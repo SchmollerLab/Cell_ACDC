@@ -920,8 +920,9 @@ class mainWin(QMainWindow):
             self.renameWin.show()
             self.renameWin.main()
         else:
+            geometry = self.renameWin.saveGeometry()
             self.renameWin.setWindowState(Qt.WindowActive)
-            self.renameWin.raise_()
+            self.renameWin.restoreGeometry(geometry)
 
     def launchConvertFormatUtil(self, checked=False):
         s = self.sender().text()
@@ -939,9 +940,9 @@ class mainWin(QMainWindow):
             self.convertWin.show()
             self.convertWin.main()
         else:
-            # self.convertWin.setWindowState(Qt.WindowNoState)
+            geometry = self.convertWin.saveGeometry()
             self.convertWin.setWindowState(Qt.WindowActive)
-            self.convertWin.raise_()
+            self.convertWin.restoreGeometry(geometry)
     
     def launchImageBatchConverter(self):
         self.batchConverterWin = utilsConvert.ImagesToPositions(parent=self)
@@ -1139,9 +1140,9 @@ class mainWin(QMainWindow):
             self.dataPrepWin.sigClose.connect(self.dataPrepClosed)
             self.dataPrepWin.show()
         else:
-            # self.dataPrepWin.setWindowState(Qt.WindowNoState)
+            geometry = self.dataPrepWin.saveGeometry()
             self.dataPrepWin.setWindowState(Qt.WindowActive)
-            self.dataPrepWin.raise_()
+            self.dataPrepWin.restoreGeometry(geometry)
     
     def dataPrepClosed(self):
         self.logger.info('Data prep window closed.')
@@ -1164,9 +1165,9 @@ class mainWin(QMainWindow):
             self.segmWin.show()
             self.segmWin.main()
         else:
-            # self.segmWin.setWindowState(Qt.WindowNoState)
+            geometry = self.segmWin.saveGeometry()
             self.segmWin.setWindowState(Qt.WindowActive)
-            self.segmWin.raise_()
+            self.segmWin.restoreGeometry(geometry)
 
 
     def launchGui(self, checked=False):
@@ -1228,7 +1229,25 @@ class mainWin(QMainWindow):
         )
         self.concatWindow.show()
     
+    def showEvent(self, event):
+        self.showAllWindows()
+        self.setFocus(True)
+        self.activateWindow()
+    
+    def showAllWindows(self):
+        openModules = self.getOpenModules()
+        for win in openModules:
+            if not win.isMinimized():
+                continue
+            geometry = win.saveGeometry()
+            win.setWindowState(Qt.WindowNoState)
+            win.restoreGeometry(geometry)
+        self.raise_()
+        self.setFocus(True)
+        self.activateWindow()
+
     def show(self):
+        self.setColorsAndText()
         super().show()
         h = self.dataPrepButton.geometry().height()
         f = 1.8
@@ -1253,8 +1272,8 @@ class mainWin(QMainWindow):
         settings = QSettings('schmollerlab', 'acdc_main')
         if settings.value('geometry') is not None:
             self.restoreGeometry(settings.value("geometry"))
-
-    def checkOpenModules(self):
+    
+    def getOpenModules(self):
         c1 = self.dataPrepButton.palette().button().color().name()
         c2 = self.segmButton.palette().button().color().name()
         c3 = self.guiButton.palette().button().color().name()
@@ -1269,6 +1288,11 @@ class mainWin(QMainWindow):
             openModules.extend(self.guiWins)
         if self.spotmaxWins:
             openModules.extend(self.spotmaxWins)
+        return openModules
+
+
+    def checkOpenModules(self):
+        openModules = self.getOpenModules()
 
         if not openModules:
             return True, openModules
@@ -1293,8 +1317,9 @@ class mainWin(QMainWindow):
         acceptClose, openModules = self.checkOpenModules()
         if acceptClose:
             for openModule in openModules:
+                geometry = openModule.saveGeometry()
                 openModule.setWindowState(Qt.WindowActive)
-                openModule.raise_()
+                openModule.restoreGeometry(geometry)
                 openModule.close()
                 if openModule.isVisible():
                     event.ignore()

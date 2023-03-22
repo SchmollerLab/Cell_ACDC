@@ -572,13 +572,16 @@ def CustomGradientMenuAction(gradient: QLinearGradient, name: str, parent):
     delButton.action = action
     return action
 
-class ContourItem(pg.PlotDataItem):
+class ContourItem(pg.PlotCurveItem):
     def __init__(self, *args, **kargs):
         super().__init__(*args, **kargs)
         self._prevData = None
     
     def clear(self):
-        self.setData([], [])
+        try:
+            self.setData([], [])
+        except AttributeError as e:
+            pass
     
     def tempClear(self):
         try:

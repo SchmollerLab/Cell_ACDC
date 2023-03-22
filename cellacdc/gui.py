@@ -76,7 +76,7 @@ from . import base_cca_df, graphLayoutBkgrColor, darkBkgrColor
 from . import load, prompts, apps, workers, html_utils
 from . import core, myutils, dataPrep, widgets
 from . import measurements, printl
-from . import colors, filters
+from . import colors, filters, plot
 from . import user_manual_url
 from . import cellacdc_path, temp_path, settings_csv_path
 from . import qutils, autopilot
@@ -1271,7 +1271,10 @@ class guiWin(QMainWindow):
         self.fontSize = self.df_settings.at['fontSize', 'value']
         intSize = int(re.findall(r'(\d+)', self.fontSize)[0])
         self.smallFontSize = f'{intSize*0.75}pt'
-        self.fontSizeMenu = editMenu.addMenu("Font size")
+        self.fontSizeMenu = editMenu.addMenu('Font size')
+        self.fontActionGroup = self.addFontSizeActions(
+            self.fontSizeMenu, self.changeFontSize
+        )
 
         editMenu.addAction(self.editShortcutsAction)
         editMenu.addAction(self.editTextIDsColorAction)
@@ -2856,7 +2859,6 @@ class guiWin(QMainWindow):
         self.loadFluoAction.setEnabled(True)
         self.isEditActionsConnected = True
 
-        self.fontSizeMenu.aboutToShow.connect(self.showFontSizeMenu)
         self.overlayButton.toggled.connect(self.overlay_cb)
         self.addPointsLayerAction.triggered.connect(self.addPointsLayer_cb)
         self.overlayLabelsButton.toggled.connect(self.overlayLabels_cb)
@@ -2941,7 +2943,9 @@ class guiWin(QMainWindow):
         self.labelsGrad.textColorButton.sigColorChanged.connect(
             self.saveTextLabelsColor
         )
-        self.labelsGrad.fontSizeMenu.aboutToShow.connect(self.showFontSizeMenu)
+        self.addFontSizeActions(
+            self.labelsGrad.fontSizeMenu, self.setFontSizeActionChecked
+        )
 
         self.labelsGrad.shuffleCmapAction.triggered.connect(self.shuffle_cmap)
         self.labelsGrad.greedyShuffleCmapAction.triggered.connect(
@@ -2957,7 +2961,9 @@ class guiWin(QMainWindow):
             self.restoreDefaultSettings
         )
 
-        self.imgGrad.fontSizeMenu.aboutToShow.connect(self.showFontSizeMenu)
+        self.addFontSizeActions(
+            self.imgGrad.fontSizeMenu, self.setFontSizeActionChecked
+        )
         self.imgGrad.invertBwAction.toggled.connect(self.setCheckedInvertBW)
         self.imgGrad.textColorButton.disconnect()
         self.imgGrad.textColorButton.clicked.connect(
@@ -3401,6 +3407,7 @@ class guiWin(QMainWindow):
         self.ax1.setAspectLocked(True)
         self.ax1.hideAxis('bottom')
         self.ax1.hideAxis('left')
+        self.ax1.disableAutoRange()
         self.graphLayout.addItem(self.ax1, row=1, col=1)
 
         # Right plot
@@ -3409,6 +3416,7 @@ class guiWin(QMainWindow):
         self.ax2.invertY(True)
         self.ax2.hideAxis('bottom')
         self.ax2.hideAxis('left')
+        self.ax2.disableAutoRange()
         self.graphLayout.addItem(self.ax2, row=1, col=2)
 
     def gui_addGraphicsItems(self):
@@ -3480,25 +3488,57 @@ class guiWin(QMainWindow):
         # self.frameLabel.setText(' ')
         # self.graphLayout.addItem(self.frameLabel, row=2, col=1, colspan=2)
 
-    def gui_setImg1TextColors(self, r, g, b, custom=False):
+    def gui_createTextAnnotColors(self, r, g, b, custom=False):
         if custom:
-            self.ax1_oldIDcolor = (r, g, b)
-            self.ax1_S_oldCellColor = (int(r*0.9), int(r*0.9), int(b*0.9))
-            self.ax1_G1cellColor = (int(r*0.8), int(g*0.8), int(b*0.8), 178)
+            self.objLabelAnnotRgb = (r, g, b)
+            self.SphaseAnnotRgb = (int(r*0.9), int(r*0.9), int(b*0.9))
+            self.G1phaseAnnotRgba = (int(r*0.8), int(g*0.8), int(b*0.8), 178)
         else:
-            self.ax1_oldIDcolor = (255, 255, 255) # white
-            self.ax1_S_oldCellColor = (229, 229, 229)
-            self.ax1_G1cellColor = (204, 204, 204, 178)
-        self.ax1_divAnnotColor = (245, 188, 1) # orange
+            self.objLabelAnnotRgb = (255, 255, 255) # white
+            self.SphaseAnnotRgb = (229, 229, 229)
+            self.G1phaseAnnotRgba = (204, 204, 204, 178)
+        self.dividedAnnotRgb = (245, 188, 1) # orange
+
+        # Lost ID question mark text color
+        self.objLostRgb = (245, 184, 0)
+
+        penWidth = 2
+        brushAlpha = 150
+
+        brushColor = (*self.objLabelAnnotRgb, brushAlpha)
+        self.objLabelAnnotBrush = pg.mkBrush(brushColor)
+        self.objLabelAnnotPen = pg.mkPen(self.objLabelAnnotRgb, width=penWidth)
+        self.objLabelAnnotHoverBrush = pg.mkBrush(self.objLabelAnnotRgb)
+
+        brushColor = (*self.SphaseAnnotRgb, brushAlpha)
+        self.SphaseAnnotBrush = pg.mkBrush(brushColor)
+        self.SphaseAnnotPen = pg.mkPen(self.SphaseAnnotRgb, width=penWidth)
+        self.SphaseAnnotHoverBrush = pg.mkBrush(self.SphaseAnnotRgb)
+
+        brushColor = (*self.G1phaseAnnotRgba[:3], brushAlpha)
+        self.G1phaseAnnotBrush = pg.mkBrush(brushColor)
+        self.G1phaseAnnotPen = pg.mkPen(self.G1phaseAnnotRgba, width=penWidth)
+        self.G1phaseAnnotHoverBrush = pg.mkBrush(self.G1phaseAnnotRgba)
+
+        brushColor = (*self.dividedAnnotRgb, brushAlpha)
+        self.dividedAnnotBrush = pg.mkBrush(brushColor)
+        self.dividedAnnotPen = pg.mkPen(self.dividedAnnotRgb, width=penWidth)
+        self.dividedAnnotHoverBrush = pg.mkBrush(self.dividedAnnotRgb)
+
+        brushColor = (*self.objLostRgb, brushAlpha)
+        self.objLostAnnotBrush = pg.mkBrush(brushColor)
+        self.objLostAnnotPen = pg.mkPen(self.objLostRgb, width=penWidth)
+        self.objLostAnnotHoverBrush = pg.mkBrush(self.objLostRgb)
+
 
     def gui_createPlotItems(self):
         if 'textIDsColor' in self.df_settings.index:
             rgbString = self.df_settings.at['textIDsColor', 'value']
             r, g, b = colors.rgb_str_to_values(rgbString)
-            self.gui_setImg1TextColors(r, g, b, custom=True)
+            self.gui_createTextAnnotColors(r, g, b, custom=True)
             self.textIDsColorButton.setColor((r, g, b))
         else:
-            self.gui_setImg1TextColors(0,0,0, custom=False)
+            self.gui_createTextAnnotColors(0,0,0, custom=False)
 
         if 'labels_text_color' in self.df_settings.index:
             rgbString = self.df_settings.at['labels_text_color', 'value']
@@ -3533,9 +3573,6 @@ class guiWin(QMainWindow):
         self.gui_createMothBudLinePens()
 
         self.eraserCirclePen = pg.mkPen(width=1.5, color='r')
-
-        # Lost ID question mark text color
-        self.lostIDs_qMcolor = (245, 184, 0)
         
         # Temporary line item connecting bud to new mother
         self.BudMothTempLine = pg.PlotDataItem(pen=self.NewBudMoth_Pen)
@@ -3803,8 +3840,30 @@ class guiWin(QMainWindow):
             self.overlayLayersItems[ch] = overlayItems
             imageItem = self.overlayLayersItems[ch][0]
             self.ax1.addItem(imageItem)
+    
+    def _gui_createTextAnnotItems(self):
+        textAnnotItems = {}
 
-    def gui_createIDsAxesItems(self):
+        size = int(self.fontActionGroup.checkedAction().text())
+
+        objLabelAnnotItem = pg.ScatterPlotItem(
+            pen=self.objLabelAnnotPen, brush=self.objLabelAnnotBrush, 
+            hoverBrush=self.objLabelAnnotHoverBrush, size=size
+        )
+        textAnnotItems['objLabelAnnotItem'] = objLabelAnnotItem
+
+        objCcaStageAnnotItem = pg.ScatterPlotItem(size=size)
+        textAnnotItems['objCcaStageAnnotItem'] = objCcaStageAnnotItem
+
+        objLostAnnotItem = pg.ScatterPlotItem(
+            size=size, pen=self.lostIDs_cpen, brush=self.objLostAnnotBrush,
+            hoverBrush=self.objLostAnnotHoverBrush
+        )
+        textAnnotItems['objLostAnnotItem'] = objLostAnnotItem
+
+        return textAnnotItems
+
+    def _gui_createGraphicsItems(self):
         allIDs = set()
         if np.any(self.data[self.pos_i].segm_data):
             self.logger.info('Counting total number of segmented objects...')
@@ -3823,9 +3882,10 @@ class guiWin(QMainWindow):
         self.ax1_ContoursCurves = [None]*numItems
         self.ax2_ContoursCurves = [None]*numItems
         self.ax1_BudMothLines = [None]*numItems
-        self.ax1_LabelItemsIDs = [None]*numItems
-        self.ax2_LabelItemsIDs = [None]*numItems
         self.ax2_BudMothLines = [None]*numItems
+
+        self.ax1_textAnnotItems = self._gui_createTextAnnotItems()
+        self.ax2_textAnnotItems = self._gui_createTextAnnotItems()
 
         if numItems > 500:
             cancel, doNotCreateItems = self._warn_too_many_items(
@@ -3856,13 +3916,36 @@ class guiWin(QMainWindow):
             self.setDisabledAnnotOptions(False)
 
         self.logger.info(f'Creating {len(allIDs)} axes items...')
+        
+        fontSize = int(self.fontActionGroup.checkedAction().text())
+        annotFont = QFont()
+        annotFont.setPixelSize(fontSize)
+        annotFontBold = QFont()
+        annotFontBold.setPixelSize(fontSize)
+        annotFontBold.setBold(True)
+
+        annotTexts = []
+
         for ID in tqdm(allIDs, ncols=100):
             self.ax1_ContoursCurves[ID-1] = widgets.ContourItem()
-            self.ax1_BudMothLines[ID-1] = pg.PlotDataItem()
-            self.ax1_LabelItemsIDs[ID-1] = widgets.myLabelItem()
-            self.ax2_LabelItemsIDs[ID-1] = widgets.myLabelItem()
+            self.ax1_BudMothLines[ID-1] = pg.PlotCurveItem()
             self.ax2_ContoursCurves[ID-1] = widgets.ContourItem()
-            self.ax2_BudMothLines[ID-1] = pg.PlotDataItem()
+            self.ax2_BudMothLines[ID-1] = pg.PlotCurveItem()
+            annotTexts.append(str(ID))
+            annotTexts.append(f'{ID}?')
+        
+        for gen_num in range(20):
+            annotTexts.append(f'G1-{gen_num}')
+            annotTexts.append(f'G1-{gen_num}?')
+            annotTexts.append(f'S-{gen_num}')
+            annotTexts.append(f'S-{gen_num}?')
+
+        self.textAnnotSymbolsBold = plot.texts_to_pg_scatter_symbols(
+            annotTexts, font=annotFontBold
+        )
+        self.textAnnotSymbols = plot.texts_to_pg_scatter_symbols(
+            annotTexts, font=annotFont
+        )
 
         self.progressWin.mainPbar.setMaximum(0)
         self.gui_addOverlayLayerItems()
@@ -3998,7 +4081,7 @@ class guiWin(QMainWindow):
         self.progressWin.show(self.app)
         self.progressWin.mainPbar.setMaximum(0)
 
-        QTimer.singleShot(50, self.gui_createIDsAxesItems)
+        QTimer.singleShot(50, self._gui_createGraphicsItems)
 
     def gui_connectGraphicsEvents(self):
         self.img1.hoverEvent = self.gui_hoverEventImg1
@@ -4281,8 +4364,8 @@ class guiWin(QMainWindow):
             # Remove contour and LabelItem of deleted ID
             self.ax1_ContoursCurves[delID-1].setData([], [])
             self.ax2_ContoursCurves[delID-1].setData([], [])
-            self.ax1_LabelItemsIDs[delID-1].setText('')
-            self.ax2_LabelItemsIDs[delID-1].setText('')
+            self.clearObjsTextAnnot_ax1([delID])
+            self.clearObjsTextAnnot_ax2([delID])
 
             how = self.drawIDsContComboBox.currentText()
             if how.find('overlay segm. masks') != -1:
@@ -6941,17 +7024,14 @@ class guiWin(QMainWindow):
         allItems = zip(
             self.ax1_ContoursCurves,
             self.ax2_ContoursCurves,
-            self.ax1_LabelItemsIDs,
-            self.ax2_LabelItemsIDs,
             self.ax1_BudMothLines,
             self.ax2_BudMothLines
         )
         self.logger.info(f'Adding {len(self.ax1_ContoursCurves)} axes items...')
         pbar = tqdm(total=len(self.ax1_ContoursCurves), ncols=100)
         for items_ID in allItems:
-            (ax1ContCurve, ax2ContCurve,
-            ax1_IDlabel, ax2_IDlabel,
-            BudMothLine, ax2_mothBudLine) = items_ID
+            (ax1ContCurve, ax2ContCurve, BudMothLine, 
+            ax2_mothBudLine) = items_ID
 
             pbar.update()
 
@@ -6960,12 +7040,60 @@ class guiWin(QMainWindow):
 
             self.ax1.addItem(ax1ContCurve)
             self.ax1.addItem(BudMothLine)
-            self.ax1.addItem(ax1_IDlabel)
 
-            self.ax2.addItem(ax2_IDlabel)
             self.ax2.addItem(ax2ContCurve)
             self.ax2.addItem(ax2_mothBudLine)
+
+        for item in self.ax1_textAnnotItems.values():
+            self.ax1.addItem(item)
+        
+        for item in self.ax1_textAnnotItems.values():
+            self.ax2.addItem(item)
+
         pbar.close()
+    
+    def gui_raiseBottomLayoutContextMenu(self, event):
+        try:
+            # Convert QPointF to QPoint
+            self.bottomLayoutContextMenu.popup(event.screenPos().toPoint())
+        except AttributeError:
+            self.bottomLayoutContextMenu.popup(event.screenPos())
+    
+    def getTextAnnotScatterItem_ax1(self, ax):
+        if self.annotIDsCheckbox.isChecked():
+            return self.ax1_textAnnotItems['objLabelAnnotItem']
+        elif self.annotCcaInfoCheckbox.isChecked():
+            return self.ax1_textAnnotItems['objCcaStageAnnotItem']
+        else:
+            return
+    
+    def getTextAnnotScatterItem_ax2(self):
+        if self.annotIDsCheckboxRight.isChecked():
+            return self.ax2_textAnnotItems['objLabelAnnotItem']
+        elif self.annotCcaInfoCheckboxRight.isChecked():
+            return self.ax2_textAnnotItems['objCcaStageAnnotItem']
+        else:
+            return
+    
+    def clearObjsTextAnnot_ax1(self, IDs):
+        scatterItem = self.getTextAnnotScatterItem_ax1()
+        if scatterItem is None:
+            return
+        self._clearObjsTextAnnot(IDs, scatterItem)
+    
+    def clearObjsTextAnnot_ax2(self, IDs):
+        scatterItem = self.getTextAnnotScatterItem_ax2()
+        if scatterItem is None:
+            return
+        self._clearObjsTextAnnot(IDs, scatterItem)
+        
+    def _clearObjsTextAnnot(self, IDs, scatterItem: pg.ScatterPlotItem):
+        xx, yy = scatterItem.getData()
+        posData = self.data[self.pos_i]
+        clearIdxs = [posData.IDs_idxs[ID] for ID in IDs]
+        new_xx = np.delete(xx, clearIdxs)
+        new_yy = np.delete(yy, clearIdxs)
+        scatterItem.setData(new_xx, new_yy)
     
     def labelRoiIsCircularRadioButtonToggled(self, checked):
         if checked:
@@ -8953,10 +9081,10 @@ class guiWin(QMainWindow):
             self.graphLayout.setBackground(graphLayoutBkgrColor)
             self.ax2_BrushCirclePen = pg.mkPen((150,150,150), width=2)
             self.ax2_BrushCircleBrush = pg.mkBrush((200,200,200,150))
-            self.ax1_oldIDcolor = [255-v for v in self.ax1_oldIDcolor]
-            self.ax1_G1cellColor = [255-v for v in self.ax1_G1cellColor[:3]]
-            self.ax1_G1cellColor.append(178)
-            self.ax1_S_oldCellColor = [255-v for v in self.ax1_S_oldCellColor]
+            self.objLabelAnnotRgb = [255-v for v in self.objLabelAnnotRgb]
+            self.G1phaseAnnotRgba = [255-v for v in self.G1phaseAnnotRgba[:3]]
+            self.G1phaseAnnotRgba.append(178)
+            self.SphaseAnnotRgb = [255-v for v in self.SphaseAnnotRgb]
             self.titleColor = 'black'    
         else:
             # Dark mode
@@ -8966,10 +9094,10 @@ class guiWin(QMainWindow):
             self.graphLayout.setBackground(darkBkgrColor)
             self.ax2_BrushCirclePen = pg.mkPen(width=2)
             self.ax2_BrushCircleBrush = pg.mkBrush((255,255,255,50))
-            self.ax1_oldIDcolor = [255-v for v in self.ax1_oldIDcolor]
-            self.ax1_G1cellColor = [255-v for v in self.ax1_G1cellColor[:3]]
-            self.ax1_G1cellColor.append(178)
-            self.ax1_S_oldCellColor = [255-v for v in self.ax1_S_oldCellColor]
+            self.objLabelAnnotRgb = [255-v for v in self.objLabelAnnotRgb]
+            self.G1phaseAnnotRgba = [255-v for v in self.G1phaseAnnotRgba[:3]]
+            self.G1phaseAnnotRgba.append(178)
+            self.SphaseAnnotRgb = [255-v for v in self.SphaseAnnotRgb]
             self.titleColor = 'white'
         
         self.updateALLimg()
@@ -9115,16 +9243,14 @@ class guiWin(QMainWindow):
 
     def saveLabelsColormap(self):
         self.labelsGrad.saveColormap()
-
-    def showFontSizeMenu(self):
-        menu = self.sender()
-        menu.clear()
+    
+    def addFontSizeActions(self, menu, slot):
         fontActionGroup = QActionGroup(self)
         fontActionGroup.setExclusionPolicy(
             QActionGroup.ExclusionPolicy.Exclusive
         )
         fs = int(re.findall(r'(\d+)pt', self.fontSize)[0])
-        for i in range(0,25):
+        for i in range(1,26):
             action = QAction(self)
             action.setText(f'{i}')
             action.setCheckable(True)
@@ -9132,7 +9258,16 @@ class guiWin(QMainWindow):
                 action.setChecked(True)
             fontActionGroup.addAction(action)
             menu.addAction(action)
-            action.triggered.connect(self.changeFontSize)
+            action.triggered.connect(slot)
+        return fontActionGroup
+    
+    def setFontSizeActionChecked(self):
+        fontSize = self.sender().text()
+        for action in self.fontActionGroup.actions():
+            if action.text() != fontSize:
+                continue
+            action.trigger()
+            break
 
     @exception_handler
     def changeFontSize(self):
@@ -10291,13 +10426,6 @@ class guiWin(QMainWindow):
             if pos.y()>=0:
                 self.gui_raiseBottomLayoutContextMenu(event)
         return super().mousePressEvent(event)
-
-    def gui_raiseBottomLayoutContextMenu(self, event):
-        try:
-            # Convert QPointF to QPoint
-            self.bottomLayoutContextMenu.popup(event.screenPos().toPoint())
-        except AttributeError:
-            self.bottomLayoutContextMenu.popup(event.screenPos())
         
     def zoomBottomLayoutActionTriggered(self, checked):
         if not checked:
@@ -13119,6 +13247,9 @@ class guiWin(QMainWindow):
         self.ax1.vb.menu = self.imgGrad.gradient.menu
         self.ax2.vb.menu = self.labelsGrad.menu
 
+        # self.ax1.enableAutoRange()
+        # self.ax2.enableAutoRange()
+
         QTimer.singleShot(200, self.resizeGui)
 
         self.dataIsLoaded = True
@@ -13591,22 +13722,23 @@ class guiWin(QMainWindow):
         self.ax2_ripIDs_ScatterPlot.clear()
 
         allItems = zip(
-            self.ax2_LabelItemsIDs,
             self.ax2_ContoursCurves,
             self.ax2_BudMothLines
         )
         for idx, items_ID in enumerate(allItems):
-            _IDlabel2, ax2ContCurve, mothBudLine = items_ID
+            ax2ContCurve, mothBudLine = items_ID
 
             if ax2ContCurve is None:
                 continue
 
             if ax2ContCurve.getData()[0] is not None:
                 ax2ContCurve.setData([], [])
-            _IDlabel2.setText('')
 
             if mothBudLine.getData()[0] is not None:
                 mothBudLine.setData([], [])
+        
+        for item in self.ax2_textAnnotItems.values():
+            item.clear()
     
     def clearAx1Items(self):
         self.ax1_binnedIDs_ScatterPlot.clear()
@@ -13621,11 +13753,10 @@ class guiWin(QMainWindow):
         self.searchedIDitemRight.clear()
         allItems = zip(
             self.ax1_ContoursCurves,
-            self.ax1_LabelItemsIDs,
             self.ax1_BudMothLines
         )
         for idx, items_ID in enumerate(allItems):
-            ax1ContCurve, _IDlabel1, BudMothLine = items_ID
+            ax1ContCurve, BudMothLine = items_ID
 
             if ax1ContCurve is None:
                 continue
@@ -13634,8 +13765,10 @@ class guiWin(QMainWindow):
                 ax1ContCurve.clear()
             if BudMothLine.getData()[0] is not None:
                 BudMothLine.clear()
-            _IDlabel1.setText('')
-
+        
+        for item in self.ax1_textAnnotItems.values():
+            item.clear()
+        
         self.clearPointsLayers()
 
         self.clearOverlayLabelsItems()
@@ -14867,6 +15000,9 @@ class guiWin(QMainWindow):
 
         self.update_rp_metadata(draw=False)
         posData.IDs = [obj.label for obj in posData.rp]
+        posData.IDs_idxs = {
+            ID:i for ID, i in zip(posData.IDs, range(len(posData.IDs)))
+        }
         return proceed_cca, never_visited
 
     def load_delROIs_info(self, delROIshapes, last_tracked_num):
@@ -15231,7 +15367,7 @@ class guiWin(QMainWindow):
                 color = 'r'
                 bold = True
             else:
-                color = self.ax1_oldIDcolor
+                color = self.objLabelAnnotRgb
                 bold = False
         else:
             try:
@@ -15300,10 +15436,10 @@ class guiWin(QMainWindow):
             
             txt = f'{ccs}-{gen_num}'
             if ccs == 'G1':
-                color = self.ax1_G1cellColor
+                color = self.G1phaseAnnotRgba
                 bold = False
             elif mothCell_S:
-                color = self.ax1_S_oldCellColor
+                color = self.SphaseAnnotRgb
                 bold = False
             elif budNotEmergedNow:
                 color = 'r'
@@ -15312,20 +15448,20 @@ class guiWin(QMainWindow):
                 color = 'r'
                 bold = True
             elif is_division_annotated:
-                color = self.ax1_divAnnotColor
+                color = self.dividedAnnotRgb
                 bold = False
 
             if not is_history_known:
                 txt = f'{txt}?'
         
         if ID in posData.ripIDs or ID in posData.binnedIDs:
-            color = (*self.ax1_S_oldCellColor, 50)
+            color = (*self.SphaseAnnotRgb, 50)
             bold = False
 
         if self.isSegm3D:
             if obj.label not in self.currentLab2D:
                 # Object is present in z+1 and z-1 but not in z --> transparent
-                r,g,b = self.ax1_oldIDcolor
+                r,g,b = self.objLabelAnnotRgb
                 color = QColor(r,g,b,70)
                 LabelItemID.setText(txt, color=color, size=self.smallFontSize)
                 self.setLabelCenteredObject(obj, LabelItemID)
@@ -15587,6 +15723,9 @@ class guiWin(QMainWindow):
         # Update rp for current posData.lab (e.g. after any change)
         posData.rp = skimage.measure.regionprops(posData.lab)
         posData.IDs = [obj.label for obj in posData.rp]
+        posData.IDs_idxs = {
+            ID:i for ID, i in zip(posData.IDs, range(len(posData.IDs)))
+        }
         self.update_rp_metadata(draw=draw)
 
     def update_IDsContours(self, prev_IDs, newIDs=[]):
@@ -16755,6 +16894,8 @@ class guiWin(QMainWindow):
     
     def setOverlayImages(self, frame_i=None, updateFilters=False):
         posData = self.data[self.pos_i]
+        if posData.ol_data is None:
+            return
         for filename in posData.ol_data:
             chName = myutils.get_chname_from_basename(
                 filename, posData.basename, remove_ext=False
@@ -16860,11 +17001,11 @@ class guiWin(QMainWindow):
         for items in self.overlayLayersItems.values():
             lutItem = items[1]
             lutItem.textColorButton.setColor((r, g, b))
-        self.gui_setImg1TextColors(r,g,b, custom=True)
+        self.gui_createTextAnnotColors(r,g,b, custom=True)
         self.updateALLimg()
 
     def saveTextIDsColors(self, button):
-        self.df_settings.at['textIDsColor', 'value'] = self.ax1_oldIDcolor
+        self.df_settings.at['textIDsColor', 'value'] = self.objLabelAnnotRgb
         self.df_settings.to_csv(self.settings_csv_path)
 
     def setLut(self, shuffle=True):
@@ -18274,7 +18415,6 @@ class guiWin(QMainWindow):
             posData.lost_IDs = []
             posData.new_IDs = []
             posData.old_IDs = []
-            posData.IDs = [obj.label for obj in posData.rp]
             # posData.multiContIDs = set()
             self.titleLabel.setText('Looking good!', color=self.titleColor)
             return
@@ -19706,7 +19846,9 @@ class guiWin(QMainWindow):
         lutItem.gradient.showMenu = self.gui_gradientContextMenuEvent
 
         lutItem.invertBwAction.toggled.connect(self.setCheckedInvertBW)
-        lutItem.fontSizeMenu.aboutToShow.connect(self.showFontSizeMenu)
+        self.addFontSizeActions(
+            lutItem.fontSizeMenu, self.setFontSizeActionChecked
+        )
 
         lutItem.contoursColorButton.disconnect() 
         lutItem.contoursColorButton.clicked.connect(
@@ -20827,6 +20969,16 @@ class guiWin(QMainWindow):
             self.propsDockWidget.setVisible(True)
             self.propsDockWidget.setEnabled(True)
         self.updateALLimg()
+    
+    def showEvent(self, event):
+        if not self.mainWin.isMinimized():
+            return
+        self.mainWin.showAllWindows()
+        self.setFocus(True)
+        self.activateWindow()
+    
+    def super_show(self):
+        super().show()
 
     def show(self):
         QMainWindow.show(self)
