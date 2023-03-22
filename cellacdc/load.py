@@ -1052,22 +1052,6 @@ class loadData:
         else:
             self.PhysicalSizeZ = 1
 
-        load_last_segmSizeT = (
-            self.last_md_df is not None
-            and 'segmSizeT' in self.last_md_df.index
-            and self.SizeT > 1
-        )
-        if 'segmSizeT' in self.metadata_df.index:
-             self.segmSizeT = float(
-                 self.metadata_df.at['segmSizeT', 'values']
-             )
-             self.segmSizeT = int(self.segmSizeT)
-        elif load_last_segmSizeT:
-            self.segmSizeT = float(self.last_md_df.at['segmSizeT', 'values'])
-            self.segmSizeT = int(self.segmSizeT)
-        else:
-            self.segmSizeT = self.SizeT
-
         self._additionalMetadataValues = {}
         for name in self.metadata_df.index:
             if name.startswith('__'):
@@ -1193,7 +1177,6 @@ class loadData:
         self.PhysicalSizeX = 1.0
         self.PhysicalSizeY = 1.0
         self.PhysicalSizeZ = 1.0
-        self.segmSizeT = self.SizeT
         self.metadata_df = None
 
         if self.last_md_df is None:
@@ -1221,8 +1204,6 @@ class loadData:
             self.PhysicalSizeZ = float(
                 self.last_md_df.at['PhysicalSizeZ', 'values']
             )
-        if 'segmSizeT' in self.last_md_df.index:
-            self.segmSizeT = int(self.last_md_df.at['segmSizeT', 'values'])
 
     def addEquationCombineMetrics(self, equation, colName, isMixedChannels):
         section = 'mixed_channels_equations' if isMixedChannels else 'equations'
@@ -1570,14 +1551,6 @@ class loadData:
         self.PhysicalSizeY = from_posData.PhysicalSizeY
         self.PhysicalSizeX = from_posData.PhysicalSizeX
 
-    def updateSegmSizeT(self):
-        segmSizeT = len(self.segm_data)
-        if self.segmSizeT == segmSizeT:
-            return
-        self.segmSizeT = segmSizeT
-        self.metadata_df.at['segmSizeT', 'values'] = segmSizeT
-        self.metadataToCsv()
-
     def metadataToCsv(self, signals=None, mutex=None, waitCond=None):
         try:
             self.metadata_df.to_csv(self.metadata_csv_path)
@@ -1621,7 +1594,6 @@ class loadData:
                 'PhysicalSizeZ': self.PhysicalSizeZ,
                 'PhysicalSizeY': self.PhysicalSizeY,
                 'PhysicalSizeX': self.PhysicalSizeX,
-                'segmSizeT': self.segmSizeT,
                 isSegm3Dkey: self.isSegm3D
             }
             if additionalMetadata is not None:
@@ -1639,7 +1611,6 @@ class loadData:
             self.metadata_df.at['PhysicalSizeZ', 'values'] = self.PhysicalSizeZ
             self.metadata_df.at['PhysicalSizeY', 'values'] = self.PhysicalSizeY
             self.metadata_df.at['PhysicalSizeX', 'values'] = self.PhysicalSizeX
-            self.metadata_df.at['segmSizeT', 'values'] = self.segmSizeT
             self.metadata_df.at[isSegm3Dkey, 'values'] = self.isSegm3D
             if additionalMetadata is not None:
                 for name, value in additionalMetadata.items():

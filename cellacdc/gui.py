@@ -7143,7 +7143,6 @@ class guiWin(QMainWindow):
                 self.get_data()
         posData = self.data[self.pos_i]
         self.addMissingItemsIDs(posData.IDs)
-        posData.updateSegmSizeT()
         self.updateALLimg()
         self.titleLabel.setText('Done', color='w')
 

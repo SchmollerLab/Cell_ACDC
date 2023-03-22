@@ -7831,26 +7831,10 @@ class askStopFrameSegm(QDialog):
         buttonsLayout = QHBoxLayout()
 
         # Message
-        infoTxt = (
-        """
-        <!DOCTYPE html>
-        <html>
-        <head>
-        <style>
-        p.big {
-            line-height: 1.2;
-        }
-        </style>
-        </head>
-        <body>
-        <p class="big">
+        infoTxt = html_utils.paragraph("""
             Enter a <b>stop frame number</b> when to stop<br>
             segmentation for each Position loaded:
-        </p>
-        </body>
-        </html>
-        """
-        )
+        """)
         infoLabel = QLabel(infoTxt, self)
         _font = QFont()
         _font.setPixelSize(13)
@@ -7936,8 +7920,6 @@ class askStopFrameSegm(QDialog):
     def saveSegmSizeT(self):
         for spinBox, posData in self.dataDict.values():
             posData.segmSizeT = spinBox.value()
-            posData.metadata_df.at['segmSizeT', 'values'] = posData.segmSizeT
-            posData.metadataToCsv()
 
     def ok_cb(self, event):
         self.cancel = False
