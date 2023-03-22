@@ -82,8 +82,26 @@ def binned_means_plot(
 
     return ax
 
+def text_to_pg_scatter_symbol(text: str, font=None, scale=None):
+    if font is None:
+        font = QtGui.QFont()
+        font.setPixelSize(11)
+
+    symbol = QtGui.QPainterPath()
+    symbol.addText(0, 0, font, text)
+    br = symbol.boundingRect()
+    if scale is None:
+        scale = min(1. / br.width(), 1. / br.height())
+    tr = QtGui.QTransform()
+    tr.scale(max_scale, max_scale)
+    tr.translate(-br.x() - br.width()/2., -br.y() - br.height()/2.)
+    symbol = tr.map(symbol)
+    return symbol
+    
+
 def texts_to_pg_scatter_symbols(
-        texts: typing.Union[str, list[str]], font=None, progress=True
+        texts: typing.Union[str, list[str]], font=None, progress=True,
+        return_scale=False
     ):
     if font is None:
         font = QtGui.QFont()
@@ -112,7 +130,7 @@ def texts_to_pg_scatter_symbols(
     for text, symbol in zip(texts, symbols):
         br = symbol.boundingRect()
         tr = QtGui.QTransform()
-        tr.scale(scale, scale)
+        tr.scale(max_scale, max_scale)
         tr.translate(-br.x() - br.width()/2., -br.y() - br.height()/2.)
         scaled_symbols[text] = tr.map(symbol)
         if progress:
@@ -121,7 +139,10 @@ def texts_to_pg_scatter_symbols(
     if progress:
         pbar.close()
     
-    return scaled_symbols
+    if return_scale:
+        return scaled_symbols, max_scale
+    else:
+        return scaled_symbols
 
 
 if __name__ == '__main__':

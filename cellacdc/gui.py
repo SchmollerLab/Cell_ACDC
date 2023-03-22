@@ -3407,7 +3407,6 @@ class guiWin(QMainWindow):
         self.ax1.setAspectLocked(True)
         self.ax1.hideAxis('bottom')
         self.ax1.hideAxis('left')
-        self.ax1.disableAutoRange()
         self.graphLayout.addItem(self.ax1, row=1, col=1)
 
         # Right plot
@@ -3416,7 +3415,6 @@ class guiWin(QMainWindow):
         self.ax2.invertY(True)
         self.ax2.hideAxis('bottom')
         self.ax2.hideAxis('left')
-        self.ax2.disableAutoRange()
         self.graphLayout.addItem(self.ax2, row=1, col=2)
 
     def gui_addGraphicsItems(self):
@@ -3499,10 +3497,13 @@ class guiWin(QMainWindow):
             self.G1phaseAnnotRgba = (204, 204, 204, 178)
         self.dividedAnnotRgb = (245, 188, 1) # orange
 
+        self.emptyBrush = pg.mkBrush((0,0,0,0))
+        self.emptyPen = pg.mkPen((0,0,0,0))
+
         # Lost ID question mark text color
         self.objLostRgb = (245, 184, 0)
 
-        penWidth = 2
+        penWidth = 1
         brushAlpha = 150
 
         brushColor = (*self.objLabelAnnotRgb, brushAlpha)
@@ -3530,6 +3531,16 @@ class guiWin(QMainWindow):
         self.objLostAnnotPen = pg.mkPen(self.objLostRgb, width=penWidth)
         self.objLostAnnotHoverBrush = pg.mkBrush(self.objLostRgb)
 
+        brushColor = (255, 0, 0, brushAlpha)
+        self.objNewAnnotBrush = pg.mkBrush(brushColor)
+        self.objNewAnnotPen = pg.mkPen((255,0,0), width=penWidth)
+        self.objNewAnnotHoverBrush = pg.mkBrush((255,0,0))
+
+        brushColor = (*self.objLabelAnnotRgb, 50)
+        penColor = (*self.objLabelAnnotRgb, 100)
+        self.objDeadAnnotBrush = pg.mkBrush(brushColor)
+        self.objDeadAnnotPen = pg.mkPen(penColor, width=penWidth)
+        self.objDeadAnnotHoverBrush = pg.mkBrush(brushColor)
 
     def gui_createPlotItems(self):
         if 'textIDsColor' in self.df_settings.index:
@@ -3848,18 +3859,27 @@ class guiWin(QMainWindow):
 
         objLabelAnnotItem = pg.ScatterPlotItem(
             pen=self.objLabelAnnotPen, brush=self.objLabelAnnotBrush, 
-            hoverBrush=self.objLabelAnnotHoverBrush, size=size
+            hoverBrush=self.objLabelAnnotHoverBrush, size=size,
+            pxMode=False
         )
+        objLabelAnnotItem.hiddenAnnotOpts = {}
         textAnnotItems['objLabelAnnotItem'] = objLabelAnnotItem
 
-        objCcaStageAnnotItem = pg.ScatterPlotItem(size=size)
+        objCcaStageAnnotItem = pg.ScatterPlotItem(
+            size=size, pen=self.G1phaseAnnotPen, 
+            brush=self.G1phaseAnnotBrush,
+            hoverBrush=self.G1phaseAnnotHoverBrush,
+            pxMode=False
+        )
         textAnnotItems['objCcaStageAnnotItem'] = objCcaStageAnnotItem
+        objCcaStageAnnotItem.hiddenAnnotOpts = {}
 
         objLostAnnotItem = pg.ScatterPlotItem(
             size=size, pen=self.lostIDs_cpen, brush=self.objLostAnnotBrush,
-            hoverBrush=self.objLostAnnotHoverBrush
+            hoverBrush=self.objLostAnnotHoverBrush, pxMode=False
         )
         textAnnotItems['objLostAnnotItem'] = objLostAnnotItem
+        objLostAnnotItem.hiddenAnnotOpts = {}
 
         return textAnnotItems
 
@@ -3939,17 +3959,25 @@ class guiWin(QMainWindow):
             annotTexts.append(f'G1-{gen_num}?')
             annotTexts.append(f'S-{gen_num}')
             annotTexts.append(f'S-{gen_num}?')
+        
+        annotTexts.append('?')
 
-        self.textAnnotSymbolsBold = plot.texts_to_pg_scatter_symbols(
-            annotTexts, font=annotFontBold
+        self.textAnnotSymbolsBold, scale = plot.texts_to_pg_scatter_symbols(
+            annotTexts, font=annotFontBold, return_scale=True
         )
-        self.textAnnotSymbols = plot.texts_to_pg_scatter_symbols(
-            annotTexts, font=annotFont
+        self.textAnnotSymbolScaleBold = scale
+        self.textAnnotFontBold = annotFontBold
+
+        self.textAnnotSymbols, scale = plot.texts_to_pg_scatter_symbols(
+            annotTexts, font=annotFont, return_scale=True
         )
+        self.textAnnotSymbolScale = scale
+        self.textAnnotFont = annotFont
 
         self.progressWin.mainPbar.setMaximum(0)
         self.gui_addOverlayLayerItems()
         self.gui_addTopLayerItems()
+
         self.gui_addCreatedAxesItems()
         self.gui_add_ax_cursors()
         self.progressWin.workerFinished = True
@@ -4364,8 +4392,8 @@ class guiWin(QMainWindow):
             # Remove contour and LabelItem of deleted ID
             self.ax1_ContoursCurves[delID-1].setData([], [])
             self.ax2_ContoursCurves[delID-1].setData([], [])
-            self.clearObjsTextAnnot_ax1([delID])
-            self.clearObjsTextAnnot_ax2([delID])
+            self.clearObjsTextAnnot([delID], ax=0)
+            self.clearObjsTextAnnot([delID], ax=1)
 
             how = self.drawIDsContComboBox.currentText()
             if how.find('overlay segm. masks') != -1:
@@ -7047,7 +7075,7 @@ class guiWin(QMainWindow):
         for item in self.ax1_textAnnotItems.values():
             self.ax1.addItem(item)
         
-        for item in self.ax1_textAnnotItems.values():
+        for item in self.ax2_textAnnotItems.values():
             self.ax2.addItem(item)
 
         pbar.close()
@@ -7059,7 +7087,7 @@ class guiWin(QMainWindow):
         except AttributeError:
             self.bottomLayoutContextMenu.popup(event.screenPos())
     
-    def getTextAnnotScatterItem_ax1(self, ax):
+    def getTextAnnotScatterItem_ax1(self):
         if self.annotIDsCheckbox.isChecked():
             return self.ax1_textAnnotItems['objLabelAnnotItem']
         elif self.annotCcaInfoCheckbox.isChecked():
@@ -7075,14 +7103,75 @@ class guiWin(QMainWindow):
         else:
             return
     
-    def clearObjsTextAnnot_ax1(self, IDs):
-        scatterItem = self.getTextAnnotScatterItem_ax1()
+    def updateObjAnnotText(self, obj):
+        objAnnotOpts, objAnnotOptsRight, objAnnotSegmOpts = (
+            self.getAllAxisObjTextAnnotOpts(obj)
+        )
+        if objAnnotOpts is not None:
+            self._updateIDAnnotText(obj.label, objAnnotOpts, ax=0)
+        if objAnnotOptsRight is not None:
+            self._updateIDAnnotText(obj.label, objAnnotOptsRight, ax=1)
+        if objAnnotSegmOpts is not None:
+            self._updateIDAnnotText(obj.label, objAnnotSegmOpts, ax=1)
+
+    def _updateIDAnnotText(self, ID, opts, ax=0):
+        if ax == 0:
+            scatterItem = self.getTextAnnotScatterItem_ax1()
+        else:
+            scatterItem = self.getTextAnnotScatterItem_ax2()
         if scatterItem is None:
             return
-        self._clearObjsTextAnnot(IDs, scatterItem)
     
-    def clearObjsTextAnnot_ax2(self, IDs):
-        scatterItem = self.getTextAnnotScatterItem_ax2()
+        posData = self.data[self.pos_i]
+        idx = posData.IDs_idxs[ID]
+        for key, value in opts.items():
+            scatterItem.data[key][idx] = value
+    
+    def hideObjsTextAnnot(self, IDs, ax=0):
+        if ax == 0:
+            scatterItem = self.getTextAnnotScatterItem_ax1()
+        else:
+            scatterItem = self.getTextAnnotScatterItem_ax2()
+        if scatterItem is None:
+            return
+        self._hideObjsTextAnnot(IDs, scatterItem)
+    
+    def _hideObjsTextAnnot(self, IDs, scatterItem):
+        posData = self.data[self.pos_i]
+        for ID in IDs:
+            idx = posData.IDs_idxs[ID]
+            brush = pg.mkBrush(scatterItem.data['brush'][idx])
+            pen = pg.mkPen(scatterItem.data['pen'][idx])
+            scatterItem.hiddenAnnotOpts[ID] = {'brush': brush, 'pen': pen}
+            scatterItem.data['brush'][idx] = self.emptyBrush
+            scatterItem.data['pen'][idx] = self.emptyPen
+        scatterItem.updateSpots()
+    
+    def restoreTextAnnotBrush(self, IDs, ax=0):
+        if ax == 0:
+            scatterItem = self.getTextAnnotScatterItem_ax1()
+        else:
+            scatterItem = self.getTextAnnotScatterItem_ax2()
+        if scatterItem is None:
+            return
+        self._restoreTextAnnotBrush(self, IDs, scatterItem)
+    
+    def _restoreTextAnnotBrush(self, IDs, scatterItem):
+        posData = self.data[self.pos_i]
+        for ID in IDs:
+            idx = posData.IDs_idxs[ID]
+            IDopts = scatterItem.hiddenAnnotOpts.get(ID, {})
+            brush = IDopts.get('brush', scatterItem.opts['brush'])
+            pen = IDopts.get('pen', scatterItem.opts['pen'])
+            scatterItem.data['brush'][idx] = brush
+            scatterItem.data['pen'][idx] = pen
+        scatterItem.updateSpots()
+    
+    def clearObjsTextAnnot(self, IDs, ax=0):
+        if ax == 0:
+            scatterItem = self.getTextAnnotScatterItem_ax1()
+        else:
+            scatterItem = self.getTextAnnotScatterItem_ax2()
         if scatterItem is None:
             return
         self._clearObjsTextAnnot(IDs, scatterItem)
@@ -8025,12 +8114,14 @@ class guiWin(QMainWindow):
         # Update cell cycle info LabelItems
         obj_idx = posData.IDs.index(ID)
         rp_ID = posData.rp[obj_idx]
-        self.drawID_and_Contour(rp_ID, drawContours=False)
+        self.drawObjContours(rp_ID, drawContours=False)
+        self.updateObjAnnotText(rp_ID)
 
         if relID in posData.IDs:
             relObj_idx = posData.IDs.index(relID)
             rp_relID = posData.rp[relObj_idx]
-            self.drawID_and_Contour(rp_relID, drawContours=False)
+            self.drawObjContours(rp_relID, drawContours=False)
+            self.updateObjAnnotText(rp_relID)
 
         self.store_cca_df()
 
@@ -8152,8 +8243,10 @@ class guiWin(QMainWindow):
         self.store_cca_df()
 
         # Update cell cycle info LabelItems
-        self.drawID_and_Contour(rp_ID, drawContours=False)
-        self.drawID_and_Contour(rp_relID, drawContours=False)
+        self.drawObjContours(rp_ID, drawContours=False)
+        self.drawObjContours(rp_relID, drawContours=False)
+        self.updateObjAnnotText(rp_ID)
+        self.updateObjAnnotText(rp_relID)
 
 
         if self.ccaTableWin is not None:
@@ -8209,8 +8302,10 @@ class guiWin(QMainWindow):
         rp_relID = posData.rp[relObj_idx]
 
         # Update cell cycle info LabelItems
-        self.drawID_and_Contour(rp_ID, drawContours=False)
-        self.drawID_and_Contour(rp_relID, drawContours=False)
+        self.drawObjContours(rp_ID, drawContours=False)
+        self.drawObjContours(rp_relID, drawContours=False)
+        self.updateObjAnnotText(rp_ID)
+        self.updateObjAnnotText(rp_relID)
 
         if self.ccaTableWin is not None:
             self.ccaTableWin.updateTable(posData.cca_df)
@@ -8495,7 +8590,8 @@ class guiWin(QMainWindow):
                 posData.cca_df.at[currentRelID, 'cell_cycle_stage'] = 'G1'
                 currentRelObjIdx = posData.IDs.index(currentRelID)
                 currentRelObj = posData.rp[currentRelObjIdx]
-                self.drawID_and_Contour(currentRelObj, drawContours=False)
+                self.drawObjContours(currentRelObj, drawContours=False)
+                self.updateObjAnnotText(currentRelObj)
             posData.cca_df.at[budID, 'relationship'] = 'bud'
             posData.cca_df.at[budID, 'generation_num'] = 0
             posData.cca_df.at[budID, 'relative_ID'] = new_mothID
@@ -8507,8 +8603,10 @@ class guiWin(QMainWindow):
             new_moth_obj_idx = posData.IDs.index(new_mothID)
             rp_budID = posData.rp[bud_obj_idx]
             rp_new_mothID = posData.rp[new_moth_obj_idx]
-            self.drawID_and_Contour(rp_budID, drawContours=False)
-            self.drawID_and_Contour(rp_new_mothID, drawContours=False)
+            self.drawObjContours(rp_budID, drawContours=False)
+            self.drawObjContours(rp_new_mothID, drawContours=False)
+            self.updateObjAnnotText(rp_budID)
+            self.updateObjAnnotText(rp_new_mothID)
             self.store_cca_df()
             return
 
@@ -8550,12 +8648,15 @@ class guiWin(QMainWindow):
         rp_new_mothID = posData.rp[new_moth_obj_idx]
 
 
-        self.drawID_and_Contour(rp_budID, drawContours=False)
-        self.drawID_and_Contour(rp_new_mothID, drawContours=False)
+        self.drawObjContours(rp_budID, drawContours=False)
+        self.drawObjContours(rp_new_mothID, drawContours=False)
+        self.updateObjAnnotText(rp_budID)
+        self.updateObjAnnotText(rp_new_mothID)
 
         if curr_mothID in posData.cca_df.index:
             rp_curr_mothID = posData.rp[curr_moth_obj_idx]
-            self.drawID_and_Contour(rp_curr_mothID, drawContours=False)
+            self.drawObjContours(rp_curr_mothID, drawContours=False)
+            self.updateObjAnnotText(rp_curr_mothID)
 
         self.checkMultiBudMoth(draw=True)
 
@@ -8875,14 +8976,16 @@ class guiWin(QMainWindow):
             )       
         elif how.find('overlay segm. masks') != -1:
             if ax == 0:
-                self.labelsLayerImg1.setImage(self.currentLab2D, autoLevels=False)
+                self.labelsLayerImg1.setImage(
+                    self.currentLab2D, autoLevels=False
+                )
             else:
                 self.labelsLayerRightImg.setImage(
                     self.currentLab2D, autoLevels=False
                 )
 
-        self.ax1_LabelItemsIDs[delID-1].setText(f'{delID}')
-        self.ax2_LabelItemsIDs[delID-1].setText(f'{delID}')
+        self.hideObjsTextAnnot([delID], ax=0)
+        self.hideObjsTextAnnot([delID], ax=1)
 
     def getDelROIlab(self):
         posData = self.data[self.pos_i]
@@ -9274,29 +9377,23 @@ class guiWin(QMainWindow):
         self.smallFontSize = f'{int(int(self.sender().text())*0.75)}pt'
         self.df_settings.at['fontSize', 'value'] = self.fontSize
         self.df_settings.to_csv(self.settings_csv_path)
-        LIs = zip(self.ax1_LabelItemsIDs, self.ax2_LabelItemsIDs)
-        for ax1_LI, ax2_LI in LIs:
-            if ax1_LI is None:
-                continue
-            
-            x1, y1 = ax1_LI.pos().x(), ax1_LI.pos().y()
-            if x1>0:
-                w, h = ax1_LI.rect().right(), ax1_LI.rect().bottom()
-                xc, yc = x1+w/2, y1+h/2
-            ax1_LI.setAttr('size', self.fontSize)
-            ax1_LI.setText(ax1_LI.text)
-            if x1>0:
-                w, h = ax1_LI.rect().right(), ax1_LI.rect().bottom()
-                ax1_LI.setPos(xc-w/2, yc-h/2)
-            x2, y2 = ax2_LI.pos().x(), ax2_LI.pos().y()
-            if x2>0:
-                w, h = ax2_LI.rect().right(), ax2_LI.rect().bottom()
-                xc, yc = x2+w/2, y2+h/2
-            ax2_LI.setAttr('size', self.fontSize)
-            ax2_LI.setText(ax2_LI.text)
-            if x2>0:
-                w, h = ax2_LI.rect().right(), ax2_LI.rect().bottom()
-                ax2_LI.setPos(xc-w/2, yc-h/2)
+        
+        fontSize = int(self.sender().text())
+        annotFont = QFont()
+        annotFont.setPixelSize(fontSize)
+        annotFontBold = QFont()
+        annotFontBold.setPixelSize(fontSize)
+        annotFontBold.setBold(True)
+
+        self.textAnnotSymbolsBold = plot.texts_to_pg_scatter_symbols(
+            self.textAnnotSymbolsBold.keys(), font=annotFontBold
+        )
+
+        self.textAnnotSymbols = plot.texts_to_pg_scatter_symbols(
+            self.textAnnotSymbols.keys(), font=annotFont
+        )
+
+        self.updateAnnotations(True)
 
     def enableZstackWidgets(self, enabled):
         if enabled:
@@ -10015,7 +10112,8 @@ class guiWin(QMainWindow):
         if self.ax1BrushHoverID in posData.IDs:
             obj_idx = posData.IDs.index(self.ax1BrushHoverID)
             obj = posData.rp[obj_idx]
-            self.drawID_and_Contour(obj)
+            self.drawObjContours(obj)
+            self.updateObjAnnotText(obj)
         elif self.ax1BrushHoverID in posData.lost_IDs:
             prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
             obj_idx = [obj.label for obj in prev_rp].index(self.ax1BrushHoverID)
@@ -10059,7 +10157,7 @@ class guiWin(QMainWindow):
                 return
 
             contCurve.setData([], [])
-            self.ax1_LabelItemsIDs[ID-1].setText('')
+            self.hideObjsTextAnnot([ID])
             self.ax1BrushHoverID = ID
         else:
             prev_lab = posData.allData_li[posData.frame_i-1]['labels']
@@ -11483,15 +11581,9 @@ class guiWin(QMainWindow):
                     self.ax1_ContoursCurves[delID-1].tempClear()
                 except Exception as e:
                     pass
-            try:
-                self.ax1_LabelItemsIDs[delID-1].tempClearText()
-            except Exception as e:
-                traceback.print_exc()
-                pass
-            try:
-                self.ax2_LabelItemsIDs[delID-1].tempClearText()
-            except Exception as e:
-                pass
+            
+        self.hideObjsTextAnnot(delIDs, ax=0)
+        self.hideObjsTextAnnot(delIDs, ax=1)
             
         posData = self.data[self.pos_i]
         for ID in posData.IDs:
@@ -11509,14 +11601,8 @@ class guiWin(QMainWindow):
                 except Exception as e:
                     pass
             
-            try:
-                self.ax1_LabelItemsIDs[ID-1].restoreText()
-            except Exception as e:
-                pass
-            try:
-                self.ax2_LabelItemsIDs[ID-1].restoreText()
-            except Exception as e:
-                pass
+            self.restoreTextAnnotBrush([ID], ax=0)
+            self.restoreTextAnnotBrush([ID], ax=1)
 
         posData.lab = lab
         self.setImageImg2()
@@ -13209,9 +13295,9 @@ class guiWin(QMainWindow):
         self.initLookupTableLab()
         if self.invertBwAction.isChecked():
             self.invertBw(True)
-        self.updateALLimg()
         self.restoreSavedSettings()
-
+        self.updateALLimg()
+        
         self.setMetricsFunc()
 
         self.gui_createLabelRoiItem()
@@ -13635,7 +13721,7 @@ class guiWin(QMainWindow):
             self.updateViewerWindow()
             if self.isSegm3D and hasattr(self, 'currentLab2D'):
                 for obj in posData.rp:
-                    self.annotateObject(obj, 'IDs')
+                    self.getObjTextAnnotOpts(obj, 'IDs')
             if self.isSegm3D:
                 self.currentLab2D = posData.lab[z]
                 self.setOverlaySegmMasks(force=True)
@@ -13692,8 +13778,6 @@ class guiWin(QMainWindow):
         itemsToRemove = zip(
             self.ax1_ContoursCurves[maxID:],
             self.ax2_ContoursCurves[maxID:],
-            self.ax1_LabelItemsIDs[maxID:],
-            self.ax2_LabelItemsIDs[maxID:],
             self.ax1_BudMothLines[maxID:]
         )
         for items in itemsToRemove:
@@ -13705,15 +13789,11 @@ class guiWin(QMainWindow):
                 continue
 
             self.ax1.removeItem(ax1ContCurve)
-            self.ax1.removeItem(_IDlabel1)
             self.ax1.removeItem(BudMothLine)
             self.ax2.removeItem(ax2ContCurve)
-            self.ax2.removeItem(_IDlabel2)
 
         self.ax1_ContoursCurves = self.ax1_ContoursCurves[:maxID]
         self.ax2_ContoursCurves = self.ax2_ContoursCurves[:maxID]
-        self.ax1_LabelItemsIDs = self.ax1_LabelItemsIDs[:maxID]
-        self.ax2_LabelItemsIDs = self.ax2_LabelItemsIDs[:maxID]
         self.ax1_BudMothLines = self.ax1_BudMothLines[:maxID]
     
     def clearAx2Items(self):
@@ -14962,10 +15042,10 @@ class guiWin(QMainWindow):
                     # Since there was already segmentation metadata from
                     # previous closed session add it to current metadata
                     df = posData.acdc_df.loc[posData.frame_i].copy()
-                    binnedIDs_df = df[df['is_cell_excluded']]
+                    binnedIDs_df = df[df['is_cell_excluded']>0]
                     binnedIDs = set(binnedIDs_df.index).union(posData.binnedIDs)
                     posData.binnedIDs = binnedIDs
-                    ripIDs_df = df[df['is_cell_dead']]
+                    ripIDs_df = df[df['is_cell_dead']>0]
                     ripIDs = set(ripIDs_df.index).union(posData.ripIDs)
                     posData.ripIDs = ripIDs
                     posData.editID_info.extend(self._get_editID_info(df))
@@ -14990,9 +15070,9 @@ class guiWin(QMainWindow):
             posData.lab = self.get_labels(is_stored=True)
             posData.rp = skimage.measure.regionprops(posData.lab)
             df = posData.allData_li[posData.frame_i]['acdc_df']
-            binnedIDs_df = df[df['is_cell_excluded']]
+            binnedIDs_df = df[df['is_cell_excluded']>0]
             posData.binnedIDs = set(binnedIDs_df.index)
-            ripIDs_df = df[df['is_cell_dead']]
+            ripIDs_df = df[df['is_cell_dead']>0]
             posData.ripIDs = set(ripIDs_df.index)
             posData.editID_info = self._get_editID_info(df)
             self.get_cca_df()
@@ -15333,22 +15413,50 @@ class guiWin(QMainWindow):
             worker, thread = self.autoSaveActiveWorkers[-1]
             self.statusBarLabel.setText('Autosaving...')
             worker.enqueue(posData)
+    
+    def getObjLabelTextAnnotOpts(self, txt, isNewObject):
+        if isNewObject:
+            brush = self.objNewAnnotBrush
+            pen = self.objNewAnnotPen
+        else:
+            brush = self.objLabelAnnotBrush
+            pen = self.objLabelAnnotPen
 
-    def annotateObject(self, obj, how, debug=False, ax=0):
+        opts = {
+            'brush': brush, 'pen': pen,
+            'symbol': self.getObjTextAnnotSymbol(txt, bold=isNewObject)
+        }
+        return opts
+    
+    def getObjMissingTextAnnotOpts(self):
+        opts = {
+            'brush': self.objLostAnnotBrush, 
+            'pen': self.objLostAnnotPen, 
+            'symbol': self.getObjTextAnnotSymbol('?')
+        }
+        return opts
+    
+    def getObjCcaTextAnnotOpts(self, txt, bold, brush, pen):
+        opts = {
+            'brush': brush, 
+            'pen': pen, 
+            'symbol': self.getObjTextAnnotSymbol('?')
+        }
+        return opts
+
+    def getObjTextAnnotOpts(self, obj, how, debug=False, ax=0):
         if not self.createItems:
             return
         
-        posData = self.data[self.pos_i]
-        # Draw ID label on ax1 image depending on how
-        if ax == 0:
-            LabelItemID = self.ax1_LabelItemsIDs[obj.label-1]
-        else:
-            LabelItemID = self.ax2_LabelItemsIDs[obj.label-1]   
+        posData = self.data[self.pos_i]   
 
         if not self.isObjVisible(obj.bbox):
-            # Object not visible (entire bbox in another z_range)
-            LabelItemID.setText('')
             return
+        
+        annotNumZslices = (
+            (self.annotNumZslicesCheckbox.isChecked() and ax==0)
+            or (self.annotNumZslicesCheckboxRight.isChecked() and ax==1)
+        )
 
         df = posData.cca_df
         ID = obj.label
@@ -15361,20 +15469,22 @@ class guiWin(QMainWindow):
                     annotID = obj.label
             else:
                 annotID = obj.label
-            txt = f'{annotID}'
-            if ID in posData.new_IDs:
-                color = 'r'
-                bold = True
-            else:
-                color = self.objLabelAnnotRgb
-                bold = False
+            
+            isNewObject = ID in posData.new_IDs
+            txt = str(annotID)
+            if annotNumZslices:
+                num_zslices = np.sum(np.any(obj.image, axis=(1,2)))
+                txt = f'{txt} ({num_zslices})'
+            
+            objOpts = self.getObjLabelTextAnnotOpts(txt, isNewObject)
         else:
             try:
                 df_ID = df.loc[ID]
             except KeyError:
-                LabelItemID.setText('?', color='r', size=self.fontSize)
-                self.setLabelCenteredObject(obj, LabelItemID)
-                return
+                objOpts = self.getObjMissingTextAnnotOpts()
+                y, x = self.getObjCentroid(obj.centroid)
+                objOpts['pos'] = (x, y)
+                return objOpts
             
             ccs = df_ID['cell_cycle_stage']
             relationship = df_ID['relationship']
@@ -15404,27 +15514,25 @@ class guiWin(QMainWindow):
                         break
 
             mothCell_S = (
-                ccs == 'S'
-                and is_moth
-                and not emerged_now
+                ccs == 'S' and is_moth and not emerged_now
                 and not is_division_annotated
             )
 
             budNotEmergedNow = (
-                ccs == 'S'
-                and is_bud
-                and not emerged_now
+                ccs == 'S' and is_bud and not emerged_now
                 and not is_division_annotated
             )
 
             budEmergedNow = (
-                ccs == 'S'
-                and is_bud
-                and emerged_now
+                ccs == 'S' and is_bud and emerged_now
                 and not is_division_annotated
             )
             
-            if self.annotSettingsGenNumMenu.checkedAction().text().find('tree') != -1:
+            isTreeAnnot = (
+                self.annotSettingsGenNumMenu.checkedAction().text().find('tree') 
+                != -1
+            )
+            if isTreeAnnot:
                 try:
                     acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
                     gen_num = acdc_df.at[obj.label, 'generation_num_tree']
@@ -15435,56 +15543,50 @@ class guiWin(QMainWindow):
             
             txt = f'{ccs}-{gen_num}'
             if ccs == 'G1':
-                color = self.G1phaseAnnotRgba
+                brush = self.G1phaseAnnotBrush
+                pen = self.G1phaseAnnotPen
+                hoverBrush = self.G1phaseAnnotHoverBrush
                 bold = False
             elif mothCell_S:
-                color = self.SphaseAnnotRgb
+                brush = self.SphaseAnnotBrush
+                pen = self.SphaseAnnotPen
+                hoverBrush = self.SphaseAnnotHoverBrush
                 bold = False
             elif budNotEmergedNow:
-                color = 'r'
+                brush = self.objNewAnnotBrush
+                pen = self.objNewAnnotPen
+                hoverBrush = self.objNewAnnotHoverBrush
                 bold = False
             elif budEmergedNow:
-                color = 'r'
+                brush = self.objNewAnnotBrush
+                pen = self.objNewAnnotPen
+                hoverBrush = self.objNewAnnotHoverBrush
                 bold = True
             elif is_division_annotated:
-                color = self.dividedAnnotRgb
+                brush = self.dividedAnnotBrush
+                pen = self.dividedAnnotPen
+                hoverBrush = self.dividedAnnotHoverBrush
                 bold = False
 
             if not is_history_known:
                 txt = f'{txt}?'
+            
+            objOpts = self.getObjCcaTextAnnotOpts(
+                txt, bold, brush, pen
+            )
         
         if ID in posData.ripIDs or ID in posData.binnedIDs:
-            color = (*self.SphaseAnnotRgb, 50)
-            bold = False
-
-        if self.isSegm3D:
-            if obj.label not in self.currentLab2D:
-                # Object is present in z+1 and z-1 but not in z --> transparent
-                r,g,b = self.objLabelAnnotRgb
-                color = QColor(r,g,b,70)
-                LabelItemID.setText(txt, color=color, size=self.smallFontSize)
-                self.setLabelCenteredObject(obj, LabelItemID)
-                return
-
-        annotNumZslices = (
-            (self.annotNumZslicesCheckbox.isChecked() and ax==0)
-            or (self.annotNumZslicesCheckboxRight.isChecked() and ax==1)
-        )
-        if annotNumZslices:
-            num_zslices = np.sum(np.any(obj.image, axis=(1,2)))
-            txt = f'{txt} ({num_zslices})'
-        try:
-            if debug:
-                print(txt, color)
-            LabelItemID.setText(
-                txt, color=color, bold=bold, size=self.fontSize
+            objOpts = self.getObjCcaTextAnnotOpts(
+                txt, False, self.objDeadAnnotBrush, self.objDeadAnnotPen, 
+                self.objDeadAnnotHoverBrush
             )
-        except UnboundLocalError:
-            pass
 
-        self.setLabelCenteredObject(obj, LabelItemID)
+        y, x = self.getObjCentroid(obj.centroid)
+        objOpts['pos'] = (x, y)
 
-    def annotateObjectRightImage(self, obj, debug=False):
+        return objOpts
+
+    def getObjTextAnnotOptsRightImage(self, obj, debug=False):
         if not self.labelsGrad.showRightImgAction.isChecked():
             return
         
@@ -15496,7 +15598,8 @@ class guiWin(QMainWindow):
         if not isAnnotActive:
             return
         
-        self.annotateObject(obj, how, ax=1)
+        objOpts = self.getObjTextAnnotOpts(obj, how, ax=1)
+        return objOpts
     
     def drawMotherBudLineRightImage(
             self, obj, lineData=None, pen=None, posData=None
@@ -15617,53 +15720,50 @@ class guiWin(QMainWindow):
             how = self.drawIDsContComboBox.currentText()
         return how
 
-    def ax2_setTextID(self, obj):
+    def getObjOptsSegmLabels(self, obj):
         if not self.labelsGrad.showLabelsImgAction.isChecked():
             return
 
-        posData = self.data[self.pos_i]
-        # Draw ID label on ax1 image
-        LabelItemID = self.ax2_LabelItemsIDs[obj.label-1]
-
-        ID = obj.label
-        df = posData.cca_df
-        if self.annotSettingsIDmenu.checkedAction().text().find('tree') != -1:
-            try:
-                acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
-                annotID = acdc_df.at[obj.label, 'Cell_ID_tree']
-            except Exception as e:
-                annotID = obj.label
-        else:
-            annotID = obj.label
-        txt = f'{annotID}' if self.isObjVisible(obj.bbox) else ''
-        if ID in posData.ripIDs or ID in posData.binnedIDs:
-            self.ax2_textColor = (*self.ax2_textColor, 50)
-            bold = False
-        else:
-            color = self.ax2_textColor
-            bold = ID in posData.new_IDs
-
-        LabelItemID.setText(txt, color=color, bold=bold, size=self.fontSize)
-
-        # Center LabelItem at centroid
-        y, x = self.getObjCentroid(obj.centroid)
-        w, h = LabelItemID.rect().right(), LabelItemID.rect().bottom()
-        LabelItemID.setPos(x-w/2, y-h/2)
+        objOpts = self.getObjTextAnnotOpts(obj, 'Draw only IDs', ax=1)
+        return objOpts
 
     def updateAnnotations(self, checked):
         if not checked:
             return
         
         posData = self.data[self.pos_i]
+        ax1_textAnnotOpts = []
+        ax2_textAnnotOpts = []
         for i, obj in enumerate(posData.rp):
             if not self.isObjVisible(obj.bbox):
                 continue
-            self.drawID_and_Contour(obj)
+            self.drawObjContours(obj)
 
-    def drawID_and_Contour(self, obj, drawContours=True):
+            objTextAnnotOpts, objTextAnnotOptsRight, objTextAnnotSegmOpts = (
+                self.getAllAxisObjTextAnnotOpts(obj)
+            )
+
+            if objTextAnnotOpts is not None:
+                ax1_textAnnotOpts.append(objTextAnnotOpts)
+            if objTextAnnotSegmOpts is not None:
+                ax2_textAnnotOpts.append(objTextAnnotSegmOpts)
+            elif objTextAnnotOptsRight is not None:
+                ax2_textAnnotOpts.append(objTextAnnotOptsRight)
+        
+        ax1_scatterItem = self.getTextAnnotScatterItem_ax1()
+        ax2_scatterItem = self.getTextAnnotScatterItem_ax2()
+
+        if ax1_scatterItem is not None and ax1_textAnnotOpts:
+            ax1_scatterItem.setData(ax1_textAnnotOpts)
+        if ax2_scatterItem is not None and ax2_textAnnotOpts:
+            ax2_scatterItem.setData(ax2_textAnnotOpts)  
+
+    def drawObjContours(self, obj, drawContours=True):
         if not self.createItems:
             return
 
+        objTextAnnotOpts = None
+        objTextAnnotOptsRight = None
         posData = self.data[self.pos_i]
         how = self.drawIDsContComboBox.currentText()
         IDs_and_cont = how == 'Draw IDs and contours'
@@ -15677,24 +15777,11 @@ class guiWin(QMainWindow):
         onlyMasks = how == 'Draw only overlay segm. masks'
         ccaInfo_and_masks = how == 'Draw cell cycle info and overlay segm. masks'
 
-        # Draw LabelItems for IDs on ax2
-        self.ax2_setTextID(obj)
-
         if posData.cca_df is not None and self.isSnapshot:
             if obj.label not in posData.cca_df.index:
                 self.store_data()
                 self.addIDBaseCca_df(posData, obj.label)
                 self.store_cca_df()
-
-        # Draw LabelItems for IDs on ax1 if requested
-        draw_LIs = (
-            IDs_and_cont or onlyIDs or only_ccaInfo or ccaInfo_and_cont
-            or IDs_and_masks or ccaInfo_and_masks
-        )
-        if draw_LIs:
-            self.annotateObject(obj, how)
-        
-        self.annotateObjectRightImage(obj)
 
         # Draw line connecting mother and buds
         drawLines = (
@@ -15708,7 +15795,7 @@ class guiWin(QMainWindow):
             self.drawMotherBudLineRightImage(obj, posData=posData)
 
         if not drawContours:
-            return
+            return objTextAnnotOpts, objTextAnnotOptsRight, objTextAnnotSegmOpts
 
         # Draw contours on ax1 if requested
         if IDs_and_cont or onlyCont or ccaInfo_and_cont:
@@ -15726,6 +15813,13 @@ class guiWin(QMainWindow):
             ID:i for ID, i in zip(posData.IDs, range(len(posData.IDs)))
         }
         self.update_rp_metadata(draw=draw)
+    
+    def getAllAxisObjTextAnnotOpts(self, obj):
+        objTextAnnotSegmOpts = self.getObjOptsSegmLabels(obj)
+        how = self.drawIDsContComboBox.currentText()
+        objTextAnnotOpts = self.getObjTextAnnotOpts(obj, how, debug=True)
+        objTextAnnotOptsRight = self.getObjTextAnnotOptsRightImage(obj)
+        return objTextAnnotOpts, objTextAnnotSegmOpts, objTextAnnotOptsRight
 
     def update_IDsContours(self, prev_IDs, newIDs=[]):
         """Function to draw labels text and contours of specific IDs.
@@ -15751,9 +15845,11 @@ class guiWin(QMainWindow):
         if len(newIDs)>0:
             for i, obj in enumerate(posData.rp):
                 ID = obj.label
-                if ID in newIDs:
-                    # Draw ID labels and contours of new objects
-                    self.drawID_and_Contour(obj)
+                if ID not in newIDs:
+                    continue
+                # Draw ID labels and contours of new objects
+                self.drawObjContours(obj)
+                self.updateObjAnnotText(obj)
 
         # Clear contours and LabelItems of IDs that are in prev_IDs
         # but not in current IDs
@@ -15761,8 +15857,6 @@ class guiWin(QMainWindow):
         for prevID in prev_IDs:
             if prevID not in currentIDs:
                 self.ax1_ContoursCurves[prevID-1].setData([], [])
-                self.ax1_LabelItemsIDs[prevID-1].setText('')
-                self.ax2_LabelItemsIDs[prevID-1].setText('')
 
         self.highlightLostNew()
         self.setTitleText()
@@ -15888,11 +15982,11 @@ class guiWin(QMainWindow):
         obj_idx = posData.IDs.index(ID)
         obj = posData.rp[obj_idx]
 
-        self.ax2_setTextID(obj)
+        self.getObjOptsSegmLabels(obj)
 
         how = self.drawIDsContComboBox.currentText()
-        self.annotateObject(obj, how)
-        self.annotateObjectRightImage(obj, debug=True)
+        self.getObjTextAnnotOpts(obj, how)
+        self.getObjTextAnnotOptsRightImage(obj, debug=True)
     
     def _keepObjects(self, keepIDs=None, lab=None, rp=None):
         posData = self.data[self.pos_i]
@@ -16144,20 +16238,20 @@ class guiWin(QMainWindow):
                 binnedIDs_xx.append(x)
                 binnedIDs_yy.append(y)
                 if updateLabel:
-                    self.ax2_setTextID(obj)
+                    self.getObjOptsSegmLabels(obj)
                     how = self.drawIDsContComboBox.currentText()
-                    self.annotateObject(obj, how)
-                    self.annotateObjectRightImage(obj)
+                    self.getObjTextAnnotOpts(obj, how)
+                    self.getObjTextAnnotOptsRightImage(obj)
             
             if obj.dead:
                 y, x = self.getObjCentroid(obj.centroid)
                 ripIDs_xx.append(x)
                 ripIDs_yy.append(y)
                 if updateLabel:
-                    self.ax2_setTextID(obj)
+                    self.getObjOptsSegmLabels(obj)
                     how = self.drawIDsContComboBox.currentText()
-                    self.annotateObject(obj, how)
-                    self.annotateObjectRightImage(obj)
+                    self.getObjTextAnnotOpts(obj, how)
+                    self.getObjTextAnnotOptsRightImage(obj)
         
         self.ax2_binnedIDs_ScatterPlot.setData(binnedIDs_xx, binnedIDs_yy)
         self.ax2_ripIDs_ScatterPlot.setData(ripIDs_xx, ripIDs_yy)
@@ -16838,6 +16932,25 @@ class guiWin(QMainWindow):
         if isOverlaySegmRightActive: 
             self.labelsLayerRightImg.setImage(self.currentLab2D, autoLevels=False)
     
+    def getObjTextAnnotSymbol(self, txt, bold=False):
+        if bold:
+            symbols = self.textAnnotSymbolsBold
+            font = self.textAnnotFontBold
+            scale = self.textAnnotSymbolScaleBold
+        else:
+            symbols = self.textAnnotSymbols
+            font = self.textAnnotFont
+            scale = self.textAnnotSymbolScale
+        
+        symbol = symbols.get(txt)
+        if symbol is not None:
+            return symbol
+
+        symbol = plot.text_to_pg_scatter_symbol(
+            txt, font=font, scale=scale
+        )
+        return symbol
+    
     def getObject2DimageFromZ(self, z, obj):
         posData = self.data[self.pos_i]
         z_min = obj.bbox[0]
@@ -17173,7 +17286,7 @@ class guiWin(QMainWindow):
             return
 
         for obj in posData.rp:
-            self.ax2_setTextID(obj)
+            self.getObjOptsSegmLabels(obj)
 
     def saveTextLabelsColor(self, button):
         color = button.color().getRgb()[:3]
@@ -18012,8 +18125,8 @@ class guiWin(QMainWindow):
         # Restore other text IDs to default
         if draw_LIs:
             for _obj in posData.rp:
-                self.annotateObject(_obj, how, debug=False)
-                self.ax2_setTextID(_obj)
+                self.getObjTextAnnotOpts(_obj, how, debug=False)
+                self.getObjOptsSegmLabels(_obj)
 
         # Label ID
         LabelItemID = self.ax1_LabelItemsIDs[ID-1]
@@ -18175,19 +18288,30 @@ class guiWin(QMainWindow):
         self.addItemsAllIDs(posData.IDs)
         self.update_rp()
 
-        self.computingContoursTimes = []
-        self.drawingLabelsTimes = []
-        self.drawingContoursTimes = []
         # Annotate ID and draw contours
+        ax1_textAnnotOpts = []
+        ax2_textAnnotOpts = []
         for i, obj in enumerate(posData.rp):
             if not self.isObjVisible(obj.bbox):
                 continue
-            self.drawID_and_Contour(obj)
+            self.drawObjContours(obj)
+            objTextAnnotOpts, objTextAnnotOptsRight, objTextAnnotSegmOpts = (
+                self.getAllAxisObjTextAnnotOpts(obj)
+            )
+            if objTextAnnotOpts is not None:
+                ax1_textAnnotOpts.append(objTextAnnotOpts)
+            if objTextAnnotSegmOpts is not None:
+                ax2_textAnnotOpts.append(objTextAnnotSegmOpts)
+            elif objTextAnnotOptsRight is not None:
+                ax2_textAnnotOpts.append(objTextAnnotOptsRight)
+        
+        ax1_scatterItem = self.getTextAnnotScatterItem_ax1()
+        ax2_scatterItem = self.getTextAnnotScatterItem_ax2()
 
-        # self.logger.info('------------------------------------')
-        # self.logger.info(f'Drawing labels = {np.sum(self.drawingLabelsTimes):.3f} s')
-        # self.logger.info(f'Computing contours = {np.sum(self.computingContoursTimes):.3f} s')
-        # self.logger.info(f'Drawing contours = {np.sum(self.drawingContoursTimes):.3f} s')
+        if ax1_scatterItem is not None and ax1_textAnnotOpts:
+            ax1_scatterItem.setData(ax1_textAnnotOpts)
+        if ax2_scatterItem is not None and ax2_textAnnotOpts:
+            ax2_scatterItem.setData(ax2_textAnnotOpts)    
 
         # Update annotated IDs (e.g. dead cells)
         self.update_rp_metadata(draw=True)
@@ -18289,8 +18413,8 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         for obj in posData.rp:
             if obj.label in posData.new_IDs:
-                # self.ax2_setTextID(obj, 'Draw IDs and contours')
-                self.annotateObject(obj, 'Draw IDs and contours')
+                # self.getObjOptsSegmLabels(obj, 'Draw IDs and contours')
+                self.getObjTextAnnotOpts(obj, 'Draw IDs and contours')
                 cont = self.getObjContours(obj)
                 curveID = self.ax1_ContoursCurves[obj.label-1]
                 curveID.setData(cont[:,0], cont[:,1], pen=self.tempNewIDs_cpen)

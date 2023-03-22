@@ -4804,12 +4804,10 @@ class MainPlotItem(pg.PlotItem):
         # clicking it.
         # If autorange is enabled, it is called everytime the brush or eraser 
         # scatter plot items touches the border causing flickering
+        self.disableAutoRange()
         self.autoBtn.mode = 'manual'
     
     def autoBtnClicked(self):
-        self.autoRange()
-    
-    def autoRange(self):
         self.vb.autoRange()
         self.autoBtn.hide()
 
