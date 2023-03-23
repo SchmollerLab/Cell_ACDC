@@ -1362,6 +1362,33 @@ class VerticalResizeHline(QFrame):
             self.setLineWidth(1)
         return False
 
+class GroupBox(QGroupBox):
+    def __init__(self, *args, keyPressCallback=None):
+        super().__init__(*args)
+        self.keyPressCallback = None
+        self.setFocusPolicy(Qt.NoFocus)
+    
+    def keyPressEvent(self, event) -> None:
+        event.ignore()
+        if self.keyPressCallback is None:
+            return
+
+        self.keyPressCallback()
+
+class CheckBox(QCheckBox):
+    def __init__(self, *args, keyPressCallback=None):
+        super().__init__(*args)
+        self.keyPressCallback = None
+        self.setFocusPolicy(Qt.NoFocus)
+    
+    def keyPressEvent(self, event) -> None:
+        event.ignore()
+        if self.keyPressCallback is None:
+            return
+
+        self.keyPressCallback()
+        
+
 class ScrollArea(QScrollArea):
     sigLeaveEvent = pyqtSignal()
 

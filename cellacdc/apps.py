@@ -6270,11 +6270,13 @@ class postProcessSegmDialog(widgets.QBaseDialog):
         self.mainWin.updateALLimg()
 
     def ok_cb(self):
+        self.cancel = False
         self.apply()
         self.onEditingFinished()
         self.close()
 
     def apply_cb(self):
+        self.cancel = False
         self.apply()
         self.onEditingFinished()
 
@@ -6339,6 +6341,10 @@ class postProcessSegmDialog(widgets.QBaseDialog):
             self.mainWin.updateALLimg()
 
     def cancel_cb(self):
+        self.cancel = False
+        self.close()
+    
+    def undoChanges(self):
         if self.mainWin is not None:
             self.posData.lab = self.origLab
             self.mainWin.update_rp()
@@ -6381,8 +6387,6 @@ class postProcessSegmDialog(widgets.QBaseDialog):
                 self.mainWin.get_data()
                 self.mainWin.updateALLimg()
 
-        self.close()
-
     def show(self, block=False):
         # self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         super().show(block=block)
@@ -6390,6 +6394,8 @@ class postProcessSegmDialog(widgets.QBaseDialog):
 
     def closeEvent(self, event):
         self.sigClosed.emit()
+        if self.cancel:
+            self.undoChanges()
         super().closeEvent(event)
 
 class imageViewer(QMainWindow):

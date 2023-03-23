@@ -3091,22 +3091,33 @@ class guiWin(QMainWindow):
         self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxSegmItems)
         self.drawIDsContComboBox.setVisible(False)
 
-        self.annotIDsCheckbox = QCheckBox('IDs')
-        self.annotCcaInfoCheckbox = QCheckBox('Cell cycle info')
-        self.annotNumZslicesCheckbox = QCheckBox('No. z-slices/object')
+        self.annotIDsCheckbox = widgets.CheckBox(
+            'IDs', keyPressCallback=self.resetFocus)
+        self.annotCcaInfoCheckbox = widgets.CheckBox(
+            'Cell cycle info', keyPressCallback=self.resetFocus)
+        self.annotNumZslicesCheckbox = widgets.CheckBox(
+            'No. z-slices/object', keyPressCallback=self.resetFocus)
 
-        self.annotContourCheckbox = QCheckBox('Contours')
-        self.annotSegmMasksCheckbox = QCheckBox('Segm. masks')
+        self.annotContourCheckbox = widgets.CheckBox(
+            'Contours', keyPressCallback=self.resetFocus)
+        self.annotSegmMasksCheckbox = widgets.CheckBox(
+            'Segm. masks', keyPressCallback=self.resetFocus)
 
-        self.drawMothBudLinesCheckbox = QCheckBox('Only mother-daughter line')
+        self.drawMothBudLinesCheckbox = widgets.CheckBox(
+            'Only mother-daughter line', keyPressCallback=self.resetFocus
+        )
 
-        self.drawNothingCheckbox = QCheckBox('Do not annotate')
+        self.drawNothingCheckbox = widgets.CheckBox(
+            'Do not annotate', keyPressCallback=self.resetFocus
+        )
 
         self.annotOptionsWidget = QWidget()
         annotOptionsLayout = QHBoxLayout()
 
         # Show tree info checkbox
-        self.showTreeInfoCheckbox = QCheckBox('Show tree info')
+        self.showTreeInfoCheckbox = widgets.CheckBox(
+            'Show tree info', keyPressCallback=self.resetFocus
+        )
         self.showTreeInfoCheckbox.setFont(_font)
         sp = self.showTreeInfoCheckbox.sizePolicy()
         sp.setRetainSizeWhenHidden(True)
@@ -3128,8 +3139,9 @@ class guiWin(QMainWindow):
         self.annotOptionsLayout = annotOptionsLayout
 
         # Toggle highlight z+-1 objects combobox
-        self.highlightZneighObjCheckbox = QCheckBox(
-            'Highlight objects in neighbouring z-slices'
+        self.highlightZneighObjCheckbox = widgets.CheckBox(
+            'Highlight objects in neighbouring z-slices', 
+            keyPressCallback=self.resetFocus
         )
         self.highlightZneighObjCheckbox.setFont(_font)
         self.highlightZneighObjCheckbox.hide()
@@ -3138,16 +3150,25 @@ class guiWin(QMainWindow):
         self.annotOptionsWidget.setLayout(annotOptionsLayout)
 
         # Annotations options right image
-        self.annotIDsCheckboxRight = QCheckBox('IDs')
-        self.annotCcaInfoCheckboxRight = QCheckBox('Cell cycle info')
-        self.annotNumZslicesCheckboxRight = QCheckBox('No. z-slices/object')
+        self.annotIDsCheckboxRight = widgets.CheckBox(
+            'IDs', keyPressCallback=self.resetFocus)
+        self.annotCcaInfoCheckboxRight = widgets.CheckBox(
+            'Cell cycle info', keyPressCallback=self.resetFocus)
+        self.annotNumZslicesCheckboxRight = widgets.CheckBox(
+            'No. z-slices/object', keyPressCallback=self.resetFocus
+        )
 
-        self.annotContourCheckboxRight = QCheckBox('Contours')
-        self.annotSegmMasksCheckboxRight = QCheckBox('Segm. masks')
+        self.annotContourCheckboxRight = widgets.CheckBox(
+            'Contours', keyPressCallback=self.resetFocus)
+        self.annotSegmMasksCheckboxRight = widgets.CheckBox(
+            'Segm. masks', keyPressCallback=self.resetFocus)
 
-        self.drawMothBudLinesCheckboxRight = QCheckBox('Only mother-daughter line')
+        self.drawMothBudLinesCheckboxRight = widgets.CheckBox(
+            'Only mother-daughter line', keyPressCallback=self.resetFocus
+        )
 
-        self.drawNothingCheckboxRight = QCheckBox('Do not annotate')
+        self.drawNothingCheckboxRight = widgets.CheckBox(
+            'Do not annotate', keyPressCallback=self.resetFocus)
 
         self.annotOptionsWidgetRight = QWidget()
         annotOptionsLayoutRight = QHBoxLayout()
@@ -3296,7 +3317,8 @@ class guiWin(QMainWindow):
 
     def gui_createLabWidgets(self):
         bottomRightLayout = QVBoxLayout()
-        self.rightBottomGroupbox = QGroupBox('Annotate right image')
+        self.rightBottomGroupbox = widgets.GroupBox(
+            'Annotate right image', keyPressCallback=self.resetFocus)
         self.rightBottomGroupbox.setCheckable(True)
         self.rightBottomGroupbox.setChecked(False)
         self.rightBottomGroupbox.hide()
@@ -3326,6 +3348,10 @@ class guiWin(QMainWindow):
     
     def setFocusMain(self):
         self.setFocus(True)
+    
+    def resetFocus():
+        self.setFocusGraphics()
+        self.setFocusMain()
 
     def gui_createBottomWidgetsToBottomLayout(self):
         # self.bottomDockWidget = QDockWidget(self)
@@ -7232,7 +7258,11 @@ class guiWin(QMainWindow):
     
     def _restoreTextAnnotBrush(self, ID, scatterItem):
         posData = self.data[self.pos_i]
-        idx = posData.IDs_idxs[ID]
+        try:
+            idx = posData.IDs_idxs[ID]
+        except KeyError:
+            # Object not annotated (i.e., lost), skip
+            return
         IDopts = scatterItem.hiddenAnnotOpts.get(ID, {})
         brush = IDopts.get('brush', scatterItem.opts['brush'])
         pen = IDopts.get('pen', scatterItem.opts['pen'])
@@ -10214,7 +10244,7 @@ class guiWin(QMainWindow):
             self.progressWin.close()
             self.progressWin = None  
 
-    def restoreHoveredID(self):
+    def restoreHoverIObjBrush(self):
         posData = self.data[self.pos_i]
         if self.ax1BrushHoverID in posData.IDs:
             obj_idx = posData.IDs.index(self.ax1BrushHoverID)
@@ -10246,13 +10276,13 @@ class guiWin(QMainWindow):
         if ID == 0:
             prev_lab = posData.allData_li[posData.frame_i-1]['labels']
             if prev_lab is None:
-                self.restoreHoveredID()
+                self.restoreHoverIObjBrush()
                 return
             ID = self.get_2Dlab(prev_lab)[ydata, xdata]
 
         # Restore ID previously hovered
         if ID != self.ax1BrushHoverID and not self.isMouseDragImg1:
-            self.restoreHoveredID()
+            self.restoreHoverIObjBrush()
 
         # Hide items hover ID
         if ID != 0:
@@ -10594,29 +10624,74 @@ class guiWin(QMainWindow):
             self.resetCursors()
             self.updateALLimg()
     
+    def storeCurrentAnnotOptions_ax1(self):
+        checkboxes = [
+            'annotIDsCheckbox',
+            'annotCcaInfoCheckbox',
+            'annotContourCheckbox',
+            'annotSegmMasksCheckbox',
+            'drawMothBudLinesCheckbox',
+            'annotNumZslicesCheckbox',
+            'drawNothingCheckbox',
+        ]
+        self.annotOptions = {}
+        for checkboxName in checkboxes:
+            checkbox = getattr(self, checkboxName)
+            self.annotOptions[checkboxName] = checkbox.isChecked()
+
+    def storeCurrentAnnotOptions_ax2(self):
+        checkboxes = [
+            'annotIDsCheckboxRight',
+            'annotCcaInfoCheckboxRight',
+            'annotContourCheckboxRight',
+            'annotSegmMasksCheckboxRight',
+            'drawMothBudLinesCheckboxRight',
+            'annotNumZslicesCheckboxRight',
+            'drawNothingCheckboxRight',
+        ]
+        self.annotOptionsRight = {}
+        for checkboxName in checkboxes:
+            checkbox = getattr(self, checkboxName)
+            self.annotOptionsRight[checkboxName] = checkbox.isChecked()
+    
+    def restoreAnnotOptions_ax1(self):
+        if not hasattr(self, 'annotOptions'):
+            return
+
+        for option, state in self.annotOptions.items():
+            checkbox = getattr(self, option)
+            checkbox.setChecked(state)
+        
+        self.setDrawAnnotComboboxText()
+    
+    def restoreAnnotOptions_ax2(self):
+        if not hasattr(self, 'annotOptionsRight'):
+            return
+
+        for option, state in self.annotOptionsRight.items():
+            checkbox = getattr(self, option)
+            checkbox.setChecked(state)
+        
+        self.setDrawAnnotComboboxText()
+
     def onDoubleSpaceBar(self):
         how = self.drawIDsContComboBox.currentText()
         if how.find('nothing') == -1:
-            self.prev_how = how
-            self.drawIDsContComboBox.setCurrentText('Draw nothing')
+            self.storeCurrentAnnotOptions_ax1()
+            self.drawNothingCheckbox.setChecked(True)
+            self.annotOptionClicked(sender=self.drawNothingCheckbox)
         else:
-            try:
-                self.drawIDsContComboBox.setCurrentText(self.prev_how)
-            except Exception as e:
-                # traceback.print_exc()
-                pass
+            self.restoreAnnotOptions_ax1()
         
         how = self.annotateRightHowCombobox.currentText()
         if how.find('nothing') == -1:
-            self.prev_how_right = how
-            self.annotateRightHowCombobox.setCurrentText('Draw nothing')
+            self.storeCurrentAnnotOptions_ax2()
+            self.drawNothingCheckboxRight.setChecked(True)
+            self.annotOptionClickedRight(sender=self.drawNothingCheckboxRight)
         else:
-            try:
-                self.annotateRightHowCombobox.setCurrentText(self.prev_how_right)
-            except Exception as e:
-                # traceback.print_exc()
-                pass
-    
+            self.restoreAnnotOptions_ax2()
+
+
     def resizeBottomLayoutLineClicked(self, event):
         pass
         
@@ -19752,11 +19827,13 @@ class guiWin(QMainWindow):
                     action.setChecked(True)
                     break
     
-    def annotOptionClicked(self):
+    def annotOptionClicked(self, sender=None):
+        if sender is None:
+            sender = self.sender()
         # First manually set exclusive with uncheckable
-        clickedIDs = self.sender() == self.annotIDsCheckbox
-        clickedCca = self.sender() == self.annotCcaInfoCheckbox
-        clickedMBline = self.sender() == self.drawMothBudLinesCheckbox
+        clickedIDs = sender == self.annotIDsCheckbox
+        clickedCca = sender == self.annotCcaInfoCheckbox
+        clickedMBline = sender == self.drawMothBudLinesCheckbox
         if self.annotIDsCheckbox.isChecked() and clickedIDs:
             if self.annotCcaInfoCheckbox.isChecked():
                 self.annotCcaInfoCheckbox.setChecked(False)
@@ -19775,8 +19852,8 @@ class guiWin(QMainWindow):
             if self.annotCcaInfoCheckbox.isChecked():
                 self.annotCcaInfoCheckbox.setChecked(False)
         
-        clickedCont = self.sender() == self.annotContourCheckbox
-        clickedSegm = self.sender() == self.annotSegmMasksCheckbox
+        clickedCont = sender == self.annotContourCheckbox
+        clickedSegm = sender == self.annotSegmMasksCheckbox
         if self.annotContourCheckbox.isChecked() and clickedCont:
             if self.annotSegmMasksCheckbox.isChecked():
                 self.annotSegmMasksCheckbox.setChecked(False)
@@ -19785,7 +19862,7 @@ class guiWin(QMainWindow):
             if self.annotContourCheckbox.isChecked():
                 self.annotContourCheckbox.setChecked(False)
         
-        clickedDoNot = self.sender() == self.drawNothingCheckbox
+        clickedDoNot = sender == self.drawNothingCheckbox
         if clickedDoNot:
             self.annotIDsCheckbox.setChecked(False)
             self.annotCcaInfoCheckbox.setChecked(False)
@@ -19796,17 +19873,19 @@ class guiWin(QMainWindow):
         else:
             self.drawNothingCheckbox.setChecked(False)
         
-        if self.sender() == self.annotNumZslicesCheckbox:
+        if sender == self.annotNumZslicesCheckbox:
             self.annotIDsCheckbox.setChecked(True)
             self.drawNothingCheckbox.setChecked(False)
         
         self.setDrawAnnotComboboxText()
 
-    def annotOptionClickedRight(self):
+    def annotOptionClickedRight(self, sender=None):
+        if sender is None:
+            sender = self.sender()
         # First manually set exclusive with uncheckable
-        clickedIDs = self.sender() == self.annotIDsCheckboxRight
-        clickedCca = self.sender() == self.annotCcaInfoCheckboxRight
-        clickedMBline = self.sender() == self.drawMothBudLinesCheckboxRight
+        clickedIDs = sender == self.annotIDsCheckboxRight
+        clickedCca = sender == self.annotCcaInfoCheckboxRight
+        clickedMBline = sender == self.drawMothBudLinesCheckboxRight
         if self.annotIDsCheckboxRight.isChecked() and clickedIDs:
             if self.annotCcaInfoCheckboxRight.isChecked():
                 self.annotCcaInfoCheckboxRight.setChecked(False)
@@ -19825,8 +19904,8 @@ class guiWin(QMainWindow):
             if self.annotCcaInfoCheckboxRight.isChecked():
                 self.annotCcaInfoCheckboxRight.setChecked(False)
         
-        clickedCont = self.sender() == self.annotContourCheckboxRight
-        clickedSegm = self.sender() == self.annotSegmMasksCheckboxRight
+        clickedCont = sender == self.annotContourCheckboxRight
+        clickedSegm = sender == self.annotSegmMasksCheckboxRight
         if self.annotContourCheckboxRight.isChecked() and clickedCont:
             if self.annotSegmMasksCheckboxRight.isChecked():
                 self.annotSegmMasksCheckboxRight.setChecked(False)
@@ -19835,7 +19914,7 @@ class guiWin(QMainWindow):
             if self.annotContourCheckboxRight.isChecked():
                 self.annotContourCheckboxRight.setChecked(False)
         
-        clickedDoNot = self.sender() == self.drawNothingCheckboxRight
+        clickedDoNot = sender == self.drawNothingCheckboxRight
         if clickedDoNot:
             self.annotIDsCheckboxRight.setChecked(False)
             self.annotCcaInfoCheckboxRight.setChecked(False)
@@ -19846,7 +19925,7 @@ class guiWin(QMainWindow):
         else:
             self.drawNothingCheckboxRight.setChecked(False)
         
-        if self.sender() == self.annotNumZslicesCheckboxRight:
+        if sender == self.annotNumZslicesCheckboxRight:
             self.annotIDsCheckboxRight.setChecked(True)
             self.drawNothingCheckboxRight.setChecked(False)
 
