@@ -13895,6 +13895,7 @@ class guiWin(QMainWindow):
             if self.zSliceScrollBarStartedMoving and self.isSegm3D:
                 self.clearAx1Items(onlyHideText=True)
                 self.clearAx2Items(onlyHideText=True)
+                self.initContoursImage()
             posData = self.data[self.pos_i]
             idx = (posData.filename, posData.frame_i)
             z = self.zSliceScrollBar.sliderPosition()
@@ -13912,6 +13913,8 @@ class guiWin(QMainWindow):
             self.zSliceScrollBarStartedMoving = False
 
     def zSliceScrollBarReleased(self):
+        self.tempLayerImg1.setImage(self.emptyLab)
+        self.tempLayerRightImage.setImage(self.emptyLab)
         self.zSliceScrollBarStartedMoving = True
         self.update_z_slice(self.zSliceScrollBar.sliderPosition())
     
@@ -17059,7 +17062,7 @@ class guiWin(QMainWindow):
         for obj in posData.rp:
             idx = posData.IDs_idxs[obj.label]
             if self.isObjVisible(obj.bbox):
-                brush = self.objLabelAnnotBrush
+                brush = self.objLabelAnnotHoverBrush
             else:
                 brush = self.emptyBrush
             if scatterItem_ax1 is not None:
@@ -17081,6 +17084,39 @@ class guiWin(QMainWindow):
         else:
             self.currentLab2D = posData.lab
             self.setOverlaySegmMasks()
+        self.setTempContoursImage()
+    
+    def initLutTempContoursLayer(self, ax):
+        if ax == 0:
+            imageItem = self.tempLayerImg1
+        else:
+            imageItem = self.tempLayerRightImage
+
+        r, g, b, a = self.imgGrad.contoursColorButton.color(mode='byte')
+        if imageItem.lut is not None:
+            R, G, B, A = imageItem.lut[1]
+            if r==R and g==G and b==B and a==255:
+                # Layer already initialised
+                return
+        
+        imageItem.setOpacity(1)
+        lut = np.zeros((2, 4), dtype=np.uint8)
+        lut[1,-1] = 255
+        lut[1,:-1] = (r,g,b)
+        imageItem.setLookupTable(lut)
+    
+    def initContoursImage(self):
+        if not hasattr(self, 'currentLab2D'):
+            self.contoursImage = None
+            return
+        
+        self.contoursImage = np.zeros(self.currentLab2D.shape, dtype=np.uint8)
+    
+    def populateContoursImage(self):
+        self.contoursImage[:] = 0
+        for obj in skimage.measure.regionprops(self.currentLab2D):
+            cont = self.getObjContours(obj, appendMultiContID=False)
+            self.contoursImage[cont[:,1], cont[:,0]] = 1
     
     def setTempContoursImage(self):
         if not hasattr(self, 'currentLab2D'):
@@ -17090,7 +17126,7 @@ class guiWin(QMainWindow):
         areContoursActiveLeft = how.find('contours') != -1
 
         how_ax2 = self.getAnnotateHowRightImage()
-        areContoursActiveRight = how_ax2.find()
+        areContoursActiveRight = how_ax2.find('contours') != -1
 
         areContoursActive = (
             areContoursActiveLeft or areContoursActiveRight
@@ -17100,10 +17136,17 @@ class guiWin(QMainWindow):
 
         contoursImg = None
         if areContoursActiveLeft:
-            pass
+            self.initLutTempContoursLayer(ax=0)
+            self.populateContoursImage()
+            contoursImg = self.contoursImage
+            self.tempLayerImg1.setImage(self.contoursImage)
 
         if areContoursActiveRight:
-            pass
+            self.initLutTempContoursLayer(ax=1)
+            if contoursImg is None:
+                self.populateContoursImage()
+                contoursImg = self.contoursImage
+            self.tempLayerRightImage.setImage(self.contoursImage)
         
     def setOverlaySegmMasks(self, force=False, forceIfNotActive=False):
         if not hasattr(self, 'currentLab2D'):
@@ -18384,8 +18427,6 @@ class guiWin(QMainWindow):
                 ax2_textAnnotOpts.append(objTextAnnotSegmOpts)
             elif objTextAnnotOptsRight is not None:
                 ax2_textAnnotOpts.append(objTextAnnotOptsRight)
-
-        printl(len(ax1_textAnnotOpts))
 
         ax1_scatterItem = self.getTextAnnotScatterItem_ax1()
         ax2_scatterItem = self.getTextAnnotScatterItem_ax2()
