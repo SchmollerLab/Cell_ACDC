@@ -3503,6 +3503,9 @@ class guiWin(QMainWindow):
         # Lost ID question mark text color
         self.objLostRgb = (245, 184, 0)
 
+        self.gui_createTextAnnotBrushAndPens()
+    
+    def gui_createTextAnnotBrushAndPens(self):
         penWidth = 1
         brushAlpha = 150
 
@@ -7117,7 +7120,12 @@ class guiWin(QMainWindow):
         if idx >= len(annotData):
             return
 
-        return annotData[idx]        
+        objAnnotData = annotData[idx]
+        opts = {
+            'brush': annotData[idx]['brush'], 'pen': annotData[idx]['pen'],
+            'symbol': annotData[idx]['symbol']
+        }
+        return opts
 
     def updateObjAnnotCustomText(self, obj, txt, brush, pen, bold, scatterItem):
         opts = {
@@ -7176,7 +7184,14 @@ class guiWin(QMainWindow):
     def _hideObjsTextAnnot(self, IDs, scatterItem):
         posData = self.data[self.pos_i]
         for ID in IDs:
-            idx = posData.IDs_idxs[ID]
+            try:
+                idx = posData.IDs_idxs[ID]
+            except KeyError as e:
+                # Object already not annotated --> skip
+                continue
+            if ID in scatterItem.hiddenAnnotOpts:
+                # Object already hidden --> skip
+                continue
             brush = pg.mkBrush(scatterItem.data['brush'][idx])
             pen = pg.mkPen(scatterItem.data['pen'][idx])
             scatterItem.hiddenAnnotOpts[ID] = {'brush': brush, 'pen': pen}
@@ -7184,25 +7199,25 @@ class guiWin(QMainWindow):
             scatterItem.data['pen'][idx] = self.emptyPen
         scatterItem.updateSpots()
     
-    def restoreTextAnnotBrush(self, IDs, ax=0):
+    def restoreTextAnnotBrush(self, ID, ax=0):
         if ax == 0:
             scatterItem = self.getTextAnnotScatterItem_ax1()
         else:
             scatterItem = self.getTextAnnotScatterItem_ax2()
         if scatterItem is None:
             return
-        self._restoreTextAnnotBrush(self, IDs, scatterItem)
+        self._restoreTextAnnotBrush(ID, scatterItem)
     
-    def _restoreTextAnnotBrush(self, IDs, scatterItem):
+    def _restoreTextAnnotBrush(self, ID, scatterItem):
         posData = self.data[self.pos_i]
-        for ID in IDs:
-            idx = posData.IDs_idxs[ID]
-            IDopts = scatterItem.hiddenAnnotOpts.get(ID, {})
-            brush = IDopts.get('brush', scatterItem.opts['brush'])
-            pen = IDopts.get('pen', scatterItem.opts['pen'])
-            scatterItem.data['brush'][idx] = brush
-            scatterItem.data['pen'][idx] = pen
+        idx = posData.IDs_idxs[ID]
+        IDopts = scatterItem.hiddenAnnotOpts.get(ID, {})
+        brush = IDopts.get('brush', scatterItem.opts['brush'])
+        pen = IDopts.get('pen', scatterItem.opts['pen'])
+        scatterItem.data['brush'][idx] = brush
+        scatterItem.data['pen'][idx] = pen
         scatterItem.updateSpots()
+        scatterItem.hiddenAnnotOpts.pop(ID, None)
     
     def clearObjsTextAnnot(self, IDs, ax=0):
         if ax == 0:
@@ -9239,6 +9254,7 @@ class guiWin(QMainWindow):
             self.SphaseAnnotRgb = [255-v for v in self.SphaseAnnotRgb]
             self.titleColor = 'white'
         
+        self.gui_createTextAnnotBrushAndPens()
         self.updateALLimg()
     
     def _channelHoverValues(self, descr, channel, value, max_value, ff=None):
@@ -10156,12 +10172,13 @@ class guiWin(QMainWindow):
             obj_idx = posData.IDs.index(self.ax1BrushHoverID)
             obj = posData.rp[obj_idx]
             self.drawObjContours(obj)
-            self.updateObjAnnotText(obj)
         elif self.ax1BrushHoverID in posData.lost_IDs:
             prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
             obj_idx = [obj.label for obj in prev_rp].index(self.ax1BrushHoverID)
             obj = prev_rp[obj_idx]
-            self.highlightLost_obj(obj)
+        else:
+            return
+        self.restoreTextAnnotBrush(obj.label)
 
     def hideItemsHoverBrush(self, x, y):
         if x is None:
@@ -11644,8 +11661,8 @@ class guiWin(QMainWindow):
                 except Exception as e:
                     pass
             
-            self.restoreTextAnnotBrush([ID], ax=0)
-            self.restoreTextAnnotBrush([ID], ax=1)
+            self.restoreTextAnnotBrush(ID, ax=0)
+            self.restoreTextAnnotBrush(ID, ax=1)
 
         posData.lab = lab
         self.setImageImg2()
@@ -14576,11 +14593,6 @@ class guiWin(QMainWindow):
             # No cells in S that disappears --> do nothing
             return False, automaticallyDividedIDs
 
-        prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
-        for obj in prev_rp:
-            if obj.label in ScellsIDsGone:
-                self.highlight_obj(obj)
-
         self.highlightNewIDs_ccaFailed()
         proceed = self.warnScellsGone(ScellsIDsGone, posData.frame_i)
         if not proceed:
@@ -15469,11 +15481,11 @@ class guiWin(QMainWindow):
         }
         return opts
     
-    def getObjMissingTextAnnotOpts(self):
+    def getObjMissingTextAnnotOpts(self, txt='?'):
         opts = {
             'brush': self.objLostAnnotBrush, 
             'pen': self.objLostAnnotPen, 
-            'symbol': self.getObjTextAnnotSymbol('?')
+            'symbol': self.getObjTextAnnotSymbol(txt)
         }
         return opts
     
@@ -15831,7 +15843,7 @@ class guiWin(QMainWindow):
             self.drawMotherBudLineRightImage(obj, posData=posData)
 
         if not drawContours:
-            return objTextAnnotOpts, objTextAnnotOptsRight, objTextAnnotSegmOpts
+            return 
 
         # Draw contours on ax1 if requested
         if IDs_and_cont or onlyCont or ccaInfo_and_cont:
@@ -16002,11 +16014,8 @@ class guiWin(QMainWindow):
         obj_idx = posData.IDs.index(ID)
         obj = posData.rp[obj_idx]
 
-        self.getObjOptsSegmLabels(obj)
-
-        how = self.drawIDsContComboBox.currentText()
-        self.getObjTextAnnotOpts(obj, how)
-        self.getObjTextAnnotOptsRightImage(obj, debug=True)
+        self.highlightedIDopts = None
+        self.updateObjAnnotText(obj)
     
     def _keepObjects(self, keepIDs=None, lab=None, rp=None):
         posData = self.data[self.pos_i]
@@ -18216,59 +18225,30 @@ class guiWin(QMainWindow):
         self.labelsLayerImg1.setOpacity(value)
         self.labelsLayerRightImg.setOpacity(value)
 
-    # @exec_time
-    @exception_handler
-    def updateALLimg(
-            self, image=None, updateFilters=False, computePointsLayers=True
-        ):
-        self.clearAx1Items()
-        self.clearAx2Items()
-
+    def _getImageUpdateALLimg(self, image, updateFilters):
+        if image is not None:
+            return image
+        
+        if updateFilters:
+            img = self.applyFilter(self.user_ch_name, setImg=False)
+        else:
+            posData = self.data[self.pos_i]
+            filteredData = self.filteredData.get(self.user_ch_name)
+            if filteredData is None:
+                # Filtered data not existing
+                img = self.getImage()
+            elif posData.SizeZ > 1:
+                # 3D filtered data (see self.applyFilter)
+                img = self.get_2Dimg_from_3D(filteredData)
+            else:
+                # 2D filtered data (see self.applyFilter)
+                img = filteredData
+        return img
+    
+    @exec_time
+    def setAllContoursAndTextAnnot(self):
         posData = self.data[self.pos_i]
 
-        if self.last_pos_i != self.pos_i or posData.frame_i != self.last_frame_i:
-            updateFilters = True
-        
-        self.last_pos_i = self.pos_i
-        self.last_frame_i = posData.frame_i
-
-        if image is None:
-            if updateFilters:
-                img = self.applyFilter(self.user_ch_name, setImg=False)
-            else:
-                filteredData = self.filteredData.get(self.user_ch_name)
-                if filteredData is None:
-                    # Filtered data not existing
-                    img = self.getImage()
-                elif posData.SizeZ > 1:
-                    # 3D filtered data (see self.applyFilter)
-                    img = self.get_2Dimg_from_3D(filteredData)
-                else:
-                    # 2D filtered data (see self.applyFilter)
-                    img = filteredData            
-        else:
-            img = image
-        
-        if self.equalizeHistPushButton.isChecked():
-            img = skimage.exposure.equalize_adapthist(img)
-        
-        self.setImageImg2()
-        self.img1.setImage(img)
-
-        if self.overlayButton.isChecked():
-            img = self.setOverlayImages(updateFilters=updateFilters)
-
-        self.setOverlayLabelsItems()
-        self.setOverlaySegmMasks()
-              
-        if self.slideshowWin is not None:
-            self.slideshowWin.frame_i = posData.frame_i
-            self.slideshowWin.update_img()
-
-        self.addItemsAllIDs(posData.IDs)
-        self.update_rp()
-
-        # Annotate ID and draw contours
         ax1_textAnnotOpts = []
         ax2_textAnnotOpts = []
         for i, obj in enumerate(posData.rp):
@@ -18291,7 +18271,47 @@ class guiWin(QMainWindow):
         if ax1_scatterItem is not None and ax1_textAnnotOpts:
             ax1_scatterItem.setData(ax1_textAnnotOpts)
         if ax2_scatterItem is not None and ax2_textAnnotOpts:
-            ax2_scatterItem.setData(ax2_textAnnotOpts)    
+            ax2_scatterItem.setData(ax2_textAnnotOpts)
+
+    # @exec_time
+    @exception_handler
+    def updateALLimg(
+            self, image=None, updateFilters=False, computePointsLayers=True
+        ):
+        self.clearAx1Items()
+        self.clearAx2Items()
+
+        posData = self.data[self.pos_i]
+
+        if self.last_pos_i != self.pos_i or posData.frame_i != self.last_frame_i:
+            updateFilters = True
+        
+        self.last_pos_i = self.pos_i
+        self.last_frame_i = posData.frame_i
+
+        img = self._getImageUpdateALLimg(image, updateFilters)
+        
+        if self.equalizeHistPushButton.isChecked():
+            img = skimage.exposure.equalize_adapthist(img)
+        
+        self.setImageImg2()
+        self.img1.setImage(img)
+
+        if self.overlayButton.isChecked():
+            img = self.setOverlayImages(updateFilters=updateFilters)
+
+        self.setOverlayLabelsItems()
+        self.setOverlaySegmMasks()
+              
+        if self.slideshowWin is not None:
+            self.slideshowWin.frame_i = posData.frame_i
+            self.slideshowWin.update_img()
+
+        self.addItemsAllIDs(posData.IDs)
+        self.update_rp()
+
+        # Annotate ID and draw contours
+        self.setAllContoursAndTextAnnot()    
 
         # Update annotated IDs (e.g. dead cells)
         self.update_rp_metadata(draw=True)
@@ -18440,30 +18460,14 @@ class guiWin(QMainWindow):
             rp = posData.allData_li[posData.frame_i-1]['regionprops']
             if rp is None:
                 return
+            
+            lostObjsOpts = []
             for obj in rp:
-                self.highlightLost_obj(obj)
-
-    def highlight_obj(self, obj, contPen=None, textColor=None):
-        if not self.createItems:
-            return
-
-        if contPen is None:
-            contPen = self.lostIDs_cpen
-        if textColor is None:
-            textColor = self.lostIDs_qMcolor
-        ID = obj.label
-        ContCurve = self.ax1_ContoursCurves[ID-1]
-        cont = self.getObjContours(obj)
-        ContCurve.setData(
-            cont[:,0], cont[:,1], pen=contPen
-        )
-        LabelItemID = self.ax1_LabelItemsIDs[ID-1]
-        txt = f'{obj.label}?'
-        LabelItemID.setText(txt, color=textColor)
-        # Center LabelItem at centroid
-        y, x = self.getObjCentroid(obj.centroid)
-        w, h = LabelItemID.rect().right(), LabelItemID.rect().bottom()
-        LabelItemID.setPos(x-w/2, y-h/2)
+                lostObjOpts = self.highlightLost_obj(obj)
+                if lostObjOpts is None:
+                    continue
+                lostObjsOpts.append(lostObjOpts)
+            self.ax1_textAnnotItems['objLostAnnotItem'].setData(lostObjsOpts)
 
     def highlightLost_obj(self, obj, forceContour=False):
         if not self.createItems:
@@ -18486,30 +18490,32 @@ class guiWin(QMainWindow):
             return
 
         ID = obj.label
-        if ID in posData.lost_IDs:
-            ContCurve = self.ax1_ContoursCurves[ID-1]
-            if ContCurve is None:
-                self.addNewItems(ID)
-            ContCurve = self.ax1_ContoursCurves[ID-1]
+        if ID not in posData.lost_IDs:
+            return
+        
+        ContCurve = self.ax1_ContoursCurves[ID-1]
+        if ContCurve is None:
+            self.addNewItems(ID)
+        ContCurve = self.ax1_ContoursCurves[ID-1]
 
-            highlight = (
-                IDs_and_cont or onlyCont or ccaInfo_and_cont
-                or IDs_and_masks or onlyMasks or forceContour
-                or ccaInfo_and_masks
+        highlight = (
+            IDs_and_cont or onlyCont or ccaInfo_and_cont
+            or IDs_and_masks or onlyMasks or forceContour
+            or ccaInfo_and_masks
+        )
+
+        if highlight:
+            cont = self.getObjContours(obj)
+            ContCurve.setData(
+                cont[:,0], cont[:,1], pen=self.lostIDs_cpen
             )
-
-            if highlight:
-                cont = self.getObjContours(obj)
-                ContCurve.setData(
-                    cont[:,0], cont[:,1], pen=self.lostIDs_cpen
-                )
-            LabelItemID = self.ax1_LabelItemsIDs[ID-1]
-            txt = f'{obj.label}?'
-            LabelItemID.setText(txt, color=self.lostIDs_qMcolor)
-            # Center LabelItem at centroid
-            y, x = self.getObjCentroid(obj.centroid)
-            w, h = LabelItemID.rect().right(), LabelItemID.rect().bottom()
-            LabelItemID.setPos(x-w/2, y-h/2)
+        
+        txt = f'{obj.label}?'
+        lostObjOpts = self.getObjMissingTextAnnotOpts(txt=txt)
+        y, x = self.getObjCentroid(obj.centroid)
+        lostObjOpts['pos'] = (x, y)
+        return lostObjOpts
+        
 
 
     def setTitleText(self):
