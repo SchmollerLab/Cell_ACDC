@@ -572,13 +572,16 @@ def CustomGradientMenuAction(gradient: QLinearGradient, name: str, parent):
     delButton.action = action
     return action
 
-class ContourItem(pg.PlotDataItem):
+class ContourItem(pg.PlotCurveItem):
     def __init__(self, *args, **kargs):
         super().__init__(*args, **kargs)
         self._prevData = None
     
     def clear(self):
-        self.setData([], [])
+        try:
+            self.setData([], [])
+        except AttributeError as e:
+            pass
     
     def tempClear(self):
         try:
@@ -1358,6 +1361,33 @@ class VerticalResizeHline(QFrame):
             self.setMidLineWidth(0)
             self.setLineWidth(1)
         return False
+
+class GroupBox(QGroupBox):
+    def __init__(self, *args, keyPressCallback=None):
+        super().__init__(*args)
+        self.keyPressCallback = None
+        self.setFocusPolicy(Qt.NoFocus)
+    
+    def keyPressEvent(self, event) -> None:
+        event.ignore()
+        if self.keyPressCallback is None:
+            return
+
+        self.keyPressCallback()
+
+class CheckBox(QCheckBox):
+    def __init__(self, *args, keyPressCallback=None):
+        super().__init__(*args)
+        self.keyPressCallback = None
+        self.setFocusPolicy(Qt.NoFocus)
+    
+    def keyPressEvent(self, event) -> None:
+        event.ignore()
+        if self.keyPressCallback is None:
+            return
+
+        self.keyPressCallback()
+        
 
 class ScrollArea(QScrollArea):
     sigLeaveEvent = pyqtSignal()
@@ -4801,12 +4831,10 @@ class MainPlotItem(pg.PlotItem):
         # clicking it.
         # If autorange is enabled, it is called everytime the brush or eraser 
         # scatter plot items touches the border causing flickering
+        self.disableAutoRange()
         self.autoBtn.mode = 'manual'
     
     def autoBtnClicked(self):
-        self.autoRange()
-    
-    def autoRange(self):
         self.vb.autoRange()
         self.autoBtn.hide()
 

@@ -8,6 +8,10 @@ import matplotlib
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+from tqdm import tqdm
+
+from PyQt5 import QtGui
+
 
 def _binned_mean_stats(x, y, bins, bins_min_count):
     bin_counts, _, _ = scipy.stats.binned_statistic(x, y, statistic='count', bins=bins)
@@ -77,6 +81,69 @@ def binned_means_plot(
     ax.errorbar(xe, ye, yerr=yerr, color=color, label=label, **errorbar_kws)
 
     return ax
+
+def text_to_pg_scatter_symbol(text: str, font=None, scale=None):
+    if font is None:
+        font = QtGui.QFont()
+        font.setPixelSize(11)
+
+    symbol = QtGui.QPainterPath()
+    symbol.addText(0, 0, font, text)
+    br = symbol.boundingRect()
+    if scale is None:
+        scale = min(1. / br.width(), 1. / br.height())
+    tr = QtGui.QTransform()
+    tr.scale(scale, scale)
+    tr.translate(-br.x() - br.width()/2., -br.y() - br.height()/2.)
+    symbol = tr.map(symbol)
+    return symbol
+    
+
+def texts_to_pg_scatter_symbols(
+        texts: typing.Union[str, list[str]], font=None, progress=True,
+        return_scale=False
+    ):
+    if font is None:
+        font = QtGui.QFont()
+        font.setPixelSize(11)
+    if isinstance(texts, str):
+        texts = [texts]
+
+    if progress:
+        pbar = tqdm(total=len(texts)*2, ncols=100)
+    
+    max_scale = 0
+    symbols = []
+    for text in texts:
+        symbol = QtGui.QPainterPath()
+        symbol.addText(0, 0, font, text)
+        br = symbol.boundingRect()
+        scale = min(1. / br.width(), 1. / br.height())
+        symbols.append(symbol)
+        if progress:
+            pbar.update()
+        if scale<=max_scale:
+            continue
+        max_scale = scale
+    
+    scaled_symbols = {}
+    for text, symbol in zip(texts, symbols):
+        br = symbol.boundingRect()
+        tr = QtGui.QTransform()
+        tr.scale(max_scale, max_scale)
+        tr.translate(-br.x() - br.width()/2., -br.y() - br.height()/2.)
+        scaled_symbols[text] = tr.map(symbol)
+        if progress:
+            pbar.update()
+    
+    if progress:
+        pbar.close()
+    
+    if return_scale:
+        return scaled_symbols, max_scale
+    else:
+        return scaled_symbols
+
 
 if __name__ == '__main__':
     x = np.arange(0, 1000).astype(float)

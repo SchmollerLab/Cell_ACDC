@@ -68,7 +68,8 @@ base_cca_df = {
     'emerg_frame_i': -1,
     'division_frame_i': -1,
     'is_history_known': False,
-    'corrected_assignment': False
+    'corrected_assignment': False,
+    'will_divide': 0
 }
 
 base_acdc_df = {
