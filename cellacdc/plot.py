@@ -100,7 +100,7 @@ def text_to_pg_scatter_symbol(text: str, font=None, scale=None):
     
 
 def texts_to_pg_scatter_symbols(
-        texts: typing.Union[str, list[str]], font=None, progress=True,
+        texts: typing.Union[str, list], font=None, progress=True,
         return_scale=False
     ):
     if font is None:
