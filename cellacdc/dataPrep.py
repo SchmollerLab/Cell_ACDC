@@ -422,73 +422,18 @@ class dataPrepWin(QMainWindow):
         if self.AutoPilot.timer.isActive():
             self.AutoPilot.timer.stop()
         self.AutoPilot = None
-
-    def next_cb(self):
-        if self.num_pos > 1:
-            self.next_pos()
-        else:
-            self.next_frame()
-
-    def prev_cb(self):
-        if self.num_pos > 1:
-            self.prev_pos()
-        else:
-            self.prev_frame()
-
-    def next_pos(self):
-        if self.pos_i < self.num_pos-1:
-            self.removeBkgrROIs()
-            self.removeCropROI()
-            self.pos_i += 1
-            self.updateCropZtool()
-            self.setImageNameText()
-            self.update_img()
-            self.updateROI()
-            self.updateBkgrROIs()
-            self.saveBkgrROIs(self.data[self.pos_i])
-
-
-    def prev_pos(self):
-        if self.pos_i > 0:
-            self.removeBkgrROIs()
-            self.removeCropROI()
-            self.pos_i -= 1
-            self.updateCropZtool()
-            self.setImageNameText()
-            self.update_img()
-            self.updateROI()
-            self.updateBkgrROIs()
-
-
-    def skip10ahead_pos(self):
-        if self.pos_i < self.num_pos-10:
-            self.pos_i += 10
-        else:
-            self.pos_i = 0
+    
+    def updatePos(self):
+        self.updateCropZtool()
+        self.setImageNameText()
         self.update_img()
-
-    def skip10back_pos(self):
-        if self.pos_i > 9:
-            self.pos_i -= 10
-        else:
-            self.pos_i = self.num_pos-1
-        self.update_img()
-
-    def next_frame(self):
-        if self.frame_i < self.num_frames-1:
-            self.frame_i += 1
-        else:
-            self.frame_i = 0
-        self.navigateScrollbar.setValue(self.frame_i+1)
-        self.update_img()
-
-    def prev_frame(self):
-        if self.frame_i > 0:
-            self.frame_i -= 1
-        else:
-            self.frame_i = self.num_frames-1
-        self.navigateScrollbar.setValue(self.frame_i+1)
-        self.update_img()
+        self.updateROI()
+        self.updateBkgrROIs()
+        self.saveBkgrROIs(self.data[self.pos_i])
+    
+    def clearCurrentPos(self):
+        self.removeBkgrROIs()
+        self.removeCropROI()
 
     def skip10ahead_frames(self):
         if self.frame_i < self.num_frames-10:
@@ -526,7 +471,7 @@ class dataPrepWin(QMainWindow):
                 pass
             self.navigateScrollbar.setValue(self.frame_i+1)
         self.navigateScrollbar.valueChanged.connect(
-            self.navigateScrollBarMoved
+            self.navigateScrollbarValueChanged
         )
 
     def getImage(self, posData, img_data, frame_i, force_z=None):
@@ -642,25 +587,18 @@ class dataPrepWin(QMainWindow):
             self.navigateScrollbar.setDisabled(True)
         self.navigateScrollbar.setValue(1)
         self.navigateScrollbar.valueChanged.connect(
-            self.navigateScrollBarMoved
+            self.navigateScrollbarValueChanged
         )
 
-    def navigateScrollBarMoved(self, value):
-        # posData = self.data[self.pos_i]
-        # self.removeBkgrROIs()
-        # self.removeCropROI()
-
+    def navigateScrollbarValueChanged(self, value):
         if self.num_pos > 1:
-            self.pos_i = value-2
+            self.removeBkgrROIs()
+            self.removeCropROI()
+            self.pos_i = value-1
+            self.updatePos()
         else:
-            self.frame_i = value-2
-
-        self.next_cb()
-
-        # self.update_img()
-        # self.updateROI()
-        # self.updateBkgrROIs()
-        # self.saveBkgrROIs(self.data[self.pos_i])
+            self.frame_i = value-1
+            self.update_img()
 
     @exception_handler
     def crop(self, data, posData):
