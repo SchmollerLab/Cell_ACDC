@@ -3349,7 +3349,7 @@ class guiWin(QMainWindow):
     def setFocusMain(self):
         self.setFocus(True)
     
-    def resetFocus():
+    def resetFocus(self):
         self.setFocusGraphics()
         self.setFocusMain()
 
