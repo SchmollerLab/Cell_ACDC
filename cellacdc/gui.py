@@ -17074,27 +17074,56 @@ class guiWin(QMainWindow):
     def setGraphicalAnnotZsliceScrolling(self):
         posData = self.data[self.pos_i]
         if self.isSegm3D:
-            self.currentLab2D = posData.lab[z]
-            self.setOverlaySegmMasks(force=True)
+            self.currentLab2D = posData.lab[self.z_lab()]
+            self.setOverlaySegmMasks()
             self.doCustomAnnotation(0)
             self.update_rp_metadata()
         else:
             self.currentLab2D = posData.lab
-            self.setOverlaySegmMasks(forceIfNotActive=True)
-                
+            self.setOverlaySegmMasks()
+    
+    def setTempContoursImage(self):
+        if not hasattr(self, 'currentLab2D'):
+            return
+        
+        how = self.drawIDsContComboBox.currentText()
+        areContoursActiveLeft = how.find('contours') != -1
+
+        how_ax2 = self.getAnnotateHowRightImage()
+        areContoursActiveRight = how_ax2.find()
+
+        areContoursActive = (
+            areContoursActiveLeft or areContoursActiveRight
+        )
+        if not areContoursActive:
+            return
+
+        contoursImg = None
+        if areContoursActiveLeft:
+            pass
+
+        if areContoursActiveRight:
+            pass
+        
     def setOverlaySegmMasks(self, force=False, forceIfNotActive=False):
         if not hasattr(self, 'currentLab2D'):
             return
 
         how = self.drawIDsContComboBox.currentText()
+        isOverlaySegmLeftActive = how.find('overlay segm. masks') != -1
+
         how_ax2 = self.getAnnotateHowRightImage()
+        isOverlaySegmRightActive = (
+            how_ax2.find('overlay segm. masks') != -1
+            and self.labelsGrad.showRightImgAction.isChecked()
+        )
+
         isOverlaySegmActive = (
-            how.find('overlay segm. masks') != -1
-            or how_ax2.find('overlay segm. masks') != -1
+            isOverlaySegmLeftActive or isOverlaySegmRightActive
             or force
         )
         if not isOverlaySegmActive and not forceIfNotActive:
-            return
+            return 
 
         alpha = self.imgGrad.labelsAlphaSlider.value()
         if alpha == 0:
@@ -17109,14 +17138,9 @@ class guiWin(QMainWindow):
         if maxID >= len(self.lut):
             self.extendLabelsLUT(maxID+10)
 
-        isOverlaySegmLeftActive = how.find('overlay segm. masks') != -1
         if isOverlaySegmLeftActive:
             self.labelsLayerImg1.setImage(self.currentLab2D, autoLevels=False)
 
-        isOverlaySegmRightActive = (
-            how_ax2.find('overlay segm. masks') != -1
-            and self.labelsGrad.showRightImgAction.isChecked()
-        )
         if isOverlaySegmRightActive: 
             self.labelsLayerRightImg.setImage(self.currentLab2D, autoLevels=False)
     
