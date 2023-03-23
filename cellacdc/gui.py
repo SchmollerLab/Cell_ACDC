@@ -7126,8 +7126,26 @@ class guiWin(QMainWindow):
             'symbol': annotData[idx]['symbol']
         }
         return opts
+    
+    def highlightObjAnnotText(self, obj, scatterItem):
+        opts = {
+            'brush': self.objNewAnnotBrush, 'pen': self.objNewAnnotPen, 
+        }
+        opts['y'], opts['x'] = self.getObjCentroid(obj.centroid)
+        posData = self.data[self.pos_i]
+        idx = posData.IDs_idxs[obj.label]
+        if idx >= len(scatterItem.data):
+            symbol = self.getObjTextAnnotSymbol(str(obj.label), bold=True)
+            opts['symbol'] = symbol
+            scatterItem.addPoints([opts])
+        else:
+            for key, value in opts.items():
+                scatterItem.data[key][idx] = value
+            scatterItem.updateSpots()         
 
     def updateObjAnnotCustomText(self, obj, txt, brush, pen, bold, scatterItem):
+        if scatterItem is None:
+            return
         opts = {
             'brush': brush, 'pen': pen, 
             'symbol': self.getObjTextAnnotSymbol(txt, bold=bold)
@@ -7137,9 +7155,13 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         idx = posData.IDs_idxs[obj.label]
         for key, value in opts.items():
+            if idx >= len(scatterItem.data):
+                scatterItem.addPoints([opts])
+                break
             scatterItem.data[key][idx] = value
+        else:
+            scatterItem.updateSpots()       
         
-        scatterItem.updateSpots()
     
     def updateObjAnnotText(self, obj):
         objAnnotOpts, objAnnotOptsRight, objAnnotSegmOpts = (
@@ -10295,6 +10317,10 @@ class guiWin(QMainWindow):
     def keepIDs_cb(self, checked):
         self.keepIDsToolbar.setVisible(checked)
         if checked:
+            if self.annotCcaInfoCheckbox.isChecked():
+                self.annotCcaInfoCheckbox.setChecked(False)
+                self.annotIDsCheckbox.setChecked(True)
+                self.setDrawAnnotComboboxText()
             self.uncheckLeftClickButtons(None)
             self.initKeepObjLabelsLayers()      
             self.setAllIDs()
@@ -10655,7 +10681,7 @@ class guiWin(QMainWindow):
         if ev.key() == Qt.Key_Q:
             # self.setAllIDs()
             posData = self.data[self.pos_i]
-            printl(posData.loaded_shifts)
+            # printl(self.getTextAnnotScatterItem_ax1().data)
             # printl(posData.fluo_data_dict.keys())
             # for key in posData.fluo_data_dict:
             #     printl(key, posData.fluo_data_dict[key].max())
@@ -16028,6 +16054,8 @@ class guiWin(QMainWindow):
         )
     
     def restoreHighlightedLabelID(self, ID):
+        if self.highlightedIDopts is None:
+            return
         posData = self.data[self.pos_i]
         obj_idx = posData.IDs.index(ID)
         obj = posData.rp[obj_idx]
@@ -18014,11 +18042,14 @@ class guiWin(QMainWindow):
         if ID == self.highlightedID and not force:
             return
 
+        if self.highlightedID > 0:
+            self.restoreHighlightedLabelID(self.highlightedID)
+        self.searchedIDitemRight.setData([], [])
+        self.searchedIDitemLeft.setData([], [])
+
         posData = self.data[self.pos_i]
 
         self.highlightedIDopts = {
-            'ax1ContPen': self.ax1_ContoursCurves[ID-1].opts['pen'],
-            'ax2ContPen': self.ax2_ContoursCurves[ID-1].opts['pen'],
             'ax1Opts': self.getCurrentObjTextAnnotOpts(ID, 0),
             'ax2Opts': self.getCurrentObjTextAnnotOpts(ID, 1),
         }
@@ -18029,35 +18060,8 @@ class guiWin(QMainWindow):
             self.ax1_ContoursCurves,
             self.ax2_ContoursCurves
         )
-        isContourON_ax1 = how_ax1.find('contours') != -1
-        isContourON_ax2 = how_ax2.find('contours') != -1
         isOverlaySegm_ax1 = how_ax1.find('segm. masks') != -1 
         isOverlaySegm_ax2 = how_ax2.find('segm. masks') != -1
-
-        # Set contours to normal pen if requested or clear
-        for ax1ContCurve, ax2ContCurve in contours:
-            if ax1ContCurve is None:
-                continue
-            if ax1ContCurve.getData()[0] is not None:
-                if isContourON_ax1:
-                    if ax1ContCurve.opts['pen'] != self.lostIDs_cpen:
-                        ax1ContCurve.setPen(self.oldIDs_cpen)
-                else:
-                    ax1ContCurve.setData([], [])
-            if ax2ContCurve.getData()[0] is not None:
-                if isContourON_ax2:
-                    if ax2ContCurve.opts['pen'] != self.lostIDs_cpen:
-                        ax2ContCurve.setPen(self.oldIDs_cpen)
-                else:
-                    ax2ContCurve.setData([], [])
-
-        if how_ax1.find('IDs') == -1:
-            for item in self.ax1_textAnnotItems.values():
-                item.clear()
-        
-        if how_ax2.find('IDs') == -1:
-            for item in self.ax2_textAnnotItems.values():
-                item.clear()
 
         self.highlightedID = ID
 
@@ -18091,11 +18095,6 @@ class guiWin(QMainWindow):
             self.highLightIDLayerImg1.setImage(highlightedLab)          
             self.labelsLayerImg1.setOpacity(alpha/3)
         else:
-            # # Red thick contour of searched ID
-            # cont = self.getObjContours(obj)
-            # pen = self.newIDs_cpen
-            # curveID = self.ax1_ContoursCurves[ID-1]
-            # curveID.setData(cont[:,0], cont[:,1], pen=pen)
             _image = self.getObjImage(obj.image, obj.bbox).astype(np.uint8)
             contours = core.get_objContours(obj, obj_image=_image, all=True)
             for cont in contours:
@@ -18106,49 +18105,14 @@ class guiWin(QMainWindow):
             self.highLightIDLayerRightImage.setImage(highlightedLab)
             self.labelsLayerRightImg.setOpacity(alpha/3)
         else:
-            # # Red thick contour of searched ID
-            # if cont is None:
-            #     cont = self.getObjContours(obj)
-            # pen = self.newIDs_cpen
-            # curveID = self.ax2_ContoursCurves[ID-1]
-            # curveID.setData(cont[:,0], cont[:,1], pen=pen)
             if contours is None:
                 _image = self.getObjImage(obj.image, obj.bbox).astype(np.uint8)
                 contours = core.get_objContours(obj, obj_image=_image, all=True)
             for cont in contours:
-                self.searchedIDitemRight.addPoints(cont[:,0], cont[:,1])
+                self.searchedIDitemRight.addPoints(cont[:,0], cont[:,1])       
 
-        how = self.drawIDsContComboBox.currentText()
-        IDs_and_cont = how == 'Draw IDs and contours'
-        onlyIDs = how == 'Draw only IDs'
-        nothing = how == 'Draw nothing'
-        onlyCont = how == 'Draw only contours'
-        only_ccaInfo = how == 'Draw only cell cycle info'
-        ccaInfo_and_cont = how == 'Draw cell cycle info and contours'
-        onlyMothBudLines = how == 'Draw only mother-bud lines'
-        IDs_and_masks = how == 'Draw IDs and overlay segm. masks'
-        onlyMasks = how == 'Draw only overlay segm. masks'
-        ccaInfo_and_masks = how == 'Draw cell cycle info and overlay segm. masks'
-        draw_LIs = (
-            IDs_and_cont or onlyIDs or only_ccaInfo or ccaInfo_and_cont
-            or IDs_and_masks or ccaInfo_and_masks
-        )
-        # Restore other text IDs to default
-        if draw_LIs:
-            for _obj in posData.rp:
-                self.getObjTextAnnotOpts(_obj, how, debug=False)
-                self.getObjOptsSegmLabels(_obj)        
-
-        bold = True
-        txt = str(ID)
-        self.updateObjAnnotCustomText(
-            obj, txt, self.objNewAnnotBrush, self.objNewAnnotPen, bold,
-            self.ax1_textAnnotItems['objLabelAnnotItem']
-        )
-        self.updateObjAnnotCustomText(
-            obj, txt, self.objNewAnnotBrush, self.objNewAnnotPen, bold,
-            self.ax2_textAnnotItems['objLabelAnnotItem']
-        )
+        self.highlightObjAnnotText(obj, self.getTextAnnotScatterItem_ax1())
+        self.highlightObjAnnotText(obj, self.getTextAnnotScatterItem_ax2())
 
         # Gray out all IDs excpet searched one
         lut = self.lut.copy() # [:max(posData.IDs)+1]

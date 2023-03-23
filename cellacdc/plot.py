@@ -93,7 +93,7 @@ def text_to_pg_scatter_symbol(text: str, font=None, scale=None):
     if scale is None:
         scale = min(1. / br.width(), 1. / br.height())
     tr = QtGui.QTransform()
-    tr.scale(max_scale, max_scale)
+    tr.scale(scale, scale)
     tr.translate(-br.x() - br.width()/2., -br.y() - br.height()/2.)
     symbol = tr.map(symbol)
     return symbol
