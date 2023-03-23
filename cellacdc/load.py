@@ -169,21 +169,46 @@ def load_segm_file(images_path, end_name_segm_file='segm', return_path=False):
         else:
             return 
 
-def load_acdc_df_file(images_path, end_name_acdc_df_file='segm', return_path=False):
-    if not end_name_acdc_df_file.endswith('.csv'):
-        end_name_acdc_df_file = f'{end_name_acdc_df_file}.csv'
-    for file in myutils.listdir(images_path):
-        if file.endswith(end_name_acdc_df_file):
-            acdc_df = pd.read_csv(os.path.join(images_path, file))
-            if return_path:
-                return acdc_df, os.path.join(images_path, file)
-            else:
-                return acdc_df
-    else:
-        if return_path:
-            return None, ''
-        else:
-            return 
+def _add_will_divide_column(acdc_df):
+    if 'cell_cycle_stage' not in acdc_df.columns:
+        return acdc_df
+
+    if 'will_divide' in acdc_df.columns:
+        return acdc_df
+
+    acdc_df['will_divide'] = np.nan
+    last_index_cca_df = acdc_df[['cell_cycle_stage']].last_valid_index()
+
+    cca_df = acdc_df.loc[:last_index_cca_df, cca_df_colnames].reset_index()
+    cca_df['will_divide'] = 0.0
+
+    cca_df_buds = cca_df.query('relationship == "bud"')
+
+    for budID, bud_cca_df in cca_df_buds.groupby('Cell_ID'):
+        all_gen_nums = cca_df.query(f'Cell_ID == {budID}')['generation_num']
+        if not (all_gen_nums > 0).any():
+            # bud division is annotated in the future
+            continue        
+
+        cca_df.loc[bud_cca_df.index, 'will_divide'] = 1
+        
+        mothID = int(bud_cca_df['relative_ID'].iloc[0])
+        first_frame_bud = bud_cca_df['frame_i'].iloc[0]
+        gen_num_moth = cca_df.query(
+            f'(frame_i == {first_frame_bud}) & (Cell_ID == {mothID})'
+        )['generation_num'].iloc[0]
+ 
+        mothMask = (
+            (cca_df['Cell_ID'] == mothID) 
+            & (cca_df['generation_num'] == gen_num_moth)
+        )
+
+        cca_df.loc[mothMask, 'will_divide'] = 1
+    
+    cca_df = cca_df.set_index(['frame_i', 'Cell_ID'])
+    acdc_df.loc[cca_df.index, cca_df.columns] = cca_df
+
+    return acdc_df
 
 def _load_acdc_df_file(acdc_df_file_path):
     acdc_df = pd.read_csv(acdc_df_file_path)
@@ -192,10 +217,28 @@ def _load_acdc_df_file(acdc_df_file_path):
         acdc_df[acdc_df_drop_cca.columns] = acdc_df_drop_cca
     except KeyError:
         pass
-    acdc_df = acdc_df.set_index(['frame_i', 'Cell_ID'])
+    acdc_df = acdc_df.set_index(['frame_i', 'Cell_ID']).sort_index()
     acdc_df = pd_bool_to_int(acdc_df, acdc_df_bool_cols, inplace=True)
     acdc_df = pd_int_to_bool(acdc_df, acdc_df_bool_cols)
+    acdc_df = _add_will_divide_column(acdc_df)
     return acdc_df
+
+def load_acdc_df_file(images_path, end_name_acdc_df_file='segm', return_path=False):
+    if not end_name_acdc_df_file.endswith('.csv'):
+        end_name_acdc_df_file = f'{end_name_acdc_df_file}.csv'
+    for file in myutils.listdir(images_path):
+        if file.endswith(end_name_acdc_df_file):
+            acdc_df_file_path = os.path.join(images_path, file)
+            acdc_df = _load_acdc_df_file(acdc_df_file_path).reset_index()
+            if return_path:
+                return acdc_df, acdc_df_file_path
+            else:
+                return acdc_df
+    else:
+        if return_path:
+            return None, ''
+        else:
+            return
 
 def get_user_ch_paths(images_paths, user_ch_name):
     user_ch_file_paths = []

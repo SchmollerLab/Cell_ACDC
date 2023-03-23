@@ -8220,7 +8220,7 @@ class guiWin(QMainWindow):
         
         self.enqAutosave()
     
-    def storeIsDivisionAnnotated(self, ID, relID):
+    def storeWillDivide(self, ID, relID):
         posData = self.data[self.pos_i]
 
         # Store in the past S frames that division has been annotated
@@ -8233,8 +8233,8 @@ class guiWin(QMainWindow):
             if ccs == 'G1':
                 break
             
-            past_cca_df.at[ID, 'is_division_annotated'] = 1
-            past_cca_df.at[relID, 'is_division_annotated'] = 1
+            past_cca_df.at[ID, 'will_divide'] = 1
+            past_cca_df.at[relID, 'will_divide'] = 1
 
             self.store_cca_df(
                 cca_df=past_cca_df, frame_i=frame_i, autosave=False
@@ -8246,7 +8246,7 @@ class guiWin(QMainWindow):
         # For frame == 0 --> reinitialize to unknown cells
         posData = self.data[self.pos_i]
 
-        self.storeIsDivisionAnnotated(ID, relID)
+        self.storeWillDivide(ID, relID)
 
         store = False
         cca_df.at[ID, 'cell_cycle_stage'] = 'G1'
@@ -8292,8 +8292,8 @@ class guiWin(QMainWindow):
             cca_df.at[ID, 'relationship'] = 'bud'
         else:
             cca_df.at[relID, 'relationship'] = 'bud'
-        cca_df.at[ID, 'is_division_annotated'] = 0
-        cca_df.at[relID, 'is_division_annotated'] = 0
+        cca_df.at[ID, 'will_divide'] = 0
+        cca_df.at[relID, 'will_divide'] = 0
         store = True
         return store
 
@@ -15523,7 +15523,7 @@ class guiWin(QMainWindow):
         }
         return opts
 
-    def getObjTextAnnotOpts(self, obj, how, debug=False, ax=0, profile=False):
+    def getObjTextAnnotOpts(self, obj, how, debug=False, ax=0):
         if not self.createItems:
             return
         
@@ -15577,40 +15577,25 @@ class guiWin(QMainWindow):
             is_moth = relationship == 'mother'
             emerged_now = emerg_frame_i == posData.frame_i
 
-            if profile:
-                t0 = time.perf_counter()
             # Check if the cell has already annotated division in the future
             # to use orange instead of red
-            is_division_annotated = False
+            will_divide = False
             if ccs == 'S' and is_bud and not self.isSnapshot:
-                for i in range(posData.frame_i+1, posData.SizeT):
-                    cca_df = self.get_cca_df(frame_i=i, return_df=True)
-                    if cca_df is None:
-                        break
-
-                    if ID not in cca_df.index:
-                        continue
-
-                    _ccs = cca_df.at[ID, 'cell_cycle_stage']
-                    if _ccs == 'G1':
-                        is_division_annotated = True
-                        break
-            if profile:
-                t1 = time.perf_counter()
+                will_divide = df_ID['will_divide'] > 0
 
             mothCell_S = (
                 ccs == 'S' and is_moth and not emerged_now
-                and not is_division_annotated
+                and not will_divide
             )
 
             budNotEmergedNow = (
                 ccs == 'S' and is_bud and not emerged_now
-                and not is_division_annotated
+                and not will_divide
             )
 
             budEmergedNow = (
                 ccs == 'S' and is_bud and emerged_now
-                and not is_division_annotated
+                and not will_divide
             )
             
             isTreeAnnot = (
@@ -15643,7 +15628,7 @@ class guiWin(QMainWindow):
                 brush = self.objNewAnnotBrush
                 pen = self.objNewAnnotPen
                 bold = True
-            elif is_division_annotated:
+            elif will_divide:
                 brush = self.dividedAnnotBrush
                 pen = self.dividedAnnotPen
                 bold = False
@@ -15662,10 +15647,7 @@ class guiWin(QMainWindow):
         y, x = self.getObjCentroid(obj.centroid)
         objOpts['pos'] = (x, y)
 
-        if not profile:
-            return objOpts
-        else:
-            return objOpts, (t1-t0)*1000
+        return objOpts
 
     def getObjTextAnnotOptsRightImage(self, obj, debug=False):
         if not self.labelsGrad.showRightImgAction.isChecked():
@@ -15899,17 +15881,11 @@ class guiWin(QMainWindow):
         objTextAnnotSegmOpts = self.getObjOptsSegmLabels(obj)
 
         how = self.drawIDsContComboBox.currentText()       
-        objTextAnnotOpts, profiledTime = self.getObjTextAnnotOpts(obj, how, profile=True)
+        objTextAnnotOpts = self.getObjTextAnnotOpts(obj, how)
         
         objTextAnnotOptsRight = self.getObjTextAnnotOptsRightImage(obj)        
-        
-        if not profile:
-            return objTextAnnotOpts, objTextAnnotSegmOpts, objTextAnnotOptsRight
-        else:
-            return (
-                objTextAnnotOpts, objTextAnnotSegmOpts, objTextAnnotOptsRight,
-                profiledTime
-            )
+
+        return objTextAnnotOpts, objTextAnnotSegmOpts, objTextAnnotOptsRight
 
     def update_IDsContours(self, prev_IDs, newIDs=[]):
         """Function to draw labels text and contours of specific IDs.
@@ -18288,13 +18264,9 @@ class guiWin(QMainWindow):
                 img = filteredData
         return img
     
-    @exec_time
+    # @exec_time
     def setAllContoursAndTextAnnot(self):
         posData = self.data[self.pos_i]
-
-        contoursTimes = []
-        getAnnotOptsTime = []
-        profiledTimes = []
 
         ax1_textAnnotOpts = []
         ax2_textAnnotOpts = []
@@ -18302,18 +18274,11 @@ class guiWin(QMainWindow):
             if not self.isObjVisible(obj.bbox):
                 continue
 
-            t0 = time.perf_counter()
             self.drawObjContours(obj)
-            t1 = time.perf_counter()
-            objAnnotOpts = (
-                self.getAllAxisObjTextAnnotOpts(obj, profile=True)
+            objAnnotOpts = self.getAllAxisObjTextAnnotOpts(obj)
+            objTextAnnotOpts, objTextAnnotOptsRight, objTextAnnotSegmOpts = (
+                objAnnotOpts
             )
-            t3 = time.perf_counter()
-
-            (objTextAnnotOpts, objTextAnnotOptsRight, objTextAnnotSegmOpts,
-            profilingTime) = objAnnotOpts
-
-            profiledTimes.append(profilingTime)
 
             if objTextAnnotOpts is not None:
                 ax1_textAnnotOpts.append(objTextAnnotOpts)
@@ -18322,10 +18287,6 @@ class guiWin(QMainWindow):
             elif objTextAnnotOptsRight is not None:
                 ax2_textAnnotOpts.append(objTextAnnotOptsRight)
 
-            contoursTimes.append((t1-t0)*1000)
-            getAnnotOptsTime.append((t3-t1)*1000)
-        
-        t4 = time.perf_counter()
         ax1_scatterItem = self.getTextAnnotScatterItem_ax1()
         ax2_scatterItem = self.getTextAnnotScatterItem_ax2()
 
@@ -18333,14 +18294,6 @@ class guiWin(QMainWindow):
             ax1_scatterItem.setData(ax1_textAnnotOpts)
         if ax2_scatterItem is not None and ax2_textAnnotOpts:
             ax2_scatterItem.setData(ax2_textAnnotOpts)
-        t5 = time.perf_counter()
-
-        printl(
-            f'  * Contours time = {np.sum(contoursTimes):.3f} ms\n'
-            f'  * Get annot opts time = {np.sum(getAnnotOptsTime):.3f} ms\n'
-            f'  * Profiled time = {np.sum(profiledTimes):.3f} ms\n'
-            f'  * Set data annot text time = {(t5-t4)*1000:.3f} ms'
-        )
 
     # @exec_time
     @exception_handler
