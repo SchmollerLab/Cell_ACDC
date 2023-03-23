@@ -62,7 +62,7 @@ class segmWorkerSignals(QObject):
 
 class segmWorker(QRunnable):
     def __init__(
-            self, img_path, mainWin
+            self, img_path, mainWin, stop_frame_n
         ):
         QRunnable.__init__(self)
         self.signals = segmWorkerSignals()
@@ -89,6 +89,7 @@ class segmWorker(QRunnable):
         self.ROIdeactivatedByUser = mainWin.ROIdeactivatedByUser
         self.secondChannelName = mainWin.secondChannelName
         self.image_chName_tracker = mainWin.image_chName_tracker
+        self.stop_frame_n = stop_frame_n
 
     def setupPausingItems(self):
         self.mutex = QMutex()
@@ -162,7 +163,7 @@ class segmWorker(QRunnable):
 
         # Note that stop_i is not used when SizeT == 1 so it does not matter
         # which value it has in that case
-        stop_i = posData.segmSizeT
+        stop_i = self.stop_frame_n
 
         if self.secondChannelName is not None:
             self.signals.progress.emit(
@@ -1092,9 +1093,8 @@ class segmWin(QMainWindow):
         self.do_tracking = False
         self.tracker = None
         self.track_params = {}
+        self.stopFrames = [1 for _ in range(len(user_ch_file_paths))]
         if posData.SizeT > 1:
-            # Ask stop frame. The "askStopFrameSegm" will internally load
-            # all the posData and save segmSizeT which will be used as stop_i
             win = apps.askStopFrameSegm(
                 user_ch_file_paths, user_ch_name,
                 concat_segm=self.concat_segm, parent=self
@@ -1106,6 +1106,8 @@ class segmWin(QMainWindow):
                 if abort:
                     self.close()
                     return
+
+            self.stopFrames = win.stopFrames
 
             # Ask whether to track the frames
             trackers = myutils.get_list_of_trackers()
@@ -1189,7 +1191,6 @@ class segmWin(QMainWindow):
         self.threadIdx = 0
         for i in range(self.threadCount):
             self.threadIdx = i
-            img_path = user_ch_file_paths[i]
             self.startSegmWorker()
 
     def askMultipleSegm(self, segm_files, isTimelapse=True):
@@ -1317,7 +1318,8 @@ class segmWin(QMainWindow):
 
     def startSegmWorker(self):
         img_path = self.user_ch_file_paths[self.threadIdx]
-        worker = segmWorker(img_path, self)
+        stop_frame_n = self.stopFrames[self.threadIdx]
+        worker = segmWorker(img_path, self, stop_frame_n)
         worker.signals.finished.connect(self.segmWorkerFinished)
         worker.signals.progress.connect(self.segmWorkerProgress)
         worker.signals.progressBar.connect(self.segmWorkerProgressBar)

@@ -7919,7 +7919,7 @@ class askStopFrameSegm(QDialog):
 
     def saveSegmSizeT(self):
         for spinBox, posData in self.dataDict.values():
-            posData.segmSizeT = spinBox.value()
+            self.stopFrames.append(spinBox.value())
 
     def ok_cb(self, event):
         self.cancel = False
@@ -10166,6 +10166,8 @@ class QDialogModelParams(QDialog):
                 except Exception as err:
                     pass
             widget = argWidget.widget
+            if val is None:
+                continue
             try:
                 argWidget.valueSetter(widget, val)
             except TypeError:
