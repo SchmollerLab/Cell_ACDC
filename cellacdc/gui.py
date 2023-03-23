@@ -3936,7 +3936,7 @@ class guiWin(QMainWindow):
         self.ax1_textAnnotItems = self._gui_createTextAnnotItems()
         self.ax2_textAnnotItems = self._gui_createTextAnnotItems()
 
-        if numItems > 500:
+        if numItems > 1000:
             cancel, doNotCreateItems = self._warn_too_many_items(
                 numItems, self.progressWin
             )
@@ -7188,7 +7188,6 @@ class guiWin(QMainWindow):
         else:
             scatterItem.updateSpots()       
         
-    
     def updateObjAnnotText(self, obj):
         objAnnotOpts, objAnnotOptsRight, objAnnotSegmOpts = (
             self.getAllAxisObjTextAnnotOpts(obj)
@@ -10756,7 +10755,7 @@ class guiWin(QMainWindow):
         if ev.key() == Qt.Key_Q:
             # self.setAllIDs()
             posData = self.data[self.pos_i]
-            # printl(self.getTextAnnotScatterItem_ax1().data)
+            printl(self.getTextAnnotScatterItem_ax1().data)
             # printl(posData.fluo_data_dict.keys())
             # for key in posData.fluo_data_dict:
             #     printl(key, posData.fluo_data_dict[key].max())
@@ -12541,7 +12540,7 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
 
         numItems = (posData.segm_data).max()
-        if numItems > 500:
+        if numItems > 1000:
             cancel, doNotCreateItems = self._warn_too_many_items(numItems, self)
             if cancel or doNotCreateItems:
                 self.createItems = False
@@ -12602,7 +12601,7 @@ class guiWin(QMainWindow):
             posData.lab = lab.copy()
         
         numItems = lab.max()
-        if numItems > 500:
+        if numItems > 1000:
             cancel, doNotCreateItems = self._warn_too_many_items(numItems, self)
             if cancel or doNotCreateItems:
                 self.createItems = False
@@ -13894,7 +13893,8 @@ class guiWin(QMainWindow):
             self.update_z_slice(self.zSliceScrollBar.sliderPosition())
         elif action == QAbstractSlider.SliderMove:
             if self.zSliceScrollBarStartedMoving and self.isSegm3D:
-                self.clearAllItems()
+                self.clearAx1Items(onlyHideText=True)
+                self.clearAx2Items(onlyHideText=True)
             posData = self.data[self.pos_i]
             idx = (posData.filename, posData.frame_i)
             z = self.zSliceScrollBar.sliderPosition()
@@ -13906,17 +13906,8 @@ class guiWin(QMainWindow):
             if self.labelsGrad.showLabelsImgAction.isChecked():
                 self.img2.setImage(posData.lab, z=z, autoLevels=False)
             self.updateViewerWindow()
-            if self.isSegm3D and hasattr(self, 'currentLab2D'):
-                for obj in posData.rp:
-                    self.getObjTextAnnotOpts(obj, 'IDs')
-            if self.isSegm3D:
-                self.currentLab2D = posData.lab[z]
-                self.setOverlaySegmMasks(force=True)
-                self.doCustomAnnotation(0)
-                self.update_rp_metadata()
-            else:
-                self.currentLab2D = posData.lab
-                self.setOverlaySegmMasks(forceIfNotActive=True)
+            self.setTextAnnotZsliceScrolling()
+            self.setGraphicalAnnotZsliceScrolling()
             self.drawPointsLayers(computePointsLayers=False)
             self.zSliceScrollBarStartedMoving = False
 
@@ -13983,7 +13974,7 @@ class guiWin(QMainWindow):
         self.ax2_ContoursCurves = self.ax2_ContoursCurves[:maxID]
         self.ax1_BudMothLines = self.ax1_BudMothLines[:maxID]
     
-    def clearAx2Items(self):
+    def clearAx2Items(self, onlyHideText=False):
         self.ax2_binnedIDs_ScatterPlot.clear()
         self.ax2_ripIDs_ScatterPlot.clear()
 
@@ -14003,10 +13994,17 @@ class guiWin(QMainWindow):
             if mothBudLine.getData()[0] is not None:
                 mothBudLine.setData([], [])
         
-        for item in self.ax2_textAnnotItems.values():
-            item.clear()
+        if onlyHideText:
+            for item in self.ax2_textAnnotItems.values():
+                for objData in item.data:
+                    objData['brush'] = self.emptyBrush
+                    objData['pen'] = self.emptyPen
+                item.updateSpots()
+        else:
+            for item in self.ax2_textAnnotItems.values():
+                item.clear()
     
-    def clearAx1Items(self):
+    def clearAx1Items(self, onlyHideText=False):
         self.ax1_binnedIDs_ScatterPlot.clear()
         self.ax1_ripIDs_ScatterPlot.clear()
         self.labelsLayerImg1.clear()
@@ -14032,8 +14030,15 @@ class guiWin(QMainWindow):
             if BudMothLine.getData()[0] is not None:
                 BudMothLine.clear()
         
-        for item in self.ax1_textAnnotItems.values():
-            item.clear()
+        if onlyHideText:
+            for item in self.ax1_textAnnotItems.values():
+                for objData in item.data:
+                    objData['brush'] = self.emptyBrush
+                    objData['pen'] = self.emptyPen
+                item.updateSpots()
+        else:
+            for item in self.ax1_textAnnotItems.values():
+                item.clear()
         
         self.clearPointsLayers()
 
@@ -15594,8 +15599,11 @@ class guiWin(QMainWindow):
             self.statusBarLabel.setText('Autosaving...')
             worker.enqueue(posData)
     
-    def getObjLabelTextAnnotOpts(self, txt, isNewObject):
-        if isNewObject:
+    def getObjLabelTextAnnotOpts(self, obj, txt, isNewObject):
+        if not self.isObjVisible(obj.bbox):
+            brush = self.emptyBrush
+            pen = self.emptyPen
+        elif isNewObject:
             brush = self.objNewAnnotBrush
             pen = self.objNewAnnotPen
         else:
@@ -15616,24 +15624,19 @@ class guiWin(QMainWindow):
         }
         return opts
     
-    def getObjCcaTextAnnotOpts(self, txt, bold, brush, pen):
-        opts = {
-            'brush': brush, 
-            'pen': pen, 
-            'symbol': self.getObjTextAnnotSymbol(txt, bold=bold)
-        }
+    def getObjTextAnnotOptsCustom(self, obj, txt, bold, brush, pen):
+        if not self.isObjVisible(obj.bbox):
+            opts = {'brush': self.emptyBrush, 'pen': self.emptyPen}
+        else:
+            opts = {'brush': brush, 'pen': pen}
+        opts['symbol'] = self.getObjTextAnnotSymbol(txt, bold=bold)
         return opts
 
     def getObjTextAnnotOpts(self, obj, how, debug=False, ax=0):
         if not self.createItems:
             return
-        
-        t1, t0 = 0, 0
 
         posData = self.data[self.pos_i]   
-
-        if not self.isObjVisible(obj.bbox):
-            return
         
         annotNumZslices = (
             (self.annotNumZslicesCheckbox.isChecked() and ax==0)
@@ -15658,7 +15661,7 @@ class guiWin(QMainWindow):
                 num_zslices = np.sum(np.any(obj.image, axis=(1,2)))
                 txt = f'{txt} ({num_zslices})'
             
-            objOpts = self.getObjLabelTextAnnotOpts(txt, isNewObject)
+            objOpts = self.getObjLabelTextAnnotOpts(obj, txt, isNewObject)
         else:
             try:
                 df_ID = df.loc[ID]
@@ -15737,10 +15740,10 @@ class guiWin(QMainWindow):
             if not is_history_known:
                 txt = f'{txt}?'
             
-            objOpts = self.getObjCcaTextAnnotOpts(txt, bold, brush, pen)
+            objOpts = self.getObjTextAnnotOptsCustom(txt, bold, brush, pen)
         
         if ID in posData.ripIDs or ID in posData.binnedIDs:
-            objOpts = self.getObjCcaTextAnnotOpts(
+            objOpts = self.getObjTextAnnotOptsCustom(
                 txt, False, self.objDeadAnnotBrush, self.objDeadAnnotPen, 
                 self.objDeadAnnotHoverBrush
             )
@@ -17043,7 +17046,42 @@ class guiWin(QMainWindow):
         if normalizeIntens:
             ol_img = self.normalizeIntensities(ol_img)
         return ol_img
+    
+    def setTextAnnotZsliceScrolling(self):
+        posData = self.data[self.pos_i]
+        scatterItem_ax1 = self.getTextAnnotScatterItem_ax1()
+        scatterItem_ax2 = self.getTextAnnotScatterItem_ax2()
+        if scatterItem_ax1 is not None:
+            scatterData_ax1 = scatterItem_ax1.data
+        if scatterItem_ax2 is not None:
+            scatterItem_ax2 = scatterItem_ax2.data
 
+        for obj in posData.rp:
+            idx = posData.IDs_idxs[obj.label]
+            if self.isObjVisible(obj.bbox):
+                brush = self.objLabelAnnotBrush
+            else:
+                brush = self.emptyBrush
+            if scatterItem_ax1 is not None:
+                scatterData_ax1[idx]['brush'] = brush
+            if scatterItem_ax2 is not None:
+                scatterItem_ax2[idx]['brush'] = brush
+        if scatterItem_ax1 is not None:
+            scatterItem_ax1.updateSpots()
+        if scatterItem_ax2 is not None:
+            scatterItem_ax2.updateSpots()
+    
+    def setGraphicalAnnotZsliceScrolling(self):
+        posData = self.data[self.pos_i]
+        if self.isSegm3D:
+            self.currentLab2D = posData.lab[z]
+            self.setOverlaySegmMasks(force=True)
+            self.doCustomAnnotation(0)
+            self.update_rp_metadata()
+        else:
+            self.currentLab2D = posData.lab
+            self.setOverlaySegmMasks(forceIfNotActive=True)
+                
     def setOverlaySegmMasks(self, force=False, forceIfNotActive=False):
         if not hasattr(self, 'currentLab2D'):
             return
@@ -18310,9 +18348,6 @@ class guiWin(QMainWindow):
         ax1_textAnnotOpts = []
         ax2_textAnnotOpts = []
         for i, obj in enumerate(posData.rp):
-            if not self.isObjVisible(obj.bbox):
-                continue
-
             self.drawObjContours(obj)
             objAnnotOpts = self.getAllAxisObjTextAnnotOpts(obj)
             objTextAnnotOpts, objTextAnnotOptsRight, objTextAnnotSegmOpts = (
@@ -18325,6 +18360,8 @@ class guiWin(QMainWindow):
                 ax2_textAnnotOpts.append(objTextAnnotSegmOpts)
             elif objTextAnnotOptsRight is not None:
                 ax2_textAnnotOpts.append(objTextAnnotOptsRight)
+
+        printl(len(ax1_textAnnotOpts))
 
         ax1_scatterItem = self.getTextAnnotScatterItem_ax1()
         ax2_scatterItem = self.getTextAnnotScatterItem_ax2()
