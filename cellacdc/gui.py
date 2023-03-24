@@ -15748,11 +15748,11 @@ class guiWin(QMainWindow):
             if not is_history_known:
                 txt = f'{txt}?'
             
-            objOpts = self.getObjTextAnnotOptsCustom(txt, bold, brush, pen)
+            objOpts = self.getObjTextAnnotOptsCustom(obj, txt, bold, brush, pen)
         
         if ID in posData.ripIDs or ID in posData.binnedIDs:
             objOpts = self.getObjTextAnnotOptsCustom(
-                txt, False, self.objDeadAnnotBrush, self.objDeadAnnotPen, 
+                obj, txt, False, self.objDeadAnnotBrush, self.objDeadAnnotPen, 
                 self.objDeadAnnotHoverBrush
             )
 
@@ -18673,8 +18673,6 @@ class guiWin(QMainWindow):
         lostObjOpts['pos'] = (x, y)
         return lostObjOpts
         
-
-
     def setTitleText(self):
         posData = self.data[self.pos_i]
         if posData.frame_i == 0:
