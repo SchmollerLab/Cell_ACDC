@@ -3341,6 +3341,8 @@ class guiWin(QMainWindow):
         self.rightBottomGroupbox.toggled.connect(self.rightImageControlsToggled)
 
     def rightImageControlsToggled(self, checked):
+        if self.isDataLoading:
+            return
         self.updateALLimg()
     
     def setFocusGraphics(self):
@@ -9672,13 +9674,15 @@ class guiWin(QMainWindow):
         self.updateALLimg()
     
     def annotateRightHowCombobox_cb(self, idx):
-        self.updateALLimg()
+        if not self.isDataLoading:
+            self.updateALLimg()
         how = self.annotateRightHowCombobox.currentText()
         self.df_settings.at['how_draw_right_annotations', 'value'] = how
         self.df_settings.to_csv(self.settings_csv_path)
 
     def drawIDsContComboBox_cb(self, idx):
-        self.updateALLimg()
+        if not self.isDataLoading:
+            self.updateALLimg()
         how = self.drawIDsContComboBox.currentText()
         self.df_settings.at['how_draw_annotations', 'value'] = how
         self.df_settings.to_csv(self.settings_csv_path)
@@ -13401,6 +13405,7 @@ class guiWin(QMainWindow):
         return True
 
     def loadingDataCompleted(self):
+        self.isDataLoading = True
         posData = self.data[self.pos_i]
         self.updateImageValueFormatter()
 
@@ -13482,6 +13487,8 @@ class guiWin(QMainWindow):
         if self.invertBwAction.isChecked():
             self.invertBw(True)
         self.restoreSavedSettings()
+
+        self.update_rp()
         self.updateALLimg()
         
         self.setMetricsFunc()
@@ -13518,12 +13525,10 @@ class guiWin(QMainWindow):
         self.ax1.vb.menu = self.imgGrad.gradient.menu
         self.ax2.vb.menu = self.labelsGrad.menu
 
-        # self.ax1.enableAutoRange()
-        # self.ax2.enableAutoRange()
-
         QTimer.singleShot(200, self.resizeGui)
 
         self.dataIsLoaded = True
+        self.isDataLoading = False
     
     def resizeGui(self):
         self.autoRange()
@@ -16367,10 +16372,6 @@ class guiWin(QMainWindow):
 
     def update_rp_metadata(self, draw=True):
         posData = self.data[self.pos_i]
-        binnedIDs_xx = []
-        binnedIDs_yy = []
-        ripIDs_xx = []
-        ripIDs_yy = []
         # Add to rp dynamic metadata (e.g. cells annotated as dead)
         for i, obj in enumerate(posData.rp):
             ID = obj.label
@@ -17147,7 +17148,7 @@ class guiWin(QMainWindow):
                 self.populateContoursImage()
                 contoursImg = self.contoursImage
             self.tempLayerRightImage.setImage(self.contoursImage)
-        
+    
     def setOverlaySegmMasks(self, force=False, forceIfNotActive=False):
         if not hasattr(self, 'currentLab2D'):
             return
@@ -17446,7 +17447,8 @@ class guiWin(QMainWindow):
             self.df_settings.at['isRightImageVisible', 'value'] = 'Yes'
             self.graphLayout.addItem(self.rightImageGrad, row=1, col=3)
             self.rightBottomGroupbox.show()
-            self.updateALLimg()
+            if not self.isDataLoading:
+                self.updateALLimg()
         else:
             self.clearAx2Items()
             self.rightBottomGroupbox.hide()
@@ -18145,12 +18147,6 @@ class guiWin(QMainWindow):
                 self.ax1_BudMothLines[idx] = None
 
     def addItemsAllIDs(self, IDs):
-        numCreatedItems = sum(
-            1 for item in self.ax1_ContoursCurves if item is not None
-        )
-        # if numCreatedItems > 1000:
-        #     self.logger.info('Re-initializing graphical items...')
-        #     self.reinitGraphicalItems(IDs)
         for ID in IDs:
             self.addNewItems(ID)
     
@@ -18388,6 +18384,7 @@ class guiWin(QMainWindow):
         self.labelsLayerImg1.setOpacity(value)
         self.labelsLayerRightImg.setOpacity(value)
 
+    
     def _getImageUpdateALLimg(self, image, updateFilters):
         if image is not None:
             return image
@@ -18408,7 +18405,13 @@ class guiWin(QMainWindow):
                 img = filteredData
         return img
     
-    # @exec_time
+    def setImageImg1(self, image, updateFilters):
+        img = self._getImageUpdateALLimg(image, updateFilters)
+        if self.equalizeHistPushButton.isChecked():
+            img = skimage.exposure.equalize_adapthist(img)
+        self.img1.setImage(img)
+    
+    @exec_time
     def setAllContoursAndTextAnnot(self):
         posData = self.data[self.pos_i]
 
@@ -18436,13 +18439,12 @@ class guiWin(QMainWindow):
         if ax2_scatterItem is not None and ax2_textAnnotOpts:
             ax2_scatterItem.setData(ax2_textAnnotOpts)
 
-    # @exec_time
+    @exec_time
     @exception_handler
     def updateALLimg(
             self, image=None, updateFilters=False, computePointsLayers=True
         ):
-        self.clearAx1Items()
-        self.clearAx2Items()
+        self.clearAllItems()
 
         posData = self.data[self.pos_i]
 
@@ -18452,16 +18454,11 @@ class guiWin(QMainWindow):
         self.last_pos_i = self.pos_i
         self.last_frame_i = posData.frame_i
 
-        img = self._getImageUpdateALLimg(image, updateFilters)
-        
-        if self.equalizeHistPushButton.isChecked():
-            img = skimage.exposure.equalize_adapthist(img)
-        
+        self.setImageImg1(image, updateFilters)       
         self.setImageImg2()
-        self.img1.setImage(img)
-
+        
         if self.overlayButton.isChecked():
-            img = self.setOverlayImages(updateFilters=updateFilters)
+            self.setOverlayImages(updateFilters=updateFilters)
 
         self.setOverlayLabelsItems()
         self.setOverlaySegmMasks()
@@ -18471,13 +18468,10 @@ class guiWin(QMainWindow):
             self.slideshowWin.update_img()
 
         self.addItemsAllIDs(posData.IDs)
-        self.update_rp()
+        # self.update_rp()
 
         # Annotate ID and draw contours
         self.setAllContoursAndTextAnnot()    
-
-        # Update annotated IDs (e.g. dead cells)
-        self.update_rp_metadata(draw=True)
 
         self.setTitleText()
         self.highlightLostNew()
@@ -19929,7 +19923,7 @@ class guiWin(QMainWindow):
                     action.setChecked(True)
                     break
     
-    def annotOptionClicked(self, sender=None):
+    def annotOptionClicked(self, clicked=True, sender=None):
         if sender is None:
             sender = self.sender()
         # First manually set exclusive with uncheckable
