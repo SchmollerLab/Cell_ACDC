@@ -7284,10 +7284,26 @@ class guiWin(QMainWindow):
     def _clearObjsTextAnnot(self, IDs, scatterItem: pg.ScatterPlotItem):
         xx, yy = scatterItem.getData()
         posData = self.data[self.pos_i]
-        clearIdxs = [posData.IDs_idxs[ID] for ID in IDs]
-        new_xx = np.delete(xx, clearIdxs)
-        new_yy = np.delete(yy, clearIdxs)
-        scatterItem.setData(new_xx, new_yy)
+        clearIdxs = []
+        for ID in IDs:
+            try:
+                idx = posData.IDs_idxs[ID]
+            except KeyError:
+                continue
+            clearIdxs.append(idx)
+        
+        newDataOpts = []
+        for i, objData in enumerate(scatterItem.data):
+            if i in clearIdxs:
+                continue
+            opts = {
+                'brush': objData['brush'], 'pen': objData['pen'],
+                'pos': (objData['x'], objData['y']),
+                'symbol': objData['symbol']
+            }
+            newDataOpts.append(opts)
+        
+        scatterItem.setData(newDataOpts)
     
     def labelRoiIsCircularRadioButtonToggled(self, checked):
         if checked:
