@@ -7871,14 +7871,7 @@ class askStopFrameSegm(QDialog):
                 loadSegmInfo=True,
             )
             spinBox.setMaximum(posData.SizeT)
-            if posData.segmSizeT == 1:
-                spinBox.setValue(posData.SizeT)
-            else:
-                if self.concat_segm and posData.segmSizeT < posData.SizeT:
-                    spinBox.setMinimum(posData.segmSizeT+1)
-                    spinBox.setValue(posData.SizeT)
-                else:
-                    spinBox.setValue(posData.segmSizeT)
+            spinBox.setValue(posData.SizeT)
             spinBox.setAlignment(Qt.AlignCenter)
             visualizeButton = widgets.viewPushButton('Visualize')
             visualizeButton.clicked.connect(self.visualize_cb)
