@@ -412,9 +412,9 @@ class segmWorker(QRunnable):
             tracked_stack = lab_stack
             try:
                 if self.innerPbar_available:
-                    self.signals.innerProgressBar.emit(posData.segmSizeT)
+                    self.signals.innerProgressBar.emit(self.stop_frame_n)
                 else:
-                    self.signals.progressBar.emit(posData.segmSizeT)
+                    self.signals.progressBar.emit(self.stop_frame_n)
             except AttributeError:
                 if self.innerPbar_available:
                     self.signals.innerProgressBar.emit(1)
@@ -1155,7 +1155,7 @@ class segmWin(QMainWindow):
         self.progressLabel.setText('Starting main worker...')
 
         max = 0
-        for imgPath in user_ch_file_paths:
+        for i, imgPath in enumerate(user_ch_file_paths):
             _posData = load.loadData(imgPath, user_ch_name)
             _posData.getBasenameAndChNames()
             _posData.loadOtherFiles(
@@ -1163,7 +1163,7 @@ class segmWin(QMainWindow):
                 load_metadata=True
             )
             if posData.SizeT > 1:
-                max += posData.segmSizeT
+                max += self.stopFrames[i]
             else:
                 max += 1
 
