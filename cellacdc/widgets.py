@@ -2567,11 +2567,12 @@ class LabelRoiCircularItem(pg.ScatterPlotItem):
 class Toggle(QCheckBox):
     def __init__(
         self,
+        label_text='',
         initial=None,
         width=80,
         bg_color='#b3b3b3',
-        circle_color='#dddddd',
-        active_color='#005ce6',
+        circle_color='#ffffff',
+        active_color='#1db954',# '#005ce6',
         animation_curve=QEasingCurve.InOutQuad
     ):
         QCheckBox.__init__(self)
@@ -2579,13 +2580,14 @@ class Toggle(QCheckBox):
         # self.setFixedSize(width, 28)
         self.setCursor(Qt.PointingHandCursor)
 
+        self._label_text = label_text
         self._bg_color = bg_color
         self._circle_color = circle_color
         self._active_color = active_color
         self._disabled_active_color = colors.lighten_color(active_color)
         self._disabled_circle_color = colors.lighten_color(circle_color)
         self._disabled_bg_color = colors.lighten_color(bg_color, amount=0.5)
-        self._circle_margin = 10
+        self._circle_margin = 6
 
         self._circle_position = int(self._circle_margin/2)
         self.animation = QPropertyAnimation(self, b'circle_position', self)
@@ -2601,7 +2603,7 @@ class Toggle(QCheckBox):
             self.setChecked(initial)
 
     def sizeHint(self):
-        return QSize(45, 22)
+        return QSize(39, 22)
 
     def eventFilter(self, object, event):
         # To get the actual position of the circle we need to wait that
@@ -2613,11 +2615,18 @@ class Toggle(QCheckBox):
     def setChecked(self, state):
         # To get the actual position of the circle we need to wait that
         # the widget is visible before setting the state
+        self._isChecked = state
         if self.isVisible():
             self.requestedState = None
             QCheckBox.setChecked(self, state>0)
         else:
             self.requestedState = state
+    
+    def isChecked(self):
+        if self.isVisible():
+            return super().isChecked()
+        else:
+            return self._isChecked
 
     def circlePos(self, state: bool):
         start = int(self._circle_margin/2)

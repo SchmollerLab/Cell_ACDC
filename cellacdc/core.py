@@ -22,6 +22,28 @@ from tqdm import tqdm
 from . import apps, base_cca_df, printl
 from . import load, myutils
 
+def get_indices_dash_pattern(arr, line_length, gap):
+    n = len(arr)
+    sampling_rate = (line_length+gap)
+    n_lines = n // sampling_rate
+    tot_len = n_lines*sampling_rate
+    indices_2D = np.arange(tot_len).reshape((n_lines,sampling_rate))
+    indices = (indices_2D[:, :line_length]).flatten()
+    return indices
+
+def get_line(r0, c0, r1, c1, dashed=True):
+    x1, x2 = sorted((c0, c1))
+    m = (r0-r1)/(c0-c1)
+    q = (c0*r1 - c1*r0)/(c0-c1)
+    dist = np.ceil(np.sqrt(np.square(r0-r1)+np.square(c0-c1)))
+    xx = np.linspace(x1, x2, int(dist))
+    yy = xx*m+q
+    if dashed:
+        indices = get_indices_dash_pattern(xx, 3, 2)
+        xx = xx[indices]
+        yy = yy[indices]
+    return xx, yy
+
 def np_replace_values(arr, old_values, new_values):
     # See method_jdehesa https://stackoverflow.com/questions/45735230/how-to-replace-a-list-of-values-in-a-numpy-array
     old_values = np.asarray(old_values)
