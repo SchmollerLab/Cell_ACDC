@@ -7917,8 +7917,9 @@ class askStopFrameSegm(QDialog):
         focusSpinbox.setFocus(True)
 
     def saveSegmSizeT(self):
-        for spinBox, posData in self.dataDict.values():
-            self.stopFrames.append(spinBox.value())
+        self.stopFrames = [
+            spinBox.value() for spinBox, _ in self.dataDict.values()
+        ]
 
     def ok_cb(self, event):
         self.cancel = False
