@@ -15354,6 +15354,7 @@ class guiWin(QMainWindow):
         division_frame_i = [-1]*len(IDs)
         is_history_known = [False]*len(IDs)
         corrected_assignment = [False]*len(IDs)
+        will_divide = [0]*len(IDs)
         cca_df = pd.DataFrame({
             'cell_cycle_stage': cc_stage,
             'generation_num': num_cycles,
@@ -15362,7 +15363,8 @@ class guiWin(QMainWindow):
             'emerg_frame_i': emerg_frame_i,
             'division_frame_i': division_frame_i,
             'is_history_known': is_history_known,
-            'corrected_assignment': corrected_assignment
+            'corrected_assignment': corrected_assignment,
+            'will_divide': will_divide
             },
             index=IDs
         )
