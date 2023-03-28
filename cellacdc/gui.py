@@ -18429,7 +18429,7 @@ class guiWin(QMainWindow):
             img = skimage.exposure.equalize_adapthist(img)
         self.img1.setImage(img)
     
-    @exec_time
+    # @exec_time
     def setAllContoursAndTextAnnot(self):
         posData = self.data[self.pos_i]
 
@@ -18457,7 +18457,7 @@ class guiWin(QMainWindow):
         if ax2_scatterItem is not None and ax2_textAnnotOpts:
             ax2_scatterItem.setData(ax2_textAnnotOpts)
 
-    @exec_time
+    # @exec_time
     @exception_handler
     def updateALLimg(
             self, image=None, updateFilters=False, computePointsLayers=True
