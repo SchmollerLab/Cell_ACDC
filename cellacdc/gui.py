@@ -15007,6 +15007,7 @@ class guiWin(QMainWindow):
             posData.cca_df.at[mothID, 'cell_cycle_stage'] = 'S'
 
             posData.cca_df.loc[budID] = pd.Series({
+                'cell_cycle_stage': 'S',
                 'generation_num': 0,
                 'relative_ID': mothID,
                 'relationship': 'bud',
