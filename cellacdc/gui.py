@@ -8176,7 +8176,8 @@ class guiWin(QMainWindow):
                     'emerg_frame_i': i+1,
                     'division_frame_i': -1,
                     'is_history_known': True,
-                    'corrected_assignment': False
+                    'corrected_assignment': False,
+                    'will_divide': 0
                 })
                 return cca_df_ID
 
@@ -8681,7 +8682,8 @@ class guiWin(QMainWindow):
                         'emerg_frame_i': i+1,
                         'division_frame_i': -1,
                         'is_history_known': True,
-                        'corrected_assignment': False
+                        'corrected_assignment': False,
+                        'will_divide': 0
                     })
 
     def assignBudMoth(self):
@@ -14954,7 +14956,8 @@ class guiWin(QMainWindow):
                         'emerg_frame_i': -1,
                         'division_frame_i': -1,
                         'is_history_known': False,
-                        'corrected_assignment': False
+                        'corrected_assignment': False,
+                        'will_divide': 0
                     })
                     cca_df_ID = self.getStatusKnownHistoryBud(ID)
                     posData.ccaStatus_whenEmerged[ID] = cca_df_ID
@@ -15004,14 +15007,14 @@ class guiWin(QMainWindow):
             posData.cca_df.at[mothID, 'cell_cycle_stage'] = 'S'
 
             posData.cca_df.loc[budID] = pd.Series({
-                'cell_cycle_stage': 'S',
                 'generation_num': 0,
                 'relative_ID': mothID,
                 'relationship': 'bud',
                 'emerg_frame_i': posData.frame_i,
                 'division_frame_i': -1,
                 'is_history_known': True,
-                'corrected_assignment': False
+                'corrected_assignment': False,
+                'will_divide': 0
             })
 
 
