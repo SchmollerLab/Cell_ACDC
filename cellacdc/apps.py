@@ -70,8 +70,6 @@ PRE_PROCESSING_STEPS = [
     'Smooth (gaussian filter)', 
     'Sharpen (difference of gaussians filter)'
 ]
-
-pg.setConfigOption('imageAxisOrder', 'row-major') # best performance
 font = QFont()
 font.setPixelSize(13)
 italicFont = QFont()
@@ -7763,15 +7761,17 @@ class editCcaTableWidget(QDialog):
         
         corrected_assignment = self.inputCca_df['corrected_assignment']
         cca_df = pd.DataFrame({
-                            'cell_cycle_stage': ccsValues,
-                            'generation_num': genNumValues,
-                            'relative_ID': relIDValues,
-                            'relationship': relatValues,
-                            'emerg_frame_i': emergFrameValues,
-                            'division_frame_i': divisFrameValues,
-                            'is_history_known': historyValues,
-                            'corrected_assignment': corrected_assignment},
-                            index=self.IDs)
+            'cell_cycle_stage': ccsValues,
+            'generation_num': genNumValues,
+            'relative_ID': relIDValues,
+            'relationship': relatValues,
+            'emerg_frame_i': emergFrameValues,
+            'division_frame_i': divisFrameValues,
+            'is_history_known': historyValues,
+            'corrected_assignment': corrected_assignment,
+            'will_divide': self.inputCca_df['will_divide'],
+            }, index=self.IDs
+        )
         cca_df.index.name = 'Cell_ID'
         d = dict.fromkeys(cca_df.select_dtypes(np.int64).columns, np.int32)
         cca_df = cca_df.astype(d)

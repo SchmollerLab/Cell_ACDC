@@ -96,14 +96,6 @@ shortcut_filepath = os.path.join(temp_path, 'shortcuts.ini')
 _font = QFont()
 _font.setPixelSize(11)
 
-# Interpret image data as row-major instead of col-major
-pg.setConfigOption('imageAxisOrder', 'row-major') # best performance
-np.random.seed(3548784512)
-
-pd.set_option("display.max_columns", 20)
-pd.set_option("display.max_rows", 200)
-pd.set_option('display.expand_frame_repr', False)
-
 def qt_debug_trace():
     from PyQt5.QtCore import pyqtRemoveInputHook
     pyqtRemoveInputHook()
@@ -1835,13 +1827,6 @@ class guiWin(QMainWindow):
         widgetsToolBar = QToolBar("Widgets", self)
         self.addToolBar(widgetsToolBar)
 
-        self.disableTrackingCheckBox = QCheckBox("Disable tracking")
-        self.disableTrackingAction = widgetsToolBar.addWidget(
-            self.disableTrackingCheckBox
-        )
-        self.disableTrackingAction.setVisible(False)
-        self.functionsNotTested3D.append(self.disableTrackingAction)
-
         self.editIDspinbox = widgets.SpinBox()
         self.editIDspinbox.setMaximum(2**16)
         editIDLabel = QLabel('   ID: ')
@@ -2618,7 +2603,7 @@ class guiWin(QMainWindow):
         )
         self.editShortcutsAction.setShortcut('Ctrl+K')
 
-        self.editTextIDsColorAction = QAction('Text on IDs color...', self)
+        self.editTextIDsColorAction = QAction('Text annotation color...', self)
         self.editTextIDsColorAction.setDisabled(True)
 
         self.editOverlayColorAction = QAction('Overlay color...', self)
@@ -2873,7 +2858,7 @@ class guiWin(QMainWindow):
         self.SegmActionRW.triggered.connect(self.randomWalkerSegm)
         self.postProcessSegmAction.toggled.connect(self.postProcessSegm)
         self.autoSegmAction.toggled.connect(self.autoSegm_cb)
-        self.disableTrackingCheckBox.clicked.connect(self.disableTracking)
+        self.realTimeTrackingToggle.clicked.connect(self.realTimeTrackingClicked)
         self.repeatTrackingAction.triggered.connect(self.repeatTracking)
         self.manualTrackingButton.toggled.connect(self.manualTracking_cb)
         self.repeatTrackingMenuAction.triggered.connect(self.repeatTracking)
@@ -2919,7 +2904,7 @@ class guiWin(QMainWindow):
         self.editOverlayColorAction.triggered.connect(self.toggleOverlayColorButton)
         self.editTextIDsColorAction.triggered.connect(self.toggleTextIDsColorButton)
         self.overlayColorButton.sigColorChanging.connect(self.updateOlColors)
-        self.textIDsColorButton.sigColorChanging.connect(self.updateTextIDsColors)
+        self.textIDsColorButton.sigColorChanging.connect(self.updateTextAnnotColor)
         self.textIDsColorButton.sigColorChanged.connect(self.saveTextIDsColors)
 
         self.setMeasurementsAction.triggered.connect(self.showSetMeasurements)
@@ -3069,24 +3054,59 @@ class guiWin(QMainWindow):
         self.quickSettingsLayout = QVBoxLayout()
         self.quickSettingsGroupbox = widgets.GroupBox()
         self.quickSettingsGroupbox.setTitle('Quick settings')
+
         layout = QFormLayout()
         layout.setFieldGrowthPolicy(QFormLayout.FieldsStayAtSizeHint)
+
         self.autoSaveToggle = widgets.Toggle()
+        autoSaveTooltip = (
+            'Automatically store a copy of the segmentation data and of '
+            'the annotations in the `.recovery` folder after every edit.'
+        )
         self.autoSaveToggle.setChecked(True)
+        self.autoSaveToggle.setToolTip(autoSaveTooltip)
+        autoSaveLabel = QLabel('Autosave')
+        autoSaveLabel.setToolTip(autoSaveTooltip)
+        layout.addRow(autoSaveLabel, self.autoSaveToggle)
+
+        self.highLowResToggle = widgets.Toggle()
         highLowResTooltip = (
             'Resolution of the text annotations. High resolution results '
             'in slower update of the annotations.\n'
             'Not recommended with a number of segmented objects > 500.'
         )
-        self.autoSaveToggle.setToolTip(highLowResTooltip)
-        self.highLowResToggle = widgets.Toggle()
-        highResLabel = QLabel('Autosave')
+        highResLabel = QLabel('High resolution')
         highResLabel.setToolTip(highLowResTooltip)
-        layout.addRow(highResLabel, self.autoSaveToggle)
-        layout.addRow('High resolution', self.highLowResToggle)
+        self.highLowResToggle.setToolTip(highLowResTooltip)
+        layout.addRow(highResLabel, self.highLowResToggle)
+
+        self.realTimeTrackingToggle = widgets.Toggle()
+        self.realTimeTrackingToggle.setChecked(True)
+        self.realTimeTrackingToggle.setDisabled(True)
+        layout.addRow('Real-time tracking', self.realTimeTrackingToggle)
+
+        self.pxModeToggle = widgets.Toggle()
+        self.pxModeToggle.setChecked(False)
+        pxModeTooltip = (
+            'With "Pixel mode" active, the text annotations scales relative '
+            'to the object when zooming in/out (fixed size in pixels).\n'
+            'This is typically faster to render, but it makes annotations '
+            'smaller/larger when zooming in/out, respectively.\n\n'
+            'Try activating it to speed up the annotation of many objects '
+            'in high resolution mode.\n\n'
+            'After activating it, you might need to increase the font size '
+            'from the menu on the top menubar `Edit --> Font size`.'
+        )
+        pxModeLabel = QLabel('Pixel mode')
+        pxModeLabel.setToolTip(pxModeTooltip)
+        self.pxModeToggle.setToolTip(pxModeTooltip)
+        self.pxModeToggle.clicked.connect(self.pxModeToggled)
+        layout.addRow(pxModeLabel, self.pxModeToggle)
+
         self.quickSettingsGroupbox.setLayout(layout)
         self.quickSettingsLayout.addWidget(self.quickSettingsGroupbox)
         self.quickSettingsLayout.addStretch(1)
+
 
     def gui_createImg1Widgets(self):
         # Toggle contours/ID combobox
@@ -3508,13 +3528,13 @@ class guiWin(QMainWindow):
         self.viewMenu.addAction(self.labelsGrad.showRightImgAction)
         
         # Right image histogram
-        self.rightImageGrad = widgets.baseHistogramLUTitem(
+        self.imgGradRight = widgets.baseHistogramLUTitem(
             name='image', parent=self, gradientPosition='left'
         )
-        self.rightImageGrad.gradient.menu.addAction(
+        self.imgGradRight.gradient.menu.addAction(
             self.labelsGrad.showLabelsImgAction
         )
-        self.rightImageGrad.gradient.menu.addAction(
+        self.imgGradRight.gradient.menu.addAction(
             self.labelsGrad.showRightImgAction
         )
 
@@ -3544,20 +3564,16 @@ class guiWin(QMainWindow):
 
         self.emptyBrush = pg.mkBrush((0,0,0,0))
         self.emptyPen = pg.mkPen((0,0,0,0))
-
-        # Lost ID question mark text color
-        self.objLostRgb = (245, 184, 0)
     
-    def gui_createTextAnnotRgbas(self):
-        self.objNewAnnotRgb = (255, 0, 0)
+    def gui_setTextAnnotColors(self):
         self.textAnnot[0].setColors(
             self.objLabelAnnotRgb, self.dividedAnnotRgb, self.SphaseAnnotRgb,
-            self.G1phaseAnnotRgba, self.objNewAnnotRgb, self.objLostAnnotRgb
+            self.G1phaseAnnotRgba, self.objLostAnnotRgb
         )
 
         self.textAnnot[1].setColors(
             self.objLabelAnnotRgb, self.dividedAnnotRgb, self.SphaseAnnotRgb,
-            self.G1phaseAnnotRgba, self.objNewAnnotRgb, self.objLostAnnotRgb
+            self.G1phaseAnnotRgba, self.objLostAnnotRgb
         )
 
 
@@ -3581,7 +3597,7 @@ class guiWin(QMainWindow):
 
         # Right image item linked to left
         self.rightImageItem = pg.ImageItem()
-        self.rightImageGrad.setImageItem(self.rightImageItem)   
+        self.imgGradRight.setImageItem(self.rightImageItem)   
         self.ax2.addItem(self.rightImageItem)
         
         # Left image
@@ -3899,6 +3915,9 @@ class guiWin(QMainWindow):
                 return
             if switchToLowRes:
                 self.highLowResToggle.setChecked(False)
+            else:
+                # Many items requires pxMode active to be fast enough
+                self.pxModeToggle.setChecked(True)
 
         self.logger.info(f'Creating graphical items...')
 
@@ -3913,6 +3932,13 @@ class guiWin(QMainWindow):
         )
         self.ax1_lostObjScatterItem = self.gui_getLostObjScatterItem()
 
+        brush = pg.mkBrush((0,255,0,200))
+        pen = pg.mkPen('g', width=1)
+        self.ccaFailedScatterItem = pg.ScatterPlotItem(
+            size=self.contLineWeight+1, pen=pen, 
+            brush=brush, pxMode=False, symbol='s'
+        )
+
         self.ax2_contoursImageItem = pg.ImageItem()
         self.ax2_oldMothBudLinesItem = pg.ScatterPlotItem(
             symbol='s', pxMode=False, brush=self.oldMothBudLineBrush,
@@ -3925,7 +3951,7 @@ class guiWin(QMainWindow):
         self.ax2_lostObjScatterItem = self.gui_getLostObjScatterItem()
 
         self.gui_createTextAnnotItems(allIDs)
-        self.gui_createTextAnnotRgbas()
+        self.gui_setTextAnnotColors()
 
         self.setDisabledAnnotOptions(False)
         
@@ -3943,10 +3969,15 @@ class guiWin(QMainWindow):
     def gui_createTextAnnotItems(self, allIDs):
         self.textAnnot = {}
         isHighResolution = self.highLowResToggle.isChecked()
+        pxMode = self.pxModeToggle.isChecked()
         for ax in range(2):
-            ax_textAnnot = annotate.TextAnnotations()
+            ax_textAnnot = annotate.TextAnnotations(
+                
+            )
             ax_textAnnot.initFonts(self.fontSize)
-            ax_textAnnot.createItems(isHighResolution, allIDs)
+            ax_textAnnot.createItems(
+                isHighResolution, allIDs, pxMode=pxMode
+            )
             self.textAnnot[ax] = ax_textAnnot
     
     def gui_addOverlayLayerItems(self):
@@ -4089,7 +4120,7 @@ class guiWin(QMainWindow):
         self.rightImageItem.mouseReleaseEvent = self.gui_mouseReleaseRightImage
         self.rightImageItem.hoverEvent = self.gui_hoverEventRightImage
         self.imgGrad.gradient.showMenu = self.gui_gradientContextMenuEvent
-        self.rightImageGrad.gradient.showMenu = self.gui_rightImageShowContextMenu
+        self.imgGradRight.gradient.showMenu = self.gui_rightImageShowContextMenu
         # self.imgGrad.vb.contextMenuEvent = self.gui_gradientContextMenuEvent
 
     def gui_initImg1BottomWidgets(self):
@@ -4373,7 +4404,6 @@ class guiWin(QMainWindow):
                 self.labelsLayerRightImg.image[delID_mask] = 0
                 self.labelsLayerRightImg.setImage(self.labelsLayerRightImg.image)
 
-            self.setTitleText()
             self.highlightLostNew()
 
         # Separate bud
@@ -4681,7 +4711,7 @@ class guiWin(QMainWindow):
             self.update_rp()
 
             # Since we manually changed an ID we don't want to repeat tracking
-            self.setTitleText()
+            self.setAllTextAnnotations()
             self.highlightLostNew()
             # self.checkIDsMultiContour()
 
@@ -5757,9 +5787,9 @@ class guiWin(QMainWindow):
     def gui_rightImageShowContextMenu(self, event):
         try:
             # Convert QPointF to QPoint
-            self.rightImageGrad.gradient.menu.popup(event.screenPos().toPoint())
+            self.imgGradRight.gradient.menu.popup(event.screenPos().toPoint())
         except AttributeError:
-            self.rightImageGrad.gradient.menu.popup(event.screenPos())
+            self.imgGradRight.gradient.menu.popup(event.screenPos())
             
     def gui_gradientContextMenuEvent(self, event):
         if self.overlayButton.isChecked():
@@ -7014,6 +7044,7 @@ class guiWin(QMainWindow):
         self.ax1.addItem(self.ax1_oldMothBudLinesItem)
         self.ax1.addItem(self.ax1_newMothBudLinesItem)
         self.ax1.addItem(self.ax1_lostObjScatterItem)
+        self.ax1.addItem(self.ccaFailedScatterItem)
 
         self.ax2.addItem(self.ax2_contoursImageItem)
         self.ax2.addItem(self.ax2_oldMothBudLinesItem)
@@ -7030,27 +7061,24 @@ class guiWin(QMainWindow):
         except AttributeError:
             self.bottomLayoutContextMenu.popup(event.screenPos())
     
-    def areTextAnnotActive(self, ax):
-        if ax == 0:
-            return (
-                self.annotIDsCheckbox.isChecked() or 
-                self.annotCcaInfoCheckbox.isChecked()
-            )
-        else:
-            return (
-                self.annotIDsCheckboxRight.isChecked() or 
-                self.annotCcaInfoCheckboxRight.isChecked()
-            )
-    
-    def getTextAnnotItem(self, ax):
-        areTextsAx1Active = self.areTextAnnotActive(ax)
-        areTextsAx2Active = self.areTextAnnotActive(ax)
-        if ax == 0 and not areTextsAx1Active:
-            return
-        elif ax == 1 and not areTextsAx2Active:
-            return
-        
-        return self.textAnnot[ax]
+    def areContoursRequested(self, ax):
+        if ax == 0 and self.annotContourCheckbox.isChecked():
+            return True
+
+        if ax == 1:
+            if not self.labelsGrad.showRightImgAction.isChecked():
+                return False
+
+            isRightDifferentAnnot = self.rightBottomGroupbox.isChecked()
+            areContRequestedRight = self.annotContourCheckboxRight.isChecked()
+           
+            if isRightDifferentAnnot and areContRequestedRight:
+                return True
+            
+            areContRequestedLeft = self.annotContourCheckbox.isChecked()
+            if not isRightDifferentAnnot and areContRequestedLeft:
+                return True
+        return False
     
     def areMothBudLinesRequested(self, ax):
         if ax == 0:
@@ -7059,9 +7087,16 @@ class guiWin(QMainWindow):
             if self.drawMothBudLinesCheckbox.isChecked():
                 return True
         else:
-            if self.annotCcaInfoCheckboxRight.isChecked():
+            if not self.labelsGrad.showRightImgAction.isChecked():
+                return False
+            
+            isRightDifferentAnnot = self.rightBottomGroupbox.isChecked()
+            areLinesRequestedRight = self.annotCcaInfoCheckboxRight.isChecked()
+            if isRightDifferentAnnot and areLinesRequestedRight:
                 return True
-            if self.drawMothBudLinesCheckboxRight.isChecked():
+        
+            areLinesRequestedLeft = self.drawMothBudLinesCheckboxRight.isChecked()
+            if not isRightDifferentAnnot and areLinesRequestedLeft:
                 return True
         return False
     
@@ -7082,6 +7117,12 @@ class guiWin(QMainWindow):
             self.labelRoiCircularRadiusSpinbox.setDisabled(False)
         else:
             self.labelRoiCircularRadiusSpinbox.setDisabled(True)
+    
+    def pxModeToggled(self, checked):
+        if self.highLowResToggle.isChecked():
+            for ax in range(2):
+                self.textAnnot[ax].setPxMode(checked)
+        self.updateAllImages()
 
     def relabelSequentialCallback(self):
         mode = str(self.modeComboBox.currentText())
@@ -7215,7 +7256,7 @@ class guiWin(QMainWindow):
         self.logger.info('Worker process ended.')
         askDisableRealTimeTracking = (
             self.trackingWorker.trackingOnNeverVisitedFrames
-            and not self.disableTrackingCheckBox.isChecked()
+            and self.realTimeTrackingToggle.isChecked()
         )
         if askDisableRealTimeTracking:
             msg = widgets.myMessageBox()
@@ -7389,6 +7430,10 @@ class guiWin(QMainWindow):
         )
 
     def setHoverToolSymbolData(self, xx, yy, ScatterItems, size=None):
+        if not xx:
+            self.ax1_lostObjScatterItem.setVisible(True)
+            self.ax2_lostObjScatterItem.setVisible(True)
+
         for item in ScatterItems:
             if size is None:
                 item.setData(xx, yy)
@@ -7933,7 +7978,8 @@ class guiWin(QMainWindow):
                     'emerg_frame_i': i+1,
                     'division_frame_i': -1,
                     'is_history_known': True,
-                    'corrected_assignment': False
+                    'corrected_assignment': False,
+                    'will_divide': 0
                 })
                 return cca_df_ID
 
@@ -8201,6 +8247,11 @@ class guiWin(QMainWindow):
         rp_relID = posData.rp[relObj_idx]
 
         # Update cell cycle info LabelItems
+        self.ax1_newMothBudLinesItem.setData([], [])
+        self.ax1_oldMothBudLinesItem.setData([], [])
+        self.ax2_newMothBudLinesItem.setData([], [])
+        self.ax2_oldMothBudLinesItem.setData([], [])
+        self.drawAllMothBudLines()
         self.setAllTextAnnotations()
 
         if self.ccaTableWin is not None:
@@ -8430,7 +8481,8 @@ class guiWin(QMainWindow):
                         'emerg_frame_i': i+1,
                         'division_frame_i': -1,
                         'is_history_known': True,
-                        'corrected_assignment': False
+                        'corrected_assignment': False,
+                        'will_divide': 0
                     })
 
     def assignBudMoth(self):
@@ -8798,8 +8850,13 @@ class guiWin(QMainWindow):
 
         roi.handleSize = 7
         roi.sigRegionChanged.connect(self.delROImoving)
+        roi.sigRegionChanged.connect(self.delROIstartedMoving)
         roi.sigRegionChangeFinished.connect(self.delROImovingFinished)
         return roi
+    
+    def delROIstartedMoving(self, roi):
+        self.ax1_lostObjScatterItem.setData([], [])
+        self.ax2_lostObjScatterItem.setData([], [])
 
     def delROImoving(self, roi):
         roi.setPen(color=(255,255,0))
@@ -9037,6 +9094,9 @@ class guiWin(QMainWindow):
         self.imgGrad.setInvertedColorMaps(checked)
         self.imgGrad.invertCurrentColormap()
 
+        self.imgGradRight.setInvertedColorMaps(checked)
+        self.imgGradRight.invertCurrentColormap()
+
         for items in self.overlayLayersItems.values():
             lutItem = items[1]
             lutItem.invertBwAction.toggled.disconnect()
@@ -9070,8 +9130,12 @@ class guiWin(QMainWindow):
         
         self.textAnnot[0].invertBlackAndWhite()
         self.textAnnot[1].invertBlackAndWhite()
+
+        self.objLabelAnnotRgb = tuple(
+            self.textAnnot[0].item.colors()['label'][:3]
+        )
+        self.textIDsColorButton.setColor(self.objLabelAnnotRgb)
         
-        self.gui_createTextAnnotRgbas()
         self.updateAllImages()
     
     def _channelHoverValues(self, descr, channel, value, max_value, ff=None):
@@ -9250,6 +9314,11 @@ class guiWin(QMainWindow):
         self.df_settings.at['fontSize', 'value'] = self.fontSize
         self.df_settings.to_csv(self.settings_csv_path)
         
+        self.setAllIDs()
+        posData = self.data[self.pos_i]
+        allIDs = posData.allIDs
+        for ax in range(2):
+            self.textAnnot[ax].setFontSize(self.fontSize, allIDs)
         self.setAllTextAnnotations()
 
     def enableZstackWidgets(self, enabled):
@@ -9507,9 +9576,6 @@ class guiWin(QMainWindow):
         self.widgetsToolBar.setVisible(enabled)
         for action in self.widgetsToolBar.actions():
             widget = self.widgetsToolBar.widgetForAction(action)
-            if widget == self.disableTrackingCheckBox:
-                action.setVisible(enabled)
-                widget.setEnabled(enabled)
         
         self.disableNonFunctionalButtons()
 
@@ -9570,19 +9636,14 @@ class guiWin(QMainWindow):
             self.addExistingDelROIs()
             self.checkTrackingEnabled()
             self.setEnabledCcaToolbar(enabled=False)
-            # self.drawIDsContComboBox.clear()
-            # self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxSegmItems)
-            # for BudMothLine in self.ax1_BudMothLines:
-            #     if BudMothLine is None:
-            #         continue
-            #     if BudMothLine.getData()[0] is not None:
-            #         BudMothLine.setData([], [])
+            self.realTimeTrackingToggle.setDisabled(False)
             if posData.cca_df is not None:
                 self.store_cca_df()
         elif mode == 'Cell cycle analysis':
             proceed = self.initCca()
             self.modeToolBar.setVisible(True)
             self.setEnabledWidgetsToolbar(False)
+            self.realTimeTrackingToggle.setDisabled(True)
             if proceed:
                 self.setEnabledEditToolbarButton(enabled=False)
                 if self.isSnapshot:
@@ -9596,11 +9657,11 @@ class guiWin(QMainWindow):
                 self.clearGhost()
         elif mode == 'Viewer':
             self.modeToolBar.setVisible(True)
+            self.realTimeTrackingToggle.setDisabled(True)
             self.setEnabledWidgetsToolbar(False)
             self.setEnabledEditToolbarButton(enabled=False)
             self.setEnabledCcaToolbar(enabled=False)
             self.removeAlldelROIsCurrentFrame()
-            # self.disableTrackingCheckBox.setChecked(True)
             # currentMode = self.drawIDsContComboBox.currentText()
             # self.drawIDsContComboBox.clear()
             # self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxCcaItems)
@@ -9610,6 +9671,7 @@ class guiWin(QMainWindow):
             self.clearGhost()
         elif mode == 'Custom annotations':
             self.modeToolBar.setVisible(True)
+            self.realTimeTrackingToggle.setDisabled(True)
             self.setEnabledWidgetsToolbar(False)
             self.setEnabledEditToolbarButton(enabled=False)
             self.setEnabledCcaToolbar(enabled=False)
@@ -9620,7 +9682,7 @@ class guiWin(QMainWindow):
             self.reconnectUndoRedo()
             self.setEnabledSnapshotMode()
             self.setEnabledWidgetsToolbar(True)
-            self.disableTrackingAction.setVisible(False)
+            self.realTimeTrackingToggle.setVisible(False)
 
     def setEnabledSnapshotMode(self):
         posData = self.data[self.pos_i]
@@ -9652,8 +9714,8 @@ class guiWin(QMainWindow):
             button = self.editToolBar.widgetForAction(action)
             action.setVisible(True)
             button.setEnabled(True)
-        # self.disableTrackingCheckBox.setChecked(True)
-        self.disableTrackingCheckBox.setDisabled(True)
+        self.realTimeTrackingToggle.setDisabled(True)
+        self.realTimeTrackingToggle.setVisible(False)
         self.repeatTrackingAction.setVisible(False)
         self.manualTrackingAction.setVisible(False)
         button = self.editToolBar.widgetForAction(self.repeatTrackingAction)
@@ -9983,12 +10045,7 @@ class guiWin(QMainWindow):
             obj_idx = posData.IDs_idxs[self.ax1BrushHoverID]
             obj = posData.rp[obj_idx]
             self.addObjContourToContoursImage(obj=obj, ax=0)
-        elif self.ax1BrushHoverID in posData.lost_IDs:
-            prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
-            obj_idx = [obj.label for obj in prev_rp].index(self.ax1BrushHoverID)
-            obj = prev_rp[obj_idx]
-        else:
-            return
+            self.addObjContourToContoursImage(obj=obj, ax=1)
 
     def hideItemsHoverBrush(self, x, y):
         if x is None:
@@ -10005,6 +10062,12 @@ class guiWin(QMainWindow):
 
         ID = self.get_2Dlab(posData.lab)[ydata, xdata]
 
+        if self.ax1_lostObjScatterItem.isVisible():
+            self.ax1_lostObjScatterItem.setVisible(False)
+        
+        if self.ax2_lostObjScatterItem.isVisible():
+            self.ax2_lostObjScatterItem.setVisible(False)
+
         # Restore ID previously hovered
         if ID != self.ax1BrushHoverID and not self.isMouseDragImg1:
             self.restoreHoverObjBrush()
@@ -10013,10 +10076,10 @@ class guiWin(QMainWindow):
         if ID != 0:
             self.clearObjContour(ID=ID, ax=0)
             self.clearObjContour(ID=ID, ax=1)
-            self.setAllTextAnnotations(labelsToSkip={ID:True})
+            # self.setAllTextAnnotations(labelsToSkip={ID:True})
             self.ax1BrushHoverID = ID
         else:
-            self.setAllTextAnnotations()
+            # self.setAllTextAnnotations()
             self.ax1BrushHoverID = 0
 
     def updateBrushCursor(self, x, y):
@@ -10108,6 +10171,8 @@ class guiWin(QMainWindow):
             self.enableSizeSpinbox(True)
             self.showEditIDwidgets(True)
         else:
+            self.ax1_lostObjScatterItem.setVisible(True)
+            self.ax2_lostObjScatterItem.setVisible(True)
             self.setHoverToolSymbolData(
                 [], [], (self.ax2_BrushCircle, self.ax1_BrushCircle),
             )
@@ -11107,7 +11172,6 @@ class guiWin(QMainWindow):
             # Restore state
             image_left = self.getCurrentState()
             self.update_rp()
-            self.setTitleText()
             self.updateAllImages(image=image_left)
             self.store_data()
 
@@ -11126,7 +11190,6 @@ class guiWin(QMainWindow):
             # Restore state
             image_left = self.getCurrentState()
             self.update_rp()
-            self.setTitleText()
             self.updateAllImages(image=image_left)
             self.store_data()
 
@@ -11134,7 +11197,7 @@ class guiWin(QMainWindow):
             # We have redone all available states
             self.redoAction.setEnabled(False)
 
-    def disableTracking(self, isChecked):
+    def realTimeTrackingClicked(self, checked):
         # Event called ONLY if the user click on Disable tracking
         # NOT called if setChecked is called. This allows to keep track
         # of the user choice. This way user con enforce tracking
@@ -11142,11 +11205,12 @@ class guiWin(QMainWindow):
         # but the code is more readable when we actually need them
 
         posData = self.data[self.pos_i]
+        isRealTimeTrackingDisabled = not checked
 
         # Turn off smart tracking
         self.enableSmartTrackAction.toggled.disconnect()
         self.enableSmartTrackAction.setChecked(False)
-        if isChecked:
+        if isRealTimeTrackingDisabled:
             self.UserEnforced_DisabledTracking = True
             self.UserEnforced_Tracking = False
         else:
@@ -11254,7 +11318,7 @@ class guiWin(QMainWindow):
                 lab2D = self.get_2Dlab(posData.lab)
                 self.manuallyEditTracking(lab2D, allIDs)
                 self.update_rp()
-                self.setTitleText()
+                self.setAllTextAnnotations()
                 self.highlightLostNew()
                 # self.checkIDsMultiContour()
             else:
@@ -11363,10 +11427,10 @@ class guiWin(QMainWindow):
     def manualTracking_cb(self, checked):
         self.manualTrackingToolbar.setVisible(checked)
         if checked:
-            self.disableTrackingCheckBox.previousStatus = (
-                self.disableTrackingCheckBox.isChecked()
+            self.realTimeTrackingToggle.previousStatus = (
+                self.realTimeTrackingToggle.isChecked()
             )
-            self.disableTrackingCheckBox.setChecked(True)
+            self.realTimeTrackingToggle.setChecked(False)
             self.UserEnforced_DisabledTracking_previousStatus = (
                 self.UserEnforced_DisabledTracking
             )
@@ -11379,8 +11443,8 @@ class guiWin(QMainWindow):
             self.initGhostObject()
             self.addManualTrackingItems()
         else:
-            self.disableTrackingCheckBox.setChecked(
-                self.disableTrackingCheckBox.previousStatus
+            self.realTimeTrackingToggle.setChecked(
+                self.realTimeTrackingToggle.previousStatus
             )
             self.UserEnforced_DisabledTracking = (
                 self.UserEnforced_DisabledTracking_previousStatus
@@ -13367,7 +13431,7 @@ class guiWin(QMainWindow):
     def setFramesSnapshotMode(self):
         self.measurementsMenu.setDisabled(False)
         if self.isSnapshot:
-            self.disableTrackingCheckBox.setDisabled(True)
+            self.realTimeTrackingToggle.setDisabled(True)
             try:
                 self.drawIDsContComboBox.currentIndexChanged.disconnect()
             except Exception as e:
@@ -13392,7 +13456,7 @@ class guiWin(QMainWindow):
             self.showTreeInfoCheckbox.hide()
         else:
             self.annotateToolbar.setVisible(False)
-            self.disableTrackingCheckBox.setDisabled(False)
+            self.realTimeTrackingToggle.setDisabled(False)
             self.repeatTrackingAction.setDisabled(False)
             self.manualTrackingAction.setDisabled(False)
             self.modeComboBox.setDisabled(False)
@@ -13663,6 +13727,7 @@ class guiWin(QMainWindow):
         self.ax1_newMothBudLinesItem.setData([], [])
         self.ax1_oldMothBudLinesItem.setData([], [])
         self.ax1_lostObjScatterItem.setData([], [])
+        self.ccaFailedScatterItem.setData([], [])
         
         self.clearPointsLayers()
 
@@ -13844,7 +13909,7 @@ class guiWin(QMainWindow):
 
         self.cca_df_colnames = list(base_cca_df.keys())
         self.cca_df_dtypes = [
-            str, int, int, str, int, int, bool, bool
+            str, int, int, str, int, int, bool, bool, int
         ]
         self.cca_df_default_values = list(base_cca_df.values())
         self.cca_df_int_cols = [
@@ -14271,7 +14336,7 @@ class guiWin(QMainWindow):
         return curr_df is not None and 'cell_cycle_stage' in curr_df.columns
 
     def warnScellsGone(self, ScellsIDsGone, frame_i):
-        msg = QMessageBox()
+        msg = widgets.myMessageBox()
         text = html_utils.paragraph(f"""
             In the next frame the followning cells' IDs in S/G2/M
             (highlighted with a yellow contour) <b>will disappear</b>:<br><br>
@@ -14284,11 +14349,11 @@ class guiWin(QMainWindow):
             annotated as divided at frame number {frame_i}</b>.<br><br>
             Do you want to continue?
         """)
-        answer = msg.warning(
+        _, yesButton, noButton = msg.warning(
            self, 'Cells in "S/G2/M" disappeared!', text,
-           msg.Yes | msg.Cancel
+           buttonsTexts=('Cancel', 'Yes', 'No')
         )
-        return answer == msg.Yes
+        return msg.clickedButton == yesButton
 
     def checkScellsGone(self):
         """Check if there are cells in S phase whose relative disappear in
@@ -14310,20 +14375,16 @@ class guiWin(QMainWindow):
 
         posData = self.data[self.pos_i]
 
-
         if posData.allData_li[posData.frame_i]['labels'] is None:
             # Frame never visited/checked in segm mode --> autoCca_df will raise
             # a critical message
             return False, automaticallyDividedIDs
 
-        # if self.isCurrentFrameCcaVisited():
-        #     # Frame already visited in cca mode --> do nothing
-        #     return False, automaticallyDividedIDs
-
         # Check if there are S cells that either only mother or only
         # bud disappeared and automatically assign division to it
         # or abort visiting this frame
         prev_acdc_df = posData.allData_li[posData.frame_i-1]['acdc_df']
+        prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
         prev_cca_df = prev_acdc_df[self.cca_df_colnames].copy()
 
         ScellsIDsGone = []
@@ -14345,8 +14406,9 @@ class guiWin(QMainWindow):
             # No cells in S that disappears --> do nothing
             return False, automaticallyDividedIDs
 
-        self.highlightNewIDs_ccaFailed()
+        self.highlightNewIDs_ccaFailed(ScellsIDsGone, rp=prev_rp)
         proceed = self.warnScellsGone(ScellsIDsGone, posData.frame_i)
+        self.ax1_lostObjScatterItem.setData([], [])
         if not proceed:
             return True, automaticallyDividedIDs
 
@@ -14359,53 +14421,29 @@ class guiWin(QMainWindow):
 
         return False, automaticallyDividedIDs
 
+    @exception_handler
     def attempt_auto_cca(self, enforceAll=False):
         posData = self.data[self.pos_i]
-        try:
-            notEnoughG1Cells, proceed = self.autoCca_df(
-                enforceAll=enforceAll
-            )
-            if not proceed:
-                return notEnoughG1Cells, proceed
-            mode = str(self.modeComboBox.currentText())
-            if posData.cca_df is None or mode.find('Cell cycle') == -1:
-                notEnoughG1Cells = False
-                proceed = True
-                return notEnoughG1Cells, proceed
-            if posData.cca_df.isna().any(axis=None):
-                raise ValueError('Cell cycle analysis table contains NaNs')
-            self.checkMultiBudMoth()
+        notEnoughG1Cells, proceed = self.autoCca_df(
+            enforceAll=enforceAll
+        )
+        if not proceed:
             return notEnoughG1Cells, proceed
-        except Exception as e:
-            self.logger.info('')
-            self.logger.info('====================================')
-            traceback.print_exc()
-            self.logger.info('====================================')
-            self.logger.info('')
-            self.highlightNewIDs_ccaFailed()
-            msg = QMessageBox(self)
-            msg.setIcon(msg.Critical)
-            msg.setWindowTitle('Failed cell cycle analysis')
-            msg.setDefaultButton(msg.Ok)
-            msg.setText(
-                f'Cell cycle analysis for frame {posData.frame_i+1} failed!\n\n'
-                'This can have multiple reasons:\n\n'
-                '1. Segmentation or tracking errors --> Switch to \n'
-                '   "Segmentation and Tracking" mode and check/correct next frame,\n'
-                '   before attempting cell cycle analysis again.\n\n'
-                '2. Edited a frame in "Segmentation and Tracking" mode\n'
-                '   that already had cell cyce annotations -->\n'
-                '   click on "Re-initialize cell cycle annotations" button,\n'
-                '   and try again.')
-            msg.setDetailedText(traceback.format_exc())
-            msg.exec_()
-            return False, False
+        mode = str(self.modeComboBox.currentText())
+        if posData.cca_df is None or mode.find('Cell cycle') == -1:
+            notEnoughG1Cells = False
+            proceed = True
+            return notEnoughG1Cells, proceed
+        if posData.cca_df.isna().any(axis=None):
+            raise ValueError('Cell cycle analysis table contains NaNs')
+        self.checkMultiBudMoth()
+        return notEnoughG1Cells, proceed
 
     def highlightIDs(self, IDs, pen):
         pass
 
     def warnFrameNeverVisitedSegmMode(self):
-        msg = QMessageBox()
+        msg = widgets.myMessageBox()
         warn_cca = msg.critical(
             self, 'Next frame NEVER visited',
             'Next frame was never visited in "Segmentation and Tracking"'
@@ -14415,9 +14453,31 @@ class guiWin(QMainWindow):
             'Switch to "Segmentation and Tracking" mode '
             'and check/correct next frame,\n'
             'before attempting cell cycle analysis again',
-            msg.Ok
         )
         return False
+
+    def checkCcaPastFramesNewIDs(self):
+        posData = self.data[self.pos_i]
+        if not posData.new_IDs:
+            return
+        
+        found_cca_df_IDs = []
+        for frame_i in range(posData.frame_i-2, -1, -1):
+            acdc_df = posData.allData_li[frame_i]['acdc_df']
+            cca_df_i = acdc_df[self.cca_df_colnames]
+            intersect_idx = cca_df_i.index.intersection(posData.new_IDs)
+            cca_df_i = cca_df_i.loc[intersect_idx]
+            if cca_df_i.empty:
+                continue
+            found_cca_df_IDs.append(cca_df_i)
+            
+            # Remove IDs found in past frames from new_IDs list
+            newIDs = np.array(posData.new_IDs, dtype=np.uint32)
+            mask_index = np.in1d(newIDs, cca_df_i.index)
+            posData.new_IDs = list(newIDs[~mask_index])
+            if not posData.new_IDs:
+                return found_cca_df_IDs
+        return found_cca_df_IDs
 
     def autoCca_df(self, enforceAll=False):
         """
@@ -14479,6 +14539,9 @@ class guiWin(QMainWindow):
                 ID for ID in posData.new_IDs
                 if ID not in correctedAssignIDs
             ]
+        
+        # Check if new IDs exist some time in the past
+        found_cca_df_IDs = self.checkCcaPastFramesNewIDs()
 
         # Check if there are some S cells that disappeared
         abort, automaticallyDividedIDs = self.checkScellsGone()
@@ -14495,6 +14558,10 @@ class guiWin(QMainWindow):
             posData.cca_df = prev_cca_df
         else:
             posData.cca_df = curr_df[self.cca_df_colnames].copy()
+
+        # concatenate new IDs found in past frames (before frame_i-1)
+        if found_cca_df_IDs is not None:
+            posData.cca_df = pd.concat([posData.cca_df, *found_cca_df_IDs])
 
         # If there are no new IDs we are done
         if not posData.new_IDs:
@@ -14519,25 +14586,24 @@ class guiWin(QMainWindow):
         numCellsG1 = len(IDsCellsG1)
         numNewCells = len(posData.new_IDs)
         if numCellsG1 < numNewCells:
-            self.highlightNewIDs_ccaFailed()
-            msg = QMessageBox()
-            warn_cca = msg.warning(
-                self, 'No cells in G1!',
-                f'In the next frame {numNewCells} new cells will '
-                'appear (GREEN contour objects, left image).\n\n'
-                f'However there are only {numCellsG1} cells '
-                'in G1 available.\n\n'
+            self.highlightNewCellNotEnoughG1cells(posData.new_IDs)
+            msg = widgets.myMessageBox()
+            text = html_utils.paragraph(
+                f'In the next frame {numNewCells} new object(s) will '
+                'appear (highlighted in green on left image).<br><br>'
+                f'However there are only {numCellsG1} object(s) '
+                'in G1 available.<br><br>'
                 'You can either cancel the operation and "free" a cell '
-                'by first annotating division on it or continue.\n\n'
-                'If you continue the new cell will be annotated as a cell in G1 '
-                'with unknown history.\n\n'
-                'If you are not sure, before clicking "Yes" or "Cancel", you can '
-                'preview (green contour objects, left image) '
-                'where the new cells will appear.\n\n'
-                'Do you want to continue?\n',
-                msg.Yes | msg.Cancel
+                'by first annotating division or continue.<br><br>'
+                'If you continue the <b>new cell</b> will be annotated as a '
+                '<b>cell in G1 with unknown history</b>.<br><br>'
+                'Do you want to continue?<br>'
             )
-            if warn_cca == msg.Yes:
+            _, yesButton = msg.warning(
+                self, 'No cells in G1!', text,
+                buttonsTexts=('Cancel', 'Yes')
+            )
+            if msg.clickedButton == yesButton:
                 notEnoughG1Cells = False
                 proceed = True
                 # Annotate the new IDs with unknown history
@@ -14550,13 +14616,15 @@ class guiWin(QMainWindow):
                         'emerg_frame_i': -1,
                         'division_frame_i': -1,
                         'is_history_known': False,
-                        'corrected_assignment': False
+                        'corrected_assignment': False,
+                        'will_divide': 0
                     })
                     cca_df_ID = self.getStatusKnownHistoryBud(ID)
                     posData.ccaStatus_whenEmerged[ID] = cca_df_ID
             else:
                 notEnoughG1Cells = True
                 proceed = False
+            self.ccaFailedScatterItem.setData([], [])
             return notEnoughG1Cells, proceed
 
         # Compute new IDs contours
@@ -14607,7 +14675,8 @@ class guiWin(QMainWindow):
                 'emerg_frame_i': posData.frame_i,
                 'division_frame_i': -1,
                 'is_history_known': True,
-                'corrected_assignment': False
+                'corrected_assignment': False,
+                'will_divide': 0
             })
 
 
@@ -14828,13 +14897,15 @@ class guiWin(QMainWindow):
                 # Warn that we are visiting a frame that was never segm-checked
                 # on cell cycle analysis mode
                 msg = widgets.myMessageBox()
-                warn_cca = msg.critical(
-                    self, 'Never checked segmentation on requested frame',
+                txt = html_utils.paragraph(
                     'Segmentation and Tracking was <b>never checked from '
                     f'frame {posData.frame_i+1} onwards</b>.<br><br>'
                     'To ensure correct cell cell cycle analysis you have to '
                     'first visit frames '
                     f'{posData.frame_i+1}-end with "Segmentation and Tracking" mode.'
+                )
+                warn_cca = msg.critical(
+                    self, 'Never checked segmentation on requested frame', txt                    
                 )
                 proceed_cca = False
                 return proceed_cca, never_visited
@@ -14950,6 +15021,7 @@ class guiWin(QMainWindow):
         division_frame_i = [-1]*len(IDs)
         is_history_known = [False]*len(IDs)
         corrected_assignment = [False]*len(IDs)
+        will_divide = [0]*len(IDs)
         cca_df = pd.DataFrame({
             'cell_cycle_stage': cc_stage,
             'generation_num': num_cycles,
@@ -14958,7 +15030,8 @@ class guiWin(QMainWindow):
             'emerg_frame_i': emerg_frame_i,
             'division_frame_i': division_frame_i,
             'is_history_known': is_history_known,
-            'corrected_assignment': corrected_assignment
+            'corrected_assignment': corrected_assignment,
+            'will_divide': will_divide
             },
             index=IDs
         )
@@ -16525,13 +16598,14 @@ class guiWin(QMainWindow):
     def toggleTextIDsColorButton(self, checked=True):
         self.textIDsColorButton.selectColor()
 
-    def updateTextIDsColors(self, button):
+    def updateTextAnnotColor(self, button):
         r, g, b = np.array(self.textIDsColorButton.color().getRgb()[:3])
         self.imgGrad.textColorButton.setColor((r, g, b))
         for items in self.overlayLayersItems.values():
             lutItem = items[1]
             lutItem.textColorButton.setColor((r, g, b))
         self.gui_createTextAnnotColors(r,g,b, custom=True)
+        self.gui_setTextAnnotColors()
         self.updateAllImages()
 
     def saveTextIDsColors(self, button):
@@ -16606,7 +16680,7 @@ class guiWin(QMainWindow):
 
         if checked:
             self.df_settings.at['isRightImageVisible', 'value'] = 'Yes'
-            self.graphLayout.addItem(self.rightImageGrad, row=1, col=3)
+            self.graphLayout.addItem(self.imgGradRight, row=1, col=3)
             self.rightBottomGroupbox.show()
             if not self.isDataLoading:
                 self.updateAllImages()
@@ -16615,7 +16689,7 @@ class guiWin(QMainWindow):
             self.rightBottomGroupbox.hide()
             self.df_settings.at['isRightImageVisible', 'value'] = 'No'
             try:
-                self.graphLayout.removeItem(self.rightImageGrad)
+                self.graphLayout.removeItem(self.imgGradRight)
             except Exception:
                 return
             self.rightImageItem.clear()
@@ -17429,9 +17503,7 @@ class guiWin(QMainWindow):
         self.img1.setImage(img)
     
     def getContoursImageItem(self, ax):
-        if ax == 0 and not self.annotContourCheckbox.isChecked():
-            return
-        elif ax == 1 and not self.annotContourCheckboxRight.isChecked():
+        if not self.areContoursRequested(ax):
             return
         
         if ax == 0:
@@ -17480,6 +17552,28 @@ class guiWin(QMainWindow):
         self.ax1_lostObjScatterItem.addPoints(xx, yy)
         self.ax2_lostObjScatterItem.addPoints(xx, yy)
     
+    def setCcaIssueContour(self, obj):
+        objContours = self.getObjContours(obj)
+        xx = objContours[:,0]
+        yy = objContours[:,1]
+        self.ax1_lostObjScatterItem.addPoints(xx, yy)
+        self.textAnnot[0].addObjAnnotation(
+            obj, 'lost_object', f'{obj.label}?', False
+        )
+    
+    def highlightNewCellNotEnoughG1cells(self, IDsCellsG1):
+        posData = self.data[self.pos_i]
+        for obj in posData.rp:
+            if obj.label not in IDsCellsG1:
+                continue
+            objContours = self.getObjContours(obj)
+            xx = objContours[:,0]
+            yy = objContours[:,1]
+            self.ccaFailedScatterItem.addPoints(xx, yy)
+            self.textAnnot[0].addObjAnnotation(
+                obj, 'green', f'{obj.label}?', False
+            )
+
     def addObjContourToContoursImage(
             self, ID=0, obj=None, ax=0, thickness=None, color=None
         ):        
@@ -17516,7 +17610,7 @@ class guiWin(QMainWindow):
             obj_image = self.getObjImage(obj.image)
             self.contoursImage[obj_slice][obj_image] = [0,0,0,0]
         
-        imageItem.setImage(self.contoursImage)
+        imageItem.setImage(self.contoursImage)        
     
     def clearAnnotItems(self):
         self.textAnnot[0].clear()
@@ -17524,6 +17618,7 @@ class guiWin(QMainWindow):
 
     @exec_time
     def setAllTextAnnotations(self, labelsToSkip=None):
+        self.setTitleText()
         posData = self.data[self.pos_i]
         self.textAnnot[0].setAnnotations(
             posData=posData, labelsToSkip=labelsToSkip
@@ -17531,6 +17626,8 @@ class guiWin(QMainWindow):
         self.textAnnot[1].setAnnotations(
             posData=posData, labelsToSkip=labelsToSkip
         )
+        self.textAnnot[0].update()
+        self.textAnnot[1].update()
     
     def setAllContoursImages(self):
         self.updateContoursImage(ax=0)
@@ -17571,8 +17668,6 @@ class guiWin(QMainWindow):
         self.setAllContoursImages()
 
         self.drawAllMothBudLines()
-
-        self.setTitleText()
         self.highlightLostNew()
         
         # # self.checkIDsMultiContour()
@@ -17665,16 +17760,14 @@ class guiWin(QMainWindow):
         self.timer.stop()
         self.modeComboBox.setStyleSheet('background-color: none')
 
-    def highlightNewIDs_ccaFailed(self):
-        posData = self.data[self.pos_i]
-        for obj in posData.rp:
-            if obj.label in posData.new_IDs:
-                # self.getObjOptsSegmLabels(obj, 'Draw IDs and contours')
-                self.getObjTextAnnotOpts(obj, 'Draw IDs and contours')
-                cont = self.getObjContours(obj)
-                self.searchedIDitemLeft.addPoints(
-                    cont[:,0], cont[:,1], pen=self.tempNewIDs_cpen
-                )
+    def highlightNewIDs_ccaFailed(self, IDsWithIssue, rp=None):
+        if rp is None:
+            posData = self.data[self.pos_i]
+            rp = posData.rp
+        for obj in rp:
+            if obj.label not in IDsWithIssue:
+                continue
+            self.setCcaIssueContour(obj)
 
     def highlightLostNew(self):
         posData = self.data[self.pos_i]
@@ -17789,10 +17882,8 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         posData.last_tracked_i = self.navigateScrollBar.maximum()-1
         if posData.frame_i <= posData.last_tracked_i:
-            # # self.disableTrackingCheckBox.setChecked(True)
             return True
         else:
-            # # self.disableTrackingCheckBox.setChecked(False)
             return False
 
     # @exec_time
@@ -17816,14 +17907,6 @@ class guiWin(QMainWindow):
             # Disable tracking for already visited frames
             trackingDisabled = self.checkTrackingEnabled()
 
-            """
-            Track only frames that were NEVER visited or the user
-            specifically requested to track:
-                - Never visited --> NOT self.disableTrackingCheckBox.isChecked()
-                - User requested --> posData.isAltDown
-                                 --> clicked on repeat tracking (enforce=True)
-            """
-
             if enforce or self.UserEnforced_Tracking:
                 # Tracking enforced by the user
                 do_tracking = True
@@ -17838,15 +17921,10 @@ class guiWin(QMainWindow):
                 do_tracking = True
 
             if not do_tracking:
-                # # self.disableTrackingCheckBox.setChecked(True)
-                # self.logger.info('-------------')
-                # self.logger.info(f'Frame {posData.frame_i+1} NOT tracked')
-                # self.logger.info('-------------')
                 self.setTitleText()
                 return
 
             """Tracking starts here"""
-            # self.disableTrackingCheckBox.setChecked(False)
             staturBarLabelText = self.statusBarLabel.text()
             self.statusBarLabel.setText('Tracking...')
 
@@ -17895,7 +17973,7 @@ class guiWin(QMainWindow):
         # Update labels, regionprops and determine new and lost IDs
         posData.lab = tracked_lab
         self.update_rp()
-        self.setTitleText()
+        self.setAllTextAnnotations()
         QTimer.singleShot(50, partial(
             self.statusBarLabel.setText, staturBarLabelText
         ))
@@ -18195,7 +18273,6 @@ class guiWin(QMainWindow):
         self.editToolBar.hide()
         self.widgetsToolBar.hide()
         self.modeToolBar.hide()
-        self.disableTrackingAction.setVisible(True)
 
         self.modeComboBox.setCurrentText('Viewer')
         
@@ -18528,7 +18605,7 @@ class guiWin(QMainWindow):
             contoursItem.setData(
                 [], [], symbol='s', pxMode=False, size=1,
                 brush=pg.mkBrush(color=(255,0,0,150)),
-                pen=pg.mkPen(width=2, color='r'), tip=None
+                pen=pg.mkPen(width=1, color='r'), tip=None
             )
 
             items = (imageItem, contoursItem, gradItem)
@@ -20039,7 +20116,12 @@ class guiWin(QMainWindow):
         self.logger.info(
             f'Switching to {resolutionMode} for the text annnotations...'
         )
-        self.gui_createTextAnnotItems()
+        self.setAllIDs()
+        posData = self.data[self.pos_i]
+        allIDs = posData.allIDs
+        for ax in range(2):
+            self.textAnnot[ax].changeResolution(resolutionMode, allIDs, ax)
+        self.updateAllImages()
     
     def highLoweResClicked(self, clicked=True):
         self.changeTextResolution()

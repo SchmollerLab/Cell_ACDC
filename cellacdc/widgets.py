@@ -3671,6 +3671,9 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
 
         self.addCustomGradients()
 
+        # Set inverted gradients for invert bw action
+        self.addInvertedColorMaps()
+
         self.gradient.menu.addSeparator()
 
         # hide histogram tool
@@ -3678,6 +3681,107 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
 
         # Disable histogram default context Menu event
         self.vb.raiseContextMenu = lambda x: None
+    
+    def setGradient(self, gradient):
+        self.gradient.restoreState(gradient)
+        self.lastGradient = gradient
+    
+    def colormapClicked(self, checked=False, name=None):
+        name = self.sender().name
+        self.lastGradientName = name
+        if self.isInverted:
+            self.setGradient(self.invertedGradients[name])
+        else:
+            self.setGradient(Gradients[name])
+
+    def sortTicks(self, ticks):
+        sortedTicks = sorted(ticks, key=operator.itemgetter(0))
+        return sortedTicks
+    
+    def getInvertedGradients(self):
+        invertedGradients = {}
+        for name, gradient in Gradients.items():
+            ticks = gradient['ticks']
+            sortedTicks = self.sortTicks(ticks)
+            if name in nonInvertibleCmaps:
+                invertedColors = sortedTicks
+            else:
+                invertedColors = [
+                    (t[0], ti[1]) 
+                    for t, ti in zip(sortedTicks, sortedTicks[::-1])
+                ]
+            invertedGradient = {}
+            invertedGradient['ticks'] = invertedColors
+            invertedGradient['mode'] = gradient['mode']
+            invertedGradients[name] = invertedGradient
+        return invertedGradients
+    
+    def addInvertedColorMaps(self):
+        self.invertedGradients = self.getInvertedGradients()
+        for action in self.gradient.menu.actions():
+            if not hasattr(action, 'name'):
+                continue
+            
+            if action.name not in self.cmaps:
+                continue
+            
+            action.triggered.disconnect()
+            action.triggered.connect(self.colormapClicked)
+
+            px = QPixmap(100, 15)
+            p = QPainter(px)
+            invertedGradient = self.invertedGradients[action.name]
+            qtGradient = QLinearGradient(QPointF(0,0), QPointF(100,0))
+            ticks = self.sortTicks(invertedGradient['ticks'])
+            qtGradient.setStops([(x, QColor(*color)) for x,color in ticks])
+            brush = QBrush(qtGradient)
+            p.fillRect(QRect(0, 0, 100, 15), brush)
+            p.end()
+            widget = action.defaultWidget()
+            hbox = widget.layout()
+            rectLabelWidget = QLabel()
+            rectLabelWidget.setPixmap(px)
+            hbox.addWidget(rectLabelWidget)
+            rectLabelWidget.hide()
+    
+    def setInvertedColorMaps(self, inverted):
+        if inverted:
+            showIdx = 2
+            hideIdx = 1
+        else:
+            showIdx = 1
+            hideIdx = 2
+        
+        for action in self.gradient.menu.actions():
+            if not hasattr(action, 'name'):
+                continue
+            
+            if action.name not in self.cmaps:
+                continue
+
+            widget = action.defaultWidget()
+            hbox = widget.layout()
+            hideCmapRect = hbox.itemAt(hideIdx).widget()
+            showCmapRect = hbox.itemAt(showIdx).widget()
+            hideCmapRect.hide()
+            showCmapRect.show()
+        
+        self.isInverted = inverted
+    
+    def invertGradient(self, gradient):
+        ticks = gradient['ticks']
+        sortedTicks = self.sortTicks(ticks)
+        invertedColors = [
+            (t[0], ti[1]) 
+            for t, ti in zip(sortedTicks, sortedTicks[::-1])
+        ]
+        invertedGradient = {}
+        invertedGradient['ticks'] = invertedColors
+        invertedGradient['mode'] = gradient['mode']
+        return invertedGradient
+    
+    def invertCurrentColormap(self, debug=False):
+        self.setGradient(self.invertGradient(self.lastGradient))
     
     def addCustomGradient(self, gradient_name, gradient_ticks):
         self.originalLength = self.gradient.length
@@ -4022,9 +4126,6 @@ class myHistogramLUTitem(baseHistogramLUTitem):
         self.defaultSettingsAction = QAction('Restore default settings...', self)
         self.gradient.menu.addAction(self.defaultSettingsAction)
 
-        # Set inverted gradients for invert bw action
-        self.addInvertedColorMaps()
-
         self.filterObject = FilterObject()
         self.filterObject.sigFilteredEvent.connect(self.gradientMenuEventFilter)
         self.gradient.menu.installEventFilter(self.filterObject)
@@ -4066,92 +4167,6 @@ class myHistogramLUTitem(baseHistogramLUTitem):
         act.setDefaultWidget(widget)
         act.triggered.connect(self.overlayColorButton.click)
         self.gradient.menu.addAction(act)
-    
-    def invertGradient(self, gradient):
-        ticks = gradient['ticks']
-        sortedTicks = self.sortTicks(ticks)
-        invertedColors = [
-            (t[0], ti[1]) 
-            for t, ti in zip(sortedTicks, sortedTicks[::-1])
-        ]
-        invertedGradient = {}
-        invertedGradient['ticks'] = invertedColors
-        invertedGradient['mode'] = gradient['mode']
-        return invertedGradient
-    
-    def getInvertedGradients(self):
-        invertedGradients = {}
-        for name, gradient in Gradients.items():
-            ticks = gradient['ticks']
-            sortedTicks = self.sortTicks(ticks)
-            if name in nonInvertibleCmaps:
-                invertedColors = sortedTicks
-            else:
-                invertedColors = [
-                    (t[0], ti[1]) 
-                    for t, ti in zip(sortedTicks, sortedTicks[::-1])
-                ]
-            invertedGradient = {}
-            invertedGradient['ticks'] = invertedColors
-            invertedGradient['mode'] = gradient['mode']
-            invertedGradients[name] = invertedGradient
-        return invertedGradients
-    
-    def sortTicks(self, ticks):
-        sortedTicks = sorted(ticks, key=operator.itemgetter(0))
-        return sortedTicks
-    
-    def addInvertedColorMaps(self):
-        self.invertedGradients = self.getInvertedGradients()
-        for action in self.gradient.menu.actions():
-            if not hasattr(action, 'name'):
-                continue
-            
-            if action.name not in self.cmaps:
-                continue
-            
-            action.triggered.disconnect()
-            action.triggered.connect(self.colormapClicked)
-
-            px = QPixmap(100, 15)
-            p = QPainter(px)
-            invertedGradient = self.invertedGradients[action.name]
-            qtGradient = QLinearGradient(QPointF(0,0), QPointF(100,0))
-            ticks = self.sortTicks(invertedGradient['ticks'])
-            qtGradient.setStops([(x, QColor(*color)) for x,color in ticks])
-            brush = QBrush(qtGradient)
-            p.fillRect(QRect(0, 0, 100, 15), brush)
-            p.end()
-            widget = action.defaultWidget()
-            hbox = widget.layout()
-            rectLabelWidget = QLabel()
-            rectLabelWidget.setPixmap(px)
-            hbox.addWidget(rectLabelWidget)
-            rectLabelWidget.hide()
-    
-    def setInvertedColorMaps(self, inverted):
-        if inverted:
-            showIdx = 2
-            hideIdx = 1
-        else:
-            showIdx = 1
-            hideIdx = 2
-        
-        for action in self.gradient.menu.actions():
-            if not hasattr(action, 'name'):
-                continue
-            
-            if action.name not in self.cmaps:
-                continue
-
-            widget = action.defaultWidget()
-            hbox = widget.layout()
-            hideCmapRect = hbox.itemAt(hideIdx).widget()
-            showCmapRect = hbox.itemAt(showIdx).widget()
-            hideCmapRect.hide()
-            showCmapRect.show()
-        
-        self.isInverted = inverted
 
     def uncheckContLineWeightActions(self):
         for act in self.contLineWightActionGroup.actions():
@@ -4162,21 +4177,6 @@ class myHistogramLUTitem(baseHistogramLUTitem):
         for act in self.mothBudLineWightActionGroup.actions():
             act.toggled.disconnect()
             act.setChecked(False)
-    
-    def setGradient(self, gradient):
-        self.gradient.restoreState(gradient)
-        self.lastGradient = gradient
-    
-    def invertCurrentColormap(self, debug=False):
-        self.setGradient(self.invertGradient(self.lastGradient))
-    
-    def colormapClicked(self, checked=False, name=None):
-        name = self.sender().name
-        self.lastGradientName = name
-        if self.isInverted:
-            self.setGradient(self.invertedGradients[name])
-        else:
-            self.setGradient(Gradients[name])
 
     def restoreState(self, df):
         if 'textIDsColor' in df.index:

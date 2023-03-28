@@ -12,6 +12,7 @@ from tqdm import tqdm
 
 from PyQt5 import QtGui
 
+from . import printl
 
 def _binned_mean_stats(x, y, bins, bins_min_count):
     bin_counts, _, _ = scipy.stats.binned_statistic(x, y, statistic='count', bins=bins)
@@ -82,7 +83,7 @@ def binned_means_plot(
 
     return ax
 
-def text_to_pg_scatter_symbol(text: str, font=None, scale=None):
+def text_to_pg_scatter_symbol(text: str, font=None, return_scale=False):
     if font is None:
         font = QtGui.QFont()
         font.setPixelSize(11)
@@ -90,18 +91,26 @@ def text_to_pg_scatter_symbol(text: str, font=None, scale=None):
     symbol = QtGui.QPainterPath()
     symbol.addText(0, 0, font, text)
     br = symbol.boundingRect()
-    if scale is None:
-        scale = min(1. / br.width(), 1. / br.height())
+    scale = min(1. / br.width(), 1. / br.height())
     tr = QtGui.QTransform()
     tr.scale(scale, scale)
     tr.translate(-br.x() - br.width()/2., -br.y() - br.height()/2.)
     symbol = tr.map(symbol)
-    return symbol
-    
+    if return_scale:
+        return symbol, scale
+    else:
+        return symbol
+
+def get_symbol_sizes(scales: dict, symbols: dict, size: int):
+    scales_arr = np.array([scales[text] for text in symbols.keys()])
+    normalized_scales = scales_arr/scales_arr.max()
+    sizes = np.round(size/normalized_scales).astype(int)
+    sizes = {text:scale for text, scale in zip(symbols.keys(), sizes)}
+    return sizes
 
 def texts_to_pg_scatter_symbols(
         texts: typing.Union[str, list], font=None, progress=True,
-        return_scale=False
+        return_scales=False
     ):
     if font is None:
         font = QtGui.QFont()
@@ -111,38 +120,31 @@ def texts_to_pg_scatter_symbols(
 
     if progress:
         pbar = tqdm(total=len(texts)*2, ncols=100)
-    
-    max_scale = 0
-    symbols = []
+
+    symbols = {}
+    scales = {}
     for text in texts:
         symbol = QtGui.QPainterPath()
         symbol.addText(0, 0, font, text)
         br = symbol.boundingRect()
         scale = min(1. / br.width(), 1. / br.height())
-        symbols.append(symbol)
         if progress:
             pbar.update()
-        if scale<=max_scale:
-            continue
-        max_scale = scale
-    
-    scaled_symbols = {}
-    for text, symbol in zip(texts, symbols):
-        br = symbol.boundingRect()
         tr = QtGui.QTransform()
-        tr.scale(max_scale, max_scale)
+        tr.scale(scale, scale)
         tr.translate(-br.x() - br.width()/2., -br.y() - br.height()/2.)
-        scaled_symbols[text] = tr.map(symbol)
+        symbols[text] = tr.map(symbol)
+        scales[text] = scale
         if progress:
             pbar.update()
     
     if progress:
         pbar.close()
     
-    if return_scale:
-        return scaled_symbols, max_scale
+    if return_scales:
+        return symbols, scales
     else:
-        return scaled_symbols
+        return symbols
 
 
 if __name__ == '__main__':
