@@ -8176,7 +8176,8 @@ class guiWin(QMainWindow):
                     'emerg_frame_i': i+1,
                     'division_frame_i': -1,
                     'is_history_known': True,
-                    'corrected_assignment': False
+                    'corrected_assignment': False,
+                    'will_divide': 0
                 })
                 return cca_df_ID
 
@@ -8681,7 +8682,8 @@ class guiWin(QMainWindow):
                         'emerg_frame_i': i+1,
                         'division_frame_i': -1,
                         'is_history_known': True,
-                        'corrected_assignment': False
+                        'corrected_assignment': False,
+                        'will_divide': 0
                     })
 
     def assignBudMoth(self):
@@ -14954,7 +14956,8 @@ class guiWin(QMainWindow):
                         'emerg_frame_i': -1,
                         'division_frame_i': -1,
                         'is_history_known': False,
-                        'corrected_assignment': False
+                        'corrected_assignment': False,
+                        'will_divide': 0
                     })
                     cca_df_ID = self.getStatusKnownHistoryBud(ID)
                     posData.ccaStatus_whenEmerged[ID] = cca_df_ID
@@ -15011,7 +15014,8 @@ class guiWin(QMainWindow):
                 'emerg_frame_i': posData.frame_i,
                 'division_frame_i': -1,
                 'is_history_known': True,
-                'corrected_assignment': False
+                'corrected_assignment': False,
+                'will_divide': 0
             })
 
 
@@ -15354,6 +15358,7 @@ class guiWin(QMainWindow):
         division_frame_i = [-1]*len(IDs)
         is_history_known = [False]*len(IDs)
         corrected_assignment = [False]*len(IDs)
+        will_divide = [0]*len(IDs)
         cca_df = pd.DataFrame({
             'cell_cycle_stage': cc_stage,
             'generation_num': num_cycles,
@@ -15362,7 +15367,8 @@ class guiWin(QMainWindow):
             'emerg_frame_i': emerg_frame_i,
             'division_frame_i': division_frame_i,
             'is_history_known': is_history_known,
-            'corrected_assignment': corrected_assignment
+            'corrected_assignment': corrected_assignment,
+            'will_divide': will_divide
             },
             index=IDs
         )
@@ -18427,7 +18433,7 @@ class guiWin(QMainWindow):
             img = skimage.exposure.equalize_adapthist(img)
         self.img1.setImage(img)
     
-    @exec_time
+    # @exec_time
     def setAllContoursAndTextAnnot(self):
         posData = self.data[self.pos_i]
 
@@ -18455,7 +18461,7 @@ class guiWin(QMainWindow):
         if ax2_scatterItem is not None and ax2_textAnnotOpts:
             ax2_scatterItem.setData(ax2_textAnnotOpts)
 
-    @exec_time
+    # @exec_time
     @exception_handler
     def updateALLimg(
             self, image=None, updateFilters=False, computePointsLayers=True
