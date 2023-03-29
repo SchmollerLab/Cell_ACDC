@@ -17528,7 +17528,7 @@ class guiWin(QMainWindow):
         self.labelsGrad.restoreState(df, loadCmap=False)
 
         self.df_settings.to_csv(self.settings_csv_path)
-        self.upateAllImage(s)
+        self.upateAllImages()
 
     def updateLabelsAlpha(self, value):
         self.df_settings.at['overlaySegmMasksAlpha', 'value'] = value
