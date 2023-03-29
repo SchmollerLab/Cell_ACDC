@@ -4915,6 +4915,9 @@ class sliderWithSpinBox(QWidget):
     def maximum(self):
         return self.slider.maximum()
 
+    def minimum(self):
+        return self.slider.minimum()
+
     def setValue(self, value, emitSignal=False):
         valueInt = value
         if self._normalize:
@@ -5070,6 +5073,7 @@ class PostProcessSegmSlider(sliderWithSpinBox):
         self.checkbox = QCheckBox('Disable')
         self.layout.addWidget(self.checkbox, self.sliderCol, self.lastCol+1)
         self.checkbox.toggled.connect(self.onCheckBoxToggled)
+        self.valueChanged.connect(self.checkExpandRange)
     
     def onCheckBoxToggled(self, checked: bool) -> None:
         super().setDisabled(checked)
@@ -5080,6 +5084,22 @@ class PostProcessSegmSlider(sliderWithSpinBox):
     
     def onValueChanged(self, value):
         self.valueChanged.emit(value)
+    
+    def checkExpandRange(self, value):
+        if value == self.maximum():
+            range = int(self.maximum() - self.minimum())
+            half_range = int(range/2)
+            newMinimum = self.minimum() + half_range
+            newMaximum = self.maximum() + half_range
+            self.setMaximum(newMaximum)
+            self.setMinimum(newMinimum)
+        elif value == self.minimum():
+            range = int(self.maximum() - self.minimum())
+            half_range = int(range/2)
+            newMinimum = self.minimum() - half_range
+            newMaximum = self.maximum() - half_range
+            self.setMaximum(newMaximum)
+            self.setMinimum(newMinimum)
     
     def onEditingFinished(self):
         self.editingFinished.emit()

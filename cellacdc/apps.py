@@ -6339,7 +6339,7 @@ class postProcessSegmDialog(widgets.QBaseDialog):
             self.mainWin.updateAllImages()
 
     def cancel_cb(self):
-        self.cancel = False
+        self.cancel = True
         self.close()
     
     def undoChanges(self):

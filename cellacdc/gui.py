@@ -1250,10 +1250,6 @@ class guiWin(QMainWindow):
         editMenu = menuBar.addMenu("&Edit")
         editMenu.addSeparator()
 
-        # self.fontActionGroup = self.addFontSizeActions(
-        #     self.fontSizeMenu, self.changeFontSize
-        # )
-
         editMenu.addAction(self.editShortcutsAction)
         editMenu.addAction(self.editTextIDsColorAction)
         editMenu.addAction(self.editOverlayColorAction)
@@ -2101,7 +2097,7 @@ class guiWin(QMainWindow):
     def gui_createControlsToolbar(self):
         self.addToolBarBreak()
 
-        self.wandControlsToolbar = QToolBar("Magic labeller controls", self)
+        self.wandControlsToolbar = QToolBar("Magic wand controls", self)
         self.wandToleranceSlider = widgets.sliderWithSpinBox(
             title='Tolerance', title_loc='in_line'
         )
@@ -2252,7 +2248,7 @@ class guiWin(QMainWindow):
             self.labelRoiViewCurrentModel
         )
 
-        self.keepIDsToolbar = QToolBar("Magic labeller controls", self)
+        self.keepIDsToolbar = QToolBar("Keep IDs controls", self)
         self.keepIDsConfirmAction = QAction()
         self.keepIDsConfirmAction.setIcon(QIcon(":greenTick.svg"))
         self.keepIDsConfirmAction.setToolTip('Apply "keep IDs" selection')
@@ -3115,8 +3111,10 @@ class guiWin(QMainWindow):
             # Users before introduction of pxMode had pxMode=False, but now 
             # the new default is True. This requires larger font size.
             self.fontSize = 2*self.fontSize
+            self.df_settings.at['pxMode', 'value'] = 1
+            self.df_settings.to_csv(self.settings_csv_path)
         self.fontSizeSpinBox.setValue(self.fontSize)
-        self.fontSizeSpinBox.valueChanged.connect(self.changeFontSize) 
+        self.fontSizeSpinBox.editingFinished.connect(self.changeFontSize) 
 
         self.quickSettingsGroupbox.setLayout(layout)
         self.quickSettingsLayout.addWidget(self.quickSettingsGroupbox)
@@ -5054,7 +5052,7 @@ class guiWin(QMainWindow):
         self.set_2Dlab(lab_2D)
 
         self.update_rp()
-
+        self.currentLab2D = lab_2D
         if self.labelsGrad.showLabelsImgAction.isChecked():
             self.img2.setImage(img=self.currentLab2D, autoLevels=False)
 
@@ -5071,8 +5069,9 @@ class guiWin(QMainWindow):
 
         posData = self.data[self.pos_i]
         self.isMovingLabel = True
-        self.highLightIDLayerImg1.clear()
-        self.highLightIDLayerRightImage.clear()
+
+        self.searchedIDitemRight.setData([], [])
+        self.searchedIDitemLeft.setData([], [])
         self.movingID = ID
         self.prevMovePos = (xdata, ydata)
         movingObj = posData.rp[posData.IDs.index(ID)]
@@ -5087,6 +5086,8 @@ class guiWin(QMainWindow):
         xdata, ydata = int(xPos), int(yPos)
         if xdata<0 or ydata<0 or xdata>=X or ydata>=Y:
             return
+
+        self.clearObjContour(ID=self.movingID, ax=0)
 
         xStart, yStart = self.prevMovePos
         deltaX = xdata-xStart
@@ -5115,7 +5116,8 @@ class guiWin(QMainWindow):
             posData.lab[zz, yy, xx] = self.movingID
         else:
             posData.lab[yy, xx] = self.movingID
-
+        
+        self.currentLab2D = self.get_2Dlab(posData.lab)
         if self.labelsGrad.showLabelsImgAction.isChecked():
             self.img2.setImage(self.currentLab2D, autoLevels=False)
         
@@ -9313,8 +9315,8 @@ class guiWin(QMainWindow):
         return fontActionGroup
 
     @exception_handler
-    def changeFontSize(self, fontSize):
-        self.fontSize = int(fontSize)
+    def changeFontSize(self):
+        self.fontSize = self.fontSizeSpinBox.value()
         
         for textAnnot in self.textAnnot.values():
             textAnnot.initFonts(self.fontSize)
@@ -9326,7 +9328,7 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         allIDs = posData.allIDs
         for ax in range(2):
-            self.textAnnot[ax].changeFontSize(self.fontSize, allIDs)
+            self.textAnnot[ax].changeFontSize(self.fontSize)
         self.setAllTextAnnotations()
 
     def enableZstackWidgets(self, enabled):
@@ -9646,8 +9648,6 @@ class guiWin(QMainWindow):
             self.setEnabledCcaToolbar(enabled=False)
             self.realTimeTrackingToggle.setDisabled(False)
             self.realTimeTrackingToggle.label.setDisabled(False)
-            self.realTimeTrackingToggle.setVisible(False)
-            self.realTimeTrackingToggle.label.setVisible(False)
             if posData.cca_df is not None:
                 self.store_cca_df()
         elif mode == 'Cell cycle analysis':
@@ -9696,8 +9696,6 @@ class guiWin(QMainWindow):
             self.reconnectUndoRedo()
             self.setEnabledSnapshotMode()
             self.setEnabledWidgetsToolbar(True)
-            self.realTimeTrackingToggle.setVisible(False)
-            self.realTimeTrackingToggle.label.setVisible(False)
 
     def setEnabledSnapshotMode(self):
         posData = self.data[self.pos_i]
@@ -9731,8 +9729,6 @@ class guiWin(QMainWindow):
             button.setEnabled(True)
         self.realTimeTrackingToggle.setDisabled(True)
         self.realTimeTrackingToggle.label.setDisabled(True)
-        self.realTimeTrackingToggle.setVisible(False)
-        self.realTimeTrackingToggle.label.setVisible(False)
         self.repeatTrackingAction.setVisible(False)
         self.manualTrackingAction.setVisible(False)
         button = self.editToolBar.widgetForAction(self.repeatTrackingAction)
@@ -11554,15 +11550,16 @@ class guiWin(QMainWindow):
             self.clearObjContour(ID=delID, ax=1)
             
         posData = self.data[self.pos_i]
+        
         labelsToSkip = {}
         for ID in posData.IDs:
             if ID in delIDs:
+                labelsToSkip[ID] = True
                 continue
 
             self.addObjContourToContoursImage(ID=ID, ax=0)
-            labelsToSkip[ID] = True
-            
-        self.setAllTextAnnotations(labelsToSkip=labelsToSkip)
+ 
+        # self.setAllTextAnnotations(labelsToSkip=labelsToSkip)
 
         posData.lab = lab
         self.setImageImg2()
@@ -14607,9 +14604,9 @@ class guiWin(QMainWindow):
             self.highlightNewCellNotEnoughG1cells(posData.new_IDs)
             msg = widgets.myMessageBox()
             text = html_utils.paragraph(
-                f'In the next frame {numNewCells} new object(s) will '
+                f'In the next frame <b>{numNewCells} new object(s)</b> will '
                 'appear (highlighted in green on left image).<br><br>'
-                f'However there are only {numCellsG1} object(s) '
+                f'However there are <b>only {numCellsG1} object(s)</b> '
                 'in G1 available.<br><br>'
                 'You can either cancel the operation and "free" a cell '
                 'by first annotating division or continue.<br><br>'
@@ -14919,8 +14916,8 @@ class guiWin(QMainWindow):
                     'Segmentation and Tracking was <b>never checked from '
                     f'frame {posData.frame_i+1} onwards</b>.<br><br>'
                     'To ensure correct cell cell cycle analysis you have to '
-                    'first visit frames '
-                    f'{posData.frame_i+1}-end with "Segmentation and Tracking" mode.'
+                    'first visit the frames after '
+                    f'{posData.frame_i+1} with "Segmentation and Tracking" mode.'
                 )
                 warn_cca = msg.critical(
                     self, 'Never checked segmentation on requested frame', txt                    
@@ -15157,11 +15154,11 @@ class guiWin(QMainWindow):
                 The cell cycle analysis will restart from that frame.<br><br>
                 Do you want to proceed?
             """)
-            goTo_last_annotated_frame_i = msg.warning(
+            _, yesButton = msg.warning(
                 self, 'Go to last annotated frame?', txt, 
-                buttonsTexts=('Yes', 'Cancel')
+                buttonsTexts=('Cancel', 'Yes')
             )[0]
-            if goTo_last_annotated_frame_i == msg.clickedButton:
+            if yesButton == msg.clickedButton:
                 msg = 'Looking good!'
                 self.last_cca_frame_i = last_cca_frame_i
                 posData.frame_i = last_cca_frame_i
@@ -17057,10 +17054,10 @@ class guiWin(QMainWindow):
                 self.labelsLayerRightImg.setImage(
                     self.labelsLayerRightImg.image, autoLevels=False)
         else:
-            self.clearObjContour(ID=self.expandingID, ax=ax)
             currentLab2Drp = skimage.measure.regionprops(self.currentLab2D)
             for obj in currentLab2Drp:
                 if obj.label == self.expandingID:
+                    self.clearObjContour(obj=obj, ax=ax)
                     self.addObjContourToContoursImage(obj=obj, ax=ax)
                     break
 
@@ -17071,7 +17068,6 @@ class guiWin(QMainWindow):
             how = self.getAnnotateHowRightImage()
         
         if how.find('contours') != -1:
-            self.clearObjContour(ID=self.movingID, ax=ax)
             currentLab2Drp = skimage.measure.regionprops(self.currentLab2D)
             for obj in currentLab2Drp:
                 if obj.label == self.movingID:
@@ -17080,10 +17076,20 @@ class guiWin(QMainWindow):
         elif how.find('overlay segm. masks') != -1:
             if ax == 0:
                 self.labelsLayerImg1.setImage(self.currentLab2D, autoLevels=False)
+                self.highLightIDLayerImg1.image[:] = 0
+                mask = self.currentLab2D==self.movingID
+                self.highLightIDLayerImg1.image[mask] = self.movingID
+                highlightedImage = self.highLightIDLayerImg1.image
+                self.highLightIDLayerImg1.setImage(highlightedImage)
             else:
                 self.labelsLayerRightImg.setImage(
                     self.currentLab2D, autoLevels=False
                 )
+                self.highLightIDLayerRightImage.image[:] = 0
+                mask = self.currentLab2D==self.movingID
+                self.highLightIDLayerRightImage.image[mask] = self.movingID
+                highlightedImage = self.highLightIDLayerRightImage.image
+                self.highLightIDLayerRightImage.setImage(highlightedImage)
 
     def addMissingIDs_cca_df(self, posData):
         base_cca_df = self.getBaseCca_df()
@@ -17622,7 +17628,7 @@ class guiWin(QMainWindow):
             self.contoursImage[self.currentLab2D==ID] = [0,0,0,0]
         else:
             obj_slice = self.getObjSlice(obj.slice)
-            obj_image = self.getObjImage(obj.image)
+            obj_image = self.getObjImage(obj.image, obj.bbox)
             self.contoursImage[obj_slice][obj_image] = [0,0,0,0]
         
         imageItem.setImage(self.contoursImage)        

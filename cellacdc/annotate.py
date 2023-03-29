@@ -217,7 +217,7 @@ class TextAnnotationsScatterItem(pg.ScatterPlotItem):
             )
         self.initSizes()
 
-    def createSymbols(self, annotTexts)
+    def createSymbols(self, annotTexts):
         self.symbolsBold, self.scalesBold = plot.texts_to_pg_scatter_symbols(
             annotTexts, font=self.fontBold, return_scales=True
         )
