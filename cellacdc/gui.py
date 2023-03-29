@@ -8003,7 +8003,6 @@ class guiWin(QMainWindow):
                     'is_history_known': True,
                     'corrected_assignment': False,
                     'will_divide': 0,
-                    'will_divide': 0
                 })
                 return cca_df_ID
 
