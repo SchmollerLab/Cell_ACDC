@@ -8,6 +8,30 @@ from pprint import pprint
 from functools import wraps
 from . import html_utils
 
+import pyqtgraph as pg
+import pandas as pd
+import numpy as np
+
+np.random.seed(3548784512)
+
+pd.set_option("display.max_columns", 20)
+pd.set_option("display.max_rows", 200)
+pd.set_option('display.expand_frame_repr', False)
+
+# Interpret image data as row-major instead of col-major
+pg.setConfigOption('imageAxisOrder', 'row-major')
+try:
+    import numba
+    pg.setConfigOption("useNumba", True)
+except Exception as e:
+    pass
+
+try:
+    import cupy as cp
+    pg.setConfigOption("useCupy", True)
+except Exception as e:
+    pass
+
 def printl(*objects, pretty=False, is_decorator=False, **kwargs):
     # Copy current stdout, reset to default __stdout__ and then restore current
     current_stdout = sys.stdout
@@ -151,5 +175,20 @@ def exception_handler(func):
                 self.cleanUpOnError()
             except Exception as e:
                 pass
+        return result
+    return inner_function
+
+def ignore_exception(func):
+    @wraps(func)
+    def inner_function(self, *args, **kwargs):
+        try:
+            if func.__code__.co_argcount==1 and func.__defaults__ is None:
+                result = func(self)
+            elif func.__code__.co_argcount>1 and func.__defaults__ is None:
+                result = func(self, *args)
+            else:
+                result = func(self, *args, **kwargs)
+        except Exception as e:
+            pass
         return result
     return inner_function

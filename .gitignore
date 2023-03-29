@@ -20,6 +20,7 @@ notebooks/.ipynb_checkpoints
 .idea/
 test.txt
 cellacdc/_version.py
+cellacdc/.qt_for_python
 cellacdc/metrics/*
 !cellacdc/metrics/CV.py
 !cellacdc/metrics/combine_metrics_example.py

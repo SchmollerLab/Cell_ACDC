@@ -287,6 +287,10 @@ class mainWin(QMainWindow):
         QFontDatabase.addApplicationFont(":ArialMT-Bold.otf")
         QFontDatabase.addApplicationFont(":ArialMT-Italic.otf")
         QFontDatabase.addApplicationFont(":ArialMT-BoldItalic.otf")
+        QFontDatabase.addApplicationFont(":Helvetica-Regular.ttf")
+        QFontDatabase.addApplicationFont(":Helvetica-Bold.ttf")
+        QFontDatabase.addApplicationFont(":Helvetica-Italic.ttf")
+        QFontDatabase.addApplicationFont(":Helvetica-BoldItalic.ttf")
 
     def launchWelcomeGuide(self, checked=False):
         cellacdc_path = os.path.dirname(os.path.realpath(__file__))

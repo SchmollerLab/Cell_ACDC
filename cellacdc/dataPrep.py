@@ -52,8 +52,6 @@ if os.name == 'nt':
     except Exception as e:
         pass
 
-pg.setConfigOptions(imageAxisOrder='row-major')
-
 class toCsvWorker(QObject):
     finished = pyqtSignal()
     progress = pyqtSignal(int)

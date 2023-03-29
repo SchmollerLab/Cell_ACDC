@@ -54,7 +54,7 @@ At this point, the user can **RIGHT-click** on any segmented object, **only on t
 
 The annotation is performed by the `doCustomAnnotation` function called in the case `elif isCustomAnnot:` of `gui_mousePressEventImg1`.
 
-Note that `doCustomAnnotation` is also called at the end of `updateALLimg` to annotate every time the image changes.
+Note that `doCustomAnnotation` is also called at the end of `updateAllImages` to annotate every time the image changes.
 
 The `doCustomAnnotation` function will check which button is active (from the keys of `customAnnotDict`). The checked button reference is used to access the `customAnnotDict[button]['annotatedIDs']` list of dictionaries. This list is indexed with `self.pos_i`. The resulting dictionary is indexed with `frame_i` to get the list of annotated IDs for the specific frame/position.
 

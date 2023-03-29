@@ -70,8 +70,6 @@ PRE_PROCESSING_STEPS = [
     'Smooth (gaussian filter)', 
     'Sharpen (difference of gaussians filter)'
 ]
-
-pg.setConfigOption('imageAxisOrder', 'row-major') # best performance
 font = QFont()
 font.setPixelSize(13)
 italicFont = QFont()
@@ -5672,7 +5670,7 @@ class randomWalkerDialog(QDialog):
 
         self.mainWindow.update_rp()
         self.mainWindow.tracking(enforce=True)
-        self.mainWindow.updateALLimg()
+        self.mainWindow.updateAllImages()
         self.mainWindow.warnEditingWithCca_df('Random Walker segmentation')
         txt = f'Random Walker segmentation computed in {deltaT:.3f} s'
         print('-----------------')
@@ -5690,7 +5688,7 @@ class randomWalkerDialog(QDialog):
 
     def closeEvent(self, event):
         self.mainWindow.segmModel = ''
-        self.mainWindow.updateALLimg()
+        self.mainWindow.updateAllImages()
 
 class FutureFramesAction_QDialog(QDialog):
     def __init__(
@@ -6267,7 +6265,7 @@ class postProcessSegmDialog(widgets.QBaseDialog):
 
         self.mainWin.update_rp()
         self.mainWin.store_data()
-        self.mainWin.updateALLimg()
+        self.mainWin.updateAllImages()
 
     def ok_cb(self):
         self.cancel = False
@@ -6312,7 +6310,7 @@ class postProcessSegmDialog(widgets.QBaseDialog):
             # Back to current frame
             self.posData.frame_i = current_frame_i
             self.mainWin.get_data()
-            self.mainWin.updateALLimg()
+            self.mainWin.updateAllImages()
 
             msg = QMessageBox()
             msg.information(
@@ -6338,17 +6336,17 @@ class postProcessSegmDialog(widgets.QBaseDialog):
             # Back to current pos and current frame
             self.mainWin.pos_i = current_pos_i
             self.mainWin.get_data()
-            self.mainWin.updateALLimg()
+            self.mainWin.updateAllImages()
 
     def cancel_cb(self):
-        self.cancel = False
+        self.cancel = True
         self.close()
     
     def undoChanges(self):
         if self.mainWin is not None:
             self.posData.lab = self.origLab
             self.mainWin.update_rp()
-            self.mainWin.updateALLimg()
+            self.mainWin.updateAllImages()
 
         # Undo if changes were applied to all future frames
         if hasattr(self, 'origSegmData'):
@@ -6371,7 +6369,7 @@ class postProcessSegmDialog(widgets.QBaseDialog):
                 # Back to current frame
                 self.posData.frame_i = current_frame_i
                 self.mainWin.get_data()
-                self.mainWin.updateALLimg()
+                self.mainWin.updateAllImages()
             elif self.isMultiPos:
                 current_pos_i = self.mainWin.pos_i
                 # Apply to all future frames or future positions
@@ -6385,7 +6383,7 @@ class postProcessSegmDialog(widgets.QBaseDialog):
                 # Back to current pos and current frame
                 self.mainWin.pos_i = current_pos_i
                 self.mainWin.get_data()
-                self.mainWin.updateALLimg()
+                self.mainWin.updateAllImages()
 
     def show(self, block=False):
         # self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
