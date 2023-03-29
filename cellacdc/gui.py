@@ -16358,7 +16358,7 @@ class guiWin(QMainWindow):
         w = self.sender().lineWeight
         self.df_settings.at['mothBudLineSize', 'value'] = w
         self.df_settings.to_csv(self.settings_csv_path)
-        self._updateMothBudLineSize(size)
+        self._updateMothBudLineSize(w)
         self.updateAllImages()
     
     def _updateMothBudLineSize(self, size):
