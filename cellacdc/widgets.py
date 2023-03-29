@@ -2603,7 +2603,7 @@ class Toggle(QCheckBox):
             self.setChecked(initial)
 
     def sizeHint(self):
-        return QSize(39, 22)
+        return QSize(37, 18)
 
     def eventFilter(self, object, event):
         # To get the actual position of the circle we need to wait that

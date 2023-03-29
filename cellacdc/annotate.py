@@ -200,6 +200,24 @@ class TextAnnotationsScatterItem(pg.ScatterPlotItem):
             annotTexts.append(f'S-{gen_num}')
             annotTexts.append(f'S-{gen_num}?')
         
+        if hasattr(self, 'symbolsBold'):
+            # Symbols already created in prev. session --> add missing ones
+            self.addSymbols(annotTexts)
+        else:
+            # Symbols never created --> create now
+            self.createSymbols(annotTexts)
+    
+    def addSymbols(self, annotTexts):
+        for text in annotTexts:
+            self.symbolsBold[text] = self.getObjTextAnnotSymbol(
+                text, bold=True, initSizes=False
+            )
+            self.symbolsRegular[text] = self.getObjTextAnnotSymbol(
+                text, bold=True, initSizes=False
+            )
+        self.initSizes()
+
+    def createSymbols(self, annotTexts)
         self.symbolsBold, self.scalesBold = plot.texts_to_pg_scatter_symbols(
             annotTexts, font=self.fontBold, return_scales=True
         )
@@ -235,7 +253,7 @@ class TextAnnotationsScatterItem(pg.ScatterPlotItem):
     def colors(self):
         return self._colors
 
-    def getObjTextAnnotSymbol(self, text, bold=False):
+    def getObjTextAnnotSymbol(self, text, bold=False, initSizes=True):
         if bold:
             symbols = self.symbolsBold
             font = self.fontBold
@@ -254,7 +272,8 @@ class TextAnnotationsScatterItem(pg.ScatterPlotItem):
         )
         symbols[text] = symbol
         scales[text] = scale
-        self.initSizes()
+        if initSizes:
+            self.initSizes()
         return symbol
 
     def addObjAnnot(self, pos, draw=False, **objOpts):        
@@ -349,6 +368,11 @@ class TextAnnotations:
         self.fontSize = fontSize
         self.item.initFonts(self.fontSize)
         self.item.initSymbols(allIDs)
+    
+    def changeFontSize(self, fontSize):
+        self.fontSize = fontSize
+        self.item.initFonts(fontSize)
+        self.item.initSizes()
   
     def changeResolution(self, mode, allIDs, ax):
         ax.removeItem(self.item)

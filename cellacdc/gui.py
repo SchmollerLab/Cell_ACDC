@@ -1249,16 +1249,10 @@ class guiWin(QMainWindow):
         # Edit menu
         editMenu = menuBar.addMenu("&Edit")
         editMenu.addSeparator()
-        # Font size
-        savedFontSize = str(self.df_settings.at['fontSize', 'value'])
-        if savedFontSize.find('pt') != -1:
-            savedFontSize = savedFontSize[:-2]
-        self.fontSize = int(savedFontSize)
 
-        self.fontSizeMenu = editMenu.addMenu('Font size')
-        self.fontActionGroup = self.addFontSizeActions(
-            self.fontSizeMenu, self.changeFontSize
-        )
+        # self.fontActionGroup = self.addFontSizeActions(
+        #     self.fontSizeMenu, self.changeFontSize
+        # )
 
         editMenu.addAction(self.editShortcutsAction)
         editMenu.addAction(self.editTextIDsColorAction)
@@ -2921,9 +2915,9 @@ class guiWin(QMainWindow):
         self.labelsGrad.textColorButton.sigColorChanged.connect(
             self.saveTextLabelsColor
         )
-        self.addFontSizeActions(
-            self.labelsGrad.fontSizeMenu, self.setFontSizeActionChecked
-        )
+        # self.addFontSizeActions(
+        #     self.labelsGrad.fontSizeMenu, self.setFontSizeActionChecked
+        # )
 
         self.labelsGrad.shuffleCmapAction.triggered.connect(self.shuffle_cmap)
         self.labelsGrad.greedyShuffleCmapAction.triggered.connect(
@@ -2939,9 +2933,9 @@ class guiWin(QMainWindow):
             self.restoreDefaultSettings
         )
 
-        self.addFontSizeActions(
-            self.imgGrad.fontSizeMenu, self.setFontSizeActionChecked
-        )
+        # self.addFontSizeActions(
+        #     self.imgGrad.fontSizeMenu, self.setFontSizeActionChecked
+        # )
         self.imgGrad.invertBwAction.toggled.connect(self.setCheckedInvertBW)
         self.imgGrad.textColorButton.disconnect()
         self.imgGrad.textColorButton.clicked.connect(
@@ -3057,6 +3051,7 @@ class guiWin(QMainWindow):
 
         layout = QFormLayout()
         layout.setFieldGrowthPolicy(QFormLayout.FieldsStayAtSizeHint)
+        layout.setFormAlignment(Qt.AlignRight | Qt.AlignVCenter)
 
         self.autoSaveToggle = widgets.Toggle()
         autoSaveTooltip = (
@@ -3070,10 +3065,12 @@ class guiWin(QMainWindow):
         layout.addRow(autoSaveLabel, self.autoSaveToggle)
 
         self.highLowResToggle = widgets.Toggle()
+        self.highLowResToggle.setShortcut('w')
         highLowResTooltip = (
             'Resolution of the text annotations. High resolution results '
             'in slower update of the annotations.\n'
-            'Not recommended with a number of segmented objects > 500.'
+            'Not recommended with a number of segmented objects > 500.\n\n'
+            'SHORTCUT: "W" key'
         )
         highResLabel = QLabel('High resolution')
         highResLabel.setToolTip(highLowResTooltip)
@@ -3083,10 +3080,13 @@ class guiWin(QMainWindow):
         self.realTimeTrackingToggle = widgets.Toggle()
         self.realTimeTrackingToggle.setChecked(True)
         self.realTimeTrackingToggle.setDisabled(True)
-        layout.addRow('Real-time tracking', self.realTimeTrackingToggle)
+        label = QLabel('Real-time tracking')
+        label.setDisabled(True)
+        self.realTimeTrackingToggle.label = label
+        layout.addRow(label, self.realTimeTrackingToggle)
 
         self.pxModeToggle = widgets.Toggle()
-        self.pxModeToggle.setChecked(False)
+        self.pxModeToggle.setChecked(True)
         pxModeTooltip = (
             'With "Pixel mode" active, the text annotations scales relative '
             'to the object when zooming in/out (fixed size in pixels).\n'
@@ -3102,6 +3102,21 @@ class guiWin(QMainWindow):
         self.pxModeToggle.setToolTip(pxModeTooltip)
         self.pxModeToggle.clicked.connect(self.pxModeToggled)
         layout.addRow(pxModeLabel, self.pxModeToggle)
+
+        # Font size
+        self.fontSizeSpinBox = QSpinBox()
+        self.fontSizeSpinBox.setMinimum(1)
+        layout.addRow('Font size', self.fontSizeSpinBox) 
+        savedFontSize = str(self.df_settings.at['fontSize', 'value'])
+        if savedFontSize.find('pt') != -1:
+            savedFontSize = savedFontSize[:-2]
+        self.fontSize = int(savedFontSize)
+        if 'pxMode' not in self.df_settings.index:
+            # Users before introduction of pxMode had pxMode=False, but now 
+            # the new default is True. This requires larger font size.
+            self.fontSize = 2*self.fontSize
+        self.fontSizeSpinBox.setValue(self.fontSize)
+        self.fontSizeSpinBox.valueChanged.connect(self.changeFontSize) 
 
         self.quickSettingsGroupbox.setLayout(layout)
         self.quickSettingsLayout.addWidget(self.quickSettingsGroupbox)
@@ -3555,11 +3570,11 @@ class guiWin(QMainWindow):
         if custom:
             self.objLabelAnnotRgb = (int(r), int(g), int(b))
             self.SphaseAnnotRgb = (int(r*0.9), int(r*0.9), int(b*0.9))
-            self.G1phaseAnnotRgba = (int(r*0.8), int(g*0.8), int(b*0.8), 178)
+            self.G1phaseAnnotRgba = (int(r*0.8), int(g*0.8), int(b*0.8), 220)
         else:
             self.objLabelAnnotRgb = (255, 255, 255) # white
             self.SphaseAnnotRgb = (229, 229, 229)
-            self.G1phaseAnnotRgba = (204, 204, 204, 178)
+            self.G1phaseAnnotRgba = (204, 204, 204, 220)
         self.dividedAnnotRgb = (245, 188, 1) # orange
 
         self.emptyBrush = pg.mkBrush((0,0,0,0))
@@ -7122,6 +7137,7 @@ class guiWin(QMainWindow):
         if self.highLowResToggle.isChecked():
             for ax in range(2):
                 self.textAnnot[ax].setPxMode(checked)
+        self.df_settings.at['pxMode', 'value'] = int(checked)
         self.updateAllImages()
 
     def relabelSequentialCallback(self):
@@ -9295,18 +9311,10 @@ class guiWin(QMainWindow):
             menu.addAction(action)
             action.triggered.connect(slot)
         return fontActionGroup
-    
-    def setFontSizeActionChecked(self):
-        fontSize = self.sender().text()
-        for action in self.fontActionGroup.actions():
-            if action.text() != fontSize:
-                continue
-            action.trigger()
-            break
 
     @exception_handler
-    def changeFontSize(self):
-        self.fontSize = int(self.sender().text())
+    def changeFontSize(self, fontSize):
+        self.fontSize = int(fontSize)
         
         for textAnnot in self.textAnnot.values():
             textAnnot.initFonts(self.fontSize)
@@ -9318,7 +9326,7 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         allIDs = posData.allIDs
         for ax in range(2):
-            self.textAnnot[ax].setFontSize(self.fontSize, allIDs)
+            self.textAnnot[ax].changeFontSize(self.fontSize, allIDs)
         self.setAllTextAnnotations()
 
     def enableZstackWidgets(self, enabled):
@@ -9637,6 +9645,9 @@ class guiWin(QMainWindow):
             self.checkTrackingEnabled()
             self.setEnabledCcaToolbar(enabled=False)
             self.realTimeTrackingToggle.setDisabled(False)
+            self.realTimeTrackingToggle.label.setDisabled(False)
+            self.realTimeTrackingToggle.setVisible(False)
+            self.realTimeTrackingToggle.label.setVisible(False)
             if posData.cca_df is not None:
                 self.store_cca_df()
         elif mode == 'Cell cycle analysis':
@@ -9644,6 +9655,7 @@ class guiWin(QMainWindow):
             self.modeToolBar.setVisible(True)
             self.setEnabledWidgetsToolbar(False)
             self.realTimeTrackingToggle.setDisabled(True)
+            self.realTimeTrackingToggle.label.setDisabled(True)
             if proceed:
                 self.setEnabledEditToolbarButton(enabled=False)
                 if self.isSnapshot:
@@ -9658,6 +9670,7 @@ class guiWin(QMainWindow):
         elif mode == 'Viewer':
             self.modeToolBar.setVisible(True)
             self.realTimeTrackingToggle.setDisabled(True)
+            self.realTimeTrackingToggle.label.setDisabled(True)
             self.setEnabledWidgetsToolbar(False)
             self.setEnabledEditToolbarButton(enabled=False)
             self.setEnabledCcaToolbar(enabled=False)
@@ -9672,6 +9685,7 @@ class guiWin(QMainWindow):
         elif mode == 'Custom annotations':
             self.modeToolBar.setVisible(True)
             self.realTimeTrackingToggle.setDisabled(True)
+            self.realTimeTrackingToggle.label.setDisabled(True)
             self.setEnabledWidgetsToolbar(False)
             self.setEnabledEditToolbarButton(enabled=False)
             self.setEnabledCcaToolbar(enabled=False)
@@ -9683,6 +9697,7 @@ class guiWin(QMainWindow):
             self.setEnabledSnapshotMode()
             self.setEnabledWidgetsToolbar(True)
             self.realTimeTrackingToggle.setVisible(False)
+            self.realTimeTrackingToggle.label.setVisible(False)
 
     def setEnabledSnapshotMode(self):
         posData = self.data[self.pos_i]
@@ -9715,7 +9730,9 @@ class guiWin(QMainWindow):
             action.setVisible(True)
             button.setEnabled(True)
         self.realTimeTrackingToggle.setDisabled(True)
+        self.realTimeTrackingToggle.label.setDisabled(True)
         self.realTimeTrackingToggle.setVisible(False)
+        self.realTimeTrackingToggle.label.setVisible(False)
         self.repeatTrackingAction.setVisible(False)
         self.manualTrackingAction.setVisible(False)
         button = self.editToolBar.widgetForAction(self.repeatTrackingAction)
@@ -13432,6 +13449,7 @@ class guiWin(QMainWindow):
         self.measurementsMenu.setDisabled(False)
         if self.isSnapshot:
             self.realTimeTrackingToggle.setDisabled(True)
+            self.realTimeTrackingToggle.label.setDisabled(True)
             try:
                 self.drawIDsContComboBox.currentIndexChanged.disconnect()
             except Exception as e:
@@ -16581,9 +16599,6 @@ class guiWin(QMainWindow):
         
         with open(shortcut_filepath, 'w') as ini:
             cp.write(ini)
-        
-
-
     
     def editShortcuts_cb(self):
         win = apps.ShortcutEditorDialog(self.widgetsWithShortcut, parent=self)
@@ -19229,9 +19244,9 @@ class guiWin(QMainWindow):
         lutItem.gradient.showMenu = self.gui_gradientContextMenuEvent
 
         lutItem.invertBwAction.toggled.connect(self.setCheckedInvertBW)
-        self.addFontSizeActions(
-            lutItem.fontSizeMenu, self.setFontSizeActionChecked
-        )
+        # self.addFontSizeActions(
+        #     lutItem.fontSizeMenu, self.setFontSizeActionChecked
+        # )
 
         lutItem.contoursColorButton.disconnect() 
         lutItem.contoursColorButton.clicked.connect(
