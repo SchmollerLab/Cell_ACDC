@@ -39,7 +39,7 @@ def get_line(r0, c0, r1, c1, dashed=True):
     xx = np.linspace(x1, x2, int(dist))
     yy = xx*m+q
     if dashed:
-        indices = get_indices_dash_pattern(xx, 3, 2)
+        indices = get_indices_dash_pattern(xx, 4, 3)
         xx = xx[indices]
         yy = yy[indices]
     return xx, yy

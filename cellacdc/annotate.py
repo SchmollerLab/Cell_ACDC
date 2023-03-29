@@ -338,13 +338,13 @@ class TextAnnotations:
         self.item.clear()
     
     def invertBlackAndWhite(self):
-        lost_object_rgb = self.item.colors()['lost_object'][:3]
-        invertedColors = {}
+        invertedColors = {
+            name:color[:3] for name, color in self.item.colors().items()
+        }
         for color_name in INVERTIBLE_COLOR_NAMES:
             color = self.item.colors()[color_name]
             invertedColors[color_name] = tuple([255-val for val in color[:3]])
 
-        invertedColors['lost_object'] = lost_object_rgb
         self.setColors(**invertedColors)
 
     def createItems(self, isHighResolution, allIDs, pxMode=False):
@@ -374,10 +374,11 @@ class TextAnnotations:
         self.item.initFonts(fontSize)
         self.item.initSizes()
   
-    def changeResolution(self, mode, allIDs, ax):
+    def changeResolution(self, mode, allIDs, ax, img_shape):
         ax.removeItem(self.item)
         highRes = True if mode == 'high' else False        
         self.createItems(highRes, allIDs, pxMode=self._pxMode)
+        self.initItem(img_shape)
     
     def addObjAnnotation(self, obj, color_name, text, bold):
         objOpts = {
@@ -398,6 +399,7 @@ class TextAnnotations:
         
         labelsToSkip = kwargs.get('labelsToSkip')
         posData = kwargs['posData']
+        isObjVisible = kwargs.get('isVisibleCheckFunc')
         isCcaAnnot = self.isCcaAnnot()
         isAnnotateNumZslices = self.isAnnotateNumZslices()
         isLabelTreeAnnotation = self.isLabelTreeAnnotation()
@@ -407,6 +409,9 @@ class TextAnnotations:
                 if labelsToSkip.get(obj.label, False):
                     continue
             
+            if not isObjVisible(obj.bbox):
+                continue
+
             isNewObject = obj.label in posData.new_IDs
             objOpts = get_obj_text_annot_opts(
                 obj, posData.cca_df, isCcaAnnot, isNewObject,
@@ -444,11 +449,15 @@ class TextAnnotations:
             lost_object, **kwargs
         ):
         alpha = 200
+        if len(G1_phase) == 3:
+            G1_phase = (*G1_phase, 220)
+        else:
+            G1_phase = tuple(G1_phase)
         colors = {
             'label': (*label, alpha),
             'bud_will_divide': (*bud_will_divide, alpha),
             'S_phase_mother': (*S_phase_mother, alpha),
-            'G1_phase': tuple(G1_phase),
+            'G1_phase': G1_phase,
             'new_object': (255,0,0,255),
             'lost_object': (*lost_object, alpha),
             'grayed': (100,100,100,75),

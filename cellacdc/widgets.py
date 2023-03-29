@@ -4170,12 +4170,18 @@ class myHistogramLUTitem(baseHistogramLUTitem):
 
     def uncheckContLineWeightActions(self):
         for act in self.contLineWightActionGroup.actions():
-            act.toggled.disconnect()
+            try:
+                act.toggled.disconnect()
+            except Exception as e:
+                pass
             act.setChecked(False)
 
     def uncheckMothBudLineLineWeightActions(self):
         for act in self.mothBudLineWightActionGroup.actions():
-            act.toggled.disconnect()
+            try:
+                act.toggled.disconnect()
+            except Exception as e:
+                pass
             act.setChecked(False)
 
     def restoreState(self, df):

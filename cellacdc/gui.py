@@ -3854,7 +3854,7 @@ class guiWin(QMainWindow):
         msg = widgets.myMessageBox()
         txt = html_utils.paragraph(f"""
             You loaded a segmentation mask that has <b>{numItems} objects</b>.<br><br>
-            Creating <b>high resolution text annotations 
+            Creating <b>high resolution</b> text annotations 
             for these many objects could take a <b>long time</b>.<br><br>
             We recommend <b>switching to low resolution</b> annotations.<br><br>
             You can still try to switch to high resolution later.<br><br>
@@ -3864,8 +3864,7 @@ class guiWin(QMainWindow):
         _, stayHighResButton, switchToLowResButton = msg.warning(
             qparent, 'Too many objects', txt,
             buttonsTexts=(
-                'Cancel', 
-                'Stay on high resolution', 
+                'Cancel', 'Stay on high resolution', 
                 widgets.reloadPushButton(' Switch to low resolution ')              
             )
         )
@@ -3922,8 +3921,12 @@ class guiWin(QMainWindow):
         self.highLowResToggle.setChecked(True)
         numItems = len(allIDs)
         if numItems > 500:
-            proceed, switchToLowRes = self.warnTooManyItems(numItems)
-            if not proceed:
+            cancel, switchToLowRes = self.warnTooManyItems(
+                numItems, self.progressWin
+            )
+            if cancel:
+                self.progressWin.workerFinished = True
+                self.progressWin.close()
                 self.loadingDataAborted()
                 return
             if switchToLowRes:
@@ -3937,11 +3940,11 @@ class guiWin(QMainWindow):
         self.ax1_contoursImageItem = pg.ImageItem()
         self.ax1_oldMothBudLinesItem = pg.ScatterPlotItem(
             symbol='s', pxMode=False, brush=self.oldMothBudLineBrush,
-            size=1, pen=None
+            size=self.mothBudLineWeight, pen=None
         )
         self.ax1_newMothBudLinesItem = pg.ScatterPlotItem(
             symbol='s', pxMode=False, brush=self.newMothBudLineBrush,
-            size=1, pen=None
+            size=self.mothBudLineWeight, pen=None
         )
         self.ax1_lostObjScatterItem = self.gui_getLostObjScatterItem()
 
@@ -3955,11 +3958,11 @@ class guiWin(QMainWindow):
         self.ax2_contoursImageItem = pg.ImageItem()
         self.ax2_oldMothBudLinesItem = pg.ScatterPlotItem(
             symbol='s', pxMode=False, brush=self.oldMothBudLineBrush,
-            size=1, pen=None
+            size=self.mothBudLineWeight, pen=None
         )
         self.ax2_newMothBudLinesItem = pg.ScatterPlotItem(
             symbol='s', pxMode=False, brush=self.newMothBudLineBrush,
-            size=1, pen=None
+            size=self.mothBudLineWeight, pen=None
         )
         self.ax2_lostObjScatterItem = self.gui_getLostObjScatterItem()
 
@@ -4007,8 +4010,8 @@ class guiWin(QMainWindow):
             self.ax2.addItem(item)
     
     def gui_createMothBudLinePens(self):
-        if 'mothBudLineWeight' in self.df_settings.index:
-            val = self.df_settings.at['mothBudLineWeight', 'value']
+        if 'mothBudLineSize' in self.df_settings.index:
+            val = self.df_settings.at['mothBudLineSize', 'value']
             self.mothBudLineWeight = int(val)
         else:
             self.mothBudLineWeight = 2
@@ -4034,6 +4037,8 @@ class guiWin(QMainWindow):
         for act in self.imgGrad.mothBudLineWightActionGroup.actions():
             if act.lineWeight == self.mothBudLineWeight:
                 act.setChecked(True)
+            else:
+                act.setChecked(False)
         self.imgGrad.mothBudLineColorButton.setColor(self.mothBudLineColor[:3])
 
         self.imgGrad.mothBudLineColorButton.sigColorChanging.connect(
@@ -9100,7 +9105,7 @@ class guiWin(QMainWindow):
                 self.UserEnforced_DisabledTracking = False
                 self.UserEnforced_Tracking = True
 
-    def invertBw(self, checked):
+    def invertBw(self, checked, update=True):
         self.labelsGrad.invertBwAction.toggled.disconnect()
         self.labelsGrad.invertBwAction.setChecked(checked)
         self.labelsGrad.invertBwAction.toggled.connect(self.setCheckedInvertBW)
@@ -9154,7 +9159,8 @@ class guiWin(QMainWindow):
         )
         self.textIDsColorButton.setColor(self.objLabelAnnotRgb)
         
-        self.updateAllImages()
+        if update:
+            self.updateAllImages()
     
     def _channelHoverValues(self, descr, channel, value, max_value, ff=None):
         if ff is None:
@@ -16297,50 +16303,76 @@ class guiWin(QMainWindow):
     def updateContColour(self, colorButton):
         color = colorButton.color().getRgb()
         self.df_settings.at['contLineColor', 'value'] = str(color)
-        self.gui_createContourPens()
+        self._updateContColour(color)
         self.updateAllImages()
+    
+    def _updateContColour(self, color):
+        self.gui_createContourPens()
         for items in self.overlayLayersItems.values():
             lutItem = items[1]
             lutItem.contoursColorButton.setColor(color)
-
+        
     def saveContColour(self, colorButton):
         self.df_settings.to_csv(self.settings_csv_path)
     
     def updateMothBudLineColour(self, colorButton):
         color = colorButton.color().getRgb()
         self.df_settings.at['mothBudLineColor', 'value'] = str(color)
+        self._updateMothBudLineColour(color)
+        self.updateAllImages()
+    
+    def _updateMothBudLineColour(self, color):
         self.gui_createMothBudLinePens()
+        self.ax1_newMothBudLinesItem.setBrush(self.newMothBudLineBrush)
+        self.ax1_oldMothBudLinesItem.setBrush(self.oldMothBudLineBrush)
+        self.ax2_newMothBudLinesItem.setBrush(self.newMothBudLineBrush)
+        self.ax2_oldMothBudLinesItem.setBrush(self.oldMothBudLineBrush)
         for items in self.overlayLayersItems.values():
             lutItem = items[1]
             lutItem.mothBudLineColorButton.setColor(color)
-        self.updateAllImages()
 
     def saveMothBudLineColour(self, colorButton):
         self.df_settings.to_csv(self.settings_csv_path)
 
     def contLineWeightToggled(self, checked=True):
+        if not checked:
+            return
         self.imgGrad.uncheckContLineWeightActions()
         w = self.sender().lineWeight
         self.df_settings.at['contLineWeight', 'value'] = w
         self.df_settings.to_csv(self.settings_csv_path)
-        self.gui_createContourPens()
+        self._updateContLineThickness()
         self.updateAllImages()
+    
+    def _updateContLineThickness(self):
+        self.gui_createContourPens()
         for act in self.imgGrad.contLineWightActionGroup.actions():
             if act == self.sender():
                 act.setChecked(True)
             act.toggled.connect(self.contLineWeightToggled)
     
-    def mothBudLineWeightToggled(self):
+    def mothBudLineWeightToggled(self, checked=True):
+        if not checked:
+            return
         self.imgGrad.uncheckContLineWeightActions()
         w = self.sender().lineWeight
-        self.df_settings.at['mothBudLineWeight', 'value'] = w
+        self.df_settings.at['mothBudLineSize', 'value'] = w
         self.df_settings.to_csv(self.settings_csv_path)
-        self.gui_createMothBudLinePens()
+        self._updateMothBudLineSize(size)
         self.updateAllImages()
+    
+    def _updateMothBudLineSize(self, size):
+        self.gui_createMothBudLinePens()
+        
         for act in self.imgGrad.mothBudLineWightActionGroup.actions():
             if act == self.sender():
                 act.setChecked(True)
             act.toggled.connect(self.mothBudLineWeightToggled)
+        
+        self.ax1_oldMothBudLinesItem.setSize(size)
+        self.ax1_newMothBudLinesItem.setSize(size)
+        self.ax2_oldMothBudLinesItem.setSize(size)
+        self.ax2_newMothBudLinesItem.setSize(size)
 
     def getOlImg(self, key, normalizeIntens=True, frame_i=None):
         posData = self.data[self.pos_i]
@@ -17466,20 +17498,27 @@ class guiWin(QMainWindow):
     def restoreDefaultSettings(self):
         df = self.df_settings
         df.at['contLineWeight', 'value'] = 1
-        df.at['mothBudLineWeight', 'value'] = 2
+        df.at['mothBudLineSize', 'value'] = 1
         df.at['mothBudLineColor', 'value'] = (255, 165, 0, 255)
         df.at['contLineColor', 'value'] = (205, 0, 0, 220)
+
+        self._updateContColour((205, 0, 0, 220))
+        self._updateMothBudLineColour((255, 165, 0, 255))
+        self._updateMothBudLineSize(1)
+        self._updateContLineThickness()
+
         df.at['overlaySegmMasksAlpha', 'value'] = 0.3
         df.at['img_cmap', 'value'] = 'grey'
         self.imgCmap = self.imgGrad.cmaps['grey']
         self.imgCmapName = 'grey'
         self.labelsGrad.item.loadPreset('viridis')
         df.at['labels_bkgrColor', 'value'] = (25, 25, 25)
-        df.at['is_bw_inverted', 'value'] = 'No'
+        
+        if df.at['is_bw_inverted', 'value'] == 'Yes':
+            self.invertBw(update=False)
+        
         df = df[~df.index.str.contains('lab_cmap')]
         df.to_csv(self.settings_csv_path)
-        self.gui_createMothBudLinePens()
-        self.gui_createContourPens()
         self.imgGrad.restoreState(df)
         for items in self.overlayLayersItems.values():
             lutItem = items[1]
@@ -17487,6 +17526,9 @@ class guiWin(QMainWindow):
 
         self.labelsGrad.saveState(df)
         self.labelsGrad.restoreState(df, loadCmap=False)
+
+        self.df_settings.to_csv(self.settings_csv_path)
+        self.upateAllImage(s)
 
     def updateLabelsAlpha(self, value):
         self.df_settings.at['overlaySegmMasksAlpha', 'value'] = value
@@ -17642,10 +17684,12 @@ class guiWin(QMainWindow):
         self.setTitleText()
         posData = self.data[self.pos_i]
         self.textAnnot[0].setAnnotations(
-            posData=posData, labelsToSkip=labelsToSkip
+            posData=posData, labelsToSkip=labelsToSkip, 
+            isVisibleCheckFunc=self.isObjVisible
         )
         self.textAnnot[1].setAnnotations(
-            posData=posData, labelsToSkip=labelsToSkip
+            posData=posData, labelsToSkip=labelsToSkip, 
+            isVisibleCheckFunc=self.isObjVisible
         )
         self.textAnnot[0].update()
         self.textAnnot[1].update()
@@ -20133,15 +20177,16 @@ class guiWin(QMainWindow):
         # self.worker.waitCond.wakeAll()
     
     def changeTextResolution(self):
-        resolutionMode = 'high' if self.highLowResToggle.isChecked() else 'low'
+        mode = 'high' if self.highLowResToggle.isChecked() else 'low'
         self.logger.info(
-            f'Switching to {resolutionMode} for the text annnotations...'
+            f'Switching to {mode} for the text annnotations...'
         )
         self.setAllIDs()
         posData = self.data[self.pos_i]
         allIDs = posData.allIDs
-        for ax in range(2):
-            self.textAnnot[ax].changeResolution(resolutionMode, allIDs, ax)
+        img_shape = self.img1.image.shape
+        self.textAnnot[0].changeResolution(mode, allIDs, self.ax1, img_shape)
+        self.textAnnot[1].changeResolution(mode, allIDs, self.ax2, img_shape)
         self.updateAllImages()
     
     def highLoweResClicked(self, clicked=True):
