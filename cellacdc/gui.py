@@ -17565,18 +17565,6 @@ class guiWin(QMainWindow):
             img = skimage.exposure.equalize_adapthist(img)
         self.img1.setImage(img)
     
-    @exec_time
-    def setAllContoursAndTextAnnot(self):
-        posData = self.data[self.pos_i]
-        try:
-            idx = posData.IDs_idxs[ID]
-        except KeyError as e:
-            # Object already cleared
-            return
-        
-        obj = posData.rp[idx]
-        return obj
-    
     def setLostObjectContour(self, obj):
         objContours = self.getObjContours(obj)
         xx = objContours[:,0]
@@ -17648,7 +17636,7 @@ class guiWin(QMainWindow):
         self.textAnnot[0].clear()
         self.textAnnot[1].clear()
 
-    @exec_time
+    # @exec_time
     def setAllTextAnnotations(self, labelsToSkip=None):
         self.setTitleText()
         posData = self.data[self.pos_i]
