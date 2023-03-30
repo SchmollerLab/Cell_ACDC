@@ -37,7 +37,7 @@ from PyQt5.QtWidgets import (
     QLineEdit, QSlider, QSpinBox, QGridLayout, QRadioButton,
     QScrollArea, QSizePolicy, QComboBox, QPushButton, QScrollBar,
     QGroupBox, QAbstractSlider, QDoubleSpinBox, QWidgetAction,
-    QAction, QTabWidget, QAbstractSpinBox, QToolBar,
+    QAction, QTabWidget, QAbstractSpinBox, QToolBar, QStyleOptionSpinBox,
     QStyle, QDialog, QSpacerItem, QFrame, QMenu, QActionGroup,
     QListWidget, QPlainTextEdit, QFileDialog, QListView, QAbstractItemView,
     QTreeWidget, QTreeWidgetItem, QListWidgetItem, QLayout, QStylePainter
@@ -3009,6 +3009,8 @@ class DoubleSpinBox(QDoubleSpinBox):
 
 class SpinBox(QSpinBox):
     sigValueChanged = pyqtSignal(int)
+    sigUpClicked = pyqtSignal()
+    sigDownClicked = pyqtSignal()
 
     def __init__(self, parent=None, disableKeyPress=False):
         super().__init__(parent=parent)
@@ -3017,6 +3019,19 @@ class SpinBox(QSpinBox):
         self._valueChangedFunction = None
         self.disableKeyPress = disableKeyPress
     
+    def mousePressEvent(self, event) -> None:
+        super().mousePressEvent(event)
+        opt = QStyleOptionSpinBox()
+        self.initStyleOption(opt)
+
+        control = self.style().hitTestComplexControl(
+            QStyle.CC_SpinBox, opt, event.pos(), self
+        )
+        if control == QStyle.SC_SpinBoxUp:
+            self.sigUpClicked.emit()
+        elif control == QStyle.SC_SpinBoxDown:
+            self.sigDownClicked.emit()
+
     def keyPressEvent(self, event) -> None:
         isBackSpaceKey = event.key() == Qt.Key_Backspace
         isDeleteKey = event.key() == Qt.Key_Delete

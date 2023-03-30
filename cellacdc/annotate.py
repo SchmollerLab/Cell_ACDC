@@ -117,8 +117,12 @@ class TextAnnotationsImageItem(pg.ImageItem):
         super().__init__(**kargs)
     
     def initFonts(self, fontSize):
+        self.fontSize = fontSize
         self.fontBold = ImageFont.truetype(font_path, fontSize)
         self.fontRegular = ImageFont.truetype(font_bold_path, fontSize)
+    
+    def initSizes(self):
+        pass
     
     def init(self, image_shape):
         shape = (*image_shape, 4)

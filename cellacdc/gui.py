@@ -3102,8 +3102,9 @@ class guiWin(QMainWindow):
         layout.addRow(pxModeLabel, self.pxModeToggle)
 
         # Font size
-        self.fontSizeSpinBox = QSpinBox()
+        self.fontSizeSpinBox = widgets.SpinBox()
         self.fontSizeSpinBox.setMinimum(1)
+        self.fontSizeSpinBox.setMaximum(99)
         layout.addRow('Font size', self.fontSizeSpinBox) 
         savedFontSize = str(self.df_settings.at['fontSize', 'value'])
         if savedFontSize.find('pt') != -1:
@@ -3117,6 +3118,8 @@ class guiWin(QMainWindow):
             self.df_settings.to_csv(self.settings_csv_path)
         self.fontSizeSpinBox.setValue(self.fontSize)
         self.fontSizeSpinBox.editingFinished.connect(self.changeFontSize) 
+        self.fontSizeSpinBox.sigUpClicked.connect(self.changeFontSize)
+        self.fontSizeSpinBox.sigDownClicked.connect(self.changeFontSize)
 
         self.quickSettingsGroupbox.setLayout(layout)
         self.quickSettingsLayout.addWidget(self.quickSettingsGroupbox)
@@ -9352,10 +9355,11 @@ class guiWin(QMainWindow):
 
     @exception_handler
     def changeFontSize(self):
-        self.fontSize = self.fontSizeSpinBox.value()
+        fontSize = self.fontSizeSpinBox.value()
+        if fontSize == self.fontSize:
+            return
         
-        for textAnnot in self.textAnnot.values():
-            textAnnot.initFonts(self.fontSize)
+        self.fontSize = fontSize
 
         self.df_settings.at['fontSize', 'value'] = self.fontSize
         self.df_settings.to_csv(self.settings_csv_path)
@@ -9365,7 +9369,10 @@ class guiWin(QMainWindow):
         allIDs = posData.allIDs
         for ax in range(2):
             self.textAnnot[ax].changeFontSize(self.fontSize)
-        self.setAllTextAnnotations()
+        if self.highLowResToggle.isChecked():
+            self.setAllTextAnnotations()
+        else:
+            self.updateAllImages()
 
     def enableZstackWidgets(self, enabled):
         if enabled:
