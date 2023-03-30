@@ -1682,6 +1682,63 @@ class TrackSubCellObjectsWorker(BaseWorkerUtil):
         self.signals.finished.emit(self)
 
 
+class PostProcessSegm(QObject):
+    def __init__(self, postProcessKwargs, mainWin):
+        super().__init__()
+        self.signals = signals()
+        self.logger = workerLogger(self.signals.progress)
+        self.kwargs = postProcessKwargs
+        self.mainWin = mainWin
+    
+    def run(self):
+        mainWin = self.mainWin
+        data = mainWin.data
+        posData = data[mainWin.pos_i]
+        if len(data) > 1:
+            self.signals.initProgressBar.emit(len(data))
+        else:
+            current_frame_i = posData.frame_i
+            self.signals.initProgressBar.emit(posData.SizeT - current_frame_i)
+        
+        self.logger.log('Post-process segmentation process started.')
+        self._run()
+        self.signals.finished.emit(None)
+    
+    def _run(self):
+        kwargs = self.kwargs
+        mainWin = self.mainWin
+        data = mainWin.data
+
+        for posData in data:
+            current_frame_i = posData.frame_i
+            data_li = posData.allData_li[current_frame_i:]
+            for i, data_dict in enumerate(data_li):
+                frame_i = current_frame_i + i
+                visited = True
+                lab = data_dict['labels']
+                if lab is None:
+                    visited = False
+                    try:
+                        lab = posData.segm_data[frame_i]
+                    except Exception as e:
+                        return
+
+                processed_lab = core.remove_artefacts(
+                    lab, return_delIDs=False, **kwargs
+                )
+                if visited:
+                    posData.allData_li[frame_i]['labels'] = processed_lab
+                    # Get the rest of the stored metadata based on the new lab
+                    posData.frame_i = frame_i
+                    mainWin.get_data()
+                    mainWin.store_data(autosave=False)
+                else:
+                    posData.segm_data[frame_i] = lab
+
+                self.signals.progressBar.emit(1)
+            
+            posData.frame_i = current_frame_i
+
 class CreateConnected3Dsegm(BaseWorkerUtil):
     sigAskAppendName = pyqtSignal(str, list)
     sigAborted = pyqtSignal()

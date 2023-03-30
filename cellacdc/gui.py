@@ -7372,6 +7372,34 @@ class guiWin(QMainWindow):
         self.thread.started.connect(self.worker.run)
         self.thread.start()
     
+    def startPostProcessSegmWorker(self, postProcessKwargs):
+        self.thread = QThread()
+        self.postProcessWorker = workers.PostProcessSegm(postProcessKwargs, self)
+        
+        self.postProcessWorker.moveToThread(self.thread)
+        self.postProcessWorker.signals.finished.connect(self.thread.quit)
+        self.postProcessWorker.signals.finished.connect(
+            self.postProcessWorker.deleteLater
+        )
+        self.thread.finished.connect(self.thread.deleteLater)
+
+        self.postProcessWorker.signals.finished.connect(
+            self.postProcessSegmWorkerFinished
+        )
+        self.postProcessWorker.signals.progress.connect(self.workerProgress)
+        self.postProcessWorker.signals.initProgressBar.connect(
+            self.workerInitProgressbar
+        )
+        self.postProcessWorker.signals.progressBar.connect(
+            self.workerUpdateProgressbar
+        )
+        self.postProcessWorker.signals.critical.connect(
+            self.workerCritical
+        )
+
+        self.thread.started.connect(self.postProcessWorker.run)
+        self.thread.start()
+    
     def relabelWorkerFinished(self):
         self.updateAllImages()
 
@@ -11556,16 +11584,43 @@ class guiWin(QMainWindow):
             self.postProcessSegmWin.sigEditingFinished.connect(
                 self.postProcessSegmEditingFinished
             )
+            self.postProcessSegmWin.sigApplyToAllFutureFrames.connect(
+                self.postProcessSegmApplyToAllFutureFrames
+            )
             self.postProcessSegmWin.show()
             self.postProcessSegmWin.valueChanged(None)
         else:
             self.postProcessSegmWin.close()
             self.postProcessSegmWin = None
     
+    def postProcessSegmApplyToAllFutureFrames(self, postProcessKwargs):
+        proceed = self.warnEditingWithCca_df('post-processing segmentation')
+        if not proceed:
+            self.logger.info('Post-processing segmentation cancelled.')
+            return
+
+        self.progressWin = apps.QDialogWorkerProgress(
+            title='Post-processing segmentation', parent=self,
+            pbarDesc=f'Post-processing segmentation masks...'
+        )
+        self.progressWin.show(self.app)
+        self.progressWin.mainPbar.setMaximum(0)
+
+        self.startPostProcessSegmWorker(postProcessKwargs)
+    
     def postProcessSegmEditingFinished(self):
         self.update_rp()
         self.store_data()
         self.updateAllImages()
+    
+    def postProcessSegmWorkerFinished(self):
+        self.progressWin.workerFinished = True
+        self.progressWin.close()
+        self.progressWin = None
+        self.get_data()
+        self.updateAllImages()
+        self.titleLabel.setText('Post-processing segmentation done!', color='w')
+        self.logger.info('Post-processing segmentation done!')
 
     def postProcessSegmWinClosed(self):
         self.postProcessSegmWin = None

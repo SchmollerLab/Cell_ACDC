@@ -6173,7 +6173,7 @@ class postProcessSegmDialog(widgets.QBaseDialog):
     sigClosed = pyqtSignal()
     sigValueChanged = pyqtSignal(object, object)
     sigEditingFinished = pyqtSignal()
-    sigApplyToAllFutureFrames = pyqtSignal()
+    sigApplyToAllFutureFrames = pyqtSignal(object)
 
     def __init__(self, mainWin=None, useSliders=True, SizeZ=None, maxSize=None):
         super().__init__(mainWin)
@@ -6200,8 +6200,8 @@ class postProcessSegmDialog(widgets.QBaseDialog):
         self.artefactsGroupBox.editingFinished.connect(self.onEditingFinished)
 
         if self.isTimelapse:
-            applyAllButton = widgets.okPushButton(
-                'Apply to all frames...', isDefault=False
+            applyAllButton = widgets.futurePushButton(
+                'Apply to all frames...'
             )
             applyAllButton.clicked.connect(self.applyAll_cb)
             applyButton = widgets.okPushButton(
@@ -6209,8 +6209,8 @@ class postProcessSegmDialog(widgets.QBaseDialog):
             )
             applyButton.clicked.connect(self.apply_cb)
         elif self.isMultiPos:
-            applyAllButton = QPushButton(
-                'Apply to all Positions...', isDefault=False
+            applyAllButton = widgets.futurePushButton(
+                'Apply to all Positions...'
             )
             applyAllButton.clicked.connect(self.applyAll_cb)
             applyButton = widgets.okPushButton('Apply', isDefault=False)
@@ -6223,10 +6223,12 @@ class postProcessSegmDialog(widgets.QBaseDialog):
         cancelButton = widgets.cancelPushButton('Cancel')
 
         buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(cancelButton)
+        buttonsLayout.addSpacing(20)
         if applyButton is not None:
             buttonsLayout.addWidget(applyButton)
         buttonsLayout.addWidget(applyAllButton)
-        buttonsLayout.addWidget(cancelButton)
+        
         emitEditingFinishedButton = widgets.okPushButton()
         buttonsLayout.addWidget(emitEditingFinishedButton)
         emitEditingFinishedButton.hide()
@@ -6260,9 +6262,6 @@ class postProcessSegmDialog(widgets.QBaseDialog):
         self.sigValueChanged.emit(lab, delObjs)
         
     def apply(self, origLab=None):
-        if self.mainWin is None:
-            return
-
         self.mainWin.warnEditingWithCca_df('post-processing segmentation mask')
 
         if origLab is None:
@@ -6289,64 +6288,9 @@ class postProcessSegmDialog(widgets.QBaseDialog):
         self.onEditingFinished()
 
     def applyAll_cb(self):
-        if self.mainWin is None:
-            return
-
-        if self.isTimelapse:
-            current_frame_i = self.posData.frame_i
-
-            self.origSegmData = self.posData.segm_data.copy()
-
-            # Apply to all future frames or future positions
-            for frame_i in range(self.posData.segmSizeT):
-                self.posData.frame_i = frame_i
-                lab = self.posData.allData_li[frame_i]['labels']
-                if lab is None:
-                    # Non-visited frame modify segm_data
-                    origLab = self.posData.segm_data[frame_i].copy()
-                    lab, delIDs = self.apply(origLab=origLab)
-                    self.posData.segm_data[frame_i] = lab
-                else:
-                    self.mainWin.get_data()
-                    origLab = self.posData.lab.copy()
-                    self.origSegmData[frame_i] = origLab
-                    lab, delIDs = self.apply(origLab=origLab)
-                    self.posData.lab = lab
-                    self.posData.allData_li[frame_i]['labels'] = lab.copy()
-                    # Get the rest of the stored metadata based on the new lab
-                    self.mainWin.get_data()
-                    self.mainWin.store_data()
-
-            # Back to current frame
-            self.posData.frame_i = current_frame_i
-            self.mainWin.get_data()
-            self.mainWin.updateAllImages()
-
-            msg = QMessageBox()
-            msg.information(
-                self, 'Done', 'Post-processing applied to all frames!'
-            )
-
-        elif self.isMultiPos:
-            self.origSegmData = []
-            current_pos_i = self.mainWin.pos_i
-            # Apply to all future frames or future positions
-            for pos_i, posData in enumerate(self.mainWin.data):
-                self.mainWin.pos_i = pos_i
-                self.mainWin.get_data()
-                origLab = posData.lab.copy()
-                self.origSegmData.append(origLab)
-                lab, delIDs = self.apply(origLab=origLab)
-
-                self.posData.allData_li[0]['labels'] = lab.copy()
-                # Get the rest of the stored metadata based on the new lab
-                self.mainWin.get_data()
-                self.mainWin.store_data()
-
-            # Back to current pos and current frame
-            self.mainWin.pos_i = current_pos_i
-            self.mainWin.get_data()
-            self.mainWin.updateAllImages()
+        self.cancel = False
+        self.sigApplyToAllFutureFrames.emit(self.artefactsGroupBox.kwargs())
+        self.close()
 
     def cancel_cb(self):
         self.cancel = True
