@@ -6173,6 +6173,7 @@ class postProcessSegmDialog(widgets.QBaseDialog):
     sigClosed = pyqtSignal()
     sigValueChanged = pyqtSignal(object, object)
     sigEditingFinished = pyqtSignal()
+    sigApplyToAllFutureFrames = pyqtSignal()
 
     def __init__(self, mainWin=None, useSliders=True, SizeZ=None, maxSize=None):
         super().__init__(mainWin)
