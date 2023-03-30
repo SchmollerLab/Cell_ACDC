@@ -187,7 +187,7 @@ class segmWorker(QRunnable):
                     Y, X = img_data.shape[-2:]
                     img_data = img_data[:, y0:y1, x0:x1]
                     if self.secondChannelName is not None:
-                        second_ch_data = second_ch_data[:, y0:y1, x0:x1]
+                        second_ch_data_slice = second_ch_data_slice[:, y0:y1, x0:x1]
                     pad_info = ((0, 0), (y0, Y-y1), (x0, X-x1))
 
                 img_data_slice = img_data[self.t0:stop_i]
