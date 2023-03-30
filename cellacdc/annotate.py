@@ -131,6 +131,7 @@ class TextAnnotationsImageItem(pg.ImageItem):
     def clearData(self):
         self.clearImage()
         self.texts = []
+        self.annotData = []
     
     def update(self):
         pass
@@ -150,10 +151,10 @@ class TextAnnotationsImageItem(pg.ImageItem):
         self.pilDraw.text(pos, text, color, font=font, anchor='mm')
     
     def draw(self):
-        super().setImage(np.array(self.pilDraw))
+        super().setImage(np.array(self.pilImage))
 
     def setColors(self, colors):
-        self._colors = colors
+        self._colors = colors.copy()
     
     def initSymbols(self, allIDs):
         pass
@@ -237,7 +238,7 @@ class TextAnnotationsScatterItem(pg.ScatterPlotItem):
         )
     
     def setColors(self, colors):
-        self._colors = colors
+        self._colors = colors.copy()
         self._brushes = {}
         self._pens = {}
         for name, color in self._colors.items():
@@ -379,6 +380,9 @@ class TextAnnotations:
         highRes = True if mode == 'high' else False        
         self.createItems(highRes, allIDs, pxMode=self._pxMode)
         self.initItem(img_shape)
+        self.item.setColors(self.colors())
+        self.item.clearData()
+        ax.addItem(self.item)
     
     def addObjAnnotation(self, obj, color_name, text, bold):
         objOpts = {
@@ -466,6 +470,10 @@ class TextAnnotations:
             'green': (0,255,0,220)
         }
         self.item.setColors(colors)
+        self._colors = colors
+    
+    def colors(self):
+        return self._colors
 
     def setLabelAnnot(self, isLabelAnnot):
         self._isLabelAnnot = isLabelAnnot

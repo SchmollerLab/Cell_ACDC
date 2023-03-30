@@ -3061,6 +3061,7 @@ class guiWin(QMainWindow):
         layout.addRow(autoSaveLabel, self.autoSaveToggle)
 
         self.highLowResToggle = widgets.Toggle()
+        self.widgetsWithShortcut['High resolution'] = self.highLowResToggle
         self.highLowResToggle.setShortcut('w')
         highLowResTooltip = (
             'Resolution of the text annotations. High resolution results '
@@ -3094,6 +3095,7 @@ class guiWin(QMainWindow):
             'from the menu on the top menubar `Edit --> Font size`.'
         )
         pxModeLabel = QLabel('Pixel mode')
+        self.pxModeToggle.label = pxModeLabel
         pxModeLabel.setToolTip(pxModeTooltip)
         self.pxModeToggle.setToolTip(pxModeTooltip)
         self.pxModeToggle.clicked.connect(self.pxModeToggled)
@@ -16773,9 +16775,9 @@ class guiWin(QMainWindow):
         if self.labelsGrad.showRightImgAction.isChecked():
             # Equally share space between the two control groupboxes
             self.bottomLayout.setStretch(1, 1)
-            self.bottomLayout.setStretch(2, 6)
+            self.bottomLayout.setStretch(2, 5)
             self.bottomLayout.setStretch(3, 1)
-            self.bottomLayout.setStretch(4, 6)
+            self.bottomLayout.setStretch(4, 5)
             self.bottomLayout.setStretch(5, 1)
         elif self.labelsGrad.showLabelsImgAction.isChecked():
             # Left control takes only left space
@@ -17564,6 +17566,38 @@ class guiWin(QMainWindow):
         if self.equalizeHistPushButton.isChecked():
             img = skimage.exposure.equalize_adapthist(img)
         self.img1.setImage(img)
+    
+    def getContoursImageItem(self, ax):
+        if not self.areContoursRequested(ax):
+            return
+        
+        if ax == 0:
+            return self.ax1_contoursImageItem
+        else:
+            return self.ax2_contoursImageItem
+    
+    def updateContoursImage(self, ax):
+        imageItem = self.getContoursImageItem(ax)
+        if imageItem is None:
+            return
+        
+        if not hasattr(self, 'contoursImage'):
+            self.initContoursImage()
+        else:
+            self.contoursImage[:] = 0
+        
+        contours = []
+        for obj in skimage.measure.regionprops(self.currentLab2D):            
+            objContour = self.getObjContours(obj, appendMultiContID=False)
+            contours.append(objContour)
+
+        thickness = self.contLineWeight
+        color = self.contLineColor
+        self.setContoursImage(imageItem, contours, thickness, color)
+    
+    def setContoursImage(self, imageItem, contours, thickness, color):
+        cv2.drawContours(self.contoursImage, contours, -1, color, thickness)
+        imageItem.setImage(self.contoursImage)
     
     def setLostObjectContour(self, obj):
         objContours = self.getObjContours(obj)
@@ -20138,6 +20172,7 @@ class guiWin(QMainWindow):
         self.logger.info(
             f'Switching to {mode} for the text annnotations...'
         )
+        self.pxModeToggle.setDisabled(not self.highLowResToggle.isChecked())
         self.setAllIDs()
         posData = self.data[self.pos_i]
         allIDs = posData.allIDs

@@ -2572,7 +2572,7 @@ class Toggle(QCheckBox):
         width=80,
         bg_color='#b3b3b3',
         circle_color='#ffffff',
-        active_color='#1db954',# '#005ce6',
+        active_color='#26dd66',# '#005ce6',
         animation_curve=QEasingCurve.InOutQuad
     ):
         QCheckBox.__init__(self)
@@ -2587,7 +2587,7 @@ class Toggle(QCheckBox):
         self._disabled_active_color = colors.lighten_color(active_color)
         self._disabled_circle_color = colors.lighten_color(circle_color)
         self._disabled_bg_color = colors.lighten_color(bg_color, amount=0.5)
-        self._circle_margin = 6
+        self._circle_margin = 4
 
         self._circle_position = int(self._circle_margin/2)
         self.animation = QPropertyAnimation(self, b'circle_position', self)
@@ -2603,7 +2603,7 @@ class Toggle(QCheckBox):
             self.setChecked(initial)
 
     def sizeHint(self):
-        return QSize(37, 18)
+        return QSize(36, 18)
 
     def eventFilter(self, object, event):
         # To get the actual position of the circle we need to wait that
@@ -2660,8 +2660,10 @@ class Toggle(QCheckBox):
     def hitButton(self, pos: QPoint):
         return self.contentsRect().contains(pos)
 
-    def setDisabled(self, state):
-        QCheckBox.setDisabled(self, state)
+    def setDisabled(self, disable):
+        QCheckBox.setDisabled(self, disable)
+        if hasattr(self, 'label'):
+            self.label.setDisabled(disable)
         self.update()
 
     def paintEvent(self, e):
