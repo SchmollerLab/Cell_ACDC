@@ -5657,8 +5657,7 @@ class randomWalkerDialog(QDialog):
         lab = skimage.measure.label(lab>1)
         t1 = time.time()
         if len(np.unique(lab)) > 2:
-            skimage.morphology.remove_small_objects(lab, min_size=5,
-                                                    in_place=True)
+            lab = skimage.morphology.remove_small_objects(lab, min_size=5)
         posData = self.mainWindow.data[self.mainWindow.pos_i]
         posData.lab = lab
         return t1-t0
@@ -8882,7 +8881,7 @@ class manualSeparateGui(QMainWindow):
             self.AllCutsCoords.append((yyCurve, xxCurve))
             for rr, cc in self.AllCutsCoords:
                 self.lab[rr, cc] = 0
-            skimage.morphology.remove_small_objects(self.lab, 5, in_place=True)
+            self.lab = skimage.morphology.remove_small_objects(self.lab, 5)
             self.splitObjectAlongCurve()
 
 
@@ -8908,7 +8907,9 @@ class manualSeparateGui(QMainWindow):
         self.labelItemsIDs = []
         for obj in rp:
             labelItemID = widgets.myLabelItem()
-            labelItemID.setText(f'{obj.label}', color='r', size=self.fontSize)
+            labelItemID.setText(
+                f'{obj.label}', color='r', size=f'{self.fontSize}px'
+            )
             y, x = obj.centroid
             w, h = labelItemID.rect().right(), labelItemID.rect().bottom()
             labelItemID.setPos(x-w/2, y-h/2)
