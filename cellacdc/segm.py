@@ -154,7 +154,7 @@ class segmWorker(QRunnable):
         isROIactive = False
         if posData.dataPrep_ROIcoords is not None and not self.ROIdeactivatedByUser:
             isROIactive = posData.dataPrep_ROIcoords.at['cropped', 'value'] == 0
-            x0, x1, y0, y1 = posData.dataPrep_ROIcoords['value'][:4]
+            x0, x1, y0, y1 = posData.dataPrep_ROIcoords['value'].astype(int)[:4]
             Y, X = posData.img_data.shape[-2:]
             x0 = x0 if x0>0 else 0
             y0 = y0 if y0>0 else 0
@@ -179,13 +179,21 @@ class segmWorker(QRunnable):
             if self.concat_segm and posData.segm_data is not None:
                 self.t0 = len(posData.segm_data)
             if posData.SizeZ > 1 and not self.isSegm3D:
+                img_data = posData.img_data
                 # 2D segmentation on 3D data over time
-                img_data_slice = posData.img_data[self.t0:stop_i]
+                if isROIactive:
+                    Y, X = img_data.shape[-2:]
+                    img_data = img_data[:, y0:y1, x0:x1]
+                    if self.secondChannelName is not None:
+                        second_ch_data = second_ch_data[:, y0:y1, x0:x1]
+                    pad_info = ((0, 0), (y0, Y-y1), (x0, X-x1))
+
+                img_data_slice = img_data[self.t0:stop_i]
                 if self.secondChannelName is not None:
                     second_ch_data_slice = secondChImgData[self.t0:stop_i]
-                Y, X = posData.img_data.shape[-2:]
+                Y, X = img_data.shape[-2:]
                 newShape = (stop_i, Y, X)
-                img_data = np.zeros(newShape, posData.img_data.dtype)
+                img_data = np.zeros(newShape, img_data.dtype)
                 if self.secondChannelName is not None:
                     second_ch_data = np.zeros(newShape, secondChImgData.dtype)
                 df = posData.segmInfo_df.loc[posData.filename]
@@ -212,12 +220,6 @@ class segmWorker(QRunnable):
                         img_data[i] = np.median(img, axis=0)
                         if self.secondChannelName is not None:
                             second_ch_data[i] = np.median(second_ch_img, axis=0)
-                if isROIactive:
-                    Y, X = img_data.shape[-2:]
-                    img_data = img_data[:, y0:y1, x0:x1]
-                    if self.secondChannelName is not None:
-                        second_ch_data = second_ch_data[:, y0:y1, x0:x1]
-                    pad_info = ((0, 0), (0, 0), (y0, Y-y1), (x0, X-x1))
             elif posData.SizeZ > 1 and self.isSegm3D:
                 # 3D segmentation on 3D data over time
                 img_data = posData.img_data[self.t0:stop_i]
@@ -242,30 +244,36 @@ class segmWorker(QRunnable):
                     pad_info = ((0, 0), (y0, Y-y1), (x0, X-x1))
         else:
             if posData.SizeZ > 1 and not self.isSegm3D:
+                img_data = posData.img_data
+                if self.secondChannelName is not None:
+                    second_ch_data = secondChImgData
+                if isROIactive:
+                    Y, X = img_data.shape[-2:]
+                    pad_info = ((y0, Y-y1), (x0, X-x1))
+                    img_data = img_data[:, y0:y1, x0:x1]
+                    if self.secondChannelName is not None:
+                        second_ch_data = second_ch_data[:, :, y0:y1, x0:x1]
+               
                 # 2D segmentation on single 3D image
                 z_info = posData.segmInfo_df.loc[posData.filename].iloc[0]
                 z = z_info.z_slice_used_dataPrep
                 zProjHow = z_info.which_z_proj
                 if zProjHow == 'single z-slice':
-                    img_data = posData.img_data[z]
+                    img_data = img_data[z]
                     if self.secondChannelName is not None:
-                        second_ch_data = secondChImgData[z]
+                        second_ch_data = second_ch_data[z]
                 elif zProjHow == 'max z-projection':
-                    img_data = posData.img_data.max(axis=0)
+                    img_data = img_data.max(axis=0)
                     if self.secondChannelName is not None:
-                        second_ch_data = secondChImgData.max(axis=0)
+                        second_ch_data = second_ch_data.max(axis=0)
                 elif zProjHow == 'mean z-projection':
-                    img_data = posData.img_data.mean(axis=0)
+                    img_data = img_data.mean(axis=0)
                     if self.secondChannelName is not None:
-                        second_ch_data = secondChImgData.mean(axis=0)
+                        second_ch_data = second_ch_data.mean(axis=0)
                 elif zProjHow == 'median z-proj.':
-                    img_data = np.median(posData.img_data, axis=0)
+                    img_data = np.median(img_data, axis=0)
                     if self.secondChannelName is not None:
-                        second_ch_data[i] = np.median(secondChImgData, axis=0)
-                if isROIactive:
-                    Y, X = img_data.shape[-2:]
-                    pad_info = ((0, 0), (y0, Y-y1), (x0, X-x1))
-                    img_data = img_data[:, y0:y1, x0:x1]
+                        second_ch_data[i] = np.median(second_ch_data, axis=0)
             elif posData.SizeZ > 1 and self.isSegm3D:
                 # 3D segmentation on 3D z-stack
                 img_data = posData.img_data

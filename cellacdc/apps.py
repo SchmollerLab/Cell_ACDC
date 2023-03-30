@@ -8884,7 +8884,6 @@ class manualSeparateGui(QMainWindow):
             self.lab = skimage.morphology.remove_small_objects(self.lab, 5)
             self.splitObjectAlongCurve()
 
-
     def histLUT_cb(self, LUTitem):
         if self.overlayButton.isChecked():
             overlay = self.getOverlay()
