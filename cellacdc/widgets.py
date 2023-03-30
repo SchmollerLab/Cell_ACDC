@@ -281,10 +281,11 @@ class mergePushButton(QPushButton):
         self.setIcon(QIcon(':merge-IDs.svg'))
 
 class okPushButton(QPushButton):
-    def __init__(self, *args):
+    def __init__(self, *args, isDefault=True):
         super().__init__(*args)
         self.setIcon(QIcon(':yesGray.svg'))
-        self.setDefault(True)
+        if isDefault:
+            self.setDefault(True)
         # QShortcut(Qt.Key_Return, self, self.click)
         # QShortcut(Qt.Key_Enter, self, self.click)
 

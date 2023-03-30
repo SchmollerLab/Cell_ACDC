@@ -6173,6 +6173,7 @@ class postProcessSegmParams(QGroupBox):
 class postProcessSegmDialog(widgets.QBaseDialog):
     sigClosed = pyqtSignal()
     sigValueChanged = pyqtSignal(object, object)
+    sigEditingFinished = pyqtSignal()
 
     def __init__(self, mainWin=None, useSliders=True, SizeZ=None, maxSize=None):
         super().__init__(mainWin)
@@ -6199,17 +6200,23 @@ class postProcessSegmDialog(widgets.QBaseDialog):
         self.artefactsGroupBox.editingFinished.connect(self.onEditingFinished)
 
         if self.isTimelapse:
-            applyAllButton = widgets.okPushButton('Apply to all frames...')
+            applyAllButton = widgets.okPushButton(
+                'Apply to all frames...', isDefault=False
+            )
             applyAllButton.clicked.connect(self.applyAll_cb)
-            applyButton = widgets.okPushButton('Apply')
+            applyButton = widgets.okPushButton(
+                'Apply', isDefault=False
+            )
             applyButton.clicked.connect(self.apply_cb)
         elif self.isMultiPos:
-            applyAllButton = QPushButton('Apply to all Positions...')
+            applyAllButton = QPushButton(
+                'Apply to all Positions...', isDefault=False
+            )
             applyAllButton.clicked.connect(self.applyAll_cb)
-            applyButton = widgets.okPushButton('Apply')
+            applyButton = widgets.okPushButton('Apply', isDefault=False)
             applyButton.clicked.connect(self.apply_cb)
         else:
-            applyAllButton = widgets.okPushButton('Apply')
+            applyAllButton = widgets.okPushButton('Apply', isDefault=False)
             applyAllButton.clicked.connect(self.ok_cb)
             applyButton = None
 
@@ -6220,6 +6227,9 @@ class postProcessSegmDialog(widgets.QBaseDialog):
             buttonsLayout.addWidget(applyButton)
         buttonsLayout.addWidget(applyAllButton)
         buttonsLayout.addWidget(cancelButton)
+        emitEditingFinishedButton = widgets.okPushButton()
+        buttonsLayout.addWidget(emitEditingFinishedButton)
+        emitEditingFinishedButton.hide()
         buttonsLayout.setContentsMargins(0,10,0,0)
 
         mainLayout.addWidget(self.artefactsGroupBox)
@@ -6231,6 +6241,9 @@ class postProcessSegmDialog(widgets.QBaseDialog):
 
         if mainWin is not None:
             self.setPosData()
+    
+    def keyPressEvent(self, event) -> None:
+        return super().keyPressEvent(event)
 
     def setPosData(self):
         if self.mainWin is None:
@@ -6239,10 +6252,12 @@ class postProcessSegmDialog(widgets.QBaseDialog):
         self.mainWin.storeUndoRedoStates(False)
         self.posData = self.mainWin.data[self.mainWin.pos_i]
         self.origLab = self.posData.lab.copy()
+        self.origRp = skimage.measure.regionprops(self.origLab)
+        self.origObjs = {obj.label:obj for obj in self.origRp}
 
     def valueChanged(self, value):
-        lab, delIDs = self.apply()
-        self.sigValueChanged.emit(lab, delIDs)
+        lab, delObjs = self.apply()
+        self.sigValueChanged.emit(lab, delObjs)
         
     def apply(self, origLab=None):
         if self.mainWin is None:
@@ -6256,16 +6271,11 @@ class postProcessSegmDialog(widgets.QBaseDialog):
         lab, delIDs = core.remove_artefacts(
             origLab, return_delIDs=True, **self.artefactsGroupBox.kwargs()
         )
-
-        return lab, delIDs
+        delObjs = {delID:self.origObjs[delID] for delID in delIDs}
+        return lab, delObjs
 
     def onEditingFinished(self):
-        if self.mainWin is None:
-            return
-
-        self.mainWin.update_rp()
-        self.mainWin.store_data()
-        self.mainWin.updateAllImages()
+        self.sigEditingFinished.emit()
 
     def ok_cb(self):
         self.cancel = False
@@ -6387,8 +6397,9 @@ class postProcessSegmDialog(widgets.QBaseDialog):
 
     def show(self, block=False):
         # self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
-        super().show(block=block)
+        super().show(block=False)
         self.resize(int(self.width()*1.5), self.height())
+        super().show(block=block)
 
     def closeEvent(self, event):
         self.sigClosed.emit()

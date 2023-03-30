@@ -9769,6 +9769,19 @@ class guiWin(QMainWindow):
         else:
             self.slideshowWin.close()
             self.slideshowWin = None
+    
+    def goToZsliceSearchedID(self, obj):
+        if not self.isSegm3D:
+            return
+        
+        current_z = self.z_lab()
+        nearest_nonzero_z = core.nearest_nonzero_z_idx_from_z_centroid(
+            obj, current_z=current_z
+        )
+        if nearest_nonzero_z == current_z:
+            return
+        
+        self.zSliceScrollBar.setSliderPosition(nearest_nonzero_z)
 
     def nearest_nonzero(self, a, y, x):
         r, c = np.nonzero(a)
@@ -11540,11 +11553,19 @@ class guiWin(QMainWindow):
             self.postProcessSegmWin.sigValueChanged.connect(
                 self.postProcessSegmValueChanged
             )
+            self.postProcessSegmWin.sigEditingFinished.connect(
+                self.postProcessSegmEditingFinished
+            )
             self.postProcessSegmWin.show()
             self.postProcessSegmWin.valueChanged(None)
         else:
             self.postProcessSegmWin.close()
             self.postProcessSegmWin = None
+    
+    def postProcessSegmEditingFinished(self):
+        self.update_rp()
+        self.store_data()
+        self.updateAllImages()
 
     def postProcessSegmWinClosed(self):
         self.postProcessSegmWin = None
@@ -11552,20 +11573,22 @@ class guiWin(QMainWindow):
         self.postProcessSegmAction.setChecked(False)
         self.postProcessSegmAction.toggled.connect(self.postProcessSegm)
     
-    def postProcessSegmValueChanged(self, lab, delIDs):
-        for delID in delIDs:
-            self.clearObjContour(ID=delID, ax=0)
-            self.clearObjContour(ID=delID, ax=1)
+    def postProcessSegmValueChanged(self, lab, delObjs: dict):
+        for delObj in delObjs.values():
+            self.clearObjContour(obj=delObj, ax=0)
+            self.clearObjContour(obj=delObj, ax=1)
             
         posData = self.data[self.pos_i]
         
         labelsToSkip = {}
         for ID in posData.IDs:
-            if ID in delIDs:
+            if ID in delObjs:
                 labelsToSkip[ID] = True
                 continue
-
-            self.addObjContourToContoursImage(ID=ID, ax=0)
+            
+            restoreObj = self.postProcessSegmWin.origObjs[ID]
+            self.addObjContourToContoursImage(obj=restoreObj, ax=0)
+            self.addObjContourToContoursImage(obj=restoreObj, ax=1)
  
         # self.setAllTextAnnotations(labelsToSkip=labelsToSkip)
 
@@ -13298,6 +13321,8 @@ class guiWin(QMainWindow):
         self.isDataLoading = False
     
     def resizeGui(self):
+        self.ax1.vb.state['limits']['xRange'] = [None, None]
+        self.ax1.vb.state['limits']['yRange'] = [None, None]
         self.autoRange()
         if self.ax1.getViewBox().state['limits']['xRange'][0] is not None:
             self.bottomScrollArea._resizeVertical()
@@ -13307,6 +13332,7 @@ class guiWin(QMainWindow):
         maxXRange = int((xmax-xmin)*1.5)
         self.ax1.setLimits(maxYRange=maxYRange, maxXRange=maxXRange)
         self.bottomScrollArea._resizeVertical()
+        QTimer.singleShot(300, self.autoRange)
     
     def setVisible3DsegmWidgets(self):
         self.annotNumZslicesCheckbox.setVisible(self.isSegm3D)
@@ -16742,7 +16768,7 @@ class guiWin(QMainWindow):
         
         self.df_settings.to_csv(self.settings_csv_path)
             
-        QTimer.singleShot(300, self.autoRange)
+        QTimer.singleShot(300, self.resizeGui)
 
         self.setBottomLayoutStretch()    
         
@@ -16767,7 +16793,7 @@ class guiWin(QMainWindow):
                     # self.ax2.removeItem(roi)
         
         self.df_settings.to_csv(self.settings_csv_path)
-        QTimer.singleShot(200, self.autoRange)
+        QTimer.singleShot(200, self.resizeGui)
 
         self.setBottomLayoutStretch()
 
@@ -17392,6 +17418,8 @@ class guiWin(QMainWindow):
         objIdx = posData.IDs.index(ID)
         obj = posData.rp[objIdx]
 
+        self.goToZsliceSearchedID(obj)
+
         if isOverlaySegm_ax1 or isOverlaySegm_ax2:
             alpha = self.imgGrad.labelsAlphaSlider.value()
             highlightedLab = np.zeros_like(self.currentLab2D)
@@ -17598,6 +17626,17 @@ class guiWin(QMainWindow):
     def setContoursImage(self, imageItem, contours, thickness, color):
         cv2.drawContours(self.contoursImage, contours, -1, color, thickness)
         imageItem.setImage(self.contoursImage)
+    
+    def getObjFromID(self, ID):
+        posData = self.data[self.pos_i]
+        try:
+            idx = posData.IDs_idxs[ID]
+        except KeyError as e:
+            # Object already cleared
+            return
+        
+        obj = posData.rp[idx]
+        return obj
     
     def setLostObjectContour(self, obj):
         objContours = self.getObjContours(obj)

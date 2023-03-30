@@ -56,6 +56,44 @@ def np_replace_values(arr, old_values, new_values):
     arr = replacer[arr - n_min]
     return arr
 
+def nearest_nonzero_2D(a, y, x):
+    r, c = np.nonzero(a)
+    dist = ((r - y)**2 + (c - x)**2)
+    min_idx = dist.argmin()
+    return a[r[min_idx], c[min_idx]]
+
+def nearest_nonzero_1D(arr, x, return_index=False):
+    if arr[x] > 0:
+        if return_index:
+            return arr[x], x
+        else:
+            return arr[x]
+    nonzero_idxs, = np.nonzero(arr)
+    dist = (nonzero_idxs - x)**2
+    min_idx = dist.argmin()
+    nearest_nonzero_idx = nonzero_idxs[min_idx]
+    val = arr[nearest_nonzero_idx]
+    
+    if return_index:
+        return val, nearest_nonzero_idx
+    else:
+        return val
+
+def nearest_nonzero_z_idx_from_z_centroid(obj, current_z=-1):
+    zc = obj.local_centroid[0]
+    z_obj_local = int(zc)
+    is_obj_slice_not_empty = np.any(obj.image[z_obj_local])
+    z_obj_global = z_obj_local + obj.bbox[0]
+    if current_z == z_obj_global and is_obj_slice_not_empty:
+        return current_z
+    
+    zslices_not_empty_arr = np.any(obj.image, axis=(1,2)).astype(np.uint8)
+    _, nearest_nonzero_z_local = nearest_nonzero_1D(
+        zslices_not_empty_arr, z_obj_local, return_index=True
+    )
+    nearest_nonzero_z_global = nearest_nonzero_z_local + obj.bbox[0]
+    return nearest_nonzero_z_global
+
 def compute_twoframes_velocity(prev_lab, lab, spacing=None):
     prev_rp = skimage.measure.regionprops(prev_lab)
     rp = skimage.measure.regionprops(lab)
