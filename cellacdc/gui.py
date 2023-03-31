@@ -7322,7 +7322,6 @@ class guiWin(QMainWindow):
                 posData.frame_i = current_frame_i
                 self.get_data()
         posData = self.data[self.pos_i]
-        self.addMissingItemsIDs(posData.IDs)
         self.updateAllImages()
         self.titleLabel.setText('Done', color='w')
 
@@ -15254,7 +15253,7 @@ class guiWin(QMainWindow):
             _, yesButton = msg.warning(
                 self, 'Go to last annotated frame?', txt, 
                 buttonsTexts=('Cancel', 'Yes')
-            )[0]
+            )
             if yesButton == msg.clickedButton:
                 msg = 'Looking good!'
                 self.last_cca_frame_i = last_cca_frame_i

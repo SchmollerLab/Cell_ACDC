@@ -8629,6 +8629,11 @@ class manualSeparateGui(QMainWindow):
         self.okAction = QAction(QIcon(":applyCrop.svg"), "Happy with that", self)
         self.cancelAction = QAction(QIcon(":cancel.svg"), "Cancel", self)
 
+        self.freeHandAction = QAction(
+            QIcon(":freehand.svg"), 'Separate with freehand line', self
+        )
+        self.freeHandAction.setCheckable(True)
+
     def gui_createMenuBar(self):
         menuBar = self.menuBar()
         style = "QMenuBar::item:selected { background: white; }"
@@ -8659,6 +8664,8 @@ class manualSeparateGui(QMainWindow):
             'Overlay channel\'s image'
         )
         editToolBar.addWidget(self.overlayButton)
+
+        editToolBar.addAction(self.freeHandAction)
 
     def gui_connectActions(self):
         self.exitAction.triggered.connect(self.close)
@@ -8712,6 +8719,11 @@ class manualSeparateGui(QMainWindow):
         self.ax.addItem(self.curvAnchors)
         self.ax.addItem(self.curvHoverPlotItem)
         self.ax.addItem(self.lineHoverPlotItem)
+
+        self.freeHandItem = widgets.PlotCurveItem(
+            pen=pg.mkPen(color='r', width=2)
+        )
+        self.ax.addItem(self.freeHandItem)
 
     def gui_createImgWidgets(self):
         self.img_Widglayout = QGridLayout()
