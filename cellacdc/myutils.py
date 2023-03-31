@@ -719,6 +719,7 @@ def listdir(path):
         f for f in os.listdir(path)
         if not f.startswith('.')
         and not f == 'desktop.ini'
+        and not f == 'recovery'
     ])
 
 def insertModelArgSpect(params, param_name, param_value, param_type=None):

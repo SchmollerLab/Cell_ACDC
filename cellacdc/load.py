@@ -1393,7 +1393,7 @@ class loadData:
             cp.write(configfile)
     
     def setTempPaths(self, createFolder=True):
-        temp_folder = os.path.join(self.images_path, '.recovery')
+        temp_folder = os.path.join(self.images_path, 'recovery')
         self.recoveryFolderPath = temp_folder
         if not os.path.exists(temp_folder) and createFolder:
             os.mkdir(temp_folder)
@@ -1402,6 +1402,9 @@ class loadData:
         self.segm_npz_temp_path = os.path.join(temp_folder, segm_filename)
         self.acdc_output_temp_csv_path = os.path.join(
             temp_folder, acdc_df_filename
+        )
+        self.acdc_output_backup_zip_path = os.path.join(
+            temp_folder, acdc_df_filename.replace('.csv', '.zip')
         )
 
     def buildPaths(self):

@@ -8638,18 +8638,23 @@ class manualSeparateGui(QMainWindow):
             self
         )
         self.threePointsArcAction.setCheckable(True)
+        self.threePointsArcAction.drawMode = 'threepoints_arc'
         self.drawModesActionGroup.addAction(self.threePointsArcAction)
 
         self.freeHandAction = QAction(
             QIcon(":freehand.svg"), 'Separate with freehand line', self
         )
         self.freeHandAction.setCheckable(True)
+        self.freeHandAction.drawMode = 'freehand'
         self.drawModesActionGroup.addAction(self.freeHandAction)
 
         if self.drawMode == 'threepoints_arc':
             self.threePointsArcAction.setChecked(True)
         elif self.drawMode == 'freehand':
             self.freeHandAction.setChecked(True)
+    
+    def gui_storeDrawMode(self):
+        self.drawMode = self.sender().drawMode
         
     def gui_createMenuBar(self):
         menuBar = self.menuBar()
@@ -8877,7 +8882,6 @@ class manualSeparateGui(QMainWindow):
             self.curvAnchors.addPoints([xdata], [ydata])
             self.countClicks = 2
         elif self.countClicks == 2:
-            self.storeUndoState()
             self.countClicks = 0
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
@@ -8889,6 +8893,7 @@ class manualSeparateGui(QMainWindow):
             self.splitObjectAlongCurve()
     
     def setSplitCurveCoords(self, xx, yy):
+        self.storeUndoState()
         xxCurve, yyCurve = [], []
         for i, (r0, c0) in enumerate(zip(yy, xx)):
             if i == len(yy)-1:
@@ -9043,8 +9048,7 @@ class manualSeparateGui(QMainWindow):
         # Rescale intensity based on hist ticks values
         min = self.imgGrad.gradient.listTicks()[0][1]
         max = self.imgGrad.gradient.listTicks()[1][1]
-        img = skimage.exposure.rescale_intensity(
-                                      self.img, in_range=(min, max))
+        img = skimage.exposure.rescale_intensity(self.img, in_range=(min, max))
         alpha = self.alphaScrollBar.value()/self.alphaScrollBar.maximum()
 
         # Convert img and lab to RGBs

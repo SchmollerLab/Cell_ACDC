@@ -332,44 +332,46 @@ class saveDataWorker(QObject):
         self.abort = False
     
     def _check_zSlice(self, posData, frame_i):
+        if posData.SizeZ == 1:
+            return True
+        
         # Iteare fluo channels and get 2D data from 3D if needed
         filenames = posData.fluo_data_dict.keys()
         for chName, filename in zip(posData.loadedChNames, filenames):
-            if posData.SizeZ > 1:
-                idx = (filename, frame_i)
+            idx = (filename, frame_i)
+            try:
+                if posData.segmInfo_df.at[idx, 'resegmented_in_gui']:
+                    col = 'z_slice_used_gui'
+                else:
+                    col = 'z_slice_used_dataPrep'
+                z_slice = posData.segmInfo_df.at[idx, col]
+            except KeyError:
                 try:
-                    if posData.segmInfo_df.at[idx, 'resegmented_in_gui']:
-                        col = 'z_slice_used_gui'
-                    else:
-                        col = 'z_slice_used_dataPrep'
+                    # Try to see if the user already selected z-slice in prev pos
+                    segmInfo_df = pd.read_csv(posData.segmInfo_df_csv_path)
+                    index_col = ['filename', 'frame_i']
+                    posData.segmInfo_df = segmInfo_df.set_index(index_col)
+                    col = 'z_slice_used_dataPrep'
                     z_slice = posData.segmInfo_df.at[idx, col]
-                except KeyError:
-                    try:
-                        # Try to see if the user already selected z-slice in prev pos
-                        segmInfo_df = pd.read_csv(posData.segmInfo_df_csv_path)
-                        index_col = ['filename', 'frame_i']
-                        posData.segmInfo_df = segmInfo_df.set_index(index_col)
-                        col = 'z_slice_used_dataPrep'
-                        z_slice = posData.segmInfo_df.at[idx, col]
-                    except KeyError as e:
-                        self.progress.emit(
-                            f'z-slice for channel "{chName}" absent. '
-                            'Follow instructions on pop-up dialogs.'
-                        )
-                        self.mutex.lock()
-                        self.askZsliceAbsent.emit(filename, posData)
-                        self.waitCond.wait(self.mutex)
-                        self.mutex.unlock()
-                        if self.abort:
-                            return False
-                        self.progress.emit(
-                            f'Saving (check terminal for additional progress info)...'
-                        )
-                        segmInfo_df = pd.read_csv(posData.segmInfo_df_csv_path)
-                        index_col = ['filename', 'frame_i']
-                        posData.segmInfo_df = segmInfo_df.set_index(index_col)
-                        col = 'z_slice_used_dataPrep'
-                        z_slice = posData.segmInfo_df.at[idx, col]
+                except KeyError as e:
+                    self.progress.emit(
+                        f'z-slice for channel "{chName}" absent. '
+                        'Follow instructions on pop-up dialogs.'
+                    )
+                    self.mutex.lock()
+                    self.askZsliceAbsent.emit(filename, posData)
+                    self.waitCond.wait(self.mutex)
+                    self.mutex.unlock()
+                    if self.abort:
+                        return False
+                    self.progress.emit(
+                        f'Saving (check terminal for additional progress info)...'
+                    )
+                    segmInfo_df = pd.read_csv(posData.segmInfo_df_csv_path)
+                    index_col = ['filename', 'frame_i']
+                    posData.segmInfo_df = segmInfo_df.set_index(index_col)
+                    col = 'z_slice_used_dataPrep'
+                    z_slice = posData.segmInfo_df.at[idx, col]
         return True
     
     def _emitSigDebug(self, stuff_to_debug):
@@ -1109,6 +1111,10 @@ class guiWin(QMainWindow):
         
         if 'isRightImageVisible' not in self.df_settings.index:
             self.df_settings.at['isRightImageVisible', 'value'] = 'Yes'
+        
+        if 'manual_separate_draw_mode' not in self.df_settings.index:
+            col = 'manual_separate_draw_mode'
+            self.df_settings.at[col, 'value'] = 'threepoints_arc'
 
     def dragEnterEvent(self, event):
         file_path = event.mimeData().urls()[0].toLocalFile()
@@ -4467,11 +4473,14 @@ class guiWin(QMainWindow):
             if not success:
                 posData.disableAutoActivateViewerWindow = True
                 img = self.getDisplayedCellsImg()
+                col = 'manual_separate_draw_mode'
+                drawMode = self.df_settings.at[col, 'value']
                 manualSep = apps.manualSeparateGui(
                     self.get_2Dlab(posData.lab), ID, img,
                     fontSize=self.fontSize,
                     IDcolor=self.lut[ID],
-                    parent=self
+                    parent=self,
+                    drawMode=drawMode
                 )
                 manualSep.show()
                 manualSep.centerWindow()
@@ -4487,6 +4496,7 @@ class guiWin(QMainWindow):
                 lab2D[manualSep.lab!=0] = manualSep.lab[manualSep.lab!=0]
                 self.set_2Dlab(lab2D)
                 posData.disableAutoActivateViewerWindow = False
+                self.storeManualSeparateDrawMode(manualSep.drawMode)
 
             # Update data (rp, etc)
             prev_IDs = [obj.label for obj in posData.rp]
@@ -20551,6 +20561,10 @@ class guiWin(QMainWindow):
         
         if self.lazyLoader is None:
             self.sigClosed.emit(self)
+    
+    def storeManualSeparateDrawMode(self, mode):
+        self.df_settings.at['manual_separate_draw_mode', 'value'] = mode
+        self.df_settings.to_csv(self.settings_csv_path)
 
     def readSettings(self):
         settings = QSettings('schmollerlab', 'acdc_gui')
