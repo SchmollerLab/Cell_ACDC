@@ -8817,9 +8817,8 @@ class manualSeparateGui(QMainWindow):
         if self.freeHandAction.isChecked():
             self.countClicks = 0
             xx, yy = self.freeHandItem.getData()
-            printl(xx, yy)
-            # self.setSplitCurveCoords(xx, yy)
-            # self.splitObjectAlongCurve()
+            self.setSplitCurveCoords(xx, yy)
+            self.splitObjectAlongCurve()
             self.freeHandItem.setData([], [])
             self.curvAnchors.setData([], [])
     
@@ -8848,7 +8847,7 @@ class manualSeparateGui(QMainWindow):
         self.freeHandItem.addPoint(int(x), int(y))
         _xx, _yy = self.freeHandItem.getData()
         xx = [_xx[0], x]
-        yy = [_yy, y]
+        yy = [_yy[0], y]
         self.curvAnchors.setData(xx, yy)
 
     def threePointsArcHoverEvent(self, x, y):

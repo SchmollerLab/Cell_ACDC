@@ -218,6 +218,9 @@ def _load_acdc_df_file(acdc_df_file_path):
     except KeyError:
         pass
     acdc_df = acdc_df.set_index(['frame_i', 'Cell_ID']).sort_index()
+    # remove duplicates saved by mistake or bugs
+    duplicated = acdc_df.index.duplicated(keep='first')
+    acdc_df = acdc_df[~duplicated]
     acdc_df = pd_bool_to_int(acdc_df, acdc_df_bool_cols, inplace=True)
     acdc_df = pd_int_to_bool(acdc_df, acdc_df_bool_cols)
     acdc_df = _add_will_divide_column(acdc_df)
