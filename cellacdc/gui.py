@@ -16,6 +16,7 @@ from importlib import import_module
 from functools import partial
 from tqdm import tqdm
 from pprint import pprint
+from natsort import natsorted
 import time
 import cv2
 import math
@@ -807,6 +808,10 @@ class saveDataWorker(QObject):
                 )
                 try:
                     # Save segmentation metadata
+                    load.store_copy_acdc_df(
+                        posData, acdc_output_csv_path, 
+                        log_func=self.progress.emit
+                    )
                     all_frames_acdc_df.to_csv(acdc_output_csv_path)
                     posData.acdc_df = all_frames_acdc_df
                     try:
@@ -833,11 +838,6 @@ class saveDataWorker(QObject):
                     self.critical.emit(traceback.format_exc())
                     self.waitCond.wait(self.mutex)
                     self.mutex.unlock()
-
-            try:
-                shutil.rmtree(posData.recoveryFolderPath)
-            except Exception as e:
-                pass
 
             with open(last_tracked_i_path, 'w+') as txt:
                 txt.write(str(frame_i))
@@ -1243,6 +1243,7 @@ class guiWin(QMainWindow):
         fileMenu.addAction(self.openFileAction)
         # Open Recent submenu
         self.openRecentMenu = fileMenu.addMenu("Open Recent")
+        fileMenu.addAction(self.manageVersionsAction)
         fileMenu.addAction(self.saveAction)
         fileMenu.addAction(self.saveAsAction)
         fileMenu.addAction(self.quickSaveAction)
@@ -1358,6 +1359,7 @@ class guiWin(QMainWindow):
 
         fileToolBar.addAction(self.newAction)
         fileToolBar.addAction(self.openAction)
+        fileToolBar.addAction(self.manageVersionsAction)
         fileToolBar.addAction(self.saveAction)
         fileToolBar.addAction(self.showInExplorerAction)
         # fileToolBar.addAction(self.reloadAction)
@@ -2434,6 +2436,14 @@ class guiWin(QMainWindow):
         self.openFileAction = QAction(
             QIcon(":image.svg"),"&Open image/video file...", self
         )
+        self.manageVersionsAction = QAction(
+            QIcon(":manage_versions.svg"), "Load older versions...", self
+        )
+        self.manageVersionsAction.setToolTip(
+            'Load an older version of the `acdc_output.csv` file (table '
+            'with annotations and measurements).'
+        )
+        self.manageVersionsAction.setDisabled(True)
         self.saveAction = QAction(QIcon(":file-save.svg"), "Save", self)
         self.saveAsAction = QAction("Save as...", self)
         self.quickSaveAction = QAction("Save only segm. file", self)
@@ -2789,6 +2799,7 @@ class guiWin(QMainWindow):
         self.newAction.triggered.connect(self.newFile)
         self.openAction.triggered.connect(self.openFolder)
         self.openFileAction.triggered.connect(self.openFile)
+        self.manageVersionsAction.triggered.connect(self.manageVersions)
         self.saveAction.triggered.connect(self.saveData)
         self.saveAsAction.triggered.connect(self.saveAsData)
         self.quickSaveAction.triggered.connect(self.quickSave)
@@ -9618,6 +9629,8 @@ class guiWin(QMainWindow):
             button = self.fileToolBar.widgetForAction(action)
             if action == self.openAction or action == self.newAction:
                 continue
+            if action == self.manageVersionsAction:
+                continue
             action.setEnabled(enabled)
             button.setEnabled(enabled)
 
@@ -12738,6 +12751,7 @@ class guiWin(QMainWindow):
     
     def updatePos(self):
         self.setSaturBarLabel()
+        self.checkManageVersions()
         self.removeAlldelROIsCurrentFrame()
         proceed_cca, never_visited = self.get_data()
         self.initContoursImage()
@@ -13275,11 +13289,26 @@ class guiWin(QMainWindow):
         self.data = data
         self.gui_createGraphicsItems()
         return True
+    
+    def checkManageVersions(self):
+        posData = self.data[self.pos_i]
+        posData.setTempPaths(createFolder=False)
+        loaded_acdc_df_filename = os.path.basename(posData.acdc_output_csv_path)
+
+        if os.path.exists(posData.acdc_output_backup_h5_path):
+            self.manageVersionsAction.setDisabled(False)
+            self.manageVersionsAction.setToolTip(
+                f'Load an older version of the `{loaded_acdc_df_filename}` file '
+                '(table with annotations and measurements).'
+            )
+        else:
+            self.manageVersionsAction.setDisabled(True)
 
     def loadingDataCompleted(self):
         self.isDataLoading = True
         posData = self.data[self.pos_i]
         self.updateImageValueFormatter()
+        self.checkManageVersions()
 
         if self.isSnapshot:
             self.setWindowTitle(f'Cell-ACDC - GUI - "{posData.exp_path}"')
@@ -18359,6 +18388,69 @@ class guiWin(QMainWindow):
         self.isNewFile = False
         self._openFile(file_path=file_path)
     
+    def manageVersions(self):
+        posData = self.data[self.pos_i]
+        h5_filepath = posData.acdc_output_backup_h5_path
+        with pd.HDFStore(h5_filepath, mode='r') as hdf:
+            keys = natsorted(hdf.keys())
+        
+        f = load.TIMESTAMP_HDF
+        timestamps = [datetime.datetime.strptime(key[1:], f) for key in keys]
+        items = [date.strftime(r'%d %b %Y, %H:%M:%S') for date in timestamps]
+
+        acdc_df_filename = os.path.basename(posData.acdc_output_csv_path)
+        instructions = html_utils.paragraph(
+            f'Select an <b>older version</b> of the <code>{acdc_df_filename}</code> '
+            'file to load.<br><br>'
+            'The datetime refers to the time you replaced the old version with '
+            'a newer one.<br>'
+        )
+        selectVersion = widgets.QDialogListbox(
+            'Select older version', instructions,
+            items, multiSelection=False, parent=self
+        )
+        selectVersion.exec_()
+
+        if selectVersion.cancel:
+            return
+
+        selectedTime = selectVersion.selectedItemsText[0]
+
+        self.modeComboBox.setCurrentText('Viewer')
+        self.logger.info(f'Loading file replaced on {selectedTime}...')
+
+        idx = items.index(selectedTime)
+        key_to_load = keys[idx]
+
+        acdc_df = pd.read_hdf(h5_filepath, key=key_to_load)
+        posData.acdc_df = acdc_df
+        frames = acdc_df.index.get_level_values(0)
+        last_visited_frame_i = frames.max()
+        current_frame_i = posData.frame_i
+        pbar = tqdm(total=last_visited_frame_i+1, ncols=100)
+        for frame_i in range(last_visited_frame_i+1):
+            posData.frame_i = frame_i
+            self.get_data()
+            if posData.allData_li[frame_i]['labels'] is None:
+                pbar.update()
+                continue
+        
+            if frame_i not in frames:
+                acdc_df_i = pd.DataFrame(columns=acdc_df.columns)
+                acdc_df_i.drop(self.cca_df_colnames, axis=1, errors='ignore')
+                acdc_df_i.index.name = 'Cell_ID'
+            else:
+                acdc_df_i = acdc_df.loc[frame_i].dropna(axis=1, how='all')
+            
+            posData.allData_li[frame_i]['acdc_df'] = acdc_df_i
+            pbar.update()
+        pbar.close()
+        
+        # Back to current frame
+        posData.frame_i = current_frame_i
+        self.get_data(debug=False)
+        self.updateAllImages()
+
     def warnUserCreationImagesFolder(self, images_path):
         msg = widgets.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(f"""
@@ -20412,6 +20504,9 @@ class guiWin(QMainWindow):
             self.warnErrorsRegionProps()
         if self.worker.customMetricsErrors:
             self.warnErrorsCustomMetrics()
+        
+        self.checkManageVersions()
+        
         if self.closeGUI:
             salute_string = myutils.get_salute_string()
             msg = widgets.myMessageBox()

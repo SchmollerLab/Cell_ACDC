@@ -412,12 +412,7 @@ class AutoSaveWorker(QObject):
     
     def _saveSegm(self, recovery_path, main_segm_path, data):
         if np.all(self.savedSegmData == data):
-            try:
-                # Remove currently recovered data since the saved main 
-                # segm data is the latest (if exists --> try)
-                os.remove(recovery_path)
-            except Exception as e:
-                pass
+            return
         else:
             np.savez_compressed(recovery_path, np.squeeze(data))
     
@@ -460,14 +455,7 @@ class AutoSaveWorker(QObject):
             
             equals.append(col_equals)
 
-        if all(equals):
-            try:
-                # Remove currently recovered data since the saved main 
-                # acdc_df is the latest (recovery == saved)
-                os.remove(recovery_path)
-            except Exception as e:
-                pass
-        else:
+        if not all(equals):
             recovery_acdc_df.to_csv(recovery_path)
 
 

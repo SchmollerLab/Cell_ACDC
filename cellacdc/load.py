@@ -35,6 +35,7 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 
 from . import prompts, apps, myutils, widgets, measurements, config
 from . import base_cca_df, base_acdc_df, html_utils, temp_path, printl
+from . import ignore_exception
 
 cca_df_colnames = list(base_cca_df.keys())
 acdc_df_bool_cols = [
@@ -52,6 +53,7 @@ last_selected_groupboxes_measurements_path = os.path.join(
 channel_file_formats = (
     '_aligned.h5', '.h5', '_aligned.npz', '.tif'
 )
+TIMESTAMP_HDF = r'iso%Y%m%d%H%M%S'
 
 def read_json(json_path, logger_func=print, desc='custom annotations'):
     json_data = {}
@@ -242,6 +244,39 @@ def load_acdc_df_file(images_path, end_name_acdc_df_file='segm', return_path=Fal
             return None, ''
         else:
             return
+
+def store_copy_acdc_df(posData, acdc_output_csv_path, log_func=printl):
+    try:
+        if not os.path.exists(acdc_output_csv_path):
+            return
+        
+        df = pd.read_csv(acdc_output_csv_path).set_index(['frame_i', 'Cell_ID'])
+        posData.setTempPaths()
+        h5_path = posData.acdc_output_backup_h5_path
+        keys = []
+        if os.path.exists(h5_path):
+            with pd.HDFStore(h5_path, mode='a') as hdf:
+                keys = natsorted(hdf.keys())
+        
+        new_key = datetime.now().strftime(TIMESTAMP_HDF)
+        if len(keys) > 10:
+            # Delete oldest df and resave remaining 9
+            keys.pop(0)
+            temp_dirpath = tempfile.mkdtemp()
+            filename = os.path.basename(h5_path)
+            temp_h5_filepath = os.path.join(temp_dirpath, filename)
+            with pd.HDFStore(temp_h5_filepath, mode='a') as hdf:
+                for key in keys:
+                    old_df = pd.read_hdf(h5_path, key=key)
+                    hdf.append(key, old_df)
+            shutil.move(temp_h5_filepath, h5_path)
+            shutil.rmtree(temp_dirpath)
+        
+        with pd.HDFStore(h5_path, mode='a') as hdf:
+            hdf.append(new_key, df)
+    
+    except Exception as e:
+        log_func(traceback.format_exc())
 
 def get_user_ch_paths(images_paths, user_ch_name):
     user_ch_file_paths = []
@@ -1403,8 +1438,8 @@ class loadData:
         self.acdc_output_temp_csv_path = os.path.join(
             temp_folder, acdc_df_filename
         )
-        self.acdc_output_backup_zip_path = os.path.join(
-            temp_folder, acdc_df_filename.replace('.csv', '.zip')
+        self.acdc_output_backup_h5_path = os.path.join(
+            temp_folder, acdc_df_filename.replace('.csv', '.h5')
         )
 
     def buildPaths(self):

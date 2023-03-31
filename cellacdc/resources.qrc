@@ -47,6 +47,7 @@
     <file alias="threepoints_arc.svg">resources/icons/threepoints_arc.svg</file>
     <file alias="3d.svg">resources/icons/3d.svg</file>
     <file alias="2d.svg">resources/icons/2d.svg</file>
+    <file alias="manage_versions.svg">resources/icons/manage_versions.svg</file>
     <file alias="prep.svg">resources/icons/prep.svg</file>
     <file alias="continue.svg">resources/icons/continue.svg</file>
     <file alias="eraser.svg">resources/icons/eraser.svg</file>
