@@ -8552,12 +8552,14 @@ class QtSelectItems(QDialog):
 
 
 class manualSeparateGui(QMainWindow):
-    def __init__(self, lab, ID, img, fontSize='12pt',
-                 IDcolor=[255, 255, 0], parent=None,
-                 loop=None):
+    def __init__(
+            self, lab, ID, img, fontSize='12pt', IDcolor=[255, 255, 0],
+            parent=None, loop=None, drawMode='threepoints_arc'
+        ):
         super().__init__(parent)
         self.loop = loop
         self.cancel = True
+        self.drawMode = drawMode
         self._parent = parent
         self.lab = lab.copy()
         self.lab[lab!=ID] = 0
@@ -8629,11 +8631,26 @@ class manualSeparateGui(QMainWindow):
         self.okAction = QAction(QIcon(":applyCrop.svg"), "Happy with that", self)
         self.cancelAction = QAction(QIcon(":cancel.svg"), "Cancel", self)
 
+        self.drawModesActionGroup = QActionGroup(self)
+
+        self.threePointsArcAction = QAction(
+            QIcon(":threepoints_arc.svg"), 'Separate with three-points arc', 
+            self
+        )
+        self.threePointsArcAction.setCheckable(True)
+        self.drawModesActionGroup.addAction(self.threePointsArcAction)
+
         self.freeHandAction = QAction(
             QIcon(":freehand.svg"), 'Separate with freehand line', self
         )
         self.freeHandAction.setCheckable(True)
+        self.drawModesActionGroup.addAction(self.freeHandAction)
 
+        if self.drawMode == 'threepoints_arc':
+            self.threePointsArcAction.setChecked(True)
+        elif self.drawMode == 'freehand':
+            self.freeHandAction.setChecked(True)
+        
     def gui_createMenuBar(self):
         menuBar = self.menuBar()
         style = "QMenuBar::item:selected { background: white; }"
@@ -8665,6 +8682,7 @@ class manualSeparateGui(QMainWindow):
         )
         editToolBar.addWidget(self.overlayButton)
 
+        editToolBar.addAction(self.threePointsArcAction)
         editToolBar.addAction(self.freeHandAction)
 
     def gui_connectActions(self):
@@ -8771,28 +8789,10 @@ class manualSeparateGui(QMainWindow):
         except Exception as e:
             self.wcLabel.setText(f'')
 
-        try:
-            if not event.isExit():
-                x, y = event.pos()
-                if self.countClicks == 1:
-                    self.lineHoverPlotItem.setData([self.x0, x], [self.y0, y])
-                elif self.countClicks == 2:
-                    xx = [self.x0, x, self.x1]
-                    yy = [self.y0, y, self.y1]
-                    xi, yi = self.getSpline(xx, yy)
-                    self.curvHoverPlotItem.setData(xi, yi)
-                elif self.countClicks == 0:
-                    self.curvHoverPlotItem.setData([], [])
-                    self.lineHoverPlotItem.setData([], [])
-                    self.curvAnchors.setData([], [])
-        except Exception as e:
-            traceback.print_exc()
-            pass
+        if event.isExit():
+            return
 
-    def getSpline(self, xx, yy):
-        tck, u = scipy.interpolate.splprep([xx, yy], s=0, k=2)
-        xi, yi = scipy.interpolate.splev(self.hoverLinSpace, tck)
-        return xi, yi
+        self.drawHoverEvent(*event.pos())
 
     def gui_mousePressEventImg(self, event):
         right_click = event.button() == Qt.MouseButton.RightButton
@@ -8802,20 +8802,56 @@ class manualSeparateGui(QMainWindow):
 
         if dragImg:
             pg.ImageItem.mousePressEvent(self.imgItem, event)
+        
+        if not right_click:
+            return
 
-        if right_click and self.countClicks == 0:
+        self.drawPressEvent(self, event)
+    
+    def getSpline(self, xx, yy):
+        tck, u = scipy.interpolate.splprep([xx, yy], s=0, k=2)
+        xi, yi = scipy.interpolate.splev(self.hoverLinSpace, tck)
+        return xi, yi
+
+    def drawPressEvent(self, event):
+        pass
+    
+    def drawHoverEvent(self, x, y):
+        if self.freeHandAction.isChecked():
+            self.freeHandHoverEvent(x, y)
+        elif self.threePointsArcAction.isChecked():
+            self.threePointsArcHoverEvent(x, y)
+        
+    def freeHandHoverEvent(self, x, y):
+        pass
+
+    def threePointsArcHoverEvent(self, x, y):
+        if self.countClicks == 1:
+            self.lineHoverPlotItem.setData([self.x0, x], [self.y0, y])
+        elif self.countClicks == 2:
+            xx = [self.x0, x, self.x1]
+            yy = [self.y0, y, self.y1]
+            xi, yi = self.getSpline(xx, yy)
+            self.curvHoverPlotItem.setData(xi, yi)
+        elif self.countClicks == 0:
+            self.curvHoverPlotItem.setData([], [])
+            self.lineHoverPlotItem.setData([], [])
+            self.curvAnchors.setData([], [])
+    
+    def threePointsArcPressEvent(self, event):
+        if self.countClicks == 0:
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
             self.x0, self.y0 = xdata, ydata
             self.curvAnchors.addPoints([xdata], [ydata])
             self.countClicks = 1
-        elif right_click and self.countClicks == 1:
+        elif self.countClicks == 1:
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
             self.x1, self.y1 = xdata, ydata
             self.curvAnchors.addPoints([xdata], [ydata])
             self.countClicks = 2
-        elif right_click and self.countClicks == 2:
+        elif self.countClicks == 2:
             self.storeUndoState()
             self.countClicks = 0
             x, y = event.pos().x(), event.pos().y()

@@ -7278,6 +7278,7 @@ class guiWin(QMainWindow):
             self.progressWin.workerFinished = True
             self.progressWin.close()
 
+    @exception_handler
     def trackingWorkerFinished(self):
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
@@ -8153,11 +8154,14 @@ class guiWin(QMainWindow):
         for frame_i in range(posData.frame_i, 0, -1):
             past_cca_df = self.get_cca_df(frame_i=frame_i, return_df=True)
             if past_cca_df is None:
-                break
-
+                return
+            
+            if ID not in past_cca_df.index:
+                return
+            
             ccs = past_cca_df.at[ID, 'cell_cycle_stage']
             if ccs == 'G1':
-                break
+                return
             
             past_cca_df.at[ID, 'will_divide'] = 1
             past_cca_df.at[relID, 'will_divide'] = 1
