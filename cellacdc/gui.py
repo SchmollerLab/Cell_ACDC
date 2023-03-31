@@ -2467,7 +2467,8 @@ class guiWin(QMainWindow):
         self.findIdAction.setIcon(QIcon(":find.svg"))
         self.findIdAction.setShortcut('Ctrl+F')
         self.findIdAction.setToolTip(
-            'Find and highlight ID (Ctrl+F). Press Esc to exist highlight mode'
+            'Find and highlight ID (Ctrl+F).'
+            'Press "Esc" to clear highlighted object.'
         )
 
         # Edit actions
@@ -5309,7 +5310,7 @@ class guiWin(QMainWindow):
     def updatePropsWidget(self, ID):
         if isinstance(ID, str):
             # Function called by currentTextChanged of channelCombobox or
-            # additionalMeasCombobox. We set elf.currentPropsID = 0 to force update
+            # additionalMeasCombobox. We set self.currentPropsID = 0 to force update
             ID = self.guiTabControl.propsQGBox.idSB.value()
             self.currentPropsID = -1
 
@@ -7077,9 +7078,9 @@ class guiWin(QMainWindow):
         self.ax2.addItem(self.ax2_oldMothBudLinesItem)
         self.ax2.addItem(self.ax2_newMothBudLinesItem)
         self.ax2.addItem(self.ax2_lostObjScatterItem)
-        
-        self.ax1.addItem(self.textAnnot[0].item)
-        self.ax2.addItem(self.textAnnot[1].item)
+
+        self.textAnnot[0].addToPlotItem(self.ax1)
+        self.textAnnot[1].addToPlotItem(self.ax2)
     
     def gui_raiseBottomLayoutContextMenu(self, event):
         try:
@@ -10601,7 +10602,7 @@ class guiWin(QMainWindow):
         if ev.key() == Qt.Key_Q:
             # self.setAllIDs()
             posData = self.data[self.pos_i]
-            self.clearHighlightedText()
+            self.textAnnot[0].grayOutAnnotations(IDsToSkip={2:True})
             # printl(posData.fluo_data_dict.keys())
             # for key in posData.fluo_data_dict:
             #     printl(key, posData.fluo_data_dict[key].max())
@@ -15566,12 +15567,8 @@ class guiWin(QMainWindow):
 
     def highlightLabelID(self, ID, ax=0):        
         posData = self.data[self.pos_i]
-        try:
-            obj_idx = posData.IDs.index(ID)
-        except Exception as e:
-            return
-                
-        self.textAnnot[0].highlightObject(obj_idx)
+        obj = posData.rp[posData.IDs_idxs[ID]]
+        self.textAnnot[ax].highlightObject(obj)
     
     def _keepObjects(self, keepIDs=None, lab=None, rp=None):
         posData = self.data[self.pos_i]
@@ -17477,6 +17474,9 @@ class guiWin(QMainWindow):
         if ID not in posData.IDs:
             return
 
+        self.textAnnot[0].grayOutAnnotations()
+        self.textAnnot[1].grayOutAnnotations()
+
         objIdx = posData.IDs.index(ID)
         obj = posData.rp[objIdx]
 
@@ -17777,11 +17777,13 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         self.textAnnot[0].setAnnotations(
             posData=posData, labelsToSkip=labelsToSkip, 
-            isVisibleCheckFunc=self.isObjVisible
+            isVisibleCheckFunc=self.isObjVisible,
+            highlightedID=self.highlightedID
         )
         self.textAnnot[1].setAnnotations(
             posData=posData, labelsToSkip=labelsToSkip, 
-            isVisibleCheckFunc=self.isObjVisible
+            isVisibleCheckFunc=self.isObjVisible,
+            highlightedID=self.highlightedID
         )
         self.textAnnot[0].update()
         self.textAnnot[1].update()
@@ -17827,9 +17829,7 @@ class guiWin(QMainWindow):
         self.drawAllMothBudLines()
         self.highlightLostNew()
         
-        # # self.checkIDsMultiContour()
-
-        self.highlightSearchedID(self.highlightedID, force=True)
+        self.highlightSearchedID(self.highlightedID, force=True)        
 
         if self.ccaTableWin is not None:
             self.ccaTableWin.updateTable(posData.cca_df)

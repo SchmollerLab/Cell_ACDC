@@ -120,6 +120,11 @@ class TextAnnotationsImageItem(pg.ImageItem):
         self.fontSize = fontSize
         self.fontBold = ImageFont.truetype(font_path, fontSize)
         self.fontRegular = ImageFont.truetype(font_bold_path, fontSize)
+        self.highlighterItem = TextAnnotationsScatterItem(
+            size=self.fontSize, pxMode=False
+        )
+        self.highlighterItem.initFonts(fontSize)
+        self.highlighterItem.initSymbols(range(10))
     
     def initSizes(self):
         pass
@@ -134,6 +139,8 @@ class TextAnnotationsImageItem(pg.ImageItem):
     
     def clearData(self):
         self.clearImage()
+        self.setOpacity(1.0)
+        self.highlighterItem.setData([], [])
         self.texts = []
         self.annotData = []
     
@@ -144,6 +151,13 @@ class TextAnnotationsImageItem(pg.ImageItem):
         self.annotData.append(data)
         self.texts.append(text)
     
+    def highlightObject(self, obj):
+        self.highlighterItem.texts = self.texts
+        self.highlighterItem.highlightObject(obj)
+    
+    def grayOutAnnotations(self, IDsToSkip=None):
+        self.setOpacity(0.1)
+    
     def addObjAnnot(self, pos, draw=True, **objOpts):
         if objOpts['bold']:
             font = self.fontBold
@@ -153,12 +167,14 @@ class TextAnnotationsImageItem(pg.ImageItem):
         text = objOpts['text']
         color = self._colors[objOpts['color_name']]
         self.pilDraw.text(pos, text, color, font=font, anchor='mm')
+        return objOpts    
     
     def draw(self):
         super().setImage(np.array(self.pilImage))
 
     def setColors(self, colors):
         self._colors = colors.copy()
+        self.highlighterItem.setColors(colors)
     
     def initSymbols(self, allIDs):
         pass
@@ -281,6 +297,47 @@ class TextAnnotationsScatterItem(pg.ScatterPlotItem):
             self.initSizes()
         return symbol
 
+    def grayOutAnnotations(self, IDsToSkip=None):
+        brushes = [self._brushes['grayed'] for _ in range(len(self.data))]
+        pens = [self._pens['grayed'] for _ in range(len(self.data))]
+        if IDsToSkip is not None:
+            pointItems = self.points()
+            for idx, objData in enumerate(self.data):
+                ID = objData['data']
+                doNotGray = IDsToSkip.get(ID, False)
+                if not doNotGray:
+                    continue
+                pointItem = pointItems[idx]
+                brush = pointItem.brush()
+                pen = pointItem.pen()
+                brushes[idx] = brush
+                pens[idx] = pen
+        self.setBrush(brushes)
+        self.setPen(pens)
+
+    def highlightObject(self, obj):
+        ID = obj.label
+        objIdx = None
+        for idx, objData in enumerate(self.data):
+            if ID == objData['data']:
+                objIdx = idx
+                break
+        if objIdx is None:
+            objOpts = {
+                'text': str(ID), 'bold': True, 'color_name': 'new_object'
+            }
+            yc, xc = obj.centroid[-2:]
+            pos = (int(xc), int(yc))
+            self.addObjAnnot(pos, draw=True, **objOpts)
+            return
+        
+        pointItem = self.points()[objIdx]
+        symbol = self.getObjTextAnnotSymbol(str(ID), bold=True)
+        pointItem.setSymbol(symbol)
+
+        pointItem.setBrush(self._brushes['new_object'])
+        pointItem.setPen(self._pens['new_object'])
+
     def addObjAnnot(self, pos, draw=False, **objOpts):        
         text = objOpts['text']
         bold = objOpts['bold']
@@ -303,26 +360,7 @@ class TextAnnotationsScatterItem(pg.ScatterPlotItem):
         if draw:
             self.addPoints([pointOpts])
         
-        return pointOpts
-    
-    @ignore_exception
-    def highlightObject(self, obj_idx):
-        for idx in range(len(self.data)):
-            if idx == obj_idx:
-                brush = self._brushes['highlight']
-                pen = self._pens['highlight']
-                text = self.texts[idx]
-                symbol = self.getObjTextAnnotSymbol(text, True)
-            else:
-                brush = self._brushes['grayed']
-                pen = self._pens['grayed']
-                symbol = self.data[idx]['symbol']
-            
-            self.data[idx]['brush'] = brush
-            self.data[idx]['pen'] = pen
-            self.data[idx]['symbol'] = symbol
-        self.updateSpots()
-        
+        return pointOpts        
 
 class TextAnnotations:
     def __init__(self):
@@ -341,6 +379,8 @@ class TextAnnotations:
     
     def clear(self):
         self.item.clear()
+        if hasattr(self.item, 'highlighterItem'):
+            self.item.highlighterItem.setData([], [])
     
     def invertBlackAndWhite(self):
         invertedColors = {
@@ -380,13 +420,23 @@ class TextAnnotations:
         self.item.initSizes()
   
     def changeResolution(self, mode, allIDs, ax, img_shape):
-        ax.removeItem(self.item)
+        self.removeFromPlotItem(ax)
         highRes = True if mode == 'high' else False        
         self.createItems(highRes, allIDs, pxMode=self._pxMode)
         self.initItem(img_shape)
         self.item.setColors(self.colors())
         self.item.clearData()
+        self.addToPlotItem(ax)
+    
+    def addToPlotItem(self, ax):
         ax.addItem(self.item)
+        if hasattr(self.item, 'highlighterItem'):
+            ax.addItem(self.item.highlighterItem)
+
+    def removeFromPlotItem(self, ax):
+        ax.removeItem(self.item)
+        if hasattr(self.item, 'highlighterItem'):
+            ax.removeItem(self.item.highlighterItem)
     
     def addObjAnnotation(self, obj, color_name, text, bold):
         objOpts = {
@@ -408,6 +458,7 @@ class TextAnnotations:
         labelsToSkip = kwargs.get('labelsToSkip')
         posData = kwargs['posData']
         isObjVisible = kwargs.get('isVisibleCheckFunc')
+        highlightedID = kwargs.get('highlightedID')
         isCcaAnnot = self.isCcaAnnot()
         isAnnotateNumZslices = self.isAnnotateNumZslices()
         isLabelTreeAnnotation = self.isLabelTreeAnnotation()
@@ -429,6 +480,7 @@ class TextAnnotations:
             yc, xc = obj.centroid[-2:]
             pos = (int(xc), int(yc))
             objData = self.item.addObjAnnot(pos, draw=False, **objOpts)
+            objData['data'] = obj.label
             self.item.appendData(objData, objOpts['text'])
 
         if posData.lost_IDs:
@@ -448,6 +500,12 @@ class TextAnnotations:
 
         self.item.draw()
     
+    def highlightObject(self, obj):
+        self.item.highlightObject(obj)
+    
+    def grayOutAnnotations(self, IDsToSkip=None):
+        self.item.grayOutAnnotations(IDsToSkip=IDsToSkip)
+
     def isDisabled(self):
         _isEnabled = self._isLabelAnnot or self._isCcaAnnot
         return (not _isEnabled)
@@ -508,9 +566,6 @@ class TextAnnotations:
 
     def isGenNumTreeAnnotation(self):
         return self._isGenNumTreeAnnotation
-    
-    def highlightObject(self, obj_idx):
-        self.item.highlightObject(obj_idx)
     
     def setPxMode(self, mode):
         self.item.setPxMode(mode)
