@@ -1879,7 +1879,10 @@ class myLabelItem(pg.LabelItem):
         color = pg.functions.mkColor(color)
         optlist.append('color: ' + color.name(QColor.NameFormat.HexArgb))
         if 'size' in opts:
-            optlist.append('font-size: ' + opts['size'])
+            size = opts['size']
+            if not isinstance(size, str):
+                size = f'{size}px'
+            optlist.append('font-size: ' + size)
         if 'bold' in opts and opts['bold'] in [True, False]:
             optlist.append('font-weight: ' + {True:'bold', False:'normal'}[opts['bold']])
         if 'italic' in opts and opts['italic'] in [True, False]:

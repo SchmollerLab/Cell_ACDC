@@ -621,15 +621,16 @@ def getBaseCca_df(IDs, with_tree_cols=False):
     is_history_known = [False]*len(IDs)
     corrected_assignment = [False]*len(IDs)
     cca_df = pd.DataFrame({
-                       'cell_cycle_stage': cc_stage,
-                       'generation_num': num_cycles,
-                       'relative_ID': related_to,
-                       'relationship': relationship,
-                       'emerg_frame_i': emerg_frame_i,
-                       'division_frame_i': division_frame_i,
-                       'is_history_known': is_history_known,
-                       'corrected_assignment': corrected_assignment},
-                        index=IDs)
+        'cell_cycle_stage': cc_stage,
+        'generation_num': num_cycles,
+        'relative_ID': related_to,
+        'relationship': relationship,
+        'emerg_frame_i': emerg_frame_i,
+        'division_frame_i': division_frame_i,
+        'is_history_known': is_history_known,
+        'corrected_assignment': corrected_assignment,
+        'will_divide': [0]*len(IDs)
+    }, index=IDs)
     if with_tree_cols:
         cca_df['generation_num_tree'] = [1]*len(IDs)
         cca_df['Cell_ID_tree'] = IDs

@@ -8806,7 +8806,22 @@ class manualSeparateGui(QMainWindow):
         if not right_click:
             return
 
-        self.drawPressEvent(self, event)
+        self.drawPressEvent(event)
+    
+    def gui_mouseDragEventImg(self, event):
+        pass
+
+    def gui_mouseReleaseEventImg(self, event):
+        if self.countClicks == 0:
+            return
+        if self.freeHandAction.isChecked():
+            self.countClicks = 0
+            xx, yy = self.freeHandItem.getData()
+            printl(xx, yy)
+            # self.setSplitCurveCoords(xx, yy)
+            # self.splitObjectAlongCurve()
+            self.freeHandItem.setData([], [])
+            self.curvAnchors.setData([], [])
     
     def getSpline(self, xx, yy):
         tck, u = scipy.interpolate.splprep([xx, yy], s=0, k=2)
@@ -8814,7 +8829,12 @@ class manualSeparateGui(QMainWindow):
         return xi, yi
 
     def drawPressEvent(self, event):
-        pass
+        if self.freeHandAction.isChecked():
+            self.countClicks = 1
+            x, y = event.pos().x(), event.pos().y()
+            self.curvAnchors.addPoints([x], [y])
+        elif self.threePointsArcAction.isChecked():
+            self.threePointsArcPressEvent(event)
     
     def drawHoverEvent(self, x, y):
         if self.freeHandAction.isChecked():
@@ -8823,7 +8843,13 @@ class manualSeparateGui(QMainWindow):
             self.threePointsArcHoverEvent(x, y)
         
     def freeHandHoverEvent(self, x, y):
-        pass
+        if self.countClicks == 0:
+            return
+        self.freeHandItem.addPoint(int(x), int(y))
+        _xx, _yy = self.freeHandItem.getData()
+        xx = [_xx[0], x]
+        yy = [_yy, y]
+        self.curvAnchors.setData(xx, yy)
 
     def threePointsArcHoverEvent(self, x, y):
         if self.countClicks == 1:
@@ -8860,22 +8886,25 @@ class manualSeparateGui(QMainWindow):
             yy = [self.y0, ydata, self.y1]
             xi, yi = self.getSpline(xx, yy)
             yy, xx = np.round(yi).astype(int), np.round(xi).astype(int)
-            xxCurve, yyCurve = [], []
-            for i, (r0, c0) in enumerate(zip(yy, xx)):
-                if i == len(yy)-1:
-                    break
-                r1 = yy[i+1]
-                c1 = xx[i+1]
-                rr, cc, _ = skimage.draw.line_aa(r0, c0, r1, c1)
-                # rr, cc = skimage.draw.line(r0, c0, r1, c1)
-                nonzeroMask = self.lab[rr, cc]>0
-                xxCurve.extend(cc[nonzeroMask])
-                yyCurve.extend(rr[nonzeroMask])
-            self.AllCutsCoords.append((yyCurve, xxCurve))
-            for rr, cc in self.AllCutsCoords:
-                self.lab[rr, cc] = 0
-            self.lab = skimage.morphology.remove_small_objects(self.lab, 5)
+            self.setSplitCurveCoords(xx, yy)
             self.splitObjectAlongCurve()
+    
+    def setSplitCurveCoords(self, xx, yy):
+        xxCurve, yyCurve = [], []
+        for i, (r0, c0) in enumerate(zip(yy, xx)):
+            if i == len(yy)-1:
+                break
+            r1 = yy[i+1]
+            c1 = xx[i+1]
+            rr, cc, _ = skimage.draw.line_aa(r0, c0, r1, c1)
+            # rr, cc = skimage.draw.line(r0, c0, r1, c1)
+            nonzeroMask = self.lab[rr, cc]>0
+            xxCurve.extend(cc[nonzeroMask])
+            yyCurve.extend(rr[nonzeroMask])
+        self.AllCutsCoords.append((yyCurve, xxCurve))
+        for rr, cc in self.AllCutsCoords:
+            self.lab[rr, cc] = 0
+        self.lab = skimage.morphology.remove_small_objects(self.lab, 5)
 
     def histLUT_cb(self, LUTitem):
         if self.overlayButton.isChecked():
@@ -8933,7 +8962,6 @@ class manualSeparateGui(QMainWindow):
             self.undoAction.setEnabled(False)
             self.prevLabs = []
             self.prevAllCutsCoords = []
-
 
     def splitObjectAlongCurve(self):
         self.lab = skimage.measure.label(self.lab, connectivity=1)
@@ -9008,6 +9036,7 @@ class manualSeparateGui(QMainWindow):
             self.curvHoverPlotItem.setData([], [])
             self.lineHoverPlotItem.setData([], [])
             self.curvAnchors.setData([], [])
+            self.freeHandItem.setData([], [])
         elif ev.key() == Qt.Key_Enter or ev.key() == Qt.Key_Return:
             self.ok_cb()
 
@@ -9034,13 +9063,6 @@ class manualSeparateGui(QMainWindow):
         # Convert (0,1) to (0,255)
         overlay = (np.clip(overlay, 0, 1)*255).astype(np.uint8)
         return overlay
-
-
-    def gui_mouseDragEventImg(self, event):
-        pass
-
-    def gui_mouseReleaseEventImg(self, event):
-        pass
 
     def alphaScrollBarMoved(self, alpha_int):
         overlay = self.getOverlay()

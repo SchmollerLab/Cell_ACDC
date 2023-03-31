@@ -6880,7 +6880,6 @@ class guiWin(QMainWindow):
             self.storeUndoRedoStates(False)
 
             posData = self.data[self.pos_i]
-            self.addNewItems(manualTrackID)
             currentIDs = posData.IDs.copy()
             if manualTrackID in currentIDs:
                 tempID = np.max(posData.lab) + 1
@@ -8257,6 +8256,7 @@ class guiWin(QMainWindow):
         if self.ccaTableWin is not None:
             self.ccaTableWin.updateTable(posData.cca_df)
 
+    @exception_handler
     def manualCellCycleAnnotation(self, ID):
         """
         This function is used for both annotating division or undoing the
@@ -12660,6 +12660,14 @@ class guiWin(QMainWindow):
         self.logger.info('========================')
         if posData.cca_df is None:
             return
+        if posData.cca_df.empty:
+            msg = widgets.myMessageBox()
+            txt = html_utils.paragraph(
+                'Cell cycle annotations\' table is <b>empty</b>.<br>'
+            )
+            msg.warning(self, 'Table empty', txt)
+            return
+        
         df = posData.add_tree_cols_to_cca_df(
             posData.cca_df, frame_i=posData.frame_i
         )
@@ -14593,6 +14601,44 @@ class guiWin(QMainWindow):
             if not posData.new_IDs:
                 return found_cca_df_IDs
         return found_cca_df_IDs
+    
+    def initMissingFramesCca(self, last_cca_frame_i, current_frame_i):
+        self.logger.info(
+            'Initialising cell cycle annotations of missing past frames...'
+        )
+        posData = self.data[self.pos_i]
+        current_frame_i = posData.frame_i
+        
+        annotated_cca_dfs = [
+            posData.allData_li[i]['acdc_df'][self.cca_df_colnames]
+            for i in range(last_cca_frame_i+1)
+        ]
+        keys = range(last_cca_frame_i+1)
+        names = ['frame_i', 'Cell_ID']
+        annotated_cca_df = (
+            pd.concat(annotated_cca_dfs, keys=keys, names=names)
+            .reset_index()
+            .set_index(['Cell_ID', 'frame_i'])
+            .sort_index()
+        )
+        
+        last_annotated_cca_df = annotated_cca_df.groupby(level=0).last()
+        cca_df_colnames = self.cca_df_colnames
+        pbar = tqdm(total=current_frame_i-last_cca_frame_i+1, ncols=100)
+        for frame_i in range(last_cca_frame_i, current_frame_i+1):
+            posData.frame_i = frame_i
+            self.get_data()
+            cca_df = self.getBaseCca_df()
+
+            idx = last_annotated_cca_df.index.intersection(cca_df.index)
+            cca_df.loc[idx, cca_df_colnames] = last_annotated_cca_df.loc[idx]
+
+            self.store_cca_df(cca_df=cca_df, frame_i=frame_i, autosave=False)
+            pbar.update()
+        pbar.close()
+
+        posData.frame_i = current_frame_i
+        self.get_data()
 
     def autoCca_df(self, enforceAll=False):
         """
@@ -14628,9 +14674,11 @@ class guiWin(QMainWindow):
         curr_df = posData.allData_li[posData.frame_i]['acdc_df']
         if curr_df is not None:
             if 'cell_cycle_stage' in curr_df.columns and not enforceAll:
-                posData.new_IDs = [ID for ID in posData.new_IDs
-                                if curr_df.at[ID, 'is_history_known']
-                                and curr_df.at[ID, 'cell_cycle_stage'] == 'S']
+                posData.new_IDs = [
+                    ID for ID in posData.new_IDs
+                    if curr_df.at[ID, 'is_history_known']
+                    and curr_df.at[ID, 'cell_cycle_stage'] == 'S'
+                ]
                 if posData.frame_i+1 < posData.SizeT:
                     next_df = posData.allData_li[posData.frame_i+1]['acdc_df']
                     if next_df is None:
@@ -14654,7 +14702,7 @@ class guiWin(QMainWindow):
                 ID for ID in posData.new_IDs
                 if ID not in correctedAssignIDs
             ]
-        
+
         # Check if new IDs exist some time in the past
         found_cca_df_IDs = self.checkCcaPastFramesNewIDs()
 
@@ -14676,7 +14724,10 @@ class guiWin(QMainWindow):
 
         # concatenate new IDs found in past frames (before frame_i-1)
         if found_cca_df_IDs is not None:
-            posData.cca_df = pd.concat([posData.cca_df, *found_cca_df_IDs])
+            cca_df = pd.concat([posData.cca_df, *found_cca_df_IDs])
+            unique_idx = ~cca_df.index.duplicated(keep='first')
+            posData.cca_df = cca_df[unique_idx]
+        
 
         # If there are no new IDs we are done
         if not posData.new_IDs:
@@ -15207,6 +15258,7 @@ class guiWin(QMainWindow):
 
         self.checkTrackingEnabled()
 
+    @exception_handler
     def initCca(self):
         posData = self.data[self.pos_i]
         last_tracked_i = self.get_last_tracked_i()
@@ -15250,13 +15302,15 @@ class guiWin(QMainWindow):
             # Prompt user to go to last annotated frame
             msg = widgets.myMessageBox()
             txt = html_utils.paragraph(f"""
-                The <b>last annotated frame</b> is frame {last_cca_frame_i+1}.<br>
-                The cell cycle analysis will restart from that frame.<br><br>
-                Do you want to proceed?
+                The <b>last annotated frame</b> is frame {last_cca_frame_i+1}.<br><br>
+                Do you want to restart cell cycle analysis from frame 
+                {last_cca_frame_i+1}?<br>
             """)
-            _, yesButton = msg.warning(
+            _, yesButton, stayButton = msg.warning(
                 self, 'Go to last annotated frame?', txt, 
-                buttonsTexts=('Cancel', 'Yes')
+                buttonsTexts=(
+                    'Cancel', f'Yes, go to frame {last_cca_frame_i+1}', 
+                    'No, stay on current frame')
             )
             if yesButton == msg.clickedButton:
                 msg = 'Looking good!'
@@ -15266,7 +15320,12 @@ class guiWin(QMainWindow):
                 self.get_data()
                 self.updateAllImages(updateFilters=True)
                 self.updateScrollbars()
-            else:
+            elif stayButton == msg.clickedButton:
+                self.initMissingFramesCca(last_cca_frame_i, posData.frame_i)
+                last_cca_frame_i = posData.frame_i
+                msg = 'Cell cycle analysis initialised!'
+                self.titleLabel.setText(msg, color='g')
+            elif msg.cancel:
                 msg = 'Cell cycle analysis aborted.'
                 self.logger.info(msg)
                 self.titleLabel.setText(msg, color=self.titleColor)
@@ -15277,9 +15336,9 @@ class guiWin(QMainWindow):
             # Prompt user to go to last annotated frame
             msg = widgets.myMessageBox()
             txt = html_utils.paragraph(f"""
-                The <b>last annotated frame</b> is frame {last_cca_frame_i+1}.<br>
+                The <b>last annotated frame</b> is frame {last_cca_frame_i+1}.<br><br>
                 Do you want to restart cell cycle analysis from frame
-                {last_cca_frame_i+1}?
+                {last_cca_frame_i+1}?<br>
             """)
             goTo_last_annotated_frame_i = msg.question(
                 self, 'Go to last annotated frame?', txt, 
