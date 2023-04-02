@@ -773,6 +773,16 @@ class KeepIDsLineEdit(ValidLineEdit):
         self._label.setText(self.instructionsText)
         self._label.setStyleSheet('')
 
+class ScrollBar(QScrollBar):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.installEventFilter(self)
+    
+    def eventFilter(self, object, event) -> bool:
+        if event.type() == QEvent.Wheel:
+            return True
+        return False
+
 class _ReorderableListModel(QAbstractListModel):
     '''
     ReorderableListModel is a list model which implements reordering of its
@@ -1388,7 +1398,6 @@ class CheckBox(QCheckBox):
             return
 
         self.keyPressCallback()
-        
 
 class ScrollArea(QScrollArea):
     sigLeaveEvent = pyqtSignal()
@@ -3654,10 +3663,15 @@ class BaseGradientEditorItemLabels(pg.GradientEditorItem):
 class baseHistogramLUTitem(pg.HistogramLUTItem):
     sigAddColormap = pyqtSignal(object, str)
 
-    def __init__(self, name='image', parent=None, **kwargs):
+    def __init__(self, name='image', axisLabel='', parent=None, **kwargs):
         pg.GradientEditorItem = BaseGradientEditorItemLabels
 
         super().__init__(**kwargs)
+
+        self.labelStyle = {'color': '#ffffff', 'font-size': '11px'}
+
+        if axisLabel:
+            self.setAxisLabel(axisLabel)
 
         self.cmaps = cmaps
         self._parent = parent
@@ -3702,6 +3716,16 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
 
         # Disable histogram default context Menu event
         self.vb.raiseContextMenu = lambda x: None
+    
+    def setAxisLabel(self, text):
+        self.labelText = text
+        self.axis.setLabel(text, **self.labelStyle)
+    
+    def updateAxisLabel(self):
+        text = self.axis.label.toPlainText()
+        if not text:
+            return
+        self.setAxisLabel(self, text)
     
     def setGradient(self, gradient):
         self.gradient.restoreState(gradient)
@@ -3769,9 +3793,11 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
         if inverted:
             showIdx = 2
             hideIdx = 1
+            self.labelStyle['color'] = '#000000'
         else:
             showIdx = 1
             hideIdx = 2
+            self.labelStyle['color'] = '#ffffff'
         
         for action in self.gradient.menu.actions():
             if not hasattr(action, 'name'):
@@ -3787,6 +3813,7 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
             hideCmapRect.hide()
             showCmapRect.show()
         
+        self.updateAxisLabel()
         self.isInverted = inverted
     
     def invertGradient(self, gradient):
@@ -4030,8 +4057,13 @@ class myHistogramLUTitem(baseHistogramLUTitem):
     sigGradientMenuEvent = pyqtSignal(object)
     sigTickColorAccepted = pyqtSignal(object)
 
-    def __init__(self, parent=None, name='image', isViewer=False, **kwargs):
-        super().__init__(parent=parent, name=name, **kwargs)
+    def __init__(
+            self, parent=None, name='image', axisLabel='', isViewer=False, 
+            **kwargs
+        ):
+        super().__init__(
+            parent=parent, name=name, axisLabel=axisLabel, **kwargs
+        )
 
         self.name = name
         self._parent = parent
@@ -4175,11 +4207,12 @@ class myHistogramLUTitem(baseHistogramLUTitem):
 
             self.lastHoveredAction = hoveredAction
     
-    def addOverlayColorButton(self, rgbColor):
+    def addOverlayColorButton(self, rgbColor, channelName):
         # Overlay color button
         hbox = QHBoxLayout()
         hbox.addWidget(QLabel('Overlay color: '))
         self.overlayColorButton = myColorButton(color=rgbColor)
+        self.overlayColorButton.channel = channelName
         hbox.addStretch(1)
         hbox.addWidget(self.overlayColorButton)
         widget = QWidget()
@@ -4299,7 +4332,7 @@ class myHistogramLUTitem(baseHistogramLUTitem):
             state['ticks'] = ticks
             self.gradient.restoreState(state)
 
-class labelledQScrollbar(QScrollBar):
+class labelledQScrollbar(ScrollBar):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._label = None
@@ -4322,7 +4355,7 @@ class labelledQScrollbar(QScrollBar):
         QScrollBar.setValue(self, value)
         self.updateLabel()
 
-class navigateQScrollBar(QScrollBar):
+class navigateQScrollBar(ScrollBar):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._disableCustomPressEvent = False
@@ -4352,7 +4385,7 @@ class navigateQScrollBar(QScrollBar):
             # self.setMaximum(self.maximum()+1)
             self.triggerAction(QAbstractSlider.SliderSingleStepAdd)
 
-class linkedQScrollbar(QScrollBar):
+class linkedQScrollbar(ScrollBar):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._linkedScrollBar = None
