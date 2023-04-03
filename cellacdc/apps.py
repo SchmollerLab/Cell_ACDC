@@ -2510,6 +2510,8 @@ class QDialogMetadataXML(QDialog):
                 self.addImageName_QCB = addImageName_QCB
                 self.channelNameLayouts[2].addWidget(addImageName_QCB)
             else:
+                self.addImageName_QCB = QCheckBox('dummy')
+                self.addImageName_QCB.hide()
                 self.channelNameLayouts[2].addWidget(QLabel())
 
             showChannelDataButton = QPushButton()

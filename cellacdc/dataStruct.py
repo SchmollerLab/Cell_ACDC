@@ -145,6 +145,19 @@ class bioFormatsWorker(QObject):
         self.sigFinishedReadingSampleImageData.emit(sampleImgData)
         return sampleImgData
 
+    def getSizeZ(self, rawFilePath):
+        try:
+            if rawFilePath.endswith('.ome.tif'):
+                metadata = load.OMEXML(rawFilePath)
+                metadataXML = metadata.omexml_string
+            else:
+                metadataXML = bioformats.get_omexml_metadata(rawFilePath)
+                metadata = bioformats.OMEXML(metadataXML)
+            SizeZ = int(metadata.image().Pixels.SizeZ)
+            return SizeZ
+        except Exception as e:
+            return self.SizeZ
+
     def readMetadata(self, raw_src_path, filename):
         rawFilePath = os.path.join(raw_src_path, filename)
 
@@ -543,7 +556,7 @@ class bioFormatsWorker(QObject):
             
     def saveImgDataChannel(
             self, reader, series, images_path, filenameNOext, s0p, chName,
-            ch_idx, idxs
+            ch_idx, idxs, SizeZ
         ):
         if self.to_h5:
             filename = self.getFilename(
@@ -576,7 +589,7 @@ class bioFormatsWorker(QObject):
         for t in range(self.SizeT):
             imgData_z = []
             dimsIdx['t'] = t
-            for z in range(self.SizeZ):
+            for z in range(SizeZ):
                 dimsIdx['z'] = z
                 if self.rawDataStruct != 2:
                     idx = self.getIndex(idxs, dimsIdx, self.DimensionOrder)
@@ -598,7 +611,7 @@ class bioFormatsWorker(QObject):
         if not self.to_h5:
             imgData_ch = np.squeeze(np.array(imgData_ch, dtype=imgData.dtype))
             myutils.imagej_tiffwriter(
-                filePath, imgData_ch, {}, self.SizeT, self.SizeZ
+                filePath, imgData_ch, {}, self.SizeT, SizeZ
             )
         else:
             h5f.close()
@@ -689,6 +702,7 @@ class bioFormatsWorker(QObject):
             self.SizeC, self.SizeT, self.SizeZ, self.DimensionOrder
         )
         if self.rawDataStruct != 2:       
+            SizeZ = self.getSizeZ(rawFilePath)
             with bioformats.ImageReader(rawFilePath) as reader:
                 iter = enumerate(zip(self.chNames, self.saveChannels))
                 for c, (chName, saveCh) in iter:
@@ -701,7 +715,7 @@ class bioFormatsWorker(QObject):
                     )
                     self.saveImgDataChannel(
                         reader, series, images_path, filenameNOext, s0p,
-                        chName, c, idxs
+                        chName, c, idxs, SizeZ
                     )
 
         elif self.rawDataStruct == 2:
@@ -722,6 +736,7 @@ class bioFormatsWorker(QObject):
                     if f.find(rawFilename)!=-1
                 ][0]
 
+                SizeZ = self.getSizeZ(rawFilePath)
                 with bioformats.ImageReader(rawFilePath) as reader:
                     self.progress.emit(
                         f'  Saving channel {c+1}/{len(self.chNames)} ({chName})'
@@ -729,7 +744,7 @@ class bioFormatsWorker(QObject):
                     imgData_ch = []
                     self.saveImgDataChannel(
                         reader, series, images_path, filenameNOext, s0p,
-                        chName, 0, idxs
+                        chName, 0, idxs, SizeZ
                     )
 
             if self.moveOtherFiles or self.copyOtherFiles:
@@ -838,7 +853,6 @@ class bioFormatsWorker(QObject):
                     javabridge.kill_vm()
                     self.finished.emit()
                     return
-
 
             self.numPos = len(self.posNums)
             self.numPosDigits = len(str(self.numPos))

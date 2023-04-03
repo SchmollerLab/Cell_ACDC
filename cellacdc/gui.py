@@ -19017,6 +19017,13 @@ class guiWin(QMainWindow):
             return True
 
     def criticalImgPathNotFound(self, images_path):
+        self.logger.info(
+            'The following folder does not contain valid image files: '
+            f'"{images_path}"\n\n'
+            'Check that all the positions loaded contain the same channel name. '
+            'Make sure to double check for spelling mistakes or types in the '
+            'channel names.'
+        )
         msg = widgets.myMessageBox()
         msg.addShowInFileManagerButton(images_path)
         err_msg = html_utils.paragraph(f"""
