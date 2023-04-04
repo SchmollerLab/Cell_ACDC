@@ -3652,6 +3652,30 @@ class BaseGradientEditorItemImage(pg.GradientEditorItem):
         pg.graphicsItems.GradientEditorItem.Gradients = GradientsImage
         return super().restoreState(state)
 
+class MouseCursor(QWidget):
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self._x = None
+        self._y = None
+        self.setMouseTracking(True)
+    
+    def mouseMoveEvent(self, event) -> None:
+        self.move(event.pos())
+        self.update()
+        return super().mouseMoveEvent(event)
+    
+    # def drawAtPos(self, x, y):
+    #     self._x = x
+    #     self._y = y
+    #     self.update()
+    
+    def paintEvent(self, event) -> None:
+        p = QPainter(self)
+        # p.setPen(QPen(QColor(0,0,0)))
+        # p.setBrush(QBrush(QColor(70,70,70,200)))
+        p.drawLine(0,0,200,0)
+        p.end()
+
 class BaseGradientEditorItemLabels(pg.GradientEditorItem):
     def __init__(self, *args, **kargs):
         super().__init__(*args, **kargs)

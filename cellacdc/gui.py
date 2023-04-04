@@ -5801,10 +5801,9 @@ class guiWin(QMainWindow):
             x, y = event.pos()
             xdata, ydata = int(x), int(y)
             _img = self.currentLab2D
-            Y, X = _img.shape
-            if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
-                hoverText = self.hoverValuesFormatted(xdata, ydata)
-                self.wcLabel.setText(hoverText)
+            Y, X = _img.shape                
+            # hoverText = self.hoverValuesFormatted(xdata, ydata)
+            # self.wcLabel.setText(hoverText)
         else:
             if self.eraserButton.isChecked() or self.brushButton.isChecked():
                 self.gui_mouseReleaseEventImg2(event)
@@ -9217,15 +9216,14 @@ class guiWin(QMainWindow):
         if update:
             self.updateAllImages()
     
-    def _channelHoverValues(self, descr, channel, value, max_value, ff=None):
+    def _channelHoverValues(self, descr, channel, value, ff=None):
         if ff is None:
-            n_digits = len(str(int(max_value)))
+            n_digits = len(str(int(value)))
             ff = myutils.get_number_fstring_formatter(
                 type(value), precision=abs(n_digits-5)
             )
         txt = (
-            f'<b>{descr} {channel}</b>: value={value:{ff}}, '
-            f'<i>max={max_value:{ff}}</i>'
+            f'<b>{descr} {channel}</b>: value={value:{ff}}'
         )
         return txt
     
@@ -9243,58 +9241,28 @@ class guiWin(QMainWindow):
             
             raw_overlay_img = self.getRawImage(filename=filename)
             raw_overlay_value = raw_overlay_img[ydata, xdata]
-            raw_overlay_max_value = raw_overlay_img.max()
+            # raw_overlay_max_value = raw_overlay_img.max()
 
-            raw_txt = self._channelHoverValues(
-                'Raw', chName, raw_overlay_value, raw_overlay_max_value
-            )
+            raw_txt = self._channelHoverValues('Raw', chName, raw_overlay_value)
 
             txt = f'{txt} | {raw_txt}'
-
-            # overlayImageItem = self.overlayLayersItems[chName][0]
-            # display_overlay_img = overlayImageItem.image
-            # display_overlay_value = display_overlay_img[ydata, xdata]
-            # display_overlay_max_value = display_overlay_img.max()
-
-            # n_digits = len(str(int(display_overlay_max_value)))
-            # ff = myutils.get_number_fstring_formatter(
-            #     display_overlay_img.dtype, precision=abs(n_digits-5)
-            # )
-
-            # display_txt = self._channelHoverValues(
-            #     'Display', chName, display_overlay_value, 
-            #     display_overlay_max_value, self.imgValueFormatter
-            # )
-
-            # txt = f'{txt} | {raw_txt} ; {display_txt}'
         return txt
     
     def hoverValuesFormatted(self, xdata, ydata):
+        for button in self.LeftClickButtons:
+            if button.isChecked():
+                return ''
+
         posData = self.data[self.pos_i]
 
         txt = f'x={xdata:d}, y={ydata:d}'
 
         raw_img = self.getRawImage()
         raw_value = raw_img[ydata, xdata]
-        raw_max_value = raw_img.max()
+        # raw_max_value = raw_img.max()
 
         ch = self.user_ch_name
-        raw_txt = self._channelHoverValues(
-            'Raw', ch, raw_value, raw_max_value
-        )
-
-        # display_value = self.img1.image[ydata, xdata]
-        # if display_value != raw_value:
-        #     display_max_value = self.img1.image.max()
-
-        #     display_txt = self._channelHoverValues(
-        #         'Display', ch, display_value, display_max_value, 
-        #         self.imgValueFormatter
-        #     )
-
-        #     txt = f'{txt} | {raw_txt} ; {display_txt}'
-        # else:
-        #     txt = f'{txt} | {raw_txt}'
+        raw_txt = self._channelHoverValues('Raw', ch, raw_value)
 
         txt = f'{txt} | {raw_txt}'
 
@@ -18822,6 +18790,8 @@ class guiWin(QMainWindow):
         self.createUserChannelNameAction()
         self.gui_createOverlayColors()
         self.gui_createOverlayItems()
+        lastRow = self.bottomLeftLayout.rowCount()
+        self.bottomLeftLayout.setRowStretch(lastRow+1, 1)
 
         self.num_pos = len(user_ch_file_paths)
         proceed = self.loadSelectedData(user_ch_file_paths, user_ch_name)

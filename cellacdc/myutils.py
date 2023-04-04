@@ -347,19 +347,19 @@ def checkDataIntegrity(filenames, parent_path, parentQWidget=None):
         msg = QMessageBox(parentQWidget)
         msg.setWindowTitle('Data structure compromised')
         msg.setIcon(msg.Warning)
-        txt = (
+        txt = html_utils.paragraph(
             'The system detected files inside the folder '
-            'that do not start with the same, common basename.\n\n'
+            'that <b>do not start with the same, common basename</b>.<br><br>'
             'To ensure correct loading of the data, the folder where '
             'the file(s) is/are should either contain a single image file or'
-            'only files that start with the same, common basename.\n\n'
-            'For example the following filenames:\n\n'
-            'F014_s01_phase_contr.tif\n'
-            'F014_s01_mCitrine.tif\n\n'
+            'only files that start with the same, common basename.<br><br>'
+            'For example the following filenames:<br><br>'
+            '<code>F014_s01_phase_contr.tif<br>'
+            '<code>F014_s01_mCitrine.tif</code><br><br>'
             'are named correctly since they all start with the '
             'the common basename "F014_s01_". After the common basename you '
             'can write whatever text you want. In the example above, "phase_contr" '
-            'and "mCitrine" are the channel names.\n\n'
+            'and "mCitrine" are the channel names.<br><br>'
             'Data loading may still be successfull, so Cell-ACDC will '
             'still try to load data now.'
         )
