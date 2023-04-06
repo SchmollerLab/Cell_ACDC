@@ -36,8 +36,7 @@ class Model:
         
         model_type, sam_checkpoint = model_types[model_type]
         sam_checkpoint = os.path.join(sam_models_path, sam_checkpoint)
-        with open(sam_checkpoint, 'rb') as f:
-            sam = sam_model_registry[model_type](checkpoint=f)
+        sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
             
         sam.to(device=device)
         self.model = SamAutomaticMaskGenerator(

@@ -884,6 +884,7 @@ class loadData:
                 self.loaded_shifts = np.load(filePath)
             elif loadSegmInfo and file.endswith('segmInfo.csv'):
                 self.segmInfoFound = True
+                remove_duplicates_file(filePath)
                 df = pd.read_csv(filePath).dropna()
                 if 'filename' not in df.columns:
                     df['filename'] = self.filename
@@ -925,6 +926,7 @@ class loadData:
                         self.dataPrep_ROIcoords = df
             elif loadMetadata:
                 self.metadataFound = True
+                remove_duplicates_file(filePath)
                 self.metadata_df = pd.read_csv(filePath).set_index('Description')
             elif load_customAnnot and file.endswith('custom_annot_params.json'):
                 self.customAnnotFound = True
