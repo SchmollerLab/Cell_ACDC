@@ -75,7 +75,7 @@ class Model:
 
     def _remove_background(self, labels: np.ndarray) -> np.ndarray:
         border_mask = np.ones(labels.shape, dtype=bool)
-        border_slice = tuple([slice(1,-1) for _ in range(labels.ndim)])
+        border_slice = tuple([slice(2,-2) for _ in range(labels.ndim)])
         border_mask[border_slice] = False
         border_ids, counts = np.unique(labels[border_mask], return_counts=True)
         max_count_idx = list(counts).index(counts.max())
