@@ -18033,6 +18033,8 @@ class guiWin(QMainWindow):
             return
         
         prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
+        if prev_rp is None:
+            return
         for obj in prev_rp:
             if obj.label not in posData.lost_IDs:
                 continue
@@ -18061,9 +18063,10 @@ class guiWin(QMainWindow):
         curr_IDs = [obj.label for obj in posData.rp]
         lost_IDs = [ID for ID in prev_IDs if ID not in curr_IDs]
         new_IDs = [ID for ID in curr_IDs if ID not in prev_IDs]
-        IDs_with_holes = [
-            obj.label for obj in posData.rp if obj.area/obj.filled_area < 1
-        ]
+        # IDs_with_holes = [
+        #     obj.label for obj in posData.rp if obj.area/obj.filled_area < 1
+        # ]
+        IDs_with_holes = []
         posData.lost_IDs = lost_IDs
         posData.new_IDs = new_IDs
         posData.old_IDs = prev_IDs

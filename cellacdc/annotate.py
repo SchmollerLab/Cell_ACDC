@@ -485,6 +485,9 @@ class TextAnnotations:
 
         if posData.lost_IDs:
             prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
+            if prev_rp is None:
+                self.item.draw()
+                return
             for obj in prev_rp:
                 if obj.label not in posData.lost_IDs:
                     continue
