@@ -59,6 +59,7 @@ cellacdc/models/cellpose/model/*
 cellacdc/models/YeaZ/model/*
 cellacdc/models/YeastMate/model/*
 cellacdc/models/StarDist/model/*
+cellacdc/models/segment_anything/model/*
 
 # Hide placeholder.txt dummy file (probably works only on Linux)
 !models/.placeholder.txt

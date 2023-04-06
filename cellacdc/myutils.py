@@ -1041,6 +1041,7 @@ def check_model_exists(model_path, model_name):
     m = model_name.lower()
     weights_filenames = getattr(cellacdc, f'{m}_weights_filenames')
     files_present = listdir(model_path)
+    print(model_path, files_present)
     return all([f in files_present for f in weights_filenames])
 
 def _create_temp_dir():
@@ -1057,6 +1058,16 @@ def _model_url(model_name, return_alternative=False):
         url = 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/czTkPmZReGjDRjG/download/yeastmate_weights.zip'
         alternative_url = 'https://zenodo.org/record/6140067/files/yeastmate_weights.zip?download=1'
         file_size = 164911104
+    elif model_name == 'segment_anything':
+        url = [
+            'https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth', 
+            'https://dl.fbaipublicfiles.com/segment_anything/sam_vit_l_0b3195.pth',
+            'https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth'
+        ]
+        file_size = [
+            2564550879, 1249524736, 375042383
+        ]
+        alternative_url = ''
     if return_alternative:
         return url, alternative_url
     else:
@@ -1179,8 +1190,35 @@ def determine_folder_type(folder_path):
         folder_path = os.path.join(folder_path, 'Images')
     return is_pos_folder, is_images_folder, folder_path
 
+def _download_segment_anything_models():
+    urls, file_sizes = _model_url('segment_anything')
+    temp_model_path = tempfile.mkdtemp()
+    _, final_model_path = (
+        get_model_path('segment_anything', create_temp_dir=False)
+    )
+    for url, file_size in zip(urls, file_sizes):
+        filename = url.split('/')[-1]
+        final_dst = os.path.join(final_model_path, filename)
+        if os.path.exists(final_dst):            
+            continue
+
+        temp_dst = os.path.join(temp_model_path, filename)
+        download_url(
+            url, temp_dst, file_size=file_size, desc='segment_anything',
+            verbose=False
+        )
+        
+        shutil.move(temp_dst, final_dst)
+
 def download_model(model_name):
-    if model_name != 'YeastMate' and model_name != 'YeaZ':
+    if model_name == 'segment_anything':
+        try:
+            _download_segment_anything_models()
+            return True
+        except Exception as e:
+            traceback.print_exc()
+            return False
+    elif model_name != 'YeastMate' and model_name != 'YeaZ':
         # We manage only YeastMate and YeaZ
         return True
     try:
@@ -1205,6 +1243,7 @@ def download_model(model_name):
         temp_dir = os.path.dirname(temp_zip_path)
         url, file_size = _model_url(model_name)
         print(f'Downloading {model_name} to {model_path}')
+
         download_url(
             url, temp_zip_path, file_size=file_size, desc=model_name,
             verbose=False
@@ -1533,7 +1572,10 @@ def check_install_cellpose():
             _install_pip_package('cellpose')
     except Exception as e:
         _inform_install_package_failed('cellpose')
-            
+
+def check_install_segment_anything():
+    check_install_package('torchvision')
+    check_install_package('segment_anything')
 
 def check_install_package(
         pkg_name: str, pypi_name='', note='', 
@@ -1555,6 +1597,8 @@ def check_install_package(
         try:
             if pkg_name == 'tensorflow':
                 _install_tensorflow()
+            elif pkg_name == 'segment_anything':
+                _install_segment_anything()
             else:
                 _install_pip_package(pkg_name)
         except Exception as e:
@@ -1647,6 +1691,14 @@ def _install_tensorflow():
         args = ['conda', 'install', '-y', '-c', 'conda-forge', 'tensorflow']
     else:
         args = [sys.executable, '-m', 'pip', 'install', '-U', 'tensorflow']
+    subprocess.check_call(args)
+
+def _install_segment_anything():
+    args = [
+        sys.executable, '-m', 'pip', 'install', 
+        '-U', '--use-pep517', 
+        'git+https://github.com/facebookresearch/segment-anything.git'
+    ]
     subprocess.check_call(args)
 
 def import_tracker(posData, trackerName, realTime=False, qparent=None):

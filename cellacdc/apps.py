@@ -10050,7 +10050,7 @@ class QDialogModelParams(QDialog):
         if self.model_name.find('cellpose') != -1 and addChannelSelector:
             label = QLabel('Second channel (optional):  ')
             groupBoxLayout.addWidget(label, 0, 0, alignment=Qt.AlignRight)
-            self.channelsCombobox = QComboBox()
+            self.channelsCombobox = widgets.QCenteredComboBox()
             groupBoxLayout.addWidget(self.channelsCombobox, 0, 1, 1, 2)
             start_row = 1
 
@@ -10119,11 +10119,11 @@ class QDialogModelParams(QDialog):
             elif isCustomListType:
                 items = ArgSpec.type().values
                 defaultVal = str(ArgSpec.default)
-                combobox = QComboBox()
+                combobox = widgets.QCenteredComboBox()
                 combobox.addItems(items)
                 combobox.setCurrentText(defaultVal)
-                valueSetter = QComboBox.setCurrentText
-                valueGetter = QComboBox.currentText
+                valueSetter = widgets.QCenteredComboBox.setCurrentText
+                valueGetter = widgets.QCenteredComboBox.currentText
                 widget = combobox
                 groupBoxLayout.addWidget(combobox, row, 1, 1, 2)
             else:
@@ -10373,70 +10373,74 @@ class QDialogModelParams(QDialog):
             height = screenHeight - 100
         self.resize(self.width(), height)
 
-class downloadModel(QMessageBox):
+class downloadModel:
     def __init__(self, model_name, parent=None):
-        super().__init__(parent)
         self.loop = None
         self.model_name = model_name
+        self._parent = parent
 
     def download(self):
+        _, model_path = myutils.get_model_path(self.model_name)
+        model_name = self.model_name
+        model_exists = myutils.check_model_exists(model_path, model_name)
+        if not model_exists:
+            self.warnDownloadModel(model_path, self.model_name)
         success = myutils.download_model(self.model_name)
         if not success:
-            self.exec_()
+            self.criticalDowloadFailed()
+        
+    def warnDownloadModel(self, model_path, model_name):
+        txt = html_utils.paragraph(
+            'Cell-ACDC needs to <b>download the model</b> '
+            f'<code>{model_name}</code>.<br><br>'
+            'The files will be dowloaded into the following folder:<br><br>'
+            f'<code>{model_path}</code><br><br>'
+            '<b>Progress</b> will be displayed in the <b>terminal</b>.<br>'
+        )
+        msg = widgets.myMessageBox()
+        msg.information(self._parent, 'Download model', txt)
 
-    def exec_(self):
-        self.show(block=True)
-
-    def show(self, block=False):
+    def criticalDowloadFailed(self):
         import cellacdc
         model_name = self.model_name
         m = model_name.lower()
         weights_filenames = getattr(cellacdc, f'{m}_weights_filenames')
-        self.setIcon(self.Critical)
-        self.setWindowTitle(f'Download of {model_name} failed')
-        self.setTextFormat(Qt.RichText)
         url, alternative_url = myutils._model_url(
             model_name, return_alternative=True
         )
         url_href = f'<a href="{url}">this link</a>'
         alternative_url_href = f'<a href="{alternative_url}">this link</a>'
         _, model_path = myutils.get_model_path(model_name, create_temp_dir=False)
-        txt = (f"""
-        <p style=font-size:13px>
+        txt = html_utils.paragraph(f"""
             Automatic download of {model_name} failed.<br><br>
             Please, <b>manually download</b> the model weights from {url_href} or
             {alternative_url_href}.<br><br>
-            Next, unzip the content of the downloaded file into the
-            following folder:<br><br>
-            {model_path}<br>
-        </p>
-        <p style=font-size:13px>
+            Next, unzip the content (or move the files if not a zip archive) 
+            of the downloaded file into the following folder:<br><br>
+            <code>{model_path}</code><br><br>
             <i>NOTE: if clicking on the link above does not work
             copy one of the links below and paste it into the browser</i><br><br>
             {url}<br>{alternative_url}
-        </p>
         """)
-        self.setText(txt)
         weights_paths = [os.path.join(model_path, f) for f in weights_filenames]
         weights = '\n\n'.join(weights_paths)
-        self.setDetailedText(
+        detailsText = (
             f'Files that {model_name} requires:\n\n'
             f'{weights}'
         )
-        okButton = widgets.okPushButton('Ok')
-        self.addButton(okButton, self.YesRole)
-        okButton.disconnect()
-        okButton.clicked.connect(self.close_)
-        super().show()
-        if block:
-            self.loop = QEventLoop()
-            self.loop.exec_()
+        msg = widgets.myMessageBox()
+        msg.critical(
+            self._parent, f'Download of {model_name} failed', txt, 
+            detailsText=detailsText
+        )
+        self.close_()
 
     def close_(self):
-        self.hide()
-        self.close()
-        if self.loop is not None:
-            self.loop.exit()
+        return
+        # self.hide()
+        # self.close()
+        # if self.loop is not None:
+        #     self.loop.exit()
 
 class warnVisualCppRequired(QMessageBox):
     def __init__(self, pkg_name='javabridge', parent=None):

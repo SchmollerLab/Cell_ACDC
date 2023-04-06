@@ -112,6 +112,12 @@ yeaz_weights_filenames = [
     'weights_budding_BF_multilab_0_1.hdf5'
 ]
 
+segment_anything_weights_filenames = [
+    'sam_vit_h_4b8939.pth', 
+    'sam_vit_l_0b3195.pth', 
+    'sam_vit_b_01ec64.pth'
+]
+
 yeastmate_weights_filenames = [
     'yeastmate_advanced.yaml',
     'yeastmate_weights.pth',

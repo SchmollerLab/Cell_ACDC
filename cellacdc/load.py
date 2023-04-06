@@ -70,6 +70,19 @@ def read_json(json_path, logger_func=print, desc='custom annotations'):
         print('============================')
     return json_data
 
+def remove_duplicates_file(filepath):
+    if not os.path.exists(filepath):
+        return
+    with open(filepath, 'r') as file:
+        first_line = file.readline()
+        rest_of_text = file.read()
+        duplicate_first_line_idx = rest_of_text.find(first_line)
+        if duplicate_first_line_idx == -1:
+            return
+        unique_text = f'{first_line}{rest_of_text[:duplicate_first_line_idx]}'
+    with open(filepath, 'w') as file:
+        file.write(unique_text)
+
 def write_json(json_data, json_path, indent=2):
     with open(json_path, mode='w') as file:
         json.dump(json_data, file, indent=indent)

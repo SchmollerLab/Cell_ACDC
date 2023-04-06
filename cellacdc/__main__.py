@@ -84,7 +84,7 @@ try:
     # We try to import from cellacdc instead of "from ." to check
     # if cellacdc was installed with pip or not
     from cellacdc import (
-        dataPrep, segm, gui, dataStruct, utils, help, qrc_resources, myutils,
+        dataPrep, segm, gui, dataStruct, load, help, qrc_resources, myutils,
         cite_url, html_utils, widgets, apps, dataReStruct
     )
     from cellacdc.help import about
@@ -144,6 +144,8 @@ class mainWin(QMainWindow):
         self.log_path = log_path
         self.log_filename = log_filename
         self.logs_path = logs_path
+
+        self.checkConfigFiles()
 
         if not is_linux:
             self.loadFonts()
@@ -257,6 +259,20 @@ class mainWin(QMainWindow):
         self.dataPrepWin = None
         self._version = None
         self.progressWin = None
+    
+    def checkConfigFiles(self):
+        self.logger.info('Loading configuration files...')
+        paths_to_check = [
+            gui.favourite_func_metrics_csv_path, 
+            gui.custom_annot_path, 
+            gui.shortcut_filepath, 
+            os.path.join(temp_path, 'recentPaths.csv'), 
+            load.last_entries_metadata_path, 
+            load.additional_metadata_path, 
+            load.last_selected_groupboxes_measurements_path
+        ]
+        for path in paths_to_check:
+            load.remove_duplicates_file(path)
     
     def dragEnterEvent(self, event) -> None:
         printl(event)

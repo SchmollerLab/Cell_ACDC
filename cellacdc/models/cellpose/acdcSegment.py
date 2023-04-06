@@ -11,8 +11,11 @@ from cellpose import models
 from cellacdc.models import CELLPOSE_MODELS
 from cellacdc import printl
 
+class AvailableModels:
+    values = CELLPOSE_MODELS
+
 class Model:
-    def __init__(self, model_type='cyto', net_avg=False, gpu=False):
+    def __init__(self, model_type: AvailableModels='cyto', net_avg=False, gpu=False):
         if model_type not in CELLPOSE_MODELS:
             err_msg = (
                 f'"{model_type}" not available. '

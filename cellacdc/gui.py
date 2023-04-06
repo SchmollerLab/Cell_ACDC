@@ -4480,7 +4480,7 @@ class guiWin(QMainWindow):
 
             # Store undo state before modifying stuff
             self.storeUndoRedoStates(False)
-            max_ID = np.max(posData.lab)
+            max_ID = max(posData.IDs)
 
             if right_click:
                 lab2D, success = self.auto_separate_bud_ID(
@@ -4729,11 +4729,11 @@ class guiWin(QMainWindow):
 
             # Store undo state before modifying stuff
             self.storeUndoRedoStates(UndoFutFrames)
-
+            maxID = max(posData.IDs)
             for old_ID, new_ID in editID.how:
                 if new_ID in prev_IDs and not self.editIDmergeIDs:
-                    tempID = np.max(posData.lab) + 1
-                    posData.lab[posData.lab == old_ID] = tempID
+                    tempID = maxID + 1
+                    posData.lab[posData.lab == old_ID] = maxID + 1
                     posData.lab[posData.lab == new_ID] = old_ID
                     posData.lab[posData.lab == tempID] = new_ID
 
@@ -4753,6 +4753,8 @@ class guiWin(QMainWindow):
                         posData.editID_info.append((yo, xo, old_ID))
                 else:
                     posData.lab[posData.lab == old_ID] = new_ID
+                    if newID > maxID:
+                        maxID = newID
                     old_ID_idx = posData.IDs.index(old_ID)
 
                     # Append information for replicating the edit in tracking
@@ -5188,13 +5190,19 @@ class guiWin(QMainWindow):
 
         # Brush dragging mouse --> keep painting
         elif self.isMouseDragImg1 and self.brushButton.isChecked():
+            # t0 = time.perf_counter()
+
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
             lab_2D = self.get_2Dlab(posData.lab)
             Y, X = lab_2D.shape
 
+            # t1 = time.perf_counter()
+
             ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
             rrPoly, ccPoly = self.getPolygonBrush((y, x), Y, X)
+
+            # t2 = time.perf_counter()
 
             diskSlice = (slice(ymin, ymax), slice(xmin, xmax))
 
@@ -5206,6 +5214,8 @@ class guiWin(QMainWindow):
             # If user double-pressed 'b' then draw over the labels
             color = self.brushButton.palette().button().color().name()
             drawUnder = color != self.doublePressKeyButtonColor
+
+            # t3 = time.perf_counter()
             if drawUnder:
                 mask[lab_2D!=0] = False
                 self.setHoverToolSymbolColor(
@@ -5214,10 +5224,14 @@ class guiWin(QMainWindow):
                     self.brushButton, brush=self.ax2_BrushCircleBrush
                 )
 
+            # t4 = time.perf_counter()
+
             # Apply brush mask
             self.applyBrushMask(mask, posData.brushID)
 
             self.setImageImg2(updateLookuptable=False)
+
+            # t5 = time.perf_counter()
 
             lab2D = self.get_2Dlab(posData.lab)
             brushMask = np.logical_and(
@@ -5227,6 +5241,19 @@ class guiWin(QMainWindow):
                 False, brushMask, posData.brushID, 
                 toLocalSlice=diskSlice
             )
+
+            # t6 = time.perf_counter()
+
+            # printl(
+            #     'Brush exec times =\n'
+            #     f'  * {(t1-t0)*1000 = :.4f} ms\n'
+            #     f'  * {(t2-t1)*1000 = :.4f} ms\n'
+            #     f'  * {(t3-t2)*1000 = :.4f} ms\n'
+            #     f'  * {(t4-t3)*1000 = :.4f} ms\n'
+            #     f'  * {(t5-t4)*1000 = :.4f} ms\n'
+            #     f'  * {(t6-t5)*1000 = :.4f} ms\n'
+            #     f'  * {(t6-t0)*1000 = :.4f} ms'
+            # )
 
         # Eraser dragging mouse --> keep erasing
         elif self.isMouseDragImg1 and self.eraserButton.isChecked():
@@ -6612,7 +6639,6 @@ class guiWin(QMainWindow):
         # Paint new IDs with brush and left click on the left image
         if left_click and canBrush:
             # Store undo state before modifying stuff
-
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
             lab_2D = self.get_2Dlab(posData.lab)
@@ -6852,7 +6878,7 @@ class guiWin(QMainWindow):
             if posData.brushID == 0:
                 self.setBrushID()
                 self.updateLookuptable(
-                    lenNewLut=np.max(posData.lab)+posData.brushID+1
+                    lenNewLut=posData.brushID+1
                 )
             self.brushColor = self.img2.lut[posData.brushID]/255
 
@@ -6904,7 +6930,7 @@ class guiWin(QMainWindow):
             posData = self.data[self.pos_i]
             currentIDs = posData.IDs.copy()
             if manualTrackID in currentIDs:
-                tempID = np.max(posData.lab) + 1
+                tempID = max(currentIDs) + 1
                 posData.lab[posData.lab == clickedID] = tempID
                 posData.lab[posData.lab == manualTrackID] = clickedID
                 posData.lab[posData.lab == tempID] = manualTrackID
@@ -9822,13 +9848,15 @@ class guiWin(QMainWindow):
         defects = cv2.convexityDefects(cnt,hull) # see https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_imgproc/py_contours/py_contours_more_functions/py_contours_more_functions.html
         return cnt, defects
 
-    def auto_separate_bud_ID(self, ID, lab, rp, max_ID, max_i=1,
-                             enforce=False, eps_percent=0.01):
+    def auto_separate_bud_ID(
+            self, ID, lab, rp, max_ID, max_i=1, enforce=False, 
+            eps_percent=0.01
+        ):
         lab_ID_bool = lab == ID
         # First try separating by labelling
         lab_ID = lab_ID_bool.astype(int)
         rp_ID = skimage.measure.regionprops(lab_ID)
-        setRp = self.separateByLabelling(lab_ID, rp_ID, maxID=np.max(lab))
+        setRp = self.separateByLabelling(lab_ID, rp_ID, maxID=max_ID)
         if setRp:
             success = True
             lab[lab_ID_bool] = lab_ID[lab_ID_bool]
@@ -10323,13 +10351,16 @@ class guiWin(QMainWindow):
         # already visited frames
         posData = self.data[self.pos_i]
         if useCurrentLab:
-            newID = np.max(posData.lab)
+            newID = max(posData.IDs)
         else:
             newID = 1
         for frame_i, storedData in enumerate(posData.allData_li):
+            if frame_i == posData.frame_i:
+                continue
             lab = storedData['labels']
             if lab is not None:
-                _max = np.max(lab)
+                rp = storedData['regionprops']
+                _max = max([obj.label for obj in rp])
                 if _max > newID:
                     newID = _max
             else:
@@ -11141,7 +11172,6 @@ class guiWin(QMainWindow):
         self.undoAction.setEnabled(True)
         self.addCurrentState(storeImage=storeImage)
         
-
     def storeUndoRedoCca(self, frame_i, cca_df, undoId):
         if self.isSnapshot:
             # For snapshot mode we don't store anything because we have only
@@ -12895,6 +12925,10 @@ class guiWin(QMainWindow):
         self.user_ch_file_paths = user_ch_file_paths
 
         required_ram = myutils.getMemoryFootprint(user_ch_file_paths)
+        if required_ram >= 1e6:
+            # Disable autosave for data > 1GB
+            self.autoSaveToggle.setChecked(False)
+
         proceed = self.checkMemoryRequirements(required_ram)
         if not proceed:
             self.loadingDataAborted()
@@ -14003,6 +14037,7 @@ class guiWin(QMainWindow):
         )
         self.imgValueFormatter = 'd'
         self.rawValueFormatter = 'd'
+        self.lastHoverID = -1
 
         # Second channel used by cellpose
         self.secondChannelName = None
@@ -14970,7 +15005,6 @@ class guiWin(QMainWindow):
             self.brushColor = self.lut[posData.brushID]/255
             self.setTempImg1Brush(True, brushIDmask, posData.brushID)
 
-    # @exec_time
     def applyBrushMask(self, mask, ID, toLocalSlice=None):
         posData = self.data[self.pos_i]
         if self.isSegm3D:
@@ -15227,8 +15261,6 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         last_tracked_i = self.get_last_tracked_i()
 
-        self.navigateScrollBar.setMaximum(last_tracked_i+1)
-        self.navSpinBox.setMaximum(last_tracked_i+1)
         if posData.frame_i > last_tracked_i:
             # Prompt user to go to last tracked frame
             msg = widgets.myMessageBox()
@@ -15259,6 +15291,9 @@ class guiWin(QMainWindow):
 
                 posData.frame_i = current_frame_i
                 self.get_data()
+        
+        self.navigateScrollBar.setMaximum(posData.frame_i+1)
+        self.navSpinBox.setMaximum(posData.frame_i+1)
 
         self.checkTrackingEnabled()
 
@@ -18077,18 +18112,20 @@ class guiWin(QMainWindow):
         one object then we insert the separated object into posData.lab
         """
         setRp = False
+        posData = self.data[self.pos_i]
+        if maxID is None:
+            maxID = max(posData.IDs)
         for obj in rp:
             lab_obj = skimage.measure.label(obj.image)
             rp_lab_obj = skimage.measure.regionprops(lab_obj)
-            if len(rp_lab_obj)>1:
-                if maxID is None:
-                    lab_obj += np.max(lab)
-                else:
-                    lab_obj += maxID
-                _slice = obj.slice # self.getObjSlice(obj.slice)
-                _objMask = obj.image # self.getObjImage(obj.image)
-                lab[_slice][_objMask] = lab_obj[_objMask]
-                setRp = True
+            if len(rp_lab_obj)<=1:
+                continue
+            lab_obj += maxID
+            _slice = obj.slice # self.getObjSlice(obj.slice)
+            _objMask = obj.image # self.getObjImage(obj.image)
+            lab[_slice][_objMask] = lab_obj[_objMask]
+            setRp = True
+            maxID += 1
         return setRp
 
     def checkTrackingEnabled(self):
@@ -18195,18 +18232,21 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         infoToRemove = []
         # Correct tracking with manually changed IDs
+        maxID = max(allIDs)
         for y, x, new_ID in posData.editID_info:
             old_ID = tracked_lab[y, x]
             if old_ID == 0:
                 infoToRemove.append((y, x, new_ID))
                 continue
             if new_ID in allIDs:
-                tempID = np.max(tracked_lab) + 1
+                tempID = maxID+1
                 tracked_lab[tracked_lab == old_ID] = tempID
                 tracked_lab[tracked_lab == new_ID] = old_ID
                 tracked_lab[tracked_lab == tempID] = new_ID
             else:
                 tracked_lab[tracked_lab == old_ID] = new_ID
+                if newID > maxID:
+                    maxID = newID
         for info in infoToRemove:
             posData.editID_info.remove(info)
 
