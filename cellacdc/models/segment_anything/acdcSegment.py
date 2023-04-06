@@ -49,7 +49,7 @@ class Model:
             min_mask_region_area=min_mask_region_area,
         )
     
-    def segment(self, image):
+    def segment(self, image, automatic_remove_background=True):
         isRGB = image.shape[-1] == 3 or image.shape[-1] == 4
         isZstack = (image.ndim==3 and not isRGB) or (image.ndim==4)
 
@@ -71,6 +71,15 @@ class Model:
             for id, mask in enumerate(masks):
                 obj_image = mask['segmentation']
                 labels[obj_image] = id+1
+        
+        if automatic_remove_background:
+            border_mask = np.ones(labels.shape, dtype=bool)
+            border_slice = tuple([slice(1,-1) for _ in range(labels.ndim)])
+            border_mask[border_slice] = False
+            border_ids, counts = np.unique(labels[border_mask])
+            max_count_idx = list(counts).index(counts.max())
+            largest_border_id = border_ids[max_count_idx]
+            labels[labels == largest_border_id] = 0
         return labels
 
 def url_help():
