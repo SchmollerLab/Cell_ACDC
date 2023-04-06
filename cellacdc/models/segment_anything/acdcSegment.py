@@ -76,7 +76,9 @@ class Model:
             border_mask = np.ones(labels.shape, dtype=bool)
             border_slice = tuple([slice(1,-1) for _ in range(labels.ndim)])
             border_mask[border_slice] = False
-            border_ids, counts = np.unique(labels[border_mask])
+            border_ids, counts = np.unique(
+                labels[border_mask], return_counts=True
+            )
             max_count_idx = list(counts).index(counts.max())
             largest_border_id = border_ids[max_count_idx]
             labels[labels == largest_border_id] = 0
