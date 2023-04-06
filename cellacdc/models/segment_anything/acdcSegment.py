@@ -49,7 +49,7 @@ class Model:
             min_mask_region_area=min_mask_region_area,
         )
     
-    def segment(self, image, automatic_remove_background=True):
+    def segment(self, image, automatic_removal_of_background=True):
         isRGB = image.shape[-1] == 3 or image.shape[-1] == 4
         isZstack = (image.ndim==3 and not isRGB) or (image.ndim==4)
 
@@ -72,7 +72,7 @@ class Model:
                 obj_image = mask['segmentation']
                 labels[obj_image] = id+1
         
-        if automatic_remove_background:
+        if automatic_removal_of_background:
             border_mask = np.ones(labels.shape, dtype=bool)
             border_slice = tuple([slice(1,-1) for _ in range(labels.ndim)])
             border_mask[border_slice] = False
