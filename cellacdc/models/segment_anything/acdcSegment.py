@@ -36,8 +36,9 @@ class Model:
         
         model_type, sam_checkpoint = model_types[model_type]
         sam_checkpoint = os.path.join(sam_models_path, sam_checkpoint)
-
-        sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
+        with open(sam_checkpoint, 'rb') as f:
+            sam = sam_model_registry[model_type](checkpoint=f)
+            
         sam.to(device=device)
         self.model = SamAutomaticMaskGenerator(
             sam, 
@@ -49,40 +50,39 @@ class Model:
             min_mask_region_area=min_mask_region_area,
         )
     
-    def segment(self, image, automatic_removal_of_background=True):
-        isRGB = image.shape[-1] == 3 or image.shape[-1] == 4
-        isZstack = (image.ndim==3 and not isRGB) or (image.ndim==4)
-
-        print('Generating masks...')
-
+    def segment(self, image: np.ndarray, automatic_removal_of_background: bool=True) -> np.ndarray:
+        is_rgb_image = image.shape[-1] == 3 or image.shape[-1] == 4
+        is_z_stack = (image.ndim==3 and not is_rgb_image) or (image.ndim==4)
         labels = np.zeros(image.shape, dtype=np.uint32)
-        if isZstack:   
+        if is_z_stack:
             for z, img in enumerate(image):
-                img = myutils.to_uint8(img)
-                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                masks = self.model.generate(img)
-                for id, mask in enumerate(masks):
-                    obj_image = mask['segmentation']
-                    labels[z][obj_image] = id+1
+                labels[z] = self._segment_single_image(img)
         else:
-            img = myutils.to_uint8(image)
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            masks = self.model.generate(img)
-            for id, mask in enumerate(masks):
-                obj_image = mask['segmentation']
-                labels[obj_image] = id+1
-        
+            labels = self._segment_single_image(image)
         if automatic_removal_of_background:
-            border_mask = np.ones(labels.shape, dtype=bool)
-            border_slice = tuple([slice(1,-1) for _ in range(labels.ndim)])
-            border_mask[border_slice] = False
-            border_ids, counts = np.unique(
-                labels[border_mask], return_counts=True
-            )
-            max_count_idx = list(counts).index(counts.max())
-            largest_border_id = border_ids[max_count_idx]
-            labels[labels == largest_border_id] = 0
+            labels = self._remove_background(labels)
         return labels
+
+    def _segment_single_image(self, image: np.ndarray) -> np.ndarray:
+        img = myutils.to_uint8(image)
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        masks = self.model.generate(img)
+        labels = np.zeros(image.shape[:3], dtype=np.uint32)
+        for id, mask in enumerate(masks):
+            obj_image = mask['segmentation']
+            labels[obj_image] = id+1
+        return labels
+
+    def _remove_background(self, labels: np.ndarray) -> np.ndarray:
+        border_mask = np.ones(labels.shape, dtype=bool)
+        border_slice = tuple([slice(1,-1) for _ in range(labels.ndim)])
+        border_mask[border_slice] = False
+        border_ids, counts = np.unique(labels[border_mask], return_counts=True)
+        max_count_idx = list(counts).index(counts.max())
+        largest_border_id = border_ids[max_count_idx]
+        labels[labels == largest_border_id] = 0
+        return labels
+
 
 def url_help():
     return 'https://github.com/facebookresearch/segment-anything'
