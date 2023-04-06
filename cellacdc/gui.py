@@ -4753,8 +4753,8 @@ class guiWin(QMainWindow):
                         posData.editID_info.append((yo, xo, old_ID))
                 else:
                     posData.lab[posData.lab == old_ID] = new_ID
-                    if newID > maxID:
-                        maxID = newID
+                    if new_ID > maxID:
+                        maxID = new_ID
                     old_ID_idx = posData.IDs.index(old_ID)
 
                     # Append information for replicating the edit in tracking
@@ -18245,8 +18245,8 @@ class guiWin(QMainWindow):
                 tracked_lab[tracked_lab == tempID] = new_ID
             else:
                 tracked_lab[tracked_lab == old_ID] = new_ID
-                if newID > maxID:
-                    maxID = newID
+                if new_ID > maxID:
+                    maxID = new_ID
         for info in infoToRemove:
             posData.editID_info.remove(info)
 
