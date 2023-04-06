@@ -15,6 +15,7 @@ requirements.txt
 conda_env_list_commands.txt
 
 notebooks/testing.ipynb
+notebooks/Untitled.ipynb
 notebooks/test.ipynb
 notebooks/.ipynb_checkpoints
 .idea/
