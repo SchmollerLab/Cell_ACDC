@@ -1536,7 +1536,10 @@ def check_install_cellpose():
             _install_pip_package('cellpose')
     except Exception as e:
         _inform_install_package_failed('cellpose')
-            
+
+def check_install_segment_anything():
+    check_install_package('torchvision')
+    check_install_package('segment_anything')
 
 def check_install_package(
         pkg_name: str, pypi_name='', note='', 
