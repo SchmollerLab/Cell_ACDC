@@ -10351,7 +10351,11 @@ class guiWin(QMainWindow):
         # already visited frames
         posData = self.data[self.pos_i]
         if useCurrentLab:
-            newID = max(posData.IDs)
+            try:
+                newID = max(posData.IDs)
+            except Exception as e:
+                # posData.IDs is empty. Start from 1
+                newID = 1
         else:
             newID = 1
         for frame_i, storedData in enumerate(posData.allData_li):
