@@ -4480,7 +4480,7 @@ class guiWin(QMainWindow):
 
             # Store undo state before modifying stuff
             self.storeUndoRedoStates(False)
-            max_ID = max(posData.IDs)
+            max_ID = max(posData.IDs, default=1)
 
             if right_click:
                 lab2D, success = self.auto_separate_bud_ID(
@@ -4729,13 +4729,14 @@ class guiWin(QMainWindow):
 
             # Store undo state before modifying stuff
             self.storeUndoRedoStates(UndoFutFrames)
-            maxID = max(posData.IDs)
+            maxID = max(posData.IDs, default=0)
             for old_ID, new_ID in editID.how:
                 if new_ID in prev_IDs and not self.editIDmergeIDs:
                     tempID = maxID + 1
                     posData.lab[posData.lab == old_ID] = maxID + 1
                     posData.lab[posData.lab == new_ID] = old_ID
                     posData.lab[posData.lab == tempID] = new_ID
+                    maxID += 1
 
                     old_ID_idx = prev_IDs.index(old_ID)
                     new_ID_idx = prev_IDs.index(new_ID)
@@ -4815,12 +4816,14 @@ class guiWin(QMainWindow):
                         if self.onlyTracking:
                             self.tracking(enforce=True)
                         else:
+                            maxID = max(posData.IDs) + 1
                             for old_ID, new_ID in editID.how:
                                 if new_ID in posData.lab:
-                                    tempID = posData.lab.max() + 1
+                                    tempID = maxID + 1 # posData.lab.max() + 1
                                     posData.lab[posData.lab == old_ID] = tempID
                                     posData.lab[posData.lab == new_ID] = old_ID
                                     posData.lab[posData.lab == tempID] = new_ID
+                                    maxID += 1
                                 else:
                                     posData.lab[posData.lab == old_ID] = new_ID
                             self.update_rp(draw=False)
@@ -9295,10 +9298,8 @@ class guiWin(QMainWindow):
         txt = self._addOverlayHoverValuesFormatted(txt, xdata, ydata)
         
         ID = self.currentLab2D[ydata, xdata]
-        if posData.IDs:
-            maxID = max(posData.IDs)
-        else:
-            maxID = 0
+        maxID = max(posData.IDs, default=0)
+
         num_obj = len(posData.IDs)
         lab_txt = (
             f'<b>Objects</b>: ID={ID}, <i>max ID={maxID}, '
@@ -10351,11 +10352,7 @@ class guiWin(QMainWindow):
         # already visited frames
         posData = self.data[self.pos_i]
         if useCurrentLab:
-            try:
-                newID = max(posData.IDs)
-            except Exception as e:
-                # posData.IDs is empty. Start from 1
-                newID = 1
+            newID = max(posData.IDs, default=1)
         else:
             newID = 1
         for frame_i, storedData in enumerate(posData.allData_li):
@@ -10364,7 +10361,7 @@ class guiWin(QMainWindow):
             lab = storedData['labels']
             if lab is not None:
                 rp = storedData['regionprops']
-                _max = max([obj.label for obj in rp])
+                _max = max([obj.label for obj in rp], default=0)
                 if _max > newID:
                     newID = _max
             else:
@@ -14409,10 +14406,7 @@ class guiWin(QMainWindow):
             if obj.label in editedNewIDs:
                 areManuallyEdited[i] = 1
 
-        try:
-            posData.STOREDmaxID = max(IDs)
-        except ValueError:
-            posData.STOREDmaxID = 0
+        posData.STOREDmaxID = max(IDs, default=0)
 
         acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
         if acdc_df is None:
@@ -15869,7 +15863,7 @@ class guiWin(QMainWindow):
                 else:
                     # Remove IDs removed with ROI from LUT
                     IDs = [ID for ID in posData.IDs if ID not in delIDs]
-                lenNewLut = max(IDs)+1
+                lenNewLut = max(IDs, default=0) + 1
             except ValueError:
                 # Empty segmentation mask
                 lenNewLut = 1
@@ -16654,10 +16648,7 @@ class guiWin(QMainWindow):
             return
 
         posData = self.data[self.pos_i]
-        if posData.IDs:
-            maxID = max(posData.IDs)
-        else:
-            maxID = 0
+        maxID = max(posData.IDs, default=0)
 
         if maxID >= len(self.lut):
             self.extendLabelsLUT(maxID+10)
@@ -18121,7 +18112,7 @@ class guiWin(QMainWindow):
         setRp = False
         posData = self.data[self.pos_i]
         if maxID is None:
-            maxID = max(posData.IDs)
+            maxID = max(posData.IDs, default=1)
         for obj in rp:
             lab_obj = skimage.measure.label(obj.image)
             rp_lab_obj = skimage.measure.regionprops(lab_obj)
@@ -18239,7 +18230,7 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         infoToRemove = []
         # Correct tracking with manually changed IDs
-        maxID = max(allIDs)
+        maxID = max(allIDs, default=1)
         for y, x, new_ID in posData.editID_info:
             old_ID = tracked_lab[y, x]
             if old_ID == 0:
