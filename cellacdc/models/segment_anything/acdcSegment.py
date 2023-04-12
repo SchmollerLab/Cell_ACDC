@@ -28,7 +28,7 @@ class Model:
             import platform
             cpu = platform.processor()
             if is_mac and cpu == 'arm':
-                device = 'mps'
+                device = 'cpu'
             else:
                 device = 'cuda'
         else:

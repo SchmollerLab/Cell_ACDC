@@ -1,3 +1,5 @@
+print('Initialising Cell-ACDC...')
+
 import sys
 import os
 import inspect

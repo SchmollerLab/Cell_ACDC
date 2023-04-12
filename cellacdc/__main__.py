@@ -56,7 +56,6 @@ splashScreen.setWindowFlags(
 splashScreen.show()
 splashScreen.raise_()
 
-print('Importing modules...')
 import sys
 import re
 import traceback
