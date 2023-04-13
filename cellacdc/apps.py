@@ -7022,7 +7022,8 @@ class TreeSelectorDialog(widgets.QBaseDialog):
 
     def __init__(
             self, title='Tree selector', infoTxt='', parent=None,
-            multiSelection=True, widthFactor=None, heightFactor=None
+            multiSelection=True, widthFactor=None, heightFactor=None,
+            expandOnDobleClick=False, isTopLevelSelectable=True
         ):
         super().__init__(parent)
 
@@ -7032,12 +7033,13 @@ class TreeSelectorDialog(widgets.QBaseDialog):
         self.widthFactor = widthFactor
         self.heightFactor = heightFactor
         self.mainLayout = QVBoxLayout()
+        self._isTopLevelSelectable = isTopLevelSelectable
 
         if infoTxt:
             self.mainLayout.addWidget(QLabel(html_utils.paragraph(infoTxt)))
         
         self.treeWidget = widgets.TreeWidget(multiSelection=multiSelection)
-        self.treeWidget.setExpandsOnDoubleClick(False)
+        self.treeWidget.setExpandsOnDoubleClick(expandOnDobleClick)
         self.treeWidget.setHeaderHidden(True)
         self.mainLayout.addWidget(self.treeWidget)
 
@@ -7053,10 +7055,17 @@ class TreeSelectorDialog(widgets.QBaseDialog):
 
         self.setLayout(self.mainLayout)
 
+        self.treeWidget.itemClicked.connect(self.onItemClicked)
         self.treeWidget.itemDoubleClicked.connect(self.onItemDoubleClicked)
     
     def onItemDoubleClicked(self, item):
         self.sigItemDoubleClicked.emit(item)
+    
+    def onItemClicked(self, item):
+        if self._isTopLevelSelectable:
+            return
+        if item.parent() is None:
+            item.setSelected(False)
         
     def addTree(self, tree: dict):
         for topLevel, children in tree.items():
