@@ -71,9 +71,9 @@ PRE_PROCESSING_STEPS = [
     'Sharpen (difference of gaussians filter)'
 ]
 font = QFont()
-font.setPixelSize(13)
+font.setPixelSize(12)
 italicFont = QFont()
-italicFont.setPixelSize(13)
+italicFont.setPixelSize(12)
 italicFont.setItalic(True)
 
 class AcdcSPlashScreen(QSplashScreen):
@@ -7023,7 +7023,8 @@ class TreeSelectorDialog(widgets.QBaseDialog):
     def __init__(
             self, title='Tree selector', infoTxt='', parent=None,
             multiSelection=True, widthFactor=None, heightFactor=None,
-            expandOnDobleClick=False, isTopLevelSelectable=True
+            expandOnDoubleClick=False, isTopLevelSelectable=True,
+            allItemsExpanded=True
         ):
         super().__init__(parent)
 
@@ -7032,6 +7033,7 @@ class TreeSelectorDialog(widgets.QBaseDialog):
         self.cancel = True
         self.widthFactor = widthFactor
         self.heightFactor = heightFactor
+        self.allItemsExpanded = allItemsExpanded
         self.mainLayout = QVBoxLayout()
         self._isTopLevelSelectable = isTopLevelSelectable
 
@@ -7039,7 +7041,7 @@ class TreeSelectorDialog(widgets.QBaseDialog):
             self.mainLayout.addWidget(QLabel(html_utils.paragraph(infoTxt)))
         
         self.treeWidget = widgets.TreeWidget(multiSelection=multiSelection)
-        self.treeWidget.setExpandsOnDoubleClick(expandOnDobleClick)
+        self.treeWidget.setExpandsOnDoubleClick(expandOnDoubleClick)
         self.treeWidget.setHeaderHidden(True)
         self.mainLayout.addWidget(self.treeWidget)
 
@@ -7074,7 +7076,44 @@ class TreeSelectorDialog(widgets.QBaseDialog):
             self.treeWidget.addTopLevelItem(topLevelItem)
             childrenItems = [widgets.TreeWidgetItem([c]) for c in children]
             topLevelItem.addChildren(childrenItems)
+            if not self.allItemsExpanded:
+                continue
             topLevelItem.setExpanded(True)
+    
+    def resizeVertical(self):
+        if not self.isVisible():
+            self.show()
+
+        currentTreeWidgetHeight = self.treeWidget.height()
+        treeWidgetHeight = 0
+        for i in range(self.treeWidget.topLevelItemCount()):
+            topLevelItem = self.treeWidget.topLevelItem(i)
+            rect = self.treeWidget.visualItemRect(topLevelItem)
+            treeWidgetHeight += rect.height()
+            for j in range(topLevelItem.childCount()):
+                childItem = topLevelItem.child(j)
+                rect = self.treeWidget.visualItemRect(childItem)
+                treeWidgetHeight += rect.height()
+        
+        deltaHeight = treeWidgetHeight - currentTreeWidgetHeight + 10
+        self.resize(self.width(), self.height() + deltaHeight)
+        self.move(self.x(), 20)
+    
+    def setCurrentItem(self, itemText: dict):
+        if not itemText:
+            return
+        for i in range(self.treeWidget.topLevelItemCount()):
+            topLevelItem = self.treeWidget.topLevelItem(i)
+            topLevelName = topLevelItem.text(0)
+            childText = itemText.get(topLevelName)
+            if childText is None:
+                continue
+            for j in range(topLevelItem.childCount()):
+                childItem = topLevelItem.child(j)
+                childItemText = childItem.text(0)
+                if childItemText == childText:
+                    childItem.setSelected(True)
+                    break
     
     def selectedItems(self):
         self._selectedItems = {}
