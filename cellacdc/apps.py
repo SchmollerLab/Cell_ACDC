@@ -7113,6 +7113,8 @@ class TreeSelectorDialog(widgets.QBaseDialog):
                 childItemText = childItem.text(0)
                 if childItemText == childText:
                     childItem.setSelected(True)
+                    topLevelItem.setExpanded(True)
+                    self.treeWidget.scrollToItem(topLevelItem)
                     break
     
     def selectedItems(self):
