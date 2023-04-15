@@ -45,7 +45,7 @@ Contributions to Cell-ACDC are always very welcome! For more details see instruc
 ## Overview
 
 Let's face it, when dealing with segmentation of microscopy data we often do not have time to check that **everything is correct**, because it is a **tedious** and **very time consuming process**. Cell-ACDC comes to the rescue!
-We combined the currently **best available neural network models** (such as [YeaZ](https://www.nature.com/articles/s41467-020-19557-4),
+We combined the currently **best available neural network models** (such as [Segment Anything Model (SAM)](https://github.com/facebookresearch/segment-anything), [YeaZ](https://www.nature.com/articles/s41467-020-19557-4),
 [cellpose](https://www.nature.com/articles/s41592-020-01018-x), [StarDist](https://github.com/stardist/stardist), [YeastMate](https://github.com/hoerlteam/YeastMate), [omnipose](https://omnipose.readthedocs.io/), [delta](https://gitlab.com/dunloplab/delta), etc.) and we complemented them with a **fast and intuitive GUI**.
 
 We developed and implemented several smart functionalities such as **real-time continuous tracking**, **automatic propagation** of error correction, and several tools to facilitate manual correction, from simple yet useful **brush** and **eraser** to more complex flood fill (magic wand) and Random Walker segmentation routines.
