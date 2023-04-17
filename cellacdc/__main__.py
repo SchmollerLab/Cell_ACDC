@@ -40,9 +40,9 @@ class AcdcSPlashScreen(QtWidgets.QSplashScreen):
 
 # Create the application
 app = QtWidgets.QApplication([])
-
 app.setStyle(QtWidgets.QStyleFactory.create('Fusion'))
 app.setPalette(app.style().standardPalette())
+
 app.setWindowIcon(QtGui.QIcon(":icon.ico"))
 
 # Launch splashscreen
@@ -1376,6 +1376,7 @@ def run():
         splashScreen.show()
     
     win = mainWin(app)
+
     try:
         myutils.check_matplotlib_version(qparent=win)
     except Exception as e:
@@ -1407,6 +1408,7 @@ def run():
     win.logger.info('----------------------------------------------')
     splashScreen.close()
     # splashScreenApp.quit()
+    # modernWin.show()
     sys.exit(app.exec_())
 
 def main():

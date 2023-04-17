@@ -260,7 +260,7 @@ class dataPrepWin(QMainWindow):
 
         self.ROIshapeComboBox = QComboBox()
         self.ROIshapeComboBox.SizeAdjustPolicy(QComboBox.AdjustToContents)
-        self.ROIshapeComboBox.addItems(['256x256'])
+        self.ROIshapeComboBox.addItems(['  256x256  '])
         ROIshapeLabel = QLabel('   ROI standard shape: ')
         ROIshapeLabel.setBuddy(self.ROIshapeComboBox)
         navigateToolbar.addWidget(ROIshapeLabel)
@@ -1424,6 +1424,8 @@ class dataPrepWin(QMainWindow):
 
     def setStandardRoiShape(self, text):
         posData = self.data[self.pos_i]
+        if posData.cropROI is None:
+            return
         Y, X = posData.img_data.shape[-2:]
         m = re.findall(r'(\d+)x(\d+)', text)
         w, h = int(m[0][0]), int(m[0][1])
@@ -1468,9 +1470,10 @@ class dataPrepWin(QMainWindow):
         try:
             self.ROIshapeComboBox.currentTextChanged.disconnect()
         except Exception as e:
-            self.ROIshapeComboBox.currentTextChanged.connect(
-                self.setStandardRoiShape
-            )
+            pass
+        self.ROIshapeComboBox.currentTextChanged.connect(
+            self.setStandardRoiShape
+        )
 
         self.addBkrgRoiActon.setDisabled(False)
 
