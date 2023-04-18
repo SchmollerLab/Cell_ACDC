@@ -1,6 +1,7 @@
 # Custom ignores
 tweets
 figures
+outreach
 !cellacdc/resources/figures
 
 env_dependencies_issues.txt
