@@ -70,7 +70,7 @@ from . import base_cca_df, graphLayoutBkgrColor, darkBkgrColor
 from . import load, prompts, apps, workers, html_utils
 from . import core, myutils, dataPrep, widgets
 from . import measurements, printl
-from . import colors, filters, plot, annotate
+from . import colors, filters, warnings, annotate
 from . import user_manual_url
 from . import cellacdc_path, temp_path, settings_csv_path
 from . import qutils, autopilot
@@ -3140,7 +3140,6 @@ class guiWin(QMainWindow):
         self.quickSettingsLayout.addWidget(self.quickSettingsGroupbox)
         self.quickSettingsLayout.addStretch(1)
 
-
     def gui_createImg1Widgets(self):
         # Toggle contours/ID combobox
         self.drawIDsContComboBoxSegmItems = [
@@ -3867,29 +3866,6 @@ class guiWin(QMainWindow):
 
         self.ghostMaskItemLeft = widgets.GhostMaskItem()
         self.ghostMaskItemRight = widgets.GhostMaskItem()
-
-    def warnTooManyItems(self, numItems, qparent):
-        self.logger.info(
-            '[WARNING]: asking user what to do with too many graphical items...'
-        )
-        msg = widgets.myMessageBox()
-        txt = html_utils.paragraph(f"""
-            You loaded a segmentation mask that has <b>{numItems} objects</b>.<br><br>
-            Creating <b>high resolution</b> text annotations 
-            for these many objects could take a <b>long time</b>.<br><br>
-            We recommend <b>switching to low resolution</b> annotations.<br><br>
-            You can still try to switch to high resolution later.<br><br>
-            What do you want to do?
-        """)
-
-        _, stayHighResButton, switchToLowResButton = msg.warning(
-            qparent, 'Too many objects', txt,
-            buttonsTexts=(
-                'Cancel', 'Stay on high resolution', 
-                widgets.reloadPushButton(' Switch to low resolution ')              
-            )
-        )
-        return msg.cancel, msg.clickedButton==switchToLowResButton
     
     def gui_createLabelRoiItem(self):
         Y, X = self.currentLab2D.shape
@@ -3955,8 +3931,8 @@ class guiWin(QMainWindow):
         self.highLowResToggle.setChecked(True)
         numItems = len(allIDs)
         if numItems > 500:
-            cancel, switchToLowRes = self.warnTooManyItems(
-                numItems, self.progressWin
+            cancel, switchToLowRes = warnings.warnTooManyItems(
+                self, numItems, self.progressWin
             )
             if cancel:
                 self.progressWin.workerFinished = True
@@ -4021,9 +3997,7 @@ class guiWin(QMainWindow):
         isHighResolution = self.highLowResToggle.isChecked()
         pxMode = self.pxModeToggle.isChecked()
         for ax in range(2):
-            ax_textAnnot = annotate.TextAnnotations(
-                
-            )
+            ax_textAnnot = annotate.TextAnnotations()
             ax_textAnnot.initFonts(self.fontSize)
             ax_textAnnot.createItems(
                 isHighResolution, allIDs, pxMode=pxMode

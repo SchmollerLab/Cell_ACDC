@@ -1890,6 +1890,14 @@ def synthetic_image_geneator(size=(512,512), f_x=1, f_y=1):
     img = np.sin(f_x*xx)*np.cos(f_y*yy)
     return img
 
+def get_show_in_file_manager_text():
+    if is_mac:
+        return 'Reveal in Finder'
+    elif is_linux:
+        return 'Show in File Manager'
+    elif is_win:
+        return 'Show in File Explorer'
+
 def get_slices_local_into_global_arr(bbox_coords, global_shape):
     slice_global_to_local = []
     slice_crop_local = []

@@ -45,7 +45,7 @@ from PyQt5.QtWidgets import (
 
 import pyqtgraph as pg
 
-from . import myutils, measurements, is_mac, is_win, html_utils
+from . import myutils, measurements, is_mac, is_win, html_utils, is_linux
 from . import qrc_resources, printl, temp_path
 from . import colors, config
 
@@ -407,9 +407,14 @@ class movePushButton(QPushButton):
         self.setIcon(QIcon(':folder-move.svg'))
 
 class showInFileManagerButton(QPushButton):
-    def __init__(self, *args):
+    def __init__(self, *args, setDefaultText=False):
         super().__init__(*args)
         self.setIcon(QIcon(':folder-open.svg'))
+        if setDefaultText:
+            self.setDefaultText()
+    
+    def setDefaultText(self):
+        self.setText(myutils.get_show_in_file_manager_text())
 
 class showDetailsButton(QPushButton):
     def __init__(self, *args, txt='Show details...'):
@@ -1694,7 +1699,6 @@ class TreeWidgetItem(QTreeWidgetItem):
                     continue
                 self.setBackground(c, QBrush(color))
     
-
 class FilterObject(QObject):
     sigFilteredEvent = pyqtSignal(object, object)
 
