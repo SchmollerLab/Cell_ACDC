@@ -1743,8 +1743,10 @@ def _install_deepsea():
         'git+https://github.com/abzargar/DeepSea.git']
     )
 
-
 def import_tracker(posData, trackerName, realTime=False, qparent=None):
+    downloadWin = apps.downloadModel(trackerName, parent=qparent)
+    downloadWin.download()
+
     trackerModuleName =  f'trackers.{trackerName}.{trackerName}_tracker'
     trackerModule = import_module(trackerModuleName)
     init_params = {}

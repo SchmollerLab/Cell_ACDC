@@ -13,6 +13,7 @@ from deepsea.model import DeepSeaSegmentation
 from cellacdc import myutils, printl
 
 from . import deepsea_models_path, _init_model
+from . import image_size, image_means, image_stds
 
 SEED = 1234
 random.seed(SEED)
@@ -24,8 +25,8 @@ torch.backends.cudnn.deterministic = True
 class Model:
     def __init__(self, gpu=False):
         _transforms, torch_device, checkpoint, model = _init_model(
-            'segmentation.pth', DeepSeaSegmentation, [383,512], 
-            [0.5], [0.5]
+            'segmentation.pth', DeepSeaSegmentation, image_size, 
+            image_means, image_stds
         )
         self.torch_device = torch_device
         self._transforms = _transforms
@@ -38,29 +39,35 @@ class Model:
         labels = np.zeros(image.shape, dtype=np.uint32)
         if is_rgb_image:
             labels = np.zeros(image.shape[:-1], dtype=np.uint32)
+            
         else:
             labels = np.zeros(image.shape, dtype=np.uint32)
 
+        Y, X = labels.shape[-2:]
+
         if is_z_stack:
             for z, img in enumerate(image):
-                labels[z] = self._segment_2D_image(img)
+                labels[z] = self._segment_2D_image(img, (Y, X))
         else:
-            labels = self._segment_2D_image(image)
+            labels = self._segment_2D_image(image, (Y, X))
         return labels
         
-    def _segment_2D_image(self, image: np.ndarray):
+    def _segment_2D_image(self, image: np.ndarray, grayscale_img_shape):
         img = myutils.to_uint8(image)
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        img = Image.fromarray(image)
+        img = Image.fromarray(img)
         tensor_img = (
             self._transforms(img)
             .to(device=self.torch_device, dtype=torch.float32)
         )
         _eval = self.model.eval()
         mask_pred, edge_pred = _eval(tensor_img.unsqueeze(0))
+
         mask_pred = transforms.Resize(
-            image.shape, antialias=True
+            grayscale_img_shape, antialias=True
         ).forward(mask_pred)
-        mask_pred = mask_pred.argmax(dim=1).cpu().numpy()
-        lab = skimage.measure.label(np.squeeze(mask_pred))
+        mask_pred = mask_pred.argmax(dim=1).cpu().numpy()[0, :, :]
+        mask_bool = mask_pred > 0
+        lab = skimage.measure.label(np.squeeze(mask_bool))
+        
         return lab
