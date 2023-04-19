@@ -1066,9 +1066,14 @@ def _model_url(model_name, return_alternative=False):
             'https://dl.fbaipublicfiles.com/segment_anything/sam_vit_l_0b3195.pth',
             'https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth'
         ]
-        file_size = [
-            2564550879, 1249524736, 375042383
+        file_size = [2564550879, 1249524736, 375042383]
+        alternative_url = ''
+    elif model_name == 'deepsea':
+        url = [
+            'https://github.com/abzargar/DeepSea/raw/264b71809d1a3abe5573c12b4ea8c12901a6758b/deepsea/trained_models/segmentation.pth',
+            'https://github.com/abzargar/DeepSea/raw/264b71809d1a3abe5573c12b4ea8c12901a6758b/deepsea/trained_models/tracker.pth'
         ]
+        file_size = [7988969, 8637439]
         alternative_url = ''
     if return_alternative:
         return url, alternative_url
@@ -1080,6 +1085,26 @@ def _download_segment_anything_models():
     temp_model_path = tempfile.mkdtemp()
     _, final_model_path = (
         get_model_path('segment_anything', create_temp_dir=False)
+    )
+    for url, file_size in zip(urls, file_sizes):
+        filename = url.split('/')[-1]
+        final_dst = os.path.join(final_model_path, filename)
+        if os.path.exists(final_dst):            
+            continue
+
+        temp_dst = os.path.join(temp_model_path, filename)
+        download_url(
+            url, temp_dst, file_size=file_size, desc='segment_anything',
+            verbose=False
+        )
+        
+        shutil.move(temp_dst, final_dst)
+
+def _download_deepsea_models():
+    urls, file_sizes = _model_url('deepsea')
+    temp_model_path = tempfile.mkdtemp()
+    _, final_model_path = (
+        get_model_path('deepsea', create_temp_dir=False)
     )
     for url, file_size in zip(urls, file_sizes):
         filename = url.split('/')[-1]
@@ -1216,6 +1241,13 @@ def download_model(model_name):
     if model_name == 'segment_anything':
         try:
             _download_segment_anything_models()
+            return True
+        except Exception as e:
+            traceback.print_exc()
+            return False
+    elif model_name == 'DeepSea':
+        try:
+            _download_deepsea_models()
             return True
         except Exception as e:
             traceback.print_exc()
@@ -1579,12 +1611,6 @@ def check_install_segment_anything():
     check_install_package('torchvision')
     check_install_package('segment_anything')
 
-def _install_deepsea():
-    subprocess.check_call(
-        [sys.executable, '-m', 'pip', 'install',
-        'git+https://github.com/abzargar/DeepSea.git']
-    )
-
 def check_install_package(
         pkg_name: str, pypi_name='', note='', parent=None, 
         raise_on_cancel=True
@@ -1710,6 +1736,13 @@ def _install_segment_anything():
         'git+https://github.com/facebookresearch/segment-anything.git'
     ]
     subprocess.check_call(args)
+
+def _install_deepsea():
+    subprocess.check_call(
+        [sys.executable, '-m', 'pip', 'install',
+        'git+https://github.com/abzargar/DeepSea.git']
+    )
+
 
 def import_tracker(posData, trackerName, realTime=False, qparent=None):
     trackerModuleName =  f'trackers.{trackerName}.{trackerName}_tracker'

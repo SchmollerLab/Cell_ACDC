@@ -120,6 +120,11 @@ segment_anything_weights_filenames = [
     'sam_vit_b_01ec64.pth'
 ]
 
+deepsea_weights_filenames = [
+    'segmentation.pth', 
+    'tracker.pth'
+]
+
 yeastmate_weights_filenames = [
     'yeastmate_advanced.yaml',
     'yeastmate_weights.pth',
