@@ -993,8 +993,8 @@ class guiWin(QMainWindow):
         self.gui_createMenuBar()
         self.gui_createToolBars()
         self.gui_createControlsToolbar()
-        self.gui_createLeftSideWidgets()
-        self.gui_createPropsDockWidget()
+        self.gui_createShowPropsButton()
+        self.gui_createRegionPropsDockWidget()
         self.gui_createQuickSettingsWidgets()
 
         self.autoSaveGarbageWorkers = []
@@ -2054,6 +2054,9 @@ class guiWin(QMainWindow):
         col = 4 # graphLayout spans two columns
         mainLayout.addWidget(self.labelsGrad, row, col)
 
+        col = 5 
+        mainLayout.addLayout(self.rightSideDocksLayout, row, col, 2, 1)
+
         col = 2
         row += 1
         self.resizeBottomLayoutLine = widgets.VerticalResizeHline()
@@ -2086,7 +2089,7 @@ class guiWin(QMainWindow):
 
         return mainLayout
 
-    def gui_createPropsDockWidget(self):
+    def gui_createRegionPropsDockWidget(self, side=Qt.LeftDockWidgetArea):
         self.propsDockWidget = QDockWidget('Cell-ACDC objects', self)
         self.guiTabControl = widgets.guiTabControl(self.propsDockWidget)
 
@@ -2100,7 +2103,7 @@ class guiWin(QMainWindow):
             Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea
         )
 
-        self.addDockWidget(Qt.LeftDockWidgetArea, self.propsDockWidget)
+        self.addDockWidget(side, self.propsDockWidget)
         self.propsDockWidget.hide()
 
     def gui_createControlsToolbar(self):
@@ -2819,7 +2822,7 @@ class guiWin(QMainWindow):
         # self.openRecentMenu.aboutToShow.connect(self.populateOpenRecent)
         self.checkableQButtonsGroup.buttonClicked.connect(self.uncheckQButton)
 
-        self.showLeftDockButton.sigClicked.connect(self.showPropsDockWidget)
+        self.showPropsDockButton.sigClicked.connect(self.showPropsDockWidget)
 
         self.addCustomAnnotationAction.triggered.connect(
             self.addCustomAnnotation
@@ -2835,7 +2838,6 @@ class guiWin(QMainWindow):
         )
         self.addCustomModelFrameAction.callback = self.segmFrameCallback
         self.addCustomModelVideoAction.callback = self.segmVideoCallback
-        
 
     def gui_connectEditActions(self):
         self.showInExplorerAction.setEnabled(True)
@@ -3018,6 +3020,15 @@ class guiWin(QMainWindow):
         )
         self.imgPropertiesAction.triggered.connect(self.editImgProperties)
 
+        self.relabelSequentialAction.triggered.connect(
+            self.relabelSequentialCallback
+        )
+
+        self.zoomToObjsAction.triggered.connect(self.zoomToObjsActionCallback)
+        self.zoomOutAction.triggered.connect(self.zoomOut)
+
+        self.viewCcaTableAction.triggered.connect(self.viewCcaTable)
+
         self.guiTabControl.propsQGBox.idSB.valueChanged.connect(
             self.updatePropsWidget
         )
@@ -3037,25 +3048,22 @@ class guiWin(QMainWindow):
             self.updatePropsWidget
         )
 
-        self.relabelSequentialAction.triggered.connect(
-            self.relabelSequentialCallback
-        )
-
-        self.zoomToObjsAction.triggered.connect(self.zoomToObjsActionCallback)
-        self.zoomOutAction.triggered.connect(self.zoomOut)
-
-        self.viewCcaTableAction.triggered.connect(self.viewCcaTable)
-
-    def gui_createLeftSideWidgets(self):
-        self.leftSideDocksLayout = QVBoxLayout()
-        self.showLeftDockButton = widgets.expandCollapseButton()
-        self.showLeftDockButton.setDisabled(True)
-        self.showLeftDockButton.setFocusPolicy(Qt.NoFocus)
-        self.showLeftDockButton.setToolTip('Show object properties')
-        self.leftSideDocksLayout.addWidget(self.showLeftDockButton)
+    def gui_createShowPropsButton(self, side='left'):
+        self.leftSideDocksLayout = QVBoxLayout()            
         self.leftSideDocksLayout.setSpacing(0)
         self.leftSideDocksLayout.setContentsMargins(0,0,0,0)
-    
+        self.rightSideDocksLayout = QVBoxLayout()            
+        self.rightSideDocksLayout.setSpacing(0)
+        self.rightSideDocksLayout.setContentsMargins(0,0,0,0)
+        self.showPropsDockButton = widgets.expandCollapseButton()
+        self.showPropsDockButton.setDisabled(True)
+        self.showPropsDockButton.setFocusPolicy(Qt.NoFocus)
+        self.showPropsDockButton.setToolTip('Show object properties')
+        if side == 'left':
+            self.leftSideDocksLayout.addWidget(self.showPropsDockButton)
+        else:
+            self.rightSideDocksLayout.addWidget(self.showPropsDockButton)
+            
     def gui_createQuickSettingsWidgets(self):
         self.quickSettingsLayout = QVBoxLayout()
         self.quickSettingsGroupbox = widgets.GroupBox()
@@ -13289,7 +13297,7 @@ class guiWin(QMainWindow):
             self.setWindowTitle(f'Cell-ACDC - GUI - "{posData.pos_path}"')
 
         self.guiTabControl.addChannels([posData.user_ch_name])
-        self.showLeftDockButton.setDisabled(False)
+        self.showPropsDockButton.setDisabled(False)
 
         self.bottomScrollArea.show()
         self.gui_createAutoSaveWorker()
@@ -18538,7 +18546,7 @@ class guiWin(QMainWindow):
         self.askZrangeSegm3D = True
         self.dataIsLoaded = False
         self.retainSizeLutItems = False
-        self.showLeftDockButton.setDisabled(True)
+        self.showPropsDockButton.setDisabled(True)
 
         self.reinitWidgetsPos()
         self.removeAllItems()
@@ -20583,7 +20591,7 @@ class guiWin(QMainWindow):
         self.doublePressKeyButtonColor = '#fa693b'
 
     def showPropsDockWidget(self, checked=False):
-        if self.showLeftDockButton.isExpand:
+        if self.showPropsDockButton.isExpand:
             self.propsDockWidget.setVisible(False)
             self.highlightIDcheckBoxToggled(False)
         else:
@@ -20648,11 +20656,11 @@ class guiWin(QMainWindow):
         self.gui_initImg1BottomWidgets()
         self.img1BottomGroupbox.hide()
 
-        w = self.showLeftDockButton.width()
-        h = self.showLeftDockButton.height()
+        w = self.showPropsDockButton.width()
+        h = self.showPropsDockButton.height()
 
-        self.showLeftDockButton.setMaximumWidth(15)
-        self.showLeftDockButton.setMaximumHeight(60)
+        self.showPropsDockButton.setMaximumWidth(15)
+        self.showPropsDockButton.setMaximumHeight(60)
 
         self.graphLayout.setFocus(True)
     
