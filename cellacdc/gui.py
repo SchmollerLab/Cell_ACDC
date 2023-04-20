@@ -9278,13 +9278,20 @@ class guiWin(QMainWindow):
         return txt
     
     def hoverValuesFormatted(self, xdata, ydata):
+        activeToolButton = None
         for button in self.LeftClickButtons:
             if button.isChecked():
-                return ''
+                activeToolButton = button
+                break
+        
+        txt = f'x={xdata:d}, y={ydata:d}'
+        if activeToolButton == self.rulerButton:
+            txt = self._addRulerMeasurementText(txt)
+            return txt
+        elif activeToolButton is not None:
+            return txt
 
         posData = self.data[self.pos_i]
-
-        txt = f'x={xdata:d}, y={ydata:d}'
 
         raw_img = self.getRawImage()
         raw_value = raw_img[ydata, xdata]
@@ -9307,6 +9314,11 @@ class guiWin(QMainWindow):
         )
         txt = f'{txt} | {lab_txt}'
 
+        txt = self._addRulerMeasurementText(txt)
+        return txt
+    
+    def _addRulerMeasurementText(self, txt):
+        posData = self.data[self.pos_i]
         xx, yy = self.ax1_rulerPlotItem.getData()
         if xx is None:
             return txt
