@@ -3608,6 +3608,8 @@ class guiTabControl(QTabWidget):
         self.intensMeasurQGBox.addChannels(channels)
 
 class expandCollapseButton(QPushButton):
+    sigClicked = pyqtSignal()
+
     def __init__(self, parent=None):
         QPushButton.__init__(self, parent)
         self.setIcon(QIcon(":expand.svg"))
@@ -3623,6 +3625,7 @@ class expandCollapseButton(QPushButton):
         else:
             self.setIcon(QIcon(":expand.svg"))
             self.isExpand = True
+        self.sigClicked.emit()
 
     def eventFilter(self, object, event):
         if event.type() == QEvent.HoverEnter:

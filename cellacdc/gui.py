@@ -1038,15 +1038,16 @@ class guiWin(QMainWindow):
 
         self.splineToObjModel.fit()
     
-    def readRecentPaths(self):
+    def readRecentPaths(self, recentPaths_path=None):
         # Step 0. Remove the old options from the menu
         self.openRecentMenu.clear()
 
         # Step 1. Read recent Paths
-        cellacdc_path = os.path.dirname(os.path.abspath(__file__))
-        recentPaths_path = os.path.join(
-            cellacdc_path, 'temp', 'recentPaths.csv'
-        )
+        if recentPaths_path is None:
+            recentPaths_path = os.path.join(
+                cellacdc_path, 'temp', 'recentPaths.csv'
+            )
+        
         if os.path.exists(recentPaths_path):
             df = pd.read_csv(recentPaths_path, index_col='index')
             if 'opened_last_on' in df.columns:
@@ -2818,7 +2819,7 @@ class guiWin(QMainWindow):
         # self.openRecentMenu.aboutToShow.connect(self.populateOpenRecent)
         self.checkableQButtonsGroup.buttonClicked.connect(self.uncheckQButton)
 
-        self.showPropsDockButton.clicked.connect(self.showPropsDockWidget)
+        self.showLeftDockButton.sigClicked.connect(self.showPropsDockWidget)
 
         self.addCustomAnnotationAction.triggered.connect(
             self.addCustomAnnotation
@@ -3047,11 +3048,11 @@ class guiWin(QMainWindow):
 
     def gui_createLeftSideWidgets(self):
         self.leftSideDocksLayout = QVBoxLayout()
-        self.showPropsDockButton = widgets.expandCollapseButton()
-        self.showPropsDockButton.setDisabled(True)
-        self.showPropsDockButton.setFocusPolicy(Qt.NoFocus)
-        self.showPropsDockButton.setToolTip('Show object properties')
-        self.leftSideDocksLayout.addWidget(self.showPropsDockButton)
+        self.showLeftDockButton = widgets.expandCollapseButton()
+        self.showLeftDockButton.setDisabled(True)
+        self.showLeftDockButton.setFocusPolicy(Qt.NoFocus)
+        self.showLeftDockButton.setToolTip('Show object properties')
+        self.leftSideDocksLayout.addWidget(self.showLeftDockButton)
         self.leftSideDocksLayout.setSpacing(0)
         self.leftSideDocksLayout.setContentsMargins(0,0,0,0)
     
@@ -13288,7 +13289,7 @@ class guiWin(QMainWindow):
             self.setWindowTitle(f'Cell-ACDC - GUI - "{posData.pos_path}"')
 
         self.guiTabControl.addChannels([posData.user_ch_name])
-        self.showPropsDockButton.setDisabled(False)
+        self.showLeftDockButton.setDisabled(False)
 
         self.bottomScrollArea.show()
         self.gui_createAutoSaveWorker()
@@ -18443,7 +18444,7 @@ class guiWin(QMainWindow):
         Function used for loading an image file directly.
         """
         if file_path is None:
-            self.MostRecentPath = myutils.getMostRecentPath()
+            self.MostRecentPath = self.getMostRecentPath()
             file_path = QFileDialog.getOpenFileName(
                 self, 'Select image file', self.MostRecentPath,
                 "Image/Video Files (*.png *.tif *.tiff *.jpg *.jpeg *.mov *.avi *.mp4)"
@@ -18537,7 +18538,7 @@ class guiWin(QMainWindow):
         self.askZrangeSegm3D = True
         self.dataIsLoaded = False
         self.retainSizeLutItems = False
-        self.showPropsDockButton.setDisabled(True)
+        self.showLeftDockButton.setDisabled(True)
 
         self.reinitWidgetsPos()
         self.removeAllItems()
@@ -18625,6 +18626,9 @@ class guiWin(QMainWindow):
 
     def addToRecentPaths(self, path, logger=None):
         myutils.addToRecentPaths(path, logger=self.logger)
+    
+    def getMostRecentPath(self):
+        return myutils.getMostRecentPath()
 
     @exception_handler
     def _openFolder(
@@ -18649,7 +18653,7 @@ class guiWin(QMainWindow):
         """
 
         if exp_path is None:
-            self.MostRecentPath = myutils.getMostRecentPath()
+            self.MostRecentPath = self.getMostRecentPath()
             exp_path = QFileDialog.getExistingDirectory(
                 self,
                 'Select experiment folder containing Position_n folders '
@@ -20579,7 +20583,7 @@ class guiWin(QMainWindow):
         self.doublePressKeyButtonColor = '#fa693b'
 
     def showPropsDockWidget(self, checked=False):
-        if self.showPropsDockButton.isExpand:
+        if self.showLeftDockButton.isExpand:
             self.propsDockWidget.setVisible(False)
             self.highlightIDcheckBoxToggled(False)
         else:
@@ -20644,11 +20648,11 @@ class guiWin(QMainWindow):
         self.gui_initImg1BottomWidgets()
         self.img1BottomGroupbox.hide()
 
-        w = self.showPropsDockButton.width()
-        h = self.showPropsDockButton.height()
+        w = self.showLeftDockButton.width()
+        h = self.showLeftDockButton.height()
 
-        self.showPropsDockButton.setMaximumWidth(15)
-        self.showPropsDockButton.setMaximumHeight(60)
+        self.showLeftDockButton.setMaximumWidth(15)
+        self.showLeftDockButton.setMaximumHeight(60)
 
         self.graphLayout.setFocus(True)
     
