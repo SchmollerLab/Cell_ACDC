@@ -16207,7 +16207,7 @@ class guiWin(QMainWindow):
         # apps.AddPointsLayerDialog.ok_cb()
         posData = self.data[self.pos_i]
         action.pointsData[posData.frame_i] = {}
-        if action.weighingData:
+        if hasattr(action, 'weighingData'):
             lab = posData.lab
             img = action.weighingData[self.pos_i][posData.frame_i]
             rp = skimage.measure.regionprops(lab, intensity_image=img)
