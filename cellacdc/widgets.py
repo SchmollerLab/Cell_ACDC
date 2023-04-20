@@ -48,6 +48,7 @@ import pyqtgraph as pg
 from . import myutils, measurements, is_mac, is_win, html_utils, is_linux
 from . import qrc_resources, printl, temp_path
 from . import colors, config
+from . import html_path
 
 font = QFont()
 font.setPixelSize(13)
@@ -4918,7 +4919,8 @@ class NoneWidget:
 class MainPlotItem(pg.PlotItem):
     def __init__(
             self, parent=None, name=None, labels=None, title=None, 
-            viewBox=None, axisItems=None, enableMenu=True, **kargs
+            viewBox=None, axisItems=None, enableMenu=True, 
+            showWelcomeText=False, **kargs
         ):
         super().__init__(
             parent, name, labels, title, viewBox, axisItems, enableMenu, 
@@ -4930,7 +4932,22 @@ class MainPlotItem(pg.PlotItem):
         # scatter plot items touches the border causing flickering
         self.disableAutoRange()
         self.autoBtn.mode = 'manual'
+        if showWelcomeText:
+            self.infoTextItem = pg.TextItem()
+            self.addItem(self.infoTextItem)
+            html_filepath = os.path.join(html_path, 'gui_welcome.html')
+            with open(html_filepath) as html_file:
+                htmlText = html_file.read()
+            self.infoTextItem.setHtml(htmlText)
+            self.infoTextItem.setPos(0,0)
     
+    def clear(self):
+        super().clear()
+        try:
+            self.removeItem(self.infoTextItem)
+        except Exception as e:
+            pass
+        
     def autoBtnClicked(self):
         self.vb.autoRange()
         self.autoBtn.hide()

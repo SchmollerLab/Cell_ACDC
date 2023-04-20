@@ -39,7 +39,7 @@ from PyQt5.QtCore import pyqtSignal, QObject, QCoreApplication
 from . import apps
 from . import prompts, widgets, core, load
 from . import html_utils, is_linux, is_win, is_mac, issues_url
-from . import cellacdc_path, printl, temp_path
+from . import cellacdc_path, printl, temp_path, logs_path
 from . import config
 
 models_list_file_path = os.path.join(temp_path, 'custom_models_paths.ini')
@@ -232,16 +232,16 @@ def getMemoryFootprint(files_list):
     return required_memory
 
 def get_logs_path():
-    user_path = pathlib.Path.home()
-    logs_path = os.path.join(user_path, '.acdc-logs')
     return logs_path
 
-def setupLogger(module='gui'):
+def setupLogger(module='gui', logs_path=None):
+    if logs_path is None:
+        logs_path = get_logs_path()
+    
     logger = logging.getLogger(f'cellacdc-logger-{module}')
     logger.setLevel(logging.INFO)
 
     user_path = pathlib.Path.home()
-    logs_path = os.path.join(user_path, '.acdc-logs')
     if not os.path.exists(logs_path):
         os.mkdir(logs_path)
     else:

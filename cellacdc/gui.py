@@ -915,7 +915,7 @@ class guiWin(QMainWindow):
     def _print(self, *objects):
         self.logger.info(', '.join([str(x) for x in objects]))
             
-    def run(self):
+    def run(self, module='acdc_gui', logs_path=None):
         global print, printl
         
         self.is_win = sys.platform.startswith("win")
@@ -926,7 +926,7 @@ class guiWin(QMainWindow):
 
         self.is_error_state = False
         logger, logs_path, log_path, log_filename = setupLogger(
-            module='gui'
+            module=module, logs_path=logs_path
         )
         if self._version is not None:
             logger.info(f'Initializing GUI v{self._version}...')
@@ -3503,7 +3503,7 @@ class guiWin(QMainWindow):
         # self.lutItemsLayout.setBorder('w')
 
         # Left plot
-        self.ax1 = widgets.MainPlotItem()
+        self.ax1 = widgets.MainPlotItem(showWelcomeText=True)
         self.ax1.invertY(True)
         self.ax1.setAspectLocked(True)
         self.ax1.hideAxis('bottom')
@@ -3580,8 +3580,6 @@ class guiWin(QMainWindow):
         self.titleLabel = pg.LabelItem(
             justify='center', color=self.titleColor, size='14pt'
         )
-        self.titleLabel.setText(
-            'Drag and drop image file or go to File --> Open folder...')
         self.graphLayout.addItem(self.titleLabel, row=0, col=1, colspan=2)
 
     def gui_createTextAnnotColors(self, r, g, b, custom=False):
@@ -18625,6 +18623,9 @@ class guiWin(QMainWindow):
             exp_path=exp_path, imageFilePath=imageFilePath
         )
 
+    def addToRecentPaths(self, path, logger=None):
+        myutils.addToRecentPaths(path, logger=self.logger)
+
     @exception_handler
     def _openFolder(
             self, checked=False, exp_path=None, imageFilePath=''
@@ -18658,9 +18659,6 @@ class guiWin(QMainWindow):
 
         if exp_path == '':
             self.openAction.setEnabled(True)
-            self.titleLabel.setText(
-                'Drag and drop image file or go to File --> Open folder...',
-                color=self.titleColor)
             return
 
         self.reInitGui()
@@ -18675,7 +18673,7 @@ class guiWin(QMainWindow):
 
         self.exp_path = exp_path
         self.logger.info(f'Loading from {self.exp_path}')
-        myutils.addToRecentPaths(exp_path, logger=self.logger)
+        self.addToRecentPaths(exp_path, logger=self.logger)
         self.addPathToOpenRecentMenu(exp_path)
 
         folder_type = myutils.determine_folder_type(exp_path)
@@ -18693,9 +18691,6 @@ class guiWin(QMainWindow):
             values = select_folder.get_values_segmGUI(exp_path)
             if not values:
                 self.criticalInvalidPosFolder(exp_path)
-                self.titleLabel.setText(
-                    'Drag and drop image file or go to File --> Open folder...',
-                    color=self.titleColor)
                 self.openAction.setEnabled(True)
                 return
 
@@ -18752,9 +18747,6 @@ class guiWin(QMainWindow):
             )
             self.ch_names = ch_names
             if not ch_names:
-                self.titleLabel.setText(
-                    'Drag and drop image file or go to File --> Open folder...',
-                    color=self.titleColor)
                 self.openAction.setEnabled(True)
                 self.criticalNoTifFound(images_path)
                 return
@@ -18764,9 +18756,6 @@ class guiWin(QMainWindow):
                     self, ch_names, CbLabel=CbLabel
                 )
                 if ch_name_selector.was_aborted:
-                    self.titleLabel.setText(
-                        'Drag and drop image file or go to File --> Open folder...',
-                        color=self.titleColor)
                     self.openAction.setEnabled(True)
                     return
                 skip_channels.extend([
@@ -18809,9 +18798,6 @@ class guiWin(QMainWindow):
         proceed = self.loadSelectedData(user_ch_file_paths, user_ch_name)
         if not proceed:
             self.openAction.setEnabled(True)
-            self.titleLabel.setText(
-                'Drag and drop image file or go to File --> Open folder...',
-                color=self.titleColor)
             return
     
     def criticalInvalidPosFolder(self, exp_path):
@@ -20614,9 +20600,10 @@ class guiWin(QMainWindow):
         self.updateAllImages()
     
     def showEvent(self, event):
-        if not self.mainWin.isMinimized():
-            return
-        self.mainWin.showAllWindows()
+        if self.mainWin is not None:
+            if not self.mainWin.isMinimized():
+                return
+            self.mainWin.showAllWindows()
         self.setFocus(True)
         self.activateWindow()
     
