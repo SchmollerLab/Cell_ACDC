@@ -12,8 +12,8 @@ import skimage.measure
 from deepsea.model import DeepSeaSegmentation
 from cellacdc import myutils, printl
 
-from . import deepsea_models_path, _init_model
-from . import image_size, image_means, image_stds
+from . import _init_model
+from . import _get_segm_transforms
 
 SEED = 1234
 random.seed(SEED)
@@ -24,12 +24,11 @@ torch.backends.cudnn.deterministic = True
 
 class Model:
     def __init__(self, gpu=False):
-        _transforms, torch_device, checkpoint, model = _init_model(
-            'segmentation.pth', DeepSeaSegmentation, image_size, 
-            image_means, image_stds
+        torch_device, checkpoint, model = _init_model(
+            'segmentation.pth', DeepSeaSegmentation, gpu=gpu
         )
         self.torch_device = torch_device
-        self._transforms = _transforms
+        self._transforms = _get_segm_transforms()
         self._checkpoint = checkpoint
         self.model = model
     
@@ -39,7 +38,6 @@ class Model:
         labels = np.zeros(image.shape, dtype=np.uint32)
         if is_rgb_image:
             labels = np.zeros(image.shape[:-1], dtype=np.uint32)
-            
         else:
             labels = np.zeros(image.shape, dtype=np.uint32)
 
@@ -52,10 +50,8 @@ class Model:
             labels = self._segment_2D_image(image, (Y, X))
         return labels
         
-    def _segment_2D_image(self, image: np.ndarray, grayscale_img_shape):
-        img = myutils.to_uint8(image)
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        img = Image.fromarray(img)
+    def _segment_2D_image(self, img: np.ndarray, grayscale_img_shape):
+        img = (255 * ((img - img.min()) / img.ptp())).astype(np.uint8)
         tensor_img = (
             self._transforms(img)
             .to(device=self.torch_device, dtype=torch.float32)

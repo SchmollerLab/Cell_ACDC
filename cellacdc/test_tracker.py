@@ -1,4 +1,5 @@
 import os
+import traceback
 import sys
 
 import matplotlib.pyplot as plt
@@ -76,6 +77,7 @@ if 'image' in track_params:
             lab_stack, trackerInputImage, **track_params
         )
     except Exception as e:
+        traceback.print_exc()
         tracked_stack = tracker.track(lab_stack, **track_params)
 else:
     tracked_stack = tracker.track(lab_stack, **track_params)

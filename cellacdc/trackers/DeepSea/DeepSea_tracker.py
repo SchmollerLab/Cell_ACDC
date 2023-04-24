@@ -1,8 +1,13 @@
 import cv2
+import random
 
 import numpy as np
 
-from PIL import Image
+import torch
+
+from skimage.measure import regionprops
+from skimage.segmentation import relabel_sequential
+from skimage.transform import resize
 
 from deepsea.model import DeepSeaTracker
 from deepsea.utils import track_cells
@@ -10,45 +15,62 @@ from deepsea.utils import track_cells
 from cellacdc import myutils, printl
 from cellacdc.models.DeepSea import _init_model, _resize_img
 from cellacdc.models.DeepSea import image_size as segm_image_size
-from cellacdc.models.DeepSea import image_means as segm_image_means
-from cellacdc.models.DeepSea import image_stds as segm_image_stds
+from cellacdc.models.DeepSea import _get_segm_transforms
 
-from . import image_size, image_means, image_stds
+from . import _get_tracker_transforms
+
+SEED = 1234
+random.seed(SEED)
+np.random.seed(SEED)
+torch.manual_seed(SEED)
+torch.cuda.manual_seed(SEED)
+torch.backends.cudnn.deterministic = True
 
 class tracker:
     def __init__(self, gpu=False):
-        _transforms, torch_device, checkpoint, model = _init_model(
-            'tracker.pth', DeepSeaTracker, image_size, 
-            image_means, image_stds
+        torch_device, checkpoint, model = _init_model(
+            'tracker.pth', DeepSeaTracker, gpu=gpu
         )
         self.torch_device = torch_device
-        self._transforms = _transforms
+        self._transforms = _get_tracker_transforms()
+        self._segm_transforms = _get_segm_transforms()
         self._checkpoint = checkpoint
         self.model = model
     
+    def _resize_lab(self, lab, output_shape, rp):
+        _lab_obj_to_resize = np.zeros(lab.shape, dtype=np.float16)
+        lab_resized = np.zeros(output_shape, dtype=np.uint32)
+        for obj in rp:
+            _lab_obj_to_resize[obj.slice][obj.image] = 1.0
+            _lab_obj_resized = resize(
+                _lab_obj_to_resize, output_shape, anti_aliasing=True,
+                preserve_range=True
+            ).round()
+            lab_resized[_lab_obj_resized == 1.0] = obj.label
+            _lab_obj_to_resize[:] = 0.0
+        return lab_resized
+
     def track(self, segm_video, image, signals=None):
         labels_list = []
         resize_img_list = []
         for img, lab in zip(image, segm_video):
-            img = myutils.to_uint8(img)
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            img = Image.fromarray(img)
-            lab = Image.fromarray(lab)
+            img = (255 * ((img - img.min()) / img.ptp())).astype(np.uint8)
+            rp = regionprops(lab)
             resized_img = _resize_img(
-                img, segm_image_size, segm_image_means, segm_image_stds,
-                self.torch_device
+                img, self.torch_device, self._segm_transforms
             )
-            resize_lab = _resize_img(
-                lab, segm_image_size, segm_image_means, segm_image_stds,
-                self.torch_device
-            ).round().astype(np.uint32)
-            
+            resized_lab = self._resize_lab(
+                lab, output_shape=tuple(segm_image_size), rp=rp
+            )
+            sequential_lab, _, _ = relabel_sequential(resized_lab)
             resize_img_list.append(resized_img)
-            labels_list.append(resize_lab)
+            labels_list.append(sequential_lab)
         
         result = track_cells(
             labels_list, resize_img_list, self.model, self.torch_device, 
             transforms=self._transforms
         )
         tracked_video, tracked_centroids, tracked_imgs = result
+
+        import pdb; pdb.set_trace()
         return tracked_video

@@ -1,4 +1,5 @@
 import os
+from typing import Union
 
 import numpy as np
 
@@ -17,17 +18,16 @@ image_size = [383,512]
 image_means = [0.5]
 image_stds = [0.5]
 
-def _get_transforms(image_size, image_means, image_stds):
+def _get_segm_transforms():
     return transforms.Compose([
+        transforms.ToPILImage(),
         transforms.Resize(image_size),
-        transforms.Grayscale(num_output_channels=1),
         transforms.ToTensor(),
         transforms.Normalize(mean=image_means, std=image_stds)
     ])
 
 def _init_model(
-        checkpoint_filename, DeepSeaClass, image_size, image_means, 
-        image_stds, gpu=False
+        checkpoint_filename, DeepSeaClass, gpu=False
     ):
      # Initialize torch device
     if gpu:
@@ -46,19 +46,15 @@ def _init_model(
     checkpoint_path = os.path.join(deepsea_models_path, checkpoint_filename)
     checkpoint = torch.load(checkpoint_path)
 
-    # Initialize model
-    _transforms = _get_transforms(image_size, image_means, image_stds)
-
     model = DeepSeaClass(
         n_channels=1, n_classes=2, bilinear=True
     )
     model.load_state_dict(checkpoint)
     model = model.to(torch_device)
-    return _transforms, torch_device, checkpoint, model
+    return torch_device, checkpoint, model
 
-def _resize_img(img: Image.Image, image_size, image_means, image_stds, device):
-    _transforms = _get_transforms(image_size, image_means, image_stds)
-    tensor_img = _transforms(img).to(device=device, dtype=torch.float32)
+def _resize_img(img: Union[Image.Image, np.ndarray], device, transforms):
+    tensor_img = transforms(img).to(device=device, dtype=torch.float32)
     resized_img = tensor_img.cpu().numpy()[0,:,:]
     img_min = np.min(resized_img)
     img_max = np.max(resized_img)

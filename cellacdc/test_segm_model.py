@@ -3,7 +3,6 @@ import sys
 
 import matplotlib.pyplot as plt
 
-from collections import namedtuple
 from importlib import import_module
 
 from cellacdc import apps, myutils, widgets
@@ -72,6 +71,8 @@ model = acdcSegment.Model(**win.init_kwargs)
 import skimage.io
 
 img = skimage.io.imread(test_img_path)
+if img.ndim == 3 and (img.shape[-1] == 3 or img.shape[-1] == 4):
+    img = skimage.color.rgb2gray(img)
 
 print(img.shape)
 
