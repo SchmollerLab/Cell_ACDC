@@ -69,7 +69,6 @@ win.exec_()
 model = acdcSegment.Model(**win.init_kwargs)
 
 # Use model on a test image
-# In this case image is in 'Cell-ACDC/data/test_images' folder
 import skimage.io
 
 img = skimage.io.imread(test_img_path)

@@ -1739,8 +1739,7 @@ def _install_segment_anything():
 
 def _install_deepsea():
     subprocess.check_call(
-        [sys.executable, '-m', 'pip', 'install',
-        'git+https://github.com/abzargar/DeepSea.git']
+        [sys.executable, '-m', 'pip', 'install', 'deepsea']
     )
 
 def import_tracker(posData, trackerName, realTime=False, qparent=None):
