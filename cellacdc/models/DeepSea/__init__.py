@@ -14,8 +14,8 @@ from PIL import Image
 _, deepsea_models_path = myutils.get_model_path('deepsea', create_temp_dir=False)
 
 image_size = [383,512]
-image_means = [0.0]
-image_stds = [1.0]
+image_means = [0.5]
+image_stds = [0.5]
 
 def _get_transforms(image_size, image_means, image_stds):
     return transforms.Compose([

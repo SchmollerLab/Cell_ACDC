@@ -1070,8 +1070,8 @@ def _model_url(model_name, return_alternative=False):
         alternative_url = ''
     elif model_name == 'deepsea':
         url = [
-            'https://github.com/abzargar/DeepSea/raw/264b71809d1a3abe5573c12b4ea8c12901a6758b/deepsea/trained_models/segmentation.pth',
-            'https://github.com/abzargar/DeepSea/raw/264b71809d1a3abe5573c12b4ea8c12901a6758b/deepsea/trained_models/tracker.pth'
+            'https://github.com/abzargar/DeepSea/raw/master/deepsea/trained_models/segmentation.pth',
+            'https://github.com/abzargar/DeepSea/raw/master/deepsea/trained_models/tracker.pth'
         ]
         file_size = [7988969, 8637439]
         alternative_url = ''
