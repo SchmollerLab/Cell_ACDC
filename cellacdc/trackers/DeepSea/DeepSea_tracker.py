@@ -42,7 +42,7 @@ class tracker:
                 self.torch_device
             ).round().astype(np.uint32)
             
-            resize_img_list.append(resize_lab)
+            resize_img_list.append(resized_img)
             labels_list.append(resize_lab)
         
         tracked_video, tracked_centroids, tracked_imgs = (
