@@ -15283,8 +15283,8 @@ class guiWin(QMainWindow):
                 posData.frame_i = current_frame_i
                 self.get_data()
         
-        self.navigateScrollBar.setMaximum(posData.frame_i+1)
-        self.navSpinBox.setMaximum(posData.frame_i+1)
+        self.navigateScrollBar.setMaximum(last_tracked_i+1)
+        self.navSpinBox.setMaximum(last_tracked_i+1)
 
         self.checkTrackingEnabled()
 
@@ -18240,8 +18240,28 @@ class guiWin(QMainWindow):
                     maxID = new_ID
         for info in infoToRemove:
             posData.editID_info.remove(info)
+    
+    def warnReinitLastSegmFrame(self):
+        current_frame_n = self.navigateScrollBar.value()
+        msg = widgets.myMessageBox()
+        txt = html_utils.paragraph(f"""
+            Are you sure you want to <b>re-initialize the last visited and 
+            validated</b> frame to number {current_frame_n}?<br><br>
+            WARNING: If you save, <b>all annotations after frame number 
+            {current_frame_n} will be lost!</b> 
+        """)
+        msg.warning(
+            self, 'WARNING: Potential loss of data', txt,
+            buttonsTexts=('Cancel', 'Yes, I am sure')
+        )
+        return msg.cancel
 
     def reInitLastSegmFrame(self, checked=True, from_frame_i=None):
+        cancel = self.warnReinitLastSegmFrame()
+        if cancel:
+            self.logger.info('Re-initialization of last validated frame cancelled.')
+            return
+
         posData = self.data[self.pos_i]
         if from_frame_i is None:
             from_frame_i = posData.frame_i
@@ -20018,24 +20038,40 @@ class guiWin(QMainWindow):
             self.last_tracked_i = frame_i
             return True
 
-        if frame_i > 0:
-            # Ask to save last visited frame or not
-            txt = html_utils.paragraph(f"""
-                You visited and stored data up until frame
-                number {frame_i+1}.<br><br>
-                Enter <b>up to which frame number</b> you want to save data:
-            """)
-            lastFrameDialog = apps.QLineEditDialog(
-                title='Last frame number to save', defaultTxt=str(frame_i+1),
-                msg=txt, parent=self, allowedValues=(1,frame_i+1),
-                warnLastFrame=True, isInteger=True, stretchEntry=False
+        # Ask to save last visited frame or not
+        txt = html_utils.paragraph(f"""
+            You visited and stored data up until frame
+            number {frame_i+1}.<br><br>
+            Enter <b>up to which frame number</b> you want to save data:
+        """)
+        lastFrameDialog = apps.QLineEditDialog(
+            title='Last frame number to save', defaultTxt=str(frame_i+1),
+            msg=txt, parent=self, allowedValues=(1, posData.SizeT),
+            warnLastFrame=True, isInteger=True, stretchEntry=False,
+            lastVisitedFrame=frame_i+1
+        )
+        lastFrameDialog.exec_()
+        if lastFrameDialog.cancel:
+            return False
+
+        self.save_until_frame_i = lastFrameDialog.EntryID - 1
+        if self.save_until_frame_i > frame_i:
+            self.logger.info(
+                f'Storing frames {frame_i+1}-{self.save_until_frame_i+1}...'
             )
-            lastFrameDialog.exec_()
-            if lastFrameDialog.cancel:
-                return False
-            else:
-                self.save_until_frame_i = lastFrameDialog.EntryID - 1
-                last_tracked_i = self.save_until_frame_i
+            current_frame_i = posData.frame_i
+            # User is requesting to save past the last visited frame -->
+            # store data as if they were visited
+            for i in range(frame_i+1, self.save_until_frame_i+1):
+                posData.frame_i = i
+                self.get_data()
+                self.store_data(autosave=False)
+            
+            # Go back to current frame
+            posData.frame_i = current_frame_i
+            self.get_data()
+        last_tracked_i = self.save_until_frame_i
+        
         self.last_tracked_i = last_tracked_i
         return True
 

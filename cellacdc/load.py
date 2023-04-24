@@ -287,7 +287,6 @@ def store_copy_acdc_df(posData, acdc_output_csv_path, log_func=printl):
         
         with pd.HDFStore(h5_path, mode='a') as hdf:
             hdf.append(new_key, df)
-    
     except Exception as e:
         log_func(traceback.format_exc())
 

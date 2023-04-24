@@ -7965,7 +7965,7 @@ class QLineEditDialog(QDialog):
             defaultTxt='', parent=None, allowedValues=None,
             warnLastFrame=False, isInteger=False, isFloat=False,
             stretchEntry=True, allowEmpty=True, allowedTextEntries=None, 
-            allowText=False
+            allowText=False, lastVisitedFrame=None
         ):
         QDialog.__init__(self, parent)
 
@@ -7978,6 +7978,7 @@ class QLineEditDialog(QDialog):
         self.isInteger = isInteger
         self.allowedTextEntries = allowedTextEntries
         self.allowText = allowText
+        self.lastVisitedFrame = lastVisitedFrame
         if allowedValues and warnLastFrame:
             self.maxValue = max(allowedValues)
 
@@ -8109,6 +8110,19 @@ class QLineEditDialog(QDialog):
         )
         return msg.cancel
 
+    def warnValMoreLastVisitedFrame(self, val):
+        msg = widgets.myMessageBox()
+        warn_txt = html_utils.paragraph(f"""
+            The <b>last visited/validated frame is {self.lastVisitedFrame}</b>
+            .<br><br>
+            Are you sure you want to save until frame n. {val}?<br>
+        """)
+        msg.warning(
+           self, 'Saving past last visited frame', warn_txt, 
+           buttonsTexts=('Cancel', 'Yes, I am sure.')
+        )
+        return msg.cancel
+
     def ok_cb(self, event):
         if not self.allowEmpty and not self.ID_QLineEdit.text():
             msg = widgets.myMessageBox(showCentered=False, wrapText=False)
@@ -8136,10 +8150,17 @@ class QLineEditDialog(QDialog):
         else:
             val = int(self.ID_QLineEdit.text())
         
-        if self.warnLastFrame and val < self.maxValue:
-            cancel = self.warnValLessLastFrame(val)
-            if cancel:
-                return
+        if self.warnLastFrame and self.lastVisitedFrame is not None:
+            if val < self.lastVisitedFrame:
+                cancel = self.warnValLessLastFrame(val)
+                if cancel:
+                    return
+
+        if self.lastVisitedFrame is not None:
+            if val > self.lastVisitedFrame:
+                cancel = self.warnValMoreLastVisitedFrame(val)
+                if cancel:
+                    return
 
         self.cancel = False
         self.EntryID = val
