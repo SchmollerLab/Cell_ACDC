@@ -63,5 +63,5 @@ def _resize_img(img: Image.Image, image_size, image_means, image_stds, device):
     img_min = np.min(resized_img)
     img_max = np.max(resized_img)
     img_range = img_max - img_min
-    resized_img = (resized_img - img_min) / img_range * 255
+    resized_img = ((resized_img - img_min) / img_range * 255).astype(np.uint8)
     return resized_img

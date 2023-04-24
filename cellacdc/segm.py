@@ -1122,7 +1122,6 @@ class segmWin(QMainWindow):
             txt = html_utils.paragraph('''
                 Do you want to track the objects?<br><br>
                 If yes, <b>select the tracker</b> to use<br><br>
-                If you are unsure, choose YeaZ
             ''')
             win = widgets.QDialogListbox(
                 'Track objects?', txt,

@@ -18,7 +18,7 @@ from . import image_size, image_means, image_stds
 class tracker:
     def __init__(self, gpu=False):
         _transforms, torch_device, checkpoint, model = _init_model(
-            'tracking.pth', DeepSeaTracker, image_size, 
+            'tracker.pth', DeepSeaTracker, image_size, 
             image_means, image_stds
         )
         self.torch_device = torch_device
@@ -29,10 +29,11 @@ class tracker:
     def track(self, segm_video, image, signals=None):
         labels_list = []
         resize_img_list = []
-        for img, lab in image:
+        for img, lab in zip(image, segm_video):
             img = myutils.to_uint8(img)
             img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             img = Image.fromarray(img)
+            lab = Image.fromarray(lab)
             resized_img = _resize_img(
                 img, segm_image_size, segm_image_means, segm_image_stds,
                 self.torch_device
@@ -45,10 +46,9 @@ class tracker:
             resize_img_list.append(resized_img)
             labels_list.append(resize_lab)
         
-        tracked_video, tracked_centroids, tracked_imgs = (
-            track_cells(
-                labels_list, resize_img_list, self.model, 
-                self.torch_device, transforms=self._transforms
-            )
+        result = track_cells(
+            labels_list, resize_img_list, self.model, self.torch_device, 
+            transforms=self._transforms
         )
+        tracked_video, tracked_centroids, tracked_imgs = result
         return tracked_video
