@@ -1144,6 +1144,107 @@ class loadDataWorker(QObject):
 
         self.signals.finished.emit(data)
 
+class trackingWorker(QObject):
+    finished = pyqtSignal()
+    critical = pyqtSignal(object)
+    progress = pyqtSignal(str)
+    debug = pyqtSignal(object)
+
+    def __init__(self, posData, mainWin, video_to_track):
+        QObject.__init__(self)
+        self.mainWin = mainWin
+        self.posData = posData
+        self.mutex = QMutex()
+        self.waitCond = QWaitCondition()
+        self.tracker = self.mainWin.tracker
+        self.track_params = self.mainWin.track_params
+        self.video_to_track = video_to_track
+    
+    def _get_first_untracked_lab(self):
+        start_frame_i = self.mainWin.start_n - 1
+        frameData = self.posData.allData_li[start_frame_i]
+        lab = frameData['labels']
+        if lab is not None:
+            return lab
+        else:
+            return self.posData.segm_data[start_frame_i]
+
+    def _relabel_first_frame_labels(self, tracked_video):
+        first_untracked_lab = self._get_first_untracked_lab()
+        self.mainWin.setAllIDs()
+        uniqueID = max(max(self.posData.allIDs), tracked_video.max()) + 1
+        first_tracked_lab = tracked_video[0]
+        for obj in skimage.measure.regionprops(first_untracked_lab):
+            trackedID = first_tracked_lab[obj.slice][obj.image].flat[0]
+            if trackedID == obj.label:
+                continue
+            if obj.label in tracked_video[1:]:
+                tracked_video[tracked_video==obj.label] = uniqueID
+                uniqueID += 1
+            tracked_video[tracked_video==trackedID] = obj.label
+        return tracked_video
+
+    @worker_exception_handler
+    def run(self):
+        self.mutex.lock()
+
+        self.progress.emit('Tracking process started...')
+
+        self.track_params['signals'] = self.signals
+        if 'image' in self.track_params:
+            trackerInputImage = self.track_params.pop('image')
+            start_frame_i = self.mainWin.start_n-1
+            stop_frame_n = self.mainWin.stop_n
+            trackerInputImage = trackerInputImage[start_frame_i:stop_frame_n]
+            try:
+                tracked_video = self.tracker.track(
+                    self.video_to_track, trackerInputImage, **self.track_params
+                )
+            except TypeError:
+                # User accidentally loaded image data but the tracker doesn't
+                # need it
+                self.progress.emit(
+                    'Image data is not required by this tracker, ignoring it...'
+                )
+                tracked_video = self.tracker.track(
+                    self.video_to_track, **self.track_params
+                )
+        else:
+            tracked_video = self.tracker.track(
+                self.video_to_track, **self.track_params
+            )
+
+        # Relabel first frame objects back to IDs they had before tracking
+        # (to ensure continuity with past untracked frames)
+        tracked_video = self._relabel_first_frame_labels(tracked_video)
+
+        # Store new tracked video
+        current_frame_i = self.posData.frame_i
+        
+        self.trackingOnNeverVisitedFrames = False
+        for rel_frame_i, lab in enumerate(tracked_video):
+            frame_i = rel_frame_i + self.mainWin.start_n - 1
+
+            if self.posData.allData_li[frame_i]['labels'] is None:
+                # repeating tracking on a never visited frame
+                # --> modify only raw data and ask later what to do
+                self.posData.segm_data[frame_i] = lab
+                self.trackingOnNeverVisitedFrames = True
+            else:
+                # Get the rest of the stored metadata based on the new lab
+                self.posData.allData_li[frame_i]['labels'] = lab
+                self.posData.frame_i = frame_i
+                self.mainWin.get_data()
+                self.mainWin.store_data(autosave=False)
+
+        # Back to current frame
+        self.posData.frame_i = current_frame_i
+        self.mainWin.get_data()
+        self.mainWin.store_data(autosave=True)
+
+        self.mutex.unlock()
+        self.finished.emit()
+
 class reapplyDataPrepWorker(QObject):
     finished = pyqtSignal()
     debug = pyqtSignal(object)

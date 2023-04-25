@@ -50,7 +50,15 @@ class tracker:
             _lab_obj_to_resize[:] = 0.0
         return lab_resized
 
+    def _relabel_sequential(self, segm_video):
+        relabelled_video = np.zeros_like(segm_video)
+        for frame_i, lab in enumerate(segm_video):
+            relabelled_lab, _, _ = relabel_sequential(lab)
+            relabelled_video[frame_i] = relabelled_lab
+        return relabelled_video
+
     def track(self, segm_video, image, signals=None):
+        segm_video = self._relabel_sequential(segm_video)
         labels_list = []
         resize_img_list = []
         for img, lab in zip(image, segm_video):
@@ -62,9 +70,8 @@ class tracker:
             resized_lab = self._resize_lab(
                 lab, output_shape=tuple(segm_image_size), rp=rp
             )
-            sequential_lab, _, _ = relabel_sequential(resized_lab)
             resize_img_list.append(resized_img)
-            labels_list.append(sequential_lab)
+            labels_list.append(resized_lab)
         
         result = track_cells(
             labels_list, resize_img_list, self.model, self.torch_device, 
@@ -72,22 +79,24 @@ class tracker:
         )
         tracked_IDs, tracked_centroids, tracked_imgs = result
         tracked_video = self._replace_tracked_IDs(
-            labels_list, tracked_IDs, tracked_centroids
+            labels_list, tracked_IDs, tracked_centroids, segm_video
         )
 
         return tracked_video
-    
+
     def _replace_tracked_IDs(
-            self, resized_labels_list, tracked_IDs, tracked_centroids
+            self, resized_labels_list, tracked_IDs, tracked_centroids,
+            segm_video
         ):
         _zip = zip(tracked_IDs, tracked_centroids)
-        tracked_labels_list = []
         IDs_prev = []
+        tracked_video = np.zeros_like(segm_video)
         for frame_i, track_info_frame in enumerate(_zip):
             tracked_frame_labels, tracked_frame_centroids = track_info_frame
             tracked_frame_IDs = [int(label)+1 for label in tracked_frame_labels]
             lab = resized_labels_list[frame_i]
-            tracked_lab = np.zeros_like(lab)
+            tracked_lab = tracked_video[frame_i]
+            untracked_lab = segm_video[frame_i]
             rp = regionprops(lab)
             IDs_curr_untracked = [obj.label for obj in rp]
             uniqueID = max(
@@ -99,19 +108,19 @@ class tracker:
                 lab[tuple(centr)]:idx
                 for idx, centr in enumerate(tracked_frame_centroids)
             }
-            IDs_prev = []
+            IDs_prev = []            
             for obj in rp:
                 idx_ID_to_replace = IDs_to_replace.get(obj.label)
-                if IDs_to_replace is None:
+                if idx_ID_to_replace is None:
                     newID = uniqueID
                     uniqueID += 1
                 else:
                     newID = tracked_frame_IDs[idx_ID_to_replace]
-                tracked_lab[obj.slice][obj.image] = newID
+                tracked_lab[untracked_lab == obj.label] = newID
                 IDs_prev.append(newID)
             
-            tracked_labels_list.append(tracked_lab)
-        tracked_video = np.array(tracked_labels_list)
+            tracked_video[frame_i] = tracked_lab
+
         return tracked_video
             
             

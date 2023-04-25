@@ -1,11 +1,11 @@
 import os
 import traceback
 import sys
+import numpy as np
 
 import matplotlib.pyplot as plt
 
-from collections import namedtuple
-from importlib import import_module
+import skimage.measure
 
 from cellacdc import apps, myutils, widgets, load, html_utils
 
@@ -66,7 +66,22 @@ tracker, track_params = myutils.import_tracker(
     posData, trackerName, qparent=None
 )
 
+# Scrumble IDs last frame
 lab_stack = posData.segm_data[START_FRAME:STOP_FRAME+1]
+last_lab = lab_stack[-1]
+last_rp = skimage.measure.regionprops(lab_stack[-1])
+IDs = [obj.label for obj in last_rp]
+randomIDs = np.random.choice(IDs, size=len(last_rp), replace=False)
+for obj, randomID in zip(last_rp, randomIDs):
+    last_lab[obj.slice][obj.image] = randomID
+
+# Randomly delete some objects last frame
+num_obj_to_del = 4
+idxs = np.arange(len(last_rp))
+random_idxs = np.random.choice(idxs, size=num_obj_to_del, replace=False)
+for random_idx in random_idxs:
+    obj_to_del = last_rp[random_idx]
+    last_lab[obj_to_del.slice][obj_to_del.image] = 0
 
 print(f'Tracking data with shape {lab_stack.shape}')
 
@@ -82,7 +97,10 @@ if 'image' in track_params:
 else:
     tracked_stack = tracker.track(lab_stack, **track_params)
 
-fig, ax = plt.subplots(1, 2)
-ax[0].imshow(tracked_stack[-1])
-ax[1].imshow(tracked_stack[-2])
+fig, ax = plt.subplots(2, 2)
+ax = ax.flatten()
+ax[0].imshow(lab_stack[-2])
+ax[1].imshow(lab_stack[-1])
+ax[2].imshow(tracked_stack[-2])
+ax[3].imshow(tracked_stack[-1])
 plt.show()

@@ -150,79 +150,6 @@ def get_data_exception_handler(func):
         return result
     return inner_function
 
-class trackingWorker(QObject):
-    finished = pyqtSignal()
-    critical = pyqtSignal(object)
-    progress = pyqtSignal(str)
-    debug = pyqtSignal(object)
-
-    def __init__(self, posData, mainWin, video_to_track):
-        QObject.__init__(self)
-        self.mainWin = mainWin
-        self.posData = posData
-        self.mutex = QMutex()
-        self.waitCond = QWaitCondition()
-        self.tracker = self.mainWin.tracker
-        self.track_params = self.mainWin.track_params
-        self.video_to_track = video_to_track
-
-    @workers.worker_exception_handler
-    def run(self):
-        self.mutex.lock()
-
-        self.progress.emit('Tracking process started...')
-
-        self.track_params['signals'] = self.signals
-        if 'image' in self.track_params:
-            trackerInputImage = self.track_params.pop('image')
-            start_frame_i = self.mainWin.start_n-1
-            stop_frame_n = self.mainWin.stop_n
-            trackerInputImage = trackerInputImage[start_frame_i:stop_frame_n]
-            try:
-                tracked_video = self.tracker.track(
-                    self.video_to_track, trackerInputImage, **self.track_params
-                )
-            except TypeError:
-                # User accidentally loaded image data but the tracker doesn't
-                # need it
-                self.progress.emit(
-                    'Image data is not required by this tracker, ignoring it...'
-                )
-                tracked_video = self.tracker.track(
-                    self.video_to_track, **self.track_params
-                )
-        else:
-            tracked_video = self.tracker.track(
-                self.video_to_track, **self.track_params
-            )
-
-        # Store new tracked video
-        current_frame_i = self.posData.frame_i
-        
-        self.trackingOnNeverVisitedFrames = False
-        for rel_frame_i, lab in enumerate(tracked_video):
-            frame_i = rel_frame_i + self.mainWin.start_n - 1
-
-            if self.posData.allData_li[frame_i]['labels'] is None:
-                # repeating tracking on a never visited frame
-                # --> modify only raw data and ask later what to do
-                self.posData.segm_data[frame_i] = lab
-                self.trackingOnNeverVisitedFrames = True
-            else:
-                # Get the rest of the stored metadata based on the new lab
-                self.posData.allData_li[frame_i]['labels'] = lab
-                self.posData.frame_i = frame_i
-                self.mainWin.get_data()
-                self.mainWin.store_data(autosave=False)
-
-        # Back to current frame
-        self.posData.frame_i = current_frame_i
-        self.mainWin.get_data()
-        self.mainWin.store_data(autosave=True)
-
-        self.mutex.unlock()
-        self.finished.emit()
-
 class relabelSequentialWorker(QObject):
     finished = pyqtSignal()
     critical = pyqtSignal(object)
@@ -7368,7 +7295,9 @@ class guiWin(QMainWindow):
 
     def startTrackingWorker(self, posData, video_to_track):
         self.thread = QThread()
-        self.trackingWorker = trackingWorker(posData, self, video_to_track)
+        self.trackingWorker = workers.trackingWorker(
+            posData, self, video_to_track
+        )
         self.trackingWorker.moveToThread(self.thread)
         self.trackingWorker.finished.connect(self.thread.quit)
         self.trackingWorker.finished.connect(self.trackingWorker.deleteLater)
