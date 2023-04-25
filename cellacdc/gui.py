@@ -15205,11 +15205,18 @@ class guiWin(QMainWindow):
                 self.updateAllImages(updateFilters=True)
                 self.updateScrollbars()
             else:
+                last_tracked_i = posData.frame_i
                 current_frame_i = posData.frame_i
+                self.logger.info(
+                    f'Storing data up until frame n. {current_frame_i+1}...'
+                )
+                pbar = tqdm(total=current_frame_i+1, ncols=100)
                 for i in range(current_frame_i):
                     posData.frame_i = i
                     self.get_data()
                     self.store_data(autosave=i==current_frame_i-1)
+                    pbar.update()
+                pbar.close()
 
                 posData.frame_i = current_frame_i
                 self.get_data()

@@ -9898,6 +9898,8 @@ class QDialogTrackerParams(QDialog):
                 except Exception as err:
                     pass
             widget = argWidget.widget
+            if val is None:
+                continue
             try:
                 argWidget.valueSetter(widget, val)
             except TypeError:

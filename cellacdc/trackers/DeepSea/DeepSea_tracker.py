@@ -57,7 +57,7 @@ class tracker:
             relabelled_video[frame_i] = relabelled_lab
         return relabelled_video
 
-    def track(self, segm_video, image, signals=None):
+    def track(self, segm_video, image, min_size=10, signals=None):
         segm_video = self._relabel_sequential(segm_video)
         labels_list = []
         resize_img_list = []
@@ -75,20 +75,20 @@ class tracker:
         
         result = track_cells(
             labels_list, resize_img_list, self.model, self.torch_device, 
-            transforms=self._transforms
+            transforms=self._transforms, min_size=min_size
         )
-        tracked_IDs, tracked_centroids, tracked_imgs = result
+        tracked_labels, tracked_centroids, tracked_imgs = result
         tracked_video = self._replace_tracked_IDs(
-            labels_list, tracked_IDs, tracked_centroids, segm_video
+            labels_list, tracked_labels, tracked_centroids, segm_video
         )
 
         return tracked_video
 
     def _replace_tracked_IDs(
-            self, resized_labels_list, tracked_IDs, tracked_centroids,
+            self, resized_labels_list, tracked_labels, tracked_centroids,
             segm_video
         ):
-        _zip = zip(tracked_IDs, tracked_centroids)
+        _zip = zip(tracked_labels, tracked_centroids)
         IDs_prev = []
         tracked_video = np.zeros_like(segm_video)
         for frame_i, track_info_frame in enumerate(_zip):
@@ -116,9 +116,13 @@ class tracker:
                     uniqueID += 1
                 else:
                     newID = tracked_frame_IDs[idx_ID_to_replace]
-                tracked_lab[untracked_lab == obj.label] = newID
+                try:
+                    tracked_lab[untracked_lab == obj.label] = newID
+                except Exception as e:
+                    import pdb; pdb.set_trace()
                 IDs_prev.append(newID)
             
+            import pdb; pdb.set_trace()
             tracked_video[frame_i] = tracked_lab
 
         return tracked_video
