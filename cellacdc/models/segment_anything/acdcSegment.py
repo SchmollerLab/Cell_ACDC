@@ -60,7 +60,7 @@ class Model:
             labels = np.zeros(image.shape, dtype=np.uint32)
         if is_z_stack:
             for z, img in enumerate(image):
-                labels[z] = self._segment_single_image(img)
+                labels[z] = self._segment_2D_image(img)
             labels = skimage.measure.label(labels>0)
         else:
             labels = self._segment_2D_image(image)
