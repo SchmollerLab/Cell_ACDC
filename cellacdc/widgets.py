@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 
 from PyQt5.QtCore import (
     pyqtSignal, QTimer, Qt, QPoint, pyqtSlot, pyqtProperty,
-    QPropertyAnimation, QEasingCurve, QSequentialAnimationGroup,
+    QPropertyAnimation, QEasingCurve, QLocale,
     QSize, QRect, QPointF, QRect, QPoint, QEasingCurve, QRegExp,
     QEvent, QEventLoop, QPropertyAnimation, QObject,
     QItemSelectionModel, QAbstractListModel, QModelIndex,
@@ -3006,6 +3006,7 @@ class DoubleSpinBox(QDoubleSpinBox):
         super().__init__(parent=parent)
         self.setAlignment(Qt.AlignCenter)
         self.setMaximum(2**31-1)
+        self.setMinimum(-2**31)
         self._valueChangedFunction = None
         self.disableKeyPress = disableKeyPress
     
@@ -3023,6 +3024,14 @@ class DoubleSpinBox(QDoubleSpinBox):
             self.clearFocus()
         else:
             super().keyPressEvent(event)
+    
+    def textFromValue(self, value: float) -> str:
+        text = super().textFromValue(value)
+        return text.replace(QLocale().decimalPoint(), '.')
+
+    def valueFromText(self, text: str) -> float:
+        text = text.replace('.', QLocale().decimalPoint())
+        return super().valueFromText(text)
 
 class SpinBox(QSpinBox):
     sigValueChanged = pyqtSignal(int)
@@ -3033,6 +3042,7 @@ class SpinBox(QSpinBox):
         super().__init__(parent=parent)
         self.setAlignment(Qt.AlignCenter)
         self.setMaximum(2**31-1)
+        self.setMinimum(-2**31)
         self._valueChangedFunction = None
         self.disableKeyPress = disableKeyPress
     

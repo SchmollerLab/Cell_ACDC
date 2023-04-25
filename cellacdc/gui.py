@@ -554,7 +554,7 @@ class saveDataWorker(QObject):
                 self.finished.emit()
                 return
             
-            posData.saveSegmHyperparams()
+            # posData.saveSegmHyperparams()
             posData.saveCustomAnnotationParams()
             current_frame_i = posData.frame_i
 
