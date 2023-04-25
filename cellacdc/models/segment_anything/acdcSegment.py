@@ -3,6 +3,8 @@ import cv2
 
 import numpy as np
 
+import skimage.measure
+
 from . import model_types, sam_models_path
 
 from segment_anything import sam_model_registry, SamAutomaticMaskGenerator
@@ -56,6 +58,7 @@ class Model:
         if is_z_stack:
             for z, img in enumerate(image):
                 labels[z] = self._segment_single_image(img)
+            labels = skimage.measure.label(labels>0)
         else:
             labels = self._segment_single_image(image)
         if automatic_removal_of_background:

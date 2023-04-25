@@ -9808,22 +9808,18 @@ class QDialogTrackerParams(QDialog):
                 groupBoxLayout.addWidget(trueRadioButton, row, 1)
                 groupBoxLayout.addWidget(falseRadioButton, row, 2)
             elif ArgSpec.type == int:
-                spinBox = QSpinBox()
-                spinBox.setAlignment(Qt.AlignCenter)
-                spinBox.setMaximum(2147483647)
+                spinBox = widgets.SpinBox()
                 spinBox.setValue(ArgSpec.default)
                 defaultVal = ArgSpec.default
-                valueSetter = QSpinBox.setValue
+                valueSetter = widgets.SpinBox.setValue
                 widget = spinBox
                 groupBoxLayout.addWidget(spinBox, row, 1, 1, 2)
             elif ArgSpec.type == float:
-                doubleSpinBox = QDoubleSpinBox()
-                doubleSpinBox.setAlignment(Qt.AlignCenter)
-                doubleSpinBox.setMaximum(2147483647)
+                doubleSpinBox = widgets.DoubleSpinBox()
                 doubleSpinBox.setValue(ArgSpec.default)
                 widget = doubleSpinBox
                 defaultVal = ArgSpec.default
-                valueSetter = QDoubleSpinBox.setValue
+                valueSetter = widgets.DoubleSpinBox.setValue
                 groupBoxLayout.addWidget(doubleSpinBox, row, 1, 1, 2)
             elif ArgSpec.type == os.PathLike:
                 filePathControl = widgets.filePathControl()
@@ -10158,10 +10154,7 @@ class QDialogModelParams(QDialog):
                 groupBoxLayout.addWidget(trueRadioButton, row, 1)
                 groupBoxLayout.addWidget(falseRadioButton, row, 2)
             elif ArgSpec.type == int:
-                spinBox = QSpinBox()
-                spinBox.setAlignment(Qt.AlignCenter)
-                spinBox.setMinimum(-2147483647)
-                spinBox.setMaximum(2147483647)
+                spinBox = widgets.SpinBox()
                 spinBox.setValue(ArgSpec.default)
                 defaultVal = ArgSpec.default
                 valueSetter = QSpinBox.setValue
@@ -10169,10 +10162,7 @@ class QDialogModelParams(QDialog):
                 widget = spinBox
                 groupBoxLayout.addWidget(spinBox, row, 1, 1, 2)
             elif ArgSpec.type == float:
-                doubleSpinBox = QDoubleSpinBox()
-                doubleSpinBox.setAlignment(Qt.AlignCenter)
-                doubleSpinBox.setMinimum(-2147483647.0)
-                doubleSpinBox.setMaximum(2147483647.0)
+                doubleSpinBox = widgets.DoubleSpinBox()
                 doubleSpinBox.setValue(ArgSpec.default)
                 widget = doubleSpinBox
                 defaultVal = ArgSpec.default
