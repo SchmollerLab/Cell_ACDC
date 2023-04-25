@@ -161,6 +161,12 @@ class Model:
             'resample': resample
         }
 
+        if not segment_3D_volume and isZstack and stitch_threshold>0:
+            raise TypeError(
+                "`stitch_threshold` must be 0 when segmenting slice-by-slice. "
+                "Alternatively, set `segment_3D_volume = True`."
+            )
+
         # Run cellpose eval
         if not segment_3D_volume and isZstack:
             labels = np.zeros(image.shape, dtype=np.uint32)
