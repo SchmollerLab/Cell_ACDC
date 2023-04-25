@@ -11387,18 +11387,20 @@ class guiWin(QMainWindow):
                 f'Replace ID {posData.lab[y,x]} with {newID}'
                 for y, x, newID in posData.editID_info
             ]
-            msg = QMessageBox(self)
-            msg.setWindowTitle('Repeat tracking mode')
-            msg.setIcon(msg.Question)
-            msg.setText("You requested to repeat tracking but there are "
-                        "the following manually edited IDs:\n\n"
-                        f"{editIDinfo}\n\n"
-                        "Do you want to keep these edits or ignore them?")
-            keepManualEditButton = QPushButton('Keep manually edited IDs')
-            msg.addButton(keepManualEditButton, msg.YesRole)
-            msg.addButton(QPushButton('Ignore'), msg.NoRole)
-            msg.exec_()
-            if msg.clickedButton() == keepManualEditButton:
+            msg = widgets.myMessageBox()
+            txt = html_utils.paragraph(f"""
+                You requested to repeat tracking but there are the following
+                manually edited IDs:<br><br>
+                {editIDinfo}<br><br>
+                Do you want to keep these edits or ignore them?
+            """)
+            _, keepManualEditButton, _ = msg.question(
+                self, 'Repeat tracking mode', txt, 
+                buttonsTexts=('Keep manually edited IDs', 'Ignore')
+            )
+            if msg.cancel:
+                return
+            if msg.clickedButton == keepManualEditButton:
                 allIDs = [obj.label for obj in posData.rp]
                 lab2D = self.get_2Dlab(posData.lab)
                 self.manuallyEditTracking(lab2D, allIDs)
