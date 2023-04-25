@@ -70,7 +70,48 @@ class tracker:
             labels_list, resize_img_list, self.model, self.torch_device, 
             transforms=self._transforms
         )
-        tracked_video, tracked_centroids, tracked_imgs = result
+        tracked_IDs, tracked_centroids, tracked_imgs = result
+        tracked_video = self._replace_tracked_IDs(
+            labels_list, tracked_IDs, tracked_centroids
+        )
 
-        import pdb; pdb.set_trace()
         return tracked_video
+    
+    def _replace_tracked_IDs(
+            self, resized_labels_list, tracked_IDs, tracked_centroids
+        ):
+        _zip = zip(tracked_IDs, tracked_centroids)
+        tracked_labels_list = []
+        IDs_prev = []
+        for frame_i, track_info_frame in enumerate(_zip):
+            tracked_frame_labels, tracked_frame_centroids = track_info_frame
+            tracked_frame_IDs = [int(label)+1 for label in tracked_frame_labels]
+            lab = resized_labels_list[frame_i]
+            tracked_lab = np.zeros_like(lab)
+            rp = regionprops(lab)
+            IDs_curr_untracked = [obj.label for obj in rp]
+            uniqueID = max(
+                max(IDs_prev, default=0), 
+                max(IDs_curr_untracked, default=0),
+                max(tracked_frame_IDs, default=0)
+            ) + 1
+            IDs_to_replace = {
+                lab[tuple(centr)]:idx
+                for idx, centr in enumerate(tracked_frame_centroids)
+            }
+            IDs_prev = []
+            for obj in rp:
+                idx_ID_to_replace = IDs_to_replace.get(obj.label)
+                if IDs_to_replace is None:
+                    newID = uniqueID
+                    uniqueID += 1
+                else:
+                    newID = tracked_frame_IDs[idx_ID_to_replace]
+                tracked_lab[obj.slice][obj.image] = newID
+                IDs_prev.append(newID)
+            
+            tracked_labels_list.append(tracked_lab)
+        tracked_video = np.array(tracked_labels_list)
+        return tracked_video
+            
+            
