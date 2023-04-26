@@ -40,11 +40,12 @@ def _init_model(
             device = 'cuda'
     else:
         device = 'cpu'
+    
     torch_device = torch.device(device)
 
     # Initialize checkpoint
     checkpoint_path = os.path.join(deepsea_models_path, checkpoint_filename)
-    checkpoint = torch.load(checkpoint_path)
+    checkpoint = torch.load(checkpoint_path, map_location=torch_device)
 
     model = DeepSeaClass(
         n_channels=1, n_classes=2, bilinear=True

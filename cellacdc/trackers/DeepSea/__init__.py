@@ -1,8 +1,8 @@
+from cellacdc.models import DeepSea
+
 from deepsea import tracker_transforms
 
 import torchvision.transforms as transforms
-
-from cellacdc.models import DeepSea
 
 image_size = [128,128]
 image_means = [0.5]

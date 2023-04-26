@@ -22,12 +22,14 @@ test_img_path = (
     # r"G:\My Drive\01_Postdoc_HMGU\Python_MyScripts\MIA\Git\DeepSea\data\test_images\train_A11_z001_c001.png"
     # r"G:\My Drive\01_Postdoc_HMGU\Python_MyScripts\MIA\Git\Cell_ACDC\data\test_images\test_cellpose.tif"
     # r"G:\My Drive\01_Postdoc_HMGU\Python_MyScripts\MIA\Git\Cell_ACDC\data\test_images\test_YeaZ.tif"
-    r"G:\My Drive\01_Postdoc_HMGU\Python_MyScripts\MIA\Git\Cell_ACDC\data\test_timelapse\Yagya_Kurt_presentation\Position_6\Images\SCGE_5strains_23092021_Dia_Ph3.tif"
+    # r"G:\My Drive\01_Postdoc_HMGU\Python_MyScripts\MIA\Git\Cell_ACDC\data\test_timelapse\Yagya_Kurt_presentation\Position_6\Images\SCGE_5strains_23092021_Dia_Ph3.tif"
+    r"G:\My Drive\01_Postdoc_HMGU\Python_MyScripts\MIA\Git\DeepSea\data\test_tracking\Position_1\Images\A3_03_1_1_Phase Contrast.tif"
 )
 
-channel_name = 'Dia_Ph3'
-START_FRAME = 0
-STOP_FRAME = 51
+channel_name = 'Phase Contrast'
+START_FRAME = 173
+STOP_FRAME = 178
+PLOT_FRAME = 175
 SCRUMBLE_IDs = False
 
 posData = load.loadData(
@@ -37,10 +39,6 @@ posData.loadImgData()
 posData.loadOtherFiles(
     load_segm_data=True, 
     load_metadata=True
-)
-
-test_segm_path = (
-    r"G:\My Drive\01_Postdoc_HMGU\Python_MyScripts\MIA\Git\Cell_ACDC\data\test_timelapse\Yagya_Kurt_presentation\Position_6\Images\SCGE_5strains_23092021_segm.npz"
 )
 
 # Ask which model to use --> Test if new model is visible
@@ -102,8 +100,8 @@ else:
 
 fig, ax = plt.subplots(2, 2)
 ax = ax.flatten()
-ax[0].imshow(lab_stack[-2])
-ax[1].imshow(lab_stack[-1])
-ax[2].imshow(tracked_stack[-2])
-ax[3].imshow(tracked_stack[-1])
+ax[0].imshow(lab_stack[PLOT_FRAME-START_FRAME-1])
+ax[1].imshow(lab_stack[PLOT_FRAME-START_FRAME])
+ax[2].imshow(tracked_stack[PLOT_FRAME-START_FRAME-1])
+ax[3].imshow(tracked_stack[PLOT_FRAME-START_FRAME])
 plt.show()
