@@ -1217,6 +1217,9 @@ class trackingWorker(QObject):
         # Relabel first frame objects back to IDs they had before tracking
         # (to ensure continuity with past untracked frames)
         tracked_video = self._relabel_first_frame_labels(tracked_video)
+        acdc_df = self.posData.fromTrackerToAcdcDf(
+            self.tracker, tracked_video, start_frame_i=self.mainWin.start_n-1
+        )
 
         # Store new tracked video
         current_frame_i = self.posData.frame_i
@@ -1224,6 +1227,14 @@ class trackingWorker(QObject):
         self.trackingOnNeverVisitedFrames = False
         for rel_frame_i, lab in enumerate(tracked_video):
             frame_i = rel_frame_i + self.mainWin.start_n - 1
+
+            if acdc_df is not None:
+                # Store cca_df if it is an output of the tracker
+                cca_df = acdc_df.loc[frame_i][self.mainWin.cca_df_colname]
+                self.mainWin.store_cca_df(
+                    frame_i=frame_i, cca_df=cca_df, mainThread=False,
+                    autosave=False
+                )
 
             if self.posData.allData_li[frame_i]['labels'] is None:
                 # repeating tracking on a never visited frame

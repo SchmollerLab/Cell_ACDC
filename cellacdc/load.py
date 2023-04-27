@@ -1054,11 +1054,11 @@ class loadData:
                     zc = obj.centroid[0]
                     acdc_df.at[(frame_i, obj.label), 'z_centroid'] = int(zc)                
 
-        self.acdc_df = acdc_df
         if not save:
-            return
+            return acdc_df
 
         acdc_df.to_csv(self.acdc_output_csv_path)
+        self.loadAcdcDf(self.acdc_output_csv_path)
 
     def getCustomAnnotatedIDs(self):
         self.customAnnotIDs = {}
