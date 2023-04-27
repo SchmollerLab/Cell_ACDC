@@ -7829,12 +7829,10 @@ class editCcaTableWidget(QDialog):
 
 class askStopFrameSegm(QDialog):
     def __init__(
-            self, user_ch_file_paths, user_ch_name,
-            concat_segm=False, parent=None
+            self, user_ch_file_paths, user_ch_name, parent=None
         ):
         self.parent = parent
         self.cancel = True
-        self.concat_segm = concat_segm
 
         super().__init__(parent)
         self.setWindowTitle('Enter stop frame')
@@ -9894,6 +9892,8 @@ class QDialogTrackerParams(QDialog):
                 except Exception as err:
                     pass
             widget = argWidget.widget
+            if val is None:
+                continue
             try:
                 argWidget.valueSetter(widget, val)
             except TypeError:

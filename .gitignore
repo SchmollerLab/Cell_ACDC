@@ -33,6 +33,7 @@ cellacdc/test_qt_app.py
 cellacdc/test_qthread.py
 cellacdc/test.py
 cellacdc/test1.py
+cellacdc/test_download_model.py
 cellacdc/test_segm.npy
 cellacdc/_profile/\spline_to_obj/regression.ipynb
 cellacdc/deprecated
@@ -62,6 +63,7 @@ cellacdc/models/YeaZ/model/*
 cellacdc/models/YeastMate/model/*
 cellacdc/models/StarDist/model/*
 cellacdc/models/segment_anything/model/*
+cellacdc/models/deepsea/model/*
 
 # Hide placeholder.txt dummy file (probably works only on Linux)
 !models/.placeholder.txt

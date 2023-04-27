@@ -54,18 +54,21 @@ class Model:
     def segment(self, image: np.ndarray, automatic_removal_of_background: bool=True) -> np.ndarray:
         is_rgb_image = image.shape[-1] == 3 or image.shape[-1] == 4
         is_z_stack = (image.ndim==3 and not is_rgb_image) or (image.ndim==4)
-        labels = np.zeros(image.shape, dtype=np.uint32)
+        if is_rgb_image:
+            labels = np.zeros(image.shape[:-1], dtype=np.uint32)
+        else:
+            labels = np.zeros(image.shape, dtype=np.uint32)
         if is_z_stack:
             for z, img in enumerate(image):
-                labels[z] = self._segment_single_image(img)
+                labels[z] = self._segment_2D_image(img)
             labels = skimage.measure.label(labels>0)
         else:
-            labels = self._segment_single_image(image)
+            labels = self._segment_2D_image(image)
         if automatic_removal_of_background:
             labels = self._remove_background(labels)
         return labels
 
-    def _segment_single_image(self, image: np.ndarray) -> np.ndarray:
+    def _segment_2D_image(self, image: np.ndarray) -> np.ndarray:
         img = myutils.to_uint8(image)
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         masks = self.model.generate(img)

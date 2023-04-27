@@ -70,7 +70,7 @@ from . import base_cca_df, graphLayoutBkgrColor, darkBkgrColor
 from . import load, prompts, apps, workers, html_utils
 from . import core, myutils, dataPrep, widgets
 from . import measurements, printl
-from . import colors, filters, plot, annotate
+from . import colors, filters, warnings, annotate
 from . import user_manual_url
 from . import cellacdc_path, temp_path, settings_csv_path
 from . import qutils, autopilot
@@ -149,79 +149,6 @@ def get_data_exception_handler(func):
             raise e
         return result
     return inner_function
-
-class trackingWorker(QObject):
-    finished = pyqtSignal()
-    critical = pyqtSignal(object)
-    progress = pyqtSignal(str)
-    debug = pyqtSignal(object)
-
-    def __init__(self, posData, mainWin, video_to_track):
-        QObject.__init__(self)
-        self.mainWin = mainWin
-        self.posData = posData
-        self.mutex = QMutex()
-        self.waitCond = QWaitCondition()
-        self.tracker = self.mainWin.tracker
-        self.track_params = self.mainWin.track_params
-        self.video_to_track = video_to_track
-
-    @workers.worker_exception_handler
-    def run(self):
-        self.mutex.lock()
-
-        self.progress.emit('Tracking process started...')
-
-        self.track_params['signals'] = self.signals
-        if 'image' in self.track_params:
-            trackerInputImage = self.track_params.pop('image')
-            start_frame_i = self.mainWin.start_n-1
-            stop_frame_n = self.mainWin.stop_n
-            trackerInputImage = trackerInputImage[start_frame_i:stop_frame_n]
-            try:
-                tracked_video = self.tracker.track(
-                    self.video_to_track, trackerInputImage, **self.track_params
-                )
-            except TypeError:
-                # User accidentally loaded image data but the tracker doesn't
-                # need it
-                self.progress.emit(
-                    'Image data is not required by this tracker, ignoring it...'
-                )
-                tracked_video = self.tracker.track(
-                    self.video_to_track, **self.track_params
-                )
-        else:
-            tracked_video = self.tracker.track(
-                self.video_to_track, **self.track_params
-            )
-
-        # Store new tracked video
-        current_frame_i = self.posData.frame_i
-        
-        self.trackingOnNeverVisitedFrames = False
-        for rel_frame_i, lab in enumerate(tracked_video):
-            frame_i = rel_frame_i + self.mainWin.start_n - 1
-
-            if self.posData.allData_li[frame_i]['labels'] is None:
-                # repeating tracking on a never visited frame
-                # --> modify only raw data and ask later what to do
-                self.posData.segm_data[frame_i] = lab
-                self.trackingOnNeverVisitedFrames = True
-            else:
-                # Get the rest of the stored metadata based on the new lab
-                self.posData.allData_li[frame_i]['labels'] = lab
-                self.posData.frame_i = frame_i
-                self.mainWin.get_data()
-                self.mainWin.store_data(autosave=False)
-
-        # Back to current frame
-        self.posData.frame_i = current_frame_i
-        self.mainWin.get_data()
-        self.mainWin.store_data(autosave=True)
-
-        self.mutex.unlock()
-        self.finished.emit()
 
 class relabelSequentialWorker(QObject):
     finished = pyqtSignal()
@@ -915,7 +842,7 @@ class guiWin(QMainWindow):
     def _print(self, *objects):
         self.logger.info(', '.join([str(x) for x in objects]))
             
-    def run(self):
+    def run(self, module='acdc_gui', logs_path=None):
         global print, printl
         
         self.is_win = sys.platform.startswith("win")
@@ -926,7 +853,7 @@ class guiWin(QMainWindow):
 
         self.is_error_state = False
         logger, logs_path, log_path, log_filename = setupLogger(
-            module='gui'
+            module=module, logs_path=logs_path
         )
         if self._version is not None:
             logger.info(f'Initializing GUI v{self._version}...')
@@ -993,8 +920,8 @@ class guiWin(QMainWindow):
         self.gui_createMenuBar()
         self.gui_createToolBars()
         self.gui_createControlsToolbar()
-        self.gui_createLeftSideWidgets()
-        self.gui_createPropsDockWidget()
+        self.gui_createShowPropsButton()
+        self.gui_createRegionPropsDockWidget()
         self.gui_createQuickSettingsWidgets()
 
         self.autoSaveGarbageWorkers = []
@@ -1038,15 +965,16 @@ class guiWin(QMainWindow):
 
         self.splineToObjModel.fit()
     
-    def readRecentPaths(self):
+    def readRecentPaths(self, recentPaths_path=None):
         # Step 0. Remove the old options from the menu
         self.openRecentMenu.clear()
 
         # Step 1. Read recent Paths
-        cellacdc_path = os.path.dirname(os.path.abspath(__file__))
-        recentPaths_path = os.path.join(
-            cellacdc_path, 'temp', 'recentPaths.csv'
-        )
+        if recentPaths_path is None:
+            recentPaths_path = os.path.join(
+                cellacdc_path, 'temp', 'recentPaths.csv'
+            )
+        
         if os.path.exists(recentPaths_path):
             df = pd.read_csv(recentPaths_path, index_col='index')
             if 'opened_last_on' in df.columns:
@@ -2053,6 +1981,9 @@ class guiWin(QMainWindow):
         col = 4 # graphLayout spans two columns
         mainLayout.addWidget(self.labelsGrad, row, col)
 
+        col = 5 
+        mainLayout.addLayout(self.rightSideDocksLayout, row, col, 2, 1)
+
         col = 2
         row += 1
         self.resizeBottomLayoutLine = widgets.VerticalResizeHline()
@@ -2085,7 +2016,7 @@ class guiWin(QMainWindow):
 
         return mainLayout
 
-    def gui_createPropsDockWidget(self):
+    def gui_createRegionPropsDockWidget(self, side=Qt.LeftDockWidgetArea):
         self.propsDockWidget = QDockWidget('Cell-ACDC objects', self)
         self.guiTabControl = widgets.guiTabControl(self.propsDockWidget)
 
@@ -2099,7 +2030,7 @@ class guiWin(QMainWindow):
             Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea
         )
 
-        self.addDockWidget(Qt.LeftDockWidgetArea, self.propsDockWidget)
+        self.addDockWidget(side, self.propsDockWidget)
         self.propsDockWidget.hide()
 
     def gui_createControlsToolbar(self):
@@ -2818,7 +2749,7 @@ class guiWin(QMainWindow):
         # self.openRecentMenu.aboutToShow.connect(self.populateOpenRecent)
         self.checkableQButtonsGroup.buttonClicked.connect(self.uncheckQButton)
 
-        self.showPropsDockButton.clicked.connect(self.showPropsDockWidget)
+        self.showPropsDockButton.sigClicked.connect(self.showPropsDockWidget)
 
         self.addCustomAnnotationAction.triggered.connect(
             self.addCustomAnnotation
@@ -2834,7 +2765,6 @@ class guiWin(QMainWindow):
         )
         self.addCustomModelFrameAction.callback = self.segmFrameCallback
         self.addCustomModelVideoAction.callback = self.segmVideoCallback
-        
 
     def gui_connectEditActions(self):
         self.showInExplorerAction.setEnabled(True)
@@ -3017,6 +2947,15 @@ class guiWin(QMainWindow):
         )
         self.imgPropertiesAction.triggered.connect(self.editImgProperties)
 
+        self.relabelSequentialAction.triggered.connect(
+            self.relabelSequentialCallback
+        )
+
+        self.zoomToObjsAction.triggered.connect(self.zoomToObjsActionCallback)
+        self.zoomOutAction.triggered.connect(self.zoomOut)
+
+        self.viewCcaTableAction.triggered.connect(self.viewCcaTable)
+
         self.guiTabControl.propsQGBox.idSB.valueChanged.connect(
             self.updatePropsWidget
         )
@@ -3036,25 +2975,22 @@ class guiWin(QMainWindow):
             self.updatePropsWidget
         )
 
-        self.relabelSequentialAction.triggered.connect(
-            self.relabelSequentialCallback
-        )
-
-        self.zoomToObjsAction.triggered.connect(self.zoomToObjsActionCallback)
-        self.zoomOutAction.triggered.connect(self.zoomOut)
-
-        self.viewCcaTableAction.triggered.connect(self.viewCcaTable)
-
-    def gui_createLeftSideWidgets(self):
-        self.leftSideDocksLayout = QVBoxLayout()
+    def gui_createShowPropsButton(self, side='left'):
+        self.leftSideDocksLayout = QVBoxLayout()            
+        self.leftSideDocksLayout.setSpacing(0)
+        self.leftSideDocksLayout.setContentsMargins(0,0,0,0)
+        self.rightSideDocksLayout = QVBoxLayout()            
+        self.rightSideDocksLayout.setSpacing(0)
+        self.rightSideDocksLayout.setContentsMargins(0,0,0,0)
         self.showPropsDockButton = widgets.expandCollapseButton()
         self.showPropsDockButton.setDisabled(True)
         self.showPropsDockButton.setFocusPolicy(Qt.NoFocus)
         self.showPropsDockButton.setToolTip('Show object properties')
-        self.leftSideDocksLayout.addWidget(self.showPropsDockButton)
-        self.leftSideDocksLayout.setSpacing(0)
-        self.leftSideDocksLayout.setContentsMargins(0,0,0,0)
-    
+        if side == 'left':
+            self.leftSideDocksLayout.addWidget(self.showPropsDockButton)
+        else:
+            self.rightSideDocksLayout.addWidget(self.showPropsDockButton)
+            
     def gui_createQuickSettingsWidgets(self):
         self.quickSettingsLayout = QVBoxLayout()
         self.quickSettingsGroupbox = widgets.GroupBox()
@@ -3139,7 +3075,6 @@ class guiWin(QMainWindow):
         self.quickSettingsGroupbox.setLayout(layout)
         self.quickSettingsLayout.addWidget(self.quickSettingsGroupbox)
         self.quickSettingsLayout.addStretch(1)
-
 
     def gui_createImg1Widgets(self):
         # Toggle contours/ID combobox
@@ -3504,7 +3439,7 @@ class guiWin(QMainWindow):
         # self.lutItemsLayout.setBorder('w')
 
         # Left plot
-        self.ax1 = widgets.MainPlotItem()
+        self.ax1 = widgets.MainPlotItem(showWelcomeText=True)
         self.ax1.invertY(True)
         self.ax1.setAspectLocked(True)
         self.ax1.hideAxis('bottom')
@@ -3581,8 +3516,6 @@ class guiWin(QMainWindow):
         self.titleLabel = pg.LabelItem(
             justify='center', color=self.titleColor, size='14pt'
         )
-        self.titleLabel.setText(
-            'Drag and drop image file or go to File --> Open folder...')
         self.graphLayout.addItem(self.titleLabel, row=0, col=1, colspan=2)
 
     def gui_createTextAnnotColors(self, r, g, b, custom=False):
@@ -3867,29 +3800,6 @@ class guiWin(QMainWindow):
 
         self.ghostMaskItemLeft = widgets.GhostMaskItem()
         self.ghostMaskItemRight = widgets.GhostMaskItem()
-
-    def warnTooManyItems(self, numItems, qparent):
-        self.logger.info(
-            '[WARNING]: asking user what to do with too many graphical items...'
-        )
-        msg = widgets.myMessageBox()
-        txt = html_utils.paragraph(f"""
-            You loaded a segmentation mask that has <b>{numItems} objects</b>.<br><br>
-            Creating <b>high resolution</b> text annotations 
-            for these many objects could take a <b>long time</b>.<br><br>
-            We recommend <b>switching to low resolution</b> annotations.<br><br>
-            You can still try to switch to high resolution later.<br><br>
-            What do you want to do?
-        """)
-
-        _, stayHighResButton, switchToLowResButton = msg.warning(
-            qparent, 'Too many objects', txt,
-            buttonsTexts=(
-                'Cancel', 'Stay on high resolution', 
-                widgets.reloadPushButton(' Switch to low resolution ')              
-            )
-        )
-        return msg.cancel, msg.clickedButton==switchToLowResButton
     
     def gui_createLabelRoiItem(self):
         Y, X = self.currentLab2D.shape
@@ -3955,8 +3865,8 @@ class guiWin(QMainWindow):
         self.highLowResToggle.setChecked(True)
         numItems = len(allIDs)
         if numItems > 500:
-            cancel, switchToLowRes = self.warnTooManyItems(
-                numItems, self.progressWin
+            cancel, switchToLowRes = warnings.warnTooManyItems(
+                self, numItems, self.progressWin
             )
             if cancel:
                 self.progressWin.workerFinished = True
@@ -4021,9 +3931,7 @@ class guiWin(QMainWindow):
         isHighResolution = self.highLowResToggle.isChecked()
         pxMode = self.pxModeToggle.isChecked()
         for ax in range(2):
-            ax_textAnnot = annotate.TextAnnotations(
-                
-            )
+            ax_textAnnot = annotate.TextAnnotations()
             ax_textAnnot.initFonts(self.fontSize)
             ax_textAnnot.createItems(
                 isHighResolution, allIDs, pxMode=pxMode
@@ -7387,7 +7295,9 @@ class guiWin(QMainWindow):
 
     def startTrackingWorker(self, posData, video_to_track):
         self.thread = QThread()
-        self.trackingWorker = trackingWorker(posData, self, video_to_track)
+        self.trackingWorker = workers.trackingWorker(
+            posData, self, video_to_track
+        )
         self.trackingWorker.moveToThread(self.thread)
         self.trackingWorker.finished.connect(self.thread.quit)
         self.trackingWorker.finished.connect(self.trackingWorker.deleteLater)
@@ -11406,18 +11316,20 @@ class guiWin(QMainWindow):
                 f'Replace ID {posData.lab[y,x]} with {newID}'
                 for y, x, newID in posData.editID_info
             ]
-            msg = QMessageBox(self)
-            msg.setWindowTitle('Repeat tracking mode')
-            msg.setIcon(msg.Question)
-            msg.setText("You requested to repeat tracking but there are "
-                        "the following manually edited IDs:\n\n"
-                        f"{editIDinfo}\n\n"
-                        "Do you want to keep these edits or ignore them?")
-            keepManualEditButton = QPushButton('Keep manually edited IDs')
-            msg.addButton(keepManualEditButton, msg.YesRole)
-            msg.addButton(QPushButton('Ignore'), msg.NoRole)
-            msg.exec_()
-            if msg.clickedButton() == keepManualEditButton:
+            msg = widgets.myMessageBox()
+            txt = html_utils.paragraph(f"""
+                You requested to repeat tracking but there are the following
+                manually edited IDs:<br><br>
+                {editIDinfo}<br><br>
+                Do you want to keep these edits or ignore them?
+            """)
+            _, keepManualEditButton, _ = msg.question(
+                self, 'Repeat tracking mode', txt, 
+                buttonsTexts=('Keep manually edited IDs', 'Ignore')
+            )
+            if msg.cancel:
+                return
+            if msg.clickedButton == keepManualEditButton:
                 allIDs = [obj.label for obj in posData.rp]
                 lab2D = self.get_2Dlab(posData.lab)
                 self.manuallyEditTracking(lab2D, allIDs)
@@ -15293,11 +15205,18 @@ class guiWin(QMainWindow):
                 self.updateAllImages(updateFilters=True)
                 self.updateScrollbars()
             else:
+                last_tracked_i = posData.frame_i
                 current_frame_i = posData.frame_i
+                self.logger.info(
+                    f'Storing data up until frame n. {current_frame_i+1}...'
+                )
+                pbar = tqdm(total=current_frame_i+1, ncols=100)
                 for i in range(current_frame_i):
                     posData.frame_i = i
                     self.get_data()
                     self.store_data(autosave=i==current_frame_i-1)
+                    pbar.update()
+                pbar.close()
 
                 posData.frame_i = current_frame_i
                 self.get_data()
@@ -16238,7 +16157,7 @@ class guiWin(QMainWindow):
         # apps.AddPointsLayerDialog.ok_cb()
         posData = self.data[self.pos_i]
         action.pointsData[posData.frame_i] = {}
-        if action.weighingData:
+        if hasattr(action, 'weighingData'):
             lab = posData.lab
             img = action.weighingData[self.pos_i][posData.frame_i]
             rp = skimage.measure.regionprops(lab, intensity_image=img)
@@ -18503,7 +18422,7 @@ class guiWin(QMainWindow):
         Function used for loading an image file directly.
         """
         if file_path is None:
-            self.MostRecentPath = myutils.getMostRecentPath()
+            self.MostRecentPath = self.getMostRecentPath()
             file_path = QFileDialog.getOpenFileName(
                 self, 'Select image file', self.MostRecentPath,
                 "Image/Video Files (*.png *.tif *.tiff *.jpg *.jpeg *.mov *.avi *.mp4)"
@@ -18683,6 +18602,12 @@ class guiWin(QMainWindow):
             exp_path=exp_path, imageFilePath=imageFilePath
         )
 
+    def addToRecentPaths(self, path, logger=None):
+        myutils.addToRecentPaths(path, logger=self.logger)
+    
+    def getMostRecentPath(self):
+        return myutils.getMostRecentPath()
+
     @exception_handler
     def _openFolder(
             self, checked=False, exp_path=None, imageFilePath=''
@@ -18706,7 +18631,7 @@ class guiWin(QMainWindow):
         """
 
         if exp_path is None:
-            self.MostRecentPath = myutils.getMostRecentPath()
+            self.MostRecentPath = self.getMostRecentPath()
             exp_path = QFileDialog.getExistingDirectory(
                 self,
                 'Select experiment folder containing Position_n folders '
@@ -18716,9 +18641,6 @@ class guiWin(QMainWindow):
 
         if exp_path == '':
             self.openAction.setEnabled(True)
-            self.titleLabel.setText(
-                'Drag and drop image file or go to File --> Open folder...',
-                color=self.titleColor)
             return
 
         self.reInitGui()
@@ -18733,7 +18655,7 @@ class guiWin(QMainWindow):
 
         self.exp_path = exp_path
         self.logger.info(f'Loading from {self.exp_path}')
-        myutils.addToRecentPaths(exp_path, logger=self.logger)
+        self.addToRecentPaths(exp_path, logger=self.logger)
         self.addPathToOpenRecentMenu(exp_path)
 
         folder_type = myutils.determine_folder_type(exp_path)
@@ -18751,9 +18673,6 @@ class guiWin(QMainWindow):
             values = select_folder.get_values_segmGUI(exp_path)
             if not values:
                 self.criticalInvalidPosFolder(exp_path)
-                self.titleLabel.setText(
-                    'Drag and drop image file or go to File --> Open folder...',
-                    color=self.titleColor)
                 self.openAction.setEnabled(True)
                 return
 
@@ -18810,9 +18729,6 @@ class guiWin(QMainWindow):
             )
             self.ch_names = ch_names
             if not ch_names:
-                self.titleLabel.setText(
-                    'Drag and drop image file or go to File --> Open folder...',
-                    color=self.titleColor)
                 self.openAction.setEnabled(True)
                 self.criticalNoTifFound(images_path)
                 return
@@ -18822,9 +18738,6 @@ class guiWin(QMainWindow):
                     self, ch_names, CbLabel=CbLabel
                 )
                 if ch_name_selector.was_aborted:
-                    self.titleLabel.setText(
-                        'Drag and drop image file or go to File --> Open folder...',
-                        color=self.titleColor)
                     self.openAction.setEnabled(True)
                     return
                 skip_channels.extend([
@@ -18867,9 +18780,6 @@ class guiWin(QMainWindow):
         proceed = self.loadSelectedData(user_ch_file_paths, user_ch_name)
         if not proceed:
             self.openAction.setEnabled(True)
-            self.titleLabel.setText(
-                'Drag and drop image file or go to File --> Open folder...',
-                color=self.titleColor)
             return
     
     def criticalInvalidPosFolder(self, exp_path):
@@ -20688,9 +20598,10 @@ class guiWin(QMainWindow):
         self.updateAllImages()
     
     def showEvent(self, event):
-        if not self.mainWin.isMinimized():
-            return
-        self.mainWin.showAllWindows()
+        if self.mainWin is not None:
+            if not self.mainWin.isMinimized():
+                return
+            self.mainWin.showAllWindows()
         self.setFocus(True)
         self.activateWindow()
     

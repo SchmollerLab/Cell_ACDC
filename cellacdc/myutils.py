@@ -39,7 +39,7 @@ from PyQt5.QtCore import pyqtSignal, QObject, QCoreApplication
 from . import apps
 from . import prompts, widgets, core, load
 from . import html_utils, is_linux, is_win, is_mac, issues_url
-from . import cellacdc_path, printl, temp_path
+from . import cellacdc_path, printl, temp_path, logs_path
 from . import config
 
 models_list_file_path = os.path.join(temp_path, 'custom_models_paths.ini')
@@ -232,16 +232,16 @@ def getMemoryFootprint(files_list):
     return required_memory
 
 def get_logs_path():
-    user_path = pathlib.Path.home()
-    logs_path = os.path.join(user_path, '.acdc-logs')
     return logs_path
 
-def setupLogger(module='gui'):
+def setupLogger(module='gui', logs_path=None):
+    if logs_path is None:
+        logs_path = get_logs_path()
+    
     logger = logging.getLogger(f'cellacdc-logger-{module}')
     logger.setLevel(logging.INFO)
 
     user_path = pathlib.Path.home()
-    logs_path = os.path.join(user_path, '.acdc-logs')
     if not os.path.exists(logs_path):
         os.mkdir(logs_path)
     else:
@@ -1066,9 +1066,14 @@ def _model_url(model_name, return_alternative=False):
             'https://dl.fbaipublicfiles.com/segment_anything/sam_vit_l_0b3195.pth',
             'https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth'
         ]
-        file_size = [
-            2564550879, 1249524736, 375042383
+        file_size = [2564550879, 1249524736, 375042383]
+        alternative_url = ''
+    elif model_name == 'deepsea':
+        url = [
+            'https://github.com/abzargar/DeepSea/raw/master/deepsea/trained_models/segmentation.pth',
+            'https://github.com/abzargar/DeepSea/raw/master/deepsea/trained_models/tracker.pth'
         ]
+        file_size = [7988969, 8637439]
         alternative_url = ''
     if return_alternative:
         return url, alternative_url
@@ -1080,6 +1085,26 @@ def _download_segment_anything_models():
     temp_model_path = tempfile.mkdtemp()
     _, final_model_path = (
         get_model_path('segment_anything', create_temp_dir=False)
+    )
+    for url, file_size in zip(urls, file_sizes):
+        filename = url.split('/')[-1]
+        final_dst = os.path.join(final_model_path, filename)
+        if os.path.exists(final_dst):            
+            continue
+
+        temp_dst = os.path.join(temp_model_path, filename)
+        download_url(
+            url, temp_dst, file_size=file_size, desc='segment_anything',
+            verbose=False
+        )
+        
+        shutil.move(temp_dst, final_dst)
+
+def _download_deepsea_models():
+    urls, file_sizes = _model_url('deepsea')
+    temp_model_path = tempfile.mkdtemp()
+    _, final_model_path = (
+        get_model_path('deepsea', create_temp_dir=False)
     )
     for url, file_size in zip(urls, file_sizes):
         filename = url.split('/')[-1]
@@ -1216,6 +1241,13 @@ def download_model(model_name):
     if model_name == 'segment_anything':
         try:
             _download_segment_anything_models()
+            return True
+        except Exception as e:
+            traceback.print_exc()
+            return False
+    elif model_name == 'DeepSea':
+        try:
+            _download_deepsea_models()
             return True
         except Exception as e:
             traceback.print_exc()
@@ -1579,12 +1611,6 @@ def check_install_segment_anything():
     check_install_package('torchvision')
     check_install_package('segment_anything')
 
-def _install_deepsea():
-    subprocess.check_call(
-        [sys.executable, '-m', 'pip', 'install',
-        'git+https://github.com/abzargar/DeepSea.git']
-    )
-
 def check_install_package(
         pkg_name: str, pypi_name='', note='', parent=None, 
         raise_on_cancel=True
@@ -1665,7 +1691,9 @@ def _inform_install_package_failed(pkg_name, parent=None, do_exit=True):
     if do_exit:
         exit()
 
-def _install_package_msg(pkg_name, note='', parent=None, upgrade=False):
+def _install_package_msg(
+        pkg_name, note='', parent=None, upgrade=False, caller_name='Cell-ACDC'
+    ):
     msg = widgets.myMessageBox(parent=parent)
     if upgrade:
         install_text = 'upgrade'
@@ -1674,12 +1702,12 @@ def _install_package_msg(pkg_name, note='', parent=None, upgrade=False):
     if pkg_name == 'BayesianTracker':
         pkg_name = 'btrack'
     txt = html_utils.paragraph(f"""
-        Cell-ACDC is going to <b>download and {install_text}</b>
+        {caller_name} is going to <b>download and {install_text}</b>
         <code>{pkg_name}</code>.<br><br>
         Make sure you have an <b>active internet connection</b>,
         before continuing.<br>
         Progress will be displayed on the terminal<br><br>
-        You might have to <b>restart Cell-ACDC</b>.<br><br>
+        You might have to <b>restart {caller_name}</b>.<br><br>
         <b>IMPORTANT:</b> If the installation fails please install
         <code>{pkg_name}</code> manually with the follwing command:<br><br>
         <code>pip install --upgrade {pkg_name.lower()}</code><br><br>
@@ -1711,7 +1739,15 @@ def _install_segment_anything():
     ]
     subprocess.check_call(args)
 
+def _install_deepsea():
+    subprocess.check_call(
+        [sys.executable, '-m', 'pip', 'install', 'deepsea']
+    )
+
 def import_tracker(posData, trackerName, realTime=False, qparent=None):
+    downloadWin = apps.downloadModel(trackerName, parent=qparent)
+    downloadWin.download()
+
     trackerModuleName =  f'trackers.{trackerName}.{trackerName}_tracker'
     trackerModule = import_module(trackerModuleName)
     init_params = {}
@@ -1829,6 +1865,8 @@ def check_cuda(model_name, use_gpu, qparent=None):
     is_torch_model = (
         model_name.lower().find('cellpose') != -1
         or model_name.lower().find('omnipose') != -1
+        or model_name.lower().find('deepsea') != -1
+        or model_name.lower().find('segment_anything') != -1
     )
     if is_torch_model:
         import torch
@@ -1854,6 +1892,14 @@ def synthetic_image_geneator(size=(512,512), f_x=1, f_y=1):
     xx, yy = np.meshgrid(x, y)
     img = np.sin(f_x*xx)*np.cos(f_y*yy)
     return img
+
+def get_show_in_file_manager_text():
+    if is_mac:
+        return 'Reveal in Finder'
+    elif is_linux:
+        return 'Show in File Manager'
+    elif is_win:
+        return 'Show in File Explorer'
 
 def get_slices_local_into_global_arr(bbox_coords, global_shape):
     slice_global_to_local = []
