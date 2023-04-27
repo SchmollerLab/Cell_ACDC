@@ -9761,7 +9761,7 @@ class QDialogTrackerParams(QDialog):
     def createGroupParams(self, ArgSpecs_list, groupName, addChannel=False):
         ArgWidget = namedtuple(
             'ArgsWidgets',
-            ['name', 'type', 'widget', 'defaultVal', 'valueSetter']
+            ['name', 'type', 'widget', 'defaultVal', 'valueSetter', 'valueGetter']
         )
         ArgsWidgets_list = []
         groupBox = QGroupBox(groupName)
@@ -9788,28 +9788,21 @@ class QDialogTrackerParams(QDialog):
             if ArgSpec.type == bool:
                 booleanGroup = QButtonGroup()
                 booleanGroup.setExclusive(True)
-                trueRadioButton = QRadioButton('True')
-                falseRadioButton = QRadioButton('False')
-                booleanGroup.addButton(trueRadioButton)
-                booleanGroup.addButton(falseRadioButton)
-                trueRadioButton.notButton = falseRadioButton
-                falseRadioButton.notButton = trueRadioButton
-                trueRadioButton.group = booleanGroup
-                if ArgSpec.default:
-                    trueRadioButton.setChecked(True)
-                    defaultVal = True
-                else:
-                    falseRadioButton.setChecked(True)
-                    defaultVal = False
-                valueSetter = QRadioButton.setChecked
-                widget = trueRadioButton
-                groupBoxLayout.addWidget(trueRadioButton, row, 1)
-                groupBoxLayout.addWidget(falseRadioButton, row, 2)
+                checkBox = widgets.Toggle()
+                checkBox.setChecked(ArgSpec.default)
+                valueSetter = widgets.Toggle.setChecked
+                valueGetter = widgets.Toggle.isChecked
+                defaultVal = ArgSpec.default
+                widget = checkBox
+                groupBoxLayout.addWidget(
+                    checkBox, row, 1, 1, 2, alignment=Qt.AlignCenter
+                )
             elif ArgSpec.type == int:
                 spinBox = widgets.SpinBox()
                 spinBox.setValue(ArgSpec.default)
                 defaultVal = ArgSpec.default
                 valueSetter = widgets.SpinBox.setValue
+                valueGetter = widgets.SpinBox.value
                 widget = spinBox
                 groupBoxLayout.addWidget(spinBox, row, 1, 1, 2)
             elif ArgSpec.type == float:
@@ -9818,6 +9811,7 @@ class QDialogTrackerParams(QDialog):
                 widget = doubleSpinBox
                 defaultVal = ArgSpec.default
                 valueSetter = widgets.DoubleSpinBox.setValue
+                valueGetter = QDoubleSpinBox.value
                 groupBoxLayout.addWidget(doubleSpinBox, row, 1, 1, 2)
             elif ArgSpec.type == os.PathLike:
                 filePathControl = widgets.filePathControl()
@@ -9825,6 +9819,7 @@ class QDialogTrackerParams(QDialog):
                 widget = filePathControl
                 defaultVal = str(ArgSpec.default)
                 valueSetter = widgets.filePathControl.setText
+                valueGetter = widgets.filePathControl.path
                 groupBoxLayout.addWidget(filePathControl, row, 1, 1, 2)
             else:
                 lineEdit = QLineEdit()
@@ -9833,6 +9828,7 @@ class QDialogTrackerParams(QDialog):
                 widget = lineEdit
                 defaultVal = str(ArgSpec.default)
                 valueSetter = QLineEdit.setText
+                valueGetter = QLineEdit.text
                 groupBoxLayout.addWidget(lineEdit, row, 1, 1, 2)
 
             argsInfo = ArgWidget(
@@ -9840,7 +9836,8 @@ class QDialogTrackerParams(QDialog):
                 type=ArgSpec.type,
                 widget=widget,
                 defaultVal=defaultVal,
-                valueSetter=valueSetter
+                valueSetter=valueSetter,
+                valueGetter=valueGetter
             )
             ArgsWidgets_list.append(argsInfo)
 
@@ -9852,16 +9849,12 @@ class QDialogTrackerParams(QDialog):
             defaultVal = argWidget.defaultVal
             widget = argWidget.widget
             argWidget.valueSetter(widget, defaultVal)
-            if isinstance(defaultVal, bool):
-                argWidget.valueSetter(widget.notButton, True)
 
     def restoreDefaultTrack(self):
         for argWidget in self.track_kwargs:
             defaultVal = argWidget.defaultVal
             widget = argWidget.widget
             argWidget.valueSetter(widget, defaultVal)
-            if isinstance(defaultVal, bool) and not defaultVal:
-                argWidget.valueSetter(widget.notButton, True)
 
     def readLastSelection(self):
         self.ini_path = os.path.join(temp_path, 'last_params_trackers.ini')
@@ -9914,20 +9907,10 @@ class QDialogTrackerParams(QDialog):
         return seeHereLabel
 
     def argsWidgets_to_kwargs(self, argsWidgets):
-        kwargs_dict = {}
-        for argWidget in argsWidgets:
-            if argWidget.type == bool:
-                kwargs_dict[argWidget.name] = argWidget.widget.isChecked()
-            elif argWidget.type == int or argWidget.type == float:
-                kwargs_dict[argWidget.name] = argWidget.widget.value()
-            elif argWidget.type == str:
-                kwargs_dict[argWidget.name] = argWidget.widget.text()
-            elif argWidget.type == os.PathLike:
-                kwargs_dict[argWidget.name] = argWidget.widget.path()
-            else:
-                to_type = argWidget.type
-                s = argWidget.widget.text()
-                kwargs_dict[argWidget.name] = eval(s)
+        kwargs_dict = {
+            argWidget.name:argWidget.valueGetter(argWidget.widget)
+            for argWidget in argsWidgets
+        }
         return kwargs_dict
 
     def ok_cb(self, checked):
@@ -10135,24 +10118,15 @@ class QDialogModelParams(QDialog):
             if ArgSpec.type == bool:
                 booleanGroup = QButtonGroup()
                 booleanGroup.setExclusive(True)
-                trueRadioButton = QRadioButton('True')
-                falseRadioButton = QRadioButton('False')
-                booleanGroup.addButton(trueRadioButton)
-                booleanGroup.addButton(falseRadioButton)
-                trueRadioButton.notButton = falseRadioButton
-                falseRadioButton.notButton = trueRadioButton
-                trueRadioButton.group = booleanGroup
-                if ArgSpec.default:
-                    trueRadioButton.setChecked(True)
-                    defaultVal = True
-                else:
-                    falseRadioButton.setChecked(True)
-                    defaultVal = False
-                valueSetter = QRadioButton.setChecked
-                valueGetter = QRadioButton.isChecked
-                widget = trueRadioButton
-                groupBoxLayout.addWidget(trueRadioButton, row, 1)
-                groupBoxLayout.addWidget(falseRadioButton, row, 2)
+                checkBox = widgets.Toggle()
+                checkBox.setChecked(ArgSpec.default)
+                defaultVal = ArgSpec.default
+                valueSetter = widgets.Toggle.setChecked
+                valueGetter = widgets.Toggle.isChecked
+                widget = checkBox
+                groupBoxLayout.addWidget(
+                    checkBox, row, 1, 1, 2, alignment=Qt.AlignCenter
+                )
             elif ArgSpec.type == int:
                 spinBox = widgets.SpinBox()
                 spinBox.setValue(ArgSpec.default)
@@ -10215,16 +10189,12 @@ class QDialogModelParams(QDialog):
             defaultVal = argWidget.defaultVal
             widget = argWidget.widget
             argWidget.valueSetter(widget, defaultVal)
-            if isinstance(defaultVal, bool):
-                argWidget.valueSetter(widget.notButton, True)
 
     def restoreDefaultSegment(self):
         for argWidget in self.segment2D_argsWidgets:
             defaultVal = argWidget.defaultVal
             widget = argWidget.widget
             argWidget.valueSetter(widget, defaultVal)
-            if isinstance(defaultVal, bool) and not defaultVal:
-                argWidget.valueSetter(widget.notButton, True)
 
     def restoreDefaultPostprocess(self):
         self.artefactsGroupBox.restoreDefault()
