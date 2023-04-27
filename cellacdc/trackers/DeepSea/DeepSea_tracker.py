@@ -5,6 +5,8 @@ import numpy as np
 
 import torch
 
+from tqdm import tqdm
+
 from skimage.measure import regionprops
 from skimage.segmentation import relabel_sequential
 from skimage.transform import resize
@@ -65,6 +67,9 @@ class tracker:
         segm_video = self._relabel_sequential(segm_video)
         labels_list = []
         resize_img_list = []
+        pbar = tqdm(total=len(segm_video), ncols=100)
+        if signals is not None:
+            signals.progress.emit('Resizing objects...')
         for img, lab in zip(image, segm_video):
             img = (255 * ((img - img.min()) / img.ptp())).astype(np.uint8)
             rp = regionprops(lab)
@@ -76,6 +81,8 @@ class tracker:
             )
             resize_img_list.append(resized_img)
             labels_list.append(resized_lab)
+            pbar.update()
+        pbar.close()
         
         result = track_cells(
             labels_list, resize_img_list, self.model, self.torch_device, 
@@ -83,7 +90,8 @@ class tracker:
         )
         tracked_labels, tracked_centroids, tracked_imgs = result
         
-        labels_to_IDs_mapper = self._from_labels_to_IDs(tracked_labels)
+        labels_to_IDs_mapper = self._get_labels_to_IDs_mapper(tracked_labels)
+        
         if annotate_lineage_tree:
             self.cca_dfs = self._annotate_lineage_tree(
                 tracked_labels, labels_to_IDs_mapper
@@ -98,70 +106,16 @@ class tracker:
     def _annotate_lineage_tree(self, tracked_labels, labels_to_IDs_mapper):
         if self.signals is not None:
             self.signals.progress.emit('Annotating lineage trees...')
-        from cellacdc.core import getBaseCca_df
-        import pandas as pd
-        IDs_to_labels_mapper = {
-            ID:label for label, ID in labels_to_IDs_mapper.items()
-        }
-        cca_dfs = []
-        keys = []
-        for frame_i, tracked_frame_labels in enumerate(tracked_labels):
-            keys.append(frame_i)
-            IDs = [
-                labels_to_IDs_mapper[label] for label in tracked_frame_labels
-            ]
-            if frame_i == 0:
-                cca_df = getBaseCca_df(IDs)
-                cca_dfs.append(cca_df)
-                continue
-
-            # Get cca_df from previous frame for existing cells
-            cca_df = cca_dfs[frame_i-1]
-            is_in_index = cca_df.index.isin(IDs)
-            cca_df = cca_df[is_in_index]
-            new_cells_cca_dfs = []
-
-            for ID in IDs:
-                if ID in cca_df.index:
-                    continue
-                
-                newID = ID
-                # New cell --> store cca info
-                label = IDs_to_labels_mapper[newID]
-                parent_label, _, sister_label = label.rpartition('_')
-                if not parent_label:
-                    # New single-cell --> check if it existed in past frames
-                    for i in range(frame_i-2, -1, -1):
-                        past_cca_df = cca_dfs[frame_i-1]
-                        if newID in past_cca_df.index:
-                            cca_df_single_ID = past_cca_df.loc[[newID]]
-                            break
-                    else:
-                        cca_df_single_ID = getBaseCca_df([newID])
-                        cca_df_single_ID.loc[newID, 'emerg_frame_i'] = frame_i
-                else:
-                    # New cell resulting from division --> store division
-                    mothID = labels_to_IDs_mapper[parent_label]
-                    cca_df_single_ID = getBaseCca_df([newID])
-                    cca_df.at[mothID, 'generation_num'] += 1
-                    cca_df.at[mothID, 'division_frame_i'] = frame_i
-                    cca_df.at[mothID, 'relative_ID'] = newID
-                    cca_df_single_ID.at[newID, 'emerg_frame_i'] = frame_i   
-                    cca_df_single_ID.at[newID, 'division_frame_i'] = frame_i
-                    cca_df_single_ID.at[newID, 'generation_num'] = 1  
-                    cca_df_single_ID.at[newID, 'relative_ID'] = mothID
-
-                new_cells_cca_dfs.append(cca_df_single_ID)
-            
-            cca_df = pd.concat([cca_df, *new_cells_cca_dfs]).sort_index()
-            cca_dfs.append(cca_df)
-        
+        from cellacdc.core import annotate_lineage_tree_from_labels
+        cca_dfs = annotate_lineage_tree_from_labels(
+            tracked_labels, labels_to_IDs_mapper
+        )        
         return cca_dfs
 
-    def _from_labels_to_IDs(self, tracked_labels):
+    def _get_labels_to_IDs_mapper(self, tracked_labels):
         labels_to_IDs_mapper = {}
         uniqueID = 1
-        for tracked_frame_labels in tracked_labels:
+        for frame_i, tracked_frame_labels in enumerate(tracked_labels):
             for tracked_label in tracked_frame_labels:
                 if tracked_label in labels_to_IDs_mapper:
                     # Cell existed in the past, ID already stored
@@ -170,18 +124,16 @@ class tracker:
                 parent_label, _, sister_label = tracked_label.rpartition('_')
                 if not parent_label:
                     # Single-cell that was not mapped yet
-                    labels_to_IDs_mapper[tracked_label] = uniqueID
+                    ID = uniqueID
                     uniqueID += 1
-                    continue
-
-                if sister_label == '0':
+                elif sister_label == '0':
                     # Sister label == 0 --> keep mother ID
-                    ID = labels_to_IDs_mapper[parent_label]
+                    ID = labels_to_IDs_mapper[parent_label].split('_')[0]
                 else:
                     # Sister label == 1 --> assign new ID
                     ID = uniqueID
                     uniqueID += 1
-                labels_to_IDs_mapper[tracked_label] = ID
+                labels_to_IDs_mapper[tracked_label] = f'{ID}_{frame_i}'
 
         return labels_to_IDs_mapper
 
@@ -198,7 +150,8 @@ class tracker:
         for frame_i, track_info_frame in enumerate(_zip):
             tracked_frame_labels, tracked_frame_centroids = track_info_frame
             tracked_frame_IDs = [
-                labels_to_IDs_mapper[label] for label in tracked_frame_labels
+                int(labels_to_IDs_mapper[label].split('_')[0])
+                for label in tracked_frame_labels
             ]
             lab = resized_labels_list[frame_i]
             tracked_lab = tracked_video[frame_i]

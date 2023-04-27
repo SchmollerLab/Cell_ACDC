@@ -80,7 +80,6 @@ class segmWorker(QRunnable):
         self.predictCcaState_model = mainWin.predictCcaState_model
         self.is_segment3DT_available = mainWin.is_segment3DT_available
         self.innerPbar_available = mainWin.innerPbar_available
-        self.concat_segm = mainWin.concat_segm
         self.tracker = mainWin.tracker
         self.isNewSegmFile = mainWin.isNewSegmFile
         self.endFilenameSegm = mainWin.endFilenameSegm
@@ -120,7 +119,7 @@ class segmWorker(QRunnable):
         posData.buildPaths()
         posData.loadImgData()
         posData.loadOtherFiles(
-            load_segm_data=self.concat_segm,
+            load_segm_data=False,
             load_acdc_df=False,
             load_shifts=False,
             loadSegmInfo=True,
@@ -134,7 +133,7 @@ class segmWorker(QRunnable):
         s = self.endFilenameSegm
         # Get only name from the string 'segm_<name>.npz'
         endName = s.replace('segm', '', 1).replace('_', '', 1).split('.')[0]
-        if endName and not self.concat_segm:
+        if endName:
             # Create a new file that is not the default 'segm.npz'
             posData.setFilePaths(endName)
 
@@ -176,8 +175,6 @@ class segmWorker(QRunnable):
 
         if posData.SizeT > 1:
             self.t0 = 0
-            if self.concat_segm and posData.segm_data is not None:
-                self.t0 = len(posData.segm_data)
             if posData.SizeZ > 1 and not self.isSegm3D:
                 # 2D segmentation on 3D data over time
                 img_data = posData.img_data
@@ -368,16 +365,7 @@ class segmWorker(QRunnable):
                     lab_stack, **self.removeArtefactsKwargs
                 )
 
-        if posData.SizeT > 1 and self.do_tracking:
-            # NOTE: We use yeaz tracking also for cellpose
-            if self.concat_segm and posData.segm_data is not None:
-                # Insert last frame from existing segm to ensure
-                # correct tracking when concatenating
-                last_segm_frame = posData.segm_data[-1]
-                lab_stack = np.insert(
-                    lab_stack, 0, last_segm_frame, axis=0
-                )
-            
+        if posData.SizeT > 1 and self.do_tracking:            
             if self.save:
                 # Since tracker could raise errors we save the not-tracked 
                 # version which will eventually be overwritten
@@ -413,9 +401,7 @@ class segmWorker(QRunnable):
                 tracked_stack = self.tracker.track(
                     lab_stack, **self.track_params
                 )
-            if self.concat_segm and posData.segm_data is not None:
-                # Remove first frame that comes from existing segm
-                tracked_stack = tracked_stack[1:]
+            posData.fromTrackerToAcdcDf(self.tracker, tracked_stack, save=True)
         else:
             tracked_stack = lab_stack
             try:
@@ -432,12 +418,6 @@ class segmWorker(QRunnable):
         if isROIactive:
             self.signals.progress.emit(f'Padding with zeros {pad_info}...')
             tracked_stack = np.pad(tracked_stack, pad_info, mode='constant')
-
-        if self.concat_segm and posData.segm_data is not None:
-            # Concatenate existing segmentation with new one
-            tracked_stack = np.append(
-                posData.segm_data, tracked_stack, axis=0
-            )
 
         if self.save:
             self.signals.progress.emit(f'Saving {posData.relPath}...')
@@ -885,7 +865,6 @@ class segmWin(QMainWindow):
         # Check if there are segmentation already computed
         self.selectedSegmFile = None
         self.endFilenameSegm = 'segm.npz'
-        self.concat_segm = False
         self.isNewSegmFile = False
         askNewName = True
         isMultiSegm = False
@@ -897,16 +876,15 @@ class segmWin(QMainWindow):
                 break
 
         if isMultiSegm:
-            concat_segm, askNewName = self.askMultipleSegm(
+            askNewName = self.askMultipleSegm(
                 segm_files, isTimelapse=posData.SizeT>1
             )
-            if concat_segm is None:
+            if askNewName is None:
                 self.save = False
                 abort = self.doAbort()
                 if abort:
                     self.close()
                     return
-            self.concat_segm = concat_segm
 
         if self.selectedSegmFile is not None:
             self.endFilenameSegm = self.selectedSegmFile[len(posData.basename):]
@@ -1106,8 +1084,7 @@ class segmWin(QMainWindow):
         self.stopFrames = [1 for _ in range(len(user_ch_file_paths))]
         if posData.SizeT > 1:
             win = apps.askStopFrameSegm(
-                user_ch_file_paths, user_ch_name,
-                concat_segm=self.concat_segm, parent=self
+                user_ch_file_paths, user_ch_name, parent=self
             )
             win.setFont(font)
             win.exec_()
@@ -1212,13 +1189,6 @@ class segmWin(QMainWindow):
         msg = widgets.myMessageBox(resizeButtons=False)
         msg.setWindowTitle('Multiple segmentation files')
         msg.addText(txt)
-        concatButton = ''
-        if isTimelapse:
-            if len(segm_files) > 1:
-                concatTxt = 'Select segm. file to concatenate to...'
-            else:
-                concatTxt = 'Concatenate to existing segmentation file'
-            concatButton = widgets.reloadPushButton(concatTxt)
         if len(segm_files) > 1:
             overWriteText = 'Select segm. file to overwrite...'
         else:
@@ -1227,19 +1197,10 @@ class segmWin(QMainWindow):
         doNotSaveButton = widgets.noPushButton('Do not save')
         newButton = widgets.newFilePushButton('Save as...')
         msg.addCancelButton(connect=True)
-        if isTimelapse:
-            msg.addButton(concatButton)
         msg.addButton(overWriteButton)
         msg.addButton(newButton)
         msg.addButton(doNotSaveButton)
         if len(segm_files)>1:
-            if isTimelapse:
-                concatButton.clicked.disconnect()
-                func = partial(
-                    self.selectSegmFile, segm_files, False, msg,
-                    concatButton
-                )
-                concatButton.clicked.connect(func)
             overWriteButton.clicked.disconnect()
             func = partial(
                 self.selectSegmFile, segm_files, True, msg,
@@ -1251,22 +1212,16 @@ class segmWin(QMainWindow):
 
         msg.exec_()
         if msg.cancel:
-            return None, None
+            return None
         elif msg.clickedButton == doNotSaveButton:
             self.save = False
-            return False, False
-        elif msg.clickedButton == concatButton:
-            concat = True
-            askNewName = False
-            return concat, askNewName
+            return False
         elif msg.clickedButton == newButton:
-            concat = False
             askNewName = True
-            return concat, askNewName
+            return askNewName
         elif msg.clickedButton == overWriteButton:
-            concat = False
             askNewName = False
-            return concat, askNewName
+            return askNewName
 
     def selectSegmFile(self, segm_files, isOverwrite, msg, button):
         action = 'overwrite' if isOverwrite else 'concatenate to'
@@ -1352,7 +1307,6 @@ class segmWin(QMainWindow):
         print('-----------------------------------------')
         self.logger.info(text)
         self.progressLabel.setText(text)
-
 
     def segmWorkerProgressBar(self, step):
         self.QPbar.setValue(self.QPbar.value()+step)

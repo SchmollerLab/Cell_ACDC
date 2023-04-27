@@ -1026,6 +1026,39 @@ class loadData:
 
         filePath = os.path.join(self.images_path, acdc_output_filename)
         self.acdc_output_csv_path = filePath
+    
+    def fromTrackerToAcdcDf(
+            self, tracker, tracked_video, save=False, start_frame_i=0
+        ):
+        if not hasattr(tracker, 'cca_dfs'):
+            return
+        
+        keys = list(range(start_frame_i, len(tracker.cca_dfs)))
+        acdc_df = pd.concat(tracker.cca_dfs, keys=keys, names=['frame_i'])
+        acdc_df['is_cell_dead'] = 0
+        acdc_df['is_cell_excluded'] = 0
+        acdc_df['was_manually_edited'] = 0
+        acdc_df['x_centroid'] = 0
+        acdc_df['y_centroid'] = 0
+        for i, lab in enumerate(tracked_video):
+            frame_i = start_frame_i + i
+            rp = skimage.measure.regionprops(lab)
+            for obj in rp:
+                centroid = obj.centroid
+                yc, xc = obj.centroid[-2:]
+                acdc_df.at[(frame_i, obj.label), 'x_centroid'] = int(xc)
+                acdc_df.at[(frame_i, obj.label), 'y_centroid'] = int(yc)
+                if len(centroid) == 3:
+                    if 'z_centroid' not in acdc_df.columns:
+                        acdc_df['z_centroid'] = 0
+                    zc = obj.centroid[0]
+                    acdc_df.at[(frame_i, obj.label), 'z_centroid'] = int(zc)                
+
+        self.acdc_df = acdc_df
+        if not save:
+            return
+
+        acdc_df.to_csv(self.acdc_output_csv_path)
 
     def getCustomAnnotatedIDs(self):
         self.customAnnotIDs = {}

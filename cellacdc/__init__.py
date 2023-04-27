@@ -1,4 +1,4 @@
-print('Initialising Cell-ACDC...')
+print('Initialising...')
 
 import sys
 import os

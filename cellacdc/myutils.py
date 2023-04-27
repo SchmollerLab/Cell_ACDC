@@ -1691,7 +1691,9 @@ def _inform_install_package_failed(pkg_name, parent=None, do_exit=True):
     if do_exit:
         exit()
 
-def _install_package_msg(pkg_name, note='', parent=None, upgrade=False):
+def _install_package_msg(
+        pkg_name, note='', parent=None, upgrade=False, caller_name='Cell-ACDC'
+    ):
     msg = widgets.myMessageBox(parent=parent)
     if upgrade:
         install_text = 'upgrade'
@@ -1700,12 +1702,12 @@ def _install_package_msg(pkg_name, note='', parent=None, upgrade=False):
     if pkg_name == 'BayesianTracker':
         pkg_name = 'btrack'
     txt = html_utils.paragraph(f"""
-        Cell-ACDC is going to <b>download and {install_text}</b>
+        {caller_name} is going to <b>download and {install_text}</b>
         <code>{pkg_name}</code>.<br><br>
         Make sure you have an <b>active internet connection</b>,
         before continuing.<br>
         Progress will be displayed on the terminal<br><br>
-        You might have to <b>restart Cell-ACDC</b>.<br><br>
+        You might have to <b>restart {caller_name}</b>.<br><br>
         <b>IMPORTANT:</b> If the installation fails please install
         <code>{pkg_name}</code> manually with the follwing command:<br><br>
         <code>pip install --upgrade {pkg_name.lower()}</code><br><br>
@@ -1863,6 +1865,8 @@ def check_cuda(model_name, use_gpu, qparent=None):
     is_torch_model = (
         model_name.lower().find('cellpose') != -1
         or model_name.lower().find('omnipose') != -1
+        or model_name.lower().find('deepsea') != -1
+        or model_name.lower().find('segment_anything') != -1
     )
     if is_torch_model:
         import torch

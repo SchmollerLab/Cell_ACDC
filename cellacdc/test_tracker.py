@@ -27,9 +27,10 @@ test_img_path = (
 )
 
 channel_name = 'Phase Contrast'
-START_FRAME = 173
-STOP_FRAME = 178
-PLOT_FRAME = 175
+end_filename_segm = 'segm'# 'segm_test'
+START_FRAME = 0 
+STOP_FRAME = 501
+PLOT_FRAME = 183
 SCRUMBLE_IDs = False
 
 posData = load.loadData(
@@ -38,7 +39,8 @@ posData = load.loadData(
 posData.loadImgData()
 posData.loadOtherFiles(
     load_segm_data=True, 
-    load_metadata=True
+    load_metadata=True,
+    end_filename_segm=end_filename_segm
 )
 
 # Ask which model to use --> Test if new model is visible
@@ -97,6 +99,13 @@ if 'image' in track_params:
         tracked_stack = tracker.track(lab_stack, **track_params)
 else:
     tracked_stack = tracker.track(lab_stack, **track_params)
+
+try:
+    np.savez_compressed(
+        posData.segm_npz_path.replace('segm', 'segm_tracked'), tracked_stack
+    )
+except Exception as e:
+    import pdb; pdb.set_trace()
 
 fig, ax = plt.subplots(2, 2)
 ax = ax.flatten()
