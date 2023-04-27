@@ -611,12 +611,44 @@ def smooth_contours(lab, radius=2):
         smooth_lab[temp_mask] = obj.label
     return smooth_lab
 
+def get_labels_to_IDs_mapper(tracked_labels):
+    labels_to_IDs_mapper = {}
+    uniqueID = 1
+    for frame_i, tracked_frame_labels in enumerate(tracked_labels):
+        for tracked_label in tracked_frame_labels:
+            if tracked_label in labels_to_IDs_mapper:
+                # Cell existed in the past, ID already stored
+                continue
+            
+            parent_label, _, sister_label = tracked_label.rpartition('_')
+            if not parent_label:
+                # Single-cell that was not mapped yet
+                ID = uniqueID
+                uniqueID += 1
+            elif sister_label == '0':
+                # Sister label == 0 --> keep mother ID
+                ID = labels_to_IDs_mapper[parent_label].split('_')[0]
+            elif (
+                    sister_label == '1' 
+                    and f'{parent_label}_0' not in tracked_frame_labels
+                ):
+                # Daughter cell without a sister --> keep mother ID
+                ID = labels_to_IDs_mapper[parent_label].split('_')[0]
+            else:
+                # Sister label == 1 --> assign new ID
+                ID = uniqueID
+                uniqueID += 1
+            labels_to_IDs_mapper[tracked_label] = f'{ID}_{frame_i}'
+
+    return labels_to_IDs_mapper
+
 def annotate_lineage_tree_from_labels(tracked_labels, labels_to_IDs_mapper):
     IDs_to_labels_mapper = {
         ID:label for label, ID in labels_to_IDs_mapper.items()
     }
     cca_dfs = []
     keys = []
+    pbar = tqdm(total=len(tracked_labels), ncols=100)
     for frame_i, tracked_frame_labels in enumerate(tracked_labels):
         keys.append(frame_i)
         IDs = [
@@ -626,6 +658,7 @@ def annotate_lineage_tree_from_labels(tracked_labels, labels_to_IDs_mapper):
         if frame_i == 0:
             cca_df = getBaseCca_df(IDs)
             cca_dfs.append(cca_df)
+            pbar.update()
             continue
         
         # Get cca_df from previous frame for existing cells
@@ -656,7 +689,6 @@ def annotate_lineage_tree_from_labels(tracked_labels, labels_to_IDs_mapper):
                 # New cell resulting from division --> store division
                 mothID = int(labels_to_IDs_mapper[parent_label].split('_')[0])
                 cca_df_single_ID = getBaseCca_df([newID])
-                import pdb; pdb.set_trace()
                 try:
                     cca_df.at[mothID, 'generation_num'] += 1
                 except Exception as e:
@@ -672,6 +704,8 @@ def annotate_lineage_tree_from_labels(tracked_labels, labels_to_IDs_mapper):
         
         cca_df = pd.concat([cca_df, *new_cells_cca_dfs]).sort_index()
         cca_dfs.append(cca_df)
+        pbar.update()
+    pbar.close()
     return cca_dfs
 
 def getBaseCca_df(IDs, with_tree_cols=False):

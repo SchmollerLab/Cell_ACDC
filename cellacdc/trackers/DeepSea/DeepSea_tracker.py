@@ -18,6 +18,7 @@ from cellacdc import myutils, printl
 from cellacdc.models.DeepSea import _init_model, _resize_img
 from cellacdc.models.DeepSea import image_size as segm_image_size
 from cellacdc.models.DeepSea import _get_segm_transforms
+from cellacdc.core import get_labels_to_IDs_mapper
 
 from . import _get_tracker_transforms
 
@@ -113,28 +114,9 @@ class tracker:
         return cca_dfs
 
     def _get_labels_to_IDs_mapper(self, tracked_labels):
-        labels_to_IDs_mapper = {}
-        uniqueID = 1
-        for frame_i, tracked_frame_labels in enumerate(tracked_labels):
-            for tracked_label in tracked_frame_labels:
-                if tracked_label in labels_to_IDs_mapper:
-                    # Cell existed in the past, ID already stored
-                    continue
-                
-                parent_label, _, sister_label = tracked_label.rpartition('_')
-                if not parent_label:
-                    # Single-cell that was not mapped yet
-                    ID = uniqueID
-                    uniqueID += 1
-                elif sister_label == '0':
-                    # Sister label == 0 --> keep mother ID
-                    ID = labels_to_IDs_mapper[parent_label].split('_')[0]
-                else:
-                    # Sister label == 1 --> assign new ID
-                    ID = uniqueID
-                    uniqueID += 1
-                labels_to_IDs_mapper[tracked_label] = f'{ID}_{frame_i}'
-
+        if self.signals is not None:
+            self.signals.progress.emit('Mapping labels to IDs...')
+        labels_to_IDs_mapper = get_labels_to_IDs_mapper(tracked_labels)
         return labels_to_IDs_mapper
 
     def _replace_tracked_IDs(
