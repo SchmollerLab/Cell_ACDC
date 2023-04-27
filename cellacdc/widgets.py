@@ -250,12 +250,26 @@ class QLog(QPlainTextEdit):
         self.sigClose.emit()
 
 class PushButton(QPushButton):
-    def __init__(self, *args, icon=None, alignIconLeft=False):
+    def __init__(
+            self, *args, icon=None, alignIconLeft=False, 
+            flat=False, hoverable=False
+        ):
         super().__init__(*args)
         if icon is not None:
             self.setIcon(icon)
         self.alignIconLeft = alignIconLeft
         self._text = None
+        if flat:
+            self.setFlat(True)
+        if hoverable:
+            self.installEventFilter(self)
+    
+    def eventFilter(self, object, event):
+        if event.type() == QEvent.HoverEnter:
+            self.setFlat(False)
+        elif event.type() == QEvent.HoverLeave:
+            self.setFlat(True)
+        return False
     
     def show(self):
         text = self.text()
@@ -276,23 +290,23 @@ class PushButton(QPushButton):
         if self._text is None:
             super().setText(self._text)
 
-class mergePushButton(QPushButton):
-    def __init__(self, *args):
-        super().__init__(*args)
+class mergePushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':merge-IDs.svg'))
 
-class okPushButton(QPushButton):
-    def __init__(self, *args, isDefault=True):
-        super().__init__(*args)
+class okPushButton(PushButton):
+    def __init__(self, *args, isDefault=True, **kwargs):
+        super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':yesGray.svg'))
         if isDefault:
             self.setDefault(True)
         # QShortcut(Qt.Key_Return, self, self.click)
         # QShortcut(Qt.Key_Enter, self, self.click)
 
-class zoomPushButton(QPushButton):
-    def __init__(self, *args):
-        super().__init__(*args)
+class zoomPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':zoom_out.svg'))
     
     def setIconZoomOut(self):
@@ -301,115 +315,115 @@ class zoomPushButton(QPushButton):
     def setIconZoomIn(self):
         self.setIcon(QIcon(':zoom_in.svg'))
 
-class reloadPushButton(QPushButton):
-    def __init__(self, *args):
-        super().__init__(*args)
+class reloadPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':reload.svg'))
 
-class savePushButton(QPushButton):
-    def __init__(self, *args):
-        super().__init__(*args)
+class savePushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':file-save.svg'))
 
-class autoPushButton(QPushButton):
-    def __init__(self, *args):
-        super().__init__(*args)
+class autoPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':cog_play.svg'))
 
-class newFilePushButton(QPushButton):
-    def __init__(self, *args):
-        super().__init__(*args)
+class newFilePushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':file-new.svg'))
 
-class helpPushButton(QPushButton):
-    def __init__(self, *args):
-        super().__init__(*args)
+class helpPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':help.svg'))
 
-class viewPushButton(QPushButton):
-    def __init__(self, *args):
-        super().__init__(*args)
+class viewPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':eye.svg'))
 
-class infoPushButton(QPushButton):
-    def __init__(self, *args):
-        super().__init__(*args)
+class infoPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':info.svg'))
 
-class threeDPushButton(QPushButton):
-    def __init__(self, *args):
-        super().__init__(*args)
+class threeDPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':3d.svg'))
 
-class twoDPushButton(QPushButton):
-    def __init__(self, *args):
-        super().__init__(*args)
+class twoDPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':2d.svg'))
 
-class addPushButton(QPushButton):
-    def __init__(self, *args):
-        super().__init__(*args)
+class addPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':add.svg'))
 
-class futurePushButton(QPushButton):
-    def __init__(self, *args):
-        super().__init__(*args)
+class futurePushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':arrow_future.svg'))
 
-class currentPushButton(QPushButton):
-    def __init__(self, *args):
-        super().__init__(*args)
+class currentPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':arrow_current.svg'))
 
 class arrowUpPushButton(PushButton):
-    def __init__(self, *args, alignIconLeft=False):
+    def __init__(self, *args, **kwargs):
         super().__init__(
             *args, icon=QIcon(':arrow-up.svg'), alignIconLeft=alignIconLeft
         )
 
-class arrowDownPushButton(QPushButton):
-    def __init__(self, *args):
-        super().__init__(*args)
+class arrowDownPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':arrow-down.svg'))
 
-class subtractPushButton(QPushButton):
-    def __init__(self, *args):
-        super().__init__(*args)
+class subtractPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':subtract.svg'))
 
-class continuePushButton(QPushButton):
-    def __init__(self, *args):
-        super().__init__(*args)
+class continuePushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':continue.svg'))
 
-class calcPushButton(QPushButton):
-    def __init__(self, *args):
-        super().__init__(*args)
+class calcPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':calc.svg'))
 
-class playPushButton(QPushButton):
-    def __init__(self, *args):
-        super().__init__(*args)
+class playPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':play.svg'))
 
-class stopPushButton(QPushButton):
-    def __init__(self, *args):
-        super().__init__(*args)
+class stopPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':stop.svg'))
 
-class copyPushButton(QPushButton):
-    def __init__(self, *args):
-        super().__init__(*args)
+class copyPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':edit-copy.svg'))
 
-class movePushButton(QPushButton):
-    def __init__(self, *args):
-        super().__init__(*args)
+class movePushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':folder-move.svg'))
 
-class showInFileManagerButton(QPushButton):
-    def __init__(self, *args, setDefaultText=False):
-        super().__init__(*args)
+class showInFileManagerButton(PushButton):
+    def __init__(self, *args, setDefaultText=False, **kwargs):
+        super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':folder-open.svg'))
         if setDefaultText:
             self.setDefaultText()
@@ -417,9 +431,9 @@ class showInFileManagerButton(QPushButton):
     def setDefaultText(self):
         self.setText(myutils.get_show_in_file_manager_text())
 
-class showDetailsButton(QPushButton):
-    def __init__(self, *args, txt='Show details...'):
-        super().__init__(*args)
+class showDetailsButton(PushButton):
+    def __init__(self, *args, txt='Show details...', **kwargs):
+        super().__init__(*args, **kwargs)
         self.setText(txt)
         self.txt = txt
         self.checkedIcon = QIcon(':hideUp.svg')
@@ -437,39 +451,39 @@ class showDetailsButton(QPushButton):
             self.setText(self.txt)
             self.setIcon(self.uncheckedIcon)
 
-class cancelPushButton(QPushButton):
-    def __init__(self, *args):
-        super().__init__(*args)
+class cancelPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':cancelButton.svg'))
 
-class setPushButton(QPushButton):
-    def __init__(self, *args):
-        super().__init__(*args)
+class setPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':cog.svg'))
 
-class noPushButton(QPushButton):
-    def __init__(self, *args):
-        super().__init__(*args)
+class noPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':no.svg'))
 
-class editPushButton(QPushButton):
-    def __init__(self, *args):
-        super().__init__(*args)
+class editPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':edit-id.svg'))
 
-class delPushButton(QPushButton):
-    def __init__(self, *args):
-        super().__init__(*args)
+class delPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':bin.svg'))
 
-class browseFileButton(QPushButton):
+class browseFileButton(PushButton):
     sigPathSelected = pyqtSignal(str)
 
     def __init__(
             self, *args, ext=None, title='Select file', start_dir='', 
-            openFolder=False
+            openFolder=False, **kwargs
         ):
-        super().__init__(*args)
+        super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':folder-open.svg'))
         self.clicked.connect(self.browse)
         self._file_types = 'All Files (*)'
@@ -1326,16 +1340,32 @@ class QVWidgetSpacer(QWidget):
         self.setFixedHeight(height)
 
 class QHLine(QFrame):
-    def __init__(self, shadow='Sunken', parent=None):
+    def __init__(self, shadow='Sunken', parent=None, color=None):
         super().__init__(parent)
         self.setFrameShape(QFrame.HLine)
         self.setFrameShadow(getattr(QFrame, shadow))
+        if color is not None:
+            self.setColor(color)
+    
+    def setColor(self, color):
+        qcolor = pg.mkColor(color)
+        pal = self.palette()
+        pal.setColor(QPalette.WindowText, qcolor)
+        self.setPalette(pal)
 
 class QVLine(QFrame):
-    def __init__(self, shadow='Plain', parent=None):
+    def __init__(self, shadow='Plain', parent=None, color=None):
         super().__init__(parent)
         self.setFrameShape(QFrame.VLine)
         self.setFrameShadow(getattr(QFrame, shadow))
+        if color is not None:
+            self.setColor(color)
+    
+    def setColor(self, color):
+        qcolor = pg.mkColor(color)
+        pal = self.palette()
+        pal.setColor(QPalette.WindowText, qcolor)
+        self.setPalette(pal)
 
 class VerticalResizeHline(QFrame):
     dragged = pyqtSignal(object)
@@ -1941,6 +1971,7 @@ class myMessageBox(QDialog):
         self.scrollableText = scrollableText
 
         self.layout = QGridLayout()
+        self.commandsLayout = None
         self.layout.setHorizontalSpacing(20)
         self.buttonsLayout = QHBoxLayout()
         self.buttonsLayout.setSpacing(2)
@@ -2011,6 +2042,28 @@ class myMessageBox(QDialog):
         self.layout.addWidget(textWidget, self.currentRow, 1)#, alignment=Qt.AlignTop)
         self.currentRow += 1
         return label
+    
+    def addCopiableCommand(self, command):
+        groubox = QGroupBox()
+        layout = QHBoxLayout()
+        groubox.setLayout(layout)
+        layout.addWidget(
+            QLabel(html_utils.paragraph(f'<code>{command}</code>'))
+        )
+        layout.addWidget(QVLine(shadow='Plain', color='#4d4d4d'))
+        copyButton = copyPushButton('Copy', flat=True, hoverable=True)
+        copyButton._command = command
+        copyButton.clicked.connect(self.copyToClipboard)
+        layout.addWidget(copyButton)
+        layout.addStretch(1)
+        self.layout.addWidget(groubox, self.currentRow, 1)
+        self.currentRow += 1
+    
+    def copyToClipboard(self):
+        cb = QApplication.clipboard()
+        cb.clear(mode=cb.Clipboard)
+        cb.setText(self.sender()._command, mode=cb.Clipboard)
+        print('Command copied!')
 
     def addButton(self, buttonText):
         if not isinstance(buttonText, str):
@@ -2189,12 +2242,17 @@ class myMessageBox(QDialog):
 
     def _template(
             self, parent, title, message, detailsText=None,
-            buttonsTexts=None, layouts=None, widgets=None
+            buttonsTexts=None, layouts=None, widgets=None,
+            commands=None
         ):
+        print(commands)
         if parent is not None:
             self.setParent(parent)
         self.setWindowTitle(title)
         self.addText(message)
+        if commands is not None:
+            for command in commands:
+                self.addCopiableCommand(command)
         if layouts is not None:
             if myutils.is_iterable(layouts):
                 for layout in layouts:
@@ -2229,11 +2287,13 @@ class myMessageBox(QDialog):
             self, parent, title, message,
             buttonsTexts=None, layouts=None, widgets=None,
             showDialog=True, detailsText=None,
+            commands=None
         ):
         self.setIcon(iconName='SP_MessageBoxCritical')
         buttons = self._template(
             parent, title, message, detailsText=detailsText,
-            buttonsTexts=buttonsTexts, layouts=layouts, widgets=widgets
+            buttonsTexts=buttonsTexts, layouts=layouts, widgets=widgets,
+            commands=commands
         )
         if showDialog:
             self.exec_()
@@ -2242,12 +2302,14 @@ class myMessageBox(QDialog):
     def information(
             self, parent, title, message,
             buttonsTexts=None, layouts=None, widgets=None,
-            showDialog=True, detailsText=None
+            showDialog=True, detailsText=None,
+            commands=None
         ):
         self.setIcon(iconName='SP_MessageBoxInformation')
         buttons = self._template(
             parent, title, message, detailsText=detailsText,
-            buttonsTexts=buttonsTexts, layouts=layouts, widgets=widgets
+            buttonsTexts=buttonsTexts, layouts=layouts, widgets=widgets,
+            commands=commands
         )
         if showDialog:
             self.exec_()
@@ -2257,11 +2319,13 @@ class myMessageBox(QDialog):
             self, parent, title, message,
             buttonsTexts=None, layouts=None, widgets=None,
             showDialog=True, detailsText=None,
+            commands=None
         ):
         self.setIcon(iconName='SP_MessageBoxWarning')
         buttons = self._template(
             parent, title, message, detailsText=detailsText,
-            buttonsTexts=buttonsTexts, layouts=layouts, widgets=widgets
+            buttonsTexts=buttonsTexts, layouts=layouts, widgets=widgets,
+            commands=commands
         )
         if showDialog:
             self.exec_()
@@ -2271,11 +2335,13 @@ class myMessageBox(QDialog):
             self, parent, title, message,
             buttonsTexts=None, layouts=None, widgets=None,
             showDialog=True, detailsText=None,
+            commands=None
         ):
         self.setIcon(iconName='SP_MessageBoxQuestion')
         buttons = self._template(
             parent, title, message, detailsText=detailsText,
-            buttonsTexts=buttonsTexts, layouts=layouts, widgets=widgets
+            buttonsTexts=buttonsTexts, layouts=layouts, widgets=widgets,
+            commands=commands
         )
         if showDialog:
             self.exec_()
@@ -2935,11 +3001,11 @@ class formWidget(QWidget):
         for item in self.items:
             item.setDisabled(disabled)
 
-class ToggleTerminalButton(QPushButton):
+class ToggleTerminalButton(PushButton):
     sigClicked = pyqtSignal(bool)
 
-    def __init__(self, *args):
-        super().__init__(*args)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':terminal_up.svg'))
         self.setFixedSize(34,18)
         self.setIconSize(QSize(30, 14))
@@ -3617,11 +3683,11 @@ class guiTabControl(QTabWidget):
     def addChannels(self, channels):
         self.intensMeasurQGBox.addChannels(channels)
 
-class expandCollapseButton(QPushButton):
+class expandCollapseButton(PushButton):
     sigClicked = pyqtSignal()
 
-    def __init__(self, parent=None):
-        QPushButton.__init__(self, parent)
+    def __init__(self, parent=None, **kwargs):
+        QPushButton.__init__(self, parent, **kwargs)
         self.setIcon(QIcon(":expand.svg"))
         self.setFlat(True)
         self.installEventFilter(self)
@@ -4045,9 +4111,9 @@ class PlotCurveItem(pg.PlotCurveItem):
         _xx, _yy = self.getData()
         return _yy.min(), _xx.min(), _yy.max(), _xx.max()
 
-class ToggleVisibilityButton(QPushButton):
-    def __init__(self, *args):
-        super().__init__(*args)
+class ToggleVisibilityButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.setFlat(True)
         self.setCheckable(True)
         self.toggled.connect(self.onToggled)
