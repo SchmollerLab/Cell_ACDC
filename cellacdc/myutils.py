@@ -344,9 +344,7 @@ def checkDataIntegrity(filenames, parent_path, parentQWidget=None):
     char = filenames[0][:2]
     startWithSameChar = all([f.startswith(char) for f in filenames])
     if not startWithSameChar:
-        msg = QMessageBox(parentQWidget)
-        msg.setWindowTitle('Data structure compromised')
-        msg.setIcon(msg.Warning)
+        msg = widgets.myMessageBox()
         txt = html_utils.paragraph(
             'The system detected files inside the folder '
             'that <b>do not start with the same, common basename</b>.<br><br>'
@@ -354,27 +352,30 @@ def checkDataIntegrity(filenames, parent_path, parentQWidget=None):
             'the file(s) is/are should either contain a single image file or'
             'only files that start with the same, common basename.<br><br>'
             'For example the following filenames:<br><br>'
-            '<code>F014_s01_phase_contr.tif<br>'
+            '<code>F014_s01_phase_contr.tif</code><br>'
             '<code>F014_s01_mCitrine.tif</code><br><br>'
             'are named correctly since they all start with the '
             'the common basename "F014_s01_". After the common basename you '
             'can write whatever text you want. In the example above, "phase_contr" '
             'and "mCitrine" are the channel names.<br><br>'
             'Data loading may still be successfull, so Cell-ACDC will '
-            'still try to load data now.'
+            'still try to load data now.<br>'
         )
-        msg.setText(txt)
-        _ls = "\n".join(filenames)
-        msg.setDetailedText(
-            f'Files present in the folder {parent_path}:\n'
-            f'{_ls}'
+        filesFormat = [f'    - {file}' for file in filenames]
+        filesFormat = "\n".join(filesFormat)
+        detailsText = (
+            f'Files present in the folder {parent_path}:\n\n'
+            f'{filesFormat}'
         )
-        msg.addButton(msg.Ok)
-        openFolderButton = msg.addButton('Open folder...', msg.HelpRole)
-        openFolderButton.disconnect()
-        slot = partial(showInExplorer, parent_path)
-        openFolderButton.clicked.connect(slot)
-        msg.exec_()
+        msg.addShowInFileManagerButton(parent_path, txt='Open folder...')
+        msg.warning(
+            parentQWidget, 'Data structure compromised', txt, 
+            detailsText=detailsText, buttonsTexts=('Cancel', 'Ok')
+        )
+        if msg.cancel:
+            raise TypeError(
+                'Process aborted by the user.'
+            )
         return False
     return True
 
