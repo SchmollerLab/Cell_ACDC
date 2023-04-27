@@ -377,8 +377,9 @@ class currentPushButton(PushButton):
 
 class arrowUpPushButton(PushButton):
     def __init__(self, *args, **kwargs):
+        alignIconLeft = kwargs.get('alignIconLeft', False)
         super().__init__(
-            *args, icon=QIcon(':arrow-up.svg'), alignIconLeft=alignIconLeft
+            *args, icon=QIcon(':arrow-up.svg'), alignIconLeftalignIconLeft
         )
 
 class arrowDownPushButton(PushButton):
