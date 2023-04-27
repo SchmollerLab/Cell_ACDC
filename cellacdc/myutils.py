@@ -1013,6 +1013,7 @@ def get_model_path(model_name, create_temp_dir=True):
             if file == 'weights_location_path.txt':
                 with open(os.path.join(model_info_path, file), 'r') as txt:
                     model_path = txt.read()
+                    model_path = os.path.expanduser(model_path)
                 if not os.path.exists(model_path):
                     model_path = _write_model_location_to_txt(model_name)
                 else:
@@ -1218,12 +1219,11 @@ def check_v123_model_path(model_name):
 
 def _write_model_location_to_txt(model_name):
     model_info_path = os.path.join(cellacdc_path, 'models', model_name, 'model')
-    user_path = pathlib.Path.home()
-    model_path = os.path.join(str(user_path), f'acdc-{model_name}')
+    model_path = os.path.join('~', f'acdc-{model_name}')
     file = 'weights_location_path.txt'
     with open(os.path.join(model_info_path, file), 'w') as txt:
         txt.write(model_path)
-    return model_path
+    return os.path.expanduser(model_path)
 
 def determine_folder_type(folder_path):
     is_pos_folder = os.path.basename(folder_path).find('Position_') != -1
