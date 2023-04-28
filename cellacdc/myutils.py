@@ -1056,7 +1056,7 @@ def _create_temp_dir():
 def _model_url(model_name, return_alternative=False):
     if model_name == 'YeaZ':
         url = 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/CnfxkQtdRQm5MrT/download/YeaZ_weights.zip'
-        alternative_url = 'https://zenodo.org/record/6127658/files/yeastmate_weights.zip?download=1'
+        alternative_url = 'https://zenodo.org/record/6125825/files/YeaZ_weights.zip?download=1'
         file_size = 693685011
     elif model_name == 'YeastMate':
         url = 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/czTkPmZReGjDRjG/download/yeastmate_weights.zip'
