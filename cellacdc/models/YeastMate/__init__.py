@@ -46,7 +46,7 @@ except ModuleNotFoundError:
 
     subprocess.check_call(
         [sys.executable, '-m', 'pip', 'install',
-        'git+https://github.com/hoerlteam/YeastMate']
+        'git+https://github.com/hoerlteam/YeastMate.git']
     )
     # YeastMate installs opencv-python which is not functional with PyQt5 on macOS.
     # Uninstall it, and reinstall opencv-python-headless

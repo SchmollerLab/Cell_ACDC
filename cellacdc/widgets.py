@@ -2896,6 +2896,7 @@ class formWidget(QWidget):
             self, widget,
             initialVal=None,
             stretchWidget=True,
+            widgetAlignment=None,
             labelTextLeft='',
             labelTextRight='',
             font=None,
@@ -2910,6 +2911,7 @@ class formWidget(QWidget):
         self.widget = widget
         self.key = key
         self.infoTxt = infoTxt
+        self.widgetAlignment = widgetAlignment
 
         widget.setParent(self)
 
@@ -2933,9 +2935,11 @@ class formWidget(QWidget):
 
         if not stretchWidget:
             widgetLayout = QHBoxLayout()
-            widgetLayout.addStretch(1)
+            if widgetAlignment != 'left':
+                widgetLayout.addStretch(1)
             widgetLayout.addWidget(widget)
-            widgetLayout.addStretch(1)
+            if widgetAlignment != 'right':
+                widgetLayout.addStretch(1)
             self.items.append(widgetLayout)
         else:
             self.items.append(widget)
