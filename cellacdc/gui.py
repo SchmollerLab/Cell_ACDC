@@ -14846,11 +14846,14 @@ class guiWin(QMainWindow):
         else:
             return obj_bbox
 
-    def z_lab(self):
+    def z_lab(self, checkIfProj=False):
+        if checkIfProj and self.zProjComboBox.currentText() != 'single z-slice':
+            return
+        
         if self.isSegm3D:
             return self.zSliceScrollBar.sliderPosition()
         else:
-            return None
+            return
 
     def get_2Dlab(self, lab, force_z=True):
         if self.isSegm3D:

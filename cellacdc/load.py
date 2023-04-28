@@ -540,6 +540,7 @@ class loadData:
         self.user_ch_name = user_ch_name
         self.images_path = os.path.dirname(imgPath)
         self.pos_path = os.path.dirname(self.images_path)
+        self.spotmax_out_path = os.path.join(self.pos_path, 'spotMAX_output')
         self.exp_path = os.path.dirname(self.pos_path)
         self.pos_foldername = os.path.basename(self.pos_path)
         self.pos_num = self.getPosNum()
@@ -968,6 +969,28 @@ class loadData:
             self.last_tracked_i = max(self.acdc_df.index.get_level_values(0))
         if return_df:
             return acdc_df
+    
+    def getSpotmaxH5files(self):
+        from spotmax.core import DFs_FILENAMES
+        spotmax_files = myutils.listdir(self.spotmax_out_path)
+        patterns = [
+            filename.replace('*rn*', '').replace('*desc*', '')
+            for filename in DFs_FILENAMES.values()
+        ]
+        valid_files = []
+        for file in spotmax_files:
+            filepath = os.path.join(self.spotmax_out_path, file)
+            if not os.path.isfile(filepath):
+                continue
+            if file.endswith('aggregated.csv'):
+                continue
+            for pattern in patterns:
+                if file.find(pattern) != -1:
+                    break
+            else:
+                continue
+            valid_files.append(file)
+        return valid_files
 
     def askBooleanSegm(self):
         segmFilename = os.path.basename(self.segm_npz_path)
