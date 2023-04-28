@@ -288,6 +288,8 @@ class PushButton(QPushButton):
         
     def setText(self, text):
         if self._text is None:
+            super().setText(text)
+        else:
             super().setText(self._text)
 
 class mergePushButton(PushButton):
@@ -430,7 +432,8 @@ class showInFileManagerButton(PushButton):
             self.setDefaultText()
     
     def setDefaultText(self):
-        self.setText(myutils.get_show_in_file_manager_text())
+        self._text = myutils.get_show_in_file_manager_text()
+        self.setText(self._text)
 
 class showDetailsButton(PushButton):
     def __init__(self, *args, txt='Show details...', **kwargs):
