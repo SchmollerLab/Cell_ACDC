@@ -18669,29 +18669,10 @@ class guiWin(QMainWindow):
         )
         user_ch_name = None
         if not is_pos_folder and not is_images_folder and not imageFilePath:
-            select_folder = load.select_exp_folder()
-            values = select_folder.get_values_segmGUI(exp_path)
-            if not values:
-                self.criticalInvalidPosFolder(exp_path)
-                self.openAction.setEnabled(True)
+            images_paths = self._loadFromExperimentFolder(exp_path)
+            if not images_paths:
+                self.loadingDataAborted()
                 return
-
-            if len(values) > 1:
-                select_folder.QtPrompt(self, values, allow_abort=False)
-                if select_folder.was_aborted:
-                    self.titleLabel.setText(
-                        'Drag and drop image file or go to '
-                        'File --> Open folder...',
-                        color=self.titleColor)
-                    self.openAction.setEnabled(True)
-                    return
-            else:
-                select_folder.was_aborted = False
-                select_folder.selected_pos = select_folder.pos_foldernames
-
-            images_paths = []
-            for pos in select_folder.selected_pos:
-                images_paths.append(os.path.join(exp_path, pos, 'Images'))
 
         elif is_pos_folder and not imageFilePath:
             pos_foldername = os.path.basename(exp_path)
@@ -18781,6 +18762,27 @@ class guiWin(QMainWindow):
         if not proceed:
             self.openAction.setEnabled(True)
             return
+    
+    def _loadFromExperimentFolder(self, exp_path):
+        select_folder = load.select_exp_folder()
+        values = select_folder.get_values_segmGUI(exp_path)
+        if not values:
+            self.criticalInvalidPosFolder(exp_path)
+            self.openAction.setEnabled(True)
+            return []
+
+        if len(values) > 1:
+            select_folder.QtPrompt(self, values, allow_abort=False)
+            if select_folder.was_aborted:
+                return []
+        else:
+            select_folder.was_aborted = False
+            select_folder.selected_pos = select_folder.pos_foldernames
+
+        images_paths = []
+        for pos in select_folder.selected_pos:
+            images_paths.append(os.path.join(exp_path, pos, 'Images'))
+        return images_paths
     
     def criticalInvalidPosFolder(self, exp_path):
         href = f'<a href="{user_manual_url}">user manual</a>'
