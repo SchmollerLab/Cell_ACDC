@@ -2525,6 +2525,23 @@ class ToolButtonCustomColor(rightClickToolButton):
         self.penColor = color
         self.brushColor = [0, 0, 0, 100]
         self.brushColor[:3] = color.getRgb()[:3]
+    
+    def updateSymbol(self, symbol, update=True):
+        self.symbol = symbol
+        if not update:
+            return
+        self.update()
+    
+    def updateColor(self, color, update=True):
+        self.setColor(color)
+        if not update:
+            return
+        self.update()
+    
+    def updateIcon(self, symbol, color):
+        self.updateSymbol(symbol)
+        self.updateColor(color)
+        self.update()
 
     def paintEvent(self, event):
         QToolButton.paintEvent(self, event)
