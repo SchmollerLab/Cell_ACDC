@@ -18465,7 +18465,12 @@ class guiWin(QMainWindow):
             img = data.img_data
             if img.ndim == 3 and (img.shape[-1] == 3 or img.shape[-1] == 4):
                 self.logger.info('Converting RGB image to grayscale...')
-                data.img_data = skimage.color.rgb2gray(data.img_data)
+                if img.shape[-1] == 3:
+                    data.img_data = skimage.color.rgb2gray(data.img_data)
+                else:
+                    data.img_data = cv2.cvtColor(
+                        data.img_data, cv2.COLOR_RGBA2GRAY
+                    )
                 data.img_data = skimage.img_as_ubyte(data.img_data)
             tif_path = os.path.join(exp_path, f'{filename}.tif')
             if data.img_data.ndim == 3:
