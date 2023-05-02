@@ -120,7 +120,9 @@ try:
     import spotmax
     from spotmax import _run as spotmaxRun
     spotmax_filepath = os.path.dirname(os.path.abspath(spotmax.__file__))
-    spotmax_logo_path = os.path.join(spotmax_filepath, 'resources', 'logo.svg')
+    spotmax_logo_path = os.path.join(
+        spotmax_filepath, 'resources', 'spotMAX_logo.svg'
+    )
     SPOTMAX = True
 except Exception as e:
     traceback.print_exc()
