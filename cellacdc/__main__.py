@@ -266,7 +266,7 @@ class mainWin(QMainWindow):
         self.logger.info('Loading configuration files...')
         paths_to_check = [
             gui.favourite_func_metrics_csv_path, 
-            gui.custom_annot_path, 
+            # gui.custom_annot_path, 
             gui.shortcut_filepath, 
             os.path.join(temp_path, 'recentPaths.csv'), 
             load.last_entries_metadata_path, 

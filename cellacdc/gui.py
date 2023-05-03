@@ -17456,7 +17456,7 @@ class guiWin(QMainWindow):
             except IndexError:
                 return
 
-        self.highlightSearchedID(hoverID)
+        self.highlightSearchedID(hoverID, isHover=True)
     
     def highlightHoverIDsKeptObj(self, x, y, hoverID=None):
         if hoverID is None:
@@ -17465,11 +17465,11 @@ class guiWin(QMainWindow):
             except IndexError:
                 return
 
-        self.highlightSearchedID(hoverID)
+        self.highlightSearchedID(hoverID, isHover=True)
         for ID in self.keptObjectsIDs:
             self.highlightLabelID(ID)
 
-    def highlightSearchedID(self, ID, force=False, doNotClearIDs=None):
+    def highlightSearchedID(self, ID, force=False, isHover=False):
         if ID == 0:
             return
 
@@ -17500,7 +17500,8 @@ class guiWin(QMainWindow):
         objIdx = posData.IDs.index(ID)
         obj = posData.rp[objIdx]
 
-        self.goToZsliceSearchedID(obj)
+        if not isHover:
+            self.goToZsliceSearchedID(obj)
 
         if isOverlaySegm_ax1 or isOverlaySegm_ax2:
             alpha = self.imgGrad.labelsAlphaSlider.value()
