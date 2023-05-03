@@ -11918,13 +11918,13 @@ class guiWin(QMainWindow):
             for annotID in annotIDs_frame_i:
                 obj_idx = posData.IDs.index(annotID)
                 obj = posData.rp[obj_idx]
+                acdc_df.at[annotID, state['name']] = 1
                 if not self.isObjVisible(obj.bbox):
                     continue
                 y, x = self.getObjCentroid(obj.centroid)
                 xx.append(x)
                 yy.append(y)
-                acdc_df.at[annotID, state['name']] = 1
-
+                
             scatterPlotItem = self.customAnnotDict[button]['scatterPlotItem']
             scatterPlotItem.setData(xx, yy)
 
