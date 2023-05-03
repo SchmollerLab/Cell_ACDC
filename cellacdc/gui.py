@@ -11627,7 +11627,11 @@ class guiWin(QMainWindow):
             )
 
         posData = self.data[self.pos_i]
-        self.savedCustomAnnot = {**tempAnnot, **posData.customAnnot}
+        self.savedCustomAnnot = tempAnnot
+        for pos_i, posData in enumerate(self.data):
+            self.savedCustomAnnot = {
+                **self.savedCustomAnnot, **posData.customAnnot
+            }
     
     def addCustomAnnotButtonAllLoadedPos(self):
         allPosCustomAnnot = {}
@@ -11723,6 +11727,42 @@ class guiWin(QMainWindow):
         scatterPlotItem.button = toolButton
         self.customAnnotDict[toolButton]['scatterPlotItem'] = scatterPlotItem
         self.ax1.addItem(scatterPlotItem)
+    
+    def addCustomAnnotationItems(
+            self, symbol, symbolColor, keySequence, toolTip, name,
+            keepActive, isHideChecked, state
+        ):
+        toolButton, action = self.addCustomAnnotationButton(
+            symbol, symbolColor, keySequence, toolTip, name,
+            keepActive, isHideChecked
+        )
+
+        self.customAnnotDict[toolButton] = {
+            'action': action,
+            'state': state,
+            'annotatedIDs': [{} for _ in range(len(self.data))]
+        }
+
+        # Save custom annotation to cellacdc/temp/custom_annotations.json
+        state_to_save = state.copy()
+        state_to_save['symbolColor'] = tuple(symbolColor.getRgb())
+        self.savedCustomAnnot[name] = state_to_save
+        for posData in self.data:
+            posData.customAnnot[name] = state_to_save
+
+        # Add scatter plot item
+        self.addCustomAnnnotScatterPlot(symbolColor, symbol, toolButton)
+
+        # Add 0s column to acdc_df
+        posData = self.data[self.pos_i]
+        for frame_i, data_dict in enumerate(posData.allData_li):
+            acdc_df = data_dict['acdc_df']
+            if acdc_df is None:
+                continue
+            acdc_df[name] = 0
+        if posData.acdc_df is not None:
+            posData.acdc_df[name] = 0
+        
 
     def customAnnotHovered(self, scatterPlotItem, points, event):
         # Show tool tip when hovering an annotation with annotation name and ID
@@ -11767,7 +11807,42 @@ class guiWin(QMainWindow):
         if self.selectAnnotWin.cancel:
             return
         
+        for selectedAnnotName in self.selectAnnotWin.selectedItemsText:
+            selectedAnnot = self.savedCustomAnnot[selectedAnnotName]
 
+            symbol = selectedAnnot['symbol']
+            symbol = re.findall(r"\'(.+)\'", symbol)[0]
+            symbolColor = selectedAnnot['symbolColor']
+            symbolColor = pg.mkColor(symbolColor)
+            keySequence = QKeySequence(selectedAnnot['shortcut'])
+            Type = selectedAnnot['type']
+            toolTip = (
+                f'Name: {selectedAnnotName}\n\n'
+                f'Type: {Type}\n\n'
+                f'Usage: activate the button and RIGHT-CLICK on cell to annotate\n\n'
+                f'Description: {selectedAnnot["description"]}\n\n'
+                f'SHORTCUT: "{keySequence}"'
+            )
+            keepActive = selectedAnnot['keepActive']
+            isHideChecked = selectedAnnot['isHideChecked']
+            state = {
+                'type': Type,
+                'name': selectedAnnotName,
+                'symbol':  selectedAnnot['symbol'],
+                'shortcut': selectedAnnot['shortcut'],
+                'description': selectedAnnot["description"],
+                'keepActive': keepActive,
+                'isHideChecked': isHideChecked,
+                'symbolColor': symbolColor
+            }
+            self.addCustomAnnotationItems(
+                symbol, symbolColor, keySequence, toolTip, selectedAnnotName,
+                keepActive, isHideChecked, state
+            )
+            for pos_i, posData in enumerate(self.data):
+                posData.customAnnot[selectedAnnotName] = selectedAnnot
+            
+        self.saveCustomAnnot()
     
     def deleteSavedAnnotation(self):
         for item in self.selectAnnotWin.listBox.selectedItems():
@@ -11796,37 +11871,12 @@ class guiWin(QMainWindow):
         name = self.addAnnotWin.state['name']
         keepActive = self.addAnnotWin.state.get('keepActive', True)
         isHideChecked = self.addAnnotWin.state.get('isHideChecked', True)
-        toolButton, action = self.addCustomAnnotationButton(
+
+        self.addCustomAnnotationItems(
             symbol, symbolColor, keySequence, toolTip, name,
-            keepActive, isHideChecked
+            keepActive, isHideChecked, self.annotWin.state
         )
-
-        self.customAnnotDict[toolButton] = {
-            'action': action,
-            'state': self.addAnnotWin.state,
-            'annotatedIDs': [{} for _ in range(len(self.data))]
-        }
-
-        # Save custom annotation to cellacdc/temp/custom_annotations.json
-        state_to_save = self.addAnnotWin.state.copy()
-        state_to_save['symbolColor'] = tuple(symbolColor.getRgb())
-        self.savedCustomAnnot[name] = state_to_save
-        for posData in self.data:
-            posData.customAnnot[name] = state_to_save
         self.saveCustomAnnot()
-
-        # Add scatter plot item
-        self.addCustomAnnnotScatterPlot(symbolColor, symbol, toolButton)
-
-        # Add 0s column to acdc_df
-        posData = self.data[self.pos_i]
-        for frame_i, data_dict in enumerate(posData.allData_li):
-            acdc_df = data_dict['acdc_df']
-            if acdc_df is None:
-                continue
-            acdc_df[self.addAnnotWin.state['name']] = 0
-        if posData.acdc_df is not None:
-            posData.acdc_df[self.addAnnotWin.state['name']] = 0
 
     def viewAllCustomAnnot(self, checked):
         if not checked:
@@ -11984,6 +12034,20 @@ class guiWin(QMainWindow):
             return buttons[0]
 
     def removeCustomAnnotButton(self, button, save=True):
+        msg = widgets.myMessageBox()
+        txt = html_utils.paragraph("""
+            Do you want to <b>remove also the column with annotations</b> or 
+            only the annotation button?<br>
+        """)
+        _, removeOnlyButton, removeColButton = msg.question(
+            self, 'Remove only button?', txt, 
+            buttonsTexts=(
+                'Cancel', 'Remove only button', ' Remove also column with annotations '
+            )
+        )
+        if msg.cancel:
+            return
+        
         name = self.customAnnotDict[button]['state']['name']
         # remove annotation from position
         for posData in self.data:
@@ -11992,16 +12056,22 @@ class guiWin(QMainWindow):
             except KeyError as e:
                 # Current pos doesn't have any annotation button. Continue
                 continue
-            if posData.acdc_df is not None:
-                posData.acdc_df = posData.acdc_df.drop(
-                    columns=name, errors='ignore'
-                )
-                for frame_i, data_dict in enumerate(posData.allData_li):
-                    acdc_df = data_dict['acdc_df']
-                    if acdc_df is None:
-                        continue
-                    acdc_df = acdc_df.drop(columns=name, errors='ignore')
-                    posData.allData_li[frame_i]['acdc_df'] = acdc_df
+
+            if posData.acdc_df is None:
+                continue
+            
+            if msg.clickedButton == removeOnlyButton:
+                continue
+
+            posData.acdc_df = posData.acdc_df.drop(
+                columns=name, errors='ignore'
+            )
+            for frame_i, data_dict in enumerate(posData.allData_li):
+                acdc_df = data_dict['acdc_df']
+                if acdc_df is None:
+                    continue
+                acdc_df = acdc_df.drop(columns=name, errors='ignore')
+                posData.allData_li[frame_i]['acdc_df'] = acdc_df
 
         self.clearScatterPlotCustomAnnotButton(button)
 
@@ -12011,7 +12081,7 @@ class guiWin(QMainWindow):
         self.customAnnotDict.pop(button)
         # self.savedCustomAnnot.pop(name)
 
-        self.saveCustomAnnot()
+        self.saveCustomAnnot(only_temp=True)
 
     def customAnnotButtonToggled(self, checked):
         if checked:
