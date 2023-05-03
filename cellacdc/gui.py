@@ -1837,6 +1837,7 @@ class guiWin(QMainWindow):
         self.annotateToolbar = QToolBar("Custom annotations", self)
         self.annotateToolbar.setContextMenuPolicy(Qt.PreventContextMenu)
         self.addToolBar(Qt.LeftToolBarArea, self.annotateToolbar)
+        self.annotateToolbar.addAction(self.loadCustomAnnotationsAction)
         self.annotateToolbar.addAction(self.addCustomAnnotationAction)
         self.annotateToolbar.addAction(self.viewAllCustomAnnotAction)
         self.annotateToolbar.setVisible(False)
@@ -2706,6 +2707,12 @@ class guiWin(QMainWindow):
         self.delBorderObjAction.setToolTip(
             'Remove segmented objects touching the border of the image'
         )
+
+        self.loadCustomAnnotationsAction = QAction(self)
+        self.loadCustomAnnotationsAction.setIcon(QIcon(":load_annotation.svg"))
+        self.loadCustomAnnotationsAction.setToolTip(
+            'Load previously used custom annotation'
+        )
     
         self.addCustomAnnotationAction = QAction(self)
         self.addCustomAnnotationAction.setIcon(QIcon(":annotate.svg"))
@@ -2751,6 +2758,9 @@ class guiWin(QMainWindow):
 
         self.showPropsDockButton.sigClicked.connect(self.showPropsDockWidget)
 
+        self.loadCustomAnnotationsAction.triggered.connect(
+            self.loadCustomAnnotations
+        )
         self.addCustomAnnotationAction.triggered.connect(
             self.addCustomAnnotation
         )
@@ -11731,6 +11741,42 @@ class guiWin(QMainWindow):
             )
         else:
             vb.setToolTip('')
+    
+    def loadCustomAnnotations(self):
+        items = list(self.savedCustomAnnot.keys())
+        if len(items) == 0:
+            msg = widgets.myMessageBox()
+            txt = html_utils.paragraph("""
+            There are no custom annotations saved.<br><br>
+            Click on "Add custom annotation" button to start adding new 
+            annotations.
+            """)
+            msg.warning(self, 'No annotations saved', txt)
+            return
+        
+        self.selectAnnotWin = widgets.QDialogListbox(
+            'Load previously used custom annotation(s)',
+            'Select annotation to load:', items,
+            additionalButtons=('Delete selected annnotations', ),
+            parent=self, multiSelection=True
+        )
+        for button in self.selectAnnotWin._additionalButtons:
+            button.disconnect()
+            button.clicked.connect(self.deleteSavedAnnotation)
+        self.selectAnnotWin.exec_()
+        if self.selectAnnotWin.cancel:
+            return
+        
+
+    
+    def deleteSavedAnnotation(self):
+        for item in self.selectAnnotWin.listBox.selectedItems():
+            name = item.text()
+            self.savedCustomAnnot.pop(name)
+        self.deleteSelectedAnnot(self.selectAnnotWin.listBox.selectedItems())
+        items = list(self.savedCustomAnnot.keys())
+        self.selectAnnotWin.listBox.clear()
+        self.selectAnnotWin.listBox.addItems(items)
 
     def addCustomAnnotation(self):
         self.readSavedCustomAnnot()
@@ -11829,7 +11875,7 @@ class guiWin(QMainWindow):
             # User uncheked hide annot with the button not active --> show
             self.doCustomAnnotation(0)
 
-    def deleteSelectedAnnot(self, items):
+    def deleteSelectedAnnot(self, itemsToDelete):
         self.saveCustomAnnot(only_temp=True)
 
     def customAnnotModify(self, button):

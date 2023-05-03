@@ -631,7 +631,7 @@ class customAnnotationDialog(QDialog):
             'Load annotation parameters',
             'Select annotation to load:', items,
             additionalButtons=('Delete selected annnotations', ),
-            parent=self
+            parent=self, multiSelection=False
         )
         for button in self.selectAnnotWin._additionalButtons:
             button.disconnect()
@@ -674,10 +674,10 @@ class customAnnotationDialog(QDialog):
         msg.exec_()
         if msg.clickedButton == cancelButton:
             return
-        self.sigDeleteSelecAnnot.emit(self.selectAnnotWin.listBox.selectedItems())
         for item in self.selectAnnotWin.listBox.selectedItems():
             name = item.text()
             self.savedCustomAnnot.pop(name)
+        self.sigDeleteSelecAnnot.emit(self.selectAnnotWin.listBox.selectedItems())
         items = list(self.savedCustomAnnot.keys())
         self.selectAnnotWin.listBox.clear()
         self.selectAnnotWin.listBox.addItems(items)

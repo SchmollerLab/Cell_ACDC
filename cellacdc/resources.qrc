@@ -24,6 +24,7 @@
     <file alias="file-save.svg">resources/icons/file-save.svg</file>
     <file alias="file-exit.svg">resources/icons/file-exit.svg</file>
     <file alias="edit-copy.svg">resources/icons/edit-copy.svg</file>
+    <file alias="load_annotation.svg">resources/icons/load_annotation.svg</file>
     <file alias="edit-cut.svg">resources/icons/edit-cut.svg</file>
     <file alias="keep_objects.svg">resources/icons/keep_objects.svg</file>
     <file alias="edit-paste.svg">resources/icons/edit-paste.svg</file>
