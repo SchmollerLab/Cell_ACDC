@@ -419,6 +419,11 @@ class copyPushButton(PushButton):
         super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':edit-copy.svg'))
 
+class OpenFilePushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setIcon(QIcon(':folder-open.svg'))
+
 class movePushButton(PushButton):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

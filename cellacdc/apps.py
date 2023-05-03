@@ -563,7 +563,9 @@ class customAnnotationDialog(QDialog):
 
         buttonsLayout = QHBoxLayout()
 
-        self.loadSavedAnnotButton = QPushButton('Load annotation...')
+        self.loadSavedAnnotButton = widgets.OpenFilePushButton(
+            '  Load annotation...  '
+        )
         if not savedCustomAnnot:
             self.loadSavedAnnotButton.setDisabled(True)
         self.okButton = widgets.okPushButton('  Ok  ')
@@ -649,6 +651,7 @@ class customAnnotationDialog(QDialog):
         self.symbolWidget.widget.setCurrentText(selectedAnnot['symbol'])
         self.shortcutWidget.widget.setText(selectedAnnot['shortcut'])
         self.descWidget.widget.setPlainText(selectedAnnot['description'])
+        self.colorButton.setColor(selectedAnnot['symbolColor'])
         keySequence = widgets.macShortcutToWindows(selectedAnnot['shortcut'])
         if keySequence:
             self.shortcutWidget.widget.keySequence = QKeySequence(keySequence)
