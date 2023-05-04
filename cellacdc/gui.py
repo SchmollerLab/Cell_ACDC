@@ -12,7 +12,6 @@ import logging
 import uuid
 import json
 import psutil
-from uuid import uuid4
 from importlib import import_module
 from functools import partial
 from tqdm import tqdm
