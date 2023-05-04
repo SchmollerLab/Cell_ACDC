@@ -258,7 +258,8 @@ def setupLogger(module='gui', logs_path=None):
     logger.default_stdout = sys.stdout
 
     date_time = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-    log_filename = f'{date_time}_{module}_stdout.log'
+    id = uuid4()
+    log_filename = f'{date_time}_{module}_{id}_stdout.log'
     log_path = os.path.join(logs_path, log_filename)
 
     output_file_handler = logging.FileHandler(log_path, mode='w')
