@@ -241,7 +241,6 @@ def setupLogger(module='gui', logs_path=None):
     logger = logging.getLogger(f'cellacdc-logger-{module}')
     logger.setLevel(logging.INFO)
 
-    user_path = pathlib.Path.home()
     if not os.path.exists(logs_path):
         os.mkdir(logs_path)
     else:
@@ -251,7 +250,10 @@ def setupLogger(module='gui', logs_path=None):
             ls = [os.path.join(logs_path, f) for f in ls]
             ls.sort(key=lambda x: os.path.getmtime(x))
             for file in ls[:-20]:
-                os.remove(file)
+                try:
+                    os.remove(file)
+                except Exception as e:
+                    pass
     
     logger.default_stdout = sys.stdout
 
