@@ -260,7 +260,7 @@ def setupLogger(module='gui', logs_path=None):
 
     date_time = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     id = uuid4()
-    log_filename = f'{date_time}_{module}_{id}_stdout.log'
+    log_filename = f'.{date_time}_{module}_{id}_stdout.log'
     log_path = os.path.join(logs_path, log_filename)
 
     output_file_handler = logging.FileHandler(log_path, mode='w')
