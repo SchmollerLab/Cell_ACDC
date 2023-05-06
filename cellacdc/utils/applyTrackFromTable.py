@@ -7,7 +7,7 @@ from .. import exception_handler
 from .. import myutils, apps, widgets, html_utils, printl, workers
 from ..utils import base
 
-from PyQt5.QtWidgets import QFileDialog
+from qtpy.QtWidgets import QFileDialog
 
 class ApplyTrackingInfoFromTableUtil(base.MainThreadSinglePosUtilBase):
     def __init__(

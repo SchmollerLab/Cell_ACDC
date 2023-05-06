@@ -16,15 +16,15 @@ from tqdm import tqdm
 from functools import partial, wraps
 from tifffile.tifffile import TiffWriter, TiffFile
 
-from PyQt5.QtCore import (
+from qtpy.QtCore import (
     Qt, QFile, QTextStream, QSize, QRect, QRectF,
     QObject, QThread, pyqtSignal, QSettings
 )
-from PyQt5.QtGui import (
+from qtpy.QtGui import (
     QIcon, QKeySequence, QCursor, QTextBlockFormat,
     QTextCursor, QFont
 )
-from PyQt5.QtWidgets import (
+from qtpy.QtWidgets import (
     QAction, QApplication, QLabel, QPushButton, QWidget,
     QMainWindow, QMenu, QToolBar, QGroupBox, QGridLayout,
     QScrollBar, QCheckBox, QToolButton, QSpinBox,

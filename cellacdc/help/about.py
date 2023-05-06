@@ -2,9 +2,9 @@ import os
 import cellacdc
 from functools import partial
 
-from PyQt5.QtWidgets import QDialog, QLabel, QGridLayout, QHBoxLayout
-from PyQt5.QtGui import QPixmap
-from PyQt5.QtCore import Qt
+from qtpy.QtWidgets import QDialog, QLabel, QGridLayout, QHBoxLayout
+from qtpy.QtGui import QPixmap
+from qtpy.QtCore import Qt
 
 from ..myutils import read_version
 from .. import widgets, myutils
@@ -79,7 +79,7 @@ class QDialogAbout(QDialog):
 
 def _test():
     import sys
-    from PyQt5.QtWidgets import QStyleFactory, QApplication
+    from qtpy.QtWidgets import QStyleFactory, QApplication
     app = QApplication(sys.argv)
     app.setStyle(QStyleFactory.create('Fusion'))
     win = QDialogAbout()

@@ -18,7 +18,7 @@ import queue
 
 from tifffile.tifffile import TiffFile
 
-from PyQt5.QtCore import (
+from qtpy.QtCore import (
     pyqtSignal, QObject, QRunnable, QMutex, QWaitCondition, QTimer
 )
 

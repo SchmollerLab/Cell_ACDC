@@ -38,12 +38,12 @@ import time
 
 import pyqtgraph as pg
 from PyQt5 import QtCore
-from PyQt5.QtGui import (
+from qtpy.QtGui import (
     QIcon, QFontMetrics, QKeySequence, QFont, QGuiApplication, QCursor,
     QKeyEvent, QPixmap, QFont, QPalette, QMouseEvent, QColor
 )
-from PyQt5.QtCore import Qt, QSize, QEvent, pyqtSignal, QEventLoop, QTimer
-from PyQt5.QtWidgets import (
+from qtpy.QtCore import Qt, QSize, QEvent, pyqtSignal, QEventLoop, QTimer
+from qtpy.QtWidgets import (
     QFileDialog, QApplication, QMainWindow, QMenu, QLabel, QToolBar,
     QScrollBar, QWidget, QVBoxLayout, QLineEdit, QPushButton,
     QHBoxLayout, QDialog, QFormLayout, QListWidget, QAbstractItemView,

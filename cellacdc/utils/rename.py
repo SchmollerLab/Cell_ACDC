@@ -12,12 +12,12 @@ from tifffile.tifffile import TiffWriter, TiffFile
 
 from tqdm import tqdm
 
-from PyQt5.QtWidgets import (
+from qtpy.QtWidgets import (
     QApplication, QMainWindow, QFileDialog,
     QVBoxLayout, QPushButton, QLabel, QStyleFactory,
     QWidget, QMessageBox
 )
-from PyQt5.QtCore import Qt, QEventLoop
+from qtpy.QtCore import Qt, QEventLoop
 from PyQt5 import QtGui
 
 script_path = os.path.dirname(os.path.realpath(__file__))

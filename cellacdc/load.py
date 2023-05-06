@@ -24,8 +24,8 @@ from natsort import natsorted
 import skimage
 import skimage.measure
 from PyQt5 import QtGui
-from PyQt5.QtCore import Qt, QRect, QRectF
-from PyQt5.QtWidgets import (
+from qtpy.QtCore import Qt, QRect, QRectF
+from qtpy.QtWidgets import (
     QApplication, QMessageBox
 )
 import pyqtgraph as pg

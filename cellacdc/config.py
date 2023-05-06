@@ -1,4 +1,4 @@
-from PyQt5.QtCore import QObject, pyqtSignal, qInstallMessageHandler
+from qtpy.QtCore import QObject, pyqtSignal, qInstallMessageHandler
 import argparse
 import configparser
 import pprint

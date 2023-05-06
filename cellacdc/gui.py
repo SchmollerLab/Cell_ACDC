@@ -40,16 +40,16 @@ from PIL import Image, ImageFont, ImageDraw
 from functools import wraps
 from skimage.color import gray2rgb, gray2rgba, label2rgb
 
-from PyQt5.QtCore import (
+from qtpy.QtCore import (
     Qt, QFile, QTextStream, QSize, QRect, QRectF,
     QEventLoop, QTimer, QEvent, QObject, pyqtSignal,
     QThread, QMutex, QWaitCondition, QSettings
 )
-from PyQt5.QtGui import (
+from qtpy.QtGui import (
     QIcon, QKeySequence, QCursor, QGuiApplication, QPixmap, QColor,
     QFont
 )
-from PyQt5.QtWidgets import (
+from qtpy.QtWidgets import (
     QAction, QLabel, QPushButton, QHBoxLayout, QSizePolicy,
     QMainWindow, QMenu, QToolBar, QGroupBox, QGridLayout,
     QScrollBar, QCheckBox, QToolButton, QSpinBox,
@@ -98,7 +98,7 @@ _font = QFont()
 _font.setPixelSize(11)
 
 def qt_debug_trace():
-    from PyQt5.QtCore import pyqtRemoveInputHook
+    from qtpy.QtCore import pyqtRemoveInputHook
     pyqtRemoveInputHook()
     import pdb; pdb.set_trace()
 

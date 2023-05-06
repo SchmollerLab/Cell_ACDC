@@ -1,4 +1,4 @@
-from PyQt5.QtWidgets import QFileDialog
+from qtpy.QtWidgets import QFileDialog
 
 from .. import apps, myutils, workers, widgets, html_utils
 

@@ -2,8 +2,8 @@ import os
 import sys
 import traceback
 
-from PyQt5.QtCore import Qt, QThread, QSize
-from PyQt5.QtWidgets import (
+from qtpy.QtCore import Qt, QThread, QSize
+from qtpy.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel
 )
 from PyQt5 import QtGui
@@ -18,8 +18,8 @@ import pandas as pd
 
 from tqdm import tqdm
 
-from PyQt5.QtCore import pyqtSignal, QThread
-from PyQt5.QtWidgets import (
+from qtpy.QtCore import pyqtSignal, QThread
+from qtpy.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QStyle, QApplication
 )
 

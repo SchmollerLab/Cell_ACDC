@@ -8,8 +8,8 @@ import numpy as np
 import pandas as pd
 import skimage.io
 from natsort import natsorted
-from PyQt5.QtCore import QThread
-from PyQt5.QtWidgets import QFileDialog
+from qtpy.QtCore import QThread
+from qtpy.QtWidgets import QFileDialog
 
 from . import apps, html_utils, myutils, printl, widgets, workers
 

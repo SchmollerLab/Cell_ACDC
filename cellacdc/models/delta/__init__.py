@@ -25,8 +25,8 @@ try:
         version = pkg_resources.get_distribution("delta2").version
         major = int(version.split('.')[0])
         if major < 2:
-            from PyQt5.QtWidgets import QApplication
-            from PyQt5.QtCore import QCoreApplication
+            from qtpy.QtWidgets import QApplication
+            from qtpy.QtCore import QCoreApplication
             from cellacdc import widgets, html_utils
 
             if QCoreApplication.instance() is None:
@@ -43,8 +43,8 @@ try:
             )
 
 except ModuleNotFoundError:
-    from PyQt5.QtWidgets import QApplication
-    from PyQt5.QtCore import QCoreApplication
+    from qtpy.QtWidgets import QApplication
+    from qtpy.QtCore import QCoreApplication
 
     if QCoreApplication.instance() is None:
         app = QApplication(sys.argv)

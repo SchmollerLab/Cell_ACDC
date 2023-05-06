@@ -3,8 +3,8 @@ import sys
 import traceback
 import shutil
 
-from PyQt5.QtCore import Qt, QThread, QSize
-from PyQt5.QtWidgets import (
+from qtpy.QtCore import Qt, QThread, QSize
+from qtpy.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QFileDialog, QListWidgetItem 
 )
 from PyQt5 import QtGui

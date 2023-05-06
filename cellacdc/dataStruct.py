@@ -18,12 +18,12 @@ from pprint import pprint
 from functools import wraps, partial
 from itertools import permutations
 
-from PyQt5.QtWidgets import (
+from qtpy.QtWidgets import (
     QApplication, QMainWindow, QFileDialog,
     QVBoxLayout, QPushButton, QLabel, QStyleFactory,
     QWidget, QMessageBox, QPlainTextEdit, QProgressBar
 )
-from PyQt5.QtCore import (
+from qtpy.QtCore import (
     Qt, QObject, pyqtSignal, QThread, QMutex, QWaitCondition,
     QEventLoop
 )

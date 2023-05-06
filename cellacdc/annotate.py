@@ -6,7 +6,7 @@ import pandas as pd
 
 from PIL import Image, ImageFont, ImageDraw
 
-from PyQt5.QtGui import QFont
+from qtpy.QtGui import QFont
 
 import pyqtgraph as pg
 

@@ -5,13 +5,13 @@ import webbrowser
 import pandas as pd
 import numpy as np
 
-from PyQt5.QtGui import (
+from qtpy.QtGui import (
     QIcon, QFont, QFontMetrics, QPixmap, QPalette, QColor
 )
-from PyQt5.QtCore import (
+from qtpy.QtCore import (
     Qt, QSize, QEvent, pyqtSignal, QObject, QThread, QTimer
 )
-from PyQt5.QtWidgets import (
+from qtpy.QtWidgets import (
     QApplication, QWidget, QGridLayout, QTextEdit, QPushButton,
     QListWidget, QListWidgetItem, QCheckBox, QFrame, QStyleFactory,
     QLabel, QTreeWidget, QTreeWidgetItem, QTreeWidgetItemIterator,

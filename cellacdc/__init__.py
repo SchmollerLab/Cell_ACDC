@@ -6,7 +6,7 @@ except ModuleNotFoundError as e:
     while True:
         txt = (
             'Since version 1.3.0 Cell-ACDC requires the package `qtpy`.\n\n'
-            'You can choose to let Cell-ACDC to install it now, or you can abort '
+            'You can let Cell-ACDC install it now, or you can abort '
             'and install it manually with the command `pip install qtpy`.\n'
         )
         print('-'*60)
@@ -14,9 +14,46 @@ except ModuleNotFoundError as e:
         answer = input('Do you want to install it now ([y]/n)? ')
         if answer.lower() == 'y' or not answer:
             import subprocess
+            import sys
             subprocess.check_call(
                 [sys.executable, '-m', 'pip', 'install', '-U', 'qtpy']
             )
+            break
+        elif answer.lower() == 'n':
+            raise e
+        else:
+            print(
+                f'"{answer}" is not a valid answer. '
+                'Type "y" for "yes", or "n" for "no".'
+            )
+
+try:
+    from qtpy.QtCore import Qt
+except Exception as e:
+    while True:
+        txt = (
+            'Since version 1.3.0 Cell-ACDC does not install a GUI library by default.\n\n'
+            'You can let Cell-ACDC install it now (default library is `PyQt6`), '
+            'or you can abort\n'
+            'and install a compatible GUI library with one of '
+            'the following commands:\n\n'
+            '    * pip install PyQt6\n'
+            '    * pip install PyQt5\n'
+            '    * pip install PySide2\n'
+            '    * pip install PySide6\n\n'
+            'Note: if `PyQt6` installation fails, you could try installing any '
+            'of the other libraries.\n\n'
+        )
+        print('-'*60)
+        print(txt)
+        answer = input('Do you want to install PyQt6 now ([y]/n)? ')
+        if answer.lower() == 'y' or not answer:
+            import subprocess
+            import sys
+            subprocess.check_call(
+                [sys.executable, '-m', 'pip', 'install', '-U', 'PyQt6']
+            )
+            break
         elif answer.lower() == 'n':
             raise e
         else:

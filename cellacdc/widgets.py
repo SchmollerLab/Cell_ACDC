@@ -17,7 +17,7 @@ import skimage.morphology
 from matplotlib.colors import ListedColormap, LinearSegmentedColormap
 import matplotlib.pyplot as plt
 
-from PyQt5.QtCore import (
+from qtpy.QtCore import (
     pyqtSignal, QTimer, Qt, QPoint, pyqtSlot, pyqtProperty,
     QPropertyAnimation, QEasingCurve, QLocale,
     QSize, QRect, QPointF, QRect, QPoint, QEasingCurve, QRegExp,
@@ -26,12 +26,12 @@ from PyQt5.QtCore import (
     QByteArray, QDataStream, QMimeData, QAbstractItemModel, 
     QIODevice, QItemSelection
 )
-from PyQt5.QtGui import (
+from qtpy.QtGui import (
     QFont, QPalette, QColor, QPen, QKeyEvent, QBrush, QPainter,
     QRegExpValidator, QIcon, QPixmap, QKeySequence, QLinearGradient,
     QShowEvent, QBitmap, QFontMetrics, QGuiApplication, QLinearGradient 
 )
-from PyQt5.QtWidgets import (
+from qtpy.QtWidgets import (
     QTextEdit, QLabel, QProgressBar, QHBoxLayout, QToolButton, QCheckBox,
     QApplication, QWidget, QVBoxLayout, QMainWindow, QStyleFactory,
     QLineEdit, QSlider, QSpinBox, QGridLayout, QRadioButton,

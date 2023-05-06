@@ -34,8 +34,8 @@ from natsort import natsorted
 
 from tifffile.tifffile import TiffWriter, TiffFile
 
-from PyQt5.QtWidgets import QMessageBox
-from PyQt5.QtCore import pyqtSignal, QObject, QCoreApplication
+from qtpy.QtWidgets import QMessageBox
+from qtpy.QtCore import pyqtSignal, QObject, QCoreApplication
 
 from . import apps
 from . import prompts, widgets, core, load

@@ -65,15 +65,15 @@ import psutil
 
 from functools import partial
 
-from PyQt5.QtWidgets import (
+from qtpy.QtWidgets import (
     QMainWindow, QVBoxLayout, QPushButton, QLabel, QAction,
     QMenu, QHBoxLayout, QFileDialog
 )
-from PyQt5.QtCore import (
+from qtpy.QtCore import (
     Qt, QProcess, pyqtSignal, pyqtSlot, QTimer, QSize,
     QSettings, QUrl, QCoreApplication
 )
-from PyQt5.QtGui import (
+from qtpy.QtGui import (
     QFontDatabase, QIcon, QDesktopServices, QFont, QMouseEvent, 
     QPixmap
 )

@@ -1,6 +1,6 @@
 import os
 
-from PyQt5.QtCore import (
+from qtpy.QtCore import (
     QTimer, QThread, pyqtSignal, QObject
 )
 

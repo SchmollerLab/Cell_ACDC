@@ -16,12 +16,12 @@ import skimage.morphology
 
 from tqdm import tqdm
 
-from PyQt5.QtWidgets import (
+from qtpy.QtWidgets import (
     QApplication, QMainWindow, QFileDialog,
     QVBoxLayout, QPushButton, QLabel, QProgressBar, QHBoxLayout,
     QStyleFactory, QWidget, QMessageBox, QTextEdit
 )
-from PyQt5.QtCore import (
+from qtpy.QtCore import (
     Qt, QEventLoop, QThreadPool, QRunnable, pyqtSignal, QObject,
     QMutex, QWaitCondition
 )

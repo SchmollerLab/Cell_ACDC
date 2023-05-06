@@ -9,7 +9,7 @@ import skimage.measure
 
 from cellacdc import apps, myutils, widgets, load, html_utils
 
-from PyQt5.QtWidgets import QApplication, QStyleFactory
+from qtpy.QtWidgets import QApplication, QStyleFactory
 
 try:
     import pytest

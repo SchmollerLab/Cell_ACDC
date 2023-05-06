@@ -3,8 +3,8 @@ import numpy as np
 import skimage.filters
 
 from PyQt5 import QtGui
-from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtWidgets import (
+from qtpy.QtCore import Qt, pyqtSignal
+from qtpy.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QHBoxLayout, QComboBox, QDoubleSpinBox,
     QSlider, QCheckBox, QPushButton, QLabel, QGroupBox, QGridLayout,
     QWidget

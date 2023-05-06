@@ -14,12 +14,12 @@ import skimage
 import skimage.io
 import skimage.color
 
-from PyQt5.QtWidgets import (
+from qtpy.QtWidgets import (
     QApplication, QMainWindow, QFileDialog,
     QVBoxLayout, QPushButton, QLabel, QStyleFactory,
     QWidget, QMessageBox, QDialog, QHBoxLayout
 )
-from PyQt5.QtCore import (
+from qtpy.QtCore import (
     Qt, QEventLoop, QSize, QThread, pyqtSignal, QObject
 )
 from PyQt5 import QtGui
