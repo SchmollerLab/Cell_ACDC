@@ -62,7 +62,7 @@ from PyQt5.QtWidgets import (
 import pyqtgraph as pg
 
 # NOTE: Enable icons
-from . import qrc_resources
+from . import _warnings, qrc_resources
 
 # Custom modules
 from . import exception_handler
@@ -70,7 +70,7 @@ from . import base_cca_df, graphLayoutBkgrColor, darkBkgrColor
 from . import load, prompts, apps, workers, html_utils
 from . import core, myutils, dataPrep, widgets
 from . import measurements, printl
-from . import colors, filters, warnings, annotate
+from . import colors, filters, annotate
 from . import user_manual_url
 from . import cellacdc_path, temp_path, settings_csv_path
 from . import qutils, autopilot
@@ -3875,7 +3875,7 @@ class guiWin(QMainWindow):
         self.highLowResToggle.setChecked(True)
         numItems = len(allIDs)
         if numItems > 500:
-            cancel, switchToLowRes = warnings.warnTooManyItems(
+            cancel, switchToLowRes = _warnings.warnTooManyItems(
                 self, numItems, self.progressWin
             )
             if cancel:
