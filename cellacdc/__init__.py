@@ -1,5 +1,30 @@
 print('Initialising...')
 
+try:
+    import qtpy
+except ModuleNotFoundError as e:
+    while True:
+        txt = (
+            'Since version 1.3.0 Cell-ACDC requires the package `qtpy`.\n\n'
+            'You can choose to let Cell-ACDC to install it now, or you can abort '
+            'and install it manually with the command `pip install qtpy`.\n'
+        )
+        print('-'*60)
+        print(txt)
+        answer = input('Do you want to install it now ([y]/n)? ')
+        if answer.lower() == 'y' or not answer:
+            import subprocess
+            subprocess.check_call(
+                [sys.executable, '-m', 'pip', 'install', '-U', 'qtpy']
+            )
+        elif answer.lower() == 'n':
+            raise e
+        else:
+            print(
+                f'"{answer}" is not a valid answer. '
+                'Type "y" for "yes", or "n" for "no".'
+            )
+
 import sys
 import os
 import inspect
