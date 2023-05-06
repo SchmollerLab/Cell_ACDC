@@ -2,7 +2,7 @@ import numpy as np
 
 import skimage.filters
 
-from PyQt5 import QtGui
+from qtpy import QtGui
 from qtpy.QtCore import Qt, pyqtSignal
 from qtpy.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QHBoxLayout, QComboBox, QDoubleSpinBox,

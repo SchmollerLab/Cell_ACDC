@@ -10,7 +10,7 @@ from math import pow, floor
 from tqdm import tqdm
 from qtpy.QtGui import QIcon
 from qtpy.QtWidgets import QApplication, QStyleFactory, QFileDialog
-from PyQt5 import QtCore
+from qtpy import QtCore
 import sys
 import difflib
 from scipy.stats import binned_statistic

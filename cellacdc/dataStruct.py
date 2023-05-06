@@ -27,7 +27,7 @@ from qtpy.QtCore import (
     Qt, QObject, pyqtSignal, QThread, QMutex, QWaitCondition,
     QEventLoop
 )
-from PyQt5 import QtGui
+from qtpy import QtGui
 
 # Here we use from cellacdc because this script is laucnhed in
 # a separate process that doesn't have a parent package

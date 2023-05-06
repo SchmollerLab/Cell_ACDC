@@ -37,7 +37,7 @@ import math
 import time
 
 import pyqtgraph as pg
-from PyQt5 import QtCore
+from qtpy import QtCore
 from qtpy.QtGui import (
     QIcon, QFontMetrics, QKeySequence, QFont, QGuiApplication, QCursor,
     QKeyEvent, QPixmap, QFont, QPalette, QMouseEvent, QColor

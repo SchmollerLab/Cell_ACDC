@@ -23,7 +23,7 @@ from tifffile import TiffFile
 from natsort import natsorted
 import skimage
 import skimage.measure
-from PyQt5 import QtGui
+from qtpy import QtGui
 from qtpy.QtCore import Qt, QRect, QRectF
 from qtpy.QtWidgets import (
     QApplication, QMessageBox

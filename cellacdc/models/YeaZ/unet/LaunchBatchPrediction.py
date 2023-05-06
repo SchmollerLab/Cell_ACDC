@@ -6,7 +6,7 @@ Created on Tue Nov 19 17:38:58 2019
 from qtpy.QtWidgets import (QDialog, QDialogButtonBox, QLineEdit, QFormLayout, 
                              QLabel, QListWidget, QAbstractItemView, QCheckBox,
                              QButtonGroup, QRadioButton)
-from PyQt5 import QtGui
+from qtpy import QtGui
 
 
 class CustomDialog(QDialog):

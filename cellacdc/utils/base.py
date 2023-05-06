@@ -6,7 +6,7 @@ from qtpy.QtCore import Qt, QThread, QSize
 from qtpy.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel
 )
-from PyQt5 import QtGui
+from qtpy import QtGui
 
 from .. import myutils, html_utils, workers, widgets
 

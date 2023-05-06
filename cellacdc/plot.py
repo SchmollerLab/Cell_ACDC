@@ -10,7 +10,7 @@ import seaborn as sns
 
 from tqdm import tqdm
 
-from PyQt5 import QtGui
+from qtpy import QtGui
 
 from . import printl
 

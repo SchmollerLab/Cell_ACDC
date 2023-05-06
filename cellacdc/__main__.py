@@ -14,7 +14,7 @@ if os.name == 'nt':
     except Exception as e:
         pass
 
-from PyQt5 import QtGui, QtWidgets, QtCore
+from qtpy import QtGui, QtWidgets, QtCore
 
 # Handle high resolution displays:
 if hasattr(QtCore.Qt, 'AA_EnableHighDpiScaling'):

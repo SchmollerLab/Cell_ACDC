@@ -25,7 +25,7 @@ from qtpy.QtCore import (
     Qt, QEventLoop, QThreadPool, QRunnable, pyqtSignal, QObject,
     QMutex, QWaitCondition
 )
-from PyQt5 import QtGui
+from qtpy import QtGui
 
 # Custom modules
 from . import prompts, load, myutils, apps, core, dataPrep, widgets

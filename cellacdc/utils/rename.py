@@ -18,7 +18,7 @@ from qtpy.QtWidgets import (
     QWidget, QMessageBox
 )
 from qtpy.QtCore import Qt, QEventLoop
-from PyQt5 import QtGui
+from qtpy import QtGui
 
 script_path = os.path.dirname(os.path.realpath(__file__))
 cellacdc_path = os.path.join(os.path.dirname(script_path))

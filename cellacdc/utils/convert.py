@@ -22,7 +22,7 @@ from qtpy.QtWidgets import (
 from qtpy.QtCore import (
     Qt, QEventLoop, QSize, QThread, pyqtSignal, QObject
 )
-from PyQt5 import QtGui
+from qtpy import QtGui
 
 script_path = os.path.dirname(os.path.realpath(__file__))
 cellacdc_path = os.path.join(os.path.dirname(script_path))

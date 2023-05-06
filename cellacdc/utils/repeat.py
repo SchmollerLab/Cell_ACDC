@@ -7,7 +7,7 @@ from qtpy.QtCore import Qt, QThread, QSize
 from qtpy.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QFileDialog, QListWidgetItem 
 )
-from PyQt5 import QtGui
+from qtpy import QtGui
 
 from .. import exception_handler
 from .. import myutils, html_utils, workers, widgets, load, apps
