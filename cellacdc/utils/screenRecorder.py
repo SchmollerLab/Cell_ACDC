@@ -6,15 +6,15 @@ import numpy as np
 import pandas as pd
 
 from qtpy.QtWidgets import QMainWindow, QApplication, QFrame
-from qtpy.QtCore import Qt, QPoint, QRect, QObject, pyqtSignal, QThread
+from qtpy.QtCore import Qt, QPoint, QRect, QObject, Signal, QThread
 from qtpy.QtGui import QBrush, QColor, QPen, QPainter
 
 import pathlib
 USER_PATH = pathlib.Path.home()
 
 class screenRecorderWorker(QObject):
-    sigGrabScreen = pyqtSignal()
-    finished = pyqtSignal()
+    sigGrabScreen = Signal()
+    finished = Signal()
 
     def __init__(self):
         QObject.__init__(self)

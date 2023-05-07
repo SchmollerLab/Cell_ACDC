@@ -69,8 +69,8 @@ class PythonHighlighter (QtGui.QSyntaxHighlighter):
         super().__init__(parent)
 
         # Multi-line strings (expression, flag, style)
-        self.tri_single = (QtCore.QRegExp("'''"), 1, STYLES['string2'])
-        self.tri_double = (QtCore.QRegExp('"""'), 2, STYLES['string2'])
+        self.tri_single = (QtCore.QRegularExpression("'''"), 1, STYLES['string2'])
+        self.tri_double = (QtCore.QRegularExpression('"""'), 2, STYLES['string2'])
 
         rules = []
 
@@ -106,8 +106,8 @@ class PythonHighlighter (QtGui.QSyntaxHighlighter):
             (r'#[^\n]*', 0, STYLES['comment']),
         ]
 
-        # Build a QRegExp for each pattern
-        self.rules = [(QtCore.QRegExp(pat), index, fmt)
+        # Build a QRegularExpression for each pattern
+        self.rules = [(QtCore.QRegularExpression(pat), index, fmt)
             for (pat, index, fmt) in rules]
 
     def highlightBlock(self, text):
@@ -152,7 +152,7 @@ class PythonHighlighter (QtGui.QSyntaxHighlighter):
 
     def match_multiline(self, text, delimiter, in_state, style):
         """Do highlighting of multi-line strings. ``delimiter`` should be a
-        ``QRegExp`` for triple-single-quotes or triple-double-quotes, and
+        ``QRegularExpression`` for triple-single-quotes or triple-double-quotes, and
         ``in_state`` should be a unique integer to represent the corresponding
         state changes when inside those strings. Returns True if we're still
         inside a multi-line string when this function is finished.

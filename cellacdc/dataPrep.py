@@ -18,7 +18,7 @@ from tifffile.tifffile import TiffWriter, TiffFile
 
 from qtpy.QtCore import (
     Qt, QFile, QTextStream, QSize, QRect, QRectF,
-    QObject, QThread, pyqtSignal, QSettings
+    QObject, QThread, Signal, QSettings
 )
 from qtpy.QtGui import (
     QIcon, QKeySequence, QCursor, QTextBlockFormat,
@@ -53,8 +53,8 @@ if os.name == 'nt':
         pass
 
 class toCsvWorker(QObject):
-    finished = pyqtSignal()
-    progress = pyqtSignal(int)
+    finished = Signal()
+    progress = Signal(int)
 
     def setData(self, data):
         self.data = data
@@ -65,7 +65,7 @@ class toCsvWorker(QObject):
         self.finished.emit()
 
 class dataPrepWin(QMainWindow):
-    sigClose = pyqtSignal()
+    sigClose = Signal()
 
     def __init__(
             self, parent=None, buttonToRestore=None, mainWin=None,

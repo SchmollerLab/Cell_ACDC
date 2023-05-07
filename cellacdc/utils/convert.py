@@ -20,7 +20,7 @@ from qtpy.QtWidgets import (
     QWidget, QMessageBox, QDialog, QHBoxLayout
 )
 from qtpy.QtCore import (
-    Qt, QEventLoop, QSize, QThread, pyqtSignal, QObject
+    Qt, QEventLoop, QSize, QThread, Signal, QObject
 )
 from qtpy import QtGui
 

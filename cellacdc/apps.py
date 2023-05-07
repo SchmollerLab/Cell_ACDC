@@ -42,7 +42,7 @@ from qtpy.QtGui import (
     QIcon, QFontMetrics, QKeySequence, QFont, QGuiApplication, QCursor,
     QKeyEvent, QPixmap, QFont, QPalette, QMouseEvent, QColor
 )
-from qtpy.QtCore import Qt, QSize, QEvent, pyqtSignal, QEventLoop, QTimer
+from qtpy.QtCore import Qt, QSize, QEvent, Signal, QEventLoop, QTimer
 from qtpy.QtWidgets import (
     QFileDialog, QApplication, QMainWindow, QMenu, QLabel, QToolBar,
     QScrollBar, QWidget, QVBoxLayout, QLineEdit, QPushButton,
@@ -390,7 +390,7 @@ def addCustomModelMessages(QParent=None):
     return modelFilePath
 
 class customAnnotationDialog(QDialog):
-    sigDeleteSelecAnnot = pyqtSignal(object)
+    sigDeleteSelecAnnot = Signal(object)
 
     def __init__(self, savedCustomAnnot, parent=None, state=None):
         self.cancel = True
@@ -914,9 +914,9 @@ class _PointsLayerAppearanceGroupbox(QGroupBox):
         return _state
 
 class AddPointsLayerDialog(widgets.QBaseDialog):
-    sigClosed = pyqtSignal()
-    sigCriticalReadTable = pyqtSignal(str)
-    sigLoadedTable = pyqtSignal(object)
+    sigClosed = Signal()
+    sigCriticalReadTable = Signal(str)
+    sigLoadedTable = Signal(object)
 
     def __init__(self, channelNames=None, imagesPath='', SizeT=1, parent=None):
         self.cancel = True
@@ -1285,7 +1285,7 @@ class AddPointsLayerDialog(widgets.QBaseDialog):
 
 
 class EditPointsLayerAppearanceDialog(widgets.QBaseDialog):
-    sigClosed = pyqtSignal()
+    sigClosed = Signal()
 
     def __init__(self, parent=None):
         self.cancel = True
@@ -1642,9 +1642,9 @@ class TrackSubCellObjectsDialog(widgets.QBaseDialog):
         self.close()
 
 class setMeasurementsDialog(widgets.QBaseDialog):
-    sigClosed = pyqtSignal()
-    sigCancel = pyqtSignal()
-    sigRestart = pyqtSignal()
+    sigClosed = Signal()
+    sigCancel = Signal()
+    sigRestart = Signal()
 
     def __init__(
             self, loadedChNames, notLoadedChNames, isZstack, isSegm3D,
@@ -2178,7 +2178,7 @@ class setMeasurementsDialog(widgets.QBaseDialog):
         super().show(block=block)
 
 class QDialogMetadataXML(QDialog):
-    sigDimensionOrderEditFinished = pyqtSignal(str, int, int, object)
+    sigDimensionOrderEditFinished = Signal(str, int, int, object)
 
     def __init__(
             self, title='Metadata',
@@ -3626,7 +3626,7 @@ class DeltaTrackerParamsWin(QDialog):
             self.loop.exit()
 
 class QDialogWorkerProgress(QDialog):
-    sigClosed = pyqtSignal(bool)
+    sigClosed = Signal(bool)
 
     def __init__(
             self, title='Progress', infoTxt='',
@@ -3821,7 +3821,7 @@ class QDialogCombobox(QDialog):
             self.loop.exit()
 
 class _PreProcessRecipeList(QWidget):
-    sigItemSelected = pyqtSignal(object)
+    sigItemSelected = Signal(object)
     
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -5397,10 +5397,10 @@ class QDialogMetadata(QDialog):
             self.loop.exit()
 
 class QCropZtool(widgets.QBaseDialog):
-    sigClose = pyqtSignal()
-    sigZvalueChanged = pyqtSignal(str, int)
-    sigReset = pyqtSignal()
-    sigCrop = pyqtSignal()
+    sigClose = Signal()
+    sigZvalueChanged = Signal(str, int)
+    sigReset = Signal()
+    sigCrop = Signal()
 
     def __init__(
             self, SizeZ, cropButtonText='Crop and save', parent=None, 
@@ -5993,8 +5993,8 @@ class ComputeMetricsErrorsDialog(widgets.QBaseDialog):
         return super().showEvent(a0)
 
 class postProcessSegmParams(QGroupBox):
-    valueChanged = pyqtSignal(object)
-    editingFinished = pyqtSignal()
+    valueChanged = Signal(object)
+    editingFinished = Signal()
 
     def __init__(
             self, title, useSliders=False, parent=None, maxSize=None,
@@ -6175,10 +6175,10 @@ class postProcessSegmParams(QGroupBox):
         msg.information(self, title, html_utils.paragraph(txt))
 
 class postProcessSegmDialog(widgets.QBaseDialog):
-    sigClosed = pyqtSignal()
-    sigValueChanged = pyqtSignal(object, object)
-    sigEditingFinished = pyqtSignal()
-    sigApplyToAllFutureFrames = pyqtSignal(object)
+    sigClosed = Signal()
+    sigValueChanged = Signal(object, object)
+    sigEditingFinished = Signal()
+    sigApplyToAllFutureFrames = Signal(object)
 
     def __init__(self, mainWin=None, useSliders=True, SizeZ=None, maxSize=None):
         super().__init__(mainWin)
@@ -6358,7 +6358,7 @@ class postProcessSegmDialog(widgets.QBaseDialog):
 
 class imageViewer(QMainWindow):
     """Main Window."""
-    sigClosed = pyqtSignal()
+    sigClosed = Signal()
 
     def __init__(
             self, parent=None, posData=None, button_toUncheck=None,
@@ -7021,7 +7021,7 @@ class imageViewer(QMainWindow):
             self.setGeometry(left, top, 850, 800)
 
 class TreeSelectorDialog(widgets.QBaseDialog):
-    sigItemDoubleClicked = pyqtSignal(object)
+    sigItemDoubleClicked = Signal(object)
 
     def __init__(
             self, title='Tree selector', infoTxt='', parent=None,
@@ -9195,10 +9195,10 @@ class DataFrameModel(QtCore.QAbstractTableModel):
     def dataFrame(self):
         return self._dataframe
 
-    dataFrame = QtCore.pyqtProperty(pd.DataFrame, fget=dataFrame,
+    dataFrame = QtCore.Property(pd.DataFrame, fget=dataFrame,
                                     fset=setDataFrame)
 
-    @QtCore.pyqtSlot(int, QtCore.Qt.Orientation, result=str)
+    @QtCore.Slot(int, QtCore.Qt.Orientation, result=str)
     def headerData(self, section: int,
                    orientation: QtCore.Qt.Orientation,
                    role: int = QtCore.Qt.DisplayRole):
@@ -10537,7 +10537,7 @@ class warnVisualCppRequired(QMessageBox):
             self.screenShotWin.close()
 
 class combineMetricsEquationDialog(widgets.QBaseDialog):
-    sigOk = pyqtSignal(object)
+    sigOk = Signal(object)
 
     def __init__(
             self, allChNames, isZstack, isSegm3D, parent=None, debug=False,
@@ -11117,8 +11117,8 @@ class pgTestWindow(QWidget):
 
 
 class CombineMetricsMultiDfsDialog(widgets.QBaseDialog):
-    sigOk = pyqtSignal(object, object)
-    sigClose = pyqtSignal(bool)
+    sigOk = Signal(object, object)
+    sigClose = Signal(bool)
 
     def __init__(self, acdcDfs, allChNames, parent=None, debug=False):
         super().__init__(parent)
@@ -11470,7 +11470,7 @@ class CombineMetricsMultiDfsDialog(widgets.QBaseDialog):
         )
 
 class CombineMetricsMultiDfsSummaryDialog(widgets.QBaseDialog):
-    sigLoadAdditionalAcdcDf = pyqtSignal()
+    sigLoadAdditionalAcdcDf = Signal()
 
     def __init__(
             self, acdcDfs, allChNames, parent=None, debug=False

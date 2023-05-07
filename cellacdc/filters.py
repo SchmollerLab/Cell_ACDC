@@ -3,7 +3,7 @@ import numpy as np
 import skimage.filters
 
 from qtpy import QtGui
-from qtpy.QtCore import Qt, pyqtSignal
+from qtpy.QtCore import Qt, Signal
 from qtpy.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QHBoxLayout, QComboBox, QDoubleSpinBox,
     QSlider, QCheckBox, QPushButton, QLabel, QGroupBox, QGridLayout,
@@ -16,9 +16,9 @@ font = QtGui.QFont()
 font.setPixelSize(13)
 
 class FilterBaseDialog(QDialog):
-    sigClose = pyqtSignal(object)
-    sigApplyFilter = pyqtSignal(str)
-    sigPreviewToggled = pyqtSignal(bool, str)
+    sigClose = Signal(object)
+    sigApplyFilter = Signal(str)
+    sigPreviewToggled = Signal(bool, str)
     
     def __init__(
             self, layersChannelNames, winTitle, parent=None, 

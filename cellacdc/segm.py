@@ -22,7 +22,7 @@ from qtpy.QtWidgets import (
     QStyleFactory, QWidget, QMessageBox, QTextEdit
 )
 from qtpy.QtCore import (
-    Qt, QEventLoop, QThreadPool, QRunnable, pyqtSignal, QObject,
+    Qt, QEventLoop, QThreadPool, QRunnable, Signal, QObject,
     QMutex, QWaitCondition
 )
 from qtpy import QtGui
@@ -49,16 +49,16 @@ class QTerminal(QTextEdit):
             self.setText(message)
 
 class segmWorkerSignals(QObject):
-    finished = pyqtSignal(float)
-    progress = pyqtSignal(str)
-    progressBar = pyqtSignal(int)
-    innerProgressBar = pyqtSignal(int)
-    resetInnerPbar = pyqtSignal(int)
-    progress_tqdm = pyqtSignal(int)
-    signal_close_tqdm = pyqtSignal()
-    create_tqdm = pyqtSignal(int)
-    debug = pyqtSignal(object)
-    critical = pyqtSignal(object)
+    finished = Signal(float)
+    progress = Signal(str)
+    progressBar = Signal(int)
+    innerProgressBar = Signal(int)
+    resetInnerPbar = Signal(int)
+    progress_tqdm = Signal(int)
+    signal_close_tqdm = Signal()
+    create_tqdm = Signal(int)
+    debug = Signal(object)
+    critical = Signal(object)
 
 class segmWorker(QRunnable):
     def __init__(

@@ -24,7 +24,7 @@ from qtpy.QtWidgets import (
     QWidget, QMessageBox, QPlainTextEdit, QProgressBar
 )
 from qtpy.QtCore import (
-    Qt, QObject, pyqtSignal, QThread, QMutex, QWaitCondition,
+    Qt, QObject, Signal, QThread, QMutex, QWaitCondition,
     QEventLoop
 )
 from qtpy import QtGui
@@ -57,20 +57,20 @@ def worker_exception_handler(func):
     return run
 
 class bioFormatsWorker(QObject):
-    finished = pyqtSignal()
-    progress = pyqtSignal(str)
-    progressPbar = pyqtSignal(int)
-    initPbar = pyqtSignal(int)
-    criticalError = pyqtSignal(str, str, str)
-    filesExisting = pyqtSignal(str)
-    confirmMetadata = pyqtSignal(
+    finished = Signal()
+    progress = Signal(str)
+    progressPbar = Signal(int)
+    initPbar = Signal(int)
+    criticalError = Signal(str, str, str)
+    filesExisting = Signal(str)
+    confirmMetadata = Signal(
         str, float, str, int, int, int, int,
         float, str, float, float, float,
         str, list, list, str, str, object
     )
-    critical = pyqtSignal(object)
-    sigFinishedReadingSampleImageData = pyqtSignal(object)
-    # aborted = pyqtSignal()
+    critical = Signal(object)
+    sigFinishedReadingSampleImageData = Signal(object)
+    # aborted = Signal()
 
     def __init__(
             self, raw_src_path, rawFilenames, exp_dst_path,

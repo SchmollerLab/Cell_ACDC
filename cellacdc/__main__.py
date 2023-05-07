@@ -70,7 +70,7 @@ from qtpy.QtWidgets import (
     QMenu, QHBoxLayout, QFileDialog
 )
 from qtpy.QtCore import (
-    Qt, QProcess, pyqtSignal, pyqtSlot, QTimer, QSize,
+    Qt, QProcess, Signal, Slot, QTimer, QSize,
     QSettings, QUrl, QCoreApplication
 )
 from qtpy.QtGui import (

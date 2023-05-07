@@ -9,7 +9,7 @@ from qtpy.QtGui import (
     QIcon, QFont, QFontMetrics, QPixmap, QPalette, QColor
 )
 from qtpy.QtCore import (
-    Qt, QSize, QEvent, pyqtSignal, QObject, QThread, QTimer
+    Qt, QSize, QEvent, Signal, QObject, QThread, QTimer
 )
 from qtpy.QtWidgets import (
     QApplication, QWidget, QGridLayout, QTextEdit, QPushButton,
@@ -38,8 +38,8 @@ if os.name == 'nt':
         pass
 
 class downloadWorker(QObject):
-    finished = pyqtSignal()
-    progress = pyqtSignal(int, int)
+    finished = Signal()
+    progress = Signal(int, int)
 
     def __init__(self, which):
         QObject.__init__(self)

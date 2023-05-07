@@ -5,7 +5,7 @@ from natsort import natsorted
 from .. import myutils, apps, load, printl, core, widgets
 from ..utils import base
 
-from qtpy.QtCore import QTimer, pyqtSignal
+from qtpy.QtCore import QTimer, Signal
 
 class NapariArboretumDialog(base.MainThreadSinglePosUtilBase):
     def __init__(

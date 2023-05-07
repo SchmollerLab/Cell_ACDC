@@ -1,7 +1,7 @@
 import os
 
 from qtpy.QtCore import (
-    QTimer, QThread, pyqtSignal, QObject
+    QTimer, QThread, Signal, QObject
 )
 
 from . import load, printl, myutils

@@ -18,9 +18,9 @@ from matplotlib.colors import ListedColormap, LinearSegmentedColormap
 import matplotlib.pyplot as plt
 
 from qtpy.QtCore import (
-    pyqtSignal, QTimer, Qt, QPoint, pyqtSlot, pyqtProperty,
+    Signal, QTimer, Qt, QPoint, Slot, Property,
     QPropertyAnimation, QEasingCurve, QLocale,
-    QSize, QRect, QPointF, QRect, QPoint, QEasingCurve, QRegExp,
+    QSize, QRect, QPointF, QRect, QPoint, QEasingCurve, QRegularExpression,
     QEvent, QEventLoop, QPropertyAnimation, QObject,
     QItemSelectionModel, QAbstractListModel, QModelIndex,
     QByteArray, QDataStream, QMimeData, QAbstractItemModel, 
@@ -28,7 +28,7 @@ from qtpy.QtCore import (
 )
 from qtpy.QtGui import (
     QFont, QPalette, QColor, QPen, QKeyEvent, QBrush, QPainter,
-    QRegExpValidator, QIcon, QPixmap, QKeySequence, QLinearGradient,
+    QRegularExpressionValidator, QIcon, QPixmap, QKeySequence, QLinearGradient,
     QShowEvent, QBitmap, QFontMetrics, QGuiApplication, QLinearGradient 
 )
 from qtpy.QtWidgets import (
@@ -184,7 +184,7 @@ class QBaseDialog(QDialog):
 class XStream(QObject):
     _stdout = None
     _stderr = None
-    messageWritten = pyqtSignal(str)
+    messageWritten = Signal(str)
     
     def flush( self ):
         pass
@@ -220,7 +220,7 @@ class QtHandler(logging.Handler):
             XStream.stdout().write('%s\n'%record)
 
 class QLog(QPlainTextEdit):
-    sigClose = pyqtSignal()
+    sigClose = Signal()
 
     def __init__(self, *args, logger=None):
         super().__init__(*args)
@@ -486,7 +486,7 @@ class delPushButton(PushButton):
         self.setIcon(QIcon(':bin.svg'))
 
 class browseFileButton(PushButton):
-    sigPathSelected = pyqtSignal(str)
+    sigPathSelected = Signal(str)
 
     def __init__(
             self, *args, ext=None, title='Select file', start_dir='', 
@@ -751,14 +751,14 @@ class ValidLineEdit(QLineEdit):
         self.setStyleSheet('')
 
 class KeepIDsLineEdit(ValidLineEdit):
-    sigIDsChanged = pyqtSignal(list)
-    sigSort = pyqtSignal()
+    sigIDsChanged = Signal(list)
+    sigSort = Signal()
 
     def __init__(self, instructionsLabel, parent=None):
         super().__init__(parent)
 
         self.validPattern = '^[0-9-, ]+$'
-        self.setValidator(QRegExpValidator(QRegExp(self.validPattern)))
+        self.setValidator(QRegularExpressionValidator(QRegularExpression(self.validPattern)))
 
         self.textChanged.connect(self.onTextChanged)
         self.editingFinished.connect(self.onEditingFinished)
@@ -817,7 +817,7 @@ class _ReorderableListModel(QAbstractListModel):
     ReorderableListModel is a list model which implements reordering of its
     items via drag-n-drop
     '''
-    dragDropFinished = pyqtSignal()
+    dragDropFinished = Signal()
 
     def __init__(self, items, parent=None):
         QAbstractItemModel.__init__(self, parent)
@@ -1042,7 +1042,7 @@ class ReorderableListView(QListView):
     #     self._selectionModel.reset()
 
 class QDialogListbox(QDialog):
-    sigSelectionConfirmed = pyqtSignal(list)
+    sigSelectionConfirmed = Signal(list)
 
     def __init__(
             self, title, text, items, cancelText='Cancel',
@@ -1377,9 +1377,9 @@ class QVLine(QFrame):
         self.setPalette(pal)
 
 class VerticalResizeHline(QFrame):
-    dragged = pyqtSignal(object)
-    clicked = pyqtSignal(object)
-    released = pyqtSignal(object)
+    dragged = Signal(object)
+    clicked = Signal(object)
+    released = Signal(object)
 
     def __init__(self):
         super().__init__()
@@ -1445,7 +1445,7 @@ class CheckBox(QCheckBox):
         self.keyPressCallback()
 
 class ScrollArea(QScrollArea):
-    sigLeaveEvent = pyqtSignal()
+    sigLeaveEvent = Signal()
 
     def __init__(
             self, parent=None, resizeVerticalOnShow=False, 
@@ -1518,7 +1518,7 @@ class ScrollArea(QScrollArea):
         return False
 
 class QClickableLabel(QLabel):
-    clicked = pyqtSignal(object)
+    clicked = Signal(object)
 
     def __init__(self, parent=None):
         self._parent = parent
@@ -1740,7 +1740,7 @@ class TreeWidgetItem(QTreeWidgetItem):
                 self.setBackground(c, QBrush(color))
     
 class FilterObject(QObject):
-    sigFilteredEvent = pyqtSignal(object, object)
+    sigFilteredEvent = Signal(object, object)
 
     def __init__(self) -> None:
         super().__init__()
@@ -1792,7 +1792,7 @@ class alphaNumericLineEdit(QLineEdit):
         super().__init__(parent)
 
         self.validPattern = '^[a-zA-Z0-9_-]+$'
-        self.setValidator(QRegExpValidator(QRegExp(self.validPattern)))
+        self.setValidator(QRegularExpressionValidator(QRegularExpression(self.validPattern)))
 
         # self.setAlignment(Qt.AlignCenter)
 
@@ -1801,7 +1801,7 @@ class NumericCommaLineEdit(QLineEdit):
         super().__init__(parent)
 
         self.validPattern = '^[0-9,\.]+$'
-        self.setValidator(QRegExpValidator(QRegExp(self.validPattern)))
+        self.setValidator(QRegularExpressionValidator(QRegularExpression(self.validPattern)))
     
     def values(self):
         try:
@@ -1811,7 +1811,7 @@ class NumericCommaLineEdit(QLineEdit):
         return vals
 
 class mySpinBox(QSpinBox):
-    sigTabEvent = pyqtSignal(object, object)
+    sigTabEvent = Signal(object, object)
 
     def __init__(self, *args) -> None:
         super().__init__(*args)
@@ -2430,11 +2430,11 @@ class ToolBar(QToolBar):
         return spinbox
 
 class ManualTrackingToolBar(ToolBar):
-    sigIDchanged = pyqtSignal(int)
-    sigDisableGhost = pyqtSignal()
-    sigClearGhostContour = pyqtSignal()
-    sigClearGhostMask = pyqtSignal()
-    sigGhostOpacityChanged = pyqtSignal(int)
+    sigIDchanged = Signal(int)
+    sigDisableGhost = Signal()
+    sigClearGhostContour = Signal()
+    sigClearGhostMask = Signal()
+    sigGhostOpacityChanged = Signal(int)
 
     def __init__(self, *args) -> None:
         super().__init__(*args)
@@ -2507,7 +2507,7 @@ class ManualTrackingToolBar(ToolBar):
         self.sigGhostOpacityChanged.emit(value)
 
 class rightClickToolButton(QToolButton):
-    sigRightClick = pyqtSignal(object)
+    sigRightClick = Signal(object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -2569,7 +2569,7 @@ class ToolButtonCustomColor(rightClickToolButton):
             p.end()
 
 class PointsLayerToolButton(ToolButtonCustomColor):
-    sigEditAppearance = pyqtSignal(object)
+    sigEditAppearance = Signal(object)
 
     def __init__(self, symbol, color='r', parent=None):
         super().__init__(symbol, color=color, parent=parent)
@@ -2589,10 +2589,10 @@ class PointsLayerToolButton(ToolButtonCustomColor):
         self.sigEditAppearance.emit(self)
 
 class customAnnotToolButton(ToolButtonCustomColor):
-    sigRemoveAction = pyqtSignal(object)
-    sigKeepActiveAction = pyqtSignal(object)
-    sigModifyAction = pyqtSignal(object)
-    sigHideAction = pyqtSignal(object)
+    sigRemoveAction = Signal(object)
+    sigKeepActiveAction = Signal(object)
+    sigModifyAction = Signal(object)
+    sigHideAction = Signal(object)
 
     def __init__(
             self, symbol, color, keepToolActive=True, parent=None,
@@ -2752,7 +2752,7 @@ class Toggle(QCheckBox):
             pos = start
         return pos
 
-    @pyqtProperty(float)
+    @Property(float)
     def circle_position(self):
         return self._circle_position
 
@@ -2911,8 +2911,8 @@ class selectStartStopFrames(QGroupBox):
             self.warningLabel.setText('')
 
 class formWidget(QWidget):
-    sigApplyButtonClicked = pyqtSignal(object)
-    sigComputeButtonClicked = pyqtSignal(object)
+    sigApplyButtonClicked = Signal(object)
+    sigComputeButtonClicked = Signal(object)
 
     def __init__(
             self, widget,
@@ -3032,7 +3032,7 @@ class formWidget(QWidget):
             item.setDisabled(disabled)
 
 class ToggleTerminalButton(PushButton):
-    sigClicked = pyqtSignal(bool)
+    sigClicked = Signal(bool)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -3096,7 +3096,7 @@ class readOnlySpinbox(QSpinBox):
         self.setStyleSheet('background-color: rgba(240, 240, 240, 200);')
 
 class DoubleSpinBox(QDoubleSpinBox):
-    sigValueChanged = pyqtSignal(int)
+    sigValueChanged = Signal(int)
 
     def __init__(self, parent=None, disableKeyPress=False):
         super().__init__(parent=parent)
@@ -3130,9 +3130,9 @@ class DoubleSpinBox(QDoubleSpinBox):
         return super().valueFromText(text)
 
 class SpinBox(QSpinBox):
-    sigValueChanged = pyqtSignal(int)
-    sigUpClicked = pyqtSignal()
-    sigDownClicked = pyqtSignal()
+    sigValueChanged = Signal(int)
+    sigUpClicked = Signal()
+    sigDownClicked = Signal()
 
     def __init__(self, parent=None, disableKeyPress=False):
         super().__init__(parent=parent)
@@ -3197,7 +3197,7 @@ class ReadOnlyLineEdit(QLineEdit):
         return super().eventFilter(a0, a1)
         
 class _metricsQGBox(QGroupBox):
-    sigDelClicked = pyqtSignal(str, object)
+    sigDelClicked = Signal(str, object)
 
     def __init__(
             self, desc_dict, title, favourite_funcs=None, isZstack=False,
@@ -3332,8 +3332,8 @@ class _metricsQGBox(QGroupBox):
         self.minWidth = fw + sw
 
 class channelMetricsQGBox(QGroupBox):
-    sigDelClicked = pyqtSignal(str, object)
-    sigCheckboxToggled = pyqtSignal(object)
+    sigDelClicked = Signal(str, object)
+    sigCheckboxToggled = Signal(object)
 
     def __init__(
             self, isZstack, chName, isSegm3D,
@@ -3714,7 +3714,7 @@ class guiTabControl(QTabWidget):
         self.intensMeasurQGBox.addChannels(channels)
 
 class expandCollapseButton(PushButton):
-    sigClicked = pyqtSignal()
+    sigClicked = Signal()
 
     def __init__(self, parent=None, **kwargs):
         QPushButton.__init__(self, parent, **kwargs)
@@ -3799,7 +3799,7 @@ class BaseGradientEditorItemLabels(pg.GradientEditorItem):
         return super().restoreState(state)
 
 class baseHistogramLUTitem(pg.HistogramLUTItem):
-    sigAddColormap = pyqtSignal(object, str)
+    sigAddColormap = Signal(object, str)
 
     def __init__(self, name='image', axisLabel='', parent=None, **kwargs):
         pg.GradientEditorItem = BaseGradientEditorItemLabels
@@ -4192,8 +4192,8 @@ class ToggleVisibilityCheckBox(QCheckBox):
 
 
 class myHistogramLUTitem(baseHistogramLUTitem):
-    sigGradientMenuEvent = pyqtSignal(object)
-    sigTickColorAccepted = pyqtSignal(object)
+    sigGradientMenuEvent = Signal(object)
+    sigTickColorAccepted = Signal(object)
 
     def __init__(
             self, parent=None, name='image', axisLabel='', isViewer=False, 
@@ -4686,8 +4686,8 @@ class overlayLabelsGradientWidget(pg.GradientWidget):
         self.imageItem.setOpacity(value)
 
 class labelsGradientWidget(pg.GradientWidget):
-    sigShowRightImgToggled = pyqtSignal(bool)
-    sigShowLabelsImgToggled = pyqtSignal(bool)
+    sigShowRightImgToggled = Signal(bool)
+    sigShowLabelsImgToggled = Signal(bool)
 
     def __init__( self, *args, parent=None, orientation='right', **kargs):
         pg.GradientEditorItem = BaseGradientEditorItemLabels
@@ -5062,9 +5062,9 @@ class MainPlotItem(pg.PlotItem):
         self.autoBtn.hide()
 
 class sliderWithSpinBox(QWidget):
-    sigValueChange = pyqtSignal(object)
-    valueChanged = pyqtSignal(object)
-    editingFinished = pyqtSignal()
+    sigValueChange = Signal(object)
+    valueChanged = Signal(object)
+    editingFinished = Signal()
 
     def __init__(self, *args, **kwargs):      
         super().__init__(*args)
@@ -5410,9 +5410,9 @@ class GhostMaskItem(pg.ImageItem):
         self.updateImage()
 
 class PostProcessSegmSpinbox(QWidget):
-    valueChanged = pyqtSignal(int)
-    editingFinished = pyqtSignal()
-    sigCheckboxToggled = pyqtSignal()
+    valueChanged = Signal(int)
+    editingFinished = Signal()
+    sigCheckboxToggled = Signal()
 
     def __init__(self, *args, isFloat=False, label=None, **kwargs):
         super().__init__(*args, **kwargs)

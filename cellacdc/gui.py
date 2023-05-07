@@ -42,7 +42,7 @@ from skimage.color import gray2rgb, gray2rgba, label2rgb
 
 from qtpy.QtCore import (
     Qt, QFile, QTextStream, QSize, QRect, QRectF,
-    QEventLoop, QTimer, QEvent, QObject, pyqtSignal,
+    QEventLoop, QTimer, QEvent, QObject, Signal,
     QThread, QMutex, QWaitCondition, QSettings
 )
 from qtpy.QtGui import (
@@ -151,11 +151,11 @@ def get_data_exception_handler(func):
     return inner_function
 
 class relabelSequentialWorker(QObject):
-    finished = pyqtSignal()
-    critical = pyqtSignal(object)
-    progress = pyqtSignal(str)
-    sigRemoveItemsGUI = pyqtSignal(int)
-    debug = pyqtSignal(object)
+    finished = Signal()
+    critical = Signal(object)
+    progress = Signal(str)
+    sigRemoveItemsGUI = Signal(int)
+    debug = Signal(object)
 
     def __init__(self, posData, mainWin):
         QObject.__init__(self)
@@ -235,18 +235,18 @@ class relabelSequentialWorker(QObject):
         self.finished.emit()
 
 class saveDataWorker(QObject):
-    finished = pyqtSignal()
-    progress = pyqtSignal(str)
-    progressBar = pyqtSignal(int, int, float)
-    critical = pyqtSignal(object)
-    addMetricsCritical = pyqtSignal(str, str)
-    regionPropsCritical = pyqtSignal(str, str)
-    criticalPermissionError = pyqtSignal(str)
-    metricsPbarProgress = pyqtSignal(int, int)
-    askZsliceAbsent = pyqtSignal(str, object)
-    customMetricsCritical = pyqtSignal(str, str)
-    sigCombinedMetricsMissingColumn = pyqtSignal(str, str)
-    sigDebug = pyqtSignal(object)
+    finished = Signal()
+    progress = Signal(str)
+    progressBar = Signal(int, int, float)
+    critical = Signal(object)
+    addMetricsCritical = Signal(str, str)
+    regionPropsCritical = Signal(str, str)
+    criticalPermissionError = Signal(str)
+    metricsPbarProgress = Signal(int, int)
+    askZsliceAbsent = Signal(str, object)
+    customMetricsCritical = Signal(str, str)
+    sigCombinedMetricsMissingColumn = Signal(str, str)
+    sigDebug = Signal(object)
 
     def __init__(self, mainWin):
         QObject.__init__(self)
@@ -796,7 +796,7 @@ class saveDataWorker(QObject):
 class guiWin(QMainWindow):
     """Main Window."""
 
-    sigClosed = pyqtSignal(object)
+    sigClosed = Signal(object)
 
     def __init__(
             self, app, parent=None, buttonToRestore=None,

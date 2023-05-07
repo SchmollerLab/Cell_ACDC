@@ -6,7 +6,7 @@ import pandas as pd
 
 from tqdm import tqdm
 
-from qtpy.QtCore import pyqtSignal, QThread
+from qtpy.QtCore import Signal, QThread
 from qtpy.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QStyle
 )

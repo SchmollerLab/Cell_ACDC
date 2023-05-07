@@ -1,4 +1,4 @@
-from qtpy.QtCore import QObject, pyqtSignal, qInstallMessageHandler
+from qtpy.QtCore import QObject, Signal, qInstallMessageHandler
 import argparse
 import configparser
 import pprint
@@ -15,7 +15,7 @@ class ConfigParser(configparser.ConfigParser):
         return string
 
 class QtWarningHandler(QObject):
-    sigGeometryWarning = pyqtSignal(object)
+    sigGeometryWarning = Signal(object)
 
     def _resizeWarningHandler(self, msg_type, msg_log_context, msg_string):
         if msg_string.find('Unable to set geometry') != -1:

@@ -329,7 +329,7 @@ def track_sub_cell_objects(
         SizeT (int, optional): Number of frames. Pass `SizeT=1` for non-timelapse
             data. Defaults to None --> assume first dimension of segm data is SizeT.
 
-        sigProgress (PyQt5.QtCore.pyqtSignal, optional): If provided it will emit 
+        sigProgress (PyQt5.QtCore.Signal, optional): If provided it will emit 
             1 for each complete frame. Used to update GUI progress bars. 
             Defaults to None --> do not emit signal.
     

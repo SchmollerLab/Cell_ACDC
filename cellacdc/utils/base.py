@@ -18,7 +18,7 @@ import pandas as pd
 
 from tqdm import tqdm
 
-from qtpy.QtCore import pyqtSignal, QThread
+from qtpy.QtCore import Signal, QThread
 from qtpy.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QStyle, QApplication
 )
@@ -309,7 +309,7 @@ class NewThreadMultipleExpBaseUtil(QDialog):
             self.logger.removeHandler(handler)
 
 class MainThreadSinglePosUtilBase(QDialog):
-    sigClose = pyqtSignal()
+    sigClose = Signal()
 
     def __init__(
             self, app: QApplication, title: str, module: str, infoText: str, 

@@ -35,7 +35,7 @@ from natsort import natsorted
 from tifffile.tifffile import TiffWriter, TiffFile
 
 from qtpy.QtWidgets import QMessageBox
-from qtpy.QtCore import pyqtSignal, QObject, QCoreApplication
+from qtpy.QtCore import Signal, QObject, QCoreApplication
 
 from . import apps
 from . import prompts, widgets, core, load
@@ -201,8 +201,8 @@ class utilClass:
     pass
 
 class signals(QObject):
-    progressBar = pyqtSignal(int)
-    progress = pyqtSignal(str)
+    progressBar = Signal(int)
+    progress = Signal(str)
 
 def get_trimmed_list(li: list, max_num_digits=10):
     li_str = li.copy()

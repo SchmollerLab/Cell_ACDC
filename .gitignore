@@ -32,6 +32,7 @@ cellacdc/trackers/example
 cellacdc/test_qt_app.py
 cellacdc/test_qthread.py
 cellacdc/test.py
+cellacdc/_test_all_icons.py
 cellacdc/test1.py
 cellacdc/test_download_model.py
 cellacdc/test_segm.npy
