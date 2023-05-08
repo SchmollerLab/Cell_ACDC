@@ -2161,11 +2161,10 @@ def _restructure_multi_files_multi_pos(
     action_str = 'copied' if action=='copy' else 'moved'
     logger(f'Done! Files {action_str} and restructured into "{src_path}"')
 
-def get_all_icons_aliases():
-    import qrc_resources
+def get_all_svg_icons_aliases():
     from . import resources_path
     with open(resources_path, 'r') as resources_file:
         resources_txt = resources_file.read()
     
-    aliases = re.findall('<file alias="(.+)">')
-    import pdb; pdb.set_trace()
+    aliases = re.findall('<file alias="(.+\.svg)">', resources_txt)
+    return aliases

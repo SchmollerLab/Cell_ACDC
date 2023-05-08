@@ -182,4 +182,3 @@ def get_greedy_lut(lab, lut, ids=None):
 
     return greedy_lut
     
-    
