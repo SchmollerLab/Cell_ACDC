@@ -11,11 +11,11 @@ import inspect
 import logging
 import uuid
 import json
+import pprint
 import psutil
 from importlib import import_module
 from functools import partial
 from tqdm import tqdm
-from pprint import pprint
 from natsort import natsorted
 import time
 import cv2
@@ -836,7 +836,11 @@ class guiWin(QMainWindow):
         self.logger.info(
             f'{timestap} - File "{filename}", line {callingframe_info.lineno}:'
         )
-        self.logger.info(', '.join([str(x) for x in objects]))
+        if kwargs.get('pretty'):
+            txt = pprint.pformat(objects[0])
+        else:
+            txt = ', '.join([str(x) for x in objects])
+        self.logger.info(txt)
         self.logger.info('='*30)
     
     def _print(self, *objects):
@@ -10626,7 +10630,7 @@ class guiWin(QMainWindow):
                 pass
         
         isBrushKey = ev.key() == self.brushButton.keyPressShortcut
-        isEraserKey = ev.key() == Qt.Key_X
+        isEraserKey = ev.key() == self.eraserButton.keyPressShortcut
         isExpandLabelActive = self.expandLabelToolButton.isChecked()
         isWandActive = self.wandToolButton.isChecked()
         isLabelRoiCircActive = (
@@ -16816,7 +16820,6 @@ class guiWin(QMainWindow):
                 shortcut = QKeySequence(shortcut_text)
             
             shortcuts[name] = (shortcut_text, shortcut)
-        
         self.setShortcuts(shortcuts, save=False)
         with open(shortcut_filepath, 'w') as ini:
             cp.write(ini)
