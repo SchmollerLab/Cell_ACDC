@@ -41,9 +41,7 @@ from . import apps
 from . import prompts, widgets, core, load
 from . import html_utils, is_linux, is_win, is_mac, issues_url
 from . import cellacdc_path, printl, temp_path, logs_path
-from . import config
-
-models_list_file_path = os.path.join(temp_path, 'custom_models_paths.ini')
+from . import config, models_list_file_path
 
 def get_module_name(script_file_path):
     parts = pathlib.Path(script_file_path).parts
@@ -1389,6 +1387,7 @@ def get_list_of_trackers():
 def get_list_of_models():
     models_path = os.path.join(cellacdc_path, 'models')
     models = set()
+    import pdb; pdb.set_trace()
     for name in listdir(models_path):
         _path = os.path.join(models_path, name)
         if not os.path.exists(_path):

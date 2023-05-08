@@ -69,6 +69,7 @@ resources_folderpath = os.path.join(cellacdc_path, 'resources')
 resources_filepath = os.path.join(cellacdc_path, 'resources.qrc')
 settings_csv_path = os.path.join(temp_path, 'settings.csv')
 logs_path = os.path.join(user_path, '.acdc-logs')
+models_list_file_path = os.path.join(temp_path, 'custom_models_paths.ini')
 user_manual_url = 'https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf'
 
 # Use to get the acdc_output file name from `segm_filename` as 
