@@ -12037,20 +12037,25 @@ class guiWin(QMainWindow):
         if buttons:
             return buttons[0]
 
-    def removeCustomAnnotButton(self, button, save=True):
-        msg = widgets.myMessageBox()
-        txt = html_utils.paragraph("""
-            Do you want to <b>remove also the column with annotations</b> or 
-            only the annotation button?<br>
-        """)
-        _, removeOnlyButton, removeColButton = msg.question(
-            self, 'Remove only button?', txt, 
-            buttonsTexts=(
-                'Cancel', 'Remove only button', ' Remove also column with annotations '
+    def removeCustomAnnotButton(self, button, askHow=True, save=True):
+        if askHow:
+            msg = widgets.myMessageBox()
+            txt = html_utils.paragraph("""
+                Do you want to <b>remove also the column with annotations</b> or 
+                only the annotation button?<br>
+            """)
+            _, removeOnlyButton, removeColButton = msg.question(
+                self, 'Remove only button?', txt, 
+                buttonsTexts=(
+                    'Cancel', 'Remove only button', 
+                    ' Remove also column with annotations '
+                )
             )
-        )
-        if msg.cancel:
-            return
+            if msg.cancel:
+                return
+            removeOnlyButton = msg.clickedButton == removeOnlyButton
+        else:
+            removeOnlyButton = True
         
         name = self.customAnnotDict[button]['state']['name']
         # remove annotation from position
@@ -12064,7 +12069,7 @@ class guiWin(QMainWindow):
             if posData.acdc_df is None:
                 continue
             
-            if msg.clickedButton == removeOnlyButton:
+            if removeOnlyButton:
                 continue
 
             posData.acdc_df = posData.acdc_df.drop(
@@ -18689,7 +18694,7 @@ class guiWin(QMainWindow):
     def reinitCustomAnnot(self):
         buttons = list(self.customAnnotDict.keys())
         for button in buttons:
-            self.removeCustomAnnotButton(button, save=False)
+            self.removeCustomAnnotButton(button, save=False, askHow=False)
 
     def loadingDataAborted(self):
         self.openAction.setEnabled(True)
