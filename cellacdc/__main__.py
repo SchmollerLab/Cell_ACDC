@@ -134,7 +134,7 @@ try:
     )
     SPOTMAX = True
 except Exception as e:
-    traceback.print_exc()
+    # traceback.print_exc()
     if not isinstance(e, ModuleNotFoundError):
         traceback.print_exc()
     SPOTMAX = False
