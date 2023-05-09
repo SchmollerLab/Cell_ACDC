@@ -3,7 +3,7 @@ import os
 import logging
 
 from cellacdc import dataReStruct
-from . import exception_handler
+from . import exception_handler, printl
 from . import qrc_resources
 if os.name == 'nt':
     try:
@@ -38,8 +38,17 @@ class AcdcSPlashScreen(QtWidgets.QSplashScreen):
     def mousePressEvent(self, a0: QtGui.QMouseEvent) -> None:
         pass
 
+class App(QtWidgets.QApplication):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.installEventFilter(self)
+        
+    def eventFilter(self, object, event):
+        return False
+    
+    
 # Create the application
-app = QtWidgets.QApplication([])
+app = App([])
 app.setStyle(QtWidgets.QStyleFactory.create('Fusion'))
 app.setPalette(app.style().standardPalette())
 
@@ -67,7 +76,7 @@ from functools import partial
 
 from PyQt5.QtWidgets import (
     QMainWindow, QVBoxLayout, QPushButton, QLabel, QAction,
-    QMenu, QHBoxLayout, QFileDialog
+    QMenu, QHBoxLayout, QFileDialog, QGroupBox
 )
 from PyQt5.QtCore import (
     Qt, QProcess, pyqtSignal, pyqtSlot, QTimer, QSize,
@@ -182,7 +191,12 @@ class mainWin(QMainWindow):
         mainLayout.addStretch()
 
         iconSize = 26
-
+        
+        modulesButtonsGroupBox = QGroupBox()
+        modulesButtonsGroupBox.setTitle('Modules')
+        modulesButtonsGroupBoxLayout = QVBoxLayout()
+        modulesButtonsGroupBox.setLayout(modulesButtonsGroupBoxLayout)
+        
         dataStructButton = widgets.setPushButton(
             '  0. Create data structure from microscopy/image file(s)...  '
         )
@@ -192,7 +206,7 @@ class mainWin(QMainWindow):
         dataStructButton.setFont(font)
         dataStructButton.clicked.connect(self.launchDataStruct)
         self.dataStructButton = dataStructButton
-        mainLayout.addWidget(dataStructButton)
+        modulesButtonsGroupBoxLayout.addWidget(dataStructButton)
 
         dataPrepButton = QPushButton('  1. Launch data prep module...')
         dataPrepButton.setIcon(QIcon(':prep.svg'))
@@ -202,7 +216,7 @@ class mainWin(QMainWindow):
         dataPrepButton.setFont(font)
         dataPrepButton.clicked.connect(self.launchDataPrep)
         self.dataPrepButton = dataPrepButton
-        mainLayout.addWidget(dataPrepButton)
+        modulesButtonsGroupBoxLayout.addWidget(dataPrepButton)
 
         segmButton = QPushButton('  2. Launch segmentation module...')
         segmButton.setIcon(QIcon(':segment.svg'))
@@ -210,7 +224,7 @@ class mainWin(QMainWindow):
         segmButton.setFont(font)
         segmButton.clicked.connect(self.launchSegm)
         self.segmButton = segmButton
-        mainLayout.addWidget(segmButton)
+        modulesButtonsGroupBoxLayout.addWidget(segmButton)
 
         guiButton = QPushButton('  3. Launch GUI...')
         guiButton.setIcon(QIcon(':icon.ico'))
@@ -218,7 +232,7 @@ class mainWin(QMainWindow):
         guiButton.setFont(font)
         guiButton.clicked.connect(self.launchGui)
         self.guiButton = guiButton
-        mainLayout.addWidget(guiButton)
+        modulesButtonsGroupBoxLayout.addWidget(guiButton)
 
         if SPOTMAX:
             spotmaxButton = QPushButton('  4. Launch spotMAX...')
@@ -227,7 +241,24 @@ class mainWin(QMainWindow):
             spotmaxButton.setFont(font)
             self.spotmaxButton = spotmaxButton
             spotmaxButton.clicked.connect(self.launchSpotmaxGui)
-            mainLayout.addWidget(spotmaxButton)
+            modulesButtonsGroupBox.addWidget(spotmaxButton)
+        
+        mainLayout.addWidget(modulesButtonsGroupBox)
+        mainLayout.addSpacing(20)
+        
+        controlsButtonsGroupBox = QGroupBox()
+        controlsButtonsGroupBox.setTitle('Controls')
+        controlsButtonsGroupBoxLayout = QVBoxLayout()
+        controlsButtonsGroupBox.setLayout(controlsButtonsGroupBoxLayout)
+        
+        showAllWindowsButton = QPushButton('  Restore open windows')
+        showAllWindowsButton.setIcon(QIcon(':eye.svg'))
+        showAllWindowsButton.setIconSize(QSize(iconSize,iconSize))
+        showAllWindowsButton.setFont(font)
+        self.showAllWindowsButton = showAllWindowsButton
+        showAllWindowsButton.clicked.connect(self.showAllWindows)
+        controlsButtonsGroupBoxLayout.addWidget(showAllWindowsButton)
+        # showAllWindowsButton.setDisabled(True)
 
         font = QFont()
         font.setPixelSize(13)
@@ -243,7 +274,7 @@ class mainWin(QMainWindow):
         self.restartButton = restartButton
         closeLayout.addWidget(restartButton)
 
-        closeButton = QPushButton(QIcon(":exit.png"), '  Exit')
+        closeButton = QPushButton(QIcon(":close.svg"), '  Close application')
         closeButton.setIconSize(QSize(iconSize, iconSize))
         self.closeButton = closeButton
         # closeButton.setIconSize(QSize(24,24))
@@ -251,7 +282,10 @@ class mainWin(QMainWindow):
         closeButton.clicked.connect(self.close)
         closeLayout.addWidget(closeButton)
 
-        mainLayout.addLayout(closeLayout)
+        controlsButtonsGroupBoxLayout.addLayout(closeLayout)
+        
+        mainLayout.addWidget(controlsButtonsGroupBox)
+        
         mainContainer.setLayout(mainLayout)
 
         self.start_JVM = True
@@ -1279,6 +1313,7 @@ class mainWin(QMainWindow):
         self.guiButton.setMinimumHeight(int(h*f))
         if hasattr(self, 'spotmaxButton'):
             self.spotmaxButton.setMinimumHeight(int(h*f))
+        self.showAllWindowsButton.setMinimumHeight(int(h*f))
         self.restartButton.setMinimumHeight(int(int(h*f)))
         self.closeButton.setMinimumHeight(int(int(h*f)))
         # iconWidth = int(self.closeButton.iconSize().width()*1.3)
