@@ -241,10 +241,10 @@ class mainWin(QMainWindow):
             spotmaxButton.setFont(font)
             self.spotmaxButton = spotmaxButton
             spotmaxButton.clicked.connect(self.launchSpotmaxGui)
-            modulesButtonsGroupBox.addWidget(spotmaxButton)
+            modulesButtonsGroupBoxLayout.addWidget(spotmaxButton)
         
         mainLayout.addWidget(modulesButtonsGroupBox)
-        mainLayout.addSpacing(20)
+        mainLayout.addSpacing(10)
         
         controlsButtonsGroupBox = QGroupBox()
         controlsButtonsGroupBox.setTitle('Controls')
@@ -1306,7 +1306,7 @@ class mainWin(QMainWindow):
         self.setColorsAndText()
         super().show()
         h = self.dataPrepButton.geometry().height()
-        f = 1.8
+        f = 1.5
         self.dataStructButton.setMinimumHeight(int(h*f))
         self.dataPrepButton.setMinimumHeight(int(h*f))
         self.segmButton.setMinimumHeight(int(h*f))
