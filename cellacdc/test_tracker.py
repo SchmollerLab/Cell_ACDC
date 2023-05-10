@@ -17,20 +17,24 @@ try:
 except Exception as e:
     pass
 
+gdrive_path = myutils.get_gdrive_path()
+
 test_img_path = (
-    # r"G:\My Drive\01_Postdoc_HMGU\Python_MyScripts\MIA\Git\DeepSea\data\test_images\A11_z007_c001.png"
-    # r"G:\My Drive\01_Postdoc_HMGU\Python_MyScripts\MIA\Git\DeepSea\data\test_images\train_A11_z001_c001.png"
-    # r"G:\My Drive\01_Postdoc_HMGU\Python_MyScripts\MIA\Git\Cell_ACDC\data\test_images\test_cellpose.tif"
-    # r"G:\My Drive\01_Postdoc_HMGU\Python_MyScripts\MIA\Git\Cell_ACDC\data\test_images\test_YeaZ.tif"
-    # r"G:\My Drive\01_Postdoc_HMGU\Python_MyScripts\MIA\Git\Cell_ACDC\data\test_timelapse\Yagya_Kurt_presentation\Position_6\Images\SCGE_5strains_23092021_Dia_Ph3.tif"
-    r"G:\My Drive\01_Postdoc_HMGU\Python_MyScripts\MIA\Git\DeepSea\data\test_tracking\Position_1\Images\A3_03_1_1_Phase Contrast.tif"
+    # os.path.join(gdrive_path, *(r'01_Postdoc_HMGU\Python_MyScripts\MIA\Git\DeepSea\data\test_images\A11_z007_c001.png').split('\\')"
+    # os.path.join(gdrive_path, *(r'01_Postdoc_HMGU\Python_MyScripts\MIA\Git\DeepSea\data\test_images\train_A11_z001_c001.png').split('\\')"
+    # os.path.join(gdrive_path, *(r'01_Postdoc_HMGU\Python_MyScripts\MIA\Git\Cell_ACDC\data\test_images\test_cellpose.tif').split('\\')"
+    # os.path.join(gdrive_path, *(r'01_Postdoc_HMGU\Python_MyScripts\MIA\Git\Cell_ACDC\data\test_images\test_YeaZ.tif').split('\\')"
+    os.path.join(
+        gdrive_path, 
+        *(r'01_Postdoc_HMGU\Python_MyScripts\MIA\Git\Cell_ACDC\data\test_timelapse\Yagya_Kurt_presentation\Position_6\Images\SCGE_5strains_23092021_Dia_Ph3.tif').split('\\'))
+    # os.path.join(gdrive_path, *(r'01_Postdoc_HMGU\Python_MyScripts\MIA\Git\DeepSea\data\test_tracking\Position_1\Images\A3_03_1_1_Phase Contrast.tif').split('\\')"
 )
 
 channel_name = 'Phase Contrast'
 end_filename_segm = 'segm'# 'segm_test'
 START_FRAME = 0 
-STOP_FRAME = 501
-PLOT_FRAME = 183
+STOP_FRAME = 20
+PLOT_FRAME = 10
 SCRUMBLE_IDs = False
 
 posData = load.loadData(
@@ -67,6 +71,9 @@ tracker, track_params = myutils.import_tracker(
     posData, trackerName, qparent=None
 )
 lab_stack = posData.segm_data[START_FRAME:STOP_FRAME+1]
+
+print(track_params.keys())
+import pdb; pdb.set_trace()
 
 if SCRUMBLE_IDs:
     # Scrumble IDs last frame

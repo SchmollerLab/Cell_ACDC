@@ -78,7 +78,10 @@ def get_gdrive_path():
     if is_win:
         return os.path.join(f'G:{os.sep}', 'My Drive')
     elif is_mac:
-        return os.path.join('/Volumes/GoogleDrive/My Drive')
+        return os.path.join(
+            '/Users/francesco.padovani/Library/CloudStorage/'
+            'GoogleDrive-padovaf@tcd.ie/My Drive'
+        )
 
 def get_acdc_data_path():
     Cell_ACDC_path = os.path.dirname(cellacdc_path)
@@ -1748,8 +1751,9 @@ def _install_deepsea():
     )
 
 def import_tracker(posData, trackerName, realTime=False, qparent=None):
-    downloadWin = apps.downloadModel(trackerName, parent=qparent)
-    downloadWin.download()
+    if trackerName.lower() == 'deepsea':
+        downloadWin = apps.downloadModel(trackerName, parent=qparent)
+        downloadWin.download()
 
     trackerModuleName =  f'trackers.{trackerName}.{trackerName}_tracker'
     trackerModule = import_module(trackerModuleName)
@@ -1805,6 +1809,7 @@ def import_tracker(posData, trackerName, realTime=False, qparent=None):
                 if paramsWin.inputChannelName != 'None':
                     chName = paramsWin.inputChannelName
                     track_params['image'] = posData.loadChannelData(chName)
+                    track_params['image_channel_name'] = chName
         if 'export_to_extension' in track_params:
             ext = track_params['export_to_extension']
             track_params['export_to'] = posData.get_tracker_export_path(

@@ -374,7 +374,7 @@ class segmWorker(QRunnable):
 
             self.signals.innerPbar_available = self.innerPbar_available
             self.track_params['signals'] = self.signals
-            if self.image_chName_tracker:
+            if self.image_chName_tracker is not None:
                 # Check if loading the image for the tracker is required
                 if 'image' in self.track_params:
                     trackerInputImage = self.track_params.pop('image')
@@ -388,9 +388,9 @@ class segmWorker(QRunnable):
                     tracked_stack = self.tracker.track(
                         lab_stack, trackerInputImage, **self.track_params
                     )
-                except TypeError:
-                    # User accidentally loaded image data but the tracker doesn't
-                    # need it
+                except Exception as e:
+                    # Check if user accidentally passed the image even if 
+                    # the tracker doesn't need it
                     self.signals.progress.emit(
                         'Image data is not required by this tracker, ignoring it...'
                     )
@@ -1079,7 +1079,7 @@ class segmWin(QMainWindow):
             isROIactive = posData.dataPrep_ROIcoords.at['cropped', 'value'] == 0
             x0, x1, y0, y1 = posData.dataPrep_ROIcoords['value'][:4]
 
-        self.image_chName_tracker = ''
+        self.image_chName_tracker = None
         self.do_tracking = False
         self.tracker = None
         self.track_params = {}
@@ -1117,7 +1117,7 @@ class segmWin(QMainWindow):
                     self.close()
                     return
 
-            self.image_chName_tracker = ''
+            self.image_chName_tracker = None
             if win.clickedButton in win._additionalButtons:
                 self.do_tracking = False
                 trackerName = ''
@@ -1138,7 +1138,8 @@ class segmWin(QMainWindow):
                     # Store the channel name for the tracker for loading it 
                     # in case of multiple pos
                     self.image_chName_tracker = self.track_params.pop(
-                        'image_channel_name')
+                        'image_channel_name'
+                    )
 
         self.progressLabel.setText('Starting main worker...')
 
@@ -1302,6 +1303,7 @@ class segmWin(QMainWindow):
     
     @exception_handler
     def workerCritical(self, error):
+        self.isSegmWorkerRunning = False
         raise error
 
     def debugSegmWorker(self, lab):
