@@ -295,6 +295,7 @@ class mainWin(QMainWindow):
         self.dataPrepWin = None
         self._version = None
         self.progressWin = None
+        self.forceClose = False
     
     def checkConfigFiles(self):
         self.logger.info('Loading configuration files...')
@@ -1371,19 +1372,20 @@ class mainWin(QMainWindow):
 
         self.saveWindowGeometry()
 
-        acceptClose, openModules = self.checkOpenModules()
-        if acceptClose:
-            for openModule in openModules:
-                geometry = openModule.saveGeometry()
-                openModule.setWindowState(Qt.WindowActive)
-                openModule.restoreGeometry(geometry)
-                openModule.close()
-                if openModule.isVisible():
-                    event.ignore()
-                    return
-        else:
-            event.ignore()
-            return
+        if not self.forceClose:
+            acceptClose, openModules = self.checkOpenModules()
+            if acceptClose:
+                for openModule in openModules:
+                    geometry = openModule.saveGeometry()
+                    openModule.setWindowState(Qt.WindowActive)
+                    openModule.restoreGeometry(geometry)
+                    openModule.close()
+                    if openModule.isVisible():
+                        event.ignore()
+                        return
+            else:
+                event.ignore()
+                return
 
         if self.sender() == self.restartButton:
             try:

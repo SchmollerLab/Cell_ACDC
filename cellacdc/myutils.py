@@ -39,7 +39,7 @@ from PyQt5.QtCore import pyqtSignal, QObject, QCoreApplication
 
 from . import apps
 from . import prompts, widgets, core, load
-from . import html_utils, is_linux, is_win, is_mac, issues_url
+from . import html_utils, is_linux, is_win, is_mac, issues_url, is_mac_arm64
 from . import cellacdc_path, printl, temp_path, logs_path
 from . import config, models_list_file_path
 
@@ -1871,7 +1871,7 @@ def check_cuda(model_name, use_gpu, qparent=None):
         or model_name.lower().find('deepsea') != -1
         or model_name.lower().find('segment_anything') != -1
     )
-    if is_torch_model:
+    if is_torch_model and not is_mac_arm64:
         import torch
         if not torch.cuda.is_available():
             proceed = _warn_install_torch_cuda(model_name, qparent=qparent)

@@ -10454,7 +10454,9 @@ class downloadModel:
             <code>{model_path}</code><br><br>
             <i>NOTE: if clicking on the link above does not work
             copy one of the links below and paste it into the browser</i><br><br>
-            {url}<br>{alternative_url}
+            <code>{url}</code>
+            <br><br>
+            <code>{alternative_url}</code>
         """)
         weights_paths = [os.path.join(model_path, f) for f in weights_filenames]
         weights = '\n\n'.join(weights_paths)
