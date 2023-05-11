@@ -20744,6 +20744,7 @@ class guiWin(QMainWindow):
         super().show()
 
     def show(self):
+        self.setFont(_font)
         QMainWindow.show(self)
 
         self.setWindowState(Qt.WindowNoState)
