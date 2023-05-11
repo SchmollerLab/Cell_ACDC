@@ -46,10 +46,8 @@ if win.cancel:
     sys.exit('Execution aborted')
 
 model_name = win.selectedItemsText[0]
-import pdb; pdb.set_trace()
 if model_name == 'Automatic thresholding':
     model_name = 'thresholding'
-import pdb; pdb.set_trace()
 # Check if model needs to be downloaded
 downloadWin = apps.downloadModel(model_name, parent=None)
 downloadWin.download()
