@@ -4441,7 +4441,6 @@ class QDialogSelectModel(QDialog):
 
         listBox = widgets.listWidget()
         models = myutils.get_list_of_models()
-        models.append('Automatic thresholding')   
         listBox.setFont(font)
         listBox.addItems(models)
         addCustomModelItem = QListWidgetItem('Add custom model...')

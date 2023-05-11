@@ -42,6 +42,7 @@ cellacdc/java
 cellacdc/javabridge_cp37
 cellacdc/javabridge_cp38
 cellacdc/javabridge_linux
+**/weights_location_path.txt
 instructions/
 benchmarks/
 .vscode/

@@ -1012,8 +1012,11 @@ def download_java():
     return jre_path, jdk_path, url
 
 def get_model_path(model_name, create_temp_dir=True):
+    if model_name == 'Automatic thresholding':
+        model_name == 'thresholding'
+        
     model_info_path = os.path.join(cellacdc_path, 'models', model_name, 'model')
-
+    
     if os.path.exists(model_info_path):
         for file in listdir(model_info_path):
             if file == 'weights_location_path.txt':
@@ -1385,7 +1388,7 @@ def get_list_of_trackers():
         )
         if is_valid_tracker:
             trackers.append(name)
-    return trackers
+    return natsorted(trackers)
 
 def get_list_of_models():
     models_path = os.path.join(cellacdc_path, 'models')
@@ -1396,13 +1399,15 @@ def get_list_of_models():
             continue
         if os.path.isdir(_path) and not name.endswith('__') and name != 'thresholding':
             models.add(name)
+        if name == 'thresholding':
+            models.add('Automatic thresholding')
     if not os.path.exists(models_list_file_path):
-        return list(models)
+        return natsorted(list(models))
     
     cp = config.ConfigParser()
     cp.read(models_list_file_path)
     models.update(cp.sections())
-    return sorted(list(models))
+    return natsorted(list(models))
 
 def seconds_to_ETA(seconds):
     seconds = round(seconds)

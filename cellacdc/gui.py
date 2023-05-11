@@ -2425,7 +2425,6 @@ class guiWin(QMainWindow):
 
         # Edit actions
         models = myutils.get_list_of_models()
-        models.append('Automatic thresholding')
         self.segmActions = []
         self.modelNames = []
         self.acdcSegment_li = []
