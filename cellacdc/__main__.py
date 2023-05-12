@@ -699,6 +699,8 @@ class mainWin(QMainWindow):
             )
             win.exec_()
             posPath = os.path.join(exp_path, win.selectedItemText)
+        else:
+            posPath = os.path.join(exp_path, posFolders[0])
         
         return posPath
 
