@@ -2254,7 +2254,6 @@ class myMessageBox(QDialog):
             buttonsTexts=None, layouts=None, widgets=None,
             commands=None
         ):
-        print(commands)
         if parent is not None:
             self.setParent(parent)
         self.setWindowTitle(title)
