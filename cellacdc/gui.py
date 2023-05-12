@@ -11877,7 +11877,7 @@ class guiWin(QMainWindow):
 
         self.addCustomAnnotationItems(
             symbol, symbolColor, keySequence, toolTip, name,
-            keepActive, isHideChecked, self.annotWin.state
+            keepActive, isHideChecked, self.addAnnotWin.state
         )
         self.saveCustomAnnot()
 
