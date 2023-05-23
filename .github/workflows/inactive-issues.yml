@@ -1,0 +1,46 @@
+# Mark issues and pull requests without activity as dormant
+# See https://github.com/actions/stale for documentation and configuration
+
+name: Mark dormant issues
+on:
+  schedule:
+    - cron: "15 2 * * *" # trigger every day at 2:15
+  workflow_dispatch: # or run manually
+permissions:
+  issues: write
+  pull-requests: write
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v8
+        with:
+          days-before-stale: 180
+          days-before-close: -1 # never close
+          stale-issue-label: ":sleeping: Inactive"
+          stale-pr-label: ":sleeping: Inactive"
+          remove-stale-when-updated: true
+          stale-issue-message: >
+            Hi, this issue had no activity for more than 180 days. 
+            For now, we have marked it as "dormant" until there is some
+            new activity. The reason is that we haven't had the time to 
+            implement this or it requires more discussion. Note that it doesn't 
+            mean it has been ignored, but a little reminder from your side would 
+            help :D. Feel free to reach out to us here or on our
+            [forum](https://github.com/SchmollerLab/Cell_ACDC/discussions).
+            If you think that this issue is no longer relevant, 
+            you may close it by yourself.
+            In any case, we apologise for the inconvenience and we thank you 
+            for your patience and contributions so far!
+          stale-pr-message: >
+            Hi, this pull request had no activity for more than 180 days. 
+            For now, we have marked it as "dormant" until there is some
+            new activity. The reason is that we haven't had the time to 
+            implement this or it requires more discussion. Note that it doesn't 
+            mean it has been ignored, but a little reminder from your side would 
+            help :D. Feel free to reach out to us here or on our
+            [forum](https://github.com/SchmollerLab/Cell_ACDC/discussions).
+            If you think that this PR is no longer relevant, 
+            you may close it by yourself.
+            In any case, we apologise for the inconvenience and we thank you 
+            for your patience and contributions so far!
