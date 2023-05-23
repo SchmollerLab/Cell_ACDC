@@ -5278,7 +5278,11 @@ class guiWin(QMainWindow):
             if not self.brushAutoFillCheckbox.isChecked():
                 return
             
-            obj_idx = posData.IDs.index(ID)
+            try:
+                obj_idx = posData.IDs.index(ID)
+            except IndexError as e:
+                return
+            
             obj = posData.rp[obj_idx]
             objMask = self.getObjImage(obj.image, obj.bbox)
             localFill = scipy.ndimage.binary_fill_holes(objMask)
