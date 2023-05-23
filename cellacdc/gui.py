@@ -12312,7 +12312,10 @@ class guiWin(QMainWindow):
             self.z_range = None
         if self.isSegm3D and self.segment3D and self.askZrangeSegm3D:
             idx = (posData.filename, posData.frame_i)
-            orignal_z = posData.segmInfo_df.at[idx, 'z_slice_used_gui']
+            try:
+                orignal_z = posData.segmInfo_df.at[idx, 'z_slice_used_gui']
+            except ValueError as e:
+                orignal_z = posData.segmInfo_df.loc[idx, 'z_slice_used_gui'].iloc[0] 
             selectZtool = apps.QCropZtool(
                 posData.SizeZ, parent=self, cropButtonText='Ok',
                 addDoNotShowAgain=True, title='Select z-slice range to segment'
@@ -12761,7 +12764,10 @@ class guiWin(QMainWindow):
         if posData.SizeZ > 1:
             self.updateZsliceScrollbar(posData.frame_i)
             idx = (posData.filename, posData.frame_i)
-            how = posData.segmInfo_df.at[idx, 'which_z_proj_gui']
+            try:
+                how = posData.segmInfo_df.at[idx, 'which_z_proj_gui']
+            except ValueError as e:
+                how = posData.segmInfo_df.loc[idx, 'which_z_proj_gui'].iloc[0] 
             self.zProjComboBox.setCurrentText(how)
             self.zSliceScrollBar.setMaximum(posData.SizeZ-1)
             self.zSliceSpinbox.setMaximum(posData.SizeZ)
@@ -13391,7 +13397,10 @@ class guiWin(QMainWindow):
         self.navigateScrollBar.setSliderPosition(posData.frame_i+1)
         if posData.SizeZ > 1:
             idx = (posData.filename, posData.frame_i)
-            how = posData.segmInfo_df.at[idx, 'which_z_proj_gui']
+            try:
+                how = posData.segmInfo_df.at[idx, 'which_z_proj_gui']
+            except ValueError as e:
+                how = posData.segmInfo_df.loc[idx, 'which_z_proj_gui'].iloc[0] 
             self.zProjComboBox.setCurrentText(how)
 
         # Connect events at the end of loading data process
@@ -17093,9 +17102,15 @@ class guiWin(QMainWindow):
         if frame_i is None:
             frame_i = posData.frame_i
         idx = (posData.filename, frame_i)
-        zProjHow_L0 = posData.segmInfo_df.at[idx, 'which_z_proj_gui']
+        try:
+            zProjHow_L0 = posData.segmInfo_df.at[idx, 'which_z_proj_gui']
+        except ValueError as e:
+            zProjHow_L0 = posData.segmInfo_df.loc[idx, 'which_z_proj_gui'].iloc[0] 
         if isLayer0:
-            z = posData.segmInfo_df.at[idx, 'z_slice_used_gui']
+            try:
+                z = posData.segmInfo_df.at[idx, 'z_slice_used_gui']
+            except ValueError as e:
+                z = posData.segmInfo_df.loc[idx, 'z_slice_used_gui'].iloc[0] 
             zProjHow = zProjHow_L0
         else:
             z = self.zSliceOverlay_SB.sliderPosition()
@@ -17118,8 +17133,14 @@ class guiWin(QMainWindow):
     def updateZsliceScrollbar(self, frame_i):
         posData = self.data[self.pos_i]
         idx = (posData.filename, frame_i)
-        z = posData.segmInfo_df.at[idx, 'z_slice_used_gui']
-        zProjHow = posData.segmInfo_df.at[idx, 'which_z_proj_gui']
+        try:
+            z = posData.segmInfo_df.at[idx, 'z_slice_used_gui']
+        except ValueError as e:
+            z = posData.segmInfo_df.loc[idx, 'z_slice_used_gui'].iloc[0] 
+        try:
+            zProjHow = posData.segmInfo_df.at[idx, 'which_z_proj_gui']
+        except ValueError as e:
+            zProjHow = posData.segmInfo_df.loc[idx, 'which_z_proj_gui'].iloc[0] 
         if zProjHow != 'single z-slice':
             return
         reconnect = False
