@@ -1460,6 +1460,20 @@ class loadData:
             return channel_name, segmEndName
         else:
             return self.user_ch_name, ''
+    
+    def updateSegmentedChannelHyperparams(self, channelName):
+        cp = config.ConfigParser()
+        if not os.path.exists(self.segm_hyperparams_ini_path):
+            return
+        cp.read(self.segm_hyperparams_ini_path)
+        segmEndName = self.getSegmEndname()
+        section = segmEndName
+        if section not in cp.sections():
+            return
+        option = 'segmented_channel'
+        cp[section][option] = channelName
+        with open(self.segm_hyperparams_ini_path, 'w') as configfile:
+            cp.write(configfile)
 
     def saveSegmHyperparams(
             self, model_name='', hyperparams=None, post_process_params=None

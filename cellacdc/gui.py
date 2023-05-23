@@ -342,6 +342,11 @@ class saveDataWorker(QObject):
         if not proceed:
             return
 
+        df = measurements.add_size_metrics(
+            df, rp, size_metrics_to_save, isSegm3D, yx_pxl_to_um2, 
+            vox_to_fl_3D
+        )
+        
         # Get background masks
         autoBkgr_masks = measurements.get_autoBkgr_mask(
             lab, isSegm3D, posData, frame_i
@@ -375,8 +380,8 @@ class saveDataWorker(QObject):
             # Iterate objects and compute foreground metrics
             df = measurements.add_foregr_metrics(
                 df, rp, channel, foregr_data, foregr_metrics_params[channel], 
-                metrics_func, size_metrics_to_save, custom_metrics_params[channel], 
-                isSegm3D, yx_pxl_to_um2, vox_to_fl_3D, lab, foregr_img,
+                metrics_func, custom_metrics_params[channel], isSegm3D, 
+                yx_pxl_to_um2, vox_to_fl_3D, lab, foregr_img,
                 customMetricsCritical=self.customMetricsCritical
             )
 
@@ -20361,13 +20366,14 @@ class guiWin(QMainWindow):
         # Check channel name correspondence to warn
         posData = self.data[self.pos_i]
         lastSegmChannel, segmEndName = posData.getSegmentedChannelHyperparams()
-        if lastSegmChannel != self.user_ch_name:
+        if lastSegmChannel != self.user_ch_name and lastSegmChannel:
             cancel = self.warnDifferentSegmChannel(
                 self.user_ch_name, lastSegmChannel, segmEndName
             )
             if cancel:
                 self.abortSavingInitialisation()
                 return True
+            posData.updateSegmentedChannelHyperparams(self.user_ch_name)
 
         self.save_metrics = False
         if not isQuickSave:

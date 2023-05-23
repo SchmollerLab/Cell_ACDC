@@ -96,7 +96,7 @@ class installJavaDialog(widgets.myMessageBox):
         txt_macOS = ("""
         <p style="font-size:13px">
             Your system doesn't have the <code>Java Development Kit</code>
-            installed<br> and/or a C++ compiler.which is required for the installation of
+            installed<br> and/or a C++ compiler which is required for the installation of
             <code>javabridge</code><br><br>
             <b>Cell-ACDC is now going to install Java for you</b>.<br><br>
             <i><b>NOTE: After clicking on "Install", follow the instructions<br>
