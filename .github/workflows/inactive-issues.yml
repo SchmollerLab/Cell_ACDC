@@ -1,7 +1,7 @@
 # Mark issues and pull requests without activity as dormant
 # See https://github.com/actions/stale for documentation and configuration
 
-name: Mark dormant issues
+name: Mark inactive issues
 on:
   schedule:
     - cron: "15 2 * * *" # trigger every day at 2:15
@@ -21,26 +21,30 @@ jobs:
           stale-pr-label: ":sleeping: Inactive"
           remove-stale-when-updated: true
           stale-issue-message: >
-            Hi, this issue had no activity for more than 180 days. 
-            For now, we have marked it as "dormant" until there is some
-            new activity. The reason is that we haven't had the time to 
-            implement this or it requires more discussion. Note that it doesn't 
-            mean it has been ignored, but a little reminder from your side would 
-            help :D. Feel free to reach out to us here or on our
+            Hi there, I'm the Cell-ACDC bot :wave:. 
+            This issue had no activity for more than 180 days. 
+            For now, we have marked it as "inactive" until there is some
+            new activity. If this issue was not solved yet, unfortunately 
+            we haven't had the time to implement it or it requires more discussion. 
+            Note that it doesn't mean it has been ignored, but a little reminder 
+            from your side would help :D. 
+            Feel free to reach out to us here or on our
             [forum](https://github.com/SchmollerLab/Cell_ACDC/discussions).
             If you think that this issue is no longer relevant, 
             you may close it by yourself.
             In any case, we apologise for the inconvenience and we thank you 
             for your patience and contributions so far!
           stale-pr-message: >
-            Hi, this pull request had no activity for more than 180 days. 
-            For now, we have marked it as "dormant" until there is some
-            new activity. The reason is that we haven't had the time to 
-            implement this or it requires more discussion. Note that it doesn't 
-            mean it has been ignored, but a little reminder from your side would 
-            help :D. Feel free to reach out to us here or on our
+            Hi there, I'm the Cell-ACDC bot :wave:. 
+            This pull request had no activity for more than 180 days. 
+            For now, we have marked it as "inactive" until there is some
+            new activity. If this PR was not implemented yet, unfortunately 
+            we haven't had the time to implement it or it requires more discussion. 
+            Note that it doesn't mean it has been ignored, but a little reminder 
+            from your side would help :D. 
+            Feel free to reach out to us here or on our
             [forum](https://github.com/SchmollerLab/Cell_ACDC/discussions).
-            If you think that this PR is no longer relevant, 
+            If you think that this issue is no longer relevant, 
             you may close it by yourself.
             In any case, we apologise for the inconvenience and we thank you 
             for your patience and contributions so far!
