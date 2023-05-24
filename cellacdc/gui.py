@@ -17106,10 +17106,7 @@ class guiWin(QMainWindow):
         if frame_i is None:
             frame_i = posData.frame_i
         idx = (posData.filename, frame_i)
-        try:
-            zProjHow_L0 = posData.segmInfo_df.at[idx, 'which_z_proj_gui']
-        except ValueError as e:
-            zProjHow_L0 = posData.segmInfo_df.loc[idx, 'which_z_proj_gui'].iloc[0] 
+        zProjHow_L0 = self.zProjComboBox.currentText()
         if isLayer0:
             try:
                 z = posData.segmInfo_df.at[idx, 'z_slice_used_gui']

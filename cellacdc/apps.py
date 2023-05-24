@@ -3000,19 +3000,40 @@ class QDialogMetadataXML(QDialog):
 
                 self.adjustSize()
 
+    def confirmOrderOfDimensions(self):
+        helpButton = widgets.helpPushButton('More details...')
+        txt = html_utils.paragraph("""
+            Are you sure that the parameter <code>Order of dimensions</code> 
+            <b>is correct</b>?<br>
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(
+            self, 'Double-check Order of dimensions', txt, showDialog=False,
+            buttonsTexts=('Cancel', helpButton, 'Yes')
+        )
+        helpButton.clicked.disconnect()
+        helpButton.clicked.connect(self.dimensionOrderHelp)
+        msg.exec_()
+        return msg.cancel
+    
     def ok_cb(self, event):
         areChNamesValid = self.checkChNames()
         if not areChNamesValid:
-            err_msg = (
-                'Channel names cannot be empty or equal to each other.\n\n'
-                'Insert a unique text for each channel name'
+            err_msg = html_utils.paragraph(
+                'Channel names <b>cannot be empty</b> or equal to each other.'
+                '<br><br>'
+                'Insert a unique text for each channel name.'
             )
-            msg = QMessageBox()
+            msg = widgets.myMessageBox()
             msg.critical(
-               self, 'Invalid channel names', err_msg, msg.Ok
+               self, 'Invalid channel names', err_msg
             )
             return
 
+        cancel = self.confirmOrderOfDimensions()
+        if cancel:
+            return
+        
         self.getValues()
         self.convertUnits()
 
