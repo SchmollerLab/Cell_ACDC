@@ -893,7 +893,9 @@ class loadData:
                 df = pd.read_csv(filePath).dropna()
                 if 'filename' not in df.columns:
                     df['filename'] = self.filename
-                self.segmInfo_df = df.set_index(['filename', 'frame_i']).sort_index()
+                df = df.set_index(['filename', 'frame_i']).sort_index()
+                df = df[~df.index.duplicated()]
+                self.segmInfo_df = df
                 self.segmInfo_df.to_csv(filePath)
             elif load_delROIsInfo and file.endswith('delROIsInfo.npz'):
                 self.delROIsInfoFound = True
