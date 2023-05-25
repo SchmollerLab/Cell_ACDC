@@ -45,6 +45,8 @@ acdc_df_bool_cols = [
     'corrected_assignment'
 ]
 
+acdc_df_str_cols = {'cell_cycle_stage': str, 'relationship': str}
+
 additional_metadata_path = os.path.join(temp_path, 'additional_metadata.json')
 last_entries_metadata_path = os.path.join(temp_path, 'last_entries_metadata.csv')
 last_selected_groupboxes_measurements_path = os.path.join(
@@ -226,7 +228,7 @@ def _add_will_divide_column(acdc_df):
     return acdc_df
 
 def _load_acdc_df_file(acdc_df_file_path):
-    acdc_df = pd.read_csv(acdc_df_file_path)
+    acdc_df = pd.read_csv(acdc_df_file_path, dtype=acdc_df_str_cols)
     try:
         acdc_df_drop_cca = acdc_df.drop(columns=cca_df_colnames).fillna(0)
         acdc_df[acdc_df_drop_cca.columns] = acdc_df_drop_cca
@@ -263,7 +265,10 @@ def store_copy_acdc_df(posData, acdc_output_csv_path, log_func=printl):
         if not os.path.exists(acdc_output_csv_path):
             return
         
-        df = pd.read_csv(acdc_output_csv_path).set_index(['frame_i', 'Cell_ID'])
+        df = (
+            pd.read_csv(acdc_output_csv_path, dtype=acdc_df_str_cols)
+            .set_index(['frame_i', 'Cell_ID'])
+        )
         posData.setTempPaths()
         h5_path = posData.acdc_output_backup_h5_path
         keys = []
@@ -1866,7 +1871,7 @@ class select_exp_folder:
                 if filename.find('acdc_output.csv') != -1:
                     last_tracked_i_found = True
                     acdc_df_path = f'{images_path}/{filename}'
-                    acdc_df = pd.read_csv(acdc_df_path)
+                    acdc_df = pd.read_csv(acdc_df_path, dtype=acdc_df_str_cols)
                     last_tracked_i = max(acdc_df['frame_i'])
                     break
             if last_tracked_i_found:

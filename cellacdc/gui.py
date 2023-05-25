@@ -8961,9 +8961,25 @@ class guiWin(QMainWindow):
                     self.currentLab2D, autoLevels=False
                 )
 
+    def getDelRoisIDs(self):
+        posData = self.data[self.pos_i]
+        allDelIDs = set()
+        for roi in posData.allData_li[posData.frame_i]['delROIs_info']['rois']:
+            if roi not in self.ax2.items and roi not in self.ax1.items:
+                continue
+            
+            ROImask = self.getDelRoiMask(roi)
+            delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
+            idx = delROIs_info['rois'].index(roi)
+            delObjROImask = delROIs_info['delMasks'][idx]
+            delIDsROI = delROIs_info['delIDsROI'][idx]   
+            delIDs = posData.lab[ROImask]
+            allDelIDs.update(delIDs)
+        return allDelIDs
+            
     def getDelROIlab(self):
         posData = self.data[self.pos_i]
-        DelROIlab = self.get_2Dlab(posData.lab, force_z=False)
+        DelROIlab = self.get_2Dlab(posData.lab, force_z=False).copy()
         allDelIDs = set()
         # Iterate rois and delete IDs
         for roi in posData.allData_li[posData.frame_i]['delROIs_info']['rois']:
@@ -13373,10 +13389,7 @@ class guiWin(QMainWindow):
         self.updateImageValueFormatter()
         self.checkManageVersions()
 
-        if self.isSnapshot:
-            self.setWindowTitle(f'Cell-ACDC - GUI - "{posData.exp_path}"')
-        else:
-            self.setWindowTitle(f'Cell-ACDC - GUI - "{posData.pos_path}"')
+        self.setWindowTitle(f'Cell-ACDC - GUI - "{posData.exp_path}"')
 
         self.guiTabControl.addChannels([posData.user_ch_name])
         self.showPropsDockButton.setDisabled(False)
@@ -13631,12 +13644,11 @@ class guiWin(QMainWindow):
         segmentedChannelname = posData.filename[len(posData.basename):]
         segmEndName = os.path.basename(posData.segm_npz_path)[len(posData.basename):]
         txt = (
+            f'{posData.pos_foldername} || '
             f'Basename: {posData.basename} || '
             f'Segmented channel: {segmentedChannelname} || '
             f'Segmentation file name: {segmEndName}'
         )
-        if not self.isSnapshot:
-            txt = f'{txt} || {posData.pos_foldername}'
         if log:
             self.logger.info(txt)
         self.statusBarLabel.setText(txt)
@@ -17946,15 +17958,18 @@ class guiWin(QMainWindow):
     def setAllTextAnnotations(self, labelsToSkip=None):
         self.setTitleText()
         posData = self.data[self.pos_i]
+        delROIsIDs = self.getDelRoisIDs()
         self.textAnnot[0].setAnnotations(
             posData=posData, labelsToSkip=labelsToSkip, 
             isVisibleCheckFunc=self.isObjVisible,
-            highlightedID=self.highlightedID
+            highlightedID=self.highlightedID, 
+            delROIsIDs=delROIsIDs
         )
         self.textAnnot[1].setAnnotations(
             posData=posData, labelsToSkip=labelsToSkip, 
             isVisibleCheckFunc=self.isObjVisible,
-            highlightedID=self.highlightedID
+            highlightedID=self.highlightedID, 
+            delROIsIDs=delROIsIDs
         )
         self.textAnnot[0].update()
         self.textAnnot[1].update()
@@ -18099,15 +18114,18 @@ class guiWin(QMainWindow):
 
     def highlightLostNew(self):
         posData = self.data[self.pos_i]
+
         for obj in posData.rp:
             ID = obj.label
-            if ID in posData.new_IDs:
-                self.addObjContourToContoursImage(
-                    obj=obj, ax=0, thickness=self.contLineWeight+1
-                )
-                self.addObjContourToContoursImage(
-                    obj=obj, ax=1, thickness=self.contLineWeight+1
-                )
+            if ID not in posData.new_IDs:
+                continue
+            
+            self.addObjContourToContoursImage(
+                obj=obj, ax=0, thickness=self.contLineWeight+1
+            )
+            self.addObjContourToContoursImage(
+                obj=obj, ax=1, thickness=self.contLineWeight+1
+            )
         
         if not posData.lost_IDs:
             return
