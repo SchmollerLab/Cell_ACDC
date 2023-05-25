@@ -8969,10 +8969,6 @@ class guiWin(QMainWindow):
                 continue
             
             ROImask = self.getDelRoiMask(roi)
-            delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
-            idx = delROIs_info['rois'].index(roi)
-            delObjROImask = delROIs_info['delMasks'][idx]
-            delIDsROI = delROIs_info['delIDsROI'][idx]   
             delIDs = posData.lab[ROImask]
             allDelIDs.update(delIDs)
         return allDelIDs
