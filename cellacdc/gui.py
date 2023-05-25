@@ -18749,7 +18749,10 @@ class guiWin(QMainWindow):
     def openFolder(
             self, checked=False, exp_path=None, imageFilePath=''
         ):
-        self.logger.info(f'Opening FOLDER "{exp_path}"')
+        if exp_path is None:
+            self.logger.info('Asking to select a folder path...')
+        else:
+            self.logger.info(f'Opening FOLDER "{exp_path}"...')
 
         self.isNewFile = False
         if hasattr(self, 'data') and self.titleLabel.text != 'Saved!':
