@@ -13638,7 +13638,8 @@ class guiWin(QMainWindow):
         self.statusbar.clearMessage()
         posData = self.data[self.pos_i]
         segmentedChannelname = posData.filename[len(posData.basename):]
-        segmEndName = os.path.basename(posData.segm_npz_path)[len(posData.basename):]
+        segmFilename = os.path.basename(posData.segm_npz_path)
+        segmEndName = segmFilename[len(posData.basename):]
         txt = (
             f'{posData.pos_foldername} || '
             f'Basename: {posData.basename} || '

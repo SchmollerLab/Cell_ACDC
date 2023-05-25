@@ -893,7 +893,9 @@ class loadData:
                 df = pd.read_csv(filePath).dropna()
                 if 'filename' not in df.columns:
                     df['filename'] = self.filename
-                self.segmInfo_df = df.set_index(['filename', 'frame_i']).sort_index()
+                df = df.set_index(['filename', 'frame_i']).sort_index()
+                df = df[~df.index.duplicated()]
+                self.segmInfo_df = df
                 self.segmInfo_df.to_csv(filePath)
             elif load_delROIsInfo and file.endswith('delROIsInfo.npz'):
                 self.delROIsInfoFound = True
@@ -1208,6 +1210,24 @@ class loadData:
         else:
             self.PhysicalSizeZ = 1
 
+        if 'LensNA' in self.metadata_df.index:
+            self.PhysicalSizeZ = float(
+                self.metadata_df.at['LensNA', 'values']
+            )
+        else:
+            self.numAperture = 1.4
+        
+        emWavelenMask = self.metadata_df.index.str.contains(r'_emWavelen')
+        df_emWavelens = self.metadata_df[emWavelenMask]
+        self.emWavelens = {}
+        try:
+            for channel_i_emWavelen, emWavelen in df_emWavelens.itertuples():
+                channel_i_name = channel_i_emWavelen.replace('_emWavelen', '_name')
+                chName = self.metadata_df.at[channel_i_name, 'values']
+                self.emWavelens[chName] = float(emWavelen)
+        except Exception as e:
+            pass
+        
         self._additionalMetadataValues = {}
         for name in self.metadata_df.index:
             if name.startswith('__'):
