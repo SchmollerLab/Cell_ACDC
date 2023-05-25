@@ -1208,6 +1208,24 @@ class loadData:
         else:
             self.PhysicalSizeZ = 1
 
+        if 'LensNA' in self.metadata_df.index:
+            self.PhysicalSizeZ = float(
+                self.metadata_df.at['LensNA', 'values']
+            )
+        else:
+            self.numAperture = 1.4
+        
+        emWavelenMask = self.metadata_df.index.str.contains(r'_emWavelen')
+        df_emWavelens = self.metadata_df[emWavelenMask]
+        self.emWavelens = {}
+        try:
+            for channel_i_emWavelen, emWavelen in df_emWavelens.itertuples():
+                channel_i_name = channel_i_emWavelen.replace('_emWavelen', '_name')
+                chName = self.metadata_df.at[channel_i_name, 'values']
+                self.emWavelens[chName] = float(emWavelen)
+        except Exception as e:
+            pass
+        
         self._additionalMetadataValues = {}
         for name in self.metadata_df.index:
             if name.startswith('__'):
