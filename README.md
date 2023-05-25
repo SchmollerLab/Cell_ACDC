@@ -67,6 +67,9 @@ Finally, we provide Jupyter notebooks to **visualize** and interactively **explo
 
 **Do not hesitate to contact me** here on GitHub (by opening an issue) or directly at my email [padovaf@tcd.ie](mailto:padovaf@tcd.ie) for any problem and/or feedback on how to improve the user experience!
 
+# Bidirectional microscopy shift error correction
+Is every second line in your files from your bidirectional microscopy shifted? Look [here](https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/scripts/README.md) for further information on how to correct your data.
+
 ## Update v1.2.4
 First release that is finally available on PyPi.
 

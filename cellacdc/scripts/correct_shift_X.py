@@ -19,7 +19,7 @@ import copy
 PREVIEW_Z_STACK = 40
 PREVIEW_Z = 14
 NEW_PATH_SUF = '' #'' causes old file to be overwritten
-EXCLUDE_PATTERN_TIF_SEARCH = r"^(?!.*(T_PMT|" + NEW_PATH_SUF + ")\.tif).*"
+INCLUDE_PATTERN_TIF_SEARCH = r"^(?!.*(T_PMT|" + NEW_PATH_SUF + ")\.tif).*"
 ############################################
 
 def correct_constant_shift_X_img(img, shift):
@@ -117,7 +117,7 @@ def sequential():
     print('Shift used: ' +str(shift))
 
     tif_files = find_other_tif(tif_path)    
-    tif_names = [tif_file for tif_file in tif_files if re.match(EXCLUDE_PATTERN_TIF_SEARCH, tif_file)]
+    tif_names = [tif_file for tif_file in tif_files if re.match(INCLUDE_PATTERN_TIF_SEARCH, tif_file)]
     print('New tif file(s) found:\n' + "\n".join(tif_names))
 
     while True:
@@ -126,7 +126,7 @@ def sequential():
             scan_other = False
             break
         elif answer.lower() == 'help':
-            print('You can change the regex pattern in the beginning of the code (EXCLUDE_PATTERN_TIF_SEARCH). \nIf you dont know regex, ask Chat_GPT to generate one for you by giving it examples of file names and then asking it to generate a regex code which excludes the files you want to exclude. \nCurrent expression is: ' + EXCLUDE_PATTERN_TIF_SEARCH)
+            print('You can change the regex pattern in the beginning of the code (EXCLUDE_PATTERN_TIF_SEARCH). \nIf you dont know regex, ask Chat_GPT to generate one for you by giving it examples of file names and then asking it to generate a regex code which excludes the files you want to exclude. \nCurrent expression is: ' + INCLUDE_PATTERN_TIF_SEARCH)
             exit()
         else:
             scan_other = True

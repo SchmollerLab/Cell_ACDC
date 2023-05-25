@@ -21,7 +21,7 @@ import copy
 PREVIEW_Z_STACK = 40
 PREVIEW_Z = 14
 NEW_PATH_SUF = '' #'' causes old file to be overwritten
-EXCLUDE_PATTERN_TIF_SEARCH = r"^(?!.*(T_PMT|" + NEW_PATH_SUF + ")\.tif).*"
+INCLUDE_PATTERN_TIF_SEARCH = r"^(?!.*(T_PMT|" + NEW_PATH_SUF + ")\.tif).*"
 INCLUDE_PATTERN_TIF_BASESEARCH = r"^(.*T_PMT\.tif)"
 #FOLDER_STRUCTURE = (root_path, foldername, 'Images')
 FOLDER_FILTER = 'pos'
@@ -112,14 +112,16 @@ def sequential():
     base_file_paths, other_files_paths = finding_base_tif_files_path(root_path)
     print('Path: \n' + root_path)
     print('Base files found:\n' + "\n".join(base_file_paths))
-
+    if base_file_paths == []:
+        print('No files found!')
+        exit()
     while True:
         answer = input('Do you want to shift the other .tif files in the folders too? ([y]/n/help)')
         if answer.lower() == 'n':
             scan_other = False
             break
         elif answer.lower() == 'help':
-            print('You can change the regex pattern in the beginning of the code (EXCLUDE_PATTERN_TIF_SEARCH). \nIf you dont know regex, ask Chat_GPT to generate one for you by giving it examples of file names and then asking it to generate a regex code which excludes the files you want to exclude. \nCurrent expression is: ' + EXCLUDE_PATTERN_TIF_SEARCH)
+            print('You can change the regex pattern in the beginning of the code (EXCLUDE_PATTERN_TIF_SEARCH). \nIf you dont know regex, ask Chat_GPT to generate one for you by giving it examples of file names and then asking it to generate a regex code which excludes the files you want to exclude. \nCurrent expression is: ' + INCLUDE_PATTERN_TIF_SEARCH)
             exit()
         else:
             scan_other = True
@@ -136,7 +138,7 @@ def sequential():
         if scan_other == True:
             other_tif_files = []
             other_tif_files = find_other_tif(tif_path)    
-            other_tif_files = [tif_file for tif_file in other_tif_files if re.match(EXCLUDE_PATTERN_TIF_SEARCH, tif_file)]
+            other_tif_files = [tif_file for tif_file in other_tif_files if re.match(INCLUDE_PATTERN_TIF_SEARCH, tif_file)]
             other_tif_files = [os.path.join(other_files_paths[i], tif_file) for tif_file in other_tif_files]
             for other_tif_file in other_tif_files:
                 tif_files_master.append([shift, other_tif_file])
