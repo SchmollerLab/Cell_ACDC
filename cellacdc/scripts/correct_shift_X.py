@@ -14,13 +14,16 @@ import concurrent.futures
 
 import copy
 
+import json
 
-###############Constants:###################
-PREVIEW_Z_STACK = 40
-PREVIEW_Z = 14
-NEW_PATH_SUF = '' #'' causes old file to be overwritten
-INCLUDE_PATTERN_TIF_SEARCH = r"^(?!.*(T_PMT|" + NEW_PATH_SUF + ")\.tif).*"
-############################################
+
+with open('config.json', 'r') as input_file:
+    config = json.load(input_file)
+PREVIEW_Z_STACK = config['correct_shift_x']['PREVIEW_Z_STACK']
+PREVIEW_Z = config['correct_shift_x']['PREVIEW_Z']
+NEW_PATH_SUF = config['correct_shift_x']['NEW_PATH_SUF']
+INCLUDE_PATTERN_TIF_SEARCH = config['correct_shift_x']['INCLUDE_PATTERN_TIF_SEARCH']
+
 
 def correct_constant_shift_X_img(img, shift):
     for i, row in enumerate(img[::2]):
@@ -41,27 +44,11 @@ def find_other_tif(file_path):
     return tif_files
 
 def finding_shift(tif_data, shift):
-    eval_img = (tif_data[PREVIEW_Z_STACK][PREVIEW_Z]).copy() #is deepcopy here too much? Would copy also be ok?
+    eval_img = (tif_data[PREVIEW_Z_STACK][PREVIEW_Z]).copy()
     eval_img = correct_constant_shift_X_img(eval_img, shift) 
     imshow(tif_data[PREVIEW_Z_STACK][PREVIEW_Z], eval_img)
     while True:
-        answer = input('Do you want to proceed with the shift or change it ([y]/n/"number"/help)? ') #how would you write number here?
-    #    if not answer:
-    #        return shift
-    #    if answer.lower() == 'help':
-    #        print('Change the shown image by changing PREVIEW_Z_STACK and PREVIEW_Z in the beginning of the code. \nChange the ending of the new file name by changing NEW_PATH_SUF in the code. \nCurrent z stack and z displayed: ' + str(PREVIEW_Z_STACK) + ' ' +str(PREVIEW_Z) + '\nCurrent ending: ' + NEW_PATH_SUF)
-    #        continue
-    #    else:
-    #        try:
-    #            shift = int(answer)
-    #            eval_img = (tif_data[PREVIEW_Z_STACK][PREVIEW_Z]).copy()
-    #            eval_img = correct_constant_shift_X_img(eval_img, shift) 
-    #            imshow(tif_data[PREVIEW_Z_STACK][PREVIEW_Z], eval_img)
-    #            proceed = input(f'Shift selected = {shift}. Do you want to continue (y/[n])? ')
-    #            if proceed.lower() == 'y':
-    #                return shift
-    #        except Exception as e:
-    #            print(f"{answer} is not an integer. Please enter an integer")
+        answer = input('Do you want to proceed with the shift or change it ([y]/n/"number"/help)? ')
         if answer.lower() == 'n':
             exit()
         elif answer.isdigit():

@@ -1,7 +1,7 @@
 ### Scripts to correct shifts in bidirectional scanning
 Using a bidirectional microscope can cause shifts in every second x-axis, resulting in extremely bad segmentation and tracking performance.
 These scripts correct this.
-### Workflow
+### Work-flow
 Run this **before** dataprep but after creating a structure out of microscopy file.
 ## If you have multiple positions
 1. activate the 'acdc' environment
@@ -34,10 +34,10 @@ Change 'INCLUDE_PATTERN_TIF_SEARCH' for additional tif files and 'INCLUDE_PATTER
 Wrong tif files found:
 Refer to tif files are not found.  
 The shift is different depending on where on one picture im currently at:
-No fix, usally this effect is low enough to not cause problems with segmentation and tracking.
+No fix, usually this effect is low enough to not cause problems with segmentation and tracking.
 
 ### Configs
-There are quite a few things you can change in scripts. In order to do that, open them with a text editor of your choice (even Notepad should suffice)
+There are quite a few things you can change in scripts. To change them, change them in configs.json in the "scripts" folder.
 ## Same in all scripts
 'NEW_PATH_SUF':
 Changes the suffix of the new files. Leaving it empty causes old files to be overwritten, which is recommended, as otherwise the data prep process will also align the old files.  
@@ -53,3 +53,4 @@ Same as in 'INCLUDE_PATTERN_TIF_SEARCH', but this regex expression is used to ma
 'FOLDER_FILTER':
 Filter which is applied in order to make sure only folders which contain tif files (and not for example the original microscopy file) are considered.  
 The first function 'finding_base_tif_files_path()' is used to find the base tif files. If your basic directory structure is different, change this function accordingly. 'root_path' is simply the argument parsed from user input. 'base_tif_files_paths' is the path directly to your main tif file which should be used to determine the shift. 'tif_files_paths' is the path to the folder in which they are contained.
+

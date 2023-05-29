@@ -16,12 +16,13 @@ import copy
 
 from itertools import islice
 
-###############Constants:###################
-#PREVIEW_Z_STACK = 40
-PREVIEW_Z = 14
-NEW_PATH_SUF = '' #'' causes old file to be overwritten #Should be emtpty bc this code should only be used on already corrected data
-INCLUDE_PATTERN_TIF_SEARCH = r"^(?=.*[^(T_PMT)](_corrected)\.tif).*"
-############################################
+import json
+
+with open('config.json', 'r') as input_file:
+    config = json.load(input_file)
+NEW_PATH_SUF = config['correct_shift_x_single']['MEW_PATH_SUF']
+INCLUDE_PATTERN_TIF_SEARCH = config['correct_shift_x_single']['INCLUDE_PATTERN_TIF_SEARCH']
+PREVIEW_Z = config['correct_shift_x_single']['PREVIEW_Z']
 
 def correct_constant_shift_X_img(img, shift):
     for i, row in enumerate(img[::2]):

@@ -16,17 +16,7 @@ import concurrent.futures
 
 import copy
 
-
-##################Constants:######################
-PREVIEW_Z_STACK = 40
-PREVIEW_Z = 14
-NEW_PATH_SUF = '' #'' causes old file to be overwritten
-INCLUDE_PATTERN_TIF_SEARCH = r"^(?!.*(T_PMT|" + NEW_PATH_SUF + ")\.tif).*"
-INCLUDE_PATTERN_TIF_BASESEARCH = r"^(.*T_PMT\.tif)"
-#FOLDER_STRUCTURE = (root_path, foldername, 'Images')
-FOLDER_FILTER = 'pos'
-##################################################
-
+import json
 #Change this if your data structure is different:#
 def finding_base_tif_files_path(root_path):
     base_tif_files_paths =[]
@@ -41,6 +31,15 @@ def finding_base_tif_files_path(root_path):
                 tif_files_paths.append(folder_name)
     return base_tif_files_paths, tif_files_paths
 ##################################################
+
+with open('config.json', 'r') as input_file:
+    config = json.load(input_file)
+PREVIEW_Z_STACK = config['correct_shift_x_multi']['PREVIEW_Z_STACK']
+PREVIEW_Z = config['correct_shift_x_multi']['PREVIEW_Z']
+NEW_PATH_SUF = config['correct_shift_x_multi']['NEW_PATH_SUF']
+INCLUDE_PATTERN_TIF_SEARCH = config['correct_shift_x_multi']['INCLUDE_PATTERN_TIF_SEARCH']
+INCLUDE_PATTERN_TIF_BASESEARCH = config['correct_shift_x_multi']['INCLUDE_PATTERN_TIF_BASESEARCH']
+FOLDER_FILTER = config['correct_shift_x_multi']['FOLDER_FILTER']
 
 def correct_constant_shift_X_img(img, shift):
     for i, row in enumerate(img[::2]):
