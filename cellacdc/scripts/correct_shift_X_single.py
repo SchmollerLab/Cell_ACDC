@@ -18,10 +18,17 @@ from itertools import islice
 
 import json
 
+
 with open('config.json', 'r') as input_file:
-    config = json.load(input_file)
+    config_raw = input_file.read()
+for line in config_raw.splitlines():
+    if re.search('x_sing_INCLUDE_PATTERN_TIF_SEARCH'):
+        line = line.split(':', 1)[1].strip().lstrip().rstrip(',')
+        INCLUDE_PATTERN_TIF_SEARCH = line
+
+config = json.load(config_raw)
 NEW_PATH_SUF = config['correct_shift_x_single']['MEW_PATH_SUF']
-INCLUDE_PATTERN_TIF_SEARCH = config['correct_shift_x_single']['INCLUDE_PATTERN_TIF_SEARCH']
+#INCLUDE_PATTERN_TIF_SEARCH = config['correct_shift_x_single']['INCLUDE_PATTERN_TIF_SEARCH']
 PREVIEW_Z = config['correct_shift_x_single']['PREVIEW_Z']
 
 def correct_constant_shift_X_img(img, shift):

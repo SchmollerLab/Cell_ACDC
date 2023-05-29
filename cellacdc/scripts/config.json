@@ -3,19 +3,19 @@
     "PREVIEW_Z_STACK": 40,
     "PREVIEW_Z": 14,
     "NEW_PATH_SUF": "",
-    "INCLUDE_PATTERN_TIF_SEARCH": r"^(?!.*(T_PMT|" + NEW_PATH_SUF + ")\.tif).*"
+    "x_INCLUDE_PATTERN_TIF_SEARCH": r"^(?!.*(T_PMT|" + NEW_PATH_SUF + ")\.tif).*"
       },
   "corrrect_shift_x_multi": {
     "PREVIEW_Z_STACK": 40,
     "PREVIEW_Z": 14,
     "NEW_PATH_SUF": "",
-    "INCLUDE_PATTERN_TIF_SEARCH": r"^(?!.*(T_PMT|" + NEW_PATH_SUF + ")\.tif).*",
-    "INCLUDE_PATTERN_TIF_BASESEARCH": r"^(.*T_PMT\.tif)",
+    "x_mult_INCLUDE_PATTERN_TIF_SEARCH": r"^(?!.*(T_PMT|" + NEW_PATH_SUF + ")\.tif).*",
+    "x_mult_IINCLUDE_PATTERN_TIF_BASESEARCH": r"^(.*T_PMT\.tif)",
     "FOLDER_FILTER": "pos"
       },
   "corrrect_shift_x_single": {
     "PREVIEW_Z": 14,
     "NEW_PATH_SUF": "",
-    "INCLUDE_PATTERN_TIF_SEARCH": r"^(?=.*[^(T_PMT)](_corrected)\.tif).*"
-      }
+    "x_sing_INCLUDE_PATTERN_TIF_SEARCH": "r\'^(?=.*[^(T_PMT)](_corrected)\\.tif).*\'",
+  }
 }

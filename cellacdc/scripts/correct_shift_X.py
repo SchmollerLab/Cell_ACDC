@@ -16,13 +16,17 @@ import copy
 
 import json
 
-
 with open('config.json', 'r') as input_file:
-    config = json.load(input_file)
+    config_raw = input_file.read()
+for line in config_raw.splitlines():
+    if re.search('x_INCLUDE_PATTERN_TIF_SEARCH'):
+        line = line.split(':', 1)[1].strip().lstrip().rstrip(',')
+        INCLUDE_PATTERN_TIF_SEARCH = line
+config = json.load(config_raw)
 PREVIEW_Z_STACK = config['correct_shift_x']['PREVIEW_Z_STACK']
 PREVIEW_Z = config['correct_shift_x']['PREVIEW_Z']
 NEW_PATH_SUF = config['correct_shift_x']['NEW_PATH_SUF']
-INCLUDE_PATTERN_TIF_SEARCH = config['correct_shift_x']['INCLUDE_PATTERN_TIF_SEARCH']
+#INCLUDE_PATTERN_TIF_SEARCH = config['correct_shift_x']['INCLUDE_PATTERN_TIF_SEARCH']
 
 
 def correct_constant_shift_X_img(img, shift):
