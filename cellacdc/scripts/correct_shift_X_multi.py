@@ -17,8 +17,11 @@ import concurrent.futures
 import copy
 
 import json
+
+
 #Change this if your data structure is different:#
 def finding_base_tif_files_path(root_path):
+    print(INCLUDE_PATTERN_TIF_BASESEARCH)
     base_tif_files_paths =[]
     tif_files_paths = []
     folder_list = os.listdir(root_path)
@@ -26,28 +29,40 @@ def finding_base_tif_files_path(root_path):
     for folder_name in folder_list:
         folder_cont = os.listdir(folder_name)
         for file_name in folder_cont:
-            if re.match(INCLUDE_PATTERN_TIF_BASESEARCH, file_name):
+            if re.search(INCLUDE_PATTERN_TIF_BASESEARCH, file_name):
                 base_tif_files_paths.append(os.path.join(folder_name, file_name))
                 tif_files_paths.append(folder_name)
     return base_tif_files_paths, tif_files_paths
 ##################################################
 
-with open('config.json', 'r') as input_file:
-    config_raw = input_file.read()
-for line in config_raw.splitlines():
-    if re.search('x_mult_INCLUDE_PATTERN_TIF_SEARCH'):
-        line = line.split(':', 1)[1].strip().lstrip().rstrip(',')
-        INCLUDE_PATTERN_TIF_SEARCH = line
-    if re.search('x_mult_INCLUDE_PATTERN_TIF_BASESEARCH'):
-        line = line.split(':', 1)[1].strip().lstrip().rstrip(',')
-        INCLUDE_PATTERN_TIF_BASESEARCH = line
-config = json.load(config_raw)
-PREVIEW_Z_STACK = config['correct_shift_x_multi']['PREVIEW_Z_STACK']
-PREVIEW_Z = config['correct_shift_x_multi']['PREVIEW_Z']
-NEW_PATH_SUF = config['correct_shift_x_multi']['NEW_PATH_SUF']
-#INCLUDE_PATTERN_TIF_SEARCH = config['correct_shift_x_multi']['INCLUDE_PATTERN_TIF_SEARCH']
-#INCLUDE_PATTERN_TIF_BASESEARCH = config['correct_shift_x_multi']['INCLUDE_PATTERN_TIF_BASESEARCH']
-FOLDER_FILTER = config['correct_shift_x_multi']['FOLDER_FILTER']
+def load_constants():
+
+    print('Loading constants...')
+    global PREVIEW_Z_STACK
+    global PREVIEW_Z
+    global FOLDER_FILTER
+    global INCLUDE_PATTERN_TIF_SEARCH
+    global INCLUDE_PATTERN_TIF_BASESEARCH
+    global PRESET_SHIFT
+    with open('regex.txt', 'r') as input_file:
+        regex_file = input_file.read()
+    for line in regex_file.splitlines():
+        if re.search('x_mult_INCLUDE_PATTERN_TIF_SEARCH', line):
+            line = line.split(':', 1)[1].strip().lstrip().rstrip(',')
+            INCLUDE_PATTERN_TIF_SEARCH = line
+        elif re.search('x_mult_INCLUDE_PATTERN_TIF_BASESEARCH', line):
+            line = line.split(':', 1)[1].strip().lstrip().rstrip(',')
+            INCLUDE_PATTERN_TIF_BASESEARCH = line
+
+    with open('config.json', 'r') as input_file:
+        config = json.load(input_file)
+    PREVIEW_Z_STACK = config['correct_shift_x_multi']['PREVIEW_Z_STACK']
+    PREVIEW_Z = config['correct_shift_x_multi']['PREVIEW_Z']
+    NEW_PATH_SUF = config['correct_shift_x_multi']['NEW_PATH_SUF']
+    FOLDER_FILTER = config['correct_shift_x_multi']['FOLDER_FILTER']
+    PRESET_SHIFT = config['correct_shift_x_multi']['PRESET_SHIFT']
+    return NEW_PATH_SUF #IDK WHY THIS CAN'T BE GLOBAL(ID DOESNT WORK LIKE THE OTHERS? WHY?)
+#                       #Ok it is bc it is used in concurrent.futures. Wellp I guess I'll just return it then
 
 def correct_constant_shift_X_img(img, shift):
     for i, row in enumerate(img[::2]):
@@ -68,7 +83,7 @@ def find_other_tif(file_path):
     file_list = [filename for filename in file_list if filename.lower().endswith('.tif')]
     return file_list
 
-def finding_shift(tif_data, shift):
+def finding_shift(tif_data, shift, NEW_PATH_SUF):
     eval_img = (tif_data[PREVIEW_Z_STACK][PREVIEW_Z]).copy()
     eval_img = correct_constant_shift_X_img(eval_img, shift)
     imshow(tif_data[PREVIEW_Z_STACK][PREVIEW_Z], eval_img)
@@ -78,15 +93,15 @@ def finding_shift(tif_data, shift):
             exit()
         elif answer.isdigit():
             shift = int(answer)
-            shift = finding_shift(tif_data, shift)
+            shift = finding_shift(tif_data, shift, NEW_PATH_SUF)
             return shift
         elif answer.lstrip('-').isdigit():
             shift = int(answer)
-            shift = finding_shift(tif_data, shift)
+            shift = finding_shift(tif_data, shift, NEW_PATH_SUF)
             return shift
         elif answer.lower() == 'help':
             print('Change the shown image by changing PREVIEW_Z_STACK and PREVIEW_Z in the beginning of the code. \nChange the ending of the new file name by changing NEW_PATH_SUF in the code. \nCurrent z stack and z displayed: ' + str(PREVIEW_Z_STACK) + ' ' +str(PREVIEW_Z) + '\nCurrent ending: ' + NEW_PATH_SUF)
-            finding_shift(tif_data, shift)
+            finding_shift(tif_data, shift, NEW_PATH_SUF)
             return shift
         elif not answer:
             return shift
@@ -95,22 +110,25 @@ def finding_shift(tif_data, shift):
         else:
             print('The input is not an integer')
 
-def shiftingstuff_main(shift, tif_data, tif_path):
+def shiftingstuff_main(shift, tif_data, tif_path, NEW_PATH_SUF):
     corrected_data = tif_data.copy()
     for frame_i, img in enumerate(tif_data):
         corrected_data[frame_i] = correct_constant_shift_X(img.copy(), shift)
     new_path = tif_path.replace('.tif', NEW_PATH_SUF + '.tif')
     skimage.io.imsave(new_path, corrected_data, check_contrast=False)
     print("Saved under:\n" + str(new_path))
-    return
-
-def shiftingstuff_other(shifttif):
-    tif_data = skimage.io.imread(shifttif[1])
-    shiftingstuff_main(shifttif[0], tif_data, shifttif[1])
     del tif_data
+    del corrected_data
     return
 
-def sequential():
+def shiftingstuff_other(shifttif, NEW_PATH_SUF):
+    if shifttif[0] != 0:
+        tif_data = skimage.io.imread(shifttif[1])
+        shiftingstuff_main(shifttif[0], tif_data, shifttif[1], NEW_PATH_SUF)
+        del tif_data
+    return
+
+def sequential(NEW_PATH_SUF):
     parser = argparse.ArgumentParser()
     parser.add_argument('root_path', help='Path to the folder containing all the folders with the positions')
     args = parser.parse_args()
@@ -136,10 +154,10 @@ def sequential():
 
     tif_files_master = []
     for i, tif_path in enumerate(base_file_paths):
-        shift = 0
+        shift = PRESET_SHIFT
         tif_data = skimage.io.imread(tif_path)
         print('You are looking at:\n' + str(tif_path) + '\nPlease close the window after inspecting if the shift value is right in order to proceed.')
-        shift = finding_shift(tif_data, shift)
+        shift = finding_shift(tif_data, shift, NEW_PATH_SUF)
         tif_files_master.append([shift, tif_path])
         del tif_data
         if scan_other == True:
@@ -152,13 +170,14 @@ def sequential():
     return tif_files_master
 
 if __name__ == "__main__":
-    tif_files_master = sequential()
+    NEW_PATH_SUF = load_constants()
+    tif_files_master = sequential(NEW_PATH_SUF)
     print('\nFiles with shift:\n')
     for sub_list in tif_files_master:
         print('Shift: ' + str(sub_list[0]) + '\nPath:' + str(sub_list[1]) + '\n')
     with concurrent.futures.ProcessPoolExecutor() as executor:
         futures = []
-        futures = [executor.submit(shiftingstuff_other, shifttif) for shifttif in tif_files_master]
+        futures = [executor.submit(shiftingstuff_other, shifttif, NEW_PATH_SUF) for shifttif in tif_files_master]
         results = [future.result() for future in futures]
     print('Done!')
     exit()

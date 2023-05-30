@@ -33,11 +33,11 @@ tif files are not found:
 Change 'INCLUDE_PATTERN_TIF_SEARCH' for additional tif files and 'INCLUDE_PATTERN_TIF_BASESEARCH' if '_multi' does not find any paths accordingly.  
 Wrong tif files found:
 Refer to tif files are not found.  
-The shift is different depending on where on one picture im currently at:
+The shift is different depending on where on one picture I'm currently at:
 No fix, usually this effect is low enough to not cause problems with segmentation and tracking.
 
 ### Configs
-There are quite a few things you can change in scripts. To change them, change them in configs.json in the "scripts" folder.
+There are quite a few things you can change in scripts. To change them, change them in configs.json in the "scripts" folder. For the regex expression please find "regex.txt"
 ## Same in all scripts
 'NEW_PATH_SUF':
 Changes the suffix of the new files. Leaving it empty causes old files to be overwritten, which is recommended, as otherwise the data prep process will also align the old files.  
@@ -48,6 +48,8 @@ Changes the z-slice which is used in preview.
 'INCLUDE_PATTERN_TIF_SEARCH':  
 Regex expression which is used to filter the .tif files if you choose to search for other tif files. If you don’t know regex, ask Chat_GPT to generate one for you by giving it examples of file names and then asking it to generate a regex code which excludes the files you want to exclude. In the code it is used in a 're.match' function which iterates over all tif files in the folder.
 ## _multi
+'PRESET_SHIFT':
+Allows you to set a standard shift.  
 'INCLUDE_PATTERN_TIF_BASESEARCH':
 Same as in 'INCLUDE_PATTERN_TIF_SEARCH', but this regex expression is used to match tif files which are used to determine the shift.  
 'FOLDER_FILTER':
