@@ -1,4 +1,20 @@
 print('Initialising...')
+import os
+
+# Force PyQt6 if available
+try:
+    import PyQt6
+    os.environ["QT_API"] = "pyqt6"
+except ModuleNotFoundError:
+    pass
+
+cellacdc_path = os.path.dirname(os.path.abspath(__file__))
+qrc_resources_path = os.path.join(cellacdc_path, 'qrc_resources.py')
+with open(qrc_resources_path, 'r') as qrc_py:
+    text = qrc_py.read()
+    text = text.replace('from PyQt5', 'from qtpy')
+with open(qrc_resources_path, 'w') as qrc_py:
+    qrc_py.write(text)
 
 try:
     import qtpy
@@ -7,7 +23,7 @@ except ModuleNotFoundError as e:
         txt = (
             'Since version 1.3.1 Cell-ACDC requires the package `qtpy`.\n\n'
             'You can let Cell-ACDC install it now, or you can abort '
-            'and install it manually with the command `pip install qtpy`.\n'
+            'and install it manually with the command `pip install qtpy`.'
         )
         print('-'*60)
         print(txt)
@@ -26,15 +42,19 @@ except ModuleNotFoundError as e:
                 f'"{answer}" is not a valid answer. '
                 'Type "y" for "yes", or "n" for "no".'
             )
-
+except ImportError as e:
+    # Ignore that qtpy is installed but there is no PyQt bindings --> this 
+    # is handled in the next block
+    pass
+    
 try:
     from qtpy.QtCore import Qt
 except Exception as e:
     while True:
         txt = (
-            'Since version 1.3.0 Cell-ACDC does not install a GUI library by default.\n\n'
+            'Since version 1.3.1 Cell-ACDC does not install a GUI library by default.\n\n'
             'You can let Cell-ACDC install it now (default library is `PyQt6`), '
-            'or you can abort\n'
+            'or you can abort (press "q")\n'
             'and install a compatible GUI library with one of '
             'the following commands:\n\n'
             '    * pip install PyQt6\n'
@@ -122,8 +142,6 @@ def printl(*objects, pretty=False, is_decorator=False, **kwargs):
     sys.stdout = current_stdout
 
 user_path = pathlib.Path.home()
-
-cellacdc_path = os.path.dirname(os.path.abspath(__file__))
 parent_path = os.path.dirname(cellacdc_path)
 html_path = os.path.join(cellacdc_path, '_html')
 data_path = os.path.join(parent_path, 'data')

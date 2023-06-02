@@ -23,9 +23,12 @@ if hasattr(QtCore.Qt, 'AA_UseHighDpiPixmaps'):
     QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True)
 
 # Needed by pyqtgraph with display resolution scaling
-QtWidgets.QApplication.setAttribute(
-    QtCore.Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
-)
+try:
+    QtWidgets.QApplication.setAttribute(
+        QtCore.Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
+    )
+except Exception as e:
+    pass
 
 class AcdcSPlashScreen(QtWidgets.QSplashScreen):
     def __init__(self):
@@ -53,7 +56,6 @@ app.setStyle(QtWidgets.QStyleFactory.create('Fusion'))
 app.setPalette(app.style().standardPalette())
 
 app.setWindowIcon(QtGui.QIcon(":icon.ico"))
-
 # Launch splashscreen
 splashScreen = AcdcSPlashScreen()
 splashScreen.setWindowIcon(QtGui.QIcon(":icon.ico"))
@@ -110,6 +112,7 @@ try:
     from cellacdc.utils import applyTrackFromTable as utilsApplyTrackFromTab
     from cellacdc.info import utilsInfo
     from cellacdc import is_win, is_linux, temp_path, issues_url
+    from cellacdc import settings_csv_path
     from cellacdc import printl
 except ModuleNotFoundError as e:
     src_path = os.path.dirname(os.path.abspath(__file__))
@@ -141,8 +144,15 @@ except Exception as e:
 
 class mainWin(QMainWindow):
     def __init__(self, app, parent=None):
+        self.checkConfigFiles()
+        
+        scheme = self.getColorScheme()
+        from _palettes import getPaletteColorScheme
         self.app = app
+        palette = getPaletteColorScheme(app.palette(), scheme=scheme)
+        app.setPalette(palette)     
         self.welcomeGuide = None
+        
         super().__init__(parent)
         self.setWindowTitle("Cell-ACDC")
         self.setWindowIcon(QIcon(":icon.ico"))
@@ -156,11 +166,13 @@ class mainWin(QMainWindow):
         self.log_filename = log_filename
         self.logs_path = logs_path
 
-        self.checkConfigFiles()
+        self.logger.info(f'Using Qt version {QtCore.__version__}')
+        
 
         if not is_linux:
             self.loadFonts()
 
+        self.addStatusBar(scheme)
         self.createActions()
         self.createMenuBar()
         self.connectActions()
@@ -297,8 +309,58 @@ class mainWin(QMainWindow):
         self.progressWin = None
         self.forceClose = False
     
+    def addStatusBar(self, scheme):
+        self.statusbar = self.statusBar()
+        # Permanent widget
+        label = QLabel('Dark mode')
+        widget = QtWidgets.QWidget()
+        layout = QHBoxLayout()
+        widget.setLayout(layout)
+        layout.addWidget(label)
+        self.darkModeToggle = widgets.Toggle(label_text='Dark mode')
+        self.darkModeToggle.ignoreEvent = True
+        if scheme == 'dark':
+            self.darkModeToggle.ignoreEvent = True
+            self.darkModeToggle.setChecked(True)
+        self.darkModeToggle.toggled.connect(self.onDarkModeToggled)
+        layout.addWidget(self.darkModeToggle)
+        self.statusBarLayout = layout
+        self.statusbar.addWidget(widget)
+    
+    def getColorScheme(self):
+        if not os.path.exists(settings_csv_path):
+            return 'light'
+        df_settings = pd.read_csv(settings_csv_path, index_col='setting')
+        if 'colorScheme' not in df_settings.index:
+            return 'light'
+        else:
+            return df_settings.at['colorScheme', 'value']
+    
+    def onDarkModeToggled(self, checked):
+        if self.darkModeToggle.ignoreEvent:
+            self.darkModeToggle.ignoreEvent = False
+            return
+        from _palettes import getPaletteColorScheme
+        scheme = 'dark' if checked else 'light'
+        if not os.path.exists(settings_csv_path):
+            df_settings = pd.DataFrame(
+                {'setting': [], 'value': []}).set_index('setting')
+        else:
+            df_settings = pd.read_csv(settings_csv_path, index_col='setting')
+        df_settings.at['colorScheme', 'value'] = scheme
+        df_settings.to_csv(settings_csv_path)
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(
+            'In order for the change to take effect, <b>please restart Cell-ACDC</b>'
+        )
+        msg.information(self, 'Restart Cell-ACDC', txt)
+        self.statusBarLayout.addWidget(QLabel(html_utils.paragraph(
+            '<i>Restart Cell-ACDC for the change to take effect</i>', 
+            font_color='red'
+        )))
+    
     def checkConfigFiles(self):
-        self.logger.info('Loading configuration files...')
+        print('Loading configuration files...')
         paths_to_check = [
             gui.favourite_func_metrics_csv_path, 
             # gui.custom_annot_path, 
@@ -346,21 +408,16 @@ class mainWin(QMainWindow):
         QFontDatabase.addApplicationFont(":Helvetica-BoldItalic.ttf")
 
     def launchWelcomeGuide(self, checked=False):
-        cellacdc_path = os.path.dirname(os.path.realpath(__file__))
-        temp_path = os.path.join(cellacdc_path, 'temp')
-        csv_path = os.path.join(temp_path, 'settings.csv')
-        self.settings_csv_path = csv_path
-        if not os.path.exists(csv_path):
+        if not os.path.exists(settings_csv_path):
             idx = ['showWelcomeGuide']
             values = ['Yes']
-            self.df_settings = pd.DataFrame({'setting': idx,
-                                             'value': values}
-                                           ).set_index('setting')
-            self.df_settings.to_csv(csv_path)
-        self.df_settings = pd.read_csv(csv_path, index_col='setting')
+            self.df_settings = pd.DataFrame(
+                {'setting': idx, 'value': values}).set_index('setting')
+            self.df_settings.to_csv(settings_csv_path)
+        self.df_settings = pd.read_csv(settings_csv_path, index_col='setting')
         if 'showWelcomeGuide' not in self.df_settings.index:
             self.df_settings.at['showWelcomeGuide', 'value'] = 'Yes'
-            self.df_settings.to_csv(csv_path)
+            self.df_settings.to_csv(settings_csv_path)
 
         show = (
             self.df_settings.at['showWelcomeGuide', 'value'] == 'Yes'
@@ -1302,7 +1359,7 @@ class mainWin(QMainWindow):
     
     def showEvent(self, event):
         self.showAllWindows()
-        self.setFocus(True)
+        self.setFocus()
         self.activateWindow()
     
     def showAllWindows(self):
@@ -1314,7 +1371,7 @@ class mainWin(QMainWindow):
             win.setWindowState(Qt.WindowNoState)
             win.restoreGeometry(geometry)
         self.raise_()
-        self.setFocus(True)
+        self.setFocus()
         self.activateWindow()
 
     def show(self):

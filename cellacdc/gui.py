@@ -1107,7 +1107,7 @@ class guiWin(QMainWindow):
             )
 
             if autoActivate:
-                self.slideshowWin.setFocus(True)
+                self.slideshowWin.setFocus()
                 self.slideshowWin.activateWindow()
 
     def enterEvent(self, event):
@@ -1141,7 +1141,7 @@ class guiWin(QMainWindow):
             )
 
             if autoActivate:
-                self.setFocus(True)
+                self.setFocus()
                 self.activateWindow()
 
     def isPanImageClick(self, mouseEvent, modifiers):
@@ -3369,10 +3369,10 @@ class guiWin(QMainWindow):
         self.updateAllImages()
     
     def setFocusGraphics(self):
-        self.graphLayout.setFocus(True)
+        self.graphLayout.setFocus()
     
     def setFocusMain(self):
-        self.setFocus(True)
+        self.setFocus()
     
     def resetFocus(self):
         self.setFocusGraphics()
@@ -12767,7 +12767,7 @@ class guiWin(QMainWindow):
             self.ccaTableWin.show()
             self.ccaTableWin.setGeometryWindow()
         else:
-            self.ccaTableWin.setFocus(True)
+            self.ccaTableWin.setFocus()
             self.ccaTableWin.activateWindow()
             self.ccaTableWin.updateTable(posData.cca_df)
 
@@ -20782,7 +20782,7 @@ class guiWin(QMainWindow):
             if not self.mainWin.isMinimized():
                 return
             self.mainWin.showAllWindows()
-        self.setFocus(True)
+        self.setFocus()
         self.activateWindow()
     
     def super_show(self):
@@ -20829,7 +20829,7 @@ class guiWin(QMainWindow):
         self.showPropsDockButton.setMaximumWidth(15)
         self.showPropsDockButton.setMaximumHeight(60)
 
-        self.graphLayout.setFocus(True)
+        self.graphLayout.setFocus()
     
     def resizeSlidersArea(self, fontSizeFactor=None, heightFactor=None):
         global _font

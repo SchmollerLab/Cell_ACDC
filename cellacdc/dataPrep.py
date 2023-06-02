@@ -2201,4 +2201,4 @@ class dataPrepWin(QMainWindow):
     def show(self):
         QMainWindow.show(self)
         self.readSettings()
-        self.graphLayout.setFocus(True)
+        self.graphLayout.setFocus()

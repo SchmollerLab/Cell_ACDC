@@ -2217,7 +2217,7 @@ class myMessageBox(QDialog):
         self._h = self.height()
 
         if self.okButton is not None:
-            self.okButton.setFocus(True)
+            self.okButton.setFocus()
 
         if self.widgets:
             return

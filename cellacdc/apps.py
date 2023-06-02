@@ -581,7 +581,7 @@ class customAnnotationDialog(QDialog):
         self.cancelButton = cancelButton
         self.loadSavedAnnotButton.clicked.connect(self.loadSavedAnnot)
         self.okButton.clicked.connect(self.ok_cb)
-        self.okButton.setFocus(True)
+        self.okButton.setFocus()
 
         mainLayout = QVBoxLayout()
 
@@ -4110,7 +4110,7 @@ class MultiTimePointFilePattern(widgets.QBaseDialog):
             self.vLayouts[j].insertWidget(row, w)
 
         self.additionalChannelWidgets[row] = items
-        lineEdit.setFocus(True)
+        lineEdit.setFocus()
 
     def removeChannel(self):
         row = self.sender()._row
@@ -4164,7 +4164,7 @@ class MultiTimePointFilePattern(widgets.QBaseDialog):
         self.close()
     
     def showEvent(self, event) -> None:
-        self.channelNameLE.setFocus(True)
+        self.channelNameLE.setFocus()
 
 class OrderableListWidgetDialog(widgets.QBaseDialog):
     def __init__(
@@ -7942,7 +7942,7 @@ class askStopFrameSegm(QDialog):
         if self.tab_idx >= len(self.spinBoxes):
             self.tab_idx = 0
         focusSpinbox = self.spinBoxes[self.tab_idx]
-        focusSpinbox.setFocus(True)
+        focusSpinbox.setFocus()
 
     def saveSegmSizeT(self):
         self.stopFrames = [
@@ -8602,7 +8602,7 @@ class QtSelectItems(QDialog):
                 h = sum([self.ListBox.sizeHintForRow(i) for i in range(n)])
             self.ListBox.setMinimumHeight(h+5)
             self.ListBox.setFocusPolicy(Qt.StrongFocus)
-            self.ListBox.setFocus(True)
+            self.ListBox.setFocus()
             self.ListBox.setCurrentRow(0)
             self.mainLayout.setStretchFactor(self.topLayout, 2)
         else:

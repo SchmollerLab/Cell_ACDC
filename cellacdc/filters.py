@@ -269,7 +269,7 @@ class diffGaussFilterDialog(FilterBaseDialog):
 
     def showEvent(self, event):
         self.resize(int(self.width()*1.5), self.height())
-        self.firstSigmaSliderYX.setFocus(True)
+        self.firstSigmaSliderYX.setFocus()
 
 class edgeDetectionDialog(FilterBaseDialog):
     def __init__(self, layersChannelNames, parent=None, **kwargs):
