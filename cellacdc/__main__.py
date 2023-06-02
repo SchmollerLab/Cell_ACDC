@@ -318,7 +318,7 @@ class mainWin(QMainWindow):
         widget.setLayout(layout)
         layout.addWidget(label)
         self.darkModeToggle = widgets.Toggle(label_text='Dark mode')
-        self.darkModeToggle.ignoreEvent = True
+        self.darkModeToggle.ignoreEvent = False
         if scheme == 'dark':
             self.darkModeToggle.ignoreEvent = True
             self.darkModeToggle.setChecked(True)
