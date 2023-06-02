@@ -109,7 +109,7 @@ try:
     from cellacdc.utils import computeMultiChannel as utilsComputeMultiCh
     from cellacdc.utils import applyTrackFromTable as utilsApplyTrackFromTab
     from cellacdc.info import utilsInfo
-    from cellacdc import is_win, is_linux, temp_path
+    from cellacdc import is_win, is_linux, temp_path, issues_url
     from cellacdc import printl
 except ModuleNotFoundError as e:
     src_path = os.path.dirname(os.path.abspath(__file__))
@@ -1071,19 +1071,29 @@ class mainWin(QMainWindow):
     def _showDataStructWin(self):
         msg = widgets.myMessageBox(wrapText=False, showCentered=False)
         bioformats_url = 'https://www.openmicroscopy.org/bio-formats/'
+        bioformats_href = html_utils.href_tag('<b>Bio-Formats</b>', bioformats_url)
+        aicsimageio_url = 'https://allencellmodeling.github.io/aicsimageio/#'
+        aicsimageio_href = html_utils.href_tag('<b>AICSImageIO</b>', aicsimageio_url)
+        issues_href = f'<a href="{issues_url}">GitHub page</a>'
         txt = html_utils.paragraph(f"""
-            Cell-ACDC can use <b>Bio-Formats</b> to read microscopy files 
-            (more info {html_utils.href_tag('here', bioformats_url)}).<br><br>
+            Cell-ACDC can use the {bioformats_href} or the {aicsimageio_href}  
+            libraries to read microscopy files.<br><br>
             Bio-Formats requires Java and a python package called <code>javabridge</code>,<br>
             that will be automatically installed if missing.<br><br>
             We recommend using Bio-Formats, since it can read the metadata of the file,<br> 
             such as pixel size, numerical aperture etc.<br><br>
-            However, if you <b>already pre-processed your microsocpy files into .tif 
+            If Bio-Formats fails, try using AICSImageIO.<br><br>
+            Alternatively, if you <b>already pre-processed your microsocpy files into .tif 
             files</b>,<br>
             you can choose to simply re-structure them into the Cell-ACDC compatible 
             format.<br><br>
+            If nothing works, open an issue on our {issues_href} and we 
+            will be happy to help you out.<br><br>
             How do you want to proceed?          
         """)
+        useAICSImageIO = QPushButton(
+            QIcon(':AICS_logo.png'), ' Use AICSImageIO ', msg
+        )
         useBioFormatsButton = QPushButton(
             QIcon(':ome.svg'), ' Use Bio-Formats ', msg
         )
@@ -1092,7 +1102,9 @@ class mainWin(QMainWindow):
         )
         _, useBioFormatsButton, restructButton = msg.question(
             self, 'How to structure files', txt, 
-            buttonsTexts=('Cancel', useBioFormatsButton, restructButton)
+            buttonsTexts=(
+                'Cancel', useBioFormatsButton, useAICSImageIO, restructButton
+            )
         )
         if msg.cancel:
             self.logger.info('Creating data structure process aborted by the user.')
