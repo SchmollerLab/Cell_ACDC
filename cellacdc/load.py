@@ -2201,13 +2201,8 @@ def _restructure_multi_files_multi_pos(
     logger(f'Done! Files {action_str} and restructured into "{src_path}"')
 
 def get_all_svg_icons_aliases():
-<<<<<<< HEAD
-    from . import resources_path
-    with open(resources_path, 'r') as resources_file:
-=======
     from . import resources_filepath
     with open(resources_filepath, 'r') as resources_file:
->>>>>>> aicsimageio
         resources_txt = resources_file.read()
     
     aliases = re.findall('<file alias="(.+\.svg)">', resources_txt)
