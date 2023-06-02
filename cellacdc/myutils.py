@@ -39,11 +39,9 @@ from qtpy.QtCore import Signal, QObject, QCoreApplication
 
 from . import apps
 from . import prompts, widgets, core, load
-from . import html_utils, is_linux, is_win, is_mac, issues_url
+from . import html_utils, is_linux, is_win, is_mac, issues_url, is_mac_arm64
 from . import cellacdc_path, printl, temp_path, logs_path
-from . import config
-
-models_list_file_path = os.path.join(temp_path, 'custom_models_paths.ini')
+from . import config, models_list_file_path
 
 def get_module_name(script_file_path):
     parts = pathlib.Path(script_file_path).parts
@@ -80,7 +78,10 @@ def get_gdrive_path():
     if is_win:
         return os.path.join(f'G:{os.sep}', 'My Drive')
     elif is_mac:
-        return os.path.join('/Volumes/GoogleDrive/My Drive')
+        return os.path.join(
+            '/Users/francesco.padovani/Library/CloudStorage/'
+            'GoogleDrive-padovaf@tcd.ie/My Drive'
+        )
 
 def get_acdc_data_path():
     Cell_ACDC_path = os.path.dirname(cellacdc_path)
@@ -1011,8 +1012,11 @@ def download_java():
     return jre_path, jdk_path, url
 
 def get_model_path(model_name, create_temp_dir=True):
+    if model_name == 'Automatic thresholding':
+        model_name == 'thresholding'
+        
     model_info_path = os.path.join(cellacdc_path, 'models', model_name, 'model')
-
+    
     if os.path.exists(model_info_path):
         for file in listdir(model_info_path):
             if file == 'weights_location_path.txt':
@@ -1384,7 +1388,7 @@ def get_list_of_trackers():
         )
         if is_valid_tracker:
             trackers.append(name)
-    return trackers
+    return natsorted(trackers)
 
 def get_list_of_models():
     models_path = os.path.join(cellacdc_path, 'models')
@@ -1395,13 +1399,15 @@ def get_list_of_models():
             continue
         if os.path.isdir(_path) and not name.endswith('__') and name != 'thresholding':
             models.add(name)
+        if name == 'thresholding':
+            models.add('Automatic thresholding')
     if not os.path.exists(models_list_file_path):
-        return list(models)
+        return natsorted(list(models))
     
     cp = config.ConfigParser()
     cp.read(models_list_file_path)
     models.update(cp.sections())
-    return sorted(list(models))
+    return natsorted(list(models))
 
 def seconds_to_ETA(seconds):
     seconds = round(seconds)
@@ -1750,8 +1756,9 @@ def _install_deepsea():
     )
 
 def import_tracker(posData, trackerName, realTime=False, qparent=None):
-    downloadWin = apps.downloadModel(trackerName, parent=qparent)
-    downloadWin.download()
+    if trackerName.lower() == 'deepsea':
+        downloadWin = apps.downloadModel(trackerName, parent=qparent)
+        downloadWin.download()
 
     trackerModuleName =  f'trackers.{trackerName}.{trackerName}_tracker'
     trackerModule = import_module(trackerModuleName)
@@ -1807,6 +1814,7 @@ def import_tracker(posData, trackerName, realTime=False, qparent=None):
                 if paramsWin.inputChannelName != 'None':
                     chName = paramsWin.inputChannelName
                     track_params['image'] = posData.loadChannelData(chName)
+                    track_params['image_channel_name'] = chName
         if 'export_to_extension' in track_params:
             ext = track_params['export_to_extension']
             track_params['export_to'] = posData.get_tracker_export_path(
@@ -1873,7 +1881,7 @@ def check_cuda(model_name, use_gpu, qparent=None):
         or model_name.lower().find('deepsea') != -1
         or model_name.lower().find('segment_anything') != -1
     )
-    if is_torch_model:
+    if is_torch_model and not is_mac_arm64:
         import torch
         if not torch.cuda.is_available():
             proceed = _warn_install_torch_cuda(model_name, qparent=qparent)

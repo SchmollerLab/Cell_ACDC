@@ -374,7 +374,7 @@ class segmWorker(QRunnable):
 
             self.signals.innerPbar_available = self.innerPbar_available
             self.track_params['signals'] = self.signals
-            if self.image_chName_tracker:
+            if self.image_chName_tracker is not None:
                 # Check if loading the image for the tracker is required
                 if 'image' in self.track_params:
                     trackerInputImage = self.track_params.pop('image')
@@ -388,9 +388,9 @@ class segmWorker(QRunnable):
                     tracked_stack = self.tracker.track(
                         lab_stack, trackerInputImage, **self.track_params
                     )
-                except TypeError:
-                    # User accidentally loaded image data but the tracker doesn't
-                    # need it
+                except Exception as e:
+                    # Check if user accidentally passed the image even if 
+                    # the tracker doesn't need it
                     self.signals.progress.emit(
                         'Image data is not required by this tracker, ignoring it...'
                     )
@@ -441,6 +441,8 @@ class segmWin(QMainWindow):
         self.buttonToRestore = buttonToRestore
         self.mainWin = mainWin
         self._version = version
+        
+        self.isSegmWorkerRunning = False
 
         logger, logs_path, log_path, log_filename = myutils.setupLogger(
             module='segm'
@@ -1077,7 +1079,7 @@ class segmWin(QMainWindow):
             isROIactive = posData.dataPrep_ROIcoords.at['cropped', 'value'] == 0
             x0, x1, y0, y1 = posData.dataPrep_ROIcoords['value'][:4]
 
-        self.image_chName_tracker = ''
+        self.image_chName_tracker = None
         self.do_tracking = False
         self.tracker = None
         self.track_params = {}
@@ -1115,7 +1117,7 @@ class segmWin(QMainWindow):
                     self.close()
                     return
 
-            self.image_chName_tracker = ''
+            self.image_chName_tracker = None
             if win.clickedButton in win._additionalButtons:
                 self.do_tracking = False
                 trackerName = ''
@@ -1136,7 +1138,8 @@ class segmWin(QMainWindow):
                     # Store the channel name for the tracker for loading it 
                     # in case of multiple pos
                     self.image_chName_tracker = self.track_params.pop(
-                        'image_channel_name')
+                        'image_channel_name'
+                    )
 
         self.progressLabel.setText('Starting main worker...')
 
@@ -1293,11 +1296,14 @@ class segmWin(QMainWindow):
         worker.signals.progress_tqdm.connect(self.update_tqdm_pbar)
         worker.signals.signal_close_tqdm.connect(self.close_tqdm)
         worker.signals.critical.connect(self.workerCritical)
+        self.segmWorker = worker
         # worker.signals.debug.connect(self.debugSegmWorker)
         self.threadPool.start(worker)
+        self.isSegmWorkerRunning = True
     
     @exception_handler
     def workerCritical(self, error):
+        self.isSegmWorkerRunning = False
         raise error
 
     def debugSegmWorker(self, lab):
@@ -1352,25 +1358,33 @@ class segmWin(QMainWindow):
             self.startSegmWorker()
         else:
             self.numThreadsRunning -= 1
-            if self.numThreadsRunning == 0:
+            if self.numThreadsRunning > 0:
+                return 
+            self.isSegmWorkerRunning = False
+            if exec_time > 0:
+                short_txt = 'Segmentation process finished!'
                 exec_time = round(self.total_exec_time)
                 exec_time_delta = datetime.timedelta(seconds=exec_time)
                 h, m, s = str(exec_time_delta).split(':')
                 exec_time_delta = f'{int(h):02}h:{int(m):02}m:{int(s):02}s'
-                self.progressLabel.setText(
-                    'Segmentation task done.'
+                txt = html_utils.paragraph(
+                    'Segmentation task ended.<br><br>'
+                    f'  - Total execution time: {exec_time_delta}<br><br>'
+                    f'  - Files saved to "{self.exp_path}"'
                 )
-                msg = QMessageBox(self)
-                abort = msg.information(
-                   self, 'Segmentation task ended.',
-                   'Segmentation task ended.\n\n'
-                   f'Total execution time: {exec_time_delta}\n\n'
-                   f'Files saved to "{self.exp_path}"',
-                   msg.Close
+            else:
+                short_txt = 'Segmentation process stopped'
+                txt = html_utils.paragraph(
+                    'Segmentation task stopped by the user.<br>'
                 )
+                
+            self.progressLabel.setText(short_txt)
+            msg = widgets.myMessageBox(self)
+            abort = msg.information(self, 'Segmentation task ended.', txt)
+            if exec_time > 0:
                 self.close()
-                if self.allowExit:
-                    exit('Conversion task ended.')
+            if self.allowExit:
+                exit('Conversion task ended.')
 
     def doAbort(self):
         if self.allowExit:
@@ -1381,8 +1395,35 @@ class segmWin(QMainWindow):
                self, 'Execution aborted', 'Segmentation task aborted.'
             )
             return True
+    
+    def warnSegmWorkerStillRunning(self):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph("""
+            Segmentation/tracking process is <b>still running.</b><br><br>
+            The only way to stop the process is to <b>close Cell-ACDC</b>.<br><br>
+            Are you sure you want to continue?
+        """)
+        noButton, yesButton = msg.warning(
+            self, 'Process still running', txt, 
+            buttonsTexts=(
+                'No, wait for the process to end', 
+                'Yes, close Cell-ACDC'
+            )
+        )
+        if msg.cancel:
+            return False
+        return msg.clickedButton == yesButton
 
     def closeEvent(self, event):
+        if self.isSegmWorkerRunning:
+            proceed = self.warnSegmWorkerStillRunning()
+            if not proceed:
+                event.ignore()
+                return
+            self.numThreadsRunning = 0
+            self.segmWorker.signals.finished.emit(-1)
+            self.mainWin.forceClose = True
+            self.mainWin.close()
         print('')
         self.log('Closing segmentation module...')
         if self.buttonToRestore is not None:

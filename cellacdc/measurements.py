@@ -1323,9 +1323,20 @@ def add_concentration_metrics(df, concentration_metrics_params):
             df[col] = concentration_values
     return df
 
+def add_size_metrics(
+        df, rp, size_metrics_to_save, isSegm3D, yx_pxl_to_um2, vox_to_fl_3D
+    ):
+    for o, obj in enumerate(tqdm(rp, ncols=100, leave=False)):
+        for col in size_metrics_to_save:
+            val = get_obj_size_metric(
+                col, obj, isSegm3D, yx_pxl_to_um2, vox_to_fl_3D
+            )
+            df.at[obj.label, col] = val
+    return df
+
 def add_foregr_metrics(
         df, rp, channel, foregr_data, foregr_metrics_params, metrics_func,
-        size_metrics_to_save, custom_metrics_params, isSegm3D, yx_pxl_to_um2, 
+        custom_metrics_params, isSegm3D, yx_pxl_to_um2, 
         vox_to_fl_3D, lab, foregr_img, customMetricsCritical=None
     ):
     custom_errors = ''
@@ -1350,12 +1361,6 @@ def add_foregr_metrics(
             else:
                 func = metrics_func[func_name]
                 val = func(foregr_obj_arr)
-            df.at[obj.label, col] = val
-        
-        for col in size_metrics_to_save:
-            val = get_obj_size_metric(
-                col, obj, isSegm3D, yx_pxl_to_um2, vox_to_fl_3D
-            )
             df.at[obj.label, col] = val
 
         for col, (custom_func, how) in custom_metrics_params.items():   

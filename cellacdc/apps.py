@@ -96,7 +96,7 @@ class installJavaDialog(widgets.myMessageBox):
         txt_macOS = ("""
         <p style="font-size:13px">
             Your system doesn't have the <code>Java Development Kit</code>
-            installed<br> and/or a C++ compiler.which is required for the installation of
+            installed<br> and/or a C++ compiler which is required for the installation of
             <code>javabridge</code><br><br>
             <b>Cell-ACDC is now going to install Java for you</b>.<br><br>
             <i><b>NOTE: After clicking on "Install", follow the instructions<br>
@@ -3000,19 +3000,40 @@ class QDialogMetadataXML(QDialog):
 
                 self.adjustSize()
 
+    def confirmOrderOfDimensions(self):
+        helpButton = widgets.helpPushButton('More details...')
+        txt = html_utils.paragraph("""
+            Are you sure that the parameter <code>Order of dimensions</code> 
+            <b>is correct</b>?<br>
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(
+            self, 'Double-check Order of dimensions', txt, showDialog=False,
+            buttonsTexts=('Cancel', helpButton, 'Yes')
+        )
+        helpButton.clicked.disconnect()
+        helpButton.clicked.connect(self.dimensionOrderHelp)
+        msg.exec_()
+        return msg.cancel
+    
     def ok_cb(self, event):
         areChNamesValid = self.checkChNames()
         if not areChNamesValid:
-            err_msg = (
-                'Channel names cannot be empty or equal to each other.\n\n'
-                'Insert a unique text for each channel name'
+            err_msg = html_utils.paragraph(
+                'Channel names <b>cannot be empty</b> or equal to each other.'
+                '<br><br>'
+                'Insert a unique text for each channel name.'
             )
-            msg = QMessageBox()
+            msg = widgets.myMessageBox()
             msg.critical(
-               self, 'Invalid channel names', err_msg, msg.Ok
+               self, 'Invalid channel names', err_msg
             )
             return
 
+        cancel = self.confirmOrderOfDimensions()
+        if cancel:
+            return
+        
         self.getValues()
         self.convertUnits()
 
@@ -4441,7 +4462,6 @@ class QDialogSelectModel(QDialog):
 
         listBox = widgets.listWidget()
         models = myutils.get_list_of_models()
-        models.append('Automatic thresholding')   
         listBox.setFont(font)
         listBox.addItems(models)
         addCustomModelItem = QListWidgetItem('Add custom model...')
@@ -10454,7 +10474,9 @@ class downloadModel:
             <code>{model_path}</code><br><br>
             <i>NOTE: if clicking on the link above does not work
             copy one of the links below and paste it into the browser</i><br><br>
-            {url}<br>{alternative_url}
+            <code>{url}</code>
+            <br><br>
+            <code>{alternative_url}</code>
         """)
         weights_paths = [os.path.join(model_path, f) for f in weights_filenames]
         weights = '\n\n'.join(weights_paths)

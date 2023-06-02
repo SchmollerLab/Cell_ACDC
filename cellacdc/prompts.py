@@ -162,8 +162,7 @@ class select_channel_name:
             if not validFile:
                 continue
             sm = difflib.SequenceMatcher(None, file, basename)
-            i, j, k = sm.find_longest_match(0, len(file),
-                                            0, len(basename))
+            i, j, k = sm.find_longest_match(0, len(file), 0, len(basename))
             basename = file[i:i+k]
         self.basename = basename
         basenameNotFound = [False]

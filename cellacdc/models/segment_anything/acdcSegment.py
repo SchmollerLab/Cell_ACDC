@@ -26,10 +26,8 @@ class Model:
             gpu=False
         ):
         if gpu:
-            from cellacdc import is_mac
-            import platform
-            cpu = platform.processor()
-            if is_mac and cpu == 'arm':
+            from cellacdc import is_mac_arm64
+            if is_mac_arm64:
                 device = 'cpu'
             else:
                 device = 'cuda'

@@ -45,6 +45,8 @@ acdc_df_bool_cols = [
     'corrected_assignment'
 ]
 
+acdc_df_str_cols = {'cell_cycle_stage': str, 'relationship': str}
+
 additional_metadata_path = os.path.join(temp_path, 'additional_metadata.json')
 last_entries_metadata_path = os.path.join(temp_path, 'last_entries_metadata.csv')
 last_selected_groupboxes_measurements_path = os.path.join(
@@ -226,7 +228,7 @@ def _add_will_divide_column(acdc_df):
     return acdc_df
 
 def _load_acdc_df_file(acdc_df_file_path):
-    acdc_df = pd.read_csv(acdc_df_file_path)
+    acdc_df = pd.read_csv(acdc_df_file_path, dtype=acdc_df_str_cols)
     try:
         acdc_df_drop_cca = acdc_df.drop(columns=cca_df_colnames).fillna(0)
         acdc_df[acdc_df_drop_cca.columns] = acdc_df_drop_cca
@@ -263,7 +265,10 @@ def store_copy_acdc_df(posData, acdc_output_csv_path, log_func=printl):
         if not os.path.exists(acdc_output_csv_path):
             return
         
-        df = pd.read_csv(acdc_output_csv_path).set_index(['frame_i', 'Cell_ID'])
+        df = (
+            pd.read_csv(acdc_output_csv_path, dtype=acdc_df_str_cols)
+            .set_index(['frame_i', 'Cell_ID'])
+        )
         posData.setTempPaths()
         h5_path = posData.acdc_output_backup_h5_path
         keys = []
@@ -888,7 +893,9 @@ class loadData:
                 df = pd.read_csv(filePath).dropna()
                 if 'filename' not in df.columns:
                     df['filename'] = self.filename
-                self.segmInfo_df = df.set_index(['filename', 'frame_i'])
+                df = df.set_index(['filename', 'frame_i']).sort_index()
+                df = df[~df.index.duplicated()]
+                self.segmInfo_df = df
                 self.segmInfo_df.to_csv(filePath)
             elif load_delROIsInfo and file.endswith('delROIsInfo.npz'):
                 self.delROIsInfoFound = True
@@ -1203,6 +1210,24 @@ class loadData:
         else:
             self.PhysicalSizeZ = 1
 
+        if 'LensNA' in self.metadata_df.index:
+            self.PhysicalSizeZ = float(
+                self.metadata_df.at['LensNA', 'values']
+            )
+        else:
+            self.numAperture = 1.4
+        
+        emWavelenMask = self.metadata_df.index.str.contains(r'_emWavelen')
+        df_emWavelens = self.metadata_df[emWavelenMask]
+        self.emWavelens = {}
+        try:
+            for channel_i_emWavelen, emWavelen in df_emWavelens.itertuples():
+                channel_i_name = channel_i_emWavelen.replace('_emWavelen', '_name')
+                chName = self.metadata_df.at[channel_i_name, 'values']
+                self.emWavelens[chName] = float(emWavelen)
+        except Exception as e:
+            pass
+        
         self._additionalMetadataValues = {}
         for name in self.metadata_df.index:
             if name.startswith('__'):
@@ -1460,6 +1485,20 @@ class loadData:
             return channel_name, segmEndName
         else:
             return self.user_ch_name, ''
+    
+    def updateSegmentedChannelHyperparams(self, channelName):
+        cp = config.ConfigParser()
+        if not os.path.exists(self.segm_hyperparams_ini_path):
+            return
+        cp.read(self.segm_hyperparams_ini_path)
+        segmEndName = self.getSegmEndname()
+        section = segmEndName
+        if section not in cp.sections():
+            return
+        option = 'segmented_channel'
+        cp[section][option] = channelName
+        with open(self.segm_hyperparams_ini_path, 'w') as configfile:
+            cp.write(configfile)
 
     def saveSegmHyperparams(
             self, model_name='', hyperparams=None, post_process_params=None
@@ -1852,7 +1891,7 @@ class select_exp_folder:
                 if filename.find('acdc_output.csv') != -1:
                     last_tracked_i_found = True
                     acdc_df_path = f'{images_path}/{filename}'
-                    acdc_df = pd.read_csv(acdc_df_path)
+                    acdc_df = pd.read_csv(acdc_df_path, dtype=acdc_df_str_cols)
                     last_tracked_i = max(acdc_df['frame_i'])
                     break
             if last_tracked_i_found:
@@ -2162,8 +2201,13 @@ def _restructure_multi_files_multi_pos(
     logger(f'Done! Files {action_str} and restructured into "{src_path}"')
 
 def get_all_svg_icons_aliases():
+<<<<<<< HEAD
     from . import resources_path
     with open(resources_path, 'r') as resources_file:
+=======
+    from . import resources_filepath
+    with open(resources_filepath, 'r') as resources_file:
+>>>>>>> aicsimageio
         resources_txt = resources_file.read()
     
     aliases = re.findall('<file alias="(.+\.svg)">', resources_txt)

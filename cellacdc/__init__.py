@@ -65,6 +65,7 @@ except Exception as e:
 import sys
 import os
 import inspect
+import platform
 import traceback
 import pathlib
 from datetime import datetime
@@ -127,9 +128,15 @@ parent_path = os.path.dirname(cellacdc_path)
 html_path = os.path.join(cellacdc_path, '_html')
 data_path = os.path.join(parent_path, 'data')
 temp_path = os.path.join(cellacdc_path, 'temp')
+resources_folderpath = os.path.join(cellacdc_path, 'resources')
+resources_filepath = os.path.join(cellacdc_path, 'resources.qrc')
 settings_csv_path = os.path.join(temp_path, 'settings.csv')
 logs_path = os.path.join(user_path, '.acdc-logs')
+<<<<<<< HEAD
 resources_path = os.path.join(cellacdc_path, 'resources.qrc')
+=======
+models_list_file_path = os.path.join(temp_path, 'custom_models_paths.ini')
+>>>>>>> aicsimageio
 user_manual_url = 'https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf'
 
 # Use to get the acdc_output file name from `segm_filename` as 
@@ -176,6 +183,7 @@ is_linux = sys.platform.startswith('linux')
 is_mac = sys.platform == 'darwin'
 is_win = sys.platform.startswith("win")
 is_win64 = (is_win and (os.environ["PROCESSOR_ARCHITECTURE"] == "AMD64"))
+is_mac_arm64 = is_mac and platform.machine() == 'arm64'
 
 yeaz_weights_filenames = [
     'unet_weights_batchsize_25_Nepochs_100_SJR0_10.hdf5',

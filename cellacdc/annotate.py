@@ -457,6 +457,7 @@ class TextAnnotations:
         
         labelsToSkip = kwargs.get('labelsToSkip')
         posData = kwargs['posData']
+        delROIsIDs = kwargs.get('delROIsIDs', [])
         isObjVisible = kwargs.get('isVisibleCheckFunc')
         highlightedID = kwargs.get('highlightedID')
         isCcaAnnot = self.isCcaAnnot()
@@ -470,6 +471,9 @@ class TextAnnotations:
             
             if not isObjVisible(obj.bbox):
                 continue
+            
+            if obj.label in delROIsIDs:
+                continue
 
             isNewObject = obj.label in posData.new_IDs
             objOpts = get_obj_text_annot_opts(
@@ -478,6 +482,7 @@ class TextAnnotations:
                 isGenNumTreeAnnotation, posData.frame_i
             )
             yc, xc = obj.centroid[-2:]
+            
             pos = (int(xc), int(yc))
             objData = self.item.addObjAnnot(pos, draw=False, **objOpts)
             objData['data'] = obj.label

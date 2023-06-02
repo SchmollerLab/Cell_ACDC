@@ -11,11 +11,11 @@ import inspect
 import logging
 import uuid
 import json
+import pprint
 import psutil
 from importlib import import_module
 from functools import partial
 from tqdm import tqdm
-from pprint import pprint
 from natsort import natsorted
 import time
 import cv2
@@ -342,6 +342,11 @@ class saveDataWorker(QObject):
         if not proceed:
             return
 
+        df = measurements.add_size_metrics(
+            df, rp, size_metrics_to_save, isSegm3D, yx_pxl_to_um2, 
+            vox_to_fl_3D
+        )
+        
         # Get background masks
         autoBkgr_masks = measurements.get_autoBkgr_mask(
             lab, isSegm3D, posData, frame_i
@@ -375,8 +380,8 @@ class saveDataWorker(QObject):
             # Iterate objects and compute foreground metrics
             df = measurements.add_foregr_metrics(
                 df, rp, channel, foregr_data, foregr_metrics_params[channel], 
-                metrics_func, size_metrics_to_save, custom_metrics_params[channel], 
-                isSegm3D, yx_pxl_to_um2, vox_to_fl_3D, lab, foregr_img,
+                metrics_func, custom_metrics_params[channel], isSegm3D, 
+                yx_pxl_to_um2, vox_to_fl_3D, lab, foregr_img,
                 customMetricsCritical=self.customMetricsCritical
             )
 
@@ -836,7 +841,11 @@ class guiWin(QMainWindow):
         self.logger.info(
             f'{timestap} - File "{filename}", line {callingframe_info.lineno}:'
         )
-        self.logger.info(', '.join([str(x) for x in objects]))
+        if kwargs.get('pretty'):
+            txt = pprint.pformat(objects[0])
+        else:
+            txt = ', '.join([str(x) for x in objects])
+        self.logger.info(txt)
         self.logger.info('='*30)
     
     def _print(self, *objects):
@@ -2421,7 +2430,6 @@ class guiWin(QMainWindow):
 
         # Edit actions
         models = myutils.get_list_of_models()
-        models.append('Automatic thresholding')
         self.segmActions = []
         self.modelNames = []
         self.acdcSegment_li = []
@@ -5270,7 +5278,11 @@ class guiWin(QMainWindow):
             if not self.brushAutoFillCheckbox.isChecked():
                 return
             
-            obj_idx = posData.IDs.index(ID)
+            try:
+                obj_idx = posData.IDs.index(ID)
+            except IndexError as e:
+                return
+            
             obj = posData.rp[obj_idx]
             objMask = self.getObjImage(obj.image, obj.bbox)
             localFill = scipy.ndimage.binary_fill_holes(objMask)
@@ -8949,9 +8961,21 @@ class guiWin(QMainWindow):
                     self.currentLab2D, autoLevels=False
                 )
 
+    def getDelRoisIDs(self):
+        posData = self.data[self.pos_i]
+        allDelIDs = set()
+        for roi in posData.allData_li[posData.frame_i]['delROIs_info']['rois']:
+            if roi not in self.ax2.items and roi not in self.ax1.items:
+                continue
+            
+            ROImask = self.getDelRoiMask(roi)
+            delIDs = posData.lab[ROImask]
+            allDelIDs.update(delIDs)
+        return allDelIDs
+            
     def getDelROIlab(self):
         posData = self.data[self.pos_i]
-        DelROIlab = self.get_2Dlab(posData.lab, force_z=False)
+        DelROIlab = self.get_2Dlab(posData.lab, force_z=False).copy()
         allDelIDs = set()
         # Iterate rois and delete IDs
         for roi in posData.allData_li[posData.frame_i]['delROIs_info']['rois']:
@@ -10626,7 +10650,7 @@ class guiWin(QMainWindow):
                 pass
         
         isBrushKey = ev.key() == self.brushButton.keyPressShortcut
-        isEraserKey = ev.key() == Qt.Key_X
+        isEraserKey = ev.key() == self.eraserButton.keyPressShortcut
         isExpandLabelActive = self.expandLabelToolButton.isChecked()
         isWandActive = self.wandToolButton.isChecked()
         isLabelRoiCircActive = (
@@ -11874,7 +11898,7 @@ class guiWin(QMainWindow):
 
         self.addCustomAnnotationItems(
             symbol, symbolColor, keySequence, toolTip, name,
-            keepActive, isHideChecked, self.annotWin.state
+            keepActive, isHideChecked, self.addAnnotWin.state
         )
         self.saveCustomAnnot()
 
@@ -12033,20 +12057,25 @@ class guiWin(QMainWindow):
         if buttons:
             return buttons[0]
 
-    def removeCustomAnnotButton(self, button, save=True):
-        msg = widgets.myMessageBox()
-        txt = html_utils.paragraph("""
-            Do you want to <b>remove also the column with annotations</b> or 
-            only the annotation button?<br>
-        """)
-        _, removeOnlyButton, removeColButton = msg.question(
-            self, 'Remove only button?', txt, 
-            buttonsTexts=(
-                'Cancel', 'Remove only button', ' Remove also column with annotations '
+    def removeCustomAnnotButton(self, button, askHow=True, save=True):
+        if askHow:
+            msg = widgets.myMessageBox()
+            txt = html_utils.paragraph("""
+                Do you want to <b>remove also the column with annotations</b> or 
+                only the annotation button?<br>
+            """)
+            _, removeOnlyButton, removeColButton = msg.question(
+                self, 'Remove only button?', txt, 
+                buttonsTexts=(
+                    'Cancel', 'Remove only button', 
+                    ' Remove also column with annotations '
+                )
             )
-        )
-        if msg.cancel:
-            return
+            if msg.cancel:
+                return
+            removeOnlyButton = msg.clickedButton == removeOnlyButton
+        else:
+            removeOnlyButton = True
         
         name = self.customAnnotDict[button]['state']['name']
         # remove annotation from position
@@ -12060,7 +12089,7 @@ class guiWin(QMainWindow):
             if posData.acdc_df is None:
                 continue
             
-            if msg.clickedButton == removeOnlyButton:
+            if removeOnlyButton:
                 continue
 
             posData.acdc_df = posData.acdc_df.drop(
@@ -12299,7 +12328,10 @@ class guiWin(QMainWindow):
             self.z_range = None
         if self.isSegm3D and self.segment3D and self.askZrangeSegm3D:
             idx = (posData.filename, posData.frame_i)
-            orignal_z = posData.segmInfo_df.at[idx, 'z_slice_used_gui']
+            try:
+                orignal_z = posData.segmInfo_df.at[idx, 'z_slice_used_gui']
+            except ValueError as e:
+                orignal_z = posData.segmInfo_df.loc[idx, 'z_slice_used_gui'].iloc[0] 
             selectZtool = apps.QCropZtool(
                 posData.SizeZ, parent=self, cropButtonText='Ok',
                 addDoNotShowAgain=True, title='Select z-slice range to segment'
@@ -12748,7 +12780,10 @@ class guiWin(QMainWindow):
         if posData.SizeZ > 1:
             self.updateZsliceScrollbar(posData.frame_i)
             idx = (posData.filename, posData.frame_i)
-            how = posData.segmInfo_df.at[idx, 'which_z_proj_gui']
+            try:
+                how = posData.segmInfo_df.at[idx, 'which_z_proj_gui']
+            except ValueError as e:
+                how = posData.segmInfo_df.loc[idx, 'which_z_proj_gui'].iloc[0] 
             self.zProjComboBox.setCurrentText(how)
             self.zSliceScrollBar.setMaximum(posData.SizeZ-1)
             self.zSliceSpinbox.setMaximum(posData.SizeZ)
@@ -13350,10 +13385,7 @@ class guiWin(QMainWindow):
         self.updateImageValueFormatter()
         self.checkManageVersions()
 
-        if self.isSnapshot:
-            self.setWindowTitle(f'Cell-ACDC - GUI - "{posData.exp_path}"')
-        else:
-            self.setWindowTitle(f'Cell-ACDC - GUI - "{posData.pos_path}"')
+        self.setWindowTitle(f'Cell-ACDC - GUI - "{posData.exp_path}"')
 
         self.guiTabControl.addChannels([posData.user_ch_name])
         self.showPropsDockButton.setDisabled(False)
@@ -13378,7 +13410,10 @@ class guiWin(QMainWindow):
         self.navigateScrollBar.setSliderPosition(posData.frame_i+1)
         if posData.SizeZ > 1:
             idx = (posData.filename, posData.frame_i)
-            how = posData.segmInfo_df.at[idx, 'which_z_proj_gui']
+            try:
+                how = posData.segmInfo_df.at[idx, 'which_z_proj_gui']
+            except ValueError as e:
+                how = posData.segmInfo_df.loc[idx, 'which_z_proj_gui'].iloc[0] 
             self.zProjComboBox.setCurrentText(how)
 
         # Connect events at the end of loading data process
@@ -13603,14 +13638,14 @@ class guiWin(QMainWindow):
         self.statusbar.clearMessage()
         posData = self.data[self.pos_i]
         segmentedChannelname = posData.filename[len(posData.basename):]
-        segmEndName = os.path.basename(posData.segm_npz_path)[len(posData.basename):]
+        segmFilename = os.path.basename(posData.segm_npz_path)
+        segmEndName = segmFilename[len(posData.basename):]
         txt = (
+            f'{posData.pos_foldername} || '
             f'Basename: {posData.basename} || '
             f'Segmented channel: {segmentedChannelname} || '
             f'Segmentation file name: {segmEndName}'
         )
-        if not self.isSnapshot:
-            txt = f'{txt} || {posData.pos_foldername}'
         if log:
             self.logger.info(txt)
         self.statusBarLabel.setText(txt)
@@ -16816,7 +16851,6 @@ class guiWin(QMainWindow):
                 shortcut = QKeySequence(shortcut_text)
             
             shortcuts[name] = (shortcut_text, shortcut)
-        
         self.setShortcuts(shortcuts, save=False)
         with open(shortcut_filepath, 'w') as ini:
             cp.write(ini)
@@ -17081,9 +17115,12 @@ class guiWin(QMainWindow):
         if frame_i is None:
             frame_i = posData.frame_i
         idx = (posData.filename, frame_i)
-        zProjHow_L0 = posData.segmInfo_df.at[idx, 'which_z_proj_gui']
+        zProjHow_L0 = self.zProjComboBox.currentText()
         if isLayer0:
-            z = posData.segmInfo_df.at[idx, 'z_slice_used_gui']
+            try:
+                z = posData.segmInfo_df.at[idx, 'z_slice_used_gui']
+            except ValueError as e:
+                z = posData.segmInfo_df.loc[idx, 'z_slice_used_gui'].iloc[0] 
             zProjHow = zProjHow_L0
         else:
             z = self.zSliceOverlay_SB.sliderPosition()
@@ -17106,8 +17143,14 @@ class guiWin(QMainWindow):
     def updateZsliceScrollbar(self, frame_i):
         posData = self.data[self.pos_i]
         idx = (posData.filename, frame_i)
-        z = posData.segmInfo_df.at[idx, 'z_slice_used_gui']
-        zProjHow = posData.segmInfo_df.at[idx, 'which_z_proj_gui']
+        try:
+            z = posData.segmInfo_df.at[idx, 'z_slice_used_gui']
+        except ValueError as e:
+            z = posData.segmInfo_df.loc[idx, 'z_slice_used_gui'].iloc[0] 
+        try:
+            zProjHow = posData.segmInfo_df.at[idx, 'which_z_proj_gui']
+        except ValueError as e:
+            zProjHow = posData.segmInfo_df.loc[idx, 'which_z_proj_gui'].iloc[0] 
         if zProjHow != 'single z-slice':
             return
         reconnect = False
@@ -17912,15 +17955,18 @@ class guiWin(QMainWindow):
     def setAllTextAnnotations(self, labelsToSkip=None):
         self.setTitleText()
         posData = self.data[self.pos_i]
+        delROIsIDs = self.getDelRoisIDs()
         self.textAnnot[0].setAnnotations(
             posData=posData, labelsToSkip=labelsToSkip, 
             isVisibleCheckFunc=self.isObjVisible,
-            highlightedID=self.highlightedID
+            highlightedID=self.highlightedID, 
+            delROIsIDs=delROIsIDs
         )
         self.textAnnot[1].setAnnotations(
             posData=posData, labelsToSkip=labelsToSkip, 
             isVisibleCheckFunc=self.isObjVisible,
-            highlightedID=self.highlightedID
+            highlightedID=self.highlightedID, 
+            delROIsIDs=delROIsIDs
         )
         self.textAnnot[0].update()
         self.textAnnot[1].update()
@@ -18065,15 +18111,18 @@ class guiWin(QMainWindow):
 
     def highlightLostNew(self):
         posData = self.data[self.pos_i]
+
         for obj in posData.rp:
             ID = obj.label
-            if ID in posData.new_IDs:
-                self.addObjContourToContoursImage(
-                    obj=obj, ax=0, thickness=self.contLineWeight+1
-                )
-                self.addObjContourToContoursImage(
-                    obj=obj, ax=1, thickness=self.contLineWeight+1
-                )
+            if ID not in posData.new_IDs:
+                continue
+            
+            self.addObjContourToContoursImage(
+                obj=obj, ax=0, thickness=self.contLineWeight+1
+            )
+            self.addObjContourToContoursImage(
+                obj=obj, ax=1, thickness=self.contLineWeight+1
+            )
         
         if not posData.lost_IDs:
             return
@@ -18686,7 +18735,7 @@ class guiWin(QMainWindow):
     def reinitCustomAnnot(self):
         buttons = list(self.customAnnotDict.keys())
         for button in buttons:
-            self.removeCustomAnnotButton(button, save=False)
+            self.removeCustomAnnotButton(button, save=False, askHow=False)
 
     def loadingDataAborted(self):
         self.openAction.setEnabled(True)
@@ -18701,7 +18750,10 @@ class guiWin(QMainWindow):
     def openFolder(
             self, checked=False, exp_path=None, imageFilePath=''
         ):
-        self.logger.info(f'Opening FOLDER "{exp_path}"')
+        if exp_path is None:
+            self.logger.info('Asking to select a folder path...')
+        else:
+            self.logger.info(f'Opening FOLDER "{exp_path}"...')
 
         self.isNewFile = False
         if hasattr(self, 'data') and self.titleLabel.text != 'Saved!':
@@ -20354,13 +20406,14 @@ class guiWin(QMainWindow):
         # Check channel name correspondence to warn
         posData = self.data[self.pos_i]
         lastSegmChannel, segmEndName = posData.getSegmentedChannelHyperparams()
-        if lastSegmChannel != self.user_ch_name:
+        if lastSegmChannel != self.user_ch_name and lastSegmChannel:
             cancel = self.warnDifferentSegmChannel(
                 self.user_ch_name, lastSegmChannel, segmEndName
             )
             if cancel:
                 self.abortSavingInitialisation()
                 return True
+            posData.updateSegmentedChannelHyperparams(self.user_ch_name)
 
         self.save_metrics = False
         if not isQuickSave:
@@ -20736,6 +20789,7 @@ class guiWin(QMainWindow):
         super().show()
 
     def show(self):
+        self.setFont(_font)
         QMainWindow.show(self)
 
         self.setWindowState(Qt.WindowNoState)

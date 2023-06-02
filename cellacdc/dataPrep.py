@@ -484,7 +484,10 @@ class dataPrepWin(QMainWindow):
                 return img
             df =  posData.segmInfo_df
             idx = (posData.filename, frame_i)
-            z = posData.segmInfo_df.at[idx, 'z_slice_used_dataPrep']
+            try:
+                z = posData.segmInfo_df.at[idx, 'z_slice_used_dataPrep']
+            except Exception as e:
+                z = posData.segmInfo_df.loc[idx, 'z_slice_used_dataPrep'].iloc[0]
             zProjHow = posData.segmInfo_df.at[idx, 'which_z_proj']
             try:
                 self.zProjComboBox.currentTextChanged.disconnect()
@@ -1654,14 +1657,14 @@ class dataPrepWin(QMainWindow):
                 txt = html_utils.paragraph(f"""
                     Do you want to <b>align ALL channels</b> based on 
                     <code>{user_ch_name}</code> channel?<br><br>
-                    <i>If you don't know what to choose, we <b>reccommend</b> 
-                    aligning.</i>
+                    NOTE: If you don't know what to choose, we <b>reccommend</b> 
+                    aligning.
                 """)
             else:
                 txt = html_utils.paragraph(f"""
                     Do you want to <b>align</b> the frames over time?<br><br>
-                    <i>If you don't know what to choose, we <b>reccommend</b> 
-                    aligning.</i>
+                    NOTE: If you don't know what to choose, we <b>reccommend</b> 
+                    aligning.
                 """)
             _, yesButton, noButton = msg.question(
                 self, 'Align frames?', txt,

@@ -3,7 +3,7 @@ import os
 import logging
 
 from cellacdc import dataReStruct
-from . import exception_handler
+from . import exception_handler, printl
 from . import qrc_resources
 if os.name == 'nt':
     try:
@@ -38,8 +38,17 @@ class AcdcSPlashScreen(QtWidgets.QSplashScreen):
     def mousePressEvent(self, a0: QtGui.QMouseEvent) -> None:
         pass
 
+class App(QtWidgets.QApplication):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.installEventFilter(self)
+        
+    def eventFilter(self, object, event):
+        return False
+    
+    
 # Create the application
-app = QtWidgets.QApplication([])
+app = App([])
 app.setStyle(QtWidgets.QStyleFactory.create('Fusion'))
 app.setPalette(app.style().standardPalette())
 
@@ -67,7 +76,7 @@ from functools import partial
 
 from qtpy.QtWidgets import (
     QMainWindow, QVBoxLayout, QPushButton, QLabel, QAction,
-    QMenu, QHBoxLayout, QFileDialog
+    QMenu, QHBoxLayout, QFileDialog, QGroupBox
 )
 from qtpy.QtCore import (
     Qt, QProcess, Signal, Slot, QTimer, QSize,
@@ -100,7 +109,7 @@ try:
     from cellacdc.utils import computeMultiChannel as utilsComputeMultiCh
     from cellacdc.utils import applyTrackFromTable as utilsApplyTrackFromTab
     from cellacdc.info import utilsInfo
-    from cellacdc import is_win, is_linux, temp_path
+    from cellacdc import is_win, is_linux, temp_path, issues_url
     from cellacdc import printl
 except ModuleNotFoundError as e:
     src_path = os.path.dirname(os.path.abspath(__file__))
@@ -125,7 +134,7 @@ try:
     )
     SPOTMAX = True
 except Exception as e:
-    traceback.print_exc()
+    # traceback.print_exc()
     if not isinstance(e, ModuleNotFoundError):
         traceback.print_exc()
     SPOTMAX = False
@@ -182,7 +191,12 @@ class mainWin(QMainWindow):
         mainLayout.addStretch()
 
         iconSize = 26
-
+        
+        modulesButtonsGroupBox = QGroupBox()
+        modulesButtonsGroupBox.setTitle('Modules')
+        modulesButtonsGroupBoxLayout = QVBoxLayout()
+        modulesButtonsGroupBox.setLayout(modulesButtonsGroupBoxLayout)
+        
         dataStructButton = widgets.setPushButton(
             '  0. Create data structure from microscopy/image file(s)...  '
         )
@@ -192,7 +206,7 @@ class mainWin(QMainWindow):
         dataStructButton.setFont(font)
         dataStructButton.clicked.connect(self.launchDataStruct)
         self.dataStructButton = dataStructButton
-        mainLayout.addWidget(dataStructButton)
+        modulesButtonsGroupBoxLayout.addWidget(dataStructButton)
 
         dataPrepButton = QPushButton('  1. Launch data prep module...')
         dataPrepButton.setIcon(QIcon(':prep.svg'))
@@ -202,7 +216,7 @@ class mainWin(QMainWindow):
         dataPrepButton.setFont(font)
         dataPrepButton.clicked.connect(self.launchDataPrep)
         self.dataPrepButton = dataPrepButton
-        mainLayout.addWidget(dataPrepButton)
+        modulesButtonsGroupBoxLayout.addWidget(dataPrepButton)
 
         segmButton = QPushButton('  2. Launch segmentation module...')
         segmButton.setIcon(QIcon(':segment.svg'))
@@ -210,7 +224,7 @@ class mainWin(QMainWindow):
         segmButton.setFont(font)
         segmButton.clicked.connect(self.launchSegm)
         self.segmButton = segmButton
-        mainLayout.addWidget(segmButton)
+        modulesButtonsGroupBoxLayout.addWidget(segmButton)
 
         guiButton = QPushButton('  3. Launch GUI...')
         guiButton.setIcon(QIcon(':icon.ico'))
@@ -218,7 +232,7 @@ class mainWin(QMainWindow):
         guiButton.setFont(font)
         guiButton.clicked.connect(self.launchGui)
         self.guiButton = guiButton
-        mainLayout.addWidget(guiButton)
+        modulesButtonsGroupBoxLayout.addWidget(guiButton)
 
         if SPOTMAX:
             spotmaxButton = QPushButton('  4. Launch spotMAX...')
@@ -227,7 +241,24 @@ class mainWin(QMainWindow):
             spotmaxButton.setFont(font)
             self.spotmaxButton = spotmaxButton
             spotmaxButton.clicked.connect(self.launchSpotmaxGui)
-            mainLayout.addWidget(spotmaxButton)
+            modulesButtonsGroupBoxLayout.addWidget(spotmaxButton)
+        
+        mainLayout.addWidget(modulesButtonsGroupBox)
+        mainLayout.addSpacing(10)
+        
+        controlsButtonsGroupBox = QGroupBox()
+        controlsButtonsGroupBox.setTitle('Controls')
+        controlsButtonsGroupBoxLayout = QVBoxLayout()
+        controlsButtonsGroupBox.setLayout(controlsButtonsGroupBoxLayout)
+        
+        showAllWindowsButton = QPushButton('  Restore open windows')
+        showAllWindowsButton.setIcon(QIcon(':eye.svg'))
+        showAllWindowsButton.setIconSize(QSize(iconSize,iconSize))
+        showAllWindowsButton.setFont(font)
+        self.showAllWindowsButton = showAllWindowsButton
+        showAllWindowsButton.clicked.connect(self.showAllWindows)
+        controlsButtonsGroupBoxLayout.addWidget(showAllWindowsButton)
+        # showAllWindowsButton.setDisabled(True)
 
         font = QFont()
         font.setPixelSize(13)
@@ -243,7 +274,7 @@ class mainWin(QMainWindow):
         self.restartButton = restartButton
         closeLayout.addWidget(restartButton)
 
-        closeButton = QPushButton(QIcon(":exit.png"), '  Exit')
+        closeButton = QPushButton(QIcon(":close.svg"), '  Close application')
         closeButton.setIconSize(QSize(iconSize, iconSize))
         self.closeButton = closeButton
         # closeButton.setIconSize(QSize(24,24))
@@ -251,7 +282,10 @@ class mainWin(QMainWindow):
         closeButton.clicked.connect(self.close)
         closeLayout.addWidget(closeButton)
 
-        mainLayout.addLayout(closeLayout)
+        controlsButtonsGroupBoxLayout.addLayout(closeLayout)
+        
+        mainLayout.addWidget(controlsButtonsGroupBox)
+        
         mainContainer.setLayout(mainLayout)
 
         self.start_JVM = True
@@ -261,6 +295,7 @@ class mainWin(QMainWindow):
         self.dataPrepWin = None
         self._version = None
         self.progressWin = None
+        self.forceClose = False
     
     def checkConfigFiles(self):
         self.logger.info('Loading configuration files...')
@@ -664,6 +699,8 @@ class mainWin(QMainWindow):
             )
             win.exec_()
             posPath = os.path.join(exp_path, win.selectedItemText)
+        else:
+            posPath = os.path.join(exp_path, posFolders[0])
         
         return posPath
 
@@ -1034,19 +1071,29 @@ class mainWin(QMainWindow):
     def _showDataStructWin(self):
         msg = widgets.myMessageBox(wrapText=False, showCentered=False)
         bioformats_url = 'https://www.openmicroscopy.org/bio-formats/'
+        bioformats_href = html_utils.href_tag('<b>Bio-Formats</b>', bioformats_url)
+        aicsimageio_url = 'https://allencellmodeling.github.io/aicsimageio/#'
+        aicsimageio_href = html_utils.href_tag('<b>AICSImageIO</b>', aicsimageio_url)
+        issues_href = f'<a href="{issues_url}">GitHub page</a>'
         txt = html_utils.paragraph(f"""
-            Cell-ACDC can use <b>Bio-Formats</b> to read microscopy files 
-            (more info {html_utils.href_tag('here', bioformats_url)}).<br><br>
+            Cell-ACDC can use the {bioformats_href} or the {aicsimageio_href}  
+            libraries to read microscopy files.<br><br>
             Bio-Formats requires Java and a python package called <code>javabridge</code>,<br>
             that will be automatically installed if missing.<br><br>
             We recommend using Bio-Formats, since it can read the metadata of the file,<br> 
             such as pixel size, numerical aperture etc.<br><br>
-            However, if you <b>already pre-processed your microsocpy files into .tif 
+            If Bio-Formats fails, try using AICSImageIO.<br><br>
+            Alternatively, if you <b>already pre-processed your microsocpy files into .tif 
             files</b>,<br>
             you can choose to simply re-structure them into the Cell-ACDC compatible 
             format.<br><br>
+            If nothing works, open an issue on our {issues_href} and we 
+            will be happy to help you out.<br><br>
             How do you want to proceed?          
         """)
+        useAICSImageIO = QPushButton(
+            QIcon(':AICS_logo.png'), ' Use AICSImageIO ', msg
+        )
         useBioFormatsButton = QPushButton(
             QIcon(':ome.svg'), ' Use Bio-Formats ', msg
         )
@@ -1055,7 +1102,9 @@ class mainWin(QMainWindow):
         )
         _, useBioFormatsButton, restructButton = msg.question(
             self, 'How to structure files', txt, 
-            buttonsTexts=('Cancel', useBioFormatsButton, restructButton)
+            buttonsTexts=(
+                'Cancel', useBioFormatsButton, useAICSImageIO, restructButton
+            )
         )
         if msg.cancel:
             self.logger.info('Creating data structure process aborted by the user.')
@@ -1272,13 +1321,14 @@ class mainWin(QMainWindow):
         self.setColorsAndText()
         super().show()
         h = self.dataPrepButton.geometry().height()
-        f = 1.8
+        f = 1.5
         self.dataStructButton.setMinimumHeight(int(h*f))
         self.dataPrepButton.setMinimumHeight(int(h*f))
         self.segmButton.setMinimumHeight(int(h*f))
         self.guiButton.setMinimumHeight(int(h*f))
         if hasattr(self, 'spotmaxButton'):
             self.spotmaxButton.setMinimumHeight(int(h*f))
+        self.showAllWindowsButton.setMinimumHeight(int(h*f))
         self.restartButton.setMinimumHeight(int(int(h*f)))
         self.closeButton.setMinimumHeight(int(int(h*f)))
         # iconWidth = int(self.closeButton.iconSize().width()*1.3)
@@ -1336,19 +1386,20 @@ class mainWin(QMainWindow):
 
         self.saveWindowGeometry()
 
-        acceptClose, openModules = self.checkOpenModules()
-        if acceptClose:
-            for openModule in openModules:
-                geometry = openModule.saveGeometry()
-                openModule.setWindowState(Qt.WindowActive)
-                openModule.restoreGeometry(geometry)
-                openModule.close()
-                if openModule.isVisible():
-                    event.ignore()
-                    return
-        else:
-            event.ignore()
-            return
+        if not self.forceClose:
+            acceptClose, openModules = self.checkOpenModules()
+            if acceptClose:
+                for openModule in openModules:
+                    geometry = openModule.saveGeometry()
+                    openModule.setWindowState(Qt.WindowActive)
+                    openModule.restoreGeometry(geometry)
+                    openModule.close()
+                    if openModule.isVisible():
+                        event.ignore()
+                        return
+            else:
+                event.ignore()
+                return
 
         if self.sender() == self.restartButton:
             try:
