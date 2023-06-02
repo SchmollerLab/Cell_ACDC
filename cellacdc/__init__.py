@@ -5,7 +5,7 @@ try:
 except ModuleNotFoundError as e:
     while True:
         txt = (
-            'Since version 1.3.0 Cell-ACDC requires the package `qtpy`.\n\n'
+            'Since version 1.3.1 Cell-ACDC requires the package `qtpy`.\n\n'
             'You can let Cell-ACDC install it now, or you can abort '
             'and install it manually with the command `pip install qtpy`.\n'
         )
