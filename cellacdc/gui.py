@@ -1156,7 +1156,7 @@ class guiWin(QMainWindow):
                 and not self.brushButton.isChecked()
             )
         else:
-            middle_click = mouseEvent.button() == Qt.MouseButton.MidButton
+            middle_click = mouseEvent.button() == Qt.MouseButton.MiddleButton
         return middle_click
 
     def gui_createCursors(self):
