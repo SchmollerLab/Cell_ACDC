@@ -53,7 +53,7 @@ except Exception as e:
     while True:
         txt = (
             'Since version 1.3.1 Cell-ACDC does not install a GUI library by default.\n\n'
-            'You can let Cell-ACDC install it now (default library is `PyQt6`), '
+            'You can let Cell-ACDC install it now (default library is `PyQt5`), '
             'or you can abort (press "n")\n'
             'and install a compatible GUI library with one of '
             'the following commands:\n\n'
@@ -66,12 +66,12 @@ except Exception as e:
         )
         print('-'*60)
         print(txt)
-        answer = input('Do you want to install PyQt6 now ([y]/n)? ')
+        answer = input('Do you want to install PyQt5 now ([y]/n)? ')
         if answer.lower() == 'y' or not answer:
             import subprocess
             import sys
             subprocess.check_call(
-                [sys.executable, '-m', 'pip', 'install', '-U', 'PyQt6']
+                [sys.executable, '-m', 'pip', 'install', '-U', 'PyQt5']
             )
             break
         elif answer.lower() == 'n':
