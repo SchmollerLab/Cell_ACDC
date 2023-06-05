@@ -917,6 +917,7 @@ class AddPointsLayerDialog(widgets.QBaseDialog):
     sigClosed = Signal()
     sigCriticalReadTable = Signal(str)
     sigLoadedTable = Signal(object)
+    sigCheckClickEntryTableEndnameExists = Signal(str)
 
     def __init__(self, channelNames=None, imagesPath='', SizeT=1, parent=None):
         self.cancel = True
@@ -1027,8 +1028,8 @@ class AddPointsLayerDialog(widgets.QBaseDialog):
             self.tColName.label.setVisible(False)
             self.tColName.setVisible(False)
         
-        self.fromTableRadiobutton.toggled.connect(self.enableTableWidgets)
-        self.enableTableWidgets(False)
+        self.fromTableRadiobutton.toggled.connect(self.enableRadioButtonWidgets)
+        self.enableRadioButtonWidgets(False, sender=self.fromTableRadiobutton)
         '----------------------------------------------------------------------'
 
         '----------------------------------------------------------------------'
@@ -1069,11 +1070,62 @@ class AddPointsLayerDialog(widgets.QBaseDialog):
             self.manualTspinbox.setVisible(False)
             self.manualTspinbox.label.setVisible(False)
         
-        self.manualEntryRadiobutton.toggled.connect(self.enableManualWidgets)
-        self.enableManualWidgets(False)
+        self.manualEntryRadiobutton.toggled.connect(self.enableRadioButtonWidgets)
+        self.enableRadioButtonWidgets(False, sender=self.manualEntryRadiobutton)
+        
+        '----------------------------------------------------------------------'
+        row += 1
+        self.clickEntryRadiobutton = QRadioButton('Add points with mouse clicks')
+        typeLayout.addWidget(self.clickEntryRadiobutton, row, 0, 1, 2) 
+        self.clickEntryRadiobutton.widgets = [] 
+        
+        row += 1
+        self.autoPilotToggle = widgets.Toggle()
+        self.autoPilotToggle.label = QLabel('Use auto-pilot: ')
+        typeLayout.addWidget(self.autoPilotToggle.label, row, 1)
+        typeLayout.addWidget(
+            self.autoPilotToggle, row, 2, alignment=Qt.AlignCenter
+        )
+        self.autoPilotInfoButton = widgets.infoPushButton()
+        typeLayout.addWidget(self.autoPilotInfoButton, row, 3)
+        
+        self.autoPilotInfoButton.clicked.connect(self.showAutoPilotInfo)
+        self.clickEntryRadiobutton.widgets.append(self.autoPilotToggle)
+        self.clickEntryRadiobutton.widgets.append(self.autoPilotInfoButton)
+        
+        row += 1
+        self.clickEntryTableEndname = widgets.alphaNumericLineEdit()
+        self.clickEntryTableEndname.setText('points_added_by_clicking')
+        self.clickEntryTableEndname.setAlignment(Qt.AlignCenter)
+        self.clickEntryTableEndname.label = QLabel('Table endname: ')
+        typeLayout.addWidget(self.clickEntryTableEndname.label, row, 1)
+        typeLayout.addWidget(self.clickEntryTableEndname, row, 2)
+        self.clickEntryRadiobutton.widgets.append(self.clickEntryTableEndname)
+        self.clickEntryTableEndname.editingFinished.connect(
+            self.emitCheckClickEntryTableEndnameExists
+        )
+        
+        row += 1
+        instructionsText = html_utils.paragraph(
+            '<br><i>Left-click</i> to annotate a new point.<br>'
+            '<i>Click</i> on point to delete it', font_size='11px'
+        )
+        self.instructionsLabel = QLabel(instructionsText)
+        self.instructionsLabel.label = QLabel('Instructions')
+        typeLayout.addWidget(self.instructionsLabel.label, row, 1)
+        typeLayout.addWidget(self.instructionsLabel, row, 2)
+        self.clickEntryRadiobutton.widgets.append(self.instructionsLabel)
+        
+        self.clickEntryRadiobutton.toggled.connect(self.enableRadioButtonWidgets)
+        self.clickEntryRadiobutton.toggled.connect(
+            self.emitCheckClickEntryTableEndnameExists
+        )
+        self.enableRadioButtonWidgets(False, sender=self.clickEntryRadiobutton)
+        
         '======================================================================'
 
         self.appearanceGroupbox = _PointsLayerAppearanceGroupbox()
+        self.appearanceGroupbox.sizeSpinBox.setValue(1)
 
         buttonsLayout = widgets.CancelOkButtonsLayout()
 
@@ -1093,25 +1145,35 @@ class AddPointsLayerDialog(widgets.QBaseDialog):
 
         self.setFont(font)
     
+    def emitCheckClickEntryTableEndnameExists(self, *args, **kwargs):
+        if not self.clickEntryRadiobutton.isChecked():
+            return
+    
+    def showAutoPilotInfo(self):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph("""
+            With <b>Auto-pilot</b> mode active, Cell-ACDC will <b>automatically zoom</b> on 
+            to an object<br>
+            to allow you clicking on the points you want to add.<br><br>
+            You can then go to the <b>next object</b> by pressing the 
+            <code>Enter</code> key or go back to the<br>
+            <b>previous object</b> by pressing <code>Backspace</code>.
+        """)
+        msg.information(self, 'Auto-pilot info', txt)
+    
     def closeEvent(self, event):
         self.sigClosed.emit()
     
-    def enableManualWidgets(self, enabled):
-        for widget in self.manualEntryRadiobutton.widgets:
-            widget.setEnabled(enabled)
+    def enableRadioButtonWidgets(self, enabled, sender=None):
+        if sender is None:
+            sender = self.sender()
+        for widget in sender.widgets:
+            widget.setDisabled(not enabled)
             try:
-                widget.label.setEnabled(enabled)
+                widget.label.setDisabled(not enabled)
             except:
                 pass
-    
-    def enableTableWidgets(self, enabled):
-        for widget in self.fromTableRadiobutton.widgets:
-            widget.setEnabled(enabled)
-            try:
-                widget.label.setEnabled(enabled)
-            except:
-                pass
-    
+            
     def tablePathSelected(self, path):
         self.tablePath.setText(path)
         try:
@@ -1230,6 +1292,14 @@ class AddPointsLayerDialog(widgets.QBaseDialog):
             
             self.layerType = 'Manual entry'
             self.layetTypeIdx = 3
+        elif self.clickEntryRadiobutton.isChecked():
+            self.layerType = (
+                'Click to annotate point. Left-click to add a point, '
+                'click on point to delete it.\n'
+                f'Auto-pilot requested: {self.autoPilotToggle.isChecked()}'
+            )
+            self.clickEntryTableEndnameText = self.clickEntryTableEndname.text()
+            self.layetTypeIdx = 4
         
         self.cancel = False
         symbol = self.appearanceGroupbox.symbolWidget.widget.currentText()

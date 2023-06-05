@@ -6429,6 +6429,7 @@ class guiWin(QMainWindow):
         polyLineRoiON = self.addDelPolyLineRoiAction.isChecked()
         labelRoiON = self.labelRoiButton.isChecked()
         keepObjON = self.keepIDsButton.isChecked()
+        addPointsByClickingButton = self.buttonAddPointsByClickingActive()
 
         # Check if right-click on segment of polyline roi to add segment
         segments = self.gui_getHoveredSegmentsPolyLineRoi()
@@ -6453,7 +6454,8 @@ class guiWin(QMainWindow):
             left_click and not brushON and not histON
             and not curvToolON and not eraserON and not rulerON
             and not wandON and not polyLineRoiON and not labelRoiON
-            and not middle_click and not keepObjON
+            and not middle_click and not keepObjON 
+            and addPointsByClickingButton is None
         )
         if isPanImageClick:
             dragImgLeft = True
@@ -6503,41 +6505,55 @@ class guiWin(QMainWindow):
             curvToolON and not self.assignBudMothButton.isChecked()
             and not brushON and not dragImgLeft and not eraserON
             and not polyLineRoiON and not labelRoiON
+            and addPointsByClickingButton is None
         )
         canBrush = (
             brushON and not curvToolON and not rulerON
             and not dragImgLeft and not eraserON and not wandON
             and not labelRoiON
+            and addPointsByClickingButton is None
         )
         canErase = (
             eraserON and not curvToolON and not rulerON
             and not dragImgLeft and not brushON and not wandON
             and not polyLineRoiON and not labelRoiON
+            and addPointsByClickingButton is None
         )
         canRuler = (
             rulerON and not curvToolON and not brushON
             and not dragImgLeft and not brushON and not wandON
             and not polyLineRoiON and not labelRoiON
+            and addPointsByClickingButton is None
         )
         canWand = (
             wandON and not curvToolON and not brushON
             and not dragImgLeft and not brushON and not rulerON
             and not polyLineRoiON and not labelRoiON
+            and addPointsByClickingButton is None
         )
         canPolyLine = (
             polyLineRoiON and not wandON and not curvToolON and not brushON
             and not dragImgLeft and not brushON and not rulerON
             and not labelRoiON
+            and addPointsByClickingButton is None
         )
         canLabelRoi = (
             labelRoiON and not wandON and not curvToolON and not brushON
             and not dragImgLeft and not brushON and not rulerON
             and not polyLineRoiON and not keepObjON
+            and addPointsByClickingButton is None
         )
         canKeep = (
             keepObjON and not wandON and not curvToolON and not brushON
             and not dragImgLeft and not brushON and not rulerON
-            and not polyLineRoiON and not labelRoiON
+            and not polyLineRoiON and not labelRoiON 
+            and addPointsByClickingButton is None
+        )
+        canAddPoint = (
+            addPointsByClickingButton is not None and not wandON 
+            and not curvToolON and not brushON
+            and not dragImgLeft and not brushON and not rulerON
+            and not polyLineRoiON and not labelRoiON  and not keepObjON
         )
 
         # Enable dragging of the image window like pyqtgraph original code
@@ -6668,6 +6684,30 @@ class guiWin(QMainWindow):
             
             self.isMouseDragImg1 = True
 
+        elif left_click and canAddPoint:
+            x, y = event.pos().x(), event.pos().y()
+            action = addPointsByClickingButton.action
+            framePointsData = action.pointsData.get(posData.frame_i)
+            if framePointsData is None:
+                if self.isSegm3D:
+                    zSlice = self.z_lab()
+                    action.pointsData[posData.frame_i] = {
+                        zSlice: {'x': [x], 'y': [y]}
+                    }
+                else:
+                    action.pointsData[posData.frame_i] = {'x': [x], 'y': [y]}
+            else:
+                if self.isSegm3D:
+                    zSlice = self.z_lab()
+                    z_data = action.pointsData[posData.frame_i].get(zSlice)
+                    if z_data is None:
+                        framePointsData[zSlice] = {'x': [x], 'y': [y]}
+                    else:
+                        framePointsData[zSlice]['x'].append(x)
+                        framePointsData[zSlice]['y'].append(y)
+                    action.pointsData[posData.frame_i] = framePointsData
+            self.drawPointsLayers(computePointsLayers=False)
+        
         elif left_click and canRuler or canPolyLine:
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
@@ -9863,7 +9903,11 @@ class guiWin(QMainWindow):
 
     def disconnectLeftClickButtons(self):
         for button in self.LeftClickButtons:
-            button.toggled.disconnect()
+            try:
+                button.toggled.disconnect()
+            except Exception as e:
+                # Not all the LeftClickButtons have toggled connected
+                pass
 
     def uncheckLeftClickButtons(self, sender):
         for button in self.LeftClickButtons:
@@ -16197,6 +16241,7 @@ class guiWin(QMainWindow):
     
     def addPointsLayer_cb(self):
         posData = self.data[self.pos_i]
+        self.currentClickEntryPointsDf = None
         self.addPointsWin = apps.AddPointsLayerDialog(
             channelNames=posData.chNames, imagesPath=posData.images_path, 
             parent=self
@@ -16204,13 +16249,71 @@ class guiWin(QMainWindow):
         self.addPointsWin.sigCriticalReadTable.connect(self.logger.info)
         self.addPointsWin.sigLoadedTable.connect(self.logger.info)
         self.addPointsWin.sigClosed.connect(self.addPointsLayer)
+        self.addPointsWin.sigCheckClickEntryTableEndnameExists.connect(
+            self.checkClickEntryTableEndnameExists
+        )
         self.addPointsWin.show()
     
+    def buttonAddPointsByClickingActive(self):
+        for action in self.pointsLayersToolbar.actions()[1:]:
+            if action.layetTypeIdx == 4 and action.button.isChecked():
+                return action.button
+    
+    def setupAddPointsByClicking(self, toolButton):
+        self.LeftClickButtons.append(toolButton)
+        posData = self.data[self.pos_i]
+        tableEndName = self.addPointsWin.clickEntryTableEndnameText
+        if self.currentClickEntryPointsDf is not None:
+            toolButton.clickEntryPointsDf = self.currentClickEntryPointsDf
+        else:
+            toolButton.clickEntryPointsDf = pd.DataFrame(
+                columns=['frame_i', 'Cell_ID', 'z', 'y', 'x']
+            ).set_index(['frame_i', 'Cell_ID'])
+        toolButton.clickEntryTableEndName = tableEndName
+        toolButton.clicked.connect(self.addPointsByClickingButtonClicked)
+        self.addPointsByClickingButtonClicked(sender=toolButton)
+    
+    def addPointsByClickingButtonClicked(self, clicked=True, sender=None):
+        if sender is None:
+            sender = self.sender()
+        if not sender.isChecked():
+            return
+        self.disconnectLeftClickButtons()
+        self.uncheckLeftClickButtons(sender)
+        self.connectLeftClickButtons()
+    
+    def checkClickEntryTableEndnameExists(self, tableEndName, forceLoading=False):
+        posData = self.data[self.pos_i]
+        files = myutils.listdir(posData.images_path)
+        for file in files:
+            if file.endswith(f'{tableEndName}.csv'):
+                table_filepath = os.path.join(posData.images_path, file)
+                break
+        else:
+            return
+        
+        if not forceLoading:
+            msg = widgets.myMessageBox(wrapText=False)
+            txt = html_utils.paragraph(
+                f'The table <code>{tableEndName}.csv</code> already exists!<br><br>'
+                'Do you want to load it?'
+            )
+            _, yesButton, _ = msg.warning(
+                self.addPointsWin, 'Table exists!', txt,
+                buttonsTexts=('Cancel', 'Yes, load it', 'No, let me enter a new name')
+            )
+            if msg.clickedButton != yesButton:
+                return
+
+        self.currentClickEntryPointsDf = pd.read_csv(
+            table_filepath, index_col=['frame_i', 'Cell_ID']
+        )
+
     def addPointsLayer(self):
         if self.addPointsWin.cancel:
             self.logger.info('Adding points layer cancelled.')
             return
-
+        
         symbol = self.addPointsWin.symbol
         color = self.addPointsWin.color
         pointSize = self.addPointsWin.pointSize
@@ -16235,6 +16338,9 @@ class guiWin(QMainWindow):
             toolButton.setShortcut(self.addPointsWin.keySequence)
         toolButton.toggled.connect(self.pointLayerToolbuttonToggled)
         toolButton.sigEditAppearance.connect(self.editPointsLayerAppearance)
+        
+        if self.addPointsWin.layerType.startswith('Click to annotate point'):
+            self.setupAddPointsByClicking(toolButton)
 
         action = self.pointsLayersToolbar.addWidget(toolButton)
         action.state = self.addPointsWin.state()
@@ -16379,6 +16485,7 @@ class guiWin(QMainWindow):
                 xx = action.pointsData[posData.frame_i]['x']
                 yy = action.pointsData[posData.frame_i]['y']
             
+            printl(xx, yy)
             action.scatterItem.setData(xx, yy)
 
     def overlay_cb(self, checked):
