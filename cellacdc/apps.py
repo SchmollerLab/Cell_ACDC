@@ -1259,15 +1259,15 @@ class AddPointsLayerDialog(widgets.QBaseDialog):
                 return
             
             self.layerType = os.path.basename(self.tablePath)
-            self.layetTypeIdx = 2
+            self.layerTypeIdx = 2
         elif self.centroidsRadiobutton.isChecked():
             self.layerType = 'Centroids'
-            self.layetTypeIdx = 0
+            self.layerTypeIdx = 0
         elif self.weightedCentroidsRadiobutton.isChecked():
             channel = self.channelNameForWeightedCentr.currentText()
             self.weighingChannel = channel
             self.layerType = f'Centroids weighted by channel {channel}'
-            self.layetTypeIdx = 1
+            self.layerTypeIdx = 1
         elif self.manualEntryRadiobutton.isChecked():
             xx = self.manualXspinbox.values()
             yy = self.manualYspinbox.values()
@@ -1291,15 +1291,17 @@ class AddPointsLayerDialog(widgets.QBaseDialog):
             self._df_to_pointsData(df, tCol, zCol, 'y', 'x')
             
             self.layerType = 'Manual entry'
-            self.layetTypeIdx = 3
+            self.layerTypeIdx = 3
         elif self.clickEntryRadiobutton.isChecked():
-            self.layerType = (
-                'Click to annotate point. Left-click to add a point, '
-                'click on point to delete it.\n'
-                f'Auto-pilot requested: {self.autoPilotToggle.isChecked()}'
+            self.layerType = ('Click to annotate point')
+            self.description = (
+                'Left-click to add a point, click on point to delete it.\n'
+                f'Auto-pilot requested: {self.autoPilotToggle.isChecked()}\n'
+                'With auto-pilot you can navigate through object with Up/Down arrows.'
             )
             self.clickEntryTableEndnameText = self.clickEntryTableEndname.text()
-            self.layetTypeIdx = 4
+            self.layerTypeIdx = 4
+            self.isAutoPilotActive = self.autoPilotToggle.isChecked()
         
         self.cancel = False
         symbol = self.appearanceGroupbox.symbolWidget.widget.currentText()

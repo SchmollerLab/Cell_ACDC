@@ -6687,25 +6687,11 @@ class guiWin(QMainWindow):
         elif left_click and canAddPoint:
             x, y = event.pos().x(), event.pos().y()
             action = addPointsByClickingButton.action
-            framePointsData = action.pointsData.get(posData.frame_i)
-            if framePointsData is None:
-                if self.isSegm3D:
-                    zSlice = self.z_lab()
-                    action.pointsData[posData.frame_i] = {
-                        zSlice: {'x': [x], 'y': [y]}
-                    }
-                else:
-                    action.pointsData[posData.frame_i] = {'x': [x], 'y': [y]}
+            hoveredPoints = action.scatterItem.pointsAt(event.pos())
+            if hoveredPoints:
+                self.removeClickedPoints(action, hoveredPoints)
             else:
-                if self.isSegm3D:
-                    zSlice = self.z_lab()
-                    z_data = action.pointsData[posData.frame_i].get(zSlice)
-                    if z_data is None:
-                        framePointsData[zSlice] = {'x': [x], 'y': [y]}
-                    else:
-                        framePointsData[zSlice]['x'].append(x)
-                        framePointsData[zSlice]['y'].append(y)
-                    action.pointsData[posData.frame_i] = framePointsData
+                self.addClickedPoint(action, x, y)
             self.drawPointsLayers(computePointsLayers=False)
         
         elif left_click and canRuler or canPolyLine:
@@ -9829,6 +9815,8 @@ class guiWin(QMainWindow):
             return
         
         self.zSliceScrollBar.setSliderPosition(nearest_nonzero_z)
+        self.setAllTextAnnotations()
+        self.setAllContoursImages()
 
     def nearest_nonzero(self, a, y, x):
         r, c = np.nonzero(a)
@@ -9931,6 +9919,14 @@ class guiWin(QMainWindow):
         self.labelRoiButton.toggled.connect(self.labelRoi_cb)
         self.expandLabelToolButton.toggled.connect(self.expandLabelCallback)
         self.addDelPolyLineRoiAction.toggled.connect(self.addDelPolyLineRoi_cb)
+        for action in self.pointsLayersToolbar.actions()[1:]:
+            if not hasattr(action, 'layerTypeIdx'):
+                continue
+            if action.layerTypeIdx != 4:
+                continue
+            action.button.toggled.connect(
+                self.addPointsByClickingButtonToggled
+            )
 
     def brushSize_cb(self, value):
         self.ax2_EraserCircle.setSize(value*2)
@@ -10704,6 +10700,7 @@ class guiWin(QMainWindow):
         how = self.drawIDsContComboBox.currentText()
         isOverlaySegm = how.find('overlay segm. masks') != -1
         if ev.key()==Qt.Key_Up and not isCtrlModifier:
+            addPointsByClickingButton = self.buttonAddPointsByClickingActive()
             if isBrushActive:
                 brushSize = self.brushSizeSpinbox.value()
                 self.brushSizeSpinbox.setValue(brushSize+1)
@@ -10716,11 +10713,14 @@ class guiWin(QMainWindow):
             elif isLabelRoiCircActive:
                 val = self.labelRoiCircularRadiusSpinbox.value()
                 self.labelRoiCircularRadiusSpinbox.setValue(val+1)
+            elif addPointsByClickingButton is not None:
+                self.pointsLayerAutoPilot(addPointsByClickingButton, 'next')
             else:
                 self.zSliceScrollBar.triggerAction(
                     QAbstractSlider.SliderSingleStepAdd
                 )
         elif ev.key()==Qt.Key_Down and not isCtrlModifier:
+            addPointsByClickingButton = self.buttonAddPointsByClickingActive()
             if isBrushActive:
                 brushSize = self.brushSizeSpinbox.value()
                 self.brushSizeSpinbox.setValue(brushSize-1)
@@ -10733,6 +10733,8 @@ class guiWin(QMainWindow):
             elif isLabelRoiCircActive:
                 val = self.labelRoiCircularRadiusSpinbox.value()
                 self.labelRoiCircularRadiusSpinbox.setValue(val-1)
+            elif addPointsByClickingButton is not None:
+                self.pointsLayerAutoPilot(addPointsByClickingButton, 'prev')
             else:
                 self.zSliceScrollBar.triggerAction(
                     QAbstractSlider.SliderSingleStepSub
@@ -14016,7 +14018,10 @@ class guiWin(QMainWindow):
     
     def clearPointsLayers(self):
         for action in self.pointsLayersToolbar.actions()[1:]:
-            action.scatterItem.clear()
+            try:
+                action.scatterItem.clear()
+            except Exception as e:
+                continue
 
     def clearOverlayLabelsItems(self):
         for segmEndname, drawMode in self.drawModeOverlayLabelsChannels.items():
@@ -16256,10 +16261,12 @@ class guiWin(QMainWindow):
     
     def buttonAddPointsByClickingActive(self):
         for action in self.pointsLayersToolbar.actions()[1:]:
-            if action.layetTypeIdx == 4 and action.button.isChecked():
+            if not hasattr(action, 'layerTypeIdx'):
+                continue
+            if action.layerTypeIdx == 4 and action.button.isChecked():
                 return action.button
     
-    def setupAddPointsByClicking(self, toolButton):
+    def setupAddPointsByClicking(self, toolButton, scatterItem):
         self.LeftClickButtons.append(toolButton)
         posData = self.data[self.pos_i]
         tableEndName = self.addPointsWin.clickEntryTableEndnameText
@@ -16270,18 +16277,82 @@ class guiWin(QMainWindow):
                 columns=['frame_i', 'Cell_ID', 'z', 'y', 'x']
             ).set_index(['frame_i', 'Cell_ID'])
         toolButton.clickEntryTableEndName = tableEndName
-        toolButton.clicked.connect(self.addPointsByClickingButtonClicked)
-        self.addPointsByClickingButtonClicked(sender=toolButton)
+                
+        spinBox = widgets.SpinBox()
+        spinBox.setMinimum(1)
+        spinBox.label = QLabel('  Zoom to ID: ')
+        spinBox.labelAction = self.pointsLayersToolbar.addWidget(spinBox.label)
+        spinBox.action = self.pointsLayersToolbar.addWidget(spinBox)
+        spinBox.editingFinished.connect(self.zoomToObj)
+        toolButton.spinBox = spinBox
+        
+        toolButton.toggled.connect(self.addPointsByClickingButtonToggled)
+        self.addPointsByClickingButtonToggled(sender=toolButton)
+        
+        if toolButton.isAutoPilotActive and posData.IDs:
+            spinBox.setValue(posData.IDs[0])
+            self.zoomToObj(posData.rp[0])
     
-    def addPointsByClickingButtonClicked(self, clicked=True, sender=None):
+    def zoomToObj(self, obj=None):
+        posData = self.data[self.pos_i]
+        if obj is None:
+            ID = self.sender().value()
+            try:
+                ID_idx = posData.IDs_idxs[ID]
+                obj = obj = posData.rp[ID_idx]
+            except Exception as e:
+                self.logger.info(
+                    f'[WARNING]: ID {ID} does not exist (add points by clicking)'
+                )
+        
+        self.goToZsliceSearchedID(obj)  
+        min_row, min_col, max_row, max_col = self.getObjBbox(obj.bbox)
+        xRange = min_col-5, max_col+5
+        yRange = max_row+5, min_row-5
+
+        self.ax1.setRange(xRange=xRange, yRange=yRange)
+        
+    def addPointsByClickingButtonToggled(self, checked=True, sender=None):
         if sender is None:
             sender = self.sender()
         if not sender.isChecked():
+            sender.spinBox.labelAction.setDisabled(True)
+            sender.spinBox.action.setDisabled(True)
             return
         self.disconnectLeftClickButtons()
         self.uncheckLeftClickButtons(sender)
         self.connectLeftClickButtons()
+        
+        sender.spinBox.labelAction.setDisabled(False)
+        sender.spinBox.action.setDisabled(False)
     
+    def pointsLayerAutoPilot(self, addPointsByClickingButton, direction):
+        if not addPointsByClickingButton.isChecked():
+            return
+        if not addPointsByClickingButton.isAutoPilotActive:
+            return
+        ID = addPointsByClickingButton.spinBox.value()
+        posData = self.data[self.pos_i]
+        if not posData.IDs:
+            return
+        
+        try:
+            ID_idx = posData.IDs_idxs[ID]
+            if direction == 'next':
+                nextID_idx = ID_idx + 1
+            else:
+                nextID_idx = ID_idx - 1
+            obj = posData.rp[nextID_idx]
+        except Exception as e:
+            printl(traceback.format_exc())
+            self.logger.info(
+                f'Add points by clicking auto-pilot restarted from first ID'
+            )
+            obj = posData.rp[0]
+        
+        addPointsByClickingButton.spinBox.setValue(obj.label)
+        self.zoomToObj(obj)        
+        
     def checkClickEntryTableEndnameExists(self, tableEndName, forceLoading=False):
         posData = self.data[self.pos_i]
         files = myutils.listdir(posData.images_path)
@@ -16323,15 +16394,19 @@ class guiWin(QMainWindow):
             [], [], symbol=symbol, pxMode=False, size=pointSize,
             brush=pg.mkBrush(color=(r,g,b,100)),
             pen=pg.mkPen(width=2, color=(r,g,b)),
-            hoverable=True, hoverBrush=pg.mkBrush((r,g,b,200)), tip=None
+            hoverable=True, hoverBrush=pg.mkBrush((r,g,b,200)), 
+            tip=None
         )
         self.ax1.addItem(scatterItem)
 
         toolButton = widgets.PointsLayerToolButton(symbol, color, parent=self)
-        toolButton.setToolTip(
+        toolTip = (
             f'"{self.addPointsWin.layerType}" points layer\n\n'
             f'SHORTCUT: "{self.addPointsWin.shortcut}"'
         )
+        if hasattr(self.addPointsWin, 'description'):
+            toolTip = f'{toolTip}\nDescription: {self.addPointsWin}'
+        toolButton.setToolTip(toolTip)
         toolButton.setCheckable(True)
         toolButton.setChecked(True)
         if self.addPointsWin.keySequence is not None:
@@ -16339,9 +16414,6 @@ class guiWin(QMainWindow):
         toolButton.toggled.connect(self.pointLayerToolbuttonToggled)
         toolButton.sigEditAppearance.connect(self.editPointsLayerAppearance)
         
-        if self.addPointsWin.layerType.startswith('Click to annotate point'):
-            self.setupAddPointsByClicking(toolButton)
-
         action = self.pointsLayersToolbar.addWidget(toolButton)
         action.state = self.addPointsWin.state()
 
@@ -16349,14 +16421,58 @@ class guiWin(QMainWindow):
         action.button = toolButton
         action.scatterItem = scatterItem
         action.layerType = self.addPointsWin.layerType
-        action.layetTypeIdx = self.addPointsWin.layetTypeIdx
+        action.layerTypeIdx = self.addPointsWin.layerTypeIdx
         action.pointsData = self.addPointsWin.pointsData
         self.pointsLayersToolbar.setVisible(True)
+        
+        if self.addPointsWin.layerType.startswith('Click to annotate point'):
+            toolButton.isAutoPilotActive = self.addPointsWin.isAutoPilotActive
+            self.setupAddPointsByClicking(toolButton, scatterItem)
 
         weighingChannel = self.addPointsWin.weighingChannel
         self.loadPointsLayerWeighingData(action, weighingChannel)
 
         self.drawPointsLayers()
+    
+    def removeClickedPoints(self, action, points):
+        posData = self.data[self.pos_i]
+        framePointsData = action.pointsData[posData.frame_i]
+        if self.isSegm3D:
+            zSlice = self.z_lab()
+        else:
+            zSlice = None
+        for point in points:
+            pos = point.pos()
+            x, y = pos.x(), pos.y()
+            if zSlice is not None:
+                framePointsData[zSlice]['x'].remove(x)
+                framePointsData[zSlice]['y'].remove(y)
+            else:
+                framePointsData['x'].remove(x)
+                framePointsData['y'].remove(y)
+    
+    def addClickedPoint(self, action, x, y):
+        x, y = round(x, 2), round(y, 2)
+        posData = self.data[self.pos_i]
+        framePointsData = action.pointsData.get(posData.frame_i)
+        if framePointsData is None:
+            if self.isSegm3D:
+                zSlice = self.z_lab()
+                action.pointsData[posData.frame_i] = {
+                    zSlice: {'x': [x], 'y': [y]}
+                }
+            else:
+                action.pointsData[posData.frame_i] = {'x': [x], 'y': [y]}
+        else:
+            if self.isSegm3D:
+                zSlice = self.z_lab()
+                z_data = action.pointsData[posData.frame_i].get(zSlice)
+                if z_data is None:
+                    framePointsData[zSlice] = {'x': [x], 'y': [y]}
+                else:
+                    framePointsData[zSlice]['x'].append(x)
+                    framePointsData[zSlice]['y'].append(y)
+                action.pointsData[posData.frame_i] = framePointsData
     
     def editPointsLayerAppearance(self, button):
         win = apps.EditPointsLayerAppearanceDialog(parent=self)
@@ -16450,17 +16566,20 @@ class guiWin(QMainWindow):
     def drawPointsLayers(self, computePointsLayers=True):
         posData = self.data[self.pos_i]
         for action in self.pointsLayersToolbar.actions()[1:]:
-            if action.layetTypeIdx < 2 and computePointsLayers:
+            if not hasattr(action, 'layerTypeIdx'):
+                continue
+            if action.layerTypeIdx < 2 and computePointsLayers:
                 self.getCentroidsPointsData(action)
 
             if not action.button.isChecked():
                 continue
             
             if posData.frame_i not in action.pointsData:
-                self.logger.info(
-                    f'Frame number {posData.frame_i+1} does not have any '
-                    f'"{action.layerType}" point to display.'
-                )
+                if action.layerTypeIdx != 4:
+                    self.logger.info(
+                        f'Frame number {posData.frame_i+1} does not have any '
+                        f'"{action.layerType}" point to display.'
+                    )
                 continue
                 
             if self.isSegm3D:
@@ -16484,8 +16603,7 @@ class guiWin(QMainWindow):
                 # 2D segmentation
                 xx = action.pointsData[posData.frame_i]['x']
                 yy = action.pointsData[posData.frame_i]['y']
-            
-            printl(xx, yy)
+
             action.scatterItem.setData(xx, yy)
 
     def overlay_cb(self, checked):
