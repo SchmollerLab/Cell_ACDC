@@ -73,7 +73,7 @@ from . import measurements, printl
 from . import colors, filters, annotate
 from . import user_manual_url
 from . import cellacdc_path, temp_path, settings_csv_path
-from . import qutils, autopilot
+from . import qutils, autopilot, QtScoped
 from .trackers.CellACDC import CellACDC_tracker
 from .cca_functions import _calc_rot_vol
 from .myutils import exec_time, setupLogger
@@ -96,6 +96,12 @@ shortcut_filepath = os.path.join(temp_path, 'shortcuts.ini')
 
 _font = QFont()
 _font.setPixelSize(11)
+
+SliderSingleStepAdd = QtScoped.SliderSingleStepAdd()
+SliderSingleStepSub = QtScoped.SliderSingleStepSub()
+SliderPageStepAdd = QtScoped.SliderPageStepAdd()
+SliderPageStepSub = QtScoped.SliderPageStepSub()
+SliderMove = QtScoped.SliderMove()
 
 def qt_debug_trace():
     from qtpy.QtCore import pyqtRemoveInputHook
@@ -9869,10 +9875,11 @@ class guiWin(QMainWindow):
             obj, current_z=current_z
         )
         if nearest_nonzero_z == current_z:
+            self.drawPointsLayers(computePointsLayers=True)
             return
         
         self.zSliceScrollBar.setSliderPosition(nearest_nonzero_z)
-        self.updateAllImages()
+        self.update_z_slice(nearest_nonzero_z)
 
     def nearest_nonzero(self, a, y, x):
         r, c = np.nonzero(a)
@@ -10674,9 +10681,10 @@ class guiWin(QMainWindow):
         if ev.key() == Qt.Key_Q:
             # self.setAllIDs()
             posData = self.data[self.pos_i]
-            # self.pointsLayerDataToDf(posData)
+            self.pointsLayerDataToDf(posData)
             # posData.clickEntryPointsDfs
             printl(posData.clickEntryPointsDfs)
+            self.drawPointsLayers(computePointsLayers=False)
             # printl(posData.fluo_data_dict.keys())
             # for key in posData.fluo_data_dict:
             #     printl(key, posData.fluo_data_dict[key].max())
@@ -13977,14 +13985,14 @@ class guiWin(QMainWindow):
 
     def zSliceScrollBarActionTriggered(self, action):
         singleMove = (
-            action == QAbstractSlider.SliderAction.SliderSingleStepAdd
-            or action == QAbstractSlider.SliderAction.SliderSingleStepSub
-            or action == QAbstractSlider.SliderAction.SliderPageStepAdd
-            or action == QAbstractSlider.SliderAction.SliderPageStepSub
+            action == SliderSingleStepAdd
+            or action == SliderSingleStepSub
+            or action == SliderPageStepAdd
+            or action == SliderPageStepSub
         )
         if singleMove:
             self.update_z_slice(self.zSliceScrollBar.sliderPosition())
-        elif action == QAbstractSlider.SliderAction.SliderMove:
+        elif action == SliderMove:
             if self.zSliceScrollBarStartedMoving and self.isSegm3D:
                 self.clearAx1Items(onlyHideText=True)
                 self.clearAx2Items(onlyHideText=True)
@@ -14470,13 +14478,13 @@ class guiWin(QMainWindow):
             self.framesScrollBarReleased()
 
     def PosScrollBarAction(self, action):
-        if action == QAbstractSlider.SliderAction.SliderSingleStepAdd:
+        if action == SliderSingleStepAdd:
             self.next_cb()
-        elif action == QAbstractSlider.SliderAction.SliderSingleStepSub:
+        elif action == SliderSingleStepSub:
             self.prev_cb()
-        elif action == QAbstractSlider.SliderAction.SliderPageStepAdd:
+        elif action == SliderPageStepAdd:
             self.PosScrollBarReleased()
-        elif action == QAbstractSlider.SliderAction.SliderPageStepSub:
+        elif action == SliderPageStepSub:
             self.PosScrollBarReleased()
 
     def PosScrollBarMoved(self, pos_n):
@@ -14492,17 +14500,17 @@ class guiWin(QMainWindow):
         self.updatePos()
 
     def framesScrollBarAction(self, action):
-        if action == QAbstractSlider.SliderAction.SliderSingleStepAdd:
+        if action == SliderSingleStepAdd:
             # Clicking on dialogs triggered by next_cb might trigger
             # pressEvent of navigateQScrollBar, avoid that
             self.navigateScrollBar.disableCustomPressEvent()
             self.next_cb()
             QTimer.singleShot(100, self.navigateScrollBar.enableCustomPressEvent)
-        elif action == QAbstractSlider.SliderAction.SliderSingleStepSub:
+        elif action == SliderSingleStepSub:
             self.prev_cb()
-        elif action == QAbstractSlider.SliderAction.SliderPageStepAdd:
+        elif action == SliderPageStepAdd:
             self.framesScrollBarReleased()
-        elif action == QAbstractSlider.SliderAction.SliderPageStepSub:
+        elif action == SliderPageStepSub:
             self.framesScrollBarReleased()
 
     def framesScrollBarMoved(self, frame_n):
@@ -16327,6 +16335,14 @@ class guiWin(QMainWindow):
             channelNames=posData.chNames, imagesPath=posData.images_path, 
             parent=self
         )
+        cmap = matplotlib.colormaps['gist_rainbow']
+        i = np.random.default_rng().uniform()
+        for action in self.pointsLayersToolbar.actions()[1:]:
+            if not hasattr(action, 'layerTypeIdx'):
+                continue
+            rgb = [round(c*255) for c in cmap(i)][:3]
+            self.addPointsWin.appearanceGroupbox.colorButton.setColor(rgb)
+            break
         self.addPointsWin.sigCriticalReadTable.connect(self.logger.info)
         self.addPointsWin.sigLoadedTable.connect(self.logger.info)
         self.addPointsWin.sigClosed.connect(self.addPointsLayer)
@@ -16377,6 +16393,7 @@ class guiWin(QMainWindow):
         self.zoomToObj(posData.rp[0])
     
     def savePointsAddedByClickingFromEndname(self, tableEndName):
+        self.pointsLayerDataToDf(self.data[self.pos_i])
         for posData in self.data:
             if not posData.basename.endswith('_'):
                 basename = f'{posData.basename}_'
@@ -16384,9 +16401,7 @@ class guiWin(QMainWindow):
                 basename = posData.basename
             tableFilename = f'{basename}{tableEndName}.csv'
             tableFilepath = os.path.join(posData.images_path, tableFilename)
-            self.pointsLayerDataToDf(posData)
             df = posData.clickEntryPointsDfs.get(tableEndName)
-            printl(posData.pos_foldername, tableFilepath, '\n', df)
             if df is None:
                 continue
             df.to_csv(tableFilepath, index=False)
@@ -16790,6 +16805,7 @@ class guiWin(QMainWindow):
             if not action.button.isChecked():
                 continue
             
+            # printl(action.pointsData, action.layerTypeIdx)
             if posData.frame_i not in action.pointsData:
                 if action.layerTypeIdx != 4:
                     self.logger.info(
@@ -16797,7 +16813,7 @@ class guiWin(QMainWindow):
                         f'"{action.layerType}" point to display.'
                     )
                 continue
-                
+            
             if self.isSegm3D:
                 zProjHow = self.zProjComboBox.currentText()
                 isZslice = zProjHow == 'single z-slice'
@@ -19136,6 +19152,7 @@ class guiWin(QMainWindow):
         self.reinitWidgetsPos()
         self.removeAllItems()
         self.reinitCustomAnnot()
+        self.reinitPointsLayers()
         self.gui_createPlotItems()
         self.setUncheckedAllButtons()
         self.restoreDefaultColors()
@@ -19152,6 +19169,12 @@ class guiWin(QMainWindow):
         alpha = self.imgGrad.labelsAlphaSlider.value()
         self.labelsLayerImg1.setOpacity(alpha)
         self.labelsLayerRightImg.setOpacity(alpha)
+    
+    def reinitPointsLayers(self):
+        for action in self.pointsLayersToolbar.actions()[1:]:
+            self.pointsLayersToolbar.removeAction(action)
+        self.pointsLayersToolbar.setVisible(False)
+        self.autoPilotZoomToObjToolbar.setVisible(False)
     
     def reinitWidgetsPos(self):
         pass

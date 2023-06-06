@@ -2707,6 +2707,7 @@ class Toggle(QCheckBox):
         self.requestedState = None
 
         self.installEventFilter(self)
+        self._isChecked = False
 
         if initial is not None:
             self.setChecked(initial)
