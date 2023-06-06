@@ -54,8 +54,8 @@ class downloadWorker(QObject):
 class QHLine(QFrame):
     def __init__(self):
         super(QHLine, self).__init__()
-        self.setFrameShape(QFrame.HLine)
-        self.setFrameShadow(QFrame.Sunken)
+        self.setFrameShape(QFrame.Shape.HLine)
+        self.setFrameShadow(QFrame.Shadow.Sunken)
 
 
 class welcomeWin(QWidget):
@@ -128,7 +128,7 @@ class welcomeWin(QWidget):
     def addtreeSelector(self):
         treeSelector = QTreeWidget()
 
-        treeSelector.setFrameStyle(QFrame.NoFrame)
+        treeSelector.setFrameStyle(QFrame.Shape.NoFrame)
 
         self.welcomeItem = QTreeWidgetItem(treeSelector)
         self.welcomeItem.setIcon(0, QIcon(':home.svg'))
@@ -201,7 +201,7 @@ class welcomeWin(QWidget):
 
         # welcomeTextWidget = QTextEdit()
         # welcomeTextWidget.setReadOnly(True)
-        # welcomeTextWidget.setFrameStyle(QFrame.NoFrame)
+        # welcomeTextWidget.setFrameStyle(QFrame.Shape.NoFrame)
         # welcomeTextWidget.viewport().setAutoFillBackground(False)
 
         htmlTxt = (
@@ -304,7 +304,7 @@ class welcomeWin(QWidget):
 
         self.quickStartScrollArea = QScrollArea()
         self.quickStartScrollArea.setWidgetResizable(True)
-        self.quickStartScrollArea.setFrameStyle(QFrame.NoFrame)
+        self.quickStartScrollArea.setFrameStyle(QFrame.Shape.NoFrame)
         self.quickStartScrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.quickStartScrollArea.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
 

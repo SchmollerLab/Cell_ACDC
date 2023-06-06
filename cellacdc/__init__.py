@@ -1,12 +1,12 @@
 print('Initialising...')
 import os
 
-# Force PyQt6 if available
-try:
-    from PyQt6 import QtCore
-    os.environ["QT_API"] = "pyqt6"
-except Exception as e:
-    pass
+# # Force PyQt6 if available
+# try:
+#     from PyQt6 import QtCore
+#     os.environ["QT_API"] = "pyqt6"
+# except Exception as e:
+#     pass
 
 cellacdc_path = os.path.dirname(os.path.abspath(__file__))
 qrc_resources_path = os.path.join(cellacdc_path, 'qrc_resources.py')

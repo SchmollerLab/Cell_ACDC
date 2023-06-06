@@ -153,19 +153,19 @@ class dataPrepWin(QMainWindow):
                 #     print(xl, xl+w, xl+w>xl)
         if event.key() == Qt.Key_Left:
             self.navigateScrollbar.triggerAction(
-                QAbstractSlider.SliderSingleStepSub
+                QAbstractSlider.SliderAction.SliderSingleStepSub
             )
         elif event.key() == Qt.Key_Right:
             self.navigateScrollbar.triggerAction(
-                QAbstractSlider.SliderSingleStepAdd
+                QAbstractSlider.SliderAction.SliderSingleStepAdd
             )
         elif event.key() == Qt.Key_Up:
             self.zSliceScrollBar.triggerAction(
-                QAbstractSlider.SliderSingleStepAdd
+                QAbstractSlider.SliderAction.SliderSingleStepAdd
             )
         elif event.key() == Qt.Key_Down:
             self.zSliceScrollBar.triggerAction(
-                QAbstractSlider.SliderSingleStepSub
+                QAbstractSlider.SliderAction.SliderSingleStepSub
             )
 
     def gui_createActions(self):

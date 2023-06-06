@@ -1322,7 +1322,7 @@ class filePathControl(QFrame):
         self.le.editingFinished.connect(self.setTextTooltip)
         self.browseButton.sigPathSelected.connect(self.setText)
     
-        self.setFrameStyle(QFrame.StyledPanel)
+        self.setFrameStyle(QFrame.Shape.StyledPanel)
 
     def setText(self, text):
         self.le.setText(text)
@@ -1351,7 +1351,7 @@ class QVWidgetSpacer(QWidget):
 class QHLine(QFrame):
     def __init__(self, shadow='Sunken', parent=None, color=None):
         super().__init__(parent)
-        self.setFrameShape(QFrame.HLine)
+        self.setFrameShape(QFrame.Shape.HLine)
         self.setFrameShadow(getattr(QFrame, shadow))
         if color is not None:
             self.setColor(color)
@@ -1365,7 +1365,7 @@ class QHLine(QFrame):
 class QVLine(QFrame):
     def __init__(self, shadow='Plain', parent=None, color=None):
         super().__init__(parent)
-        self.setFrameShape(QFrame.VLine)
+        self.setFrameShape(QFrame.Shape.VLine)
         self.setFrameShadow(getattr(QFrame, shadow))
         if color is not None:
             self.setColor(color)
@@ -1384,8 +1384,8 @@ class VerticalResizeHline(QFrame):
     def __init__(self):
         super().__init__()
         self.setCursor(Qt.SizeVerCursor)
-        self.setFrameShape(QFrame.HLine)
-        self.setFrameShadow(QFrame.Sunken)
+        self.setFrameShape(QFrame.Shape.HLine)
+        self.setFrameShadow(QFrame.Shadow.Sunken)
         self.installEventFilter(self)
         self.isMousePressed = False
         self._height = 4
@@ -1453,7 +1453,7 @@ class ScrollArea(QScrollArea):
         ) -> None:
         super().__init__(parent)
         self.setWidgetResizable(True)
-        self.setFrameStyle(QFrame.NoFrame)
+        self.setFrameStyle(QFrame.Shape.NoFrame)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.containerWidget = None
         self.resizeVerticalOnShow = resizeVerticalOnShow
@@ -2043,7 +2043,7 @@ class myMessageBox(QDialog):
         self.labels.append(label)
         if self.scrollableText:
             textWidget = QScrollArea()
-            textWidget.setFrameStyle(QFrame.NoFrame)
+            textWidget.setFrameStyle(QFrame.Shape.NoFrame)
             textWidget.setWidget(label)
         else:
             textWidget = label
@@ -4520,7 +4520,7 @@ class navigateQScrollBar(ScrollBar):
         if self.sliderPosition() == self.maximum():
             # Clicked right arrow of scrollbar with the slider at maximum --> +1
             # self.setMaximum(self.maximum()+1)
-            self.triggerAction(QAbstractSlider.SliderSingleStepAdd)
+            self.triggerAction(QAbstractSlider.SliderAction.SliderSingleStepAdd)
 
 class linkedQScrollbar(ScrollBar):
     def __init__(self, *args, **kwargs):

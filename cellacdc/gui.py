@@ -10772,7 +10772,7 @@ class guiWin(QMainWindow):
                 self.pointsLayerAutoPilot('next')
             else:
                 self.zSliceScrollBar.triggerAction(
-                    QAbstractSlider.SliderSingleStepAdd
+                    QAbstractSlider.SliderAction.SliderSingleStepAdd
                 )
         elif ev.key()==Qt.Key_Down and not isCtrlModifier:
             addPointsByClickingButton = self.buttonAddPointsByClickingActive()
@@ -10792,7 +10792,7 @@ class guiWin(QMainWindow):
                 self.pointsLayerAutoPilot('prev')
             else:
                 self.zSliceScrollBar.triggerAction(
-                    QAbstractSlider.SliderSingleStepSub
+                    QAbstractSlider.SliderAction.SliderSingleStepSub
                 )
         # elif ev.key()==Qt.Key_Left and not isCtrlModifier:
         #     self.prev_cb()
@@ -12762,14 +12762,14 @@ class guiWin(QMainWindow):
         self.titleLabel.setText('Budding event prediction done.', color='g')
     
     def nextActionTriggered(self):
-        stepAddAction = QAbstractSlider.SliderSingleStepAdd
+        stepAddAction = QAbstractSlider.SliderAction.SliderSingleStepAdd
         if self.zKeptDown or self.zSliceCheckbox.isChecked():
             self.zSliceScrollBar.triggerAction(stepAddAction)
         else:
             self.navigateScrollBar.triggerAction(stepAddAction)
     
     def prevActionTriggered(self):
-        stepSubAction = QAbstractSlider.SliderSingleStepSub
+        stepSubAction = QAbstractSlider.SliderAction.SliderSingleStepSub
         if self.zKeptDown or self.zSliceCheckbox.isChecked():
             self.zSliceScrollBar.triggerAction(stepSubAction)
         else:
@@ -13971,14 +13971,14 @@ class guiWin(QMainWindow):
 
     def zSliceScrollBarActionTriggered(self, action):
         singleMove = (
-            action == QAbstractSlider.SliderSingleStepAdd
-            or action == QAbstractSlider.SliderSingleStepSub
-            or action == QAbstractSlider.SliderPageStepAdd
-            or action == QAbstractSlider.SliderPageStepSub
+            action == QAbstractSlider.SliderAction.SliderSingleStepAdd
+            or action == QAbstractSlider.SliderAction.SliderSingleStepSub
+            or action == QAbstractSlider.SliderAction.SliderPageStepAdd
+            or action == QAbstractSlider.SliderAction.SliderPageStepSub
         )
         if singleMove:
             self.update_z_slice(self.zSliceScrollBar.sliderPosition())
-        elif action == QAbstractSlider.SliderMove:
+        elif action == QAbstractSlider.SliderAction.SliderMove:
             if self.zSliceScrollBarStartedMoving and self.isSegm3D:
                 self.clearAx1Items(onlyHideText=True)
                 self.clearAx2Items(onlyHideText=True)
@@ -14463,13 +14463,13 @@ class guiWin(QMainWindow):
             self.framesScrollBarReleased()
 
     def PosScrollBarAction(self, action):
-        if action == QAbstractSlider.SliderSingleStepAdd:
+        if action == QAbstractSlider.SliderAction.SliderSingleStepAdd:
             self.next_cb()
-        elif action == QAbstractSlider.SliderSingleStepSub:
+        elif action == QAbstractSlider.SliderAction.SliderSingleStepSub:
             self.prev_cb()
-        elif action == QAbstractSlider.SliderPageStepAdd:
+        elif action == QAbstractSlider.SliderAction.SliderPageStepAdd:
             self.PosScrollBarReleased()
-        elif action == QAbstractSlider.SliderPageStepSub:
+        elif action == QAbstractSlider.SliderAction.SliderPageStepSub:
             self.PosScrollBarReleased()
 
     def PosScrollBarMoved(self, pos_n):
@@ -14485,17 +14485,17 @@ class guiWin(QMainWindow):
         self.updatePos()
 
     def framesScrollBarAction(self, action):
-        if action == QAbstractSlider.SliderSingleStepAdd:
+        if action == QAbstractSlider.SliderAction.SliderSingleStepAdd:
             # Clicking on dialogs triggered by next_cb might trigger
             # pressEvent of navigateQScrollBar, avoid that
             self.navigateScrollBar.disableCustomPressEvent()
             self.next_cb()
             QTimer.singleShot(100, self.navigateScrollBar.enableCustomPressEvent)
-        elif action == QAbstractSlider.SliderSingleStepSub:
+        elif action == QAbstractSlider.SliderAction.SliderSingleStepSub:
             self.prev_cb()
-        elif action == QAbstractSlider.SliderPageStepAdd:
+        elif action == QAbstractSlider.SliderAction.SliderPageStepAdd:
             self.framesScrollBarReleased()
-        elif action == QAbstractSlider.SliderPageStepSub:
+        elif action == QAbstractSlider.SliderAction.SliderPageStepSub:
             self.framesScrollBarReleased()
 
     def framesScrollBarMoved(self, frame_n):

@@ -6041,8 +6041,8 @@ class ComputeMetricsErrorsDialog(widgets.QBaseDialog):
                 Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard
             )
             errorLabel.setStyleSheet("background-color: white")
-            errorLabel.setFrameShape(QFrame.Panel)
-            errorLabel.setFrameShadow(QFrame.Sunken)
+            errorLabel.setFrameShape(QFrame.Shape.Panel)
+            errorLabel.setFrameShadow(QFrame.Shadow.Sunken)
             textLayout.addWidget(nameLabel)
             textLayout.addWidget(errorLabel)
             textLayout.addStretch(1)
@@ -7590,7 +7590,7 @@ class editCcaTableWidget(QDialog):
         # Scroll area properties
         self.scrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.scrollArea.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.scrollArea.setFrameStyle(QFrame.NoFrame)
+        self.scrollArea.setFrameStyle(QFrame.Shape.NoFrame)
         self.scrollArea.setWidgetResizable(True)
 
         # Add layouts
