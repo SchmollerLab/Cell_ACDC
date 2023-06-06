@@ -1074,6 +1074,7 @@ class AddPointsLayerDialog(widgets.QBaseDialog):
         self.enableRadioButtonWidgets(False, sender=self.manualEntryRadiobutton)
         
         '----------------------------------------------------------------------'
+        self.clickEntryIsLoadedDf = None
         row += 1
         self.clickEntryRadiobutton = QRadioButton('Add points with mouse clicks')
         typeLayout.addWidget(self.clickEntryRadiobutton, row, 0, 1, 2) 
@@ -1098,6 +1099,11 @@ class AddPointsLayerDialog(widgets.QBaseDialog):
         self.clickEntryTableEndname.setText('points_added_by_clicking')
         self.clickEntryTableEndname.setAlignment(Qt.AlignCenter)
         self.clickEntryTableEndname.label = QLabel('Table endname: ')
+        loadButton = widgets.browseFileButton(
+            start_dir=imagesPath, ext={'CSV': '.csv'})
+        typeLayout.addWidget(loadButton, row, 3)
+        browseButton.sigPathSelected.connect(self.loadClickEntryTable)
+        self.clickEntryLoadTableButton = loadButton
         typeLayout.addWidget(self.clickEntryTableEndname.label, row, 1)
         typeLayout.addWidget(self.clickEntryTableEndname, row, 2)
         self.clickEntryRadiobutton.widgets.append(self.clickEntryTableEndname)
@@ -1148,7 +1154,16 @@ class AddPointsLayerDialog(widgets.QBaseDialog):
     def emitCheckClickEntryTableEndnameExists(self, *args, **kwargs):
         if not self.clickEntryRadiobutton.isChecked():
             return
+        self.clickEntryIsLoadedDf = None
+        tableEndName = self.clickEntryTableEndname.text()
+        self.sigCheckClickEntryTableEndnameExists.emit(tableEndName)
     
+    def loadClickEntryTable(self, csv_path):
+        self.clickEntryIsLoadedDf = True
+        filename = os.path.basename(csv_path)
+        filename, ext = os.path.splittext(filename)
+        self.clickEntryTableEndname.setText(filename)
+        
     def showAutoPilotInfo(self):
         msg = widgets.myMessageBox(wrapText=False)
         txt = html_utils.paragraph("""
@@ -1296,12 +1311,10 @@ class AddPointsLayerDialog(widgets.QBaseDialog):
             self.layerType = ('Click to annotate point')
             self.description = (
                 'Left-click to add a point, click on point to delete it.\n'
-                f'Auto-pilot requested: {self.autoPilotToggle.isChecked()}\n'
                 'With auto-pilot you can navigate through object with Up/Down arrows.'
             )
             self.clickEntryTableEndnameText = self.clickEntryTableEndname.text()
             self.layerTypeIdx = 4
-            self.isAutoPilotActive = self.autoPilotToggle.isChecked()
         
         self.cancel = False
         symbol = self.appearanceGroupbox.symbolWidget.widget.currentText()

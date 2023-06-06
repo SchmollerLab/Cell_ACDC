@@ -21,6 +21,7 @@
     <file alias="calc.svg">resources/icons/math/calc.svg</file>
     <file alias="clear.svg">resources/icons/math/clear.svg</file>
     <file alias="view.svg">resources/icons/view.svg</file>
+    <file alias="cross_cursor.svg">resources/icons/cross_cursor.svg</file>
     <file alias="file-new.svg">resources/icons/file-new.svg</file>
     <file alias="file-open.svg">resources/icons/file-open.svg</file>
     <file alias="file-save.svg">resources/icons/file-save.svg</file>

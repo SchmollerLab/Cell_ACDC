@@ -776,6 +776,8 @@ class saveDataWorker(QObject):
 
             # Save combined metrics equations
             posData.saveCombineMetrics()
+            self.mainWin.pointsLayerDataToDf(posData)
+            posData.saveClickEntryPointsDfs()
 
             posData.last_tracked_i = last_tracked_i
 
@@ -795,9 +797,10 @@ class saveDataWorker(QObject):
             # self.progressBar.emit(1)
         if self.mainWin.isSnapshot:
             self.progress.emit(f'Saved all {p+1} Positions!')
-
+        
         self.finished.emit()
-
+        
+        
 class guiWin(QMainWindow):
     """Main Window."""
 
@@ -1168,6 +1171,9 @@ class guiWin(QMainWindow):
 
         pixmap = QPixmap(":addDelPolyLineRoi_cursor.svg")
         self.polyLineRoiCursor = QCursor(pixmap, 16, 16)
+        
+        pixmap = QPixmap(":cross_cursor.svg")
+        self.addPointsCursor = QCursor(pixmap, 16, 16)
 
     def gui_createMenuBar(self):
         menuBar = self.menuBar()
@@ -2221,13 +2227,56 @@ class guiWin(QMainWindow):
 
         self.keptIDsLineEdit.sigIDsChanged.connect(self.updateKeepIDs)
         self.keepIDsConfirmAction.triggered.connect(self.applyKeepObjects)
-
+        
+        self.autoPilotZoomToObjToolbar = QToolBar("Auto-zoom to objects", self)
+        self.autoPilotZoomToObjToolbar.setContextMenuPolicy(Qt.PreventContextMenu)
+        self.addToolBar(Qt.TopToolBarArea, self.autoPilotZoomToObjToolbar)
+        # self.autoPilotZoomToObjToolbar.setIconSize(QSize(16, 16))
+        self.autoPilotZoomToObjToolbar.setVisible(False)
+        
+        closeToolbarAction = QAction(
+            QIcon(":cancelButton.svg"), "Close toolbar...", self
+        )
+        closeToolbarAction.triggered.connect(self.closeToolbars)
+        self.autoPilotZoomToObjToolbar.addAction(closeToolbarAction)
+        
+        self.autoPilotZoomToObjToolbar.addWidget(widgets.QVLine())
+        self.autoPilotZoomToObjToolbar.addWidget(widgets.QHWidgetSpacer(width=separatorW))
+        
+        spinBox = widgets.SpinBox()
+        spinBox.setMinimum(1)
+        spinBox.label = QLabel('  Zoom to ID: ')
+        spinBox.labelAction = self.autoPilotZoomToObjToolbar.addWidget(spinBox.label)
+        spinBox.action = self.autoPilotZoomToObjToolbar.addWidget(spinBox)
+        spinBox.editingFinished.connect(self.zoomToObj)
+        spinBox.sigUpClicked.connect(self.autoZoomNextObj)
+        spinBox.sigDownClicked.connect(self.autoZoomPrevObj)
+        self.autoPilotZoomToObjSpinBox = spinBox
+        toggle = widgets.Toggle()
+        self.autoPilotZoomToObjToggle = toggle
+        toggle.toggled.connect(self.autoPilotZoomToObjToggled)
+        toggle.label = QLabel('  Auto-pilot: ')
+        tooltip = (
+            'When auto-pilot is active, you can use Up/Down arrows to '
+            'automatically zoom to the next/previous object.\n\n'
+            'Alternatively, you can type the ID of the object you want to '
+            'zoom to.'
+        )
+        toggle.label.setToolTip(tooltip)
+        toggle.setToolTip(tooltip)
+        self.autoPilotZoomToObjToolbar.addWidget(toggle.label)
+        self.autoPilotZoomToObjToolbar.addWidget(toggle)
+        
         self.pointsLayersToolbar = QToolBar("Points layers", self)
         self.pointsLayersToolbar.setContextMenuPolicy(Qt.PreventContextMenu)
         self.addToolBar(Qt.TopToolBarArea, self.pointsLayersToolbar)
         self.pointsLayersToolbar.addWidget(QLabel('Points layers:  '))
-        self.pointsLayersToolbar.setIconSize(QSize(16, 16))
+        # self.pointsLayersToolbar.setIconSize(QSize(16, 16))
         self.pointsLayersToolbar.setVisible(False)
+        
+        closeToolbarAction.toolbars = (
+            self.pointsLayersToolbar, self.autoPilotZoomToObjToolbar
+        )
 
         self.manualTrackingToolbar = widgets.ManualTrackingToolBar(
             "Manual tracking controls", self
@@ -5477,11 +5526,19 @@ class guiWin(QMainWindow):
             and (noModifier or shift or ctrl)
             and self.labelRoiIsCircularRadioButton.isChecked()
         )
+        setAddPointCurosr = (
+            self.pointsLayersToolbar.isVisible() and not event.isExit()
+            and noModifier
+        )
+        
         if setBrushCursor or setEraserCursor or setLabelRoiCircCursor:
             self.app.setOverrideCursor(Qt.CrossCursor)
 
         if setAddDelPolyLineCursor:
             self.app.setOverrideCursor(self.polyLineRoiCursor)
+        
+        if setAddPointCurosr:
+            self.app.setOverrideCursor(self.addPointsCursor)
 
         setWandCursor = (
             self.wandToolButton.isChecked() and not event.isExit()
@@ -10618,10 +10675,8 @@ class guiWin(QMainWindow):
         if ev.key() == Qt.Key_Q:
             # self.setAllIDs()
             posData = self.data[self.pos_i]
-            self.textAnnot[0].grayOutAnnotations(IDsToSkip={2:True})
-            testgrad = widgets.myHistogramLUTitem(parent=self, name='image')
-            self.testLayout.addItem(testgrad)
-            printl(self.graphLayout.items)
+            for posData in self.data:
+                printl(posData.clickEntryPointsDfs)
             # printl(posData.fluo_data_dict.keys())
             # for key in posData.fluo_data_dict:
             #     printl(key, posData.fluo_data_dict[key].max())
@@ -10714,7 +10769,7 @@ class guiWin(QMainWindow):
                 val = self.labelRoiCircularRadiusSpinbox.value()
                 self.labelRoiCircularRadiusSpinbox.setValue(val+1)
             elif addPointsByClickingButton is not None:
-                self.pointsLayerAutoPilot(addPointsByClickingButton, 'next')
+                self.pointsLayerAutoPilot('next')
             else:
                 self.zSliceScrollBar.triggerAction(
                     QAbstractSlider.SliderSingleStepAdd
@@ -10734,7 +10789,7 @@ class guiWin(QMainWindow):
                 val = self.labelRoiCircularRadiusSpinbox.value()
                 self.labelRoiCircularRadiusSpinbox.setValue(val-1)
             elif addPointsByClickingButton is not None:
-                self.pointsLayerAutoPilot(addPointsByClickingButton, 'prev')
+                self.pointsLayerAutoPilot('prev')
             else:
                 self.zSliceScrollBar.triggerAction(
                     QAbstractSlider.SliderSingleStepSub
@@ -12751,10 +12806,10 @@ class guiWin(QMainWindow):
             return
 
         posData = self.data[self.pos_i]
-        lab_mask = (posData.lab>0).astype(np.uint8)
+        lab_mask = (self.currentLab2D>0).astype(np.uint8)
         rp = skimage.measure.regionprops(lab_mask)
         if not rp:
-            Y, X = self.get_2Dlab(posData.lab).shape
+            Y, X = lab_mask.shape
             xRange = -0.5, X+0.5
             yRange = -0.5, Y+0.5
         else:
@@ -12874,10 +12929,11 @@ class guiWin(QMainWindow):
         self.initContoursImage()
         self.initTextAnnot()
         self.postProcessing()
-        self.updateAllImages(updateFilters=True)
-        self.zoomToCells()
         self.updateScrollbars()
+        self.updateAllImages(updateFilters=True)
         self.computeSegm()
+        self.zoomOut()
+        self.restartZoomAutoPilot()
 
     def prev_pos(self):
         self.store_data(debug=False)
@@ -14019,7 +14075,7 @@ class guiWin(QMainWindow):
     def clearPointsLayers(self):
         for action in self.pointsLayersToolbar.actions()[1:]:
             try:
-                action.scatterItem.clear()
+                action.scatterItem.setData([], [])
             except Exception as e:
                 continue
 
@@ -14560,7 +14616,8 @@ class guiWin(QMainWindow):
                 acdc_df['z_centroid'] = zz_centroid
             acdc_df['was_manually_edited'] = areManuallyEdited
             posData.allData_li[posData.frame_i]['acdc_df'] = acdc_df
-
+        
+        self.pointsLayerDataToDf(posData)
         self.store_cca_df(pos_i=pos_i, mainThread=mainThread, autosave=autosave)
 
     def nearest_point_2Dyx(self, points, all_others):
@@ -15287,6 +15344,7 @@ class guiWin(QMainWindow):
         posData.IDs_idxs = {
             ID:i for ID, i in zip(posData.IDs, range(len(posData.IDs)))
         }
+        self.pointsLayerDfsToData(posData)
         return proceed_cca, never_visited
 
     def load_delROIs_info(self, delROIshapes, last_tracked_num):
@@ -16215,6 +16273,7 @@ class guiWin(QMainWindow):
                 selectedLabelsEndnames = self.askLabelsToOverlay()
                 if selectedLabelsEndnames is None:
                     self.logger.info('Overlay labels cancelled.')
+                    self.overlayLabelsButton.setChecked(False)
                     return
                 for selectedEndname in selectedLabelsEndnames:
                     self.loadOverlayLabelsData(selectedEndname)
@@ -16243,10 +16302,20 @@ class guiWin(QMainWindow):
             return
 
         return selectOverlayLabels.selectedItemsText
+
+    def closeToolbars(self):
+        for toolbar in self.sender().toolbars:
+            toolbar.setVisible(False)
+            for action in toolbar.actions():
+                try:
+                    action.button.setChecked(False)
+                except Exception as e:
+                    pass
     
     def addPointsLayer_cb(self):
+        self.pointsLayersToolbar.setVisible(True)
+        self.autoPilotZoomToObjToolbar.setVisible(True)
         posData = self.data[self.pos_i]
-        self.currentClickEntryPointsDf = None
         self.addPointsWin = apps.AddPointsLayerDialog(
             channelNames=posData.chNames, imagesPath=posData.images_path, 
             parent=self
@@ -16266,34 +16335,151 @@ class guiWin(QMainWindow):
             if action.layerTypeIdx == 4 and action.button.isChecked():
                 return action.button
     
-    def setupAddPointsByClicking(self, toolButton, scatterItem):
+    def setupAddPointsByClicking(self, toolButton, isLoadedDf):
         self.LeftClickButtons.append(toolButton)
         posData = self.data[self.pos_i]
         tableEndName = self.addPointsWin.clickEntryTableEndnameText
-        if self.currentClickEntryPointsDf is not None:
-            toolButton.clickEntryPointsDf = self.currentClickEntryPointsDf
-        else:
-            toolButton.clickEntryPointsDf = pd.DataFrame(
-                columns=['frame_i', 'Cell_ID', 'z', 'y', 'x']
-            ).set_index(['frame_i', 'Cell_ID'])
+        if isLoadedDf is not None:
+            posData = self.data[self.pos_i]
+            tableEndName = tableEndName[len(posData.basename):]
         toolButton.clickEntryTableEndName = tableEndName
-                
-        spinBox = widgets.SpinBox()
-        spinBox.setMinimum(1)
-        spinBox.label = QLabel('  Zoom to ID: ')
-        spinBox.labelAction = self.pointsLayersToolbar.addWidget(spinBox.label)
-        spinBox.action = self.pointsLayersToolbar.addWidget(spinBox)
-        spinBox.editingFinished.connect(self.zoomToObj)
-        toolButton.spinBox = spinBox
         
         toolButton.toggled.connect(self.addPointsByClickingButtonToggled)
         self.addPointsByClickingButtonToggled(sender=toolButton)
         
-        if toolButton.isAutoPilotActive and posData.IDs:
-            spinBox.setValue(posData.IDs[0])
-            self.zoomToObj(posData.rp[0])
+        saveAction = QAction(
+            QIcon(":file-save.svg"), 
+            "Save annotated points in the CSV file ending with 'tableEndName.csv'", 
+            self
+        )
+        saveAction.triggered.connect(self.savePointsAddedByClicking)
+        saveAction.toolButton = toolButton
+        self.pointsLayersToolbar.addAction(saveAction)
+        self.pointsLayerDfsToData(posData)
+    
+    def autoPilotZoomToObjToggled(self, checked):
+        if not checked:
+            self.zoomOut()
+            return
+        
+        posData = self.data[self.pos_i]
+        if not posData.IDs:
+            self.logger.info('There are no objects in current segmentation mask')
+            return
+        self.autoPilotZoomToObjSpinBox.setValue(posData.IDs[0])
+        self.zoomToObj(posData.rp[0])
+    
+    def savePointsAddedByClickingFromEndname(self, tableEndName):
+        for posData in self.data:
+            if not posData.basename.endswith('_'):
+                basename = f'{posData.basename}_'
+            else:
+                basename = posData.basename
+            tableFilename = f'{basename}{tableEndName}.csv'
+            tableFilepath = os.path.join(posData.images_path, tableFilename)
+            self.pointsLayerDataToDf(posData)
+            df = posData.clickEntryPointsDfs.get(tableEndName)
+            if df is None:
+                continue
+            df.to_csv(tableFilepath, index=False)
+    
+    @exception_handler
+    def savePointsAddedByClicking(self):
+        toolButton = self.sender().toolButton
+        tableEndName = toolButton.clickEntryTableEndName
+        
+        self.logger.info(f'Saving _{tableEndName}.csv table...')
+        
+        self.savePointsAddedByClickingFromEndname(tableEndName)
+        
+        self.logger.info(f'{tableEndName}.csv saved!')
+        self.titleLabel.setText(f'{tableEndName}.csv saved!', color='g')
+    
+    def pointsLayerDfsToData(self, posData):
+        for action in self.pointsLayersToolbar.actions()[1:]:
+            if not hasattr(action, 'button'):
+                continue
+            if not hasattr(action.button, 'clickEntryTableEndName'):
+                continue
+            tableEndName = action.button.clickEntryTableEndName
+            if posData.clickEntryPointsDfs.get(tableEndName) is None:
+                action.pointsData = {}
+                continue
+            
+            df = posData.clickEntryPointsDfs[tableEndName]
+            if self.isSegm3D and df['z'].isna().any():
+                self.warnLoadedPointsTableIsNot3D(tableEndName)
+                return
+            
+            for frame_i, df_frame in df.groupby('frame_i'):
+                action.pointsData[frame_i] = {}
+                if self.isSegm3D:
+                    for z, df_zlice in df_frame.groupby('z'):
+                        xx = df_zlice['x'].to_list()
+                        yy = df_zlice['y'].to_list()
+                        action.pointsData[frame_i][z] = {'x': xx, 'y': yy}
+                else:
+                    xx = df_frame['x'].to_list()
+                    yy = df_frame['y'].to_list()
+                    action.pointsData[frame_i][z] = {'x': xx, 'y': yy}
+            
+    def pointsLayerDataToDf(self, posData):
+        for action in self.pointsLayersToolbar.actions()[1:]:
+            if not hasattr(action, 'button'):
+                continue
+            if not hasattr(action.button, 'clickEntryTableEndName'):
+                continue
+            tableEndName = action.button.clickEntryTableEndName
+            if posData.clickEntryPointsDfs.get(tableEndName) is None:
+                continue
+            
+            df = pd.DataFrame(columns=['frame_i', 'Cell_ID', 'z', 'y', 'x'])
+            frames_vals = []
+            IDs = []
+            zz = []
+            yy = []
+            xx = []
+            for frame_i, framePointsData in action.pointsData.items():
+                if self.isSegm3D:
+                    for z, zSlicePointsData in framePointsData.items():
+                        yyxx = zip(zSlicePointsData['y'], zSlicePointsData['x'])
+                        for y, x in yyxx:
+                            ID = posData.lab[int(z), int(y), int(x)]
+                            frames_vals.append(frame_i)
+                            IDs.append(ID)
+                            zz.append(z)
+                            yy.append(y)
+                            xx.append(x)
+                else:
+                    yyxx = zip(framePointsData['y'], framePointsData['x'])
+                    for y, x in yyxx:
+                        ID = posData.lab[int(y), int(x)]
+                        frames_vals.append(frame_i)
+                        IDs.append(ID)
+                        yy.append(y)
+                        xx.append(x)
+            df['frame_i'] = frames_vals
+            df['Cell_ID'] = IDs
+            df['y'] = yy
+            df['x'] = xx
+            if zz:
+                df['z'] = zz
+            posData.clickEntryPointsDfs[tableEndName] = df
+    
+    def restartZoomAutoPilot(self):
+        if not self.autoPilotZoomToObjToggle.isChecked():
+            return
+        
+        posData = self.data[self.pos_i]
+        if not posData.IDs:
+            return
+        
+        self.autoPilotZoomToObjSpinBox.setValue(posData.IDs[0])
+        self.zoomToObj(posData.rp[0])
     
     def zoomToObj(self, obj=None):
+        if not hasattr(self, 'data'):
+            return
         posData = self.data[self.pos_i]
         if obj is None:
             ID = self.sender().value()
@@ -16316,22 +16502,29 @@ class guiWin(QMainWindow):
         if sender is None:
             sender = self.sender()
         if not sender.isChecked():
-            sender.spinBox.labelAction.setDisabled(True)
-            sender.spinBox.action.setDisabled(True)
+            action = sender.action
+            action.scatterItem.setVisible(False)
             return
         self.disconnectLeftClickButtons()
         self.uncheckLeftClickButtons(sender)
         self.connectLeftClickButtons()
-        
-        sender.spinBox.labelAction.setDisabled(False)
-        sender.spinBox.action.setDisabled(False)
+        action = sender.action
+        action.scatterItem.setVisible(True)
     
-    def pointsLayerAutoPilot(self, addPointsByClickingButton, direction):
-        if not addPointsByClickingButton.isChecked():
+    def autoZoomNextObj(self):
+        self.pointsLayerAutoPilot('next')
+        self.setFocusMain()
+        self.setFocusGraphics()
+    
+    def autoZoomPrevObj(self):
+        self.pointsLayerAutoPilot('prev')
+        self.setFocusMain()
+        self.setFocusGraphics()
+    
+    def pointsLayerAutoPilot(self, direction):
+        if not self.autoPilotZoomToObjToggle.isChecked():
             return
-        if not addPointsByClickingButton.isAutoPilotActive:
-            return
-        ID = addPointsByClickingButton.spinBox.value()
+        ID = self.autoPilotZoomToObjSpinBox.value()
         posData = self.data[self.pos_i]
         if not posData.IDs:
             return
@@ -16344,23 +16537,25 @@ class guiWin(QMainWindow):
                 nextID_idx = ID_idx - 1
             obj = posData.rp[nextID_idx]
         except Exception as e:
-            printl(traceback.format_exc())
+            # printl(traceback.format_exc())
             self.logger.info(
-                f'Add points by clicking auto-pilot restarted from first ID'
+                f'Auto-pilot restarted from first ID'
             )
             obj = posData.rp[0]
         
-        addPointsByClickingButton.spinBox.setValue(obj.label)
+        self.autoPilotZoomToObjSpinBox.setValue(obj.label)
         self.zoomToObj(obj)        
         
     def checkClickEntryTableEndnameExists(self, tableEndName, forceLoading=False):
-        posData = self.data[self.pos_i]
-        files = myutils.listdir(posData.images_path)
-        for file in files:
-            if file.endswith(f'{tableEndName}.csv'):
-                table_filepath = os.path.join(posData.images_path, file)
-                break
-        else:
+        doesTableExists = False
+        for posData in self.data:
+            files = myutils.listdir(posData.images_path)
+            for file in files:
+                if file.endswith(f'{tableEndName}.csv'):
+                    doesTableExists = True
+                    break
+        
+        if not doesTableExists:
             return
         
         if not forceLoading:
@@ -16376,9 +16571,7 @@ class guiWin(QMainWindow):
             if msg.clickedButton != yesButton:
                 return
 
-        self.currentClickEntryPointsDf = pd.read_csv(
-            table_filepath, index_col=['frame_i', 'Cell_ID']
-        )
+        self.loadClickEntryDfs(tableEndName)
 
     def addPointsLayer(self):
         if self.addPointsWin.cancel:
@@ -16405,7 +16598,7 @@ class guiWin(QMainWindow):
             f'SHORTCUT: "{self.addPointsWin.shortcut}"'
         )
         if hasattr(self.addPointsWin, 'description'):
-            toolTip = f'{toolTip}\nDescription: {self.addPointsWin}'
+            toolTip = f'{toolTip}\nDescription: {self.addPointsWin.description}'
         toolButton.setToolTip(toolTip)
         toolButton.setCheckable(True)
         toolButton.setChecked(True)
@@ -16423,16 +16616,31 @@ class guiWin(QMainWindow):
         action.layerType = self.addPointsWin.layerType
         action.layerTypeIdx = self.addPointsWin.layerTypeIdx
         action.pointsData = self.addPointsWin.pointsData
-        self.pointsLayersToolbar.setVisible(True)
         
         if self.addPointsWin.layerType.startswith('Click to annotate point'):
-            toolButton.isAutoPilotActive = self.addPointsWin.isAutoPilotActive
-            self.setupAddPointsByClicking(toolButton, scatterItem)
+            isLoadedDf = self.addPointsWin.clickEntryIsLoadedDf
+            self.setupAddPointsByClicking(toolButton, isLoadedDf)
+            if self.addPointsWin.autoPilotToggle.isChecked():
+                self.autoPilotZoomToObjToggle.setChecked(True)
 
         weighingChannel = self.addPointsWin.weighingChannel
         self.loadPointsLayerWeighingData(action, weighingChannel)
 
         self.drawPointsLayers()
+    
+    def loadClickEntryDfs(self, tableEndName):
+        for posData in self.data:
+            if posData.basename.endswith('_'):
+                basename = posData.basename
+            else:
+                basename = f'{posData.basename}_'
+            csv_filename = f'{basename}{tableEndName}'
+            if not csv_filename.endswith('.csv'):
+                csv_filename = f'{csv_filename}.csv'
+            filepath = os.path.join(posData.images_path, csv_filename)
+            if not os.path.exists(filepath):
+                continue
+            posData.clickEntryPointsDfs[tableEndName] = pd.read_csv(filepath)
     
     def removeClickedPoints(self, action, points):
         posData = self.data[self.pos_i]

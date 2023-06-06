@@ -554,6 +554,7 @@ class loadData:
         self.loadSizeZ = None
         self.multiSegmAllPos = False
         self.frame_i = 0
+        self.clickEntryPointsDfs = {}
         path_li = os.path.normpath(imgPath).split(os.sep)
         self.relPath = f'{f"{os.sep}".join(path_li[-relPathDepth:])}'
         filename_ext = os.path.basename(imgPath)
@@ -1425,6 +1426,16 @@ class loadData:
     def saveCombineMetrics(self):
         with open(self.custom_combine_metrics_path, 'w') as configfile:
             self.combineMetricsConfig.write(configfile)
+    
+    def saveClickEntryPointsDfs(self):
+        for tableEndName, df in self.clickEntryPointsDfs.items():
+            if not self.basename.endswith('_'):
+                basename = f'{self.basename}_'
+            else:
+                basename = self.basename
+            tableFilename = f'{basename}{tableEndName}.csv'
+            tableFilepath = os.path.join(self.images_path, tableFilename)
+            df.to_csv(tableFilepath, index=False)
 
     def check_acdc_df_integrity(self):
         check = (
