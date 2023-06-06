@@ -10755,7 +10755,10 @@ class guiWin(QMainWindow):
         how = self.drawIDsContComboBox.currentText()
         isOverlaySegm = how.find('overlay segm. masks') != -1
         if ev.key()==Qt.Key_Up and not isCtrlModifier:
-            addPointsByClickingButton = self.buttonAddPointsByClickingActive()
+            isAutoPilotActive = (
+                self.autoPilotZoomToObjToggle.isChecked()
+                and self.autoPilotZoomToObjToolbar.isVisible()
+            )
             if isBrushActive:
                 brushSize = self.brushSizeSpinbox.value()
                 self.brushSizeSpinbox.setValue(brushSize+1)
@@ -10768,14 +10771,17 @@ class guiWin(QMainWindow):
             elif isLabelRoiCircActive:
                 val = self.labelRoiCircularRadiusSpinbox.value()
                 self.labelRoiCircularRadiusSpinbox.setValue(val+1)
-            elif addPointsByClickingButton is not None:
+            elif isAutoPilotActive:
                 self.pointsLayerAutoPilot('next')
             else:
                 self.zSliceScrollBar.triggerAction(
                     QAbstractSlider.SliderAction.SliderSingleStepAdd
                 )
         elif ev.key()==Qt.Key_Down and not isCtrlModifier:
-            addPointsByClickingButton = self.buttonAddPointsByClickingActive()
+            isAutoPilotActive = (
+                self.autoPilotZoomToObjToggle.isChecked()
+                and self.autoPilotZoomToObjToolbar.isVisible()
+            )
             if isBrushActive:
                 brushSize = self.brushSizeSpinbox.value()
                 self.brushSizeSpinbox.setValue(brushSize-1)
@@ -10788,7 +10794,7 @@ class guiWin(QMainWindow):
             elif isLabelRoiCircActive:
                 val = self.labelRoiCircularRadiusSpinbox.value()
                 self.labelRoiCircularRadiusSpinbox.setValue(val-1)
-            elif addPointsByClickingButton is not None:
+            elif isAutoPilotActive:
                 self.pointsLayerAutoPilot('prev')
             else:
                 self.zSliceScrollBar.triggerAction(
