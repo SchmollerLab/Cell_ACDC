@@ -259,7 +259,7 @@ class dataPrepWin(QMainWindow):
         navigateToolbar.addAction(self.interpAction)
 
         self.ROIshapeComboBox = QComboBox()
-        self.ROIshapeComboBox.SizeAdjustPolicy(QComboBox.AdjustToContents)
+        self.ROIshapeComboBox.SizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
         self.ROIshapeComboBox.addItems(['  256x256  '])
         ROIshapeLabel = QLabel('   ROI standard shape: ')
         ROIshapeLabel.setBuddy(self.ROIshapeComboBox)
@@ -2158,7 +2158,7 @@ class dataPrepWin(QMainWindow):
         # fmt = QTextBlockFormat()
         # fmt.setAlignment(Qt.AlignHCenter)
         # cursor = self.titleLabel.item.textCursor()
-        # cursor.select(QTextCursor.Document)
+        # cursor.select(QTextCursor.SelectionType.Document)
         # cursor.mergeBlockFormat(fmt)
         # cursor.clearSelection()
         # self.titleLabel.item.setTextCursor(cursor)

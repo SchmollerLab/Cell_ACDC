@@ -26,7 +26,7 @@ class CustomDialog(QDialog):
         
         # FOV dialog
         self.listfov = QListWidget()
-        self.listfov.setSelectionMode(QAbstractItemView.MultiSelection)
+        self.listfov.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
         for f in range(0, app.reader.Npos):
             self.listfov.addItem('Field of View {}'.format(f+1))
 
@@ -57,7 +57,7 @@ class CustomDialog(QDialog):
         flo.addWidget(self.buttonBF)
         flo.addWidget(self.buttonPC)
         
-        QBtn = QDialogButtonBox.Ok | QDialogButtonBox.Cancel
+        QBtn = QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         
         self.buttonBox = QDialogButtonBox(QBtn)
         self.buttonBox.accepted.connect(self.accept)

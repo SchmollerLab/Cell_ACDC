@@ -916,9 +916,9 @@ class welcomeWin(QWidget):
         self.QPbar = QProgressBar(self)
         self.QPbar.setValue(0)
         palette = QPalette()
-        palette.setColor(QPalette.Highlight, QColor(207, 235, 155))
-        palette.setColor(QPalette.Text, QColor(0, 0, 0))
-        palette.setColor(QPalette.HighlightedText, QColor(0, 0, 0))
+        palette.setColor(QPalette.ColorRole.Highlight, QColor(207, 235, 155))
+        palette.setColor(QPalette.ColorRole.Text, QColor(0, 0, 0))
+        palette.setColor(QPalette.ColorRole.HighlightedText, QColor(0, 0, 0))
         self.QPbar.setPalette(palette)
         self.welcomeLayout.addWidget(self.QPbar, 3, 0, 1, 3)
 
@@ -1057,7 +1057,7 @@ class welcomeWin(QWidget):
 
     def eventFilter(self, object, event):
         # Disable wheel scroll on widgets to allow scroll only on scrollarea
-        if event.type() == QEvent.Wheel:
+        if event.type() == QEvent.Type.Wheel:
             event.ignore()
             return True
         return False

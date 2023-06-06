@@ -1360,9 +1360,9 @@ class createDataStructWin(QMainWindow):
         self.QPbar = QProgressBar(self)
         self.QPbar.setValue(0)
         palette = QtGui.QPalette()
-        palette.setColor(QtGui.QPalette.Highlight, QtGui.QColor(207, 235, 155))
-        palette.setColor(QtGui.QPalette.Text, QtGui.QColor(0, 0, 0))
-        palette.setColor(QtGui.QPalette.HighlightedText, QtGui.QColor(0, 0, 0))
+        palette.setColor(QtGui.QPalette.ColorRole.Highlight, QtGui.QColor(207, 235, 155))
+        palette.setColor(QtGui.QPalette.ColorRole.Text, QtGui.QColor(0, 0, 0))
+        palette.setColor(QtGui.QPalette.ColorRole.HighlightedText, QtGui.QColor(0, 0, 0))
         self.QPbar.setPalette(palette)
         self.mainLayout.insertWidget(3, self.QPbar)
 

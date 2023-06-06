@@ -265,9 +265,9 @@ class PushButton(QPushButton):
             self.installEventFilter(self)
     
     def eventFilter(self, object, event):
-        if event.type() == QEvent.HoverEnter:
+        if event.type() == QEvent.Type.HoverEnter:
             self.setFlat(False)
-        elif event.type() == QEvent.HoverLeave:
+        elif event.type() == QEvent.Type.HoverLeave:
             self.setFlat(True)
         return False
     
@@ -808,7 +808,7 @@ class ScrollBar(QScrollBar):
         self.installEventFilter(self)
     
     def eventFilter(self, object, event) -> bool:
-        if event.type() == QEvent.Wheel:
+        if event.type() == QEvent.Type.Wheel:
             return True
         return False
 
@@ -989,9 +989,9 @@ class _SelectionModel(QItemSelectionModel):
 
         self.clearSelection()
         flags = (
-            QItemSelectionModel.ClearAndSelect 
-            | QItemSelectionModel.Rows 
-            | QItemSelectionModel.Current
+            QItemSelectionModel.SelectionFlag.ClearAndSelect 
+            | QItemSelectionModel.SelectionFlag.Rows 
+            | QItemSelectionModel.SelectionFlag.Current
         )
         self.select(new_selection, flags)
         self.setCurrentIndex(new_index, flags)
@@ -1014,7 +1014,7 @@ class ReorderableListView(QListView):
         )
         self.setModel(self._model)
         self.setSelectionModel(self._selectionModel)
-        self.setDragDropMode(QAbstractItemView.InternalMove)
+        self.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
         self.setDragDropOverwriteMode(False)
         styleSheet = (f"""
             QListView {{
@@ -1083,9 +1083,9 @@ class QDialogListbox(QDialog):
         listBox.setFont(_font)
         listBox.addItems(items)
         if multiSelection:
-            listBox.setSelectionMode(QAbstractItemView.ExtendedSelection)
+            listBox.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         else:
-            listBox.setSelectionMode(QAbstractItemView.SingleSelection)
+            listBox.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         listBox.setCurrentRow(0)
         self.listBox = listBox
         if not multiSelection:
@@ -1145,7 +1145,7 @@ class QDialogListbox(QDialog):
     def keyPressEvent(self, event) -> None:
         mod = event.modifiers()
         if mod == Qt.ShiftModifier or mod == Qt.ControlModifier:
-            self.listBox.setSelectionMode(QAbstractItemView.ExtendedSelection)
+            self.listBox.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         elif event.key() == Qt.Key_Escape:
             self.listBox.clearSelection()
             event.ignore()
@@ -1161,10 +1161,10 @@ class QDialogListbox(QDialog):
     def onItemClicked(self, item):
         mod = QGuiApplication.keyboardModifiers()
         if mod == Qt.ShiftModifier or mod == Qt.ControlModifier:
-            self.listBox.setSelectionMode(QAbstractItemView.ExtendedSelection)
+            self.listBox.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
             return
         
-        self.listBox.setSelectionMode(QAbstractItemView.MultiSelection)
+        self.listBox.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
         itemIdx = self.listBox.row(item)
         wasSelected = self.areItemsSelected[itemIdx]
         if wasSelected:
@@ -1174,7 +1174,7 @@ class QDialogListbox(QDialog):
             self.listBox.item(i).isSelected() 
             for i in range(self.listBox.count())
         ]
-        # self.listBox.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        # self.listBox.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         # else:
         #     selectedItems.append(item)
         
@@ -1359,7 +1359,7 @@ class QHLine(QFrame):
     def setColor(self, color):
         qcolor = pg.mkColor(color)
         pal = self.palette()
-        pal.setColor(QPalette.WindowText, qcolor)
+        pal.setColor(QPalette.ColorRole.WindowText, qcolor)
         self.setPalette(pal)
 
 class QVLine(QFrame):
@@ -1373,7 +1373,7 @@ class QVLine(QFrame):
     def setColor(self, color):
         qcolor = pg.mkColor(color)
         pal = self.palette()
-        pal.setColor(QPalette.WindowText, qcolor)
+        pal.setColor(QPalette.ColorRole.WindowText, qcolor)
         self.setPalette(pal)
 
 class VerticalResizeHline(QFrame):
@@ -1406,14 +1406,14 @@ class VerticalResizeHline(QFrame):
         return super().mouseReleaseEvent(event)
     
     def eventFilter(self, object, event):
-        if event.type() == QEvent.Enter:
+        if event.type() == QEvent.Type.Enter:
             self.setLineWidth(0)
             self.setMidLineWidth(self._height)
             pal = self.palette()
-            pal.setColor(QPalette.WindowText, QColor('#4d4d4d'))
+            pal.setColor(QPalette.ColorRole.WindowText, QColor('#4d4d4d'))
             self.setPalette(pal)
             # self.setStyleSheet('background-color: #4d4d4d') 
-        elif event.type() == QEvent.Leave:
+        elif event.type() == QEvent.Type.Leave:
             self.setMidLineWidth(0)
             self.setLineWidth(1)
         return False
@@ -1467,7 +1467,7 @@ class ScrollArea(QScrollArea):
             self.containerWidget = widget
         self.containerWidget.setLayout(layout)
         self.containerWidget.setSizePolicy(
-            QSizePolicy.Preferred, QSizePolicy.Preferred
+            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred
         )
         self.setWidget(self.containerWidget)
         self.containerWidget.installEventFilter(self)
@@ -1497,20 +1497,20 @@ class ScrollArea(QScrollArea):
             + self.horizontalScrollBar().height()
         )
         self.containerWidget.setSizePolicy(
-            QSizePolicy.Preferred, QSizePolicy.Preferred
+            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred
         )
 
         self.setFixedHeight(height)
 
     def eventFilter(self, object, event: QEvent):
-        if event.type() == QEvent.Leave:
+        if event.type() == QEvent.Type.Leave:
             self.sigLeaveEvent.emit()
 
         if object != self.containerWidget:
             return False
         
-        isResize = event.type() == QEvent.Resize
-        isShow = event.type() == QEvent.Show
+        isResize = event.type() == QEvent.Type.Resize
+        isShow = event.type() == QEvent.Type.Show
         if isResize and self.isOnlyVertical:
             self._resizeHorizontal()
         elif isShow and self.resizeVerticalOnShow:
@@ -1556,7 +1556,7 @@ class QCenteredComboBox(QComboBox):
     
     def eventFilter(self, lineEdit, event):
         # Reimplement show popup on click
-        if event.type() == QEvent.MouseButtonPress:
+        if event.type() == QEvent.Type.MouseButtonPress:
             if self._isPopupVisibile:
                 self.hidePopup()
                 self._isPopupVisibile = False
@@ -1618,7 +1618,7 @@ class OrderableList(listWidget):
         super().__init__(*args, **kwargs)
     
     def addItems(self, items):
-        self.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         nr_items = len(items)
         nn = [str(n) for n in range(1, nr_items+1)]
         for i, item in enumerate(items):
@@ -1632,7 +1632,7 @@ class OrderableList(listWidget):
             itemLayout.addWidget(QLabel('| Table nr.'))
             itemLayout.addWidget(itemNumberWidget)
             itemContainer.setLayout(itemLayout)
-            itemLayout.setSizeConstraint(QLayout.SetFixedSize)
+            itemLayout.setSizeConstraint(QLayout.SizeConstraint.SetFixedSize)
             itemW.setSizeHint(itemContainer.sizeHint())
             self.addItem(itemW)
             self.setItemWidget(itemW, itemContainer)
@@ -1707,7 +1707,7 @@ class TreeWidget(QTreeWidget):
         """)
         self.setFont(font)
         if multiSelection:
-            self.setSelectionMode(QAbstractItemView.ExtendedSelection)
+            self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
             self.itemClicked.connect(self.selectAllChildren)
     
     def selectAllChildren(self, item):
@@ -1817,7 +1817,7 @@ class mySpinBox(QSpinBox):
         super().__init__(*args)
     
     def event(self, event):
-        if event.type()==QEvent.KeyPress and event.key() == Qt.Key_Tab:
+        if event.type()==QEvent.Type.KeyPress and event.key() == Qt.Key_Tab:
             self.sigTabEvent.emit(event, self)
             return True
 
@@ -2558,7 +2558,7 @@ class ToolButtonCustomColor(rightClickToolButton):
         pen = pg.mkPen(color=self.penColor, width=2)
         brush = pg.mkBrush(color=self.brushColor)
         try:
-            p.setRenderHint(QPainter.Antialiasing)
+            p.setRenderHint(QPainter.RenderHint.Antialiasing)
             p.setPen(pen)
             p.setBrush(brush)
             p.drawPath(symbol)
@@ -2682,7 +2682,7 @@ class Toggle(QCheckBox):
         bg_color='#b3b3b3',
         circle_color='#ffffff',
         active_color='#26dd66',# '#005ce6',
-        animation_curve=QEasingCurve.InOutQuad
+        animation_curve=QEasingCurve.Type.InOutQuad
     ):
         QCheckBox.__init__(self)
 
@@ -2717,7 +2717,7 @@ class Toggle(QCheckBox):
     def eventFilter(self, object, event):
         # To get the actual position of the circle we need to wait that
         # the widget is visible before setting the state
-        if event.type() == QEvent.Show and self.requestedState is not None:
+        if event.type() == QEvent.Type.Show and self.requestedState is not None:
             self.setChecked(self.requestedState)
         return False
 
@@ -2791,7 +2791,7 @@ class Toggle(QCheckBox):
 
         # set painter
         p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         # set no pen
         p.setPen(Qt.NoPen)
@@ -3058,7 +3058,7 @@ class ToggleTerminalButton(PushButton):
     def enterEvent(self, event) -> None:
         self.setFlat(False)
         # pal = self.palette()
-        # pal.setColor(QPalette.Button, QColor(200, 200, 200))
+        # pal.setColor(QPalette.ColorRole.Button, QColor(200, 200, 200))
         # self.setAutoFillBackground(True)
         # self.setPalette(pal)
         self.update()
@@ -3080,7 +3080,7 @@ class readOnlyDoubleSpinbox(QDoubleSpinBox):
     def __init__(self, parent=None):
         super().__init__(parent=parent)
         self.setReadOnly(True)
-        self.setButtonSymbols(QAbstractSpinBox.NoButtons)
+        self.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         self.setAlignment(Qt.AlignCenter)
         self.setMaximum(2**31-1)
         self.setStyleSheet('background-color: rgba(240, 240, 240, 200);')
@@ -3089,7 +3089,7 @@ class readOnlySpinbox(QSpinBox):
     def __init__(self, parent=None):
         super().__init__(parent=parent)
         self.setReadOnly(True)
-        self.setButtonSymbols(QAbstractSpinBox.NoButtons)
+        self.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         self.setAlignment(Qt.AlignCenter)
         self.setMaximum(2**31-1)
         self.setStyleSheet('background-color: rgba(240, 240, 240, 200);')
@@ -3147,11 +3147,11 @@ class SpinBox(QSpinBox):
         self.initStyleOption(opt)
 
         control = self.style().hitTestComplexControl(
-            QStyle.CC_SpinBox, opt, event.pos(), self
+            QStyle.ComplexControl.CC_SpinBox, opt, event.pos(), self
         )
-        if control == QStyle.SC_SpinBoxUp:
+        if control == QStyle.SubControl.SC_SpinBoxUp:
             self.sigUpClicked.emit()
-        elif control == QStyle.SC_SpinBoxDown:
+        elif control == QStyle.SubControl.SC_SpinBoxDown:
             self.sigDownClicked.emit()
 
     def keyPressEvent(self, event) -> None:
@@ -3191,7 +3191,7 @@ class ReadOnlyLineEdit(QLineEdit):
         self.installEventFilter(self)
     
     def eventFilter(self, a0: 'QObject', a1: 'QEvent') -> bool:
-        if a1.type() == QEvent.FocusIn:
+        if a1.type() == QEvent.Type.FocusIn:
             return True
         return super().eventFilter(a0, a1)
         
@@ -3528,7 +3528,7 @@ class objPropsQGBox(QGroupBox):
         label = QLabel('Object ID: ')
         self.idSB = QSpinBox()
         self.idSB.setMaximum(2**16)
-        self.idSB.setButtonSymbols(QAbstractSpinBox.NoButtons)
+        self.idSB.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         self.idSB.setAlignment(Qt.AlignCenter)
         mainLayout.addWidget(label, row, 0)
         mainLayout.addWidget(self.idSB, row, 1)
@@ -3733,9 +3733,9 @@ class expandCollapseButton(PushButton):
         self.sigClicked.emit()
 
     def eventFilter(self, object, event):
-        if event.type() == QEvent.HoverEnter:
+        if event.type() == QEvent.Type.HoverEnter:
             self.setFlat(False)
-        elif event.type() == QEvent.HoverLeave:
+        elif event.type() == QEvent.Type.HoverLeave:
             self.setFlat(True)
         return False
 
@@ -4561,7 +4561,7 @@ class myColorButton(pg.ColorButton):
     def paintEvent(self, event):
         # QPushButton.paintEvent(self, ev)
         p = QStylePainter(self)
-        p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
         rect = self.rect()
         p.setBrush(QBrush(self._bkgrColor))
         p.setPen(QPen(self._borderColor))
@@ -4978,9 +4978,9 @@ class QProgressBarWithETA(QProgressBar):
         super().__init__(parent)
 
         palette = QPalette()
-        palette.setColor(QPalette.Highlight, QColor(207, 235, 155))
-        palette.setColor(QPalette.Text, QColor(0, 0, 0))
-        palette.setColor(QPalette.HighlightedText, QColor(0, 0, 0))
+        palette.setColor(QPalette.ColorRole.Highlight, QColor(207, 235, 155))
+        palette.setColor(QPalette.ColorRole.Text, QColor(0, 0, 0))
+        palette.setColor(QPalette.ColorRole.HighlightedText, QColor(0, 0, 0))
         self.setPalette(palette)
         self.ETA_label = QLabel('NDh:NDm:NDs')
 

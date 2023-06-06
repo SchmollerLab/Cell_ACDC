@@ -749,7 +749,7 @@ class customAnnotationDialog(QDialog):
         msg = widgets.myMessageBox()
         listView = widgets.readOnlyQList(msg)
         listView.addItems(self.internalNames)
-        # listView.setSelectionMode(QAbstractItemView.NoSelection)
+        # listView.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         msg.information(
             self, 'Annotation Name info', self.nameInfoTxt,
             widgets=listView
@@ -774,7 +774,7 @@ class customAnnotationDialog(QDialog):
             msg = widgets.myMessageBox()
             listView = widgets.listWidget(msg)
             listView.addItems(self.internalNames)
-            listView.setSelectionMode(QAbstractItemView.NoSelection)
+            listView.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
             name = self.nameWidget.widget.text()
             txt = (
                 f'"{name}" cannot be part of the name, '
@@ -4552,7 +4552,7 @@ class QDialogSelectModel(QDialog):
         addCustomModelItem = QListWidgetItem('Add custom model...')
         addCustomModelItem.setFont(italicFont)
         listBox.addItem(addCustomModelItem)
-        listBox.setSelectionMode(QAbstractItemView.SingleSelection)
+        listBox.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         listBox.setCurrentRow(0)
         self.listBox = listBox
         listBox.itemDoubleClicked.connect(self.ok_cb)
@@ -5653,7 +5653,7 @@ class randomWalkerDialog(QDialog):
         self.bkgrThreshSlider.setMinimum(1)
         self.bkgrThreshSlider.setMaximum(100)
         self.bkgrThreshSlider.setValue(5)
-        self.bkgrThreshSlider.setTickPosition(QSlider.TicksBelow)
+        self.bkgrThreshSlider.setTickPosition(QSlider.TickPosition.TicksBelow)
         self.bkgrThreshSlider.setTickInterval(10)
         paramsLayout.addWidget(self.bkgrThreshSlider, row, 0)
 
@@ -5669,7 +5669,7 @@ class randomWalkerDialog(QDialog):
         self.foregrThreshSlider.setMinimum(1)
         self.foregrThreshSlider.setMaximum(100)
         self.foregrThreshSlider.setValue(95)
-        self.foregrThreshSlider.setTickPosition(QSlider.TicksBelow)
+        self.foregrThreshSlider.setTickPosition(QSlider.TickPosition.TicksBelow)
         self.foregrThreshSlider.setTickInterval(10)
         paramsLayout.addWidget(self.foregrThreshSlider, row, 0)
 
@@ -7358,7 +7358,7 @@ class MultiListSelector(widgets.QBaseDialog):
                 groupLayout.addSpacing(10)
             groupLayout.addWidget(QLabel(html_utils.paragraph(listName)))
             listWidget = widgets.listWidget()
-            listWidget.setSelectionMode(QAbstractItemView.ExtendedSelection)
+            listWidget.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
             listWidget.addItems(listItems)
             groupLayout.addWidget(listWidget)
             mainLayout.addSpacing(20)
@@ -7406,7 +7406,7 @@ class selectPositionsMultiExp(widgets.QBaseDialog):
         infoLabel = QLabel(infoTxt)
 
         self.treeWidget = QTreeWidget()
-        self.treeWidget.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.treeWidget.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.treeWidget.setHeaderHidden(True)
         self.treeWidget.setFont(font)
         for exp_path, positions in expPaths.items():
@@ -7815,7 +7815,7 @@ class editCcaTableWidget(QDialog):
                     'Cell ID = Relative\'s ID', 'Some cells are '
                     'mother or bud of itself. Make sure that the Relative\'s ID'
                     ' is different from the Cell ID!',
-                    QMessageBox.Ok)
+                    QMessageBox.StandardButton.Ok)
             return None
         elif any(check_unknown_mothers):
             txt = html_utils.paragraph("""
@@ -7840,21 +7840,21 @@ class editCcaTableWidget(QDialog):
                 'Some buds '
                 'in S phase do not have 0 as Generation number!\n'
                 'Buds in S phase must have 0 as "Generation number"',
-                QMessageBox.Ok)
+                QMessageBox.StandardButton.Ok)
             return None
         elif any(check_mothers):
             QMessageBox().critical(self,
                 'Mother not in >=1 Generation number',
                 'Some mother cells do not have >=1 as "Generation number"!\n'
                 'Mothers MUST have >1 "Generation number"',
-                QMessageBox.Ok)
+                QMessageBox.StandardButton.Ok)
             return None
         elif any(check_buds_G1):
             QMessageBox().critical(self,
                 'Buds in G1!',
                 'Some buds are in G1 phase!\n'
                 'Buds MUST be in S/G2/M phase',
-                QMessageBox.Ok)
+                QMessageBox.StandardButton.Ok)
             return None
         elif num_moth_S != num_bud_S:
             QMessageBox().critical(self,
@@ -7863,7 +7863,7 @@ class editCcaTableWidget(QDialog):
                 f'but there are {num_bud_S} bud cells.\n\n'
                 'The number of mothers and buds in "S/G2/M" '
                 'phase must be equal!',
-                QMessageBox.Ok)
+                QMessageBox.StandardButton.Ok)
             return None
         elif any(check_relID_S):
             QMessageBox().critical(self,
@@ -7871,7 +7871,7 @@ class editCcaTableWidget(QDialog):
                 'Some cells are in "S/G2/M" phase but have -1 as Relative\'s ID!\n'
                 'Cells in "S/G2/M" phase must have an existing '
                 'ID as Relative\'s ID!',
-                QMessageBox.Ok)
+                QMessageBox.StandardButton.Ok)
             return None
         
         corrected_assignment = self.inputCca_df['corrected_assignment']
@@ -7923,7 +7923,7 @@ class editCcaTableWidget(QDialog):
 
     def eventFilter(self, object, event):
         # Disable wheel scroll on widgets to allow scroll only on scrollarea
-        if event.type() == QEvent.Wheel:
+        if event.type() == QEvent.Type.Wheel:
             event.ignore()
             return True
         return False
@@ -8638,7 +8638,7 @@ class QtSelectItems(QDialog):
 
         listBox = widgets.listWidget()
         listBox.addItems(items)
-        listBox.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        listBox.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         listBox.setCurrentRow(0)
         listBox.setFont(font)
         topLayout.addWidget(listBox)
@@ -9695,9 +9695,9 @@ class QDialogPbar(QDialog):
         self.QPbar = QProgressBar(self)
         self.QPbar.setValue(0)
         palette = QPalette()
-        palette.setColor(QPalette.Highlight, QColor(207, 235, 155))
-        palette.setColor(QPalette.Text, QColor(0, 0, 0))
-        palette.setColor(QPalette.HighlightedText, QColor(0, 0, 0))
+        palette.setColor(QPalette.ColorRole.Highlight, QColor(207, 235, 155))
+        palette.setColor(QPalette.ColorRole.Text, QColor(0, 0, 0))
+        palette.setColor(QPalette.ColorRole.HighlightedText, QColor(0, 0, 0))
         self.QPbar.setPalette(palette)
         pBarLayout.addWidget(self.QPbar, 0, 0)
         self.ETA_label = QLabel('NDh:NDm:NDs')
@@ -9706,9 +9706,9 @@ class QDialogPbar(QDialog):
         self.metricsQPbar = QProgressBar(self)
         self.metricsQPbar.setValue(0)
         palette = QPalette()
-        palette.setColor(QPalette.Highlight, QColor(207, 235, 155))
-        palette.setColor(QPalette.Text, QColor(0, 0, 0))
-        palette.setColor(QPalette.HighlightedText, QColor(0, 0, 0))
+        palette.setColor(QPalette.ColorRole.Highlight, QColor(207, 235, 155))
+        palette.setColor(QPalette.ColorRole.Text, QColor(0, 0, 0))
+        palette.setColor(QPalette.ColorRole.HighlightedText, QColor(0, 0, 0))
         self.metricsQPbar.setPalette(palette)
         pBarLayout.addWidget(self.metricsQPbar, 1, 0)
 
@@ -11632,7 +11632,7 @@ class CombineMetricsMultiDfsSummaryDialog(widgets.QBaseDialog):
         self.equationsList = widgets.TreeWidget()
         self.equationsList.setFont(font)
         self.equationsList.setHeaderLabels(['Metric', 'Expression'])
-        self.equationsList.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.equationsList.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
 
         equationsButtonsLayout = QVBoxLayout()
         addEquationButton = widgets.addPushButton('Add metric')

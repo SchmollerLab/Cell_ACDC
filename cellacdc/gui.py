@@ -2040,7 +2040,7 @@ class guiWin(QMainWindow):
 
         self.propsDockWidget.setWidget(self.guiTabControl)
         self.propsDockWidget.setFeatures(
-            QDockWidget.DockWidgetFloatable | QDockWidget.DockWidgetMovable
+            QDockWidget.DockWidgetFeature.DockWidgetFloatable | QDockWidget.DockWidgetFeature.DockWidgetMovable
         )
         self.propsDockWidget.setAllowedAreas(
             Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea
@@ -2220,7 +2220,7 @@ class guiWin(QMainWindow):
         self.keepIDsToolbar.addWidget(self.keptIDsLineEdit)
         self.keepIDsToolbar.addWidget(instructionsLabel)
         spacer = QWidget()
-        spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.keepIDsToolbar.addWidget(spacer)
         self.addToolBar(Qt.TopToolBarArea, self.keepIDsToolbar)
         self.keepIDsToolbar.setVisible(False)
@@ -2403,7 +2403,7 @@ class guiWin(QMainWindow):
 
         self.terminalDock.setWidget(self.terminal)
         self.terminalDock.setFeatures(
-            QDockWidget.DockWidgetFloatable | QDockWidget.DockWidgetMovable
+            QDockWidget.DockWidgetFeature.DockWidgetFloatable | QDockWidget.DockWidgetFeature.DockWidgetMovable
         )
         self.terminalDock.setAllowedAreas(Qt.BottomDockWidgetArea)
         self.addDockWidget(Qt.BottomDockWidgetArea, self.terminalDock)
@@ -2561,9 +2561,9 @@ class guiWin(QMainWindow):
         self.addCombineMetricAction = QAction('Add combined measurement...')
 
         # Standard key sequence
-        # self.copyAction.setShortcut(QKeySequence.Copy)
-        # self.pasteAction.setShortcut(QKeySequence.Paste)
-        # self.cutAction.setShortcut(QKeySequence.Cut)
+        # self.copyAction.setShortcut(QKeySequence.StandardKey.Copy)
+        # self.pasteAction.setShortcut(QKeySequence.StandardKey.Paste)
+        # self.cutAction.setShortcut(QKeySequence.StandardKey.Cut)
         # Help actions
         self.tipsAction = QAction("Tips and tricks...", self)
         self.UserManualAction = QAction("User Manual...", self)
@@ -3064,7 +3064,7 @@ class guiWin(QMainWindow):
         self.quickSettingsGroupbox.setTitle('Quick settings')
 
         layout = QFormLayout()
-        layout.setFieldGrowthPolicy(QFormLayout.FieldsStayAtSizeHint)
+        layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.FieldsStayAtSizeHint)
         layout.setFormAlignment(Qt.AlignRight | Qt.AlignVCenter)
 
         self.autoSaveToggle = widgets.Toggle()
