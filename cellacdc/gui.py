@@ -9872,8 +9872,7 @@ class guiWin(QMainWindow):
             return
         
         self.zSliceScrollBar.setSliderPosition(nearest_nonzero_z)
-        self.setAllTextAnnotations()
-        self.setAllContoursImages()
+        self.updateAllImages()
 
     def nearest_nonzero(self, a, y, x):
         r, c = np.nonzero(a)
@@ -10675,8 +10674,9 @@ class guiWin(QMainWindow):
         if ev.key() == Qt.Key_Q:
             # self.setAllIDs()
             posData = self.data[self.pos_i]
-            for posData in self.data:
-                printl(posData.clickEntryPointsDfs)
+            # self.pointsLayerDataToDf(posData)
+            # posData.clickEntryPointsDfs
+            printl(posData.clickEntryPointsDfs)
             # printl(posData.fluo_data_dict.keys())
             # for key in posData.fluo_data_dict:
             #     printl(key, posData.fluo_data_dict[key].max())
@@ -14076,6 +14076,7 @@ class guiWin(QMainWindow):
         for action in self.pointsLayersToolbar.actions()[1:]:
             try:
                 action.scatterItem.setData([], [])
+                # action.pointsData = {}
             except Exception as e:
                 continue
 
@@ -16379,6 +16380,7 @@ class guiWin(QMainWindow):
             tableFilepath = os.path.join(posData.images_path, tableFilename)
             self.pointsLayerDataToDf(posData)
             df = posData.clickEntryPointsDfs.get(tableEndName)
+            printl(posData.pos_foldername, tableFilepath, '\n', df)
             if df is None:
                 continue
             df.to_csv(tableFilepath, index=False)
@@ -16402,8 +16404,8 @@ class guiWin(QMainWindow):
             if not hasattr(action.button, 'clickEntryTableEndName'):
                 continue
             tableEndName = action.button.clickEntryTableEndName
+            action.pointsData = {}
             if posData.clickEntryPointsDfs.get(tableEndName) is None:
-                action.pointsData = {}
                 continue
             
             df = posData.clickEntryPointsDfs[tableEndName]
@@ -16430,8 +16432,8 @@ class guiWin(QMainWindow):
             if not hasattr(action.button, 'clickEntryTableEndName'):
                 continue
             tableEndName = action.button.clickEntryTableEndName
-            if posData.clickEntryPointsDfs.get(tableEndName) is None:
-                continue
+            # if posData.clickEntryPointsDfs.get(tableEndName) is None:
+            #     continue
             
             df = pd.DataFrame(columns=['frame_i', 'Cell_ID', 'z', 'y', 'x'])
             frames_vals = []
