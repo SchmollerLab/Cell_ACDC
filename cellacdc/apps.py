@@ -6781,7 +6781,7 @@ class imageViewer(QMainWindow):
         lutItem.vb.raiseContextMenu = lambda x: None
         initColor = self.overlayRGBs.pop(0)
         self.parent.initColormapOverlayLayerItem(initColor, lutItem)
-        lutItem.addOverlayColorButton(initColor)
+        lutItem.addOverlayColorButton(initColor, channelName)
         lutItem.initColor = initColor
         lutItem.hide()
 
@@ -6872,7 +6872,7 @@ class imageViewer(QMainWindow):
                 self.parent.loadOverlayData([channelName], addToExisting=True)
             self.setOverlayItemsVisible(channelName, True)
             self.checkedOverlayChannels.add(channelName)    
-            self.updateOlColors(self.overlayColorButton)
+            self.updateOlColors(None)
         else:
             self.checkedOverlayChannels.remove(channelName)
             imageItem = self.overlayLayersItems[channelName][0]
