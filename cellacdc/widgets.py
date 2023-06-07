@@ -1366,7 +1366,7 @@ class QVLine(QFrame):
     def __init__(self, shadow='Plain', parent=None, color=None):
         super().__init__(parent)
         self.setFrameShape(QFrame.Shape.VLine)
-        self.setFrameShadow(getattr(QFrame, shadow))
+        self.setFrameShadow(getattr(QFrame.Shadow, shadow))
         if color is not None:
             self.setColor(color)
     
@@ -5481,6 +5481,30 @@ class PostProcessSegmSpinbox(QWidget):
             return None
         else:
             return self.spinBox.value()
+
+class CopiableCommandWidget(QGroupBox):
+    def __init__(self, command='', parent=None, font_size='13px'):
+        super().__init__(parent)
+        
+        layout = QHBoxLayout()
+        self.setLayout(layout)
+        
+        txt = html_utils.paragraph(
+            f'<code>{command}</code>', font_size=font_size
+        )
+        layout.addWidget(QLabel(txt))
+        layout.addWidget(QVLine(shadow='Plain', color='#4d4d4d'))
+        copyButton = copyPushButton('Copy', flat=True, hoverable=True)
+        copyButton._command = command
+        copyButton.clicked.connect(self.copyToClipboard)
+        layout.addWidget(copyButton)
+        layout.addStretch(1)
+    
+    def copyToClipboard(self):
+        cb = QApplication.clipboard()
+        cb.clear(mode=cb.Clipboard)
+        cb.setText(self.sender()._command, mode=cb.Clipboard)
+        print('Command copied!')
 
 def PostProcessSegmWidget(
         minimum, maximum, value, useSliders, isFloat=False, normalize=False,
