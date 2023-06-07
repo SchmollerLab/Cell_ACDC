@@ -1435,6 +1435,7 @@ class loadData:
                 basename = self.basename
             tableFilename = f'{basename}{tableEndName}.csv'
             tableFilepath = os.path.join(self.images_path, tableFilename)
+            df = df.sort_values(['frame_i', 'Cell_ID'])
             df.to_csv(tableFilepath, index=False)
 
     def check_acdc_df_integrity(self):

@@ -5532,6 +5532,38 @@ class guiWin(QMainWindow):
             and (noModifier or shift or ctrl)
             and self.labelRoiIsCircularRadioButton.isChecked()
         )
+        setWandCursor = (
+            self.wandToolButton.isChecked() and not event.isExit()
+            and noModifier
+        )
+        setLabelRoiCursor = (
+            self.labelRoiButton.isChecked() and not event.isExit()
+            and noModifier
+        )
+        setMoveLabelCursor = (
+            self.moveLabelToolButton.isChecked() and not event.isExit()
+            and noModifier
+        )
+        setExpandLabelCursor = (
+            self.expandLabelToolButton.isChecked() and not event.isExit()
+            and noModifier
+        )
+        setCurvCursor = (
+            self.curvToolButton.isChecked() and not event.isExit()
+            and noModifier
+        )
+        setKeepObjCursor = (
+            self.keepIDsButton.isChecked() and not event.isExit()
+            and noModifier
+        )
+        setCustomAnnotCursor = (
+            self.customAnnotButton is not None and not event.isExit()
+            and noModifier
+        )
+        setManualTrackingCursor = (
+            self.manualTrackingButton.isChecked() and not event.isExit()
+            and noModifier
+        )
         setAddPointCurosr = (
             self.pointsLayersToolbar.isVisible() and not event.isExit()
             and noModifier
@@ -5539,68 +5571,25 @@ class guiWin(QMainWindow):
         
         if setBrushCursor or setEraserCursor or setLabelRoiCircCursor:
             self.app.setOverrideCursor(Qt.CrossCursor)
-
-        if setAddDelPolyLineCursor:
-            self.app.setOverrideCursor(self.polyLineRoiCursor)
-        
-        if setAddPointCurosr:
-            self.app.setOverrideCursor(self.addPointsCursor)
-
-        setWandCursor = (
-            self.wandToolButton.isChecked() and not event.isExit()
-            and noModifier
-        )
-        if setWandCursor and self.app.overrideCursor() is None:
+        elif setWandCursor and self.app.overrideCursor() is None:
             self.app.setOverrideCursor(self.wandCursor)
-        
-        setLabelRoiCursor = (
-            self.labelRoiButton.isChecked() and not event.isExit()
-            and noModifier
-        )
-        if setLabelRoiCursor and self.app.overrideCursor() is None:
+        elif setLabelRoiCursor and self.app.overrideCursor() is None:
             self.app.setOverrideCursor(Qt.CrossCursor)
-
-        setMoveLabelCursor = (
-            self.moveLabelToolButton.isChecked() and not event.isExit()
-            and noModifier
-        )
-
-        setExpandLabelCursor = (
-            self.expandLabelToolButton.isChecked() and not event.isExit()
-            and noModifier
-        )
-
-        setCurvCursor = (
-            self.curvToolButton.isChecked() and not event.isExit()
-            and noModifier
-        )
-        if setCurvCursor and self.app.overrideCursor() is None:
+        elif setCurvCursor and self.app.overrideCursor() is None:
             self.app.setOverrideCursor(self.curvCursor)
-
-        setCustomAnnotCursor = (
-            self.customAnnotButton is not None and not event.isExit()
-            and noModifier
-        )
-        if setCustomAnnotCursor and self.app.overrideCursor() is None:
+        elif setCustomAnnotCursor and self.app.overrideCursor() is None:
             self.app.setOverrideCursor(Qt.PointingHandCursor)
-        
-        if setCustomAnnotCursor:
+        elif setAddDelPolyLineCursor:
+            self.app.setOverrideCursor(self.polyLineRoiCursor)
+        elif setCustomAnnotCursor:
             x, y = event.pos()
-            self.highlightHoverID(x, y)
-        
-        setKeepObjCursor = (
-            self.keepIDsButton.isChecked() and not event.isExit()
-            and noModifier
-        )
-        if setKeepObjCursor and self.app.overrideCursor() is None:
+            self.highlightHoverID(x, y)        
+        elif setKeepObjCursor and self.app.overrideCursor() is None:
+            self.app.setOverrideCursor(Qt.PointingHandCursor)        
+        elif setManualTrackingCursor and self.app.overrideCursor() is None:
             self.app.setOverrideCursor(Qt.PointingHandCursor)
-        
-        setManualTrackingCursor = (
-            self.manualTrackingButton.isChecked() and not event.isExit()
-            and noModifier
-        )
-        if setManualTrackingCursor and self.app.overrideCursor() is None:
-            self.app.setOverrideCursor(Qt.PointingHandCursor)
+        elif setAddPointCurosr:
+            self.app.setOverrideCursor(self.addPointsCursor)
 
         # Cursor is moving on image while Alt key is pressed --> pan cursor
         alt = QGuiApplication.keyboardModifiers() == Qt.AltModifier
@@ -16404,6 +16393,7 @@ class guiWin(QMainWindow):
             df = posData.clickEntryPointsDfs.get(tableEndName)
             if df is None:
                 continue
+            df = df.sort_values(['frame_i', 'Cell_ID'])
             df.to_csv(tableFilepath, index=False)
     
     @exception_handler
