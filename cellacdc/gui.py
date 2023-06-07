@@ -6525,7 +6525,7 @@ class guiWin(QMainWindow):
             handle.roi.removeHandle(handle)
             return
 
-        # Check if right click on ROI
+        # Check if click on ROI
         isClickOnDelRoi = self.gui_clickedDelRoi(event, left_click, right_click)
         if isClickOnDelRoi:
             return
@@ -6809,6 +6809,10 @@ class guiWin(QMainWindow):
                 self.addPointsPolyLineRoi(closed=closePolyLine)
                 if closePolyLine:
                     # Close polyline ROI
+                    if len(self.polyLineRoi.getLocalHandlePositions()) == 2:
+                        self.polyLineRoi = self.replacePolyLineRoiWithLineRoi(
+                            self.polyLineRoi
+                        )
                     self.tempSegmentON = False
                     self.ax1_rulerAnchorsItem.setData([], [])
                     self.ax1_rulerPlotItem.setData([], [])
@@ -8912,6 +8916,24 @@ class guiWin(QMainWindow):
         else:
             self.warnEditingWithCca_df('Delete IDs using ROI')
     
+    def replacePolyLineRoiWithLineRoi(self, roi):
+        roi = self.polyLineRoi
+        x0, y0 = roi.pos().x(), roi.pos().y()
+        (_, point1), (_, point2) = roi.getLocalHandlePositions()
+        xr1, yr1 = point1.x(), point1.y()
+        xr2, yr2 = point2.x(), point2.y()
+        x1, y1 = xr1+x0, yr1+y0
+        x2, y2 = xr2+x0, yr2+x0
+        lineRoi = pg.LineROI((x1, y1), (x2, y2), width=0.5)
+        lineRoi.handleSize = 7
+        self.ax1.removeItem(self.polyLineRoi)
+        self.ax1.addItem(lineRoi)
+        lineRoi.removeHandle(2)
+        # Connect closed ROI
+        lineRoi.sigRegionChanged.connect(self.delROImoving)
+        lineRoi.sigRegionChangeFinished.connect(self.delROImovingFinished)
+        return lineRoi
+    
     def addRoiToDelRoiInfo(self, roi):
         posData = self.data[self.pos_i]
         for i in range(posData.frame_i, posData.SizeT):
@@ -9128,7 +9150,21 @@ class guiWin(QMainWindow):
             if not r or not c:
                 return ROImask
             
-            rr, cc = skimage.draw.polygon(r, c, shape=self.currentLab2D.shape)
+            if len(r) == 2:
+                rr, cc, val = skimage.draw.line_aa(r[0], c[0], r[1], c[1])
+            else:
+                rr, cc = skimage.draw.polygon(r, c, shape=self.currentLab2D.shape)
+            if self.isSegm3D:
+                ROImask[self.z_lab(), rr, cc] = True
+            else:
+                ROImask[rr, cc] = True
+        elif isinstance(roi, pg.LineROI):
+            (_, point1), (_, point2) = roi.getSceneHandlePositions()
+            point1 = self.ax1.vb.mapSceneToView(point1)
+            point2 = self.ax1.vb.mapSceneToView(point2)
+            x1, y1 = int(point1.x()), int(point1.y())
+            x2, y2 = int(point2.x()), int(point2.y())
+            rr, cc, val = skimage.draw.line_aa(y1, x1, y2, x2)
             if self.isSegm3D:
                 ROImask[self.z_lab(), rr, cc] = True
             else:
@@ -10703,6 +10739,8 @@ class guiWin(QMainWindow):
         if ev.key() == Qt.Key_Q:
             # self.setAllIDs()
             posData = self.data[self.pos_i]
+            roi = posData.allData_li[posData.frame_i]['delROIs_info']['rois'][0]
+            ROImask = self.getDelRoiMask(roi)
             # self.pointsLayerDataToDf(posData)
             # # posData.clickEntryPointsDfs
             # printl(posData.clickEntryPointsDfs)
