@@ -62,13 +62,14 @@ from qtpy.QtWidgets import (
 import pyqtgraph as pg
 
 # NOTE: Enable icons
-from . import _warnings, qrc_resources
+from . import qrc_resources
 
 # Custom modules
 from . import exception_handler
 from . import base_cca_df, graphLayoutBkgrColor, darkBkgrColor
 from . import load, prompts, apps, workers, html_utils
 from . import core, myutils, dataPrep, widgets
+from . import _warnings
 from . import measurements, printl
 from . import colors, filters, annotate
 from . import user_manual_url
