@@ -1289,6 +1289,7 @@ class guiWin(QMainWindow):
         # Settings menu
         self.settingsMenu = QMenu("Settings", self)
         menuBar.addMenu(self.settingsMenu)
+        self.settingsMenu.addAction(self.editShortcutsAction)
         self.settingsMenu.addSeparator()
 
         # Mode menu (actions added when self.modeComboBox is created)
@@ -9068,6 +9069,8 @@ class guiWin(QMainWindow):
 
     def getDelRoisIDs(self):
         posData = self.data[self.pos_i]
+        if posData.frame_i > 0:
+            prev_lab = posData.allData_li[posData.frame_i-1]['labels']
         allDelIDs = set()
         for roi in posData.allData_li[posData.frame_i]['delROIs_info']['rois']:
             if roi not in self.ax2.items and roi not in self.ax1.items:
@@ -9076,6 +9079,9 @@ class guiWin(QMainWindow):
             ROImask = self.getDelRoiMask(roi)
             delIDs = posData.lab[ROImask]
             allDelIDs.update(delIDs)
+            if posData.frame_i > 0:
+                delIDsPrevFrame = prev_lab[ROImask]
+                allDelIDs.update(delIDsPrevFrame)
         return allDelIDs
             
     def getDelROIlab(self):
@@ -10697,10 +10703,10 @@ class guiWin(QMainWindow):
         if ev.key() == Qt.Key_Q:
             # self.setAllIDs()
             posData = self.data[self.pos_i]
-            self.pointsLayerDataToDf(posData)
-            # posData.clickEntryPointsDfs
-            printl(posData.clickEntryPointsDfs)
-            self.drawPointsLayers(computePointsLayers=False)
+            # self.pointsLayerDataToDf(posData)
+            # # posData.clickEntryPointsDfs
+            # printl(posData.clickEntryPointsDfs)
+            # self.drawPointsLayers(computePointsLayers=False)
             # printl(posData.fluo_data_dict.keys())
             # for key in posData.fluo_data_dict:
             #     printl(key, posData.fluo_data_dict[key].max())
@@ -18320,7 +18326,7 @@ class guiWin(QMainWindow):
         else:
             return self.ax2_contoursImageItem
     
-    def updateContoursImage(self, ax):
+    def updateContoursImage(self, ax, delROIsIDs=None):
         imageItem = self.getContoursImageItem(ax)
         if imageItem is None:
             return
@@ -18329,9 +18335,9 @@ class guiWin(QMainWindow):
             self.initContoursImage()
         else:
             self.contoursImage[:] = 0
-        
+
         contours = []
-        for obj in skimage.measure.regionprops(self.currentLab2D):            
+        for obj in skimage.measure.regionprops(self.currentLab2D):          
             objContour = self.getObjContours(obj, appendMultiContID=False)
             contours.append(objContour)
 
@@ -18444,10 +18450,11 @@ class guiWin(QMainWindow):
         )
         self.textAnnot[0].update()
         self.textAnnot[1].update()
+        return delROIsIDs
     
-    def setAllContoursImages(self):
-        self.updateContoursImage(ax=0)
-        self.updateContoursImage(ax=1)
+    def setAllContoursImages(self, delROIsIDs=None):
+        self.updateContoursImage(ax=0, delROIsIDs=delROIsIDs)
+        self.updateContoursImage(ax=1, delROIsIDs=delROIsIDs)
 
     # @exec_time
     @exception_handler
@@ -18480,8 +18487,8 @@ class guiWin(QMainWindow):
         # self.update_rp()
 
         # Annotate ID and draw contours
-        self.setAllTextAnnotations()    
-        self.setAllContoursImages()
+        delROIsIDs = self.setAllTextAnnotations()    
+        self.setAllContoursImages(delROIsIDs=delROIsIDs)
 
         self.drawAllMothBudLines()
         self.highlightLostNew()
@@ -18585,10 +18592,13 @@ class guiWin(QMainWindow):
 
     def highlightLostNew(self):
         posData = self.data[self.pos_i]
+        delROIsIDs = self.getDelRoisIDs()
 
         for obj in posData.rp:
             ID = obj.label
             if ID not in posData.new_IDs:
+                continue
+            if ID in delROIsIDs:
                 continue
             
             self.addObjContourToContoursImage(
@@ -18601,13 +18611,19 @@ class guiWin(QMainWindow):
         if not posData.lost_IDs:
             return
         
+        if posData.frame_i == 0:
+            return 
+        
         prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
         if prev_rp is None:
             return
         for obj in prev_rp:
             if obj.label not in posData.lost_IDs:
                 continue
-
+            
+            if obj.label in delROIsIDs:
+                continue
+            
             self.setLostObjectContour(obj)
 
     def setTitleText(self):
