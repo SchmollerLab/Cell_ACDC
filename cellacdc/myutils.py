@@ -42,6 +42,7 @@ from . import prompts, widgets, core, load
 from . import html_utils, is_linux, is_win, is_mac, issues_url, is_mac_arm64
 from . import cellacdc_path, printl, temp_path, logs_path
 from . import config, models_list_file_path
+from . import github_home_url
 
 def get_module_name(script_file_path):
     parts = pathlib.Path(script_file_path).parts
@@ -1931,6 +1932,30 @@ def get_slices_local_into_global_arr(bbox_coords, global_shape):
     
     return tuple(slice_global_to_local), tuple(slice_crop_local)
 
+def get_pip_install_cellacdc_version_command(version=None):
+    if version is None:
+        version = read_version()
+    is_dev_version = version.find('.dev') != -1
+    if is_dev_version:
+        commit_hash = re.findall(r'\+g(.+)\.', version)[0]
+        command = f'pip install --upgrade "git+{github_home_url}.git@{commit_hash}"'
+    else:
+        command = f'pip install --upgrade cellacdc=={version}'
+    return command
+
+def get_git_pull_checkout_cellacdc_version_commands(version=None):
+    if version is None:
+        version = read_version()
+    is_dev_version = version.find('.dev') != -1
+    if not is_dev_version:
+        return []
+    commit_hash = re.findall(r'\+g(.+)\.', version)[0]
+    commands = (
+        f'cd "{cellacdc_path}"',
+        'git pull',
+        f'git checkout {commit_hash}'
+    )
+    return commands
 
 if __name__ == '__main__':
     print(get_list_of_models())

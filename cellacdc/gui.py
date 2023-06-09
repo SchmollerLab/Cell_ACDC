@@ -78,7 +78,7 @@ from . import qutils, autopilot, QtScoped
 from .trackers.CellACDC import CellACDC_tracker
 from .cca_functions import _calc_rot_vol
 from .myutils import exec_time, setupLogger
-from .help import welcome
+from .help import welcome, about
 
 if os.name == 'nt':
     try:
@@ -1300,7 +1300,8 @@ class guiWin(QMainWindow):
         helpMenu = menuBar.addMenu("&Help")
         helpMenu.addAction(self.tipsAction)
         helpMenu.addAction(self.UserManualAction)
-        # helpMenu.addAction(self.aboutAction)
+        helpMenu.addSeparator()
+        helpMenu.addAction(self.aboutAction)
 
     def gui_createToolBars(self):
         # File toolbar
@@ -2575,6 +2576,7 @@ class guiWin(QMainWindow):
         # Help actions
         self.tipsAction = QAction("Tips and tricks...", self)
         self.UserManualAction = QAction("User Manual...", self)
+        self.aboutAction = QAction("About Cell-ACDC", self)
         # self.aboutAction = QAction("&About...", self)
 
         # Assign mother to bud button
@@ -2817,6 +2819,7 @@ class guiWin(QMainWindow):
         # Connect Help actions
         self.tipsAction.triggered.connect(self.showTipsAndTricks)
         self.UserManualAction.triggered.connect(myutils.showUserManual)
+        self.aboutAction.triggered.connect(self.showAbout)
         # Connect Open Recent to dynamically populate it
         # self.openRecentMenu.aboutToShow.connect(self.populateOpenRecent)
         self.checkableQButtonsGroup.buttonClicked.connect(self.uncheckQButton)
@@ -21139,6 +21142,10 @@ class guiWin(QMainWindow):
 
     def cutContent(self):
         pass
+    
+    def showAbout(self):
+        self.aboutWin = about.QDialogAbout(parent=self)
+        self.aboutWin.show()
 
     def showTipsAndTricks(self):
         self.welcomeWin = welcome.welcomeWin()

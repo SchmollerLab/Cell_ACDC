@@ -142,6 +142,7 @@ def printl(*objects, pretty=False, is_decorator=False, **kwargs):
     sys.stdout = current_stdout
 
 user_path = pathlib.Path.home()
+site_packages = os.path.dirname(os.path.dirname(np.__file__))
 parent_path = os.path.dirname(cellacdc_path)
 html_path = os.path.join(cellacdc_path, '_html')
 data_path = os.path.join(parent_path, 'data')
@@ -153,6 +154,7 @@ logs_path = os.path.join(user_path, '.acdc-logs')
 resources_path = os.path.join(cellacdc_path, 'resources.qrc')
 models_list_file_path = os.path.join(temp_path, 'custom_models_paths.ini')
 user_manual_url = 'https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf'
+github_home_url = 'https://github.com/SchmollerLab/Cell_ACDC'
 
 # Use to get the acdc_output file name from `segm_filename` as 
 # `m = re.sub(segm_re_pattern, '_acdc_output', segm_filename)`

@@ -441,14 +441,15 @@ class showInFileManagerButton(PushButton):
         self.setText(self._text)
 
 class showDetailsButton(PushButton):
-    def __init__(self, *args, txt='Show details...', **kwargs):
-        super().__init__(*args, **kwargs)
-        self.setText(txt)
+    def __init__(self, *args, txt='Show details...', parent=None):
+        super().__init__(txt, parent)
+        # self.setText(txt)
         self.txt = txt
         self.checkedIcon = QIcon(':hideUp.svg')
         self.uncheckedIcon = QIcon(':showDown.svg')
         self.setIcon(self.uncheckedIcon)
         self.toggled.connect(self.onClicked)
+        self.setCheckable(True)
         w = self.sizeHint().width()
         self.setFixedWidth(w)
 
