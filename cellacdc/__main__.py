@@ -328,13 +328,8 @@ class mainWin(QMainWindow):
         self.statusbar.addWidget(widget)
     
     def getColorScheme(self):
-        if not os.path.exists(settings_csv_path):
-            return 'light'
-        df_settings = pd.read_csv(settings_csv_path, index_col='setting')
-        if 'colorScheme' not in df_settings.index:
-            return 'light'
-        else:
-            return df_settings.at['colorScheme', 'value']
+        from _palettes import get_color_scheme
+        return get_color_scheme()
     
     def onDarkModeToggled(self, checked):
         if self.darkModeToggle.ignoreEvent:

@@ -1131,6 +1131,7 @@ class QDialogListbox(QDialog):
 
         self.setStyleSheet("""
             QListWidget::item:hover {background-color:#E6E6E6;}
+            QListWidget::item:hover {color:black;}
             QListWidget::item:selected {background-color:#CFEB9B;}
             QListWidget::item:selected {color:black;}
             QListView {
@@ -1586,6 +1587,7 @@ class listWidget(QListWidget):
         self.itemHeight = None
         self.setStyleSheet("""
             QListWidget::item:hover {background-color:#E6E6E6;}
+            QListWidget::item:hover {color:black;}
             QListWidget::item:selected {background-color:#CFEB9B;}
             QListWidget::item:selected {color:black;}
             QListView {
@@ -1698,6 +1700,7 @@ class TreeWidget(QTreeWidget):
         super().__init__(*args)    
         self.setStyleSheet("""
             QTreeWidget::item:hover {background-color:#E6E6E6;}
+            QTreeWidget::item:hover {color:black;}
             QTreeWidget::item:selected {background-color:#CFEB9B;}
             QTreeWidget::item:selected {color:black;}
             QTreeView {

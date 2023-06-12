@@ -1,4 +1,9 @@
+import os
+import pandas as pd
+
 from qtpy import QtGui, QtWidgets, QtCore
+
+from . import settings_csv_path
 
 def _light_colors():
     colors = {
@@ -69,5 +74,20 @@ def getPaletteColorScheme(palette: QtGui.QPalette, scheme='light'):
         colorRole = getattr(QtGui.QPalette, role)
         palette.setColor(ColorGroup, colorRole, QtGui.QColor(*rgba))
     return palette
-        
+
+def get_color_scheme():
+    if not os.path.exists(settings_csv_path):
+        return 'light'
+    df_settings = pd.read_csv(settings_csv_path, index_col='setting')
+    if 'colorScheme' not in df_settings.index:
+        return 'light'
+    else:
+        return df_settings.at['colorScheme', 'value']
+    
+def lineedit_background_hex():
+    scheme = get_color_scheme()
+    if scheme == 'light':
+        return r'{background:#ffffff;}'
+    else:
+        return r'{background:#242424;}'   
     

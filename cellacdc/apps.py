@@ -2554,9 +2554,7 @@ class QDialogMetadataXML(QDialog):
         ext = 'h5' if self.to_h5_radiobutton.isChecked() else 'tif'
         for c in range(SizeC):
             chName_QLE = QLineEdit()
-            chName_QLE.setStyleSheet(
-                'background: #FEF9C3'
-            )
+            chName_QLE.setStyleSheet('')
             chName_QLE.setAlignment(Qt.AlignCenter)
             chName_QLE.textChanged.connect(self.checkChNames)
             if chNames is not None:
@@ -2773,7 +2771,6 @@ class QDialogMetadataXML(QDialog):
 
     def setInvalidChName_StyleSheet(self, LE):
         LE.setStyleSheet(
-            'background: #FEF9C3;'
             'border-radius: 4px;'
             'border: 1.5px solid red;'
             'padding: 1px 0px 1px 0px'
@@ -2853,7 +2850,7 @@ class QDialogMetadataXML(QDialog):
             LE1 = self.chNames_QLEs[0]
             saveCh = self.saveChannels_QCBs[0].isChecked()
             if not saveCh:
-                LE1.setStyleSheet('background: #FEF9C3;')
+                LE1.setStyleSheet('')
                 return areChNamesValid
 
             s1 = LE1.text()
@@ -2861,7 +2858,7 @@ class QDialogMetadataXML(QDialog):
                 self.setInvalidChName_StyleSheet(LE1)
                 areChNamesValid = False
             else:
-                LE1.setStyleSheet('background: #FEF9C3;')
+                LE1.setStyleSheet('')
             return areChNamesValid
 
         for LE1, LE2 in combinations(self.chNames_QLEs, 2):
@@ -2876,19 +2873,19 @@ class QDialogMetadataXML(QDialog):
                     self.setInvalidChName_StyleSheet(LE1)
                     areChNamesValid = False
                 else:
-                    LE1.setStyleSheet('background: #FEF9C3;')
+                    LE1.setStyleSheet('')
                 if not s2 and saveCh2:
                     self.setInvalidChName_StyleSheet(LE2)
                     areChNamesValid = False
                 else:
-                    LE2.setStyleSheet('background: #FEF9C3;')
+                    LE2.setStyleSheet('')
                 if s1 == s2 and saveCh1 and saveCh2:
                     self.setInvalidChName_StyleSheet(LE1)
                     self.setInvalidChName_StyleSheet(LE2)
                     areChNamesValid = False
             else:
-                LE1.setStyleSheet('background: #FEF9C3;')
-                LE2.setStyleSheet('background: #FEF9C3;')
+                LE1.setStyleSheet('')
+                LE2.setStyleSheet('')
         return areChNamesValid
 
     def hideShowTimeIncrement(self, value):
@@ -2986,9 +2983,7 @@ class QDialogMetadataXML(QDialog):
         if value > currentSizeC:
             for c in range(currentSizeC, currentSizeC+DeltaChannels):
                 chName_QLE = QLineEdit()
-                chName_QLE.setStyleSheet(
-                    'background: #FEF9C3'
-                )
+                chName_QLE.setStyleSheet('')
                 chName_QLE.setAlignment(Qt.AlignCenter)
                 chName_QLE.setText(f'channel_{c}')
                 chName_QLE.textChanged.connect(self.checkChNames)
@@ -4578,6 +4573,7 @@ class QDialogSelectModel(QDialog):
 
         self.setStyleSheet("""
             QListWidget::item:hover {background-color:#E6E6E6;}
+            QListWidget::item:hover {color:black;}
             QListWidget::item:selected {background-color:#CFEB9B;}
             QListWidget::item:selected {color:black;}
             QListView {
@@ -7459,6 +7455,7 @@ class selectPositionsMultiExp(widgets.QBaseDialog):
 
         self.setStyleSheet("""
             QTreeWidget::item:hover {background-color:#E6E6E6;}
+            QTreeWidget::item:hover {color:black;}
             QTreeWidget::item:selected {background-color:#CFEB9B;}
             QTreeWidget::item:selected {color:black;}
             QTreeView {
@@ -8839,8 +8836,8 @@ class manualSeparateGui(QMainWindow):
         
     def gui_createMenuBar(self):
         menuBar = self.menuBar()
-        style = "QMenuBar::item:selected { background: white; }"
-        menuBar.setStyleSheet(style)
+        # style = "QMenuBar::item:selected { background: white; }"
+        # menuBar.setStyleSheet(style)
         # File menu
         fileMenu = QMenu("&File", self)
         menuBar.addMenu(fileMenu)
@@ -10864,6 +10861,7 @@ class combineMetricsEquationDialog(widgets.QBaseDialog):
 
         self.setStyleSheet("""
             QTreeWidget::item:hover {background-color:#E6E6E6;}
+            QTreeWidget::item:hover {color:black;}
             QTreeWidget::item:selected {background-color:#CFEB9B;}
             QTreeWidget::item:selected {color:black;}
             QTreeView {
@@ -11439,6 +11437,7 @@ class CombineMetricsMultiDfsDialog(widgets.QBaseDialog):
 
         self.setStyleSheet("""
             QTreeWidget::item:hover {background-color:#E6E6E6;}
+            QTreeWidget::item:hover {color:black;}
             QTreeWidget::item:selected {background-color:#CFEB9B;}
             QTreeWidget::item:selected {color:black;}
             QTreeView {
