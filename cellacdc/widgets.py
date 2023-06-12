@@ -3864,7 +3864,7 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
         text = self.axis.label.toPlainText()
         if not text:
             return
-        self.setAxisLabel(self, text)
+        self.setAxisLabel(text)
     
     def setGradient(self, gradient):
         self.gradient.restoreState(gradient)
