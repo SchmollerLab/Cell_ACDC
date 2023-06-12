@@ -10904,20 +10904,7 @@ class guiWin(QMainWindow):
                 self.freeRoiItem.clear()
                 return
             
-            self.setUncheckedAllButtons()
-            self.setUncheckedAllCustomAnnotButtons()
-            self.tempLayerImg1.setImage(self.emptyLab)
-            self.isMouseDragImg1 = False
-            self.typingEditID = False
-            if self.highlightedID != 0:
-                self.highlightedID = 0
-                self.guiTabControl.highlightCheckbox.setChecked(False)
-                self.highlightIDcheckBoxToggled(False)
-                # self.updateAllImages()
-            try:
-                self.polyLineRoi.clearPoints()
-            except Exception as e:
-                pass
+            self.onEscape()
         elif isAltModifier:
             isCursorSizeAll = self.app.overrideCursor() == Qt.SizeAllCursor
             # Alt is pressed while cursor is on images --> set SizeAllCursor
@@ -18444,9 +18431,9 @@ class guiWin(QMainWindow):
             if obj is None:
                 return
 
-        if not self.isObjVisible(obj.bbox):
-            self.clearObjContour(obj=obj, ax=ax)
-            return
+        # if not self.isObjVisible(obj.bbox):
+        #     self.clearObjContour(obj=obj, ax=ax)
+        #     return
         
         contours = [self.getObjContours(obj)]
         if thickness is None:
@@ -21223,7 +21210,24 @@ class guiWin(QMainWindow):
                 pass
         del self.data
 
+    def onEscape(self):
+        self.setUncheckedAllButtons()
+        self.setUncheckedAllCustomAnnotButtons()
+        self.tempLayerImg1.setImage(self.emptyLab)
+        self.isMouseDragImg1 = False
+        self.typingEditID = False
+        if self.highlightedID != 0:
+            self.highlightedID = 0
+            self.guiTabControl.highlightCheckbox.setChecked(False)
+            self.highlightIDcheckBoxToggled(False)
+            # self.updateAllImages()
+        try:
+            self.polyLineRoi.clearPoints()
+        except Exception as e:
+            pass
+    
     def closeEvent(self, event):
+        self.onEscape()
         self.saveWindowGeometry()
 
         if self.slideshowWin is not None:
