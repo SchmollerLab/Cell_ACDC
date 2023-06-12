@@ -90,4 +90,12 @@ def lineedit_background_hex():
         return r'{background:#ffffff;}'
     else:
         return r'{background:#242424;}'   
+
+def lineedit_invalid_entry_stylesheet():
+    return (
+        # 'background: #FEF9C3;'
+        'border-radius: 4px;'
+        'border: 1.5px solid red;'
+        'padding: 1px 0px 1px 0px'
+    )
     
