@@ -759,7 +759,8 @@ class KeepIDsLineEdit(ValidLineEdit):
         super().__init__(parent)
 
         self.validPattern = '^[0-9-, ]+$'
-        self.setValidator(QRegularExpressionValidator(QRegularExpression(self.validPattern)))
+        regExpr = QRegularExpression(self.validPattern)
+        self.setValidator(QRegularExpressionValidator(regExpr))
 
         self.textChanged.connect(self.onTextChanged)
         self.editingFinished.connect(self.onEditingFinished)
@@ -1796,7 +1797,8 @@ class alphaNumericLineEdit(QLineEdit):
         super().__init__(parent)
 
         self.validPattern = '^[a-zA-Z0-9_-]+$'
-        self.setValidator(QRegularExpressionValidator(QRegularExpression(self.validPattern)))
+        regExp = QRegularExpression(self.validPattern)
+        self.setValidator(QRegularExpressionValidator(regExp))
 
         # self.setAlignment(Qt.AlignCenter)
 
@@ -1805,7 +1807,8 @@ class NumericCommaLineEdit(QLineEdit):
         super().__init__(parent)
 
         self.validPattern = '^[0-9,\.]+$'
-        self.setValidator(QRegularExpressionValidator(QRegularExpression(self.validPattern)))
+        regExp = QRegularExpression(self.validPattern)
+        self.setValidator(QRegularExpressionValidator(regExp))
     
     def values(self):
         try:

@@ -3,7 +3,7 @@ import pandas as pd
 
 from qtpy import QtGui, QtWidgets, QtCore
 
-from . import settings_csv_path
+from cellacdc import settings_csv_path
 
 def _light_colors():
     colors = {
