@@ -5,7 +5,7 @@
     <file alias="logo.svg">resources/logo.svg</file>
     <file alias="logo.png">resources/logo.png</file>
     <file alias="splashImage.png">resources/splashImage.png</file>
-    <file alias="AICS_logo.png">resources/icons/AICS_logo.png</file>
+    <file alias="AICS_logo.svg">resources/icons/AICS_logo.svg</file>
     <file alias="backspace.svg">resources/icons/math/backspace.svg</file>
     <file alias="square_root.svg">resources/icons/math/square_root.svg</file>
     <file alias="add.svg">resources/icons/math/add.svg</file>

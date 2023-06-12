@@ -16599,11 +16599,13 @@ class guiWin(QMainWindow):
         action.scatterItem.setVisible(True)
     
     def autoZoomNextObj(self):
+        self.sender().setValue(self.sender().value() - 1)
         self.pointsLayerAutoPilot('next')
         self.setFocusMain()
         self.setFocusGraphics()
     
     def autoZoomPrevObj(self):
+        self.sender().setValue(self.sender().value() + 1)
         self.pointsLayerAutoPilot('prev')
         self.setFocusMain()
         self.setFocusGraphics()

@@ -7427,6 +7427,8 @@ class selectPositionsMultiExp(widgets.QBaseDialog):
             for pos in positions:
                 if posFoldersInfo is not None:
                     status = posFoldersInfo.get(pos, '')
+                else:
+                    status = ''
                 pos_item_text = f'{pos}{status}'
                 pos_item = QTreeWidgetItem(exp_path_item, [pos_item_text])
                 pos_item.posFoldername = pos

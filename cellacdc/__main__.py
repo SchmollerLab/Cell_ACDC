@@ -1135,11 +1135,11 @@ class mainWin(QMainWindow):
         txt = html_utils.paragraph(f"""
             Cell-ACDC can use the {bioformats_href} or the {aicsimageio_href}  
             libraries to read microscopy files.<br><br>
-            Bio-Formats requires Java and a python package called <code>javabridge</code>,<br>
+            <b>Bio-Formats requires Java</b> and a python package called <code>javabridge</code>,<br>
             that will be automatically installed if missing.<br><br>
             We recommend using Bio-Formats, since it can read the metadata of the file,<br> 
             such as pixel size, numerical aperture etc.<br><br>
-            If Bio-Formats fails, try using AICSImageIO.<br><br>
+            If <b>Bio-Formats fails, try using AICSImageIO</b>.<br><br>
             Alternatively, if you <b>already pre-processed your microsocpy files into .tif 
             files</b>,<br>
             you can choose to simply re-structure them into the Cell-ACDC compatible 
@@ -1149,7 +1149,7 @@ class mainWin(QMainWindow):
             How do you want to proceed?          
         """)
         useAICSImageIO = QPushButton(
-            QIcon(':AICS_logo.png'), ' Use AICSImageIO ', msg
+            QIcon(':AICS_logo.svg'), ' Use AICSImageIO ', msg
         )
         useBioFormatsButton = QPushButton(
             QIcon(':ome.svg'), ' Use Bio-Formats ', msg
@@ -1157,7 +1157,7 @@ class mainWin(QMainWindow):
         restructButton = QPushButton(
             QIcon(':folders.svg'), ' Re-structure image files ', msg
         )
-        _, useBioFormatsButton, restructButton = msg.question(
+        msg.question(
             self, 'How to structure files', txt, 
             buttonsTexts=(
                 'Cancel', useBioFormatsButton, useAICSImageIO, restructButton

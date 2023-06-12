@@ -1212,7 +1212,7 @@ class loadData:
             self.PhysicalSizeZ = 1
 
         if 'LensNA' in self.metadata_df.index:
-            self.PhysicalSizeZ = float(
+            self.numAperture = float(
                 self.metadata_df.at['LensNA', 'values']
             )
         else:
