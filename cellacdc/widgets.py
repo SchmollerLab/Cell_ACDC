@@ -2054,19 +2054,8 @@ class myMessageBox(QDialog):
         return label
     
     def addCopiableCommand(self, command):
-        groubox = QGroupBox()
-        layout = QHBoxLayout()
-        groubox.setLayout(layout)
-        layout.addWidget(
-            QLabel(html_utils.paragraph(f'<code>{command}</code>'))
-        )
-        layout.addWidget(QVLine(shadow='Plain', color='#4d4d4d'))
-        copyButton = copyPushButton('Copy', flat=True, hoverable=True)
-        copyButton._command = command
-        copyButton.clicked.connect(self.copyToClipboard)
-        layout.addWidget(copyButton)
-        layout.addStretch(1)
-        self.layout.addWidget(groubox, self.currentRow, 1)
+        copiableCommandWidget = CopiableCommandWidget(command)
+        self.layout.addWidget(copiableCommandWidget, self.currentRow, 1)
         self.currentRow += 1
     
     def copyToClipboard(self):
@@ -5493,7 +5482,11 @@ class CopiableCommandWidget(QGroupBox):
         txt = html_utils.paragraph(
             f'<code>{command}</code>', font_size=font_size
         )
-        layout.addWidget(QLabel(txt))
+        label = QLabel(txt)
+        label.setTextInteractionFlags(
+            Qt.TextBrowserInteraction | Qt.TextSelectableByKeyboard
+        )
+        layout.addWidget(label)
         layout.addWidget(QVLine(shadow='Plain', color='#4d4d4d'))
         copyButton = copyPushButton('Copy', flat=True, hoverable=True)
         copyButton._command = command
