@@ -18,6 +18,24 @@ def _light_colors():
     }
     return colors
 
+def _light_disabled_colors():
+    disabled_colors = {
+        'ButtonText': (128, 128, 128, 255), 
+        'WindowText': (128, 128, 128, 255), 
+        'Text': (128, 128, 128, 255), 
+        'Light': (53, 53, 53, 255)
+    }
+    return disabled_colors
+
+def _dark_disabled_colors():
+    disabled_colors = {
+        'ButtonText': (128, 128, 128, 255), 
+        'WindowText': (128, 128, 128, 255), 
+        'Text': (128, 128, 128, 255), 
+        'Light': (53, 53, 53, 255)
+    }
+    return disabled_colors
+
 def _dark_colors():
     colors = {
         'Window': (50, 50, 50, 255),
@@ -39,11 +57,17 @@ def _dark_colors():
 def getPaletteColorScheme(palette: QtGui.QPalette, scheme='light'):
     if scheme == 'light':
         colors = _light_colors()
+        disabled_colors = _light_disabled_colors()
     else:
         colors = _dark_colors()
+        disabled_colors = _dark_disabled_colors()
     for role, rgba in colors.items():
         colorRole = getattr(QtGui.QPalette, role)
         palette.setColor(colorRole, QtGui.QColor(*rgba))
+    ColorGroup = QtGui.QPalette.Disabled
+    for role, rgba in disabled_colors.items():
+        colorRole = getattr(QtGui.QPalette, role)
+        palette.setColor(ColorGroup, colorRole, QtGui.QColor(*rgba))
     return palette
         
     
