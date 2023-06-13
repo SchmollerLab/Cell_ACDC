@@ -3018,3 +3018,72 @@ class AlignWorker(BaseWorkerUtil):
             np.savez_compressed(filePath, data)
         elif ext == '.h5':
             load.save_to_h5(filePath, data)
+
+class ToObjCoordsWorker(BaseWorkerUtil):
+    def __init__(self, mainWin):
+        super().__init__(mainWin)
+        
+    @worker_exception_handler
+    def run(self):
+        debugging = False
+        expPaths = self.mainWin.expPaths
+        tot_exp = len(expPaths)
+        self.signals.initProgressBar.emit(0)
+        for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
+            self.errors = {}
+            tot_pos = len(pos_foldernames)
+
+            abort = self.emitSelectSegmFiles(exp_path, pos_foldernames)
+            if abort:
+                self.signals.finished.emit(self)
+                return
+            
+            for p, pos in enumerate(pos_foldernames):
+                if self.abort:
+                    self.signals.finished.emit(self)
+                    return
+
+                self.logger.log(
+                    f'Processing experiment n. {i+1}/{tot_exp}, '
+                    f'{pos} ({p+1}/{tot_pos})'
+                )
+
+                images_path = os.path.join(exp_path, pos, 'Images')
+                endFilenameSegm = self.mainWin.endFilenameSegm
+                ls = myutils.listdir(images_path)
+                file_path = [
+                    os.path.join(images_path, f) for f in ls 
+                    if f.endswith(f'{endFilenameSegm}.npz')
+                ][0]
+                
+                posData = load.loadData(file_path, '')
+
+                self.signals.sigUpdatePbarDesc.emit(f'Processing {posData.pos_path}')
+
+                posData.getBasenameAndChNames()
+                posData.buildPaths()
+
+                posData.loadOtherFiles(
+                    load_segm_data=True,
+                    load_metadata=True,
+                    end_filename_segm=endFilenameSegm
+                )
+
+                if posData.SizeT > 1:
+                    posData.segm_data = posData.segm_data[np.newaxis]
+                
+                dfs = []
+                for frame_i, lab in enumerate(posData.segm_data):
+                    df_coords_i = myutils.from_lab_to_obj_coords(
+                        posData.segm_data
+                    )
+                    dfs.append(df_coords_i)
+
+                df_filepath = posData.segm_npz_path.replace('.npz', '.csv')
+                df_filepath = df_filepath.replace('_segm', '_objects_coordinates')
+
+                keys = list(range(len(posData.segm_data)))
+                df = pd.concat(dfs, keys=keys, names=['frame_i'])
+                df.to_csv(df_filepath)
+                        
+        self.signals.finished.emit(self)

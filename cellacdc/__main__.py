@@ -105,6 +105,7 @@ try:
     from cellacdc.utils import compute as utilsCompute
     from cellacdc.utils import repeat as utilsRepeat
     from cellacdc.utils import toImageJroi as utilsToImageJroi
+    from cellacdc.utils import toObjCoords as utilsToObjCoords
     from cellacdc.utils import acdcToSymDiv as utilsSymDiv
     from cellacdc.utils import trackSubCellObjects as utilsTrackSubCell
     from cellacdc.utils import createConnected3Dsegm as utilsConnected3Dsegm
@@ -464,6 +465,7 @@ class mainWin(QMainWindow):
         convertMenu.addAction(self.TiffToNpzAction)
         convertMenu.addAction(self.h5ToNpzAction)
         convertMenu.addAction(self.toImageJroiAction)
+        convertMenu.addAction(self.toObjsCoordsAction)
 
         segmMenu = utilsMenu.addMenu('Segmentation')
         segmMenu.addAction(self.createConnected3Dsegm)
@@ -584,6 +586,9 @@ class mainWin(QMainWindow):
         self.toImageJroiAction = QAction(
             'Convert _segm.npz file(s) to ImageJ ROIs...'
         )
+        self.toObjsCoordsAction = QAction(
+            'Convert _segm.npz file(s) to object coordinates (CSV)...'
+        )
         self.createConnected3Dsegm = QAction(
             'Create connected 3D segmentation mask from z-slices segmentation...'
         )   
@@ -634,6 +639,9 @@ class mainWin(QMainWindow):
         self.TiffToNpzAction.triggered.connect(self.launchConvertFormatUtil)
         self.h5ToNpzAction.triggered.connect(self.launchConvertFormatUtil)
         self.toImageJroiAction.triggered.connect(self.launchToImageJroiUtil)
+        self.toObjsCoordsAction.triggered.connect(
+            self.launchToObjectsCoordsUtil
+        )
         self.createConnected3Dsegm.triggered.connect(
             self.launchConnected3DsegmActionUtil
         )
@@ -921,6 +929,26 @@ class mainWin(QMainWindow):
             posPath, self.app, title, infoText, parent=self
         )
         self.arboretumWindow.show()
+    
+    def launchToObjectsCoordsUtil(self):
+        self.logger.info(f'Launching utility "{self.sender().text()}"')
+
+        selectedExpPaths = self.getSelectedExpPaths(
+            'From _segm.npz to objects coordinates (CSV)'
+        )
+        if selectedExpPaths is None:
+            return
+        
+        title = 'Convert _segm.npz file(s) to objects coordinates (CSV)'
+        infoText = 'Launching to to objects coordinates process...'
+        progressDialogueTitle = (
+            'Converting _segm.npz file(s) to to objects coordinates (CSV)'
+        )
+        self.toObjCoordsWin = utilsToObjCoords.toObjCoordsUtil(
+            selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
+            parent=self
+        )
+        self.toObjCoordsWin.show()
     
     def launchToImageJroiUtil(self):
         self.logger.info(f'Launching utility "{self.sender().text()}"')

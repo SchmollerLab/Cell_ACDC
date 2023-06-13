@@ -1325,6 +1325,24 @@ def imagej_tiffwriter(
     with TiffWriter(new_path, bigtiff=True) as new_tif:
         new_tif.save(data)
 
+def from_lab_to_obj_coords(lab):
+    rp = skimage.measure.regionprops(lab)
+    dfs = []
+    keys = []
+    for obj in rp:
+        keys.append(obj.label)
+        obj_coords = obj.coords
+        ndim = obj_coords.shape[1]
+        if ndim == 3:
+            columns = ['z', 'y', 'x']
+        else:
+            columns = ['y', 'x']
+        df_obj = pd.DataFrame(data=obj_coords, columns=columns)
+        dfs.append(df_obj)
+    df = pd.concat(dfs, keys = keys, names=['Cell_ID', 'idx']).droplevel(1)
+    return df
+        
+
 def from_lab_to_imagej_rois(lab, ImagejRoi, t=0, SizeT=1, max_ID=None):
     if max_ID is None:
         max_ID = lab.max()
