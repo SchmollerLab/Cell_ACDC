@@ -61,7 +61,7 @@ except Exception as e:
             '    * pip install PyQt5\n'
             '    * pip install PySide2\n'
             '    * pip install PySide6\n\n'
-            'Note: if `PyQt6` installation fails, you could try installing any '
+            'Note: if `PyQt5` installation fails, you could try installing any '
             'of the other libraries.\n\n'
         )
         print('-'*60)
