@@ -15293,7 +15293,12 @@ class guiWin(QMainWindow):
     def set_2Dlab(self, lab2D):
         posData = self.data[self.pos_i]
         if self.isSegm3D:
-            posData.lab[self.z_lab()] = lab2D
+            zProjHow = self.zProjComboBox.currentText()
+            isZslice = zProjHow == 'single z-slice'
+            if isZslice:
+                posData.lab[self.z_lab()] = lab2D
+            else:
+                posData.lab[:] = lab2D
         else:
             posData.lab = lab2D
 
@@ -17767,35 +17772,60 @@ class guiWin(QMainWindow):
                 self.labelsLayerRightImg.setImage(lab, autoLevels=False)
 
         self.setAllTextAnnotations(labelsToSkip={ID:True for ID in delIDs})
-    
-    def initTempLayer(self, ID):
-        posData = self.data[self.pos_i]
-        how = self.drawIDsContComboBox.currentText()
+                
+    def initTempLayerBrush(self, ID, ax=0):
+        if ax == 0:
+            how = self.drawIDsContComboBox.currentText()
+        else:
+            how = self.getAnnotateHowRightImage()
+        
         Y, X = self.img1.image.shape[:2]
         tempImage = np.zeros((Y, X), dtype=np.uint32)
         if how.find('contours') != -1:
             tempImage[self.currentLab2D==ID] = ID
-        lut = np.zeros((2, 4), dtype=np.uint8)
-        lut[1,-1] = 255
-        lut[1,:-1] = self.lut[ID]
-        self.tempLayerImg1.setLookupTable(lut)
+            self.brushImage = tempImage.copy()
+            self.brushContourImage = np.zeros((Y, X, 4), dtype=np.uint8)
+            color = self.imgGrad.contoursColorButton.color()
+            self.brushContoursRgba = color.getRgb()
+            opacity = 1.0
+        else:
+            opacity = self.imgGrad.labelsAlphaSlider.value()
+            color = self.lut[ID]
+            lut = np.zeros((2, 4), dtype=np.uint8)
+            lut[1,-1] = 255
+            lut[1,:-1] = color
+            self.tempLayerImg1.setLookupTable(lut)
+        self.tempLayerImg1.setOpacity(opacity)
         self.tempLayerImg1.setImage(tempImage)
-        return tempImage        
-
+    
+    def _setTempImageBrushContour(self):
+        pass
+    
     # @exec_time
     def setTempImg1Brush(self, init: bool, mask, ID, toLocalSlice=None, ax=0):
         if init:
-            Y, X = self.img1.image.shape[:2]
-            alpha = self.imgGrad.labelsAlphaSlider.value()
-            self.tempLayerImg1.setOpacity(alpha)
-            self.initTempLayer(ID)
+            self.initTempLayerBrush(ID, ax=ax)
         
-        if toLocalSlice is None:
-            self.tempLayerImg1.image[mask] = ID
+        if self.annotContourCheckbox.isChecked():
+            brushImage = self.brushImage
         else:
-            self.tempLayerImg1.image[toLocalSlice][mask] = ID
+            brushImage = self.tempLayerImg1.image
+            
+        if toLocalSlice is None:
+            brushImage[mask] = ID
+        else:
+            brushImage[toLocalSlice][mask] = ID
         
-        self.tempLayerImg1.setImage(self.tempLayerImg1.image)
+        if self.annotContourCheckbox.isChecked():
+            obj = skimage.measure.regionprops(brushImage)[0]
+            objContour = [self.getObjContours(obj, appendMultiContID=False)]
+            self.brushContourImage[:] = 0
+            img = self.brushContourImage
+            color = self.brushContoursRgba
+            cv2.drawContours(img, objContour, -1, color, 1)
+            self.tempLayerImg1.setImage(img)
+        else:
+            self.tempLayerImg1.setImage(brushImage)
     
     def getLabelsLayerImage(self, ax=0):
         if ax == 0:

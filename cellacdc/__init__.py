@@ -251,6 +251,12 @@ def exception_handler(func):
                 self.logger.exception(traceback_str)
             else:
                 printl(traceback_str)
+            
+            try:
+                self.cleanUpOnError()
+            except Exception as e:
+                pass
+            
             msg = widgets.myMessageBox(wrapText=False, showCentered=False)
             if hasattr(self, 'logs_path'):
                 msg.addShowInFileManagerButton(
@@ -277,10 +283,6 @@ def exception_handler(func):
 
             msg.critical(self, 'Critical error', err_msg)
             self.is_error_state = True
-            try:
-                self.cleanUpOnError()
-            except Exception as e:
-                pass
         return result
     return inner_function
 
