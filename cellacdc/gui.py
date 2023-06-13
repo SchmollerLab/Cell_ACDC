@@ -1773,45 +1773,6 @@ class guiWin(QMainWindow):
         self.reinitLastSegmFrameAction.toolbar = editToolBar
         self.functionsNotTested3D.append(self.reinitLastSegmFrameAction)
 
-        # Widgets toolbar
-        widgetsToolBar = QToolBar("Widgets", self)
-        self.addToolBar(widgetsToolBar)
-
-        self.editIDspinbox = widgets.SpinBox()
-        self.editIDspinbox.setMaximum(2**16)
-        editIDLabel = QLabel('   ID: ')
-        self.editIDLabelAction = widgetsToolBar.addWidget(editIDLabel)
-        self.editIDspinboxAction = widgetsToolBar.addWidget(self.editIDspinbox)
-        self.editIDLabelAction.setVisible(False)
-        self.editIDspinboxAction.setVisible(False)
-        self.editIDspinboxAction.setDisabled(True)
-        self.editIDLabelAction.setDisabled(True)
-
-        widgetsToolBar.addWidget(QLabel(' '))
-        self.editIDcheckbox = QCheckBox('Auto-ID')
-        self.editIDcheckbox.setChecked(True)
-        self.editIDcheckboxAction = widgetsToolBar.addWidget(self.editIDcheckbox)
-        self.editIDcheckboxAction.setVisible(False)
-
-        self.brushSizeSpinbox = widgets.SpinBox(disableKeyPress=True)
-        self.brushSizeSpinbox.setValue(4)
-        brushSizeLabel = QLabel('   Size: ')
-        brushSizeLabel.setBuddy(self.brushSizeSpinbox)
-        self.brushSizeLabelAction = widgetsToolBar.addWidget(brushSizeLabel)
-        self.brushSizeAction = widgetsToolBar.addWidget(self.brushSizeSpinbox)
-        self.brushSizeLabelAction.setVisible(False)
-        self.brushSizeAction.setVisible(False)
-        
-        widgetsToolBar.addWidget(QLabel('  '))
-        self.brushAutoFillCheckbox = QCheckBox('Auto-fill holes')
-        self.brushAutoFillAction = widgetsToolBar.addWidget(
-            self.brushAutoFillCheckbox
-        )
-        self.brushAutoFillAction.setVisible(False)
-        
-        widgetsToolBar.setVisible(False)
-        self.widgetsToolBar = widgetsToolBar
-
         # Edit toolbar
         modeToolBar = QToolBar("Mode", self)
         self.addToolBar(modeToolBar)
@@ -1853,7 +1814,7 @@ class guiWin(QMainWindow):
         # navigateToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
         # ccaToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
         # editToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
-        # widgetsToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
+        # brushEraserToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
         # modeToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
 
     def gui_createAnnotateToolbar(self):
@@ -2060,6 +2021,59 @@ class guiWin(QMainWindow):
 
     def gui_createControlsToolbar(self):
         self.addToolBarBreak()
+        
+        # Widgets toolbar
+        brushEraserToolBar = QToolBar("Widgets", self)
+        self.addToolBar(Qt.TopToolBarArea, brushEraserToolBar)
+
+        self.editIDspinbox = widgets.SpinBox()
+        # self.editIDspinbox.setMaximum(2**32-1)
+        editIDLabel = QLabel('   ID: ')
+        self.editIDLabelAction = brushEraserToolBar.addWidget(editIDLabel)
+        self.editIDspinboxAction = brushEraserToolBar.addWidget(self.editIDspinbox)
+        self.editIDLabelAction.setVisible(False)
+        self.editIDspinboxAction.setVisible(False)
+        self.editIDspinboxAction.setDisabled(True)
+        self.editIDLabelAction.setDisabled(True)
+
+        brushEraserToolBar.addWidget(QLabel(' '))
+        self.editIDcheckbox = QCheckBox('Auto-ID')
+        self.editIDcheckbox.setChecked(True)
+        self.editIDcheckboxAction = brushEraserToolBar.addWidget(self.editIDcheckbox)
+        self.editIDcheckboxAction.setVisible(False)
+
+        self.brushSizeSpinbox = widgets.SpinBox(disableKeyPress=True)
+        self.brushSizeSpinbox.setValue(4)
+        brushSizeLabel = QLabel('   Size: ')
+        brushSizeLabel.setBuddy(self.brushSizeSpinbox)
+        self.brushSizeLabelAction = brushEraserToolBar.addWidget(brushSizeLabel)
+        self.brushSizeAction = brushEraserToolBar.addWidget(self.brushSizeSpinbox)
+        self.brushSizeLabelAction.setVisible(False)
+        self.brushSizeAction.setVisible(False)
+        
+        brushEraserToolBar.addWidget(QLabel('  '))
+        self.brushAutoFillCheckbox = QCheckBox('Auto-fill holes')
+        self.brushAutoFillAction = brushEraserToolBar.addWidget(
+            self.brushAutoFillCheckbox
+        )
+        self.brushAutoFillAction.setVisible(False)
+        if 'brushAutoFill' in self.df_settings.index:
+            checked = self.df_settings.at['brushAutoFill', 'value'] == 'Yes'
+            self.brushAutoFillCheckbox.setChecked(checked)
+        
+        brushEraserToolBar.addWidget(QLabel('  '))
+        self.brushAutoHideCheckbox = QCheckBox('Hide objects when hovering')
+        self.brushAutoHideAction = brushEraserToolBar.addWidget(
+            self.brushAutoHideCheckbox
+        )
+        self.brushAutoHideCheckbox.setChecked(True)
+        self.brushAutoHideAction.setVisible(False)
+        if 'brushAutoHide' in self.df_settings.index:
+            checked = self.df_settings.at['brushAutoHide', 'value'] == 'Yes'
+            self.brushAutoHideCheckbox.setChecked(checked)
+        
+        brushEraserToolBar.setVisible(False)
+        self.brushEraserToolBar = brushEraserToolBar
 
         self.wandControlsToolbar = QToolBar("Magic wand controls", self)
         self.wandToleranceSlider = widgets.sliderWithSpinBox(
@@ -3014,6 +3028,9 @@ class guiWin(QMainWindow):
         self.addDelRoiAction.triggered.connect(self.addDelROI)
         self.addDelPolyLineRoiAction.toggled.connect(self.addDelPolyLineRoi_cb)
         self.delBorderObjAction.triggered.connect(self.delBorderObj)
+        
+        self.brushAutoFillCheckbox.toggled.connect(self.brushAutoFillToggled)
+        self.brushAutoHideCheckbox.toggled.connect(self.brushAutoHideToggled)
 
         self.imgGrad.sigLookupTableChanged.connect(self.imgGradLUT_cb)
         self.imgGrad.gradient.sigGradientChangeFinished.connect(
@@ -5573,7 +5590,7 @@ class guiWin(QMainWindow):
         if cursorsInfo['setEraserCursor']:
             x, y = event.pos()
             self.updateEraserCursor(x, y)
-            self.hideItemsHoverBrush(x, y)
+            self.hideItemsHoverBrush(xy=(x, y))
         else:
             self.setHoverToolSymbolData(
                 [], [], (self.ax1_EraserCircle, self.ax2_EraserCircle,
@@ -5584,7 +5601,7 @@ class guiWin(QMainWindow):
         if cursorsInfo['setBrushCursor']:
             x, y = event.pos()
             self.updateBrushCursor(x, y)
-            self.hideItemsHoverBrush(x, y)
+            self.hideItemsHoverBrush(xy=(x, y))
         else:
             self.setHoverToolSymbolData(
                 [], [], (self.ax2_BrushCircle, self.ax1_BrushCircle),
@@ -8905,6 +8922,16 @@ class guiWin(QMainWindow):
             posData.cca_df = posData.cca_df.drop(index=removedIDs)
         self.store_data()
         self.updateAllImages()
+    
+    def brushAutoFillToggled(self, checked):
+        val = 'Yes' if checked else 'No'
+        self.df_settings.at['brushAutoFill', 'value'] = val
+        self.df_settings.to_csv(self.settings_csv_path)
+    
+    def brushAutoHideToggled(self, checked):
+        val = 'Yes' if checked else 'No'
+        self.df_settings.at['brushAutoHide', 'value'] = val
+        self.df_settings.to_csv(self.settings_csv_path)
 
     def addDelROI(self, event):       
         roi = self.getDelROI()
@@ -9750,17 +9777,13 @@ class guiWin(QMainWindow):
             self.undoAction.setDisabled(True)
             self.redoAction.setDisabled(True)
 
-    def setEnabledWidgetsToolbar(self, enabled):
-        self.widgetsToolBar.setVisible(enabled)
-        for action in self.widgetsToolBar.actions():
-            widget = self.widgetsToolBar.widgetForAction(action)
-        
-        self.disableNonFunctionalButtons()
-
     def enableSizeSpinbox(self, enabled):
         self.brushSizeLabelAction.setVisible(enabled)
         self.brushSizeAction.setVisible(enabled)
         self.brushAutoFillAction.setVisible(enabled)
+        self.brushAutoHideAction.setVisible(enabled)
+        self.brushEraserToolBar.setVisible(enabled)        
+        self.disableNonFunctionalButtons()
 
     def reload_cb(self):
         posData = self.data[self.pos_i]
@@ -9808,7 +9831,6 @@ class guiWin(QMainWindow):
         if mode == 'Segmentation and Tracking':
             self.trackingMenu.setDisabled(False)
             self.modeToolBar.setVisible(True)
-            self.setEnabledWidgetsToolbar(True)
             self.initSegmTrackMode()
             self.setEnabledEditToolbarButton(enabled=True)
             self.addExistingDelROIs()
@@ -9821,7 +9843,6 @@ class guiWin(QMainWindow):
         elif mode == 'Cell cycle analysis':
             proceed = self.initCca()
             self.modeToolBar.setVisible(True)
-            self.setEnabledWidgetsToolbar(False)
             self.realTimeTrackingToggle.setDisabled(True)
             self.realTimeTrackingToggle.label.setDisabled(True)
             if proceed:
@@ -9839,7 +9860,6 @@ class guiWin(QMainWindow):
             self.modeToolBar.setVisible(True)
             self.realTimeTrackingToggle.setDisabled(True)
             self.realTimeTrackingToggle.label.setDisabled(True)
-            self.setEnabledWidgetsToolbar(False)
             self.setEnabledEditToolbarButton(enabled=False)
             self.setEnabledCcaToolbar(enabled=False)
             self.removeAlldelROIsCurrentFrame()
@@ -9854,7 +9874,6 @@ class guiWin(QMainWindow):
             self.modeToolBar.setVisible(True)
             self.realTimeTrackingToggle.setDisabled(True)
             self.realTimeTrackingToggle.label.setDisabled(True)
-            self.setEnabledWidgetsToolbar(False)
             self.setEnabledEditToolbarButton(enabled=False)
             self.setEnabledCcaToolbar(enabled=False)
             self.removeAlldelROIsCurrentFrame()
@@ -9863,7 +9882,6 @@ class guiWin(QMainWindow):
         elif mode == 'Snapshot':
             self.reconnectUndoRedo()
             self.setEnabledSnapshotMode()
-            self.setEnabledWidgetsToolbar(True)
 
     def setEnabledSnapshotMode(self):
         posData = self.data[self.pos_i]
@@ -9903,7 +9921,6 @@ class guiWin(QMainWindow):
         button.setDisabled(True)
         button = self.editToolBar.widgetForAction(self.manualTrackingAction)
         button.setDisabled(True)
-        self.setEnabledWidgetsToolbar(False)
         self.disableNonFunctionalButtons()
         self.reinitLastSegmFrameAction.setVisible(False)
 
@@ -10257,20 +10274,26 @@ class guiWin(QMainWindow):
             self.addObjContourToContoursImage(obj=obj, ax=0)
             self.addObjContourToContoursImage(obj=obj, ax=1)
 
-    def hideItemsHoverBrush(self, x, y):
-        if x is None:
+    def hideItemsHoverBrush(self, xy=None, ID=None, force=False):
+        if xy is not None:
+            x, y = xy
+            if x is None:
+                return
+
+            xdata, ydata = int(x), int(y)
+            Y, X = self.currentLab2D.shape
+
+            if not (xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y):
+                return
+
+        if not self.brushAutoHideCheckbox.isChecked() and not force:
             return
-
-        xdata, ydata = int(x), int(y)
-        Y, X = self.currentLab2D.shape
-
-        if not (xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y):
-            return
-
+        
         posData = self.data[self.pos_i]
         size = self.brushSizeSpinbox.value()*2
 
-        ID = self.get_2Dlab(posData.lab)[ydata, xdata]
+        if xy is not None:
+            ID = self.get_2Dlab(posData.lab)[ydata, xdata]
 
         if self.ax1_lostObjScatterItem.isVisible():
             self.ax1_lostObjScatterItem.setVisible(False)
@@ -17779,6 +17802,7 @@ class guiWin(QMainWindow):
         else:
             how = self.getAnnotateHowRightImage()
         
+        self.hideItemsHoverBrush(ID=ID, force=True)
         Y, X = self.img1.image.shape[:2]
         tempImage = np.zeros((Y, X), dtype=np.uint32)
         if how.find('contours') != -1:
@@ -19257,7 +19281,7 @@ class guiWin(QMainWindow):
         self.navigateToolBar.hide()
         self.ccaToolBar.hide()
         self.editToolBar.hide()
-        self.widgetsToolBar.hide()
+        self.brushEraserToolBar.hide()
         self.modeToolBar.hide()
 
         self.modeComboBox.setCurrentText('Viewer')
