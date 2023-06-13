@@ -1386,7 +1386,7 @@ class VerticalResizeHline(QFrame):
 
     def __init__(self):
         super().__init__()
-        self.setCursor(Qt.SizeVerCursor)
+        self.setCursor(Qt.SplitVCursor)
         self.setFrameShape(QFrame.Shape.HLine)
         self.setFrameShadow(QFrame.Shadow.Sunken)
         self.installEventFilter(self)

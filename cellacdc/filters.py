@@ -18,7 +18,7 @@ font.setPixelSize(13)
 class FilterBaseDialog(QDialog):
     sigClose = Signal(object)
     sigApplyFilter = Signal(str)
-    sigPreviewToggled = Signal(bool, str)
+    sigPreviewToggled = Signal(bool, object, str)
     
     def __init__(
             self, layersChannelNames, winTitle, parent=None, 
@@ -50,7 +50,7 @@ class FilterBaseDialog(QDialog):
 
     def preview_cb(self, checked):
         channelName = self.channelsComboBox.currentText()
-        self.sigPreviewToggled.emit(checked, channelName)
+        self.sigPreviewToggled.emit(checked, self, channelName)
 
     def apply(self):
         channelName = self.channelsComboBox.currentText()

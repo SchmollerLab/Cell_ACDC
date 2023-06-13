@@ -5346,7 +5346,10 @@ class guiWin(QMainWindow):
             obj = posData.rp[obj_idx]
             objMask = self.getObjImage(obj.image, obj.bbox)
             localFill = scipy.ndimage.binary_fill_holes(objMask)
-            posData.lab[self.getObjSlice(obj.slice)][localFill] = ID
+            objSlice = self.getObjSlice(obj.slice)
+            lab2D = self.get_2Dlab(posData.lab)
+            lab2D[objSlice][localFill] = ID
+            self.set_2Dlab(lab2D)
             self.update_rp()
 
     def highlightIDcheckBoxToggled(self, checked):
@@ -15266,8 +15269,8 @@ class guiWin(QMainWindow):
             else:
                 if toLocalSlice is not None:
                     for z in range(len(posData.lab)):
-                        toLocalSlice = (z, *toLocalSlice)
-                        posData.lab[toLocalSlice][mask] = ID
+                        _slice = (z, *toLocalSlice)
+                        posData.lab[_slice][mask] = ID
                 else:
                     posData.lab[:, mask] = ID
         else:
@@ -19269,6 +19272,7 @@ class guiWin(QMainWindow):
         self.titleLabel.setText('Loading data aborted.')
     
     def cleanUpOnError(self):
+        self.onEscape()
         txt = 'WARNING: Cell-ACDC is in error state. Please, restart.'
         _hl = '===================================='
         self.titleLabel.setText(txt, color='r')
@@ -21213,7 +21217,8 @@ class guiWin(QMainWindow):
     def onEscape(self):
         self.setUncheckedAllButtons()
         self.setUncheckedAllCustomAnnotButtons()
-        self.tempLayerImg1.setImage(self.emptyLab)
+        if hasattr(self, 'tempLayerImg1'):
+            self.tempLayerImg1.setImage(self.emptyLab)
         self.isMouseDragImg1 = False
         self.typingEditID = False
         if self.highlightedID != 0:
