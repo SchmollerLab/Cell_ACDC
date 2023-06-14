@@ -148,10 +148,11 @@ class mainWin(QMainWindow):
         self.checkConfigFiles()
         
         scheme = self.getColorScheme()
-        from _palettes import getPaletteColorScheme
+        from _palettes import getPaletteColorScheme, setToolTipStyleSheet
         self.app = app
         palette = getPaletteColorScheme(app.palette(), scheme=scheme)
         app.setPalette(palette)     
+        setToolTipStyleSheet(app, scheme=scheme)
         self.welcomeGuide = None
         
         super().__init__(parent)

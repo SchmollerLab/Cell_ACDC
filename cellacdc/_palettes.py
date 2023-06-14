@@ -98,4 +98,16 @@ def lineedit_invalid_entry_stylesheet():
         'border: 1.5px solid red;'
         'padding: 1px 0px 1px 0px'
     )
-    
+
+def setToolTipStyleSheet(app, scheme='light'):
+    if scheme == 'dark':
+        app.setStyleSheet(r"QToolTip {"
+            "color: #e6e6e6; background-color: #3c3c3c; border: 1px solid white;"
+        "}"
+        )
+    else:
+        app.setStyleSheet(r"QToolTip {"
+            "color: #141414; background-color: #ffffff; border: 1px solid black;"
+        "}"
+        )
+        
