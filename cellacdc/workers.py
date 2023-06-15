@@ -3074,9 +3074,7 @@ class ToObjCoordsWorker(BaseWorkerUtil):
                 
                 dfs = []
                 for frame_i, lab in enumerate(posData.segm_data):
-                    df_coords_i = myutils.from_lab_to_obj_coords(
-                        posData.segm_data
-                    )
+                    df_coords_i = myutils.from_lab_to_obj_coords(lab)
                     dfs.append(df_coords_i)
 
                 df_filepath = posData.segm_npz_path.replace('.npz', '.csv')
