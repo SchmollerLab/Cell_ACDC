@@ -1,0 +1,6 @@
+{
+    "x_mult_INCLUDE_PATTERN_TIF_SEARCH": ^(?!.*(T_PMT|' + NEW_PATH_SUF + ')\.tif).*,
+    "x_mult_INCLUDE_PATTERN_TIF_BASESEARCH": T_PMT\.tif,
+    "x_INCLUDE_PATTERN_TIF_SEARCH": ^(?!.*(T_PMT|" + NEW_PATH_SUF + ")\.tif).*,
+    "x_sing_INCLUDE_PATTERN_TIF_SEARCH": ^(?=.*[^(T_PMT)](_corrected)\\.tif).*
+}
