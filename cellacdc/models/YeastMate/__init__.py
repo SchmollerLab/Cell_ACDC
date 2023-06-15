@@ -6,8 +6,8 @@ try:
     import detectron2
 except ModuleNotFoundError:
     if sys.platform.startswith("win"):
-        from PyQt5.QtWidgets import QMessageBox, QApplication
-        from PyQt5.QtCore import QCoreApplication
+        from qtpy.QtWidgets import QMessageBox, QApplication
+        from qtpy.QtCore import QCoreApplication
         from cellacdc.apps import warnVisualCppRequired
 
         if QCoreApplication.instance() is None:
@@ -31,8 +31,8 @@ except ModuleNotFoundError:
 try:
     import yeastmatedetector
 except ModuleNotFoundError:
-    from PyQt5.QtWidgets import QMessageBox, QApplication
-    from PyQt5.QtCore import QCoreApplication
+    from qtpy.QtWidgets import QMessageBox, QApplication
+    from qtpy.QtCore import QCoreApplication
 
     if QCoreApplication.instance() is None:
         app = QApplication(sys.argv)

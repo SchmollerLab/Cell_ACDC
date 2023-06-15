@@ -9,11 +9,11 @@ import tkinter as tk
 import sys
 from tkinter import ttk
 
-from PyQt5.QtWidgets import (
+from qtpy.QtWidgets import (
     QApplication, QPushButton, QHBoxLayout, QLabel, QSizePolicy
 )
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QFont
+from qtpy.QtCore import Qt
+from qtpy.QtGui import QFont
 
 from . import apps, myutils, printl, html_utils, load
 
@@ -33,8 +33,8 @@ class RichTextPushButton(QPushButton):
         self.__lbl.setAttribute(Qt.WA_TranslucentBackground)
         self.__lbl.setAttribute(Qt.WA_TransparentForMouseEvents)
         self.__lbl.setSizePolicy(
-            QSizePolicy.Expanding,
-            QSizePolicy.Expanding,
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
         )
         self.__lbl.setTextFormat(Qt.RichText)
         self.__lyt.addWidget(self.__lbl)

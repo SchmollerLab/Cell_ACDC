@@ -1,7 +1,7 @@
-from PyQt5.QtCore import (
+from qtpy.QtCore import (
     Qt, QTimer, QEventLoop
 )
-from PyQt5.QtWidgets import QWidget
+from qtpy.QtWidgets import QWidget
 
 class QWhileLoop:
     def __init__(

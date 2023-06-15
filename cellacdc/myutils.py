@@ -34,14 +34,15 @@ from natsort import natsorted
 
 from tifffile.tifffile import TiffWriter, TiffFile
 
-from PyQt5.QtWidgets import QMessageBox
-from PyQt5.QtCore import pyqtSignal, QObject, QCoreApplication
+from qtpy.QtWidgets import QMessageBox
+from qtpy.QtCore import Signal, QObject, QCoreApplication
 
 from . import apps
 from . import prompts, widgets, core, load
 from . import html_utils, is_linux, is_win, is_mac, issues_url, is_mac_arm64
 from . import cellacdc_path, printl, temp_path, logs_path
 from . import config, models_list_file_path
+from . import github_home_url
 
 def get_module_name(script_file_path):
     parts = pathlib.Path(script_file_path).parts
@@ -202,8 +203,8 @@ class utilClass:
     pass
 
 class signals(QObject):
-    progressBar = pyqtSignal(int)
-    progress = pyqtSignal(str)
+    progressBar = Signal(int)
+    progress = Signal(str)
 
 def get_trimmed_list(li: list, max_num_digits=10):
     li_str = li.copy()
@@ -1324,6 +1325,24 @@ def imagej_tiffwriter(
     with TiffWriter(new_path, bigtiff=True) as new_tif:
         new_tif.save(data)
 
+def from_lab_to_obj_coords(lab):
+    rp = skimage.measure.regionprops(lab)
+    dfs = []
+    keys = []
+    for obj in rp:
+        keys.append(obj.label)
+        obj_coords = obj.coords
+        ndim = obj_coords.shape[1]
+        if ndim == 3:
+            columns = ['z', 'y', 'x']
+        else:
+            columns = ['y', 'x']
+        df_obj = pd.DataFrame(data=obj_coords, columns=columns)
+        dfs.append(df_obj)
+    df = pd.concat(dfs, keys = keys, names=['Cell_ID', 'idx']).droplevel('idx')
+    return df
+        
+
 def from_lab_to_imagej_rois(lab, ImagejRoi, t=0, SizeT=1, max_ID=None):
     if max_ID is None:
         max_ID = lab.max()
@@ -1931,6 +1950,32 @@ def get_slices_local_into_global_arr(bbox_coords, global_shape):
     
     return tuple(slice_global_to_local), tuple(slice_crop_local)
 
+def get_pip_install_cellacdc_version_command(version=None):
+    if version is None:
+        version = read_version()
+    commit_hash_idx = version.find('+g') != -1
+    is_dev_version = commit_hash_idx > 0    
+    if is_dev_version:
+        commit_hash = version[commit_hash_idx+2:]
+        command = f'pip install --upgrade "git+{github_home_url}.git@{commit_hash}"'
+    else:
+        command = f'pip install --upgrade cellacdc=={version}'
+    return command
+
+def get_git_pull_checkout_cellacdc_version_commands(version=None):
+    if version is None:
+        version = read_version()
+    commit_hash_idx = version.find('+g') != -1
+    is_dev_version = commit_hash_idx > 0 
+    if not is_dev_version:
+        return []
+    commit_hash = version[commit_hash_idx+2:]
+    commands = (
+        f'cd "{cellacdc_path}"',
+        'git pull',
+        f'git checkout {commit_hash}'
+    )
+    return commands
 
 if __name__ == '__main__':
     print(get_list_of_models())

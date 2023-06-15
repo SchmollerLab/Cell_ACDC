@@ -2,9 +2,9 @@ import numpy as np
 
 import skimage.filters
 
-from PyQt5 import QtGui
-from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtWidgets import (
+from qtpy import QtGui
+from qtpy.QtCore import Qt, Signal
+from qtpy.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QHBoxLayout, QComboBox, QDoubleSpinBox,
     QSlider, QCheckBox, QPushButton, QLabel, QGroupBox, QGridLayout,
     QWidget
@@ -16,9 +16,9 @@ font = QtGui.QFont()
 font.setPixelSize(13)
 
 class FilterBaseDialog(QDialog):
-    sigClose = pyqtSignal(object)
-    sigApplyFilter = pyqtSignal(str)
-    sigPreviewToggled = pyqtSignal(bool, str)
+    sigClose = Signal(object)
+    sigApplyFilter = Signal(str)
+    sigPreviewToggled = Signal(bool, object, str)
     
     def __init__(
             self, layersChannelNames, winTitle, parent=None, 
@@ -50,7 +50,7 @@ class FilterBaseDialog(QDialog):
 
     def preview_cb(self, checked):
         channelName = self.channelsComboBox.currentText()
-        self.sigPreviewToggled.emit(checked, channelName)
+        self.sigPreviewToggled.emit(checked, self, channelName)
 
     def apply(self):
         channelName = self.channelsComboBox.currentText()
@@ -86,7 +86,7 @@ class gaussBlurDialog(FilterBaseDialog):
         self.sigmaSlider.setMaximum(100)
         self.sigmaSlider.setValue(20)
         self.sigma = 1.0
-        self.sigmaSlider.setTickPosition(QSlider.TicksBelow)
+        self.sigmaSlider.setTickPosition(QSlider.TickPosition.TicksBelow)
         self.sigmaSlider.setTickInterval(10)
 
         self.PreviewCheckBox = QCheckBox("Preview")
@@ -155,14 +155,14 @@ class diffGaussFilterDialog(FilterBaseDialog):
             isFloat=True, title='Sigma YX-direction:',
             title_loc='in_line'
         )
-        self.firstSigmaSliderYX.setTickPosition(QSlider.TicksBelow)
+        self.firstSigmaSliderYX.setTickPosition(QSlider.TickPosition.TicksBelow)
         self.firstSigmaSliderYX.setSingleStep(0.5)
         self.firstSigmaSliderYX.setTickInterval(10)
         self.firstSigmaSliderZ = widgets.sliderWithSpinBox(
             isFloat=True, title='Sigma Z-direction:  ',
             title_loc='in_line'
         )
-        self.firstSigmaSliderZ.setTickPosition(QSlider.TicksBelow)
+        self.firstSigmaSliderZ.setTickPosition(QSlider.TickPosition.TicksBelow)
         self.firstSigmaSliderZ.setSingleStep(0.5)
         self.firstSigmaSliderZ.setTickInterval(10)
         firstLayout.addWidget(self.firstSigmaSliderYX)
@@ -175,7 +175,7 @@ class diffGaussFilterDialog(FilterBaseDialog):
             isFloat=True, title='Sigma YX-direction:',
             title_loc='in_line'
         )
-        self.secondSigmaSliderYX.setTickPosition(QSlider.TicksBelow)
+        self.secondSigmaSliderYX.setTickPosition(QSlider.TickPosition.TicksBelow)
         self.secondSigmaSliderYX.setSingleStep(0.5)
         self.secondSigmaSliderYX.setTickInterval(10)
         self.secondSigmaSliderYX.setValue(1)
@@ -184,7 +184,7 @@ class diffGaussFilterDialog(FilterBaseDialog):
             isFloat=True, title='Sigma Z-direction:  ',
             title_loc='in_line'
         )
-        self.secondSigmaSliderZ.setTickPosition(QSlider.TicksBelow)
+        self.secondSigmaSliderZ.setTickPosition(QSlider.TickPosition.TicksBelow)
         self.secondSigmaSliderZ.setSingleStep(0.5)
         self.secondSigmaSliderZ.setTickInterval(10)
 
@@ -269,7 +269,7 @@ class diffGaussFilterDialog(FilterBaseDialog):
 
     def showEvent(self, event):
         self.resize(int(self.width()*1.5), self.height())
-        self.firstSigmaSliderYX.setFocus(True)
+        self.firstSigmaSliderYX.setFocus()
 
 class edgeDetectionDialog(FilterBaseDialog):
     def __init__(self, layersChannelNames, parent=None, **kwargs):
@@ -299,7 +299,7 @@ class edgeDetectionDialog(FilterBaseDialog):
         self.sigmaSlider.setMaximum(100)
         self.sigmaSlider.setValue(20)
         self.sigma = 1.0
-        self.sigmaSlider.setTickPosition(QSlider.TicksBelow)
+        self.sigmaSlider.setTickPosition(QSlider.TickPosition.TicksBelow)
         self.sigmaSlider.setTickInterval(10)
         paramsLayout.addWidget(self.sigmaSlider, row, 0)
 
@@ -316,7 +316,7 @@ class edgeDetectionDialog(FilterBaseDialog):
         self.sharpSlider.setMaximum(100)
         self.sharpSlider.setValue(50)
         self.radius = 5.0
-        self.sharpSlider.setTickPosition(QSlider.TicksBelow)
+        self.sharpSlider.setTickPosition(QSlider.TickPosition.TicksBelow)
         self.sharpSlider.setTickInterval(10)
         paramsLayout.addWidget(self.sharpSlider, row, 0)
 
@@ -393,7 +393,7 @@ class entropyFilterDialog(FilterBaseDialog):
         self.radiusSlider.setMinimum(1)
         self.radiusSlider.setMaximum(100)
         self.radiusSlider.setValue(10)
-        self.radiusSlider.setTickPosition(QSlider.TicksBelow)
+        self.radiusSlider.setTickPosition(QSlider.TickPosition.TicksBelow)
         self.radiusSlider.setTickInterval(10)
         paramsLayout.addWidget(self.radiusSlider, row, 0)
 

@@ -16,7 +16,7 @@ if INSTALL_BTRACK:
     import os
     import sys
     import subprocess
-    from PyQt5.QtWidgets import QMessageBox
+    from qtpy.QtWidgets import QMessageBox
     from cellacdc import myutils
     cancel = myutils._install_package_msg(pkg_name)
     if cancel:

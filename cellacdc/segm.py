@@ -16,16 +16,16 @@ import skimage.morphology
 
 from tqdm import tqdm
 
-from PyQt5.QtWidgets import (
+from qtpy.QtWidgets import (
     QApplication, QMainWindow, QFileDialog,
     QVBoxLayout, QPushButton, QLabel, QProgressBar, QHBoxLayout,
     QStyleFactory, QWidget, QMessageBox, QTextEdit
 )
-from PyQt5.QtCore import (
-    Qt, QEventLoop, QThreadPool, QRunnable, pyqtSignal, QObject,
+from qtpy.QtCore import (
+    Qt, QEventLoop, QThreadPool, QRunnable, Signal, QObject,
     QMutex, QWaitCondition
 )
-from PyQt5 import QtGui
+from qtpy import QtGui
 
 # Custom modules
 from . import prompts, load, myutils, apps, core, dataPrep, widgets
@@ -49,16 +49,16 @@ class QTerminal(QTextEdit):
             self.setText(message)
 
 class segmWorkerSignals(QObject):
-    finished = pyqtSignal(float)
-    progress = pyqtSignal(str)
-    progressBar = pyqtSignal(int)
-    innerProgressBar = pyqtSignal(int)
-    resetInnerPbar = pyqtSignal(int)
-    progress_tqdm = pyqtSignal(int)
-    signal_close_tqdm = pyqtSignal()
-    create_tqdm = pyqtSignal(int)
-    debug = pyqtSignal(object)
-    critical = pyqtSignal(object)
+    finished = Signal(float)
+    progress = Signal(str)
+    progressBar = Signal(int)
+    innerProgressBar = Signal(int)
+    resetInnerPbar = Signal(int)
+    progress_tqdm = Signal(int)
+    signal_close_tqdm = Signal()
+    create_tqdm = Signal(int)
+    debug = Signal(object)
+    critical = Signal(object)
 
 class segmWorker(QRunnable):
     def __init__(
@@ -561,9 +561,9 @@ class segmWin(QMainWindow):
         QPbar = QProgressBar(self)
         QPbar.setValue(0)
         palette = QtGui.QPalette()
-        palette.setColor(QtGui.QPalette.Highlight, QtGui.QColor(207, 235, 155))
-        palette.setColor(QtGui.QPalette.Text, QtGui.QColor(0, 0, 0))
-        palette.setColor(QtGui.QPalette.HighlightedText, QtGui.QColor(0, 0, 0))
+        palette.setColor(QtGui.QPalette.ColorRole.Highlight, QtGui.QColor(207, 235, 155))
+        palette.setColor(QtGui.QPalette.ColorRole.Text, QtGui.QColor(0, 0, 0))
+        palette.setColor(QtGui.QPalette.ColorRole.HighlightedText, QtGui.QColor(0, 0, 0))
         QPbar.setPalette(palette)
         pBarLayout.addWidget(QPbar)
         ETA_label = QLabel()

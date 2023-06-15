@@ -6,7 +6,7 @@ import pandas as pd
 
 from PIL import Image, ImageFont, ImageDraw
 
-from PyQt5.QtGui import QFont
+from qtpy.QtGui import QFont
 
 import pyqtgraph as pg
 
@@ -496,6 +496,10 @@ class TextAnnotations:
             for obj in prev_rp:
                 if obj.label not in posData.lost_IDs:
                     continue
+                
+                if obj.label in delROIsIDs:
+                    continue
+                
                 objOpts = {
                     'text': f'{obj.label}?',
                     'color_name': 'lost_object',

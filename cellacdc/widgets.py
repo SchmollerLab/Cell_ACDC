@@ -17,21 +17,21 @@ import skimage.morphology
 from matplotlib.colors import ListedColormap, LinearSegmentedColormap
 import matplotlib.pyplot as plt
 
-from PyQt5.QtCore import (
-    pyqtSignal, QTimer, Qt, QPoint, pyqtSlot, pyqtProperty,
+from qtpy.QtCore import (
+    Signal, QTimer, Qt, QPoint, Slot, Property,
     QPropertyAnimation, QEasingCurve, QLocale,
-    QSize, QRect, QPointF, QRect, QPoint, QEasingCurve, QRegExp,
+    QSize, QRect, QPointF, QRect, QPoint, QEasingCurve, QRegularExpression,
     QEvent, QEventLoop, QPropertyAnimation, QObject,
     QItemSelectionModel, QAbstractListModel, QModelIndex,
     QByteArray, QDataStream, QMimeData, QAbstractItemModel, 
     QIODevice, QItemSelection
 )
-from PyQt5.QtGui import (
+from qtpy.QtGui import (
     QFont, QPalette, QColor, QPen, QKeyEvent, QBrush, QPainter,
-    QRegExpValidator, QIcon, QPixmap, QKeySequence, QLinearGradient,
+    QRegularExpressionValidator, QIcon, QPixmap, QKeySequence, QLinearGradient,
     QShowEvent, QBitmap, QFontMetrics, QGuiApplication, QLinearGradient 
 )
-from PyQt5.QtWidgets import (
+from qtpy.QtWidgets import (
     QTextEdit, QLabel, QProgressBar, QHBoxLayout, QToolButton, QCheckBox,
     QApplication, QWidget, QVBoxLayout, QMainWindow, QStyleFactory,
     QLineEdit, QSlider, QSpinBox, QGridLayout, QRadioButton,
@@ -184,7 +184,7 @@ class QBaseDialog(QDialog):
 class XStream(QObject):
     _stdout = None
     _stderr = None
-    messageWritten = pyqtSignal(str)
+    messageWritten = Signal(str)
     
     def flush( self ):
         pass
@@ -220,7 +220,7 @@ class QtHandler(logging.Handler):
             XStream.stdout().write('%s\n'%record)
 
 class QLog(QPlainTextEdit):
-    sigClose = pyqtSignal()
+    sigClose = Signal()
 
     def __init__(self, *args, logger=None):
         super().__init__(*args)
@@ -265,9 +265,9 @@ class PushButton(QPushButton):
             self.installEventFilter(self)
     
     def eventFilter(self, object, event):
-        if event.type() == QEvent.HoverEnter:
+        if event.type() == QEvent.Type.HoverEnter:
             self.setFlat(False)
-        elif event.type() == QEvent.HoverLeave:
+        elif event.type() == QEvent.Type.HoverLeave:
             self.setFlat(True)
         return False
     
@@ -441,14 +441,15 @@ class showInFileManagerButton(PushButton):
         self.setText(self._text)
 
 class showDetailsButton(PushButton):
-    def __init__(self, *args, txt='Show details...', **kwargs):
-        super().__init__(*args, **kwargs)
-        self.setText(txt)
+    def __init__(self, *args, txt='Show details...', parent=None):
+        super().__init__(txt, parent)
+        # self.setText(txt)
         self.txt = txt
         self.checkedIcon = QIcon(':hideUp.svg')
         self.uncheckedIcon = QIcon(':showDown.svg')
         self.setIcon(self.uncheckedIcon)
         self.toggled.connect(self.onClicked)
+        self.setCheckable(True)
         w = self.sizeHint().width()
         self.setFixedWidth(w)
 
@@ -486,7 +487,7 @@ class delPushButton(PushButton):
         self.setIcon(QIcon(':bin.svg'))
 
 class browseFileButton(PushButton):
-    sigPathSelected = pyqtSignal(str)
+    sigPathSelected = Signal(str)
 
     def __init__(
             self, *args, ext=None, title='Select file', start_dir='', 
@@ -751,14 +752,15 @@ class ValidLineEdit(QLineEdit):
         self.setStyleSheet('')
 
 class KeepIDsLineEdit(ValidLineEdit):
-    sigIDsChanged = pyqtSignal(list)
-    sigSort = pyqtSignal()
+    sigIDsChanged = Signal(list)
+    sigSort = Signal()
 
     def __init__(self, instructionsLabel, parent=None):
         super().__init__(parent)
 
         self.validPattern = '^[0-9-, ]+$'
-        self.setValidator(QRegExpValidator(QRegExp(self.validPattern)))
+        regExpr = QRegularExpression(self.validPattern)
+        self.setValidator(QRegularExpressionValidator(regExpr))
 
         self.textChanged.connect(self.onTextChanged)
         self.editingFinished.connect(self.onEditingFinished)
@@ -808,7 +810,7 @@ class ScrollBar(QScrollBar):
         self.installEventFilter(self)
     
     def eventFilter(self, object, event) -> bool:
-        if event.type() == QEvent.Wheel:
+        if event.type() == QEvent.Type.Wheel:
             return True
         return False
 
@@ -817,7 +819,7 @@ class _ReorderableListModel(QAbstractListModel):
     ReorderableListModel is a list model which implements reordering of its
     items via drag-n-drop
     '''
-    dragDropFinished = pyqtSignal()
+    dragDropFinished = Signal()
 
     def __init__(self, items, parent=None):
         QAbstractItemModel.__init__(self, parent)
@@ -989,9 +991,9 @@ class _SelectionModel(QItemSelectionModel):
 
         self.clearSelection()
         flags = (
-            QItemSelectionModel.ClearAndSelect 
-            | QItemSelectionModel.Rows 
-            | QItemSelectionModel.Current
+            QItemSelectionModel.SelectionFlag.ClearAndSelect 
+            | QItemSelectionModel.SelectionFlag.Rows 
+            | QItemSelectionModel.SelectionFlag.Current
         )
         self.select(new_selection, flags)
         self.setCurrentIndex(new_index, flags)
@@ -1014,7 +1016,7 @@ class ReorderableListView(QListView):
         )
         self.setModel(self._model)
         self.setSelectionModel(self._selectionModel)
-        self.setDragDropMode(QAbstractItemView.InternalMove)
+        self.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
         self.setDragDropOverwriteMode(False)
         styleSheet = (f"""
             QListView {{
@@ -1042,7 +1044,7 @@ class ReorderableListView(QListView):
     #     self._selectionModel.reset()
 
 class QDialogListbox(QDialog):
-    sigSelectionConfirmed = pyqtSignal(list)
+    sigSelectionConfirmed = Signal(list)
 
     def __init__(
             self, title, text, items, cancelText='Cancel',
@@ -1083,9 +1085,9 @@ class QDialogListbox(QDialog):
         listBox.setFont(_font)
         listBox.addItems(items)
         if multiSelection:
-            listBox.setSelectionMode(QAbstractItemView.ExtendedSelection)
+            listBox.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         else:
-            listBox.setSelectionMode(QAbstractItemView.SingleSelection)
+            listBox.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         listBox.setCurrentRow(0)
         self.listBox = listBox
         if not multiSelection:
@@ -1130,6 +1132,7 @@ class QDialogListbox(QDialog):
 
         self.setStyleSheet("""
             QListWidget::item:hover {background-color:#E6E6E6;}
+            QListWidget::item:hover {color:black;}
             QListWidget::item:selected {background-color:#CFEB9B;}
             QListWidget::item:selected {color:black;}
             QListView {
@@ -1145,7 +1148,7 @@ class QDialogListbox(QDialog):
     def keyPressEvent(self, event) -> None:
         mod = event.modifiers()
         if mod == Qt.ShiftModifier or mod == Qt.ControlModifier:
-            self.listBox.setSelectionMode(QAbstractItemView.ExtendedSelection)
+            self.listBox.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         elif event.key() == Qt.Key_Escape:
             self.listBox.clearSelection()
             event.ignore()
@@ -1161,10 +1164,10 @@ class QDialogListbox(QDialog):
     def onItemClicked(self, item):
         mod = QGuiApplication.keyboardModifiers()
         if mod == Qt.ShiftModifier or mod == Qt.ControlModifier:
-            self.listBox.setSelectionMode(QAbstractItemView.ExtendedSelection)
+            self.listBox.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
             return
         
-        self.listBox.setSelectionMode(QAbstractItemView.MultiSelection)
+        self.listBox.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
         itemIdx = self.listBox.row(item)
         wasSelected = self.areItemsSelected[itemIdx]
         if wasSelected:
@@ -1174,7 +1177,7 @@ class QDialogListbox(QDialog):
             self.listBox.item(i).isSelected() 
             for i in range(self.listBox.count())
         ]
-        # self.listBox.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        # self.listBox.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         # else:
         #     selectedItems.append(item)
         
@@ -1322,7 +1325,7 @@ class filePathControl(QFrame):
         self.le.editingFinished.connect(self.setTextTooltip)
         self.browseButton.sigPathSelected.connect(self.setText)
     
-        self.setFrameStyle(QFrame.StyledPanel)
+        self.setFrameStyle(QFrame.Shape.StyledPanel)
 
     def setText(self, text):
         self.le.setText(text)
@@ -1351,7 +1354,7 @@ class QVWidgetSpacer(QWidget):
 class QHLine(QFrame):
     def __init__(self, shadow='Sunken', parent=None, color=None):
         super().__init__(parent)
-        self.setFrameShape(QFrame.HLine)
+        self.setFrameShape(QFrame.Shape.HLine)
         self.setFrameShadow(getattr(QFrame, shadow))
         if color is not None:
             self.setColor(color)
@@ -1359,33 +1362,33 @@ class QHLine(QFrame):
     def setColor(self, color):
         qcolor = pg.mkColor(color)
         pal = self.palette()
-        pal.setColor(QPalette.WindowText, qcolor)
+        pal.setColor(QPalette.ColorRole.WindowText, qcolor)
         self.setPalette(pal)
 
 class QVLine(QFrame):
     def __init__(self, shadow='Plain', parent=None, color=None):
         super().__init__(parent)
-        self.setFrameShape(QFrame.VLine)
-        self.setFrameShadow(getattr(QFrame, shadow))
+        self.setFrameShape(QFrame.Shape.VLine)
+        self.setFrameShadow(getattr(QFrame.Shadow, shadow))
         if color is not None:
             self.setColor(color)
     
     def setColor(self, color):
         qcolor = pg.mkColor(color)
         pal = self.palette()
-        pal.setColor(QPalette.WindowText, qcolor)
+        pal.setColor(QPalette.ColorRole.WindowText, qcolor)
         self.setPalette(pal)
 
 class VerticalResizeHline(QFrame):
-    dragged = pyqtSignal(object)
-    clicked = pyqtSignal(object)
-    released = pyqtSignal(object)
+    dragged = Signal(object)
+    clicked = Signal(object)
+    released = Signal(object)
 
     def __init__(self):
         super().__init__()
-        self.setCursor(Qt.SizeVerCursor)
-        self.setFrameShape(QFrame.HLine)
-        self.setFrameShadow(QFrame.Sunken)
+        self.setCursor(Qt.SplitVCursor)
+        self.setFrameShape(QFrame.Shape.HLine)
+        self.setFrameShadow(QFrame.Shadow.Sunken)
         self.installEventFilter(self)
         self.isMousePressed = False
         self._height = 4
@@ -1406,14 +1409,14 @@ class VerticalResizeHline(QFrame):
         return super().mouseReleaseEvent(event)
     
     def eventFilter(self, object, event):
-        if event.type() == QEvent.Enter:
+        if event.type() == QEvent.Type.Enter:
             self.setLineWidth(0)
             self.setMidLineWidth(self._height)
             pal = self.palette()
-            pal.setColor(QPalette.WindowText, QColor('#4d4d4d'))
+            pal.setColor(QPalette.ColorRole.WindowText, QColor('#4d4d4d'))
             self.setPalette(pal)
             # self.setStyleSheet('background-color: #4d4d4d') 
-        elif event.type() == QEvent.Leave:
+        elif event.type() == QEvent.Type.Leave:
             self.setMidLineWidth(0)
             self.setLineWidth(1)
         return False
@@ -1445,7 +1448,7 @@ class CheckBox(QCheckBox):
         self.keyPressCallback()
 
 class ScrollArea(QScrollArea):
-    sigLeaveEvent = pyqtSignal()
+    sigLeaveEvent = Signal()
 
     def __init__(
             self, parent=None, resizeVerticalOnShow=False, 
@@ -1453,7 +1456,7 @@ class ScrollArea(QScrollArea):
         ) -> None:
         super().__init__(parent)
         self.setWidgetResizable(True)
-        self.setFrameStyle(QFrame.NoFrame)
+        self.setFrameStyle(QFrame.Shape.NoFrame)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.containerWidget = None
         self.resizeVerticalOnShow = resizeVerticalOnShow
@@ -1467,7 +1470,7 @@ class ScrollArea(QScrollArea):
             self.containerWidget = widget
         self.containerWidget.setLayout(layout)
         self.containerWidget.setSizePolicy(
-            QSizePolicy.Preferred, QSizePolicy.Preferred
+            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred
         )
         self.setWidget(self.containerWidget)
         self.containerWidget.installEventFilter(self)
@@ -1497,20 +1500,20 @@ class ScrollArea(QScrollArea):
             + self.horizontalScrollBar().height()
         )
         self.containerWidget.setSizePolicy(
-            QSizePolicy.Preferred, QSizePolicy.Preferred
+            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred
         )
 
         self.setFixedHeight(height)
 
     def eventFilter(self, object, event: QEvent):
-        if event.type() == QEvent.Leave:
+        if event.type() == QEvent.Type.Leave:
             self.sigLeaveEvent.emit()
 
         if object != self.containerWidget:
             return False
         
-        isResize = event.type() == QEvent.Resize
-        isShow = event.type() == QEvent.Show
+        isResize = event.type() == QEvent.Type.Resize
+        isShow = event.type() == QEvent.Type.Show
         if isResize and self.isOnlyVertical:
             self._resizeHorizontal()
         elif isShow and self.resizeVerticalOnShow:
@@ -1518,7 +1521,7 @@ class ScrollArea(QScrollArea):
         return False
 
 class QClickableLabel(QLabel):
-    clicked = pyqtSignal(object)
+    clicked = Signal(object)
 
     def __init__(self, parent=None):
         self._parent = parent
@@ -1556,7 +1559,7 @@ class QCenteredComboBox(QComboBox):
     
     def eventFilter(self, lineEdit, event):
         # Reimplement show popup on click
-        if event.type() == QEvent.MouseButtonPress:
+        if event.type() == QEvent.Type.MouseButtonPress:
             if self._isPopupVisibile:
                 self.hidePopup()
                 self._isPopupVisibile = False
@@ -1585,6 +1588,7 @@ class listWidget(QListWidget):
         self.itemHeight = None
         self.setStyleSheet("""
             QListWidget::item:hover {background-color:#E6E6E6;}
+            QListWidget::item:hover {color:black;}
             QListWidget::item:selected {background-color:#CFEB9B;}
             QListWidget::item:selected {color:black;}
             QListView {
@@ -1618,7 +1622,7 @@ class OrderableList(listWidget):
         super().__init__(*args, **kwargs)
     
     def addItems(self, items):
-        self.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         nr_items = len(items)
         nn = [str(n) for n in range(1, nr_items+1)]
         for i, item in enumerate(items):
@@ -1632,7 +1636,7 @@ class OrderableList(listWidget):
             itemLayout.addWidget(QLabel('| Table nr.'))
             itemLayout.addWidget(itemNumberWidget)
             itemContainer.setLayout(itemLayout)
-            itemLayout.setSizeConstraint(QLayout.SetFixedSize)
+            itemLayout.setSizeConstraint(QLayout.SizeConstraint.SetFixedSize)
             itemW.setSizeHint(itemContainer.sizeHint())
             self.addItem(itemW)
             self.setItemWidget(itemW, itemContainer)
@@ -1697,6 +1701,7 @@ class TreeWidget(QTreeWidget):
         super().__init__(*args)    
         self.setStyleSheet("""
             QTreeWidget::item:hover {background-color:#E6E6E6;}
+            QTreeWidget::item:hover {color:black;}
             QTreeWidget::item:selected {background-color:#CFEB9B;}
             QTreeWidget::item:selected {color:black;}
             QTreeView {
@@ -1707,7 +1712,7 @@ class TreeWidget(QTreeWidget):
         """)
         self.setFont(font)
         if multiSelection:
-            self.setSelectionMode(QAbstractItemView.ExtendedSelection)
+            self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
             self.itemClicked.connect(self.selectAllChildren)
     
     def selectAllChildren(self, item):
@@ -1740,7 +1745,7 @@ class TreeWidgetItem(QTreeWidgetItem):
                 self.setBackground(c, QBrush(color))
     
 class FilterObject(QObject):
-    sigFilteredEvent = pyqtSignal(object, object)
+    sigFilteredEvent = Signal(object, object)
 
     def __init__(self) -> None:
         super().__init__()
@@ -1792,7 +1797,8 @@ class alphaNumericLineEdit(QLineEdit):
         super().__init__(parent)
 
         self.validPattern = '^[a-zA-Z0-9_-]+$'
-        self.setValidator(QRegExpValidator(QRegExp(self.validPattern)))
+        regExp = QRegularExpression(self.validPattern)
+        self.setValidator(QRegularExpressionValidator(regExp))
 
         # self.setAlignment(Qt.AlignCenter)
 
@@ -1801,7 +1807,8 @@ class NumericCommaLineEdit(QLineEdit):
         super().__init__(parent)
 
         self.validPattern = '^[0-9,\.]+$'
-        self.setValidator(QRegExpValidator(QRegExp(self.validPattern)))
+        regExp = QRegularExpression(self.validPattern)
+        self.setValidator(QRegularExpressionValidator(regExp))
     
     def values(self):
         try:
@@ -1811,13 +1818,13 @@ class NumericCommaLineEdit(QLineEdit):
         return vals
 
 class mySpinBox(QSpinBox):
-    sigTabEvent = pyqtSignal(object, object)
+    sigTabEvent = Signal(object, object)
 
     def __init__(self, *args) -> None:
         super().__init__(*args)
     
     def event(self, event):
-        if event.type()==QEvent.KeyPress and event.key() == Qt.Key_Tab:
+        if event.type()==QEvent.Type.KeyPress and event.key() == Qt.Key_Tab:
             self.sigTabEvent.emit(event, self)
             return True
 
@@ -2043,7 +2050,7 @@ class myMessageBox(QDialog):
         self.labels.append(label)
         if self.scrollableText:
             textWidget = QScrollArea()
-            textWidget.setFrameStyle(QFrame.NoFrame)
+            textWidget.setFrameStyle(QFrame.Shape.NoFrame)
             textWidget.setWidget(label)
         else:
             textWidget = label
@@ -2053,19 +2060,8 @@ class myMessageBox(QDialog):
         return label
     
     def addCopiableCommand(self, command):
-        groubox = QGroupBox()
-        layout = QHBoxLayout()
-        groubox.setLayout(layout)
-        layout.addWidget(
-            QLabel(html_utils.paragraph(f'<code>{command}</code>'))
-        )
-        layout.addWidget(QVLine(shadow='Plain', color='#4d4d4d'))
-        copyButton = copyPushButton('Copy', flat=True, hoverable=True)
-        copyButton._command = command
-        copyButton.clicked.connect(self.copyToClipboard)
-        layout.addWidget(copyButton)
-        layout.addStretch(1)
-        self.layout.addWidget(groubox, self.currentRow, 1)
+        copiableCommandWidget = CopiableCommandWidget(command)
+        self.layout.addWidget(copiableCommandWidget, self.currentRow, 1)
         self.currentRow += 1
     
     def copyToClipboard(self):
@@ -2217,7 +2213,7 @@ class myMessageBox(QDialog):
         self._h = self.height()
 
         if self.okButton is not None:
-            self.okButton.setFocus(True)
+            self.okButton.setFocus()
 
         if self.widgets:
             return
@@ -2429,11 +2425,11 @@ class ToolBar(QToolBar):
         return spinbox
 
 class ManualTrackingToolBar(ToolBar):
-    sigIDchanged = pyqtSignal(int)
-    sigDisableGhost = pyqtSignal()
-    sigClearGhostContour = pyqtSignal()
-    sigClearGhostMask = pyqtSignal()
-    sigGhostOpacityChanged = pyqtSignal(int)
+    sigIDchanged = Signal(int)
+    sigDisableGhost = Signal()
+    sigClearGhostContour = Signal()
+    sigClearGhostMask = Signal()
+    sigGhostOpacityChanged = Signal(int)
 
     def __init__(self, *args) -> None:
         super().__init__(*args)
@@ -2506,7 +2502,7 @@ class ManualTrackingToolBar(ToolBar):
         self.sigGhostOpacityChanged.emit(value)
 
 class rightClickToolButton(QToolButton):
-    sigRightClick = pyqtSignal(object)
+    sigRightClick = Signal(object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -2558,7 +2554,7 @@ class ToolButtonCustomColor(rightClickToolButton):
         pen = pg.mkPen(color=self.penColor, width=2)
         brush = pg.mkBrush(color=self.brushColor)
         try:
-            p.setRenderHint(QPainter.Antialiasing)
+            p.setRenderHint(QPainter.RenderHint.Antialiasing)
             p.setPen(pen)
             p.setBrush(brush)
             p.drawPath(symbol)
@@ -2568,7 +2564,7 @@ class ToolButtonCustomColor(rightClickToolButton):
             p.end()
 
 class PointsLayerToolButton(ToolButtonCustomColor):
-    sigEditAppearance = pyqtSignal(object)
+    sigEditAppearance = Signal(object)
 
     def __init__(self, symbol, color='r', parent=None):
         super().__init__(symbol, color=color, parent=parent)
@@ -2588,10 +2584,10 @@ class PointsLayerToolButton(ToolButtonCustomColor):
         self.sigEditAppearance.emit(self)
 
 class customAnnotToolButton(ToolButtonCustomColor):
-    sigRemoveAction = pyqtSignal(object)
-    sigKeepActiveAction = pyqtSignal(object)
-    sigModifyAction = pyqtSignal(object)
-    sigHideAction = pyqtSignal(object)
+    sigRemoveAction = Signal(object)
+    sigKeepActiveAction = Signal(object)
+    sigModifyAction = Signal(object)
+    sigHideAction = Signal(object)
 
     def __init__(
             self, symbol, color, keepToolActive=True, parent=None,
@@ -2682,7 +2678,7 @@ class Toggle(QCheckBox):
         bg_color='#b3b3b3',
         circle_color='#ffffff',
         active_color='#26dd66',# '#005ce6',
-        animation_curve=QEasingCurve.InOutQuad
+        animation_curve=QEasingCurve.Type.InOutQuad
     ):
         QCheckBox.__init__(self)
 
@@ -2707,6 +2703,7 @@ class Toggle(QCheckBox):
         self.requestedState = None
 
         self.installEventFilter(self)
+        self._isChecked = False
 
         if initial is not None:
             self.setChecked(initial)
@@ -2717,7 +2714,7 @@ class Toggle(QCheckBox):
     def eventFilter(self, object, event):
         # To get the actual position of the circle we need to wait that
         # the widget is visible before setting the state
-        if event.type() == QEvent.Show and self.requestedState is not None:
+        if event.type() == QEvent.Type.Show and self.requestedState is not None:
             self.setChecked(self.requestedState)
         return False
 
@@ -2751,7 +2748,7 @@ class Toggle(QCheckBox):
             pos = start
         return pos
 
-    @pyqtProperty(float)
+    @Property(float)
     def circle_position(self):
         return self._circle_position
 
@@ -2791,7 +2788,7 @@ class Toggle(QCheckBox):
 
         # set painter
         p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         # set no pen
         p.setPen(Qt.NoPen)
@@ -2910,8 +2907,8 @@ class selectStartStopFrames(QGroupBox):
             self.warningLabel.setText('')
 
 class formWidget(QWidget):
-    sigApplyButtonClicked = pyqtSignal(object)
-    sigComputeButtonClicked = pyqtSignal(object)
+    sigApplyButtonClicked = Signal(object)
+    sigComputeButtonClicked = Signal(object)
 
     def __init__(
             self, widget,
@@ -3031,7 +3028,7 @@ class formWidget(QWidget):
             item.setDisabled(disabled)
 
 class ToggleTerminalButton(PushButton):
-    sigClicked = pyqtSignal(bool)
+    sigClicked = Signal(bool)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -3058,7 +3055,7 @@ class ToggleTerminalButton(PushButton):
     def enterEvent(self, event) -> None:
         self.setFlat(False)
         # pal = self.palette()
-        # pal.setColor(QPalette.Button, QColor(200, 200, 200))
+        # pal.setColor(QPalette.ColorRole.Button, QColor(200, 200, 200))
         # self.setAutoFillBackground(True)
         # self.setPalette(pal)
         self.update()
@@ -3080,7 +3077,7 @@ class readOnlyDoubleSpinbox(QDoubleSpinBox):
     def __init__(self, parent=None):
         super().__init__(parent=parent)
         self.setReadOnly(True)
-        self.setButtonSymbols(QAbstractSpinBox.NoButtons)
+        self.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         self.setAlignment(Qt.AlignCenter)
         self.setMaximum(2**31-1)
         self.setStyleSheet('background-color: rgba(240, 240, 240, 200);')
@@ -3089,13 +3086,13 @@ class readOnlySpinbox(QSpinBox):
     def __init__(self, parent=None):
         super().__init__(parent=parent)
         self.setReadOnly(True)
-        self.setButtonSymbols(QAbstractSpinBox.NoButtons)
+        self.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         self.setAlignment(Qt.AlignCenter)
         self.setMaximum(2**31-1)
         self.setStyleSheet('background-color: rgba(240, 240, 240, 200);')
 
 class DoubleSpinBox(QDoubleSpinBox):
-    sigValueChanged = pyqtSignal(int)
+    sigValueChanged = Signal(int)
 
     def __init__(self, parent=None, disableKeyPress=False):
         super().__init__(parent=parent)
@@ -3129,9 +3126,9 @@ class DoubleSpinBox(QDoubleSpinBox):
         return super().valueFromText(text)
 
 class SpinBox(QSpinBox):
-    sigValueChanged = pyqtSignal(int)
-    sigUpClicked = pyqtSignal()
-    sigDownClicked = pyqtSignal()
+    sigValueChanged = Signal(int)
+    sigUpClicked = Signal()
+    sigDownClicked = Signal()
 
     def __init__(self, parent=None, disableKeyPress=False):
         super().__init__(parent=parent)
@@ -3147,11 +3144,11 @@ class SpinBox(QSpinBox):
         self.initStyleOption(opt)
 
         control = self.style().hitTestComplexControl(
-            QStyle.CC_SpinBox, opt, event.pos(), self
+            QStyle.ComplexControl.CC_SpinBox, opt, event.pos(), self
         )
-        if control == QStyle.SC_SpinBoxUp:
+        if control == QStyle.SubControl.SC_SpinBoxUp:
             self.sigUpClicked.emit()
-        elif control == QStyle.SC_SpinBoxDown:
+        elif control == QStyle.SubControl.SC_SpinBoxDown:
             self.sigDownClicked.emit()
 
     def keyPressEvent(self, event) -> None:
@@ -3191,12 +3188,12 @@ class ReadOnlyLineEdit(QLineEdit):
         self.installEventFilter(self)
     
     def eventFilter(self, a0: 'QObject', a1: 'QEvent') -> bool:
-        if a1.type() == QEvent.FocusIn:
+        if a1.type() == QEvent.Type.FocusIn:
             return True
         return super().eventFilter(a0, a1)
         
 class _metricsQGBox(QGroupBox):
-    sigDelClicked = pyqtSignal(str, object)
+    sigDelClicked = Signal(str, object)
 
     def __init__(
             self, desc_dict, title, favourite_funcs=None, isZstack=False,
@@ -3331,8 +3328,8 @@ class _metricsQGBox(QGroupBox):
         self.minWidth = fw + sw
 
 class channelMetricsQGBox(QGroupBox):
-    sigDelClicked = pyqtSignal(str, object)
-    sigCheckboxToggled = pyqtSignal(object)
+    sigDelClicked = Signal(str, object)
+    sigCheckboxToggled = Signal(object)
 
     def __init__(
             self, isZstack, chName, isSegm3D,
@@ -3528,7 +3525,7 @@ class objPropsQGBox(QGroupBox):
         label = QLabel('Object ID: ')
         self.idSB = QSpinBox()
         self.idSB.setMaximum(2**16)
-        self.idSB.setButtonSymbols(QAbstractSpinBox.NoButtons)
+        self.idSB.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         self.idSB.setAlignment(Qt.AlignCenter)
         mainLayout.addWidget(label, row, 0)
         mainLayout.addWidget(self.idSB, row, 1)
@@ -3713,7 +3710,7 @@ class guiTabControl(QTabWidget):
         self.intensMeasurQGBox.addChannels(channels)
 
 class expandCollapseButton(PushButton):
-    sigClicked = pyqtSignal()
+    sigClicked = Signal()
 
     def __init__(self, parent=None, **kwargs):
         QPushButton.__init__(self, parent, **kwargs)
@@ -3733,9 +3730,9 @@ class expandCollapseButton(PushButton):
         self.sigClicked.emit()
 
     def eventFilter(self, object, event):
-        if event.type() == QEvent.HoverEnter:
+        if event.type() == QEvent.Type.HoverEnter:
             self.setFlat(False)
-        elif event.type() == QEvent.HoverLeave:
+        elif event.type() == QEvent.Type.HoverLeave:
             self.setFlat(True)
         return False
 
@@ -3798,7 +3795,7 @@ class BaseGradientEditorItemLabels(pg.GradientEditorItem):
         return super().restoreState(state)
 
 class baseHistogramLUTitem(pg.HistogramLUTItem):
-    sigAddColormap = pyqtSignal(object, str)
+    sigAddColormap = Signal(object, str)
 
     def __init__(self, name='image', axisLabel='', parent=None, **kwargs):
         pg.GradientEditorItem = BaseGradientEditorItemLabels
@@ -3862,7 +3859,7 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
         text = self.axis.label.toPlainText()
         if not text:
             return
-        self.setAxisLabel(self, text)
+        self.setAxisLabel(text)
     
     def setGradient(self, gradient):
         self.gradient.restoreState(gradient)
@@ -4191,8 +4188,8 @@ class ToggleVisibilityCheckBox(QCheckBox):
 
 
 class myHistogramLUTitem(baseHistogramLUTitem):
-    sigGradientMenuEvent = pyqtSignal(object)
-    sigTickColorAccepted = pyqtSignal(object)
+    sigGradientMenuEvent = Signal(object)
+    sigTickColorAccepted = Signal(object)
 
     def __init__(
             self, parent=None, name='image', axisLabel='', isViewer=False, 
@@ -4520,7 +4517,7 @@ class navigateQScrollBar(ScrollBar):
         if self.sliderPosition() == self.maximum():
             # Clicked right arrow of scrollbar with the slider at maximum --> +1
             # self.setMaximum(self.maximum()+1)
-            self.triggerAction(QAbstractSlider.SliderSingleStepAdd)
+            self.triggerAction(QAbstractSlider.SliderAction.SliderSingleStepAdd)
 
 class linkedQScrollbar(ScrollBar):
     def __init__(self, *args, **kwargs):
@@ -4561,7 +4558,7 @@ class myColorButton(pg.ColorButton):
     def paintEvent(self, event):
         # QPushButton.paintEvent(self, ev)
         p = QStylePainter(self)
-        p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
         rect = self.rect()
         p.setBrush(QBrush(self._bkgrColor))
         p.setPen(QPen(self._borderColor))
@@ -4685,8 +4682,8 @@ class overlayLabelsGradientWidget(pg.GradientWidget):
         self.imageItem.setOpacity(value)
 
 class labelsGradientWidget(pg.GradientWidget):
-    sigShowRightImgToggled = pyqtSignal(bool)
-    sigShowLabelsImgToggled = pyqtSignal(bool)
+    sigShowRightImgToggled = Signal(bool)
+    sigShowLabelsImgToggled = Signal(bool)
 
     def __init__( self, *args, parent=None, orientation='right', **kargs):
         pg.GradientEditorItem = BaseGradientEditorItemLabels
@@ -4978,9 +4975,9 @@ class QProgressBarWithETA(QProgressBar):
         super().__init__(parent)
 
         palette = QPalette()
-        palette.setColor(QPalette.Highlight, QColor(207, 235, 155))
-        palette.setColor(QPalette.Text, QColor(0, 0, 0))
-        palette.setColor(QPalette.HighlightedText, QColor(0, 0, 0))
+        palette.setColor(QPalette.ColorRole.Highlight, QColor(207, 235, 155))
+        palette.setColor(QPalette.ColorRole.Text, QColor(0, 0, 0))
+        palette.setColor(QPalette.ColorRole.HighlightedText, QColor(0, 0, 0))
         self.setPalette(palette)
         self.ETA_label = QLabel('NDh:NDm:NDs')
 
@@ -5061,9 +5058,9 @@ class MainPlotItem(pg.PlotItem):
         self.autoBtn.hide()
 
 class sliderWithSpinBox(QWidget):
-    sigValueChange = pyqtSignal(object)
-    valueChanged = pyqtSignal(object)
-    editingFinished = pyqtSignal()
+    sigValueChange = Signal(object)
+    valueChanged = Signal(object)
+    editingFinished = Signal()
 
     def __init__(self, *args, **kwargs):      
         super().__init__(*args)
@@ -5409,9 +5406,9 @@ class GhostMaskItem(pg.ImageItem):
         self.updateImage()
 
 class PostProcessSegmSpinbox(QWidget):
-    valueChanged = pyqtSignal(int)
-    editingFinished = pyqtSignal()
-    sigCheckboxToggled = pyqtSignal()
+    valueChanged = Signal(int)
+    editingFinished = Signal()
+    sigCheckboxToggled = Signal()
 
     def __init__(self, *args, isFloat=False, label=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -5480,6 +5477,34 @@ class PostProcessSegmSpinbox(QWidget):
             return None
         else:
             return self.spinBox.value()
+
+class CopiableCommandWidget(QGroupBox):
+    def __init__(self, command='', parent=None, font_size='13px'):
+        super().__init__(parent)
+        
+        layout = QHBoxLayout()
+        self.setLayout(layout)
+        
+        txt = html_utils.paragraph(
+            f'<code>{command}</code>', font_size=font_size
+        )
+        label = QLabel(txt)
+        label.setTextInteractionFlags(
+            Qt.TextBrowserInteraction | Qt.TextSelectableByKeyboard
+        )
+        layout.addWidget(label)
+        layout.addWidget(QVLine(shadow='Plain', color='#4d4d4d'))
+        copyButton = copyPushButton('Copy', flat=True, hoverable=True)
+        copyButton._command = command
+        copyButton.clicked.connect(self.copyToClipboard)
+        layout.addWidget(copyButton)
+        layout.addStretch(1)
+    
+    def copyToClipboard(self):
+        cb = QApplication.clipboard()
+        cb.clear(mode=cb.Clipboard)
+        cb.setText(self.sender()._command, mode=cb.Clipboard)
+        print('Command copied!')
 
 def PostProcessSegmWidget(
         minimum, maximum, value, useSliders, isFloat=False, normalize=False,

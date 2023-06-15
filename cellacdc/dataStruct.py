@@ -18,16 +18,16 @@ from pprint import pprint
 from functools import wraps, partial
 from itertools import permutations
 
-from PyQt5.QtWidgets import (
+from qtpy.QtWidgets import (
     QApplication, QMainWindow, QFileDialog,
     QVBoxLayout, QPushButton, QLabel, QStyleFactory,
     QWidget, QMessageBox, QPlainTextEdit, QProgressBar
 )
-from PyQt5.QtCore import (
-    Qt, QObject, pyqtSignal, QThread, QMutex, QWaitCondition,
+from qtpy.QtCore import (
+    Qt, QObject, Signal, QThread, QMutex, QWaitCondition,
     QEventLoop
 )
-from PyQt5 import QtGui
+from qtpy import QtGui
 
 # Here we use from cellacdc because this script is laucnhed in
 # a separate process that doesn't have a parent package
@@ -57,20 +57,20 @@ def worker_exception_handler(func):
     return run
 
 class bioFormatsWorker(QObject):
-    finished = pyqtSignal()
-    progress = pyqtSignal(str)
-    progressPbar = pyqtSignal(int)
-    initPbar = pyqtSignal(int)
-    criticalError = pyqtSignal(str, str, str)
-    filesExisting = pyqtSignal(str)
-    confirmMetadata = pyqtSignal(
+    finished = Signal()
+    progress = Signal(str)
+    progressPbar = Signal(int)
+    initPbar = Signal(int)
+    criticalError = Signal(str, str, str)
+    filesExisting = Signal(str)
+    confirmMetadata = Signal(
         str, float, str, int, int, int, int,
         float, str, float, float, float,
         str, list, list, str, str, object
     )
-    critical = pyqtSignal(object)
-    sigFinishedReadingSampleImageData = pyqtSignal(object)
-    # aborted = pyqtSignal()
+    critical = Signal(object)
+    sigFinishedReadingSampleImageData = Signal(object)
+    # aborted = Signal()
 
     def __init__(
             self, raw_src_path, rawFilenames, exp_dst_path,
@@ -1360,9 +1360,9 @@ class createDataStructWin(QMainWindow):
         self.QPbar = QProgressBar(self)
         self.QPbar.setValue(0)
         palette = QtGui.QPalette()
-        palette.setColor(QtGui.QPalette.Highlight, QtGui.QColor(207, 235, 155))
-        palette.setColor(QtGui.QPalette.Text, QtGui.QColor(0, 0, 0))
-        palette.setColor(QtGui.QPalette.HighlightedText, QtGui.QColor(0, 0, 0))
+        palette.setColor(QtGui.QPalette.ColorRole.Highlight, QtGui.QColor(207, 235, 155))
+        palette.setColor(QtGui.QPalette.ColorRole.Text, QtGui.QColor(0, 0, 0))
+        palette.setColor(QtGui.QPalette.ColorRole.HighlightedText, QtGui.QColor(0, 0, 0))
         self.QPbar.setPalette(palette)
         self.mainLayout.insertWidget(3, self.QPbar)
 

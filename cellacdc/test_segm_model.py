@@ -7,7 +7,7 @@ from importlib import import_module
 
 from cellacdc import apps, myutils, widgets
 
-from PyQt5.QtWidgets import QApplication, QStyleFactory
+from qtpy.QtWidgets import QApplication, QStyleFactory
 
 try:
     import pytest

@@ -1,4 +1,86 @@
 print('Initialising...')
+import os
+
+# Force PyQt6 if available
+try:
+    from PyQt6 import QtCore
+    os.environ["QT_API"] = "pyqt6"
+except Exception as e:
+    pass
+
+cellacdc_path = os.path.dirname(os.path.abspath(__file__))
+qrc_resources_path = os.path.join(cellacdc_path, 'qrc_resources.py')
+with open(qrc_resources_path, 'r') as qrc_py:
+    text = qrc_py.read()
+    text = text.replace('from PyQt5', 'from qtpy')
+with open(qrc_resources_path, 'w') as qrc_py:
+    qrc_py.write(text)
+
+try:
+    import qtpy
+except ModuleNotFoundError as e:
+    while True:
+        txt = (
+            'Since version 1.3.1 Cell-ACDC requires the package `qtpy`.\n\n'
+            'You can let Cell-ACDC install it now, or you can abort '
+            'and install it manually with the command `pip install qtpy`.'
+        )
+        print('-'*60)
+        print(txt)
+        answer = input('Do you want to install it now ([y]/n)? ')
+        if answer.lower() == 'y' or not answer:
+            import subprocess
+            import sys
+            subprocess.check_call(
+                [sys.executable, '-m', 'pip', 'install', '-U', 'qtpy']
+            )
+            break
+        elif answer.lower() == 'n':
+            raise e
+        else:
+            print(
+                f'"{answer}" is not a valid answer. '
+                'Type "y" for "yes", or "n" for "no".'
+            )
+except ImportError as e:
+    # Ignore that qtpy is installed but there is no PyQt bindings --> this 
+    # is handled in the next block
+    pass
+
+try:
+    from qtpy.QtCore import Qt
+except Exception as e:
+    while True:
+        txt = (
+            'Since version 1.3.1 Cell-ACDC does not install a GUI library by default.\n\n'
+            'You can let Cell-ACDC install it now (default library is `PyQt5`), '
+            'or you can abort (press "n")\n'
+            'and install a compatible GUI library with one of '
+            'the following commands:\n\n'
+            '    * pip install PyQt6\n'
+            '    * pip install PyQt5\n'
+            '    * pip install PySide2\n'
+            '    * pip install PySide6\n\n'
+            'Note: if `PyQt5` installation fails, you could try installing any '
+            'of the other libraries.\n\n'
+        )
+        print('-'*60)
+        print(txt)
+        answer = input('Do you want to install PyQt5 now ([y]/n)? ')
+        if answer.lower() == 'y' or not answer:
+            import subprocess
+            import sys
+            subprocess.check_call(
+                [sys.executable, '-m', 'pip', 'install', '-U', 'PyQt5']
+            )
+            break
+        elif answer.lower() == 'n':
+            raise e
+        else:
+            print(
+                f'"{answer}" is not a valid answer. '
+                'Type "y" for "yes", or "n" for "no".'
+            )
 
 import sys
 import os
@@ -60,8 +142,7 @@ def printl(*objects, pretty=False, is_decorator=False, **kwargs):
     sys.stdout = current_stdout
 
 user_path = pathlib.Path.home()
-
-cellacdc_path = os.path.dirname(os.path.abspath(__file__))
+site_packages = os.path.dirname(os.path.dirname(np.__file__))
 parent_path = os.path.dirname(cellacdc_path)
 html_path = os.path.join(cellacdc_path, '_html')
 data_path = os.path.join(parent_path, 'data')
@@ -70,8 +151,10 @@ resources_folderpath = os.path.join(cellacdc_path, 'resources')
 resources_filepath = os.path.join(cellacdc_path, 'resources.qrc')
 settings_csv_path = os.path.join(temp_path, 'settings.csv')
 logs_path = os.path.join(user_path, '.acdc-logs')
+resources_path = os.path.join(cellacdc_path, 'resources.qrc')
 models_list_file_path = os.path.join(temp_path, 'custom_models_paths.ini')
 user_manual_url = 'https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf'
+github_home_url = 'https://github.com/SchmollerLab/Cell_ACDC'
 
 # Use to get the acdc_output file name from `segm_filename` as 
 # `m = re.sub(segm_re_pattern, '_acdc_output', segm_filename)`
@@ -168,6 +251,12 @@ def exception_handler(func):
                 self.logger.exception(traceback_str)
             else:
                 printl(traceback_str)
+            
+            try:
+                self.cleanUpOnError()
+            except Exception as e:
+                pass
+            
             msg = widgets.myMessageBox(wrapText=False, showCentered=False)
             if hasattr(self, 'logs_path'):
                 msg.addShowInFileManagerButton(
@@ -194,10 +283,6 @@ def exception_handler(func):
 
             msg.critical(self, 'Critical error', err_msg)
             self.is_error_state = True
-            try:
-                self.cleanUpOnError()
-            except Exception as e:
-                pass
         return result
     return inner_function
 

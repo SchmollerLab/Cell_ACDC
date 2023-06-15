@@ -14,15 +14,15 @@ import skimage
 import skimage.io
 import skimage.color
 
-from PyQt5.QtWidgets import (
+from qtpy.QtWidgets import (
     QApplication, QMainWindow, QFileDialog,
     QVBoxLayout, QPushButton, QLabel, QStyleFactory,
     QWidget, QMessageBox, QDialog, QHBoxLayout
 )
-from PyQt5.QtCore import (
-    Qt, QEventLoop, QSize, QThread, pyqtSignal, QObject
+from qtpy.QtCore import (
+    Qt, QEventLoop, QSize, QThread, Signal, QObject
 )
-from PyQt5 import QtGui
+from qtpy import QtGui
 
 script_path = os.path.dirname(os.path.realpath(__file__))
 cellacdc_path = os.path.join(os.path.dirname(script_path))

@@ -181,6 +181,4 @@ def get_greedy_lut(lab, lut, ids=None):
     greedy_lut[list(color_idxs.keys())] = lut[list(color_idxs.values())]
 
     return greedy_lut
-
-
     

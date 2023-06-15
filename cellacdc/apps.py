@@ -37,13 +37,13 @@ import math
 import time
 
 import pyqtgraph as pg
-from PyQt5 import QtCore
-from PyQt5.QtGui import (
+from qtpy import QtCore
+from qtpy.QtGui import (
     QIcon, QFontMetrics, QKeySequence, QFont, QGuiApplication, QCursor,
     QKeyEvent, QPixmap, QFont, QPalette, QMouseEvent, QColor
 )
-from PyQt5.QtCore import Qt, QSize, QEvent, pyqtSignal, QEventLoop, QTimer
-from PyQt5.QtWidgets import (
+from qtpy.QtCore import Qt, QSize, QEvent, Signal, QEventLoop, QTimer
+from qtpy.QtWidgets import (
     QFileDialog, QApplication, QMainWindow, QMenu, QLabel, QToolBar,
     QScrollBar, QWidget, QVBoxLayout, QLineEdit, QPushButton,
     QHBoxLayout, QDialog, QFormLayout, QListWidget, QAbstractItemView,
@@ -390,7 +390,7 @@ def addCustomModelMessages(QParent=None):
     return modelFilePath
 
 class customAnnotationDialog(QDialog):
-    sigDeleteSelecAnnot = pyqtSignal(object)
+    sigDeleteSelecAnnot = Signal(object)
 
     def __init__(self, savedCustomAnnot, parent=None, state=None):
         self.cancel = True
@@ -581,7 +581,7 @@ class customAnnotationDialog(QDialog):
         self.cancelButton = cancelButton
         self.loadSavedAnnotButton.clicked.connect(self.loadSavedAnnot)
         self.okButton.clicked.connect(self.ok_cb)
-        self.okButton.setFocus(True)
+        self.okButton.setFocus()
 
         mainLayout = QVBoxLayout()
 
@@ -749,7 +749,7 @@ class customAnnotationDialog(QDialog):
         msg = widgets.myMessageBox()
         listView = widgets.readOnlyQList(msg)
         listView.addItems(self.internalNames)
-        # listView.setSelectionMode(QAbstractItemView.NoSelection)
+        # listView.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         msg.information(
             self, 'Annotation Name info', self.nameInfoTxt,
             widgets=listView
@@ -774,7 +774,7 @@ class customAnnotationDialog(QDialog):
             msg = widgets.myMessageBox()
             listView = widgets.listWidget(msg)
             listView.addItems(self.internalNames)
-            listView.setSelectionMode(QAbstractItemView.NoSelection)
+            listView.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
             name = self.nameWidget.widget.text()
             txt = (
                 f'"{name}" cannot be part of the name, '
@@ -914,9 +914,10 @@ class _PointsLayerAppearanceGroupbox(QGroupBox):
         return _state
 
 class AddPointsLayerDialog(widgets.QBaseDialog):
-    sigClosed = pyqtSignal()
-    sigCriticalReadTable = pyqtSignal(str)
-    sigLoadedTable = pyqtSignal(object)
+    sigClosed = Signal()
+    sigCriticalReadTable = Signal(str)
+    sigLoadedTable = Signal(object)
+    sigCheckClickEntryTableEndnameExists = Signal(str)
 
     def __init__(self, channelNames=None, imagesPath='', SizeT=1, parent=None):
         self.cancel = True
@@ -1027,8 +1028,8 @@ class AddPointsLayerDialog(widgets.QBaseDialog):
             self.tColName.label.setVisible(False)
             self.tColName.setVisible(False)
         
-        self.fromTableRadiobutton.toggled.connect(self.enableTableWidgets)
-        self.enableTableWidgets(False)
+        self.fromTableRadiobutton.toggled.connect(self.enableRadioButtonWidgets)
+        self.enableRadioButtonWidgets(False, sender=self.fromTableRadiobutton)
         '----------------------------------------------------------------------'
 
         '----------------------------------------------------------------------'
@@ -1069,11 +1070,68 @@ class AddPointsLayerDialog(widgets.QBaseDialog):
             self.manualTspinbox.setVisible(False)
             self.manualTspinbox.label.setVisible(False)
         
-        self.manualEntryRadiobutton.toggled.connect(self.enableManualWidgets)
-        self.enableManualWidgets(False)
+        self.manualEntryRadiobutton.toggled.connect(self.enableRadioButtonWidgets)
+        self.enableRadioButtonWidgets(False, sender=self.manualEntryRadiobutton)
+        
+        '----------------------------------------------------------------------'
+        self.clickEntryIsLoadedDf = None
+        row += 1
+        self.clickEntryRadiobutton = QRadioButton('Add points with mouse clicks')
+        typeLayout.addWidget(self.clickEntryRadiobutton, row, 0, 1, 2) 
+        self.clickEntryRadiobutton.widgets = [] 
+        
+        row += 1
+        self.autoPilotToggle = widgets.Toggle()
+        self.autoPilotToggle.label = QLabel('Use auto-pilot: ')
+        typeLayout.addWidget(self.autoPilotToggle.label, row, 1)
+        typeLayout.addWidget(
+            self.autoPilotToggle, row, 2, alignment=Qt.AlignCenter
+        )
+        self.autoPilotInfoButton = widgets.infoPushButton()
+        typeLayout.addWidget(self.autoPilotInfoButton, row, 3)
+        
+        self.autoPilotInfoButton.clicked.connect(self.showAutoPilotInfo)
+        self.clickEntryRadiobutton.widgets.append(self.autoPilotToggle)
+        self.clickEntryRadiobutton.widgets.append(self.autoPilotInfoButton)
+        
+        row += 1
+        self.clickEntryTableEndname = widgets.alphaNumericLineEdit()
+        self.clickEntryTableEndname.setText('points_added_by_clicking')
+        self.clickEntryTableEndname.setAlignment(Qt.AlignCenter)
+        self.clickEntryTableEndname.label = QLabel('Table endname: ')
+        loadButton = widgets.browseFileButton(
+            start_dir=imagesPath, ext={'CSV': '.csv'})
+        typeLayout.addWidget(loadButton, row, 3)
+        browseButton.sigPathSelected.connect(self.loadClickEntryTable)
+        self.clickEntryLoadTableButton = loadButton
+        typeLayout.addWidget(self.clickEntryTableEndname.label, row, 1)
+        typeLayout.addWidget(self.clickEntryTableEndname, row, 2)
+        self.clickEntryRadiobutton.widgets.append(self.clickEntryTableEndname)
+        self.clickEntryTableEndname.editingFinished.connect(
+            self.emitCheckClickEntryTableEndnameExists
+        )
+        
+        row += 1
+        instructionsText = html_utils.paragraph(
+            '<br><i>Left-click</i> to annotate a new point.<br>'
+            '<i>Click</i> on point to delete it', font_size='11px'
+        )
+        self.instructionsLabel = QLabel(instructionsText)
+        self.instructionsLabel.label = QLabel('Instructions')
+        typeLayout.addWidget(self.instructionsLabel.label, row, 1)
+        typeLayout.addWidget(self.instructionsLabel, row, 2)
+        self.clickEntryRadiobutton.widgets.append(self.instructionsLabel)
+        
+        self.clickEntryRadiobutton.toggled.connect(self.enableRadioButtonWidgets)
+        self.clickEntryRadiobutton.toggled.connect(
+            self.emitCheckClickEntryTableEndnameExists
+        )
+        self.enableRadioButtonWidgets(False, sender=self.clickEntryRadiobutton)
+        
         '======================================================================'
 
         self.appearanceGroupbox = _PointsLayerAppearanceGroupbox()
+        self.appearanceGroupbox.sizeSpinBox.setValue(1)
 
         buttonsLayout = widgets.CancelOkButtonsLayout()
 
@@ -1093,25 +1151,44 @@ class AddPointsLayerDialog(widgets.QBaseDialog):
 
         self.setFont(font)
     
+    def emitCheckClickEntryTableEndnameExists(self, *args, **kwargs):
+        if not self.clickEntryRadiobutton.isChecked():
+            return
+        self.clickEntryIsLoadedDf = None
+        tableEndName = self.clickEntryTableEndname.text()
+        self.sigCheckClickEntryTableEndnameExists.emit(tableEndName)
+    
+    def loadClickEntryTable(self, csv_path):
+        self.clickEntryIsLoadedDf = True
+        filename = os.path.basename(csv_path)
+        filename, ext = os.path.splittext(filename)
+        self.clickEntryTableEndname.setText(filename)
+        
+    def showAutoPilotInfo(self):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph("""
+            With <b>Auto-pilot</b> mode active, Cell-ACDC will <b>automatically zoom</b> on 
+            to an object<br>
+            to allow you clicking on the points you want to add.<br><br>
+            You can then go to the <b>next object</b> by pressing the 
+            <code>Enter</code> key or go back to the<br>
+            <b>previous object</b> by pressing <code>Backspace</code>.
+        """)
+        msg.information(self, 'Auto-pilot info', txt)
+    
     def closeEvent(self, event):
         self.sigClosed.emit()
     
-    def enableManualWidgets(self, enabled):
-        for widget in self.manualEntryRadiobutton.widgets:
-            widget.setEnabled(enabled)
+    def enableRadioButtonWidgets(self, enabled, sender=None):
+        if sender is None:
+            sender = self.sender()
+        for widget in sender.widgets:
+            widget.setDisabled(not enabled)
             try:
-                widget.label.setEnabled(enabled)
+                widget.label.setDisabled(not enabled)
             except:
                 pass
-    
-    def enableTableWidgets(self, enabled):
-        for widget in self.fromTableRadiobutton.widgets:
-            widget.setEnabled(enabled)
-            try:
-                widget.label.setEnabled(enabled)
-            except:
-                pass
-    
+            
     def tablePathSelected(self, path):
         self.tablePath.setText(path)
         try:
@@ -1197,15 +1274,15 @@ class AddPointsLayerDialog(widgets.QBaseDialog):
                 return
             
             self.layerType = os.path.basename(self.tablePath)
-            self.layetTypeIdx = 2
+            self.layerTypeIdx = 2
         elif self.centroidsRadiobutton.isChecked():
             self.layerType = 'Centroids'
-            self.layetTypeIdx = 0
+            self.layerTypeIdx = 0
         elif self.weightedCentroidsRadiobutton.isChecked():
             channel = self.channelNameForWeightedCentr.currentText()
             self.weighingChannel = channel
             self.layerType = f'Centroids weighted by channel {channel}'
-            self.layetTypeIdx = 1
+            self.layerTypeIdx = 1
         elif self.manualEntryRadiobutton.isChecked():
             xx = self.manualXspinbox.values()
             yy = self.manualYspinbox.values()
@@ -1229,7 +1306,15 @@ class AddPointsLayerDialog(widgets.QBaseDialog):
             self._df_to_pointsData(df, tCol, zCol, 'y', 'x')
             
             self.layerType = 'Manual entry'
-            self.layetTypeIdx = 3
+            self.layerTypeIdx = 3
+        elif self.clickEntryRadiobutton.isChecked():
+            self.layerType = ('Click to annotate point')
+            self.description = (
+                'Left-click to add a point, click on point to delete it.\n'
+                'With auto-pilot you can navigate through object with Up/Down arrows.'
+            )
+            self.clickEntryTableEndnameText = self.clickEntryTableEndname.text()
+            self.layerTypeIdx = 4
         
         self.cancel = False
         symbol = self.appearanceGroupbox.symbolWidget.widget.currentText()
@@ -1285,7 +1370,7 @@ class AddPointsLayerDialog(widgets.QBaseDialog):
 
 
 class EditPointsLayerAppearanceDialog(widgets.QBaseDialog):
-    sigClosed = pyqtSignal()
+    sigClosed = Signal()
 
     def __init__(self, parent=None):
         self.cancel = True
@@ -1642,9 +1727,9 @@ class TrackSubCellObjectsDialog(widgets.QBaseDialog):
         self.close()
 
 class setMeasurementsDialog(widgets.QBaseDialog):
-    sigClosed = pyqtSignal()
-    sigCancel = pyqtSignal()
-    sigRestart = pyqtSignal()
+    sigClosed = Signal()
+    sigCancel = Signal()
+    sigRestart = Signal()
 
     def __init__(
             self, loadedChNames, notLoadedChNames, isZstack, isSegm3D,
@@ -2178,7 +2263,7 @@ class setMeasurementsDialog(widgets.QBaseDialog):
         super().show(block=block)
 
 class QDialogMetadataXML(QDialog):
-    sigDimensionOrderEditFinished = pyqtSignal(str, int, int, object)
+    sigDimensionOrderEditFinished = Signal(str, int, int, object)
 
     def __init__(
             self, title='Metadata',
@@ -2469,9 +2554,7 @@ class QDialogMetadataXML(QDialog):
         ext = 'h5' if self.to_h5_radiobutton.isChecked() else 'tif'
         for c in range(SizeC):
             chName_QLE = QLineEdit()
-            chName_QLE.setStyleSheet(
-                'background: #FEF9C3'
-            )
+            chName_QLE.setStyleSheet('')
             chName_QLE.setAlignment(Qt.AlignCenter)
             chName_QLE.textChanged.connect(self.checkChNames)
             if chNames is not None:
@@ -2688,7 +2771,6 @@ class QDialogMetadataXML(QDialog):
 
     def setInvalidChName_StyleSheet(self, LE):
         LE.setStyleSheet(
-            'background: #FEF9C3;'
             'border-radius: 4px;'
             'border: 1.5px solid red;'
             'padding: 1px 0px 1px 0px'
@@ -2768,7 +2850,7 @@ class QDialogMetadataXML(QDialog):
             LE1 = self.chNames_QLEs[0]
             saveCh = self.saveChannels_QCBs[0].isChecked()
             if not saveCh:
-                LE1.setStyleSheet('background: #FEF9C3;')
+                LE1.setStyleSheet('')
                 return areChNamesValid
 
             s1 = LE1.text()
@@ -2776,7 +2858,7 @@ class QDialogMetadataXML(QDialog):
                 self.setInvalidChName_StyleSheet(LE1)
                 areChNamesValid = False
             else:
-                LE1.setStyleSheet('background: #FEF9C3;')
+                LE1.setStyleSheet('')
             return areChNamesValid
 
         for LE1, LE2 in combinations(self.chNames_QLEs, 2):
@@ -2791,19 +2873,19 @@ class QDialogMetadataXML(QDialog):
                     self.setInvalidChName_StyleSheet(LE1)
                     areChNamesValid = False
                 else:
-                    LE1.setStyleSheet('background: #FEF9C3;')
+                    LE1.setStyleSheet('')
                 if not s2 and saveCh2:
                     self.setInvalidChName_StyleSheet(LE2)
                     areChNamesValid = False
                 else:
-                    LE2.setStyleSheet('background: #FEF9C3;')
+                    LE2.setStyleSheet('')
                 if s1 == s2 and saveCh1 and saveCh2:
                     self.setInvalidChName_StyleSheet(LE1)
                     self.setInvalidChName_StyleSheet(LE2)
                     areChNamesValid = False
             else:
-                LE1.setStyleSheet('background: #FEF9C3;')
-                LE2.setStyleSheet('background: #FEF9C3;')
+                LE1.setStyleSheet('')
+                LE2.setStyleSheet('')
         return areChNamesValid
 
     def hideShowTimeIncrement(self, value):
@@ -2901,9 +2983,7 @@ class QDialogMetadataXML(QDialog):
         if value > currentSizeC:
             for c in range(currentSizeC, currentSizeC+DeltaChannels):
                 chName_QLE = QLineEdit()
-                chName_QLE.setStyleSheet(
-                    'background: #FEF9C3'
-                )
+                chName_QLE.setStyleSheet('')
                 chName_QLE.setAlignment(Qt.AlignCenter)
                 chName_QLE.setText(f'channel_{c}')
                 chName_QLE.textChanged.connect(self.checkChNames)
@@ -3647,7 +3727,7 @@ class DeltaTrackerParamsWin(QDialog):
             self.loop.exit()
 
 class QDialogWorkerProgress(QDialog):
-    sigClosed = pyqtSignal(bool)
+    sigClosed = Signal(bool)
 
     def __init__(
             self, title='Progress', infoTxt='',
@@ -3842,7 +3922,7 @@ class QDialogCombobox(QDialog):
             self.loop.exit()
 
 class _PreProcessRecipeList(QWidget):
-    sigItemSelected = pyqtSignal(object)
+    sigItemSelected = Signal(object)
     
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -4110,7 +4190,7 @@ class MultiTimePointFilePattern(widgets.QBaseDialog):
             self.vLayouts[j].insertWidget(row, w)
 
         self.additionalChannelWidgets[row] = items
-        lineEdit.setFocus(True)
+        lineEdit.setFocus()
 
     def removeChannel(self):
         row = self.sender()._row
@@ -4164,7 +4244,7 @@ class MultiTimePointFilePattern(widgets.QBaseDialog):
         self.close()
     
     def showEvent(self, event) -> None:
-        self.channelNameLE.setFocus(True)
+        self.channelNameLE.setFocus()
 
 class OrderableListWidgetDialog(widgets.QBaseDialog):
     def __init__(
@@ -4467,7 +4547,7 @@ class QDialogSelectModel(QDialog):
         addCustomModelItem = QListWidgetItem('Add custom model...')
         addCustomModelItem.setFont(italicFont)
         listBox.addItem(addCustomModelItem)
-        listBox.setSelectionMode(QAbstractItemView.SingleSelection)
+        listBox.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         listBox.setCurrentRow(0)
         self.listBox = listBox
         listBox.itemDoubleClicked.connect(self.ok_cb)
@@ -4493,6 +4573,7 @@ class QDialogSelectModel(QDialog):
 
         self.setStyleSheet("""
             QListWidget::item:hover {background-color:#E6E6E6;}
+            QListWidget::item:hover {color:black;}
             QListWidget::item:selected {background-color:#CFEB9B;}
             QListWidget::item:selected {color:black;}
             QListView {
@@ -5417,10 +5498,10 @@ class QDialogMetadata(QDialog):
             self.loop.exit()
 
 class QCropZtool(widgets.QBaseDialog):
-    sigClose = pyqtSignal()
-    sigZvalueChanged = pyqtSignal(str, int)
-    sigReset = pyqtSignal()
-    sigCrop = pyqtSignal()
+    sigClose = Signal()
+    sigZvalueChanged = Signal(str, int)
+    sigReset = Signal()
+    sigCrop = Signal()
 
     def __init__(
             self, SizeZ, cropButtonText='Crop and save', parent=None, 
@@ -5568,7 +5649,7 @@ class randomWalkerDialog(QDialog):
         self.bkgrThreshSlider.setMinimum(1)
         self.bkgrThreshSlider.setMaximum(100)
         self.bkgrThreshSlider.setValue(5)
-        self.bkgrThreshSlider.setTickPosition(QSlider.TicksBelow)
+        self.bkgrThreshSlider.setTickPosition(QSlider.TickPosition.TicksBelow)
         self.bkgrThreshSlider.setTickInterval(10)
         paramsLayout.addWidget(self.bkgrThreshSlider, row, 0)
 
@@ -5584,7 +5665,7 @@ class randomWalkerDialog(QDialog):
         self.foregrThreshSlider.setMinimum(1)
         self.foregrThreshSlider.setMaximum(100)
         self.foregrThreshSlider.setValue(95)
-        self.foregrThreshSlider.setTickPosition(QSlider.TicksBelow)
+        self.foregrThreshSlider.setTickPosition(QSlider.TickPosition.TicksBelow)
         self.foregrThreshSlider.setTickInterval(10)
         paramsLayout.addWidget(self.foregrThreshSlider, row, 0)
 
@@ -5956,8 +6037,8 @@ class ComputeMetricsErrorsDialog(widgets.QBaseDialog):
                 Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard
             )
             errorLabel.setStyleSheet("background-color: white")
-            errorLabel.setFrameShape(QFrame.Panel)
-            errorLabel.setFrameShadow(QFrame.Sunken)
+            errorLabel.setFrameShape(QFrame.Shape.Panel)
+            errorLabel.setFrameShadow(QFrame.Shadow.Sunken)
             textLayout.addWidget(nameLabel)
             textLayout.addWidget(errorLabel)
             textLayout.addStretch(1)
@@ -6013,8 +6094,8 @@ class ComputeMetricsErrorsDialog(widgets.QBaseDialog):
         return super().showEvent(a0)
 
 class postProcessSegmParams(QGroupBox):
-    valueChanged = pyqtSignal(object)
-    editingFinished = pyqtSignal()
+    valueChanged = Signal(object)
+    editingFinished = Signal()
 
     def __init__(
             self, title, useSliders=False, parent=None, maxSize=None,
@@ -6195,10 +6276,10 @@ class postProcessSegmParams(QGroupBox):
         msg.information(self, title, html_utils.paragraph(txt))
 
 class postProcessSegmDialog(widgets.QBaseDialog):
-    sigClosed = pyqtSignal()
-    sigValueChanged = pyqtSignal(object, object)
-    sigEditingFinished = pyqtSignal()
-    sigApplyToAllFutureFrames = pyqtSignal(object)
+    sigClosed = Signal()
+    sigValueChanged = Signal(object, object)
+    sigEditingFinished = Signal()
+    sigApplyToAllFutureFrames = Signal(object)
 
     def __init__(self, mainWin=None, useSliders=True, SizeZ=None, maxSize=None):
         super().__init__(mainWin)
@@ -6378,7 +6459,7 @@ class postProcessSegmDialog(widgets.QBaseDialog):
 
 class imageViewer(QMainWindow):
     """Main Window."""
-    sigClosed = pyqtSignal()
+    sigClosed = Signal()
 
     def __init__(
             self, parent=None, posData=None, button_toUncheck=None,
@@ -6696,7 +6777,7 @@ class imageViewer(QMainWindow):
         lutItem.vb.raiseContextMenu = lambda x: None
         initColor = self.overlayRGBs.pop(0)
         self.parent.initColormapOverlayLayerItem(initColor, lutItem)
-        lutItem.addOverlayColorButton(initColor)
+        lutItem.addOverlayColorButton(initColor, channelName)
         lutItem.initColor = initColor
         lutItem.hide()
 
@@ -6787,7 +6868,7 @@ class imageViewer(QMainWindow):
                 self.parent.loadOverlayData([channelName], addToExisting=True)
             self.setOverlayItemsVisible(channelName, True)
             self.checkedOverlayChannels.add(channelName)    
-            self.updateOlColors(self.overlayColorButton)
+            self.updateOlColors(None)
         else:
             self.checkedOverlayChannels.remove(channelName)
             imageItem = self.overlayLayersItems[channelName][0]
@@ -7041,7 +7122,7 @@ class imageViewer(QMainWindow):
             self.setGeometry(left, top, 850, 800)
 
 class TreeSelectorDialog(widgets.QBaseDialog):
-    sigItemDoubleClicked = pyqtSignal(object)
+    sigItemDoubleClicked = Signal(object)
 
     def __init__(
             self, title='Tree selector', infoTxt='', parent=None,
@@ -7273,7 +7354,7 @@ class MultiListSelector(widgets.QBaseDialog):
                 groupLayout.addSpacing(10)
             groupLayout.addWidget(QLabel(html_utils.paragraph(listName)))
             listWidget = widgets.listWidget()
-            listWidget.setSelectionMode(QAbstractItemView.ExtendedSelection)
+            listWidget.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
             listWidget.addItems(listItems)
             groupLayout.addWidget(listWidget)
             mainLayout.addSpacing(20)
@@ -7321,7 +7402,7 @@ class selectPositionsMultiExp(widgets.QBaseDialog):
         infoLabel = QLabel(infoTxt)
 
         self.treeWidget = QTreeWidget()
-        self.treeWidget.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.treeWidget.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.treeWidget.setHeaderHidden(True)
         self.treeWidget.setFont(font)
         for exp_path, positions in expPaths.items():
@@ -7342,6 +7423,8 @@ class selectPositionsMultiExp(widgets.QBaseDialog):
             for pos in positions:
                 if posFoldersInfo is not None:
                     status = posFoldersInfo.get(pos, '')
+                else:
+                    status = ''
                 pos_item_text = f'{pos}{status}'
                 pos_item = QTreeWidgetItem(exp_path_item, [pos_item_text])
                 pos_item.posFoldername = pos
@@ -7372,6 +7455,7 @@ class selectPositionsMultiExp(widgets.QBaseDialog):
 
         self.setStyleSheet("""
             QTreeWidget::item:hover {background-color:#E6E6E6;}
+            QTreeWidget::item:hover {color:black;}
             QTreeWidget::item:selected {background-color:#CFEB9B;}
             QTreeWidget::item:selected {color:black;}
             QTreeView {
@@ -7505,7 +7589,7 @@ class editCcaTableWidget(QDialog):
         # Scroll area properties
         self.scrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.scrollArea.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.scrollArea.setFrameStyle(QFrame.NoFrame)
+        self.scrollArea.setFrameStyle(QFrame.Shape.NoFrame)
         self.scrollArea.setWidgetResizable(True)
 
         # Add layouts
@@ -7730,7 +7814,7 @@ class editCcaTableWidget(QDialog):
                     'Cell ID = Relative\'s ID', 'Some cells are '
                     'mother or bud of itself. Make sure that the Relative\'s ID'
                     ' is different from the Cell ID!',
-                    QMessageBox.Ok)
+                    QMessageBox.StandardButton.Ok)
             return None
         elif any(check_unknown_mothers):
             txt = html_utils.paragraph("""
@@ -7755,21 +7839,21 @@ class editCcaTableWidget(QDialog):
                 'Some buds '
                 'in S phase do not have 0 as Generation number!\n'
                 'Buds in S phase must have 0 as "Generation number"',
-                QMessageBox.Ok)
+                QMessageBox.StandardButton.Ok)
             return None
         elif any(check_mothers):
             QMessageBox().critical(self,
                 'Mother not in >=1 Generation number',
                 'Some mother cells do not have >=1 as "Generation number"!\n'
                 'Mothers MUST have >1 "Generation number"',
-                QMessageBox.Ok)
+                QMessageBox.StandardButton.Ok)
             return None
         elif any(check_buds_G1):
             QMessageBox().critical(self,
                 'Buds in G1!',
                 'Some buds are in G1 phase!\n'
                 'Buds MUST be in S/G2/M phase',
-                QMessageBox.Ok)
+                QMessageBox.StandardButton.Ok)
             return None
         elif num_moth_S != num_bud_S:
             QMessageBox().critical(self,
@@ -7778,7 +7862,7 @@ class editCcaTableWidget(QDialog):
                 f'but there are {num_bud_S} bud cells.\n\n'
                 'The number of mothers and buds in "S/G2/M" '
                 'phase must be equal!',
-                QMessageBox.Ok)
+                QMessageBox.StandardButton.Ok)
             return None
         elif any(check_relID_S):
             QMessageBox().critical(self,
@@ -7786,7 +7870,7 @@ class editCcaTableWidget(QDialog):
                 'Some cells are in "S/G2/M" phase but have -1 as Relative\'s ID!\n'
                 'Cells in "S/G2/M" phase must have an existing '
                 'ID as Relative\'s ID!',
-                QMessageBox.Ok)
+                QMessageBox.StandardButton.Ok)
             return None
         
         corrected_assignment = self.inputCca_df['corrected_assignment']
@@ -7838,7 +7922,7 @@ class editCcaTableWidget(QDialog):
 
     def eventFilter(self, object, event):
         # Disable wheel scroll on widgets to allow scroll only on scrollarea
-        if event.type() == QEvent.Wheel:
+        if event.type() == QEvent.Type.Wheel:
             event.ignore()
             return True
         return False
@@ -7942,7 +8026,7 @@ class askStopFrameSegm(QDialog):
         if self.tab_idx >= len(self.spinBoxes):
             self.tab_idx = 0
         focusSpinbox = self.spinBoxes[self.tab_idx]
-        focusSpinbox.setFocus(True)
+        focusSpinbox.setFocus()
 
     def saveSegmSizeT(self):
         self.stopFrames = [
@@ -8553,7 +8637,7 @@ class QtSelectItems(QDialog):
 
         listBox = widgets.listWidget()
         listBox.addItems(items)
-        listBox.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        listBox.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         listBox.setCurrentRow(0)
         listBox.setFont(font)
         topLayout.addWidget(listBox)
@@ -8602,7 +8686,7 @@ class QtSelectItems(QDialog):
                 h = sum([self.ListBox.sizeHintForRow(i) for i in range(n)])
             self.ListBox.setMinimumHeight(h+5)
             self.ListBox.setFocusPolicy(Qt.StrongFocus)
-            self.ListBox.setFocus(True)
+            self.ListBox.setFocus()
             self.ListBox.setCurrentRow(0)
             self.mainLayout.setStretchFactor(self.topLayout, 2)
         else:
@@ -8752,8 +8836,8 @@ class manualSeparateGui(QMainWindow):
         
     def gui_createMenuBar(self):
         menuBar = self.menuBar()
-        style = "QMenuBar::item:selected { background: white; }"
-        menuBar.setStyleSheet(style)
+        # style = "QMenuBar::item:selected { background: white; }"
+        # menuBar.setStyleSheet(style)
         # File menu
         fileMenu = QMenu("&File", self)
         menuBar.addMenu(fileMenu)
@@ -9215,10 +9299,10 @@ class DataFrameModel(QtCore.QAbstractTableModel):
     def dataFrame(self):
         return self._dataframe
 
-    dataFrame = QtCore.pyqtProperty(pd.DataFrame, fget=dataFrame,
+    dataFrame = QtCore.Property(pd.DataFrame, fget=dataFrame,
                                     fset=setDataFrame)
 
-    @QtCore.pyqtSlot(int, QtCore.Qt.Orientation, result=str)
+    @QtCore.Slot(int, QtCore.Qt.Orientation, result=str)
     def headerData(self, section: int,
                    orientation: QtCore.Qt.Orientation,
                    role: int = QtCore.Qt.DisplayRole):
@@ -9610,9 +9694,9 @@ class QDialogPbar(QDialog):
         self.QPbar = QProgressBar(self)
         self.QPbar.setValue(0)
         palette = QPalette()
-        palette.setColor(QPalette.Highlight, QColor(207, 235, 155))
-        palette.setColor(QPalette.Text, QColor(0, 0, 0))
-        palette.setColor(QPalette.HighlightedText, QColor(0, 0, 0))
+        palette.setColor(QPalette.ColorRole.Highlight, QColor(207, 235, 155))
+        palette.setColor(QPalette.ColorRole.Text, QColor(0, 0, 0))
+        palette.setColor(QPalette.ColorRole.HighlightedText, QColor(0, 0, 0))
         self.QPbar.setPalette(palette)
         pBarLayout.addWidget(self.QPbar, 0, 0)
         self.ETA_label = QLabel('NDh:NDm:NDs')
@@ -9621,9 +9705,9 @@ class QDialogPbar(QDialog):
         self.metricsQPbar = QProgressBar(self)
         self.metricsQPbar.setValue(0)
         palette = QPalette()
-        palette.setColor(QPalette.Highlight, QColor(207, 235, 155))
-        palette.setColor(QPalette.Text, QColor(0, 0, 0))
-        palette.setColor(QPalette.HighlightedText, QColor(0, 0, 0))
+        palette.setColor(QPalette.ColorRole.Highlight, QColor(207, 235, 155))
+        palette.setColor(QPalette.ColorRole.Text, QColor(0, 0, 0))
+        palette.setColor(QPalette.ColorRole.HighlightedText, QColor(0, 0, 0))
         self.metricsQPbar.setPalette(palette)
         pBarLayout.addWidget(self.metricsQPbar, 1, 0)
 
@@ -10559,7 +10643,7 @@ class warnVisualCppRequired(QMessageBox):
             self.screenShotWin.close()
 
 class combineMetricsEquationDialog(widgets.QBaseDialog):
-    sigOk = pyqtSignal(object)
+    sigOk = Signal(object)
 
     def __init__(
             self, allChNames, isZstack, isSegm3D, parent=None, debug=False,
@@ -10777,6 +10861,7 @@ class combineMetricsEquationDialog(widgets.QBaseDialog):
 
         self.setStyleSheet("""
             QTreeWidget::item:hover {background-color:#E6E6E6;}
+            QTreeWidget::item:hover {color:black;}
             QTreeWidget::item:selected {background-color:#CFEB9B;}
             QTreeWidget::item:selected {color:black;}
             QTreeView {
@@ -11139,8 +11224,8 @@ class pgTestWindow(QWidget):
 
 
 class CombineMetricsMultiDfsDialog(widgets.QBaseDialog):
-    sigOk = pyqtSignal(object, object)
-    sigClose = pyqtSignal(bool)
+    sigOk = Signal(object, object)
+    sigClose = Signal(bool)
 
     def __init__(self, acdcDfs, allChNames, parent=None, debug=False):
         super().__init__(parent)
@@ -11352,6 +11437,7 @@ class CombineMetricsMultiDfsDialog(widgets.QBaseDialog):
 
         self.setStyleSheet("""
             QTreeWidget::item:hover {background-color:#E6E6E6;}
+            QTreeWidget::item:hover {color:black;}
             QTreeWidget::item:selected {background-color:#CFEB9B;}
             QTreeWidget::item:selected {color:black;}
             QTreeView {
@@ -11492,7 +11578,7 @@ class CombineMetricsMultiDfsDialog(widgets.QBaseDialog):
         )
 
 class CombineMetricsMultiDfsSummaryDialog(widgets.QBaseDialog):
-    sigLoadAdditionalAcdcDf = pyqtSignal()
+    sigLoadAdditionalAcdcDf = Signal()
 
     def __init__(
             self, acdcDfs, allChNames, parent=None, debug=False
@@ -11547,7 +11633,7 @@ class CombineMetricsMultiDfsSummaryDialog(widgets.QBaseDialog):
         self.equationsList = widgets.TreeWidget()
         self.equationsList.setFont(font)
         self.equationsList.setHeaderLabels(['Metric', 'Expression'])
-        self.equationsList.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.equationsList.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
 
         equationsButtonsLayout = QVBoxLayout()
         addEquationButton = widgets.addPushButton('Add metric')

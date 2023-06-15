@@ -6,8 +6,8 @@ import pandas as pd
 
 from tqdm import tqdm
 
-from PyQt5.QtCore import pyqtSignal, QThread
-from PyQt5.QtWidgets import (
+from qtpy.QtCore import Signal, QThread
+from qtpy.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QStyle
 )
 

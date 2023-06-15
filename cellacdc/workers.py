@@ -18,8 +18,8 @@ import queue
 
 from tifffile.tifffile import TiffFile
 
-from PyQt5.QtCore import (
-    pyqtSignal, QObject, QRunnable, QMutex, QWaitCondition, QTimer
+from qtpy.QtCore import (
+    Signal, QObject, QRunnable, QMutex, QWaitCondition, QTimer
 )
 
 from cellacdc import html_utils
@@ -51,41 +51,41 @@ class workerLogger:
         self.sigProcess.emit(message, 'INFO')
 
 class signals(QObject):
-    progress = pyqtSignal(str, object)
-    finished = pyqtSignal(object)
-    initProgressBar = pyqtSignal(int)
-    progressBar = pyqtSignal(int)
-    critical = pyqtSignal(object)
-    dataIntegrityWarning = pyqtSignal(str)
-    dataIntegrityCritical = pyqtSignal()
-    sigLoadingFinished = pyqtSignal()
-    sigLoadingNewChunk = pyqtSignal(object)
-    resetInnerPbar = pyqtSignal(int)
-    progress_tqdm = pyqtSignal(int)
-    signal_close_tqdm = pyqtSignal()
-    create_tqdm = pyqtSignal(int)
-    innerProgressBar = pyqtSignal(int)
-    sigPermissionError = pyqtSignal(str, object)
-    sigSelectSegmFiles = pyqtSignal(object, object)
-    sigSelectAcdcOutputFiles = pyqtSignal(object, object, str, bool, bool)
-    sigSetMeasurements = pyqtSignal(object)
-    sigInitAddMetrics = pyqtSignal(object, object)
-    sigUpdatePbarDesc = pyqtSignal(str)
-    sigComputeVolume = pyqtSignal(int, object)
-    sigAskStopFrame = pyqtSignal(object)
-    sigWarnMismatchSegmDataShape = pyqtSignal(object)
-    sigErrorsReport = pyqtSignal(dict, dict, dict)
-    sigMissingAcdcAnnot = pyqtSignal(dict)
-    sigRecovery = pyqtSignal(object)
-    sigInitInnerPbar = pyqtSignal(int)
-    sigUpdateInnerPbar = pyqtSignal(int)
+    progress = Signal(str, object)
+    finished = Signal(object)
+    initProgressBar = Signal(int)
+    progressBar = Signal(int)
+    critical = Signal(object)
+    dataIntegrityWarning = Signal(str)
+    dataIntegrityCritical = Signal()
+    sigLoadingFinished = Signal()
+    sigLoadingNewChunk = Signal(object)
+    resetInnerPbar = Signal(int)
+    progress_tqdm = Signal(int)
+    signal_close_tqdm = Signal()
+    create_tqdm = Signal(int)
+    innerProgressBar = Signal(int)
+    sigPermissionError = Signal(str, object)
+    sigSelectSegmFiles = Signal(object, object)
+    sigSelectAcdcOutputFiles = Signal(object, object, str, bool, bool)
+    sigSetMeasurements = Signal(object)
+    sigInitAddMetrics = Signal(object, object)
+    sigUpdatePbarDesc = Signal(str)
+    sigComputeVolume = Signal(int, object)
+    sigAskStopFrame = Signal(object)
+    sigWarnMismatchSegmDataShape = Signal(object)
+    sigErrorsReport = Signal(dict, dict, dict)
+    sigMissingAcdcAnnot = Signal(dict)
+    sigRecovery = Signal(object)
+    sigInitInnerPbar = Signal(int)
+    sigUpdateInnerPbar = Signal(int)
 
 class AutoPilotWorker(QObject):
-    finished = pyqtSignal()
-    critical = pyqtSignal(object)
-    progress = pyqtSignal(str, object)
-    sigStarted = pyqtSignal()
-    sigStopTimer = pyqtSignal()
+    finished = Signal()
+    critical = Signal(object)
+    progress = Signal(str, object)
+    sigStarted = Signal()
+    sigStopTimer = Signal()
 
     def __init__(self, guiWin):
         QObject.__init__(self)
@@ -106,11 +106,11 @@ class AutoPilotWorker(QObject):
         self.sigStarted.emit()
 
 class LabelRoiWorker(QObject):
-    finished = pyqtSignal()
-    critical = pyqtSignal(object)
-    progress = pyqtSignal(str, object)
-    sigProgressBar = pyqtSignal(int)
-    sigLabellingDone = pyqtSignal(object, bool)
+    finished = Signal()
+    critical = Signal(object)
+    progress = Signal(str, object)
+    sigProgressBar = Signal(int)
+    sigLabellingDone = Signal(object, bool)
 
     def __init__(self, Gui):
         QObject.__init__(self)
@@ -186,9 +186,9 @@ class LabelRoiWorker(QObject):
         self.finished.emit()
 
 class StoreGuiStateWorker(QObject):
-    finished = pyqtSignal(object)
-    sigDone = pyqtSignal()
-    progress = pyqtSignal(str, object)
+    finished = Signal(object)
+    sigDone = Signal()
+    progress = Signal(str, object)
 
     def __init__(self, mutex, waitCond):
         QObject.__init__(self)
@@ -244,13 +244,13 @@ class StoreGuiStateWorker(QObject):
         self.finished.emit(self)
 
 class AutoSaveWorker(QObject):
-    finished = pyqtSignal(object)
-    sigDone = pyqtSignal()
-    critical = pyqtSignal(object)
-    progress = pyqtSignal(str, object)
-    sigStartTimer = pyqtSignal(object, object)
-    sigStopTimer = pyqtSignal()
-    sigAutoSaveCannotProceed = pyqtSignal()
+    finished = Signal(object)
+    sigDone = Signal()
+    critical = Signal(object)
+    progress = Signal(str, object)
+    sigStartTimer = Signal(object, object)
+    sigStopTimer = Signal()
+    sigAutoSaveCannotProceed = Signal()
 
     def __init__(self, mutex, waitCond, savedSegmData):
         QObject.__init__(self)
@@ -460,9 +460,9 @@ class AutoSaveWorker(QObject):
 
 
 class segmWorker(QObject):
-    finished = pyqtSignal(np.ndarray, float)
-    debug = pyqtSignal(object)
-    critical = pyqtSignal(object)
+    finished = Signal(np.ndarray, float)
+    debug = Signal(object)
+    critical = Signal(object)
 
     def __init__(self, mainWin, secondChannelData=None):
         QObject.__init__(self)
@@ -512,10 +512,10 @@ class segmWorker(QObject):
         self.finished.emit(lab, exec_time)
 
 class segmVideoWorker(QObject):
-    finished = pyqtSignal(float)
-    debug = pyqtSignal(object)
-    critical = pyqtSignal(object)
-    progressBar = pyqtSignal(int)
+    finished = Signal(float)
+    debug = Signal(object)
+    critical = Signal(object)
+    progressBar = Signal(int)
 
     def __init__(self, posData, paramWin, model, startFrameNum, stopFrameNum):
         QObject.__init__(self)
@@ -559,7 +559,7 @@ class segmVideoWorker(QObject):
         self.finished.emit(exec_time)
 
 class calcMetricsWorker(QObject):
-    progressBar = pyqtSignal(int, int, float)
+    progressBar = Signal(int, int, float)
 
     def __init__(self, mainWin):
         QObject.__init__(self)
@@ -1145,10 +1145,10 @@ class loadDataWorker(QObject):
         self.signals.finished.emit(data)
 
 class trackingWorker(QObject):
-    finished = pyqtSignal()
-    critical = pyqtSignal(object)
-    progress = pyqtSignal(str)
-    debug = pyqtSignal(object)
+    finished = Signal()
+    critical = Signal(object)
+    progress = Signal(str)
+    debug = Signal(object)
 
     def __init__(self, posData, mainWin, video_to_track):
         QObject.__init__(self)
@@ -1257,14 +1257,14 @@ class trackingWorker(QObject):
         self.finished.emit()
 
 class reapplyDataPrepWorker(QObject):
-    finished = pyqtSignal()
-    debug = pyqtSignal(object)
-    critical = pyqtSignal(object)
-    progress = pyqtSignal(str)
-    initPbar = pyqtSignal(int)
-    updatePbar = pyqtSignal()
-    sigCriticalNoChannels = pyqtSignal(str)
-    sigSelectChannels = pyqtSignal(object, object, object, str)
+    finished = Signal()
+    debug = Signal(object)
+    critical = Signal(object)
+    progress = Signal(str)
+    initPbar = Signal(int)
+    updatePbar = Signal()
+    sigCriticalNoChannels = Signal(str)
+    sigSelectChannels = Signal(object, object, object, str)
 
     def __init__(self, expPath, posFoldernames):
         super().__init__()
@@ -1425,7 +1425,7 @@ class reapplyDataPrepWorker(QObject):
         self.finished.emit()
 
 class LazyLoader(QObject):
-    sigLoadingFinished = pyqtSignal()
+    sigLoadingFinished = Signal()
 
     def __init__(self, mutex, waitCond, readH5mutex, waitReadH5cond):
         QObject.__init__(self)
@@ -1483,12 +1483,12 @@ class LazyLoader(QObject):
 
 
 class ImagesToPositionsWorker(QObject):
-    finished = pyqtSignal()
-    debug = pyqtSignal(object)
-    critical = pyqtSignal(object)
-    progress = pyqtSignal(str)
-    initPbar = pyqtSignal(int)
-    updatePbar = pyqtSignal()
+    finished = Signal()
+    debug = Signal(object)
+    critical = Signal(object)
+    progress = Signal(str)
+    initPbar = Signal(int)
+    updatePbar = Signal()
 
     def __init__(self, folderPath, targetFolderPath, appendText):
         super().__init__()
@@ -1555,7 +1555,7 @@ class ImagesToPositionsWorker(QObject):
         self.finished.emit()
 
 class BaseWorkerUtil(QObject):
-    progressBar = pyqtSignal(int, int, float)
+    progressBar = Signal(int, int, float)
 
     def __init__(self, mainWin):
         QObject.__init__(self)
@@ -1587,9 +1587,9 @@ class BaseWorkerUtil(QObject):
         return self.abort
 
 class TrackSubCellObjectsWorker(BaseWorkerUtil):
-    sigAskAppendName = pyqtSignal(str, list)
-    sigCriticalNotEnoughSegmFiles = pyqtSignal(str)
-    sigAborted = pyqtSignal()
+    sigAskAppendName = Signal(str, list)
+    sigCriticalNotEnoughSegmFiles = Signal(str)
+    sigAborted = Signal()
 
     def __init__(self, mainWin):
         super().__init__(mainWin)
@@ -1840,8 +1840,8 @@ class PostProcessSegm(QObject):
             posData.frame_i = current_frame_i
 
 class CreateConnected3Dsegm(BaseWorkerUtil):
-    sigAskAppendName = pyqtSignal(str, list)
-    sigAborted = pyqtSignal()
+    sigAskAppendName = Signal(str, list)
+    sigAborted = Signal()
 
     def __init__(self, mainWin):
         super().__init__(mainWin)
@@ -2048,7 +2048,7 @@ class ApplyTrackInfoWorker(BaseWorkerUtil):
         self.signals.finished.emit(self)
 
 class RestructMultiPosWorker(BaseWorkerUtil):
-    sigSaveTiff = pyqtSignal(str, object, object)
+    sigSaveTiff = Signal(str, object, object)
 
     def __init__(self, rootFolderPath, dstFolderPath, action='copy'):
         super().__init__(None)
@@ -2068,7 +2068,7 @@ class RestructMultiPosWorker(BaseWorkerUtil):
 
 
 class RestructMultiTimepointsWorker(BaseWorkerUtil):
-    sigSaveTiff = pyqtSignal(str, object, object)
+    sigSaveTiff = Signal(str, object, object)
 
     def __init__(
             self, allChannels, frame_name_pattern, basename, validFilenames,
@@ -2300,10 +2300,10 @@ class RestructMultiTimepointsWorker(BaseWorkerUtil):
         self.signals.finished.emit(self)
 
 class ComputeMetricsMultiChannelWorker(BaseWorkerUtil):
-    sigAskAppendName = pyqtSignal(str, list, list)
-    sigCriticalNotEnoughSegmFiles = pyqtSignal(str)
-    sigAborted = pyqtSignal()
-    sigHowCombineMetrics = pyqtSignal(str, list, list, list)
+    sigAskAppendName = Signal(str, list, list)
+    sigCriticalNotEnoughSegmFiles = Signal(str)
+    sigAborted = Signal()
+    sigHowCombineMetrics = Signal(str, list, list, list)
 
     def __init__(self, mainWin):
         super().__init__(mainWin)
@@ -2452,8 +2452,8 @@ class ComputeMetricsMultiChannelWorker(BaseWorkerUtil):
         self.signals.finished.emit(self)
 
 class ConcatAcdcDfsWorker(BaseWorkerUtil):
-    sigAborted = pyqtSignal()
-    sigAskFolder = pyqtSignal(str)
+    sigAborted = Signal()
+    sigAskFolder = Signal(str)
 
     def __init__(self, mainWin):
         super().__init__(mainWin)
@@ -2642,7 +2642,7 @@ class ToImajeJroiWorker(BaseWorkerUtil):
 
 
 class ToSymDivWorker(QObject):
-    progressBar = pyqtSignal(int, int, float)
+    progressBar = Signal(int, int, float)
 
     def __init__(self, mainWin):
         QObject.__init__(self)
@@ -2806,9 +2806,9 @@ class ToSymDivWorker(QObject):
         self.signals.finished.emit(self)
 
 class AlignWorker(BaseWorkerUtil):
-    sigAborted = pyqtSignal()
-    sigAskUseSavedShifts = pyqtSignal(str, str)
-    sigAskSelectChannel = pyqtSignal(list)
+    sigAborted = Signal()
+    sigAskUseSavedShifts = Signal(str, str)
+    sigAskSelectChannel = Signal(list)
 
     def __init__(self, mainWin):
         super().__init__(mainWin)
@@ -3018,3 +3018,78 @@ class AlignWorker(BaseWorkerUtil):
             np.savez_compressed(filePath, data)
         elif ext == '.h5':
             load.save_to_h5(filePath, data)
+
+class ToObjCoordsWorker(BaseWorkerUtil):
+    def __init__(self, mainWin):
+        super().__init__(mainWin)
+        
+    @worker_exception_handler
+    def run(self):
+        debugging = False
+        expPaths = self.mainWin.expPaths
+        tot_exp = len(expPaths)
+        self.signals.initProgressBar.emit(0)
+        for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
+            self.errors = {}
+            tot_pos = len(pos_foldernames)
+
+            abort = self.emitSelectSegmFiles(exp_path, pos_foldernames)
+            if abort:
+                self.signals.finished.emit(self)
+                return
+            
+            for p, pos in enumerate(pos_foldernames):
+                if self.abort:
+                    self.signals.finished.emit(self)
+                    return
+
+                self.logger.log(
+                    f'Processing experiment n. {i+1}/{tot_exp}, '
+                    f'{pos} ({p+1}/{tot_pos})'
+                )
+
+                images_path = os.path.join(exp_path, pos, 'Images')
+                endFilenameSegm = self.mainWin.endFilenameSegm
+                ls = myutils.listdir(images_path)
+                file_path = [
+                    os.path.join(images_path, f) for f in ls 
+                    if f.endswith(f'{endFilenameSegm}.npz')
+                ][0]
+                
+                posData = load.loadData(file_path, '')
+
+                self.signals.sigUpdatePbarDesc.emit(f'Processing {posData.pos_path}')
+
+                posData.getBasenameAndChNames()
+                posData.buildPaths()
+
+                posData.loadOtherFiles(
+                    load_segm_data=True,
+                    load_metadata=True,
+                    end_filename_segm=endFilenameSegm
+                )
+
+                if posData.SizeT == 1:
+                    posData.segm_data = posData.segm_data[np.newaxis]
+                
+                printl(posData.segm_data.shape, posData.SizeT)
+                printl(posData.segm_npz_path)
+                dfs = []
+                n_frames = len(posData.segm_data)
+                self.signals.initProgressBar.emit(n_frames)
+                for frame_i, lab in enumerate(posData.segm_data):
+                    printl(lab.shape)
+                    df_coords_i = myutils.from_lab_to_obj_coords(lab)
+                    dfs.append(df_coords_i)
+                    self.signals.progressBar.emit(1)
+                    printl(df_coords_i)
+                df_filepath = posData.segm_npz_path.replace('.npz', '.csv')
+                df_filepath = df_filepath.replace('_segm', '_objects_coordinates')
+
+                keys = list(range(len(posData.segm_data)))
+                df = pd.concat(dfs, keys=keys, names=['frame_i'])
+                
+                self.signals.initProgressBar.emit(0)
+                df.to_csv(df_filepath)
+                        
+        self.signals.finished.emit(self)

@@ -5,16 +5,16 @@ import time
 import numpy as np
 import pandas as pd
 
-from PyQt5.QtWidgets import QMainWindow, QApplication, QFrame
-from PyQt5.QtCore import Qt, QPoint, QRect, QObject, pyqtSignal, QThread
-from PyQt5.QtGui import QBrush, QColor, QPen, QPainter
+from qtpy.QtWidgets import QMainWindow, QApplication, QFrame
+from qtpy.QtCore import Qt, QPoint, QRect, QObject, Signal, QThread
+from qtpy.QtGui import QBrush, QColor, QPen, QPainter
 
 import pathlib
 USER_PATH = pathlib.Path.home()
 
 class screenRecorderWorker(QObject):
-    sigGrabScreen = pyqtSignal()
-    finished = pyqtSignal()
+    sigGrabScreen = Signal()
+    finished = Signal()
 
     def __init__(self):
         QObject.__init__(self)

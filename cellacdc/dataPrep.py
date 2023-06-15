@@ -16,15 +16,15 @@ from tqdm import tqdm
 from functools import partial, wraps
 from tifffile.tifffile import TiffWriter, TiffFile
 
-from PyQt5.QtCore import (
+from qtpy.QtCore import (
     Qt, QFile, QTextStream, QSize, QRect, QRectF,
-    QObject, QThread, pyqtSignal, QSettings
+    QObject, QThread, Signal, QSettings
 )
-from PyQt5.QtGui import (
+from qtpy.QtGui import (
     QIcon, QKeySequence, QCursor, QTextBlockFormat,
     QTextCursor, QFont
 )
-from PyQt5.QtWidgets import (
+from qtpy.QtWidgets import (
     QAction, QApplication, QLabel, QPushButton, QWidget,
     QMainWindow, QMenu, QToolBar, QGroupBox, QGridLayout,
     QScrollBar, QCheckBox, QToolButton, QSpinBox,
@@ -53,8 +53,8 @@ if os.name == 'nt':
         pass
 
 class toCsvWorker(QObject):
-    finished = pyqtSignal()
-    progress = pyqtSignal(int)
+    finished = Signal()
+    progress = Signal(int)
 
     def setData(self, data):
         self.data = data
@@ -65,7 +65,7 @@ class toCsvWorker(QObject):
         self.finished.emit()
 
 class dataPrepWin(QMainWindow):
-    sigClose = pyqtSignal()
+    sigClose = Signal()
 
     def __init__(
             self, parent=None, buttonToRestore=None, mainWin=None,
@@ -153,19 +153,19 @@ class dataPrepWin(QMainWindow):
                 #     print(xl, xl+w, xl+w>xl)
         if event.key() == Qt.Key_Left:
             self.navigateScrollbar.triggerAction(
-                QAbstractSlider.SliderSingleStepSub
+                QAbstractSlider.SliderAction.SliderSingleStepSub
             )
         elif event.key() == Qt.Key_Right:
             self.navigateScrollbar.triggerAction(
-                QAbstractSlider.SliderSingleStepAdd
+                QAbstractSlider.SliderAction.SliderSingleStepAdd
             )
         elif event.key() == Qt.Key_Up:
             self.zSliceScrollBar.triggerAction(
-                QAbstractSlider.SliderSingleStepAdd
+                QAbstractSlider.SliderAction.SliderSingleStepAdd
             )
         elif event.key() == Qt.Key_Down:
             self.zSliceScrollBar.triggerAction(
-                QAbstractSlider.SliderSingleStepSub
+                QAbstractSlider.SliderAction.SliderSingleStepSub
             )
 
     def gui_createActions(self):
@@ -259,7 +259,7 @@ class dataPrepWin(QMainWindow):
         navigateToolbar.addAction(self.interpAction)
 
         self.ROIshapeComboBox = QComboBox()
-        self.ROIshapeComboBox.SizeAdjustPolicy(QComboBox.AdjustToContents)
+        self.ROIshapeComboBox.SizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
         self.ROIshapeComboBox.addItems(['  256x256  '])
         ROIshapeLabel = QLabel('   ROI standard shape: ')
         ROIshapeLabel.setBuddy(self.ROIshapeComboBox)
@@ -2158,7 +2158,7 @@ class dataPrepWin(QMainWindow):
         # fmt = QTextBlockFormat()
         # fmt.setAlignment(Qt.AlignHCenter)
         # cursor = self.titleLabel.item.textCursor()
-        # cursor.select(QTextCursor.Document)
+        # cursor.select(QTextCursor.SelectionType.Document)
         # cursor.mergeBlockFormat(fmt)
         # cursor.clearSelection()
         # self.titleLabel.item.setTextCursor(cursor)
@@ -2201,4 +2201,4 @@ class dataPrepWin(QMainWindow):
     def show(self):
         QMainWindow.show(self)
         self.readSettings()
-        self.graphLayout.setFocus(True)
+        self.graphLayout.setFocus()

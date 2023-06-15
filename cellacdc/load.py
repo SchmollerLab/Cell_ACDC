@@ -23,9 +23,9 @@ from tifffile import TiffFile
 from natsort import natsorted
 import skimage
 import skimage.measure
-from PyQt5 import QtGui
-from PyQt5.QtCore import Qt, QRect, QRectF
-from PyQt5.QtWidgets import (
+from qtpy import QtGui
+from qtpy.QtCore import Qt, QRect, QRectF
+from qtpy.QtWidgets import (
     QApplication, QMessageBox
 )
 import pyqtgraph as pg
@@ -554,6 +554,7 @@ class loadData:
         self.loadSizeZ = None
         self.multiSegmAllPos = False
         self.frame_i = 0
+        self.clickEntryPointsDfs = {}
         path_li = os.path.normpath(imgPath).split(os.sep)
         self.relPath = f'{f"{os.sep}".join(path_li[-relPathDepth:])}'
         filename_ext = os.path.basename(imgPath)
@@ -1211,7 +1212,7 @@ class loadData:
             self.PhysicalSizeZ = 1
 
         if 'LensNA' in self.metadata_df.index:
-            self.PhysicalSizeZ = float(
+            self.numAperture = float(
                 self.metadata_df.at['LensNA', 'values']
             )
         else:
@@ -1346,8 +1347,11 @@ class loadData:
                 self.SizeT, self.SizeZ = 1, 1
         else:
             self.SizeT, self.SizeZ = 1, 1
-
-        self.SizeY, self.SizeX = self.img_data_shape[-2:]
+        
+        try:
+            self.SizeY, self.SizeX = self.img_data_shape[-2:]
+        except Exception as e:
+            self.SizeY, self.SizeX = self.segm_data.shape[-2:]
 
         self.TimeIncrement = 1.0
         self.PhysicalSizeX = 1.0
@@ -1425,6 +1429,17 @@ class loadData:
     def saveCombineMetrics(self):
         with open(self.custom_combine_metrics_path, 'w') as configfile:
             self.combineMetricsConfig.write(configfile)
+    
+    def saveClickEntryPointsDfs(self):
+        for tableEndName, df in self.clickEntryPointsDfs.items():
+            if not self.basename.endswith('_'):
+                basename = f'{self.basename}_'
+            else:
+                basename = self.basename
+            tableFilename = f'{basename}{tableEndName}.csv'
+            tableFilepath = os.path.join(self.images_path, tableFilename)
+            df = df.sort_values(['frame_i', 'Cell_ID'])
+            df.to_csv(tableFilepath, index=False)
 
     def check_acdc_df_integrity(self):
         check = (

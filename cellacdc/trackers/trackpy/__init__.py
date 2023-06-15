@@ -1,8 +1,8 @@
 try:
     import trackpy
 except ModuleNotFoundError:
-    from PyQt5.QtWidgets import QApplication
-    from PyQt5.QtCore import QCoreApplication
+    from qtpy.QtWidgets import QApplication
+    from qtpy.QtCore import QCoreApplication
     import sys
     import subprocess
 

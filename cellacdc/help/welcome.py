@@ -5,13 +5,13 @@ import webbrowser
 import pandas as pd
 import numpy as np
 
-from PyQt5.QtGui import (
+from qtpy.QtGui import (
     QIcon, QFont, QFontMetrics, QPixmap, QPalette, QColor
 )
-from PyQt5.QtCore import (
-    Qt, QSize, QEvent, pyqtSignal, QObject, QThread, QTimer
+from qtpy.QtCore import (
+    Qt, QSize, QEvent, Signal, QObject, QThread, QTimer
 )
-from PyQt5.QtWidgets import (
+from qtpy.QtWidgets import (
     QApplication, QWidget, QGridLayout, QTextEdit, QPushButton,
     QListWidget, QListWidgetItem, QCheckBox, QFrame, QStyleFactory,
     QLabel, QTreeWidget, QTreeWidgetItem, QTreeWidgetItemIterator,
@@ -38,8 +38,8 @@ if os.name == 'nt':
         pass
 
 class downloadWorker(QObject):
-    finished = pyqtSignal()
-    progress = pyqtSignal(int, int)
+    finished = Signal()
+    progress = Signal(int, int)
 
     def __init__(self, which):
         QObject.__init__(self)
@@ -54,8 +54,8 @@ class downloadWorker(QObject):
 class QHLine(QFrame):
     def __init__(self):
         super(QHLine, self).__init__()
-        self.setFrameShape(QFrame.HLine)
-        self.setFrameShadow(QFrame.Sunken)
+        self.setFrameShape(QFrame.Shape.HLine)
+        self.setFrameShadow(QFrame.Shadow.Sunken)
 
 
 class welcomeWin(QWidget):
@@ -85,6 +85,7 @@ class welcomeWin(QWidget):
         self.setStyleSheet(
             """
             QTreeWidget::item:hover {background-color:#E6E6E6;}
+            QTreeWidget::item:hover {color:black;}
             QTreeWidget::item:selected {background-color:#CFEB9B;}
             QTreeWidget::item:selected {color:black;}
             QTreeView {
@@ -128,7 +129,7 @@ class welcomeWin(QWidget):
     def addtreeSelector(self):
         treeSelector = QTreeWidget()
 
-        treeSelector.setFrameStyle(QFrame.NoFrame)
+        treeSelector.setFrameStyle(QFrame.Shape.NoFrame)
 
         self.welcomeItem = QTreeWidgetItem(treeSelector)
         self.welcomeItem.setIcon(0, QIcon(':home.svg'))
@@ -201,7 +202,7 @@ class welcomeWin(QWidget):
 
         # welcomeTextWidget = QTextEdit()
         # welcomeTextWidget.setReadOnly(True)
-        # welcomeTextWidget.setFrameStyle(QFrame.NoFrame)
+        # welcomeTextWidget.setFrameStyle(QFrame.Shape.NoFrame)
         # welcomeTextWidget.viewport().setAutoFillBackground(False)
 
         htmlTxt = (
@@ -304,7 +305,7 @@ class welcomeWin(QWidget):
 
         self.quickStartScrollArea = QScrollArea()
         self.quickStartScrollArea.setWidgetResizable(True)
-        self.quickStartScrollArea.setFrameStyle(QFrame.NoFrame)
+        self.quickStartScrollArea.setFrameStyle(QFrame.Shape.NoFrame)
         self.quickStartScrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.quickStartScrollArea.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
 
@@ -916,9 +917,9 @@ class welcomeWin(QWidget):
         self.QPbar = QProgressBar(self)
         self.QPbar.setValue(0)
         palette = QPalette()
-        palette.setColor(QPalette.Highlight, QColor(207, 235, 155))
-        palette.setColor(QPalette.Text, QColor(0, 0, 0))
-        palette.setColor(QPalette.HighlightedText, QColor(0, 0, 0))
+        palette.setColor(QPalette.ColorRole.Highlight, QColor(207, 235, 155))
+        palette.setColor(QPalette.ColorRole.Text, QColor(0, 0, 0))
+        palette.setColor(QPalette.ColorRole.HighlightedText, QColor(0, 0, 0))
         self.QPbar.setPalette(palette)
         self.welcomeLayout.addWidget(self.QPbar, 3, 0, 1, 3)
 
@@ -1057,7 +1058,7 @@ class welcomeWin(QWidget):
 
     def eventFilter(self, object, event):
         # Disable wheel scroll on widgets to allow scroll only on scrollarea
-        if event.type() == QEvent.Wheel:
+        if event.type() == QEvent.Type.Wheel:
             event.ignore()
             return True
         return False

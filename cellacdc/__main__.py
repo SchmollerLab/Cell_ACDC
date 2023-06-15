@@ -14,7 +14,7 @@ if os.name == 'nt':
     except Exception as e:
         pass
 
-from PyQt5 import QtGui, QtWidgets, QtCore
+from qtpy import QtGui, QtWidgets, QtCore
 
 # Handle high resolution displays:
 if hasattr(QtCore.Qt, 'AA_EnableHighDpiScaling'):
@@ -23,9 +23,12 @@ if hasattr(QtCore.Qt, 'AA_UseHighDpiPixmaps'):
     QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True)
 
 # Needed by pyqtgraph with display resolution scaling
-QtWidgets.QApplication.setAttribute(
-    QtCore.Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
-)
+try:
+    QtWidgets.QApplication.setAttribute(
+        QtCore.Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
+    )
+except Exception as e:
+    pass
 
 class AcdcSPlashScreen(QtWidgets.QSplashScreen):
     def __init__(self):
@@ -53,7 +56,6 @@ app.setStyle(QtWidgets.QStyleFactory.create('Fusion'))
 app.setPalette(app.style().standardPalette())
 
 app.setWindowIcon(QtGui.QIcon(":icon.ico"))
-
 # Launch splashscreen
 splashScreen = AcdcSPlashScreen()
 splashScreen.setWindowIcon(QtGui.QIcon(":icon.ico"))
@@ -74,15 +76,15 @@ import psutil
 
 from functools import partial
 
-from PyQt5.QtWidgets import (
+from qtpy.QtWidgets import (
     QMainWindow, QVBoxLayout, QPushButton, QLabel, QAction,
     QMenu, QHBoxLayout, QFileDialog, QGroupBox
 )
-from PyQt5.QtCore import (
-    Qt, QProcess, pyqtSignal, pyqtSlot, QTimer, QSize,
+from qtpy.QtCore import (
+    Qt, QProcess, Signal, Slot, QTimer, QSize,
     QSettings, QUrl, QCoreApplication
 )
-from PyQt5.QtGui import (
+from qtpy.QtGui import (
     QFontDatabase, QIcon, QDesktopServices, QFont, QMouseEvent, 
     QPixmap
 )
@@ -103,13 +105,15 @@ try:
     from cellacdc.utils import compute as utilsCompute
     from cellacdc.utils import repeat as utilsRepeat
     from cellacdc.utils import toImageJroi as utilsToImageJroi
+    from cellacdc.utils import toObjCoords as utilsToObjCoords
     from cellacdc.utils import acdcToSymDiv as utilsSymDiv
     from cellacdc.utils import trackSubCellObjects as utilsTrackSubCell
     from cellacdc.utils import createConnected3Dsegm as utilsConnected3Dsegm
     from cellacdc.utils import computeMultiChannel as utilsComputeMultiCh
     from cellacdc.utils import applyTrackFromTable as utilsApplyTrackFromTab
     from cellacdc.info import utilsInfo
-    from cellacdc import is_win, is_linux, temp_path
+    from cellacdc import is_win, is_linux, temp_path, issues_url
+    from cellacdc import settings_csv_path
     from cellacdc import printl
 except ModuleNotFoundError as e:
     src_path = os.path.dirname(os.path.abspath(__file__))
@@ -141,8 +145,16 @@ except Exception as e:
 
 class mainWin(QMainWindow):
     def __init__(self, app, parent=None):
+        self.checkConfigFiles()
+        
+        scheme = self.getColorScheme()
+        from _palettes import getPaletteColorScheme, setToolTipStyleSheet
         self.app = app
+        palette = getPaletteColorScheme(app.palette(), scheme=scheme)
+        app.setPalette(palette)     
+        setToolTipStyleSheet(app, scheme=scheme)
         self.welcomeGuide = None
+        
         super().__init__(parent)
         self.setWindowTitle("Cell-ACDC")
         self.setWindowIcon(QIcon(":icon.ico"))
@@ -156,11 +168,13 @@ class mainWin(QMainWindow):
         self.log_filename = log_filename
         self.logs_path = logs_path
 
-        self.checkConfigFiles()
+        self.logger.info(f'Using Qt version {QtCore.__version__}')
+        
 
         if not is_linux:
             self.loadFonts()
 
+        self.addStatusBar(scheme)
         self.createActions()
         self.createMenuBar()
         self.connectActions()
@@ -297,8 +311,67 @@ class mainWin(QMainWindow):
         self.progressWin = None
         self.forceClose = False
     
+    def addStatusBar(self, scheme):
+        self.statusbar = self.statusBar()
+        # Permanent widget
+        label = QLabel('Dark mode')
+        widget = QtWidgets.QWidget()
+        layout = QHBoxLayout()
+        widget.setLayout(layout)
+        layout.addWidget(label)
+        self.darkModeToggle = widgets.Toggle(label_text='Dark mode')
+        self.darkModeToggle.ignoreEvent = False
+        if scheme == 'dark':
+            self.darkModeToggle.ignoreEvent = True
+            self.darkModeToggle.setChecked(True)
+        self.darkModeToggle.toggled.connect(self.onDarkModeToggled)
+        layout.addWidget(self.darkModeToggle)
+        self.statusBarLayout = layout
+        self.statusbar.addWidget(widget)
+    
+    def getColorScheme(self):
+        from _palettes import get_color_scheme
+        return get_color_scheme()
+    
+    def onDarkModeToggled(self, checked):
+        if self.darkModeToggle.ignoreEvent:
+            self.darkModeToggle.ignoreEvent = False
+            return
+        from _palettes import getPaletteColorScheme
+        scheme = 'dark' if checked else 'light'
+        if not os.path.exists(settings_csv_path):
+            df_settings = pd.DataFrame(
+                {'setting': [], 'value': []}).set_index('setting')
+        else:
+            df_settings = pd.read_csv(settings_csv_path, index_col='setting')
+        df_settings.at['colorScheme', 'value'] = scheme
+        df_settings.to_csv(settings_csv_path)
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = (
+            'In order for the change to take effect, '
+            '<b>please restart Cell-ACDC</b>'
+        )
+        if scheme == 'dark':
+            issues_href = f'<a href="{issues_url}">GitHub page</a>'
+            note_txt = (
+                'NOTE: <b>dark mode</b> is still in <b>beta phase</b> and '
+                'it is not perfect, but we believe it is usable.<br><br>'
+                'Many icons are not very visible on a dark background, but '
+                'if you see anything clearly <b>wrong</b><br>'
+                '(besides icons) please <b>report it</b> by opening an issue '
+                f'on our {issues_href}.<br><br>'
+                'Thanks!'
+            )
+            txt = f'{txt}<br><br>{note_txt}'
+        txt = html_utils.paragraph(txt)
+        msg.information(self, 'Restart Cell-ACDC', txt)
+        self.statusBarLayout.addWidget(QLabel(html_utils.paragraph(
+            '<i>Restart Cell-ACDC for the change to take effect</i>', 
+            font_color='red'
+        )))
+    
     def checkConfigFiles(self):
-        self.logger.info('Loading configuration files...')
+        print('Loading configuration files...')
         paths_to_check = [
             gui.favourite_func_metrics_csv_path, 
             # gui.custom_annot_path, 
@@ -346,21 +419,16 @@ class mainWin(QMainWindow):
         QFontDatabase.addApplicationFont(":Helvetica-BoldItalic.ttf")
 
     def launchWelcomeGuide(self, checked=False):
-        cellacdc_path = os.path.dirname(os.path.realpath(__file__))
-        temp_path = os.path.join(cellacdc_path, 'temp')
-        csv_path = os.path.join(temp_path, 'settings.csv')
-        self.settings_csv_path = csv_path
-        if not os.path.exists(csv_path):
+        if not os.path.exists(settings_csv_path):
             idx = ['showWelcomeGuide']
             values = ['Yes']
-            self.df_settings = pd.DataFrame({'setting': idx,
-                                             'value': values}
-                                           ).set_index('setting')
-            self.df_settings.to_csv(csv_path)
-        self.df_settings = pd.read_csv(csv_path, index_col='setting')
+            self.df_settings = pd.DataFrame(
+                {'setting': idx, 'value': values}).set_index('setting')
+            self.df_settings.to_csv(settings_csv_path)
+        self.df_settings = pd.read_csv(settings_csv_path, index_col='setting')
         if 'showWelcomeGuide' not in self.df_settings.index:
             self.df_settings.at['showWelcomeGuide', 'value'] = 'Yes'
-            self.df_settings.to_csv(csv_path)
+            self.df_settings.to_csv(settings_csv_path)
 
         show = (
             self.df_settings.at['showWelcomeGuide', 'value'] == 'Yes'
@@ -398,6 +466,7 @@ class mainWin(QMainWindow):
         convertMenu.addAction(self.TiffToNpzAction)
         convertMenu.addAction(self.h5ToNpzAction)
         convertMenu.addAction(self.toImageJroiAction)
+        convertMenu.addAction(self.toObjsCoordsAction)
 
         segmMenu = utilsMenu.addMenu('Segmentation')
         segmMenu.addAction(self.createConnected3Dsegm)
@@ -518,6 +587,9 @@ class mainWin(QMainWindow):
         self.toImageJroiAction = QAction(
             'Convert _segm.npz file(s) to ImageJ ROIs...'
         )
+        self.toObjsCoordsAction = QAction(
+            'Convert _segm.npz file(s) to object coordinates (CSV)...'
+        )
         self.createConnected3Dsegm = QAction(
             'Create connected 3D segmentation mask from z-slices segmentation...'
         )   
@@ -568,6 +640,9 @@ class mainWin(QMainWindow):
         self.TiffToNpzAction.triggered.connect(self.launchConvertFormatUtil)
         self.h5ToNpzAction.triggered.connect(self.launchConvertFormatUtil)
         self.toImageJroiAction.triggered.connect(self.launchToImageJroiUtil)
+        self.toObjsCoordsAction.triggered.connect(
+            self.launchToObjectsCoordsUtil
+        )
         self.createConnected3Dsegm.triggered.connect(
             self.launchConnected3DsegmActionUtil
         )
@@ -856,6 +931,26 @@ class mainWin(QMainWindow):
         )
         self.arboretumWindow.show()
     
+    def launchToObjectsCoordsUtil(self):
+        self.logger.info(f'Launching utility "{self.sender().text()}"')
+
+        selectedExpPaths = self.getSelectedExpPaths(
+            'From _segm.npz to objects coordinates (CSV)'
+        )
+        if selectedExpPaths is None:
+            return
+        
+        title = 'Convert _segm.npz file(s) to objects coordinates (CSV)'
+        infoText = 'Launching to to objects coordinates process...'
+        progressDialogueTitle = (
+            'Converting _segm.npz file(s) to to objects coordinates (CSV)'
+        )
+        self.toObjCoordsWin = utilsToObjCoords.toObjCoordsUtil(
+            selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
+            parent=self
+        )
+        self.toObjCoordsWin.show()
+    
     def launchToImageJroiUtil(self):
         self.logger.info(f'Launching utility "{self.sender().text()}"')
         myutils.check_install_package('roifile', parent=self)
@@ -1071,28 +1166,40 @@ class mainWin(QMainWindow):
     def _showDataStructWin(self):
         msg = widgets.myMessageBox(wrapText=False, showCentered=False)
         bioformats_url = 'https://www.openmicroscopy.org/bio-formats/'
+        bioformats_href = html_utils.href_tag('<b>Bio-Formats</b>', bioformats_url)
+        aicsimageio_url = 'https://allencellmodeling.github.io/aicsimageio/#'
+        aicsimageio_href = html_utils.href_tag('<b>AICSImageIO</b>', aicsimageio_url)
+        issues_href = f'<a href="{issues_url}">GitHub page</a>'
         txt = html_utils.paragraph(f"""
-            Cell-ACDC can use <b>Bio-Formats</b> to read microscopy files 
-            (more info {html_utils.href_tag('here', bioformats_url)}).<br><br>
-            Bio-Formats requires Java and a python package called <code>javabridge</code>,<br>
+            Cell-ACDC can use the {bioformats_href} or the {aicsimageio_href}  
+            libraries to read microscopy files.<br><br>
+            <b>Bio-Formats requires Java</b> and a python package called <code>javabridge</code>,<br>
             that will be automatically installed if missing.<br><br>
             We recommend using Bio-Formats, since it can read the metadata of the file,<br> 
             such as pixel size, numerical aperture etc.<br><br>
-            However, if you <b>already pre-processed your microsocpy files into .tif 
+            If <b>Bio-Formats fails, try using AICSImageIO</b>.<br><br>
+            Alternatively, if you <b>already pre-processed your microsocpy files into .tif 
             files</b>,<br>
             you can choose to simply re-structure them into the Cell-ACDC compatible 
             format.<br><br>
+            If nothing works, open an issue on our {issues_href} and we 
+            will be happy to help you out.<br><br>
             How do you want to proceed?          
         """)
+        useAICSImageIO = QPushButton(
+            QIcon(':AICS_logo.svg'), ' Use AICSImageIO ', msg
+        )
         useBioFormatsButton = QPushButton(
             QIcon(':ome.svg'), ' Use Bio-Formats ', msg
         )
         restructButton = QPushButton(
             QIcon(':folders.svg'), ' Re-structure image files ', msg
         )
-        _, useBioFormatsButton, restructButton = msg.question(
+        msg.question(
             self, 'How to structure files', txt, 
-            buttonsTexts=('Cancel', useBioFormatsButton, restructButton)
+            buttonsTexts=(
+                'Cancel', useBioFormatsButton, useAICSImageIO, restructButton
+            )
         )
         if msg.cancel:
             self.logger.info('Creating data structure process aborted by the user.')
@@ -1290,7 +1397,7 @@ class mainWin(QMainWindow):
     
     def showEvent(self, event):
         self.showAllWindows()
-        self.setFocus(True)
+        self.setFocus()
         self.activateWindow()
     
     def showAllWindows(self):
@@ -1302,7 +1409,7 @@ class mainWin(QMainWindow):
             win.setWindowState(Qt.WindowNoState)
             win.restoreGeometry(geometry)
         self.raise_()
-        self.setFocus(True)
+        self.setFocus()
         self.activateWindow()
 
     def show(self):
@@ -1442,7 +1549,7 @@ def run():
     except AttributeError:
         pass
     win.logger.info('**********************************************')
-    win.logger.info(f'Welcome to Cell-ACDC v{version}!')
+    win.logger.info(f'Welcome to Cell-ACDC v{version}')
     win.logger.info('**********************************************')
     win.logger.info('----------------------------------------------')
     win.logger.info('NOTE: If application is not visible, it is probably minimized\n'

@@ -2,11 +2,11 @@ import os
 import sys
 import traceback
 
-from PyQt5.QtCore import Qt, QThread, QSize
-from PyQt5.QtWidgets import (
+from qtpy.QtCore import Qt, QThread, QSize
+from qtpy.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel
 )
-from PyQt5 import QtGui
+from qtpy import QtGui
 
 from .. import myutils, html_utils, workers, widgets
 
@@ -18,8 +18,8 @@ import pandas as pd
 
 from tqdm import tqdm
 
-from PyQt5.QtCore import pyqtSignal, QThread
-from PyQt5.QtWidgets import (
+from qtpy.QtCore import Signal, QThread
+from qtpy.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QStyle, QApplication
 )
 
@@ -309,7 +309,7 @@ class NewThreadMultipleExpBaseUtil(QDialog):
             self.logger.removeHandler(handler)
 
 class MainThreadSinglePosUtilBase(QDialog):
-    sigClose = pyqtSignal()
+    sigClose = Signal()
 
     def __init__(
             self, app: QApplication, title: str, module: str, infoText: str, 

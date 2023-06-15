@@ -1,13 +1,19 @@
 import os
+import re
 import cellacdc
 from functools import partial
 
-from PyQt5.QtWidgets import QDialog, QLabel, QGridLayout, QHBoxLayout
-from PyQt5.QtGui import QPixmap
-from PyQt5.QtCore import Qt
+from qtpy.QtWidgets import (
+    QDialog, QLabel, QGridLayout, QHBoxLayout, QSpacerItem, QWidget, QVBoxLayout
+)
+from qtpy.QtGui import QPixmap
+from qtpy.QtCore import Qt
 
 from ..myutils import read_version
+from ..myutils import get_pip_install_cellacdc_version_command
+from ..myutils import get_git_pull_checkout_cellacdc_version_commands
 from .. import widgets, myutils
+from .. import html_utils, printl
 from .. import qrc_resources
 
 class QDialogAbout(QDialog):
@@ -18,6 +24,8 @@ class QDialogAbout(QDialog):
         self.setWindowTitle('About Cell-ACDC')
 
         layout = QGridLayout()
+        
+        version = read_version()
 
         titleLabel = QLabel()
         txt = (f"""
@@ -28,12 +36,38 @@ class QDialogAbout(QDialog):
             </span>
         </p>
         <p style="font-size:14px; font-family:ubuntu">
-            Version {read_version()}
+            Version {version}
         </p>
         """)
 
         titleLabel.setText(txt)
-
+        
+        # '{next_version}.dev{distance}+{scm letter}{revision hash}'
+        command = get_pip_install_cellacdc_version_command(version=version)
+        commandLabel = QLabel(html_utils.paragraph(
+            f'<b>To install this specific version</b> '
+            f'on a new environment or <b>to upgrade/downgrade</b> in an '
+            'environment where you already have Cell-ACDC<br>'
+            'installed with pip run the following <b>command</b>:'
+        ))
+        commandWidget = widgets.CopiableCommandWidget(
+            command=command, font_size='11px'
+        )
+        
+        commandWidgetsGit = []
+        git_commands = get_git_pull_checkout_cellacdc_version_commands(version)
+        if git_commands:
+            commandLabelGit = QLabel(html_utils.paragraph(
+                f'<br><br><b>To upgrade/downgrade</b> the Cell-ACDC version in an '
+                'environment where you installed it by first cloning with '
+                '<code>git</code><br>'
+                'run the following <b>commands</b> one by one:'
+            ))  
+        for command in git_commands:
+            commandWidgetsGit.append(
+                widgets.CopiableCommandWidget(command=command, font_size='11px')
+            )
+            
         iconPixmap = QPixmap(":icon.ico")
         h = 128
         iconPixmap = iconPixmap.scaled(h,h, aspectRatioMode=Qt.KeepAspectRatio)
@@ -44,21 +78,24 @@ class QDialogAbout(QDialog):
         infoLabel = QLabel()
         infoLabel.setTextInteractionFlags(Qt.TextBrowserInteraction);
         infoLabel.setOpenExternalLinks(True);
-        txt = (f"""
-        <p style="font-size:13px; font-family:ubuntu">
+        txt = html_utils.paragraph(f"""
             More info on our <a href=\"{github_url}">home page</a>.<br>
-        </p>
         """)
         infoLabel.setText(txt)
 
         installedLayout = QHBoxLayout()
         installedLabel = QLabel()
-        txt = (f"""
-        <p style="font-size:12px; font-family:ubuntu">
+        txt = html_utils.paragraph(f"""
             Installed in: {cellacdc_path}
-        </p>
-        """)
+        """, font_size='12px')
         installedLabel.setText(txt)
+        
+        self.showHowToInstallButton = widgets.helpPushButton(
+            'How to install this version'
+        )
+        self.showHowToInstallButton.clicked.connect(
+            self.showHotToInstallInstructions
+        )
 
         button = widgets.showInFileManagerButton(
             myutils.get_open_filemaneger_os_string()
@@ -67,19 +104,59 @@ class QDialogAbout(QDialog):
         button.clicked.connect(func)
         installedLayout.addWidget(installedLabel)
         installedLayout.addStretch(1)
+        installedLayout.addWidget(self.showHowToInstallButton)
         installedLayout.addWidget(button)
 
-        layout.addWidget(iconLabel, 0, 0)
-        layout.addWidget(titleLabel, 0, 1, alignment=Qt.AlignLeft)
-        layout.addWidget(infoLabel, 1, 1, alignment=Qt.AlignLeft)
+        row = 0
+        layout.addWidget(iconLabel, row, 0)
+        layout.addWidget(titleLabel, row, 1, alignment=Qt.AlignLeft)
+        
+        row += 1
+        layout.addWidget(infoLabel, row, 1, alignment=Qt.AlignLeft)
+        
+        row += 1
         layout.setColumnStretch(2,1)
-        layout.addLayout(installedLayout, 2, 0, 1, 3)
-
+        layout.addItem(QSpacerItem(10,20), row, 1)
+        
+        row += 1
+        layout.setRowStretch(row,1)
+        
+        row += 1
+        layout.addLayout(installedLayout, row, 0, 1, 3)
+        
+        row += 1
+        self.howToInstallDialog = QDialog(self)
+        self.howToInstallDialog.setWindowTitle(
+            f'How to install Cell-ACDC v{version}'
+        )
+        howToInstallLayout = QVBoxLayout()
+        self.howToInstallDialog.setLayout(howToInstallLayout)
+        
+        howToInstallOkButton = widgets.okPushButton(' Ok ')
+        buttonsLayout = QHBoxLayout()
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(howToInstallOkButton)
+        howToInstallOkButton.clicked.connect(self.howToInstallDialog.close)
+        
+        howToInstallLayout.addWidget(commandLabel, alignment=Qt.AlignLeft)
+        howToInstallLayout.addWidget(commandWidget, alignment=Qt.AlignLeft)
+        
+        if git_commands:
+            howToInstallLayout.addWidget(commandLabelGit, alignment=Qt.AlignLeft)
+            for widget in commandWidgetsGit:
+                howToInstallLayout.addWidget(widget, alignment=Qt.AlignLeft)
+        # layout.addWidget(self.howToInstallWidget, row, 0, 1, 3)
+        howToInstallLayout.addLayout(buttonsLayout)
+        self.howToInstallDialog.hide()
+        
         self.setLayout(layout)
+    
+    def showHotToInstallInstructions(self):
+        self.howToInstallDialog.show()
 
 def _test():
     import sys
-    from PyQt5.QtWidgets import QStyleFactory, QApplication
+    from qtpy.QtWidgets import QStyleFactory, QApplication
     app = QApplication(sys.argv)
     app.setStyle(QStyleFactory.create('Fusion'))
     win = QDialogAbout()
