@@ -1339,7 +1339,7 @@ def from_lab_to_obj_coords(lab):
             columns = ['y', 'x']
         df_obj = pd.DataFrame(data=obj_coords, columns=columns)
         dfs.append(df_obj)
-    df = pd.concat(dfs, keys = keys, names=['Cell_ID', 'idx']).droplevel(1)
+    df = pd.concat(dfs, keys = keys, names=['Cell_ID', 'idx']).droplevel('idx')
     return df
         
 

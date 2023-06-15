@@ -3073,10 +3073,12 @@ class ToObjCoordsWorker(BaseWorkerUtil):
                     posData.segm_data = posData.segm_data[np.newaxis]
                 
                 dfs = []
+                n_frames = len(posData.segm_data)
+                self.signals.initProgressBar.emit(n_frames)
                 for frame_i, lab in enumerate(posData.segm_data):
                     df_coords_i = myutils.from_lab_to_obj_coords(lab)
                     dfs.append(df_coords_i)
-
+                    self.signals.progressBar.emit(1)
                 df_filepath = posData.segm_npz_path.replace('.npz', '.csv')
                 df_filepath = df_filepath.replace('_segm', '_objects_coordinates')
 

@@ -1347,8 +1347,11 @@ class loadData:
                 self.SizeT, self.SizeZ = 1, 1
         else:
             self.SizeT, self.SizeZ = 1, 1
-
-        self.SizeY, self.SizeX = self.img_data_shape[-2:]
+        
+        try:
+            self.SizeY, self.SizeX = self.img_data_shape[-2:]
+        except Exception as e:
+            self.SizeY, self.SizeX = self.segm_data.shape[-2:]
 
         self.TimeIncrement = 1.0
         self.PhysicalSizeX = 1.0
