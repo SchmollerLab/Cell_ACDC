@@ -43,11 +43,15 @@ def get_obj_text_cca_annot(
     try:
         cca_df_obj = cca_df.loc[ID]
     except Exception as e:
-        return f'{obj.label}', None
+        return str(ID), None
     
     ccs = cca_df_obj['cell_cycle_stage']
 
-    generation_num = int(cca_df_obj['generation_num'])
+    try:
+        generation_num = int(cca_df_obj['generation_num'])
+    except Exception as e:
+        return str(ID), None
+    
     generation_num = 'ND' if generation_num==-1 else generation_num
     if is_tree_annot:
         try:
