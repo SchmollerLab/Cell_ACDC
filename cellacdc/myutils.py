@@ -1967,10 +1967,10 @@ def get_pip_install_cellacdc_version_command(version=None):
 def get_git_pull_checkout_cellacdc_version_commands(version=None):
     if version is None:
         version = read_version()
-    is_dev_version = version.find('.dev') != -1
-    if not is_dev_version:
+    try:
+        commit_hash = re.findall(r'\+g(.+)\.', version)[0]
+    except Exception as e:
         return []
-    commit_hash = re.findall(r'\+g(.+)\.', version)[0]
     commands = (
         f'cd "{cellacdc_path}"',
         'git pull',
