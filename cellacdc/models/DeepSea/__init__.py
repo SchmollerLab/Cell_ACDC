@@ -6,6 +6,7 @@ import numpy as np
 from cellacdc import myutils
 
 myutils.check_install_package('deepsea')
+myutils.check_install_package('torch')
 
 import torch
 import torchvision.transforms as transforms
