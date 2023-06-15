@@ -3084,6 +3084,8 @@ class ToObjCoordsWorker(BaseWorkerUtil):
 
                 keys = list(range(len(posData.segm_data)))
                 df = pd.concat(dfs, keys=keys, names=['frame_i'])
+                
+                self.signals.initProgressBar.emit(0)
                 df.to_csv(df_filepath)
                         
         self.signals.finished.emit(self)
