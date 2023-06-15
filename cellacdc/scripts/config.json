@@ -1,0 +1,18 @@
+{
+  "correct_shift_x": {
+    "PREVIEW_Z_STACK": 40,
+    "PREVIEW_Z": 14,
+    "NEW_PATH_SUF": ""
+  },
+  "correct_shift_x_multi": {
+    "PREVIEW_Z_STACK": 40,
+    "PREVIEW_Z": 14,
+    "NEW_PATH_SUF": "",
+    "FOLDER_FILTER": "pos",
+    "PRESET_SHIFT": 3
+  },
+  "correct_shift_x_single": {
+    "PREVIEW_Z": 14,
+    "NEW_PATH_SUF": ""
+  }
+}
