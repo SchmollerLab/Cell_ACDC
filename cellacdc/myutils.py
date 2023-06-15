@@ -1953,12 +1953,10 @@ def get_slices_local_into_global_arr(bbox_coords, global_shape):
 def get_pip_install_cellacdc_version_command(version=None):
     if version is None:
         version = read_version()
-    try:
-        commit_hash = re.findall(r'\+g(.+)\.', version)[0]
-        is_dev_version = True
-    except Exception as e:
-        is_dev_version = False
+    commit_hash_idx = version.find('+g') != -1
+    is_dev_version = commit_hash_idx > 0    
     if is_dev_version:
+        commit_hash = version[commit_hash_idx+2:]
         command = f'pip install --upgrade "git+{github_home_url}.git@{commit_hash}"'
     else:
         command = f'pip install --upgrade cellacdc=={version}'
@@ -1967,10 +1965,11 @@ def get_pip_install_cellacdc_version_command(version=None):
 def get_git_pull_checkout_cellacdc_version_commands(version=None):
     if version is None:
         version = read_version()
-    try:
-        commit_hash = re.findall(r'\+g(.+)\.', version)[0]
-    except Exception as e:
+    commit_hash_idx = version.find('+g') != -1
+    is_dev_version = commit_hash_idx > 0 
+    if not is_dev_version:
         return []
+    commit_hash = version[commit_hash_idx+2:]
     commands = (
         f'cd "{cellacdc_path}"',
         'git pull',
