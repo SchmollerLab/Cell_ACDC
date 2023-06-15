@@ -15019,7 +15019,10 @@ class guiWin(QMainWindow):
         # For the last visited frame we perform assignment again only on
         # IDs where we didn't manually correct assignment
         if lastVisited and not enforceAll:
-            correctedAssignIDs = curr_df[curr_df['corrected_assignment']].index
+            try:
+                correctedAssignIDs = curr_df[curr_df['corrected_assignment']].index
+            except Exception as e:
+                correctedAssignIDs = []
             posData.new_IDs = [
                 ID for ID in posData.new_IDs
                 if ID not in correctedAssignIDs
