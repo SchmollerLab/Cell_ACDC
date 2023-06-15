@@ -13,7 +13,7 @@ from ..myutils import read_version
 from ..myutils import get_pip_install_cellacdc_version_command
 from ..myutils import get_git_pull_checkout_cellacdc_version_commands
 from .. import widgets, myutils
-from .. import html_utils
+from .. import html_utils, printl
 from .. import qrc_resources
 
 class QDialogAbout(QDialog):
@@ -43,7 +43,6 @@ class QDialogAbout(QDialog):
         titleLabel.setText(txt)
         
         # '{next_version}.dev{distance}+{scm letter}{revision hash}'
-        commit_hash = re.findall(r'\+g(.+)\.', version)[0]
         command = get_pip_install_cellacdc_version_command(version=version)
         commandLabel = QLabel(html_utils.paragraph(
             f'<b>To install this specific version</b> '

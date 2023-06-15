@@ -875,7 +875,7 @@ class guiWin(QMainWindow):
             module=module, logs_path=logs_path
         )
         if self._version is not None:
-            logger.info(f'Initializing GUI v{self._version}...')
+            logger.info(f'Initializing GUI v{self._version}')
         else:
             logger.info(f'Initializing GUI...')
         self.logger = logger

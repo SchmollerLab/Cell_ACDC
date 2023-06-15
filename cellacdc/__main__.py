@@ -1549,7 +1549,7 @@ def run():
     except AttributeError:
         pass
     win.logger.info('**********************************************')
-    win.logger.info(f'Welcome to Cell-ACDC v{version}!')
+    win.logger.info(f'Welcome to Cell-ACDC v{version}')
     win.logger.info('**********************************************')
     win.logger.info('----------------------------------------------')
     win.logger.info('NOTE: If application is not visible, it is probably minimized\n'
