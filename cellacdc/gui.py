@@ -14773,6 +14773,9 @@ class guiWin(QMainWindow):
             In the next frame the followning cells' IDs in S/G2/M
             (highlighted with a yellow contour) <b>will disappear</b>:<br><br>
             {ScellsIDsGone}<br><br>
+            If the cell <b>does not exist</b> you might have deleted it at some point. 
+            If that's the case, then try to go to some previous frames and reset 
+            the cell cycle annotations there (button on the top toolbar).<br><br>
             These cells are either buds or mother whose <b>related IDs will not
             disappear</b>. This is likely due to cell division happening in
             previous frame and the divided bud or mother will be
@@ -14829,7 +14832,7 @@ class guiWin(QMainWindow):
             relID = ccSeries.relative_ID
             if relID == -1:
                 continue
-
+            
             # Check is relID is gone while ID stays
             if relID not in posData.IDs and ID in posData.IDs:
                 ScellsIDsGone.append(relID)
@@ -14847,11 +14850,21 @@ class guiWin(QMainWindow):
         for IDgone in ScellsIDsGone:
             relID = prev_cca_df.at[IDgone, 'relative_ID']
             self.annotateDivision(prev_cca_df, IDgone, relID)
+            self.annotateDivisionCurrentFrameRelativeIDgone(relID)
             automaticallyDividedIDs.append(relID)
-
+            
         self.store_cca_df(frame_i=posData.frame_i-1, cca_df=prev_cca_df)
 
         return False, automaticallyDividedIDs
+
+    def annotateDivisionCurrentFrameRelativeIDgone(self, IDwhoseRelativeIsGone):
+        posData = self.data[self.pos_i]
+        if posData.cca_df is None:
+            return
+        ID = IDwhoseRelativeIsGone
+        posData.cca_df.at[ID, 'generation_num'] += 1
+        posData.cca_df.at[ID, 'division_frame_i'] = posData.frame_i-1
+        posData.cca_df.at[ID, 'relationship'] = 'mother'
 
     @exception_handler
     def attempt_auto_cca(self, enforceAll=False):

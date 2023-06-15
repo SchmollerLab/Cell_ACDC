@@ -135,7 +135,7 @@ If you want to contribute to the code or you want to have a developer version th
 6. Navigate to the `Cell_ACDC` folder with the command `cd Cell_ACDC`.
 7. Add the upstream repository with the command `git remote add upstream https://github.com/SchmollerLab/Cell_ACDC.git`
 8. Update conda with `conda update conda`. Optionally, consider removing unused packages with the command `conda clean --all`
-9. Create a new conda environment with the command `conda create -n acdc_dev python=3.9`
+9. Create a new conda environment with the command `conda create -n acdc_dev python=3.9`. Note that `acdc_dev` is the name of the environment and you can call it whatever you like. Feel free to call it just `acdc`.
 10. Activate the environment with the command `conda activate acdc_dev`
 11. Upgrade pip with the command `python -m pip install --upgrade pip`
 12. Install Cell-ACDC with the command `pip install -e .`. The `.` at the end of the command means that you want to install from the current folder in the terminal. This must be the `Cell_ACDC` folder that you cloned before. 
