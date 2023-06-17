@@ -18694,6 +18694,9 @@ class guiWin(QMainWindow):
             self.setCcaIssueContour(obj)
 
     def highlightLostNew(self):
+        if self.modeComboBox.currentText() == 'Viewer':
+            return
+        
         posData = self.data[self.pos_i]
         delROIsIDs = self.getDelRoisIDs()
 
@@ -18729,6 +18732,7 @@ class guiWin(QMainWindow):
             
             self.setLostObjectContour(obj)
 
+    # @exec_time
     def setTitleText(self):
         posData = self.data[self.pos_i]
         if posData.frame_i == 0:
@@ -18738,7 +18742,8 @@ class guiWin(QMainWindow):
             # posData.multiContIDs = set()
             self.titleLabel.setText('Looking good!', color=self.titleColor)
             return
-
+        # elif self.modeComboBox.currentText() == 'Viewer':
+        #     pass
         prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
         existing = True
         if prev_rp is None:
