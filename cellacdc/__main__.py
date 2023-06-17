@@ -2,7 +2,34 @@
 import os
 import logging
 
-from cellacdc import dataReStruct
+import os
+import numpy as np
+
+site_packages = os.path.dirname(os.path.dirname(np.__file__))
+cellacdc_path = os.path.dirname(os.path.abspath(__file__))
+cellacdc_installation_path = os.path.dirname(cellacdc_path)
+if cellacdc_installation_path != site_packages:
+    # Running developer version. Delete cellacdc folder from site_packages 
+    # if present from a previous installation of cellacdc from PyPi
+    cellacdc_path_pypi = os.path.join(site_packages, 'cellacdc')
+    if os.path.exists(cellacdc_path_pypi):
+        import shutil
+        try:
+            shutil.rmtree(cellacdc_path_pypi)
+        except Exception as err:
+            print(err)
+            print(
+                '[ERROR]: Previous Cell-ACDC installation detected. '
+                f'Please, manually delete this folder and re-start the software '
+                f'"{cellacdc_path_pypi}". '
+                'Thank you for you patience!'
+            )
+            exit()
+        exit('[WARNING]: Cell-ACDC had to clean-up some files from a previous '
+             'installation. Please, re-start the software. '
+             'Thank you for your patience!')
+
+from . import dataReStruct
 from . import exception_handler, printl
 from . import qrc_resources
 if os.name == 'nt':
@@ -148,7 +175,7 @@ class mainWin(QMainWindow):
         self.checkConfigFiles()
         
         scheme = self.getColorScheme()
-        from _palettes import getPaletteColorScheme, setToolTipStyleSheet
+        from ._palettes import getPaletteColorScheme, setToolTipStyleSheet
         self.app = app
         palette = getPaletteColorScheme(app.palette(), scheme=scheme)
         app.setPalette(palette)     
@@ -330,14 +357,14 @@ class mainWin(QMainWindow):
         self.statusbar.addWidget(widget)
     
     def getColorScheme(self):
-        from _palettes import get_color_scheme
+        from ._palettes import get_color_scheme
         return get_color_scheme()
     
     def onDarkModeToggled(self, checked):
         if self.darkModeToggle.ignoreEvent:
             self.darkModeToggle.ignoreEvent = False
             return
-        from _palettes import getPaletteColorScheme
+        from ._palettes import getPaletteColorScheme
         scheme = 'dark' if checked else 'light'
         if not os.path.exists(settings_csv_path):
             df_settings = pd.DataFrame(

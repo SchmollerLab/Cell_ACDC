@@ -1,8 +1,5 @@
 import sys
 import os
-os.environ["QT_API"] = "pyqt6"
-
-import qrc_resources
 
 from qtpy.QtGui import QIcon
 from qtpy.QtCore import Qt, QSize
@@ -11,8 +8,12 @@ from qtpy.QtWidgets import (
 )
 
 from cellacdc.load import get_all_svg_icons_aliases
+from cellacdc._palettes import getPaletteColorScheme, setToolTipStyleSheet
+import qrc_resources
 
-svg_aliases = get_all_svg_icons_aliases()
+SCHEME = 'dark' # 'light'
+
+svg_aliases = get_all_svg_icons_aliases(sort=True)
 
 # Distribute icons over a 16:9 grid
 nicons = len(svg_aliases)
@@ -25,6 +26,9 @@ if left_nicons > 0:
 app = QApplication(sys.argv)
 app.setStyle(QStyleFactory.create('Fusion'))
 app.setPalette(app.style().standardPalette())
+palette = getPaletteColorScheme(app.palette(), scheme=SCHEME)
+app.setPalette(palette)     
+setToolTipStyleSheet(app, scheme=SCHEME)
 
 if hasattr(Qt, 'AA_UseHighDpiPixmaps'):
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)

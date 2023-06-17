@@ -2215,10 +2215,12 @@ def _restructure_multi_files_multi_pos(
     action_str = 'copied' if action=='copy' else 'moved'
     logger(f'Done! Files {action_str} and restructured into "{src_path}"')
 
-def get_all_svg_icons_aliases():
+def get_all_svg_icons_aliases(sort=True):
     from . import resources_filepath
     with open(resources_filepath, 'r') as resources_file:
         resources_txt = resources_file.read()
     
     aliases = re.findall('<file alias="(.+\.svg)">', resources_txt)
+    if sort:
+        aliases = natsorted(aliases)
     return aliases
