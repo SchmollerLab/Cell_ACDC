@@ -2,7 +2,6 @@ import sys
 import os
 import shutil
 
-
 SCHEME = 'dark' 
 
 cellacdc_path = os.path.dirname(os.path.abspath(__file__))
@@ -51,6 +50,7 @@ layout = QGridLayout()
 win.setLayout(layout)
 
 idx = 0
+buttons = []
 for i in range(nrows):
     for j in range(ncols):
         if idx == nicons:
@@ -62,9 +62,15 @@ for i in range(nrows):
         button.setIconSize(QSize(32,32))
         button.setCheckable(True)
         layout.addWidget(button, i, j)
+        buttons.append(button)
         idx += 1
 
-checkbox = QCheckBox('Test checkbox')
+def setDisabled(checked):
+    for button in buttons:
+        button.setDisabled(checked)
+        
+checkbox = QCheckBox('Disable buttons')
+checkbox.toggled.connect(setDisabled)
 layout.addWidget(checkbox, i, j+1)
 
 win.showMaximized()
