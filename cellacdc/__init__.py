@@ -14,15 +14,20 @@ qrc_resources_path = os.path.join(cellacdc_path, 'qrc_resources.py')
 qrc_resources_light_path = os.path.join(cellacdc_path, 'qrc_resources_light.py')
 qrc_resources_dark_path = os.path.join(cellacdc_path, 'qrc_resources_dark.py')
 
+# Set default qrc resources
 if not os.path.exists(qrc_resources_path):
     # Load default light mode
     shutil.copyfile(qrc_resources_light_path, qrc_resources_path)
 
-with open(qrc_resources_path, 'r') as qrc_py:
-    text = qrc_py.read()
-    text = text.replace('from PyQt5', 'from qtpy')
-with open(qrc_resources_path, 'w') as qrc_py:
-    qrc_py.write(text)
+# Replace 'from PyQt5' with 'from qtpy' in qrc_resources.py file
+try:
+    with open(qrc_resources_path, 'r') as qrc_py:
+        text = qrc_py.read()
+        text = text.replace('from PyQt5', 'from qtpy')
+    with open(qrc_resources_path, 'w') as qrc_py:
+        qrc_py.write(text)
+except Exception as err:
+    raise err
 
 try:
     import qtpy
