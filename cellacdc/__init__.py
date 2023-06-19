@@ -95,6 +95,29 @@ except Exception as e:
                 'Type "y" for "yes", or "n" for "no".'
             )
 
+temp_path = os.path.join(cellacdc_path, 'temp')
+settings_csv_path = os.path.join(temp_path, 'settings.csv')
+if not os.path.exists(temp_path):
+    os.makedirs(temp_path)
+if not os.path.exists(settings_csv_path):
+    import pandas as pd
+    df_settings = pd.DataFrame(
+        {'setting': [], 'value': []}).set_index('setting')
+    df_settings.to_csv(settings_csv_path)
+
+# Check OS dark or light mode
+from qtpy.QtWidgets import QApplication, QStyleFactory
+from qtpy.QtGui import QPalette
+app = QApplication([])
+app.setStyle(QStyleFactory.create('Fusion'))
+is_OS_dark_mode = app.palette().color(QPalette.Window).getHsl()[2] < 100
+if is_OS_dark_mode:
+    import pandas as pd
+    df_settings = pd.read_csv(settings_csv_path, index_col='setting')
+    if 'colorScheme' not in df_settings.index:
+        df_settings.at['colorScheme', 'value'] = 'dark'
+        df_settings.to_csv(settings_csv_path)
+
 import sys
 import os
 import inspect
@@ -158,10 +181,8 @@ user_path = pathlib.Path.home()
 parent_path = os.path.dirname(cellacdc_path)
 html_path = os.path.join(cellacdc_path, '_html')
 data_path = os.path.join(parent_path, 'data')
-temp_path = os.path.join(cellacdc_path, 'temp')
 resources_folderpath = os.path.join(cellacdc_path, 'resources')
 resources_filepath = os.path.join(cellacdc_path, 'resources.qrc')
-settings_csv_path = os.path.join(temp_path, 'settings.csv')
 logs_path = os.path.join(user_path, '.acdc-logs')
 resources_path = os.path.join(cellacdc_path, 'resources.qrc')
 models_list_file_path = os.path.join(temp_path, 'custom_models_paths.ini')
@@ -171,9 +192,6 @@ github_home_url = 'https://github.com/SchmollerLab/Cell_ACDC'
 # Use to get the acdc_output file name from `segm_filename` as 
 # `m = re.sub(segm_re_pattern, '_acdc_output', segm_filename)`
 segm_re_pattern = r'_segm(?!.*_segm)'
-
-if not os.path.exists(temp_path):
-    os.makedirs(temp_path)
 
 try:
     from setuptools_scm import get_version
