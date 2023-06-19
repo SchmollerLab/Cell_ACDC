@@ -2220,7 +2220,7 @@ def get_all_svg_icons_aliases(sort=True):
     with open(resources_filepath, 'r') as resources_file:
         resources_txt = resources_file.read()
     
-    aliases = re.findall('<file alias="(.+\.svg)">', resources_txt)
+    aliases = re.findall(r'<file alias="(.+\.svg)">', resources_txt)
     if sort:
         aliases = natsorted(aliases)
     return aliases

@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   version="1.1"
+   width="32"
+   height="32"
+   viewBox="0 0 32 32"
+   id="svg6"
+   sodipodi:docname="cross_cursor.svg"
+   inkscape:version="1.2.2 (732a01da63, 2022-12-09)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <metadata
+     id="metadata12">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title>magic-wand</dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <defs
+     id="defs10">
+    <inkscape:path-effect
+       effect="bspline"
+       id="path-effect1028"
+       is_visible="true"
+       lpeversion="1"
+       weight="33.333333"
+       steps="2"
+       helper_size="0"
+       apply_no_weight="true"
+       apply_with_weight="true"
+       only_selected="false" />
+  </defs>
+  <sodipodi:namedview
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="1"
+     objecttolerance="10"
+     gridtolerance="10"
+     guidetolerance="10"
+     inkscape:pageopacity="0"
+     inkscape:pageshadow="2"
+     inkscape:window-width="1920"
+     inkscape:window-height="1017"
+     id="namedview8"
+     showgrid="false"
+     showguides="true"
+     inkscape:guide-bbox="true"
+     inkscape:zoom="17.987029"
+     inkscape:cx="19.402871"
+     inkscape:cy="18.513341"
+     inkscape:window-x="1912"
+     inkscape:window-y="-8"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg6"
+     inkscape:document-rotation="0"
+     inkscape:showpageshadow="2"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1">
+    <sodipodi:guide
+       position="16,36.066679"
+       orientation="-1,0"
+       id="guide837"
+       inkscape:label=""
+       inkscape:locked="false"
+       inkscape:color="rgb(0,0,255)" />
+    <sodipodi:guide
+       position="-8.0290834,16"
+       orientation="0,1"
+       id="guide839"
+       inkscape:label=""
+       inkscape:locked="false"
+       inkscape:color="rgb(0,0,255)" />
+  </sodipodi:namedview>
+  <title
+     id="title2">magic-wand</title>
+  <circle
+     style="opacity:1;fill:#ff0000;fill-opacity:0.442748;stroke:#ff0000;stroke-width:1.572;stroke-linecap:square;stroke-linejoin:miter;stroke-dasharray:none;stroke-opacity:1"
+     id="path1229"
+     cx="16"
+     cy="-16"
+     transform="scale(1,-1)"
+     r="6.7139997" />
+  <path
+     id="rect1082"
+     style="fill:#e6e6e6;stroke:#f0f0f0;stroke-width:0.572001;stroke-linecap:square;stroke-linejoin:miter;stroke-opacity:1"
+     d="M 14.839844 2.2851562 C 14.809728 2.2851562 14.785156 2.5874517 14.785156 2.9628906 L 14.785156 14.785156 L 2.9628906 14.785156 C 2.5874517 14.785156 2.2851562 14.809728 2.2851562 14.839844 L 2.2851562 17.160156 C 2.2851562 17.190272 2.5874517 17.214844 2.9628906 17.214844 L 14.785156 17.214844 L 14.785156 29.037109 C 14.785156 29.412548 14.809728 29.714844 14.839844 29.714844 L 17.160156 29.714844 C 17.190272 29.714844 17.214844 29.412548 17.214844 29.037109 L 17.214844 17.214844 L 29.037109 17.214844 C 29.412548 17.214844 29.714844 17.190272 29.714844 17.160156 L 29.714844 14.839844 C 29.714844 14.809728 29.412548 14.785156 29.037109 14.785156 L 17.214844 14.785156 L 17.214844 2.9628906 C 17.214844 2.5874517 17.190272 2.2851562 17.160156 2.2851562 L 14.839844 2.2851562 z " />
+</svg>

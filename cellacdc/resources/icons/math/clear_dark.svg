@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   class="icon icon-tabler icon-tabler-square-root"
+   fill="none"
+   stroke="#000000"
+   stroke-linecap="round"
+   stroke-linejoin="round"
+   stroke-width="2"
+   viewBox="0 0 24 24"
+   version="1.1"
+   id="svg6"
+   sodipodi:docname="clear.svg"
+   inkscape:version="1.1.2 (b8e25be8, 2022-02-05)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs10">
+    <inkscape:path-effect
+       effect="spiro"
+       id="path-effect2536"
+       is_visible="true"
+       lpeversion="1" />
+    <inkscape:path-effect
+       effect="spiro"
+       id="path-effect2392"
+       is_visible="true"
+       lpeversion="1" />
+    <pattern
+       id="EMFhbasepattern"
+       patternUnits="userSpaceOnUse"
+       width="6"
+       height="6"
+       x="0"
+       y="0" />
+    <pattern
+       id="EMFhbasepattern-1"
+       patternUnits="userSpaceOnUse"
+       width="6"
+       height="6"
+       x="0"
+       y="0" />
+    <pattern
+       id="EMFhbasepattern-5"
+       patternUnits="userSpaceOnUse"
+       width="6"
+       height="6"
+       x="0"
+       y="0" />
+  </defs>
+  <sodipodi:namedview
+     id="namedview8"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     showgrid="false"
+     inkscape:zoom="17.875"
+     inkscape:cx="17.874126"
+     inkscape:cy="11.776224"
+     inkscape:window-width="1296"
+     inkscape:window-height="917"
+     inkscape:window-x="0"
+     inkscape:window-y="25"
+     inkscape:window-maximized="0"
+     inkscape:current-layer="svg6" />
+  <g
+     aria-label="C"
+     id="text1359"
+     style="font-size:26.388px;line-height:1.25;fill:#000000;stroke:none;stroke-width:1.30463"
+     transform="matrix(0.86857051,0,0,0.86964152,1.5771628,1.5643017)">
+    <path
+       d="m 19.480998,17.2776 c -1.9791,1.873548 -3.43044,2.665188 -5.80536,2.665188 -1.820772,0 -3.535992,-0.6597 -4.697064,-1.899936 C 7.738338,16.697064 7.078638,14.6388 7.078638,11.73612 c 0,-4.5651238 2.348532,-7.7844599 6.33312,-7.7844599 1.71522,0 3.087396,0.765252 4.248468,2.005488 0.6597,0.712476 1.05552,1.4777281 1.372176,2.9290681 h 0.606924 L 19.401834,2.8961401 h -0.52776 c -0.158328,0.554148 -0.606924,0.870804 -1.108296,0.870804 -0.448596,0 -1.266624,-0.316656 -1.820772,-0.474984 -1.05552,-0.290268 -2.11104,-0.39582 -3.140172,-0.39582 -2.454084,0 -4.723452,0.870804 -6.412284,2.744352 -1.5041161,1.6888321 -2.3749201,3.8790361 -2.3749201,6.5178359 0,2.612412 0.92358,5.01372 2.5332481,6.597 1.530504,1.504116 3.82626,2.348532 6.227568,2.348532 3.113784,0 5.67342,-1.161072 7.203924,-3.351276 z"
+       style="font-family:'Cambria Math';-inkscape-font-specification:'Cambria Math';fill:#f0f0f0;stroke:#f0f0f0;stroke-width:1.30463"
+       id="path986" />
+  </g>
+</svg>

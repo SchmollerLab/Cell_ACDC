@@ -4,14 +4,26 @@ import os
 from qtpy.QtGui import QIcon
 from qtpy.QtCore import Qt, QSize
 from qtpy.QtWidgets import (
-    QApplication, QPushButton, QStyleFactory, QWidget, QGridLayout
+    QApplication, QPushButton, QStyleFactory, QWidget, QGridLayout, 
+    QCheckBox
 )
+
+cellacdc_path = os.path.dirname(os.path.abspath(__file__))
+qrc_resources_light_path = os.path.join(cellacdc_path, 'qrc_resources_light.py')
+qrc_resources_dark_path = os.path.join(cellacdc_path, 'qrc_resources_dark.py')
+qrc_resources_path = os.path.join(cellacdc_path, 'qrc_resources.py')
+
+SCHEME = 'dark' 
+if SCHEME == 'dark' and os.path.exists(qrc_resources_dark_path):
+    os.rename(qrc_resources_path, qrc_resources_light_path)
+    os.rename(qrc_resources_dark_path, qrc_resources_path)
+elif SCHEME == 'light' and os.path.exists(qrc_resources_light_path):
+    os.rename(qrc_resources_path, qrc_resources_dark_path)
+    os.rename(qrc_resources_light_path, qrc_resources_path)
+    
 
 from cellacdc.load import get_all_svg_icons_aliases
 from cellacdc._palettes import getPaletteColorScheme, setToolTipStyleSheet
-import qrc_resources
-
-SCHEME = 'dark' # 'light'
 
 svg_aliases = get_all_svg_icons_aliases(sort=True)
 
@@ -47,8 +59,12 @@ for i in range(nrows):
         button = QPushButton(alias)
         button.setIcon(icon)
         button.setIconSize(QSize(32,32))
+        button.setCheckable(True)
         layout.addWidget(button, i, j)
         idx += 1
+
+checkbox = QCheckBox('Test checkbox')
+layout.addWidget(checkbox, i, j+1)
 
 win.showMaximized()
 app.exec_()
