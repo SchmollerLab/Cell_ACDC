@@ -471,7 +471,7 @@ class mainWin(QMainWindow):
         self.welcomeGuide.showPage(self.welcomeGuide.welcomeItem)
 
     def setColorsAndText(self):
-        self.moduleLaunchedColor = '#ead935'
+        self.moduleLaunchedColor = '#998f31'
         self.moduleLaunchedQColor = QColor(self.moduleLaunchedColor)
         defaultColor = self.guiButton.palette().button().color().name()
         self.defaultButtonPalette = self.guiButton.palette()
@@ -1197,6 +1197,7 @@ class mainWin(QMainWindow):
         
         useBioFormats = msg.clickedButton == useBioFormatsButton
         if self.dataStructButton.isEnabled() and useBioFormats:
+            self.dataStructButton.setPalette(self.defaultButtonPalette)
             self.dataStructButton.setText(
                 '0. Restart Cell-ACDC to enable module 0 again.')
             self.dataStructButton.setToolTip(

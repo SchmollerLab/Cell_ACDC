@@ -2267,7 +2267,7 @@ class QDialogMetadataXML(QDialog):
 
     def __init__(
             self, title='Metadata',
-            LensNA=1.0, DimensionOrder='zct', rawFilename='test',
+            LensNA=1.0, DimensionOrder=None, rawFilename='test',
             SizeT=1, SizeZ=1, SizeC=1, SizeS=1,
             TimeIncrement=1.0, TimeIncrementUnit='s',
             PhysicalSizeX=1.0, PhysicalSizeY=1.0, PhysicalSizeZ=1.0,
@@ -2292,6 +2292,8 @@ class QDialogMetadataXML(QDialog):
         font = QFont()
         font.setPixelSize(13)
         self.setFont(font)
+        if DimensionOrder is None:
+            DimensionOrder = 'ztc' # default for .czi and .nd2
 
         mainLayout = QVBoxLayout()
         entriesLayout = QGridLayout()
@@ -2384,10 +2386,7 @@ class QDialogMetadataXML(QDialog):
         else:
             items = list(sampleImgData.keys())
         self.DimensionOrderCombo.addItems(items)
-        # ztc should be default for .czi and .nd2
-        if 'ztc' in items:
-            self.DimensionOrderCombo.setCurrentText('ztc')
-        self.lastValidDimensionOrderText = DimensionOrder
+        self.DimensionOrderCombo.setCurrentText(DimensionOrder[:3].lower())
         txt = 'Order of dimensions:  '
         label = QLabel(txt)
         entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)

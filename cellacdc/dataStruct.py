@@ -34,7 +34,7 @@ from qtpy import QtGui
 from . import exception_handler
 from . import qrc_resources
 from . import apps, myutils, widgets, html_utils, printl
-from . import load
+from . import load, settings_csv_path
 
 if os.name == 'nt':
     try:
@@ -205,7 +205,7 @@ class bioFormatsWorker(QObject):
         else:
             SizeS = self.SizeS
 
-        DimensionOrder = 'zct'
+        DimensionOrder = 'ztc'
 
         try:
             SizeZ = int(metadata.image().Pixels.SizeZ)
@@ -886,11 +886,9 @@ class bioFormatsWorker(QObject):
         
 
 class createDataStructWin(QMainWindow):
-
     def __init__(
-            self, parent=None, allowExit=False,
-            buttonToRestore=None, mainWin=None,
-            start_JVM=True, version=None
+            self, parent=None, allowExit=False, buttonToRestore=None, 
+            mainWin=None, start_JVM=True, version=None
         ):
         super().__init__(parent)
 
@@ -909,7 +907,6 @@ class createDataStructWin(QMainWindow):
         else:
             logger.info(f'Initializing Data structure module...')
 
-        
         is_linux = sys.platform.startswith('linux')
         is_mac = sys.platform == 'darwin'
         is_win = sys.platform.startswith("win")
@@ -920,6 +917,12 @@ class createDataStructWin(QMainWindow):
         self.buttonToRestore = buttonToRestore
         self.mainWin = mainWin
         self.metadataDialogIsOpen = False
+        self.df_settings = pd.read_csv(
+            settings_csv_path, index_col='setting'
+        )
+        if 'lastDimensionOrder' in self.df_settings.index:
+            val = self.df_settings.at['lastDimensionOrder', 'value']
+            self.lastDimensionOrder = val
 
         self.setWindowTitle("Cell-ACDC - From raw microscopy file to tifs")
         self.setWindowIcon(QtGui.QIcon(":icon.ico"))
@@ -1657,6 +1660,8 @@ class createDataStructWin(QMainWindow):
         if self.rawDataStruct == 2:
             filename = self.basename
         self.metadataDialogIsOpen = True
+        if hasattr(self, 'lastDimensionOrder'):
+            DimensionOrder = self.lastDimensionOrder
         self.metadataWin = apps.QDialogMetadataXML(
             title=f'Metadata for {filename}', rawFilename=filename,
             LensNA=LensNA, DimensionOrder=DimensionOrder,
@@ -1669,9 +1674,16 @@ class createDataStructWin(QMainWindow):
             sampleImgData=sampleImgData, rawFilePath=rawFilePath
         )
         self.metadataWin.exec_()
+        if not self.metadataWin.cancel:
+            self.saveLastSelectedDimensionOrder(self.metadataWin.DimensionOrder)
         self.metadataDialogIsOpen = False
         self.worker.metadataWin = self.metadataWin
         self.waitCond.wakeAll()
+    
+    def saveLastSelectedDimensionOrder(self, DimensionOrder):
+        self.df_settings.at['lastDimensionOrder', 'value'] = DimensionOrder
+        self.df_settings.to_csv(settings_csv_path)
+        self.lastDimensionOrder = DimensionOrder
 
     def askReplacePos(self, pos_path):
         msg = widgets.myMessageBox()
