@@ -9175,8 +9175,11 @@ class guiWin(QMainWindow):
             delROIs_info['delIDsROI'][idx] = delIDsROI
         return allDelIDs, DelROIlab
     
-    def getDelRoiMask(self, roi):
-        posData = self.data[self.pos_i]
+    def getDelRoiMask(self, roi, posData=None, z_slice=None):
+        if posData is None:
+            posData = self.data[self.pos_i]
+        if z_slice is None:
+            z_slice = self.z_lab()
         ROImask = np.zeros(posData.lab.shape, bool)
         if isinstance(roi, pg.PolyLineROI):
             r, c = [], []
@@ -9193,7 +9196,7 @@ class guiWin(QMainWindow):
             else:
                 rr, cc = skimage.draw.polygon(r, c, shape=self.currentLab2D.shape)
             if self.isSegm3D:
-                ROImask[self.z_lab(), rr, cc] = True
+                ROImask[z_slice, rr, cc] = True
             else:
                 ROImask[rr, cc] = True
         elif isinstance(roi, pg.LineROI):
@@ -9204,14 +9207,14 @@ class guiWin(QMainWindow):
             x2, y2 = int(point2.x()), int(point2.y())
             rr, cc, val = skimage.draw.line_aa(y1, x1, y2, x2)
             if self.isSegm3D:
-                ROImask[self.z_lab(), rr, cc] = True
+                ROImask[z_slice, rr, cc] = True
             else:
                 ROImask[rr, cc] = True
         else: 
             x0, y0 = [int(c) for c in roi.pos()]
             w, h = [int(c) for c in roi.size()]
             if self.isSegm3D:
-                ROImask[self.z_lab(), y0:y0+h, x0:x0+w] = True
+                ROImask[z_slice, y0:y0+h, x0:x0+w] = True
             else:
                 ROImask[y0:y0+h, x0:x0+w] = True
         return ROImask
@@ -9847,6 +9850,8 @@ class guiWin(QMainWindow):
                 self.store_cca_df()
         elif mode == 'Cell cycle analysis':
             proceed = self.initCca()
+            if proceed:
+                self.applyDelROIs()
             self.modeToolBar.setVisible(True)
             self.realTimeTrackingToggle.setDisabled(True)
             self.realTimeTrackingToggle.label.setDisabled(True)
@@ -10773,17 +10778,13 @@ class guiWin(QMainWindow):
         if ev.key() == Qt.Key_Q:
             # self.setAllIDs()
             posData = self.data[self.pos_i]
-            roi = posData.allData_li[posData.frame_i]['delROIs_info']['rois'][0]
-            ROImask = self.getDelRoiMask(roi)
-            # self.pointsLayerDataToDf(posData)
-            # # posData.clickEntryPointsDfs
-            # printl(posData.clickEntryPointsDfs)
-            # self.drawPointsLayers(computePointsLayers=False)
-            # printl(posData.fluo_data_dict.keys())
-            # for key in posData.fluo_data_dict:
-            #     printl(key, posData.fluo_data_dict[key].max())
-            # printl(f'{posData.binnedIDs = }')
-            # printl(f'{posData.ripIDs = }')
+            # from acdctools.plot import imshow
+            # delIDs = posData.allData_li[posData.frame_i]['delROIs_info']['delIDsROI']
+            # printl(delIDs)
+            # self.store_data()
+            # self.applyDelROIs()
+            # stored_lab = posData.allData_li[posData.frame_i]['labels']
+            # imshow(posData.lab, stored_lab, parent=self)
         
         if not self.dataIsLoaded:
             self.logger.info(
@@ -17816,6 +17817,32 @@ class guiWin(QMainWindow):
                 self.labelsLayerRightImg.setImage(lab, autoLevels=False)
 
         self.setAllTextAnnotations(labelsToSkip={ID:True for ID in delIDs})
+    
+    def applyDelROIs(self):
+        self.logger.info('Applying deletion ROIs (if present)...')
+        
+        for posData in self.data:
+            self.current_frame_i = posData.frame_i
+            for frame_i in range(posData.SizeT):
+                lab = posData.allData_li[frame_i]['labels']
+                if lab is None:
+                    break
+                delROIs_info = posData.allData_li[frame_i]['delROIs_info']
+                delIDs_rois = delROIs_info['delIDsROI']
+                if not delIDs_rois:
+                    continue
+                for delIDs in delIDs_rois:
+                    for delID in delIDs:
+                        lab[lab==delID] = 0
+                posData.allData_li[frame_i]['labels'] = lab
+                # Get the rest of the metadata and store data based on the new lab
+                posData.frame_i = frame_i
+                self.get_data()
+                self.store_data(autosave=False)
+            
+            # Back to current frame
+            posData.frame_i = self.current_frame_i
+            self.get_data()
                 
     def initTempLayerBrush(self, ID, ax=0):
         if ax == 0:
@@ -21005,6 +21032,8 @@ class guiWin(QMainWindow):
 
     @exception_handler
     def saveData(self, checked=False, finishedCallback=None, isQuickSave=False):
+        self.store_data(autosave=False)
+        self.applyDelROIs()
         self.store_data()
 
         # Wait autosave worker to finish
