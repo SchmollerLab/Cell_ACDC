@@ -8947,7 +8947,12 @@ class guiWin(QMainWindow):
             self.fixCcaDfAfterEdit('Delete IDs using ROI')
             self.updateAllImages()
         else:
-            self.warnEditingWithCca_df('Delete IDs using ROI')
+            cancelled_str = self.warnEditingWithCca_df(
+                'Delete IDs using ROI', get_cancelled=True
+            )
+            if cancelled_str == 'cancelled':
+                self.roi_to_del = roi
+                self.removeDelROI()
     
     def replacePolyLineRoiWithLineRoi(self, roi):
         roi = self.polyLineRoi
@@ -18050,7 +18055,10 @@ class guiWin(QMainWindow):
             self.update_cca_df_snapshots(editTxt, posData)
             self.store_data()
 
-    def warnEditingWithCca_df(self, editTxt, return_answer=False, get_answer=False):
+    def warnEditingWithCca_df(
+            self, editTxt, return_answer=False, get_answer=False, 
+            get_cancelled=False
+        ):
         # Function used to warn that the user is editing in "Segmentation and
         # Tracking" mode a frame that contains cca annotations.
         # Ask whether to remove annotations from all future frames 
@@ -18099,6 +18107,8 @@ class guiWin(QMainWindow):
             ), widgets=checkBox
             )
         if msg.cancel:
+            if get_cancelled:
+                return 'cancelled'
             removeAnnotations = False
             return removeAnnotations
         

@@ -18,11 +18,14 @@ if not os.path.exists(qrc_resources_path):
     # Load default light mode
     shutil.copyfile(qrc_resources_light_path, qrc_resources_path)
 
-with open(qrc_resources_path, 'r') as qrc_py:
-    text = qrc_py.read()
-    text = text.replace('from PyQt5', 'from qtpy')
-with open(qrc_resources_path, 'w') as qrc_py:
-    qrc_py.write(text)
+try:
+    with open(qrc_resources_path, 'r') as qrc_py:
+        text = qrc_py.read()
+        text = text.replace('from PyQt5', 'from qtpy')
+    with open(qrc_resources_path, 'w') as qrc_py:
+        qrc_py.write(text)
+except Exception as err:
+    raise err
 
 try:
     import qtpy
