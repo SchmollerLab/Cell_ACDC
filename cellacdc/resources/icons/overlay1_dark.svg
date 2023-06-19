@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   data-name="Layer 1"
+   viewBox="0 0 90 90"
+   version="1.1"
+   id="svg8"
+   sodipodi:docname="overlay1.svg"
+   inkscape:version="1.1 (c68e22c387, 2021-05-23)"
+   width="90"
+   height="90"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs12">
+    <linearGradient
+       inkscape:collect="always"
+       id="linearGradient857">
+      <stop
+         style="stop-color:#beff17;stop-opacity:0.6808989"
+         offset="0"
+         id="stop853" />
+      <stop
+         style="stop-color:#00c93d;stop-opacity:0.78876406"
+         offset="1"
+         id="stop855" />
+    </linearGradient>
+    <radialGradient
+       inkscape:collect="always"
+       xlink:href="#linearGradient857"
+       id="radialGradient861"
+       cx="37.180637"
+       cy="53.479004"
+       fx="37.180637"
+       fy="53.479004"
+       r="34.880314"
+       gradientUnits="userSpaceOnUse"
+       gradientTransform="matrix(1.1713324,0,0,0.99360603,-5.4951441,-1.1598013)" />
+  </defs>
+  <sodipodi:namedview
+     id="namedview10"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     showgrid="false"
+     inkscape:zoom="5.8901622"
+     inkscape:cx="48.979975"
+     inkscape:cy="56.959382"
+     inkscape:window-width="1920"
+     inkscape:window-height="1137"
+     inkscape:window-x="-8"
+     inkscape:window-y="-8"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg8" />
+  <rect
+     style="fill:none;fill-opacity:1;fill-rule:evenodd;stroke:#f0f0f0;stroke-width:10;stroke-linecap:round;stroke-linejoin:round;stroke-opacity:1;stroke-miterlimit:4;stroke-dasharray:none"
+     id="rect845-6"
+     width="60.000031"
+     height="59.999683"
+     x="22.553595"
+     y="7.2740769"
+     ry="4.2857161" />
+  <rect
+     style="fill:url(#radialGradient861);fill-opacity:1;fill-rule:evenodd;stroke:none;stroke-width:9.99997;stroke-linecap:round;stroke-linejoin:round"
+     id="rect845"
+     width="70"
+     height="69.999603"
+     x="3.0559416"
+     y="16.977457"
+     ry="9" />
+</svg>

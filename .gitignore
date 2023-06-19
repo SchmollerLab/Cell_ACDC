@@ -22,6 +22,7 @@ notebooks/test.ipynb
 notebooks/.ipynb_checkpoints
 .idea/
 test.txt
+cellacdc/qrc_resources.py
 cellacdc/scripts/test.py
 cellacdc/scripts/test1.py
 cellacdc/scripts/correct_shift_X_old.py

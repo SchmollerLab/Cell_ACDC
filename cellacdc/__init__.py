@@ -1,5 +1,6 @@
 print('Initalising...')
 import os
+import shutil
 
 # Force PyQt6 if available
 try:
@@ -10,6 +11,13 @@ except Exception as e:
 
 cellacdc_path = os.path.dirname(os.path.abspath(__file__))
 qrc_resources_path = os.path.join(cellacdc_path, 'qrc_resources.py')
+qrc_resources_light_path = os.path.join(cellacdc_path, 'qrc_resources_light.py')
+qrc_resources_dark_path = os.path.join(cellacdc_path, 'qrc_resources_dark.py')
+
+if not os.path.exists(qrc_resources_path):
+    # Load default light mode
+    shutil.copyfile(qrc_resources_light_path, qrc_resources_path)
+
 with open(qrc_resources_path, 'r') as qrc_py:
     text = qrc_py.read()
     text = text.replace('from PyQt5', 'from qtpy')

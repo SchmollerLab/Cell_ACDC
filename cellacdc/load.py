@@ -35,7 +35,9 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 
 from . import prompts, apps, myutils, widgets, measurements, config
 from . import base_cca_df, base_acdc_df, html_utils, temp_path, printl
-from . import ignore_exception
+from . import ignore_exception, cellacdc_path
+from . import qrc_resources_path, qrc_resources_light_path
+from . import qrc_resources_dark_path
 
 cca_df_colnames = list(base_cca_df.keys())
 acdc_df_bool_cols = [
@@ -647,7 +649,6 @@ class loadData:
         return pos_num
 
     def loadLastEntriesMetadata(self):
-        cellacdc_path = os.path.dirname(os.path.realpath(__file__))
         temp_path = os.path.join(cellacdc_path, 'temp')
         if not os.path.exists(temp_path):
             self.last_md_df = None
@@ -2220,7 +2221,15 @@ def get_all_svg_icons_aliases(sort=True):
     with open(resources_filepath, 'r') as resources_file:
         resources_txt = resources_file.read()
     
-    aliases = re.findall('<file alias="(.+\.svg)">', resources_txt)
+    aliases = re.findall(r'<file alias="(.+\.svg)">', resources_txt)
     if sort:
         aliases = natsorted(aliases)
     return aliases
+
+def rename_qrc_resources_file(scheme='light'):
+    os.remove(qrc_resources_path)
+ 
+    if scheme == 'dark' and os.path.exists(qrc_resources_dark_path):
+        shutil.copyfile(qrc_resources_dark_path, qrc_resources_path)
+    elif scheme == 'light' and os.path.exists(qrc_resources_light_path):
+        shutil.copyfile(qrc_resources_light_path, qrc_resources_path)

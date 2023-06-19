@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   class="icon icon-tabler icon-tabler-square-root"
+   fill="none"
+   stroke="#000000"
+   stroke-linecap="round"
+   stroke-linejoin="round"
+   stroke-width="2"
+   viewBox="0 0 24 24"
+   version="1.1"
+   id="svg6"
+   sodipodi:docname="close_bracket.svg"
+   inkscape:version="1.1.2 (b8e25be8, 2022-02-05)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs10">
+    <inkscape:path-effect
+       effect="spiro"
+       id="path-effect2536"
+       is_visible="true"
+       lpeversion="1" />
+    <inkscape:path-effect
+       effect="spiro"
+       id="path-effect2392"
+       is_visible="true"
+       lpeversion="1" />
+    <pattern
+       id="EMFhbasepattern"
+       patternUnits="userSpaceOnUse"
+       width="6"
+       height="6"
+       x="0"
+       y="0" />
+    <pattern
+       id="EMFhbasepattern-1"
+       patternUnits="userSpaceOnUse"
+       width="6"
+       height="6"
+       x="0"
+       y="0" />
+    <pattern
+       id="EMFhbasepattern-5"
+       patternUnits="userSpaceOnUse"
+       width="6"
+       height="6"
+       x="0"
+       y="0" />
+    <pattern
+       id="EMFhbasepattern-2"
+       patternUnits="userSpaceOnUse"
+       width="6"
+       height="6"
+       x="0"
+       y="0" />
+  </defs>
+  <sodipodi:namedview
+     id="namedview8"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     showgrid="false"
+     inkscape:zoom="23.194431"
+     inkscape:cx="9.161682"
+     inkscape:cy="9.9808441"
+     inkscape:window-width="1680"
+     inkscape:window-height="925"
+     inkscape:window-x="0"
+     inkscape:window-y="25"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg6" />
+  <g
+     aria-label=") "
+     id="text20525"
+     style="font-size:19.4328px;line-height:125%;font-family:'Cambria Math';letter-spacing:0px;word-spacing:0px;fill:#f0f0f0;stroke:#f0f0f0;stroke-width:1.13386;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+     transform="translate(1.1488272)">
+    <path
+       d="m 12.208045,11.909858 q 0,-3.2071709 -1.062731,-5.3231447 Q 10.082583,4.4612508 7.8527446,3.730623 L 8.1089388,2.9999953 q 2.7706922,0.7306277 4.2509252,3.1597277 1.489721,2.4196114 1.489721,5.845022 0,3.434899 -1.480232,5.845022 -1.480233,2.419611 -4.2604142,3.150239 L 7.8812107,20.269378 q 2.1918833,-0.730627 3.2546143,-2.884556 1.07222,-2.153929 1.07222,-5.474964 z"
+       style="font-size:19.4328px;stroke:#f0f0f0;stroke-width:1.13386;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       id="path830" />
+  </g>
+</svg>

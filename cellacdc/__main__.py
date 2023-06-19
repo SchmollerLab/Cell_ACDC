@@ -179,6 +179,7 @@ class mainWin(QMainWindow):
         self.app = app
         palette = getPaletteColorScheme(app.palette(), scheme=scheme)
         app.setPalette(palette)     
+        load.rename_qrc_resources_file(scheme)
         setToolTipStyleSheet(app, scheme=scheme)
         self.welcomeGuide = None
         
@@ -366,6 +367,7 @@ class mainWin(QMainWindow):
             return
         from ._palettes import getPaletteColorScheme
         scheme = 'dark' if checked else 'light'
+        load.rename_qrc_resources_file(scheme)
         if not os.path.exists(settings_csv_path):
             df_settings = pd.DataFrame(
                 {'setting': [], 'value': []}).set_index('setting')
