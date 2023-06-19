@@ -140,10 +140,9 @@ class dataPrepWin(QMainWindow):
     @exception_handler
     def keyPressEvent(self, event):
         if self.debug:
-            if event.key() == Qt.Key_P:
+            if event.key() == Qt.Key_Q:
                 posData = self.data[self.pos_i]
-                posData.cropROI.disconnect()
-                self.removeAllHandles(posData.cropROI)
+                printl(posData.all_npz_paths)
                 # for r, roi in enumerate(posData.bkgrROIs):
                 #     print(roi.pos(), roi.size())
                 #     xl, yt = [int(round(c)) for c in roi.pos()]
@@ -882,6 +881,7 @@ class dataPrepWin(QMainWindow):
         self.cropZaction.setChecked(False)
         self.cropZaction.toggled.connect(self.openCropZtool)
 
+    @exception_handler
     def crop_cb(self):
         # msg = QMessageBox()
         # doSave = msg.question(
@@ -1703,95 +1703,109 @@ class dataPrepWin(QMainWindow):
             filename_tif = os.path.basename(tif)
             user_ch_filename = f'{posData.basename}{user_ch_name}.tif'
 
-            # Align based on user_ch_name
-            if doAlign and filename_tif == user_ch_filename:
-                aligned = True
-                if align:
-                    self.logger.info(f'Aligning: {tif}')
-                tif_data = skimage.io.imread(tif)
-                numFramesWith0s = self.detectTifAlignment(tif_data, posData)
-                if align:
-                    proceed = self.warnTifAligned(numFramesWith0s, tif, posData)
-                    if not proceed:
-                        return False
-
-                # Alignment routine
-                if posData.SizeZ>1:
-                    align_func = core.align_frames_3D
-                    df = posData.segmInfo_df.loc[posData.filename]
-                    zz = df['z_slice_used_dataPrep'].to_list()
-                    if not posData.filename.endswith('aligned') and align:
-                        # Add aligned channel to segmInfo
-                        df_aligned = posData.segmInfo_df.rename(
-                            index={posData.filename: f'{posData.filename}_aligned'}
-                        )
-                        posData.segmInfo_df = pd.concat(
-                            [posData.segmInfo_df, df_aligned]
-                        )
-                        posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
-                else:
-                    align_func = core.align_frames_2D
-                    zz = None
-                if align:
-                    aligned_frames, shifts = align_func(
-                        tif_data, slices=zz, user_shifts=posData.loaded_shifts
-                    )
-                    posData.loaded_shifts = shifts
-                else:
-                    aligned_frames = tif_data.copy()
-                if align:
-                    _npz = f'{os.path.splitext(tif)[0]}_aligned.npz'
-                    self.logger.info(f'Saving: {_npz}')
-                    temp_npz = self.getTempfilePath(_npz)
-                    np.savez_compressed(temp_npz, aligned_frames)
-                    self.moveTempFile(temp_npz, _npz)
-                    np.save(posData.align_shifts_path, posData.loaded_shifts)
+            if not doAlign:
+                _npz = f'{os.path.splitext(tif)[0]}_aligned.npz'
+                if os.path.exists(_npz):
                     posData.all_npz_paths[i] = _npz
+                continue
+            
+            if filename_tif != user_ch_filename:
+                continue
+            
+            # Align based on user_ch_name
+            aligned = True
+            if align:
+                self.logger.info(f'Aligning: {tif}')
+            tif_data = skimage.io.imread(tif)
+            numFramesWith0s = self.detectTifAlignment(tif_data, posData)
+            if align:
+                proceed = self.warnTifAligned(numFramesWith0s, tif, posData)
+                if not proceed:
+                    return False
 
-                    self.logger.info(f'Saving: {tif}')
-                    temp_tif = self.getTempfilePath(tif)
-                    myutils.imagej_tiffwriter(temp_tif, aligned_frames)
-                    self.moveTempFile(temp_tif, tif)
-                    posData.img_data = skimage.io.imread(tif)
+            # Alignment routine
+            if posData.SizeZ>1:
+                align_func = core.align_frames_3D
+                df = posData.segmInfo_df.loc[posData.filename]
+                zz = df['z_slice_used_dataPrep'].to_list()
+                if not posData.filename.endswith('aligned') and align:
+                    # Add aligned channel to segmInfo
+                    df_aligned = posData.segmInfo_df.rename(
+                        index={posData.filename: f'{posData.filename}_aligned'}
+                    )
+                    posData.segmInfo_df = pd.concat(
+                        [posData.segmInfo_df, df_aligned]
+                    )
+                    posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
+            else:
+                align_func = core.align_frames_2D
+                zz = None
+            if align:
+                aligned_frames, shifts = align_func(
+                    tif_data, slices=zz, user_shifts=posData.loaded_shifts
+                )
+                posData.loaded_shifts = shifts
+            else:
+                aligned_frames = tif_data.copy()
+            if align:
+                _npz = f'{os.path.splitext(tif)[0]}_aligned.npz'
+                self.logger.info(f'Saving: {_npz}')
+                temp_npz = self.getTempfilePath(_npz)
+                np.savez_compressed(temp_npz, aligned_frames)
+                self.moveTempFile(temp_npz, _npz)
+                np.save(posData.align_shifts_path, posData.loaded_shifts)
+                posData.all_npz_paths[i] = _npz
+
+                self.logger.info(f'Saving: {tif}')
+                temp_tif = self.getTempfilePath(tif)
+                myutils.imagej_tiffwriter(temp_tif, aligned_frames)
+                self.moveTempFile(temp_tif, tif)
+                posData.img_data = skimage.io.imread(tif)
 
         _zip = zip(posData.tif_paths, posData.npz_paths)
         for i, (tif, npz) in enumerate(_zip):
             doAlign = npz is None or aligned
 
+            if not doAlign:
+                continue
+            
+            if not tif.endswith(f'{user_ch_name}.tif'):
+                continue
+            
             # Align the other channels
-            if doAlign and tif.find(user_ch_name) == -1:
-                if posData.loaded_shifts is None:
-                    break
-                if align:
-                    self.logger.info(f'Aligning: {tif}')
-                tif_data = skimage.io.imread(tif)
+            if posData.loaded_shifts is None:
+                break
+            if align:
+                self.logger.info(f'Aligning: {tif}')
+            tif_data = skimage.io.imread(tif)
 
-                # Alignment routine
-                if posData.SizeZ>1:
-                    align_func = core.align_frames_3D
-                    df = posData.segmInfo_df.loc[posData.filename]
-                    zz = df['z_slice_used_dataPrep'].to_list()
-                else:
-                    align_func = core.align_frames_2D
-                    zz = None
-                if align:
-                    aligned_frames, shifts = align_func(
-                        tif_data, slices=zz, user_shifts=posData.loaded_shifts
-                    )
-                else:
-                    aligned_frames = tif_data.copy()
-                _npz = f'{os.path.splitext(tif)[0]}_aligned.npz'
-                if align:
-                    self.logger.info(f'Saving: {_npz}')
-                    temp_npz = self.getTempfilePath(_npz)
-                    np.savez_compressed(temp_npz, aligned_frames)
-                    self.moveTempFile(temp_npz, _npz)
-                    posData.all_npz_paths[i] = _npz
+            # Alignment routine
+            if posData.SizeZ>1:
+                align_func = core.align_frames_3D
+                df = posData.segmInfo_df.loc[posData.filename]
+                zz = df['z_slice_used_dataPrep'].to_list()
+            else:
+                align_func = core.align_frames_2D
+                zz = None
+            if align:
+                aligned_frames, shifts = align_func(
+                    tif_data, slices=zz, user_shifts=posData.loaded_shifts
+                )
+            else:
+                aligned_frames = tif_data.copy()
+            _npz = f'{os.path.splitext(tif)[0]}_aligned.npz'
+            
+            if align:
+                self.logger.info(f'Saving: {_npz}')
+                temp_npz = self.getTempfilePath(_npz)
+                np.savez_compressed(temp_npz, aligned_frames)
+                self.moveTempFile(temp_npz, _npz)
+                posData.all_npz_paths[i] = _npz
 
-                    self.logger.info(f'Saving: {tif}')
-                    temp_tif = self.getTempfilePath(tif)
-                    myutils.imagej_tiffwriter(temp_tif, aligned_frames)
-                    self.moveTempFile(temp_tif, tif)
+                self.logger.info(f'Saving: {tif}')
+                temp_tif = self.getTempfilePath(tif)
+                myutils.imagej_tiffwriter(temp_tif, aligned_frames)
+                self.moveTempFile(temp_tif, tif)
 
         # Align segmentation data accordingly
         self.segmAligned = False
