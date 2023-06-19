@@ -110,4 +110,6 @@ def setToolTipStyleSheet(app, scheme='light'):
             "color: #141414; background-color: #ffffff; border: 1px solid black;"
         "}"
         )
-        
+
+def QProgressBarColor():
+    return QtGui.QColor(111, 138, 61)      

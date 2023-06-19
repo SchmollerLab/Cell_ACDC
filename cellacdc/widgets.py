@@ -49,6 +49,7 @@ from . import myutils, measurements, is_mac, is_win, html_utils, is_linux
 from . import qrc_resources, printl, temp_path
 from . import colors, config
 from . import html_path
+from . import _palettes
 
 font = QFont()
 font.setPixelSize(13)
@@ -4975,9 +4976,9 @@ class QProgressBarWithETA(QProgressBar):
         super().__init__(parent)
 
         palette = QPalette()
-        palette.setColor(QPalette.ColorRole.Highlight, QColor(207, 235, 155))
-        palette.setColor(QPalette.ColorRole.Text, QColor(0, 0, 0))
-        palette.setColor(QPalette.ColorRole.HighlightedText, QColor(0, 0, 0))
+        palette.setColor(QPalette.ColorRole.Highlight, _palettes.QProgressBarColor())
+        # palette.setColor(QPalette.ColorRole.Text, QColor(0, 0, 0))
+        # palette.setColor(QPalette.ColorRole.HighlightedText, QColor(0, 0, 0))
         self.setPalette(palette)
         self.ETA_label = QLabel('NDh:NDm:NDs')
 

@@ -64,6 +64,7 @@ from . import colors
 from . import issues_url
 from . import myutils
 from . import qutils
+from . import _palettes
 
 PRE_PROCESSING_STEPS = [
     'Adjust Brightness/Contrast',
@@ -9693,9 +9694,11 @@ class QDialogPbar(QDialog):
         self.QPbar = QProgressBar(self)
         self.QPbar.setValue(0)
         palette = QPalette()
-        palette.setColor(QPalette.ColorRole.Highlight, QColor(207, 235, 155))
-        palette.setColor(QPalette.ColorRole.Text, QColor(0, 0, 0))
-        palette.setColor(QPalette.ColorRole.HighlightedText, QColor(0, 0, 0))
+        palette.setColor(
+            QPalette.ColorRole.Highlight, _palettes.QProgressBarColor()
+        )
+        # palette.setColor(QPalette.ColorRole.Text, QColor(0, 0, 0))
+        # palette.setColor(QPalette.ColorRole.HighlightedText, QColor(0, 0, 0))
         self.QPbar.setPalette(palette)
         pBarLayout.addWidget(self.QPbar, 0, 0)
         self.ETA_label = QLabel('NDh:NDm:NDs')
@@ -9704,9 +9707,11 @@ class QDialogPbar(QDialog):
         self.metricsQPbar = QProgressBar(self)
         self.metricsQPbar.setValue(0)
         palette = QPalette()
-        palette.setColor(QPalette.ColorRole.Highlight, QColor(207, 235, 155))
-        palette.setColor(QPalette.ColorRole.Text, QColor(0, 0, 0))
-        palette.setColor(QPalette.ColorRole.HighlightedText, QColor(0, 0, 0))
+        palette.setColor(
+            QPalette.ColorRole.Highlight, _palettes.QProgressBarColor()
+        )
+        # palette.setColor(QPalette.ColorRole.Text, QColor(0, 0, 0))
+        # palette.setColor(QPalette.ColorRole.HighlightedText, QColor(0, 0, 0))
         self.metricsQPbar.setPalette(palette)
         pBarLayout.addWidget(self.metricsQPbar, 1, 0)
 
