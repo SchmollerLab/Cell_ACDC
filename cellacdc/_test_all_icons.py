@@ -23,9 +23,6 @@ from qtpy.QtWidgets import (
     QCheckBox
 )
 
-
-    
-
 from cellacdc.load import get_all_svg_icons_aliases
 from cellacdc._palettes import getPaletteColorScheme, setToolTipStyleSheet
 
