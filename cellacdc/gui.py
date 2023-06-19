@@ -8952,7 +8952,7 @@ class guiWin(QMainWindow):
             )
             if cancelled_str == 'cancelled':
                 self.roi_to_del = roi
-                self.removeDelROI()
+                self.removeDelROI(None)
     
     def replacePolyLineRoiWithLineRoi(self, roi):
         roi = self.polyLineRoi
