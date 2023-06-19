@@ -1,4 +1,4 @@
-print('Initialising...')
+print('Initalising...')
 import os
 
 # Force PyQt6 if available
@@ -142,7 +142,6 @@ def printl(*objects, pretty=False, is_decorator=False, **kwargs):
     sys.stdout = current_stdout
 
 user_path = pathlib.Path.home()
-site_packages = os.path.dirname(os.path.dirname(np.__file__))
 parent_path = os.path.dirname(cellacdc_path)
 html_path = os.path.join(cellacdc_path, '_html')
 data_path = os.path.join(parent_path, 'data')

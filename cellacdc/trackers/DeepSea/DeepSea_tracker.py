@@ -84,7 +84,8 @@ class tracker:
             labels_list.append(resized_lab)
             pbar.update()
         pbar.close()
-        
+        if signals is not None:
+            signals.progress.emit('Tracking...')
         result = track_cells(
             labels_list, resize_img_list, self.model, self.torch_device, 
             transforms=self._transforms, min_size=min_size
