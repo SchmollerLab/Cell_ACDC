@@ -486,7 +486,10 @@ class dataPrepWin(QMainWindow):
             try:
                 z = posData.segmInfo_df.at[idx, 'z_slice_used_dataPrep']
             except Exception as e:
-                z = posData.segmInfo_df.loc[idx, 'z_slice_used_dataPrep'].iloc[0]
+                duplicated_idx = posData.segmInfo_df.index.duplicated()
+                posData.segmInfo_df = posData.segmInfo_df[~duplicated_idx]
+                z = posData.segmInfo_df.at[idx, 'z_slice_used_dataPrep']
+                
             zProjHow = posData.segmInfo_df.at[idx, 'which_z_proj']
             try:
                 self.zProjComboBox.currentTextChanged.disconnect()
