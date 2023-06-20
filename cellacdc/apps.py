@@ -4578,7 +4578,6 @@ class QDialogSelectModel(QDialog):
             QListWidget::item:selected {color:black;}
             QListView {
                 selection-background-color: #CFEB9B;
-                selection-color: white;
                 show-decoration-selected: 1;
             }
         """)
@@ -7460,7 +7459,6 @@ class selectPositionsMultiExp(widgets.QBaseDialog):
             QTreeWidget::item:selected {color:black;}
             QTreeView {
                 selection-background-color: #CFEB9B;
-                selection-color: white;
                 show-decoration-selected: 1;
             }
         """)
@@ -10870,7 +10868,6 @@ class combineMetricsEquationDialog(widgets.QBaseDialog):
             QTreeWidget::item:selected {color:black;}
             QTreeView {
                 selection-background-color: #CFEB9B;
-                selection-color: white;
                 show-decoration-selected: 1;
             }
         """)
@@ -11446,7 +11443,6 @@ class CombineMetricsMultiDfsDialog(widgets.QBaseDialog):
             QTreeWidget::item:selected {color:black;}
             QTreeView {
                 selection-background-color: #CFEB9B;
-                selection-color: white;
                 show-decoration-selected: 1;
             }
         """)
