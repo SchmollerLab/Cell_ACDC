@@ -571,11 +571,21 @@ class segmVideoWorker(QObject):
         self.posData.segm_data = self._check_extend_segm_data(
             self.posData.segm_data, self.stopFrameNum
         )
-        img_data = self.getImageData()
+        img_data = imgData = self.posData.img_data[self.startFrameNum-1:self.stopFrameNum]
+        is4D = img_data.ndim == 4
+        is2D_segm = self.posData.segm_data.ndim == 3
+        if is4D and is2D_segm:
+            filename = self.posData.filename
+            zz = self.posData.segmInfo_df.loc[filename, 'z_slice_used_gui']
+        else:
+            zz = None
         for i, img in enumerate(img_data):
             frame_i = i+self.startFrameNum-1
             if self.secondChannelData is not None:
                 img = self.model.to_rgb_stack(img, self.secondChannelData)
+            if zz is not None:
+                z_slice = zz.loc[frame_i]
+                img = img[z_slice]
             lab = self.model.segment(img, **self.segment2D_kwargs)
             if self.applyPostProcessing:
                 lab = core.remove_artefacts(
