@@ -18,7 +18,7 @@ def _light_colors():
         'ButtonText': (0, 0, 0, 255),
         'BrightText': (255, 255, 255, 255),
         'Link': (0, 0, 255, 255),
-        'Highlight': (48, 140, 198, 255),
+        'Highlight': (108, 209, 77, 255),
         'HighlightedText': (255, 255, 255, 255)
     }
     return colors
@@ -56,7 +56,7 @@ def _dark_colors():
         'ButtonText': (240, 240, 240, 255),
         'BrightText': (75, 75, 75, 255),
         'Link': (48, 140, 198, 255),
-        'Highlight': (48, 140, 198, 255),
+        'Highlight': (49, 97, 35, 255),
         'HighlightedText': (240, 240, 240, 255)
     }
     return colors
