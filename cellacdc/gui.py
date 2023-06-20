@@ -9184,10 +9184,12 @@ class guiWin(QMainWindow):
                 allDelIDs.update(delIDsPrevFrame)
         return allDelIDs
     
-    def getStoredDelRoiIDs(self):
+    def getStoredDelRoiIDs(self, frame_i=None):
         posData = self.data[self.pos_i]
+        if frame_i is None:
+            frame_i = posData.frame_i
         allDelIDs = set()
-        delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
+        delROIs_info = posData.allData_li[frame_i]['delROIs_info']
         delIDs_rois = delROIs_info['delIDsROI']
         for delIDs in delIDs_rois:
             allDelIDs.update(delIDs)
@@ -14539,6 +14541,7 @@ class guiWin(QMainWindow):
                 'labels': None,
                 'acdc_df': None,
                 'delROIs_info': { 'rois': [], 'delMasks': [], 'delIDsROI': []},
+                'IDs': []
             } for i in range(posData.SizeT)]
 
             posData.ccaStatus_whenEmerged = {}
@@ -14710,6 +14713,7 @@ class guiWin(QMainWindow):
 
         posData.allData_li[posData.frame_i]['regionprops'] = posData.rp.copy()
         posData.allData_li[posData.frame_i]['labels'] = posData.lab.copy()
+        posData.allData_li[posData.frame_i]['IDs'] = posData.IDs.copy()
 
         # Store dynamic metadata
         is_cell_dead_li = [False]*len(posData.rp)
@@ -14762,7 +14766,7 @@ class guiWin(QMainWindow):
                 acdc_df['z_centroid'] = zz_centroid
             acdc_df['was_manually_edited'] = areManuallyEdited
             posData.allData_li[posData.frame_i]['acdc_df'] = acdc_df
-        
+    
         self.pointsLayerDataToDf(posData)
         self.store_cca_df(pos_i=pos_i, mainThread=mainThread, autosave=autosave)
 
@@ -15936,11 +15940,8 @@ class guiWin(QMainWindow):
     def update_rp(self, draw=True, debug=False):
         posData = self.data[self.pos_i]
         # Update rp for current posData.lab (e.g. after any change)
-        delRoiIDs = self.getStoredDelRoiIDs()
         posData.rp = skimage.measure.regionprops(posData.lab)
-        posData.IDs = [
-            obj.label for obj in posData.rp if obj.label not in delRoiIDs
-        ]
+        posData.IDs = [obj.label for obj in posData.rp]
         posData.IDs_idxs = {
             ID:i for ID, i in zip(posData.IDs, range(len(posData.IDs)))
         }
@@ -18625,9 +18626,8 @@ class guiWin(QMainWindow):
 
     # @exec_time
     def setAllTextAnnotations(self, labelsToSkip=None):
-        self.setTitleText()
+        delROIsIDs = self.setTitleText()
         posData = self.data[self.pos_i]
-        delROIsIDs = self.getDelRoisIDs()
         self.textAnnot[0].setAnnotations(
             posData=posData, labelsToSkip=labelsToSkip, 
             isVisibleCheckFunc=self.isObjVisible,
@@ -18830,9 +18830,11 @@ class guiWin(QMainWindow):
             posData.old_IDs = []
             # posData.multiContIDs = set()
             self.titleLabel.setText('Looking good!', color=self.titleColor)
-            return
+            return []
+        
         # elif self.modeComboBox.currentText() == 'Viewer':
         #     pass
+        
         prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
         existing = True
         if prev_rp is None:
@@ -18840,11 +18842,22 @@ class guiWin(QMainWindow):
                 frame_i=posData.frame_i-1, return_existing=True
             )
             prev_rp = skimage.measure.regionprops(prev_lab)
+            prev_IDs = [obj.label for obj in prev_rp]
+        else:
+            prev_IDs = posData.allData_li[posData.frame_i-1]['IDs']
 
-        prev_IDs = [obj.label for obj in prev_rp]
-        curr_IDs = [obj.label for obj in posData.rp]
-        lost_IDs = [ID for ID in prev_IDs if ID not in curr_IDs]
-        new_IDs = [ID for ID in curr_IDs if ID not in prev_IDs]
+        curr_IDs = posData.IDs
+        curr_delRoiIDs = self.getStoredDelRoiIDs()
+        prev_delRoiIDs = self.getStoredDelRoiIDs(frame_i=posData.frame_i-1)
+        lost_IDs = [
+            ID for ID in prev_IDs if ID not in curr_IDs 
+            and ID not in prev_delRoiIDs
+        ]
+        new_IDs = [
+            ID for ID in curr_IDs if ID not in prev_IDs 
+            and ID not in curr_delRoiIDs
+        ]
+        
         # IDs_with_holes = [
         #     obj.label for obj in posData.rp if obj.area/obj.filled_area < 1
         # ]
@@ -18890,6 +18903,7 @@ class guiWin(QMainWindow):
                 f'<font color="{self.titleColor}">{warn_txt}</font>'
             )
         self.titleLabel.setText(htmlTxt)
+        return curr_delRoiIDs
 
     def separateByLabelling(self, lab, rp, maxID=None):
         """
