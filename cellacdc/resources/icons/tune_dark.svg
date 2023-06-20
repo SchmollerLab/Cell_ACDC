@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="32mm"
+   height="32mm"
+   viewBox="0 0 32 32"
+   version="1.1"
+   id="svg5"
+   inkscape:version="1.2.2 (732a01da63, 2022-12-09)"
+   sodipodi:docname="tune_dark.svg"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview7"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:document-units="mm"
+     showgrid="false"
+     inkscape:zoom="4.2179991"
+     inkscape:cx="41.725945"
+     inkscape:cy="63.300156"
+     inkscape:window-width="1920"
+     inkscape:window-height="1137"
+     inkscape:window-x="-8"
+     inkscape:window-y="-8"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="layer1" />
+  <defs
+     id="defs2">
+    <inkscape:perspective
+       sodipodi:type="inkscape:persp3d"
+       inkscape:vp_x="0 : 16 : 1"
+       inkscape:vp_y="0 : 1000 : 0"
+       inkscape:vp_z="32 : 16 : 1"
+       inkscape:persp3d-origin="16 : 10.666667 : 1"
+       id="perspective1011" />
+    <inkscape:path-effect
+       effect="bspline"
+       id="path-effect247"
+       is_visible="true"
+       lpeversion="1"
+       weight="33.333333"
+       steps="2"
+       helper_size="0"
+       apply_no_weight="true"
+       apply_with_weight="true"
+       only_selected="false" />
+    <inkscape:path-effect
+       effect="bspline"
+       id="path-effect247-1"
+       is_visible="true"
+       lpeversion="1"
+       weight="33.333333"
+       steps="2"
+       helper_size="0"
+       apply_no_weight="true"
+       apply_with_weight="true"
+       only_selected="false" />
+    <inkscape:path-effect
+       effect="bspline"
+       id="path-effect247-4"
+       is_visible="true"
+       lpeversion="1"
+       weight="33.333333"
+       steps="2"
+       helper_size="0"
+       apply_no_weight="true"
+       apply_with_weight="true"
+       only_selected="false" />
+  </defs>
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <path
+       style="fill:none;stroke:#d9d9d9;stroke-width:3;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:none;stroke-opacity:1;fill-opacity:1"
+       d="m 7.5,4.37169 c 0,0 0,23.25662 0,23.25662"
+       id="path245"
+       inkscape:path-effect="#path-effect247"
+       inkscape:original-d="M 7.5,4.37169 V 27.62831" />
+    <path
+       style="fill:none;stroke:#d9d9d9;stroke-width:3;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:none;stroke-opacity:1;fill-opacity:1"
+       d="m 16.5,4.3716899 c 0,0 0,23.2566201 0,23.2566201"
+       id="path245-0"
+       inkscape:path-effect="#path-effect247-1"
+       inkscape:original-d="M 16.5,4.3716899 V 27.62831" />
+    <path
+       style="fill:none;stroke:#d9d9d9;stroke-width:3;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:none;stroke-opacity:1;fill-opacity:1"
+       d="m 25.5,4.3716899 c 0,0 0,23.2566201 0,23.2566201"
+       id="path245-8"
+       inkscape:path-effect="#path-effect247-4"
+       inkscape:original-d="M 25.5,4.3716899 V 27.62831" />
+    <rect
+       style="fill:none;stroke:#d9d9d9;stroke-width:2.87937;stroke-linecap:round;stroke-linejoin:miter;stroke-dasharray:none;stroke-opacity:1;fill-opacity:1"
+       id="rect1079"
+       width="7.1206279"
+       height="1.5006292"
+       x="3.9396861"
+       y="22.79974" />
+    <rect
+       style="fill:none;stroke:#d9d9d9;stroke-width:2.87937;stroke-linecap:round;stroke-linejoin:miter;stroke-dasharray:none;stroke-opacity:1;fill-opacity:1"
+       id="rect1079-8"
+       width="7.1206279"
+       height="1.5006292"
+       x="12.939686"
+       y="7.7452087" />
+    <rect
+       style="fill:none;stroke:#d9d9d9;stroke-width:2.87937;stroke-linecap:round;stroke-linejoin:miter;stroke-dasharray:none;stroke-opacity:1;fill-opacity:1"
+       id="rect1079-86"
+       width="7.1206279"
+       height="1.5006292"
+       x="21.939686"
+       y="15.272473" />
+  </g>
+</svg>

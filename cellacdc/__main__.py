@@ -29,6 +29,8 @@ if cellacdc_installation_path != site_packages:
              'installation. Please, re-start the software. '
              'Thank you for your patience!')
 
+from qtpy import QtGui, QtWidgets, QtCore
+
 from . import dataReStruct
 from . import exception_handler, printl
 from . import qrc_resources
@@ -40,14 +42,6 @@ if os.name == 'nt':
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
     except Exception as e:
         pass
-
-from qtpy import QtGui, QtWidgets, QtCore
-
-# Handle high resolution displays:
-if hasattr(QtCore.Qt, 'AA_EnableHighDpiScaling'):
-    QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling, True)
-if hasattr(QtCore.Qt, 'AA_UseHighDpiPixmaps'):
-    QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True)
 
 # Needed by pyqtgraph with display resolution scaling
 try:
