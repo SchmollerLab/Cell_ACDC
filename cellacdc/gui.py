@@ -835,6 +835,7 @@ class guiWin(QMainWindow):
         self.closeGUI = False
 
         self.setAcceptDrops(True)
+        self._appName = 'Cell-ACDC'
     
     def _printl(
             self, *objects, is_decorator=False, **kwargs
@@ -1063,6 +1064,12 @@ class guiWin(QMainWindow):
         if 'manual_separate_draw_mode' not in self.df_settings.index:
             col = 'manual_separate_draw_mode'
             self.df_settings.at[col, 'value'] = 'threepoints_arc'
+        
+        if 'colorScheme' in self.df_settings.index:
+            col = 'colorScheme'
+            self._colorScheme = self.df_settings.at[col, 'value']
+        else:
+            self._colorScheme = 'light'
 
     def dragEnterEvent(self, event):
         file_path = event.mimeData().urls()[0].toLocalFile()
@@ -1289,6 +1296,7 @@ class guiWin(QMainWindow):
         # Settings menu
         self.settingsMenu = QMenu("Settings", self)
         menuBar.addMenu(self.settingsMenu)
+        self.settingsMenu.addAction(self.toggleColorSchemeAction)
         self.settingsMenu.addAction(self.editShortcutsAction)
         self.settingsMenu.addSeparator()
 
@@ -2618,6 +2626,11 @@ class guiWin(QMainWindow):
             '(from the current session not the saved information)'
         )
 
+        self.toggleColorSchemeAction = QAction(
+            'Switch to light mode'
+        )
+        self.gui_updateSwitchColorSchemeActionText()
+        
         self.editShortcutsAction = QAction(
             'Customize keyboard shortcuts...', self
         )
@@ -2809,6 +2822,13 @@ class guiWin(QMainWindow):
         # self.imgGradLabelsAlphaUpAction = QAction(self)
         # self.imgGradLabelsAlphaUpAction.setVisible(False)
         # self.imgGradLabelsAlphaUpAction.setShortcut('Ctrl+Up')
+    
+    def gui_updateSwitchColorSchemeActionText(self):
+        if self._colorScheme == 'dark':
+            txt = 'Switch to light mode'
+        else:
+            txt = 'Switch to dark mode'
+        self.toggleColorSchemeAction.setText(txt)
 
     def gui_connectActions(self):
         # Connect File actions
@@ -2828,6 +2848,7 @@ class guiWin(QMainWindow):
         self.nextAction.triggered.connect(self.nextActionTriggered)
         self.prevAction.triggered.connect(self.prevActionTriggered)
 
+        self.toggleColorSchemeAction.triggered.connect(self.onToggleColorScheme)
         self.editShortcutsAction.triggered.connect(self.editShortcuts_cb)
 
         # Connect Help actions
@@ -2857,7 +2878,26 @@ class guiWin(QMainWindow):
         )
         self.addCustomModelFrameAction.callback = self.segmFrameCallback
         self.addCustomModelVideoAction.callback = self.segmVideoCallback
-
+    
+    def onToggleColorScheme(self):
+        if self.toggleColorSchemeAction.text().find('light') != -1:
+            self._colorScheme = 'light'
+            setDarkModeToggleChecked = False
+        else:
+            self._colorScheme = 'dark'
+            setDarkModeToggleChecked = True
+        self.gui_updateSwitchColorSchemeActionText()
+        _warnings.warnRestartCellACDCcolorModeToggled(
+            self._colorScheme, app_name=self._appName, parent=self
+        )
+        load.rename_qrc_resources_file(self._colorScheme)
+        self.statusBarLabel.setText(html_utils.paragraph(
+            f'<i>Restart {self._appName} for the change to take effect</i>', 
+            font_color='red'
+        ))
+        self.df_settings.at['colorScheme', 'value'] = self._colorScheme
+        self.df_settings.to_csv(settings_csv_path)
+        
     def gui_connectEditActions(self):
         self.showInExplorerAction.setEnabled(True)
         self.setEnabledFileToolbar(True)
@@ -3161,7 +3201,7 @@ class guiWin(QMainWindow):
             # the new default is True. This requires larger font size.
             self.fontSize = 2*self.fontSize
             self.df_settings.at['pxMode', 'value'] = 1
-            self.df_settings.to_csv(self.settings_csv_path)
+            self.df_settings.to_csv(settings_csv_path)
         self.fontSizeSpinBox.setValue(self.fontSize)
         self.fontSizeSpinBox.editingFinished.connect(self.changeFontSize) 
         self.fontSizeSpinBox.sigUpClicked.connect(self.changeFontSize)
@@ -4497,7 +4537,7 @@ class guiWin(QMainWindow):
             # If automatic bud separation was not successfull call manual one
             if not success:
                 posData.disableAutoActivateViewerWindow = True
-                img = self.getDisplayedCellsImg()
+                img = self.getDisplayedImg1()
                 col = 'manual_separate_draw_mode'
                 drawMode = self.df_settings.at[col, 'value']
                 manualSep = apps.manualSeparateGui(
@@ -6774,7 +6814,7 @@ class guiWin(QMainWindow):
             if eraseOnlyOneID:
                 mask[lab_2D!=self.erasedID] = False
 
-            self.getDisplayedCellsImg()
+            self.getDisplayedImg1()
             self.setTempImg1Eraser(mask, init=True)
             self.applyEraserMask(mask)
 
@@ -6886,7 +6926,7 @@ class guiWin(QMainWindow):
             self.autoCont_y0 = ydata
             self.xxA_autoCont, self.yyA_autoCont = [], []
             self.curvAnchors.addPoints([x], [y])
-            img = self.getDisplayedCellsImg()
+            img = self.getDisplayedImg1()
             self.autoContObjMask = np.zeros(img.shape, np.uint8)
             self.isRightClickDragImg1 = True
 
@@ -6950,7 +6990,7 @@ class guiWin(QMainWindow):
 
             # NOTE: flood is on mousedrag or release
             tol = self.wandToleranceSlider.value()
-            self.flood_img = myutils.to_uint8(self.getDisplayedCellsImg())
+            self.flood_img = myutils.to_uint8(self.getDisplayedImg1())
             flood_mask = skimage.segmentation.flood(
                 self.flood_img, (ydata, xdata), tolerance=tol
             )
@@ -8064,7 +8104,7 @@ class guiWin(QMainWindow):
         y1, x1 = self.autoCont_y0, self.autoCont_x0
         Dy = abs(y2-y1)
         Dx = abs(x2-x1)
-        edge = self.getDisplayedCellsImg()
+        edge = self.getDisplayedImg1()
         if Dy != 0 or Dx != 0:
             # NOTE: numIter takes care of any lag in mouseMoveEvent
             numIter = int(round(max((Dy, Dx))))
@@ -12778,7 +12818,7 @@ class guiWin(QMainWindow):
         self.checkIfAutoSegm()
 
     # @exec_time
-    def getDisplayedCellsImg(self):
+    def getDisplayedImg1(self):
         return self.img1.image
     
     def getDisplayedZstack(self):
@@ -12858,7 +12898,7 @@ class guiWin(QMainWindow):
 
         self.models[idx] = model
 
-        img = self.getDisplayedCellsImg()
+        img = self.getDisplayedImg1()
 
         posData.cca_df = model.predictCcaState(img, posData.lab)
         self.store_data()
@@ -13979,12 +14019,12 @@ class guiWin(QMainWindow):
             if posData.SizeZ > 1 and posData.segmInfo_df is not None:
                 if 'z_slice_used_gui' not in posData.segmInfo_df.columns:
                     posData.segmInfo_df['z_slice_used_gui'] = (
-                                    posData.segmInfo_df['z_slice_used_dataPrep']
-                                    )
+                        posData.segmInfo_df['z_slice_used_dataPrep']
+                    )
                 if 'which_z_proj_gui' not in posData.segmInfo_df.columns:
                     posData.segmInfo_df['which_z_proj_gui'] = (
-                                    posData.segmInfo_df['which_z_proj']
-                                    )
+                        posData.segmInfo_df['which_z_proj']
+                    )
                 posData.segmInfo_df['resegmented_in_gui'] = False
                 posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
 

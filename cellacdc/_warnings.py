@@ -1,4 +1,5 @@
 from . import widgets, html_utils
+from . import issues_url
 
 def warnTooManyItems(mainWin, numItems, qparent):
     mainWin.logger.info(
@@ -22,3 +23,22 @@ def warnTooManyItems(mainWin, numItems, qparent):
         )
     )
     return msg.cancel, msg.clickedButton==switchToLowResButton
+
+def warnRestartCellACDCcolorModeToggled(scheme, app_name='Cell-ACDC', parent=None):
+    msg = widgets.myMessageBox(wrapText=False)
+    txt = (
+        'In order for the change to take effect, '
+        f'<b>please restart {app_name}</b>'
+    )
+    if scheme == 'dark':
+        issues_href = f'<a href="{issues_url}">GitHub page</a>'
+        note_txt = (
+            'NOTE: <b>dark mode</b> is a recent feature so if you see '
+            'if you see anything odd,<br>'
+            'please, <b>report it</b> by opening an issue '
+            f'on our {issues_href}.<br><br>'
+            'Thanks!'
+        )
+        txt = f'{txt}<br><br>{note_txt}'
+    txt = html_utils.paragraph(txt)
+    msg.information(parent, f'Restart {app_name}', txt)

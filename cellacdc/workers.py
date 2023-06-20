@@ -481,7 +481,7 @@ class segmWorker(QObject):
                 startZ, stopZ = self.z_range
                 img = img[startZ:stopZ+1]
         else:
-            img = self.mainWin.getDisplayedCellsImg()
+            img = self.mainWin.getDisplayedImg1()
         
         posData = self.mainWin.data[self.mainWin.pos_i]
         lab = np.zeros_like(posData.segm_data[0])
@@ -534,15 +534,44 @@ class segmVideoWorker(QObject):
         extended_shape = (stop_frame_num, *segm_data.shape[1:])
         extended_segm_data = np.zeros(extended_shape, dtype=segm_data.dtype)
         extended_segm_data[:len(segm_data)] = segm_data
+        if len(extended_shape) == 4:
+            return extended_segm_data
+        if self.posData.SizeZ == 1:
+            return extended_segm_data
+        else:
+            num_added_frames = len(extended_segm_data) - len(segm_data)
+            half_z = int(self.posData.SizeZ/2)
+            # 2D segm on 3D over time data --> fix segmInfo
+            segmInfo_extended = pd.DataFrame({
+                'filename': [self.posData.filename]*num_added_frames,
+                'frame_i': list(range(len(segm_data), len(extended_segm_data))),
+                'z_slice_used_gui': [half_z]*num_added_frames,
+                'which_z_proj_gui': ['single z-slice']*num_added_frames
+            }).set_index(['filename', 'frame_i'])
+            segmInfo_df = pd.concat([self.posData.segmInfo_df, segmInfo_extended])
+            self.posData.segmInfo_df = segmInfo_df
+            self.posData.segmInfo_df.to_csv(self.posData.segmInfo_df_csv_path)
         return extended_segm_data
+    
+    def getImageData(self):
+        imgData = self.posData.img_data[self.startFrameNum-1:self.stopFrameNum]
+        if self.posData.SizeZ == 1:
+            return imgData
+        if self.posData.segm_data.ndim == 4:
+            return imgData
+        # 2D segm on 3D over time data --> index z-slices
+        filename = self.posData.filename
+        zz = self.posData.segmInfo_df.loc[filename, 'z_slice_used_gui']
+        imgData = self.posData.img_data[:, zz.to_list()]
+        return imgData
 
     @worker_exception_handler
     def run(self):
         t0 = time.perf_counter()
-        img_data = self.posData.img_data[self.startFrameNum-1:self.stopFrameNum]
         self.posData.segm_data = self._check_extend_segm_data(
             self.posData.segm_data, self.stopFrameNum
         )
+        img_data = self.getImageData()
         for i, img in enumerate(img_data):
             frame_i = i+self.startFrameNum-1
             if self.secondChannelData is not None:

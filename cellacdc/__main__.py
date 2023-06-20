@@ -136,6 +136,7 @@ try:
     from cellacdc import is_win, is_linux, temp_path, issues_url
     from cellacdc import settings_csv_path
     from cellacdc import printl
+    from cellacdc import _warnings
 except ModuleNotFoundError as e:
     src_path = os.path.dirname(os.path.abspath(__file__))
     main_path = os.path.dirname(src_path)
@@ -369,25 +370,9 @@ class mainWin(QMainWindow):
             df_settings = pd.read_csv(settings_csv_path, index_col='setting')
         df_settings.at['colorScheme', 'value'] = scheme
         df_settings.to_csv(settings_csv_path)
-        msg = widgets.myMessageBox(wrapText=False)
-        txt = (
-            'In order for the change to take effect, '
-            '<b>please restart Cell-ACDC</b>'
+        _warnings.warnRestartCellACDCcolorModeToggled(
+            scheme, app_name='Cell-ACDC', parent=self
         )
-        if scheme == 'dark':
-            issues_href = f'<a href="{issues_url}">GitHub page</a>'
-            note_txt = (
-                'NOTE: <b>dark mode</b> is still in <b>beta phase</b> and '
-                'it is not perfect, but we believe it is usable.<br><br>'
-                'Many icons are not very visible on a dark background, but '
-                'if you see anything clearly <b>wrong</b><br>'
-                '(besides icons) please <b>report it</b> by opening an issue '
-                f'on our {issues_href}.<br><br>'
-                'Thanks!'
-            )
-            txt = f'{txt}<br><br>{note_txt}'
-        txt = html_utils.paragraph(txt)
-        msg.information(self, 'Restart Cell-ACDC', txt)
         self.statusBarLayout.addWidget(QLabel(html_utils.paragraph(
             '<i>Restart Cell-ACDC for the change to take effect</i>', 
             font_color='red'
