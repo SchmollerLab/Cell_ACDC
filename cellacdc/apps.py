@@ -5710,7 +5710,7 @@ class randomWalkerDialog(QDialog):
         self.plotMarkers()
 
     def getImage(self):
-        img = self.mainWindow.getDisplayedCellsImg()
+        img = self.mainWindow.getDisplayedImg1()
         self.img = img/img.max()
         self.imgRGB = (skimage.color.gray2rgb(self.img)*255).astype(np.uint8)
 

@@ -4497,7 +4497,7 @@ class guiWin(QMainWindow):
             # If automatic bud separation was not successfull call manual one
             if not success:
                 posData.disableAutoActivateViewerWindow = True
-                img = self.getDisplayedCellsImg()
+                img = self.getDisplayedImg1()
                 col = 'manual_separate_draw_mode'
                 drawMode = self.df_settings.at[col, 'value']
                 manualSep = apps.manualSeparateGui(
@@ -6774,7 +6774,7 @@ class guiWin(QMainWindow):
             if eraseOnlyOneID:
                 mask[lab_2D!=self.erasedID] = False
 
-            self.getDisplayedCellsImg()
+            self.getDisplayedImg1()
             self.setTempImg1Eraser(mask, init=True)
             self.applyEraserMask(mask)
 
@@ -6886,7 +6886,7 @@ class guiWin(QMainWindow):
             self.autoCont_y0 = ydata
             self.xxA_autoCont, self.yyA_autoCont = [], []
             self.curvAnchors.addPoints([x], [y])
-            img = self.getDisplayedCellsImg()
+            img = self.getDisplayedImg1()
             self.autoContObjMask = np.zeros(img.shape, np.uint8)
             self.isRightClickDragImg1 = True
 
@@ -6950,7 +6950,7 @@ class guiWin(QMainWindow):
 
             # NOTE: flood is on mousedrag or release
             tol = self.wandToleranceSlider.value()
-            self.flood_img = myutils.to_uint8(self.getDisplayedCellsImg())
+            self.flood_img = myutils.to_uint8(self.getDisplayedImg1())
             flood_mask = skimage.segmentation.flood(
                 self.flood_img, (ydata, xdata), tolerance=tol
             )
@@ -8064,7 +8064,7 @@ class guiWin(QMainWindow):
         y1, x1 = self.autoCont_y0, self.autoCont_x0
         Dy = abs(y2-y1)
         Dx = abs(x2-x1)
-        edge = self.getDisplayedCellsImg()
+        edge = self.getDisplayedImg1()
         if Dy != 0 or Dx != 0:
             # NOTE: numIter takes care of any lag in mouseMoveEvent
             numIter = int(round(max((Dy, Dx))))
@@ -12778,7 +12778,7 @@ class guiWin(QMainWindow):
         self.checkIfAutoSegm()
 
     # @exec_time
-    def getDisplayedCellsImg(self):
+    def getDisplayedImg1(self):
         return self.img1.image
     
     def getDisplayedZstack(self):
@@ -12858,7 +12858,7 @@ class guiWin(QMainWindow):
 
         self.models[idx] = model
 
-        img = self.getDisplayedCellsImg()
+        img = self.getDisplayedImg1()
 
         posData.cca_df = model.predictCcaState(img, posData.lab)
         self.store_data()
@@ -13979,12 +13979,12 @@ class guiWin(QMainWindow):
             if posData.SizeZ > 1 and posData.segmInfo_df is not None:
                 if 'z_slice_used_gui' not in posData.segmInfo_df.columns:
                     posData.segmInfo_df['z_slice_used_gui'] = (
-                                    posData.segmInfo_df['z_slice_used_dataPrep']
-                                    )
+                        posData.segmInfo_df['z_slice_used_dataPrep']
+                    )
                 if 'which_z_proj_gui' not in posData.segmInfo_df.columns:
                     posData.segmInfo_df['which_z_proj_gui'] = (
-                                    posData.segmInfo_df['which_z_proj']
-                                    )
+                        posData.segmInfo_df['which_z_proj']
+                    )
                 posData.segmInfo_df['resegmented_in_gui'] = False
                 posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
 
