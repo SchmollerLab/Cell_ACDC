@@ -32,6 +32,7 @@ from . import prompts, load, myutils, apps, core, dataPrep, widgets
 from . import qrc_resources, html_utils, printl
 from . import exception_handler
 from . import workers
+from . import _palettes
 
 if os.name == 'nt':
     try:
@@ -561,9 +562,11 @@ class segmWin(QMainWindow):
         QPbar = QProgressBar(self)
         QPbar.setValue(0)
         palette = QtGui.QPalette()
-        palette.setColor(QtGui.QPalette.ColorRole.Highlight, QtGui.QColor(207, 235, 155))
-        palette.setColor(QtGui.QPalette.ColorRole.Text, QtGui.QColor(0, 0, 0))
-        palette.setColor(QtGui.QPalette.ColorRole.HighlightedText, QtGui.QColor(0, 0, 0))
+        palette.setColor(
+            QtGui.QPalette.ColorRole.Highlight, _palettes.QProgressBarColor()
+        )
+        # palette.setColor(QtGui.QPalette.ColorRole.Text, QtGui.QColor(0, 0, 0))
+        # palette.setColor(QtGui.QPalette.ColorRole.HighlightedText, QtGui.QColor(0, 0, 0))
         QPbar.setPalette(palette)
         pBarLayout.addWidget(QPbar)
         ETA_label = QLabel()

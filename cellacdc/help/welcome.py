@@ -24,6 +24,7 @@ cellacdc_path = os.path.dirname(script_path)
 sys.path.append(cellacdc_path)
 
 from .. import gui, dataStruct, myutils, cite_url, html_utils, urls, widgets
+from .. import _palettes
 
 # NOTE: Enable icons
 from .. import qrc_resources
@@ -917,9 +918,11 @@ class welcomeWin(QWidget):
         self.QPbar = QProgressBar(self)
         self.QPbar.setValue(0)
         palette = QPalette()
-        palette.setColor(QPalette.ColorRole.Highlight, QColor(207, 235, 155))
-        palette.setColor(QPalette.ColorRole.Text, QColor(0, 0, 0))
-        palette.setColor(QPalette.ColorRole.HighlightedText, QColor(0, 0, 0))
+        palette.setColor(
+            QPalette.ColorRole.Highlight, _palettes.QProgressBarColor()
+        )
+        # palette.setColor(QPalette.ColorRole.Text, QColor(0, 0, 0))
+        # palette.setColor(QPalette.ColorRole.HighlightedText, QColor(0, 0, 0))
         self.QPbar.setPalette(palette)
         self.welcomeLayout.addWidget(self.QPbar, 3, 0, 1, 3)
 

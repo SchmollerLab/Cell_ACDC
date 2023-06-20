@@ -3959,7 +3959,7 @@ class guiWin(QMainWindow):
         
         self.highLowResToggle.setChecked(True)
         numItems = len(allIDs)
-        if numItems > 500:
+        if numItems > 1500:
             cancel, switchToLowRes = _warnings.warnTooManyItems(
                 self, numItems, self.progressWin
             )

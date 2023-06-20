@@ -28,16 +28,18 @@ def _light_disabled_colors():
         'ButtonText': (128, 128, 128, 255), 
         'WindowText': (128, 128, 128, 255), 
         'Text': (150, 150, 150, 255), 
-        'Light': (255, 255, 255, 255)
+        'Light': (255, 255, 255, 255),
+        'Button': (200, 200, 200, 255)
     }
     return disabled_colors
 
 def _dark_disabled_colors():
     disabled_colors = {
-        'ButtonText': (128, 128, 128, 255), 
+        'ButtonText': (150, 150, 150, 255), 
         'WindowText': (128, 128, 128, 255), 
         'Text': (128, 128, 128, 255), 
-        'Light': (53, 53, 53, 255)
+        'Light': (53, 53, 53, 255),
+        'Button': (70, 70, 70, 255)
     }
     return disabled_colors
 
@@ -110,4 +112,6 @@ def setToolTipStyleSheet(app, scheme='light'):
             "color: #141414; background-color: #ffffff; border: 1px solid black;"
         "}"
         )
-        
+
+def QProgressBarColor():
+    return QtGui.QColor(111, 138, 61)      

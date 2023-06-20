@@ -64,6 +64,7 @@ from . import colors
 from . import issues_url
 from . import myutils
 from . import qutils
+from . import _palettes
 
 PRE_PROCESSING_STEPS = [
     'Adjust Brightness/Contrast',
@@ -2267,7 +2268,7 @@ class QDialogMetadataXML(QDialog):
 
     def __init__(
             self, title='Metadata',
-            LensNA=1.0, DimensionOrder='zct', rawFilename='test',
+            LensNA=1.0, DimensionOrder=None, rawFilename='test',
             SizeT=1, SizeZ=1, SizeC=1, SizeS=1,
             TimeIncrement=1.0, TimeIncrementUnit='s',
             PhysicalSizeX=1.0, PhysicalSizeY=1.0, PhysicalSizeZ=1.0,
@@ -2292,6 +2293,8 @@ class QDialogMetadataXML(QDialog):
         font = QFont()
         font.setPixelSize(13)
         self.setFont(font)
+        if DimensionOrder is None:
+            DimensionOrder = 'ztc' # default for .czi and .nd2
 
         mainLayout = QVBoxLayout()
         entriesLayout = QGridLayout()
@@ -2384,10 +2387,7 @@ class QDialogMetadataXML(QDialog):
         else:
             items = list(sampleImgData.keys())
         self.DimensionOrderCombo.addItems(items)
-        # ztc should be default for .czi and .nd2
-        if 'ztc' in items:
-            self.DimensionOrderCombo.setCurrentText('ztc')
-        self.lastValidDimensionOrderText = DimensionOrder
+        self.DimensionOrderCombo.setCurrentText(DimensionOrder[:3].lower())
         txt = 'Order of dimensions:  '
         label = QLabel(txt)
         entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
@@ -9694,9 +9694,11 @@ class QDialogPbar(QDialog):
         self.QPbar = QProgressBar(self)
         self.QPbar.setValue(0)
         palette = QPalette()
-        palette.setColor(QPalette.ColorRole.Highlight, QColor(207, 235, 155))
-        palette.setColor(QPalette.ColorRole.Text, QColor(0, 0, 0))
-        palette.setColor(QPalette.ColorRole.HighlightedText, QColor(0, 0, 0))
+        palette.setColor(
+            QPalette.ColorRole.Highlight, _palettes.QProgressBarColor()
+        )
+        # palette.setColor(QPalette.ColorRole.Text, QColor(0, 0, 0))
+        # palette.setColor(QPalette.ColorRole.HighlightedText, QColor(0, 0, 0))
         self.QPbar.setPalette(palette)
         pBarLayout.addWidget(self.QPbar, 0, 0)
         self.ETA_label = QLabel('NDh:NDm:NDs')
@@ -9705,9 +9707,11 @@ class QDialogPbar(QDialog):
         self.metricsQPbar = QProgressBar(self)
         self.metricsQPbar.setValue(0)
         palette = QPalette()
-        palette.setColor(QPalette.ColorRole.Highlight, QColor(207, 235, 155))
-        palette.setColor(QPalette.ColorRole.Text, QColor(0, 0, 0))
-        palette.setColor(QPalette.ColorRole.HighlightedText, QColor(0, 0, 0))
+        palette.setColor(
+            QPalette.ColorRole.Highlight, _palettes.QProgressBarColor()
+        )
+        # palette.setColor(QPalette.ColorRole.Text, QColor(0, 0, 0))
+        # palette.setColor(QPalette.ColorRole.HighlightedText, QColor(0, 0, 0))
         self.metricsQPbar.setPalette(palette)
         pBarLayout.addWidget(self.metricsQPbar, 1, 0)
 

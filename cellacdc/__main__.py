@@ -112,8 +112,8 @@ from qtpy.QtCore import (
     QSettings, QUrl, QCoreApplication
 )
 from qtpy.QtGui import (
-    QFontDatabase, QIcon, QDesktopServices, QFont, QMouseEvent, 
-    QPixmap
+    QFontDatabase, QIcon, QDesktopServices, QFont, QColor, 
+    QPalette
 )
 
 # acdc modules
@@ -471,13 +471,22 @@ class mainWin(QMainWindow):
         self.welcomeGuide.showPage(self.welcomeGuide.welcomeItem)
 
     def setColorsAndText(self):
-        self.moduleLaunchedColor = '#ead935'
+        self.moduleLaunchedColor = '#998f31'
+        self.moduleLaunchedQColor = QColor(self.moduleLaunchedColor)
         defaultColor = self.guiButton.palette().button().color().name()
+        self.defaultButtonPalette = self.guiButton.palette()
         self.defaultPushButtonColor = defaultColor
         self.defaultTextDataStructButton = self.dataStructButton.text()
         self.defaultTextGuiButton = self.guiButton.text()
         self.defaultTextDataPrepButton = self.dataPrepButton.text()
         self.defaultTextSegmButton = self.segmButton.text()
+        self.moduleLaunchedPalette = self.guiButton.palette()
+        self.moduleLaunchedPalette.setColor(
+            QPalette.Button, self.moduleLaunchedQColor
+        )
+        self.moduleLaunchedPalette.setColor(
+            QPalette.ButtonText, QColor(0,0,0)
+        )
 
     def createMenuBar(self):
         menuBar = self.menuBar()
@@ -1136,61 +1145,12 @@ class mainWin(QMainWindow):
         self.batchConverterWin.show()
 
     def launchDataStruct(self, checked=False):
-        self.dataStructButton.setStyleSheet(
-            f'QPushButton {{background-color: {self.moduleLaunchedColor};}}'
-        )
+        self.dataStructButton.setPalette(self.moduleLaunchedPalette)
         self.dataStructButton.setText(
             '0. Creating data structure running...'
         )
 
         QTimer.singleShot(100, self._showDataStructWin)
-
-    # def attemptDataStructSeparateProcess(self):
-    #     self.dataStructButton.setStyleSheet(
-    #         f'QPushButton {{background-color: {self.moduleLaunchedColor};}}'
-    #     )
-    #     self.dataStructButton.setText(
-    #         '0. Creating data structure running...'
-    #     )
-    #
-    #     cellacdc_path = os.path.dirname(os.path.realpath(__file__))
-    #     dataStruct_path = os.path.join(cellacdc_path, 'dataStruct.py')
-    #
-    #     # Due to javabridge limitation only one 'start_vm' can be called in
-    #     # each process. To get around with this every data structure conversion
-    #     # is launched in a separate process
-    #     try:
-    #         subprocess.run(
-    #             [sys.executable, dataStruct_path], check=True, text=True,
-    #             shell=False
-    #         )
-    #     except Exception as e:
-    #         print('=========================================')
-    #         traceback.print_exc()
-    #         print('=========================================')
-    #         err = ("""
-    #         <p style="font-size:12px">
-    #             Launching data structure module in a separate process failed.<br><br>
-    #             Please restart Cell-ACDC if you need to use this module again.
-    #         <p>
-    #         """)
-    #         self.dataStructButton.setStyleSheet(
-    #             f'QPushButton {{background-color: {self.defaultPushButtonColor};}}')
-    #         self.dataStructButton.setText(
-    #             '0. Restart Cell-ACDC to enable module 0 again.')
-    #         self.dataStructButton.setToolTip(
-    #             'Due to an interal limitation of the Java Virtual Machine\n'
-    #             'moduel 0 can be launched only once.\n'
-    #             'To use it again close and reopen Cell-ACDC'
-    #         )
-    #         self.dataStructButton.setDisabled(True)
-    #         return
-    #
-    #     self.dataStructButton.setStyleSheet(
-    #         f'QPushButton {{background-color: {self.defaultPushButtonColor};}}')
-    #     self.dataStructButton.setText(
-    #         '0. Create data structure from microscopy file(s)...')
-    #     self.dataStructButton.setDisabled(False)
 
     def _showDataStructWin(self):
         msg = widgets.myMessageBox(wrapText=False, showCentered=False)
@@ -1237,6 +1197,7 @@ class mainWin(QMainWindow):
         
         useBioFormats = msg.clickedButton == useBioFormatsButton
         if self.dataStructButton.isEnabled() and useBioFormats:
+            self.dataStructButton.setPalette(self.defaultButtonPalette)
             self.dataStructButton.setText(
                 '0. Restart Cell-ACDC to enable module 0 again.')
             self.dataStructButton.setToolTip(
@@ -1309,13 +1270,10 @@ class mainWin(QMainWindow):
         self.logger.log(getattr(logging, loggerLevel), text)
 
     def restoreDefaultButtons(self):
-        self.dataStructButton.setStyleSheet(
-            f'QPushButton {{background-color: {self.defaultPushButtonColor};}}'
-        )
         self.dataStructButton.setText(
             '0. Create data structure from microscopy/image file(s)...'
         )
-
+        self.dataStructButton.setPalette(self.defaultButtonPalette)
 
     def launchDataPrep(self, checked=False):
         c = self.dataPrepButton.palette().button().color().name()
@@ -1323,8 +1281,7 @@ class mainWin(QMainWindow):
         defaultColor = self.defaultPushButtonColor
         defaultText = self.defaultTextDataPrepButton
         if c != self.moduleLaunchedColor:
-            self.dataPrepButton.setStyleSheet(
-                f'QPushButton {{background-color: {launchedColor};}}')
+            self.dataPrepButton.setPalette(self.moduleLaunchedPalette)
             self.dataPrepButton.setText(
                 'DataPrep is running. Click to restore window.'
             )
@@ -1341,6 +1298,8 @@ class mainWin(QMainWindow):
     
     def dataPrepClosed(self):
         self.logger.info('Data prep window closed.')
+        self.dataPrepButton.setText('  1. Launch data prep module...')
+        self.dataPrepButton.setPalette(self.defaultButtonPalette)
         del self.dataPrepWin
 
     def launchSegm(self, checked=False):
@@ -1349,8 +1308,7 @@ class mainWin(QMainWindow):
         defaultColor = self.defaultPushButtonColor
         defaultText = self.defaultTextSegmButton
         if c != self.moduleLaunchedColor:
-            self.segmButton.setStyleSheet(
-                f'QPushButton {{background-color: {launchedColor};}}')
+            self.segmButton.setPalette(self.moduleLaunchedPalette)
             self.segmButton.setText('Segmentation is running. '
                                     'Check progress in the terminal/console')
             self.segmWin = segm.segmWin(
