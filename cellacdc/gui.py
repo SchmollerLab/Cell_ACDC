@@ -9143,7 +9143,16 @@ class guiWin(QMainWindow):
                 delIDsPrevFrame = prev_lab[ROImask]
                 allDelIDs.update(delIDsPrevFrame)
         return allDelIDs
-            
+    
+    def getStoredDelRoiIDs(self):
+        posData = self.data[self.pos_i]
+        allDelIDs = set()
+        delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
+        delIDs_rois = delROIs_info['delIDsROI']
+        for delIDs in delIDs_rois:
+            allDelIDs.update(delIDs)
+        return allDelIDs
+    
     def getDelROIlab(self):
         posData = self.data[self.pos_i]
         DelROIlab = self.get_2Dlab(posData.lab, force_z=False).copy()
@@ -15887,8 +15896,11 @@ class guiWin(QMainWindow):
     def update_rp(self, draw=True, debug=False):
         posData = self.data[self.pos_i]
         # Update rp for current posData.lab (e.g. after any change)
+        delRoiIDs = self.getStoredDelRoiIDs()
         posData.rp = skimage.measure.regionprops(posData.lab)
-        posData.IDs = [obj.label for obj in posData.rp]
+        posData.IDs = [
+            obj.label for obj in posData.rp if obj.label not in delRoiIDs
+        ]
         posData.IDs_idxs = {
             ID:i for ID, i in zip(posData.IDs, range(len(posData.IDs)))
         }
