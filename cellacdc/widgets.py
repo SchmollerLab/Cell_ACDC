@@ -1138,7 +1138,6 @@ class QDialogListbox(QDialog):
             QListWidget::item:selected {color:black;}
             QListView {
                 selection-background-color: #CFEB9B;
-                selection-color: white;
                 show-decoration-selected: 1;
             }
         """)
@@ -1594,7 +1593,6 @@ class listWidget(QListWidget):
             QListWidget::item:selected {color:black;}
             QListView {
                 selection-background-color: #CFEB9B;
-                selection-color: white;
                 show-decoration-selected: 1;
             }
         """)
@@ -1707,7 +1705,6 @@ class TreeWidget(QTreeWidget):
             QTreeWidget::item:selected {color:black;}
             QTreeView {
                 selection-background-color: #CFEB9B;
-                selection-color: white;
                 show-decoration-selected: 1;
             }
         """)

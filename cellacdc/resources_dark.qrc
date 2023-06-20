@@ -126,6 +126,7 @@
     <file alias="compute.svg">resources/icons/compute_dark.svg</file>
     <file alias="exit.png">resources/icons/exit.png</file>
     <file alias="ome.svg">resources/icons/ome-logomark_dark.svg</file>
+    <file alias="magnGlass.svg">resources/icons/magnGlass_dark.svg</file>
     <file alias="delBorderObj.svg">resources/icons/delBorderObj_dark.svg</file>
     <file alias="autoAssign.svg">resources/icons/autoAssign_dark.svg</file>
     <file alias="magic_wand.svg">resources/icons/magic_wand_dark.svg</file>

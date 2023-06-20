@@ -91,7 +91,6 @@ class welcomeWin(QWidget):
             QTreeWidget::item:selected {color:black;}
             QTreeView {
                 selection-background-color: #CFEB9B;
-                selection-color: white;
                 show-decoration-selected: 1;
             }
             QTreeWidget::item {padding: 5px;}
