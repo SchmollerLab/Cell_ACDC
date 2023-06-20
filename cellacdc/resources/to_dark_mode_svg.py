@@ -10,10 +10,10 @@ LIGHT_TO_DARK_MAPPER = {
 }
 
 
-# Read resources.qrc file and extract SVG relative paths
+# Read resources_light.qrc file and extract SVG relative paths
 resources_folderpath = os.path.dirname(os.path.abspath(__file__))
 cellacdc_path = os.path.dirname(resources_folderpath)
-resources_filepath = os.path.join(cellacdc_path, 'resources.qrc')
+resources_filepath = os.path.join(cellacdc_path, 'resources_light.qrc')
 
 qrc_resources_light_path = os.path.join(cellacdc_path, 'qrc_resources_light.py')
 qrc_resources_dark_path = os.path.join(cellacdc_path, 'qrc_resources_dark.py')

@@ -105,6 +105,13 @@ if not os.path.exists(settings_csv_path):
         {'setting': [], 'value': []}).set_index('setting')
     df_settings.to_csv(settings_csv_path)
 
+from qtpy import QtCore, QtWidgets
+# Handle high resolution displays:
+if hasattr(QtCore.Qt, 'AA_EnableHighDpiScaling'):
+    QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling, True)
+if hasattr(QtCore.Qt, 'AA_UseHighDpiPixmaps'):
+    QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True)
+
 # Check OS dark or light mode
 from qtpy.QtWidgets import QApplication, QStyleFactory
 from qtpy.QtGui import QPalette
@@ -182,9 +189,9 @@ parent_path = os.path.dirname(cellacdc_path)
 html_path = os.path.join(cellacdc_path, '_html')
 data_path = os.path.join(parent_path, 'data')
 resources_folderpath = os.path.join(cellacdc_path, 'resources')
-resources_filepath = os.path.join(cellacdc_path, 'resources.qrc')
+resources_filepath = os.path.join(cellacdc_path, 'resources_light.qrc')
 logs_path = os.path.join(user_path, '.acdc-logs')
-resources_path = os.path.join(cellacdc_path, 'resources.qrc')
+resources_path = os.path.join(cellacdc_path, 'resources_light.qrc')
 models_list_file_path = os.path.join(temp_path, 'custom_models_paths.ini')
 user_manual_url = 'https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf'
 github_home_url = 'https://github.com/SchmollerLab/Cell_ACDC'
