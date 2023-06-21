@@ -19088,7 +19088,8 @@ class guiWin(QMainWindow):
         for i in range(from_frame_i, posData.SizeT):
             if posData.allData_li[i]['labels'] is None:
                 break
-
+            
+            posData.segm_data[i] = posData.allData_li[i]['labels']
             posData.allData_li[i] = {
                 'regionprops': [],
                 'labels': None,
