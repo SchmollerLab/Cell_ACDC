@@ -14992,7 +14992,11 @@ class guiWin(QMainWindow):
         
         annotated_cca_dfs = []
         for frame_i in range(last_cca_frame_i+1):
-            if 'cell_cycle_stage'
+            acdc_df = posData.allData_li[frame_i]['acdc_df']
+            if 'cell_cycle_stage' in acdc_df.columns:
+                continue
+            
+            acdc_df[self.cca_df_colnames] = ''
         
         annotated_cca_dfs = [
             posData.allData_li[i]['acdc_df'][self.cca_df_colnames]
