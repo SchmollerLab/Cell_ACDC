@@ -10000,7 +10000,8 @@ class QDialogTrackerParams(QDialog):
             for caster in casters:
                 try:
                     argWidget.valueSetter(widget, caster(val))
-                except TypeError:
+                    break
+                except Exception as e:
                     continue
 
     def createSeeHereLabel(self, url):
@@ -10345,7 +10346,8 @@ class QDialogModelParams(QDialog):
             for caster in casters:
                 try:
                     argWidget.valueSetter(widget, caster(val))
-                except TypeError:
+                    break
+                except Exception as e:
                     continue
 
     def loadLastSelectionPostProcess(self):
