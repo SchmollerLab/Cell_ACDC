@@ -10341,10 +10341,12 @@ class QDialogModelParams(QDialog):
             widget = argWidget.widget
             if val is None:
                 continue
-            try:
-                argWidget.valueSetter(widget, val)
-            except TypeError:
-                argWidget.valueSetter(widget, int(val))
+            casters = [lambda x: x, int, float, str, bool]
+            for caster in casters:
+                try:
+                    argWidget.valueSetter(widget, caster(val))
+                except TypeError:
+                    continue
 
     def loadLastSelectionPostProcess(self):
         postProcessSection = f'{self.model_name}.postprocess'
