@@ -139,17 +139,17 @@ class dataPrepWin(QMainWindow):
 
     @exception_handler
     def keyPressEvent(self, event):
-        if self.debug:
-            if event.key() == Qt.Key_Q:
-                posData = self.data[self.pos_i]
-                printl(posData.all_npz_paths)
-                # for r, roi in enumerate(posData.bkgrROIs):
-                #     print(roi.pos(), roi.size())
-                #     xl, yt = [int(round(c)) for c in roi.pos()]
-                #     w, h = [int(round(c)) for c in roi.size()]
-                #     print('-'*20)
-                #     print(yt, yt+h, yt+h>yt)
-                #     print(xl, xl+w, xl+w>xl)
+        if event.key() == Qt.Key_Q:
+            posData = self.data[self.pos_i]
+            printl(posData.all_npz_paths)
+            printl(posData.tif_paths)
+            # for r, roi in enumerate(posData.bkgrROIs):
+            #     print(roi.pos(), roi.size())
+            #     xl, yt = [int(round(c)) for c in roi.pos()]
+            #     w, h = [int(round(c)) for c in roi.size()]
+            #     print('-'*20)
+            #     print(yt, yt+h, yt+h>yt)
+            #     print(xl, xl+w, xl+w>xl)
         if event.key() == Qt.Key_Left:
             self.navigateScrollbar.triggerAction(
                 QAbstractSlider.SliderAction.SliderSingleStepSub
@@ -980,20 +980,21 @@ class dataPrepWin(QMainWindow):
                 np.savez_compressed(temp_npz, croppedSegm)
                 self.moveTempFile(temp_npz, posData.segm_npz_path)
 
-            # Correct acdc_df if present and save
-            if posData.acdc_df is not None:
-                x0, y0 = [int(round(c)) for c in posData.cropROI.pos()]
-                self.logger.info(f'Saving: {posData.acdc_output_csv_path}')
-                df = posData.acdc_df
-                df['x_centroid'] -= x0
-                df['y_centroid'] -= y0
-                df['editIDclicked_x'] -= x0
-                df['editIDclicked_y'] -= y0
-                try:
-                    df.to_csv(posData.acdc_output_csv_path)
-                except PermissionError:
-                    self.permissionErrorCritical(posData.acdc_output_csv_path)
-                    df.to_csv(posData.acdc_output_csv_path)
+            try:
+                # Correct acdc_df if present and save
+                if posData.acdc_df is not None:
+                    x0, y0 = [int(round(c)) for c in posData.cropROI.pos()]
+                    self.logger.info(f'Saving: {posData.acdc_output_csv_path}')
+                    df = posData.acdc_df
+                    df['x_centroid'] -= x0
+                    df['y_centroid'] -= y0
+                    try:
+                        df.to_csv(posData.acdc_output_csv_path)
+                    except PermissionError:
+                        self.permissionErrorCritical(posData.acdc_output_csv_path)
+                        df.to_csv(posData.acdc_output_csv_path)
+            except Exception as e:
+                pass
 
             self.logger.info(f'{posData.pos_foldername} saved!')
             print(f'--------------------------------')
@@ -1699,7 +1700,9 @@ class dataPrepWin(QMainWindow):
 
         _zip = zip(posData.tif_paths, posData.npz_paths)
         aligned = False
-        posData.all_npz_paths = [None]*len(posData.tif_paths)
+        posData.all_npz_paths = [
+            tif.replace('.tif', 'aligned.npz') for tif in posData.tif_paths
+        ]
         for i, (tif, npz) in enumerate(_zip):
             doAlign = npz is None or posData.loaded_shifts is None
 
@@ -1772,7 +1775,7 @@ class dataPrepWin(QMainWindow):
             if not doAlign:
                 continue
             
-            if not tif.endswith(f'{user_ch_name}.tif'):
+            if tif.endswith(f'{user_ch_name}.tif'):
                 continue
             
             # Align the other channels
