@@ -6035,7 +6035,7 @@ class ComputeMetricsErrorsDialog(widgets.QBaseDialog):
             errorLabel.setTextInteractionFlags(
                 Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard
             )
-            errorLabel.setStyleSheet("background-color: white")
+            # errorLabel.setStyleSheet("background-color: white")
             errorLabel.setFrameShape(QFrame.Shape.Panel)
             errorLabel.setFrameShadow(QFrame.Shadow.Sunken)
             textLayout.addWidget(nameLabel)
@@ -9996,10 +9996,13 @@ class QDialogTrackerParams(QDialog):
             widget = argWidget.widget
             if val is None:
                 continue
-            try:
-                argWidget.valueSetter(widget, val)
-            except TypeError:
-                argWidget.valueSetter(widget, int(val))
+            casters = [lambda x: x, int, float, str, bool]
+            for caster in casters:
+                try:
+                    argWidget.valueSetter(widget, caster(val))
+                    break
+                except Exception as e:
+                    continue
 
     def createSeeHereLabel(self, url):
         htmlTxt = f'<a href=\"{url}">here</a>'
@@ -10339,10 +10342,13 @@ class QDialogModelParams(QDialog):
             widget = argWidget.widget
             if val is None:
                 continue
-            try:
-                argWidget.valueSetter(widget, val)
-            except TypeError:
-                argWidget.valueSetter(widget, int(val))
+            casters = [lambda x: x, int, float, str, bool]
+            for caster in casters:
+                try:
+                    argWidget.valueSetter(widget, caster(val))
+                    break
+                except Exception as e:
+                    continue
 
     def loadLastSelectionPostProcess(self):
         postProcessSection = f'{self.model_name}.postprocess'

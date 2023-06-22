@@ -18,18 +18,22 @@ def _light_colors():
         'ButtonText': (0, 0, 0, 255),
         'BrightText': (255, 255, 255, 255),
         'Link': (0, 0, 255, 255),
-        'Highlight': (48, 140, 198, 255),
+        'Highlight': (108, 209, 77, 255),
         'HighlightedText': (255, 255, 255, 255)
     }
     return colors
 
 def _light_disabled_colors():
     disabled_colors = {
-        'ButtonText': (128, 128, 128, 255), 
+        'ButtonText': (150, 150, 150, 255), 
         'WindowText': (128, 128, 128, 255), 
         'Text': (150, 150, 150, 255), 
         'Light': (255, 255, 255, 255),
-        'Button': (200, 200, 200, 255)
+        'Button': (200, 200, 200, 255),
+        # 'Window': (200, 200, 200, 255),
+        # 'Highlight': (0, 0, 0, 255),
+        # 'HighlightedText': (0, 0, 0, 255),
+        
     }
     return disabled_colors
 
@@ -39,7 +43,8 @@ def _dark_disabled_colors():
         'WindowText': (128, 128, 128, 255), 
         'Text': (128, 128, 128, 255), 
         'Light': (53, 53, 53, 255),
-        'Button': (70, 70, 70, 255)
+        'Button': (100, 100, 100, 255),
+        'Window': (0, 0, 0, 255),
     }
     return disabled_colors
 
@@ -56,7 +61,7 @@ def _dark_colors():
         'ButtonText': (240, 240, 240, 255),
         'BrightText': (75, 75, 75, 255),
         'Link': (48, 140, 198, 255),
-        'Highlight': (48, 140, 198, 255),
+        'Highlight': (49, 97, 35, 255),
         'HighlightedText': (240, 240, 240, 255)
     }
     return colors

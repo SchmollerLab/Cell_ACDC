@@ -3,6 +3,7 @@ import os
 import shutil
 
 SCHEME = 'dark' 
+FLAT = True
 
 cellacdc_path = os.path.dirname(os.path.abspath(__file__))
 qrc_resources_light_path = os.path.join(cellacdc_path, 'qrc_resources_light.py')
@@ -61,6 +62,8 @@ for i in range(nrows):
         button.setIcon(icon)
         button.setIconSize(QSize(32,32))
         button.setCheckable(True)
+        if FLAT:
+            button.setFlat(True)
         layout.addWidget(button, i, j)
         buttons.append(button)
         idx += 1

@@ -1,7 +1,7 @@
 # This workflow will install Python dependencies, run tests and lint with a variety of Python versions
 # For more information see: https://help.github.com/actions/language-and-framework-guides/using-python-with-github-actions
 
-name: Ubuntu build, lint and test (PyQt5)
+name: Ubuntu build, lint and test (PyQt6)
 
 on:
   push:
@@ -28,7 +28,7 @@ jobs:
         python-version: ${{ matrix.python-version }}
     - name: setup ubuntu-latest
       run: |
-        sudo apt install libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 libxcb-xfixes0 x11-utils
+        sudo apt install libegl1 libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 libxcb-xfixes0 x11-utils
         /sbin/start-stop-daemon --start --quiet --pidfile /tmp/custom_xvfb_99.pid --make-pidfile --background --exec /usr/bin/Xvfb -- :99 -screen 0 1920x1200x24 -ac +extension GLX
     - name: Install dependencies
       run: |
@@ -36,7 +36,7 @@ jobs:
         python -m pip install flake8 pytest
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
         python -m pip install -e .
-        python -m pip install PyQt5
+        python -m pip install PyQt6
     - name: Lint with flake8
       run: |
         # stop the build if there are Python syntax errors or undefined names
