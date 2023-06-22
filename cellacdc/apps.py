@@ -6035,7 +6035,7 @@ class ComputeMetricsErrorsDialog(widgets.QBaseDialog):
             errorLabel.setTextInteractionFlags(
                 Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard
             )
-            errorLabel.setStyleSheet("background-color: white")
+            # errorLabel.setStyleSheet("background-color: white")
             errorLabel.setFrameShape(QFrame.Shape.Panel)
             errorLabel.setFrameShadow(QFrame.Shadow.Sunken)
             textLayout.addWidget(nameLabel)
