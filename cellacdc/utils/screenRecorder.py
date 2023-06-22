@@ -9,6 +9,8 @@ from qtpy.QtWidgets import QMainWindow, QApplication, QFrame
 from qtpy.QtCore import Qt, QPoint, QRect, QObject, Signal, QThread
 from qtpy.QtGui import QBrush, QColor, QPen, QPainter
 
+from .. import cellacdc_path, temp_path
+
 import pathlib
 USER_PATH = pathlib.Path.home()
 
@@ -126,8 +128,6 @@ class screenRecorder(QMainWindow):
 
     def loadLastRect(self):
         utils_path = os.path.dirname(os.path.realpath(__file__))
-        cellacdc_path = os.path.dirname(utils_path)
-        temp_path = os.path.join(cellacdc_path, 'temp')
         self.settings_csv_path = os.path.join(temp_path, 'settings.csv')
         if not os.path.exists(self.settings_csv_path):
             self.x0, self.y0, self.x1, self.y1 = 100, 100, 400, 300

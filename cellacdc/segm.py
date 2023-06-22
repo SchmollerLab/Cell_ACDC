@@ -33,6 +33,7 @@ from . import qrc_resources, html_utils, printl
 from . import exception_handler
 from . import workers
 from . import _palettes
+from . import cellacdc_path, temp_path, recentPaths_path
 
 if os.name == 'nt':
     try:
@@ -510,10 +511,6 @@ class segmWin(QMainWindow):
         mainContainer.setLayout(mainLayout)
 
     def getMostRecentPath(self):
-        cellacdc_path = os.path.dirname(os.path.abspath(__file__))
-        recentPaths_path = os.path.join(
-            cellacdc_path, 'temp', 'recentPaths.csv'
-        )
         if os.path.exists(recentPaths_path):
             df = pd.read_csv(recentPaths_path, index_col='index')
             if 'opened_last_on' in df.columns:
@@ -527,10 +524,6 @@ class segmWin(QMainWindow):
     def addToRecentPaths(self, exp_path):
         if not os.path.exists(exp_path):
             return
-        cellacdc_path = os.path.dirname(os.path.realpath(__file__))
-        recentPaths_path = os.path.join(
-            cellacdc_path, 'temp', 'recentPaths.csv'
-        )
         if os.path.exists(recentPaths_path):
             df = pd.read_csv(recentPaths_path, index_col='index')
             recentPaths = df['path'].to_list()

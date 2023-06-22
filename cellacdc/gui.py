@@ -73,7 +73,7 @@ from . import _warnings
 from . import measurements, printl
 from . import colors, filters, annotate
 from . import user_manual_url
-from . import cellacdc_path, temp_path, settings_csv_path
+from . import recentPaths_path, temp_path, settings_csv_path
 from . import qutils, autopilot, QtScoped
 from .trackers.CellACDC import CellACDC_tracker
 from .cca_functions import _calc_rot_vol
@@ -985,18 +985,16 @@ class guiWin(QMainWindow):
 
         self.splineToObjModel.fit()
     
-    def readRecentPaths(self, recentPaths_path=None):
+    def readRecentPaths(self, recent_paths_path=None):
         # Step 0. Remove the old options from the menu
         self.openRecentMenu.clear()
 
         # Step 1. Read recent Paths
-        if recentPaths_path is None:
-            recentPaths_path = os.path.join(
-                cellacdc_path, 'temp', 'recentPaths.csv'
-            )
+        if recent_paths_path is None:
+            recent_paths_path = recentPaths_path    
         
-        if os.path.exists(recentPaths_path):
-            df = pd.read_csv(recentPaths_path, index_col='index')
+        if os.path.exists(recent_paths_path):
+            df = pd.read_csv(recent_paths_path, index_col='index')
             if 'opened_last_on' in df.columns:
                 df = df.sort_values('opened_last_on', ascending=False)
             recentPaths = df['path'].to_list()

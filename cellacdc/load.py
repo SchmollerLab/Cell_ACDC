@@ -649,7 +649,6 @@ class loadData:
         return pos_num
 
     def loadLastEntriesMetadata(self):
-        temp_path = os.path.join(cellacdc_path, 'temp')
         if not os.path.exists(temp_path):
             self.last_md_df = None
             return

@@ -26,6 +26,7 @@ sys.path.append(cellacdc_path)
 
 # Custom modules
 from .. import prompts, load, myutils, apps, html_utils, widgets
+from .. import recentPaths_path, cellacdc_path, temp_path
 
 from .. import qrc_resources
 
@@ -79,9 +80,6 @@ class renameFilesWin(QMainWindow):
         mainContainer.setLayout(mainLayout)
 
     def getMostRecentPath(self):
-        recentPaths_path = os.path.join(
-            cellacdc_path, 'temp', 'recentPaths.csv'
-        )
         if os.path.exists(recentPaths_path):
             df = pd.read_csv(recentPaths_path, index_col='index')
             if 'opened_last_on' in df.columns:
@@ -271,9 +269,6 @@ class renameFilesWin(QMainWindow):
     def addToRecentPaths(self, exp_path):
         if not os.path.exists(exp_path):
             return
-        recentPaths_path = os.path.join(
-            cellacdc_path, 'temp', 'recentPaths.csv'
-        )
         if os.path.exists(recentPaths_path):
             df = pd.read_csv(recentPaths_path, index_col='index')
             recentPaths = df['path'].to_list()

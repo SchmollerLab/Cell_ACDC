@@ -40,7 +40,7 @@ from qtpy.QtCore import Signal, QObject, QCoreApplication
 from . import apps
 from . import prompts, widgets, core, load
 from . import html_utils, is_linux, is_win, is_mac, issues_url, is_mac_arm64
-from . import cellacdc_path, printl, temp_path, logs_path
+from . import cellacdc_path, printl, temp_path, logs_path, recentPaths_path
 from . import config, models_list_file_path
 from . import github_home_url
 
@@ -297,9 +297,6 @@ def get_pos_foldernames(exp_path):
     return pos_foldernames
 
 def getMostRecentPath():
-    recentPaths_path = os.path.join(
-        cellacdc_path, 'temp', 'recentPaths.csv'
-    )
     if os.path.exists(recentPaths_path):
         df = pd.read_csv(recentPaths_path, index_col='index')
         if 'opened_last_on' in df.columns:
@@ -316,9 +313,6 @@ def getMostRecentPath():
 def addToRecentPaths(exp_path, logger=None):
     if not os.path.exists(exp_path):
         return
-    recentPaths_path = os.path.join(
-        cellacdc_path, 'temp', 'recentPaths.csv'
-    )
     if os.path.exists(recentPaths_path):
         df = pd.read_csv(recentPaths_path, index_col='index')
         recentPaths = df['path'].to_list()

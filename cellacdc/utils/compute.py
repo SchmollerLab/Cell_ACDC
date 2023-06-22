@@ -16,8 +16,8 @@ from .. import (
     gui, cca_functions, load, printl
 )
 
-cellacdc_path = os.path.dirname(os.path.abspath(apps.__file__))
-temp_path = os.path.join(cellacdc_path, 'temp')
+from .. import cellacdc_path, temp_path
+
 favourite_func_metrics_csv_path = os.path.join(
     temp_path, 'favourite_func_metrics.csv'
 )

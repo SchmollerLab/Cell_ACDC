@@ -1,6 +1,7 @@
 print('Initalising...')
 import os
 import shutil
+import sys
 
 # Force PyQt6 if available
 try:
@@ -43,7 +44,6 @@ except ModuleNotFoundError as e:
         answer = input('Do you want to install it now ([y]/n)? ')
         if answer.lower() == 'y' or not answer:
             import subprocess
-            import sys
             subprocess.check_call(
                 [sys.executable, '-m', 'pip', 'install', '-U', 'qtpy']
             )
@@ -82,7 +82,6 @@ except Exception as e:
         answer = input('Do you want to install PyQt6 now ([y]/n)? ')
         if answer.lower() == 'y' or not answer:
             import subprocess
-            import sys
             subprocess.check_call(
                 [sys.executable, '-m', 'pip', 'install', '-U', 'PyQt6']
             )
@@ -95,10 +94,25 @@ except Exception as e:
                 'Type "y" for "yes", or "n" for "no".'
             )
 
-temp_path = os.path.join(cellacdc_path, 'temp')
-settings_csv_path = os.path.join(temp_path, 'settings.csv')
+import pathlib
+old_temp_path = os.path.join(cellacdc_path, 'temp')
+user_path = pathlib.Path.home()
+temp_path = os.path.join(user_path, '.acdc-settings')
 if not os.path.exists(temp_path):
     os.makedirs(temp_path)
+if os.path.exists(old_temp_path):
+    try:
+        from distutils.dir_util import copy_tree
+        copy_tree(old_temp_path, temp_path)
+        shutil.rmtree(old_temp_path)
+    except Exception as e:
+        print('*'*60)
+        print(
+            '[WARNING]: could not copy settings from previous location. '
+            f'Please manually copy the folder "{old_temp_path}" to "{temp_path}"')
+        print('^'*60)
+
+settings_csv_path = os.path.join(temp_path, 'settings.csv')
 if not os.path.exists(settings_csv_path):
     import pandas as pd
     df_settings = pd.DataFrame(
@@ -127,12 +141,10 @@ if is_OS_dark_mode:
         df_settings.at['colorScheme', 'value'] = 'dark'
         df_settings.to_csv(settings_csv_path)
 
-import sys
 import os
 import inspect
 import platform
 import traceback
-import pathlib
 from datetime import datetime
 from pprint import pprint
 
@@ -186,7 +198,6 @@ def printl(*objects, pretty=False, is_decorator=False, **kwargs):
     print('='*30)
     sys.stdout = current_stdout
 
-user_path = pathlib.Path.home()
 parent_path = os.path.dirname(cellacdc_path)
 html_path = os.path.join(cellacdc_path, '_html')
 data_path = os.path.join(parent_path, 'data')
@@ -195,6 +206,7 @@ resources_filepath = os.path.join(cellacdc_path, 'resources_light.qrc')
 logs_path = os.path.join(user_path, '.acdc-logs')
 resources_path = os.path.join(cellacdc_path, 'resources_light.qrc')
 models_list_file_path = os.path.join(temp_path, 'custom_models_paths.ini')
+recentPaths_path = os.path.join(temp_path, 'recentPaths.csv')
 user_manual_url = 'https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf'
 github_home_url = 'https://github.com/SchmollerLab/Cell_ACDC'
 
