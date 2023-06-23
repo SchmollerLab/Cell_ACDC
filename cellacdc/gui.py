@@ -15781,6 +15781,7 @@ class guiWin(QMainWindow):
 
         if posData.cca_df is None:
             posData.cca_df = self.getBaseCca_df()
+            self.store_cca_df()
             msg = 'Cell cycle analysis initialized!'
             self.logger.info(msg)
             self.titleLabel.setText(msg, color=self.titleColor)
@@ -17896,9 +17897,15 @@ class guiWin(QMainWindow):
                 delIDs_rois = delROIs_info['delIDsROI']
                 if not delIDs_rois:
                     continue
+                delIDs_present = False
                 for delIDs in delIDs_rois:
+                    if delIDs and not delIDs_present:
+                        delIDs_present = True
                     for delID in delIDs:
                         lab[lab==delID] = 0
+                
+                if not delIDs_present:
+                    continue
                 posData.allData_li[frame_i]['labels'] = lab
                 # Get the rest of the metadata and store data based on the new lab
                 posData.frame_i = frame_i
