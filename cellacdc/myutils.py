@@ -1971,6 +1971,11 @@ def get_git_pull_checkout_cellacdc_version_commands(version=None):
     )
     return commands
 
+def check_install_tapir():
+    check_install_package(
+        'tapnet', pypi_name='"git+https://github.com/ElpadoCan/TAPIR.git"'
+    )
+
 if __name__ == '__main__':
     print(get_list_of_models())
     # model_name = 'cellpose'
