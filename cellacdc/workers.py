@@ -1211,7 +1211,10 @@ class trackingWorker(QObject):
     def _relabel_first_frame_labels(self, tracked_video):
         first_untracked_lab = self._get_first_untracked_lab()
         self.mainWin.setAllIDs()
-        uniqueID = max(max(self.posData.allIDs, 0), tracked_video.max()) + 1
+        max_allIDs = max(self.posData.allIDs, default=0)
+        max_tracked_video = tracked_video.max()
+        overall_max = max(max_allIDs, max_tracked_video)
+        uniqueID = overall_max + 1
         first_tracked_lab = tracked_video[0]
         for obj in skimage.measure.regionprops(first_untracked_lab):
             trackedID = first_tracked_lab[obj.slice][obj.image].flat[0]

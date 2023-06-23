@@ -7467,6 +7467,7 @@ class guiWin(QMainWindow):
                 )
             )
             if msg.clickedButton == disableTrackingButton:
+                self.realTimeTrackingToggle.setChecked(False)
                 posData = self.data[self.pos_i]
                 current_frame_i = posData.frame_i
                 for frame_i in range(self.start_n-1, self.stop_n):

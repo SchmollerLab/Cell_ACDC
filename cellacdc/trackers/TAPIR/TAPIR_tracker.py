@@ -8,7 +8,7 @@ class tracker:
         pass
     
     def track(
-            segm_video, image, 
+            self, segm_video, image, 
             resize_to_square_with_size: SizesToResize=256,
             signals=None
         ):
