@@ -9905,8 +9905,6 @@ class guiWin(QMainWindow):
                 self.store_cca_df()
         elif mode == 'Cell cycle analysis':
             proceed = self.initCca()
-            if proceed:
-                self.applyDelROIs()
             self.modeToolBar.setVisible(True)
             self.realTimeTrackingToggle.setDisabled(True)
             self.realTimeTrackingToggle.label.setDisabled(True)
@@ -15778,6 +15776,8 @@ class guiWin(QMainWindow):
 
         self.navigateScrollBar.setMaximum(last_cca_frame_i+1)
         self.navSpinBox.setMaximum(last_cca_frame_i+1)
+        
+        self.applyDelROIs()
 
         if posData.cca_df is None:
             posData.cca_df = self.getBaseCca_df()
