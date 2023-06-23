@@ -1656,7 +1656,7 @@ class guiWin(QMainWindow):
         self.separateBudButton.setToolTip(
             'Toggle "Automatic/manual separation" mode ON/OFF\n\n'
             'EXAMPLE: separate mother-bud fused together\n\n'
-            'ACTION: right-click for automatic and left-click for manual\n\n'
+            'ACTION: right-click for automatic and Ctrl+right-click for manual\n\n'
             'SHORTCUT: "S" key'
         )
         self.separateBudButton.action = editToolBar.addWidget(self.separateBudButton)
@@ -4500,7 +4500,7 @@ class guiWin(QMainWindow):
             self.highlightLostNew()
 
         # Separate bud
-        elif (right_click or left_click) and self.separateBudButton.isChecked():
+        elif right_click and separateON:
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
@@ -4523,7 +4523,7 @@ class guiWin(QMainWindow):
             self.storeUndoRedoStates(False)
             max_ID = max(posData.IDs, default=1)
 
-            if right_click:
+            if not ctrl:
                 lab2D, success = self.auto_separate_bud_ID(
                     ID, self.get_2Dlab(posData.lab), posData.rp, max_ID,
                     enforce=True
@@ -6046,7 +6046,11 @@ class guiWin(QMainWindow):
             return
 
         Y, X = self.get_2Dlab(posData.lab).shape
-        x, y = event.pos().x(), event.pos().y()
+        try:
+            x, y = event.pos().x(), event.pos().y()
+        except Exception as e:
+            return
+            
         xdata, ydata = int(x), int(y)
         if not myutils.is_in_bounds(xdata, ydata, X, Y):
             self.isMouseDragImg2 = False
@@ -6570,6 +6574,7 @@ class guiWin(QMainWindow):
         polyLineRoiON = self.addDelPolyLineRoiAction.isChecked()
         labelRoiON = self.labelRoiButton.isChecked()
         keepObjON = self.keepIDsButton.isChecked()
+        separateON = self.separateBudButton.isChecked()
         addPointsByClickingButton = self.buttonAddPointsByClickingActive()
 
         # Check if right-click on segment of polyline roi to add segment
@@ -6595,7 +6600,7 @@ class guiWin(QMainWindow):
             left_click and not brushON and not histON
             and not curvToolON and not eraserON and not rulerON
             and not wandON and not polyLineRoiON and not labelRoiON
-            and not middle_click and not keepObjON 
+            and not middle_click and not keepObjON and not separateON
             and addPointsByClickingButton is None
         )
         if isPanImageClick:
@@ -6611,10 +6616,11 @@ class guiWin(QMainWindow):
              and not self.curvToolButton.isChecked()
              and not is_right_click_custom_ON
              and not labelRoiON
+             and not separateON
         )
 
         # In timelapse mode division can be annotated if isCcaMode and right-click
-        # while in snapshot mode with Ctrl+rigth-click
+        # while in snapshot mode with Ctrl+right-click
         isAnnotateDivision = (
             (right_click and isCcaMode and canAnnotateDivision)
             or (right_click and ctrl and self.isSnapshot)
