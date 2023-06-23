@@ -95,9 +95,22 @@ except Exception as e:
             )
 
 import pathlib
+import numpy as np
+
 old_temp_path = os.path.join(cellacdc_path, 'temp')
 user_path = pathlib.Path.home()
-temp_path = os.path.join(user_path, '.acdc-settings')
+
+site_packages = os.path.dirname(os.path.dirname(np.__file__))
+cellacdc_path = os.path.dirname(os.path.abspath(__file__))
+cellacdc_installation_path = os.path.dirname(cellacdc_path)
+
+if cellacdc_installation_path != site_packages:
+    IS_CLONED = True
+    temp_path = os.path.join(cellacdc_installation_path, '.acdc-settings')
+else:
+    IS_CLONED = False
+    temp_path = os.path.join(user_path, '.acdc-settings')
+    
 if not os.path.exists(temp_path):
     os.makedirs(temp_path)
 if os.path.exists(old_temp_path):
@@ -153,7 +166,6 @@ from . import html_utils
 
 import pyqtgraph as pg
 import pandas as pd
-import numpy as np
 
 np.random.seed(3548784512)
 
