@@ -12444,7 +12444,7 @@ class guiWin(QMainWindow):
         # Ask segm parameters if not already set
         # and not called by segmSingleFrameMenu (askSegmParams=False)
         if not askSegmParams:
-            askSegmParams = self.segment2D_kwargs is None
+            askSegmParams = self.model_kwargs is None
 
         self.downloadWin = apps.downloadModel(model_name, parent=self)
         self.downloadWin.download()
@@ -12489,9 +12489,9 @@ class guiWin(QMainWindow):
                 win.exec_()
                 if win.cancel:
                     return
-                self.segment2D_kwargs = win.segment_kwargs
-                thresh_method = self.segment2D_kwargs['threshold_method']
-                gauss_sigma = self.segment2D_kwargs['gauss_sigma']
+                self.model_kwargs = win.segment_kwargs
+                thresh_method = self.model_kwargs['threshold_method']
+                gauss_sigma = self.model_kwargs['gauss_sigma']
                 segment_params = myutils.insertModelArgSpect(
                     segment_params, 'threshold_method', thresh_method
                 )
@@ -12517,7 +12517,7 @@ class guiWin(QMainWindow):
                 return
 
             if model_name != 'thresholding':
-                self.segment2D_kwargs = win.segment2D_kwargs
+                self.model_kwargs = win.model_kwargs
             self.removeArtefactsKwargs = win.artefactsGroupBox.kwargs()
             self.applyPostProcessing = win.applyPostProcessing
             self.secondChannelName = win.secondChannelName
@@ -12541,7 +12541,7 @@ class guiWin(QMainWindow):
             }
             postProcessParams = {**postProcessParams, **self.removeArtefactsKwargs}
             posData.saveSegmHyperparams(
-                model_name, self.segment2D_kwargs, postProcessParams
+                model_name, self.model_kwargs, postProcessParams
             )
             model.model_name = model_name
         else:
@@ -12692,7 +12692,7 @@ class guiWin(QMainWindow):
             return
         
         if model_name == 'thresholding':
-            win.segment2D_kwargs = autoThreshWin.segment_kwargs
+            win.model_kwargs = autoThreshWin.segment_kwargs
 
         secondChannelData = None
         if win.secondChannelName is not None:
@@ -12895,7 +12895,7 @@ class guiWin(QMainWindow):
             self.titleLabel.setText('Segmentation process cancelled.')
             return
             
-        self.segment2D_kwargs = win.segment2D_kwargs
+        self.model_kwargs = win.model_kwargs
         model = acdcSegment.Model(**win.init_kwargs)
         try:
             model.setupLogger(self.logger)
@@ -12926,6 +12926,7 @@ class guiWin(QMainWindow):
         else:
             self.navigateScrollBar.triggerAction(stepSubAction)
 
+    @exception_handler
     def next_cb(self):
         if self.isSnapshot:
             self.next_pos()
@@ -12936,6 +12937,7 @@ class guiWin(QMainWindow):
         
         self.updatePropsWidget('')
 
+    @exception_handler
     def prev_cb(self):
         if self.isSnapshot:
             self.prev_pos()
@@ -14378,7 +14380,7 @@ class guiWin(QMainWindow):
         self.ax1_viewRange = None
         self.measurementsWin = None
 
-        self.segment2D_kwargs = None
+        self.model_kwargs = None
         self.segmModelName = None
         self.labelRoiModel = None
         self.autoSegmDoNotAskAgain = False
@@ -15698,9 +15700,8 @@ class guiWin(QMainWindow):
             df = dict_frame_i['acdc_df']
             if df is None:
                 break
-            else:
-                if 'cell_cycle_stage' not in df.columns:
-                    break
+            elif 'cell_cycle_stage' not in df.columns:
+                break
         
         last_cca_frame_i = i if i==0 or i+1==len(posData.allData_li) else i-1
 
@@ -15781,6 +15782,7 @@ class guiWin(QMainWindow):
 
         if posData.cca_df is None:
             posData.cca_df = self.getBaseCca_df()
+            self.store_cca_df()
             msg = 'Cell cycle analysis initialized!'
             self.logger.info(msg)
             self.titleLabel.setText(msg, color=self.titleColor)

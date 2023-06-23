@@ -31,7 +31,6 @@ class tracker:
             dynamic_predictor=False,
             neighbor_strategy='KDTree',
             link_strategy = 'recursive',
-            export_to_extension='.csv',
             signals=None, 
             export_to=None,
         ):

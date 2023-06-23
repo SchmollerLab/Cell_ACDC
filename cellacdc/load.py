@@ -868,6 +868,8 @@ class loadData:
             else:
                 is_acdc_df_file = file.endswith('acdc_output.csv')
 
+                is_acdc_df_file = file == linked_acdc_filename
+            
             if load_segm_data and is_segm_file and not create_new_segm:
                 self.segmFound = True
                 self.segm_npz_path = filePath
@@ -958,7 +960,9 @@ class loadData:
         if load_last_tracked_i:
             self.last_tracked_i_found = True
             try:
-                self.last_tracked_i = max(self.acdc_df.index.get_level_values(0))
+                self.last_tracked_i = max(
+                    self.acdc_df.index.get_level_values(0)
+                )
             except AttributeError as e:
                 # traceback.print_exc()
                 self.last_tracked_i = None

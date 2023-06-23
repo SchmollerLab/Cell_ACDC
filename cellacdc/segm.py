@@ -77,7 +77,7 @@ class segmWorker(QRunnable):
         self.removeArtefactsKwargs = mainWin.removeArtefactsKwargs
         self.applyPostProcessing = mainWin.applyPostProcessing
         self.save = mainWin.save
-        self.segment2D_kwargs = mainWin.segment2D_kwargs
+        self.model_kwargs = mainWin.model_kwargs
         self.do_tracking = mainWin.do_tracking
         self.predictCcaState_model = mainWin.predictCcaState_model
         self.is_segment3DT_available = mainWin.is_segment3DT_available
@@ -307,13 +307,13 @@ class segmWorker(QRunnable):
                 self.signals.resetInnerPbar.emit(len(img_data))
 
             if self.is_segment3DT_available:
-                self.segment2D_kwargs['signals'] = (
+                self.model_kwargs['signals'] = (
                     self.signals, self.innerPbar_available
                 )
                 if self.secondChannelName is not None:
                     img_data = self.model.to_rgb_stack(img_data, second_ch_data)
                 lab_stack = self.model.segment3DT(
-                    img_data, **self.segment2D_kwargs
+                    img_data, **self.model_kwargs
                 )
                 if self.innerPbar_available:
                     # emit one pos done
@@ -323,7 +323,7 @@ class segmWorker(QRunnable):
                 for t, img in enumerate(img_data):
                     if self.secondChannelName is not None:
                         img = self.model.to_rgb_stack(img, second_ch_data[t])
-                    lab = self.model.segment(img, **self.segment2D_kwargs)
+                    lab = self.model.segment(img, **self.model_kwargs)
                     lab_stack[t] = lab
                     if self.innerPbar_available:
                         self.signals.innerProgressBar.emit(1)
@@ -336,7 +336,7 @@ class segmWorker(QRunnable):
             if self.secondChannelName is not None:
                 img_data = self.model.to_rgb_stack(img_data, second_ch_data)
         
-            lab_stack = self.model.segment(img_data, **self.segment2D_kwargs)
+            lab_stack = self.model.segment(img_data, **self.model_kwargs)
             if self.predictCcaState_model is not None:
                 cca_df = self.predictCcaState_model.predictCcaState(
                     img_data, lab_stack
@@ -767,7 +767,7 @@ class segmWin(QMainWindow):
             win.exec_()
             if win.cancel:
                 return
-            self.segment2D_kwargs = win.segment_kwargs
+            self.model_kwargs = win.segment_kwargs
 
         self.log(f'Downloading {model_name} (if needed)...')
         self.downloadWin = apps.downloadModel(model_name, parent=self)
@@ -806,7 +806,7 @@ class segmWin(QMainWindow):
                 return
 
         if model_name != 'thresholding':
-            self.segment2D_kwargs = win.segment2D_kwargs
+            self.model_kwargs = win.model_kwargs
         self.removeArtefactsKwargs = win.artefactsGroupBox.kwargs()
 
         self.applyPostProcessing = win.applyPostProcessing
@@ -910,7 +910,7 @@ class segmWin(QMainWindow):
         }
         post_process_params = {**post_process_params, **self.removeArtefactsKwargs}
         posData.saveSegmHyperparams(
-            model_name, self.segment2D_kwargs, post_process_params
+            model_name, self.model_kwargs, post_process_params
         )
 
         # Ask ROI

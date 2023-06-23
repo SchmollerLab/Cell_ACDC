@@ -9792,7 +9792,7 @@ class QDialogTrackerParams(QDialog):
             partial(loadFunc, f'{self.tracker_name}.init', self.init_argsWidgets)
         )
 
-        trackGroupBox, self.track_kwargs = self.createGroupParams(
+        trackGroupBox, self.model_kwargs = self.createGroupParams(
             track_params, 'Parameters for tracking', addChannel=True
         )
         trackDefaultButton = widgets.reloadPushButton('Restore default')
@@ -9804,7 +9804,7 @@ class QDialogTrackerParams(QDialog):
         trackDefaultButton.clicked.connect(self.restoreDefaultTrack)
         section = f'{self.tracker_name}.segment'
         trackLoadLastSelButton.clicked.connect(
-            partial(loadFunc, section, self.track_kwargs)
+            partial(loadFunc, section, self.model_kwargs)
         )
 
         if tracker_name == 'thresholding':
@@ -9960,7 +9960,7 @@ class QDialogTrackerParams(QDialog):
             argWidget.valueSetter(widget, defaultVal)
 
     def restoreDefaultTrack(self):
-        for argWidget in self.track_kwargs:
+        for argWidget in self.model_kwargs:
             defaultVal = argWidget.defaultVal
             widget = argWidget.widget
             argWidget.valueSetter(widget, defaultVal)
@@ -10028,7 +10028,7 @@ class QDialogTrackerParams(QDialog):
     def ok_cb(self, checked):
         self.cancel = False
         self.init_kwargs = self.argsWidgets_to_kwargs(self.init_argsWidgets)
-        self.track_kwargs = self.argsWidgets_to_kwargs(self.track_kwargs)
+        self.model_kwargs = self.argsWidgets_to_kwargs(self.model_kwargs)
         self.inputChannelName = 'None'
         if self.channelCombobox is not None:
             self.inputChannelName = self.channelCombobox.currentText()
@@ -10042,7 +10042,7 @@ class QDialogTrackerParams(QDialog):
         self.configPars[f'{self.tracker_name}.segment'] = {}
         for key, val in self.init_kwargs.items():
             self.configPars[f'{self.tracker_name}.init'][key] = str(val)
-        for key, val in self.track_kwargs.items():
+        for key, val in self.model_kwargs.items():
             self.configPars[f'{self.tracker_name}.segment'][key] = str(val)
 
         with open(self.ini_path, 'w') as configfile:
@@ -10064,11 +10064,21 @@ class QDialogTrackerParams(QDialog):
 
 class QDialogModelParams(QDialog):
     def __init__(
-            self, init_params, segment_params, model_name,
-            url=None, parent=None, initLastParams=True, SizeZ=None
+            self, init_params, segment_params, model_name, is_tracker=False,
+            url=None, parent=None, initLastParams=True, SizeZ=None, 
+            channels=None, currentChannelName=None
         ):
         self.cancel = True
         super().__init__(parent)
+        self.channels = channels
+        self.is_tracker = is_tracker
+        self.currentChannelName = currentChannelName
+        self.channelCombobox = None
+        
+        if is_tracker:
+            self.ini_filename = 'last_params_trackers.ini'
+        else:
+            self.ini_filename = 'last_params_segm_models.ini'
 
         self.model_name = model_name
 
@@ -10098,7 +10108,7 @@ class QDialogModelParams(QDialog):
             partial(loadFunc, f'{self.model_name}.init', self.init_argsWidgets)
         )
 
-        segmentGroupBox, self.segment2D_argsWidgets = self.createGroupParams(
+        segmentGroupBox, self.argsWidgets = self.createGroupParams(
             segment_params, 'Parameters for segmentation', 
             addChannelSelector=True
         ) 
@@ -10112,7 +10122,7 @@ class QDialogModelParams(QDialog):
         segmentDefaultButton.clicked.connect(self.restoreDefaultSegment)
         section = f'{self.model_name}.segment'
         segmentLoadLastSelButton.clicked.connect(
-            partial(loadFunc, section, self.segment2D_argsWidgets)
+            partial(loadFunc, section, self.argsWidgets)
         )
 
         cancelButton = widgets.cancelPushButton(' Cancel ')
@@ -10141,34 +10151,35 @@ class QDialogModelParams(QDialog):
         scrollAreaLayout.addWidget(segmentGroupBox)
         scrollAreaLayout.addLayout(segmentButtonsLayout)
 
-        # Add minimum size spinbox whihc is valid for all models
-        artefactsGroupBox = postProcessSegmParams(
-            'Post-processing segmentation parameters', SizeZ=SizeZ
-        )
-        artefactsGroupBox.setCheckable(True)
-        artefactsGroupBox.setChecked(True)
-        self.artefactsGroupBox = artefactsGroupBox
-
-        scrollAreaLayout.addSpacing(15)
-        scrollAreaLayout.addStretch(1)
-        scrollAreaLayout.addWidget(artefactsGroupBox)
-
-        postProcDefaultButton = widgets.reloadPushButton('Restore default')
-        postProcLoadLastSelButton = QPushButton('Load last parameters')
-        postProcButtonsLayout = QHBoxLayout()
-        postProcButtonsLayout.addStretch(1)
-        postProcButtonsLayout.addWidget(postProcDefaultButton)
-        postProcButtonsLayout.addWidget(postProcLoadLastSelButton)
-        postProcDefaultButton.clicked.connect(self.restoreDefaultPostprocess)
-        postProcLoadLastSelButton.clicked.connect(
-            self.loadLastSelectionPostProcess
-        )
-        scrollAreaLayout.addLayout(postProcButtonsLayout)
-
-        if url is not None:
-            scrollAreaLayout.addWidget(
-                self.createSeeHereLabel(url), alignment=Qt.AlignCenter
+        if not is_tracker:
+            # Add minimum size spinbox whihc is valid for all models
+            artefactsGroupBox = postProcessSegmParams(
+                'Post-processing segmentation parameters', SizeZ=SizeZ
             )
+            artefactsGroupBox.setCheckable(True)
+            artefactsGroupBox.setChecked(True)
+            self.artefactsGroupBox = artefactsGroupBox
+
+            scrollAreaLayout.addSpacing(15)
+            scrollAreaLayout.addStretch(1)
+            scrollAreaLayout.addWidget(artefactsGroupBox)
+
+            postProcDefaultButton = widgets.reloadPushButton('Restore default')
+            postProcLoadLastSelButton = QPushButton('Load last parameters')
+            postProcButtonsLayout = QHBoxLayout()
+            postProcButtonsLayout.addStretch(1)
+            postProcButtonsLayout.addWidget(postProcDefaultButton)
+            postProcButtonsLayout.addWidget(postProcLoadLastSelButton)
+            postProcDefaultButton.clicked.connect(self.restoreDefaultPostprocess)
+            postProcLoadLastSelButton.clicked.connect(
+                self.loadLastSelectionPostProcess
+            )
+            scrollAreaLayout.addLayout(postProcButtonsLayout)
+
+            if url is not None:
+                scrollAreaLayout.addWidget(
+                    self.createSeeHereLabel(url), alignment=Qt.AlignCenter
+                )
 
         mainLayout.addWidget(self.scrollArea)
         mainLayout.addSpacing(20)
@@ -10178,13 +10189,15 @@ class QDialogModelParams(QDialog):
         if self.configPars is None:
             initLoadLastSelButton.setDisabled(True)
             segmentLoadLastSelButton.setDisabled(True)
-            postProcLoadLastSelButton.setDisabled(True)
+            if not is_tracker:
+                postProcLoadLastSelButton.setDisabled(True)
 
         if initLastParams:
             initLoadLastSelButton.click()
             segmentLoadLastSelButton.click()
         
-        postProcLoadLastSelButton.click()
+        if not is_tracker:
+            postProcLoadLastSelButton.click()
 
         self.setLayout(mainLayout)
 
@@ -10209,12 +10222,25 @@ class QDialogModelParams(QDialog):
         groupBoxLayout = QGridLayout()
 
         start_row = 0
+        if self.is_tracker and self.channels is not None:
+            label = QLabel(f'Input image:  ')
+            groupBoxLayout.addWidget(
+                label, start_row, 0, alignment=Qt.AlignRight
+            )
+            items = ['None', *self.channels]
+            self.channelCombobox = widgets.QCenteredComboBox()
+            self.channelCombobox.addItems(items)
+            groupBoxLayout.addWidget(self.channelCombobox, start_row, 1, 1, 2)
+            if self.currentChannelName is not None:
+                self.channelCombobox.setCurrentText(self.currentChannelName)
+            start_row += 1
+            
         if self.model_name.find('cellpose') != -1 and addChannelSelector:
             label = QLabel('Second channel (optional):  ')
             groupBoxLayout.addWidget(label, 0, 0, alignment=Qt.AlignRight)
             self.channelsCombobox = widgets.QCenteredComboBox()
             groupBoxLayout.addWidget(self.channelsCombobox, 0, 1, 1, 2)
-            start_row = 1
+            start_row += 1
 
         for row, ArgSpec in enumerate(ArgSpecs_list):
             row = row + start_row
@@ -10223,10 +10249,10 @@ class QDialogModelParams(QDialog):
             groupBoxLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
             try:
                 values = ArgSpec.type().values
-                if all([isinstance(val, str) for val in values]):
-                    isCustomListType = True
+                isCustomListType = True
             except Exception as e:
                 isCustomListType = False
+            
             if ArgSpec.type == bool:
                 booleanGroup = QButtonGroup()
                 booleanGroup.setExclusive(True)
@@ -10266,11 +10292,11 @@ class QDialogModelParams(QDialog):
             elif isCustomListType:
                 items = ArgSpec.type().values
                 defaultVal = str(ArgSpec.default)
-                combobox = widgets.QCenteredComboBox()
+                combobox = widgets.AlphaNumericComboBox()
                 combobox.addItems(items)
-                combobox.setCurrentText(defaultVal)
-                valueSetter = widgets.QCenteredComboBox.setCurrentText
-                valueGetter = widgets.QCenteredComboBox.currentText
+                combobox.setCurrentValue(defaultVal)
+                valueSetter = widgets.AlphaNumericComboBox.setCurrentValue
+                valueGetter = widgets.AlphaNumericComboBox.currentValue
                 widget = combobox
                 groupBoxLayout.addWidget(combobox, row, 1, 1, 2)
             else:
@@ -10303,7 +10329,7 @@ class QDialogModelParams(QDialog):
             argWidget.valueSetter(widget, defaultVal)
 
     def restoreDefaultSegment(self):
-        for argWidget in self.segment2D_argsWidgets:
+        for argWidget in self.argsWidgets:
             defaultVal = argWidget.defaultVal
             widget = argWidget.widget
             argWidget.valueSetter(widget, defaultVal)
@@ -10312,7 +10338,7 @@ class QDialogModelParams(QDialog):
         self.artefactsGroupBox.restoreDefault()
 
     def readLastSelection(self):
-        self.ini_path = os.path.join(temp_path, 'last_params_segm_models.ini')
+        self.ini_path = os.path.join(temp_path, self.ini_filename)
         if not os.path.exists(self.ini_path):
             return None
 
@@ -10421,8 +10447,6 @@ class QDialogModelParams(QDialog):
             return
              
         txt = html_utils.paragraph(
-            'Currently Cell-ACDC has <b>four models implemented</b>: '
-            'YeaZ, Cellpose, StarDist, YeastMate, and omnipose.<br><br>'
             'These are the following models available for '
             f'<code>{self.model_name}</code>:<br><br>'
             f'{_models}<br>'
@@ -10455,15 +10479,19 @@ class QDialogModelParams(QDialog):
     def ok_cb(self, checked):
         self.cancel = False
         self.init_kwargs = self.argsWidgets_to_kwargs(self.init_argsWidgets)
-        self.segment2D_kwargs = self.argsWidgets_to_kwargs(
-            self.segment2D_argsWidgets
+        self.model_kwargs = self.argsWidgets_to_kwargs(
+            self.argsWidgets
         )
-        self.applyPostProcessing = self.artefactsGroupBox.isChecked()
+        if hasattr(self, 'applyPostProcessing'):
+            self.applyPostProcessing = self.artefactsGroupBox.isChecked()
         self.secondChannelName = None
         if hasattr(self, 'channelsCombobox'):
             self.secondChannelName = self.channelsCombobox.currentText()
         if self.secondChannelName == 'None':
             self.secondChannelName = None
+        self.inputChannelName = 'None'
+        if self.channelCombobox is not None:
+            self.inputChannelName = self.channelCombobox.currentText()
         self._saveParams()
         self.close()
 
@@ -10474,23 +10502,24 @@ class QDialogModelParams(QDialog):
         self.configPars[f'{self.model_name}.segment'] = {}
         for key, val in self.init_kwargs.items():
             self.configPars[f'{self.model_name}.init'][key] = str(val)
-        for key, val in self.segment2D_kwargs.items():
+        for key, val in self.model_kwargs.items():
             self.configPars[f'{self.model_name}.segment'][key] = str(val)
 
         self.configPars[f'{self.model_name}.postprocess'] = {}
-        postProcKwargs = self.artefactsGroupBox.kwargs()
-        postProcessConfig = self.configPars[f'{self.model_name}.postprocess']
-        postProcessConfig['minSize'] = str(postProcKwargs['min_area'])
-        postProcessConfig['minSolidity'] = str(postProcKwargs['min_solidity'])
-        postProcessConfig['maxElongation'] = str(
-            postProcKwargs['max_elongation']
-        )
-        postProcessConfig['min_obj_no_zslices'] = str(
-            postProcKwargs['min_obj_no_zslices']
-        )
-        postProcessConfig['applyPostProcessing'] = str(
-            self.artefactsGroupBox.isChecked()
-        )
+        if hasattr(self, 'applyPostProcessing'):
+            postProcKwargs = self.artefactsGroupBox.kwargs()
+            postProcessConfig = self.configPars[f'{self.model_name}.postprocess']
+            postProcessConfig['minSize'] = str(postProcKwargs['min_area'])
+            postProcessConfig['minSolidity'] = str(postProcKwargs['min_solidity'])
+            postProcessConfig['maxElongation'] = str(
+                postProcKwargs['max_elongation']
+            )
+            postProcessConfig['min_obj_no_zslices'] = str(
+                postProcKwargs['min_obj_no_zslices']
+            )
+            postProcessConfig['applyPostProcessing'] = str(
+                self.artefactsGroupBox.isChecked()
+            )
 
         with open(self.ini_path, 'w') as configfile:
             self.configPars.write(configfile)

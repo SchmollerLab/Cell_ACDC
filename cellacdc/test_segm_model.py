@@ -83,7 +83,7 @@ if img.ndim == 3 and (img.shape[-1] == 3 or img.shape[-1] == 4):
 
 print(img.shape)
 
-lab = model.segment(img, **win.segment2D_kwargs)
+lab = model.segment(img, **win.model_kwargs)
 
 print(lab.shape)
 

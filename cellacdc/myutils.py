@@ -772,9 +772,11 @@ def getTrackerArgSpec(trackerModule, realTime=False):
     ArgSpec = namedtuple('ArgSpec', ['name', 'default', 'type'])
 
     init_ArgSpec = inspect.getfullargspec(trackerModule.tracker.__init__)
-    init_kwargs_type_hints = typing.get_type_hints(trackerModule.tracker.__init__)
+    init_kwargs_type_hints = typing.get_type_hints(
+        trackerModule.tracker.__init__
+    )
     init_params = []
-    if len(init_ArgSpec.args)>1:
+    if len(init_ArgSpec.args)>1 and init_ArgSpec.defaults is not None:
         for arg, default in zip(init_ArgSpec.args[1:], init_ArgSpec.defaults):
             if arg in init_kwargs_type_hints:
                 _type = init_kwargs_type_hints[arg]
@@ -788,16 +790,25 @@ def getTrackerArgSpec(trackerModule, realTime=False):
     else:
         track_ArgSpec = inspect.getfullargspec(trackerModule.tracker.track)
     track_params = []
+    track_kwargs_type_hints = typing.get_type_hints(
+        trackerModule.tracker.track
+    )
     # Start at first kwarg
-    kwargs_start_idx = len(track_ArgSpec.args) - len(track_ArgSpec.defaults)
-    if len(track_ArgSpec.args)>1:
-        iter = zip(track_ArgSpec.args[kwargs_start_idx:], track_ArgSpec.defaults)
+    if len(track_ArgSpec.args)>1 and track_ArgSpec.defaults is not None:
+        kwargs_start_idx = len(track_ArgSpec.args) - len(track_ArgSpec.defaults)
+        iter = zip(
+            track_ArgSpec.args[kwargs_start_idx:], track_ArgSpec.defaults
+        )
         for arg, default in iter:
             if arg == 'signals':
                 continue
             if arg == 'export_to':
                 continue
-            param = ArgSpec(name=arg, default=default, type=type(default))
+            if arg in track_kwargs_type_hints:
+                _type = track_kwargs_type_hints[arg]
+            else:
+                _type = type(default)
+            param = ArgSpec(name=arg, default=default, type=_type)
             track_params.append(param)
     return init_params, track_params
 
@@ -1080,6 +1091,12 @@ def _model_url(model_name, return_alternative=False):
         ]
         file_size = [7988969, 8637439]
         alternative_url = ''
+    elif model_name == 'TAPIR':
+        url = [
+            'https://storage.googleapis.com/dm-tapnet/tapir_checkpoint.npy'
+        ]
+        file_size = [124408122]
+        alternative_url = ''
     if return_alternative:
         return url, alternative_url
     else:
@@ -1259,6 +1276,13 @@ def download_model(model_name):
     elif model_name != 'YeastMate' and model_name != 'YeaZ':
         # We manage only YeastMate and YeaZ
         return True
+    elif model_name == 'TAPIR':
+        try:
+            _download_tapir_model()
+            return True
+        except Exception as e:
+            traceback.print_exc()
+            return False
     
     try:
         # Check if model exists
@@ -1815,15 +1839,23 @@ def import_tracker(posData, trackerName, realTime=False, qparent=None):
                 url = trackerModule.url_help()
             except AttributeError:
                 url = None
-            paramsWin = apps.QDialogTrackerParams(
+            try:
+                channels = posData.chNames
+            except Exception as e:
+                channels = None
+            try:
+                currentChannelName = posData.user_ch_name
+            except Exception as e:
+                currentChannelName = None
+            paramsWin = apps.QDialogModelParams(
                 init_argspecs, track_argspecs, trackerName, url=url,
-                channels=posData.chNames, 
-                currentChannelName=posData.user_ch_name
+                channels=channels, is_tracker=True,
+                currentChannelName=currentChannelName
             )
             paramsWin.exec_()
             if not paramsWin.cancel:
                 init_params = paramsWin.init_kwargs
-                track_params = paramsWin.track_kwargs
+                track_params = paramsWin.model_kwargs
                 if paramsWin.inputChannelName != 'None':
                     chName = paramsWin.inputChannelName
                     track_params['image'] = posData.loadChannelData(chName)
@@ -1973,8 +2005,28 @@ def get_git_pull_checkout_cellacdc_version_commands(version=None):
 
 def check_install_tapir():
     check_install_package(
-        'tapnet', pypi_name='"git+https://github.com/ElpadoCan/TAPIR.git"'
+        'tapnet', pypi_name='git+https://github.com/ElpadoCan/TAPIR.git'
     )
+
+def _download_tapir_model():
+    urls, file_sizes = _model_url('TAPIR')
+    temp_model_path = tempfile.mkdtemp()
+    _, final_model_path = (
+        get_model_path('TAPIR', create_temp_dir=False)
+    )
+    for url, file_size in zip(urls, file_sizes):
+        filename = url.split('/')[-1]
+        final_dst = os.path.join(final_model_path, filename)
+        if os.path.exists(final_dst):            
+            continue
+
+        temp_dst = os.path.join(temp_model_path, filename)
+        download_url(
+            url, temp_dst, file_size=file_size, desc='TAPIR',
+            verbose=False
+        )
+        
+        shutil.move(temp_dst, final_dst)
 
 if __name__ == '__main__':
     print(get_list_of_models())

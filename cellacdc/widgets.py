@@ -1568,6 +1568,20 @@ class QCenteredComboBox(QComboBox):
                 self._isPopupVisibile = True
         return False
 
+class AlphaNumericComboBox(QCenteredComboBox):
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent=parent)
+    
+    def addItems(self, items):
+        self._dtype = type(items[0])
+        super().addItems([str(item) for item in items])
+    
+    def setCurrentValue(self, value):
+        super().setCurrentText(str(value))
+    
+    def currentValue(self):
+        return self._dtype(super().currentText())
+
 class statusBarPermanentLabel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
