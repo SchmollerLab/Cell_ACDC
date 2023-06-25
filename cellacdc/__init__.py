@@ -287,6 +287,10 @@ yeastmate_weights_filenames = [
     'yeastmate.yaml'
 ]
 
+tapir_weights_filenames = [
+    'tapir_checkpoint.npy'
+]
+
 graphLayoutBkgrColor = (235, 235, 235)
 darkBkgrColor = [255-v for v in graphLayoutBkgrColor]
 

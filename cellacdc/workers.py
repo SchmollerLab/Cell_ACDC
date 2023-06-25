@@ -151,7 +151,7 @@ class LabelRoiWorker(QObject):
             )
         
         lab = self.Gui.labelRoiModel.segment(
-            img, **self.Gui.segment2D_kwargs
+            img, **self.Gui.model_kwargs
         )
         if self.Gui.applyPostProcessing:
             lab = core.remove_artefacts(
@@ -489,7 +489,7 @@ class segmWorker(QObject):
         if self.secondChannelData is not None:
             img = self.mainWin.model.to_rgb_stack(img, self.secondChannelData)
 
-        _lab = self.mainWin.model.segment(img, **self.mainWin.segment2D_kwargs)
+        _lab = self.mainWin.model.segment(img, **self.mainWin.model_kwargs)
         if self.mainWin.applyPostProcessing:
             _lab = core.remove_artefacts(
                 _lab, **self.mainWin.removeArtefactsKwargs
@@ -521,7 +521,7 @@ class segmVideoWorker(QObject):
         QObject.__init__(self)
         self.removeArtefactsKwargs = paramWin.artefactsGroupBox.kwargs()
         self.applyPostProcessing = paramWin.applyPostProcessing
-        self.segment2D_kwargs = paramWin.segment2D_kwargs
+        self.model_kwargs = paramWin.model_kwargs
         self.secondChannelName = paramWin.secondChannelName
         self.model = model
         self.posData = posData
@@ -586,7 +586,7 @@ class segmVideoWorker(QObject):
             if zz is not None:
                 z_slice = zz.loc[frame_i]
                 img = img[z_slice]
-            lab = self.model.segment(img, **self.segment2D_kwargs)
+            lab = self.model.segment(img, **self.model_kwargs)
             if self.applyPostProcessing:
                 lab = core.remove_artefacts(
                     lab, **self.removeArtefactsKwargs
@@ -1211,7 +1211,10 @@ class trackingWorker(QObject):
     def _relabel_first_frame_labels(self, tracked_video):
         first_untracked_lab = self._get_first_untracked_lab()
         self.mainWin.setAllIDs()
-        uniqueID = max(max(self.posData.allIDs), tracked_video.max()) + 1
+        max_allIDs = max(self.posData.allIDs, default=0)
+        max_tracked_video = tracked_video.max()
+        overall_max = max(max_allIDs, max_tracked_video)
+        uniqueID = overall_max + 1
         first_tracked_lab = tracked_video[0]
         for obj in skimage.measure.regionprops(first_untracked_lab):
             trackedID = first_tracked_lab[obj.slice][obj.image].flat[0]
