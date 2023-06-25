@@ -1097,6 +1097,8 @@ def _model_url(model_name, return_alternative=False):
         ]
         file_size = [124408122]
         alternative_url = ''
+    else:
+        return
     if return_alternative:
         return url, alternative_url
     else:
@@ -1273,9 +1275,6 @@ def download_model(model_name):
         except Exception as e:
             traceback.print_exc()
             return False
-    elif model_name != 'YeastMate' and model_name != 'YeaZ':
-        # We manage only YeastMate and YeaZ
-        return True
     elif model_name == 'TAPIR':
         try:
             _download_tapir_model()
@@ -1283,6 +1282,9 @@ def download_model(model_name):
         except Exception as e:
             traceback.print_exc()
             return False
+    elif model_name != 'YeastMate' and model_name != 'YeaZ':
+        # We manage only YeastMate and YeaZ
+        return True
     
     try:
         # Check if model exists
@@ -1793,9 +1795,8 @@ def _install_deepsea():
     )
 
 def import_tracker(posData, trackerName, realTime=False, qparent=None):
-    if trackerName.lower() == 'deepsea':
-        downloadWin = apps.downloadModel(trackerName, parent=qparent)
-        downloadWin.download()
+    downloadWin = apps.downloadModel(trackerName, parent=qparent)
+    downloadWin.download()
 
     trackerModuleName =  f'trackers.{trackerName}.{trackerName}_tracker'
     trackerModule = import_module(trackerModuleName)

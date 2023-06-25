@@ -10555,7 +10555,11 @@ class downloadModel:
         self._parent = parent
 
     def download(self):
-        _, model_path = myutils.get_model_path(self.model_name)
+        if myutils._model_url(self.model_name) is None:
+            return
+        _, model_path = myutils.get_model_path(
+            self.model_name, create_temp_dir=False
+        )
         model_name = self.model_name
         model_exists = myutils.check_model_exists(model_path, model_name)
         if not model_exists:

@@ -10,6 +10,9 @@ env_dependencies_issues.txt
 not_installed_requirements.txt
 requirements_new.txt
 
+**/_test*.py
+**/weights_location_path.txt
+
 # Starting from pip 21.3 setup.py is not needed anymore
 # and we rely only on setup.cfg for env
 setup.py
@@ -51,7 +54,6 @@ cellacdc/java
 cellacdc/javabridge_cp37
 cellacdc/javabridge_cp38
 cellacdc/javabridge_linux
-**/weights_location_path.txt
 instructions/
 benchmarks/
 .vscode/
