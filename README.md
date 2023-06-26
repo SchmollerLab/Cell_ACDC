@@ -4,9 +4,11 @@
 
 *Written in Python 3 by [Francesco Padovani](https://github.com/ElpadoCan) and [Benedikt Mairhoermann](https://github.com/Beno71).*
 
-[![build ubuntu](https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-ubuntu.yml/badge.svg)](https://github.com/SchmollerLab/Cell_ACDC/actions)
-[![build macos](https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-macos.yml/badge.svg)](https://github.com/SchmollerLab/Cell_ACDC/actions)
-[![build windows](https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-windows.yml/badge.svg)](https://github.com/SchmollerLab/Cell_ACDC/actions)
+[![build ubuntu PyQt5](https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-ubuntu_pyqt5.yml/badge.svg)](https://github.com/SchmollerLab/Cell_ACDC/actions)
+[![build macos PyQt5](https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-macos_pyqt5.yml/badge.svg)](https://github.com/SchmollerLab/Cell_ACDC/actions)
+[![build windows PyQt5](https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-windows_pyqt5.yml/badge.svg)](https://github.com/SchmollerLab/Cell_ACDC/actions)
+[![build macos PyQt6](https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-macos_pyqt6.yml/badge.svg)](https://github.com/SchmollerLab/Cell_ACDC/actions)
+[![build windows PyQt6](https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-windows_pyqt6.yml/badge.svg)](https://github.com/SchmollerLab/Cell_ACDC/actions)
 [![Python version](https://img.shields.io/pypi/pyversions/cellacdc)](https://www.python.org/downloads/)
 [![pypi version](https://img.shields.io/pypi/v/cellacdc?color=red)](https://pypi.org/project/cellacdc/)
 [![Downloads](https://pepy.tech/badge/cellacdc/month)](https://pepy.tech/project/cellacdc)
