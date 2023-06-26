@@ -297,6 +297,48 @@ def store_copy_acdc_df(posData, acdc_output_csv_path, log_func=printl):
     except Exception as e:
         log_func(traceback.format_exc())
 
+def store_unsaved_acdc_df(posData, acdc_df_to_store, log_func=printl):
+    try:        
+        df = acdc_df_to_store
+        posData.setTempPaths()
+        h5_path = posData.unsaved_acdc_df_autosave_path
+        keys = []
+        if os.path.exists(h5_path):
+            with pd.HDFStore(h5_path, mode='a') as hdf:
+                keys = natsorted(hdf.keys())
+        
+        new_key = datetime.now().strftime(TIMESTAMP_HDF)
+        if len(keys) > 10:
+            # Delete oldest df and resave remaining 9
+            keys.pop(0)
+            temp_dirpath = tempfile.mkdtemp()
+            filename = os.path.basename(h5_path)
+            temp_h5_filepath = os.path.join(temp_dirpath, filename)
+            with pd.HDFStore(temp_h5_filepath, mode='a') as hdf:
+                for key in keys:
+                    old_df = pd.read_hdf(h5_path, key=key)
+                    hdf.append(key, old_df)
+            shutil.move(temp_h5_filepath, h5_path)
+            shutil.rmtree(temp_dirpath)
+        
+        with pd.HDFStore(h5_path, mode='a') as hdf:
+            hdf.append(new_key, df)
+    except Exception as e:
+        log_func(traceback.format_exc())
+
+def get_last_stored_unsaved_acdc_df(posData):
+    h5_path = posData.unsaved_acdc_df_autosave_path
+    if not os.path.exists(h5_path):
+        return
+    
+    try:
+        with pd.HDFStore(h5_path, mode='r') as hdf:
+            keys = natsorted(hdf.keys())
+        return pd.read_hdf(keys[-1])
+    except Exception as e:
+        return
+    
+    
 def get_user_ch_paths(images_paths, user_ch_name):
     user_ch_file_paths = []
     for images_path in images_paths:
@@ -1568,6 +1610,12 @@ class loadData:
         )
         self.acdc_output_backup_h5_path = os.path.join(
             temp_folder, acdc_df_filename.replace('.csv', '.h5')
+        )
+        unsaved_acdc_df_filename = acdc_df_filename.replace(
+            '.csv', '_autosave.h5'
+        )
+        self.unsaved_acdc_df_autosave_path = os.path.join(
+            temp_folder, unsaved_acdc_df_filename
         )
 
     def buildPaths(self):

@@ -1,7 +1,7 @@
 import os
 import sys
 import re
-import ast
+import datetime
 import pathlib
 from heapq import nlargest
 import matplotlib
@@ -65,6 +65,7 @@ from . import issues_url
 from . import myutils
 from . import qutils
 from . import _palettes
+from . import base_cca_df
 
 PRE_PROCESSING_STEPS = [
     'Adjust Brightness/Contrast',
@@ -7501,12 +7502,15 @@ class selectPositionsMultiExp(widgets.QBaseDialog):
 
 
 class editCcaTableWidget(QDialog):
+    sigApplyChangesFutureFrames = Signal(object, int)
+    
     def __init__(
             self, cca_df, SizeT, title='Edit cell cycle annotations', 
             parent=None, current_frame_i=0
         ):
         self.inputCca_df = cca_df
         self.cancel = True
+        self.SizeT = SizeT
         self.cca_df = None
         self.current_frame_i = current_frame_i
 
@@ -7573,18 +7577,21 @@ class editCcaTableWidget(QDialog):
         self.tableLayout = tableLayout
 
         # Add buttons
-        okButton = widgets.okPushButton('Ok')
-        okButton.setShortcut(Qt.Key_Enter)
-
         cancelButton = widgets.cancelPushButton('Cancel')
-
-        moreInfoButton = QPushButton('More info...')
+        moreInfoButton = widgets.helpPushButton('More info...')
         moreInfoButton.setIcon(QIcon(':info.svg'))
+        applyToFutureFramesbutton = widgets.futurePushButton(
+            'Apply changes to future frames...'
+        )
+        okButton = widgets.okPushButton('Ok')
+
+        
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
         buttonsLayout.addSpacing(20)
         buttonsLayout.addWidget(moreInfoButton)
+        buttonsLayout.addWidget(applyToFutureFramesbutton)
         buttonsLayout.addWidget(okButton)
 
         # Scroll area properties
@@ -7718,9 +7725,59 @@ class editCcaTableWidget(QDialog):
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.cancel_cb)
         moreInfoButton.clicked.connect(self.moreInfo)
+        applyToFutureFramesbutton.clicked.connect(self.applyToFutureFrames)
 
         # self.setModal(True)
+    
+    def getChanges(self):
+        newCcaDf = self.getCca_df()
+        changes = {}
+        for row in newCcaDf.itertuples():
+            ID = row.Index
+            for col in newCcaDf.columns:
+                inputValue = self.inputCca_df.at[ID, col]
+                newValue = getattr(row, col)
+                if newValue == inputValue:
+                    continue
+                
+                if ID not in changes:
+                    changes[ID] = {col: (inputValue, newValue)}
+                else:
+                    changes[ID][col] = (inputValue, newValue)
+        return changes
 
+    def applyToFutureFrames(self):        
+        txt = 'Enter <b>up to which frame</b> you want to apply the changes<br>'
+        win = NumericEntryDialog(
+            title='Stop frame', instructions=txt, parent=self, minValue=1, 
+            maxValue=self.SizeT, currentValue=self.current_frame_i
+        )
+        win.exec_()
+        if win.cancel:
+            return
+        
+        stop_frame_i = win.value
+        changes = self.getChanges()
+        changes_format = myutils.format_cca_manual_changes(changes)
+        detailsText = (
+            f'Changes that will be applied from frame n. {self.current_frame_i+1}'
+            f' to frame n. {stop_frame_i+1}:\n\n{changes_format}'
+        )
+        txt = html_utils.paragraph("""
+Use this feature with <b>caution</b>!<br><br>
+Before propagating to future frames <b>carefully inspect what changes</b> 
+will be applied (see below).<br><br>
+""")
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.setDetailedText(detailsText, visible=True)
+        msg.warning(
+            self, 'Caution!', txt, buttonsTexts=('Yes, I am sure', 'Cancel')
+        )
+        if msg.cancel:
+            return
+        
+        self.sigApplyChangesFutureFrames.emit(changes, stop_frame_i)     
+    
     def moreInfo(self, checked=True):
         desc = myutils.get_cca_colname_desc()
         msg = widgets.myMessageBox(parent=self)
@@ -8289,6 +8346,48 @@ class QLineEditDialog(QDialog):
     def closeEvent(self, event):
         if hasattr(self, 'loop'):
             self.loop.exit()
+
+class NumericEntryDialog(widgets.QBaseDialog):
+    def __init__(
+            self, title='Entry a value', currentValue=0,
+            instructions='Entry value', parent=None, 
+            maxValue=None, minValue=None
+        ):
+        super().__init__(parent=parent)
+        self.setWindowTitle(title)
+        self.cancel = False
+        mainLayout = QVBoxLayout()
+        entryLayout = QHBoxLayout()
+        cancelOkLayout = widgets.CancelOkButtonsLayout()
+        cancelOkLayout.okButton.clicked.connect(self.ok_cb)
+        cancelOkLayout.cancelButton.clicked.connect(self.close)
+        
+        instructionsLabel = QLabel(html_utils.paragraph(instructions))
+        mainLayout.addWidget(instructionsLabel)
+        
+        if type(currentValue) == int:
+            self.entryWidget = widgets.SpinBox()
+            self.entryWidget.setValue(currentValue)
+            self.valueGetter = 'value'
+            if maxValue is not None:
+                self.entryWidget.setMaximum(maxValue)
+            if minValue is not None:
+                self.entryWidget.setMinimum(minValue)
+        
+        entryLayout.addStretch(1)
+        entryLayout.addWidget(self.entryWidget)
+        entryLayout.addStretch(1)
+        
+        mainLayout.addLayout(entryLayout)
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(cancelOkLayout)
+        
+        self.setLayout(mainLayout)
+    
+    def ok_cb(self):
+        self.cancel = False
+        self.value = getattr(self.entryWidget, self.valueGetter)()
+        self.close()
 
 class editID_QWidget(QDialog):
     def __init__(self, clickedID, IDs, doNotShowAgain=False, parent=None):
@@ -11950,3 +12049,108 @@ class ShortcutEditorDialog(widgets.QBaseDialog):
     def showEvent(self, event) -> None:
         self.resize(int(self.width()*1.2), self.height())
         self.move(self.x(), 100)
+
+class SelectAcdcDfVersionToRestore(widgets.QBaseDialog):
+    def __init__(self, posData, parent=None):
+        super().__init__(parent=parent)
+        
+        self.cancel = True
+        
+        self.setWindowTitle('Select annotations table to restore')
+        
+        mainLayout = QVBoxLayout()
+        
+        acdc_df_filename = os.path.basename(posData.acdc_output_csv_path)
+        instructionsLabel = html_utils.paragraph(
+            f'Select an <b>older version</b> of the <code>{acdc_df_filename}</code> '
+            'annotations table to load.<br><br>'
+            'The datetime refers to the time you replaced the old version with '
+            'a newer one.<br><br>'
+        )
+        mainLayout.addWidget(QLabel(instructionsLabel))
+        
+        self.savedListBox = None
+        if os.path.exists(posData.acdc_output_backup_h5_path):
+            h5_filepath = posData.acdc_output_backup_h5_path
+            self.savedHDFfilepath = h5_filepath
+            with pd.HDFStore(h5_filepath, mode='r') as hdf:
+                keys = natsorted(hdf.keys())
+            
+            self.savedKeys = keys
+            f = load.TIMESTAMP_HDF
+            timestamps = [datetime.datetime.strptime(key[1:], f) for key in keys]
+            items = [date.strftime(r'%d %b %Y, %H:%M:%S') for date in timestamps]
+            mainLayout.addWidget(QLabel('Saved annotations:'))
+            self.savedListBox = widgets.listWidget()
+            self.savedListBox.addItems(items)
+            mainLayout.addWidget(self.savedListBox)
+            self.savedListBox.itemSelectionChanged.connect(
+                self.onItemSelectionChanged
+            )
+        
+        self.neverSavedListBox = None
+        if os.path.exists(posData.unsaved_acdc_df_autosave_path):
+            h5_filepath = posData.unsaved_acdc_df_autosave_path
+            self.neverSavedHDFfilepath = h5_filepath
+            with pd.HDFStore(h5_filepath, mode='r') as hdf:
+                keys = natsorted(hdf.keys())
+            
+            self.neverSavedKeys = keys
+            f = load.TIMESTAMP_HDF
+            timestamps = [datetime.datetime.strptime(key[1:], f) for key in keys]
+            items = [date.strftime(r'%d %b %Y, %H:%M:%S') for date in timestamps]
+            mainLayout.addWidget(QLabel('Never saved annotations:'))
+            self.neverSavedListBox = widgets.listWidget()
+            self.neverSavedListBox.addItems(items)
+            mainLayout.addWidget(self.neverSavedListBox)
+            self.neverSavedListBox.itemSelectionChanged.connect(
+                self.onItemSelectionChanged
+            )
+                
+        cancelOkLayout = widgets.CancelOkButtonsLayout()
+        
+        cancelOkLayout.okButton.clicked.connect(self.ok_cb)
+        cancelOkLayout.cancelButton.clicked.connect(self.close)
+        
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(cancelOkLayout)
+        
+        self.setLayout(mainLayout)
+        
+        self.setFont(font)
+    
+    def ok_cb(self):
+        self.cancel = False
+        try:
+            for i in range(self.savedListBox.count()):
+                item = self.savedListBox.item(i)
+                if item.isSelected():
+                    self.selectedTimestamp = item.text()
+                    self.selectedKey = self.savedKeys[i]
+                    self.HDFfilepath = self.savedHDFfilepath
+                    break
+        except Exception as e:
+            pass
+        
+        try:
+            for i in range(self.neverSavedListBox.count()):
+                item = self.neverSavedListBox.item(i)
+                if item.isSelected():
+                    self.selectedTimestamp = item.text()
+                    self.selectedKey = self.neverSavedKeys[i]
+                    self.HDFfilepath = self.neverSavedHDFfilepath
+                    break
+        except Exception as e:
+            pass
+        self.close()
+    
+    def onItemSelectionChanged(self):
+        otherListBox = (
+            self.savedListBox if self.sender() == self.neverSavedListBox
+            else self.neverSavedListBox
+        )
+        if otherListBox is None:
+            return
+        for i in range(otherListBox.count()):
+            item = otherListBox.item(i)
+            item.setSelected(False)

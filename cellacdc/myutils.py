@@ -2029,6 +2029,15 @@ def _download_tapir_model():
         
         shutil.move(temp_dst, final_dst)
 
+def format_cca_manual_changes(changes: dict):
+    txt = ''
+    for ID, changes_ID in changes.items():
+        txt = f'{txt}* ID {ID}:\n'
+        for col, (old_val, new_val) in changes_ID.items():
+            txt = f'{txt}    - {col}: {old_val} --> {new_val}\n'
+        txt = f'{txt}--------------------------------\n\n'
+    return txt
+
 if __name__ == '__main__':
     print(get_list_of_models())
     # model_name = 'cellpose'

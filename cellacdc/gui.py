@@ -1895,12 +1895,12 @@ class guiWin(QMainWindow):
     def storeStateWorkerClosed(self):
         self.logger.info('Store state worker started.')
     
-    def gui_createAutoSaveWorker(self):
-        if not self.autoSaveToggle.isChecked():
-            return
-        
+    def gui_createAutoSaveWorker(self):        
         if not hasattr(self, 'data'):
             return
+        
+        if not self.dataIsLoaded:
+            return 
         
         if self.autoSaveActiveWorkers:
             garbage = self.autoSaveActiveWorkers[-1]
@@ -1917,6 +1917,7 @@ class guiWin(QMainWindow):
         autoSaveWorker = workers.AutoSaveWorker(
             self.autoSaveMutex, self.autoSaveWaitCond, savedSegmData
         )
+        autoSaveWorker.isAutoSaveON = self.autoSaveToggle.isChecked()
 
         autoSaveWorker.moveToThread(autoSaveThread)
         autoSaveWorker.finished.connect(autoSaveThread.quit)
@@ -2609,7 +2610,7 @@ class guiWin(QMainWindow):
 
         self.editCcaToolAction = QAction(self)
         self.editCcaToolAction.setIcon(QIcon(":edit_cca.svg"))
-        self.editCcaToolAction.setDisabled(True)
+        # self.editCcaToolAction.setDisabled(True)
         self.editCcaToolAction.setVisible(False)
         self.editCcaToolAction.setToolTip(
             'Manually edit cell cycle annotations table.'
@@ -2940,7 +2941,9 @@ class guiWin(QMainWindow):
         self.labelRoiButton.toggled.connect(self.labelRoi_cb)
         self.reInitCcaAction.triggered.connect(self.reInitCca)
         self.moveLabelToolButton.toggled.connect(self.moveLabelButtonToggled)
-        self.editCcaToolAction.triggered.connect(self.manualEditCca)
+        self.editCcaToolAction.triggered.connect(
+            self.manualEditCcaToolbarActionTriggered
+        )
         self.assignBudMothAutoAction.triggered.connect(
             self.autoAssignBud_YeastMate
         )
@@ -3140,7 +3143,7 @@ class guiWin(QMainWindow):
         )
         self.autoSaveToggle.setChecked(True)
         self.autoSaveToggle.setToolTip(autoSaveTooltip)
-        autoSaveLabel = QLabel('Autosave')
+        autoSaveLabel = QLabel('Autosave segm.')
         autoSaveLabel.setToolTip(autoSaveTooltip)
         layout.addRow(autoSaveLabel, self.autoSaveToggle)
 
@@ -9715,17 +9718,45 @@ class guiWin(QMainWindow):
         else:
             self.updateAllImages()
 
+    def manualEditCcaToolbarActionTriggered(self):
+        self.manualEditCca()
+    
     def manualEditCca(self, checked=True):
         posData = self.data[self.pos_i]
         editCcaWidget = apps.editCcaTableWidget(
             posData.cca_df, posData.SizeT, current_frame_i=posData.frame_i,
             parent=self
         )
+        editCcaWidget.sigApplyChangesFutureFrames.connect(
+            self.applyManualCcaChangesFutureFrames
+        )
         editCcaWidget.exec_()
         if editCcaWidget.cancel:
             return
         posData.cca_df = editCcaWidget.cca_df
         self.checkMultiBudMoth()
+        self.updateAllImages()
+    
+    @exception_handler
+    def applyManualCcaChangesFutureFrames(self, changes, stop_frame_i):
+        self.store_data(autosave=False)
+        posData = self.data[self.pos_i]
+        undoId = uuid.uuid4()
+        for i in range(posData.frame_i, stop_frame_i):
+            cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
+            if cca_df_i is None:
+                # ith frame was not visited yet
+                break
+            
+            self.storeUndoRedoCca(i, cca_df_i, undoId)
+            
+            for ID, changes_ID in changes.items():
+                if ID not in cca_df_i.index:
+                    continue
+                for col, (oldValue, newValue) in changes_ID.items():
+                    cca_df_i.at[ID, col] = newValue
+            self.store_cca_df(frame_i=i, cca_df=cca_df_i, autosave=False)
+        self.get_data()
         self.updateAllImages()
     
     def annotateRightHowCombobox_cb(self, idx):
@@ -13160,6 +13191,9 @@ class guiWin(QMainWindow):
                     posData.cca_df, posData.SizeT, parent=self,
                     title='Initialize cell cycle annotations'
                 )
+                editCcaWidget.sigApplyChangesFutureFrames.connect(
+                    self.applyManualCcaChangesFutureFrames
+                )
                 editCcaWidget.exec_()
                 if editCcaWidget.cancel:
                     return
@@ -13647,7 +13681,6 @@ class guiWin(QMainWindow):
         self.showPropsDockButton.setDisabled(False)
 
         self.bottomScrollArea.show()
-        self.gui_createAutoSaveWorker()
         self.gui_createStoreStateWorker()
         self.init_segmInfo_df()
         self.connectScrollbars()
@@ -13763,6 +13796,7 @@ class guiWin(QMainWindow):
 
         self.dataIsLoaded = True
         self.isDataLoading = False
+        self.gui_createAutoSaveWorker()
     
     def resizeGui(self):
         self.ax1.vb.state['limits']['xRange'] = [None, None]
@@ -15458,6 +15492,8 @@ class guiWin(QMainWindow):
             # Check if current frame contains undo states (not empty list)
             if posData.UndoRedoStates[posData.frame_i]:
                 self.undoAction.setDisabled(False)
+            elif posData.UndoRedoCcaStates[posData.frame_i]:
+                self.undoAction.setDisabled(False)
             else:
                 self.undoAction.setDisabled(True)
         self.UndoCount = 0
@@ -15873,13 +15909,13 @@ class guiWin(QMainWindow):
     
     def enqAutosave(self):
         posData = self.data[self.pos_i]  
-        if self.autoSaveToggle.isChecked():
-            if not self.autoSaveActiveWorkers:
-                self.gui_createAutoSaveWorker()
-            
-            worker, thread = self.autoSaveActiveWorkers[-1]
-            self.statusBarLabel.setText('Autosaving...')
-            worker.enqueue(posData)
+        # if self.autoSaveToggle.isChecked():
+        if not self.autoSaveActiveWorkers:
+            self.gui_createAutoSaveWorker()
+        
+        worker, thread = self.autoSaveActiveWorkers[-1]
+        self.statusBarLabel.setText('Autosaving...')
+        worker.enqueue(posData)
     
     def drawAllMothBudLines(self):
         posData = self.data[self.pos_i]
@@ -19212,38 +19248,22 @@ class guiWin(QMainWindow):
     
     def manageVersions(self):
         posData = self.data[self.pos_i]
-        h5_filepath = posData.acdc_output_backup_h5_path
-        with pd.HDFStore(h5_filepath, mode='r') as hdf:
-            keys = natsorted(hdf.keys())
-        
-        f = load.TIMESTAMP_HDF
-        timestamps = [datetime.datetime.strptime(key[1:], f) for key in keys]
-        items = [date.strftime(r'%d %b %Y, %H:%M:%S') for date in timestamps]
-
-        acdc_df_filename = os.path.basename(posData.acdc_output_csv_path)
-        instructions = html_utils.paragraph(
-            f'Select an <b>older version</b> of the <code>{acdc_df_filename}</code> '
-            'file to load.<br><br>'
-            'The datetime refers to the time you replaced the old version with '
-            'a newer one.<br>'
-        )
-        selectVersion = widgets.QDialogListbox(
-            'Select older version', instructions,
-            items, multiSelection=False, parent=self
-        )
+        selectVersion = apps.SelectAcdcDfVersionToRestore(posData, parent=self)
         selectVersion.exec_()
 
         if selectVersion.cancel:
             return
 
-        selectedTime = selectVersion.selectedItemsText[0]
+        undoId = uuid.uuid4()
+        self.storeUndoRedoCca(posData.frame_i, posData.cca_df, undoId)
+        
+        selectedTime = selectVersion.selectedTimestamp
 
         self.modeComboBox.setCurrentText('Viewer')
-        self.logger.info(f'Loading file replaced on {selectedTime}...')
+        self.logger.info(f'Loading file from {selectedTime}...')
 
-        idx = items.index(selectedTime)
-        key_to_load = keys[idx]
-
+        key_to_load = selectVersion.selectedKey
+        h5_filepath = selectVersion.neverSavedHDFfilepath
         acdc_df = pd.read_hdf(h5_filepath, key=key_to_load)
         posData.acdc_df = acdc_df
         frames = acdc_df.index.get_level_values(0)
@@ -19253,6 +19273,7 @@ class guiWin(QMainWindow):
         for frame_i in range(last_visited_frame_i+1):
             posData.frame_i = frame_i
             self.get_data()
+            self.storeUndoRedoCca(posData.frame_i, posData.cca_df, undoId)
             if posData.allData_li[frame_i]['labels'] is None:
                 pbar.update()
                 continue
@@ -21260,10 +21281,18 @@ class guiWin(QMainWindow):
             worker._stop()
     
     def autoSaveToggled(self, checked):
-        self.autoSaveClose()
-        
-        if checked:
+        if not self.autoSaveActiveWorkers:
             self.gui_createAutoSaveWorker()
+        
+        if not self.autoSaveActiveWorkers:
+            return
+        
+        worker, thread = self.autoSaveActiveWorkers[-1]
+        worker.isAutoSaveON = checked
+        # self.autoSaveClose()
+        
+        # if checked:
+        #     self.gui_createAutoSaveWorker()
     
     def warnErrorsCustomMetrics(self):
         win = apps.ComputeMetricsErrorsDialog(

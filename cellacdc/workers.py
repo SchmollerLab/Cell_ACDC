@@ -264,6 +264,7 @@ class AutoSaveWorker(QObject):
         self.isSaving = False
         self.isPaused = False
         self.dataQ = queue.Queue()
+        self.isAutoSaveON = False
     
     def pause(self):
         if DEBUG:
@@ -278,9 +279,7 @@ class AutoSaveWorker(QObject):
         # First stop previously saving data
         if self.isSaving:
             self.abortSaving = True
-            self.sigStartTimer.emit(self, posData)
-        else:
-            self._enqueue(posData)
+        self._enqueue(posData)
     
     def _enqueue(self, posData):
         if DEBUG:
@@ -347,16 +346,16 @@ class AutoSaveWorker(QObject):
             self.sigAutoSaveCannotProceed.emit()
             return
         segm_npz_path = posData.segm_npz_temp_path
-        acdc_output_csv_path = posData.acdc_output_temp_csv_path
 
         end_i = self.getLastTrackedFrame(posData)
 
-        if end_i < len(posData.segm_data):
-            saved_segm_data = posData.segm_data
-        else:
-            frame_shape = posData.segm_data.shape[1:]
-            segm_shape = (end_i+1, *frame_shape)
-            saved_segm_data = np.zeros(segm_shape, dtype=np.uint32)
+        if self.isAutoSaveON:
+            if end_i < len(posData.segm_data):
+                saved_segm_data = posData.segm_data
+            else:
+                frame_shape = posData.segm_data.shape[1:]
+                segm_shape = (end_i+1, *frame_shape)
+                saved_segm_data = np.zeros(segm_shape, dtype=np.uint32)
         
         keys = []
         acdc_df_li = []
@@ -369,14 +368,15 @@ class AutoSaveWorker(QObject):
             lab = data_dict['labels']
             if lab is None:
                 break
-
-            if posData.SizeT > 1:
-                saved_segm_data[frame_i] = lab
-            else:
-                saved_segm_data = lab
+            
+            if self.isAutoSaveON:
+                if posData.SizeT > 1:
+                    saved_segm_data[frame_i] = lab
+                else:
+                    saved_segm_data = lab
 
             acdc_df = data_dict['acdc_df']
-
+            
             if acdc_df is None:
                 continue
 
@@ -392,16 +392,17 @@ class AutoSaveWorker(QObject):
                 break
         
         if not self.abortSaving:
-            segm_data = np.squeeze(saved_segm_data)
-            self._saveSegm(segm_npz_path, posData.segm_npz_path, segm_data)
+            if self.isAutoSaveON:
+                segm_data = np.squeeze(saved_segm_data)
+                self._saveSegm(segm_npz_path, posData.segm_npz_path, segm_data)
+            
             if acdc_df_li:
                 all_frames_acdc_df = pd.concat(
                     acdc_df_li, keys=keys,
                     names=['frame_i', 'time_seconds', 'Cell_ID']
                 )
-                self._save_acdc_df(
-                    acdc_output_csv_path, all_frames_acdc_df, posData   
-                )
+                h5_filepath = posData.unsaved_acdc_df_autosave_path
+                self._save_acdc_df(all_frames_acdc_df, posData)
 
         if DEBUG:
             self.logger.log(f'Autosaving done.')
@@ -416,9 +417,9 @@ class AutoSaveWorker(QObject):
         else:
             np.savez_compressed(recovery_path, np.squeeze(data))
     
-    def _save_acdc_df(self, recovery_path, recovery_acdc_df, posData):
+    def _save_acdc_df(self, recovery_acdc_df, posData):
         if not os.path.exists(posData.acdc_output_csv_path):
-            recovery_acdc_df.to_csv(recovery_path)
+            load.store_unsaved_acdc_df(posData, recovery_acdc_df)
             return
 
         saved_acdc_df = pd.read_csv(
@@ -454,9 +455,31 @@ class AutoSaveWorker(QObject):
                 break
             
             equals.append(col_equals)
+        
+        # Check if last stored acdc_df is equal
+        last_unsaved_acdc_df = load.get_last_stored_unsaved_acdc_df(
+            posData
+        )
+        if all(equals) and last_unsaved_acdc_df is not None:
+            equals = []
+            for col in last_unsaved_acdc_df.columns:
+                if col not in saved_acdc_df.columns:
+                    # recovery_acdc_df has a new col --> definitely not the same
+                    equals = [False]
+                    break
+                
+                try:
+                    col_equals = (
+                        saved_acdc_df[col] == last_unsaved_acdc_df[col]).all()
+                except Exception as e:
+                    equals = [False]
+                    break
+                
+                equals.append(col_equals)
 
         if not all(equals):
-            recovery_acdc_df.to_csv(recovery_path)
+            load.store_unsaved_acdc_df(posData, recovery_acdc_df)
+            # recovery_acdc_df.to_csv(recovery_path)
 
 
 class segmWorker(QObject):
