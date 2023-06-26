@@ -18411,7 +18411,7 @@ class guiWin(QMainWindow):
             self.labelsLayerImg1.setOpacity(alpha/3)
         else:
             _image = self.getObjImage(obj.image, obj.bbox).astype(np.uint8)
-            contours = core.get_objContours(obj, obj_image=_image, all=True)
+            contours = core.get_obj_contours(obj, obj_image=_image, all=True)
             for cont in contours:
                 self.searchedIDitemLeft.addPoints(cont[:,0], cont[:,1])
         
@@ -18422,7 +18422,7 @@ class guiWin(QMainWindow):
         else:
             if contours is None:
                 _image = self.getObjImage(obj.image, obj.bbox).astype(np.uint8)
-                contours = core.get_objContours(obj, obj_image=_image, all=True)
+                contours = core.get_obj_contours(obj, obj_image=_image, all=True)
             for cont in contours:
                 self.searchedIDitemRight.addPoints(cont[:,0], cont[:,1])       
 
@@ -18759,7 +18759,7 @@ class guiWin(QMainWindow):
             if drawMode == 'Draw contours':
                 for obj in skimage.measure.regionprops(ol_lab):
                     _img = self.getObjImage(obj.image, obj.bbox).astype(np.uint8)
-                    contours = core.get_objContours(obj, obj_image=_img, all=True)
+                    contours = core.get_obj_contours(obj, obj_image=_img, all=True)
                     for cont in contours:
                         contoursItem.addPoints(cont[:,0], cont[:,1])
             elif drawMode == 'Overlay labels':

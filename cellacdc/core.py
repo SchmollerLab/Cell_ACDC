@@ -576,7 +576,7 @@ def label_3d_segm(labels):
 
     return labels
 
-def get_objContours(obj, obj_image=None, all=False):
+def get_obj_contours(obj, obj_image=None, all=False):
     if all:
         retrieveMode = cv2.RETR_CCOMP
     else:
@@ -602,7 +602,7 @@ def smooth_contours(lab, radius=2):
     sigma = 2*radius + 1
     smooth_lab = np.zeros_like(lab)
     for obj in skimage.measure.regionprops(lab):
-        cont = get_objContours(obj)
+        cont = get_obj_contours(obj)
         x = cont[:,0]
         y = cont[:,1]
         x = np.append(x, x[0:sigma])

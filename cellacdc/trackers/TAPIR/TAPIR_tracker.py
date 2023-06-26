@@ -14,7 +14,7 @@ import skimage.color
 
 from cellacdc import printl
 from cellacdc.transformation import resize_lab
-from cellacdc.core import nearest_nonzero_2D
+from cellacdc.core import nearest_nonzero_2D, get_obj_contours
 
 from ..CellACDC import CellACDC_tracker
 
@@ -23,6 +23,12 @@ from .tracking import build_model, inference
 
 class SizesToResize:
     values = np.arange(256, 1025, 128)
+
+class TrackingInputs:
+    values = ['Intensity image', 'Segmented objects']
+
+class PointsToTrack:
+    values = ['Centroids', 'Contours']
 
 class tracker:
     def __init__(
@@ -42,7 +48,8 @@ class tracker:
             max_distance=5, save_napari_tracks=False, 
             use_visibile_information=True, export_to=None,
             signals=None, export_to_extension='.csv', 
-            track_segmented_objects=False
+            tracking_input: TrackingInputs='Intensity image', 
+            which_points_to_track: PointsToTrack='Centroids'
         ):
         
         if video_grayscale.ndim == 4:
@@ -51,6 +58,7 @@ class tracker:
             raise TypeError(msg)
         
         self._use_visibile_information = use_visibile_information
+        self._which_points_to_track = which_points_to_track
         self.segm_video = segm_video
         self.max_dist = max_distance
         num_frames = len(video_grayscale)
@@ -75,10 +83,10 @@ class tracker:
         
         frames_rgb = self._get_frames_to_track(
             reversed_resized_frames, reversed_resized_segm, 
-            track_segmented_objects
+            tracking_input
         )
         query_points = self._initialize_query_points(
-            reversed_resized_segm, track_segmented_objects
+            reversed_resized_segm, tracking_input, which_points_to_track
         )
         
         import matplotlib.pyplot as plt
@@ -104,9 +112,9 @@ class tracker:
 
     def _get_frames_to_track(
             self, reversed_resized_frames, reversed_resized_segm, 
-            track_segmented_objects
+            tracking_input
         ):
-        if track_segmented_objects:
+        if tracking_input == 'Segmented objects':
             frames = np.zeros(reversed_resized_segm.shape, dtype=np.float32)
             for frame_i, lab in enumerate(reversed_resized_segm):
                 rp = skimage.measure.regionprops(lab)
@@ -141,11 +149,7 @@ class tracker:
         visibles_li = []
         Y, X = resized_segm.shape[-2:]
         for tr, track in enumerate(tqdm(tracks, ncols=100)):
-            x, y = track[-1]
-            y_int, x_int = round(y), round(x)
-            y_int = max(0, min(y_int, Y-1))
-            x_int = max(0, min(x_int, X-1))
-            track_ID = resized_segm[-1, y_int, x_int]
+            track_ID = self._get_track_ID(resized_segm, track)
             for frame_i, (x, y) in enumerate(track):                  
                 yc = y*self.resize_ratio_height
                 xc = x*self.resize_ratio_width
@@ -169,12 +173,9 @@ class tracker:
         napari_tracks = []
         num_frames = len(self.reversed_resized_segm)
         Y, X = self.reversed_resized_segm.shape[-2:]
+        resized_segm = self.reversed_resized_segm[::-1]
         for tr, track in enumerate(tqdm(self.reversed_tracks, ncols=100)):
-            x, y = track[0]
-            y_int, x_int = round(y), round(x)
-            y_int = max(0, min(y_int, Y-1))
-            x_int = max(0, min(x_int, X-1))
-            track_ID = self.reversed_resized_segm[0, y_int, x_int]
+            track_ID = self._get_track_ID(resized_segm, track[::-1])
             for reversed_frame_i, (x, y) in enumerate(track):
                 visible = self.reversed_visibles[tr, reversed_frame_i]
                 if not visible and self._use_visibile_information:
@@ -207,6 +208,21 @@ class tracker:
             xc = x*self.resize_ratio_width
             napari_tracks.append((track_ID, frame_i, yc, xc))
     
+    def _get_track_ID(self, resized_segm, track, frame_i=None, max_dist=None):
+        if frame_i is None:
+            # As of now we track in reverse from last frame and we don't 
+            # initialize additional points in later frames 
+            # --> use last frame
+            frame_i = -1
+        Y, X = resized_segm.shape[-2:]
+        if self._which_points_to_track == 'Centroids':
+            x, y = track[frame_i]
+            y_int, x_int = round(y), round(x)
+            y_int = max(0, min(y_int, Y-1))
+            x_int = max(0, min(x_int, X-1))
+            track_ID = resized_segm[frame_i, y_int, x_int]
+        return track_ID
+    
     def _apply_tracks(self, reversed_tracks, reversed_visibles):
         print('Applying tracks data...')
         
@@ -221,11 +237,7 @@ class tracker:
         Y, X = resized_segm.shape[-2:]
         for tr, track in enumerate(tqdm(tracks, ncols=100)):
             # Get the track ID from last frame (we track in reverse)
-            x, y = track[-1]
-            y0, x0 = round(y), round(x)
-            y0 = max(0, min(y0, Y-1))
-            x0 = max(0, min(x0, X-1))
-            tracked_ID = resized_segm[-1, y0, x0]
+            track_ID = self._get_track_ID(resized_segm, track)
             for frame_i, (x, y) in enumerate(track):
                 if frame_i == 0:
                     continue
@@ -238,6 +250,10 @@ class tracker:
                 x_int = max(0, min(x_int, X-1))
                 idxs = (frame_i, y_int, x_int)
                 oldID = resized_segm[idxs]
+                oldID = self._get_track_ID(
+                    resized_segm, track, frame_i=frame_i, 
+                    max_dist=self.max_dist
+                )
                 if oldID == 0:
                     oldID = nearest_nonzero_2D(
                         resized_segm[frame_i], y, x, max_dist=self.max_dist
@@ -248,10 +264,10 @@ class tracker:
                 
                 if frame_i not in old_IDs_tracks:
                     old_IDs_tracks[frame_i] = [oldID]
-                    tracked_IDs_tracks[frame_i] = [tracked_ID]
+                    tracked_IDs_tracks[frame_i] = [track_ID]
                 else:
                     old_IDs_tracks[frame_i].append(oldID)
-                    tracked_IDs_tracks[frame_i].append(tracked_ID)
+                    tracked_IDs_tracks[frame_i].append(track_ID)
 
         tracked_video = self.segm_video.copy()
         for frame_i in old_IDs_tracks.keys():
@@ -271,22 +287,39 @@ class tracker:
         return tracked_video
     
     def _initialize_query_points(
-            self, reversed_resized_segm, track_segmented_objects
+            self, reversed_resized_segm, tracking_input, 
+            which_points_to_track
         ):
         first_lab = reversed_resized_segm[0]
         first_lab_rp = skimage.measure.regionprops(first_lab)
         num_objs = len(first_lab_rp)
-        query_points = np.zeros((num_objs, 3), dtype=int)        
+        if which_points_to_track == 'Centroids':
+            query_points = np.zeros((num_objs, 3), dtype=int)      
+        else:
+            all_contours = []  
         for o, obj in enumerate(first_lab_rp):
-            if track_segmented_objects:
-                obj_edt = distance_transform_edt(obj.image)
-                argmax = np.argmax(obj_edt)
-                yc_loc, xc_loc = np.unravel_index(argmax, obj_edt.shape)
-                ymin, xmin, _, _ = obj.bbox
-                yc, xc = yc_loc+ymin, xc_loc+xmin
+            if which_points_to_track == 'Centroids':
+                if tracking_input == 'Segmented objects':
+                    # Track the center of the edt of the object
+                    # since edt is also the input image
+                    obj_edt = distance_transform_edt(obj.image)
+                    argmax = np.argmax(obj_edt)
+                    yc_loc, xc_loc = np.unravel_index(argmax, obj_edt.shape)
+                    ymin, xmin, _, _ = obj.bbox
+                    yc, xc = yc_loc+ymin, xc_loc+xmin
+                else:
+                    # Track the centroid of the object
+                    yc, xc = obj.centroid
+                query_points[o, 1:] = int(yc), int(xc)
             else:
-                yc, xc = obj.centroid
-            query_points[o, 1:] = int(yc), int(xc)
+                contours = get_obj_contours(obj)
+                all_contours.append(contours)
+        if which_points_to_track == 'Contours':
+            all_contours = np.concatenate(all_contours)
+            nrows = len(all_contours)
+            query_points = np.zeros((nrows, 3), dtype=int) 
+            query_points[:, 2] = all_contours[:,0]
+            query_points[:, 1] = all_contours[:,1]
         return query_points
 
 def url_help():
