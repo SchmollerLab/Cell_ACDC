@@ -10482,7 +10482,7 @@ class QDialogModelParams(QDialog):
         self.model_kwargs = self.argsWidgets_to_kwargs(
             self.argsWidgets
         )
-        if hasattr(self, 'applyPostProcessing'):
+        if hasattr(self, 'artefactsGroupBox'):
             self.applyPostProcessing = self.artefactsGroupBox.isChecked()
         self.secondChannelName = None
         if hasattr(self, 'channelsCombobox'):
@@ -10506,7 +10506,7 @@ class QDialogModelParams(QDialog):
             self.configPars[f'{self.model_name}.segment'][key] = str(val)
 
         self.configPars[f'{self.model_name}.postprocess'] = {}
-        if hasattr(self, 'applyPostProcessing'):
+        if hasattr(self, 'artefactsGroupBox'):
             postProcKwargs = self.artefactsGroupBox.kwargs()
             postProcessConfig = self.configPars[f'{self.model_name}.postprocess']
             postProcessConfig['minSize'] = str(postProcKwargs['min_area'])
