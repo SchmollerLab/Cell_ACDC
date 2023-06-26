@@ -16,6 +16,7 @@ from qtpy.QtCore import Qt
 from qtpy.QtGui import QFont
 
 from . import apps, myutils, printl, html_utils, load
+from . import temp_path
 
 class RichTextPushButton(QPushButton):
     def __init__(self, parent=None, text=None):
@@ -202,8 +203,6 @@ class select_channel_name:
         last_sel_channel = None
         ch = self.which_channel
         if self.which_channel is not None:
-            _path = os.path.dirname(os.path.realpath(__file__))
-            temp_path = os.path.join(_path, 'temp')
             txt_path = os.path.join(temp_path, f'{ch}_last_sel.txt')
             if os.path.exists(txt_path):
                 with open(txt_path) as txt:
@@ -213,8 +212,6 @@ class select_channel_name:
     def _save_last_selection(self, selection):
         ch = self.which_channel
         if self.which_channel is not None:
-            _path = os.path.dirname(os.path.realpath(__file__))
-            temp_path = os.path.join(_path, 'temp')
             if not os.path.exists(temp_path):
                 os.mkdir(temp_path)
             txt_path = os.path.join(temp_path, f'{ch}_last_sel.txt')

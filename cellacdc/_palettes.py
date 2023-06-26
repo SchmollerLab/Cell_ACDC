@@ -43,8 +43,8 @@ def _dark_disabled_colors():
         'WindowText': (128, 128, 128, 255), 
         'Text': (128, 128, 128, 255), 
         'Light': (53, 53, 53, 255),
-        'Button': (100, 100, 100, 255),
-        'Window': (0, 0, 0, 255),
+        'Button': (70, 70, 70, 255),
+        # 'Window': (0, 0, 0, 255),
     }
     return disabled_colors
 

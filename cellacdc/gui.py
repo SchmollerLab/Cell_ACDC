@@ -73,7 +73,7 @@ from . import _warnings
 from . import measurements, printl
 from . import colors, filters, annotate
 from . import user_manual_url
-from . import cellacdc_path, temp_path, settings_csv_path
+from . import recentPaths_path, temp_path, settings_csv_path
 from . import qutils, autopilot, QtScoped
 from .trackers.CellACDC import CellACDC_tracker
 from .cca_functions import _calc_rot_vol
@@ -985,18 +985,16 @@ class guiWin(QMainWindow):
 
         self.splineToObjModel.fit()
     
-    def readRecentPaths(self, recentPaths_path=None):
+    def readRecentPaths(self, recent_paths_path=None):
         # Step 0. Remove the old options from the menu
         self.openRecentMenu.clear()
 
         # Step 1. Read recent Paths
-        if recentPaths_path is None:
-            recentPaths_path = os.path.join(
-                cellacdc_path, 'temp', 'recentPaths.csv'
-            )
+        if recent_paths_path is None:
+            recent_paths_path = recentPaths_path    
         
-        if os.path.exists(recentPaths_path):
-            df = pd.read_csv(recentPaths_path, index_col='index')
+        if os.path.exists(recent_paths_path):
+            df = pd.read_csv(recent_paths_path, index_col='index')
             if 'opened_last_on' in df.columns:
                 df = df.sort_values('opened_last_on', ascending=False)
             recentPaths = df['path'].to_list()
@@ -1658,7 +1656,7 @@ class guiWin(QMainWindow):
         self.separateBudButton.setToolTip(
             'Toggle "Automatic/manual separation" mode ON/OFF\n\n'
             'EXAMPLE: separate mother-bud fused together\n\n'
-            'ACTION: right-click for automatic and left-click for manual\n\n'
+            'ACTION: right-click for automatic and Ctrl+right-click for manual\n\n'
             'SHORTCUT: "S" key'
         )
         self.separateBudButton.action = editToolBar.addWidget(self.separateBudButton)
@@ -4502,7 +4500,7 @@ class guiWin(QMainWindow):
             self.highlightLostNew()
 
         # Separate bud
-        elif (right_click or left_click) and self.separateBudButton.isChecked():
+        elif right_click and separateON:
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
@@ -4525,7 +4523,7 @@ class guiWin(QMainWindow):
             self.storeUndoRedoStates(False)
             max_ID = max(posData.IDs, default=1)
 
-            if right_click:
+            if not ctrl:
                 lab2D, success = self.auto_separate_bud_ID(
                     ID, self.get_2Dlab(posData.lab), posData.rp, max_ID,
                     enforce=True
@@ -6048,7 +6046,11 @@ class guiWin(QMainWindow):
             return
 
         Y, X = self.get_2Dlab(posData.lab).shape
-        x, y = event.pos().x(), event.pos().y()
+        try:
+            x, y = event.pos().x(), event.pos().y()
+        except Exception as e:
+            return
+            
         xdata, ydata = int(x), int(y)
         if not myutils.is_in_bounds(xdata, ydata, X, Y):
             self.isMouseDragImg2 = False
@@ -6572,6 +6574,7 @@ class guiWin(QMainWindow):
         polyLineRoiON = self.addDelPolyLineRoiAction.isChecked()
         labelRoiON = self.labelRoiButton.isChecked()
         keepObjON = self.keepIDsButton.isChecked()
+        separateON = self.separateBudButton.isChecked()
         addPointsByClickingButton = self.buttonAddPointsByClickingActive()
 
         # Check if right-click on segment of polyline roi to add segment
@@ -6597,7 +6600,7 @@ class guiWin(QMainWindow):
             left_click and not brushON and not histON
             and not curvToolON and not eraserON and not rulerON
             and not wandON and not polyLineRoiON and not labelRoiON
-            and not middle_click and not keepObjON 
+            and not middle_click and not keepObjON and not separateON
             and addPointsByClickingButton is None
         )
         if isPanImageClick:
@@ -6613,10 +6616,11 @@ class guiWin(QMainWindow):
              and not self.curvToolButton.isChecked()
              and not is_right_click_custom_ON
              and not labelRoiON
+             and not separateON
         )
 
         # In timelapse mode division can be annotated if isCcaMode and right-click
-        # while in snapshot mode with Ctrl+rigth-click
+        # while in snapshot mode with Ctrl+right-click
         isAnnotateDivision = (
             (right_click and isCcaMode and canAnnotateDivision)
             or (right_click and ctrl and self.isSnapshot)
@@ -7463,6 +7467,7 @@ class guiWin(QMainWindow):
                 )
             )
             if msg.clickedButton == disableTrackingButton:
+                self.realTimeTrackingToggle.setChecked(False)
                 posData = self.data[self.pos_i]
                 current_frame_i = posData.frame_i
                 for frame_i in range(self.start_n-1, self.stop_n):
@@ -12440,7 +12445,7 @@ class guiWin(QMainWindow):
         # Ask segm parameters if not already set
         # and not called by segmSingleFrameMenu (askSegmParams=False)
         if not askSegmParams:
-            askSegmParams = self.segment2D_kwargs is None
+            askSegmParams = self.model_kwargs is None
 
         self.downloadWin = apps.downloadModel(model_name, parent=self)
         self.downloadWin.download()
@@ -12485,9 +12490,9 @@ class guiWin(QMainWindow):
                 win.exec_()
                 if win.cancel:
                     return
-                self.segment2D_kwargs = win.segment_kwargs
-                thresh_method = self.segment2D_kwargs['threshold_method']
-                gauss_sigma = self.segment2D_kwargs['gauss_sigma']
+                self.model_kwargs = win.segment_kwargs
+                thresh_method = self.model_kwargs['threshold_method']
+                gauss_sigma = self.model_kwargs['gauss_sigma']
                 segment_params = myutils.insertModelArgSpect(
                     segment_params, 'threshold_method', thresh_method
                 )
@@ -12513,7 +12518,7 @@ class guiWin(QMainWindow):
                 return
 
             if model_name != 'thresholding':
-                self.segment2D_kwargs = win.segment2D_kwargs
+                self.model_kwargs = win.model_kwargs
             self.removeArtefactsKwargs = win.artefactsGroupBox.kwargs()
             self.applyPostProcessing = win.applyPostProcessing
             self.secondChannelName = win.secondChannelName
@@ -12537,7 +12542,7 @@ class guiWin(QMainWindow):
             }
             postProcessParams = {**postProcessParams, **self.removeArtefactsKwargs}
             posData.saveSegmHyperparams(
-                model_name, self.segment2D_kwargs, postProcessParams
+                model_name, self.model_kwargs, postProcessParams
             )
             model.model_name = model_name
         else:
@@ -12688,7 +12693,7 @@ class guiWin(QMainWindow):
             return
         
         if model_name == 'thresholding':
-            win.segment2D_kwargs = autoThreshWin.segment_kwargs
+            win.model_kwargs = autoThreshWin.segment_kwargs
 
         secondChannelData = None
         if win.secondChannelName is not None:
@@ -12891,7 +12896,7 @@ class guiWin(QMainWindow):
             self.titleLabel.setText('Segmentation process cancelled.')
             return
             
-        self.segment2D_kwargs = win.segment2D_kwargs
+        self.model_kwargs = win.model_kwargs
         model = acdcSegment.Model(**win.init_kwargs)
         try:
             model.setupLogger(self.logger)
@@ -12922,6 +12927,7 @@ class guiWin(QMainWindow):
         else:
             self.navigateScrollBar.triggerAction(stepSubAction)
 
+    @exception_handler
     def next_cb(self):
         if self.isSnapshot:
             self.next_pos()
@@ -12932,6 +12938,7 @@ class guiWin(QMainWindow):
         
         self.updatePropsWidget('')
 
+    @exception_handler
     def prev_cb(self):
         if self.isSnapshot:
             self.prev_pos()
@@ -14374,7 +14381,7 @@ class guiWin(QMainWindow):
         self.ax1_viewRange = None
         self.measurementsWin = None
 
-        self.segment2D_kwargs = None
+        self.model_kwargs = None
         self.segmModelName = None
         self.labelRoiModel = None
         self.autoSegmDoNotAskAgain = False
@@ -15694,9 +15701,8 @@ class guiWin(QMainWindow):
             df = dict_frame_i['acdc_df']
             if df is None:
                 break
-            else:
-                if 'cell_cycle_stage' not in df.columns:
-                    break
+            elif 'cell_cycle_stage' not in df.columns:
+                break
         
         last_cca_frame_i = i if i==0 or i+1==len(posData.allData_li) else i-1
 
@@ -15777,6 +15783,7 @@ class guiWin(QMainWindow):
 
         if posData.cca_df is None:
             posData.cca_df = self.getBaseCca_df()
+            self.store_cca_df()
             msg = 'Cell cycle analysis initialized!'
             self.logger.info(msg)
             self.titleLabel.setText(msg, color=self.titleColor)

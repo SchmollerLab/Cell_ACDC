@@ -42,6 +42,7 @@ from . import exception_handler
 from . import load, prompts, apps, core, myutils, widgets
 from . import html_utils, myutils, darkBkgrColor, printl
 from . import autopilot
+from . import recentPaths_path, cellacdc_path, temp_path
 
 if os.name == 'nt':
     try:
@@ -1898,10 +1899,6 @@ class dataPrepWin(QMainWindow):
         shutil.rmtree(tempDir)
 
     def getMostRecentPath(self):
-        cellacdc_path = os.path.dirname(os.path.realpath(__file__))
-        recentPaths_path = os.path.join(
-            cellacdc_path, 'temp', 'recentPaths.csv'
-        )
         if os.path.exists(recentPaths_path):
             df = pd.read_csv(recentPaths_path, index_col='index')
             if 'opened_last_on' in df.columns:
@@ -1915,10 +1912,6 @@ class dataPrepWin(QMainWindow):
     def addToRecentPaths(self, exp_path):
         if not os.path.exists(exp_path):
             return
-        cellacdc_path = os.path.dirname(os.path.realpath(__file__))
-        recentPaths_path = os.path.join(
-            cellacdc_path, 'temp', 'recentPaths.csv'
-        )
         if os.path.exists(recentPaths_path):
             df = pd.read_csv(recentPaths_path, index_col='index')
             recentPaths = df['path'].to_list()
@@ -1949,10 +1942,6 @@ class dataPrepWin(QMainWindow):
         # Step 0. Remove the old options from the menu
         self.openRecentMenu.clear()
         # Step 1. Read recent Paths
-        cellacdc_path = os.path.dirname(os.path.realpath(__file__))
-        recentPaths_path = os.path.join(
-            cellacdc_path, 'temp', 'recentPaths.csv'
-        )
         if os.path.exists(recentPaths_path):
             df = pd.read_csv(recentPaths_path, index_col='index')
             if 'opened_last_on' in df.columns:

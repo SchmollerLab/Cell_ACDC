@@ -31,9 +31,9 @@ class tracker:
             dynamic_predictor=False,
             neighbor_strategy='KDTree',
             link_strategy = 'recursive',
-            export_to_extension='.csv',
             signals=None, 
             export_to=None,
+            export_to_extension='.csv'
         ):
         # Handle string input for adaptive_stop
         if isinstance(adaptive_stop, str):

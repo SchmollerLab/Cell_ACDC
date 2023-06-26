@@ -32,6 +32,7 @@ sys.path.append(cellacdc_path)
 from .. import exception_handler, printl
 from .. import prompts, load, myutils, apps, load, widgets, html_utils
 from .. import workers
+from .. import cellacdc_path, recentPaths_path, temp_path
 
 from .. import qrc_resources
 
@@ -94,9 +95,6 @@ class convertFileFormatWin(QMainWindow):
         mainContainer.setLayout(mainLayout)
 
     def getMostRecentPath(self):
-        recentPaths_path = os.path.join(
-            cellacdc_path, 'temp', 'recentPaths.csv'
-        )
         if os.path.exists(recentPaths_path):
             df = pd.read_csv(recentPaths_path, index_col='index')
             if 'opened_last_on' in df.columns:
@@ -398,9 +396,6 @@ class convertFileFormatWin(QMainWindow):
     def addToRecentPaths(self, exp_path):
         if not os.path.exists(exp_path):
             return
-        recentPaths_path = os.path.join(
-            cellacdc_path, 'temp', 'recentPaths.csv'
-        )
         if os.path.exists(recentPaths_path):
             df = pd.read_csv(recentPaths_path, index_col='index')
             recentPaths = df['path'].to_list()

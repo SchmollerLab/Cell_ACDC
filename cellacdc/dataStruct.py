@@ -36,6 +36,7 @@ from . import qrc_resources
 from . import apps, myutils, widgets, html_utils, printl
 from . import load, settings_csv_path
 from . import _palettes
+from . import recentPaths_path, cellacdc_path, temp_path
 
 if os.name == 'nt':
     try:
@@ -1185,10 +1186,6 @@ class createDataStructWin(QMainWindow):
 
 
     def getMostRecentPath(self):
-        cellacdc_path = os.path.dirname(os.path.realpath(__file__))
-        recentPaths_path = os.path.join(
-            cellacdc_path, 'temp', 'recentPaths.csv'
-        )
         if os.path.exists(recentPaths_path):
             df = pd.read_csv(recentPaths_path, index_col='index')
             if 'opened_last_on' in df.columns:
@@ -1202,10 +1199,6 @@ class createDataStructWin(QMainWindow):
     def addToRecentPaths(self, raw_src_path):
         if not os.path.exists(raw_src_path):
             return
-        cellacdc_path = os.path.dirname(os.path.realpath(__file__))
-        recentPaths_path = os.path.join(
-            cellacdc_path, 'temp', 'recentPaths.csv'
-        )
         if os.path.exists(recentPaths_path):
             df = pd.read_csv(recentPaths_path, index_col='index')
             recentPaths = df['path'].to_list()

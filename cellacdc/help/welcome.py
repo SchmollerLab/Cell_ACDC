@@ -20,14 +20,12 @@ from qtpy.QtWidgets import (
 )
 
 script_path = os.path.dirname(os.path.realpath(__file__))
-cellacdc_path = os.path.dirname(script_path)
-sys.path.append(cellacdc_path)
 
 from .. import gui, dataStruct, myutils, cite_url, html_utils, urls, widgets
 from .. import _palettes
 
 # NOTE: Enable icons
-from .. import qrc_resources
+from .. import qrc_resources, cellacdc_path, temp_path
 
 if os.name == 'nt':
     try:
@@ -111,7 +109,6 @@ class welcomeWin(QWidget):
         # self.debugAction.hide()
 
     def loadSettings(self):
-        temp_path = os.path.join(cellacdc_path, 'temp')
         csv_path = os.path.join(temp_path, 'settings.csv')
         if os.path.exists(csv_path):
             self.df_settings = pd.read_csv(csv_path, index_col='setting')
