@@ -5463,14 +5463,14 @@ class QDialogMetadata(QDialog):
                     try:
                         acdc_df.to_csv(acdc_df_path, index=False)
                     except PermissionError:
-                        err_msg = (
+                        err_msg = html_utils.paragraph(
                             'The below file is open in another app '
-                            '(Excel maybe?).\n\n'
-                            f'{acdc_df_path}\n\n'
+                            '(Excel maybe?).<br><br>'
+                            f'<code>{acdc_df_path}</code><br><br>'
                             'Close file and then press "Ok".'
                         )
-                        msg = QMessageBox()
-                        msg.critical(self, 'Permission denied', err_msg, msg.Ok)
+                        msg = widgets.myMessageBox()
+                        msg.critical(self, 'Permission denied', err_msg)
                         acdc_df.to_csv(acdc_df_path, index=False)
 
         elif self.sender() == self.selectButton:
@@ -7517,6 +7517,7 @@ class editCcaTableWidget(QDialog):
 
         # Layouts
         mainLayout = QVBoxLayout()
+        headerLayout = QGridLayout()
         tableLayout = QGridLayout()
         buttonsLayout = QHBoxLayout()
         self.scrollArea = QScrollArea()
@@ -7528,43 +7529,45 @@ class editCcaTableWidget(QDialog):
         IDsLabel = QLabel('Cell ID')
         AC = Qt.AlignCenter
         IDsLabel.setAlignment(AC)
-        tableLayout.addWidget(IDsLabel, 0, col, alignment=AC)
+        headerLayout.addWidget(IDsLabel, 0, col, alignment=AC)
 
         col += 1
         ccsLabel = QLabel('Cell cycle stage')
         ccsLabel.setAlignment(Qt.AlignCenter)
-        tableLayout.addWidget(ccsLabel, 0, col, alignment=AC)
+        headerLayout.addWidget(ccsLabel, 0, col, alignment=AC)
 
         col += 1
         relIDLabel = QLabel('Relative ID')
         relIDLabel.setAlignment(Qt.AlignCenter)
-        tableLayout.addWidget(relIDLabel, 0, col, alignment=AC)
+        headerLayout.addWidget(relIDLabel, 0, col, alignment=AC)
 
         col += 1
         genNumLabel = QLabel('Generation number')
         genNumLabel.setAlignment(Qt.AlignCenter)
-        tableLayout.addWidget(genNumLabel, 0, col, alignment=AC)
+        headerLayout.addWidget(genNumLabel, 0, col, alignment=AC)
         genNumColWidth = genNumLabel.sizeHint().width()
 
         col += 1
         relationshipLabel = QLabel('Relationship')
         relationshipLabel.setAlignment(Qt.AlignCenter)
-        tableLayout.addWidget(relationshipLabel, 0, col, alignment=AC)
+        headerLayout.addWidget(relationshipLabel, 0, col, alignment=AC)
 
         col += 1
         emergFrameLabel = QLabel('Emerging frame num.')
         emergFrameLabel.setAlignment(Qt.AlignCenter)
-        tableLayout.addWidget(emergFrameLabel, 0, col, alignment=AC)
+        headerLayout.addWidget(emergFrameLabel, 0, col, alignment=AC)
 
         col += 1
         divitionFrameLabel = QLabel('Division frame num.')
         divitionFrameLabel.setAlignment(Qt.AlignCenter)
-        tableLayout.addWidget(divitionFrameLabel, 0, col, alignment=AC)
+        headerLayout.addWidget(divitionFrameLabel, 0, col, alignment=AC)
 
         col += 1
         historyKnownLabel = QLabel('Is history known?')
         historyKnownLabel.setAlignment(Qt.AlignCenter)
-        tableLayout.addWidget(historyKnownLabel, 0, col, alignment=AC)
+        headerLayout.addWidget(historyKnownLabel, 0, col, alignment=AC)
+        
+        self.headerLayout = headerLayout
 
         tableLayout.setHorizontalSpacing(20)
         self.tableLayout = tableLayout
@@ -7593,7 +7596,9 @@ class editCcaTableWidget(QDialog):
         # Add layouts
         self.viewBox.setLayout(tableLayout)
         self.scrollArea.setWidget(self.viewBox)
+        mainLayout.addLayout(headerLayout)
         mainLayout.addWidget(self.scrollArea)
+        mainLayout.addSpacing(20)
         mainLayout.addLayout(buttonsLayout)
 
         # Populate table Layout
@@ -7706,9 +7711,6 @@ class editCcaTableWidget(QDialog):
             HistoryCheckBox.setChecked(bool(cca_df.at[ID, 'is_history_known']))
             tableLayout.addWidget(HistoryCheckBox, row+1, col, alignment=AC)
             self.historyKnownCheckBoxes.append(HistoryCheckBox)
-
-        # Contents margins
-        buttonsLayout.setContentsMargins(200, 15, 200, 15)
 
         self.setLayout(mainLayout)
 
@@ -7907,13 +7909,13 @@ class editCcaTableWidget(QDialog):
     def show(self, block=False):
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         super().show()
-        w = (
-            self.viewBox.minimumSizeHint().width()
-            + 5*self.tableLayout.columnCount()
-        )
-        winGeometry = self.geometry()
-        l, t, h = winGeometry.left(), winGeometry.top(), winGeometry.height()
-        self.setGeometry(l, t, w, h)
+        ncols = self.tableLayout.columnCount()
+        maxLabelWidth = max([
+            self.headerLayout.itemAt(j).widget().sizeHint().width()
+            for j in range(ncols)
+        ])
+        minWidth = (maxLabelWidth+5)*ncols
+        self.setMinimumWidth(minWidth)
         if block:
             self.loop = QEventLoop()
             self.loop.exec_()
