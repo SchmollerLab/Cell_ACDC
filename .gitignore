@@ -13,6 +13,8 @@ requirements_new.txt
 **/_test*.py
 **/weights_location_path.txt
 
+yeast_toolbox/
+
 # Starting from pip 21.3 setup.py is not needed anymore
 # and we rely only on setup.cfg for env
 setup.py
