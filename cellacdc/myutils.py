@@ -762,6 +762,8 @@ def getModelArgSpec(acdcSegment):
     if len(segment_ArgSpec.args)>2:
         iter = zip(segment_ArgSpec.args[2:], segment_ArgSpec.defaults)
         for arg, default in iter:
+            if arg == 'frame_i':
+                continue
             if arg in segment_kwargs_type_hints:
                 _type = segment_kwargs_type_hints[arg]
             else:
@@ -2050,6 +2052,8 @@ def init_segm_model(acdcSegment, posData, init_kwargs):
                 segm_endname, posData.images_path
             )
             segm_data = np.load(segm_filepath)['arr_0']
+    else:
+        segm_data = None
     
     try:
         # Models introduced before 1.3.2 do not have the segm_data as input

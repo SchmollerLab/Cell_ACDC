@@ -512,7 +512,10 @@ class segmWorker(QObject):
         if self.secondChannelData is not None:
             img = self.mainWin.model.to_rgb_stack(img, self.secondChannelData)
 
-        _lab = self.mainWin.model.segment(img, **self.mainWin.model_kwargs)
+        _lab = core.segm_model_segment(
+            self.mainWin.model, img, self.mainWin.model_kwargs, 
+            frame_i=posData.frame_i
+        )
         if self.mainWin.applyPostProcessing:
             _lab = core.remove_artefacts(
                 _lab, **self.mainWin.removeArtefactsKwargs
@@ -609,7 +612,10 @@ class segmVideoWorker(QObject):
             if zz is not None:
                 z_slice = zz.loc[frame_i]
                 img = img[z_slice]
-            lab = self.model.segment(img, **self.model_kwargs)
+                
+            lab = core.segm_model_segment(
+                self.model, img, model_kwargs, frame_i=frame_i
+            )
             if self.applyPostProcessing:
                 lab = core.remove_artefacts(
                     lab, **self.removeArtefactsKwargs
