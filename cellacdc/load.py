@@ -177,7 +177,7 @@ def load_segm_file(images_path, end_name_segm_file='segm', return_path=False):
     for file in myutils.listdir(images_path):
         if file.endswith(end_name_segm_file):
             filepath = os.path.join(images_path, file)
-            segm_data = np.load(filepath)['arr_0'].astype(np.uin32)
+            segm_data = np.load(filepath)['arr_0'].astype(np.uint32)
             if return_path:
                 return segm_data, filepath
             else:
