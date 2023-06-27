@@ -5,9 +5,11 @@ import matplotlib.pyplot as plt
 
 from importlib import import_module
 
-from cellacdc import apps, myutils, widgets
+from cellacdc import apps, myutils, widgets, data, core
 
 from qtpy.QtWidgets import QApplication, QStyleFactory
+
+import skimage.color
 
 try:
     import pytest
@@ -17,16 +19,13 @@ except Exception as e:
 
 gdrive_path = myutils.get_gdrive_path()
 
-test_img_path = (
-    # os.path.join(
-    #    gdrive_path,
-    #    *(r'01_Postdoc_HMGU\Python_MyScripts\MIA\Git\DeepSea\data\test_images\A11_z007_c001.png').split('\\'))
-    # r"G:\My Drive\01_Postdoc_HMGU\Python_MyScripts\MIA\Git\DeepSea\data\test_images\train_A11_z001_c001.png"
-    # r"G:\My Drive\01_Postdoc_HMGU\Python_MyScripts\MIA\Git\Cell_ACDC\data\test_images\test_cellpose.tif"
-    os.path.join(
-        gdrive_path,
-        *(r'01_Postdoc_HMGU\Python_MyScripts\MIA\Git\Cell_ACDC\data\test_images\test_YeaZ.tif').split('\\'))
-)
+FRAME_I = 0
+test_data = data.Cdc42TimeLapseData()
+# image_data = test_data.image_data()
+image_data = test_data.cdc42_data()
+segm_data = test_data.segm_data()
+
+img = image_data[FRAME_I]
 
 # Ask which model to use --> Test if new model is visible
 app = QApplication(sys.argv)
@@ -53,7 +52,7 @@ downloadWin = apps.downloadModel(model_name, parent=None)
 downloadWin.download()
 
 # Load model as a module
-acdcSegment = import_module(f'models.{model_name}.acdcSegment')
+acdcSegment = myutils.import_segment_module(model_name)
 
 # Read all models parameters
 init_params, segment_params = myutils.getModelArgSpec(acdcSegment)
@@ -72,18 +71,17 @@ win = apps.QDialogModelParams(
 win.exec_()
 
 # Initialize model
-model = acdcSegment.Model(**win.init_kwargs)
+try:
+    model = acdcSegment.Model(**win.init_kwargs)
+except Exception as e:
+    model = acdcSegment.Model(segm_data, **win.init_kwargs)
 
-# Use model on a test image
-import skimage.io
-
-img = skimage.io.imread(test_img_path)
 if img.ndim == 3 and (img.shape[-1] == 3 or img.shape[-1] == 4):
     img = skimage.color.rgb2gray(img)
 
 print(img.shape)
 
-lab = model.segment(img, **win.model_kwargs)
+lab = core.segm_model_segment(model, img, win.model_kwargs, frame_i=FRAME_I)
 
 print(lab.shape)
 

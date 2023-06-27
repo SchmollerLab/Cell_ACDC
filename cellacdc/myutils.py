@@ -744,11 +744,13 @@ def getModelArgSpec(acdcSegment):
 
     init_ArgSpec = inspect.getfullargspec(acdcSegment.Model.__init__)
     init_kwargs_type_hints = typing.get_type_hints(acdcSegment.Model.__init__)
+    try:
+        init_ArgSpec.args.remove('segm_data')
+    except Exception as e:
+        pass
     init_params = []
     if len(init_ArgSpec.args)>1:
         for arg, default in zip(init_ArgSpec.args[1:], init_ArgSpec.defaults):
-            if arg == 'segm_data':
-                continue
             if arg in init_kwargs_type_hints:
                 _type = init_kwargs_type_hints[arg]
             else:
@@ -758,12 +760,15 @@ def getModelArgSpec(acdcSegment):
 
     segment_ArgSpec = inspect.getfullargspec(acdcSegment.Model.segment)
     segment_kwargs_type_hints = typing.get_type_hints(acdcSegment.Model.segment)
+    try:
+        segment_ArgSpec.args.remove('frame_i')
+    except Exception as e:
+        pass
+    
     segment_params = []
     if len(segment_ArgSpec.args)>2:
         iter = zip(segment_ArgSpec.args[2:], segment_ArgSpec.defaults)
         for arg, default in iter:
-            if arg == 'frame_i':
-                continue
             if arg in segment_kwargs_type_hints:
                 _type = segment_kwargs_type_hints[arg]
             else:
@@ -2061,10 +2066,3 @@ def init_segm_model(acdcSegment, posData, init_kwargs):
     except Exception as e:
         model = acdcSegment.Model(segm_data, **init_kwargs)
     return model
-
-if __name__ == '__main__':
-    print(get_list_of_models())
-    # model_name = 'cellpose'
-    # download_model(model_name)
-    #
-    # download_examples()

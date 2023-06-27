@@ -17139,6 +17139,7 @@ class guiWin(QMainWindow):
         customModelAction = QAction(modelName)
         self.segmSingleFrameMenu.addAction(customModelAction)
         self.segmActions.append(customModelAction)
+        self.segmActionsVideo.append(customModelAction)
         self.modelNames.append(modelName)
         self.models.append(None)
         self.sender().callback(customModelAction)

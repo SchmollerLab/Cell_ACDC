@@ -1505,7 +1505,6 @@ def brownian(x0, n, dt, delta, out=None):
     return out
 
 def segm_model_segment(model, image, model_kwargs, frame_i=None):
-    printl(frame_i)
     try:
         lab = model.segment(image, **model_kwargs)
     except Exception as e:
