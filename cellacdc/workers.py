@@ -614,7 +614,7 @@ class segmVideoWorker(QObject):
                 img = img[z_slice]
                 
             lab = core.segm_model_segment(
-                self.model, img, model_kwargs, frame_i=frame_i
+                self.model, img, self.model_kwargs, frame_i=frame_i
             )
             if self.applyPostProcessing:
                 lab = core.remove_artefacts(
