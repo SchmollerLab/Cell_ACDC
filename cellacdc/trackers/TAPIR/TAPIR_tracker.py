@@ -85,23 +85,22 @@ class tracker:
             reversed_resized_frames, reversed_resized_segm, 
             tracking_input
         )
-        query_points = self._initialize_query_points(
+        query_points, tracks_start_frames = self._initialize_query_points(
             reversed_resized_segm, tracking_input, which_points_to_track
         )
-        
-        import matplotlib.pyplot as plt
-        plt.imshow(frames_rgb[0])
-        plt.plot(query_points[:,2], query_points[:,1], 'r.')
-        plt.show()
+        self.tracks_start_frames = tracks_start_frames
+
+        # import matplotlib.pyplot as plt
+        # plt.imshow(frames_rgb[0])
+        # plt.plot(query_points[:,2], query_points[:,1], 'r.')
+        # plt.show()
         
         self.reversed_tracks, self.reversed_visibles = inference(
             frames_rgb, query_points, self.model_apply, self.params, 
             self.state
         )
         
-        tracked_video = self._apply_tracks(
-            self.reversed_tracks, self.reversed_visibles
-        )
+        tracked_video = self._apply_tracks()
         
         if save_napari_tracks:
             self._save_napari_tracks(export_to)
@@ -137,8 +136,7 @@ class tracker:
         df = pd.DataFrame(data=napari_tracks, columns=['ID', 'T', 'Y', 'X'])
         df.to_csv(napari_tracks_path, index=False)
     
-    def _save_tracks(self, export_to):
-        print('Saving tracks...')
+    def _build_tracks_table(self):
         tracks = self.reversed_tracks[:, ::-1]
         visibles = self.reversed_visibles[:, ::-1]
         resized_segm = self.reversed_resized_segm[::-1]
@@ -147,7 +145,7 @@ class tracker:
         xx = []
         yy = []
         visibles_li = []
-        Y, X = resized_segm.shape[-2:]
+        segm_IDs = []
         for tr, track in enumerate(tqdm(tracks, ncols=100)):
             track_ID = self._get_track_ID(resized_segm, track)
             for frame_i, (x, y) in enumerate(track):                  
@@ -159,14 +157,23 @@ class tracker:
                 xx.append(xc)
                 yy.append(yc)
                 visibles_li.append(visible)
+                segm_ID = nearest_nonzero_2D(
+                    resized_segm[frame_i], y, x, max_dist=self.max_dist
+                )
+                segm_IDs.append(segm_ID)
         df = pd.DataFrame({
             'frame_i': frames, 
-            'track_ID': track_ID,
+            'track_ID': segm_IDs,
+            'segm_ID': track_IDs,
             'y_point': yy, 
             'x_point': xx,
             'visible': visibles_li
         }).set_index(['frame_i', 'track_ID']).sort_index()
-        df.to_csv(export_to)
+        return df
+    
+    def _save_tracks(self, export_to):
+        print('Saving tracks...')
+        self.df_tracks.to_csv(export_to)
 
     def to_napari_tracks(self, use_centroids=False):
         print('Building napari tracks data...')
@@ -180,9 +187,6 @@ class tracker:
                 visible = self.reversed_visibles[tr, reversed_frame_i]
                 if not visible and self._use_visibile_information:
                     continue
-                y_int, x_int = round(y), round(x)
-                y_int = max(0, min(y_int, Y-1))
-                x_int = max(0, min(x_int, X-1))
                 self._append_napari_point(
                     napari_tracks, y, x, num_frames, reversed_frame_i, 
                     track_ID, use_centroids=use_centroids
@@ -208,66 +212,43 @@ class tracker:
             xc = x*self.resize_ratio_width
             napari_tracks.append((track_ID, frame_i, yc, xc))
     
-    def _get_track_ID(self, resized_segm, track, frame_i=None, max_dist=None):
-        if frame_i is None:
-            # As of now we track in reverse from last frame and we don't 
-            # initialize additional points in later frames 
-            # --> use last frame
-            frame_i = -1
+    def _get_track_ID(self, resized_segm, track, max_dist=None):
         Y, X = resized_segm.shape[-2:]
-        if self._which_points_to_track == 'Centroids':
-            x, y = track[frame_i]
-            y_int, x_int = round(y), round(x)
-            y_int = max(0, min(y_int, Y-1))
-            x_int = max(0, min(x_int, X-1))
-            track_ID = resized_segm[frame_i, y_int, x_int]
+        x, y = track[-1]
+        # frame_i = self.tracks_start_frames[(round(y), round(x))]
+        # I still don't know how to get the start frame of each track 
+        # because TAPIR returns a float even for the initialized query 
+        # point of each track
+        frame_i = -1
+        y_int, x_int = round(y), round(x)
+        y_int = max(0, min(y_int, Y-1))
+        x_int = max(0, min(x_int, X-1))
+        track_ID = resized_segm[frame_i, y_int, x_int]
         return track_ID
     
-    def _apply_tracks(self, reversed_tracks, reversed_visibles):
+    def _apply_tracks(self):
         print('Applying tracks data...')
         
-        # Restore correct order (we tracked backwards)
-        tracks = reversed_tracks[:, ::-1]
-        resized_segm = self.reversed_resized_segm[::-1]
-        visibles = reversed_visibles[:, ::-1]
+        self.df_tracks = self._build_tracks_table()        
+        self.df_tracks = self.df_tracks[self.df_tracks.visible>0]
         
         # Iterate tracks and determine tracked IDs
         old_IDs_tracks = {}
         tracked_IDs_tracks = {}
-        Y, X = resized_segm.shape[-2:]
-        for tr, track in enumerate(tqdm(tracks, ncols=100)):
-            # Get the track ID from last frame (we track in reverse)
-            track_ID = self._get_track_ID(resized_segm, track)
-            for frame_i, (x, y) in enumerate(track):
-                if frame_i == 0:
-                    continue
-                
-                visible = visibles[tr, frame_i]
-                if not visible  and self._use_visibile_information:
-                    continue
-                y_int, x_int = round(y), round(x)
-                y_int = max(0, min(y_int, Y-1))
-                x_int = max(0, min(x_int, X-1))
-                idxs = (frame_i, y_int, x_int)
-                oldID = resized_segm[idxs]
-                oldID = self._get_track_ID(
-                    resized_segm, track, frame_i=frame_i, 
-                    max_dist=self.max_dist
-                )
-                if oldID == 0:
-                    oldID = nearest_nonzero_2D(
-                        resized_segm[frame_i], y, x, max_dist=self.max_dist
-                    )
-                
-                if oldID == 0:
-                    continue
-                
-                if frame_i not in old_IDs_tracks:
-                    old_IDs_tracks[frame_i] = [oldID]
-                    tracked_IDs_tracks[frame_i] = [track_ID]
-                else:
-                    old_IDs_tracks[frame_i].append(oldID)
-                    tracked_IDs_tracks[frame_i].append(track_ID)
+        for (frame_i, track_ID), df in self.df_tracks.groupby(level=(0,1)):
+            if track_ID == 0:
+                continue
+            
+            oldID = df['segm_ID'].mode().iloc[0]
+            if oldID == 0:
+                continue
+            
+            if frame_i not in old_IDs_tracks:
+                old_IDs_tracks[frame_i] = [oldID]
+                tracked_IDs_tracks[frame_i] = [track_ID]
+            else:
+                old_IDs_tracks[frame_i].append(oldID)
+                tracked_IDs_tracks[frame_i].append(track_ID)
 
         tracked_video = self.segm_video.copy()
         for frame_i in old_IDs_tracks.keys():
@@ -293,6 +274,7 @@ class tracker:
         first_lab = reversed_resized_segm[0]
         first_lab_rp = skimage.measure.regionprops(first_lab)
         num_objs = len(first_lab_rp)
+        tracks_start_frames = {}
         if which_points_to_track == 'Centroids':
             query_points = np.zeros((num_objs, 3), dtype=int)      
         else:
@@ -311,16 +293,20 @@ class tracker:
                     # Track the centroid of the object
                     yc, xc = obj.centroid
                 query_points[o, 1:] = int(yc), int(xc)
+                tracks_start_frames[tuple(query_points[0][1:])] = 0
             else:
                 contours = get_obj_contours(obj)
                 all_contours.append(contours)
+                for x, y in contours:
+                    tracks_start_frames[(y, x)] = 0
         if which_points_to_track == 'Contours':
             all_contours = np.concatenate(all_contours)
             nrows = len(all_contours)
             query_points = np.zeros((nrows, 3), dtype=int) 
             query_points[:, 2] = all_contours[:,0]
             query_points[:, 1] = all_contours[:,1]
-        return query_points
+        
+        return query_points, tracks_start_frames
 
 def url_help():
     return 'https://deepmind-tapir.github.io/'
