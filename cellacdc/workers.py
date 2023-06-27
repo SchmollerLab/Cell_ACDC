@@ -3154,3 +3154,97 @@ class ToObjCoordsWorker(BaseWorkerUtil):
                 df.to_csv(df_filepath)
                         
         self.signals.finished.emit(self)
+
+class Stack2DsegmTo3Dsegm(BaseWorkerUtil):
+    sigAskAppendName = Signal(str, list)
+    sigAborted = Signal()
+
+    def __init__(self, mainWin, SizeZ):
+        super().__init__(mainWin)
+        self.SizeZ = SizeZ
+
+    @worker_exception_handler
+    def run(self):
+        debugging = False
+        expPaths = self.mainWin.expPaths
+        tot_exp = len(expPaths)
+        self.signals.initProgressBar.emit(0)
+        for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
+            self.errors = {}
+            tot_pos = len(pos_foldernames)
+
+            self.mainWin.infoText = f'Select <b>2D segmentation file to stack</b>'
+            abort = self.emitSelectSegmFiles(exp_path, pos_foldernames)
+            if abort:
+                self.sigAborted.emit()
+                return
+            
+            # Ask appendend name
+            self.mutex.lock()
+            self.sigAskAppendName.emit(
+                self.mainWin.endFilenameSegm, self.mainWin.existingSegmEndNames
+            )
+            self.waitCond.wait(self.mutex)
+            self.mutex.unlock()
+            if self.abort:
+                self.sigAborted.emit()
+                return
+
+            appendedName = self.appendedName
+            self.signals.initProgressBar.emit(len(pos_foldernames))
+            for p, pos in enumerate(pos_foldernames):
+                if self.abort:
+                    self.sigAborted.emit()
+                    return
+
+                self.logger.log(
+                    f'Processing experiment n. {i+1}/{tot_exp}, '
+                    f'{pos} ({p+1}/{tot_pos})'
+                )
+
+                images_path = os.path.join(exp_path, pos, 'Images')
+                endFilenameSegm = self.mainWin.endFilenameSegm
+                ls = myutils.listdir(images_path)
+                file_path = [
+                    os.path.join(images_path, f) for f in ls 
+                    if f.endswith(f'{endFilenameSegm}.npz')
+                ][0]
+                
+                posData = load.loadData(file_path, '')
+
+                self.signals.sigUpdatePbarDesc.emit(f'Processing {posData.pos_path}')
+
+                posData.getBasenameAndChNames()
+                posData.buildPaths()
+
+                posData.loadOtherFiles(
+                    load_segm_data=True,
+                    load_acdc_df=True,
+                    load_metadata=True,
+                    end_filename_segm=endFilenameSegm
+                )
+                if posData.segm_data.ndim == 2:
+                    posData.segm_data = posData.segm_data[np.newaxis]
+                
+                self.logger.log('Stacking 2D into 3D objects...')
+                
+                numFrames = len(posData.segm_data)
+                self.signals.sigInitInnerPbar.emit(numFrames)
+                T, Y, X = posData.segm_data.shape
+                newShape = (T, self.SizeZ, Y, X)
+                segmData2D = np.zeros(newShape, dtype=np.uint32)
+                for frame_i, lab in enumerate(posData.segm_data):
+                    stacked_lab = core.stack_2Dlab_to_3D(lab, self.SizeZ)
+                    segmData2D[frame_i] = stacked_lab
+
+                    self.signals.sigUpdateInnerPbar.emit(1)
+
+                self.logger.log('Saving stacked 3D segmentation file...')
+                segmFilename, ext = os.path.splitext(posData.segm_npz_path)
+                newSegmFilepath = f'{segmFilename}_{appendedName}.npz'
+                segmData2D = np.squeeze(segmData2D)
+                np.savez_compressed(newSegmFilepath, segmData2D)
+                
+                self.signals.progressBar.emit(1)
+
+        self.signals.finished.emit(self)

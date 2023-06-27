@@ -242,6 +242,9 @@ def connect_3Dlab_zboundaries(lab):
         
     return connected_lab
 
+def stack_2Dlab_to_3D(lab, SizeZ):
+    return np.tile(lab, (SizeZ, 1, 1))
+
 def track_sub_cell_objects_acdc_df(
         tracked_subobj_segm_data, subobj_acdc_df, all_old_sub_ids,
         all_num_objects_per_cells, SizeT=None, sigProgress=None, 

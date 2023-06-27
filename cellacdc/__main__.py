@@ -130,6 +130,7 @@ try:
     from cellacdc.utils import acdcToSymDiv as utilsSymDiv
     from cellacdc.utils import trackSubCellObjects as utilsTrackSubCell
     from cellacdc.utils import createConnected3Dsegm as utilsConnected3Dsegm
+    from cellacdc.utils import stack2Dinto3Dsegm as utilsStack2Dto3D
     from cellacdc.utils import computeMultiChannel as utilsComputeMultiCh
     from cellacdc.utils import applyTrackFromTable as utilsApplyTrackFromTab
     from cellacdc.info import utilsInfo
@@ -487,6 +488,7 @@ class mainWin(QMainWindow):
 
         segmMenu = utilsMenu.addMenu('Segmentation')
         segmMenu.addAction(self.createConnected3Dsegm)
+        segmMenu.addAction(self.stack2Dto3DsegmAction)
 
         trackingMenu = utilsMenu.addMenu('Tracking')
         trackingMenu.addAction(self.trackSubCellFeaturesAction)
@@ -609,7 +611,10 @@ class mainWin(QMainWindow):
         )
         self.createConnected3Dsegm = QAction(
             'Create connected 3D segmentation mask from z-slices segmentation...'
-        )   
+        )  
+        self.stack2Dto3DsegmAction = QAction(
+            'Stack 2D segmentation objects into 3D objects...'
+        )  
         self.trackSubCellFeaturesAction = QAction(
             'Track sub-cellular objects (assign same ID as the cell they belong to)...'
         )    
@@ -662,6 +667,9 @@ class mainWin(QMainWindow):
         )
         self.createConnected3Dsegm.triggered.connect(
             self.launchConnected3DsegmActionUtil
+        )
+        self.stack2Dto3DsegmAction.triggered.connect(
+            self.launchStack2Dto3DsegmActionUtil
         )
         self.trackSubCellFeaturesAction.triggered.connect(
             self.launchTrackSubCellFeaturesUtil
@@ -1009,7 +1017,7 @@ class mainWin(QMainWindow):
     def launchConnected3DsegmActionUtil(self):
         self.logger.info(f'Launching utility "{self.sender().text()}"')
         selectedExpPaths = self.getSelectedExpPaths(
-            'Create 3D segmentation mask from 2D'
+            'Create connected 3D segmentation mask'
         )
         if selectedExpPaths is None:
             return
@@ -1022,6 +1030,32 @@ class mainWin(QMainWindow):
             parent=self
         )
         self.connected3DsegmWin.show()
+    
+    def launchStack2Dto3DsegmActionUtil(self):
+        self.logger.info(f'Launching utility "{self.sender().text()}"')
+        selectedExpPaths = self.getSelectedExpPaths(
+            'Create 3D segmentation mask from 2D'
+        )
+        if selectedExpPaths is None:
+            return
+        
+        SizeZwin = apps.NumericEntryDialog(
+            title='Number of z-slices', 
+            instructions='Enter number of z-slices requires',
+            currentValue=1, parent=self
+        )
+        SizeZwin.exec_()
+        if SizeZwin.cancel:
+            return
+        
+        title = 'Create stacked 3D segmentation mask'
+        infoText = 'Launching stacked 3D segmentation mask creation process...'
+        progressDialogueTitle = 'Creating stacked 3D segmentation mask'
+        self.stack2DsegmWin = utilsStack2Dto3D.Stack2DsegmTo3Dsegm(
+            selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
+            SizeZwin.value, parent=self
+        )
+        self.stack2DsegmWin.show()
 
     def launchTrackSubCellFeaturesUtil(self):
         self.logger.info(f'Launching utility "{self.sender().text()}"')
