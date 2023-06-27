@@ -5626,6 +5626,13 @@ class LoadingCircleAnimation(QLabel):
         
         self.update()
     
+    def setVisible(self, visible):
+        if visible:
+            self.animation.start()
+        else:
+            self.animation.stop()
+        super().setVisible(visible)
+    
     def setBrushesAndAngles(self):
         self._brushes = []
         self._pens = []
