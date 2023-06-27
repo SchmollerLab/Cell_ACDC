@@ -5575,10 +5575,6 @@ class guiWin(QMainWindow):
 
         # Alt key was released --> restore cursor
         modifiers = QGuiApplication.keyboardModifiers()
-        noModifier = modifiers == Qt.NoModifier
-        shift = modifiers == Qt.ShiftModifier
-        ctrl = modifiers == Qt.ControlModifier
-        alt = modifiers == Qt.AltModifier
         cursorsInfo = self.gui_setCursor(modifiers, event)
         
         drawRulerLine = (
@@ -5712,7 +5708,8 @@ class guiWin(QMainWindow):
         if setMirroredCursor:
             x, y = event.pos()
             self.ax2_cursor.setData([x], [y])
-
+        return cursorsInfo
+        
     def gui_add_ax_cursors(self):
         try:
             self.ax1.removeItem(self.ax1_cursor)
