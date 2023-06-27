@@ -5,7 +5,7 @@ import time
 import re
 from matplotlib.pyplot import text
 import numpy as np
-import string
+import math
 import traceback
 import logging
 import difflib
@@ -40,7 +40,8 @@ from qtpy.QtWidgets import (
     QAction, QTabWidget, QAbstractSpinBox, QToolBar, QStyleOptionSpinBox,
     QStyle, QDialog, QSpacerItem, QFrame, QMenu, QActionGroup,
     QListWidget, QPlainTextEdit, QFileDialog, QListView, QAbstractItemView,
-    QTreeWidget, QTreeWidgetItem, QListWidgetItem, QLayout, QStylePainter
+    QTreeWidget, QTreeWidgetItem, QListWidgetItem, QLayout, QStylePainter,
+    QGraphicsBlurEffect
 )
 
 import pyqtgraph as pg
@@ -5534,3 +5535,127 @@ def PostProcessSegmWidget(
     widget.setMaximum(maximum)
     widget.setValue(value)
     return widget
+
+# class Spinner(QLabel):
+#     def __init__(self, size=150, parent=None):
+#         super().__init__(parent)
+#         # layout = QHBoxLayout()
+        
+#         # self._label = QLabel()
+#         self.setAlignment(Qt.AlignCenter)
+#         # self._label.setText('Ciao')
+#         self._pixmap = QPixmap(':spinner.svg')
+        
+#         self._pixmapSize = size + size%2
+#         self._halfPixmapSize = int(self._pixmapSize/2)
+#         printl(self._pixmapSize, self._halfPixmapSize)
+#         self.setPixmap(self._pixmap.scaled(self._pixmapSize, self._pixmapSize))
+
+#         # self.setFixedSize(160, 160)
+#         self._angle = 0
+        
+#         blurEffect = QGraphicsBlurEffect()
+#         blurEffect.setBlurRadius(1.4)
+#         self.setGraphicsEffect(blurEffect)
+        
+#         # layout.addWidget(self._label)
+#         # self.setLayout(layout)
+
+#         self.animation = QPropertyAnimation(self, b"angle", self)
+#         self.animation.setStartValue(0)
+#         self.animation.setEndValue(360)
+#         self.animation.setLoopCount(-1)
+#         self.animation.setDuration(1700)
+#         self.animation.start()
+
+#     @Property(int)
+#     def angle(self):
+#         return self._angle
+
+#     @angle.setter
+#     def angle(self, value):
+#         self._angle = value
+#         self.update()
+
+#     def paintEvent(self, ev=None):
+#         width, height = self.size().width(), self.size().height()
+#         radius_x = int(width/2)
+#         radius_y = int(height/2)
+#         x = radius_x-self._halfPixmapSize
+#         y = radius_y-self._halfPixmapSize
+#         painter = QPainter(self)
+#         painter.setRenderHint(QPainter.Antialiasing)
+#         painter.translate(radius_x, radius_y)
+#         painter.rotate(self._angle)
+#         painter.translate(-radius_x, -radius_y)
+#         painter.drawPixmap(x, y, self._pixmap.scaled(self._pixmapSize, self._pixmapSize))
+#         painter.end()
+
+class LoadingCircleAnimation(QLabel):
+    def __init__(self, size=32, parent=None):
+        super().__init__(parent)
+        # layout = QHBoxLayout()
+        
+        # self._label = QLabel()
+        self.setAlignment(Qt.AlignCenter)
+        self._size = size + size%2
+        self._radius = int(self._size/2)
+        self.setFixedSize(self._size, self._size)
+        self._dotDiameter = int(self._size*0.15)
+        self._dotDiameter = self._dotDiameter + self._dotDiameter%2
+        self._dotRadius = int(self._dotDiameter/2)
+        
+        self._rgb = _palettes.getPainterColor()[:3]
+        self._index = 0
+        
+        self.setBrushesAndAngles()
+        
+        blurEffect = QGraphicsBlurEffect()
+        blurRadius = self._size*0.02
+        if blurRadius < 1:
+            blurRadius = 1
+        blurEffect.setBlurRadius(blurRadius)
+        self.setGraphicsEffect(blurEffect)
+
+        self.animation = QPropertyAnimation(self, b"index", self)
+        self.animation.setStartValue(0)
+        self.animation.setEndValue(11)
+        self.animation.setLoopCount(-1)
+        self.animation.setDuration(1200)
+        self.animation.start()
+        
+        self.update()
+    
+    def setBrushesAndAngles(self):
+        self._brushes = []
+        self._pens = []
+        alphas = np.round(np.linspace(0, 255, 12)).astype(int)
+        self._angles = np.arange(0, 360, 30)
+        for alpha in alphas:
+            color = QColor(*self._rgb, alpha)
+            self._brushes.append(pg.mkBrush(color))
+            self._pens.append(pg.mkPen(color))
+
+    @Property(int)
+    def index(self):
+        return self._index
+
+    @index.setter
+    def index(self, value):
+        self._index = value
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.translate(self._radius, self._radius)
+        for i in range(12):
+            idx = i - self._index
+            angle = self._angles[i]
+            painter.setBrush(self._brushes[idx])
+            painter.setPen(self._pens[idx])
+            x = (self._radius-self._dotRadius)*math.cos(angle*math.pi/180)
+            y = (self._radius-self._dotRadius)*math.sin(angle*math.pi/180)
+            painter.drawEllipse(QPointF(x, y), self._dotRadius, self._dotRadius)
+        
+        painter.end()
