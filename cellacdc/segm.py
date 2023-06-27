@@ -324,7 +324,7 @@ class segmWorker(QRunnable):
                     if self.secondChannelName is not None:
                         img = self.model.to_rgb_stack(img, second_ch_data[t])
                     lab = core.segm_model_segment(
-                        self.model, img, model_kwargs, frame_i=t
+                        self.model, img, self.model_kwargs, frame_i=t
                     )
                     lab_stack[t] = lab
                     if self.innerPbar_available:
