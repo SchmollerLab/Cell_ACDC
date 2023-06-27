@@ -12532,11 +12532,17 @@ class guiWin(QMainWindow):
             _SizeZ = None
             if self.isSegm3D:
                 _SizeZ = posData.SizeZ
+            
+            segm_files = load.get_segm_files(posData.images_path)
+            existingSegmEndnames = load.get_existing_segm_endnames(
+                posData.basename, segm_files
+            )
             win = apps.QDialogModelParams(
                 init_params,
                 segment_params,
                 model_name, parent=self,
-                url=url, initLastParams=initLastParams, SizeZ=_SizeZ
+                url=url, initLastParams=initLastParams, SizeZ=_SizeZ,
+                segmFileEndnames=existingSegmEndnames
             )
             win.setChannelNames(posData.chNames)
             win.exec_()
@@ -12558,7 +12564,7 @@ class guiWin(QMainWindow):
                 self.titleLabel.setText('Segmentation process cancelled.')
                 return
             
-            model = acdcSegment.Model(**win.init_kwargs)
+            model = myutils.init_segm_model(acdcSegment, posData, win.init_kwargs)            
             try:
                 model.setupLogger(self.logger)
             except Exception as e:
@@ -12734,7 +12740,7 @@ class guiWin(QMainWindow):
             self.titleLabel.setText('Segmentation process cancelled.')
             return
 
-        model = acdcSegment.Model(**win.init_kwargs)
+        model = myutils.init_segm_model(acdcSegment, posData, win.init_kwargs) 
         try:
             model.setupLogger(self.logger)
         except Exception as e:
@@ -12925,7 +12931,7 @@ class guiWin(QMainWindow):
             return
             
         self.model_kwargs = win.model_kwargs
-        model = acdcSegment.Model(**win.init_kwargs)
+        model = myutils.init_segm_model(acdcSegment, posData, win.init_kwargs) 
         try:
             model.setupLogger(self.logger)
         except Exception as e:

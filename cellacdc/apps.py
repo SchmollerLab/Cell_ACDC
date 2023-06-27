@@ -10167,7 +10167,7 @@ class QDialogModelParams(QDialog):
     def __init__(
             self, init_params, segment_params, model_name, is_tracker=False,
             url=None, parent=None, initLastParams=True, SizeZ=None, 
-            channels=None, currentChannelName=None
+            channels=None, currentChannelName=None, segmFileEndnames=None
         ):
         self.cancel = True
         super().__init__(parent)
@@ -10175,6 +10175,7 @@ class QDialogModelParams(QDialog):
         self.is_tracker = is_tracker
         self.currentChannelName = currentChannelName
         self.channelCombobox = None
+        self.segmFileEndnames = segmFileEndnames
         
         if is_tracker:
             self.ini_filename = 'last_params_trackers.ini'
@@ -10312,7 +10313,6 @@ class QDialogModelParams(QDialog):
         items.extend(chNames)
         self.channelsCombobox.addItems(items)
 
-
     def createGroupParams(self, ArgSpecs_list, groupName, addChannelSelector=False):
         ArgWidget = namedtuple(
             'ArgsWidgets',
@@ -10335,14 +10335,23 @@ class QDialogModelParams(QDialog):
             if self.currentChannelName is not None:
                 self.channelCombobox.setCurrentText(self.currentChannelName)
             start_row += 1
-            
+        
         if self.model_name.find('cellpose') != -1 and addChannelSelector:
             label = QLabel('Second channel (optional):  ')
-            groupBoxLayout.addWidget(label, 0, 0, alignment=Qt.AlignRight)
+            groupBoxLayout.addWidget(label, start_row, 0, alignment=Qt.AlignRight)
             self.channelsCombobox = widgets.QCenteredComboBox()
-            groupBoxLayout.addWidget(self.channelsCombobox, 0, 1, 1, 2)
+            groupBoxLayout.addWidget(self.channelsCombobox, start_row, 1, 1, 2)
             start_row += 1
 
+        if self.segmFileEndnames is not None and addChannelSelector:
+            label = QLabel('Segmentation file (optional):  ')
+            groupBoxLayout.addWidget(label, start_row, 0, alignment=Qt.AlignRight)
+            items = ['None', *self.segmFileEndnames]
+            self.segmEndnameCombobox = widgets.QCenteredComboBox()
+            self.segmEndnameCombobox.addItems(items)
+            groupBoxLayout.addWidget(self.segmEndnameCombobox, start_row, 1, 1, 2)
+            start_row += 1
+        
         for row, ArgSpec in enumerate(ArgSpecs_list):
             row = row + start_row
             var_name = ArgSpec.name.replace('_', ' ').title()
@@ -10580,6 +10589,8 @@ class QDialogModelParams(QDialog):
     def ok_cb(self, checked):
         self.cancel = False
         self.init_kwargs = self.argsWidgets_to_kwargs(self.init_argsWidgets)
+        if hasattr(self, 'segmEndnameCombobox'):
+            self.init_kwargs['segm_endname'] = self.segmEndnameCombobox.currentText()
         self.model_kwargs = self.argsWidgets_to_kwargs(
             self.argsWidgets
         )

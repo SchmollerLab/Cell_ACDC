@@ -823,7 +823,7 @@ class segmWin(QMainWindow):
                 self.close()
                 return
 
-        self.model = acdcSegment.Model(**init_kwargs)
+        model = myutils.init_segm_model(acdcSegment, posData, init_kwargs) 
         try:
             self.model.setupLogger(self.logger)
         except Exception as e:

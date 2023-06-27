@@ -747,6 +747,8 @@ def getModelArgSpec(acdcSegment):
     init_params = []
     if len(init_ArgSpec.args)>1:
         for arg, default in zip(init_ArgSpec.args[1:], init_ArgSpec.defaults):
+            if arg == 'segm_data':
+                continue
             if arg in init_kwargs_type_hints:
                 _type = init_kwargs_type_hints[arg]
             else:
@@ -2037,6 +2039,24 @@ def format_cca_manual_changes(changes: dict):
             txt = f'{txt}    - {col}: {old_val} --> {new_val}\n'
         txt = f'{txt}--------------------------------\n\n'
     return txt
+
+def init_segm_model(acdcSegment, posData, init_kwargs):
+    segm_endname = init_kwargs.pop('segm_endname')
+    if segm_endname != 'None':
+        if posData.segm_npz_path.endswith(f'{segm_endname}.npz'):
+            segm_data = np.squeeze(posData.segm_data)
+        else:
+            segm_filepath = load.get_path_from_endname(
+                segm_endname, posData.images_path
+            )
+            segm_data = np.load(segm_filepath)['arr_0']
+    
+    try:
+        # Models introduced before 1.3.2 do not have the segm_data as input
+        model = acdcSegment.Model(**init_kwargs)
+    except Exception as e:
+        model = acdcSegment.Model(segm_data, **init_kwargs)
+    return model
 
 if __name__ == '__main__':
     print(get_list_of_models())
