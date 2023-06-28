@@ -8,7 +8,7 @@ import skimage.io
 
 import numpy as np
 
-from acdctools.plot import imshow
+from cellacdc.plot import imshow
 
 #import threading
 

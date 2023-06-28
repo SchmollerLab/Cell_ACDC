@@ -93,7 +93,7 @@ If you are **new to Python** or you need a **refresher** on how to manage scient
 4. Create a virtual environment with the command `conda create -n acdc python=3.9`
 5. Activate the environment `conda activate acdc`
 6. Upgrade pip with the command `python -m pip install --upgrade pip`
-7. Install Cell-ACDC with the command `pip install cellacdc`. Note that if you know you are going to **need tensorflow** (for segmentation models like YeaZ) you can run the command `pip install "cellacdc[all]"`, or `pip install tensorflow` before or after installing Cell-ACDC.
+7. Install Cell-ACDC with the command `pip install "cellacdc[gui]"`. Note that if you know you are going to **need tensorflow** (for segmentation models like YeaZ) you can run the command `pip install "cellacdc[all]"`, or `pip install tensorflow` before or after installing Cell-ACDC.
 
 ## Installation using Pip
 
@@ -103,7 +103,7 @@ If you are **new to Python** or you need a **refresher** on how to manage scient
 4. Navigate to a folder where you want to create the virtual environment
 5. Create a virtual environment: Windows: `py -m venv acdc`, macOS/Unix `python3 -m venv acdc`
 6. Activate the environment: Windows: `.\acdc\Scripts\activate`, macOS/Unix: `source acdc/bin/activate`
-7. Install Cell-ACDC with the command `pip install cellacdc`. Note that if you know you are going to **need tensorflow** (for segmentation models like YeaZ) you can run the command `pip install "cellacdc[all]"`, or `pip install tensorflow` before or after installing Cell-ACDC.
+7. Install Cell-ACDC with the command `pip install "cellacdc[gui]"`. Note that if you know you are going to **need tensorflow** (for segmentation models like YeaZ) you can run the command `pip install "cellacdc[all]"`, or `pip install tensorflow` before or after installing Cell-ACDC.
 
 ## Install from source
 

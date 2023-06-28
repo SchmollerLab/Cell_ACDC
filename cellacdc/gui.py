@@ -7504,7 +7504,7 @@ class guiWin(QMainWindow):
         self.thread.finished.connect(self.thread.deleteLater)
 
         # Custom signals
-        self.trackingWorker.signals = myutils.signals()
+        self.trackingWorker.signals = workers.signals()
         self.trackingWorker.signals.progress = self.trackingWorker.progress
         self.trackingWorker.signals.progressBar.connect(
             self.workerUpdateProgressbar
@@ -7959,7 +7959,7 @@ class guiWin(QMainWindow):
         if how == 'Do not normalize. Display raw image':
             img = img 
         elif how == 'Convert to floating point format with values [0, 1]':
-            img = myutils.uint_to_float(img)
+            img = myutils.img_to_float(img)
         # elif how == 'Rescale to 8-bit unsigned integer format with values [0, 255]':
         #     img = skimage.img_as_float(img)
         #     img = (img*255).astype(np.uint8)

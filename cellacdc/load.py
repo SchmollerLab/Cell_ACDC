@@ -23,17 +23,24 @@ from tifffile import TiffFile
 from natsort import natsorted
 import skimage
 import skimage.measure
-from qtpy import QtGui
-from qtpy.QtCore import Qt, QRect, QRectF
-from qtpy.QtWidgets import (
-    QApplication, QMessageBox
-)
-import pyqtgraph as pg
 
+from . import GUI_INSTALLED
+
+if GUI_INSTALLED:
+    from qtpy import QtGui
+    from qtpy.QtCore import Qt, QRect, QRectF
+    from qtpy.QtWidgets import (
+        QApplication, QMessageBox
+    )
+    import pyqtgraph as pg
+    from . import prompts
+    from . import apps
+    from . import widgets
+    
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
-from . import prompts, apps, myutils, widgets, measurements, config
+from . import myutils, measurements, config
 from . import base_cca_df, base_acdc_df, html_utils, temp_path, printl
 from . import ignore_exception, cellacdc_path
 from . import qrc_resources_path, qrc_resources_light_path

@@ -1,4 +1,3 @@
-from qtpy.QtCore import QObject, Signal, qInstallMessageHandler
 import argparse
 import configparser
 import pprint
@@ -14,20 +13,25 @@ class ConfigParser(configparser.ConfigParser):
         )
         return string
 
-class QtWarningHandler(QObject):
-    sigGeometryWarning = Signal(object)
+from . import GUI_INSTALLED
 
-    def _resizeWarningHandler(self, msg_type, msg_log_context, msg_string):
-        if msg_string.find('Unable to set geometry') != -1:
-            try:
-                self.sigGeometryWarning.emit(msg_string)
-            except Exception as e:
-                pass
-        elif msg_string:
-            print(msg_string)
+if GUI_INSTALLED:
+    from qtpy.QtCore import QObject, Signal, qInstallMessageHandler
 
-warningHandler = QtWarningHandler()
-qInstallMessageHandler(warningHandler._resizeWarningHandler)
+    class QtWarningHandler(QObject):
+        sigGeometryWarning = Signal(object)
+
+        def _resizeWarningHandler(self, msg_type, msg_log_context, msg_string):
+            if msg_string.find('Unable to set geometry') != -1:
+                try:
+                    self.sigGeometryWarning.emit(msg_string)
+                except Exception as e:
+                    pass
+            elif msg_string:
+                print(msg_string)
+
+    warningHandler = QtWarningHandler()
+    qInstallMessageHandler(warningHandler._resizeWarningHandler)
 
 try:
     ap = argparse.ArgumentParser(description='Cell-ACDC parser')

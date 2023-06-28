@@ -1,7 +1,11 @@
 from functools import wraps
 import re
 import sys
-from matplotlib.colors import to_hex
+
+from . import GUI_INSTALLED
+
+if GUI_INSTALLED:
+    from matplotlib.colors import to_hex
 
 is_mac = sys.platform == 'darwin'
 
@@ -31,7 +35,17 @@ def to_list(items, ordered=False):
     return txt
 
 def span(text, color='r'):
-    c = to_hex(color)
+    try:
+        c = to_hex(color)
+    except Exception as e:
+        if color == 'r':
+            c = 'red'
+        elif color == 'g':
+            c = 'green'
+        elif color == 'k':
+            c = 'black'
+        else:
+            c = color
     return f'<span style="color: {c}">{text}</span>'
 
 def css_head(txt):
