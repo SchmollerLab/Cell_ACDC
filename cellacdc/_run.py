@@ -108,7 +108,7 @@ def _setup_gui():
         )
 
 def _setup_app(splashscreen=False):
-    from qtpy import QtCore:
+    from qtpy import QtCore
     if QtCore.QCoreApplication.instance() is not None:
         return QtCore.QCoreApplication.instance(), None
     
