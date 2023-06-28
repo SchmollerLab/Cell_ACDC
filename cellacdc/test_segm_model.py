@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 
 from importlib import import_module
 
-from cellacdc import apps, myutils, widgets, data, core
+from cellacdc import apps, myutils, widgets, data, core, load
 
 from qtpy.QtWidgets import QApplication, QStyleFactory
 
@@ -63,14 +63,15 @@ try:
 except AttributeError:
     url = None
 
-segm_files = load.get_segm_files(posData.images_path)
+segm_files = load.get_segm_files(test_data.images_path)
 existingSegmEndnames = load.get_existing_segm_endnames(
-    posData.basename, segm_files
+    test_data.basename, segm_files
 )
 win = apps.QDialogModelParams(
     init_params,
     segment_params,
-    model_name, url=url
+    model_name, url=url,
+    segmFileEndnames=existingSegmEndnames
 )
 
 win.exec_()
