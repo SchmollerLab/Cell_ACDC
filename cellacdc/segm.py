@@ -792,11 +792,16 @@ class segmWin(QMainWindow):
         _SizeZ = None
         if self.isSegm3D:
             _SizeZ = posData.SizeZ
+        segm_files = load.get_segm_files(posData.images_path)
+        existingSegmEndnames = load.get_existing_segm_endnames(
+            posData.basename, segm_files
+        )
         win = apps.QDialogModelParams(
             init_params,
             segment_params,
             model_name, parent=self,
-            url=url, SizeZ=_SizeZ
+            url=url, SizeZ=_SizeZ,
+            segmFileEndnames=existingSegmEndnames
         )
         win.setChannelNames(posData.chNames)
         win.exec_()
