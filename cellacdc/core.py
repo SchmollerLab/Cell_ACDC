@@ -9,10 +9,6 @@ import skimage.registration
 import skimage.color
 import skimage.filters
 import scipy.ndimage.morphology
-import matplotlib
-import matplotlib.pyplot as plt
-from matplotlib.lines import Line2D
-from matplotlib.patches import Rectangle, Circle, PathPatch, Path
 
 from math import sqrt
 from scipy.stats import norm
@@ -21,9 +17,17 @@ import pandas as pd
 
 from tqdm import tqdm
 
-# Custom modules
-from . import apps, base_cca_df, printl
 from . import load, myutils
+from . import base_cca_df, printl
+
+from . import GUI_INSTALLED
+if GUI_INSTALLED:
+    from . import apps
+    import matplotlib
+    import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
+    from matplotlib.patches import Rectangle, Circle, PathPatch, Path
+
 
 def get_indices_dash_pattern(arr, line_length, gap):
     n = len(arr)

@@ -29,6 +29,24 @@ if cellacdc_installation_path != site_packages:
              'installation. Please, re-start the software. '
              'Thank you for your patience!')
 
+from cellacdc import _run
+_run._setup_gui()
+
+import pyqtgraph as pg
+# Interpret image data as row-major instead of col-major
+pg.setConfigOption('imageAxisOrder', 'row-major')
+try:
+    import numba
+    pg.setConfigOption("useNumba", True)
+except Exception as e:
+    pass
+
+try:
+    import cupy as cp
+    pg.setConfigOption("useCupy", True)
+except Exception as e:
+    pass
+
 from qtpy import QtGui, QtWidgets, QtCore
 
 from . import dataReStruct
@@ -50,43 +68,10 @@ try:
     )
 except Exception as e:
     pass
-
-class AcdcSPlashScreen(QtWidgets.QSplashScreen):
-    def __init__(self):
-        super().__init__()
-        cellacdc_path = os.path.dirname(os.path.abspath(__file__))
-        resources_path = os.path.join(cellacdc_path, 'resources')
-        logo_path = os.path.join(resources_path, 'logo.png')
-        self.setPixmap(QtGui.QPixmap(logo_path))
-    
-    def mousePressEvent(self, a0: QtGui.QMouseEvent) -> None:
-        pass
-
-class App(QtWidgets.QApplication):
-    def __init__(self, *args):
-        super().__init__(*args)
-        self.installEventFilter(self)
-        
-    def eventFilter(self, object, event):
-        return False
     
     
 # Create the application
-app = App([])
-app.setStyle(QtWidgets.QStyleFactory.create('Fusion'))
-app.setPalette(app.style().standardPalette())
-
-app.setWindowIcon(QtGui.QIcon(":icon.ico"))
-# Launch splashscreen
-splashScreen = AcdcSPlashScreen()
-splashScreen.setWindowIcon(QtGui.QIcon(":icon.ico"))
-splashScreen.setWindowFlags(
-    QtCore.Qt.WindowStaysOnTopHint 
-    | QtCore.Qt.SplashScreen 
-    | QtCore.Qt.FramelessWindowHint
-)
-splashScreen.show()
-splashScreen.raise_()
+app, splashScreen = _run._setup_app()
 
 import sys
 import re
@@ -110,47 +95,32 @@ from qtpy.QtGui import (
     QPalette
 )
 
-# acdc modules
-try:
-    # We try to import from cellacdc instead of "from ." to check
-    # if cellacdc was installed with pip or not
-    from cellacdc import (
-        dataPrep, segm, gui, dataStruct, load, help, qrc_resources, myutils,
-        cite_url, html_utils, widgets, apps, dataReStruct
-    )
-    from cellacdc.help import about
-    from cellacdc.utils import concat as utilsConcat
-    from cellacdc.utils import convert as utilsConvert
-    from cellacdc.utils import rename as utilsRename
-    from cellacdc.utils import align as utilsAlign
-    from cellacdc.utils import compute as utilsCompute
-    from cellacdc.utils import repeat as utilsRepeat
-    from cellacdc.utils import toImageJroi as utilsToImageJroi
-    from cellacdc.utils import toObjCoords as utilsToObjCoords
-    from cellacdc.utils import acdcToSymDiv as utilsSymDiv
-    from cellacdc.utils import trackSubCellObjects as utilsTrackSubCell
-    from cellacdc.utils import createConnected3Dsegm as utilsConnected3Dsegm
-    from cellacdc.utils import stack2Dinto3Dsegm as utilsStack2Dto3D
-    from cellacdc.utils import computeMultiChannel as utilsComputeMultiCh
-    from cellacdc.utils import applyTrackFromTable as utilsApplyTrackFromTab
-    from cellacdc.info import utilsInfo
-    from cellacdc import is_win, is_linux, temp_path, issues_url
-    from cellacdc import settings_csv_path
-    from cellacdc import printl
-    from cellacdc import _warnings
-except ModuleNotFoundError as e:
-    src_path = os.path.dirname(os.path.abspath(__file__))
-    main_path = os.path.dirname(src_path)
-    print('='*30)
-    traceback.print_exc()
-    print('----------------------------------------')
-    print(
-        'Cellacdc NOT INSTALLED. '
-        'Run the following command to install: '
-        f'pip install -e "{main_path}"'
-    )
-    print('----------------------------------------')
-    exit('Execution aborted due to an error. See above for details.')
+from cellacdc import (
+    dataPrep, segm, gui, dataStruct, load, help, qrc_resources, myutils,
+    cite_url, html_utils, widgets, apps, dataReStruct
+)
+from cellacdc.help import about
+from cellacdc.utils import concat as utilsConcat
+from cellacdc.utils import convert as utilsConvert
+from cellacdc.utils import rename as utilsRename
+from cellacdc.utils import align as utilsAlign
+from cellacdc.utils import compute as utilsCompute
+from cellacdc.utils import repeat as utilsRepeat
+from cellacdc.utils import toImageJroi as utilsToImageJroi
+from cellacdc.utils import toObjCoords as utilsToObjCoords
+from cellacdc.utils import acdcToSymDiv as utilsSymDiv
+from cellacdc.utils import trackSubCellObjects as utilsTrackSubCell
+from cellacdc.utils import createConnected3Dsegm as utilsConnected3Dsegm
+from cellacdc.utils import stack2Dinto3Dsegm as utilsStack2Dto3D
+from cellacdc.utils import computeMultiChannel as utilsComputeMultiCh
+from cellacdc.utils import applyTrackFromTable as utilsApplyTrackFromTab
+from cellacdc.info import utilsInfo
+from cellacdc import is_win, is_linux, temp_path, issues_url
+from cellacdc import settings_csv_path
+from cellacdc import printl
+from cellacdc import _warnings
+
+import qrc_resources
 
 try:
     import spotmax
