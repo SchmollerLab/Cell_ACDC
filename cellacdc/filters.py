@@ -231,12 +231,12 @@ class diffGaussFilterDialog(FilterBaseDialog):
         if sigma1_yx>0:
             filtered1 = skimage.filters.gaussian(img, sigma=sigmas1)
         else:
-            filtered1 = myutils.uint_to_float(img)
+            filtered1 = myutils.img_to_float(img)
 
         if sigma2_yx>0:
             filtered2 = skimage.filters.gaussian(img, sigma=sigmas2)
         else:
-            filtered2 = myutils.uint_to_float(img)
+            filtered2 = myutils.img_to_float(img)
 
         resultFiltered = filtered1 - filtered2
         return resultFiltered

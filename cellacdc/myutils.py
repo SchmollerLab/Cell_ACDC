@@ -27,21 +27,25 @@ import skimage
 from distutils.dir_util import copy_tree
 import inspect
 import typing
-import matplotlib.colors
-import colorsys
 
 from natsort import natsorted
 
 from tifffile.tifffile import TiffWriter, TiffFile
 
-from qtpy.QtWidgets import QMessageBox
-from qtpy.QtCore import Signal, QObject, QCoreApplication
+from . import GUI_INSTALLED
 
-from . import apps
-from . import prompts, widgets, core, load
+if GUI_INSTALLED:
+    from qtpy.QtWidgets import QMessageBox
+    from qtpy.QtCore import Signal, QObject, QCoreApplication
+
+    from . import apps
+    from . import widgets
+    from . import config
+    
+from . import core, load
 from . import html_utils, is_linux, is_win, is_mac, issues_url, is_mac_arm64
 from . import cellacdc_path, printl, temp_path, logs_path, recentPaths_path
-from . import config, models_list_file_path
+from . import models_list_file_path
 from . import github_home_url
 
 def get_module_name(script_file_path):
@@ -201,10 +205,6 @@ def is_iterable(item):
 
 class utilClass:
     pass
-
-class signals(QObject):
-    progressBar = Signal(int)
-    progress = Signal(str)
 
 def get_trimmed_list(li: list, max_num_digits=10):
     li_str = li.copy()
@@ -1475,10 +1475,10 @@ def seconds_to_ETA(seconds):
 def to_uint8(img):
     if img.dtype == np.uint8:
         return img
-    img = np.round(uint_to_float(img)*255).astype(np.uint8)
+    img = np.round(img_to_float(img)*255).astype(np.uint8)
     return img
 
-def uint_to_float(img):
+def img_to_float(img):
     img_max = np.max(img)
     # Check if float outside of -1, 1
     if img_max <= 1:
@@ -1497,7 +1497,7 @@ def uint_to_float(img):
 def scale_float(data):
     val = data[tuple([0]*data.ndim)]
     if isinstance(val, (np.floating, float)):
-        data = uint_to_float(data)
+        data = img_to_float(data)
     return data
 
 def _install_homebrew_command():
