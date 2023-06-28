@@ -1673,6 +1673,7 @@ class TrackSubCellObjectsWorker(BaseWorkerUtil):
         elif mainWin.trackingMode.find('Only track') != -1:
             self.trackingMode = 'only_track'
         
+        self.relabelSubObjLab = mainWin.relabelSubObjLab
         self.IoAthresh = mainWin.IoAthresh
         self.createThirdSegm = mainWin.createThirdSegm
         self.thirdSegmAppendedText = mainWin.thirdSegmAppendedText
@@ -1779,7 +1780,8 @@ class TrackSubCellObjectsWorker(BaseWorkerUtil):
                 tracked = core.track_sub_cell_objects(
                     segmDataCells, posData.segm_data, self.IoAthresh, 
                     how=self.trackingMode, SizeT=posData.SizeT, 
-                    sigProgress=self.signals.sigUpdateInnerPbar
+                    sigProgress=self.signals.sigUpdateInnerPbar,
+                    relabel_sub_obj_lab=self.relabelSubObjLab
                 )
                 (trackedSubSegmData, trackedCellsSegmData, numSubObjPerCell, 
                 replacedSubIds) = tracked

@@ -266,6 +266,8 @@ def track_sub_cell_objects_acdc_df(
         old_sub_ids = all_old_sub_ids[frame_i]
         if subobj_acdc_df is None:
             sub_acdc_df_frame_i = myutils.getBaseAcdcDf(rp_sub)
+        if frame_i not in subobj_acdc_df.index.get_level_values(0):
+            sub_acdc_df_frame_i = myutils.getBaseAcdcDf(rp_sub)
         else:
             sub_acdc_df_frame_i = (
                 subobj_acdc_df.loc[frame_i].rename(index=old_sub_ids) 
@@ -314,7 +316,8 @@ def track_sub_cell_objects_acdc_df(
         
 def track_sub_cell_objects(
         cells_segm_data, subobj_segm_data, IoAthresh, 
-        how='delete_sub', SizeT=None, sigProgress=None
+        how='delete_sub', SizeT=None, sigProgress=None,
+        relabel_sub_obj_lab=False
     ):  
     """Function used to track sub-cellular objects and assign the same ID of 
     the cell they belong to. 
@@ -333,7 +336,13 @@ def track_sub_cell_objects(
         IoAthresh (float): Minimum percentage (0-1) of the sub-cellular object's 
             area to assign it to a cell
 
-        how (str, optional): _description_. Defaults to 'delete_sub'.
+        how (str, optional): Strategy to take with untracked objects. 
+            Options are 'delete_sub' to delete untracked sub-cellular objects, 
+            'delete_cells' to delete cells that do not have any sub-cellular 
+            object assigned to it, 'delete_both', and 'only_track' to keep 
+            untracked objects. Note that 'delete_sub' is actually not used 
+            because we add tracked sub-objects to an array initialized with 
+            zeros. Defaults to 'delete_sub'.
 
         SizeT (int, optional): Number of frames. Pass `SizeT=1` for non-timelapse
             data. Defaults to None --> assume first dimension of segm data is SizeT.
@@ -341,6 +350,9 @@ def track_sub_cell_objects(
         sigProgress (PyQt5.QtCore.Signal, optional): If provided it will emit 
             1 for each complete frame. Used to update GUI progress bars. 
             Defaults to None --> do not emit signal.
+        
+        relabel_sub_obj_lab (bool, optional): Re-label sub-cellular objects 
+            segmentation labels before tracking them.
     
     Returns:
         tuple: A tuple `(tracked_subobj_segm_data, tracked_cells_segm_data, 
@@ -372,28 +384,48 @@ def track_sub_cell_objects(
     for frame_i, (lab, lab_sub) in enumerate(segm_data_zip):
         rp = skimage.measure.regionprops(lab)
         num_objects_per_cells = {obj.label:0 for obj in rp}
+        if relabel_sub_obj_lab:
+            lab_sub = skimage.measure.label(lab_sub)
         rp_sub = skimage.measure.regionprops(lab_sub)
         tracked_lab_sub = tracked_subobj_segm_data[frame_i]
         cells_IDs_with_sub_obj = []
+        tracked_sub_obj_original_IDs = []
+        untracked_sub_objs_frame_i = set()
         for sub_obj in rp_sub:
             intersect_mask = lab[sub_obj.slice][sub_obj.image]
-            intersect_IDs, I_counts = np.unique(
+            intersect_IDs, intersections = np.unique(
                 intersect_mask, return_counts=True
             )
-            for intersect_ID, I in zip(intersect_IDs, I_counts):
-                if intersect_ID == 0:
-                    continue
-                
-                IoA = I/sub_obj.area
-                if IoA < IoAthresh:
-                    # Do not add untracked sub-obj
-                    continue
-                
-                all_old_sub_ids[frame_i][sub_obj.label] = intersect_ID
-                tracked_lab_sub[sub_obj.slice][sub_obj.image] = intersect_ID
-                num_objects_per_cells[intersect_ID] += 1
-                old_tracked_sub_obj_IDs.add(sub_obj.label)
-                cells_IDs_with_sub_obj.append(intersect_ID)
+            argmax = intersections.argmax()
+            intersect_ID = intersect_IDs[argmax]
+            intersection = intersections[argmax]
+            
+            if intersect_ID == 0:
+                untracked_sub_objs_frame_i.add(sub_obj.label)
+                continue
+            
+            IoA = intersection/sub_obj.area
+            if IoA < IoAthresh:
+                # Do not add untracked sub-obj
+                untracked_sub_objs_frame_i.add(sub_obj.label)
+                continue
+            
+            all_old_sub_ids[frame_i][sub_obj.label] = intersect_ID
+            tracked_lab_sub[sub_obj.slice][sub_obj.image] = intersect_ID
+            num_objects_per_cells[intersect_ID] += 1
+            old_tracked_sub_obj_IDs.add(sub_obj.label)
+            cells_IDs_with_sub_obj.append(intersect_ID)
+            tracked_sub_obj_original_IDs.append(sub_obj.label)
+        
+        # assignments = []
+        # for sub_obj_ID, cell_ID in zip(tracked_sub_obj_original_IDs, cells_IDs_with_sub_obj):
+        #     assignments.append(f'  * {sub_obj_ID} --> {cell_ID}')
+        # assignments_format = '\n'.join(assignments)
+        # printl(f'Assignments in frame_i = {frame_i}:\n{assignments_format}')
+        # printl(f'Untracked sub-objs = {untracked_sub_objs_frame_i}')
+        # from acdctools.plot import imshow
+        # imshow(lab, subobj_segm_data[frame_i], lab_sub, tracked_lab_sub)
+        # import pdb; pdb.set_trace()
         
         all_num_objects_per_cells.append(num_objects_per_cells)
         all_cells_IDs_with_sub_obj.append(cells_IDs_with_sub_obj)

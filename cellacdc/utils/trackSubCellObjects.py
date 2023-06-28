@@ -16,6 +16,7 @@ class TrackSubCellFeatures(NewThreadMultipleExpBaseUtil):
         self.expPaths = expPaths
         self.trackingMode = trackSubCellObjParams['how']
         self.IoAthresh = trackSubCellObjParams['IoA']
+        self.relabelSubObjLab = trackSubCellObjParams['relabelSubObjLab']
         self.createThirdSegm = trackSubCellObjParams['createThirdSegm']
         self.thirdSegmAppendedText = trackSubCellObjParams['thirdSegmAppendedText']
     

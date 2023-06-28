@@ -1641,6 +1641,20 @@ class TrackSubCellObjectsDialog(widgets.QBaseDialog):
             infoTxt=infoTxt
         )
         entriesLayout.addFormWidget(self.optionsWidget, row=row)
+        
+        row += 1
+        infoTxt = html_utils.paragraph("""
+            Re-label sub-cellular objects before assigning them to the cell.<br><br> 
+            Activate this option if you have <b>merged sub-cellular objects</b>   
+            that must be separated, or the segmentation is a <b>boolean mask</b> 
+            (i.e., semantic segmentation).
+        """)
+        self.relabelSubObjLab = widgets.formWidget(
+            widgets.Toggle(), addInfoButton=True, stretchWidget=False,
+            labelTextLeft='Re-label sub-cellular objects before tracking: ', 
+            infoTxt=infoTxt
+        )
+        entriesLayout.addFormWidget(self.relabelSubObjLab, row=row)
 
         row += 1
         IoAtext = html_utils.paragraph("""
@@ -1724,6 +1738,7 @@ class TrackSubCellObjectsDialog(widgets.QBaseDialog):
             'how': self.optionsWidget.widget.currentText(),
             'IoA': self.IoAwidget.widget.value(),
             'createThirdSegm': self.createThirdSegmWidget.widget.isChecked(),
+            'relabelSubObjLab': self.relabelSubObjLab.widget.isChecked(),
             'thirdSegmAppendedText': self.appendTextWidget.widget.text()
         }
         self.close()

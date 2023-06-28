@@ -75,3 +75,33 @@ class Cdc42TimeLapseData(_Data):
             self.images_path, 
             'SCGE_DLY16570_1-15_DLY16571_16-30_corr_s01_tdTomato_Ph3__YEAST.tif'
         ))
+
+class YeastMitoTimelapse(_Data):
+    def __init__(self):
+        images_path = os.path.join(
+            data_path, 'test_4D', 'Lisa_mito', 'Position_5', 'Images'
+        )
+        intensity_image_path = os.path.join(
+            images_path, 'Point0019_ChannelGFP,mCardinal,Ph-3_Seq0019_s5_Ph_3.tif'
+        )
+        acdc_df_path = os.path.join(
+            images_path, 'Point0019_ChannelGFP,mCardinal,Ph-3_Seq0019_s5_acdc_output.csv'
+        )
+        segm_path = os.path.join(
+            images_path, 'Point0019_ChannelGFP,mCardinal,Ph-3_Seq0019_s5_segm.npz'
+        )
+        super().__init__(
+            images_path, intensity_image_path, acdc_df_path, segm_path
+        )
+    
+    def mito_segm(self):
+        return np.load(os.path.join(
+            self.images_path, 
+            'Point0019_ChannelGFP,mCardinal,Ph-3_Seq0019_s5_GFP_segm_mask_otsu.npz'
+        ))['arr_0']
+    
+    def cells_3D_segm(self):
+        return np.load(os.path.join(
+            self.images_path, 
+            'Point0019_ChannelGFP,mCardinal,Ph-3_Seq0019_s5_segm_7slices.npz'
+        ))['arr_0']
