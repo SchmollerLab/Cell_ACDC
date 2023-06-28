@@ -63,10 +63,15 @@ try:
 except AttributeError:
     url = None
 
+segm_files = load.get_segm_files(posData.images_path)
+existingSegmEndnames = load.get_existing_segm_endnames(
+    posData.basename, segm_files
+)
 win = apps.QDialogModelParams(
     init_params,
     segment_params,
-    model_name, url=url)
+    model_name, url=url
+)
 
 win.exec_()
 
