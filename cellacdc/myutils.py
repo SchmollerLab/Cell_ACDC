@@ -1381,7 +1381,7 @@ def from_lab_to_imagej_rois(lab, ImagejRoi, t=0, SizeT=1, max_ID=None):
         for z, lab2D in enumerate(lab):
             rp = skimage.measure.regionprops(lab2D)
             for obj in rp:
-                cont = core.get_objContours(obj)
+                cont = core.get_obj_contours(obj)
                 t_str = str(t).zfill(len(str(SizeT)))
                 z_str = str(z).zfill(len(str(SizeZ)))
                 id_str = str(obj.label).zfill(len(str(max_ID)))
@@ -1393,7 +1393,7 @@ def from_lab_to_imagej_rois(lab, ImagejRoi, t=0, SizeT=1, max_ID=None):
     else:
         rp = skimage.measure.regionprops(lab)
         for obj in rp:
-            cont = core.get_objContours(obj)
+            cont = core.get_obj_contours(obj)
             t_str = str(t).zfill(len(str(SizeT)))
             id_str = str(obj.label).zfill(len(str(max_ID)))
             name = f't={t_str}-id={id_str}'

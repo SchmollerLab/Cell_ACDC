@@ -8151,7 +8151,7 @@ class guiWin(QMainWindow):
             if not rp:
                 return
             obj = rp[0]
-            cont = self.getObjContours(obj)
+            cont = core.get_obj_contours(obj)
             xxC, yyC = cont[:,0], cont[:,1]
             xxA, yyA = xxC[::n], yyC[::n]
             self.xxA_autoCont, self.yyA_autoCont = xxA, yyA
@@ -11734,7 +11734,7 @@ class guiWin(QMainWindow):
         
         self.manualTrackingToolbar.clearInfoText()
 
-        self.ghostObject.contour = self.getObjContours(
+        self.ghostObject.contour = core.get_obj_contours(
             self.ghostObject, local=True
         )
         self.ghostObject.xx_contour = self.ghostObject.contour[:,1]
@@ -14594,7 +14594,6 @@ class guiWin(QMainWindow):
             posData.brushID = 0
             posData.binnedIDs = set()
             posData.ripIDs = set()
-            posData.multiContIDs = set()
             posData.cca_df = None
             if posData.last_tracked_i is not None:
                 last_tracked_num = posData.last_tracked_i+1
@@ -15234,7 +15233,7 @@ class guiWin(QMainWindow):
         for obj in posData.rp:
             ID = obj.label
             if ID in posData.new_IDs:
-                cont = self.getObjContours(obj)
+                cont = core.get_obj_contours(obj)
                 newIDs_contours.append(cont)
 
         # Compute cost matrix
@@ -15242,7 +15241,7 @@ class guiWin(QMainWindow):
         for obj in posData.rp:
             ID = obj.label
             if ID in IDsCellsG1:
-                cont = self.getObjContours(obj)
+                cont = core.get_obj_contours(obj)
                 i = IDsCellsG1.index(ID)
                 for j, newID_cont in enumerate(newIDs_contours):
                     min_dist, nearest_xy = self.nearest_point_2Dyx(
@@ -15288,31 +15287,6 @@ class guiWin(QMainWindow):
         self.store_cca_df()
         proceed = True
         return notEnoughG1Cells, proceed
-
-    def getObjContours(self, obj, appendMultiContID=True, approx=False, local=False):
-        approxMode = cv2.CHAIN_APPROX_SIMPLE if approx else cv2.CHAIN_APPROX_NONE
-        contours, _ = cv2.findContours(
-           self.getObjImage(obj.image, obj.bbox).astype(np.uint8),
-           cv2.RETR_EXTERNAL, approxMode
-        )
-        if not contours:
-            return np.array([[np.nan, np.nan]])
-        min_y, min_x, _, _ = self.getObjBbox(obj.bbox)
-        if len(contours) > 1:
-            contoursLengths = [len(c) for c in contours]
-            maxLenIdx = contoursLengths.index(max(contoursLengths))
-            contour = contours[maxLenIdx]
-            if appendMultiContID:
-                posData = self.data[self.pos_i]
-                if obj.label in posData.IDs:
-                    posData.multiContIDs.add(obj.label)
-        else:
-            contour = contours[0]
-        cont = np.squeeze(contour, axis=1)
-        cont = np.vstack((cont, cont[0]))
-        if not local:
-            cont += [min_x, min_y]
-        return cont
 
     def getObjBbox(self, obj_bbox):
         if self.isSegm3D and len(obj_bbox)==6:
@@ -17376,8 +17350,9 @@ class guiWin(QMainWindow):
     def populateContoursImage(self):
         self.contoursImage[:] = 0
         for obj in skimage.measure.regionprops(self.currentLab2D):
-            cont = self.getObjContours(obj, appendMultiContID=False)
-            self.contoursImage[cont[:,1], cont[:,0]] = 1
+            contours = core.get_obj_contours(obj, all_external=True)
+            for cont in contours:
+                self.contoursImage[cont[:,1], cont[:,0]] = 1
     
     def setOverlaySegmMasks(self, force=False, forceIfNotActive=False):
         if not hasattr(self, 'currentLab2D'):
@@ -17998,7 +17973,7 @@ class guiWin(QMainWindow):
         
         if self.annotContourCheckbox.isChecked():
             obj = skimage.measure.regionprops(brushImage)[0]
-            objContour = [self.getObjContours(obj, appendMultiContID=False)]
+            objContour = [core.get_obj_contours(obj)]
             self.brushContourImage[:] = 0
             img = self.brushContourImage
             color = self.brushContoursRgba
@@ -18415,7 +18390,7 @@ class guiWin(QMainWindow):
             self.labelsLayerImg1.setOpacity(alpha/3)
         else:
             _image = self.getObjImage(obj.image, obj.bbox).astype(np.uint8)
-            contours = core.get_objContours(obj, obj_image=_image, all=True)
+            contours = core.get_obj_contours(obj, obj_image=_image, all=True)
             for cont in contours:
                 self.searchedIDitemLeft.addPoints(cont[:,0], cont[:,1])
         
@@ -18426,7 +18401,7 @@ class guiWin(QMainWindow):
         else:
             if contours is None:
                 _image = self.getObjImage(obj.image, obj.bbox).astype(np.uint8)
-                contours = core.get_objContours(obj, obj_image=_image, all=True)
+                contours = core.get_obj_contours(obj, obj_image=_image, all=True)
             for cont in contours:
                 self.searchedIDitemRight.addPoints(cont[:,0], cont[:,1])       
 
@@ -18585,9 +18560,9 @@ class guiWin(QMainWindow):
             self.contoursImage[:] = 0
 
         contours = []
-        for obj in skimage.measure.regionprops(self.currentLab2D):          
-            objContour = self.getObjContours(obj, appendMultiContID=False)
-            contours.append(objContour)
+        for obj in skimage.measure.regionprops(self.currentLab2D):    
+            obj_contours = core.get_obj_contours(obj, all_external=True)  
+            contours.extend(obj_contours)
 
         thickness = self.contLineWeight
         color = self.contLineColor
@@ -18609,14 +18584,14 @@ class guiWin(QMainWindow):
         return obj
     
     def setLostObjectContour(self, obj):
-        objContours = self.getObjContours(obj)
+        objContours = core.get_obj_contours(obj)  
         xx = objContours[:,0]
         yy = objContours[:,1]
         self.ax1_lostObjScatterItem.addPoints(xx, yy)
         self.ax2_lostObjScatterItem.addPoints(xx, yy)
     
     def setCcaIssueContour(self, obj):
-        objContours = self.getObjContours(obj)
+        objContours = core.get_obj_contours(obj, all_external=True)  
         xx = objContours[:,0]
         yy = objContours[:,1]
         self.ax1_lostObjScatterItem.addPoints(xx, yy)
@@ -18629,7 +18604,7 @@ class guiWin(QMainWindow):
         for obj in posData.rp:
             if obj.label not in IDsCellsG1:
                 continue
-            objContours = self.getObjContours(obj)
+            objContours = contours = core.get_obj_contours(obj)
             xx = objContours[:,0]
             yy = objContours[:,1]
             self.ccaFailedScatterItem.addPoints(xx, yy)
@@ -18653,7 +18628,7 @@ class guiWin(QMainWindow):
         #     self.clearObjContour(obj=obj, ax=ax)
         #     return
         
-        contours = [self.getObjContours(obj)]
+        contours = core.get_obj_contours(obj, all_external=True)
         if thickness is None:
             thickness = self.contLineWeight
         if color is None:
@@ -18763,7 +18738,7 @@ class guiWin(QMainWindow):
             if drawMode == 'Draw contours':
                 for obj in skimage.measure.regionprops(ol_lab):
                     _img = self.getObjImage(obj.image, obj.bbox).astype(np.uint8)
-                    contours = core.get_objContours(obj, obj_image=_img, all=True)
+                    contours = core.get_obj_contours(obj, obj_image=_img, all=True)
                     for cont in contours:
                         contoursItem.addPoints(cont[:,0], cont[:,1])
             elif drawMode == 'Overlay labels':
@@ -18944,13 +18919,6 @@ class guiWin(QMainWindow):
             htmlTxt = (
                 f'{htmlTxt}, <font color="red">{warn_txt}</font>'
             )
-        if posData.multiContIDs:
-            multiContIDs = myutils.get_trimmed_list(list(posData.multiContIDs))
-            warn_txt = f'IDs with multiple contours: {multiContIDs}'
-            htmlTxt = (
-                f'{htmlTxt}, <font color="red">{warn_txt}</font>'
-            )
-            posData.multiContIDs = set()
         if not htmlTxt:
             warn_txt = 'Looking good'
             color = 'w'

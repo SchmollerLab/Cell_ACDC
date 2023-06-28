@@ -579,7 +579,10 @@ def label_3d_segm(labels):
 
     return labels
 
-def get_objContours(obj, obj_image=None, all=False):
+def get_obj_contours(
+        obj, obj_image=None, all_external=False, all=False, 
+        only_longest_contour=True
+    ):
     if all:
         retrieveMode = cv2.RETR_CCOMP
     else:
@@ -594,18 +597,25 @@ def get_objContours(obj, obj_image=None, all=False):
         _, min_y, min_x, _, _, _ = obj.bbox
     else:
         min_y, min_x, _, _ = obj.bbox
-    if all:
+    if all or all_external:
         return [np.squeeze(cont, axis=1)+[min_x, min_y] for cont in contours]
-    cont = np.squeeze(contours[0], axis=1)
-    cont = np.vstack((cont, cont[0]))
-    cont += [min_x, min_y]
-    return cont
+    
+    if len(contours) > 1 and only_longest_contour:
+        contours_len = [len(c) for c in contours]
+        max_len_idx = contours_len.index(max(contours_len))
+        contour = contours[max_len_idx]
+    else:
+        contour = contours[0]
+    contour = np.squeeze(contour, axis=1)
+    contour = np.vstack((contour, contour[0]))
+    contour += [min_x, min_y]
+    return contour
 
 def smooth_contours(lab, radius=2):
     sigma = 2*radius + 1
     smooth_lab = np.zeros_like(lab)
     for obj in skimage.measure.regionprops(lab):
-        cont = get_objContours(obj)
+        cont = get_obj_contours(obj)
         x = cont[:,0]
         y = cont[:,1]
         x = np.append(x, x[0:sigma])
