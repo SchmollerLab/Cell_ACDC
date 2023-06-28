@@ -1,7 +1,7 @@
 import traceback
 import sys
 import typing
-from typing import Union, Iterable
+from typing import Union, Iterable, List
 
 import pandas as pd
 import numpy as np
@@ -349,7 +349,7 @@ def heatmap(
         data: Union[pd.DataFrame, np.ndarray], 
         x: str='',  
         z: str='',
-        y_grouping: Union[str, list[str]]='',
+        y_grouping: Union[str, List[str]]='',
         sort_groups: bool=True,
         normalize_x: bool=False,
         zeroize_x: bool=False,
