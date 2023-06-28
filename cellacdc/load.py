@@ -34,7 +34,6 @@ if GUI_INSTALLED:
     )
     import pyqtgraph as pg
     from . import prompts
-    from . import apps
     from . import widgets
     
 import warnings
@@ -1751,6 +1750,7 @@ class loadData:
             forceEnableAskSegm3D=False,
             warnMultiPos=False
         ):
+        from . import apps
         SizeZ_metadata = None
         SizeT_metadata = None
         if hasattr(self, 'metadataFound'):
@@ -1929,6 +1929,7 @@ class select_exp_folder:
             allow_abort=True, show=False, toggleMulti=False,
             allowMultiSelection=True
         ):
+        from . import apps
         font = QtGui.QFont()
         font.setPixelSize(13)
         win = apps.QtSelectItems(

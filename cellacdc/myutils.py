@@ -37,8 +37,7 @@ from . import GUI_INSTALLED
 if GUI_INSTALLED:
     from qtpy.QtWidgets import QMessageBox
     from qtpy.QtCore import Signal, QObject, QCoreApplication
-
-    from . import apps
+    
     from . import widgets
     from . import config
     
@@ -461,6 +460,7 @@ def install_java():
         subprocess.check_call(['javac', '-version'])
         return False
     except Exception as e:
+        from . import apps
         win = apps.installJavaDialog()
         win.exec_()
         return win.clickedButton == win.cancelButton
@@ -1804,6 +1804,7 @@ def _install_deepsea():
     )
 
 def import_tracker(posData, trackerName, realTime=False, qparent=None):
+    from . import apps
     downloadWin = apps.downloadModel(trackerName, parent=qparent)
     downloadWin.download()
 

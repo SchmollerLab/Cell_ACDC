@@ -107,8 +107,12 @@ def _setup_gui():
             [sys.executable, '-m', 'pip', 'install', '-U', 'seaborn']
         )
 
-def _setup_app():
-    from qtpy import QtCore, QtWidgets
+def _setup_app(splashscreen=False):
+    from qtpy import QtCore:
+    if QtCore.QCoreApplication.instance() is not None:
+        return QtCore.QCoreApplication.instance(), None
+    
+    from qtpy import QtWidgets
     # Handle high resolution displays:
     if hasattr(QtCore.Qt, 'AA_EnableHighDpiScaling'):
         QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling, True)
@@ -137,24 +141,35 @@ def _setup_app():
     
     from qtpy import QtWidgets, QtGui
 
-    class AcdcSPlashScreen(QtWidgets.QSplashScreen):
-        def __init__(self):
-            super().__init__()
-            logo_path = os.path.join(resources_folderpath, 'logo.png')
-            self.setPixmap(QtGui.QPixmap(logo_path))
+    splashScreen = None
+    if splashscreen:
+        class AcdcSPlashScreen(QtWidgets.QSplashScreen):
+            def __init__(self):
+                super().__init__()
+                logo_path = os.path.join(resources_folderpath, 'logo.png')
+                self.setPixmap(QtGui.QPixmap(logo_path))
+            
+            def mousePressEvent(self, a0: QtGui.QMouseEvent) -> None:
+                pass
         
-        def mousePressEvent(self, a0: QtGui.QMouseEvent) -> None:
-            pass
+        # Launch splashscreen
+        splashScreen = AcdcSPlashScreen()
+        splashScreen.setWindowIcon(QIcon(icon_path))
+        splashScreen.setWindowFlags(
+            QtCore.Qt.WindowStaysOnTopHint 
+            | QtCore.Qt.SplashScreen 
+            | QtCore.Qt.FramelessWindowHint
+        )
+        splashScreen.show()
+        splashScreen.raise_()        
     
-    # Launch splashscreen
-    splashScreen = AcdcSPlashScreen()
-    splashScreen.setWindowIcon(QIcon(icon_path))
-    splashScreen.setWindowFlags(
-        QtCore.Qt.WindowStaysOnTopHint 
-        | QtCore.Qt.SplashScreen 
-        | QtCore.Qt.FramelessWindowHint
-    )
-    splashScreen.show()
-    splashScreen.raise_()
+    from ._palettes import getPaletteColorScheme, setToolTipStyleSheet
+    from ._palettes import get_color_scheme
+    from . import load
+    scheme = get_color_scheme()
+    palette = getPaletteColorScheme(app.palette(), scheme=scheme)
+    app.setPalette(palette)     
+    load.rename_qrc_resources_file(scheme)
+    setToolTipStyleSheet(app, scheme=scheme)
     
     return app, splashScreen

@@ -71,7 +71,7 @@ except Exception as e:
     
     
 # Create the application
-app, splashScreen = _run._setup_app()
+app, splashScreen = _run._setup_app(splashscreen=True)
 
 import sys
 import re
@@ -139,14 +139,8 @@ except Exception as e:
 class mainWin(QMainWindow):
     def __init__(self, app, parent=None):
         self.checkConfigFiles()
-        
-        scheme = self.getColorScheme()
-        from ._palettes import getPaletteColorScheme, setToolTipStyleSheet
         self.app = app
-        palette = getPaletteColorScheme(app.palette(), scheme=scheme)
-        app.setPalette(palette)     
-        load.rename_qrc_resources_file(scheme)
-        setToolTipStyleSheet(app, scheme=scheme)
+        scheme = self.getColorScheme()
         self.welcomeGuide = None
         
         super().__init__(parent)

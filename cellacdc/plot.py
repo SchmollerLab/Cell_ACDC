@@ -20,6 +20,7 @@ from qtpy import QtGui
 
 from . import printl
 from . import widgets, _core, error_below, error_close
+from . import _run
 
 def matplotlib_cmap_to_lut(
         cmap: Union[Iterable, matplotlib.colors.Colormap, str], 
@@ -75,7 +76,7 @@ def imshow(
             image = image.astype(np.uint8)
         casted_images.append(image)
 
-    app = widgets.setupApp()
+    app = _run._setup_app()
     win = widgets.ImShow(parent=parent, link_scrollbars=link_scrollbars)
     win.setWindowTitle(window_title)
     if app is not None:

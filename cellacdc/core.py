@@ -20,15 +20,6 @@ from tqdm import tqdm
 from . import load, myutils
 from . import base_cca_df, printl
 
-from . import GUI_INSTALLED
-if GUI_INSTALLED:
-    from . import apps
-    import matplotlib
-    import matplotlib.pyplot as plt
-    from matplotlib.lines import Line2D
-    from matplotlib.patches import Rectangle, Circle, PathPatch, Path
-
-
 def get_indices_dash_pattern(arr, line_length, gap):
     n = len(arr)
     sampling_rate = (line_length+gap)

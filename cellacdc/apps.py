@@ -56,7 +56,6 @@ from qtpy.QtWidgets import (
 )
 
 from . import exception_handler
-from . import widgets
 from . import load, prompts, core, measurements, html_utils
 from . import is_mac, is_win, is_linux, temp_path, config
 from . import qrc_resources, printl
@@ -66,6 +65,7 @@ from . import myutils
 from . import qutils
 from . import _palettes
 from . import base_cca_df
+from . import widgets
 
 PRE_PROCESSING_STEPS = [
     'Adjust Brightness/Contrast',
