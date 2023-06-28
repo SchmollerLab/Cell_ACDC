@@ -8151,7 +8151,7 @@ class guiWin(QMainWindow):
             if not rp:
                 return
             obj = rp[0]
-            cont = core.get_obj_contours(obj)
+            cont = self.getObjContours(obj)
             xxC, yyC = cont[:,0], cont[:,1]
             xxA, yyA = xxC[::n], yyC[::n]
             self.xxA_autoCont, self.yyA_autoCont = xxA, yyA
@@ -11734,7 +11734,7 @@ class guiWin(QMainWindow):
         
         self.manualTrackingToolbar.clearInfoText()
 
-        self.ghostObject.contour = core.get_obj_contours(
+        self.ghostObject.contour = self.getObjContours(
             self.ghostObject, local=True
         )
         self.ghostObject.xx_contour = self.ghostObject.contour[:,1]
@@ -15233,7 +15233,7 @@ class guiWin(QMainWindow):
         for obj in posData.rp:
             ID = obj.label
             if ID in posData.new_IDs:
-                cont = core.get_obj_contours(obj)
+                cont = self.getObjContours(obj)
                 newIDs_contours.append(cont)
 
         # Compute cost matrix
@@ -15241,7 +15241,7 @@ class guiWin(QMainWindow):
         for obj in posData.rp:
             ID = obj.label
             if ID in IDsCellsG1:
-                cont = core.get_obj_contours(obj)
+                cont = self.getObjContours(obj)
                 i = IDsCellsG1.index(ID)
                 for j, newID_cont in enumerate(newIDs_contours):
                     min_dist, nearest_xy = self.nearest_point_2Dyx(
@@ -17345,14 +17345,16 @@ class guiWin(QMainWindow):
         else:
             Y, X = posData.img_data.shape[-2:]
         self.textAnnot[0].initItem((Y, X))
-        self.textAnnot[1].initItem((Y, X))      
+        self.textAnnot[1].initItem((Y, X))  
     
-    def populateContoursImage(self):
-        self.contoursImage[:] = 0
-        for obj in skimage.measure.regionprops(self.currentLab2D):
-            contours = core.get_obj_contours(obj, all_external=True)
-            for cont in contours:
-                self.contoursImage[cont[:,1], cont[:,0]] = 1
+    def getObjContours(self, obj, all_external=False, local=False):
+        obj_image = self.getObjImage(obj.image, obj.bbox).astype(np.uint8)
+        obj_bbox = self.getObjBbox(obj.bbox)
+        contours = core.get_obj_contours(
+            obj_image=obj_image, obj_bbox=obj_bbox, local=local,
+            all_external=all_external
+        )
+        return contours
     
     def setOverlaySegmMasks(self, force=False, forceIfNotActive=False):
         if not hasattr(self, 'currentLab2D'):
@@ -17973,7 +17975,7 @@ class guiWin(QMainWindow):
         
         if self.annotContourCheckbox.isChecked():
             obj = skimage.measure.regionprops(brushImage)[0]
-            objContour = [core.get_obj_contours(obj)]
+            objContour = [self.getObjContours(obj)]
             self.brushContourImage[:] = 0
             img = self.brushContourImage
             color = self.brushContoursRgba
@@ -18389,8 +18391,7 @@ class guiWin(QMainWindow):
             self.highLightIDLayerImg1.setImage(highlightedLab)          
             self.labelsLayerImg1.setOpacity(alpha/3)
         else:
-            _image = self.getObjImage(obj.image, obj.bbox).astype(np.uint8)
-            contours = core.get_obj_contours(obj, obj_image=_image, all=True)
+            contours = self.getObjContours(obj, all_external=True)
             for cont in contours:
                 self.searchedIDitemLeft.addPoints(cont[:,0], cont[:,1])
         
@@ -18400,8 +18401,7 @@ class guiWin(QMainWindow):
             self.labelsLayerRightImg.setOpacity(alpha/3)
         else:
             if contours is None:
-                _image = self.getObjImage(obj.image, obj.bbox).astype(np.uint8)
-                contours = core.get_obj_contours(obj, obj_image=_image, all=True)
+                contours = self.getObjContours(obj, all_external=True)
             for cont in contours:
                 self.searchedIDitemRight.addPoints(cont[:,0], cont[:,1])       
 
@@ -18561,7 +18561,7 @@ class guiWin(QMainWindow):
 
         contours = []
         for obj in skimage.measure.regionprops(self.currentLab2D):    
-            obj_contours = core.get_obj_contours(obj, all_external=True)  
+            obj_contours = self.getObjContours(obj, all_external=True)  
             contours.extend(obj_contours)
 
         thickness = self.contLineWeight
@@ -18584,14 +18584,14 @@ class guiWin(QMainWindow):
         return obj
     
     def setLostObjectContour(self, obj):
-        objContours = core.get_obj_contours(obj)  
+        objContours = self.getObjContours(obj)  
         xx = objContours[:,0]
         yy = objContours[:,1]
         self.ax1_lostObjScatterItem.addPoints(xx, yy)
         self.ax2_lostObjScatterItem.addPoints(xx, yy)
     
     def setCcaIssueContour(self, obj):
-        objContours = core.get_obj_contours(obj, all_external=True)  
+        objContours = self.getObjContours(obj, all_external=True)  
         xx = objContours[:,0]
         yy = objContours[:,1]
         self.ax1_lostObjScatterItem.addPoints(xx, yy)
@@ -18604,7 +18604,7 @@ class guiWin(QMainWindow):
         for obj in posData.rp:
             if obj.label not in IDsCellsG1:
                 continue
-            objContours = contours = core.get_obj_contours(obj)
+            objContours = self.getObjContours(obj)
             xx = objContours[:,0]
             yy = objContours[:,1]
             self.ccaFailedScatterItem.addPoints(xx, yy)
@@ -18627,8 +18627,8 @@ class guiWin(QMainWindow):
         # if not self.isObjVisible(obj.bbox):
         #     self.clearObjContour(obj=obj, ax=ax)
         #     return
-        
-        contours = core.get_obj_contours(obj, all_external=True)
+
+        contours = self.getObjContours(obj, all_external=True)
         if thickness is None:
             thickness = self.contLineWeight
         if color is None:
@@ -18737,8 +18737,9 @@ class guiWin(QMainWindow):
             contoursItem.clear()
             if drawMode == 'Draw contours':
                 for obj in skimage.measure.regionprops(ol_lab):
-                    _img = self.getObjImage(obj.image, obj.bbox).astype(np.uint8)
-                    contours = core.get_obj_contours(obj, obj_image=_img, all=True)
+                    contours = self.getObjContours(
+                        obj, all_external=True
+                    )
                     for cont in contours:
                         contoursItem.addPoints(cont[:,0], cont[:,1])
             elif drawMode == 'Overlay labels':
@@ -18824,6 +18825,9 @@ class guiWin(QMainWindow):
             if ID not in posData.new_IDs:
                 continue
             if ID in delROIsIDs:
+                continue
+            
+            if not self.isObjVisible(obj.bbox):
                 continue
             
             self.addObjContourToContoursImage(

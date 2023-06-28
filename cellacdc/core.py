@@ -580,25 +580,34 @@ def label_3d_segm(labels):
     return labels
 
 def get_obj_contours(
-        obj, obj_image=None, all_external=False, all=False, 
-        only_longest_contour=True
+        obj=None, 
+        obj_image=None, 
+        obj_bbox=None, 
+        all_external=False, 
+        all=False, 
+        only_longest_contour=True, 
+        local=False,
     ):
     if all:
         retrieveMode = cv2.RETR_CCOMP
     else:
         retrieveMode = cv2.RETR_EXTERNAL
+    
     if obj_image is None:
         obj_image = obj.image.astype(np.uint8)
+    
+    if obj_bbox is None:
+        obj_bbox = obj.bbox
+    
     contours, _ = cv2.findContours(
         obj_image, retrieveMode, cv2.CHAIN_APPROX_NONE
     )
-    if len(obj.bbox) > 4:
-        # 3D object
-        _, min_y, min_x, _, _, _ = obj.bbox
-    else:
-        min_y, min_x, _, _ = obj.bbox
+    min_y, min_x, _, _ = obj_bbox
     if all or all_external:
-        return [np.squeeze(cont, axis=1)+[min_x, min_y] for cont in contours]
+        if local:
+            return [np.squeeze(cont, axis=1) for cont in contours]
+        else:
+            return [np.squeeze(cont, axis=1)+[min_x, min_y] for cont in contours]
     
     if len(contours) > 1 and only_longest_contour:
         contours_len = [len(c) for c in contours]
@@ -608,7 +617,8 @@ def get_obj_contours(
         contour = contours[0]
     contour = np.squeeze(contour, axis=1)
     contour = np.vstack((contour, contour[0]))
-    contour += [min_x, min_y]
+    if not local:
+        contour += [min_x, min_y]
     return contour
 
 def smooth_contours(lab, radius=2):
