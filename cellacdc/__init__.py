@@ -370,3 +370,6 @@ def ignore_exception(func):
             pass
         return result
     return inner_function
+
+error_below = f"\n{'*'*30} ERROR {'*'*30}\n"
+error_close = f"\n{'^'*(len(error_below)-1)}"
