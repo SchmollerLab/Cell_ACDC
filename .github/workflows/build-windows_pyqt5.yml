@@ -29,6 +29,7 @@ jobs:
         python -m pip install --upgrade pip
         python -m pip install flake8 pytest
         python -m pip install -e .
+        python -m pip install qtpy pyqtgraph seaborn
         python -m pip install PyQt5
     - name: Lint with flake8
       run: |

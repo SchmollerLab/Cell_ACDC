@@ -32,26 +32,9 @@ if cellacdc_installation_path != site_packages:
 from cellacdc import _run
 _run._setup_gui()
 
-import pyqtgraph as pg
-# Interpret image data as row-major instead of col-major
-pg.setConfigOption('imageAxisOrder', 'row-major')
-try:
-    import numba
-    pg.setConfigOption("useNumba", True)
-except Exception as e:
-    pass
-
-try:
-    import cupy as cp
-    pg.setConfigOption("useCupy", True)
-except Exception as e:
-    pass
-
 from qtpy import QtGui, QtWidgets, QtCore
-
-from . import dataReStruct
-from . import exception_handler, printl
 from . import qrc_resources
+
 if os.name == 'nt':
     try:
         # Set taskbar icon in windows
@@ -68,8 +51,22 @@ try:
     )
 except Exception as e:
     pass
-    
-    
+
+import pyqtgraph as pg
+# Interpret image data as row-major instead of col-major
+pg.setConfigOption('imageAxisOrder', 'row-major')
+try:
+    import numba
+    pg.setConfigOption("useNumba", True)
+except Exception as e:
+    pass
+
+try:
+    import cupy as cp
+    pg.setConfigOption("useCupy", True)
+except Exception as e:
+    pass
+
 # Create the application
 app, splashScreen = _run._setup_app(splashscreen=True)
 
@@ -96,7 +93,7 @@ from qtpy.QtGui import (
 )
 
 from cellacdc import (
-    dataPrep, segm, gui, dataStruct, load, help, qrc_resources, myutils,
+    dataPrep, segm, gui, dataStruct, load, help, myutils,
     cite_url, html_utils, widgets, apps, dataReStruct
 )
 from cellacdc.help import about
@@ -119,6 +116,7 @@ from cellacdc import is_win, is_linux, temp_path, issues_url
 from cellacdc import settings_csv_path
 from cellacdc import printl
 from cellacdc import _warnings
+from cellacdc import exception_handler
 
 import qrc_resources
 
