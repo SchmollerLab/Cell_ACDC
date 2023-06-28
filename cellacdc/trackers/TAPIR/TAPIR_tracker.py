@@ -49,7 +49,8 @@ class tracker:
             use_visibile_information=True, export_to=None,
             signals=None, export_to_extension='.csv', 
             tracking_input: TrackingInputs='Intensity image', 
-            which_points_to_track: PointsToTrack='Centroids'
+            which_points_to_track: PointsToTrack='Centroids',
+            number_of_points_per_object: int=8
         ):
         
         if video_grayscale.ndim == 4:
