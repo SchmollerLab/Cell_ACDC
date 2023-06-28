@@ -9,12 +9,14 @@ from . import data_path, load, base_cca_df
 
 class _Data:
     def __init__(
-            self, images_path, intensity_image_path, acdc_df_path, segm_path
+            self, images_path, intensity_image_path, acdc_df_path, segm_path,
+            basename
         ):
         self.images_path = images_path
         self.intensity_image_path = intensity_image_path
         self.acdc_df_path = acdc_df_path
         self.segm_path = segm_path
+        self.basename= basename
     
     def acdc_df(self):
         return load._load_acdc_df_file(self.acdc_df_path)
@@ -47,8 +49,10 @@ class YeastTimeLapseAnnotated(_Data):
         segm_path = os.path.join(
             images_path, 'SCGE_5strains_23092021_segm.npz'
         )
+        basename = 'SCGE_5strains_23092021_'
         super().__init__(
-            images_path, intensity_image_path, acdc_df_path, segm_path
+            images_path, intensity_image_path, acdc_df_path, segm_path,
+            basename
         )
 
 class Cdc42TimeLapseData(_Data):
@@ -66,8 +70,10 @@ class Cdc42TimeLapseData(_Data):
         segm_path = os.path.join(
             images_path, 'SCGE_DLY16570_1-15_DLY16571_16-30_corr_s01_segm.npz'
         )
+        basename = 'SCGE_DLY16570_1-15_DLY16571_16-30_corr_s01_'
         super().__init__(
-            images_path, intensity_image_path, acdc_df_path, segm_path
+            images_path, intensity_image_path, acdc_df_path, segm_path,
+            basename
         )
     
     def cdc42_data(self):
@@ -90,8 +96,10 @@ class YeastMitoTimelapse(_Data):
         segm_path = os.path.join(
             images_path, 'Point0019_ChannelGFP,mCardinal,Ph-3_Seq0019_s5_segm.npz'
         )
+        basename = 'Point0019_ChannelGFP,mCardinal,Ph-3_Seq0019_s5_'
         super().__init__(
-            images_path, intensity_image_path, acdc_df_path, segm_path
+            images_path, intensity_image_path, acdc_df_path, segm_path,
+            basename
         )
     
     def mito_segm(self):
