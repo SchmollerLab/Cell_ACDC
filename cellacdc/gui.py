@@ -2804,7 +2804,7 @@ class guiWin(QMainWindow):
         self.loadCustomAnnotationsAction = QAction(self)
         self.loadCustomAnnotationsAction.setIcon(QIcon(":load_annotation.svg"))
         self.loadCustomAnnotationsAction.setToolTip(
-            'Load previously used custom annotation'
+            'Load previously used custom annotations'
         )
     
         self.addCustomAnnotationAction = QAction(self)
@@ -11925,6 +11925,7 @@ class guiWin(QMainWindow):
 
     def readSavedCustomAnnot(self):
         tempAnnot = {}
+        printl(custom_annot_path)
         if os.path.exists(custom_annot_path):
             self.logger.info('Loading saved custom annotations...')
             tempAnnot = load.read_json(
@@ -12101,7 +12102,7 @@ class guiWin(QMainWindow):
         
         self.selectAnnotWin = widgets.QDialogListbox(
             'Load previously used custom annotation(s)',
-            'Select annotation to load:', items,
+            'Select annotations to load:', items,
             additionalButtons=('Delete selected annnotations', ),
             parent=self, multiSelection=True
         )
