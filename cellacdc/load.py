@@ -23,17 +23,23 @@ from tifffile import TiffFile
 from natsort import natsorted
 import skimage
 import skimage.measure
-from qtpy import QtGui
-from qtpy.QtCore import Qt, QRect, QRectF
-from qtpy.QtWidgets import (
-    QApplication, QMessageBox
-)
-import pyqtgraph as pg
 
+from . import GUI_INSTALLED
+
+if GUI_INSTALLED:
+    from qtpy import QtGui
+    from qtpy.QtCore import Qt, QRect, QRectF
+    from qtpy.QtWidgets import (
+        QApplication, QMessageBox
+    )
+    import pyqtgraph as pg
+    from . import prompts
+    from . import widgets
+    
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
-from . import prompts, apps, myutils, widgets, measurements, config
+from . import myutils, measurements, config
 from . import base_cca_df, base_acdc_df, html_utils, temp_path, printl
 from . import ignore_exception, cellacdc_path
 from . import qrc_resources_path, qrc_resources_light_path
@@ -177,7 +183,7 @@ def load_segm_file(images_path, end_name_segm_file='segm', return_path=False):
     for file in myutils.listdir(images_path):
         if file.endswith(end_name_segm_file):
             filepath = os.path.join(images_path, file)
-            segm_data = np.load(filepath)['arr_0'].astype(np.uin32)
+            segm_data = np.load(filepath)['arr_0'].astype(np.uint32)
             if return_path:
                 return segm_data, filepath
             else:
@@ -297,6 +303,48 @@ def store_copy_acdc_df(posData, acdc_output_csv_path, log_func=printl):
     except Exception as e:
         log_func(traceback.format_exc())
 
+def store_unsaved_acdc_df(posData, acdc_df_to_store, log_func=printl):
+    try:        
+        df = acdc_df_to_store
+        posData.setTempPaths()
+        h5_path = posData.unsaved_acdc_df_autosave_path
+        keys = []
+        if os.path.exists(h5_path):
+            with pd.HDFStore(h5_path, mode='a') as hdf:
+                keys = natsorted(hdf.keys())
+        
+        new_key = datetime.now().strftime(TIMESTAMP_HDF)
+        if len(keys) > 10:
+            # Delete oldest df and resave remaining 9
+            keys.pop(0)
+            temp_dirpath = tempfile.mkdtemp()
+            filename = os.path.basename(h5_path)
+            temp_h5_filepath = os.path.join(temp_dirpath, filename)
+            with pd.HDFStore(temp_h5_filepath, mode='a') as hdf:
+                for key in keys:
+                    old_df = pd.read_hdf(h5_path, key=key)
+                    hdf.append(key, old_df)
+            shutil.move(temp_h5_filepath, h5_path)
+            shutil.rmtree(temp_dirpath)
+        
+        with pd.HDFStore(h5_path, mode='a') as hdf:
+            hdf.append(new_key, df)
+    except Exception as e:
+        log_func(traceback.format_exc())
+
+def get_last_stored_unsaved_acdc_df(posData):
+    h5_path = posData.unsaved_acdc_df_autosave_path
+    if not os.path.exists(h5_path):
+        return
+    
+    try:
+        with pd.HDFStore(h5_path, mode='r') as hdf:
+            keys = natsorted(hdf.keys())
+        return pd.read_hdf(keys[-1])
+    except Exception as e:
+        return
+    
+    
 def get_user_ch_paths(images_paths, user_ch_name):
     user_ch_file_paths = []
     for images_path in images_paths:
@@ -1569,6 +1617,12 @@ class loadData:
         self.acdc_output_backup_h5_path = os.path.join(
             temp_folder, acdc_df_filename.replace('.csv', '.h5')
         )
+        unsaved_acdc_df_filename = acdc_df_filename.replace(
+            '.csv', '_autosave.h5'
+        )
+        self.unsaved_acdc_df_autosave_path = os.path.join(
+            temp_folder, unsaved_acdc_df_filename
+        )
 
     def buildPaths(self):
         if self.basename.endswith('_'):
@@ -1696,6 +1750,7 @@ class loadData:
             forceEnableAskSegm3D=False,
             warnMultiPos=False
         ):
+        from . import apps
         SizeZ_metadata = None
         SizeT_metadata = None
         if hasattr(self, 'metadataFound'):
@@ -1874,6 +1929,7 @@ class select_exp_folder:
             allow_abort=True, show=False, toggleMulti=False,
             allowMultiSelection=True
         ):
+        from . import apps
         font = QtGui.QFont()
         font.setPixelSize(13)
         win = apps.QtSelectItems(

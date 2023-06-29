@@ -62,7 +62,7 @@ class Model:
         # image = skimage.filters.gaussian(image, sigma=1)
         # image = skimage.exposure.equalize_adapthist(image)
         # image = image/image.max()
-        image = myutils.uint_to_float(image)
+        image = myutils.img_to_float(image)
         image = skimage.exposure.equalize_adapthist(image)
         if tqdm_pbar is not None:
             tqdm_pbar.emit(1)

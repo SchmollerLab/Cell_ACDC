@@ -9,7 +9,7 @@ from qtpy.QtWidgets import QMainWindow, QApplication, QFrame
 from qtpy.QtCore import Qt, QPoint, QRect, QObject, Signal, QThread
 from qtpy.QtGui import QBrush, QColor, QPen, QPainter
 
-from .. import cellacdc_path, temp_path
+from cellacdc import cellacdc_path, temp_path
 
 import pathlib
 USER_PATH = pathlib.Path.home()

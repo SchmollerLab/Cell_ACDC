@@ -81,10 +81,10 @@ class tracker:
             reversed_resized_segm, track_segmented_objects
         )
         
-        import matplotlib.pyplot as plt
-        plt.imshow(frames_rgb[0])
-        plt.plot(query_points[:,2], query_points[:,1], 'r.')
-        plt.show()
+        # import matplotlib.pyplot as plt
+        # plt.imshow(frames_rgb[0])
+        # plt.plot(query_points[:,2], query_points[:,1], 'r.')
+        # plt.show()
         
         self.reversed_tracks, self.reversed_visibles = inference(
             frames_rgb, query_points, self.model_apply, self.params, 

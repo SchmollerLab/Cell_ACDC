@@ -9,10 +9,6 @@ import skimage.registration
 import skimage.color
 import skimage.filters
 import scipy.ndimage.morphology
-import matplotlib
-import matplotlib.pyplot as plt
-from matplotlib.lines import Line2D
-from matplotlib.patches import Rectangle, Circle, PathPatch, Path
 
 from math import sqrt
 from scipy.stats import norm
@@ -21,9 +17,8 @@ import pandas as pd
 
 from tqdm import tqdm
 
-# Custom modules
-from . import apps, base_cca_df, printl
 from . import load, myutils
+from . import base_cca_df, printl
 
 def get_indices_dash_pattern(arr, line_length, gap):
     n = len(arr)
@@ -242,6 +237,9 @@ def connect_3Dlab_zboundaries(lab):
         
     return connected_lab
 
+def stack_2Dlab_to_3D(lab, SizeZ):
+    return np.tile(lab, (SizeZ, 1, 1))
+
 def track_sub_cell_objects_acdc_df(
         tracked_subobj_segm_data, subobj_acdc_df, all_old_sub_ids,
         all_num_objects_per_cells, SizeT=None, sigProgress=None, 
@@ -262,6 +260,8 @@ def track_sub_cell_objects_acdc_df(
         sub_ids = [sub_obj.label for sub_obj in rp_sub]
         old_sub_ids = all_old_sub_ids[frame_i]
         if subobj_acdc_df is None:
+            sub_acdc_df_frame_i = myutils.getBaseAcdcDf(rp_sub)
+        if frame_i not in subobj_acdc_df.index.get_level_values(0):
             sub_acdc_df_frame_i = myutils.getBaseAcdcDf(rp_sub)
         else:
             sub_acdc_df_frame_i = (
@@ -311,7 +311,8 @@ def track_sub_cell_objects_acdc_df(
         
 def track_sub_cell_objects(
         cells_segm_data, subobj_segm_data, IoAthresh, 
-        how='delete_sub', SizeT=None, sigProgress=None
+        how='delete_sub', SizeT=None, sigProgress=None,
+        relabel_sub_obj_lab=False
     ):  
     """Function used to track sub-cellular objects and assign the same ID of 
     the cell they belong to. 
@@ -330,7 +331,13 @@ def track_sub_cell_objects(
         IoAthresh (float): Minimum percentage (0-1) of the sub-cellular object's 
             area to assign it to a cell
 
-        how (str, optional): _description_. Defaults to 'delete_sub'.
+        how (str, optional): Strategy to take with untracked objects. 
+            Options are 'delete_sub' to delete untracked sub-cellular objects, 
+            'delete_cells' to delete cells that do not have any sub-cellular 
+            object assigned to it, 'delete_both', and 'only_track' to keep 
+            untracked objects. Note that 'delete_sub' is actually not used 
+            because we add tracked sub-objects to an array initialized with 
+            zeros. Defaults to 'delete_sub'.
 
         SizeT (int, optional): Number of frames. Pass `SizeT=1` for non-timelapse
             data. Defaults to None --> assume first dimension of segm data is SizeT.
@@ -338,6 +345,9 @@ def track_sub_cell_objects(
         sigProgress (PyQt5.QtCore.Signal, optional): If provided it will emit 
             1 for each complete frame. Used to update GUI progress bars. 
             Defaults to None --> do not emit signal.
+        
+        relabel_sub_obj_lab (bool, optional): Re-label sub-cellular objects 
+            segmentation labels before tracking them.
     
     Returns:
         tuple: A tuple `(tracked_subobj_segm_data, tracked_cells_segm_data, 
@@ -369,28 +379,48 @@ def track_sub_cell_objects(
     for frame_i, (lab, lab_sub) in enumerate(segm_data_zip):
         rp = skimage.measure.regionprops(lab)
         num_objects_per_cells = {obj.label:0 for obj in rp}
+        if relabel_sub_obj_lab:
+            lab_sub = skimage.measure.label(lab_sub)
         rp_sub = skimage.measure.regionprops(lab_sub)
         tracked_lab_sub = tracked_subobj_segm_data[frame_i]
         cells_IDs_with_sub_obj = []
+        tracked_sub_obj_original_IDs = []
+        untracked_sub_objs_frame_i = set()
         for sub_obj in rp_sub:
             intersect_mask = lab[sub_obj.slice][sub_obj.image]
-            intersect_IDs, I_counts = np.unique(
+            intersect_IDs, intersections = np.unique(
                 intersect_mask, return_counts=True
             )
-            for intersect_ID, I in zip(intersect_IDs, I_counts):
-                if intersect_ID == 0:
-                    continue
-                
-                IoA = I/sub_obj.area
-                if IoA < IoAthresh:
-                    # Do not add untracked sub-obj
-                    continue
-                
-                all_old_sub_ids[frame_i][sub_obj.label] = intersect_ID
-                tracked_lab_sub[sub_obj.slice][sub_obj.image] = intersect_ID
-                num_objects_per_cells[intersect_ID] += 1
-                old_tracked_sub_obj_IDs.add(sub_obj.label)
-                cells_IDs_with_sub_obj.append(intersect_ID)
+            argmax = intersections.argmax()
+            intersect_ID = intersect_IDs[argmax]
+            intersection = intersections[argmax]
+            
+            if intersect_ID == 0:
+                untracked_sub_objs_frame_i.add(sub_obj.label)
+                continue
+            
+            IoA = intersection/sub_obj.area
+            if IoA < IoAthresh:
+                # Do not add untracked sub-obj
+                untracked_sub_objs_frame_i.add(sub_obj.label)
+                continue
+            
+            all_old_sub_ids[frame_i][sub_obj.label] = intersect_ID
+            tracked_lab_sub[sub_obj.slice][sub_obj.image] = intersect_ID
+            num_objects_per_cells[intersect_ID] += 1
+            old_tracked_sub_obj_IDs.add(sub_obj.label)
+            cells_IDs_with_sub_obj.append(intersect_ID)
+            tracked_sub_obj_original_IDs.append(sub_obj.label)
+        
+        # assignments = []
+        # for sub_obj_ID, cell_ID in zip(tracked_sub_obj_original_IDs, cells_IDs_with_sub_obj):
+        #     assignments.append(f'  * {sub_obj_ID} --> {cell_ID}')
+        # assignments_format = '\n'.join(assignments)
+        # printl(f'Assignments in frame_i = {frame_i}:\n{assignments_format}')
+        # printl(f'Untracked sub-objs = {untracked_sub_objs_frame_i}')
+        # from acdctools.plot import imshow
+        # imshow(lab, subobj_segm_data[frame_i], lab_sub, tracked_lab_sub)
+        # import pdb; pdb.set_trace()
         
         all_num_objects_per_cells.append(num_objects_per_cells)
         all_cells_IDs_with_sub_obj.append(cells_IDs_with_sub_obj)
@@ -576,33 +606,53 @@ def label_3d_segm(labels):
 
     return labels
 
-def get_objContours(obj, obj_image=None, all=False):
+def get_obj_contours(
+        obj=None, 
+        obj_image=None, 
+        obj_bbox=None, 
+        all_external=False, 
+        all=False, 
+        only_longest_contour=True, 
+        local=False,
+    ):
     if all:
         retrieveMode = cv2.RETR_CCOMP
     else:
         retrieveMode = cv2.RETR_EXTERNAL
+    
     if obj_image is None:
         obj_image = obj.image.astype(np.uint8)
+    
+    if obj_bbox is None:
+        obj_bbox = obj.bbox
+    
     contours, _ = cv2.findContours(
         obj_image, retrieveMode, cv2.CHAIN_APPROX_NONE
     )
-    if len(obj.bbox) > 4:
-        # 3D object
-        _, min_y, min_x, _, _, _ = obj.bbox
+    min_y, min_x, _, _ = obj_bbox
+    if all or all_external:
+        if local:
+            return [np.squeeze(cont, axis=1) for cont in contours]
+        else:
+            return [np.squeeze(cont, axis=1)+[min_x, min_y] for cont in contours]
+    
+    if len(contours) > 1 and only_longest_contour:
+        contours_len = [len(c) for c in contours]
+        max_len_idx = contours_len.index(max(contours_len))
+        contour = contours[max_len_idx]
     else:
-        min_y, min_x, _, _ = obj.bbox
-    if all:
-        return [np.squeeze(cont, axis=1)+[min_x, min_y] for cont in contours]
-    cont = np.squeeze(contours[0], axis=1)
-    cont = np.vstack((cont, cont[0]))
-    cont += [min_x, min_y]
-    return cont
+        contour = contours[0]
+    contour = np.squeeze(contour, axis=1)
+    contour = np.vstack((contour, contour[0]))
+    if not local:
+        contour += [min_x, min_y]
+    return contour
 
 def smooth_contours(lab, radius=2):
     sigma = 2*radius + 1
     smooth_lab = np.zeros_like(lab)
     for obj in skimage.measure.regionprops(lab):
-        cont = get_objContours(obj)
+        cont = get_obj_contours(obj)
         x = cont[:,0]
         y = cont[:,1]
         x = np.append(x, x[0:sigma])
@@ -1500,3 +1550,10 @@ def brownian(x0, n, dt, delta, out=None):
     out += np.expand_dims(x0, axis=-1)
 
     return out
+
+def segm_model_segment(model, image, model_kwargs, frame_i=None):
+    try:
+        lab = model.segment(image, **model_kwargs)
+    except Exception as e:
+        lab = model.segment(image, frame_i, **model_kwargs)
+    return lab

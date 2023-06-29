@@ -133,6 +133,7 @@
     <file alias="folders.svg">resources/icons/folders.svg</file>
     <file alias="wand_cursor.svg">resources/icons/wand_cursor.svg</file>
     <file alias="curv_cursor.svg">resources/icons/curv_cursor.svg</file>
+    <file alias="spinner.svg">resources/icons/spinner.svg</file>
     <file alias="label_roi.svg">resources/icons/label_roi.svg</file>
     <file alias="addDelPolyLineRoi_cursor.svg">resources/icons/addDelPolyLineRoi_cursor.svg</file>
     <file alias="fill_holes.svg">resources/icons/fill_holes.svg</file>

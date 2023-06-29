@@ -8,7 +8,8 @@ from qtpy.QtWidgets import (
 )
 from qtpy import QtGui
 
-from .. import myutils, html_utils, workers, widgets
+from .. import exception_handler, myutils, html_utils, workers, widgets
+from .. import _critical_exception_gui
 
 import os
 import traceback
@@ -25,7 +26,7 @@ from qtpy.QtWidgets import (
 
 from .. import (
     widgets, apps, workers, html_utils, myutils,
-    gui, load, printl
+    gui, load, printl, exception_handler
 )
 
 class NewThreadMultipleExpBaseUtil(QDialog):
@@ -35,6 +36,7 @@ class NewThreadMultipleExpBaseUtil(QDialog):
         ):
         super().__init__(parent)
         self.setWindowTitle(title)
+        self._title = title
 
         self._parent = parent
         self.progressDialogueTitle = progressDialogueTitle 
@@ -276,6 +278,7 @@ class NewThreadMultipleExpBaseUtil(QDialog):
         else:
             self.close()
 
+    @exception_handler
     def workerCritical(self, error):
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
@@ -283,10 +286,10 @@ class NewThreadMultipleExpBaseUtil(QDialog):
         try:
             raise error
         except:
-            self.traceback_str = traceback.format_exc()
             print('='*20)
-            self.worker.logger.log(self.traceback_str)
+            self.worker.logger.log(traceback.format_exc())
             print('='*20)
+            result = _critical_exception_gui(self, f'{self._title} utility')
 
     def workerFinished(self, worker):
         if self.progressWin is not None:

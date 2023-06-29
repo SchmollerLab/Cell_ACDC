@@ -66,6 +66,13 @@ def _dark_colors():
     }
     return colors
 
+def getPainterColor():
+    scheme = get_color_scheme()
+    if scheme == 'light':
+        return _light_colors()['Text']
+    else:
+        return _dark_colors()['Text']
+
 def getPaletteColorScheme(palette: QtGui.QPalette, scheme='light'):
     if scheme == 'light':
         colors = _light_colors()

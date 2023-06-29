@@ -4,20 +4,24 @@ import traceback
 import numpy as np
 import pandas as pd
 
-from PIL import Image, ImageFont, ImageDraw
+from . import GUI_INSTALLED
+from . import cellacdc_path, printl, ignore_exception
 
-from qtpy.QtGui import QFont
-
-import pyqtgraph as pg
-
-from . import plot, cellacdc_path, printl, ignore_exception
+if GUI_INSTALLED:
+    from PIL import Image, ImageFont, ImageDraw
+    from qtpy.QtGui import QFont
+    import pyqtgraph as pg
+    from . import plot
 
 INVERTIBLE_COLOR_NAMES = [
     'label', 'S_phase_mother', 'G1_phase'
 ]
 FONT_FAMILY = 'Helvetica'
-font_path = os.path.join(cellacdc_path, 'resources', 'fonts', f'{FONT_FAMILY}-Regular.ttf')
-font_bold_path = os.path.join(cellacdc_path, 'resources', 'fonts', f'{FONT_FAMILY}-Bold.ttf')
+font_path = os.path.join(
+    cellacdc_path, 'resources', 'fonts', f'{FONT_FAMILY}-Regular.ttf')
+font_bold_path = os.path.join(
+    cellacdc_path, 'resources', 'fonts', f'{FONT_FAMILY}-Bold.ttf'
+)
 
 def get_obj_text_label_annot(
         obj, cca_df: pd.DataFrame, is_tree_annot: bool, add_num_zslices: bool

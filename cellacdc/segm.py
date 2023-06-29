@@ -323,7 +323,9 @@ class segmWorker(QRunnable):
                 for t, img in enumerate(img_data):
                     if self.secondChannelName is not None:
                         img = self.model.to_rgb_stack(img, second_ch_data[t])
-                    lab = self.model.segment(img, **self.model_kwargs)
+                    lab = core.segm_model_segment(
+                        self.model, img, self.model_kwargs, frame_i=t
+                    )
                     lab_stack[t] = lab
                     if self.innerPbar_available:
                         self.signals.innerProgressBar.emit(1)
@@ -790,11 +792,16 @@ class segmWin(QMainWindow):
         _SizeZ = None
         if self.isSegm3D:
             _SizeZ = posData.SizeZ
+        segm_files = load.get_segm_files(posData.images_path)
+        existingSegmEndnames = load.get_existing_segm_endnames(
+            posData.basename, segm_files
+        )
         win = apps.QDialogModelParams(
             init_params,
             segment_params,
             model_name, parent=self,
-            url=url, SizeZ=_SizeZ
+            url=url, SizeZ=_SizeZ,
+            segmFileEndnames=existingSegmEndnames
         )
         win.setChannelNames(posData.chNames)
         win.exec_()
@@ -823,7 +830,7 @@ class segmWin(QMainWindow):
                 self.close()
                 return
 
-        self.model = acdcSegment.Model(**init_kwargs)
+        self.model = myutils.init_segm_model(acdcSegment, posData, init_kwargs) 
         try:
             self.model.setupLogger(self.logger)
         except Exception as e:

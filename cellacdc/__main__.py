@@ -29,11 +29,12 @@ if cellacdc_installation_path != site_packages:
              'installation. Please, re-start the software. '
              'Thank you for your patience!')
 
-from qtpy import QtGui, QtWidgets, QtCore
+from cellacdc import _run
+_run._setup_gui()
 
-from . import dataReStruct
-from . import exception_handler, printl
+from qtpy import QtGui, QtWidgets, QtCore
 from . import qrc_resources
+
 if os.name == 'nt':
     try:
         # Set taskbar icon in windows
@@ -51,42 +52,23 @@ try:
 except Exception as e:
     pass
 
-class AcdcSPlashScreen(QtWidgets.QSplashScreen):
-    def __init__(self):
-        super().__init__()
-        cellacdc_path = os.path.dirname(os.path.abspath(__file__))
-        resources_path = os.path.join(cellacdc_path, 'resources')
-        logo_path = os.path.join(resources_path, 'logo.png')
-        self.setPixmap(QtGui.QPixmap(logo_path))
-    
-    def mousePressEvent(self, a0: QtGui.QMouseEvent) -> None:
-        pass
+import pyqtgraph as pg
+# Interpret image data as row-major instead of col-major
+pg.setConfigOption('imageAxisOrder', 'row-major')
+try:
+    import numba
+    pg.setConfigOption("useNumba", True)
+except Exception as e:
+    pass
 
-class App(QtWidgets.QApplication):
-    def __init__(self, *args):
-        super().__init__(*args)
-        self.installEventFilter(self)
-        
-    def eventFilter(self, object, event):
-        return False
-    
-    
+try:
+    import cupy as cp
+    pg.setConfigOption("useCupy", True)
+except Exception as e:
+    pass
+
 # Create the application
-app = App([])
-app.setStyle(QtWidgets.QStyleFactory.create('Fusion'))
-app.setPalette(app.style().standardPalette())
-
-app.setWindowIcon(QtGui.QIcon(":icon.ico"))
-# Launch splashscreen
-splashScreen = AcdcSPlashScreen()
-splashScreen.setWindowIcon(QtGui.QIcon(":icon.ico"))
-splashScreen.setWindowFlags(
-    QtCore.Qt.WindowStaysOnTopHint 
-    | QtCore.Qt.SplashScreen 
-    | QtCore.Qt.FramelessWindowHint
-)
-splashScreen.show()
-splashScreen.raise_()
+app, splashScreen = _run._setup_app(splashscreen=True)
 
 import sys
 import re
@@ -110,46 +92,33 @@ from qtpy.QtGui import (
     QPalette
 )
 
-# acdc modules
-try:
-    # We try to import from cellacdc instead of "from ." to check
-    # if cellacdc was installed with pip or not
-    from cellacdc import (
-        dataPrep, segm, gui, dataStruct, load, help, qrc_resources, myutils,
-        cite_url, html_utils, widgets, apps, dataReStruct
-    )
-    from cellacdc.help import about
-    from cellacdc.utils import concat as utilsConcat
-    from cellacdc.utils import convert as utilsConvert
-    from cellacdc.utils import rename as utilsRename
-    from cellacdc.utils import align as utilsAlign
-    from cellacdc.utils import compute as utilsCompute
-    from cellacdc.utils import repeat as utilsRepeat
-    from cellacdc.utils import toImageJroi as utilsToImageJroi
-    from cellacdc.utils import toObjCoords as utilsToObjCoords
-    from cellacdc.utils import acdcToSymDiv as utilsSymDiv
-    from cellacdc.utils import trackSubCellObjects as utilsTrackSubCell
-    from cellacdc.utils import createConnected3Dsegm as utilsConnected3Dsegm
-    from cellacdc.utils import computeMultiChannel as utilsComputeMultiCh
-    from cellacdc.utils import applyTrackFromTable as utilsApplyTrackFromTab
-    from cellacdc.info import utilsInfo
-    from cellacdc import is_win, is_linux, temp_path, issues_url
-    from cellacdc import settings_csv_path
-    from cellacdc import printl
-    from cellacdc import _warnings
-except ModuleNotFoundError as e:
-    src_path = os.path.dirname(os.path.abspath(__file__))
-    main_path = os.path.dirname(src_path)
-    print('='*30)
-    traceback.print_exc()
-    print('----------------------------------------')
-    print(
-        'Cellacdc NOT INSTALLED. '
-        'Run the following command to install: '
-        f'pip install -e "{main_path}"'
-    )
-    print('----------------------------------------')
-    exit('Execution aborted due to an error. See above for details.')
+from cellacdc import (
+    dataPrep, segm, gui, dataStruct, load, help, myutils,
+    cite_url, html_utils, widgets, apps, dataReStruct
+)
+from cellacdc.help import about
+from cellacdc.utils import concat as utilsConcat
+from cellacdc.utils import convert as utilsConvert
+from cellacdc.utils import rename as utilsRename
+from cellacdc.utils import align as utilsAlign
+from cellacdc.utils import compute as utilsCompute
+from cellacdc.utils import repeat as utilsRepeat
+from cellacdc.utils import toImageJroi as utilsToImageJroi
+from cellacdc.utils import toObjCoords as utilsToObjCoords
+from cellacdc.utils import acdcToSymDiv as utilsSymDiv
+from cellacdc.utils import trackSubCellObjects as utilsTrackSubCell
+from cellacdc.utils import createConnected3Dsegm as utilsConnected3Dsegm
+from cellacdc.utils import stack2Dinto3Dsegm as utilsStack2Dto3D
+from cellacdc.utils import computeMultiChannel as utilsComputeMultiCh
+from cellacdc.utils import applyTrackFromTable as utilsApplyTrackFromTab
+from cellacdc.info import utilsInfo
+from cellacdc import is_win, is_linux, temp_path, issues_url
+from cellacdc import settings_csv_path
+from cellacdc import printl
+from cellacdc import _warnings
+from cellacdc import exception_handler
+
+import qrc_resources
 
 try:
     import spotmax
@@ -168,14 +137,8 @@ except Exception as e:
 class mainWin(QMainWindow):
     def __init__(self, app, parent=None):
         self.checkConfigFiles()
-        
-        scheme = self.getColorScheme()
-        from ._palettes import getPaletteColorScheme, setToolTipStyleSheet
         self.app = app
-        palette = getPaletteColorScheme(app.palette(), scheme=scheme)
-        app.setPalette(palette)     
-        load.rename_qrc_resources_file(scheme)
-        setToolTipStyleSheet(app, scheme=scheme)
+        scheme = self.getColorScheme()
         self.welcomeGuide = None
         
         super().__init__(parent)
@@ -487,6 +450,7 @@ class mainWin(QMainWindow):
 
         segmMenu = utilsMenu.addMenu('Segmentation')
         segmMenu.addAction(self.createConnected3Dsegm)
+        segmMenu.addAction(self.stack2Dto3DsegmAction)
 
         trackingMenu = utilsMenu.addMenu('Tracking')
         trackingMenu.addAction(self.trackSubCellFeaturesAction)
@@ -609,7 +573,10 @@ class mainWin(QMainWindow):
         )
         self.createConnected3Dsegm = QAction(
             'Create connected 3D segmentation mask from z-slices segmentation...'
-        )   
+        )  
+        self.stack2Dto3DsegmAction = QAction(
+            'Stack 2D segmentation objects into 3D objects...'
+        )  
         self.trackSubCellFeaturesAction = QAction(
             'Track sub-cellular objects (assign same ID as the cell they belong to)...'
         )    
@@ -662,6 +629,9 @@ class mainWin(QMainWindow):
         )
         self.createConnected3Dsegm.triggered.connect(
             self.launchConnected3DsegmActionUtil
+        )
+        self.stack2Dto3DsegmAction.triggered.connect(
+            self.launchStack2Dto3DsegmActionUtil
         )
         self.trackSubCellFeaturesAction.triggered.connect(
             self.launchTrackSubCellFeaturesUtil
@@ -1009,7 +979,7 @@ class mainWin(QMainWindow):
     def launchConnected3DsegmActionUtil(self):
         self.logger.info(f'Launching utility "{self.sender().text()}"')
         selectedExpPaths = self.getSelectedExpPaths(
-            'Create 3D segmentation mask from 2D'
+            'Create connected 3D segmentation mask'
         )
         if selectedExpPaths is None:
             return
@@ -1022,6 +992,32 @@ class mainWin(QMainWindow):
             parent=self
         )
         self.connected3DsegmWin.show()
+    
+    def launchStack2Dto3DsegmActionUtil(self):
+        self.logger.info(f'Launching utility "{self.sender().text()}"')
+        selectedExpPaths = self.getSelectedExpPaths(
+            'Create 3D segmentation mask from 2D'
+        )
+        if selectedExpPaths is None:
+            return
+        
+        SizeZwin = apps.NumericEntryDialog(
+            title='Number of z-slices', 
+            instructions='Enter number of z-slices requires',
+            currentValue=1, parent=self
+        )
+        SizeZwin.exec_()
+        if SizeZwin.cancel:
+            return
+        
+        title = 'Create stacked 3D segmentation mask'
+        infoText = 'Launching stacked 3D segmentation mask creation process...'
+        progressDialogueTitle = 'Creating stacked 3D segmentation mask'
+        self.stack2DsegmWin = utilsStack2Dto3D.Stack2DsegmTo3Dsegm(
+            selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
+            SizeZwin.value, parent=self
+        )
+        self.stack2DsegmWin.show()
 
     def launchTrackSubCellFeaturesUtil(self):
         self.logger.info(f'Launching utility "{self.sender().text()}"')

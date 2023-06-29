@@ -264,6 +264,7 @@ class AutoSaveWorker(QObject):
         self.isSaving = False
         self.isPaused = False
         self.dataQ = queue.Queue()
+        self.isAutoSaveON = False
     
     def pause(self):
         if DEBUG:
@@ -278,9 +279,7 @@ class AutoSaveWorker(QObject):
         # First stop previously saving data
         if self.isSaving:
             self.abortSaving = True
-            self.sigStartTimer.emit(self, posData)
-        else:
-            self._enqueue(posData)
+        self._enqueue(posData)
     
     def _enqueue(self, posData):
         if DEBUG:
@@ -347,16 +346,16 @@ class AutoSaveWorker(QObject):
             self.sigAutoSaveCannotProceed.emit()
             return
         segm_npz_path = posData.segm_npz_temp_path
-        acdc_output_csv_path = posData.acdc_output_temp_csv_path
 
         end_i = self.getLastTrackedFrame(posData)
 
-        if end_i < len(posData.segm_data):
-            saved_segm_data = posData.segm_data
-        else:
-            frame_shape = posData.segm_data.shape[1:]
-            segm_shape = (end_i+1, *frame_shape)
-            saved_segm_data = np.zeros(segm_shape, dtype=np.uint32)
+        if self.isAutoSaveON:
+            if end_i < len(posData.segm_data):
+                saved_segm_data = posData.segm_data
+            else:
+                frame_shape = posData.segm_data.shape[1:]
+                segm_shape = (end_i+1, *frame_shape)
+                saved_segm_data = np.zeros(segm_shape, dtype=np.uint32)
         
         keys = []
         acdc_df_li = []
@@ -369,14 +368,15 @@ class AutoSaveWorker(QObject):
             lab = data_dict['labels']
             if lab is None:
                 break
-
-            if posData.SizeT > 1:
-                saved_segm_data[frame_i] = lab
-            else:
-                saved_segm_data = lab
+            
+            if self.isAutoSaveON:
+                if posData.SizeT > 1:
+                    saved_segm_data[frame_i] = lab
+                else:
+                    saved_segm_data = lab
 
             acdc_df = data_dict['acdc_df']
-
+            
             if acdc_df is None:
                 continue
 
@@ -392,16 +392,17 @@ class AutoSaveWorker(QObject):
                 break
         
         if not self.abortSaving:
-            segm_data = np.squeeze(saved_segm_data)
-            self._saveSegm(segm_npz_path, posData.segm_npz_path, segm_data)
+            if self.isAutoSaveON:
+                segm_data = np.squeeze(saved_segm_data)
+                self._saveSegm(segm_npz_path, posData.segm_npz_path, segm_data)
+            
             if acdc_df_li:
                 all_frames_acdc_df = pd.concat(
                     acdc_df_li, keys=keys,
                     names=['frame_i', 'time_seconds', 'Cell_ID']
                 )
-                self._save_acdc_df(
-                    acdc_output_csv_path, all_frames_acdc_df, posData   
-                )
+                h5_filepath = posData.unsaved_acdc_df_autosave_path
+                self._save_acdc_df(all_frames_acdc_df, posData)
 
         if DEBUG:
             self.logger.log(f'Autosaving done.')
@@ -416,9 +417,9 @@ class AutoSaveWorker(QObject):
         else:
             np.savez_compressed(recovery_path, np.squeeze(data))
     
-    def _save_acdc_df(self, recovery_path, recovery_acdc_df, posData):
+    def _save_acdc_df(self, recovery_acdc_df, posData):
         if not os.path.exists(posData.acdc_output_csv_path):
-            recovery_acdc_df.to_csv(recovery_path)
+            load.store_unsaved_acdc_df(posData, recovery_acdc_df)
             return
 
         saved_acdc_df = pd.read_csv(
@@ -454,9 +455,31 @@ class AutoSaveWorker(QObject):
                 break
             
             equals.append(col_equals)
+        
+        # Check if last stored acdc_df is equal
+        last_unsaved_acdc_df = load.get_last_stored_unsaved_acdc_df(
+            posData
+        )
+        if all(equals) and last_unsaved_acdc_df is not None:
+            equals = []
+            for col in last_unsaved_acdc_df.columns:
+                if col not in saved_acdc_df.columns:
+                    # recovery_acdc_df has a new col --> definitely not the same
+                    equals = [False]
+                    break
+                
+                try:
+                    col_equals = (
+                        saved_acdc_df[col] == last_unsaved_acdc_df[col]).all()
+                except Exception as e:
+                    equals = [False]
+                    break
+                
+                equals.append(col_equals)
 
         if not all(equals):
-            recovery_acdc_df.to_csv(recovery_path)
+            load.store_unsaved_acdc_df(posData, recovery_acdc_df)
+            # recovery_acdc_df.to_csv(recovery_path)
 
 
 class segmWorker(QObject):
@@ -489,7 +512,10 @@ class segmWorker(QObject):
         if self.secondChannelData is not None:
             img = self.mainWin.model.to_rgb_stack(img, self.secondChannelData)
 
-        _lab = self.mainWin.model.segment(img, **self.mainWin.model_kwargs)
+        _lab = core.segm_model_segment(
+            self.mainWin.model, img, self.mainWin.model_kwargs, 
+            frame_i=posData.frame_i
+        )
         if self.mainWin.applyPostProcessing:
             _lab = core.remove_artefacts(
                 _lab, **self.mainWin.removeArtefactsKwargs
@@ -574,7 +600,10 @@ class segmVideoWorker(QObject):
             if zz is not None:
                 z_slice = zz.loc[frame_i]
                 img = img[z_slice]
-            lab = self.model.segment(img, **self.model_kwargs)
+                
+            lab = core.segm_model_segment(
+                self.model, img, self.model_kwargs, frame_i=frame_i
+            )
             if self.applyPostProcessing:
                 lab = core.remove_artefacts(
                     lab, **self.removeArtefactsKwargs
@@ -1632,6 +1661,7 @@ class TrackSubCellObjectsWorker(BaseWorkerUtil):
         elif mainWin.trackingMode.find('Only track') != -1:
             self.trackingMode = 'only_track'
         
+        self.relabelSubObjLab = mainWin.relabelSubObjLab
         self.IoAthresh = mainWin.IoAthresh
         self.createThirdSegm = mainWin.createThirdSegm
         self.thirdSegmAppendedText = mainWin.thirdSegmAppendedText
@@ -1738,7 +1768,8 @@ class TrackSubCellObjectsWorker(BaseWorkerUtil):
                 tracked = core.track_sub_cell_objects(
                     segmDataCells, posData.segm_data, self.IoAthresh, 
                     how=self.trackingMode, SizeT=posData.SizeT, 
-                    sigProgress=self.signals.sigUpdateInnerPbar
+                    sigProgress=self.signals.sigUpdateInnerPbar,
+                    relabel_sub_obj_lab=self.relabelSubObjLab
                 )
                 (trackedSubSegmData, trackedCellsSegmData, numSubObjPerCell, 
                 replacedSubIds) = tracked
@@ -3118,4 +3149,98 @@ class ToObjCoordsWorker(BaseWorkerUtil):
                 self.signals.initProgressBar.emit(0)
                 df.to_csv(df_filepath)
                         
+        self.signals.finished.emit(self)
+
+class Stack2DsegmTo3Dsegm(BaseWorkerUtil):
+    sigAskAppendName = Signal(str, list)
+    sigAborted = Signal()
+
+    def __init__(self, mainWin, SizeZ):
+        super().__init__(mainWin)
+        self.SizeZ = SizeZ
+
+    @worker_exception_handler
+    def run(self):
+        debugging = False
+        expPaths = self.mainWin.expPaths
+        tot_exp = len(expPaths)
+        self.signals.initProgressBar.emit(0)
+        for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
+            self.errors = {}
+            tot_pos = len(pos_foldernames)
+
+            self.mainWin.infoText = f'Select <b>2D segmentation file to stack</b>'
+            abort = self.emitSelectSegmFiles(exp_path, pos_foldernames)
+            if abort:
+                self.sigAborted.emit()
+                return
+            
+            # Ask appendend name
+            self.mutex.lock()
+            self.sigAskAppendName.emit(
+                self.mainWin.endFilenameSegm, self.mainWin.existingSegmEndNames
+            )
+            self.waitCond.wait(self.mutex)
+            self.mutex.unlock()
+            if self.abort:
+                self.sigAborted.emit()
+                return
+
+            appendedName = self.appendedName
+            self.signals.initProgressBar.emit(len(pos_foldernames))
+            for p, pos in enumerate(pos_foldernames):
+                if self.abort:
+                    self.sigAborted.emit()
+                    return
+
+                self.logger.log(
+                    f'Processing experiment n. {i+1}/{tot_exp}, '
+                    f'{pos} ({p+1}/{tot_pos})'
+                )
+
+                images_path = os.path.join(exp_path, pos, 'Images')
+                endFilenameSegm = self.mainWin.endFilenameSegm
+                ls = myutils.listdir(images_path)
+                file_path = [
+                    os.path.join(images_path, f) for f in ls 
+                    if f.endswith(f'{endFilenameSegm}.npz')
+                ][0]
+                
+                posData = load.loadData(file_path, '')
+
+                self.signals.sigUpdatePbarDesc.emit(f'Processing {posData.pos_path}')
+
+                posData.getBasenameAndChNames()
+                posData.buildPaths()
+
+                posData.loadOtherFiles(
+                    load_segm_data=True,
+                    load_acdc_df=True,
+                    load_metadata=True,
+                    end_filename_segm=endFilenameSegm
+                )
+                if posData.segm_data.ndim == 2:
+                    posData.segm_data = posData.segm_data[np.newaxis]
+                
+                self.logger.log('Stacking 2D into 3D objects...')
+                
+                numFrames = len(posData.segm_data)
+                self.signals.sigInitInnerPbar.emit(numFrames)
+                T, Y, X = posData.segm_data.shape
+                newShape = (T, self.SizeZ, Y, X)
+                segmData2D = np.zeros(newShape, dtype=np.uint32)
+                for frame_i, lab in enumerate(posData.segm_data):
+                    stacked_lab = core.stack_2Dlab_to_3D(lab, self.SizeZ)
+                    segmData2D[frame_i] = stacked_lab
+
+                    self.signals.sigUpdateInnerPbar.emit(1)
+
+                self.logger.log('Saving stacked 3D segmentation file...')
+                segmFilename, ext = os.path.splitext(posData.segm_npz_path)
+                newSegmFilepath = f'{segmFilename}_{appendedName}.npz'
+                segmData2D = np.squeeze(segmData2D)
+                np.savez_compressed(newSegmFilepath, segmData2D)
+                
+                self.signals.progressBar.emit(1)
+
         self.signals.finished.emit(self)

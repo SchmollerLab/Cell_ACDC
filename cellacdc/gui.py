@@ -1895,12 +1895,12 @@ class guiWin(QMainWindow):
     def storeStateWorkerClosed(self):
         self.logger.info('Store state worker started.')
     
-    def gui_createAutoSaveWorker(self):
-        if not self.autoSaveToggle.isChecked():
-            return
-        
+    def gui_createAutoSaveWorker(self):        
         if not hasattr(self, 'data'):
             return
+        
+        if not self.dataIsLoaded:
+            return 
         
         if self.autoSaveActiveWorkers:
             garbage = self.autoSaveActiveWorkers[-1]
@@ -1917,6 +1917,7 @@ class guiWin(QMainWindow):
         autoSaveWorker = workers.AutoSaveWorker(
             self.autoSaveMutex, self.autoSaveWaitCond, savedSegmData
         )
+        autoSaveWorker.isAutoSaveON = self.autoSaveToggle.isChecked()
 
         autoSaveWorker.moveToThread(autoSaveThread)
         autoSaveWorker.finished.connect(autoSaveThread.quit)
@@ -2609,7 +2610,7 @@ class guiWin(QMainWindow):
 
         self.editCcaToolAction = QAction(self)
         self.editCcaToolAction.setIcon(QIcon(":edit_cca.svg"))
-        self.editCcaToolAction.setDisabled(True)
+        # self.editCcaToolAction.setDisabled(True)
         self.editCcaToolAction.setVisible(False)
         self.editCcaToolAction.setToolTip(
             'Manually edit cell cycle annotations table.'
@@ -2803,7 +2804,7 @@ class guiWin(QMainWindow):
         self.loadCustomAnnotationsAction = QAction(self)
         self.loadCustomAnnotationsAction.setIcon(QIcon(":load_annotation.svg"))
         self.loadCustomAnnotationsAction.setToolTip(
-            'Load previously used custom annotation'
+            'Load previously used custom annotations'
         )
     
         self.addCustomAnnotationAction = QAction(self)
@@ -2940,7 +2941,9 @@ class guiWin(QMainWindow):
         self.labelRoiButton.toggled.connect(self.labelRoi_cb)
         self.reInitCcaAction.triggered.connect(self.reInitCca)
         self.moveLabelToolButton.toggled.connect(self.moveLabelButtonToggled)
-        self.editCcaToolAction.triggered.connect(self.manualEditCca)
+        self.editCcaToolAction.triggered.connect(
+            self.manualEditCcaToolbarActionTriggered
+        )
         self.assignBudMothAutoAction.triggered.connect(
             self.autoAssignBud_YeastMate
         )
@@ -3140,7 +3143,7 @@ class guiWin(QMainWindow):
         )
         self.autoSaveToggle.setChecked(True)
         self.autoSaveToggle.setToolTip(autoSaveTooltip)
-        autoSaveLabel = QLabel('Autosave')
+        autoSaveLabel = QLabel('Autosave segm.')
         autoSaveLabel.setToolTip(autoSaveTooltip)
         layout.addRow(autoSaveLabel, self.autoSaveToggle)
 
@@ -5572,10 +5575,6 @@ class guiWin(QMainWindow):
 
         # Alt key was released --> restore cursor
         modifiers = QGuiApplication.keyboardModifiers()
-        noModifier = modifiers == Qt.NoModifier
-        shift = modifiers == Qt.ShiftModifier
-        ctrl = modifiers == Qt.ControlModifier
-        alt = modifiers == Qt.AltModifier
         cursorsInfo = self.gui_setCursor(modifiers, event)
         
         drawRulerLine = (
@@ -5709,7 +5708,8 @@ class guiWin(QMainWindow):
         if setMirroredCursor:
             x, y = event.pos()
             self.ax2_cursor.setData([x], [y])
-
+        return cursorsInfo
+        
     def gui_add_ax_cursors(self):
         try:
             self.ax1.removeItem(self.ax1_cursor)
@@ -7504,7 +7504,7 @@ class guiWin(QMainWindow):
         self.thread.finished.connect(self.thread.deleteLater)
 
         # Custom signals
-        self.trackingWorker.signals = myutils.signals()
+        self.trackingWorker.signals = workers.signals()
         self.trackingWorker.signals.progress = self.trackingWorker.progress
         self.trackingWorker.signals.progressBar.connect(
             self.workerUpdateProgressbar
@@ -7959,7 +7959,7 @@ class guiWin(QMainWindow):
         if how == 'Do not normalize. Display raw image':
             img = img 
         elif how == 'Convert to floating point format with values [0, 1]':
-            img = myutils.uint_to_float(img)
+            img = myutils.img_to_float(img)
         # elif how == 'Rescale to 8-bit unsigned integer format with values [0, 255]':
         #     img = skimage.img_as_float(img)
         #     img = (img*255).astype(np.uint8)
@@ -9715,17 +9715,45 @@ class guiWin(QMainWindow):
         else:
             self.updateAllImages()
 
+    def manualEditCcaToolbarActionTriggered(self):
+        self.manualEditCca()
+    
     def manualEditCca(self, checked=True):
         posData = self.data[self.pos_i]
         editCcaWidget = apps.editCcaTableWidget(
             posData.cca_df, posData.SizeT, current_frame_i=posData.frame_i,
             parent=self
         )
+        editCcaWidget.sigApplyChangesFutureFrames.connect(
+            self.applyManualCcaChangesFutureFrames
+        )
         editCcaWidget.exec_()
         if editCcaWidget.cancel:
             return
         posData.cca_df = editCcaWidget.cca_df
         self.checkMultiBudMoth()
+        self.updateAllImages()
+    
+    @exception_handler
+    def applyManualCcaChangesFutureFrames(self, changes, stop_frame_i):
+        self.store_data(autosave=False)
+        posData = self.data[self.pos_i]
+        undoId = uuid.uuid4()
+        for i in range(posData.frame_i, stop_frame_i):
+            cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
+            if cca_df_i is None:
+                # ith frame was not visited yet
+                break
+            
+            self.storeUndoRedoCca(i, cca_df_i, undoId)
+            
+            for ID, changes_ID in changes.items():
+                if ID not in cca_df_i.index:
+                    continue
+                for col, (oldValue, newValue) in changes_ID.items():
+                    cca_df_i.at[ID, col] = newValue
+            self.store_cca_df(frame_i=i, cca_df=cca_df_i, autosave=False)
+        self.get_data()
         self.updateAllImages()
     
     def annotateRightHowCombobox_cb(self, idx):
@@ -11897,6 +11925,7 @@ class guiWin(QMainWindow):
 
     def readSavedCustomAnnot(self):
         tempAnnot = {}
+        printl(custom_annot_path)
         if os.path.exists(custom_annot_path):
             self.logger.info('Loading saved custom annotations...')
             tempAnnot = load.read_json(
@@ -12073,7 +12102,7 @@ class guiWin(QMainWindow):
         
         self.selectAnnotWin = widgets.QDialogListbox(
             'Load previously used custom annotation(s)',
-            'Select annotation to load:', items,
+            'Select annotations to load:', items,
             additionalButtons=('Delete selected annnotations', ),
             parent=self, multiSelection=True
         )
@@ -12504,11 +12533,17 @@ class guiWin(QMainWindow):
             _SizeZ = None
             if self.isSegm3D:
                 _SizeZ = posData.SizeZ
+            
+            segm_files = load.get_segm_files(posData.images_path)
+            existingSegmEndnames = load.get_existing_segm_endnames(
+                posData.basename, segm_files
+            )
             win = apps.QDialogModelParams(
                 init_params,
                 segment_params,
                 model_name, parent=self,
-                url=url, initLastParams=initLastParams, SizeZ=_SizeZ
+                url=url, initLastParams=initLastParams, SizeZ=_SizeZ,
+                segmFileEndnames=existingSegmEndnames
             )
             win.setChannelNames(posData.chNames)
             win.exec_()
@@ -12530,7 +12565,7 @@ class guiWin(QMainWindow):
                 self.titleLabel.setText('Segmentation process cancelled.')
                 return
             
-            model = acdcSegment.Model(**win.init_kwargs)
+            model = myutils.init_segm_model(acdcSegment, posData, win.init_kwargs)            
             try:
                 model.setupLogger(self.logger)
             except Exception as e:
@@ -12679,11 +12714,17 @@ class guiWin(QMainWindow):
         _SizeZ = None
         if self.isSegm3D:
             _SizeZ = posData.SizeZ  
+        
+        segm_files = load.get_segm_files(posData.images_path)
+        existingSegmEndnames = load.get_existing_segm_endnames(
+            posData.basename, segm_files
+        )
         win = apps.QDialogModelParams(
             init_params,
             segment_params,
             model_name, parent=self,
-            url=url, SizeZ=_SizeZ
+            url=url, SizeZ=_SizeZ,
+            segmFileEndnames=existingSegmEndnames
         )
         win.setChannelNames(posData.chNames)
         win.exec_()
@@ -12706,7 +12747,7 @@ class guiWin(QMainWindow):
             self.titleLabel.setText('Segmentation process cancelled.')
             return
 
-        model = acdcSegment.Model(**win.init_kwargs)
+        model = myutils.init_segm_model(acdcSegment, posData, win.init_kwargs) 
         try:
             model.setupLogger(self.logger)
         except Exception as e:
@@ -12897,7 +12938,7 @@ class guiWin(QMainWindow):
             return
             
         self.model_kwargs = win.model_kwargs
-        model = acdcSegment.Model(**win.init_kwargs)
+        model = myutils.init_segm_model(acdcSegment, posData, win.init_kwargs) 
         try:
             model.setupLogger(self.logger)
         except Exception as e:
@@ -13159,6 +13200,9 @@ class guiWin(QMainWindow):
                 editCcaWidget = apps.editCcaTableWidget(
                     posData.cca_df, posData.SizeT, parent=self,
                     title='Initialize cell cycle annotations'
+                )
+                editCcaWidget.sigApplyChangesFutureFrames.connect(
+                    self.applyManualCcaChangesFutureFrames
                 )
                 editCcaWidget.exec_()
                 if editCcaWidget.cancel:
@@ -13647,7 +13691,6 @@ class guiWin(QMainWindow):
         self.showPropsDockButton.setDisabled(False)
 
         self.bottomScrollArea.show()
-        self.gui_createAutoSaveWorker()
         self.gui_createStoreStateWorker()
         self.init_segmInfo_df()
         self.connectScrollbars()
@@ -13763,6 +13806,7 @@ class guiWin(QMainWindow):
 
         self.dataIsLoaded = True
         self.isDataLoading = False
+        self.gui_createAutoSaveWorker()
     
     def resizeGui(self):
         self.ax1.vb.state['limits']['xRange'] = [None, None]
@@ -14557,7 +14601,6 @@ class guiWin(QMainWindow):
             posData.brushID = 0
             posData.binnedIDs = set()
             posData.ripIDs = set()
-            posData.multiContIDs = set()
             posData.cca_df = None
             if posData.last_tracked_i is not None:
                 last_tracked_num = posData.last_tracked_i+1
@@ -15252,31 +15295,6 @@ class guiWin(QMainWindow):
         proceed = True
         return notEnoughG1Cells, proceed
 
-    def getObjContours(self, obj, appendMultiContID=True, approx=False, local=False):
-        approxMode = cv2.CHAIN_APPROX_SIMPLE if approx else cv2.CHAIN_APPROX_NONE
-        contours, _ = cv2.findContours(
-           self.getObjImage(obj.image, obj.bbox).astype(np.uint8),
-           cv2.RETR_EXTERNAL, approxMode
-        )
-        if not contours:
-            return np.array([[np.nan, np.nan]])
-        min_y, min_x, _, _ = self.getObjBbox(obj.bbox)
-        if len(contours) > 1:
-            contoursLengths = [len(c) for c in contours]
-            maxLenIdx = contoursLengths.index(max(contoursLengths))
-            contour = contours[maxLenIdx]
-            if appendMultiContID:
-                posData = self.data[self.pos_i]
-                if obj.label in posData.IDs:
-                    posData.multiContIDs.add(obj.label)
-        else:
-            contour = contours[0]
-        cont = np.squeeze(contour, axis=1)
-        cont = np.vstack((cont, cont[0]))
-        if not local:
-            cont += [min_x, min_y]
-        return cont
-
     def getObjBbox(self, obj_bbox):
         if self.isSegm3D and len(obj_bbox)==6:
             obj_bbox = (obj_bbox[1], obj_bbox[2], obj_bbox[4], obj_bbox[5])
@@ -15457,6 +15475,8 @@ class guiWin(QMainWindow):
             posData.UndoRedoStates[posData.frame_i-4] = []
             # Check if current frame contains undo states (not empty list)
             if posData.UndoRedoStates[posData.frame_i]:
+                self.undoAction.setDisabled(False)
+            elif posData.UndoRedoCcaStates[posData.frame_i]:
                 self.undoAction.setDisabled(False)
             else:
                 self.undoAction.setDisabled(True)
@@ -15873,13 +15893,13 @@ class guiWin(QMainWindow):
     
     def enqAutosave(self):
         posData = self.data[self.pos_i]  
-        if self.autoSaveToggle.isChecked():
-            if not self.autoSaveActiveWorkers:
-                self.gui_createAutoSaveWorker()
-            
-            worker, thread = self.autoSaveActiveWorkers[-1]
-            self.statusBarLabel.setText('Autosaving...')
-            worker.enqueue(posData)
+        # if self.autoSaveToggle.isChecked():
+        if not self.autoSaveActiveWorkers:
+            self.gui_createAutoSaveWorker()
+        
+        worker, thread = self.autoSaveActiveWorkers[-1]
+        self.statusBarLabel.setText('Autosaving...')
+        worker.enqueue(posData)
     
     def drawAllMothBudLines(self):
         posData = self.data[self.pos_i]
@@ -17100,6 +17120,7 @@ class guiWin(QMainWindow):
         customModelAction = QAction(modelName)
         self.segmSingleFrameMenu.addAction(customModelAction)
         self.segmActions.append(customModelAction)
+        self.segmActionsVideo.append(customModelAction)
         self.modelNames.append(modelName)
         self.models.append(None)
         self.sender().callback(customModelAction)
@@ -17331,13 +17352,16 @@ class guiWin(QMainWindow):
         else:
             Y, X = posData.img_data.shape[-2:]
         self.textAnnot[0].initItem((Y, X))
-        self.textAnnot[1].initItem((Y, X))      
+        self.textAnnot[1].initItem((Y, X))  
     
-    def populateContoursImage(self):
-        self.contoursImage[:] = 0
-        for obj in skimage.measure.regionprops(self.currentLab2D):
-            cont = self.getObjContours(obj, appendMultiContID=False)
-            self.contoursImage[cont[:,1], cont[:,0]] = 1
+    def getObjContours(self, obj, all_external=False, local=False):
+        obj_image = self.getObjImage(obj.image, obj.bbox).astype(np.uint8)
+        obj_bbox = self.getObjBbox(obj.bbox)
+        contours = core.get_obj_contours(
+            obj_image=obj_image, obj_bbox=obj_bbox, local=local,
+            all_external=all_external
+        )
+        return contours
     
     def setOverlaySegmMasks(self, force=False, forceIfNotActive=False):
         if not hasattr(self, 'currentLab2D'):
@@ -17958,7 +17982,7 @@ class guiWin(QMainWindow):
         
         if self.annotContourCheckbox.isChecked():
             obj = skimage.measure.regionprops(brushImage)[0]
-            objContour = [self.getObjContours(obj, appendMultiContID=False)]
+            objContour = [self.getObjContours(obj)]
             self.brushContourImage[:] = 0
             img = self.brushContourImage
             color = self.brushContoursRgba
@@ -18374,8 +18398,7 @@ class guiWin(QMainWindow):
             self.highLightIDLayerImg1.setImage(highlightedLab)          
             self.labelsLayerImg1.setOpacity(alpha/3)
         else:
-            _image = self.getObjImage(obj.image, obj.bbox).astype(np.uint8)
-            contours = core.get_objContours(obj, obj_image=_image, all=True)
+            contours = self.getObjContours(obj, all_external=True)
             for cont in contours:
                 self.searchedIDitemLeft.addPoints(cont[:,0], cont[:,1])
         
@@ -18385,8 +18408,7 @@ class guiWin(QMainWindow):
             self.labelsLayerRightImg.setOpacity(alpha/3)
         else:
             if contours is None:
-                _image = self.getObjImage(obj.image, obj.bbox).astype(np.uint8)
-                contours = core.get_objContours(obj, obj_image=_image, all=True)
+                contours = self.getObjContours(obj, all_external=True)
             for cont in contours:
                 self.searchedIDitemRight.addPoints(cont[:,0], cont[:,1])       
 
@@ -18545,9 +18567,9 @@ class guiWin(QMainWindow):
             self.contoursImage[:] = 0
 
         contours = []
-        for obj in skimage.measure.regionprops(self.currentLab2D):          
-            objContour = self.getObjContours(obj, appendMultiContID=False)
-            contours.append(objContour)
+        for obj in skimage.measure.regionprops(self.currentLab2D):    
+            obj_contours = self.getObjContours(obj, all_external=True)  
+            contours.extend(obj_contours)
 
         thickness = self.contLineWeight
         color = self.contLineColor
@@ -18569,14 +18591,14 @@ class guiWin(QMainWindow):
         return obj
     
     def setLostObjectContour(self, obj):
-        objContours = self.getObjContours(obj)
+        objContours = self.getObjContours(obj)  
         xx = objContours[:,0]
         yy = objContours[:,1]
         self.ax1_lostObjScatterItem.addPoints(xx, yy)
         self.ax2_lostObjScatterItem.addPoints(xx, yy)
     
     def setCcaIssueContour(self, obj):
-        objContours = self.getObjContours(obj)
+        objContours = self.getObjContours(obj, all_external=True)  
         xx = objContours[:,0]
         yy = objContours[:,1]
         self.ax1_lostObjScatterItem.addPoints(xx, yy)
@@ -18612,8 +18634,8 @@ class guiWin(QMainWindow):
         # if not self.isObjVisible(obj.bbox):
         #     self.clearObjContour(obj=obj, ax=ax)
         #     return
-        
-        contours = [self.getObjContours(obj)]
+
+        contours = self.getObjContours(obj, all_external=True)
         if thickness is None:
             thickness = self.contLineWeight
         if color is None:
@@ -18722,8 +18744,9 @@ class guiWin(QMainWindow):
             contoursItem.clear()
             if drawMode == 'Draw contours':
                 for obj in skimage.measure.regionprops(ol_lab):
-                    _img = self.getObjImage(obj.image, obj.bbox).astype(np.uint8)
-                    contours = core.get_objContours(obj, obj_image=_img, all=True)
+                    contours = self.getObjContours(
+                        obj, all_external=True
+                    )
                     for cont in contours:
                         contoursItem.addPoints(cont[:,0], cont[:,1])
             elif drawMode == 'Overlay labels':
@@ -18809,6 +18832,9 @@ class guiWin(QMainWindow):
             if ID not in posData.new_IDs:
                 continue
             if ID in delROIsIDs:
+                continue
+            
+            if not self.isObjVisible(obj.bbox):
                 continue
             
             self.addObjContourToContoursImage(
@@ -18904,13 +18930,6 @@ class guiWin(QMainWindow):
             htmlTxt = (
                 f'{htmlTxt}, <font color="red">{warn_txt}</font>'
             )
-        if posData.multiContIDs:
-            multiContIDs = myutils.get_trimmed_list(list(posData.multiContIDs))
-            warn_txt = f'IDs with multiple contours: {multiContIDs}'
-            htmlTxt = (
-                f'{htmlTxt}, <font color="red">{warn_txt}</font>'
-            )
-            posData.multiContIDs = set()
         if not htmlTxt:
             warn_txt = 'Looking good'
             color = 'w'
@@ -19212,38 +19231,22 @@ class guiWin(QMainWindow):
     
     def manageVersions(self):
         posData = self.data[self.pos_i]
-        h5_filepath = posData.acdc_output_backup_h5_path
-        with pd.HDFStore(h5_filepath, mode='r') as hdf:
-            keys = natsorted(hdf.keys())
-        
-        f = load.TIMESTAMP_HDF
-        timestamps = [datetime.datetime.strptime(key[1:], f) for key in keys]
-        items = [date.strftime(r'%d %b %Y, %H:%M:%S') for date in timestamps]
-
-        acdc_df_filename = os.path.basename(posData.acdc_output_csv_path)
-        instructions = html_utils.paragraph(
-            f'Select an <b>older version</b> of the <code>{acdc_df_filename}</code> '
-            'file to load.<br><br>'
-            'The datetime refers to the time you replaced the old version with '
-            'a newer one.<br>'
-        )
-        selectVersion = widgets.QDialogListbox(
-            'Select older version', instructions,
-            items, multiSelection=False, parent=self
-        )
+        selectVersion = apps.SelectAcdcDfVersionToRestore(posData, parent=self)
         selectVersion.exec_()
 
         if selectVersion.cancel:
             return
 
-        selectedTime = selectVersion.selectedItemsText[0]
+        undoId = uuid.uuid4()
+        self.storeUndoRedoCca(posData.frame_i, posData.cca_df, undoId)
+        
+        selectedTime = selectVersion.selectedTimestamp
 
         self.modeComboBox.setCurrentText('Viewer')
-        self.logger.info(f'Loading file replaced on {selectedTime}...')
+        self.logger.info(f'Loading file from {selectedTime}...')
 
-        idx = items.index(selectedTime)
-        key_to_load = keys[idx]
-
+        key_to_load = selectVersion.selectedKey
+        h5_filepath = selectVersion.neverSavedHDFfilepath
         acdc_df = pd.read_hdf(h5_filepath, key=key_to_load)
         posData.acdc_df = acdc_df
         frames = acdc_df.index.get_level_values(0)
@@ -19253,6 +19256,7 @@ class guiWin(QMainWindow):
         for frame_i in range(last_visited_frame_i+1):
             posData.frame_i = frame_i
             self.get_data()
+            self.storeUndoRedoCca(posData.frame_i, posData.cca_df, undoId)
             if posData.allData_li[frame_i]['labels'] is None:
                 pbar.update()
                 continue
@@ -21260,10 +21264,18 @@ class guiWin(QMainWindow):
             worker._stop()
     
     def autoSaveToggled(self, checked):
-        self.autoSaveClose()
-        
-        if checked:
+        if not self.autoSaveActiveWorkers:
             self.gui_createAutoSaveWorker()
+        
+        if not self.autoSaveActiveWorkers:
+            return
+        
+        worker, thread = self.autoSaveActiveWorkers[-1]
+        worker.isAutoSaveON = checked
+        # self.autoSaveClose()
+        
+        # if checked:
+        #     self.gui_createAutoSaveWorker()
     
     def warnErrorsCustomMetrics(self):
         win = apps.ComputeMetricsErrorsDialog(

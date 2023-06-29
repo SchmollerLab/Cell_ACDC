@@ -27,21 +27,24 @@ import skimage
 from distutils.dir_util import copy_tree
 import inspect
 import typing
-import matplotlib.colors
-import colorsys
 
 from natsort import natsorted
 
 from tifffile.tifffile import TiffWriter, TiffFile
 
-from qtpy.QtWidgets import QMessageBox
-from qtpy.QtCore import Signal, QObject, QCoreApplication
+from . import GUI_INSTALLED
 
-from . import apps
-from . import prompts, widgets, core, load
+if GUI_INSTALLED:
+    from qtpy.QtWidgets import QMessageBox
+    from qtpy.QtCore import Signal, QObject, QCoreApplication
+    
+    from . import widgets
+    from . import config
+    
+from . import core, load
 from . import html_utils, is_linux, is_win, is_mac, issues_url, is_mac_arm64
 from . import cellacdc_path, printl, temp_path, logs_path, recentPaths_path
-from . import config, models_list_file_path
+from . import models_list_file_path
 from . import github_home_url
 
 def get_module_name(script_file_path):
@@ -201,10 +204,6 @@ def is_iterable(item):
 
 class utilClass:
     pass
-
-class signals(QObject):
-    progressBar = Signal(int)
-    progress = Signal(str)
 
 def get_trimmed_list(li: list, max_num_digits=10):
     li_str = li.copy()
@@ -461,6 +460,7 @@ def install_java():
         subprocess.check_call(['javac', '-version'])
         return False
     except Exception as e:
+        from . import apps
         win = apps.installJavaDialog()
         win.exec_()
         return win.clickedButton == win.cancelButton
@@ -744,6 +744,10 @@ def getModelArgSpec(acdcSegment):
 
     init_ArgSpec = inspect.getfullargspec(acdcSegment.Model.__init__)
     init_kwargs_type_hints = typing.get_type_hints(acdcSegment.Model.__init__)
+    try:
+        init_ArgSpec.args.remove('segm_data')
+    except Exception as e:
+        pass
     init_params = []
     if len(init_ArgSpec.args)>1:
         for arg, default in zip(init_ArgSpec.args[1:], init_ArgSpec.defaults):
@@ -756,6 +760,11 @@ def getModelArgSpec(acdcSegment):
 
     segment_ArgSpec = inspect.getfullargspec(acdcSegment.Model.segment)
     segment_kwargs_type_hints = typing.get_type_hints(acdcSegment.Model.segment)
+    try:
+        segment_ArgSpec.args.remove('frame_i')
+    except Exception as e:
+        pass
+    
     segment_params = []
     if len(segment_ArgSpec.args)>2:
         iter = zip(segment_ArgSpec.args[2:], segment_ArgSpec.defaults)
@@ -1372,7 +1381,7 @@ def from_lab_to_imagej_rois(lab, ImagejRoi, t=0, SizeT=1, max_ID=None):
         for z, lab2D in enumerate(lab):
             rp = skimage.measure.regionprops(lab2D)
             for obj in rp:
-                cont = core.get_objContours(obj)
+                cont = core.get_obj_contours(obj)
                 t_str = str(t).zfill(len(str(SizeT)))
                 z_str = str(z).zfill(len(str(SizeZ)))
                 id_str = str(obj.label).zfill(len(str(max_ID)))
@@ -1384,7 +1393,7 @@ def from_lab_to_imagej_rois(lab, ImagejRoi, t=0, SizeT=1, max_ID=None):
     else:
         rp = skimage.measure.regionprops(lab)
         for obj in rp:
-            cont = core.get_objContours(obj)
+            cont = core.get_obj_contours(obj)
             t_str = str(t).zfill(len(str(SizeT)))
             id_str = str(obj.label).zfill(len(str(max_ID)))
             name = f't={t_str}-id={id_str}'
@@ -1466,10 +1475,10 @@ def seconds_to_ETA(seconds):
 def to_uint8(img):
     if img.dtype == np.uint8:
         return img
-    img = np.round(uint_to_float(img)*255).astype(np.uint8)
+    img = np.round(img_to_float(img)*255).astype(np.uint8)
     return img
 
-def uint_to_float(img):
+def img_to_float(img):
     img_max = np.max(img)
     # Check if float outside of -1, 1
     if img_max <= 1:
@@ -1488,7 +1497,7 @@ def uint_to_float(img):
 def scale_float(data):
     val = data[tuple([0]*data.ndim)]
     if isinstance(val, (np.floating, float)):
-        data = uint_to_float(data)
+        data = img_to_float(data)
     return data
 
 def _install_homebrew_command():
@@ -1795,6 +1804,7 @@ def _install_deepsea():
     )
 
 def import_tracker(posData, trackerName, realTime=False, qparent=None):
+    from . import apps
     downloadWin = apps.downloadModel(trackerName, parent=qparent)
     downloadWin.download()
 
@@ -2029,9 +2039,31 @@ def _download_tapir_model():
         
         shutil.move(temp_dst, final_dst)
 
-if __name__ == '__main__':
-    print(get_list_of_models())
-    # model_name = 'cellpose'
-    # download_model(model_name)
-    #
-    # download_examples()
+def format_cca_manual_changes(changes: dict):
+    txt = ''
+    for ID, changes_ID in changes.items():
+        txt = f'{txt}* ID {ID}:\n'
+        for col, (old_val, new_val) in changes_ID.items():
+            txt = f'{txt}    - {col}: {old_val} --> {new_val}\n'
+        txt = f'{txt}--------------------------------\n\n'
+    return txt
+
+def init_segm_model(acdcSegment, posData, init_kwargs):
+    segm_endname = init_kwargs.pop('segm_endname')
+    if segm_endname != 'None':
+        if posData.segm_npz_path.endswith(f'{segm_endname}.npz'):
+            segm_data = np.squeeze(posData.segm_data)
+        else:
+            segm_filepath = load.get_path_from_endname(
+                segm_endname, posData.images_path
+            )
+            segm_data = np.load(segm_filepath)['arr_0']
+    else:
+        segm_data = None
+    
+    try:
+        # Models introduced before 1.3.2 do not have the segm_data as input
+        model = acdcSegment.Model(**init_kwargs)
+    except Exception as e:
+        model = acdcSegment.Model(segm_data, **init_kwargs)
+    return model

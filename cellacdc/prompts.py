@@ -15,7 +15,7 @@ from qtpy.QtWidgets import (
 from qtpy.QtCore import Qt
 from qtpy.QtGui import QFont
 
-from . import apps, myutils, printl, html_utils, load
+from . import myutils, printl, html_utils, load
 from . import temp_path
 
 class RichTextPushButton(QPushButton):
@@ -219,6 +219,7 @@ class select_channel_name:
                 txt.write(selection)
     
     def askChannelName(self, filenames, images_path, ask, ch_names):
+        from . import apps
         if not ask:
             return ch_names
         filename = self.basename
@@ -260,6 +261,7 @@ class select_channel_name:
 
     def QtPrompt(self, parent, channel_names, informativeText='',
                  CbLabel='Select channel name:  '):
+        from . import apps
         font = QFont()
         font.setPixelSize(13)
         win = apps.QDialogCombobox(
