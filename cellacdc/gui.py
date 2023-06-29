@@ -12565,7 +12565,6 @@ class guiWin(QMainWindow):
                 self.titleLabel.setText('Segmentation process cancelled.')
                 return
             
-            printl(win.init_kwargs)
             model = myutils.init_segm_model(acdcSegment, posData, win.init_kwargs)            
             try:
                 model.setupLogger(self.logger)
