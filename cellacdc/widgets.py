@@ -5595,7 +5595,7 @@ def PostProcessSegmWidget(
 #         painter.end()
 
 class LoadingCircleAnimation(QLabel):
-    def __init__(self, size=32, parent=None):
+    def __init__(self, size=32, motionBlur=False, parent=None):
         super().__init__(parent)
         # layout = QHBoxLayout()
         
@@ -5613,12 +5613,13 @@ class LoadingCircleAnimation(QLabel):
         
         self.setBrushesAndAngles()
         
-        blurEffect = QGraphicsBlurEffect()
-        blurRadius = self._size*0.02
-        if blurRadius < 1:
-            blurRadius = 1
-        blurEffect.setBlurRadius(blurRadius)
-        self.setGraphicsEffect(blurEffect)
+        if motionBlur:
+            blurEffect = QGraphicsBlurEffect()
+            blurRadius = self._size*0.02
+            if blurRadius < 1:
+                blurRadius = 1
+            blurEffect.setBlurRadius(blurRadius)
+            self.setGraphicsEffect(blurEffect)
 
         self.animation = QPropertyAnimation(self, b"index", self)
         self.animation.setStartValue(0)

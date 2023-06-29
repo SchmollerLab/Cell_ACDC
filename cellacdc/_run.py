@@ -92,7 +92,7 @@ def _setup_gui():
             [sys.executable, '-m', 'pip', 'install', '-U', 'seaborn']
         )
 
-def _setup_app(splashscreen=False):
+def _setup_app(splashscreen=False, icon_path=None, logo_path=None):
     from qtpy import QtCore
     if QtCore.QCoreApplication.instance() is not None:
         return QtCore.QCoreApplication.instance(), None
@@ -121,32 +121,37 @@ def _setup_app(splashscreen=False):
             df_settings.at['colorScheme', 'value'] = 'dark'
             df_settings.to_csv(settings_csv_path)
     
-    icon_path = os.path.join(resources_folderpath, 'icon.ico')
-    app.setWindowIcon(QIcon(icon_path))
+    if icon_path is None:
+        icon_path = os.path.join(resources_folderpath, 'icon.ico')
+        app.setWindowIcon(QIcon(icon_path))
+    
+    if logo_path is None:
+        logo_path = os.path.join(resources_folderpath, 'logo.png')
     
     from qtpy import QtWidgets, QtGui
 
     splashScreen = None
     if splashscreen:
-        class AcdcSPlashScreen(QtWidgets.QSplashScreen):
-            def __init__(self):
+        class SplashScreen(QtWidgets.QSplashScreen):
+            def __init__(self, logo_path, icon_path):
                 super().__init__()
-                logo_path = os.path.join(resources_folderpath, 'logo.png')
                 self.setPixmap(QtGui.QPixmap(logo_path))
+                self.setWindowIcon(QIcon(icon_path))
+                self.setWindowFlags(
+                    QtCore.Qt.WindowStaysOnTopHint 
+                    | QtCore.Qt.SplashScreen 
+                    | QtCore.Qt.FramelessWindowHint
+                )
             
             def mousePressEvent(self, a0: QtGui.QMouseEvent) -> None:
                 pass
+            
+            def showEvent(self, event):
+                self.raise_()
         
         # Launch splashscreen
-        splashScreen = AcdcSPlashScreen()
-        splashScreen.setWindowIcon(QIcon(icon_path))
-        splashScreen.setWindowFlags(
-            QtCore.Qt.WindowStaysOnTopHint 
-            | QtCore.Qt.SplashScreen 
-            | QtCore.Qt.FramelessWindowHint
-        )
-        splashScreen.show()
-        splashScreen.raise_()        
+        splashScreen = SplashScreen(logo_path, icon_path)
+        splashScreen.show()  
     
     from ._palettes import getPaletteColorScheme, setToolTipStyleSheet
     from ._palettes import get_color_scheme
