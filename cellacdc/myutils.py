@@ -2054,7 +2054,7 @@ def init_segm_model(acdcSegment, posData, init_kwargs):
         if posData.segm_npz_path.endswith(f'{segm_endname}.npz'):
             segm_data = np.squeeze(posData.segm_data)
         else:
-            segm_filepath = load.get_path_from_endname(
+            segm_filepath, _ = load.get_path_from_endname(
                 segm_endname, posData.images_path
             )
             segm_data = np.load(segm_filepath)['arr_0']
