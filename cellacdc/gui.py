@@ -18600,9 +18600,10 @@ class guiWin(QMainWindow):
     
     def setCcaIssueContour(self, obj):
         objContours = self.getObjContours(obj, all_external=True)  
-        xx = objContours[:,0]
-        yy = objContours[:,1]
-        self.ax1_lostObjScatterItem.addPoints(xx, yy)
+        for cont in objContours:
+            xx = cont[:,0]
+            yy = cont[:,1]
+            self.ax1_lostObjScatterItem.addPoints(xx, yy)
         self.textAnnot[0].addObjAnnotation(
             obj, 'lost_object', f'{obj.label}?', False
         )
