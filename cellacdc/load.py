@@ -194,6 +194,13 @@ def load_segm_file(images_path, end_name_segm_file='segm', return_path=False):
         else:
             return 
 
+def load_metadata_df(images_path):
+    for file in myutils.listdir(images_path):
+        if not file.endswith('metadata.csv'):
+            continue
+        filepath = os.path.join(images_path, file)
+        return pd.read_csv(filepath).set_index('Description')
+
 def _add_will_divide_column(acdc_df):
     if 'cell_cycle_stage' not in acdc_df.columns:
         return acdc_df

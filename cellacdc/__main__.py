@@ -876,7 +876,9 @@ class mainWin(QMainWindow):
             )
         )
         self.applyTrackWin.show()
-        func = partial(self._runApplyTrackingFromTableUtil, posPath, self.applyTrackWin)
+        func = partial(
+            self._runApplyTrackingFromTableUtil, posPath, self.applyTrackWin
+        )
         QTimer.singleShot(200, func)
 
     def _runApplyTrackingFromTableUtil(self, posPath, win):
@@ -1334,11 +1336,11 @@ class mainWin(QMainWindow):
         title = 'Align frames'
         infoText = 'Aligning frames in X and Y with phase cross-correlation...'
         progressDialogueTitle = 'Align frames'
-        self.concatWindow = utilsAlign.alignWin(
+        self.alignWindow = utilsAlign.alignWin(
             selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
             parent=self
         )
-        self.concatWindow.show()
+        self.alignWindow.show()
 
     def launchConcatUtil(self, checked=False):
         self.logger.info(f'Launching utility "{self.sender().text()}"')

@@ -1664,6 +1664,7 @@ def check_install_cellpose():
         if major < 2:
             _install_pip_package('cellpose')
     except Exception as e:
+        printl(traceback.format_exc())
         _inform_install_package_failed('cellpose')
 
 def check_install_segment_anything():
@@ -1697,6 +1698,7 @@ def check_install_package(
             else:
                 _install_pip_package(pkg_name)
         except Exception as e:
+            printl(traceback.format_exc())
             _inform_install_package_failed(
                 pkg_name, parent=parent, do_exit=raise_on_cancel
             )
@@ -1724,6 +1726,7 @@ def check_matplotlib_version(qparent=None):
                 [sys.executable, '-m', 'pip', 'install', '-U', 'matplotlib']
             )
         except Exception as e:
+            printl(traceback.format_exc())
             _inform_install_package_failed(
                 'matplotlib', parent=qparent, do_exit=False
             )
@@ -1747,8 +1750,6 @@ def _inform_install_package_failed(pkg_name, parent=None, do_exit=True):
         f'`pip install --upgrade {pkg_name}`'
     )
     print('^'*50)
-    if do_exit:
-        exit()
 
 def _install_package_msg(
         pkg_name, note='', parent=None, upgrade=False, caller_name='Cell-ACDC'

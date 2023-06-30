@@ -11925,7 +11925,6 @@ class guiWin(QMainWindow):
 
     def readSavedCustomAnnot(self):
         tempAnnot = {}
-        printl(custom_annot_path)
         if os.path.exists(custom_annot_path):
             self.logger.info('Loading saved custom annotations...')
             tempAnnot = load.read_json(
@@ -20630,7 +20629,7 @@ class guiWin(QMainWindow):
             allPos_acdc_df_cols=list(allPos_acdc_df_cols),
             acdc_df_path=posData.images_path, posData=posData,
             addCombineMetricCallback=self.addCombineMetric,
-            allPosData=self.data
+            allPosData=self.data, parent=self
         )
         self.measurementsWin.sigClosed.connect(self.setMeasurements)
         self.measurementsWin.show()

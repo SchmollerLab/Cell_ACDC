@@ -3348,12 +3348,13 @@ class channelMetricsQGBox(QGroupBox):
     sigCheckboxToggled = Signal(object)
 
     def __init__(
-            self, isZstack, chName, isSegm3D,
+            self, isZstack, chName, isSegm3D, is_concat=False,
             posData=None, favourite_funcs=None
         ):
         QGroupBox.__init__(self)
 
         self.doNotWarn = False
+        self.is_concat = is_concat
 
         layout = QVBoxLayout()
         metrics_desc, bkgr_val_desc = measurements.standard_metrics_desc(
@@ -3456,6 +3457,9 @@ class channelMetricsQGBox(QGroupBox):
             The checkbox that has been toggled, by default None. If None 
             use `self.sender()`
         """        
+        if self.is_concat:
+            return
+        
         if checkbox is None:
             checkbox = self.sender()
 
@@ -3497,7 +3501,9 @@ class channelMetricsQGBox(QGroupBox):
         checked : bool
             State of the checkbox toggled
         """
-
+        if self.is_concat:
+            return
+        
         checkbox = self.sender()
         if not hasattr(checkbox, 'isRequired'):
             return

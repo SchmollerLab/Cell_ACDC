@@ -2527,9 +2527,24 @@ class ComputeMetricsMultiChannelWorker(BaseWorkerUtil):
 class ConcatAcdcDfsWorker(BaseWorkerUtil):
     sigAborted = Signal()
     sigAskFolder = Signal(str)
+    sigSetMeasurements = Signal(object)
+    sigAskAppendName = Signal(str, list)
 
     def __init__(self, mainWin):
         super().__init__(mainWin)
+    
+    def emitSetMeasurements(self, kwargs):
+        self.mutex.lock()
+        self.sigSetMeasurements.emit(kwargs)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+    
+    def emitAskAppendName(self, allPos_acdc_df_basename):
+        # Ask appendend name
+        self.mutex.lock()
+        self.sigAskAppendName.emit(allPos_acdc_df_basename, [])
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
 
     @worker_exception_handler
     def run(self):
@@ -2593,6 +2608,29 @@ class ConcatAcdcDfsWorker(BaseWorkerUtil):
             acdc_df_allpos = pd.concat(
                 acdc_dfs, keys=keys, names=['Position_n']
             )
+            
+            basename, chNames = myutils.getBasenameAndChNames(
+                images_path, useExt=('.tif', '.h5')
+            )
+            df_metadata = load.load_metadata_df(images_path)
+            SizeZ = df_metadata.at['SizeZ', 'values']
+            SizeZ = int(float(SizeZ))
+            existing_colnames = acdc_df_allpos.columns
+            isSegm3D = any([col.endswith('3D') for col in existing_colnames])
+            
+            kwargs = {
+                'loadedChNames': chNames, 
+                'notLoadedChNames': [],
+                'isZstack': SizeZ > 1,
+                'isSegm3D': isSegm3D,
+                'existing_colnames': existing_colnames
+            }
+            self.emitSetMeasurements(kwargs)
+            if self.abort:
+                self.sigAborted.emit()
+                return
+            
+            acdc_df_allpos = acdc_df_allpos[self.selectedColumns]
             acdc_dfs_allexp.append(acdc_df_allpos)
             exp_name = os.path.basename(exp_path)
             keys_exp.append(exp_name)
@@ -2601,8 +2639,11 @@ class ConcatAcdcDfsWorker(BaseWorkerUtil):
             if not os.path.exists(allpos_dir):
                 os.mkdir(allpos_dir)
             
+            allPos_acdc_df_basename = f'AllPos_{selectedAcdcOutputEndname}'
+            self.emitAskAppendName(allPos_acdc_df_basename)
+            
             acdc_dfs_allpos_filepath = os.path.join(
-                allpos_dir, f'AllPos_{selectedAcdcOutputEndname}.csv'
+                allpos_dir, self.concat_df_filename
             )
 
             self.logger.log(
@@ -2610,9 +2651,10 @@ class ConcatAcdcDfsWorker(BaseWorkerUtil):
                 f'"{acdc_dfs_allpos_filepath}"'
             )
             acdc_df_allpos.to_csv(acdc_dfs_allpos_filepath)
+            self.acdc_dfs_allpos_filepath = acdc_dfs_allpos_filepath
 
         if len(keys_exp) > 1:
-            allExp_filename = f'multiExp_{selectedAcdcOutputEndname}.csv'
+            allExp_filename = f'multiExp_{self.concat_df_filename}'
             self.mutex.lock()
             self.sigAskFolder.emit(allExp_filename)
             self.waitCond.wait(self.mutex)
