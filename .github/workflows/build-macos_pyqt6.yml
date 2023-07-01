@@ -30,7 +30,7 @@ jobs:
         python -m pip install flake8 pytest
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
         python -m pip install -e .
-        python -m pip install qtpy pyqtgraph seaborn
+        python -m pip install qtpy pyqtgraph seaborn tables
         python -m pip install PyQt6
     - name: Lint with flake8
       run: |
