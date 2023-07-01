@@ -5,6 +5,7 @@ import sys
 def _setup_gui():
     from . import qrc_resources_path, qrc_resources_light_path
     
+    warn_restart = False
     # Force PyQt6 if available
     try:
         from PyQt6 import QtCore
@@ -67,6 +68,7 @@ def _setup_gui():
                 subprocess.check_call(
                     [sys.executable, '-m', 'pip', 'install', '-U', 'PyQt6']
                 )
+                warn_restart = True
                 break
             elif answer.lower() == 'n':
                 raise e
@@ -75,7 +77,7 @@ def _setup_gui():
                     f'"{answer}" is not a valid answer. '
                     'Type "y" for "yes", or "n" for "no".'
                 )
-        
+    
     try:
         import pyqtgraph
     except ModuleNotFoundError:
@@ -83,6 +85,7 @@ def _setup_gui():
         subprocess.check_call(
             [sys.executable, '-m', 'pip', 'install', '-U', 'pyqtgraph']
         )
+        warn_restart = True
     
     try:
         import seaborn
@@ -90,6 +93,13 @@ def _setup_gui():
         import subprocess
         subprocess.check_call(
             [sys.executable, '-m', 'pip', 'install', '-U', 'seaborn']
+        )
+        warn_restart = True
+    
+    if warn_restart:
+        exit(
+            '[WARNING]: Cell-ACDC had to install the required GUI libraries. '
+            'Please, re-start the software. Thank you for your patience!'
         )
 
 def _setup_app(splashscreen=False, icon_path=None, logo_path=None):

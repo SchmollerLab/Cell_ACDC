@@ -1506,6 +1506,9 @@ def _install_homebrew_command():
 def _brew_install_java_command():
     return 'brew install --cask homebrew/cask-versions/adoptopenjdk8'
 
+def _brew_install_hdf5():
+    return 'brew install hdf5'
+
 def _apt_update_command():
     return 'sudo apt-get update'
 
