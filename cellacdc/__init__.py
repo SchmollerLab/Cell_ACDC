@@ -6,6 +6,45 @@ import shutil
 import pathlib
 import numpy as np
 
+try:
+    import tables
+except Exception as e:
+    while True:
+        txt = (
+            'Cell-ACDC needs to install a library called `tables`.\n\n'
+            'If the installation fails, you can still use Cell-ACDC, but we '
+            'highly recommend you report the issue (see link below) and we '
+            'will be very happy to help. Thank you for your patience!\n\n'
+            'Report issue here: https://github.com/SchmollerLab/Cell_ACDC/issues'
+            '\n'
+        )
+        print('-'*60)
+        print(txt)
+        answer = input('Do you want to install it now ([y]/n)? ')
+        if answer.lower() == 'y' or not answer:
+            try:
+                import subprocess
+                subprocess.check_call(
+                    [sys.executable, '-m', 'pip', 'install', '-U', 'tables']
+                )
+                break
+            except Exception as err:
+                traceback.print_exc()
+                print('*'*60)
+                print(
+                    '[WARNING]: Installation of `tables` failed. '
+                    'Please report the issue here: '
+                    'https://github.com/SchmollerLab/Cell_ACDC/issues'
+                )
+                print('^'*60)
+        elif answer.lower() == 'n':
+            raise e
+        else:
+            print(
+                f'"{answer}" is not a valid answer. '
+                'Type "y" for "yes", or "n" for "no".'
+            )
+
 cellacdc_path = os.path.dirname(os.path.abspath(__file__))
 qrc_resources_path = os.path.join(cellacdc_path, 'qrc_resources.py')
 qrc_resources_light_path = os.path.join(cellacdc_path, 'qrc_resources_light.py')
