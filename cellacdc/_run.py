@@ -3,6 +3,47 @@ import shutil
 import sys
 
 def _setup_gui():
+    try:
+        import tables
+    except Exception as e:
+        while True:
+            txt = (
+                'Cell-ACDC needs to install a library called `tables`.\n\n'
+                'If the installation fails, you can still use Cell-ACDC, but we '
+                'highly recommend you report the issue (see link below) and we '
+                'will be very happy to help. Thank you for your patience!\n\n'
+                'Report issue here: https://github.com/SchmollerLab/Cell_ACDC/issues'
+                '\n'
+            )
+            print('-'*60)
+            print(txt)
+            answer = input('Do you want to install it now ([y]/n)? ')
+            if answer.lower() == 'y' or not answer:
+                try:
+                    import subprocess
+                    subprocess.check_call(
+                        [sys.executable, '-m', 'pip', 'install', '-U', 'tables']
+                    )
+                except Exception as err:
+                    import traceback
+                    traceback.print_exc()
+                    print('*'*60)
+                    print(
+                        '[WARNING]: Installation of `tables` failed. '
+                        'Please report the issue here: '
+                        'https://github.com/SchmollerLab/Cell_ACDC/issues'
+                    )
+                    print('^'*60)
+                finally:
+                    break
+            elif answer.lower() == 'n':
+                raise e
+            else:
+                print(
+                    f'"{answer}" is not a valid answer. '
+                    'Type "y" for "yes", or "n" for "no".'
+                )
+            
     from . import qrc_resources_path, qrc_resources_light_path
     
     warn_restart = False
