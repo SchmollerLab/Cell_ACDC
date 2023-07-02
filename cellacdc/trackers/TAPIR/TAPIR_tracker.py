@@ -87,7 +87,8 @@ class tracker:
             tracking_input
         )
         query_points, tracks_start_frames = self._initialize_query_points(
-            reversed_resized_segm, tracking_input, which_points_to_track
+            reversed_resized_segm, tracking_input, which_points_to_track,
+            number_of_points_per_object
         )
         self.tracks_start_frames = tracks_start_frames
 
@@ -270,7 +271,7 @@ class tracker:
     
     def _initialize_query_points(
             self, reversed_resized_segm, tracking_input, 
-            which_points_to_track
+            which_points_to_track, number_of_points_per_object
         ):
         first_lab = reversed_resized_segm[0]
         first_lab_rp = skimage.measure.regionprops(first_lab)
@@ -296,7 +297,12 @@ class tracker:
                 query_points[o, 1:] = int(yc), int(xc)
                 tracks_start_frames[tuple(query_points[0][1:])] = 0
             else:
-                contours = get_obj_contours(obj)
+                contours = get_obj_contours(obj)[:-1]
+                if number_of_points_per_object > 1:
+                    num_points = len(contours)
+                    if number_of_points_per_object < num_points:
+                        step = num_points // number_of_points_per_object
+                        contours = contours[::step]
                 all_contours.append(contours)
                 for x, y in contours:
                     tracks_start_frames[(y, x)] = 0
