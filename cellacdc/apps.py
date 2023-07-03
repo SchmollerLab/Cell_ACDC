@@ -1752,7 +1752,7 @@ class setMeasurementsDialog(widgets.QBaseDialog):
             self, loadedChNames, notLoadedChNames, isZstack, isSegm3D,
             favourite_funcs=None, parent=None, allPos_acdc_df_cols=None,
             acdc_df_path=None, posData=None, addCombineMetricCallback=None,
-            allPosData=None
+            allPosData=None, is_concat=False
         ):
         super().__init__(parent=parent)
 
@@ -1762,6 +1762,7 @@ class setMeasurementsDialog(widgets.QBaseDialog):
 
         self.delExistingCols = False
         self.okClicked = False
+        self.is_concat = is_concat
         self.allPos_acdc_df_cols = allPos_acdc_df_cols
         self.acdc_df_path = acdc_df_path
         self.allPosData = allPosData
@@ -1781,7 +1782,7 @@ class setMeasurementsDialog(widgets.QBaseDialog):
         for col, chName in enumerate(loadedChNames):
             channelGBox = widgets.channelMetricsQGBox(
                 isZstack, chName, isSegm3D, favourite_funcs=favourite_funcs,
-                posData=posData
+                posData=posData, is_concat=is_concat
             )
             channelGBox.chName = chName
             groupsLayout.addWidget(channelGBox, 0, col, 3, 1)
@@ -1795,7 +1796,7 @@ class setMeasurementsDialog(widgets.QBaseDialog):
         for col, chName in enumerate(notLoadedChNames):
             channelGBox = widgets.channelMetricsQGBox(
                 isZstack, chName, isSegm3D, favourite_funcs=favourite_funcs,
-                posData=posData
+                posData=posData, is_concat=is_concat
             )
             channelGBox.setChecked(False)
             channelGBox.chName = chName
@@ -1862,14 +1863,15 @@ class setMeasurementsDialog(widgets.QBaseDialog):
                 self.mixedChannelsCombineMetricsQGBox, 2, current_col
             )
             groupsLayout.setRowStretch(1, 1)
-            self.setDisabledMetricsRequestedForCombined()
-            self.mixedChannelsCombineMetricsQGBox.toggled.connect(
-                self.setDisabledMetricsRequestedForCombined
-            )
-            for combCheckbox in self.mixedChannelsCombineMetricsQGBox.checkBoxes:
-                combCheckbox.toggled.connect(
+            if not self.is_concat:
+                self.setDisabledMetricsRequestedForCombined()
+                self.mixedChannelsCombineMetricsQGBox.toggled.connect(
                     self.setDisabledMetricsRequestedForCombined
                 )
+                for combCheckbox in self.mixedChannelsCombineMetricsQGBox.checkBoxes:
+                    combCheckbox.toggled.connect(
+                        self.setDisabledMetricsRequestedForCombined
+                    )
 
         self.numberCols = current_col
 
@@ -1916,6 +1918,11 @@ class setMeasurementsDialog(widgets.QBaseDialog):
         if checkbox.text().find('concentration_') == -1:
             return
         
+        if self.is_concat:
+            # When this dialogue is used in concatenate pos utility we do not 
+            # need to check that certain metrics are present
+            return
+        
         pattern = r'.+_from_vol_([a-z]+)(_3D)?(_?[A-Za-z0-9]*)'
         repl = r'cell_vol_\1\2'
         cell_vol_metric_name = re.sub(pattern, repl, checkbox.text())
@@ -1957,6 +1964,10 @@ class setMeasurementsDialog(widgets.QBaseDialog):
         checked : bool
             State of the checkbox toggled
         """
+        if self.is_concat:
+            # When this dialogue is used in concatenate pos utility we do not 
+            # need to check that certain metrics are present
+            return
 
         checkbox = self.sender()
         if not hasattr(checkbox, 'isRequired'):
@@ -2137,6 +2148,11 @@ class setMeasurementsDialog(widgets.QBaseDialog):
         self.doNotWarn = False
     
     def setDisabledMetricsRequestedForCombined(self, checked=True):
+        if self.is_concat:
+            # When this dialogue is used in concatenate pos utility we do not 
+            # need to check that certain metrics are present
+            return
+        
         # Set checked and disable those metrics that are requested for 
         # combined measurements
         allCheckboxes = []
@@ -2178,11 +2194,61 @@ class setMeasurementsDialog(widgets.QBaseDialog):
     def closeEvent(self, event):
         if self.cancel:
             self.sigCancel.emit()
+        super().closeEvent(event)
     
     def restart(self):
         self.cancel = False
         self.close()
         self.sigRestart.emit()
+    
+    def setDisabledNotExistingMeasurements(self, existing_colnames):
+        for chNameGroupbox in self.chNameGroupboxes:
+            for checkBox in chNameGroupbox.checkBoxes:
+                colname = checkBox.text()
+                if colname in existing_colnames:
+                    checkBox.setChecked(True)
+                    continue
+                
+                checkBox.setChecked(False)
+                checkBox.setDisabled(True)
+                self.setNotExistingMeasurementTooltip(checkBox)
+        
+        for checkBox in self.sizeMetricsQGBox.checkBoxes:
+            colname = checkBox.text()
+            if colname in existing_colnames:
+                checkBox.setChecked(True)
+                continue
+            checkBox.setChecked(False)
+            checkBox.setDisabled(True)
+            self.setNotExistingMeasurementTooltip(checkBox)
+        
+        for checkBox in self.regionPropsQGBox.checkBoxes:
+            colname = checkBox.text()
+            if any([col == colname for col in existing_colnames]):
+                checkBox.setChecked(True)
+                continue
+            checkBox.setChecked(False)
+            checkBox.setDisabled(True)
+            self.setNotExistingMeasurementTooltip(checkBox)
+        
+        if self.mixedChannelsCombineMetricsQGBox is None:
+            return
+        
+        for combCheckbox in self.mixedChannelsCombineMetricsQGBox.checkBoxes:
+            colname = combCheckbox.text()
+            if colname in existing_colnames:
+                combCheckbox.setChecked(True)
+                continue
+            combCheckbox.setChecked(False)
+            combCheckbox.setDisabled(True)
+            self.setNotExistingMeasurementTooltip(combCheckbox)
+    
+    def setNotExistingMeasurementTooltip(self, checkBox):
+        checkBox.setToolTip(
+            'Measurement is disabled because it is not present in selected '
+            'acdc_output tables, hence it cannot be addded to concatenated '
+            'table. '
+        )
 
     def ok_cb(self):
         if self.allPos_acdc_df_cols is None:

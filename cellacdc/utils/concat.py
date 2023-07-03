@@ -1,6 +1,7 @@
 from qtpy.QtWidgets import QFileDialog
 
 from .. import apps, myutils, workers, widgets, html_utils
+from .. import printl
 
 from .base import NewThreadMultipleExpBaseUtil
 
@@ -20,10 +21,95 @@ class concatWin(NewThreadMultipleExpBaseUtil):
         self.worker = workers.ConcatAcdcDfsWorker(self)
         self.worker.sigAskFolder.connect(self.askFolderWhereToSaveAllExp)
         self.worker.sigAborted.connect(self.workerAborted)
+        self.worker.sigAskAppendName.connect(self.askAppendName)
+        self.worker.sigSetMeasurements.connect(self.askSetMeasurements)
         super().runWorker(self.worker)
+    
+    def askSetMeasurements(self, kwargs):
+        loadedChNames = kwargs['loadedChNames']
+        notLoadedChNames = kwargs['notLoadedChNames']
+        isZstack = kwargs['isZstack']
+        isSegm3D = kwargs['isSegm3D']
+        self.setMeasurementsWin = apps.setMeasurementsDialog(
+            loadedChNames, notLoadedChNames, isZstack, isSegm3D,
+            is_concat=True, parent=self
+        )
+        existing_colnames = kwargs['existing_colnames']
+        self.setMeasurementsWin.setDisabledNotExistingMeasurements(
+            existing_colnames
+        )
+        self.setMeasurementsWin.sigClosed.connect(self.setMeasurements)
+        self.setMeasurementsWin.sigCancel.connect(self.setMeasurementsCancelled)
+        self.setMeasurementsWin.show()
+    
+    def setMeasurements(self):
+        selectedColumns = []
+        for chNameGroupbox in self.setMeasurementsWin.chNameGroupboxes:
+            chName = chNameGroupbox.chName
+            if not chNameGroupbox.isChecked():
+                # Skip entire channel
+                continue
+            
+            for checkBox in chNameGroupbox.checkBoxes:
+                if not checkBox.isChecked():
+                    continue
+                colname = checkBox.text()
+                selectedColumns.append(colname)
+        
+        if self.setMeasurementsWin.sizeMetricsQGBox.isChecked():
+            for checkBox in self.setMeasurementsWin.sizeMetricsQGBox.checkBoxes:
+                if not checkBox.isChecked():
+                    continue
+                colname = checkBox.text()
+                selectedColumns.append(colname)
+        
+        if self.setMeasurementsWin.regionPropsQGBox.isChecked():
+            for checkBox in self.setMeasurementsWin.regionPropsQGBox.checkBoxes:
+                if not checkBox.isChecked():
+                    continue
+                colname = checkBox.text()
+                selectedColumns.append(colname)
+        
+        checkMixedChannel = (
+            self.setMeasurementsWin.mixedChannelsCombineMetricsQGBox is not None
+            and self.setMeasurementsWin.mixedChannelsCombineMetricsQGBox.isChecked()
+        )
+        if checkMixedChannel:
+            win = self.setMeasurementsWin
+            checkBoxes = win.mixedChannelsCombineMetricsQGBox.checkBoxes
+            for checkBox in checkBoxes:
+                if not checkBox.isChecked():
+                    continue
+                colname = checkBox.text()
+                selectedColumns.append(colname)
+            
+        self.worker.selectedColumns = selectedColumns
+        self.worker.abort = False
+        self.worker.waitCond.wakeAll()
+    
+    def setMeasurementsCancelled(self):
+        self.worker.abort = True
+        self.worker.waitCond.wakeAll()
     
     def showEvent(self, event):
         self.runWorker()
+    
+    def askAppendName(self, basename, existingEndnames):
+        win = apps.filenameDialog(
+            basename=basename,
+            hintText='Insert a name for the <b>concatenated table</b> file:',
+            existingNames=existingEndnames, 
+            allowEmpty=True,
+            ext='.csv'
+        )
+        win.exec_()
+        if win.cancel:
+            self.worker.abort = True
+            self.worker.waitCond.wakeAll()
+            return
+        
+        self.worker.concat_df_filename = win.filename
+        self.worker.waitCond.wakeAll()
     
     def askFolderWhereToSaveAllExp(self, allExp_filename):
         txt = html_utils.paragraph(f"""
@@ -53,7 +139,8 @@ class concatWin(NewThreadMultipleExpBaseUtil):
         self.worker.waitCond.wakeAll()
 
     def workerAborted(self):
-        self.workerFinished(None, aborted=True)
+        self.worker.signals.finished.emit(self)
+        self.workerFinished(self.worker, aborted=True)
     
     def workerFinished(self, worker, aborted=False):
         if aborted:

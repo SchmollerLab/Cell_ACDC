@@ -110,6 +110,8 @@ def get_custom_metrics_func():
     scripts = os.listdir(acdc_metrics_path)
     custom_func_dict = {}
     for file in scripts:
+        if file == '__init__.py':
+            continue
         module_name, ext = os.path.splitext(file)
         if ext != '.py':
             # print(f'The file {file} is not a python file. Ignoring it.')

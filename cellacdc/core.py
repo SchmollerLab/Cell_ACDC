@@ -55,6 +55,9 @@ def np_replace_values(arr, old_values, new_values):
     return arr
 
 def nearest_nonzero_2D(a, y, x, max_dist=None):
+    value = a[round(y), round(x)]
+    if value > 0:
+        return value
     r, c = np.nonzero(a)
     dist = ((r - y)**2 + (c - x)**2)
     if max_dist is not None:

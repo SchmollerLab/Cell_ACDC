@@ -36,6 +36,7 @@ cellacdc/scripts/test1.py
 cellacdc/scripts/correct_shift_X_old.py
 cellacdc/scripts/correct_shift_X_old2.py
 cellacdc/scripts/correct_shift_X_single_old.py
+cellacdc/_tests
 cellacdc/_version.py
 cellacdc/.qt_for_python
 cellacdc/metrics/*
@@ -52,7 +53,7 @@ cellacdc/_test_all_icons.py
 cellacdc/test1.py
 cellacdc/test_download_model.py
 cellacdc/test_segm.npy
-cellacdc/_profile/\spline_to_obj/regression.ipynb
+cellacdc/_profile/spline_to_obj/regression.ipynb
 cellacdc/deprecated
 cellacdc/bioformats/jars/.old_bioformats_package.jar
 cellacdc/java

@@ -3,8 +3,50 @@ import shutil
 import sys
 
 def _setup_gui():
+    try:
+        import tables
+    except Exception as e:
+        while True:
+            txt = (
+                'Cell-ACDC needs to install a library called `tables`.\n\n'
+                'If the installation fails, you can still use Cell-ACDC, but we '
+                'highly recommend you report the issue (see link below) and we '
+                'will be very happy to help. Thank you for your patience!\n\n'
+                'Report issue here: https://github.com/SchmollerLab/Cell_ACDC/issues'
+                '\n'
+            )
+            print('-'*60)
+            print(txt)
+            answer = input('Do you want to install it now ([y]/n)? ')
+            if answer.lower() == 'y' or not answer:
+                try:
+                    import subprocess
+                    subprocess.check_call(
+                        [sys.executable, '-m', 'pip', 'install', '-U', 'tables']
+                    )
+                except Exception as err:
+                    import traceback
+                    traceback.print_exc()
+                    print('*'*60)
+                    print(
+                        '[WARNING]: Installation of `tables` failed. '
+                        'Please report the issue here: '
+                        'https://github.com/SchmollerLab/Cell_ACDC/issues'
+                    )
+                    print('^'*60)
+                finally:
+                    break
+            elif answer.lower() == 'n':
+                raise e
+            else:
+                print(
+                    f'"{answer}" is not a valid answer. '
+                    'Type "y" for "yes", or "n" for "no".'
+                )
+            
     from . import qrc_resources_path, qrc_resources_light_path
     
+    warn_restart = False
     # Force PyQt6 if available
     try:
         from PyQt6 import QtCore
@@ -15,14 +57,14 @@ def _setup_gui():
     try:
         import qtpy
     except ModuleNotFoundError as e:
+        txt = (
+            'Since version 1.3.1 Cell-ACDC requires the package `qtpy`.\n\n'
+            'You can let Cell-ACDC install it now, or you can abort '
+            'and install it manually with the command `pip install qtpy`.'
+        )
+        print('-'*60)
+        print(txt)
         while True:
-            txt = (
-                'Since version 1.3.1 Cell-ACDC requires the package `qtpy`.\n\n'
-                'You can let Cell-ACDC install it now, or you can abort '
-                'and install it manually with the command `pip install qtpy`.'
-            )
-            print('-'*60)
-            print(txt)
             answer = input('Do you want to install it now ([y]/n)? ')
             if answer.lower() == 'y' or not answer:
                 import subprocess
@@ -45,28 +87,29 @@ def _setup_gui():
     try:
         from qtpy.QtCore import Qt
     except Exception as e:
+        txt = (
+            'Since version 1.3.1 Cell-ACDC does not install a GUI library by default.\n\n'
+            'You can let Cell-ACDC install it now (default library is `PyQt6`), '
+            'or you can abort (press "n")\n'
+            'and install a compatible GUI library with one of '
+            'the following commands:\n\n'
+            '    * pip install PyQt6\n'
+            '    * pip install PyQt5\n'
+            '    * pip install PySide2\n'
+            '    * pip install PySide6\n\n'
+            'Note: if `PyQt6` installation fails, you could try installing any '
+            'of the other libraries.\n\n'
+        )
+        print('-'*60)
+        print(txt)
         while True:
-            txt = (
-                'Since version 1.3.1 Cell-ACDC does not install a GUI library by default.\n\n'
-                'You can let Cell-ACDC install it now (default library is `PyQt6`), '
-                'or you can abort (press "n")\n'
-                'and install a compatible GUI library with one of '
-                'the following commands:\n\n'
-                '    * pip install PyQt6\n'
-                '    * pip install PyQt5\n'
-                '    * pip install PySide2\n'
-                '    * pip install PySide6\n\n'
-                'Note: if `PyQt6` installation fails, you could try installing any '
-                'of the other libraries.\n\n'
-            )
-            print('-'*60)
-            print(txt)
             answer = input('Do you want to install PyQt6 now ([y]/n)? ')
             if answer.lower() == 'y' or not answer:
                 import subprocess
                 subprocess.check_call(
                     [sys.executable, '-m', 'pip', 'install', '-U', 'PyQt6']
                 )
+                warn_restart = True
                 break
             elif answer.lower() == 'n':
                 raise e
@@ -75,7 +118,7 @@ def _setup_gui():
                     f'"{answer}" is not a valid answer. '
                     'Type "y" for "yes", or "n" for "no".'
                 )
-        
+    
     try:
         import pyqtgraph
     except ModuleNotFoundError:
@@ -83,6 +126,7 @@ def _setup_gui():
         subprocess.check_call(
             [sys.executable, '-m', 'pip', 'install', '-U', 'pyqtgraph']
         )
+        warn_restart = True
     
     try:
         import seaborn
@@ -90,6 +134,13 @@ def _setup_gui():
         import subprocess
         subprocess.check_call(
             [sys.executable, '-m', 'pip', 'install', '-U', 'seaborn']
+        )
+        warn_restart = True
+    
+    if warn_restart:
+        exit(
+            '[WARNING]: Cell-ACDC had to install the required GUI libraries. '
+            'Please, re-start the software. Thank you for your patience!'
         )
 
 def _setup_app(splashscreen=False, icon_path=None, logo_path=None):
