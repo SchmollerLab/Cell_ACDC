@@ -18864,6 +18864,9 @@ class guiWin(QMainWindow):
             if obj.label in delROIsIDs:
                 continue
             
+            if not self.isObjVisible(obj.bbox):
+                continue
+            
             self.setLostObjectContour(obj)
 
     # @exec_time
