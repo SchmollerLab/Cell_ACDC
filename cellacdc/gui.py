@@ -3348,10 +3348,6 @@ class guiWin(QMainWindow):
 
         # z-slice scrollbars
         self.zSliceScrollBar = widgets.linkedQScrollbar(Qt.Horizontal)
-        _z_label = widgets.QClickableLabel()
-        _z_label.setText('z-slice  ')
-        _z_label.setFont(_font)
-        self.z_label = _z_label
 
         self.zProjComboBox = QComboBox()
         self.zProjComboBox.setFont(_font)
@@ -3416,18 +3412,15 @@ class guiWin(QMainWindow):
 
         row += 1
         zSliceCheckboxLayout = QHBoxLayout()
-        self.zSliceCheckbox = QCheckBox()
+        self.zSliceCheckbox = QCheckBox('z-slice')
         self.zSliceSpinbox = widgets.SpinBox(disableKeyPress=True)
         self.zSliceSpinbox.setMinimum(1)
         self.SizeZlabel = QLabel('/ND')
-        self.z_label.setCheckableItem(self.zSliceCheckbox)
         self.zSliceCheckbox.setToolTip(
             'Activate/deactivate control of the z-slices with keyboard arrows.\n\n'
             'SHORTCUT to toggle ON/OFF: "Z" key'
         )
-        self.z_label.setToolTip(self.zSliceCheckbox.toolTip())
         zSliceCheckboxLayout.addWidget(self.zSliceCheckbox)
-        zSliceCheckboxLayout.addWidget(self.z_label)
         zSliceCheckboxLayout.addWidget(self.zSliceSpinbox)
         zSliceCheckboxLayout.addWidget(self.SizeZlabel)
         bottomLeftLayout.addLayout(
@@ -4222,7 +4215,6 @@ class guiWin(QMainWindow):
     def gui_initImg1BottomWidgets(self):
         self.zSliceScrollBar.hide()
         self.zProjComboBox.hide()
-        self.z_label.hide()
         self.zSliceOverlay_SB.hide()
         self.zProjOverlay_CB.hide()
         self.overlay_z_label.hide()
@@ -9596,28 +9588,24 @@ class guiWin(QMainWindow):
         if enabled:
             myutils.setRetainSizePolicy(self.zSliceScrollBar)
             myutils.setRetainSizePolicy(self.zProjComboBox)
-            myutils.setRetainSizePolicy(self.z_label)
             myutils.setRetainSizePolicy(self.zSliceOverlay_SB)
             myutils.setRetainSizePolicy(self.zProjOverlay_CB)
             myutils.setRetainSizePolicy(self.overlay_z_label)
             self.zSliceScrollBar.setDisabled(False)
             self.zProjComboBox.show()
             self.zSliceScrollBar.show()
-            self.z_label.show()
             self.zSliceCheckbox.show()
             self.zSliceSpinbox.show()
             self.SizeZlabel.show()
         else:
             myutils.setRetainSizePolicy(self.zSliceScrollBar, retain=False)
             myutils.setRetainSizePolicy(self.zProjComboBox, retain=False)
-            myutils.setRetainSizePolicy(self.z_label, retain=False)
             myutils.setRetainSizePolicy(self.zSliceOverlay_SB, retain=False)
             myutils.setRetainSizePolicy(self.zProjOverlay_CB, retain=False)
             myutils.setRetainSizePolicy(self.overlay_z_label, retain=False)
             self.zSliceScrollBar.setDisabled(True)
             self.zProjComboBox.hide()
             self.zSliceScrollBar.hide()
-            self.z_label.hide()
             self.zSliceCheckbox.hide()
             self.zSliceSpinbox.hide()
             self.SizeZlabel.hide()
@@ -10849,7 +10837,6 @@ class guiWin(QMainWindow):
             retainSpaceZ = checked
         myutils.setRetainSizePolicy(self.zSliceScrollBar, retain=retainSpaceZ)
         myutils.setRetainSizePolicy(self.zProjComboBox, retain=retainSpaceZ)
-        myutils.setRetainSizePolicy(self.z_label, retain=retainSpaceZ)
         myutils.setRetainSizePolicy(self.zSliceOverlay_SB, retain=retainSpaceZ)
         myutils.setRetainSizePolicy(self.zProjOverlay_CB, retain=retainSpaceZ)
         myutils.setRetainSizePolicy(self.overlay_z_label, retain=retainSpaceZ)
@@ -14233,13 +14220,13 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         if how == 'single z-slice':
             self.zSliceScrollBar.setDisabled(False)
-            self.z_label.setStyleSheet('color: black')
-            self.update_z_slice(self.zSliceScrollBar.sliderPosition())
             self.zSliceSpinbox.setDisabled(False)
+            self.zSliceCheckbox.setDisabled(False)
+            self.update_z_slice(self.zSliceScrollBar.sliderPosition())
         else:
             self.zSliceScrollBar.setDisabled(True)
-            self.z_label.setStyleSheet('color: gray')
             self.zSliceSpinbox.setDisabled(True)
+            self.zSliceCheckbox.setDisabled(True)
             self.updateAllImages()
     
     def clearAx2Items(self, onlyHideText=False):
@@ -17826,7 +17813,6 @@ class guiWin(QMainWindow):
             self.zSliceScrollBar.sliderReleased.connect(
                 self.zSliceScrollBarReleased
             )
-        # self.z_label.setText(f'z-slice  {z+1:02}/{posData.SizeZ}')
         self.zSliceSpinbox.setValueNoEmit(z+1)
     
     def getRawImage(self, frame_i=None, filename=None):
@@ -21617,7 +21603,6 @@ class guiWin(QMainWindow):
         _font = newFont
         self.zProjComboBox.setFont(newFont)
         self.t_label.setFont(newFont)
-        self.z_label.setFont(newFont)
         self.zProjOverlay_CB.setFont(newFont)
         self.annotateRightHowCombobox.setFont(newFont)
         self.drawIDsContComboBox.setFont(newFont)
