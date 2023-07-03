@@ -1773,6 +1773,7 @@ class setMeasurementsDialog(widgets.QBaseDialog):
 
         layout = QVBoxLayout()
         groupsLayout = QGridLayout()
+        self.groupsLayout = groupsLayout
         buttonsLayout = QHBoxLayout()
 
         self.chNameGroupboxes = []
@@ -2202,6 +2203,7 @@ class setMeasurementsDialog(widgets.QBaseDialog):
         self.sigRestart.emit()
     
     def setDisabledNotExistingMeasurements(self, existing_colnames):
+        self.existing_colnames = existing_colnames
         for chNameGroupbox in self.chNameGroupboxes:
             for checkBox in chNameGroupbox.checkBoxes:
                 colname = checkBox.text()
@@ -2242,6 +2244,20 @@ class setMeasurementsDialog(widgets.QBaseDialog):
             combCheckbox.setChecked(False)
             combCheckbox.setDisabled(True)
             self.setNotExistingMeasurementTooltip(combCheckbox)
+        
+    def addNonMeasurementColumns(self, colnames):
+        additionalCols = measurements.get_non_measurements_cols(
+            colnames, self.all_metrics
+        )
+        if not additionalCols:
+            return
+        self.nonMeasurementsGroupbox = widgets.CheckboxesGroupBox(
+            additionalCols, title='Additional columns', checkable=True
+        )
+        self.groupsLayout.addWidget(
+            self.nonMeasurementsGroupbox, 2, self.numberCols
+        )
+            
     
     def setNotExistingMeasurementTooltip(self, checkBox):
         checkBox.setToolTip(

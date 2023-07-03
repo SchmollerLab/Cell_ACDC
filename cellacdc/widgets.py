@@ -394,6 +394,32 @@ class arrowDownPushButton(PushButton):
         super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':arrow-down.svg'))
 
+class selectAllPushButton(PushButton):
+    sigClicked = Signal(object, bool)
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._status = 'deselect'
+        self.setIcon(QIcon(':deselect_all.svg'))
+        self.setText('Deselect all')
+        self.clicked.connect(self.onClicked)
+        self.setMinimumWidth(self.sizeHint().width())
+    
+    def onClicked(self):
+        if self._status == 'select':
+            icon_fn = ':deselect_all.svg'
+            self._status = 'deselect'
+            checked = True
+            text = 'Deselect all'
+        else:
+            icon_fn = ':select_all.svg'
+            text = 'Select all'
+            self._status = 'select'
+            checked = False
+        self.setIcon(QIcon(icon_fn))
+        self.setText(text)
+        self.sigClicked.emit(self, checked)
+
 class subtractPushButton(PushButton):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -3207,7 +3233,46 @@ class ReadOnlyLineEdit(QLineEdit):
         if a1.type() == QEvent.Type.FocusIn:
             return True
         return super().eventFilter(a0, a1)
+
+class CheckboxesGroupBox(QGroupBox):
+    def __init__(
+            self, texts, title='', checkable=False, parent=None
+        ):
+        super().__init__(parent)
         
+        self.setTitle(title)
+        self.setCheckable(checkable)
+        layout = QVBoxLayout()
+
+        scrollLayout = QVBoxLayout()
+        container = QWidget()
+        scrollarea = QScrollArea()
+        
+        self.checkBoxes = []
+        for text in texts:
+            checkbox = QCheckBox(text)
+            checkbox.setChecked(True)
+            scrollLayout.addWidget(checkbox)
+            self.checkBoxes.append(checkbox)
+        
+        container.setLayout(scrollLayout)
+        scrollarea.setWidget(container)
+        layout.addWidget(scrollarea)
+        
+        buttonsLayout = QHBoxLayout()
+        selectAllButton = selectAllPushButton()
+        selectAllButton.sigClicked.connect(self.checkAll)
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(selectAllButton)
+        layout.addLayout(buttonsLayout)
+        
+        self.setLayout(layout)
+    
+    def checkAll(self, button, checked):
+        for checkBox in self.checkBoxes:
+            checkBox.setChecked(checked)
+            
+
 class _metricsQGBox(QGroupBox):
     sigDelClicked = Signal(str, object)
 
@@ -3268,10 +3333,8 @@ class _metricsQGBox(QGroupBox):
         self.scrollArea.setWidget(self.scrollAreaWidget)
         layout.addWidget(self.scrollArea)
 
-        self.selectAllButton = QPushButton('Deselect all', self)
-        self.selectAllButton.setCheckable(True)
-        self.selectAllButton.setChecked(True)
-        self.selectAllButton.clicked.connect(self.checkAll)
+        self.selectAllButton = selectAllPushButton()
+        self.selectAllButton.sigClicked.connect(self.checkAll)
         buttonsLayout = QHBoxLayout()
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(self.selectAllButton)
@@ -3319,13 +3382,9 @@ class _metricsQGBox(QGroupBox):
                     break
         self.doNotWarn = False
 
-    def checkAll(self, isChecked):
+    def checkAll(self, button, checked):
         for checkBox in self.checkBoxes:
-            checkBox.setChecked(isChecked)
-        if isChecked:
-            self.selectAllButton.setText('Deselect all')
-        else:
-            self.selectAllButton.setText('Select all')
+            checkBox.setChecked(checked)
 
     def showInfo(self, checked=False):
         info_txt = self.sender().info

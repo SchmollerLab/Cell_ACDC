@@ -1,5 +1,7 @@
 from qtpy.QtWidgets import QFileDialog
 
+from cellacdc import measurements
+
 from .. import apps, myutils, workers, widgets, html_utils
 from .. import printl
 
@@ -35,6 +37,9 @@ class concatWin(NewThreadMultipleExpBaseUtil):
             is_concat=True, parent=self
         )
         existing_colnames = kwargs['existing_colnames']
+        self.setMeasurementsWin.addNonMeasurementColumns(
+            existing_colnames
+        )
         self.setMeasurementsWin.setDisabledNotExistingMeasurements(
             existing_colnames
         )
@@ -44,6 +49,15 @@ class concatWin(NewThreadMultipleExpBaseUtil):
     
     def setMeasurements(self):
         selectedColumns = []
+        if hasattr(self.setMeasurementsWin, 'nonMeasurementsGroupbox'):
+            if self.setMeasurementsWin.nonMeasurementsGroupbox.isChecked():
+                groupbox = self.setMeasurementsWin.nonMeasurementsGroupbox
+                for checkBox in groupbox.checkBoxes: 
+                    if not checkBox.isChecked():
+                        continue
+                    colname = checkBox.text()
+                    selectedColumns.append(colname) 
+                
         for chNameGroupbox in self.setMeasurementsWin.chNameGroupboxes:
             chName = chNameGroupbox.chName
             if not chNameGroupbox.isChecked():
@@ -63,12 +77,17 @@ class concatWin(NewThreadMultipleExpBaseUtil):
                 colname = checkBox.text()
                 selectedColumns.append(colname)
         
+        selectedPropsNames = []
         if self.setMeasurementsWin.regionPropsQGBox.isChecked():
             for checkBox in self.setMeasurementsWin.regionPropsQGBox.checkBoxes:
                 if not checkBox.isChecked():
                     continue
                 colname = checkBox.text()
-                selectedColumns.append(colname)
+                selectedPropsNames.append(colname)
+            selectedRpCols = measurements.get_regionprops_columns(
+                self.setMeasurementsWin.existing_colnames, selectedPropsNames
+            )
+            selectedColumns.extend(selectedRpCols)
         
         checkMixedChannel = (
             self.setMeasurementsWin.mixedChannelsCombineMetricsQGBox is not None
@@ -104,10 +123,7 @@ class concatWin(NewThreadMultipleExpBaseUtil):
         )
         win.exec_()
         if win.cancel:
-            self.worker.abort = True
-            self.worker.waitCond.wakeAll()
-            return
-        
+            self.worker.abort = True        
         self.worker.concat_df_filename = win.filename
         self.worker.waitCond.wakeAll()
     

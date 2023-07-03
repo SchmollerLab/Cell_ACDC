@@ -95,14 +95,13 @@ class AutoPilotWorker(QObject):
         # self.timer = timer
     
     def timerCallback(self):
-        printl('test')
+        pass
     
     def stop(self):
         self.sigStopTimer.emit()
         self.finished.emit()        
     
     def run(self):
-        printl('Running')
         self.sigStarted.emit()
 
 class LabelRoiWorker(QObject):
@@ -2587,14 +2586,14 @@ class ConcatAcdcDfsWorker(BaseWorkerUtil):
                     continue
                 
                 acdc_df_filepath = os.path.join(images_path, acdc_output_file[0])
-                acdc_df = pd.read_csv(acdc_df_filepath)
+                acdc_df = pd.read_csv(acdc_df_filepath).set_index('Cell_ID')
                 acdc_dfs.append(acdc_df)
                 keys.append(pos)
 
                 self.signals.progressBar.emit(1)
 
             acdc_df_allpos = pd.concat(
-                acdc_dfs, keys=keys, names=['Position_n']
+                acdc_dfs, keys=keys, names=['Position_n', 'Cell_ID']
             )
             
             basename, chNames = myutils.getBasenameAndChNames(
@@ -2618,7 +2617,11 @@ class ConcatAcdcDfsWorker(BaseWorkerUtil):
                 self.sigAborted.emit()
                 return
             
-            acdc_df_allpos = acdc_df_allpos[self.selectedColumns]
+            selected_cols = [
+                col for col in self.selectedColumns 
+                if col in acdc_df_allpos.columns
+            ]
+            acdc_df_allpos = acdc_df_allpos[selected_cols]
             acdc_dfs_allexp.append(acdc_df_allpos)
             exp_name = os.path.basename(exp_path)
             keys_exp.append(exp_name)
@@ -2629,6 +2632,9 @@ class ConcatAcdcDfsWorker(BaseWorkerUtil):
             
             allPos_acdc_df_basename = f'AllPos_{selectedAcdcOutputEndname}'
             self.emitAskAppendName(allPos_acdc_df_basename)
+            if self.abort:
+                self.sigAborted.emit()
+                return
             
             acdc_dfs_allpos_filepath = os.path.join(
                 allpos_dir, self.concat_df_filename
