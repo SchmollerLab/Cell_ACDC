@@ -468,6 +468,7 @@ class TextAnnotations:
         delROIsIDs = kwargs.get('delROIsIDs', [])
         isObjVisible = kwargs.get('isVisibleCheckFunc')
         highlightedID = kwargs.get('highlightedID')
+        annotateLost = kwargs.get('annotateLost')
         isCcaAnnot = self.isCcaAnnot()
         isAnnotateNumZslices = self.isAnnotateNumZslices()
         isLabelTreeAnnotation = self.isLabelTreeAnnotation()
@@ -496,7 +497,7 @@ class TextAnnotations:
             objData['data'] = obj.label
             self.item.appendData(objData, objOpts['text'])
 
-        if posData.lost_IDs:
+        if posData.lost_IDs and annotateLost:
             prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
             if prev_rp is None:
                 self.item.draw()

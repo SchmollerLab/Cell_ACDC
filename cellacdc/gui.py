@@ -2839,6 +2839,7 @@ class guiWin(QMainWindow):
         self.saveAsAction.triggered.connect(self.saveAsData)
         self.quickSaveAction.triggered.connect(self.quickSave)
         self.autoSaveToggle.toggled.connect(self.autoSaveToggled)
+        self.annotLostObjsToggle.toggled.connect(self.annotLostObjsToggled)
         self.highLowResToggle.clicked.connect(self.highLoweResClicked)
         self.showInExplorerAction.triggered.connect(self.showInExplorer_cb)
         self.exitAction.triggered.connect(self.close)
@@ -3146,6 +3147,17 @@ class guiWin(QMainWindow):
         autoSaveLabel = QLabel('Autosave segm.')
         autoSaveLabel.setToolTip(autoSaveTooltip)
         layout.addRow(autoSaveLabel, self.autoSaveToggle)
+        
+        self.annotLostObjsToggle = widgets.Toggle()
+        annotLostObjsToggleTooltip = (
+            'Automatically store a copy of the segmentation data and of '
+            'the annotations in the `.recovery` folder after every edit.'
+        )
+        self.annotLostObjsToggle.setChecked(True)
+        self.annotLostObjsToggle.setToolTip(annotLostObjsToggleTooltip)
+        label = QLabel('Annotate lost objects')
+        label.setToolTip(annotLostObjsToggleTooltip)
+        layout.addRow(label, self.annotLostObjsToggle)
 
         self.highLowResToggle = widgets.Toggle()
         self.widgetsWithShortcut['High resolution'] = self.highLowResToggle
@@ -13291,7 +13303,7 @@ class guiWin(QMainWindow):
         self.user_ch_file_paths = user_ch_file_paths
 
         required_ram = myutils.getMemoryFootprint(user_ch_file_paths)
-        if required_ram >= 1e6:
+        if required_ram >= 1e9:
             # Disable autosave for data > 1GB
             self.autoSaveToggle.setChecked(False)
 
@@ -18659,13 +18671,15 @@ class guiWin(QMainWindow):
             posData=posData, labelsToSkip=labelsToSkip, 
             isVisibleCheckFunc=self.isObjVisible,
             highlightedID=self.highlightedID, 
-            delROIsIDs=delROIsIDs
+            delROIsIDs=delROIsIDs,
+            annotateLost=self.annotLostObjsToggle.isChecked()
         )
         self.textAnnot[1].setAnnotations(
             posData=posData, labelsToSkip=labelsToSkip, 
             isVisibleCheckFunc=self.isObjVisible,
             highlightedID=self.highlightedID, 
-            delROIsIDs=delROIsIDs
+            delROIsIDs=delROIsIDs,
+            annotateLost=self.annotLostObjsToggle.isChecked()
         )
         self.textAnnot[0].update()
         self.textAnnot[1].update()
@@ -18814,6 +18828,9 @@ class guiWin(QMainWindow):
         if self.modeComboBox.currentText() == 'Viewer':
             return
         
+        if not self.annotLostObjsToggle.isChecked():
+            return
+        
         posData = self.data[self.pos_i]
         delROIsIDs = self.getDelRoisIDs()
 
@@ -18854,6 +18871,11 @@ class guiWin(QMainWindow):
                 continue
             
             self.setLostObjectContour(obj)
+    
+    def annotLostObjsToggled(self, checked):
+        if not self.dataIsLoaded:
+            return
+        self.updateAllImages()
 
     # @exec_time
     def setTitleText(self):
