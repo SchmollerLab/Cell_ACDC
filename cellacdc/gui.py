@@ -8623,6 +8623,10 @@ class guiWin(QMainWindow):
             if cca_df_i is None:
                 # ith frame was not visited yet
                 break
+            
+            if budID not in cca_df_i.index:
+                # Bud disappeared
+                break
 
             is_still_bud = cca_df_i.at[budID, 'relationship'] == 'bud'
             if not is_still_bud:
