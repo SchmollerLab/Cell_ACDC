@@ -17359,10 +17359,20 @@ class guiWin(QMainWindow):
     def getObjContours(self, obj, all_external=False, local=False):
         obj_image = self.getObjImage(obj.image, obj.bbox).astype(np.uint8)
         obj_bbox = self.getObjBbox(obj.bbox)
-        contours = core.get_obj_contours(
-            obj_image=obj_image, obj_bbox=obj_bbox, local=local,
-            all_external=all_external
-        )
+        try:
+            contours = core.get_obj_contours(
+                obj_image=obj_image, obj_bbox=obj_bbox, local=local,
+                all_external=all_external
+            )
+        except Exception as e:
+            if all_external:
+                contours = []
+            else:
+                contours = None
+            self.logger.info(
+                f'[WARNING]: Object ID {obj.label} contours drawing failed. '
+                f'(bounding box = {obj.bbox})'
+            )
         return contours
     
     def setOverlaySegmMasks(self, force=False, forceIfNotActive=False):
@@ -18401,7 +18411,7 @@ class guiWin(QMainWindow):
         else:
             contours = self.getObjContours(obj, all_external=True)
             for cont in contours:
-                self.searchedIDitemLeft.addPoints(cont[:,0], cont[:,1])
+                self.searchedIDitemLeft.addPoints(cont[:,0]+0.5, cont[:,1]+0.5)
         
         if isOverlaySegm_ax2:
             self.highLightIDLayerRightImage.setLookupTable(lut)
@@ -18411,7 +18421,7 @@ class guiWin(QMainWindow):
             if contours is None:
                 contours = self.getObjContours(obj, all_external=True)
             for cont in contours:
-                self.searchedIDitemRight.addPoints(cont[:,0], cont[:,1])       
+                self.searchedIDitemRight.addPoints(cont[:,0]+0.5, cont[:,1]+0.5)       
 
         # Gray out all IDs excpet searched one
         lut = self.lut.copy() # [:max(posData.IDs)+1]
@@ -18592,17 +18602,18 @@ class guiWin(QMainWindow):
         return obj
     
     def setLostObjectContour(self, obj):
-        objContours = self.getObjContours(obj)  
-        xx = objContours[:,0]
-        yy = objContours[:,1]
-        self.ax1_lostObjScatterItem.addPoints(xx, yy)
-        self.ax2_lostObjScatterItem.addPoints(xx, yy)
+        allContours = self.getObjContours(obj, all_external=True)  
+        for objContours in allContours:
+            xx = objContours[:,0] + 0.5
+            yy = objContours[:,1] + 0.5
+            self.ax1_lostObjScatterItem.addPoints(xx, yy)
+            self.ax2_lostObjScatterItem.addPoints(xx, yy)
     
     def setCcaIssueContour(self, obj):
         objContours = self.getObjContours(obj, all_external=True)  
         for cont in objContours:
-            xx = cont[:,0]
-            yy = cont[:,1]
+            xx = cont[:,0] + 0.5
+            yy = cont[:,1] + 0.5
             self.ax1_lostObjScatterItem.addPoints(xx, yy)
         self.textAnnot[0].addObjAnnotation(
             obj, 'lost_object', f'{obj.label}?', False
@@ -18614,9 +18625,10 @@ class guiWin(QMainWindow):
             if obj.label not in IDsCellsG1:
                 continue
             objContours = self.getObjContours(obj)
-            xx = objContours[:,0]
-            yy = objContours[:,1]
-            self.ccaFailedScatterItem.addPoints(xx, yy)
+            if objContours is not None:
+                xx = objContours[:,0] + 0.5
+                yy = objContours[:,1] + 0.5
+                self.ccaFailedScatterItem.addPoints(xx, yy)
             self.textAnnot[0].addObjAnnotation(
                 obj, 'green', f'{obj.label}?', False
             )
@@ -18752,7 +18764,7 @@ class guiWin(QMainWindow):
                         obj, all_external=True
                     )
                     for cont in contours:
-                        contoursItem.addPoints(cont[:,0], cont[:,1])
+                        contoursItem.addPoints(cont[:,0]+0.5, cont[:,1]+0.5)
             elif drawMode == 'Overlay labels':
                 imageItem.setImage(ol_lab, autoLevels=False)
     
