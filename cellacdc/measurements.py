@@ -838,25 +838,6 @@ def get_btrack_features():
     )
     return features
 
-def get_regionprops_columns(colnames, props):
-    rp_colnames = []
-    for col in colnames:
-        for prop in props:
-            if prop == col:
-                break
-            match = re.match(rf'{prop}-\d', col)
-            if match is not None:
-                break
-            match = re.match(rf'{col}-\d-\d', col)
-            if match is not None:
-                break
-        else:
-            # For loop checking if col is a prop never broke 
-            # --> col is not a prop --> do not append
-            continue
-        rp_colnames.append(col)
-    return rp_colnames  
-
 def get_non_measurements_cols(colnames, metrics_colnames):
     non_metrics_colnames = []
     for col in colnames:
@@ -878,6 +859,7 @@ def get_non_measurements_cols(colnames, metrics_colnames):
         else:
             non_metrics_non_rp_colnames.append(col)
     return non_metrics_non_rp_colnames  
+            
 
 def get_props_names_3D():
     props = {

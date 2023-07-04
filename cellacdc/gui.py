@@ -2839,6 +2839,7 @@ class guiWin(QMainWindow):
         self.saveAsAction.triggered.connect(self.saveAsData)
         self.quickSaveAction.triggered.connect(self.quickSave)
         self.autoSaveToggle.toggled.connect(self.autoSaveToggled)
+        self.annotLostObjsToggle.toggled.connect(self.annotLostObjsToggled)
         self.highLowResToggle.clicked.connect(self.highLoweResClicked)
         self.showInExplorerAction.triggered.connect(self.showInExplorer_cb)
         self.exitAction.triggered.connect(self.close)
@@ -3146,6 +3147,17 @@ class guiWin(QMainWindow):
         autoSaveLabel = QLabel('Autosave segm.')
         autoSaveLabel.setToolTip(autoSaveTooltip)
         layout.addRow(autoSaveLabel, self.autoSaveToggle)
+        
+        self.annotLostObjsToggle = widgets.Toggle()
+        annotLostObjsToggleTooltip = (
+            'Automatically store a copy of the segmentation data and of '
+            'the annotations in the `.recovery` folder after every edit.'
+        )
+        self.annotLostObjsToggle.setChecked(True)
+        self.annotLostObjsToggle.setToolTip(annotLostObjsToggleTooltip)
+        label = QLabel('Annotate lost objects')
+        label.setToolTip(annotLostObjsToggleTooltip)
+        layout.addRow(label, self.annotLostObjsToggle)
 
         self.highLowResToggle = widgets.Toggle()
         self.widgetsWithShortcut['High resolution'] = self.highLowResToggle
@@ -3348,10 +3360,6 @@ class guiWin(QMainWindow):
 
         # z-slice scrollbars
         self.zSliceScrollBar = widgets.linkedQScrollbar(Qt.Horizontal)
-        _z_label = widgets.QClickableLabel()
-        _z_label.setText('z-slice  ')
-        _z_label.setFont(_font)
-        self.z_label = _z_label
 
         self.zProjComboBox = QComboBox()
         self.zProjComboBox.setFont(_font)
@@ -3416,18 +3424,15 @@ class guiWin(QMainWindow):
 
         row += 1
         zSliceCheckboxLayout = QHBoxLayout()
-        self.zSliceCheckbox = QCheckBox()
+        self.zSliceCheckbox = QCheckBox('z-slice')
         self.zSliceSpinbox = widgets.SpinBox(disableKeyPress=True)
         self.zSliceSpinbox.setMinimum(1)
         self.SizeZlabel = QLabel('/ND')
-        self.z_label.setCheckableItem(self.zSliceCheckbox)
         self.zSliceCheckbox.setToolTip(
             'Activate/deactivate control of the z-slices with keyboard arrows.\n\n'
             'SHORTCUT to toggle ON/OFF: "Z" key'
         )
-        self.z_label.setToolTip(self.zSliceCheckbox.toolTip())
         zSliceCheckboxLayout.addWidget(self.zSliceCheckbox)
-        zSliceCheckboxLayout.addWidget(self.z_label)
         zSliceCheckboxLayout.addWidget(self.zSliceSpinbox)
         zSliceCheckboxLayout.addWidget(self.SizeZlabel)
         bottomLeftLayout.addLayout(
@@ -4222,7 +4227,6 @@ class guiWin(QMainWindow):
     def gui_initImg1BottomWidgets(self):
         self.zSliceScrollBar.hide()
         self.zProjComboBox.hide()
-        self.z_label.hide()
         self.zSliceOverlay_SB.hide()
         self.zProjOverlay_CB.hide()
         self.overlay_z_label.hide()
@@ -9596,28 +9600,24 @@ class guiWin(QMainWindow):
         if enabled:
             myutils.setRetainSizePolicy(self.zSliceScrollBar)
             myutils.setRetainSizePolicy(self.zProjComboBox)
-            myutils.setRetainSizePolicy(self.z_label)
             myutils.setRetainSizePolicy(self.zSliceOverlay_SB)
             myutils.setRetainSizePolicy(self.zProjOverlay_CB)
             myutils.setRetainSizePolicy(self.overlay_z_label)
             self.zSliceScrollBar.setDisabled(False)
             self.zProjComboBox.show()
             self.zSliceScrollBar.show()
-            self.z_label.show()
             self.zSliceCheckbox.show()
             self.zSliceSpinbox.show()
             self.SizeZlabel.show()
         else:
             myutils.setRetainSizePolicy(self.zSliceScrollBar, retain=False)
             myutils.setRetainSizePolicy(self.zProjComboBox, retain=False)
-            myutils.setRetainSizePolicy(self.z_label, retain=False)
             myutils.setRetainSizePolicy(self.zSliceOverlay_SB, retain=False)
             myutils.setRetainSizePolicy(self.zProjOverlay_CB, retain=False)
             myutils.setRetainSizePolicy(self.overlay_z_label, retain=False)
             self.zSliceScrollBar.setDisabled(True)
             self.zProjComboBox.hide()
             self.zSliceScrollBar.hide()
-            self.z_label.hide()
             self.zSliceCheckbox.hide()
             self.zSliceSpinbox.hide()
             self.SizeZlabel.hide()
@@ -10849,7 +10849,6 @@ class guiWin(QMainWindow):
             retainSpaceZ = checked
         myutils.setRetainSizePolicy(self.zSliceScrollBar, retain=retainSpaceZ)
         myutils.setRetainSizePolicy(self.zProjComboBox, retain=retainSpaceZ)
-        myutils.setRetainSizePolicy(self.z_label, retain=retainSpaceZ)
         myutils.setRetainSizePolicy(self.zSliceOverlay_SB, retain=retainSpaceZ)
         myutils.setRetainSizePolicy(self.zProjOverlay_CB, retain=retainSpaceZ)
         myutils.setRetainSizePolicy(self.overlay_z_label, retain=retainSpaceZ)
@@ -13304,7 +13303,7 @@ class guiWin(QMainWindow):
         self.user_ch_file_paths = user_ch_file_paths
 
         required_ram = myutils.getMemoryFootprint(user_ch_file_paths)
-        if required_ram >= 1e6:
+        if required_ram >= 1e9:
             # Disable autosave for data > 1GB
             self.autoSaveToggle.setChecked(False)
 
@@ -14233,13 +14232,13 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         if how == 'single z-slice':
             self.zSliceScrollBar.setDisabled(False)
-            self.z_label.setStyleSheet('color: black')
-            self.update_z_slice(self.zSliceScrollBar.sliderPosition())
             self.zSliceSpinbox.setDisabled(False)
+            self.zSliceCheckbox.setDisabled(False)
+            self.update_z_slice(self.zSliceScrollBar.sliderPosition())
         else:
             self.zSliceScrollBar.setDisabled(True)
-            self.z_label.setStyleSheet('color: gray')
             self.zSliceSpinbox.setDisabled(True)
+            self.zSliceCheckbox.setDisabled(True)
             self.updateAllImages()
     
     def clearAx2Items(self, onlyHideText=False):
@@ -17360,10 +17359,20 @@ class guiWin(QMainWindow):
     def getObjContours(self, obj, all_external=False, local=False):
         obj_image = self.getObjImage(obj.image, obj.bbox).astype(np.uint8)
         obj_bbox = self.getObjBbox(obj.bbox)
-        contours = core.get_obj_contours(
-            obj_image=obj_image, obj_bbox=obj_bbox, local=local,
-            all_external=all_external
-        )
+        try:
+            contours = core.get_obj_contours(
+                obj_image=obj_image, obj_bbox=obj_bbox, local=local,
+                all_external=all_external
+            )
+        except Exception as e:
+            if all_external:
+                contours = []
+            else:
+                contours = None
+            self.logger.info(
+                f'[WARNING]: Object ID {obj.label} contours drawing failed. '
+                f'(bounding box = {obj.bbox})'
+            )
         return contours
     
     def setOverlaySegmMasks(self, force=False, forceIfNotActive=False):
@@ -17826,7 +17835,6 @@ class guiWin(QMainWindow):
             self.zSliceScrollBar.sliderReleased.connect(
                 self.zSliceScrollBarReleased
             )
-        # self.z_label.setText(f'z-slice  {z+1:02}/{posData.SizeZ}')
         self.zSliceSpinbox.setValueNoEmit(z+1)
     
     def getRawImage(self, frame_i=None, filename=None):
@@ -18403,7 +18411,7 @@ class guiWin(QMainWindow):
         else:
             contours = self.getObjContours(obj, all_external=True)
             for cont in contours:
-                self.searchedIDitemLeft.addPoints(cont[:,0], cont[:,1])
+                self.searchedIDitemLeft.addPoints(cont[:,0]+0.5, cont[:,1]+0.5)
         
         if isOverlaySegm_ax2:
             self.highLightIDLayerRightImage.setLookupTable(lut)
@@ -18413,7 +18421,7 @@ class guiWin(QMainWindow):
             if contours is None:
                 contours = self.getObjContours(obj, all_external=True)
             for cont in contours:
-                self.searchedIDitemRight.addPoints(cont[:,0], cont[:,1])       
+                self.searchedIDitemRight.addPoints(cont[:,0]+0.5, cont[:,1]+0.5)       
 
         # Gray out all IDs excpet searched one
         lut = self.lut.copy() # [:max(posData.IDs)+1]
@@ -18594,17 +18602,18 @@ class guiWin(QMainWindow):
         return obj
     
     def setLostObjectContour(self, obj):
-        objContours = self.getObjContours(obj)  
-        xx = objContours[:,0]
-        yy = objContours[:,1]
-        self.ax1_lostObjScatterItem.addPoints(xx, yy)
-        self.ax2_lostObjScatterItem.addPoints(xx, yy)
+        allContours = self.getObjContours(obj, all_external=True)  
+        for objContours in allContours:
+            xx = objContours[:,0] + 0.5
+            yy = objContours[:,1] + 0.5
+            self.ax1_lostObjScatterItem.addPoints(xx, yy)
+            self.ax2_lostObjScatterItem.addPoints(xx, yy)
     
     def setCcaIssueContour(self, obj):
         objContours = self.getObjContours(obj, all_external=True)  
         for cont in objContours:
-            xx = cont[:,0]
-            yy = cont[:,1]
+            xx = cont[:,0] + 0.5
+            yy = cont[:,1] + 0.5
             self.ax1_lostObjScatterItem.addPoints(xx, yy)
         self.textAnnot[0].addObjAnnotation(
             obj, 'lost_object', f'{obj.label}?', False
@@ -18616,9 +18625,10 @@ class guiWin(QMainWindow):
             if obj.label not in IDsCellsG1:
                 continue
             objContours = self.getObjContours(obj)
-            xx = objContours[:,0]
-            yy = objContours[:,1]
-            self.ccaFailedScatterItem.addPoints(xx, yy)
+            if objContours is not None:
+                xx = objContours[:,0] + 0.5
+                yy = objContours[:,1] + 0.5
+                self.ccaFailedScatterItem.addPoints(xx, yy)
             self.textAnnot[0].addObjAnnotation(
                 obj, 'green', f'{obj.label}?', False
             )
@@ -18673,13 +18683,15 @@ class guiWin(QMainWindow):
             posData=posData, labelsToSkip=labelsToSkip, 
             isVisibleCheckFunc=self.isObjVisible,
             highlightedID=self.highlightedID, 
-            delROIsIDs=delROIsIDs
+            delROIsIDs=delROIsIDs,
+            annotateLost=self.annotLostObjsToggle.isChecked()
         )
         self.textAnnot[1].setAnnotations(
             posData=posData, labelsToSkip=labelsToSkip, 
             isVisibleCheckFunc=self.isObjVisible,
             highlightedID=self.highlightedID, 
-            delROIsIDs=delROIsIDs
+            delROIsIDs=delROIsIDs,
+            annotateLost=self.annotLostObjsToggle.isChecked()
         )
         self.textAnnot[0].update()
         self.textAnnot[1].update()
@@ -18752,7 +18764,7 @@ class guiWin(QMainWindow):
                         obj, all_external=True
                     )
                     for cont in contours:
-                        contoursItem.addPoints(cont[:,0], cont[:,1])
+                        contoursItem.addPoints(cont[:,0]+0.5, cont[:,1]+0.5)
             elif drawMode == 'Overlay labels':
                 imageItem.setImage(ol_lab, autoLevels=False)
     
@@ -18828,6 +18840,9 @@ class guiWin(QMainWindow):
         if self.modeComboBox.currentText() == 'Viewer':
             return
         
+        if not self.annotLostObjsToggle.isChecked():
+            return
+        
         posData = self.data[self.pos_i]
         delROIsIDs = self.getDelRoisIDs()
 
@@ -18864,7 +18879,15 @@ class guiWin(QMainWindow):
             if obj.label in delROIsIDs:
                 continue
             
+            if not self.isObjVisible(obj.bbox):
+                continue
+            
             self.setLostObjectContour(obj)
+    
+    def annotLostObjsToggled(self, checked):
+        if not self.dataIsLoaded:
+            return
+        self.updateAllImages()
 
     # @exec_time
     def setTitleText(self):
@@ -21614,7 +21637,6 @@ class guiWin(QMainWindow):
         _font = newFont
         self.zProjComboBox.setFont(newFont)
         self.t_label.setFont(newFont)
-        self.z_label.setFont(newFont)
         self.zProjOverlay_CB.setFont(newFont)
         self.annotateRightHowCombobox.setFont(newFont)
         self.drawIDsContComboBox.setFont(newFont)
