@@ -517,6 +517,11 @@ class delPushButton(PushButton):
         super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':bin.svg'))
 
+class eraserPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setIcon(QIcon(':eraser.svg'))
+
 class browseFileButton(PushButton):
     sigPathSelected = Signal(str)
 
@@ -1954,6 +1959,20 @@ class KeptObjectIDsList(list):
             self.setText()
         if not self:
             self.confirmSelectionAction.setEnabled(False)
+
+class ScatterPlotItem(pg.ScatterPlotItem):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+    
+    def removePoint(self, index):
+        newData = np.delete(self.data, index)
+        self.data = newData
+        self.prepareGeometryChange()
+        self.informViewBoundsChanged()
+        self.bounds = [None, None]
+        self.invalidate()
+        self.updateSpots()
+        self.sigPlotChanged.emit(self)
 
 class myLabelItem(pg.LabelItem):
     def __init__(self, *args, **kwargs):
