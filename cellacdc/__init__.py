@@ -25,7 +25,7 @@ else:
     temp_path = os.path.join(user_path, '.acdc-settings')
     
 if not os.path.exists(temp_path):
-    os.makedirs(temp_path)
+    os.makedirs(temp_path, exist_ok=True)
 if os.path.exists(old_temp_path):
     try:
         from distutils.dir_util import copy_tree

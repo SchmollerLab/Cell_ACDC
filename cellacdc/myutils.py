@@ -863,7 +863,7 @@ def download_examples(which='time_lapse_2D', progress=None):
     zip_dst = os.path.join(examples_path, 'example_temp.zip')
 
     if not os.path.exists(examples_path):
-        os.makedirs(examples_path)
+        os.makedirs(examples_path, exist_ok=True)
 
     print(f'Downloading example to {example_path}')
 
@@ -998,7 +998,7 @@ def download_java():
     temp_zip = os.path.join(os_acdc_java_path, 'acdc_java_temp.zip')
 
     if not os.path.exists(os_acdc_java_path):
-        os.makedirs(os_acdc_java_path)
+        os.makedirs(os_acdc_java_path, exist_ok=True)
 
     try:
         download_url(url, temp_zip, file_size=file_size, desc='Java')
@@ -1045,11 +1045,11 @@ def get_model_path(model_name, create_temp_dir=True):
         else:
             model_path = _write_model_location_to_txt(model_name)
     else:
-        os.makedirs(model_info_path)
+        os.makedirs(model_info_path, exist_ok=True)
         model_path = _write_model_location_to_txt(model_name)
 
     if not os.path.exists(model_path):
-        os.makedirs(model_path)
+        os.makedirs(model_path, exist_ok=True)
 
     if not create_temp_dir:
         return '', model_path
@@ -1157,7 +1157,7 @@ def download_manual():
     user_path = pathlib.Path.home()
     manual_folder_path = os.path.join(user_path, 'acdc-manual')
     if not os.path.exists(manual_folder_path):
-        os.makedirs(manual_folder_path)
+        os.makedirs(manual_folder_path, exist_ok=True)
 
     manual_file_path = os.path.join(user_path, 'Cell-ACDC_User_Manual.pdf')
     if not os.path.exists(manual_file_path):
@@ -1227,7 +1227,7 @@ def save_response_content(
     # Move to destination and delete temp folder
     destination_dir = os.path.dirname(destination)
     if not os.path.exists(destination_dir):
-        os.makedirs(destination_dir)
+        os.makedirs(destination_dir, exist_ok=True)
     shutil.move(temp_dst, destination)
     shutil.rmtree(temp_folder)
 

@@ -1603,7 +1603,7 @@ class ImagesToPositionsWorker(QObject):
                 posPath = os.path.join(self.targetFolderPath, posName)
                 imagesPath = os.path.join(posPath, 'Images')
                 if not os.path.exists(imagesPath):
-                    os.makedirs(imagesPath)
+                    os.makedirs(imagesPath, exist_ok=True)
                 newFilename = f's{s0p}_{filename}_{self.appendText}.tif'
                 relPath = os.path.join(posName, 'Images', newFilename)
                 tifFilePath = os.path.join(imagesPath, newFilename)
@@ -2244,7 +2244,7 @@ class RestructMultiTimepointsWorker(BaseWorkerUtil):
 
                 imagesPath = os.path.join(dstFolderPath, f'Position_{p+1}', 'Images')
                 if not os.path.exists(imagesPath):
-                    os.makedirs(imagesPath)
+                    os.makedirs(imagesPath, exist_ok=True)
 
                 # Iterate frames
                 videoData = None
