@@ -10481,12 +10481,12 @@ class QDialogModelParams(QDialog):
                 widget = spinBox
                 groupBoxLayout.addWidget(spinBox, row, 1, 1, 2)
             elif ArgSpec.type == float:
-                doubleSpinBox = widgets.DoubleSpinBox()
+                doubleSpinBox = widgets.FloatLineEdit()
                 doubleSpinBox.setValue(ArgSpec.default)
                 widget = doubleSpinBox
                 defaultVal = ArgSpec.default
-                valueSetter = QDoubleSpinBox.setValue
-                valueGetter = QDoubleSpinBox.value
+                valueSetter = widgets.FloatLineEdit.setValue
+                valueGetter = widgets.FloatLineEdit.value
                 groupBoxLayout.addWidget(doubleSpinBox, row, 1, 1, 2)
             elif ArgSpec.type == os.PathLike:
                 filePathControl = widgets.filePathControl()

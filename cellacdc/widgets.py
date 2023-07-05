@@ -54,6 +54,9 @@ from . import qrc_resources, printl, temp_path
 from . import colors, config
 from . import html_path
 from . import _palettes
+from .regex import float_regex
+
+LINEEDIT_INVALID_ENTRY_STYLESHEET = _palettes.lineedit_invalid_entry_stylesheet()
 
 font = QFont()
 font.setPixelSize(13)
@@ -3257,6 +3260,52 @@ class ReadOnlyLineEdit(QLineEdit):
         if a1.type() == QEvent.Type.FocusIn:
             return True
         return super().eventFilter(a0, a1)
+
+class FloatLineEdit(QLineEdit):
+    valueChanged = Signal(float)
+
+    def __init__(
+            self, *args, notAllowed=None, allowNegative=True, initial=None
+        ):
+        QLineEdit.__init__(self, *args)
+        self.notAllowed = notAllowed
+
+        self.isNumericRegExp = rf'^{float_regex(allow_negative=allowNegative)}$'
+
+        regExp = QRegularExpression(self.isNumericRegExp)
+        self.setValidator(QRegularExpressionValidator(regExp))
+        self.setAlignment(Qt.AlignCenter)
+
+        font = QFont()
+        font.setPixelSize(11)
+        self.setFont(font)
+
+        self.textChanged.connect(self.emitValueChanged)
+        if initial is None:
+            self.setText('0.0')
+
+    def setValue(self, value: float):
+        self.setText(str(value))
+
+    def value(self):
+        m = re.match(self.isNumericRegExp, self.text())
+        if m is not None:
+            text = m.group(0)
+            try:
+                val = float(text)
+            except ValueError:
+                val = 0.0
+            return val
+        else:
+            return 0.0
+
+    def emitValueChanged(self, text):
+        val = self.value()
+        if self.notAllowed is not None and val in self.notAllowed:
+            self.setStyleSheet(LINEEDIT_INVALID_ENTRY_STYLESHEET)
+        else:
+            self.setStyleSheet('')
+            self.valueChanged.emit(self.value())
 
 class CheckboxesGroupBox(QGroupBox):
     def __init__(
