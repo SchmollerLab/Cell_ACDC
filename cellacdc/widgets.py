@@ -522,6 +522,11 @@ class eraserPushButton(PushButton):
         super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':eraser.svg'))
 
+class CrossCursorPointButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setIcon(QIcon(':cross_cursor.svg'))
+
 class browseFileButton(PushButton):
     sigPathSelected = Signal(str)
 
