@@ -1,4 +1,5 @@
 import os
+from bs4 import Stylesheet
 import pandas as pd
 
 from qtpy import QtGui, QtWidgets, QtCore
@@ -124,6 +125,38 @@ def setToolTipStyleSheet(app, scheme='light'):
             "color: #141414; background-color: #ffffff; border: 1px solid black;"
         "}"
         )
+
+def TreeWidgetStyleSheet():
+    scheme = get_color_scheme()
+    if scheme == 'light':
+        styleSheet = ("""
+            QTreeWidget::item:hover {background-color:#E6E6E6;}
+            QTreeWidget::item:hover {color:black;}
+            QTreeWidget::item:selected {background-color:#CFEB9B;}
+            QTreeWidget::item:selected {color:black;}
+            QTreeView {
+                selection-background-color: #CFEB9B;
+                show-decoration-selected: 1;
+            }
+        """)
+    else:
+        styleSheet = ("""
+            QTreeWidget::item:hover {background-color:#4d4d4d;}
+            QTreeWidget::item:hover {color:white;}
+            QTreeWidget::item:selected {background-color:#607a2f;}
+            QTreeWidget::item:selected {color:white;}
+            QTreeView {
+                selection-background-color: #607a2f;
+                show-decoration-selected: 1;
+            }
+        """)
+    return styleSheet
+
+def ListWidgetStyleSheet():
+    styleSheet = TreeWidgetStyleSheet()
+    styleSheet = styleSheet.replace('QTreeWidget', 'QListWidget')
+    styleSheet = styleSheet.replace('QTreeView', 'QListView')
+    return styleSheet
 
 def QProgressBarColor():
     return QtGui.QColor(111, 138, 61)      

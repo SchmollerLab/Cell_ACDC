@@ -36,7 +36,7 @@ from qtpy.QtGui import (
 )
 from qtpy.QtWidgets import (
     QTextEdit, QLabel, QProgressBar, QHBoxLayout, QToolButton, QCheckBox,
-    QApplication, QWidget, QVBoxLayout, QMainWindow, QStyleFactory,
+    QApplication, QWidget, QVBoxLayout, QMainWindow, QTreeWidgetItemIterator,
     QLineEdit, QSlider, QSpinBox, QGridLayout, QRadioButton,
     QScrollArea, QSizePolicy, QComboBox, QPushButton, QScrollBar,
     QGroupBox, QAbstractSlider, QDoubleSpinBox, QWidgetAction,
@@ -57,6 +57,8 @@ from . import _palettes
 from .regex import float_regex
 
 LINEEDIT_INVALID_ENTRY_STYLESHEET = _palettes.lineedit_invalid_entry_stylesheet()
+TREEWIDGET_STYLESHEET = _palettes.TreeWidgetStyleSheet()
+LISTWIDGET_STYLESHEET = _palettes.ListWidgetStyleSheet()
 
 font = QFont()
 font.setPixelSize(13)
@@ -1174,16 +1176,7 @@ class QDialogListbox(QDialog):
             listBox.itemClicked.connect(self.onItemClicked)
             listBox.itemSelectionChanged.connect(self.onItemSelectionChanged)
 
-        self.setStyleSheet("""
-            QListWidget::item:hover {background-color:#E6E6E6;}
-            QListWidget::item:hover {color:black;}
-            QListWidget::item:selected {background-color:#CFEB9B;}
-            QListWidget::item:selected {color:black;}
-            QListView {
-                selection-background-color: #CFEB9B;
-                show-decoration-selected: 1;
-            }
-        """)
+        self.setStyleSheet(LISTWIDGET_STYLESHEET)
         self.areItemsSelected = [
             listBox.item(i).isSelected() for i in range(listBox.count())
         ]
@@ -1643,16 +1636,7 @@ class listWidget(QListWidget):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.itemHeight = None
-        self.setStyleSheet("""
-            QListWidget::item:hover {background-color:#E6E6E6;}
-            QListWidget::item:hover {color:black;}
-            QListWidget::item:selected {background-color:#CFEB9B;}
-            QListWidget::item:selected {color:black;}
-            QListView {
-                selection-background-color: #CFEB9B;
-                show-decoration-selected: 1;
-            }
-        """)
+        self.setStyleSheet(LISTWIDGET_STYLESHEET)
         self.setFont(font)
     
     def addItems(self, labels) -> None:
@@ -1755,27 +1739,63 @@ class OrderableList(listWidget):
 class TreeWidget(QTreeWidget):
     def __init__(self, *args, multiSelection=False):
         super().__init__(*args)    
-        self.setStyleSheet("""
-            QTreeWidget::item:hover {background-color:#E6E6E6;}
-            QTreeWidget::item:hover {color:black;}
-            QTreeWidget::item:selected {background-color:#CFEB9B;}
-            QTreeWidget::item:selected {color:black;}
-            QTreeView {
-                selection-background-color: #CFEB9B;
-                show-decoration-selected: 1;
-            }
-        """)
+        self.setStyleSheet(TREEWIDGET_STYLESHEET)
         self.setFont(font)
         if multiSelection:
             self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
             self.itemClicked.connect(self.selectAllChildren)
+        
+        self.isCtrlDown = False
+        self.isShiftDown = False
     
-    def selectAllChildren(self, item):
-        if item.childCount() == 0:
-            return
+    def keyPressEvent(self, ev):
+        if ev.key() == Qt.Key_Escape:
+            self.clearSelection()
+        elif ev.key() == Qt.Key_Control:
+            self.isCtrlDown = True
+        elif ev.key() == Qt.Key_Shift:
+            self.isShiftDown = True
 
-        for i in range(item.childCount()):
-            item.child(i).setSelected(True)
+    def keyReleaseEvent(self, ev):
+        if ev.key() == Qt.Key_Control:
+            self.isCtrlDown = False
+        elif ev.key() == Qt.Key_Shift:
+            self.isShiftDown = False
+    
+    def onFocusChanged(self):
+        self.isCtrlDown = False
+        self.isShiftDown = False
+    
+    def selectAllChildren(self, item_or_label):
+        label = None
+        if isinstance(item_or_label, QLabel):
+            label = item_or_label
+        else:
+            item = item_or_label
+            if item.childCount() == 0:
+                return
+
+        if label is not None:
+            if not self.isCtrlDown and not self.isShiftDown:
+                self.clearSelection()
+            label.item.setSelected(True)
+            if self.isShiftDown:
+                selectionStarted = False
+                it = QTreeWidgetItemIterator(self)
+                while it:
+                    item = it.value()
+                    if item is None:
+                        break
+                    if item.isSelected():
+                        selectionStarted = not selectionStarted
+                    if selectionStarted:
+                        item.setSelected(True)
+                    it += 1
+
+        for item in self.selectedItems():
+            if item.parent() is None:
+                for i in range(item.childCount()):
+                    item.child(i).setSelected(True)
 
 class CancelOkButtonsLayout(QHBoxLayout):
     def __init__(self, *args):
