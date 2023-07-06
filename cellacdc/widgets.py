@@ -59,6 +59,7 @@ from .regex import float_regex
 LINEEDIT_INVALID_ENTRY_STYLESHEET = _palettes.lineedit_invalid_entry_stylesheet()
 TREEWIDGET_STYLESHEET = _palettes.TreeWidgetStyleSheet()
 LISTWIDGET_STYLESHEET = _palettes.ListWidgetStyleSheet()
+BASE_COLOR = _palettes.base_color()
 
 font = QFont()
 font.setPixelSize(13)
@@ -1449,7 +1450,7 @@ class VerticalResizeHline(QFrame):
             self.setLineWidth(0)
             self.setMidLineWidth(self._height)
             pal = self.palette()
-            pal.setColor(QPalette.ColorRole.WindowText, QColor('#4d4d4d'))
+            pal.setColor(QPalette.ColorRole.WindowText, QColor(BASE_COLOR))
             self.setPalette(pal)
             # self.setStyleSheet('background-color: #4d4d4d') 
         elif event.type() == QEvent.Type.Leave:

@@ -5,6 +5,13 @@ from qtpy import QtGui, QtWidgets, QtCore
 
 from cellacdc import settings_csv_path
 
+def base_color():
+    scheme = get_color_scheme()
+    if scheme == 'light':
+        return '#4d4d4d'
+    else:
+        return '#d9d9d9'
+
 def _light_colors():
     colors = {
         'Window': (239, 239, 239, 255),
