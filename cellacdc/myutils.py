@@ -1078,11 +1078,11 @@ def _create_temp_dir():
 
 def _model_url(model_name, return_alternative=False):
     if model_name == 'YeaZ':
-        url = 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/CnfxkQtdRQm5MrT/download/YeaZ_weights.zip'
+        url = 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/8PMePcwJXmaMMS6/download/YeaZ_weights.zip'
         alternative_url = 'https://zenodo.org/record/6125825/files/YeaZ_weights.zip?download=1'
         file_size = 693685011
     elif model_name == 'YeastMate':
-        url = 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/czTkPmZReGjDRjG/download/yeastmate_weights.zip'
+        url = 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/pMT8pAmMkNtN8BP/download/yeastmate_weights.zip'
         alternative_url = 'https://zenodo.org/record/6140067/files/yeastmate_weights.zip?download=1'
         file_size = 164911104
     elif model_name == 'segment_anything':
@@ -1567,14 +1567,14 @@ def _java_instructions_macOS():
     installation.<br><br>
     Alternatively,<b> you can install Java as a regular app</b><br>
     by downloading the app from
-    <a href="https://hmgubox2.helmholtz-muenchen.de/index.php/s/7xF7YnArwbt9ZqB">
+    <a href="https://hmgubox2.helmholtz-muenchen.de/index.php/s/AWWinWCTXwWTmEi">
         here
     </a>.
     """)
     return s1, s2, s3, s4
 
 def jdk_windows_url():
-    return 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/zocneD2j2wMwbNc'
+    return 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/R62Ktcda6jWea2s'
 
 def cpp_windows_url():
     return 'https://visualstudio.microsoft.com/visual-cpp-build-tools/'
