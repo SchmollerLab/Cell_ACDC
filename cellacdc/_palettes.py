@@ -1,5 +1,4 @@
 import os
-from bs4 import Stylesheet
 import pandas as pd
 
 from qtpy import QtGui, QtWidgets, QtCore
