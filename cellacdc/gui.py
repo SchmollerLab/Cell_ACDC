@@ -19357,7 +19357,7 @@ class guiWin(QMainWindow):
             if not proceed:
                 self.logger.info('Loading image file aborted.')
                 return
-            os.makedirs(exp_path)
+            os.makedirs(exp_path, exist_ok=True)
         else:
             exp_path = dirpath
 

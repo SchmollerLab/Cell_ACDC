@@ -72,6 +72,10 @@ PRE_PROCESSING_STEPS = [
     'Smooth (gaussian filter)', 
     'Sharpen (difference of gaussians filter)'
 ]
+
+TREEWIDGET_STYLESHEET = widgets.TREEWIDGET_STYLESHEET
+LISTWIDGET_STYLESHEET = widgets.LISTWIDGET_STYLESHEET
+
 font = QFont()
 font.setPixelSize(12)
 italicFont = QFont()
@@ -4669,16 +4673,7 @@ class QDialogSelectModel(QDialog):
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.cancel_cb)
 
-        self.setStyleSheet("""
-            QListWidget::item:hover {background-color:#E6E6E6;}
-            QListWidget::item:hover {color:black;}
-            QListWidget::item:selected {background-color:#CFEB9B;}
-            QListWidget::item:selected {color:black;}
-            QListView {
-                selection-background-color: #CFEB9B;
-                show-decoration-selected: 1;
-            }
-        """)
+        self.setStyleSheet(LISTWIDGET_STYLESHEET)
     
     def keyPressEvent(self, event: QKeyEvent) -> None:
         if event.key() == Qt.Key_Escape:
@@ -7550,16 +7545,7 @@ class selectPositionsMultiExp(widgets.QBaseDialog):
 
         self.setLayout(mainLayout)
 
-        self.setStyleSheet("""
-            QTreeWidget::item:hover {background-color:#E6E6E6;}
-            QTreeWidget::item:hover {color:black;}
-            QTreeWidget::item:selected {background-color:#CFEB9B;}
-            QTreeWidget::item:selected {color:black;}
-            QTreeView {
-                selection-background-color: #CFEB9B;
-                show-decoration-selected: 1;
-            }
-        """)
+        self.setStyleSheet(TREEWIDGET_STYLESHEET)
 
     def selectAllChildren(self, item, col):
         if item.parent() is not None:
@@ -10481,12 +10467,12 @@ class QDialogModelParams(QDialog):
                 widget = spinBox
                 groupBoxLayout.addWidget(spinBox, row, 1, 1, 2)
             elif ArgSpec.type == float:
-                doubleSpinBox = widgets.DoubleSpinBox()
+                doubleSpinBox = widgets.FloatLineEdit()
                 doubleSpinBox.setValue(ArgSpec.default)
                 widget = doubleSpinBox
                 defaultVal = ArgSpec.default
-                valueSetter = QDoubleSpinBox.setValue
-                valueGetter = QDoubleSpinBox.value
+                valueSetter = widgets.FloatLineEdit.setValue
+                valueGetter = widgets.FloatLineEdit.value
                 groupBoxLayout.addWidget(doubleSpinBox, row, 1, 1, 2)
             elif ArgSpec.type == os.PathLike:
                 filePathControl = widgets.filePathControl()
@@ -11109,16 +11095,7 @@ class combineMetricsEquationDialog(widgets.QBaseDialog):
         self.setLayout(mainLayout)
         self.setFont(font)
 
-        self.setStyleSheet("""
-            QTreeWidget::item:hover {background-color:#E6E6E6;}
-            QTreeWidget::item:hover {color:black;}
-            QTreeWidget::item:selected {background-color:#CFEB9B;}
-            QTreeWidget::item:selected {color:black;}
-            QTreeView {
-                selection-background-color: #CFEB9B;
-                show-decoration-selected: 1;
-            }
-        """)
+        self.setStyleSheet(TREEWIDGET_STYLESHEET)
 
     def addChannelLessItems(self, isZstack, isSegm3D=False):
         allChannelsTreeItem = QTreeWidgetItem(self.metricsTreeWidget)
@@ -11684,16 +11661,7 @@ class CombineMetricsMultiDfsDialog(widgets.QBaseDialog):
         self.setLayout(mainLayout)
         self.setFont(font)
 
-        self.setStyleSheet("""
-            QTreeWidget::item:hover {background-color:#E6E6E6;}
-            QTreeWidget::item:hover {color:black;}
-            QTreeWidget::item:selected {background-color:#CFEB9B;}
-            QTreeWidget::item:selected {color:black;}
-            QTreeView {
-                selection-background-color: #CFEB9B;
-                show-decoration-selected: 1;
-            }
-        """)
+        self.setStyleSheet(TREEWIDGET_STYLESHEET)
     
     def setLogger(self, logger, logs_path, log_path):
         self.logger = logger

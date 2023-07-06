@@ -863,7 +863,7 @@ def download_examples(which='time_lapse_2D', progress=None):
     zip_dst = os.path.join(examples_path, 'example_temp.zip')
 
     if not os.path.exists(examples_path):
-        os.makedirs(examples_path)
+        os.makedirs(examples_path, exist_ok=True)
 
     print(f'Downloading example to {example_path}')
 
@@ -998,7 +998,7 @@ def download_java():
     temp_zip = os.path.join(os_acdc_java_path, 'acdc_java_temp.zip')
 
     if not os.path.exists(os_acdc_java_path):
-        os.makedirs(os_acdc_java_path)
+        os.makedirs(os_acdc_java_path, exist_ok=True)
 
     try:
         download_url(url, temp_zip, file_size=file_size, desc='Java')
@@ -1045,11 +1045,11 @@ def get_model_path(model_name, create_temp_dir=True):
         else:
             model_path = _write_model_location_to_txt(model_name)
     else:
-        os.makedirs(model_info_path)
+        os.makedirs(model_info_path, exist_ok=True)
         model_path = _write_model_location_to_txt(model_name)
 
     if not os.path.exists(model_path):
-        os.makedirs(model_path)
+        os.makedirs(model_path, exist_ok=True)
 
     if not create_temp_dir:
         return '', model_path
@@ -1078,11 +1078,11 @@ def _create_temp_dir():
 
 def _model_url(model_name, return_alternative=False):
     if model_name == 'YeaZ':
-        url = 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/CnfxkQtdRQm5MrT/download/YeaZ_weights.zip'
+        url = 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/8PMePcwJXmaMMS6/download/YeaZ_weights.zip'
         alternative_url = 'https://zenodo.org/record/6125825/files/YeaZ_weights.zip?download=1'
         file_size = 693685011
     elif model_name == 'YeastMate':
-        url = 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/czTkPmZReGjDRjG/download/yeastmate_weights.zip'
+        url = 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/pMT8pAmMkNtN8BP/download/yeastmate_weights.zip'
         alternative_url = 'https://zenodo.org/record/6140067/files/yeastmate_weights.zip?download=1'
         file_size = 164911104
     elif model_name == 'segment_anything':
@@ -1157,7 +1157,7 @@ def download_manual():
     user_path = pathlib.Path.home()
     manual_folder_path = os.path.join(user_path, 'acdc-manual')
     if not os.path.exists(manual_folder_path):
-        os.makedirs(manual_folder_path)
+        os.makedirs(manual_folder_path, exist_ok=True)
 
     manual_file_path = os.path.join(user_path, 'Cell-ACDC_User_Manual.pdf')
     if not os.path.exists(manual_file_path):
@@ -1227,7 +1227,7 @@ def save_response_content(
     # Move to destination and delete temp folder
     destination_dir = os.path.dirname(destination)
     if not os.path.exists(destination_dir):
-        os.makedirs(destination_dir)
+        os.makedirs(destination_dir, exist_ok=True)
     shutil.move(temp_dst, destination)
     shutil.rmtree(temp_folder)
 
@@ -1567,14 +1567,14 @@ def _java_instructions_macOS():
     installation.<br><br>
     Alternatively,<b> you can install Java as a regular app</b><br>
     by downloading the app from
-    <a href="https://hmgubox2.helmholtz-muenchen.de/index.php/s/7xF7YnArwbt9ZqB">
+    <a href="https://hmgubox2.helmholtz-muenchen.de/index.php/s/AWWinWCTXwWTmEi">
         here
     </a>.
     """)
     return s1, s2, s3, s4
 
 def jdk_windows_url():
-    return 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/zocneD2j2wMwbNc'
+    return 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/R62Ktcda6jWea2s'
 
 def cpp_windows_url():
     return 'https://visualstudio.microsoft.com/visual-cpp-build-tools/'

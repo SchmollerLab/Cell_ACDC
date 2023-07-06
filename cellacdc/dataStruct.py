@@ -474,7 +474,7 @@ class bioFormatsWorker(QObject):
             shutil.rmtree(images_path)
         
         if not os.path.exists(images_path):
-            os.makedirs(images_path)
+            os.makedirs(images_path, exist_ok=True)
 
         self.saveData(images_path, rawFilePath, filename, p, series, p_idx=p_idx)
 

@@ -21,7 +21,7 @@ warnings.filterwarnings("ignore", message="invalid value encountered in double_s
 user_path = pathlib.Path.home()
 acdc_metrics_path = os.path.join(user_path, 'acdc-metrics')
 if not os.path.exists(acdc_metrics_path):
-    os.makedirs(acdc_metrics_path)
+    os.makedirs(acdc_metrics_path, exist_ok=True)
 sys.path.append(acdc_metrics_path)
 
 combine_metrics_ini_path = os.path.join(acdc_metrics_path, 'combine_metrics.ini')

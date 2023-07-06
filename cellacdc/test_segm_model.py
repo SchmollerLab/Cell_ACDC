@@ -1,6 +1,8 @@
 import os
 import sys
 
+import numpy as np
+
 import matplotlib.pyplot as plt
 
 from importlib import import_module
@@ -24,6 +26,7 @@ test_data = data.Cdc42TimeLapseData()
 # image_data = test_data.image_data()
 image_data = test_data.cdc42_data()
 segm_data = test_data.segm_data()
+images_path = test_data.images_path
 
 img = image_data[FRAME_I]
 
@@ -75,8 +78,17 @@ win = apps.QDialogModelParams(
 )
 
 win.exec_()
+if win.cancel:
+    exit('Execution cancelled.')
 
 # Initialize model
+segm_data = None
+init_kwargs = win.init_kwargs
+segm_endname = init_kwargs.pop('segm_endname')
+if segm_endname != 'None':
+    segm_filepath, _ = load.get_path_from_endname(segm_endname, images_path)
+    segm_data = np.load(segm_filepath)['arr_0']
+
 try:
     model = acdcSegment.Model(**win.init_kwargs)
 except Exception as e:

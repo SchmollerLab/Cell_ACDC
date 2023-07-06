@@ -2249,7 +2249,7 @@ def _restructure_multi_files_multi_pos(
                 images_path = os.path.join(pos_path, 'Images')
                 final_structure[images_path] = []
                 if not os.path.exists(images_path):
-                    os.makedirs(images_path)
+                    os.makedirs(images_path, exist_ok=True)
                 for file in files:
                     if not file.startswith(pos_split):
                         continue 
