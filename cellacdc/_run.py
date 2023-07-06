@@ -138,10 +138,13 @@ def _setup_gui():
         warn_restart = True
     
     if warn_restart:
-        exit(
+        print('*'*60)
+        input(
             '[WARNING]: Cell-ACDC had to install the required GUI libraries. '
-            'Please, re-start the software. Thank you for your patience!'
+            'Please, re-start the software. Thank you for your patience! '
+            '(Press any key to exit). '
         )
+        exit()
 
 def _setup_app(splashscreen=False, icon_path=None, logo_path=None):
     from qtpy import QtCore

@@ -25,9 +25,13 @@ if cellacdc_installation_path != site_packages:
                 'Thank you for you patience!'
             )
             exit()
-        exit('[WARNING]: Cell-ACDC had to clean-up some files from a previous '
-             'installation. Please, re-start the software. '
-             'Thank you for your patience!')
+        print('*'*60)
+        input(
+            '[WARNING]: Cell-ACDC had to install the required GUI libraries. '
+            'Please, re-start the software. Thank you for your patience! '
+            '(Press any key to exit). '
+        )
+        exit()
 
 from cellacdc import _run
 _run._setup_gui()
