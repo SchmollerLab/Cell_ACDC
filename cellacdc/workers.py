@@ -429,7 +429,7 @@ class AutoSaveWorker(QObject):
             recovery_acdc_df.reset_index().set_index(['frame_i', 'Cell_ID'])
         )
         df_left = recovery_acdc_df
-        existing_cols = df_left.columns.intersection(df_right.columns)
+        existing_cols = df_left.columns.intersection(saved_acdc_df.columns)
         df_right = saved_acdc_df.drop(columns=existing_cols)
         try:
             # Try to insert into the recovery_acdc_df any column that was saved
