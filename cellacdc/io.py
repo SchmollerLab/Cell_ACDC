@@ -37,7 +37,10 @@ def get_filepath_from_channel_name(images_path, channel_name):
             h5_path = filepath
         elif file.endswith(f'{channel_name}_aligned.npz'):
             npz_aligned_path = filepath
-        elif file.endswith(f'{channel_name}.tif') or file.endswith(f'{channel_name}.npz'):
+        elif (
+                file.endswith(f'{channel_name}.tif') 
+                or file.endswith(f'{channel_name}.npz')
+            ):
             img_path = filepath
     
     if segm_npz_path:
