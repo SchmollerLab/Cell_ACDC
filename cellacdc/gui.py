@@ -13303,8 +13303,8 @@ class guiWin(QMainWindow):
         self.user_ch_file_paths = user_ch_file_paths
 
         required_ram = myutils.getMemoryFootprint(user_ch_file_paths)
-        if required_ram >= 1e9:
-            # Disable autosave for data > 1GB
+        if required_ram >= 5e8:
+            # Disable autosave for data > 500MB
             self.autoSaveToggle.setChecked(False)
 
         proceed = self.checkMemoryRequirements(required_ram)
@@ -13312,6 +13312,7 @@ class guiWin(QMainWindow):
             self.loadingDataAborted()
             return
 
+        
         self.logger.info(f'Reading {user_ch_name} channel metadata...')
         # Get information from first loaded position
         posData = load.loadData(user_ch_file_paths[0], user_ch_name)
@@ -21143,6 +21144,12 @@ class guiWin(QMainWindow):
         )
         return msg.cancel
 
+    def waitAutoSaveWorker(self, worker):
+        if worker.isFinished or worker.isPaused or worker.dataQ.empty():
+            self.waitAutoSaveWorkerLoop.exit()
+            self.waitAutoSaveWorkerTimer.stop()
+            self.setSaturBarLabel(log=False)
+        
     @exception_handler
     def saveData(self, checked=False, finishedCallback=None, isQuickSave=False):
         self.store_data(autosave=False)
@@ -21151,11 +21158,16 @@ class guiWin(QMainWindow):
 
         # Wait autosave worker to finish
         for worker, thread in self.autoSaveActiveWorkers:
-            self.logger.info('Waiting autosaving process to finish....')
-            if worker.isFinished:
-                break
-            while not worker.dataQ.empty() and not worker.isPaused:
-                time.sleep(0.05)
+            self.logger.info('Stopping autosaving process...')
+            self.statusBarLabel.setText('Stopping autosaving process...')
+            worker.abort()
+            self.waitAutoSaveWorkerTimer = QTimer()
+            self.waitAutoSaveWorkerTimer.timeout.connect(
+                partial(self.waitAutoSaveWorker, worker)
+            )
+            self.waitAutoSaveWorkerTimer.start(100)
+            self.waitAutoSaveWorkerLoop = QEventLoop()
+            self.waitAutoSaveWorkerLoop.exec_()
 
         self.titleLabel.setText(
             'Saving data... (check progress in the terminal)', color=self.titleColor
