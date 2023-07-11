@@ -1,3 +1,4 @@
+from ast import Index
 import os
 import sys
 import operator
@@ -1995,12 +1996,18 @@ class ScatterPlotItem(pg.ScatterPlotItem):
     
     def removePoint(self, index):
         newData = np.delete(self.data, index)
+        # Update the index of current points
+        for i in range(index, len(newData)):
+            spotItem = newData[i]['item']
+            spotItem._index = i
+            newData[i]['item'] = spotItem
+        
         self.data = newData
         self.prepareGeometryChange()
         self.informViewBoundsChanged()
         self.bounds = [None, None]
         self.invalidate()
-        self.updateSpots()
+        self.updateSpots(newData)
         self.sigPlotChanged.emit(self)
 
 class myLabelItem(pg.LabelItem):
