@@ -14167,7 +14167,7 @@ class guiWin(QMainWindow):
                 self.framesScrollBarReleased
             )
             self.navigateScrollBar.actionTriggered.connect(
-                self.framesScrollBarAction
+                self.framesScrollBarActionTriggered
             )
 
     def zSliceScrollBarActionTriggered(self, action):
@@ -14686,7 +14686,7 @@ class guiWin(QMainWindow):
         self.updateFramePosLabel()
         self.updatePos()
 
-    def framesScrollBarAction(self, action):
+    def framesScrollBarActionTriggered(self, action):
         if action == SliderSingleStepAdd:
             # Clicking on dialogs triggered by next_cb might trigger
             # pressEvent of navigateQScrollBar, avoid that

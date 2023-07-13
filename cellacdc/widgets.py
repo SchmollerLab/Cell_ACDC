@@ -2011,28 +2011,40 @@ class ScatterPlotItem(pg.ScatterPlotItem):
         self.sigPlotChanged.emit(self)
     
     def coordsToNumpy(self, includeData=False, rounded=True, decimals=None):
-        ncols = 3 if includeData else 2
         points = self.points()
         nrows = len(points)
-        data_arr = np.zeros((nrows, ncols))
+        coords_arr = np.zeros((nrows, 2))
+        data_arr = None
         for p, point in enumerate(points):
             pos = point.pos()
             x, y = pos.x(), pos.y()
             y_idx = 0
             if includeData:
                 data = point.data()
-                data_arr[p, 0] = data
-                y_idx = 1
+                if data_arr is None:
+                    try:
+                        ncols = len(data)
+                    except Exception as e:
+                        data = [data]
+                        ncols = 1
+                    data_arr = np.zeros((nrows, ncols))
+                for j, data_j in enumerate(data):
+                    data_arr[p, j] = data
+                y_idx = j+1
             
-            data_arr[p, y_idx] = y
-            data_arr[p, y_idx+1] = x
+            coords_arr[p, y_idx] = y
+            coords_arr[p, y_idx+1] = x
+        if not includeData:
+            out_arr = coords_arr
+        else:
+            out_arr = np.column_stack((data_arr, coords_arr))
         cast_to_int = decimals is None
         decimals = decimals if decimals is not None else 0
         if rounded:
-            data_arr = np.round(data_arr, decimals)
+            out_arr = np.round(out_arr, decimals)
         if cast_to_int:
-            data_arr = data_arr.astype(int)
-        return data_arr
+            out_arr = out_arr.astype(int)
+        return out_arr
 
 class myLabelItem(pg.LabelItem):
     def __init__(self, *args, **kwargs):
