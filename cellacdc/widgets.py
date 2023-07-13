@@ -1993,6 +1993,19 @@ class KeptObjectIDsList(list):
 class ScatterPlotItem(pg.ScatterPlotItem):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self._itemBrush = kwargs['brush']
+        self._itemPen = kwargs['pen']
+    
+    def setData(self, *args, **kwargs):
+        super().setData(*args, **kwargs)
+        self._itemBrush = kwargs['brush']
+        self._itemPen = kwargs['pen']
+    
+    def itemBrush(self):
+        return self._itemBrush
+    
+    def itemPen(self):
+        return self._itemPen
     
     def removePoint(self, index):
         newData = np.delete(self.data, index)
@@ -2018,7 +2031,6 @@ class ScatterPlotItem(pg.ScatterPlotItem):
         for p, point in enumerate(points):
             pos = point.pos()
             x, y = pos.x(), pos.y()
-            y_idx = 0
             if includeData:
                 data = point.data()
                 if data_arr is None:
@@ -2029,15 +2041,16 @@ class ScatterPlotItem(pg.ScatterPlotItem):
                         ncols = 1
                     data_arr = np.zeros((nrows, ncols))
                 for j, data_j in enumerate(data):
-                    data_arr[p, j] = data
-                y_idx = j+1
+                    data_arr[p, j] = data_j
             
-            coords_arr[p, y_idx] = y
-            coords_arr[p, y_idx+1] = x
+            coords_arr[p, 0] = y
+            coords_arr[p, 1] = x
         if not includeData:
             out_arr = coords_arr
-        else:
+        elif data_arr is not None:
             out_arr = np.column_stack((data_arr, coords_arr))
+        else:
+            out_arr = coords_arr
         cast_to_int = decimals is None
         decimals = decimals if decimals is not None else 0
         if rounded:
