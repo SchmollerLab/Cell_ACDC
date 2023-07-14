@@ -6,12 +6,47 @@ import shutil
 import pathlib
 import numpy as np
 
+def user_data_dir():
+    r"""
+    Get OS specific data directory path for Cell-ACDC.
+
+    Typical user data directories are:
+        macOS:    ~/Library/Application Support/
+        Unix:     ~/.local/share/   # or in $XDG_DATA_HOME, if defined
+        Win 10:   C:\Users\<username>\AppData\Local\
+    For Unix, we follow the XDG spec and support $XDG_DATA_HOME if defined.
+    :return: full path to the user-specific data dir
+    """
+    # get os specific path
+    if sys.platform.startswith("win"):
+        os_path = os.getenv("LOCALAPPDATA")
+    elif sys.platform.startswith("darwin"):
+        os_path = "~/Library/Application Support"
+    else:
+        # linux
+        os_path = os.getenv("XDG_DATA_HOME", "~/.local/share")
+
+    return os.path.join(os_path, 'Cell_ACDC')
+
 cellacdc_path = os.path.dirname(os.path.abspath(__file__))
 qrc_resources_path = os.path.join(cellacdc_path, 'qrc_resources.py')
 qrc_resources_light_path = os.path.join(cellacdc_path, 'qrc_resources_light.py')
 qrc_resources_dark_path = os.path.join(cellacdc_path, 'qrc_resources_dark.py')
 old_temp_path = os.path.join(cellacdc_path, 'temp')
-user_path = pathlib.Path.home()
+
+user_data_folderpath = user_data_dir()
+user_profile_path_txt = os.path.join(
+    user_data_folderpath, 'acdc_user_profile_location.txt'
+)
+user_home_path = str(pathlib.Path.home())
+user_profile_path = user_home_path
+if os.path.exists(user_profile_path_txt):
+    try:
+        with open(user_profile_path_txt, 'r') as txt:
+            user_profile_path = fr'{txt.read()}'
+    except Exception as e:
+        pass
+os.makedirs(user_profile_path, exist_ok=True)
 
 site_packages = os.path.dirname(os.path.dirname(np.__file__))
 cellacdc_path = os.path.dirname(os.path.abspath(__file__))
@@ -19,26 +54,26 @@ cellacdc_installation_path = os.path.dirname(cellacdc_path)
 
 if cellacdc_installation_path != site_packages:
     IS_CLONED = True
-    temp_path = os.path.join(cellacdc_installation_path, '.acdc-settings')
+    settings_folderpath = os.path.join(cellacdc_installation_path, '.acdc-settings')
 else:
     IS_CLONED = False
-    temp_path = os.path.join(user_path, '.acdc-settings')
+    settings_folderpath = os.path.join(user_profile_path, '.acdc-settings')
     
-if not os.path.exists(temp_path):
-    os.makedirs(temp_path, exist_ok=True)
+if not os.path.exists(settings_folderpath):
+    os.makedirs(settings_folderpath, exist_ok=True)
 if os.path.exists(old_temp_path):
     try:
         from distutils.dir_util import copy_tree
-        copy_tree(old_temp_path, temp_path)
+        copy_tree(old_temp_path, settings_folderpath)
         shutil.rmtree(old_temp_path)
     except Exception as e:
         print('*'*60)
         print(
             '[WARNING]: could not copy settings from previous location. '
-            f'Please manually copy the folder "{old_temp_path}" to "{temp_path}"')
+            f'Please manually copy the folder "{old_temp_path}" to "{settings_folderpath}"')
         print('^'*60)
 
-settings_csv_path = os.path.join(temp_path, 'settings.csv')
+settings_csv_path = os.path.join(settings_folderpath, 'settings.csv')
 if not os.path.exists(settings_csv_path):
     import pandas as pd
     df_settings = pd.DataFrame(
@@ -113,10 +148,10 @@ html_path = os.path.join(cellacdc_path, '_html')
 data_path = os.path.join(parent_path, 'data')
 resources_folderpath = os.path.join(cellacdc_path, 'resources')
 resources_filepath = os.path.join(cellacdc_path, 'resources_light.qrc')
-logs_path = os.path.join(user_path, '.acdc-logs')
+logs_path = os.path.join(user_profile_path, '.acdc-logs')
 resources_path = os.path.join(cellacdc_path, 'resources_light.qrc')
-models_list_file_path = os.path.join(temp_path, 'custom_models_paths.ini')
-recentPaths_path = os.path.join(temp_path, 'recentPaths.csv')
+models_list_file_path = os.path.join(settings_folderpath, 'custom_models_paths.ini')
+recentPaths_path = os.path.join(settings_folderpath, 'recentPaths.csv')
 user_manual_url = 'https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf'
 github_home_url = 'https://github.com/SchmollerLab/Cell_ACDC'
 

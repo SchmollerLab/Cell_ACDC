@@ -51,7 +51,7 @@ from qtpy.QtWidgets import (
 import pyqtgraph as pg
 
 from . import myutils, measurements, is_mac, is_win, html_utils, is_linux
-from . import qrc_resources, printl, temp_path
+from . import qrc_resources, printl, settings_folderpath
 from . import colors, config
 from . import html_path
 from . import _palettes
@@ -65,7 +65,7 @@ BASE_COLOR = _palettes.base_color()
 font = QFont()
 font.setPixelSize(13)
 
-custom_cmaps_filepath = os.path.join(temp_path, 'custom_colormaps.ini')
+custom_cmaps_filepath = os.path.join(settings_folderpath, 'custom_colormaps.ini')
 
 def removeHSVcmaps():
     hsv_cmaps = []

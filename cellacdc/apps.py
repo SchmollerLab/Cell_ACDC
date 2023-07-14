@@ -57,7 +57,7 @@ from qtpy.QtWidgets import (
 
 from . import exception_handler
 from . import load, prompts, core, measurements, html_utils
-from . import is_mac, is_win, is_linux, temp_path, config
+from . import is_mac, is_win, is_linux, settings_folderpath, config
 from . import qrc_resources, printl
 from . import colors
 from . import issues_url
@@ -66,6 +66,7 @@ from . import qutils
 from . import _palettes
 from . import base_cca_df
 from . import widgets
+from . import user_profile_path
 
 PRE_PROCESSING_STEPS = [
     'Adjust Brightness/Contrast',
@@ -4495,7 +4496,7 @@ class QDialogAutomaticThresholding(widgets.QBaseDialog):
         self.close()
     
     def loadLastSelection(self):
-        self.ini_path = os.path.join(temp_path, 'last_params_segm_models.ini')
+        self.ini_path = os.path.join(settings_folderpath, 'last_params_segm_models.ini')
         if not os.path.exists(self.ini_path):
             return
 
@@ -10150,7 +10151,7 @@ class QDialogTrackerParams(QDialog):
             argWidget.valueSetter(widget, defaultVal)
 
     def readLastSelection(self):
-        self.ini_path = os.path.join(temp_path, 'last_params_trackers.ini')
+        self.ini_path = os.path.join(settings_folderpath, 'last_params_trackers.ini')
         if not os.path.exists(self.ini_path):
             return None
 
@@ -10531,7 +10532,7 @@ class QDialogModelParams(QDialog):
         self.artefactsGroupBox.restoreDefault()
 
     def readLastSelection(self):
-        self.ini_path = os.path.join(temp_path, self.ini_filename)
+        self.ini_path = os.path.join(settings_folderpath, self.ini_filename)
         if not os.path.exists(self.ini_path):
             return None
 
@@ -11232,7 +11233,7 @@ class combineMetricsEquationDialog(widgets.QBaseDialog):
         
         self.cancel = False
 
-        # Save equation to "<user_path>/acdc-metrics/combine_metrics.ini" file
+        # Save equation to "<user_profile_path>/acdc-metrics/combine_metrics.ini" file
         config = measurements.read_saved_user_combine_config()
 
         equationsDict, isMixedChannels = self.getEquationsDict()
@@ -12230,3 +12231,45 @@ class SelectAcdcDfVersionToRestore(widgets.QBaseDialog):
         for i in range(otherListBox.count()):
             item = otherListBox.item(i)
             item.setSelected(False)
+
+class ChangeUserProfileFolderPathDialog(widgets.QBaseDialog):
+    def __init__(self, posData, parent=None):
+        super().__init__(parent=parent)
+        
+        self.cancel = True
+        
+        self.setWindowTitle('Change user profile folder path')
+        
+        mainLayout = QVBoxLayout()
+        
+        acdc_folders = load.get_all_acdc_folders(user_profile_path)
+        acdc_folders_format = [f'  - {folder}' for folder in acdc_folders]
+        acdc_folders_format = '<br>'.join(acdc_folders_format)
+        
+        txt = (f"""
+            Current user profile path:<br><br>
+            <code>{user_profile_path}</code><br><br>
+            The user profile contains the following Cell-ACDC folders:<br><br>
+            {acdc_folders_format}<br><br>
+            After clicking "Ok" you will be <b>asked to select the folder</b> where 
+            you want to <b>migrate</b> the user profile data. 
+        """)
+        
+        txt = html_utils.paragraph(txt)
+        label = QLabel(txt)
+        
+        mainLayout.addWidget(label)
+        
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+        
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(buttonsLayout)
+        mainLayout.addStretch()
+        
+        self.setLayout(mainLayout)
+    
+    def ok_cb(self):
+        self.cancel = False
+        self.close()

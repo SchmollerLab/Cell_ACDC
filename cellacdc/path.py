@@ -1,4 +1,7 @@
 import os
+import sys
+import pathlib
+
 import subprocess
 
 from natsort import natsorted
@@ -10,6 +13,7 @@ def listdir(path):
         f for f in os.listdir(path)
         if not f.startswith('.')
         and not f == 'desktop.ini'
+        and not f == 'recovery'
     ])
 
 def newfilepath(file_path, appended_text: str=None):

@@ -42,7 +42,7 @@ from . import exception_handler
 from . import load, prompts, apps, core, myutils, widgets
 from . import html_utils, myutils, darkBkgrColor, printl
 from . import autopilot
-from . import recentPaths_path, cellacdc_path, temp_path
+from . import recentPaths_path, cellacdc_path, settings_folderpath
 
 if os.name == 'nt':
     try:

@@ -16,10 +16,10 @@ from .. import (
     gui, cca_functions, load, printl
 )
 
-from .. import cellacdc_path, temp_path
+from .. import cellacdc_path, settings_folderpath
 
 favourite_func_metrics_csv_path = os.path.join(
-    temp_path, 'favourite_func_metrics.csv'
+    settings_folderpath, 'favourite_func_metrics.csv'
 )
 
 class computeMeasurmentsUtilWin(QDialog):

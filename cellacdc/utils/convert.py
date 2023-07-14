@@ -32,7 +32,7 @@ sys.path.append(cellacdc_path)
 from .. import exception_handler, printl
 from .. import prompts, load, myutils, apps, load, widgets, html_utils
 from .. import workers
-from .. import cellacdc_path, recentPaths_path, temp_path
+from .. import cellacdc_path, recentPaths_path, settings_folderpath
 
 from .. import qrc_resources
 

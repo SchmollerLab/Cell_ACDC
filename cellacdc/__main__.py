@@ -116,7 +116,7 @@ from cellacdc.utils import stack2Dinto3Dsegm as utilsStack2Dto3D
 from cellacdc.utils import computeMultiChannel as utilsComputeMultiCh
 from cellacdc.utils import applyTrackFromTable as utilsApplyTrackFromTab
 from cellacdc.info import utilsInfo
-from cellacdc import is_win, is_linux, temp_path, issues_url
+from cellacdc import is_win, is_linux, settings_folderpath, issues_url
 from cellacdc import settings_csv_path
 from cellacdc import printl
 from cellacdc import _warnings
@@ -351,7 +351,7 @@ class mainWin(QMainWindow):
             gui.favourite_func_metrics_csv_path, 
             # gui.custom_annot_path, 
             gui.shortcut_filepath, 
-            os.path.join(temp_path, 'recentPaths.csv'), 
+            os.path.join(settings_folderpath, 'recentPaths.csv'), 
             load.last_entries_metadata_path, 
             load.additional_metadata_path, 
             load.last_selected_groupboxes_measurements_path
@@ -478,6 +478,12 @@ class mainWin(QMainWindow):
         utilsHelpAction.triggered.connect(self.showUtilsHelp)
     
         menuBar.addMenu(utilsMenu)
+        
+        self.settingsMenu = QMenu("&Settings", self)
+        self.settingsMenu.addAction(self.changeUserProfileFolderPathAction)
+        self.settingsMenu.addAction(self.resetUserProfileFolderPathAction)
+        self.settingsMenu.triggered.connect(self.launchNapariUtil)
+        menuBar.addMenu(self.settingsMenu)
 
         napariMenu = QMenu("&napari", self)
         napariMenu.addAction(self.arboretumAction)
@@ -515,6 +521,155 @@ class mainWin(QMainWindow):
         self.utilsHelpWin.addTree(treeInfo)
         self.utilsHelpWin.sigItemDoubleClicked.connect(self._showUtilHelp)
         self.utilsHelpWin.exec_()
+    
+    def resetUserProfileFolderPath(self):
+        from . import user_profile_path, user_home_path
+        
+        if os.path.samefile(user_profile_path, user_home_path):
+            msg = widgets.myMessageBox()
+            txt = html_utils.paragraph(
+                'The user profile data is already in the default folder.'
+            )
+            msg.warning(self, 'Reset user profile data', txt)
+            return
+        
+        acdc_folders = load.get_all_acdc_folders(user_profile_path)
+        acdc_folders_format = [
+            f'&nbsp;&nbsp;&nbsp;{folder}' for folder in acdc_folders
+        ]
+        acdc_folders_format = '<br>'.join(acdc_folders_format)
+        
+        txt = (f"""
+            Current user profile path:<br><br>
+            <code>{user_profile_path}</code><br><br>
+            The user profile contains the following Cell-ACDC folders:<br><br>
+            <code>{acdc_folders_format}</code><br><br>
+            After clicking "Ok" you <b>Cell-ACDC will migrate</b> 
+            the user profile data to the following folder:<br><br>
+            <code>{user_home_path}</code>.<br>
+        """)
+        
+        txt = html_utils.paragraph(txt)
+        
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.information(
+            self, 'Reset default user profile folder path', txt, 
+            buttonsTexts=('Cancel', 'Ok')
+        )
+        if msg.cancel:
+            self.logger.info('Resetting user profile folder path cancelled.')
+            return
+        
+        
+        new_user_profile_path = user_home_path
+        
+        self.startMigrateUserProfileWorker(
+            user_profile_path, new_user_profile_path, acdc_folders
+        )
+    
+    def changeUserProfileFolderPath(self):
+        from . import user_profile_path
+        
+        acdc_folders = load.get_all_acdc_folders(user_profile_path)
+        acdc_folders_format = [
+            f'&nbsp;&nbsp;&nbsp;{folder}' for folder in acdc_folders
+        ]
+        acdc_folders_format = '<br>'.join(acdc_folders_format)
+        
+        txt = (f"""
+            Current user profile path:<br><br>
+            <code>{user_profile_path}</code><br><br>
+            The user profile contains the following Cell-ACDC folders:<br><br>
+            <code>{acdc_folders_format}</code><br><br>
+            After clicking "Ok" you will be <b>asked to select the folder</b> where 
+            you want to <b>migrate</b> the user profile data.<br>
+        """)
+        
+        txt = html_utils.paragraph(txt)
+        
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.information(
+            self, 'Change user profile folder path', txt, 
+            buttonsTexts=('Cancel', 'Ok')
+        )
+        if msg.cancel:
+            self.logger.info('Changing user profile folder path cancelled.')
+            return
+
+        from qtpy.compat import getexistingdirectory
+        new_user_profile_path = getexistingdirectory(
+            caption='Select folder for user profile data', 
+            basedir=user_profile_path
+        )
+        if not new_user_profile_path:
+            self.logger.info('Changing user profile folder path cancelled.')
+            return
+        
+        if os.path.samefile(user_profile_path, new_user_profile_path):
+            msg = widgets.myMessageBox()
+            txt = html_utils.paragraph(
+                'The user profile data is already in the selected folder.'
+            )
+            msg.warning(self, 'Change user profile data folder', txt)
+            return
+        
+        self.startMigrateUserProfileWorker(
+            user_profile_path, new_user_profile_path, acdc_folders
+        )
+        
+    def startMigrateUserProfileWorker(self, src_path, dst_path, acdc_folders):
+        self.progressWin = apps.QDialogWorkerProgress(
+            title='Migrate user profile data', parent=self,
+            pbarDesc='Migrating user profile data...'
+        )
+        self.progressWin.sigClosed.connect(self.progressWinClosed)
+        self.progressWin.show(app)
+        
+        from . import workers
+        self.workerName = 'Migrating user profile data'
+        self._thread = QtCore.QThread()
+        self.migrateWorker = workers.MigrateUserProfileWorker(
+            src_path, dst_path, acdc_folders
+        )
+        self.migrateWorker.moveToThread(self._thread)
+        self.migrateWorker.finished.connect(self._thread.quit)
+        self.migrateWorker.finished.connect(self.migrateWorker.deleteLater)
+        self._thread.finished.connect(self._thread.deleteLater)
+        
+        self.migrateWorker.progress.connect(self.workerProgress)
+        self.migrateWorker.critical.connect(self.workerCritical)
+        self.migrateWorker.finished.connect(self.migrateWorkerFinished)
+        
+        self.migrateWorker.signals.initProgressBar.connect(
+            self.workerInitProgressbar
+        )
+        self.migrateWorker.signals.progressBar.connect(
+            self.workerUpdateProgressbar
+        )
+        
+        self._thread.started.connect(self.migrateWorker.run)
+        self._thread.start()
+    
+    def workerInitProgressbar(self, totalIter):
+        self.progressWin.mainPbar.setValue(0)
+        if totalIter == 1:
+            totalIter = 0
+        self.progressWin.mainPbar.setMaximum(totalIter)
+
+    def workerUpdateProgressbar(self, step):
+        self.progressWin.mainPbar.update(step)
+    
+    def migrateWorkerFinished(self, worker):
+        self.workerFinished()
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph("""
+            To make this change effective, please restart Cell-ACDC. Thanks!
+        """)
+        self.statusBarLayout.addWidget(QLabel(html_utils.paragraph(
+            '<i>Restart Cell-ACDC for the change to take effect</i>', 
+            font_color='red'
+        )))
+        msg.information(self, 'Restart Cell-ACDC', txt)
     
     def _showUtilHelp(self, item):
         if item.parent() is None:
@@ -565,6 +720,12 @@ class mainWin(QMainWindow):
         return treeInfo
 
     def createActions(self):
+        self.changeUserProfileFolderPathAction = QAction(
+            'Change user profile path...'
+        )
+        self.resetUserProfileFolderPathAction = QAction(
+            'Reset default user profile path'
+        )
         self.npzToNpyAction = QAction('Convert .npz file(s) to .npy...')
         self.npzToTiffAction = QAction('Convert .npz file(s) to .tif...')
         self.TiffToNpzAction = QAction('Convert .tif file(s) to _segm.npz...')
@@ -621,6 +782,12 @@ class mainWin(QMainWindow):
         self.showLogsAction = QAction('Show log files...')
 
     def connectActions(self):
+        self.changeUserProfileFolderPathAction.triggered.connect(
+            self.changeUserProfileFolderPath
+        )
+        self.resetUserProfileFolderPathAction.triggered.connect(
+            self.resetUserProfileFolderPath
+        )
         self.alignAction.triggered.connect(self.launchAlignUtil)
         self.concatAcdcDfsAction.triggered.connect(self.launchConcatUtil)
         self.npzToNpyAction.triggered.connect(self.launchConvertFormatUtil)
@@ -675,7 +842,7 @@ class mainWin(QMainWindow):
         # Step 0. Remove the old options from the menu
         self.recentPathsMenu.clear()
         # Step 1. Read recent Paths
-        recentPaths_path = os.path.join(temp_path, 'recentPaths.csv')
+        recentPaths_path = os.path.join(settings_folderpath, 'recentPaths.csv')
         if os.path.exists(recentPaths_path):
             df = pd.read_csv(recentPaths_path, index_col='index')
             if 'opened_last_on' in df.columns:

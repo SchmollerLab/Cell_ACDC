@@ -36,7 +36,7 @@ from . import qrc_resources
 from . import apps, myutils, widgets, html_utils, printl
 from . import load, settings_csv_path
 from . import _palettes
-from . import recentPaths_path, cellacdc_path, temp_path
+from . import recentPaths_path, cellacdc_path, settings_folderpath
 
 if os.name == 'nt':
     try:

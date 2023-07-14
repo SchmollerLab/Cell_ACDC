@@ -26,7 +26,7 @@ sys.path.append(cellacdc_path)
 
 # Custom modules
 from .. import prompts, load, myutils, apps, html_utils, widgets
-from .. import recentPaths_path, cellacdc_path, temp_path
+from .. import recentPaths_path, cellacdc_path, settings_folderpath
 
 from .. import qrc_resources
 

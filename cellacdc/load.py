@@ -40,7 +40,7 @@ import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 from . import myutils, measurements, config
-from . import base_cca_df, base_acdc_df, html_utils, temp_path, printl
+from . import base_cca_df, base_acdc_df, html_utils, settings_folderpath, printl
 from . import ignore_exception, cellacdc_path
 from . import qrc_resources_path, qrc_resources_light_path
 from . import qrc_resources_dark_path
@@ -55,10 +55,10 @@ acdc_df_bool_cols = [
 
 acdc_df_str_cols = {'cell_cycle_stage': str, 'relationship': str}
 
-additional_metadata_path = os.path.join(temp_path, 'additional_metadata.json')
-last_entries_metadata_path = os.path.join(temp_path, 'last_entries_metadata.csv')
+additional_metadata_path = os.path.join(settings_folderpath, 'additional_metadata.json')
+last_entries_metadata_path = os.path.join(settings_folderpath, 'last_entries_metadata.csv')
 last_selected_groupboxes_measurements_path = os.path.join(
-    temp_path, 'last_selected_groupboxes_set_measurements.json'
+    settings_folderpath, 'last_selected_groupboxes_set_measurements.json'
 )
 channel_file_formats = (
     '_aligned.h5', '.h5', '_aligned.npz', '.tif'
@@ -92,6 +92,18 @@ def remove_duplicates_file(filepath):
         unique_text = f'{first_line}{rest_of_text[:duplicate_first_line_idx]}'
     with open(filepath, 'w') as file:
         file.write(unique_text)
+
+def get_all_acdc_folders(user_profile_path):
+    acdc_folders = []
+    for file in os.listdir(user_profile_path):
+        filepath = os.path.join(user_profile_path, file)
+        if not os.path.isdir(filepath):
+            continue
+        if file.startswith('.acdc'):
+            acdc_folders.append(file)
+        elif file.startswith('acdc'):
+            acdc_folders.append(file)
+    return acdc_folders
 
 def write_json(json_data, json_path, indent=2):
     with open(json_path, mode='w') as file:
@@ -704,17 +716,17 @@ class loadData:
         return pos_num
 
     def loadLastEntriesMetadata(self):
-        if not os.path.exists(temp_path):
+        if not os.path.exists(settings_folderpath):
             self.last_md_df = None
             return
-        csv_path = os.path.join(temp_path, 'last_entries_metadata.csv')
+        csv_path = os.path.join(settings_folderpath, 'last_entries_metadata.csv')
         if not os.path.exists(csv_path):
             self.last_md_df = None
         else:
             self.last_md_df = pd.read_csv(csv_path).set_index('Description')
 
     def saveLastEntriesMetadata(self):
-        if not os.path.exists(temp_path):
+        if not os.path.exists(settings_folderpath):
             return
         self.metadata_df.to_csv(last_entries_metadata_path)
     
@@ -1464,7 +1476,7 @@ class loadData:
         if 'user_path_equations' not in configPars:
             configPars['user_path_equations'] = {}
 
-        # Append channel specific equations from the user_path ini file
+        # Append channel specific equations from the user_profile_path ini file
         userPathChEquations = configPars['user_path_equations']
         for chName in self.chNames:
             chName_equations = measurements.get_user_combine_metrics_equations(
@@ -1477,7 +1489,7 @@ class loadData:
             userPathChEquations = {**userPathChEquations, **chName_equations}
             configPars['user_path_equations'] = userPathChEquations
 
-        # Append mixed channels equations from the user_path ini file
+        # Append mixed channels equations from the user_profile_path ini file
         configPars['mixed_channels_equations'] = {
             **configPars['mixed_channels_equations'],
             **measurements.get_user_combine_mixed_channels_equations()
