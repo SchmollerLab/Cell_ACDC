@@ -46,7 +46,14 @@ if os.path.exists(user_profile_path_txt):
             user_profile_path = fr'{txt.read()}'
     except Exception as e:
         pass
-os.makedirs(user_profile_path, exist_ok=True)
+try:
+    os.makedirs(user_profile_path, exist_ok=True)
+except Exception as e:
+    print(
+        f'[WARNING]: User profile path was not found "{user_profile_path}". '
+        f'Resetting back to default path "{user_home_path}".'
+    )
+    user_profile_path = user_home_path
 
 site_packages = os.path.dirname(os.path.dirname(np.__file__))
 cellacdc_path = os.path.dirname(os.path.abspath(__file__))
