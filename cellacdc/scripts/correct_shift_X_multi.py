@@ -8,7 +8,7 @@ import skimage.io
 
 import numpy as np
 
-from cellacdc.plot import imshow
+from acdctools.plot import imshow
 
 #import threading
 
@@ -25,7 +25,7 @@ def finding_base_tif_files_path(root_path):
     base_tif_files_paths =[]
     tif_files_paths = []
     folder_list = os.listdir(root_path)
-    folder_list = [os.path.join(root_path, folder_name, 'Images') for folder_name in folder_list if folder_name.lower().startswith(FOLDER_FILTER)]
+    folder_list = [os.path.join(root_path, folder_name, 'Images') for folder_name in folder_list if folder_name.lower().startswith(FOLDER_FILTER.lower())]
     for folder_name in folder_list:
         folder_cont = os.listdir(folder_name)
         for file_name in folder_cont:

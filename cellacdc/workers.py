@@ -292,6 +292,13 @@ class AutoSaveWorker(QObject):
         self.exit = True
         self.waitCond.wakeAll()
     
+    def abort(self):
+        self.abortSaving = True
+        while not self.dataQ.empty():
+            data = self.dataQ.get()
+            del data
+        self._stop()
+    
     @worker_exception_handler
     def run(self):
         while True:

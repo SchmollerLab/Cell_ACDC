@@ -1,3 +1,4 @@
+from ast import Index
 import os
 import sys
 import operator
@@ -1992,16 +1993,71 @@ class KeptObjectIDsList(list):
 class ScatterPlotItem(pg.ScatterPlotItem):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self._itemBrush = kwargs['brush']
+        self._itemPen = kwargs['pen']
+    
+    def setData(self, *args, **kwargs):
+        super().setData(*args, **kwargs)
+        self._itemBrush = kwargs['brush']
+        self._itemPen = kwargs['pen']
+    
+    def itemBrush(self):
+        return self._itemBrush
+    
+    def itemPen(self):
+        return self._itemPen
     
     def removePoint(self, index):
         newData = np.delete(self.data, index)
+        # Update the index of current points
+        for i in range(index, len(newData)):
+            spotItem = newData[i]['item']
+            spotItem._index = i
+            newData[i]['item'] = spotItem
+        
         self.data = newData
         self.prepareGeometryChange()
         self.informViewBoundsChanged()
         self.bounds = [None, None]
         self.invalidate()
-        self.updateSpots()
+        self.updateSpots(newData)
         self.sigPlotChanged.emit(self)
+    
+    def coordsToNumpy(self, includeData=False, rounded=True, decimals=None):
+        points = self.points()
+        nrows = len(points)
+        coords_arr = np.zeros((nrows, 2))
+        data_arr = None
+        for p, point in enumerate(points):
+            pos = point.pos()
+            x, y = pos.x(), pos.y()
+            if includeData:
+                data = point.data()
+                if data_arr is None:
+                    try:
+                        ncols = len(data)
+                    except Exception as e:
+                        data = [data]
+                        ncols = 1
+                    data_arr = np.zeros((nrows, ncols))
+                for j, data_j in enumerate(data):
+                    data_arr[p, j] = data_j
+            
+            coords_arr[p, 0] = y
+            coords_arr[p, 1] = x
+        if not includeData:
+            out_arr = coords_arr
+        elif data_arr is not None:
+            out_arr = np.column_stack((data_arr, coords_arr))
+        else:
+            out_arr = coords_arr
+        cast_to_int = decimals is None
+        decimals = decimals if decimals is not None else 0
+        if rounded:
+            out_arr = np.round(out_arr, decimals)
+        if cast_to_int:
+            out_arr = out_arr.astype(int)
+        return out_arr
 
 class myLabelItem(pg.LabelItem):
     def __init__(self, *args, **kwargs):
