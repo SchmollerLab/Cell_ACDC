@@ -49,9 +49,12 @@ def imshow(
         axis_titles: Union[Iterable, None]=None, 
         parent=None, 
         window_title='acdc-tools image viewer',
-        color_scheme='light', 
+        color_scheme=None, 
         link_scrollbars=True
     ):
+    if color_scheme is None:
+        from ._palettes import get_color_scheme
+        color_scheme = get_color_scheme()
     if lut is None:
         lut = matplotlib_cmap_to_lut('viridis')
 
