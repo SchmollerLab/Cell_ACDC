@@ -39,13 +39,14 @@ user_profile_path_txt = os.path.join(
     user_data_folderpath, 'acdc_user_profile_location.txt'
 )
 user_home_path = str(pathlib.Path.home())
-user_profile_path = user_home_path
+user_profile_path = os.path.join(user_home_path, 'acdc-appdata')
 if os.path.exists(user_profile_path_txt):
     try:
         with open(user_profile_path_txt, 'r') as txt:
             user_profile_path = fr'{txt.read()}'
     except Exception as e:
         pass
+
 try:
     os.makedirs(user_profile_path, exist_ok=True)
 except Exception as e:
@@ -152,6 +153,7 @@ def printl(*objects, pretty=False, is_decorator=False, **kwargs):
 
 parent_path = os.path.dirname(cellacdc_path)
 html_path = os.path.join(cellacdc_path, '_html')
+models_path = os.path.join(cellacdc_path, 'models')
 data_path = os.path.join(parent_path, 'data')
 resources_folderpath = os.path.join(cellacdc_path, 'resources')
 resources_filepath = os.path.join(cellacdc_path, 'resources_light.qrc')

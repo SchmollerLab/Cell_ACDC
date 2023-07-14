@@ -121,6 +121,7 @@ from cellacdc import settings_csv_path
 from cellacdc import printl
 from cellacdc import _warnings
 from cellacdc import exception_handler
+from cellacdc import user_profile_path
 
 import qrc_resources
 
@@ -149,6 +150,8 @@ class mainWin(QMainWindow):
         self.setWindowTitle("Cell-ACDC")
         self.setWindowIcon(QIcon(":icon.ico"))
         self.setAcceptDrops(True)
+        
+        self.checkUserDataFolderPath = True
 
         logger, logs_path, log_path, log_filename = myutils.setupLogger(
             module='main'
@@ -567,9 +570,7 @@ class mainWin(QMainWindow):
             user_profile_path, new_user_profile_path, acdc_folders
         )
     
-    def changeUserProfileFolderPath(self):
-        from . import user_profile_path
-        
+    def changeUserProfileFolderPath(self):        
         acdc_folders = load.get_all_acdc_folders(user_profile_path)
         acdc_folders_format = [
             f'&nbsp;&nbsp;&nbsp;{folder}' for folder in acdc_folders
@@ -1534,7 +1535,39 @@ class mainWin(QMainWindow):
         self.showAllWindows()
         self.setFocus()
         self.activateWindow()
+        if not self.checkUserDataFolderPath:
+            return
+        self.checkMigrateUserDataFolderPath()
     
+    def checkMigrateUserDataFolderPath(self):
+        from . import user_home_path
+        user_home_acdc_folders = load.get_all_acdc_folders(user_home_path)
+        if not user_home_acdc_folders:
+            self.checkUserDataFolderPath = False
+            return
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(
+            'Starting from version 1.4.0, Cell-ACDC default <b>user profile path</b> '
+            f'has been <b>changed</b> to <code>{user_profile_path}</code><br><br>'
+            'Since you have some profile data saved in the old path, Cell-ACDC '
+            'can now migrate everything to the new folder.<br><br>'
+            'Do you want to <b>migrate now?</b><br>'
+        )
+        msg.warning(
+            self, 'Migrate old user profile', txt, 
+            buttonsTexts=('Cancel', 'Yes')
+        )
+        if msg.cancel:
+            self.logger.info(
+                'Migrating old user profile cancelled.'
+            )
+            self.checkUserDataFolderPath = False
+            return
+        self.startMigrateUserProfileWorker(
+            user_home_path, user_profile_path, user_home_acdc_folders
+        )
+        self.checkUserDataFolderPath = False
+        
     def showAllWindows(self):
         openModules = self.getOpenModules()
         for win in openModules:

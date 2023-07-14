@@ -44,6 +44,7 @@ from . import base_cca_df, base_acdc_df, html_utils, settings_folderpath, printl
 from . import ignore_exception, cellacdc_path
 from . import qrc_resources_path, qrc_resources_light_path
 from . import qrc_resources_dark_path
+from . import models_path
 
 cca_df_colnames = list(base_cca_df.keys())
 acdc_df_bool_cols = [
@@ -99,6 +100,8 @@ def get_all_acdc_folders(user_profile_path):
         filepath = os.path.join(user_profile_path, file)
         if not os.path.isdir(filepath):
             continue
+        if file == 'acdc-appdata':
+            continue
         if file.startswith('.acdc'):
             acdc_folders.append(file)
         elif file.startswith('acdc'):
@@ -120,6 +123,25 @@ def read_last_selected_gb_meas(logger_func=print):
             logger_func=logger_func
         )
     return data
+
+def migrate_models_paths(dst_path):
+    models = myutils.get_list_of_models()
+    user_profile_path = dst_path.replace('\\', '/')
+    for model in models:
+        model_path = os.path.join(models_path, model, 'model')
+        weight_location_txt_path = os.path.join(
+            model_path, 'weights_location_path.txt'
+        )
+        if not os.path.exists(weight_location_txt_path):
+            continue
+        with open(weight_location_txt_path, 'r') as txt:
+            model_location = os.path.expanduser(txt.read())
+        model_location = model_location.replace('\\', '/')
+        model_folder = os.path.basename(model_location)
+        model_location = os.path.join(user_profile_path, model_folder)
+        model_location = model_location.replace('\\', '/')
+        with open(weight_location_txt_path, 'w') as txt:
+            txt.write(model_location)
 
 def save_last_selected_gb_meas(json_data):
     write_json(json_data, last_selected_groupboxes_measurements_path)

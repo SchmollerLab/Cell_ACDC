@@ -3327,6 +3327,7 @@ class MigrateUserProfileWorker(QObject):
     def run(self):
         from distutils.dir_util import copy_tree
         import shutil
+        from . import models_path
 
         self.progress.emit(
             'Migrating user profile data from '
@@ -3355,14 +3356,21 @@ class MigrateUserProfileWorker(QObject):
                 shutil.rmtree(to_remove)
             except Exception as err:
                 self.progress.emit(
+                    '--------------------------------------------------------\n'
                     f'[WARNING]: Removal of the folder "{to_remove}" failed. '
-                    'Please remove manually.'
+                    'Please remove manually.\n'
+                    '--------------------------------------------------------'
                 )
             finally:
                 self.signals.progressBar.emit(1)
         
+        # Update model's paths
+        load.migrate_models_paths(self.dst_path)        
+        
+        # Store user profile data folder path
         from . import user_profile_path_txt
         os.makedirs(os.path.dirname(user_profile_path_txt), exist_ok=True)
         with open(user_profile_path_txt, 'w') as txt:
             txt.write(self.dst_path)
+        
         self.finished.emit(self)
