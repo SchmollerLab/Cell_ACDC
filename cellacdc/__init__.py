@@ -26,6 +26,7 @@ def user_data_dir():
         # linux
         os_path = os.getenv("XDG_DATA_HOME", "~/.local/share")
 
+    os_path = os.path.expanduser(os_path)
     return os.path.join(os_path, 'Cell_ACDC')
 
 cellacdc_path = os.path.dirname(os.path.abspath(__file__))
