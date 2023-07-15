@@ -485,7 +485,6 @@ class mainWin(QMainWindow):
         self.settingsMenu = QMenu("&Settings", self)
         self.settingsMenu.addAction(self.changeUserProfileFolderPathAction)
         self.settingsMenu.addAction(self.resetUserProfileFolderPathAction)
-        self.settingsMenu.triggered.connect(self.launchNapariUtil)
         menuBar.addMenu(self.settingsMenu)
 
         napariMenu = QMenu("&napari", self)
