@@ -57,6 +57,8 @@ except Exception as e:
     )
     user_profile_path = user_home_path
 
+print(f'User profile path: "{user_profile_path}"')
+
 site_packages = os.path.dirname(os.path.dirname(np.__file__))
 cellacdc_path = os.path.dirname(os.path.abspath(__file__))
 cellacdc_installation_path = os.path.dirname(cellacdc_path)
