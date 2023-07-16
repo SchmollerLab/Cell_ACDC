@@ -1720,7 +1720,7 @@ def run():
     win.logger.info('**********************************************')
     win.logger.info('----------------------------------------------')
     win.logger.info('NOTE: If application is not visible, it is probably minimized\n'
-          'or behind some other open window.')
+          'or behind some other open windows.')
     win.logger.info('----------------------------------------------')
     splashScreen.close()
     # splashScreenApp.quit()
