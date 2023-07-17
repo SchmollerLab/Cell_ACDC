@@ -962,7 +962,9 @@ class loadData:
             if load_segm_data and is_segm_file and not create_new_segm:
                 self.segmFound = True
                 self.segm_npz_path = filePath
-                self.segm_data = np.load(filePath)['arr_0'].astype(np.uint32)
+                archive = np.load(filePath)
+                file = archive.files[0]
+                self.segm_data = archive[file].astype(np.uint32)
                 if self.segm_data.dtype == bool:
                     if self.labelBoolSegm is None:
                         self.askBooleanSegm()
