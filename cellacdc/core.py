@@ -264,7 +264,7 @@ def track_sub_cell_objects_acdc_df(
         old_sub_ids = all_old_sub_ids[frame_i]
         if subobj_acdc_df is None:
             sub_acdc_df_frame_i = myutils.getBaseAcdcDf(rp_sub)
-        if frame_i not in subobj_acdc_df.index.get_level_values(0):
+        elif frame_i not in subobj_acdc_df.index.get_level_values(0):
             sub_acdc_df_frame_i = myutils.getBaseAcdcDf(rp_sub)
         else:
             sub_acdc_df_frame_i = (
