@@ -95,6 +95,7 @@ from qtpy.QtGui import (
     QFontDatabase, QIcon, QDesktopServices, QFont, QColor, 
     QPalette
 )
+import qtpy.compat 
 
 from cellacdc import (
     dataPrep, segm, gui, dataStruct, load, help, myutils,
@@ -598,6 +599,7 @@ class mainWin(QMainWindow):
 
         from qtpy.compat import getexistingdirectory
         new_user_profile_path = getexistingdirectory(
+            parent=self,
             caption='Select folder for user profile data', 
             basedir=user_profile_path
         )
@@ -953,13 +955,15 @@ class mainWin(QMainWindow):
         if msg.cancel:
             self.logger.info(f'{utilityName} aborted by the user.')
             return
-
+        
         expPaths = {}
         mostRecentPath = myutils.getMostRecentPath()
         while True:
-            exp_path = QFileDialog.getExistingDirectory(
-                self, 'Select experiment folder containing Position_n folders',
-                mostRecentPath
+            exp_path = qtpy.compat.getexistingdirectory(
+                parent=self, 
+                caption='Select experiment folder containing Position_n folders',
+                basedir=mostRecentPath,
+                # options=QFileDialog.DontUseNativeDialog
             )
             if not exp_path:
                 break
@@ -1021,7 +1025,9 @@ class mainWin(QMainWindow):
         if len(expPaths) > 1 or len(posFolders) > 1:
             infoPaths = self.getInfoPosStatus(expPaths)
             selectPosWin = apps.selectPositionsMultiExp(
-                expPaths, infoPaths=infoPaths
+                expPaths, 
+                infoPaths=infoPaths, 
+                parent=self
             )
             selectPosWin.exec_()
             if selectPosWin.cancel:
@@ -1032,6 +1038,18 @@ class mainWin(QMainWindow):
             selectedExpPaths = expPaths
         
         return selectedExpPaths
+    
+    def keyPressEvent(self, event):
+        pass
+        # win = apps.combineMetricsEquationDialog(
+        #     ['channel_1', 'channel_2'], False, False, debug=True, closeOnOk=False
+        # )
+        # win.exec_()
+        # expPaths = {
+        #     r'/Users/francesco.padovani/Library/CloudStorage/GoogleDrive-padovaf@tcd.ie/My Drive/01_Postdoc_HMGU/Python_MyScripts/MIA/Git/ChromRings/data/13_nucleolus_nucleus_profile/Fed_with_spotmax_3Dseg': ['Position_1', 'Position_3'],
+        # }
+        # self.win = apps.selectPositionsMultiExp(expPaths)
+        # self.win.show() 
     
     def launchApplyTrackingFromTableUtil(self):
         posPath = self.getSelectedPosPath('Apply tracking info from tabular data')
@@ -1725,7 +1743,7 @@ def run():
     splashScreen.close()
     # splashScreenApp.quit()
     # modernWin.show()
-    sys.exit(app.exec_())
+    app.exec_()
 
 def main():
     # Keep compatibility with users that installed older versions
