@@ -5440,6 +5440,9 @@ class guiWin(QMainWindow):
             return
 
         posData = self.data[self.pos_i]
+        if not hasattr(posData, 'rp'):
+            return 
+        
         if posData.rp is None:
             self.update_rp()
 
