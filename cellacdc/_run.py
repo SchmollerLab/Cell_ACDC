@@ -25,6 +25,18 @@ def _setup_gui():
                         [sys.executable, '-m', 'pip', 'install', '-U', 'tables']
                     )
                 except Exception as err:
+                    print('-'*60)
+                    print(
+                        '[WARNING]: Installation of `tables` with pip failed. '
+                        'Trying with conda...'
+                    )
+                    print('-'*60)
+                try:
+                    import subprocess
+                    subprocess.check_call(
+                        ['conda', 'install', '-y', 'pytables']
+                    )
+                except Exception as err:
                     import traceback
                     traceback.print_exc()
                     print('*'*60)
@@ -83,32 +95,40 @@ def _setup_gui():
         # Ignore that qtpy is installed but there is no PyQt bindings --> this 
         # is handled in the next block
         pass
-
+    
+    from . import is_mac_arm64
+    default_qt = 'PyQt5' if is_mac_arm64 else 'PyQt6'
+    
     try:
         from qtpy.QtCore import Qt
     except Exception as e:
         txt = (
             'Since version 1.3.1 Cell-ACDC does not install a GUI library by default.\n\n'
-            'You can let Cell-ACDC install it now (default library is `PyQt6`), '
+            f'You can let Cell-ACDC install it now (default library is `{default_qt}`), '
             'or you can abort (press "n")\n'
             'and install a compatible GUI library with one of '
             'the following commands:\n\n'
             '    * pip install PyQt6\n'
-            '    * pip install PyQt5\n'
+            '    * pip install PyQt5 (or `conda install pyqt`)\n'
             '    * pip install PySide2\n'
             '    * pip install PySide6\n\n'
-            'Note: if `PyQt6` installation fails, you could try installing any '
+            f'Note: if `{default_qt}` installation fails, you could try installing any '
             'of the other libraries.\n\n'
         )
         print('-'*60)
         print(txt)
         while True:
-            answer = input('Do you want to install PyQt6 now ([y]/n)? ')
+            answer = input(f'Do you want to install {default_qt} now ([y]/n)? ')
             if answer.lower() == 'y' or not answer:
                 import subprocess
-                subprocess.check_call(
-                    [sys.executable, '-m', 'pip', 'install', '-U', 'PyQt6']
-                )
+                if is_mac_arm64:
+                    subprocess.check_call(
+                        ['conda', 'install', '-y', 'pyqt']
+                    )
+                else:
+                    subprocess.check_call(
+                        [sys.executable, '-m', 'pip', 'install', '-U', 'PyQt6']
+                    )
                 warn_restart = True
                 break
             elif answer.lower() == 'n':
