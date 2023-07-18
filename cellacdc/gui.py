@@ -2017,7 +2017,8 @@ class guiWin(QMainWindow):
 
         self.propsDockWidget.setWidget(self.guiTabControl)
         self.propsDockWidget.setFeatures(
-            QDockWidget.DockWidgetFeature.DockWidgetFloatable | QDockWidget.DockWidgetFeature.DockWidgetMovable
+            QDockWidget.DockWidgetFeature.DockWidgetFloatable 
+            | QDockWidget.DockWidgetFeature.DockWidgetMovable
         )
         self.propsDockWidget.setAllowedAreas(
             Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea
@@ -5515,7 +5516,7 @@ class guiWin(QMainWindow):
         except Exception as e:
             image = posData.img_data[posData.frame_i]
 
-        if posData.SizeZ > 1:
+        if posData.SizeZ > 1 and not self.isSegm3D:
             z = self.zSliceScrollBar.sliderPosition()
             objData = image[z][obj.slice][obj.image]
         else:
