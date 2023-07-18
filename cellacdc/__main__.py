@@ -1570,9 +1570,18 @@ class mainWin(QMainWindow):
             'can now migrate everything to the new folder.<br><br>'
             'Do you want to <b>migrate now?</b><br>'
         )
+        acdc_folders_format = [
+            f'&nbsp;&nbsp;&nbsp;<code>{os.path.join(user_home_path, folder)}</code>' 
+            for folder in user_home_acdc_folders
+        ]
+        acdc_folders_format = '<br>'.join(acdc_folders_format)
+        detailsText = (
+            f'Folders found in the previous location:<br><br>{acdc_folders_format}'
+        )
         msg.warning(
             self, 'Migrate old user profile', txt, 
-            buttonsTexts=('Cancel', 'Yes')
+            buttonsTexts=('Cancel', 'Yes'),
+            detailsText=detailsText
         )
         if msg.cancel:
             self.logger.info(

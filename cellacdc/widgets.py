@@ -2294,7 +2294,8 @@ class myMessageBox(QDialog):
             self._block()
 
     def setDetailedText(self, text, visible=False):
-        self.detailsTextWidget = QPlainTextEdit(text)
+        text = text.replace('\n', '<br>')
+        self.detailsTextWidget = QTextEdit(text)
         self.detailsTextWidget.setReadOnly(True)
         self.detailsButton = showDetailsButton()
         self.detailsButton.setCheckable(True)

@@ -48,7 +48,7 @@ def imshow(
         max_ncols=4,
         axis_titles: Union[Iterable, None]=None, 
         parent=None, 
-        window_title='acdc-tools image viewer',
+        window_title='Cell-ACDC image viewer',
         color_scheme=None, 
         link_scrollbars=True
     ):

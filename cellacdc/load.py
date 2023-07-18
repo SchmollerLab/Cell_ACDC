@@ -95,18 +95,23 @@ def remove_duplicates_file(filepath):
         file.write(unique_text)
 
 def get_all_acdc_folders(user_profile_path):
-    acdc_folders = []
+    models = myutils.get_list_of_models()
+    acdc_folders = [f'acdc-{model}' for model in models]
+    acdc_folders.append('acdc-java')
+    acdc_folders.append('.acdc-logs')
+    acdc_folders.append('.acdc-settings')
+    acdc_folders.append('acdc-manual')
+    acdc_folders.append('acdc-metrics')
+    acdc_folders.append('acdc-examples')
+    existing_acdc_folders = []
     for file in os.listdir(user_profile_path):
         filepath = os.path.join(user_profile_path, file)
         if not os.path.isdir(filepath):
             continue
-        if file == 'acdc-appdata':
+        if file not in acdc_folders:
             continue
-        if file.startswith('.acdc'):
-            acdc_folders.append(file)
-        elif file.startswith('acdc'):
-            acdc_folders.append(file)
-    return acdc_folders
+        existing_acdc_folders.append(file)
+    return existing_acdc_folders
 
 def write_json(json_data, json_path, indent=2):
     with open(json_path, mode='w') as file:
