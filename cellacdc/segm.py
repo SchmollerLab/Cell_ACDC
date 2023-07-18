@@ -33,7 +33,7 @@ from . import qrc_resources, html_utils, printl
 from . import exception_handler
 from . import workers
 from . import _palettes
-from . import cellacdc_path, temp_path, recentPaths_path
+from . import cellacdc_path, settings_folderpath, recentPaths_path
 
 if os.name == 'nt':
     try:

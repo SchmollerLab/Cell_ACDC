@@ -13,11 +13,11 @@ import skimage.measure
 from yeastmatedetector.inference import YeastMatePredictor
 
 from cellacdc.core import getBaseCca_df
+from cellacdc import user_profile_path
 
 class Model:
     def __init__(self):
-        user_path = pathlib.Path.home()
-        model_path = os.path.join(str(user_path), f'acdc-YeastMate')
+        model_path = os.path.join(str(user_profile_path), f'acdc-YeastMate')
         yaml_path = os.path.join(model_path, 'yeastmate.yaml')
         weights_path = os.path.join(model_path, 'yeastmate_weights.pth')
 

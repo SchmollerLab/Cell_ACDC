@@ -43,7 +43,8 @@ if GUI_INSTALLED:
     
 from . import core, load
 from . import html_utils, is_linux, is_win, is_mac, issues_url, is_mac_arm64
-from . import cellacdc_path, printl, temp_path, logs_path, recentPaths_path
+from . import cellacdc_path, printl, settings_folderpath, logs_path
+from . import user_profile_path, recentPaths_path
 from . import models_list_file_path
 from . import github_home_url
 
@@ -846,9 +847,8 @@ def get_examples_path(which):
         file_size = 124822528
     else:
         return ''
-
-    user_path = pathlib.Path.home()
-    examples_path = os.path.join(user_path, 'acdc-examples')
+    
+    examples_path = os.path.join(user_profile_path, 'acdc-examples')
     example_path = os.path.join(examples_path, foldername)
     return examples_path, example_path, url, file_size
 
@@ -884,9 +884,8 @@ def download_examples(which='time_lapse_2D', progress=None):
     return example_path
 
 def get_acdc_java_path():
-    user_path = str(pathlib.Path.home())
-    acdc_java_path = os.path.join(user_path, 'acdc-java')
-    dot_acdc_java_path = os.path.join(user_path, '.acdc-java')
+    acdc_java_path = os.path.join(user_profile_path, 'acdc-java')
+    dot_acdc_java_path = os.path.join(user_profile_path, '.acdc-java')
     return acdc_java_path, dot_acdc_java_path
 
 def get_java_url():
@@ -1154,12 +1153,11 @@ def _download_deepsea_models():
         shutil.move(temp_dst, final_dst)
 
 def download_manual():
-    user_path = pathlib.Path.home()
-    manual_folder_path = os.path.join(user_path, 'acdc-manual')
+    manual_folder_path = os.path.join(user_profile_path, 'acdc-manual')
     if not os.path.exists(manual_folder_path):
         os.makedirs(manual_folder_path, exist_ok=True)
 
-    manual_file_path = os.path.join(user_path, 'Cell-ACDC_User_Manual.pdf')
+    manual_file_path = os.path.join(user_profile_path, 'Cell-ACDC_User_Manual.pdf')
     if not os.path.exists(manual_file_path):
         url = 'https://github.com/SchmollerLab/Cell_ACDC/raw/main/UserManual/Cell-ACDC_User_Manual.pdf'
         download_url(url, manual_file_path, file_size=1727470)

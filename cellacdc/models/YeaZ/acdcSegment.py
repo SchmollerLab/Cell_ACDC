@@ -15,6 +15,7 @@ from tensorflow import keras
 
 from tqdm import tqdm
 from cellacdc import myutils
+from cellacdc import user_profile_path
 
 class progressCallback(keras.callbacks.Callback):
     def __init__(self, signals):
@@ -43,8 +44,7 @@ class Model:
 
         # Get the path where the weights are saved.
         # We suggest saving the weights files into a 'model' subfolder
-        user_path = pathlib.Path.home()
-        model_path = os.path.join(str(user_path), f'acdc-YeaZ')
+        model_path = os.path.join(str(user_profile_path), f'acdc-YeaZ')
 
         if is_phase_contrast:
             weights_fn = 'unet_weights_batchsize_25_Nepochs_100_SJR0_10.hdf5'

@@ -73,7 +73,7 @@ from . import _warnings
 from . import measurements, printl
 from . import colors, filters, annotate
 from . import user_manual_url
-from . import recentPaths_path, temp_path, settings_csv_path
+from . import recentPaths_path, settings_folderpath, settings_csv_path
 from . import qutils, autopilot, QtScoped
 from .trackers.CellACDC import CellACDC_tracker
 from .cca_functions import _calc_rot_vol
@@ -90,10 +90,10 @@ if os.name == 'nt':
         pass
 
 favourite_func_metrics_csv_path = os.path.join(
-    temp_path, 'favourite_func_metrics.csv'
+    settings_folderpath, 'favourite_func_metrics.csv'
 )
-custom_annot_path = os.path.join(temp_path, 'custom_annotations.json')
-shortcut_filepath = os.path.join(temp_path, 'shortcuts.ini')
+custom_annot_path = os.path.join(settings_folderpath, 'custom_annotations.json')
+shortcut_filepath = os.path.join(settings_folderpath, 'shortcuts.ini')
 
 _font = QFont()
 _font.setPixelSize(11)
@@ -20819,7 +20819,7 @@ class guiWin(QMainWindow):
     
     def labelRoiViewCurrentModel(self):
         from . import config
-        ini_path = os.path.join(temp_path, 'last_params_segm_models.ini')
+        ini_path = os.path.join(settings_folderpath, 'last_params_segm_models.ini')
         configPars = config.ConfigParser()
         configPars.read(ini_path)
         model_name = self.labelRoiModel.model_name
