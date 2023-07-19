@@ -1525,13 +1525,13 @@ class mainWin(QMainWindow):
         )
         self.concatWindow.show()
     
-    # def showEvent(self, event):
-    #     self.showAllWindows()
-    #     self.setFocus()
-    #     self.activateWindow()
-    #     if not self.checkUserDataFolderPath:
-    #         return
-    #     self.checkMigrateUserDataFolderPath()
+    def showEvent(self, event):
+        self.showAllWindows()
+        # self.setFocus()
+        self.activateWindow()
+        if not self.checkUserDataFolderPath:
+            return
+        self.checkMigrateUserDataFolderPath()
     
     def checkMigrateUserDataFolderPath(self):
         from . import user_home_path
@@ -1580,7 +1580,7 @@ class mainWin(QMainWindow):
             win.setWindowState(Qt.WindowNoState)
             win.restoreGeometry(geometry)
         self.raise_()
-        self.setFocus()
+        # self.setFocus()
         self.activateWindow()
 
     def show(self):

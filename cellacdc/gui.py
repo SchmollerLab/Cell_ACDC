@@ -1156,7 +1156,7 @@ class guiWin(QMainWindow):
             )
 
             if autoActivate:
-                self.setFocus()
+                # self.setFocus()
                 self.activateWindow()
 
     def isPanImageClick(self, mouseEvent, modifiers):
