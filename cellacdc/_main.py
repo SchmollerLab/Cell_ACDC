@@ -231,8 +231,6 @@ class mainWin(QMainWindow):
         
         mainContainer.setLayout(mainLayout)
 
-        self.start_JVM = True
-
         self.guiWins = []
         self.spotmaxWins = []
         self.dataPrepWin = None
@@ -884,7 +882,7 @@ class mainWin(QMainWindow):
         return posPath
 
     def getSelectedExpPaths(self, utilityName):
-        self._debug()
+        # self._debug()
         
         self.logger.info('Asking to select experiment folders...')
         msg = widgets.myMessageBox()
@@ -1527,13 +1525,13 @@ class mainWin(QMainWindow):
         )
         self.concatWindow.show()
     
-    def showEvent(self, event):
-        self.showAllWindows()
-        self.setFocus()
-        self.activateWindow()
-        if not self.checkUserDataFolderPath:
-            return
-        self.checkMigrateUserDataFolderPath()
+    # def showEvent(self, event):
+    #     self.showAllWindows()
+    #     self.setFocus()
+    #     self.activateWindow()
+    #     if not self.checkUserDataFolderPath:
+    #         return
+    #     self.checkMigrateUserDataFolderPath()
     
     def checkMigrateUserDataFolderPath(self):
         from . import user_home_path
