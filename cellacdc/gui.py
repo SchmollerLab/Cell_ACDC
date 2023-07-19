@@ -3496,7 +3496,8 @@ class guiWin(QMainWindow):
         self.graphLayout.setFocus()
     
     def setFocusMain(self):
-        self.setFocus()
+        # on macOS with Qt6 setFocus causes crashes. Disabled for now.
+        return 
     
     def resetFocus(self):
         self.setFocusGraphics()
@@ -21586,7 +21587,7 @@ class guiWin(QMainWindow):
             if not self.mainWin.isMinimized():
                 return
             self.mainWin.showAllWindows()
-        self.setFocus()
+        # self.setFocus()
         self.activateWindow()
     
     def super_show(self):
