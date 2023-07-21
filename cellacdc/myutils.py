@@ -1061,6 +1061,8 @@ def get_model_path(model_name, create_temp_dir=True):
         os.makedirs(model_info_path, exist_ok=True)
         model_path = _write_model_location_to_txt(model_name)
 
+    model_path = migrate_to_new_user_profile_path(model_path)   
+    
     if not os.path.exists(model_path):
         os.makedirs(model_path, exist_ok=True)
 
@@ -1263,6 +1265,27 @@ def check_v123_model_path(model_name):
         return v123_model_path
     else:
         return ''
+
+def is_old_user_profile_path(path_to_check: os.PathLike):
+    from . import user_data_dir
+    user_data_folderpath = user_data_dir()
+    user_profile_path_txt = os.path.join(
+        user_data_folderpath, 'acdc_user_profile_location.txt'
+    )
+    if os.path.exists(user_profile_path_txt):
+        return False
+    
+    from . import user_home_path
+    user_home_path = user_home_path.replace('\\', '/')
+    path_to_check = path_to_check.replace('\\', '/')
+    return user_home_path == path_to_check
+
+def migrate_to_new_user_profile_path(path_to_migrate: os.PathLike):
+    parent_dir = os.path.dirname(path_to_migrate)
+    if not is_old_user_profile_path(parent_dir):
+        return path_to_migrate
+    folder = os.path.basename(path_to_migrate)
+    return os.path.join(user_profile_path, folder)
 
 def _write_model_location_to_txt(model_name):
     model_info_path = os.path.join(cellacdc_path, 'models', model_name, 'model')
