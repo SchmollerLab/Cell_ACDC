@@ -856,6 +856,7 @@ class ScrollBar(QScrollBar):
     def __init__(self, *args):
         super().__init__(*args)
         self.installEventFilter(self)
+        self.setContextMenuPolicy(Qt.NoContextMenu)
     
     def eventFilter(self, object, event) -> bool:
         if event.type() == QEvent.Type.Wheel:
@@ -865,7 +866,6 @@ class ScrollBar(QScrollBar):
             return event.button() == Qt.MouseButton.RightButton
         elif event.type() == QEvent.Type.MouseButtonRelease:
             # Filter right-click to prevent context menu
-            printl(event.button() == Qt.MouseButton.RightButton)
             return event.button() == Qt.MouseButton.RightButton
         return False
 
