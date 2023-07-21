@@ -3,6 +3,8 @@ import numpy as np
 from skimage.transform import resize
 from skimage.measure import regionprops
 
+from . import printl
+
 def resize_lab(lab, output_shape, rp=None):
     if rp is None:
         rp = regionprops(lab)
@@ -37,3 +39,14 @@ def crop_2D(img, xy_range, tolerance=0, return_copy=True):
     else:
         cropped = img[crop_slice]
     return cropped, crop_slice
+
+def del_objs_outside_segm_roi(segm_roi, segm):
+    del_IDs = np.unique(segm[segm_roi==0])
+    cleared_segm = segm.copy()
+    clearedIDs = []
+    for del_ID in del_IDs:
+        if del_ID == 0:
+            continue
+        cleared_segm[segm==del_ID] = 0
+        clearedIDs.append(del_ID)
+    return cleared_segm, clearedIDs

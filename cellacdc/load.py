@@ -429,7 +429,7 @@ def get_segm_files(images_path):
         or (file.endswith('.npz') and file.find('segm') != -1)
         or file.endswith('_segm.npy')
     ]
-    return segm_files
+    return segm_files            
 
 def get_filename_from_channel(
         images_path, channel_name, not_allowed_ends=None, logger=None,
@@ -500,7 +500,9 @@ def load_image_file(filepath):
         h5f = h5py.File(filepath, 'r')
         img_data = h5f['data']
     elif filepath.endswith('.npz'):
-        img_data = np.load(filepath)['arr_0']
+        archive = np.load(filepath)
+        files = archive.files
+        img_data = archive[files[0]]
     elif filepath.endswith('.npy'):
         img_data = np.load(filepath)
     else:

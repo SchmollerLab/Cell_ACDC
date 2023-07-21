@@ -1580,6 +1580,17 @@ class guiWin(QMainWindow):
             'SHORTCUT: "R" key')
         self.widgetsWithShortcut['Repeat segmentation'] = self.segmentToolAction
         editToolBar.addAction(self.segmentToolAction)
+        
+        self.delObjsOutSegmMaskAction = QAction(
+            QIcon(":del_objs_out_segm.svg"), 
+            'Select a segmentation file and delete all objects on the background', 
+            self
+        )
+        self.delObjsOutSegmMaskAction.setShortcut('i')
+        self.widgetsWithShortcut['Delete all objects outside segm'] = (
+            self.delObjsOutSegmMaskAction
+        )
+        editToolBar.addAction(self.delObjsOutSegmMaskAction)
 
         self.hullContToolButton = QToolButton(self)
         self.hullContToolButton.setIcon(QIcon(":hull.svg"))
@@ -2940,6 +2951,9 @@ class guiWin(QMainWindow):
         for rtTrackerAction in self.trackingAlgosGroup.actions():
             rtTrackerAction.toggled.connect(self.storeTrackingAlgo)
 
+        self.delObjsOutSegmMaskAction.triggered.connect(
+            self.delObjsOutSegmMaskActionTriggered
+        )
         self.brushButton.toggled.connect(self.Brush_cb)
         self.eraserButton.toggled.connect(self.Eraser_cb)
         self.curvToolButton.toggled.connect(self.curvTool_cb)
@@ -7449,6 +7463,36 @@ class guiWin(QMainWindow):
         self.updateAllImages()
         self.titleLabel.setText('Done', color='w')
     
+    def delObjsOutSegmMaskWorkerFinished(self, result):
+        posData = self.data[self.pos_i]
+        worker, cleared_segm_data, delIDs = result
+        if posData.SizeT == 1:
+            cleared_segm_data = cleared_segm_data[np.newaxis]
+        
+        current_frame_i = posData.frame_i
+        for frame_i, cleared_lab in enumerate(cleared_segm_data):
+            # Store change
+            posData.allData_li[frame_i]['labels'] = cleared_lab
+            # Get the rest of the stored metadata based on the new lab
+            posData.frame_i = frame_i
+            self.get_data()
+            self.update_cca_df_deletedIDs(posData, delIDs)
+            self.store_data(autosave=False)
+        
+        # Back to current frame
+        posData.frame_i = current_frame_i
+        self.get_data()
+        
+        if self.progressWin is not None:
+            self.progressWin.workerFinished = True
+            self.progressWin.close()
+            self.progressWin = None
+        self.logger.info('Deleting objects outside of ROIs finished.')
+        self.titleLabel.setText(
+            'Deleting objects outside of ROIs finished.', color='w'
+        )
+        self.updateAllImages()
+    
     def loadingNewChunk(self, chunk_range):
         coord0_chunk, coord1_chunk = chunk_range
         desc = (
@@ -10513,6 +10557,56 @@ class guiWin(QMainWindow):
 
         QTimer.singleShot(300, self.autoRange)
 
+    def delObjsOutSegmMaskActionTriggered(self):
+        posData = self.data[self.pos_i]
+        segm_files = load.get_segm_files(posData.images_path)
+        existingSegmEndnames = load.get_existing_segm_endnames(
+            posData.basename, segm_files
+        )
+        selectSegmWin = widgets.QDialogListbox(
+            'Select segmentation file',
+            'Select segmentation file to use as ROI:\n',
+            existingSegmEndnames, multiSelection=True, parent=self
+        )
+        selectSegmWin.exec_()
+        if selectSegmWin.cancel:
+            self.logger.info('Delete objects process cancelled.')
+            return
+        
+        selectedSegmEndname = selectSegmWin.selectedItemsText[0]
+        
+        self.startDelObjsOutSegmMaskWorker(selectedSegmEndname)
+    
+    def startDelObjsOutSegmMaskWorker(self, selectedSegmEndname):
+        self.store_data(autosave=False)
+        posData = self.data[self.pos_i]
+        segm_data = np.squeeze(self.getStoredSegmData())
+        
+        self.progressWin = apps.QDialogWorkerProgress(
+            title='Deleting objects outside of ROIs', parent=self,
+            pbarDesc='Deleting objects outside of ROIs...'
+        )
+        self.progressWin.show(self.app)
+        self.progressWin.mainPbar.setMaximum(0)
+        
+        self.thread = QThread()
+        self.worker = workers.DelObjectsOutsideSegmROIWorker(
+            selectedSegmEndname, segm_data, posData.images_path
+        )
+        self.worker.moveToThread(self.thread)
+        self.worker.finished.connect(self.thread.quit)
+        self.worker.finished.connect(self.worker.deleteLater)
+        self.thread.finished.connect(self.thread.deleteLater)
+
+        self.worker.progress.connect(self.workerProgress)
+        self.worker.critical.connect(self.workerCritical)
+        self.worker.finished.connect(self.delObjsOutSegmMaskWorkerFinished)
+
+        self.worker.debug.connect(self.workerDebug)
+
+        self.thread.started.connect(self.worker.run)
+        self.thread.start()
+        
     def Brush_cb(self, checked):
         if checked:
             self.typingEditID = False
@@ -14794,7 +14888,17 @@ class guiWin(QMainWindow):
                 'rois': [], 'delMasks': [], 'delIDsROI': []
             }
         }
-
+    
+    def getStoredSegmData(self):
+        posData = self.data[self.pos_i]
+        segm_data = []
+        for data_frame_i in posData.allData_li:
+            lab = data_frame_i['labels']
+            if lab is None:
+                break
+            segm_data.append(lab)
+        return np.array(segm_data)
+    
     @exception_handler
     def store_data(
             self, pos_i=None, enforce=True, debug=False, mainThread=True,
@@ -20162,8 +20266,6 @@ class guiWin(QMainWindow):
         self.labelRoiStartFrameNoSpinbox.setValue(posData.frame_i+1)
         self.labelRoiStopFrameNoSpinbox.setValue(posData.frame_i+1)
         
-
-    
     def getSecondChannelData(self):
         if self.secondChannelName is None:
             return

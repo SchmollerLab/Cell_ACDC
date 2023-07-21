@@ -43,6 +43,7 @@
     <file alias="arrow_future.svg">resources/icons/arrow_future.svg</file>
     <file alias="arrow_future_all.svg">resources/icons/arrow_future_all.svg</file>
     <file alias="arrow-down.svg">resources/icons/arrow-down.svg</file>
+    <file alias="del_objs_out_segm.svg">resources/icons/del_objs_out_segm.svg</file>
     <file alias="showDown.svg">resources/icons/showDown.svg</file>
     <file alias="terminal_up.svg">resources/icons/terminal_up.svg</file>
     <file alias="terminal_down.svg">resources/icons/terminal_down.svg</file>
