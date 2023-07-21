@@ -1007,6 +1007,7 @@ class createDataStructWin(QMainWindow):
 
         global bioformats, javabridge
         self.logger.info('Checking if Java is installed...')
+        myutils.check_upgrade_javabridge()
         try:
             import javabridge
         except ModuleNotFoundError as e:

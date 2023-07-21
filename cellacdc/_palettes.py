@@ -132,6 +132,13 @@ def setToolTipStyleSheet(app, scheme='light'):
         "}"
         )
 
+def green():
+    scheme = get_color_scheme()
+    if scheme == 'light':
+        return '#CFEB9B'
+    else:
+        return '#607a2f'
+
 def TreeWidgetStyleSheet():
     scheme = get_color_scheme()
     if scheme == 'light':

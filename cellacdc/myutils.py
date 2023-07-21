@@ -477,22 +477,22 @@ def install_javabridge(force_compile=False, attempt_uninstall_first=False):
     if sys.platform.startswith('win'):
         if force_compile:
             subprocess.check_call(
-                [sys.executable, '-m', 'pip', 'install',
+                [sys.executable, '-m', 'pip', 'install', '-U',
                 'git+https://github.com/SchmollerLab/python-javabridge-acdc']
             )
         else:
             subprocess.check_call(
-                [sys.executable, '-m', 'pip', 'install',
+                [sys.executable, '-m', 'pip', 'install', '-U',
                 'git+https://github.com/SchmollerLab/python-javabridge-windows']
             )
     elif is_mac:
         subprocess.check_call(
-            [sys.executable, '-m', 'pip', 'install',
+            [sys.executable, '-m', 'pip', 'install', '-U',
             'git+https://github.com/SchmollerLab/python-javabridge-acdc']
         )
     elif is_linux:
         subprocess.check_call(
-            [sys.executable, '-m', 'pip', 'install',
+            [sys.executable, '-m', 'pip', 'install', '-U',
             'git+https://github.com/LeeKamentsky/python-javabridge.git@master']
         )
 
@@ -930,6 +930,14 @@ def _jdk_exists(jre_path):
                 if file == 'bin':
                     return dir_path
     return ''
+
+def check_upgrade_javabridge():
+    import pkg_resources
+    version = pkg_resources.get_distribution("javabridge").version
+    patch = int(version.split('.')[-1])
+    if patch > 19:
+        return
+    install_javabridge()
 
 def _java_exists(os_foldername):
     acdc_java_path, dot_acdc_java_path = get_acdc_java_path()

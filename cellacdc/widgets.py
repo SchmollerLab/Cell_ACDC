@@ -860,6 +860,12 @@ class ScrollBar(QScrollBar):
     def eventFilter(self, object, event) -> bool:
         if event.type() == QEvent.Type.Wheel:
             return True
+        elif event.type() == QEvent.Type.MouseButtonPress:
+            # Filter right-click to prevent context menu
+            return event.button() == Qt.MouseButton.RightButton
+        elif event.type() == QEvent.Type.MouseButtonRelease:
+            # Filter right-click to prevent context menu
+            return event.button() == Qt.MouseButton.RightButton
         return False
 
 class _ReorderableListModel(QAbstractListModel):

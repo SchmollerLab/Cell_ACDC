@@ -75,6 +75,7 @@ from . import colors, filters, annotate
 from . import user_manual_url
 from . import recentPaths_path, settings_folderpath, settings_csv_path
 from . import qutils, autopilot, QtScoped
+from . import _palettes
 from .trackers.CellACDC import CellACDC_tracker
 from .cca_functions import _calc_rot_vol
 from .myutils import exec_time, setupLogger
@@ -88,6 +89,8 @@ if os.name == 'nt':
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
     except Exception as e:
         pass
+
+GREEN_HEX = _palettes.green()
 
 favourite_func_metrics_csv_path = os.path.join(
     settings_folderpath, 'favourite_func_metrics.csv'
@@ -20069,7 +20072,7 @@ class guiWin(QMainWindow):
                 posData.fluo_bkgrData_dict[filename] = bkgrData
                 posData.ol_data_dict[filename] = fluo_data.copy()
                 
-        self.overlayButton.setStyleSheet('background-color: #A7FAC7')
+        self.overlayButton.setStyleSheet(f'background-color: {GREEN_HEX}')
         self.guiTabControl.addChannels([
             posData.user_ch_name, *posData.loadedFluoChannels
         ])

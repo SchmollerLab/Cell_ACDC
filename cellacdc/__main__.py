@@ -5,7 +5,10 @@ import logging
 import os
 import numpy as np
 
-site_packages = os.path.dirname(os.path.dirname(np.__file__))
+import site
+sitepackages = site.getsitepackages()
+site_packages = [p for p in sitepackages if p.endswith('site-packages')][0]
+
 cellacdc_path = os.path.dirname(os.path.abspath(__file__))
 cellacdc_installation_path = os.path.dirname(cellacdc_path)
 if cellacdc_installation_path != site_packages:
