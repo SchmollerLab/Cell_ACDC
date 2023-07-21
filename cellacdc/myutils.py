@@ -1046,14 +1046,15 @@ def get_model_path(model_name, create_temp_dir=True):
     
     if os.path.exists(model_info_path):
         for file in listdir(model_info_path):
-            if file == 'weights_location_path.txt':
-                with open(os.path.join(model_info_path, file), 'r') as txt:
-                    model_path = txt.read()
-                    model_path = os.path.expanduser(model_path)
-                if not os.path.exists(model_path):
-                    model_path = _write_model_location_to_txt(model_name)
-                else:
-                    break
+            if file != 'weights_location_path.txt':
+                continue
+            with open(os.path.join(model_info_path, file), 'r') as txt:
+                model_path = txt.read()
+                model_path = os.path.expanduser(model_path)
+            if not os.path.exists(model_path):
+                model_path = _write_model_location_to_txt(model_name)
+            else:
+                break
         else:
             model_path = _write_model_location_to_txt(model_name)
     else:
@@ -1265,7 +1266,7 @@ def check_v123_model_path(model_name):
 
 def _write_model_location_to_txt(model_name):
     model_info_path = os.path.join(cellacdc_path, 'models', model_name, 'model')
-    model_path = os.path.join('~', f'acdc-{model_name}')
+    model_path = os.path.join(user_profile_path, f'acdc-{model_name}')
     file = 'weights_location_path.txt'
     with open(os.path.join(model_info_path, file), 'w') as txt:
         txt.write(model_path)
