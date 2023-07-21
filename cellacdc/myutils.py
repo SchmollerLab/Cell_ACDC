@@ -1029,7 +1029,6 @@ def download_java():
         # move files up one level
         src = os.path.join(unzipped_path, name)
         shutil.move(src, os_acdc_java_path)
-
     try:
         shutil.rmtree(unzipped_path)
     except PermissionError as e:
@@ -1190,10 +1189,13 @@ def get_confirm_token(response):
 def download_url(
         url, dst, desc='', file_size=None, verbose=True, progress=None
     ):
+    import urllib3
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    
     CHUNK_SIZE = 32768
     if verbose:
         print(f'Downloading {desc} to: {os.path.dirname(dst)}')
-    response = requests.get(url, stream=True, timeout=20)
+    response = requests.get(url, stream=True, timeout=20, verify=False)
     if file_size is not None and progress is not None:
         progress.emit(file_size, -1)
     pbar = tqdm(
