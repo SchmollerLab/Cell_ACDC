@@ -2,7 +2,7 @@ print('Importing GUI modules...')
 import sys
 import os
 import shutil
-import pathlib
+import inspect
 import re
 import traceback
 import time
@@ -76,6 +76,7 @@ from . import user_manual_url
 from . import recentPaths_path, settings_folderpath, settings_csv_path
 from . import qutils, autopilot, QtScoped
 from . import _palettes
+from . import transformation
 from .trackers.CellACDC import CellACDC_tracker
 from .cca_functions import _calc_rot_vol
 from .myutils import exec_time, setupLogger
@@ -4335,7 +4336,7 @@ class guiWin(QMainWindow):
             xdata, ydata = int(x), int(y)
             Y, X = self.get_2Dlab(posData.lab).shape
             # Store undo state before modifying stuff
-            self.storeUndoRedoStates(False)
+            self.storeUndoRedoStates(False, storeOnlyZoom=True)
             self.yPressAx2, self.xPressAx2 = y, x
             # Keep a global mask to compute which IDs got erased
             self.erasedIDs = []
@@ -4375,7 +4376,7 @@ class guiWin(QMainWindow):
             lab_2D = self.get_2Dlab(posData.lab)
             Y, X = lab_2D.shape
             # Store undo state before modifying stuff
-            self.storeUndoRedoStates(False)
+            self.storeUndoRedoStates(False, storeOnlyZoom=True)
             self.yPressAx2, self.xPressAx2 = y, x
 
             ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
@@ -5403,21 +5404,16 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         if sender == 'brush':
             if not self.brushAutoFillCheckbox.isChecked():
-                return
+                return False
             
-            try:
-                obj_idx = posData.IDs.index(ID)
-            except IndexError as e:
-                return
-            
-            obj = posData.rp[obj_idx]
-            objMask = self.getObjImage(obj.image, obj.bbox)
-            localFill = scipy.ndimage.binary_fill_holes(objMask)
-            objSlice = self.getObjSlice(obj.slice)
             lab2D = self.get_2Dlab(posData.lab)
-            lab2D[objSlice][localFill] = ID
+            mask = lab2D == ID
+            filledMask = scipy.ndimage.binary_fill_holes(mask)
+            lab2D[filledMask] = ID
+
             self.set_2Dlab(lab2D)
-            self.update_rp()
+            return True
+        return False
 
     def highlightIDcheckBoxToggled(self, checked):
         if not checked:
@@ -6075,7 +6071,7 @@ class guiWin(QMainWindow):
             erasedIDs = np.unique(self.erasedIDs)
 
             # Update data (rp, etc)
-            self.update_rp()
+            self.update_rp(update_IDs=len(erasedIDs) > 0)
 
             for ID in erasedIDs:
                 if ID not in posData.lab:
@@ -6088,14 +6084,19 @@ class guiWin(QMainWindow):
 
         # Brush button mouse release --> update IDs and contours
         elif self.isMouseDragImg2 and self.brushButton.isChecked():
+            # t0 = time.perf_counter()
+            
             self.isMouseDragImg2 = False
-
-            self.update_rp()
+            
             self.fillHolesID(self.ax2BrushID, sender='brush')
+            
+            self.update_rp(update_IDs=self.isNewID)
 
+            # t1 = time.perf_counter()
             if self.editIDcheckbox.isChecked():
                 self.tracking(enforce=True, assign_unique_new_IDs=False)
 
+            # t2 = time.perf_counter()
             # Update images
             if self.isNewID:
                 editTxt = 'Add new ID with brush tool'
@@ -6106,6 +6107,18 @@ class guiWin(QMainWindow):
                     self.warnEditingWithCca_df(editTxt)
             else:
                 self.updateAllImages()
+            
+            # t3 = time.perf_counter()
+            # printl(
+            #     'Brush exec times =\n'
+            #     f'  * {(t1-t0)*1000 = :.4f} ms\n'
+            #     f'  * {(t2-t1)*1000 = :.4f} ms\n'
+            #     f'  * {(t3-t2)*1000 = :.4f} ms\n'
+            #     # f'  * {(t4-t3)*1000 = :.4f} ms\n'
+            #     # f'  * {(t5-t4)*1000 = :.4f} ms\n'
+            #     # f'  * {(t6-t5)*1000 = :.4f} ms\n'
+            #     f'  * {(t3-t0)*1000 = :.4f} ms'
+            # )
 
         # Move label mouse released, update move
         elif self.isMovingLabel and self.moveLabelToolButton.isChecked():
@@ -6168,6 +6181,11 @@ class guiWin(QMainWindow):
 
     @exception_handler
     def gui_mouseReleaseEventImg1(self, event):
+        modifiers = QGuiApplication.keyboardModifiers()
+        ctrl = modifiers == Qt.ControlModifier
+        alt = modifiers == Qt.AltModifier
+        right_click = event.button() == Qt.MouseButton.RightButton and not alt
+        
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
         if mode == 'Viewer':
@@ -6181,7 +6199,11 @@ class guiWin(QMainWindow):
             self.updateAllImages()
             return
 
-        if mode=='Segmentation and Tracking' or self.isSnapshot:
+        sendRightClickImg2 = (
+            (mode=='Segmentation and Tracking' or self.isSnapshot)
+            and right_click
+        )
+        if sendRightClickImg2:
             # Allow right-click actions on both images
             self.gui_mouseReleaseEventImg2(event)
 
@@ -6213,7 +6235,7 @@ class guiWin(QMainWindow):
             erasedIDs = np.unique(self.erasedIDs)
 
             # Update data (rp, etc)
-            self.update_rp()
+            self.update_rp(update_IDs=len(erasedIDs) > 0)
 
             for ID in erasedIDs:
                 if ID not in posData.IDs:
@@ -6228,20 +6250,34 @@ class guiWin(QMainWindow):
 
         # Brush button mouse release
         elif self.isMouseDragImg1 and self.brushButton.isChecked():
+            # printl('mouse released')
+            # t0 = time.perf_counter()
+            
             self.isMouseDragImg1 = False
 
             self.tempLayerImg1.setImage(self.emptyLab)
-
-            # Update data (rp, etc)
-            self.update_rp()
+            
+            # printl('cleared tempLayerImg1')
+            
+            # t1 = time.perf_counter()
             
             posData = self.data[self.pos_i]
             self.fillHolesID(posData.brushID, sender='brush')
+            
+            # t2 = time.perf_counter()
+
+            # Update data (rp, etc)
+            self.update_rp(update_IDs=self.isNewID)
+            
+            # printl('update_rp')
+            
+            # t3 = time.perf_counter()
 
             # Repeat tracking
             if self.editIDcheckbox.isChecked():
                 self.tracking(enforce=True, assign_unique_new_IDs=False)
 
+            # t4 = time.perf_counter()
             # Update images
             if self.isNewID:
                 editTxt = 'Add new ID with brush tool'
@@ -6254,6 +6290,18 @@ class guiWin(QMainWindow):
                 self.updateAllImages()
             
             self.isNewID = False
+            
+            # t5 = time.perf_counter()
+            # printl(
+            #     'Brush exec times =\n'
+            #     f'  * {(t1-t0)*1000 = :.4f} ms\n'
+            #     f'  * {(t2-t1)*1000 = :.4f} ms\n'
+            #     f'  * {(t3-t2)*1000 = :.4f} ms\n'
+            #     f'  * {(t4-t3)*1000 = :.4f} ms\n'
+            #     f'  * {(t5-t4)*1000 = :.4f} ms\n'
+            #     # f'  * {(t6-t5)*1000 = :.4f} ms\n'
+            #     f'  * {(t5-t0)*1000 = :.4f} ms'
+            # )
 
         # Wand tool release, add new object
         elif self.isMouseDragImg1 and self.wandToolButton.isChecked():
@@ -6751,7 +6799,7 @@ class guiWin(QMainWindow):
             xdata, ydata = int(x), int(y)
             lab_2D = self.get_2Dlab(posData.lab)
             Y, X = lab_2D.shape
-            self.storeUndoRedoStates(False)
+            self.storeUndoRedoStates(False, storeOnlyZoom=True)
 
             ID = self.getHoverID(xdata, ydata)
 
@@ -6803,7 +6851,7 @@ class guiWin(QMainWindow):
             Y, X = lab_2D.shape
 
             # Store undo state before modifying stuff
-            self.storeUndoRedoStates(False)
+            self.storeUndoRedoStates(False, storeOnlyZoom=True)
 
             self.yPressAx2, self.xPressAx2 = y, x
             # Keep a list of erased IDs got erased
@@ -10509,6 +10557,7 @@ class guiWin(QMainWindow):
             self.connectLeftClickButtons()
             self.enableSizeSpinbox(True)
             self.showEditIDwidgets(True)
+            self.setFocusGraphics()
         else:
             self.ax1_lostObjScatterItem.setVisible(True)
             self.ax2_lostObjScatterItem.setVisible(True)
@@ -11305,7 +11354,7 @@ class guiWin(QMainWindow):
             0, {'id': undoId, 'cca_df': cca_df.copy()}
         )
 
-    def addCurrentState(self, callbackOnDone=None, storeImage=False):
+    def addCurrentState(self, storeImage=False, storeOnlyZoom=False):
         posData = self.data[self.pos_i]
         if posData.cca_df is not None:
             cca_df = posData.cca_df.copy()
@@ -11317,14 +11366,23 @@ class guiWin(QMainWindow):
         else:
             image = None
 
+        if storeOnlyZoom:
+            labels, crop_slice = transformation.crop_2D(
+                self.currentLab2D, self.ax1.viewRange(), tolerance=10
+            )
+        else:
+            labels = posData.lab.copy()
+            crop_slice = None
+        
         state = {
             'image': image,
-            'labels': posData.lab.copy(),
+            'labels': labels,
             'editID_info': posData.editID_info.copy(),
             'binnedIDs': posData.binnedIDs.copy(),
             'keptObejctsIDs': self.keptObjectsIDs.copy(),
             'ripIDs': posData.ripIDs.copy(),
-            'cca_df': cca_df
+            'cca_df': cca_df,
+            'crop_slice': crop_slice
         }
         posData.UndoRedoStates[posData.frame_i].insert(0, state)
         
@@ -11341,7 +11399,12 @@ class guiWin(QMainWindow):
             image_left = None
         else:
             image_left = state['image'].copy()
-        posData.lab = state['labels'].copy()
+        
+        crop_slice = state['crop_slice']
+        if crop_slice is None:
+            posData.lab = state['labels'].copy()
+        else:
+            posData.lab[..., crop_slice] = state['labels'].copy()
         posData.editID_info = state['editID_info'].copy()
         posData.binnedIDs = state['binnedIDs'].copy()
         posData.ripIDs = state['ripIDs'].copy()
@@ -11404,7 +11467,9 @@ class guiWin(QMainWindow):
             self.labelRoiCircularRadiusSpinbox.setDisabled(False)
 
     # @exec_time
-    def storeUndoRedoStates(self, UndoFutFrames, storeImage=False):
+    def storeUndoRedoStates(
+            self, UndoFutFrames, storeImage=False, storeOnlyZoom=False
+        ):
         posData = self.data[self.pos_i]
         if UndoFutFrames:
             # Since we modified current frame all future frames that were already
@@ -11419,7 +11484,9 @@ class guiWin(QMainWindow):
         # NOTE: index 0 is most recent state before doing last change
         self.UndoCount = 0
         self.undoAction.setEnabled(True)
-        self.addCurrentState(storeImage=storeImage)
+        self.addCurrentState(
+            storeImage=storeImage, storeOnlyZoom=storeOnlyZoom
+        )
         
     def storeUndoRedoCca(self, frame_i, cca_df, undoId):
         if self.isSnapshot:
@@ -14327,7 +14394,7 @@ class guiWin(QMainWindow):
     def splineToObj(self, xxA=None, yyA=None, isRightClick=False):
         posData = self.data[self.pos_i]
         # Store undo state before modifying stuff
-        self.storeUndoRedoStates(False)
+        self.storeUndoRedoStates(False, storeOnlyZoom=True)
 
         if isRightClick:
             xxS, yyS = self.curvPlotItem.getData()
@@ -15983,15 +16050,39 @@ class guiWin(QMainWindow):
         return objOpts
 
     @exception_handler
-    def update_rp(self, draw=True, debug=False):
+    def update_rp(self, draw=True, debug=False, update_IDs=True):
+        # currentframe = inspect.currentframe()
+        # outerframes = inspect.getouterframes(currentframe, 2)
+        # outerframes_format = '\n'
+        # for frame in outerframes:
+        #     outerframes_format = f'{outerframes_format}  * {frame.function}\n'
+        
         posData = self.data[self.pos_i]
         # Update rp for current posData.lab (e.g. after any change)
+        # t0 = time.perf_counter()
         posData.rp = skimage.measure.regionprops(posData.lab)
-        posData.IDs = [obj.label for obj in posData.rp]
-        posData.IDs_idxs = {
-            ID:i for ID, i in zip(posData.IDs, range(len(posData.IDs)))
-        }
+        # t1 = time.perf_counter()
+        if update_IDs:
+            IDs = []
+            IDs_idxs = {}
+            for idx, obj in enumerate(posData.rp):
+                IDs.append(obj.label)
+                IDs_idxs[obj.label] = idx
+            posData.IDs = IDs
+            posData.IDs_idxs = IDs_idxs
+        # t2 = time.perf_counter()
         self.update_rp_metadata(draw=draw)
+        # t3 = time.perf_counter()
+        # printl(
+        #     'Update rp exec times =\n'
+        #     f'  * {(t1-t0)*1000 = :.4f} ms\n'
+        #     f'  * {(t2-t1)*1000 = :.4f} ms\n'
+        #     f'  * {(t3-t2)*1000 = :.4f} ms\n'
+        #     # f'  * {(t4-t3)*1000 = :.4f} ms\n'
+        #     # f'  * {(t5-t4)*1000 = :.4f} ms\n'
+        #     # f'  * {(t6-t5)*1000 = :.4f} ms\n'
+        #     f'  * {(t3-t0)*1000 = :.4f} ms'
+        # )
 
     def extendLabelsLUT(self, lenNewLut):
         posData = self.data[self.pos_i]
@@ -16303,6 +16394,7 @@ class guiWin(QMainWindow):
 
         self.img2.setLookupTable(lut)
 
+    # @exec_time
     def update_rp_metadata(self, draw=True):
         posData = self.data[self.pos_i]
         # Add to rp dynamic metadata (e.g. cells annotated as dead)
@@ -18003,6 +18095,9 @@ class guiWin(QMainWindow):
         if self.annotContourCheckbox.isChecked():
             obj = skimage.measure.regionprops(brushImage)[0]
             objContour = [self.getObjContours(obj)]
+            # objContour = core.get_obj_contours(
+            #     obj_image=(brushImage>0).astype(np.uint8), local=True
+            # )
             self.brushContourImage[:] = 0
             img = self.brushContourImage
             color = self.brushContoursRgba
