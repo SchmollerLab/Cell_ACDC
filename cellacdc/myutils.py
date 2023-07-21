@@ -933,8 +933,11 @@ def _jdk_exists(jre_path):
 
 def check_upgrade_javabridge():
     import pkg_resources
-    version = pkg_resources.get_distribution("javabridge").version
-    patch = int(version.split('.')[-1])
+    try:
+        version = pkg_resources.get_distribution("javabridge").version
+    except Exception as e:
+        return
+    patch = int(version.split('.')[2])
     if patch > 19:
         return
     install_javabridge()
