@@ -11472,7 +11472,8 @@ class guiWin(QMainWindow):
         if crop_slice is None:
             posData.lab = state['labels'].copy()
         else:
-            posData.lab[..., crop_slice] = state['labels'].copy()
+            slice_y, slice_x = crop_slice
+            posData.lab[..., slice_y, slice_x] = state['labels'].copy()
         posData.editID_info = state['editID_info'].copy()
         posData.binnedIDs = state['binnedIDs'].copy()
         posData.ripIDs = state['ripIDs'].copy()
