@@ -6250,34 +6250,20 @@ class guiWin(QMainWindow):
 
         # Brush button mouse release
         elif self.isMouseDragImg1 and self.brushButton.isChecked():
-            # printl('mouse released')
-            # t0 = time.perf_counter()
-            
             self.isMouseDragImg1 = False
 
             self.tempLayerImg1.setImage(self.emptyLab)
             
-            # printl('cleared tempLayerImg1')
-            
-            # t1 = time.perf_counter()
-            
             posData = self.data[self.pos_i]
             self.fillHolesID(posData.brushID, sender='brush')
             
-            # t2 = time.perf_counter()
-
             # Update data (rp, etc)
             self.update_rp(update_IDs=self.isNewID)
             
-            # printl('update_rp')
-            
-            # t3 = time.perf_counter()
-
             # Repeat tracking
             if self.editIDcheckbox.isChecked():
                 self.tracking(enforce=True, assign_unique_new_IDs=False)
 
-            # t4 = time.perf_counter()
             # Update images
             if self.isNewID:
                 editTxt = 'Add new ID with brush tool'
@@ -6290,18 +6276,6 @@ class guiWin(QMainWindow):
                 self.updateAllImages()
             
             self.isNewID = False
-            
-            # t5 = time.perf_counter()
-            # printl(
-            #     'Brush exec times =\n'
-            #     f'  * {(t1-t0)*1000 = :.4f} ms\n'
-            #     f'  * {(t2-t1)*1000 = :.4f} ms\n'
-            #     f'  * {(t3-t2)*1000 = :.4f} ms\n'
-            #     f'  * {(t4-t3)*1000 = :.4f} ms\n'
-            #     f'  * {(t5-t4)*1000 = :.4f} ms\n'
-            #     # f'  * {(t6-t5)*1000 = :.4f} ms\n'
-            #     f'  * {(t5-t0)*1000 = :.4f} ms'
-            # )
 
         # Wand tool release, add new object
         elif self.isMouseDragImg1 and self.wandToolButton.isChecked():
@@ -16051,17 +16025,9 @@ class guiWin(QMainWindow):
 
     @exception_handler
     def update_rp(self, draw=True, debug=False, update_IDs=True):
-        # currentframe = inspect.currentframe()
-        # outerframes = inspect.getouterframes(currentframe, 2)
-        # outerframes_format = '\n'
-        # for frame in outerframes:
-        #     outerframes_format = f'{outerframes_format}  * {frame.function}\n'
-        
         posData = self.data[self.pos_i]
         # Update rp for current posData.lab (e.g. after any change)
-        # t0 = time.perf_counter()
         posData.rp = skimage.measure.regionprops(posData.lab)
-        # t1 = time.perf_counter()
         if update_IDs:
             IDs = []
             IDs_idxs = {}
@@ -16070,19 +16036,7 @@ class guiWin(QMainWindow):
                 IDs_idxs[obj.label] = idx
             posData.IDs = IDs
             posData.IDs_idxs = IDs_idxs
-        # t2 = time.perf_counter()
         self.update_rp_metadata(draw=draw)
-        # t3 = time.perf_counter()
-        # printl(
-        #     'Update rp exec times =\n'
-        #     f'  * {(t1-t0)*1000 = :.4f} ms\n'
-        #     f'  * {(t2-t1)*1000 = :.4f} ms\n'
-        #     f'  * {(t3-t2)*1000 = :.4f} ms\n'
-        #     # f'  * {(t4-t3)*1000 = :.4f} ms\n'
-        #     # f'  * {(t5-t4)*1000 = :.4f} ms\n'
-        #     # f'  * {(t6-t5)*1000 = :.4f} ms\n'
-        #     f'  * {(t3-t0)*1000 = :.4f} ms'
-        # )
 
     def extendLabelsLUT(self, lenNewLut):
         posData = self.data[self.pos_i]
