@@ -368,6 +368,8 @@ def store_unsaved_acdc_df(posData, acdc_df_to_store, log_func=printl):
             temp_h5_filepath = os.path.join(temp_dirpath, filename)
             with pd.HDFStore(temp_h5_filepath, mode='a') as hdf:
                 for key in keys:
+                    if key is None:
+                        continue
                     old_df = pd.read_hdf(h5_path, key=key)
                     hdf.append(key, old_df)
             shutil.move(temp_h5_filepath, h5_path)
@@ -376,7 +378,8 @@ def store_unsaved_acdc_df(posData, acdc_df_to_store, log_func=printl):
         with pd.HDFStore(h5_path, mode='a') as hdf:
             hdf.append(new_key, df)
     except Exception as e:
-        log_func(traceback.format_exc())
+        pass
+        # log_func(traceback.format_exc())
 
 def get_last_stored_unsaved_acdc_df(posData):
     h5_path = posData.unsaved_acdc_df_autosave_path

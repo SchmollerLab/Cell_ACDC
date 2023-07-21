@@ -865,6 +865,7 @@ class ScrollBar(QScrollBar):
             return event.button() == Qt.MouseButton.RightButton
         elif event.type() == QEvent.Type.MouseButtonRelease:
             # Filter right-click to prevent context menu
+            printl(event.button() == Qt.MouseButton.RightButton)
             return event.button() == Qt.MouseButton.RightButton
         return False
 

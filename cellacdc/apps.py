@@ -12152,7 +12152,7 @@ class SelectAcdcDfVersionToRestore(widgets.QBaseDialog):
             self.savedHDFfilepath = h5_filepath
             with pd.HDFStore(h5_filepath, mode='r') as hdf:
                 keys = natsorted(hdf.keys())
-            
+
             self.savedKeys = keys
             f = load.TIMESTAMP_HDF
             timestamps = [datetime.datetime.strptime(key[1:], f) for key in keys]

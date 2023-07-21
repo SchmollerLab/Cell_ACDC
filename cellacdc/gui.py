@@ -10261,6 +10261,7 @@ class guiWin(QMainWindow):
             self.editIDspinbox.setValue(newID)
 
     def wand_cb(self, checked):
+        self.storeViewRange()
         posData = self.data[self.pos_i]
         if checked:
             self.disconnectLeftClickButtons()
@@ -10270,8 +10271,8 @@ class guiWin(QMainWindow):
         else:
             self.resetCursors()
             self.wandControlsToolbar.setVisible(False)
-        if not self.labelsGrad.showLabelsImgAction.isChecked():
-            self.ax1.autoRange()
+        
+        QTimer.singleShot(200, self.resetRange)
     
     def lebelRoiTrangeCheckboxToggled(self, checked):
         disabled = not checked
@@ -10291,6 +10292,7 @@ class guiWin(QMainWindow):
         self.labelRoiStopFrameNoSpinbox.setValue(posData.SizeT)
 
     def labelRoi_cb(self, checked):
+        self.storeViewRange()
         posData = self.data[self.pos_i]
         if checked:
             self.disconnectLeftClickButtons()
@@ -10353,6 +10355,8 @@ class guiWin(QMainWindow):
             self.freeRoiItem.clear()
             self.ax1.removeItem(self.labelRoiItem)
             self.updateLabelRoiCircularCursor(None, None, False)
+        
+        QTimer.singleShot(200, self.resetRange)
     
     def labelRoiWorkerFinished(self):
         self.logger.info('Magic labeller closed.')
@@ -10606,8 +10610,12 @@ class guiWin(QMainWindow):
 
         self.thread.started.connect(self.worker.run)
         self.thread.start()
+    
+    def storeViewRange(self):
+        self.ax1_viewRange = self.ax1.viewRange()
         
     def Brush_cb(self, checked):
+        self.storeViewRange()
         if checked:
             self.typingEditID = False
             self.setDiskMask()
@@ -10635,6 +10643,8 @@ class guiWin(QMainWindow):
             self.enableSizeSpinbox(False)
             self.showEditIDwidgets(False)
             self.resetCursors()
+        
+        QTimer.singleShot(200, self.resetRange)
     
     def showEditIDwidgets(self, visible):
         self.editIDLabelAction.setVisible(visible)
@@ -10838,6 +10848,7 @@ class guiWin(QMainWindow):
             )
 
     def Eraser_cb(self, checked):
+        self.storeViewRange()
         if checked:
             self.setDiskMask()
             self.setHoverToolSymbolData(
@@ -10858,6 +10869,8 @@ class guiWin(QMainWindow):
             self.enableSizeSpinbox(False)
             self.resetCursors()
             self.updateAllImages()
+        
+        QTimer.singleShot(200, self.resetRange)
     
     def storeCurrentAnnotOptions_ax1(self):
         checkboxes = [
@@ -11903,6 +11916,7 @@ class guiWin(QMainWindow):
         self.ghostMaskItemRight.clear()
 
     def manualTracking_cb(self, checked):
+        self.storeViewRange()
         self.manualTrackingToolbar.setVisible(checked)
         if checked:
             self.realTimeTrackingToggle.previousStatus = (
@@ -11932,6 +11946,8 @@ class guiWin(QMainWindow):
             )
             self.removeManualTrackingItems()
             self.clearGhost()
+        
+        QTimer.singleShot(200, self.resetRange)
 
     def autoSegm_cb(self, checked):
         if checked:
@@ -16681,6 +16697,7 @@ class guiWin(QMainWindow):
                     pass
     
     def addPointsLayer_cb(self):
+        self.storeViewRange()
         self.pointsLayersToolbar.setVisible(True)
         self.autoPilotZoomToObjToolbar.setVisible(True)
         posData = self.data[self.pos_i]
@@ -16703,7 +16720,9 @@ class guiWin(QMainWindow):
             self.checkClickEntryTableEndnameExists
         )
         self.addPointsWin.show()
-    
+
+        QTimer.singleShot(200, self.resetRange)
+        
     def buttonAddPointsByClickingActive(self):
         for action in self.pointsLayersToolbar.actions()[1:]:
             if not hasattr(action, 'layerTypeIdx'):
