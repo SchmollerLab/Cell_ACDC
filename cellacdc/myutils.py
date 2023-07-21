@@ -899,19 +899,19 @@ def get_java_url():
         os_foldername = 'win64'
         unzipped_foldername = 'java_portable_windows-0.1'
         file_size = 214798150
-        url = 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/eMyirTw8qG2wJMt/download/java_portable_windows-0.1.zip'
-        # url = 'https://github.com/SchmollerLab/java_portable_windows/archive/refs/tags/v0.1.zip'
+        # url = 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/eMyirTw8qG2wJMt/download/java_portable_windows-0.1.zip'
+        url = 'https://github.com/SchmollerLab/java_portable_windows/archive/refs/tags/v0.1.zip'
     elif is_mac:
         os_foldername = 'macOS'
         unzipped_foldername = 'java_portable_macos-0.1'
-        # url = 'https://github.com/SchmollerLab/java_portable_macos/archive/refs/tags/v0.1.zip'
-        url = 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/SjZb8aommXgrECq/download/java_portable_macos-0.1.zip'
+        url = 'https://github.com/SchmollerLab/java_portable_macos/archive/refs/tags/v0.1.zip'
+        # url = 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/SjZb8aommXgrECq/download/java_portable_macos-0.1.zip'
         file_size = 108478751
     elif is_linux:
         os_foldername = 'linux'
         unzipped_foldername = 'java_portable_linux-0.1'
-        # url = 'https://github.com/SchmollerLab/java_portable_linux/archive/refs/tags/v0.1.zip'
-        url = 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/HjeQagixE2cjbZL/download/java_portable_linux-0.1.zip'
+        url = 'https://github.com/SchmollerLab/java_portable_linux/archive/refs/tags/v0.1.zip'
+        # url = 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/HjeQagixE2cjbZL/download/java_portable_linux-0.1.zip'
         file_size = 92520706
     return url, file_size, os_foldername, unzipped_foldername
 
