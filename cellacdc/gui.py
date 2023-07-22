@@ -12704,8 +12704,10 @@ class guiWin(QMainWindow):
                 init_params,
                 segment_params,
                 model_name, parent=self,
-                url=url, initLastParams=initLastParams, SizeZ=_SizeZ,
-                segmFileEndnames=existingSegmEndnames
+                url=url, initLastParams=initLastParams, 
+                SizeZ=_SizeZ,
+                segmFileEndnames=existingSegmEndnames,
+                df_metadata=posData.metadata_df
             )
             win.setChannelNames(posData.chNames)
             win.exec_()
@@ -12886,7 +12888,8 @@ class guiWin(QMainWindow):
             segment_params,
             model_name, parent=self,
             url=url, SizeZ=_SizeZ,
-            segmFileEndnames=existingSegmEndnames
+            segmFileEndnames=existingSegmEndnames,
+            df_metadata=posData.metadata_df
         )
         win.setChannelNames(posData.chNames)
         win.exec_()
@@ -13085,7 +13088,8 @@ class guiWin(QMainWindow):
         win = apps.QDialogModelParams(
             init_params,
             segment_params,
-            model_name, url=url, SizeZ=_SizeZ
+            model_name, url=url, SizeZ=_SizeZ,
+            df_metadata=posData.metadata_df
         )
         win.exec_()
         if win.cancel:

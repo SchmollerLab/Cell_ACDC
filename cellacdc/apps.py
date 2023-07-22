@@ -10251,7 +10251,8 @@ class QDialogModelParams(QDialog):
     def __init__(
             self, init_params, segment_params, model_name, is_tracker=False,
             url=None, parent=None, initLastParams=True, SizeZ=None, 
-            channels=None, currentChannelName=None, segmFileEndnames=None
+            channels=None, currentChannelName=None, segmFileEndnames=None,
+            df_metadata=None
         ):
         self.cancel = True
         super().__init__(parent)
@@ -10260,6 +10261,7 @@ class QDialogModelParams(QDialog):
         self.currentChannelName = currentChannelName
         self.channelCombobox = None
         self.segmFileEndnames = segmFileEndnames
+        self.df_metadata = df_metadata
         
         if is_tracker:
             self.ini_filename = 'last_params_trackers.ini'
@@ -10396,6 +10398,14 @@ class QDialogModelParams(QDialog):
         items = ['None']
         items.extend(chNames)
         self.channelsCombobox.addItems(items)
+    
+    def getValueFromMetadata(self, name):
+        try:
+            value = self.df_metadata.at[name, 'values']
+        except KeyError as e:
+            # traceback.print_exc()
+            value = None
+        return value
 
     def createGroupParams(self, ArgSpecs_list, groupName, addChannelSelector=False):
         ArgWidget = namedtuple(
@@ -10438,8 +10448,10 @@ class QDialogModelParams(QDialog):
         
         for row, ArgSpec in enumerate(ArgSpecs_list):
             row = row + start_row
-            var_name = ArgSpec.name.replace('_', ' ').title()
+            var_name = ArgSpec.name.replace('_', ' ')
+            var_name = f'{var_name[0].upper()}{var_name[1:]}'
             label = QLabel(f'{var_name}:  ')
+            metadata_val = self.getValueFromMetadata(ArgSpec.name)
             groupBoxLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
             try:
                 values = ArgSpec.type().values
@@ -10461,7 +10473,10 @@ class QDialogModelParams(QDialog):
                 )
             elif ArgSpec.type == int:
                 spinBox = widgets.SpinBox()
-                spinBox.setValue(ArgSpec.default)
+                if metadata_val is None:
+                    spinBox.setValue(ArgSpec.default)
+                else:
+                    spinBox.setValue(int(metadata_val))
                 defaultVal = ArgSpec.default
                 valueSetter = QSpinBox.setValue
                 valueGetter = QSpinBox.value
@@ -10469,7 +10484,10 @@ class QDialogModelParams(QDialog):
                 groupBoxLayout.addWidget(spinBox, row, 1, 1, 2)
             elif ArgSpec.type == float:
                 doubleSpinBox = widgets.FloatLineEdit()
-                doubleSpinBox.setValue(ArgSpec.default)
+                if metadata_val is None:
+                    doubleSpinBox.setValue(ArgSpec.default)
+                else:
+                    doubleSpinBox.setValue(float(metadata_val))
                 widget = doubleSpinBox
                 defaultVal = ArgSpec.default
                 valueSetter = widgets.FloatLineEdit.setValue

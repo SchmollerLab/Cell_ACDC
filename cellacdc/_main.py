@@ -367,9 +367,6 @@ class mainWin(QMainWindow):
         self.moduleLaunchedPalette.setColor(
             QPalette.Button, self.moduleLaunchedQColor
         )
-        self.moduleLaunchedPalette.setColor(
-            QPalette.ButtonText, QColor(0,0,0)
-        )
 
     def createMenuBar(self):
         menuBar = self.menuBar()

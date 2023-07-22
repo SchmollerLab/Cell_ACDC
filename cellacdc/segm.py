@@ -801,7 +801,8 @@ class segmWin(QMainWindow):
             segment_params,
             model_name, parent=self,
             url=url, SizeZ=_SizeZ,
-            segmFileEndnames=existingSegmEndnames
+            segmFileEndnames=existingSegmEndnames,
+            df_metadata=posData.metadata_df
         )
         win.setChannelNames(posData.chNames)
         win.exec_()

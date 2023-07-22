@@ -1900,10 +1900,15 @@ def import_tracker(posData, trackerName, realTime=False, qparent=None):
                 currentChannelName = posData.user_ch_name
             except Exception as e:
                 currentChannelName = None
+            try:
+                df_metadata = posData.metadata_df
+            except Exception as e:
+                df_metadata = None
             paramsWin = apps.QDialogModelParams(
                 init_argspecs, track_argspecs, trackerName, url=url,
                 channels=channels, is_tracker=True,
-                currentChannelName=currentChannelName
+                currentChannelName=currentChannelName,
+                df_metadata=df_metadata
             )
             paramsWin.exec_()
             if not paramsWin.cancel:
@@ -1930,6 +1935,7 @@ def import_segment_module(model_name):
     try:
         acdcSegment = import_module(f'models.{model_name}.acdcSegment')
     except ModuleNotFoundError as e:
+        # Check if custom model
         cp = config.ConfigParser()
         cp.read(models_list_file_path)
         model_path = cp[model_name]['path']
