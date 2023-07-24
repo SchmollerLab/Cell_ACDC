@@ -1,5 +1,6 @@
 import os
 import pandas as pd
+import re
 
 from qtpy import QtGui, QtWidgets, QtCore
 
@@ -156,10 +157,10 @@ def TreeWidgetStyleSheet():
         styleSheet = ("""
             QTreeWidget::item:hover {background-color:#4d4d4d;}
             QTreeWidget::item:hover {color:white;}
-            QTreeWidget::item:selected {background-color:#607a2f;}
+            QTreeWidget::item:selected {background-color:#8dc427;}
             QTreeWidget::item:selected {color:white;}
             QTreeView {
-                selection-background-color: #607a2f;
+                selection-background-color: #8dc427;
                 show-decoration-selected: 1;
             }
         """)
@@ -172,4 +173,6 @@ def ListWidgetStyleSheet():
     return styleSheet
 
 def QProgressBarColor():
-    return QtGui.QColor(111, 138, 61)      
+    styleSheet = TreeWidgetStyleSheet()
+    hex = re.findall(r'selection-background-color: (#[A-Za-z0-9]+)', styleSheet)[0]
+    return QtGui.QColor(hex)      

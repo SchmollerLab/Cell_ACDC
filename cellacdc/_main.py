@@ -557,7 +557,8 @@ class mainWin(QMainWindow):
     def startMigrateUserProfileWorker(self, src_path, dst_path, acdc_folders):
         self.progressWin = apps.QDialogWorkerProgress(
             title='Migrate user profile data', parent=self,
-            pbarDesc='Migrating user profile data...'
+            pbarDesc='Migrating user profile data...',
+            showInnerPbar=True
         )
         self.progressWin.sigClosed.connect(self.progressWinClosed)
         self.progressWin.show(self.app)
@@ -583,6 +584,12 @@ class mainWin(QMainWindow):
         self.migrateWorker.signals.progressBar.connect(
             self.workerUpdateProgressbar
         )
+        self.migrateWorker.signals.sigInitInnerPbar.connect(
+            self.workerInitInnerPbar
+        )
+        self.migrateWorker.signals.sigUpdateInnerPbar.connect(
+            self.workerUpdateInnerPbar
+        )
         
         self._thread.started.connect(self.migrateWorker.run)
         self._thread.start()
@@ -595,6 +602,15 @@ class mainWin(QMainWindow):
 
     def workerUpdateProgressbar(self, step):
         self.progressWin.mainPbar.update(step)
+    
+    def workerInitInnerPbar(self, totalIter):
+        self.progressWin.innerPbar.setValue(0)
+        if totalIter == 1:
+            totalIter = 0
+        self.progressWin.innerPbar.setMaximum(totalIter)
+    
+    def workerUpdateInnerPbar(self, step):
+        self.progressWin.innerPbar.update(step)
     
     def migrateWorkerFinished(self, worker):
         self.workerFinished()

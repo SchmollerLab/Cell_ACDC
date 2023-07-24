@@ -1,12 +1,13 @@
 import os
 import sys
-import pathlib
+import shutil
 
 import subprocess
 
 from natsort import natsorted
 
 from . import is_mac, is_linux
+from . import printl
 
 def listdir(path):
     return natsorted([
@@ -59,3 +60,35 @@ def show_in_file_manager(path):
         else:
             args = ['explorer', os.path.realpath(path)]
     subprocess.run(args)
+
+def copy_or_move_tree(
+        src: os.PathLike, dst: os.PathLike, copy=False,
+        sigInitPbar=None, sigUpdatePbar=None
+    ):
+    if sigInitPbar is not None:
+        sigInitPbar.emit(0)
+    
+    files_failed_move = {}
+    files_info = {}
+    for root, dirs, files in os.walk(src):
+        for file in files:
+            rel_path = os.path.relpath(root, src).replace('\\', '/')
+            src_filepath = os.path.join(root, file)
+            dst_filepath = os.path.join(dst, *rel_path.split('/'), file)
+            files_info[src_filepath] = dst_filepath
+    
+    if sigInitPbar is not None:
+        sigInitPbar.emit(len(files_info))
+    for src_filepath, dst_filepath in files_info.items():
+        os.makedirs(os.path.dirname(dst_filepath), exist_ok=True)
+        if copy:
+            shutil.copyfile(src_filepath, dst_filepath)
+        else:
+            try:
+                os.rename(src_filepath, dst_filepath)
+            except Exception as e:
+                shutil.copyfile(src_filepath, dst_filepath)
+                files_failed_move[src_filepath] = dst_filepath
+        if sigUpdatePbar is not None:
+            sigUpdatePbar.emit(1)
+    return files_failed_move

@@ -31,6 +31,7 @@ from . import (
     segm_re_pattern
 )
 from . import transformation
+from .path import copy_or_move_tree
 
 DEBUG = False
 
@@ -3328,7 +3329,6 @@ class MigrateUserProfileWorker(QObject):
     
     @worker_exception_handler
     def run(self):
-        from distutils.dir_util import copy_tree
         import shutil
         from . import models_path
 
@@ -3349,7 +3349,11 @@ class MigrateUserProfileWorker(QObject):
             src = os.path.join(self.src_path, acdc_folder)
             dst = os.path.join(self.dst_path, acdc_folder)
             self.progress.emit(f'Copying {src} to {dst}...')
-            copy_tree(src, dst)
+            files_failed_move = copy_or_move_tree(
+                src, dst, copy=False,
+                sigInitPbar=self.signals.sigInitInnerPbar, 
+                sigUpdatePbar=self.signals.sigUpdateInnerPbar
+            )
             folders_to_remove.append(src)
             self.signals.progressBar.emit(1)
         

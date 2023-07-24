@@ -7607,6 +7607,15 @@ class guiWin(QMainWindow):
 
     def workerUpdateProgressbar(self, step):
         self.progressWin.mainPbar.update(step)
+    
+    def workerInitInnerPbar(self, totalIter):
+        self.progressWin.innerPbar.setValue(0)
+        if totalIter == 1:
+            totalIter = 0
+        self.progressWin.innerPbar.setMaximum(totalIter)
+    
+    def workerUpdateInnerPbar(self, step):
+        self.progressWin.innerPbar.update(step)
 
     def startTrackingWorker(self, posData, video_to_track):
         self.thread = QThread()

@@ -61,6 +61,7 @@ LINEEDIT_INVALID_ENTRY_STYLESHEET = _palettes.lineedit_invalid_entry_stylesheet(
 TREEWIDGET_STYLESHEET = _palettes.TreeWidgetStyleSheet()
 LISTWIDGET_STYLESHEET = _palettes.ListWidgetStyleSheet()
 BASE_COLOR = _palettes.base_color()
+PROGRESSBAR_QCOLOR = _palettes.QProgressBarColor()
 
 font = QFont()
 font.setPixelSize(13)
@@ -5295,7 +5296,7 @@ class QProgressBarWithETA(QProgressBar):
         super().__init__(parent)
 
         palette = QPalette()
-        palette.setColor(QPalette.ColorRole.Highlight, _palettes.QProgressBarColor())
+        palette.setColor(QPalette.ColorRole.Highlight, PROGRESSBAR_QCOLOR)
         # palette.setColor(QPalette.ColorRole.Text, QColor(0, 0, 0))
         # palette.setColor(QPalette.ColorRole.HighlightedText, QColor(0, 0, 0))
         self.setPalette(palette)
