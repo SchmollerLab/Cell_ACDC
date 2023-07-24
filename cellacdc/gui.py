@@ -1566,7 +1566,7 @@ class guiWin(QMainWindow):
             self.copyContourButton
         )
         self.functionsNotTested3D.append(self.copyContourButton)
-        self.widgetsWithShortcut['Magic wand'] = self.copyContourButton
+        self.widgetsWithShortcut['Copy lost object contour'] = self.copyContourButton
 
         self.widgetsWithShortcut['Annotate mother/daughter pairing'] = (
             self.assignBudMothButton
@@ -2956,6 +2956,8 @@ class guiWin(QMainWindow):
         # self.reloadAction.triggered.connect(self.reload_cb)
         self.findIdAction.triggered.connect(self.findID)
         self.slideshowButton.toggled.connect(self.launchSlideshow)
+        
+        self.copyContourButton.toggled.connect(self.copyLostObjContour_cb)
 
         self.segmSingleFrameMenu.triggered.connect(self.segmFrameCallback)
         self.segmVideoMenu.triggered.connect(self.segmVideoCallback)
@@ -3191,8 +3193,7 @@ class guiWin(QMainWindow):
         
         self.annotLostObjsToggle = widgets.Toggle()
         annotLostObjsToggleTooltip = (
-            'Automatically store a copy of the segmentation data and of '
-            'the annotations in the `.recovery` folder after every edit.'
+            'Toggle annotation of lost objects mode ON/OFF'
         )
         self.annotLostObjsToggle.setChecked(True)
         self.annotLostObjsToggle.setToolTip(annotLostObjsToggleTooltip)
@@ -5620,6 +5621,7 @@ class guiWin(QMainWindow):
         # Alt key was released --> restore cursor
         modifiers = QGuiApplication.keyboardModifiers()
         cursorsInfo = self.gui_setCursor(modifiers, event)
+        self.highlightHoverLostObj(modifiers, event)
         
         drawRulerLine = (
             (self.rulerButton.isChecked() 
@@ -6646,6 +6648,10 @@ class guiWin(QMainWindow):
         keepObjON = self.keepIDsButton.isChecked()
         separateON = self.separateBudButton.isChecked()
         addPointsByClickingButton = self.buttonAddPointsByClickingActive()
+        copyContourON = (
+            self.copyContourButton.isChecked()
+            and self.ax1_lostObjScatterItem.hoverLostID>0
+        )
 
         # Check if right-click on segment of polyline roi to add segment
         segments = self.gui_getHoveredSegmentsPolyLineRoi()
@@ -6709,7 +6715,7 @@ class guiWin(QMainWindow):
         isOnlyRightClick = (
             right_click and canAnnotateDivision and not isAnnotateDivision
             and not isMod and not is_right_click_action_ON
-            and not is_right_click_custom_ON
+            and not is_right_click_custom_ON and not copyContourON
         )
 
         if isOnlyRightClick:
@@ -6989,6 +6995,15 @@ class guiWin(QMainWindow):
                 self.highlightLabelID(ID)
             
             self.updateTempLayerKeepIDs()
+        
+        elif right_click and copyContourON:
+            hoverLostID = self.ax1_lostObjScatterItem.hoverLostID#
+            lab2D = self.get_2Dlab(posData.lab)
+            lab2D[self.lostObjImage == hoverLostID] = hoverLostID
+            self.set_2Dlab(lab2D)
+            self.update_rp()
+            self.updateAllImages()
+            self.store_data()
 
         elif right_click and canCurv:
             # Draw manually assisted auto contour
@@ -10020,6 +10035,7 @@ class guiWin(QMainWindow):
         mode = self.modeComboBox.itemText(idx)
         self.annotateToolbar.setVisible(False)
         self.store_data(autosave=False)
+        self.copyContourButton.setChecked(False)
         if mode == 'Segmentation and Tracking':
             self.trackingMenu.setDisabled(False)
             self.modeToolBar.setVisible(True)
@@ -10254,7 +10270,6 @@ class guiWin(QMainWindow):
         self.rulerButton.toggled.connect(self.ruler_cb)
         self.eraserButton.toggled.connect(self.Eraser_cb)
         self.wandToolButton.toggled.connect(self.wand_cb)
-        self.copyContourButton.toggled.connect(self.copyLostObjContour_cb)
         self.labelRoiButton.toggled.connect(self.labelRoi_cb)
         self.expandLabelToolButton.toggled.connect(self.expandLabelCallback)
         self.addDelPolyLineRoiAction.toggled.connect(self.addDelPolyLineRoi_cb)
@@ -10298,10 +10313,11 @@ class guiWin(QMainWindow):
         QTimer.singleShot(200, self.resetRange)
     
     def copyLostObjContour_cb(self, checked):
+        self.ax1_lostObjScatterItem.hoverLostID = 0
         if not checked:
             return
         self.lostObjImage = np.zeros_like(self.currentLab2D)
-        self.addLostObjToImage()
+        self.addLostObjsToImage()
     
     def lebelRoiTrangeCheckboxToggled(self, checked):
         disabled = not checked
@@ -18821,19 +18837,19 @@ class guiWin(QMainWindow):
         for objContours in allContours:
             xx = objContours[:,0] + 0.5
             yy = objContours[:,1] + 0.5
-            self.ax1_lostObjScatterItem.addPoints(xx, yy)
+            data = [obj.label]*len(xx)
+            self.ax1_lostObjScatterItem.addPoints(xx, yy, data=data)
             self.ax2_lostObjScatterItem.addPoints(xx, yy)
     
-    def addLostObjToImage(self):
+    def addLostObjsToImage(self):
         xx, yy = self.ax1_lostObjScatterItem.getData()
-        self.lostObjImage[yy, xx] = self.currentLab2D[yy, xx]
+        xx, yy = np.round(xx-0.5).astype(int), np.round(yy-0.5).astype(int)
+        labels = self.ax1_lostObjScatterItem.data['data']
+        self.lostObjImage[yy, xx] = labels
         lostObjRp = skimage.measure.regionprops(self.lostObjImage)
         for obj in lostObjRp:
             filleObjMask = scipy.ndimage.binary_fill_holes(obj.image)
             self.lostObjImage[obj.slice][filleObjMask] = obj.label
-        
-        from cellacdc.plot import imshow
-        imshow(self.lostObjImage)
     
     def setCcaIssueContour(self, obj):
         objContours = self.getObjContours(obj, all_external=True)  
@@ -19066,9 +19082,6 @@ class guiWin(QMainWindow):
         if self.modeComboBox.currentText() == 'Viewer':
             return
         
-        if not self.annotLostObjsToggle.isChecked():
-            return
-        
         posData = self.data[self.pos_i]
         delROIsIDs = self.getDelRoisIDs()
 
@@ -19088,6 +19101,9 @@ class guiWin(QMainWindow):
             self.addObjContourToContoursImage(
                 obj=obj, ax=1, thickness=self.contLineWeight+1
             )
+        
+        if not self.annotLostObjsToggle.isChecked():
+            return
         
         if not posData.lost_IDs:
             return
@@ -19109,6 +19125,29 @@ class guiWin(QMainWindow):
                 continue
             
             self.setLostObjectContour(obj)
+        
+        if self.copyContourButton.isChecked():
+            self.addLostObjsToImage()
+    
+    def highlightHoverLostObj(self, modifiers, event):
+        noModifier = modifiers == Qt.NoModifier
+        if not noModifier:
+            return
+        
+        if not self.copyContourButton.isChecked():
+            return
+        
+        if event.isExit():
+            return
+        
+        x, y = event.pos()
+        xdata, ydata = int(x), int(y)
+        hoverLostID = self.lostObjImage[ydata, xdata]
+        self.ax1_lostObjScatterItem.hoverLostID = hoverLostID
+        if hoverLostID == 0:
+            self.ax1_lostObjScatterItem.setSize(self.contLineWeight+1)
+        else:
+            self.ax1_lostObjScatterItem.setSize(self.contLineWeight+2)
     
     def annotLostObjsToggled(self, checked):
         if not self.dataIsLoaded:
