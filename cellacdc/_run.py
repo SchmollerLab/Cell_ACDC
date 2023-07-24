@@ -255,6 +255,6 @@ def _setup_app(splashscreen=False, icon_path=None, logo_path=None):
     palette = getPaletteColorScheme(app.palette(), scheme=scheme)
     app.setPalette(palette)     
     load.rename_qrc_resources_file(scheme)
-    setToolTipStyleSheet(app, scheme=scheme)
+    # setToolTipStyleSheet(app, scheme=scheme)
     
     return app, splashScreen
