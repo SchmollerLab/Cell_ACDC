@@ -915,6 +915,7 @@ class guiWin(QMainWindow):
         self.storeStateWorker = None
         self.AutoPilot = None
         self.widgetsWithShortcut = {}
+        self.invertBwAlreadyCalledOnce = False
 
         self.setWindowTitle("Cell-ACDC - GUI")
         self.setWindowIcon(QIcon(":icon.ico"))
@@ -9507,6 +9508,8 @@ class guiWin(QMainWindow):
                 self.UserEnforced_Tracking = True
 
     def invertBw(self, checked, update=True):
+        self.invertBwAlreadyCalledOnce = True
+        
         self.labelsGrad.invertBwAction.toggled.disconnect()
         self.labelsGrad.invertBwAction.setChecked(checked)
         self.labelsGrad.invertBwAction.toggled.connect(self.setCheckedInvertBW)
@@ -9516,10 +9519,10 @@ class guiWin(QMainWindow):
         self.imgGrad.invertBwAction.toggled.connect(self.setCheckedInvertBW)
 
         self.imgGrad.setInvertedColorMaps(checked)
-        self.imgGrad.invertCurrentColormap()
+        self.imgGrad.invertCurrentColormap(checked)
 
         self.imgGradRight.setInvertedColorMaps(checked)
-        self.imgGradRight.invertCurrentColormap()
+        self.imgGradRight.invertCurrentColormap(checked)
 
         for items in self.overlayLayersItems.values():
             lutItem = items[1]
@@ -9557,6 +9560,10 @@ class guiWin(QMainWindow):
             self.textAnnot[0].item.colors()['label'][:3]
         )
         self.textIDsColorButton.setColor(self.objLabelAnnotRgb)
+        self.imgGrad.textColorButton.setColor(self.objLabelAnnotRgb)
+        for items in self.overlayLayersItems.values():
+            lutItem = items[1]
+            lutItem.textColorButton.setColor(self.objLabelAnnotRgb)
         
         if update:
             self.updateAllImages()
@@ -13979,7 +13986,7 @@ class guiWin(QMainWindow):
         self.setSaturBarLabel()
 
         self.initLookupTableLab()
-        if self.invertBwAction.isChecked():
+        if self.invertBwAction.isChecked() and not self.invertBwAlreadyCalledOnce:
             self.invertBw(True)
         self.restoreSavedSettings()
 

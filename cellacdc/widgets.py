@@ -4283,7 +4283,7 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
         invertedGradient['mode'] = gradient['mode']
         return invertedGradient
     
-    def invertCurrentColormap(self, debug=False):
+    def invertCurrentColormap(self, inverted, debug=False):
         self.setGradient(self.invertGradient(self.lastGradient))
     
     def addCustomGradient(self, gradient_name, gradient_ticks):
