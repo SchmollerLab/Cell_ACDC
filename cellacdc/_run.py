@@ -55,8 +55,6 @@ def _setup_gui():
                     f'"{answer}" is not a valid answer. '
                     'Type "y" for "yes", or "n" for "no".'
                 )
-            
-    from . import qrc_resources_path, qrc_resources_light_path
     
     warn_restart = False
     # Force PyQt6 if available
@@ -189,6 +187,8 @@ def _setup_app(splashscreen=False, icon_path=None, logo_path=None):
     app.setStyle(QStyleFactory.create('Fusion'))
     is_OS_dark_mode = app.palette().color(QPalette.Window).getHsl()[2] < 100
     if is_OS_dark_mode:
+        # Switch to dark mode if scheme was never selected by user and OS is 
+        # dark mode
         import pandas as pd
         df_settings = pd.read_csv(settings_csv_path, index_col='setting')
         if 'colorScheme' not in df_settings.index:
@@ -229,6 +229,27 @@ def _setup_app(splashscreen=False, icon_path=None, logo_path=None):
     
     from ._palettes import getPaletteColorScheme, setToolTipStyleSheet
     from ._palettes import get_color_scheme
+    from . import qrc_resources_path
+    from . import printl
+    
+    # Check if there are new icons --> replace qrc_resources.py
+    scheme = get_color_scheme()
+    if scheme == 'light':
+        from . import qrc_resources_light_path
+        qrc_resources_scheme_path = qrc_resources_light_path
+    else:
+        from . import qrc_resources_dark_path
+        qrc_resources_scheme_path = qrc_resources_dark_path
+    
+    with open(qrc_resources_scheme_path, 'r') as qrc_scheme:
+        qrc_scheme_data = qrc_scheme.read()
+    with open(qrc_resources_path, 'r') as qrc:
+        qrc_data = qrc.read()
+    
+    if qrc_scheme_data != qrc_data:
+        # When we add new icons the qrc_resources.py file needs to be replaced
+        shutil.copyfile(qrc_resources_scheme_path, qrc_resources_path)
+    
     from . import load
     scheme = get_color_scheme()
     palette = getPaletteColorScheme(app.palette(), scheme=scheme)

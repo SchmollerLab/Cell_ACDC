@@ -1552,6 +1552,28 @@ class guiWin(QMainWindow):
         self.widgetsWithShortcut['Annotate unknown history'] = (
             self.setIsHistoryKnownButton
         )
+        
+        self.copyContourButton = QToolButton(self)
+        self.copyContourButton.setIcon(QIcon(":copyContour.svg"))
+        self.copyContourButton.setCheckable(True)
+        self.copyContourButton.setShortcut('w')
+        self.copyContourButton.setToolTip(
+            'Toggle "Copy contour mode from lost object" ON/OFF\n\n'
+            'ACTION: Hover onto lost object contour --> right-click to copy '
+            'the contour as a new object.\n'
+            'SHORTCUT: "V" key')
+        self.copyContourButton.action = editToolBar.addWidget(
+            self.copyContourButton
+        )
+        self.functionsNotTested3D.append(self.copyContourButton)
+        self.widgetsWithShortcut['Magic wand'] = self.copyContourButton
+
+        self.widgetsWithShortcut['Annotate mother/daughter pairing'] = (
+            self.assignBudMothButton
+        )
+        self.widgetsWithShortcut['Annotate unknown history'] = (
+            self.setIsHistoryKnownButton
+        )
 
         self.labelRoiButton = widgets.rightClickToolButton(parent=self)
         self.labelRoiButton.setIcon(QIcon(":label_roi.svg"))
@@ -10232,6 +10254,7 @@ class guiWin(QMainWindow):
         self.rulerButton.toggled.connect(self.ruler_cb)
         self.eraserButton.toggled.connect(self.Eraser_cb)
         self.wandToolButton.toggled.connect(self.wand_cb)
+        self.copyContourButton.toggled.connect(self.copyLostObjContour_cb)
         self.labelRoiButton.toggled.connect(self.labelRoi_cb)
         self.expandLabelToolButton.toggled.connect(self.expandLabelCallback)
         self.addDelPolyLineRoiAction.toggled.connect(self.addDelPolyLineRoi_cb)
@@ -10273,6 +10296,12 @@ class guiWin(QMainWindow):
             self.wandControlsToolbar.setVisible(False)
         
         QTimer.singleShot(200, self.resetRange)
+    
+    def copyLostObjContour_cb(self, checked):
+        if not checked:
+            return
+        self.lostObjImage = np.zeros_like(self.currentLab2D)
+        self.addLostObjToImage()
     
     def lebelRoiTrangeCheckboxToggled(self, checked):
         disabled = not checked
@@ -18794,6 +18823,17 @@ class guiWin(QMainWindow):
             yy = objContours[:,1] + 0.5
             self.ax1_lostObjScatterItem.addPoints(xx, yy)
             self.ax2_lostObjScatterItem.addPoints(xx, yy)
+    
+    def addLostObjToImage(self):
+        xx, yy = self.ax1_lostObjScatterItem.getData()
+        self.lostObjImage[yy, xx] = self.currentLab2D[yy, xx]
+        lostObjRp = skimage.measure.regionprops(self.lostObjImage)
+        for obj in lostObjRp:
+            filleObjMask = scipy.ndimage.binary_fill_holes(obj.image)
+            self.lostObjImage[obj.slice][filleObjMask] = obj.label
+        
+        from cellacdc.plot import imshow
+        imshow(self.lostObjImage)
     
     def setCcaIssueContour(self, obj):
         objContours = self.getObjContours(obj, all_external=True)  
