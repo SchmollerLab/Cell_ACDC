@@ -3932,9 +3932,11 @@ class guiWin(QMainWindow):
         )
         self.ax2.addItem(self.ax2_EraserCircle)
         self.ax2_EraserX = pg.ScatterPlotItem()
-        self.ax2_EraserX.setData([], [], symbol='x', pxMode=False, size=3,
-                                      brush=pg.mkBrush(color=(255,0,0,50)),
-                                      pen=pg.mkPen(width=1.5, color='r'))
+        self.ax2_EraserX.setData(
+            [], [], symbol='x', pxMode=False, size=3,
+            brush=pg.mkBrush(color=(255,0,0,50)),
+            pen=pg.mkPen(width=1.5, color='r')
+        )
         self.ax2.addItem(self.ax2_EraserX)
 
         # Brush circle img2
@@ -3979,6 +3981,12 @@ class guiWin(QMainWindow):
             pen=pg.mkPen(color='r', width=2)
         )
         self.topLayerItems.append(self.freeRoiItem)
+        
+        self.warnPairingItem = widgets.PlotCurveItem(
+            pen=pg.mkPen(color='r', width=5, style=Qt.DashLine),
+            pxMode=False
+        )
+        self.topLayerItems.append(self.warnPairingItem)
 
         self.ghostContourItemLeft = widgets.GhostContourItem()
         self.ghostContourItemRight = widgets.GhostContourItem()
@@ -8806,6 +8814,101 @@ class guiWin(QMainWindow):
                 new_mothID, budID, posData.frame_i, 'single_frame_G1_duration'
             )
         return eligible
+    
+    def checkMothersExcludedOrDead(self):
+        try:
+            posData = self.data[self.pos_i]
+            buds_df = posData.cca_df[
+                (posData.cca_df.relationship == 'bud')
+                & (posData.cca_df.emerg_frame_i == posData.frame_i)
+            ]
+            acdc_df_i = posData.allData_li[posData.frame_i]['acdc_df']
+            moth_df = acdc_df_i.loc[buds_df.relative_ID.to_list()]
+            excluded_df = moth_df[
+                (moth_df.is_cell_dead > 0) | (moth_df.is_cell_excluded > 0)
+            ]
+            excludedMothIDs = excluded_df.index.to_list()
+            if not excludedMothIDs:
+                self.stopBlinkingPairItem()
+                return True
+            budIDsOfExcludedMoth = excluded_df.relative_ID.to_list()
+            self.warnDeadOrExcludedMothers(budIDsOfExcludedMoth, excludedMothIDs)
+        except Exception as e:
+            self.logger.info(traceback.format_exc())
+            self.logger.info('-'*60)
+            self.logger.info(
+                '[WARNING]: checking if mother cell is excluded or dead failed.'
+            )
+            self.logger.info('^'*60)
+    
+    def stopBlinkingPairItem(self):
+        self.ax1_newMothBudLinesItem.setOpacity(1.0)
+        self.ax1_oldMothBudLinesItem.setOpacity(1.0)
+        
+        self.warnPairingItem.setData([], [])
+        try:
+            self.blinkPairingItemTimer.stop()
+        except Exception as e:
+            pass
+    
+    def warnDeadOrExcludedMothers(self, budIDs, mothIDs):
+        self.startBlinkingPairingItem(budIDs, mothIDs)
+        msg = widgets.myMessageBox(wrapText=False)
+        pairings = [
+            f'Mother ID {mID} --> bud ID {bID}' 
+            for mID, bID in zip(mothIDs, budIDs)
+        ]
+        txt = html_utils.paragraph(f"""
+            The <b>mother</b> cell in the following mother-bud pairings
+            (blinking line on the image) is<br>
+            <b>excluded from the analysis or dead</b>:
+            {html_utils.to_list(pairings)}
+        """)
+        msg.warning(
+            self, 'Mother cell is excluded or dead', txt, 
+            buttonsTexts=('Cancel', 'Ok')
+        )
+        return not msg.cancel
+    
+    def checkMothExcludedOrDead(self, budID, mothID):
+        posData = self.data[self.pos_i]
+        acdc_df_i = posData.allData_li[posData.frame_i]['acdc_df']
+        is_moth_dead = acdc_df_i.at[mothID, 'is_cell_dead']
+        is_moth_excluded = acdc_df_i.at[mothID, 'is_cell_excluded']
+        if not is_moth_dead and not is_moth_excluded:
+            return True
+        proceed = self.warnDeadOrExcludedMothers([budID], [mothID])
+        return proceed
+        
+    def startBlinkingPairingItem(self, budIDs, mothIDs):
+        self.ax1_newMothBudLinesItem.setOpacity(0.2)
+        self.ax1_oldMothBudLinesItem.setOpacity(0.2)
+        
+        posData = self.data[self.pos_i]
+        acdc_df_i = posData.allData_li[posData.frame_i]['acdc_df']
+        
+        # Blink one pairing at the time (the first found)
+        xc_b = acdc_df_i.loc[budIDs[0], 'x_centroid']
+        yc_b = acdc_df_i.loc[budIDs[0], 'y_centroid']
+        
+        xc_m = acdc_df_i.loc[mothIDs[0], 'x_centroid']
+        yc_m = acdc_df_i.loc[mothIDs[0], 'y_centroid']
+        
+        self.warnPairingItem.setData([xc_b, xc_m], [yc_b, yc_m])
+        
+        self.blinkPairingItemTimer = QTimer()
+        self.blinkPairingItemTimer.flag = True
+        self.blinkPairingItemTimer.timeout.connect(self.blinkPairingItem)
+        self.blinkPairingItemTimer.start(300)
+    
+    def blinkPairingItem(self):
+        if self.blinkPairingItemTimer.flag:
+            opacity = 0.3
+            self.blinkPairingItemTimer.flag = False
+        else:
+            opacity = 1.0
+            self.blinkPairingItemTimer.flag = True
+        self.warnPairingItem.setOpacity(opacity)
 
     def getStatus_RelID_BeforeEmergence(self, budID, curr_mothID):
         posData = self.data[self.pos_i]
@@ -8907,9 +9010,14 @@ class guiWin(QMainWindow):
         if not eligible:
             return
 
+        proceed = self.checkMothExcludedOrDead(budID, new_mothID)
+        if not proceed:
+            return
+
         if curr_mothID in posData.cca_df.index:
             curr_moth_cca = self.getStatus_RelID_BeforeEmergence(
-                                                         budID, curr_mothID)
+                budID, curr_mothID
+            )
 
         # Store cca_df for undo action
         undoId = uuid.uuid4()
@@ -8944,8 +9052,8 @@ class guiWin(QMainWindow):
         self.updateAllImages()
 
         self.checkMultiBudMoth(draw=True)
-
         self.store_cca_df()
+        self.checkMothersExcludedOrDead()
 
         if self.ccaTableWin is not None:
             self.ccaTableWin.updateTable(posData.cca_df)
@@ -10792,9 +10900,9 @@ class guiWin(QMainWindow):
         # already visited frames
         posData = self.data[self.pos_i]
         if useCurrentLab:
-            newID = max(posData.IDs, default=1)
+            newID = max(posData.IDs, default=0)
         else:
-            newID = 1
+            newID = 0
         for frame_i, storedData in enumerate(posData.allData_li):
             if frame_i == posData.frame_i:
                 continue
@@ -15045,7 +15153,11 @@ class guiWin(QMainWindow):
         else:
             # Filter or add IDs that were not stored yet
             acdc_df = acdc_df.drop(columns=['time_seconds'], errors='ignore')
-            acdc_df = acdc_df.reindex(IDs, fill_value=0)
+            try:
+                acdc_df = acdc_df.reindex(IDs, fill_value=0)
+            except Exception as e:
+                printl(IDs)
+                printl(acdc_df.index)
             acdc_df['is_cell_dead'] = is_cell_dead_li
             acdc_df['is_cell_excluded'] = is_cell_excluded_li
             acdc_df['x_centroid'] = xx_centroid
@@ -15229,6 +15341,7 @@ class guiWin(QMainWindow):
         if posData.cca_df.isna().any(axis=None):
             raise ValueError('Cell cycle analysis table contains NaNs')
         self.checkMultiBudMoth()
+        self.checkMothersExcludedOrDead()
         return notEnoughG1Cells, proceed
 
     def highlightIDs(self, IDs, pen):
@@ -19069,7 +19182,7 @@ class guiWin(QMainWindow):
             return
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.blinkModeComboBox)
-        self.timer.start(100)
+        self.timer.start(200)
         self.stopBlinkTimer = QTimer(self)
         self.stopBlinkTimer.timeout.connect(self.stopBlinkingCB)
         self.stopBlinkTimer.start(2000)
