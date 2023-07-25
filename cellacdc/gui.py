@@ -2847,7 +2847,7 @@ class guiWin(QMainWindow):
         )
     
         self.addCustomAnnotationAction = QAction(self)
-        self.addCustomAnnotationAction.setIcon(QIcon(":annotate.svg"))
+        self.addCustomAnnotationAction.setIcon(QIcon(":addCustomAnnotation.svg"))
         self.addCustomAnnotationAction.setToolTip('Add custom annotation')
         # self.functionsNotTested3D.append(self.addCustomAnnotationAction)
 

@@ -146,7 +146,7 @@
     <file alias="collapse.svg">resources/icons/collapse_dark.svg</file>
     <file alias="info.svg">resources/icons/info_dark.svg</file>
     <file alias="help.svg">resources/icons/help_dark.svg</file>
-    <file alias="annotate.svg">resources/icons/annotate_dark.svg</file>
+    <file alias="addCustomAnnotation.svg">resources/icons/addCustomAnnotation.svg</file>
     <file alias="toolbar.png">resources/screenshots/toolbar.png</file>
     <file alias="toolTip.png">resources/screenshots/toolTip.png</file>
     <file alias="visualcpp.png">resources/screenshots/visual_studio_settings.png</file>
