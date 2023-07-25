@@ -9010,10 +9010,6 @@ class guiWin(QMainWindow):
         if not eligible:
             return
 
-        proceed = self.checkMothExcludedOrDead(budID, new_mothID)
-        if not proceed:
-            return
-
         if curr_mothID in posData.cca_df.index:
             curr_moth_cca = self.getStatus_RelID_BeforeEmergence(
                 budID, curr_mothID
