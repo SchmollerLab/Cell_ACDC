@@ -63,6 +63,7 @@ TREEWIDGET_STYLESHEET = _palettes.TreeWidgetStyleSheet()
 LISTWIDGET_STYLESHEET = _palettes.ListWidgetStyleSheet()
 BASE_COLOR = _palettes.base_color()
 PROGRESSBAR_QCOLOR = _palettes.QProgressBarColor()
+PROGRESSBAR_HIGHLIGHTEDTEXT_QCOLOR = _palettes.QProgressBarHighlightedTextColor()
 
 font = QFont()
 font.setPixelSize(13)
@@ -5298,6 +5299,10 @@ class QProgressBarWithETA(QProgressBar):
 
         palette = QPalette()
         palette.setColor(QPalette.ColorRole.Highlight, PROGRESSBAR_QCOLOR)
+        palette.setColor(
+            QPalette.ColorRole.HighlightedText, 
+            PROGRESSBAR_HIGHLIGHTEDTEXT_QCOLOR
+        )
         # palette.setColor(QPalette.ColorRole.Text, QColor(0, 0, 0))
         # palette.setColor(QPalette.ColorRole.HighlightedText, QColor(0, 0, 0))
         self.setPalette(palette)

@@ -175,4 +175,11 @@ def ListWidgetStyleSheet():
 def QProgressBarColor():
     styleSheet = TreeWidgetStyleSheet()
     hex = re.findall(r'selection-background-color: (#[A-Za-z0-9]+)', styleSheet)[0]
-    return QtGui.QColor(hex)      
+    return QtGui.QColor(hex)    
+
+def QProgressBarHighlightedTextColor():
+    scheme = get_color_scheme()
+    if scheme == 'light':
+        return QtGui.QColor(0, 0, 0, 255)
+    else:
+        return QtGui.QColor(255, 255, 255, 255)

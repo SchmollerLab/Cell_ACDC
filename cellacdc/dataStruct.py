@@ -1352,7 +1352,13 @@ class createDataStructWin(QMainWindow):
         self.QPbar = QProgressBar(self)
         self.QPbar.setValue(0)
         palette = QtGui.QPalette()
-        palette.setColor(QtGui.QPalette.ColorRole.Highlight, _palettes.QProgressBarColor())
+        palette.setColor(
+            QtGui.QPalette.ColorRole.Highlight, widgets.PROGRESSBAR_QCOLOR
+        )
+        palette.setColor(
+            QtGui.QPalette.ColorRole.HighlightedText, 
+            widgets.PROGRESSBAR_HIGHLIGHTEDTEXT_QCOLOR
+        )
         # palette.setColor(QtGui.QPalette.ColorRole.Text, QtGui.QColor(0, 0, 0))
         # palette.setColor(QtGui.QPalette.ColorRole.HighlightedText, QtGui.QColor(0, 0, 0))
         self.QPbar.setPalette(palette)

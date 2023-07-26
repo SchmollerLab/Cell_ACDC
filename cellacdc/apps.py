@@ -9879,8 +9879,10 @@ class QDialogPbar(QDialog):
         self.QPbar = QProgressBar(self)
         self.QPbar.setValue(0)
         palette = QPalette()
+        palette.setColor(QPalette.ColorRole.Highlight, widgets.PROGRESSBAR_QCOLOR)
         palette.setColor(
-            QPalette.ColorRole.Highlight, _palettes.QProgressBarColor()
+            QPalette.ColorRole.HighlightedText, 
+            widgets.PROGRESSBAR_HIGHLIGHTEDTEXT_QCOLOR
         )
         # palette.setColor(QPalette.ColorRole.Text, QColor(0, 0, 0))
         # palette.setColor(QPalette.ColorRole.HighlightedText, QColor(0, 0, 0))
@@ -9891,10 +9893,6 @@ class QDialogPbar(QDialog):
 
         self.metricsQPbar = QProgressBar(self)
         self.metricsQPbar.setValue(0)
-        palette = QPalette()
-        palette.setColor(
-            QPalette.ColorRole.Highlight, _palettes.QProgressBarColor()
-        )
         # palette.setColor(QPalette.ColorRole.Text, QColor(0, 0, 0))
         # palette.setColor(QPalette.ColorRole.HighlightedText, QColor(0, 0, 0))
         self.metricsQPbar.setPalette(palette)

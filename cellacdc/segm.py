@@ -558,7 +558,11 @@ class segmWin(QMainWindow):
         QPbar.setValue(0)
         palette = QtGui.QPalette()
         palette.setColor(
-            QtGui.QPalette.ColorRole.Highlight, _palettes.QProgressBarColor()
+            QtGui.QPalette.ColorRole.Highlight, widgets.PROGRESSBAR_QCOLOR
+        )
+        palette.setColor(
+            QtGui.QPalette.ColorRole.HighlightedText, 
+            widgets.PROGRESSBAR_HIGHLIGHTEDTEXT_QCOLOR
         )
         # palette.setColor(QtGui.QPalette.ColorRole.Text, QtGui.QColor(0, 0, 0))
         # palette.setColor(QtGui.QPalette.ColorRole.HighlightedText, QtGui.QColor(0, 0, 0))

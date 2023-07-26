@@ -62,6 +62,9 @@ from qtpy.QtWidgets import (
 import pyqtgraph as pg
 pg.setConfigOption('imageAxisOrder', 'row-major')
 
+from warnings import simplefilter
+simplefilter(action="ignore", category=pd.errors.PerformanceWarning)
+
 # NOTE: Enable icons
 from . import qrc_resources
 
@@ -654,6 +657,7 @@ class saveDataWorker(QObject):
                 try:
                     acdc_df = load.pd_bool_to_int(acdc_df, inplace=False)
                     rp = data_dict['regionprops']
+                    acdc_df['num_objects'] = len(acdc_df)
                     if save_metrics:
                         if frame_i > 0:
                             prev_data_dict = posData.allData_li[frame_i-1]
