@@ -49,6 +49,7 @@ from qtpy.QtWidgets import (
 )
 
 import pyqtgraph as pg
+pg.setConfigOption('imageAxisOrder', 'row-major')
 
 from . import myutils, measurements, is_mac, is_win, html_utils, is_linux
 from . import qrc_resources, printl, settings_folderpath

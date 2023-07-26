@@ -37,6 +37,8 @@ import math
 import time
 
 import pyqtgraph as pg
+pg.setConfigOption('imageAxisOrder', 'row-major')
+
 from qtpy import QtCore
 from qtpy.QtGui import (
     QIcon, QFontMetrics, QKeySequence, QFont, QGuiApplication, QCursor,

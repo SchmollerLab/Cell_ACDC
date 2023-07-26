@@ -60,6 +60,7 @@ from qtpy.QtWidgets import (
 )
 
 import pyqtgraph as pg
+pg.setConfigOption('imageAxisOrder', 'row-major')
 
 # NOTE: Enable icons
 from . import qrc_resources

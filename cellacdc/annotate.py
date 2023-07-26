@@ -11,6 +11,8 @@ if GUI_INSTALLED:
     from PIL import Image, ImageFont, ImageDraw
     from qtpy.QtGui import QFont
     import pyqtgraph as pg
+    pg.setConfigOption('imageAxisOrder', 'row-major')
+    
     from . import plot
 
 INVERTIBLE_COLOR_NAMES = [

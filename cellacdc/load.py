@@ -33,6 +33,7 @@ if GUI_INSTALLED:
         QApplication, QMessageBox
     )
     import pyqtgraph as pg
+    pg.setConfigOption('imageAxisOrder', 'row-major')
     from . import prompts
     from . import widgets
     
