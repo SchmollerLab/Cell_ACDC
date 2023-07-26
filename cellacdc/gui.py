@@ -78,6 +78,7 @@ from . import recentPaths_path, settings_folderpath, settings_csv_path
 from . import qutils, autopilot, QtScoped
 from . import _palettes
 from . import transformation
+from . import measure
 from .trackers.CellACDC import CellACDC_tracker
 from .cca_functions import _calc_rot_vol
 from .myutils import exec_time, setupLogger
@@ -1694,14 +1695,14 @@ class guiWin(QMainWindow):
         self.separateBudButton.setShortcut('s')
         self.separateBudButton.setToolTip(
             'Toggle "Automatic/manual separation" mode ON/OFF\n\n'
-            'EXAMPLE: separate mother-bud fused together\n\n'
+            'EXAMPLE: separate mother-bud fused together or separate objects that have the same ID.\n\n'
             'ACTION: right-click for automatic and Ctrl+right-click for manual\n\n'
             'SHORTCUT: "S" key'
         )
         self.separateBudButton.action = editToolBar.addWidget(self.separateBudButton)
         self.checkableButtons.append(self.separateBudButton)
         self.checkableQButtonsGroup.addButton(self.separateBudButton)
-        self.functionsNotTested3D.append(self.separateBudButton)
+        # self.functionsNotTested3D.append(self.separateBudButton)
         self.widgetsWithShortcut['Separate objects'] = self.separateBudButton
 
         self.mergeIDsButton = QToolButton(self)
@@ -4559,7 +4560,7 @@ class guiWin(QMainWindow):
 
             self.highlightLostNew()
 
-        # Separate bud
+        # Separate bud or objects with same ID
         elif right_click and separateON:
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
@@ -4578,12 +4579,22 @@ class guiWin(QMainWindow):
                     return
                 else:
                     ID = sepID_prompt.EntryID
+                y, x = posData.rp[posData.IDs_idxs[ID]].centroid[-2:]
+                xdata, ydata = int(x), int(y)
 
             # Store undo state before modifying stuff
             self.storeUndoRedoStates(False)
             max_ID = max(posData.IDs, default=1)
 
-            if not ctrl:
+            if self.isSegm3D:
+                z = self.zSliceScrollBar.sliderPosition()
+                posData.lab = measure.separate_with_label(
+                    posData.lab, posData.rp, [ID], max_ID, 
+                    click_coords_list=[(z, ydata, xdata)]
+                )
+                success = True
+                # self.set_2Dlab(lab2D)
+            elif not ctrl:
                 lab2D, success = self.auto_separate_bud_ID(
                     ID, self.get_2Dlab(posData.lab), posData.rp, max_ID,
                     enforce=True
@@ -14526,6 +14537,7 @@ class guiWin(QMainWindow):
             self.updateViewerWindow()
             self.setTextAnnotZsliceScrolling()
             self.setGraphicalAnnotZsliceScrolling()
+            self.setOverlayLabelsItems()
             self.drawPointsLayers(computePointsLayers=False)
             self.zSliceScrollBarStartedMoving = False
 
