@@ -19148,9 +19148,11 @@ class guiWin(QMainWindow):
             isZslice = zProjHow == 'single z-slice'
             if isZslice:
                 z = self.zSliceScrollBar.sliderPosition()
-                return posData.ol_labels_data[segmEndname][posData.frame_i][z]
+                ol_lab = posData.ol_labels_data[segmEndname][posData.frame_i][z]
+                return ol_lab
             else:
-                return posData.ol_labels_data[segmEndname][posData.frame_i].max(axis=0)
+                ol_lab = posData.ol_labels_data[segmEndname][posData.frame_i].max(axis=0)
+                return ol_lab
         else:
             return posData.ol_labels_data[segmEndname][posData.frame_i]
     
@@ -19163,6 +19165,11 @@ class guiWin(QMainWindow):
         labelsData = np.load(filePath)['arr_0']
         if posData.SizeT == 1:
             labelsData = labelsData[np.newaxis]
+        if self.isSegm3D and labelsData.ndim == 3:
+            # 2D segm --> stack to 3D
+            T, Y, X = labelsData.shape
+            repeat = [labelsData]*posData.SizeZ
+            labelsData = np.stack(repeat, axis=1)
         
         if posData.ol_labels_data is None:
             posData.ol_labels_data = {}
