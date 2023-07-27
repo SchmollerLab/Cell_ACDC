@@ -5292,20 +5292,24 @@ class QLogConsole(QTextEdit):
         super().append(text)
         self.verticalScrollBar().setValue(self.verticalScrollBar().maximum())
 
-class QProgressBarWithETA(QProgressBar):
+class ProgressBar(QProgressBar):
     def __init__(self, parent=None):
-        self.parent = parent
         super().__init__(parent)
-
-        palette = QPalette()
-        palette.setColor(QPalette.ColorRole.Highlight, PROGRESSBAR_QCOLOR)
+        palette = self.palette()
+        palette.setColor(
+            QPalette.ColorRole.Highlight, 
+            PROGRESSBAR_QCOLOR
+        )
         palette.setColor(
             QPalette.ColorRole.HighlightedText, 
             PROGRESSBAR_HIGHLIGHTEDTEXT_QCOLOR
         )
-        # palette.setColor(QPalette.ColorRole.Text, QColor(0, 0, 0))
-        # palette.setColor(QPalette.ColorRole.HighlightedText, QColor(0, 0, 0))
         self.setPalette(palette)
+
+class ProgressBarWithETA(ProgressBar):
+    def __init__(self, parent=None):
+        self.parent = parent
+        super().__init__(parent=parent)
         self.ETA_label = QLabel('NDh:NDm:NDs')
 
     def update(self, step: int):

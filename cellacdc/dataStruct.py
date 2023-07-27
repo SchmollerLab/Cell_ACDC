@@ -1349,19 +1349,8 @@ class createDataStructWin(QMainWindow):
         msg.exec_()
 
     def addPbar(self):
-        self.QPbar = QProgressBar(self)
+        self.QPbar = widgets.ProgressBar(self)
         self.QPbar.setValue(0)
-        palette = QtGui.QPalette()
-        palette.setColor(
-            QtGui.QPalette.ColorRole.Highlight, widgets.PROGRESSBAR_QCOLOR
-        )
-        palette.setColor(
-            QtGui.QPalette.ColorRole.HighlightedText, 
-            widgets.PROGRESSBAR_HIGHLIGHTEDTEXT_QCOLOR
-        )
-        # palette.setColor(QtGui.QPalette.ColorRole.Text, QtGui.QColor(0, 0, 0))
-        # palette.setColor(QtGui.QPalette.ColorRole.HighlightedText, QtGui.QColor(0, 0, 0))
-        self.QPbar.setPalette(palette)
         self.mainLayout.insertWidget(3, self.QPbar)
 
     def updatePbar(self, deltaPbar):

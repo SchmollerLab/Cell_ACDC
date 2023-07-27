@@ -554,19 +554,7 @@ class segmWin(QMainWindow):
 
     def addPbar(self, add_inner=False):
         pBarLayout = QHBoxLayout()
-        QPbar = QProgressBar(self)
-        QPbar.setValue(0)
-        palette = QtGui.QPalette()
-        palette.setColor(
-            QtGui.QPalette.ColorRole.Highlight, widgets.PROGRESSBAR_QCOLOR
-        )
-        palette.setColor(
-            QtGui.QPalette.ColorRole.HighlightedText, 
-            widgets.PROGRESSBAR_HIGHLIGHTEDTEXT_QCOLOR
-        )
-        # palette.setColor(QtGui.QPalette.ColorRole.Text, QtGui.QColor(0, 0, 0))
-        # palette.setColor(QtGui.QPalette.ColorRole.HighlightedText, QtGui.QColor(0, 0, 0))
-        QPbar.setPalette(palette)
+        QPbar = widgets.ProgressBar(self)
         pBarLayout.addWidget(QPbar)
         ETA_label = QLabel()
         ETA_label.setText('ETA: NDh:NDm:NDs')

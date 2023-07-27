@@ -3859,12 +3859,12 @@ class QDialogWorkerProgress(QDialog):
 
         self.progressLabel = QLabel(pbarDesc)
 
-        self.mainPbar = widgets.QProgressBarWithETA(self)
+        self.mainPbar = widgets.ProgressBarWithETA(self)
         self.mainPbar.setValue(0)
         pBarLayout.addWidget(self.mainPbar, 0, 0)
         pBarLayout.addWidget(self.mainPbar.ETA_label, 0, 1)
 
-        self.innerPbar = widgets.QProgressBarWithETA(self)
+        self.innerPbar = widgets.ProgressBarWithETA(self)
         self.innerPbar.setValue(0)
         pBarLayout.addWidget(self.innerPbar, 1, 0)
         pBarLayout.addWidget(self.innerPbar.ETA_label, 1, 1)
@@ -9876,26 +9876,13 @@ class QDialogPbar(QDialog):
 
         self.progressLabel = QLabel()
 
-        self.QPbar = QProgressBar(self)
-        self.QPbar.setValue(0)
-        palette = QPalette()
-        palette.setColor(QPalette.ColorRole.Highlight, widgets.PROGRESSBAR_QCOLOR)
-        palette.setColor(
-            QPalette.ColorRole.HighlightedText, 
-            widgets.PROGRESSBAR_HIGHLIGHTEDTEXT_QCOLOR
-        )
-        # palette.setColor(QPalette.ColorRole.Text, QColor(0, 0, 0))
-        # palette.setColor(QPalette.ColorRole.HighlightedText, QColor(0, 0, 0))
-        self.QPbar.setPalette(palette)
+        self.QPbar = widgets.ProgressBar(self)
         pBarLayout.addWidget(self.QPbar, 0, 0)
         self.ETA_label = QLabel('NDh:NDm:NDs')
         pBarLayout.addWidget(self.ETA_label, 0, 1)
 
-        self.metricsQPbar = QProgressBar(self)
+        self.metricsQPbar = widgets.ProgressBar(self)
         self.metricsQPbar.setValue(0)
-        # palette.setColor(QPalette.ColorRole.Text, QColor(0, 0, 0))
-        # palette.setColor(QPalette.ColorRole.HighlightedText, QColor(0, 0, 0))
-        self.metricsQPbar.setPalette(palette)
         pBarLayout.addWidget(self.metricsQPbar, 1, 0)
 
         #pBarLayout.setColumnStretch(2, 1)
