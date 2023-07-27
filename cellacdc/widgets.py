@@ -6029,6 +6029,8 @@ class ScrollBarWithNumericControl(QWidget):
         layout.setStretch(0,0)
         layout.setStretch(1,0)
         layout.setStretch(2,1)
+        
+        layout.setContentsMargins(5, 0, 5, 0)
 
         self.setLayout(layout)
 
@@ -6209,7 +6211,7 @@ class ImShow(QBaseWindow):
             rows_range = range(0, (nrows-1)*2+1, 2)
         else:
             rows_range = range(nrows)
-
+        
         self.PlotItems = []
         self.ImageItems = []
         self.ScrollBars = []
@@ -6250,7 +6252,9 @@ class ImShow(QBaseWindow):
                     scrollbarProxy = self._getGraphicsScrollbar(
                         0, image, imageItem, maximum
                     )
-                    self.graphicLayout.addItem(scrollbarProxy, row=row+1, col=col)
+                    self.graphicLayout.addItem(
+                        scrollbarProxy, row=row+s+1, col=col
+                    )
                     imageItem.ScrollBars.append(scrollbarProxy.scrollbar)
 
                 i += 1

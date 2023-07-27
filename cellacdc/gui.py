@@ -21827,22 +21827,28 @@ class guiWin(QMainWindow):
         self.closeGUI = False
     
     def askSaveOnClosing(self, event):
-        if self.saveAction.isEnabled() and self.titleLabel.text != 'Saved!':
-            msg = widgets.myMessageBox()
-            txt = html_utils.paragraph('Do you want to <b>save before closing?</b>')
-            _, noButton, yesButton = msg.question(
-                self, 'Save?', txt,
-                buttonsTexts=('Cancel', 'No', 'Yes')
-            )
-            if msg.cancel:
-                event.ignore()
-                return False
-            
-            if msg.clickedButton == yesButton:
-                self.closeGUI = True
-                QTimer.singleShot(100, self.saveAction.trigger)
-                event.ignore()
-                return False
+        if not self.saveAction.isEnabled():
+            return True
+        if self.titleLabel.text == 'Saved!':
+            return True
+        if not self.dataIsLoaded:
+            return True
+        
+        msg = widgets.myMessageBox()
+        txt = html_utils.paragraph('Do you want to <b>save before closing?</b>')
+        _, noButton, yesButton = msg.question(
+            self, 'Save?', txt,
+            buttonsTexts=('Cancel', 'No', 'Yes')
+        )
+        if msg.cancel:
+            event.ignore()
+            return False
+        
+        if msg.clickedButton == yesButton:
+            self.closeGUI = True
+            QTimer.singleShot(100, self.saveAction.trigger)
+            event.ignore()
+            return False
         return True
     
     def clearMemory(self):
