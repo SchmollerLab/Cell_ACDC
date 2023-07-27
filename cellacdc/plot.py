@@ -36,7 +36,7 @@ def matplotlib_cmap_to_lut(
     return lut
 
 def imshow(
-        *images: np.ndarray, 
+        *images: Union[np.ndarray, dict], 
         points_coords: np.ndarray=None, 
         points_data: Union[np.ndarray, pd.DataFrame, pd.Series]=None,
         hide_axes: bool=True, 
@@ -52,9 +52,17 @@ def imshow(
         color_scheme=None, 
         link_scrollbars=True
     ):
+    if isinstance(images[0], dict):
+        images_dict = images[0]
+        images = []
+        axis_titles = []
+        for title, image in images_dict.items():
+            images.append(image)
+            axis_titles.append(title)
     if color_scheme is None:
         from ._palettes import get_color_scheme
         color_scheme = get_color_scheme()
+    
     if lut is None:
         lut = matplotlib_cmap_to_lut('viridis')
 

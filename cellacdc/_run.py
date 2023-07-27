@@ -231,18 +231,18 @@ def _setup_app(splashscreen=False, icon_path=None, logo_path=None):
     from ._palettes import getPaletteColorScheme, setToolTipStyleSheet
     from ._palettes import get_color_scheme
     from . import qrc_resources_path
-    from qrc_resources import qt_resource_data
+    from .qrc_resources import qt_resource_data
     from . import printl
     
     # Check if there are new icons --> replace qrc_resources.py
     scheme = get_color_scheme()
     if scheme == 'light':
         from . import qrc_resources_light_path as qrc_resources_scheme_path
-        qrc_resources_scheme = import_module('qrc_resources_light')
+        qrc_resources_scheme = import_module('cellacdc.qrc_resources_light')
         qt_resource_data_scheme = qrc_resources_scheme.qt_resource_data
     else:
         from . import qrc_resources_dark_path as qrc_resources_scheme_path
-        qrc_resources_scheme = import_module('qrc_resources_dark')
+        qrc_resources_scheme = import_module('cellacdc.qrc_resources_dark')
         qt_resource_data_scheme = qrc_resources_scheme.qt_resource_data
     
     if qt_resource_data_scheme != qt_resource_data:
