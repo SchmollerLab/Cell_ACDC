@@ -684,10 +684,10 @@ class mainWin(QMainWindow):
         self.TiffToNpzAction = QAction('Convert .tif file(s) to _segm.npz...')
         self.h5ToNpzAction = QAction('Convert .h5 file(s) to _segm.npz...')
         self.toImageJroiAction = QAction(
-            'Convert _segm.npz file(s) to ImageJ ROIs...'
+            'Convert .npz segmentation file(s) to ImageJ ROIs...'
         )
         self.toObjsCoordsAction = QAction(
-            'Convert _segm.npz file(s) to object coordinates (CSV)...'
+            'Convert .npz segmentation file(s) to object coordinates (CSV)...'
         )
         self.createConnected3Dsegm = QAction(
             'Create connected 3D segmentation mask from z-slices segmentation...'
