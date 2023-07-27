@@ -22,7 +22,7 @@ class _Data:
         return load._load_acdc_df_file(self.acdc_df_path)
     
     def image_data(self):
-        return skimage.io.imread(self.intensity_image_path)
+        return load.load_image_file(self.intensity_image_path)
     
     def segm_data(self):
         return np.load(self.segm_path)['arr_0']
