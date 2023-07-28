@@ -1750,7 +1750,7 @@ class TrackSubCellObjectsDialog(widgets.QBaseDialog):
         }
         self.close()
 
-class setMeasurementsDialog(widgets.QBaseDialog):
+class SetMeasurementsDialog(widgets.QBaseDialog):
     sigClosed = Signal()
     sigCancel = Signal()
     sigRestart = Signal()
@@ -6193,8 +6193,8 @@ class postProcessSegmParams(QGroupBox):
     editingFinished = Signal()
 
     def __init__(
-            self, title, useSliders=False, parent=None, maxSize=None,
-            SizeZ=None
+            self, title, channelName, useSliders=False, parent=None, 
+            maxSize=None, SizeZ=None
         ):
         QGroupBox.__init__(self, title, parent)
         self.useSliders = useSliders

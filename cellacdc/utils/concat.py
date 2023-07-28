@@ -32,7 +32,7 @@ class concatWin(NewThreadMultipleExpBaseUtil):
         notLoadedChNames = kwargs['notLoadedChNames']
         isZstack = kwargs['isZstack']
         isSegm3D = kwargs['isSegm3D']
-        self.setMeasurementsWin = apps.setMeasurementsDialog(
+        self.setMeasurementsWin = apps.SetMeasurementsDialog(
             loadedChNames, notLoadedChNames, isZstack, isSegm3D,
             is_concat=True, parent=self
         )

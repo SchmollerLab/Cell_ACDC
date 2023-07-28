@@ -252,7 +252,7 @@ class computeMeasurmentsUtilWin(QDialog):
                 _posData.custom_combine_metrics_path = combineMetricsPath
                 self.allPosData.append(_posData)
 
-        self.measurementsWin = apps.setMeasurementsDialog(
+        self.measurementsWin = apps.SetMeasurementsDialog(
             posData.chNames, [], posData.SizeZ > 1, posData.isSegm3D,
             favourite_funcs=favourite_funcs, posData=posData,
             addCombineMetricCallback=self.addCombineMetric,

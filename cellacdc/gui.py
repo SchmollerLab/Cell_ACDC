@@ -11184,6 +11184,12 @@ class guiWin(QMainWindow):
         if ev.key() == Qt.Key_Q:
             # self.setAllIDs()
             posData = self.data[self.pos_i]
+            is_segm_3D = self.isSegm3D
+            # all_metrics_names = measurements.get_all_metrics_names(
+            #     posData, self.user_ch_name, is_segm_3D
+            # )
+            all_metrics_names = measurements.get_all_metrics_names()
+            printl(all_metrics_names)
             # from acdctools.plot import imshow
             # delIDs = posData.allData_li[posData.frame_i]['delROIs_info']['delIDsROI']
             # printl(delIDs)
@@ -21062,7 +21068,7 @@ class guiWin(QMainWindow):
         loadedChNames.insert(0, self.user_ch_name)
         notLoadedChNames = [c for c in self.ch_names if c not in loadedChNames]
         self.notLoadedChNames = notLoadedChNames
-        self.measurementsWin = apps.setMeasurementsDialog(
+        self.measurementsWin = apps.SetMeasurementsDialog(
             loadedChNames, notLoadedChNames, posData.SizeZ > 1, self.isSegm3D,
             favourite_funcs=favourite_funcs, 
             allPos_acdc_df_cols=list(allPos_acdc_df_cols),

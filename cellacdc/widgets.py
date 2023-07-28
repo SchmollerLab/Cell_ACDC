@@ -5448,6 +5448,9 @@ class sliderWithSpinBox(QWidget):
         self.slider.sliderReleased.connect(self.onEditingFinished)
         self.spinBox.valueChanged.connect(self.spinboxValueChanged)
         self.spinBox.editingFinished.connect(self.onEditingFinished)
+        
+        layout.setContentsMargins(5, 0, 5, 0)
+        
         self.setLayout(layout)
 
     def onEditingFinished(self):
@@ -5763,6 +5766,8 @@ class PostProcessSegmSpinbox(QWidget):
         self.label = label
 
         self.checkbox.toggled.connect(self.onCheckBoxToggled)
+        
+        layout.setContentsMargins(5, 0, 5, 0)
     
         self.setLayout(layout)
     
