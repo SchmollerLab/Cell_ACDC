@@ -12191,8 +12191,9 @@ class guiWin(QMainWindow):
         else:
             SizeZ = None
         if checked:
-            self.postProcessSegmWin = apps.postProcessSegmDialog(
-                SizeZ=SizeZ, mainWin=self
+            posData = self.data[self.pos_i]
+            self.postProcessSegmWin = apps.PostProcessSegmDialog(
+                posData, mainWin=self
             )
             self.postProcessSegmWin.sigClosed.connect(
                 self.postProcessSegmWinClosed
@@ -12892,7 +12893,7 @@ class guiWin(QMainWindow):
                 segment_params,
                 model_name, parent=self,
                 url=url, initLastParams=initLastParams, 
-                SizeZ=_SizeZ,
+                posData=posData,
                 segmFileEndnames=existingSegmEndnames,
                 df_metadata=posData.metadata_df
             )
@@ -13073,8 +13074,10 @@ class guiWin(QMainWindow):
         win = apps.QDialogModelParams(
             init_params,
             segment_params,
-            model_name, parent=self,
-            url=url, SizeZ=_SizeZ,
+            model_name, 
+            parent=self,
+            url=url, 
+            posData=posData,
             segmFileEndnames=existingSegmEndnames,
             df_metadata=posData.metadata_df
         )
@@ -13275,7 +13278,9 @@ class guiWin(QMainWindow):
         win = apps.QDialogModelParams(
             init_params,
             segment_params,
-            model_name, url=url, SizeZ=_SizeZ,
+            model_name, 
+            url=url, 
+            posData=posData,
             df_metadata=posData.metadata_df
         )
         win.exec_()

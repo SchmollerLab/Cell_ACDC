@@ -792,7 +792,7 @@ class segmWin(QMainWindow):
             init_params,
             segment_params,
             model_name, parent=self,
-            url=url, SizeZ=_SizeZ,
+            url=url, posData=posData,
             segmFileEndnames=existingSegmEndnames,
             df_metadata=posData.metadata_df
         )
