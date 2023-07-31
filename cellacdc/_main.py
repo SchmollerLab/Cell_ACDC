@@ -97,9 +97,12 @@ class mainWin(QMainWindow):
         self.log_filename = log_filename
         self.logs_path = logs_path
 
-        self.logger.info(f'Using Qt version {QtCore.__version__}')
+        py_ver = sys.version_info
+        python_version = f'{py_ver.major}.{py_ver.minor}.{py_ver.micro}'
+        self.logger.info(
+            f'Using Qt {QtCore.__version__} with Python {python_version}'
+        )
         
-
         if not is_linux:
             self.loadFonts()
 

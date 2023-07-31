@@ -1,5 +1,5 @@
 import os
-import re
+import sys
 import cellacdc
 from functools import partial
 
@@ -8,6 +8,7 @@ from qtpy.QtWidgets import (
 )
 from qtpy.QtGui import QPixmap
 from qtpy.QtCore import Qt
+from qtpy import QtCore
 
 from ..myutils import read_version
 from ..myutils import get_pip_install_cellacdc_version_command
@@ -26,6 +27,9 @@ class QDialogAbout(QDialog):
         layout = QGridLayout()
         
         version = read_version()
+        
+        py_ver = sys.version_info
+        python_version = f'{py_ver.major}.{py_ver.minor}.{py_ver.micro}'
 
         titleLabel = QLabel()
         txt = (f"""
@@ -37,6 +41,10 @@ class QDialogAbout(QDialog):
         </p>
         <p style="font-size:14px; font-family:ubuntu">
             Version {version}
+        </p>
+        <p style="font-size:13px; font-family:ubuntu">
+            Qt {QtCore.__version__}<br>
+            Python {python_version}<br>
         </p>
         """)
 
