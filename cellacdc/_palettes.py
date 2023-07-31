@@ -37,7 +37,7 @@ def _light_disabled_colors():
         'WindowText': (128, 128, 128, 255), 
         'Text': (150, 150, 150, 255), 
         'Light': (255, 255, 255, 255),
-        'Button': (200, 200, 200, 255),
+        'Button': (230, 230, 230, 255),
         # 'Window': (200, 200, 200, 255),
         # 'Highlight': (0, 0, 0, 255),
         # 'HighlightedText': (0, 0, 0, 255),
