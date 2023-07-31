@@ -32,6 +32,7 @@ from . import (
 )
 from . import transformation
 from .path import copy_or_move_tree
+from . import features
 
 DEBUG = False
 
@@ -130,7 +131,8 @@ class LabelRoiWorker(QObject):
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
     
-    def start(self, roiImg, roiSecondChannel=None, isTimelapse=False):
+    def start(self, roiImg, posData, roiSecondChannel=None, isTimelapse=False):
+        self.posData = posData
         self.isTimelapse = isTimelapse
         self.imageData = roiImg
         self.roiSecondChannel = roiSecondChannel
@@ -157,9 +159,16 @@ class LabelRoiWorker(QObject):
             img, **self.Gui.model_kwargs
         )
         if self.Gui.applyPostProcessing:
-            lab = core.remove_artefacts(
-                lab, **self.Gui.removeArtefactsKwargs
+            lab = core.post_process_segm(
+                lab, **self.Gui.standardPostProcessKwargs
             )
+            if self.Gui.customPostProcessFeatures:
+                lab = features.custom_post_process_segm(
+                    self.posData, self.Gui.customPostProcessGroupedFeatures, 
+                    lab, img, self.posData.frame_i, self.posData.filename, 
+                    self.posData.user_ch_name, 
+                    self.Gui.customPostProcessFeatures
+                )
         return lab
     
     @worker_exception_handler
@@ -525,9 +534,15 @@ class segmWorker(QObject):
             frame_i=posData.frame_i
         )
         if self.mainWin.applyPostProcessing:
-            _lab = core.remove_artefacts(
-                _lab, **self.mainWin.removeArtefactsKwargs
+            _lab = core.post_process_segm(
+                _lab, **self.mainWin.standardPostProcessKwargs
             )
+            if self.mainWin.customPostProcessFeatures:
+                _lab = features.custom_post_process_segm(
+                    posData, self.mainWin.customPostProcessGroupedFeatures, 
+                    _lab, img, posData.frame_i, posData.filename, 
+                    posData.user_ch_name, self.mainWin.customPostProcessFeatures
+                )
         
         if self.z_range is not None:
             # 3D segmentation of a z-slices range
@@ -553,8 +568,10 @@ class segmVideoWorker(QObject):
 
     def __init__(self, posData, paramWin, model, startFrameNum, stopFrameNum):
         QObject.__init__(self)
-        self.removeArtefactsKwargs = paramWin.artefactsGroupBox.kwargs()
+        self.standardPostProcessKwargs = paramWin.postProcessGroupbox.kwargs()
         self.applyPostProcessing = paramWin.applyPostProcessing
+        self.customPostProcessFeatures = paramWin.selectedFeaturesRange()
+        self.customPostProcessGroupedFeatures = paramWin.groupedFeatures()
         self.model_kwargs = paramWin.model_kwargs
         self.secondChannelName = paramWin.secondChannelName
         self.model = model
@@ -625,9 +642,18 @@ class segmVideoWorker(QObject):
                 self.model, img, self.model_kwargs, frame_i=frame_i
             )
             if self.applyPostProcessing:
-                lab = core.remove_artefacts(
-                    lab, **self.removeArtefactsKwargs
+                lab = core.post_process_segm(
+                    lab, **self.standardPostProcessKwargs
                 )
+                if self.customPostProcessFeatures:
+                    lab = features.custom_post_process_segm(
+                        self.posData, 
+                        self.customPostProcessGroupedFeatures, 
+                        lab, img, self.posData.frame_i, 
+                        self.posData.filename, 
+                        self.posData.user_ch_name, 
+                        self.customPostProcessFeatures
+                    )
             self.posData.segm_data[frame_i] = lab
             self.progressBar.emit(1)
         t1 = time.perf_counter()
@@ -759,7 +785,7 @@ class calcMetricsWorker(QObject):
                     load_shifts=True,
                     loadSegmInfo=True,
                     load_delROIsInfo=True,
-                    loadBkgrData=True,
+                    load_bkgr_data=True,
                     loadBkgrROIs=True,
                     load_last_tracked_i=True,
                     load_metadata=True,
@@ -1078,7 +1104,7 @@ class loadDataWorker(QObject):
                 load_shifts=True,
                 loadSegmInfo=True,
                 load_delROIsInfo=True,
-                loadBkgrData=True,
+                load_bkgr_data=True,
                 loadBkgrROIs=True,
                 load_dataPrep_ROIcoords=True,
                 load_last_tracked_i=True,
@@ -1862,13 +1888,20 @@ class TrackSubCellObjectsWorker(BaseWorkerUtil):
 
         self.signals.finished.emit(self)
 
-
-class PostProcessSegm(QObject):
-    def __init__(self, postProcessKwargs, mainWin):
+class PostProcessSegmWorker(QObject):
+    def __init__(
+            self, 
+            postProcessKwargs, 
+            customPostProcessGroupedFeatures, 
+            customPostProcessFeatures,
+            mainWin
+        ):
         super().__init__()
         self.signals = signals()
         self.logger = workerLogger(self.signals.progress)
         self.kwargs = postProcessKwargs
+        self.customPostProcessGroupedFeatures = customPostProcessGroupedFeatures
+        self.customPostProcessFeatures = customPostProcessFeatures
         self.mainWin = mainWin
     
     def run(self):
@@ -1904,9 +1937,22 @@ class PostProcessSegm(QObject):
                     except Exception as e:
                         return
 
-                processed_lab = core.remove_artefacts(
+                image = posData.image_data[frame_i]
+                
+                processed_lab = core.post_process_segm(
                     lab, return_delIDs=False, **kwargs
                 )
+                if mainWin.customPostProcessFeatures:
+                    processed_lab = features.custom_post_process_segm(
+                        posData, 
+                        self.customPostProcessGroupedFeatures, 
+                        processed_lab, 
+                        image, 
+                        posData.frame_i, 
+                        posData.filename, 
+                        posData.user_ch_name, 
+                        self.customPostProcessFeatures
+                    )
                 if visited:
                     posData.allData_li[frame_i]['labels'] = processed_lab
                     # Get the rest of the stored metadata based on the new lab

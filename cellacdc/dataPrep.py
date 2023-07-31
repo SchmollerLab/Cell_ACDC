@@ -67,7 +67,7 @@ class toCsvWorker(QObject):
         self.finished.emit()
 
 class dataPrepWin(QMainWindow):
-    sigClose = Signal()
+    sigClose = Signal(object)
 
     def __init__(
             self, parent=None, buttonToRestore=None, mainWin=None,
@@ -1119,7 +1119,7 @@ class dataPrepWin(QMainWindow):
                     loadSegmInfo=True,
                     load_dataPrep_ROIcoords=True,
                     load_delROIsInfo=False,
-                    loadBkgrData=False,
+                    load_bkgr_data=False,
                     loadBkgrROIs=True,
                     load_last_tracked_i=False,
                     load_metadata=True,
@@ -2197,7 +2197,7 @@ class dataPrepWin(QMainWindow):
         if self.loop is not None:
             self.loop.exit()
         
-        self.sigClose.emit()
+        self.sigClose.emit(self)
 
     def saveWindowGeometry(self):
         settings = QSettings('schmollerlab', 'acdc_dataPrep')

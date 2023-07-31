@@ -1361,8 +1361,8 @@ def add_size_metrics(
 
 def add_foregr_metrics(
         df, rp, channel, foregr_data, foregr_metrics_params, metrics_func,
-        custom_metrics_params, isSegm3D, yx_pxl_to_um2, 
-        vox_to_fl_3D, lab, foregr_img, customMetricsCritical=None
+        custom_metrics_params, isSegm3D, lab, foregr_img, 
+        customMetricsCritical=None
     ):
     custom_errors = ''
     # Iterate objects and compute foreground metrics

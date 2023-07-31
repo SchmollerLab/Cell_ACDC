@@ -69,6 +69,7 @@ from . import _palettes
 from . import base_cca_df
 from . import widgets
 from . import user_profile_path
+from . import features
 
 PRE_PROCESSING_STEPS = [
     'Adjust Brightness/Contrast',
@@ -1934,29 +1935,54 @@ class SetMeasurementsDialog(widgets.QBaseDialog):
     
     def allMetricsDict(self):
         all_metrics = {
-            'channel': [], 
+            'standard': {}, 
             'regionprop': [],
             'size': [],
             'mixed_channels': []
         }
         for chNameGroupbox in self.chNameGroupboxes:
-             for checkBox in chNameGroupbox.checkBoxes:
-                all_metrics['channel'].append(checkBox.text())
+            channel_name = chNameGroupbox.chName
+            for checkBox in chNameGroupbox.checkBoxes:
+                if channel_name not in all_metrics['standard']:
+                    all_metrics['standard'][channel_name] = []
+                all_metrics['standard'][channel_name].append(checkBox.text())
         
         for checkBox in self.regionPropsQGBox.checkBoxes:
-            all_metrics['channel'].append(checkBox.text())
+            all_metrics['regionprop'].append(checkBox.text())
         
         for checkBox in self.sizeMetricsQGBox.checkBoxes:
-            all_metrics['channel'].append(checkBox.text())
+            all_metrics['size'].append(checkBox.text())
         
         if self.mixedChannelsCombineMetricsQGBox is None:
             return
         
         checkBoxes = self.mixedChannelsCombineMetricsQGBox.checkBoxes
         for checkBox in checkBoxes:
-            all_metrics['channel'].append(checkBox.text())
+            all_metrics['mixed_channels'].append(checkBox.text())
     
-    def selectedMetricName(self):
+    def selectedMetricNameAndGroup(self):
+        for chNameGroupbox in self.chNameGroupboxes:
+            for checkBox in chNameGroupbox.checkBoxes:
+                if checkBox.isChecked():
+                    return checkBox.text(), {'standard': chNameGroupbox.chName}
+        
+        for checkBox in self.regionPropsQGBox.checkBoxes:
+            if checkBox.isChecked():
+                return checkBox.text(), 'regionprop'
+        
+        for checkBox in self.sizeMetricsQGBox.checkBoxes:
+            if checkBox.isChecked():
+                return checkBox.text(), 'size'
+        
+        if self.mixedChannelsCombineMetricsQGBox is None:
+            return
+        
+        checkBoxes = self.mixedChannelsCombineMetricsQGBox.checkBoxes
+        for checkBox in checkBoxes:
+            if checkBox.isChecked():
+                return checkBox.text(), 'mixed_channels'
+    
+    def selectedMetricGroup(self):
         for chNameGroupbox in self.chNameGroupboxes:
              for checkBox in chNameGroupbox.checkBoxes:
                 if checkBox.isChecked():
@@ -1980,8 +2006,8 @@ class SetMeasurementsDialog(widgets.QBaseDialog):
     
     def addCheckboxesToGroup(self):
         for chNameGroupbox in self.chNameGroupboxes:
-             for checkBox in chNameGroupbox.checkBoxes:
-                 self.checkBoxedGroup.addButton(checkBox)
+            for checkBox in chNameGroupbox.checkBoxes:
+                self.checkBoxedGroup.addButton(checkBox)
         
         for checkBox in self.regionPropsQGBox.checkBoxes:
             self.checkBoxedGroup.addButton(checkBox)
@@ -6282,12 +6308,14 @@ class PostProcessSegmParams(QGroupBox):
             useSliders=False, 
             parent=None, 
             maxSize=None, 
+            force_postprocess_2D=False
         ):
         QGroupBox.__init__(self, title, parent)
         SizeZ = posData.SizeZ
         self.isSegm3D = posData.isSegm3D
         self.channelName = posData.user_ch_name
         self.useSliders = useSliders
+        self.force_postprocess_2D = force_postprocess_2D
         if maxSize is None:
             maxSize=2147483647
 
@@ -6399,10 +6427,23 @@ class PostProcessSegmParams(QGroupBox):
             self.minObjSizeZ_SB = widgets.NoneWidget()
 
         row += 1
-        self.selectedFeaturesGroupbox = SelectFeaturesRangeGroupbox(
-            posData=posData, parent=self
+        addCustomFeatureLayout = QHBoxLayout()
+        self.addCustomFeaturesButton = widgets.setPushButton(
+            'Select custom features for post-processing...',
         )
-        layout.addWidget(self.selectedFeaturesGroupbox, row, 0, 1, 2)
+        addCustomFeatureLayout.addWidget(self.addCustomFeaturesButton)
+        addCustomFeatureLayout.addStretch(1)
+        self.selectedFeaturesDialog = SelectFeaturesRangeDialog(
+            posData=posData, parent=self, 
+            force_postprocess_2D=force_postprocess_2D
+        )
+        self.selectedFeaturesDialog.hide()
+        self.addCustomFeaturesButton.clicked.connect(
+            self.selectedFeaturesDialog.show
+        )
+        self.selectedFeaturesDialog.sigValueChanged.connect(self.onValueChanged)
+        
+        layout.addLayout(addCustomFeatureLayout, row, 0, 1, 2)
         
         layout.setColumnStretch(1, 2)
         layout.setRowStretch(row+1, 1)
@@ -6412,6 +6453,12 @@ class PostProcessSegmParams(QGroupBox):
         for widget in self.controlWidgets:
             widget.valueChanged.connect(self.onValueChanged)
             widget.editingFinished.connect(self.onEditingFinished)
+    
+    def selectedFeaturesRange(self):
+        return self.selectedFeaturesDialog.groupbox.selectedFeaturesRange()
+
+    def groupedFeatures(self):
+        return self.selectedFeaturesDialog.groupbox.groupedFeatures()
     
     def restoreDefault(self):
         self.minSolidity_DSB.setValue(0.5)
@@ -6470,7 +6517,7 @@ class PostProcessSegmDialog(widgets.QBaseDialog):
     sigClosed = Signal()
     sigValueChanged = Signal(object, object)
     sigEditingFinished = Signal()
-    sigApplyToAllFutureFrames = Signal(object)
+    sigApplyToAllFutureFrames = Signal(object, object, object)
 
     def __init__(
             self, posData, 
@@ -6493,15 +6540,15 @@ class PostProcessSegmDialog(widgets.QBaseDialog):
         mainLayout = QVBoxLayout()
         buttonsLayout = QHBoxLayout()
 
-        self.artefactsGroupBox = PostProcessSegmParams(
+        self.postProcessGroupbox = PostProcessSegmParams(
             'Post-processing parameters', posData,
             useSliders=useSliders, 
             maxSize=maxSize,
             parent=mainWin
         )
 
-        self.artefactsGroupBox.valueChanged.connect(self.valueChanged)
-        self.artefactsGroupBox.editingFinished.connect(self.onEditingFinished)
+        self.postProcessGroupbox.valueChanged.connect(self.valueChanged)
+        self.postProcessGroupbox.editingFinished.connect(self.onEditingFinished)
 
         if self.isTimelapse:
             applyAllButton = widgets.futurePushButton(
@@ -6538,7 +6585,7 @@ class PostProcessSegmDialog(widgets.QBaseDialog):
         emitEditingFinishedButton.hide()
         buttonsLayout.setContentsMargins(0,10,0,0)
 
-        mainLayout.addWidget(self.artefactsGroupBox)
+        mainLayout.addWidget(self.postProcessGroupbox)
         mainLayout.addLayout(buttonsLayout)
 
         self.setLayout(mainLayout)
@@ -6571,9 +6618,24 @@ class PostProcessSegmDialog(widgets.QBaseDialog):
         if origLab is None:
             origLab = self.origLab.copy()
 
-        lab, delIDs = core.remove_artefacts(
-            origLab, return_delIDs=True, **self.artefactsGroupBox.kwargs()
+        lab, delIDs = core.post_process_segm(
+            origLab, return_delIDs=True, **self.postProcessGroupbox.kwargs()
         )
+        
+        if self.postProcessGroupbox.selectedFeaturesRange():
+            lab, custom_delIDs = features.custom_post_process_segm(
+                self.posData, 
+                self.postProcessGroupbox.groupedFeatures(), 
+                lab, 
+                self.posData.img_data[self.posData.frame_i], 
+                self.posData.frame_i, 
+                self.posData.filename, 
+                self.posData.user_ch_name,
+                self.postProcessGroupbox.selectedFeaturesRange(), 
+                return_delIDs=True
+            )
+            delIDs.extend(custom_delIDs)
+        
         delObjs = {delID:self.origObjs[delID] for delID in delIDs}
         return lab, delObjs
 
@@ -6593,7 +6655,11 @@ class PostProcessSegmDialog(widgets.QBaseDialog):
 
     def applyAll_cb(self):
         self.cancel = False
-        self.sigApplyToAllFutureFrames.emit(self.artefactsGroupBox.kwargs())
+        self.sigApplyToAllFutureFrames.emit(
+            self.postProcessGroupbox.kwargs(),
+            self.postProcessGroupbox.groupedFeatures(),
+            self.postProcessGroupbox.selectedFeaturesRange()
+        )
         self.close()
 
     def cancel_cb(self):
@@ -10342,7 +10408,7 @@ class QDialogModelParams(QDialog):
             self, init_params, segment_params, model_name, is_tracker=False,
             url=None, parent=None, initLastParams=True, posData=None, 
             channels=None, currentChannelName=None, segmFileEndnames=None,
-            df_metadata=None
+            df_metadata=None, force_postprocess_2D=False
         ):
         self.cancel = True
         super().__init__(parent)
@@ -10352,6 +10418,7 @@ class QDialogModelParams(QDialog):
         self.channelCombobox = None
         self.segmFileEndnames = segmFileEndnames
         self.df_metadata = df_metadata
+        self.force_postprocess_2D = force_postprocess_2D
         
         if is_tracker:
             self.ini_filename = 'last_params_trackers.ini'
@@ -10429,18 +10496,21 @@ class QDialogModelParams(QDialog):
         scrollAreaLayout.addWidget(segmentGroupBox)
         scrollAreaLayout.addLayout(segmentButtonsLayout)
 
+        self.postProcessGroupbox = None
+        
         if not is_tracker:
             # Add minimum size spinbox whihc is valid for all models
-            artefactsGroupBox = PostProcessSegmParams(
-                'Post-processing segmentation parameters', posData
+            postProcessGroupbox = PostProcessSegmParams(
+                'Post-processing segmentation parameters', posData,
+                force_postprocess_2D=force_postprocess_2D
             )
-            artefactsGroupBox.setCheckable(True)
-            artefactsGroupBox.setChecked(True)
-            self.artefactsGroupBox = artefactsGroupBox
+            postProcessGroupbox.setCheckable(True)
+            postProcessGroupbox.setChecked(True)
+            self.postProcessGroupbox = postProcessGroupbox
 
             scrollAreaLayout.addSpacing(15)
             scrollAreaLayout.addStretch(1)
-            scrollAreaLayout.addWidget(artefactsGroupBox)
+            scrollAreaLayout.addWidget(postProcessGroupbox)
 
             postProcDefaultButton = widgets.reloadPushButton('Restore default')
             postProcLoadLastSelButton = QPushButton('Load last parameters')
@@ -10480,6 +10550,16 @@ class QDialogModelParams(QDialog):
         self.setLayout(mainLayout)
 
         # self.setModal(True)
+    
+    def selectedFeaturesRange(self):
+        if self.postProcessGroupbox is None:
+            return {}
+        return self.postProcessGroupbox.selectedFeaturesRange()
+
+    def groupedFeatures(self):
+        if self.postProcessGroupbox is None:
+            return {}
+        return self.postProcessGroupbox.groupedFeatures()
     
     def setChannelNames(self, chNames):
         if not hasattr(self, 'channelsCombobox'):
@@ -10637,7 +10717,7 @@ class QDialogModelParams(QDialog):
             argWidget.valueSetter(widget, defaultVal)
 
     def restoreDefaultPostprocess(self):
-        self.artefactsGroupBox.restoreDefault()
+        self.postProcessGroupbox.restoreDefault()
 
     def readLastSelection(self):
         self.ini_path = os.path.join(settings_folderpath, self.ini_filename)
@@ -10718,12 +10798,12 @@ class QDialogModelParams(QDialog):
             'max_elongation': maxElongation,
             'min_obj_no_zslices': minObjSizeZ
         }
-        self.artefactsGroupBox.restoreFromKwargs(kwargs)
+        self.postProcessGroupbox.restoreFromKwargs(kwargs)
 
         applyPostProcessing = self.configPars.getboolean(
             postProcessSection, 'applyPostProcessing'
         )
-        self.artefactsGroupBox.setChecked(applyPostProcessing)
+        self.postProcessGroupbox.setChecked(applyPostProcessing)
 
     def info_params(self):
         from cellacdc.models import CELLPOSE_MODELS, STARDIST_MODELS, OMNI_MODELS
@@ -10786,8 +10866,8 @@ class QDialogModelParams(QDialog):
         self.model_kwargs = self.argsWidgets_to_kwargs(
             self.argsWidgets
         )
-        if hasattr(self, 'artefactsGroupBox'):
-            self.applyPostProcessing = self.artefactsGroupBox.isChecked()
+        if hasattr(self, 'postProcessGroupbox'):
+            self.applyPostProcessing = self.postProcessGroupbox.isChecked()
         self.secondChannelName = None
         if hasattr(self, 'channelsCombobox'):
             self.secondChannelName = self.channelsCombobox.currentText()
@@ -10810,8 +10890,8 @@ class QDialogModelParams(QDialog):
             self.configPars[f'{self.model_name}.segment'][key] = str(val)
 
         self.configPars[f'{self.model_name}.postprocess'] = {}
-        if hasattr(self, 'artefactsGroupBox'):
-            postProcKwargs = self.artefactsGroupBox.kwargs()
+        if hasattr(self, 'postProcessGroupbox'):
+            postProcKwargs = self.postProcessGroupbox.kwargs()
             postProcessConfig = self.configPars[f'{self.model_name}.postprocess']
             postProcessConfig['minSize'] = str(postProcKwargs['min_area'])
             postProcessConfig['minSolidity'] = str(postProcKwargs['min_solidity'])
@@ -10822,7 +10902,7 @@ class QDialogModelParams(QDialog):
                 postProcKwargs['min_obj_no_zslices']
             )
             postProcessConfig['applyPostProcessing'] = str(
-                self.artefactsGroupBox.isChecked()
+                self.postProcessGroupbox.isChecked()
             )
 
         with open(self.ini_path, 'w') as configfile:
@@ -12383,9 +12463,17 @@ class ChangeUserProfileFolderPathDialog(widgets.QBaseDialog):
         self.close()
  
 class SelectFeaturesRange:
-    def __init__(self, posData, qparent=None) -> None:
+    def __init__(
+            self, 
+            posData, 
+            force_postprocess_2D=False, 
+            qparent=None,
+            sigValueChanged=None
+        ) -> None:
         self.posData = posData
         self.qparent = qparent
+        self.force_postprocess_2D = force_postprocess_2D
+        self.sigValueChanged = sigValueChanged
         
         self.lowRangeWidgets = widgets.CheckableSpinBoxWidgets()
         self.highRangeWidgets = widgets.CheckableSpinBoxWidgets()        
@@ -12398,6 +12486,8 @@ class SelectFeaturesRange:
         )
         self.selectButton.clicked.connect(self.selectFeature)
         self.selectButton.setCursor(Qt.PointingHandCursor)
+
+        self.selectedFeatureGroups = {}
 
         self.widgets = [
             {'pos': (0, 0), 'widget': self.lowRangeWidgets.checkbox}, 
@@ -12414,19 +12504,11 @@ class SelectFeaturesRange:
     def setText(self, text):
         self.selectButton.setText(text)
     
-    def getFeatureGroup(self):
-        if self.selectButton.text().find('Click') != -1:
-            return ''
-
-        text = self.selectButton.text()
-        topLevelText, childText = text.split(', ')
-        return {topLevelText: childText}
-    
     def selectFeature(self):
         loadedChNames = [self.posData.user_ch_name]
         notLoadedChNames = []
-        isZstack = self.posData.SizeZ > 1
-        isSegm3D = self.posData.isSegm3D
+        isZstack = self.posData.SizeZ > 1 and not self.force_postprocess_2D
+        isSegm3D = self.posData.isSegm3D and not self.force_postprocess_2D
         self.selectFeatureDialog = SetMeasurementsDialog(
             loadedChNames, notLoadedChNames, isZstack, isSegm3D,
             posData=self.posData, parent=self.qparent,
@@ -12440,10 +12522,51 @@ class SelectFeaturesRange:
         if self.selectFeatureDialog.cancel:
             return
         self.selectButton.setFlat(True)
-        self.selectButton.setText(self.selectFeatureDialog.selectedMetricName())
+        selectedMetricName, selectedMetricGroup = (
+            self.selectFeatureDialog.selectedMetricNameAndGroup()
+        )
+        self.selectButton.setText(selectedMetricName)
+        self.featureGroup = selectedMetricGroup
+
+class SelectFeaturesRangeDialog(widgets.QBaseDialog):
+    sigValueChanged = Signal(object)
+    
+    def __init__(self, posData=None, parent=None, force_postprocess_2D=False):
+        super().__init__(parent)
+        
+        self.force_postprocess_2D = force_postprocess_2D
+        
+        layout = QVBoxLayout()
+        self.setWindowTitle('Custom features for post-processing')
+        
+        self.groupbox = SelectFeaturesRangeGroupbox(
+            posData=posData, parent=parent, 
+            force_postprocess_2D=force_postprocess_2D
+        )
+        
+        buttonsLayout = QHBoxLayout()
+        okPushButton = widgets.okPushButton(' Ok ')
+        
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(okPushButton)
+        
+        okPushButton.clicked.connect(self.ok_cb)
+
+        layout.addWidget(self.groupbox)
+        layout.addSpacing(10)
+        layout.addLayout(buttonsLayout)
+        
+        self.setLayout(layout)
+    
+    def ok_cb(self):
+        if self.groupbox.selectedFeaturesRange():
+            self.sigValueChanged.emit(None)
+        self.hide()
 
 class SelectFeaturesRangeGroupbox(QGroupBox):
-    def __init__(self, posData=None, parent=None) -> None:
+    def __init__(
+            self, posData=None, parent=None, force_postprocess_2D=False
+        ):
         super().__init__(parent)
 
         self.setTitle('Features and thresholds for filtering segmented objects')
@@ -12454,7 +12577,9 @@ class SelectFeaturesRangeGroupbox(QGroupBox):
         self._layout = QGridLayout()
         self._layout.setVerticalSpacing(0)
 
-        firstSelector = SelectFeaturesRange(posData)
+        firstSelector = SelectFeaturesRange(
+            posData, force_postprocess_2D=force_postprocess_2D
+        )
         self.addButton = widgets.addPushButton('  Add feature    ')
         self.addButton.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
@@ -12472,13 +12597,15 @@ class SelectFeaturesRangeGroupbox(QGroupBox):
 
         self.setLayout(self._layout)
 
-        self.setFont(font)
+        # self.setFont(font)
 
         self.addButton.clicked.connect(self.addFeatureField)
 
     def addFeatureField(self):
         row = self._layout.rowCount()
-        selector = SelectFeaturesRange(self.posData)
+        selector = SelectFeaturesRange(
+            self.posData, force_postprocess_2D=self.force_postprocess_2D
+        )
         delButton = widgets.delPushButton('Remove feature')
         delButton.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
@@ -12497,6 +12624,45 @@ class SelectFeaturesRangeGroupbox(QGroupBox):
             self._layout.removeWidget(widget['widget'])
         self._layout.removeWidget(delButton)
         self.selectors.remove(delButton.selector)
+    
+    def selectedFeaturesRange(self):
+        featuresRange = {}
+        for selector in self.selectors:
+            if selector.selectButton.text().find('Click') != -1:
+                continue
+            featuresRange[selector.selectButton.text()] = (
+                selector.lowRangeWidgets.value(), 
+                selector.highRangeWidgets.value()
+            )
+        return featuresRange
+
+    def selectedFeaturesGroup(self):
+        featuresGroup = {}
+        for selector in self.selectors:
+            if selector.selectButton.text().find('Click') != -1:
+                continue
+            group = selector.featureGroup                
+            featuresGroup[selector.selectButton.text()] = group
+        return featuresGroup
+
+    def groupedFeatures(self):
+        featuresGroup = self.selectedFeaturesGroup()
+        groupedFeatures = {}
+        for feature, group in featuresGroup.items():
+            group = featuresGroup[feature]
+            if isinstance(group, str):
+                key = group
+                if key not in groupedFeatures:
+                    groupedFeatures[key] = []
+                groupedFeatures[key].append(feature)
+            else:
+                key, channel = list(group.items())[0]
+                if key not in groupedFeatures:
+                    groupedFeatures[key] = {}
+                if channel not in groupedFeatures[key]:
+                    groupedFeatures[key][channel] = []
+                groupedFeatures[key][channel].append(feature)
+        return groupedFeatures
     
     def setValue(self, value):
         pass

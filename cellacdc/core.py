@@ -134,7 +134,7 @@ def lab_replace_values(lab, rp, oldIDs, newIDs, in_place=True):
         lab[obj.slice][obj.image] = newIDs[idx]
     return lab
 
-def remove_artefacts(labels, return_delIDs=False, **kwargs):
+def post_process_segm(labels, return_delIDs=False, **kwargs):
     min_solidity = kwargs.get('min_solidity')
     min_area = kwargs.get('min_area')
     max_elongation = kwargs.get('max_elongation')
@@ -151,7 +151,7 @@ def remove_artefacts(labels, return_delIDs=False, **kwargs):
                     delIDs.add(obj.label)
         
         for z, lab in enumerate(labels):
-            _result = remove_artefacts_lab2D(
+            _result = post_process_segm_lab2D(
                 lab, min_solidity, min_area, max_elongation,
                 return_delIDs=return_delIDs
             )
@@ -166,7 +166,7 @@ def remove_artefacts(labels, return_delIDs=False, **kwargs):
         else:
             result = labels
     else:
-        result = remove_artefacts_lab2D(
+        result = post_process_segm_lab2D(
             labels, min_solidity, min_area, max_elongation,
             return_delIDs=return_delIDs
         )
@@ -178,7 +178,7 @@ def remove_artefacts(labels, return_delIDs=False, **kwargs):
         labels = result
         return labels
 
-def remove_artefacts_lab2D(
+def post_process_segm_lab2D(
         lab, min_solidity=None, min_area=None, max_elongation=None,
         return_delIDs=False
     ):

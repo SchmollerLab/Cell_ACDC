@@ -233,7 +233,7 @@ class mainWin(QMainWindow):
 
         self.guiWins = []
         self.spotmaxWins = []
-        self.dataPrepWin = None
+        self.dataPrepWins = []
         self._version = None
         self.progressWin = None
         self.forceClose = False
@@ -354,7 +354,7 @@ class mainWin(QMainWindow):
         self.welcomeGuide.showPage(self.welcomeGuide.welcomeItem)
 
     def setColorsAndText(self):
-        self.moduleLaunchedColor = '#998f31'
+        self.moduleLaunchedColor = '#f1dd00'
         self.moduleLaunchedQColor = QColor(self.moduleLaunchedColor)
         defaultColor = self.guiButton.palette().button().color().name()
         self.defaultButtonPalette = self.guiButton.palette()
@@ -1432,31 +1432,18 @@ class mainWin(QMainWindow):
         self.dataStructButton.setPalette(self.defaultButtonPalette)
 
     def launchDataPrep(self, checked=False):
-        c = self.dataPrepButton.palette().button().color().name()
-        launchedColor = self.moduleLaunchedColor
-        defaultColor = self.defaultPushButtonColor
-        defaultText = self.defaultTextDataPrepButton
-        if c != self.moduleLaunchedColor:
-            self.dataPrepButton.setPalette(self.moduleLaunchedPalette)
-            self.dataPrepButton.setText(
-                'DataPrep is running. Click to restore window.'
-            )
-            self.dataPrepWin = dataPrep.dataPrepWin(
-                buttonToRestore=(self.dataPrepButton, defaultColor, defaultText),
-                mainWin=self, version=self._version
-            )
-            self.dataPrepWin.sigClose.connect(self.dataPrepClosed)
-            self.dataPrepWin.show()
-        else:
-            geometry = self.dataPrepWin.saveGeometry()
-            self.dataPrepWin.setWindowState(Qt.WindowActive)
-            self.dataPrepWin.restoreGeometry(geometry)
+        dataPrepWin = dataPrep.dataPrepWin(
+            mainWin=self, version=self._version
+        )
+        dataPrepWin.sigClose.connect(self.dataPrepClosed)
+        dataPrepWin.show()
+        self.dataPrepWins.append(dataPrepWin)
     
-    def dataPrepClosed(self):
-        self.logger.info('Data prep window closed.')
-        self.dataPrepButton.setText('  1. Launch data prep module...')
-        self.dataPrepButton.setPalette(self.defaultButtonPalette)
-        del self.dataPrepWin
+    def dataPrepClosed(self, dataPrepWin):
+        try:
+            self.dataPrepWins.remove(dataPrepWin)
+        except ValueError:
+            pass
 
     def launchSegm(self, checked=False):
         c = self.segmButton.palette().button().color().name()
@@ -1485,9 +1472,6 @@ class mainWin(QMainWindow):
         self.guiWins.append(guiWin)
         guiWin.sigClosed.connect(self.guiClosed)
         guiWin.run()
-        
-    def guiClosed(self, guiWin):
-        self.guiWins.remove(guiWin)
     
     def launchSpotmaxGui(self, checked=False):
         self.logger.info('Launching spotMAX...')
@@ -1625,14 +1609,12 @@ class mainWin(QMainWindow):
             self.restoreGeometry(settings.value("geometry"))
     
     def getOpenModules(self):
-        c1 = self.dataPrepButton.palette().button().color().name()
         c2 = self.segmButton.palette().button().color().name()
-        c3 = self.guiButton.palette().button().color().name()
         launchedColor = self.moduleLaunchedColor
 
         openModules = []
-        if c1 == launchedColor:
-            openModules.append(self.dataPrepWin)
+        if self.dataPrepWins:
+            openModules.extend(self.dataPrepWins)
         if c2 == launchedColor:
             openModules.append(self.segmWin)
         if self.guiWins:

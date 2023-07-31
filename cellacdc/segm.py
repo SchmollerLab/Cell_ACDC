@@ -34,6 +34,7 @@ from . import exception_handler
 from . import workers
 from . import _palettes
 from . import cellacdc_path, settings_folderpath, recentPaths_path
+from . import features
 
 if os.name == 'nt':
     try:
@@ -74,7 +75,9 @@ class segmWorker(QRunnable):
         self.SizeZ = mainWin.SizeZ
         self.model = mainWin.model
         self.model_name = mainWin.model_name
-        self.removeArtefactsKwargs = mainWin.removeArtefactsKwargs
+        self.standardPostProcessKwargs = mainWin.standardPostProcessKwargs
+        self.customPostProcessFeatures = mainWin.customPostProcessFeatures
+        self.customPostProcessGroupedFeatures = mainWin.customPostProcessGroupedFeatures
         self.applyPostProcessing = mainWin.applyPostProcessing
         self.save = mainWin.save
         self.model_kwargs = mainWin.model_kwargs
@@ -123,11 +126,11 @@ class segmWorker(QRunnable):
         posData.loadOtherFiles(
             load_segm_data=False,
             load_acdc_df=False,
-            load_shifts=False,
+            load_shifts=True,
             loadSegmInfo=True,
             load_delROIsInfo=False,
             load_dataPrep_ROIcoords=True,
-            loadBkgrData=False,
+            load_bkgr_data=True,
             load_last_tracked_i=False,
             load_metadata=True,
             end_filename_segm=self.endFilenameSegm
@@ -190,9 +193,12 @@ class segmWorker(QRunnable):
                     pad_info = ((0, 0), (y0, Y-y1), (x0, X-x1))
 
                 img_data_slice = img_data[self.t0:stop_i]
+                postprocess_img = img_data
+                
                 Y, X = img_data.shape[-2:]
                 newShape = (stop_i, Y, X)
                 img_data = np.zeros(newShape, img_data.dtype)
+                
                 if self.secondChannelName is not None:
                     second_ch_data = np.zeros(newShape, secondChImgData.dtype)
                 df = posData.segmInfo_df.loc[posData.filename]
@@ -222,6 +228,7 @@ class segmWorker(QRunnable):
             elif posData.SizeZ > 1 and self.isSegm3D:
                 # 3D segmentation on 3D data over time
                 img_data = posData.img_data[self.t0:stop_i]
+                postprocess_img = img_data
                 if self.secondChannelName is not None:
                     second_ch_data = secondChImgData[self.t0:stop_i]
                 if isROIactive:
@@ -233,6 +240,7 @@ class segmWorker(QRunnable):
             else:
                 # 2D data over time
                 img_data = posData.img_data[self.t0:stop_i]
+                postprocess_img = img_data
                 if self.secondChannelName is not None:
                     second_ch_data = secondChImgData[self.t0:stop_i]
                 if isROIactive:
@@ -252,7 +260,8 @@ class segmWorker(QRunnable):
                     img_data = img_data[:, y0:y1, x0:x1]
                     if self.secondChannelName is not None:
                         second_ch_data = second_ch_data[:, :, y0:y1, x0:x1]
-               
+
+                postprocess_img = img_data
                 # 2D segmentation on single 3D image
                 z_info = posData.segmInfo_df.loc[posData.filename].iloc[0]
                 z = z_info.z_slice_used_dataPrep
@@ -284,6 +293,7 @@ class segmWorker(QRunnable):
                     img_data = img_data[:, y0:y1, x0:x1]
                     if self.secondChannelName is not None:
                         second_ch_data = second_ch_data[:, y0:y1, x0:x1]
+                postprocess_img = img_data
             else:
                 # Single 2D image
                 img_data = posData.img_data
@@ -295,6 +305,7 @@ class segmWorker(QRunnable):
                     img_data = img_data[y0:y1, x0:x1]
                     if self.secondChannelName is not None:
                         second_ch_data = second_ch_data[y0:y1, x0:x1]
+                postprocess_img = img_data
 
         self.signals.progress.emit(f'Image shape = {img_data.shape}')
 
@@ -360,14 +371,28 @@ class segmWorker(QRunnable):
         if self.applyPostProcessing:
             if posData.SizeT > 1:
                 for t, lab in enumerate(lab_stack):
-                    lab_cleaned = core.remove_artefacts(
-                        lab, **self.removeArtefactsKwargs
+                    lab_cleaned = core.post_process_segm(
+                        lab, **self.standardPostProcessKwargs
                     )
                     lab_stack[t] = lab_cleaned
+                    if self.customPostProcessFeatures:
+                        lab_filtered = features.custom_post_process_segm(
+                            posData, self.customPostProcessGroupedFeatures, 
+                            lab_cleaned, postprocess_img, t, posData.filename, 
+                            posData.user_ch_name, self.customPostProcessFeatures
+                        )
+                        lab_stack[t] = lab_filtered
             else:
-                lab_stack = core.remove_artefacts(
-                    lab_stack, **self.removeArtefactsKwargs
+                lab_stack = core.post_process_segm(
+                    lab_stack, **self.standardPostProcessKwargs
                 )
+                if self.customPostProcessFeatures:
+                    lab_stack = features.custom_post_process_segm(
+                        posData, self.customPostProcessGroupedFeatures, 
+                        lab_stack, postprocess_img, 0, posData.filename, 
+                        posData.user_ch_name, self.customPostProcessFeatures
+                    )
+            
 
         if posData.SizeT > 1 and self.do_tracking:            
             if self.save:
@@ -718,13 +743,14 @@ class segmWin(QMainWindow):
         posData.loadOtherFiles(
             load_segm_data=True,
             load_acdc_df=False,
-            load_shifts=False,
+            load_shifts=True,
             loadSegmInfo=True,
             load_delROIsInfo=False,
             load_dataPrep_ROIcoords=True,
-            loadBkgrData=False,
+            load_bkgr_data=False,
             load_last_tracked_i=False,
-            load_metadata=True
+            load_metadata=True,
+            load_customCombineMetrics=True
         )
         proceed = posData.askInputMetadata(
             self.numPos,
@@ -807,7 +833,9 @@ class segmWin(QMainWindow):
 
         if model_name != 'thresholding':
             self.model_kwargs = win.model_kwargs
-        self.removeArtefactsKwargs = win.artefactsGroupBox.kwargs()
+        self.standardPostProcessKwargs = win.postProcessGroupbox.kwargs()
+        self.customPostProcessFeatures = win.selectedFeaturesRange()
+        self.customPostProcessGroupedFeatures = win.groupedFeatures()
 
         self.applyPostProcessing = win.applyPostProcessing
         self.secondChannelName = win.secondChannelName
@@ -908,7 +936,11 @@ class segmWin(QMainWindow):
         post_process_params = {
             'applied_postprocessing': self.applyPostProcessing
         }
-        post_process_params = {**post_process_params, **self.removeArtefactsKwargs}
+        post_process_params = {
+            **post_process_params, 
+            **self.standardPostProcessKwargs,
+            **self.customPostProcessFeatures
+        }
         posData.saveSegmHyperparams(
             model_name, self.model_kwargs, post_process_params
         )
@@ -1061,7 +1093,7 @@ class segmWin(QMainWindow):
                 loadSegmInfo=True,
                 load_delROIsInfo=False,
                 load_dataPrep_ROIcoords=True,
-                loadBkgrData=False,
+                load_bkgr_data=False,
                 load_last_tracked_i=False,
                 load_metadata=True
             )
@@ -1368,6 +1400,8 @@ class segmWin(QMainWindow):
                     f'  - Total execution time: {exec_time_delta}<br><br>'
                     f'  - Files saved to "{self.exp_path}"'
                 )
+                steps_left = self.QPbar.maximum()-self.QPbar.value()
+                self.QPbar.setValue(self.QPbar.value()+steps_left)
             else:
                 short_txt = 'Segmentation process stopped'
                 txt = html_utils.paragraph(
