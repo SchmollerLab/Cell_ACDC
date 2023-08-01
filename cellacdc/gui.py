@@ -1610,6 +1610,30 @@ class guiWin(QMainWindow):
         self.widgetsWithShortcut['Repeat segmentation'] = self.segmentToolAction
         editToolBar.addAction(self.segmentToolAction)
         
+        self.manualBackgroundButton = QToolButton(self)
+        self.manualBackgroundButton.setIcon(QIcon(":manual_background.svg"))
+        self.manualBackgroundButton.setCheckable(True)
+        self.manualBackgroundButton.setToolTip(
+            'Toggle "Manual background" mode ON/OFF\n\n'
+            'ACTIONs:\n\n'
+            '  1. Select object to copy its shape\n'
+            '  2. Place the new shape on the background close to the source object.\n'
+            'SHORTCUT: "G" key\n\n'
+            'HELP: Use this function if you need to set the background level specific '
+            'for each object.\n'
+            'Cell-ACDC will save the metrics `amount`, `concentration` and `corrected_mean`\n'
+            'where the background correction will be performed by subtracting the mean\n'
+            'of the signal in the background ROI (for each object).'
+        )
+        self.manualBackgroundButton.setShortcut('T')
+        self.checkableQButtonsGroup.addButton(self.manualBackgroundButton)
+        self.checkableButtons.append(self.manualBackgroundButton)
+        self.widgetsWithShortcut['Manual background'] = self.manualBackgroundButton
+        
+        self.manualBackgroundAction = editToolBar.addWidget(
+            self.manualBackgroundButton
+        )
+        
         self.delObjsOutSegmMaskAction = QAction(
             QIcon(":del_objs_out_segm.svg"), 
             'Select a segmentation file and delete all objects on the background', 
@@ -2370,6 +2394,15 @@ class guiWin(QMainWindow):
 
         self.addToolBar(Qt.TopToolBarArea, self.manualTrackingToolbar)
         self.manualTrackingToolbar.setVisible(False)
+        
+        self.manualBackgroundToolbar = widgets.ManualBackgroundToolBar(
+            "Manual background controls", self
+        )
+        self.manualBackgroundToolbar.sigIDchanged.connect(
+            self.initManualBackgroundObject
+        )
+        self.addToolBar(Qt.TopToolBarArea, self.manualBackgroundToolbar)
+        self.manualBackgroundToolbar.setVisible(False)
 
     def gui_populateToolSettingsMenu(self):
         brushHoverModeActionGroup = QActionGroup(self)
@@ -2975,6 +3008,7 @@ class guiWin(QMainWindow):
         self.realTimeTrackingToggle.clicked.connect(self.realTimeTrackingClicked)
         self.repeatTrackingAction.triggered.connect(self.repeatTracking)
         self.manualTrackingButton.toggled.connect(self.manualTracking_cb)
+        self.manualBackgroundButton.toggled.connect(self.manualBackground_cb)
         self.repeatTrackingMenuAction.triggered.connect(self.repeatTracking)
         self.repeatTrackingVideoAction.triggered.connect(
             self.repeatTrackingVideo
@@ -5680,7 +5714,7 @@ class guiWin(QMainWindow):
             x, y = event.pos()
             self.highlightHoverIDsKeptObj(x, y)
         
-        if cursorsInfo['setManualTrackingCursor']:
+        if cursorsInfo['setPointingHandCursor']:
             x, y = event.pos()
             # self.highlightHoverID(x, y)
             if event.isExit():
@@ -5855,8 +5889,12 @@ class guiWin(QMainWindow):
             self.customAnnotButton is not None and not event.isExit()
             and noModifier
         )
-        setManualTrackingCursor = (
-            self.manualTrackingButton.isChecked() and not event.isExit()
+        setPointingHandCursor = (
+            (
+                self.manualTrackingButton.isChecked() 
+                or self.manualBackgroundButton.isChecked()
+            )
+            and not event.isExit()
             and noModifier
         )
         setAddPointCursor = (
@@ -5884,7 +5922,7 @@ class guiWin(QMainWindow):
             self.highlightHoverID(x, y)        
         elif setKeepObjCursor and overrideCursor is None:
             self.app.setOverrideCursor(Qt.PointingHandCursor)        
-        elif setManualTrackingCursor and overrideCursor is None:
+        elif setPointingHandCursor and overrideCursor is None:
             self.app.setOverrideCursor(Qt.PointingHandCursor)
         elif setAddPointCursor:
             self.app.setOverrideCursor(self.addPointsCursor)
@@ -5901,7 +5939,7 @@ class guiWin(QMainWindow):
             'setCurvCursor': setCurvCursor,
             'setKeepObjCursor': setKeepObjCursor,
             'setCustomAnnotCursor': setCustomAnnotCursor,
-            'setManualTrackingCursor': setManualTrackingCursor,
+            'setPointingHandCursor': setPointingHandCursor,
             'setAddPointCursor': setAddPointCursor,
         }
     
@@ -7166,6 +7204,10 @@ class guiWin(QMainWindow):
             
             self.update_rp()
             self.updateAllImages()
+        
+        elif right_click and self.manualBackgroundButton.isChecked():
+            x, y = event.pos().x(), event.pos().y()
+            xdata, ydata = int(x), int(y)
 
         # Label ROI mouse press
         elif (left_click or right_click) and canLabelRoi:
@@ -11237,6 +11279,7 @@ class guiWin(QMainWindow):
             self.brushButton.isChecked() or self.eraserButton.isChecked()
         )
         isManualTrackingActive = self.manualTrackingButton.isChecked()
+        isManualBackgroundActive = self.manualBackgroundButton.isChecked()
         if self.brushButton.isChecked():
             try:
                 n = int(ev.text())
@@ -11252,7 +11295,7 @@ class guiWin(QMainWindow):
                 # printl(traceback.format_exc())
                 pass
         
-        if self.manualTrackingButton.isChecked():
+        if isManualTrackingActive:
             try:
                 n = int(ev.text())
                 if self.typingEditID:
@@ -11265,6 +11308,26 @@ class guiWin(QMainWindow):
                 # printl(traceback.format_exc())
                 pass
         
+        elif isManualBackgroundActive:
+            try:
+                n = int(ev.text())
+                if self.typingEditID:
+                    ID = int(
+                        f'{self.manualBackgroundToolbar.spinboxID.value()}{n}'
+                    )
+                else:
+                    ID = n
+                    self.typingEditID = True
+                self.manualBackgroundToolbar.spinboxID.setValue(ID)
+            except Exception as e:
+                # printl(traceback.format_exc())
+                pass
+        
+        isTypingIDFunctionChecked = (
+            self.brushButton.isChecked() 
+            or isManualBackgroundActive
+            or isManualTrackingActive
+        )
         isBrushKey = ev.key() == self.brushButton.keyPressShortcut
         isEraserKey = ev.key() == self.eraserButton.keyPressShortcut
         isExpandLabelActive = self.expandLabelToolButton.isChecked()
@@ -11326,7 +11389,7 @@ class guiWin(QMainWindow):
         # elif ev.key()==Qt.Key_Right and not isCtrlModifier:
         #     self.next_cb()
         elif ev.key() == Qt.Key_Enter or ev.key() == Qt.Key_Return:
-            if self.brushButton.isChecked() or isManualTrackingActive:
+            if isTypingIDFunctionChecked:
                 self.typingEditID = False
             elif self.keepIDsButton.isChecked():
                 self.keepIDsConfirmAction.trigger()
@@ -11343,7 +11406,7 @@ class guiWin(QMainWindow):
                 self.typingEditID = False
                 return
             
-            if isManualTrackingActive and self.typingEditID:
+            if isTypingIDFunctionChecked and self.typingEditID:
                 self.typingEditID = False
                 return
             
@@ -12045,6 +12108,11 @@ class guiWin(QMainWindow):
         self.ghostMaskItemLeft.removeFromPlotItem()
         self.ghostMaskItemRight.removeFromPlotItem()
     
+    def initManualBackgroundObject(self, ID=None):
+        if not self.manualTrackingButton.isChecked():
+            self.ghostObject = None
+            return
+    
     def initGhostObject(self, ID=None):
         mode = self.modeComboBox.currentText()
         if mode != 'Segmentation and Tracking':
@@ -12140,6 +12208,11 @@ class guiWin(QMainWindow):
             self.removeManualTrackingItems()
             self.clearGhost()
         
+        QTimer.singleShot(200, self.resetRange)
+    
+    def manualBackground_cb(self, checked):
+        self.storeViewRange()
+        self.manualBackgroundToolbar.setVisible(checked)
         QTimer.singleShot(200, self.resetRange)
 
     def autoSegm_cb(self, checked):
@@ -14370,6 +14443,12 @@ class guiWin(QMainWindow):
                 self.drawIDsContComboBox_cb
             )
             self.showTreeInfoCheckbox.hide()
+            if not self.isSegm3D:
+                self.manualBackgroundAction.setVisible(True)
+                self.manualBackgroundAction.setDisabled(False)
+            else:
+                self.manualBackgroundAction.setVisible(False)
+                self.manualBackgroundAction.setDisabled(True)
         else:
             self.annotateToolbar.setVisible(False)
             self.realTimeTrackingToggle.setDisabled(False)
@@ -14394,6 +14473,8 @@ class guiWin(QMainWindow):
                                                     self.drawIDsContComboBox_cb)
             self.modeComboBox.setCurrentText('Viewer')
             self.showTreeInfoCheckbox.show()
+            self.manualBackgroundAction.setVisible(False)
+            self.manualBackgroundAction.setDisabled(True)
 
     def checkIfAutoSegm(self):
         """

@@ -79,6 +79,7 @@
     <file alias="reload.svg">resources/icons/reload.svg</file>
     <file alias="repeat-tracking.svg">resources/icons/repeat-tracking.svg</file>
     <file alias="manual_tracking.svg">resources/icons/manual_tracking.svg</file>
+    <file alias="manual_background.svg">resources/icons/manual_background.svg</file>
     <file alias="bin.svg">resources/icons/bin.svg</file>
     <file alias="rip.svg">resources/icons/rip.svg</file>
     <file alias="select_all.svg">resources/icons/select_all.svg</file>

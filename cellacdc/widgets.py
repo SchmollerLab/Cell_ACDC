@@ -2674,6 +2674,26 @@ class ManualTrackingToolBar(ToolBar):
     def ghostOpacityValueChanged(self, value):
         self.sigGhostOpacityChanged.emit(value)
 
+class ManualBackgroundToolBar(ToolBar):
+    sigIDchanged = Signal(int)
+
+    def __init__(self, *args) -> None:
+        super().__init__(*args)
+        self.spinboxID = self.addSpinBox(label='Set background of ID ')
+        self.spinboxID.setMinimum(1)
+        self.spinboxID.valueChanged.connect(self.IDchanged)
+    
+    def IDchanged(self, value):
+        self.sigIDchanged.emit(value)
+    
+    def showWarning(self, text):
+        text = html_utils.paragraph(f'WARNING: {text}', font_color='red')
+        self.infoLabel.setText(text)
+    
+    def clearInfoText(self):
+        self.infoLabel.setText('')
+    
+
 class rightClickToolButton(QToolButton):
     sigRightClick = Signal(object)
 
