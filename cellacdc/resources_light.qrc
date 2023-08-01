@@ -43,6 +43,7 @@
     <file alias="arrow_future.svg">resources/icons/arrow_future.svg</file>
     <file alias="arrow_future_all.svg">resources/icons/arrow_future_all.svg</file>
     <file alias="arrow-down.svg">resources/icons/arrow-down.svg</file>
+    <file alias="del_objs_out_segm.svg">resources/icons/del_objs_out_segm.svg</file>
     <file alias="showDown.svg">resources/icons/showDown.svg</file>
     <file alias="terminal_up.svg">resources/icons/terminal_up.svg</file>
     <file alias="terminal_down.svg">resources/icons/terminal_down.svg</file>
@@ -62,6 +63,7 @@
     <file alias="brush-cursor.png">resources/icons/brush-cursor.png</file>
     <file alias="undo.svg">resources/icons/undo.svg</file>
     <file alias="redo.svg">resources/icons/redo.svg</file>
+    <file alias="copyContour.svg">resources/icons/copyContour.svg</file>
     <file alias="eye.svg">resources/icons/eye.svg</file>
     <file alias="eye-checked.svg">resources/icons/eye-checked.svg</file>
     <file alias="unchecked.svg">resources/icons/unchecked.svg</file>
@@ -144,7 +146,7 @@
     <file alias="collapse.svg">resources/icons/collapse.svg</file>
     <file alias="info.svg">resources/icons/info.svg</file>
     <file alias="help.svg">resources/icons/help.svg</file>
-    <file alias="annotate.svg">resources/icons/annotate.svg</file>
+    <file alias="addCustomAnnotation.svg">resources/icons/addCustomAnnotation.svg</file>
     <file alias="toolbar.png">resources/screenshots/toolbar.png</file>
     <file alias="toolTip.png">resources/screenshots/toolTip.png</file>
     <file alias="visualcpp.png">resources/screenshots/visual_studio_settings.png</file>

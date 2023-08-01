@@ -33,6 +33,7 @@ if GUI_INSTALLED:
         QApplication, QMessageBox
     )
     import pyqtgraph as pg
+    pg.setConfigOption('imageAxisOrder', 'row-major')
     from . import prompts
     from . import widgets
     
@@ -368,6 +369,8 @@ def store_unsaved_acdc_df(posData, acdc_df_to_store, log_func=printl):
             temp_h5_filepath = os.path.join(temp_dirpath, filename)
             with pd.HDFStore(temp_h5_filepath, mode='a') as hdf:
                 for key in keys:
+                    if key is None:
+                        continue
                     old_df = pd.read_hdf(h5_path, key=key)
                     hdf.append(key, old_df)
             shutil.move(temp_h5_filepath, h5_path)
@@ -376,7 +379,8 @@ def store_unsaved_acdc_df(posData, acdc_df_to_store, log_func=printl):
         with pd.HDFStore(h5_path, mode='a') as hdf:
             hdf.append(new_key, df)
     except Exception as e:
-        log_func(traceback.format_exc())
+        pass
+        # log_func(traceback.format_exc())
 
 def get_last_stored_unsaved_acdc_df(posData):
     h5_path = posData.unsaved_acdc_df_autosave_path
@@ -429,7 +433,7 @@ def get_segm_files(images_path):
         or (file.endswith('.npz') and file.find('segm') != -1)
         or file.endswith('_segm.npy')
     ]
-    return segm_files
+    return segm_files            
 
 def get_filename_from_channel(
         images_path, channel_name, not_allowed_ends=None, logger=None,
@@ -500,7 +504,9 @@ def load_image_file(filepath):
         h5f = h5py.File(filepath, 'r')
         img_data = h5f['data']
     elif filepath.endswith('.npz'):
-        img_data = np.load(filepath)['arr_0']
+        archive = np.load(filepath)
+        files = archive.files
+        img_data = archive[files[0]]
     elif filepath.endswith('.npy'):
         img_data = np.load(filepath)
     else:

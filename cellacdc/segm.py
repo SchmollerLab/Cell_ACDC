@@ -554,15 +554,7 @@ class segmWin(QMainWindow):
 
     def addPbar(self, add_inner=False):
         pBarLayout = QHBoxLayout()
-        QPbar = QProgressBar(self)
-        QPbar.setValue(0)
-        palette = QtGui.QPalette()
-        palette.setColor(
-            QtGui.QPalette.ColorRole.Highlight, _palettes.QProgressBarColor()
-        )
-        # palette.setColor(QtGui.QPalette.ColorRole.Text, QtGui.QColor(0, 0, 0))
-        # palette.setColor(QtGui.QPalette.ColorRole.HighlightedText, QtGui.QColor(0, 0, 0))
-        QPbar.setPalette(palette)
+        QPbar = widgets.ProgressBar(self)
         pBarLayout.addWidget(QPbar)
         ETA_label = QLabel()
         ETA_label.setText('ETA: NDh:NDm:NDs')
@@ -801,7 +793,8 @@ class segmWin(QMainWindow):
             segment_params,
             model_name, parent=self,
             url=url, SizeZ=_SizeZ,
-            segmFileEndnames=existingSegmEndnames
+            segmFileEndnames=existingSegmEndnames,
+            df_metadata=posData.metadata_df
         )
         win.setChannelNames(posData.chNames)
         win.exec_()

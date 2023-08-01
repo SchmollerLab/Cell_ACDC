@@ -52,3 +52,41 @@ def rotational_volume(
     radii = np.sum(rotate_ID_img, axis=1)/2
     vol_vox = np.sum(np.pi*(radii**2))
     return vol_vox, float(vol_vox*vox_to_fl)
+
+def separate_with_label(lab, rp, IDs_to_separate, maxID, click_coords_list=None):
+    separate_lab = lab.copy()
+    for obj_idx, obj in enumerate(rp):
+        if obj.label not in IDs_to_separate:
+            continue
+        label_obj = skimage.measure.label(obj.image)
+        label_obj_rp = skimage.measure.regionprops(label_obj)
+        if click_coords_list is None:
+            areas = [sub_obj.area for sub_obj in label_obj_rp]
+            max_area = max(areas)
+            max_area_idx = areas.index(max_area)
+            id_to_keep = label_obj_rp[max_area_idx].label
+        else:
+            click_coords = click_coords_list[IDs_to_separate.index(obj.label)]
+            if len(obj.bbox) == 6:
+                zmin, ymin, xmin, _, _, _ = obj.bbox
+                zclick, yclick, xclick = click_coords
+                click_z_local = zclick - zmin
+                click_y_local = yclick - ymin
+                click_x_local = xclick - xmin
+                id_to_keep = label_obj[click_z_local, click_y_local, click_x_local]
+            else:
+                ymin, xmin, _, _ = obj.bbox
+                yclick, xclick = click_coords
+                click_y_local = yclick - ymin
+                click_x_local = xclick - xmin
+                id_to_keep = label_obj[click_y_local, click_x_local]
+        
+        separate_lab[obj.slice][obj.image] = 0
+        for sub_obj_idx, sub_obj in enumerate(label_obj_rp):
+            if sub_obj.label == id_to_keep:
+                new_ID = obj.label
+            else:
+                new_ID = maxID + 1 + sub_obj_idx
+            separate_lab[obj.slice][sub_obj.slice][sub_obj.image] = new_ID
+    return separate_lab
+            

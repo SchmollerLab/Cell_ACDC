@@ -1007,6 +1007,7 @@ class createDataStructWin(QMainWindow):
 
         global bioformats, javabridge
         self.logger.info('Checking if Java is installed...')
+        myutils.check_upgrade_javabridge()
         try:
             import javabridge
         except ModuleNotFoundError as e:
@@ -1050,21 +1051,15 @@ class createDataStructWin(QMainWindow):
                     'copy the link below and paste it into the browser</i><br><br>'
                     f'{url}'
                 )
-                msg = QMessageBox()
-                msg.setIcon(msg.Warning)
-                msg.setWindowTitle('Java not found')
-                msg.setTextFormat(Qt.RichText)
-
-                txt = (f"""
-                <p style=font-size:13px>
+                msg = widgets.myMessageBox(wrapText=False)
+                txt = html_utils.paragraph(f"""
                     This module requires Java to work.<br><br>
                     Follow the instructions below and then try
                     launching this module again.<br><br>
                     {s}{note}
-                </p>
                 """)
-                msg.setText(txt)
-                msg.exec_()
+                msg.warning(self, 'Java not found', txt)
+                
                 err = s.replace('<br>', ' ')
                 err = err.replace('<a href=', '')
                 err = err.replace('>this</a>', '')
@@ -1354,13 +1349,8 @@ class createDataStructWin(QMainWindow):
         msg.exec_()
 
     def addPbar(self):
-        self.QPbar = QProgressBar(self)
+        self.QPbar = widgets.ProgressBar(self)
         self.QPbar.setValue(0)
-        palette = QtGui.QPalette()
-        palette.setColor(QtGui.QPalette.ColorRole.Highlight, _palettes.QProgressBarColor())
-        # palette.setColor(QtGui.QPalette.ColorRole.Text, QtGui.QColor(0, 0, 0))
-        # palette.setColor(QtGui.QPalette.ColorRole.HighlightedText, QtGui.QColor(0, 0, 0))
-        self.QPbar.setPalette(palette)
         self.mainLayout.insertWidget(3, self.QPbar)
 
     def updatePbar(self, deltaPbar):

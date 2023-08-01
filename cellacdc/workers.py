@@ -4,6 +4,8 @@ import os
 import time
 import json
 
+from typing import Union, List
+
 from pprint import pprint
 from functools import wraps, partial
 import numpy as np
@@ -28,6 +30,8 @@ from . import (
     load, myutils, core, measurements, prompts, printl, config,
     segm_re_pattern
 )
+from . import transformation
+from .path import copy_or_move_tree
 
 DEBUG = False
 
@@ -3313,7 +3317,6 @@ class MigrateUserProfileWorker(QObject):
     
     @worker_exception_handler
     def run(self):
-        from distutils.dir_util import copy_tree
         import shutil
         from . import models_path
 
@@ -3334,7 +3337,11 @@ class MigrateUserProfileWorker(QObject):
             src = os.path.join(self.src_path, acdc_folder)
             dst = os.path.join(self.dst_path, acdc_folder)
             self.progress.emit(f'Copying {src} to {dst}...')
-            copy_tree(src, dst)
+            files_failed_move = copy_or_move_tree(
+                src, dst, copy=False,
+                sigInitPbar=self.signals.sigInitInnerPbar, 
+                sigUpdatePbar=self.signals.sigUpdateInnerPbar
+            )
             folders_to_remove.append(src)
             self.signals.progressBar.emit(1)
         
@@ -3362,3 +3369,37 @@ class MigrateUserProfileWorker(QObject):
             txt.write(self.dst_path)
         
         self.finished.emit(self)
+
+class DelObjectsOutsideSegmROIWorker(QObject):
+    finished = Signal(object)
+    critical = Signal(object)
+    progress = Signal(str)
+    debug = Signal(object)
+
+    def __init__(
+            self, 
+            segm_roi_endname: os.PathLike, 
+            segm_data: np.ndarray,
+            images_path: os.PathLike
+        ):
+        QObject.__init__(self)
+        self.signals = signals()
+        self.segm_roi_endname = segm_roi_endname
+        self.segm_data = segm_data
+        self.images_path = images_path
+        
+    @worker_exception_handler
+    def run(self):
+        segm_roi_endname = self.segm_roi_endname
+        segm_roi_filepath, _ = load.get_path_from_endname(
+            segm_roi_endname, self.images_path
+        )
+        self.progress.emit(f'Loading segmentation file "{segm_roi_filepath}"...')
+        segm_roi_data = load.load_image_file(segm_roi_filepath)
+        
+        self.progress.emit(f'Deleting objects outside of selected ROIs...')
+        cleared_segm_data, delIDs = transformation.del_objs_outside_segm_roi(
+            segm_roi_data, self.segm_data
+        )
+        
+        self.finished.emit((self, cleared_segm_data, delIDs))

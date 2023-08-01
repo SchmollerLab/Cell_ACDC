@@ -1,6 +1,7 @@
 import os
 import shutil
 import sys
+from importlib import import_module
 
 def _setup_gui():
     try:
@@ -25,6 +26,18 @@ def _setup_gui():
                         [sys.executable, '-m', 'pip', 'install', '-U', 'tables']
                     )
                 except Exception as err:
+                    print('-'*60)
+                    print(
+                        '[WARNING]: Installation of `tables` with pip failed. '
+                        'Trying with conda...'
+                    )
+                    print('-'*60)
+                try:
+                    import subprocess
+                    subprocess.check_call(
+                        ['conda', 'install', '-y', 'pytables']
+                    )
+                except Exception as err:
                     import traceback
                     traceback.print_exc()
                     print('*'*60)
@@ -43,8 +56,6 @@ def _setup_gui():
                     f'"{answer}" is not a valid answer. '
                     'Type "y" for "yes", or "n" for "no".'
                 )
-            
-    from . import qrc_resources_path, qrc_resources_light_path
     
     warn_restart = False
     # Force PyQt6 if available
@@ -83,32 +94,40 @@ def _setup_gui():
         # Ignore that qtpy is installed but there is no PyQt bindings --> this 
         # is handled in the next block
         pass
-
+    
+    from . import is_mac_arm64
+    default_qt = 'PyQt5' if is_mac_arm64 else 'PyQt6'
+    
     try:
         from qtpy.QtCore import Qt
     except Exception as e:
         txt = (
             'Since version 1.3.1 Cell-ACDC does not install a GUI library by default.\n\n'
-            'You can let Cell-ACDC install it now (default library is `PyQt6`), '
+            f'You can let Cell-ACDC install it now (default library is `{default_qt}`), '
             'or you can abort (press "n")\n'
             'and install a compatible GUI library with one of '
             'the following commands:\n\n'
             '    * pip install PyQt6\n'
-            '    * pip install PyQt5\n'
+            '    * pip install PyQt5 (or `conda install pyqt`)\n'
             '    * pip install PySide2\n'
             '    * pip install PySide6\n\n'
-            'Note: if `PyQt6` installation fails, you could try installing any '
+            f'Note: if `{default_qt}` installation fails, you could try installing any '
             'of the other libraries.\n\n'
         )
         print('-'*60)
         print(txt)
         while True:
-            answer = input('Do you want to install PyQt6 now ([y]/n)? ')
+            answer = input(f'Do you want to install {default_qt} now ([y]/n)? ')
             if answer.lower() == 'y' or not answer:
                 import subprocess
-                subprocess.check_call(
-                    [sys.executable, '-m', 'pip', 'install', '-U', 'PyQt6']
-                )
+                if is_mac_arm64:
+                    subprocess.check_call(
+                        ['conda', 'install', '-y', 'pyqt']
+                    )
+                else:
+                    subprocess.check_call(
+                        [sys.executable, '-m', 'pip', 'install', '-U', 'PyQt6']
+                    )
                 warn_restart = True
                 break
             elif answer.lower() == 'n':
@@ -169,6 +188,8 @@ def _setup_app(splashscreen=False, icon_path=None, logo_path=None):
     app.setStyle(QStyleFactory.create('Fusion'))
     is_OS_dark_mode = app.palette().color(QPalette.Window).getHsl()[2] < 100
     if is_OS_dark_mode:
+        # Switch to dark mode if scheme was never selected by user and OS is 
+        # dark mode
         import pandas as pd
         df_settings = pd.read_csv(settings_csv_path, index_col='setting')
         if 'colorScheme' not in df_settings.index:
@@ -209,11 +230,30 @@ def _setup_app(splashscreen=False, icon_path=None, logo_path=None):
     
     from ._palettes import getPaletteColorScheme, setToolTipStyleSheet
     from ._palettes import get_color_scheme
+    from . import qrc_resources_path
+    from .qrc_resources import qt_resource_data
+    from . import printl
+    
+    # Check if there are new icons --> replace qrc_resources.py
+    scheme = get_color_scheme()
+    if scheme == 'light':
+        from . import qrc_resources_light_path as qrc_resources_scheme_path
+        qrc_resources_scheme = import_module('cellacdc.qrc_resources_light')
+        qt_resource_data_scheme = qrc_resources_scheme.qt_resource_data
+    else:
+        from . import qrc_resources_dark_path as qrc_resources_scheme_path
+        qrc_resources_scheme = import_module('cellacdc.qrc_resources_dark')
+        qt_resource_data_scheme = qrc_resources_scheme.qt_resource_data
+    
+    if qt_resource_data_scheme != qt_resource_data:
+        # When we add new icons the qrc_resources.py file needs to be replaced
+        shutil.copyfile(qrc_resources_scheme_path, qrc_resources_path)
+    
     from . import load
     scheme = get_color_scheme()
     palette = getPaletteColorScheme(app.palette(), scheme=scheme)
     app.setPalette(palette)     
     load.rename_qrc_resources_file(scheme)
-    setToolTipStyleSheet(app, scheme=scheme)
+    # setToolTipStyleSheet(app, scheme=scheme)
     
     return app, splashScreen

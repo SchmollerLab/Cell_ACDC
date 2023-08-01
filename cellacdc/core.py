@@ -626,17 +626,17 @@ def get_obj_contours(
     if obj_image is None:
         obj_image = obj.image.astype(np.uint8)
     
-    if obj_bbox is None:
+    if obj_bbox is None and not local:
         obj_bbox = obj.bbox
     
     contours, _ = cv2.findContours(
         obj_image, retrieveMode, cv2.CHAIN_APPROX_NONE
     )
-    min_y, min_x, _, _ = obj_bbox
     if all or all_external:
         if local:
             return [np.squeeze(cont, axis=1) for cont in contours]
         else:
+            min_y, min_x, _, _ = obj_bbox
             return [np.squeeze(cont, axis=1)+[min_x, min_y] for cont in contours]
     
     if len(contours) > 1 and only_longest_contour:
@@ -648,6 +648,7 @@ def get_obj_contours(
     contour = np.squeeze(contour, axis=1)
     contour = np.vstack((contour, contour[0]))
     if not local:
+        min_y, min_x, _, _ = obj_bbox
         contour += [min_x, min_y]
     return contour
 

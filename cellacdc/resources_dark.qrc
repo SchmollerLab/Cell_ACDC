@@ -42,6 +42,7 @@
     <file alias="arrow_future.svg">resources/icons/arrow_future_dark.svg</file>
     <file alias="arrow_future_all.svg">resources/icons/arrow_future_all_dark.svg</file>
     <file alias="arrow-down.svg">resources/icons/arrow-down_dark.svg</file>
+    <file alias="del_objs_out_segm.svg">resources/icons/del_objs_out_segm_dark.svg</file>
     <file alias="showDown.svg">resources/icons/showDown_dark.svg</file>
     <file alias="terminal_up.svg">resources/icons/terminal_up_dark.svg</file>
     <file alias="terminal_down.svg">resources/icons/terminal_down_dark.svg</file>
@@ -72,6 +73,7 @@
     <file alias="separate-bud.svg">resources/icons/separate-bud_dark.svg</file>
     <file alias="edit-id.svg">resources/icons/edit-id_dark.svg</file>
     <file alias="eye-plus.svg">resources/icons/eye-plus_dark.svg</file>
+    <file alias="copyContour.svg">resources/icons/copyContour_dark.svg</file>
     <file alias="folder-open.svg">resources/icons/folder-open_dark.svg</file>
     <file alias="drawer.svg">resources/icons/drawer_dark.svg</file>
     <file alias="reload.svg">resources/icons/reload_dark.svg</file>
@@ -144,7 +146,7 @@
     <file alias="collapse.svg">resources/icons/collapse_dark.svg</file>
     <file alias="info.svg">resources/icons/info_dark.svg</file>
     <file alias="help.svg">resources/icons/help_dark.svg</file>
-    <file alias="annotate.svg">resources/icons/annotate_dark.svg</file>
+    <file alias="addCustomAnnotation.svg">resources/icons/addCustomAnnotation.svg</file>
     <file alias="toolbar.png">resources/screenshots/toolbar.png</file>
     <file alias="toolTip.png">resources/screenshots/toolTip.png</file>
     <file alias="visualcpp.png">resources/screenshots/visual_studio_settings.png</file>

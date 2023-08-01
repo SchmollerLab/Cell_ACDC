@@ -37,6 +37,8 @@ import math
 import time
 
 import pyqtgraph as pg
+pg.setConfigOption('imageAxisOrder', 'row-major')
+
 from qtpy import QtCore
 from qtpy.QtGui import (
     QIcon, QFontMetrics, QKeySequence, QFont, QGuiApplication, QCursor,
@@ -1748,7 +1750,7 @@ class TrackSubCellObjectsDialog(widgets.QBaseDialog):
         }
         self.close()
 
-class setMeasurementsDialog(widgets.QBaseDialog):
+class SetMeasurementsDialog(widgets.QBaseDialog):
     sigClosed = Signal()
     sigCancel = Signal()
     sigRestart = Signal()
@@ -3857,12 +3859,12 @@ class QDialogWorkerProgress(QDialog):
 
         self.progressLabel = QLabel(pbarDesc)
 
-        self.mainPbar = widgets.QProgressBarWithETA(self)
+        self.mainPbar = widgets.ProgressBarWithETA(self)
         self.mainPbar.setValue(0)
         pBarLayout.addWidget(self.mainPbar, 0, 0)
         pBarLayout.addWidget(self.mainPbar.ETA_label, 0, 1)
 
-        self.innerPbar = widgets.QProgressBarWithETA(self)
+        self.innerPbar = widgets.ProgressBarWithETA(self)
         self.innerPbar.setValue(0)
         pBarLayout.addWidget(self.innerPbar, 1, 0)
         pBarLayout.addWidget(self.innerPbar.ETA_label, 1, 1)
@@ -6191,8 +6193,8 @@ class postProcessSegmParams(QGroupBox):
     editingFinished = Signal()
 
     def __init__(
-            self, title, useSliders=False, parent=None, maxSize=None,
-            SizeZ=None
+            self, title, channelName, useSliders=False, parent=None, 
+            maxSize=None, SizeZ=None
         ):
         QGroupBox.__init__(self, title, parent)
         self.useSliders = useSliders
@@ -9874,28 +9876,13 @@ class QDialogPbar(QDialog):
 
         self.progressLabel = QLabel()
 
-        self.QPbar = QProgressBar(self)
-        self.QPbar.setValue(0)
-        palette = QPalette()
-        palette.setColor(
-            QPalette.ColorRole.Highlight, _palettes.QProgressBarColor()
-        )
-        # palette.setColor(QPalette.ColorRole.Text, QColor(0, 0, 0))
-        # palette.setColor(QPalette.ColorRole.HighlightedText, QColor(0, 0, 0))
-        self.QPbar.setPalette(palette)
+        self.QPbar = widgets.ProgressBar(self)
         pBarLayout.addWidget(self.QPbar, 0, 0)
         self.ETA_label = QLabel('NDh:NDm:NDs')
         pBarLayout.addWidget(self.ETA_label, 0, 1)
 
-        self.metricsQPbar = QProgressBar(self)
+        self.metricsQPbar = widgets.ProgressBar(self)
         self.metricsQPbar.setValue(0)
-        palette = QPalette()
-        palette.setColor(
-            QPalette.ColorRole.Highlight, _palettes.QProgressBarColor()
-        )
-        # palette.setColor(QPalette.ColorRole.Text, QColor(0, 0, 0))
-        # palette.setColor(QPalette.ColorRole.HighlightedText, QColor(0, 0, 0))
-        self.metricsQPbar.setPalette(palette)
         pBarLayout.addWidget(self.metricsQPbar, 1, 0)
 
         #pBarLayout.setColumnStretch(2, 1)
@@ -10251,7 +10238,8 @@ class QDialogModelParams(QDialog):
     def __init__(
             self, init_params, segment_params, model_name, is_tracker=False,
             url=None, parent=None, initLastParams=True, SizeZ=None, 
-            channels=None, currentChannelName=None, segmFileEndnames=None
+            channels=None, currentChannelName=None, segmFileEndnames=None,
+            df_metadata=None
         ):
         self.cancel = True
         super().__init__(parent)
@@ -10260,6 +10248,7 @@ class QDialogModelParams(QDialog):
         self.currentChannelName = currentChannelName
         self.channelCombobox = None
         self.segmFileEndnames = segmFileEndnames
+        self.df_metadata = df_metadata
         
         if is_tracker:
             self.ini_filename = 'last_params_trackers.ini'
@@ -10396,6 +10385,14 @@ class QDialogModelParams(QDialog):
         items = ['None']
         items.extend(chNames)
         self.channelsCombobox.addItems(items)
+    
+    def getValueFromMetadata(self, name):
+        try:
+            value = self.df_metadata.at[name, 'values']
+        except KeyError as e:
+            # traceback.print_exc()
+            value = None
+        return value
 
     def createGroupParams(self, ArgSpecs_list, groupName, addChannelSelector=False):
         ArgWidget = namedtuple(
@@ -10438,8 +10435,10 @@ class QDialogModelParams(QDialog):
         
         for row, ArgSpec in enumerate(ArgSpecs_list):
             row = row + start_row
-            var_name = ArgSpec.name.replace('_', ' ').title()
+            var_name = ArgSpec.name.replace('_', ' ')
+            var_name = f'{var_name[0].upper()}{var_name[1:]}'
             label = QLabel(f'{var_name}:  ')
+            metadata_val = self.getValueFromMetadata(ArgSpec.name)
             groupBoxLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
             try:
                 values = ArgSpec.type().values
@@ -10461,7 +10460,10 @@ class QDialogModelParams(QDialog):
                 )
             elif ArgSpec.type == int:
                 spinBox = widgets.SpinBox()
-                spinBox.setValue(ArgSpec.default)
+                if metadata_val is None:
+                    spinBox.setValue(ArgSpec.default)
+                else:
+                    spinBox.setValue(int(metadata_val))
                 defaultVal = ArgSpec.default
                 valueSetter = QSpinBox.setValue
                 valueGetter = QSpinBox.value
@@ -10469,7 +10471,10 @@ class QDialogModelParams(QDialog):
                 groupBoxLayout.addWidget(spinBox, row, 1, 1, 2)
             elif ArgSpec.type == float:
                 doubleSpinBox = widgets.FloatLineEdit()
-                doubleSpinBox.setValue(ArgSpec.default)
+                if metadata_val is None:
+                    doubleSpinBox.setValue(ArgSpec.default)
+                else:
+                    doubleSpinBox.setValue(float(metadata_val))
                 widget = doubleSpinBox
                 defaultVal = ArgSpec.default
                 valueSetter = widgets.FloatLineEdit.setValue
@@ -12152,7 +12157,7 @@ class SelectAcdcDfVersionToRestore(widgets.QBaseDialog):
             self.savedHDFfilepath = h5_filepath
             with pd.HDFStore(h5_filepath, mode='r') as hdf:
                 keys = natsorted(hdf.keys())
-            
+
             self.savedKeys = keys
             f = load.TIMESTAMP_HDF
             timestamps = [datetime.datetime.strptime(key[1:], f) for key in keys]

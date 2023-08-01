@@ -314,22 +314,26 @@ def addToRecentPaths(exp_path, logger=None):
     if not os.path.exists(exp_path):
         return
     if os.path.exists(recentPaths_path):
-        df = pd.read_csv(recentPaths_path, index_col='index')
-        recentPaths = df['path'].to_list()
-        if 'opened_last_on' in df.columns:
-            openedOn = df['opened_last_on'].to_list()
-        else:
-            openedOn = [np.nan]*len(recentPaths)
-        if exp_path in recentPaths:
-            pop_idx = recentPaths.index(exp_path)
-            recentPaths.pop(pop_idx)
-            openedOn.pop(pop_idx)
-        recentPaths.insert(0, exp_path)
-        openedOn.insert(0, datetime.datetime.now())
-        # Keep max 40 recent paths
-        if len(recentPaths) > 40:
-            recentPaths.pop(-1)
-            openedOn.pop(-1)
+        try:
+            df = pd.read_csv(recentPaths_path, index_col='index')
+            recentPaths = df['path'].to_list()
+            if 'opened_last_on' in df.columns:
+                openedOn = df['opened_last_on'].to_list()
+            else:
+                openedOn = [np.nan]*len(recentPaths)
+            if exp_path in recentPaths:
+                pop_idx = recentPaths.index(exp_path)
+                recentPaths.pop(pop_idx)
+                openedOn.pop(pop_idx)
+            recentPaths.insert(0, exp_path)
+            openedOn.insert(0, datetime.datetime.now())
+            # Keep max 40 recent paths
+            if len(recentPaths) > 40:
+                recentPaths.pop(-1)
+                openedOn.pop(-1)
+        except Exception as e:
+            recentPaths = [exp_path]
+            openedOn = [datetime.datetime.now()]
     else:
         recentPaths = [exp_path]
         openedOn = [datetime.datetime.now()]
@@ -477,22 +481,22 @@ def install_javabridge(force_compile=False, attempt_uninstall_first=False):
     if sys.platform.startswith('win'):
         if force_compile:
             subprocess.check_call(
-                [sys.executable, '-m', 'pip', 'install',
+                [sys.executable, '-m', 'pip', 'install', '-U',
                 'git+https://github.com/SchmollerLab/python-javabridge-acdc']
             )
         else:
             subprocess.check_call(
-                [sys.executable, '-m', 'pip', 'install',
+                [sys.executable, '-m', 'pip', 'install', '-U',
                 'git+https://github.com/SchmollerLab/python-javabridge-windows']
             )
     elif is_mac:
         subprocess.check_call(
-            [sys.executable, '-m', 'pip', 'install',
+            [sys.executable, '-m', 'pip', 'install', '-U',
             'git+https://github.com/SchmollerLab/python-javabridge-acdc']
         )
     elif is_linux:
         subprocess.check_call(
-            [sys.executable, '-m', 'pip', 'install',
+            [sys.executable, '-m', 'pip', 'install', '-U',
             'git+https://github.com/LeeKamentsky/python-javabridge.git@master']
         )
 
@@ -899,16 +903,19 @@ def get_java_url():
         os_foldername = 'win64'
         unzipped_foldername = 'java_portable_windows-0.1'
         file_size = 214798150
+        # url = 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/eMyirTw8qG2wJMt/download/java_portable_windows-0.1.zip'
         url = 'https://github.com/SchmollerLab/java_portable_windows/archive/refs/tags/v0.1.zip'
     elif is_mac:
         os_foldername = 'macOS'
         unzipped_foldername = 'java_portable_macos-0.1'
         url = 'https://github.com/SchmollerLab/java_portable_macos/archive/refs/tags/v0.1.zip'
+        # url = 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/SjZb8aommXgrECq/download/java_portable_macos-0.1.zip'
         file_size = 108478751
     elif is_linux:
         os_foldername = 'linux'
         unzipped_foldername = 'java_portable_linux-0.1'
         url = 'https://github.com/SchmollerLab/java_portable_linux/archive/refs/tags/v0.1.zip'
+        # url = 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/HjeQagixE2cjbZL/download/java_portable_linux-0.1.zip'
         file_size = 92520706
     return url, file_size, os_foldername, unzipped_foldername
 
@@ -930,6 +937,17 @@ def _jdk_exists(jre_path):
                 if file == 'bin':
                     return dir_path
     return ''
+
+def check_upgrade_javabridge():
+    import pkg_resources
+    try:
+        version = pkg_resources.get_distribution("javabridge").version
+    except Exception as e:
+        return
+    patch = int(version.split('.')[2])
+    if patch > 19:
+        return
+    install_javabridge()
 
 def _java_exists(os_foldername):
     acdc_java_path, dot_acdc_java_path = get_acdc_java_path()
@@ -1015,7 +1033,6 @@ def download_java():
         # move files up one level
         src = os.path.join(unzipped_path, name)
         shutil.move(src, os_acdc_java_path)
-
     try:
         shutil.rmtree(unzipped_path)
     except PermissionError as e:
@@ -1033,20 +1050,23 @@ def get_model_path(model_name, create_temp_dir=True):
     
     if os.path.exists(model_info_path):
         for file in listdir(model_info_path):
-            if file == 'weights_location_path.txt':
-                with open(os.path.join(model_info_path, file), 'r') as txt:
-                    model_path = txt.read()
-                    model_path = os.path.expanduser(model_path)
-                if not os.path.exists(model_path):
-                    model_path = _write_model_location_to_txt(model_name)
-                else:
-                    break
+            if file != 'weights_location_path.txt':
+                continue
+            with open(os.path.join(model_info_path, file), 'r') as txt:
+                model_path = txt.read()
+                model_path = os.path.expanduser(model_path)
+            if not os.path.exists(model_path):
+                model_path = _write_model_location_to_txt(model_name)
+            else:
+                break
         else:
             model_path = _write_model_location_to_txt(model_name)
     else:
         os.makedirs(model_info_path, exist_ok=True)
         model_path = _write_model_location_to_txt(model_name)
 
+    model_path = migrate_to_new_user_profile_path(model_path)   
+    
     if not os.path.exists(model_path):
         os.makedirs(model_path, exist_ok=True)
 
@@ -1176,10 +1196,13 @@ def get_confirm_token(response):
 def download_url(
         url, dst, desc='', file_size=None, verbose=True, progress=None
     ):
+    import urllib3
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    
     CHUNK_SIZE = 32768
     if verbose:
         print(f'Downloading {desc} to: {os.path.dirname(dst)}')
-    response = requests.get(url, stream=True, timeout=20)
+    response = requests.get(url, stream=True, timeout=20, verify=False)
     if file_size is not None and progress is not None:
         progress.emit(file_size, -1)
     pbar = tqdm(
@@ -1247,9 +1270,30 @@ def check_v123_model_path(model_name):
     else:
         return ''
 
+def is_old_user_profile_path(path_to_check: os.PathLike):
+    from . import user_data_dir
+    user_data_folderpath = user_data_dir()
+    user_profile_path_txt = os.path.join(
+        user_data_folderpath, 'acdc_user_profile_location.txt'
+    )
+    if os.path.exists(user_profile_path_txt):
+        return False
+    
+    from . import user_home_path
+    user_home_path = user_home_path.replace('\\', '/')
+    path_to_check = path_to_check.replace('\\', '/')
+    return user_home_path == path_to_check
+
+def migrate_to_new_user_profile_path(path_to_migrate: os.PathLike):
+    parent_dir = os.path.dirname(path_to_migrate)
+    if not is_old_user_profile_path(parent_dir):
+        return path_to_migrate
+    folder = os.path.basename(path_to_migrate)
+    return os.path.join(user_profile_path, folder)
+
 def _write_model_location_to_txt(model_name):
     model_info_path = os.path.join(cellacdc_path, 'models', model_name, 'model')
-    model_path = os.path.join('~', f'acdc-{model_name}')
+    model_path = os.path.join(user_profile_path, f'acdc-{model_name}')
     file = 'weights_location_path.txt'
     with open(os.path.join(model_info_path, file), 'w') as txt:
         txt.write(model_path)
@@ -1860,10 +1904,15 @@ def import_tracker(posData, trackerName, realTime=False, qparent=None):
                 currentChannelName = posData.user_ch_name
             except Exception as e:
                 currentChannelName = None
+            try:
+                df_metadata = posData.metadata_df
+            except Exception as e:
+                df_metadata = None
             paramsWin = apps.QDialogModelParams(
                 init_argspecs, track_argspecs, trackerName, url=url,
                 channels=channels, is_tracker=True,
-                currentChannelName=currentChannelName
+                currentChannelName=currentChannelName,
+                df_metadata=df_metadata
             )
             paramsWin.exec_()
             if not paramsWin.cancel:
@@ -1890,6 +1939,7 @@ def import_segment_module(model_name):
     try:
         acdcSegment = import_module(f'models.{model_name}.acdcSegment')
     except ModuleNotFoundError as e:
+        # Check if custom model
         cp = config.ConfigParser()
         cp.read(models_list_file_path)
         model_path = cp[model_name]['path']

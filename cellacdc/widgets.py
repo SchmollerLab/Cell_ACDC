@@ -49,6 +49,7 @@ from qtpy.QtWidgets import (
 )
 
 import pyqtgraph as pg
+pg.setConfigOption('imageAxisOrder', 'row-major')
 
 from . import myutils, measurements, is_mac, is_win, html_utils, is_linux
 from . import qrc_resources, printl, settings_folderpath
@@ -61,6 +62,8 @@ LINEEDIT_INVALID_ENTRY_STYLESHEET = _palettes.lineedit_invalid_entry_stylesheet(
 TREEWIDGET_STYLESHEET = _palettes.TreeWidgetStyleSheet()
 LISTWIDGET_STYLESHEET = _palettes.ListWidgetStyleSheet()
 BASE_COLOR = _palettes.base_color()
+PROGRESSBAR_QCOLOR = _palettes.QProgressBarColor()
+PROGRESSBAR_HIGHLIGHTEDTEXT_QCOLOR = _palettes.QProgressBarHighlightedTextColor()
 
 font = QFont()
 font.setPixelSize(13)
@@ -856,10 +859,17 @@ class ScrollBar(QScrollBar):
     def __init__(self, *args):
         super().__init__(*args)
         self.installEventFilter(self)
+        self.setContextMenuPolicy(Qt.NoContextMenu)
     
     def eventFilter(self, object, event) -> bool:
         if event.type() == QEvent.Type.Wheel:
             return True
+        elif event.type() == QEvent.Type.MouseButtonPress:
+            # Filter right-click to prevent context menu
+            return event.button() == Qt.MouseButton.RightButton
+        elif event.type() == QEvent.Type.MouseButtonRelease:
+            # Filter right-click to prevent context menu
+            return event.button() == Qt.MouseButton.RightButton
         return False
 
 class _ReorderableListModel(QAbstractListModel):
@@ -3227,7 +3237,7 @@ class readOnlyDoubleSpinbox(QDoubleSpinBox):
         self.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         self.setAlignment(Qt.AlignCenter)
         self.setMaximum(2**31-1)
-        self.setStyleSheet('background-color: rgba(240, 240, 240, 200);')
+        # self.setStyleSheet('background-color: rgba(240, 240, 240, 200);')
 
 class readOnlySpinbox(QSpinBox):
     def __init__(self, parent=None):
@@ -3236,7 +3246,7 @@ class readOnlySpinbox(QSpinBox):
         self.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         self.setAlignment(Qt.AlignCenter)
         self.setMaximum(2**31-1)
-        self.setStyleSheet('background-color: rgba(240, 240, 240, 200);')
+        # self.setStyleSheet('background-color: rgba(240, 240, 240, 200);')
 
 class DoubleSpinBox(QDoubleSpinBox):
     sigValueChanged = Signal(int)
@@ -3329,9 +3339,9 @@ class ReadOnlyLineEdit(QLineEdit):
     def __init__(self, parent=None):
         super().__init__(parent=parent)
         self.setReadOnly(True)
-        self.setStyleSheet(
-            'background-color: rgba(240, 240, 240, 200);'
-        )
+        # self.setStyleSheet(
+        #     'background-color: rgba(240, 240, 240, 200);'
+        # )
         self.installEventFilter(self)
     
     def eventFilter(self, a0: 'QObject', a1: 'QEvent') -> bool:
@@ -3343,10 +3353,16 @@ class FloatLineEdit(QLineEdit):
     valueChanged = Signal(float)
 
     def __init__(
-            self, *args, notAllowed=None, allowNegative=True, initial=None
+            self, *args, notAllowed=None, allowNegative=True, initial=None,
+            readOnly=False, decimals=6
         ):
         QLineEdit.__init__(self, *args)
+        if readOnly:
+            self.setReadOnly(readOnly)
         self.notAllowed = notAllowed
+        self._maximum = np.inf
+        self._minimum = -np.inf
+        self._decimals = decimals
 
         self.isNumericRegExp = rf'^{float_regex(allow_negative=allowNegative)}$'
 
@@ -3361,9 +3377,16 @@ class FloatLineEdit(QLineEdit):
         self.textChanged.connect(self.emitValueChanged)
         if initial is None:
             self.setText('0.0')
+    
+    def setDecimals(self, decimals):
+        self._decimals = 6
 
     def setValue(self, value: float):
-        self.setText(str(value))
+        if value > self._maximum:
+            value = self._maximum
+        if value < self._minimum:
+            value = self._minimum
+        self.setText(str(round(value, self._decimals)))
 
     def value(self):
         m = re.match(self.isNumericRegExp, self.text())
@@ -3376,6 +3399,74 @@ class FloatLineEdit(QLineEdit):
             return val
         else:
             return 0.0
+    
+    def setMaximum(self, maximum):
+        self._maximum = maximum
+    
+    def setMinimum(self, minimum):
+        self._minimum = minimum
+
+    def emitValueChanged(self, text):
+        val = self.value()
+        if self.notAllowed is not None and val in self.notAllowed:
+            self.setStyleSheet(LINEEDIT_INVALID_ENTRY_STYLESHEET)
+        else:
+            self.setStyleSheet('')
+            self.valueChanged.emit(self.value())
+
+class IntLineEdit(QLineEdit):
+    valueChanged = Signal(float)
+
+    def __init__(
+            self, *args, notAllowed=None, allowNegative=True, initial=None,
+            readOnly=False
+        ):
+        QLineEdit.__init__(self, *args)
+        self.notAllowed = notAllowed
+        if readOnly:
+            self.setReadOnly(readOnly)
+
+        self._maximum = np.inf
+        self._minimum = -np.inf
+        
+        self._regExp = r'\d+'
+
+        regExp = QRegularExpression(self._regExp)
+        self.setValidator(QRegularExpressionValidator(regExp))
+        self.setAlignment(Qt.AlignCenter)
+
+        font = QFont()
+        font.setPixelSize(11)
+        self.setFont(font)
+
+        self.textChanged.connect(self.emitValueChanged)
+        if initial is None:
+            self.setText('0')
+    
+    def setMaximum(self, maximum):
+        self._maximum = maximum
+    
+    def setMinimum(self, minimum):
+        self._minimum = minimum
+
+    def setValue(self, value: int):
+        if value > self._maximum:
+            value = self._maximum
+        if value < self._minimum:
+            value = self._minimum
+        self.setText(str(value))
+
+    def value(self):
+        m = re.match(self._regExp, self.text())
+        if m is not None:
+            text = m.group(0)
+            try:
+                val = int(text)
+            except ValueError:
+                val = 0
+            return val
+        else:
+            return 0
 
     def emitValueChanged(self, text):
         val = self.value()
@@ -3755,14 +3846,9 @@ class objPropsQGBox(QGroupBox):
 
         row = 0
         label = QLabel('Object ID: ')
-        self.idSB = QSpinBox()
-        self.idSB.setMaximum(2**16)
-        self.idSB.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
-        self.idSB.setAlignment(Qt.AlignCenter)
+        self.idSB = IntLineEdit()
         mainLayout.addWidget(label, row, 0)
         mainLayout.addWidget(self.idSB, row, 1)
-
-        mainLayout.setColumnStretch(row, 3)
 
         row += 1
         mainLayout.addWidget(QHLine(), row, 0, 1, 2)
@@ -3778,13 +3864,13 @@ class objPropsQGBox(QGroupBox):
 
         row += 1
         label = QLabel('Area (pixel): ')
-        self.cellAreaPxlSB = readOnlySpinbox()
+        self.cellAreaPxlSB = IntLineEdit(readOnly=True)
         mainLayout.addWidget(label, row, 0)
         mainLayout.addWidget(self.cellAreaPxlSB, row, 1)
 
         row += 1
         label = QLabel('Area (<span>&#181;</span>m<sup>2</sup>): ')
-        self.cellAreaUm2DSB = readOnlyDoubleSpinbox()
+        self.cellAreaUm2DSB = FloatLineEdit(readOnly=True)
         mainLayout.addWidget(label, row, 0)
         mainLayout.addWidget(self.cellAreaUm2DSB, row, 1)
 
@@ -3793,26 +3879,26 @@ class objPropsQGBox(QGroupBox):
 
         row += 1
         label = QLabel('Rotational volume (voxel): ')
-        self.cellVolVoxSB = readOnlySpinbox()
+        self.cellVolVoxSB = IntLineEdit(readOnly=True)
         mainLayout.addWidget(label, row, 0)
         mainLayout.addWidget(self.cellVolVoxSB, row, 1)
 
         row += 1
         label = QLabel('3D volume (voxel): ')
-        self.cellVolVox3D_SB = readOnlySpinbox()
+        self.cellVolVox3D_SB = IntLineEdit(readOnly=True)
         self.cellVolVox3D_SB.label = label
         mainLayout.addWidget(label, row, 0)
         mainLayout.addWidget(self.cellVolVox3D_SB, row, 1)
 
         row += 1
         label = QLabel('Rotational volume (fl): ')
-        self.cellVolFlDSB = readOnlyDoubleSpinbox()
+        self.cellVolFlDSB = FloatLineEdit(readOnly=True)
         mainLayout.addWidget(label, row, 0)
         mainLayout.addWidget(self.cellVolFlDSB, row, 1)
 
         row += 1
         label = QLabel('3D volume (fl): ')
-        self.cellVolFl3D_DSB = readOnlyDoubleSpinbox()
+        self.cellVolFl3D_DSB = FloatLineEdit(readOnly=True)
         self.cellVolFl3D_DSB.label = label
         mainLayout.addWidget(label, row, 0)
         mainLayout.addWidget(self.cellVolFl3D_DSB, row, 1)
@@ -3822,14 +3908,14 @@ class objPropsQGBox(QGroupBox):
 
         row += 1
         label = QLabel('Solidity: ')
-        self.solidityDSB = readOnlyDoubleSpinbox()
+        self.solidityDSB = FloatLineEdit(readOnly=True)
         self.solidityDSB.setMaximum(1)
         mainLayout.addWidget(label, row, 0)
         mainLayout.addWidget(self.solidityDSB, row, 1)
 
         row += 1
         label = QLabel('Elongation: ')
-        self.elongationDSB = readOnlyDoubleSpinbox()
+        self.elongationDSB = FloatLineEdit(readOnly=True)
         mainLayout.addWidget(label, row, 0)
         mainLayout.addWidget(self.elongationDSB, row, 1)
 
@@ -3840,12 +3926,15 @@ class objPropsQGBox(QGroupBox):
         propsNames = measurements.get_props_names()[1:]
         self.additionalPropsCombobox = QComboBox()
         self.additionalPropsCombobox.addItems(propsNames)
-        self.additionalPropsCombobox.indicator = readOnlyDoubleSpinbox()
+        self.additionalPropsCombobox.indicator = FloatLineEdit(readOnly=True)
         mainLayout.addWidget(self.additionalPropsCombobox, row, 0)
         mainLayout.addWidget(self.additionalPropsCombobox.indicator, row, 1)
 
         row += 1
         mainLayout.addWidget(QHLine(), row, 0, 1, 2)
+        
+        mainLayout.setColumnStretch(0, 0)
+        mainLayout.setColumnStretch(1, 1)
 
         self.setLayout(mainLayout)
 
@@ -3867,25 +3956,25 @@ class objIntesityMeasurQGBox(QGroupBox):
 
         row += 1
         label = QLabel('Minimum: ')
-        self.minimumDSB = readOnlyDoubleSpinbox()
+        self.minimumDSB = FloatLineEdit(readOnly=True)
         mainLayout.addWidget(label, row, 0)
         mainLayout.addWidget(self.minimumDSB, row, 1)
 
         row += 1
         label = QLabel('Maximum: ')
-        self.maximumDSB = readOnlyDoubleSpinbox()
+        self.maximumDSB = FloatLineEdit(readOnly=True)
         mainLayout.addWidget(label, row, 0)
         mainLayout.addWidget(self.maximumDSB, row, 1)
 
         row += 1
         label = QLabel('Mean: ')
-        self.meanDSB = readOnlyDoubleSpinbox()
+        self.meanDSB = FloatLineEdit(readOnly=True)
         mainLayout.addWidget(label, row, 0)
         mainLayout.addWidget(self.meanDSB, row, 1)
 
         row += 1
         label = QLabel('Median: ')
-        self.medianDSB = readOnlyDoubleSpinbox()
+        self.medianDSB = FloatLineEdit(readOnly=True)
         mainLayout.addWidget(label, row, 0)
         mainLayout.addWidget(self.medianDSB, row, 1)
 
@@ -3904,7 +3993,7 @@ class objIntesityMeasurQGBox(QGroupBox):
         funcionCombobox = QComboBox()
         funcionCombobox.addItems(items)
         self.additionalMeasCombobox = funcionCombobox
-        self.additionalMeasCombobox.indicator = readOnlyDoubleSpinbox()
+        self.additionalMeasCombobox.indicator = FloatLineEdit(readOnly=True)
         self.additionalMeasCombobox.functions = nameFuncDict
         mainLayout.addWidget(funcionCombobox, row, 0)
         mainLayout.addWidget(self.additionalMeasCombobox.indicator, row, 1)
@@ -3932,9 +4021,11 @@ class guiTabControl(QTabWidget):
 
         layout.addWidget(self.highlightCheckbox)
         layout.addWidget(self.propsQGBox)
-        layout.addWidget(self.intensMeasurQGBox)       
+        layout.addWidget(self.intensMeasurQGBox)  
+        layout.addStretch(1)     
         container.setLayout(layout)
 
+        self.propsTab.setWidgetResizable(True)
         self.propsTab.setWidget(container)
         self.addTab(self.propsTab, 'Measurements')
 
@@ -4194,7 +4285,7 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
         invertedGradient['mode'] = gradient['mode']
         return invertedGradient
     
-    def invertCurrentColormap(self, debug=False):
+    def invertCurrentColormap(self, inverted, debug=False):
         self.setGradient(self.invertGradient(self.lastGradient))
     
     def addCustomGradient(self, gradient_name, gradient_ticks):
@@ -5201,16 +5292,24 @@ class QLogConsole(QTextEdit):
         super().append(text)
         self.verticalScrollBar().setValue(self.verticalScrollBar().maximum())
 
-class QProgressBarWithETA(QProgressBar):
+class ProgressBar(QProgressBar):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        palette = self.palette()
+        palette.setColor(
+            QPalette.ColorRole.Highlight, 
+            PROGRESSBAR_QCOLOR
+        )
+        palette.setColor(
+            QPalette.ColorRole.HighlightedText, 
+            PROGRESSBAR_HIGHLIGHTEDTEXT_QCOLOR
+        )
+        self.setPalette(palette)
+
+class ProgressBarWithETA(ProgressBar):
     def __init__(self, parent=None):
         self.parent = parent
-        super().__init__(parent)
-
-        palette = QPalette()
-        palette.setColor(QPalette.ColorRole.Highlight, _palettes.QProgressBarColor())
-        # palette.setColor(QPalette.ColorRole.Text, QColor(0, 0, 0))
-        # palette.setColor(QPalette.ColorRole.HighlightedText, QColor(0, 0, 0))
-        self.setPalette(palette)
+        super().__init__(parent=parent)
         self.ETA_label = QLabel('NDh:NDm:NDs')
 
     def update(self, step: int):
@@ -5349,6 +5448,9 @@ class sliderWithSpinBox(QWidget):
         self.slider.sliderReleased.connect(self.onEditingFinished)
         self.spinBox.valueChanged.connect(self.spinboxValueChanged)
         self.spinBox.editingFinished.connect(self.onEditingFinished)
+        
+        layout.setContentsMargins(5, 0, 5, 0)
+        
         self.setLayout(layout)
 
     def onEditingFinished(self):
@@ -5664,6 +5766,8 @@ class PostProcessSegmSpinbox(QWidget):
         self.label = label
 
         self.checkbox.toggled.connect(self.onCheckBoxToggled)
+        
+        layout.setContentsMargins(5, 0, 5, 0)
     
         self.setLayout(layout)
     
@@ -5930,6 +6034,8 @@ class ScrollBarWithNumericControl(QWidget):
         layout.setStretch(0,0)
         layout.setStretch(1,0)
         layout.setStretch(2,1)
+        
+        layout.setContentsMargins(5, 0, 5, 0)
 
         self.setLayout(layout)
 
@@ -6110,7 +6216,7 @@ class ImShow(QBaseWindow):
             rows_range = range(0, (nrows-1)*2+1, 2)
         else:
             rows_range = range(nrows)
-
+        
         self.PlotItems = []
         self.ImageItems = []
         self.ScrollBars = []
@@ -6151,7 +6257,9 @@ class ImShow(QBaseWindow):
                     scrollbarProxy = self._getGraphicsScrollbar(
                         0, image, imageItem, maximum
                     )
-                    self.graphicLayout.addItem(scrollbarProxy, row=row+1, col=col)
+                    self.graphicLayout.addItem(
+                        scrollbarProxy, row=row+s+1, col=col
+                    )
                     imageItem.ScrollBars.append(scrollbarProxy.scrollbar)
 
                 i += 1

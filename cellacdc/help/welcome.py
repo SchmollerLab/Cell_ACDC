@@ -911,15 +911,8 @@ class welcomeWin(QWidget):
         self.dataStructWin.main()
 
     def addPbar(self):
-        self.QPbar = QProgressBar(self)
+        self.QPbar = widgets.ProgressBar(self)
         self.QPbar.setValue(0)
-        palette = QPalette()
-        palette.setColor(
-            QPalette.ColorRole.Highlight, _palettes.QProgressBarColor()
-        )
-        # palette.setColor(QPalette.ColorRole.Text, QColor(0, 0, 0))
-        # palette.setColor(QPalette.ColorRole.HighlightedText, QColor(0, 0, 0))
-        self.QPbar.setPalette(palette)
         self.welcomeLayout.addWidget(self.QPbar, 3, 0, 1, 3)
 
     def testTimeLapseExample(self, checked=True):
