@@ -1,4 +1,4 @@
-from qtpy.QtCore import PYQT6
+from qtpy.QtCore import PYQT6, Qt
 
 from qtpy.QtWidgets import QAbstractSlider
 

@@ -655,6 +655,7 @@ class loadData:
         self.loadSizeT = None
         self.loadSizeZ = None
         self.multiSegmAllPos = False
+        self.manualBackgroundLab = None
         self.frame_i = 0
         self.clickEntryPointsDfs = {}
         path_li = os.path.normpath(imgPath).split(os.sep)
@@ -976,6 +977,7 @@ class loadData:
                 archive = np.load(filePath)
                 file = archive.files[0]
                 self.segm_data = archive[file].astype(np.uint32)
+                self.loadManualBackgroundData()
                 if self.segm_data.dtype == bool:
                     if self.labelBoolSegm is None:
                         self.askBooleanSegm()
@@ -1384,8 +1386,27 @@ class loadData:
                 cca_df.insert(ref_col_idx, col, df[col])
         
         return cca_df
+    
+    def getManualBackgroudDataFilepath(self):
+        segmFilename = os.path.basename(self.segm_npz_path)
+        segmEndname = segmFilename[len(self.basename):]
+        manualBackgrEndname = segmEndname.replace('segm', 'manualBackground')
+        manualBackgrFilename = f'{self.basename}{manualBackgrEndname}'
+        filepath = os.path.join(self.images_path, manualBackgrFilename)
+        return filepath
 
+    def saveManualBackgroundData(self, data: np.ndarray):
+        filepath = self.getManualBackgroudDataFilepath()
+        np.savez_compressed(filepath, data)
 
+    def loadManualBackgroundData(self):
+        filepath = self.getManualBackgroudDataFilepath()
+        if not os.path.exists(filepath):
+            self.manualBackgroundLab = None
+            return
+        archive = np.load(filepath)
+        self.manualBackgroundLab = archive[archive.files[0]]
+    
     def setNotFoundData(self):
         if self.segmFound is not None and not self.segmFound:
             self.segm_data = None

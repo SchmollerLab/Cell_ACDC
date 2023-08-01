@@ -2682,6 +2682,9 @@ class ManualBackgroundToolBar(ToolBar):
         self.spinboxID = self.addSpinBox(label='Set background of ID ')
         self.spinboxID.setMinimum(1)
         self.spinboxID.valueChanged.connect(self.IDchanged)
+        
+        self.infoLabel = QLabel('')
+        self.addWidget(self.infoLabel)
     
     def IDchanged(self, value):
         self.sigIDchanged.emit(value)
@@ -5691,13 +5694,13 @@ class PostProcessSegmSlider(sliderWithSpinBox):
             return super().value()
 
 class GhostContourItem(pg.PlotDataItem):
-    def __init__(self,):
+    def __init__(self, penColor=(245, 184, 0, 100), textColor=(245, 184, 0)):
         super().__init__()
         # Yellow pen
-        self.setPen(pg.mkPen(width=2, color=(245, 184, 0, 100)))
+        self.setPen(pg.mkPen(width=2, color=penColor))
         self.label = myLabelItem()
         self.label.setAttr('bold', True)
-        self.label.setAttr('color', (245, 184, 0))
+        self.label.setAttr('color', textColor)
     
     def addToPlotItem(self, PlotItem: MainPlotItem):
         self._plotItem = PlotItem
@@ -5705,6 +5708,8 @@ class GhostContourItem(pg.PlotDataItem):
         PlotItem.addItem(self.label)
     
     def removeFromPlotItem(self):
+        if not hasattr(self, '_plotItem'):
+            return
         self._plotItem.removeItem(self.label)
         self._plotItem.removeItem(self)
     
