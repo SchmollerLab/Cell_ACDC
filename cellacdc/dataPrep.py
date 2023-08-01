@@ -67,7 +67,7 @@ class toCsvWorker(QObject):
         self.finished.emit()
 
 class dataPrepWin(QMainWindow):
-    sigClose = Signal()
+    sigClose = Signal(object)
 
     def __init__(
             self, parent=None, buttonToRestore=None, mainWin=None,
@@ -1087,9 +1087,10 @@ class dataPrepWin(QMainWindow):
         xl, yt = [int(round(c)) for c in roi.pos()]
 
         roi.handleSize = 7
-        roi.label = pg.LabelItem('ROI', color='r', size=f'{self.pt}pt')
-        hLabel = roi.label.rect().bottom()
-        roi.label.setPos(xl, yt-hLabel)
+        roi.label = pg.TextItem('ROI', color='r')
+        roi.label.setFont(self.roiLabelFont)
+        # hLabel = roi.label.rect().bottom()
+        roi.label.setPos(xl, yt)
 
         ## handles scaling horizontally around center
         roi.addScaleHandle([1, 0.5], [0, 0.5])
@@ -1119,7 +1120,7 @@ class dataPrepWin(QMainWindow):
                     loadSegmInfo=True,
                     load_dataPrep_ROIcoords=True,
                     load_delROIsInfo=False,
-                    loadBkgrData=False,
+                    load_bkgr_data=False,
                     loadBkgrROIs=True,
                     load_last_tracked_i=False,
                     load_metadata=True,
@@ -1517,11 +1518,10 @@ class dataPrepWin(QMainWindow):
         bkgrROI.handleSize = 7
 
         xl, yt = [int(round(c)) for c in bkgrROI.pos()]
-        bkgrROI.label = pg.LabelItem(
-            'Bkgr. ROI', color=(150,150,150), size=f'{self.pt}pt'
-        )
-        hLabel = bkgrROI.label.rect().bottom()
-        bkgrROI.label.setPos(xl, yt-hLabel)
+        bkgrROI.label = pg.TextItem('Bkgr. ROI', color=(150,150,150))
+        bkgrROI.label.setFont(self.roiLabelFont)
+        # hLabel = bkgrROI.label.rect().bottom()
+        bkgrROI.label.setPos(xl, yt)
 
         ## handles scaling horizontally around center
         bkgrROI.addScaleHandle([1, 0.5], [0, 0.5])
@@ -1554,17 +1554,19 @@ class dataPrepWin(QMainWindow):
         bkgrROI.sigRegionChangeFinished.connect(self.bkgrROImovingFinished)
 
     def bkgrROIMoving(self, roi):
-        txt = roi.label.text
+        # txt = roi.label.text
         roi.setPen(color=(255,255,0))
-        roi.label.setText(txt, color=(255,255,0), size=f'{self.pt}pt')
+        roi.label.setColor((255,255,0))
+        # roi.label.setText(txt, color=(255,255,0), size=self.roiLabelSize)
         xl, yt = [int(round(c)) for c in roi.pos()]
-        hLabel = roi.label.rect().bottom()
-        roi.label.setPos(xl, yt-hLabel)
+        # hLabel = roi.label.rect().bottom()
+        roi.label.setPos(xl, yt)
 
     def bkgrROImovingFinished(self, roi):
         txt = roi.label.text
         roi.setPen(color=(150,150,150))
-        roi.label.setText(txt, color=(150,150,150), size=f'{self.pt}pt')
+        roi.label.setColor((150,150,150))
+        # roi.label.setText(txt, color=(150,150,150), size=self.roiLabelSize)
         posData = self.data[self.pos_i]
         idx = posData.bkgrROIs.index(roi)
         posData.bkgrROIs[idx] = roi
@@ -1573,15 +1575,17 @@ class dataPrepWin(QMainWindow):
     def ROImovingFinished(self, roi):
         txt = roi.label.text
         roi.setPen(color='r')
-        roi.label.setText(txt, color='r', size=f'{self.pt}pt')
+        roi.label.setColor('r')
+        # roi.label.setText(txt, color='r', size=self.roiLabelSize)
         self.saveROIcoords(False, self.data[self.pos_i])
 
     def updateCurrentRoiShape(self, roi):
         roi.setPen(color=(255,255,0))
-        roi.label.setText('ROI', color=(255,255,0), size=f'{self.pt}pt')
+        roi.label.setColor((255,255,0))
+        # roi.label.setText('ROI', color=(255,255,0), size=self.roiLabelSize)
         xl, yt = [int(round(c)) for c in roi.pos()]
-        hLabel = roi.label.rect().bottom()
-        roi.label.setPos(xl, yt-hLabel)
+        # hLabel = roi.label.rect().bottom()
+        roi.label.setPos(xl, yt)
         w, h = [int(round(c)) for c in roi.size()]
         self.ROIshapeLabel.setText(f'   Current ROI shape: {w} x {h}')
     
@@ -2147,8 +2151,11 @@ class dataPrepWin(QMainWindow):
 
     def setFontSizeROIlabels(self):
         Y, X = self.img.image.shape
-        factor = 40
+        factor = 50
         self.pt = int(X/factor)
+        self.roiLabelSize = '11px'
+        self.roiLabelFont = QFont()
+        self.roiLabelFont.setPixelSize(13)
 
     def criticalNoTifFound(self, images_path):
         err_title = f'No .tif files found in folder.'
@@ -2197,7 +2204,7 @@ class dataPrepWin(QMainWindow):
         if self.loop is not None:
             self.loop.exit()
         
-        self.sigClose.emit()
+        self.sigClose.emit(self)
 
     def saveWindowGeometry(self):
         settings = QSettings('schmollerlab', 'acdc_dataPrep')

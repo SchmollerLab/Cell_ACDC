@@ -16,7 +16,14 @@ class _Data:
         self.intensity_image_path = intensity_image_path
         self.acdc_df_path = acdc_df_path
         self.segm_path = segm_path
-        self.basename= basename
+        self.basename = basename
+    
+    def filename(self):
+        return os.path.basename(self.intensity_image_path)
+    
+    def channel_name(self):
+        filename, ext = os.path.splitext(self.filename())
+        return filename[len(self.basename):]
     
     def acdc_df(self):
         return load._load_acdc_df_file(self.acdc_df_path)
@@ -54,6 +61,10 @@ class YeastTimeLapseAnnotated(_Data):
             images_path, intensity_image_path, acdc_df_path, segm_path,
             basename
         )
+    
+    def posData(self):
+        from . import load
+        return load.loadData(self.intensity_image_path, 'Dia_Ph3')
 
 class Cdc42TimeLapseData(_Data):
     def __init__(self):

@@ -37,7 +37,7 @@ def _light_disabled_colors():
         'WindowText': (128, 128, 128, 255), 
         'Text': (150, 150, 150, 255), 
         'Light': (255, 255, 255, 255),
-        'Button': (200, 200, 200, 255),
+        'Button': (230, 230, 230, 255),
         # 'Window': (200, 200, 200, 255),
         # 'Highlight': (0, 0, 0, 255),
         # 'HighlightedText': (0, 0, 0, 255),
@@ -183,3 +183,10 @@ def QProgressBarHighlightedTextColor():
         return QtGui.QColor(0, 0, 0, 255)
     else:
         return QtGui.QColor(255, 255, 255, 255)
+
+def moduleLaunchedButtonRgb(self):
+    scheme = get_color_scheme()
+    if scheme == 'light':
+        return (241,221,0)
+    else:
+        return (241,221,0)

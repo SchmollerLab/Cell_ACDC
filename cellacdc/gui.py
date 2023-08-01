@@ -397,7 +397,7 @@ class saveDataWorker(QObject):
             df = measurements.add_foregr_metrics(
                 df, rp, channel, foregr_data, foregr_metrics_params[channel], 
                 metrics_func, custom_metrics_params[channel], isSegm3D, 
-                yx_pxl_to_um2, vox_to_fl_3D, lab, foregr_img,
+                lab, foregr_img, 
                 customMetricsCritical=self.customMetricsCritical
             )
 
@@ -6406,7 +6406,7 @@ class guiWin(QMainWindow):
             self.app.restoreOverrideCursor() 
             labelRoiWorker = self.labelRoiActiveWorkers[-1]
             labelRoiWorker.start(
-                roiImg, roiSecondChannel=roiSecondChannel, 
+                roiImg, posData, roiSecondChannel=roiSecondChannel, 
                 isTimelapse=isTimelapse
             )            
             self.app.setOverrideCursor(Qt.WaitCursor)
@@ -7685,9 +7685,15 @@ class guiWin(QMainWindow):
         self.thread.started.connect(self.worker.run)
         self.thread.start()
     
-    def startPostProcessSegmWorker(self, postProcessKwargs):
+    def startPostProcessSegmWorker(
+            self, postProcessKwargs, customPostProcessGroupedFeatures, 
+            customPostProcessFeatures
+        ):
         self.thread = QThread()
-        self.postProcessWorker = workers.PostProcessSegm(postProcessKwargs, self)
+        self.postProcessWorker = workers.PostProcessSegmWorker(
+            postProcessKwargs, customPostProcessGroupedFeatures, 
+            customPostProcessFeatures, self
+        )
         
         self.postProcessWorker.moveToThread(self.thread)
         self.postProcessWorker.signals.finished.connect(self.thread.quit)
@@ -12191,8 +12197,9 @@ class guiWin(QMainWindow):
         else:
             SizeZ = None
         if checked:
-            self.postProcessSegmWin = apps.postProcessSegmDialog(
-                SizeZ=SizeZ, mainWin=self
+            posData = self.data[self.pos_i]
+            self.postProcessSegmWin = apps.PostProcessSegmDialog(
+                posData, mainWin=self
             )
             self.postProcessSegmWin.sigClosed.connect(
                 self.postProcessSegmWinClosed
@@ -12212,7 +12219,11 @@ class guiWin(QMainWindow):
             self.postProcessSegmWin.close()
             self.postProcessSegmWin = None
     
-    def postProcessSegmApplyToAllFutureFrames(self, postProcessKwargs):
+    def postProcessSegmApplyToAllFutureFrames(
+            self, postProcessKwargs, 
+            customPostProcessGroupedFeatures, 
+            customPostProcessFeatures
+        ):
         proceed = self.warnEditingWithCca_df('post-processing segmentation')
         if not proceed:
             self.logger.info('Post-processing segmentation cancelled.')
@@ -12225,7 +12236,10 @@ class guiWin(QMainWindow):
         self.progressWin.show(self.app)
         self.progressWin.mainPbar.setMaximum(0)
 
-        self.startPostProcessSegmWorker(postProcessKwargs)
+        self.startPostProcessSegmWorker(
+            postProcessKwargs, customPostProcessGroupedFeatures, 
+            customPostProcessFeatures
+        )
     
     def postProcessSegmEditingFinished(self):
         self.update_rp()
@@ -12813,7 +12827,7 @@ class guiWin(QMainWindow):
             self.repeatSegm(model_name=self.segmModelName)
 
     @exception_handler
-    def repeatSegm(self, model_name='', askSegmParams=False, return_model=False):
+    def repeatSegm(self, model_name='', askSegmParams=False, is_label_roi=False):
         if model_name == 'thresholding':
             # thresholding model is stored as 'Automatic thresholding'
             # at line of code `models.append('Automatic thresholding')`
@@ -12892,9 +12906,10 @@ class guiWin(QMainWindow):
                 segment_params,
                 model_name, parent=self,
                 url=url, initLastParams=initLastParams, 
-                SizeZ=_SizeZ,
+                posData=posData,
                 segmFileEndnames=existingSegmEndnames,
-                df_metadata=posData.metadata_df
+                df_metadata=posData.metadata_df,
+                force_postprocess_2D=True
             )
             win.setChannelNames(posData.chNames)
             win.exec_()
@@ -12905,7 +12920,9 @@ class guiWin(QMainWindow):
 
             if model_name != 'thresholding':
                 self.model_kwargs = win.model_kwargs
-            self.removeArtefactsKwargs = win.artefactsGroupBox.kwargs()
+            self.standardPostProcessKwargs = win.postProcessGroupbox.kwargs()
+            self.customPostProcessFeatures = win.selectedFeaturesRange()
+            self.customPostProcessGroupedFeatures = win.groupedFeatures()
             self.applyPostProcessing = win.applyPostProcessing
             self.secondChannelName = win.secondChannelName
 
@@ -12926,7 +12943,11 @@ class guiWin(QMainWindow):
             postProcessParams = {
                 'applied_postprocessing': self.applyPostProcessing
             }
-            postProcessParams = {**postProcessParams, **self.removeArtefactsKwargs}
+            postProcessParams = {
+                **postProcessParams, 
+                **self.standardPostProcessKwargs,
+                **self.customPostProcessFeatures
+            }
             posData.saveSegmHyperparams(
                 model_name, self.model_kwargs, postProcessParams
             )
@@ -12934,7 +12955,7 @@ class guiWin(QMainWindow):
         else:
             model = self.models[idx]
         
-        if return_model:
+        if is_label_roi:
             return model
 
         self.titleLabel.setText(
@@ -13073,8 +13094,10 @@ class guiWin(QMainWindow):
         win = apps.QDialogModelParams(
             init_params,
             segment_params,
-            model_name, parent=self,
-            url=url, SizeZ=_SizeZ,
+            model_name, 
+            parent=self,
+            url=url, 
+            posData=posData,
             segmFileEndnames=existingSegmEndnames,
             df_metadata=posData.metadata_df
         )
@@ -13275,7 +13298,9 @@ class guiWin(QMainWindow):
         win = apps.QDialogModelParams(
             init_params,
             segment_params,
-            model_name, url=url, SizeZ=_SizeZ,
+            model_name, 
+            url=url, 
+            posData=posData,
             df_metadata=posData.metadata_df
         )
         win.exec_()
@@ -17468,7 +17493,7 @@ class guiWin(QMainWindow):
         model_name = win.selectedModel
         self.labelRoiModel = self.repeatSegm(
             model_name=model_name, askSegmParams=True,
-            return_model=True
+            is_label_roi=True
         )
         if self.labelRoiModel is None:
             return True

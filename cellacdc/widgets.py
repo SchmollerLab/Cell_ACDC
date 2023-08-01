@@ -481,6 +481,14 @@ class showInFileManagerButton(PushButton):
         self._text = myutils.get_show_in_file_manager_text()
         self.setText(self._text)
 
+class LessThanPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setIcon(QIcon(':less_than.svg'))
+        flat = kwargs.get('flat')
+        if flat is not None:
+            self.setFlat(True)
+
 class showDetailsButton(PushButton):
     def __init__(self, *args, txt='Show details...', parent=None):
         super().__init__(txt, parent)
@@ -692,6 +700,14 @@ class BaseScatterPlotItem(pg.ScatterPlotItem):
         if self._prevData is not None:
             if self._prevData[0] is not None:
                 self.setData(*self._prevData)
+
+class VerticalSpacerEmptyWidget(QWidget):
+    def __init__(self, parent=None, height=5) -> None:
+        super().__init__(parent)
+        self.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum
+        )
+        self.setFixedHeight(height)
 
 class CustomAnnotationScatterPlotItem(BaseScatterPlotItem):
     def __init__(self, *args, **kargs):
@@ -6429,3 +6445,51 @@ class ImShow(QBaseWindow):
     def resizeEvent(self, event) -> None:
         self.PlotItems[0].autoRange()       
         return super().resizeEvent(event)
+
+class FeatureSelectorButton(QPushButton):
+    def __init__(self, text, parent=None, alignment=''):
+        super().__init__(text, parent=parent)
+        self._isFeatureSet = False
+        self._alignment = alignment
+        self.setCursor(Qt.PointingHandCursor)
+    
+    def setFeatureText(self, text):
+        self.setText(text)
+        self.setFlat(True)
+        self._isFeatureSet = True
+        if self._alignment:
+            self.setStyleSheet(f'text-align:{self._alignment};')
+    
+    def enterEvent(self, event) -> None:
+        if self._isFeatureSet:
+            self.setFlat(False)
+        return super().enterEvent(event)
+
+    def leaveEvent(self, event) -> None:
+        if self._isFeatureSet:
+            self.setFlat(True)
+        self.update()
+        return super().leaveEvent(event)
+
+    def setSizeLongestText(self, longestText):
+        currentText = self.text()
+        self.setText(longestText)
+        w, h = self.sizeHint().width(), self.sizeHint().height()
+        self.setMinimumWidth(w+10)
+        # self.setMinimumHeight(h+5)
+        self.setText(currentText)
+
+class CheckableSpinBoxWidgets:
+    def __init__(self, isFloat=True):
+        if isFloat:
+            self.spinbox = FloatLineEdit()
+        else:
+            self.spinbox = SpinBox()
+        self.checkbox = QCheckBox('Activate')
+        self.spinbox.setEnabled(False)
+        self.checkbox.toggled.connect(self.spinbox.setEnabled)
+    
+    def value(self):
+        if not self.checkbox.isChecked():
+            return
+        return self.spinbox.value()

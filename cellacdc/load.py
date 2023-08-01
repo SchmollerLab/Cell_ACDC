@@ -892,7 +892,7 @@ class loadData:
             load_shifts=False,
             loadSegmInfo=False,
             load_delROIsInfo=False,
-            loadBkgrData=False,
+            load_bkgr_data=False,
             loadBkgrROIs=False,
             load_last_tracked_i=False,
             load_metadata=False,
@@ -910,7 +910,7 @@ class loadData:
         self.shiftsFound = False if load_shifts else None
         self.segmInfoFound = False if loadSegmInfo else None
         self.delROIsInfoFound = False if load_delROIsInfo else None
-        self.bkgrDataFound = False if loadBkgrData else None
+        self.bkgrDataFound = False if load_bkgr_data else None
         self.bkgrROisFound = False if loadBkgrROIs else None
         self.last_tracked_i_found = False if load_last_tracked_i else None
         self.metadataFound = False if load_metadata else None
@@ -1007,7 +1007,7 @@ class loadData:
                 self.delROIsInfo_npz = np.load(filePath)
             elif file.endswith(f'{self.filename}_bkgrRoiData.npz'):
                 self.bkgrDataExists = True
-                if loadBkgrData:
+                if load_bkgr_data:
                     self.bkgrDataFound = True
                     self.bkgrData = np.load(filePath)
             elif loadBkgrROIs and file.endswith('dataPrep_bkgrROIs.json'):
