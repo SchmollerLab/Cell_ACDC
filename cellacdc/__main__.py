@@ -37,10 +37,10 @@ if cellacdc_installation_path != site_packages:
         exit()
 
 from cellacdc import _run
-_run._setup_gui()
+_run._setup_gui_libraries()
 
 from qtpy import QtGui, QtWidgets, QtCore
-from . import qrc_resources
+# from . import qrc_resources
 
 if os.name == 'nt':
     try:
