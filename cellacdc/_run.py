@@ -58,6 +58,7 @@ def _setup_gui_libraries():
                 )
     
     warn_restart = False
+    
     # Force PyQt6 if available
     try:
         from PyQt6 import QtCore

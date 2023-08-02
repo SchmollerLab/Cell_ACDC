@@ -41,7 +41,7 @@ from functools import wraps
 from skimage.color import gray2rgb, gray2rgba, label2rgb
 
 from qtpy.QtCore import (
-    Qt, QFile, QTextStream, QSize, QRect, QRectF,
+    Qt, QPointF, QTextStream, QSize, QRect, QRectF,
     QEventLoop, QTimer, QEvent, QObject, Signal,
     QThread, QMutex, QWaitCondition, QSettings
 )
@@ -347,7 +347,7 @@ class saveDataWorker(QObject):
             posData.PhysicalSizeY*posData.PhysicalSizeX*posData.PhysicalSizeZ
         )
 
-        manualBackgrLab = posData.manualBackgrLab
+        manualBackgrLab = posData.manualBackgroundLab
         manualBackgrRp = None
         if manualBackgrLab is not None:
             manualBackgrRp = skimage.measure.regionprops(manualBackgrLab)
@@ -359,6 +359,9 @@ class saveDataWorker(QObject):
         metrics_func = self.mainWin.metrics_func
         custom_func_dict = self.mainWin.custom_func_dict
         bkgr_metrics_params = self.mainWin.bkgr_metrics_params
+        
+        printl(bkgr_metrics_params, pretty=True)
+        
         foregr_metrics_params = self.mainWin.foregr_metrics_params
         concentration_metrics_params = self.mainWin.concentration_metrics_params
         custom_metrics_params = self.mainWin.custom_metrics_params
@@ -406,14 +409,14 @@ class saveDataWorker(QObject):
                 foregr_img, posData, filename, frame_i, autoBkgr_mask, z,
                 autoBkgr_mask_proj, dataPrepBkgrROI_mask, isSegm3D, lab
             )
+            
+            foregr_data = measurements.get_foregr_data(foregr_img, isSegm3D, z)
 
             # Compute background values
             df = measurements.add_bkgr_values(
                 df, bkgr_data, bkgr_metrics_params[channel], metrics_func,
-                manualBackgrRp=manualBackgrRp
+                manualBackgrRp=manualBackgrRp, foregr_data=foregr_data
             )
-            
-            foregr_data = measurements.get_foregr_data(foregr_img, isSegm3D, z)
 
             # Iterate objects and compute foreground metrics
             df = measurements.add_foregr_metrics(
@@ -488,10 +491,14 @@ class saveDataWorker(QObject):
             posDataEquations = config['equations']
             userPathChEquations = config['user_path_equations']
             for newColName, equation in posDataEquations.items():
+                if not newColName.startswith(chName):
+                    continue
                 if newColName in metricsToSkipChannel:
                     continue
                 self._dfEvalEquation(df, newColName, equation)
             for newColName, equation in userPathChEquations.items():
+                if not newColName.startswith(chName):
+                    continue
                 if newColName in metricsToSkipChannel:
                     continue
                 self._dfEvalEquation(df, newColName, equation)
@@ -5668,8 +5675,10 @@ class guiWin(QMainWindow):
         if posData.SizeZ > 1 and not self.isSegm3D:
             z = self.zSliceScrollBar.sliderPosition()
             objData = image[z][obj.slice][obj.image]
+            img = self.img1.image
         else:
             objData = image[obj.slice][obj.image]
+            img = image
 
         intensMeasurQGBox.minimumDSB.setValue(np.min(objData))
         intensMeasurQGBox.maximumDSB.setValue(np.max(objData))
@@ -5679,11 +5688,11 @@ class guiWin(QMainWindow):
         funcDesc = intensMeasurQGBox.additionalMeasCombobox.currentText()
         func = intensMeasurQGBox.additionalMeasCombobox.functions[funcDesc]
         if funcDesc == 'Concentration':
-            bkgrVal = np.median(image[posData.lab == 0])
+            bkgrVal = np.median(img[posData.lab == 0])
             amount = func(objData, bkgrVal, obj.area)
             value = amount/vol_vox
         elif funcDesc == 'Amount':
-            bkgrVal = np.median(image[posData.lab == 0])
+            bkgrVal = np.median(img[posData.lab == 0])
             amount = func(objData, bkgrVal, obj.area)
             value = amount
         else:
@@ -5767,18 +5776,18 @@ class guiWin(QMainWindow):
         if cursorsInfo['setManualTrackingCursor']:
             x, y = event.pos()
             # self.highlightHoverID(x, y)
-            if event.isExit():
-                self.clearGhost()
-            else:
-                self.drawManualTrackingGhost(x, y)
+            self.drawManualTrackingGhost(x, y)
         
         if cursorsInfo['setManualBackgroundCursor']:
             x, y = event.pos()
             # self.highlightHoverID(x, y)
-            if event.isExit():
-                self.clearGhost()
-            else:
-                self.drawManualBackgroundObj(x, y)
+            self.drawManualBackgroundObj(x, y)
+        
+        if (
+                not cursorsInfo['setManualTrackingCursor'] 
+                and not cursorsInfo['setManualBackgroundCursor']
+            ):
+            self.clearGhost()
 
         setMoveLabelCursor = cursorsInfo['setMoveLabelCursor']
         setExpandLabelCursor = cursorsInfo['setExpandLabelCursor']
@@ -7288,12 +7297,12 @@ class guiWin(QMainWindow):
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
             
-            delID = self.manualBackgroundLab[ydata, xdata]
+            delID = posData.manualBackgroundLab[ydata, xdata]
             if delID == 0:
                 return
             
-            self.manualBackgroundImage[self.manualBackgroundLab==delID, :] = 0
-            self.manualBackgroundLab[self.manualBackgroundLab==delID] = 0
+            posData.manualBackgroundImage[posData.manualBackgroundLab==delID, :] = 0
+            posData.manualBackgroundLab[posData.manualBackgroundLab==delID] = 0
             textItem = self.manualBackgroundTextItems.pop(delID)
             self.ax1.removeItem(textItem)
             self.setManualBackgroundImage()
@@ -11323,17 +11332,20 @@ class guiWin(QMainWindow):
     @exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_Q:
-            # self.setAllIDs()
+            printl(self.xHoverImg, self.yHoverImg)
+            printl(self.img1.mapToData(QCursor().pos()))
+            x, y = QCursor().pos().x(), QCursor().pos().y()
+            printl(self.graphLayout.mapToScene(x, y))
             posData = self.data[self.pos_i]
             is_segm_3D = self.isSegm3D
             # all_metrics_names = measurements.get_all_metrics_names(
             #     posData, self.user_ch_name, is_segm_3D
             # )
-            printl(self.metricsToSave)
-            self.initMetricsToSave(posData)
+            # printl(self.metricsToSave)
+            # self.initMetricsToSave(posData)
             
-            printl(self.bkgr_metrics_params, pretty=True)
-            printl(self.foregr_metrics_params, pretty=True)
+            # printl(self.bkgr_metrics_params, pretty=True)
+            # printl(self.foregr_metrics_params, pretty=True)
             
             # from acdctools.plot import imshow
             # delIDs = posData.allData_li[posData.frame_i]['delROIs_info']['delIDsROI']
@@ -12212,6 +12224,15 @@ class guiWin(QMainWindow):
     def removeManualTrackingItems(self):
         self.manualBackgroundObjItem.removeFromPlotItem()
         self.ax1.removeItem(self.manualBackgroundImageItem)
+    
+    def resetManualBackgroundSpinboxID(self):
+        if not self.manualBackgroundButton.isChecked():
+            self.manualBackgroundObj = None
+            return
+        
+        posData = self.data[self.pos_i]
+        minID = min(posData.IDs, default=0)
+        self.manualBackgroundToolbar.spinboxID.setValue(minID)
     
     def initManualBackgroundObject(self, ID=None):
         if not self.manualBackgroundButton.isChecked():
@@ -13713,12 +13734,18 @@ class guiWin(QMainWindow):
             self.pos_i = 0
         self.updatePos()
     
+    def resetManualBackgroundItems(self):
+        self.initManualBackgroundImage()
+        self.resetManualBackgroundSpinboxID()
+        self.drawManualTrackingGhost(self.xHoverImg, self.yHoverImg)
+        self.drawManualBackgroundObj(self.xHoverImg, self.yHoverImg)
+    
     def updatePos(self):
         self.setSaturBarLabel()
         self.checkManageVersions()
         self.removeAlldelROIsCurrentFrame()
-        self.initManualBackgroundImage()
-        proceed_cca, never_visited = self.get_data()
+        self.resetManualBackgroundItems()
+        proceed_cca, never_visited = self.get_data(debug=True)
         self.initContoursImage()
         self.initTextAnnot()
         self.postProcessing()
@@ -15086,9 +15113,11 @@ class guiWin(QMainWindow):
             # self.metricsToSave means that the user did not set 
             # through setMeasurements dialog --> save all measurements
             self.metricsToSave = {chName:[] for chName in posData.loadedChNames}
+            isManualBackgrPresent = posData.manualBackgroundLab is not None
             for chName in posData.loadedChNames:
                 metrics_desc, bkgr_val_desc = measurements.standard_metrics_desc(
-                    posData.SizeZ>1, chName, isSegm3D=self.isSegm3D
+                    posData.SizeZ>1, chName, isSegm3D=self.isSegm3D,
+                    isManualBackgrPresent=isManualBackgrPresent
                 )
                 self.metricsToSave[chName].extend(metrics_desc.keys())
                 self.metricsToSave[chName].extend(bkgr_val_desc.keys())
@@ -15389,8 +15418,11 @@ class guiWin(QMainWindow):
         posData.allData_li[posData.frame_i]['labels'] = posData.lab.copy()
         posData.allData_li[posData.frame_i]['IDs'] = posData.IDs.copy()
         if hasattr(self, 'manualBackgroundLab'):
+            printl(self.pos_i)
+            from cellacdc.plot import imshow
+            imshow(posData.manualBackgroundLab)
             posData.allData_li[posData.frame_i]['manualBackgroundLab'] = (
-                self.manualBackgroundLab
+                posData.manualBackgroundLab
             )
 
         # Store dynamic metadata
@@ -16137,7 +16169,7 @@ class guiWin(QMainWindow):
             # Requested frame was never visited before. Load from HDD
             posData.lab = self.get_labels()
             posData.rp = skimage.measure.regionprops(posData.lab)
-            self.getManualBackgroundLab()
+            self.setManualBackgroundLab()
             if posData.acdc_df is not None:
                 frames = posData.acdc_df.index.get_level_values(0)
                 if posData.frame_i in frames:
@@ -16177,7 +16209,7 @@ class guiWin(QMainWindow):
             ripIDs_df = df[df['is_cell_dead']>0]
             posData.ripIDs = set(ripIDs_df.index)
             posData.editID_info = self._get_editID_info(df)
-            self.getManualBackgroundLab(load_from_store=True)
+            self.setManualBackgroundLab(load_from_store=True, debug=debug)
             self.get_cca_df()
 
         self.update_rp_metadata(draw=False)
@@ -17991,9 +18023,11 @@ class guiWin(QMainWindow):
             Y, X = posData.lab.shape[-2:]
         else:
             Y, X = posData.img_data.shape[-2:]
-        self.manualBackgroundTextItems = {}
-        self.manualBackgroundImage = np.zeros((Y, X, 4), dtype=np.uint8)
-        self.manualBackgroundLab = np.zeros((Y, X), dtype=np.uint32)
+        if not hasattr(self, 'manualBackgroundTextItems'):
+            self.manualBackgroundTextItems = {}
+        posData.manualBackgroundImage = np.zeros((Y, X, 4), dtype=np.uint8)
+        if posData.manualBackgroundLab is None:
+            posData.manualBackgroundLab = np.zeros((Y, X), dtype=np.uint32)
     
     def initTextAnnot(self, force=False):
         posData = self.data[self.pos_i]
@@ -19144,10 +19178,18 @@ class guiWin(QMainWindow):
         )
 
     def drawManualBackgroundObj(self, x, y):
+        if x is None or y is None:
+            self.clearGhost()
+            return
+        
         self._drawManualBackgroundObjContour(x, y)
 
     def drawManualTrackingGhost(self, x, y):
         if not self.manualTrackingToolbar.showGhostCheckbox.isChecked():
+            return
+        
+        if x is None or y is None:
+            self.clearGhost()
             return
         
         if self.manualTrackingToolbar.ghostContourRadiobutton.isChecked():
@@ -19238,11 +19280,12 @@ class guiWin(QMainWindow):
         if not self.manualBackgroundButton.isChecked():
             return
         
-        if not hasattr(self, 'manualBackgroundImage'):
+        posData = self.data[self.pos_i]
+        if not hasattr(posData, 'manualBackgroundImage'):
             self.initManualBackgroundImage()
         
         contours = []
-        for obj in skimage.measure.regionprops(self.manualBackgroundLab):    
+        for obj in skimage.measure.regionprops(posData.manualBackgroundLab):    
             obj_contours = self.getObjContours(obj, all_external=True)  
             contours.extend(obj_contours)
             textItem = self.manualBackgroundTextItems[obj.label]
@@ -19253,9 +19296,9 @@ class guiWin(QMainWindow):
                 textItem.setPos(xc, yc)
         
         cv2.drawContours(
-            self.manualBackgroundImage, contours, -1, (255, 0, 0, 200), 1
+            posData.manualBackgroundImage, contours, -1, (255, 0, 0, 200), 1
         )
-        self.manualBackgroundImageItem.setImage(self.manualBackgroundImage)
+        self.manualBackgroundImageItem.setImage(posData.manualBackgroundImage)
     
     def setManualBackgrounNextID(self):
         posData = self.data[self.pos_i]
@@ -19268,6 +19311,8 @@ class guiWin(QMainWindow):
         self.manualBackgroundToolbar.spinboxID.setValue(next_ID)
         
     def addManualBackgroundObject(self, x, y):
+        posData = self.data[self.pos_i]
+        
         Y, X = self.currentLab2D.shape
         ymin, xmin, ymax, xmax = self.manualBackgroundObj.bbox
         width, height = xmax-xmin, ymax-ymin
@@ -19287,7 +19332,7 @@ class guiWin(QMainWindow):
         obj_image = self.manualBackgroundObj.image[:height, :width]
         obj_slice = (slice(ystart, yend), slice(xstart, xend))
         ID = self.manualBackgroundObj.label
-        self.manualBackgroundLab[obj_slice][obj_image] = ID
+        posData.manualBackgroundLab[obj_slice][obj_image] = ID
         
         if ID in self.manualBackgroundTextItems:
             return
@@ -19301,18 +19346,12 @@ class guiWin(QMainWindow):
         
         self.ax1.addItem(textItem)
     
-    def getManualBackgroundLab(self, load_from_store=False):
+    def setManualBackgroundLab(self, load_from_store=False, debug=True):
         posData = self.data[self.pos_i]
-        if posData.manualBackgroundLab is not None and not load_from_store:
-            self.manualBackgroundLab = posData.manualBackgroundLab
-        elif 'manualBackgroundLab' in posData.allData_li[posData.frame_i]:
-            self.manualBackgroundLab = (
-                posData.allData_li[posData.frame_i]['manualBackgroundLab']
-            )
-            posData.manualBackgroundLab = self.manualBackgroundLab.copy()
-        else:
-            return
-        for obj in skimage.measure.regionprops(self.manualBackgroundLab):
+        if posData.manualBackgroundLab is None:
+            self.initManualBackgroundImage()
+        
+        for obj in skimage.measure.regionprops(posData.manualBackgroundLab):
             textItem = pg.TextItem(text='', color='r', anchor=(0.5, 0.5))
             if obj.label in self.manualBackgroundTextItems:
                 continue
@@ -22064,6 +22103,8 @@ class guiWin(QMainWindow):
         self.thread.started.connect(self.worker.run)
 
         self.thread.start()
+        
+        
     
     def _workerDebug(self, stuff_to_debug):
         pass

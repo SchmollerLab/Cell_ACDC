@@ -3559,9 +3559,11 @@ class _metricsQGBox(QGroupBox):
 
     def __init__(
             self, desc_dict, title, favourite_funcs=None, isZstack=False,
-            equations=None, addDelButton=False, delButtonMetricsDesc=None
+            equations=None, addDelButton=False, delButtonMetricsDesc=None,
+            parent=None
         ):
-        QGroupBox.__init__(self)
+        QGroupBox.__init__(self, parent)
+        self._parent = parent
         self.scrollArea = QScrollArea()
         self.scrollAreaWidget = QWidget()
         self.favourite_funcs = favourite_funcs
@@ -3654,6 +3656,8 @@ class _metricsQGBox(QGroupBox):
 
     def checkFavouriteFuncs(self, checked=True, isZstack=False):
         self.doNotWarn = True
+        if self._parent is not None:
+            self._parent.doNotWarn = True
         for checkBox in self.checkBoxes:
             checkBox.setChecked(False)
             for favourite_func in self.favourite_funcs:
@@ -3662,10 +3666,16 @@ class _metricsQGBox(QGroupBox):
                     checkBox.setChecked(True)
                     break
         self.doNotWarn = False
+        if self._parent is not None:
+            self._parent.doNotWarn = False
 
     def checkAll(self, button, checked):
+        if self._parent is not None:
+            self._parent.doNotWarn = True
         for checkBox in self.checkBoxes:
             checkBox.setChecked(checked)
+        if self._parent is not None:
+            self._parent.doNotWarn = False
 
     def showInfo(self, checked=False):
         info_txt = self.sender().info
@@ -3708,12 +3718,14 @@ class channelMetricsQGBox(QGroupBox):
 
         metricsQGBox = _metricsQGBox(
             metrics_desc, 'Standard measurements',
-            favourite_funcs=favourite_funcs
+            favourite_funcs=favourite_funcs, 
+            parent=self
         )
         
         bkgrValsQGBox = _metricsQGBox(
             bkgr_val_desc, 'Background values',
-            favourite_funcs=favourite_funcs
+            favourite_funcs=favourite_funcs, 
+            parent=self
         )
 
         self.checkBoxes = metricsQGBox.checkBoxes.copy()
@@ -4025,12 +4037,16 @@ class objIntesityMeasurQGBox(QGroupBox):
         row += 1
         metricsDesc = measurements._get_metrics_names()
         metricsFunc, _ = measurements.standard_metrics_func()
-        items = [metricsDesc[key] for key in metricsFunc.keys()]
+        items = list(set([metricsDesc[key] for key in metricsFunc.keys()]))
         items.append('Concentration')
         items.sort()
         nameFuncDict = {}
         for name, desc in metricsDesc.items():
             if name not in metricsFunc.keys():
+                continue
+            if name.find('dataPrepBkgr')!=-1 or  name.find('manualBkgr')!=-1:
+                # Skip dataPrepBkgr and manualBkgr since in the dock widget 
+                # we display only autoBkgr metrics
                 continue
             nameFuncDict[desc] = metricsFunc[name]
 
@@ -5738,7 +5754,7 @@ class GhostContourItem(pg.PlotDataItem):
             self.label.setPos(x_cursor-w/2, y_cursor-h/2)
     
     def clear(self):
-        self.setData()
+        self.setData([], [])
 
 class GhostMaskItem(pg.ImageItem):
     def __init__(self):
@@ -5783,7 +5799,7 @@ class GhostMaskItem(pg.ImageItem):
         if self.image is None:
             return
         self.image[:] = 0
-        self.updateImage()
+        self.setImage(self.image)
 
 class PostProcessSegmSpinbox(QWidget):
     valueChanged = Signal(int)

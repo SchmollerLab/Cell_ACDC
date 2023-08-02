@@ -87,17 +87,30 @@ if os.path.exists(old_temp_path):
             f'Please manually copy the folder "{old_temp_path}" to "{settings_folderpath}"')
         print('^'*60)
 
+import pandas as pd
 settings_csv_path = os.path.join(settings_folderpath, 'settings.csv')
 if not os.path.exists(settings_csv_path):
-    import pandas as pd
     df_settings = pd.DataFrame(
         {'setting': [], 'value': []}).set_index('setting')
     df_settings.to_csv(settings_csv_path)
 
+# Get color scheme
+if not os.path.exists(settings_csv_path):
+    scheme = 'light'
+df_settings = pd.read_csv(settings_csv_path, index_col='setting')
+if 'colorScheme' not in df_settings.index:
+    scheme = 'light'
+else:
+    scheme = df_settings.at['colorScheme', 'value']
+
 # Set default qrc resources
 if not os.path.exists(qrc_resources_path):
+    if scheme == 'light':
+        qrc_resources_scheme_path = qrc_resources_light_path
+    else:
+        qrc_resources_scheme_path = qrc_resources_dark_path
     # Load default light mode
-    shutil.copyfile(qrc_resources_light_path, qrc_resources_path)
+    shutil.copyfile(qrc_resources_scheme_path, qrc_resources_path)
 
 # Replace 'from PyQt5' with 'from qtpy' in qrc_resources.py file
 try:
@@ -119,6 +132,12 @@ from pprint import pprint
 from functools import wraps
 
 try:
+    # Force PyQt6 if available
+    try:
+        from PyQt6 import QtCore
+        os.environ["QT_API"] = "pyqt6"
+    except Exception as e:
+        pass
     from qtpy import QtCore
     import pyqtgraph
     import seaborn
