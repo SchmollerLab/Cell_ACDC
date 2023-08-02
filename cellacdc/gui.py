@@ -347,6 +347,10 @@ class saveDataWorker(QObject):
             posData.PhysicalSizeY*posData.PhysicalSizeX*posData.PhysicalSizeZ
         )
 
+        manualBackgrLab = posData.manualBackgrLab
+        manualBackgrRp = None
+        if manualBackgrLab is not None:
+            manualBackgrRp = skimage.measure.regionprops(manualBackgrLab)
         isZstack = posData.SizeZ > 1
         isSegm3D = self.mainWin.isSegm3D
         all_channels_metrics = self.mainWin.metricsToSave
@@ -405,7 +409,8 @@ class saveDataWorker(QObject):
 
             # Compute background values
             df = measurements.add_bkgr_values(
-                df, bkgr_data, bkgr_metrics_params[channel], metrics_func
+                df, bkgr_data, bkgr_metrics_params[channel], metrics_func,
+                manualBackgrRp=manualBackgrRp
             )
             
             foregr_data = measurements.get_foregr_data(foregr_img, isSegm3D, z)
@@ -414,7 +419,7 @@ class saveDataWorker(QObject):
             df = measurements.add_foregr_metrics(
                 df, rp, channel, foregr_data, foregr_metrics_params[channel], 
                 metrics_func, custom_metrics_params[channel], isSegm3D, 
-                lab, foregr_img, 
+                lab, foregr_img, manualBackgrRp=manualBackgrRp,
                 customMetricsCritical=self.customMetricsCritical
             )
 
@@ -11324,9 +11329,12 @@ class guiWin(QMainWindow):
             # all_metrics_names = measurements.get_all_metrics_names(
             #     posData, self.user_ch_name, is_segm_3D
             # )
-            from cellacdc.plot import imshow
-            imshow(posData.manualBackgroundLab, self.manualBackgroundLab)
-            imshow(posData.allData_li[posData.frame_i]['manualBackgroundLab'])
+            printl(self.metricsToSave)
+            self.initMetricsToSave(posData)
+            
+            printl(self.bkgr_metrics_params, pretty=True)
+            printl(self.foregr_metrics_params, pretty=True)
+            
             # from acdctools.plot import imshow
             # delIDs = posData.allData_li[posData.frame_i]['delROIs_info']['delIDsROI']
             # printl(delIDs)
@@ -19301,6 +19309,7 @@ class guiWin(QMainWindow):
             self.manualBackgroundLab = (
                 posData.allData_li[posData.frame_i]['manualBackgroundLab']
             )
+            posData.manualBackgroundLab = self.manualBackgroundLab.copy()
         else:
             return
         for obj in skimage.measure.regionprops(self.manualBackgroundLab):

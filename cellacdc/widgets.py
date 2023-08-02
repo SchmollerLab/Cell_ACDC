@@ -3695,10 +3695,15 @@ class channelMetricsQGBox(QGroupBox):
 
         self.doNotWarn = False
         self.is_concat = is_concat
+        isManualBackgrPresent = False
+        if posData is not None:
+            if posData.manualBackgroundLab is not None:
+                isManualBackgrPresent = True
 
         layout = QVBoxLayout()
         metrics_desc, bkgr_val_desc = measurements.standard_metrics_desc(
-            isZstack, chName, isSegm3D=isSegm3D
+            isZstack, chName, isSegm3D=isSegm3D, 
+            isManualBackgrPresent=isManualBackgrPresent
         )
 
         metricsQGBox = _metricsQGBox(

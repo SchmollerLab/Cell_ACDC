@@ -510,10 +510,16 @@ def get_how_3Dto2D(isZstack, isSegm3D):
     ]
     return how_3Dto2D, how_3Dto2D_desc
 
-def standard_metrics_desc(isZstack, chName, isSegm3D=False):
+def standard_metrics_desc(
+        isZstack, chName, isManualBackgrPresent=False, isSegm3D=False
+    ):
     how_3Dto2D, how_3Dto2D_desc = get_how_3Dto2D(isZstack, isSegm3D)
-    metrics_names = _get_metrics_names()
-    bkgr_val_names = _get_bkgr_val_names()
+    metrics_names = _get_metrics_names(
+        is_manual_bkgr_present=isManualBackgrPresent
+    )
+    bkgr_val_names = _get_bkgr_val_names(
+        is_manual_bkgr_present=isManualBackgrPresent
+    )
     metrics_desc = {}
     bkgr_val_desc = {}
     for how, how_desc in zip(how_3Dto2D, how_3Dto2D_desc):
@@ -575,6 +581,14 @@ def standard_metrics_desc(isZstack, chName, isSegm3D=False):
                     data prep module (module 1.).<br><br>
                     Note taht this metric is <b>grayed out</b> and it cannot be selected 
                     if the <b>selection of the background ROIs was not performed</b>.
+                """)
+            elif func_name.find('_manualBkgr') != -1:
+                bkgr_desc = ("""
+                    <code>manualBkgr</code> means that the background value
+                    used to correct the intensities is computed as the <b>mean</b>
+                    of the pixels from the pixels inside each 
+                    <b>background objects</b> that you selected in the
+                    GUI module (module 3).<br><br>
                 """)
             else:
                 bkgr_desc = ''
@@ -691,7 +705,7 @@ def classify_acdc_df_colnames(acdc_df, channels):
 
     return metrics
 
-def _get_metrics_names():
+def _get_metrics_names(is_manual_bkgr_present=False):
     metrics_names = {
         'mean': 'Mean',
         'sum': 'Sum',
@@ -709,9 +723,12 @@ def _get_metrics_names():
         'q05': '5 percentile',
         'q95': '95 percentile'
     }
+    if is_manual_bkgr_present:
+        metrics_names['amount_manualBkgr'] = 'Amount'
+        metrics_names['mean_manualBkgr'] = 'Mean'
     return metrics_names
 
-def _get_bkgr_val_names():
+def _get_bkgr_val_names(is_manual_bkgr_present=False):
     bkgr_val_names = {
         'autoBkgr_bkgrVal_median': 'Median',
         'autoBkgr_bkgrVal_mean': 'Mean',
@@ -726,6 +743,13 @@ def _get_bkgr_val_names():
         'dataPrepBkgr_bkgrVal_q95': '95 percentile',
         'dataPrepBkgr_bkgrVal_q05': '5 percentile',
     }
+    if is_manual_bkgr_present:
+        bkgr_val_names['manualBkgr_bkgrVal_median'] = 'Median'
+        bkgr_val_names['manualBkgr_bkgrVal_mean'] = 'Mean'
+        bkgr_val_names['manualBkgr_bkgrVal_q75'] = '75 percentile'
+        bkgr_val_names['manualBkgr_bkgrVal_q25'] = '25 percentile'
+        bkgr_val_names['manualBkgr_bkgrVal_q95'] = '95 percentile'
+        bkgr_val_names['manualBkgr_bkgrVal_q05'] = '5 percentile'
     return bkgr_val_names
 
 def get_props_info_txt():
@@ -926,6 +950,13 @@ def _quantile(arr, q):
 def _amount(arr, bkgr, area):
     try:
         val = (np.mean(arr)-bkgr)*area
+    except Exception as e:
+        val = np.nan
+    return val
+
+def _mean_corrected(arr, bkgr):
+    try:
+        val = np.mean(arr)-bkgr
     except Exception as e:
         val = np.nan
     return val
@@ -1139,7 +1170,7 @@ def get_bkgr_data(
             bkgr_data['dataPrepBkgr']['3D'].extend(bkgrRoi_3D)
     elif dataPrepBkgr_present:
         bkgr_data['dataPrepBkgr'][''].extend(bkgrRoi)
-
+    
     return bkgr_data
             
 
@@ -1149,6 +1180,8 @@ def standard_metrics_func():
         'sum': lambda arr: _try_metric_func(np.sum, arr),
         'amount_autoBkgr': lambda arr, bkgr, area: _amount(arr, bkgr, area),
         'amount_dataPrepBkgr': lambda arr, bkgr, area: _amount(arr, bkgr, area),
+        'amount_manualBkgr': lambda arr, bkgr, area: _amount(arr, bkgr, area),
+        'mean_manualBkgr': lambda arr, bkgr, area: _mean_corrected(arr, bkgr),
         'median': lambda arr: _try_metric_func(np.median, arr),
         'min': lambda arr: _try_metric_func(np.min, arr),
         'max': lambda arr: _try_metric_func(np.max, arr),
@@ -1362,8 +1395,11 @@ def add_size_metrics(
 def add_foregr_metrics(
         df, rp, channel, foregr_data, foregr_metrics_params, metrics_func,
         custom_metrics_params, isSegm3D, lab, foregr_img, 
+        manualBackgrRp=None, manual_backgr_params=None,
         customMetricsCritical=None
     ):
+    if manualBackgrRp is not None:
+        manualBackgrRp = {obj.label for obj in manualBackgrRp}
     custom_errors = ''
     # Iterate objects and compute foreground metrics
     for o, obj in enumerate(tqdm(rp, ncols=100, leave=False)):
@@ -1373,7 +1409,9 @@ def add_foregr_metrics(
             foregr_obj_arr, obj_area = get_foregr_obj_array(
                 foregr_arr, obj, isSegm3D
             )
-            if func_name.find('amount_') != -1:
+            is_manual_bkgr_metric = func_name.find('manualBkgr') != -1
+            is_amount_metric = func_name.find('amount_') != -1
+            if is_amount_metric and not is_manual_bkgr_metric:
                 bkgr_type = func_name[len('amount_'):]
                 try:
                     bkgr_val = get_bkgrVals(
@@ -1383,6 +1421,9 @@ def add_foregr_metrics(
                     val = func(foregr_obj_arr, bkgr_val, obj_area)
                 except Exception as e:
                     val = np.nan
+            elif is_manual_bkgr_metric:
+                here we get the mean of the background and compute 
+                the background corrected metric
             else:
                 func = metrics_func[func_name]
                 val = func(foregr_obj_arr)
@@ -1409,11 +1450,39 @@ def add_foregr_metrics(
             df.at[ID, col] = custom_val
             if customMetricsCritical is not None and custom_error:
                 customMetricsCritical.emit(custom_error, col)
+        
+        for col, (func, how) in manual_backgr_params.items():   
+            foregr_arr = foregr_data[how]
+            foregr_obj_arr, obj_area = get_foregr_obj_array(
+                foregr_arr, obj, isSegm3D
+            )
     return df
 
-def add_bkgr_values(df, bkgr_data, bkgr_metrics_params, metrics_func):
+def add_bkgr_values(
+        df, bkgr_data, bkgr_metrics_params, metrics_func, 
+        manualBackgrRp=None
+    ):
     # Compute background values
     for col, (bkgr_type, func_name, how) in bkgr_metrics_params.items():
+        if bkgr_type == 'manualBkgr':
+            here we iterate objects and add manual background value
+        bkgr_arr = bkgr_data[bkgr_type][how]
+        bkgr_func = metrics_func[func_name]
+        bkgr_val = bkgr_func(bkgr_arr)
+        df[col] = bkgr_val
+    return df
+
+def add_manual_bkgr_values(
+        manual_backgr_rp, df, bkgr_data, bkgr_metrics_params, metrics_func
+    ):
+    if manual_backgr_rp is None:
+        return
+    # Compute background values
+    for col, (bkgr_type, func_name, how) in bkgr_metrics_params.items():
+        if bkgr_type == 'manualBkgr':
+            # We cannot add manual background now, we add it later
+            # because it is per-object based
+            continue
         bkgr_arr = bkgr_data[bkgr_type][how]
         bkgr_func = metrics_func[func_name]
         bkgr_val = bkgr_func(bkgr_arr)
