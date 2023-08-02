@@ -3,7 +3,7 @@ import shutil
 import sys
 from importlib import import_module
 
-def _setup_gui():
+def _setup_gui_libraries():
     try:
         import tables
     except Exception as e:
@@ -187,14 +187,14 @@ def _setup_app(splashscreen=False, icon_path=None, logo_path=None):
     app = QApplication([])
     app.setStyle(QStyleFactory.create('Fusion'))
     is_OS_dark_mode = app.palette().color(QPalette.Window).getHsl()[2] < 100
+    app.toggle_dark_mode = False
     if is_OS_dark_mode:
         # Switch to dark mode if scheme was never selected by user and OS is 
         # dark mode
         import pandas as pd
         df_settings = pd.read_csv(settings_csv_path, index_col='setting')
         if 'colorScheme' not in df_settings.index:
-            df_settings.at['colorScheme', 'value'] = 'dark'
-            df_settings.to_csv(settings_csv_path)
+            app.toggle_dark_mode = True
     
     if icon_path is None:
         icon_path = os.path.join(resources_folderpath, 'icon.ico')
@@ -253,7 +253,7 @@ def _setup_app(splashscreen=False, icon_path=None, logo_path=None):
     scheme = get_color_scheme()
     palette = getPaletteColorScheme(app.palette(), scheme=scheme)
     app.setPalette(palette)     
-    load.rename_qrc_resources_file(scheme)
+    # load.rename_qrc_resources_file(scheme)
     # setToolTipStyleSheet(app, scheme=scheme)
     
     return app, splashScreen
