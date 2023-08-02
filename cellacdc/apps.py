@@ -2118,17 +2118,19 @@ class SetMeasurementsDialog(widgets.QBaseDialog):
         msg.warning(self, 'Physical measurement required', txt)
 
     def deselectAll(self):
+        self.doNotWarn = True
         for chNameGroupbox in self.chNameGroupboxes:
             for gb in chNameGroupbox.groupboxes:
                 gb.checkAll(False)
             cgb = getattr(chNameGroupbox, 'customMetricsQGBox', None)
             if cgb is not None:
                 cgb.checkAll(False)
-                
+        
         self.sizeMetricsQGBox.checkAll(False)
         self.regionPropsQGBox.checkAll(False)
         if self.mixedChannelsCombineMetricsQGBox is not None:
             self.mixedChannelsCombineMetricsQGBox.checkAll(False)
+        self.doNotWarn = False
     
     def delMixedChannelCombineMetric(self, colname_to_del, hlayout):
         cp = measurements.read_saved_user_combine_config()
