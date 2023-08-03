@@ -1878,7 +1878,7 @@ class SetMeasurementsDialog(widgets.QBaseDialog):
             )
             groupsLayout.setRowStretch(1, 1)
             if not self.is_concat:
-                self.setDisabledMetricsRequestedForCombined()
+                self.setDisabledMetricsRequestedForCombined(False)
                 self.mixedChannelsCombineMetricsQGBox.toggled.connect(
                     self.setDisabledMetricsRequestedForCombined
                 )
