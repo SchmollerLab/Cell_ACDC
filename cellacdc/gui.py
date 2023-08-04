@@ -1,4 +1,3 @@
-print('Importing GUI modules...')
 import sys
 import os
 import shutil
