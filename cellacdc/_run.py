@@ -3,18 +3,29 @@ import shutil
 import sys
 from importlib import import_module
 
-def _setup_gui():
+def _install_tables(parent_software='Cell-ACDC'):
     try:
         import tables
     except Exception as e:
-        while True:
-            txt = (
-                'Cell-ACDC needs to install a library called `tables`.\n\n'
+        if parent_software == 'Cell-ACDC':
+            issues_url = 'https://github.com/SchmollerLab/Cell_ACDC/issues'
+            note_txt = (
                 'If the installation fails, you can still use Cell-ACDC, but we '
                 'highly recommend you report the issue (see link below) and we '
-                'will be very happy to help. Thank you for your patience!\n\n'
-                'Report issue here: https://github.com/SchmollerLab/Cell_ACDC/issues'
-                '\n'
+                'will be very happy to help. Thank you for your patience!'
+                
+            )
+        else:
+            issues_url = 'https://github.com/SchmollerLab/Cell_ACDC/issues'
+            note_txt = (
+                'If the installation fails, report the issue (see link below) and we '
+                'will be very happy to help. Thank you for your patience!'
+            )
+        while True:
+            txt = (
+                f'{parent_software} needs to install a library called `tables`.\n\n'
+                f'{note_txt}\n\n'
+                f'Report issue here: {issues_url}\n'
             )
             print('-'*60)
             print(txt)
@@ -41,10 +52,17 @@ def _setup_gui():
                     import traceback
                     traceback.print_exc()
                     print('*'*60)
-                    print(
-                        '[WARNING]: Installation of `tables` failed. '
-                        'Please report the issue here: '
-                        'https://github.com/SchmollerLab/Cell_ACDC/issues'
+                    if parent_software == 'Cell-ACDC':
+                        msg_type = '[WARNING]'
+                        log_func = print
+                    else:
+                        msg_type = '[ERROR]'
+                        log_func = exit
+                    
+                    log_func(
+                        f'{msg_type}: Installation of `tables` failed. '
+                        'Please report the issue here (**including the error message above**): '
+                        f'{issues_url}'
                     )
                     print('^'*60)
                 finally:
@@ -56,8 +74,12 @@ def _setup_gui():
                     f'"{answer}" is not a valid answer. '
                     'Type "y" for "yes", or "n" for "no".'
                 )
+
+def _setup_gui_libraries():
+    
     
     warn_restart = False
+    
     # Force PyQt6 if available
     try:
         from PyQt6 import QtCore
@@ -187,14 +209,14 @@ def _setup_app(splashscreen=False, icon_path=None, logo_path=None):
     app = QApplication([])
     app.setStyle(QStyleFactory.create('Fusion'))
     is_OS_dark_mode = app.palette().color(QPalette.Window).getHsl()[2] < 100
+    app.toggle_dark_mode = False
     if is_OS_dark_mode:
         # Switch to dark mode if scheme was never selected by user and OS is 
         # dark mode
         import pandas as pd
         df_settings = pd.read_csv(settings_csv_path, index_col='setting')
         if 'colorScheme' not in df_settings.index:
-            df_settings.at['colorScheme', 'value'] = 'dark'
-            df_settings.to_csv(settings_csv_path)
+            app.toggle_dark_mode = True
     
     if icon_path is None:
         icon_path = os.path.join(resources_folderpath, 'icon.ico')
@@ -253,7 +275,7 @@ def _setup_app(splashscreen=False, icon_path=None, logo_path=None):
     scheme = get_color_scheme()
     palette = getPaletteColorScheme(app.palette(), scheme=scheme)
     app.setPalette(palette)     
-    load.rename_qrc_resources_file(scheme)
+    # load.rename_qrc_resources_file(scheme)
     # setToolTipStyleSheet(app, scheme=scheme)
     
     return app, splashScreen

@@ -1,4 +1,3 @@
-print('Importing GUI modules...')
 import sys
 import os
 import shutil
@@ -41,7 +40,7 @@ from functools import wraps
 from skimage.color import gray2rgb, gray2rgba, label2rgb
 
 from qtpy.QtCore import (
-    Qt, QFile, QTextStream, QSize, QRect, QRectF,
+    Qt, QPointF, QTextStream, QSize, QRect, QRectF,
     QEventLoop, QTimer, QEvent, QObject, Signal,
     QThread, QMutex, QWaitCondition, QSettings
 )
@@ -107,6 +106,9 @@ shortcut_filepath = os.path.join(settings_folderpath, 'shortcuts.ini')
 _font = QFont()
 _font.setPixelSize(11)
 
+font_13px = QFont()
+font_13px.setPixelSize(13)
+
 SliderSingleStepAdd = QtScoped.SliderSingleStepAdd()
 SliderSingleStepSub = QtScoped.SliderSingleStepSub()
 SliderPageStepAdd = QtScoped.SliderPageStepAdd()
@@ -163,6 +165,20 @@ def get_data_exception_handler(func):
             msg.critical(self, 'Critical error', err_msg)
             self.is_error_state = True
             raise e
+        return result
+    return inner_function
+
+def resetViewRange(func):
+    @wraps(func)
+    def inner_function(self, *args, **kwargs):
+        self.storeViewRange()
+        if func.__code__.co_argcount==1 and func.__defaults__ is None:
+            result = func(self)
+        elif func.__code__.co_argcount>1 and func.__defaults__ is None:
+            result = func(self, *args)
+        else:
+            result = func(self, *args, **kwargs)
+        QTimer.singleShot(200, self.resetRange)
         return result
     return inner_function
 
@@ -330,6 +346,10 @@ class saveDataWorker(QObject):
             posData.PhysicalSizeY*posData.PhysicalSizeX*posData.PhysicalSizeZ
         )
 
+        manualBackgrLab = posData.manualBackgroundLab
+        manualBackgrRp = None
+        if manualBackgrLab is not None:
+            manualBackgrRp = skimage.measure.regionprops(manualBackgrLab)
         isZstack = posData.SizeZ > 1
         isSegm3D = self.mainWin.isSegm3D
         all_channels_metrics = self.mainWin.metricsToSave
@@ -338,6 +358,9 @@ class saveDataWorker(QObject):
         metrics_func = self.mainWin.metrics_func
         custom_func_dict = self.mainWin.custom_func_dict
         bkgr_metrics_params = self.mainWin.bkgr_metrics_params
+        
+        printl(bkgr_metrics_params, pretty=True)
+        
         foregr_metrics_params = self.mainWin.foregr_metrics_params
         concentration_metrics_params = self.mainWin.concentration_metrics_params
         custom_metrics_params = self.mainWin.custom_metrics_params
@@ -385,19 +408,20 @@ class saveDataWorker(QObject):
                 foregr_img, posData, filename, frame_i, autoBkgr_mask, z,
                 autoBkgr_mask_proj, dataPrepBkgrROI_mask, isSegm3D, lab
             )
+            
+            foregr_data = measurements.get_foregr_data(foregr_img, isSegm3D, z)
 
             # Compute background values
             df = measurements.add_bkgr_values(
-                df, bkgr_data, bkgr_metrics_params[channel], metrics_func
+                df, bkgr_data, bkgr_metrics_params[channel], metrics_func,
+                manualBackgrRp=manualBackgrRp, foregr_data=foregr_data
             )
-            
-            foregr_data = measurements.get_foregr_data(foregr_img, isSegm3D, z)
 
             # Iterate objects and compute foreground metrics
             df = measurements.add_foregr_metrics(
                 df, rp, channel, foregr_data, foregr_metrics_params[channel], 
                 metrics_func, custom_metrics_params[channel], isSegm3D, 
-                lab, foregr_img, 
+                lab, foregr_img, manualBackgrRp=manualBackgrRp,
                 customMetricsCritical=self.customMetricsCritical
             )
 
@@ -466,10 +490,14 @@ class saveDataWorker(QObject):
             posDataEquations = config['equations']
             userPathChEquations = config['user_path_equations']
             for newColName, equation in posDataEquations.items():
+                if not newColName.startswith(chName):
+                    continue
                 if newColName in metricsToSkipChannel:
                     continue
                 self._dfEvalEquation(df, newColName, equation)
             for newColName, equation in userPathChEquations.items():
+                if not newColName.startswith(chName):
+                    continue
                 if newColName in metricsToSkipChannel:
                     continue
                 self._dfEvalEquation(df, newColName, equation)
@@ -641,6 +669,9 @@ class saveDataWorker(QObject):
                     saved_segm_data[frame_i] = lab
                 else:
                     saved_segm_data = lab
+                    if 'manualBackgroundLab' in data_dict:
+                        manualBackgrData = data_dict['manualBackgroundLab']
+                        posData.saveManualBackgroundData(manualBackgrData)
 
                 acdc_df = data_dict['acdc_df']
 
@@ -1610,6 +1641,33 @@ class guiWin(QMainWindow):
         self.widgetsWithShortcut['Repeat segmentation'] = self.segmentToolAction
         editToolBar.addAction(self.segmentToolAction)
         
+        self.manualBackgroundButton = QToolButton(self)
+        self.manualBackgroundButton.setIcon(QIcon(":manual_background.svg"))
+        self.manualBackgroundButton.setCheckable(True)
+        self.manualBackgroundButton.setToolTip(
+            'Toggle "Manual background" mode ON/OFF\n\n'
+            'ACTIONs:\n\n'
+            '  1. Select object to copy its shape\n'
+            '  2. Place the new shape on the background close to the source object.\n'
+            '  3. Left-click to set the background ROI of the selected object\n'
+            'Note: right-click on a background ROI to remove it.\n\n'
+            'SHORTCUT: "G" key\n\n'
+            'HELP: Use this function if you need to set the background level specific '
+            'for each object.\n'
+            'Cell-ACDC will save the metrics `amount`, `concentration` and `corrected_mean`\n'
+            'where the background correction will be performed by subtracting the mean\n'
+            'of the signal in the background ROI (for each object).'
+        )
+        self.manualBackgroundButton.setShortcut('G')
+        self.LeftClickButtons.append(self.manualBackgroundButton)
+        self.checkableButtons.append(self.manualBackgroundButton)
+        self.checkableQButtonsGroup.addButton(self.manualBackgroundButton)
+        self.widgetsWithShortcut['Manual background'] = self.manualBackgroundButton
+        
+        self.manualBackgroundAction = editToolBar.addWidget(
+            self.manualBackgroundButton
+        )
+        
         self.delObjsOutSegmMaskAction = QAction(
             QIcon(":del_objs_out_segm.svg"), 
             'Select a segmentation file and delete all objects on the background', 
@@ -2072,11 +2130,13 @@ class guiWin(QMainWindow):
         self.propsDockWidget.hide()
 
     def gui_createControlsToolbar(self):
+        self.controlToolBars = []
         self.addToolBarBreak()
         
         # Widgets toolbar
         brushEraserToolBar = QToolBar("Widgets", self)
         self.addToolBar(Qt.TopToolBarArea, brushEraserToolBar)
+        self.controlToolBars.append(brushEraserToolBar)
 
         self.editIDspinbox = widgets.SpinBox()
         # self.editIDspinbox.setMaximum(2**32-1)
@@ -2147,6 +2207,7 @@ class guiWin(QMainWindow):
 
         self.addToolBar(Qt.TopToolBarArea , self.wandControlsToolbar)
         self.wandControlsToolbar.setVisible(False)
+        self.controlToolBars.append(self.wandControlsToolbar)
 
         separatorW = 5
         self.labelRoiToolbar = QToolBar("Magic labeller controls", self)
@@ -2240,6 +2301,7 @@ class guiWin(QMainWindow):
         self.labelRoiViewCurrentModelAction.setDisabled(True)
 
         self.addToolBar(Qt.TopToolBarArea, self.labelRoiToolbar)
+        self.controlToolBars.append(self.labelRoiToolbar)
         self.labelRoiToolbar.setVisible(False)
         self.labelRoiTypesGroup = group
 
@@ -2299,6 +2361,7 @@ class guiWin(QMainWindow):
         self.keepIDsToolbar.addWidget(spacer)
         self.addToolBar(Qt.TopToolBarArea, self.keepIDsToolbar)
         self.keepIDsToolbar.setVisible(False)
+        self.controlToolBars.append(self.keepIDsToolbar)
 
         self.keptIDsLineEdit.sigIDsChanged.connect(self.updateKeepIDs)
         self.keepIDsConfirmAction.triggered.connect(self.applyKeepObjects)
@@ -2308,6 +2371,7 @@ class guiWin(QMainWindow):
         self.addToolBar(Qt.TopToolBarArea, self.autoPilotZoomToObjToolbar)
         # self.autoPilotZoomToObjToolbar.setIconSize(QSize(16, 16))
         self.autoPilotZoomToObjToolbar.setVisible(False)
+        self.controlToolBars.append(self.autoPilotZoomToObjToolbar)
         
         closeToolbarAction = QAction(
             QIcon(":cancelButton.svg"), "Close toolbar...", self
@@ -2348,6 +2412,7 @@ class guiWin(QMainWindow):
         self.pointsLayersToolbar.addWidget(QLabel('Points layers:  '))
         # self.pointsLayersToolbar.setIconSize(QSize(16, 16))
         self.pointsLayersToolbar.setVisible(False)
+        self.controlToolBars.append(self.pointsLayersToolbar)
         
         closeToolbarAction.toolbars = (
             self.pointsLayersToolbar, self.autoPilotZoomToObjToolbar
@@ -2370,6 +2435,26 @@ class guiWin(QMainWindow):
 
         self.addToolBar(Qt.TopToolBarArea, self.manualTrackingToolbar)
         self.manualTrackingToolbar.setVisible(False)
+        self.controlToolBars.append(self.manualTrackingToolbar)
+        
+        self.manualBackgroundToolbar = widgets.ManualBackgroundToolBar(
+            "Manual background controls", self
+        )
+        self.manualBackgroundToolbar.sigIDchanged.connect(
+            self.initManualBackgroundObject
+        )
+        self.addToolBar(Qt.TopToolBarArea, self.manualBackgroundToolbar)
+        self.manualBackgroundToolbar.setVisible(False)
+        self.controlToolBars.append(self.manualBackgroundToolbar)
+        
+        # Empty toolbar to avoid weird ranges on image when showing the 
+        # other toolbars --> placeholder
+        placeHolderToolbar = QToolBar("Place holder", self)
+        self.addToolBar(Qt.TopToolBarArea, placeHolderToolbar)
+        placeHolderToolbar.addWidget(QToolButton(self))
+        placeHolderToolbar.setMovable(False)
+        self.placeHolderToolbar = placeHolderToolbar
+        self.placeHolderToolbar.setVisible(False)
 
     def gui_populateToolSettingsMenu(self):
         brushHoverModeActionGroup = QActionGroup(self)
@@ -2484,11 +2569,10 @@ class guiWin(QMainWindow):
         self.addDockWidget(Qt.BottomDockWidgetArea, self.terminalDock)
         # self.terminalDock.widget().layout().setContentsMargins(10,0,10,0)
         self.terminalDock.setVisible(False)
-        
+    
+    @resetViewRange
     def gui_terminalButtonClicked(self, terminalVisible):
-        self.ax1_viewRange = self.ax1.vb.viewRange()
         self.terminalDock.setVisible(terminalVisible)
-        QTimer.singleShot(200, self.resetRange)
 
     def gui_createActions(self):
         # File actions
@@ -2975,6 +3059,7 @@ class guiWin(QMainWindow):
         self.realTimeTrackingToggle.clicked.connect(self.realTimeTrackingClicked)
         self.repeatTrackingAction.triggered.connect(self.repeatTracking)
         self.manualTrackingButton.toggled.connect(self.manualTracking_cb)
+        self.manualBackgroundButton.toggled.connect(self.manualBackground_cb)
         self.repeatTrackingMenuAction.triggered.connect(self.repeatTracking)
         self.repeatTrackingVideoAction.triggered.connect(
             self.repeatTrackingVideo
@@ -3999,6 +4084,11 @@ class guiWin(QMainWindow):
 
         self.ghostMaskItemLeft = widgets.GhostMaskItem()
         self.ghostMaskItemRight = widgets.GhostMaskItem()
+        
+        self.manualBackgroundObjItem = widgets.GhostContourItem(
+            penColor='r', textColor='r'
+        )
+        self.manualBackgroundImageItem = pg.ImageItem()
     
     def gui_createLabelRoiItem(self):
         Y, X = self.currentLab2D.shape
@@ -5584,8 +5674,10 @@ class guiWin(QMainWindow):
         if posData.SizeZ > 1 and not self.isSegm3D:
             z = self.zSliceScrollBar.sliderPosition()
             objData = image[z][obj.slice][obj.image]
+            img = self.img1.image
         else:
             objData = image[obj.slice][obj.image]
+            img = image
 
         intensMeasurQGBox.minimumDSB.setValue(np.min(objData))
         intensMeasurQGBox.maximumDSB.setValue(np.max(objData))
@@ -5595,11 +5687,11 @@ class guiWin(QMainWindow):
         funcDesc = intensMeasurQGBox.additionalMeasCombobox.currentText()
         func = intensMeasurQGBox.additionalMeasCombobox.functions[funcDesc]
         if funcDesc == 'Concentration':
-            bkgrVal = np.median(image[posData.lab == 0])
+            bkgrVal = np.median(img[posData.lab == 0])
             amount = func(objData, bkgrVal, obj.area)
             value = amount/vol_vox
         elif funcDesc == 'Amount':
-            bkgrVal = np.median(image[posData.lab == 0])
+            bkgrVal = np.median(img[posData.lab == 0])
             amount = func(objData, bkgrVal, obj.area)
             value = amount
         else:
@@ -5683,10 +5775,18 @@ class guiWin(QMainWindow):
         if cursorsInfo['setManualTrackingCursor']:
             x, y = event.pos()
             # self.highlightHoverID(x, y)
-            if event.isExit():
-                self.clearGhost()
-            else:
-                self.drawManualTrackingGhost(x, y)
+            self.drawManualTrackingGhost(x, y)
+        
+        if cursorsInfo['setManualBackgroundCursor']:
+            x, y = event.pos()
+            # self.highlightHoverID(x, y)
+            self.drawManualBackgroundObj(x, y)
+        
+        if (
+                not cursorsInfo['setManualTrackingCursor'] 
+                and not cursorsInfo['setManualBackgroundCursor']
+            ):
+            self.clearGhost()
 
         setMoveLabelCursor = cursorsInfo['setMoveLabelCursor']
         setExpandLabelCursor = cursorsInfo['setExpandLabelCursor']
@@ -5856,7 +5956,13 @@ class guiWin(QMainWindow):
             and noModifier
         )
         setManualTrackingCursor = (
-            self.manualTrackingButton.isChecked() and not event.isExit()
+            self.manualTrackingButton.isChecked() 
+            and not event.isExit()
+            and noModifier
+        )
+        setManualBackgroundCursor = (
+            self.manualBackgroundButton.isChecked()
+            and not event.isExit()
             and noModifier
         )
         setAddPointCursor = (
@@ -5886,6 +5992,8 @@ class guiWin(QMainWindow):
             self.app.setOverrideCursor(Qt.PointingHandCursor)        
         elif setManualTrackingCursor and overrideCursor is None:
             self.app.setOverrideCursor(Qt.PointingHandCursor)
+        elif setManualBackgroundCursor and overrideCursor is None:
+            self.app.setOverrideCursor(Qt.PointingHandCursor)
         elif setAddPointCursor:
             self.app.setOverrideCursor(self.addPointsCursor)
         
@@ -5902,6 +6010,7 @@ class guiWin(QMainWindow):
             'setKeepObjCursor': setKeepObjCursor,
             'setCustomAnnotCursor': setCustomAnnotCursor,
             'setManualTrackingCursor': setManualTrackingCursor,
+            'setManualBackgroundCursor': setManualBackgroundCursor,
             'setAddPointCursor': setAddPointCursor,
         }
     
@@ -6673,6 +6782,7 @@ class guiWin(QMainWindow):
         keepObjON = self.keepIDsButton.isChecked()
         separateON = self.separateBudButton.isChecked()
         addPointsByClickingButton = self.buttonAddPointsByClickingActive()
+        manualBackgroundON = self.manualBackgroundButton.isChecked()
         copyContourON = (
             self.copyContourButton.isChecked()
             and self.ax1_lostObjScatterItem.hoverLostID>0
@@ -6702,6 +6812,7 @@ class guiWin(QMainWindow):
             and not curvToolON and not eraserON and not rulerON
             and not wandON and not polyLineRoiON and not labelRoiON
             and not middle_click and not keepObjON and not separateON
+            and not manualBackgroundON
             and addPointsByClickingButton is None
         )
         if isPanImageClick:
@@ -6754,11 +6865,12 @@ class guiWin(QMainWindow):
             and not brushON and not dragImgLeft and not eraserON
             and not polyLineRoiON and not labelRoiON
             and addPointsByClickingButton is None
+            and not manualBackgroundON
         )
         canBrush = (
             brushON and not curvToolON and not rulerON
             and not dragImgLeft and not eraserON and not wandON
-            and not labelRoiON
+            and not labelRoiON and not manualBackgroundON
             and addPointsByClickingButton is None
         )
         canErase = (
@@ -6766,23 +6878,26 @@ class guiWin(QMainWindow):
             and not dragImgLeft and not brushON and not wandON
             and not polyLineRoiON and not labelRoiON
             and addPointsByClickingButton is None
+            and not manualBackgroundON
         )
         canRuler = (
             rulerON and not curvToolON and not brushON
             and not dragImgLeft and not brushON and not wandON
             and not polyLineRoiON and not labelRoiON
             and addPointsByClickingButton is None
+            and not manualBackgroundON
         )
         canWand = (
             wandON and not curvToolON and not brushON
             and not dragImgLeft and not brushON and not rulerON
             and not polyLineRoiON and not labelRoiON
             and addPointsByClickingButton is None
+            and not manualBackgroundON
         )
         canPolyLine = (
             polyLineRoiON and not wandON and not curvToolON and not brushON
             and not dragImgLeft and not brushON and not rulerON
-            and not labelRoiON
+            and not labelRoiON and not manualBackgroundON
             and addPointsByClickingButton is None
         )
         canLabelRoi = (
@@ -6790,18 +6905,28 @@ class guiWin(QMainWindow):
             and not dragImgLeft and not brushON and not rulerON
             and not polyLineRoiON and not keepObjON
             and addPointsByClickingButton is None
+            and not manualBackgroundON
         )
         canKeep = (
             keepObjON and not wandON and not curvToolON and not brushON
             and not dragImgLeft and not brushON and not rulerON
             and not polyLineRoiON and not labelRoiON 
             and addPointsByClickingButton is None
+            and not manualBackgroundON
         )
         canAddPoint = (
             addPointsByClickingButton is not None and not wandON 
             and not curvToolON and not brushON
             and not dragImgLeft and not brushON and not rulerON
             and not polyLineRoiON and not labelRoiON  and not keepObjON
+            and not manualBackgroundON
+        )
+        canAddManualBackgroundObj = (
+            manualBackgroundON and not wandON and not curvToolON and not brushON
+            and not dragImgLeft and not brushON and not rulerON
+            and not polyLineRoiON and not labelRoiON 
+            and addPointsByClickingButton is None
+            and not keepObjON
         )
 
         # Enable dragging of the image window like pyqtgraph original code
@@ -6819,7 +6944,7 @@ class guiWin(QMainWindow):
         eventOnImg2 = (
             (right_click or middle_click)
             and (mode=='Segmentation and Tracking' or self.isSnapshot)
-            and not isAnnotateDivision
+            and not isAnnotateDivision and not manualBackgroundON
         )
         if eventOnImg2:
             event.isImg1Sender = True
@@ -7166,6 +7291,27 @@ class guiWin(QMainWindow):
             
             self.update_rp()
             self.updateAllImages()
+        
+        elif right_click and manualBackgroundON:
+            x, y = event.pos().x(), event.pos().y()
+            xdata, ydata = int(x), int(y)
+            
+            delID = posData.manualBackgroundLab[ydata, xdata]
+            if delID == 0:
+                return
+            
+            posData.manualBackgroundImage[posData.manualBackgroundLab==delID, :] = 0
+            posData.manualBackgroundLab[posData.manualBackgroundLab==delID] = 0
+            textItem = self.manualBackgroundTextItems.pop(delID)
+            self.ax1.removeItem(textItem)
+            self.setManualBackgroundImage()
+        
+        elif left_click and canAddManualBackgroundObj:
+            x, y = event.pos().x(), event.pos().y()
+            
+            self.addManualBackgroundObject(x, y)            
+            self.setManualBackgroundImage()
+            self.setManualBackgrounNextID()
 
         # Label ROI mouse press
         elif (left_click or right_click) and canLabelRoi:
@@ -10401,7 +10547,10 @@ class guiWin(QMainWindow):
         if button != self.labelRoiButton:
             # self.labelRoiButton is disconnected so we manually call uncheck
             self.labelRoi_cb(False)
-        self.wandControlsToolbar.setVisible(False)
+        self.placeHolderToolbar.setVisible(True)
+        for toolbar in self.controlToolBars:
+            toolbar.setVisible(False) 
+        
         self.enableSizeSpinbox(False)
         if sender is not None:
             self.keepIDsButton.setChecked(False)
@@ -10415,6 +10564,7 @@ class guiWin(QMainWindow):
         self.labelRoiButton.toggled.connect(self.labelRoi_cb)
         self.expandLabelToolButton.toggled.connect(self.expandLabelCallback)
         self.addDelPolyLineRoiAction.toggled.connect(self.addDelPolyLineRoi_cb)
+        self.manualBackgroundButton.toggled.connect(self.manualBackground_cb)
         for action in self.pointsLayersToolbar.actions()[1:]:
             if not hasattr(action, 'layerTypeIdx'):
                 continue
@@ -10441,18 +10591,17 @@ class guiWin(QMainWindow):
             self.editIDspinbox.setValue(newID)
 
     def wand_cb(self, checked):
-        self.storeViewRange()
         posData = self.data[self.pos_i]
         if checked:
             self.disconnectLeftClickButtons()
             self.uncheckLeftClickButtons(self.wandToolButton)
             self.connectLeftClickButtons()
             self.wandControlsToolbar.setVisible(True)
+            self.placeHolderToolbar.setVisible(False)
         else:
             self.resetCursors()
+            self.placeHolderToolbar.setVisible(True)
             self.wandControlsToolbar.setVisible(False)
-        
-        QTimer.singleShot(200, self.resetRange)
     
     def copyLostObjContour_cb(self, checked):
         self.ax1_lostObjScatterItem.hoverLostID = 0
@@ -10479,7 +10628,6 @@ class guiWin(QMainWindow):
         self.labelRoiStopFrameNoSpinbox.setValue(posData.SizeT)
 
     def labelRoi_cb(self, checked):
-        self.storeViewRange()
         posData = self.data[self.pos_i]
         if checked:
             self.disconnectLeftClickButtons()
@@ -10542,8 +10690,6 @@ class guiWin(QMainWindow):
             self.freeRoiItem.clear()
             self.ax1.removeItem(self.labelRoiItem)
             self.updateLabelRoiCircularCursor(None, None, False)
-        
-        QTimer.singleShot(200, self.resetRange)
     
     def labelRoiWorkerFinished(self):
         self.logger.info('Magic labeller closed.')
@@ -10721,7 +10867,6 @@ class guiWin(QMainWindow):
                 posData.allIDs.update([obj.label for obj in rp])
     
     def keepIDs_cb(self, checked):
-        self.keepIDsToolbar.setVisible(checked)
         if checked:
             if self.annotCcaInfoCheckbox.isChecked():
                 self.annotCcaInfoCheckbox.setChecked(False)
@@ -10740,6 +10885,7 @@ class guiWin(QMainWindow):
             self.ax1_contoursImageItem.setOpacity(1.0)
             self.ax2_contoursImageItem.setOpacity(1.0)
         
+        self.keepIDsToolbar.setVisible(checked)
         self.highlightedIDopts = None
         self.keptObjectsIDs = widgets.KeptObjectIDsList(
             self.keptIDsLineEdit, self.keepIDsConfirmAction
@@ -10799,10 +10945,12 @@ class guiWin(QMainWindow):
         self.thread.start()
     
     def storeViewRange(self):
+        if not self.isRangeReset:
+            return
         self.ax1_viewRange = self.ax1.viewRange()
+        self.isRangeReset = False
         
     def Brush_cb(self, checked):
-        self.storeViewRange()
         if checked:
             self.typingEditID = False
             self.setDiskMask()
@@ -10830,8 +10978,6 @@ class guiWin(QMainWindow):
             self.enableSizeSpinbox(False)
             self.showEditIDwidgets(False)
             self.resetCursors()
-        
-        QTimer.singleShot(200, self.resetRange)
     
     def showEditIDwidgets(self, visible):
         self.editIDLabelAction.setVisible(visible)
@@ -11035,7 +11181,6 @@ class guiWin(QMainWindow):
             )
 
     def Eraser_cb(self, checked):
-        self.storeViewRange()
         if checked:
             self.setDiskMask()
             self.setHoverToolSymbolData(
@@ -11056,8 +11201,6 @@ class guiWin(QMainWindow):
             self.enableSizeSpinbox(False)
             self.resetCursors()
             self.updateAllImages()
-        
-        QTimer.singleShot(200, self.resetRange)
     
     def storeCurrentAnnotOptions_ax1(self):
         checkboxes = [
@@ -11188,14 +11331,21 @@ class guiWin(QMainWindow):
     @exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_Q:
-            # self.setAllIDs()
+            printl(self.xHoverImg, self.yHoverImg)
+            printl(self.img1.mapToData(QCursor().pos()))
+            x, y = QCursor().pos().x(), QCursor().pos().y()
+            printl(self.graphLayout.mapToScene(x, y))
             posData = self.data[self.pos_i]
             is_segm_3D = self.isSegm3D
             # all_metrics_names = measurements.get_all_metrics_names(
             #     posData, self.user_ch_name, is_segm_3D
             # )
-            all_metrics_names = measurements.get_all_metrics_names()
-            printl(all_metrics_names)
+            # printl(self.metricsToSave)
+            # self.initMetricsToSave(posData)
+            
+            # printl(self.bkgr_metrics_params, pretty=True)
+            # printl(self.foregr_metrics_params, pretty=True)
+            
             # from acdctools.plot import imshow
             # delIDs = posData.allData_li[posData.frame_i]['delROIs_info']['delIDsROI']
             # printl(delIDs)
@@ -11237,6 +11387,7 @@ class guiWin(QMainWindow):
             self.brushButton.isChecked() or self.eraserButton.isChecked()
         )
         isManualTrackingActive = self.manualTrackingButton.isChecked()
+        isManualBackgroundActive = self.manualBackgroundButton.isChecked()
         if self.brushButton.isChecked():
             try:
                 n = int(ev.text())
@@ -11252,7 +11403,7 @@ class guiWin(QMainWindow):
                 # printl(traceback.format_exc())
                 pass
         
-        if self.manualTrackingButton.isChecked():
+        if isManualTrackingActive:
             try:
                 n = int(ev.text())
                 if self.typingEditID:
@@ -11265,6 +11416,26 @@ class guiWin(QMainWindow):
                 # printl(traceback.format_exc())
                 pass
         
+        elif isManualBackgroundActive:
+            try:
+                n = int(ev.text())
+                if self.typingEditID:
+                    ID = int(
+                        f'{self.manualBackgroundToolbar.spinboxID.value()}{n}'
+                    )
+                else:
+                    ID = n
+                    self.typingEditID = True
+                self.manualBackgroundToolbar.spinboxID.setValue(ID)
+            except Exception as e:
+                # printl(traceback.format_exc())
+                pass
+        
+        isTypingIDFunctionChecked = (
+            self.brushButton.isChecked() 
+            or isManualBackgroundActive
+            or isManualTrackingActive
+        )
         isBrushKey = ev.key() == self.brushButton.keyPressShortcut
         isEraserKey = ev.key() == self.eraserButton.keyPressShortcut
         isExpandLabelActive = self.expandLabelToolButton.isChecked()
@@ -11326,7 +11497,7 @@ class guiWin(QMainWindow):
         # elif ev.key()==Qt.Key_Right and not isCtrlModifier:
         #     self.next_cb()
         elif ev.key() == Qt.Key_Enter or ev.key() == Qt.Key_Return:
-            if self.brushButton.isChecked() or isManualTrackingActive:
+            if isTypingIDFunctionChecked:
                 self.typingEditID = False
             elif self.keepIDsButton.isChecked():
                 self.keepIDsConfirmAction.trigger()
@@ -11343,7 +11514,7 @@ class guiWin(QMainWindow):
                 self.typingEditID = False
                 return
             
-            if isManualTrackingActive and self.typingEditID:
+            if isTypingIDFunctionChecked and self.typingEditID:
                 self.typingEditID = False
                 return
             
@@ -12045,6 +12216,51 @@ class guiWin(QMainWindow):
         self.ghostMaskItemLeft.removeFromPlotItem()
         self.ghostMaskItemRight.removeFromPlotItem()
     
+    def addManualBackgroundItems(self):
+        self.manualBackgroundObjItem.addToPlotItem(self.ax1)
+        self.ax1.addItem(self.manualBackgroundImageItem)
+    
+    def removeManualTrackingItems(self):
+        self.manualBackgroundObjItem.removeFromPlotItem()
+        self.ax1.removeItem(self.manualBackgroundImageItem)
+    
+    def resetManualBackgroundSpinboxID(self):
+        if not self.manualBackgroundButton.isChecked():
+            self.manualBackgroundObj = None
+            return
+        
+        posData = self.data[self.pos_i]
+        minID = min(posData.IDs, default=0)
+        self.manualBackgroundToolbar.spinboxID.setValue(minID)
+    
+    def initManualBackgroundObject(self, ID=None):
+        if not self.manualBackgroundButton.isChecked():
+            self.manualBackgroundObj = None
+            return
+        
+        if ID is None:
+            ID = self.manualBackgroundToolbar.spinboxID.value()
+        
+        posData = self.data[self.pos_i]
+        if ID not in posData.IDs:
+            self.manualTrackingButton = None
+            self.manualBackgroundToolbar.showWarning(
+                f'The ID {ID} does not exist'
+            )
+            return
+        
+        ID_idx = posData.IDs_idxs[ID]
+        self.manualBackgroundObj = posData.rp[ID_idx]
+        
+        self.manualBackgroundToolbar.clearInfoText()
+        self.manualBackgroundObj.contour = self.getObjContours(
+            self.manualBackgroundObj, local=True
+        )
+        xx_contour = self.manualBackgroundObj.contour[:,0]
+        yy_contour = self.manualBackgroundObj.contour[:,1]
+        self.manualBackgroundObj.xx_contour = xx_contour
+        self.manualBackgroundObj.yy_contour = yy_contour
+    
     def initGhostObject(self, ID=None):
         mode = self.modeComboBox.currentText()
         if mode != 'Segmentation and Tracking':
@@ -12090,8 +12306,8 @@ class guiWin(QMainWindow):
         self.ghostObject.contour = self.getObjContours(
             self.ghostObject, local=True
         )
-        self.ghostObject.xx_contour = self.ghostObject.contour[:,1]
-        self.ghostObject.yy_contour = self.ghostObject.contour[:,0]
+        self.ghostObject.xx_contour = self.ghostObject.contour[:,0]
+        self.ghostObject.yy_contour = self.ghostObject.contour[:,1]
 
         self.ghostMaskItemLeft.initLookupTable(self.lut[ID])
         self.ghostMaskItemRight.initLookupTable(self.lut[ID])
@@ -12100,16 +12316,23 @@ class guiWin(QMainWindow):
         self.clearGhostContour()
         self.clearGhostMask()
     
+    def clearManualBackgroundAnnotations(self):
+        try:
+            for textItem in self.manualBackgroundTextItems.values():
+                textItem.setText('')
+        except Exception as error:
+            pass
+    
     def clearGhostContour(self):
         self.ghostContourItemLeft.clear()
         self.ghostContourItemRight.clear()
+        self.manualBackgroundObjItem.clear()
     
     def clearGhostMask(self):
         self.ghostMaskItemLeft.clear()
         self.ghostMaskItemRight.clear()
 
     def manualTracking_cb(self, checked):
-        self.storeViewRange()
         self.manualTrackingToolbar.setVisible(checked)
         if checked:
             self.realTimeTrackingToggle.previousStatus = (
@@ -12139,8 +12362,24 @@ class guiWin(QMainWindow):
             )
             self.removeManualTrackingItems()
             self.clearGhost()
-        
-        QTimer.singleShot(200, self.resetRange)
+    
+    def manualBackground_cb(self, checked):
+        if checked:
+            posData = self.data[self.pos_i]
+            minID = min(posData.IDs, default=0)
+            self.manualBackgroundToolbar.spinboxID.setValue(minID)
+            # self.initManualBackgroundObject()
+            # self.initManualBackgroundImage()
+            self.addManualBackgroundItems()
+            self.disconnectLeftClickButtons()
+            self.uncheckLeftClickButtons(self.manualBackgroundButton)
+            self.connectLeftClickButtons()
+            self.updateAllImages()
+        else:
+            self.removeManualTrackingItems()
+            self.clearGhost()
+            self.clearManualBackgroundAnnotations()
+        self.manualBackgroundToolbar.setVisible(checked)
 
     def autoSegm_cb(self, checked):
         if checked:
@@ -13494,11 +13733,18 @@ class guiWin(QMainWindow):
             self.pos_i = 0
         self.updatePos()
     
+    def resetManualBackgroundItems(self):
+        self.initManualBackgroundImage()
+        self.resetManualBackgroundSpinboxID()
+        self.drawManualTrackingGhost(self.xHoverImg, self.yHoverImg)
+        self.drawManualBackgroundObj(self.xHoverImg, self.yHoverImg)
+    
     def updatePos(self):
         self.setSaturBarLabel()
         self.checkManageVersions()
         self.removeAlldelROIsCurrentFrame()
-        proceed_cca, never_visited = self.get_data()
+        self.resetManualBackgroundItems()
+        proceed_cca, never_visited = self.get_data(debug=True)
         self.initContoursImage()
         self.initTextAnnot()
         self.postProcessing()
@@ -13507,6 +13753,7 @@ class guiWin(QMainWindow):
         self.computeSegm()
         self.zoomOut()
         self.restartZoomAutoPilot()
+        self.initManualBackgroundObject()
 
     def prev_pos(self):
         self.store_data(debug=False)
@@ -14061,8 +14308,10 @@ class guiWin(QMainWindow):
     def loadingDataCompleted(self):
         self.isDataLoading = True
         posData = self.data[self.pos_i]
+        self.placeHolderToolbar.setVisible(True)
         self.updateImageValueFormatter()
         self.checkManageVersions()
+        self.initManualBackgroundImage()
 
         self.setWindowTitle(f'Cell-ACDC - GUI - "{posData.exp_path}"')
 
@@ -14342,6 +14591,7 @@ class guiWin(QMainWindow):
             self.ax2.vb.setRange(xRange=xRange, yRange=yRange)
         self.ax1.vb.setRange(xRange=xRange, yRange=yRange)
         self.ax1_viewRange = None
+        self.isRangeReset = True
 
     def setFramesSnapshotMode(self):
         self.measurementsMenu.setDisabled(False)
@@ -14370,6 +14620,12 @@ class guiWin(QMainWindow):
                 self.drawIDsContComboBox_cb
             )
             self.showTreeInfoCheckbox.hide()
+            if not self.isSegm3D:
+                self.manualBackgroundAction.setVisible(True)
+                self.manualBackgroundAction.setDisabled(False)
+            else:
+                self.manualBackgroundAction.setVisible(False)
+                self.manualBackgroundAction.setDisabled(True)
         else:
             self.annotateToolbar.setVisible(False)
             self.realTimeTrackingToggle.setDisabled(False)
@@ -14394,6 +14650,8 @@ class guiWin(QMainWindow):
                                                     self.drawIDsContComboBox_cb)
             self.modeComboBox.setCurrentText('Viewer')
             self.showTreeInfoCheckbox.show()
+            self.manualBackgroundAction.setVisible(False)
+            self.manualBackgroundAction.setDisabled(True)
 
     def checkIfAutoSegm(self):
         """
@@ -14649,6 +14907,7 @@ class guiWin(QMainWindow):
         self.clearPointsLayers()
 
         self.clearOverlayLabelsItems()
+        self.clearManualBackgroundAnnotations()
     
     def clearPointsLayers(self):
         for action in self.pointsLayersToolbar.actions()[1:]:
@@ -14789,6 +15048,7 @@ class guiWin(QMainWindow):
         self.navigateScrollBarStartedMoving = True
         self.zSliceScrollBarStartedMoving = True
         self.labelRoiRunning = False
+        self.isRangeReset = True
         self.editIDmergeIDs = True
         self.doNotAskAgainExistingID = False
         self.highlightedIDopts = None
@@ -14852,9 +15112,11 @@ class guiWin(QMainWindow):
             # self.metricsToSave means that the user did not set 
             # through setMeasurements dialog --> save all measurements
             self.metricsToSave = {chName:[] for chName in posData.loadedChNames}
+            isManualBackgrPresent = posData.manualBackgroundLab is not None
             for chName in posData.loadedChNames:
                 metrics_desc, bkgr_val_desc = measurements.standard_metrics_desc(
-                    posData.SizeZ>1, chName, isSegm3D=self.isSegm3D
+                    posData.SizeZ>1, chName, isSegm3D=self.isSegm3D,
+                    isManualBackgrPresent=isManualBackgrPresent
                 )
                 self.metricsToSave[chName].extend(metrics_desc.keys())
                 self.metricsToSave[chName].extend(bkgr_val_desc.keys())
@@ -15154,6 +15416,13 @@ class guiWin(QMainWindow):
         posData.allData_li[posData.frame_i]['regionprops'] = posData.rp.copy()
         posData.allData_li[posData.frame_i]['labels'] = posData.lab.copy()
         posData.allData_li[posData.frame_i]['IDs'] = posData.IDs.copy()
+        if hasattr(self, 'manualBackgroundLab'):
+            printl(self.pos_i)
+            from cellacdc.plot import imshow
+            imshow(posData.manualBackgroundLab)
+            posData.allData_li[posData.frame_i]['manualBackgroundLab'] = (
+                posData.manualBackgroundLab
+            )
 
         # Store dynamic metadata
         is_cell_dead_li = [False]*len(posData.rp)
@@ -15899,6 +16168,7 @@ class guiWin(QMainWindow):
             # Requested frame was never visited before. Load from HDD
             posData.lab = self.get_labels()
             posData.rp = skimage.measure.regionprops(posData.lab)
+            self.setManualBackgroundLab()
             if posData.acdc_df is not None:
                 frames = posData.acdc_df.index.get_level_values(0)
                 if posData.frame_i in frames:
@@ -15938,6 +16208,7 @@ class guiWin(QMainWindow):
             ripIDs_df = df[df['is_cell_dead']>0]
             posData.ripIDs = set(ripIDs_df.index)
             posData.editID_info = self._get_editID_info(df)
+            self.setManualBackgroundLab(load_from_store=True, debug=debug)
             self.get_cca_df()
 
         self.update_rp_metadata(draw=False)
@@ -16919,7 +17190,6 @@ class guiWin(QMainWindow):
                     pass
     
     def addPointsLayer_cb(self):
-        self.storeViewRange()
         self.pointsLayersToolbar.setVisible(True)
         self.autoPilotZoomToObjToolbar.setVisible(True)
         posData = self.data[self.pos_i]
@@ -16942,8 +17212,6 @@ class guiWin(QMainWindow):
             self.checkClickEntryTableEndnameExists
         )
         self.addPointsWin.show()
-
-        QTimer.singleShot(200, self.resetRange)
         
     def buttonAddPointsByClickingActive(self):
         for action in self.pointsLayersToolbar.actions()[1:]:
@@ -17747,6 +18015,18 @@ class guiWin(QMainWindow):
         else:
             Y, X = posData.img_data.shape[-2:]
         self.contoursImage = np.zeros((Y, X, 4), dtype=np.uint8)
+    
+    def initManualBackgroundImage(self):
+        posData = self.data[self.pos_i]
+        if hasattr(posData, 'lab'):
+            Y, X = posData.lab.shape[-2:]
+        else:
+            Y, X = posData.img_data.shape[-2:]
+        if not hasattr(self, 'manualBackgroundTextItems'):
+            self.manualBackgroundTextItems = {}
+        posData.manualBackgroundImage = np.zeros((Y, X, 4), dtype=np.uint8)
+        if posData.manualBackgroundLab is None:
+            posData.manualBackgroundLab = np.zeros((Y, X), dtype=np.uint32)
     
     def initTextAnnot(self, force=False):
         posData = self.data[self.pos_i]
@@ -18854,6 +19134,20 @@ class guiWin(QMainWindow):
             xx, yy, fontSize=self.fontSize, ID=ID, y_cursor=y, x_cursor=x
         )
     
+    def _drawManualBackgroundObjContour(self, x, y):
+        if self.manualBackgroundObj is None:
+            return
+        
+        ID = self.manualBackgroundObj.label
+        yc, xc = self.manualBackgroundObj.local_centroid
+        Dx = x-xc
+        Dy = y-yc
+        xx = self.manualBackgroundObj.xx_contour + Dx
+        yy = self.manualBackgroundObj.yy_contour + Dy
+        self.manualBackgroundObjItem.setData(
+            xx, yy, fontSize=self.fontSize, ID=ID, y_cursor=y, x_cursor=x
+        )
+    
     def _drawGhostMask(self, x, y):
         if self.ghostObject is None:
             return
@@ -18882,9 +19176,19 @@ class guiWin(QMainWindow):
             fontSize=self.fontSize, ID=ID, y_cursor=y, x_cursor=x
         )
 
+    def drawManualBackgroundObj(self, x, y):
+        if x is None or y is None:
+            self.clearGhost()
+            return
+        
+        self._drawManualBackgroundObjContour(x, y)
 
     def drawManualTrackingGhost(self, x, y):
         if not self.manualTrackingToolbar.showGhostCheckbox.isChecked():
+            return
+        
+        if x is None or y is None:
+            self.clearGhost()
             return
         
         if self.manualTrackingToolbar.ghostContourRadiobutton.isChecked():
@@ -18970,6 +19274,87 @@ class guiWin(QMainWindow):
             return self.ax1_contoursImageItem
         else:
             return self.ax2_contoursImageItem
+    
+    def setManualBackgroundImage(self):
+        if not self.manualBackgroundButton.isChecked():
+            return
+        
+        posData = self.data[self.pos_i]
+        if not hasattr(posData, 'manualBackgroundImage'):
+            self.initManualBackgroundImage()
+        
+        contours = []
+        for obj in skimage.measure.regionprops(posData.manualBackgroundLab):    
+            obj_contours = self.getObjContours(obj, all_external=True)  
+            contours.extend(obj_contours)
+            textItem = self.manualBackgroundTextItems[obj.label]
+            textItem.setText(f'{obj.label}')
+            if textItem not in self.ax1.items:
+                self.ax1.addItem(textItem)
+                yc, xc = obj.centroid
+                textItem.setPos(xc, yc)
+        
+        cv2.drawContours(
+            posData.manualBackgroundImage, contours, -1, (255, 0, 0, 200), 1
+        )
+        self.manualBackgroundImageItem.setImage(posData.manualBackgroundImage)
+    
+    def setManualBackgrounNextID(self):
+        posData = self.data[self.pos_i]
+        currentID = self.manualBackgroundObj.label
+        idx = posData.IDs_idxs[currentID]
+        next_idx = idx + 1
+        if next_idx >= len(posData.IDs):
+            return
+        next_ID = posData.IDs[next_idx]
+        self.manualBackgroundToolbar.spinboxID.setValue(next_ID)
+        
+    def addManualBackgroundObject(self, x, y):
+        posData = self.data[self.pos_i]
+        
+        Y, X = self.currentLab2D.shape
+        ymin, xmin, ymax, xmax = self.manualBackgroundObj.bbox
+        width, height = xmax-xmin, ymax-ymin
+        yc, xc = self.manualBackgroundObj.local_centroid
+        xstart, ystart = round(x-xc), round(y-yc)
+        xstart = xstart if xstart >= 0 else 0
+        ystart = ystart if ystart >= 0 else 0
+        
+        xend = xstart+width
+        yend = ystart+height
+        xend = xend if xend <= X else X
+        yend = yend if yend <= Y else Y
+        
+        width = xend-xstart
+        height = yend-ystart
+        
+        obj_image = self.manualBackgroundObj.image[:height, :width]
+        obj_slice = (slice(ystart, yend), slice(xstart, xend))
+        ID = self.manualBackgroundObj.label
+        posData.manualBackgroundLab[obj_slice][obj_image] = ID
+        
+        if ID in self.manualBackgroundTextItems:
+            return
+        
+        textItem = pg.TextItem(
+            text=str(ID), color='r', anchor=(0.5, 0.5)
+        )
+        textItem.setFont(font_13px)
+        textItem.setPos(x, y)
+        self.manualBackgroundTextItems[ID] = textItem
+        
+        self.ax1.addItem(textItem)
+    
+    def setManualBackgroundLab(self, load_from_store=False, debug=True):
+        posData = self.data[self.pos_i]
+        if posData.manualBackgroundLab is None:
+            self.initManualBackgroundImage()
+        
+        for obj in skimage.measure.regionprops(posData.manualBackgroundLab):
+            textItem = pg.TextItem(text='', color='r', anchor=(0.5, 0.5))
+            if obj.label in self.manualBackgroundTextItems:
+                continue
+            self.manualBackgroundTextItems[obj.label] = textItem
     
     def updateContoursImage(self, ax, delROIsIDs=None):
         imageItem = self.getContoursImageItem(ax)
@@ -19163,6 +19548,7 @@ class guiWin(QMainWindow):
         self.annotate_rip_and_bin_IDs()
         self.updateTempLayerKeepIDs()
         self.drawPointsLayers(computePointsLayers=computePointsLayers)
+        self.setManualBackgroundImage()
     
     def setOverlayLabelsItems(self):
         if not self.overlayLabelsButton.isChecked():
@@ -19870,6 +20256,8 @@ class guiWin(QMainWindow):
         msg.critical(self, err_title, err_msg)
 
     def reInitGui(self):
+        self.placeHolderToolbar.setVisible(False)
+        
         self.gui_createLazyLoader()
 
         try:
@@ -21714,6 +22102,8 @@ class guiWin(QMainWindow):
         self.thread.started.connect(self.worker.run)
 
         self.thread.start()
+        
+        
     
     def _workerDebug(self, stuff_to_debug):
         pass
@@ -22076,6 +22466,11 @@ class guiWin(QMainWindow):
 
         self.showPropsDockButton.setMaximumWidth(15)
         self.showPropsDockButton.setMaximumHeight(60)
+        
+        for toolbar in self.controlToolBars:
+            toolbar.setFixedHeight(
+                self.placeHolderToolbar.sizeHint().height()
+            )
 
         self.graphLayout.setFocus()
     

@@ -510,10 +510,16 @@ def get_how_3Dto2D(isZstack, isSegm3D):
     ]
     return how_3Dto2D, how_3Dto2D_desc
 
-def standard_metrics_desc(isZstack, chName, isSegm3D=False):
+def standard_metrics_desc(
+        isZstack, chName, isManualBackgrPresent=False, isSegm3D=False
+    ):
     how_3Dto2D, how_3Dto2D_desc = get_how_3Dto2D(isZstack, isSegm3D)
-    metrics_names = _get_metrics_names()
-    bkgr_val_names = _get_bkgr_val_names()
+    metrics_names = _get_metrics_names(
+        is_manual_bkgr_present=isManualBackgrPresent
+    )
+    bkgr_val_names = _get_bkgr_val_names(
+        is_manual_bkgr_present=isManualBackgrPresent
+    )
     metrics_desc = {}
     bkgr_val_desc = {}
     for how, how_desc in zip(how_3Dto2D, how_3Dto2D_desc):
@@ -530,14 +536,15 @@ def standard_metrics_desc(isZstack, chName, isSegm3D=False):
                 note_txt = ''
 
             if func_desc == 'Amount':
-                amount_desc = ("""
+                amount_formula = _get_amount_formula_str(func_name)
+                amount_desc = (f"""
                     Amount is the <b>background corrected (subtracted) total
                     fluorescence intensity</b>, which is usually the best proxy
                     for the amount of the tagged molecule, e.g.,
                     <b>protein amount</b>.
                     <br><br>
                     The amount is calculated as follows:<br><br>
-                    <code>amount = (mean_obj - median_background)*area_obj</code>
+                    <code>{amount_formula}</code>
                     <br><br>
                     where <code>_obj</code> refers to the pixels inside the 
                     segmented object.
@@ -575,6 +582,14 @@ def standard_metrics_desc(isZstack, chName, isSegm3D=False):
                     data prep module (module 1.).<br><br>
                     Note taht this metric is <b>grayed out</b> and it cannot be selected 
                     if the <b>selection of the background ROIs was not performed</b>.
+                """)
+            elif func_name.find('_manualBkgr') != -1:
+                bkgr_desc = ("""
+                    <code>manualBkgr</code> means that the background value
+                    used to correct the intensities is computed as the <b>mean</b>
+                    of the pixels from the pixels inside each 
+                    <b>background objects</b> that you selected in the
+                    GUI module (module 3).<br><br>
                 """)
             else:
                 bkgr_desc = ''
@@ -691,12 +706,14 @@ def classify_acdc_df_colnames(acdc_df, channels):
 
     return metrics
 
-def _get_metrics_names():
+def _get_metrics_names(is_manual_bkgr_present=False):
     metrics_names = {
         'mean': 'Mean',
         'sum': 'Sum',
         'amount_autoBkgr': 'Amount',
         'amount_dataPrepBkgr': 'Amount',
+        'amount_manualBkgr': 'Amount',
+        'mean_manualBkgr': 'Mean',
         'concentration_autoBkgr_from_vol_vox': 'Concentration',
         'concentration_dataPrepBkgr_from_vol_vox': 'Concentration',
         'concentration_autoBkgr_from_vol_fl': 'Concentration',
@@ -707,11 +724,19 @@ def _get_metrics_names():
         'q25': '25 percentile',
         'q75': '75 percentile',
         'q05': '5 percentile',
-        'q95': '95 percentile'
+        'q95': '95 percentile',
+        
     }
     return metrics_names
 
-def _get_bkgr_val_names():
+def _get_amount_formula_str(func_name):
+    if func_name.find('manualBkgr') != -1:
+        formula = 'amount = (mean_obj - mean_background)*area_obj'
+    else:
+        formula = 'amount = (mean_obj - median_background)*area_obj'
+    return formula
+
+def _get_bkgr_val_names(is_manual_bkgr_present=False):
     bkgr_val_names = {
         'autoBkgr_bkgrVal_median': 'Median',
         'autoBkgr_bkgrVal_mean': 'Mean',
@@ -726,6 +751,13 @@ def _get_bkgr_val_names():
         'dataPrepBkgr_bkgrVal_q95': '95 percentile',
         'dataPrepBkgr_bkgrVal_q05': '5 percentile',
     }
+    if is_manual_bkgr_present:
+        bkgr_val_names['manualBkgr_bkgrVal_median'] = 'Median'
+        bkgr_val_names['manualBkgr_bkgrVal_mean'] = 'Mean'
+        bkgr_val_names['manualBkgr_bkgrVal_q75'] = '75 percentile'
+        bkgr_val_names['manualBkgr_bkgrVal_q25'] = '25 percentile'
+        bkgr_val_names['manualBkgr_bkgrVal_q95'] = '95 percentile'
+        bkgr_val_names['manualBkgr_bkgrVal_q05'] = '5 percentile'
     return bkgr_val_names
 
 def get_props_info_txt():
@@ -930,6 +962,13 @@ def _amount(arr, bkgr, area):
         val = np.nan
     return val
 
+def _mean_corrected(arr, bkgr):
+    try:
+        val = np.mean(arr)-bkgr
+    except Exception as e:
+        val = np.nan
+    return val
+
 def get_obj_size_metric(
         col_name, obj, isSegm3D, yx_pxl_to_um2, vox_to_fl_3D
     ):
@@ -1006,20 +1045,18 @@ def get_bkgrVals(df, channel, how, ID, bkgr_type=None):
     try:
         if how:
             autoBkgr_col = f'{channel}_autoBkgr_bkgrVal_median_{how}'
-            autoBkgrVal = df.at[ID, autoBkgr_col]
         else:
             autoBkgr_col = f'{channel}_autoBkgr_bkgrVal_median'
-            autoBkgrVal = df.at[ID, autoBkgr_col]
+        autoBkgrVal = df.at[ID, autoBkgr_col]
     except Exception as e:
         autoBkgrVal = np.nan
     
     try:
         if how:
             dataPrepBkgr_col = f'{channel}_dataPrepBkgr_bkgrVal_median_{how}'
-            dataPrepBkgrVal = df.at[ID, dataPrepBkgr_col]
         else:
             dataPrepBkgr_col = f'{channel}_dataPrepBkgr_bkgrVal_median'
-            dataPrepBkgrVal = df.at[ID, dataPrepBkgr_col]
+        dataPrepBkgrVal = df.at[ID, dataPrepBkgr_col]
     except Exception as e:
         dataPrepBkgrVal = np.nan
 
@@ -1030,6 +1067,17 @@ def get_bkgrVals(df, channel, how, ID, bkgr_type=None):
         return dataPrepBkgrVal
     else:
         return autoBkgrVal
+
+def get_manualBkgr_bkgrVal(df, channel, how, ID):
+    try:
+        if how:
+            bkgr_col = f'{channel}_manualBkgr_bkgrVal_mean_{how}'
+        else:
+            bkgr_col = f'{channel}_dataPrepBkgr_bkgrVal_mean'
+        bkgrVal = df.at[ID, bkgr_col]
+    except Exception as e:
+        bkgrVal = np.nan
+    return bkgrVal
 
 def get_foregr_obj_array(foregr_arr, obj, isSegm3D):
     if foregr_arr.ndim == 3 and isSegm3D:
@@ -1139,7 +1187,7 @@ def get_bkgr_data(
             bkgr_data['dataPrepBkgr']['3D'].extend(bkgrRoi_3D)
     elif dataPrepBkgr_present:
         bkgr_data['dataPrepBkgr'][''].extend(bkgrRoi)
-
+    
     return bkgr_data
             
 
@@ -1149,6 +1197,8 @@ def standard_metrics_func():
         'sum': lambda arr: _try_metric_func(np.sum, arr),
         'amount_autoBkgr': lambda arr, bkgr, area: _amount(arr, bkgr, area),
         'amount_dataPrepBkgr': lambda arr, bkgr, area: _amount(arr, bkgr, area),
+        'amount_manualBkgr': lambda arr, bkgr, area: _amount(arr, bkgr, area),
+        'mean_manualBkgr': lambda arr, bkgr, area: _mean_corrected(arr, bkgr),
         'median': lambda arr: _try_metric_func(np.median, arr),
         'min': lambda arr: _try_metric_func(np.min, arr),
         'max': lambda arr: _try_metric_func(np.max, arr),
@@ -1362,8 +1412,10 @@ def add_size_metrics(
 def add_foregr_metrics(
         df, rp, channel, foregr_data, foregr_metrics_params, metrics_func,
         custom_metrics_params, isSegm3D, lab, foregr_img, 
-        customMetricsCritical=None
+        manualBackgrRp=None, customMetricsCritical=None
     ):
+    if manualBackgrRp is not None:
+        manualBackgrRp = {obj.label for obj in manualBackgrRp}
     custom_errors = ''
     # Iterate objects and compute foreground metrics
     for o, obj in enumerate(tqdm(rp, ncols=100, leave=False)):
@@ -1373,7 +1425,9 @@ def add_foregr_metrics(
             foregr_obj_arr, obj_area = get_foregr_obj_array(
                 foregr_arr, obj, isSegm3D
             )
-            if func_name.find('amount_') != -1:
+            is_manual_bkgr_metric = func_name.find('manualBkgr') != -1
+            is_amount_metric = func_name.find('amount_') != -1
+            if is_amount_metric and not is_manual_bkgr_metric:
                 bkgr_type = func_name[len('amount_'):]
                 try:
                     bkgr_val = get_bkgrVals(
@@ -1383,6 +1437,10 @@ def add_foregr_metrics(
                     val = func(foregr_obj_arr, bkgr_val, obj_area)
                 except Exception as e:
                     val = np.nan
+            elif is_manual_bkgr_metric:
+                bkgr_val = get_manualBkgr_bkgrVal(df, channel, how, obj.label)
+                func = metrics_func[func_name]
+                val = func(foregr_obj_arr, bkgr_val, obj_area)
             else:
                 func = metrics_func[func_name]
                 val = func(foregr_obj_arr)
@@ -1411,14 +1469,33 @@ def add_foregr_metrics(
                 customMetricsCritical.emit(custom_error, col)
     return df
 
-def add_bkgr_values(df, bkgr_data, bkgr_metrics_params, metrics_func):
+def add_bkgr_values(
+        df, bkgr_data, bkgr_metrics_params, metrics_func, 
+        manualBackgrRp=None, foregr_data=None
+    ):
     # Compute background values
     for col, (bkgr_type, func_name, how) in bkgr_metrics_params.items():
-        bkgr_arr = bkgr_data[bkgr_type][how]
         bkgr_func = metrics_func[func_name]
+        if bkgr_type == 'manualBkgr':
+            add_manual_bkgr_values(
+                manualBackgrRp, foregr_data, df, col, how, bkgr_func
+            )
+            continue
+        bkgr_arr = bkgr_data[bkgr_type][how]
         bkgr_val = bkgr_func(bkgr_arr)
         df[col] = bkgr_val
     return df
+
+def add_manual_bkgr_values(manualBackgrRp, foregr_data, df, col, how, bkgr_func):
+    if manualBackgrRp is None:
+        return
+    if foregr_data is None:
+        return
+    foregr_img = foregr_data[how]
+    for obj in manualBackgrRp:
+        bkgr_obj_arr = foregr_img[obj.slice][obj.image]
+        bkgr_val = bkgr_func(bkgr_obj_arr)
+        df.at[obj.label, col] = bkgr_val
 
 def add_regionprops_metrics(df, lab, regionprops_to_save, logger_func=None):
     if not regionprops_to_save:
@@ -1503,7 +1580,7 @@ def get_metrics_params(all_channels_metrics, metrics_func, custom_func_dict):
     concentration_metrics_params = {}
     custom_metrics_params = {ch:{} for ch in channel_names}
     az = r'[A-Za-z0-9]'
-    bkgrVal_pattern = fr'_({az}+)_bkgrVal_({az}+)_?({az}*)'
+    bkgrVal_pattern = fr'_({az}+)_bkgrVal_({az}+)_?({az}*)$'
 
     for channel_name, columns in all_channels_metrics.items():
         for col in columns:
@@ -1518,7 +1595,7 @@ def get_metrics_params(all_channels_metrics, metrics_func, custom_func_dict):
             
             is_standard_foregr = False
             for metric in metrics_func:
-                foregr_pattern = rf'{channel_name}_({metric})_?({az}*)'
+                foregr_pattern = rf'{channel_name}_({metric})_?({az}*)$'
                 m = re.findall(foregr_pattern, col)
                 if m:
                     # Metric is a standard metric 

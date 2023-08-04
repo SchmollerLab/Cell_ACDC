@@ -251,6 +251,7 @@ class mainWin(QMainWindow):
         layout.addWidget(label)
         self.darkModeToggle = widgets.Toggle(label_text='Dark mode')
         self.darkModeToggle.ignoreEvent = False
+        self.darkModeToggle.warnMessageBox  = True
         if scheme == 'dark':
             self.darkModeToggle.ignoreEvent = True
             self.darkModeToggle.setChecked(True)
@@ -277,9 +278,14 @@ class mainWin(QMainWindow):
             df_settings = pd.read_csv(settings_csv_path, index_col='setting')
         df_settings.at['colorScheme', 'value'] = scheme
         df_settings.to_csv(settings_csv_path)
-        _warnings.warnRestartCellACDCcolorModeToggled(
-            scheme, app_name='Cell-ACDC', parent=self
-        )
+        if self.darkModeToggle.warnMessageBox:
+            _warnings.warnRestartCellACDCcolorModeToggled(
+                scheme, app_name='Cell-ACDC', parent=self
+            )
+            self.darkModeToggle.warnMessageBox = True
+        self.setStatusBarRestartCellACDC()
+    
+    def setStatusBarRestartCellACDC(self):
         self.statusBarLayout.addWidget(QLabel(html_utils.paragraph(
             '<i>Restart Cell-ACDC for the change to take effect</i>', 
             font_color='red'
@@ -699,7 +705,7 @@ class mainWin(QMainWindow):
             'Stack 2D segmentation objects into 3D objects...'
         )  
         self.trackSubCellFeaturesAction = QAction(
-            'Track sub-cellular objects (assign same ID as the cell they belong to)...'
+            'Track and/or count sub-cellular objects (assign same ID as the cell they belong to)...'
         )    
         self.applyTrackingFromTableAction = QAction(
             'Apply tracking info from tabular data...'
@@ -1601,6 +1607,9 @@ class mainWin(QMainWindow):
         # self.closeButton.setIconSize(QSize(iconWidth, iconWidth))
         self.setColorsAndText()
         self.readSettings()
+        if self.app.toggle_dark_mode:
+            self.darkModeToggle.warnMessageBox  = False
+            self.darkModeToggle.setChecked(True)
 
     def saveWindowGeometry(self):
         settings = QSettings('schmollerlab', 'acdc_main')
