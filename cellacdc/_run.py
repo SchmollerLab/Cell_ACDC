@@ -7,14 +7,25 @@ def _install_tables(parent_software='Cell-ACDC'):
     try:
         import tables
     except Exception as e:
+        if parent_software == 'Cell-ACDC':
+            issues_url = 'https://github.com/SchmollerLab/Cell_ACDC/issues'
+            note_txt = (
+                'If the installation fails, you can still use Cell-ACDC, but we '
+                'highly recommend you report the issue (see link below) and we '
+                'will be very happy to help. Thank you for your patience!'
+                
+            )
+        else:
+            issues_url = 'https://github.com/SchmollerLab/Cell_ACDC/issues'
+            note_txt = (
+                'If the installation fails, report the issue (see link below) and we '
+                'will be very happy to help. Thank you for your patience!'
+            )
         while True:
             txt = (
                 f'{parent_software} needs to install a library called `tables`.\n\n'
-                'If the installation fails, you can still use Cell-ACDC, but we '
-                'highly recommend you report the issue (see link below) and we '
-                'will be very happy to help. Thank you for your patience!\n\n'
-                'Report issue here: https://github.com/SchmollerLab/Cell_ACDC/issues'
-                '\n'
+                f'{note_txt}\n\n'
+                f'Report issue here: {issues_url}\n'
             )
             print('-'*60)
             print(txt)
@@ -51,7 +62,7 @@ def _install_tables(parent_software='Cell-ACDC'):
                     log_func(
                         f'{msg_type}: Installation of `tables` failed. '
                         'Please report the issue here (**including the error message above**): '
-                        'https://github.com/SchmollerLab/Cell_ACDC/issues'
+                        f'{issues_url}'
                     )
                     print('^'*60)
                 finally:
