@@ -3,13 +3,13 @@ import shutil
 import sys
 from importlib import import_module
 
-def _setup_gui_libraries():
+def _install_tables(parent_software='Cell-ACDC'):
     try:
         import tables
     except Exception as e:
         while True:
             txt = (
-                'Cell-ACDC needs to install a library called `tables`.\n\n'
+                f'{parent_software} needs to install a library called `tables`.\n\n'
                 'If the installation fails, you can still use Cell-ACDC, but we '
                 'highly recommend you report the issue (see link below) and we '
                 'will be very happy to help. Thank you for your patience!\n\n'
@@ -41,9 +41,16 @@ def _setup_gui_libraries():
                     import traceback
                     traceback.print_exc()
                     print('*'*60)
-                    print(
-                        '[WARNING]: Installation of `tables` failed. '
-                        'Please report the issue here: '
+                    if parent_software == 'Cell-ACDC':
+                        msg_type = '[WARNING]'
+                        log_func = print
+                    else:
+                        msg_type = '[ERROR]'
+                        log_func = exit
+                    
+                    log_func(
+                        f'{msg_type}: Installation of `tables` failed. '
+                        'Please report the issue here (**including the error message above**): '
                         'https://github.com/SchmollerLab/Cell_ACDC/issues'
                     )
                     print('^'*60)
@@ -56,6 +63,9 @@ def _setup_gui_libraries():
                     f'"{answer}" is not a valid answer. '
                     'Type "y" for "yes", or "n" for "no".'
                 )
+
+def _setup_gui_libraries():
+    
     
     warn_restart = False
     
