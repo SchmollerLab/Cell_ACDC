@@ -17163,10 +17163,7 @@ class guiWin(QMainWindow):
                 for action in self.selectOverlayLabelsActionGroup.actions():
                     if action.text() == lastSelectedName:
                         action.setChecked(True)
-            self.updateAllImages()
-        else:
-            self.clearOverlayLabelsItems()
-            self.setOverlayLabelsItemsVisible(False)
+        self.updateAllImages()
     
     def askLabelsToOverlay(self):
         selectOverlayLabels = widgets.QDialogListbox(
