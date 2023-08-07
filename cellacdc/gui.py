@@ -11331,10 +11331,10 @@ class guiWin(QMainWindow):
     @exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_Q:
-            printl(self.xHoverImg, self.yHoverImg)
-            printl(self.img1.mapToData(QCursor().pos()))
-            x, y = QCursor().pos().x(), QCursor().pos().y()
-            printl(self.graphLayout.mapToScene(x, y))
+            # printl(self.xHoverImg, self.yHoverImg)
+            # printl(self.img1.mapToData(QCursor().pos()))
+            # x, y = QCursor().pos().x(), QCursor().pos().y()
+            # printl(self.graphLayout.mapToScene(x, y))
             posData = self.data[self.pos_i]
             is_segm_3D = self.isSegm3D
             # all_metrics_names = measurements.get_all_metrics_names(
