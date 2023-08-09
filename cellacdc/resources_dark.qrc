@@ -113,6 +113,7 @@
     <file alias="no.svg">resources/icons/no_dark.svg</file>
     <file alias="yesGray.svg">resources/icons/yesGray_dark.svg</file>
     <file alias="bkgrRoi.svg">resources/icons/bkgrRoi_dark.svg</file>
+    <file alias="add_crop_ROI.svg">resources/icons/add_crop_ROI_dark.svg</file>
     <file alias="hull.svg">resources/icons/hull_dark.svg</file>
     <file alias="image.svg">resources/icons/image_dark.svg</file>
     <file alias="edit_cca.svg">resources/icons/edit_cca_dark.svg</file>

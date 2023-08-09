@@ -1487,7 +1487,6 @@ class guiWin(QMainWindow):
         self.checkableQButtonsGroup.addButton(self.setIsHistoryKnownButton)
         self.functionsNotTested3D.append(self.setIsHistoryKnownButton)
         
-
         ccaToolBar.addAction(self.assignBudMothAutoAction)
         ccaToolBar.addAction(self.editCcaToolAction)
         ccaToolBar.addAction(self.reInitCcaAction)
@@ -4559,10 +4558,12 @@ class guiWin(QMainWindow):
                 )
                 delID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
-                    msg='You clicked on the background.\n'
-                        'Enter here ID that you want to delete',
+                    msg='You clicked on the background.<br>'
+                        'Enter here ID(s) that you want to delete<br><br>'
+                        'You can enter multiple IDs separated by comma',
                     parent=self, allowedValues=posData.IDs,
-                    defaultTxt=str(nearest_ID)
+                    defaultTxt=str(nearest_ID),
+                    allowList=True
                 )
                 delID_prompt.exec_()
                 if delID_prompt.cancel:
@@ -4579,52 +4580,16 @@ class guiWin(QMainWindow):
             if UndoFutFrames is None:
                 return
 
+            # Store undo state before modifying stuff
+            self.storeUndoRedoStates(UndoFutFrames)  
             posData.doNotShowAgain_DelID = doNotShowAgain
             posData.UndoFutFrames_DelID = UndoFutFrames
             posData.applyFutFrames_DelID = applyFutFrames
             includeUnvisited = posData.includeUnvisitedInfo['Delete ID']
 
-            self.current_frame_i = posData.frame_i
-
-            # Apply Delete ID to future frames if requested
-            if applyFutFrames:
-                # Store current data before going to future frames
-                self.store_data()
-                segmSizeT = len(posData.segm_data)
-                for i in range(posData.frame_i+1, segmSizeT):
-                    lab = posData.allData_li[i]['labels']
-                    if lab is None and not includeUnvisited:
-                        self.enqAutosave()
-                        break
-                    
-                    if lab is not None:
-                        # Visited frame
-                        lab[lab==delID] = 0
-
-                        # Store change
-                        posData.allData_li[i]['labels'] = lab.copy()
-                        # Get the rest of the stored metadata based on the new lab
-                        posData.frame_i = i
-                        self.get_data()
-                        self.store_data(autosave=False)
-                    elif includeUnvisited:
-                        # Unvisited frame (includeUnvisited = True)
-                        lab = posData.segm_data[i]
-                        lab[lab==delID] = 0
-
-            # Back to current frame
-            if applyFutFrames:
-                posData.frame_i = self.current_frame_i
-                self.get_data()
-
-            # Store undo state before modifying stuff
-            self.storeUndoRedoStates(UndoFutFrames)     
-
-            self.clearObjContour(ID=delID, ax=0)     
-            self.clearObjContour(ID=delID, ax=1)       
-
-            delID_mask = posData.lab==delID
-            posData.lab[delID_mask] = 0
+            delID_mask = self.deleteIDmiddleClick(
+                delID, applyFutFrames, includeUnvisited
+            )
 
             # Update data (rp, etc)
             self.update_rp()
@@ -10892,7 +10857,7 @@ class guiWin(QMainWindow):
         )
         self.updateAllImages()
 
-        QTimer.singleShot(300, self.autoRange)
+        # QTimer.singleShot(300, self.autoRange)
 
     def delObjsOutSegmMaskActionTriggered(self):
         posData = self.data[self.pos_i]
@@ -19547,6 +19512,57 @@ class guiWin(QMainWindow):
         self.drawPointsLayers(computePointsLayers=computePointsLayers)
         self.setManualBackgroundImage()
     
+    def deleteIDFromLab(self, lab, delID):
+        delMask = np.zeros(lab.shape, dtype=bool)
+        if isinstance(delID, int):
+            delMask[lab==delID] = True
+        else:
+            for _delID in delID:
+                delMask[lab==_delID] = True
+        lab[delMask] = 0
+        return lab, delMask
+    
+    def deleteIDmiddleClick(self, delID, applyFutFrames, includeUnvisited):
+        posData = self.data[self.pos_i]
+        self.current_frame_i = posData.frame_i
+
+        # Apply Delete ID to future frames if requested
+        if applyFutFrames:
+            # Store current data before going to future frames
+            self.store_data()
+            segmSizeT = len(posData.segm_data)
+            for i in range(posData.frame_i+1, segmSizeT):
+                lab = posData.allData_li[i]['labels']
+                if lab is None and not includeUnvisited:
+                    self.enqAutosave()
+                    break
+                
+                if lab is not None:
+                    # Visited frame
+                    lab, _ = self.deleteIDFromLab(lab, delID)
+
+                    # Store change
+                    posData.allData_li[i]['labels'] = lab.copy()
+                    # Get the rest of the stored metadata based on the new lab
+                    posData.frame_i = i
+                    self.get_data()
+                    self.store_data(autosave=False)
+                elif includeUnvisited:
+                    # Unvisited frame (includeUnvisited = True)
+                    lab, _ = posData.segm_data[i]
+                    lab, _ = self.deleteIDFromLab(lab, delID)
+
+        # Back to current frame
+        if applyFutFrames:
+            posData.frame_i = self.current_frame_i
+            self.get_data()   
+
+        self.clearObjContour(ID=delID, ax=0)     
+        self.clearObjContour(ID=delID, ax=1)       
+
+        posData.lab, delID_mask = self.deleteIDFromLab(posData.lab, delID)
+        return delID_mask
+    
     def setOverlayLabelsItems(self):
         if not self.overlayLabelsButton.isChecked():
             return 
@@ -22226,6 +22242,7 @@ class guiWin(QMainWindow):
 
     def openRecentFile(self, path):
         self.logger.info(f'Opening recent folder: {path}')
+        self.addToRecentPaths(path, logger=self.logger)
         self.openFolder(exp_path=path)
     
     def _waitCloseAutoSaveWorker(self):

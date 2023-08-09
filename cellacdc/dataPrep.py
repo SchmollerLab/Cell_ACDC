@@ -189,6 +189,14 @@ class dataPrepWin(QMainWindow):
 
         self.loadPosAction = QAction("Load different Position...", self)
         self.loadPosAction.setShortcut("Shift+P")
+        
+        toolTip = (
+            "Add crop ROI for multiple crops\n\n"
+            "Multiple crops will be saved as Position_1, Position_2 "
+            "as sub-folders in the current Position."
+        )
+        self.addCropRoiActon = QAction(QIcon(":add_crop_ROI.svg"), toolTip, self)
+        self.addCropRoiActon.setDisabled(True)
 
         toolTip = "Add ROI where to calculate background intensity"
         self.addBkrgRoiActon = QAction(QIcon(":bkgrRoi.svg"), toolTip, self)
@@ -252,7 +260,7 @@ class dataPrepWin(QMainWindow):
 
         # navigateToolbar.addAction(self.jumpBackwardAction)
         # navigateToolbar.addAction(self.jumpForwardAction)
-
+        navigateToolbar.addAction(self.addCropRoiActon)
         navigateToolbar.addAction(self.addBkrgRoiActon)
 
         navigateToolbar.addAction(self.ZbackAction)
@@ -276,6 +284,7 @@ class dataPrepWin(QMainWindow):
         self.openRecentMenu.aboutToShow.connect(self.populateOpenRecent)
         self.exitAction.triggered.connect(self.close)
         self.showInExplorerAction.triggered.connect(self.showInExplorer)
+        self.addCropRoiActon.triggered.connect(self.addCropROI)
         self.addBkrgRoiActon.triggered.connect(self.addDefaultBkgrROI)
         self.cropAction.triggered.connect(self.crop_cb)
         self.cropZaction.toggled.connect(self.openCropZtool)
@@ -426,7 +435,7 @@ class dataPrepWin(QMainWindow):
         self.updateCropZtool()
         self.setImageNameText()
         self.update_img()
-        self.updateROI()
+        self.addAndConnectCropROIs()
         self.updateBkgrROIs()
         self.saveBkgrROIs(self.data[self.pos_i])
     
@@ -523,7 +532,10 @@ class dataPrepWin(QMainWindow):
         self.img.setImage(img)
         self.zSliceScrollBar.setMaximum(posData.SizeZ-1)
 
-    def updateROI(self):
+    def addAndConnectROI(self, roi):
+        pass
+    
+    def addAndConnectCropROIs(self):
         if self.startAction.isEnabled() or self.onlySelectingZslice:
             return
 
@@ -1455,6 +1467,7 @@ class dataPrepWin(QMainWindow):
         self.ROIshapeComboBox.setCurrentText(items[-1])
 
         for posData in self.data:
+            posData.cropROIs = []
             if posData.dataPrep_ROIcoords is None:
                 cropROI = self.getDefaultROI()
             else:
@@ -1473,9 +1486,9 @@ class dataPrepWin(QMainWindow):
                 )
 
             self.setROIprops(cropROI)
-            posData.cropROI = cropROI
+            posData.cropROIs.append(cropROI)
 
-        self.updateROI()
+        self.addAndConnectCropROIs()
 
         try:
             self.ROIshapeComboBox.currentTextChanged.disconnect()
@@ -1486,6 +1499,7 @@ class dataPrepWin(QMainWindow):
         )
 
         self.addBkrgRoiActon.setDisabled(False)
+        self.addCropRoiActon.setDisabled(False)
 
         for posData in self.data:
             if not posData.bkgrROIs and not posData.bkgrDataExists:
@@ -1540,6 +1554,9 @@ class dataPrepWin(QMainWindow):
         # bkgrROI.sigRegionChanged.connect(self.bkgrROIMoving)
         # bkgrROI.sigRegionChangeFinished.connect(self.bkgrROImovingFinished)
 
+    def addCropROI(self):
+        cropROI = self.getDefaultROI()
+        self.setROIprops(cropROI)
 
     def addDefaultBkgrROI(self, checked=False):
         bkgrROI = self.getDefaultBkgrROI()

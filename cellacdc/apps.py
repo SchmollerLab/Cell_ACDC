@@ -41,10 +41,12 @@ pg.setConfigOption('imageAxisOrder', 'row-major')
 
 from qtpy import QtCore
 from qtpy.QtGui import (
-    QIcon, QFontMetrics, QKeySequence, QFont, QGuiApplication, QCursor,
-    QKeyEvent, QPixmap, QFont, QPalette, QMouseEvent, QColor
+    QIcon, QFontMetrics, QKeySequence, QFont, QRegularExpressionValidator, 
+    QCursor, QKeyEvent, QPixmap, QFont, QPalette, QMouseEvent, QColor
 )
-from qtpy.QtCore import Qt, QSize, QEvent, Signal, QEventLoop, QTimer
+from qtpy.QtCore import (
+    Qt, QSize, QEvent, Signal, QEventLoop, QTimer, QRegularExpression
+)
 from qtpy.QtWidgets import (
     QFileDialog, QApplication, QMainWindow, QMenu, QLabel, QToolBar,
     QScrollBar, QWidget, QVBoxLayout, QLineEdit, QPushButton,
@@ -70,7 +72,9 @@ from . import base_cca_df
 from . import widgets
 from . import user_profile_path
 from . import features
+from .regex import float_regex
 
+POSITIVE_FLOAT_REGEX = float_regex(allow_negative=False)
 PRE_PROCESSING_STEPS = [
     'Adjust Brightness/Contrast',
     'Smooth (gaussian filter)', 
@@ -8384,7 +8388,7 @@ class QLineEditDialog(QDialog):
             defaultTxt='', parent=None, allowedValues=None,
             warnLastFrame=False, isInteger=False, isFloat=False,
             stretchEntry=True, allowEmpty=True, allowedTextEntries=None, 
-            allowText=False, lastVisitedFrame=None
+            allowText=False, lastVisitedFrame=None, allowList=False
         ):
         QDialog.__init__(self, parent)
 
@@ -8413,37 +8417,46 @@ class QLineEditDialog(QDialog):
             msg = html_utils.paragraph(msg, center=True)
         msg = QLabel(msg)
         msg.setStyleSheet("padding:0px 0px 3px 0px;")
-
+        
         if isFloat:
-            ID_QLineEdit = QDoubleSpinBox()
-            if allowedValues is not None:
-                _min, _max = allowedValues
-                ID_QLineEdit.setMinimum(_min)
-                ID_QLineEdit.setMaximum(_max)
-            else:
-                ID_QLineEdit.setMaximum(2147483647)
-            if defaultTxt:
-                ID_QLineEdit.setValue(float(defaultTxt))
-
+            self._type = float
         elif isInteger:
-            ID_QLineEdit = QSpinBox()
+            self._type = int
+        else:
+            self._type = str
+        
+        self.allowList = allowList
+
+        if isFloat and not allowList:
+            entryWidget = QDoubleSpinBox()
             if allowedValues is not None:
                 _min, _max = allowedValues
-                ID_QLineEdit.setMinimum(_min)
-                ID_QLineEdit.setMaximum(_max)
+                entryWidget.setMinimum(_min)
+                entryWidget.setMaximum(_max)
             else:
-                ID_QLineEdit.setMaximum(2147483647)
+                entryWidget.setMaximum(2147483647)
             if defaultTxt:
-                ID_QLineEdit.setValue(int(defaultTxt))
-        else:
-            ID_QLineEdit = QLineEdit()
-            ID_QLineEdit.setText(defaultTxt)
-            if not self.allowText:
-                ID_QLineEdit.textChanged[str].connect(self.ID_LineEdit_cb)
-        ID_QLineEdit.setFont(font)
-        ID_QLineEdit.setAlignment(Qt.AlignCenter)
+                entryWidget.setValue(float(defaultTxt))
 
-        self.ID_QLineEdit = ID_QLineEdit
+        elif isInteger and not allowList:
+            entryWidget = QSpinBox()
+            if allowedValues is not None:
+                _min, _max = allowedValues
+                entryWidget.setMinimum(_min)
+                entryWidget.setMaximum(_max)
+            else:
+                entryWidget.setMaximum(2147483647)
+            if defaultTxt:
+                entryWidget.setValue(int(defaultTxt))
+        else:
+            entryWidget = QLineEdit()
+            entryWidget.setText(defaultTxt)
+            if not self.allowText:
+                entryWidget.textChanged[str].connect(self.onTextChanged)
+        entryWidget.setFont(font)
+        entryWidget.setAlignment(Qt.AlignCenter)
+
+        self.entryWidget = entryWidget
 
         if allowedValues is not None:
             notValidLabel = QLabel()
@@ -8467,11 +8480,11 @@ class QLineEditDialog(QDialog):
         # Add widgets to layouts
         LineEditLayout.addWidget(msg, alignment=Qt.AlignCenter)
         if stretchEntry:
-            LineEditLayout.addWidget(ID_QLineEdit)
+            LineEditLayout.addWidget(entryWidget)
         else:
             entryLayout = QHBoxLayout()
             entryLayout.addStretch(1)
-            entryLayout.addWidget(ID_QLineEdit)
+            entryLayout.addWidget(entryWidget)
             entryLayout.addStretch(1)
             entryLayout.setStretch(1,1)
             LineEditLayout.addLayout(entryLayout)
@@ -8489,30 +8502,46 @@ class QLineEditDialog(QDialog):
         self.setLayout(mainLayout)
 
         # self.setModal(True)
+    
+    def value(self):
+        if self.isFloat or self.isInteger:
+            val = self.entryWidget.value()
+        elif not self.allowList:
+            val = int(self.entryWidget.text())
+        elif self.allowList:
+            text = self.entryWidget.text()
+            m = re.findall(POSITIVE_FLOAT_REGEX, text)
+            val = [int(val) for val in m]
+        return val
 
-    def ID_LineEdit_cb(self, text):
+    def onTextChanged(self, text):
         # Get inserted char
-        idx = self.ID_QLineEdit.cursorPosition()
+        idx = self.entryWidget.cursorPosition()
         if idx == 0:
             return
 
         newChar = text[idx-1]
+        if self.allowList and (newChar==',' or newChar == ' '):
+            return
 
         # Allow only integers
         try:
             val = int(newChar)
             if val > np.iinfo(np.uint32).max:
-                self.ID_QLineEdit.setText(str(np.iinfo(np.uint32).max))
-            if self.allowedValues is not None:
-                currentVal = int(self.ID_QLineEdit.text())
-                if currentVal not in self.allowedValues:
-                    self.notValidLabel.setText(f'{currentVal} not existing!')
-                else:
-                    self.notValidLabel.setText('')
+                self.entryWidget.setText(str(np.iinfo(np.uint32).max))
         except Exception as e:
             text = text.replace(newChar, '')
-            self.ID_QLineEdit.setText(text)
+            self.entryWidget.setText(text)
             return
+        
+        if self.allowedValues is not None:
+            currentVal = self.value()
+            if self.allowList:
+                currentVal = currentVal[-1]
+            if currentVal not in self.allowedValues:
+                self.notValidLabel.setText(f'{currentVal} not existing!')
+            else:
+                self.notValidLabel.setText('')
 
     def warnValLessLastFrame(self, val):
         msg = widgets.myMessageBox()
@@ -8543,7 +8572,7 @@ class QLineEditDialog(QDialog):
         return msg.cancel
 
     def ok_cb(self, event):
-        if not self.allowEmpty and not self.ID_QLineEdit.text():
+        if not self.allowEmpty and not self.entryWidget.text():
             msg = widgets.myMessageBox(showCentered=False, wrapText=False)
             msg.critical(
                 self, 'Empty text', 
@@ -8551,10 +8580,10 @@ class QLineEditDialog(QDialog):
             )
             return
         if self.allowedTextEntries is not None:
-            if self.ID_QLineEdit.text() not in self.allowedTextEntries:
+            if self.entryWidget.text() not in self.allowedTextEntries:
                 msg = widgets.myMessageBox(showCentered=False, wrapText=False)
                 txt = html_utils.paragraph(
-                    f'"{self.ID_QLineEdit.text()}" is not a valid entry.<br><br>'
+                    f'"{self.entryWidget.text()}" is not a valid entry.<br><br>'
                     'Valid entries are:<br>'
                     f'{html_utils.to_list(self.allowedTextEntries)}'
                 )
@@ -8564,10 +8593,7 @@ class QLineEditDialog(QDialog):
             if self.notValidLabel.text():
                 return
 
-        if self.isFloat or self.isInteger:
-            val = self.ID_QLineEdit.value()
-        else:
-            val = int(self.ID_QLineEdit.text())
+        val = self.value()
         
         if self.warnLastFrame and self.lastVisitedFrame is not None:
             if val < self.lastVisitedFrame:
@@ -8668,11 +8694,11 @@ class editID_QWidget(QDialog):
         msg.setStyleSheet("padding:0px 0px 3px 0px;")
         VBoxLayout.addWidget(msg, alignment=Qt.AlignCenter)
 
-        ID_QLineEdit = QLineEdit()
-        ID_QLineEdit.setFont(_font)
-        ID_QLineEdit.setAlignment(Qt.AlignCenter)
-        self.ID_QLineEdit = ID_QLineEdit
-        VBoxLayout.addWidget(ID_QLineEdit)
+        entryWidget = QLineEdit()
+        entryWidget.setFont(_font)
+        entryWidget.setAlignment(Qt.AlignCenter)
+        self.entryWidget = entryWidget
+        VBoxLayout.addWidget(entryWidget)
 
         note = QLabel(
             'NOTE: To replace multiple IDs at once\n'
@@ -8700,14 +8726,14 @@ class editID_QWidget(QDialog):
 
         # Connect events
         self.prevText = ''
-        ID_QLineEdit.textChanged[str].connect(self.ID_LineEdit_cb)
+        entryWidget.textChanged[str].connect(self.onTextChanged)
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.cancel_cb)
         # self.setModal(True)
 
-    def ID_LineEdit_cb(self, text):
+    def onTextChanged(self, text):
         # Get inserted char
-        idx = self.ID_QLineEdit.cursorPosition()
+        idx = self.entryWidget.cursorPosition()
         if idx == 0:
             return
 
@@ -8723,23 +8749,23 @@ class editID_QWidget(QDialog):
         if m is None:
             self.prevText = text
             text = text.replace(newChar, '')
-            self.ID_QLineEdit.setText(text)
+            self.entryWidget.setText(text)
             return
 
         # Cast integers greater than uint32 machine limit
-        m_iter = re.finditer(r'\d+', self.ID_QLineEdit.text())
+        m_iter = re.finditer(r'\d+', self.entryWidget.text())
         for m in m_iter:
             val = int(m.group())
             uint32_max = np.iinfo(np.uint32).max
             if val > uint32_max:
-                text = self.ID_QLineEdit.text()
+                text = self.entryWidget.text()
                 text = f'{text[:m.start()]}{uint32_max}{text[m.end():]}'
-                self.ID_QLineEdit.setText(text)
+                self.entryWidget.setText(text)
 
         # Automatically close ( bracket
         if newChar == '(':
             text += ')'
-            self.ID_QLineEdit.setText(text)
+            self.entryWidget.setText(text)
         self.prevText = text
     
     def _warnExistingID(self, existingID, newID):
@@ -8764,7 +8790,7 @@ class editID_QWidget(QDialog):
 
     def ok_cb(self, event):
         self.cancel = False
-        txt = self.ID_QLineEdit.text()
+        txt = self.entryWidget.text()
         valid = False
 
         # Check validity of inserted text

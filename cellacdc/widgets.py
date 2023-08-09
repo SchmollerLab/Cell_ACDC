@@ -3404,7 +3404,6 @@ class FloatLineEdit(QLineEdit):
         self._decimals = decimals
 
         self.isNumericRegExp = rf'^{float_regex(allow_negative=allowNegative)}$'
-
         regExp = QRegularExpression(self.isNumericRegExp)
         self.setValidator(QRegularExpressionValidator(regExp))
         self.setAlignment(Qt.AlignCenter)
