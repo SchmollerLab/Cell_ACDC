@@ -9614,7 +9614,10 @@ class guiWin(QMainWindow):
                 return ROImask
             
             if len(r) == 2:
+                Y, X = self.currentLab2D.shape
                 rr, cc, val = skimage.draw.line_aa(r[0], c[0], r[1], c[1])
+                rr = rr[(rr>=0) & (rr<Y)]
+                cc = cc[(cc>=0) & (cc<X)]
             else:
                 rr, cc = skimage.draw.polygon(r, c, shape=self.currentLab2D.shape)
             if self.isSegm3D:
