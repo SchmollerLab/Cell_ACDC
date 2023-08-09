@@ -143,8 +143,8 @@ class dataPrepWin(QMainWindow):
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Q:
             posData = self.data[self.pos_i]
-            printl(posData.all_npz_paths)
-            printl(posData.tif_paths)
+            # printl(posData.all_npz_paths)
+            # printl(posData.tif_paths)
             # for r, roi in enumerate(posData.bkgrROIs):
             #     print(roi.pos(), roi.size())
             #     xl, yt = [int(round(c)) for c in roi.pos()]
@@ -441,7 +441,7 @@ class dataPrepWin(QMainWindow):
     
     def clearCurrentPos(self):
         self.removeBkgrROIs()
-        self.removeCropROI()
+        self.removeCropROIs()
 
     def skip10ahead_frames(self):
         if self.frame_i < self.num_frames-10:
@@ -540,29 +540,31 @@ class dataPrepWin(QMainWindow):
             return
 
         posData = self.data[self.pos_i]
-        if posData.cropROI not in self.ax1.items:
-            self.ax1.addItem(posData.cropROI.label)
-            self.ax1.addItem(posData.cropROI)
+        for cropROI in posData.cropROIs:
+            if cropROI not in self.ax1.items:
+                self.ax1.addItem(cropROI.label)
+                self.ax1.addItem(cropROI)
 
-        posData.cropROI.sigRegionChanged.connect(self.updateCurrentRoiShape)
-        posData.cropROI.sigRegionChangeFinished.connect(self.ROImovingFinished)
+            cropROI.sigRegionChanged.connect(self.updateCurrentRoiShape)
+            cropROI.sigRegionChangeFinished.connect(self.ROImovingFinished)
 
-    def removeCropROI(self):
+    def removeCropROIs(self):
         if self.startAction.isEnabled() or self.onlySelectingZslice:
             return
 
         posData = self.data[self.pos_i]
-        if posData.cropROI is None:
+        if posData.cropROIs is None:
             return
 
-        self.ax1.removeItem(posData.cropROI.label)
-        self.ax1.removeItem(posData.cropROI)
+        for cropROI in posData.cropROIs:
+            self.ax1.removeItem(cropROI.label)
+            self.ax1.removeItem(cropROI)
 
-        try:
-            posData.cropROI.sigRegionChanged.disconnect()
-            posData.cropROI.sigRegionChangeFinished.disconnect()
-        except TypeError:
-            pass
+            try:
+                cropROI.sigRegionChanged.disconnect()
+                cropROI.sigRegionChangeFinished.disconnect()
+            except TypeError:
+                pass
 
 
     def updateBkgrROIs(self):
@@ -610,7 +612,7 @@ class dataPrepWin(QMainWindow):
     def navigateScrollbarValueChanged(self, value):
         if self.num_pos > 1:
             self.removeBkgrROIs()
-            self.removeCropROI()
+            self.removeCropROIs()
             self.pos_i = value-1
             self.updatePos()
         else:
@@ -779,9 +781,12 @@ class dataPrepWin(QMainWindow):
                 event.ignore()
                 return
 
-        if posData.cropROI is not None:
-            x0, y0 = [int(c) for c in posData.cropROI.pos()]
-            w, h = [int(c) for c in posData.cropROI.size()]
+        if posData.cropROIs is None:
+            return
+        
+        for cropROI in posData.cropROIs:
+            x0, y0 = [int(c) for c in cropROI.pos()]
+            w, h = [int(c) for c in cropROI.size()]
             x1, y1 = x0+w, y0+h
             clickedOnROI = (
                 x>=x0-handleSize and x<=x1+handleSize
@@ -793,43 +798,49 @@ class dataPrepWin(QMainWindow):
                 return
 
     def saveROIcoords(self, doCrop, posData):
-        x0, y0 = [int(round(c)) for c in posData.cropROI.pos()]
-        w, h = [int(round(c)) for c in posData.cropROI.size()]
+        dfs = []
+        keys = []
+        for c, cropROI in enumerate(posData.cropROIs):
+            x0, y0 = [int(round(c)) for c in cropROI.pos()]
+            w, h = [int(round(c)) for c in cropROI.size()]
 
-        Y, X = self.img.image.shape
-        x1, y1 = x0+w, y0+h
+            Y, X = self.img.image.shape
+            x1, y1 = x0+w, y0+h
 
-        x0 = x0 if x0>0 else 0
-        y0 = y0 if y0>0 else 0
-        x1 = x1 if x1<X else X
-        y1 = y1 if y1<Y else Y
+            x0 = x0 if x0>0 else 0
+            y0 = y0 if y0>0 else 0
+            x1 = x1 if x1<X else X
+            y1 = y1 if y1<Y else Y
 
-        if x0<=0 and y0<=0 and x1>=X and y1>=Y:
-            # ROI coordinates are the exact image shape. No need to save them
+            if x0<=0 and y0<=0 and x1>=X and y1>=Y:
+                # ROI coordinates are the exact image shape. No need to save them
+                continue
+            
+            keys.append(c)
+
+            description = ['x_left', 'x_right', 'y_top', 'y_bottom', 'cropped']
+            values = [x0, x1, y0, y1, int(doCrop)]
+            df_roi = (
+                pd.DataFrame({'description': description, 'value': values})
+                .set_index('description')
+            )
+            
+            dfs.append(df_roi)
+        
+        if not dfs:
             return
+        
+        df = pd.concat(dfs, keys=keys, names=['roi_id'])
 
         self.logger.info(
-            f'Saving ROI coords: x_left = {x0}, x_right = {x1}, '
-            f'y_top = {y0}, y_bottom = {y1}\n'
-            f'to {posData.dataPrepROI_coords_path}'
-        )
-
-        csv_data = (
-            f'description,value\n'
-            f'x_left,{x0}\n'
-            f'x_right,{x1}\n'
-            f'y_top,{y0}\n'
-            f'y_bottom,{y1}\n'
-            f'cropped,{int(doCrop)}'
-        )
-
+                f'Saving ROI coords '
+                f'to "{posData.dataPrepROI_coords_path}"'
+            )
         try:
-            with open(posData.dataPrepROI_coords_path, 'w') as csv:
-                csv.write(csv_data)
+            df.to_csv(posData.dataPrepROI_coords_path)
         except PermissionError:
             self.permissionErrorCritical(posData.dataPrepROI_coords_path)
-            with open(posData.dataPrepROI_coords_path, 'w') as csv:
-                csv.write(csv_data)
+            df.to_csv(posData.dataPrepROI_coords_path)
 
     def openCropZtool(self, checked):
         posData = self.data[self.pos_i]
@@ -1034,10 +1045,11 @@ class dataPrepWin(QMainWindow):
         roi.stateChanged()
     
     def disconnectROIs(self, posData):
-        posData.cropROI.disconnect()
-        posData.cropROI.translatable = False
-        posData.cropROI.resizable = False
-        self.removeAllHandles(posData.cropROI)
+        for cropROI in posData.cropROIs:
+            cropROI.disconnect()
+            cropROI.translatable = False
+            cropROI.resizable = False
+            self.removeAllHandles(cropROI)
 
         for roi in posData.bkgrROIs:
             roi.disconnect()
@@ -1446,15 +1458,17 @@ class dataPrepWin(QMainWindow):
 
     def setStandardRoiShape(self, text):
         posData = self.data[self.pos_i]
-        if posData.cropROI is None:
+        if posData.cropROIs is None:
+            return
+        if len(posData.cropROIs)>1:
             return
         Y, X = posData.img_data.shape[-2:]
         m = re.findall(r'(\d+)x(\d+)', text)
         w, h = int(m[0][0]), int(m[0][1])
         # xc, yc = int(round(X/2)), int(round(Y/2))
         # yt, xl = int(round(xc-w/2)), int(round(yc-h/2))
-        posData.cropROI.setPos([0, 0])
-        posData.cropROI.setSize([w, h])
+        posData.cropROIs[0].setPos([0, 0])
+        posData.cropROIs[0].setSize([w, h])
 
     def addROIs(self):
         Y, X = self.img.image.shape
@@ -1470,24 +1484,29 @@ class dataPrepWin(QMainWindow):
             posData.cropROIs = []
             if posData.dataPrep_ROIcoords is None:
                 cropROI = self.getDefaultROI()
+                self.setROIprops(cropROI)
+                posData.cropROIs.append(cropROI)
             else:
-                xl = posData.dataPrep_ROIcoords.at['x_left', 'value']
-                yt = posData.dataPrep_ROIcoords.at['y_top', 'value']
-                w = posData.dataPrep_ROIcoords.at['x_right', 'value'] - xl
-                h = posData.dataPrep_ROIcoords.at['y_bottom', 'value'] - yt
-                cropROI = pg.ROI(
-                    [xl, yt], [w, h],
-                    rotatable=False,
-                    removable=False,
-                    pen=pg.mkPen(color='r'),
-                    maxBounds=QRectF(QRect(0,0,X,Y)),
-                    scaleSnap=True,
-                    translateSnap=True
-                )
-
-            self.setROIprops(cropROI)
-            posData.cropROIs.append(cropROI)
-
+                df = posData.dataPrep_ROIcoords
+                grouped = df.groupby(level=0)
+                for roi_id, df_roi in grouped:
+                    df_roi = df_roi.loc[roi_id]
+                    xl = df_roi.at['x_left', 'value']
+                    yt = df_roi.at['y_top', 'value']
+                    w = df_roi.at['x_right', 'value'] - xl
+                    h = df_roi.at['y_bottom', 'value'] - yt
+                    cropROI = pg.ROI(
+                        [xl, yt], [w, h],
+                        rotatable=False,
+                        removable=False,
+                        pen=pg.mkPen(color='r'),
+                        maxBounds=QRectF(QRect(0,0,X,Y)),
+                        scaleSnap=True,
+                        translateSnap=True
+                    )
+                    self.setROIprops(cropROI)
+                    posData.cropROIs.append(cropROI)
+             
         self.addAndConnectCropROIs()
 
         try:
@@ -1571,7 +1590,6 @@ class dataPrepWin(QMainWindow):
         bkgrROI.sigRegionChangeFinished.connect(self.bkgrROImovingFinished)
 
     def bkgrROIMoving(self, roi):
-        # txt = roi.label.text
         roi.setPen(color=(255,255,0))
         roi.label.setColor((255,255,0))
         # roi.label.setText(txt, color=(255,255,0), size=self.roiLabelSize)
@@ -1580,7 +1598,7 @@ class dataPrepWin(QMainWindow):
         roi.label.setPos(xl, yt)
 
     def bkgrROImovingFinished(self, roi):
-        txt = roi.label.text
+        txt = roi.label.toPlainText()
         roi.setPen(color=(150,150,150))
         roi.label.setColor((150,150,150))
         # roi.label.setText(txt, color=(150,150,150), size=self.roiLabelSize)
@@ -1590,7 +1608,7 @@ class dataPrepWin(QMainWindow):
         self.saveBkgrROIs(posData)
 
     def ROImovingFinished(self, roi):
-        txt = roi.label.text
+        txt = roi.label.toPlainText()
         roi.setPen(color='r')
         roi.label.setColor('r')
         # roi.label.setText(txt, color='r', size=self.roiLabelSize)

@@ -1033,8 +1033,10 @@ class loadData:
                         self.bkgrROIs.append(roi)
             elif load_dataPrep_ROIcoords and file.endswith('dataPrepROIs_coords.csv'):
                 df = pd.read_csv(filePath)
+                if 'roi_id' not in df.columns:
+                    df['roi_id'] = 0
                 if 'description' in df.columns:
-                    df = df.set_index('description')
+                    df = df.set_index(['roi_id', 'description'])
                     if 'value' in df.columns:
                         self.dataPrep_ROIcoordsFound = True
                         self.dataPrep_ROIcoords = df
