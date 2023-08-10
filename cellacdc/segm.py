@@ -26,6 +26,7 @@ from qtpy.QtCore import (
     QMutex, QWaitCondition
 )
 from qtpy import QtGui
+import qtpy.compat
 
 # Custom modules
 from . import prompts, load, myutils, apps, core, dataPrep, widgets
@@ -1216,6 +1217,9 @@ class segmWin(QMainWindow):
             self.threadIdx = i
             self.startSegmWorker()
     
+    def _saveConfigurationFile(self, filepath):
+        pass
+    
     def saveWorkflowToConfigFile(self):
         timestamp = datetime.datetime.now().strftime(
             r'%Y-%m-%d_%H-%M'
@@ -1223,12 +1227,28 @@ class segmWin(QMainWindow):
         win = apps.filenameDialog(
             parent=self, 
             ext='.ini', 
-            title='Insert filename for configuration file'
+            title='Insert filename for configuration file',
             hintText='Insert filename for the configuration file',
             allowEmpty=False, 
             defaultEntry=f'{timestamp}_acdc_segm_track_workflow'
         )
         win.exec_()
+        if win.cancel:
+            return False
+        
+        config_filename = win.filename
+        mostRecentPath = myutils.getMostRecentPath()
+        folder_path = qtpy.compat.getexistingdirectory(
+            parent=self, 
+            caption='Select folder where to save configuration file',
+            basedir=mostRecentPath,
+            # options=QFileDialog.DontUseNativeDialog
+        )
+        if not folder_path:
+            return False
+        
+        config_filepath = os.path.join(folder_path, config_filename)
+        self._saveConfigurationFile(config_filepath)
     
     def askRunNowOrSaveConfigFile(self):
         txt = html_utils.paragraph("""
@@ -1247,8 +1267,12 @@ class segmWin(QMainWindow):
         )
         if msg.cancel:
             return False
-        if msg.clickedButton == runNowButton:
-            return True
+        
+        saved = self.saveWorkflowToConfigFile()
+        if not saved:
+            return False
+
+        return msg.clickedButton == runNowButton
         
         
 
