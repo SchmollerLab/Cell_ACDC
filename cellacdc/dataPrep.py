@@ -12,7 +12,6 @@ import pandas as pd
 import scipy.interpolate
 import skimage
 import skimage.io
-from torch import int16
 from tqdm import tqdm
 from functools import partial, wraps
 from tifffile.tifffile import TiffWriter, TiffFile
