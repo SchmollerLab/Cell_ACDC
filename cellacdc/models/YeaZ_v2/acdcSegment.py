@@ -52,7 +52,7 @@ class Model:
     
     def _segment_img_2D(self, image, thresh_val=0.0, min_distance=10):
         # Preprocess image
-        image = self._preprocess_image(image)
+        image = self._preprocess_image(image).astype(np.float32)
         
         # pad with zeros such that is divisible by 16
         (nrow, ncol) = image.shape
