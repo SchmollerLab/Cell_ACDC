@@ -2513,7 +2513,7 @@ class QDialogMetadataXML(QDialog):
         super().__init__(parent)
         self.setWindowTitle(title)
         font = QFont()
-        font.setPixelSize(13)
+        font.setPixelSize(12)
         self.setFont(font)
         if DimensionOrder is None:
             DimensionOrder = 'ztc' # default for .czi and .nd2
@@ -5894,7 +5894,7 @@ class randomWalkerDialog(QDialog):
         seeHereLabel.setTextInteractionFlags(Qt.TextBrowserInteraction)
         seeHereLabel.setOpenExternalLinks(True)
         font = QFont()
-        font.setPixelSize(13)
+        font.setPixelSize(12)
         seeHereLabel.setFont(font)
         seeHereLabel.setStyleSheet("padding:12px 0px 0px 0px;")
         paramsLayout.addWidget(seeHereLabel, row, 0, 1, 2)
@@ -6999,7 +6999,7 @@ class imageViewer(QMainWindow):
         self.framesScrollBar.setMaximum(posData.SizeT)
         t_label = QLabel('frame  ')
         _font = QFont()
-        _font.setPixelSize(13)
+        _font.setPixelSize(12)
         t_label.setFont(_font)
         self.img_Widglayout.addWidget(
                 t_label, 0, 0, alignment=Qt.AlignRight)
@@ -7014,7 +7014,7 @@ class imageViewer(QMainWindow):
         self.zSliceScrollBar.setMaximum(self.posData.SizeZ-1)
         _z_label = QLabel('z-slice  ')
         _font = QFont()
-        _font.setPixelSize(13)
+        _font.setPixelSize(12)
         _z_label.setFont(_font)
         self.z_label = _z_label
         self.img_Widglayout.addWidget(_z_label, 1, 0, alignment=Qt.AlignCenter)
@@ -8273,7 +8273,7 @@ class askStopFrameSegm(QDialog):
         """)
         infoLabel = QLabel(infoTxt, self)
         _font = QFont()
-        _font.setPixelSize(13)
+        _font.setPixelSize(12)
         infoLabel.setFont(_font)
         infoLabel.setAlignment(Qt.AlignCenter)
         # padding: top, left, bottom, right
@@ -8688,7 +8688,7 @@ class editID_QWidget(QDialog):
         VBoxLayout = QVBoxLayout()
         msg = QLabel(f'Replace ID {clickedID} with:')
         _font = QFont()
-        _font.setPixelSize(13)
+        _font.setPixelSize(12)
         msg.setFont(_font)
         # padding: top, left, bottom, right
         msg.setStyleSheet("padding:0px 0px 3px 0px;")
@@ -9870,7 +9870,7 @@ class QDialogZsliceAbsent(QDialog):
         self.setLayout(mainLayout)
 
         font = QFont()
-        font.setPixelSize(13)
+        font.setPixelSize(12)
         self.setFont(font)
 
         # self.setModal(True)

@@ -2177,6 +2177,8 @@ class myMessageBox(QDialog):
 
         self.layout.setColumnStretch(1, 1)
         self.setLayout(self.layout)
+        
+        self.setFont(font)
 
     def mousePressEvent(self, event):
         for label in self.labels:
