@@ -1033,11 +1033,12 @@ class loadData:
                         self.bkgrROIs.append(roi)
             elif load_dataPrep_ROIcoords and file.endswith('dataPrepROIs_coords.csv'):
                 df = pd.read_csv(filePath)
-                if 'description' in df.columns:
-                    df = df.set_index('description')
-                    if 'value' in df.columns:
-                        self.dataPrep_ROIcoordsFound = True
-                        self.dataPrep_ROIcoords = df
+                if 'roi_id' not in df.columns:
+                    df['roi_id'] = 0
+                if 'description' in df.columns and 'value' in df.columns:
+                    df = df.set_index(['roi_id', 'description'])
+                    self.dataPrep_ROIcoordsFound = True
+                    self.dataPrep_ROIcoords = df
             elif loadMetadata:
                 self.metadataFound = True
                 remove_duplicates_file(filePath)
@@ -1224,6 +1225,16 @@ class loadData:
                 annotatedIDs = list(series.index.get_level_values(1).unique())
                 self.customAnnotIDs[name][frame_i] = annotatedIDs
 
+    def isCropped(self):
+        if self.dataPrep_ROIcoords is None:
+            return False
+        df = self.dataPrep_ROIcoords
+        _isCropped = any([
+            df_roi.at[(roi_id, 'cropped'), 'value'] > 0
+            for roi_id, df_roi in df.groupby(level=0)
+        ]) 
+        return _isCropped
+    
     def getIsSegm3D(self):
         if self.SizeZ == 1:
             return False
@@ -2037,7 +2048,7 @@ class select_exp_folder:
         values = []
         for pos in pos_foldernames:
             last_tracked_i_found = False
-            pos_path = f'{exp_path}/{pos}'
+            pos_path = os.path.join(exp_path, pos)
             images_path = f'{exp_path}/{pos}/Images'
             filenames = myutils.listdir(images_path)
             for filename in filenames:
@@ -2061,7 +2072,7 @@ class select_exp_folder:
         values = []
         for pos in pos_foldernames:
             is_prepped = False
-            pos_path = f'{exp_path}/{pos}'
+            pos_path = os.path.join(exp_path, pos)
             images_path = f'{exp_path}/{pos}/Images'
             filenames = myutils.listdir(images_path)
             for filename in filenames:
@@ -2096,7 +2107,7 @@ class select_exp_folder:
         values = []
         for pos in pos_foldernames:
             cc_stage_found = False
-            pos_path = f'{exp_path}/{pos}'
+            pos_path = os.path.join(exp_path, pos)
             if os.path.isdir(pos_path):
                 images_path = f'{exp_path}/{pos}/Images'
                 filenames = myutils.listdir(images_path)

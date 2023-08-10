@@ -1305,7 +1305,11 @@ def determine_folder_type(folder_path):
     contains_images_folder = os.path.exists(
         os.path.join(folder_path, 'Images')
     )
-    if contains_images_folder and not is_pos_folder:
+    contains_pos_folders = len(get_pos_foldernames(folder_path)) > 0
+    if contains_pos_folders:
+        is_pos_folder = False
+        is_images_folder = False
+    elif contains_images_folder and not is_pos_folder:
         # Folder created by loading an image
         is_images_folder = True
         folder_path = os.path.join(folder_path, 'Images')
@@ -2060,7 +2064,7 @@ def get_git_pull_checkout_cellacdc_version_commands(version=None):
         return []
     commit_hash = version[commit_hash_idx+2:].split('.')[0]
     commands = (
-        f'cd "{cellacdc_path}"',
+        f'cd "{os.path.dirname(cellacdc_path)}"',
         'git pull',
         f'git checkout {commit_hash}'
     )
