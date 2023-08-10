@@ -863,7 +863,9 @@ class dataPrepWin(QMainWindow):
         print('')
     
     def saveMultiCrops(self, posData):
-        pass
+        currentSubPosFolders = myutils.get_pos_foldernames(posData.pos_path)
+        for cropROI in posData.cropROIs:
+            pass
     
     def saveROIcoords(self, doCrop, posData):
         dfs = []

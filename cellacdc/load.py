@@ -2048,7 +2048,7 @@ class select_exp_folder:
         values = []
         for pos in pos_foldernames:
             last_tracked_i_found = False
-            pos_path = f'{exp_path}/{pos}'
+            pos_path = os.path.join(exp_path, pos)
             images_path = f'{exp_path}/{pos}/Images'
             filenames = myutils.listdir(images_path)
             for filename in filenames:
@@ -2072,7 +2072,7 @@ class select_exp_folder:
         values = []
         for pos in pos_foldernames:
             is_prepped = False
-            pos_path = f'{exp_path}/{pos}'
+            pos_path = os.path.join(exp_path, pos)
             images_path = f'{exp_path}/{pos}/Images'
             filenames = myutils.listdir(images_path)
             for filename in filenames:
@@ -2107,7 +2107,7 @@ class select_exp_folder:
         values = []
         for pos in pos_foldernames:
             cc_stage_found = False
-            pos_path = f'{exp_path}/{pos}'
+            pos_path = os.path.join(exp_path, pos)
             if os.path.isdir(pos_path):
                 images_path = f'{exp_path}/{pos}/Images'
                 filenames = myutils.listdir(images_path)
