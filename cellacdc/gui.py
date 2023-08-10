@@ -10460,10 +10460,10 @@ class guiWin(QMainWindow):
         cnt, defects = self.convexity_defects(lab_ID_bool, eps_percent)
         success = False
         if defects is None:
-            return False
+            return lab, success
 
         if len(defects) != 2:
-            return False
+            return lab, success
 
         defects_points = [0]*len(defects)
         for i, defect in enumerate(defects):
