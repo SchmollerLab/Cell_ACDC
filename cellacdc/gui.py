@@ -19562,8 +19562,9 @@ class guiWin(QMainWindow):
             posData.frame_i = self.current_frame_i
             self.get_data()   
 
-        self.clearObjContour(ID=delID, ax=0)     
-        self.clearObjContour(ID=delID, ax=1)       
+        for _delID in delID:
+            self.clearObjContour(ID=_delID, ax=0)     
+            self.clearObjContour(ID=_delID, ax=1)       
 
         posData.lab, delID_mask = self.deleteIDFromLab(posData.lab, delID)
         return delID_mask
