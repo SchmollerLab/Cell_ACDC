@@ -2060,7 +2060,7 @@ def get_git_pull_checkout_cellacdc_version_commands(version=None):
         return []
     commit_hash = version[commit_hash_idx+2:].split('.')[0]
     commands = (
-        f'cd "{cellacdc_path}"',
+        f'cd "{os.path.dirname(cellacdc_path)}"',
         'git pull',
         f'git checkout {commit_hash}'
     )

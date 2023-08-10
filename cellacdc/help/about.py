@@ -4,7 +4,8 @@ import cellacdc
 from functools import partial
 
 from qtpy.QtWidgets import (
-    QDialog, QLabel, QGridLayout, QHBoxLayout, QSpacerItem, QWidget, QVBoxLayout
+    QDialog, QLabel, QGridLayout, QHBoxLayout, QSpacerItem, QApplication, 
+    QVBoxLayout
 )
 from qtpy.QtGui import QPixmap
 from qtpy.QtCore import Qt
@@ -16,10 +17,10 @@ from ..myutils import get_git_pull_checkout_cellacdc_version_commands
 from .. import widgets, myutils
 from .. import html_utils, printl
 from .. import qrc_resources
+from .. import cellacdc_path
 
 class QDialogAbout(QDialog):
     def __init__(self, parent=None):
-        cellacdc_path = os.path.dirname(os.path.abspath(cellacdc.__file__))
         super().__init__(parent)
         self.setWindowFlags(Qt.Dialog)
         self.setWindowTitle('About Cell-ACDC')
@@ -94,9 +95,15 @@ class QDialogAbout(QDialog):
         installedLayout = QHBoxLayout()
         installedLabel = QLabel()
         txt = html_utils.paragraph(f"""
-            Installed in: {cellacdc_path}
+            Installed in: <code>{cellacdc_path}</code>
         """, font_size='12px')
         installedLabel.setText(txt)
+        installedLabel.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        
+        self.copyCellACDCpathButton = widgets.copyPushButton('Copy path')
+        self.copyCellACDCpathButton.clicked.connect(
+            self.copyCellACDCpath
+        )
         
         self.showHowToInstallButton = widgets.helpPushButton(
             'How to install this version'
@@ -111,6 +118,7 @@ class QDialogAbout(QDialog):
         func = partial(myutils.showInExplorer, cellacdc_path)
         button.clicked.connect(func)
         installedLayout.addWidget(installedLabel)
+        installedLayout.addWidget(self.copyCellACDCpathButton)
         installedLayout.addStretch(1)
         installedLayout.addWidget(self.showHowToInstallButton)
         installedLayout.addWidget(button)
@@ -158,6 +166,11 @@ class QDialogAbout(QDialog):
         self.howToInstallDialog.hide()
         
         self.setLayout(layout)
+    
+    def copyCellACDCpath(self):
+        cb = QApplication.clipboard()
+        cb.clear(mode=cb.Clipboard)
+        cb.setText(cellacdc_path, mode=cb.Clipboard)
     
     def showHotToInstallInstructions(self):
         self.howToInstallDialog.show()

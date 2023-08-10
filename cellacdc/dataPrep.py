@@ -620,9 +620,9 @@ class dataPrepWin(QMainWindow):
             self.update_img()
 
     @exception_handler
-    def crop(self, data, posData):
-        x0, y0 = [int(round(c)) for c in posData.cropROI.pos()]
-        w, h = [int(round(c)) for c in posData.cropROI.size()]
+    def crop(self, data, posData, cropROI):
+        x0, y0 = [int(round(c)) for c in cropROI.pos()]
+        w, h = [int(round(c)) for c in cropROI.size()]
         if data.ndim == 4:
             croppedData = data[:, :, y0:y0+h, x0:x0+w]
         elif data.ndim == 3:
@@ -797,6 +797,74 @@ class dataPrepWin(QMainWindow):
                 event.ignore()
                 return
 
+    def saveSingleCrop(self, posData, cropROI):
+        # Save channels (npz AND tif)
+        _zip = zip(posData.tif_paths, posData.all_npz_paths)
+        for tif, npz in _zip:
+            if self.align:
+                data = np.load(npz)['arr_0']
+            else:
+                data = skimage.io.imread(tif)
+
+            npz_data, _ = self.crop(data, posData, cropROI)
+
+            if self.align:
+                self.logger.info(f'Saving: {npz}')
+                temp_npz = self.getTempfilePath(npz)
+                np.savez_compressed(temp_npz, npz_data)
+                self.moveTempFile(temp_npz, npz)
+
+            self.logger.info(f'Saving: {tif}')
+            temp_tif = self.getTempfilePath(tif)
+            myutils.imagej_tiffwriter(temp_tif, npz_data)
+            self.moveTempFile(temp_tif, tif)
+
+        # Save segm.npz
+        if posData.segmFound:
+            self.logger.info(f'Saving: {posData.segm_npz_path}')
+            data = posData.segm_data
+            croppedSegm, _ = self.crop(data, posData, cropROI)
+            temp_npz = self.getTempfilePath(posData.segm_npz_path)
+            np.savez_compressed(temp_npz, croppedSegm)
+            self.moveTempFile(temp_npz, posData.segm_npz_path)
+
+        try:
+            # Correct acdc_df if present and save
+            if posData.acdc_df is not None:
+                x0, y0 = [int(round(c)) for c in posData.cropROI.pos()]
+                self.logger.info(f'Saving: {posData.acdc_output_csv_path}')
+                df = posData.acdc_df
+                df['x_centroid'] -= x0
+                df['y_centroid'] -= y0
+                try:
+                    df.to_csv(posData.acdc_output_csv_path)
+                except PermissionError:
+                    self.permissionErrorCritical(posData.acdc_output_csv_path)
+                    df.to_csv(posData.acdc_output_csv_path)
+        except Exception as e:
+            pass
+
+        self.logger.info(f'{posData.pos_foldername} saved!')
+        print(f'--------------------------------')
+        print('')
+    
+    def saveCroppedData(self, posData):
+        # Get metadata from tif
+        with TiffFile(posData.tif_path) as tif:
+            metadata = tif.imagej_metadata
+
+        if len(posData.cropROIs) == 1:
+            self.saveSingleCrop(posData, posData.cropROIs[0])
+        else:
+            self.saveMultiCrops(posData)
+
+        self.logger.info(f'{posData.pos_foldername} saved!')
+        print(f'--------------------------------')
+        print('')
+    
+    def saveMultiCrops(self, posData):
+        pass
+    
     def saveROIcoords(self, doCrop, posData):
         dfs = []
         keys = []
@@ -909,17 +977,7 @@ class dataPrepWin(QMainWindow):
         self.cropZaction.setChecked(False)
         self.cropZaction.toggled.connect(self.openCropZtool)
 
-    @exception_handler
-    def crop_cb(self):
-        # msg = QMessageBox()
-        # doSave = msg.question(
-        #     self, 'Save data?', 'Do you want to save?',
-        #     msg.Yes | msg.No
-        # )
-        # if doSave == msg.No:
-        #     return
-
-        self.cropAction.setDisabled(True)
+    def getCroppedData(self):
         for p, posData in enumerate(self.data):
             self.saveBkgrROIs(posData)
 
@@ -929,13 +987,19 @@ class dataPrepWin(QMainWindow):
 
             # Get crop shape and print it
             data = posData.img_data
-            croppedData, SizeZ = self.crop(data, posData)
+            
+            allCropsData = []
+            for cropROI in posData.cropROIs:
+                croppedData, SizeZ = self.crop(data, posData, cropROI)
+                allCropsData.append(croppedData)
 
+            croppedShapes = [cropped.shape for cropped in allCropsData]
+            isCropped = any([shape != data.shape for shape in croppedShapes])
             isCroppingCancelled = False
-            if croppedData.shape != data.shape:
+            if isCropped != data.shape:
                 if p == 0:
                     isCroppingCancelled = self.askCropping(
-                        data.shape, croppedData.shape
+                        data.shape, croppedShapes
                     )
                     doCrop = not isCroppingCancelled
                 else:
@@ -947,14 +1011,35 @@ class dataPrepWin(QMainWindow):
                 self.cropAction.setEnabled(True)
                 txt = ('Cropping cancelled.')
                 self.titleLabel.setText(txt, color='r')
-                return
+                yield None
             elif croppedData.shape == data.shape:
                 self.cropAction.setEnabled(True)
                 txt = ('Crop ROI has same shape of the image --> no need to crop. Process stopped.')
                 self.titleLabel.setText(txt, color='r')
+                yield 'continue'
+            
+            yield allCropsData, croppedShapes, posData, SizeZ, doCrop
+    
+    @exception_handler
+    def crop_cb(self):
+        # msg = QMessageBox()
+        # doSave = msg.question(
+        #     self, 'Save data?', 'Do you want to save?',
+        #     msg.Yes | msg.No
+        # )
+        # if doSave == msg.No:
+        #     return
+
+        self.cropAction.setDisabled(True)
+        for cropInfo in self.getCroppedData():
+            if cropInfo is None:
+                # Process cancelled by the user
                 return
-
-
+            
+            if cropInfo == 'continue':
+                continue
+            
+            allCropsData, croppedShapes, posData, SizeZ, doCrop = cropInfo
             if SizeZ != posData.SizeZ:
                 # Update metadata with cropped SizeZ
                 posData.metadata_df.at['SizeZ', 'values'] = SizeZ
@@ -965,65 +1050,15 @@ class dataPrepWin(QMainWindow):
                 'Cropping... (check progress in the terminal)',
                 color='w')
 
-            self.logger.info(f'Cropped data shape: {croppedData.shape}')
+            croppedShapesFormat = [f'  --> {shape}' for shape in croppedShapes]
+            croppedShapesFormat = '\n'.join(croppedShapesFormat)
+            self.logger.info(f'Cropped data shape:\n{croppedShapesFormat}')
             self.saveROIcoords(doCrop, posData)
 
             self.logger.info('Saving background data...')
             self.saveBkgrData(posData)
 
-            # Get metadata from tif
-            with TiffFile(posData.tif_path) as tif:
-                metadata = tif.imagej_metadata
-
-            # Save channels (npz AND tif)
-            _zip = zip(posData.tif_paths, posData.all_npz_paths)
-            for tif, npz in _zip:
-                if self.align:
-                    data = np.load(npz)['arr_0']
-                else:
-                    data = skimage.io.imread(tif)
-
-                npz_data, _ = self.crop(data, posData)
-
-                if self.align:
-                    self.logger.info(f'Saving: {npz}')
-                    temp_npz = self.getTempfilePath(npz)
-                    np.savez_compressed(temp_npz, npz_data)
-                    self.moveTempFile(temp_npz, npz)
-
-                self.logger.info(f'Saving: {tif}')
-                temp_tif = self.getTempfilePath(tif)
-                myutils.imagej_tiffwriter(temp_tif, npz_data)
-                self.moveTempFile(temp_tif, tif)
-
-            # Save segm.npz
-            if posData.segmFound:
-                self.logger.info(f'Saving: {posData.segm_npz_path}')
-                data = posData.segm_data
-                croppedSegm, _ = self.crop(data, posData)
-                temp_npz = self.getTempfilePath(posData.segm_npz_path)
-                np.savez_compressed(temp_npz, croppedSegm)
-                self.moveTempFile(temp_npz, posData.segm_npz_path)
-
-            try:
-                # Correct acdc_df if present and save
-                if posData.acdc_df is not None:
-                    x0, y0 = [int(round(c)) for c in posData.cropROI.pos()]
-                    self.logger.info(f'Saving: {posData.acdc_output_csv_path}')
-                    df = posData.acdc_df
-                    df['x_centroid'] -= x0
-                    df['y_centroid'] -= y0
-                    try:
-                        df.to_csv(posData.acdc_output_csv_path)
-                    except PermissionError:
-                        self.permissionErrorCritical(posData.acdc_output_csv_path)
-                        df.to_csv(posData.acdc_output_csv_path)
-            except Exception as e:
-                pass
-
-            self.logger.info(f'{posData.pos_foldername} saved!')
-            print(f'--------------------------------')
-            print('')
+            self.saveCroppedData()
         
         self.disconnectROIs(posData)
 
@@ -1072,11 +1107,12 @@ class dataPrepWin(QMainWindow):
         )
 
 
-    def askCropping(self, dataShape, croppedShape):
+    def askCropping(self, dataShape, croppedShapes):
         msg = widgets.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(f"""
             You are about to <b>crop</b> data from shape {dataShape} 
-            to shape {croppedShape}.<br><br>
+            to the following shapes: 
+            {html_utils.to_list(croppedShapes, ordered=True)}
             Saving cropped data <b>cannot be undone</b>.<br><br>
             Do you want to crop or simply save the ROI coordinates<br>
             for the segmentation step?
@@ -1152,11 +1188,8 @@ class dataPrepWin(QMainWindow):
                 )
 
                 # If data was cropped then dataPrep_ROIcoords are useless
-                if posData.dataPrep_ROIcoords is not None:
-                    df = posData.dataPrep_ROIcoords
-                    isROIactive = df.at['cropped', 'value'] == 0
-                    if not isROIactive:
-                        posData.dataPrep_ROIcoords = None
+                if posData.isCropped():
+                    posData.dataPrep_ROIcoords = None
 
                 posData.loadAllImgPaths()
                 if f==0 and not self.metadataAlreadyAsked:
@@ -1540,7 +1573,7 @@ class dataPrepWin(QMainWindow):
             [xl, yt], [w, h],
             rotatable=False,
             removable=False,
-            pen=pg.mkPen(color=(150,150,150)),
+            pen=pg.mkPen(color=(255,255,255)),
             maxBounds=QRectF(QRect(0,0,X,Y)),
             scaleSnap=True,
             translateSnap=True
@@ -1551,7 +1584,7 @@ class dataPrepWin(QMainWindow):
         bkgrROI.handleSize = 7
 
         xl, yt = [int(round(c)) for c in bkgrROI.pos()]
-        bkgrROI.label = pg.TextItem('Bkgr. ROI', color=(150,150,150))
+        bkgrROI.label = pg.TextItem('Bkgr. ROI', color=(255,255,255))
         bkgrROI.label.setFont(self.roiLabelFont)
         # hLabel = bkgrROI.label.rect().bottom()
         bkgrROI.label.setPos(xl, yt)
@@ -1599,8 +1632,8 @@ class dataPrepWin(QMainWindow):
 
     def bkgrROImovingFinished(self, roi):
         txt = roi.label.toPlainText()
-        roi.setPen(color=(150,150,150))
-        roi.label.setColor((150,150,150))
+        roi.setPen(color=(255,255,255))
+        roi.label.setColor((255,255,255))
         # roi.label.setText(txt, color=(150,150,150), size=self.roiLabelSize)
         posData = self.data[self.pos_i]
         idx = posData.bkgrROIs.index(roi)
