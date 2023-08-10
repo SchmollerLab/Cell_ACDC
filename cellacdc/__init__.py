@@ -241,6 +241,12 @@ yeaz_weights_filenames = [
     'weights_budding_BF_multilab_0_1.hdf5'
 ]
 
+yeaz_v2_weights_filenames = [
+    'weights_budding_BF_multilab_0_1',
+    'weights_budding_PhC_multilab_0_1',
+    'weights_fission_multilab_0_2'
+]
+
 segment_anything_weights_filenames = [
     'sam_vit_h_4b8939.pth', 
     'sam_vit_l_0b3195.pth', 

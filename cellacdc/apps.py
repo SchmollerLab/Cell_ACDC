@@ -10600,7 +10600,7 @@ class QDialogModelParams(QDialog):
     def getValueFromMetadata(self, name):
         try:
             value = self.df_metadata.at[name, 'values']
-        except KeyError as e:
+        except Exception as e:
             # traceback.print_exc()
             value = None
         return value

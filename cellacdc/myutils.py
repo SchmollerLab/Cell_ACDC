@@ -1112,6 +1112,14 @@ def _model_url(model_name, return_alternative=False):
         ]
         file_size = [2564550879, 1249524736, 375042383]
         alternative_url = ''
+    elif model_name == 'YeaZ_v2':
+        url = [
+            'https://hmgubox2.helmholtz-muenchen.de/index.php/s/5PARckkcJcN9D3S/download/weights_budding_BF_multilab_0_1', 
+            'https://hmgubox2.helmholtz-muenchen.de/index.php/s/CTHq4HN3adyFbnE/download/weights_budding_PhC_multilab_0_1',
+            'https://hmgubox2.helmholtz-muenchen.de/index.php/s/QTtBJycYnLQZsHQ/download/weights_fission_multilab_0_2'
+        ]
+        file_size = [124142981, 124143031, 124144759]
+        alternative_url = 'https://github.com/rahi-lab/YeaZ-GUI#installation'
     elif model_name == 'deepsea':
         url = [
             'https://github.com/abzargar/DeepSea/raw/master/deepsea/trained_models/segmentation.pth',
@@ -1333,6 +1341,13 @@ def download_model(model_name):
     elif model_name == 'TAPIR':
         try:
             _download_tapir_model()
+            return True
+        except Exception as e:
+            traceback.print_exc()
+            return False
+    elif model_name == 'YeaZ_v2':
+        try:
+            _download_yeaz_models()
             return True
         except Exception as e:
             traceback.print_exc()
@@ -1716,6 +1731,10 @@ def check_install_cellpose():
         printl(traceback.format_exc())
         _inform_install_package_failed('cellpose')
 
+def check_install_yeaz():
+    check_install_package('torch')
+    check_install_package('yeaz')
+
 def check_install_segment_anything():
     check_install_package('torchvision')
     check_install_package('segment_anything')
@@ -2080,6 +2099,26 @@ def _download_tapir_model():
     temp_model_path = tempfile.mkdtemp()
     _, final_model_path = (
         get_model_path('TAPIR', create_temp_dir=False)
+    )
+    for url, file_size in zip(urls, file_sizes):
+        filename = url.split('/')[-1]
+        final_dst = os.path.join(final_model_path, filename)
+        if os.path.exists(final_dst):            
+            continue
+
+        temp_dst = os.path.join(temp_model_path, filename)
+        download_url(
+            url, temp_dst, file_size=file_size, desc='TAPIR',
+            verbose=False
+        )
+        
+        shutil.move(temp_dst, final_dst)
+
+def _download_yeaz_models():
+    urls, file_sizes = _model_url('YeaZ_v2')
+    temp_model_path = tempfile.mkdtemp()
+    _, final_model_path = (
+        get_model_path('YeaZ_v2', create_temp_dir=False)
     )
     for url, file_size in zip(urls, file_sizes):
         filename = url.split('/')[-1]
