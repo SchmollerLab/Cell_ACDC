@@ -40,7 +40,7 @@ class Model:
         self.acdcCellpose.setupLogger(logger)
     
     def closeLogger(self):
-        self.acdcCellpose.setupLogger()
+        self.acdcCellpose.closeLogger()
     
     def to_rgb_stack(self, first_ch_data, second_ch_data):
         self.acdcCellpose.to_rgb_stack(first_ch_data, second_ch_data)
