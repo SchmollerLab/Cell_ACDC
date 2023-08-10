@@ -1937,7 +1937,7 @@ class PostProcessSegmWorker(QObject):
                     except Exception as e:
                         return
 
-                image = posData.image_data[frame_i]
+                image = posData.img_data[frame_i]
                 
                 processed_lab = core.post_process_segm(
                     lab, return_delIDs=False, **kwargs
