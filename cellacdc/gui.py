@@ -1597,21 +1597,18 @@ class guiWin(QMainWindow):
         self.copyContourButton.setToolTip(
             'Toggle "Copy contour mode from lost object" ON/OFF\n\n'
             'ACTION: Hover onto lost object contour --> right-click to copy '
-            'the contour as a new object.\n'
+            'the contour as a new object.\n\n'
             'SHORTCUT: "V" key')
         self.copyContourButton.action = editToolBar.addWidget(
             self.copyContourButton
         )
+        self.checkableButtons.append(self.copyContourButton)
+        self.checkableQButtonsGroup.addButton(self.copyContourButton)
+        self.widgetsWithShortcut['Copy lost object contour'] = (
+            self.copyContourButton
+        )
         self.functionsNotTested3D.append(self.copyContourButton)
-        self.widgetsWithShortcut['Copy lost object contour'] = self.copyContourButton
-
-        self.widgetsWithShortcut['Annotate mother/daughter pairing'] = (
-            self.assignBudMothButton
-        )
-        self.widgetsWithShortcut['Annotate unknown history'] = (
-            self.setIsHistoryKnownButton
-        )
-
+        
         self.labelRoiButton = widgets.rightClickToolButton(parent=self)
         self.labelRoiButton.setIcon(QIcon(":label_roi.svg"))
         self.labelRoiButton.setCheckable(True)
