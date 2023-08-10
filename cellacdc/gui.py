@@ -4569,6 +4569,8 @@ class guiWin(QMainWindow):
                 if delID_prompt.cancel:
                     return
                 delID = delID_prompt.EntryID
+            else:
+                delID = [delID]
 
             # Ask to propagate change to all future visited frames
             (UndoFutFrames, applyFutFrames, endFrame_i,
