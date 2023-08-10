@@ -31,6 +31,7 @@ from qtpy.QtWidgets import (
     QComboBox, QDial, QButtonGroup, QFileDialog,
     QAbstractSlider, QMessageBox, QStyleFactory
 )
+from qtpy.compat import getexistingdirectory
 
 import pyqtgraph as pg
 pg.setConfigOption('imageAxisOrder', 'row-major')
@@ -883,14 +884,35 @@ class dataPrepWin(QMainWindow):
         print('')
     
     def saveMultiCrops(self, posData):
-        currentSubPosFolders = myutils.get_pos_foldernames(posData.pos_path)
+        txt = html_utils.paragraph("""
+            You will now be asked to <b>choose a location</b> where to save multiple 
+            Positions from each crop ROI.
+        """)
+        msg = widgets.myMessageBox()
+        msg.information(
+            self, 'Select folder where to save multiple crops', txt
+        )
+        if msg.cancel:
+            self.logger.info('Cropping process cancelled.')
+            return
+        
+        parentSubPosPath = getexistingdirectory(
+            parent=self,
+            caption='Select folder where to save multiple crops', 
+            basedir=posData.pos_path
+        )
+        if not parentSubPosPath:
+            self.logger.info('Cropping process cancelled.')
+            return
+        
+        currentSubPosFolders = myutils.get_pos_foldernames(parentSubPosPath)
         currentSubPosNumbers = [
             int(pos.split('_')[-1]) for pos in currentSubPosFolders
         ]
         startPosNumber = max(currentSubPosNumbers, default=0) + 1
         for p, cropROI in enumerate(posData.cropROIs):
             subPosFolder = f'Position_{p+startPosNumber}'
-            subPosFolderPath = os.path.join(posData.pos_path, subPosFolder)
+            subPosFolderPath = os.path.join(parentSubPosPath, subPosFolder)
             subImagesPath = os.path.join(subPosFolderPath, 'Images')
             os.makedirs(subImagesPath)
             
