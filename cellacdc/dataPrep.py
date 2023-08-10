@@ -948,6 +948,7 @@ class dataPrepWin(QMainWindow):
                     file.endswith('metadata.csv')
                     or file.endswith('bkgrRoiData.npz')
                     or file.endswith('dataPrep_bkgrROIs.json')
+                    or file.endswith('segmInfo.csv')
                 )
                 if not copy_file:
                     continue
