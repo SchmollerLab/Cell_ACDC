@@ -1202,6 +1202,12 @@ class segmWin(QMainWindow):
         self.user_ch_file_paths = user_ch_file_paths
         self.user_ch_name = user_ch_name
 
+        proceed = self.askRunNowOrSaveConfigFile()
+        if not proceed:
+            self.logger.info('Segmentation process interrupted.')
+            self.close()
+            return
+        
         self.threadCount = 1 # QThreadPool.globalInstance().maxThreadCount()
         self.numThreadsRunning = self.threadCount
         self.threadPool = QThreadPool.globalInstance()
@@ -1209,6 +1215,42 @@ class segmWin(QMainWindow):
         for i in range(self.threadCount):
             self.threadIdx = i
             self.startSegmWorker()
+    
+    def saveWorkflowToConfigFile(self):
+        timestamp = datetime.datetime.now().strftime(
+            r'%Y-%m-%d_%H-%M'
+        )
+        win = apps.filenameDialog(
+            parent=self, 
+            ext='.ini', 
+            title='Insert filename for configuration file'
+            hintText='Insert filename for the configuration file',
+            allowEmpty=False, 
+            defaultEntry=f'{timestamp}_acdc_segm_track_workflow'
+        )
+        win.exec_()
+    
+    def askRunNowOrSaveConfigFile(self):
+        txt = html_utils.paragraph("""
+            Do you want to <b>run</b> the segmentation process <b>now</b><br>
+            or save the  workflow to a <b>configuration file/b> and run it 
+            <b>later?</b><br><br>
+            With the configuration file you can also run the workflow on a<br>
+            computing cluster that does not support GUI elements.<br>
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        _, runNowButton, saveButton = msg.question(
+            self, 'Run workflow now?', txt, 
+            buttonsTexts=(
+                'Cancel', 'Run now', 'Save workflow'
+            )
+        )
+        if msg.cancel:
+            return False
+        if msg.clickedButton == runNowButton:
+            return True
+        
+        
 
     def askMultipleSegm(self, segm_files, isTimelapse=True):
         txt = html_utils.paragraph("""
