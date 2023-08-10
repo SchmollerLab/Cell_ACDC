@@ -1130,8 +1130,6 @@ class dataPrepWin(QMainWindow):
             
             croppedShapes, posData, SizeZ, doCrop = cropInfo
             
-            printl(posData.pos_path)
-            
             if SizeZ != posData.SizeZ:
                 # Update metadata with cropped SizeZ
                 posData.metadata_df.at['SizeZ', 'values'] = SizeZ
