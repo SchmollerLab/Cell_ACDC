@@ -4657,8 +4657,7 @@ class guiWin(QMainWindow):
                 # self.set_2Dlab(lab2D)
             elif not ctrl:
                 lab2D, success = self.auto_separate_bud_ID(
-                    ID, self.get_2Dlab(posData.lab), posData.rp, max_ID,
-                    enforce=True
+                    ID, self.get_2Dlab(posData.lab), posData.rp, max_ID
                 )
                 self.set_2Dlab(lab2D)
             else:
@@ -10446,8 +10445,7 @@ class guiWin(QMainWindow):
         return cnt, defects
 
     def auto_separate_bud_ID(
-            self, ID, lab, rp, max_ID, max_i=1, enforce=False, 
-            eps_percent=0.01
+            self, ID, lab, rp, max_ID, max_i=1, eps_percent=0.01
         ):
         lab_ID_bool = lab == ID
         # First try separating by labelling
@@ -10461,44 +10459,48 @@ class guiWin(QMainWindow):
 
         cnt, defects = self.convexity_defects(lab_ID_bool, eps_percent)
         success = False
-        if defects is not None:
-            if len(defects) == 2:
-                num_obj_watshed = 0
-                # Separate only if it was a separation also with watershed method
-                if num_obj_watshed > 2 or enforce:
-                    defects_points = [0]*len(defects)
-                    for i, defect in enumerate(defects):
-                        s,e,f,d = defect[0]
-                        x,y = tuple(cnt[f][0])
-                        defects_points[i] = (y,x)
-                    (r0, c0), (r1, c1) = defects_points
-                    rr, cc, _ = skimage.draw.line_aa(r0, c0, r1, c1)
-                    sep_bud_img = np.copy(lab_ID_bool)
-                    sep_bud_img[rr, cc] = False
-                    sep_bud_label = skimage.measure.label(
-                                               sep_bud_img, connectivity=2)
-                    rp_sep = skimage.measure.regionprops(sep_bud_label)
-                    IDs_sep = [obj.label for obj in rp_sep]
-                    areas = [obj.area for obj in rp_sep]
-                    curr_ID_bud = IDs_sep[areas.index(min(areas))]
-                    curr_ID_moth = IDs_sep[areas.index(max(areas))]
-                    orig_sblab = np.copy(sep_bud_label)
-                    # sep_bud_label = np.zeros_like(sep_bud_label)
-                    sep_bud_label[orig_sblab==curr_ID_moth] = ID
-                    sep_bud_label[orig_sblab==curr_ID_bud] = max_ID+max_i
-                    # sep_bud_label *= (max_ID+max_i)
-                    temp_sep_bud_lab = sep_bud_label.copy()
-                    for r, c in zip(rr, cc):
-                        if lab_ID_bool[r, c]:
-                            nearest_ID = self.nearest_nonzero(
-                                                    sep_bud_label, r, c)
-                            temp_sep_bud_lab[r,c] = nearest_ID
-                    sep_bud_label = temp_sep_bud_lab
-                    sep_bud_label_mask = sep_bud_label != 0
-                    # plt.imshow_tk(sep_bud_label, dots_coords=np.asarray(defects_points))
-                    lab[sep_bud_label_mask] = sep_bud_label[sep_bud_label_mask]
-                    max_i += 1
-                    success = True
+        if defects is None:
+            return False
+
+        if len(defects) != 2:
+            return False
+
+        defects_points = [0]*len(defects)
+        for i, defect in enumerate(defects):
+            s,e,f,d = defect[0]
+            x,y = tuple(cnt[f][0])
+            defects_points[i] = (y,x)
+        (r0, c0), (r1, c1) = defects_points
+        rr, cc, _ = skimage.draw.line_aa(r0, c0, r1, c1)
+        sep_bud_img = np.copy(lab_ID_bool)
+        sep_bud_img[rr, cc] = False
+        
+        sep_bud_label = skimage.measure.label(
+            sep_bud_img, connectivity=2
+        )
+        
+        rp_sep = skimage.measure.regionprops(sep_bud_label)
+        IDs_sep = [obj.label for obj in rp_sep]
+        areas = [obj.area for obj in rp_sep]
+        curr_ID_bud = IDs_sep[areas.index(min(areas))]
+        curr_ID_moth = IDs_sep[areas.index(max(areas))]
+        orig_sblab = np.copy(sep_bud_label)
+        # sep_bud_label = np.zeros_like(sep_bud_label)
+        sep_bud_label[orig_sblab==curr_ID_moth] = ID
+        sep_bud_label[orig_sblab==curr_ID_bud] = max_ID+max_i
+        # sep_bud_label *= (max_ID+max_i)
+        temp_sep_bud_lab = sep_bud_label.copy()
+        for r, c in zip(rr, cc):
+            if lab_ID_bool[r, c]:
+                nearest_ID = self.nearest_nonzero(
+                                        sep_bud_label, r, c)
+                temp_sep_bud_lab[r,c] = nearest_ID
+        sep_bud_label = temp_sep_bud_lab
+        sep_bud_label_mask = sep_bud_label != 0
+        # plt.imshow_tk(sep_bud_label, dots_coords=np.asarray(defects_points))
+        lab[sep_bud_label_mask] = sep_bud_label[sep_bud_label_mask]
+        max_i += 1
+        success = True
         return lab, success
 
     def disconnectLeftClickButtons(self):
