@@ -1584,6 +1584,7 @@ class dataPrepWin(QMainWindow):
         self.ROIshapeComboBox.setCurrentText(items[-1])
 
         for posData in self.data:
+            posData.cropROIs = []
             if posData.dataPrep_ROIcoords is None:
                 cropROI = self.getDefaultROI()
                 self.setROIprops(cropROI)
