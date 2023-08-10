@@ -944,13 +944,19 @@ class dataPrepWin(QMainWindow):
                 pass
             
             for file in myutils.listdir(posData.images_path):
-                if file.endswith('metadata.csv'):
-                    metadata_sub_filepath = os.path.join(subImagesPath, file)
-                    if os.path.exists(metadata_sub_filepath):
-                        continue
-                    
-                    src_filepath = os.path.join(posData.images_path, file)
-                    shutil.copyfile(src_filepath, metadata_sub_filepath)
+                copy_file = (
+                    file.endswith('metadata.csv')
+                    or file.endswith('bkgrRoiData.npz')
+                    or file.endswith('dataPrep_bkgrROIs.json')
+                )
+                if not copy_file:
+                    continue
+                sub_filepath = os.path.join(subImagesPath, file)
+                if os.path.exists(sub_filepath):
+                    continue
+                
+                src_filepath = os.path.join(posData.images_path, file)
+                shutil.copyfile(src_filepath, sub_filepath)
     
     def saveROIcoords(self, doCrop, posData):
         dfs = []
