@@ -157,8 +157,9 @@ class segmWorker(QRunnable):
 
         isROIactive = False
         if posData.dataPrep_ROIcoords is not None and not self.ROIdeactivatedByUser:
-            isROIactive = posData.dataPrep_ROIcoords.at['cropped', 'value'] == 0
-            x0, x1, y0, y1 = posData.dataPrep_ROIcoords['value'].astype(int)[:4]
+            df_roi = posData.dataPrep_ROIcoords.loc[0]
+            isROIactive = df_roi.at['cropped', 'value'] == 0
+            x0, x1, y0, y1 = df_roi['value'].astype(int)[:4]
             Y, X = posData.img_data.shape[-2:]
             x0 = x0 if x0>0 else 0
             y0 = y0 if y0>0 else 0
@@ -1104,8 +1105,9 @@ class segmWin(QMainWindow):
 
         isROIactive = False
         if posData.dataPrep_ROIcoords is not None and not self.ROIdeactivatedByUser:
-            isROIactive = posData.dataPrep_ROIcoords.at['cropped', 'value'] == 0
-            x0, x1, y0, y1 = posData.dataPrep_ROIcoords['value'][:4]
+            df_roi = posData.dataPrep_ROIcoords.loc[0]
+            isROIactive = df_roi.at['cropped', 'value'] == 0
+            x0, x1, y0, y1 = df_roi['value'][:4]
 
         self.image_chName_tracker = None
         self.do_tracking = False
