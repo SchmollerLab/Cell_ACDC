@@ -53,11 +53,10 @@ body:
     attributes:
       label: "Version information:"
       description: |
-        Paste the output after running the following Python commands
-        ```python
-        import sys; print(sys.version)
-        import platform; print(platform.platform())
-        import cellacdc; print(f'Cell-ACDC version: {cellacdc.__version__}')
+        After activating the environment where you have Cell-ACDC installed, 
+        run the following command and paste the output
+        ```shell
+        python -c "import sys; print(sys.version); import platform; print(platform.platform()); import cellacdc; print(f'Cell-ACDC version: {cellacdc.__version__}')"
         ```
       placeholder: |
         Version information...
