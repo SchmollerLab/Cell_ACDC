@@ -12,6 +12,7 @@ import pandas as pd
 import scipy.interpolate
 import skimage
 import skimage.io
+from torch import int16
 from tqdm import tqdm
 from functools import partial, wraps
 from tifffile.tifffile import TiffWriter, TiffFile
@@ -189,6 +190,14 @@ class dataPrepWin(QMainWindow):
 
         self.loadPosAction = QAction("Load different Position...", self)
         self.loadPosAction.setShortcut("Shift+P")
+        
+        toolTip = (
+            "Add crop ROI for multiple crops\n\n"
+            "Multiple crops will be saved as Position_1, Position_2 "
+            "as sub-folders in the current Position."
+        )
+        self.addCropRoiActon = QAction(QIcon(":add_crop_ROI.svg"), toolTip, self)
+        self.addCropRoiActon.setDisabled(True)
 
         toolTip = "Add ROI where to calculate background intensity"
         self.addBkrgRoiActon = QAction(QIcon(":bkgrRoi.svg"), toolTip, self)
@@ -252,7 +261,7 @@ class dataPrepWin(QMainWindow):
 
         # navigateToolbar.addAction(self.jumpBackwardAction)
         # navigateToolbar.addAction(self.jumpForwardAction)
-
+        navigateToolbar.addAction(self.addCropRoiActon)
         navigateToolbar.addAction(self.addBkrgRoiActon)
 
         navigateToolbar.addAction(self.ZbackAction)
@@ -276,6 +285,7 @@ class dataPrepWin(QMainWindow):
         self.openRecentMenu.aboutToShow.connect(self.populateOpenRecent)
         self.exitAction.triggered.connect(self.close)
         self.showInExplorerAction.triggered.connect(self.showInExplorer)
+        self.addCropRoiActon.triggered.connect(self.addCropROI)
         self.addBkrgRoiActon.triggered.connect(self.addDefaultBkgrROI)
         self.cropAction.triggered.connect(self.crop_cb)
         self.cropZaction.toggled.connect(self.openCropZtool)
@@ -426,7 +436,7 @@ class dataPrepWin(QMainWindow):
         self.updateCropZtool()
         self.setImageNameText()
         self.update_img()
-        self.updateROI()
+        self.addAndConnectCropROIs()
         self.updateBkgrROIs()
         self.saveBkgrROIs(self.data[self.pos_i])
     
@@ -1621,6 +1631,7 @@ class dataPrepWin(QMainWindow):
         )
 
         self.addBkrgRoiActon.setDisabled(False)
+        self.addCropRoiActon.setDisabled(False)
 
         for posData in self.data:
             if not posData.bkgrROIs and not posData.bkgrDataExists:
