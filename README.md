@@ -40,6 +40,20 @@ If you use Cell-ACDC in your publication, please cite:
 > Cell-ACDC_. BMC Biol 20, 174 (2022)
 > https://doi.org/10.1186/s12915-022-01372-6
 
+Additionally, **make sure you cite the paper of the segmentation and/or tracking models you used**. Here are links to the models currently supported by Cell-ACDC:
+
+- [Segment Anything Model (SAM)](https://github.com/facebookresearch/segment-anything)
+- [YeaZ](https://www.nature.com/articles/s41467-020-19557-4)
+- [cellpose](https://www.nature.com/articles/s41592-020-01018-x)
+- [StarDist](https://github.com/stardist/stardist)
+- [YeastMate](https://github.com/hoerlteam/YeastMate)
+- [omnipose](https://omnipose.readthedocs.io/)
+- [Delta](https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1009797)
+- [DeepSea](https://doi.org/10.1016/j.crmeth.2023.100500)
+- [TAPIR](https://deepmind-tapir.github.io/)
+- [Bayesian tracker (btrack)](https://doi.org/10.3389/fcomp.2021.734559)
+- [trackpy](https://soft-matter.github.io/trackpy/dev/introduction.html#citing-trackpy)
+
 ## How to contribute
 
 Contributions to Cell-ACDC are always very welcome! For more details see instructions [here](https://github.com/SchmollerLab/Cell_ACDC/blob/main/CONTRIBUTING.rst).
@@ -48,7 +62,7 @@ Contributions to Cell-ACDC are always very welcome! For more details see instruc
 
 Let's face it, when dealing with segmentation of microscopy data we often do not have time to check that **everything is correct**, because it is a **tedious** and **very time consuming process**. Cell-ACDC comes to the rescue!
 We combined the currently **best available neural network models** (such as [Segment Anything Model (SAM)](https://github.com/facebookresearch/segment-anything), [YeaZ](https://www.nature.com/articles/s41467-020-19557-4),
-[cellpose](https://www.nature.com/articles/s41592-020-01018-x), [StarDist](https://github.com/stardist/stardist), [YeastMate](https://github.com/hoerlteam/YeastMate), [omnipose](https://omnipose.readthedocs.io/), [delta](https://gitlab.com/dunloplab/delta), [DeepSea](https://www.biorxiv.org/content/10.1101/2021.03.10.434806v1), etc.) and we complemented them with a **fast and intuitive GUI**.
+[cellpose](https://www.nature.com/articles/s41592-020-01018-x), [StarDist](https://github.com/stardist/stardist), [YeastMate](https://github.com/hoerlteam/YeastMate), [omnipose](https://omnipose.readthedocs.io/), [delta](https://gitlab.com/dunloplab/delta), [DeepSea](https://doi.org/10.1016/j.crmeth.2023.100500), etc.) and we complemented them with a **fast and intuitive GUI**.
 
 We developed and implemented several smart functionalities such as **real-time continuous tracking**, **automatic propagation** of error correction, and several tools to facilitate manual correction, from simple yet useful **brush** and **eraser** to more complex flood fill (magic wand) and Random Walker segmentation routines.
 
