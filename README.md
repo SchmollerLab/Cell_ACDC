@@ -40,7 +40,7 @@ If you use Cell-ACDC in your publication, please cite:
 > Cell-ACDC_. BMC Biol 20, 174 (2022)
 > https://doi.org/10.1186/s12915-022-01372-6
 
-Additionally, **make sure you cite the paper of the segmentation and/or tracking models you used**. Here are links to the models currently supported by Cell-ACDC:
+Additionally, **make sure you cite the paper of the segmentation and/or tracking models you used**. Here are the links to the models currently supported by Cell-ACDC:
 
 - [Segment Anything Model (SAM)](https://github.com/facebookresearch/segment-anything)
 - [YeaZ](https://www.nature.com/articles/s41467-020-19557-4)
