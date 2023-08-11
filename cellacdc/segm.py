@@ -911,8 +911,8 @@ class segmWin(QMainWindow):
             'second_channel_name': self.secondChannelName,
         }
         metadata_params = {
-            'SizeZ': self.SizeZ,
-            'SizeT': self.SizeZ
+            'SizeT': self.SizeT,
+            'SizeZ': self.SizeZ
         }
         track_params = {
             key:value for key, value in self.track_params.items()
@@ -952,11 +952,11 @@ class segmWin(QMainWindow):
         txt = html_utils.paragraph(
             'Segmentation workflow successfully saved to the following location:<br><br>'
             f'<code>{filepath}</code><br><br>'
-            'The segmentation module will now close. '
-            f'{myutils.get_salute_string()}<br>'
+            'You can run the segmentation workflow with the following command:'
         )
+        command = f'acdc -p "{filepath}"'
         msg = widgets.myMessageBox(wrapText=False)
-        msg.information(self, 'Workflow save', txt)
+        msg.information(self, 'Workflow save', txt, commands=(command,))
     
     def saveWorkflowToConfigFile(self):
         timestamp = datetime.datetime.now().strftime(

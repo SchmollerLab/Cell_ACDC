@@ -1853,10 +1853,11 @@ class SegmKernel(_WorkflowKernel):
         posData.SizeT = self.SizeT
         if self.SizeZ > 1:
             SizeZ = posData.img_data.shape[-3]
-            posData.SizeZ = self.SizeZ
+            posData.SizeZ = SizeZ
         else:
             posData.SizeZ = 1
 
+        import pdb; pdb.set_trace()
         posData.isSegm3D = self.isSegm3D
         posData.saveMetadata()
         
