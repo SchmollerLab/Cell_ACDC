@@ -100,6 +100,12 @@ try:
 except Exception as e:
     model = acdcSegment.Model(segm_data, **win.init_kwargs)
 
+is_segment3DT_available = any(
+    [name=='segment3DT' for name in dir(model)]
+)
+
+import pdb; pdb.set_trace()
+
 if img.ndim == 3 and (img.shape[-1] == 3 or img.shape[-1] == 4):
     img = skimage.color.rgb2gray(img)
 

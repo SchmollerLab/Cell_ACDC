@@ -58,6 +58,7 @@ from qtpy.QtWidgets import (
     QTreeWidget, QTreeWidgetItem, QTextEdit, QSplashScreen, QAction,
     QListWidgetItem, QActionGroup, QLayout
 )
+import qtpy.compat
 
 from . import exception_handler
 from . import load, prompts, core, measurements, html_utils
@@ -10576,7 +10577,7 @@ class QDialogModelParams(QDialog):
             postProcLoadLastSelButton.click()
 
         self.setLayout(mainLayout)
-
+        self.setFont(font)
         # self.setModal(True)
     
     def selectedFeaturesRange(self):
@@ -12694,3 +12695,30 @@ class SelectFeaturesRangeGroupbox(QGroupBox):
     
     def setValue(self, value):
         pass
+
+def get_existing_directory(allow_images_path=True, **kwargs):
+    while True:
+        folder_path = qtpy.compat.getexistingdirectory(**kwargs)
+        if not folder_path:
+            return
+        
+        if allow_images_path:
+            return folder_path
+        
+        pos_folderpath = os.path.dirname(folder_path)
+        is_images_folder = (
+            folder_path.endswith('Images') 
+            and os.path.basename(pos_folderpath).startswith('Position_')
+            and os.path.isdir(folder_path)
+        )
+        if not is_images_folder:
+            return folder_path
+        
+        txt = html_utils.paragraph(
+            'You <b>cannot save</b> to the <code>Images</code> folder '
+            'because it is reserved to files that start with the same '
+            'basename.<br><br>Thank you for your patience!'
+        )
+        msg = widgets.myMessageBox()
+        msg.warning(kwargs['parent'], 'Cannot save here', txt)
+        

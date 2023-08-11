@@ -1872,12 +1872,15 @@ def _install_deepsea():
         [sys.executable, '-m', 'pip', 'install', 'deepsea']
     )
 
-def import_tracker(posData, trackerName, realTime=False, qparent=None):
+def import_tracker(
+        posData, trackerName, realTime=False, qparent=None, 
+        return_init_params=False
+    ):
     from . import apps
     downloadWin = apps.downloadModel(trackerName, parent=qparent)
     downloadWin.download()
 
-    trackerModuleName =  f'trackers.{trackerName}.{trackerName}_tracker'
+    trackerModuleName =  f'cellacdc.trackers.{trackerName}.{trackerName}_tracker'
     trackerModule = import_module(trackerModuleName)
     init_params = {}
     track_params = {}
@@ -1956,11 +1959,14 @@ def import_tracker(posData, trackerName, realTime=False, qparent=None):
             return None, None
     
     tracker = trackerModule.tracker(**init_params)
-    return tracker, track_params
+    if return_init_params:
+        return tracker, track_params, init_params
+    else:
+        return tracker, track_params
 
 def import_segment_module(model_name):
     try:
-        acdcSegment = import_module(f'models.{model_name}.acdcSegment')
+        acdcSegment = import_module(f'cellacdc.models.{model_name}.acdcSegment')
     except ModuleNotFoundError as e:
         # Check if custom model
         cp = config.ConfigParser()
@@ -2144,9 +2150,14 @@ def format_cca_manual_changes(changes: dict):
     return txt
 
 def init_segm_model(acdcSegment, posData, init_kwargs):
-    segm_endname = init_kwargs.pop('segm_endname')
+    segm_endname = init_kwargs.pop('segm_endname', 'None')
     if segm_endname != 'None':
-        if posData.segm_npz_path.endswith(f'{segm_endname}.npz'):
+        load_segm = True
+        if not hasattr(posData, 'segm_data'):
+            load_segm = True
+        elif posData.segm_npz_path.endswith(f'{segm_endname}.npz'):
+            load_segm = False
+        if not load_segm:
             segm_data = np.squeeze(posData.segm_data)
         else:
             segm_filepath, _ = load.get_path_from_endname(
@@ -2162,3 +2173,25 @@ def init_segm_model(acdcSegment, posData, init_kwargs):
     except Exception as e:
         model = acdcSegment.Model(segm_data, **init_kwargs)
     return model
+
+def _parse_bool_str(value):
+    if isinstance(value, bool):
+        return value
+    
+    if value == 'True':
+        return True
+    elif value == 'False':
+        return False
+
+def parse_model_params(model_argspecs, model_params):
+    parsed_model_params = {}
+    for row, argspec in enumerate(model_argspecs):
+        value = model_params[argspec.name]
+        if argspec.type == bool:
+            value = _parse_bool_str(value)
+        elif argspec.type == int:
+            value = int(value)
+        elif argspec.type == float:
+            value = float(value)
+        parsed_model_params[argspec.name] = value
+    return parsed_model_params

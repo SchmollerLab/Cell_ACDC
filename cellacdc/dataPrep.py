@@ -1,3 +1,4 @@
+import gc
 import os
 import sys
 import traceback
@@ -269,9 +270,12 @@ class dataPrepWin(QMainWindow):
         navigateToolbar.addAction(self.interpAction)
 
         self.ROIshapeComboBox = QComboBox()
+        self.ROIshapeComboBox.setFont(apps.font)
         self.ROIshapeComboBox.SizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
         self.ROIshapeComboBox.addItems(['  256x256  '])
-        ROIshapeLabel = QLabel('   ROI standard shape: ')
+        ROIshapeLabel = QLabel(html_utils.paragraph(
+            '&nbsp;&nbsp;&nbsp;ROI standard shape: ')
+        )
         ROIshapeLabel.setBuddy(self.ROIshapeComboBox)
         navigateToolbar.addWidget(ROIshapeLabel)
         navigateToolbar.addWidget(self.ROIshapeComboBox)
@@ -2382,6 +2386,7 @@ class dataPrepWin(QMainWindow):
             self.loop.exit()
         
         self.sigClose.emit(self)
+        gc.collect()
 
     def saveWindowGeometry(self):
         settings = QSettings('schmollerlab', 'acdc_dataPrep')

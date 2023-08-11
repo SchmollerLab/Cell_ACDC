@@ -1,4 +1,3 @@
-from ast import Index
 import os
 import sys
 import operator
@@ -66,7 +65,7 @@ PROGRESSBAR_QCOLOR = _palettes.QProgressBarColor()
 PROGRESSBAR_HIGHLIGHTEDTEXT_QCOLOR = _palettes.QProgressBarHighlightedTextColor()
 
 font = QFont()
-font.setPixelSize(13)
+font.setPixelSize(12)
 
 custom_cmaps_filepath = os.path.join(settings_folderpath, 'custom_colormaps.ini')
 
@@ -1208,6 +1207,7 @@ class QDialogListbox(QDialog):
         self.areItemsSelected = [
             listBox.item(i).isSelected() for i in range(listBox.count())
         ]
+        self.setFont(font)
     
     def keyPressEvent(self, event) -> None:
         mod = event.modifiers()
@@ -6540,3 +6540,14 @@ class CheckableSpinBoxWidgets:
         if not self.checkbox.isChecked():
             return
         return self.spinbox.value()
+
+class Label(QLabel):
+    def __init__(self, parent=None, force_html=False):
+        super().__init__(parent)
+        self._force_html = force_html
+        
+    def setText(self, text):
+        if self._force_html:
+            text = html_utils.paragraph(text)
+        super().setText(text)
+        

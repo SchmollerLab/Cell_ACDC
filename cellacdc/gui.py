@@ -1,3 +1,4 @@
+import gc
 import sys
 import os
 import shutil
@@ -1593,7 +1594,7 @@ class guiWin(QMainWindow):
         self.copyContourButton = QToolButton(self)
         self.copyContourButton.setIcon(QIcon(":copyContour.svg"))
         self.copyContourButton.setCheckable(True)
-        self.copyContourButton.setShortcut('w')
+        self.copyContourButton.setShortcut('v')
         self.copyContourButton.setToolTip(
             'Toggle "Copy contour mode from lost object" ON/OFF\n\n'
             'ACTION: Hover onto lost object contour --> right-click to copy '
@@ -3291,12 +3292,12 @@ class guiWin(QMainWindow):
 
         self.highLowResToggle = widgets.Toggle()
         self.widgetsWithShortcut['High resolution'] = self.highLowResToggle
-        self.highLowResToggle.setShortcut('w')
+        self.highLowResToggle.setShortcut('y')
         highLowResTooltip = (
             'Resolution of the text annotations. High resolution results '
             'in slower update of the annotations.\n'
             'Not recommended with a number of segmented objects > 500.\n\n'
-            'SHORTCUT: "W" key'
+            'SHORTCUT: "Y" key'
         )
         highResLabel = QLabel('High resolution')
         highResLabel.setToolTip(highLowResTooltip)
@@ -10292,7 +10293,7 @@ class guiWin(QMainWindow):
         self.copyContourButton.setChecked(False)
         if mode == 'Segmentation and Tracking':
             self.trackingMenu.setDisabled(False)
-            self.modeToolBar.setVisible(True)
+            # self.modeToolBar.setVisible(True)
             self.initSegmTrackMode()
             self.setEnabledEditToolbarButton(enabled=True)
             self.addExistingDelROIs()
@@ -10306,7 +10307,7 @@ class guiWin(QMainWindow):
             proceed = self.initCca()
             if proceed:
                 self.applyDelROIs()
-            self.modeToolBar.setVisible(True)
+            # self.modeToolBar.setVisible(True)
             self.realTimeTrackingToggle.setDisabled(True)
             self.realTimeTrackingToggle.label.setDisabled(True)
             if proceed:
@@ -10321,7 +10322,7 @@ class guiWin(QMainWindow):
                 self.setDrawAnnotComboboxText()
                 self.clearGhost()
         elif mode == 'Viewer':
-            self.modeToolBar.setVisible(True)
+            # self.modeToolBar.setVisible(True)
             self.realTimeTrackingToggle.setDisabled(True)
             self.realTimeTrackingToggle.label.setDisabled(True)
             self.setEnabledEditToolbarButton(enabled=False)
@@ -10335,7 +10336,7 @@ class guiWin(QMainWindow):
             self.navSpinBox.setMaximum(posData.SizeT)
             self.clearGhost()
         elif mode == 'Custom annotations':
-            self.modeToolBar.setVisible(True)
+            # self.modeToolBar.setVisible(True)
             self.realTimeTrackingToggle.setDisabled(True)
             self.realTimeTrackingToggle.label.setDisabled(True)
             self.setEnabledEditToolbarButton(enabled=False)
@@ -22392,6 +22393,8 @@ class guiWin(QMainWindow):
         
         if self.lazyLoader is None:
             self.sigClosed.emit(self)
+        
+        gc.collect()
     
     def storeManualSeparateDrawMode(self, mode):
         self.df_settings.at['manual_separate_draw_mode', 'value'] = mode

@@ -177,3 +177,6 @@ class Model:
         if signals is not None:
             signals[0].signal_close_tqdm.emit()
         return lab_timelapse
+
+def url_help():
+    return 'https://github.com/rahi-lab/YeaZ-GUI'

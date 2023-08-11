@@ -30,64 +30,71 @@ if cellacdc_installation_path != site_packages:
             exit()
         print('*'*60)
         input(
-            '[WARNING]: Cell-ACDC had to install the required GUI libraries. '
+            '[WARNING]: Cell-ACDC had to clean-up and older installation. '
             'Please, re-start the software. Thank you for your patience! '
             '(Press any key to exit). '
         )
         exit()
 
 from cellacdc import _run
-_run._setup_gui_libraries()
-
-from qtpy import QtGui, QtWidgets, QtCore
-# from . import qrc_resources
-
-if os.name == 'nt':
-    try:
-        # Set taskbar icon in windows
-        import ctypes
-        myappid = 'schmollerlab.cellacdc.pyqt.v1' # arbitrary string
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
-    except Exception as e:
-        pass
-
-# Needed by pyqtgraph with display resolution scaling
-try:
-    QtWidgets.QApplication.setAttribute(
-        QtCore.Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
-    )
-except Exception as e:
-    pass
-
-import pyqtgraph as pg
-# Interpret image data as row-major instead of col-major
-pg.setConfigOption('imageAxisOrder', 'row-major')
-try:
-    import numba
-    pg.setConfigOption("useNumba", True)
-except Exception as e:
-    pass
-
-try:
-    import cupy as cp
-    pg.setConfigOption("useCupy", True)
-except Exception as e:
-    pass
-
-# Create the application
-app, splashScreen = _run._setup_app(splashscreen=True)
-
-import sys
-import re
-import traceback
-
-import pandas as pd
-
-from cellacdc import myutils, printl
-from cellacdc import qrc_resources
 
 def run():
     from cellacdc.config import parser_args
+
+    PARAMS_PATH = parser_args['params']
+
+    if PARAMS_PATH:
+        _run.run_cli(PARAMS_PATH)
+    else:
+        run_gui()
+
+def main():
+    # Keep compatibility with users that installed older versions
+    # where the entry point was main()
+    run()
+
+def run_gui():
+    from qtpy import QtGui, QtWidgets, QtCore
+    # from . import qrc_resources
+
+    if os.name == 'nt':
+        try:
+            # Set taskbar icon in windows
+            import ctypes
+            myappid = 'schmollerlab.cellacdc.pyqt.v1' # arbitrary string
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+        except Exception as e:
+            pass
+
+    # Needed by pyqtgraph with display resolution scaling
+    try:
+        QtWidgets.QApplication.setAttribute(
+            QtCore.Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
+        )
+    except Exception as e:
+        pass
+
+    import pyqtgraph as pg
+    # Interpret image data as row-major instead of col-major
+    pg.setConfigOption('imageAxisOrder', 'row-major')
+    try:
+        import numba
+        pg.setConfigOption("useNumba", True)
+    except Exception as e:
+        pass
+
+    try:
+        import cupy as cp
+        pg.setConfigOption("useCupy", True)
+    except Exception as e:
+        pass
+
+    # Create the application
+    app, splashScreen = _run._setup_app(splashscreen=True)
+
+    from cellacdc import myutils, printl
+    from cellacdc import qrc_resources
+
     print('Launching application...')
 
     from cellacdc._main import mainWin
@@ -124,19 +131,9 @@ def run():
     win.logger.info('**********************************************')
     win.logger.info('----------------------------------------------')
     win.logger.info('NOTE: If application is not visible, it is probably minimized\n'
-          'or behind some other open windows.')
+        'or behind some other open windows.')
     win.logger.info('----------------------------------------------')
     splashScreen.close()
     # splashScreenApp.quit()
     # modernWin.show()
     app.exec_()
-
-def main():
-    # Keep compatibility with users that installed older versions
-    # where the entry point was main()
-    run()
-
-if __name__ == "__main__":
-    run()
-else:
-    splashScreen.hide()
