@@ -593,7 +593,8 @@ class segmWin(QMainWindow):
             self.isNewSegmFile = True
             win = apps.filenameDialog(
                 basename=f'{posData.basename}segm',
-                hintText='Insert a <b>filename</b> for the segmentation file:<br>'
+                hintText='Insert a <b>filename</b> for the segmentation file:<br>',
+                existingNames=segm_files
             )
             win.exec_()
             if win.cancel:
@@ -831,11 +832,11 @@ class segmWin(QMainWindow):
                 self.do_tracking = True
                 trackerName = win.selectedItemsText[0]
                 self.trackerName = trackerName
-                import_tracker_output = myutils.import_tracker(
+                init_tracker_output = myutils.init_tracker(
                         posData, trackerName, return_init_params=True, qparent=self
                 )
                 self.tracker, self.track_params, self.tracker_init_params = (
-                    import_tracker_output
+                    init_tracker_output
                 )
                 if self.track_params is None:
                     abort = self.doAbort()

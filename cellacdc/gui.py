@@ -1877,25 +1877,13 @@ class guiWin(QMainWindow):
         editToolBar.setVisible(False)
         self.reinitLastSegmFrameAction.toolbar = editToolBar
         self.functionsNotTested3D.append(self.reinitLastSegmFrameAction)
-
-        # Edit toolbar
-        modeToolBar = QToolBar("Mode", self)
-        self.addToolBar(modeToolBar)
-
-        self.modeComboBox = QComboBox()
+        
         self.modeItems = [
             'Segmentation and Tracking',
             'Cell cycle analysis',
             'Viewer',
             'Custom annotations'
         ]
-        self.modeComboBox.addItems(self.modeItems)
-        self.modeComboBoxLabel = QLabel('    Mode: ')
-        self.modeComboBoxLabel.setBuddy(self.modeComboBox)
-        modeToolBar.addWidget(self.modeComboBoxLabel)
-        modeToolBar.addWidget(self.modeComboBox)
-        modeToolBar.setVisible(False)
-        
         self.modeActionGroup = QActionGroup(self.modeMenu)
         for mode in self.modeItems:
             action = QAction(mode)
@@ -1905,7 +1893,6 @@ class guiWin(QMainWindow):
             if mode == 'Viewer':
                 action.setChecked(True)
 
-        self.modeToolBar = modeToolBar
         self.editToolBar = editToolBar
         self.editToolBar.setVisible(False)
         self.navigateToolBar.setVisible(False)
@@ -2130,6 +2117,20 @@ class guiWin(QMainWindow):
         self.controlToolBars = []
         self.addToolBarBreak()
         
+        # Edit toolbar
+        modeToolBar = QToolBar("Mode", self)
+        self.addToolBar(modeToolBar)
+
+        self.modeComboBox = QComboBox()
+        self.modeComboBox.addItems(self.modeItems)
+        self.modeComboBoxLabel = QLabel('    Mode: ')
+        self.modeComboBoxLabel.setBuddy(self.modeComboBox)
+        modeToolBar.addWidget(self.modeComboBoxLabel)
+        modeToolBar.addWidget(self.modeComboBox)
+        modeToolBar.setVisible(False)
+        
+        self.modeToolBar = modeToolBar
+        
         # Widgets toolbar
         brushEraserToolBar = QToolBar("Widgets", self)
         self.addToolBar(Qt.TopToolBarArea, brushEraserToolBar)
@@ -2217,7 +2218,7 @@ class guiWin(QMainWindow):
         self.labelRoiToolbar.addWidget(widgets.QHWidgetSpacer(width=separatorW))
 
         self.labelRoiReplaceExistingObjectsCheckbox = QCheckBox(
-            'Remove existing objects touched by new objects'
+            'Remove objects touched by new objects'
         )
         self.labelRoiToolbar.addWidget(self.labelRoiReplaceExistingObjectsCheckbox)
         self.labelRoiAutoClearBorderCheckbox = QCheckBox(
@@ -10293,7 +10294,7 @@ class guiWin(QMainWindow):
         self.copyContourButton.setChecked(False)
         if mode == 'Segmentation and Tracking':
             self.trackingMenu.setDisabled(False)
-            # self.modeToolBar.setVisible(True)
+            self.modeToolBar.setVisible(True)
             self.initSegmTrackMode()
             self.setEnabledEditToolbarButton(enabled=True)
             self.addExistingDelROIs()
@@ -10307,7 +10308,7 @@ class guiWin(QMainWindow):
             proceed = self.initCca()
             if proceed:
                 self.applyDelROIs()
-            # self.modeToolBar.setVisible(True)
+            self.modeToolBar.setVisible(True)
             self.realTimeTrackingToggle.setDisabled(True)
             self.realTimeTrackingToggle.label.setDisabled(True)
             if proceed:
@@ -10322,7 +10323,7 @@ class guiWin(QMainWindow):
                 self.setDrawAnnotComboboxText()
                 self.clearGhost()
         elif mode == 'Viewer':
-            # self.modeToolBar.setVisible(True)
+            self.modeToolBar.setVisible(True)
             self.realTimeTrackingToggle.setDisabled(True)
             self.realTimeTrackingToggle.label.setDisabled(True)
             self.setEnabledEditToolbarButton(enabled=False)
@@ -10336,7 +10337,7 @@ class guiWin(QMainWindow):
             self.navSpinBox.setMaximum(posData.SizeT)
             self.clearGhost()
         elif mode == 'Custom annotations':
-            # self.modeToolBar.setVisible(True)
+            self.modeToolBar.setVisible(True)
             self.realTimeTrackingToggle.setDisabled(True)
             self.realTimeTrackingToggle.label.setDisabled(True)
             self.setEnabledEditToolbarButton(enabled=False)
@@ -12070,14 +12071,14 @@ class guiWin(QMainWindow):
 
         trackerName = win.selectedItemsText[0]
         self.logger.info(f'Importing {trackerName} tracker...')
-        self.tracker, self.track_params = myutils.import_tracker(
+        self.tracker, self.track_params = myutils.init_tracker(
             posData, trackerName, qparent=self
         )
         if self.track_params is None:
             self.logger.info('Tracking aborted.')
             return
         if 'image_channel_name' in self.track_params:
-            # Remove the channel name since it was already loaded in import_tracker
+            # Remove the channel name since it was already loaded in init_tracker
             del self.track_params['image_channel_name']
         
         start_n = win.startFrame
@@ -20786,12 +20787,12 @@ class guiWin(QMainWindow):
         
         self.logger.info(f'Initializing {rtTracker} tracker...')
         posData = self.data[self.pos_i]
-        self.realTimeTracker, self.track_frame_params = myutils.import_tracker(
+        self.realTimeTracker, self.track_frame_params = myutils.init_tracker(
             posData, rtTracker, qparent=self
         )
         self.logger.info(f'{rtTracker} tracker successfully initialized.')
         if 'image_channel_name' in self.track_params:
-            # Remove the channel name since it was already loaded in import_tracker
+            # Remove the channel name since it was already loaded in init_tracker
             del self.track_params['image_channel_name']
 
     def initFluoData(self):

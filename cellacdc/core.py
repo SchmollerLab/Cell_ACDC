@@ -1797,8 +1797,7 @@ class SegmKernel(_WorkflowKernel):
         
         if tracker is None:
             self.signals.progress.emit(f'Initializing {tracker_name} tracker...')
-            module_name = f'trackers.{tracker_name}.{tracker_name}_tracker'
-            tracker_module = import_module(module_name)
+            tracker_module = myutils.import_tracker_module(tracker_name)
             init_argspecs, track_argspecs = myutils.getTrackerArgSpec(
                 tracker_module, realTime=False
             )
@@ -1861,7 +1860,6 @@ class SegmKernel(_WorkflowKernel):
         else:
             posData.SizeZ = 1
 
-        import pdb; pdb.set_trace()
         posData.isSegm3D = self.isSegm3D
         posData.saveMetadata()
         
@@ -2106,7 +2104,7 @@ class SegmKernel(_WorkflowKernel):
                 self.logger_func(f'Saving NON-tracked masks of {posData.relPath}...')
                 np.savez_compressed(posData.segm_npz_path, lab_stack)
 
-            self.signals.self.innerPbar_available = self.innerPbar_available
+            self.signals.innerPbar_available = self.innerPbar_available
             self.track_params['signals'] = self.signals
             if self.image_channel_tracker is not None:
                 # Check if loading the image for the tracker is required

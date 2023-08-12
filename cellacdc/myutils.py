@@ -1872,7 +1872,12 @@ def _install_deepsea():
         [sys.executable, '-m', 'pip', 'install', 'deepsea']
     )
 
-def import_tracker(
+def import_tracker_module(tracker_name):
+    module_name =  f'cellacdc.trackers.{tracker_name}.{tracker_name}_tracker'
+    tracker_module = import_module(module_name)
+    return tracker_module
+
+def init_tracker(
         posData, trackerName, realTime=False, qparent=None, 
         return_init_params=False
     ):
@@ -1880,8 +1885,7 @@ def import_tracker(
     downloadWin = apps.downloadModel(trackerName, parent=qparent)
     downloadWin.download()
 
-    trackerModuleName =  f'cellacdc.trackers.{trackerName}.{trackerName}_tracker'
-    trackerModule = import_module(trackerModuleName)
+    trackerModule = import_tracker_module(trackerName)
     init_params = {}
     track_params = {}
     paramsWin = None

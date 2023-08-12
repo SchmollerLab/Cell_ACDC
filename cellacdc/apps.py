@@ -1552,13 +1552,19 @@ class filenameDialog(QDialog):
         return _text
 
     def checkExistingNames(self):
-        if self._text() not in self.existingNames:
+        is_existing = (
+            self._text() in self.existingNames
+            or self.filenameLabel.text() in self.existingNames
+        )
+        if not is_existing:
             return True
 
         filename = self.filenameLabel.text()
         msg = widgets.myMessageBox()
         txt = html_utils.paragraph(
-            f'The file <code>{filename}</code> is <b>already existing</b>.<br><br>'
+            'The following file<br><br>'
+            f'<code>{filename}</code><br><br>'
+            'is <b>already existing</b>.<br><br>'
             'Do you want to <b>overwrite</b> the existing file?'
         )
         noButton, yesButton = msg.warning(
@@ -8352,13 +8358,19 @@ class askStopFrameSegm(QDialog):
         focusSpinbox.setFocus()
 
     def saveStopFrameNumbers(self):
-        self.stopFrames = [
-            spinBox.value() for spinBox, _ in self.dataDict.values()
-        ]
+        for spinBox, posData in self.dataDict.values():
+            posData.metadata_df.at['stop_frame_num', 'values'] = spinBox.value()
+            posData.metadataToCsv()
 
     def ok_cb(self, event):
         self.cancel = False
-        self.saveSegmSizeT()
+        try:
+            self.saveStopFrameNumbers()
+        except Exception as err:
+            printl(traceback.format_exc())
+        self.stopFrames = [
+            spinBox.value() for spinBox, posData in self.dataDict.values()
+        ]
         self.close()
 
     def visualize_cb(self, checked=True):

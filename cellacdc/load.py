@@ -2002,11 +2002,9 @@ class loadData:
             )
             if signals is None:
                 msg = widgets.myMessageBox(self.parent)
-                msg.setIcon(iconName='SP_MessageBoxCritical')
-                msg.setWindowTitle('Permission denied')
-                msg.addText(permissionErrorTxt)
-                msg.addButton('  Ok  ')
-                msg.exec_()
+                msg.warning(
+                    self, 'Permission denied', permissionErrorTxt
+                )
                 self.metadata_df.to_csv(self.metadata_csv_path)
             else:
                 mutex.lock()
