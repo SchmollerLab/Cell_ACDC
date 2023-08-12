@@ -2423,7 +2423,7 @@ class myMessageBox(QDialog):
     def _template(
             self, parent, title, message, detailsText=None,
             buttonsTexts=None, layouts=None, widgets=None,
-            commands=None
+            commands=None, path_to_browse=None, browse_button_text=None
         ):
         if parent is not None:
             self.setParent(parent)
@@ -2446,6 +2446,11 @@ class myMessageBox(QDialog):
             else:
                 self.addWidget(widgets)
 
+        if path_to_browse is not None:
+            self.addShowInFileManagerButton(
+                path_to_browse, txt=browse_button_text
+            )
+        
         buttons = []
         if buttonsTexts is None:
             okButton = self.addButton('  Ok  ')
@@ -2462,66 +2467,30 @@ class myMessageBox(QDialog):
             self.setDetailedText(detailsText, visible=True)
         return buttons
 
-    def critical(
-            self, parent, title, message,
-            buttonsTexts=None, layouts=None, widgets=None,
-            showDialog=True, detailsText=None,
-            commands=None
-        ):
+    def critical(self, *args, showDialog=True, **kwargs):
         self.setIcon(iconName='SP_MessageBoxCritical')
-        buttons = self._template(
-            parent, title, message, detailsText=detailsText,
-            buttonsTexts=buttonsTexts, layouts=layouts, widgets=widgets,
-            commands=commands
-        )
+        buttons = self._template(*args, **kwargs)
         if showDialog:
             self.exec_()
         return buttons
 
-    def information(
-            self, parent, title, message,
-            buttonsTexts=None, layouts=None, widgets=None,
-            showDialog=True, detailsText=None,
-            commands=None
-        ):
+    def information(self, *args, showDialog=True, **kwargs):
         self.setIcon(iconName='SP_MessageBoxInformation')
-        buttons = self._template(
-            parent, title, message, detailsText=detailsText,
-            buttonsTexts=buttonsTexts, layouts=layouts, widgets=widgets,
-            commands=commands
-        )
+        buttons = self._template(*args, **kwargs)
         if showDialog:
             self.exec_()
         return buttons
 
-    def warning(
-            self, parent, title, message,
-            buttonsTexts=None, layouts=None, widgets=None,
-            showDialog=True, detailsText=None,
-            commands=None
-        ):
+    def warning(self, *args, showDialog=True, **kwargs):
         self.setIcon(iconName='SP_MessageBoxWarning')
-        buttons = self._template(
-            parent, title, message, detailsText=detailsText,
-            buttonsTexts=buttonsTexts, layouts=layouts, widgets=widgets,
-            commands=commands
-        )
+        buttons = self._template(*args, **kwargs)
         if showDialog:
             self.exec_()
         return buttons
 
-    def question(
-            self, parent, title, message,
-            buttonsTexts=None, layouts=None, widgets=None,
-            showDialog=True, detailsText=None,
-            commands=None
-        ):
+    def question(self, *args, showDialog=True, **kwargs):
         self.setIcon(iconName='SP_MessageBoxQuestion')
-        buttons = self._template(
-            parent, title, message, detailsText=detailsText,
-            buttonsTexts=buttonsTexts, layouts=layouts, widgets=widgets,
-            commands=commands
-        )
+        buttons = self._template(*args, **kwargs)
         if showDialog:
             self.exec_()
         return buttons

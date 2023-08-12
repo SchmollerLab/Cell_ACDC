@@ -8302,7 +8302,11 @@ class askStopFrameSegm(QDialog):
                 loadSegmInfo=True,
             )
             spinBox.setMaximum(posData.SizeT)
-            spinBox.setValue(posData.SizeT)
+            stopFrameNum = posData.readLastUsedStopFrameNumber()
+            if stopFrameNum is None:
+                spinBox.setValue(posData.SizeT)
+            else:
+                spinBox.setValue(stopFrameNum)
             spinBox.setAlignment(Qt.AlignCenter)
             visualizeButton = widgets.viewPushButton('Visualize')
             visualizeButton.clicked.connect(self.visualize_cb)
@@ -8347,7 +8351,7 @@ class askStopFrameSegm(QDialog):
         focusSpinbox = self.spinBoxes[self.tab_idx]
         focusSpinbox.setFocus()
 
-    def saveSegmSizeT(self):
+    def saveStopFrameNumbers(self):
         self.stopFrames = [
             spinBox.value() for spinBox, _ in self.dataDict.values()
         ]

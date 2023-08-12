@@ -956,7 +956,11 @@ class segmWin(QMainWindow):
         )
         command = f'acdc -p "{filepath}"'
         msg = widgets.myMessageBox(wrapText=False)
-        msg.information(self, 'Workflow save', txt, commands=(command,))
+        msg.information(
+            self, 'Workflow save', txt, 
+            commands=(command,),
+            path_to_browse=os.path.dirname(filepath)
+        )
     
     def saveWorkflowToConfigFile(self):
         timestamp = datetime.datetime.now().strftime(

@@ -7,21 +7,17 @@ import cv2
 import json
 import h5py
 import shutil
-import difflib
 from math import isnan
 from tqdm import tqdm
 import numpy as np
 import h5py
 import pandas as pd
-import xml.etree.ElementTree as ET
-import tkinter as tk
-from tkinter import ttk
-from skimage import io
 import skimage.filters
 from datetime import datetime
 from tifffile import TiffFile
 from natsort import natsorted
 import skimage
+import skimage.io
 import skimage.measure
 
 from . import GUI_INSTALLED
@@ -956,6 +952,20 @@ class loadData:
         else:
             return '', '', False
 
+    def readLastUsedStopFrameNumber(self):
+        if not hasattr(self, 'metadata_df'):
+            return
+        
+        if self.metadata_df is None:
+            return
+        
+        try:
+            stop_frame_num = int(self.metadata_df.at['stop_frame_num', 'values'])
+        except Exception as err:
+            stop_frame_num = None
+        
+        return stop_frame_num
+    
     def loadOtherFiles(
             self,
             load_segm_data=True,

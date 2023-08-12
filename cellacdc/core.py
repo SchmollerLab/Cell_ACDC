@@ -1686,12 +1686,12 @@ class SegmKernel(_WorkflowKernel):
     def init_args_from_params(self, workflow_params, logger_func):
         args = workflow_params['initialization'].copy()
         args['model_kwargs'] = workflow_params['segmentation_model_params']
-        args['track_params'] = workflow_params['tracker_params']
+        args['track_params'] = workflow_params.get('tracker_params', {})
         args['standard_postrocess_kwargs'] = (
-            workflow_params['standard_postprocess_features']
+            workflow_params.get('standard_postprocess_features', {})
         )
         args['custom_postproc_features'] = (
-            workflow_params['custom_postprocess_features']
+            workflow_params.get('custom_postprocess_features', {})
         )
         args['custom_postproc_grouped_features'] = (
             self.parse_custom_postproc_features_grouped(workflow_params)
@@ -1700,8 +1700,12 @@ class SegmKernel(_WorkflowKernel):
         args['SizeT'] = workflow_params['metadata']['SizeT']
         args['SizeZ'] = workflow_params['metadata']['SizeZ']
         args['logger_func'] = logger_func
-        args['init_model_kwargs'] = workflow_params['init_segmentation_model_params']
-        args['init_tracker_kwargs'] = workflow_params['init_tracker_params']
+        args['init_model_kwargs'] = (
+            workflow_params.get('init_segmentation_model_params', {})
+        )
+        args['init_tracker_kwargs'] = (
+            workflow_params.get('init_tracker_params', {})
+        )
         self.init_args(**args)
     
     @exception_handler_cli
