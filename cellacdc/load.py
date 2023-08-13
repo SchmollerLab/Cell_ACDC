@@ -8,6 +8,7 @@ import json
 import h5py
 import shutil
 from math import isnan
+import xml.etree.ElementTree as ET
 from tqdm import tqdm
 import numpy as np
 import h5py
