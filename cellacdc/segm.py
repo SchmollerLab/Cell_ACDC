@@ -1208,22 +1208,31 @@ class segmWin(QMainWindow):
                 exec_time_delta = str(delta).split(',')[-1].strip()
                 h, m, s = str(exec_time_delta).split(':')
                 exec_time_delta = f'{int(h):02}h:{int(m):02}m:{int(s):02}s'
-                txt = html_utils.paragraph(
-                    'Segmentation task ended.<br><br>'
-                    f'  - Total execution time: {exec_time_delta}<br><br>'
-                    f'  - Files saved to "{self.exp_path}"'
+                items = (
+                    f'Total execution time: <code>{exec_time_delta}</code><br>',
+                    f'Selected folder: <code>{self.exp_path}</code>'
+                )
+                txt = (
+                    'Segmentation task ended.'
+                    f'{html_utils.to_list(items)}'
                 )
                 steps_left = self.QPbar.maximum()-self.QPbar.value()
                 self.QPbar.setValue(self.QPbar.value()+steps_left)
             else:
                 short_txt = 'Segmentation process stopped'
-                txt = html_utils.paragraph(
+                txt = (
                     'Segmentation task stopped by the user.<br>'
                 )
-                
+            
+            txt = html_utils.paragraph(
+                f'{txt}<br>{myutils.get_salute_string()}'
+            )
             self.progressLabel.setText(short_txt)
-            msg = widgets.myMessageBox(self)
-            abort = msg.information(self, 'Segmentation task ended.', txt)
+            msg = widgets.myMessageBox(self, wrapText=False)
+            msg.information(
+                self, 'Segmentation task ended.', txt,
+                path_to_browse=self.exp_path
+            )
             if exec_time > 0:
                 self.close()
             if self.allowExit:
