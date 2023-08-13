@@ -279,3 +279,31 @@ def _setup_app(splashscreen=False, icon_path=None, logo_path=None):
     # setToolTipStyleSheet(app, scheme=scheme)
     
     return app, splashScreen
+
+def run_segm_workflow(workflow_params, logger, log_path):
+    logger.info('Initializing segmentation and tracking kernel...')
+    from cellacdc import core
+    kernel = core.SegmKernel(logger, log_path, is_cli=True)
+    kernel.init_args_from_params(workflow_params, logger.info)
+    ch_filepaths = kernel.parse_paths(workflow_params)
+    stop_frame_nums = kernel.parse_stop_frame_numbers(workflow_params)
+    for ch_filepath, stop_frame_n in zip(ch_filepaths, stop_frame_nums):
+        logger.info(f'Processing "{ch_filepath}"...')
+        kernel.run(ch_filepath, stop_frame_n)
+
+def run_cli(ini_filepath):
+    from cellacdc import myutils
+    logger, logs_path, log_path, log_filename = myutils.setupLogger(
+        module='cli', logs_path=None
+    )
+    
+    logger.info(f'Reading workflow file "{ini_filepath}"...')
+    from cellacdc import load
+    workflow_params = load.read_segm_workflow_from_config(ini_filepath)
+    workflow_type = workflow_params['workflow']['type']
+    
+    if workflow_type == 'segmentation and/or tracking':
+        run_segm_workflow(workflow_params, logger, log_path)
+    
+    
+    

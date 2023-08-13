@@ -1,4 +1,7 @@
 import traceback
+import os
+import time
+from importlib import import_module
 import numpy as np
 import cv2
 import skimage.measure
@@ -19,6 +22,37 @@ from tqdm import tqdm
 
 from . import load, myutils
 from . import base_cca_df, printl
+from . import features
+from . import error_up_str
+from . import issues_url
+from . import exception_handler_cli
+
+class HeadlessSignal:
+    def __init__(self, *args):
+        pass
+    
+    def emit(self, *args, **kwargs):
+        pass
+
+class ProgressCliSignal:
+    def __init__(self, logger_func):
+        self.logger_func = logger_func
+    
+    def emit(self, text):
+        self.logger_func(text)
+
+class KernelCliSignals:
+    def __init__(self, logger_func):
+        self.finished = HeadlessSignal(float)
+        self.progress = ProgressCliSignal(logger_func)
+        self.progressBar = HeadlessSignal(int)
+        self.innerProgressBar = HeadlessSignal(int)
+        self.resetInnerPbar = HeadlessSignal(int)
+        self.progress_tqdm = HeadlessSignal(int)
+        self.signal_close_tqdm = HeadlessSignal()
+        self.create_tqdm = HeadlessSignal(int)
+        self.debug = HeadlessSignal(object)
+        self.critical = HeadlessSignal(object)
 
 def get_indices_dash_pattern(arr, line_length, gap):
     n = len(arr)
@@ -1561,3 +1595,567 @@ def segm_model_segment(model, image, model_kwargs, frame_i=None):
     except Exception as e:
         lab = model.segment(image, frame_i, **model_kwargs)
     return lab
+
+class _WorkflowKernel:
+    def __init__(self, logger, log_path, is_cli=False):
+        self.logger = logger
+        self.log_path = log_path
+        self.is_cli = True
+    
+    def quit(self, error=None):
+        if not self.is_cli and error is not None:
+            raise error
+        
+        self.logger.info('='*50)
+        if error is not None:
+            self.logger.exception(traceback.format_exc())
+            print('-'*60)
+            self.logger.info(f'[ERROR]: {error}{error_up_str}')
+            err_msg = (
+                'Cell-ACDC aborted due to **error**. '
+                'More details above or in the following log file:\n\n'
+                f'{self.log_path}\n\n'
+                'If you cannot solve it, you can report this error by opening '
+                'an issue on our '
+                'GitHub page at the following link:\n\n'
+                f'{issues_url}\n\n'
+                'Please **send the log file** when reporting a bug, thanks!'
+            )
+            self.logger.info(err_msg)
+        else:
+            self.logger.info(
+                'Cell-ACDC command-line interface closed. '
+                f'{myutils.get_salute_string()}'
+            )
+        self.logger.info('='*50)
+        exit()
+
+class SegmKernel(_WorkflowKernel):
+    def __init__(self, logger, log_path, is_cli):
+        super().__init__(logger, log_path, is_cli=is_cli)
+    
+    @exception_handler_cli
+    def parse_paths(self, workflow_params):
+        paths_to_segm = workflow_params['paths_to_segment']['paths']
+        ch_name = workflow_params['initialization']['user_ch_name']
+        parsed_paths = []
+        for path in paths_to_segm:
+            if os.path.isfile(path):
+                parsed_paths.append(path)
+                continue
+            
+            images_paths = load.get_images_paths(path)
+            ch_filepaths = load.get_user_ch_paths(images_paths, ch_name)
+            parsed_paths.extend(ch_filepaths)
+        return parsed_paths
+
+    @exception_handler_cli
+    def parse_stop_frame_numbers(self, workflow_params):
+        stop_frames_param = (
+            workflow_params['paths_to_segment']['stop_frame_numbers']
+        )
+        return [int(n) for n in stop_frames_param]
+
+    @exception_handler_cli
+    def parse_custom_postproc_features_grouped(self, workflow_params):
+        custom_postproc_grouped_features = {}
+        for section, options in workflow_params.items():
+            if not section.startswith('postprocess_features.'):
+                continue
+            category = section.split('.')[-1]
+            for option, value in options.items():
+                if option == 'names':
+                    values = value.strip('\n')
+                    values = value.split('\n')
+                    custom_postproc_grouped_features[category] = values
+                    continue
+                channel = option
+                if category not in custom_postproc_grouped_features:
+                    custom_postproc_grouped_features[category] = {
+                        channel: [value]
+                    }
+                elif channel not in custom_postproc_grouped_features[category]:
+                    custom_postproc_grouped_features[category][channel] = (
+                        [value]
+                    )
+                else:
+                    custom_postproc_grouped_features[category][channel].append(value)
+        return custom_postproc_grouped_features
+    
+    @exception_handler_cli      
+    def init_args_from_params(self, workflow_params, logger_func):
+        args = workflow_params['initialization'].copy()
+        args['model_kwargs'] = workflow_params['segmentation_model_params']
+        args['track_params'] = workflow_params.get('tracker_params', {})
+        args['standard_postrocess_kwargs'] = (
+            workflow_params.get('standard_postprocess_features', {})
+        )
+        args['custom_postproc_features'] = (
+            workflow_params.get('custom_postprocess_features', {})
+        )
+        args['custom_postproc_grouped_features'] = (
+            self.parse_custom_postproc_features_grouped(workflow_params)
+        )
+        
+        args['SizeT'] = workflow_params['metadata']['SizeT']
+        args['SizeZ'] = workflow_params['metadata']['SizeZ']
+        args['logger_func'] = logger_func
+        args['init_model_kwargs'] = (
+            workflow_params.get('init_segmentation_model_params', {})
+        )
+        args['init_tracker_kwargs'] = (
+            workflow_params.get('init_tracker_params', {})
+        )
+        self.init_args(**args)
+    
+    @exception_handler_cli
+    def init_args(
+            self, 
+            user_ch_name, 
+            segm_endname,
+            model_name, 
+            do_tracking,
+            do_postprocess, 
+            do_save,
+            image_channel_tracker,
+            standard_postrocess_kwargs,
+            custom_postproc_grouped_features,
+            custom_postproc_features,
+            isSegm3D,
+            use_ROI,
+            second_channel_name,
+            model_kwargs, 
+            track_params,
+            SizeT, 
+            SizeZ,
+            tracker_name='',
+            model=None,
+            init_model_kwargs=None,
+            init_tracker_kwargs=None,
+            tracker=None,
+            signals=None,
+            logger_func=print,
+            innerPbar_available=False,
+        ):
+        self.user_ch_name = user_ch_name
+        self.segm_endname = segm_endname
+        self.model_name = model_name
+        self.do_postprocess = do_postprocess
+        self.standard_postrocess_kwargs = standard_postrocess_kwargs
+        self.custom_postproc_grouped_features = custom_postproc_grouped_features
+        self.custom_postproc_features = custom_postproc_features
+        self.do_tracking = do_tracking
+        self.do_save = do_save
+        self.image_channel_tracker = image_channel_tracker
+        self.isSegm3D = isSegm3D
+        self.use_ROI = use_ROI
+        self.second_channel_name = second_channel_name
+        self.logger_func = logger_func
+        self.innerPbar_available = innerPbar_available
+        self.SizeT = SizeT
+        self.SizeZ = SizeZ
+        self.init_model_kwargs = init_model_kwargs
+        self.init_tracker_kwargs = init_tracker_kwargs
+        if signals is None:
+            self.signals = KernelCliSignals(logger_func)
+        else:
+            self.signals = signals
+        self.model = model
+        self.model_kwargs = model_kwargs
+        self.init_tracker(
+            self.do_tracking, track_params, tracker_name=tracker_name, 
+            tracker=tracker
+        )
+    
+    @exception_handler_cli
+    def init_segm_model(self, posData):
+        self.signals.progress.emit(
+            f'Initializing {self.model_name} segmentation model...'
+        )
+        acdcSegment = myutils.import_segment_module(self.model_name)
+        init_argspecs, segment_argspecs = myutils.getModelArgSpec(acdcSegment)
+        self.init_model_kwargs = myutils.parse_model_params(
+            init_argspecs, self.init_model_kwargs
+        )
+        self.model_kwargs = myutils.parse_model_params(
+            segment_argspecs, self.model_kwargs
+        )
+        self.model = myutils.init_segm_model(
+            acdcSegment, posData, self.init_model_kwargs
+        )
+        self.is_segment3DT_available = any(
+            [name=='segment3DT' for name in dir(self.model)]
+        )
+    
+    @exception_handler_cli
+    def init_tracker(
+            self, do_tracking, track_params, tracker_name='', tracker=None
+        ):
+        if not do_tracking:
+            self.tracker = None
+            return
+        
+        if tracker is None:
+            self.signals.progress.emit(f'Initializing {tracker_name} tracker...')
+            tracker_module = myutils.import_tracker_module(tracker_name)
+            init_argspecs, track_argspecs = myutils.getTrackerArgSpec(
+                tracker_module, realTime=False
+            )
+            self.init_tracker_kwargs = myutils.parse_model_params(
+                init_argspecs, self.init_tracker_kwargs
+            )
+            self.init_tracker_kwargs = myutils.parse_model_params(
+                init_argspecs, self.init_tracker_kwargs
+            )
+            track_params = myutils.parse_model_params(
+                track_argspecs, track_params
+            )
+            tracker = tracker_module.tracker(**self.init_tracker_kwargs)
+            
+        self.track_params = track_params
+        self.tracker = tracker
+    
+    @exception_handler_cli
+    def run(
+            self,
+            img_path,  
+            stop_frame_n
+        ):    
+        posData = load.loadData(img_path, self.user_ch_name)
+
+        self.logger_func(f'Loading {posData.relPath}...')
+
+        posData.getBasenameAndChNames()
+        posData.buildPaths()
+        posData.loadImgData()
+        posData.loadOtherFiles(
+            load_segm_data=False,
+            load_acdc_df=False,
+            load_shifts=True,
+            loadSegmInfo=True,
+            load_delROIsInfo=False,
+            load_dataPrep_ROIcoords=True,
+            load_bkgr_data=True,
+            load_last_tracked_i=False,
+            load_metadata=True,
+            end_filename_segm=self.segm_endname
+        )
+        # Get only name from the string 'segm_<name>.npz'
+        endName = (
+            self.segm_endname.replace('segm', '', 1)
+            .replace('_', '', 1)
+            .split('.')[0]
+        )
+        if endName:
+            # Create a new file that is not the default 'segm.npz'
+            posData.setFilePaths(endName)
+
+        segmFilename = os.path.basename(posData.segm_npz_path)
+        self.logger_func(f'Segmentation file {segmFilename}...')
+
+        posData.SizeT = self.SizeT
+        if self.SizeZ > 1:
+            SizeZ = posData.img_data.shape[-3]
+            posData.SizeZ = SizeZ
+        else:
+            posData.SizeZ = 1
+
+        posData.isSegm3D = self.isSegm3D
+        posData.saveMetadata()
+        
+        isROIactive = False
+        if posData.dataPrep_ROIcoords is not None and self.use_ROI:
+            df_roi = posData.dataPrep_ROIcoords.loc[0]
+            isROIactive = df_roi.at['cropped', 'value'] == 0
+            x0, x1, y0, y1 = df_roi['value'].astype(int)[:4]
+            Y, X = posData.img_data.shape[-2:]
+            x0 = x0 if x0>0 else 0
+            y0 = y0 if y0>0 else 0
+            x1 = x1 if x1<X else X
+            y1 = y1 if y1<Y else Y
+
+        # Note that stop_i is not used when SizeT == 1 so it does not matter
+        # which value it has in that case
+        stop_i = stop_frame_n
+
+        if self.second_channel_name is not None:
+            self.logger_func(
+                f'Loading second channel "{self.second_channel_name}"...'
+            )
+            secondChFilePath = load.get_filename_from_channel(
+                posData.images_path, self.second_channel_name
+            )
+            secondChImgData = load.load_image_file(secondChFilePath)
+
+        if posData.SizeT > 1:
+            self.t0 = 0
+            if posData.SizeZ > 1 and not self.isSegm3D:
+                # 2D segmentation on 3D data over time
+                img_data = posData.img_data
+                if self.second_channel_name is not None:
+                    second_ch_data_slice = secondChImgData[self.t0:stop_i]
+                if isROIactive:
+                    Y, X = img_data.shape[-2:]
+                    img_data = img_data[:, y0:y1, x0:x1]
+                    if self.second_channel_name is not None:
+                        second_ch_data_slice = second_ch_data_slice[:, y0:y1, x0:x1]
+                    pad_info = ((0, 0), (y0, Y-y1), (x0, X-x1))
+
+                img_data_slice = img_data[self.t0:stop_i]
+                postprocess_img = img_data
+                
+                Y, X = img_data.shape[-2:]
+                newShape = (stop_i, Y, X)
+                img_data = np.zeros(newShape, img_data.dtype)
+                
+                if self.second_channel_name is not None:
+                    second_ch_data = np.zeros(newShape, secondChImgData.dtype)
+                df = posData.segmInfo_df.loc[posData.filename]
+                for z_info in df[:stop_i].itertuples():
+                    i = z_info.Index
+                    z = z_info.z_slice_used_dataPrep
+                    zProjHow = z_info.which_z_proj
+                    img = img_data_slice[i]
+                    if self.second_channel_name is not None:
+                        second_ch_img = second_ch_data_slice[i]
+                    if zProjHow == 'single z-slice':
+                        img_data[i] = img[z]
+                        if self.second_channel_name is not None:
+                            second_ch_data[i] = second_ch_img[z]
+                    elif zProjHow == 'max z-projection':
+                        img_data[i] = img.max(axis=0)
+                        if self.second_channel_name is not None:
+                            second_ch_data[i] = second_ch_img.max(axis=0)
+                    elif zProjHow == 'mean z-projection':
+                        img_data[i] = img.mean(axis=0)
+                        if self.second_channel_name is not None:
+                            second_ch_data[i] = second_ch_img.mean(axis=0)
+                    elif zProjHow == 'median z-proj.':
+                        img_data[i] = np.median(img, axis=0)
+                        if self.second_channel_name is not None:
+                            second_ch_data[i] = np.median(second_ch_img, axis=0)
+            elif posData.SizeZ > 1 and self.isSegm3D:
+                # 3D segmentation on 3D data over time
+                img_data = posData.img_data[self.t0:stop_i]
+                postprocess_img = img_data
+                if self.second_channel_name is not None:
+                    second_ch_data = secondChImgData[self.t0:stop_i]
+                if isROIactive:
+                    Y, X = img_data.shape[-2:]
+                    img_data = img_data[:, :, y0:y1, x0:x1]
+                    if self.second_channel_name is not None:
+                        second_ch_data = second_ch_data[:, :, y0:y1, x0:x1]
+                    pad_info = ((0, 0), (0, 0), (y0, Y-y1), (x0, X-x1))
+            else:
+                # 2D data over time
+                img_data = posData.img_data[self.t0:stop_i]
+                postprocess_img = img_data
+                if self.second_channel_name is not None:
+                    second_ch_data = secondChImgData[self.t0:stop_i]
+                if isROIactive:
+                    Y, X = img_data.shape[-2:]
+                    img_data = img_data[:, y0:y1, x0:x1]
+                    if self.second_channel_name is not None:
+                        second_ch_data = second_ch_data[:, :, y0:y1, x0:x1]
+                    pad_info = ((0, 0), (y0, Y-y1), (x0, X-x1))
+        else:
+            if posData.SizeZ > 1 and not self.isSegm3D:
+                img_data = posData.img_data
+                if self.second_channel_name is not None:
+                    second_ch_data = secondChImgData
+                if isROIactive:
+                    Y, X = img_data.shape[-2:]
+                    pad_info = ((y0, Y-y1), (x0, X-x1))
+                    img_data = img_data[:, y0:y1, x0:x1]
+                    if self.second_channel_name is not None:
+                        second_ch_data = second_ch_data[:, :, y0:y1, x0:x1]
+
+                postprocess_img = img_data
+                # 2D segmentation on single 3D image
+                z_info = posData.segmInfo_df.loc[posData.filename].iloc[0]
+                z = z_info.z_slice_used_dataPrep
+                zProjHow = z_info.which_z_proj
+                if zProjHow == 'single z-slice':
+                    img_data = img_data[z]
+                    if self.second_channel_name is not None:
+                        second_ch_data = second_ch_data[z]
+                elif zProjHow == 'max z-projection':
+                    img_data = img_data.max(axis=0)
+                    if self.second_channel_name is not None:
+                        second_ch_data = second_ch_data.max(axis=0)
+                elif zProjHow == 'mean z-projection':
+                    img_data = img_data.mean(axis=0)
+                    if self.second_channel_name is not None:
+                        second_ch_data = second_ch_data.mean(axis=0)
+                elif zProjHow == 'median z-proj.':
+                    img_data = np.median(img_data, axis=0)
+                    if self.second_channel_name is not None:
+                        second_ch_data[i] = np.median(second_ch_data, axis=0)
+            elif posData.SizeZ > 1 and self.isSegm3D:
+                # 3D segmentation on 3D z-stack
+                img_data = posData.img_data
+                if self.second_channel_name is not None:
+                    second_ch_data = secondChImgData
+                if isROIactive:
+                    Y, X = img_data.shape[-2:]
+                    pad_info = ((0, 0), (y0, Y-y1), (x0, X-x1))
+                    img_data = img_data[:, y0:y1, x0:x1]
+                    if self.second_channel_name is not None:
+                        second_ch_data = second_ch_data[:, y0:y1, x0:x1]
+                postprocess_img = img_data
+            else:
+                # Single 2D image
+                img_data = posData.img_data
+                if self.second_channel_name is not None:
+                    second_ch_data = secondChImgData
+                if isROIactive:
+                    Y, X = img_data.shape[-2:]
+                    pad_info = ((y0, Y-y1), (x0, X-x1))
+                    img_data = img_data[y0:y1, x0:x1]
+                    if self.second_channel_name is not None:
+                        second_ch_data = second_ch_data[y0:y1, x0:x1]
+                postprocess_img = img_data
+
+        self.logger_func(f'Image shape = {img_data.shape}')
+
+        if self.model is None:
+            self.init_segm_model(posData)
+        
+        """Segmentation routine"""
+        self.logger_func(f'Segmenting with {self.model_name}...')
+        t0 = time.perf_counter()
+        # self.logger_func(f'Segmenting with {model} (Ctrl+C to abort)...')
+        if posData.SizeT > 1:
+            if self.innerPbar_available and self.signals is not None:
+                self.signals.resetInnerPbar.emit(len(img_data))
+
+            if self.is_segment3DT_available:
+                self.model_kwargs['signals'] = (
+                    self.signals, self.innerPbar_available
+                )
+                if self.second_channel_name is not None:
+                    img_data = self.model.to_rgb_stack(img_data, second_ch_data)
+                lab_stack = self.model.segment3DT(
+                    img_data, **self.model_kwargs
+                )
+                if self.innerPbar_available:
+                    # emit one pos done
+                    self.signals.progressBar.emit(1)
+            else:
+                lab_stack = np.zeros(img_data.shape, np.uint32)
+                pbar = tqdm(total=len(img_data), ncols=100)
+                for t, img in enumerate(img_data):
+                    if self.second_channel_name is not None:
+                        img = self.model.to_rgb_stack(img, second_ch_data[t])
+                    lab = segm_model_segment(
+                        self.model, img, self.model_kwargs, frame_i=t
+                    )
+                    lab_stack[t] = lab
+                    if self.innerPbar_available:
+                        self.signals.innerProgressBar.emit(1)
+                    else:
+                        self.signals.progressBar.emit(1)
+                    pbar.update()
+                pbar.close()
+                if self.innerPbar_available:
+                    # emit one pos done
+                    self.signals.progressBar.emit(1)
+        else:
+            if self.second_channel_name is not None:
+                img_data = self.model.to_rgb_stack(img_data, second_ch_data)
+        
+            lab_stack = self.model.segment(img_data, **self.model_kwargs)
+            self.signals.progressBar.emit(1)
+            # lab_stack = smooth_contours(lab_stack, radius=2)
+
+        if self.do_postprocess:
+            if posData.SizeT > 1:
+                pbar = tqdm(total=len(lab_stack), ncols=100)
+                for t, lab in enumerate(lab_stack):
+                    lab_cleaned = post_process_segm(
+                        lab, **self.standard_postrocess_kwargs
+                    )
+                    lab_stack[t] = lab_cleaned
+                    if self.custom_postproc_features:
+                        lab_filtered = features.custom_post_process_segm(
+                            posData, self.custom_postproc_grouped_features, 
+                            lab_cleaned, postprocess_img, t, posData.filename, 
+                            posData.self.user_ch_name, self.custom_postproc_features
+                        )
+                        lab_stack[t] = lab_filtered
+                    pbar.update()
+                pbar.close()
+            else:
+                lab_stack = post_process_segm(
+                    lab_stack, **self.standard_postrocess_kwargs
+                )
+                if self.custom_postproc_features:
+                    lab_stack = features.custom_post_process_segm(
+                        posData, self.custom_postproc_grouped_features, 
+                        lab_stack, postprocess_img, 0, posData.filename, 
+                        posData.self.user_ch_name, self.custom_postproc_features
+                    )
+            
+
+        if posData.SizeT > 1 and self.do_tracking:            
+            if self.do_save:
+                # Since tracker could raise errors we save the not-tracked 
+                # version which will eventually be overwritten
+                self.logger_func(f'Saving NON-tracked masks of {posData.relPath}...')
+                np.savez_compressed(posData.segm_npz_path, lab_stack)
+
+            self.signals.innerPbar_available = self.innerPbar_available
+            self.track_params['signals'] = self.signals
+            if self.image_channel_tracker is not None:
+                # Check if loading the image for the tracker is required
+                if 'image' in self.track_params:
+                    trackerInputImage = self.track_params.pop('image')
+                else:
+                    self.logger_func(
+                        'Loading image data of channel '
+                        f'"{self.image_channel_tracker}"')
+                    trackerInputImage = posData.loadChannelData(
+                        self.image_channel_tracker)
+                try:
+                    tracked_stack = self.tracker.track(
+                        lab_stack, trackerInputImage, **self.track_params
+                    )
+                except Exception as e:
+                    # Check if user accidentally passed the image even if 
+                    # the tracker doesn't need it
+                    self.logger_func(
+                        'Image data is not required by this tracker, ignoring it...'
+                    )
+                    tracked_stack = self.tracker.track(
+                        lab_stack, **self.track_params
+                    )
+            else:
+                tracked_stack = self.tracker.track(
+                    lab_stack, **self.track_params
+                )
+            posData.fromTrackerToAcdcDf(self.tracker, tracked_stack, save=True)
+        else:
+            tracked_stack = lab_stack
+            try:
+                if self.innerPbar_available:
+                    self.signals.innerProgressBar.emit(stop_frame_n)
+                else:
+                    self.signals.progressBar.emit(stop_frame_n)
+            except AttributeError:
+                if self.innerPbar_available:
+                    self.signals.innerProgressBar.emit(1)
+                else:
+                    self.signals.progressBar.emit(1)
+
+        if isROIactive:
+            self.logger_func(f'Padding with zeros {pad_info}...')
+            tracked_stack = np.pad(tracked_stack, pad_info, mode='constant')
+
+        if self.do_save:
+            self.logger_func(f'Saving {posData.relPath}...')
+            np.savez_compressed(posData.segm_npz_path, tracked_stack)
+
+        t_end = time.perf_counter()
+
+        self.logger_func(f'{posData.relPath} segmented!')
+        self.signals.finished.emit(t_end-t0)

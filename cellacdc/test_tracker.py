@@ -67,7 +67,7 @@ if win.cancel:
 trackerName = win.selectedItemsText[0]
 
 # Load tracker
-tracker, track_params = myutils.import_tracker(
+tracker, track_params = myutils.init_tracker(
     posData, trackerName, qparent=None
 )
 lab_stack = posData.segm_data[START_FRAME:STOP_FRAME+1]

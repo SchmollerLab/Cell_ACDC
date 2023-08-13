@@ -33,8 +33,28 @@ if GUI_INSTALLED:
     warningHandler = QtWarningHandler()
     qInstallMessageHandler(warningHandler._resizeWarningHandler)
 
+help_text = (
+    'Welcome to Cell-ACDC!\n\n'
+    'You can run Cell-ACDC both as a GUI or in the command line.\n'
+    'To run the GUI type `acdc`. To run the command line type `acdc -p <path_to_params_file>`.\n'
+    'The `<path_to_params_file>` must be a workflow INI file.\n'
+    'If you do not have one, use the GUI to set up the parameters.\n\n'
+    'Enjoy!'
+)
 try:
-    ap = argparse.ArgumentParser(description='Cell-ACDC parser')
+    ap = argparse.ArgumentParser(
+        prog='Cell-ACDC', description=help_text, 
+        formatter_class=argparse.RawTextHelpFormatter
+    )
+    
+    ap.add_argument(
+        '-p', '--params',
+        default='',
+        type=str,
+        metavar='PATH_TO_PARAMS',
+        help=('Path of the ".ini" workflow file')
+    )
+    
     ap.add_argument(
         '-d', '--debug', action='store_true',
         help=(

@@ -114,3 +114,6 @@ class Model:
                 image, thresh_val=thresh_val, min_distance=min_distance
             )
         return labels
+
+def url_help():
+    return 'https://github.com/rahi-lab/YeaZ-GUI'

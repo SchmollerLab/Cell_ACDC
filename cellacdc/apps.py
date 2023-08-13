@@ -58,6 +58,7 @@ from qtpy.QtWidgets import (
     QTreeWidget, QTreeWidgetItem, QTextEdit, QSplashScreen, QAction,
     QListWidgetItem, QActionGroup, QLayout
 )
+import qtpy.compat
 
 from . import exception_handler
 from . import load, prompts, core, measurements, html_utils
@@ -1551,13 +1552,19 @@ class filenameDialog(QDialog):
         return _text
 
     def checkExistingNames(self):
-        if self._text() not in self.existingNames:
+        is_existing = (
+            self._text() in self.existingNames
+            or self.filenameLabel.text() in self.existingNames
+        )
+        if not is_existing:
             return True
 
         filename = self.filenameLabel.text()
         msg = widgets.myMessageBox()
         txt = html_utils.paragraph(
-            f'The file <code>{filename}</code> is <b>already existing</b>.<br><br>'
+            'The following file<br><br>'
+            f'<code>{filename}</code><br><br>'
+            'is <b>already existing</b>.<br><br>'
             'Do you want to <b>overwrite</b> the existing file?'
         )
         noButton, yesButton = msg.warning(
@@ -8301,7 +8308,11 @@ class askStopFrameSegm(QDialog):
                 loadSegmInfo=True,
             )
             spinBox.setMaximum(posData.SizeT)
-            spinBox.setValue(posData.SizeT)
+            stopFrameNum = posData.readLastUsedStopFrameNumber()
+            if stopFrameNum is None:
+                spinBox.setValue(posData.SizeT)
+            else:
+                spinBox.setValue(stopFrameNum)
             spinBox.setAlignment(Qt.AlignCenter)
             visualizeButton = widgets.viewPushButton('Visualize')
             visualizeButton.clicked.connect(self.visualize_cb)
@@ -8346,14 +8357,20 @@ class askStopFrameSegm(QDialog):
         focusSpinbox = self.spinBoxes[self.tab_idx]
         focusSpinbox.setFocus()
 
-    def saveSegmSizeT(self):
-        self.stopFrames = [
-            spinBox.value() for spinBox, _ in self.dataDict.values()
-        ]
+    def saveStopFrameNumbers(self):
+        for spinBox, posData in self.dataDict.values():
+            posData.metadata_df.at['stop_frame_num', 'values'] = spinBox.value()
+            posData.metadataToCsv()
 
     def ok_cb(self, event):
         self.cancel = False
-        self.saveSegmSizeT()
+        try:
+            self.saveStopFrameNumbers()
+        except Exception as err:
+            printl(traceback.format_exc())
+        self.stopFrames = [
+            spinBox.value() for spinBox, posData in self.dataDict.values()
+        ]
         self.close()
 
     def visualize_cb(self, checked=True):
@@ -10576,7 +10593,7 @@ class QDialogModelParams(QDialog):
             postProcLoadLastSelButton.click()
 
         self.setLayout(mainLayout)
-
+        self.setFont(font)
         # self.setModal(True)
     
     def selectedFeaturesRange(self):
@@ -12694,3 +12711,30 @@ class SelectFeaturesRangeGroupbox(QGroupBox):
     
     def setValue(self, value):
         pass
+
+def get_existing_directory(allow_images_path=True, **kwargs):
+    while True:
+        folder_path = qtpy.compat.getexistingdirectory(**kwargs)
+        if not folder_path:
+            return
+        
+        if allow_images_path:
+            return folder_path
+        
+        pos_folderpath = os.path.dirname(folder_path)
+        is_images_folder = (
+            folder_path.endswith('Images') 
+            and os.path.basename(pos_folderpath).startswith('Position_')
+            and os.path.isdir(folder_path)
+        )
+        if not is_images_folder:
+            return folder_path
+        
+        txt = html_utils.paragraph(
+            'You <b>cannot save</b> to the <code>Images</code> folder '
+            'because it is reserved to files that start with the same '
+            'basename.<br><br>Thank you for your patience!'
+        )
+        msg = widgets.myMessageBox()
+        msg.warning(kwargs['parent'], 'Cannot save here', txt)
+        
