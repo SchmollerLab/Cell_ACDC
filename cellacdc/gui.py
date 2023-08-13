@@ -4675,16 +4675,16 @@ class guiWin(QMainWindow):
                     parent=self,
                     drawMode=drawMode
                 )
+                manualSep.setState(self.lastManualSeparateState)
                 manualSep.show()
                 manualSep.centerWindow()
-                loop = QEventLoop(self)
-                manualSep.loop = loop
-                loop.exec_()
+                manualSep.show(block=True)
                 if manualSep.cancel:
                     posData.disableAutoActivateViewerWindow = False
                     if not self.separateBudButton.findChild(QAction).isChecked():
                         self.separateBudButton.setChecked(False)
                     return
+                self.lastManualSeparateState = manualSep.state()
                 lab2D = self.get_2Dlab(posData.lab)
                 lab2D[manualSep.lab!=0] = manualSep.lab[manualSep.lab!=0]
                 self.set_2Dlab(lab2D)
@@ -15020,6 +15020,7 @@ class guiWin(QMainWindow):
         self.zSliceScrollBarStartedMoving = True
         self.labelRoiRunning = False
         self.isRangeReset = True
+        self.lastManualSeparateState = None
         self.editIDmergeIDs = True
         self.doNotAskAgainExistingID = False
         self.highlightedIDopts = None

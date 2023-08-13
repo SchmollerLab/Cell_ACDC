@@ -9230,6 +9230,29 @@ class manualSeparateGui(QMainWindow):
         elif self.drawMode == 'freehand':
             self.freeHandAction.setChecked(True)
     
+    def state(self):
+        return {
+            'is_overlay_active': self.overlayButton.isChecked(),
+            'is_three_points_active': self.threePointsArcAction.isChecked(),
+            'is_free_hand_active': self.freeHandAction.isChecked()
+        }
+    
+    def show(self, block=False):
+        super().show()
+        if not block:
+            return
+        self.loop = QEventLoop(self)
+        self.loop.exec_()
+    
+    def setState(self, state):
+        if state is None:
+            return
+        self.overlayButton.setChecked(state.get('is_overlay_active', False))
+        self.threePointsArcAction.setChecked(
+            state.get('is_three_points_active', True)
+        )
+        self.freeHandAction.setChecked(state.get('is_free_hand_active', False))
+        
     def gui_storeDrawMode(self):
         self.drawMode = self.sender().drawMode
         
