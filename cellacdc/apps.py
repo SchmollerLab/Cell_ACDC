@@ -11592,7 +11592,9 @@ class stopFrameDialog(widgets.QBaseDialog):
             if posData.acdc_df is not None:
                 _val = posData.acdc_df.index.get_level_values(0).max()+1
             else:
-                _val = posData.segmSizeT
+                _val = posData.readLastUsedStopFrameNumber()
+            if _val is None:
+                _val = posData.SizeT
             _spinBox.setValue(_val)
 
             posData.stopFrameSpinbox = _spinBox
