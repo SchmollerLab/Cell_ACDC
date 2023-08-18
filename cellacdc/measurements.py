@@ -1098,7 +1098,8 @@ def _mask_0valued_pixels_from_alignment(bkgr_mask, frame_i, posData):
         return bkgr_mask
     
     if posData.dataPrep_ROIcoords is not None:
-        is_cropped = int(posData.dataPrep_ROIcoords.at['cropped', 'value'])
+        df_roi = posData.dataPrep_ROIcoords.loc[[0]]
+        is_cropped = int(df_roi.at['cropped', 'value'])
         if is_cropped:
             # Do not mask 0valued pixels if image was cropped
             return bkgr_mask
