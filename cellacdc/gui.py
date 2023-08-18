@@ -360,8 +360,6 @@ class saveDataWorker(QObject):
         custom_func_dict = self.mainWin.custom_func_dict
         bkgr_metrics_params = self.mainWin.bkgr_metrics_params
         
-        printl(bkgr_metrics_params, pretty=True)
-        
         foregr_metrics_params = self.mainWin.foregr_metrics_params
         concentration_metrics_params = self.mainWin.concentration_metrics_params
         custom_metrics_params = self.mainWin.custom_metrics_params
@@ -11312,10 +11310,10 @@ class guiWin(QMainWindow):
             #     posData, self.user_ch_name, is_segm_3D
             # )
             # printl(self.metricsToSave)
-            # self.initMetricsToSave(posData)
+            self.initMetricsToSave(posData)
             
             # printl(self.bkgr_metrics_params, pretty=True)
-            # printl(self.foregr_metrics_params, pretty=True)
+            printl(self.foregr_metrics_params, pretty=True)
             
             # from acdctools.plot import imshow
             # delIDs = posData.allData_li[posData.frame_i]['delROIs_info']['delIDsROI']

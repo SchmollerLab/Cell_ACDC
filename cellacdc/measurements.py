@@ -1194,12 +1194,12 @@ def get_bkgr_data(
 
 def standard_metrics_func():
     metrics_func = {
-        'mean': lambda arr: _try_metric_func(np.mean, arr),
         'sum': lambda arr: _try_metric_func(np.sum, arr),
         'amount_autoBkgr': lambda arr, bkgr, area: _amount(arr, bkgr, area),
         'amount_dataPrepBkgr': lambda arr, bkgr, area: _amount(arr, bkgr, area),
         'amount_manualBkgr': lambda arr, bkgr, area: _amount(arr, bkgr, area),
         'mean_manualBkgr': lambda arr, bkgr, area: _mean_corrected(arr, bkgr),
+        'mean': lambda arr: _try_metric_func(np.mean, arr),
         'median': lambda arr: _try_metric_func(np.median, arr),
         'min': lambda arr: _try_metric_func(np.min, arr),
         'max': lambda arr: _try_metric_func(np.max, arr),
