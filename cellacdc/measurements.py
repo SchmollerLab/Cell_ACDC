@@ -1581,6 +1581,7 @@ def get_metrics_params(all_channels_metrics, metrics_func, custom_func_dict):
     concentration_metrics_params = {}
     custom_metrics_params = {ch:{} for ch in channel_names}
     az = r'[A-Za-z0-9]'
+    how_3D_to_2D_pattern = r'zSlice|3D|maxProj|meanProj|(?=\s*$)'
     bkgrVal_pattern = fr'_({az}+)_bkgrVal_({az}+)_?({az}*)$'
 
     for channel_name, columns in all_channels_metrics.items():
@@ -1596,7 +1597,9 @@ def get_metrics_params(all_channels_metrics, metrics_func, custom_func_dict):
             
             is_standard_foregr = False
             for metric in metrics_func:
-                foregr_pattern = rf'{channel_name}_({metric})_?({az}*)$'
+                foregr_pattern = (
+                    rf'{channel_name}_({metric})_?({how_3D_to_2D_pattern}*)$'
+                )
                 m = re.findall(foregr_pattern, col)
                 if m:
                     # Metric is a standard metric 
