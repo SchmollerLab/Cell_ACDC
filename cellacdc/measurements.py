@@ -1633,3 +1633,15 @@ def get_metrics_params(all_channels_metrics, metrics_func, custom_func_dict):
         concentration_metrics_params, custom_metrics_params
     )
     return params
+
+def get_regionprops_columns(existing_colnames, selected_props_names):
+    selected_rp_cols = []
+    for col in existing_colnames:
+        for selected_prop in selected_props_names:
+            if selected_prop == col:
+                selected_rp_cols.append(col)
+                continue
+            m = re.match(fr'{selected_prop}-\d', col)
+            if m is not None:
+                selected_rp_cols.append(col)
+    return selected_rp_cols

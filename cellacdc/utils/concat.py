@@ -123,8 +123,9 @@ class concatWin(NewThreadMultipleExpBaseUtil):
         )
         win.exec_()
         if win.cancel:
-            self.worker.abort = True        
-        self.worker.concat_df_filename = win.filename
+            self.worker.abort = True     
+        else:   
+            self.worker.concat_df_filename = win.filename
         self.worker.waitCond.wakeAll()
     
     def askFolderWhereToSaveAllExp(self, allExp_filename):

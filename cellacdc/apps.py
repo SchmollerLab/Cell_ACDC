@@ -2356,13 +2356,19 @@ class SetMeasurementsDialog(widgets.QBaseDialog):
             self.setNotExistingMeasurementTooltip(checkBox)
         
         for checkBox in self.regionPropsQGBox.checkBoxes:
-            colname = checkBox.text()
-            if any([col == colname for col in existing_colnames]):
-                checkBox.setChecked(True)
-                continue
-            checkBox.setChecked(False)
-            checkBox.setDisabled(True)
-            self.setNotExistingMeasurementTooltip(checkBox)
+            prop_name = checkBox.text()
+            for existing_col in existing_colnames:
+                if prop_name == existing_col:
+                    checkBox.setChecked(True)
+                    break
+                m = re.match(fr'{prop_name}-\d', existing_col)
+                if m is not None:
+                    checkBox.setChecked(True)
+                    break
+            else:
+                checkBox.setChecked(False)
+                checkBox.setDisabled(True)
+                self.setNotExistingMeasurementTooltip(checkBox)
         
         if self.mixedChannelsCombineMetricsQGBox is None:
             return
