@@ -87,6 +87,8 @@ from .cca_functions import _calc_rot_vol
 from .myutils import exec_time, setupLogger
 from .help import welcome, about
 
+np.seterr(invalid='ignore')
+
 if os.name == 'nt':
     try:
         # Set taskbar icon in windows

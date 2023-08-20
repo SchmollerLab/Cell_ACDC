@@ -66,6 +66,34 @@ class YeastTimeLapseAnnotated(_Data):
         from . import load
         return load.loadData(self.intensity_image_path, 'Dia_Ph3')
 
+class _YeastTimeLapseAnnotatedJordan(_Data):
+    def __init__(self, custom_data_path=None):
+        if custom_data_path is not None:
+            _data_path = custom_data_path
+        else:
+            _data_path = data_path
+        images_path = os.path.join(
+            _data_path, 'gh_issue_394_Jordan', 'Position_1', 'Images'
+        )
+        intensity_image_path = os.path.join(
+            images_path, '220630_JX_MS380_2ng-uL-aTc_pos04_g_s1_Phase.tif'
+        )
+        acdc_df_path = os.path.join(
+            images_path, '220630_JX_MS380_2ng-uL-aTc_pos04_g_s1_acdc_output.csv'
+        )
+        segm_path = os.path.join(
+            images_path, '220630_JX_MS380_2ng-uL-aTc_pos04_g_s1_segm.npz'
+        )
+        basename = '220630_JX_MS380_2ng-uL-aTc_pos04_g_s1_'
+        super().__init__(
+            images_path, intensity_image_path, acdc_df_path, segm_path,
+            basename
+        )
+    
+    def posData(self):
+        from . import load
+        return load.loadData(self.intensity_image_path, 'Dia_Ph3')
+
 class Cdc42TimeLapseData(_Data):
     def __init__(self):
         images_path = os.path.join(

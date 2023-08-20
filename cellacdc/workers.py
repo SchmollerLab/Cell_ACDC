@@ -684,6 +684,7 @@ class calcMetricsWorker(QObject):
 
     @worker_exception_handler
     def run(self):
+        np.seterr(invalid='ignore')
         debugging = False
         expPaths = self.mainWin.expPaths
         tot_exp = len(expPaths)
@@ -791,7 +792,8 @@ class calcMetricsWorker(QObject):
                     load_metadata=True,
                     load_customAnnot=True,
                     load_customCombineMetrics=True,
-                    end_filename_segm=self.mainWin.endFilenameSegm
+                    end_filename_segm=self.mainWin.endFilenameSegm,
+                    load_dataPrep_ROIcoords=True
                 )
                 posData.labelSegmData()
                 if not posData.segmFound:
