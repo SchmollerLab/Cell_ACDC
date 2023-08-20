@@ -1201,13 +1201,14 @@ def cca_df_to_acdc_df(cca_df, rp, acdc_df=None):
     return acdc_df
 
 class LineageTree:
-    def __init__(self, acdc_df) -> None:
+    def __init__(self, acdc_df, logging_func=print) -> None:
         acdc_df = load.pd_bool_to_int(acdc_df).reset_index()
         acdc_df = self._normalize_gen_num(acdc_df).reset_index()
         acdc_df = acdc_df.drop(columns=['index', 'level_0'], errors='ignore')
         self.acdc_df = acdc_df.set_index(['frame_i', 'Cell_ID'])
         self.df = acdc_df.copy()
         self.cca_df_colnames = list(base_cca_df.keys())
+        self.log = logging_func
     
     def build(self):
         print('Building lineage tree...')
@@ -1426,7 +1427,7 @@ class LineageTree:
                 # Iterate the branch till the end
                 self.df_G1 = (
                     self.df_G1
-                    .groupby(['Cell_ID', 'generation_num'])
+                    .groupby(['Cell_ID', 'generation_num'], group_keys=False)
                     .apply(self._build_tree, ID)
                 )
                 not_annotated_IDs.remove(ID)
@@ -1450,9 +1451,18 @@ class LineageTree:
             if relative_ID == -1:
                 continue
             start_frame_i = df.index.get_level_values(0)[0]
-            sister_ID_tree = self.df_G1.at[
-                (start_frame_i, relative_ID), 'Cell_ID_tree'
-            ]
+            try:
+                sister_ID_tree = self.df_G1.at[
+                    (start_frame_i, relative_ID), 'Cell_ID_tree'
+                ]
+            except KeyError as error:
+                raise KeyError(
+                    f'There is a problem with Cell ID {relative_ID} '
+                    f'at frame n. {start_frame_i+1}. '
+                    'Make sure that annotations are correct '
+                    'before trying again.'
+                ) from error
+                
             self.df_G1.loc[df.index, 'sister_ID_tree'] = sister_ID_tree
     
     def _build_tree_S(self, cols_tree):
