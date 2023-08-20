@@ -224,6 +224,14 @@ base_cca_df = {
     'will_divide': 0
 }
 
+lineage_tree_cols = [
+    'Cell_ID_tree',
+    'generation_num_tree',
+    'parent_ID_tree',
+    'root_ID_tree',
+    'sister_ID_tree'
+]
+
 base_acdc_df = {
     'is_cell_dead': False,
     'is_cell_excluded': False,
