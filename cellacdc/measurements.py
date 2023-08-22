@@ -1614,7 +1614,7 @@ def get_metrics_params(all_channels_metrics, metrics_func, custom_func_dict):
             # Metric is concentration
             conc_pattern = rf'concentration_{az}+_from_vol_[a-z]+'
             conc_metric_pattern = (
-                rf'{channel_name}_({conc_pattern})_?({az}*)'
+                rf'{channel_name}_({conc_pattern})_?({how_3D_to_2D_pattern}*)'
             )
             m = re.findall(conc_metric_pattern, col)
             if m:
@@ -1623,7 +1623,7 @@ def get_metrics_params(all_channels_metrics, metrics_func, custom_func_dict):
                 continue
 
             for metric, custom_func in custom_func_dict.items():
-                custom_pattern = rf'{channel_name}_({metric})_?({az}*)'
+                custom_pattern = rf'{channel_name}_({metric})_?({how_3D_to_2D_pattern}*)'
                 m = re.findall(custom_pattern, col)
                 if m:
                     # Metric is a standard metric 
