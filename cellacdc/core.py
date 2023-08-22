@@ -1746,6 +1746,7 @@ class SegmKernel(_WorkflowKernel):
             signals=None,
             logger_func=print,
             innerPbar_available=False,
+            is_segment3DT_available=False
         ):
         self.user_ch_name = user_ch_name
         self.segm_endname = segm_endname
@@ -1766,6 +1767,7 @@ class SegmKernel(_WorkflowKernel):
         self.SizeZ = SizeZ
         self.init_model_kwargs = init_model_kwargs
         self.init_tracker_kwargs = init_tracker_kwargs
+        self.is_segment3DT_available = is_segment3DT_available
         if signals is None:
             self.signals = KernelCliSignals(logger_func)
         else:

@@ -111,6 +111,7 @@ class segmWorker(QRunnable):
             signals=self.signals,
             logger_func=self.signals.progress.emit,
             innerPbar_available=mainWin.innerPbar_available,
+            is_segment3DT_available=mainWin.is_segment3DT_available
         )
     
     def run_kernel(self, mainWin):

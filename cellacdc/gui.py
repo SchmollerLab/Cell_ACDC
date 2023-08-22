@@ -11301,7 +11301,7 @@ class guiWin(QMainWindow):
 
     @exception_handler
     def keyPressEvent(self, ev):
-        if ev.key() == Qt.Key_Q:
+        if ev.key() == Qt.Key_Q and self.debug:
             # printl(self.xHoverImg, self.yHoverImg)
             # printl(self.img1.mapToData(QCursor().pos()))
             # x, y = QCursor().pos().x(), QCursor().pos().y()
@@ -11316,6 +11316,7 @@ class guiWin(QMainWindow):
             
             # printl(self.bkgr_metrics_params, pretty=True)
             printl(self.foregr_metrics_params, pretty=True)
+            printl(self.custom_metrics_params, pretty=True)
             
             # from acdctools.plot import imshow
             # delIDs = posData.allData_li[posData.frame_i]['delROIs_info']['delIDsROI']
