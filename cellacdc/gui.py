@@ -11325,6 +11325,8 @@ class guiWin(QMainWindow):
             # self.applyDelROIs()
             # stored_lab = posData.allData_li[posData.frame_i]['labels']
             # imshow(posData.lab, stored_lab, parent=self)
+            
+            printl(self.setMeasWinState, pretty=True)
         
         if not self.dataIsLoaded:
             self.logger.info(
@@ -20293,6 +20295,7 @@ class guiWin(QMainWindow):
         self.askZrangeSegm3D = True
         self.dataIsLoaded = False
         self.retainSizeLutItems = False
+        self.setMeasWinState = None
         self.showPropsDockButton.setDisabled(True)
 
         self.reinitWidgetsPos()
@@ -21509,7 +21512,8 @@ class guiWin(QMainWindow):
             allPos_acdc_df_cols=list(allPos_acdc_df_cols),
             acdc_df_path=posData.images_path, posData=posData,
             addCombineMetricCallback=self.addCombineMetric,
-            allPosData=self.data, parent=self
+            allPosData=self.data, parent=self, 
+            state=self.setMeasWinState
         )
         self.measurementsWin.sigClosed.connect(self.setMeasurements)
         self.measurementsWin.show()
@@ -21537,6 +21541,7 @@ class guiWin(QMainWindow):
                         drop_cols_rp = drop_df_rp.columns
                         acdc_df = acdc_df.drop(columns=drop_cols_rp, errors='ignore')
                     _posData.allData_li[frame_i]['acdc_df'] = acdc_df
+        self.setMeasWinState = self.measurementsWin.state()
         self.logger.info('Setting measurements...')
         self._setMetrics(self.measurementsWin)
         self.logger.info('Metrics successfully set.')

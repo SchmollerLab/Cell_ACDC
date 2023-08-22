@@ -1771,7 +1771,8 @@ class SetMeasurementsDialog(widgets.QBaseDialog):
             self, loadedChNames, notLoadedChNames, isZstack, isSegm3D,
             favourite_funcs=None, parent=None, allPos_acdc_df_cols=None,
             acdc_df_path=None, posData=None, addCombineMetricCallback=None,
-            allPosData=None, is_concat=False, isSingleSelection=False
+            allPosData=None, is_concat=False, isSingleSelection=False,
+            state=None
         ):
         super().__init__(parent=parent)
         
@@ -1932,6 +1933,9 @@ class SetMeasurementsDialog(widgets.QBaseDialog):
         layout.addLayout(buttonsLayout)
 
         self.setLayout(layout)
+        
+        if state is not None:
+            self.setState(state)
 
         self.deselectAllButton.clicked.connect(self.deselectAll)
         okButton.clicked.connect(self.ok_cb)
@@ -2163,6 +2167,50 @@ class SetMeasurementsDialog(widgets.QBaseDialog):
                     _config.remove_option(section, colname_to_del)
                 posData.saveCombineMetrics()
     
+    def setState(self, state):
+        self.doNotWarn = True
+        for chNameGroupbox in self.chNameGroupboxes:
+            measurementsInfo = state.get(chNameGroupbox.title())
+            if not measurementsInfo:
+                chNameGroupbox.setChecked(False)
+            else:
+                for checkBox in chNameGroupbox.checkBoxes:
+                    colname = checkBox.text()
+                    checkBox.setChecked(measurementsInfo[colname])
+
+        measurementsInfo = state.get(self.sizeMetricsQGBox.title())
+        if not measurementsInfo:
+            self.sizeMetricsQGBox.setChecked(False)
+        else:
+            for checkBox in self.sizeMetricsQGBox.checkBoxes:
+                checked = checkBox.isChecked()
+                colname = checkBox.text()
+                checkBox.setChecked(measurementsInfo[colname])
+
+        measurementsInfo = state.get(self.regionPropsQGBox.title())
+        if not measurementsInfo:
+            self.regionPropsQGBox.setChecked(False)
+        else:
+            self.regionPropsToSave = []
+            for checkBox in self.regionPropsQGBox.checkBoxes:
+                checked = checkBox.isChecked()
+                colname = checkBox.text()
+                checkBox.setChecked(measurementsInfo[colname])
+
+        if self.mixedChannelsCombineMetricsQGBox is not None:
+            measurementsInfo = state.get(self.mixedChannelsCombineMetricsQGBox.title())
+            if not measurementsInfo:
+                self.mixedChannelsCombineMetricsQGBox.setChecked(False)
+            else:
+                checkBoxes = self.mixedChannelsCombineMetricsQGBox.checkBoxes
+                for checkBox in checkBoxes:
+                    checked = checkBox.isChecked()
+                    colname = checkBox.text()
+                    key = self.mixedChannelsCombineMetricsQGBox.title()
+                    checkBox.setChecked(measurementsInfo[colname])
+        
+        self.doNotWarn = False
+            
     def state(self):
         state = {
             self.sizeMetricsQGBox.title(): {},
@@ -2183,6 +2231,7 @@ class SetMeasurementsDialog(widgets.QBaseDialog):
         else:
             for checkBox in self.sizeMetricsQGBox.checkBoxes:
                 checked = checkBox.isChecked()
+                colname = checkBox.text()
                 state[self.sizeMetricsQGBox.title()][colname] = checked
 
         if not self.regionPropsQGBox.isChecked():
@@ -2191,15 +2240,17 @@ class SetMeasurementsDialog(widgets.QBaseDialog):
             self.regionPropsToSave = []
             for checkBox in self.regionPropsQGBox.checkBoxes:
                 checked = checkBox.isChecked()
+                colname = checkBox.text()
                 state[self.regionPropsQGBox.title()][colname] = checked
 
         if self.mixedChannelsCombineMetricsQGBox is not None:
             state[self.mixedChannelsCombineMetricsQGBox.title()] = {}
-            if not self.mixedChannelsCombineMetricsQGBox.isChecked():
+            if self.mixedChannelsCombineMetricsQGBox.isChecked():
                 checkBoxes = self.mixedChannelsCombineMetricsQGBox.checkBoxes
                 for checkBox in checkBoxes:
                     checked = checkBox.isChecked()
                     key = self.mixedChannelsCombineMetricsQGBox.title()
+                    colname = checkBox.text()
                     state[key][colname] = checked
         
         return state
