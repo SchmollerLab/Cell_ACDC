@@ -11789,6 +11789,8 @@ class guiWin(QMainWindow):
             labels, crop_slice = transformation.crop_2D(
                 self.currentLab2D, self.ax1.viewRange(), tolerance=10
             )
+            if self.isSegm3D:
+                crop_slice = (self.z_lab(), *crop_slice)
         else:
             labels = posData.lab.copy()
             crop_slice = None
@@ -11822,9 +11824,13 @@ class guiWin(QMainWindow):
         crop_slice = state['crop_slice']
         if crop_slice is None:
             posData.lab = state['labels'].copy()
+        elif self.isSegm3D:
+            z_slice, slice_y, slice_x = crop_slice
+            posData.lab[..., z_slice, slice_y, slice_x] = state['labels'].copy()
         else:
             slice_y, slice_x = crop_slice
             posData.lab[..., slice_y, slice_x] = state['labels'].copy()
+        
         posData.editID_info = state['editID_info'].copy()
         posData.binnedIDs = state['binnedIDs'].copy()
         posData.ripIDs = state['ripIDs'].copy()
