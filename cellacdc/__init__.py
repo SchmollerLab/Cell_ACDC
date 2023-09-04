@@ -224,6 +224,14 @@ base_cca_df = {
     'will_divide': 0
 }
 
+lineage_tree_cols = [
+    'Cell_ID_tree',
+    'generation_num_tree',
+    'parent_ID_tree',
+    'root_ID_tree',
+    'sister_ID_tree'
+]
+
 base_acdc_df = {
     'is_cell_dead': False,
     'is_cell_excluded': False,
@@ -239,6 +247,12 @@ is_mac_arm64 = is_mac and platform.machine() == 'arm64'
 yeaz_weights_filenames = [
     'unet_weights_batchsize_25_Nepochs_100_SJR0_10.hdf5',
     'weights_budding_BF_multilab_0_1.hdf5'
+]
+
+yeaz_v2_weights_filenames = [
+    'weights_budding_BF_multilab_0_1',
+    'weights_budding_PhC_multilab_0_1',
+    'weights_fission_multilab_0_2'
 ]
 
 segment_anything_weights_filenames = [
@@ -306,6 +320,25 @@ def _critical_exception_gui(self, func_name):
     msg.critical(self, 'Critical error', err_msg)
     self.is_error_state = True
 
+def exception_handler_cli(func):
+    @wraps(func)
+    def inner_function(self, *args, **kwargs):
+        try:
+            if func.__code__.co_argcount==1 and func.__defaults__ is None:
+                result = func(self)
+            elif func.__code__.co_argcount>1 and func.__defaults__ is None:
+                result = func(self, *args)
+            else:
+                result = func(self, *args, **kwargs)
+        except Exception as err:
+            result = None
+            if self.is_cli:
+                self.quit(error=err)
+            else:
+                raise err
+        return result
+    return inner_function
+
 def exception_handler(func):
     @wraps(func)
     def inner_function(self, *args, **kwargs):
@@ -344,3 +377,8 @@ def ignore_exception(func):
 
 error_below = f"\n{'*'*30} ERROR {'*'*30}\n"
 error_close = f"\n{'^'*(len(error_below)-1)}"
+
+error_up_str = '^'*50
+error_up_str = f'\n{error_up_str}'
+error_down_str = '^'*50
+error_down_str = f'\n{error_down_str}'

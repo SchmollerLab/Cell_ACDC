@@ -1098,7 +1098,8 @@ def _mask_0valued_pixels_from_alignment(bkgr_mask, frame_i, posData):
         return bkgr_mask
     
     if posData.dataPrep_ROIcoords is not None:
-        is_cropped = int(posData.dataPrep_ROIcoords.at['cropped', 'value'])
+        df_roi = posData.dataPrep_ROIcoords.loc[0]
+        is_cropped = int(df_roi.at['cropped', 'value'])
         if is_cropped:
             # Do not mask 0valued pixels if image was cropped
             return bkgr_mask
@@ -1193,12 +1194,12 @@ def get_bkgr_data(
 
 def standard_metrics_func():
     metrics_func = {
-        'mean': lambda arr: _try_metric_func(np.mean, arr),
         'sum': lambda arr: _try_metric_func(np.sum, arr),
         'amount_autoBkgr': lambda arr, bkgr, area: _amount(arr, bkgr, area),
         'amount_dataPrepBkgr': lambda arr, bkgr, area: _amount(arr, bkgr, area),
         'amount_manualBkgr': lambda arr, bkgr, area: _amount(arr, bkgr, area),
         'mean_manualBkgr': lambda arr, bkgr, area: _mean_corrected(arr, bkgr),
+        'mean': lambda arr: _try_metric_func(np.mean, arr),
         'median': lambda arr: _try_metric_func(np.median, arr),
         'min': lambda arr: _try_metric_func(np.min, arr),
         'max': lambda arr: _try_metric_func(np.max, arr),
@@ -1580,6 +1581,7 @@ def get_metrics_params(all_channels_metrics, metrics_func, custom_func_dict):
     concentration_metrics_params = {}
     custom_metrics_params = {ch:{} for ch in channel_names}
     az = r'[A-Za-z0-9]'
+    how_3D_to_2D_pattern = r'zSlice|3D|maxProj|meanProj|(?=\s*$)'
     bkgrVal_pattern = fr'_({az}+)_bkgrVal_({az}+)_?({az}*)$'
 
     for channel_name, columns in all_channels_metrics.items():
@@ -1595,7 +1597,9 @@ def get_metrics_params(all_channels_metrics, metrics_func, custom_func_dict):
             
             is_standard_foregr = False
             for metric in metrics_func:
-                foregr_pattern = rf'{channel_name}_({metric})_?({az}*)$'
+                foregr_pattern = (
+                    rf'{channel_name}_({metric})_?({how_3D_to_2D_pattern}*)$'
+                )
                 m = re.findall(foregr_pattern, col)
                 if m:
                     # Metric is a standard metric 
@@ -1610,7 +1614,7 @@ def get_metrics_params(all_channels_metrics, metrics_func, custom_func_dict):
             # Metric is concentration
             conc_pattern = rf'concentration_{az}+_from_vol_[a-z]+'
             conc_metric_pattern = (
-                rf'{channel_name}_({conc_pattern})_?({az}*)'
+                rf'{channel_name}_({conc_pattern})_?({how_3D_to_2D_pattern}*)'
             )
             m = re.findall(conc_metric_pattern, col)
             if m:
@@ -1619,7 +1623,7 @@ def get_metrics_params(all_channels_metrics, metrics_func, custom_func_dict):
                 continue
 
             for metric, custom_func in custom_func_dict.items():
-                custom_pattern = rf'{channel_name}_({metric})_?({az}*)'
+                custom_pattern = rf'{channel_name}_({metric})_?({how_3D_to_2D_pattern}*)'
                 m = re.findall(custom_pattern, col)
                 if m:
                     # Metric is a standard metric 
@@ -1632,3 +1636,15 @@ def get_metrics_params(all_channels_metrics, metrics_func, custom_func_dict):
         concentration_metrics_params, custom_metrics_params
     )
     return params
+
+def get_regionprops_columns(existing_colnames, selected_props_names):
+    selected_rp_cols = []
+    for col in existing_colnames:
+        for selected_prop in selected_props_names:
+            if selected_prop == col:
+                selected_rp_cols.append(col)
+                continue
+            m = re.match(fr'{selected_prop}-\d', col)
+            if m is not None:
+                selected_rp_cols.append(col)
+    return selected_rp_cols

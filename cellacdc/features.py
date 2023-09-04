@@ -153,8 +153,6 @@ def custom_post_process_segm(
         bkgrData
     )
     filtered_df = filter_acdc_df_by_features_range(features_range, df)
-    
-    
     filtered_lab = np.zeros_like(lab)
     rp = skimage.measure.regionprops(lab)
     for obj in rp:

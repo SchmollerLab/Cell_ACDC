@@ -7,21 +7,18 @@ import cv2
 import json
 import h5py
 import shutil
-import difflib
 from math import isnan
+import xml.etree.ElementTree as ET
 from tqdm import tqdm
 import numpy as np
 import h5py
 import pandas as pd
-import xml.etree.ElementTree as ET
-import tkinter as tk
-from tkinter import ttk
-from skimage import io
 import skimage.filters
 from datetime import datetime
 from tifffile import TiffFile
 from natsort import natsorted
 import skimage
+import skimage.io
 import skimage.measure
 
 from . import GUI_INSTALLED
@@ -149,6 +146,77 @@ def migrate_models_paths(dst_path):
         with open(weight_location_txt_path, 'w') as txt:
             txt.write(model_location)
 
+def save_segm_workflow_to_config(
+        filepath, ini_items: dict, paths_to_segm: list, 
+        stop_frame_nums: list
+    ):
+    paths_to_segm = [path.replace('\\', '/') for path in paths_to_segm]
+    paths_param = '\n'.join(paths_to_segm)
+    paths_param = f'\n{paths_param}'
+    configPars = config.ConfigParser()
+    configPars['paths_to_segment'] = {'paths': paths_param} 
+    
+    stop_frames_param = '\n'.join([str(n) for n in stop_frame_nums])
+    stop_frames_param = f'\n{stop_frames_param}'
+    configPars['paths_to_segment']['stop_frame_numbers'] = stop_frames_param
+    
+    for section, options in ini_items.items():
+        configPars[section] = {}
+        for option, value in options.items():
+            configPars[section][option] = str(value)
+    with open(filepath, 'w') as configfile:
+        configPars.write(configfile)
+
+def read_segm_workflow_from_config(filepath):
+    configPars = config.ConfigParser()
+    configPars.read(filepath)
+    ini_items = {}
+    for section in configPars.sections():
+        options = dict(configPars[section])
+        ini_items[section] = {}
+        for option, value in options.items():
+            if section == 'paths_to_segment':
+                value = value.strip('\n')
+                value = value.split('\n')
+                ini_items[section][option] = value
+                continue
+            if value == 'False':
+                value = False
+            elif value == 'True':
+                value = True
+            elif value == 'None':
+                value = None
+            elif option == 'SizeT' or option == 'SizeZ':
+                value = int(value)
+                
+            if section == 'standard_postprocess_features':
+                for _type in (int, float, str):
+                    try:
+                        value = _type(value)
+                        break
+                    except Exception as e:
+                        continue
+            
+            elif section == 'custom_postprocess_features':
+                value = tuple([float(val) for val in value])
+            
+            ini_items[section][option] = value
+    return ini_items
+
+def get_images_paths(self, folder_path):
+    folder_type = myutils.determine_folder_type(folder_path)     
+    is_pos_folder, is_images_folder, folder_path = folder_type     
+    if not is_pos_folder and not is_images_folder:
+        pos_foldernames = myutils.get_pos_foldernames(folder_path)
+        images_paths = [
+            os.path.join(folder_path, pos, 'Images') for pos in pos_foldernames
+        ]
+    elif is_pos_folder:
+        images_paths = [os.path.join(folder_path, 'Images')]
+    elif is_images_folder:
+        images_paths = [folder_path]
+    return images_paths
+            
 def save_last_selected_gb_meas(json_data):
     write_json(json_data, last_selected_groupboxes_measurements_path)
 
@@ -885,6 +953,20 @@ class loadData:
         else:
             return '', '', False
 
+    def readLastUsedStopFrameNumber(self):
+        if not hasattr(self, 'metadata_df'):
+            return
+        
+        if self.metadata_df is None:
+            return
+        
+        try:
+            stop_frame_num = int(self.metadata_df.at['stop_frame_num', 'values'])
+        except Exception as err:
+            stop_frame_num = None
+        
+        return stop_frame_num
+    
     def loadOtherFiles(
             self,
             load_segm_data=True,
@@ -1033,11 +1115,12 @@ class loadData:
                         self.bkgrROIs.append(roi)
             elif load_dataPrep_ROIcoords and file.endswith('dataPrepROIs_coords.csv'):
                 df = pd.read_csv(filePath)
-                if 'description' in df.columns:
-                    df = df.set_index('description')
-                    if 'value' in df.columns:
-                        self.dataPrep_ROIcoordsFound = True
-                        self.dataPrep_ROIcoords = df
+                if 'roi_id' not in df.columns:
+                    df['roi_id'] = 0
+                if 'description' in df.columns and 'value' in df.columns:
+                    df = df.set_index(['roi_id', 'description'])
+                    self.dataPrep_ROIcoordsFound = True
+                    self.dataPrep_ROIcoords = df
             elif loadMetadata:
                 self.metadataFound = True
                 remove_duplicates_file(filePath)
@@ -1224,6 +1307,16 @@ class loadData:
                 annotatedIDs = list(series.index.get_level_values(1).unique())
                 self.customAnnotIDs[name][frame_i] = annotatedIDs
 
+    def isCropped(self):
+        if self.dataPrep_ROIcoords is None:
+            return False
+        df = self.dataPrep_ROIcoords
+        _isCropped = any([
+            df_roi.at[(roi_id, 'cropped'), 'value'] > 0
+            for roi_id, df_roi in df.groupby(level=0)
+        ]) 
+        return _isCropped
+    
     def getIsSegm3D(self):
         if self.SizeZ == 1:
             return False
@@ -1478,7 +1571,10 @@ class loadData:
         try:
             self.SizeY, self.SizeX = self.img_data_shape[-2:]
         except Exception as e:
-            self.SizeY, self.SizeX = self.segm_data.shape[-2:]
+            try:
+                self.SizeY, self.SizeX = self.segm_data.shape[-2:]
+            except Exception as e:
+                self.SizeY, self.SizeX = 1, 1
 
         self.TimeIncrement = 1.0
         self.PhysicalSizeX = 1.0
@@ -1907,11 +2003,9 @@ class loadData:
             )
             if signals is None:
                 msg = widgets.myMessageBox(self.parent)
-                msg.setIcon(iconName='SP_MessageBoxCritical')
-                msg.setWindowTitle('Permission denied')
-                msg.addText(permissionErrorTxt)
-                msg.addButton('  Ok  ')
-                msg.exec_()
+                msg.warning(
+                    self, 'Permission denied', permissionErrorTxt
+                )
                 self.metadata_df.to_csv(self.metadata_csv_path)
             else:
                 mutex.lock()
@@ -2034,7 +2128,7 @@ class select_exp_folder:
         values = []
         for pos in pos_foldernames:
             last_tracked_i_found = False
-            pos_path = f'{exp_path}/{pos}'
+            pos_path = os.path.join(exp_path, pos)
             images_path = f'{exp_path}/{pos}/Images'
             filenames = myutils.listdir(images_path)
             for filename in filenames:
@@ -2058,7 +2152,7 @@ class select_exp_folder:
         values = []
         for pos in pos_foldernames:
             is_prepped = False
-            pos_path = f'{exp_path}/{pos}'
+            pos_path = os.path.join(exp_path, pos)
             images_path = f'{exp_path}/{pos}/Images'
             filenames = myutils.listdir(images_path)
             for filename in filenames:
@@ -2093,7 +2187,7 @@ class select_exp_folder:
         values = []
         for pos in pos_foldernames:
             cc_stage_found = False
-            pos_path = f'{exp_path}/{pos}'
+            pos_path = os.path.join(exp_path, pos)
             if os.path.isdir(pos_path):
                 images_path = f'{exp_path}/{pos}/Images'
                 filenames = myutils.listdir(images_path)

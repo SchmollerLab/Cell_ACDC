@@ -1112,6 +1112,14 @@ def _model_url(model_name, return_alternative=False):
         ]
         file_size = [2564550879, 1249524736, 375042383]
         alternative_url = ''
+    elif model_name == 'YeaZ_v2':
+        url = [
+            'https://hmgubox2.helmholtz-muenchen.de/index.php/s/5PARckkcJcN9D3S/download/weights_budding_BF_multilab_0_1', 
+            'https://hmgubox2.helmholtz-muenchen.de/index.php/s/CTHq4HN3adyFbnE/download/weights_budding_PhC_multilab_0_1',
+            'https://hmgubox2.helmholtz-muenchen.de/index.php/s/QTtBJycYnLQZsHQ/download/weights_fission_multilab_0_2'
+        ]
+        file_size = [124142981, 124143031, 124144759]
+        alternative_url = 'https://github.com/rahi-lab/YeaZ-GUI#installation'
     elif model_name == 'deepsea':
         url = [
             'https://github.com/abzargar/DeepSea/raw/master/deepsea/trained_models/segmentation.pth',
@@ -1305,7 +1313,11 @@ def determine_folder_type(folder_path):
     contains_images_folder = os.path.exists(
         os.path.join(folder_path, 'Images')
     )
-    if contains_images_folder and not is_pos_folder:
+    contains_pos_folders = len(get_pos_foldernames(folder_path)) > 0
+    if contains_pos_folders:
+        is_pos_folder = False
+        is_images_folder = False
+    elif contains_images_folder and not is_pos_folder:
         # Folder created by loading an image
         is_images_folder = True
         folder_path = os.path.join(folder_path, 'Images')
@@ -1329,6 +1341,13 @@ def download_model(model_name):
     elif model_name == 'TAPIR':
         try:
             _download_tapir_model()
+            return True
+        except Exception as e:
+            traceback.print_exc()
+            return False
+    elif model_name == 'YeaZ_v2':
+        try:
+            _download_yeaz_models()
             return True
         except Exception as e:
             traceback.print_exc()
@@ -1712,6 +1731,10 @@ def check_install_cellpose():
         printl(traceback.format_exc())
         _inform_install_package_failed('cellpose')
 
+def check_install_yeaz():
+    check_install_package('torch')
+    check_install_package('yeaz')
+
 def check_install_segment_anything():
     check_install_package('torchvision')
     check_install_package('segment_anything')
@@ -1849,13 +1872,20 @@ def _install_deepsea():
         [sys.executable, '-m', 'pip', 'install', 'deepsea']
     )
 
-def import_tracker(posData, trackerName, realTime=False, qparent=None):
+def import_tracker_module(tracker_name):
+    module_name =  f'cellacdc.trackers.{tracker_name}.{tracker_name}_tracker'
+    tracker_module = import_module(module_name)
+    return tracker_module
+
+def init_tracker(
+        posData, trackerName, realTime=False, qparent=None, 
+        return_init_params=False
+    ):
     from . import apps
     downloadWin = apps.downloadModel(trackerName, parent=qparent)
     downloadWin.download()
 
-    trackerModuleName =  f'trackers.{trackerName}.{trackerName}_tracker'
-    trackerModule = import_module(trackerModuleName)
+    trackerModule = import_tracker_module(trackerName)
     init_params = {}
     track_params = {}
     paramsWin = None
@@ -1933,11 +1963,14 @@ def import_tracker(posData, trackerName, realTime=False, qparent=None):
             return None, None
     
     tracker = trackerModule.tracker(**init_params)
-    return tracker, track_params
+    if return_init_params:
+        return tracker, track_params, init_params
+    else:
+        return tracker, track_params
 
 def import_segment_module(model_name):
     try:
-        acdcSegment = import_module(f'models.{model_name}.acdcSegment')
+        acdcSegment = import_module(f'cellacdc.models.{model_name}.acdcSegment')
     except ModuleNotFoundError as e:
         # Check if custom model
         cp = config.ConfigParser()
@@ -2042,10 +2075,10 @@ def get_slices_local_into_global_arr(bbox_coords, global_shape):
 def get_pip_install_cellacdc_version_command(version=None):
     if version is None:
         version = read_version()
-    commit_hash_idx = version.find('+g') != -1
+    commit_hash_idx = version.find('+g')
     is_dev_version = commit_hash_idx > 0    
     if is_dev_version:
-        commit_hash = version[commit_hash_idx+2:]
+        commit_hash = version[commit_hash_idx+2:].split('.')[0]
         command = f'pip install --upgrade "git+{github_home_url}.git@{commit_hash}"'
     else:
         command = f'pip install --upgrade cellacdc=={version}'
@@ -2054,13 +2087,13 @@ def get_pip_install_cellacdc_version_command(version=None):
 def get_git_pull_checkout_cellacdc_version_commands(version=None):
     if version is None:
         version = read_version()
-    commit_hash_idx = version.find('+g') != -1
+    commit_hash_idx = version.find('+g')
     is_dev_version = commit_hash_idx > 0 
     if not is_dev_version:
         return []
-    commit_hash = version[commit_hash_idx+2:]
+    commit_hash = version[commit_hash_idx+2:].split('.')[0]
     commands = (
-        f'cd "{cellacdc_path}"',
+        f'cd "{os.path.dirname(cellacdc_path)}"',
         'git pull',
         f'git checkout {commit_hash}'
     )
@@ -2091,6 +2124,26 @@ def _download_tapir_model():
         
         shutil.move(temp_dst, final_dst)
 
+def _download_yeaz_models():
+    urls, file_sizes = _model_url('YeaZ_v2')
+    temp_model_path = tempfile.mkdtemp()
+    _, final_model_path = (
+        get_model_path('YeaZ_v2', create_temp_dir=False)
+    )
+    for url, file_size in zip(urls, file_sizes):
+        filename = url.split('/')[-1]
+        final_dst = os.path.join(final_model_path, filename)
+        if os.path.exists(final_dst):            
+            continue
+
+        temp_dst = os.path.join(temp_model_path, filename)
+        download_url(
+            url, temp_dst, file_size=file_size, desc='TAPIR',
+            verbose=False
+        )
+        
+        shutil.move(temp_dst, final_dst)
+
 def format_cca_manual_changes(changes: dict):
     txt = ''
     for ID, changes_ID in changes.items():
@@ -2101,9 +2154,14 @@ def format_cca_manual_changes(changes: dict):
     return txt
 
 def init_segm_model(acdcSegment, posData, init_kwargs):
-    segm_endname = init_kwargs.pop('segm_endname')
+    segm_endname = init_kwargs.pop('segm_endname', 'None')
     if segm_endname != 'None':
-        if posData.segm_npz_path.endswith(f'{segm_endname}.npz'):
+        load_segm = True
+        if not hasattr(posData, 'segm_data'):
+            load_segm = True
+        elif posData.segm_npz_path.endswith(f'{segm_endname}.npz'):
+            load_segm = False
+        if not load_segm:
             segm_data = np.squeeze(posData.segm_data)
         else:
             segm_filepath, _ = load.get_path_from_endname(
@@ -2119,3 +2177,25 @@ def init_segm_model(acdcSegment, posData, init_kwargs):
     except Exception as e:
         model = acdcSegment.Model(segm_data, **init_kwargs)
     return model
+
+def _parse_bool_str(value):
+    if isinstance(value, bool):
+        return value
+    
+    if value == 'True':
+        return True
+    elif value == 'False':
+        return False
+
+def parse_model_params(model_argspecs, model_params):
+    parsed_model_params = {}
+    for row, argspec in enumerate(model_argspecs):
+        value = model_params[argspec.name]
+        if argspec.type == bool:
+            value = _parse_bool_str(value)
+        elif argspec.type == int:
+            value = int(value)
+        elif argspec.type == float:
+            value = float(value)
+        parsed_model_params[argspec.name] = value
+    return parsed_model_params

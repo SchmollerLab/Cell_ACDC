@@ -35,3 +35,15 @@ class Model:
             segment_3D_volume=segment_3D_volume  
         )
         return labels
+    
+    def setupLogger(self, logger):
+        self.acdcCellpose.setupLogger(logger)
+    
+    def closeLogger(self):
+        self.acdcCellpose.closeLogger()
+    
+    def to_rgb_stack(self, first_ch_data, second_ch_data):
+        return self.acdcCellpose.to_rgb_stack(first_ch_data, second_ch_data)
+
+def url_help():
+    return 'https://cellpose.readthedocs.io/en/latest/api.html'

@@ -21,12 +21,17 @@ except Exception as e:
 
 gdrive_path = myutils.get_gdrive_path()
 
-FRAME_I = 0
-test_data = data.Cdc42TimeLapseData()
-# image_data = test_data.image_data()
-image_data = test_data.cdc42_data()
+FRAME_I = 300
+# test_data = data.Cdc42TimeLapseData()
+# # image_data = test_data.image_data()
+# image_data = test_data.cdc42_data()
+
+test_data = data.YeastTimeLapseAnnotated()
+image_data = test_data.image_data()
 segm_data = test_data.segm_data()
 images_path = test_data.images_path
+posData = test_data.posData()
+posData.loadOtherFiles(load_segm_data=False, load_metadata=True)
 
 img = image_data[FRAME_I]
 
@@ -74,7 +79,8 @@ win = apps.QDialogModelParams(
     init_params,
     segment_params,
     model_name, url=url,
-    segmFileEndnames=existingSegmEndnames
+    segmFileEndnames=existingSegmEndnames,
+    posData=posData
 )
 
 win.exec_()
@@ -93,6 +99,12 @@ try:
     model = acdcSegment.Model(**win.init_kwargs)
 except Exception as e:
     model = acdcSegment.Model(segm_data, **win.init_kwargs)
+
+is_segment3DT_available = any(
+    [name=='segment3DT' for name in dir(model)]
+)
+
+import pdb; pdb.set_trace()
 
 if img.ndim == 3 and (img.shape[-1] == 3 or img.shape[-1] == 4):
     img = skimage.color.rgb2gray(img)

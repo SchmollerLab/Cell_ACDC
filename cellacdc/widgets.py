@@ -1,4 +1,3 @@
-from ast import Index
 import os
 import sys
 import operator
@@ -66,7 +65,7 @@ PROGRESSBAR_QCOLOR = _palettes.QProgressBarColor()
 PROGRESSBAR_HIGHLIGHTEDTEXT_QCOLOR = _palettes.QProgressBarHighlightedTextColor()
 
 font = QFont()
-font.setPixelSize(13)
+font.setPixelSize(12)
 
 custom_cmaps_filepath = os.path.join(settings_folderpath, 'custom_colormaps.ini')
 
@@ -1208,6 +1207,7 @@ class QDialogListbox(QDialog):
         self.areItemsSelected = [
             listBox.item(i).isSelected() for i in range(listBox.count())
         ]
+        self.setFont(font)
     
     def keyPressEvent(self, event) -> None:
         mod = event.modifiers()
@@ -2177,6 +2177,8 @@ class myMessageBox(QDialog):
 
         self.layout.setColumnStretch(1, 1)
         self.setLayout(self.layout)
+        
+        self.setFont(font)
 
     def mousePressEvent(self, event):
         for label in self.labels:
@@ -2421,7 +2423,7 @@ class myMessageBox(QDialog):
     def _template(
             self, parent, title, message, detailsText=None,
             buttonsTexts=None, layouts=None, widgets=None,
-            commands=None
+            commands=None, path_to_browse=None, browse_button_text=None
         ):
         if parent is not None:
             self.setParent(parent)
@@ -2444,6 +2446,11 @@ class myMessageBox(QDialog):
             else:
                 self.addWidget(widgets)
 
+        if path_to_browse is not None:
+            self.addShowInFileManagerButton(
+                path_to_browse, txt=browse_button_text
+            )
+        
         buttons = []
         if buttonsTexts is None:
             okButton = self.addButton('  Ok  ')
@@ -2460,66 +2467,30 @@ class myMessageBox(QDialog):
             self.setDetailedText(detailsText, visible=True)
         return buttons
 
-    def critical(
-            self, parent, title, message,
-            buttonsTexts=None, layouts=None, widgets=None,
-            showDialog=True, detailsText=None,
-            commands=None
-        ):
+    def critical(self, *args, showDialog=True, **kwargs):
         self.setIcon(iconName='SP_MessageBoxCritical')
-        buttons = self._template(
-            parent, title, message, detailsText=detailsText,
-            buttonsTexts=buttonsTexts, layouts=layouts, widgets=widgets,
-            commands=commands
-        )
+        buttons = self._template(*args, **kwargs)
         if showDialog:
             self.exec_()
         return buttons
 
-    def information(
-            self, parent, title, message,
-            buttonsTexts=None, layouts=None, widgets=None,
-            showDialog=True, detailsText=None,
-            commands=None
-        ):
+    def information(self, *args, showDialog=True, **kwargs):
         self.setIcon(iconName='SP_MessageBoxInformation')
-        buttons = self._template(
-            parent, title, message, detailsText=detailsText,
-            buttonsTexts=buttonsTexts, layouts=layouts, widgets=widgets,
-            commands=commands
-        )
+        buttons = self._template(*args, **kwargs)
         if showDialog:
             self.exec_()
         return buttons
 
-    def warning(
-            self, parent, title, message,
-            buttonsTexts=None, layouts=None, widgets=None,
-            showDialog=True, detailsText=None,
-            commands=None
-        ):
+    def warning(self, *args, showDialog=True, **kwargs):
         self.setIcon(iconName='SP_MessageBoxWarning')
-        buttons = self._template(
-            parent, title, message, detailsText=detailsText,
-            buttonsTexts=buttonsTexts, layouts=layouts, widgets=widgets,
-            commands=commands
-        )
+        buttons = self._template(*args, **kwargs)
         if showDialog:
             self.exec_()
         return buttons
 
-    def question(
-            self, parent, title, message,
-            buttonsTexts=None, layouts=None, widgets=None,
-            showDialog=True, detailsText=None,
-            commands=None
-        ):
+    def question(self, *args, showDialog=True, **kwargs):
         self.setIcon(iconName='SP_MessageBoxQuestion')
-        buttons = self._template(
-            parent, title, message, detailsText=detailsText,
-            buttonsTexts=buttonsTexts, layouts=layouts, widgets=widgets,
-            commands=commands
-        )
+        buttons = self._template(*args, **kwargs)
         if showDialog:
             self.exec_()
         return buttons
@@ -3404,7 +3375,6 @@ class FloatLineEdit(QLineEdit):
         self._decimals = decimals
 
         self.isNumericRegExp = rf'^{float_regex(allow_negative=allowNegative)}$'
-
         regExp = QRegularExpression(self.isNumericRegExp)
         self.setValidator(QRegularExpressionValidator(regExp))
         self.setAlignment(Qt.AlignCenter)
@@ -6539,3 +6509,14 @@ class CheckableSpinBoxWidgets:
         if not self.checkbox.isChecked():
             return
         return self.spinbox.value()
+
+class Label(QLabel):
+    def __init__(self, parent=None, force_html=False):
+        super().__init__(parent)
+        self._force_html = force_html
+        
+    def setText(self, text):
+        if self._force_html:
+            text = html_utils.paragraph(text)
+        super().setText(text)
+        

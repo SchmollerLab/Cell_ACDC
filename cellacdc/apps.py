@@ -41,10 +41,12 @@ pg.setConfigOption('imageAxisOrder', 'row-major')
 
 from qtpy import QtCore
 from qtpy.QtGui import (
-    QIcon, QFontMetrics, QKeySequence, QFont, QGuiApplication, QCursor,
-    QKeyEvent, QPixmap, QFont, QPalette, QMouseEvent, QColor
+    QIcon, QFontMetrics, QKeySequence, QFont, QRegularExpressionValidator, 
+    QCursor, QKeyEvent, QPixmap, QFont, QPalette, QMouseEvent, QColor
 )
-from qtpy.QtCore import Qt, QSize, QEvent, Signal, QEventLoop, QTimer
+from qtpy.QtCore import (
+    Qt, QSize, QEvent, Signal, QEventLoop, QTimer, QRegularExpression
+)
 from qtpy.QtWidgets import (
     QFileDialog, QApplication, QMainWindow, QMenu, QLabel, QToolBar,
     QScrollBar, QWidget, QVBoxLayout, QLineEdit, QPushButton,
@@ -56,6 +58,7 @@ from qtpy.QtWidgets import (
     QTreeWidget, QTreeWidgetItem, QTextEdit, QSplashScreen, QAction,
     QListWidgetItem, QActionGroup, QLayout
 )
+import qtpy.compat
 
 from . import exception_handler
 from . import load, prompts, core, measurements, html_utils
@@ -70,7 +73,9 @@ from . import base_cca_df
 from . import widgets
 from . import user_profile_path
 from . import features
+from .regex import float_regex
 
+POSITIVE_FLOAT_REGEX = float_regex(allow_negative=False)
 PRE_PROCESSING_STEPS = [
     'Adjust Brightness/Contrast',
     'Smooth (gaussian filter)', 
@@ -1547,13 +1552,19 @@ class filenameDialog(QDialog):
         return _text
 
     def checkExistingNames(self):
-        if self._text() not in self.existingNames:
+        is_existing = (
+            self._text() in self.existingNames
+            or self.filenameLabel.text() in self.existingNames
+        )
+        if not is_existing:
             return True
 
         filename = self.filenameLabel.text()
         msg = widgets.myMessageBox()
         txt = html_utils.paragraph(
-            f'The file <code>{filename}</code> is <b>already existing</b>.<br><br>'
+            'The following file<br><br>'
+            f'<code>{filename}</code><br><br>'
+            'is <b>already existing</b>.<br><br>'
             'Do you want to <b>overwrite</b> the existing file?'
         )
         noButton, yesButton = msg.warning(
@@ -1760,7 +1771,8 @@ class SetMeasurementsDialog(widgets.QBaseDialog):
             self, loadedChNames, notLoadedChNames, isZstack, isSegm3D,
             favourite_funcs=None, parent=None, allPos_acdc_df_cols=None,
             acdc_df_path=None, posData=None, addCombineMetricCallback=None,
-            allPosData=None, is_concat=False, isSingleSelection=False
+            allPosData=None, is_concat=False, isSingleSelection=False,
+            state=None
         ):
         super().__init__(parent=parent)
         
@@ -1921,6 +1933,9 @@ class SetMeasurementsDialog(widgets.QBaseDialog):
         layout.addLayout(buttonsLayout)
 
         self.setLayout(layout)
+        
+        if state is not None:
+            self.setState(state)
 
         self.deselectAllButton.clicked.connect(self.deselectAll)
         okButton.clicked.connect(self.ok_cb)
@@ -2152,6 +2167,50 @@ class SetMeasurementsDialog(widgets.QBaseDialog):
                     _config.remove_option(section, colname_to_del)
                 posData.saveCombineMetrics()
     
+    def setState(self, state):
+        self.doNotWarn = True
+        for chNameGroupbox in self.chNameGroupboxes:
+            measurementsInfo = state.get(chNameGroupbox.title())
+            if not measurementsInfo:
+                chNameGroupbox.setChecked(False)
+            else:
+                for checkBox in chNameGroupbox.checkBoxes:
+                    colname = checkBox.text()
+                    checkBox.setChecked(measurementsInfo[colname])
+
+        measurementsInfo = state.get(self.sizeMetricsQGBox.title())
+        if not measurementsInfo:
+            self.sizeMetricsQGBox.setChecked(False)
+        else:
+            for checkBox in self.sizeMetricsQGBox.checkBoxes:
+                checked = checkBox.isChecked()
+                colname = checkBox.text()
+                checkBox.setChecked(measurementsInfo[colname])
+
+        measurementsInfo = state.get(self.regionPropsQGBox.title())
+        if not measurementsInfo:
+            self.regionPropsQGBox.setChecked(False)
+        else:
+            self.regionPropsToSave = []
+            for checkBox in self.regionPropsQGBox.checkBoxes:
+                checked = checkBox.isChecked()
+                colname = checkBox.text()
+                checkBox.setChecked(measurementsInfo[colname])
+
+        if self.mixedChannelsCombineMetricsQGBox is not None:
+            measurementsInfo = state.get(self.mixedChannelsCombineMetricsQGBox.title())
+            if not measurementsInfo:
+                self.mixedChannelsCombineMetricsQGBox.setChecked(False)
+            else:
+                checkBoxes = self.mixedChannelsCombineMetricsQGBox.checkBoxes
+                for checkBox in checkBoxes:
+                    checked = checkBox.isChecked()
+                    colname = checkBox.text()
+                    key = self.mixedChannelsCombineMetricsQGBox.title()
+                    checkBox.setChecked(measurementsInfo[colname])
+        
+        self.doNotWarn = False
+            
     def state(self):
         state = {
             self.sizeMetricsQGBox.title(): {},
@@ -2172,6 +2231,7 @@ class SetMeasurementsDialog(widgets.QBaseDialog):
         else:
             for checkBox in self.sizeMetricsQGBox.checkBoxes:
                 checked = checkBox.isChecked()
+                colname = checkBox.text()
                 state[self.sizeMetricsQGBox.title()][colname] = checked
 
         if not self.regionPropsQGBox.isChecked():
@@ -2180,15 +2240,17 @@ class SetMeasurementsDialog(widgets.QBaseDialog):
             self.regionPropsToSave = []
             for checkBox in self.regionPropsQGBox.checkBoxes:
                 checked = checkBox.isChecked()
+                colname = checkBox.text()
                 state[self.regionPropsQGBox.title()][colname] = checked
 
         if self.mixedChannelsCombineMetricsQGBox is not None:
             state[self.mixedChannelsCombineMetricsQGBox.title()] = {}
-            if not self.mixedChannelsCombineMetricsQGBox.isChecked():
+            if self.mixedChannelsCombineMetricsQGBox.isChecked():
                 checkBoxes = self.mixedChannelsCombineMetricsQGBox.checkBoxes
                 for checkBox in checkBoxes:
                     checked = checkBox.isChecked()
                     key = self.mixedChannelsCombineMetricsQGBox.title()
+                    colname = checkBox.text()
                     state[key][colname] = checked
         
         return state
@@ -2345,13 +2407,19 @@ class SetMeasurementsDialog(widgets.QBaseDialog):
             self.setNotExistingMeasurementTooltip(checkBox)
         
         for checkBox in self.regionPropsQGBox.checkBoxes:
-            colname = checkBox.text()
-            if any([col == colname for col in existing_colnames]):
-                checkBox.setChecked(True)
-                continue
-            checkBox.setChecked(False)
-            checkBox.setDisabled(True)
-            self.setNotExistingMeasurementTooltip(checkBox)
+            prop_name = checkBox.text()
+            for existing_col in existing_colnames:
+                if prop_name == existing_col:
+                    checkBox.setChecked(True)
+                    break
+                m = re.match(fr'{prop_name}-\d', existing_col)
+                if m is not None:
+                    checkBox.setChecked(True)
+                    break
+            else:
+                checkBox.setChecked(False)
+                checkBox.setDisabled(True)
+                self.setNotExistingMeasurementTooltip(checkBox)
         
         if self.mixedChannelsCombineMetricsQGBox is None:
             return
@@ -2509,7 +2577,7 @@ class QDialogMetadataXML(QDialog):
         super().__init__(parent)
         self.setWindowTitle(title)
         font = QFont()
-        font.setPixelSize(13)
+        font.setPixelSize(12)
         self.setFont(font)
         if DimensionOrder is None:
             DimensionOrder = 'ztc' # default for .czi and .nd2
@@ -5890,7 +5958,7 @@ class randomWalkerDialog(QDialog):
         seeHereLabel.setTextInteractionFlags(Qt.TextBrowserInteraction)
         seeHereLabel.setOpenExternalLinks(True)
         font = QFont()
-        font.setPixelSize(13)
+        font.setPixelSize(12)
         seeHereLabel.setFont(font)
         seeHereLabel.setStyleSheet("padding:12px 0px 0px 0px;")
         paramsLayout.addWidget(seeHereLabel, row, 0, 1, 2)
@@ -6995,7 +7063,7 @@ class imageViewer(QMainWindow):
         self.framesScrollBar.setMaximum(posData.SizeT)
         t_label = QLabel('frame  ')
         _font = QFont()
-        _font.setPixelSize(13)
+        _font.setPixelSize(12)
         t_label.setFont(_font)
         self.img_Widglayout.addWidget(
                 t_label, 0, 0, alignment=Qt.AlignRight)
@@ -7010,7 +7078,7 @@ class imageViewer(QMainWindow):
         self.zSliceScrollBar.setMaximum(self.posData.SizeZ-1)
         _z_label = QLabel('z-slice  ')
         _font = QFont()
-        _font.setPixelSize(13)
+        _font.setPixelSize(12)
         _z_label.setFont(_font)
         self.z_label = _z_label
         self.img_Widglayout.addWidget(_z_label, 1, 0, alignment=Qt.AlignCenter)
@@ -8269,7 +8337,7 @@ class askStopFrameSegm(QDialog):
         """)
         infoLabel = QLabel(infoTxt, self)
         _font = QFont()
-        _font.setPixelSize(13)
+        _font.setPixelSize(12)
         infoLabel.setFont(_font)
         infoLabel.setAlignment(Qt.AlignCenter)
         # padding: top, left, bottom, right
@@ -8297,7 +8365,11 @@ class askStopFrameSegm(QDialog):
                 loadSegmInfo=True,
             )
             spinBox.setMaximum(posData.SizeT)
-            spinBox.setValue(posData.SizeT)
+            stopFrameNum = posData.readLastUsedStopFrameNumber()
+            if stopFrameNum is None:
+                spinBox.setValue(posData.SizeT)
+            else:
+                spinBox.setValue(stopFrameNum)
             spinBox.setAlignment(Qt.AlignCenter)
             visualizeButton = widgets.viewPushButton('Visualize')
             visualizeButton.clicked.connect(self.visualize_cb)
@@ -8342,14 +8414,20 @@ class askStopFrameSegm(QDialog):
         focusSpinbox = self.spinBoxes[self.tab_idx]
         focusSpinbox.setFocus()
 
-    def saveSegmSizeT(self):
-        self.stopFrames = [
-            spinBox.value() for spinBox, _ in self.dataDict.values()
-        ]
+    def saveStopFrameNumbers(self):
+        for spinBox, posData in self.dataDict.values():
+            posData.metadata_df.at['stop_frame_num', 'values'] = spinBox.value()
+            posData.metadataToCsv()
 
     def ok_cb(self, event):
         self.cancel = False
-        self.saveSegmSizeT()
+        try:
+            self.saveStopFrameNumbers()
+        except Exception as err:
+            printl(traceback.format_exc())
+        self.stopFrames = [
+            spinBox.value() for spinBox, posData in self.dataDict.values()
+        ]
         self.close()
 
     def visualize_cb(self, checked=True):
@@ -8384,7 +8462,7 @@ class QLineEditDialog(QDialog):
             defaultTxt='', parent=None, allowedValues=None,
             warnLastFrame=False, isInteger=False, isFloat=False,
             stretchEntry=True, allowEmpty=True, allowedTextEntries=None, 
-            allowText=False, lastVisitedFrame=None
+            allowText=False, lastVisitedFrame=None, allowList=False
         ):
         QDialog.__init__(self, parent)
 
@@ -8413,37 +8491,46 @@ class QLineEditDialog(QDialog):
             msg = html_utils.paragraph(msg, center=True)
         msg = QLabel(msg)
         msg.setStyleSheet("padding:0px 0px 3px 0px;")
-
+        
         if isFloat:
-            ID_QLineEdit = QDoubleSpinBox()
-            if allowedValues is not None:
-                _min, _max = allowedValues
-                ID_QLineEdit.setMinimum(_min)
-                ID_QLineEdit.setMaximum(_max)
-            else:
-                ID_QLineEdit.setMaximum(2147483647)
-            if defaultTxt:
-                ID_QLineEdit.setValue(float(defaultTxt))
-
+            self._type = float
         elif isInteger:
-            ID_QLineEdit = QSpinBox()
+            self._type = int
+        else:
+            self._type = str
+        
+        self.allowList = allowList
+
+        if isFloat and not allowList:
+            entryWidget = QDoubleSpinBox()
             if allowedValues is not None:
                 _min, _max = allowedValues
-                ID_QLineEdit.setMinimum(_min)
-                ID_QLineEdit.setMaximum(_max)
+                entryWidget.setMinimum(_min)
+                entryWidget.setMaximum(_max)
             else:
-                ID_QLineEdit.setMaximum(2147483647)
+                entryWidget.setMaximum(2147483647)
             if defaultTxt:
-                ID_QLineEdit.setValue(int(defaultTxt))
-        else:
-            ID_QLineEdit = QLineEdit()
-            ID_QLineEdit.setText(defaultTxt)
-            if not self.allowText:
-                ID_QLineEdit.textChanged[str].connect(self.ID_LineEdit_cb)
-        ID_QLineEdit.setFont(font)
-        ID_QLineEdit.setAlignment(Qt.AlignCenter)
+                entryWidget.setValue(float(defaultTxt))
 
-        self.ID_QLineEdit = ID_QLineEdit
+        elif isInteger and not allowList:
+            entryWidget = QSpinBox()
+            if allowedValues is not None:
+                _min, _max = allowedValues
+                entryWidget.setMinimum(_min)
+                entryWidget.setMaximum(_max)
+            else:
+                entryWidget.setMaximum(2147483647)
+            if defaultTxt:
+                entryWidget.setValue(int(defaultTxt))
+        else:
+            entryWidget = QLineEdit()
+            entryWidget.setText(defaultTxt)
+            if not self.allowText:
+                entryWidget.textChanged[str].connect(self.onTextChanged)
+        entryWidget.setFont(font)
+        entryWidget.setAlignment(Qt.AlignCenter)
+
+        self.entryWidget = entryWidget
 
         if allowedValues is not None:
             notValidLabel = QLabel()
@@ -8467,11 +8554,11 @@ class QLineEditDialog(QDialog):
         # Add widgets to layouts
         LineEditLayout.addWidget(msg, alignment=Qt.AlignCenter)
         if stretchEntry:
-            LineEditLayout.addWidget(ID_QLineEdit)
+            LineEditLayout.addWidget(entryWidget)
         else:
             entryLayout = QHBoxLayout()
             entryLayout.addStretch(1)
-            entryLayout.addWidget(ID_QLineEdit)
+            entryLayout.addWidget(entryWidget)
             entryLayout.addStretch(1)
             entryLayout.setStretch(1,1)
             LineEditLayout.addLayout(entryLayout)
@@ -8489,30 +8576,46 @@ class QLineEditDialog(QDialog):
         self.setLayout(mainLayout)
 
         # self.setModal(True)
+    
+    def value(self):
+        if self.isFloat or self.isInteger:
+            val = self.entryWidget.value()
+        elif not self.allowList:
+            val = int(self.entryWidget.text())
+        elif self.allowList:
+            text = self.entryWidget.text()
+            m = re.findall(POSITIVE_FLOAT_REGEX, text)
+            val = [int(val) for val in m]
+        return val
 
-    def ID_LineEdit_cb(self, text):
+    def onTextChanged(self, text):
         # Get inserted char
-        idx = self.ID_QLineEdit.cursorPosition()
+        idx = self.entryWidget.cursorPosition()
         if idx == 0:
             return
 
         newChar = text[idx-1]
+        if self.allowList and (newChar==',' or newChar == ' '):
+            return
 
         # Allow only integers
         try:
             val = int(newChar)
             if val > np.iinfo(np.uint32).max:
-                self.ID_QLineEdit.setText(str(np.iinfo(np.uint32).max))
-            if self.allowedValues is not None:
-                currentVal = int(self.ID_QLineEdit.text())
-                if currentVal not in self.allowedValues:
-                    self.notValidLabel.setText(f'{currentVal} not existing!')
-                else:
-                    self.notValidLabel.setText('')
+                self.entryWidget.setText(str(np.iinfo(np.uint32).max))
         except Exception as e:
             text = text.replace(newChar, '')
-            self.ID_QLineEdit.setText(text)
+            self.entryWidget.setText(text)
             return
+        
+        if self.allowedValues is not None:
+            currentVal = self.value()
+            if self.allowList:
+                currentVal = currentVal[-1]
+            if currentVal not in self.allowedValues:
+                self.notValidLabel.setText(f'{currentVal} not existing!')
+            else:
+                self.notValidLabel.setText('')
 
     def warnValLessLastFrame(self, val):
         msg = widgets.myMessageBox()
@@ -8543,7 +8646,7 @@ class QLineEditDialog(QDialog):
         return msg.cancel
 
     def ok_cb(self, event):
-        if not self.allowEmpty and not self.ID_QLineEdit.text():
+        if not self.allowEmpty and not self.entryWidget.text():
             msg = widgets.myMessageBox(showCentered=False, wrapText=False)
             msg.critical(
                 self, 'Empty text', 
@@ -8551,10 +8654,10 @@ class QLineEditDialog(QDialog):
             )
             return
         if self.allowedTextEntries is not None:
-            if self.ID_QLineEdit.text() not in self.allowedTextEntries:
+            if self.entryWidget.text() not in self.allowedTextEntries:
                 msg = widgets.myMessageBox(showCentered=False, wrapText=False)
                 txt = html_utils.paragraph(
-                    f'"{self.ID_QLineEdit.text()}" is not a valid entry.<br><br>'
+                    f'"{self.entryWidget.text()}" is not a valid entry.<br><br>'
                     'Valid entries are:<br>'
                     f'{html_utils.to_list(self.allowedTextEntries)}'
                 )
@@ -8564,10 +8667,7 @@ class QLineEditDialog(QDialog):
             if self.notValidLabel.text():
                 return
 
-        if self.isFloat or self.isInteger:
-            val = self.ID_QLineEdit.value()
-        else:
-            val = int(self.ID_QLineEdit.text())
+        val = self.value()
         
         if self.warnLastFrame and self.lastVisitedFrame is not None:
             if val < self.lastVisitedFrame:
@@ -8662,17 +8762,17 @@ class editID_QWidget(QDialog):
         VBoxLayout = QVBoxLayout()
         msg = QLabel(f'Replace ID {clickedID} with:')
         _font = QFont()
-        _font.setPixelSize(13)
+        _font.setPixelSize(12)
         msg.setFont(_font)
         # padding: top, left, bottom, right
         msg.setStyleSheet("padding:0px 0px 3px 0px;")
         VBoxLayout.addWidget(msg, alignment=Qt.AlignCenter)
 
-        ID_QLineEdit = QLineEdit()
-        ID_QLineEdit.setFont(_font)
-        ID_QLineEdit.setAlignment(Qt.AlignCenter)
-        self.ID_QLineEdit = ID_QLineEdit
-        VBoxLayout.addWidget(ID_QLineEdit)
+        entryWidget = QLineEdit()
+        entryWidget.setFont(_font)
+        entryWidget.setAlignment(Qt.AlignCenter)
+        self.entryWidget = entryWidget
+        VBoxLayout.addWidget(entryWidget)
 
         note = QLabel(
             'NOTE: To replace multiple IDs at once\n'
@@ -8700,14 +8800,14 @@ class editID_QWidget(QDialog):
 
         # Connect events
         self.prevText = ''
-        ID_QLineEdit.textChanged[str].connect(self.ID_LineEdit_cb)
+        entryWidget.textChanged[str].connect(self.onTextChanged)
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.cancel_cb)
         # self.setModal(True)
 
-    def ID_LineEdit_cb(self, text):
+    def onTextChanged(self, text):
         # Get inserted char
-        idx = self.ID_QLineEdit.cursorPosition()
+        idx = self.entryWidget.cursorPosition()
         if idx == 0:
             return
 
@@ -8723,23 +8823,23 @@ class editID_QWidget(QDialog):
         if m is None:
             self.prevText = text
             text = text.replace(newChar, '')
-            self.ID_QLineEdit.setText(text)
+            self.entryWidget.setText(text)
             return
 
         # Cast integers greater than uint32 machine limit
-        m_iter = re.finditer(r'\d+', self.ID_QLineEdit.text())
+        m_iter = re.finditer(r'\d+', self.entryWidget.text())
         for m in m_iter:
             val = int(m.group())
             uint32_max = np.iinfo(np.uint32).max
             if val > uint32_max:
-                text = self.ID_QLineEdit.text()
+                text = self.entryWidget.text()
                 text = f'{text[:m.start()]}{uint32_max}{text[m.end():]}'
-                self.ID_QLineEdit.setText(text)
+                self.entryWidget.setText(text)
 
         # Automatically close ( bracket
         if newChar == '(':
             text += ')'
-            self.ID_QLineEdit.setText(text)
+            self.entryWidget.setText(text)
         self.prevText = text
     
     def _warnExistingID(self, existingID, newID):
@@ -8764,7 +8864,7 @@ class editID_QWidget(QDialog):
 
     def ok_cb(self, event):
         self.cancel = False
-        txt = self.ID_QLineEdit.text()
+        txt = self.entryWidget.text()
         valid = False
 
         # Check validity of inserted text
@@ -9187,6 +9287,29 @@ class manualSeparateGui(QMainWindow):
         elif self.drawMode == 'freehand':
             self.freeHandAction.setChecked(True)
     
+    def state(self):
+        return {
+            'is_overlay_active': self.overlayButton.isChecked(),
+            'is_three_points_active': self.threePointsArcAction.isChecked(),
+            'is_free_hand_active': self.freeHandAction.isChecked()
+        }
+    
+    def show(self, block=False):
+        super().show()
+        if not block:
+            return
+        self.loop = QEventLoop(self)
+        self.loop.exec_()
+    
+    def setState(self, state):
+        if state is None:
+            return
+        self.overlayButton.setChecked(state.get('is_overlay_active', False))
+        self.threePointsArcAction.setChecked(
+            state.get('is_three_points_active', True)
+        )
+        self.freeHandAction.setChecked(state.get('is_free_hand_active', False))
+        
     def gui_storeDrawMode(self):
         self.drawMode = self.sender().drawMode
         
@@ -9844,7 +9967,7 @@ class QDialogZsliceAbsent(QDialog):
         self.setLayout(mainLayout)
 
         font = QFont()
-        font.setPixelSize(13)
+        font.setPixelSize(12)
         self.setFont(font)
 
         # self.setModal(True)
@@ -10550,7 +10673,7 @@ class QDialogModelParams(QDialog):
             postProcLoadLastSelButton.click()
 
         self.setLayout(mainLayout)
-
+        self.setFont(font)
         # self.setModal(True)
     
     def selectedFeaturesRange(self):
@@ -10574,7 +10697,7 @@ class QDialogModelParams(QDialog):
     def getValueFromMetadata(self, name):
         try:
             value = self.df_metadata.at[name, 'values']
-        except KeyError as e:
+        except Exception as e:
             # traceback.print_exc()
             value = None
         return value
@@ -11549,7 +11672,9 @@ class stopFrameDialog(widgets.QBaseDialog):
             if posData.acdc_df is not None:
                 _val = posData.acdc_df.index.get_level_values(0).max()+1
             else:
-                _val = posData.segmSizeT
+                _val = posData.readLastUsedStopFrameNumber()
+            if _val is None:
+                _val = posData.SizeT
             _spinBox.setValue(_val)
 
             posData.stopFrameSpinbox = _spinBox
@@ -12668,3 +12793,30 @@ class SelectFeaturesRangeGroupbox(QGroupBox):
     
     def setValue(self, value):
         pass
+
+def get_existing_directory(allow_images_path=True, **kwargs):
+    while True:
+        folder_path = qtpy.compat.getexistingdirectory(**kwargs)
+        if not folder_path:
+            return
+        
+        if allow_images_path:
+            return folder_path
+        
+        pos_folderpath = os.path.dirname(folder_path)
+        is_images_folder = (
+            folder_path.endswith('Images') 
+            and os.path.basename(pos_folderpath).startswith('Position_')
+            and os.path.isdir(folder_path)
+        )
+        if not is_images_folder:
+            return folder_path
+        
+        txt = html_utils.paragraph(
+            'You <b>cannot save</b> to the <code>Images</code> folder '
+            'because it is reserved to files that start with the same '
+            'basename.<br><br>Thank you for your patience!'
+        )
+        msg = widgets.myMessageBox()
+        msg.warning(kwargs['parent'], 'Cannot save here', txt)
+        

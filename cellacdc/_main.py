@@ -203,7 +203,6 @@ class mainWin(QMainWindow):
         showAllWindowsButton.setFont(font)
         self.showAllWindowsButton = showAllWindowsButton
         showAllWindowsButton.clicked.connect(self.showAllWindows)
-        controlsButtonsGroupBoxLayout.addWidget(showAllWindowsButton)
         # showAllWindowsButton.setDisabled(True)
 
         font = QFont()
@@ -218,7 +217,10 @@ class mainWin(QMainWindow):
         restartButton.setIconSize(QSize(iconSize, iconSize))
         restartButton.clicked.connect(self.close)
         self.restartButton = restartButton
+        self.restartButton.hide()
         closeLayout.addWidget(restartButton)
+        
+        closeLayout.addWidget(showAllWindowsButton)
 
         closeButton = QPushButton(QIcon(":close.svg"), '  Close application')
         closeButton.setIconSize(QSize(iconSize, iconSize))

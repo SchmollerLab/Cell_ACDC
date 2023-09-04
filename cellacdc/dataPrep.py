@@ -1,3 +1,4 @@
+import gc
 import os
 import sys
 import traceback
@@ -31,6 +32,7 @@ from qtpy.QtWidgets import (
     QComboBox, QDial, QButtonGroup, QFileDialog,
     QAbstractSlider, QMessageBox, QStyleFactory
 )
+from qtpy.compat import getexistingdirectory
 
 import pyqtgraph as pg
 pg.setConfigOption('imageAxisOrder', 'row-major')
@@ -143,8 +145,8 @@ class dataPrepWin(QMainWindow):
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Q:
             posData = self.data[self.pos_i]
-            printl(posData.all_npz_paths)
-            printl(posData.tif_paths)
+            # printl(posData.all_npz_paths)
+            # printl(posData.tif_paths)
             # for r, roi in enumerate(posData.bkgrROIs):
             #     print(roi.pos(), roi.size())
             #     xl, yt = [int(round(c)) for c in roi.pos()]
@@ -189,6 +191,14 @@ class dataPrepWin(QMainWindow):
 
         self.loadPosAction = QAction("Load different Position...", self)
         self.loadPosAction.setShortcut("Shift+P")
+        
+        toolTip = (
+            "Add crop ROI for multiple crops\n\n"
+            "Multiple crops will be saved as Position_1, Position_2 "
+            "as sub-folders in the current Position."
+        )
+        self.addCropRoiActon = QAction(QIcon(":add_crop_ROI.svg"), toolTip, self)
+        self.addCropRoiActon.setDisabled(True)
 
         toolTip = "Add ROI where to calculate background intensity"
         self.addBkrgRoiActon = QAction(QIcon(":bkgrRoi.svg"), toolTip, self)
@@ -252,7 +262,7 @@ class dataPrepWin(QMainWindow):
 
         # navigateToolbar.addAction(self.jumpBackwardAction)
         # navigateToolbar.addAction(self.jumpForwardAction)
-
+        navigateToolbar.addAction(self.addCropRoiActon)
         navigateToolbar.addAction(self.addBkrgRoiActon)
 
         navigateToolbar.addAction(self.ZbackAction)
@@ -260,9 +270,12 @@ class dataPrepWin(QMainWindow):
         navigateToolbar.addAction(self.interpAction)
 
         self.ROIshapeComboBox = QComboBox()
+        self.ROIshapeComboBox.setFont(apps.font)
         self.ROIshapeComboBox.SizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
         self.ROIshapeComboBox.addItems(['  256x256  '])
-        ROIshapeLabel = QLabel('   ROI standard shape: ')
+        ROIshapeLabel = QLabel(html_utils.paragraph(
+            '&nbsp;&nbsp;&nbsp;ROI standard shape: ')
+        )
         ROIshapeLabel.setBuddy(self.ROIshapeComboBox)
         navigateToolbar.addWidget(ROIshapeLabel)
         navigateToolbar.addWidget(self.ROIshapeComboBox)
@@ -276,6 +289,7 @@ class dataPrepWin(QMainWindow):
         self.openRecentMenu.aboutToShow.connect(self.populateOpenRecent)
         self.exitAction.triggered.connect(self.close)
         self.showInExplorerAction.triggered.connect(self.showInExplorer)
+        self.addCropRoiActon.triggered.connect(self.addCropROI)
         self.addBkrgRoiActon.triggered.connect(self.addDefaultBkgrROI)
         self.cropAction.triggered.connect(self.crop_cb)
         self.cropZaction.toggled.connect(self.openCropZtool)
@@ -426,13 +440,13 @@ class dataPrepWin(QMainWindow):
         self.updateCropZtool()
         self.setImageNameText()
         self.update_img()
-        self.updateROI()
+        self.addAndConnectCropROIs()
         self.updateBkgrROIs()
         self.saveBkgrROIs(self.data[self.pos_i])
     
     def clearCurrentPos(self):
         self.removeBkgrROIs()
-        self.removeCropROI()
+        self.removeCropROIs()
 
     def skip10ahead_frames(self):
         if self.frame_i < self.num_frames-10:
@@ -523,34 +537,39 @@ class dataPrepWin(QMainWindow):
         self.img.setImage(img)
         self.zSliceScrollBar.setMaximum(posData.SizeZ-1)
 
-    def updateROI(self):
+    def addAndConnectROI(self, roi):
+        if roi not in self.ax1.items:
+            self.ax1.addItem(roi.label)
+            self.ax1.addItem(roi)
+
+        roi.sigRegionChanged.connect(self.updateCurrentRoiShape)
+        roi.sigRegionChangeFinished.connect(self.ROImovingFinished)
+    
+    def addAndConnectCropROIs(self):
         if self.startAction.isEnabled() or self.onlySelectingZslice:
             return
 
         posData = self.data[self.pos_i]
-        if posData.cropROI not in self.ax1.items:
-            self.ax1.addItem(posData.cropROI.label)
-            self.ax1.addItem(posData.cropROI)
+        for cropROI in posData.cropROIs:
+            self.addAndConnectROI(cropROI)
 
-        posData.cropROI.sigRegionChanged.connect(self.updateCurrentRoiShape)
-        posData.cropROI.sigRegionChangeFinished.connect(self.ROImovingFinished)
-
-    def removeCropROI(self):
+    def removeCropROIs(self):
         if self.startAction.isEnabled() or self.onlySelectingZslice:
             return
 
         posData = self.data[self.pos_i]
-        if posData.cropROI is None:
+        if posData.cropROIs is None:
             return
 
-        self.ax1.removeItem(posData.cropROI.label)
-        self.ax1.removeItem(posData.cropROI)
+        for cropROI in posData.cropROIs:
+            self.ax1.removeItem(cropROI.label)
+            self.ax1.removeItem(cropROI)
 
-        try:
-            posData.cropROI.sigRegionChanged.disconnect()
-            posData.cropROI.sigRegionChangeFinished.disconnect()
-        except TypeError:
-            pass
+            try:
+                cropROI.sigRegionChanged.disconnect()
+                cropROI.sigRegionChangeFinished.disconnect()
+            except TypeError:
+                pass
 
 
     def updateBkgrROIs(self):
@@ -598,7 +617,7 @@ class dataPrepWin(QMainWindow):
     def navigateScrollbarValueChanged(self, value):
         if self.num_pos > 1:
             self.removeBkgrROIs()
-            self.removeCropROI()
+            self.removeCropROIs()
             self.pos_i = value-1
             self.updatePos()
         else:
@@ -606,9 +625,9 @@ class dataPrepWin(QMainWindow):
             self.update_img()
 
     @exception_handler
-    def crop(self, data, posData):
-        x0, y0 = [int(round(c)) for c in posData.cropROI.pos()]
-        w, h = [int(round(c)) for c in posData.cropROI.size()]
+    def crop(self, data, posData, cropROI):
+        x0, y0 = [int(round(c)) for c in cropROI.pos()]
+        w, h = [int(round(c)) for c in cropROI.size()]
         if data.ndim == 4:
             croppedData = data[:, :, y0:y0+h, x0:x0+w]
         elif data.ndim == 3:
@@ -716,7 +735,10 @@ class dataPrepWin(QMainWindow):
 
     def removeROI(self, event):
         posData = self.data[self.pos_i]
-        posData.bkgrROIs.remove(self.roi_to_del)
+        try:
+            posData.bkgrROIs.remove(self.roi_to_del)
+        except Exception as e:
+            posData.cropROIs.remove(self.roi_to_del)
         self.ax1.removeItem(self.roi_to_del.label)
         self.ax1.removeItem(self.roi_to_del)
         if not posData.bkgrROIs:
@@ -726,7 +748,25 @@ class dataPrepWin(QMainWindow):
                 pass
         else:
             self.saveBkgrROIs(posData)
-
+    
+    def gui_raiseContextMenuRoi(self, roi, event, is_bkgr_ROI=True):
+        self.roi_to_del = roi
+        self.roiContextMenu = QMenu(self)
+        separator = QAction(self)
+        separator.setSeparator(True)
+        self.roiContextMenu.addAction(separator)
+        if is_bkgr_ROI:
+            action1 = QAction('Remove background ROI')
+        else:
+            action1 = QAction('Remove crop ROI')
+        action1.triggered.connect(self.removeROI)
+        self.roiContextMenu.addAction(action1)
+        if is_bkgr_ROI:
+            action2 = QAction('Remove ALL background ROIs')
+            action2.triggered.connect(self.removeAllROIs)
+            self.roiContextMenu.addAction(action2)
+        self.roiContextMenu.exec_(event.screenPos())
+    
     def gui_mousePressEventImg(self, event):
         posData = self.data[self.pos_i]
         right_click = event.button() == Qt.MouseButton.RightButton
@@ -738,7 +778,6 @@ class dataPrepWin(QMainWindow):
         x, y = event.pos().x(), event.pos().y()
 
         handleSize = 7
-
         # Check if right click on ROI
         for r, roi in enumerate(posData.bkgrROIs):
             x0, y0 = [int(c) for c in roi.pos()]
@@ -751,25 +790,18 @@ class dataPrepWin(QMainWindow):
             raiseContextMenuRoi = right_click and clickedOnROI
             dragRoi = left_click and clickedOnROI
             if raiseContextMenuRoi:
-                self.roi_to_del = roi
-                self.roiContextMenu = QMenu(self)
-                separator = QAction(self)
-                separator.setSeparator(True)
-                self.roiContextMenu.addAction(separator)
-                action1 = QAction('Remove background ROI')
-                action1.triggered.connect(self.removeROI)
-                action2 = QAction('Remove ALL background ROIs')
-                action2.triggered.connect(self.removeAllROIs)
-                self.roiContextMenu.addAction(action1)
-                self.roiContextMenu.addAction(action2)
-                self.roiContextMenu.exec_(event.screenPos())
+                self.gui_raiseContextMenuRoi(roi, event)
+                return
             elif dragRoi:
                 event.ignore()
                 return
 
-        if posData.cropROI is not None:
-            x0, y0 = [int(c) for c in posData.cropROI.pos()]
-            w, h = [int(c) for c in posData.cropROI.size()]
+        if posData.cropROIs is None:
+            return
+        
+        for c, cropROI in enumerate(posData.cropROIs):
+            x0, y0 = [int(c) for c in cropROI.pos()]
+            w, h = [int(c) for c in cropROI.size()]
             x1, y1 = x0+w, y0+h
             clickedOnROI = (
                 x>=x0-handleSize and x<=x1+handleSize
@@ -779,45 +811,204 @@ class dataPrepWin(QMainWindow):
             if dragRoi:
                 event.ignore()
                 return
+            raiseContextMenuRoi = right_click and clickedOnROI and c>0
+            if raiseContextMenuRoi:
+                self.gui_raiseContextMenuRoi(cropROI, event, is_bkgr_ROI=False)
+    
+    def getAllChannelsPaths(self, posData):
+        _zip = zip(posData.tif_paths, posData.all_npz_paths)
+        for tif_path, npz_path in _zip:
+            if self.align:
+                uncropped_data = np.load(npz_path)['arr_0']
+            else:
+                uncropped_data = skimage.io.imread(tif_path)
+            
+            yield uncropped_data, npz_path, tif_path
+    
+    def saveCroppedChannel(self, cropped_data, npz_path, tif_path):        
+        if self.align:
+            self.logger.info(f'Saving: {npz_path}')
+            temp_npz = self.getTempfilePath(npz_path)
+            np.savez_compressed(temp_npz, cropped_data)
+            self.moveTempFile(temp_npz, npz_path)
 
-    def saveROIcoords(self, doCrop, posData):
-        x0, y0 = [int(round(c)) for c in posData.cropROI.pos()]
-        w, h = [int(round(c)) for c in posData.cropROI.size()]
-
-        Y, X = self.img.image.shape
-        x1, y1 = x0+w, y0+h
-
-        x0 = x0 if x0>0 else 0
-        y0 = y0 if y0>0 else 0
-        x1 = x1 if x1<X else X
-        y1 = y1 if y1<Y else Y
-
-        if x0<=0 and y0<=0 and x1>=X and y1>=Y:
-            # ROI coordinates are the exact image shape. No need to save them
+        self.logger.info(f'Saving: {tif_path}')
+        temp_tif = self.getTempfilePath(tif_path)
+        myutils.imagej_tiffwriter(temp_tif, cropped_data)
+        self.moveTempFile(temp_tif, tif_path)
+    
+    def saveCroppedSegmData(self, posData, segm_npz_path, cropROI):
+        if not posData.segmFound:
             return
+        self.logger.info(f'Saving: {segm_npz_path}')
+        croppedSegm, _ = self.crop(posData.segm_data, posData, cropROI)
+        temp_npz = self.getTempfilePath(segm_npz_path)
+        np.savez_compressed(temp_npz, croppedSegm)
+        self.moveTempFile(temp_npz, segm_npz_path)
+    
+    def correctAcdcDfCrop(self, posData, acdc_output_csv_path, cropROI):
+        try:
+            # Correct acdc_df if present and save
+            if posData.acdc_df is not None:
+                x0, y0 = [int(round(c)) for c in cropROI.pos()]
+                self.logger.info(f'Saving: {acdc_output_csv_path}')
+                df = posData.acdc_df
+                df['x_centroid'] -= x0
+                df['y_centroid'] -= y0
+                try:
+                    df.to_csv(acdc_output_csv_path)
+                except PermissionError:
+                    self.permissionErrorCritical(acdc_output_csv_path)
+                    df.to_csv(acdc_output_csv_path)
+        except Exception as e:
+            pass
+    
+    def saveSingleCrop(self, posData, cropROI):
+        # Save channels (npz AND tif)
+        _iter = self.getAllChannelsPaths(posData)
+        for uncropped_data, npz_path, tif_path in _iter:
+            cropped_data, _ = self.crop(uncropped_data, posData, cropROI)
+            self.saveCroppedChannel(cropped_data, npz_path, tif_path)
+
+        self.saveCroppedSegmData(posData, posData.segm_npz_path, cropROI)
+        self.correctAcdcDfCrop(posData, posData.acdc_output_csv_path, cropROI)
+    
+    def saveCroppedData(self, posData):
+        # Get metadata from tif
+        with TiffFile(posData.tif_path) as tif:
+            metadata = tif.imagej_metadata
+
+        if len(posData.cropROIs) == 1:
+            self.saveSingleCrop(posData, posData.cropROIs[0])
+        else:
+            self.saveMultiCrops(posData)
+
+        self.logger.info(f'{posData.pos_foldername} saved!')
+        print(f'--------------------------------')
+        print('')
+    
+    def saveMultiCrops(self, posData):
+        txt = html_utils.paragraph("""
+            You will now be asked to <b>choose a location</b> where to save multiple 
+            Positions from each crop ROI.
+        """)
+        msg = widgets.myMessageBox()
+        msg.information(
+            self, 'Select folder where to save multiple crops', txt
+        )
+        if msg.cancel:
+            self.logger.info('Cropping process cancelled.')
+            return
+        
+        parentSubPosPath = getexistingdirectory(
+            parent=self,
+            caption='Select folder where to save multiple crops', 
+            basedir=posData.pos_path
+        )
+        if not parentSubPosPath:
+            self.logger.info('Cropping process cancelled.')
+            return
+        
+        currentSubPosFolders = myutils.get_pos_foldernames(parentSubPosPath)
+        currentSubPosNumbers = [
+            int(pos.split('_')[-1]) for pos in currentSubPosFolders
+        ]
+        startPosNumber = max(currentSubPosNumbers, default=0) + 1
+        for p, cropROI in enumerate(posData.cropROIs):
+            subPosFolder = f'Position_{p+startPosNumber}'
+            subPosFolderPath = os.path.join(parentSubPosPath, subPosFolder)
+            subImagesPath = os.path.join(subPosFolderPath, 'Images')
+            os.makedirs(subImagesPath)
+            
+            _iter = self.getAllChannelsPaths(posData)
+            for uncropped_data, npz_path, tif_path in _iter:
+                cropped_data, _ = self.crop(uncropped_data, posData, cropROI)
+                npz_filename = os.path.basename(npz_path)
+                tif_filename = os.path.basename(tif_path)
+                sub_npz_filepath = os.path.join(subImagesPath, npz_filename)
+                sub_tif_filepath = os.path.join(subImagesPath, tif_filename)
+                self.saveCroppedChannel(
+                    cropped_data, sub_npz_filepath, sub_tif_filepath
+                )
+            
+            segm_filename = os.path.basename(posData.segm_npz_path)
+            sub_segm_filepath = os.path.join(subImagesPath, segm_filename)
+            self.saveCroppedSegmData(posData, sub_segm_filepath, cropROI)
+            
+            acdc_df_filename = os.path.basename(posData.acdc_output_csv_path)
+            acdc_df_filepath = os.path.join(subImagesPath, acdc_df_filename)
+            self.correctAcdcDfCrop(posData, acdc_df_filepath, cropROI)
+            
+            try:
+                df_roi = posData.dataPrep_ROIcoords.loc[[p]]
+                df_roi_filename = os.path.basename(posData.dataPrepROI_coords_path)
+                df_roi_filepath = os.path.join(subImagesPath, df_roi_filename)
+                df_roi.to_csv(df_roi_filepath)
+            except IndexError:
+                pass
+            
+            for file in myutils.listdir(posData.images_path):
+                copy_file = (
+                    file.endswith('metadata.csv')
+                    or file.endswith('bkgrRoiData.npz')
+                    or file.endswith('dataPrep_bkgrROIs.json')
+                    or file.endswith('segmInfo.csv')
+                )
+                if not copy_file:
+                    continue
+                sub_filepath = os.path.join(subImagesPath, file)
+                if os.path.exists(sub_filepath):
+                    continue
+                
+                src_filepath = os.path.join(posData.images_path, file)
+                shutil.copyfile(src_filepath, sub_filepath)
+    
+    def saveROIcoords(self, doCrop, posData):
+        dfs = []
+        keys = []
+        for c, cropROI in enumerate(posData.cropROIs):
+            x0, y0 = [int(round(c)) for c in cropROI.pos()]
+            w, h = [int(round(c)) for c in cropROI.size()]
+
+            Y, X = self.img.image.shape
+            x1, y1 = x0+w, y0+h
+
+            x0 = x0 if x0>0 else 0
+            y0 = y0 if y0>0 else 0
+            x1 = x1 if x1<X else X
+            y1 = y1 if y1<Y else Y
+
+            if x0<=0 and y0<=0 and x1>=X and y1>=Y:
+                # ROI coordinates are the exact image shape. No need to save them
+                continue
+            
+            keys.append(c)
+
+            description = ['x_left', 'x_right', 'y_top', 'y_bottom', 'cropped']
+            values = [x0, x1, y0, y1, int(doCrop)]
+            df_roi = (
+                pd.DataFrame({'description': description, 'value': values})
+                .set_index('description')
+            )
+            
+            dfs.append(df_roi)
+        
+        if not dfs:
+            return
+        
+        df = pd.concat(dfs, keys=keys, names=['roi_id'])
 
         self.logger.info(
-            f'Saving ROI coords: x_left = {x0}, x_right = {x1}, '
-            f'y_top = {y0}, y_bottom = {y1}\n'
-            f'to {posData.dataPrepROI_coords_path}'
-        )
-
-        csv_data = (
-            f'description,value\n'
-            f'x_left,{x0}\n'
-            f'x_right,{x1}\n'
-            f'y_top,{y0}\n'
-            f'y_bottom,{y1}\n'
-            f'cropped,{int(doCrop)}'
-        )
-
+                f'Saving ROI coords '
+                f'to "{posData.dataPrepROI_coords_path}"'
+            )
         try:
-            with open(posData.dataPrepROI_coords_path, 'w') as csv:
-                csv.write(csv_data)
+            df.to_csv(posData.dataPrepROI_coords_path)
         except PermissionError:
             self.permissionErrorCritical(posData.dataPrepROI_coords_path)
-            with open(posData.dataPrepROI_coords_path, 'w') as csv:
-                csv.write(csv_data)
+            df.to_csv(posData.dataPrepROI_coords_path)
+        
+        posData.dataPrep_ROIcoords = df
 
     def openCropZtool(self, checked):
         posData = self.data[self.pos_i]
@@ -886,17 +1077,7 @@ class dataPrepWin(QMainWindow):
         self.cropZaction.setChecked(False)
         self.cropZaction.toggled.connect(self.openCropZtool)
 
-    @exception_handler
-    def crop_cb(self):
-        # msg = QMessageBox()
-        # doSave = msg.question(
-        #     self, 'Save data?', 'Do you want to save?',
-        #     msg.Yes | msg.No
-        # )
-        # if doSave == msg.No:
-        #     return
-
-        self.cropAction.setDisabled(True)
+    def getCroppedData(self):
         for p, posData in enumerate(self.data):
             self.saveBkgrROIs(posData)
 
@@ -906,13 +1087,19 @@ class dataPrepWin(QMainWindow):
 
             # Get crop shape and print it
             data = posData.img_data
-            croppedData, SizeZ = self.crop(data, posData)
+            
+            allCropsData = []
+            for cropROI in posData.cropROIs:
+                croppedData, SizeZ = self.crop(data, posData, cropROI)
+                allCropsData.append(croppedData)
 
+            croppedShapes = [cropped.shape for cropped in allCropsData]
+            isCropped = any([shape != data.shape for shape in croppedShapes])
             isCroppingCancelled = False
-            if croppedData.shape != data.shape:
+            if isCropped != data.shape:
                 if p == 0:
                     isCroppingCancelled = self.askCropping(
-                        data.shape, croppedData.shape
+                        data.shape, croppedShapes
                     )
                     doCrop = not isCroppingCancelled
                 else:
@@ -924,14 +1111,36 @@ class dataPrepWin(QMainWindow):
                 self.cropAction.setEnabled(True)
                 txt = ('Cropping cancelled.')
                 self.titleLabel.setText(txt, color='r')
-                return
+                yield None
             elif croppedData.shape == data.shape:
                 self.cropAction.setEnabled(True)
                 txt = ('Crop ROI has same shape of the image --> no need to crop. Process stopped.')
                 self.titleLabel.setText(txt, color='r')
+                yield 'continue'
+            
+            yield croppedShapes, posData, SizeZ, doCrop
+    
+    @exception_handler
+    def crop_cb(self):
+        # msg = QMessageBox()
+        # doSave = msg.question(
+        #     self, 'Save data?', 'Do you want to save?',
+        #     msg.Yes | msg.No
+        # )
+        # if doSave == msg.No:
+        #     return
+
+        self.cropAction.setDisabled(True)
+        for cropInfo in self.getCroppedData():
+            if cropInfo is None:
+                # Process cancelled by the user
                 return
-
-
+            
+            if cropInfo == 'continue':
+                continue
+            
+            croppedShapes, posData, SizeZ, doCrop = cropInfo
+            
             if SizeZ != posData.SizeZ:
                 # Update metadata with cropped SizeZ
                 posData.metadata_df.at['SizeZ', 'values'] = SizeZ
@@ -942,67 +1151,18 @@ class dataPrepWin(QMainWindow):
                 'Cropping... (check progress in the terminal)',
                 color='w')
 
-            self.logger.info(f'Cropped data shape: {croppedData.shape}')
+            croppedShapesFormat = [f'  --> {shape}' for shape in croppedShapes]
+            croppedShapesFormat = '\n'.join(croppedShapesFormat)
+            self.logger.info(f'Cropped data shape:\n{croppedShapesFormat}')
             self.saveROIcoords(doCrop, posData)
 
             self.logger.info('Saving background data...')
             self.saveBkgrData(posData)
 
-            # Get metadata from tif
-            with TiffFile(posData.tif_path) as tif:
-                metadata = tif.imagej_metadata
-
-            # Save channels (npz AND tif)
-            _zip = zip(posData.tif_paths, posData.all_npz_paths)
-            for tif, npz in _zip:
-                if self.align:
-                    data = np.load(npz)['arr_0']
-                else:
-                    data = skimage.io.imread(tif)
-
-                npz_data, _ = self.crop(data, posData)
-
-                if self.align:
-                    self.logger.info(f'Saving: {npz}')
-                    temp_npz = self.getTempfilePath(npz)
-                    np.savez_compressed(temp_npz, npz_data)
-                    self.moveTempFile(temp_npz, npz)
-
-                self.logger.info(f'Saving: {tif}')
-                temp_tif = self.getTempfilePath(tif)
-                myutils.imagej_tiffwriter(temp_tif, npz_data)
-                self.moveTempFile(temp_tif, tif)
-
-            # Save segm.npz
-            if posData.segmFound:
-                self.logger.info(f'Saving: {posData.segm_npz_path}')
-                data = posData.segm_data
-                croppedSegm, _ = self.crop(data, posData)
-                temp_npz = self.getTempfilePath(posData.segm_npz_path)
-                np.savez_compressed(temp_npz, croppedSegm)
-                self.moveTempFile(temp_npz, posData.segm_npz_path)
-
-            try:
-                # Correct acdc_df if present and save
-                if posData.acdc_df is not None:
-                    x0, y0 = [int(round(c)) for c in posData.cropROI.pos()]
-                    self.logger.info(f'Saving: {posData.acdc_output_csv_path}')
-                    df = posData.acdc_df
-                    df['x_centroid'] -= x0
-                    df['y_centroid'] -= y0
-                    try:
-                        df.to_csv(posData.acdc_output_csv_path)
-                    except PermissionError:
-                        self.permissionErrorCritical(posData.acdc_output_csv_path)
-                        df.to_csv(posData.acdc_output_csv_path)
-            except Exception as e:
-                pass
-
-            self.logger.info(f'{posData.pos_foldername} saved!')
-            print(f'--------------------------------')
-            print('')
+            self.saveCroppedData(posData)
         
-        self.disconnectROIs(posData)
+        for posData in self.data:
+            self.disconnectROIs(posData)
 
         txt = (
             'Saved! You can close the program or load another position.'
@@ -1022,10 +1182,11 @@ class dataPrepWin(QMainWindow):
         roi.stateChanged()
     
     def disconnectROIs(self, posData):
-        posData.cropROI.disconnect()
-        posData.cropROI.translatable = False
-        posData.cropROI.resizable = False
-        self.removeAllHandles(posData.cropROI)
+        for cropROI in posData.cropROIs:
+            cropROI.disconnect()
+            cropROI.translatable = False
+            cropROI.resizable = False
+            self.removeAllHandles(cropROI)
 
         for roi in posData.bkgrROIs:
             roi.disconnect()
@@ -1048,11 +1209,20 @@ class dataPrepWin(QMainWindow):
         )
 
 
-    def askCropping(self, dataShape, croppedShape):
+    def askCropping(self, dataShape, croppedShapes):
+        if len(self.data) > 1:
+            info_text = (f"""
+                You are about to <b>crop</b> data.<br><br>
+            """)
+        else:
+            info_text = (f"""
+                You are about to <b>crop</b> data from shape {dataShape} 
+                to the following shapes: 
+                {html_utils.to_list(croppedShapes, ordered=True)}
+            """)
         msg = widgets.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(f"""
-            You are about to <b>crop</b> data from shape {dataShape} 
-            to shape {croppedShape}.<br><br>
+            {info_text}
             Saving cropped data <b>cannot be undone</b>.<br><br>
             Do you want to crop or simply save the ROI coordinates<br>
             for the segmentation step?
@@ -1063,9 +1233,9 @@ class dataPrepWin(QMainWindow):
         )
         return msg.cancel
 
-    def getDefaultROI(self):
+    def getDefaultROI(self, shrinkFactor=1):
         Y, X = self.img.image.shape
-        w, h = X, Y
+        w, h = int(X*shrinkFactor), int(Y*shrinkFactor)
 
         xc, yc = int(round(X/2)), int(round(Y/2))
         # yt, xl = int(round(xc-w/2)), int(round(yc-h/2))
@@ -1128,11 +1298,8 @@ class dataPrepWin(QMainWindow):
                 )
 
                 # If data was cropped then dataPrep_ROIcoords are useless
-                if posData.dataPrep_ROIcoords is not None:
-                    df = posData.dataPrep_ROIcoords
-                    isROIactive = df.at['cropped', 'value'] == 0
-                    if not isROIactive:
-                        posData.dataPrep_ROIcoords = None
+                if posData.isCropped():
+                    posData.dataPrep_ROIcoords = None
 
                 posData.loadAllImgPaths()
                 if f==0 and not self.metadataAlreadyAsked:
@@ -1434,15 +1601,17 @@ class dataPrepWin(QMainWindow):
 
     def setStandardRoiShape(self, text):
         posData = self.data[self.pos_i]
-        if posData.cropROI is None:
+        if posData.cropROIs is None:
+            return
+        if len(posData.cropROIs)>1:
             return
         Y, X = posData.img_data.shape[-2:]
         m = re.findall(r'(\d+)x(\d+)', text)
         w, h = int(m[0][0]), int(m[0][1])
         # xc, yc = int(round(X/2)), int(round(Y/2))
         # yt, xl = int(round(xc-w/2)), int(round(yc-h/2))
-        posData.cropROI.setPos([0, 0])
-        posData.cropROI.setSize([w, h])
+        posData.cropROIs[0].setPos([0, 0])
+        posData.cropROIs[0].setSize([w, h])
 
     def addROIs(self):
         Y, X = self.img.image.shape
@@ -1455,27 +1624,33 @@ class dataPrepWin(QMainWindow):
         self.ROIshapeComboBox.setCurrentText(items[-1])
 
         for posData in self.data:
+            posData.cropROIs = []
             if posData.dataPrep_ROIcoords is None:
                 cropROI = self.getDefaultROI()
+                self.setROIprops(cropROI)
+                posData.cropROIs.append(cropROI)
             else:
-                xl = posData.dataPrep_ROIcoords.at['x_left', 'value']
-                yt = posData.dataPrep_ROIcoords.at['y_top', 'value']
-                w = posData.dataPrep_ROIcoords.at['x_right', 'value'] - xl
-                h = posData.dataPrep_ROIcoords.at['y_bottom', 'value'] - yt
-                cropROI = pg.ROI(
-                    [xl, yt], [w, h],
-                    rotatable=False,
-                    removable=False,
-                    pen=pg.mkPen(color='r'),
-                    maxBounds=QRectF(QRect(0,0,X,Y)),
-                    scaleSnap=True,
-                    translateSnap=True
-                )
-
-            self.setROIprops(cropROI)
-            posData.cropROI = cropROI
-
-        self.updateROI()
+                df = posData.dataPrep_ROIcoords
+                grouped = df.groupby(level=0)
+                for roi_id, df_roi in grouped:
+                    df_roi = df_roi.loc[roi_id]
+                    xl = df_roi.at['x_left', 'value']
+                    yt = df_roi.at['y_top', 'value']
+                    w = df_roi.at['x_right', 'value'] - xl
+                    h = df_roi.at['y_bottom', 'value'] - yt
+                    cropROI = pg.ROI(
+                        [xl, yt], [w, h],
+                        rotatable=False,
+                        removable=False,
+                        pen=pg.mkPen(color='r'),
+                        maxBounds=QRectF(QRect(0,0,X,Y)),
+                        scaleSnap=True,
+                        translateSnap=True
+                    )
+                    self.setROIprops(cropROI)
+                    posData.cropROIs.append(cropROI)
+             
+        self.addAndConnectCropROIs()
 
         try:
             self.ROIshapeComboBox.currentTextChanged.disconnect()
@@ -1486,6 +1661,7 @@ class dataPrepWin(QMainWindow):
         )
 
         self.addBkrgRoiActon.setDisabled(False)
+        self.addCropRoiActon.setDisabled(False)
 
         for posData in self.data:
             if not posData.bkgrROIs and not posData.bkgrDataExists:
@@ -1507,7 +1683,7 @@ class dataPrepWin(QMainWindow):
             [xl, yt], [w, h],
             rotatable=False,
             removable=False,
-            pen=pg.mkPen(color=(150,150,150)),
+            pen=pg.mkPen(color=(255,255,255)),
             maxBounds=QRectF(QRect(0,0,X,Y)),
             scaleSnap=True,
             translateSnap=True
@@ -1518,7 +1694,7 @@ class dataPrepWin(QMainWindow):
         bkgrROI.handleSize = 7
 
         xl, yt = [int(round(c)) for c in bkgrROI.pos()]
-        bkgrROI.label = pg.TextItem('Bkgr. ROI', color=(150,150,150))
+        bkgrROI.label = pg.TextItem('Bkgr. ROI', color=(255,255,255))
         bkgrROI.label.setFont(self.roiLabelFont)
         # hLabel = bkgrROI.label.rect().bottom()
         bkgrROI.label.setPos(xl, yt)
@@ -1540,6 +1716,12 @@ class dataPrepWin(QMainWindow):
         # bkgrROI.sigRegionChanged.connect(self.bkgrROIMoving)
         # bkgrROI.sigRegionChangeFinished.connect(self.bkgrROImovingFinished)
 
+    def addCropROI(self):
+        cropROI = self.getDefaultROI(shrinkFactor=0.5)
+        self.setROIprops(cropROI)
+        posData = self.data[self.pos_i]
+        posData.cropROIs.append(cropROI)
+        self.addAndConnectROI(cropROI)
 
     def addDefaultBkgrROI(self, checked=False):
         bkgrROI = self.getDefaultBkgrROI()
@@ -1554,7 +1736,6 @@ class dataPrepWin(QMainWindow):
         bkgrROI.sigRegionChangeFinished.connect(self.bkgrROImovingFinished)
 
     def bkgrROIMoving(self, roi):
-        # txt = roi.label.text
         roi.setPen(color=(255,255,0))
         roi.label.setColor((255,255,0))
         # roi.label.setText(txt, color=(255,255,0), size=self.roiLabelSize)
@@ -1563,9 +1744,9 @@ class dataPrepWin(QMainWindow):
         roi.label.setPos(xl, yt)
 
     def bkgrROImovingFinished(self, roi):
-        txt = roi.label.text
-        roi.setPen(color=(150,150,150))
-        roi.label.setColor((150,150,150))
+        txt = roi.label.toPlainText()
+        roi.setPen(color=(255,255,255))
+        roi.label.setColor((255,255,255))
         # roi.label.setText(txt, color=(150,150,150), size=self.roiLabelSize)
         posData = self.data[self.pos_i]
         idx = posData.bkgrROIs.index(roi)
@@ -1573,7 +1754,7 @@ class dataPrepWin(QMainWindow):
         self.saveBkgrROIs(posData)
 
     def ROImovingFinished(self, roi):
-        txt = roi.label.text
+        txt = roi.label.toPlainText()
         roi.setPen(color='r')
         roi.label.setColor('r')
         # roi.label.setText(txt, color='r', size=self.roiLabelSize)
@@ -1707,7 +1888,7 @@ class dataPrepWin(QMainWindow):
         _zip = zip(posData.tif_paths, posData.npz_paths)
         aligned = False
         posData.all_npz_paths = [
-            tif.replace('.tif', 'aligned.npz') for tif in posData.tif_paths
+            tif.replace('.tif', '_aligned.npz') for tif in posData.tif_paths
         ]
         for i, (tif, npz) in enumerate(_zip):
             doAlign = npz is None or posData.loaded_shifts is None
@@ -2205,6 +2386,7 @@ class dataPrepWin(QMainWindow):
             self.loop.exit()
         
         self.sigClose.emit(self)
+        gc.collect()
 
     def saveWindowGeometry(self):
         settings = QSettings('schmollerlab', 'acdc_dataPrep')

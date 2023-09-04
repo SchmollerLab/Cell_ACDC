@@ -1,3 +1,4 @@
+import gc
 import sys
 import os
 import shutil
@@ -85,6 +86,8 @@ from .trackers.CellACDC import CellACDC_tracker
 from .cca_functions import _calc_rot_vol
 from .myutils import exec_time, setupLogger
 from .help import welcome, about
+
+np.seterr(invalid='ignore')
 
 if os.name == 'nt':
     try:
@@ -358,8 +361,6 @@ class saveDataWorker(QObject):
         metrics_func = self.mainWin.metrics_func
         custom_func_dict = self.mainWin.custom_func_dict
         bkgr_metrics_params = self.mainWin.bkgr_metrics_params
-        
-        printl(bkgr_metrics_params, pretty=True)
         
         foregr_metrics_params = self.mainWin.foregr_metrics_params
         concentration_metrics_params = self.mainWin.concentration_metrics_params
@@ -1487,7 +1488,6 @@ class guiWin(QMainWindow):
         self.checkableQButtonsGroup.addButton(self.setIsHistoryKnownButton)
         self.functionsNotTested3D.append(self.setIsHistoryKnownButton)
         
-
         ccaToolBar.addAction(self.assignBudMothAutoAction)
         ccaToolBar.addAction(self.editCcaToolAction)
         ccaToolBar.addAction(self.reInitCcaAction)
@@ -1594,25 +1594,22 @@ class guiWin(QMainWindow):
         self.copyContourButton = QToolButton(self)
         self.copyContourButton.setIcon(QIcon(":copyContour.svg"))
         self.copyContourButton.setCheckable(True)
-        self.copyContourButton.setShortcut('w')
+        self.copyContourButton.setShortcut('v')
         self.copyContourButton.setToolTip(
             'Toggle "Copy contour mode from lost object" ON/OFF\n\n'
             'ACTION: Hover onto lost object contour --> right-click to copy '
-            'the contour as a new object.\n'
+            'the contour as a new object.\n\n'
             'SHORTCUT: "V" key')
         self.copyContourButton.action = editToolBar.addWidget(
             self.copyContourButton
         )
+        self.checkableButtons.append(self.copyContourButton)
+        self.checkableQButtonsGroup.addButton(self.copyContourButton)
+        self.widgetsWithShortcut['Copy lost object contour'] = (
+            self.copyContourButton
+        )
         self.functionsNotTested3D.append(self.copyContourButton)
-        self.widgetsWithShortcut['Copy lost object contour'] = self.copyContourButton
-
-        self.widgetsWithShortcut['Annotate mother/daughter pairing'] = (
-            self.assignBudMothButton
-        )
-        self.widgetsWithShortcut['Annotate unknown history'] = (
-            self.setIsHistoryKnownButton
-        )
-
+        
         self.labelRoiButton = widgets.rightClickToolButton(parent=self)
         self.labelRoiButton.setIcon(QIcon(":label_roi.svg"))
         self.labelRoiButton.setCheckable(True)
@@ -1880,25 +1877,13 @@ class guiWin(QMainWindow):
         editToolBar.setVisible(False)
         self.reinitLastSegmFrameAction.toolbar = editToolBar
         self.functionsNotTested3D.append(self.reinitLastSegmFrameAction)
-
-        # Edit toolbar
-        modeToolBar = QToolBar("Mode", self)
-        self.addToolBar(modeToolBar)
-
-        self.modeComboBox = QComboBox()
+        
         self.modeItems = [
             'Segmentation and Tracking',
             'Cell cycle analysis',
             'Viewer',
             'Custom annotations'
         ]
-        self.modeComboBox.addItems(self.modeItems)
-        self.modeComboBoxLabel = QLabel('    Mode: ')
-        self.modeComboBoxLabel.setBuddy(self.modeComboBox)
-        modeToolBar.addWidget(self.modeComboBoxLabel)
-        modeToolBar.addWidget(self.modeComboBox)
-        modeToolBar.setVisible(False)
-        
         self.modeActionGroup = QActionGroup(self.modeMenu)
         for mode in self.modeItems:
             action = QAction(mode)
@@ -1908,7 +1893,6 @@ class guiWin(QMainWindow):
             if mode == 'Viewer':
                 action.setChecked(True)
 
-        self.modeToolBar = modeToolBar
         self.editToolBar = editToolBar
         self.editToolBar.setVisible(False)
         self.navigateToolBar.setVisible(False)
@@ -2133,6 +2117,20 @@ class guiWin(QMainWindow):
         self.controlToolBars = []
         self.addToolBarBreak()
         
+        # Edit toolbar
+        modeToolBar = QToolBar("Mode", self)
+        self.addToolBar(modeToolBar)
+
+        self.modeComboBox = QComboBox()
+        self.modeComboBox.addItems(self.modeItems)
+        self.modeComboBoxLabel = QLabel('    Mode: ')
+        self.modeComboBoxLabel.setBuddy(self.modeComboBox)
+        modeToolBar.addWidget(self.modeComboBoxLabel)
+        modeToolBar.addWidget(self.modeComboBox)
+        modeToolBar.setVisible(False)
+        
+        self.modeToolBar = modeToolBar
+        
         # Widgets toolbar
         brushEraserToolBar = QToolBar("Widgets", self)
         self.addToolBar(Qt.TopToolBarArea, brushEraserToolBar)
@@ -2220,7 +2218,7 @@ class guiWin(QMainWindow):
         self.labelRoiToolbar.addWidget(widgets.QHWidgetSpacer(width=separatorW))
 
         self.labelRoiReplaceExistingObjectsCheckbox = QCheckBox(
-            'Remove existing objects touched by new objects'
+            'Remove objects touched by new objects'
         )
         self.labelRoiToolbar.addWidget(self.labelRoiReplaceExistingObjectsCheckbox)
         self.labelRoiAutoClearBorderCheckbox = QCheckBox(
@@ -3295,12 +3293,12 @@ class guiWin(QMainWindow):
 
         self.highLowResToggle = widgets.Toggle()
         self.widgetsWithShortcut['High resolution'] = self.highLowResToggle
-        self.highLowResToggle.setShortcut('w')
+        self.highLowResToggle.setShortcut('y')
         highLowResTooltip = (
             'Resolution of the text annotations. High resolution results '
             'in slower update of the annotations.\n'
             'Not recommended with a number of segmented objects > 500.\n\n'
-            'SHORTCUT: "W" key'
+            'SHORTCUT: "Y" key'
         )
         highResLabel = QLabel('High resolution')
         highResLabel.setToolTip(highLowResTooltip)
@@ -4559,15 +4557,19 @@ class guiWin(QMainWindow):
                 )
                 delID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
-                    msg='You clicked on the background.\n'
-                        'Enter here ID that you want to delete',
+                    msg='You clicked on the background.<br>'
+                        'Enter here ID(s) that you want to delete<br><br>'
+                        'You can enter multiple IDs separated by comma',
                     parent=self, allowedValues=posData.IDs,
-                    defaultTxt=str(nearest_ID)
+                    defaultTxt=str(nearest_ID),
+                    allowList=True
                 )
                 delID_prompt.exec_()
                 if delID_prompt.cancel:
                     return
                 delID = delID_prompt.EntryID
+            else:
+                delID = [delID]
 
             # Ask to propagate change to all future visited frames
             (UndoFutFrames, applyFutFrames, endFrame_i,
@@ -4579,52 +4581,16 @@ class guiWin(QMainWindow):
             if UndoFutFrames is None:
                 return
 
+            # Store undo state before modifying stuff
+            self.storeUndoRedoStates(UndoFutFrames)  
             posData.doNotShowAgain_DelID = doNotShowAgain
             posData.UndoFutFrames_DelID = UndoFutFrames
             posData.applyFutFrames_DelID = applyFutFrames
             includeUnvisited = posData.includeUnvisitedInfo['Delete ID']
 
-            self.current_frame_i = posData.frame_i
-
-            # Apply Delete ID to future frames if requested
-            if applyFutFrames:
-                # Store current data before going to future frames
-                self.store_data()
-                segmSizeT = len(posData.segm_data)
-                for i in range(posData.frame_i+1, segmSizeT):
-                    lab = posData.allData_li[i]['labels']
-                    if lab is None and not includeUnvisited:
-                        self.enqAutosave()
-                        break
-                    
-                    if lab is not None:
-                        # Visited frame
-                        lab[lab==delID] = 0
-
-                        # Store change
-                        posData.allData_li[i]['labels'] = lab.copy()
-                        # Get the rest of the stored metadata based on the new lab
-                        posData.frame_i = i
-                        self.get_data()
-                        self.store_data(autosave=False)
-                    elif includeUnvisited:
-                        # Unvisited frame (includeUnvisited = True)
-                        lab = posData.segm_data[i]
-                        lab[lab==delID] = 0
-
-            # Back to current frame
-            if applyFutFrames:
-                posData.frame_i = self.current_frame_i
-                self.get_data()
-
-            # Store undo state before modifying stuff
-            self.storeUndoRedoStates(UndoFutFrames)     
-
-            self.clearObjContour(ID=delID, ax=0)     
-            self.clearObjContour(ID=delID, ax=1)       
-
-            delID_mask = posData.lab==delID
-            posData.lab[delID_mask] = 0
+            delID_mask = self.deleteIDmiddleClick(
+                delID, applyFutFrames, includeUnvisited
+            )
 
             # Update data (rp, etc)
             self.update_rp()
@@ -4690,8 +4656,7 @@ class guiWin(QMainWindow):
                 # self.set_2Dlab(lab2D)
             elif not ctrl:
                 lab2D, success = self.auto_separate_bud_ID(
-                    ID, self.get_2Dlab(posData.lab), posData.rp, max_ID,
-                    enforce=True
+                    ID, self.get_2Dlab(posData.lab), posData.rp, max_ID
                 )
                 self.set_2Dlab(lab2D)
             else:
@@ -4710,16 +4675,16 @@ class guiWin(QMainWindow):
                     parent=self,
                     drawMode=drawMode
                 )
+                manualSep.setState(self.lastManualSeparateState)
                 manualSep.show()
                 manualSep.centerWindow()
-                loop = QEventLoop(self)
-                manualSep.loop = loop
-                loop.exec_()
+                manualSep.show(block=True)
                 if manualSep.cancel:
                     posData.disableAutoActivateViewerWindow = False
                     if not self.separateBudButton.findChild(QAction).isChecked():
                         self.separateBudButton.setChecked(False)
                     return
+                self.lastManualSeparateState = manualSep.state()
                 lab2D = self.get_2Dlab(posData.lab)
                 lab2D[manualSep.lab!=0] = manualSep.lab[manualSep.lab!=0]
                 self.set_2Dlab(lab2D)
@@ -9649,7 +9614,10 @@ class guiWin(QMainWindow):
                 return ROImask
             
             if len(r) == 2:
+                Y, X = self.currentLab2D.shape
                 rr, cc, val = skimage.draw.line_aa(r[0], c[0], r[1], c[1])
+                rr = rr[(rr>=0) & (rr<Y)]
+                cc = cc[(cc>=0) & (cc<X)]
             else:
                 rr, cc = skimage.draw.polygon(r, c, shape=self.currentLab2D.shape)
             if self.isSegm3D:
@@ -10476,8 +10444,7 @@ class guiWin(QMainWindow):
         return cnt, defects
 
     def auto_separate_bud_ID(
-            self, ID, lab, rp, max_ID, max_i=1, enforce=False, 
-            eps_percent=0.01
+            self, ID, lab, rp, max_ID, max_i=1, eps_percent=0.01
         ):
         lab_ID_bool = lab == ID
         # First try separating by labelling
@@ -10491,44 +10458,48 @@ class guiWin(QMainWindow):
 
         cnt, defects = self.convexity_defects(lab_ID_bool, eps_percent)
         success = False
-        if defects is not None:
-            if len(defects) == 2:
-                num_obj_watshed = 0
-                # Separate only if it was a separation also with watershed method
-                if num_obj_watshed > 2 or enforce:
-                    defects_points = [0]*len(defects)
-                    for i, defect in enumerate(defects):
-                        s,e,f,d = defect[0]
-                        x,y = tuple(cnt[f][0])
-                        defects_points[i] = (y,x)
-                    (r0, c0), (r1, c1) = defects_points
-                    rr, cc, _ = skimage.draw.line_aa(r0, c0, r1, c1)
-                    sep_bud_img = np.copy(lab_ID_bool)
-                    sep_bud_img[rr, cc] = False
-                    sep_bud_label = skimage.measure.label(
-                                               sep_bud_img, connectivity=2)
-                    rp_sep = skimage.measure.regionprops(sep_bud_label)
-                    IDs_sep = [obj.label for obj in rp_sep]
-                    areas = [obj.area for obj in rp_sep]
-                    curr_ID_bud = IDs_sep[areas.index(min(areas))]
-                    curr_ID_moth = IDs_sep[areas.index(max(areas))]
-                    orig_sblab = np.copy(sep_bud_label)
-                    # sep_bud_label = np.zeros_like(sep_bud_label)
-                    sep_bud_label[orig_sblab==curr_ID_moth] = ID
-                    sep_bud_label[orig_sblab==curr_ID_bud] = max_ID+max_i
-                    # sep_bud_label *= (max_ID+max_i)
-                    temp_sep_bud_lab = sep_bud_label.copy()
-                    for r, c in zip(rr, cc):
-                        if lab_ID_bool[r, c]:
-                            nearest_ID = self.nearest_nonzero(
-                                                    sep_bud_label, r, c)
-                            temp_sep_bud_lab[r,c] = nearest_ID
-                    sep_bud_label = temp_sep_bud_lab
-                    sep_bud_label_mask = sep_bud_label != 0
-                    # plt.imshow_tk(sep_bud_label, dots_coords=np.asarray(defects_points))
-                    lab[sep_bud_label_mask] = sep_bud_label[sep_bud_label_mask]
-                    max_i += 1
-                    success = True
+        if defects is None:
+            return lab, success
+
+        if len(defects) != 2:
+            return lab, success
+
+        defects_points = [0]*len(defects)
+        for i, defect in enumerate(defects):
+            s,e,f,d = defect[0]
+            x,y = tuple(cnt[f][0])
+            defects_points[i] = (y,x)
+        (r0, c0), (r1, c1) = defects_points
+        rr, cc, _ = skimage.draw.line_aa(r0, c0, r1, c1)
+        sep_bud_img = np.copy(lab_ID_bool)
+        sep_bud_img[rr, cc] = False
+        
+        sep_bud_label = skimage.measure.label(
+            sep_bud_img, connectivity=2
+        )
+        
+        rp_sep = skimage.measure.regionprops(sep_bud_label)
+        IDs_sep = [obj.label for obj in rp_sep]
+        areas = [obj.area for obj in rp_sep]
+        curr_ID_bud = IDs_sep[areas.index(min(areas))]
+        curr_ID_moth = IDs_sep[areas.index(max(areas))]
+        orig_sblab = np.copy(sep_bud_label)
+        # sep_bud_label = np.zeros_like(sep_bud_label)
+        sep_bud_label[orig_sblab==curr_ID_moth] = ID
+        sep_bud_label[orig_sblab==curr_ID_bud] = max_ID+max_i
+        # sep_bud_label *= (max_ID+max_i)
+        temp_sep_bud_lab = sep_bud_label.copy()
+        for r, c in zip(rr, cc):
+            if lab_ID_bool[r, c]:
+                nearest_ID = self.nearest_nonzero(
+                                        sep_bud_label, r, c)
+                temp_sep_bud_lab[r,c] = nearest_ID
+        sep_bud_label = temp_sep_bud_lab
+        sep_bud_label_mask = sep_bud_label != 0
+        # plt.imshow_tk(sep_bud_label, dots_coords=np.asarray(defects_points))
+        lab[sep_bud_label_mask] = sep_bud_label[sep_bud_label_mask]
+        max_i += 1
+        success = True
         return lab, success
 
     def disconnectLeftClickButtons(self):
@@ -10892,7 +10863,7 @@ class guiWin(QMainWindow):
         )
         self.updateAllImages()
 
-        QTimer.singleShot(300, self.autoRange)
+        # QTimer.singleShot(300, self.autoRange)
 
     def delObjsOutSegmMaskActionTriggered(self):
         posData = self.data[self.pos_i]
@@ -11330,21 +11301,22 @@ class guiWin(QMainWindow):
 
     @exception_handler
     def keyPressEvent(self, ev):
-        if ev.key() == Qt.Key_Q:
-            printl(self.xHoverImg, self.yHoverImg)
-            printl(self.img1.mapToData(QCursor().pos()))
-            x, y = QCursor().pos().x(), QCursor().pos().y()
-            printl(self.graphLayout.mapToScene(x, y))
+        if ev.key() == Qt.Key_Q and self.debug:
+            # printl(self.xHoverImg, self.yHoverImg)
+            # printl(self.img1.mapToData(QCursor().pos()))
+            # x, y = QCursor().pos().x(), QCursor().pos().y()
+            # printl(self.graphLayout.mapToScene(x, y))
             posData = self.data[self.pos_i]
             is_segm_3D = self.isSegm3D
             # all_metrics_names = measurements.get_all_metrics_names(
             #     posData, self.user_ch_name, is_segm_3D
             # )
             # printl(self.metricsToSave)
-            # self.initMetricsToSave(posData)
+            self.initMetricsToSave(posData)
             
             # printl(self.bkgr_metrics_params, pretty=True)
-            # printl(self.foregr_metrics_params, pretty=True)
+            printl(self.foregr_metrics_params, pretty=True)
+            printl(self.custom_metrics_params, pretty=True)
             
             # from acdctools.plot import imshow
             # delIDs = posData.allData_li[posData.frame_i]['delROIs_info']['delIDsROI']
@@ -11353,6 +11325,8 @@ class guiWin(QMainWindow):
             # self.applyDelROIs()
             # stored_lab = posData.allData_li[posData.frame_i]['labels']
             # imshow(posData.lab, stored_lab, parent=self)
+            
+            printl(self.setMeasWinState, pretty=True)
         
         if not self.dataIsLoaded:
             self.logger.info(
@@ -11815,6 +11789,8 @@ class guiWin(QMainWindow):
             labels, crop_slice = transformation.crop_2D(
                 self.currentLab2D, self.ax1.viewRange(), tolerance=10
             )
+            if self.isSegm3D:
+                crop_slice = (self.z_lab(), *crop_slice)
         else:
             labels = posData.lab.copy()
             crop_slice = None
@@ -11848,9 +11824,13 @@ class guiWin(QMainWindow):
         crop_slice = state['crop_slice']
         if crop_slice is None:
             posData.lab = state['labels'].copy()
+        elif self.isSegm3D:
+            z_slice, slice_y, slice_x = crop_slice
+            posData.lab[..., z_slice, slice_y, slice_x] = state['labels'].copy()
         else:
             slice_y, slice_x = crop_slice
             posData.lab[..., slice_y, slice_x] = state['labels'].copy()
+        
         posData.editID_info = state['editID_info'].copy()
         posData.binnedIDs = state['binnedIDs'].copy()
         posData.ripIDs = state['ripIDs'].copy()
@@ -12100,14 +12080,14 @@ class guiWin(QMainWindow):
 
         trackerName = win.selectedItemsText[0]
         self.logger.info(f'Importing {trackerName} tracker...')
-        self.tracker, self.track_params = myutils.import_tracker(
+        self.tracker, self.track_params = myutils.init_tracker(
             posData, trackerName, qparent=self
         )
         if self.track_params is None:
             self.logger.info('Tracking aborted.')
             return
         if 'image_channel_name' in self.track_params:
-            # Remove the channel name since it was already loaded in import_tracker
+            # Remove the channel name since it was already loaded in init_tracker
             del self.track_params['image_channel_name']
         
         start_n = win.startFrame
@@ -15049,6 +15029,7 @@ class guiWin(QMainWindow):
         self.zSliceScrollBarStartedMoving = True
         self.labelRoiRunning = False
         self.isRangeReset = True
+        self.lastManualSeparateState = None
         self.editIDmergeIDs = True
         self.doNotAskAgainExistingID = False
         self.highlightedIDopts = None
@@ -17163,10 +17144,7 @@ class guiWin(QMainWindow):
                 for action in self.selectOverlayLabelsActionGroup.actions():
                     if action.text() == lastSelectedName:
                         action.setChecked(True)
-            self.updateAllImages()
-        else:
-            self.clearOverlayLabelsItems()
-            self.setOverlayLabelsItemsVisible(False)
+        self.updateAllImages()
     
     def askLabelsToOverlay(self):
         selectOverlayLabels = widgets.QDialogListbox(
@@ -19550,6 +19528,58 @@ class guiWin(QMainWindow):
         self.drawPointsLayers(computePointsLayers=computePointsLayers)
         self.setManualBackgroundImage()
     
+    def deleteIDFromLab(self, lab, delID):
+        delMask = np.zeros(lab.shape, dtype=bool)
+        if isinstance(delID, int):
+            delMask[lab==delID] = True
+        else:
+            for _delID in delID:
+                delMask[lab==_delID] = True
+        lab[delMask] = 0
+        return lab, delMask
+    
+    def deleteIDmiddleClick(self, delID, applyFutFrames, includeUnvisited):
+        posData = self.data[self.pos_i]
+        self.current_frame_i = posData.frame_i
+
+        # Apply Delete ID to future frames if requested
+        if applyFutFrames:
+            # Store current data before going to future frames
+            self.store_data()
+            segmSizeT = len(posData.segm_data)
+            for i in range(posData.frame_i+1, segmSizeT):
+                lab = posData.allData_li[i]['labels']
+                if lab is None and not includeUnvisited:
+                    self.enqAutosave()
+                    break
+                
+                if lab is not None:
+                    # Visited frame
+                    lab, _ = self.deleteIDFromLab(lab, delID)
+
+                    # Store change
+                    posData.allData_li[i]['labels'] = lab.copy()
+                    # Get the rest of the stored metadata based on the new lab
+                    posData.frame_i = i
+                    self.get_data()
+                    self.store_data(autosave=False)
+                elif includeUnvisited:
+                    # Unvisited frame (includeUnvisited = True)
+                    lab, _ = posData.segm_data[i]
+                    lab, _ = self.deleteIDFromLab(lab, delID)
+
+        # Back to current frame
+        if applyFutFrames:
+            posData.frame_i = self.current_frame_i
+            self.get_data()   
+
+        for _delID in delID:
+            self.clearObjContour(ID=_delID, ax=0)     
+            self.clearObjContour(ID=_delID, ax=1)       
+
+        posData.lab, delID_mask = self.deleteIDFromLab(posData.lab, delID)
+        return delID_mask
+    
     def setOverlayLabelsItems(self):
         if not self.overlayLabelsButton.isChecked():
             return 
@@ -20271,6 +20301,7 @@ class guiWin(QMainWindow):
         self.askZrangeSegm3D = True
         self.dataIsLoaded = False
         self.retainSizeLutItems = False
+        self.setMeasWinState = None
         self.showPropsDockButton.setDisabled(True)
 
         self.reinitWidgetsPos()
@@ -20767,12 +20798,12 @@ class guiWin(QMainWindow):
         
         self.logger.info(f'Initializing {rtTracker} tracker...')
         posData = self.data[self.pos_i]
-        self.realTimeTracker, self.track_frame_params = myutils.import_tracker(
+        self.realTimeTracker, self.track_frame_params = myutils.init_tracker(
             posData, rtTracker, qparent=self
         )
         self.logger.info(f'{rtTracker} tracker successfully initialized.')
         if 'image_channel_name' in self.track_params:
-            # Remove the channel name since it was already loaded in import_tracker
+            # Remove the channel name since it was already loaded in init_tracker
             del self.track_params['image_channel_name']
 
     def initFluoData(self):
@@ -21487,7 +21518,8 @@ class guiWin(QMainWindow):
             allPos_acdc_df_cols=list(allPos_acdc_df_cols),
             acdc_df_path=posData.images_path, posData=posData,
             addCombineMetricCallback=self.addCombineMetric,
-            allPosData=self.data, parent=self
+            allPosData=self.data, parent=self, 
+            state=self.setMeasWinState
         )
         self.measurementsWin.sigClosed.connect(self.setMeasurements)
         self.measurementsWin.show()
@@ -21515,6 +21547,7 @@ class guiWin(QMainWindow):
                         drop_cols_rp = drop_df_rp.columns
                         acdc_df = acdc_df.drop(columns=drop_cols_rp, errors='ignore')
                     _posData.allData_li[frame_i]['acdc_df'] = acdc_df
+        self.setMeasWinState = self.measurementsWin.state()
         self.logger.info('Setting measurements...')
         self._setMetrics(self.measurementsWin)
         self.logger.info('Metrics successfully set.')
@@ -22229,6 +22262,7 @@ class guiWin(QMainWindow):
 
     def openRecentFile(self, path):
         self.logger.info(f'Opening recent folder: {path}')
+        self.addToRecentPaths(path, logger=self.logger)
         self.openFolder(exp_path=path)
     
     def _waitCloseAutoSaveWorker(self):
@@ -22373,6 +22407,8 @@ class guiWin(QMainWindow):
         
         if self.lazyLoader is None:
             self.sigClosed.emit(self)
+        
+        gc.collect()
     
     def storeManualSeparateDrawMode(self, mode):
         self.df_settings.at['manual_separate_draw_mode', 'value'] = mode
