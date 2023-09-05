@@ -109,6 +109,39 @@ class AutoPilotWorker(QObject):
     def run(self):
         self.sigStarted.emit()
 
+class FindNextNewIdWorker(QObject):
+    def __init__(self, posData, guiWin):
+        QObject.__init__(self)
+        self.signals = signals()
+        self.logger = workerLogger(self.signals.progress)
+        self.posData = posData
+        self.guiWin = guiWin
+    
+    @worker_exception_handler
+    def run(self):
+        prev_IDs = None
+        next_frame_i = -1
+        for frame_i, data_dict in enumerate(self.posData.allData_li):
+            lab = data_dict['labels']
+            rp = data_dict['regionprops']
+            IDs = data_dict['IDs']
+            if lab is None:
+                lab = self.posData.segm_data[frame_i]
+                rp = skimage.measure.regionprops(lab)
+                IDs = [obj.label for obj in rp]
+            
+            if prev_IDs is None:
+                prev_IDs = IDs
+                continue
+            
+            newIDs = [ID for ID in IDs if ID not in prev_IDs]
+            if newIDs:
+                next_frame_i = frame_i
+                break            
+            prev_IDs = IDs
+            
+        self.signals.finished.emit(next_frame_i)
+
 class LabelRoiWorker(QObject):
     finished = Signal()
     critical = Signal(object)
