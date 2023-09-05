@@ -3,7 +3,7 @@ import os
 import sys
 import traceback
 import re
-import time
+import logging
 import datetime
 import tempfile
 import shutil
@@ -18,19 +18,16 @@ from functools import partial, wraps
 from tifffile.tifffile import TiffWriter, TiffFile
 
 from qtpy.QtCore import (
-    Qt, QFile, QTextStream, QSize, QRect, QRectF,
-    QObject, QThread, Signal, QSettings
+    Qt, QFile, QEventLoop, QSize, QRect, QRectF,
+    QObject, QThread, Signal, QSettings, QMutex, QWaitCondition
 )
 from qtpy.QtGui import (
     QIcon, QKeySequence, QCursor, QTextBlockFormat,
     QTextCursor, QFont
 )
 from qtpy.QtWidgets import (
-    QAction, QApplication, QLabel, QPushButton, QWidget,
-    QMainWindow, QMenu, QToolBar, QGroupBox, QGridLayout,
-    QScrollBar, QCheckBox, QToolButton, QSpinBox,
-    QComboBox, QDial, QButtonGroup, QFileDialog,
-    QAbstractSlider, QMessageBox, QStyleFactory
+    QAction, QLabel, QWidget, QMainWindow, QMenu, QToolBar, QGridLayout,
+    QScrollBar, QComboBox, QFileDialog, QAbstractSlider, QMessageBox
 )
 from qtpy.compat import getexistingdirectory
 
@@ -44,7 +41,7 @@ from . import qrc_resources
 from . import exception_handler
 from . import load, prompts, apps, core, myutils, widgets
 from . import html_utils, myutils, darkBkgrColor, printl
-from . import autopilot
+from . import autopilot, workers
 from . import recentPaths_path, cellacdc_path, settings_folderpath
 
 if os.name == 'nt':
@@ -795,7 +792,7 @@ class dataPrepWin(QMainWindow):
             elif dragRoi:
                 event.ignore()
                 return
-
+        
         if posData.cropROIs is None:
             return
         
@@ -1532,7 +1529,71 @@ class dataPrepWin(QMainWindow):
             df.at[(posData.filename, i), 'z_slice_used_gui'] = zz[i]
             df.at[(posData.filename, i), 'which_z_proj'] = 'single z-slice'
         posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
+    
+    def waitAlignDataWorker(self):
+        self.alignDataWorkerLoop = QEventLoop(self)
+        self.alignDataWorkerLoop.exec_()
+    
+    def workerProgress(self, text, loggerLevel='INFO'):
+        if self.progressWin is not None:
+            self.progressWin.logConsole.append('-'*60)
+            self.progressWin.logConsole.append(text)
+        self.logger.log(getattr(logging, loggerLevel), text)
+    
+    def startAlignDataWorker(self, posData, align, user_ch_name):
+        # Disable clicks on image during alignment
+        self.img.mousePressEvent = None
+        
+        if posData.SizeT > 1:
+            self.progressWin = apps.QDialogWorkerProgress(
+                title='Aligning data', 
+                parent=self,
+                pbarDesc=f'Aligning all channels based on "{user_ch_name}" channel...'
+            )
+            self.progressWin.show(self.app)
+            self.progressWin.mainPbar.setMaximum(0)
+        
+        self._thread = QThread()
+        self.alignDataWorkerMutex = QMutex()
+        self.alignDataWorkerWaitCond = QWaitCondition()
+        
+        self.alignDataWorker = workers.AlignDataWorker(
+            posData, self, self.alignDataWorkerMutex, self.alignDataWorkerWaitCond
+        )
+        self.alignDataWorker.set_attr(align, user_ch_name)
+        self.alignDataWorker.moveToThread(self._thread)
+        
+        self.alignDataWorker.moveToThread(self._thread)
+        self.alignDataWorker.signals.finished.connect(self._thread.quit)
+        self.alignDataWorker.signals.finished.connect(
+            self.alignDataWorker.deleteLater
+        )
+        self._thread.finished.connect(self._thread.deleteLater)
 
+        self.alignDataWorker.signals.finished.connect(
+            self.alignDataWorkerFinished
+        )
+        self.alignDataWorker.signals.progress.connect(self.workerProgress)
+        self.alignDataWorker.signals.initProgressBar.connect(
+            self.workerInitProgressbar
+        )
+        self.alignDataWorker.signals.progressBar.connect(
+            self.workerUpdateProgressbar
+        )
+        self.alignDataWorker.signals.critical.connect(
+            self.workerCritical
+        )
+
+        self.alignDataWorker.sigAskAlignSegmData.connect(
+            self.askAlignSegmData
+        )
+        self.alignDataWorker.sigWarnTifAligned.connect(
+            self.warnTifAligned
+        )
+        
+        self._thread.started.connect(self.alignDataWorker.run)
+        self._thread.start()
+    
     @exception_handler
     def prepData(self, event):
         self.titleLabel.setText(
@@ -1594,10 +1655,14 @@ class dataPrepWin(QMainWindow):
             self.cropAction.setEnabled(True)
             if posData.SizeZ>1:
                 self.cropZaction.setEnabled(True)
-            self.titleLabel.setText(
+            txt = (
                 'Data successfully prepped. You can now crop the images or '
-                'close the program',
-                color='w')
+                'place the background ROIs, or close the program'
+            )
+            self.titleLabel.setText(txt, color='w')
+            msg = widgets.myMessageBox(wrapText=False)
+            txt = html_utils.paragraph(txt)
+            msg.information(self, 'Dataprep completed', txt)
 
     def setStandardRoiShape(self, text):
         posData = self.data[self.pos_i]
@@ -1770,6 +1835,30 @@ class dataPrepWin(QMainWindow):
         w, h = [int(round(c)) for c in roi.size()]
         self.ROIshapeLabel.setText(f'   Current ROI shape: {w} x {h}')
     
+    def alignDataWorkerFinished(self, result):
+        if self.progressWin is not None:
+            self.progressWin.workerFinished = True
+            self.progressWin.close()
+            self.progressWin = None
+        self.alignDataWorkerLoop.exit()
+        self.img.mousePressEvent = self.gui_mousePressEventImg
+    
+    def workerInitProgressbar(self, totalIter):
+        self.progressWin.mainPbar.setValue(0)
+        if totalIter == 1:
+            totalIter = 0
+        self.progressWin.mainPbar.setMaximum(totalIter)
+    
+    def workerUpdateProgressbar(self, step):
+        self.progressWin.mainPbar.update(step)
+    
+    @exception_handler
+    def workerCritical(self, error):
+        if self.progressWin is not None:
+            self.progressWin.workerFinished = True
+            self.progressWin.close()
+        raise error
+    
     def warnZeroPaddingAlignment(self):
         txt = html_utils.paragraph("""
             To align the frames, Cell-ACDC needs to <b>shift the images</b> 
@@ -1790,53 +1879,8 @@ class dataPrepWin(QMainWindow):
         if msg.cancel:
             return False
         return True
-
+    
     def alignData(self, user_ch_name, posData):
-        """
-        NOTE: if self.num_pos > 1 then we simply save a ".._aligned.npz"
-        file without alignment
-
-        Alignemnt routine. Alignemnt is based on the data contained in the
-        .tif file of the channel selected by the user (e.g. "phase_contr").
-        Next, using the shifts calculated when aligning the channel selected
-        by the user, it will align all the other channels, always starting from
-        the data contained in the .tif files.
-
-        In the end, aligned data will be saved to both the .tif file and a
-        "_aligned.npz" file. The shifts will be saved to "align_shift.npy" file.
-
-        Alignemnt is performed only if needed and requested by the user:
-
-        1. If the "_aligned.npz" file does NOT exist AND the "align_shift.npy"
-        file does NOT exist then alignment is performed with the function
-        skimage.registration.phase_cross_correlation
-
-        2. If the "_aligned.npz" file does NOT exist AND the "align_shift.npy"
-        file does exist then alignment is performed with the saved shifts
-
-        3. If the "_aligned.npz" file does exist AND the "align_shift.npy"
-        file does NOT exist then alignment is performed AGAIN with the function
-        skimage.registration.phase_cross_correlation
-
-        4. If the "_aligned.npz" file does exist AND the "align_shift.npy"
-        file does exist no alignment is needed.
-
-        NOTE on the segmentation mask. If the system detects a "_segm.npz" file
-        AND alignmnet was performed, we need to be careful with aligning the
-        segm file. Segmentation files were most likely already aligned
-        (although this cannot be detected) so aligning them again will probably
-        misAlign them. It is responsibility of the user to choose wisely.
-        However, if alignment is performed AGAIN, the system will zip the
-        "Images" folder first to avoid data losses or corruption.
-
-        In general, it should be fine performing alignment again if the user
-        deletes the "align_shift.npy" file ONLY if also the .tif files are
-        already aligned. If the .tif files are not aligned and we need to
-        perform alignment again then the segmentation mask is invalid. In this
-        case we should align starting from "_aligned.npz" file but it is
-        not implemented yet.
-        """
-
         # Get metadata from tif
         with TiffFile(posData.tif_path) as tif:
             metadata = tif.imagej_metadata
@@ -1885,148 +1929,23 @@ class dataPrepWin(QMainWindow):
                 'Aligning data...(check progress in terminal)',
                 color='w')
 
-        _zip = zip(posData.tif_paths, posData.npz_paths)
-        aligned = False
-        posData.all_npz_paths = [
-            tif.replace('.tif', '_aligned.npz') for tif in posData.tif_paths
-        ]
-        for i, (tif, npz) in enumerate(_zip):
-            doAlign = npz is None or posData.loaded_shifts is None
-
-            filename_tif = os.path.basename(tif)
-            user_ch_filename = f'{posData.basename}{user_ch_name}.tif'
-
-            if not doAlign:
-                _npz = f'{os.path.splitext(tif)[0]}_aligned.npz'
-                if os.path.exists(_npz):
-                    posData.all_npz_paths[i] = _npz
-                continue
-            
-            if filename_tif != user_ch_filename:
-                continue
-            
-            # Align based on user_ch_name
-            aligned = True
-            if align:
-                self.logger.info(f'Aligning: {tif}')
-            tif_data = skimage.io.imread(tif)
-            numFramesWith0s = self.detectTifAlignment(tif_data, posData)
-            if align:
-                proceed = self.warnTifAligned(numFramesWith0s, tif, posData)
-                if not proceed:
-                    return False
-
-            # Alignment routine
-            if posData.SizeZ>1:
-                align_func = core.align_frames_3D
-                df = posData.segmInfo_df.loc[posData.filename]
-                zz = df['z_slice_used_dataPrep'].to_list()
-                if not posData.filename.endswith('aligned') and align:
-                    # Add aligned channel to segmInfo
-                    df_aligned = posData.segmInfo_df.rename(
-                        index={posData.filename: f'{posData.filename}_aligned'}
-                    )
-                    posData.segmInfo_df = pd.concat(
-                        [posData.segmInfo_df, df_aligned]
-                    )
-                    posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
-            else:
-                align_func = core.align_frames_2D
-                zz = None
-            if align:
-                aligned_frames, shifts = align_func(
-                    tif_data, slices=zz, user_shifts=posData.loaded_shifts
-                )
-                posData.loaded_shifts = shifts
-            else:
-                aligned_frames = tif_data.copy()
-            if align:
-                _npz = f'{os.path.splitext(tif)[0]}_aligned.npz'
-                self.logger.info(f'Saving: {_npz}')
-                temp_npz = self.getTempfilePath(_npz)
-                np.savez_compressed(temp_npz, aligned_frames)
-                self.moveTempFile(temp_npz, _npz)
-                np.save(posData.align_shifts_path, posData.loaded_shifts)
-                posData.all_npz_paths[i] = _npz
-
-                self.logger.info(f'Saving: {tif}')
-                temp_tif = self.getTempfilePath(tif)
-                myutils.imagej_tiffwriter(temp_tif, aligned_frames)
-                self.moveTempFile(temp_tif, tif)
-                posData.img_data = skimage.io.imread(tif)
-
-        _zip = zip(posData.tif_paths, posData.npz_paths)
-        for i, (tif, npz) in enumerate(_zip):
-            doAlign = npz is None or aligned
-
-            if not doAlign:
-                continue
-            
-            if tif.endswith(f'{user_ch_name}.tif'):
-                continue
-            
-            # Align the other channels
-            if posData.loaded_shifts is None:
-                break
-            if align:
-                self.logger.info(f'Aligning: {tif}')
-            tif_data = skimage.io.imread(tif)
-
-            # Alignment routine
-            if posData.SizeZ>1:
-                align_func = core.align_frames_3D
-                df = posData.segmInfo_df.loc[posData.filename]
-                zz = df['z_slice_used_dataPrep'].to_list()
-            else:
-                align_func = core.align_frames_2D
-                zz = None
-            if align:
-                aligned_frames, shifts = align_func(
-                    tif_data, slices=zz, user_shifts=posData.loaded_shifts
-                )
-            else:
-                aligned_frames = tif_data.copy()
-            _npz = f'{os.path.splitext(tif)[0]}_aligned.npz'
-            
-            if align:
-                self.logger.info(f'Saving: {_npz}')
-                temp_npz = self.getTempfilePath(_npz)
-                np.savez_compressed(temp_npz, aligned_frames)
-                self.moveTempFile(temp_npz, _npz)
-                posData.all_npz_paths[i] = _npz
-
-                self.logger.info(f'Saving: {tif}')
-                temp_tif = self.getTempfilePath(tif)
-                myutils.imagej_tiffwriter(temp_tif, aligned_frames)
-                self.moveTempFile(temp_tif, tif)
-
-        # Align segmentation data accordingly
-        self.segmAligned = False
-        if posData.segmFound and aligned:
-            if posData.loaded_shifts is None or not align:
-                return True
-            msg = QMessageBox()
-            alignAnswer = msg.question(
-                self, 'Align segmentation data?',
-                'The system found an existing segmentation mask.\n\n'
-                'Do you need to align that too?',
-                msg.Yes | msg.No
-            )
-            if alignAnswer == msg.Yes:
-                self.segmAligned = True
-                self.logger.info(f'Aligning: {posData.segm_npz_path}')
-                posData.segm_data, shifts = core.align_frames_2D(
-                                             posData.segm_data,
-                                             slices=None,
-                                             user_shifts=posData.loaded_shifts
-                )
-                self.logger.info(f'Saving: {posData.segm_npz_path}')
-                temp_npz = self.getTempfilePath(posData.segm_npz_path)
-                np.savez_compressed(temp_npz, posData.segm_data)
-                self.moveTempFile(temp_npz, posData.segm_npz_path)
+        self.startAlignDataWorker(posData, align, user_ch_name)
+        self.waitAlignDataWorker()
         
-        return True
+        return not self.alignDataWorker.doAbort
 
+    def askAlignSegmData(self):
+        msg = widgets.myMessageBox()
+        txt = html_utils.paragraph(
+            'The system found an existing segmentation mask.<br><br>'
+            'Do you need to align that too?'
+        )
+        yesButton, noButton = msg.question(
+            self, 'Align segmentation data?', txt,
+            buttonsTexts=('Yes', 'No')
+        )
+        self.alignDataWorker.doNotAlignSegmData = msg.clickedButton = noButton
+        self.alignDataWorker.restart()
 
     def detectTifAlignment(self, tif_data, posData):
         numFramesWith0s = 0
@@ -2052,7 +1971,6 @@ class dataPrepWin(QMainWindow):
         return numFramesWith0s
 
     def warnTifAligned(self, numFramesWith0s, tifPath, posData):
-        proceed = True
         if numFramesWith0s>0 and posData.loaded_shifts is not None:
             msg = widgets.myMessageBox()
             txt = html_utils.paragraph("""
@@ -2069,8 +1987,8 @@ class dataPrepWin(QMainWindow):
                buttonsTexts=('Cancel', 'Yes')
             )
             if msg.cancel:
-                proceed = False
-        return proceed
+                self.alignDataWorker.doAbort = True
+        self.alignDataWorker.restart()
 
     def getTempfilePath(self, path):
         temp_dirpath = tempfile.mkdtemp()
@@ -2198,6 +2116,7 @@ class dataPrepWin(QMainWindow):
         self.statusbar.showMessage(posData.filename_ext)
 
     def initLoading(self):
+        self.progressWin = None
         self.dataIsLoaded = False
         # Remove all items from a previous session if open is pressed again
         self.removeAllItems()
