@@ -1911,6 +1911,32 @@ class BaseWorkerUtil(QObject):
         self.mutex.unlock()
         return self.abort
 
+class DataPrepSaveBkgrDataWorker(QObject):
+    def __init__(self, posData, dataPrepWin):
+        QObject.__init__(self)
+        self.signals = signals()
+        self.logger = workerLogger(self.signals.progress)
+        self.posData = posData
+        self.dataPrepWin = dataPrepWin
+    
+    @worker_exception_handler
+    def run(self):
+        self.dataPrepWin.saveBkgrData(self.posData)
+        self.signals.finished.emit(self)
+
+class DataPrepCropWorker(QObject):
+    def __init__(self, posData, dataPrepWin):
+        QObject.__init__(self)
+        self.signals = signals()
+        self.logger = workerLogger(self.signals.progress)
+        self.posData = posData
+        self.dataPrepWin = dataPrepWin
+    
+    @worker_exception_handler
+    def run(self):
+        self.dataPrepWin.saveSingleCrop(self.posData, self.posData.cropROIs[0])
+        self.signals.finished.emit(self)
+
 class TrackSubCellObjectsWorker(BaseWorkerUtil):
     sigAskAppendName = Signal(str, list)
     sigCriticalNotEnoughSegmFiles = Signal(str)

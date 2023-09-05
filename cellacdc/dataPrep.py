@@ -870,13 +870,102 @@ class dataPrepWin(QMainWindow):
         self.saveCroppedSegmData(posData, posData.segm_npz_path, cropROI)
         self.correctAcdcDfCrop(posData, posData.acdc_output_csv_path, cropROI)
     
+    def startCropWorker(self, posData):
+        # Disable clicks on image during alignment
+        self.img.mousePressEvent = None
+        
+        if posData.SizeT > 1:
+            self.progressWin = apps.QDialogWorkerProgress(
+                title='Saving cropped data', 
+                parent=self,
+                pbarDesc=f'Saving cropped data...'
+            )
+            self.progressWin.show(self.app)
+            self.progressWin.mainPbar.setMaximum(0)
+        
+        self._thread = QThread()
+        
+        self.cropWorker = workers.DataPrepCropWorker(posData, self)
+        self.cropWorker.moveToThread(self._thread)
+        
+        self.cropWorker.moveToThread(self._thread)
+        self.cropWorker.signals.finished.connect(self._thread.quit)
+        self.cropWorker.signals.finished.connect(
+            self.cropWorker.deleteLater
+        )
+        self._thread.finished.connect(self._thread.deleteLater)
+
+        self.cropWorker.signals.finished.connect(
+            self.cropWorkerFinished
+        )
+        self.cropWorker.signals.progress.connect(self.workerProgress)
+        self.cropWorker.signals.initProgressBar.connect(
+            self.workerInitProgressbar
+        )
+        self.cropWorker.signals.progressBar.connect(
+            self.workerUpdateProgressbar
+        )
+        self.cropWorker.signals.critical.connect(
+            self.workerCritical
+        )
+        
+        self._thread.started.connect(self.cropWorker.run)
+        self._thread.start()
+        return self.cropWorker
+    
+    def startSaveBkgrDataWorker(self, posData):
+        # Disable clicks on image during alignment
+        self.img.mousePressEvent = None
+        
+        if posData.SizeT > 1:
+            self.progressWin = apps.QDialogWorkerProgress(
+                title='Saving background data', 
+                parent=self,
+                pbarDesc=f'Saving background data...'
+            )
+            self.progressWin.show(self.app)
+            self.progressWin.mainPbar.setMaximum(0)
+        
+        self._thread = QThread()
+        
+        self.saveBkgrDataWorker = workers.DataPrepSaveBkgrDataWorker(
+            posData, self
+        )
+        self.saveBkgrDataWorker.moveToThread(self._thread)
+        
+        self.saveBkgrDataWorker.moveToThread(self._thread)
+        self.saveBkgrDataWorker.signals.finished.connect(self._thread.quit)
+        self.saveBkgrDataWorker.signals.finished.connect(
+            self.saveBkgrDataWorker.deleteLater
+        )
+        self._thread.finished.connect(self._thread.deleteLater)
+
+        self.saveBkgrDataWorker.signals.finished.connect(
+            self.saveBkgrDataWorkerFinished
+        )
+        self.saveBkgrDataWorker.signals.progress.connect(self.workerProgress)
+        self.saveBkgrDataWorker.signals.initProgressBar.connect(
+            self.workerInitProgressbar
+        )
+        self.saveBkgrDataWorker.signals.progressBar.connect(
+            self.workerUpdateProgressbar
+        )
+        self.saveBkgrDataWorker.signals.critical.connect(
+            self.workerCritical
+        )
+        
+        self._thread.started.connect(self.saveBkgrDataWorker.run)
+        self._thread.start()
+        return self.saveBkgrDataWorker
+    
     def saveCroppedData(self, posData):
         # Get metadata from tif
         with TiffFile(posData.tif_path) as tif:
             metadata = tif.imagej_metadata
 
         if len(posData.cropROIs) == 1:
-            self.saveSingleCrop(posData, posData.cropROIs[0])
+            worker = self.startCropWorker(posData)
+            self.waitWorker(worker)
         else:
             self.saveMultiCrops(posData)
 
@@ -1153,9 +1242,11 @@ class dataPrepWin(QMainWindow):
             self.logger.info(f'Cropped data shape:\n{croppedShapesFormat}')
             self.saveROIcoords(doCrop, posData)
 
-            self.logger.info('Saving background data...')
-            self.saveBkgrData(posData)
-
+            self.logger.info('Starting crop worker...')
+            
+            worker = self.startSaveBkgrDataWorker(posData)
+            self.waitWorker(worker)
+            
             self.saveCroppedData(posData)
         
         for posData in self.data:
@@ -1534,6 +1625,10 @@ class dataPrepWin(QMainWindow):
         self.alignDataWorkerLoop = QEventLoop(self)
         self.alignDataWorkerLoop.exec_()
     
+    def waitWorker(self, worker):
+        worker.loop = QEventLoop(self)
+        worker.loop.exec_()
+    
     def workerProgress(self, text, loggerLevel='INFO'):
         if self.progressWin is not None:
             self.progressWin.logConsole.append('-'*60)
@@ -1841,6 +1936,22 @@ class dataPrepWin(QMainWindow):
             self.progressWin.close()
             self.progressWin = None
         self.alignDataWorkerLoop.exit()
+        self.img.mousePressEvent = self.gui_mousePressEventImg
+    
+    def saveBkgrDataWorkerFinished(self, result):
+        if self.progressWin is not None:
+            self.progressWin.workerFinished = True
+            self.progressWin.close()
+            self.progressWin = None
+        self.saveBkgrDataWorker.loop.exit()
+        self.img.mousePressEvent = self.gui_mousePressEventImg
+    
+    def cropWorkerFinished(self, result):
+        if self.progressWin is not None:
+            self.progressWin.workerFinished = True
+            self.progressWin.close()
+            self.progressWin = None
+        self.cropWorker.loop.exit()
         self.img.mousePressEvent = self.gui_mousePressEventImg
     
     def workerInitProgressbar(self, totalIter):
