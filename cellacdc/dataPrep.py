@@ -2224,7 +2224,12 @@ class dataPrepWin(QMainWindow):
     def setImageNameText(self):
         self.statusbar.clearMessage()
         posData = self.data[self.pos_i]
-        self.statusbar.showMessage(posData.filename_ext)
+        txt = (
+            f'{posData.pos_foldername} || '
+            f'Basename: {posData.basename} || '
+            f'Loaded channel: {posData.filename_ext}'
+        )
+        self.statusbar.showMessage(txt)
 
     def initLoading(self):
         self.progressWin = None
