@@ -1577,7 +1577,7 @@ class mainWin(QMainWindow):
         )
         if doNotAskAgainCheckbox.isChecked():
             self.df_settings.at['doNotAskMigrate', 'value'] = 'Yes'
-            self.df_settings.to_csv(self.settings_csv_path)
+            self.df_settings.to_csv(settings_csv_path)
         if msg.cancel:
             self.logger.info(
                 'Migrating old user profile cancelled.'
