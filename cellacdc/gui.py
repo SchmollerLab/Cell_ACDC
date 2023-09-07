@@ -22265,6 +22265,24 @@ class guiWin(QMainWindow):
         )
         win.exec_()
     
+    def askConcatenate(self):
+        if self.mainWin is None:
+            return
+        
+        txt = html_utils.paragraph(f"""
+            Do you want to <b>concatenate</b> the `acdc_output.csv` tables from 
+            multiple Positions into <b>one single CSV file</b>?<br>
+        """)
+        msg = widgets.myMessageBox()
+        noButton, yesButton = msg.question(
+            self, 'Concatenate tables?', txt, buttonsTexts=('No', 'Yes')
+        )
+        if not msg.clickedButton == yesButton:
+            return
+        
+        posData = self.data[self.pos_i]
+        self.mainWin.launchConcatUtil(exp_folderpath=posData.exp_path)
+        
     def updateSegmDataAutoSaveWorker(self):
         # Update savedSegmData in autosave worker
         posData = self.data[self.pos_i]
@@ -22291,6 +22309,8 @@ class guiWin(QMainWindow):
             self.warnErrorsCustomMetrics()
         
         self.checkManageVersions()
+        
+        self.askConcatenate()
         
         if self.closeGUI:
             salute_string = myutils.get_salute_string()
