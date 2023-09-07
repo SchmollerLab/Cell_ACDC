@@ -13831,7 +13831,7 @@ class guiWin(QMainWindow):
         
         mode = str(self.modeComboBox.currentText())
         if not mode == 'Segmentation and Tracking':
-            return
+            return True
         
         posData = self.data[self.pos_i]
         if not posData.lost_IDs:
