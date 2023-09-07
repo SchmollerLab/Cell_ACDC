@@ -11,7 +11,7 @@ from functools import partial
 from qtpy import QtCore, QtWidgets
 from qtpy.QtWidgets import (
     QMainWindow, QVBoxLayout, QPushButton, QLabel, QAction,
-    QMenu, QHBoxLayout, QFileDialog, QGroupBox
+    QMenu, QHBoxLayout, QFileDialog, QGroupBox, QCheckBox
 )
 from qtpy.QtCore import (
     Qt, QProcess, Signal, Slot, QTimer, QSize,
@@ -905,37 +905,41 @@ class mainWin(QMainWindow):
         
         return posPath
 
-    def getSelectedExpPaths(self, utilityName):
+    def getSelectedExpPaths(self, utilityName, exp_folderpath=None):
         # self._debug()
         
-        self.logger.info('Asking to select experiment folders...')
-        msg = widgets.myMessageBox()
-        txt = html_utils.paragraph("""
-            After you click "Ok" on this dialog you will be asked
-            to <b>select the experiment folders</b>, one by one.<br><br>
-            Next, you will be able to <b>choose specific Positions</b>
-            from each selected experiment.
-        """)
-        msg.information(
-            self, f'{utilityName}', txt,
-            buttonsTexts=('Cancel', 'Ok')
-        )
-        if msg.cancel:
-            self.logger.info(f'{utilityName} aborted by the user.')
-            return
+        if exp_folderpath is None:
+            self.logger.info('Asking to select experiment folders...')
+            msg = widgets.myMessageBox()
+            txt = html_utils.paragraph("""
+                After you click "Ok" on this dialog you will be asked
+                to <b>select the experiment folders</b>, one by one.<br><br>
+                Next, you will be able to <b>choose specific Positions</b>
+                from each selected experiment.
+            """)
+            msg.information(
+                self, f'{utilityName}', txt,
+                buttonsTexts=('Cancel', 'Ok')
+            )
+            if msg.cancel:
+                self.logger.info(f'{utilityName} aborted by the user.')
+                return
         
         expPaths = {}
         mostRecentPath = myutils.getMostRecentPath()
         while True:
-            exp_path = qtpy.compat.getexistingdirectory(
-                parent=self, 
-                caption='Select experiment folder containing Position_n folders',
-                basedir=mostRecentPath,
-                # options=QFileDialog.DontUseNativeDialog
-            )
-            if not exp_path:
-                break
-            myutils.addToRecentPaths(exp_path)
+            if exp_folderpath is None:
+                exp_path = qtpy.compat.getexistingdirectory(
+                    parent=self, 
+                    caption='Select experiment folder containing Position_n folders',
+                    basedir=mostRecentPath,
+                    # options=QFileDialog.DontUseNativeDialog
+                )
+                if not exp_path:
+                    break
+                myutils.addToRecentPaths(exp_path)
+            else: 
+                exp_path = exp_folderpath
             baseFolder = os.path.basename(exp_path)
             isPosFolder = (
                 re.search('Position_(\d+)$', baseFolder) is not None
@@ -1516,10 +1520,12 @@ class mainWin(QMainWindow):
         )
         self.alignWindow.show()
 
-    def launchConcatUtil(self, checked=False):
-        self.logger.info(f'Launching utility "{self.sender().text()}"')
+    def launchConcatUtil(self, checked=False, exp_folderpath=None):
+        self.logger.info(
+            f'Launching utility "Concatenate tables from multipe positions"'
+        )
         selectedExpPaths = self.getSelectedExpPaths(
-            'Concatenate acdc_output files'
+            'Concatenate acdc_output files', exp_folderpath=exp_folderpath
         )
         if selectedExpPaths is None:
             return
@@ -1547,6 +1553,11 @@ class mainWin(QMainWindow):
         if not user_home_acdc_folders:
             self.checkUserDataFolderPath = False
             return
+
+        if 'doNotAskMigrate' in self.df_settings.index:
+            if str(self.df_settings.at['doNotAskMigrate', 'value']) == 'Yes':
+                return
+        
         msg = widgets.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(
             'Starting from version 1.4.0, Cell-ACDC default <b>user profile path</b> '
@@ -1563,11 +1574,16 @@ class mainWin(QMainWindow):
         detailsText = (
             f'Folders found in the previous location:<br><br>{acdc_folders_format}'
         )
+        doNotAskAgainCheckbox = QCheckBox('Do not ask again')
         msg.warning(
             self, 'Migrate old user profile', txt, 
             buttonsTexts=('Cancel', 'Yes'),
-            detailsText=detailsText
+            detailsText=detailsText,
+            widgets=doNotAskAgainCheckbox
         )
+        if doNotAskAgainCheckbox.isChecked():
+            self.df_settings.at['doNotAskMigrate', 'value'] = 'Yes'
+            self.df_settings.to_csv(settings_csv_path)
         if msg.cancel:
             self.logger.info(
                 'Migrating old user profile cancelled.'

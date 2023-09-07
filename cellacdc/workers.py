@@ -109,6 +109,224 @@ class AutoPilotWorker(QObject):
     def run(self):
         self.sigStarted.emit()
 
+class FindNextNewIdWorker(QObject):
+    def __init__(self, posData, guiWin):
+        QObject.__init__(self)
+        self.signals = signals()
+        self.logger = workerLogger(self.signals.progress)
+        self.posData = posData
+        self.guiWin = guiWin
+    
+    @worker_exception_handler
+    def run(self):
+        prev_IDs = None
+        next_frame_i = -1
+        for frame_i, data_dict in enumerate(self.posData.allData_li):
+            lab = data_dict['labels']
+            rp = data_dict['regionprops']
+            IDs = data_dict['IDs']
+            if lab is None:
+                lab = self.posData.segm_data[frame_i]
+                rp = skimage.measure.regionprops(lab)
+                IDs = [obj.label for obj in rp]
+            
+            if prev_IDs is None:
+                prev_IDs = IDs
+                continue
+            
+            newIDs = [ID for ID in IDs if ID not in prev_IDs]
+            if newIDs:
+                next_frame_i = frame_i
+                break            
+            prev_IDs = IDs
+            
+        self.signals.finished.emit(next_frame_i)
+
+class AlignDataWorker(QObject):
+    sigWarnTifAligned = Signal(object, object, object)
+    sigAskAlignSegmData = Signal()
+        
+    def __init__(self, posData, dataPrepWin, mutex, waitCond):
+        QObject.__init__(self)
+        self.signals = signals()
+        self.logger = workerLogger(self.signals.progress)
+        self.posData = posData
+        self.dataPrepWin = dataPrepWin
+        self.mutex = mutex
+        self.waitCond = waitCond
+        self.doNotAlignSegmData = False
+        self.doAbort = False
+    
+    def set_attr(self, align, user_ch_name):
+        self.align = align
+        self.user_ch_name = user_ch_name
+    
+    def pause(self):
+        self.mutex.lock()
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+    
+    def restart(self):
+        self.waitCond.wakeAll()
+    
+    def emitWarnTifAligned(self, numFramesWith0s, tif, posData):
+        self.sigWarnTifAligned.emit(numFramesWith0s, tif, posData)
+        self.pause()
+    
+    def emitSigAskAlignSegmData(self):
+        self.sigAskAlignSegmData.emit()
+        self.pause()
+    
+    def _align_data(self):
+        _zip = zip(self.posData.tif_paths, self.posData.npz_paths)
+        aligned = False
+        self.posData.all_npz_paths = [
+            tif.replace('.tif', '_aligned.npz') for tif in self.posData.tif_paths
+        ]
+        for i, (tif, npz) in enumerate(_zip):
+            doAlign = npz is None or self.posData.loaded_shifts is None
+
+            filename_tif = os.path.basename(tif)
+            user_ch_filename = f'{self.posData.basename}{self.user_ch_name}.tif'
+
+            if not doAlign:
+                _npz = f'{os.path.splitext(tif)[0]}_aligned.npz'
+                if os.path.exists(_npz):
+                    self.posData.all_npz_paths[i] = _npz
+                continue
+            
+            if filename_tif != user_ch_filename:
+                continue
+            
+            # Align based on user_ch_name
+            aligned = True
+            if self.align:
+                self.logger.log(f'Aligning: {tif}')
+            tif_data = skimage.io.imread(tif)
+            numFramesWith0s = self.dataPrepWin.detectTifAlignment(
+                tif_data, self.posData
+            )
+            if self.align:
+                self.emitWarnTifAligned(
+                    numFramesWith0s, tif, self.posData
+                )
+                if self.doAbort:
+                    return
+
+            # Alignment routine
+            if self.posData.SizeZ>1:
+                align_func = core.align_frames_3D
+                df = self.posData.segmInfo_df.loc[self.posData.filename]
+                zz = df['z_slice_used_dataPrep'].to_list()
+                if not self.posData.filename.endswith('aligned') and self.align:
+                    # Add aligned channel to segmInfo
+                    df_aligned = self.posData.segmInfo_df.rename(
+                        index={self.posData.filename: f'{self.posData.filename}_aligned'}
+                    )
+                    self.posData.segmInfo_df = pd.concat(
+                        [self.posData.segmInfo_df, df_aligned]
+                    )
+                    self.posData.segmInfo_df.to_csv(self.posData.segmInfo_df_csv_path)
+            else:
+                align_func = core.align_frames_2D
+                zz = None
+            if self.align:
+                self.signals.initProgressBar.emit(len(tif_data))
+                aligned_frames, shifts = align_func(
+                    tif_data, slices=zz, user_shifts=self.posData.loaded_shifts,
+                    sigPyqt=self.signals.progressBar
+                )
+                self.posData.loaded_shifts = shifts
+            else:
+                aligned_frames = tif_data.copy()
+            if self.align:
+                self.signals.initProgressBar.emit(0)
+                _npz = f'{os.path.splitext(tif)[0]}_aligned.npz'
+                self.logger.log(f'Saving: {_npz}')
+                temp_npz = self.dataPrepWin.getTempfilePath(_npz)
+                np.savez_compressed(temp_npz, aligned_frames)
+                self.dataPrepWin.moveTempFile(temp_npz, _npz)
+                np.save(self.posData.align_shifts_path, self.posData.loaded_shifts)
+                self.posData.all_npz_paths[i] = _npz
+
+                self.logger.log(f'Saving: {tif}')
+                temp_tif = self.dataPrepWin.getTempfilePath(tif)
+                myutils.imagej_tiffwriter(temp_tif, aligned_frames)
+                self.dataPrepWin.moveTempFile(temp_tif, tif)
+                self.posData.img_data = skimage.io.imread(tif)
+
+        _zip = zip(self.posData.tif_paths, self.posData.npz_paths)
+        for i, (tif, npz) in enumerate(_zip):
+            doAlign = npz is None or aligned
+
+            if not doAlign:
+                continue
+            
+            if tif.endswith(f'{self.user_ch_name}.tif'):
+                continue
+            
+            # Align the other channels
+            if self.posData.loaded_shifts is None:
+                break
+            if self.align:
+                self.logger.log(f'Aligning: {tif}')
+            tif_data = skimage.io.imread(tif)
+
+            # Alignment routine
+            if self.posData.SizeZ>1:
+                align_func = core.align_frames_3D
+                df = self.posData.segmInfo_df.loc[self.posData.filename]
+                zz = df['z_slice_used_dataPrep'].to_list()
+            else:
+                align_func = core.align_frames_2D
+                zz = None
+            if self.align:
+                self.signals.initProgressBar.emit(len(tif_data))
+                aligned_frames, shifts = align_func(
+                    tif_data, slices=zz, user_shifts=self.posData.loaded_shifts,
+                    sigPyqt=self.signals.progressBar
+                )
+            else:
+                aligned_frames = tif_data.copy()
+            _npz = f'{os.path.splitext(tif)[0]}_aligned.npz'
+            
+            if self.align:
+                self.signals.initProgressBar.emit(0)
+                self.logger.log(f'Saving: {_npz}')
+                temp_npz = self.dataPrepWin.getTempfilePath(_npz)
+                np.savez_compressed(temp_npz, aligned_frames)
+                self.dataPrepWin.moveTempFile(temp_npz, _npz)
+                self.posData.all_npz_paths[i] = _npz
+
+                self.logger.log(f'Saving: {tif}')
+                temp_tif = self.dataPrepWin.getTempfilePath(tif)
+                myutils.imagej_tiffwriter(temp_tif, aligned_frames)
+                self.dataPrepWin.moveTempFile(temp_tif, tif)
+
+        # Align segmentation data accordingly
+        self.segmAligned = False
+        if self.posData.segmFound and aligned:
+            if self.posData.loaded_shifts is None or not self.align:
+                return
+            self.emitSigAskAlignSegmData()
+            if self.doNotAlignSegmData:
+                return
+            self.dataPrepWin.segmAligned = True
+            self.logger.log(f'Aligning: {self.posData.segm_npz_path}')
+            self.posData.segm_data, shifts = core.align_frames_2D(
+                self.posData.segm_data, slices=None,
+                user_shifts=self.posData.loaded_shifts
+            )
+            self.logger.log(f'Saving: {self.posData.segm_npz_path}')
+            temp_npz = self.dataPrepWin.getTempfilePath(self.posData.segm_npz_path)
+            np.savez_compressed(temp_npz, self.posData.segm_data)
+            self.dataPrepWin.moveTempFile(temp_npz, self.posData.segm_npz_path)
+
+    @worker_exception_handler
+    def run(self):     
+        self._align_data()     
+        self.signals.finished.emit(self)
+
 class LabelRoiWorker(QObject):
     finished = Signal()
     critical = Signal(object)
@@ -1680,6 +1898,32 @@ class BaseWorkerUtil(QObject):
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
         return self.abort
+
+class DataPrepSaveBkgrDataWorker(QObject):
+    def __init__(self, posData, dataPrepWin):
+        QObject.__init__(self)
+        self.signals = signals()
+        self.logger = workerLogger(self.signals.progress)
+        self.posData = posData
+        self.dataPrepWin = dataPrepWin
+    
+    @worker_exception_handler
+    def run(self):
+        self.dataPrepWin.saveBkgrData(self.posData)
+        self.signals.finished.emit(self)
+
+class DataPrepCropWorker(QObject):
+    def __init__(self, posData, dataPrepWin):
+        QObject.__init__(self)
+        self.signals = signals()
+        self.logger = workerLogger(self.signals.progress)
+        self.posData = posData
+        self.dataPrepWin = dataPrepWin
+    
+    @worker_exception_handler
+    def run(self):
+        self.dataPrepWin.saveSingleCrop(self.posData, self.posData.cropROIs[0])
+        self.signals.finished.emit(self)
 
 class TrackSubCellObjectsWorker(BaseWorkerUtil):
     sigAskAppendName = Signal(str, list)

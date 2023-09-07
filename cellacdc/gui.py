@@ -1385,6 +1385,9 @@ class guiWin(QMainWindow):
         self.slideshowButton.setShortcut('Ctrl+W')
         self.slideshowButton.setToolTip('Open slideshow (Ctrl+W)')
         navigateToolBar.addWidget(self.slideshowButton)
+        
+        # navigateToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
+        navigateToolBar.addAction(self.skipToNewIdAction)
 
         self.overlayButton = widgets.rightClickToolButton(parent=self)
         self.overlayButton.setIcon(QIcon(":overlay.svg"))
@@ -2633,6 +2636,15 @@ class guiWin(QMainWindow):
             'Find and highlight ID (Ctrl+F).'
             'Press "Esc" to clear highlighted object.'
         )
+        
+        self.skipToNewIdAction = QAction(self)
+        self.skipToNewIdAction.setIcon(QIcon(":skip_forward_new_ID.svg"))
+        self.skipToNewIdAction.setShortcut(QKeySequence(Qt.Key_PageUp))
+        self.skipToNewIdAction.setToolTip(
+            'Skip forward to the frame where a new object appears.\n\n'
+            'SHORTCUT: "Page up" key'
+        )
+        self.skipToNewIdAction.setDisabled(True)
 
         # Edit actions
         models = myutils.get_list_of_models()
@@ -3044,6 +3056,7 @@ class guiWin(QMainWindow):
         self.loadPosAction.triggered.connect(self.loadPosTriggered)
         # self.reloadAction.triggered.connect(self.reload_cb)
         self.findIdAction.triggered.connect(self.findID)
+        self.skipToNewIdAction.triggered.connect(self.skipForwardToNewID)        
         self.slideshowButton.toggled.connect(self.launchSlideshow)
         
         self.copyContourButton.toggled.connect(self.copyLostObjContour_cb)
@@ -7621,6 +7634,55 @@ class guiWin(QMainWindow):
         self.highlightSearchedID(searchIDdialog.EntryID)
         propsQGBox = self.guiTabControl.propsQGBox
         propsQGBox.idSB.setValue(searchIDdialog.EntryID)
+    
+    def skipForwardToNewID(self):
+        self.progressWin = apps.QDialogWorkerProgress(
+            title='Searching the next frame with a new object', parent=self,
+            pbarDesc=f'Searching the next frame with a new object...'
+        )
+        self.progressWin.show(self.app)
+        self.progressWin.mainPbar.setMaximum(0)
+        
+        self.startFindNextNewIdWorker()
+    
+    def startFindNextNewIdWorker(self):
+        posData = self.data[self.pos_i]
+        self._thread = QThread()
+        self.findNextNewIdWorker = workers.FindNextNewIdWorker(posData, self)
+        self.findNextNewIdWorker.moveToThread(self._thread)
+        
+        self.findNextNewIdWorker.moveToThread(self._thread)
+        self.findNextNewIdWorker.signals.finished.connect(self._thread.quit)
+        self.findNextNewIdWorker.signals.finished.connect(
+            self.findNextNewIdWorker.deleteLater
+        )
+        self._thread.finished.connect(self._thread.deleteLater)
+
+        self.findNextNewIdWorker.signals.finished.connect(
+            self.findNextNewIdWorkerFinished
+        )
+        self.findNextNewIdWorker.signals.progress.connect(self.workerProgress)
+        self.findNextNewIdWorker.signals.initProgressBar.connect(
+            self.workerInitProgressbar
+        )
+        self.findNextNewIdWorker.signals.progressBar.connect(
+            self.workerUpdateProgressbar
+        )
+        self.findNextNewIdWorker.signals.critical.connect(
+            self.workerCritical
+        )
+
+        self._thread.started.connect(self.findNextNewIdWorker.run)
+        self._thread.start()
+    
+    def findNextNewIdWorkerFinished(self, next_frame_i):
+        if self.progressWin is not None:
+            self.progressWin.workerFinished = True
+            self.progressWin.close()
+            self.progressWin = None
+                    
+        self.navSpinBox.setValue(next_frame_i+1)
+        self.framesScrollBarReleased()
 
     def workerProgress(self, text, loggerLevel='INFO'):
         if self.progressWin is not None:
@@ -14594,6 +14656,8 @@ class guiWin(QMainWindow):
             self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxSegmItems)
             self.drawIDsContComboBox.setCurrentIndex(1)
             self.modeToolBar.setVisible(False)
+            self.skipToNewIdAction.setVisible(False)
+            self.skipToNewIdAction.setDisabled(True)
             self.modeComboBox.setCurrentText('Snapshot')
             self.annotateToolbar.setVisible(True)
             self.drawIDsContComboBox.currentIndexChanged.connect(
@@ -14613,6 +14677,8 @@ class guiWin(QMainWindow):
             self.manualTrackingAction.setDisabled(False)
             self.modeComboBox.setDisabled(False)
             self.modeMenu.menuAction().setVisible(True)
+            self.skipToNewIdAction.setVisible(True)
+            self.skipToNewIdAction.setDisabled(False)
             try:
                 self.modeComboBox.activated.disconnect()
                 self.modeComboBox.currentIndexChanged.disconnect()
@@ -15398,9 +15464,6 @@ class guiWin(QMainWindow):
         posData.allData_li[posData.frame_i]['labels'] = posData.lab.copy()
         posData.allData_li[posData.frame_i]['IDs'] = posData.IDs.copy()
         if hasattr(self, 'manualBackgroundLab'):
-            printl(self.pos_i)
-            from cellacdc.plot import imshow
-            imshow(posData.manualBackgroundLab)
             posData.allData_li[posData.frame_i]['manualBackgroundLab'] = (
                 posData.manualBackgroundLab
             )
@@ -22202,6 +22265,24 @@ class guiWin(QMainWindow):
         )
         win.exec_()
     
+    def askConcatenate(self):
+        if self.mainWin is None:
+            return
+        
+        txt = html_utils.paragraph(f"""
+            Do you want to <b>concatenate</b> the `acdc_output.csv` tables from 
+            multiple Positions into <b>one single CSV file</b>?<br>
+        """)
+        msg = widgets.myMessageBox()
+        noButton, yesButton = msg.question(
+            self, 'Concatenate tables?', txt, buttonsTexts=('No', 'Yes')
+        )
+        if not msg.clickedButton == yesButton:
+            return
+        
+        posData = self.data[self.pos_i]
+        self.mainWin.launchConcatUtil(exp_folderpath=posData.exp_path)
+        
     def updateSegmDataAutoSaveWorker(self):
         # Update savedSegmData in autosave worker
         posData = self.data[self.pos_i]
@@ -22228,6 +22309,8 @@ class guiWin(QMainWindow):
             self.warnErrorsCustomMetrics()
         
         self.checkManageVersions()
+        
+        self.askConcatenate()
         
         if self.closeGUI:
             salute_string = myutils.get_salute_string()

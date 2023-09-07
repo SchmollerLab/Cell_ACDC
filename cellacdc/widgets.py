@@ -2341,7 +2341,6 @@ class myMessageBox(QDialog):
             func = partial(self.resize, self.width(), self.origHeight)
             QTimer.singleShot(10, func)
 
-
     def _resize(self):
         if self.resizeButtons:
             widths = [button.width() for button in self.buttons]
