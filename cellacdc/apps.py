@@ -7452,6 +7452,15 @@ class imageViewer(QMainWindow):
             self.framesScrollBar.setFixedHeight(self.parent.h)
         except Exception as e:
             pass
+        try:
+            self.zSliceScrollBar.setFixedHeight(self.parent.h)
+        except Exception as e:
+            pass
+        
+        try:
+            self.img.alphaScrollbar.setFixedHeight(self.parent.h)
+        except Exception as e:
+            pass
         if left is not None and top is not None:
             self.setGeometry(left, top, 850, 800)
 

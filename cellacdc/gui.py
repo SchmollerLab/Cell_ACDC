@@ -17,6 +17,7 @@ from importlib import import_module
 from functools import partial
 from tqdm import tqdm
 from natsort import natsorted
+from collections import Counter
 import time
 import cv2
 import math
@@ -13820,46 +13821,67 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         self.slideshowWin.frame_i = posData.frame_i
         self.slideshowWin.update_img()
-
+    
+    def warnLostObjects(self, do_warn=True):
+        if not do_warn:
+            return True
+        
+        if not self.warnLostCellsAction.isChecked():
+            return True
+        
+        mode = str(self.modeComboBox.currentText())
+        if not mode == 'Segmentation and Tracking':
+            return
+        
+        posData = self.data[self.pos_i]
+        if not posData.lost_IDs:
+            return True
+        
+        frame_i = posData.frame_i
+        try:
+            accepted_lost_IDs = posData.accepted_lost_IDs.get(frame_i, [])
+            already_accepted_lost = (
+                Counter(accepted_lost_IDs) == Counter(posData.lost_IDs)
+            )
+        except AttributeError as err:
+            already_accepted_lost = False
+        
+        if already_accepted_lost:
+            return True
+        
+        msg = widgets.myMessageBox()
+        warn_msg = html_utils.paragraph(
+            'Current frame (compared to previous frame) '
+            'has <b>lost the following cells</b>:<br><br>'
+            f'{posData.lost_IDs}<br><br>'
+            'Are you <b>sure</b> you want to continue?<br>'
+        )
+        checkBox = QCheckBox('Do not show again')
+        noButton, yesButton = msg.warning(
+            self, 'Lost cells!', warn_msg,
+            buttonsTexts=('No', 'Yes'),
+            widgets=checkBox
+        )
+        doNotWarnLostCells = not checkBox.isChecked()
+        self.warnLostCellsAction.setChecked(doNotWarnLostCells)
+        if msg.clickedButton == noButton:
+            return False
+        
+        if not hasattr(posData, 'accepted_lost_IDs'):
+            posData.accepted_lost_IDs = {}
+        if frame_i not in posData.accepted_lost_IDs:
+            posData.accepted_lost_IDs[frame_i] = []
+        
+        posData.accepted_lost_IDs[frame_i].extend(posData.lost_IDs)
+        return True
+        
     def next_frame(self, warn=True):
         mode = str(self.modeComboBox.currentText())
-        isSegmMode =  mode == 'Segmentation and Tracking'
         posData = self.data[self.pos_i]
         if posData.frame_i < posData.SizeT-1:
-            if 'lost' in self.titleLabel.text and isSegmMode and warn:
-                if self.warnLostCellsAction.isChecked():
-                    msg = widgets.myMessageBox()
-                    warn_msg = html_utils.paragraph(
-                        'Current frame (compared to previous frame) '
-                        'has <b>lost the following cells</b>:<br><br>'
-                        f'{posData.lost_IDs}<br><br>'
-                        'Are you <b>sure</b> you want to continue?<br>'
-                    )
-                    checkBox = QCheckBox('Do not show again')
-                    noButton, yesButton = msg.warning(
-                        self, 'Lost cells!', warn_msg,
-                        buttonsTexts=('No', 'Yes'),
-                        widgets=checkBox
-                    )
-                    doNotWarnLostCells = not checkBox.isChecked()
-                    self.warnLostCellsAction.setChecked(doNotWarnLostCells)
-                    if msg.clickedButton == noButton:
-                        return
-            if 'multiple' in self.titleLabel.text and mode != 'Viewer' and warn:
-                msg = widgets.myMessageBox(showCentered=False, wrapText=False)
-                warn_msg = html_utils.paragraph(
-                    'Current frame contains <b>cells with MULTIPLE contours</b> '
-                    '(see title message above the images)<br><br>'
-                    'This is potentially an issue indicating that <b>two distant cells '
-                    'have been merged</b>.<br><br>'
-                    'Are you sure you want to continue?'
-                )
-                noButton, yesButton = msg.warning(
-                   self, 'Multiple contours detected!', warn_msg, 
-                   buttonsTexts=('No', 'Yes')
-                )
-                if msg.cancel or msg.clickedButton==noButton:
-                    return
+            proceed = self.warnLostObjects()
+            if not proceed:
+                return
 
             if posData.frame_i <= 0 and mode == 'Cell cycle analysis':
                 IDs = [obj.label for obj in posData.rp]
@@ -22080,6 +22102,7 @@ class guiWin(QMainWindow):
         self.store_data(autosave=False)
         self.applyDelROIs()
         self.store_data()
+        self._isQuickSave = isQuickSave
 
         # Wait autosave worker to finish
         for worker, thread in self.autoSaveActiveWorkers:
@@ -22266,6 +22289,9 @@ class guiWin(QMainWindow):
     
     def askConcatenate(self):
         if self.mainWin is None:
+            return
+        
+        if self._isQuickSave:
             return
         
         txt = html_utils.paragraph(f"""
