@@ -42,7 +42,7 @@ from functools import wraps
 from skimage.color import gray2rgb, gray2rgba, label2rgb
 
 from qtpy.QtCore import (
-    Qt, QPointF, QTextStream, QSize, QRect, QRectF,
+    Qt, QPoint, QTextStream, QSize, QRect, QRectF,
     QEventLoop, QTimer, QEvent, QObject, Signal,
     QThread, QMutex, QWaitCondition, QSettings
 )
@@ -971,6 +971,7 @@ class guiWin(QMainWindow):
         self.pos_i = 0
         self.save_until_frame_i = 0
         self.countKeyPress = 0
+        self.countRightClicks = 0
         self.xHoverImg, self.yHoverImg = None, None
 
         # Buttons added to QButtonGroup will be mutually exclusive
@@ -1746,7 +1747,7 @@ class guiWin(QMainWindow):
             'Toggle "Edit ID" mode ON/OFF\n\n'
             'EXAMPLE: manually change ID of a cell\n\n'
             'ACTION: right-click on cell\n\n'
-            'SHORTCUT: "N" key')
+            'SHORTCUT: "N" key or double right-click on an object')
         editToolBar.addWidget(self.editIDbutton)
         self.checkableButtons.append(self.editIDbutton)
         self.checkableQButtonsGroup.addButton(self.editIDbutton)
@@ -4454,10 +4455,15 @@ class guiWin(QMainWindow):
         is_event_from_img1 = False
         if hasattr(event, 'isImg1Sender'):
             is_event_from_img1 = event.isImg1Sender
-        showLabelsGradMenu = (
-            right_click and not is_right_click_action_ON
-            and not is_event_from_img1 and not middle_click
+        
+        is_only_right_click = (
+            right_click and not is_right_click_action_ON and not middle_click
         )
+        
+        showLabelsGradMenu = (
+            is_only_right_click and not is_event_from_img1
+        )
+        
         if showLabelsGradMenu:
             self.labelsGrad.showMenu(event)
             event.ignore()
@@ -6103,12 +6109,8 @@ class guiWin(QMainWindow):
             x, y = None, None
         self.updateLabelRoiCircularCursor(x, y, setLabelRoiCircCursor)
     
-    def gui_imgGradShowContextMenu(self, event):
-        try:
-            # Convert QPointF to QPoint
-            self.imgGrad.gradient.menu.popup(event.screenPos().toPoint())
-        except AttributeError:
-            self.imgGrad.gradient.menu.popup(event.screenPos())
+    def gui_imgGradShowContextMenu(self, x, y):
+        self.imgGrad.gradient.menu.popup(QPoint(int(x), int(y)))
     
     def gui_rightImageShowContextMenu(self, event):
         try:
@@ -6832,11 +6834,30 @@ class guiWin(QMainWindow):
             and not isMod and not is_right_click_action_ON
             and not is_right_click_custom_ON and not copyContourON
         )
-
+        
+        # printl(
+        #     f'{isOnlyRightClick = }\n'
+        #     f'{self.isDoubleRightClick = }\n'
+        #     f'{self.doubleRightClickTimeElapsed = }\n'
+        #     f'{self.countRightClicks = }'
+        # )
+        
         if isOnlyRightClick:
-            self.gui_imgGradShowContextMenu(event)
-            event.ignore()
-            return
+            if self.countRightClicks == 0:
+                self.isDoubleRightClick = False
+                self.countRightClicks = 1
+                self.doubleRightClickTimeElapsed = False
+                screenPos = event.screenPos()
+                self._img1_click_xy = (screenPos.x(), screenPos.y())
+                QTimer.singleShot(400, self.doubleRightClickTimerCallBack)
+                return
+            elif (
+                self.countRightClicks == 1 
+                and not self.doubleRightClickTimeElapsed
+            ):            
+                self.isDoubleRightClick = True
+                self.countRightClicks = 0
+                self.editIDbutton.setChecked(True)
 
         # Left click actions
         canCurv = (
@@ -11648,6 +11669,16 @@ class guiWin(QMainWindow):
                             self.eraserButton
                         )
 
+    def doubleRightClickTimerCallBack(self):
+        if self.isDoubleRightClick:
+            self.doubleRightClickTimeElapsed = False
+            return
+        self.doubleRightClickTimeElapsed = True
+        self.countRightClicks = 0
+        
+        # Time to double right click on img1 expired --> single right-click
+        self.gui_imgGradShowContextMenu(*self._img1_click_xy)        
+    
     def doubleKeyTimerCallBack(self):
         if self.isKeyDoublePress:
             self.doubleKeyTimeElapsed = False
@@ -15119,6 +15150,8 @@ class guiWin(QMainWindow):
         self.lastManualSeparateState = None
         self.editIDmergeIDs = True
         self.doNotAskAgainExistingID = False
+        self.doubleRightClickTimeElapsed = False
+        self.isDoubleRightClick = False
         self.highlightedIDopts = None
         self.keptObjectsIDs = widgets.KeptObjectIDsList(
             self.keptIDsLineEdit, self.keepIDsConfirmAction
