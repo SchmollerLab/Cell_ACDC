@@ -10228,7 +10228,6 @@ class guiWin(QMainWindow):
             )
             selectFluo.exec_()
             keys = selectFluo.selectedItemsText
-            key = keys[0]
             if selectFluo.cancel or not keys:
                 return
             else:

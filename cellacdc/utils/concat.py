@@ -19,8 +19,8 @@ class concatWin(NewThreadMultipleExpBaseUtil):
         )
         self.expPaths = expPaths
     
-    def runWorker(self):
-        self.worker = workers.ConcatAcdcDfsWorker(self)
+    def runWorker(self, format='CSV'):
+        self.worker = workers.ConcatAcdcDfsWorker(self, format=format)
         self.worker.sigAskFolder.connect(self.askFolderWhereToSaveAllExp)
         self.worker.sigAborted.connect(self.workerAborted)
         self.worker.sigAskAppendName.connect(self.askAppendName)
@@ -111,7 +111,24 @@ class concatWin(NewThreadMultipleExpBaseUtil):
         self.worker.waitCond.wakeAll()
     
     def showEvent(self, event):
-        self.runWorker()
+        formats = (
+            'CSV (Comma Separated Values)', 
+            'XLS (Excel)'
+        )
+        selectFormatWin = widgets.QDialogListbox(
+            'Select output file format',
+            'Select format of the output file\n',
+            formats, multiSelection=False, parent=self
+        )
+        selectFormatWin.exec_()
+        if selectFormatWin.cancel:
+            return
+        
+        if selectFormatWin.selectedItemsText[0].startswith('CSV'):
+            self._ext = '.csv'
+        else:
+            self._ext = '.xlsx'
+        self.runWorker(format=selectFormatWin.selectedItemsText[0])
     
     def askAppendName(self, basename, existingEndnames):
         win = apps.filenameDialog(
@@ -119,7 +136,7 @@ class concatWin(NewThreadMultipleExpBaseUtil):
             hintText='Insert a name for the <b>concatenated table</b> file:',
             existingNames=existingEndnames, 
             allowEmpty=True,
-            ext='.csv'
+            ext=self._ext
         )
         win.exec_()
         if win.cancel:

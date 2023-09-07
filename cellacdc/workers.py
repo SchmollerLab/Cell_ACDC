@@ -2818,8 +2818,12 @@ class ConcatAcdcDfsWorker(BaseWorkerUtil):
     sigSetMeasurements = Signal(object)
     sigAskAppendName = Signal(str, list)
 
-    def __init__(self, mainWin):
+    def __init__(self, mainWin, format='CSV'):
         super().__init__(mainWin)
+        if format.startswith('CSV'):
+            self._to_format = 'to_csv'
+        elif format.startswith('XLS'):
+            self._to_format = 'to_excel'
     
     def emitSetMeasurements(self, kwargs):
         self.mutex.lock()
@@ -2945,7 +2949,8 @@ class ConcatAcdcDfsWorker(BaseWorkerUtil):
                 'Saving all positions concatenated file to '
                 f'"{acdc_dfs_allpos_filepath}"'
             )
-            acdc_df_allpos.to_csv(acdc_dfs_allpos_filepath)
+            to_format_func = getattr(acdc_df_allpos, self._to_format)
+            to_format_func(acdc_dfs_allpos_filepath)
             self.acdc_dfs_allpos_filepath = acdc_dfs_allpos_filepath
 
         if len(keys_exp) > 1:
@@ -2968,7 +2973,8 @@ class ConcatAcdcDfsWorker(BaseWorkerUtil):
                 'Saving multiple experiments concatenated file to '
                 f'"{acdc_dfs_allexp_filepath}"'
             )
-            acdc_df_allexp.to_csv(acdc_dfs_allexp_filepath)
+            to_format_func = getattr(acdc_df_allpos, self._to_format)
+            to_format_func(acdc_dfs_allexp_filepath)
 
         self.signals.finished.emit(self)
 
