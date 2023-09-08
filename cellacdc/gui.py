@@ -8899,11 +8899,14 @@ class guiWin(QMainWindow):
                 Saved data is not changed of course.<br><br>
                 Apply assignment or cancel process?
             """)
-            msg = QMessageBox()
-            enforce_assignment = msg.warning(
-               self, 'Cell not eligible', err_msg, msg.Apply | msg.Cancel
+            applyButton = widgets.okPushButton(isDefault=False)
+            applyButton.setText('Apply and remove future annotations')
+            msg = widgets.myMessageBox()
+            _, applyButton = msg.warning(
+               self, 'Cell not eligible', err_msg, 
+               buttonsTexts=('Cancel', applyButton)
             )
-            cancel = enforce_assignment == msg.Cancel
+            cancel = msg.cancel
         elif why == 'not_G1_in_the_past':
             err_msg = html_utils.paragraph(f"""
                 The requested cell in G1
@@ -8915,11 +8918,11 @@ class guiWin(QMainWindow):
                 One possible solution is to first go to frame {i+1} and
                 assign the bud of cell {new_mothID} to another cell.
             """)
-            msg = QMessageBox()
+            msg = widgets.myMessageBox()
             msg.warning(
-               self, 'Cell not eligible', err_msg, msg.Ok
+               self, 'Cell not eligible', err_msg
             )
-            cancel = None
+            cancel = msg.cancel
         elif why == 'single_frame_G1_duration':
             err_msg = html_utils.paragraph(f"""
                 Assigning bud ID {budID} to cell in G1
@@ -8936,7 +8939,7 @@ class guiWin(QMainWindow):
             msg.warning(
                self, 'Cell not eligible', err_msg
             )
-            cancel = None
+            cancel = msg.cancel
         return cancel
     
     def warnSettingHistoryKnownCellsFirstFrame(self, ID):
@@ -8956,6 +8959,7 @@ class guiWin(QMainWindow):
         Check that the new mother is in G1 for the entire life of the bud
         and that the G1 duration is > than 1 frame
         """
+        last_cca_frame_i = self.navigateScrollBar.maximum()-1
         posData = self.data[self.pos_i]
         eligible = True
 
@@ -8981,7 +8985,7 @@ class guiWin(QMainWindow):
                 cancel = self.warnMotherNotEligible(
                     new_mothID, budID, i, 'not_G1_in_the_future'
                 )
-                if cancel or G1_duration == 1:
+                if cancel or (G1_duration == 1 and i != last_cca_frame_i):
                     eligible = False
                     return eligible
                 else:
@@ -9124,6 +9128,7 @@ class guiWin(QMainWindow):
     def getStatus_RelID_BeforeEmergence(self, budID, curr_mothID):
         posData = self.data[self.pos_i]
         # Get status of the current mother before it had budID assigned to it
+        cca_status_before_bud_emerg = None
         for i in range(posData.frame_i-1, -1, -1):
             # Get cca_df for ith frame from allData_li
             cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
@@ -9132,12 +9137,13 @@ class guiWin(QMainWindow):
             if not is_bud_existing:
                 # Bud was not emerged yet
                 if curr_mothID in cca_df_i.index:
-                    return cca_df_i.loc[curr_mothID]
+                    cca_status_before_bud_emerg = cca_df_i.loc[curr_mothID]
+                    return cca_status_before_bud_emerg
                 else:
                     # The bud emerged together with the mother because
                     # they appeared together from outside of the fov
                     # and they were trated as new IDs bud in S0
-                    return pd.Series({
+                    cca_status_before_bud_emerg = pd.Series({
                         'cell_cycle_stage': 'S',
                         'generation_num': 0,
                         'relative_ID': -1,
@@ -9148,6 +9154,15 @@ class guiWin(QMainWindow):
                         'corrected_assignment': False,
                         'will_divide': 0
                     })
+                    return cca_status_before_bud_emerg
+        
+        # Mother did not have a status before bud emergence because it was
+        # already paired with bud at first frame --> reinit to default
+        cca_status_before_bud_emerg = (
+            core.getBaseCca_df([curr_mothID]).loc[curr_mothID]
+        )
+        return cca_status_before_bud_emerg
+        
 
     def assignBudMoth(self):
         """
@@ -9241,20 +9256,11 @@ class guiWin(QMainWindow):
         posData.cca_df.at[new_mothID, 'cell_cycle_stage'] = 'S'
         posData.cca_df.at[new_mothID, 'relationship'] = 'mother'
 
+        
         if curr_mothID in posData.cca_df.index:
             # Cells with UNKNOWN history has relative's ID = -1
             # which is not an existing cell
             posData.cca_df.loc[curr_mothID] = curr_moth_cca
-
-        bud_obj_idx = posData.IDs.index(budID)
-        new_moth_obj_idx = posData.IDs.index(new_mothID)
-        if curr_mothID in posData.cca_df.index:
-            curr_moth_obj_idx = posData.IDs.index(curr_mothID)
-        rp_budID = posData.rp[bud_obj_idx]
-        rp_new_mothID = posData.rp[new_moth_obj_idx]
-
-        if curr_mothID in posData.cca_df.index:
-            rp_curr_mothID = posData.rp[curr_moth_obj_idx]
 
         self.updateAllImages()
 
@@ -16586,7 +16592,7 @@ class guiWin(QMainWindow):
                 # No cell cycle info present
                 continue
 
-            df.drop(self.cca_df_colnames, axis=1, inplace=True)
+            df = df.drop(columns=self.cca_df_colnames)
             posData.allData_li[i]['acdc_df'] = df
 
     def get_cca_df(self, frame_i=None, return_df=False):
