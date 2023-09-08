@@ -9215,8 +9215,6 @@ class guiWin(QMainWindow):
                 posData.cca_df.at[currentRelID, 'relative_ID'] = -1
                 posData.cca_df.at[currentRelID, 'generation_num'] = 2
                 posData.cca_df.at[currentRelID, 'cell_cycle_stage'] = 'G1'
-                currentRelObjIdx = posData.IDs.index(currentRelID)
-                currentRelObj = posData.rp[currentRelObjIdx]
             posData.cca_df.at[budID, 'relationship'] = 'bud'
             posData.cca_df.at[budID, 'generation_num'] = 0
             posData.cca_df.at[budID, 'relative_ID'] = new_mothID
@@ -9224,8 +9222,6 @@ class guiWin(QMainWindow):
             posData.cca_df.at[new_mothID, 'relative_ID'] = budID
             posData.cca_df.at[new_mothID, 'generation_num'] = 2
             posData.cca_df.at[new_mothID, 'cell_cycle_stage'] = 'S'
-            bud_obj_idx = posData.IDs.index(budID)
-            new_moth_obj_idx = posData.IDs.index(new_mothID)
             self.updateAllImages()
             self.store_cca_df()
             return
@@ -16558,6 +16554,9 @@ class guiWin(QMainWindow):
     def reset_will_divide_info(self):
         posData = self.data[self.pos_i]
         
+        posData.cca_df['will_divide'] = 0
+        self.store_cca_df()
+        
         IDs_in_S = posData.cca_df[posData.cca_df.cell_cycle_stage == 'S'].index
 
         # Reset will divide to 0 in the past S frames where division 
@@ -22128,7 +22127,7 @@ class guiWin(QMainWindow):
         return msg.cancel
 
     def waitAutoSaveWorker(self, worker):
-        if worker.isFinished or worker.isPaused or worker.dataQ.empty():
+        if worker.isFinished or worker.isPaused or len(worker.dataQ) == 0:
             self.waitAutoSaveWorkerLoop.exit()
             self.waitAutoSaveWorkerTimer.stop()
             self.setSaturBarLabel(log=False)
