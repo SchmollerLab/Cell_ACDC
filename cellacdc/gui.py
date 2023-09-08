@@ -6559,27 +6559,13 @@ class guiWin(QMainWindow):
             if relationship == 'bud' and posData.frame_i > 0 and is_history_known:
                 self.assignBudMothButton.setChecked(False)
                 txt = html_utils.paragraph(
-                    f'You clicked on <b>ID {ID}</b> which is a <b>BUD</b>.<br>'
-                    'To assign a bud to a cell <b>start by clicking on a bud</b> '
+                    f'You clicked on <b>ID {ID}</b> which is a <b>BUD</b>.<br><br>'
+                    'To assign a bud <b>start by clicking on the bud</b> '
                     'and release on a cell in G1'
                 )
                 msg = widgets.myMessageBox()
                 msg.critical(
                     self, 'Released on a bud', txt
-                )
-                self.assignBudMothButton.setChecked(True)
-                return
-
-            elif ccs != 'G1' and posData.frame_i > 0:
-                self.assignBudMothButton.setChecked(False)
-                txt = html_utils.paragraph(
-                    f'You clicked on <b>ID={ID}</b> which is <b>NOT in G1</b>.<br>'
-                    'To assign a bud to a cell start by clicking on a bud '
-                    'and release on a cell in G1'
-                )
-                msg = widgets.myMessageBox()
-                msg.critical(
-                    self, 'Released on a cell NOT in G1', txt
                 )
                 self.assignBudMothButton.setChecked(True)
                 return
@@ -6641,7 +6627,13 @@ class guiWin(QMainWindow):
 
             self.clickedOnHistoryKnown = is_history_known
             self.xClickMoth, self.yClickMoth = xdata, ydata
-            self.assignBudMoth()
+            
+            if ccs != 'G1' and posData.frame_i > 0:
+                self.assignBudMothButton.setChecked(False)
+                self.onMotherNotInG1(ID)
+                self.assignBudMothButton.setChecked(True)
+            else:
+                self.assignBudMoth()
 
             if not self.assignBudMothButton.findChild(QAction).isChecked():
                 self.assignBudMothButton.setChecked(False)
@@ -8605,6 +8597,7 @@ class guiWin(QMainWindow):
             rp_relID = posData.rp[relObj_idx]
         
         self.setAllTextAnnotations()
+        self.drawAllMothBudLines()
 
         self.store_cca_df()
 
@@ -9185,8 +9178,9 @@ class guiWin(QMainWindow):
               before being assigned to the clicked bud
         """
         posData = self.data[self.pos_i]
-        budID = self.get_2Dlab(posData.lab)[self.yClickBud, self.xClickBud]
-        new_mothID = self.get_2Dlab(posData.lab)[self.yClickMoth, self.xClickMoth]
+        lab2D = self.get_2Dlab(posData.lab)
+        budID = lab2D[self.yClickBud, self.xClickBud]
+        new_mothID = lab2D[self.yClickMoth, self.xClickMoth]
 
         if budID == new_mothID:
             return
@@ -9240,6 +9234,7 @@ class guiWin(QMainWindow):
         # Store cca_df for undo action
         undoId = uuid.uuid4()
         self.storeUndoRedoCca(posData.frame_i, posData.cca_df, undoId)
+        
         # Correct current frames and update LabelItems
         posData.cca_df.at[budID, 'relative_ID'] = new_mothID
         posData.cca_df.at[budID, 'generation_num'] = 0
@@ -9339,6 +9334,79 @@ class guiWin(QMainWindow):
         
         self.enqAutosave()
     
+    def onMotherNotInG1(self, mothID):
+        txt = html_utils.paragraph(
+            f'You clicked on <b>ID={mothID}</b> which is <b>NOT in G1</b><br><br>'
+            'Do you want to proceed with <b>swapping the mother cells</b>?<br><br>'
+            'NOTE: To assign a bud <b>start by clicking on the bud</b> '
+            'and release on a cell in G1'
+        )
+        msg = widgets.myMessageBox()
+        swapMothersButton = widgets.reloadPushButton('Swap mother cells')
+        _, swapMothersButton = msg.warning(
+            self, 'Released on a cell NOT in G1', txt,
+            buttonsTexts=('Cancel', swapMothersButton)
+        )
+        if msg.cancel:
+            return
+        
+        self.swapMothers()
+    
+    def swapMothers(self):
+        posData = self.data[self.pos_i]
+        
+        # Store cca_df for undo action
+        undoId = uuid.uuid4()
+        self.storeUndoRedoCca(posData.frame_i, posData.cca_df, undoId)
+        
+        lab2D = self.get_2Dlab(posData.lab)
+        budID = lab2D[self.yClickBud, self.xClickBud]
+        otherMothID = lab2D[self.yClickMoth, self.xClickMoth]
+        mothID = posData.cca_df.at[budID, 'relative_ID']
+        otherBudID = posData.cca_df.at[otherMothID, 'relative_ID']
+        
+        self.logger.info(
+            'Swapping assignments:\n'
+            f'  * Bud ID {budID} --> {otherMothID}\n'
+            f'  * Bud ID {otherBudID} --> {mothID}'
+        )
+        
+        pairs = (
+            (otherMothID, budID),
+            (otherBudID, mothID),
+            (budID, otherMothID),
+            (mothID, otherBudID)
+        )
+        
+        for ID1, ID2 in pairs:
+            posData.cca_df.at[ID1, 'relative_ID'] = ID2
+        self.store_cca_df()
+        
+        self.updateAllImages()
+        
+        for i in range(posData.SizeT):
+            if i == posData.frame_i:
+                continue
+            
+            # Get cca_df for ith frame from allData_li
+            cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
+            if cca_df_i is None:
+                # ith frame was not visited yet
+                break
+            
+            self.storeUndoRedoCca(i, cca_df_i, undoId)
+            
+            for ID1, ID2 in pairs:
+                try:
+                    ccs = cca_df_i.at[ID1, 'cell_cycle_stage']
+                    if ccs != 'S':
+                        continue
+                    cca_df_i.at[ID1, 'relative_ID'] = ID2
+                except KeyError:
+                    pass
+            
+            self.store_cca_df(frame_i=i, cca_df=cca_df_i, autosave=False)
+        
     def getClosedSplineCoords(self):
         xxS, yyS = self.curvPlotItem.getData()
         bbox_area = (xxS.max()-xxS.min())*(yyS.max()-yyS.min())
