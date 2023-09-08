@@ -3,6 +3,7 @@ import re
 import os
 import time
 import json
+from collections import deque
 
 from typing import Union, List
 
@@ -493,7 +494,7 @@ class AutoSaveWorker(QObject):
         self.abortSaving = False
         self.isSaving = False
         self.isPaused = False
-        self.dataQ = queue.Queue()
+        self.dataQ = deque(maxlen=5)
         self.isAutoSaveON = False
     
     def pause(self):
@@ -514,8 +515,9 @@ class AutoSaveWorker(QObject):
     def _enqueue(self, posData):
         if DEBUG:
             self.logger.log('Enqueing posData autosave...')
-        self.dataQ.put(posData)
-        if self.dataQ.qsize() == 1:
+        self.dataQ.append(posData)
+        if len(self.dataQ) == 1:
+            # Wake worker upon inserting first element
             self.abortSaving = False
             self.waitCond.wakeAll()
     
@@ -525,8 +527,8 @@ class AutoSaveWorker(QObject):
     
     def abort(self):
         self.abortSaving = True
-        while not self.dataQ.empty():
-            data = self.dataQ.get()
+        while not len(self.dataQ) == 0:
+            data = self.dataQ.pop()
             del data
         self._stop()
     
@@ -536,10 +538,10 @@ class AutoSaveWorker(QObject):
             if self.exit:
                 self.logger.log('Closing autosaving worker...')
                 break
-            elif not self.dataQ.empty():
+            elif not len(self.dataQ) == 0:
                 if DEBUG:
                     self.logger.log('Autosaving...')
-                data = self.dataQ.get()
+                data = self.dataQ.pop()
                 try:
                     self.saveData(data)
                 except Exception as e:
@@ -547,7 +549,7 @@ class AutoSaveWorker(QObject):
                     print('*'*40)
                     self.logger.log(error)
                     print('='*40)
-                if self.dataQ.empty():
+                if len(self.dataQ) == 0:
                     self.sigDone.emit()
             else:
                 self.pause()
@@ -585,7 +587,7 @@ class AutoSaveWorker(QObject):
         segm_npz_path = posData.segm_npz_temp_path
 
         end_i = self.getLastTrackedFrame(posData)
-
+        
         if self.isAutoSaveON:
             if end_i < len(posData.segm_data):
                 saved_segm_data = posData.segm_data
@@ -628,7 +630,7 @@ class AutoSaveWorker(QObject):
             if self.abortSaving:
                 break
         
-        if not self.abortSaving:
+        if not self.abortSaving:            
             if self.isAutoSaveON:
                 segm_data = np.squeeze(saved_segm_data)
                 self._saveSegm(segm_npz_path, posData.segm_npz_path, segm_data)

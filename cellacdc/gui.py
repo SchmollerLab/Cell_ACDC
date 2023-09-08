@@ -6835,14 +6835,8 @@ class guiWin(QMainWindow):
             and not is_right_click_custom_ON and not copyContourON
         )
         
-        # printl(
-        #     f'{isOnlyRightClick = }\n'
-        #     f'{self.isDoubleRightClick = }\n'
-        #     f'{self.doubleRightClickTimeElapsed = }\n'
-        #     f'{self.countRightClicks = }'
-        # )
-        
         if isOnlyRightClick:
+            # Start timer or check if it is a double-right-click
             if self.countRightClicks == 0:
                 self.isDoubleRightClick = False
                 self.countRightClicks = 1
@@ -11385,32 +11379,10 @@ class guiWin(QMainWindow):
     @exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_Q and self.debug:
-            # printl(self.xHoverImg, self.yHoverImg)
-            # printl(self.img1.mapToData(QCursor().pos()))
-            # x, y = QCursor().pos().x(), QCursor().pos().y()
-            # printl(self.graphLayout.mapToScene(x, y))
             posData = self.data[self.pos_i]
-            is_segm_3D = self.isSegm3D
-            # all_metrics_names = measurements.get_all_metrics_names(
-            #     posData, self.user_ch_name, is_segm_3D
-            # )
-            # printl(self.metricsToSave)
-            self.initMetricsToSave(posData)
+            for worker, thread in self.autoSaveActiveWorkers:
+                printl(worker.isAutoSaveON)
             
-            # printl(self.bkgr_metrics_params, pretty=True)
-            printl(self.foregr_metrics_params, pretty=True)
-            printl(self.custom_metrics_params, pretty=True)
-            
-            # from acdctools.plot import imshow
-            # delIDs = posData.allData_li[posData.frame_i]['delROIs_info']['delIDsROI']
-            # printl(delIDs)
-            # self.store_data()
-            # self.applyDelROIs()
-            # stored_lab = posData.allData_li[posData.frame_i]['labels']
-            # imshow(posData.lab, stored_lab, parent=self)
-            
-            printl(self.setMeasWinState, pretty=True)
-        
         if not self.dataIsLoaded:
             self.logger.info(
                 '[WARNING]: Data not loaded yet. '
