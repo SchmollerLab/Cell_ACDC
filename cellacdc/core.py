@@ -65,11 +65,19 @@ def get_indices_dash_pattern(arr, line_length, gap):
 
 def get_line(r0, c0, r1, c1, dashed=True):
     x1, x2 = sorted((c0, c1))
-    m = (r0-r1)/(c0-c1)
-    q = (c0*r1 - c1*r0)/(c0-c1)
-    dist = np.ceil(np.sqrt(np.square(r0-r1)+np.square(c0-c1)))
-    xx = np.linspace(x1, x2, int(dist))
-    yy = xx*m+q
+    Dc = (c0-c1)
+    Dr = (r0-r1)
+    dist = np.ceil(np.sqrt(np.square(Dr)+np.square(Dc)))
+    
+    if Dc == 0:
+        xx = np.array([c0]*int(dist))
+        y1, y2 = sorted((r0, r1))
+        yy = np.linspace(y1, y2, len(xx))
+    else:
+        xx = np.linspace(x1, x2, int(dist))
+        m = Dr/Dc
+        q = (c0*r1 - c1*r0)/Dc
+        yy = xx*m+q
     if dashed:
         indices = get_indices_dash_pattern(xx, 4, 3)
         xx = xx[indices]
