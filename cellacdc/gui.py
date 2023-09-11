@@ -42,7 +42,7 @@ from functools import wraps
 from skimage.color import gray2rgb, gray2rgba, label2rgb
 
 from qtpy.QtCore import (
-    Qt, QPointF, QTextStream, QSize, QRect, QRectF,
+    Qt, QPoint, QTextStream, QSize, QRect, QRectF,
     QEventLoop, QTimer, QEvent, QObject, Signal,
     QThread, QMutex, QWaitCondition, QSettings
 )
@@ -971,6 +971,7 @@ class guiWin(QMainWindow):
         self.pos_i = 0
         self.save_until_frame_i = 0
         self.countKeyPress = 0
+        self.countRightClicks = 0
         self.xHoverImg, self.yHoverImg = None, None
 
         # Buttons added to QButtonGroup will be mutually exclusive
@@ -1746,7 +1747,7 @@ class guiWin(QMainWindow):
             'Toggle "Edit ID" mode ON/OFF\n\n'
             'EXAMPLE: manually change ID of a cell\n\n'
             'ACTION: right-click on cell\n\n'
-            'SHORTCUT: "N" key')
+            'SHORTCUT: "N" key or double right-click on an object')
         editToolBar.addWidget(self.editIDbutton)
         self.checkableButtons.append(self.editIDbutton)
         self.checkableQButtonsGroup.addButton(self.editIDbutton)
@@ -4454,10 +4455,15 @@ class guiWin(QMainWindow):
         is_event_from_img1 = False
         if hasattr(event, 'isImg1Sender'):
             is_event_from_img1 = event.isImg1Sender
-        showLabelsGradMenu = (
-            right_click and not is_right_click_action_ON
-            and not is_event_from_img1 and not middle_click
+        
+        is_only_right_click = (
+            right_click and not is_right_click_action_ON and not middle_click
         )
+        
+        showLabelsGradMenu = (
+            is_only_right_click and not is_event_from_img1
+        )
+        
         if showLabelsGradMenu:
             self.labelsGrad.showMenu(event)
             event.ignore()
@@ -6103,12 +6109,8 @@ class guiWin(QMainWindow):
             x, y = None, None
         self.updateLabelRoiCircularCursor(x, y, setLabelRoiCircCursor)
     
-    def gui_imgGradShowContextMenu(self, event):
-        try:
-            # Convert QPointF to QPoint
-            self.imgGrad.gradient.menu.popup(event.screenPos().toPoint())
-        except AttributeError:
-            self.imgGrad.gradient.menu.popup(event.screenPos())
+    def gui_imgGradShowContextMenu(self, x, y):
+        self.imgGrad.gradient.menu.popup(QPoint(int(x), int(y)))
     
     def gui_rightImageShowContextMenu(self, event):
         try:
@@ -6557,27 +6559,13 @@ class guiWin(QMainWindow):
             if relationship == 'bud' and posData.frame_i > 0 and is_history_known:
                 self.assignBudMothButton.setChecked(False)
                 txt = html_utils.paragraph(
-                    f'You clicked on <b>ID {ID}</b> which is a <b>BUD</b>.<br>'
-                    'To assign a bud to a cell <b>start by clicking on a bud</b> '
+                    f'You clicked on <b>ID {ID}</b> which is a <b>BUD</b>.<br><br>'
+                    'To assign a bud <b>start by clicking on the bud</b> '
                     'and release on a cell in G1'
                 )
                 msg = widgets.myMessageBox()
                 msg.critical(
                     self, 'Released on a bud', txt
-                )
-                self.assignBudMothButton.setChecked(True)
-                return
-
-            elif ccs != 'G1' and posData.frame_i > 0:
-                self.assignBudMothButton.setChecked(False)
-                txt = html_utils.paragraph(
-                    f'You clicked on <b>ID={ID}</b> which is <b>NOT in G1</b>.<br>'
-                    'To assign a bud to a cell start by clicking on a bud '
-                    'and release on a cell in G1'
-                )
-                msg = widgets.myMessageBox()
-                msg.critical(
-                    self, 'Released on a cell NOT in G1', txt
                 )
                 self.assignBudMothButton.setChecked(True)
                 return
@@ -6639,7 +6627,13 @@ class guiWin(QMainWindow):
 
             self.clickedOnHistoryKnown = is_history_known
             self.xClickMoth, self.yClickMoth = xdata, ydata
-            self.assignBudMoth()
+            
+            if ccs != 'G1' and posData.frame_i > 0:
+                self.assignBudMothButton.setChecked(False)
+                self.onMotherNotInG1(ID)
+                self.assignBudMothButton.setChecked(True)
+            else:
+                self.assignBudMoth()
 
             if not self.assignBudMothButton.findChild(QAction).isChecked():
                 self.assignBudMothButton.setChecked(False)
@@ -6832,11 +6826,24 @@ class guiWin(QMainWindow):
             and not isMod and not is_right_click_action_ON
             and not is_right_click_custom_ON and not copyContourON
         )
-
+        
         if isOnlyRightClick:
-            self.gui_imgGradShowContextMenu(event)
-            event.ignore()
-            return
+            # Start timer or check if it is a double-right-click
+            if self.countRightClicks == 0:
+                self.isDoubleRightClick = False
+                self.countRightClicks = 1
+                self.doubleRightClickTimeElapsed = False
+                screenPos = event.screenPos()
+                self._img1_click_xy = (screenPos.x(), screenPos.y())
+                QTimer.singleShot(400, self.doubleRightClickTimerCallBack)
+                return
+            elif (
+                self.countRightClicks == 1 
+                and not self.doubleRightClickTimeElapsed
+            ):            
+                self.isDoubleRightClick = True
+                self.countRightClicks = 0
+                self.editIDbutton.setChecked(True)
 
         # Left click actions
         canCurv = (
@@ -8590,6 +8597,7 @@ class guiWin(QMainWindow):
             rp_relID = posData.rp[relObj_idx]
         
         self.setAllTextAnnotations()
+        self.drawAllMothBudLines()
 
         self.store_cca_df()
 
@@ -8884,11 +8892,14 @@ class guiWin(QMainWindow):
                 Saved data is not changed of course.<br><br>
                 Apply assignment or cancel process?
             """)
-            msg = QMessageBox()
-            enforce_assignment = msg.warning(
-               self, 'Cell not eligible', err_msg, msg.Apply | msg.Cancel
+            applyButton = widgets.okPushButton(isDefault=False)
+            applyButton.setText('Apply and remove future annotations')
+            msg = widgets.myMessageBox()
+            _, applyButton = msg.warning(
+               self, 'Cell not eligible', err_msg, 
+               buttonsTexts=('Cancel', applyButton)
             )
-            cancel = enforce_assignment == msg.Cancel
+            cancel = msg.cancel
         elif why == 'not_G1_in_the_past':
             err_msg = html_utils.paragraph(f"""
                 The requested cell in G1
@@ -8900,11 +8911,11 @@ class guiWin(QMainWindow):
                 One possible solution is to first go to frame {i+1} and
                 assign the bud of cell {new_mothID} to another cell.
             """)
-            msg = QMessageBox()
+            msg = widgets.myMessageBox()
             msg.warning(
-               self, 'Cell not eligible', err_msg, msg.Ok
+               self, 'Cell not eligible', err_msg
             )
-            cancel = None
+            cancel = msg.cancel
         elif why == 'single_frame_G1_duration':
             err_msg = html_utils.paragraph(f"""
                 Assigning bud ID {budID} to cell in G1
@@ -8921,7 +8932,7 @@ class guiWin(QMainWindow):
             msg.warning(
                self, 'Cell not eligible', err_msg
             )
-            cancel = None
+            cancel = msg.cancel
         return cancel
     
     def warnSettingHistoryKnownCellsFirstFrame(self, ID):
@@ -8941,6 +8952,7 @@ class guiWin(QMainWindow):
         Check that the new mother is in G1 for the entire life of the bud
         and that the G1 duration is > than 1 frame
         """
+        last_cca_frame_i = self.navigateScrollBar.maximum()-1
         posData = self.data[self.pos_i]
         eligible = True
 
@@ -8966,7 +8978,7 @@ class guiWin(QMainWindow):
                 cancel = self.warnMotherNotEligible(
                     new_mothID, budID, i, 'not_G1_in_the_future'
                 )
-                if cancel or G1_duration == 1:
+                if cancel or (G1_duration == 1 and i != last_cca_frame_i):
                     eligible = False
                     return eligible
                 else:
@@ -9109,6 +9121,7 @@ class guiWin(QMainWindow):
     def getStatus_RelID_BeforeEmergence(self, budID, curr_mothID):
         posData = self.data[self.pos_i]
         # Get status of the current mother before it had budID assigned to it
+        cca_status_before_bud_emerg = None
         for i in range(posData.frame_i-1, -1, -1):
             # Get cca_df for ith frame from allData_li
             cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
@@ -9117,12 +9130,13 @@ class guiWin(QMainWindow):
             if not is_bud_existing:
                 # Bud was not emerged yet
                 if curr_mothID in cca_df_i.index:
-                    return cca_df_i.loc[curr_mothID]
+                    cca_status_before_bud_emerg = cca_df_i.loc[curr_mothID]
+                    return cca_status_before_bud_emerg
                 else:
                     # The bud emerged together with the mother because
                     # they appeared together from outside of the fov
                     # and they were trated as new IDs bud in S0
-                    return pd.Series({
+                    cca_status_before_bud_emerg = pd.Series({
                         'cell_cycle_stage': 'S',
                         'generation_num': 0,
                         'relative_ID': -1,
@@ -9133,6 +9147,15 @@ class guiWin(QMainWindow):
                         'corrected_assignment': False,
                         'will_divide': 0
                     })
+                    return cca_status_before_bud_emerg
+        
+        # Mother did not have a status before bud emergence because it was
+        # already paired with bud at first frame --> reinit to default
+        cca_status_before_bud_emerg = (
+            core.getBaseCca_df([curr_mothID]).loc[curr_mothID]
+        )
+        return cca_status_before_bud_emerg
+        
 
     def assignBudMoth(self):
         """
@@ -9155,8 +9178,9 @@ class guiWin(QMainWindow):
               before being assigned to the clicked bud
         """
         posData = self.data[self.pos_i]
-        budID = self.get_2Dlab(posData.lab)[self.yClickBud, self.xClickBud]
-        new_mothID = self.get_2Dlab(posData.lab)[self.yClickMoth, self.xClickMoth]
+        lab2D = self.get_2Dlab(posData.lab)
+        budID = lab2D[self.yClickBud, self.xClickBud]
+        new_mothID = lab2D[self.yClickMoth, self.xClickMoth]
 
         if budID == new_mothID:
             return
@@ -9185,8 +9209,6 @@ class guiWin(QMainWindow):
                 posData.cca_df.at[currentRelID, 'relative_ID'] = -1
                 posData.cca_df.at[currentRelID, 'generation_num'] = 2
                 posData.cca_df.at[currentRelID, 'cell_cycle_stage'] = 'G1'
-                currentRelObjIdx = posData.IDs.index(currentRelID)
-                currentRelObj = posData.rp[currentRelObjIdx]
             posData.cca_df.at[budID, 'relationship'] = 'bud'
             posData.cca_df.at[budID, 'generation_num'] = 0
             posData.cca_df.at[budID, 'relative_ID'] = new_mothID
@@ -9194,8 +9216,6 @@ class guiWin(QMainWindow):
             posData.cca_df.at[new_mothID, 'relative_ID'] = budID
             posData.cca_df.at[new_mothID, 'generation_num'] = 2
             posData.cca_df.at[new_mothID, 'cell_cycle_stage'] = 'S'
-            bud_obj_idx = posData.IDs.index(budID)
-            new_moth_obj_idx = posData.IDs.index(new_mothID)
             self.updateAllImages()
             self.store_cca_df()
             return
@@ -9214,6 +9234,7 @@ class guiWin(QMainWindow):
         # Store cca_df for undo action
         undoId = uuid.uuid4()
         self.storeUndoRedoCca(posData.frame_i, posData.cca_df, undoId)
+        
         # Correct current frames and update LabelItems
         posData.cca_df.at[budID, 'relative_ID'] = new_mothID
         posData.cca_df.at[budID, 'generation_num'] = 0
@@ -9226,20 +9247,11 @@ class guiWin(QMainWindow):
         posData.cca_df.at[new_mothID, 'cell_cycle_stage'] = 'S'
         posData.cca_df.at[new_mothID, 'relationship'] = 'mother'
 
+        
         if curr_mothID in posData.cca_df.index:
             # Cells with UNKNOWN history has relative's ID = -1
             # which is not an existing cell
             posData.cca_df.loc[curr_mothID] = curr_moth_cca
-
-        bud_obj_idx = posData.IDs.index(budID)
-        new_moth_obj_idx = posData.IDs.index(new_mothID)
-        if curr_mothID in posData.cca_df.index:
-            curr_moth_obj_idx = posData.IDs.index(curr_mothID)
-        rp_budID = posData.rp[bud_obj_idx]
-        rp_new_mothID = posData.rp[new_moth_obj_idx]
-
-        if curr_mothID in posData.cca_df.index:
-            rp_curr_mothID = posData.rp[curr_moth_obj_idx]
 
         self.updateAllImages()
 
@@ -9322,6 +9334,79 @@ class guiWin(QMainWindow):
         
         self.enqAutosave()
     
+    def onMotherNotInG1(self, mothID):
+        txt = html_utils.paragraph(
+            f'You clicked on <b>ID={mothID}</b> which is <b>NOT in G1</b><br><br>'
+            'Do you want to proceed with <b>swapping the mother cells</b>?<br><br>'
+            'NOTE: To assign a bud <b>start by clicking on the bud</b> '
+            'and release on a cell in G1'
+        )
+        msg = widgets.myMessageBox()
+        swapMothersButton = widgets.reloadPushButton('Swap mother cells')
+        _, swapMothersButton = msg.warning(
+            self, 'Released on a cell NOT in G1', txt,
+            buttonsTexts=('Cancel', swapMothersButton)
+        )
+        if msg.cancel:
+            return
+        
+        self.swapMothers()
+    
+    def swapMothers(self):
+        posData = self.data[self.pos_i]
+        
+        # Store cca_df for undo action
+        undoId = uuid.uuid4()
+        self.storeUndoRedoCca(posData.frame_i, posData.cca_df, undoId)
+        
+        lab2D = self.get_2Dlab(posData.lab)
+        budID = lab2D[self.yClickBud, self.xClickBud]
+        otherMothID = lab2D[self.yClickMoth, self.xClickMoth]
+        mothID = posData.cca_df.at[budID, 'relative_ID']
+        otherBudID = posData.cca_df.at[otherMothID, 'relative_ID']
+        
+        self.logger.info(
+            'Swapping assignments:\n'
+            f'  * Bud ID {budID} --> {otherMothID}\n'
+            f'  * Bud ID {otherBudID} --> {mothID}'
+        )
+        
+        pairs = (
+            (otherMothID, budID),
+            (otherBudID, mothID),
+            (budID, otherMothID),
+            (mothID, otherBudID)
+        )
+        
+        for ID1, ID2 in pairs:
+            posData.cca_df.at[ID1, 'relative_ID'] = ID2
+        self.store_cca_df()
+        
+        self.updateAllImages()
+        
+        for i in range(posData.SizeT):
+            if i == posData.frame_i:
+                continue
+            
+            # Get cca_df for ith frame from allData_li
+            cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
+            if cca_df_i is None:
+                # ith frame was not visited yet
+                break
+            
+            self.storeUndoRedoCca(i, cca_df_i, undoId)
+            
+            for ID1, ID2 in pairs:
+                try:
+                    ccs = cca_df_i.at[ID1, 'cell_cycle_stage']
+                    if ccs != 'S':
+                        continue
+                    cca_df_i.at[ID1, 'relative_ID'] = ID2
+                except KeyError:
+                    pass
+            
+            self.store_cca_df(frame_i=i, cca_df=cca_df_i, autosave=False)
+        
     def getClosedSplineCoords(self):
         xxS, yyS = self.curvPlotItem.getData()
         bbox_area = (xxS.max()-xxS.min())*(yyS.max()-yyS.min())
@@ -10069,6 +10154,8 @@ class guiWin(QMainWindow):
             posData = self.data[self.pos_i]
             if msg.cancel:
                 return
+            
+            self.reset_will_divide_info()
             # Go to previous frame without storing and then back to current
             if posData.frame_i > 0:
                 posData.frame_i -= 1
@@ -11364,32 +11451,10 @@ class guiWin(QMainWindow):
     @exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_Q and self.debug:
-            # printl(self.xHoverImg, self.yHoverImg)
-            # printl(self.img1.mapToData(QCursor().pos()))
-            # x, y = QCursor().pos().x(), QCursor().pos().y()
-            # printl(self.graphLayout.mapToScene(x, y))
             posData = self.data[self.pos_i]
-            is_segm_3D = self.isSegm3D
-            # all_metrics_names = measurements.get_all_metrics_names(
-            #     posData, self.user_ch_name, is_segm_3D
-            # )
-            # printl(self.metricsToSave)
-            self.initMetricsToSave(posData)
+            for worker, thread in self.autoSaveActiveWorkers:
+                printl(worker.isAutoSaveON)
             
-            # printl(self.bkgr_metrics_params, pretty=True)
-            printl(self.foregr_metrics_params, pretty=True)
-            printl(self.custom_metrics_params, pretty=True)
-            
-            # from acdctools.plot import imshow
-            # delIDs = posData.allData_li[posData.frame_i]['delROIs_info']['delIDsROI']
-            # printl(delIDs)
-            # self.store_data()
-            # self.applyDelROIs()
-            # stored_lab = posData.allData_li[posData.frame_i]['labels']
-            # imshow(posData.lab, stored_lab, parent=self)
-            
-            printl(self.setMeasWinState, pretty=True)
-        
         if not self.dataIsLoaded:
             self.logger.info(
                 '[WARNING]: Data not loaded yet. '
@@ -11648,6 +11713,16 @@ class guiWin(QMainWindow):
                             self.eraserButton
                         )
 
+    def doubleRightClickTimerCallBack(self):
+        if self.isDoubleRightClick:
+            self.doubleRightClickTimeElapsed = False
+            return
+        self.doubleRightClickTimeElapsed = True
+        self.countRightClicks = 0
+        
+        # Time to double right click on img1 expired --> single right-click
+        self.gui_imgGradShowContextMenu(*self._img1_click_xy)        
+    
     def doubleKeyTimerCallBack(self):
         if self.isKeyDoublePress:
             self.doubleKeyTimeElapsed = False
@@ -13446,7 +13521,7 @@ class guiWin(QMainWindow):
         self.progressWin.close()
         self.progressWin = None
 
-        posData = self.data[self.pos_i]
+        self.activateAnnotations()
 
         self.get_data()
         self.tracking(enforce=True)
@@ -13503,6 +13578,8 @@ class guiWin(QMainWindow):
         else:
             posData.lab = lab.copy()
 
+        self.activateAnnotations()
+        
         self.update_rp()
         self.tracking(enforce=True)
         
@@ -13512,14 +13589,23 @@ class guiWin(QMainWindow):
         else:
             self.warnEditingWithCca_df('Repeat segmentation')
 
-        self.ax1.autoRange()
-
         txt = f'Done. Segmentation computed in {exec_time:.3f} s'
         self.logger.info('-----------------')
         self.logger.info(txt)
         self.logger.info('=================')
         self.titleLabel.setText(txt, color='g')
         self.checkIfAutoSegm()
+        
+        QTimer.singleShot(200, self.resizeGui)
+    
+    def activateAnnotations(self):
+        if self.annotContourCheckbox.isChecked():
+            return
+        if self.annotSegmMasksCheckbox.isChecked():
+            return
+        
+        self.annotSegmMasksCheckbox.setChecked(True)
+        self.setDrawAnnotComboboxText()
 
     # @exec_time
     def getDisplayedImg1(self):
@@ -13831,7 +13917,7 @@ class guiWin(QMainWindow):
         
         mode = str(self.modeComboBox.currentText())
         if not mode == 'Segmentation and Tracking':
-            return
+            return True
         
         posData = self.data[self.pos_i]
         if not posData.lost_IDs:
@@ -15119,6 +15205,8 @@ class guiWin(QMainWindow):
         self.lastManualSeparateState = None
         self.editIDmergeIDs = True
         self.doNotAskAgainExistingID = False
+        self.doubleRightClickTimeElapsed = False
+        self.isDoubleRightClick = False
         self.highlightedIDopts = None
         self.keptObjectsIDs = widgets.KeptObjectIDsList(
             self.keptIDsLineEdit, self.keepIDsConfirmAction
@@ -16542,6 +16630,32 @@ class guiWin(QMainWindow):
             self.get_cca_df()
         return proceed
 
+    def reset_will_divide_info(self):
+        posData = self.data[self.pos_i]
+        
+        posData.cca_df['will_divide'] = 0
+        self.store_cca_df()
+        
+        IDs_in_S = posData.cca_df[posData.cca_df.cell_cycle_stage == 'S'].index
+
+        # Reset will divide to 0 in the past S frames where division 
+        # has been annotated
+        for frame_i in range(posData.frame_i, 0, -1):
+            past_cca_df = self.get_cca_df(frame_i=frame_i, return_df=True)
+            if past_cca_df is None:
+                return
+            
+            # Gest IDs that are still in S in the past and reset will_divide to 0
+            past_cca_df_S = past_cca_df[past_cca_df.cell_cycle_stage == 'S']
+            IDs_in_S_past = past_cca_df_S.index.intersection(IDs_in_S)
+            if len(IDs_in_S_past) == 0:
+                return
+            
+            past_cca_df.loc[IDs_in_S_past, 'will_divide'] = 0
+            self.store_cca_df(
+                cca_df=past_cca_df, frame_i=frame_i, autosave=False
+            )
+    
     def remove_future_cca_df(self, from_frame_i):
         posData = self.data[self.pos_i]
         self.last_cca_frame_i = posData.frame_i
@@ -16556,7 +16670,7 @@ class guiWin(QMainWindow):
                 # No cell cycle info present
                 continue
 
-            df.drop(self.cca_df_colnames, axis=1, inplace=True)
+            df = df.drop(columns=self.cca_df_colnames)
             posData.allData_li[i]['acdc_df'] = df
 
     def get_cca_df(self, frame_i=None, return_df=False):
@@ -22092,7 +22206,7 @@ class guiWin(QMainWindow):
         return msg.cancel
 
     def waitAutoSaveWorker(self, worker):
-        if worker.isFinished or worker.isPaused or worker.dataQ.empty():
+        if worker.isFinished or worker.isPaused or len(worker.dataQ) == 0:
             self.waitAutoSaveWorkerLoop.exit()
             self.waitAutoSaveWorkerTimer.stop()
             self.setSaturBarLabel(log=False)

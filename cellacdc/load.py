@@ -2121,6 +2121,22 @@ class select_exp_folder:
                 self.pos_foldernames[idx] for idx in win.selectedItemsIdx
             ]
 
+    def append_last_cca_frame(self, acdc_df, text):
+        if 'cell_cycle_stage' not in acdc_df.columns:
+            return text
+        
+        try:
+            colnames = ['frame_i', *cca_df_colnames]
+            cca_df = acdc_df.dropna()[colnames]
+        except Exception as e:
+            return text
+        last_cca_frame_i = max(cca_df['frame_i'], default=None)
+        if last_cca_frame_i is None:
+            return text
+        to_append = f', last cc annotated frame: {last_cca_frame_i+1})'
+        text = text.replace(')', to_append)
+        return text
+    
     def get_values_segmGUI(self, exp_path):
         self.exp_path = exp_path
         pos_foldernames = myutils.get_pos_foldernames(exp_path)
@@ -2129,7 +2145,7 @@ class select_exp_folder:
         for pos in pos_foldernames:
             last_tracked_i_found = False
             pos_path = os.path.join(exp_path, pos)
-            images_path = f'{exp_path}/{pos}/Images'
+            images_path = os.path.join(pos_path, 'Images')
             filenames = myutils.listdir(images_path)
             for filename in filenames:
                 if filename.find('acdc_output.csv') != -1:
@@ -2139,7 +2155,9 @@ class select_exp_folder:
                     last_tracked_i = max(acdc_df['frame_i'])
                     break
             if last_tracked_i_found:
-                values.append(f'{pos} (Last tracked frame: {last_tracked_i+1})')
+                text = f'{pos} (Last tracked frame: {last_tracked_i+1})'
+                text = self.append_last_cca_frame(acdc_df, text)
+                values.append(text)
             else:
                 values.append(pos)
         self.values = values
