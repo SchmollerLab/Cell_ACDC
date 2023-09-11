@@ -2125,8 +2125,14 @@ class select_exp_folder:
         if 'cell_cycle_stage' not in acdc_df.columns:
             return text
         
-        cca_df = acdc_df.dropna()
-        last_cca_frame_i = max(cca_df['frame_i'])
+        try:
+            colnames = ['frame_i', *cca_df_colnames]
+            cca_df = acdc_df.dropna()[colnames]
+        except Exception as e:
+            return text
+        last_cca_frame_i = max(cca_df['frame_i'], default=None)
+        if last_cca_frame_i is None:
+            return text
         to_append = f', last cc annotated frame: {last_cca_frame_i+1})'
         text = text.replace(')', to_append)
         return text

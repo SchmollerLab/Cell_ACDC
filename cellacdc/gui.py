@@ -13521,7 +13521,7 @@ class guiWin(QMainWindow):
         self.progressWin.close()
         self.progressWin = None
 
-        posData = self.data[self.pos_i]
+        self.activateAnnotations()
 
         self.get_data()
         self.tracking(enforce=True)
@@ -13578,6 +13578,8 @@ class guiWin(QMainWindow):
         else:
             posData.lab = lab.copy()
 
+        self.activateAnnotations()
+        
         self.update_rp()
         self.tracking(enforce=True)
         
@@ -13587,14 +13589,23 @@ class guiWin(QMainWindow):
         else:
             self.warnEditingWithCca_df('Repeat segmentation')
 
-        self.ax1.autoRange()
-
         txt = f'Done. Segmentation computed in {exec_time:.3f} s'
         self.logger.info('-----------------')
         self.logger.info(txt)
         self.logger.info('=================')
         self.titleLabel.setText(txt, color='g')
         self.checkIfAutoSegm()
+        
+        QTimer.singleShot(200, self.resizeGui)
+    
+    def activateAnnotations(self):
+        if self.annotContourCheckbox.isChecked():
+            return
+        if self.annotSegmMasksCheckbox.isChecked():
+            return
+        
+        self.annotSegmMasksCheckbox.setChecked(True)
+        self.setDrawAnnotComboboxText()
 
     # @exec_time
     def getDisplayedImg1(self):
