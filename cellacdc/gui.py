@@ -11462,7 +11462,10 @@ class guiWin(QMainWindow):
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_Q and self.debug:
             img = np.zeros_like(self.img1.image)
-            self.img1.setImage(img, next_frame_image=self.nextFrameImage())
+            from cellacdc.plot import imshow
+            next_frame_image = self.nextFrameImage()
+            printl(next_frame_image.shape, next_frame_image.max())
+            self.img1.setImage(img, next_frame_image=next_frame_image)
             
         if not self.dataIsLoaded:
             self.logger.info(
@@ -14542,6 +14545,11 @@ class guiWin(QMainWindow):
             self.setTwoImagesLayout(False)
         
         self.setBottomLayoutStretch()
+        
+        if isNextFrameVisible:
+            self.rightBottomGroupbox.show()
+            self.rightBottomGroupbox.setChecked(True)
+            self.drawNothingCheckboxRight.click()  
 
         self.readSavedCustomAnnot()
         self.addCustomAnnotButtonAllLoadedPos()
@@ -18520,6 +18528,8 @@ class guiWin(QMainWindow):
                 self.imgGradRight, row=1, col=self.plotsCol+2
             )
             self.rightBottomGroupbox.show()
+            self.rightBottomGroupbox.setChecked(True)
+            self.drawNothingCheckboxRight.click()            
             if not self.isDataLoading:
                 self.updateAllImages()
         else:
