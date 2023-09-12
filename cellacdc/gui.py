@@ -8910,6 +8910,7 @@ class guiWin(QMainWindow):
                buttonsTexts=('Cancel', applyButton)
             )
             cancel = msg.cancel
+            apply = msg.clickedButton = applyButton
         elif why == 'not_G1_in_the_past':
             err_msg = html_utils.paragraph(f"""
                 The requested cell in G1
@@ -8926,6 +8927,7 @@ class guiWin(QMainWindow):
                self, 'Cell not eligible', err_msg
             )
             cancel = msg.cancel
+            apply = False
         elif why == 'single_frame_G1_duration':
             err_msg = html_utils.paragraph(f"""
                 Assigning bud ID {budID} to cell in G1
@@ -8943,7 +8945,8 @@ class guiWin(QMainWindow):
                self, 'Cell not eligible', err_msg
             )
             cancel = msg.cancel
-        return cancel
+            apply = False
+        return cancel, apply
     
     def warnSettingHistoryKnownCellsFirstFrame(self, ID):
         txt = html_utils.paragraph(f"""
@@ -8985,15 +8988,15 @@ class guiWin(QMainWindow):
 
             ccs = cca_df_i.at[new_mothID, 'cell_cycle_stage']
             if ccs != 'G1':
-                cancel = self.warnMotherNotEligible(
+                cancel, apply = self.warnMotherNotEligible(
                     new_mothID, budID, i, 'not_G1_in_the_future'
                 )
+                if apply:
+                    self.remove_future_cca_df(i)
+                    break
                 if cancel or (G1_duration == 1 and i != last_cca_frame_i):
                     eligible = False
                     return eligible
-                else:
-                    self.remove_future_cca_df(i)
-                    break
 
             G1_duration += 1
 
