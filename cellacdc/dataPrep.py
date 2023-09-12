@@ -39,7 +39,8 @@ from . import qrc_resources
 
 # Custom modules
 from . import exception_handler
-from . import load, prompts, apps, core, myutils, widgets
+from . import load, prompts, apps, core, myutils
+from . import widgets
 from . import html_utils, myutils, darkBkgrColor, printl
 from . import autopilot, workers
 from . import recentPaths_path, cellacdc_path, settings_folderpath

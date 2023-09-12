@@ -3151,6 +3151,7 @@ class guiWin(QMainWindow):
         self.labelsGrad.invertBwAction.toggled.connect(self.setCheckedInvertBW)
         self.labelsGrad.sigShowLabelsImgToggled.connect(self.showLabelImageItem)
         self.labelsGrad.sigShowRightImgToggled.connect(self.showRightImageItem)
+        self.labelsGrad.sigShowNextFrameToggled.connect(self.showNextFrameImageItem)
         
         self.labelsGrad.defaultSettingsAction.triggered.connect(
             self.restoreDefaultSettings
@@ -3785,6 +3786,9 @@ class guiWin(QMainWindow):
         self.imgGrad.gradient.menu.addAction(
             self.labelsGrad.showRightImgAction
         )
+        self.imgGrad.gradient.menu.addAction(
+            self.labelsGrad.showNextFrameAction
+        )
         
         # Add actions to view menu
         self.viewMenu.addAction(self.labelsGrad.showLabelsImgAction)
@@ -3799,6 +3803,9 @@ class guiWin(QMainWindow):
         )
         self.imgGradRight.gradient.menu.addAction(
             self.labelsGrad.showRightImgAction
+        )
+        self.imgGradRight.gradient.menu.addAction(
+            self.labelsGrad.showNextFrameAction
         )
 
         # Title
@@ -3859,7 +3866,10 @@ class guiWin(QMainWindow):
         # Left image
         self.img1 = widgets.ParentImageItem(
             linkedImageItem=self.rightImageItem,
-            activatingAction=self.labelsGrad.showRightImgAction
+            activatingActions=(
+                self.labelsGrad.showRightImgAction,
+                self.labelsGrad.showNextFrameAction
+            )
         )
         self.imgGrad.setImageItem(self.img1)
         self.ax1.addItem(self.img1)
@@ -3900,7 +3910,7 @@ class guiWin(QMainWindow):
         # self.tempLayerImg1 = pg.ImageItem()
         self.tempLayerImg1 = widgets.ParentImageItem(
             linkedImageItem=self.tempLayerRightImage,
-            activatingAction=self.labelsGrad.showRightImgAction
+            activatingAction=(self.labelsGrad.showRightImgAction, )
         )
         self.topLayerItems.append(self.tempLayerImg1)
         self.topLayerItemsRight.append(self.tempLayerRightImage)
@@ -9864,7 +9874,7 @@ class guiWin(QMainWindow):
             return img
         
         if channelName == self.user_ch_name:
-            self.img1.setImage(img)
+            self.img1.setImage(img, next_frame_image=self.nextFrameImage())
         else:
             imageItem = self.overlayLayersItems[channelName][0]
             imageItem.setImage(img)
@@ -11451,9 +11461,8 @@ class guiWin(QMainWindow):
     @exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_Q and self.debug:
-            posData = self.data[self.pos_i]
-            for worker, thread in self.autoSaveActiveWorkers:
-                printl(worker.isAutoSaveON)
+            img = np.zeros_like(self.img1.image)
+            self.img1.setImage(img, next_frame_image=self.nextFrameImage())
             
         if not self.dataIsLoaded:
             self.logger.info(
@@ -14513,6 +14522,9 @@ class guiWin(QMainWindow):
         isRightImgVisible = (
             self.df_settings.at['isRightImageVisible', 'value'] == 'Yes'
         )
+        isNextFrameVisible = (
+            self.df_settings.at['isNextFrameVisible', 'value'] == 'Yes'
+        )
         self.updateScrollbars()
         self.openAction.setEnabled(True)
         self.editTextIDsColorAction.setDisabled(False)
@@ -14520,10 +14532,11 @@ class guiWin(QMainWindow):
         self.navigateToolBar.setVisible(True)
         self.labelsGrad.showLabelsImgAction.setChecked(isLabVisible)
         self.labelsGrad.showRightImgAction.setChecked(isRightImgVisible)
-        if isRightImgVisible:
+        self.labelsGrad.showNextFrameAction.setChecked(isNextFrameVisible)
+        if isRightImgVisible or isNextFrameVisible:
             self.rightBottomGroupbox.setChecked(True)
-
-        if isRightImgVisible or isLabVisible:
+        
+        if isRightImgVisible or isLabVisible or isNextFrameVisible:
             self.setTwoImagesLayout(True)
         else:
             self.setTwoImagesLayout(False)
@@ -14767,6 +14780,7 @@ class guiWin(QMainWindow):
             self.skipToNewIdAction.setDisabled(True)
             self.modeComboBox.setCurrentText('Snapshot')
             self.annotateToolbar.setVisible(True)
+            self.labelsGrad.showNextFrameAction.setDisabled(True)
             self.drawIDsContComboBox.currentIndexChanged.connect(
                 self.drawIDsContComboBox_cb
             )
@@ -14805,6 +14819,7 @@ class guiWin(QMainWindow):
             self.showTreeInfoCheckbox.show()
             self.manualBackgroundAction.setVisible(False)
             self.manualBackgroundAction.setDisabled(True)
+            self.labelsGrad.showNextFrameAction.setDisabled(False)
 
     def checkIfAutoSegm(self):
         """
@@ -14976,7 +14991,7 @@ class guiWin(QMainWindow):
             posData.segmInfo_df.at[idx, 'z_slice_used_gui'] = z
             self.zSliceSpinbox.setValueNoEmit(z+1)
             img = self.getImage()
-            self.img1.setImage(img)
+            self.img1.setImage(img, next_frame_image=self.nextFrameImage())
             self.setOverlayImages()
             if self.labelsGrad.showLabelsImgAction.isChecked():
                 self.img2.setImage(posData.lab, z=z, autoLevels=False)
@@ -15507,7 +15522,7 @@ class guiWin(QMainWindow):
             posData.lab = posData.allData_li[posData.frame_i]['labels']
 
         img = self.getImage()
-        self.img1.setImage(img)
+        self.img1.setImage(img, next_frame_image=self.nextFrameImage())
         if self.overlayButton.isChecked():
             self.setOverlayImages()
 
@@ -18497,6 +18512,33 @@ class guiWin(QMainWindow):
             except TypeError:
                 pass
     
+    def showNextFrameImageItem(self, checked):
+        self.setTwoImagesLayout(checked)
+        if checked:
+            self.df_settings.at['isNextFrameVisible', 'value'] = 'Yes'
+            self.graphLayout.addItem(
+                self.imgGradRight, row=1, col=self.plotsCol+2
+            )
+            self.rightBottomGroupbox.show()
+            if not self.isDataLoading:
+                self.updateAllImages()
+        else:
+            self.clearAx2Items()
+            self.rightBottomGroupbox.hide()
+            self.df_settings.at['isNextFrameVisible', 'value'] = 'No'
+            try:
+                self.graphLayout.removeItem(self.imgGradRight)
+            except Exception:
+                return
+            self.rightImageItem.clear()
+        
+        self.df_settings.to_csv(self.settings_csv_path)
+            
+        QTimer.singleShot(300, self.resizeGui)
+
+        self.setBottomLayoutStretch()    
+        
+    
     def showRightImageItem(self, checked):
         self.setTwoImagesLayout(checked)
         if checked:
@@ -18528,7 +18570,8 @@ class guiWin(QMainWindow):
         self.rightBottomGroupbox.hide()
         if checked:
             self.df_settings.at['isLabelsVisible', 'value'] = 'Yes'
-            self.updateAllImages()
+            if not self.isDataLoading:
+                self.updateAllImages()
         else:
             self.clearAx2Items()
             self.img2.clear()
@@ -18549,7 +18592,10 @@ class guiWin(QMainWindow):
         self.setBottomLayoutStretch()
 
     def setBottomLayoutStretch(self):
-        if self.labelsGrad.showRightImgAction.isChecked():
+        if (
+            self.labelsGrad.showRightImgAction.isChecked()
+            or self.labelsGrad.showNextFrameAction.isChecked()
+        ):
             # Equally share space between the two control groupboxes
             self.bottomLayout.setStretch(1, 1)
             self.bottomLayout.setStretch(2, 5)
@@ -19440,7 +19486,7 @@ class guiWin(QMainWindow):
         img = self._getImageupdateAllImages(image, updateFilters)
         if self.equalizeHistPushButton.isChecked():
             img = skimage.exposure.equalize_adapthist(img)
-        self.img1.setImage(img)
+        self.img1.setImage(img, next_frame_image=self.nextFrameImage())
     
     def getContoursImageItem(self, ax):
         if not self.areContoursRequested(ax):
@@ -19677,6 +19723,27 @@ class guiWin(QMainWindow):
         self.updateContoursImage(ax=0, delROIsIDs=delROIsIDs)
         self.updateContoursImage(ax=1, delROIsIDs=delROIsIDs)
 
+    def nextFrameImage(self):
+        if not self.labelsGrad.showNextFrameAction.isEnabled():
+            return
+        
+        if not self.labelsGrad.showNextFrameAction.isChecked():
+            return
+        
+        posData = self.data[self.pos_i]
+        next_frame_i = posData.frame_i + 1
+        if next_frame_i >= len(posData.img_data):
+            img = posData.img_data[-1]
+        else:
+            img = posData.img_data[next_frame_i]
+        
+        if posData.SizeZ > 1:
+            img = self.get_2Dimg_from_3D(img, isLayer0=True)
+        
+        img = self.normalizeIntensities(img)
+        
+        return img
+        
     # @exec_time
     @exception_handler
     def updateAllImages(
