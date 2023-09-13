@@ -1101,6 +1101,9 @@ class guiWin(QMainWindow):
         if 'isLabelsVisible' not in self.df_settings.index:
             self.df_settings.at['isLabelsVisible', 'value'] = 'No'
         
+        if 'isNextFrameVisible' not in self.df_settings.index:
+            self.df_settings.at['isNextFrameVisible', 'value'] = 'No'
+        
         if 'isRightImageVisible' not in self.df_settings.index:
             self.df_settings.at['isRightImageVisible', 'value'] = 'Yes'
         
