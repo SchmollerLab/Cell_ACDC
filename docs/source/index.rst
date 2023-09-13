@@ -52,11 +52,11 @@ A GUI-based Python framework for **segmentation**, **tracking**, **cell cycle an
 .. image:: https://img.shields.io/badge/DOI-10.1101%2F2021.09.28.462199-informational
    :target: https://bmcbiol.biomedcentral.com/articles/10.1186/s12915-022-01372-6
    :alt: DOI
-
 |
 .. image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/cellacdc/resources/figures/Fig1.jpg
    :alt: Overview of pipeline and GUI
    :width: 600
+
 Overview of pipeline and GUI
 
 Resources
