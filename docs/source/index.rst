@@ -4,15 +4,17 @@
 A GUI-based Python framework for **segmentation**, **tracking**, **cell cycle annotations** and **quantification** of microscopy data
 -------------------------------------------------------------------------------------------------------------------------------------
 
-*Written in Python 3 by*\ `Francesco
-Padovani <https://github.com/ElpadoCan>`__\ *and*\ `Benedikt
+*Written in Python 3 by* \ `Francesco
+Padovani <https://github.com/ElpadoCan>`__ \ *and* \ `Benedikt
 Mairhoermann <https://github.com/Beno71>`__\ *.*
 
-`build ubuntu
-PyQt5 <https://github.com/SchmollerLab/Cell_ACDC/actions>`__ `build
-macos PyQt5 <https://github.com/SchmollerLab/Cell_ACDC/actions>`__
-`build windows
-PyQt5 <https://github.com/SchmollerLab/Cell_ACDC/actions>`__ `build
+.. image:: https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-ubuntu_pyqt5.yml/badge.svg
+   :target: https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-ubuntu_pyqt5.yml
+   :alt: Build Status (Ubuntu PyQt5)
+
+`build ubuntu PyQt5 <https://github.com/SchmollerLab/Cell_ACDC/actions>`__ 
+`build macos PyQt5 <https://github.com/SchmollerLab/Cell_ACDC/actions>`__
+`build windows PyQt5 <https://github.com/SchmollerLab/Cell_ACDC/actions>`__ `build
 macos PyQt6 <https://github.com/SchmollerLab/Cell_ACDC/actions>`__
 `build windows
 PyQt6 <https://github.com/SchmollerLab/Cell_ACDC/actions>`__ `Python
