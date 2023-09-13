@@ -57,6 +57,14 @@ A GUI-based Python framework for **segmentation**, **tracking**, **cell cycle an
    :alt: Overview of pipeline and GUI
    :width: 600
 
+Contents
+--------
+
+.. toctree::
+
+   getting-started
+   installation
+
 Overview of pipeline and GUI
 
 Resources
