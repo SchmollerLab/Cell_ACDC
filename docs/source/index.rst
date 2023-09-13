@@ -58,6 +58,7 @@ A GUI-based Python framework for **segmentation**, **tracking**, **cell cycle an
 .. image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/cellacdc/resources/figures/Fig1.jpg
    :alt: Overview of pipeline and GUI
    :width: 600
+
 Overview of pipeline and GUI
 
 Contents
