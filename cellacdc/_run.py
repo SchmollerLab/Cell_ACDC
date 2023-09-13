@@ -187,7 +187,7 @@ def _setup_gui_libraries():
         )
         exit()
 
-def _setup_app(splashscreen=False, icon_path=None, logo_path=None):
+def _setup_app(splashscreen=False, icon_path=None, logo_path=None, scheme=None):
     from qtpy import QtCore
     if QtCore.QCoreApplication.instance() is not None:
         return QtCore.QCoreApplication.instance(), None
@@ -257,7 +257,8 @@ def _setup_app(splashscreen=False, icon_path=None, logo_path=None):
     from . import printl
     
     # Check if there are new icons --> replace qrc_resources.py
-    scheme = get_color_scheme()
+    if scheme is None:
+        scheme = get_color_scheme()
     if scheme == 'light':
         from . import qrc_resources_light_path as qrc_resources_scheme_path
         qrc_resources_scheme = import_module('cellacdc.qrc_resources_light')

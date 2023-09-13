@@ -2472,6 +2472,16 @@ def get_all_svg_icons_aliases(sort=True):
         aliases = natsorted(aliases)
     return aliases
 
+def get_all_buttons_names(sort=True):
+    widgets_filepath = os.path.join(cellacdc_path, 'widgets.py')
+    with open(widgets_filepath, 'r') as py_file:
+        txt = py_file.read()
+    
+    all_buttons_names = re.findall(r'class (\w+)\(Q?PushButton\):', txt)
+    if sort:
+        all_buttons_names = natsorted(all_buttons_names)
+    return all_buttons_names
+
 def rename_qrc_resources_file(scheme='light'):
     os.remove(qrc_resources_path)
  
