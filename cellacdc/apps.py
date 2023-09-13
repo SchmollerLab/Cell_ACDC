@@ -82,8 +82,8 @@ PRE_PROCESSING_STEPS = [
     'Sharpen (difference of gaussians filter)'
 ]
 
-TREEWIDGET_STYLESHEET = widgets.TREEWIDGET_STYLESHEET
-LISTWIDGET_STYLESHEET = widgets.LISTWIDGET_STYLESHEET
+TREEWIDGET_STYLESHEET = _palettes.TreeWidgetStyleSheet()
+LISTWIDGET_STYLESHEET = _palettes.ListWidgetStyleSheet()
 
 font = QFont()
 font.setPixelSize(12)

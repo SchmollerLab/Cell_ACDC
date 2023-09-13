@@ -5036,6 +5036,7 @@ class overlayLabelsGradientWidget(pg.GradientWidget):
 class labelsGradientWidget(pg.GradientWidget):
     sigShowRightImgToggled = Signal(bool)
     sigShowLabelsImgToggled = Signal(bool)
+    sigShowNextFrameToggled = Signal(bool)
 
     def __init__( self, *args, parent=None, orientation='right', **kargs):
         pg.GradientEditorItem = BaseGradientEditorItemLabels
@@ -5122,6 +5123,11 @@ class labelsGradientWidget(pg.GradientWidget):
         self.showRightImgAction = QAction('Show duplicated left image', self)
         self.showRightImgAction.setCheckable(True)
         self.menu.addAction(self.showRightImgAction)
+        
+        # Show next frame action
+        self.showNextFrameAction = QAction('Show next frame', self)
+        self.showNextFrameAction.setCheckable(True)
+        self.menu.addAction(self.showNextFrameAction)
 
         # Default settings
         self.defaultSettingsAction = QAction('Restore default settings...', self)
@@ -5131,6 +5137,7 @@ class labelsGradientWidget(pg.GradientWidget):
 
         self.showRightImgAction.toggled.connect(self.showRightImageToggled)
         self.showLabelsImgAction.toggled.connect(self.showLabelsImageToggled)
+        self.showNextFrameAction.toggled.connect(self.showNextFrameToggled)
     
     def addCustomGradient(self, gradient_name, gradient_ticks):
         currentState = self.item.saveState()
@@ -5201,20 +5208,39 @@ class labelsGradientWidget(pg.GradientWidget):
             cp.write(file)
         
         self.addCustomGradient(cmapName, state)
+    
+    def isRightImageVisible(self):
+        return (
+            self.showLabelsImgAction.isChecked() 
+            or self.showNextFrameAction.isChecked() 
+        )
 
     def showRightImageToggled(self, checked):
-        if checked and self.showLabelsImgAction.isChecked():
+        if checked and self.isRightImageVisible():
             # Hide the right labels image before showing right image
             self.showLabelsImgAction.setChecked(False)
+            self.showNextFrameAction.setChecked(False)
             self.sigShowLabelsImgToggled.emit(False)
+            self.sigShowNextFrameToggled.emit(checked)
         self.sigShowRightImgToggled.emit(checked)
     
     def showLabelsImageToggled(self, checked):
-        if checked and self.showRightImgAction.isChecked():
+        if checked and self.isRightImageVisible():
             # Hide the right image before showing labels image
             self.showRightImgAction.setChecked(False)
+            self.showNextFrameAction.setChecked(False)
             self.sigShowRightImgToggled.emit(False)
+            self.sigShowNextFrameToggled.emit(False)
         self.sigShowLabelsImgToggled.emit(checked)
+    
+    def showNextFrameToggled(self, checked):
+        if checked and self.isRightImageVisible():
+            # Hide the right image before showing labels image
+            self.showRightImgAction.setChecked(False)
+            self.showLabelsImgAction.setChecked(False)
+            self.sigShowRightImgToggled.emit(False)
+            self.sigShowLabelsImgToggled.emit(False)
+        self.sigShowNextFrameToggled.emit(checked)
 
     def saveState(self, df):
         # remove previous state
@@ -5579,12 +5605,12 @@ class BaseImageItem(pg.ImageItem):
 
 class ParentImageItem(pg.ImageItem):
     def __init__(
-            self, image=None, linkedImageItem=None, activatingAction=None,
+            self, image=None, linkedImageItem=None, activatingActions=None,
             debug=False, **kargs
         ):
         super().__init__(image, **kargs)
         self.linkedImageItem = linkedImageItem
-        self.activatingAction = activatingAction
+        self.activatingActions = activatingActions
         self.debug = debug
     
     def clear(self):
@@ -5592,22 +5618,40 @@ class ParentImageItem(pg.ImageItem):
             self.linkedImageItem.clear()
         return super().clear()
     
+    def isLinkedImageItemActive(self):
+        if self.linkedImageItem is None:
+            return False
+        
+        if self.activatingActions is None:
+            return False
+        for action in self.activatingActions:
+            if action.isChecked():
+                return True
+        return False
+    
     def setLevels(self, levels, **kargs):
         if self.linkedImageItem is not None:
             self.linkedImageItem.setLevels(levels)
         return super().setLevels(levels, **kargs)
     
-    def setImage(self, image=None, autoLevels=None, **kargs):
-        if self.linkedImageItem is not None:
-            if self.activatingAction.isChecked():
-                self.linkedImageItem.setImage(image, autoLevels=autoLevels)
-        return super().setImage(image, autoLevels, **kargs)
+    def setImage(
+            self, image=None, autoLevels=None, next_frame_image=None, **kargs
+        ):
+        super().setImage(image, autoLevels, **kargs)
+        if not self.isLinkedImageItemActive():
+            return
+        
+        if next_frame_image is not None:
+            self.linkedImageItem.setImage(
+                next_frame_image, autoLevels=autoLevels
+            )
+        elif image is not None:
+            self.linkedImageItem.setImage(image, autoLevels=autoLevels)
     
     def updateImage(self, *args, **kargs):
-        if self.linkedImageItem is not None:
-            if self.activatingAction.isChecked():
-                self.linkedImageItem.image = self.image
-                self.linkedImageItem.updateImage(*args, **kargs)
+        if self.isLinkedImageItemActive():
+            self.linkedImageItem.image = self.image
+            self.linkedImageItem.updateImage(*args, **kargs)
         return super().updateImage(*args, **kargs)
     
     def setOpacity(self, value):
