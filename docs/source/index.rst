@@ -1,39 +1,63 @@
- Cell-ACDC
-==========
+.. |acdclogo| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/6bf8442b6a33d41fa9de09a2098c6c2b9efbcff1/cellacdc/resources/logo.svg
+   :width: 80
+
+|acdclogo| Cell-ACDC
+=====================
 
 A GUI-based Python framework for **segmentation**, **tracking**, **cell cycle annotations** and **quantification** of microscopy data
 -------------------------------------------------------------------------------------------------------------------------------------
 
-*Written in Python 3 by* \ `Francesco
-Padovani <https://github.com/ElpadoCan>`__ \ *and* \ `Benedikt
-Mairhoermann <https://github.com/Beno71>`__\ *.*
+*Written in Python 3 by* \ `Francesco Padovani <https://github.com/ElpadoCan>`__ \ *and* \ `Benedikt Mairhoermann <https://github.com/Beno71>`__\ *.*
+
+.. image:: https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-windows_pyqt5.yml/badge.svg
+   :target: https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-windows_pyqt5.yml
+   :alt: Build Status (Windows PyQt5)
 
 .. image:: https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-ubuntu_pyqt5.yml/badge.svg
    :target: https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-ubuntu_pyqt5.yml
    :alt: Build Status (Ubuntu PyQt5)
 
-`build ubuntu PyQt5 <https://github.com/SchmollerLab/Cell_ACDC/actions>`__ 
-`build macos PyQt5 <https://github.com/SchmollerLab/Cell_ACDC/actions>`__
-`build windows PyQt5 <https://github.com/SchmollerLab/Cell_ACDC/actions>`__ `build
-macos PyQt6 <https://github.com/SchmollerLab/Cell_ACDC/actions>`__
-`build windows
-PyQt6 <https://github.com/SchmollerLab/Cell_ACDC/actions>`__ `Python
-version <https://www.python.org/downloads/>`__ `pypi
-version <https://pypi.org/project/cellacdc/>`__
-`Downloads <https://pepy.tech/project/cellacdc>`__
-`License <https://github.com/SchmollerLab/Cell_ACDC/blob/main/LICENSE>`__
-`repo size <https://github.com/SchmollerLab/Cell_ACDC>`__
-`DOI <https://bmcbiol.biomedcentral.com/articles/10.1186/s12915-022-01372-6>`__
+.. image:: https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-macos_pyqt5.yml/badge.svg
+   :target: https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-macos_pyqt5.yml
+   :alt: Build Status (macOS PyQt5)
 
-.. raw:: html
+.. image:: https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-windows_pyqt6.yml/badge.svg
+   :target: https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-windows_pyqt6.yml
+   :alt: Build Status (Windows PyQt6)
 
-   <div align="left">
+.. image:: https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-macos_pyqt6.yml/badge.svg
+   :target: https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-macos_pyqt6.yml
+   :alt: Build Status (macOS PyQt6)
 
- Overview of pipeline and GUI
+.. image:: https://img.shields.io/pypi/pyversions/cellacdc
+   :target: https://www.python.org/downloads/
+   :alt: Python Version
 
-.. raw:: html
+.. image:: https://img.shields.io/pypi/v/cellacdc?color=red
+   :target: https://pypi.org/project/cellacdc/
+   :alt: PyPi Version
 
-   </div>
+.. image:: https://static.pepy.tech/badge/cellacdc/month
+   :target: https://pepy.tech/project/cellacdc
+   :alt: Downloads per month
+
+.. image:: https://img.shields.io/badge/license-BSD%203--Clause-brightgreen
+   :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/LICENSE
+   :alt: License
+
+.. image:: https://img.shields.io/github/repo-size/SchmollerLab/Cell_ACDC
+   :target: https://github.com/SchmollerLab/Cell_ACDC
+   :alt: Repository Size
+
+.. image:: https://img.shields.io/badge/DOI-10.1101%2F2021.09.28.462199-informational
+   :target: https://bmcbiol.biomedcentral.com/articles/10.1186/s12915-022-01372-6
+   :alt: DOI
+
+|
+.. image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/cellacdc/resources/figures/Fig1.jpg
+   :alt: Overview of pipeline and GUI
+   :width: 600
+Overview of pipeline and GUI
 
 Resources
 ---------
@@ -84,8 +108,7 @@ How to contribute
 -----------------
 
 Contributions to Cell-ACDC are always very welcome! For more details see
-instructions
-`here <https://github.com/SchmollerLab/Cell_ACDC/blob/main/CONTRIBUTING.rst>`__.
+instructions `here <https://github.com/SchmollerLab/Cell_ACDC/blob/main/CONTRIBUTING.rst>`__.
 
 Overview
 --------
@@ -113,15 +136,10 @@ simple yet useful **brush** and **eraser** to more complex flood fill
 
 See below **how it compares** to other popular tools available (*Table 1
 of
-our*\ `publication <https://bmcbiol.biomedcentral.com/articles/10.1186/s12915-022-01372-6>`__).
+our* \ `publication <https://bmcbiol.biomedcentral.com/articles/10.1186/s12915-022-01372-6>`__).
 
-.. raw:: html
-
-   <p align="center">
-
-.. raw:: html
-
-   </p>
+.. image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/cellacdc/resources/figures/Table1.jpg
+  :width: 700
 
 Is it only about segmentation?
 ------------------------------
@@ -176,7 +194,7 @@ Installation using Anaconda (recommended)
 
 *NOTE: If you don’t know what Anaconda is or you are not familiar with
 it, we recommend reading the detailed installation instructions found in
-manual*\ `here <https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf>`__\ *.*
+manual* \ `here <https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf>`__\ *.*
 
 1. Install `Anaconda <https://www.anaconda.com/products/individual>`__
    or `Miniconda <https://docs.conda.io/en/latest/miniconda.html>`__ for
