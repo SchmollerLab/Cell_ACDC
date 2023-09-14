@@ -6,17 +6,19 @@ Installation using Anaconda (recommended)
 
 1. Install `Anaconda <https://www.anaconda.com/download>`__ or `Miniconda <https://docs.conda.io/projects/miniconda/en/latest/index.html#quick-command-line-install>`__ (make sure to use the 64-bit version for Windows)
     Anaconda is a distribution of Python, which helps with package management and simplifies many aspects of using Python. Python is a programming language and needs an interpreter to function. Miniconda is a lightweight implementation of Anaconda.
-2. Open the terminal (for Windows use the conda terminal)
-    A terminal is a text-based way to communicate with the computer. The conda terminal is a terminal specifically for conda, with some commands only specific to conda available there.
+2. Open the terminal (for Windows use the anaconda terminal)
+    A terminal is a text-based way to communicate with the computer. The anaconda terminal is a terminal specifically for anaconda, with some commands specific to anaconda only available there.
 3. Update conda by typing ``conda update conda``
     This will update all programmes (or packages) that are part of conda
 4. Create a virtual environment by typing ``conda create -n acdc python=3.9``
     This will create a virtual environment, which is an isolated instance and partially independent from the rest of the system. The virtual environment is called ``acdc`` in this case.
 5. Activate the virtual environment by typing ``conda activate acdc``
     This will activate the environment, meaning that the console is now not in the default system environment, but the ``acdc`` environment.
+    .. image:: https://github.com/Teranis/Cell_ACDC/blob/main/docs/source/images/Cmdprompt.png
+    If the activation of the environment was successful, this should be indicated to the left of the active path, circled in red above.
 6. Update pip using ``python -m pip install --upgrade pip``
     Pip is an application which is included in Python. It manages programmes and updates it. In this case, we tell pip to update itself.
-7. Install Cell-ACDC using ``pip install "cellacdc[gui]"``
+   1. Install Cell-ACDC using ``pip install "cellacdc[gui]"``
     This tells pip to install Cell-ACDC, specifically the version with a user interface.
 
 **IMPORTANT: Before installing with other methods**
