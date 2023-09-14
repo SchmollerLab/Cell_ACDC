@@ -186,6 +186,38 @@ Data such as the selected frame is stored in segmInfo.csv, while aligned.npz sto
     :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataPrep4.png
     :alt: Data preparation: Data structure
 
+Segmentation and tracking
+-------------------------
+**2. Launch segmentation module…**
+
+This module can be used to segment and track object in your data. A plethora of options are available already, and new ones are added constantly. You can also add your own models, a tutorial for this will be added in the future.
+
+Upon launching the module, you first will be prompted to select a folder. This process is the same as before. Next, like before you are prompted to select a channel which should be used for segmentation.
+
+After a short wait, you are prompted to select the model you want to use for **segmentation**, after which one needs to confirm the parameters for segmentation as well as post processing.
+
+Next, you can select a stop frame if you don't want to segment and track the entire experiment. Lastly, you need to select the model which should be used for tracking. The process now begins, and you can lay back and watch the computer do work for you.
+
+.. image:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/Seg1.png?raw=true
+    :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/Seg1.png
+    :alt: Segmentation and Tracking: Segmentation model
+    :width: 300
+
+.. image:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/Seg2.png?raw=true
+    :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/Seg2.png
+    :alt: Segmentation and Tracking: Parameters for model and post processing parameters
+
+
+.. image:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/Seg3.png?raw=true
+    :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/Seg3.png
+    :alt: Segmentation and Tracking: Stop frame
+    :width: 300
+
+.. image:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/Seg4.png?raw=true
+    :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/Seg4.png
+    :alt: Segmentation and Tracking: Tracking model
+    :width: 300
+
 Correcting Tracking and Segmentation Mistakes, Cell Cycle Annotation
 --------------------------------------------------------------------
 **3. Launching GUI…**
@@ -282,7 +314,7 @@ All functions
         * Set measurements
         * Add custom measurement
         * Add combined measurement
-    * Settings: Settings for changing the behaviour of tools, including **warning behaviour** and **not disabling tools after usage**
+    * Settings: Settings for changing the behaviour of tools, including **warning behaviour** and **not disabling tools after usage** 
     * Mode: change the mode
         * Segmentation and Tracking, Cell cycle analysis, Viewer, Custom annotations
 
@@ -303,3 +335,4 @@ All functions
 .. image:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/GUI4.png?raw=true
     :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/GUI4.png
     :alt: GUI: GUI for cell cycle annotation
+
