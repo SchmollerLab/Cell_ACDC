@@ -13,16 +13,24 @@ Installation using Anaconda (recommended)
 4. Create a virtual environment by typing ``conda create -n acdc python=3.9``
     This will create a virtual environment, which is an isolated instance and partially independent from the rest of the system. The virtual environment is called ``acdc`` in this case.
 5. Activate the virtual environment by typing ``conda activate acdc``
-    This will activate the environment, meaning that the console is now not in the default system environment, but the ``acdc`` environment.
-    .. image:: https://github.com/Teranis/Cell_ACDC/blob/main/docs/source/images/Cmdprompt.png
-    If the activation of the environment was successful, this should be indicated to the left of the active path, circled in red above.
+    This will activate the environment, meaning that the console is now not in the default system environment, but the ``acdc`` environment. If the activation of the environment was successful, this should be indicated to the left of the active path, circled in red below.
+
+.. image:: https://github.com/Teranis/Cell_ACDC/blob/main/docs/source/images/Cmdprompt.png
+    :target: https://github.com/Teranis/Cell_ACDC/blob/main/docs/source/images/Cmdprompt.png
+    :alt: The active environment is displayed to the left of the currently active path
+
 6. Update pip using ``python -m pip install --upgrade pip``
     Pip is an application which is included in Python. It manages programmes and updates it. In this case, we tell pip to update itself.
-   1. Install Cell-ACDC using ``pip install "cellacdc[gui]"``
+7. Install Cell-ACDC using ``pip install "cellacdc[gui]"``
     This tells pip to install Cell-ACDC, specifically the version with a user interface.
 
-**IMPORTANT: Before installing with other methods**
+Advanced install methods
+========================
 
+The following part of the guide is not finished yet and is intended for users who are interested in changing Cell-ACDC's code, thus not really needing the guide.
+
+IMPORTANT: Before installing with other methods
+-----------------------------------------------
 If you are **new to Python** or you need a **refresher** on how to
 manage scientific Python environments, I highly recommend reading `this
 guide <https://focalplane.biologists.com/2022/12/08/managing-scientific-python-environments-using-conda-mamba-and-friends/>`__
@@ -30,7 +38,8 @@ by Dr. Robert Haase BEFORE proceeding with Cell-ACDC installation.
 
 Installation using Pip
 ----------------------
-
+Windows
+~~~~~~~~
 1. Download and install `Python
    3.9 <https://www.python.org/downloads/>`__
 2. Open a terminal. On Windows we recommend using the PowerShell that
