@@ -171,10 +171,12 @@ Data such as the selected frame is stored in segmInfo.csv, while aligned.npz sto
 .. image:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataPrep1.png?raw=true
     :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataPrep1.png
     :alt: Data preparation: Selection menu for channel
+    :width: 300
 
 .. image:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataPrep2.png?raw=true
     :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataPrep2.png
     :alt: Data preparation: Image properties
+    :width: 300
 
 .. image:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataPrep3.png?raw=true
     :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataPrep3.png
@@ -182,4 +184,122 @@ Data such as the selected frame is stored in segmInfo.csv, while aligned.npz sto
 
 .. image:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataPrep4.png?raw=true
     :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataPrep4.png
-    :alt: Data preparation: Data structure 
+    :alt: Data preparation: Data structure
+
+Correcting Tracking and Segmentation Mistakes, Cell Cycle Annotation
+--------------------------------------------------------------------
+**3. Launching GUI…**
+
+Correcting Tracking and Segmentation Mistakes
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The first step in using the GUI is to load a file. For this, click on “File” in the top ribbon and select “Load folder”. This will open a window which prompts you to select a folder. After selecting the folder containing the information for the position you want to analyse, you will be prompted to select the channel you want to view as well as double check the metadata.
+
+After first loading data, you will notice that the current mode is set to “Viewer”. This allows you to freely browse through all images, which can be useful for gaining an overview of the data.
+
+To start editing, change the mode to “Segmentation and Tracking”.
+
+Important tools:
+
+* “Eraser” and “Brush” function as you expect.
+* “Separation” can be used to separate two cells which were not segmented properly.
+* “Edit ID” can be used to change the ID of a cell and mend tracking errors.
+* “Merge IDs” for merging two IDs if a cell was segmented into two parts.
+* “Annotate as dead”, “exclude from analysis” or “deletion region” for excluding cells or regions from analysis.
+* “Repeat tracking” and “repeat segmentation” for repeating the respective processes, which can be used to bring frame in line with previous frames.
+
+Important tips:
+
+* Cells with a thick red contour and thick ID are new cells which were not present in the previous frame.
+* Yellow contours with a yellow ID with a question mark show the contours of cells which were present in the previous frame but are missing in the currently viewed frame.
+* Most key bindings can be viewed and customized via the menu found in the top ribbon “Settings” menu. Pressing “H” will centre the picture, and double pressing “H” resets zoom.
+* Press the middle mouse button to delete a cell ID.
+* Right click on any point in the picture to reveal more options. Most importantly, the option to show a duplicate picture. This is useful to both view the contours and the segmentation mask.
+* Double tap a binding for a tool to select the “empowered” version, which can draw over any cells. Otherwise, tools only influence the cell on which you start drawing. Pressing shift while drawing with the brush will force a new ID creation.
+* You can use the arrow keys to navigate between frames.
+
+Cell Cycle Annotation
+~~~~~~~~~~~~~~~~~~~~~
+
+After correcting all errors, change the mode to “Cell Cycle Analysis”. You will be presented with a warning that suggests starting from the first frame, which you usually should heed. Important tools for CC-Ana:
+
+* “Assign bud to mother” is used if automatic assignment is wrong. For this activate the tool, then press and hold the right mouse button on the bud, then drag to the mother and release.
+* “Annotate unknown history” can be used to annotate cells which have unknown history.
+“Reinitialize cell cycle annotation” for running cell cycle annotation from this frame foreword to make them in line with current edits.
+* “Right click on mother/bud pair” will break the bond. Right click again to rebind them. This needs to be done manually whenever a mother and bud separate.
+  
+After finishing annotating the first frame, you will be prompted to accept the current annotation. This is only to make sure that the initial annotations are correct.
+
+All functions
+~~~~~~~~~~~~~
+**Shared:**
+
+* Top ribbon:
+    * File: File manipulation menu with options to load different positions, saving etc.
+        * New
+        * Load folder...
+        * Open image/video file...
+        * Open Recent
+        * Load older versions...
+        * Save
+        * Save as...
+        * Save only segme file
+        * Load fluorescence images...
+        * Load different Position...
+        * Exit 
+    * Edit: Some edit settings
+        * Customize keyboard shortcuts
+        * Text annotation colour
+        * Overlay colour
+        * Edit cell cycle annotations
+        * Smart handling of enabling/disabling tracking
+        * Automatic zoom to all cells when pressing "Next/Previous"
+    * View: Some view settings
+        * View cell cycle annotations
+        * Show segmentation image
+        * Show duplicated left image
+    * Image: Image viewing settings and options
+        * Properties (from config files)
+        * Filters
+        * Normalize intensities
+        * Invert black/white
+        * Save labels colormap
+        * Randomly shuffle colormap
+        * Optimise colormap
+        * Zoom to objects (shortcut: H key)
+        * Zoom out (shortcut: double press H key)
+    * Segment: Settings for re-segmentation
+        * Segment displayed frame
+        * Segment multiple frames
+        * Random walker
+        * Segmentation post- processing
+        * Enable automatic segmentation
+        * Relabel IDs sequentially
+    * Tracking: Settings for re-tracking
+        * Select real-time tracking algorithm
+        * Repeat tracking on multiple frames
+        * Repeat tracking on current frame...
+    * Measurement: Settings for adding and managing custom measurements    
+        * Set measurements
+        * Add custom measurement
+        * Add combined measurement
+    * Settings: Settings for changing the behaviour of tools, including **warning behaviour** and **not disabling tools after usage**
+    * Mode: change the mode
+        * Segmentation and Tracking, Cell cycle analysis, Viewer, Custom annotations
+
+.. image:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/GUI1.png?raw=true
+    :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/GUI1.png
+    :alt: GUI: Select displayed channel
+    :width: 300
+
+.. image:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/GUI2.png?raw=true
+    :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/GUI2.png
+    :alt: GUI: Metadata
+    :width: 300
+
+.. image:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/GUI3.png?raw=true
+    :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/GUI3.png
+    :alt: GUI: GUI for segmentation and tracking
+
+.. image:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/GUI4.png?raw=true
+    :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/GUI4.png
+    :alt: GUI: GUI for cell cycle annotation

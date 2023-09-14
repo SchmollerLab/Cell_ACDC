@@ -65,8 +65,6 @@ A GUI-based Python framework for **segmentation**, **tracking**, **cell cycle an
 
 Overview of pipeline and GUI
 
-.. contents:: 
-
 Contents
 --------
 
@@ -81,8 +79,7 @@ Resources
 ---------
 
 -  `Installation <#installation-using-anaconda-recommended>`__
--  `User
-   Manual <https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf>`__
+-  `User Manual <https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf>`__
    with **detailed instructions**
 -  `Publication <https://bmcbiol.biomedcentral.com/articles/10.1186/s12915-022-01372-6>`__
    of Cell-ACDC

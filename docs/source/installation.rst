@@ -30,21 +30,20 @@ Installation using Anaconda (recommended)
     This tells pip to install Cell-ACDC, specifically the version with a user interface.
 
 Advanced install methods
-========================
+------------------------
 
 The following part of the guide is not finished yet and is intended for users who are interested in changing Cell-ACDC's code, thus not really needing the guide.
 
 IMPORTANT: Before installing with other methods
------------------------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 If you are **new to Python** or you need a **refresher** on how to
 manage scientific Python environments, I highly recommend reading `this
 guide <https://focalplane.biologists.com/2022/12/08/managing-scientific-python-environments-using-conda-mamba-and-friends/>`__
 by Dr. Robert Haase BEFORE proceeding with Cell-ACDC installation.
 
 Installation using Pip
-----------------------
-Windows
-~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~
+**Windows**
 1. Download and install `Python
    3.9 <https://www.python.org/downloads/>`__
 2. Open a terminal. On Windows we recommend using the PowerShell that
@@ -65,7 +64,7 @@ Windows
    or after installing Cell-ACDC.
 
 Install from source
--------------------
+~~~~~~~~~~~~~~~~~~~
 
 If you want to try out experimental features (and, if you have time,
 maybe report a bug or two :D), you can install the developer version
@@ -97,8 +96,7 @@ from source as follows:
 10. OPTIONAL: If you need tensorflow run the command
     ``pip install tensorflow``.
 
-Updating Cell-ACDC installed from source
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+**Updating Cell-ACDC installed from source**
 
 To update Cell-ACDC installed from source, open a terminal window,
 navigate to the Cell_ACDC folder and run the command
@@ -111,7 +109,7 @@ Since you installed with the ``-e`` flag, pulling with ``git`` is
 enough.
 
 Install from source with forking
---------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 If you want to contribute to the code or you want to have a developer
 version that is fixed in time (easier to get back to in case we release
@@ -153,8 +151,7 @@ a bug :D) we recommend forking before cloning:
 13. OPTIONAL: If you need tensorflow run the command
     ``pip install tensorflow``.
 
-Updating Cell-ACDC installed from source with forking
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+**Updating Cell-ACDC installed from source with forking**
 
 To update Cell-ACDC installed from source, open a terminal window,
 navigate to the Cell-ACDC folder and run the command
