@@ -3740,9 +3740,9 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
     def __init__(self, mainWin, format='CSV'):
         super().__init__(mainWin)
         if format.startswith('CSV'):
-            self._to_format = 'to_csv'
+            self._final_ext = '.csv'
         elif format.startswith('XLS'):
-            self._to_format = 'to_excel'
+            self._final_ext = '.xlsx'
     
     def emitSetMeasurements(self, kwargs):
         self.mutex.lock()
@@ -3760,6 +3760,8 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
     @worker_exception_handler
     def run(self):
         from spotmax import DFs_FILENAMES
+        import spotmax.io
+        
         debugging = False
         expPaths = self.mainWin.expPaths
         tot_exp = len(expPaths)
@@ -3788,8 +3790,9 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
             selectedSpotmaxRuns = self.mainWin.selectedSpotmaxRuns
 
             self.signals.initProgressBar.emit(len(pos_foldernames))
-            spotmax_dfs_runs = {}
-            keys = {}
+            dfs_spots = {}
+            dfs_aggr = {}
+            pos_runs = {}
             for p, pos in enumerate(pos_foldernames):
                 if self.abort:
                     self.sigAborted.emit()
@@ -3805,23 +3808,68 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                 )
                 for run_desc in selectedSpotmaxRuns:
                     run, desc = run_desc.split('...')
-                    for anal_step, pattern_filename in DFs_FILENAMES.items():
+                    for _, pattern_filename in DFs_FILENAMES.items():
                         run_filename = pattern_filename.replace('*rn*', run)
                         run_filename = run_filename.replace('*desc*', desc)
+                        aggr_filename = f'{run_filename}_aggregated.csv'
                         aggr_filepath = os.path.join(
-                            spotmax_output_path, f'{run_filename}_aggregated.csv'
+                            spotmax_output_path, aggr_filename
                         )
                         if not os.path.exists(aggr_filepath):
                             continue
+                        df_spots_filename = f'{run_filename}.h5'
                         spots_filepath = os.path.join(
-                            spotmax_output_path, f'{run_filename}.h5'
+                            spotmax_output_path, df_spots_filename
                         )
+                        ext_spots = '.h5'
                         if not os.path.exists(spots_filepath):
+                            df_spots_filename = f'{run_filename}.csv'
                             spots_filepath = os.path.join(
-                                spotmax_output_path, f'{run_filename}.h5'
+                                spotmax_output_path, df_spots_filename
                             )
+                            ext_spots = '.csv'
                         if not os.path.exists(spots_filepath):
                             continue
-                
+                        
+                        analysis_step = re.findall(
+                            r'\*rn\*(.*)\*desc\*', pattern_filename
+                        )[0]
+                        df_spots = spotmax.io.load_spots_table(
+                            spotmax_output_path, df_spots_filename
+                        )
+                        df_aggregated = pd.read_csv(
+                            aggr_filepath, index_col=['frame_i', 'Cell_ID']
+                        )
+                        key = (run, analysis_step, desc, ext_spots)
+                        if key not in dfs_spots:
+                            dfs_spots[key] = []
+                            dfs_aggr[key] = []
+                            pos_runs[key] = []
+                        dfs_spots[key].append(df_spots)
+                        dfs_aggr[key].append(df_aggregated)
+                        pos_runs[key].append(pos)
+
                 self.signals.progressBar.emit(1)        
+            
+            allpos_folderpath = os.path.join(exp_path, 'spotMAX_multipos_output')
+            os.makedirs(allpos_folderpath, exist_ok=True)
+            
+            for key, dfs in dfs_spots.items():
+                pos_keys = pos_runs[key]
+                run, analysis_step, desc, ext_spots = key
+                if ext_spots == '.csv':
+                    ext_spots = self._final_ext
+                filename = f'multipos_{run}{analysis_step}{desc}{ext_spots}'
+                spotmax.io.save_concat_dfs(
+                    dfs, pos_keys, allpos_folderpath, filename, ext_spots
+                )
+            
+            for key, dfs in dfs_aggr.items():
+                pos_keys = pos_runs[key]
+                run, analysis_step, desc, _ = key
+                filename = f'multipos_{run}{analysis_step}{desc}{self._final_ext}'
+                spotmax.io.save_concat_dfs(
+                    dfs, pos_keys, allpos_folderpath, filename, self._final_ext
+                )
+                
         self.signals.finished.emit(self)
