@@ -20,23 +20,23 @@ The Main Menu
 -------------
 The main menu is a hub through which you can access all relevant modules.
 
-.. Image:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/MainMenu.png?raw=true
+.. figure:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/MainMenu.png?raw=true
     :alt: Overview of the main menu
     :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/MainMenu.png
 
-Overview of the main menu
+    Overview of the main menu
 
 Module buttons
 ~~~~~~~~~~~~~~
 Through the main menu, all modules of Cell-ACDC can be accessed:
 
-0. Create data structure from microscopy/image file(s)...
+1. Create data structure from microscopy/image file(s)...
     This module will allow you to create a suitable data structure from raw microscopy files.
-1. Launch data prep module...
+2. Launch data prep module...
     With this module you can align time-lapse microscopy data and select a sharp image from a z-stack, as well as crop images
-2. Launch segmentation module...
+3. Launch segmentation module...
     Using this module, you can perform segmentation and tracking tasks using common methods.
-3. Launch GUI...
+4. Launch GUI...
     Lastly, using the GUI the resulting data can be inspected and corrected for mistakes. Also, cell cycle annotation can be carried out.
 
 Top ribbon options include:
@@ -110,31 +110,31 @@ Each position is saved in a separate folder. The metadata are stored both in a T
 
     It is good practice to keep the original files for future reference, even though they are not needed in the future steps.
 
-.. image:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataStruc1.png?raw=true
+.. figure:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataStruc1.png?raw=true
     :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataStruc1.png
     :alt: Creating Data Structures: Menu for selecting original file structure
 
-.. image:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataStruc2.png?raw=true
+.. figure:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataStruc2.png?raw=true
     :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataStruc2.png
     :alt: Creating Data Structures: Second menu for selecting original file structure
 
-.. image:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataStruc3.png?raw=true
+.. figure:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataStruc3.png?raw=true
     :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataStruc3.png
     :alt: Creating Data Structures: Prompt for creating a empty folder and putting microscopy files inside
 
-.. image:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataStruc4.png?raw=true
+.. figure:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataStruc4.png?raw=true
     :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataStruc4.png
     :alt: Creating Data Structures: Folder selection
 
-.. image:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataStruc5.png?raw=true
+.. figure:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataStruc5.png?raw=true
     :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataStruc5.png
     :alt: Creating Data Structures: Metadata menu
 
-.. image:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataStruc6.png?raw=true
+.. figure:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataStruc6.png?raw=true
     :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataStruc6.png
     :alt: Creating Data Structures: Window for checking order of dimensions
 
-.. image:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataStruc7.png?raw=true
+.. figure:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataStruc7.png?raw=true
     :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataStruc7.png
     :alt: Creating Data Structures: Data structure
 
@@ -168,21 +168,21 @@ Multiple ROIs and Bkgr. ROIs can be added through the corresponding buttons. Rig
 
 Data such as the selected frame is stored in segmInfo.csv, while aligned.npz stores the alignment data.
 
-.. image:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataPrep1.png?raw=true
+.. figure:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataPrep1.png?raw=true
     :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataPrep1.png
     :alt: Data preparation: Selection menu for channel
     :width: 300
 
-.. image:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataPrep2.png?raw=true
+.. figure:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataPrep2.png?raw=true
     :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataPrep2.png
     :alt: Data preparation: Image properties
     :width: 300
 
-.. image:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataPrep3.png?raw=true
+.. figure:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataPrep3.png?raw=true
     :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataPrep3.png
     :alt: Data preparation: Main GUI for data preparation
 
-.. image:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataPrep4.png?raw=true
+.. figure:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataPrep4.png?raw=true
     :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataPrep4.png
     :alt: Data preparation: Data structure
 
@@ -198,22 +198,22 @@ After a short wait, you are prompted to select the model you want to use for **s
 
 Next, you can select a stop frame if you don't want to segment and track the entire experiment. Lastly, you need to select the model which should be used for tracking. The process now begins, and you can lay back and watch the computer do work for you.
 
-.. image:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/Seg1.png?raw=true
+.. figure:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/Seg1.png?raw=true
     :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/Seg1.png
     :alt: Segmentation and Tracking: Segmentation model
     :width: 300
 
-.. image:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/Seg2.png?raw=true
+.. figure:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/Seg2.png?raw=true
     :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/Seg2.png
     :alt: Segmentation and Tracking: Parameters for model and post processing parameters
 
 
-.. image:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/Seg3.png?raw=true
+.. figure:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/Seg3.png?raw=true
     :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/Seg3.png
     :alt: Segmentation and Tracking: Stop frame
     :width: 300
 
-.. image:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/Seg4.png?raw=true
+.. figure:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/Seg4.png?raw=true
     :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/Seg4.png
     :alt: Segmentation and Tracking: Tracking model
     :width: 300
@@ -318,21 +318,21 @@ All functions
     * Mode: change the mode
         * Segmentation and Tracking, Cell cycle analysis, Viewer, Custom annotations
 
-.. image:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/GUI1.png?raw=true
+.. figure:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/GUI1.png?raw=true
     :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/GUI1.png
     :alt: GUI: Select displayed channel
     :width: 300
 
-.. image:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/GUI2.png?raw=true
+.. figure:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/GUI2.png?raw=true
     :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/GUI2.png
     :alt: GUI: Metadata
     :width: 300
 
-.. image:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/GUI3.png?raw=true
+.. figure:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/GUI3.png?raw=true
     :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/GUI3.png
     :alt: GUI: GUI for segmentation and tracking
 
-.. image:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/GUI4.png?raw=true
+.. figure:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/GUI4.png?raw=true
     :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/GUI4.png
     :alt: GUI: GUI for cell cycle annotation
 
