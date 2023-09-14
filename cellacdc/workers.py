@@ -74,6 +74,7 @@ class signals(QObject):
     sigPermissionError = Signal(str, object)
     sigSelectSegmFiles = Signal(object, object)
     sigSelectAcdcOutputFiles = Signal(object, object, str, bool, bool)
+    sigSelectSpotmaxRun = Signal(object, object, str, bool, bool)
     sigSetMeasurements = Signal(object)
     sigInitAddMetrics = Signal(object, object)
     sigUpdatePbarDesc = Signal(str)
@@ -1888,6 +1889,7 @@ class BaseWorkerUtil(QObject):
         QObject.__init__(self)
         self.signals = signals()
         self.abort = False
+        self.skipExp = False
         self.logger = workerLogger(self.signals.progress)
         self.mutex = QMutex()
         self.waitCond = QWaitCondition()
@@ -1906,6 +1908,19 @@ class BaseWorkerUtil(QObject):
         ):
         self.mutex.lock()
         self.signals.sigSelectAcdcOutputFiles.emit(
+            exp_path, pos_foldernames, infoText, allowSingleSelection,
+            multiSelection
+        )
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        return self.abort
+
+    def emitSelectSpotmaxRun(
+            self, exp_path, pos_foldernames, infoText='', 
+            allowSingleSelection=True, multiSelection=True
+        ):
+        self.mutex.lock()
+        self.signals.sigSelectSpotmaxRun.emit(
             exp_path, pos_foldernames, infoText, allowSingleSelection,
             multiSelection
         )
@@ -3715,3 +3730,98 @@ class DelObjectsOutsideSegmROIWorker(QObject):
         )
         
         self.finished.emit((self, cleared_segm_data, delIDs))
+
+class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
+    sigAborted = Signal()
+    sigAskFolder = Signal(str)
+    sigSetMeasurements = Signal(object)
+    sigAskAppendName = Signal(str, list)
+
+    def __init__(self, mainWin, format='CSV'):
+        super().__init__(mainWin)
+        if format.startswith('CSV'):
+            self._to_format = 'to_csv'
+        elif format.startswith('XLS'):
+            self._to_format = 'to_excel'
+    
+    def emitSetMeasurements(self, kwargs):
+        self.mutex.lock()
+        self.sigSetMeasurements.emit(kwargs)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+    
+    def emitAskAppendName(self, allPos_spotmax_df_basename):
+        # Ask appendend name
+        self.mutex.lock()
+        self.sigAskAppendName.emit(allPos_spotmax_df_basename, [])
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+
+    @worker_exception_handler
+    def run(self):
+        from spotmax import DFs_FILENAMES
+        debugging = False
+        expPaths = self.mainWin.expPaths
+        tot_exp = len(expPaths)
+        self.signals.initProgressBar.emit(0)
+        spotmax_dfs_allexp = []
+        keys_exp = []
+        for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
+            self.errors = {}
+            tot_pos = len(pos_foldernames)
+            
+            abort = self.emitSelectSpotmaxRun(
+                exp_path, pos_foldernames, infoText=' to combine',
+                allowSingleSelection=True, multiSelection=False
+            )
+            if abort:
+                self.sigAborted.emit()
+                return
+
+            if self.skipExp:
+                self.logger.log(
+                    '[WARNING] The following experiment does not contain '
+                    f'valid spotMAX output files. Skipping it. "{exp_path}"'
+                )
+                continue
+            
+            selectedSpotmaxRuns = self.mainWin.selectedSpotmaxRuns
+
+            self.signals.initProgressBar.emit(len(pos_foldernames))
+            spotmax_dfs_runs = {}
+            keys = {}
+            for p, pos in enumerate(pos_foldernames):
+                if self.abort:
+                    self.sigAborted.emit()
+                    return
+
+                self.logger.log(
+                    f'Processing experiment n. {i+1}/{tot_exp}, '
+                    f'{pos} ({p+1}/{tot_pos})'
+                )
+
+                spotmax_output_path = os.path.join(
+                    exp_path, pos, 'spotMAX_output'
+                )
+                for run_desc in selectedSpotmaxRuns:
+                    run, desc = run_desc.split('...')
+                    for anal_step, pattern_filename in DFs_FILENAMES.items():
+                        run_filename = pattern_filename.replace('*rn*', run)
+                        run_filename = run_filename.replace('*desc*', desc)
+                        aggr_filepath = os.path.join(
+                            spotmax_output_path, f'{run_filename}_aggregated.csv'
+                        )
+                        if not os.path.exists(aggr_filepath):
+                            continue
+                        spots_filepath = os.path.join(
+                            spotmax_output_path, f'{run_filename}.h5'
+                        )
+                        if not os.path.exists(spots_filepath):
+                            spots_filepath = os.path.join(
+                                spotmax_output_path, f'{run_filename}.h5'
+                            )
+                        if not os.path.exists(spots_filepath):
+                            continue
+                
+                self.signals.progressBar.emit(1)        
+        self.signals.finished.emit(self)
