@@ -1,5 +1,11 @@
-Getting started
-===============
+From 0 to Cell-ACDC mastery: A complete guide
+=============================================
+
+This guide should provide you with everything that you need to know about Cell-ACDC to become a true master. In the future, a abridged version of this guide as well as video tutorials will be added.
+
+.. contents::
+
+
 Running Cell-ACDC
 -----------------
 
@@ -106,28 +112,74 @@ Each position is saved in a separate folder. The metadata are stored both in a T
 
 .. image:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataStruc1.png?raw=true
     :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataStruc1.png
-    :alt: Menu for selecting original file structure
+    :alt: Creating Data Structures: Menu for selecting original file structure
 
 .. image:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataStruc2.png?raw=true
     :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataStruc2.png
-    :alt: Second menu for selecting original file structure
+    :alt: Creating Data Structures: Second menu for selecting original file structure
 
 .. image:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataStruc3.png?raw=true
     :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataStruc3.png
-    :alt: Prompt for creating a empty folder and putting microscopy files inside
+    :alt: Creating Data Structures: Prompt for creating a empty folder and putting microscopy files inside
 
 .. image:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataStruc4.png?raw=true
     :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataStruc4.png
-    :alt: Folder selection
+    :alt: Creating Data Structures: Folder selection
 
 .. image:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataStruc5.png?raw=true
     :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataStruc5.png
-    :alt: Metadata menu
+    :alt: Creating Data Structures: Metadata menu
 
 .. image:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataStruc6.png?raw=true
     :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataStruc6.png
-    :alt: Window for checking order of dimensions
+    :alt: Creating Data Structures: Window for checking order of dimensions
 
 .. image:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataStruc7.png?raw=true
     :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataStruc7.png
-    :alt: Data structure
+    :alt: Creating Data Structures: Data structure
+
+Preparing data for further analysis
+-----------------------------------
+**1. Launch data prep module…**
+
+Through pressing “Launch data prep module…” in the main menu, the data preparation module can be launched. In this step, a sharp image from a z stack can be selected, and afterwards the images can be automatically aligned in a way that cells stay in one position for time lapse experiments.
+
+The alignment process is done using the function ``skimage.registration.phase_cross_correlation`` from the `scikit-image library <https://scikit-image.org/>`__.
+
+To start off, click “File” in the top ribbon and then select “Open”. Select the position folder, for example “Position_1”, which you want to start preparing. A pop up will appear which asks you for the channel name. Here you should input the channel on which basis you want to align.
+
+In the next menu, select the desired number of frames and z-slices. Here you can also add another custom field, which will be saved in the metadata table. Later, this will be added as a column to the output table.
+
+Next, go through each frame and select the z-slice which is the sharpest (if your data is 3D).  Using the buttons in the top button row, you can apply the current slice to all future or past frames, as well as apply a gradient from the current frame to the first one.
+
+Alternatively, a projection can be used. This is done through the projection drop down menu in the bottom right.
+
+Next, select “start” from the buttons bar. This will start the alignment process. 
+
+.. note::
+    Do this even if you don't have a time lapse experiment, as it allows you to carry on to the next step and won't change the data.
+
+Afterwards, the region of interest (ROI) as well as the background ROI (Bkgr. ROI) can be adjusted. This is done through drag and drop on the edges and resizing on the turquoise rhombuses. Make sure that the ROI covers all cells of interest on all frames and that the Bkgr. ROI is on an area without cells. Once all is set, press the “Cut” button. **This will overwrite the previous files**
+
+.. note::
+    If the Bkgr. ROI is not visible, a standard Bkgr. ROI is applied. If you want to have a Bkgr. ROI, press the Bkgr. ROI button. 
+
+Multiple ROIs and Bkgr. ROIs can be added through the corresponding buttons. Right click on one of the frames to show an interaction menu through which you can remove it.
+
+Data such as the selected frame is stored in segmInfo.csv, while aligned.npz stores the alignment data.
+
+.. image:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataPrep1.png?raw=true
+    :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataPrep1.png
+    :alt: Data preparation: Selection menu for channel
+
+.. image:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataPrep2.png?raw=true
+    :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataPrep2.png
+    :alt: Data preparation: Image properties
+
+.. image:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataPrep3.png?raw=true
+    :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataPrep3.png
+    :alt: Data preparation: Main GUI for data preparation
+
+.. image:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataPrep4.png?raw=true
+    :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/DataPrep4.png
+    :alt: Data preparation: Data structure 

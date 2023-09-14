@@ -65,6 +65,8 @@ A GUI-based Python framework for **segmentation**, **tracking**, **cell cycle an
 
 Overview of pipeline and GUI
 
+.. contents:: 
+
 Contents
 --------
 

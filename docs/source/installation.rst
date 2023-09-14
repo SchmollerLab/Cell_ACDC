@@ -1,5 +1,9 @@
 Installation
 ============
+This guide contains instructions for installing Cell-ACDC in different ways. In the future a video will be added.
+
+.. contents::
+
 
 Installation using Anaconda (recommended)
 -----------------------------------------
