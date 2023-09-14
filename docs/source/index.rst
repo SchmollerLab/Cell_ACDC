@@ -69,9 +69,10 @@ Contents
 --------
 
 .. toctree::
-
-   getting-started
+   :maxdepth: 2
    installation
+   getting-started
+   release-notes
 
 Resources
 ---------
@@ -117,12 +118,6 @@ supported by Cell-ACDC:
 -  `Bayesian tracker
    (btrack) <https://doi.org/10.3389/fcomp.2021.734559>`__
 -  `trackpy <https://soft-matter.github.io/trackpy/dev/introduction.html#citing-trackpy>`__
-
-How to contribute
------------------
-
-Contributions to Cell-ACDC are always very welcome! For more details see
-instructions `here <https://github.com/SchmollerLab/Cell_ACDC/blob/main/CONTRIBUTING.rst>`__.
 
 Overview
 --------
@@ -182,22 +177,15 @@ shifted? Look
 `here <https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/scripts/README.md>`__
 for further information on how to correct your data.
 
-Update v1.2.4
--------------
-
-First release that is finally available on PyPi.
-
-Main new feature: custom trackers! You can now add any tracker you want
-by implementing a simple tracker class. See the
-`manual <https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf>`__
-at the section “**Adding trackers to the pipeline**”.
-
-Additionally, this release includes many UI/UX improvements such as
-color and style customisation, alongside a inverted LUTs.
-
 Usage
 -----
 
 For details about how to use Cell-ACDC please read the User Manual
 downloadable from
 `here <https://github.com/SchmollerLab/Cell_ACDC/tree/main/UserManual>`__
+
+How to contribute
+-----------------
+
+Contributions to Cell-ACDC are always very welcome! For more details see
+instructions `here <https://github.com/SchmollerLab/Cell_ACDC/blob/main/CONTRIBUTING.rst>`__.
