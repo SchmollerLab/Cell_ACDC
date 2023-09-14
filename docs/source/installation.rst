@@ -44,8 +44,8 @@ by Dr. Robert Haase BEFORE proceeding with Cell-ACDC installation.
 Installation using Pip
 ~~~~~~~~~~~~~~~~~~~~~~
 **Windows**
-1. Download and install `Python
-   3.9 <https://www.python.org/downloads/>`__
+
+1. Download and install `Python 3.9 <https://www.python.org/downloads/>`__
 2. Open a terminal. On Windows we recommend using the PowerShell that
    you can install from
    `here <https://docs.microsoft.com/it-it/powershell/scripting/install/installing-powershell-on-windows?view=powershell-7.2#installing-the-msi-package>`__.
@@ -119,8 +119,7 @@ a bug :D) we recommend forking before cloning:
     or `Miniconda <https://docs.conda.io/en/latest/miniconda.html>`__.
 2.  Create a personal `GitHub account <https://github.com>`__ and log
     in.
-3.  Go to the Cell-ACDC `GitHub
-    page <https://github.com/SchmollerLab/Cell_ACDC>`__ and click the
+3.  Go to the Cell-ACDC `GitHub page <https://github.com/SchmollerLab/Cell_ACDC>`__ and click the
     “Fork” button (top-right) to create your own copy of the project.
 4.  Open a terminal and navigate to a folder where you want to download
     Cell-ACDC. If you are on Windows you need to use the “Anaconda
