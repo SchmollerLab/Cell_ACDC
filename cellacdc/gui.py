@@ -1536,7 +1536,7 @@ class guiWin(QMainWindow):
             '     NOTE: use the power brush to draw ABOVE the existing labels.\n\n'
             'SHORTCUT: "B" key'
         )
-        editToolBar.addWidget(self.brushButton)
+        self.brushAction = editToolBar.addWidget(self.brushButton)
         self.checkableButtons.append(self.brushButton)
         self.LeftClickButtons.append(self.brushButton)
         self.brushButton.keyPressShortcut = Qt.Key_B
@@ -1557,7 +1557,7 @@ class guiWin(QMainWindow):
             '     double-press "X" key. If double-press is successfull,\n'
             '     then eraser button is red and eraser cursor always red.\n\n'
             'SHORTCUT: "X" key')
-        editToolBar.addWidget(self.eraserButton)
+        self.eraserAction = editToolBar.addWidget(self.eraserButton)
         self.eraserButton.keyPressShortcut = Qt.Key_X
         self.widgetsWithShortcut['Eraser'] = self.eraserButton
         self.checkableButtons.append(self.eraserButton)
@@ -15049,15 +15049,20 @@ class guiWin(QMainWindow):
             posData.segmInfo_df.at[idx, 'which_z_proj_gui'] = how
         posData = self.data[self.pos_i]
         if how == 'single z-slice':
-            self.zSliceScrollBar.setDisabled(False)
-            self.zSliceSpinbox.setDisabled(False)
-            self.zSliceCheckbox.setDisabled(False)
+            self.setZprojDisabled(False)
             self.update_z_slice(self.zSliceScrollBar.sliderPosition())
         else:
-            self.zSliceScrollBar.setDisabled(True)
-            self.zSliceSpinbox.setDisabled(True)
-            self.zSliceCheckbox.setDisabled(True)
+            self.setZprojDisabled(True)
             self.updateAllImages()
+    
+    def setZprojDisabled(self, disabled):
+        self.zSliceScrollBar.setDisabled(disabled)
+        self.zSliceSpinbox.setDisabled(disabled)
+        self.zSliceCheckbox.setDisabled(disabled)
+        for action in self.editToolBar.actions():
+            if action == self.eraserAction:
+                continue
+            action.setDisabled(disabled)
     
     def clearAx2Items(self, onlyHideText=False):
         self.ax2_binnedIDs_ScatterPlot.clear()
