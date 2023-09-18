@@ -99,9 +99,9 @@ After choosing an option, another window will open prompting you to select what 
 
 * NONE of the above
 
-Please select the appropriate option. Afterwards, you are prompted to create an empty folder in which only the microscopy file(s) are present. After doing so, select “Done”. Afterwards, you will be prompted to select this folder. After selecting the destination folder, which by default is the folder you selected in the step before, Cell-ACDC will attempt to load OEM metadata.
+Please select the appropriate option. Afterwards, you are prompted to create an empty folder in which only the microscopy file(s) are present. After doing so, select "Done". Afterwards, you will be prompted to select this folder. After selecting the destination folder, which by default is the folder you selected in the step before, Cell-ACDC will attempt to load OEM metadata.
 
-After a short wait, a window with the extracted metadata should appear. Make sure to double check all values and **change “Order of Dimensions”** to the appropriate value. To double check if the dimensions are in the correct order, press on the eye icon next to “Channel 0” and use the scrollbars to go through the z coordinate and time coordinate. Once all values are in order, press “Ok”. If the values are the same for all positions, feel free to click “Use the above metadata for all the next positions”. Note that if you have several files, and you press “Ok” and not one of the two other options, the process will stop after each file, and you need to confirm the metadata again.
+After a short wait, a window with the extracted metadata should appear. Make sure to double check all values and **change "Order of Dimensions"** to the appropriate value. To double check if the dimensions are in the correct order, press on the eye icon next to "Channel 0" and use the scrollbars to go through the z coordinate and time coordinate. Once all values are in order, press "Ok". If the values are the same for all positions, feel free to click "Use the above metadata for all the next positions". Note that if you have several files, and you press "Ok" and not one of the two other options, the process will stop after each file, and you need to confirm the metadata again.
 
 Each position is saved in a separate folder. The metadata are stored both in a TXT and SCV file, while the channels are stored in separate TIF files.
 
@@ -142,11 +142,11 @@ Preparing data for further analysis
 -----------------------------------
 **1. Launch data prep module…**
 
-Through pressing “Launch data prep module…” in the main menu, the data preparation module can be launched. In this step, a sharp image from a z stack can be selected, and afterwards the images can be automatically aligned in a way that cells stay in one position for time lapse experiments.
+Through pressing "Launch data prep module…" in the main menu, the data preparation module can be launched. In this step, a sharp image from a z stack can be selected, and afterwards the images can be automatically aligned in a way that cells stay in one position for time lapse experiments.
 
 The alignment process is done using the function ``skimage.registration.phase_cross_correlation`` from the `scikit-image library <https://scikit-image.org/>`__.
 
-To start off, click “File” in the top ribbon and then select “Open”. Select the position folder, for example “Position_1”, which you want to start preparing. A pop up will appear which asks you for the channel name. Here you should input the channel on which basis you want to align.
+To start off, click "File" in the top ribbon and then select "Open". Select the position folder, for example "Position_1", which you want to start preparing. A pop up will appear which asks you for the channel name. Here you should input the channel on which basis you want to align.
 
 In the next menu, select the desired number of frames and z-slices. Here you can also add another custom field, which will be saved in the metadata table. Later, this will be added as a column to the output table.
 
@@ -154,12 +154,12 @@ Next, go through each frame and select the z-slice which is the sharpest (if you
 
 Alternatively, a projection can be used. This is done through the projection drop down menu in the bottom right.
 
-Next, select “start” from the buttons bar. This will start the alignment process. 
+Next, select "start" from the buttons bar. This will start the alignment process. 
 
 .. note::
     Do this even if you don't have a time lapse experiment, as it allows you to carry on to the next step and won't change the data.
 
-Afterwards, the region of interest (ROI) as well as the background ROI (Bkgr. ROI) can be adjusted. This is done through drag and drop on the edges and resizing on the turquoise rhombuses. Make sure that the ROI covers all cells of interest on all frames and that the Bkgr. ROI is on an area without cells. Once all is set, press the “Cut” button. **This will overwrite the previous files**
+Afterwards, the region of interest (ROI) as well as the background ROI (Bkgr. ROI) can be adjusted. This is done through drag and drop on the edges and resizing on the turquoise rhombuses. Make sure that the ROI covers all cells of interest on all frames and that the Bkgr. ROI is on an area without cells. Once all is set, press the "Cut" button. **This will overwrite the previous files**
 
 .. note::
     If the Bkgr. ROI is not visible, a standard Bkgr. ROI is applied. If you want to have a Bkgr. ROI, press the Bkgr. ROI button. 
@@ -224,42 +224,65 @@ Correcting Tracking and Segmentation Mistakes, Cell Cycle Annotation
 
 Correcting Tracking and Segmentation Mistakes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-The first step in using the GUI is to load a file. For this, click on “File” in the top ribbon and select “Load folder”. This will open a window which prompts you to select a folder. After selecting the folder containing the information for the position you want to analyse, you will be prompted to select the channel you want to view as well as double check the metadata.
+The first step in using the GUI is to load a file. For this, click on "File" in the top ribbon and select "Load folder". This will open a window which prompts you to select a folder. After selecting the folder containing the information for the position you want to analyse, you will be prompted to select the channel you want to view as well as double check the metadata.
 
-After first loading data, you will notice that the current mode is set to “Viewer”. This allows you to freely browse through all images, which can be useful for gaining an overview of the data.
+After first loading data, you will notice that the current mode is set to "Viewer". This allows you to freely browse through all images, which can be useful for gaining an overview of the data.
 
-To start editing, change the mode to “Segmentation and Tracking”.
+To start editing, change the mode to "Segmentation and Tracking".
 
 Important tools:
 
-* “Eraser” and “Brush” function as you expect.
-* “Separation” can be used to separate two cells which were not segmented properly.
-* “Edit ID” can be used to change the ID of a cell and mend tracking errors.
-* “Merge IDs” for merging two IDs if a cell was segmented into two parts.
-* “Annotate as dead”, “exclude from analysis” or “deletion region” for excluding cells or regions from analysis.
-* “Repeat tracking” and “repeat segmentation” for repeating the respective processes, which can be used to bring frame in line with previous frames.
+.. |eraser| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/eraser.svg
+    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/eraser.svg
+    :alt: Eraser icon
+    :width: 300
+
+* |eraser| "Eraser" and "Brush" function as you expect.
+* "Separation" can be used to separate two cells which were not segmented properly.
+* "Edit ID" can be used to change the ID of a cell and mend tracking errors.
+* "Merge IDs" for merging two IDs if a cell was segmented into two parts.
+* "Annotate as dead", "exclude from analysis" or "deletion region" for excluding cells or regions from analysis.
+* "Repeat tracking" and "repeat segmentation" for repeating the respective processes, which can be used to bring frame in line with previous frames.
 
 Important tips:
 
 * Cells with a thick red contour and thick ID are new cells which were not present in the previous frame.
 * Yellow contours with a yellow ID with a question mark show the contours of cells which were present in the previous frame but are missing in the currently viewed frame.
-* Most key bindings can be viewed and customized via the menu found in the top ribbon “Settings” menu. Pressing “H” will centre the picture, and double pressing “H” resets zoom.
+* Most key bindings can be viewed and customized via the menu found in the top ribbon "Settings" menu. Pressing "H" will centre the picture, and double pressing "H" resets zoom.
 * Press the middle mouse button to delete a cell ID.
 * Right click on any point in the picture to reveal more options. Most importantly, the option to show a duplicate picture. This is useful to both view the contours and the segmentation mask.
-* Double tap a binding for a tool to select the “empowered” version, which can draw over any cells. Otherwise, tools only influence the cell on which you start drawing. Pressing shift while drawing with the brush will force a new ID creation.
+* Double tap a binding for a tool to select the "empowered" version, which can draw over any cells. Otherwise, tools only influence the cell on which you start drawing. Pressing shift while drawing with the brush will force a new ID creation.
 * You can use the arrow keys to navigate between frames.
 
 Cell Cycle Annotation
 ~~~~~~~~~~~~~~~~~~~~~
 
-After correcting all errors, change the mode to “Cell Cycle Analysis”. You will be presented with a warning that suggests starting from the first frame, which you usually should heed. Important tools for CC-Ana:
+After correcting all errors, change the mode to "Cell Cycle Analysis". You will be presented with a warning that suggests starting from the first frame, which you usually should heed. Important tools for CC-Ana:
 
-* “Assign bud to mother” is used if automatic assignment is wrong. For this activate the tool, then press and hold the right mouse button on the bud, then drag to the mother and release.
-* “Annotate unknown history” can be used to annotate cells which have unknown history.
-“Reinitialize cell cycle annotation” for running cell cycle annotation from this frame foreword to make them in line with current edits.
-* “Right click on mother/bud pair” will break the bond. Right click again to rebind them. This needs to be done manually whenever a mother and bud separate.
+* "Assign bud to mother" is used if automatic assignment is wrong. For this activate the tool, then press and hold the right mouse button on the bud, then drag to the mother and release.
+* "Annotate unknown history" can be used to annotate cells which have unknown history.
+"Reinitialize cell cycle annotation" for running cell cycle annotation from this frame foreword to make them in line with current edits.
+* "Right click on mother/bud pair" will break the bond. Right click again to rebind them. This needs to be done manually whenever a mother and bud separate.
   
 After finishing annotating the first frame, you will be prompted to accept the current annotation. This is only to make sure that the initial annotations are correct.
+
+.. figure:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/GUI1.png?raw=true
+    :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/GUI1.png
+    :alt: GUI: Select displayed channel
+    :width: 300
+
+.. figure:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/GUI2.png?raw=true
+    :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/GUI2.png
+    :alt: GUI: Metadata
+    :width: 300
+
+.. figure:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/GUI3.png?raw=true
+    :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/GUI3.png
+    :alt: GUI: GUI for segmentation and tracking
+
+.. figure:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/GUI4.png?raw=true
+    :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/GUI4.png
+    :alt: GUI: GUI for cell cycle annotation
 
 All functions
 ~~~~~~~~~~~~~
@@ -318,21 +341,5 @@ All functions
     * Mode: change the mode
         * Segmentation and Tracking, Cell cycle analysis, Viewer, Custom annotations
 
-.. figure:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/GUI1.png?raw=true
-    :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/GUI1.png
-    :alt: GUI: Select displayed channel
-    :width: 300
 
-.. figure:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/GUI2.png?raw=true
-    :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/GUI2.png
-    :alt: GUI: Metadata
-    :width: 300
-
-.. figure:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/GUI3.png?raw=true
-    :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/GUI3.png
-    :alt: GUI: GUI for segmentation and tracking
-
-.. figure:: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/GUI4.png?raw=true
-    :target: https://github.com/Teranis/Cell_ACDC/blob/UserManual/docs/source/images/GUI4.png
-    :alt: GUI: GUI for cell cycle annotation
 
