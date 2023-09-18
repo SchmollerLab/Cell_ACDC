@@ -11942,10 +11942,21 @@ class guiWin(QMainWindow):
 
         if storeOnlyZoom:
             labels, crop_slice = transformation.crop_2D(
-                self.currentLab2D, self.ax1.viewRange(), tolerance=10
+                self.currentLab2D, self.ax1.viewRange(), tolerance=10,
+                return_copy=False
             )
             if self.isSegm3D:
-                crop_slice = (self.z_lab(), *crop_slice)
+                z = self.z_lab(checkIfProj=True)
+                if z is None:
+                    z_slice = slice(0, len(posData.lab))
+                    crop_slice = (z_slice, *crop_slice)
+                    labels = posData.lab[crop_slice].copy()
+                else:
+                    z_slice = z
+                    crop_slice = (z_slice, *crop_slice)
+                    labels = labels.copy()
+            else:
+                labels = labels.copy()
         else:
             labels = posData.lab.copy()
             crop_slice = None
