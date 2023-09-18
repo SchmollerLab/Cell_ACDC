@@ -12828,4 +12828,3 @@ def get_existing_directory(allow_images_path=True, **kwargs):
         )
         msg = widgets.myMessageBox()
         msg.warning(kwargs['parent'], 'Cannot save here', txt)
-        

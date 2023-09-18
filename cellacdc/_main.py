@@ -410,9 +410,12 @@ class mainWin(QMainWindow):
         measurementsMenu = utilsMenu.addMenu('Measurements')
         measurementsMenu.addAction(self.calcMetricsAcdcDf)
         measurementsMenu.addAction(self.combineMetricsMultiChannelAction) 
+        
+        concatMenu = utilsMenu.addMenu('Concatenate')
+        concatMenu.addAction(self.concatAcdcDfsAction)    
+        concatMenu.addAction(self.concatSpotmaxDfsAction) 
 
-        utilsMenu.addAction(self.toSymDivAction)
-        utilsMenu.addAction(self.concatAcdcDfsAction)                      
+        utilsMenu.addAction(self.toSymDivAction)                 
         utilsMenu.addAction(self.batchConverterAction)
         utilsMenu.addAction(self.repeatDataPrepAction)
         utilsMenu.addAction(self.alignAction)
@@ -722,6 +725,9 @@ class mainWin(QMainWindow):
         self.concatAcdcDfsAction = QAction(
             'Concatenate acdc output tables from multiple Positions...'
         )
+        self.concatSpotmaxDfsAction = QAction(
+            'Concatenate spotMAX output tables from multiple Positions...'
+        )
         self.calcMetricsAcdcDf = QAction(
             'Compute measurements for one or more experiments...'
         )
@@ -756,6 +762,9 @@ class mainWin(QMainWindow):
         )
         self.alignAction.triggered.connect(self.launchAlignUtil)
         self.concatAcdcDfsAction.triggered.connect(self.launchConcatUtil)
+        self.concatSpotmaxDfsAction.triggered.connect(
+            self.launchConcatSpotmaxUtil
+        )
         self.npzToNpyAction.triggered.connect(self.launchConvertFormatUtil)
         self.npzToTiffAction.triggered.connect(self.launchConvertFormatUtil)
         self.TiffToNpzAction.triggered.connect(self.launchConvertFormatUtil)
@@ -1533,7 +1542,26 @@ class mainWin(QMainWindow):
         title = 'Concatenate acdc_output files'
         infoText = 'Launching concatenate acdc_output files process...'
         progressDialogueTitle = 'Concatenate acdc_output files'
-        self.concatWindow = utilsConcat.concatWin(
+        self.concatWindow = utilsConcat.ConcatWin(
+            selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
+            parent=self
+        )
+        self.concatWindow.show()
+    
+    def launchConcatSpotmaxUtil(self, checked=False, exp_folderpath=None):
+        self.logger.info(
+            f'Launching utility "Concatenate tables from multipe positions"'
+        )
+        selectedExpPaths = self.getSelectedExpPaths(
+            'Concatenate spotMAX output files', exp_folderpath=exp_folderpath
+        )
+        if selectedExpPaths is None:
+            return
+        
+        title = 'Concatenate spotMAX output files'
+        infoText = 'Launching concatenate spotMAX output files process...'
+        progressDialogueTitle = 'Concatenate spotMAX output files'
+        self.concatWindow = utilsConcat.ConcatWin(
             selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
             parent=self
         )

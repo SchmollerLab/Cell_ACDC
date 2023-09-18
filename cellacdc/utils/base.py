@@ -104,7 +104,10 @@ class NewThreadMultipleExpBaseUtil(QDialog):
         self.worker.signals.sigSelectSegmFiles.connect(self.selectSegmFileLoadData)
         self.worker.signals.sigSelectAcdcOutputFiles.connect(
             self.selectAcdcOutputTables
-        )        
+        )     
+        self.worker.signals.sigSelectSpotmaxRun.connect(
+            self.selectSpotmaxRun
+        )   
         self.worker.signals.sigPermissionError.connect(self.warnPermissionError)
         self.worker.signals.initProgressBar.connect(self.workerInitProgressbar)
         self.worker.signals.sigInitInnerPbar.connect(self.workerInitInnerPbar)
@@ -217,6 +220,42 @@ class NewThreadMultipleExpBaseUtil(QDialog):
         self.selectedAcdcOutputEndnames = selectWindow.selectedItemsText
         self.worker.waitCond.wakeAll()
 
+    def selectSpotmaxRun(
+            self, exp_path, pos_foldernames, infoText, allowSingleSelection,
+            multiSelection
+        ):
+        from spotmax.utils import get_runs_num_and_desc
+        
+        all_runs = get_runs_num_and_desc(
+            exp_path, pos_foldernames=pos_foldernames
+        )
+        if not all_runs:
+            self.worker.skipExp = True
+            self.worker.waitCond.wakeAll()
+            return
+        
+        items = [f'{run}...{desc}' for run, desc in all_runs]
+        if len(items) == 1:
+            self.selectedSpotmaxRuns = items
+            self.worker.waitCond.wakeAll()
+            return
+        
+        selectWindow = widgets.QDialogListbox(
+            'Select spotmax run(s)',
+            f'Select one or more spotmax runs{infoText}\n',
+            items, multiSelection=multiSelection, 
+            parent=self, allowSingleSelection=allowSingleSelection
+        )
+        selectWindow.exec_()
+        if selectWindow.cancel:
+            self.worker.abort = True
+            self.worker.waitCond.wakeAll()
+            return
+        
+        self.selectedSpotmaxRuns = selectWindow.selectedItemsText
+        self.worker.waitCond.wakeAll()
+        
+    
     def selectSegmFileLoadData(self, exp_path, pos_foldernames):
         # Get end name of every existing segmentation file
         existingSegmEndNames = set()
