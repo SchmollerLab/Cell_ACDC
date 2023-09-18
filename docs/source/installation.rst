@@ -1,5 +1,9 @@
 Installation
 ============
+This guide contains instructions for installing Cell-ACDC in different ways. In the future a video will be added.
+
+.. contents::
+
 
 Installation using Anaconda (recommended)
 -----------------------------------------
@@ -13,26 +17,35 @@ Installation using Anaconda (recommended)
 4. Create a virtual environment by typing ``conda create -n acdc python=3.9``
     This will create a virtual environment, which is an isolated instance and partially independent from the rest of the system. The virtual environment is called ``acdc`` in this case.
 5. Activate the virtual environment by typing ``conda activate acdc``
-    This will activate the environment, meaning that the console is now not in the default system environment, but the ``acdc`` environment.
-    .. image:: https://github.com/Teranis/Cell_ACDC/blob/main/docs/source/images/Cmdprompt.png
-    If the activation of the environment was successful, this should be indicated to the left of the active path, circled in red above.
+    This will activate the environment, meaning that the console is now not in the default system environment, but the ``acdc`` environment. If the activation of the environment was successful, this should be indicated to the left of the active path, circled in red below.
+
+.. image:: https://github.com/Teranis/Cell_ACDC/blob/main/docs/source/images/Cmdprompt.png?raw=true
+    :target: https://github.com/Teranis/Cell_ACDC/blob/main/docs/source/images/Cmdprompt.png
+    :alt: The active environment is displayed to the left of the currently active path
+    :width: 600
+
 6. Update pip using ``python -m pip install --upgrade pip``
     Pip is an application which is included in Python. It manages programmes and updates it. In this case, we tell pip to update itself.
-   1. Install Cell-ACDC using ``pip install "cellacdc[gui]"``
+7. Install Cell-ACDC using ``pip install "cellacdc[gui]"``
     This tells pip to install Cell-ACDC, specifically the version with a user interface.
 
-**IMPORTANT: Before installing with other methods**
+Advanced install methods
+------------------------
 
+The following part of the guide is not finished yet and is intended for users who are interested in changing Cell-ACDC's code, thus not really needing the guide.
+
+IMPORTANT: Before installing with other methods
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 If you are **new to Python** or you need a **refresher** on how to
 manage scientific Python environments, I highly recommend reading `this
 guide <https://focalplane.biologists.com/2022/12/08/managing-scientific-python-environments-using-conda-mamba-and-friends/>`__
 by Dr. Robert Haase BEFORE proceeding with Cell-ACDC installation.
 
 Installation using Pip
-----------------------
+~~~~~~~~~~~~~~~~~~~~~~
+**Windows**
 
-1. Download and install `Python
-   3.9 <https://www.python.org/downloads/>`__
+1. Download and install `Python 3.9 <https://www.python.org/downloads/>`__
 2. Open a terminal. On Windows we recommend using the PowerShell that
    you can install from
    `here <https://docs.microsoft.com/it-it/powershell/scripting/install/installing-powershell-on-windows?view=powershell-7.2#installing-the-msi-package>`__.
@@ -51,7 +64,7 @@ Installation using Pip
    or after installing Cell-ACDC.
 
 Install from source
--------------------
+~~~~~~~~~~~~~~~~~~~
 
 If you want to try out experimental features (and, if you have time,
 maybe report a bug or two :D), you can install the developer version
@@ -83,8 +96,7 @@ from source as follows:
 10. OPTIONAL: If you need tensorflow run the command
     ``pip install tensorflow``.
 
-Updating Cell-ACDC installed from source
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+**Updating Cell-ACDC installed from source**
 
 To update Cell-ACDC installed from source, open a terminal window,
 navigate to the Cell_ACDC folder and run the command
@@ -97,7 +109,7 @@ Since you installed with the ``-e`` flag, pulling with ``git`` is
 enough.
 
 Install from source with forking
---------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 If you want to contribute to the code or you want to have a developer
 version that is fixed in time (easier to get back to in case we release
@@ -107,8 +119,7 @@ a bug :D) we recommend forking before cloning:
     or `Miniconda <https://docs.conda.io/en/latest/miniconda.html>`__.
 2.  Create a personal `GitHub account <https://github.com>`__ and log
     in.
-3.  Go to the Cell-ACDC `GitHub
-    page <https://github.com/SchmollerLab/Cell_ACDC>`__ and click the
+3.  Go to the Cell-ACDC `GitHub page <https://github.com/SchmollerLab/Cell_ACDC>`__ and click the
     “Fork” button (top-right) to create your own copy of the project.
 4.  Open a terminal and navigate to a folder where you want to download
     Cell-ACDC. If you are on Windows you need to use the “Anaconda
@@ -139,8 +150,7 @@ a bug :D) we recommend forking before cloning:
 13. OPTIONAL: If you need tensorflow run the command
     ``pip install tensorflow``.
 
-Updating Cell-ACDC installed from source with forking
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+**Updating Cell-ACDC installed from source with forking**
 
 To update Cell-ACDC installed from source, open a terminal window,
 navigate to the Cell-ACDC folder and run the command
@@ -151,15 +161,3 @@ navigate to the Cell-ACDC folder and run the command
 
 Since you installed with the ``-e`` flag, pulling with ``git`` is
 enough.
-
-Running Cell-ACDC
------------------
-
-1. Open a terminal (on Windows use the Anaconda Prompt if you installed
-   with ``conda`` otherwise we recommend installing and using the
-   `PowerShell
-   7 <https://docs.microsoft.com/en-us/powershell/scripting/install/installing-powershell-on-windows?view=powershell-7.2>`__)
-2. Activate the environment (conda: ``conda activate acdc``, pip on
-   Windows: ``.\env\Scripts\activate``, pip on Unix:
-   ``source env/bin/activate``)
-3. Run the command ``acdc`` or ``cellacdc``

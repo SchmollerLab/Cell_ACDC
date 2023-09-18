@@ -7,7 +7,7 @@ from .. import printl
 
 from .base import NewThreadMultipleExpBaseUtil
 
-class concatWin(NewThreadMultipleExpBaseUtil):
+class ConcatWin(NewThreadMultipleExpBaseUtil):
     def __init__(
             self, expPaths, app, title: str, infoText: str, 
             progressDialogueTitle: str, parent=None
@@ -18,9 +18,13 @@ class concatWin(NewThreadMultipleExpBaseUtil):
             parent=parent
         )
         self.expPaths = expPaths
+        if title.find('spotMAX') != -1:
+            self.worker_func = workers.ConcatSpotmaxDfsWorker
+        else:
+            self.worker_func = workers.ConcatAcdcDfsWorker
     
     def runWorker(self, format='CSV'):
-        self.worker = workers.ConcatAcdcDfsWorker(self, format=format)
+        self.worker = self.worker_func(self, format=format)
         self.worker.sigAskFolder.connect(self.askFolderWhereToSaveAllExp)
         self.worker.sigAborted.connect(self.workerAborted)
         self.worker.sigAskAppendName.connect(self.askAppendName)
