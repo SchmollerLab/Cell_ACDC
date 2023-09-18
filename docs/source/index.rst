@@ -1,72 +1,79 @@
-.. image:: images/logo.svg
-   :align: left
-   :width: 60
+.. |acdclogo| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/6bf8442b6a33d41fa9de09a2098c6c2b9efbcff1/cellacdc/resources/logo.svg
+   :width: 80
 
-Cell-ACDC
-=========
+|acdclogo| Cell-ACDC
+=====================
+
+A GUI-based Python framework for **segmentation**, **tracking**, **cell cycle annotations** and **quantification** of microscopy data
+-------------------------------------------------------------------------------------------------------------------------------------
+
+*Written in Python 3 by* \ `Francesco Padovani <https://github.com/ElpadoCan>`__ \ *and* \ `Benedikt Mairhoermann <https://github.com/Beno71>`__\ *.*
+
+.. image:: https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-windows_pyqt5.yml/badge.svg
+   :target: https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-windows_pyqt5.yml
+   :alt: Build Status (Windows PyQt5)
+
+.. image:: https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-ubuntu_pyqt5.yml/badge.svg
+   :target: https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-ubuntu_pyqt5.yml
+   :alt: Build Status (Ubuntu PyQt5)
+
+.. image:: https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-macos_pyqt5.yml/badge.svg
+   :target: https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-macos_pyqt5.yml
+   :alt: Build Status (macOS PyQt5)
+
+.. image:: https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-windows_pyqt6.yml/badge.svg
+   :target: https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-windows_pyqt6.yml
+   :alt: Build Status (Windows PyQt6)
+
+.. image:: https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-macos_pyqt6.yml/badge.svg
+   :target: https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-macos_pyqt6.yml
+   :alt: Build Status (macOS PyQt6)
+
+.. image:: https://img.shields.io/pypi/pyversions/cellacdc
+   :target: https://www.python.org/downloads/
+   :alt: Python Version
+
+.. image:: https://img.shields.io/pypi/v/cellacdc?color=red
+   :target: https://pypi.org/project/cellacdc/
+   :alt: PyPi Version
+
+.. image:: https://static.pepy.tech/badge/cellacdc/month
+   :target: https://pepy.tech/project/cellacdc
+   :alt: Downloads per month
+
+.. image:: https://img.shields.io/badge/license-BSD%203--Clause-brightgreen
+   :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/LICENSE
+   :alt: License
+
+.. image:: https://img.shields.io/github/repo-size/SchmollerLab/Cell_ACDC
+   :target: https://github.com/SchmollerLab/Cell_ACDC
+   :alt: Repository Size
+
+.. image:: https://img.shields.io/badge/DOI-10.1101%2F2021.09.28.462199-informational
+   :target: https://bmcbiol.biomedcentral.com/articles/10.1186/s12915-022-01372-6
+   :alt: DOI
+
+.. image:: https://readthedocs.org/projects/teranis-cell-acdc/badge/?version=latest
+    :target: https://teranis-cell-acdc.readthedocs.io/en/latest/?badge=latest
+    :alt: Documentation Status
+
 |
 
-|BuildUbuntu| |BuildMacOS| |BuildWindows| |PythonVersion| |Licence| |PiPyVersion| |RepoSize|
+.. image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/cellacdc/resources/figures/Fig1.jpg
+   :alt: Overview of pipeline and GUI
+   :width: 600
 
-.. |BuildUbuntu| image:: https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-ubuntu.yml/badge.svg
-   :target: https://github.com/SchmollerLab/Cell_ACDC/actions
-.. |BuildMacOS| image:: https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-macos.yml/badge.svg
-   :target: https://github.com/SchmollerLab/Cell_ACDC/actions
-.. |BuildWindows| image:: https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-windows.yml/badge.svg
-   :target: https://github.com/SchmollerLab/Cell_ACDC/actions
-.. |PythonVersion| image:: https://img.shields.io/pypi/pyversions/cellacdc
-   :target: https://www.python.org/downloads/
-.. |Licence| image:: https://img.shields.io/badge/license-BSD%203--Clause-brightgreen
-   :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/LICENSE
-.. |PiPyVersion| image:: https://img.shields.io/pypi/v/cellacdc?color=red
-   :target: https://pypi.org/project/cellacdc/
-.. |RepoSize| image:: https://img.shields.io/github/repo-size/SchmollerLab/Cell_ACDC
-   :target: https://github.com/SchmollerLab/Cell_ACDC
+Overview of pipeline and GUI
 
-Welcome to Cell-ACDC's documentation!
--------------------------------------
-
-.. note::
-
-   The building of this documentation is under active development. Please, refer to our `User Manual <https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf>`_ in the meanwhile
-
-Cell-ACDC is a GUI-based Python framework for **segmentation**, **tracking**, **cell cycle annotations** and **quantification** of microscopy data.
-
-You can load and analyse **2D, 3D** (either single z-stacks or 2D images over time) and **4D** (3D z-stacks over time) images.
-
-Additionally, you can load **as many additional fluorescent channels** as you wish. Cell-ACDC will then compute many **numerical features** for each segmented cell, such as mean, sum, max, quantiles etc.
-It also performs **automatic background correction** and computes **protein amount**.
-
-Other numerical features computed are **cell volume**, and morphological properties of the segmented object.
-
-Resources
----------
-
-* `User Manual`_ with **detailed instructions**
-* `Publication`_ of Cell-ACDC publication
-* `Forum`_ for discussions (feel free to **ask any question**)
-* **Report issues, request a feature or ask questions** by opening a `new issue`_
-* Twitter `thread`_
-
-.. _User Manual: https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf
-.. _Publication: https://bmcbiol.biomedcentral.com/articles/10.1186/s12915-022-01372-6
-.. _Forum: https://github.com/SchmollerLab/Cell_ACDC/discussions
-.. _new issue: https://github.com/SchmollerLab/Cell_ACDC/issues
-.. _thread: https://twitter.com/frank_pado/status/1443957038841794561?s=20
-
-Overview
+Contents
 --------
 
-Let's face it, when dealing with segmentation of microscopy data we often do not have time to check that **everything is correct**, because it is a **tedious** and **very time consuming process**. Cell-ACDC comes to the rescue!
-We combined the currently **best available neural network models** (such as `YeaZ <https://www.nature.com/articles/s41467-020-19557-4>`_,
-`Cellpose <https://www.nature.com/articles/s41592-020-01018-x>`_, `StarDist <https://github.com/stardist/stardist>`_, and `YeastMate <https://github.com/hoerlteam/YeastMate>`_) and we complemented them with a **fast and intuitive GUI**.
-
-We developed and implemented several smart functionalities such as **real-time continuous tracking**, **automatic propagation** of error correction, and several tools to facilitate manual correction, from simple yet useful **brush** and **eraser** to more complex flood fill (magic wand) and Random Walker segmentation routines.
-
-
 .. toctree::
-   :maxdepth: 1
-   :hidden:
-
+   :maxdepth: 2
+   
+   overview
+   citation
    installation
    getting-started
+   release-notes
+   other
