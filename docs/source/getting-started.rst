@@ -235,14 +235,64 @@ Important tools:
 .. |eraser| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/eraser.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/eraser.svg
     :alt: Eraser icon
-    :width: 300
+    :height: 10
 
-* |eraser| "Eraser" and "Brush" function as you expect.
-* "Separation" can be used to separate two cells which were not segmented properly.
-* "Edit ID" can be used to change the ID of a cell and mend tracking errors.
-* "Merge IDs" for merging two IDs if a cell was segmented into two parts.
-* "Annotate as dead", "exclude from analysis" or "deletion region" for excluding cells or regions from analysis.
-* "Repeat tracking" and "repeat segmentation" for repeating the respective processes, which can be used to bring frame in line with previous frames.
+.. |brush| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/brush.svg
+    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/brush.svg
+    :alt: Brush icon
+    :height: 10
+
+.. |separate| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/separate-bud.svg
+    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/separate-bud.svg
+    :alt: Separate icon
+    :height: 10
+
+.. |EditID| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/edit-id.svg
+    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/edit-id.svg
+    :alt: Edit ID icon
+    :height: 10
+
+.. |MergeIDs| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/merge-IDs.svg
+    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/merge-IDs.svg
+    :alt: Merge IDs icon
+    :height: 10
+
+.. |AnnotateAsDead| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/rip.svg
+    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/rip.svg
+    :alt: Annotate as dead icon
+    :height: 10
+
+.. |ExcludeFromAnalysis| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/bin.svg
+    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/bin.svg
+    :alt: Exclude from analysis icon
+    :height: 10
+
+.. |DeletionRegion| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/addDelRoi.svg
+    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/addDelRoi.svg
+    :alt: Deletion region icon
+    :height: 10
+
+.. |DelBorder| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/delBorderObj.svg
+    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/delBorderObj.svg
+    :alt: Delete all objects touching ROI border icon
+    :height: 10
+
+.. |ReinitLastSegm| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/reinitLastSegm.svg
+    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/reinitLastSegm.svg
+    :alt: repeat segmentation icon
+    :height: 10
+
+.. |Repeat-tracking| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/repeat-tracking.svg
+    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/repeat-tracking.svg
+    :alt: Repeat tracking icon
+    :height: 10
+
+* |eraser| "Eraser" and |brush| "Brush" function as you expect.
+* |separate| "Separation" can be used to separate two cells which were not segmented properly.
+* |EditID| "Edit ID" can be used to change the ID of a cell and mend tracking errors.
+* |MergeIDs| "Merge IDs" for merging two IDs if a cell was segmented into two parts.
+* |AnnotateAsDead| "Annotate as dead", |ExcludeFromAnalysis| "exclude from analysis", |DeletionRegion| "deletion region" and |DelBorder| "delete all objects touching ROI border" for excluding cells or regions from analysis.
+* |Repeat-tracking| "Repeat tracking" and |reinitLastSegm| "repeat segmentation" for repeating the respective processes, which can be used to bring frame in line with previous frames.
 
 Important tips:
 
@@ -259,9 +309,24 @@ Cell Cycle Annotation
 
 After correcting all errors, change the mode to "Cell Cycle Analysis". You will be presented with a warning that suggests starting from the first frame, which you usually should heed. Important tools for CC-Ana:
 
-* "Assign bud to mother" is used if automatic assignment is wrong. For this activate the tool, then press and hold the right mouse button on the bud, then drag to the mother and release.
-* "Annotate unknown history" can be used to annotate cells which have unknown history.
-"Reinitialize cell cycle annotation" for running cell cycle annotation from this frame foreword to make them in line with current edits.
+.. |assign-motherbud| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/assign-motherbud.svg
+    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/assign-motherbud.svg
+    :alt: Assign bud to mother icon
+    :height: 10
+
+.. |history| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/history.svg
+    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/history.svg
+    :alt: Annotate unknown history icon
+    :height: 10
+
+.. |reinitCca| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/reinitCca.svg
+    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/reinitCca.svg
+    :alt: Reinitialize cell cycle annotation icon
+    :height: 10
+
+* |assign-motherbud| "Assign bud to mother" is used if automatic assignment is wrong. For this activate the tool, then press and hold the right mouse button on the bud, then drag to the mother and release.
+* |history| "Annotate unknown history" can be used to annotate cells which have unknown history.
+* |reinitCca| "Reinitialize cell cycle annotation" for running cell cycle annotation from this frame foreword to make them in line with current edits.
 * "Right click on mother/bud pair" will break the bond. Right click again to rebind them. This needs to be done manually whenever a mother and bud separate.
   
 After finishing annotating the first frame, you will be prompted to accept the current annotation. This is only to make sure that the initial annotations are correct.
