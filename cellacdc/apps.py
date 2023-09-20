@@ -12828,3 +12828,86 @@ def get_existing_directory(allow_images_path=True, **kwargs):
         )
         msg = widgets.myMessageBox()
         msg.warning(kwargs['parent'], 'Cannot save here', txt)
+
+class ScaleBarPropertiesDialog(widgets.QBaseDialog):
+    def __init__(self, maxLength, maxThickness, PhysicalSizeX, parent=None):
+        super().__init__(parent=parent)
+        
+        self.setWindowTitle('Scale bar properties')
+        
+        mainLayout = QVBoxLayout()
+        
+        formLayout = QFormLayout()
+        formLayout.setVerticalSpacing(10)
+        formLayout.setHorizontalSpacing(50)
+        formLayout.setFieldGrowthPolicy(QFormLayout.FieldsStayAtSizeHint)
+        
+        unitCombobox = QComboBox()
+        unitCombobox.addItems(
+            ['nm', 'μm', 'mm', 'cm']
+        )
+        unitCombobox.setCurrentIndex(1)
+        formLayout.addRow('Physical unit', unitCombobox)       
+        self.unitCombobox = unitCombobox
+        
+        lengthDoubleSpinbox = widgets.DoubleSpinBox()
+        lengthDoubleSpinbox.setMaximum(maxLength)
+        lengthDoubleSpinbox.setMinimum(PhysicalSizeX)
+        lengthDoubleSpinbox.setValue(round(PhysicalSizeX*15, 1))
+        self.lengthLabel = QLabel('Length (μm)')
+        formLayout.addRow(self.lengthLabel, lengthDoubleSpinbox)       
+        self.unitCombobox = unitCombobox
+        
+        displayTextToggle = widgets.Toggle()
+        displayTextToggle.setChecked(True)
+        formLayout.addRow('Display text', displayTextToggle)       
+        self.displayTextToggle = displayTextToggle
+        
+        self.colorButton = widgets.myColorButton(color=(255, 255, 255))
+        formLayout.addRow('Color', self.colorButton)  
+        
+        thicknessSpinbox = widgets.DoubleSpinBox()
+        thicknessSpinbox.setMaximum(maxThickness)
+        thicknessSpinbox.setMinimum(1)
+        thicknessSpinbox.setValue(round(3, 1))
+        formLayout.addRow('Tickness (pixel)', thicknessSpinbox)       
+        self.thicknessSpinbox = thicknessSpinbox
+        
+        mainLayout.addLayout(formLayout)
+        
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+        
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(buttonsLayout)
+        mainLayout.addStretch()
+        
+        self.setLayout(mainLayout)
+        self.setFont(font)
+        
+        self.unitCombobox.currentTextChanged.connect(self.updateLengthUnit)
+        self.colorButton.clicked.disconnect()
+        self.colorButton.clicked.connect(self.selectColor)
+    
+    def selectColor(self):
+        color = self.colorButton.color()
+        self.colorButton.origColor = color
+        self.colorButton.colorDialog.setCurrentColor(color)
+        self.colorButton.colorDialog.setWindowFlags(
+            Qt.Window | Qt.WindowStaysOnTopHint
+        )
+        self.colorButton.colorDialog.setParent(self)
+        self.colorButton.colorDialog.open()
+        w = self.width()
+        left = self.pos().x()
+        colorDialogTop = self.colorButton.colorDialog.pos().y()
+        self.colorButton.colorDialog.move(w+left+10, colorDialogTop)
+    
+    def updateLengthUnit(self, unit):
+        newText = re.sub(r'\(.*\)', f'({unit})', self.lengthLabel.text())
+        self.lengthLabel.setText(newText)
+    
+    def ok_cb(self):
+        self.cancel = False
+        self.close()

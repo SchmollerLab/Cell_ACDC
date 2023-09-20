@@ -6634,4 +6634,12 @@ class Label(QLabel):
         if self._force_html:
             text = html_utils.paragraph(text)
         super().setText(text)
-        
+
+class ScaleBar:
+    def __init__(self):
+        self.plotItem = pg.PlotDataItem()
+        self.labelItem = pg.LabelItem()
+    
+    def addToAxisItem(self, ax):
+        ax.addItem(self.plotItem)
+        ax.addItem(self.labelItem)

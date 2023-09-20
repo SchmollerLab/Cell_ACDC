@@ -1281,6 +1281,7 @@ class guiWin(QMainWindow):
         for filtersDict in self.filtersWins.values():
             filtersMenu.addAction(filtersDict['action'])
         
+        ImageMenu.addAction(self.addScaleBarAction)
         normalizeIntensitiesMenu = ImageMenu.addMenu("Normalize intensities")
         normalizeIntensitiesMenu.addAction(self.normalizeRawAction)
         normalizeIntensitiesMenu.addAction(self.normalizeToFloatAction)
@@ -2799,6 +2800,9 @@ class guiWin(QMainWindow):
         )
         self.viewCcaTableAction.setDisabled(True)
         self.viewCcaTableAction.setShortcut('Ctrl+P')
+        
+        self.addScaleBarAction = QAction('Add scale bar', self)
+        self.addScaleBarAction.setCheckable(True)
 
         self.invertBwAction = QAction('Invert black/white', self)
         self.invertBwAction.setCheckable(True)
@@ -3111,6 +3115,7 @@ class guiWin(QMainWindow):
 
         # self.repeatAutoCcaAction.triggered.connect(self.repeatAutoCca)
         self.manuallyEditCcaAction.triggered.connect(self.manualEditCca)
+        self.addScaleBarAction.toggled.connect(self.addScaleBar)
         self.invertBwAction.toggled.connect(self.invertBw)
         self.saveLabColormapAction.triggered.connect(self.saveLabelsColormap)
 
@@ -9970,6 +9975,10 @@ class guiWin(QMainWindow):
                 self.UserEnforced_DisabledTracking = False
                 self.UserEnforced_Tracking = True
 
+    def addScaleBar(self, checked):
+        if checked:
+            pass
+    
     def invertBw(self, checked, update=True):
         self.invertBwAlreadyCalledOnce = True
         
