@@ -76,8 +76,6 @@ def _install_tables(parent_software='Cell-ACDC'):
                 )
 
 def _setup_gui_libraries():
-    
-    
     warn_restart = False
     
     # Force PyQt6 if available

@@ -11098,7 +11098,7 @@ class guiWin(QMainWindow):
         selectSegmWin = widgets.QDialogListbox(
             'Select segmentation file',
             'Select segmentation file to use as ROI:\n',
-            existingSegmEndnames, multiSelection=True, parent=self
+            existingSegmEndnames, multiSelection=False, parent=self
         )
         selectSegmWin.exec_()
         if selectSegmWin.cancel:

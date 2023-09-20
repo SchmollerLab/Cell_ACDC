@@ -8,30 +8,26 @@ import os
 import glob
 from math import pow, floor
 from tqdm import tqdm
-from qtpy.QtGui import QIcon
-from qtpy.QtWidgets import QApplication, QStyleFactory, QFileDialog
-from qtpy import QtCore
 import sys
 import difflib
 from scipy.stats import binned_statistic
 import warnings
 
-from . import myutils, prompts, apps, qrc_resources, widgets, html_utils, printl
+from . import GUI_INSTALLED
+if GUI_INSTALLED:
+    from qtpy.QtGui import QIcon
+    from qtpy.QtWidgets import QApplication, QStyleFactory, QFileDialog
+    from qtpy import QtCore
+    from . import apps, widgets
+    from . import qrc_resources
+    from . import _run
+
+from . import load
+from . import myutils, prompts, widgets, html_utils, printl
 
 def configuration_dialog():
-    if os.name == 'nt':
-        try:
-            # Set taskbar icon in windows
-            import ctypes
-            myappid = 'schmollerlab.cellacdc.pyqt.v1' # arbitrary string
-            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
-        except Exception as e:
-            pass
-    # app = QtCore.QCoreApplication.instance()
-    # if app is None:
-    app = QApplication(sys.argv)
-    app.setStyle(QStyleFactory.create('Fusion'))
-    app.setWindowIcon(QIcon(":icon.ico"))
+    app, _ = _run._setup_app(splashscreen=False)
+    
     continue_selection = True
     data_dirs = []
     positions = []
@@ -93,20 +89,50 @@ def configuration_dialog():
         print("No positions selected!")
         print('******************************')
         raise IndexError
-    return data_dirs, positions
+    return data_dirs, positions, app
 
 def find_available_channels(filenames, first_pos_dir):
     ch_name_selector = prompts.select_channel_name()
     ch_names, warn = ch_name_selector.get_available_channels(
         filenames, first_pos_dir
     )
-    return ch_names, warn
+    return ch_names, ch_name_selector.basename
 
+def get_segm_endname(images_path, basename):
+    segm_files = load.get_segm_files(images_path)
+    segm_endnames = load.get_existing_segm_endnames(
+        basename, segm_files
+    )
+    if not segm_endnames:
+        msg = widgets.myMessageBox()
+        txt = html_utils.paragraph(f"""
+            The following position does not contain valid segmentation files.<br><br>
+            <code>{images_path}</code><br>
+        """)
+        msg.critical(None, 'Segmentation file(s) not found', txt)
+        raise FileNotFoundError(f'Segmentation files not found in "{images_path}"')
+
+    if len(segm_endnames) == 1:
+        return segm_endnames[0]
+    
+    selectSegmWin = widgets.QDialogListbox(
+        'Select segmentation file',
+        'Select segmentation file to use as ROI:\n',
+        segm_endnames, multiSelection=False, parent=None
+    )
+    selectSegmWin.exec_()
+    if selectSegmWin.cancel:
+        raise FileNotFoundError(f'Segmentation file selection aborted by the user.')
+    
+    return selectSegmWin.selectedItemsText[0]
+    
+    
 def calculate_downstream_data(
     file_names,
     image_folders,
     positions,
     channels,
+    segm_endname,
     force_recalculation=False
 ):
     no_of_channels = len(channels)
@@ -116,7 +142,9 @@ def calculate_downstream_data(
             channel_data = ('placeholder')*no_of_channels
             print(f'Load files for {file}, {positions[file_idx][pos_idx]}...')
             try:
-                *channel_data, seg_mask, cc_data, metadata, cc_props = _load_files(pos_dir, channels)
+                *channel_data, seg_mask, cc_data, metadata, cc_props = (
+                    _load_files(pos_dir, channels, segm_endname)
+                )
             except TypeError:
                 print(f'File {file}, position {positions[file_idx][pos_idx]} skipped due to missing segmentation mask/CC annotations.')
                 continue
@@ -338,16 +366,50 @@ def _auto_rescale_intensity(img, perc=0.01, clip_min=False):
     scaled_img = (img-vmin)/(vmax-vmin)
     return scaled_img
 
+def load_acdc_output_only(
+        file_names,
+        image_folders,
+        positions,
+        segm_endname
+    ):
+    """
+    Function to load only the acdc output.
+    Use when fluorescent file is too big to load into RAM.
+    #TODO: move to cca_functions
+    """
+    acdc_output_endname = segm_endname.replace('segm', 'acdc_output')
+    overall_df = pd.DataFrame()
+    for file_idx, file in enumerate(file_names):
+        for pos_idx, pos_dir in enumerate(image_folders[file_idx]):
+            try:
+                cc_stage_path = glob.glob(
+                    os.path.join(f'{pos_dir}', f'*{acdc_output_endname}.csv')
+                )[0]
+            except IndexError:
+                cc_stage_path = glob.glob(os.path.join(f'{pos_dir}', '*cc_stage.csv'))[0]
+            temp_df = pd.read_csv(cc_stage_path)
+            temp_df['max_frame_pos'] = temp_df.frame_i.max()
+            temp_df['file'] = file
+            temp_df['selection_subset'] = file_idx
+            temp_df['position'] = positions[file_idx][pos_idx]
+            temp_df['directory'] = pos_dir
+            overall_df = pd.concat([overall_df, temp_df])
+    return overall_df
 
-def _load_files(file_dir, channels):
+def _load_files(file_dir, channels, segm_endname):
     """
     Function to load files of all given channels and the corresponding segmentation masks.
     Check first if aligned files are available and use them if so.
     """
-    no_of_aligned_files = len(glob.glob(os.path.join(f'{file_dir}', '*aligned.npz')))
-    seg_mask_available = len(glob.glob(os.path.join(f'{file_dir}', '*_segm.npz'))) > 0
+    acdc_output_endname = segm_endname.replace('segm', 'acdc_output')
+    no_of_aligned_files = len(
+        glob.glob(os.path.join(f'{file_dir}', '*aligned.npz'))
+    )
+    seg_mask_available = len(
+        glob.glob(os.path.join(f'{file_dir}', f'*_{segm_endname}.npz'))
+    ) > 0
     acdc_output_available = (
-        len(glob.glob(os.path.join(f'{file_dir}', '*acdc_output.csv')))
+        len(glob.glob(os.path.join(f'{file_dir}', f'*{acdc_output_endname}.csv')))
         + len(glob.glob(os.path.join(f'{file_dir}', '*cc_stage*'))) > 0
     )
     if not (seg_mask_available and acdc_output_available):
@@ -378,7 +440,9 @@ def _load_files(file_dir, channels):
 
     # append segmentation file
     try:
-        segm_file_path = glob.glob(os.path.join(f'{file_dir}', '*_segm.npz'))[0]
+        segm_file_path = glob.glob(
+            os.path.join(f'{file_dir}', f'*_{segm_endname}.npz')
+        )[0]
         channel_files.append(np.load(segm_file_path)['arr_0'])
     except IndexError:
         segm_file_path = glob.glob(os.path.join(f'{file_dir}', '*_segm.npy'))[0]
@@ -386,7 +450,9 @@ def _load_files(file_dir, channels):
         channel_files.append(np.load(segm_file_path))
     # append cc-data
     try:
-        cc_stage_path = glob.glob(os.path.join(f'{file_dir}', '*acdc_output.csv'))[0]
+        cc_stage_path = glob.glob(
+            os.path.join(f'{file_dir}', f'*{acdc_output_endname}.csv')
+        )[0]
     except IndexError:
         cc_stage_path = glob.glob(os.path.join(f'{file_dir}', '*cc_stage.csv'))[0]
     # assume cell cycle output of ACDC to be .csv
@@ -408,9 +474,6 @@ def _load_files(file_dir, channels):
     else:
         channel_files.append(None)
     return tuple(channel_files)
-
-
-
 
 def _calculate_rp_df(seg_mask, is_timelapse_data, is_zstack_data, metadata, max_frame=1, label_input=False):
     """
