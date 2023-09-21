@@ -458,6 +458,17 @@ class copyPushButton(PushButton):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':edit-copy.svg'))
+        self.clicked.connect(self.onClicked)
+    
+    def onClicked(self):
+        self._original_text = self.text()
+        super().setText('Copied!')
+        self.setIcon(QIcon(':greenTick.svg'))
+        QTimer.singleShot(2000, self.resetButton)
+    
+    def resetButton(self):
+        self.setText(self._original_text)
+        self.setIcon(QIcon(':edit-copy.svg'))
 
 class OpenFilePushButton(PushButton):
     def __init__(self, *args, **kwargs):
@@ -2341,7 +2352,6 @@ class myMessageBox(QDialog):
             func = partial(self.resize, self.width(), self.origHeight)
             QTimer.singleShot(10, func)
 
-
     def _resize(self):
         if self.resizeButtons:
             widths = [button.width() for button in self.buttons]
@@ -4067,7 +4077,7 @@ class expandCollapseButton(PushButton):
     sigClicked = Signal()
 
     def __init__(self, parent=None, **kwargs):
-        QPushButton.__init__(self, parent, **kwargs)
+        super().__init__(parent, **kwargs)
         self.setIcon(QIcon(":expand.svg"))
         self.setFlat(True)
         self.installEventFilter(self)
@@ -4495,14 +4505,23 @@ class ToggleVisibilityButton(PushButton):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.setFlat(True)
-        self.setCheckable(True)
-        self.toggled.connect(self.onToggled)
-    
-    def onToggled(self, checked):
-        if checked:
-            self.setIcon(':eye-checked.svg')
+        # self.setCheckable(True)
+        self._state = False
+        self.setIcon(QIcon(':unchecked.svg'))
+        self.clicked.connect(self.onClicked)
+        self.setStyleSheet("""
+            QPushButton::pressed {
+                background-color: none;
+                border-style: none;
+            }
+        """)
+        
+    def onClicked(self):
+        self._state = not self._state
+        if self._state:
+            self.setIcon(QIcon(':eye-checked.svg'))
         else:
-            self.setIcon('unchecked.svg')
+            self.setIcon(QIcon(':unchecked.svg'))
 
 class ToggleVisibilityCheckBox(QCheckBox):
     def __init__(self, *args, pixelSize=24):
@@ -5038,6 +5057,7 @@ class overlayLabelsGradientWidget(pg.GradientWidget):
 class labelsGradientWidget(pg.GradientWidget):
     sigShowRightImgToggled = Signal(bool)
     sigShowLabelsImgToggled = Signal(bool)
+    sigShowNextFrameToggled = Signal(bool)
 
     def __init__( self, *args, parent=None, orientation='right', **kargs):
         pg.GradientEditorItem = BaseGradientEditorItemLabels
@@ -5124,6 +5144,11 @@ class labelsGradientWidget(pg.GradientWidget):
         self.showRightImgAction = QAction('Show duplicated left image', self)
         self.showRightImgAction.setCheckable(True)
         self.menu.addAction(self.showRightImgAction)
+        
+        # Show next frame action
+        self.showNextFrameAction = QAction('Show next frame', self)
+        self.showNextFrameAction.setCheckable(True)
+        self.menu.addAction(self.showNextFrameAction)
 
         # Default settings
         self.defaultSettingsAction = QAction('Restore default settings...', self)
@@ -5133,6 +5158,7 @@ class labelsGradientWidget(pg.GradientWidget):
 
         self.showRightImgAction.toggled.connect(self.showRightImageToggled)
         self.showLabelsImgAction.toggled.connect(self.showLabelsImageToggled)
+        self.showNextFrameAction.toggled.connect(self.showNextFrameToggled)
     
     def addCustomGradient(self, gradient_name, gradient_ticks):
         currentState = self.item.saveState()
@@ -5203,20 +5229,39 @@ class labelsGradientWidget(pg.GradientWidget):
             cp.write(file)
         
         self.addCustomGradient(cmapName, state)
+    
+    def isRightImageVisible(self):
+        return (
+            self.showLabelsImgAction.isChecked() 
+            or self.showNextFrameAction.isChecked() 
+        )
 
     def showRightImageToggled(self, checked):
-        if checked and self.showLabelsImgAction.isChecked():
+        if checked and self.isRightImageVisible():
             # Hide the right labels image before showing right image
             self.showLabelsImgAction.setChecked(False)
+            self.showNextFrameAction.setChecked(False)
             self.sigShowLabelsImgToggled.emit(False)
+            self.sigShowNextFrameToggled.emit(checked)
         self.sigShowRightImgToggled.emit(checked)
     
     def showLabelsImageToggled(self, checked):
-        if checked and self.showRightImgAction.isChecked():
+        if checked and self.isRightImageVisible():
             # Hide the right image before showing labels image
             self.showRightImgAction.setChecked(False)
+            self.showNextFrameAction.setChecked(False)
             self.sigShowRightImgToggled.emit(False)
+            self.sigShowNextFrameToggled.emit(False)
         self.sigShowLabelsImgToggled.emit(checked)
+    
+    def showNextFrameToggled(self, checked):
+        if checked and self.isRightImageVisible():
+            # Hide the right image before showing labels image
+            self.showRightImgAction.setChecked(False)
+            self.showLabelsImgAction.setChecked(False)
+            self.sigShowRightImgToggled.emit(False)
+            self.sigShowLabelsImgToggled.emit(False)
+        self.sigShowNextFrameToggled.emit(checked)
 
     def saveState(self, df):
         # remove previous state
@@ -5581,12 +5626,12 @@ class BaseImageItem(pg.ImageItem):
 
 class ParentImageItem(pg.ImageItem):
     def __init__(
-            self, image=None, linkedImageItem=None, activatingAction=None,
+            self, image=None, linkedImageItem=None, activatingActions=None,
             debug=False, **kargs
         ):
         super().__init__(image, **kargs)
         self.linkedImageItem = linkedImageItem
-        self.activatingAction = activatingAction
+        self.activatingActions = activatingActions
         self.debug = debug
     
     def clear(self):
@@ -5594,22 +5639,40 @@ class ParentImageItem(pg.ImageItem):
             self.linkedImageItem.clear()
         return super().clear()
     
+    def isLinkedImageItemActive(self):
+        if self.linkedImageItem is None:
+            return False
+        
+        if self.activatingActions is None:
+            return False
+        for action in self.activatingActions:
+            if action.isChecked():
+                return True
+        return False
+    
     def setLevels(self, levels, **kargs):
         if self.linkedImageItem is not None:
             self.linkedImageItem.setLevels(levels)
         return super().setLevels(levels, **kargs)
     
-    def setImage(self, image=None, autoLevels=None, **kargs):
-        if self.linkedImageItem is not None:
-            if self.activatingAction.isChecked():
-                self.linkedImageItem.setImage(image, autoLevels=autoLevels)
-        return super().setImage(image, autoLevels, **kargs)
+    def setImage(
+            self, image=None, autoLevels=None, next_frame_image=None, **kargs
+        ):
+        super().setImage(image, autoLevels, **kargs)
+        if not self.isLinkedImageItemActive():
+            return
+        
+        if next_frame_image is not None:
+            self.linkedImageItem.setImage(
+                next_frame_image, autoLevels=autoLevels
+            )
+        elif image is not None:
+            self.linkedImageItem.setImage(image, autoLevels=autoLevels)
     
     def updateImage(self, *args, **kargs):
-        if self.linkedImageItem is not None:
-            if self.activatingAction.isChecked():
-                self.linkedImageItem.image = self.image
-                self.linkedImageItem.updateImage(*args, **kargs)
+        if self.isLinkedImageItemActive():
+            self.linkedImageItem.image = self.image
+            self.linkedImageItem.updateImage(*args, **kargs)
         return super().updateImage(*args, **kargs)
     
     def setOpacity(self, value):
@@ -6051,8 +6114,12 @@ class QBaseWindow(QMainWindow):
 
 class ScrollBarWithNumericControl(QWidget):
     sigValueChanged = Signal(int)
+    sigMaxProjToggled = Signal(bool, object)
     
-    def __init__(self, orientation=Qt.Horizontal, parent=None) -> None:
+    def __init__(
+            self, orientation=Qt.Horizontal, add_max_proj_button=False, 
+            parent=None
+        ) -> None:
         super().__init__(parent)
     
         layout = QHBoxLayout()
@@ -6063,10 +6130,16 @@ class ScrollBarWithNumericControl(QWidget):
         layout.addWidget(self.spinbox)
         layout.addWidget(self.maxLabel)
         layout.addWidget(self.scrollbar)
-
+    
         layout.setStretch(0,0)
         layout.setStretch(1,0)
         layout.setStretch(2,1)
+        
+        if add_max_proj_button:
+            self.maxProjCheckbox = QCheckBox('MAX')
+            self.scrollbar.maxProjCheckbox = self.maxProjCheckbox
+            layout.addWidget(self.maxProjCheckbox)
+            layout.setStretch(3,0)
         
         layout.setContentsMargins(5, 0, 5, 0)
 
@@ -6074,6 +6147,12 @@ class ScrollBarWithNumericControl(QWidget):
 
         self.spinbox.valueChanged.connect(self.spinboxValueChanged)
         self.scrollbar.valueChanged.connect(self.scrollbarValueChanged)
+        if add_max_proj_button:
+            self.maxProjCheckbox.toggled.connect(self.maxProjToggled)
+    
+    def maxProjToggled(self, checked):
+        self.scrollbar.setDisabled(checked)
+        self.sigMaxProjToggled.emit(checked, self)
     
     def showEvent(self, event) -> None:
         super().showEvent(event)
@@ -6159,8 +6238,11 @@ class ImShow(QBaseWindow):
     
     def _getGraphicsScrollbar(self, idx, image, imageItem, maximum):
         proxy = QGraphicsProxyWidget(imageItem)
-        scrollbar = ScrollBarWithNumericControl(Qt.Horizontal)
+        scrollbar = ScrollBarWithNumericControl(
+            orientation=Qt.Horizontal, add_max_proj_button=True
+        )
         scrollbar.sigValueChanged.connect(self.OnScrollbarValueChanged)
+        scrollbar.sigMaxProjToggled.connect(self.onMaxProjToggled)
         scrollbar.idx = idx
         scrollbar.image = image
         scrollbar.imageItem = imageItem
@@ -6171,10 +6253,8 @@ class ImShow(QBaseWindow):
     
     def OnScrollbarValueChanged(self, value):
         scrollbar = self.sender()
-        img = scrollbar.image
         imageItem = scrollbar.imageItem
-        for scrollbar in imageItem.ScrollBars:
-            img = img[scrollbar.value()]
+        img = self._get2Dimg(imageItem, scrollbar.image)
         imageItem.setImage(img, autoLevels=self._autoLevels)
         self.setPointsVisible(imageItem)
         if not self._linkedScrollbars:
@@ -6194,6 +6274,41 @@ class ImShow(QBaseWindow):
                     if otherScrollbar.idx != idx:
                         continue
                     otherScrollbar.setValue(scrollbar.value())
+        except Exception as e:
+            pass
+        finally:
+            self._linkedScrollbars = True
+    
+    def _get2Dimg(self, imageItem, image):
+        for scrollbar in imageItem.ScrollBars:
+            if scrollbar.maxProjCheckbox.isChecked():
+                image = image.max(axis=0)
+            else:
+                image = image[scrollbar.value()]
+        return image
+    
+    def onMaxProjToggled(self, checked, scrollbar):
+        imageItem = scrollbar.imageItem
+        img = self._get2Dimg(imageItem, scrollbar.image)
+        imageItem.setImage(img, autoLevels=self._autoLevels)
+        self.setPointsVisible(imageItem)
+        if not self._linkedScrollbars:
+            return
+        if len(self.ImageItems) == 1:
+            return
+        
+        self._linkedScrollbars = False
+        try:
+            idx = scrollbar.idx
+            for otherImageItem in self.ImageItems:
+                if otherImageItem.gridPos == imageItem.gridPos:
+                    continue
+                if otherImageItem.image.shape != imageItem.image.shape:
+                    continue
+                for otherScrollbar in otherImageItem.ScrollBars:
+                    if otherScrollbar.idx != idx:
+                        continue
+                    otherScrollbar.maxProjCheckbox.setChecked(checked)
         except Exception as e:
             pass
         finally:

@@ -21,7 +21,7 @@ from itertools import permutations
 from qtpy.QtWidgets import (
     QApplication, QMainWindow, QFileDialog,
     QVBoxLayout, QPushButton, QLabel, QStyleFactory,
-    QWidget, QMessageBox, QPlainTextEdit, QProgressBar
+    QWidget, QMessageBox, QPlainTextEdit, QHBoxLayout
 )
 from qtpy.QtCore import (
     Qt, QObject, Signal, QThread, QMutex, QWaitCondition,
@@ -991,7 +991,12 @@ class createDataStructWin(QMainWindow):
 
         abortButton = widgets.cancelPushButton(' Abort process ')
         abortButton.clicked.connect(self.close)
-        mainLayout.addWidget(abortButton, alignment=Qt.AlignCenter)
+        
+        buttonsLayout = QHBoxLayout()
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(abortButton)
+        
+        mainLayout.addLayout(buttonsLayout)
 
         mainLayout.setContentsMargins(20, 0, 20, 20)
         mainContainer.setLayout(mainLayout)

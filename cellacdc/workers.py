@@ -3,6 +3,7 @@ import re
 import os
 import time
 import json
+from collections import deque
 
 from typing import Union, List
 
@@ -73,6 +74,7 @@ class signals(QObject):
     sigPermissionError = Signal(str, object)
     sigSelectSegmFiles = Signal(object, object)
     sigSelectAcdcOutputFiles = Signal(object, object, str, bool, bool)
+    sigSelectSpotmaxRun = Signal(object, object, str, bool, bool)
     sigSetMeasurements = Signal(object)
     sigInitAddMetrics = Signal(object, object)
     sigUpdatePbarDesc = Signal(str)
@@ -108,6 +110,224 @@ class AutoPilotWorker(QObject):
     
     def run(self):
         self.sigStarted.emit()
+
+class FindNextNewIdWorker(QObject):
+    def __init__(self, posData, guiWin):
+        QObject.__init__(self)
+        self.signals = signals()
+        self.logger = workerLogger(self.signals.progress)
+        self.posData = posData
+        self.guiWin = guiWin
+    
+    @worker_exception_handler
+    def run(self):
+        prev_IDs = None
+        next_frame_i = -1
+        for frame_i, data_dict in enumerate(self.posData.allData_li):
+            lab = data_dict['labels']
+            rp = data_dict['regionprops']
+            IDs = data_dict['IDs']
+            if lab is None:
+                lab = self.posData.segm_data[frame_i]
+                rp = skimage.measure.regionprops(lab)
+                IDs = [obj.label for obj in rp]
+            
+            if prev_IDs is None:
+                prev_IDs = IDs
+                continue
+            
+            newIDs = [ID for ID in IDs if ID not in prev_IDs]
+            if newIDs:
+                next_frame_i = frame_i
+                break            
+            prev_IDs = IDs
+            
+        self.signals.finished.emit(next_frame_i)
+
+class AlignDataWorker(QObject):
+    sigWarnTifAligned = Signal(object, object, object)
+    sigAskAlignSegmData = Signal()
+        
+    def __init__(self, posData, dataPrepWin, mutex, waitCond):
+        QObject.__init__(self)
+        self.signals = signals()
+        self.logger = workerLogger(self.signals.progress)
+        self.posData = posData
+        self.dataPrepWin = dataPrepWin
+        self.mutex = mutex
+        self.waitCond = waitCond
+        self.doNotAlignSegmData = False
+        self.doAbort = False
+    
+    def set_attr(self, align, user_ch_name):
+        self.align = align
+        self.user_ch_name = user_ch_name
+    
+    def pause(self):
+        self.mutex.lock()
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+    
+    def restart(self):
+        self.waitCond.wakeAll()
+    
+    def emitWarnTifAligned(self, numFramesWith0s, tif, posData):
+        self.sigWarnTifAligned.emit(numFramesWith0s, tif, posData)
+        self.pause()
+    
+    def emitSigAskAlignSegmData(self):
+        self.sigAskAlignSegmData.emit()
+        self.pause()
+    
+    def _align_data(self):
+        _zip = zip(self.posData.tif_paths, self.posData.npz_paths)
+        aligned = False
+        self.posData.all_npz_paths = [
+            tif.replace('.tif', '_aligned.npz') for tif in self.posData.tif_paths
+        ]
+        for i, (tif, npz) in enumerate(_zip):
+            doAlign = npz is None or self.posData.loaded_shifts is None
+
+            filename_tif = os.path.basename(tif)
+            user_ch_filename = f'{self.posData.basename}{self.user_ch_name}.tif'
+
+            if not doAlign:
+                _npz = f'{os.path.splitext(tif)[0]}_aligned.npz'
+                if os.path.exists(_npz):
+                    self.posData.all_npz_paths[i] = _npz
+                continue
+            
+            if filename_tif != user_ch_filename:
+                continue
+            
+            # Align based on user_ch_name
+            aligned = True
+            if self.align:
+                self.logger.log(f'Aligning: {tif}')
+            tif_data = skimage.io.imread(tif)
+            numFramesWith0s = self.dataPrepWin.detectTifAlignment(
+                tif_data, self.posData
+            )
+            if self.align:
+                self.emitWarnTifAligned(
+                    numFramesWith0s, tif, self.posData
+                )
+                if self.doAbort:
+                    return
+
+            # Alignment routine
+            if self.posData.SizeZ>1:
+                align_func = core.align_frames_3D
+                df = self.posData.segmInfo_df.loc[self.posData.filename]
+                zz = df['z_slice_used_dataPrep'].to_list()
+                if not self.posData.filename.endswith('aligned') and self.align:
+                    # Add aligned channel to segmInfo
+                    df_aligned = self.posData.segmInfo_df.rename(
+                        index={self.posData.filename: f'{self.posData.filename}_aligned'}
+                    )
+                    self.posData.segmInfo_df = pd.concat(
+                        [self.posData.segmInfo_df, df_aligned]
+                    )
+                    self.posData.segmInfo_df.to_csv(self.posData.segmInfo_df_csv_path)
+            else:
+                align_func = core.align_frames_2D
+                zz = None
+            if self.align:
+                self.signals.initProgressBar.emit(len(tif_data))
+                aligned_frames, shifts = align_func(
+                    tif_data, slices=zz, user_shifts=self.posData.loaded_shifts,
+                    sigPyqt=self.signals.progressBar
+                )
+                self.posData.loaded_shifts = shifts
+            else:
+                aligned_frames = tif_data.copy()
+            if self.align:
+                self.signals.initProgressBar.emit(0)
+                _npz = f'{os.path.splitext(tif)[0]}_aligned.npz'
+                self.logger.log(f'Saving: {_npz}')
+                temp_npz = self.dataPrepWin.getTempfilePath(_npz)
+                np.savez_compressed(temp_npz, aligned_frames)
+                self.dataPrepWin.moveTempFile(temp_npz, _npz)
+                np.save(self.posData.align_shifts_path, self.posData.loaded_shifts)
+                self.posData.all_npz_paths[i] = _npz
+
+                self.logger.log(f'Saving: {tif}')
+                temp_tif = self.dataPrepWin.getTempfilePath(tif)
+                myutils.imagej_tiffwriter(temp_tif, aligned_frames)
+                self.dataPrepWin.moveTempFile(temp_tif, tif)
+                self.posData.img_data = skimage.io.imread(tif)
+
+        _zip = zip(self.posData.tif_paths, self.posData.npz_paths)
+        for i, (tif, npz) in enumerate(_zip):
+            doAlign = npz is None or aligned
+
+            if not doAlign:
+                continue
+            
+            if tif.endswith(f'{self.user_ch_name}.tif'):
+                continue
+            
+            # Align the other channels
+            if self.posData.loaded_shifts is None:
+                break
+            if self.align:
+                self.logger.log(f'Aligning: {tif}')
+            tif_data = skimage.io.imread(tif)
+
+            # Alignment routine
+            if self.posData.SizeZ>1:
+                align_func = core.align_frames_3D
+                df = self.posData.segmInfo_df.loc[self.posData.filename]
+                zz = df['z_slice_used_dataPrep'].to_list()
+            else:
+                align_func = core.align_frames_2D
+                zz = None
+            if self.align:
+                self.signals.initProgressBar.emit(len(tif_data))
+                aligned_frames, shifts = align_func(
+                    tif_data, slices=zz, user_shifts=self.posData.loaded_shifts,
+                    sigPyqt=self.signals.progressBar
+                )
+            else:
+                aligned_frames = tif_data.copy()
+            _npz = f'{os.path.splitext(tif)[0]}_aligned.npz'
+            
+            if self.align:
+                self.signals.initProgressBar.emit(0)
+                self.logger.log(f'Saving: {_npz}')
+                temp_npz = self.dataPrepWin.getTempfilePath(_npz)
+                np.savez_compressed(temp_npz, aligned_frames)
+                self.dataPrepWin.moveTempFile(temp_npz, _npz)
+                self.posData.all_npz_paths[i] = _npz
+
+                self.logger.log(f'Saving: {tif}')
+                temp_tif = self.dataPrepWin.getTempfilePath(tif)
+                myutils.imagej_tiffwriter(temp_tif, aligned_frames)
+                self.dataPrepWin.moveTempFile(temp_tif, tif)
+
+        # Align segmentation data accordingly
+        self.segmAligned = False
+        if self.posData.segmFound and aligned:
+            if self.posData.loaded_shifts is None or not self.align:
+                return
+            self.emitSigAskAlignSegmData()
+            if self.doNotAlignSegmData:
+                return
+            self.dataPrepWin.segmAligned = True
+            self.logger.log(f'Aligning: {self.posData.segm_npz_path}')
+            self.posData.segm_data, shifts = core.align_frames_2D(
+                self.posData.segm_data, slices=None,
+                user_shifts=self.posData.loaded_shifts
+            )
+            self.logger.log(f'Saving: {self.posData.segm_npz_path}')
+            temp_npz = self.dataPrepWin.getTempfilePath(self.posData.segm_npz_path)
+            np.savez_compressed(temp_npz, self.posData.segm_data)
+            self.dataPrepWin.moveTempFile(temp_npz, self.posData.segm_npz_path)
+
+    @worker_exception_handler
+    def run(self):     
+        self._align_data()     
+        self.signals.finished.emit(self)
 
 class LabelRoiWorker(QObject):
     finished = Signal()
@@ -275,7 +495,7 @@ class AutoSaveWorker(QObject):
         self.abortSaving = False
         self.isSaving = False
         self.isPaused = False
-        self.dataQ = queue.Queue()
+        self.dataQ = deque(maxlen=5)
         self.isAutoSaveON = False
     
     def pause(self):
@@ -296,8 +516,9 @@ class AutoSaveWorker(QObject):
     def _enqueue(self, posData):
         if DEBUG:
             self.logger.log('Enqueing posData autosave...')
-        self.dataQ.put(posData)
-        if self.dataQ.qsize() == 1:
+        self.dataQ.append(posData)
+        if len(self.dataQ) == 1:
+            # Wake worker upon inserting first element
             self.abortSaving = False
             self.waitCond.wakeAll()
     
@@ -307,8 +528,8 @@ class AutoSaveWorker(QObject):
     
     def abort(self):
         self.abortSaving = True
-        while not self.dataQ.empty():
-            data = self.dataQ.get()
+        while not len(self.dataQ) == 0:
+            data = self.dataQ.pop()
             del data
         self._stop()
     
@@ -318,10 +539,10 @@ class AutoSaveWorker(QObject):
             if self.exit:
                 self.logger.log('Closing autosaving worker...')
                 break
-            elif not self.dataQ.empty():
+            elif not len(self.dataQ) == 0:
                 if DEBUG:
                     self.logger.log('Autosaving...')
-                data = self.dataQ.get()
+                data = self.dataQ.pop()
                 try:
                     self.saveData(data)
                 except Exception as e:
@@ -329,7 +550,7 @@ class AutoSaveWorker(QObject):
                     print('*'*40)
                     self.logger.log(error)
                     print('='*40)
-                if self.dataQ.empty():
+                if len(self.dataQ) == 0:
                     self.sigDone.emit()
             else:
                 self.pause()
@@ -367,7 +588,7 @@ class AutoSaveWorker(QObject):
         segm_npz_path = posData.segm_npz_temp_path
 
         end_i = self.getLastTrackedFrame(posData)
-
+        
         if self.isAutoSaveON:
             if end_i < len(posData.segm_data):
                 saved_segm_data = posData.segm_data
@@ -410,7 +631,7 @@ class AutoSaveWorker(QObject):
             if self.abortSaving:
                 break
         
-        if not self.abortSaving:
+        if not self.abortSaving:            
             if self.isAutoSaveON:
                 segm_data = np.squeeze(saved_segm_data)
                 self._saveSegm(segm_npz_path, posData.segm_npz_path, segm_data)
@@ -1668,6 +1889,7 @@ class BaseWorkerUtil(QObject):
         QObject.__init__(self)
         self.signals = signals()
         self.abort = False
+        self.skipExp = False
         self.logger = workerLogger(self.signals.progress)
         self.mutex = QMutex()
         self.waitCond = QWaitCondition()
@@ -1692,6 +1914,45 @@ class BaseWorkerUtil(QObject):
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
         return self.abort
+
+    def emitSelectSpotmaxRun(
+            self, exp_path, pos_foldernames, infoText='', 
+            allowSingleSelection=True, multiSelection=True
+        ):
+        self.mutex.lock()
+        self.signals.sigSelectSpotmaxRun.emit(
+            exp_path, pos_foldernames, infoText, allowSingleSelection,
+            multiSelection
+        )
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        return self.abort
+
+class DataPrepSaveBkgrDataWorker(QObject):
+    def __init__(self, posData, dataPrepWin):
+        QObject.__init__(self)
+        self.signals = signals()
+        self.logger = workerLogger(self.signals.progress)
+        self.posData = posData
+        self.dataPrepWin = dataPrepWin
+    
+    @worker_exception_handler
+    def run(self):
+        self.dataPrepWin.saveBkgrData(self.posData)
+        self.signals.finished.emit(self)
+
+class DataPrepCropWorker(QObject):
+    def __init__(self, posData, dataPrepWin):
+        QObject.__init__(self)
+        self.signals = signals()
+        self.logger = workerLogger(self.signals.progress)
+        self.posData = posData
+        self.dataPrepWin = dataPrepWin
+    
+    @worker_exception_handler
+    def run(self):
+        self.dataPrepWin.saveSingleCrop(self.posData, self.posData.cropROIs[0])
+        self.signals.finished.emit(self)
 
 class TrackSubCellObjectsWorker(BaseWorkerUtil):
     sigAskAppendName = Signal(str, list)
@@ -2586,8 +2847,12 @@ class ConcatAcdcDfsWorker(BaseWorkerUtil):
     sigSetMeasurements = Signal(object)
     sigAskAppendName = Signal(str, list)
 
-    def __init__(self, mainWin):
+    def __init__(self, mainWin, format='CSV'):
         super().__init__(mainWin)
+        if format.startswith('CSV'):
+            self._to_format = 'to_csv'
+        elif format.startswith('XLS'):
+            self._to_format = 'to_excel'
     
     def emitSetMeasurements(self, kwargs):
         self.mutex.lock()
@@ -2713,7 +2978,8 @@ class ConcatAcdcDfsWorker(BaseWorkerUtil):
                 'Saving all positions concatenated file to '
                 f'"{acdc_dfs_allpos_filepath}"'
             )
-            acdc_df_allpos.to_csv(acdc_dfs_allpos_filepath)
+            to_format_func = getattr(acdc_df_allpos, self._to_format)
+            to_format_func(acdc_dfs_allpos_filepath)
             self.acdc_dfs_allpos_filepath = acdc_dfs_allpos_filepath
 
         if len(keys_exp) > 1:
@@ -2736,7 +3002,8 @@ class ConcatAcdcDfsWorker(BaseWorkerUtil):
                 'Saving multiple experiments concatenated file to '
                 f'"{acdc_dfs_allexp_filepath}"'
             )
-            acdc_df_allexp.to_csv(acdc_dfs_allexp_filepath)
+            to_format_func = getattr(acdc_df_allpos, self._to_format)
+            to_format_func(acdc_dfs_allexp_filepath)
 
         self.signals.finished.emit(self)
 
@@ -3463,3 +3730,149 @@ class DelObjectsOutsideSegmROIWorker(QObject):
         )
         
         self.finished.emit((self, cleared_segm_data, delIDs))
+
+class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
+    sigAborted = Signal()
+    sigAskFolder = Signal(str)
+    sigSetMeasurements = Signal(object)
+    sigAskAppendName = Signal(str, list)
+
+    def __init__(self, mainWin, format='CSV'):
+        super().__init__(mainWin)
+        if format.startswith('CSV'):
+            self._final_ext = '.csv'
+        elif format.startswith('XLS'):
+            self._final_ext = '.xlsx'
+    
+    def emitSetMeasurements(self, kwargs):
+        self.mutex.lock()
+        self.sigSetMeasurements.emit(kwargs)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+    
+    def emitAskAppendName(self, allPos_spotmax_df_basename):
+        # Ask appendend name
+        self.mutex.lock()
+        self.sigAskAppendName.emit(allPos_spotmax_df_basename, [])
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+
+    @worker_exception_handler
+    def run(self):
+        from spotmax import DFs_FILENAMES
+        import spotmax.io
+        
+        debugging = False
+        expPaths = self.mainWin.expPaths
+        tot_exp = len(expPaths)
+        self.signals.initProgressBar.emit(0)
+        spotmax_dfs_allexp = []
+        keys_exp = []
+        for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
+            self.errors = {}
+            tot_pos = len(pos_foldernames)
+            
+            abort = self.emitSelectSpotmaxRun(
+                exp_path, pos_foldernames, infoText=' to combine',
+                allowSingleSelection=True, multiSelection=False
+            )
+            if abort:
+                self.sigAborted.emit()
+                return
+
+            if self.skipExp:
+                self.logger.log(
+                    '[WARNING] The following experiment does not contain '
+                    f'valid spotMAX output files. Skipping it. "{exp_path}"'
+                )
+                continue
+            
+            selectedSpotmaxRuns = self.mainWin.selectedSpotmaxRuns
+
+            self.signals.initProgressBar.emit(len(pos_foldernames))
+            dfs_spots = {}
+            dfs_aggr = {}
+            pos_runs = {}
+            for p, pos in enumerate(pos_foldernames):
+                if self.abort:
+                    self.sigAborted.emit()
+                    return
+
+                self.logger.log(
+                    f'Processing experiment n. {i+1}/{tot_exp}, '
+                    f'{pos} ({p+1}/{tot_pos})'
+                )
+
+                spotmax_output_path = os.path.join(
+                    exp_path, pos, 'spotMAX_output'
+                )
+                for run_desc in selectedSpotmaxRuns:
+                    run, desc = run_desc.split('...')
+                    for _, pattern_filename in DFs_FILENAMES.items():
+                        run_filename = pattern_filename.replace('*rn*', run)
+                        run_filename = run_filename.replace('*desc*', desc)
+                        aggr_filename = f'{run_filename}_aggregated.csv'
+                        aggr_filepath = os.path.join(
+                            spotmax_output_path, aggr_filename
+                        )
+                        if not os.path.exists(aggr_filepath):
+                            continue
+                        df_spots_filename = f'{run_filename}.h5'
+                        spots_filepath = os.path.join(
+                            spotmax_output_path, df_spots_filename
+                        )
+                        ext_spots = '.h5'
+                        if not os.path.exists(spots_filepath):
+                            df_spots_filename = f'{run_filename}.csv'
+                            spots_filepath = os.path.join(
+                                spotmax_output_path, df_spots_filename
+                            )
+                            ext_spots = '.csv'
+                        if not os.path.exists(spots_filepath):
+                            continue
+                        
+                        analysis_step = re.findall(
+                            r'\*rn\*(.*)\*desc\*', pattern_filename
+                        )[0]
+                        df_spots = spotmax.io.load_spots_table(
+                            spotmax_output_path, df_spots_filename
+                        )
+                        df_aggregated = pd.read_csv(
+                            aggr_filepath, index_col=['frame_i', 'Cell_ID']
+                        )
+                        key = (run, analysis_step, desc, ext_spots)
+                        if key not in dfs_spots:
+                            dfs_spots[key] = []
+                            dfs_aggr[key] = []
+                            pos_runs[key] = []
+                        dfs_spots[key].append(df_spots)
+                        dfs_aggr[key].append(df_aggregated)
+                        pos_runs[key].append(pos)
+
+                self.signals.progressBar.emit(1)        
+            
+            allpos_folderpath = os.path.join(exp_path, 'spotMAX_multipos_output')
+            os.makedirs(allpos_folderpath, exist_ok=True)
+            
+            for key, dfs in dfs_spots.items():
+                pos_keys = pos_runs[key]
+                run, analysis_step, desc, ext_spots = key
+                if ext_spots == '.csv':
+                    ext_spots = self._final_ext
+                filename = f'multipos_{run}{analysis_step}{desc}{ext_spots}'
+                spotmax.io.save_concat_dfs(
+                    dfs, pos_keys, allpos_folderpath, filename, ext_spots
+                )
+            
+            for key, dfs in dfs_aggr.items():
+                pos_keys = pos_runs[key]
+                run, analysis_step, desc, _ = key
+                filename = (
+                    f'multipos_{run}{analysis_step}{desc}'
+                    f'_aggregated_{self._final_ext}'
+                )
+                spotmax.io.save_concat_dfs(
+                    dfs, pos_keys, allpos_folderpath, filename, self._final_ext
+                )
+                
+        self.signals.finished.emit(self)

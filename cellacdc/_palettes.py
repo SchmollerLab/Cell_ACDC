@@ -6,6 +6,12 @@ from qtpy import QtGui, QtWidgets, QtCore
 
 from cellacdc import settings_csv_path
 
+def _highlight_rgba():
+    return (31, 223, 100, 255)
+
+def _highlighted_text():
+    return (0, 0, 0, 255)
+
 def base_color():
     scheme = get_color_scheme()
     if scheme == 'light':
@@ -26,8 +32,8 @@ def _light_colors():
         'ButtonText': (0, 0, 0, 255),
         'BrightText': (255, 255, 255, 255),
         'Link': (0, 0, 255, 255),
-        'Highlight': (108, 209, 77, 255),
-        'HighlightedText': (255, 255, 255, 255)
+        'Highlight': (207, 235, 155, 255),
+        'HighlightedText': _highlighted_text()
     }
     return colors
 
@@ -69,8 +75,8 @@ def _dark_colors():
         'ButtonText': (240, 240, 240, 255),
         'BrightText': (75, 75, 75, 255),
         'Link': (48, 140, 198, 255),
-        'Highlight': (49, 97, 35, 255),
-        'HighlightedText': (240, 240, 240, 255)
+        'Highlight': (141, 196, 39, 255),
+        'HighlightedText': _highlighted_text()
     }
     return colors
 
@@ -158,7 +164,7 @@ def TreeWidgetStyleSheet():
             QTreeWidget::item:hover {background-color:#4d4d4d;}
             QTreeWidget::item:hover {color:white;}
             QTreeWidget::item:selected {background-color:#8dc427;}
-            QTreeWidget::item:selected {color:white;}
+            QTreeWidget::item:selected {color:black;}
             QTreeView {
                 selection-background-color: #8dc427;
                 show-decoration-selected: 1;

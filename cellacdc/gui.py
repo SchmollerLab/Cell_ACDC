@@ -17,6 +17,7 @@ from importlib import import_module
 from functools import partial
 from tqdm import tqdm
 from natsort import natsorted
+from collections import Counter
 import time
 import cv2
 import math
@@ -41,7 +42,7 @@ from functools import wraps
 from skimage.color import gray2rgb, gray2rgba, label2rgb
 
 from qtpy.QtCore import (
-    Qt, QPointF, QTextStream, QSize, QRect, QRectF,
+    Qt, QPoint, QTextStream, QSize, QRect, QRectF,
     QEventLoop, QTimer, QEvent, QObject, Signal,
     QThread, QMutex, QWaitCondition, QSettings
 )
@@ -970,6 +971,7 @@ class guiWin(QMainWindow):
         self.pos_i = 0
         self.save_until_frame_i = 0
         self.countKeyPress = 0
+        self.countRightClicks = 0
         self.xHoverImg, self.yHoverImg = None, None
 
         # Buttons added to QButtonGroup will be mutually exclusive
@@ -1098,6 +1100,9 @@ class guiWin(QMainWindow):
         
         if 'isLabelsVisible' not in self.df_settings.index:
             self.df_settings.at['isLabelsVisible', 'value'] = 'No'
+        
+        if 'isNextFrameVisible' not in self.df_settings.index:
+            self.df_settings.at['isNextFrameVisible', 'value'] = 'No'
         
         if 'isRightImageVisible' not in self.df_settings.index:
             self.df_settings.at['isRightImageVisible', 'value'] = 'Yes'
@@ -1385,6 +1390,9 @@ class guiWin(QMainWindow):
         self.slideshowButton.setShortcut('Ctrl+W')
         self.slideshowButton.setToolTip('Open slideshow (Ctrl+W)')
         navigateToolBar.addWidget(self.slideshowButton)
+        
+        # navigateToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
+        navigateToolBar.addAction(self.skipToNewIdAction)
 
         self.overlayButton = widgets.rightClickToolButton(parent=self)
         self.overlayButton.setIcon(QIcon(":overlay.svg"))
@@ -1528,7 +1536,7 @@ class guiWin(QMainWindow):
             '     NOTE: use the power brush to draw ABOVE the existing labels.\n\n'
             'SHORTCUT: "B" key'
         )
-        editToolBar.addWidget(self.brushButton)
+        self.brushAction = editToolBar.addWidget(self.brushButton)
         self.checkableButtons.append(self.brushButton)
         self.LeftClickButtons.append(self.brushButton)
         self.brushButton.keyPressShortcut = Qt.Key_B
@@ -1549,7 +1557,7 @@ class guiWin(QMainWindow):
             '     double-press "X" key. If double-press is successfull,\n'
             '     then eraser button is red and eraser cursor always red.\n\n'
             'SHORTCUT: "X" key')
-        editToolBar.addWidget(self.eraserButton)
+        self.eraserAction = editToolBar.addWidget(self.eraserButton)
         self.eraserButton.keyPressShortcut = Qt.Key_X
         self.widgetsWithShortcut['Eraser'] = self.eraserButton
         self.checkableButtons.append(self.eraserButton)
@@ -1742,7 +1750,7 @@ class guiWin(QMainWindow):
             'Toggle "Edit ID" mode ON/OFF\n\n'
             'EXAMPLE: manually change ID of a cell\n\n'
             'ACTION: right-click on cell\n\n'
-            'SHORTCUT: "N" key')
+            'SHORTCUT: "N" key or double right-click on an object')
         editToolBar.addWidget(self.editIDbutton)
         self.checkableButtons.append(self.editIDbutton)
         self.checkableQButtonsGroup.addButton(self.editIDbutton)
@@ -1770,14 +1778,17 @@ class guiWin(QMainWindow):
         self.mergeIDsButton.setShortcut('m')
         self.mergeIDsButton.setToolTip(
             'Toggle "Merge IDs" mode ON/OFF\n\n'
-            'EXAMPLE: merge/fuse two cells together\n\n'
-            'ACTION: right-click\n\n'
+            'EXAMPLE: merge/fuse object IDs together\n\n'
+            'ACTION:\n'
+            '   - Right-click drag-and-drop two objects to merge them.\n'
+            '   - Ctrl + connect with right-click multiple objects to merge them.\n'
+            '\n\n'
             'SHORTCUT: "M" key'
         )
         self.mergeIDsButton.action = editToolBar.addWidget(self.mergeIDsButton)
         self.checkableButtons.append(self.mergeIDsButton)
         self.checkableQButtonsGroup.addButton(self.mergeIDsButton)
-        self.functionsNotTested3D.append(self.mergeIDsButton)
+        # self.functionsNotTested3D.append(self.mergeIDsButton)
         self.widgetsWithShortcut['Merge objects'] = self.mergeIDsButton
 
         self.keepIDsButton = QToolButton(self)
@@ -2633,6 +2644,15 @@ class guiWin(QMainWindow):
             'Find and highlight ID (Ctrl+F).'
             'Press "Esc" to clear highlighted object.'
         )
+        
+        self.skipToNewIdAction = QAction(self)
+        self.skipToNewIdAction.setIcon(QIcon(":skip_forward_new_ID.svg"))
+        self.skipToNewIdAction.setShortcut(QKeySequence(Qt.Key_PageUp))
+        self.skipToNewIdAction.setToolTip(
+            'Skip forward to the frame where a new object appears.\n\n'
+            'SHORTCUT: "Page up" key'
+        )
+        self.skipToNewIdAction.setDisabled(True)
 
         # Edit actions
         models = myutils.get_list_of_models()
@@ -3044,6 +3064,7 @@ class guiWin(QMainWindow):
         self.loadPosAction.triggered.connect(self.loadPosTriggered)
         # self.reloadAction.triggered.connect(self.reload_cb)
         self.findIdAction.triggered.connect(self.findID)
+        self.skipToNewIdAction.triggered.connect(self.skipForwardToNewID)        
         self.slideshowButton.toggled.connect(self.launchSlideshow)
         
         self.copyContourButton.toggled.connect(self.copyLostObjContour_cb)
@@ -3068,6 +3089,7 @@ class guiWin(QMainWindow):
         self.delObjsOutSegmMaskAction.triggered.connect(
             self.delObjsOutSegmMaskActionTriggered
         )
+        self.mergeIDsButton.toggled.connect(self.mergeObjs_cb)
         self.brushButton.toggled.connect(self.Brush_cb)
         self.eraserButton.toggled.connect(self.Eraser_cb)
         self.curvToolButton.toggled.connect(self.curvTool_cb)
@@ -3136,6 +3158,7 @@ class guiWin(QMainWindow):
         self.labelsGrad.invertBwAction.toggled.connect(self.setCheckedInvertBW)
         self.labelsGrad.sigShowLabelsImgToggled.connect(self.showLabelImageItem)
         self.labelsGrad.sigShowRightImgToggled.connect(self.showRightImageItem)
+        self.labelsGrad.sigShowNextFrameToggled.connect(self.showNextFrameImageItem)
         
         self.labelsGrad.defaultSettingsAction.triggered.connect(
             self.restoreDefaultSettings
@@ -3770,6 +3793,9 @@ class guiWin(QMainWindow):
         self.imgGrad.gradient.menu.addAction(
             self.labelsGrad.showRightImgAction
         )
+        self.imgGrad.gradient.menu.addAction(
+            self.labelsGrad.showNextFrameAction
+        )
         
         # Add actions to view menu
         self.viewMenu.addAction(self.labelsGrad.showLabelsImgAction)
@@ -3784,6 +3810,9 @@ class guiWin(QMainWindow):
         )
         self.imgGradRight.gradient.menu.addAction(
             self.labelsGrad.showRightImgAction
+        )
+        self.imgGradRight.gradient.menu.addAction(
+            self.labelsGrad.showNextFrameAction
         )
 
         # Title
@@ -3844,7 +3873,10 @@ class guiWin(QMainWindow):
         # Left image
         self.img1 = widgets.ParentImageItem(
             linkedImageItem=self.rightImageItem,
-            activatingAction=self.labelsGrad.showRightImgAction
+            activatingActions=(
+                self.labelsGrad.showRightImgAction,
+                self.labelsGrad.showNextFrameAction
+            )
         )
         self.imgGrad.setImageItem(self.img1)
         self.ax1.addItem(self.img1)
@@ -3864,6 +3896,10 @@ class guiWin(QMainWindow):
         # Temporary line item connecting bud to new mother
         self.BudMothTempLine = pg.PlotDataItem(pen=self.NewBudMoth_Pen)
         self.topLayerItems.append(self.BudMothTempLine)
+        
+        # Temporary line item connecting objects to merge
+        self.mergeObjsTempLine = widgets.PlotCurveItem(pen=self.redDashLinePen)
+        self.topLayerItems.append(self.mergeObjsTempLine)
 
         # Overlay segm. masks item
         self.labelsLayerImg1 = widgets.BaseImageItem()
@@ -3885,7 +3921,7 @@ class guiWin(QMainWindow):
         # self.tempLayerImg1 = pg.ImageItem()
         self.tempLayerImg1 = widgets.ParentImageItem(
             linkedImageItem=self.tempLayerRightImage,
-            activatingAction=self.labelsGrad.showRightImgAction
+            activatingAction=(self.labelsGrad.showRightImgAction, )
         )
         self.topLayerItems.append(self.tempLayerImg1)
         self.topLayerItemsRight.append(self.tempLayerRightImage)
@@ -4288,6 +4324,10 @@ class guiWin(QMainWindow):
             color=self.mothBudLineColor, width=self.mothBudLineWeight, 
             style=Qt.DashLine
         )
+        
+        self.redDashLinePen = pg.mkPen(
+            color='r', width=2, style=Qt.DashLine
+        )
 
         self.oldMothBudLineBrush = pg.mkBrush(self.mothBudLineColor)
         self.newMothBudLineBrush = pg.mkBrush(self.newMothBudlineColor)
@@ -4440,10 +4480,15 @@ class guiWin(QMainWindow):
         is_event_from_img1 = False
         if hasattr(event, 'isImg1Sender'):
             is_event_from_img1 = event.isImg1Sender
-        showLabelsGradMenu = (
-            right_click and not is_right_click_action_ON
-            and not is_event_from_img1 and not middle_click
+        
+        is_only_right_click = (
+            right_click and not is_right_click_action_ON and not middle_click
         )
+        
+        showLabelsGradMenu = (
+            is_only_right_click and not is_event_from_img1
+        )
+        
         if showLabelsGradMenu:
             self.labelsGrad.showMenu(event)
             event.ignore()
@@ -4834,6 +4879,7 @@ class guiWin(QMainWindow):
                 )
                 mergeID_prompt.exec_()
                 if mergeID_prompt.cancel:
+                    self.mergeObjsTempLine.setData([], [])
                     return
                 else:
                     ID = mergeID_prompt.EntryID
@@ -4841,6 +4887,11 @@ class guiWin(QMainWindow):
             # Store undo state before modifying stuff
             self.storeUndoRedoStates(False)
             self.firstID = ID
+            
+            obj_idx = posData.IDs_idxs[ID]
+            obj = posData.rp[obj_idx]
+            yc, xc = self.getObjCentroid(obj.centroid)
+            self.clickObjYc, self.clickObjXc = int(yc), int(xc)
 
         # Edit ID
         elif right_click and self.editIDbutton.isChecked():
@@ -5793,18 +5844,13 @@ class guiWin(QMainWindow):
             and not event.isExit()
         )
         if drawMothBudLine:
-            x, y = event.pos()
-            y2, x2 = y, x
-            xdata, ydata = int(x), int(y)
-            y1, x1 = self.yClickBud, self.xClickBud
-            ID = self.get_2Dlab(posData.lab)[ydata, xdata]
-            if ID == 0:
-                self.BudMothTempLine.setData([x1, x2], [y1, y2])
-            else:
-                obj_idx = posData.IDs.index(ID)
-                obj = posData.rp[obj_idx]
-                y2, x2 = self.getObjCentroid(obj.centroid)
-                self.BudMothTempLine.setData([x1, x2], [y1, y2])
+            self.drawTempMothBudLine(event, posData)
+
+        drawMergeObjsLine = (
+            self.mergeIDsButton.isChecked() and not event.isExit()
+        )
+        if drawMergeObjsLine:
+            self.drawTempMergeObjsLine(event, posData, modifiers)
 
         # Temporarily draw spline curve
         # see https://stackoverflow.com/questions/33962717/interpolating-a-closed-curve-using-scipy
@@ -5845,6 +5891,39 @@ class guiWin(QMainWindow):
             x, y = event.pos()
             self.ax2_cursor.setData([x], [y])
         return cursorsInfo
+    
+    def drawTempMothBudLine(self, event, posData):
+        x, y = event.pos()
+        y2, x2 = y, x
+        xdata, ydata = int(x), int(y)
+        y1, x1 = self.yClickBud, self.xClickBud
+        ID = self.get_2Dlab(posData.lab)[ydata, xdata]
+        if ID == 0:
+            self.BudMothTempLine.setData([x1, x2], [y1, y2])
+        else:
+            obj_idx = posData.IDs_idxs[ID]
+            obj = posData.rp[obj_idx]
+            y2, x2 = self.getObjCentroid(obj.centroid)
+            self.BudMothTempLine.setData([x1, x2], [y1, y2])
+    
+    def drawTempMergeObjsLine(self, event, posData, modifiers):
+        if self.clickObjYc is None:
+            return
+        modifier = modifiers == Qt.ShiftModifier
+        x, y = event.pos()
+        y2, x2 = y, x
+        xdata, ydata = int(x), int(y)
+        y1, x1 = self.clickObjYc, self.clickObjXc
+        ID = self.get_2Dlab(posData.lab)[ydata, xdata]
+        if ID != 0:
+            obj_idx = posData.IDs_idxs[ID]
+            obj = posData.rp[obj_idx]
+            y2, x2 = self.getObjCentroid(obj.centroid)
+        
+        if modifier and ID > 0:
+            self.mergeObjsTempLine.addPoint(x2, y2)
+        elif not modifier:
+            self.mergeObjsTempLine.setData([x1, x2], [y1, y2])
         
     def gui_add_ax_cursors(self):
         try:
@@ -6089,12 +6168,8 @@ class guiWin(QMainWindow):
             x, y = None, None
         self.updateLabelRoiCircularCursor(x, y, setLabelRoiCircCursor)
     
-    def gui_imgGradShowContextMenu(self, event):
-        try:
-            # Convert QPointF to QPoint
-            self.imgGrad.gradient.menu.popup(event.screenPos().toPoint())
-        except AttributeError:
-            self.imgGrad.gradient.menu.popup(event.screenPos())
+    def gui_imgGradShowContextMenu(self, x, y):
+        self.imgGrad.gradient.menu.popup(QPoint(int(x), int(y)))
     
     def gui_rightImageShowContextMenu(self, event):
         try:
@@ -6276,10 +6351,11 @@ class guiWin(QMainWindow):
         elif self.mergeIDsButton.isChecked():
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
-            ID = self.get_2Dlab(posData.lab)[ydata, xdata]
+            lab2D = self.get_2Dlab(posData.lab)
+            ID = lab2D[ydata, xdata]
             if ID == 0:
                 nearest_ID = self.nearest_nonzero(
-                    self.get_2Dlab(posData.lab), y, x
+                    lab2D, y, x
                 )
                 mergeID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
@@ -6294,8 +6370,20 @@ class guiWin(QMainWindow):
                     return
                 else:
                     ID = mergeID_prompt.EntryID
-
-            posData.lab[posData.lab==ID] = self.firstID
+                    obj_idx = posData.IDs_idxs[ID]
+                    obj = posData.rp[obj_idx]
+                    y2, x2 = self.getObjCentroid(obj.centroid)
+                    self.mergeObjsTempLine.addPoint(x2, y2)
+            
+            xx, yy = self.mergeObjsTempLine.getData()
+            IDs_to_merge = lab2D[yy.astype(int), xx.astype(int)]
+            for ID in IDs_to_merge:
+                if ID == 0:
+                    continue
+                posData.lab[posData.lab==ID] = self.firstID
+            
+            self.mergeObjsTempLine.setData([], [])
+            self.clickObjYc, self.clickObjXc = None, None
 
             # Update data (rp, etc)
             self.update_rp()
@@ -6311,7 +6399,7 @@ class guiWin(QMainWindow):
                 self.updateAllImages()
             else:
                 self.warnEditingWithCca_df('Merge IDs')
-
+            
             if not self.mergeIDsButton.findChild(QAction).isChecked():
                 self.mergeIDsButton.setChecked(False)
             self.store_data()
@@ -6543,27 +6631,13 @@ class guiWin(QMainWindow):
             if relationship == 'bud' and posData.frame_i > 0 and is_history_known:
                 self.assignBudMothButton.setChecked(False)
                 txt = html_utils.paragraph(
-                    f'You clicked on <b>ID {ID}</b> which is a <b>BUD</b>.<br>'
-                    'To assign a bud to a cell <b>start by clicking on a bud</b> '
+                    f'You clicked on <b>ID {ID}</b> which is a <b>BUD</b>.<br><br>'
+                    'To assign a bud <b>start by clicking on the bud</b> '
                     'and release on a cell in G1'
                 )
                 msg = widgets.myMessageBox()
                 msg.critical(
                     self, 'Released on a bud', txt
-                )
-                self.assignBudMothButton.setChecked(True)
-                return
-
-            elif ccs != 'G1' and posData.frame_i > 0:
-                self.assignBudMothButton.setChecked(False)
-                txt = html_utils.paragraph(
-                    f'You clicked on <b>ID={ID}</b> which is <b>NOT in G1</b>.<br>'
-                    'To assign a bud to a cell start by clicking on a bud '
-                    'and release on a cell in G1'
-                )
-                msg = widgets.myMessageBox()
-                msg.critical(
-                    self, 'Released on a cell NOT in G1', txt
                 )
                 self.assignBudMothButton.setChecked(True)
                 return
@@ -6625,7 +6699,13 @@ class guiWin(QMainWindow):
 
             self.clickedOnHistoryKnown = is_history_known
             self.xClickMoth, self.yClickMoth = xdata, ydata
-            self.assignBudMoth()
+            
+            if ccs != 'G1' and posData.frame_i > 0:
+                self.assignBudMothButton.setChecked(False)
+                self.onMotherNotInG1(ID)
+                self.assignBudMothButton.setChecked(True)
+            else:
+                self.assignBudMoth()
 
             if not self.assignBudMothButton.findChild(QAction).isChecked():
                 self.assignBudMothButton.setChecked(False)
@@ -6818,11 +6898,24 @@ class guiWin(QMainWindow):
             and not isMod and not is_right_click_action_ON
             and not is_right_click_custom_ON and not copyContourON
         )
-
+        
         if isOnlyRightClick:
-            self.gui_imgGradShowContextMenu(event)
-            event.ignore()
-            return
+            # Start timer or check if it is a double-right-click
+            if self.countRightClicks == 0:
+                self.isDoubleRightClick = False
+                self.countRightClicks = 1
+                self.doubleRightClickTimeElapsed = False
+                screenPos = event.screenPos()
+                self._img1_click_xy = (screenPos.x(), screenPos.y())
+                QTimer.singleShot(400, self.doubleRightClickTimerCallBack)
+                return
+            elif (
+                self.countRightClicks == 1 
+                and not self.doubleRightClickTimeElapsed
+            ):            
+                self.isDoubleRightClick = True
+                self.countRightClicks = 0
+                self.editIDbutton.setChecked(True)
 
         # Left click actions
         canCurv = (
@@ -7621,6 +7714,55 @@ class guiWin(QMainWindow):
         self.highlightSearchedID(searchIDdialog.EntryID)
         propsQGBox = self.guiTabControl.propsQGBox
         propsQGBox.idSB.setValue(searchIDdialog.EntryID)
+    
+    def skipForwardToNewID(self):
+        self.progressWin = apps.QDialogWorkerProgress(
+            title='Searching the next frame with a new object', parent=self,
+            pbarDesc=f'Searching the next frame with a new object...'
+        )
+        self.progressWin.show(self.app)
+        self.progressWin.mainPbar.setMaximum(0)
+        
+        self.startFindNextNewIdWorker()
+    
+    def startFindNextNewIdWorker(self):
+        posData = self.data[self.pos_i]
+        self._thread = QThread()
+        self.findNextNewIdWorker = workers.FindNextNewIdWorker(posData, self)
+        self.findNextNewIdWorker.moveToThread(self._thread)
+        
+        self.findNextNewIdWorker.moveToThread(self._thread)
+        self.findNextNewIdWorker.signals.finished.connect(self._thread.quit)
+        self.findNextNewIdWorker.signals.finished.connect(
+            self.findNextNewIdWorker.deleteLater
+        )
+        self._thread.finished.connect(self._thread.deleteLater)
+
+        self.findNextNewIdWorker.signals.finished.connect(
+            self.findNextNewIdWorkerFinished
+        )
+        self.findNextNewIdWorker.signals.progress.connect(self.workerProgress)
+        self.findNextNewIdWorker.signals.initProgressBar.connect(
+            self.workerInitProgressbar
+        )
+        self.findNextNewIdWorker.signals.progressBar.connect(
+            self.workerUpdateProgressbar
+        )
+        self.findNextNewIdWorker.signals.critical.connect(
+            self.workerCritical
+        )
+
+        self._thread.started.connect(self.findNextNewIdWorker.run)
+        self._thread.start()
+    
+    def findNextNewIdWorkerFinished(self, next_frame_i):
+        if self.progressWin is not None:
+            self.progressWin.workerFinished = True
+            self.progressWin.close()
+            self.progressWin = None
+                    
+        self.navSpinBox.setValue(next_frame_i+1)
+        self.framesScrollBarReleased()
 
     def workerProgress(self, text, loggerLevel='INFO'):
         if self.progressWin is not None:
@@ -8527,6 +8669,7 @@ class guiWin(QMainWindow):
             rp_relID = posData.rp[relObj_idx]
         
         self.setAllTextAnnotations()
+        self.drawAllMothBudLines()
 
         self.store_cca_df()
 
@@ -8821,11 +8964,15 @@ class guiWin(QMainWindow):
                 Saved data is not changed of course.<br><br>
                 Apply assignment or cancel process?
             """)
-            msg = QMessageBox()
-            enforce_assignment = msg.warning(
-               self, 'Cell not eligible', err_msg, msg.Apply | msg.Cancel
+            applyButton = widgets.okPushButton(isDefault=False)
+            applyButton.setText('Apply and remove future annotations')
+            msg = widgets.myMessageBox()
+            _, applyButton = msg.warning(
+               self, 'Cell not eligible', err_msg, 
+               buttonsTexts=('Cancel', applyButton)
             )
-            cancel = enforce_assignment == msg.Cancel
+            cancel = msg.cancel
+            apply = msg.clickedButton = applyButton
         elif why == 'not_G1_in_the_past':
             err_msg = html_utils.paragraph(f"""
                 The requested cell in G1
@@ -8837,11 +8984,12 @@ class guiWin(QMainWindow):
                 One possible solution is to first go to frame {i+1} and
                 assign the bud of cell {new_mothID} to another cell.
             """)
-            msg = QMessageBox()
+            msg = widgets.myMessageBox()
             msg.warning(
-               self, 'Cell not eligible', err_msg, msg.Ok
+               self, 'Cell not eligible', err_msg
             )
-            cancel = None
+            cancel = msg.cancel
+            apply = False
         elif why == 'single_frame_G1_duration':
             err_msg = html_utils.paragraph(f"""
                 Assigning bud ID {budID} to cell in G1
@@ -8858,8 +9006,9 @@ class guiWin(QMainWindow):
             msg.warning(
                self, 'Cell not eligible', err_msg
             )
-            cancel = None
-        return cancel
+            cancel = msg.cancel
+            apply = False
+        return cancel, apply
     
     def warnSettingHistoryKnownCellsFirstFrame(self, ID):
         txt = html_utils.paragraph(f"""
@@ -8878,6 +9027,7 @@ class guiWin(QMainWindow):
         Check that the new mother is in G1 for the entire life of the bud
         and that the G1 duration is > than 1 frame
         """
+        last_cca_frame_i = self.navigateScrollBar.maximum()-1
         posData = self.data[self.pos_i]
         eligible = True
 
@@ -8900,15 +9050,15 @@ class guiWin(QMainWindow):
 
             ccs = cca_df_i.at[new_mothID, 'cell_cycle_stage']
             if ccs != 'G1':
-                cancel = self.warnMotherNotEligible(
+                cancel, apply = self.warnMotherNotEligible(
                     new_mothID, budID, i, 'not_G1_in_the_future'
                 )
-                if cancel or G1_duration == 1:
-                    eligible = False
-                    return eligible
-                else:
+                if apply:
                     self.remove_future_cca_df(i)
                     break
+                if cancel or (G1_duration == 1 and i != last_cca_frame_i):
+                    eligible = False
+                    return eligible
 
             G1_duration += 1
 
@@ -9046,6 +9196,7 @@ class guiWin(QMainWindow):
     def getStatus_RelID_BeforeEmergence(self, budID, curr_mothID):
         posData = self.data[self.pos_i]
         # Get status of the current mother before it had budID assigned to it
+        cca_status_before_bud_emerg = None
         for i in range(posData.frame_i-1, -1, -1):
             # Get cca_df for ith frame from allData_li
             cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
@@ -9054,12 +9205,13 @@ class guiWin(QMainWindow):
             if not is_bud_existing:
                 # Bud was not emerged yet
                 if curr_mothID in cca_df_i.index:
-                    return cca_df_i.loc[curr_mothID]
+                    cca_status_before_bud_emerg = cca_df_i.loc[curr_mothID]
+                    return cca_status_before_bud_emerg
                 else:
                     # The bud emerged together with the mother because
                     # they appeared together from outside of the fov
                     # and they were trated as new IDs bud in S0
-                    return pd.Series({
+                    cca_status_before_bud_emerg = pd.Series({
                         'cell_cycle_stage': 'S',
                         'generation_num': 0,
                         'relative_ID': -1,
@@ -9070,6 +9222,15 @@ class guiWin(QMainWindow):
                         'corrected_assignment': False,
                         'will_divide': 0
                     })
+                    return cca_status_before_bud_emerg
+        
+        # Mother did not have a status before bud emergence because it was
+        # already paired with bud at first frame --> reinit to default
+        cca_status_before_bud_emerg = (
+            core.getBaseCca_df([curr_mothID]).loc[curr_mothID]
+        )
+        return cca_status_before_bud_emerg
+        
 
     def assignBudMoth(self):
         """
@@ -9092,8 +9253,9 @@ class guiWin(QMainWindow):
               before being assigned to the clicked bud
         """
         posData = self.data[self.pos_i]
-        budID = self.get_2Dlab(posData.lab)[self.yClickBud, self.xClickBud]
-        new_mothID = self.get_2Dlab(posData.lab)[self.yClickMoth, self.xClickMoth]
+        lab2D = self.get_2Dlab(posData.lab)
+        budID = lab2D[self.yClickBud, self.xClickBud]
+        new_mothID = lab2D[self.yClickMoth, self.xClickMoth]
 
         if budID == new_mothID:
             return
@@ -9122,8 +9284,6 @@ class guiWin(QMainWindow):
                 posData.cca_df.at[currentRelID, 'relative_ID'] = -1
                 posData.cca_df.at[currentRelID, 'generation_num'] = 2
                 posData.cca_df.at[currentRelID, 'cell_cycle_stage'] = 'G1'
-                currentRelObjIdx = posData.IDs.index(currentRelID)
-                currentRelObj = posData.rp[currentRelObjIdx]
             posData.cca_df.at[budID, 'relationship'] = 'bud'
             posData.cca_df.at[budID, 'generation_num'] = 0
             posData.cca_df.at[budID, 'relative_ID'] = new_mothID
@@ -9131,8 +9291,6 @@ class guiWin(QMainWindow):
             posData.cca_df.at[new_mothID, 'relative_ID'] = budID
             posData.cca_df.at[new_mothID, 'generation_num'] = 2
             posData.cca_df.at[new_mothID, 'cell_cycle_stage'] = 'S'
-            bud_obj_idx = posData.IDs.index(budID)
-            new_moth_obj_idx = posData.IDs.index(new_mothID)
             self.updateAllImages()
             self.store_cca_df()
             return
@@ -9151,6 +9309,7 @@ class guiWin(QMainWindow):
         # Store cca_df for undo action
         undoId = uuid.uuid4()
         self.storeUndoRedoCca(posData.frame_i, posData.cca_df, undoId)
+        
         # Correct current frames and update LabelItems
         posData.cca_df.at[budID, 'relative_ID'] = new_mothID
         posData.cca_df.at[budID, 'generation_num'] = 0
@@ -9163,20 +9322,11 @@ class guiWin(QMainWindow):
         posData.cca_df.at[new_mothID, 'cell_cycle_stage'] = 'S'
         posData.cca_df.at[new_mothID, 'relationship'] = 'mother'
 
+        
         if curr_mothID in posData.cca_df.index:
             # Cells with UNKNOWN history has relative's ID = -1
             # which is not an existing cell
             posData.cca_df.loc[curr_mothID] = curr_moth_cca
-
-        bud_obj_idx = posData.IDs.index(budID)
-        new_moth_obj_idx = posData.IDs.index(new_mothID)
-        if curr_mothID in posData.cca_df.index:
-            curr_moth_obj_idx = posData.IDs.index(curr_mothID)
-        rp_budID = posData.rp[bud_obj_idx]
-        rp_new_mothID = posData.rp[new_moth_obj_idx]
-
-        if curr_mothID in posData.cca_df.index:
-            rp_curr_mothID = posData.rp[curr_moth_obj_idx]
 
         self.updateAllImages()
 
@@ -9259,6 +9409,79 @@ class guiWin(QMainWindow):
         
         self.enqAutosave()
     
+    def onMotherNotInG1(self, mothID):
+        txt = html_utils.paragraph(
+            f'You clicked on <b>ID={mothID}</b> which is <b>NOT in G1</b><br><br>'
+            'Do you want to proceed with <b>swapping the mother cells</b>?<br><br>'
+            'NOTE: To assign a bud <b>start by clicking on the bud</b> '
+            'and release on a cell in G1'
+        )
+        msg = widgets.myMessageBox()
+        swapMothersButton = widgets.reloadPushButton('Swap mother cells')
+        _, swapMothersButton = msg.warning(
+            self, 'Released on a cell NOT in G1', txt,
+            buttonsTexts=('Cancel', swapMothersButton)
+        )
+        if msg.cancel:
+            return
+        
+        self.swapMothers()
+    
+    def swapMothers(self):
+        posData = self.data[self.pos_i]
+        
+        # Store cca_df for undo action
+        undoId = uuid.uuid4()
+        self.storeUndoRedoCca(posData.frame_i, posData.cca_df, undoId)
+        
+        lab2D = self.get_2Dlab(posData.lab)
+        budID = lab2D[self.yClickBud, self.xClickBud]
+        otherMothID = lab2D[self.yClickMoth, self.xClickMoth]
+        mothID = posData.cca_df.at[budID, 'relative_ID']
+        otherBudID = posData.cca_df.at[otherMothID, 'relative_ID']
+        
+        self.logger.info(
+            'Swapping assignments:\n'
+            f'  * Bud ID {budID} --> {otherMothID}\n'
+            f'  * Bud ID {otherBudID} --> {mothID}'
+        )
+        
+        pairs = (
+            (otherMothID, budID),
+            (otherBudID, mothID),
+            (budID, otherMothID),
+            (mothID, otherBudID)
+        )
+        
+        for ID1, ID2 in pairs:
+            posData.cca_df.at[ID1, 'relative_ID'] = ID2
+        self.store_cca_df()
+        
+        self.updateAllImages()
+        
+        for i in range(posData.SizeT):
+            if i == posData.frame_i:
+                continue
+            
+            # Get cca_df for ith frame from allData_li
+            cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
+            if cca_df_i is None:
+                # ith frame was not visited yet
+                break
+            
+            self.storeUndoRedoCca(i, cca_df_i, undoId)
+            
+            for ID1, ID2 in pairs:
+                try:
+                    ccs = cca_df_i.at[ID1, 'cell_cycle_stage']
+                    if ccs != 'S':
+                        continue
+                    cca_df_i.at[ID1, 'relative_ID'] = ID2
+                except KeyError:
+                    pass
+            
+            self.store_cca_df(frame_i=i, cca_df=cca_df_i, autosave=False)
+        
     def getClosedSplineCoords(self):
         xxS, yyS = self.curvPlotItem.getData()
         bbox_area = (xxS.max()-xxS.min())*(yyS.max()-yyS.min())
@@ -9716,7 +9939,7 @@ class guiWin(QMainWindow):
             return img
         
         if channelName == self.user_ch_name:
-            self.img1.setImage(img)
+            self.img1.setImage(img, next_frame_image=self.nextFrameImage())
         else:
             imageItem = self.overlayLayersItems[channelName][0]
             imageItem.setImage(img)
@@ -10006,6 +10229,8 @@ class guiWin(QMainWindow):
             posData = self.data[self.pos_i]
             if msg.cancel:
                 return
+            
+            self.reset_will_divide_info()
             # Go to previous frame without storing and then back to current
             if posData.frame_i > 0:
                 posData.frame_i -= 1
@@ -10166,7 +10391,6 @@ class guiWin(QMainWindow):
             )
             selectFluo.exec_()
             keys = selectFluo.selectedItemsText
-            key = keys[0]
             if selectFluo.cancel or not keys:
                 return
             else:
@@ -10874,7 +11098,7 @@ class guiWin(QMainWindow):
         selectSegmWin = widgets.QDialogListbox(
             'Select segmentation file',
             'Select segmentation file to use as ROI:\n',
-            existingSegmEndnames, multiSelection=True, parent=self
+            existingSegmEndnames, multiSelection=False, parent=self
         )
         selectSegmWin.exec_()
         if selectSegmWin.cancel:
@@ -10920,7 +11144,11 @@ class guiWin(QMainWindow):
             return
         self.ax1_viewRange = self.ax1.viewRange()
         self.isRangeReset = False
-        
+    
+    def mergeObjs_cb(self, checked):
+        if not checked:
+            self.mergeObjsTempLine.setData([], [])
+    
     def Brush_cb(self, checked):
         if checked:
             self.typingEditID = False
@@ -11302,32 +11530,12 @@ class guiWin(QMainWindow):
     @exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_Q and self.debug:
-            # printl(self.xHoverImg, self.yHoverImg)
-            # printl(self.img1.mapToData(QCursor().pos()))
-            # x, y = QCursor().pos().x(), QCursor().pos().y()
-            # printl(self.graphLayout.mapToScene(x, y))
-            posData = self.data[self.pos_i]
-            is_segm_3D = self.isSegm3D
-            # all_metrics_names = measurements.get_all_metrics_names(
-            #     posData, self.user_ch_name, is_segm_3D
-            # )
-            # printl(self.metricsToSave)
-            self.initMetricsToSave(posData)
+            img = np.zeros_like(self.img1.image)
+            from cellacdc.plot import imshow
+            next_frame_image = self.nextFrameImage()
+            printl(next_frame_image.shape, next_frame_image.max())
+            self.img1.setImage(img, next_frame_image=next_frame_image)
             
-            # printl(self.bkgr_metrics_params, pretty=True)
-            printl(self.foregr_metrics_params, pretty=True)
-            printl(self.custom_metrics_params, pretty=True)
-            
-            # from acdctools.plot import imshow
-            # delIDs = posData.allData_li[posData.frame_i]['delROIs_info']['delIDsROI']
-            # printl(delIDs)
-            # self.store_data()
-            # self.applyDelROIs()
-            # stored_lab = posData.allData_li[posData.frame_i]['labels']
-            # imshow(posData.lab, stored_lab, parent=self)
-            
-            printl(self.setMeasWinState, pretty=True)
-        
         if not self.dataIsLoaded:
             self.logger.info(
                 '[WARNING]: Data not loaded yet. '
@@ -11586,6 +11794,16 @@ class guiWin(QMainWindow):
                             self.eraserButton
                         )
 
+    def doubleRightClickTimerCallBack(self):
+        if self.isDoubleRightClick:
+            self.doubleRightClickTimeElapsed = False
+            return
+        self.doubleRightClickTimeElapsed = True
+        self.countRightClicks = 0
+        
+        # Time to double right click on img1 expired --> single right-click
+        self.gui_imgGradShowContextMenu(*self._img1_click_xy)        
+    
     def doubleKeyTimerCallBack(self):
         if self.isKeyDoublePress:
             self.doubleKeyTimeElapsed = False
@@ -11787,8 +12005,21 @@ class guiWin(QMainWindow):
 
         if storeOnlyZoom:
             labels, crop_slice = transformation.crop_2D(
-                self.currentLab2D, self.ax1.viewRange(), tolerance=10
+                self.currentLab2D, self.ax1.viewRange(), tolerance=10,
+                return_copy=False
             )
+            if self.isSegm3D:
+                z = self.z_lab(checkIfProj=True)
+                if z is None:
+                    z_slice = slice(0, len(posData.lab))
+                    crop_slice = (z_slice, *crop_slice)
+                    labels = posData.lab[crop_slice].copy()
+                else:
+                    z_slice = z
+                    crop_slice = (z_slice, *crop_slice)
+                    labels = labels.copy()
+            else:
+                labels = labels.copy()
         else:
             labels = posData.lab.copy()
             crop_slice = None
@@ -11822,9 +12053,13 @@ class guiWin(QMainWindow):
         crop_slice = state['crop_slice']
         if crop_slice is None:
             posData.lab = state['labels'].copy()
+        elif self.isSegm3D:
+            z_slice, slice_y, slice_x = crop_slice
+            posData.lab[..., z_slice, slice_y, slice_x] = state['labels'].copy()
         else:
             slice_y, slice_x = crop_slice
             posData.lab[..., slice_y, slice_x] = state['labels'].copy()
+        
         posData.editID_info = state['editID_info'].copy()
         posData.binnedIDs = state['binnedIDs'].copy()
         posData.ripIDs = state['ripIDs'].copy()
@@ -13378,7 +13613,7 @@ class guiWin(QMainWindow):
         self.progressWin.close()
         self.progressWin = None
 
-        posData = self.data[self.pos_i]
+        self.activateAnnotations()
 
         self.get_data()
         self.tracking(enforce=True)
@@ -13435,6 +13670,8 @@ class guiWin(QMainWindow):
         else:
             posData.lab = lab.copy()
 
+        self.activateAnnotations()
+        
         self.update_rp()
         self.tracking(enforce=True)
         
@@ -13444,14 +13681,23 @@ class guiWin(QMainWindow):
         else:
             self.warnEditingWithCca_df('Repeat segmentation')
 
-        self.ax1.autoRange()
-
         txt = f'Done. Segmentation computed in {exec_time:.3f} s'
         self.logger.info('-----------------')
         self.logger.info(txt)
         self.logger.info('=================')
         self.titleLabel.setText(txt, color='g')
         self.checkIfAutoSegm()
+        
+        QTimer.singleShot(200, self.resizeGui)
+    
+    def activateAnnotations(self):
+        if self.annotContourCheckbox.isChecked():
+            return
+        if self.annotSegmMasksCheckbox.isChecked():
+            return
+        
+        self.annotSegmMasksCheckbox.setChecked(True)
+        self.setDrawAnnotComboboxText()
 
     # @exec_time
     def getDisplayedImg1(self):
@@ -13753,46 +13999,67 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         self.slideshowWin.frame_i = posData.frame_i
         self.slideshowWin.update_img()
-
+    
+    def warnLostObjects(self, do_warn=True):
+        if not do_warn:
+            return True
+        
+        if not self.warnLostCellsAction.isChecked():
+            return True
+        
+        mode = str(self.modeComboBox.currentText())
+        if not mode == 'Segmentation and Tracking':
+            return True
+        
+        posData = self.data[self.pos_i]
+        if not posData.lost_IDs:
+            return True
+        
+        frame_i = posData.frame_i
+        try:
+            accepted_lost_IDs = posData.accepted_lost_IDs.get(frame_i, [])
+            already_accepted_lost = (
+                Counter(accepted_lost_IDs) == Counter(posData.lost_IDs)
+            )
+        except AttributeError as err:
+            already_accepted_lost = False
+        
+        if already_accepted_lost:
+            return True
+        
+        msg = widgets.myMessageBox()
+        warn_msg = html_utils.paragraph(
+            'Current frame (compared to previous frame) '
+            'has <b>lost the following cells</b>:<br><br>'
+            f'{posData.lost_IDs}<br><br>'
+            'Are you <b>sure</b> you want to continue?<br>'
+        )
+        checkBox = QCheckBox('Do not show again')
+        noButton, yesButton = msg.warning(
+            self, 'Lost cells!', warn_msg,
+            buttonsTexts=('No', 'Yes'),
+            widgets=checkBox
+        )
+        doNotWarnLostCells = not checkBox.isChecked()
+        self.warnLostCellsAction.setChecked(doNotWarnLostCells)
+        if msg.clickedButton == noButton:
+            return False
+        
+        if not hasattr(posData, 'accepted_lost_IDs'):
+            posData.accepted_lost_IDs = {}
+        if frame_i not in posData.accepted_lost_IDs:
+            posData.accepted_lost_IDs[frame_i] = []
+        
+        posData.accepted_lost_IDs[frame_i].extend(posData.lost_IDs)
+        return True
+        
     def next_frame(self, warn=True):
         mode = str(self.modeComboBox.currentText())
-        isSegmMode =  mode == 'Segmentation and Tracking'
         posData = self.data[self.pos_i]
         if posData.frame_i < posData.SizeT-1:
-            if 'lost' in self.titleLabel.text and isSegmMode and warn:
-                if self.warnLostCellsAction.isChecked():
-                    msg = widgets.myMessageBox()
-                    warn_msg = html_utils.paragraph(
-                        'Current frame (compared to previous frame) '
-                        'has <b>lost the following cells</b>:<br><br>'
-                        f'{posData.lost_IDs}<br><br>'
-                        'Are you <b>sure</b> you want to continue?<br>'
-                    )
-                    checkBox = QCheckBox('Do not show again')
-                    noButton, yesButton = msg.warning(
-                        self, 'Lost cells!', warn_msg,
-                        buttonsTexts=('No', 'Yes'),
-                        widgets=checkBox
-                    )
-                    doNotWarnLostCells = not checkBox.isChecked()
-                    self.warnLostCellsAction.setChecked(doNotWarnLostCells)
-                    if msg.clickedButton == noButton:
-                        return
-            if 'multiple' in self.titleLabel.text and mode != 'Viewer' and warn:
-                msg = widgets.myMessageBox(showCentered=False, wrapText=False)
-                warn_msg = html_utils.paragraph(
-                    'Current frame contains <b>cells with MULTIPLE contours</b> '
-                    '(see title message above the images)<br><br>'
-                    'This is potentially an issue indicating that <b>two distant cells '
-                    'have been merged</b>.<br><br>'
-                    'Are you sure you want to continue?'
-                )
-                noButton, yesButton = msg.warning(
-                   self, 'Multiple contours detected!', warn_msg, 
-                   buttonsTexts=('No', 'Yes')
-                )
-                if msg.cancel or msg.clickedButton==noButton:
-                    return
+            proceed = self.warnLostObjects()
+            if not proceed:
+                return
 
             if posData.frame_i <= 0 and mode == 'Cell cycle analysis':
                 IDs = [obj.label for obj in posData.rp]
@@ -14338,6 +14605,9 @@ class guiWin(QMainWindow):
         isRightImgVisible = (
             self.df_settings.at['isRightImageVisible', 'value'] == 'Yes'
         )
+        isNextFrameVisible = (
+            self.df_settings.at['isNextFrameVisible', 'value'] == 'Yes'
+        )
         self.updateScrollbars()
         self.openAction.setEnabled(True)
         self.editTextIDsColorAction.setDisabled(False)
@@ -14345,15 +14615,21 @@ class guiWin(QMainWindow):
         self.navigateToolBar.setVisible(True)
         self.labelsGrad.showLabelsImgAction.setChecked(isLabVisible)
         self.labelsGrad.showRightImgAction.setChecked(isRightImgVisible)
-        if isRightImgVisible:
+        self.labelsGrad.showNextFrameAction.setChecked(isNextFrameVisible)
+        if isRightImgVisible or isNextFrameVisible:
             self.rightBottomGroupbox.setChecked(True)
-
-        if isRightImgVisible or isLabVisible:
+        
+        if isRightImgVisible or isLabVisible or isNextFrameVisible:
             self.setTwoImagesLayout(True)
         else:
             self.setTwoImagesLayout(False)
         
         self.setBottomLayoutStretch()
+        
+        if isNextFrameVisible:
+            self.rightBottomGroupbox.show()
+            self.rightBottomGroupbox.setChecked(True)
+            self.drawNothingCheckboxRight.click()  
 
         self.readSavedCustomAnnot()
         self.addCustomAnnotButtonAllLoadedPos()
@@ -14588,8 +14864,11 @@ class guiWin(QMainWindow):
             self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxSegmItems)
             self.drawIDsContComboBox.setCurrentIndex(1)
             self.modeToolBar.setVisible(False)
+            self.skipToNewIdAction.setVisible(False)
+            self.skipToNewIdAction.setDisabled(True)
             self.modeComboBox.setCurrentText('Snapshot')
             self.annotateToolbar.setVisible(True)
+            self.labelsGrad.showNextFrameAction.setDisabled(True)
             self.drawIDsContComboBox.currentIndexChanged.connect(
                 self.drawIDsContComboBox_cb
             )
@@ -14607,6 +14886,8 @@ class guiWin(QMainWindow):
             self.manualTrackingAction.setDisabled(False)
             self.modeComboBox.setDisabled(False)
             self.modeMenu.menuAction().setVisible(True)
+            self.skipToNewIdAction.setVisible(True)
+            self.skipToNewIdAction.setDisabled(False)
             try:
                 self.modeComboBox.activated.disconnect()
                 self.modeComboBox.currentIndexChanged.disconnect()
@@ -14626,6 +14907,7 @@ class guiWin(QMainWindow):
             self.showTreeInfoCheckbox.show()
             self.manualBackgroundAction.setVisible(False)
             self.manualBackgroundAction.setDisabled(True)
+            self.labelsGrad.showNextFrameAction.setDisabled(False)
 
     def checkIfAutoSegm(self):
         """
@@ -14797,7 +15079,7 @@ class guiWin(QMainWindow):
             posData.segmInfo_df.at[idx, 'z_slice_used_gui'] = z
             self.zSliceSpinbox.setValueNoEmit(z+1)
             img = self.getImage()
-            self.img1.setImage(img)
+            self.img1.setImage(img, next_frame_image=self.nextFrameImage())
             self.setOverlayImages()
             if self.labelsGrad.showLabelsImgAction.isChecked():
                 self.img2.setImage(posData.lab, z=z, autoLevels=False)
@@ -14841,15 +15123,20 @@ class guiWin(QMainWindow):
             posData.segmInfo_df.at[idx, 'which_z_proj_gui'] = how
         posData = self.data[self.pos_i]
         if how == 'single z-slice':
-            self.zSliceScrollBar.setDisabled(False)
-            self.zSliceSpinbox.setDisabled(False)
-            self.zSliceCheckbox.setDisabled(False)
+            self.setZprojDisabled(False)
             self.update_z_slice(self.zSliceScrollBar.sliderPosition())
         else:
-            self.zSliceScrollBar.setDisabled(True)
-            self.zSliceSpinbox.setDisabled(True)
-            self.zSliceCheckbox.setDisabled(True)
+            self.setZprojDisabled(True)
             self.updateAllImages()
+    
+    def setZprojDisabled(self, disabled):
+        self.zSliceScrollBar.setDisabled(disabled)
+        self.zSliceSpinbox.setDisabled(disabled)
+        self.zSliceCheckbox.setDisabled(disabled)
+        for action in self.editToolBar.actions():
+            if action == self.eraserAction:
+                continue
+            action.setDisabled(disabled)
     
     def clearAx2Items(self, onlyHideText=False):
         self.ax2_binnedIDs_ScatterPlot.clear()
@@ -15026,6 +15313,8 @@ class guiWin(QMainWindow):
         self.lastManualSeparateState = None
         self.editIDmergeIDs = True
         self.doNotAskAgainExistingID = False
+        self.doubleRightClickTimeElapsed = False
+        self.isDoubleRightClick = False
         self.highlightedIDopts = None
         self.keptObjectsIDs = widgets.KeptObjectIDsList(
             self.keptIDsLineEdit, self.keepIDsConfirmAction
@@ -15063,6 +15352,7 @@ class guiWin(QMainWindow):
         self.isMouseDragImg1 = False
         self.isMovingLabel = False
         self.isRightClickDragImg1 = False
+        self.clickObjYc, self.clickObjXc = None, None
 
         self.cca_df_colnames = list(base_cca_df.keys())
         self.cca_df_dtypes = [
@@ -15326,7 +15616,7 @@ class guiWin(QMainWindow):
             posData.lab = posData.allData_li[posData.frame_i]['labels']
 
         img = self.getImage()
-        self.img1.setImage(img)
+        self.img1.setImage(img, next_frame_image=self.nextFrameImage())
         if self.overlayButton.isChecked():
             self.setOverlayImages()
 
@@ -15392,9 +15682,6 @@ class guiWin(QMainWindow):
         posData.allData_li[posData.frame_i]['labels'] = posData.lab.copy()
         posData.allData_li[posData.frame_i]['IDs'] = posData.IDs.copy()
         if hasattr(self, 'manualBackgroundLab'):
-            printl(self.pos_i)
-            from cellacdc.plot import imshow
-            imshow(posData.manualBackgroundLab)
             posData.allData_li[posData.frame_i]['manualBackgroundLab'] = (
                 posData.manualBackgroundLab
             )
@@ -16452,6 +16739,32 @@ class guiWin(QMainWindow):
             self.get_cca_df()
         return proceed
 
+    def reset_will_divide_info(self):
+        posData = self.data[self.pos_i]
+        
+        posData.cca_df['will_divide'] = 0
+        self.store_cca_df()
+        
+        IDs_in_S = posData.cca_df[posData.cca_df.cell_cycle_stage == 'S'].index
+
+        # Reset will divide to 0 in the past S frames where division 
+        # has been annotated
+        for frame_i in range(posData.frame_i, 0, -1):
+            past_cca_df = self.get_cca_df(frame_i=frame_i, return_df=True)
+            if past_cca_df is None:
+                return
+            
+            # Gest IDs that are still in S in the past and reset will_divide to 0
+            past_cca_df_S = past_cca_df[past_cca_df.cell_cycle_stage == 'S']
+            IDs_in_S_past = past_cca_df_S.index.intersection(IDs_in_S)
+            if len(IDs_in_S_past) == 0:
+                return
+            
+            past_cca_df.loc[IDs_in_S_past, 'will_divide'] = 0
+            self.store_cca_df(
+                cca_df=past_cca_df, frame_i=frame_i, autosave=False
+            )
+    
     def remove_future_cca_df(self, from_frame_i):
         posData = self.data[self.pos_i]
         self.last_cca_frame_i = posData.frame_i
@@ -16466,7 +16779,7 @@ class guiWin(QMainWindow):
                 # No cell cycle info present
                 continue
 
-            df.drop(self.cca_df_colnames, axis=1, inplace=True)
+            df = df.drop(columns=self.cca_df_colnames)
             posData.allData_li[i]['acdc_df'] = df
 
     def get_cca_df(self, frame_i=None, return_df=False):
@@ -18293,6 +18606,35 @@ class guiWin(QMainWindow):
             except TypeError:
                 pass
     
+    def showNextFrameImageItem(self, checked):
+        self.setTwoImagesLayout(checked)
+        if checked:
+            self.df_settings.at['isNextFrameVisible', 'value'] = 'Yes'
+            self.graphLayout.addItem(
+                self.imgGradRight, row=1, col=self.plotsCol+2
+            )
+            self.rightBottomGroupbox.show()
+            self.rightBottomGroupbox.setChecked(True)
+            self.drawNothingCheckboxRight.click()            
+            if not self.isDataLoading:
+                self.updateAllImages()
+        else:
+            self.clearAx2Items()
+            self.rightBottomGroupbox.hide()
+            self.df_settings.at['isNextFrameVisible', 'value'] = 'No'
+            try:
+                self.graphLayout.removeItem(self.imgGradRight)
+            except Exception:
+                return
+            self.rightImageItem.clear()
+        
+        self.df_settings.to_csv(self.settings_csv_path)
+            
+        QTimer.singleShot(300, self.resizeGui)
+
+        self.setBottomLayoutStretch()    
+        
+    
     def showRightImageItem(self, checked):
         self.setTwoImagesLayout(checked)
         if checked:
@@ -18324,7 +18666,8 @@ class guiWin(QMainWindow):
         self.rightBottomGroupbox.hide()
         if checked:
             self.df_settings.at['isLabelsVisible', 'value'] = 'Yes'
-            self.updateAllImages()
+            if not self.isDataLoading:
+                self.updateAllImages()
         else:
             self.clearAx2Items()
             self.img2.clear()
@@ -18345,7 +18688,10 @@ class guiWin(QMainWindow):
         self.setBottomLayoutStretch()
 
     def setBottomLayoutStretch(self):
-        if self.labelsGrad.showRightImgAction.isChecked():
+        if (
+            self.labelsGrad.showRightImgAction.isChecked()
+            or self.labelsGrad.showNextFrameAction.isChecked()
+        ):
             # Equally share space between the two control groupboxes
             self.bottomLayout.setStretch(1, 1)
             self.bottomLayout.setStretch(2, 5)
@@ -19236,7 +19582,7 @@ class guiWin(QMainWindow):
         img = self._getImageupdateAllImages(image, updateFilters)
         if self.equalizeHistPushButton.isChecked():
             img = skimage.exposure.equalize_adapthist(img)
-        self.img1.setImage(img)
+        self.img1.setImage(img, next_frame_image=self.nextFrameImage())
     
     def getContoursImageItem(self, ax):
         if not self.areContoursRequested(ax):
@@ -19473,6 +19819,27 @@ class guiWin(QMainWindow):
         self.updateContoursImage(ax=0, delROIsIDs=delROIsIDs)
         self.updateContoursImage(ax=1, delROIsIDs=delROIsIDs)
 
+    def nextFrameImage(self):
+        if not self.labelsGrad.showNextFrameAction.isEnabled():
+            return
+        
+        if not self.labelsGrad.showNextFrameAction.isChecked():
+            return
+        
+        posData = self.data[self.pos_i]
+        next_frame_i = posData.frame_i + 1
+        if next_frame_i >= len(posData.img_data):
+            img = posData.img_data[-1]
+        else:
+            img = posData.img_data[next_frame_i]
+        
+        if posData.SizeZ > 1:
+            img = self.get_2Dimg_from_3D(img, isLayer0=True)
+        
+        img = self.normalizeIntensities(img)
+        
+        return img
+        
     # @exec_time
     @exception_handler
     def updateAllImages(
@@ -22002,7 +22369,7 @@ class guiWin(QMainWindow):
         return msg.cancel
 
     def waitAutoSaveWorker(self, worker):
-        if worker.isFinished or worker.isPaused or worker.dataQ.empty():
+        if worker.isFinished or worker.isPaused or len(worker.dataQ) == 0:
             self.waitAutoSaveWorkerLoop.exit()
             self.waitAutoSaveWorkerTimer.stop()
             self.setSaturBarLabel(log=False)
@@ -22012,6 +22379,7 @@ class guiWin(QMainWindow):
         self.store_data(autosave=False)
         self.applyDelROIs()
         self.store_data()
+        self._isQuickSave = isQuickSave
 
         # Wait autosave worker to finish
         for worker, thread in self.autoSaveActiveWorkers:
@@ -22196,6 +22564,27 @@ class guiWin(QMainWindow):
         )
         win.exec_()
     
+    def askConcatenate(self):
+        if self.mainWin is None:
+            return
+        
+        if self._isQuickSave:
+            return
+        
+        txt = html_utils.paragraph(f"""
+            Do you want to <b>concatenate</b> the `acdc_output.csv` tables from 
+            multiple Positions into <b>one single CSV file</b>?<br>
+        """)
+        msg = widgets.myMessageBox()
+        noButton, yesButton = msg.question(
+            self, 'Concatenate tables?', txt, buttonsTexts=('No', 'Yes')
+        )
+        if not msg.clickedButton == yesButton:
+            return
+        
+        posData = self.data[self.pos_i]
+        self.mainWin.launchConcatUtil(exp_folderpath=posData.exp_path)
+        
     def updateSegmDataAutoSaveWorker(self):
         # Update savedSegmData in autosave worker
         posData = self.data[self.pos_i]
@@ -22222,6 +22611,8 @@ class guiWin(QMainWindow):
             self.warnErrorsCustomMetrics()
         
         self.checkManageVersions()
+        
+        self.askConcatenate()
         
         if self.closeGUI:
             salute_string = myutils.get_salute_string()

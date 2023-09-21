@@ -63,7 +63,7 @@ benchmarks/
 .vscode/
 env/*
 data/*
-!data/placeholder.txt
+!data/example_table_acdc_output.csv
 !data/.placeholder.txt
 mytests/
 cellacdc/utils/deprecated

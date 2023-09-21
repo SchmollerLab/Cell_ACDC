@@ -11,7 +11,7 @@
 [![build windows PyQt6](https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-windows_pyqt6.yml/badge.svg)](https://github.com/SchmollerLab/Cell_ACDC/actions)
 [![Python version](https://img.shields.io/pypi/pyversions/cellacdc)](https://www.python.org/downloads/)
 [![pypi version](https://img.shields.io/pypi/v/cellacdc?color=red)](https://pypi.org/project/cellacdc/)
-[![Downloads](https://pepy.tech/badge/cellacdc/month)](https://pepy.tech/project/cellacdc)
+[![Downloads](https://static.pepy.tech/badge/cellacdc/month)](https://pepy.tech/project/cellacdc)
 [![License](https://img.shields.io/badge/license-BSD%203--Clause-brightgreen)](https://github.com/SchmollerLab/Cell_ACDC/blob/main/LICENSE)
 [![repo size](https://img.shields.io/github/repo-size/SchmollerLab/Cell_ACDC)](https://github.com/SchmollerLab/Cell_ACDC)
 [![DOI](https://img.shields.io/badge/DOI-10.1101%2F2021.09.28.462199-informational)](https://bmcbiol.biomedcentral.com/articles/10.1186/s12915-022-01372-6)

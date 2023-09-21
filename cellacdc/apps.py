@@ -82,8 +82,8 @@ PRE_PROCESSING_STEPS = [
     'Sharpen (difference of gaussians filter)'
 ]
 
-TREEWIDGET_STYLESHEET = widgets.TREEWIDGET_STYLESHEET
-LISTWIDGET_STYLESHEET = widgets.LISTWIDGET_STYLESHEET
+TREEWIDGET_STYLESHEET = _palettes.TreeWidgetStyleSheet()
+LISTWIDGET_STYLESHEET = _palettes.ListWidgetStyleSheet()
 
 font = QFont()
 font.setPixelSize(12)
@@ -7452,6 +7452,15 @@ class imageViewer(QMainWindow):
             self.framesScrollBar.setFixedHeight(self.parent.h)
         except Exception as e:
             pass
+        try:
+            self.zSliceScrollBar.setFixedHeight(self.parent.h)
+        except Exception as e:
+            pass
+        
+        try:
+            self.img.alphaScrollbar.setFixedHeight(self.parent.h)
+        except Exception as e:
+            pass
         if left is not None and top is not None:
             self.setGeometry(left, top, 850, 800)
 
@@ -12819,4 +12828,3 @@ def get_existing_directory(allow_images_path=True, **kwargs):
         )
         msg = widgets.myMessageBox()
         msg.warning(kwargs['parent'], 'Cannot save here', txt)
-        
