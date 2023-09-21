@@ -19,8 +19,8 @@ Installation using Anaconda (recommended)
 5. Activate the virtual environment by typing ``conda activate acdc``
     This will activate the environment, meaning that the console is now not in the default system environment, but the ``acdc`` environment. If the activation of the environment was successful, this should be indicated to the left of the active path, circled in red below.
 
-.. image:: https://github.com/Teranis/Cell_ACDC/blob/main/docs/source/images/Cmdprompt.png?raw=true
-    :target: https://github.com/Teranis/Cell_ACDC/blob/main/docs/source/images/Cmdprompt.png
+.. image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/docs/source/images/Cmdprompt.png?raw=true
+    :target: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/docs/source/images/Cmdprompt.png
     :alt: The active environment is displayed to the left of the currently active path
     :width: 600
 

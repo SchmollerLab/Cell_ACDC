@@ -13,7 +13,7 @@ Resources
 -  **Report issues, request a feature or ask questions** by opening a
    new issue
    `here <https://github.com/SchmollerLab/Cell_ACDC/issues>`__.
--  Twitter
+-  X
    `thread <https://twitter.com/frank_pado/status/1443957038841794561?s=20>`__
 
 Usage
