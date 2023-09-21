@@ -31,12 +31,12 @@ if GUI_INSTALLED:
     )
     import pyqtgraph as pg
     pg.setConfigOption('imageAxisOrder', 'row-major')
-    from . import prompts
     from . import widgets
     
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
+from . import prompts
 from . import myutils, measurements, config
 from . import base_cca_df, base_acdc_df, html_utils, settings_folderpath, printl
 from . import ignore_exception, cellacdc_path

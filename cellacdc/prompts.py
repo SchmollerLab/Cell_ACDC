@@ -5,64 +5,22 @@ import traceback
 import difflib
 import numpy as np
 import pandas as pd
-import tkinter as tk
 import sys
-from tkinter import ttk
 
-from qtpy.QtWidgets import (
-    QApplication, QPushButton, QHBoxLayout, QLabel, QSizePolicy
-)
-from qtpy.QtCore import Qt
-from qtpy.QtGui import QFont
+
+from . import GUI_INSTALLED
+
+if GUI_INSTALLED:
+    import tkinter as tk
+    from tkinter import ttk
+    from qtpy.QtWidgets import (
+        QApplication, QPushButton, QHBoxLayout, QLabel, QSizePolicy
+    )
+    from qtpy.QtCore import Qt
+    from qtpy.QtGui import QFont
 
 from . import myutils, printl, html_utils, load
 from . import settings_folderpath
-
-class RichTextPushButton(QPushButton):
-    def __init__(self, parent=None, text=None):
-        if parent is not None:
-            super().__init__(parent)
-        else:
-            super().__init__()
-        self.__lbl = QLabel(self)
-        if text is not None:
-            self.__lbl.setText(text)
-        self.__lyt = QHBoxLayout()
-        self.__lyt.setContentsMargins(5, 0, 0, 0)
-        self.__lyt.setSpacing(0)
-        self.setLayout(self.__lyt)
-        self.__lbl.setAttribute(Qt.WA_TranslucentBackground)
-        self.__lbl.setAttribute(Qt.WA_TransparentForMouseEvents)
-        self.__lbl.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Expanding,
-        )
-        self.__lbl.setTextFormat(Qt.RichText)
-        self.__lyt.addWidget(self.__lbl)
-        return
-
-    def setText(self, text):
-        self.__lbl.setText(text)
-        self.updateGeometry()
-        return
-
-    def sizeHint(self):
-        s = QPushButton.sizeHint(self)
-        w = self.__lbl.sizeHint()
-        s.setWidth(w.width()+10)
-        s.setHeight(w.height()+8)
-        return s
-
-def folder_dialog(toplevel=False, **options):
-    #Prompt the user to select the image file
-    if toplevel:
-        root = tk.Toplevel()
-    else:
-        root = tk.Tk()
-        root.withdraw()
-    path = tk.filedialog.Directory(**options).show()
-    root.destroy()
-    return path
 
 class select_channel_name:
     def __init__(self, which_channel=None, allow_abort=True):
@@ -366,15 +324,3 @@ class select_channel_name:
         self.was_aborted = True
         if self.allow_abort:
             exit('Execution aborted by the user')
-
-def askyesno(title='tk', message='Yes or no?', toplevel=False):
-    if toplevel:
-        root = tk.Toplevel()
-    else:
-        root = tk.Tk()
-        root.withdraw()
-    yes = tk.messagebox.askyesno(title, message, master=root)
-    if not toplevel:
-        root.quit()
-        root.destroy()
-    return yes

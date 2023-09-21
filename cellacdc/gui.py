@@ -1536,7 +1536,7 @@ class guiWin(QMainWindow):
             '     NOTE: use the power brush to draw ABOVE the existing labels.\n\n'
             'SHORTCUT: "B" key'
         )
-        editToolBar.addWidget(self.brushButton)
+        self.brushAction = editToolBar.addWidget(self.brushButton)
         self.checkableButtons.append(self.brushButton)
         self.LeftClickButtons.append(self.brushButton)
         self.brushButton.keyPressShortcut = Qt.Key_B
@@ -1557,7 +1557,7 @@ class guiWin(QMainWindow):
             '     double-press "X" key. If double-press is successfull,\n'
             '     then eraser button is red and eraser cursor always red.\n\n'
             'SHORTCUT: "X" key')
-        editToolBar.addWidget(self.eraserButton)
+        self.eraserAction = editToolBar.addWidget(self.eraserButton)
         self.eraserButton.keyPressShortcut = Qt.Key_X
         self.widgetsWithShortcut['Eraser'] = self.eraserButton
         self.checkableButtons.append(self.eraserButton)
@@ -1778,14 +1778,17 @@ class guiWin(QMainWindow):
         self.mergeIDsButton.setShortcut('m')
         self.mergeIDsButton.setToolTip(
             'Toggle "Merge IDs" mode ON/OFF\n\n'
-            'EXAMPLE: merge/fuse two cells together\n\n'
-            'ACTION: right-click\n\n'
+            'EXAMPLE: merge/fuse object IDs together\n\n'
+            'ACTION:\n'
+            '   - Right-click drag-and-drop two objects to merge them.\n'
+            '   - Ctrl + connect with right-click multiple objects to merge them.\n'
+            '\n\n'
             'SHORTCUT: "M" key'
         )
         self.mergeIDsButton.action = editToolBar.addWidget(self.mergeIDsButton)
         self.checkableButtons.append(self.mergeIDsButton)
         self.checkableQButtonsGroup.addButton(self.mergeIDsButton)
-        self.functionsNotTested3D.append(self.mergeIDsButton)
+        # self.functionsNotTested3D.append(self.mergeIDsButton)
         self.widgetsWithShortcut['Merge objects'] = self.mergeIDsButton
 
         self.keepIDsButton = QToolButton(self)
@@ -3086,6 +3089,7 @@ class guiWin(QMainWindow):
         self.delObjsOutSegmMaskAction.triggered.connect(
             self.delObjsOutSegmMaskActionTriggered
         )
+        self.mergeIDsButton.toggled.connect(self.mergeObjs_cb)
         self.brushButton.toggled.connect(self.Brush_cb)
         self.eraserButton.toggled.connect(self.Eraser_cb)
         self.curvToolButton.toggled.connect(self.curvTool_cb)
@@ -3892,6 +3896,10 @@ class guiWin(QMainWindow):
         # Temporary line item connecting bud to new mother
         self.BudMothTempLine = pg.PlotDataItem(pen=self.NewBudMoth_Pen)
         self.topLayerItems.append(self.BudMothTempLine)
+        
+        # Temporary line item connecting objects to merge
+        self.mergeObjsTempLine = widgets.PlotCurveItem(pen=self.redDashLinePen)
+        self.topLayerItems.append(self.mergeObjsTempLine)
 
         # Overlay segm. masks item
         self.labelsLayerImg1 = widgets.BaseImageItem()
@@ -4315,6 +4323,10 @@ class guiWin(QMainWindow):
         self.OldBudMoth_Pen = pg.mkPen(
             color=self.mothBudLineColor, width=self.mothBudLineWeight, 
             style=Qt.DashLine
+        )
+        
+        self.redDashLinePen = pg.mkPen(
+            color='r', width=2, style=Qt.DashLine
         )
 
         self.oldMothBudLineBrush = pg.mkBrush(self.mothBudLineColor)
@@ -4867,6 +4879,7 @@ class guiWin(QMainWindow):
                 )
                 mergeID_prompt.exec_()
                 if mergeID_prompt.cancel:
+                    self.mergeObjsTempLine.setData([], [])
                     return
                 else:
                     ID = mergeID_prompt.EntryID
@@ -4874,6 +4887,11 @@ class guiWin(QMainWindow):
             # Store undo state before modifying stuff
             self.storeUndoRedoStates(False)
             self.firstID = ID
+            
+            obj_idx = posData.IDs_idxs[ID]
+            obj = posData.rp[obj_idx]
+            yc, xc = self.getObjCentroid(obj.centroid)
+            self.clickObjYc, self.clickObjXc = int(yc), int(xc)
 
         # Edit ID
         elif right_click and self.editIDbutton.isChecked():
@@ -5826,18 +5844,13 @@ class guiWin(QMainWindow):
             and not event.isExit()
         )
         if drawMothBudLine:
-            x, y = event.pos()
-            y2, x2 = y, x
-            xdata, ydata = int(x), int(y)
-            y1, x1 = self.yClickBud, self.xClickBud
-            ID = self.get_2Dlab(posData.lab)[ydata, xdata]
-            if ID == 0:
-                self.BudMothTempLine.setData([x1, x2], [y1, y2])
-            else:
-                obj_idx = posData.IDs.index(ID)
-                obj = posData.rp[obj_idx]
-                y2, x2 = self.getObjCentroid(obj.centroid)
-                self.BudMothTempLine.setData([x1, x2], [y1, y2])
+            self.drawTempMothBudLine(event, posData)
+
+        drawMergeObjsLine = (
+            self.mergeIDsButton.isChecked() and not event.isExit()
+        )
+        if drawMergeObjsLine:
+            self.drawTempMergeObjsLine(event, posData, modifiers)
 
         # Temporarily draw spline curve
         # see https://stackoverflow.com/questions/33962717/interpolating-a-closed-curve-using-scipy
@@ -5878,6 +5891,39 @@ class guiWin(QMainWindow):
             x, y = event.pos()
             self.ax2_cursor.setData([x], [y])
         return cursorsInfo
+    
+    def drawTempMothBudLine(self, event, posData):
+        x, y = event.pos()
+        y2, x2 = y, x
+        xdata, ydata = int(x), int(y)
+        y1, x1 = self.yClickBud, self.xClickBud
+        ID = self.get_2Dlab(posData.lab)[ydata, xdata]
+        if ID == 0:
+            self.BudMothTempLine.setData([x1, x2], [y1, y2])
+        else:
+            obj_idx = posData.IDs_idxs[ID]
+            obj = posData.rp[obj_idx]
+            y2, x2 = self.getObjCentroid(obj.centroid)
+            self.BudMothTempLine.setData([x1, x2], [y1, y2])
+    
+    def drawTempMergeObjsLine(self, event, posData, modifiers):
+        if self.clickObjYc is None:
+            return
+        modifier = modifiers == Qt.ShiftModifier
+        x, y = event.pos()
+        y2, x2 = y, x
+        xdata, ydata = int(x), int(y)
+        y1, x1 = self.clickObjYc, self.clickObjXc
+        ID = self.get_2Dlab(posData.lab)[ydata, xdata]
+        if ID != 0:
+            obj_idx = posData.IDs_idxs[ID]
+            obj = posData.rp[obj_idx]
+            y2, x2 = self.getObjCentroid(obj.centroid)
+        
+        if modifier and ID > 0:
+            self.mergeObjsTempLine.addPoint(x2, y2)
+        elif not modifier:
+            self.mergeObjsTempLine.setData([x1, x2], [y1, y2])
         
     def gui_add_ax_cursors(self):
         try:
@@ -6305,10 +6351,11 @@ class guiWin(QMainWindow):
         elif self.mergeIDsButton.isChecked():
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
-            ID = self.get_2Dlab(posData.lab)[ydata, xdata]
+            lab2D = self.get_2Dlab(posData.lab)
+            ID = lab2D[ydata, xdata]
             if ID == 0:
                 nearest_ID = self.nearest_nonzero(
-                    self.get_2Dlab(posData.lab), y, x
+                    lab2D, y, x
                 )
                 mergeID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
@@ -6323,8 +6370,20 @@ class guiWin(QMainWindow):
                     return
                 else:
                     ID = mergeID_prompt.EntryID
-
-            posData.lab[posData.lab==ID] = self.firstID
+                    obj_idx = posData.IDs_idxs[ID]
+                    obj = posData.rp[obj_idx]
+                    y2, x2 = self.getObjCentroid(obj.centroid)
+                    self.mergeObjsTempLine.addPoint(x2, y2)
+            
+            xx, yy = self.mergeObjsTempLine.getData()
+            IDs_to_merge = lab2D[yy.astype(int), xx.astype(int)]
+            for ID in IDs_to_merge:
+                if ID == 0:
+                    continue
+                posData.lab[posData.lab==ID] = self.firstID
+            
+            self.mergeObjsTempLine.setData([], [])
+            self.clickObjYc, self.clickObjXc = None, None
 
             # Update data (rp, etc)
             self.update_rp()
@@ -6340,7 +6399,7 @@ class guiWin(QMainWindow):
                 self.updateAllImages()
             else:
                 self.warnEditingWithCca_df('Merge IDs')
-
+            
             if not self.mergeIDsButton.findChild(QAction).isChecked():
                 self.mergeIDsButton.setChecked(False)
             self.store_data()
@@ -11039,7 +11098,7 @@ class guiWin(QMainWindow):
         selectSegmWin = widgets.QDialogListbox(
             'Select segmentation file',
             'Select segmentation file to use as ROI:\n',
-            existingSegmEndnames, multiSelection=True, parent=self
+            existingSegmEndnames, multiSelection=False, parent=self
         )
         selectSegmWin.exec_()
         if selectSegmWin.cancel:
@@ -11085,7 +11144,11 @@ class guiWin(QMainWindow):
             return
         self.ax1_viewRange = self.ax1.viewRange()
         self.isRangeReset = False
-        
+    
+    def mergeObjs_cb(self, checked):
+        if not checked:
+            self.mergeObjsTempLine.setData([], [])
+    
     def Brush_cb(self, checked):
         if checked:
             self.typingEditID = False
@@ -11942,10 +12005,21 @@ class guiWin(QMainWindow):
 
         if storeOnlyZoom:
             labels, crop_slice = transformation.crop_2D(
-                self.currentLab2D, self.ax1.viewRange(), tolerance=10
+                self.currentLab2D, self.ax1.viewRange(), tolerance=10,
+                return_copy=False
             )
             if self.isSegm3D:
-                crop_slice = (self.z_lab(), *crop_slice)
+                z = self.z_lab(checkIfProj=True)
+                if z is None:
+                    z_slice = slice(0, len(posData.lab))
+                    crop_slice = (z_slice, *crop_slice)
+                    labels = posData.lab[crop_slice].copy()
+                else:
+                    z_slice = z
+                    crop_slice = (z_slice, *crop_slice)
+                    labels = labels.copy()
+            else:
+                labels = labels.copy()
         else:
             labels = posData.lab.copy()
             crop_slice = None
@@ -15049,15 +15123,20 @@ class guiWin(QMainWindow):
             posData.segmInfo_df.at[idx, 'which_z_proj_gui'] = how
         posData = self.data[self.pos_i]
         if how == 'single z-slice':
-            self.zSliceScrollBar.setDisabled(False)
-            self.zSliceSpinbox.setDisabled(False)
-            self.zSliceCheckbox.setDisabled(False)
+            self.setZprojDisabled(False)
             self.update_z_slice(self.zSliceScrollBar.sliderPosition())
         else:
-            self.zSliceScrollBar.setDisabled(True)
-            self.zSliceSpinbox.setDisabled(True)
-            self.zSliceCheckbox.setDisabled(True)
+            self.setZprojDisabled(True)
             self.updateAllImages()
+    
+    def setZprojDisabled(self, disabled):
+        self.zSliceScrollBar.setDisabled(disabled)
+        self.zSliceSpinbox.setDisabled(disabled)
+        self.zSliceCheckbox.setDisabled(disabled)
+        for action in self.editToolBar.actions():
+            if action == self.eraserAction:
+                continue
+            action.setDisabled(disabled)
     
     def clearAx2Items(self, onlyHideText=False):
         self.ax2_binnedIDs_ScatterPlot.clear()
@@ -15273,6 +15352,7 @@ class guiWin(QMainWindow):
         self.isMouseDragImg1 = False
         self.isMovingLabel = False
         self.isRightClickDragImg1 = False
+        self.clickObjYc, self.clickObjXc = None, None
 
         self.cca_df_colnames = list(base_cca_df.keys())
         self.cca_df_dtypes = [

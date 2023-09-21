@@ -3855,7 +3855,10 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
             for key, dfs in dfs_aggr.items():
                 pos_keys = pos_runs[key]
                 run, analysis_step, desc, _ = key
-                filename = f'multipos_{run}{analysis_step}{desc}{self._final_ext}'
+                filename = (
+                    f'multipos_{run}{analysis_step}{desc}'
+                    f'_aggregated_{self._final_ext}'
+                )
                 spotmax.io.save_concat_dfs(
                     dfs, pos_keys, allpos_folderpath, filename, self._final_ext
                 )
