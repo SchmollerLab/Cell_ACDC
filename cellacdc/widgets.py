@@ -27,7 +27,7 @@ from qtpy.QtCore import (
     QEvent, QEventLoop, QPropertyAnimation, QObject,
     QItemSelectionModel, QAbstractListModel, QModelIndex,
     QByteArray, QDataStream, QMimeData, QAbstractItemModel, 
-    QIODevice, QItemSelection
+    QIODevice, QItemSelection, PYQT6
 )
 from qtpy.QtGui import (
     QFont, QPalette, QColor, QPen, QKeyEvent, QBrush, QPainter,
@@ -3017,7 +3017,8 @@ class ShortcutLineEdit(QLineEdit):
             self.setText('')
             return
 
-        keySequence = QKeySequence(event.modifiers() | event.key()).toString()
+        modifers_value = event.modifiers().value if PYQT6 else event.modifiers()
+        keySequence = QKeySequence(modifers_value | event.key()).toString()
         keySequence = keySequence.encode('ascii', 'ignore').decode('utf-8')
         self.setText(keySequence)
         self.key = event.key()
