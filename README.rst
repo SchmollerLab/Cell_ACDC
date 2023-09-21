@@ -121,7 +121,7 @@ for further information on how to correct your data.
 Resources
 =========
 - Please find a complete user guide `here <https://cell-acdc.readthedocs.io/en/latest/>`__.
-- `Installation guide<#installation-using-anaconda-recommended>`__.
+- `Installation guide <#installation-using-anaconda-recommended>`__.
 - `Publication <https://bmcbiol.biomedcentral.com/articles/10.1186/s12915-022-01372-6>`__ of Cell-ACDC.
 - `Forum <https://github.com/SchmollerLab/Cell_ACDC/discussions>`__ for discussions (feel free to **ask any question**).
 - **Report issues, request a feature or ask questions** by opening a new issue `here <https://github.com/SchmollerLab/Cell_ACDC/issues>`__.
