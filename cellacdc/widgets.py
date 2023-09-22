@@ -2532,14 +2532,19 @@ class myMessageBox(QDialog):
         if hasattr(self, 'loop'):
             self.loop.exit()
 
-class myFormLayout(QGridLayout):
+class FormLayout(QGridLayout):
     def __init__(self):
         QGridLayout.__init__(self)
 
-    def addFormWidget(self, formWidget, align=None, row=0):
+    def addFormWidget(
+            self, formWidget, 
+            leftLabelAlignment=Qt.AlignRight, 
+            align=None, 
+            row=0
+        ):
         for col, item in enumerate(formWidget.items):
             if col==0:
-                alignment = Qt.AlignRight
+                alignment = leftLabelAlignment
             elif col==2:
                 alignment = Qt.AlignLeft
             else:
@@ -4437,7 +4442,7 @@ class ROI(pg.ROI):
         return _slice
         
 
-class PlotCurveItem(pg.PlotCurveItem):
+class PlotCurveItem(pg.PlotCurveItem):    
     def __init__(self, *args, **kargs):
         super().__init__(*args, **kargs)
     
@@ -4562,6 +4567,7 @@ class ToggleVisibilityCheckBox(QCheckBox):
 class myHistogramLUTitem(baseHistogramLUTitem):
     sigGradientMenuEvent = Signal(object)
     sigTickColorAccepted = Signal(object)
+    sigAddScaleBar = Signal(bool)
 
     def __init__(
             self, parent=None, name='image', axisLabel='', isViewer=False, 
@@ -4578,6 +4584,12 @@ class myHistogramLUTitem(baseHistogramLUTitem):
         if isViewer:
             # In the viewer we don't allow additional settings from the menu
             return
+        
+        # Add scale bar action
+        self.addScaleBarAction = QAction('Add scale bar', self)
+        self.addScaleBarAction.setCheckable(True)
+        self.addScaleBarAction.triggered.connect(self.emitAddScaleBar)
+        self.gradient.menu.addAction(self.addScaleBarAction)
 
         # Invert bw action
         self.invertBwAction = QAction('Invert black/white', self)
@@ -4690,6 +4702,12 @@ class myHistogramLUTitem(baseHistogramLUTitem):
         self.gradient.menu.installEventFilter(self.filterObject)
         self.highlightedAction = None
         self.lastHoveredAction = None
+    
+    def removeAddScaleBarAction(self):
+        self.gradient.menu.removeAction(self.addScaleBarAction)
+    
+    def emitAddScaleBar(self):
+        self.sigAddScaleBar.emit(self.addScaleBarAction.isChecked())
     
     def gradientMenuEventFilter(self, object, event):
         if event.type() == QEvent.Type.MouseMove:
@@ -6635,11 +6653,129 @@ class Label(QLabel):
             text = html_utils.paragraph(text)
         super().setText(text)
 
-class ScaleBar:
-    def __init__(self):
-        self.plotItem = pg.PlotDataItem()
-        self.labelItem = pg.LabelItem()
+class LabelItem(pg.LabelItem):    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
     
-    def addToAxisItem(self, ax):
+    def bbox(self):
+        xl, yl = self.pos().x(), self.pos().y()
+        wl, hl = self.rect().right(), self.rect().bottom()
+        return yl, xl, yl+hl, xl+wl
+
+class ScaleBar: 
+    def __init__(self, imageShape):
+        self.SizeY, self.SizeX = imageShape
+        self.plotItem = PlotCurveItem()
+        self.labelItem = LabelItem()
+        self._x_pad = 5
+        self._y_pad = 3
+    
+    def setAttr(
+            self, 
+            length_pixel, 
+            length_unit,
+            thickness=3, 
+            color='w',
+            is_text_visible=True, 
+            loc='top-left',
+            font_size=12,
+            unit='',
+            num_decimals=0
+        ):
+        self._loc = loc
+        self._color = color
+        self._length = length_pixel
+        self._length_unit = length_unit
+        self._is_text_visible = is_text_visible
+        self._font_size = f'{font_size}px'
+        self._unit = unit
+        self._num_decimals = num_decimals
+        self._thickness = thickness
+        self.pen = pg.mkPen(width=thickness, color=color, cosmetic=False)
+        self.pen.setCapStyle(Qt.PenCapStyle.FlatCap)
+        self.plotItem.setPen(self.pen)
+    
+    def addToAxis(self, ax):
         ax.addItem(self.plotItem)
         ax.addItem(self.labelItem)
+    
+    def setText(self):
+        if self._is_text_visible:
+            number = round(self._length_unit, self._num_decimals)
+            if self._num_decimals == 0:
+                number = int(number)
+            text = f'{number} {self._unit}'
+        else:
+            text = ''
+        self.labelItem.setText(
+            text, color=self._color, size=self._font_size
+        )
+    
+    def setTextPos(self):
+        xx, yy = self.plotItem.getData()
+        x0 = xx[0]
+        y0 = yy[0]
+        xc = x0 + self._length/2
+        wl = self.labelItem.rect().right()
+        hl = self.labelItem.rect().bottom()
+        xl = xc-wl/2
+        yt = y0-hl    
+        self.labelItem.setPos(xl, yt)
+    
+    def getStartXCoordFromLoc(self, loc):
+        self.setText()
+        wl = self.labelItem.rect().right()
+        if loc.find('left') != -1:
+            x0 = self._x_pad
+            xc = x0 + self._length/2
+            xl = xc-wl/2
+            if xl < x0:
+                # Text is larger than line --> move line to the right
+                x0 = self._x_pad + abs(xl-self._x_pad)
+        else:
+            x0 = self.SizeX - self._length - self._x_pad
+            xc = x0 + self._length/2
+            x1 = x0 + self._length      
+            xr = xc+wl/2
+            if xr > x1:
+                # Text is larger than line --> move line to the left
+                delta_overshoot = xr - x1
+                x0 = x0 - delta_overshoot
+        return x0  
+    
+    def getStartYCoordFromLoc(self, loc):
+        self.setText()
+        textHeight = self.labelItem.rect().bottom()
+        if loc.find('top') != -1:
+            return textHeight + self._y_pad
+        else:
+            return self.SizeY - self._y_pad - self._thickness
+    
+    def update(self, pos=None):
+        if pos is None:
+            x0 = self.getStartXCoordFromLoc(self._loc) # + self._thickness/2
+            y0 = self.getStartYCoordFromLoc(self._loc)
+        else:
+            pass
+        
+        x1 = x0 + self._length # - self._thickness/2
+        self.plotItem.setData([x0, x1], [y0, y0])
+        self.setText()
+        self.setTextPos()
+    
+    def draw(self, length_pixel, length_unit, **kwargs):
+        self.setAttr(length_pixel, length_unit, **kwargs)
+        self.update()
+        
+    def bbox(self):
+        y_line_min, x_line_min, y_line_max, x_line_max = self.plotItem.bbox()
+        y_lab_min, x_lab_min, y_lab_max, x_lab_max = self.labelItem.bbox()
+        ymin = min(y_line_min, y_lab_min)
+        xmin = min(x_line_min, x_lab_min)
+        ymax = max(y_line_max, y_lab_max)
+        xmax = max(x_line_max, x_lab_max)
+        return ymin, xmin, ymax, xmax
+    
+    def removeFromAxis(self, ax):
+        ax.removeItem(self.labelItem)
+        ax.removeItem(self.plotItem)

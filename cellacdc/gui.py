@@ -3236,6 +3236,7 @@ class guiWin(QMainWindow):
         self.brushAutoHideCheckbox.toggled.connect(self.brushAutoHideToggled)
 
         self.imgGrad.sigLookupTableChanged.connect(self.imgGradLUT_cb)
+        self.imgGrad.sigAddScaleBar.connect(self.addScaleBarAction.setChecked)
         self.imgGrad.gradient.sigGradientChangeFinished.connect(
             self.imgGradLUTfinished_cb
         )
@@ -9977,8 +9978,26 @@ class guiWin(QMainWindow):
 
     def addScaleBar(self, checked):
         if checked:
-            pass
+            posData = self.data[self.pos_i]
+            Y, X = self.img1.image.shape
+            win = apps.ScaleBarPropertiesDialog(X, Y, posData.PhysicalSizeX)
+            win.show()
+            self.scaleBar = widgets.ScaleBar((Y, X))
+            self.scaleBar.addToAxis(self.ax1)
+            self.scaleBar.draw(**win.kwargs())
+            win.sigValueChanged.connect(self.updateScaleBar)
+            win.exec_()
+            if win.cancel:
+                self.addScaleBarAction.setChecked(False)
+                return
+        else:
+            self.scaleBar.removeFromAxis(self.ax1)
+
+        self.imgGrad.addScaleBarAction.setChecked(checked)
     
+    def updateScaleBar(self, scaleBarKwargs):
+        self.scaleBar.draw(**scaleBarKwargs)
+        
     def invertBw(self, checked, update=True):
         self.invertBwAlreadyCalledOnce = True
         
@@ -20664,6 +20683,11 @@ class guiWin(QMainWindow):
             self.navSpinBox.disconnect()
         except Exception as e:
             pass
+        
+        try: 
+            self.scaleBar.removeFromAxis(self.ax1)
+        except Exception as e:
+            pass
 
         self.isZmodifier = False
         self.zKeptDown = False
@@ -21629,6 +21653,7 @@ class guiWin(QMainWindow):
             parent=self, name='image', axisLabel=channelName
         )
         
+        lutItem.removeAddScaleBarAction()
         lutItem.restoreState(self.df_settings)
         lutItem.setImageItem(imageItem)
         lutItem.vb.raiseContextMenu = lambda x: None

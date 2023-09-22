@@ -38,6 +38,17 @@ time_units_converters = {
     'days -> hours': lambda x: x*24*3600,
 }
 
+length_unit_converters = {
+    'nm -> μm': lambda x: x/1000,
+    'mm -> μm': lambda x: x*1e3,
+    'cm -> μm': lambda x: x*1e4,
+    'μm -> μm': lambda x: x,
+}
+
+def convert_length(value, from_unit, to_unit):
+    key = f'{from_unit} -> {to_unit}'
+    return length_unit_converters[key](value)
+
 def round_to_significant(n, n_significant=1):
     return round(n, n_significant-int(floor(log10(abs(n))))-1)
 

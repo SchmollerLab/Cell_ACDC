@@ -73,6 +73,7 @@ from . import base_cca_df
 from . import widgets
 from . import user_profile_path
 from . import features
+from . import _core
 from .regex import float_regex
 
 POSITIVE_FLOAT_REGEX = float_regex(allow_negative=False)
@@ -420,7 +421,7 @@ class customAnnotationDialog(QDialog):
         self.setWindowTitle('Custom annotation')
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
 
-        layout = widgets.myFormLayout()
+        layout = widgets.FormLayout()
 
         row = 0
         typeCombobox = QComboBox()
@@ -845,7 +846,7 @@ class _PointsLayerAppearanceGroupbox(QGroupBox):
 
         self.setTitle('Points appearance')
 
-        layout = widgets.myFormLayout()
+        layout = widgets.FormLayout()
 
         '----------------------------------------------------------------------' 
         row = 0
@@ -1639,7 +1640,7 @@ class TrackSubCellObjectsDialog(widgets.QBaseDialog):
         self.setWindowTitle('Track sub-cellular objects parameters')
 
         mainLayout = QVBoxLayout()
-        entriesLayout = widgets.myFormLayout()
+        entriesLayout = widgets.FormLayout()
 
         row = 0
         infoTxt = html_utils.paragraph("""
@@ -12830,48 +12831,131 @@ def get_existing_directory(allow_images_path=True, **kwargs):
         msg.warning(kwargs['parent'], 'Cannot save here', txt)
 
 class ScaleBarPropertiesDialog(widgets.QBaseDialog):
+    sigValueChanged = Signal(object)
+    
     def __init__(self, maxLength, maxThickness, PhysicalSizeX, parent=None):
         super().__init__(parent=parent)
         
+        self.cancel = True
         self.setWindowTitle('Scale bar properties')
+        
+        self.PhysicalSizeX = PhysicalSizeX
         
         mainLayout = QVBoxLayout()
         
-        formLayout = QFormLayout()
+        formLayout = widgets.FormLayout()
         formLayout.setVerticalSpacing(10)
         formLayout.setHorizontalSpacing(50)
-        formLayout.setFieldGrowthPolicy(QFormLayout.FieldsStayAtSizeHint)
         
+        row = 0
         unitCombobox = QComboBox()
+        unitFormWidget = widgets.formWidget(
+            unitCombobox, labelTextLeft='Physical unit'
+        )
         unitCombobox.addItems(
             ['nm', 'μm', 'mm', 'cm']
         )
         unitCombobox.setCurrentIndex(1)
-        formLayout.addRow('Physical unit', unitCombobox)       
+        formLayout.addFormWidget(
+            unitFormWidget, row=row, 
+            leftLabelAlignment=Qt.AlignLeft
+        )       
         self.unitCombobox = unitCombobox
         
+        row += 1
         lengthDoubleSpinbox = widgets.DoubleSpinBox()
         lengthDoubleSpinbox.setMaximum(maxLength)
         lengthDoubleSpinbox.setMinimum(PhysicalSizeX)
+        lengthDoubleSpinbox.setDecimals(1)
         lengthDoubleSpinbox.setValue(round(PhysicalSizeX*15, 1))
-        self.lengthLabel = QLabel('Length (μm)')
-        formLayout.addRow(self.lengthLabel, lengthDoubleSpinbox)       
-        self.unitCombobox = unitCombobox
         
-        displayTextToggle = widgets.Toggle()
-        displayTextToggle.setChecked(True)
-        formLayout.addRow('Display text', displayTextToggle)       
-        self.displayTextToggle = displayTextToggle
+        lengthFormWidget = widgets.formWidget(
+            lengthDoubleSpinbox, labelTextLeft='Length (μm)'
+        )
+        self.lengthDoubleSpinbox = lengthDoubleSpinbox
+        formLayout.addFormWidget(
+            lengthFormWidget, row=row, 
+            leftLabelAlignment=Qt.AlignLeft
+        )       
         
-        self.colorButton = widgets.myColorButton(color=(255, 255, 255))
-        formLayout.addRow('Color', self.colorButton)  
-        
+        row += 1
         thicknessSpinbox = widgets.DoubleSpinBox()
         thicknessSpinbox.setMaximum(maxThickness)
         thicknessSpinbox.setMinimum(1)
-        thicknessSpinbox.setValue(round(3, 1))
-        formLayout.addRow('Tickness (pixel)', thicknessSpinbox)       
+        thicknessSpinbox.setValue(round(4, 1))
+        thicknessSpinbox.setDecimals(1)
+        thicknessFormWidget = widgets.formWidget(
+            thicknessSpinbox, labelTextLeft='Thickness (pixel)'
+        )
+        formLayout.addFormWidget(
+            thicknessFormWidget, row=row, 
+            leftLabelAlignment=Qt.AlignLeft
+        )       
         self.thicknessSpinbox = thicknessSpinbox
+        
+        row += 1
+        locCombobox = QComboBox()
+        locFormWidget = widgets.formWidget(
+            locCombobox, labelTextLeft='Location'
+        )
+        locCombobox.addItems(
+            ['Top-left', 'Top-right', 'Bottom-left', 'Bottom-right']
+        )
+        formLayout.addFormWidget(
+            locFormWidget, row=row, 
+            leftLabelAlignment=Qt.AlignLeft
+        )       
+        self.locCombobox = locCombobox
+        
+        row += 1
+        self.colorButton = widgets.myColorButton(color=(255, 255, 255))
+        colorFormWidget = widgets.formWidget(
+            self.colorButton, labelTextLeft='Color',
+            widgetAlignment=Qt.AlignCenter, stretchWidget=False
+        )
+        formLayout.addFormWidget(
+            colorFormWidget, row=row, 
+            leftLabelAlignment=Qt.AlignLeft
+        )  
+        
+        row += 1
+        displayTextToggle = widgets.Toggle()
+        displayTextToggle.setChecked(True)
+        displayTextFormWidget = widgets.formWidget(
+            displayTextToggle, labelTextLeft='Display text',
+            widgetAlignment=Qt.AlignCenter, stretchWidget=False
+        )
+        formLayout.addFormWidget(
+            displayTextFormWidget, row=row, 
+            leftLabelAlignment=Qt.AlignLeft
+        )       
+        self.displayTextToggle = displayTextToggle
+        
+        row += 1
+        fontSizeSpinbox = widgets.SpinBox()
+        fontSizeSpinbox.setValue(12)
+        fontSizeFormWidget = widgets.formWidget(
+            fontSizeSpinbox, labelTextLeft='Font size (px)'
+        )
+        self.fontSizeSpinbox = fontSizeSpinbox
+        formLayout.addFormWidget(
+            fontSizeFormWidget, row=row, 
+            leftLabelAlignment=Qt.AlignLeft
+        ) 
+        
+        row += 1
+        decimalsSpinbox = widgets.SpinBox()
+        decimalsSpinbox.setMaximum(6)
+        decimalsSpinbox.setMinimum(0)
+        decimalsSpinbox.setValue(0)
+        decimalsFormWidget = widgets.formWidget(
+            decimalsSpinbox, labelTextLeft='Number of decimals'
+        )
+        formLayout.addFormWidget(
+            decimalsFormWidget, row=row, 
+            leftLabelAlignment=Qt.AlignLeft
+        )       
+        self.decimalsSpinbox = decimalsSpinbox
         
         mainLayout.addLayout(formLayout)
         
@@ -12889,6 +12973,17 @@ class ScaleBarPropertiesDialog(widgets.QBaseDialog):
         self.unitCombobox.currentTextChanged.connect(self.updateLengthUnit)
         self.colorButton.clicked.disconnect()
         self.colorButton.clicked.connect(self.selectColor)
+        
+        self.colorButton.sigColorChanging.connect(self.onValueChanged)
+        self.lengthDoubleSpinbox.valueChanged.connect(self.onValueChanged)
+        self.thicknessSpinbox.valueChanged.connect(self.onValueChanged)
+        self.locCombobox.currentTextChanged.connect(self.onValueChanged)
+        self.displayTextToggle.toggled.connect(self.onValueChanged)
+        self.fontSizeSpinbox.valueChanged.connect(self.onValueChanged)
+        self.decimalsSpinbox.valueChanged.connect(self.onValueChanged)
+    
+    def onValueChanged(self, object):
+        self.sigValueChanged.emit(self.kwargs())
     
     def selectColor(self):
         color = self.colorButton.color()
@@ -12905,8 +13000,30 @@ class ScaleBarPropertiesDialog(widgets.QBaseDialog):
         self.colorButton.colorDialog.move(w+left+10, colorDialogTop)
     
     def updateLengthUnit(self, unit):
-        newText = re.sub(r'\(.*\)', f'({unit})', self.lengthLabel.text())
-        self.lengthLabel.setText(newText)
+        newText = re.sub(
+            r'\(.*\)', f'({unit})', 
+            self.lengthFormWidget.labelLeft.text()
+        )
+        self.lengthFormWidget.labelLeft.setText(newText)
+        self.onValueChanged(self)
+    
+    def kwargs(self):
+        unit = self.unitCombobox.currentText()
+        length_unit = self.lengthDoubleSpinbox.value()
+        length_um = _core.convert_length(length_unit, unit, 'μm')
+        length_pixel = length_um/self.PhysicalSizeX
+        kwargs = {
+            'thickness': self.thicknessSpinbox.value(),
+            'length_pixel': length_pixel,
+            'length_unit': length_unit,
+            'is_text_visible': self.displayTextToggle.isChecked(),
+            'color': self.colorButton.color(),
+            'loc': self.locCombobox.currentText().lower(),
+            'font_size': self.fontSizeSpinbox.value(),
+            'unit': unit,
+            'num_decimals': self.decimalsSpinbox.value()
+        }
+        return kwargs
     
     def ok_cb(self):
         self.cancel = False
