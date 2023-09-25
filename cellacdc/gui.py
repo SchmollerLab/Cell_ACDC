@@ -1281,6 +1281,7 @@ class guiWin(QMainWindow):
         for filtersDict in self.filtersWins.values():
             filtersMenu.addAction(filtersDict['action'])
         
+        ImageMenu.addAction(self.addScaleBarAction)
         normalizeIntensitiesMenu = ImageMenu.addMenu("Normalize intensities")
         normalizeIntensitiesMenu.addAction(self.normalizeRawAction)
         normalizeIntensitiesMenu.addAction(self.normalizeToFloatAction)
@@ -2799,6 +2800,9 @@ class guiWin(QMainWindow):
         )
         self.viewCcaTableAction.setDisabled(True)
         self.viewCcaTableAction.setShortcut('Ctrl+P')
+        
+        self.addScaleBarAction = QAction('Add scale bar', self)
+        self.addScaleBarAction.setCheckable(True)
 
         self.invertBwAction = QAction('Invert black/white', self)
         self.invertBwAction.setCheckable(True)
@@ -3111,6 +3115,7 @@ class guiWin(QMainWindow):
 
         # self.repeatAutoCcaAction.triggered.connect(self.repeatAutoCca)
         self.manuallyEditCcaAction.triggered.connect(self.manualEditCca)
+        self.addScaleBarAction.toggled.connect(self.addScaleBar)
         self.invertBwAction.toggled.connect(self.invertBw)
         self.saveLabColormapAction.triggered.connect(self.saveLabelsColormap)
 
@@ -3231,6 +3236,7 @@ class guiWin(QMainWindow):
         self.brushAutoHideCheckbox.toggled.connect(self.brushAutoHideToggled)
 
         self.imgGrad.sigLookupTableChanged.connect(self.imgGradLUT_cb)
+        self.imgGrad.sigAddScaleBar.connect(self.addScaleBarAction.setChecked)
         self.imgGrad.gradient.sigGradientChangeFinished.connect(
             self.imgGradLUTfinished_cb
         )
@@ -5397,30 +5403,29 @@ class guiWin(QMainWindow):
 
     @exception_handler
     def gui_mouseDragEventImg1(self, event):
-        posData = self.data[self.pos_i]
+        x, y = event.pos().x(), event.pos().y()
+        
+        if hasattr(self, 'scaleBar'):
+            if self.scaleBar.isHighlighted() and self.scaleBar.clicked:
+                self.scaleBar.move(x, y)
+                return
+        
         mode = str(self.modeComboBox.currentText())
         if mode == 'Viewer':
             return
 
+        posData = self.data[self.pos_i]
         Y, X = self.get_2Dlab(posData.lab).shape
-        x, y = event.pos().x(), event.pos().y()
         xdata, ydata = int(x), int(y)
         if not myutils.is_in_bounds(xdata, ydata, X, Y):
             return
-
+        
         if self.isRightClickDragImg1 and self.curvToolButton.isChecked():
-            x, y = event.pos().x(), event.pos().y()
-            xdata, ydata = int(x), int(y)
             self.drawAutoContour(y, x)
 
         # Brush dragging mouse --> keep painting
         elif self.isMouseDragImg1 and self.brushButton.isChecked():
-            # t0 = time.perf_counter()
-
-            x, y = event.pos().x(), event.pos().y()
-            xdata, ydata = int(x), int(y)
             lab_2D = self.get_2Dlab(posData.lab)
-            Y, X = lab_2D.shape
 
             # t1 = time.perf_counter()
 
@@ -5484,9 +5489,6 @@ class guiWin(QMainWindow):
         elif self.isMouseDragImg1 and self.eraserButton.isChecked():
             posData = self.data[self.pos_i]
             lab_2D = self.get_2Dlab(posData.lab)
-            Y, X = lab_2D.shape
-            x, y = event.pos().x(), event.pos().y()
-            xdata, ydata = int(x), int(y)
             brushSize = self.brushSizeSpinbox.value()
 
             rrPoly, ccPoly = self.getPolygonBrush((y, x), Y, X)
@@ -5531,8 +5533,6 @@ class guiWin(QMainWindow):
 
         # Wand dragging mouse --> keep doing the magic
         elif self.isMouseDragImg1 and self.wandToolButton.isChecked():
-            x, y = event.pos().x(), event.pos().y()
-            xdata, ydata = int(x), int(y)
             tol = self.wandToleranceSlider.value()
             flood_mask = skimage.segmentation.flood(
                 self.flood_img, (ydata, xdata), tolerance=tol
@@ -5558,8 +5558,6 @@ class guiWin(QMainWindow):
         
         # Label ROI dragging mouse --> draw ROI
         elif self.isMouseDragImg1 and self.labelRoiButton.isChecked():
-            x, y = event.pos().x(), event.pos().y()
-            xdata, ydata = int(x), int(y)
             if self.labelRoiIsRectRadioButton.isChecked():
                 x0, y0 = self.labelRoiItem.pos()
                 w, h = (xdata-x0), (ydata-y0)
@@ -5745,10 +5743,6 @@ class guiWin(QMainWindow):
             self.xHoverImg, self.yHoverImg = None, None
 
         if event.isExit():
-            self.ax2_cursor.setData([], [])
-
-        # Cursor left image --> restore cursor
-        if event.isExit():
             self.resetCursor()
 
         # Alt key was released --> restore cursor
@@ -5777,7 +5771,11 @@ class guiWin(QMainWindow):
             if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
                 ID = self.currentLab2D[ydata, xdata]
                 self.updatePropsWidget(ID)
-                hoverText = self.hoverValuesFormatted(xdata, ydata)
+                activeToolButton = self.getActiveToolButton()
+                hoverText = self.hoverValuesFormatted(
+                    xdata, ydata, activeToolButton
+                )
+                self.checkHighlightScaleBar(x, y, activeToolButton)
                 self.wcLabel.setText(hoverText)
         else:
             self.clickedOnBud = False
@@ -6169,6 +6167,10 @@ class guiWin(QMainWindow):
         self.updateLabelRoiCircularCursor(x, y, setLabelRoiCircCursor)
     
     def gui_imgGradShowContextMenu(self, x, y):
+        if hasattr(self, 'scaleBar'):
+            if self.scaleBar.isHighlighted():
+                self.scaleBar.showContextMenu(x, y)
+                return
         self.imgGrad.gradient.menu.popup(QPoint(int(x), int(y)))
     
     def gui_rightImageShowContextMenu(self, event):
@@ -6424,6 +6426,11 @@ class guiWin(QMainWindow):
             self.updateAllImages()
             return
 
+        if hasattr(self, 'scaleBar'):
+            if self.scaleBar.isHighlighted() and self.scaleBar.clicked:
+                self.scaleBar.clicked = False
+                return
+        
         sendRightClickImg2 = (
             (mode=='Segmentation and Tracking' or self.isSnapshot)
             and right_click
@@ -6986,9 +6993,13 @@ class guiWin(QMainWindow):
             and addPointsByClickingButton is None
             and not keepObjON
         )
-
-        # Enable dragging of the image window like pyqtgraph original code
+        
+        # Enable dragging of the image window or the scalebar
         if dragImgLeft and not isCustomAnnot:
+            if hasattr(self, 'scaleBar'):
+                if self.scaleBar.isHighlighted():
+                    self.scaleBar.clicked = True
+                    return
             pg.ImageItem.mousePressEvent(self.img1, event)
             event.ignore()
             return
@@ -9970,6 +9981,40 @@ class guiWin(QMainWindow):
                 self.UserEnforced_DisabledTracking = False
                 self.UserEnforced_Tracking = True
 
+    def addScaleBar(self, checked):
+        if checked:
+            posData = self.data[self.pos_i]
+            Y, X = self.img1.image.shape
+            win = apps.ScaleBarPropertiesDialog(
+                X, Y, posData.PhysicalSizeX, parent=self
+            )
+            win.show()
+            self.scaleBar = widgets.ScaleBar((Y, X), parent=self.ax1)
+            self.scaleBar.sigEditProperties.connect(self.editScaleBarProperties)
+            self.scaleBar.addToAxis(self.ax1)
+            self.scaleBar.draw(**win.kwargs())
+            win.sigValueChanged.connect(self.updateScaleBar)
+            win.exec_()
+            if win.cancel:
+                self.addScaleBarAction.setChecked(False)
+                return
+        else:
+            self.scaleBar.removeFromAxis(self.ax1)
+
+        self.imgGrad.addScaleBarAction.setChecked(checked)
+    
+    def updateScaleBar(self, scaleBarKwargs):
+        self.scaleBar.draw(**scaleBarKwargs)
+    
+    def editScaleBarProperties(self, properties):
+        Y, X = self.img1.image.shape
+        posData = self.data[self.pos_i]
+        win = apps.ScaleBarPropertiesDialog(
+            X, Y, posData.PhysicalSizeX, parent=self, **properties
+        )
+        win.sigValueChanged.connect(self.updateScaleBar)
+        win.exec_()
+        
     def invertBw(self, checked, update=True):
         self.invertBwAlreadyCalledOnce = True
         
@@ -10063,13 +10108,41 @@ class guiWin(QMainWindow):
             txt = f'{txt} | {raw_txt}'
         return txt
     
-    def hoverValuesFormatted(self, xdata, ydata):
-        activeToolButton = None
+    def getActiveToolButton(self):
         for button in self.LeftClickButtons:
             if button.isChecked():
-                activeToolButton = button
-                break
+                return button
+    
+    def checkHighlightScaleBar(self, x, y, activeToolButton):
+        if not hasattr(self, 'scaleBar'):
+            return
         
+        if not self.addScaleBarAction.isChecked():
+            return
+        
+        if activeToolButton is not None:
+            return
+        
+        ymin, xmin, ymax, xmax = self.scaleBar.bbox()
+        if x < xmin:
+            self.scaleBar.setHighlighted(False)
+            return
+        
+        if x > xmax:
+            self.scaleBar.setHighlighted(False)
+            return
+        
+        if y < ymin:
+            self.scaleBar.setHighlighted(False)
+            return
+        
+        if y > ymax:
+            self.scaleBar.setHighlighted(False)
+            return
+
+        self.scaleBar.setHighlighted(True)
+    
+    def hoverValuesFormatted(self, xdata, ydata, activeToolButton):        
         txt = f'x={xdata:d}, y={ydata:d}'
         if activeToolButton == self.rulerButton:
             txt = self._addRulerMeasurementText(txt)
@@ -11530,11 +11603,7 @@ class guiWin(QMainWindow):
     @exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_Q and self.debug:
-            img = np.zeros_like(self.img1.image)
-            from cellacdc.plot import imshow
-            next_frame_image = self.nextFrameImage()
-            printl(next_frame_image.shape, next_frame_image.max())
-            self.img1.setImage(img, next_frame_image=next_frame_image)
+            printl(self.scaleBar.bbox())
             
         if not self.dataIsLoaded:
             self.logger.info(
@@ -20655,6 +20724,11 @@ class guiWin(QMainWindow):
             self.navSpinBox.disconnect()
         except Exception as e:
             pass
+        
+        try: 
+            self.scaleBar.removeFromAxis(self.ax1)
+        except Exception as e:
+            pass
 
         self.isZmodifier = False
         self.zKeptDown = False
@@ -21620,6 +21694,7 @@ class guiWin(QMainWindow):
             parent=self, name='image', axisLabel=channelName
         )
         
+        lutItem.removeAddScaleBarAction()
         lutItem.restoreState(self.df_settings)
         lutItem.setImageItem(imageItem)
         lutItem.vb.raiseContextMenu = lambda x: None
