@@ -27,7 +27,7 @@ from qtpy.QtCore import (
     QEvent, QEventLoop, QPropertyAnimation, QObject,
     QItemSelectionModel, QAbstractListModel, QModelIndex,
     QByteArray, QDataStream, QMimeData, QAbstractItemModel, 
-    QIODevice, QItemSelection
+    QIODevice, QItemSelection, QRectF
 )
 from qtpy.QtGui import (
     QFont, QPalette, QColor, QPen, QKeyEvent, QBrush, QPainter,
@@ -44,7 +44,7 @@ from qtpy.QtWidgets import (
     QStyle, QDialog, QSpacerItem, QFrame, QMenu, QActionGroup,
     QListWidget, QPlainTextEdit, QFileDialog, QListView, QAbstractItemView,
     QTreeWidget, QTreeWidgetItem, QListWidgetItem, QLayout, QStylePainter,
-    QGraphicsBlurEffect, QGraphicsProxyWidget
+    QGraphicsBlurEffect, QGraphicsProxyWidget, QGraphicsObject
 )
 
 import pyqtgraph as pg
@@ -6658,19 +6658,91 @@ class LabelItem(pg.LabelItem):
         super().__init__(*args, **kwargs)
     
     def bbox(self):
-        xl, yl = self.pos().x(), self.pos().y()
-        wl, hl = self.rect().right(), self.rect().bottom()
+        xl, yl = self.item.pos().x(), self.item.pos().y()
+        wl, hl = self.itemRect().width(), self.itemRect().height()
         return yl, xl, yl+hl, xl+wl
+    
+    def setBold(self, bold=True):
+        self.origPos = self.item.pos()
+        self.setText(self.text, bold=bold)
+        self.item.setPos(self.origPos)
 
-class ScaleBar: 
-    def __init__(self, imageShape):
+class ScaleBar(QGraphicsObject): 
+    sigEditProperties = Signal(object)
+    
+    def __init__(self, imageShape, parent=None):
+        super().__init__(parent)
         self.SizeY, self.SizeX = imageShape
         self.plotItem = PlotCurveItem()
         self.labelItem = LabelItem()
         self._x_pad = 5
         self._y_pad = 3
+        self._highlighted = False
+        self._parent = parent
+        self.clicked = False
+        self.createContextMenu()
     
-    def setAttr(
+    def createContextMenu(self):
+        self.contextMenu = QMenu()
+        action = QAction('Edit properties...', self.contextMenu)
+        action.triggered.connect(self.emitEditProperties)
+        self.contextMenu.addSeparator()
+        self.contextMenu.addAction(action)
+    
+    def emitEditProperties(self):
+        self.setHighlighted(False)
+        self.sigEditProperties.emit(self.properties())
+    
+    def isHighlighted(self):
+        return self._highlighted
+        
+    def setHighlighted(self, highlighted):
+        if self._highlighted and highlighted:
+            return
+        
+        if not self._highlighted and not highlighted:
+            return
+        
+        pen = self.highlightPen if highlighted else self.pen
+        self.labelItem.setBold(bold=highlighted)
+        self.plotItem.setPen(pen)
+        
+        self._highlighted = highlighted
+    
+    def showContextMenu(self, x, y):
+        self.contextMenu.popup(QPoint(int(x), int(y)))
+    
+    def properties(self):
+        properties = {
+            'thickness': self._thickness,
+            'length_pixel': self._length,
+            'length_unit': self._length_unit,
+            'is_text_visible': self._is_text_visible,
+            'color': self._color,
+            'loc': self._loc,
+            'font_size': float(self._font_size[:-2]),
+            'unit': self._unit,
+            'num_decimals': self._num_decimals
+        }
+        return properties
+    
+    def move(self, xc, yc):
+        self._loc = 'Custom'
+        
+        x0 = xc - self._length/2
+        x1 = x0 + self._length
+        y0 = y1 = yc
+        self.plotItem.setData([x0, x1], [y0, y0])
+        self.setTextPos()
+    
+    def paint(self, painter, option, widget):
+        pass
+    
+    def boundingRect(self):
+        ymin, xmin, ymax, xmax = self.bbox()
+        return QRectF(xmin, ymin, xmax-xmin, ymax-ymin)
+    
+    def setProperties(
             self, 
             length_pixel, 
             length_unit,
@@ -6692,7 +6764,11 @@ class ScaleBar:
         self._num_decimals = num_decimals
         self._thickness = thickness
         self.pen = pg.mkPen(width=thickness, color=color, cosmetic=False)
+        self.highlightPen = pg.mkPen(
+            width=thickness+2, color=color, cosmetic=False
+        )
         self.pen.setCapStyle(Qt.PenCapStyle.FlatCap)
+        self.highlightPen.setCapStyle(Qt.PenCapStyle.FlatCap)
         self.plotItem.setPen(self.pen)
     
     def addToAxis(self, ax):
@@ -6716,15 +6792,20 @@ class ScaleBar:
         x0 = xx[0]
         y0 = yy[0]
         xc = x0 + self._length/2
-        wl = self.labelItem.rect().right()
-        hl = self.labelItem.rect().bottom()
+        wl = self.labelItem.itemRect().width()
+        hl = self.labelItem.itemRect().height()
         xl = xc-wl/2
         yt = y0-hl    
-        self.labelItem.setPos(xl, yt)
+        self.labelItem.item.setPos(xl, yt)
     
     def getStartXCoordFromLoc(self, loc):
+        if loc == 'custom':
+            xx, yy = self.plotItem.getData()
+            x0 = xx[0]
+            return x0
+        
         self.setText()
-        wl = self.labelItem.rect().right()
+        wl = self.labelItem.itemRect().width()
         if loc.find('left') != -1:
             x0 = self._x_pad
             xc = x0 + self._length/2
@@ -6744,27 +6825,30 @@ class ScaleBar:
         return x0  
     
     def getStartYCoordFromLoc(self, loc):
+        if loc == 'custom':
+            xx, yy = self.plotItem.getData()
+            y0 = yy[0]
+            return y0
+        
         self.setText()
-        textHeight = self.labelItem.rect().bottom()
+        textHeight = self.labelItem.itemRect().height()
         if loc.find('top') != -1:
             return textHeight + self._y_pad
         else:
             return self.SizeY - self._y_pad - self._thickness
     
-    def update(self, pos=None):
-        if pos is None:
-            x0 = self.getStartXCoordFromLoc(self._loc) # + self._thickness/2
-            y0 = self.getStartYCoordFromLoc(self._loc)
-        else:
-            pass
+    def update(self):
+        x0 = self.getStartXCoordFromLoc(self._loc) # + self._thickness/2
+        y0 = self.getStartYCoordFromLoc(self._loc)
         
         x1 = x0 + self._length # - self._thickness/2
         self.plotItem.setData([x0, x1], [y0, y0])
+        
         self.setText()
         self.setTextPos()
     
     def draw(self, length_pixel, length_unit, **kwargs):
-        self.setAttr(length_pixel, length_unit, **kwargs)
+        self.setProperties(length_pixel, length_unit, **kwargs)
         self.update()
         
     def bbox(self):

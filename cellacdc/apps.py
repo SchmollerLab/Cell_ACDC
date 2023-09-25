@@ -12833,7 +12833,10 @@ def get_existing_directory(allow_images_path=True, **kwargs):
 class ScaleBarPropertiesDialog(widgets.QBaseDialog):
     sigValueChanged = Signal(object)
     
-    def __init__(self, maxLength, maxThickness, PhysicalSizeX, parent=None):
+    def __init__(
+            self, maxLength, maxThickness, PhysicalSizeX, parent=None, 
+            **properties
+        ):
         super().__init__(parent=parent)
         
         self.cancel = True
@@ -12855,7 +12858,10 @@ class ScaleBarPropertiesDialog(widgets.QBaseDialog):
         unitCombobox.addItems(
             ['nm', 'μm', 'mm', 'cm']
         )
-        unitCombobox.setCurrentIndex(1)
+        if properties.get('unit') is None:
+            unitCombobox.setCurrentIndex(1)
+        else:
+            unitCombobox.setCurrentText(properties.get('unit'))
         formLayout.addFormWidget(
             unitFormWidget, row=row, 
             leftLabelAlignment=Qt.AlignLeft
@@ -12867,11 +12873,14 @@ class ScaleBarPropertiesDialog(widgets.QBaseDialog):
         lengthDoubleSpinbox.setMaximum(maxLength)
         lengthDoubleSpinbox.setMinimum(PhysicalSizeX)
         lengthDoubleSpinbox.setDecimals(1)
-        lengthDoubleSpinbox.setValue(round(PhysicalSizeX*15, 1))
-        
+        if properties.get('length_unit') is not None:
+            lengthDoubleSpinbox.setValue(properties.get('length_unit'))
+        else:
+            lengthDoubleSpinbox.setValue(round(PhysicalSizeX*15, 1))
         lengthFormWidget = widgets.formWidget(
             lengthDoubleSpinbox, labelTextLeft='Length (μm)'
         )
+        self.lengthFormWidget = lengthFormWidget
         self.lengthDoubleSpinbox = lengthDoubleSpinbox
         formLayout.addFormWidget(
             lengthFormWidget, row=row, 
@@ -12882,7 +12891,10 @@ class ScaleBarPropertiesDialog(widgets.QBaseDialog):
         thicknessSpinbox = widgets.DoubleSpinBox()
         thicknessSpinbox.setMaximum(maxThickness)
         thicknessSpinbox.setMinimum(1)
-        thicknessSpinbox.setValue(round(4, 1))
+        if properties.get('thickness') is not None:
+            thicknessSpinbox.setValue(properties.get('thickness'))
+        else:
+            thicknessSpinbox.setValue(round(4, 1))
         thicknessSpinbox.setDecimals(1)
         thicknessFormWidget = widgets.formWidget(
             thicknessSpinbox, labelTextLeft='Thickness (pixel)'
@@ -12899,8 +12911,11 @@ class ScaleBarPropertiesDialog(widgets.QBaseDialog):
             locCombobox, labelTextLeft='Location'
         )
         locCombobox.addItems(
-            ['Top-left', 'Top-right', 'Bottom-left', 'Bottom-right']
+            ['Top-left', 'Top-right', 'Bottom-left', 'Bottom-right', 'Custom']
         )
+        loc = properties.get('loc')
+        if isinstance(loc, str):
+            locCombobox.setCurrentText(loc)
         formLayout.addFormWidget(
             locFormWidget, row=row, 
             leftLabelAlignment=Qt.AlignLeft
@@ -12909,6 +12924,8 @@ class ScaleBarPropertiesDialog(widgets.QBaseDialog):
         
         row += 1
         self.colorButton = widgets.myColorButton(color=(255, 255, 255))
+        if properties.get('color') is not None:
+            self.colorButton.setColor(properties.get('color'))
         colorFormWidget = widgets.formWidget(
             self.colorButton, labelTextLeft='Color',
             widgetAlignment=Qt.AlignCenter, stretchWidget=False
@@ -12920,7 +12937,10 @@ class ScaleBarPropertiesDialog(widgets.QBaseDialog):
         
         row += 1
         displayTextToggle = widgets.Toggle()
-        displayTextToggle.setChecked(True)
+        if properties.get('is_text_visible') is not None:
+            displayTextToggle.setChecked(properties.get('is_text_visible'))
+        else:
+            displayTextToggle.setChecked(True)
         displayTextFormWidget = widgets.formWidget(
             displayTextToggle, labelTextLeft='Display text',
             widgetAlignment=Qt.AlignCenter, stretchWidget=False
@@ -12933,7 +12953,10 @@ class ScaleBarPropertiesDialog(widgets.QBaseDialog):
         
         row += 1
         fontSizeSpinbox = widgets.SpinBox()
-        fontSizeSpinbox.setValue(12)
+        if properties.get('font_size') is not None:
+            fontSizeSpinbox.setValue(properties.get('font_size'))
+        else:
+            fontSizeSpinbox.setValue(12)
         fontSizeFormWidget = widgets.formWidget(
             fontSizeSpinbox, labelTextLeft='Font size (px)'
         )
@@ -12947,7 +12970,10 @@ class ScaleBarPropertiesDialog(widgets.QBaseDialog):
         decimalsSpinbox = widgets.SpinBox()
         decimalsSpinbox.setMaximum(6)
         decimalsSpinbox.setMinimum(0)
-        decimalsSpinbox.setValue(0)
+        if properties.get('num_decimals') is not None:
+            decimalsSpinbox.setValue(properties.get('num_decimals'))
+        else:
+            decimalsSpinbox.setValue(0)
         decimalsFormWidget = widgets.formWidget(
             decimalsSpinbox, labelTextLeft='Number of decimals'
         )
