@@ -1452,6 +1452,18 @@ class LineageTree:
 
         return self.acdc_df
     
+    def _err_msg_add_sister_ID(self, relative_ID, frame_i, df):
+        ID = df.index.get_level_values(1)[0]
+        txt = (
+            f'There is a problem with Cell ID {relative_ID} '
+            f'at frame n. {frame_i+1}. '
+            'Make sure that annotations are correct before trying again.\n\n'
+            'More info: error happened when trying to set the `sister_ID` of '
+            f'cell ID {ID} to {relative_ID}. It might be that ID {relative_ID} '
+            f'is not in G1 at frame n. {frame_i+1}'
+        )
+        return txt
+    
     def _add_sister_ID(self):
         grouped_ID_tree = self.df_G1.groupby('Cell_ID_tree')
         for Cell_ID_tree, df in grouped_ID_tree:
@@ -1465,10 +1477,7 @@ class LineageTree:
                 ]
             except KeyError as error:
                 raise KeyError(
-                    f'There is a problem with Cell ID {relative_ID} '
-                    f'at frame n. {start_frame_i+1}. '
-                    'Make sure that annotations are correct '
-                    'before trying again.'
+                    self._err_msg_add_sister_ID(relative_ID, start_frame_i, df)
                 ) from error
                 
             self.df_G1.loc[df.index, 'sister_ID_tree'] = sister_ID_tree

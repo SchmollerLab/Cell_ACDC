@@ -3128,6 +3128,7 @@ class ToSymDivWorker(QObject):
                 self.signals.finished.emit(self)
                 return
 
+            self.signals.initProgressBar.emit(len(pos_foldernames))
             for p, pos in enumerate(pos_foldernames):
                 if self.abort:
                     self.signals.finished.emit(self)
@@ -3247,6 +3248,8 @@ class ToSymDivWorker(QObject):
                     self.waitCond.wait(self.mutex)
                     self.mutex.unlock()
                     posData.acdc_df.to_csv(posData.acdc_output_csv_path)
+                
+                self.signals.progressBar.emit(1)
                 
         self.signals.finished.emit(self)
 
