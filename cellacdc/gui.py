@@ -19699,6 +19699,9 @@ class guiWin(QMainWindow):
     def addManualBackgroundObject(self, x, y):
         posData = self.data[self.pos_i]
         
+        if not hasattr(self, 'manualBackgroundObj'):
+            self.initManualBackgroundObject()
+        
         Y, X = self.currentLab2D.shape
         ymin, xmin, ymax, xmax = self.manualBackgroundObj.bbox
         width, height = xmax-xmin, ymax-ymin
