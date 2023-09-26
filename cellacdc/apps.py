@@ -8757,7 +8757,10 @@ class NumericEntryDialog(widgets.QBaseDialog):
         self.close()
 
 class editID_QWidget(QDialog):
-    def __init__(self, clickedID, IDs, doNotShowAgain=False, parent=None):
+    def __init__(
+            self, clickedID, IDs, entryID=None, doNotShowAgain=False, 
+            parent=None
+        ):
         self.IDs = IDs
         self.clickedID = clickedID
         self.cancel = True
@@ -8783,6 +8786,8 @@ class editID_QWidget(QDialog):
         entryWidget.setAlignment(Qt.AlignCenter)
         self.entryWidget = entryWidget
         VBoxLayout.addWidget(entryWidget)
+        if entryID is not None:
+            entryWidget.setText(str(entryID))
 
         note = QLabel(
             'NOTE: To replace multiple IDs at once\n'

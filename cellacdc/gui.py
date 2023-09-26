@@ -4930,7 +4930,7 @@ class guiWin(QMainWindow):
             prev_IDs = posData.IDs.copy()
             editID = apps.editID_QWidget(
                 ID, posData.IDs, doNotShowAgain=self.doNotAskAgainExistingID,
-                parent=self
+                parent=self, entryID=self.getNearestLostObjID(y, x)
             )
             editID.show(block=True)
             if editID.cancel:
@@ -19794,6 +19794,32 @@ class guiWin(QMainWindow):
             data = [obj.label]*len(xx)
             self.ax1_lostObjScatterItem.addPoints(xx, yy, data=data)
             self.ax2_lostObjScatterItem.addPoints(xx, yy)
+    
+    def getNearestLostObjID(self, y, x):
+        xx, yy = self.ax2_lostObjScatterItem.getData()
+        if xx is None:
+            return
+        
+        if len(xx) == 0:
+            return
+        
+        posData = self.data[self.pos_i]
+        prev_lab = posData.allData_li[posData.frame_i-1]['labels']
+        if prev_lab is None:
+            return
+        
+        lostObjsContourMask = np.zeros(self.currentLab2D.shape, dtype=bool)
+        lostObjsContourMask[yy.astype(int), xx.astype(int)] = True
+            
+        _, y_nearest, x_nearest = core.nearest_nonzero_2D(
+            lostObjsContourMask, y, x, return_coords=True
+        )
+        nearest_ID = self.get_2Dlab(prev_lab)[y_nearest, x_nearest]
+        
+        if nearest_ID == 0:
+            return
+        
+        return nearest_ID
     
     def addLostObjsToImage(self):
         xx, yy = self.ax1_lostObjScatterItem.getData()
