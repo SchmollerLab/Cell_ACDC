@@ -7369,8 +7369,7 @@ class guiWin(QMainWindow):
             if delID == 0:
                 return
             
-            posData.manualBackgroundImage[posData.manualBackgroundLab==delID, :] = 0
-            posData.manualBackgroundLab[posData.manualBackgroundLab==delID] = 0
+            self.clearManualBackgroundObject(delID)
             textItem = self.manualBackgroundTextItems.pop(delID)
             self.ax1.removeItem(textItem)
             self.setManualBackgroundImage()
@@ -19695,7 +19694,13 @@ class guiWin(QMainWindow):
             return
         next_ID = posData.IDs[next_idx]
         self.manualBackgroundToolbar.spinboxID.setValue(next_ID)
-        
+    
+    def clearManualBackgroundObject(self, ID):
+        posData = self.data[self.pos_i]
+        mask = posData.manualBackgroundLab==ID
+        posData.manualBackgroundImage[mask, :] = 0
+        posData.manualBackgroundLab[mask] = 0
+    
     def addManualBackgroundObject(self, x, y):
         posData = self.data[self.pos_i]
         
@@ -19721,16 +19726,17 @@ class guiWin(QMainWindow):
         obj_image = self.manualBackgroundObj.image[:height, :width]
         obj_slice = (slice(ystart, yend), slice(xstart, xend))
         ID = self.manualBackgroundObj.label
+        self.clearManualBackgroundObject(ID)
         posData.manualBackgroundLab[obj_slice][obj_image] = ID
         
         if ID in self.manualBackgroundTextItems:
+            self.manualBackgroundTextItems[ID].setPos(x, y)
             return
         
         textItem = pg.TextItem(
             text=str(ID), color='r', anchor=(0.5, 0.5)
         )
         textItem.setFont(font_13px)
-        textItem.setPos(x, y)
         self.manualBackgroundTextItems[ID] = textItem
         
         self.ax1.addItem(textItem)
