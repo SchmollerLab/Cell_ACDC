@@ -99,12 +99,18 @@ def np_replace_values(arr, old_values, new_values):
 def nearest_nonzero_2D(a, y, x, max_dist=None, return_coords=False):
     value = a[round(y), round(x)]
     if value > 0:
-        return value
+        if return_coords:
+            return value, round(y), round(x)
+        else:
+            return value
     r, c = np.nonzero(a)
     dist = ((r - y)**2 + (c - x)**2)
     if max_dist is not None:
         if dist.min() > max_dist:
-            return 0
+            if return_coords:
+                return 0, 0, 0
+            else:
+                return 0
     min_idx = dist.argmin()
     y_nearest, x_nearest = r[min_idx], c[min_idx]
     if return_coords:
