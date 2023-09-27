@@ -8788,6 +8788,7 @@ class editID_QWidget(QDialog):
         VBoxLayout.addWidget(entryWidget)
         if entryID is not None:
             entryWidget.setText(str(entryID))
+            entryWidget.selectAll()
 
         note = QLabel(
             'NOTE: To replace multiple IDs at once\n'

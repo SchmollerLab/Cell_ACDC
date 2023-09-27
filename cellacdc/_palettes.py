@@ -184,11 +184,7 @@ def QProgressBarColor():
     return QtGui.QColor(hex)    
 
 def QProgressBarHighlightedTextColor():
-    scheme = get_color_scheme()
-    if scheme == 'light':
-        return QtGui.QColor(0, 0, 0, 255)
-    else:
-        return QtGui.QColor(255, 255, 255, 255)
+    return QtGui.QColor(0, 0, 0, 255)
 
 def moduleLaunchedButtonRgb(self):
     scheme = get_color_scheme()
