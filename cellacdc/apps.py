@@ -12716,6 +12716,7 @@ class SelectFeaturesRangeGroupbox(QGroupBox):
         # self.setCheckable(True)
 
         self.posData = posData
+        self.force_postprocess_2D = force_postprocess_2D
         
         self._layout = QGridLayout()
         self._layout.setVerticalSpacing(0)
