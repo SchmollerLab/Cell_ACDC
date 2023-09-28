@@ -3756,6 +3756,9 @@ class guiWin(QMainWindow):
         self.ax2.invertY(True)
         self.ax2.hideAxis('bottom')
         self.ax2.hideAxis('left')
+        # self.currentFrameLabelItem = pg.LabelItem(
+        #     color=self.titleColor, size='13px'
+        # )
         self.graphLayout.addItem(self.ax2, row=1, col=2)
 
     def gui_addGraphicsItems(self):
@@ -3825,7 +3828,7 @@ class guiWin(QMainWindow):
         self.titleLabel = pg.LabelItem(
             justify='center', color=self.titleColor, size='14pt'
         )
-        self.graphLayout.addItem(self.titleLabel, row=0, col=1, colspan=2)
+        self.graphLayout.addItem(self.titleLabel, row=0, col=1, colspan=2)        
 
     def gui_createTextAnnotColors(self, r, g, b, custom=False):
         if custom:
@@ -4279,7 +4282,9 @@ class guiWin(QMainWindow):
         
         for item in self.topLayerItemsRight:
             self.ax2.addItem(item)
-    
+
+        # self.ax2.addItem(self.currentFrameLabelItem)
+        
     def gui_createMothBudLinePens(self):
         if 'mothBudLineSize' in self.df_settings.index:
             val = self.df_settings.at['mothBudLineSize', 'value']
@@ -5720,7 +5725,7 @@ class guiWin(QMainWindow):
             return
 
         if event.isExit():
-            self.ax1_cursor.setData([], [])
+            self.resetCursors()
 
         self.gui_hoverEventImg1(event, isHoverImg1=False)
         setMirroredCursor = (
@@ -5773,7 +5778,7 @@ class guiWin(QMainWindow):
                 self.updatePropsWidget(ID)
                 activeToolButton = self.getActiveToolButton()
                 hoverText = self.hoverValuesFormatted(
-                    xdata, ydata, activeToolButton
+                    xdata, ydata, activeToolButton, isHoverImg1
                 )
                 self.checkHighlightScaleBar(x, y, activeToolButton)
                 self.wcLabel.setText(hoverText)
@@ -5888,6 +5893,9 @@ class guiWin(QMainWindow):
         if setMirroredCursor:
             x, y = event.pos()
             self.ax2_cursor.setData([x], [y])
+        else:
+            self.ax2_cursor.setData([], [])
+            
         return cursorsInfo
     
     def drawTempMothBudLine(self, event, posData):
@@ -10141,8 +10149,22 @@ class guiWin(QMainWindow):
 
         self.scaleBar.setHighlighted(True)
     
-    def hoverValuesFormatted(self, xdata, ydata, activeToolButton):        
-        txt = f'x={xdata:d}, y={ydata:d}'
+    def getMouseDataCoordsRightImage(self):
+        text = self.wcLabel.text()
+        if not text:
+            return
+        
+        ax_idx = int(re.findall(r'\(ax(\d)\)', text)[0])
+        if ax_idx == 0:
+            return
+        
+        coords = re.findall(r'x=(\d+), y=(\d+) \(ax', text)[0]
+        
+        return tuple([int(val) for val in coords])
+    
+    def hoverValuesFormatted(self, xdata, ydata, activeToolButton, is_ax0):     
+        ax_idx = 0 if is_ax0 else 1
+        txt = f'x={xdata:d}, y={ydata:d} (ax{ax_idx})'
         if activeToolButton == self.rulerButton:
             txt = self._addRulerMeasurementText(txt)
             return txt
@@ -11602,7 +11624,7 @@ class guiWin(QMainWindow):
     @exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_Q and self.debug:
-            printl(self.scaleBar.bbox())
+            self.getMouseDataCoordsRightImage()
             
         if not self.dataIsLoaded:
             self.logger.info(
@@ -11697,55 +11719,15 @@ class guiWin(QMainWindow):
         how = self.drawIDsContComboBox.currentText()
         isOverlaySegm = how.find('overlay segm. masks') != -1
         if ev.key()==Qt.Key_Up and not isCtrlModifier:
-            isAutoPilotActive = (
-                self.autoPilotZoomToObjToggle.isChecked()
-                and self.autoPilotZoomToObjToolbar.isVisible()
+            self.keyUpCallback(
+                isBrushActive, isWandActive, isExpandLabelActive, 
+                isLabelRoiCircActive
             )
-            if isBrushActive:
-                brushSize = self.brushSizeSpinbox.value()
-                self.brushSizeSpinbox.setValue(brushSize+1)
-            elif isWandActive:
-                wandTolerance = self.wandToleranceSlider.value()
-                self.wandToleranceSlider.setValue(wandTolerance+1)
-            elif isExpandLabelActive:
-                self.expandLabel(dilation=True)
-                self.expandFootprintSize += 1
-            elif isLabelRoiCircActive:
-                val = self.labelRoiCircularRadiusSpinbox.value()
-                self.labelRoiCircularRadiusSpinbox.setValue(val+1)
-            elif isAutoPilotActive:
-                self.pointsLayerAutoPilot('next')
-            else:
-                self.zSliceScrollBar.triggerAction(
-                    QAbstractSlider.SliderAction.SliderSingleStepAdd
-                )
         elif ev.key()==Qt.Key_Down and not isCtrlModifier:
-            isAutoPilotActive = (
-                self.autoPilotZoomToObjToggle.isChecked()
-                and self.autoPilotZoomToObjToolbar.isVisible()
+            self.keyDownCallback(
+                isBrushActive, isWandActive, isExpandLabelActive, 
+                isLabelRoiCircActive
             )
-            if isBrushActive:
-                brushSize = self.brushSizeSpinbox.value()
-                self.brushSizeSpinbox.setValue(brushSize-1)
-            elif isWandActive:
-                wandTolerance = self.wandToleranceSlider.value()
-                self.wandToleranceSlider.setValue(wandTolerance-1)
-            elif isExpandLabelActive:
-                self.expandLabel(dilation=False)
-                self.expandFootprintSize += 1
-            elif isLabelRoiCircActive:
-                val = self.labelRoiCircularRadiusSpinbox.value()
-                self.labelRoiCircularRadiusSpinbox.setValue(val-1)
-            elif isAutoPilotActive:
-                self.pointsLayerAutoPilot('prev')
-            else:
-                self.zSliceScrollBar.triggerAction(
-                    QAbstractSlider.SliderAction.SliderSingleStepSub
-                )
-        # elif ev.key()==Qt.Key_Left and not isCtrlModifier:
-        #     self.prev_cb()
-        # elif ev.key()==Qt.Key_Right and not isCtrlModifier:
-        #     self.next_cb()
         elif ev.key() == Qt.Key_Enter or ev.key() == Qt.Key_Return:
             if isTypingIDFunctionChecked:
                 self.typingEditID = False
@@ -13859,7 +13841,30 @@ class guiWin(QMainWindow):
 
         self.titleLabel.setText('Budding event prediction done.', color='g')
     
+    def isNavigateActionOnNextFrame(self):
+        posData = self.data[self.pos_i]
+        if posData.SizeT == 1:
+            return False
+        
+        ax1_coords = self.getMouseDataCoordsRightImage()
+        if ax1_coords is None:
+            return False
+        
+        if not self.labelsGrad.showNextFrameAction.isEnabled():
+            return False
+        
+        if not self.labelsGrad.showNextFrameAction.isChecked():
+            return
+        
+        # Mouse is on right image and next frame action is checked
+        return True 
+    
     def nextActionTriggered(self):
+        if self.isNavigateActionOnNextFrame():
+            printl(self.ax1_frame_i)
+            self.nextFrameImage(current_frame_i=self.ax1_frame_i)
+            return
+        
         stepAddAction = QAbstractSlider.SliderAction.SliderSingleStepAdd
         if self.zKeptDown or self.zSliceCheckbox.isChecked():
             self.zSliceScrollBar.triggerAction(stepAddAction)
@@ -13867,6 +13872,10 @@ class guiWin(QMainWindow):
             self.navigateScrollBar.triggerAction(stepAddAction)
     
     def prevActionTriggered(self):
+        if self.isNavigateActionOnNextFrame():
+            self.nextFrameImage(current_frame_i=self.ax1_frame_i-2)
+            return
+        
         stepSubAction = QAbstractSlider.SliderAction.SliderSingleStepSub
         if self.zKeptDown or self.zSliceCheckbox.isChecked():
             self.zSliceScrollBar.triggerAction(stepSubAction)
@@ -14687,10 +14696,14 @@ class guiWin(QMainWindow):
         if isRightImgVisible or isNextFrameVisible:
             self.rightBottomGroupbox.setChecked(True)
         
-        if isRightImgVisible or isLabVisible or isNextFrameVisible:
-            self.setTwoImagesLayout(True)
-        else:
-            self.setTwoImagesLayout(False)
+        isTwoImagesLayout = (
+            isRightImgVisible or isLabVisible
+            or (
+                isNextFrameVisible 
+                and self.labelsGrad.showNextFrameAction.isEnabled()
+            )
+        )
+        self.setTwoImagesLayout(isTwoImagesLayout)
         
         self.setBottomLayoutStretch()
         
@@ -19923,7 +19936,7 @@ class guiWin(QMainWindow):
         self.updateContoursImage(ax=0, delROIsIDs=delROIsIDs)
         self.updateContoursImage(ax=1, delROIsIDs=delROIsIDs)
 
-    def nextFrameImage(self):
+    def nextFrameImage(self, current_frame_i=None):
         if not self.labelsGrad.showNextFrameAction.isEnabled():
             return
         
@@ -19931,19 +19944,86 @@ class guiWin(QMainWindow):
             return
         
         posData = self.data[self.pos_i]
-        next_frame_i = posData.frame_i + 1
+        if current_frame_i is None:
+            current_frame_i = posData.frame_i
+            
+        next_frame_i = current_frame_i + 1
         if next_frame_i >= len(posData.img_data):
             img = posData.img_data[-1]
+            self.ax1_frame_i = len(posData.img_data) - 1
         else:
             img = posData.img_data[next_frame_i]
+            self.ax1_frame_i = next_frame_i
         
         if posData.SizeZ > 1:
             img = self.get_2Dimg_from_3D(img, isLayer0=True)
         
         img = self.normalizeIntensities(img)
         
+        numFrames = len(posData.img_data)
+        # self.currentFrameLabelItem.setText(
+        #     f'Frame n. {self.ax1_frame_i}/{numFrames}'
+        # )
+        # printl(self.currentFrameLabelItem.text)
+        
         return img
         
+    def keyUpCallback(
+            self, isBrushActive, isWandActive, isExpandLabelActive, 
+            isLabelRoiCircActive
+        ):
+        isAutoPilotActive = (
+            self.autoPilotZoomToObjToggle.isChecked()
+            and self.autoPilotZoomToObjToolbar.isVisible()
+        )
+        if isBrushActive:
+            brushSize = self.brushSizeSpinbox.value()
+            self.brushSizeSpinbox.setValue(brushSize+1)
+        elif isWandActive:
+            wandTolerance = self.wandToleranceSlider.value()
+            self.wandToleranceSlider.setValue(wandTolerance+1)
+        elif isExpandLabelActive:
+            self.expandLabel(dilation=True)
+            self.expandFootprintSize += 1
+        elif isLabelRoiCircActive:
+            val = self.labelRoiCircularRadiusSpinbox.value()
+            self.labelRoiCircularRadiusSpinbox.setValue(val+1)
+        elif isAutoPilotActive:
+            self.pointsLayerAutoPilot('next')
+        else:
+            self.zSliceScrollBar.triggerAction(
+                QAbstractSlider.SliderAction.SliderSingleStepAdd
+            )
+    
+    def keyDownCallback(
+            self, isBrushActive, isWandActive, isExpandLabelActive, 
+            isLabelRoiCircActive
+        ):
+        isAutoPilotActive = (
+            self.autoPilotZoomToObjToggle.isChecked()
+            and self.autoPilotZoomToObjToolbar.isVisible()
+        )
+        if isBrushActive:
+            brushSize = self.brushSizeSpinbox.value()
+            self.brushSizeSpinbox.setValue(brushSize-1)
+        elif isWandActive:
+            wandTolerance = self.wandToleranceSlider.value()
+            self.wandToleranceSlider.setValue(wandTolerance-1)
+        elif isExpandLabelActive:
+            self.expandLabel(dilation=False)
+            self.expandFootprintSize += 1
+        elif isLabelRoiCircActive:
+            val = self.labelRoiCircularRadiusSpinbox.value()
+            self.labelRoiCircularRadiusSpinbox.setValue(val-1)
+        elif isAutoPilotActive:
+            self.pointsLayerAutoPilot('prev')
+        elif self.isNavigateActionOnNextFrame():
+            self.nextFrameImage()
+        else:
+            self.zSliceScrollBar.triggerAction(
+                QAbstractSlider.SliderAction.SliderSingleStepSub
+            )
+    
     # @exec_time
     @exception_handler
     def updateAllImages(
@@ -21720,7 +21800,7 @@ class guiWin(QMainWindow):
         if t == self.annotateRightHowCombobox.currentText():
             self.annotateRightHowCombobox_cb(0)
         self.annotateRightHowCombobox.setCurrentText(t)
-    
+        
     def getOverlayItems(self, channelName):
         imageItem = pg.ImageItem()
         imageItem.setOpacity(0.5)

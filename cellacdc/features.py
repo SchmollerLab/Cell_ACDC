@@ -33,7 +33,7 @@ def filter_acdc_df_by_features_range(features_range, acdc_df):
         return acdc_df
     
     query = ' & '.join(queries)
-    
+
     return acdc_df.query(query)
 
 def _eval_equation_df(df, new_col_name, expression):
@@ -99,6 +99,7 @@ def get_acdc_df_features(
             autoBkgr_masks = measurements.get_autoBkgr_mask(
                 lab, isSegm3D, posData, frame_i
             )
+            
             autoBkgr_mask, autoBkgr_mask_proj = autoBkgr_masks
             dataPrepBkgrROI_mask = measurements.get_bkgrROI_mask(
                 posData, isSegm3D
@@ -117,9 +118,9 @@ def get_acdc_df_features(
             df = measurements.add_bkgr_values(
                 df, bkgr_data, bkgr_metrics_params[channel], metrics_func
             )
-
+            
             foregr_data = measurements.get_foregr_data(foregr_img, isSegm3D, z)
-
+            
             # Iterate objects and compute foreground metrics
             df = measurements.add_foregr_metrics(
                 df, rp, channel, foregr_data, foregr_metrics_params[channel], 
@@ -143,11 +144,40 @@ def get_acdc_df_features(
     
     return df
 
+def add_background_metrics_names(
+        grouped_features, channel, isSegm3D, isZstack, isManualBackgrPresent
+    ):
+    _, bkgr_val_desc = measurements.standard_metrics_desc(
+        isZstack, channel, isSegm3D=isSegm3D, 
+        isManualBackgrPresent=isManualBackgrPresent
+    )
+    backgr_metrics_names = list(bkgr_val_desc.keys())
+    backgr_metrics_names = [
+        name for name in backgr_metrics_names 
+        if (name.find('bkgrVal_median')!=-1 or name.find('bkgrVal_mean')!=-1)
+    ]
+    if 'standard' not in grouped_features:
+        grouped_features['standard'] = {channel: backgr_metrics_names}
+    else:
+        for backgr_metric_name in backgr_metrics_names:
+            if backgr_metric_name in grouped_features['standard'][channel]:
+                continue
+            grouped_features['standard'][channel].append(backgr_metric_name)
+    return grouped_features
+
 def custom_post_process_segm(
         posData, grouped_features, lab, img, frame_i, filename, channel,
         features_range, return_delIDs=False
     ):
+    isSegm3D = lab.ndim == 3
+    isZstack = posData.SizeZ > 1
     bkgrData = posData.bkgrData
+    isManualBackgrPresent = False
+    if posData.manualBackgroundLab is not None:
+        isManualBackgrPresent = True
+    grouped_features = add_background_metrics_names(
+        grouped_features, channel, isSegm3D, isZstack, isManualBackgrPresent
+    )
     df = get_acdc_df_features(
         posData, grouped_features, lab, img, frame_i, filename, channel, 
         bkgrData

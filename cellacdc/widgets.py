@@ -6653,6 +6653,8 @@ class Label(QLabel):
         if self._force_html:
             text = html_utils.paragraph(text)
         super().setText(text)
+        
+        
 class LabelItem(pg.LabelItem):    
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
