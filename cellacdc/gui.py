@@ -3625,7 +3625,8 @@ class guiWin(QMainWindow):
     def gui_createLabWidgets(self):
         bottomRightLayout = QVBoxLayout()
         self.rightBottomGroupbox = widgets.GroupBox(
-            'Annotate right image', keyPressCallback=self.resetFocus)
+            'Annotate right image', keyPressCallback=self.resetFocus
+        )
         self.rightBottomGroupbox.setCheckable(True)
         self.rightBottomGroupbox.setChecked(False)
         self.rightBottomGroupbox.hide()
@@ -3640,7 +3641,13 @@ class guiWin(QMainWindow):
 
         self.annotOptionsLayoutRight.addWidget(self.annotateRightHowCombobox)
 
+        self.rightImageFramesScrollbar = widgets.ScrollBarWithNumericControl(
+            labelText='Frame n. '
+        )
+        self.rightImageFramesScrollbar.setVisible(False)
+        
         bottomRightLayout.addWidget(self.annotOptionsWidgetRight)
+        bottomRightLayout.addWidget(self.rightImageFramesScrollbar)
         bottomRightLayout.addStretch(1)
 
         self.rightBottomGroupbox.setLayout(bottomRightLayout)
@@ -13859,10 +13866,15 @@ class guiWin(QMainWindow):
         # Mouse is on right image and next frame action is checked
         return True 
     
+    def rightImageFramesScrollbarValueChanged(self, value):
+        img = self.nextFrameImage(current_frame_i=value-2)
+        self.img1.linkedImageItem.setImage(img)
+    
     def nextActionTriggered(self):
         if self.isNavigateActionOnNextFrame():
-            printl(self.ax1_frame_i)
-            self.nextFrameImage(current_frame_i=self.ax1_frame_i)
+            self.rightImageFramesScrollbar.setValue(
+                self.rightImageFramesScrollbar.value()+1 
+            )
             return
         
         stepAddAction = QAbstractSlider.SliderAction.SliderSingleStepAdd
@@ -13873,7 +13885,9 @@ class guiWin(QMainWindow):
     
     def prevActionTriggered(self):
         if self.isNavigateActionOnNextFrame():
-            self.nextFrameImage(current_frame_i=self.ax1_frame_i-2)
+            self.rightImageFramesScrollbar.setValue(
+                self.rightImageFramesScrollbar.value()-1 
+            )
             return
         
         stepSubAction = QAbstractSlider.SliderAction.SliderSingleStepSub
@@ -14685,6 +14699,9 @@ class guiWin(QMainWindow):
         isNextFrameVisible = (
             self.df_settings.at['isNextFrameVisible', 'value'] == 'Yes'
         )
+        isNextFrameActive = (
+            isNextFrameVisible and self.labelsGrad.showNextFrameAction.isEnabled()
+        )
         self.updateScrollbars()
         self.openAction.setEnabled(True)
         self.editTextIDsColorAction.setDisabled(False)
@@ -14692,22 +14709,18 @@ class guiWin(QMainWindow):
         self.navigateToolBar.setVisible(True)
         self.labelsGrad.showLabelsImgAction.setChecked(isLabVisible)
         self.labelsGrad.showRightImgAction.setChecked(isRightImgVisible)
-        self.labelsGrad.showNextFrameAction.setChecked(isNextFrameVisible)
-        if isRightImgVisible or isNextFrameVisible:
+        self.labelsGrad.showNextFrameAction.setChecked(isNextFrameActive)
+        if isRightImgVisible or isNextFrameActive:
             self.rightBottomGroupbox.setChecked(True)
         
         isTwoImagesLayout = (
-            isRightImgVisible or isLabVisible
-            or (
-                isNextFrameVisible 
-                and self.labelsGrad.showNextFrameAction.isEnabled()
-            )
+            isRightImgVisible or isLabVisible or isNextFrameActive
         )
         self.setTwoImagesLayout(isTwoImagesLayout)
         
         self.setBottomLayoutStretch()
         
-        if isNextFrameVisible:
+        if isNextFrameActive:
             self.rightBottomGroupbox.show()
             self.rightBottomGroupbox.setChecked(True)
             self.drawNothingCheckboxRight.click()  
@@ -14726,7 +14739,7 @@ class guiWin(QMainWindow):
 
         self.update_rp()
         self.updateAllImages()
-        
+        self.rightImageFramesScrollbar.setValueNoSignal(posData.frame_i+2)
         self.setMetricsFunc()
 
         self.gui_createLabelRoiItem()
@@ -14954,6 +14967,8 @@ class guiWin(QMainWindow):
                 self.drawIDsContComboBox_cb
             )
             self.showTreeInfoCheckbox.hide()
+            self.rightImageFramesScrollbar.setVisible(False)
+            self.rightImageFramesScrollbar.setDisabled(True)
             if not self.isSegm3D:
                 self.manualBackgroundAction.setVisible(True)
                 self.manualBackgroundAction.setDisabled(False)
@@ -15121,6 +15136,8 @@ class guiWin(QMainWindow):
         else:
             self.navigateScrollBar.setMinimum(1)
             self.navigateScrollBar.setAbsoluteMaximum(posData.SizeT)
+            self.rightImageFramesScrollbar.setMinimum(1)
+            self.rightImageFramesScrollbar.setMaximum(posData.SizeT)
             if posData.last_tracked_i is not None:
                 self.navigateScrollBar.setMaximum(posData.last_tracked_i+1)
                 self.navSpinBox.setMaximum(posData.last_tracked_i+1)
@@ -15139,6 +15156,9 @@ class guiWin(QMainWindow):
             )
             self.navigateScrollBar.actionTriggered.connect(
                 self.framesScrollBarActionTriggered
+            )
+            self.rightImageFramesScrollbar.connectValueChanged(
+                self.rightImageFramesScrollbarValueChanged
             )
 
     def zSliceScrollBarActionTriggered(self, action):
@@ -18688,9 +18708,13 @@ class guiWin(QMainWindow):
                 pass
     
     def showNextFrameImageItem(self, checked):
+        self.rightImageFramesScrollbar.setVisible(checked)
+        self.rightImageFramesScrollbar.setDisabled(not checked)
         self.setTwoImagesLayout(checked)
         if checked:
             self.df_settings.at['isNextFrameVisible', 'value'] = 'Yes'
+            self.df_settings.at['isRightImageVisible', 'value'] = 'No'
+            self.df_settings.at['isLabelsVisible', 'value'] = 'No'
             self.graphLayout.addItem(
                 self.imgGradRight, row=1, col=self.plotsCol+2
             )
@@ -18717,9 +18741,13 @@ class guiWin(QMainWindow):
         
     
     def showRightImageItem(self, checked):
+        self.rightImageFramesScrollbar.setVisible(not checked)
+        self.rightImageFramesScrollbar.setDisabled(checked)
         self.setTwoImagesLayout(checked)
         if checked:
             self.df_settings.at['isRightImageVisible', 'value'] = 'Yes'
+            self.df_settings.at['isNextFrameVisible', 'value'] = 'No'
+            self.df_settings.at['isLabelsVisible', 'value'] = 'No'
             self.graphLayout.addItem(
                 self.imgGradRight, row=1, col=self.plotsCol+2
             )
@@ -18743,6 +18771,8 @@ class guiWin(QMainWindow):
         self.setBottomLayoutStretch()    
         
     def showLabelImageItem(self, checked):
+        self.rightImageFramesScrollbar.setVisible(not checked)
+        self.rightImageFramesScrollbar.setDisabled(checked)
         self.setTwoImagesLayout(checked)
         self.rightBottomGroupbox.hide()
         if checked:
@@ -19950,21 +19980,13 @@ class guiWin(QMainWindow):
         next_frame_i = current_frame_i + 1
         if next_frame_i >= len(posData.img_data):
             img = posData.img_data[-1]
-            self.ax1_frame_i = len(posData.img_data) - 1
         else:
             img = posData.img_data[next_frame_i]
-            self.ax1_frame_i = next_frame_i
         
         if posData.SizeZ > 1:
             img = self.get_2Dimg_from_3D(img, isLayer0=True)
         
         img = self.normalizeIntensities(img)
-        
-        numFrames = len(posData.img_data)
-        # self.currentFrameLabelItem.setText(
-        #     f'Frame n. {self.ax1_frame_i}/{numFrames}'
-        # )
-        # printl(self.currentFrameLabelItem.text)
         
         return img
         
@@ -20018,7 +20040,8 @@ class guiWin(QMainWindow):
         elif isAutoPilotActive:
             self.pointsLayerAutoPilot('prev')
         elif self.isNavigateActionOnNextFrame():
-            self.nextFrameImage()
+            posData = self.data[self.pos_i]
+            self.rightImageFramesScrollbar.setValue(posData.frame_i+2)
         else:
             self.zSliceScrollBar.triggerAction(
                 QAbstractSlider.SliderAction.SliderSingleStepSub

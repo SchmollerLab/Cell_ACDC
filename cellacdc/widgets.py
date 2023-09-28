@@ -6136,7 +6136,7 @@ class ScrollBarWithNumericControl(QWidget):
     
     def __init__(
             self, orientation=Qt.Horizontal, add_max_proj_button=False, 
-            parent=None
+            parent=None, labelText=''
         ) -> None:
         super().__init__(parent)
     
@@ -6144,20 +6144,29 @@ class ScrollBarWithNumericControl(QWidget):
         self.scrollbar = QScrollBar(orientation, self)
         self.spinbox = QSpinBox(self)
         self.maxLabel = QLabel(self)
+        idx = 0
+        if labelText:
+            layout.addWidget(QLabel(labelText))
+            layout.setStretch(idx, 0)
+            idx += 1
 
         layout.addWidget(self.spinbox)
+        layout.setStretch(idx,0)
+        idx += 1
+        
         layout.addWidget(self.maxLabel)
+        layout.setStretch(idx,0)
+        idx += 1
+        
         layout.addWidget(self.scrollbar)
-    
-        layout.setStretch(0,0)
-        layout.setStretch(1,0)
-        layout.setStretch(2,1)
+        layout.setStretch(idx,1)
+        idx += 1
         
         if add_max_proj_button:
             self.maxProjCheckbox = QCheckBox('MAX')
             self.scrollbar.maxProjCheckbox = self.maxProjCheckbox
             layout.addWidget(self.maxProjCheckbox)
-            layout.setStretch(3,0)
+            layout.setStretch(idx,0)
         
         layout.setContentsMargins(5, 0, 5, 0)
 
@@ -6167,6 +6176,15 @@ class ScrollBarWithNumericControl(QWidget):
         self.scrollbar.valueChanged.connect(self.scrollbarValueChanged)
         if add_max_proj_button:
             self.maxProjCheckbox.toggled.connect(self.maxProjToggled)
+    
+    def connectValueChanged(self, slot):
+        self.sigValueChanged.connect(slot)
+        self._slot = slot
+    
+    def setValueNoSignal(self, value):
+        self.sigValueChanged.disconnect()
+        self.setValue(value)
+        self.sigValueChanged.connect(self._slot)
     
     def maxProjToggled(self, checked):
         self.scrollbar.setDisabled(checked)
@@ -6181,6 +6199,10 @@ class ScrollBarWithNumericControl(QWidget):
         self.maxLabel.setText(f'/{maximum}')
         self.scrollbar.setMaximum(maximum)
         self.spinbox.setMaximum(maximum)
+    
+    def setMinimum(self, minumum):
+        self.scrollbar.setMinimum(minumum)
+        self.spinbox.setMinimum(minumum)
     
     def spinboxValueChanged(self, value):
         self.scrollbar.setValue(value)
