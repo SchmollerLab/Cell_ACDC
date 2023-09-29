@@ -2049,7 +2049,7 @@ class guiWin(QMainWindow):
             worker._enqueue(posData)
     
     def autoSaveWorkerDone(self):
-        self.setSaturBarLabel(log=False)
+        self.setStatusBarLabel(log=False)
     
     def autoSaveWorkerClosed(self, worker):
         if self.autoSaveActiveWorkers:
@@ -2133,7 +2133,7 @@ class guiWin(QMainWindow):
         modeToolBar = QToolBar("Mode", self)
         self.addToolBar(modeToolBar)
 
-        self.modeComboBox = QComboBox()
+        self.modeComboBox = widgets.ComboBox()
         self.modeComboBox.addItems(self.modeItems)
         self.modeComboBoxLabel = QLabel('    Mode: ')
         self.modeComboBoxLabel.setBuddy(self.modeComboBox)
@@ -3125,7 +3125,7 @@ class guiWin(QMainWindow):
         self.editIDcheckbox.toggled.connect(self.autoIDtoggled)
         # Mode
         self.modeActionGroup.triggered.connect(self.changeModeFromMenu)
-        self.modeComboBox.currentIndexChanged.connect(self.changeMode)
+        self.modeComboBox.sigTextChanged.connect(self.changeMode)
         self.modeComboBox.activated.connect(self.clearComboBoxFocus)
         self.equalizeHistPushButton.toggled.connect(self.equalizeHist)
         
@@ -3576,13 +3576,17 @@ class guiWin(QMainWindow):
         bottomLeftLayout.addLayout(
             navWidgetsLayout, row, 0, alignment=Qt.AlignRight
         )
-        bottomLeftLayout.addWidget(self.navigateScrollBar, row, 1, 1, 2)
+        bottomLeftLayout.addWidget(self.navigateScrollBar, row, 1, 1, 2)        
         sp = self.navigateScrollBar.sizePolicy()
         sp.setRetainSizeWhenHidden(True)
         self.navigateScrollBar.setSizePolicy(sp)
         self.navSpinBox.connectValueChanged(self.navigateSpinboxValueChanged)
         self.navSpinBox.editingFinished.connect(self.navigateSpinboxEditingFinished)
 
+        self.lastTrackedFrameLabel = QLabel()
+        self.lastTrackedFrameLabel.setFont(_font)
+        bottomLeftLayout.addWidget(self.lastTrackedFrameLabel, row, 3)
+        
         row += 1
         zSliceCheckboxLayout = QHBoxLayout()
         self.zSliceCheckbox = QCheckBox('z-slice')
@@ -10614,17 +10618,32 @@ class guiWin(QMainWindow):
     def changeModeFromMenu(self, action):
         self.modeComboBox.setCurrentText(action.text())
 
-    def changeMode(self, idx):
+    def restorePrevAnnotOptions(self):
+        if self.prevAnnotOptions is None:
+            return
+        self.restoreAnnotOptions_ax1(options=self.prevAnnotOptions)
+        self.setDrawAnnotComboboxText()
+        self.prevAnnotOptions = None
+    
+    def changeMode(self, text):
         self.reconnectUndoRedo()
         self.updateModeMenuAction()
         posData = self.data[self.pos_i]
-        mode = self.modeComboBox.itemText(idx)
+        mode = text
+        prevMode = self.modeComboBox.previousText()
+        if prevMode == 'Segmentation and Tracking':
+            posData.last_tracked_i = self.get_last_tracked_i()
+            if posData.last_tracked_i > 0:
+                self.lastTrackedFrameLabel.setText(
+                    f'Tracked until frame n. {posData.last_tracked_i}'
+                )
         self.annotateToolbar.setVisible(False)
         self.store_data(autosave=False)
         self.copyContourButton.setChecked(False)
         if mode == 'Segmentation and Tracking':
             self.trackingMenu.setDisabled(False)
             self.modeToolBar.setVisible(True)
+            self.lastTrackedFrameLabel.setText('')
             self.initSegmTrackMode()
             self.setEnabledEditToolbarButton(enabled=True)
             self.addExistingDelROIs()
@@ -10634,6 +10653,7 @@ class guiWin(QMainWindow):
             self.realTimeTrackingToggle.label.setDisabled(False)
             if posData.cca_df is not None:
                 self.store_cca_df()
+            self.restorePrevAnnotOptions()
         elif mode == 'Cell cycle analysis':
             proceed = self.initCca()
             if proceed:
@@ -10647,10 +10667,7 @@ class guiWin(QMainWindow):
                     self.editToolBar.setVisible(True)
                 self.setEnabledCcaToolbar(enabled=True)
                 self.removeAlldelROIsCurrentFrame()
-                self.annotCcaInfoCheckbox.setChecked(True)
-                self.annotIDsCheckbox.setChecked(False)
-                self.drawMothBudLinesCheckbox.setChecked(False)
-                self.setDrawAnnotComboboxText()
+                self.setAnnotOptionsCcaMode()
                 self.clearGhost()
         elif mode == 'Viewer':
             self.modeToolBar.setVisible(True)
@@ -11507,7 +11524,7 @@ class guiWin(QMainWindow):
             self.resetCursors()
             self.updateAllImages()
     
-    def storeCurrentAnnotOptions_ax1(self):
+    def storeCurrentAnnotOptions_ax1(self, return_value=False):
         checkboxes = [
             'annotIDsCheckbox',
             'annotCcaInfoCheckbox',
@@ -11517,11 +11534,14 @@ class guiWin(QMainWindow):
             'annotNumZslicesCheckbox',
             'drawNothingCheckbox',
         ]
-        self.annotOptions = {}
+        annotOptions = {}
         for checkboxName in checkboxes:
             checkbox = getattr(self, checkboxName)
-            self.annotOptions[checkboxName] = checkbox.isChecked()
-
+            annotOptions[checkboxName] = checkbox.isChecked()
+        if return_value:
+            return annotOptions
+        self.annotOptions = annotOptions
+        
     def storeCurrentAnnotOptions_ax2(self):
         checkboxes = [
             'annotIDsCheckboxRight',
@@ -11537,11 +11557,14 @@ class guiWin(QMainWindow):
             checkbox = getattr(self, checkboxName)
             self.annotOptionsRight[checkboxName] = checkbox.isChecked()
     
-    def restoreAnnotOptions_ax1(self):
-        if not hasattr(self, 'annotOptions'):
+    def restoreAnnotOptions_ax1(self, options=None):
+        if options is None and not hasattr(self, 'annotOptions'):
             return
 
-        for option, state in self.annotOptions.items():
+        if options is None:
+            options = self.annotOptions
+            
+        for option, state in options.items():
             checkbox = getattr(self, option)
             checkbox.setChecked(state)
         
@@ -14056,7 +14079,7 @@ class guiWin(QMainWindow):
         self.drawManualBackgroundObj(self.xHoverImg, self.yHoverImg)
     
     def updatePos(self):
-        self.setSaturBarLabel()
+        self.setStatusBarLabel()
         self.checkManageVersions()
         self.removeAlldelROIsCurrentFrame()
         self.resetManualBackgroundItems()
@@ -14732,7 +14755,7 @@ class guiWin(QMainWindow):
 
         self.readSavedCustomAnnot()
         self.addCustomAnnotButtonAllLoadedPos()
-        self.setSaturBarLabel()
+        self.setStatusBarLabel()
 
         self.initLookupTableLab()
         if self.invertBwAction.isChecked() and not self.invertBwAlreadyCalledOnce:
@@ -14911,7 +14934,7 @@ class guiWin(QMainWindow):
         if how.find('nothing') != -1:
             self.drawNothingCheckboxRight.setChecked(True)
 
-    def setSaturBarLabel(self, log=True):
+    def setStatusBarLabel(self, log=True):
         self.statusbar.clearMessage()
         posData = self.data[self.pos_i]
         segmentedChannelname = posData.filename[len(posData.basename):]
@@ -14923,6 +14946,7 @@ class guiWin(QMainWindow):
             f'Segmented channel: {segmentedChannelname} || '
             f'Segmentation file name: {segmEndName}'
         )
+        mode = str(self.modeComboBox.currentText())
         if log:
             self.logger.info(txt)
         self.statusBarLabel.setText(txt)
@@ -14991,7 +15015,7 @@ class guiWin(QMainWindow):
             self.skipToNewIdAction.setDisabled(False)
             try:
                 self.modeComboBox.activated.disconnect()
-                self.modeComboBox.currentIndexChanged.disconnect()
+                self.modeComboBox.sigTextChanged.disconnect()
                 self.drawIDsContComboBox.currentIndexChanged.disconnect()
             except Exception as e:
                 pass
@@ -15000,7 +15024,7 @@ class guiWin(QMainWindow):
             self.modeComboBox.addItems(self.modeItems)
             self.drawIDsContComboBox.clear()
             self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxSegmItems)
-            self.modeComboBox.currentIndexChanged.connect(self.changeMode)
+            self.modeComboBox.sigTextChanged.connect(self.changeMode)
             self.modeComboBox.activated.connect(self.clearComboBoxFocus)
             self.drawIDsContComboBox.currentIndexChanged.connect(
                                                     self.drawIDsContComboBox_cb)
@@ -15413,6 +15437,7 @@ class guiWin(QMainWindow):
         self.isCtrlDown = False
         self.typingEditID = False
         self.isShiftDown = False
+        self.prevAnnotOptions = None
         self.ghostObject = None
         self.autoContourHoverON = False
         self.navigateScrollBarStartedMoving = True
@@ -15692,7 +15717,7 @@ class guiWin(QMainWindow):
         self.updateFramePosLabel()
         proceed_cca, never_visited = self.get_data()
         self.updateAllImages()
-        self.setSaturBarLabel()
+        self.setStatusBarLabel()
 
     def PosScrollBarReleased(self):
         self.pos_i = self.navigateScrollBar.sliderPosition()-1
@@ -21767,6 +21792,15 @@ class guiWin(QMainWindow):
 
         self.setDrawAnnotComboboxTextRight()
 
+    def setAnnotOptionsCcaMode(self):
+        self.prevAnnotOptions = self.storeCurrentAnnotOptions_ax1(
+            return_value=True
+        )
+        self.annotCcaInfoCheckbox.setChecked(True)
+        self.annotIDsCheckbox.setChecked(False)
+        self.drawMothBudLinesCheckbox.setChecked(False)
+        self.setDrawAnnotComboboxText()
+    
     def setDrawAnnotComboboxText(self):
         if self.annotIDsCheckbox.isChecked():
             if self.annotContourCheckbox.isChecked():
@@ -22516,7 +22550,7 @@ class guiWin(QMainWindow):
         for posData in self.data:
             posData.setFilePaths(new_endname=win.entryText)
 
-        self.setSaturBarLabel()
+        self.setStatusBarLabel()
         self.saveData()
 
 
@@ -22599,7 +22633,7 @@ class guiWin(QMainWindow):
         if worker.isFinished or worker.isPaused or len(worker.dataQ) == 0:
             self.waitAutoSaveWorkerLoop.exit()
             self.waitAutoSaveWorkerTimer.stop()
-            self.setSaturBarLabel(log=False)
+            self.setStatusBarLabel(log=False)
         
     @exception_handler
     def saveData(self, checked=False, finishedCallback=None, isQuickSave=False):

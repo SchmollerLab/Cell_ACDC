@@ -5740,7 +5740,7 @@ class labImageItem(pg.ImageItem):
     def __init__(self, *args, **kwargs):
         pg.ImageItem.__init__(self, *args, **kwargs)
 
-    def setImage(self, img=None, z=None, scrollbar_value=None, **kargs):
+    def setImage(self, img=None, z=None, **kargs):
         autoLevels = kargs.get('autoLevels')
         if autoLevels is None:
             kargs['autoLevels'] = False
@@ -6922,3 +6922,43 @@ class ScaleBar(QGraphicsObject):
     def removeFromAxis(self, ax):
         ax.removeItem(self.labelItem)
         ax.removeItem(self.plotItem)
+
+class ComboBox(QComboBox):
+    sigTextChanged = Signal(str)
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._previousText = None
+        self._valueChanged = False
+        self.currentTextChanged.connect(self.emitTextChanged)
+    
+    def emitTextChanged(self, text):
+        self._valueChanged = True
+        self.sigTextChanged.emit(text)
+    
+    def mousePressEvent(self, event):
+        self._previousText = self.currentText()
+        super().mousePressEvent(event)
+    
+    def previousText(self):
+        return self._previousText
+
+    def addItems(self, items):
+        super().addItems(items)
+        self._previousText = items[0]
+    
+    def itemsText(self):
+        return [self.itemText(i) for i in range(self.count())]
+    
+    def setCurrentIndex(self, idx):
+        itemsText = self.itemsText()
+        currentText = itemsText[idx]
+        self._valueChanged = currentText != self._previousText
+        self._previousText = self.currentText()
+        super().setCurrentIndex(idx)
+    
+    def setCurrentText(self, text):
+        currentText = text
+        self._valueChanged = currentText != self._previousText
+        self._previousText = self.currentText()
+        super().setCurrentText(text)
