@@ -3882,7 +3882,9 @@ class guiWin(QMainWindow):
         self.emptyLab = np.zeros((2,2), dtype=np.uint8)
 
         # Right image item linked to left
-        self.rightImageItem = pg.ImageItem()
+        self.rightImageItem = widgets.ChildImageItem(
+            linkedScrollbar=self.rightImageFramesScrollbar
+        )
         self.imgGradRight.setImageItem(self.rightImageItem)   
         self.ax2.addItem(self.rightImageItem)
         
@@ -9964,7 +9966,10 @@ class guiWin(QMainWindow):
             return img
         
         if channelName == self.user_ch_name:
-            self.img1.setImage(img, next_frame_image=self.nextFrameImage())
+            self.img1.setImage(
+                img, next_frame_image=self.nextFrameImage(),
+                scrollbar_value=posData.frame_i+2
+            )
         else:
             imageItem = self.overlayLayersItems[channelName][0]
             imageItem.setImage(img)
@@ -15180,7 +15185,10 @@ class guiWin(QMainWindow):
             posData.segmInfo_df.at[idx, 'z_slice_used_gui'] = z
             self.zSliceSpinbox.setValueNoEmit(z+1)
             img = self.getImage()
-            self.img1.setImage(img, next_frame_image=self.nextFrameImage())
+            self.img1.setImage(
+                img, next_frame_image=self.nextFrameImage(),
+                scrollbar_value=posData.frame_i+2
+            )
             self.setOverlayImages()
             if self.labelsGrad.showLabelsImgAction.isChecked():
                 self.img2.setImage(posData.lab, z=z, autoLevels=False)
@@ -15717,7 +15725,10 @@ class guiWin(QMainWindow):
             posData.lab = posData.allData_li[posData.frame_i]['labels']
 
         img = self.getImage()
-        self.img1.setImage(img, next_frame_image=self.nextFrameImage())
+        self.img1.setImage(
+            img, next_frame_image=self.nextFrameImage(),
+            scrollbar_value=posData.frame_i+2
+        )
         if self.overlayButton.isChecked():
             self.setOverlayImages()
 
@@ -19693,7 +19704,10 @@ class guiWin(QMainWindow):
         img = self._getImageupdateAllImages(image, updateFilters)
         if self.equalizeHistPushButton.isChecked():
             img = skimage.exposure.equalize_adapthist(img)
-        self.img1.setImage(img, next_frame_image=self.nextFrameImage())
+        self.img1.setImage(
+            img, next_frame_image=self.nextFrameImage(),
+            scrollbar_value=self.navigateScrollBar.value()+2
+        )
     
     def getContoursImageItem(self, ax):
         if not self.areContoursRequested(ax):

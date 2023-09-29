@@ -5674,7 +5674,8 @@ class ParentImageItem(pg.ImageItem):
         return super().setLevels(levels, **kargs)
     
     def setImage(
-            self, image=None, autoLevels=None, next_frame_image=None, **kargs
+            self, image=None, autoLevels=None, next_frame_image=None, 
+            scrollbar_value=None, **kargs
         ):
         super().setImage(image, autoLevels, **kargs)
         if not self.isLinkedImageItemActive():
@@ -5682,7 +5683,9 @@ class ParentImageItem(pg.ImageItem):
         
         if next_frame_image is not None:
             self.linkedImageItem.setImage(
-                next_frame_image, autoLevels=autoLevels
+                next_frame_image, 
+                scrollbar_value=scrollbar_value, 
+                autoLevels=autoLevels
             )
         elif image is not None:
             self.linkedImageItem.setImage(image, autoLevels=autoLevels)
@@ -5703,11 +5706,12 @@ class ParentImageItem(pg.ImageItem):
         if self.linkedImageItem is not None:
             self.linkedImageItem.setLookupTable(lut)
 
-class labImageItem(pg.ImageItem):
-    def __init__(self, *args, **kwargs):
+class ChildImageItem(pg.ImageItem):
+    def __init__(self, *args, linkedScrollbar=None, **kwargs):
         pg.ImageItem.__init__(self, *args, **kwargs)
-
-    def setImage(self, img=None, z=None, **kargs):
+        self.linkedScrollbar = linkedScrollbar
+    
+    def setImage(self, img=None, z=None, scrollbar_value=None, **kargs):
         autoLevels = kargs.get('autoLevels')
         if autoLevels is None:
             kargs['autoLevels'] = False
@@ -5720,6 +5724,37 @@ class labImageItem(pg.ImageItem):
             pg.ImageItem.setImage(self, img[z], **kargs)
         else:
             pg.ImageItem.setImage(self, img, **kargs)
+        
+        if self.linkedScrollbar is None:
+            return
+        
+        if not self.linkedScrollbar.isEnabled():
+            return
+        
+        if scrollbar_value is None:
+            return
+        
+        self.linkedScrollbar.setValueNoSignal(scrollbar_value)
+
+class labImageItem(pg.ImageItem):
+    def __init__(self, *args, **kwargs):
+        pg.ImageItem.__init__(self, *args, **kwargs)
+
+    def setImage(self, img=None, z=None, scrollbar_value=None, **kargs):
+        autoLevels = kargs.get('autoLevels')
+        if autoLevels is None:
+            kargs['autoLevels'] = False
+
+        if img is None:
+            pg.ImageItem.setImage(self, img, **kargs)
+            return
+
+        if img.ndim == 3 and img.shape[-1] > 4 and z is not None:
+            pg.ImageItem.setImage(self, img[z], **kargs)
+        else:
+            pg.ImageItem.setImage(self, img, **kargs)
+        
+            
 
 class PostProcessSegmSlider(sliderWithSpinBox):
     def __init__(self, *args, label=None, **kwargs):
