@@ -10635,7 +10635,7 @@ class guiWin(QMainWindow):
             posData.last_tracked_i = self.get_last_tracked_i()
             if posData.last_tracked_i > 0:
                 self.lastTrackedFrameLabel.setText(
-                    f'Tracked until frame n. {posData.last_tracked_i}'
+                    f'Tracked until frame n. {posData.last_tracked_i+1}'
                 )
         self.annotateToolbar.setVisible(False)
         self.store_data(autosave=False)
