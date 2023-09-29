@@ -9486,6 +9486,7 @@ class guiWin(QMainWindow):
         
         for ID1, ID2 in pairs:
             posData.cca_df.at[ID1, 'relative_ID'] = ID2
+            posData.cca_df.at[ID1, 'corrected_assignment'] = True
         self.store_cca_df()
         
         self.updateAllImages()
@@ -9508,6 +9509,7 @@ class guiWin(QMainWindow):
                     if ccs != 'S':
                         continue
                     cca_df_i.at[ID1, 'relative_ID'] = ID2
+                    cca_df_i.at[ID1, 'corrected_assignment'] = True
                 except KeyError:
                     pass
             
@@ -16190,7 +16192,7 @@ class guiWin(QMainWindow):
                             lastVisited = True
                 else:
                     lastVisited = True
-
+        
         # Use stored cca_df and do not modify it with automatic stuff
         if posData.cca_df is not None and not enforceAll and not lastVisited:
             return notEnoughG1Cells, proceed
@@ -16200,7 +16202,8 @@ class guiWin(QMainWindow):
         # IDs where we didn't manually correct assignment
         if lastVisited and not enforceAll:
             try:
-                correctedAssignIDs = curr_df[curr_df['corrected_assignment']].index
+                correctedAssignIDs = curr_df[
+                    curr_df['corrected_assignment']].index
             except Exception as e:
                 correctedAssignIDs = []
             posData.new_IDs = [
