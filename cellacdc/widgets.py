@@ -5837,8 +5837,8 @@ class GhostContourItem(pg.PlotDataItem):
             self.label.setText('')
         else:
             self.label.setText(f'{ID}', size=fontSize)
-            w, h = self.label.rect().right(), self.label.rect().bottom()
-            self.label.setPos(x_cursor-w/2, y_cursor-h/2)
+            w, h = self.label.itemRect().width(), self.label.itemRect().height()
+            self.label.item.setPos(x_cursor, y_cursor-h)
     
     def clear(self):
         self.setData([], [])
@@ -5877,8 +5877,8 @@ class GhostMaskItem(pg.ImageItem):
             return
         
         self.label.setText(f'{ID}', size=fontSize)
-        w, h = self.label.rect().right(), self.label.rect().bottom()
-        self.label.setPos(x_cursor-w/2, y_cursor-h/2)
+        w, h = self.label.itemRect().width(), self.label.itemRect().height()
+        self.label.item.setPos(x_cursor, y_cursor-h)
     
     def clear(self):
         if hasattr(self, 'label'):
@@ -6174,6 +6174,8 @@ class ScrollBarWithNumericControl(QWidget):
             parent=None, labelText=''
         ) -> None:
         super().__init__(parent)
+        
+        self._slot = None
     
         layout = QHBoxLayout()
         self.scrollbar = QScrollBar(orientation, self)
@@ -6217,6 +6219,8 @@ class ScrollBarWithNumericControl(QWidget):
         self._slot = slot
     
     def setValueNoSignal(self, value):
+        if self._slot is None:
+            return
         self.sigValueChanged.disconnect()
         self.setValue(value)
         self.sigValueChanged.connect(self._slot)

@@ -12663,7 +12663,10 @@ class guiWin(QMainWindow):
         if checked:
             posData = self.data[self.pos_i]
             minID = min(posData.IDs, default=0)
-            self.manualBackgroundToolbar.spinboxID.setValue(minID)
+            if minID == self.manualBackgroundToolbar.spinboxID.value():
+                self.initManualBackgroundObject()
+            else:
+                self.manualBackgroundToolbar.spinboxID.setValue(minID)
             # self.initManualBackgroundObject()
             # self.initManualBackgroundImage()
             self.addManualBackgroundItems()
@@ -14667,6 +14670,7 @@ class guiWin(QMainWindow):
         else:
             self.manageVersionsAction.setDisabled(True)
 
+    @exception_handler
     def loadingDataCompleted(self):
         self.isDataLoading = True
         posData = self.data[self.pos_i]
@@ -14769,7 +14773,8 @@ class guiWin(QMainWindow):
 
         self.update_rp()
         self.updateAllImages()
-        self.rightImageFramesScrollbar.setValueNoSignal(posData.frame_i+2)
+        if posData.SizeT > 1:
+            self.rightImageFramesScrollbar.setValueNoSignal(posData.frame_i+2)
         self.setMetricsFunc()
 
         self.gui_createLabelRoiItem()
