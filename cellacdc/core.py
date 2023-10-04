@@ -96,17 +96,27 @@ def np_replace_values(arr, old_values, new_values):
     arr = replacer[arr - n_min]
     return arr
 
-def nearest_nonzero_2D(a, y, x, max_dist=None):
+def nearest_nonzero_2D(a, y, x, max_dist=None, return_coords=False):
     value = a[round(y), round(x)]
     if value > 0:
-        return value
+        if return_coords:
+            return value, round(y), round(x)
+        else:
+            return value
     r, c = np.nonzero(a)
     dist = ((r - y)**2 + (c - x)**2)
     if max_dist is not None:
         if dist.min() > max_dist:
-            return 0
+            if return_coords:
+                return 0, 0, 0
+            else:
+                return 0
     min_idx = dist.argmin()
-    return a[r[min_idx], c[min_idx]]
+    y_nearest, x_nearest = r[min_idx], c[min_idx]
+    if return_coords:
+        return a[y_nearest, x_nearest], y_nearest, x_nearest
+    else:
+        return a[y_nearest, x_nearest]
 
 def nearest_nonzero_1D(arr, x, return_index=False):
     if arr[x] > 0:
@@ -1452,6 +1462,18 @@ class LineageTree:
 
         return self.acdc_df
     
+    def _err_msg_add_sister_ID(self, relative_ID, frame_i, df):
+        ID = df.index.get_level_values(1)[0]
+        txt = (
+            f'There is a problem with Cell ID {relative_ID} '
+            f'at frame n. {frame_i+1}. '
+            'Make sure that annotations are correct before trying again.\n\n'
+            'More info: error happened when trying to set the `sister_ID` of '
+            f'cell ID {ID} to {relative_ID}. It might be that ID {relative_ID} '
+            f'is not in G1 at frame n. {frame_i+1}'
+        )
+        return txt
+    
     def _add_sister_ID(self):
         grouped_ID_tree = self.df_G1.groupby('Cell_ID_tree')
         for Cell_ID_tree, df in grouped_ID_tree:
@@ -1465,10 +1487,7 @@ class LineageTree:
                 ]
             except KeyError as error:
                 raise KeyError(
-                    f'There is a problem with Cell ID {relative_ID} '
-                    f'at frame n. {start_frame_i+1}. '
-                    'Make sure that annotations are correct '
-                    'before trying again.'
+                    self._err_msg_add_sister_ID(relative_ID, start_frame_i, df)
                 ) from error
                 
             self.df_G1.loc[df.index, 'sister_ID_tree'] = sister_ID_tree
