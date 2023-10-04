@@ -19827,6 +19827,7 @@ class guiWin(QMainWindow):
             text=str(ID), color='r', anchor=(0.5, 0.5)
         )
         textItem.setFont(font_13px)
+        textItem.setPos(x, y)
         self.manualBackgroundTextItems[ID] = textItem
         
         self.ax1.addItem(textItem)
