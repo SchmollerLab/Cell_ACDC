@@ -9,59 +9,51 @@ Installation using Anaconda (recommended)
 -----------------------------------------
 
 1. Install `Anaconda <https://www.anaconda.com/download>`__ or `Miniconda <https://docs.conda.io/projects/miniconda/en/latest/index.html#quick-command-line-install>`__ (make sure to use the 64-bit version for Windows)
-    Anaconda is a distribution of Python, which helps with package management and simplifies many aspects of using Python. Python is a programming language and needs an interpreter to function. Miniconda is a lightweight implementation of Anaconda.
-2. Open the terminal (for Windows use the anaconda terminal)
-    A terminal is a text-based way to communicate with the computer. The anaconda terminal is a terminal specifically for anaconda, with some commands specific to anaconda only available there.
-3. Update conda by typing ``conda update conda``
-    This will update all programmes (or packages) that are part of conda
-4. Create a virtual environment by typing ``conda create -n acdc python=3.9``
-    This will create a virtual environment, which is an isolated instance and partially independent from the rest of the system. The virtual environment is called ``acdc`` in this case.
-5. Activate the virtual environment by typing ``conda activate acdc``
+    Anaconda is a **distribution of Python**, which helps with **package management** and simplifies many aspects of using Python. Python is a programming language and needs an interpreter to function. Miniconda is a lightweight implementation of Anaconda.
+2. Open the **terminal** (for Windows use the anaconda terminal)
+    A terminal is a **text-based way to communicate with the computer**. The anaconda terminal is a terminal specifically for anaconda, with some commands specific to anaconda only available there.
+3. **Update conda** by typing ``conda update conda``
+    This will update all programmes (or packages) that are part of conda.
+4. Create a **virtual environment** by typing ``conda create -n acdc python=3.9``
+    This will create a virtual environment, which is an **isolated instance** and partially independent from the rest of the system. The virtual environment is called ``acdc`` in this case.
+5. **Activate the virtual environment** by typing ``conda activate acdc``
     This will activate the environment, meaning that the console is now not in the default system environment, but the ``acdc`` environment. If the activation of the environment was successful, this should be indicated to the left of the active path, circled in red below.
 
-.. image:: https://github.com/Teranis/Cell_ACDC/blob/main/docs/source/images/Cmdprompt.png?raw=true
-    :target: https://github.com/Teranis/Cell_ACDC/blob/main/docs/source/images/Cmdprompt.png
+.. image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/docs/source/images/Cmdprompt.png?raw=true
+    :target: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/docs/source/images/Cmdprompt.png
     :alt: The active environment is displayed to the left of the currently active path
     :width: 600
 
-6. Update pip using ``python -m pip install --upgrade pip``
+6. **Update pip** using ``python -m pip install --upgrade pip``
     Pip is an application which is included in Python. It manages programmes and updates it. In this case, we tell pip to update itself.
-7. Install Cell-ACDC using ``pip install "cellacdc[gui]"``
-    This tells pip to install Cell-ACDC, specifically the version with a user interface.
+7. **Install Cell-ACDC** using ``pip install "cellacdc[gui]"``
+    This tells pip to install Cell-ACDC, specifically the version with an user interface.
 
 Advanced install methods
 ------------------------
 
-The following part of the guide is not finished yet and is intended for users who are interested in changing Cell-ACDC's code, thus not really needing the guide.
+The following part of the guide is intended for users who are interested in changing Cell-ACDC's code.
 
 IMPORTANT: Before installing with other methods
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-If you are **new to Python** or you need a **refresher** on how to
-manage scientific Python environments, I highly recommend reading `this
-guide <https://focalplane.biologists.com/2022/12/08/managing-scientific-python-environments-using-conda-mamba-and-friends/>`__
-by Dr. Robert Haase BEFORE proceeding with Cell-ACDC installation.
+If you are **new to Python** or you need a **refresher** on how to manage scientific Python environments, I highly recommend reading `this guide <https://focalplane.biologists.com/2022/12/08/managing-scientific-python-environments-using-conda-mamba-and-friends/>`__ by Dr. Robert Haase BEFORE proceeding with Cell-ACDC installation.
 
 Installation using Pip
 ~~~~~~~~~~~~~~~~~~~~~~
 **Windows**
 
-1. Download and install `Python 3.9 <https://www.python.org/downloads/>`__
-2. Open a terminal. On Windows we recommend using the PowerShell that
-   you can install from
-   `here <https://docs.microsoft.com/it-it/powershell/scripting/install/installing-powershell-on-windows?view=powershell-7.2#installing-the-msi-package>`__.
-   On macOS use the Terminal app.
-3. Upgrade pip: Windows: ``py -m pip install --updgrade pip``,
-   macOS/Unix: ``python3 -m pip install --updgrade pip``
+1. Download and install `Python 3.9 <https://www.python.org/downloads/>`__. Make sure to check the checkbox so python is added to PATH, as seen in the picture below. This is so you can access python commands from anywhere.
+
+.. figure:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/docs/source/images/Install1.png?raw=true
+    :target: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/docs/source/images/Install1.png
+    :alt: Python window with PATH checkbox
+
+2. Open a terminal. On Windows we recommend using the PowerShell that you can install from `here <https://docs.microsoft.com/it-it/powershell/scripting/install/installing-powershell-on-windows?view=powershell-7.2#installing-the-msi-package>`__. On macOS use the Terminal app.
+3. Upgrade pip: Windows: ``py -m pip install --updgrade pip``, macOS/Unix: ``python3 -m pip install --updgrade pip``
 4. Navigate to a folder where you want to create the virtual environment
-5. Create a virtual environment: Windows: ``py -m venv acdc``,
-   macOS/Unix ``python3 -m venv acdc``
-6. Activate the environment: Windows: ``.\acdc\Scripts\activate``,
-   macOS/Unix: ``source acdc/bin/activate``
-7. Install Cell-ACDC with the command ``pip install "cellacdc[gui]"``.
-   Note that if you know you are going to **need tensorflow** (for
-   segmentation models like YeaZ) you can run the command
-   ``pip install "cellacdc[all]"``, or ``pip install tensorflow`` before
-   or after installing Cell-ACDC.
+5. Create a virtual environment: Windows: ``py -m venv acdc``, macOS/Unix ``python3 -m venv acdc``
+6. Activate the environment: Windows: ``.\acdc\Scripts\activate``, macOS/Unix: ``source acdc/bin/activate``
+7. Install Cell-ACDC with the command ``pip install "cellacdc[gui]"``. Note that if you know you are going to **need tensorflow** (for segmentation models like YeaZ) you can run the command ``pip install "cellacdc[all]"``, or ``pip install tensorflow`` before or after installing Cell-ACDC.
 
 Install from source
 ~~~~~~~~~~~~~~~~~~~
@@ -70,8 +62,7 @@ If you want to try out experimental features (and, if you have time,
 maybe report a bug or two :D), you can install the developer version
 from source as follows:
 
-1.  Install `Anaconda <https://www.anaconda.com/products/individual>`__
-    or `Miniconda <https://docs.conda.io/en/latest/miniconda.html>`__.
+1.  Install `Anaconda <https://www.anaconda.com/products/individual>`__ or `Miniconda <https://docs.conda.io/en/latest/miniconda.html>`__.
 2.  Open a terminal and navigate to a folder where you want to download
     Cell-ACDC. If you are on Windows you need to use the “Anaconda
     Prompt” as a terminal. You should find it by searching for “Anaconda

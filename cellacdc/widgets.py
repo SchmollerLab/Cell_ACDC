@@ -3031,6 +3031,9 @@ class ShortcutLineEdit(QLineEdit):
         if event.key() == Qt.Key_Backspace or event.key() == Qt.Key_Delete:
             self.setText('')
             return
+        
+        modifers_value = event.modifiers().value if PYQT6 else event.modifiers()
+        keySequence = QKeySequence(modifers_value | event.key()).toString()
 
         modifers_value = event.modifiers().value if PYQT6 else event.modifiers()
         keySequence = QKeySequence(modifers_value | event.key()).toString()

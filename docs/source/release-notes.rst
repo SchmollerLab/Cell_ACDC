@@ -3,6 +3,8 @@ Versions
 
 **This should not be considered a complete list of versions**
 
+.. contents::
+
 Update v1.2.4
 -------------
 

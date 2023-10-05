@@ -904,7 +904,19 @@ class guiWin(QMainWindow):
     
     def _print(self, *objects):
         self.logger.info(', '.join([str(x) for x in objects]))
-            
+
+    def setTooltips(self): #laoding tooltips for GUI from .\Cell_ACDC\docs\source\tooltips.rst
+        tooltips = load.get_tooltips_from_docs()
+
+        for key, tooltip in tooltips.items():
+            setShortcut = getattr(self, key).shortcut().toString()
+            if setShortcut != "":
+                tooltip = re.sub(r'Shortcut: \"(.*)\"', f"Shortcut: \"{setShortcut}\"", tooltip)
+            else:
+                tooltip = re.sub(r'Shortcut: \"(.*)\"', f"Shortcut: \"No shortcut\"", tooltip)
+
+            getattr(self, key).setToolTip(tooltip)
+
     def run(self, module='acdc_gui', logs_path=None):
         global print, printl
         
@@ -983,6 +995,9 @@ class guiWin(QMainWindow):
         self.gui_createCursors()
         self.gui_createActions()
         self.gui_createMenuBar()
+
+        
+
         self.gui_createToolBars()
         self.gui_createControlsToolbar()
         self.gui_createShowPropsButton()
@@ -1018,7 +1033,7 @@ class guiWin(QMainWindow):
         self.initShortcuts()
         self.show()
         # self.installEventFilter(self)
-
+        
         self.logger.info('GUI ready.')
     
     def initProfileModels(self):
@@ -1389,7 +1404,6 @@ class guiWin(QMainWindow):
         self.slideshowButton.setIcon(QIcon(":eye-plus.svg"))
         self.slideshowButton.setCheckable(True)
         self.slideshowButton.setShortcut('Ctrl+W')
-        self.slideshowButton.setToolTip('Open slideshow (Ctrl+W)')
         navigateToolBar.addWidget(self.slideshowButton)
         
         # navigateToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
@@ -1398,34 +1412,18 @@ class guiWin(QMainWindow):
         self.overlayButton = widgets.rightClickToolButton(parent=self)
         self.overlayButton.setIcon(QIcon(":overlay.svg"))
         self.overlayButton.setCheckable(True)
-        self.overlayButton.setToolTip(
-            'Overlay channels\' images.\n\n'
-            'Right-click on the button to overlay additional channels.\n\n'
-            'To overlay a different channel right-click on the colorbar on the '
-            'left of the image.\n\n'
-            'Use the colorbar ticks to adjust the selected channel\'s intensity.\n\n'
-            'You can also adjust the opacity of the selected channel with the\n'
-            '"Alpha <channel_name>" scrollbar below the image.\n\n'
-            'NOTE: This button has a green background if you successfully '
-            'loaded fluorescence data'
-        )
+
         self.overlayButtonAction = navigateToolBar.addWidget(self.overlayButton)
         # self.checkableButtons.append(self.overlayButton)
         # self.checkableQButtonsGroup.addButton(self.overlayButton)
 
         self.addPointsLayerAction = QAction('Add points layer', self)
         self.addPointsLayerAction.setIcon(QIcon(":addPointsLayer.svg"))
-        self.addPointsLayerAction.setToolTip(
-            'Add points layer as a scatter plot'
-        )
         navigateToolBar.addAction(self.addPointsLayerAction)
 
         self.overlayLabelsButton = widgets.rightClickToolButton(parent=self)
         self.overlayLabelsButton.setIcon(QIcon(":overlay_labels.svg"))
         self.overlayLabelsButton.setCheckable(True)
-        self.overlayLabelsButton.setToolTip(
-            'Add contours layer from another segmentation file'
-        )
         # self.overlayLabelsButton.setVisible(False)
         self.overlayLabelsButtonAction = navigateToolBar.addWidget(
             self.overlayLabelsButton
@@ -1435,10 +1433,6 @@ class guiWin(QMainWindow):
         self.rulerButton = QToolButton(self)
         self.rulerButton.setIcon(QIcon(":ruler.svg"))
         self.rulerButton.setCheckable(True)
-        self.rulerButton.setToolTip(
-            'Draw a straight line and show its length. '
-            'Length is displayed on the bottom-right corner.'
-        )
         navigateToolBar.addWidget(self.rulerButton)
         self.checkableButtons.append(self.rulerButton)
         self.LeftClickButtons.append(self.rulerButton)
@@ -1468,12 +1462,6 @@ class guiWin(QMainWindow):
         self.assignBudMothButton.setCheckable(True)
         self.assignBudMothButton.setShortcut('a')
         self.assignBudMothButton.setVisible(False)
-        self.assignBudMothButton.setToolTip(
-            'Toggle "Assign bud to mother cell" mode ON/OFF\n\n'
-            'ACTION: press with right button on bud and release on mother '
-            '(right-click drag-and-drop)\n\n'
-            'SHORTCUT: "A" key'
-        )
         self.assignBudMothButton.action = ccaToolBar.addWidget(self.assignBudMothButton)
         self.checkableButtons.append(self.assignBudMothButton)
         self.checkableQButtonsGroup.addButton(self.assignBudMothButton)
@@ -1486,12 +1474,6 @@ class guiWin(QMainWindow):
         self.setIsHistoryKnownButton.setCheckable(True)
         self.setIsHistoryKnownButton.setShortcut('u')
         self.setIsHistoryKnownButton.setVisible(False)
-        self.setIsHistoryKnownButton.setToolTip(
-            'Toggle "Annotate unknown history" mode ON/OFF\n\n'
-            'EXAMPLE: useful for cells appearing from outside of the field of view\n\n'
-            'ACTION: Right-click on cell\n\n'
-            'SHORTCUT: "U" key'
-        )
         self.setIsHistoryKnownButton.action = ccaToolBar.addWidget(self.setIsHistoryKnownButton)
         self.checkableButtons.append(self.setIsHistoryKnownButton)
         self.checkableQButtonsGroup.addButton(self.setIsHistoryKnownButton)
@@ -1514,30 +1496,7 @@ class guiWin(QMainWindow):
         self.brushButton = QToolButton(self)
         self.brushButton.setIcon(QIcon(":brush.svg"))
         self.brushButton.setCheckable(True)
-        self.brushButton.setToolTip(
-            'Edit segmentation labels with a circular brush.\n'
-            'Increase brush size with UP/DOWN arrows on the keyboard.\n\n'
-            'Default behaviour:\n'
-            '   - Painting on the background will create a new label.\n'
-            '   - Edit an existing label by starting to paint on the label\n'
-            '     (brush cursor changes color when hovering an existing label).\n'
-            '   - Press `Shift` to force drawing a new object\n'
-            '   - Painting in default mode always draws UNDER existing labels.\n\n'
-            'Power brush mode:\n'
-            '   - Power brush: press "b" key twice quickly to force the brush\n'
-            '     to draw ABOVE existing labels.\n'
-            '     NOTE: If double-press is successful, then brush button turns red.\n'
-            '     and brush cursor always white.\n'
-            '   - Power brush will draw a new object unless you keep "Ctrl" pressed.\n'
-            '     --> draw the ID you start the painting from.'
-            'Manual ID mode:\n'
-            '   - Toggle the manual ID mode with the "Auto-ID" checkbox on the\n'
-            '     top-right toolbar.\n'
-            '   - Enter the ID that you want to paint.\n'
-            '     NOTE: use the power brush to draw ABOVE the existing labels.\n\n'
-            'SHORTCUT: "B" key'
-        )
-        self.brushAction = editToolBar.addWidget(self.brushButton)
+        editToolBar.addWidget(self.brushButton)
         self.checkableButtons.append(self.brushButton)
         self.LeftClickButtons.append(self.brushButton)
         self.brushButton.keyPressShortcut = Qt.Key_B
@@ -1546,19 +1505,7 @@ class guiWin(QMainWindow):
         self.eraserButton = QToolButton(self)
         self.eraserButton.setIcon(QIcon(":eraser.svg"))
         self.eraserButton.setCheckable(True)
-        self.eraserButton.setToolTip(
-            'Erase segmentation labels with a circular eraser.\n'
-            'Increase eraser size with UP/DOWN arrows on the keyboard.\n\n'
-            'Default behaviour:\n\n'
-            '   - Starting to erase from the background (cursor is a red circle)\n '
-            '     will erase any labels you hover above.\n'
-            '   - Starting to erase from a specific label will erase only that label\n'
-            '     (cursor is a circle with the color of the label).\n'
-            '   - To enforce erasing all labels no matter where you start from\n'
-            '     double-press "X" key. If double-press is successfull,\n'
-            '     then eraser button is red and eraser cursor always red.\n\n'
-            'SHORTCUT: "X" key')
-        self.eraserAction = editToolBar.addWidget(self.eraserButton)
+        editToolBar.addWidget(self.eraserButton)
         self.eraserButton.keyPressShortcut = Qt.Key_X
         self.widgetsWithShortcut['Eraser'] = self.eraserButton
         self.checkableButtons.append(self.eraserButton)
@@ -1568,11 +1515,6 @@ class guiWin(QMainWindow):
         self.curvToolButton.setIcon(QIcon(":curvature-tool.svg"))
         self.curvToolButton.setCheckable(True)
         self.curvToolButton.setShortcut('c')
-        self.curvToolButton.setToolTip(
-            'Toggle "Curvature tool" ON/OFF\n\n'
-            'ACTION: left-clicks for manual spline anchors,\n'
-            'right button for drawing auto-contour\n\n'
-            'SHORTCUT: "C" key')
         self.curvToolButton.action = editToolBar.addWidget(self.curvToolButton)
         self.LeftClickButtons.append(self.curvToolButton)
         self.functionsNotTested3D.append(self.curvToolButton)
@@ -1583,11 +1525,6 @@ class guiWin(QMainWindow):
         self.wandToolButton.setIcon(QIcon(":magic_wand.svg"))
         self.wandToolButton.setCheckable(True)
         self.wandToolButton.setShortcut('w')
-        self.wandToolButton.setToolTip(
-            'Toggle "Magic wand tool" ON/OFF\n\n'
-            'ACTION: left-click for single selection,\n'
-            'or left-click and then drag for continous selection\n\n'
-            'SHORTCUT: "W" key')
         self.wandToolButton.action = editToolBar.addWidget(self.wandToolButton)
         self.LeftClickButtons.append(self.wandToolButton)
         self.functionsNotTested3D.append(self.wandToolButton)
@@ -1604,11 +1541,6 @@ class guiWin(QMainWindow):
         self.copyContourButton.setIcon(QIcon(":copyContour.svg"))
         self.copyContourButton.setCheckable(True)
         self.copyContourButton.setShortcut('v')
-        self.copyContourButton.setToolTip(
-            'Toggle "Copy contour mode from lost object" ON/OFF\n\n'
-            'ACTION: Hover onto lost object contour --> right-click to copy '
-            'the contour as a new object.\n\n'
-            'SHORTCUT: "V" key')
         self.copyContourButton.action = editToolBar.addWidget(
             self.copyContourButton
         )
@@ -1623,12 +1555,6 @@ class guiWin(QMainWindow):
         self.labelRoiButton.setIcon(QIcon(":label_roi.svg"))
         self.labelRoiButton.setCheckable(True)
         self.labelRoiButton.setShortcut('l')
-        self.labelRoiButton.setToolTip(
-            'Toggle "Magic labeller" ON/OFF\n\n'
-            'ACTION: Draw a rectangular ROI aroung object(s) you want to segment\n\n'
-            'Draw with LEFT button to label with last used model\n'
-            'Draw with RIGHT button to choose a different segmentation model\n\n'
-            'SHORTCUT: "L" key')
         self.labelRoiButton.action = editToolBar.addWidget(self.labelRoiButton)
         self.LeftClickButtons.append(self.labelRoiButton)
         self.checkableButtons.append(self.labelRoiButton)
@@ -1639,31 +1565,12 @@ class guiWin(QMainWindow):
         self.segmentToolAction = QAction('Segment with last used model', self)
         self.segmentToolAction.setIcon(QIcon(":segment.svg"))
         self.segmentToolAction.setShortcut('r')
-        self.segmentToolAction.setToolTip(
-            'Segment with last used model and last used parameters.\n\n'
-            'If you never selected a segmentation model before, you will be \n'
-            'asked to choose it and initialize its parameters.\n\n'
-            'SHORTCUT: "R" key')
         self.widgetsWithShortcut['Repeat segmentation'] = self.segmentToolAction
         editToolBar.addAction(self.segmentToolAction)
         
         self.manualBackgroundButton = QToolButton(self)
         self.manualBackgroundButton.setIcon(QIcon(":manual_background.svg"))
         self.manualBackgroundButton.setCheckable(True)
-        self.manualBackgroundButton.setToolTip(
-            'Toggle "Manual background" mode ON/OFF\n\n'
-            'ACTIONs:\n\n'
-            '  1. Select object to copy its shape\n'
-            '  2. Place the new shape on the background close to the source object.\n'
-            '  3. Left-click to set the background ROI of the selected object\n'
-            'Note: right-click on a background ROI to remove it.\n\n'
-            'SHORTCUT: "G" key\n\n'
-            'HELP: Use this function if you need to set the background level specific '
-            'for each object.\n'
-            'Cell-ACDC will save the metrics `amount`, `concentration` and `corrected_mean`\n'
-            'where the background correction will be performed by subtracting the mean\n'
-            'of the signal in the background ROI (for each object).'
-        )
         self.manualBackgroundButton.setShortcut('G')
         self.LeftClickButtons.append(self.manualBackgroundButton)
         self.checkableButtons.append(self.manualBackgroundButton)
@@ -1689,11 +1596,6 @@ class guiWin(QMainWindow):
         self.hullContToolButton.setIcon(QIcon(":hull.svg"))
         self.hullContToolButton.setCheckable(True)
         self.hullContToolButton.setShortcut('o')
-        self.hullContToolButton.setToolTip(
-            'Toggle "Hull contour" ON/OFF\n\n'
-            'ACTION: right-click on a cell to replace it with its hull contour.\n'
-            'Use it to fill cracks and holes.\n\n'
-            'SHORTCUT: "K" key')
         self.hullContToolButton.action = editToolBar.addWidget(self.hullContToolButton)
         self.checkableButtons.append(self.hullContToolButton)
         self.checkableQButtonsGroup.addButton(self.hullContToolButton)
@@ -1704,10 +1606,6 @@ class guiWin(QMainWindow):
         self.fillHolesToolButton.setIcon(QIcon(":fill_holes.svg"))
         self.fillHolesToolButton.setCheckable(True)
         self.fillHolesToolButton.setShortcut('f')
-        self.fillHolesToolButton.setToolTip(
-            'Toggle "Fill holes" ON/OFF\n\n'
-            'ACTION: right-click on a cell to fill holes\n\n'
-            'SHORTCUT: "F" key')
         self.fillHolesToolButton.action = editToolBar.addWidget(self.fillHolesToolButton)
         self.checkableButtons.append(self.fillHolesToolButton)
         self.checkableQButtonsGroup.addButton(self.fillHolesToolButton)
@@ -1718,10 +1616,6 @@ class guiWin(QMainWindow):
         self.moveLabelToolButton.setIcon(QIcon(":moveLabel.svg"))
         self.moveLabelToolButton.setCheckable(True)
         self.moveLabelToolButton.setShortcut('p')
-        self.moveLabelToolButton.setToolTip(
-            'Toggle "Move label (a.k.a. mask)" ON/OFF\n\n'
-            'ACTION: right-click drag and drop a labels to move it around\n\n'
-            'SHORTCUT: "P" key')
         self.moveLabelToolButton.action = editToolBar.addWidget(self.moveLabelToolButton)
         self.checkableButtons.append(self.moveLabelToolButton)
         self.checkableQButtonsGroup.addButton(self.moveLabelToolButton)
@@ -1731,11 +1625,6 @@ class guiWin(QMainWindow):
         self.expandLabelToolButton.setIcon(QIcon(":expandLabel.svg"))
         self.expandLabelToolButton.setCheckable(True)
         self.expandLabelToolButton.setShortcut('e')
-        self.expandLabelToolButton.setToolTip(
-            'Toggle "Expand/Shrink label (a.k.a. masks)" ON/OFF\n\n'
-            'ACTION: leave mouse cursor on the label you want to expand/shrink'
-            'and press arrow up/down on the keyboard to expand/shrink the mask.\n\n'
-            'SHORTCUT: "E" key')
         self.expandLabelToolButton.action = editToolBar.addWidget(self.expandLabelToolButton)
         self.expandLabelToolButton.hide()
         self.checkableButtons.append(self.expandLabelToolButton)
@@ -1747,11 +1636,6 @@ class guiWin(QMainWindow):
         self.editIDbutton.setIcon(QIcon(":edit-id.svg"))
         self.editIDbutton.setCheckable(True)
         self.editIDbutton.setShortcut('n')
-        self.editIDbutton.setToolTip(
-            'Toggle "Edit ID" mode ON/OFF\n\n'
-            'EXAMPLE: manually change ID of a cell\n\n'
-            'ACTION: right-click on cell\n\n'
-            'SHORTCUT: "N" key or double right-click on an object')
         editToolBar.addWidget(self.editIDbutton)
         self.checkableButtons.append(self.editIDbutton)
         self.checkableQButtonsGroup.addButton(self.editIDbutton)
@@ -1761,12 +1645,6 @@ class guiWin(QMainWindow):
         self.separateBudButton.setIcon(QIcon(":separate-bud.svg"))
         self.separateBudButton.setCheckable(True)
         self.separateBudButton.setShortcut('s')
-        self.separateBudButton.setToolTip(
-            'Toggle "Automatic/manual separation" mode ON/OFF\n\n'
-            'EXAMPLE: separate mother-bud fused together or separate objects that have the same ID.\n\n'
-            'ACTION: right-click for automatic and Ctrl+right-click for manual\n\n'
-            'SHORTCUT: "S" key'
-        )
         self.separateBudButton.action = editToolBar.addWidget(self.separateBudButton)
         self.checkableButtons.append(self.separateBudButton)
         self.checkableQButtonsGroup.addButton(self.separateBudButton)
@@ -1777,15 +1655,6 @@ class guiWin(QMainWindow):
         self.mergeIDsButton.setIcon(QIcon(":merge-IDs.svg"))
         self.mergeIDsButton.setCheckable(True)
         self.mergeIDsButton.setShortcut('m')
-        self.mergeIDsButton.setToolTip(
-            'Toggle "Merge IDs" mode ON/OFF\n\n'
-            'EXAMPLE: merge/fuse object IDs together\n\n'
-            'ACTION:\n'
-            '   - Right-click drag-and-drop two objects to merge them.\n'
-            '   - Ctrl + connect with right-click multiple objects to merge them.\n'
-            '\n\n'
-            'SHORTCUT: "M" key'
-        )
         self.mergeIDsButton.action = editToolBar.addWidget(self.mergeIDsButton)
         self.checkableButtons.append(self.mergeIDsButton)
         self.checkableQButtonsGroup.addButton(self.mergeIDsButton)
@@ -1795,13 +1664,6 @@ class guiWin(QMainWindow):
         self.keepIDsButton = QToolButton(self)
         self.keepIDsButton.setIcon(QIcon(":keep_objects.svg"))
         self.keepIDsButton.setCheckable(True)
-        self.keepIDsButton.setToolTip(
-            'Toggle "Select objects to keep" mode ON/OFF\n\n'
-            'EXAMPLE: Select the objects to keep. Press "Enter" to confirm '
-            'selection or "Esc" to clear the selection.\n'
-            'After confirming, all the NON selected objects will be deleted.\n\n'
-            'ACTION: right- or left-click on objects to keep\n\n'
-        )
         self.keepIDsButton.action = editToolBar.addWidget(self.keepIDsButton)
         self.keepIDsButton.setShortcut('k')
         self.checkableButtons.append(self.keepIDsButton)
@@ -1812,12 +1674,6 @@ class guiWin(QMainWindow):
         self.binCellButton = QToolButton(self)
         self.binCellButton.setIcon(QIcon(":bin.svg"))
         self.binCellButton.setCheckable(True)
-        self.binCellButton.setToolTip(
-            'Toggle "Annotate cell as removed from analysis" mode ON/OFF\n\n'
-            'EXAMPLE: annotate that a cell is removed from downstream analysis.\n'
-            '"is_cell_excluded" set to True in acdc_output.csv table\n\n'
-            'ACTION: right-click\n\n'
-        )
         # self.binCellButton.setShortcut('r')
         self.binCellButton.action = editToolBar.addWidget(self.binCellButton)
         self.checkableButtons.append(self.binCellButton)
@@ -1827,12 +1683,6 @@ class guiWin(QMainWindow):
         self.manualTrackingButton = QToolButton(self)
         self.manualTrackingButton.setIcon(QIcon(":manual_tracking.svg"))
         self.manualTrackingButton.setCheckable(True)
-        self.manualTrackingButton.setToolTip(
-            'Toggle "Manual tracking" mode ON/OFF\n\n'
-            'ACTION: select ID to track and right-click on an object to assign '
-            'that ID\n\n'
-            'SHORTCUT: "T" key'
-        )
         self.manualTrackingButton.setShortcut('T')
         self.checkableQButtonsGroup.addButton(self.manualTrackingButton)
         self.checkableButtons.append(self.manualTrackingButton)
@@ -1841,13 +1691,6 @@ class guiWin(QMainWindow):
         self.ripCellButton = QToolButton(self)
         self.ripCellButton.setIcon(QIcon(":rip.svg"))
         self.ripCellButton.setCheckable(True)
-        self.ripCellButton.setToolTip(
-            'Toggle "Annotate cell as dead" mode ON/OFF\n\n'
-            'EXAMPLE: annotate that a cell is dead.\n'
-            '"is_cell_dead" set to True in acdc_output.csv table\n\n'
-            'ACTION: right-click\n\n'
-            'SHORTCUT: "D" key'
-        )
         self.ripCellButton.setShortcut('d')
         self.ripCellButton.action = editToolBar.addWidget(self.ripCellButton)
         self.checkableButtons.append(self.ripCellButton)
@@ -1880,11 +1723,6 @@ class guiWin(QMainWindow):
         self.reinitLastSegmFrameAction = QAction(self)
         self.reinitLastSegmFrameAction.setIcon(QIcon(":reinitLastSegm.svg"))
         self.reinitLastSegmFrameAction.setVisible(False)
-        self.reinitLastSegmFrameAction.setToolTip(
-            'Reset last segmented frame to current one.\n'
-            'NOTE: This will re-enable real-time tracking for all the '
-            'future frames.'
-        )
         editToolBar.addAction(self.reinitLastSegmFrameAction)
         editToolBar.setVisible(False)
         self.reinitLastSegmFrameAction.toolbar = editToolBar
@@ -1908,6 +1746,8 @@ class guiWin(QMainWindow):
         self.editToolBar = editToolBar
         self.editToolBar.setVisible(False)
         self.navigateToolBar.setVisible(False)
+
+        self.setTooltips()
 
         self.gui_populateToolSettingsMenu()
 
@@ -2505,7 +2345,10 @@ class guiWin(QMainWindow):
         self.settingsMenu.addSeparator()
 
         for button in self.checkableQButtonsGroup.buttons():
-            toolName = re.findall('Toggle "(.*)"', button.toolTip())[0]
+            if button.toolTip() == "":
+                toolName = "MISSING"
+            else:
+                toolName = re.findall(r'Name: (.*)', button.toolTip())[0]
             menu = self.settingsMenu.addMenu(f'{toolName} tool')
             action = QAction(button)
             action.setText('Keep tool active after using it')
@@ -2598,10 +2441,6 @@ class guiWin(QMainWindow):
         self.manageVersionsAction = QAction(
             QIcon(":manage_versions.svg"), "Load older versions...", self
         )
-        self.manageVersionsAction.setToolTip(
-            'Load an older version of the `acdc_output.csv` file (table '
-            'with annotations and measurements).'
-        )
         self.manageVersionsAction.setDisabled(True)
         self.saveAction = QAction(QIcon(":file-save.svg"), "Save", self)
         self.saveAsAction = QAction("Save as...", self)
@@ -2635,24 +2474,16 @@ class guiWin(QMainWindow):
         # Help tips
         newTip = "Create a new segmentation file"
         self.newAction.setStatusTip(newTip)
-        self.newAction.setToolTip(newTip)
         self.newAction.setWhatsThis("Create a new empty segmentation file")
 
         self.findIdAction = QAction(self)
         self.findIdAction.setIcon(QIcon(":find.svg"))
         self.findIdAction.setShortcut('Ctrl+F')
-        self.findIdAction.setToolTip(
-            'Find and highlight ID (Ctrl+F).'
-            'Press "Esc" to clear highlighted object.'
-        )
         
         self.skipToNewIdAction = QAction(self)
         self.skipToNewIdAction.setIcon(QIcon(":skip_forward_new_ID.svg"))
         self.skipToNewIdAction.setShortcut(QKeySequence(Qt.Key_PageUp))
-        self.skipToNewIdAction.setToolTip(
-            'Skip forward to the frame where a new object appears.\n\n'
-            'SHORTCUT: "Page up" key'
-        )
+
         self.skipToNewIdAction.setDisabled(True)
 
         # Edit actions
@@ -2688,10 +2519,6 @@ class guiWin(QMainWindow):
 
         self.repeatTrackingAction = QAction(
             QIcon(":repeat-tracking.svg"), "Repeat tracking", self
-        )
-        self.repeatTrackingAction.setToolTip(
-            'Repeat tracking on current frame\n'
-            'SHORTCUT: "Shift+T"'
         )
 
         self.repeatTrackingMenuAction = QAction(
@@ -2752,26 +2579,15 @@ class guiWin(QMainWindow):
         self.assignBudMothAutoAction = QAction(self)
         self.assignBudMothAutoAction.setIcon(QIcon(":autoAssign.svg"))
         self.assignBudMothAutoAction.setVisible(False)
-        self.assignBudMothAutoAction.setToolTip(
-            'Automatically assign buds to mothers using YeastMate'
-        )
 
         self.editCcaToolAction = QAction(self)
         self.editCcaToolAction.setIcon(QIcon(":edit_cca.svg"))
         # self.editCcaToolAction.setDisabled(True)
         self.editCcaToolAction.setVisible(False)
-        self.editCcaToolAction.setToolTip(
-            'Manually edit cell cycle annotations table.'
-        )
 
         self.reInitCcaAction = QAction(self)
         self.reInitCcaAction.setIcon(QIcon(":reinitCca.svg"))
         self.reInitCcaAction.setVisible(False)
-        self.reInitCcaAction.setToolTip(
-            'Re-initialize cell cycle annotations table from this frame onward.\n'
-            'NOTE: This will erase all the already annotated future frames information\n'
-            '(from the current session not the saved information)'
-        )
 
         self.toggleColorSchemeAction = QAction(
             'Switch to light mode'
@@ -2844,10 +2660,10 @@ class guiWin(QMainWindow):
         self.normalizeQActionGroup.addAction(self.normalizeByMaxAction)
 
         self.zoomToObjsAction = QAction(
-            'Zoom to objects  (shortcut: H key)', self
+            'Zoom to objects  (Shortcut: H key)', self
         )
         self.zoomOutAction = QAction(
-            'Zoom out  (shortcut: double press H key)', self
+            'Zoom out  (Shortcut: double press H key)', self
         )
 
         self.relabelSequentialAction = QAction(
@@ -2917,40 +2733,19 @@ class guiWin(QMainWindow):
         self.addDelRoiAction = QAction(self)
         self.addDelRoiAction.roiType = 'rect'
         self.addDelRoiAction.setIcon(QIcon(":addDelRoi.svg"))
-        self.addDelRoiAction.setToolTip(
-            'Add resizable rectangle. Every ID touched by the rectangle will be '
-            'automaticaly deleted.\n '
-            'Moving adn resizing the rectangle will restore deleted IDs if they are not '
-            'touched by it anymore.\n'
-            'To delete rectangle right-click on it --> remove.')
         
         
         self.addDelPolyLineRoiAction = QAction(self)
         self.addDelPolyLineRoiAction.setCheckable(True)
         self.addDelPolyLineRoiAction.roiType = 'polyline'
         self.addDelPolyLineRoiAction.setIcon(QIcon(":addDelPolyLineRoi.svg"))
-        self.addDelPolyLineRoiAction.setToolTip(
-            'Add custom poly-line deletion ROI. Every ID touched by the ROI will be '
-            'automaticaly deleted.\n\n'
-            'USAGE:\n'
-            '- Activate the button.\n'
-            '- Left-click on the LEFT image to add a new anchor point.\n'
-            '- Add as many anchor points as needed and then close by clicking on starting anchor.\n'
-            '- Delete an anchor-point with right-click on it.\n'
-            '- Add a new anchor point on an existing segment with right-click on the segment.\n\n'
-            'Moving and reshaping the ROI will restore deleted IDs if they are not '
-            'touched by it anymore.\n'
-            'To delete the ROI right-click on it --> remove.'
-        )
+
         self.checkableButtons.append(self.addDelPolyLineRoiAction)
         self.LeftClickButtons.append(self.addDelPolyLineRoiAction)
        
 
         self.delBorderObjAction = QAction(self)
         self.delBorderObjAction.setIcon(QIcon(":delBorderObj.svg"))
-        self.delBorderObjAction.setToolTip(
-            'Remove segmented objects touching the border of the image'
-        )
 
         self.loadCustomAnnotationsAction = QAction(self)
         self.loadCustomAnnotationsAction.setIcon(QIcon(":load_annotation.svg"))
@@ -3327,7 +3122,7 @@ class guiWin(QMainWindow):
             'Resolution of the text annotations. High resolution results '
             'in slower update of the annotations.\n'
             'Not recommended with a number of segmented objects > 500.\n\n'
-            'SHORTCUT: "Y" key'
+            'Shortcut: "Y" key'
         )
         highResLabel = QLabel('High resolution')
         highResLabel.setToolTip(highLowResTooltip)
@@ -13028,7 +12823,7 @@ class guiWin(QMainWindow):
                 f'Type: {Type}\n\n'
                 f'Usage: activate the button and RIGHT-CLICK on cell to annotate\n\n'
                 f'Description: {selectedAnnot["description"]}\n\n'
-                f'SHORTCUT: "{keySequence}"'
+                f'Shortcut: "{keySequence}"'
             )
             keepActive = selectedAnnot['keepActive']
             isHideChecked = selectedAnnot['isHideChecked']
@@ -17911,13 +17706,6 @@ class guiWin(QMainWindow):
         self.ax1.addItem(scatterItem)
 
         toolButton = widgets.PointsLayerToolButton(symbol, color, parent=self)
-        toolTip = (
-            f'"{self.addPointsWin.layerType}" points layer\n\n'
-            f'SHORTCUT: "{self.addPointsWin.shortcut}"'
-        )
-        if hasattr(self.addPointsWin, 'description'):
-            toolTip = f'{toolTip}\nDescription: {self.addPointsWin.description}'
-        toolButton.setToolTip(toolTip)
         toolButton.setCheckable(True)
         toolButton.setChecked(True)
         if self.addPointsWin.keySequence is not None:
@@ -18641,7 +18429,7 @@ class guiWin(QMainWindow):
             else:
                 widget.setShortcut(shortcut)
             s = widget.toolTip()
-            toolTip = re.sub(r'SHORTCUT: "(.*)"', f'SHORTCUT: "{text}"', s)
+            toolTip = re.sub(r'Shortcut: "(.*)"', f'Shortcut: "{text}"', s)
             widget.setToolTip(toolTip)
         
         if not save: 
