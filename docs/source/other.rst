@@ -1,5 +1,8 @@
 Other
 =====
+
+.. contents::
+
 Resources
 ---------
 

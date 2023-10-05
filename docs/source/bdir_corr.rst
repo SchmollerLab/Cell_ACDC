@@ -1,6 +1,5 @@
 .. role:: raw-latex(raw)
    :format: latex
-..
 
 Scripts to correct shifts in bidirectional scanning
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -73,7 +72,8 @@ the data prep process will also align the old files.
 
 ``PREVIEW_Z``: Changes the z-slice which is used in preview.
 
-``INCLUDE_PATTERN_TIF_SEARCH``: Regex expression which is used to filter the .tif files if you choose to search for other TIF files. If you don't know regex, ask Chat_GPT to generate one for you by giving it examples of file names and then asking it to generate a regex code which excludes the files you want to exclude. In the code it is used in a ``re.match`` function which iterates over all TIF files in the folder. ## \_multi 
+``INCLUDE_PATTERN_TIF_SEARCH``: Regex expression which is used to filter the .tif files if you choose to search for other TIF files. If you don't know regex, ask Chat_GPT to generate one for you by giving it examples of file names and then asking it to generate a regex code which excludes the files you want to exclude. In the code it is used in a ``re.match`` function which iterates over all TIF files in the folder.
+
 
 *\_multi*
 

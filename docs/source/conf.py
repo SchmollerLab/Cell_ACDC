@@ -21,6 +21,7 @@ extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.autosummary',
     'sphinx.ext.intersphinx',
+    'sphinx_copybutton'
 ]
 
 intersphinx_mapping = {
@@ -28,6 +29,8 @@ intersphinx_mapping = {
     'sphinx': ('https://www.sphinx-doc.org/en/master/', None),
 }
 intersphinx_disabled_domains = ['std']
+
+html_favicon = 'https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/cellacdc/resources/icon.ico'
 
 templates_path = ['_templates']
 
@@ -37,3 +40,9 @@ html_theme = 'sphinx_rtd_theme'
 
 # -- Options for EPUB output
 epub_show_urls = 'footnote'
+
+# -- My css
+html_static_path = ['static']
+html_css_files = [
+    'css/custom.css',
+]

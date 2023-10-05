@@ -130,3 +130,10 @@ Contact
 **Do not hesitate to contact me** here on GitHub (by opening an issue)
 or directly at my email padovaf@tcd.ie for any problem and/or feedback
 on how to improve the user experience!
+
+Important links
+===============
+
+* `GitHub <https://github.com/SchmollerLab/Cell_ACDC>`__
+* `Publication <https://bmcbiol.biomedcentral.com/articles/10.1186/s12915-022-01372-6>`__
+* `Forum <https://forum.image.sc/tag/Cell-ACDC>`__
