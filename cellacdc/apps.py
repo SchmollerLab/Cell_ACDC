@@ -12883,7 +12883,8 @@ class ScaleBarPropertiesDialog(widgets.QBaseDialog):
         if properties.get('length_unit') is not None:
             lengthDoubleSpinbox.setValue(properties.get('length_unit'))
         else:
-            lengthDoubleSpinbox.setValue(round(PhysicalSizeX*15, 1))
+            deafultLength = np.ceil(PhysicalSizeX*15)
+            lengthDoubleSpinbox.setValue(round(deafultLength))
         lengthFormWidget = widgets.formWidget(
             lengthDoubleSpinbox, labelTextLeft='Length (μm)'
         )
