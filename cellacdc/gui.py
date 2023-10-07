@@ -14197,7 +14197,10 @@ class guiWin(QMainWindow):
         
         self.AutoPilotProfile.storeOkAskInputMetadata()
 
-        self.isSegm3D = posData.isSegm3D
+        if posData.isSegm3D is None:
+            self.isSegm3D = False
+        else:
+            self.isSegm3D = posData.isSegm3D
         self.SizeT = posData.SizeT
         self.SizeZ = posData.SizeZ
         self.TimeIncrement = posData.TimeIncrement

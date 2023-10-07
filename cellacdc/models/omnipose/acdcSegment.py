@@ -8,11 +8,20 @@ import skimage.filters
 import skimage.measure
 
 from cellpose_omni import models
-from cellacdc.models import OMNI_MODELS
 from cellacdc import printl
 
+from omnipose.core import OMNI_MODELS
+
+class AvailableModels:
+    values = OMNI_MODELS
+
 class Model:
-    def __init__(self, model_type='bact_phase_omni', net_avg=False, gpu=False):
+    def __init__(
+            self, 
+            model_type: AvailableModels='bact_phase_omni', 
+            net_avg=False, 
+            gpu=False
+        ):
         if model_type not in OMNI_MODELS:
             err_msg = (
                 f'"{model_type}" not available. '
