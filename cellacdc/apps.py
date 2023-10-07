@@ -6472,7 +6472,7 @@ class PostProcessSegmParams(QGroupBox):
         self.maxElongation_DSB = maxElongation_DSB
         self.controlWidgets.append(maxElongation_DSB)
 
-        if SizeZ is not None:
+        if self.isSegm3D:
             row += 1
             label = QLabel("Minimum number of z-slices ")
             layout.addWidget(label, row, 0, alignment=Qt.AlignRight)
