@@ -1782,6 +1782,7 @@ class SegmKernel(_WorkflowKernel):
             self.signals = signals
         self.model = model
         self.model_kwargs = model_kwargs
+        self.tracker_name = tracker_name
         self.init_tracker(
             self.do_tracking, track_params, tracker_name=tracker_name, 
             tracker=tracker
@@ -2117,7 +2118,8 @@ class SegmKernel(_WorkflowKernel):
                     )
             
 
-        if posData.SizeT > 1 and self.do_tracking:            
+        if posData.SizeT > 1 and self.do_tracking:     
+            self.logger_func(f'\nTracking with {self.tracker_name} tracker...')       
             if self.do_save:
                 # Since tracker could raise errors we save the not-tracked 
                 # version which will eventually be overwritten

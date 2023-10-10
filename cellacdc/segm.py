@@ -108,6 +108,7 @@ class segmWorker(QRunnable):
             mainWin.SizeZ,
             model=mainWin.model,
             tracker=mainWin.tracker,
+            tracker_name=mainWin.trackerName,
             signals=self.signals,
             logger_func=self.signals.progress.emit,
             innerPbar_available=mainWin.innerPbar_available,
