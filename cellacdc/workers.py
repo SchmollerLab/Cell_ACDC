@@ -824,18 +824,6 @@ class segmVideoWorker(QObject):
             self.posData.segmInfo_df = segmInfo_df
             self.posData.segmInfo_df.to_csv(self.posData.segmInfo_df_csv_path)
         return extended_segm_data
-    
-    def getImageData(self):
-        imgData = self.posData.img_data[self.startFrameNum-1:self.stopFrameNum]
-        if self.posData.SizeZ == 1:
-            return imgData
-        if self.posData.segm_data.ndim == 4:
-            return imgData
-        # 2D segm on 3D over time data --> index z-slices
-        filename = self.posData.filename
-        zz = self.posData.segmInfo_df.loc[filename, 'z_slice_used_gui']
-        imgData = self.posData.img_data[:, zz.to_list()]
-        return imgData
 
     @worker_exception_handler
     def run(self):

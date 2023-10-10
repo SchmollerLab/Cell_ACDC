@@ -5,6 +5,7 @@ outreach
 .acdc-settings/
 !cellacdc/resources/figures
 .vs
+test.py
 
 env_dependencies_issues.txt
 not_installed_requirements.txt
@@ -42,6 +43,7 @@ cellacdc/metrics/*
 !cellacdc/metrics/CV.py
 !cellacdc/metrics/combine_metrics_example.py
 cellacdc/models/beno
+cellacdc/timon_tests
 cellacdc/models/test_segm_model
 cellacdc/trackers/example
 cellacdc/test_qt_app.py
