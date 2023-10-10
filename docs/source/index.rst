@@ -53,8 +53,8 @@ A GUI-based Python framework for **segmentation**, **tracking**, **cell cycle an
    :target: https://bmcbiol.biomedcentral.com/articles/10.1186/s12915-022-01372-6
    :alt: DOI
 
-.. image:: https://readthedocs.org/projects/teranis-cell-acdc/badge/?version=latest
-    :target: https://teranis-cell-acdc.readthedocs.io/en/latest/?badge=latest
+.. image:: https://readthedocs.org/projects/cell-acdc/badge/?version=latest
+    :target: https://cell-acdc.readthedocs.io/en/latest/?badge=latest
     :alt: Documentation Status
 
 |
@@ -75,5 +75,16 @@ Contents
    citation
    installation
    getting-started
+   tooltips
+   models
+   bdir_corr
+   datastruc
    release-notes
    other
+
+Important links
+---------------
+
+* `GitHub <https://github.com/SchmollerLab/Cell_ACDC>`__
+* `Publication <https://bmcbiol.biomedcentral.com/articles/10.1186/s12915-022-01372-6>`__
+* `Forum <https://forum.image.sc/tag/Cell-ACDC>`__

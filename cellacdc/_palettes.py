@@ -150,10 +150,8 @@ def TreeWidgetStyleSheet():
     scheme = get_color_scheme()
     if scheme == 'light':
         styleSheet = ("""
-            QTreeWidget::item:hover {background-color:#E6E6E6;}
-            QTreeWidget::item:hover {color:black;}
-            QTreeWidget::item:selected {background-color:#CFEB9B;}
-            QTreeWidget::item:selected {color:black;}
+            QTreeWidget::item:hover {background-color:#E6E6E6; color:black;}
+            QTreeWidget::item:selected {background-color:#CFEB9B; color:black;}
             QTreeView {
                 selection-background-color: #CFEB9B;
                 show-decoration-selected: 1;
@@ -161,10 +159,8 @@ def TreeWidgetStyleSheet():
         """)
     else:
         styleSheet = ("""
-            QTreeWidget::item:hover {background-color:#4d4d4d;}
-            QTreeWidget::item:hover {color:white;}
-            QTreeWidget::item:selected {background-color:#8dc427;}
-            QTreeWidget::item:selected {color:black;}
+            QTreeWidget::item:hover {background-color:#4d4d4d; color:white;}
+            QTreeWidget::item:selected {background-color:#8dc427; color:black;}
             QTreeView {
                 selection-background-color: #8dc427;
                 show-decoration-selected: 1;
@@ -184,11 +180,7 @@ def QProgressBarColor():
     return QtGui.QColor(hex)    
 
 def QProgressBarHighlightedTextColor():
-    scheme = get_color_scheme()
-    if scheme == 'light':
-        return QtGui.QColor(0, 0, 0, 255)
-    else:
-        return QtGui.QColor(255, 255, 255, 255)
+    return QtGui.QColor(0, 0, 0, 255)
 
 def moduleLaunchedButtonRgb(self):
     scheme = get_color_scheme()

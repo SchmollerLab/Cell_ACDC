@@ -904,7 +904,19 @@ class guiWin(QMainWindow):
     
     def _print(self, *objects):
         self.logger.info(', '.join([str(x) for x in objects]))
-            
+
+    def setTooltips(self): #laoding tooltips for GUI from .\Cell_ACDC\docs\source\tooltips.rst
+        tooltips = load.get_tooltips_from_docs()
+
+        for key, tooltip in tooltips.items():
+            setShortcut = getattr(self, key).shortcut().toString()
+            if setShortcut != "":
+                tooltip = re.sub(r'Shortcut: \"(.*)\"', f"Shortcut: \"{setShortcut}\"", tooltip)
+            else:
+                tooltip = re.sub(r'Shortcut: \"(.*)\"', f"Shortcut: \"No shortcut\"", tooltip)
+
+            getattr(self, key).setToolTip(tooltip)
+
     def run(self, module='acdc_gui', logs_path=None):
         global print, printl
         
@@ -983,6 +995,9 @@ class guiWin(QMainWindow):
         self.gui_createCursors()
         self.gui_createActions()
         self.gui_createMenuBar()
+
+        
+
         self.gui_createToolBars()
         self.gui_createControlsToolbar()
         self.gui_createShowPropsButton()
@@ -1018,7 +1033,7 @@ class guiWin(QMainWindow):
         self.initShortcuts()
         self.show()
         # self.installEventFilter(self)
-
+        
         self.logger.info('GUI ready.')
     
     def initProfileModels(self):
@@ -1281,6 +1296,7 @@ class guiWin(QMainWindow):
         for filtersDict in self.filtersWins.values():
             filtersMenu.addAction(filtersDict['action'])
         
+        ImageMenu.addAction(self.addScaleBarAction)
         normalizeIntensitiesMenu = ImageMenu.addMenu("Normalize intensities")
         normalizeIntensitiesMenu.addAction(self.normalizeRawAction)
         normalizeIntensitiesMenu.addAction(self.normalizeToFloatAction)
@@ -1388,7 +1404,6 @@ class guiWin(QMainWindow):
         self.slideshowButton.setIcon(QIcon(":eye-plus.svg"))
         self.slideshowButton.setCheckable(True)
         self.slideshowButton.setShortcut('Ctrl+W')
-        self.slideshowButton.setToolTip('Open slideshow (Ctrl+W)')
         navigateToolBar.addWidget(self.slideshowButton)
         
         # navigateToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
@@ -1397,34 +1412,18 @@ class guiWin(QMainWindow):
         self.overlayButton = widgets.rightClickToolButton(parent=self)
         self.overlayButton.setIcon(QIcon(":overlay.svg"))
         self.overlayButton.setCheckable(True)
-        self.overlayButton.setToolTip(
-            'Overlay channels\' images.\n\n'
-            'Right-click on the button to overlay additional channels.\n\n'
-            'To overlay a different channel right-click on the colorbar on the '
-            'left of the image.\n\n'
-            'Use the colorbar ticks to adjust the selected channel\'s intensity.\n\n'
-            'You can also adjust the opacity of the selected channel with the\n'
-            '"Alpha <channel_name>" scrollbar below the image.\n\n'
-            'NOTE: This button has a green background if you successfully '
-            'loaded fluorescence data'
-        )
+
         self.overlayButtonAction = navigateToolBar.addWidget(self.overlayButton)
         # self.checkableButtons.append(self.overlayButton)
         # self.checkableQButtonsGroup.addButton(self.overlayButton)
 
         self.addPointsLayerAction = QAction('Add points layer', self)
         self.addPointsLayerAction.setIcon(QIcon(":addPointsLayer.svg"))
-        self.addPointsLayerAction.setToolTip(
-            'Add points layer as a scatter plot'
-        )
         navigateToolBar.addAction(self.addPointsLayerAction)
 
         self.overlayLabelsButton = widgets.rightClickToolButton(parent=self)
         self.overlayLabelsButton.setIcon(QIcon(":overlay_labels.svg"))
         self.overlayLabelsButton.setCheckable(True)
-        self.overlayLabelsButton.setToolTip(
-            'Add contours layer from another segmentation file'
-        )
         # self.overlayLabelsButton.setVisible(False)
         self.overlayLabelsButtonAction = navigateToolBar.addWidget(
             self.overlayLabelsButton
@@ -1434,10 +1433,6 @@ class guiWin(QMainWindow):
         self.rulerButton = QToolButton(self)
         self.rulerButton.setIcon(QIcon(":ruler.svg"))
         self.rulerButton.setCheckable(True)
-        self.rulerButton.setToolTip(
-            'Draw a straight line and show its length. '
-            'Length is displayed on the bottom-right corner.'
-        )
         navigateToolBar.addWidget(self.rulerButton)
         self.checkableButtons.append(self.rulerButton)
         self.LeftClickButtons.append(self.rulerButton)
@@ -1467,12 +1462,6 @@ class guiWin(QMainWindow):
         self.assignBudMothButton.setCheckable(True)
         self.assignBudMothButton.setShortcut('a')
         self.assignBudMothButton.setVisible(False)
-        self.assignBudMothButton.setToolTip(
-            'Toggle "Assign bud to mother cell" mode ON/OFF\n\n'
-            'ACTION: press with right button on bud and release on mother '
-            '(right-click drag-and-drop)\n\n'
-            'SHORTCUT: "A" key'
-        )
         self.assignBudMothButton.action = ccaToolBar.addWidget(self.assignBudMothButton)
         self.checkableButtons.append(self.assignBudMothButton)
         self.checkableQButtonsGroup.addButton(self.assignBudMothButton)
@@ -1485,12 +1474,6 @@ class guiWin(QMainWindow):
         self.setIsHistoryKnownButton.setCheckable(True)
         self.setIsHistoryKnownButton.setShortcut('u')
         self.setIsHistoryKnownButton.setVisible(False)
-        self.setIsHistoryKnownButton.setToolTip(
-            'Toggle "Annotate unknown history" mode ON/OFF\n\n'
-            'EXAMPLE: useful for cells appearing from outside of the field of view\n\n'
-            'ACTION: Right-click on cell\n\n'
-            'SHORTCUT: "U" key'
-        )
         self.setIsHistoryKnownButton.action = ccaToolBar.addWidget(self.setIsHistoryKnownButton)
         self.checkableButtons.append(self.setIsHistoryKnownButton)
         self.checkableQButtonsGroup.addButton(self.setIsHistoryKnownButton)
@@ -1513,30 +1496,7 @@ class guiWin(QMainWindow):
         self.brushButton = QToolButton(self)
         self.brushButton.setIcon(QIcon(":brush.svg"))
         self.brushButton.setCheckable(True)
-        self.brushButton.setToolTip(
-            'Edit segmentation labels with a circular brush.\n'
-            'Increase brush size with UP/DOWN arrows on the keyboard.\n\n'
-            'Default behaviour:\n'
-            '   - Painting on the background will create a new label.\n'
-            '   - Edit an existing label by starting to paint on the label\n'
-            '     (brush cursor changes color when hovering an existing label).\n'
-            '   - Press `Shift` to force drawing a new object\n'
-            '   - Painting in default mode always draws UNDER existing labels.\n\n'
-            'Power brush mode:\n'
-            '   - Power brush: press "b" key twice quickly to force the brush\n'
-            '     to draw ABOVE existing labels.\n'
-            '     NOTE: If double-press is successful, then brush button turns red.\n'
-            '     and brush cursor always white.\n'
-            '   - Power brush will draw a new object unless you keep "Ctrl" pressed.\n'
-            '     --> draw the ID you start the painting from.'
-            'Manual ID mode:\n'
-            '   - Toggle the manual ID mode with the "Auto-ID" checkbox on the\n'
-            '     top-right toolbar.\n'
-            '   - Enter the ID that you want to paint.\n'
-            '     NOTE: use the power brush to draw ABOVE the existing labels.\n\n'
-            'SHORTCUT: "B" key'
-        )
-        self.brushAction = editToolBar.addWidget(self.brushButton)
+        editToolBar.addWidget(self.brushButton)
         self.checkableButtons.append(self.brushButton)
         self.LeftClickButtons.append(self.brushButton)
         self.brushButton.keyPressShortcut = Qt.Key_B
@@ -1545,19 +1505,7 @@ class guiWin(QMainWindow):
         self.eraserButton = QToolButton(self)
         self.eraserButton.setIcon(QIcon(":eraser.svg"))
         self.eraserButton.setCheckable(True)
-        self.eraserButton.setToolTip(
-            'Erase segmentation labels with a circular eraser.\n'
-            'Increase eraser size with UP/DOWN arrows on the keyboard.\n\n'
-            'Default behaviour:\n\n'
-            '   - Starting to erase from the background (cursor is a red circle)\n '
-            '     will erase any labels you hover above.\n'
-            '   - Starting to erase from a specific label will erase only that label\n'
-            '     (cursor is a circle with the color of the label).\n'
-            '   - To enforce erasing all labels no matter where you start from\n'
-            '     double-press "X" key. If double-press is successfull,\n'
-            '     then eraser button is red and eraser cursor always red.\n\n'
-            'SHORTCUT: "X" key')
-        self.eraserAction = editToolBar.addWidget(self.eraserButton)
+        editToolBar.addWidget(self.eraserButton)
         self.eraserButton.keyPressShortcut = Qt.Key_X
         self.widgetsWithShortcut['Eraser'] = self.eraserButton
         self.checkableButtons.append(self.eraserButton)
@@ -1567,11 +1515,6 @@ class guiWin(QMainWindow):
         self.curvToolButton.setIcon(QIcon(":curvature-tool.svg"))
         self.curvToolButton.setCheckable(True)
         self.curvToolButton.setShortcut('c')
-        self.curvToolButton.setToolTip(
-            'Toggle "Curvature tool" ON/OFF\n\n'
-            'ACTION: left-clicks for manual spline anchors,\n'
-            'right button for drawing auto-contour\n\n'
-            'SHORTCUT: "C" key')
         self.curvToolButton.action = editToolBar.addWidget(self.curvToolButton)
         self.LeftClickButtons.append(self.curvToolButton)
         self.functionsNotTested3D.append(self.curvToolButton)
@@ -1582,11 +1525,6 @@ class guiWin(QMainWindow):
         self.wandToolButton.setIcon(QIcon(":magic_wand.svg"))
         self.wandToolButton.setCheckable(True)
         self.wandToolButton.setShortcut('w')
-        self.wandToolButton.setToolTip(
-            'Toggle "Magic wand tool" ON/OFF\n\n'
-            'ACTION: left-click for single selection,\n'
-            'or left-click and then drag for continous selection\n\n'
-            'SHORTCUT: "W" key')
         self.wandToolButton.action = editToolBar.addWidget(self.wandToolButton)
         self.LeftClickButtons.append(self.wandToolButton)
         self.functionsNotTested3D.append(self.wandToolButton)
@@ -1603,11 +1541,6 @@ class guiWin(QMainWindow):
         self.copyContourButton.setIcon(QIcon(":copyContour.svg"))
         self.copyContourButton.setCheckable(True)
         self.copyContourButton.setShortcut('v')
-        self.copyContourButton.setToolTip(
-            'Toggle "Copy contour mode from lost object" ON/OFF\n\n'
-            'ACTION: Hover onto lost object contour --> right-click to copy '
-            'the contour as a new object.\n\n'
-            'SHORTCUT: "V" key')
         self.copyContourButton.action = editToolBar.addWidget(
             self.copyContourButton
         )
@@ -1622,12 +1555,6 @@ class guiWin(QMainWindow):
         self.labelRoiButton.setIcon(QIcon(":label_roi.svg"))
         self.labelRoiButton.setCheckable(True)
         self.labelRoiButton.setShortcut('l')
-        self.labelRoiButton.setToolTip(
-            'Toggle "Magic labeller" ON/OFF\n\n'
-            'ACTION: Draw a rectangular ROI aroung object(s) you want to segment\n\n'
-            'Draw with LEFT button to label with last used model\n'
-            'Draw with RIGHT button to choose a different segmentation model\n\n'
-            'SHORTCUT: "L" key')
         self.labelRoiButton.action = editToolBar.addWidget(self.labelRoiButton)
         self.LeftClickButtons.append(self.labelRoiButton)
         self.checkableButtons.append(self.labelRoiButton)
@@ -1638,31 +1565,12 @@ class guiWin(QMainWindow):
         self.segmentToolAction = QAction('Segment with last used model', self)
         self.segmentToolAction.setIcon(QIcon(":segment.svg"))
         self.segmentToolAction.setShortcut('r')
-        self.segmentToolAction.setToolTip(
-            'Segment with last used model and last used parameters.\n\n'
-            'If you never selected a segmentation model before, you will be \n'
-            'asked to choose it and initialize its parameters.\n\n'
-            'SHORTCUT: "R" key')
         self.widgetsWithShortcut['Repeat segmentation'] = self.segmentToolAction
         editToolBar.addAction(self.segmentToolAction)
         
         self.manualBackgroundButton = QToolButton(self)
         self.manualBackgroundButton.setIcon(QIcon(":manual_background.svg"))
         self.manualBackgroundButton.setCheckable(True)
-        self.manualBackgroundButton.setToolTip(
-            'Toggle "Manual background" mode ON/OFF\n\n'
-            'ACTIONs:\n\n'
-            '  1. Select object to copy its shape\n'
-            '  2. Place the new shape on the background close to the source object.\n'
-            '  3. Left-click to set the background ROI of the selected object\n'
-            'Note: right-click on a background ROI to remove it.\n\n'
-            'SHORTCUT: "G" key\n\n'
-            'HELP: Use this function if you need to set the background level specific '
-            'for each object.\n'
-            'Cell-ACDC will save the metrics `amount`, `concentration` and `corrected_mean`\n'
-            'where the background correction will be performed by subtracting the mean\n'
-            'of the signal in the background ROI (for each object).'
-        )
         self.manualBackgroundButton.setShortcut('G')
         self.LeftClickButtons.append(self.manualBackgroundButton)
         self.checkableButtons.append(self.manualBackgroundButton)
@@ -1688,11 +1596,6 @@ class guiWin(QMainWindow):
         self.hullContToolButton.setIcon(QIcon(":hull.svg"))
         self.hullContToolButton.setCheckable(True)
         self.hullContToolButton.setShortcut('o')
-        self.hullContToolButton.setToolTip(
-            'Toggle "Hull contour" ON/OFF\n\n'
-            'ACTION: right-click on a cell to replace it with its hull contour.\n'
-            'Use it to fill cracks and holes.\n\n'
-            'SHORTCUT: "K" key')
         self.hullContToolButton.action = editToolBar.addWidget(self.hullContToolButton)
         self.checkableButtons.append(self.hullContToolButton)
         self.checkableQButtonsGroup.addButton(self.hullContToolButton)
@@ -1703,10 +1606,6 @@ class guiWin(QMainWindow):
         self.fillHolesToolButton.setIcon(QIcon(":fill_holes.svg"))
         self.fillHolesToolButton.setCheckable(True)
         self.fillHolesToolButton.setShortcut('f')
-        self.fillHolesToolButton.setToolTip(
-            'Toggle "Fill holes" ON/OFF\n\n'
-            'ACTION: right-click on a cell to fill holes\n\n'
-            'SHORTCUT: "F" key')
         self.fillHolesToolButton.action = editToolBar.addWidget(self.fillHolesToolButton)
         self.checkableButtons.append(self.fillHolesToolButton)
         self.checkableQButtonsGroup.addButton(self.fillHolesToolButton)
@@ -1717,10 +1616,6 @@ class guiWin(QMainWindow):
         self.moveLabelToolButton.setIcon(QIcon(":moveLabel.svg"))
         self.moveLabelToolButton.setCheckable(True)
         self.moveLabelToolButton.setShortcut('p')
-        self.moveLabelToolButton.setToolTip(
-            'Toggle "Move label (a.k.a. mask)" ON/OFF\n\n'
-            'ACTION: right-click drag and drop a labels to move it around\n\n'
-            'SHORTCUT: "P" key')
         self.moveLabelToolButton.action = editToolBar.addWidget(self.moveLabelToolButton)
         self.checkableButtons.append(self.moveLabelToolButton)
         self.checkableQButtonsGroup.addButton(self.moveLabelToolButton)
@@ -1730,11 +1625,6 @@ class guiWin(QMainWindow):
         self.expandLabelToolButton.setIcon(QIcon(":expandLabel.svg"))
         self.expandLabelToolButton.setCheckable(True)
         self.expandLabelToolButton.setShortcut('e')
-        self.expandLabelToolButton.setToolTip(
-            'Toggle "Expand/Shrink label (a.k.a. masks)" ON/OFF\n\n'
-            'ACTION: leave mouse cursor on the label you want to expand/shrink'
-            'and press arrow up/down on the keyboard to expand/shrink the mask.\n\n'
-            'SHORTCUT: "E" key')
         self.expandLabelToolButton.action = editToolBar.addWidget(self.expandLabelToolButton)
         self.expandLabelToolButton.hide()
         self.checkableButtons.append(self.expandLabelToolButton)
@@ -1746,11 +1636,6 @@ class guiWin(QMainWindow):
         self.editIDbutton.setIcon(QIcon(":edit-id.svg"))
         self.editIDbutton.setCheckable(True)
         self.editIDbutton.setShortcut('n')
-        self.editIDbutton.setToolTip(
-            'Toggle "Edit ID" mode ON/OFF\n\n'
-            'EXAMPLE: manually change ID of a cell\n\n'
-            'ACTION: right-click on cell\n\n'
-            'SHORTCUT: "N" key or double right-click on an object')
         editToolBar.addWidget(self.editIDbutton)
         self.checkableButtons.append(self.editIDbutton)
         self.checkableQButtonsGroup.addButton(self.editIDbutton)
@@ -1760,12 +1645,6 @@ class guiWin(QMainWindow):
         self.separateBudButton.setIcon(QIcon(":separate-bud.svg"))
         self.separateBudButton.setCheckable(True)
         self.separateBudButton.setShortcut('s')
-        self.separateBudButton.setToolTip(
-            'Toggle "Automatic/manual separation" mode ON/OFF\n\n'
-            'EXAMPLE: separate mother-bud fused together or separate objects that have the same ID.\n\n'
-            'ACTION: right-click for automatic and Ctrl+right-click for manual\n\n'
-            'SHORTCUT: "S" key'
-        )
         self.separateBudButton.action = editToolBar.addWidget(self.separateBudButton)
         self.checkableButtons.append(self.separateBudButton)
         self.checkableQButtonsGroup.addButton(self.separateBudButton)
@@ -1776,15 +1655,6 @@ class guiWin(QMainWindow):
         self.mergeIDsButton.setIcon(QIcon(":merge-IDs.svg"))
         self.mergeIDsButton.setCheckable(True)
         self.mergeIDsButton.setShortcut('m')
-        self.mergeIDsButton.setToolTip(
-            'Toggle "Merge IDs" mode ON/OFF\n\n'
-            'EXAMPLE: merge/fuse object IDs together\n\n'
-            'ACTION:\n'
-            '   - Right-click drag-and-drop two objects to merge them.\n'
-            '   - Ctrl + connect with right-click multiple objects to merge them.\n'
-            '\n\n'
-            'SHORTCUT: "M" key'
-        )
         self.mergeIDsButton.action = editToolBar.addWidget(self.mergeIDsButton)
         self.checkableButtons.append(self.mergeIDsButton)
         self.checkableQButtonsGroup.addButton(self.mergeIDsButton)
@@ -1794,13 +1664,6 @@ class guiWin(QMainWindow):
         self.keepIDsButton = QToolButton(self)
         self.keepIDsButton.setIcon(QIcon(":keep_objects.svg"))
         self.keepIDsButton.setCheckable(True)
-        self.keepIDsButton.setToolTip(
-            'Toggle "Select objects to keep" mode ON/OFF\n\n'
-            'EXAMPLE: Select the objects to keep. Press "Enter" to confirm '
-            'selection or "Esc" to clear the selection.\n'
-            'After confirming, all the NON selected objects will be deleted.\n\n'
-            'ACTION: right- or left-click on objects to keep\n\n'
-        )
         self.keepIDsButton.action = editToolBar.addWidget(self.keepIDsButton)
         self.keepIDsButton.setShortcut('k')
         self.checkableButtons.append(self.keepIDsButton)
@@ -1811,12 +1674,6 @@ class guiWin(QMainWindow):
         self.binCellButton = QToolButton(self)
         self.binCellButton.setIcon(QIcon(":bin.svg"))
         self.binCellButton.setCheckable(True)
-        self.binCellButton.setToolTip(
-            'Toggle "Annotate cell as removed from analysis" mode ON/OFF\n\n'
-            'EXAMPLE: annotate that a cell is removed from downstream analysis.\n'
-            '"is_cell_excluded" set to True in acdc_output.csv table\n\n'
-            'ACTION: right-click\n\n'
-        )
         # self.binCellButton.setShortcut('r')
         self.binCellButton.action = editToolBar.addWidget(self.binCellButton)
         self.checkableButtons.append(self.binCellButton)
@@ -1826,12 +1683,6 @@ class guiWin(QMainWindow):
         self.manualTrackingButton = QToolButton(self)
         self.manualTrackingButton.setIcon(QIcon(":manual_tracking.svg"))
         self.manualTrackingButton.setCheckable(True)
-        self.manualTrackingButton.setToolTip(
-            'Toggle "Manual tracking" mode ON/OFF\n\n'
-            'ACTION: select ID to track and right-click on an object to assign '
-            'that ID\n\n'
-            'SHORTCUT: "T" key'
-        )
         self.manualTrackingButton.setShortcut('T')
         self.checkableQButtonsGroup.addButton(self.manualTrackingButton)
         self.checkableButtons.append(self.manualTrackingButton)
@@ -1840,13 +1691,6 @@ class guiWin(QMainWindow):
         self.ripCellButton = QToolButton(self)
         self.ripCellButton.setIcon(QIcon(":rip.svg"))
         self.ripCellButton.setCheckable(True)
-        self.ripCellButton.setToolTip(
-            'Toggle "Annotate cell as dead" mode ON/OFF\n\n'
-            'EXAMPLE: annotate that a cell is dead.\n'
-            '"is_cell_dead" set to True in acdc_output.csv table\n\n'
-            'ACTION: right-click\n\n'
-            'SHORTCUT: "D" key'
-        )
         self.ripCellButton.setShortcut('d')
         self.ripCellButton.action = editToolBar.addWidget(self.ripCellButton)
         self.checkableButtons.append(self.ripCellButton)
@@ -1879,11 +1723,6 @@ class guiWin(QMainWindow):
         self.reinitLastSegmFrameAction = QAction(self)
         self.reinitLastSegmFrameAction.setIcon(QIcon(":reinitLastSegm.svg"))
         self.reinitLastSegmFrameAction.setVisible(False)
-        self.reinitLastSegmFrameAction.setToolTip(
-            'Reset last segmented frame to current one.\n'
-            'NOTE: This will re-enable real-time tracking for all the '
-            'future frames.'
-        )
         editToolBar.addAction(self.reinitLastSegmFrameAction)
         editToolBar.setVisible(False)
         self.reinitLastSegmFrameAction.toolbar = editToolBar
@@ -1907,6 +1746,8 @@ class guiWin(QMainWindow):
         self.editToolBar = editToolBar
         self.editToolBar.setVisible(False)
         self.navigateToolBar.setVisible(False)
+
+        self.setTooltips()
 
         self.gui_populateToolSettingsMenu()
 
@@ -2048,7 +1889,7 @@ class guiWin(QMainWindow):
             worker._enqueue(posData)
     
     def autoSaveWorkerDone(self):
-        self.setSaturBarLabel(log=False)
+        self.setStatusBarLabel(log=False)
     
     def autoSaveWorkerClosed(self, worker):
         if self.autoSaveActiveWorkers:
@@ -2132,7 +1973,7 @@ class guiWin(QMainWindow):
         modeToolBar = QToolBar("Mode", self)
         self.addToolBar(modeToolBar)
 
-        self.modeComboBox = QComboBox()
+        self.modeComboBox = widgets.ComboBox()
         self.modeComboBox.addItems(self.modeItems)
         self.modeComboBoxLabel = QLabel('    Mode: ')
         self.modeComboBoxLabel.setBuddy(self.modeComboBox)
@@ -2504,7 +2345,10 @@ class guiWin(QMainWindow):
         self.settingsMenu.addSeparator()
 
         for button in self.checkableQButtonsGroup.buttons():
-            toolName = re.findall('Toggle "(.*)"', button.toolTip())[0]
+            if button.toolTip() == "":
+                toolName = "MISSING"
+            else:
+                toolName = re.findall(r'Name: (.*)', button.toolTip())[0]
             menu = self.settingsMenu.addMenu(f'{toolName} tool')
             action = QAction(button)
             action.setText('Keep tool active after using it')
@@ -2597,10 +2441,6 @@ class guiWin(QMainWindow):
         self.manageVersionsAction = QAction(
             QIcon(":manage_versions.svg"), "Load older versions...", self
         )
-        self.manageVersionsAction.setToolTip(
-            'Load an older version of the `acdc_output.csv` file (table '
-            'with annotations and measurements).'
-        )
         self.manageVersionsAction.setDisabled(True)
         self.saveAction = QAction(QIcon(":file-save.svg"), "Save", self)
         self.saveAsAction = QAction("Save as...", self)
@@ -2634,24 +2474,16 @@ class guiWin(QMainWindow):
         # Help tips
         newTip = "Create a new segmentation file"
         self.newAction.setStatusTip(newTip)
-        self.newAction.setToolTip(newTip)
         self.newAction.setWhatsThis("Create a new empty segmentation file")
 
         self.findIdAction = QAction(self)
         self.findIdAction.setIcon(QIcon(":find.svg"))
         self.findIdAction.setShortcut('Ctrl+F')
-        self.findIdAction.setToolTip(
-            'Find and highlight ID (Ctrl+F).'
-            'Press "Esc" to clear highlighted object.'
-        )
         
         self.skipToNewIdAction = QAction(self)
         self.skipToNewIdAction.setIcon(QIcon(":skip_forward_new_ID.svg"))
         self.skipToNewIdAction.setShortcut(QKeySequence(Qt.Key_PageUp))
-        self.skipToNewIdAction.setToolTip(
-            'Skip forward to the frame where a new object appears.\n\n'
-            'SHORTCUT: "Page up" key'
-        )
+
         self.skipToNewIdAction.setDisabled(True)
 
         # Edit actions
@@ -2687,10 +2519,6 @@ class guiWin(QMainWindow):
 
         self.repeatTrackingAction = QAction(
             QIcon(":repeat-tracking.svg"), "Repeat tracking", self
-        )
-        self.repeatTrackingAction.setToolTip(
-            'Repeat tracking on current frame\n'
-            'SHORTCUT: "Shift+T"'
         )
 
         self.repeatTrackingMenuAction = QAction(
@@ -2751,26 +2579,15 @@ class guiWin(QMainWindow):
         self.assignBudMothAutoAction = QAction(self)
         self.assignBudMothAutoAction.setIcon(QIcon(":autoAssign.svg"))
         self.assignBudMothAutoAction.setVisible(False)
-        self.assignBudMothAutoAction.setToolTip(
-            'Automatically assign buds to mothers using YeastMate'
-        )
 
         self.editCcaToolAction = QAction(self)
         self.editCcaToolAction.setIcon(QIcon(":edit_cca.svg"))
         # self.editCcaToolAction.setDisabled(True)
         self.editCcaToolAction.setVisible(False)
-        self.editCcaToolAction.setToolTip(
-            'Manually edit cell cycle annotations table.'
-        )
 
         self.reInitCcaAction = QAction(self)
         self.reInitCcaAction.setIcon(QIcon(":reinitCca.svg"))
         self.reInitCcaAction.setVisible(False)
-        self.reInitCcaAction.setToolTip(
-            'Re-initialize cell cycle annotations table from this frame onward.\n'
-            'NOTE: This will erase all the already annotated future frames information\n'
-            '(from the current session not the saved information)'
-        )
 
         self.toggleColorSchemeAction = QAction(
             'Switch to light mode'
@@ -2799,6 +2616,9 @@ class guiWin(QMainWindow):
         )
         self.viewCcaTableAction.setDisabled(True)
         self.viewCcaTableAction.setShortcut('Ctrl+P')
+        
+        self.addScaleBarAction = QAction('Add scale bar', self)
+        self.addScaleBarAction.setCheckable(True)
 
         self.invertBwAction = QAction('Invert black/white', self)
         self.invertBwAction.setCheckable(True)
@@ -2840,10 +2660,10 @@ class guiWin(QMainWindow):
         self.normalizeQActionGroup.addAction(self.normalizeByMaxAction)
 
         self.zoomToObjsAction = QAction(
-            'Zoom to objects  (shortcut: H key)', self
+            'Zoom to objects  (Shortcut: H key)', self
         )
         self.zoomOutAction = QAction(
-            'Zoom out  (shortcut: double press H key)', self
+            'Zoom out  (Shortcut: double press H key)', self
         )
 
         self.relabelSequentialAction = QAction(
@@ -2913,40 +2733,19 @@ class guiWin(QMainWindow):
         self.addDelRoiAction = QAction(self)
         self.addDelRoiAction.roiType = 'rect'
         self.addDelRoiAction.setIcon(QIcon(":addDelRoi.svg"))
-        self.addDelRoiAction.setToolTip(
-            'Add resizable rectangle. Every ID touched by the rectangle will be '
-            'automaticaly deleted.\n '
-            'Moving adn resizing the rectangle will restore deleted IDs if they are not '
-            'touched by it anymore.\n'
-            'To delete rectangle right-click on it --> remove.')
         
         
         self.addDelPolyLineRoiAction = QAction(self)
         self.addDelPolyLineRoiAction.setCheckable(True)
         self.addDelPolyLineRoiAction.roiType = 'polyline'
         self.addDelPolyLineRoiAction.setIcon(QIcon(":addDelPolyLineRoi.svg"))
-        self.addDelPolyLineRoiAction.setToolTip(
-            'Add custom poly-line deletion ROI. Every ID touched by the ROI will be '
-            'automaticaly deleted.\n\n'
-            'USAGE:\n'
-            '- Activate the button.\n'
-            '- Left-click on the LEFT image to add a new anchor point.\n'
-            '- Add as many anchor points as needed and then close by clicking on starting anchor.\n'
-            '- Delete an anchor-point with right-click on it.\n'
-            '- Add a new anchor point on an existing segment with right-click on the segment.\n\n'
-            'Moving and reshaping the ROI will restore deleted IDs if they are not '
-            'touched by it anymore.\n'
-            'To delete the ROI right-click on it --> remove.'
-        )
+
         self.checkableButtons.append(self.addDelPolyLineRoiAction)
         self.LeftClickButtons.append(self.addDelPolyLineRoiAction)
        
 
         self.delBorderObjAction = QAction(self)
         self.delBorderObjAction.setIcon(QIcon(":delBorderObj.svg"))
-        self.delBorderObjAction.setToolTip(
-            'Remove segmented objects touching the border of the image'
-        )
 
         self.loadCustomAnnotationsAction = QAction(self)
         self.loadCustomAnnotationsAction.setIcon(QIcon(":load_annotation.svg"))
@@ -3111,6 +2910,7 @@ class guiWin(QMainWindow):
 
         # self.repeatAutoCcaAction.triggered.connect(self.repeatAutoCca)
         self.manuallyEditCcaAction.triggered.connect(self.manualEditCca)
+        self.addScaleBarAction.toggled.connect(self.addScaleBar)
         self.invertBwAction.toggled.connect(self.invertBw)
         self.saveLabColormapAction.triggered.connect(self.saveLabelsColormap)
 
@@ -3120,7 +2920,7 @@ class guiWin(QMainWindow):
         self.editIDcheckbox.toggled.connect(self.autoIDtoggled)
         # Mode
         self.modeActionGroup.triggered.connect(self.changeModeFromMenu)
-        self.modeComboBox.currentIndexChanged.connect(self.changeMode)
+        self.modeComboBox.sigTextChanged.connect(self.changeMode)
         self.modeComboBox.activated.connect(self.clearComboBoxFocus)
         self.equalizeHistPushButton.toggled.connect(self.equalizeHist)
         
@@ -3231,6 +3031,7 @@ class guiWin(QMainWindow):
         self.brushAutoHideCheckbox.toggled.connect(self.brushAutoHideToggled)
 
         self.imgGrad.sigLookupTableChanged.connect(self.imgGradLUT_cb)
+        self.imgGrad.sigAddScaleBar.connect(self.addScaleBarAction.setChecked)
         self.imgGrad.gradient.sigGradientChangeFinished.connect(
             self.imgGradLUTfinished_cb
         )
@@ -3321,7 +3122,7 @@ class guiWin(QMainWindow):
             'Resolution of the text annotations. High resolution results '
             'in slower update of the annotations.\n'
             'Not recommended with a number of segmented objects > 500.\n\n'
-            'SHORTCUT: "Y" key'
+            'Shortcut: "Y" key'
         )
         highResLabel = QLabel('High resolution')
         highResLabel.setToolTip(highLowResTooltip)
@@ -3570,13 +3371,17 @@ class guiWin(QMainWindow):
         bottomLeftLayout.addLayout(
             navWidgetsLayout, row, 0, alignment=Qt.AlignRight
         )
-        bottomLeftLayout.addWidget(self.navigateScrollBar, row, 1, 1, 2)
+        bottomLeftLayout.addWidget(self.navigateScrollBar, row, 1, 1, 2)        
         sp = self.navigateScrollBar.sizePolicy()
         sp.setRetainSizeWhenHidden(True)
         self.navigateScrollBar.setSizePolicy(sp)
         self.navSpinBox.connectValueChanged(self.navigateSpinboxValueChanged)
         self.navSpinBox.editingFinished.connect(self.navigateSpinboxEditingFinished)
 
+        self.lastTrackedFrameLabel = QLabel()
+        self.lastTrackedFrameLabel.setFont(_font)
+        bottomLeftLayout.addWidget(self.lastTrackedFrameLabel, row, 3)
+        
         row += 1
         zSliceCheckboxLayout = QHBoxLayout()
         self.zSliceCheckbox = QCheckBox('z-slice')
@@ -3619,7 +3424,8 @@ class guiWin(QMainWindow):
     def gui_createLabWidgets(self):
         bottomRightLayout = QVBoxLayout()
         self.rightBottomGroupbox = widgets.GroupBox(
-            'Annotate right image', keyPressCallback=self.resetFocus)
+            'Annotate right image', keyPressCallback=self.resetFocus
+        )
         self.rightBottomGroupbox.setCheckable(True)
         self.rightBottomGroupbox.setChecked(False)
         self.rightBottomGroupbox.hide()
@@ -3634,7 +3440,13 @@ class guiWin(QMainWindow):
 
         self.annotOptionsLayoutRight.addWidget(self.annotateRightHowCombobox)
 
+        self.rightImageFramesScrollbar = widgets.ScrollBarWithNumericControl(
+            labelText='Frame n. '
+        )
+        self.rightImageFramesScrollbar.setVisible(False)
+        
         bottomRightLayout.addWidget(self.annotOptionsWidgetRight)
+        bottomRightLayout.addWidget(self.rightImageFramesScrollbar)
         bottomRightLayout.addStretch(1)
 
         self.rightBottomGroupbox.setLayout(bottomRightLayout)
@@ -3750,6 +3562,9 @@ class guiWin(QMainWindow):
         self.ax2.invertY(True)
         self.ax2.hideAxis('bottom')
         self.ax2.hideAxis('left')
+        # self.currentFrameLabelItem = pg.LabelItem(
+        #     color=self.titleColor, size='13px'
+        # )
         self.graphLayout.addItem(self.ax2, row=1, col=2)
 
     def gui_addGraphicsItems(self):
@@ -3819,7 +3634,7 @@ class guiWin(QMainWindow):
         self.titleLabel = pg.LabelItem(
             justify='center', color=self.titleColor, size='14pt'
         )
-        self.graphLayout.addItem(self.titleLabel, row=0, col=1, colspan=2)
+        self.graphLayout.addItem(self.titleLabel, row=0, col=1, colspan=2)        
 
     def gui_createTextAnnotColors(self, r, g, b, custom=False):
         if custom:
@@ -3866,7 +3681,9 @@ class guiWin(QMainWindow):
         self.emptyLab = np.zeros((2,2), dtype=np.uint8)
 
         # Right image item linked to left
-        self.rightImageItem = pg.ImageItem()
+        self.rightImageItem = widgets.ChildImageItem(
+            linkedScrollbar=self.rightImageFramesScrollbar
+        )
         self.imgGradRight.setImageItem(self.rightImageItem)   
         self.ax2.addItem(self.rightImageItem)
         
@@ -4273,7 +4090,9 @@ class guiWin(QMainWindow):
         
         for item in self.topLayerItemsRight:
             self.ax2.addItem(item)
-    
+
+        # self.ax2.addItem(self.currentFrameLabelItem)
+        
     def gui_createMothBudLinePens(self):
         if 'mothBudLineSize' in self.df_settings.index:
             val = self.df_settings.at['mothBudLineSize', 'value']
@@ -4924,7 +4743,7 @@ class guiWin(QMainWindow):
             prev_IDs = posData.IDs.copy()
             editID = apps.editID_QWidget(
                 ID, posData.IDs, doNotShowAgain=self.doNotAskAgainExistingID,
-                parent=self
+                parent=self, entryID=self.getNearestLostObjID(y, x)
             )
             editID.show(block=True)
             if editID.cancel:
@@ -5397,30 +5216,29 @@ class guiWin(QMainWindow):
 
     @exception_handler
     def gui_mouseDragEventImg1(self, event):
-        posData = self.data[self.pos_i]
+        x, y = event.pos().x(), event.pos().y()
+        
+        if hasattr(self, 'scaleBar'):
+            if self.scaleBar.isHighlighted() and self.scaleBar.clicked:
+                self.scaleBar.move(x, y)
+                return
+        
         mode = str(self.modeComboBox.currentText())
         if mode == 'Viewer':
             return
 
+        posData = self.data[self.pos_i]
         Y, X = self.get_2Dlab(posData.lab).shape
-        x, y = event.pos().x(), event.pos().y()
         xdata, ydata = int(x), int(y)
         if not myutils.is_in_bounds(xdata, ydata, X, Y):
             return
-
+        
         if self.isRightClickDragImg1 and self.curvToolButton.isChecked():
-            x, y = event.pos().x(), event.pos().y()
-            xdata, ydata = int(x), int(y)
             self.drawAutoContour(y, x)
 
         # Brush dragging mouse --> keep painting
         elif self.isMouseDragImg1 and self.brushButton.isChecked():
-            # t0 = time.perf_counter()
-
-            x, y = event.pos().x(), event.pos().y()
-            xdata, ydata = int(x), int(y)
             lab_2D = self.get_2Dlab(posData.lab)
-            Y, X = lab_2D.shape
 
             # t1 = time.perf_counter()
 
@@ -5484,9 +5302,6 @@ class guiWin(QMainWindow):
         elif self.isMouseDragImg1 and self.eraserButton.isChecked():
             posData = self.data[self.pos_i]
             lab_2D = self.get_2Dlab(posData.lab)
-            Y, X = lab_2D.shape
-            x, y = event.pos().x(), event.pos().y()
-            xdata, ydata = int(x), int(y)
             brushSize = self.brushSizeSpinbox.value()
 
             rrPoly, ccPoly = self.getPolygonBrush((y, x), Y, X)
@@ -5531,8 +5346,6 @@ class guiWin(QMainWindow):
 
         # Wand dragging mouse --> keep doing the magic
         elif self.isMouseDragImg1 and self.wandToolButton.isChecked():
-            x, y = event.pos().x(), event.pos().y()
-            xdata, ydata = int(x), int(y)
             tol = self.wandToleranceSlider.value()
             flood_mask = skimage.segmentation.flood(
                 self.flood_img, (ydata, xdata), tolerance=tol
@@ -5558,8 +5371,6 @@ class guiWin(QMainWindow):
         
         # Label ROI dragging mouse --> draw ROI
         elif self.isMouseDragImg1 and self.labelRoiButton.isChecked():
-            x, y = event.pos().x(), event.pos().y()
-            xdata, ydata = int(x), int(y)
             if self.labelRoiIsRectRadioButton.isChecked():
                 x0, y0 = self.labelRoiItem.pos()
                 w, h = (xdata-x0), (ydata-y0)
@@ -5722,7 +5533,7 @@ class guiWin(QMainWindow):
             return
 
         if event.isExit():
-            self.ax1_cursor.setData([], [])
+            self.resetCursors()
 
         self.gui_hoverEventImg1(event, isHoverImg1=False)
         setMirroredCursor = (
@@ -5744,10 +5555,6 @@ class guiWin(QMainWindow):
         else:
             self.xHoverImg, self.yHoverImg = None, None
 
-        if event.isExit():
-            self.ax2_cursor.setData([], [])
-
-        # Cursor left image --> restore cursor
         if event.isExit():
             self.resetCursor()
 
@@ -5777,7 +5584,11 @@ class guiWin(QMainWindow):
             if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
                 ID = self.currentLab2D[ydata, xdata]
                 self.updatePropsWidget(ID)
-                hoverText = self.hoverValuesFormatted(xdata, ydata)
+                activeToolButton = self.getActiveToolButton()
+                hoverText = self.hoverValuesFormatted(
+                    xdata, ydata, activeToolButton, isHoverImg1
+                )
+                self.checkHighlightScaleBar(x, y, activeToolButton)
                 self.wcLabel.setText(hoverText)
         else:
             self.clickedOnBud = False
@@ -5890,6 +5701,9 @@ class guiWin(QMainWindow):
         if setMirroredCursor:
             x, y = event.pos()
             self.ax2_cursor.setData([x], [y])
+        else:
+            self.ax2_cursor.setData([], [])
+            
         return cursorsInfo
     
     def drawTempMothBudLine(self, event, posData):
@@ -6169,6 +5983,10 @@ class guiWin(QMainWindow):
         self.updateLabelRoiCircularCursor(x, y, setLabelRoiCircCursor)
     
     def gui_imgGradShowContextMenu(self, x, y):
+        if hasattr(self, 'scaleBar'):
+            if self.scaleBar.isHighlighted():
+                self.scaleBar.showContextMenu(x, y)
+                return
         self.imgGrad.gradient.menu.popup(QPoint(int(x), int(y)))
     
     def gui_rightImageShowContextMenu(self, event):
@@ -6424,6 +6242,11 @@ class guiWin(QMainWindow):
             self.updateAllImages()
             return
 
+        if hasattr(self, 'scaleBar'):
+            if self.scaleBar.isHighlighted() and self.scaleBar.clicked:
+                self.scaleBar.clicked = False
+                return
+        
         sendRightClickImg2 = (
             (mode=='Segmentation and Tracking' or self.isSnapshot)
             and right_click
@@ -6986,9 +6809,13 @@ class guiWin(QMainWindow):
             and addPointsByClickingButton is None
             and not keepObjON
         )
-
-        # Enable dragging of the image window like pyqtgraph original code
+        
+        # Enable dragging of the image window or the scalebar
         if dragImgLeft and not isCustomAnnot:
+            if hasattr(self, 'scaleBar'):
+                if self.scaleBar.isHighlighted():
+                    self.scaleBar.clicked = True
+                    return
             pg.ImageItem.mousePressEvent(self.img1, event)
             event.ignore()
             return
@@ -7358,8 +7185,7 @@ class guiWin(QMainWindow):
             if delID == 0:
                 return
             
-            posData.manualBackgroundImage[posData.manualBackgroundLab==delID, :] = 0
-            posData.manualBackgroundLab[posData.manualBackgroundLab==delID] = 0
+            self.clearManualBackgroundObject(delID)
             textItem = self.manualBackgroundTextItems.pop(delID)
             self.ax1.removeItem(textItem)
             self.setManualBackgroundImage()
@@ -9455,6 +9281,7 @@ class guiWin(QMainWindow):
         
         for ID1, ID2 in pairs:
             posData.cca_df.at[ID1, 'relative_ID'] = ID2
+            posData.cca_df.at[ID1, 'corrected_assignment'] = True
         self.store_cca_df()
         
         self.updateAllImages()
@@ -9477,6 +9304,7 @@ class guiWin(QMainWindow):
                     if ccs != 'S':
                         continue
                     cca_df_i.at[ID1, 'relative_ID'] = ID2
+                    cca_df_i.at[ID1, 'corrected_assignment'] = True
                 except KeyError:
                     pass
             
@@ -9939,7 +9767,10 @@ class guiWin(QMainWindow):
             return img
         
         if channelName == self.user_ch_name:
-            self.img1.setImage(img, next_frame_image=self.nextFrameImage())
+            self.img1.setImage(
+                img, next_frame_image=self.nextFrameImage(),
+                scrollbar_value=posData.frame_i+2
+            )
         else:
             imageItem = self.overlayLayersItems[channelName][0]
             imageItem.setImage(img)
@@ -9970,6 +9801,40 @@ class guiWin(QMainWindow):
                 self.UserEnforced_DisabledTracking = False
                 self.UserEnforced_Tracking = True
 
+    def addScaleBar(self, checked):
+        if checked:
+            posData = self.data[self.pos_i]
+            Y, X = self.img1.image.shape
+            win = apps.ScaleBarPropertiesDialog(
+                X, Y, posData.PhysicalSizeX, parent=self
+            )
+            win.show()
+            self.scaleBar = widgets.ScaleBar((Y, X), parent=self.ax1)
+            self.scaleBar.sigEditProperties.connect(self.editScaleBarProperties)
+            self.scaleBar.addToAxis(self.ax1)
+            self.scaleBar.draw(**win.kwargs())
+            win.sigValueChanged.connect(self.updateScaleBar)
+            win.exec_()
+            if win.cancel:
+                self.addScaleBarAction.setChecked(False)
+                return
+        else:
+            self.scaleBar.removeFromAxis(self.ax1)
+
+        self.imgGrad.addScaleBarAction.setChecked(checked)
+    
+    def updateScaleBar(self, scaleBarKwargs):
+        self.scaleBar.draw(**scaleBarKwargs)
+    
+    def editScaleBarProperties(self, properties):
+        Y, X = self.img1.image.shape
+        posData = self.data[self.pos_i]
+        win = apps.ScaleBarPropertiesDialog(
+            X, Y, posData.PhysicalSizeX, parent=self, **properties
+        )
+        win.sigValueChanged.connect(self.updateScaleBar)
+        win.exec_()
+        
     def invertBw(self, checked, update=True):
         self.invertBwAlreadyCalledOnce = True
         
@@ -10063,14 +9928,56 @@ class guiWin(QMainWindow):
             txt = f'{txt} | {raw_txt}'
         return txt
     
-    def hoverValuesFormatted(self, xdata, ydata):
-        activeToolButton = None
+    def getActiveToolButton(self):
         for button in self.LeftClickButtons:
             if button.isChecked():
-                activeToolButton = button
-                break
+                return button
+    
+    def checkHighlightScaleBar(self, x, y, activeToolButton):
+        if not hasattr(self, 'scaleBar'):
+            return
         
-        txt = f'x={xdata:d}, y={ydata:d}'
+        if not self.addScaleBarAction.isChecked():
+            return
+        
+        if activeToolButton is not None:
+            return
+        
+        ymin, xmin, ymax, xmax = self.scaleBar.bbox()
+        if x < xmin:
+            self.scaleBar.setHighlighted(False)
+            return
+        
+        if x > xmax:
+            self.scaleBar.setHighlighted(False)
+            return
+        
+        if y < ymin:
+            self.scaleBar.setHighlighted(False)
+            return
+        
+        if y > ymax:
+            self.scaleBar.setHighlighted(False)
+            return
+
+        self.scaleBar.setHighlighted(True)
+    
+    def getMouseDataCoordsRightImage(self):
+        text = self.wcLabel.text()
+        if not text:
+            return
+        
+        ax_idx = int(re.findall(r'\(ax(\d)\)', text)[0])
+        if ax_idx == 0:
+            return
+        
+        coords = re.findall(r'x=(\d+), y=(\d+) \(ax', text)[0]
+        
+        return tuple([int(val) for val in coords])
+    
+    def hoverValuesFormatted(self, xdata, ydata, activeToolButton, is_ax0):     
+        ax_idx = 0 if is_ax0 else 1
+        txt = f'x={xdata:d}, y={ydata:d} (ax{ax_idx})'
         if activeToolButton == self.rulerButton:
             txt = self._addRulerMeasurementText(txt)
             return txt
@@ -10508,17 +10415,32 @@ class guiWin(QMainWindow):
     def changeModeFromMenu(self, action):
         self.modeComboBox.setCurrentText(action.text())
 
-    def changeMode(self, idx):
+    def restorePrevAnnotOptions(self):
+        if self.prevAnnotOptions is None:
+            return
+        self.restoreAnnotOptions_ax1(options=self.prevAnnotOptions)
+        self.setDrawAnnotComboboxText()
+        self.prevAnnotOptions = None
+    
+    def changeMode(self, text):
         self.reconnectUndoRedo()
         self.updateModeMenuAction()
         posData = self.data[self.pos_i]
-        mode = self.modeComboBox.itemText(idx)
+        mode = text
+        prevMode = self.modeComboBox.previousText()
+        if prevMode == 'Segmentation and Tracking':
+            posData.last_tracked_i = self.get_last_tracked_i()
+            if posData.last_tracked_i > 0:
+                self.lastTrackedFrameLabel.setText(
+                    f'Tracked until frame n. {posData.last_tracked_i+1}'
+                )
         self.annotateToolbar.setVisible(False)
         self.store_data(autosave=False)
         self.copyContourButton.setChecked(False)
         if mode == 'Segmentation and Tracking':
             self.trackingMenu.setDisabled(False)
             self.modeToolBar.setVisible(True)
+            self.lastTrackedFrameLabel.setText('')
             self.initSegmTrackMode()
             self.setEnabledEditToolbarButton(enabled=True)
             self.addExistingDelROIs()
@@ -10528,6 +10450,7 @@ class guiWin(QMainWindow):
             self.realTimeTrackingToggle.label.setDisabled(False)
             if posData.cca_df is not None:
                 self.store_cca_df()
+            self.restorePrevAnnotOptions()
         elif mode == 'Cell cycle analysis':
             proceed = self.initCca()
             if proceed:
@@ -10541,10 +10464,7 @@ class guiWin(QMainWindow):
                     self.editToolBar.setVisible(True)
                 self.setEnabledCcaToolbar(enabled=True)
                 self.removeAlldelROIsCurrentFrame()
-                self.annotCcaInfoCheckbox.setChecked(True)
-                self.annotIDsCheckbox.setChecked(False)
-                self.drawMothBudLinesCheckbox.setChecked(False)
-                self.setDrawAnnotComboboxText()
+                self.setAnnotOptionsCcaMode()
                 self.clearGhost()
         elif mode == 'Viewer':
             self.modeToolBar.setVisible(True)
@@ -11401,7 +11321,7 @@ class guiWin(QMainWindow):
             self.resetCursors()
             self.updateAllImages()
     
-    def storeCurrentAnnotOptions_ax1(self):
+    def storeCurrentAnnotOptions_ax1(self, return_value=False):
         checkboxes = [
             'annotIDsCheckbox',
             'annotCcaInfoCheckbox',
@@ -11411,11 +11331,14 @@ class guiWin(QMainWindow):
             'annotNumZslicesCheckbox',
             'drawNothingCheckbox',
         ]
-        self.annotOptions = {}
+        annotOptions = {}
         for checkboxName in checkboxes:
             checkbox = getattr(self, checkboxName)
-            self.annotOptions[checkboxName] = checkbox.isChecked()
-
+            annotOptions[checkboxName] = checkbox.isChecked()
+        if return_value:
+            return annotOptions
+        self.annotOptions = annotOptions
+        
     def storeCurrentAnnotOptions_ax2(self):
         checkboxes = [
             'annotIDsCheckboxRight',
@@ -11431,11 +11354,14 @@ class guiWin(QMainWindow):
             checkbox = getattr(self, checkboxName)
             self.annotOptionsRight[checkboxName] = checkbox.isChecked()
     
-    def restoreAnnotOptions_ax1(self):
-        if not hasattr(self, 'annotOptions'):
+    def restoreAnnotOptions_ax1(self, options=None):
+        if options is None and not hasattr(self, 'annotOptions'):
             return
 
-        for option, state in self.annotOptions.items():
+        if options is None:
+            options = self.annotOptions
+            
+        for option, state in options.items():
             checkbox = getattr(self, option)
             checkbox.setChecked(state)
         
@@ -11530,11 +11456,7 @@ class guiWin(QMainWindow):
     @exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_Q and self.debug:
-            img = np.zeros_like(self.img1.image)
-            from cellacdc.plot import imshow
-            next_frame_image = self.nextFrameImage()
-            printl(next_frame_image.shape, next_frame_image.max())
-            self.img1.setImage(img, next_frame_image=next_frame_image)
+            self.getMouseDataCoordsRightImage()
             
         if not self.dataIsLoaded:
             self.logger.info(
@@ -11629,55 +11551,15 @@ class guiWin(QMainWindow):
         how = self.drawIDsContComboBox.currentText()
         isOverlaySegm = how.find('overlay segm. masks') != -1
         if ev.key()==Qt.Key_Up and not isCtrlModifier:
-            isAutoPilotActive = (
-                self.autoPilotZoomToObjToggle.isChecked()
-                and self.autoPilotZoomToObjToolbar.isVisible()
+            self.keyUpCallback(
+                isBrushActive, isWandActive, isExpandLabelActive, 
+                isLabelRoiCircActive
             )
-            if isBrushActive:
-                brushSize = self.brushSizeSpinbox.value()
-                self.brushSizeSpinbox.setValue(brushSize+1)
-            elif isWandActive:
-                wandTolerance = self.wandToleranceSlider.value()
-                self.wandToleranceSlider.setValue(wandTolerance+1)
-            elif isExpandLabelActive:
-                self.expandLabel(dilation=True)
-                self.expandFootprintSize += 1
-            elif isLabelRoiCircActive:
-                val = self.labelRoiCircularRadiusSpinbox.value()
-                self.labelRoiCircularRadiusSpinbox.setValue(val+1)
-            elif isAutoPilotActive:
-                self.pointsLayerAutoPilot('next')
-            else:
-                self.zSliceScrollBar.triggerAction(
-                    QAbstractSlider.SliderAction.SliderSingleStepAdd
-                )
         elif ev.key()==Qt.Key_Down and not isCtrlModifier:
-            isAutoPilotActive = (
-                self.autoPilotZoomToObjToggle.isChecked()
-                and self.autoPilotZoomToObjToolbar.isVisible()
+            self.keyDownCallback(
+                isBrushActive, isWandActive, isExpandLabelActive, 
+                isLabelRoiCircActive
             )
-            if isBrushActive:
-                brushSize = self.brushSizeSpinbox.value()
-                self.brushSizeSpinbox.setValue(brushSize-1)
-            elif isWandActive:
-                wandTolerance = self.wandToleranceSlider.value()
-                self.wandToleranceSlider.setValue(wandTolerance-1)
-            elif isExpandLabelActive:
-                self.expandLabel(dilation=False)
-                self.expandFootprintSize += 1
-            elif isLabelRoiCircActive:
-                val = self.labelRoiCircularRadiusSpinbox.value()
-                self.labelRoiCircularRadiusSpinbox.setValue(val-1)
-            elif isAutoPilotActive:
-                self.pointsLayerAutoPilot('prev')
-            else:
-                self.zSliceScrollBar.triggerAction(
-                    QAbstractSlider.SliderAction.SliderSingleStepSub
-                )
-        # elif ev.key()==Qt.Key_Left and not isCtrlModifier:
-        #     self.prev_cb()
-        # elif ev.key()==Qt.Key_Right and not isCtrlModifier:
-        #     self.next_cb()
         elif ev.key() == Qt.Key_Enter or ev.key() == Qt.Key_Return:
             if isTypingIDFunctionChecked:
                 self.typingEditID = False
@@ -12576,7 +12458,10 @@ class guiWin(QMainWindow):
         if checked:
             posData = self.data[self.pos_i]
             minID = min(posData.IDs, default=0)
-            self.manualBackgroundToolbar.spinboxID.setValue(minID)
+            if minID == self.manualBackgroundToolbar.spinboxID.value():
+                self.initManualBackgroundObject()
+            else:
+                self.manualBackgroundToolbar.spinboxID.setValue(minID)
             # self.initManualBackgroundObject()
             # self.initManualBackgroundImage()
             self.addManualBackgroundItems()
@@ -12938,7 +12823,7 @@ class guiWin(QMainWindow):
                 f'Type: {Type}\n\n'
                 f'Usage: activate the button and RIGHT-CLICK on cell to annotate\n\n'
                 f'Description: {selectedAnnot["description"]}\n\n'
-                f'SHORTCUT: "{keySequence}"'
+                f'Shortcut: "{keySequence}"'
             )
             keepActive = selectedAnnot['keepActive']
             isHideChecked = selectedAnnot['isHideChecked']
@@ -13791,7 +13676,35 @@ class guiWin(QMainWindow):
 
         self.titleLabel.setText('Budding event prediction done.', color='g')
     
+    def isNavigateActionOnNextFrame(self):
+        posData = self.data[self.pos_i]
+        if posData.SizeT == 1:
+            return False
+        
+        ax1_coords = self.getMouseDataCoordsRightImage()
+        if ax1_coords is None:
+            return False
+        
+        if not self.labelsGrad.showNextFrameAction.isEnabled():
+            return False
+        
+        if not self.labelsGrad.showNextFrameAction.isChecked():
+            return
+        
+        # Mouse is on right image and next frame action is checked
+        return True 
+    
+    def rightImageFramesScrollbarValueChanged(self, value):
+        img = self.nextFrameImage(current_frame_i=value-2)
+        self.img1.linkedImageItem.setImage(img)
+    
     def nextActionTriggered(self):
+        if self.isNavigateActionOnNextFrame():
+            self.rightImageFramesScrollbar.setValue(
+                self.rightImageFramesScrollbar.value()+1 
+            )
+            return
+        
         stepAddAction = QAbstractSlider.SliderAction.SliderSingleStepAdd
         if self.zKeptDown or self.zSliceCheckbox.isChecked():
             self.zSliceScrollBar.triggerAction(stepAddAction)
@@ -13799,6 +13712,12 @@ class guiWin(QMainWindow):
             self.navigateScrollBar.triggerAction(stepAddAction)
     
     def prevActionTriggered(self):
+        if self.isNavigateActionOnNextFrame():
+            self.rightImageFramesScrollbar.setValue(
+                self.rightImageFramesScrollbar.value()-1 
+            )
+            return
+        
         stepSubAction = QAbstractSlider.SliderAction.SliderSingleStepSub
         if self.zKeptDown or self.zSliceCheckbox.isChecked():
             self.zSliceScrollBar.triggerAction(stepSubAction)
@@ -13960,7 +13879,7 @@ class guiWin(QMainWindow):
         self.drawManualBackgroundObj(self.xHoverImg, self.yHoverImg)
     
     def updatePos(self):
-        self.setSaturBarLabel()
+        self.setStatusBarLabel()
         self.checkManageVersions()
         self.removeAlldelROIsCurrentFrame()
         self.resetManualBackgroundItems()
@@ -14278,7 +14197,10 @@ class guiWin(QMainWindow):
         
         self.AutoPilotProfile.storeOkAskInputMetadata()
 
-        self.isSegm3D = posData.isSegm3D
+        if posData.isSegm3D is None:
+            self.isSegm3D = False
+        else:
+            self.isSegm3D = posData.isSegm3D
         self.SizeT = posData.SizeT
         self.SizeZ = posData.SizeZ
         self.TimeIncrement = posData.TimeIncrement
@@ -14546,6 +14468,7 @@ class guiWin(QMainWindow):
         else:
             self.manageVersionsAction.setDisabled(True)
 
+    @exception_handler
     def loadingDataCompleted(self):
         self.isDataLoading = True
         posData = self.data[self.pos_i]
@@ -14608,6 +14531,9 @@ class guiWin(QMainWindow):
         isNextFrameVisible = (
             self.df_settings.at['isNextFrameVisible', 'value'] == 'Yes'
         )
+        isNextFrameActive = (
+            isNextFrameVisible and self.labelsGrad.showNextFrameAction.isEnabled()
+        )
         self.updateScrollbars()
         self.openAction.setEnabled(True)
         self.editTextIDsColorAction.setDisabled(False)
@@ -14615,25 +14541,25 @@ class guiWin(QMainWindow):
         self.navigateToolBar.setVisible(True)
         self.labelsGrad.showLabelsImgAction.setChecked(isLabVisible)
         self.labelsGrad.showRightImgAction.setChecked(isRightImgVisible)
-        self.labelsGrad.showNextFrameAction.setChecked(isNextFrameVisible)
-        if isRightImgVisible or isNextFrameVisible:
+        self.labelsGrad.showNextFrameAction.setChecked(isNextFrameActive)
+        if isRightImgVisible or isNextFrameActive:
             self.rightBottomGroupbox.setChecked(True)
         
-        if isRightImgVisible or isLabVisible or isNextFrameVisible:
-            self.setTwoImagesLayout(True)
-        else:
-            self.setTwoImagesLayout(False)
+        isTwoImagesLayout = (
+            isRightImgVisible or isLabVisible or isNextFrameActive
+        )
+        self.setTwoImagesLayout(isTwoImagesLayout)
         
         self.setBottomLayoutStretch()
         
-        if isNextFrameVisible:
+        if isNextFrameActive:
             self.rightBottomGroupbox.show()
             self.rightBottomGroupbox.setChecked(True)
             self.drawNothingCheckboxRight.click()  
 
         self.readSavedCustomAnnot()
         self.addCustomAnnotButtonAllLoadedPos()
-        self.setSaturBarLabel()
+        self.setStatusBarLabel()
 
         self.initLookupTableLab()
         if self.invertBwAction.isChecked() and not self.invertBwAlreadyCalledOnce:
@@ -14645,7 +14571,8 @@ class guiWin(QMainWindow):
 
         self.update_rp()
         self.updateAllImages()
-        
+        if posData.SizeT > 1:
+            self.rightImageFramesScrollbar.setValueNoSignal(posData.frame_i+2)
         self.setMetricsFunc()
 
         self.gui_createLabelRoiItem()
@@ -14812,7 +14739,7 @@ class guiWin(QMainWindow):
         if how.find('nothing') != -1:
             self.drawNothingCheckboxRight.setChecked(True)
 
-    def setSaturBarLabel(self, log=True):
+    def setStatusBarLabel(self, log=True):
         self.statusbar.clearMessage()
         posData = self.data[self.pos_i]
         segmentedChannelname = posData.filename[len(posData.basename):]
@@ -14824,6 +14751,7 @@ class guiWin(QMainWindow):
             f'Segmented channel: {segmentedChannelname} || '
             f'Segmentation file name: {segmEndName}'
         )
+        mode = str(self.modeComboBox.currentText())
         if log:
             self.logger.info(txt)
         self.statusBarLabel.setText(txt)
@@ -14873,6 +14801,8 @@ class guiWin(QMainWindow):
                 self.drawIDsContComboBox_cb
             )
             self.showTreeInfoCheckbox.hide()
+            self.rightImageFramesScrollbar.setVisible(False)
+            self.rightImageFramesScrollbar.setDisabled(True)
             if not self.isSegm3D:
                 self.manualBackgroundAction.setVisible(True)
                 self.manualBackgroundAction.setDisabled(False)
@@ -14890,7 +14820,7 @@ class guiWin(QMainWindow):
             self.skipToNewIdAction.setDisabled(False)
             try:
                 self.modeComboBox.activated.disconnect()
-                self.modeComboBox.currentIndexChanged.disconnect()
+                self.modeComboBox.sigTextChanged.disconnect()
                 self.drawIDsContComboBox.currentIndexChanged.disconnect()
             except Exception as e:
                 pass
@@ -14899,7 +14829,7 @@ class guiWin(QMainWindow):
             self.modeComboBox.addItems(self.modeItems)
             self.drawIDsContComboBox.clear()
             self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxSegmItems)
-            self.modeComboBox.currentIndexChanged.connect(self.changeMode)
+            self.modeComboBox.sigTextChanged.connect(self.changeMode)
             self.modeComboBox.activated.connect(self.clearComboBoxFocus)
             self.drawIDsContComboBox.currentIndexChanged.connect(
                                                     self.drawIDsContComboBox_cb)
@@ -15040,6 +14970,8 @@ class guiWin(QMainWindow):
         else:
             self.navigateScrollBar.setMinimum(1)
             self.navigateScrollBar.setAbsoluteMaximum(posData.SizeT)
+            self.rightImageFramesScrollbar.setMinimum(1)
+            self.rightImageFramesScrollbar.setMaximum(posData.SizeT)
             if posData.last_tracked_i is not None:
                 self.navigateScrollBar.setMaximum(posData.last_tracked_i+1)
                 self.navSpinBox.setMaximum(posData.last_tracked_i+1)
@@ -15058,6 +14990,9 @@ class guiWin(QMainWindow):
             )
             self.navigateScrollBar.actionTriggered.connect(
                 self.framesScrollBarActionTriggered
+            )
+            self.rightImageFramesScrollbar.connectValueChanged(
+                self.rightImageFramesScrollbarValueChanged
             )
 
     def zSliceScrollBarActionTriggered(self, action):
@@ -15079,7 +15014,10 @@ class guiWin(QMainWindow):
             posData.segmInfo_df.at[idx, 'z_slice_used_gui'] = z
             self.zSliceSpinbox.setValueNoEmit(z+1)
             img = self.getImage()
-            self.img1.setImage(img, next_frame_image=self.nextFrameImage())
+            self.img1.setImage(
+                img, next_frame_image=self.nextFrameImage(),
+                scrollbar_value=posData.frame_i+2
+            )
             self.setOverlayImages()
             if self.labelsGrad.showLabelsImgAction.isChecked():
                 self.img2.setImage(posData.lab, z=z, autoLevels=False)
@@ -15304,6 +15242,7 @@ class guiWin(QMainWindow):
         self.isCtrlDown = False
         self.typingEditID = False
         self.isShiftDown = False
+        self.prevAnnotOptions = None
         self.ghostObject = None
         self.autoContourHoverON = False
         self.navigateScrollBarStartedMoving = True
@@ -15583,7 +15522,7 @@ class guiWin(QMainWindow):
         self.updateFramePosLabel()
         proceed_cca, never_visited = self.get_data()
         self.updateAllImages()
-        self.setSaturBarLabel()
+        self.setStatusBarLabel()
 
     def PosScrollBarReleased(self):
         self.pos_i = self.navigateScrollBar.sliderPosition()-1
@@ -15616,7 +15555,10 @@ class guiWin(QMainWindow):
             posData.lab = posData.allData_li[posData.frame_i]['labels']
 
         img = self.getImage()
-        self.img1.setImage(img, next_frame_image=self.nextFrameImage())
+        self.img1.setImage(
+            img, next_frame_image=self.nextFrameImage(),
+            scrollbar_value=posData.frame_i+2
+        )
         if self.overlayButton.isChecked():
             self.setOverlayImages()
 
@@ -16053,7 +15995,7 @@ class guiWin(QMainWindow):
                             lastVisited = True
                 else:
                     lastVisited = True
-
+        
         # Use stored cca_df and do not modify it with automatic stuff
         if posData.cca_df is not None and not enforceAll and not lastVisited:
             return notEnoughG1Cells, proceed
@@ -16063,7 +16005,8 @@ class guiWin(QMainWindow):
         # IDs where we didn't manually correct assignment
         if lastVisited and not enforceAll:
             try:
-                correctedAssignIDs = curr_df[curr_df['corrected_assignment']].index
+                correctedAssignIDs = curr_df[
+                    curr_df['corrected_assignment']].index
             except Exception as e:
                 correctedAssignIDs = []
             posData.new_IDs = [
@@ -17766,13 +17709,6 @@ class guiWin(QMainWindow):
         self.ax1.addItem(scatterItem)
 
         toolButton = widgets.PointsLayerToolButton(symbol, color, parent=self)
-        toolTip = (
-            f'"{self.addPointsWin.layerType}" points layer\n\n'
-            f'SHORTCUT: "{self.addPointsWin.shortcut}"'
-        )
-        if hasattr(self.addPointsWin, 'description'):
-            toolTip = f'{toolTip}\nDescription: {self.addPointsWin.description}'
-        toolButton.setToolTip(toolTip)
         toolButton.setCheckable(True)
         toolButton.setChecked(True)
         if self.addPointsWin.keySequence is not None:
@@ -18496,7 +18432,7 @@ class guiWin(QMainWindow):
             else:
                 widget.setShortcut(shortcut)
             s = widget.toolTip()
-            toolTip = re.sub(r'SHORTCUT: "(.*)"', f'SHORTCUT: "{text}"', s)
+            toolTip = re.sub(r'Shortcut: "(.*)"', f'Shortcut: "{text}"', s)
             widget.setToolTip(toolTip)
         
         if not save: 
@@ -18607,9 +18543,13 @@ class guiWin(QMainWindow):
                 pass
     
     def showNextFrameImageItem(self, checked):
+        self.rightImageFramesScrollbar.setVisible(checked)
+        self.rightImageFramesScrollbar.setDisabled(not checked)
         self.setTwoImagesLayout(checked)
         if checked:
             self.df_settings.at['isNextFrameVisible', 'value'] = 'Yes'
+            self.df_settings.at['isRightImageVisible', 'value'] = 'No'
+            self.df_settings.at['isLabelsVisible', 'value'] = 'No'
             self.graphLayout.addItem(
                 self.imgGradRight, row=1, col=self.plotsCol+2
             )
@@ -18636,9 +18576,13 @@ class guiWin(QMainWindow):
         
     
     def showRightImageItem(self, checked):
+        self.rightImageFramesScrollbar.setVisible(not checked)
+        self.rightImageFramesScrollbar.setDisabled(checked)
         self.setTwoImagesLayout(checked)
         if checked:
             self.df_settings.at['isRightImageVisible', 'value'] = 'Yes'
+            self.df_settings.at['isNextFrameVisible', 'value'] = 'No'
+            self.df_settings.at['isLabelsVisible', 'value'] = 'No'
             self.graphLayout.addItem(
                 self.imgGradRight, row=1, col=self.plotsCol+2
             )
@@ -18662,6 +18606,8 @@ class guiWin(QMainWindow):
         self.setBottomLayoutStretch()    
         
     def showLabelImageItem(self, checked):
+        self.rightImageFramesScrollbar.setVisible(not checked)
+        self.rightImageFramesScrollbar.setDisabled(checked)
         self.setTwoImagesLayout(checked)
         self.rightBottomGroupbox.hide()
         if checked:
@@ -19582,7 +19528,10 @@ class guiWin(QMainWindow):
         img = self._getImageupdateAllImages(image, updateFilters)
         if self.equalizeHistPushButton.isChecked():
             img = skimage.exposure.equalize_adapthist(img)
-        self.img1.setImage(img, next_frame_image=self.nextFrameImage())
+        self.img1.setImage(
+            img, next_frame_image=self.nextFrameImage(),
+            scrollbar_value=self.navigateScrollBar.value()+2
+        )
     
     def getContoursImageItem(self, ax):
         if not self.areContoursRequested(ax):
@@ -19626,9 +19575,18 @@ class guiWin(QMainWindow):
             return
         next_ID = posData.IDs[next_idx]
         self.manualBackgroundToolbar.spinboxID.setValue(next_ID)
-        
+    
+    def clearManualBackgroundObject(self, ID):
+        posData = self.data[self.pos_i]
+        mask = posData.manualBackgroundLab==ID
+        posData.manualBackgroundImage[mask, :] = 0
+        posData.manualBackgroundLab[mask] = 0
+    
     def addManualBackgroundObject(self, x, y):
         posData = self.data[self.pos_i]
+        
+        if not hasattr(self, 'manualBackgroundObj'):
+            self.initManualBackgroundObject()
         
         Y, X = self.currentLab2D.shape
         ymin, xmin, ymax, xmax = self.manualBackgroundObj.bbox
@@ -19649,9 +19607,11 @@ class guiWin(QMainWindow):
         obj_image = self.manualBackgroundObj.image[:height, :width]
         obj_slice = (slice(ystart, yend), slice(xstart, xend))
         ID = self.manualBackgroundObj.label
+        self.clearManualBackgroundObject(ID)
         posData.manualBackgroundLab[obj_slice][obj_image] = ID
         
         if ID in self.manualBackgroundTextItems:
+            self.manualBackgroundTextItems[ID].setPos(x, y)
             return
         
         textItem = pg.TextItem(
@@ -19716,6 +19676,32 @@ class guiWin(QMainWindow):
             data = [obj.label]*len(xx)
             self.ax1_lostObjScatterItem.addPoints(xx, yy, data=data)
             self.ax2_lostObjScatterItem.addPoints(xx, yy)
+    
+    def getNearestLostObjID(self, y, x):
+        xx, yy = self.ax2_lostObjScatterItem.getData()
+        if xx is None:
+            return
+        
+        if len(xx) == 0:
+            return
+        
+        posData = self.data[self.pos_i]
+        prev_lab = posData.allData_li[posData.frame_i-1]['labels']
+        if prev_lab is None:
+            return
+        
+        lostObjsContourMask = np.zeros(self.currentLab2D.shape, dtype=bool)
+        lostObjsContourMask[yy.astype(int), xx.astype(int)] = True
+            
+        _, y_nearest, x_nearest = core.nearest_nonzero_2D(
+            lostObjsContourMask, y, x, return_coords=True
+        )
+        nearest_ID = self.get_2Dlab(prev_lab)[y_nearest, x_nearest]
+        
+        if nearest_ID == 0:
+            return
+        
+        return nearest_ID
     
     def addLostObjsToImage(self):
         xx, yy = self.ax1_lostObjScatterItem.getData()
@@ -19819,7 +19805,7 @@ class guiWin(QMainWindow):
         self.updateContoursImage(ax=0, delROIsIDs=delROIsIDs)
         self.updateContoursImage(ax=1, delROIsIDs=delROIsIDs)
 
-    def nextFrameImage(self):
+    def nextFrameImage(self, current_frame_i=None):
         if not self.labelsGrad.showNextFrameAction.isEnabled():
             return
         
@@ -19827,7 +19813,10 @@ class guiWin(QMainWindow):
             return
         
         posData = self.data[self.pos_i]
-        next_frame_i = posData.frame_i + 1
+        if current_frame_i is None:
+            current_frame_i = posData.frame_i
+            
+        next_frame_i = current_frame_i + 1
         if next_frame_i >= len(posData.img_data):
             img = posData.img_data[-1]
         else:
@@ -19840,6 +19829,63 @@ class guiWin(QMainWindow):
         
         return img
         
+    def keyUpCallback(
+            self, isBrushActive, isWandActive, isExpandLabelActive, 
+            isLabelRoiCircActive
+        ):
+        isAutoPilotActive = (
+            self.autoPilotZoomToObjToggle.isChecked()
+            and self.autoPilotZoomToObjToolbar.isVisible()
+        )
+        if isBrushActive:
+            brushSize = self.brushSizeSpinbox.value()
+            self.brushSizeSpinbox.setValue(brushSize+1)
+        elif isWandActive:
+            wandTolerance = self.wandToleranceSlider.value()
+            self.wandToleranceSlider.setValue(wandTolerance+1)
+        elif isExpandLabelActive:
+            self.expandLabel(dilation=True)
+            self.expandFootprintSize += 1
+        elif isLabelRoiCircActive:
+            val = self.labelRoiCircularRadiusSpinbox.value()
+            self.labelRoiCircularRadiusSpinbox.setValue(val+1)
+        elif isAutoPilotActive:
+            self.pointsLayerAutoPilot('next')
+        else:
+            self.zSliceScrollBar.triggerAction(
+                QAbstractSlider.SliderAction.SliderSingleStepAdd
+            )
+    
+    def keyDownCallback(
+            self, isBrushActive, isWandActive, isExpandLabelActive, 
+            isLabelRoiCircActive
+        ):
+        isAutoPilotActive = (
+            self.autoPilotZoomToObjToggle.isChecked()
+            and self.autoPilotZoomToObjToolbar.isVisible()
+        )
+        if isBrushActive:
+            brushSize = self.brushSizeSpinbox.value()
+            self.brushSizeSpinbox.setValue(brushSize-1)
+        elif isWandActive:
+            wandTolerance = self.wandToleranceSlider.value()
+            self.wandToleranceSlider.setValue(wandTolerance-1)
+        elif isExpandLabelActive:
+            self.expandLabel(dilation=False)
+            self.expandFootprintSize += 1
+        elif isLabelRoiCircActive:
+            val = self.labelRoiCircularRadiusSpinbox.value()
+            self.labelRoiCircularRadiusSpinbox.setValue(val-1)
+        elif isAutoPilotActive:
+            self.pointsLayerAutoPilot('prev')
+        elif self.isNavigateActionOnNextFrame():
+            posData = self.data[self.pos_i]
+            self.rightImageFramesScrollbar.setValue(posData.frame_i+2)
+        else:
+            self.zSliceScrollBar.triggerAction(
+                QAbstractSlider.SliderAction.SliderSingleStepSub
+            )
+    
     # @exec_time
     @exception_handler
     def updateAllImages(
@@ -20653,6 +20699,11 @@ class guiWin(QMainWindow):
 
         try:
             self.navSpinBox.disconnect()
+        except Exception as e:
+            pass
+        
+        try: 
+            self.scaleBar.removeFromAxis(self.ax1)
         except Exception as e:
             pass
 
@@ -21541,6 +21592,15 @@ class guiWin(QMainWindow):
 
         self.setDrawAnnotComboboxTextRight()
 
+    def setAnnotOptionsCcaMode(self):
+        self.prevAnnotOptions = self.storeCurrentAnnotOptions_ax1(
+            return_value=True
+        )
+        self.annotCcaInfoCheckbox.setChecked(True)
+        self.annotIDsCheckbox.setChecked(False)
+        self.drawMothBudLinesCheckbox.setChecked(False)
+        self.setDrawAnnotComboboxText()
+    
     def setDrawAnnotComboboxText(self):
         if self.annotIDsCheckbox.isChecked():
             if self.annotContourCheckbox.isChecked():
@@ -21611,7 +21671,7 @@ class guiWin(QMainWindow):
         if t == self.annotateRightHowCombobox.currentText():
             self.annotateRightHowCombobox_cb(0)
         self.annotateRightHowCombobox.setCurrentText(t)
-    
+        
     def getOverlayItems(self, channelName):
         imageItem = pg.ImageItem()
         imageItem.setOpacity(0.5)
@@ -21620,6 +21680,7 @@ class guiWin(QMainWindow):
             parent=self, name='image', axisLabel=channelName
         )
         
+        lutItem.removeAddScaleBarAction()
         lutItem.restoreState(self.df_settings)
         lutItem.setImageItem(imageItem)
         lutItem.vb.raiseContextMenu = lambda x: None
@@ -22289,7 +22350,7 @@ class guiWin(QMainWindow):
         for posData in self.data:
             posData.setFilePaths(new_endname=win.entryText)
 
-        self.setSaturBarLabel()
+        self.setStatusBarLabel()
         self.saveData()
 
 
@@ -22372,7 +22433,7 @@ class guiWin(QMainWindow):
         if worker.isFinished or worker.isPaused or len(worker.dataQ) == 0:
             self.waitAutoSaveWorkerLoop.exit()
             self.waitAutoSaveWorkerTimer.stop()
-            self.setSaturBarLabel(log=False)
+            self.setStatusBarLabel(log=False)
         
     @exception_handler
     def saveData(self, checked=False, finishedCallback=None, isQuickSave=False):

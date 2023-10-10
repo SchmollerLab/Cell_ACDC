@@ -27,7 +27,7 @@ from qtpy.QtCore import (
     QEvent, QEventLoop, QPropertyAnimation, QObject,
     QItemSelectionModel, QAbstractListModel, QModelIndex,
     QByteArray, QDataStream, QMimeData, QAbstractItemModel, 
-    QIODevice, QItemSelection
+    QIODevice, QItemSelection, PYQT6, QRectF
 )
 from qtpy.QtGui import (
     QFont, QPalette, QColor, QPen, QKeyEvent, QBrush, QPainter,
@@ -44,7 +44,7 @@ from qtpy.QtWidgets import (
     QStyle, QDialog, QSpacerItem, QFrame, QMenu, QActionGroup,
     QListWidget, QPlainTextEdit, QFileDialog, QListView, QAbstractItemView,
     QTreeWidget, QTreeWidgetItem, QListWidgetItem, QLayout, QStylePainter,
-    QGraphicsBlurEffect, QGraphicsProxyWidget
+    QGraphicsBlurEffect, QGraphicsProxyWidget, QGraphicsObject
 )
 
 import pyqtgraph as pg
@@ -2532,14 +2532,19 @@ class myMessageBox(QDialog):
         if hasattr(self, 'loop'):
             self.loop.exit()
 
-class myFormLayout(QGridLayout):
+class FormLayout(QGridLayout):
     def __init__(self):
         QGridLayout.__init__(self)
 
-    def addFormWidget(self, formWidget, align=None, row=0):
+    def addFormWidget(
+            self, formWidget, 
+            leftLabelAlignment=Qt.AlignRight, 
+            align=None, 
+            row=0
+        ):
         for col, item in enumerate(formWidget.items):
             if col==0:
-                alignment = Qt.AlignRight
+                alignment = leftLabelAlignment
             elif col==2:
                 alignment = Qt.AlignLeft
             else:
@@ -3026,8 +3031,12 @@ class ShortcutLineEdit(QLineEdit):
         if event.key() == Qt.Key_Backspace or event.key() == Qt.Key_Delete:
             self.setText('')
             return
+        
+        modifers_value = event.modifiers().value if PYQT6 else event.modifiers()
+        keySequence = QKeySequence(modifers_value | event.key()).toString()
 
-        keySequence = QKeySequence(event.modifiers() | event.key()).toString()
+        modifers_value = event.modifiers().value if PYQT6 else event.modifiers()
+        keySequence = QKeySequence(modifers_value | event.key()).toString()
         keySequence = keySequence.encode('ascii', 'ignore').decode('utf-8')
         self.setText(keySequence)
         self.key = event.key()
@@ -4437,7 +4446,7 @@ class ROI(pg.ROI):
         return _slice
         
 
-class PlotCurveItem(pg.PlotCurveItem):
+class PlotCurveItem(pg.PlotCurveItem):    
     def __init__(self, *args, **kargs):
         super().__init__(*args, **kargs)
     
@@ -4562,6 +4571,7 @@ class ToggleVisibilityCheckBox(QCheckBox):
 class myHistogramLUTitem(baseHistogramLUTitem):
     sigGradientMenuEvent = Signal(object)
     sigTickColorAccepted = Signal(object)
+    sigAddScaleBar = Signal(bool)
 
     def __init__(
             self, parent=None, name='image', axisLabel='', isViewer=False, 
@@ -4578,6 +4588,12 @@ class myHistogramLUTitem(baseHistogramLUTitem):
         if isViewer:
             # In the viewer we don't allow additional settings from the menu
             return
+        
+        # Add scale bar action
+        self.addScaleBarAction = QAction('Add scale bar', self)
+        self.addScaleBarAction.setCheckable(True)
+        self.addScaleBarAction.triggered.connect(self.emitAddScaleBar)
+        self.gradient.menu.addAction(self.addScaleBarAction)
 
         # Invert bw action
         self.invertBwAction = QAction('Invert black/white', self)
@@ -4690,6 +4706,12 @@ class myHistogramLUTitem(baseHistogramLUTitem):
         self.gradient.menu.installEventFilter(self.filterObject)
         self.highlightedAction = None
         self.lastHoveredAction = None
+    
+    def removeAddScaleBarAction(self):
+        self.gradient.menu.removeAction(self.addScaleBarAction)
+    
+    def emitAddScaleBar(self):
+        self.sigAddScaleBar.emit(self.addScaleBarAction.isChecked())
     
     def gradientMenuEventFilter(self, object, event):
         if event.type() == QEvent.Type.MouseMove:
@@ -5655,7 +5677,8 @@ class ParentImageItem(pg.ImageItem):
         return super().setLevels(levels, **kargs)
     
     def setImage(
-            self, image=None, autoLevels=None, next_frame_image=None, **kargs
+            self, image=None, autoLevels=None, next_frame_image=None, 
+            scrollbar_value=None, **kargs
         ):
         super().setImage(image, autoLevels, **kargs)
         if not self.isLinkedImageItemActive():
@@ -5663,7 +5686,9 @@ class ParentImageItem(pg.ImageItem):
         
         if next_frame_image is not None:
             self.linkedImageItem.setImage(
-                next_frame_image, autoLevels=autoLevels
+                next_frame_image, 
+                scrollbar_value=scrollbar_value, 
+                autoLevels=autoLevels
             )
         elif image is not None:
             self.linkedImageItem.setImage(image, autoLevels=autoLevels)
@@ -5684,6 +5709,36 @@ class ParentImageItem(pg.ImageItem):
         if self.linkedImageItem is not None:
             self.linkedImageItem.setLookupTable(lut)
 
+class ChildImageItem(pg.ImageItem):
+    def __init__(self, *args, linkedScrollbar=None, **kwargs):
+        pg.ImageItem.__init__(self, *args, **kwargs)
+        self.linkedScrollbar = linkedScrollbar
+    
+    def setImage(self, img=None, z=None, scrollbar_value=None, **kargs):
+        autoLevels = kargs.get('autoLevels')
+        if autoLevels is None:
+            kargs['autoLevels'] = False
+
+        if img is None:
+            pg.ImageItem.setImage(self, img, **kargs)
+            return
+
+        if img.ndim == 3 and img.shape[-1] > 4 and z is not None:
+            pg.ImageItem.setImage(self, img[z], **kargs)
+        else:
+            pg.ImageItem.setImage(self, img, **kargs)
+        
+        if self.linkedScrollbar is None:
+            return
+        
+        if not self.linkedScrollbar.isEnabled():
+            return
+        
+        if scrollbar_value is None:
+            return
+        
+        self.linkedScrollbar.setValueNoSignal(scrollbar_value)
+
 class labImageItem(pg.ImageItem):
     def __init__(self, *args, **kwargs):
         pg.ImageItem.__init__(self, *args, **kwargs)
@@ -5701,6 +5756,8 @@ class labImageItem(pg.ImageItem):
             pg.ImageItem.setImage(self, img[z], **kargs)
         else:
             pg.ImageItem.setImage(self, img, **kargs)
+        
+            
 
 class PostProcessSegmSlider(sliderWithSpinBox):
     def __init__(self, *args, label=None, **kwargs):
@@ -5783,8 +5840,8 @@ class GhostContourItem(pg.PlotDataItem):
             self.label.setText('')
         else:
             self.label.setText(f'{ID}', size=fontSize)
-            w, h = self.label.rect().right(), self.label.rect().bottom()
-            self.label.setPos(x_cursor-w/2, y_cursor-h/2)
+            w, h = self.label.itemRect().width(), self.label.itemRect().height()
+            self.label.item.setPos(x_cursor, y_cursor-h)
     
     def clear(self):
         self.setData([], [])
@@ -5823,8 +5880,8 @@ class GhostMaskItem(pg.ImageItem):
             return
         
         self.label.setText(f'{ID}', size=fontSize)
-        w, h = self.label.rect().right(), self.label.rect().bottom()
-        self.label.setPos(x_cursor-w/2, y_cursor-h/2)
+        w, h = self.label.itemRect().width(), self.label.itemRect().height()
+        self.label.item.setPos(x_cursor, y_cursor-h)
     
     def clear(self):
         if hasattr(self, 'label'):
@@ -6117,28 +6174,39 @@ class ScrollBarWithNumericControl(QWidget):
     
     def __init__(
             self, orientation=Qt.Horizontal, add_max_proj_button=False, 
-            parent=None
+            parent=None, labelText=''
         ) -> None:
         super().__init__(parent)
+        
+        self._slot = None
     
         layout = QHBoxLayout()
         self.scrollbar = QScrollBar(orientation, self)
         self.spinbox = QSpinBox(self)
         self.maxLabel = QLabel(self)
+        idx = 0
+        if labelText:
+            layout.addWidget(QLabel(labelText))
+            layout.setStretch(idx, 0)
+            idx += 1
 
         layout.addWidget(self.spinbox)
+        layout.setStretch(idx,0)
+        idx += 1
+        
         layout.addWidget(self.maxLabel)
+        layout.setStretch(idx,0)
+        idx += 1
+        
         layout.addWidget(self.scrollbar)
-    
-        layout.setStretch(0,0)
-        layout.setStretch(1,0)
-        layout.setStretch(2,1)
+        layout.setStretch(idx,1)
+        idx += 1
         
         if add_max_proj_button:
             self.maxProjCheckbox = QCheckBox('MAX')
             self.scrollbar.maxProjCheckbox = self.maxProjCheckbox
             layout.addWidget(self.maxProjCheckbox)
-            layout.setStretch(3,0)
+            layout.setStretch(idx,0)
         
         layout.setContentsMargins(5, 0, 5, 0)
 
@@ -6148,6 +6216,17 @@ class ScrollBarWithNumericControl(QWidget):
         self.scrollbar.valueChanged.connect(self.scrollbarValueChanged)
         if add_max_proj_button:
             self.maxProjCheckbox.toggled.connect(self.maxProjToggled)
+    
+    def connectValueChanged(self, slot):
+        self.sigValueChanged.connect(slot)
+        self._slot = slot
+    
+    def setValueNoSignal(self, value):
+        if self._slot is None:
+            return
+        self.sigValueChanged.disconnect()
+        self.setValue(value)
+        self.sigValueChanged.connect(self._slot)
     
     def maxProjToggled(self, checked):
         self.scrollbar.setDisabled(checked)
@@ -6162,6 +6241,10 @@ class ScrollBarWithNumericControl(QWidget):
         self.maxLabel.setText(f'/{maximum}')
         self.scrollbar.setMaximum(maximum)
         self.spinbox.setMaximum(maximum)
+    
+    def setMinimum(self, minumum):
+        self.scrollbar.setMinimum(minumum)
+        self.spinbox.setMinimum(minumum)
     
     def spinboxValueChanged(self, value):
         self.scrollbar.setValue(value)
@@ -6635,3 +6718,254 @@ class Label(QLabel):
             text = html_utils.paragraph(text)
         super().setText(text)
         
+        
+class LabelItem(pg.LabelItem):    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+    
+    def bbox(self):
+        xl, yl = self.item.pos().x(), self.item.pos().y()
+        wl, hl = self.itemRect().width(), self.itemRect().height()
+        return yl, xl, yl+hl, xl+wl
+    
+    def setBold(self, bold=True):
+        self.origPos = self.item.pos()
+        self.setText(self.text, bold=bold)
+        self.item.setPos(self.origPos)
+
+class ScaleBar(QGraphicsObject): 
+    sigEditProperties = Signal(object)
+    
+    def __init__(self, imageShape, parent=None):
+        super().__init__(parent)
+        self.SizeY, self.SizeX = imageShape
+        self.plotItem = PlotCurveItem()
+        self.labelItem = LabelItem()
+        self._x_pad = 5
+        self._y_pad = 3
+        self._highlighted = False
+        self._parent = parent
+        self.clicked = False
+        self.createContextMenu()
+    
+    def createContextMenu(self):
+        self.contextMenu = QMenu()
+        action = QAction('Edit properties...', self.contextMenu)
+        action.triggered.connect(self.emitEditProperties)
+        self.contextMenu.addSeparator()
+        self.contextMenu.addAction(action)
+    
+    def emitEditProperties(self):
+        self.setHighlighted(False)
+        self.sigEditProperties.emit(self.properties())
+    
+    def isHighlighted(self):
+        return self._highlighted
+        
+    def setHighlighted(self, highlighted):
+        if self._highlighted and highlighted:
+            return
+        
+        if not self._highlighted and not highlighted:
+            return
+        
+        pen = self.highlightPen if highlighted else self.pen
+        self.labelItem.setBold(bold=highlighted)
+        self.plotItem.setPen(pen)
+        
+        self._highlighted = highlighted
+    
+    def showContextMenu(self, x, y):
+        self.contextMenu.popup(QPoint(int(x), int(y)))
+    
+    def properties(self):
+        properties = {
+            'thickness': self._thickness,
+            'length_pixel': self._length,
+            'length_unit': self._length_unit,
+            'is_text_visible': self._is_text_visible,
+            'color': self._color,
+            'loc': self._loc,
+            'font_size': float(self._font_size[:-2]),
+            'unit': self._unit,
+            'num_decimals': self._num_decimals
+        }
+        return properties
+    
+    def move(self, xc, yc):
+        self._loc = 'Custom'
+        
+        x0 = xc - self._length/2
+        x1 = x0 + self._length
+        y0 = y1 = yc
+        self.plotItem.setData([x0, x1], [y0, y0])
+        self.setTextPos()
+    
+    def paint(self, painter, option, widget):
+        pass
+    
+    def boundingRect(self):
+        ymin, xmin, ymax, xmax = self.bbox()
+        return QRectF(xmin, ymin, xmax-xmin, ymax-ymin)
+    
+    def setProperties(
+            self, 
+            length_pixel, 
+            length_unit,
+            thickness=3, 
+            color='w',
+            is_text_visible=True, 
+            loc='top-left',
+            font_size=12,
+            unit='',
+            num_decimals=0
+        ):
+        self._loc = loc
+        self._color = color
+        self._length = length_pixel
+        self._length_unit = length_unit
+        self._is_text_visible = is_text_visible
+        self._font_size = f'{font_size}px'
+        self._unit = unit
+        self._num_decimals = num_decimals
+        self._thickness = thickness
+        self.pen = pg.mkPen(width=thickness, color=color, cosmetic=False)
+        self.highlightPen = pg.mkPen(
+            width=thickness+2, color=color, cosmetic=False
+        )
+        self.pen.setCapStyle(Qt.PenCapStyle.FlatCap)
+        self.highlightPen.setCapStyle(Qt.PenCapStyle.FlatCap)
+        self.plotItem.setPen(self.pen)
+    
+    def addToAxis(self, ax):
+        ax.addItem(self.plotItem)
+        ax.addItem(self.labelItem)
+    
+    def setText(self):
+        if self._is_text_visible:
+            number = round(self._length_unit, self._num_decimals)
+            if self._num_decimals == 0:
+                number = int(number)
+            text = f'{number} {self._unit}'
+        else:
+            text = ''
+        self.labelItem.setText(
+            text, color=self._color, size=self._font_size
+        )
+    
+    def setTextPos(self):
+        xx, yy = self.plotItem.getData()
+        x0 = xx[0]
+        y0 = yy[0]
+        xc = x0 + self._length/2
+        wl = self.labelItem.itemRect().width()
+        hl = self.labelItem.itemRect().height()
+        xl = xc-wl/2
+        yt = y0-hl    
+        self.labelItem.item.setPos(xl, yt)
+    
+    def getStartXCoordFromLoc(self, loc):
+        if loc == 'custom':
+            xx, yy = self.plotItem.getData()
+            x0 = xx[0]
+            return x0
+        
+        self.setText()
+        wl = self.labelItem.itemRect().width()
+        if loc.find('left') != -1:
+            x0 = self._x_pad
+            xc = x0 + self._length/2
+            xl = xc-wl/2
+            if xl < x0:
+                # Text is larger than line --> move line to the right
+                x0 = self._x_pad + abs(xl-self._x_pad)
+        else:
+            x0 = self.SizeX - self._length - self._x_pad
+            xc = x0 + self._length/2
+            x1 = x0 + self._length      
+            xr = xc+wl/2
+            if xr > x1:
+                # Text is larger than line --> move line to the left
+                delta_overshoot = xr - x1
+                x0 = x0 - delta_overshoot
+        return x0  
+    
+    def getStartYCoordFromLoc(self, loc):
+        if loc == 'custom':
+            xx, yy = self.plotItem.getData()
+            y0 = yy[0]
+            return y0
+        
+        self.setText()
+        textHeight = self.labelItem.itemRect().height()
+        if loc.find('top') != -1:
+            return textHeight + self._y_pad
+        else:
+            return self.SizeY - self._y_pad - self._thickness
+    
+    def update(self):
+        x0 = self.getStartXCoordFromLoc(self._loc) # + self._thickness/2
+        y0 = self.getStartYCoordFromLoc(self._loc)
+        
+        x1 = x0 + self._length # - self._thickness/2
+        self.plotItem.setData([x0, x1], [y0, y0])
+        
+        self.setText()
+        self.setTextPos()
+    
+    def draw(self, length_pixel, length_unit, **kwargs):
+        self.setProperties(length_pixel, length_unit, **kwargs)
+        self.update()
+        
+    def bbox(self):
+        y_line_min, x_line_min, y_line_max, x_line_max = self.plotItem.bbox()
+        y_lab_min, x_lab_min, y_lab_max, x_lab_max = self.labelItem.bbox()
+        ymin = min(y_line_min, y_lab_min)
+        xmin = min(x_line_min, x_lab_min)
+        ymax = max(y_line_max, y_lab_max)
+        xmax = max(x_line_max, x_lab_max)
+        return ymin, xmin, ymax, xmax
+    
+    def removeFromAxis(self, ax):
+        ax.removeItem(self.labelItem)
+        ax.removeItem(self.plotItem)
+
+class ComboBox(QComboBox):
+    sigTextChanged = Signal(str)
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._previousText = None
+        self._valueChanged = False
+        self.currentTextChanged.connect(self.emitTextChanged)
+    
+    def emitTextChanged(self, text):
+        self._valueChanged = True
+        self.sigTextChanged.emit(text)
+    
+    def mousePressEvent(self, event):
+        self._previousText = self.currentText()
+        super().mousePressEvent(event)
+    
+    def previousText(self):
+        return self._previousText
+
+    def addItems(self, items):
+        super().addItems(items)
+        self._previousText = items[0]
+    
+    def itemsText(self):
+        return [self.itemText(i) for i in range(self.count())]
+    
+    def setCurrentIndex(self, idx):
+        itemsText = self.itemsText()
+        currentText = itemsText[idx]
+        self._valueChanged = currentText != self._previousText
+        self._previousText = self.currentText()
+        super().setCurrentIndex(idx)
+    
+    def setCurrentText(self, text):
+        currentText = text
+        self._valueChanged = currentText != self._previousText
+        self._previousText = self.currentText()
+        super().setCurrentText(text)

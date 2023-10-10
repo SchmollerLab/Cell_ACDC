@@ -2489,3 +2489,160 @@ def rename_qrc_resources_file(scheme='light'):
         shutil.copyfile(qrc_resources_dark_path, qrc_resources_path)
     elif scheme == 'light' and os.path.exists(qrc_resources_light_path):
         shutil.copyfile(qrc_resources_light_path, qrc_resources_path)
+
+def autoLineBreak(text, length): #automatic line breaking for tooltips. Keeps indentation with spaces and preexisting line breaks
+    lines = []
+    current_line = []
+
+    # Split the text into lines while preserving existing newline characters
+    existing_lines = text.split('\n')
+
+    for existing_line in existing_lines:
+        # Calculate the indentation for the current line
+        indent = len(existing_line) - len(existing_line.lstrip())
+        words = existing_line.lstrip().split()  # Split each line into words
+
+        for word in words:
+            if len(' '.join(current_line + [word])) + indent <= length:
+                current_line.append(word)
+            else:
+                lines.append(' ' * indent + ' '.join(current_line))
+                current_line = [word]
+
+        if current_line:  # Add any remaining words as the last line
+            lines.append(' ' * indent + ' '.join(current_line))
+
+        # Reset the current line for the next existing line
+        current_line = []
+
+    return '\n'.join(lines)
+
+def format_bullet_points(text): #indentation for bullet points in tooltips. Implementation not robust
+    lines = text.split('\n')
+    formatted_lines = []
+    indent = False
+    indentNo = 0
+
+    for line in lines:
+        if line.strip().startswith("* "):
+            indent = True
+            formatted_line = line
+            indentNo = len(line) - len(line.lstrip())
+        else:
+            indentNoComp = len(line) - len(line.lstrip())
+            if indent == True and indentNo == indentNoComp:
+                formatted_line = " " * 2 + line
+            else:
+                formatted_line = line
+                indent = False
+
+        formatted_lines.append(formatted_line)
+
+    return '\n'.join(formatted_lines)   
+
+def format_number_list(text): #indentation for number points in tooltips. Implementation not robust
+    lines = text.split('\n')
+    formatted_lines = []
+    indent = False
+    indentNo = 0
+
+    for line in lines:
+        if line.strip().startswith(("0. ", "1. ", "2. ", "3. ", "4. ", "5. ", "6. ", "7. ", "8. ", "9. ")):
+            indent = True
+            formatted_line = line
+            indentNo = len(line) - len(line.lstrip())
+        else:
+            indentNoComp = len(line) - len(line.lstrip())
+            if indent == True and indentNo == indentNoComp:
+                formatted_line = " " * 3 + line
+            else:
+                formatted_line = line
+                indent = False
+
+        formatted_lines.append(formatted_line)
+
+    return '\n'.join(formatted_lines)
+
+
+def get_tooltips_from_docs(): #gets tooltips for GUI from .\Cell_ACDC\docs\source\tooltips.rst
+
+
+    var_pattern = r"\|(\S*)\|"
+    shortcut_pattern = r"\*\*(\".*\")\):\*\*"
+    title_pattern = r"\*\*(.*)\(\*\*"
+
+    script_path = os.path.abspath(__file__)
+    root_folder = os.path.abspath(os.path.join(script_path, os.pardir, os.pardir))
+    file_path = os.path.join(root_folder, "docs", "source", "tooltips.rst")
+
+    with open(file_path, "r") as file:
+        lines = file.readlines()
+
+    new_lines = []
+    for line in lines:
+        if not (line.startswith("..") or line.startswith("    :target:") or line.startswith("    :alt:") or line.startswith("    :width:") or line.startswith("    :height:") or line==""):
+            new_lines.append(line)
+    lines = new_lines
+
+    non_empty_lines = [line.replace("\n", "") for line in lines if line.strip()] #also removes \n from lines
+    lines = non_empty_lines
+
+    tipdict = {}
+
+    for i, line in enumerate(lines):
+        match = re.search(var_pattern, line)
+        if match:
+            name = match.group(1)
+
+            title = re.search(title_pattern, line).group(1)
+
+            shortcut = re.search(shortcut_pattern, line)
+            if shortcut:
+                shortcut = shortcut.group(1)
+            else:
+                shortcut = "\"No shortcut\""
+
+            desc = line.split("):**")[1].lstrip(" ")
+
+            appSameLine = False
+
+            if desc == "":
+                appSameLine = True
+
+            descList = []
+            i += 1
+            for followLine in lines[i:]:
+                followMatch = re.search(var_pattern, followLine)
+                if followMatch or followLine.startswith("* **"):
+                    break
+                else:                    
+                    descList.append(followLine)
+
+            if descList != []:
+                if descList[-1].startswith("----"):
+                    descList.pop(-1)
+                    descList.pop(-1)
+
+
+            for entry in descList:
+
+                entry = entry.replace("| ", "")
+
+                if entry.startswith(" " * 4):
+                    stripped_string = entry[4:]
+                else:
+                    stripped_string = entry
+                entry = stripped_string
+
+                if appSameLine == False:
+                    entry = "\n" + entry
+                else:
+                    appSameLine = False
+
+                desc += entry
+            desc = autoLineBreak(desc, 60)
+            desc = format_bullet_points(desc)
+            desc = format_number_list(desc)
+
+            tipdict[name] = f"Name: {title}\nShortcut: {shortcut}\n\n{desc}"
+    return tipdict

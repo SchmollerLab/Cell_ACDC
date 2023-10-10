@@ -12,8 +12,3 @@ STARDIST_MODELS = [
     '2D_versatile_he',
     '2D_paper_dsb2018'
 ]
-
-try:
-    from omnipose.core import OMNI_MODELS
-except Exception as e:
-    OMNI_MODELS = []
