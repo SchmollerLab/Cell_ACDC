@@ -305,24 +305,31 @@ class AlignDataWorker(QObject):
                 myutils.imagej_tiffwriter(temp_tif, aligned_frames)
                 self.dataPrepWin.moveTempFile(temp_tif, tif)
 
+        if not aligned:
+            return
+        
+        if not self.posData.segmFound:
+            return
+        
         # Align segmentation data accordingly
         self.segmAligned = False
-        if self.posData.segmFound and aligned:
-            if self.posData.loaded_shifts is None or not self.align:
-                return
-            self.emitSigAskAlignSegmData()
-            if self.doNotAlignSegmData:
-                return
-            self.dataPrepWin.segmAligned = True
-            self.logger.log(f'Aligning: {self.posData.segm_npz_path}')
-            self.posData.segm_data, shifts = core.align_frames_2D(
-                self.posData.segm_data, slices=None,
-                user_shifts=self.posData.loaded_shifts
-            )
-            self.logger.log(f'Saving: {self.posData.segm_npz_path}')
-            temp_npz = self.dataPrepWin.getTempfilePath(self.posData.segm_npz_path)
-            np.savez_compressed(temp_npz, self.posData.segm_data)
-            self.dataPrepWin.moveTempFile(temp_npz, self.posData.segm_npz_path)
+        if self.posData.loaded_shifts is None or not self.align:
+            return
+        
+        self.emitSigAskAlignSegmData()
+        if self.doNotAlignSegmData:
+            return
+        
+        self.dataPrepWin.segmAligned = True
+        self.logger.log(f'Aligning: {self.posData.segm_npz_path}')
+        self.posData.segm_data, shifts = core.align_frames_2D(
+            self.posData.segm_data, slices=None,
+            user_shifts=self.posData.loaded_shifts
+        )
+        self.logger.log(f'Saving: {self.posData.segm_npz_path}')
+        temp_npz = self.dataPrepWin.getTempfilePath(self.posData.segm_npz_path)
+        np.savez_compressed(temp_npz, self.posData.segm_data)
+        self.dataPrepWin.moveTempFile(temp_npz, self.posData.segm_npz_path)
 
     @worker_exception_handler
     def run(self):     

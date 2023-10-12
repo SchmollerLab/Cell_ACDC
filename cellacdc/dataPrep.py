@@ -1762,6 +1762,9 @@ class dataPrepWin(QMainWindow):
 
     def setStandardRoiShape(self, text):
         posData = self.data[self.pos_i]
+        if not hasattr(posData, 'cropROIs'):
+            return 
+        
         if posData.cropROIs is None:
             return
         if len(posData.cropROIs)>1:
@@ -1993,14 +1996,15 @@ class dataPrepWin(QMainWindow):
         return True
     
     def alignData(self, user_ch_name, posData):
-        # Get metadata from tif
-        with TiffFile(posData.tif_path) as tif:
-            metadata = tif.imagej_metadata
-
-        align = True
-        if posData.loaded_shifts is None and posData.SizeT > 1:
+        align = False
+        if posData.SizeT > 1:
             msg = widgets.myMessageBox(showCentered=False)
-            if user_ch_name:
+            if posData.loaded_shifts is not None:
+                txt = html_utils.paragraph(f"""
+                    This Position was <b>already aligned</b>.<br><br>
+                    Do you want to <b>repeat the alignment?</b><br>
+                """)
+            elif user_ch_name:
                 txt = html_utils.paragraph(f"""
                     Do you want to <b>align ALL channels</b> based on 
                     <code>{user_ch_name}</code> channel?<br><br>
@@ -2023,6 +2027,11 @@ class dataPrepWin(QMainWindow):
                 align = False
                 # Create 0, 0 shifts to perform 0 alignment
                 posData.loaded_shifts = np.zeros((self.num_frames,2), int)
+            else:
+                if posData.loaded_shifts is not None:
+                    # Discard current shifts since we want to repeat it
+                    posData.loaded_shifts = None
+                align = True
         elif posData.SizeT == 1:
             align = False
             # Create 0, 0 shifts to perform 0 alignment
@@ -2049,14 +2058,14 @@ class dataPrepWin(QMainWindow):
     def askAlignSegmData(self):
         msg = widgets.myMessageBox()
         txt = html_utils.paragraph(
-            'The system found an existing segmentation mask.<br><br>'
-            'Do you need to align that too?'
+            'Cell-ACDC found an existing segmentation mask.<br><br>'
+            'Do you need to <b>align that</b> too?<b>'
         )
         yesButton, noButton = msg.question(
             self, 'Align segmentation data?', txt,
             buttonsTexts=('Yes', 'No')
         )
-        self.alignDataWorker.doNotAlignSegmData = msg.clickedButton = noButton
+        self.alignDataWorker.doNotAlignSegmData = msg.clickedButton == noButton
         self.alignDataWorker.restart()
 
     def detectTifAlignment(self, tif_data, posData):
