@@ -11458,7 +11458,10 @@ class guiWin(QMainWindow):
     @exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_Q and self.debug:
-            self.getMouseDataCoordsRightImage()
+            printl(self.contoursImage.shape)
+            printl(self.contoursImage.max(axis=(0, 1)))
+            from cellacdc.plot import imshow
+            imshow(self.contoursImage[:, :, 0], self.erasedLab)
             
         if not self.dataIsLoaded:
             self.logger.info(
@@ -15078,6 +15081,10 @@ class guiWin(QMainWindow):
             if button == self.eraserButton:
                 continue
             action.setDisabled(disabled)
+            try:
+                button.setChecked(False)
+            except Exception as err:
+                pass
     
     def clearAx2Items(self, onlyHideText=False):
         self.ax2_binnedIDs_ScatterPlot.clear()
