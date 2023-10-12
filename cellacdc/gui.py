@@ -3424,7 +3424,8 @@ class guiWin(QMainWindow):
     def gui_createLabWidgets(self):
         bottomRightLayout = QVBoxLayout()
         self.rightBottomGroupbox = widgets.GroupBox(
-            'Annotate right image', keyPressCallback=self.resetFocus
+            'Annotate right image indipendent of left image', 
+            keyPressCallback=self.resetFocus
         )
         self.rightBottomGroupbox.setCheckable(True)
         self.rightBottomGroupbox.setChecked(False)
@@ -3456,6 +3457,10 @@ class guiWin(QMainWindow):
     def rightImageControlsToggled(self, checked):
         if self.isDataLoading:
             return
+        if checked:
+            self.annotateRightHowCombobox.setCurrentText(
+                self.drawIDsContComboBox.currentText()
+            )
         self.updateAllImages()
     
     def setFocusGraphics(self):
@@ -18609,30 +18614,46 @@ class guiWin(QMainWindow):
         self.rightImageFramesScrollbar.setVisible(not checked)
         self.rightImageFramesScrollbar.setDisabled(checked)
         self.setTwoImagesLayout(checked)
-        self.rightBottomGroupbox.hide()
+        self.setAnnotOptionsRightImageLabelsDisabled(checked)
         if checked:
             self.df_settings.at['isLabelsVisible', 'value'] = 'Yes'
+            self.df_settings.at['isNextFrameVisible', 'value'] = 'No'
+            self.df_settings.at['isRightImageVisible', 'value'] = 'No'
+            self.rightBottomGroupbox.show()
+            self.rightBottomGroupbox.setChecked(True)
             if not self.isDataLoading:
                 self.updateAllImages()
         else:
             self.clearAx2Items()
             self.img2.clear()
             self.df_settings.at['isLabelsVisible', 'value'] = 'No'
-            # Move del ROIs to the left image
-            for posData in self.data:
-                delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
-                for roi in delROIs_info['rois']:
-                    if roi not in self.ax2.items:
-                        continue
-
-                    self.ax1.addItem(roi)
-                    # self.ax2.removeItem(roi)
+            self.rightBottomGroupbox.hide()
+            self.moveDelRoisToLeft()
         
         self.df_settings.to_csv(self.settings_csv_path)
         QTimer.singleShot(200, self.resizeGui)
 
         self.setBottomLayoutStretch()
 
+    def setAnnotOptionsRightImageLabelsDisabled(self, disabled):
+        self.annotContourCheckboxRight.setDisabled(disabled)
+        self.annotSegmMasksCheckboxRight.setDisabled(disabled)
+        if disabled:
+            self.annotSegmMasksCheckboxRight.setChecked(False)
+            self.annotSegmMasksCheckboxRight.setChecked(False)
+            self.annotIDsCheckboxRight.setChecked(True)
+    
+    def moveDelRoisToLeft(self):
+        # Move del ROIs to the left image
+        for posData in self.data:
+            delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
+            for roi in delROIs_info['rois']:
+                if roi not in self.ax2.items:
+                    continue
+
+                self.ax1.addItem(roi)
+                # self.ax2.removeItem(roi)
+    
     def setBottomLayoutStretch(self):
         if (
             self.labelsGrad.showRightImgAction.isChecked()
