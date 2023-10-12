@@ -4348,7 +4348,7 @@ class guiWin(QMainWindow):
             self.storeUndoRedoStates(False, storeOnlyZoom=True)
             self.yPressAx2, self.xPressAx2 = y, x
             # Keep a global mask to compute which IDs got erased
-            self.erasedIDs = []
+            self.erasedIDs = set()
             lab_2D = self.get_2Dlab(posData.lab)
             self.erasedID = self.getHoverID(xdata, ydata)
 
@@ -4369,7 +4369,7 @@ class guiWin(QMainWindow):
 
             self.eraseOnlyOneID = eraseOnlyOneID
 
-            self.erasedIDs.extend(lab_2D[mask])
+            self.erasedIDs.update(lab_2D[mask])
             self.setTempImg1Eraser(mask, init=True)
             self.applyEraserMask(mask)
             self.setImageImg2()
@@ -5307,8 +5307,6 @@ class guiWin(QMainWindow):
         elif self.isMouseDragImg1 and self.eraserButton.isChecked():
             posData = self.data[self.pos_i]
             lab_2D = self.get_2Dlab(posData.lab)
-            brushSize = self.brushSizeSpinbox.value()
-
             rrPoly, ccPoly = self.getPolygonBrush((y, x), Y, X)
 
             ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
@@ -5329,12 +5327,12 @@ class guiWin(QMainWindow):
                     ID=self.erasedID
                 )
 
-            self.erasedIDs.extend(lab_2D[mask])
+            self.erasedIDs.update(lab_2D[mask])
             self.applyEraserMask(mask)
 
             self.setImageImg2()
-
-            for erasedID in np.unique(self.erasedIDs):
+            
+            for erasedID in self.erasedIDs:
                 if erasedID == 0:
                     continue
                 self.erasedLab[lab_2D==erasedID] = erasedID
@@ -6040,7 +6038,7 @@ class guiWin(QMainWindow):
                     ID=self.erasedID
                 )
 
-            self.erasedIDs.extend(lab_2D[mask])
+            self.erasedIDs.update(lab_2D[mask])
 
             self.applyEraserMask(mask)
             self.setImageImg2(updateLookuptable=False)
@@ -6103,12 +6101,11 @@ class guiWin(QMainWindow):
         # Eraser mouse release --> update IDs and contours
         if self.isMouseDragImg2 and self.eraserButton.isChecked():
             self.isMouseDragImg2 = False
-            erasedIDs = np.unique(self.erasedIDs)
-
+            
             # Update data (rp, etc)
-            self.update_rp(update_IDs=len(erasedIDs) > 0)
+            self.update_rp(update_IDs=len(self.erasedIDs) > 0)
 
-            for ID in erasedIDs:
+            for ID in self.erasedIDs:
                 if ID not in posData.lab:
                     if self.isSnapshot:
                         self.fixCcaDfAfterEdit('Delete ID with eraser')
@@ -6285,12 +6282,12 @@ class guiWin(QMainWindow):
 
             self.tempLayerImg1.setImage(self.emptyLab)
 
-            erasedIDs = np.unique(self.erasedIDs)
-
             # Update data (rp, etc)
-            self.update_rp(update_IDs=len(erasedIDs) > 0)
+            self.update_rp()
 
-            for ID in erasedIDs:
+            for ID in self.erasedIDs:
+                if ID == 0:
+                    continue
                 if ID not in posData.IDs:
                     if self.isSnapshot:
                         self.fixCcaDfAfterEdit('Delete ID with eraser')
@@ -6911,7 +6908,7 @@ class guiWin(QMainWindow):
 
             self.yPressAx2, self.xPressAx2 = y, x
             # Keep a list of erased IDs got erased
-            self.erasedIDs = []
+            self.erasedIDs = set()
             
             self.erasedID = self.getHoverID(xdata, ydata)
 
@@ -6938,9 +6935,9 @@ class guiWin(QMainWindow):
             self.setTempImg1Eraser(mask, init=True)
             self.applyEraserMask(mask)
 
-            self.erasedIDs.extend(lab_2D[mask])  
+            self.erasedIDs.update(lab_2D[mask])  
 
-            for erasedID in np.unique(self.erasedIDs):
+            for erasedID in self.erasedIDs:
                 if erasedID == 0:
                     continue
                 self.erasedLab[lab_2D==erasedID] = erasedID
@@ -15077,7 +15074,8 @@ class guiWin(QMainWindow):
         self.zSliceSpinbox.setDisabled(disabled)
         self.zSliceCheckbox.setDisabled(disabled)
         for action in self.editToolBar.actions():
-            if action == self.eraserAction:
+            button = self.editToolBar.widgetForAction(action)
+            if button == self.eraserButton:
                 continue
             action.setDisabled(disabled)
     
@@ -19013,10 +19011,12 @@ class guiWin(QMainWindow):
             self.clearObjFromMask(labelsImage, mask, toLocalSlice=toLocalSlice)           
             if ax == 0:
                 self.labelsLayerImg1.setImage(
-                    self.labelsLayerImg1.image, autoLevels=False)
+                    self.labelsLayerImg1.image, autoLevels=False
+                )
             else:
                 self.labelsLayerRightImg.setImage(
-                    self.labelsLayerRightImg.image, autoLevels=False)
+                    self.labelsLayerRightImg.image, autoLevels=False
+                )
 
     def setTempImg1ExpandLabel(self, prevCoords, expandedObjCoords, ax=0):
         if ax == 0:
