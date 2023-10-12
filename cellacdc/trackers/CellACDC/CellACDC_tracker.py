@@ -8,8 +8,8 @@ from skimage.segmentation import relabel_sequential
 
 from cellacdc import core, printl
 
-
 DEBUG = False
+
 def calc_IoA_matrix(lab, prev_lab, rp, prev_rp, IDs_curr_untracked=None):
     IDs_prev = []
     if IDs_curr_untracked is None:
@@ -34,40 +34,33 @@ def calc_IoA_matrix(lab, prev_lab, rp, prev_rp, IDs_curr_untracked=None):
                 IoA_matrix[i, j] = IoA
     return IoA_matrix, IDs_curr_untracked, IDs_prev
 
-def assign(IoA_matrix, IDs_curr_untracked, IDs_prev, IoA_thresh=0.4, multiple=False, max_children=2):
+def assign(IoA_matrix, IDs_curr_untracked, IDs_prev, IoA_thresh=0.4, aggr_track=None, IoA_thresh_aggr=0.4):
     # Determine max IoA between IDs and assign tracked ID if IoA >= IoA_thresh
     if IoA_matrix.size == 0:
         return [], []
-    
-    IoA_thresholded = IoA_matrix >= IoA_thresh
+    max_IoA_col_idx = IoA_matrix.argmax(axis=1)
+    unique_col_idx, counts = np.unique(max_IoA_col_idx, return_counts=True)
+    counts_dict = dict(zip(unique_col_idx, counts))
     tracked_IDs = []
     old_IDs = []
-
     if DEBUG:
         printl(f'IDs in previous frame: {IDs_prev}')
-
-    for i in range(IoA_matrix.shape[0]):
-        high_IoA_indices = np.where(IoA_thresholded[i])[0]
-        
-        if not high_IoA_indices.size:
-            continue
-
-        if not multiple:
-            old_ID_idx = IoA_matrix[i, high_IoA_indices].argmax()
-            tracked_IDs.append(IDs_prev[high_IoA_indices[old_ID_idx]])
-            old_IDs.append(IDs_curr_untracked[i])
+    for i, j in enumerate(max_IoA_col_idx):
+        if i in aggr_track:
+            IoA_thresh_temp = IoA_thresh_aggr
         else:
-            if len(high_IoA_indices) <= max_children:
+            IoA_thresh_temp = IoA_thresh
+        max_IoU = IoA_matrix[i,j]
+        count = counts_dict[j]
+        if max_IoU >= IoA_thresh_temp:
+            tracked_ID = IDs_prev[j]
+            if count == 1:
                 old_ID = IDs_curr_untracked[i]
-                tracked_IDs.extend([IDs_prev[j] for j in high_IoA_indices])
-                old_IDs.extend([old_ID] * len(high_IoA_indices))
-            else:
-                sorted_indices = np.argsort(-IoA_matrix[i, high_IoA_indices])
-                selected_indices = sorted_indices[:max_children]
-                old_ID = IDs_curr_untracked[i]
-                tracked_IDs.extend([IDs_prev[high_IoA_indices[j]] for j in selected_indices])
-                old_IDs.extend([old_ID] * len(selected_indices))
-
+            elif count > 1:
+                old_ID_idx = IoA_matrix[:,j].argmax()
+                old_ID = IDs_curr_untracked[old_ID_idx]
+            tracked_IDs.append(tracked_ID)
+            old_IDs.append(old_ID)
     return old_IDs, tracked_IDs
 
 def indexAssignment(
@@ -147,18 +140,20 @@ def track_frame(
         prev_lab, prev_rp, lab, rp, IDs_curr_untracked=None,
         uniqueID=None, setBrushID_func=None, posData=None,
         assign_unique_new_IDs=True, IoA_thresh=0.4, debug=False,
-        return_all=False
+        return_all=False, aggr_track=None, IoA_matrix=None, IoA_thresh_aggr=None, IDs_prev=None
     ):
     if not np.any(lab):
         # Skip empty frames
         return lab
 
-    IoA_matrix, IDs_curr_untracked, IDs_prev = calc_IoA_matrix(
-        lab, prev_lab, rp, prev_rp, IDs_curr_untracked=IDs_curr_untracked
-    )
+    if IoA_matrix.size == 0:
+        IoA_matrix, IDs_curr_untracked, IDs_prev = calc_IoA_matrix(
+            lab, prev_lab, rp, prev_rp, IDs_curr_untracked=IDs_curr_untracked
+        )
+
     old_IDs, tracked_IDs = assign(
         IoA_matrix, IDs_curr_untracked, IDs_prev,
-        IoA_thresh=IoA_thresh
+        IoA_thresh=IoA_thresh, aggr_track=aggr_track, IoA_thresh_aggr=IoA_thresh_aggr
     )
 
     if posData is None and uniqueID is None:
@@ -224,4 +219,3 @@ class tracker:
 
     def save_output(self):
         pass
-    
