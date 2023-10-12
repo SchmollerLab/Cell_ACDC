@@ -134,6 +134,8 @@ class segmWorker(QRunnable):
             self.signals.finished.emit(-1)
     
 class segmWin(QMainWindow):
+    sigClosed = Signal()
+    
     def __init__(
             self, parent=None, allowExit=False, buttonToRestore=None, 
             mainWin=None, version=None
@@ -1304,3 +1306,4 @@ class segmWin(QMainWindow):
             pass
         
         self.log('Segmentation module closed.')
+        self.sigClosed.emit()
