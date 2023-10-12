@@ -31,6 +31,7 @@ from qtpy import QtGui
 
 # Here we use from cellacdc because this script is laucnhed in
 # a separate process that doesn't have a parent package
+from . import issues_url
 from . import exception_handler
 from . import qrc_resources
 from . import apps, myutils, widgets, html_utils, printl
@@ -1106,20 +1107,25 @@ class createDataStructWin(QMainWindow):
             traceback_str = traceback.format_exc()
             self.logger.exception(traceback_str)
             error_msg = (
-                'Error while importing "javabridge" and "bioformats"\n\n'
-                'Please report detailed error (click "Show details") '
-                'here: https://github.com/SchmollerLab/Cell_ACDC/issues'
+                'Error while importing "javabridge" and "bioformats".\n\n'
+                f'Please report error here: {issues_url}\n'
             )
             print(error_msg)
             print('===============================================================')
 
-            msg = QMessageBox(self)
-            msg.setWindowTitle('import javabridge/bioformats error')
-            msg.setIcon(msg.Critical)
-            msg.setText(error_msg)
-            msg.setDetailedText(traceback.format_exc())
-            msg.exec_()
-            raise FileNotFoundError('Dowload of Java failed. See above for details.')
+            title = 'Import javabridge/bioformats error'
+            txt = error_msg.replace('\n', '<br>')
+            txt = txt.replace(
+                issues_url, html_utils.href_tag(issues_url, issues_url)
+            )
+            txt = html_utils.paragraph(txt)
+            msg = widgets.myMessageBox(wrapText=False)
+            msg.critical(
+                self, title, txt, detailsText=traceback_str
+            )
+            raise ModuleNotFoundError(
+                'Error when importing javabridge. See above for details.'
+            )
 
     def criticalOSnotSupported(self):
         from cellacdc import widgets
@@ -1329,7 +1335,6 @@ class createDataStructWin(QMainWindow):
         raise error
 
     def instructManualStruct(self):
-        issues_url = 'https://github.com/SchmollerLab/Cell_ACDC/issues'
         manual_url = 'https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf'
         txt = (
         f"""

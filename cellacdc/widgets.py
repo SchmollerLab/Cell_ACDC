@@ -6474,8 +6474,7 @@ class ImShow(QBaseWindow):
                 is_rgba = image.shape[-1] == 4
                 does_not_require_scrollbars = (
                     image.ndim == 2
-                    or (image.ndim == 3 and is_rgb)
-                    or (image.ndim == 3 and is_rgb)
+                    or (image.ndim == 3 and (is_rgb or is_rgba))
                 )
                 if does_not_require_scrollbars:
                     i += 1
@@ -6535,8 +6534,7 @@ class ImShow(QBaseWindow):
             is_rgba = image.shape[-1] == 4
             does_not_require_scrollbars = (
                 image.ndim == 2
-                or (image.ndim == 3 and is_rgb)
-                or (image.ndim == 3 and is_rgb)
+                or (image.ndim == 3 and (is_rgb or is_rgba))
             )
 
             if does_not_require_scrollbars:

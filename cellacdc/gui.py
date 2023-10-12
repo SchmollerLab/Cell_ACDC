@@ -3424,7 +3424,8 @@ class guiWin(QMainWindow):
     def gui_createLabWidgets(self):
         bottomRightLayout = QVBoxLayout()
         self.rightBottomGroupbox = widgets.GroupBox(
-            'Annotate right image', keyPressCallback=self.resetFocus
+            'Annotate right image indipendent of left image', 
+            keyPressCallback=self.resetFocus
         )
         self.rightBottomGroupbox.setCheckable(True)
         self.rightBottomGroupbox.setChecked(False)
@@ -3456,6 +3457,10 @@ class guiWin(QMainWindow):
     def rightImageControlsToggled(self, checked):
         if self.isDataLoading:
             return
+        if checked:
+            self.annotateRightHowCombobox.setCurrentText(
+                self.drawIDsContComboBox.currentText()
+            )
         self.updateAllImages()
     
     def setFocusGraphics(self):
@@ -4343,7 +4348,7 @@ class guiWin(QMainWindow):
             self.storeUndoRedoStates(False, storeOnlyZoom=True)
             self.yPressAx2, self.xPressAx2 = y, x
             # Keep a global mask to compute which IDs got erased
-            self.erasedIDs = []
+            self.erasedIDs = set()
             lab_2D = self.get_2Dlab(posData.lab)
             self.erasedID = self.getHoverID(xdata, ydata)
 
@@ -4364,7 +4369,7 @@ class guiWin(QMainWindow):
 
             self.eraseOnlyOneID = eraseOnlyOneID
 
-            self.erasedIDs.extend(lab_2D[mask])
+            self.erasedIDs.update(lab_2D[mask])
             self.setTempImg1Eraser(mask, init=True)
             self.applyEraserMask(mask)
             self.setImageImg2()
@@ -5302,8 +5307,6 @@ class guiWin(QMainWindow):
         elif self.isMouseDragImg1 and self.eraserButton.isChecked():
             posData = self.data[self.pos_i]
             lab_2D = self.get_2Dlab(posData.lab)
-            brushSize = self.brushSizeSpinbox.value()
-
             rrPoly, ccPoly = self.getPolygonBrush((y, x), Y, X)
 
             ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
@@ -5324,12 +5327,12 @@ class guiWin(QMainWindow):
                     ID=self.erasedID
                 )
 
-            self.erasedIDs.extend(lab_2D[mask])
+            self.erasedIDs.update(lab_2D[mask])
             self.applyEraserMask(mask)
 
             self.setImageImg2()
-
-            for erasedID in np.unique(self.erasedIDs):
+            
+            for erasedID in self.erasedIDs:
                 if erasedID == 0:
                     continue
                 self.erasedLab[lab_2D==erasedID] = erasedID
@@ -6035,7 +6038,7 @@ class guiWin(QMainWindow):
                     ID=self.erasedID
                 )
 
-            self.erasedIDs.extend(lab_2D[mask])
+            self.erasedIDs.update(lab_2D[mask])
 
             self.applyEraserMask(mask)
             self.setImageImg2(updateLookuptable=False)
@@ -6098,12 +6101,11 @@ class guiWin(QMainWindow):
         # Eraser mouse release --> update IDs and contours
         if self.isMouseDragImg2 and self.eraserButton.isChecked():
             self.isMouseDragImg2 = False
-            erasedIDs = np.unique(self.erasedIDs)
-
+            
             # Update data (rp, etc)
-            self.update_rp(update_IDs=len(erasedIDs) > 0)
+            self.update_rp(update_IDs=len(self.erasedIDs) > 0)
 
-            for ID in erasedIDs:
+            for ID in self.erasedIDs:
                 if ID not in posData.lab:
                     if self.isSnapshot:
                         self.fixCcaDfAfterEdit('Delete ID with eraser')
@@ -6280,12 +6282,12 @@ class guiWin(QMainWindow):
 
             self.tempLayerImg1.setImage(self.emptyLab)
 
-            erasedIDs = np.unique(self.erasedIDs)
-
             # Update data (rp, etc)
-            self.update_rp(update_IDs=len(erasedIDs) > 0)
+            self.update_rp()
 
-            for ID in erasedIDs:
+            for ID in self.erasedIDs:
+                if ID == 0:
+                    continue
                 if ID not in posData.IDs:
                     if self.isSnapshot:
                         self.fixCcaDfAfterEdit('Delete ID with eraser')
@@ -6906,7 +6908,7 @@ class guiWin(QMainWindow):
 
             self.yPressAx2, self.xPressAx2 = y, x
             # Keep a list of erased IDs got erased
-            self.erasedIDs = []
+            self.erasedIDs = set()
             
             self.erasedID = self.getHoverID(xdata, ydata)
 
@@ -6933,9 +6935,9 @@ class guiWin(QMainWindow):
             self.setTempImg1Eraser(mask, init=True)
             self.applyEraserMask(mask)
 
-            self.erasedIDs.extend(lab_2D[mask])  
+            self.erasedIDs.update(lab_2D[mask])  
 
-            for erasedID in np.unique(self.erasedIDs):
+            for erasedID in self.erasedIDs:
                 if erasedID == 0:
                     continue
                 self.erasedLab[lab_2D==erasedID] = erasedID
@@ -11456,7 +11458,10 @@ class guiWin(QMainWindow):
     @exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_Q and self.debug:
-            self.getMouseDataCoordsRightImage()
+            printl(self.contoursImage.shape)
+            printl(self.contoursImage.max(axis=(0, 1)))
+            from cellacdc.plot import imshow
+            imshow(self.contoursImage[:, :, 0], self.erasedLab)
             
         if not self.dataIsLoaded:
             self.logger.info(
@@ -15072,9 +15077,14 @@ class guiWin(QMainWindow):
         self.zSliceSpinbox.setDisabled(disabled)
         self.zSliceCheckbox.setDisabled(disabled)
         for action in self.editToolBar.actions():
-            if action == self.eraserAction:
+            button = self.editToolBar.widgetForAction(action)
+            if button == self.eraserButton:
                 continue
             action.setDisabled(disabled)
+            try:
+                button.setChecked(False)
+            except Exception as err:
+                pass
     
     def clearAx2Items(self, onlyHideText=False):
         self.ax2_binnedIDs_ScatterPlot.clear()
@@ -18609,30 +18619,46 @@ class guiWin(QMainWindow):
         self.rightImageFramesScrollbar.setVisible(not checked)
         self.rightImageFramesScrollbar.setDisabled(checked)
         self.setTwoImagesLayout(checked)
-        self.rightBottomGroupbox.hide()
+        self.setAnnotOptionsRightImageLabelsDisabled(checked)
         if checked:
             self.df_settings.at['isLabelsVisible', 'value'] = 'Yes'
+            self.df_settings.at['isNextFrameVisible', 'value'] = 'No'
+            self.df_settings.at['isRightImageVisible', 'value'] = 'No'
+            self.rightBottomGroupbox.show()
+            self.rightBottomGroupbox.setChecked(True)
             if not self.isDataLoading:
                 self.updateAllImages()
         else:
             self.clearAx2Items()
             self.img2.clear()
             self.df_settings.at['isLabelsVisible', 'value'] = 'No'
-            # Move del ROIs to the left image
-            for posData in self.data:
-                delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
-                for roi in delROIs_info['rois']:
-                    if roi not in self.ax2.items:
-                        continue
-
-                    self.ax1.addItem(roi)
-                    # self.ax2.removeItem(roi)
+            self.rightBottomGroupbox.hide()
+            self.moveDelRoisToLeft()
         
         self.df_settings.to_csv(self.settings_csv_path)
         QTimer.singleShot(200, self.resizeGui)
 
         self.setBottomLayoutStretch()
 
+    def setAnnotOptionsRightImageLabelsDisabled(self, disabled):
+        self.annotContourCheckboxRight.setDisabled(disabled)
+        self.annotSegmMasksCheckboxRight.setDisabled(disabled)
+        if disabled:
+            self.annotSegmMasksCheckboxRight.setChecked(False)
+            self.annotSegmMasksCheckboxRight.setChecked(False)
+            self.annotIDsCheckboxRight.setChecked(True)
+    
+    def moveDelRoisToLeft(self):
+        # Move del ROIs to the left image
+        for posData in self.data:
+            delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
+            for roi in delROIs_info['rois']:
+                if roi not in self.ax2.items:
+                    continue
+
+                self.ax1.addItem(roi)
+                # self.ax2.removeItem(roi)
+    
     def setBottomLayoutStretch(self):
         if (
             self.labelsGrad.showRightImgAction.isChecked()
@@ -18992,10 +19018,12 @@ class guiWin(QMainWindow):
             self.clearObjFromMask(labelsImage, mask, toLocalSlice=toLocalSlice)           
             if ax == 0:
                 self.labelsLayerImg1.setImage(
-                    self.labelsLayerImg1.image, autoLevels=False)
+                    self.labelsLayerImg1.image, autoLevels=False
+                )
             else:
                 self.labelsLayerRightImg.setImage(
-                    self.labelsLayerRightImg.image, autoLevels=False)
+                    self.labelsLayerRightImg.image, autoLevels=False
+                )
 
     def setTempImg1ExpandLabel(self, prevCoords, expandedObjCoords, ax=0):
         if ax == 0:

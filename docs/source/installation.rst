@@ -14,7 +14,7 @@ Installation using Anaconda (recommended)
     A terminal is a **text-based way to communicate with the computer**. The anaconda terminal is a terminal specifically for anaconda, with some commands specific to anaconda only available there.
 3. **Update conda** by typing ``conda update conda``
     This will update all programmes (or packages) that are part of conda.
-4. Create a **virtual environment** by typing ``conda create -n acdc python=3.9``
+4. Create a **virtual environment** by typing ``conda create -n acdc python=3.10``
     This will create a virtual environment, which is an **isolated instance** and partially independent from the rest of the system. The virtual environment is called ``acdc`` in this case.
 5. **Activate the virtual environment** by typing ``conda activate acdc``
     This will activate the environment, meaning that the console is now not in the default system environment, but the ``acdc`` environment. If the activation of the environment was successful, this should be indicated to the left of the active path, circled in red below.
@@ -76,7 +76,7 @@ from source as follows:
 5.  Update conda with ``conda update conda``. Optionally, consider
     removing unused packages with the command ``conda clean --all``
 6.  Create a new conda environment with the command
-    ``conda create -n acdc_dev python=3.9``
+    ``conda create -n acdc_dev python=3.10``
 7.  Activate the environment with the command
     ``conda activate acdc_dev``
 8.  Upgrade pip with the command ``python -m pip install --upgrade pip``
@@ -128,7 +128,7 @@ a bug :D) we recommend forking before cloning:
 8.  Update conda with ``conda update conda``. Optionally, consider
     removing unused packages with the command ``conda clean --all``
 9.  Create a new conda environment with the command
-    ``conda create -n acdc_dev python=3.9``. Note that ``acdc_dev`` is
+    ``conda create -n acdc_dev python=3.10``. Note that ``acdc_dev`` is
     the name of the environment and you can call it whatever you like.
     Feel free to call it just ``acdc``.
 10. Activate the environment with the command

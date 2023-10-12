@@ -378,6 +378,9 @@ class mainWin(QMainWindow):
         self.moduleLaunchedPalette.setColor(
             QPalette.Button, self.moduleLaunchedQColor
         )
+        self.moduleLaunchedPalette.setColor(
+            QPalette.ButtonText, QColor(0, 0, 0)
+        )
 
     def createMenuBar(self):
         menuBar = self.menuBar()
@@ -1482,6 +1485,7 @@ class mainWin(QMainWindow):
                 buttonToRestore=(self.segmButton, defaultColor, defaultText),
                 mainWin=self, version=self._version
             )
+            self.segmWin.sigClosed.connect(self.segmWinClosed) 
             self.segmWin.show()
             self.segmWin.main()
         else:
@@ -1489,6 +1493,8 @@ class mainWin(QMainWindow):
             self.segmWin.setWindowState(Qt.WindowActive)
             self.segmWin.restoreGeometry(geometry)
 
+    def segmWinClosed(self):
+        self.segmButton.setPalette(self.defaultButtonPalette)
 
     def launchGui(self, checked=False):
         self.logger.info('Opening GUI...')
