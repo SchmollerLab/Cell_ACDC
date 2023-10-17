@@ -299,7 +299,15 @@ class PushButton(QPushButton):
         textLabel.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         self.layout().addWidget(textLabel)
         super().show()
-        
+    
+    def confirmAction(self):
+        self.baseIcon = self.icon()
+        self.setIcon(QIcon(':greenTick.svg'))
+        QTimer.singleShot(2000, self.resetButton)
+    
+    def resetButton(self):
+        self.setIcon(self.baseIcon)
+    
     def setText(self, text):
         if self._text is None:
             super().setText(text)
