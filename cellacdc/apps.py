@@ -10701,9 +10701,8 @@ class QDialogModelParams(QDialog):
         self.model_kwargs = self.argsWidgets_to_kwargs(
             self.argsWidgets
         )
-        if hasattr(self, 'postProcessGroupbox'):
-            if self.postProcessGroupbox is not None:
-                self.applyPostProcessing = self.postProcessGroupbox.isChecked()
+        if self.postProcessGroupbox is not None:
+            self.applyPostProcessing = self.postProcessGroupbox.isChecked()
         self.secondChannelName = None
         if hasattr(self, 'channelsCombobox'):
             self.secondChannelName = self.channelsCombobox.currentText()
@@ -10726,21 +10725,20 @@ class QDialogModelParams(QDialog):
             self.configPars[f'{self.model_name}.segment'][key] = str(val)
 
         self.configPars[f'{self.model_name}.postprocess'] = {}
-        if hasattr(self, 'postProcessGroupbox'):
-            if self.postProcessGroupbox is not None:
-                postProcKwargs = self.postProcessGroupbox.kwargs()
-                postProcessConfig = self.configPars[f'{self.model_name}.postprocess']
-                postProcessConfig['minSize'] = str(postProcKwargs['min_area'])
-                postProcessConfig['minSolidity'] = str(postProcKwargs['min_solidity'])
-                postProcessConfig['maxElongation'] = str(
-                    postProcKwargs['max_elongation']
-                )
-                postProcessConfig['min_obj_no_zslices'] = str(
-                    postProcKwargs['min_obj_no_zslices']
-                )
-                postProcessConfig['applyPostProcessing'] = str(
-                    self.postProcessGroupbox.isChecked()
-                )
+        if self.postProcessGroupbox is not None:
+            postProcKwargs = self.postProcessGroupbox.kwargs()
+            postProcessConfig = self.configPars[f'{self.model_name}.postprocess']
+            postProcessConfig['minSize'] = str(postProcKwargs['min_area'])
+            postProcessConfig['minSolidity'] = str(postProcKwargs['min_solidity'])
+            postProcessConfig['maxElongation'] = str(
+                postProcKwargs['max_elongation']
+            )
+            postProcessConfig['min_obj_no_zslices'] = str(
+                postProcKwargs['min_obj_no_zslices']
+            )
+            postProcessConfig['applyPostProcessing'] = str(
+                self.postProcessGroupbox.isChecked()
+            )
 
         with open(self.ini_path, 'w') as configfile:
             self.configPars.write(configfile)
