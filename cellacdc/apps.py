@@ -8631,9 +8631,9 @@ class QLineEditDialog(QDialog):
         msg = widgets.myMessageBox()
         warn_txt = html_utils.paragraph(f"""
             WARNING: saving until a frame number below the last visited
-            frame ({self.maxValue}) will result in <b>LOSS of information</b>
+            frame ({self.lastVisitedFrame}) will result in <b>LOSS of information</b>
             about any <b>edit or annotation</b> you did <b>on frames
-            {val}-{self.maxValue}.</b><br><br>
+            {val+1}-{self.lastVisitedFrame}.</b><br><br>
             Are you sure you want to proceed?
         """)
         msg.warning(
@@ -10243,7 +10243,7 @@ class QDialogModelParams(QDialog):
             self, init_params, segment_params, model_name, is_tracker=False,
             url=None, parent=None, initLastParams=True, posData=None, 
             channels=None, currentChannelName=None, segmFileEndnames=None,
-            df_metadata=None, force_postprocess_2D=False
+            df_metadata=None, force_postprocess_2D=False, model_module=None
         ):
         self.cancel = True
         super().__init__(parent)
@@ -10382,9 +10382,35 @@ class QDialogModelParams(QDialog):
         if not is_tracker:
             postProcLoadLastSelButton.click()
 
+        try:
+            self.connectCustomSignals(model_module)
+        except Exception as e:
+            printl(traceback.format_exc())
+        
         self.setLayout(mainLayout)
         self.setFont(font)
         # self.setModal(True)
+    
+    def connectCustomSignals(self, model_module):
+        if model_module is None:
+            return
+
+        if not hasattr(model_module, 'CustomSignals'):
+            return
+        
+        customSignals = model_module.CustomSignals()
+        for slot_info in customSignals.slots_info:
+            group = slot_info['group']
+            widget_name = slot_info['widget_name']
+            if group == 'init':
+                ArgsWidgets_list = self.init_argsWidgets
+            else:
+                ArgsWidgets_list = self.argsWidgets
+            for argwidget in ArgsWidgets_list:
+                if argwidget.name == widget_name:
+                    signal = getattr(argwidget.widget, slot_info['signal'])
+                    signal.connect(partial(slot_info['slot'], self))
+                    break
     
     def selectedFeaturesRange(self):
         if self.postProcessGroupbox is None:
