@@ -10563,6 +10563,31 @@ class QDialogModelParams(QDialog):
         configPars.read(self.ini_path)
         return configPars
 
+    def setValuesFromParams(self, init_params, segment_params):
+        if self.configPars is None:
+            return
+
+        sections = {
+            f'{self.model_name}.init': (init_params, self.init_argsWidgets),
+            f'{self.model_name}.segment': (segment_params, self.argsWidgets)
+        }
+        
+        for section, values in sections.items():
+            params, argWidgetList = values
+            for argWidget in argWidgetList:
+                option = argWidget.name
+                val = params[option]
+                widget = argWidget.widget
+                if val is None:
+                    continue
+                casters = [lambda x: x, int, float, str, bool]
+                for caster in casters:
+                    try:
+                        argWidget.valueSetter(widget, caster(val))
+                        break
+                    except Exception as e:
+                        continue
+    
     def loadLastSelection(self, section, argWidgetList):
         if self.configPars is None:
             return
