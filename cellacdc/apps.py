@@ -10478,6 +10478,12 @@ class QDialogModelParams(QDialog):
             start_row += 1
         
         for row, ArgSpec in enumerate(ArgSpecs_list):
+            try:
+                not_a_param = ArgSpec.type().not_a_param
+                continue
+            except Exception as err:
+                pass
+            
             row = row + start_row
             var_name = ArgSpec.name.replace('_', ' ')
             var_name = f'{var_name[0].upper()}{var_name[1:]}'
