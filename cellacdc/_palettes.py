@@ -159,7 +159,7 @@ def TreeWidgetStyleSheet():
         """)
     else:
         styleSheet = ("""
-            QTreeWidget::item:hover {background-color:#4d4d4d; color:black;}
+            QTreeWidget::item:hover {background-color:#E6E6E6; color:black;}
             QTreeWidget::item:selected {background-color:#8dc427; color:black;}
             QTreeView {
                 selection-background-color: #8dc427;
