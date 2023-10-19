@@ -10607,8 +10607,7 @@ class QDialogModelParams(QDialog):
         for section, values in sections.items():
             params, argWidgetList = values
             for argWidget in argWidgetList:
-                option = argWidget.name
-                val = params[option]
+                val = params.get(argWidget.name)
                 widget = argWidget.widget
                 if val is None:
                     continue
