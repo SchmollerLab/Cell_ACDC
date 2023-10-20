@@ -1,4 +1,3 @@
-print('Initialising...')
 import os
 import sys
 import shutil

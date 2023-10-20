@@ -1741,14 +1741,20 @@ def check_install_segment_anything():
 
 def check_install_package(
         pkg_name: str, pypi_name='', note='', parent=None, 
-        raise_on_cancel=True
+        raise_on_cancel=True, logger_func=print, is_cli=False,
+        caller_name='Cell-ACDC', upgrade=False
     ):
     try:
         import_module(pkg_name)
     except ModuleNotFoundError:
+        
+        cancel = _install_package_msg(
+            pkg_name, note=note, parent=parent, upgrade=upgrade,
+            is_cli=is_cli, caller_name=caller_name, logger_func=logger_func,
+            pkg_command=pypi_name
+        )
         if pypi_name:
             pkg_name = pypi_name
-        cancel = _install_package_msg(pkg_name, note=note, parent=parent)
         if cancel:
             if raise_on_cancel:
                 raise ModuleNotFoundError(
@@ -1820,7 +1826,48 @@ def _inform_install_package_failed(pkg_name, parent=None, do_exit=True):
     print('^'*50)
 
 def _install_package_msg(
-        pkg_name, note='', parent=None, upgrade=False, caller_name='Cell-ACDC'
+        pkg_name, note='', parent=None, upgrade=False, caller_name='Cell-ACDC',
+        is_cli=False, pkg_command=''
+    ):
+    if is_cli:
+        _install_package_cli_msg(
+            pkg_name, note=note, upgrade=upgrade, caller_name=caller_name,
+            pkg_command=pkg_command
+        )
+    else:
+        _install_package_gui_msg(
+            pkg_name, note=note, parent=parent, upgrade=upgrade, 
+            caller_name=caller_name, pkg_command=pkg_command
+        )
+
+def _install_package_cli_msg(
+        pkg_name, note='', upgrade=False, caller_name='Cell-ACDC',
+        logger_func=print, pkg_command=''
+    ):
+    if not pkg_command:
+        pkg_command = pkg_name
+    txt = (
+        f'{caller_name} needs to install {pkg_name}\n\n'
+        'You can choose to install it now or lateer with the command '
+        f'`pip install --upgrade {pkg_command}`\n\n'
+    )
+    logger_func(txt)
+    while True:
+        answer = input('Do you want to install it now ([y]/n)? ')
+        if not answer or answer.lower() == 'y':
+            return True
+        
+        if answer.lower() == 'n':
+            return False
+        
+        logger_func(
+            f'{answer} is not a valid answer. Valid answers are "y" for Yes and '
+            '"n" for No.'
+        )
+        
+def _install_package_gui_msg(
+        pkg_name, note='', parent=None, upgrade=False, caller_name='Cell-ACDC', 
+        pkg_command=''
     ):
     msg = widgets.myMessageBox(parent=parent)
     if upgrade:
@@ -1829,6 +1876,10 @@ def _install_package_msg(
         install_text = 'install'
     if pkg_name == 'BayesianTracker':
         pkg_name = 'btrack'
+    
+    if not pkg_command:
+        pkg_command = pkg_name
+        
     txt = html_utils.paragraph(f"""
         {caller_name} is going to <b>download and {install_text}</b>
         <code>{pkg_name}</code>.<br><br>
@@ -1838,7 +1889,7 @@ def _install_package_msg(
         You might have to <b>restart {caller_name}</b>.<br><br>
         <b>IMPORTANT:</b> If the installation fails please install
         <code>{pkg_name}</code> manually with the follwing command:<br><br>
-        <code>pip install --upgrade {pkg_name.lower()}</code><br><br>
+        <code>pip install --upgrade {pkg_command.lower()}</code><br><br>
         Alternatively, you can cancel the process and try later.
     """)
     if note:
