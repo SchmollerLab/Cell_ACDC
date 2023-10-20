@@ -1282,6 +1282,30 @@ class loadData:
         acdc_df.to_csv(self.acdc_output_csv_path)
         self.loadAcdcDf(self.acdc_output_csv_path)
 
+    def getAcdcDfEndname(self):
+        if not hasattr(self, 'acdc_output_csv_path'):
+            return
+        
+        if not hasattr(self, 'basename'):
+            return
+        
+        filename = os.path.basename(self.acdc_output_csv_path)
+        filename, _ = os.path.splitext(filename)
+        endname = filename[len(self.basename):].lstrip('_')
+        return endname
+    
+    def getSegmEndname(self):
+        if not hasattr(self, 'acdc_output_csv_path'):
+            return
+        
+        if not hasattr(self, 'basename'):
+            return
+        
+        filename = os.path.basename(self.acdc_output_csv_path)
+        filename, _ = os.path.splitext(filename)
+        endname = filename[len(self.basename):].lstrip('_')
+        return endname
+    
     def getCustomAnnotatedIDs(self):
         self.customAnnotIDs = {}
 
