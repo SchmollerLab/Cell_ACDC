@@ -1827,17 +1827,18 @@ def _inform_install_package_failed(pkg_name, parent=None, do_exit=True):
 
 def _install_package_msg(
         pkg_name, note='', parent=None, upgrade=False, caller_name='Cell-ACDC',
-        is_cli=False, pkg_command=''
+        is_cli=False, pkg_command='', logger_func=print
     ):
     if is_cli:
         _install_package_cli_msg(
             pkg_name, note=note, upgrade=upgrade, caller_name=caller_name,
-            pkg_command=pkg_command
+            pkg_command=pkg_command, logger_func=logger_func
         )
     else:
         _install_package_gui_msg(
             pkg_name, note=note, parent=parent, upgrade=upgrade, 
-            caller_name=caller_name, pkg_command=pkg_command
+            caller_name=caller_name, pkg_command=pkg_command,
+            logger_func=logger_func
         )
 
 def _install_package_cli_msg(
@@ -1867,7 +1868,7 @@ def _install_package_cli_msg(
         
 def _install_package_gui_msg(
         pkg_name, note='', parent=None, upgrade=False, caller_name='Cell-ACDC', 
-        pkg_command=''
+        pkg_command='', logger_func=None
     ):
     msg = widgets.myMessageBox(parent=parent)
     if upgrade:
