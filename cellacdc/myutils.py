@@ -1849,7 +1849,7 @@ def _install_package_cli_msg(
         pkg_command = pkg_name
     txt = (
         f'{caller_name} needs to install {pkg_name}\n\n'
-        'You can choose to install it now or lateer with the command '
+        'You can choose to install it now or later with the command '
         f'`pip install --upgrade {pkg_command}`\n\n'
     )
     logger_func(txt)
