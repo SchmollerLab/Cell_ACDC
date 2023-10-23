@@ -424,7 +424,8 @@ class saveDataWorker(QObject):
                 df, rp, channel, foregr_data, foregr_metrics_params[channel], 
                 metrics_func, custom_metrics_params[channel], isSegm3D, 
                 lab, foregr_img, manualBackgrRp=manualBackgrRp,
-                customMetricsCritical=self.customMetricsCritical
+                customMetricsCritical=self.customMetricsCritical,
+                z_slice=z
             )
 
         df = measurements.add_concentration_metrics(

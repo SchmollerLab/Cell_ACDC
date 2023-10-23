@@ -1079,15 +1079,29 @@ def get_manualBkgr_bkgrVal(df, channel, how, ID):
         bkgrVal = np.nan
     return bkgrVal
 
-def get_foregr_obj_array(foregr_arr, obj, isSegm3D):
+def get_foregr_obj_array(foregr_arr, obj, isSegm3D, z_slice=None, how=None):
     if foregr_arr.ndim == 3 and isSegm3D:
         # 3D mask on 3D data
         return foregr_arr[obj.slice][obj.image], obj.area
     elif foregr_arr.ndim == 2 and isSegm3D:
         # 3D mask on 2D data
+        use_proj = (
+            z_slice is None or how is None or how != 'zSlice'
+        )
         obj_slice = obj.slice[1:3]
-        obj_image = obj.image.max(axis=0)
-        return foregr_arr[obj_slice][obj_image], np.count_nonzero(obj_image)
+        if use_proj:
+            obj_image = obj.image.max(axis=0)
+            obj_area = np.count_nonzero(obj_image)
+            return foregr_arr[obj_slice][obj_image], obj_area
+        else:
+            min_z = obj.bbox[0]
+            z_local = z_slice - min_z
+            try:
+                obj_image = obj.image[z_local]
+                obj_area = np.count_nonzero(obj_image)
+                return foregr_arr[obj_slice][obj_image], obj_area
+            except Exception as err:
+                return np.zeros(3), 0
     else:
         # 2D mask on 2D data
         return foregr_arr[obj.slice][obj.image], obj.area
@@ -1412,7 +1426,7 @@ def add_size_metrics(
 
 def add_foregr_metrics(
         df, rp, channel, foregr_data, foregr_metrics_params, metrics_func,
-        custom_metrics_params, isSegm3D, lab, foregr_img, 
+        custom_metrics_params, isSegm3D, lab, foregr_img, z_slice=None,
         manualBackgrRp=None, customMetricsCritical=None
     ):
     if manualBackgrRp is not None:
@@ -1424,7 +1438,7 @@ def add_foregr_metrics(
             func_name, how = foregr_metrics_params[col]
             foregr_arr = foregr_data[how]
             foregr_obj_arr, obj_area = get_foregr_obj_array(
-                foregr_arr, obj, isSegm3D
+                foregr_arr, obj, isSegm3D, z_slice=z_slice, how=how
             )
             is_manual_bkgr_metric = func_name.find('manualBkgr') != -1
             is_amount_metric = func_name.find('amount_') != -1
@@ -1450,7 +1464,7 @@ def add_foregr_metrics(
         for col, (custom_func, how) in custom_metrics_params.items():   
             foregr_arr = foregr_data[how]
             foregr_obj_arr, obj_area = get_foregr_obj_array(
-                foregr_arr, obj, isSegm3D
+                foregr_arr, obj, isSegm3D, z_slice=z_slice, how=how
             )
             ID = obj.label
             autoBkgrVal, dataPrepBkgrVal = get_bkgrVals(df, channel, how, ID)
