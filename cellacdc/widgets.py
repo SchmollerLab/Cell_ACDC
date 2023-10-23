@@ -6652,11 +6652,27 @@ class ImShow(QBaseWindow):
         print('')
         print('*'*60)
 
-    def run(self, block=False, showMaximised=False):
+    def show(self, block=False, screenToWindowRatio=None):
+        super().show(block=block)
+        if screenToWindowRatio is None:
+            return
+        screenGeometry = self.screen().geometry()
+        screenWidth = screenGeometry.width()
+        screenHeight = screenGeometry.height()
+        finalWidth = int(screenToWindowRatio*screenWidth)
+        finalHeight = int(screenToWindowRatio*screenHeight)
+        screenTop = screenGeometry.top()
+        screenLeft = screenGeometry.left()
+        xc, yc = screenLeft + screenWidth/2, screenTop + screenHeight/2
+        winLeft = int(xc - finalWidth/2)
+        winTop = int(yc - finalHeight/2)
+        self.setGeometry(winLeft, winTop, finalWidth, finalHeight)
+        
+    def run(self, block=False, showMaximised=False, screenToWindowRatio=None):
         if showMaximised:
             self.showMaximized()
         else:
-            self.show()
+            self.show(screenToWindowRatio=screenToWindowRatio)
         QTimer.singleShot(100, self.autoRange)
         
         if block:

@@ -109,7 +109,7 @@ def imshow(
         win.drawPoints(points_coords)
     if points_data is not None:
         win.setPointsData(points_data)
-    win.run(block=block, showMaximised=showMaximised)
+    win.run(block=block, showMaximised=showMaximised, screenToWindowRatio=0.8)
     return win
 
 def _add_colorbar_axes(
