@@ -1748,14 +1748,14 @@ def check_install_package(
         import_module(pkg_name)
     except ModuleNotFoundError:
         
-        cancel = _install_package_msg(
+        proceed = _install_package_msg(
             pkg_name, note=note, parent=parent, upgrade=upgrade,
             is_cli=is_cli, caller_name=caller_name, logger_func=logger_func,
             pkg_command=pypi_name
         )
         if pypi_name:
             pkg_name = pypi_name
-        if cancel:
+        if not proceed:
             if raise_on_cancel:
                 raise ModuleNotFoundError(
                     f'User aborted {pkg_name} installation'
@@ -1789,8 +1789,8 @@ def check_matplotlib_version(qparent=None):
 
     mpl_version = float(f'{mpl_version_digits[0]}.{mpl_version_digits[1]}')
     if mpl_version < 3.5:
-        cancel = _install_package_msg('matplotlib', parent=qparent, upgrade=True)
-        if cancel:
+        proceed = _install_package_msg('matplotlib', parent=qparent, upgrade=True)
+        if not proceed:
             raise ModuleNotFoundError(
                 f'User aborted "matplotlib" installation'
             )
@@ -1830,16 +1830,17 @@ def _install_package_msg(
         is_cli=False, pkg_command='', logger_func=print
     ):
     if is_cli:
-        _install_package_cli_msg(
+        proceed = _install_package_cli_msg(
             pkg_name, note=note, upgrade=upgrade, caller_name=caller_name,
             pkg_command=pkg_command, logger_func=logger_func
         )
     else:
-        _install_package_gui_msg(
+        proceed = _install_package_gui_msg(
             pkg_name, note=note, parent=parent, upgrade=upgrade, 
             caller_name=caller_name, pkg_command=pkg_command,
             logger_func=logger_func
         )
+    return proceed
 
 def _install_package_cli_msg(
         pkg_name, note='', upgrade=False, caller_name='Cell-ACDC',
@@ -1847,10 +1848,13 @@ def _install_package_cli_msg(
     ):
     if not pkg_command:
         pkg_command = pkg_name
+    
+    separator = '-'*60
     txt = (
-        f'{caller_name} needs to install {pkg_name}\n\n'
-        'You can choose to install it now or later with the command '
-        f'`pip install --upgrade {pkg_command}`\n\n'
+        f'{separator}\n{caller_name} needs to install {pkg_name}\n\n'
+        'You can choose to install it now or stope the process and install it '
+        'later with the following command:\n\n'
+        f'pip install --upgrade {pkg_command}\n\n'
     )
     logger_func(txt)
     while True:
@@ -1895,13 +1899,11 @@ def _install_package_gui_msg(
     """)
     if note:
         txt = f'{txt}{note}'
-    msg.setIcon()
-    msg.setWindowTitle(f'Install {pkg_name}')
-    msg.addText(txt)
-    msg.addButton('   Ok   ')
-    cancel = msg.addButton(' Cancel ')
-    msg.exec_()
-    return msg.clickedButton == cancel
+    _, okButton = msg.information(
+        parent, f'Install {pkg_name}', txt, 
+        buttonsTexts=('Cancel', 'Ok')
+    )
+    return msg.clickedButton == okButton
 
 def _install_tensorflow():
     cpu = platform.processor()
