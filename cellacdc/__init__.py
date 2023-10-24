@@ -125,6 +125,18 @@ try:
 except Exception as err:
     raise err
 
+def try_input_install_package(pkg_name, install_command, question=None):
+    if question is None:
+        question = 'Do you want to install it now ([y]/n)? '
+    try:
+        answer = input(f'\n{question}')
+        return answer
+    except Exception as err:
+        raise ModuleNotFoundError(
+            f'The module "{pkg_name}" is not installed. '
+            f'Install it with the command `{install_command}`.'
+        )
+
 import os
 import inspect
 import platform

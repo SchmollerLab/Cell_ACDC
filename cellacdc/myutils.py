@@ -47,6 +47,7 @@ from . import cellacdc_path, printl, settings_folderpath, logs_path
 from . import user_profile_path, recentPaths_path
 from . import models_list_file_path
 from . import github_home_url
+from . import try_input_install_package
 
 def get_module_name(script_file_path):
     parts = pathlib.Path(script_file_path).parts
@@ -1852,13 +1853,14 @@ def _install_package_cli_msg(
     separator = '-'*60
     txt = (
         f'{separator}\n{caller_name} needs to install {pkg_name}\n\n'
-        'You can choose to install it now or stope the process and install it '
+        'You can choose to install it now or stop the process and install it '
         'later with the following command:\n\n'
-        f'pip install --upgrade {pkg_command}\n\n'
+        f'pip install --upgrade {pkg_command}\n'
     )
     logger_func(txt)
+    install_command = f'pip install --upgrade {pkg_command}'
     while True:
-        answer = input('Do you want to install it now ([y]/n)? ')
+        answer = try_input_install_package(pkg_name, install_command)
         if not answer or answer.lower() == 'y':
             return True
         
