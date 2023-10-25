@@ -2588,9 +2588,8 @@ def format_number_list(text): #indentation for number points in tooltips. Implem
     return '\n'.join(formatted_lines)
 
 
-def get_tooltips_from_docs(): #gets tooltips for GUI from .\Cell_ACDC\docs\source\tooltips.rst
-
-
+def get_tooltips_from_docs(): 
+    # gets tooltips for GUI from .\Cell_ACDC\docs\source\tooltips.rst
     var_pattern = r"\|(\S*)\|"
     shortcut_pattern = r"\*\*(\".*\")\):\*\*"
     title_pattern = r"\*\*(.*)\(\*\*"

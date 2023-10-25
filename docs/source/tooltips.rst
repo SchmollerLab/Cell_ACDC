@@ -58,8 +58,8 @@
     :height: 16px
     :width: 16px
 
-.. |overlayButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/overlay.svg
-    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/overlay.svg 
+.. |overlayButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/cellacdc/resources/icons/overlay1.svg
+    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/overlay1.svg
     :alt: overlayButton icon
     :height: 16px
     :width: 16px

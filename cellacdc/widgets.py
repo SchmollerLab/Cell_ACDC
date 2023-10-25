@@ -7009,17 +7009,16 @@ class SetMeasurementsGroupBox(QGroupBox):
             itemsInfo = {}
         
         self.setTitle(title)
+        self.setCheckable(checkable)
         
         mainLayout = QVBoxLayout()
         
         scrollArea = QScrollArea()
-        scrollAreaLayout = QHBoxLayout()
+        scrollArea.setWidgetResizable(True)
+        scrollAreaLayout = QVBoxLayout()
         scrollAreaWidget = QWidget()
         
-        scrollAreaWidget.setLayout(scrollAreaLayout)
-        scrollArea.setWidget(scrollAreaWidget)
-        
-        checkboxes = {}
+        self.checkboxes = {}
         for text in itemsText:
             rowLayout = QHBoxLayout()
             infoText = itemsInfo.get(text)
@@ -7034,16 +7033,23 @@ class SetMeasurementsGroupBox(QGroupBox):
             checkbox = QCheckBox(text)
             checkbox.setChecked(True)
             rowLayout.addWidget(checkbox)
-            checkboxes[text] = checkbox
+            rowLayout.addStretch(1) 
+            
+            self.checkboxes[text] = checkbox
             
             scrollAreaLayout.addLayout(rowLayout)
 
-        self.setCheckable(checkable)
+        scrollAreaLayout.addStretch(1)
+        
+        scrollAreaWidget.setLayout(scrollAreaLayout)
+        scrollArea.setWidget(scrollAreaWidget)
+        self.scrollArea = scrollArea
         
         buttonsLayout = QHBoxLayout()
         self.selectAllButton = selectAllPushButton()
         self.selectAllButton.sigClicked.connect(self.setCheckedAll)
         
+        buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(self.selectAllButton)
         
         if lastSelection is not None:
@@ -7073,7 +7079,7 @@ class SetMeasurementsGroupBox(QGroupBox):
         msg.setWidth(int(self.screen().size().width()/2))
         msg.information(self, title, infoText)
     
-    def setCheckedAll(self, checked):
+    def setCheckedAll(self, button, checked):
         for checkbox in self.checkboxes.values():
             checkbox.setChecked(checked)
 
