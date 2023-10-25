@@ -1845,7 +1845,7 @@ class TreeWidget(QTreeWidget):
                     item.child(i).setSelected(True)
 
 class CancelOkButtonsLayout(QHBoxLayout):
-    def __init__(self, *args):
+    def __init__(self, *args, additionalButtons=None):
         super().__init__(*args)
 
         self.cancelButton = cancelPushButton('Cancel')
@@ -1854,6 +1854,11 @@ class CancelOkButtonsLayout(QHBoxLayout):
         self.addStretch(1)
         self.addWidget(self.cancelButton)
         self.addSpacing(20)
+        
+        if additionalButtons is not None:
+            for button in additionalButtons:
+                self.addWidget(button)
+        
         self.addWidget(self.okButton)
 
 class TreeWidgetItem(QTreeWidgetItem):
@@ -3620,8 +3625,8 @@ class _metricsQGBox(QGroupBox):
         buttonsLayout.addWidget(self.selectAllButton)
 
         if favourite_funcs is not None:
-            self.loadFavouritesButton = QPushButton(
-                '  Load last selection...  ', self
+            self.loadFavouritesButton = reloadPushButton(
+                '  Load last selection...  '
             )
             self.loadFavouritesButton.clicked.connect(self.checkFavouriteFuncs)
             # self.checkFavouriteFuncs()
@@ -6991,3 +6996,82 @@ class ComboBox(QComboBox):
         self._valueChanged = currentText != self._previousText
         self._previousText = self.currentText()
         super().setCurrentText(text)
+
+class SetMeasurementsGroupBox(QGroupBox):
+    def __init__(
+            self, title, itemsText, checkable=True, itemsInfo=None, 
+            lastSelection=None, parent=None
+        ):
+        super().__init__(parent)
+        
+        if itemsInfo is None:
+            itemsInfo = {}
+        
+        self.setTitle(title)
+        
+        mainLayout = QVBoxLayout()
+        
+        scrollArea = QScrollArea()
+        scrollAreaLayout = QHBoxLayout()
+        scrollAreaWidget = QWidget()
+        
+        scrollAreaWidget.setLayout(scrollAreaLayout)
+        scrollArea.setWidget(scrollAreaWidget)
+        
+        checkboxes = {}
+        for text in itemsText:
+            rowLayout = QHBoxLayout()
+            infoText = itemsInfo.get(text)
+            if infoText is not None:
+                infoButton = infoPushButton()
+                infoButton.setCursor(Qt.WhatsThisCursor)
+                infoButton.itemText = text
+                infoButton.infoText = infoText
+                infoButton.clicked.connect(self.showInfo)
+                rowLayout.addWidget(infoButton)
+                
+            checkbox = QCheckBox(text)
+            checkbox.setChecked(True)
+            rowLayout.addWidget(checkbox)
+            checkboxes[text] = checkbox
+            
+            scrollAreaLayout.addLayout(rowLayout)
+
+        self.setCheckable(checkable)
+        
+        buttonsLayout = QHBoxLayout()
+        self.selectAllButton = selectAllPushButton()
+        self.selectAllButton.sigClicked.connect(self.setCheckedAll)
+        
+        buttonsLayout.addWidget(self.selectAllButton)
+        
+        if lastSelection is not None:
+            self.lastSelection = lastSelection
+            self.loadLastSelButton = reloadPushButton(
+                '  Load last selection...  '
+            )
+            self.loadLastSelButton.clicked.connect(self.loadLastSelection)
+            buttonsLayout.addWidget(self.selectAllButton)
+        
+        mainLayout.addWidget(scrollArea)
+        mainLayout.addLayout(buttonsLayout)
+        
+        self.setLayout(mainLayout)
+    
+    def loadLastSelection(self):
+        for text, checkbox in self.checkboxes.items():
+            checked = self.lastSelection.get(text, False)
+            checkbox.setChecked(checked)
+            
+    def showInfo(self):
+        infoText = self.sender().infoText
+        itemText = self.sender().itemText
+        
+        title = f'{itemText} description'
+        msg = myMessageBox()
+        msg.setWidth(int(self.screen().size().width()/2))
+        msg.information(self, title, infoText)
+    
+    def setCheckedAll(self, checked):
+        for checkbox in self.checkboxes.values():
+            checkbox.setChecked(checked)

@@ -1918,6 +1918,7 @@ class SetMeasurementsDialog(widgets.QBaseDialog):
 
         loadLastSelButton = widgets.reloadPushButton('Load last selection...')
         self.deselectAllButton = QPushButton('Deselect all')
+        self.deselectAllButton.setIcon(QIcon(':deselect_all.svg'))
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
