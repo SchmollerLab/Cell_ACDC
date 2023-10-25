@@ -4,6 +4,7 @@ import operator
 import time
 import re
 import datetime
+from PyQt6 import QtGui
 from matplotlib.pyplot import text
 import numpy as np
 import pandas as pd
@@ -2866,15 +2867,15 @@ class LabelRoiCircularItem(pg.ScatterPlotItem):
 
 class Toggle(QCheckBox):
     def __init__(
-        self,
-        label_text='',
-        initial=None,
-        width=80,
-        bg_color='#b3b3b3',
-        circle_color='#ffffff',
-        active_color='#26dd66',# '#005ce6',
-        animation_curve=QEasingCurve.Type.InOutQuad
-    ):
+            self,
+            label_text='',
+            initial=None,
+            width=80,
+            bg_color='#b3b3b3',
+            circle_color='#ffffff',
+            active_color='#26dd66',# '#005ce6',
+            animation_curve=QEasingCurve.Type.InOutQuad
+        ):
         QCheckBox.__init__(self)
 
         # self.setFixedSize(width, 28)
@@ -7075,3 +7076,26 @@ class SetMeasurementsGroupBox(QGroupBox):
     def setCheckedAll(self, checked):
         for checkbox in self.checkboxes.values():
             checkbox.setChecked(checked)
+
+class SearchLineEdit(QLineEdit):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        
+        self.initSearch()
+        self.setFocusPolicy(Qt.ClickFocus)
+        
+    def focusInEvent(self, event) -> None:
+        super().focusInEvent(event)
+        if self.text() == 'Search...':
+            self.setText('')
+        self.setStyleSheet('')
+    
+    def focusOutEvent(self, event) -> None:
+        super().focusOutEvent(event)
+        if not self.text():
+            self.initSearch()
+    
+    def initSearch(self):
+        self.setText('Search...')
+        self.setStyleSheet('color: rgb(150, 150, 150)')
+        self.clearFocus()
