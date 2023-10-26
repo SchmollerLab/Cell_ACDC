@@ -422,6 +422,13 @@ class selectAllPushButton(PushButton):
         self.clicked.connect(self.onClicked)
         self.setMinimumWidth(self.sizeHint().width())
     
+    def setChecked(self, checked):
+        if checked:
+            self._status == 'deselect'
+        else:
+            self._status == 'select'
+        self.click()
+    
     def onClicked(self):
         if self._status == 'select':
             icon_fn = ':deselect_all.svg'
@@ -7007,6 +7014,10 @@ class SetMeasurementsGroupBox(QGroupBox):
         if itemsInfo is None:
             itemsInfo = {}
         
+        highlightRgba = _palettes._highlight_rgba()
+        r, g, b, a = highlightRgba
+        self._highlightStylesheetColor = f'rgb({r}, {g}, {b})'
+        
         self.setTitle(title)
         self.setCheckable(checkable)
         
@@ -7016,6 +7027,8 @@ class SetMeasurementsGroupBox(QGroupBox):
         scrollArea.setWidgetResizable(True)
         scrollAreaLayout = QVBoxLayout()
         scrollAreaWidget = QWidget()
+        self.scrollAreaWidget = scrollAreaWidget
+        self.scrollAreaLayout = scrollAreaLayout
         
         self.checkboxes = {}
         for text in itemsText:
@@ -7030,6 +7043,7 @@ class SetMeasurementsGroupBox(QGroupBox):
                 rowLayout.addWidget(infoButton)
                 
             checkbox = QCheckBox(text)
+            checkbox.setParent(self.scrollAreaWidget)
             checkbox.setChecked(True)
             rowLayout.addWidget(checkbox)
             rowLayout.addStretch(1) 
@@ -7057,12 +7071,27 @@ class SetMeasurementsGroupBox(QGroupBox):
                 '  Load last selection...  '
             )
             self.loadLastSelButton.clicked.connect(self.loadLastSelection)
-            buttonsLayout.addWidget(self.selectAllButton)
+            buttonsLayout.addWidget(self.loadLastSelButton)
         
         mainLayout.addWidget(scrollArea)
+        mainLayout.addSpacing(10)
         mainLayout.addLayout(buttonsLayout)
         
         self.setLayout(mainLayout)
+    
+    def getWidthNoScrollBarNeeded(self):
+        width = (
+            self.scrollArea.verticalScrollBar().sizeHint().width()
+            # self.scrollAreaLayout.contentsRect().width()
+            + self.scrollAreaWidget.sizeHint().width() 
+            + 30
+        )
+        return width
+    
+    def resizeWidthNoScrollBarNeeded(self):
+        width = self.getWidthNoScrollBarNeeded()
+        self.setMinimumWidth(width)
+        # self.setFixedWidth(width)
     
     def loadLastSelection(self):
         for text, checkbox in self.checkboxes.items():
@@ -7082,6 +7111,24 @@ class SetMeasurementsGroupBox(QGroupBox):
         for checkbox in self.checkboxes.values():
             checkbox.setChecked(checked)
 
+    def highlightCheckboxesFromSearchText(self, text):
+        for checkbox in self.checkboxes.values():
+            if not text:
+                highlighted = False
+            else:
+                highlighted = checkbox.text().lower().find(text.lower()) != -1
+            
+            self.setCheckboxHighlighted(highlighted, checkbox)
+    
+    def setCheckboxHighlighted(self, highlighted, checkbox):
+        if highlighted:
+            checkbox.setStyleSheet(
+                f'background: {self._highlightStylesheetColor}; color: black'
+            )
+        else:
+            checkbox.setStyleSheet('')
+        self.scrollArea.ensureWidgetVisible(checkbox)
+    
 class SearchLineEdit(QLineEdit):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -7091,16 +7138,21 @@ class SearchLineEdit(QLineEdit):
         
     def focusInEvent(self, event) -> None:
         super().focusInEvent(event)
-        if self.text() == 'Search...':
+        if super().text() == 'Search...':
             self.setText('')
         self.setStyleSheet('')
     
     def focusOutEvent(self, event) -> None:
         super().focusOutEvent(event)
-        if not self.text():
+        if not super().text():
             self.initSearch()
     
     def initSearch(self):
         self.setText('Search...')
         self.setStyleSheet('color: rgb(150, 150, 150)')
         self.clearFocus()
+    
+    def text(self):
+        if super().text() == 'Search...':
+            return ''
+        return super().text()
