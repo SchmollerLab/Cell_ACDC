@@ -4,7 +4,6 @@ import operator
 import time
 import re
 import datetime
-from PyQt6 import QtGui
 from matplotlib.pyplot import text
 import numpy as np
 import pandas as pd
