@@ -43,6 +43,7 @@ from . import ignore_exception, cellacdc_path
 from . import qrc_resources_path, qrc_resources_light_path
 from . import qrc_resources_dark_path
 from . import models_path
+from . import tooltips_rst_filepath
 
 cca_df_colnames = list(base_cca_df.keys())
 acdc_df_bool_cols = [
@@ -2594,11 +2595,10 @@ def get_tooltips_from_docs():
     shortcut_pattern = r"\*\*(\".*\")\):\*\*"
     title_pattern = r"\*\*(.*)\(\*\*"
 
-    script_path = os.path.abspath(__file__)
-    root_folder = os.path.abspath(os.path.join(script_path, os.pardir, os.pardir))
-    file_path = os.path.join(root_folder, "docs", "source", "tooltips.rst")
-
-    with open(file_path, "r") as file:
+    if not os.path.exists(tooltips_rst_filepath):
+        return {}
+    
+    with open(tooltips_rst_filepath, "r") as file:
         lines = file.readlines()
 
     new_lines = []

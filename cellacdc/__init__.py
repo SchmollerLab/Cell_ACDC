@@ -33,6 +33,9 @@ qrc_resources_path = os.path.join(cellacdc_path, 'qrc_resources.py')
 qrc_resources_light_path = os.path.join(cellacdc_path, 'qrc_resources_light.py')
 qrc_resources_dark_path = os.path.join(cellacdc_path, 'qrc_resources_dark.py')
 old_temp_path = os.path.join(cellacdc_path, 'temp')
+tooltips_rst_filepath = os.path.join(
+    cellacdc_path, "docs", "source", "tooltips.rst"
+)
 
 user_data_folderpath = user_data_dir()
 user_profile_path_txt = os.path.join(
