@@ -19,8 +19,8 @@ Installation using Anaconda (recommended)
 5. **Activate the virtual environment** by typing ``conda activate acdc``
     This will activate the environment, meaning that the console is now not in the default system environment, but the ``acdc`` environment. If the activation of the environment was successful, this should be indicated to the left of the active path, circled in red below.
 
-.. image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/docs/source/images/Cmdprompt.png?raw=true
-    :target: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/docs/source/images/Cmdprompt.png
+.. image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/cellacdc/docs/source/images/Cmdprompt.png?raw=true
+    :target: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/cellacdc/docs/source/images/Cmdprompt.png
     :alt: The active environment is displayed to the left of the currently active path
     :width: 600
 
@@ -44,8 +44,8 @@ Installation using Pip
 
 1. Download and install `Python 3.9 <https://www.python.org/downloads/>`__. Make sure to check the checkbox so python is added to PATH, as seen in the picture below. This is so you can access python commands from anywhere.
 
-.. figure:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/docs/source/images/Install1.png?raw=true
-    :target: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/docs/source/images/Install1.png
+.. figure:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/cellacdc/docs/source/images/Install1.png?raw=true
+    :target: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/cellacdc/docs/source/images/Install1.png
     :alt: Python window with PATH checkbox
 
 2. Open a terminal. On Windows we recommend using the PowerShell that you can install from `here <https://docs.microsoft.com/it-it/powershell/scripting/install/installing-powershell-on-windows?view=powershell-7.2#installing-the-msi-package>`__. On macOS use the Terminal app.
