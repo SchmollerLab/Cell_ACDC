@@ -21,7 +21,7 @@ from matplotlib.colors import ListedColormap, LinearSegmentedColormap
 import matplotlib.pyplot as plt
 
 from qtpy.QtCore import (
-    Signal, QTimer, Qt, QPoint, Slot, Property,
+    Signal, QTimer, Qt, QPoint, QUrl, Property,
     QPropertyAnimation, QEasingCurve, QLocale,
     QSize, QRect, QPointF, QRect, QPoint, QEasingCurve, QRegularExpression,
     QEvent, QEventLoop, QPropertyAnimation, QObject,
@@ -32,7 +32,7 @@ from qtpy.QtCore import (
 from qtpy.QtGui import (
     QFont, QPalette, QColor, QPen, QKeyEvent, QBrush, QPainter,
     QRegularExpressionValidator, QIcon, QPixmap, QKeySequence, QLinearGradient,
-    QShowEvent, QBitmap, QFontMetrics, QGuiApplication, QLinearGradient 
+    QShowEvent, QDesktopServices, QFontMetrics, QGuiApplication, QLinearGradient 
 )
 from qtpy.QtWidgets import (
     QTextEdit, QLabel, QProgressBar, QHBoxLayout, QToolButton, QCheckBox,
@@ -7007,12 +7007,15 @@ class ComboBox(QComboBox):
 class SetMeasurementsGroupBox(QGroupBox):
     def __init__(
             self, title, itemsText, checkable=True, itemsInfo=None, 
-            lastSelection=None, parent=None
+            lastSelection=None, itemsInfoUrls=None, parent=None
         ):
         super().__init__(parent)
         
         if itemsInfo is None:
             itemsInfo = {}
+        
+        if itemsInfo is None:
+            itemsInfoUrls = {}
         
         highlightRgba = _palettes._highlight_rgba()
         r, g, b, a = highlightRgba
@@ -7034,13 +7037,21 @@ class SetMeasurementsGroupBox(QGroupBox):
         for text in itemsText:
             rowLayout = QHBoxLayout()
             infoText = itemsInfo.get(text)
-            if infoText is not None:
+            infoUrl = itemsInfoUrls.get(text)
+            if infoText is not None or infoUrl is not None:
                 infoButton = infoPushButton()
                 infoButton.setCursor(Qt.WhatsThisCursor)
+                rowLayout.addWidget(infoButton)
+            
+            if infoText is not None:
                 infoButton.itemText = text
                 infoButton.infoText = infoText
                 infoButton.clicked.connect(self.showInfo)
-                rowLayout.addWidget(infoButton)
+            
+            if infoUrl is not None:
+                infoButton.itemText = text
+                infoButton.infoUrl = infoUrl
+                infoButton.clicked.connect(self.openInfoUrl)
                 
             checkbox = QCheckBox(text)
             checkbox.setParent(self.scrollAreaWidget)
@@ -7064,6 +7075,7 @@ class SetMeasurementsGroupBox(QGroupBox):
         
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(self.selectAllButton)
+        self.buttonsLayout = buttonsLayout
         
         if lastSelection is not None:
             self.lastSelection = lastSelection
@@ -7079,6 +7091,13 @@ class SetMeasurementsGroupBox(QGroupBox):
         
         self.setLayout(mainLayout)
     
+    def openInfoUrl(self):
+        url = self.sender().infoUrl
+        QDesktopServices.openUrl(QUrl(url))
+        # import webbrowser
+        # url = self.sender().infoUrl
+        # webbrowser.open(url)
+    
     def getWidthNoScrollBarNeeded(self):
         width = (
             self.scrollArea.verticalScrollBar().sizeHint().width()
@@ -7086,7 +7105,14 @@ class SetMeasurementsGroupBox(QGroupBox):
             + self.scrollAreaWidget.sizeHint().width() 
             + 30
         )
-        return width
+        buttonsWidth = 0
+        for i in range(self.buttonsLayout.count()):
+            widget = self.buttonsLayout.itemAt(i).widget()
+            if not isinstance(widget, QPushButton):
+                continue
+            buttonsWidth += widget.sizeHint().width() + 16
+        largerWidth = max(width, buttonsWidth)
+        return largerWidth
     
     def resizeWidthNoScrollBarNeeded(self):
         width = self.getWidthNoScrollBarNeeded()
