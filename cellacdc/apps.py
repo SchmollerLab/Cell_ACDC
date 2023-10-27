@@ -1006,6 +1006,7 @@ class AddPointsLayerDialog(widgets.QBaseDialog):
         browseButton = widgets.browseFileButton(start_dir=imagesPath)
         typeLayout.addWidget(browseButton, row, 3)
         browseButton.sigPathSelected.connect(self.tablePathSelected)
+        self.browseTableButton = browseButton
         self.fromTableRadiobutton.widgets.append(browseButton)
 
         row += 1
@@ -1118,7 +1119,8 @@ class AddPointsLayerDialog(widgets.QBaseDialog):
         loadButton = widgets.browseFileButton(
             start_dir=imagesPath, ext={'CSV': '.csv'})
         typeLayout.addWidget(loadButton, row, 3)
-        browseButton.sigPathSelected.connect(self.loadClickEntryTable)
+        loadButton.sigPathSelected.connect(self.loadClickEntryTable)
+        self.loadButton = loadButton
         self.clickEntryLoadTableButton = loadButton
         typeLayout.addWidget(self.clickEntryTableEndname.label, row, 1)
         typeLayout.addWidget(self.clickEntryTableEndname, row, 2)
@@ -1177,8 +1179,9 @@ class AddPointsLayerDialog(widgets.QBaseDialog):
     def loadClickEntryTable(self, csv_path):
         self.clickEntryIsLoadedDf = True
         filename = os.path.basename(csv_path)
-        filename, ext = os.path.splittext(filename)
+        filename, ext = os.path.splitext(filename)
         self.clickEntryTableEndname.setText(filename)
+        self.loadButton.confirmAction()
         
     def showAutoPilotInfo(self):
         msg = widgets.myMessageBox(wrapText=False)
@@ -1214,11 +1217,13 @@ class AddPointsLayerDialog(widgets.QBaseDialog):
             self.zColName.addItems(df.columns)
             self.tColName.addItems(df.columns)
             self.sigLoadedTable.emit(df)
+            self.browseTableButton.confirmAction()
         except Exception as e:
             traceback_format = traceback.format_exc()
             self.sigCriticalReadTable.emit(traceback_format)
             self.criticalReadTable(path, traceback_format)
             self.tablePath.setText('')
+        
     
     def criticalLenMismatchManualEntry(self):
         txt = html_utils.paragraph(f"""
@@ -1289,7 +1294,7 @@ class AddPointsLayerDialog(widgets.QBaseDialog):
                 self.criticalColNameIsNone('y')
                 return
             
-            self.layerType = os.path.basename(self.tablePath)
+            self.layerType = os.path.basename(self.tablePath.text())
             self.layerTypeIdx = 2
         elif self.centroidsRadiobutton.isChecked():
             self.layerType = 'Centroids'

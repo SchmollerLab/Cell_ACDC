@@ -2222,13 +2222,14 @@ class guiWin(QMainWindow):
         self.addToolBar(Qt.TopToolBarArea, self.autoPilotZoomToObjToolbar)
         # self.autoPilotZoomToObjToolbar.setIconSize(QSize(16, 16))
         self.autoPilotZoomToObjToolbar.setVisible(False)
+        self.autoPilotZoomToObjToolbar.keepVisibleWhenActive = True
         self.controlToolBars.append(self.autoPilotZoomToObjToolbar)
         
-        closeToolbarAction = QAction(
-            QIcon(":cancelButton.svg"), "Close toolbar...", self
-        )
-        closeToolbarAction.triggered.connect(self.closeToolbars)
-        self.autoPilotZoomToObjToolbar.addAction(closeToolbarAction)
+        # closeToolbarAction = QAction(
+        #     QIcon(":cancelButton.svg"), "Close toolbar...", self
+        # )
+        # closeToolbarAction.triggered.connect(self.closeToolbars)
+        # self.autoPilotZoomToObjToolbar.addAction(closeToolbarAction)
         
         self.autoPilotZoomToObjToolbar.addWidget(widgets.QVLine())
         self.autoPilotZoomToObjToolbar.addWidget(widgets.QHWidgetSpacer(width=separatorW))
@@ -2263,11 +2264,12 @@ class guiWin(QMainWindow):
         self.pointsLayersToolbar.addWidget(QLabel('Points layers:  '))
         # self.pointsLayersToolbar.setIconSize(QSize(16, 16))
         self.pointsLayersToolbar.setVisible(False)
+        self.pointsLayersToolbar.keepVisibleWhenActive = True
         self.controlToolBars.append(self.pointsLayersToolbar)
         
-        closeToolbarAction.toolbars = (
-            self.pointsLayersToolbar, self.autoPilotZoomToObjToolbar
-        )
+        # closeToolbarAction.toolbars = (
+        #     self.pointsLayersToolbar, self.autoPilotZoomToObjToolbar
+        # )
 
         self.manualTrackingToolbar = widgets.ManualTrackingToolBar(
             "Manual tracking controls", self
@@ -10667,6 +10669,13 @@ class guiWin(QMainWindow):
             self.labelRoi_cb(False)
         self.placeHolderToolbar.setVisible(True)
         for toolbar in self.controlToolBars:
+            try:
+                toolbar.keepVisibleWhenActive
+                if toolbar.isVisible():
+                    self.placeHolderToolbar.setVisible(False)
+                    continue
+            except:
+                pass
             toolbar.setVisible(False) 
         
         self.enableSizeSpinbox(False)
@@ -17466,6 +17475,8 @@ class guiWin(QMainWindow):
         if isLoadedDf is not None:
             posData = self.data[self.pos_i]
             tableEndName = tableEndName[len(posData.basename):]
+            self.loadClickEntryDfs(tableEndName)
+            
         toolButton.clickEntryTableEndName = tableEndName
         
         toolButton.toggled.connect(self.addPointsByClickingButtonToggled)
@@ -17532,6 +17543,7 @@ class guiWin(QMainWindow):
                 continue
             
             df = posData.clickEntryPointsDfs[tableEndName]
+            
             if self.isSegm3D and df['z'].isna().any():
                 self.warnLoadedPointsTableIsNot3D(tableEndName)
                 return
@@ -17742,7 +17754,7 @@ class guiWin(QMainWindow):
             self.setupAddPointsByClicking(toolButton, isLoadedDf)
             if self.addPointsWin.autoPilotToggle.isChecked():
                 self.autoPilotZoomToObjToggle.setChecked(True)
-
+        
         weighingChannel = self.addPointsWin.weighingChannel
         self.loadPointsLayerWeighingData(action, weighingChannel)
 
@@ -17761,6 +17773,10 @@ class guiWin(QMainWindow):
             if not os.path.exists(filepath):
                 continue
             posData.clickEntryPointsDfs[tableEndName] = pd.read_csv(filepath)
+        try:
+            self.addPointsWin.loadButton.confirmAction()
+        except Exception as err:
+            pass
     
     def removeClickedPoints(self, action, points):
         posData = self.data[self.pos_i]
