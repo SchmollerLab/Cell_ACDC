@@ -1801,6 +1801,14 @@ class SetMeasurementsDialog(widgets.QBaseDialog):
         # self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
 
         layout = QVBoxLayout()
+        
+        searchLayout = QHBoxLayout()
+        
+        searchLineEdit = widgets.SearchLineEdit()
+        searchLayout.addStretch(5)
+        searchLayout.addWidget(searchLineEdit)
+        searchLayout.setStretch(1, 3)
+        
         groupsLayout = QGridLayout()
         self.groupsLayout = groupsLayout
         buttonsLayout = QHBoxLayout()
@@ -1936,6 +1944,8 @@ class SetMeasurementsDialog(widgets.QBaseDialog):
 
         self.okButton = okButton
 
+        layout.addLayout(searchLayout)
+        layout.addSpacing(10)
         layout.addLayout(groupsLayout)
         layout.addLayout(buttonsLayout)
 
@@ -1944,6 +1954,7 @@ class SetMeasurementsDialog(widgets.QBaseDialog):
         if state is not None:
             self.setState(state)
 
+        searchLineEdit.textEdited.connect(self.searchAndHighlight)
         self.deselectAllButton.clicked.connect(self.deselectAll)
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.close)
@@ -1981,6 +1992,23 @@ class SetMeasurementsDialog(widgets.QBaseDialog):
         checkBoxes = self.mixedChannelsCombineMetricsQGBox.checkBoxes
         for checkBox in checkBoxes:
             all_metrics['mixed_channels'].append(checkBox.text())
+        
+        return all_metrics
+    
+    def searchAndHighlight(self, text):
+        for chNameGroupbox in self.chNameGroupboxes:
+            for groupbox in chNameGroupbox.groupboxes:
+                groupbox.highlightCheckboxesFromSearchText(text)
+        
+        self.regionPropsQGBox.highlightCheckboxesFromSearchText(text)
+        self.sizeMetricsQGBox.highlightCheckboxesFromSearchText(text)
+        
+        if self.mixedChannelsCombineMetricsQGBox is None:
+            return
+        
+        self.mixedChannelsCombineMetricsQGBox.highlightCheckboxesFromSearchText(
+            text
+        )
     
     def selectedMetricNameAndGroup(self):
         for chNameGroupbox in self.chNameGroupboxes:

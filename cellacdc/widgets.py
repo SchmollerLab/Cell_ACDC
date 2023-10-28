@@ -3572,6 +3572,11 @@ class _metricsQGBox(QGroupBox):
             parent=None
         ):
         QGroupBox.__init__(self, parent)
+        
+        highlightRgba = _palettes._highlight_rgba()
+        r, g, b, a = highlightRgba
+        self._highlightStylesheetColor = f'rgb({r}, {g}, {b})'
+        
         self._parent = parent
         self.scrollArea = QScrollArea()
         self.scrollAreaWidget = QWidget()
@@ -3592,6 +3597,7 @@ class _metricsQGBox(QGroupBox):
 
             checkBox = QCheckBox(metric_colname)
             checkBox.setChecked(True)
+            checkBox.scrollArea = self.scrollArea
             self.checkBoxes.append(checkBox)
             self.checkedState[checkBox] = True
 
@@ -3649,6 +3655,24 @@ class _metricsQGBox(QGroupBox):
         self.setFont(_font)
 
         self.toggled.connect(self.toggled_cb)
+    
+    def highlightCheckboxesFromSearchText(self, text):
+        for checkbox in self.checkBoxes:
+            if not text:
+                highlighted = False
+            else:
+                highlighted = checkbox.text().lower().find(text.lower()) != -1
+            
+            self.setCheckboxHighlighted(highlighted, checkbox)
+    
+    def setCheckboxHighlighted(self, highlighted, checkbox):
+        if highlighted:
+            checkbox.setStyleSheet(
+                f'background: {self._highlightStylesheetColor}; color: black'
+            )
+            self.scrollArea.ensureWidgetVisible(checkbox)
+        else:
+            checkbox.setStyleSheet('')
     
     def onDelClicked(self):
         button = self.sender()
@@ -7151,9 +7175,9 @@ class SetMeasurementsGroupBox(QGroupBox):
             checkbox.setStyleSheet(
                 f'background: {self._highlightStylesheetColor}; color: black'
             )
+            self.scrollArea.ensureWidgetVisible(checkbox)
         else:
             checkbox.setStyleSheet('')
-        self.scrollArea.ensureWidgetVisible(checkbox)
     
 class SearchLineEdit(QLineEdit):
     def __init__(self, parent=None):
