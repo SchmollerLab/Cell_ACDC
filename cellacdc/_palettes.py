@@ -7,7 +7,11 @@ from qtpy import QtGui, QtWidgets, QtCore
 from cellacdc import settings_csv_path
 
 def _highlight_rgba():
-    return (31, 223, 100, 255)
+    scheme = get_color_scheme()
+    if scheme == 'light':
+        return (207, 235, 155, 255)
+    else:
+        return (141, 196, 39, 255)
 
 def _highlighted_text():
     return (0, 0, 0, 255)
@@ -32,7 +36,7 @@ def _light_colors():
         'ButtonText': (0, 0, 0, 255),
         'BrightText': (255, 255, 255, 255),
         'Link': (0, 0, 255, 255),
-        'Highlight': (207, 235, 155, 255),
+        'Highlight': _highlight_rgba(),
         'HighlightedText': _highlighted_text()
     }
     return colors
@@ -75,7 +79,7 @@ def _dark_colors():
         'ButtonText': (240, 240, 240, 255),
         'BrightText': (75, 75, 75, 255),
         'Link': (48, 140, 198, 255),
-        'Highlight': (141, 196, 39, 255),
+        'Highlight': _highlight_rgba(),
         'HighlightedText': _highlighted_text()
     }
     return colors
@@ -159,7 +163,7 @@ def TreeWidgetStyleSheet():
         """)
     else:
         styleSheet = ("""
-            QTreeWidget::item:hover {background-color:#4d4d4d; color:white;}
+            QTreeWidget::item:hover {background-color:#E6E6E6; color:black;}
             QTreeWidget::item:selected {background-color:#8dc427; color:black;}
             QTreeView {
                 selection-background-color: #8dc427;

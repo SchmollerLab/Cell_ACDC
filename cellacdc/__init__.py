@@ -1,4 +1,3 @@
-print('Initialising...')
 import os
 import sys
 import shutil
@@ -34,6 +33,9 @@ qrc_resources_path = os.path.join(cellacdc_path, 'qrc_resources.py')
 qrc_resources_light_path = os.path.join(cellacdc_path, 'qrc_resources_light.py')
 qrc_resources_dark_path = os.path.join(cellacdc_path, 'qrc_resources_dark.py')
 old_temp_path = os.path.join(cellacdc_path, 'temp')
+tooltips_rst_filepath = os.path.join(
+    cellacdc_path, "docs", "source", "tooltips.rst"
+)
 
 user_data_folderpath = user_data_dir()
 user_profile_path_txt = os.path.join(
@@ -125,6 +127,18 @@ try:
             qrc_py.write(text)
 except Exception as err:
     raise err
+
+def try_input_install_package(pkg_name, install_command, question=None):
+    if question is None:
+        question = 'Do you want to install it now ([y]/n)? '
+    try:
+        answer = input(f'\n{question}')
+        return answer
+    except Exception as err:
+        raise ModuleNotFoundError(
+            f'The module "{pkg_name}" is not installed. '
+            f'Install it with the command `{install_command}`.'
+        )
 
 import os
 import inspect

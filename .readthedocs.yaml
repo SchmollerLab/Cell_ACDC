@@ -7,13 +7,13 @@ build:
 
 python:
   install:
-    - requirements: docs/requirements.txt
+    - requirements: cellacdc/docs/requirements.txt
     # Install our python package before building the docs
     - method: pip
       path: .
 
 sphinx:
-  configuration: docs/source/conf.py
+  configuration: cellacdc/docs/source/conf.py
 
 formats:
   - pdf

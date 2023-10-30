@@ -21,7 +21,7 @@ from matplotlib.colors import ListedColormap, LinearSegmentedColormap
 import matplotlib.pyplot as plt
 
 from qtpy.QtCore import (
-    Signal, QTimer, Qt, QPoint, Slot, Property,
+    Signal, QTimer, Qt, QPoint, QUrl, Property,
     QPropertyAnimation, QEasingCurve, QLocale,
     QSize, QRect, QPointF, QRect, QPoint, QEasingCurve, QRegularExpression,
     QEvent, QEventLoop, QPropertyAnimation, QObject,
@@ -32,7 +32,7 @@ from qtpy.QtCore import (
 from qtpy.QtGui import (
     QFont, QPalette, QColor, QPen, QKeyEvent, QBrush, QPainter,
     QRegularExpressionValidator, QIcon, QPixmap, QKeySequence, QLinearGradient,
-    QShowEvent, QBitmap, QFontMetrics, QGuiApplication, QLinearGradient 
+    QShowEvent, QDesktopServices, QFontMetrics, QGuiApplication, QLinearGradient 
 )
 from qtpy.QtWidgets import (
     QTextEdit, QLabel, QProgressBar, QHBoxLayout, QToolButton, QCheckBox,
@@ -299,7 +299,15 @@ class PushButton(QPushButton):
         textLabel.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         self.layout().addWidget(textLabel)
         super().show()
-        
+    
+    def confirmAction(self):
+        self.baseIcon = self.icon()
+        self.setIcon(QIcon(':greenTick.svg'))
+        QTimer.singleShot(2000, self.resetButton)
+    
+    def resetButton(self):
+        self.setIcon(self.baseIcon)
+    
     def setText(self, text):
         if self._text is None:
             super().setText(text)
@@ -413,6 +421,13 @@ class selectAllPushButton(PushButton):
         self.setText('Deselect all')
         self.clicked.connect(self.onClicked)
         self.setMinimumWidth(self.sizeHint().width())
+    
+    def setChecked(self, checked):
+        if checked:
+            self._status == 'deselect'
+        else:
+            self._status == 'select'
+        self.click()
     
     def onClicked(self):
         if self._status == 'select':
@@ -1837,7 +1852,7 @@ class TreeWidget(QTreeWidget):
                     item.child(i).setSelected(True)
 
 class CancelOkButtonsLayout(QHBoxLayout):
-    def __init__(self, *args):
+    def __init__(self, *args, additionalButtons=None):
         super().__init__(*args)
 
         self.cancelButton = cancelPushButton('Cancel')
@@ -1846,6 +1861,11 @@ class CancelOkButtonsLayout(QHBoxLayout):
         self.addStretch(1)
         self.addWidget(self.cancelButton)
         self.addSpacing(20)
+        
+        if additionalButtons is not None:
+            for button in additionalButtons:
+                self.addWidget(button)
+        
         self.addWidget(self.okButton)
 
 class TreeWidgetItem(QTreeWidgetItem):
@@ -2853,15 +2873,15 @@ class LabelRoiCircularItem(pg.ScatterPlotItem):
 
 class Toggle(QCheckBox):
     def __init__(
-        self,
-        label_text='',
-        initial=None,
-        width=80,
-        bg_color='#b3b3b3',
-        circle_color='#ffffff',
-        active_color='#26dd66',# '#005ce6',
-        animation_curve=QEasingCurve.Type.InOutQuad
-    ):
+            self,
+            label_text='',
+            initial=None,
+            width=80,
+            bg_color='#b3b3b3',
+            circle_color='#ffffff',
+            active_color='#26dd66',# '#005ce6',
+            animation_curve=QEasingCurve.Type.InOutQuad
+        ):
         QCheckBox.__init__(self)
 
         # self.setFixedSize(width, 28)
@@ -3552,6 +3572,11 @@ class _metricsQGBox(QGroupBox):
             parent=None
         ):
         QGroupBox.__init__(self, parent)
+        
+        highlightRgba = _palettes._highlight_rgba()
+        r, g, b, a = highlightRgba
+        self._highlightStylesheetColor = f'rgb({r}, {g}, {b})'
+        
         self._parent = parent
         self.scrollArea = QScrollArea()
         self.scrollAreaWidget = QWidget()
@@ -3572,6 +3597,7 @@ class _metricsQGBox(QGroupBox):
 
             checkBox = QCheckBox(metric_colname)
             checkBox.setChecked(True)
+            checkBox.scrollArea = self.scrollArea
             self.checkBoxes.append(checkBox)
             self.checkedState[checkBox] = True
 
@@ -3612,8 +3638,8 @@ class _metricsQGBox(QGroupBox):
         buttonsLayout.addWidget(self.selectAllButton)
 
         if favourite_funcs is not None:
-            self.loadFavouritesButton = QPushButton(
-                '  Load last selection...  ', self
+            self.loadFavouritesButton = reloadPushButton(
+                '  Load last selection...  '
             )
             self.loadFavouritesButton.clicked.connect(self.checkFavouriteFuncs)
             # self.checkFavouriteFuncs()
@@ -3629,6 +3655,24 @@ class _metricsQGBox(QGroupBox):
         self.setFont(_font)
 
         self.toggled.connect(self.toggled_cb)
+    
+    def highlightCheckboxesFromSearchText(self, text):
+        for checkbox in self.checkBoxes:
+            if not text:
+                highlighted = False
+            else:
+                highlighted = checkbox.text().lower().find(text.lower()) != -1
+            
+            self.setCheckboxHighlighted(highlighted, checkbox)
+    
+    def setCheckboxHighlighted(self, highlighted, checkbox):
+        if highlighted:
+            checkbox.setStyleSheet(
+                f'background: {self._highlightStylesheetColor}; color: black'
+            )
+            self.scrollArea.ensureWidgetVisible(checkbox)
+        else:
+            checkbox.setStyleSheet('')
     
     def onDelClicked(self):
         button = self.sender()
@@ -6644,11 +6688,27 @@ class ImShow(QBaseWindow):
         print('')
         print('*'*60)
 
-    def run(self, block=False, showMaximised=False):
+    def show(self, block=False, screenToWindowRatio=None):
+        super().show(block=block)
+        if screenToWindowRatio is None:
+            return
+        screenGeometry = self.screen().geometry()
+        screenWidth = screenGeometry.width()
+        screenHeight = screenGeometry.height()
+        finalWidth = int(screenToWindowRatio*screenWidth)
+        finalHeight = int(screenToWindowRatio*screenHeight)
+        screenTop = screenGeometry.top()
+        screenLeft = screenGeometry.left()
+        xc, yc = screenLeft + screenWidth/2, screenTop + screenHeight/2
+        winLeft = int(xc - finalWidth/2)
+        winTop = int(yc - finalHeight/2)
+        self.setGeometry(winLeft, winTop, finalWidth, finalHeight)
+        
+    def run(self, block=False, showMaximised=False, screenToWindowRatio=None):
         if showMaximised:
             self.showMaximized()
         else:
-            self.show()
+            self.show(screenToWindowRatio=screenToWindowRatio)
         QTimer.singleShot(100, self.autoRange)
         
         if block:
@@ -6967,3 +7027,182 @@ class ComboBox(QComboBox):
         self._valueChanged = currentText != self._previousText
         self._previousText = self.currentText()
         super().setCurrentText(text)
+
+class SetMeasurementsGroupBox(QGroupBox):
+    def __init__(
+            self, title, itemsText, checkable=True, itemsInfo=None, 
+            lastSelection=None, itemsInfoUrls=None, parent=None
+        ):
+        super().__init__(parent)
+        
+        if itemsInfo is None:
+            itemsInfo = {}
+        
+        if itemsInfo is None:
+            itemsInfoUrls = {}
+        
+        highlightRgba = _palettes._highlight_rgba()
+        r, g, b, a = highlightRgba
+        self._highlightStylesheetColor = f'rgb({r}, {g}, {b})'
+        
+        self.setTitle(title)
+        self.setCheckable(checkable)
+        
+        mainLayout = QVBoxLayout()
+        
+        scrollArea = QScrollArea()
+        scrollArea.setWidgetResizable(True)
+        scrollAreaLayout = QVBoxLayout()
+        scrollAreaWidget = QWidget()
+        self.scrollAreaWidget = scrollAreaWidget
+        self.scrollAreaLayout = scrollAreaLayout
+        
+        self.checkboxes = {}
+        for text in itemsText:
+            rowLayout = QHBoxLayout()
+            infoText = itemsInfo.get(text)
+            infoUrl = itemsInfoUrls.get(text)
+            if infoText is not None or infoUrl is not None:
+                infoButton = infoPushButton()
+                infoButton.setCursor(Qt.WhatsThisCursor)
+                rowLayout.addWidget(infoButton)
+            
+            if infoText is not None:
+                infoButton.itemText = text
+                infoButton.infoText = infoText
+                infoButton.clicked.connect(self.showInfo)
+            
+            if infoUrl is not None:
+                infoButton.itemText = text
+                infoButton.infoUrl = infoUrl
+                infoButton.clicked.connect(self.openInfoUrl)
+                
+            checkbox = QCheckBox(text)
+            checkbox.setParent(self.scrollAreaWidget)
+            checkbox.setChecked(True)
+            rowLayout.addWidget(checkbox)
+            rowLayout.addStretch(1) 
+            
+            self.checkboxes[text] = checkbox
+            
+            scrollAreaLayout.addLayout(rowLayout)
+
+        scrollAreaLayout.addStretch(1)
+        
+        scrollAreaWidget.setLayout(scrollAreaLayout)
+        scrollArea.setWidget(scrollAreaWidget)
+        self.scrollArea = scrollArea
+        
+        buttonsLayout = QHBoxLayout()
+        self.selectAllButton = selectAllPushButton()
+        self.selectAllButton.sigClicked.connect(self.setCheckedAll)
+        
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(self.selectAllButton)
+        self.buttonsLayout = buttonsLayout
+        
+        if lastSelection is not None:
+            self.lastSelection = lastSelection
+            self.loadLastSelButton = reloadPushButton(
+                '  Load last selection...  '
+            )
+            self.loadLastSelButton.clicked.connect(self.loadLastSelection)
+            buttonsLayout.addWidget(self.loadLastSelButton)
+        
+        mainLayout.addWidget(scrollArea)
+        mainLayout.addSpacing(10)
+        mainLayout.addLayout(buttonsLayout)
+        
+        self.setLayout(mainLayout)
+    
+    def openInfoUrl(self):
+        url = self.sender().infoUrl
+        QDesktopServices.openUrl(QUrl(url))
+        # import webbrowser
+        # url = self.sender().infoUrl
+        # webbrowser.open(url)
+    
+    def getWidthNoScrollBarNeeded(self):
+        width = (
+            self.scrollArea.verticalScrollBar().sizeHint().width()
+            # self.scrollAreaLayout.contentsRect().width()
+            + self.scrollAreaWidget.sizeHint().width() 
+            + 30
+        )
+        buttonsWidth = 0
+        for i in range(self.buttonsLayout.count()):
+            widget = self.buttonsLayout.itemAt(i).widget()
+            if not isinstance(widget, QPushButton):
+                continue
+            buttonsWidth += widget.sizeHint().width() + 16
+        largerWidth = max(width, buttonsWidth)
+        return largerWidth
+    
+    def resizeWidthNoScrollBarNeeded(self):
+        width = self.getWidthNoScrollBarNeeded()
+        self.setMinimumWidth(width)
+        # self.setFixedWidth(width)
+    
+    def loadLastSelection(self):
+        for text, checkbox in self.checkboxes.items():
+            checked = self.lastSelection.get(text, False)
+            checkbox.setChecked(checked)
+            
+    def showInfo(self):
+        infoText = self.sender().infoText
+        itemText = self.sender().itemText
+        
+        title = f'{itemText} description'
+        msg = myMessageBox()
+        msg.setWidth(int(self.screen().size().width()/2))
+        msg.information(self, title, infoText)
+    
+    def setCheckedAll(self, button, checked):
+        for checkbox in self.checkboxes.values():
+            checkbox.setChecked(checked)
+
+    def highlightCheckboxesFromSearchText(self, text):
+        for checkbox in self.checkboxes.values():
+            if not text:
+                highlighted = False
+            else:
+                highlighted = checkbox.text().lower().find(text.lower()) != -1
+            
+            self.setCheckboxHighlighted(highlighted, checkbox)
+    
+    def setCheckboxHighlighted(self, highlighted, checkbox):
+        if highlighted:
+            checkbox.setStyleSheet(
+                f'background: {self._highlightStylesheetColor}; color: black'
+            )
+            self.scrollArea.ensureWidgetVisible(checkbox)
+        else:
+            checkbox.setStyleSheet('')
+    
+class SearchLineEdit(QLineEdit):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        
+        self.initSearch()
+        self.setFocusPolicy(Qt.ClickFocus)
+        
+    def focusInEvent(self, event) -> None:
+        super().focusInEvent(event)
+        if super().text() == 'Search...':
+            self.setText('')
+        self.setStyleSheet('')
+    
+    def focusOutEvent(self, event) -> None:
+        super().focusOutEvent(event)
+        if not super().text():
+            self.initSearch()
+    
+    def initSearch(self):
+        self.setText('Search...')
+        self.setStyleSheet('color: rgb(150, 150, 150)')
+        self.clearFocus()
+    
+    def text(self):
+        if super().text() == 'Search...':
+            return ''
+        return super().text()

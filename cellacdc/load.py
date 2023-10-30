@@ -43,6 +43,7 @@ from . import ignore_exception, cellacdc_path
 from . import qrc_resources_path, qrc_resources_light_path
 from . import qrc_resources_dark_path
 from . import models_path
+from . import tooltips_rst_filepath
 
 cca_df_colnames = list(base_cca_df.keys())
 acdc_df_bool_cols = [
@@ -1282,6 +1283,30 @@ class loadData:
         acdc_df.to_csv(self.acdc_output_csv_path)
         self.loadAcdcDf(self.acdc_output_csv_path)
 
+    def getAcdcDfEndname(self):
+        if not hasattr(self, 'acdc_output_csv_path'):
+            return
+        
+        if not hasattr(self, 'basename'):
+            return
+        
+        filename = os.path.basename(self.acdc_output_csv_path)
+        filename, _ = os.path.splitext(filename)
+        endname = filename[len(self.basename):].lstrip('_')
+        return endname
+    
+    def getSegmEndname(self):
+        if not hasattr(self, 'acdc_output_csv_path'):
+            return
+        
+        if not hasattr(self, 'basename'):
+            return
+        
+        filename = os.path.basename(self.acdc_output_csv_path)
+        filename, _ = os.path.splitext(filename)
+        endname = filename[len(self.basename):].lstrip('_')
+        return endname
+    
     def getCustomAnnotatedIDs(self):
         self.customAnnotIDs = {}
 
@@ -2564,18 +2589,16 @@ def format_number_list(text): #indentation for number points in tooltips. Implem
     return '\n'.join(formatted_lines)
 
 
-def get_tooltips_from_docs(): #gets tooltips for GUI from .\Cell_ACDC\docs\source\tooltips.rst
-
-
+def get_tooltips_from_docs(): 
+    # gets tooltips for GUI from .\Cell_ACDC\docs\source\tooltips.rst
     var_pattern = r"\|(\S*)\|"
     shortcut_pattern = r"\*\*(\".*\")\):\*\*"
     title_pattern = r"\*\*(.*)\(\*\*"
 
-    script_path = os.path.abspath(__file__)
-    root_folder = os.path.abspath(os.path.join(script_path, os.pardir, os.pardir))
-    file_path = os.path.join(root_folder, "docs", "source", "tooltips.rst")
-
-    with open(file_path, "r") as file:
+    if not os.path.exists(tooltips_rst_filepath):
+        return {}
+    
+    with open(tooltips_rst_filepath, "r") as file:
         lines = file.readlines()
 
     new_lines = []

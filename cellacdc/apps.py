@@ -1006,6 +1006,7 @@ class AddPointsLayerDialog(widgets.QBaseDialog):
         browseButton = widgets.browseFileButton(start_dir=imagesPath)
         typeLayout.addWidget(browseButton, row, 3)
         browseButton.sigPathSelected.connect(self.tablePathSelected)
+        self.browseTableButton = browseButton
         self.fromTableRadiobutton.widgets.append(browseButton)
 
         row += 1
@@ -1118,7 +1119,8 @@ class AddPointsLayerDialog(widgets.QBaseDialog):
         loadButton = widgets.browseFileButton(
             start_dir=imagesPath, ext={'CSV': '.csv'})
         typeLayout.addWidget(loadButton, row, 3)
-        browseButton.sigPathSelected.connect(self.loadClickEntryTable)
+        loadButton.sigPathSelected.connect(self.loadClickEntryTable)
+        self.loadButton = loadButton
         self.clickEntryLoadTableButton = loadButton
         typeLayout.addWidget(self.clickEntryTableEndname.label, row, 1)
         typeLayout.addWidget(self.clickEntryTableEndname, row, 2)
@@ -1177,8 +1179,9 @@ class AddPointsLayerDialog(widgets.QBaseDialog):
     def loadClickEntryTable(self, csv_path):
         self.clickEntryIsLoadedDf = True
         filename = os.path.basename(csv_path)
-        filename, ext = os.path.splittext(filename)
+        filename, ext = os.path.splitext(filename)
         self.clickEntryTableEndname.setText(filename)
+        self.loadButton.confirmAction()
         
     def showAutoPilotInfo(self):
         msg = widgets.myMessageBox(wrapText=False)
@@ -1214,11 +1217,13 @@ class AddPointsLayerDialog(widgets.QBaseDialog):
             self.zColName.addItems(df.columns)
             self.tColName.addItems(df.columns)
             self.sigLoadedTable.emit(df)
+            self.browseTableButton.confirmAction()
         except Exception as e:
             traceback_format = traceback.format_exc()
             self.sigCriticalReadTable.emit(traceback_format)
             self.criticalReadTable(path, traceback_format)
             self.tablePath.setText('')
+        
     
     def criticalLenMismatchManualEntry(self):
         txt = html_utils.paragraph(f"""
@@ -1289,7 +1294,7 @@ class AddPointsLayerDialog(widgets.QBaseDialog):
                 self.criticalColNameIsNone('y')
                 return
             
-            self.layerType = os.path.basename(self.tablePath)
+            self.layerType = os.path.basename(self.tablePath.text())
             self.layerTypeIdx = 2
         elif self.centroidsRadiobutton.isChecked():
             self.layerType = 'Centroids'
@@ -1796,6 +1801,14 @@ class SetMeasurementsDialog(widgets.QBaseDialog):
         # self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
 
         layout = QVBoxLayout()
+        
+        searchLayout = QHBoxLayout()
+        
+        searchLineEdit = widgets.SearchLineEdit()
+        searchLayout.addStretch(5)
+        searchLayout.addWidget(searchLineEdit)
+        searchLayout.setStretch(1, 3)
+        
         groupsLayout = QGridLayout()
         self.groupsLayout = groupsLayout
         buttonsLayout = QHBoxLayout()
@@ -1918,6 +1931,7 @@ class SetMeasurementsDialog(widgets.QBaseDialog):
 
         loadLastSelButton = widgets.reloadPushButton('Load last selection...')
         self.deselectAllButton = QPushButton('Deselect all')
+        self.deselectAllButton.setIcon(QIcon(':deselect_all.svg'))
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
@@ -1930,6 +1944,8 @@ class SetMeasurementsDialog(widgets.QBaseDialog):
 
         self.okButton = okButton
 
+        layout.addLayout(searchLayout)
+        layout.addSpacing(10)
         layout.addLayout(groupsLayout)
         layout.addLayout(buttonsLayout)
 
@@ -1938,6 +1954,7 @@ class SetMeasurementsDialog(widgets.QBaseDialog):
         if state is not None:
             self.setState(state)
 
+        searchLineEdit.textEdited.connect(self.searchAndHighlight)
         self.deselectAllButton.clicked.connect(self.deselectAll)
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.close)
@@ -1975,6 +1992,23 @@ class SetMeasurementsDialog(widgets.QBaseDialog):
         checkBoxes = self.mixedChannelsCombineMetricsQGBox.checkBoxes
         for checkBox in checkBoxes:
             all_metrics['mixed_channels'].append(checkBox.text())
+        
+        return all_metrics
+    
+    def searchAndHighlight(self, text):
+        for chNameGroupbox in self.chNameGroupboxes:
+            for groupbox in chNameGroupbox.groupboxes:
+                groupbox.highlightCheckboxesFromSearchText(text)
+        
+        self.regionPropsQGBox.highlightCheckboxesFromSearchText(text)
+        self.sizeMetricsQGBox.highlightCheckboxesFromSearchText(text)
+        
+        if self.mixedChannelsCombineMetricsQGBox is None:
+            return
+        
+        self.mixedChannelsCombineMetricsQGBox.highlightCheckboxesFromSearchText(
+            text
+        )
     
     def selectedMetricNameAndGroup(self):
         for chNameGroupbox in self.chNameGroupboxes:
@@ -8631,9 +8665,9 @@ class QLineEditDialog(QDialog):
         msg = widgets.myMessageBox()
         warn_txt = html_utils.paragraph(f"""
             WARNING: saving until a frame number below the last visited
-            frame ({self.maxValue}) will result in <b>LOSS of information</b>
+            frame ({self.lastVisitedFrame}) will result in <b>LOSS of information</b>
             about any <b>edit or annotation</b> you did <b>on frames
-            {val}-{self.maxValue}.</b><br><br>
+            {val+1}-{self.lastVisitedFrame}.</b><br><br>
             Are you sure you want to proceed?
         """)
         msg.warning(
@@ -10238,318 +10272,12 @@ class QDialogPbar(QDialog):
         if not self.workerFinished:
             event.ignore()
 
-class QDialogTrackerParams(QDialog):
-    def __init__(
-            self, init_params, track_params, tracker_name,
-            url=None, parent=None, initLastParams=True, channels=None,
-            currentChannelName=None
-        ):
-        self.cancel = True
-        super().__init__(parent)
-        self.url = url
-
-        self.tracker_name = tracker_name
-        self.channels = channels
-        self.currentChannelName = currentChannelName
-        self.channelCombobox = None
-
-        self.setWindowTitle(f'{tracker_name} parameters')
-
-        mainLayout = QVBoxLayout()
-        buttonsLayout = QHBoxLayout()
-
-        loadFunc = self.loadLastSelection
-
-        initGroupBox, self.init_argsWidgets = self.createGroupParams(
-            init_params, 'Parameters for tracker initialization'
-        )
-        initDefaultButton = widgets.reloadPushButton('Restore default')
-        initLoadLastSelButton = QPushButton('Load last parameters')
-        initButtonsLayout = QHBoxLayout()
-        initButtonsLayout.addStretch(1)
-        initButtonsLayout.addWidget(initDefaultButton)
-        initButtonsLayout.addWidget(initLoadLastSelButton)
-        initDefaultButton.clicked.connect(self.restoreDefaultInit)
-        initLoadLastSelButton.clicked.connect(
-            partial(loadFunc, f'{self.tracker_name}.init', self.init_argsWidgets)
-        )
-
-        trackGroupBox, self.model_kwargs = self.createGroupParams(
-            track_params, 'Parameters for tracking', addChannel=True
-        )
-        trackDefaultButton = widgets.reloadPushButton('Restore default')
-        trackLoadLastSelButton = QPushButton('Load last parameters')
-        trackButtonsLayout = QHBoxLayout()
-        trackButtonsLayout.addStretch(1)
-        trackButtonsLayout.addWidget(trackDefaultButton)
-        trackButtonsLayout.addWidget(trackLoadLastSelButton)
-        trackDefaultButton.clicked.connect(self.restoreDefaultTrack)
-        section = f'{self.tracker_name}.segment'
-        trackLoadLastSelButton.clicked.connect(
-            partial(loadFunc, section, self.model_kwargs)
-        )
-
-        if tracker_name == 'thresholding':
-            trackGroupBox.setDisabled(True)
-
-        cancelButton = widgets.cancelPushButton(' Cancel ')
-        okButton = widgets.okPushButton(' Ok ')
-        if url is not None:
-            infoButton = widgets.infoPushButton(' Help... ')
-        # restoreDefaultButton = widgets.reloadPushButton('Restore default')
-
-        buttonsLayout.addStretch(1)
-        buttonsLayout.addWidget(cancelButton)
-        buttonsLayout.addSpacing(20)
-        if url is not None:
-            buttonsLayout.addWidget(infoButton)
-        # buttonsLayout.addWidget(restoreDefaultButton)
-        buttonsLayout.addWidget(okButton)
-
-        buttonsLayout.setContentsMargins(0, 10, 0, 10)
-
-        okButton.clicked.connect(self.ok_cb)
-        if url is not None:
-            infoButton.clicked.connect(self.openUrlHelp)
-        cancelButton.clicked.connect(self.close)
-        # restoreDefaultButton.clicked.connect(self.restoreDefault)
-
-        mainLayout.addWidget(initGroupBox)
-        mainLayout.addLayout(initButtonsLayout)
-        mainLayout.addSpacing(15)
-        mainLayout.addStretch(1)
-        mainLayout.addWidget(trackGroupBox)
-        mainLayout.addLayout(trackButtonsLayout)
-
-        if url is not None:
-            mainLayout.addWidget(
-                self.createSeeHereLabel(url),
-                alignment=Qt.AlignCenter
-            )
-
-        mainLayout.addSpacing(20)
-        mainLayout.addLayout(buttonsLayout)
-
-        self.setLayout(mainLayout)
-
-        self.configPars = self.readLastSelection()
-        if self.configPars is None:
-            initLoadLastSelButton.setDisabled(True)
-            trackLoadLastSelButton.setDisabled(True)
-
-        if initLastParams:
-            initLoadLastSelButton.click()
-            trackLoadLastSelButton.click()
-
-        self.setFont(font)
-
-        # self.setModal(True)
-    
-    def openUrlHelp(self):
-        import webbrowser
-        webbrowser.open(self.url, new=2)
-
-    def createGroupParams(self, ArgSpecs_list, groupName, addChannel=False):
-        ArgWidget = namedtuple(
-            'ArgsWidgets',
-            ['name', 'type', 'widget', 'defaultVal', 'valueSetter', 'valueGetter']
-        )
-        ArgsWidgets_list = []
-        groupBox = QGroupBox(groupName)
-
-        groupBoxLayout = QGridLayout()
-
-        if addChannel and self.channels is not None:
-            row = 0
-            label = QLabel(f'Load input channel:  ')
-            groupBoxLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
-            items = ['None', *self.channels]
-            self.channelCombobox = widgets.QCenteredComboBox()
-            self.channelCombobox.addItems(items)
-            groupBoxLayout.addWidget(self.channelCombobox, row, 1, 1, 2)
-            if self.currentChannelName is not None:
-                self.channelCombobox.setCurrentText(self.currentChannelName)
-
-        for row, ArgSpec in enumerate(ArgSpecs_list):
-            if addChannel:
-                row += 1
-            var_name = ArgSpec.name.replace('_', ' ').title()
-            label = QLabel(f'{var_name}:  ')
-            groupBoxLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
-            if ArgSpec.type == bool:
-                booleanGroup = QButtonGroup()
-                booleanGroup.setExclusive(True)
-                checkBox = widgets.Toggle()
-                checkBox.setChecked(ArgSpec.default)
-                valueSetter = widgets.Toggle.setChecked
-                valueGetter = widgets.Toggle.isChecked
-                defaultVal = ArgSpec.default
-                widget = checkBox
-                groupBoxLayout.addWidget(
-                    checkBox, row, 1, 1, 2, alignment=Qt.AlignCenter
-                )
-            elif ArgSpec.type == int:
-                spinBox = widgets.SpinBox()
-                spinBox.setValue(ArgSpec.default)
-                defaultVal = ArgSpec.default
-                valueSetter = widgets.SpinBox.setValue
-                valueGetter = widgets.SpinBox.value
-                widget = spinBox
-                groupBoxLayout.addWidget(spinBox, row, 1, 1, 2)
-            elif ArgSpec.type == float:
-                doubleSpinBox = widgets.DoubleSpinBox()
-                doubleSpinBox.setValue(ArgSpec.default)
-                widget = doubleSpinBox
-                defaultVal = ArgSpec.default
-                valueSetter = widgets.DoubleSpinBox.setValue
-                valueGetter = QDoubleSpinBox.value
-                groupBoxLayout.addWidget(doubleSpinBox, row, 1, 1, 2)
-            elif ArgSpec.type == os.PathLike:
-                filePathControl = widgets.filePathControl()
-                filePathControl.setText(str(ArgSpec.default))
-                widget = filePathControl
-                defaultVal = str(ArgSpec.default)
-                valueSetter = widgets.filePathControl.setText
-                valueGetter = widgets.filePathControl.path
-                groupBoxLayout.addWidget(filePathControl, row, 1, 1, 2)
-            else:
-                lineEdit = QLineEdit()
-                lineEdit.setText(str(ArgSpec.default))
-                lineEdit.setAlignment(Qt.AlignCenter)
-                widget = lineEdit
-                defaultVal = str(ArgSpec.default)
-                valueSetter = QLineEdit.setText
-                valueGetter = QLineEdit.text
-                groupBoxLayout.addWidget(lineEdit, row, 1, 1, 2)
-
-            argsInfo = ArgWidget(
-                name=ArgSpec.name,
-                type=ArgSpec.type,
-                widget=widget,
-                defaultVal=defaultVal,
-                valueSetter=valueSetter,
-                valueGetter=valueGetter
-            )
-            ArgsWidgets_list.append(argsInfo)
-
-        groupBox.setLayout(groupBoxLayout)
-        return groupBox, ArgsWidgets_list
-
-    def restoreDefaultInit(self):
-        for argWidget in self.init_argsWidgets:
-            defaultVal = argWidget.defaultVal
-            widget = argWidget.widget
-            argWidget.valueSetter(widget, defaultVal)
-
-    def restoreDefaultTrack(self):
-        for argWidget in self.model_kwargs:
-            defaultVal = argWidget.defaultVal
-            widget = argWidget.widget
-            argWidget.valueSetter(widget, defaultVal)
-
-    def readLastSelection(self):
-        self.ini_path = os.path.join(settings_folderpath, 'last_params_trackers.ini')
-        if not os.path.exists(self.ini_path):
-            return None
-
-        configPars = config.ConfigParser()
-        configPars.read(self.ini_path)
-        return configPars
-
-    def loadLastSelection(self, section, argWidgetList):
-        if self.configPars is None:
-            return
-
-        getters = ['getboolean', 'getfloat', 'getint', 'get']
-        try:
-            options = self.configPars.options(section)
-        except Exception:
-            return
-
-        for argWidget in argWidgetList:
-            option = argWidget.name
-            val = None
-            for getter in getters:
-                try:
-                    val = getattr(self.configPars, getter)(section, option)
-                    break
-                except Exception as err:
-                    pass
-            widget = argWidget.widget
-            if val is None:
-                continue
-            casters = [lambda x: x, int, float, str, bool]
-            for caster in casters:
-                try:
-                    argWidget.valueSetter(widget, caster(val))
-                    break
-                except Exception as e:
-                    continue
-
-    def createSeeHereLabel(self, url):
-        htmlTxt = f'<a href=\"{url}">here</a>'
-        seeHereLabel = QLabel()
-        seeHereLabel.setText(f"""
-            <p style="font-size:13px">
-                See {htmlTxt} for details on the parameters
-            </p>
-        """)
-        seeHereLabel.setTextFormat(Qt.RichText)
-        seeHereLabel.setTextInteractionFlags(Qt.TextBrowserInteraction)
-        seeHereLabel.setOpenExternalLinks(True)
-        seeHereLabel.setStyleSheet("padding:12px 0px 0px 0px;")
-        return seeHereLabel
-
-    def argsWidgets_to_kwargs(self, argsWidgets):
-        kwargs_dict = {
-            argWidget.name:argWidget.valueGetter(argWidget.widget)
-            for argWidget in argsWidgets
-        }
-        return kwargs_dict
-
-    def ok_cb(self, checked):
-        self.cancel = False
-        self.init_kwargs = self.argsWidgets_to_kwargs(self.init_argsWidgets)
-        self.model_kwargs = self.argsWidgets_to_kwargs(self.model_kwargs)
-        self.inputChannelName = 'None'
-        if self.channelCombobox is not None:
-            self.inputChannelName = self.channelCombobox.currentText()
-        self._saveParams()
-        self.close()
-
-    def _saveParams(self):
-        if self.configPars is None:
-            self.configPars = config.ConfigParser()
-        self.configPars[f'{self.tracker_name}.init'] = {}
-        self.configPars[f'{self.tracker_name}.segment'] = {}
-        for key, val in self.init_kwargs.items():
-            self.configPars[f'{self.tracker_name}.init'][key] = str(val)
-        for key, val in self.model_kwargs.items():
-            self.configPars[f'{self.tracker_name}.segment'][key] = str(val)
-
-        with open(self.ini_path, 'w') as configfile:
-            self.configPars.write(configfile)
-
-    def exec_(self):
-        self.show(block=True)
-
-    def show(self, block=False):
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
-        super().show()
-        if block:
-            self.loop = QEventLoop()
-            self.loop.exec_()
-
-    def closeEvent(self, event):
-        if hasattr(self, 'loop'):
-            self.loop.exit()
-
 class QDialogModelParams(QDialog):
     def __init__(
             self, init_params, segment_params, model_name, is_tracker=False,
             url=None, parent=None, initLastParams=True, posData=None, 
             channels=None, currentChannelName=None, segmFileEndnames=None,
-            df_metadata=None, force_postprocess_2D=False
+            df_metadata=None, force_postprocess_2D=False, model_module=None
         ):
         self.cancel = True
         super().__init__(parent)
@@ -10688,9 +10416,35 @@ class QDialogModelParams(QDialog):
         if not is_tracker:
             postProcLoadLastSelButton.click()
 
+        try:
+            self.connectCustomSignals(model_module)
+        except Exception as e:
+            printl(traceback.format_exc())
+        
         self.setLayout(mainLayout)
         self.setFont(font)
         # self.setModal(True)
+    
+    def connectCustomSignals(self, model_module):
+        if model_module is None:
+            return
+
+        if not hasattr(model_module, 'CustomSignals'):
+            return
+        
+        customSignals = model_module.CustomSignals()
+        for slot_info in customSignals.slots_info:
+            group = slot_info['group']
+            widget_name = slot_info['widget_name']
+            if group == 'init':
+                ArgsWidgets_list = self.init_argsWidgets
+            else:
+                ArgsWidgets_list = self.argsWidgets
+            for argwidget in ArgsWidgets_list:
+                if argwidget.name == widget_name:
+                    signal = getattr(argwidget.widget, slot_info['signal'])
+                    signal.connect(partial(slot_info['slot'], self))
+                    break
     
     def selectedFeaturesRange(self):
         if self.postProcessGroupbox is None:
@@ -10758,6 +10512,12 @@ class QDialogModelParams(QDialog):
             start_row += 1
         
         for row, ArgSpec in enumerate(ArgSpecs_list):
+            try:
+                not_a_param = ArgSpec.type().not_a_param
+                continue
+            except Exception as err:
+                pass
+            
             row = row + start_row
             var_name = ArgSpec.name.replace('_', ' ')
             var_name = f'{var_name[0].upper()}{var_name[1:]}'
@@ -10869,6 +10629,30 @@ class QDialogModelParams(QDialog):
         configPars.read(self.ini_path)
         return configPars
 
+    def setValuesFromParams(self, init_params, segment_params):
+        if self.configPars is None:
+            return
+
+        sections = {
+            f'{self.model_name}.init': (init_params, self.init_argsWidgets),
+            f'{self.model_name}.segment': (segment_params, self.argsWidgets)
+        }
+        
+        for section, values in sections.items():
+            params, argWidgetList = values
+            for argWidget in argWidgetList:
+                val = params.get(argWidget.name)
+                widget = argWidget.widget
+                if val is None:
+                    continue
+                casters = [lambda x: x, int, float, str, bool]
+                for caster in casters:
+                    try:
+                        argWidget.valueSetter(widget, caster(val))
+                        break
+                    except Exception as e:
+                        continue
+    
     def loadLastSelection(self, section, argWidgetList):
         if self.configPars is None:
             return
@@ -11007,7 +10791,7 @@ class QDialogModelParams(QDialog):
         self.model_kwargs = self.argsWidgets_to_kwargs(
             self.argsWidgets
         )
-        if hasattr(self, 'postProcessGroupbox'):
+        if self.postProcessGroupbox is not None:
             self.applyPostProcessing = self.postProcessGroupbox.isChecked()
         self.secondChannelName = None
         if hasattr(self, 'channelsCombobox'):
@@ -11031,7 +10815,7 @@ class QDialogModelParams(QDialog):
             self.configPars[f'{self.model_name}.segment'][key] = str(val)
 
         self.configPars[f'{self.model_name}.postprocess'] = {}
-        if hasattr(self, 'postProcessGroupbox'):
+        if self.postProcessGroupbox is not None:
             postProcKwargs = self.postProcessGroupbox.kwargs()
             postProcessConfig = self.configPars[f'{self.model_name}.postprocess']
             postProcessConfig['minSize'] = str(postProcKwargs['min_area'])

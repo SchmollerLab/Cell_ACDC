@@ -125,7 +125,8 @@ def get_acdc_df_features(
             df = measurements.add_foregr_metrics(
                 df, rp, channel, foregr_data, foregr_metrics_params[channel], 
                 metrics_func, custom_metrics_params[channel], isSegm3D, 
-                lab, foregr_img, customMetricsCritical=None
+                lab, foregr_img, customMetricsCritical=None,
+                z_slice=z
             )
 
             df = measurements.add_concentration_metrics(

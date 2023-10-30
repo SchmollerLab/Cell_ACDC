@@ -20,7 +20,7 @@ yeast_toolbox/
 # and we rely only on setup.cfg for env
 setup.py
 environment.yml
-requirements.txt
+# requirements.txt
 conda_env_list_commands.txt
 
 notebooks/testing.ipynb

@@ -4,6 +4,7 @@ import sys
 from importlib import import_module
 
 def _install_tables(parent_software='Cell-ACDC'):
+    from . import try_input_install_package
     try:
         import tables
     except Exception as e:
@@ -29,7 +30,8 @@ def _install_tables(parent_software='Cell-ACDC'):
             )
             print('-'*60)
             print(txt)
-            answer = input('Do you want to install it now ([y]/n)? ')
+            command_txt = 'pip install --upgrade tables'
+            answer = try_input_install_package('tables', command_txt)
             if answer.lower() == 'y' or not answer:
                 try:
                     import subprocess
@@ -76,6 +78,7 @@ def _install_tables(parent_software='Cell-ACDC'):
                 )
 
 def _setup_gui_libraries():
+    from . import try_input_install_package
     warn_restart = False
     
     # Force PyQt6 if available
@@ -89,14 +92,15 @@ def _setup_gui_libraries():
         import qtpy
     except ModuleNotFoundError as e:
         txt = (
-            'Since version 1.3.1 Cell-ACDC requires the package `qtpy`.\n\n'
+            'Cell-ACDC needs to install the package `qtpy`.\n\n'
             'You can let Cell-ACDC install it now, or you can abort '
             'and install it manually with the command `pip install qtpy`.'
         )
         print('-'*60)
         print(txt)
+        command_txt = 'pip install --upgrade qtpy'   
         while True:
-            answer = input('Do you want to install it now ([y]/n)? ')
+            answer = try_input_install_package('qtpy', command_txt)
             if answer.lower() == 'y' or not answer:
                 import subprocess
                 subprocess.check_call(
@@ -136,8 +140,14 @@ def _setup_gui_libraries():
         )
         print('-'*60)
         print(txt)
+        if is_mac_arm64:
+            commnad_txt = 'conda install -y pyqt'
+            pkg_name = 'pyqt'
+        else:
+            commnad_txt = 'pip install -U PyQt6'
+            pkg_name = 'PyQt6'
         while True:
-            answer = input(f'Do you want to install {default_qt} now ([y]/n)? ')
+            answer = try_input_install_package(pkg_name, commnad_txt)
             if answer.lower() == 'y' or not answer:
                 import subprocess
                 if is_mac_arm64:
