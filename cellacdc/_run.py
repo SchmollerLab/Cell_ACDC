@@ -7,6 +7,7 @@ def _install_tables(parent_software='Cell-ACDC'):
     from . import try_input_install_package
     try:
         import tables
+        return False
     except Exception as e:
         if parent_software == 'Cell-ACDC':
             issues_url = 'https://github.com/SchmollerLab/Cell_ACDC/issues'
@@ -77,6 +78,8 @@ def _install_tables(parent_software='Cell-ACDC'):
                     'Type "y" for "yes", or "n" for "no".'
                 )
 
+        return True
+    
 def _setup_gui_libraries():
     from . import try_input_install_package
     warn_restart = False
