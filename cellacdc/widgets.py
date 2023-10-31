@@ -1149,11 +1149,14 @@ class QDialogListbox(QDialog):
             self, title, text, items, cancelText='Cancel',
             multiSelection=True, parent=None,
             additionalButtons=(), includeSelectionHelp=False,
-            allowSingleSelection=True
+            allowSingleSelection=True, preSelectedItems=None
         ):
         self.cancel = True
         super().__init__(parent)
         self.setWindowTitle(title)
+        
+        if preSelectedItems is None:
+            preSelectedItems = set()
 
         self.allowSingleSelection = allowSingleSelection
 
@@ -1182,12 +1185,18 @@ class QDialogListbox(QDialog):
 
         listBox = listWidget()
         listBox.setFont(_font)
-        listBox.addItems(items)
+        listBox.addItems(items)            
         if multiSelection:
             listBox.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         else:
             listBox.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         listBox.setCurrentRow(0)
+        for i in range(listBox.count()):
+            item = listBox.item(i)
+            if item.text() not in preSelectedItems:
+                continue
+            item.setSelected(True)
+            
         self.listBox = listBox
         if not multiSelection:
             listBox.itemDoubleClicked.connect(self.ok_cb)

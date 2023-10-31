@@ -597,14 +597,23 @@ class saveDataWorker(QObject):
 
     @workers.worker_exception_handler
     def run(self):
-        last_pos = self.mainWin.last_pos
+        posToSave = self.mainWin.posToSave
+        if posToSave is None:
+            numPosToSave = 1
+        else:
+            numPosToSave = len(posToSave)
         save_metrics = self.mainWin.save_metrics
         self.time_last_pbar_update = time.perf_counter()
         mode = self.mode
-        for p, posData in enumerate(self.mainWin.data[:last_pos]):
+        for p, posData in enumerate(self.mainWin.data):
             if self.saveWin.aborted:
                 self.finished.emit()
                 return
+            
+            if posToSave is not None:
+                if posData.pos_foldername not in posToSave:
+                    self.progress.emit(f'Skipping {posData.relPath}')
+                    continue
             
             # posData.saveSegmHyperparams()
             posData.saveCustomAnnotationParams()
@@ -620,7 +629,7 @@ class saveDataWorker(QObject):
                 last_tracked_i = 0
 
             if p == 0:
-                self.progressBar.emit(0, last_pos*(last_tracked_i+1), 0)
+                self.progressBar.emit(0, numPosToSave*(last_tracked_i+1), 0)
 
             segm_npz_path = posData.segm_npz_path
             acdc_output_csv_path = posData.acdc_output_csv_path
@@ -22201,8 +22210,12 @@ class guiWin(QMainWindow):
         # with segmentation fault on macOS. I don't know why yet.
         self.logger.info('Computing cell volume...')
         end_i = self.save_until_frame_i
-        pos_iter = tqdm(self.data[:self.last_pos], ncols=100)
+        pos_iter = tqdm(self.data, ncols=100)
         for p, posData in enumerate(pos_iter):
+            if self.posToSave is not None:
+                if posData.pos_foldername not in self.posToSave:
+                    continue
+                
             PhysicalSizeY = posData.PhysicalSizeY
             PhysicalSizeX = posData.PhysicalSizeX
             frame_iter = tqdm(
@@ -22309,31 +22322,38 @@ class guiWin(QMainWindow):
         cancel = msg.clickedButton == cancelButton or msg.clickedButton is None
         return save_metrics, cancel
 
-    def askSaveAllPos(self):
+    def askPosToSave(self):
         last_pos = 1
-        ask = False
         for p, posData in enumerate(self.data):
             acdc_df = posData.allData_li[0]['acdc_df']
             if acdc_df is None:
                 last_pos = p
-                ask = True
                 break
         else:
             last_pos = len(self.data)
 
-        if not ask:
-            # All pos have been visited, no reason to ask
-            return True, len(self.data)
-
+        items = [posData.pos_foldername for posData in self.data]
+        selectPosWin = widgets.QDialogListbox(
+            'Select Positions to save', 'Select Positions to save:\n',
+            items, multiSelection=True, parent=self,
+            preSelectedItems=items[:last_pos]
+        )
+        selectPosWin.exec_()
+        return selectPosWin.selectedItemsText
+        
         last_posfoldername = self.data[last_pos-1].pos_foldername
-        msg = QMessageBox(self)
+        msg = widgets.myMessageBox(self)
+        txt = html_utils.paragraph(f"""
+            Select Positions to save:<br>
+        """
+        )
+        msg.question(
+            self, 'Positions to save'
+        )
+        
         msg.setWindowTitle('Save all positions?')
         msg.setIcon(msg.Question)
-        txt = html_utils.paragraph(
-        f"""
-            Do you want to save <b>ALL positions</b> or <b>only until
-            Position_{last_pos}</b> (last visualized/corrected position)?<br>
-        """)
+        
         msg.setText(txt)
         allPosbutton =  QPushButton('Save ALL positions')
         upToLastButton = QPushButton(f'Save until {last_posfoldername}')
@@ -22501,7 +22521,8 @@ class guiWin(QMainWindow):
             self.waitAutoSaveWorkerLoop.exec_()
 
         self.titleLabel.setText(
-            'Saving data... (check progress in the terminal)', color=self.titleColor
+            'Saving data... (check progress in the terminal)', 
+            color=self.titleColor
         )
 
         # Check channel name correspondence to warn
@@ -22523,22 +22544,12 @@ class guiWin(QMainWindow):
                 self.abortSavingInitialisation()
                 return True
 
-        last_pos = len(self.data)
-        if self.isSnapshot and not isQuickSave:
-            save_Allpos, last_pos = self.askSaveAllPos()
-            if save_Allpos:
-                last_pos = len(self.data)
-                current_pos = self.pos_i
-                for p in range(len(self.data)):
-                    self.pos_i = p
-                    self.get_data()
-                    self.store_data()
-
-                # back to current pos
-                self.pos_i = current_pos
-                self.get_data()
-
-        self.last_pos = last_pos
+        self.posToSave = None
+        if self.isSnapshot and not isQuickSave and len(self.data) > 1:
+            self.posToSave = self.askPosToSave()
+            if self.posToSave is None:
+                self.abortSavingInitialisation()
+                return True
 
         if self.isSnapshot:
             self.store_data(mainThread=False)
