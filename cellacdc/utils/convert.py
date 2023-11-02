@@ -249,7 +249,7 @@ class convertFileFormatWin(QMainWindow):
         elif self.from_ == 'npy':
             data = np.load(filePath)
         elif self.from_ == 'tif':
-            data = skimage.io.imread(filePath)
+            data = load.imread(filePath)
         elif self.from_ == 'h5':
             data = load.h5dump_to_arr(filePath)
         if self.info.find('segm') != -1:
@@ -269,7 +269,7 @@ class convertFileFormatWin(QMainWindow):
         if self.to == 'npy':
             np.save(newPath, data)
         elif self.to == 'tif':
-            myutils.imagej_tiffwriter(newPath, data, None, 1, 1, imagej=False)
+            myutils.to_tiff(newPath, data, None, 1, 1, imagej=False)
         elif self.to == 'npz':
             np.savez_compressed(newPath, data)
         print('')

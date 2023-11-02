@@ -30,7 +30,9 @@ import typing
 
 from natsort import natsorted
 
-from tifffile.tifffile import TiffWriter, TiffFile
+import tifffile
+import skimage.io
+import skimage.measure
 
 from . import GUI_INSTALLED
 
@@ -1406,15 +1408,16 @@ def download_model(model_name):
         traceback.print_exc()
         return False
 
-def imagej_tiffwriter(
+def to_tiff(
         new_path, data, metadata: dict=None, SizeT=None, SizeZ=None,
         imagej=True
     ):
     if data.dtype != np.uint8 and data.dtype != np.uint16:
         data = scale_float(data)
         data = skimage.img_as_uint(data)
-    with TiffWriter(new_path, bigtiff=True) as new_tif:
-        new_tif.save(data)
+    
+    tifffile.imwrite(new_path, data)
+    np.save(new_path.replace('.tif', '.npy'), data)
 
 def from_lab_to_obj_coords(lab):
     rp = skimage.measure.regionprops(lab)

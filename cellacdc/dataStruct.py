@@ -613,7 +613,7 @@ class bioFormatsWorker(QObject):
 
         if not self.to_h5:
             imgData_ch = np.squeeze(np.array(imgData_ch, dtype=imgData.dtype))
-            myutils.imagej_tiffwriter(
+            myutils.to_tiff(
                 filePath, imgData_ch, {}, self.SizeT, SizeZ
             )
         else:
@@ -1419,7 +1419,7 @@ class createDataStructWin(QMainWindow):
         )
         msg.information(
             self, 'Microscopy files location', txt, 
-            buttonsTexts=('Cancel', 'Done')
+            buttonsTexts=('Cancel', widgets.okPushButton('Done'))
         )
         if msg.cancel:
             return False
