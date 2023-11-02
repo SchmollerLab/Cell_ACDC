@@ -5672,64 +5672,9 @@ class QDialogMetadata(QDialog):
             f"__{field['nameWidget'].text()}":field['valueWidget'].text()
             for field in self.additionalFieldsWidgets
         }
-        valid4D = True
-        valid3D = True
-        valid2D = True
-        if self.imgDataShape is None:
-            self.close()
-        elif len(self.imgDataShape) == 4:
-            T, Z, Y, X = self.imgDataShape
-            valid4D = self.SizeT == T and self.SizeZ == Z
-        elif len(self.imgDataShape) == 3:
-            TZ, Y, X = self.imgDataShape
-            valid3D = self.SizeT == TZ or self.SizeZ == TZ
-        elif len(self.imgDataShape) == 2:
-            valid2D = self.SizeT == 1 and self.SizeZ == 1
-        valid = all([valid4D, valid3D, valid2D])
-        if not valid4D:
-            txt = (f"""
-            <p style="font-size:13px">
-                You loaded <b>4D data</b>, hence the number of frames MUST be
-                <b>{T}</b><br> nd the number of z-slices MUST be <b>{Z}</b>.<br><br>
-                What do you want to do?
-            </p>
-            """)
-        if not valid3D:
-            txt = (f"""
-            <p style="font-size:13px">
-                You loaded <b>3D data</b>, hence either the number of frames is
-                <b>{TZ}</b><br> or the number of z-slices can be <b>{TZ}</b>.<br><br>
-                However, if the number of frames is greater than 1 then the<br>
-                number of z-slices MUST be 1, and vice-versa.<br><br>
-                What do you want to do?
-            </p>
-            """)
-
-        if not valid2D:
-            txt = (f"""
-            <p style="font-size:13px">
-                You loaded <b>2D data</b>, hence the number of frames MUST be <b>1</b>
-                and the number of z-slices MUST be <b>1</b>.<br><br>
-                What do you want to do?
-            </p>
-            """)
-
-        if not valid:
-            msg = QMessageBox(self)
-            msg.setIcon(msg.Warning)
-            msg.setWindowTitle('Invalid entries')
-            msg.setText(txt)
-            continueButton = widgets.okPushButton(
-                f'Continue anyway'
-            )
-            cancelButton = QPushButton(
-                f'Let me correct'
-            )
-            msg.addButton(continueButton, msg.YesRole)
-            msg.addButton(cancelButton, msg.NoRole)
-            msg.exec_()
-            if msg.clickedButton() == cancelButton:
-                return
+        proceed = self.checkShapeMismatchMetadata()
+        if not proceed:
+            return 
 
         if self.posData is not None and self.sender() != self.okButton:
             exp_path = self.posData.exp_path
@@ -5790,6 +5735,62 @@ class QDialogMetadata(QDialog):
 
         self.close()
 
+    def checkShapeMismatchMetadata(self):
+        valid4D = True
+        valid3D = True
+        valid2D = True
+        if self.imgDataShape is None:
+            self.close()
+        elif len(self.imgDataShape) == 4:
+            T, Z, Y, X = self.imgDataShape
+            valid4D = self.SizeT == T and self.SizeZ == Z
+        elif len(self.imgDataShape) == 3:
+            TorZ, Y, X = self.imgDataShape
+            valid3D = self.SizeT == TorZ or self.SizeZ == TorZ
+        elif len(self.imgDataShape) == 2:
+            valid2D = self.SizeT == 1 and self.SizeZ == 1
+            
+        valid = all([valid4D, valid3D, valid2D])
+        if valid:
+            return True
+        
+        if not valid4D:
+            txt = (f"""
+                You loaded <b>4D data</b>, hence the number of frames MUST be
+                <b>{T}</b><br> nd the number of z-slices MUST be <b>{Z}</b>.<br><br>
+                What do you want to do?
+            """)
+        if not valid3D:
+            txt = (f"""
+                You loaded <b>3D data</b>, hence either the number of frames or 
+                the number of z-slices is <b>{TorZ}</b>.<br><br>
+                However, if the number of frames is greater than 1 then the<br>
+                number of z-slices MUST be 1, and vice-versa.<br><br>
+                What do you want to do?
+            """)
+
+        if not valid2D:
+            txt = (f"""
+                You loaded <b>2D data</b>, hence the number of frames MUST be <b>1</b>
+                and the number of z-slices MUST be <b>1</b>.<br><br>
+                What do you want to do?
+            """)
+        
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(txt)
+        
+        continueButton = widgets.okPushButton('Continue anyway')
+        correctButton = widgets.editPushButton('Let me correct')
+        
+        msg.warning(
+            self, 'Shape-metadata mismatch', txt,
+            buttonsTexts=(continueButton, correctButton)
+        )
+        if msg.cancel or msg.clickedButton == correctButton:
+            return False
+        
+        return True
+    
     def cancel_cb(self, event):
         self.cancel = True
         self.close()
