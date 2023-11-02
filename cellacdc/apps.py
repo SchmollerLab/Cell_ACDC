@@ -2744,11 +2744,9 @@ class QDialogMetadataXML(QDialog):
         self.SizeZ_SB.valueChanged.connect(self.hideShowPhysicalSizeZ)
 
         row += 1
-        self.TimeIncrement_DSB = QDoubleSpinBox()
-        self.TimeIncrement_DSB.setAlignment(Qt.AlignCenter)
-        self.TimeIncrement_DSB.setMaximum(2147483647.0)
-        self.TimeIncrement_DSB.setSingleStep(1)
-        self.TimeIncrement_DSB.setDecimals(3)
+        self.TimeIncrement_DSB = widgets.FloatLineEdit(
+            allowNegative=False, warningValues={1.0}
+        )
         self.TimeIncrement_DSB.setValue(TimeIncrement)
         self.TimeIncrement_DSB.setMinimum(0.0)
         txt = 'Frame interval:  '
@@ -2756,8 +2754,6 @@ class QDialogMetadataXML(QDialog):
         self.TimeIncrement_Label = label
         entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
         entriesLayout.addWidget(self.TimeIncrement_DSB, row, 1)
-        self.TimeIncrement_DSB.valueChanged.connect(self.warnTimeIncrement)
-        self.warnTimeIncrement(TimeIncrement)
 
         self.TimeIncrementUnit_CB = QComboBox()
         unitItems = [
@@ -3019,18 +3015,6 @@ class QDialogMetadataXML(QDialog):
 
         self.setLayout(mainLayout)
         # self.setModal(True)
-    
-    def warnTimeIncrement(self, value):
-        if value > 1:
-            self.TimeIncrement_DSB.setToolTip('')
-            self.TimeIncrement_DSB.setStyleSheet('')
-            return
-        
-        # Time increment 1.0 might be wrong
-        self.TimeIncrement_DSB.setToolTip(
-            'Are you sure the time increment is less than/equal to 1.0 seconds?'
-        )
-        self.TimeIncrement_DSB.setStyleSheet('background-color: #FEF9C3;')
 
     def dimensionOrderChanged(self, dimsOrder):
         if self.imageViewer is None:

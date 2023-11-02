@@ -57,6 +57,7 @@ from . import html_path
 from . import _palettes
 from .regex import float_regex
 
+LINEEDIT_WARNING_STYLESHEET = _palettes.lineedit_warning_stylesheet()
 LINEEDIT_INVALID_ENTRY_STYLESHEET = _palettes.lineedit_invalid_entry_stylesheet()
 TREEWIDGET_STYLESHEET = _palettes.TreeWidgetStyleSheet()
 LISTWIDGET_STYLESHEET = _palettes.ListWidgetStyleSheet()
@@ -3412,12 +3413,13 @@ class FloatLineEdit(QLineEdit):
 
     def __init__(
             self, *args, notAllowed=None, allowNegative=True, initial=None,
-            readOnly=False, decimals=6
+            readOnly=False, decimals=6, warningValues=None
         ):
         QLineEdit.__init__(self, *args)
         if readOnly:
             self.setReadOnly(readOnly)
         self.notAllowed = notAllowed
+        self.warningValues = warningValues
         self._maximum = np.inf
         self._minimum = -np.inf
         self._decimals = decimals
@@ -3465,11 +3467,19 @@ class FloatLineEdit(QLineEdit):
 
     def emitValueChanged(self, text):
         val = self.value()
+        reset_stylesheet = True
+        if self.warningValues is not None and val in self.warningValues:
+            self.setStyleSheet(LINEEDIT_WARNING_STYLESHEET)
+            reset_stylesheet = False
+        
         if self.notAllowed is not None and val in self.notAllowed:
             self.setStyleSheet(LINEEDIT_INVALID_ENTRY_STYLESHEET)
+            reset_stylesheet = False
         else:
-            self.setStyleSheet('')
             self.valueChanged.emit(self.value())
+        
+        if reset_stylesheet:
+            self.setStyleSheet('')
 
 class IntLineEdit(QLineEdit):
     valueChanged = Signal(float)
