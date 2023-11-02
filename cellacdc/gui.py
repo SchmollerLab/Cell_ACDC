@@ -22307,20 +22307,20 @@ class guiWin(QMainWindow):
             NOTE: Saving metrics might be <b>slow</b>,
             we recommend doing it <b>only when you need it</b>.<br>
         """)
-        msg = widgets.myMessageBox(parent=self, resizeButtons=False, wrapText=False)
-        msg.setIcon(iconName='SP_MessageBoxQuestion')
-        msg.setWindowTitle('Save measurements?')
-        msg.addText(txt)
-        yesButton = msg.addButton('Yes')
-        noButton = msg.addButton('No')
-        cancelButton = msg.addButton('Cancel')
-        setMeasurementsButton = msg.addButton('Set measurements...')
+        msg = widgets.myMessageBox(
+            parent=self, resizeButtons=False, wrapText=False
+        )
+        setMeasurementsButton = widgets.setPushButton('Set measurements...')
+        _, yesButton, noButton, _ = msg.question(
+            self, 'Save measurements?', txt, 
+            buttonsTexts=('Cancel', 'Yes', 'No', setMeasurementsButton),
+            showDialog=False
+        )
         setMeasurementsButton.disconnect()
         setMeasurementsButton.clicked.connect(self.showSetMeasurements)
         msg.exec_()
         save_metrics = msg.clickedButton == yesButton
-        cancel = msg.clickedButton == cancelButton or msg.clickedButton is None
-        return save_metrics, cancel
+        return save_metrics, msg.cancel
 
     def askPosToSave(self):
         last_pos = 1
