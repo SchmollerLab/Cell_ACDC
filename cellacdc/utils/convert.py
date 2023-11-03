@@ -269,7 +269,7 @@ class convertFileFormatWin(QMainWindow):
         if self.to == 'npy':
             np.save(newPath, data)
         elif self.to == 'tif':
-            myutils.to_tiff(newPath, data, None, 1, 1, imagej=False)
+            myutils.to_tiff(newPath, data)
         elif self.to == 'npz':
             np.savez_compressed(newPath, data)
         print('')

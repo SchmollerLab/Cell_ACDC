@@ -174,7 +174,7 @@ def checkFileFormat(folderPath, mainWin):
     return files
 
 def saveTiff(filePath, data, waitCond):
-    myutils.to_tiff(filePath, data, None, 1, 1)
+    myutils.to_tiff(filePath, data)
     waitCond.wakeAll()
     del data
 

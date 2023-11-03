@@ -1735,11 +1735,8 @@ class reapplyDataPrepWorker(QObject):
                     self.progress.emit('Saving prepped data...')
                     np.savez_compressed(posData.align_npz_path, imageData)
                     if hasattr(posData, 'tif_path'):
-                        with TiffFile(posData.tif_path) as tif:
-                            metadata = tif.imagej_metadata
                         myutils.to_tiff(
-                            posData.tif_path, imageData, metadata, 
-                            posData.SizeT, posData.SizeZ
+                            posData.tif_path, imageData
                         )
 
             self.updatePbar.emit()
@@ -1862,7 +1859,7 @@ class ImagesToPositionsWorker(QObject):
                 tifFilePath = os.path.join(imagesPath, newFilename)
                 self.progress.emit(f'Saving to file: ...{os.sep}{relPath}')
                 myutils.to_tiff(
-                    tifFilePath, data, None, 1, 1, imagej=False
+                    tifFilePath, data
                 )
                 pos += 1
             except Exception as e:
@@ -3456,7 +3453,7 @@ class AlignWorker(BaseWorkerUtil):
             SizeZ = 1
             if data.ndim == 4:
                 SizeZ = data.shape[1]
-            myutils.to_tiff(filePath, data, None, SizeT, SizeZ)
+            myutils.to_tiff(filePath, data)
         elif ext == '.npz':
             np.savez_compressed(filePath, data)
         elif ext == '.h5':

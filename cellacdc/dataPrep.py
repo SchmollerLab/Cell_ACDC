@@ -823,7 +823,7 @@ class dataPrepWin(QMainWindow):
             
             yield uncropped_data, npz_path, tif_path
     
-    def saveCroppedChannel(self, cropped_data, npz_path, tif_path):        
+    def saveCroppedChannel(self, cropped_data, npz_path, tif_path, posData):        
         if self.align:
             self.logger.info(f'Saving: {npz_path}')
             temp_npz = self.getTempfilePath(npz_path)
@@ -832,7 +832,15 @@ class dataPrepWin(QMainWindow):
 
         self.logger.info(f'Saving: {tif_path}')
         temp_tif = self.getTempfilePath(tif_path)
-        myutils.to_tiff(temp_tif, cropped_data)
+        myutils.to_tiff(
+            temp_tif, cropped_data,
+            SizeT=getattr(posData, 'SizeT', None),
+            SizeZ=getattr(posData, 'SizeZ', None),
+            TimeIncrement=getattr(posData, 'TimeIncrement', None),
+            PhysicalSizeZ=getattr(posData, 'PhysicalSizeZ', None),
+            PhysicalSizeY=getattr(posData, 'PhysicalSizeY', None),
+            PhysicalSizeX=getattr(posData, 'PhysicalSizeX', None),
+        )
         self.moveTempFile(temp_tif, tif_path)
     
     def saveCroppedSegmData(self, posData, segm_npz_path, cropROI):
@@ -866,7 +874,9 @@ class dataPrepWin(QMainWindow):
         _iter = self.getAllChannelsPaths(posData)
         for uncropped_data, npz_path, tif_path in _iter:
             cropped_data, _ = self.crop(uncropped_data, posData, cropROI)
-            self.saveCroppedChannel(cropped_data, npz_path, tif_path)
+            self.saveCroppedChannel(
+                cropped_data, npz_path, tif_path, posData
+            )
 
         self.saveCroppedSegmData(posData, posData.segm_npz_path, cropROI)
         self.correctAcdcDfCrop(posData, posData.acdc_output_csv_path, cropROI)
@@ -1015,7 +1025,8 @@ class dataPrepWin(QMainWindow):
                 sub_npz_filepath = os.path.join(subImagesPath, npz_filename)
                 sub_tif_filepath = os.path.join(subImagesPath, tif_filename)
                 self.saveCroppedChannel(
-                    cropped_data, sub_npz_filepath, sub_tif_filepath
+                    cropped_data, sub_npz_filepath, sub_tif_filepath, 
+                    posData
                 )
             
             segm_filename = os.path.basename(posData.segm_npz_path)

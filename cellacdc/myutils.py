@@ -1408,16 +1408,78 @@ def download_model(model_name):
         traceback.print_exc()
         return False
 
+def get_tiff_metadata(
+        image_arr,
+        SizeT=None, 
+        SizeZ=None, 
+        PhysicalSizeZ=None,
+        PhysicalSizeX=None, 
+        PhysicalSizeY=None,
+        TimeIncrement=None
+    ):
+    SizeY, SizeX = image_arr.shape[-2:]
+    Type = str(image_arr.dtype)
+    
+    metadata = {
+        'Pixels': {
+            'SizeX': SizeX,
+            'SizeY': SizeY,
+            'Type': Type
+        }
+    }
+    
+    axes = 'YX'
+    if SizeZ is not None and SizeZ > 1:
+        axes = f'Z{axes}'
+        metadata['Pixels']['SizeZ'] = SizeZ
+        
+    if SizeT is not None and SizeT > 1:
+        axes = f'T{axes}'
+        metadata['Pixels']['SizeT'] = SizeT
+        
+    metadata['axes'] = axes
+    
+    if PhysicalSizeX is not None:
+        metadata['Pixels']['PhysicalSizeX'] = PhysicalSizeX
+    
+    if PhysicalSizeY is not None:
+        metadata['Pixels']['PhysicalSizeY'] = PhysicalSizeY
+    
+    if PhysicalSizeZ is not None:
+        metadata['Pixels']['PhysicalSizeZ'] = PhysicalSizeZ
+    
+    if TimeIncrement is not None:
+        metadata['Pixels']['TimeIncrement'] = TimeIncrement
+    
+    return metadata
+
 def to_tiff(
-        new_path, data, metadata: dict=None, SizeT=None, SizeZ=None,
-        imagej=True
+        new_path, data, 
+        SizeT=None, 
+        SizeZ=None, 
+        PhysicalSizeZ=None,
+        PhysicalSizeX=None, 
+        PhysicalSizeY=None,
+        TimeIncrement=None
     ):
     if data.dtype != np.uint8 and data.dtype != np.uint16:
         data = scale_float(data)
         data = skimage.img_as_uint(data)
     
-    tifffile.imwrite(new_path, data)
-    np.save(new_path.replace('.tif', '.npy'), data)
+    metadata = get_tiff_metadata(
+        data,
+        SizeT=SizeT, 
+        SizeZ=SizeZ, 
+        PhysicalSizeZ=PhysicalSizeZ,
+        PhysicalSizeX=PhysicalSizeX, 
+        PhysicalSizeY=PhysicalSizeY,
+        TimeIncrement=TimeIncrement
+    )
+    
+    try:
+        tifffile.imwrite(new_path, data, metadata=metadata)
+    except Exception as err:
+        tifffile.imwrite(new_path, data)
 
 def from_lab_to_obj_coords(lab):
     rp = skimage.measure.regionprops(lab)

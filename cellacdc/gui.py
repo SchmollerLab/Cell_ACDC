@@ -20727,9 +20727,7 @@ class guiWin(QMainWindow):
             if not is_imageJ_dtype:
                 data.img_data = skimage.img_as_ubyte(data.img_data)
 
-            myutils.to_tiff(
-                tif_path, data.img_data, {}, SizeT, SizeZ
-            )
+            myutils.to_tiff(tif_path, data.img_data)
             self._openFolder(exp_path=exp_path, imageFilePath=tif_path)
 
     def criticalNoTifFound(self, images_path):
