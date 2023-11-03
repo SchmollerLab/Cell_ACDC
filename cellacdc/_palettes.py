@@ -4,7 +4,7 @@ import re
 
 from qtpy import QtGui, QtWidgets, QtCore
 
-from cellacdc import settings_csv_path
+from cellacdc import printl, settings_csv_path
 
 def _highlight_rgba():
     scheme = get_color_scheme()
@@ -130,6 +130,14 @@ def lineedit_invalid_entry_stylesheet():
         'border: 1.5px solid red;'
         'padding: 1px 0px 1px 0px'
     )
+
+def lineedit_warning_stylesheet():    
+    scheme = get_color_scheme()
+    if scheme == 'light':
+        stylesheet = 'background: #FEF9C3;'
+    else:
+        stylesheet = 'background: #FEF9C3; color: black'
+    return stylesheet
 
 def setToolTipStyleSheet(app, scheme='light'):
     if scheme == 'dark':

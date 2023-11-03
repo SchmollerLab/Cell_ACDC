@@ -11,6 +11,7 @@ import skimage.io
 import numpy as np
 
 from cellacdc.plot import imshow
+from cellacdc import load
 
 import concurrent.futures
 
@@ -102,7 +103,7 @@ def shiftingstuff_main(shift, tif_data, tif_path, start_frame, end_frame, NEW_PA
 def shiftingstuff_other(tif_name, shift, tif_path, scan_other, start_frame, end_frame, NEW_PATH_SUF):
     if scan_other == True:
         tif_path = os.path.join(os.path.dirname(tif_path), tif_name)
-        tif_data = skimage.io.imread(tif_path)
+        tif_data = load.imread(tif_path)
         shiftingstuff_main(shift, tif_data, tif_path, start_frame, end_frame, NEW_PATH_SUF)
         del tif_data
     return
@@ -124,7 +125,7 @@ def sequential(NEW_PATH_SUF):
     print('Start from frame: ' + str(start_frame))
     print('End on frame: ' + str(end_frame))
 
-    tif_data = skimage.io.imread(tif_path)
+    tif_data = load.imread(tif_path)
 
     start_frame -= 1
 

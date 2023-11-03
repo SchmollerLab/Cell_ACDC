@@ -16,7 +16,9 @@ import pandas as pd
 import skimage.filters
 from datetime import datetime
 from tifffile import TiffFile
+import tifffile
 from natsort import natsorted
+
 import skimage
 import skimage.io
 import skimage.measure
@@ -568,6 +570,12 @@ def get_filename_from_channel(
     else:
         return ''
 
+def imread(path):
+    if path.endswith('.tif') or path.endswith('.tiff'):
+        return tifffile.imread(path)
+    else:
+        return skimage.io.imread(path)
+
 def load_image_file(filepath):
     if filepath.endswith('.h5'):
         h5f = h5py.File(filepath, 'r')
@@ -579,7 +587,7 @@ def load_image_file(filepath):
     elif filepath.endswith('.npy'):
         img_data = np.load(filepath)
     else:
-        img_data = skimage.io.imread(filepath)
+        img_data = imread(filepath)
     return np.squeeze(img_data)
 
 def get_existing_segm_endnames(basename, segm_files):
@@ -895,7 +903,7 @@ class loadData:
             self.img_data_shape = self.img_data.shape
         else:
             try:
-                self.img_data = np.squeeze(skimage.io.imread(imgPath))
+                self.img_data = np.squeeze(imread(imgPath))
                 self.dset = self.img_data
                 self.img_data_shape = self.img_data.shape
             except ValueError:
@@ -983,6 +991,7 @@ class loadData:
             load_dataPrep_ROIcoords=False,
             load_customAnnot=False,
             load_customCombineMetrics=False,
+            load_manual_bkgr_lab=False,
             getTifPath=False,
             end_filename_segm='',
             new_endname='',
@@ -1514,6 +1523,8 @@ class loadData:
         return filepath
 
     def saveManualBackgroundData(self, data: np.ndarray):
+        if data is None:
+            return 
         filepath = self.getManualBackgroudDataFilepath()
         np.savez_compressed(filepath, data)
 
@@ -2572,7 +2583,10 @@ def format_number_list(text): #indentation for number points in tooltips. Implem
     indentNo = 0
 
     for line in lines:
-        if line.strip().startswith(("0. ", "1. ", "2. ", "3. ", "4. ", "5. ", "6. ", "7. ", "8. ", "9. ")):
+        if line.strip().startswith((
+                "0. ", "1. ", "2. ", "3. ", "4. ", 
+                "5. ", "6. ", "7. ", "8. ", "9. "
+            )):
             indent = True
             formatted_line = line
             indentNo = len(line) - len(line.lstrip())
