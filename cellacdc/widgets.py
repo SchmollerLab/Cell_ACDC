@@ -2071,10 +2071,6 @@ class ScatterPlotItem(pg.ScatterPlotItem):
         self._itemBrush = kwargs['brush']
         self._itemPen = kwargs['pen']
     
-    def clear(self):
-        super().setData([], [])
-        super().clear()
-    
     def itemBrush(self):
         return self._itemBrush
     
