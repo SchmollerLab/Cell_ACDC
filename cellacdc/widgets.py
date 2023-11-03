@@ -57,6 +57,7 @@ from . import html_path
 from . import _palettes
 from .regex import float_regex
 
+LINEEDIT_WARNING_STYLESHEET = _palettes.lineedit_warning_stylesheet()
 LINEEDIT_INVALID_ENTRY_STYLESHEET = _palettes.lineedit_invalid_entry_stylesheet()
 TREEWIDGET_STYLESHEET = _palettes.TreeWidgetStyleSheet()
 LISTWIDGET_STYLESHEET = _palettes.ListWidgetStyleSheet()
@@ -596,6 +597,9 @@ class browseFileButton(PushButton):
             self._file_types = ';;'.join(s_li)
             self._file_types = f'{self._file_types};;All Files (*)'
 
+    def setStartPath(self, start_path):
+        self._start_dir = start_path
+    
     def browse(self):
         if self._openFolder:
             fileDialog = QFileDialog.getExistingDirectory
@@ -1149,11 +1153,14 @@ class QDialogListbox(QDialog):
             self, title, text, items, cancelText='Cancel',
             multiSelection=True, parent=None,
             additionalButtons=(), includeSelectionHelp=False,
-            allowSingleSelection=True
+            allowSingleSelection=True, preSelectedItems=None
         ):
         self.cancel = True
         super().__init__(parent)
         self.setWindowTitle(title)
+        
+        if preSelectedItems is None:
+            preSelectedItems = set()
 
         self.allowSingleSelection = allowSingleSelection
 
@@ -1182,12 +1189,18 @@ class QDialogListbox(QDialog):
 
         listBox = listWidget()
         listBox.setFont(_font)
-        listBox.addItems(items)
+        listBox.addItems(items)            
         if multiSelection:
             listBox.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         else:
             listBox.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         listBox.setCurrentRow(0)
+        for i in range(listBox.count()):
+            item = listBox.item(i)
+            if item.text() not in preSelectedItems:
+                continue
+            item.setSelected(True)
+            
         self.listBox = listBox
         if not multiSelection:
             listBox.itemDoubleClicked.connect(self.ok_cb)
@@ -3403,12 +3416,13 @@ class FloatLineEdit(QLineEdit):
 
     def __init__(
             self, *args, notAllowed=None, allowNegative=True, initial=None,
-            readOnly=False, decimals=6
+            readOnly=False, decimals=6, warningValues=None
         ):
         QLineEdit.__init__(self, *args)
         if readOnly:
             self.setReadOnly(readOnly)
         self.notAllowed = notAllowed
+        self.warningValues = warningValues
         self._maximum = np.inf
         self._minimum = -np.inf
         self._decimals = decimals
@@ -3456,11 +3470,19 @@ class FloatLineEdit(QLineEdit):
 
     def emitValueChanged(self, text):
         val = self.value()
+        reset_stylesheet = True
+        if self.warningValues is not None and val in self.warningValues:
+            self.setStyleSheet(LINEEDIT_WARNING_STYLESHEET)
+            reset_stylesheet = False
+        
         if self.notAllowed is not None and val in self.notAllowed:
             self.setStyleSheet(LINEEDIT_INVALID_ENTRY_STYLESHEET)
+            reset_stylesheet = False
         else:
-            self.setStyleSheet('')
             self.valueChanged.emit(self.value())
+        
+        if reset_stylesheet:
+            self.setStyleSheet('')
 
 class IntLineEdit(QLineEdit):
     valueChanged = Signal(float)

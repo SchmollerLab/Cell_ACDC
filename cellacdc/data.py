@@ -3,7 +3,7 @@ import os
 import numpy as np
 from pyparsing import col
 
-import skimage.io
+import tifffile
 
 from . import data_path, load, base_cca_df
 
@@ -116,7 +116,7 @@ class Cdc42TimeLapseData(_Data):
         )
     
     def cdc42_data(self):
-        return skimage.io.imread(os.path.join(
+        return load.imread(os.path.join(
             self.images_path, 
             'SCGE_DLY16570_1-15_DLY16571_16-30_corr_s01_tdTomato_Ph3__YEAST.tif'
         ))

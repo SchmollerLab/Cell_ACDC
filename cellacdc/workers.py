@@ -204,7 +204,7 @@ class AlignDataWorker(QObject):
             aligned = True
             if self.align:
                 self.logger.log(f'Aligning: {tif}')
-            tif_data = skimage.io.imread(tif)
+            tif_data = load.imread(tif)
             numFramesWith0s = self.dataPrepWin.detectTifAlignment(
                 tif_data, self.posData
             )
@@ -253,9 +253,9 @@ class AlignDataWorker(QObject):
 
                 self.logger.log(f'Saving: {tif}')
                 temp_tif = self.dataPrepWin.getTempfilePath(tif)
-                myutils.imagej_tiffwriter(temp_tif, aligned_frames)
+                myutils.to_tiff(temp_tif, aligned_frames)
                 self.dataPrepWin.moveTempFile(temp_tif, tif)
-                self.posData.img_data = skimage.io.imread(tif)
+                self.posData.img_data = load.imread(tif)
 
         _zip = zip(self.posData.tif_paths, self.posData.npz_paths)
         for i, (tif, npz) in enumerate(_zip):
@@ -272,7 +272,7 @@ class AlignDataWorker(QObject):
                 break
             if self.align:
                 self.logger.log(f'Aligning: {tif}')
-            tif_data = skimage.io.imread(tif)
+            tif_data = load.imread(tif)
 
             # Alignment routine
             if self.posData.SizeZ>1:
@@ -302,7 +302,7 @@ class AlignDataWorker(QObject):
 
                 self.logger.log(f'Saving: {tif}')
                 temp_tif = self.dataPrepWin.getTempfilePath(tif)
-                myutils.imagej_tiffwriter(temp_tif, aligned_frames)
+                myutils.to_tiff(temp_tif, aligned_frames)
                 self.dataPrepWin.moveTempFile(temp_tif, tif)
 
         if not aligned:
@@ -1735,11 +1735,8 @@ class reapplyDataPrepWorker(QObject):
                     self.progress.emit('Saving prepped data...')
                     np.savez_compressed(posData.align_npz_path, imageData)
                     if hasattr(posData, 'tif_path'):
-                        with TiffFile(posData.tif_path) as tif:
-                            metadata = tif.imagej_metadata
-                        myutils.imagej_tiffwriter(
-                            posData.tif_path, imageData, metadata, 
-                            posData.SizeT, posData.SizeZ
+                        myutils.to_tiff(
+                            posData.tif_path, imageData
                         )
 
             self.updatePbar.emit()
@@ -1846,7 +1843,7 @@ class ImagesToPositionsWorker(QObject):
             filename, ext = os.path.splitext(file)
             s0p = str(pos).zfill(numPosDigits)
             try:
-                data = skimage.io.imread(filePath)
+                data = load.imread(filePath)
                 if data.ndim == 3 and (data.shape[-1] == 3 or data.shape[-1] == 4):
                     self.progress.emit('Converting RGB image to grayscale...')
                     data = skimage.color.rgb2gray(data)
@@ -1861,8 +1858,8 @@ class ImagesToPositionsWorker(QObject):
                 relPath = os.path.join(posName, 'Images', newFilename)
                 tifFilePath = os.path.join(imagesPath, newFilename)
                 self.progress.emit(f'Saving to file: ...{os.sep}{relPath}')
-                myutils.imagej_tiffwriter(
-                    tifFilePath, data, None, 1, 1, imagej=False
+                myutils.to_tiff(
+                    tifFilePath, data
                 )
                 pos += 1
             except Exception as e:
@@ -2519,7 +2516,7 @@ class RestructMultiTimepointsWorker(BaseWorkerUtil):
                 # Get info from first file
                 filePath = os.path.join(rootFolderPath, filesList[0][0])
                 try:
-                    img = skimage.io.imread(filePath)
+                    img = load.imread(filePath)
                     break
                 except Exception as e:
                     self.logger.log(traceback.format_exc())
@@ -2568,7 +2565,7 @@ class RestructMultiTimepointsWorker(BaseWorkerUtil):
                     ext = os.path.splitext(file)[1]
                     srcImgFilePath = os.path.join(rootFolderPath, file)
                     try:
-                        img = skimage.io.imread(srcImgFilePath)
+                        img = load.imread(srcImgFilePath)
                         if videoData is None:
                             shape = (SizeT, *img.shape)
                             videoData = np.zeros(shape, dtype=img.dtype)
@@ -2670,7 +2667,7 @@ class RestructMultiTimepointsWorker(BaseWorkerUtil):
             for n, segmFilePath in zip(frameNumbers, imgDataInfo['src_segm_paths']):
                 frame_i = n - minFrameNumber
                 try:
-                    lab = skimage.io.imread(segmFilePath).astype(np.uint32)
+                    lab = load.imread(segmFilePath).astype(np.uint32)
                     segmData[frame_i] = lab
                 except Exception as e:
                     self.logger.log(traceback.format_exc())
@@ -3456,7 +3453,7 @@ class AlignWorker(BaseWorkerUtil):
             SizeZ = 1
             if data.ndim == 4:
                 SizeZ = data.shape[1]
-            myutils.imagej_tiffwriter(filePath, data, None, SizeT, SizeZ)
+            myutils.to_tiff(filePath, data)
         elif ext == '.npz':
             np.savez_compressed(filePath, data)
         elif ext == '.h5':

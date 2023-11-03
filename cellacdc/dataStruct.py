@@ -477,7 +477,9 @@ class bioFormatsWorker(QObject):
         if not os.path.exists(images_path):
             os.makedirs(images_path, exist_ok=True)
 
-        self.saveData(images_path, rawFilePath, filename, p, series, p_idx=p_idx)
+        self.saveData(
+            images_path, rawFilePath, filename, p, series, p_idx=p_idx
+        )
 
         return False
 
@@ -612,9 +614,16 @@ class bioFormatsWorker(QObject):
                 imgData_ch.append(imgData_z)
 
         if not self.to_h5:
+            
             imgData_ch = np.squeeze(np.array(imgData_ch, dtype=imgData.dtype))
-            myutils.imagej_tiffwriter(
-                filePath, imgData_ch, {}, self.SizeT, SizeZ
+            myutils.to_tiff(
+                filePath, imgData_ch, 
+                SizeT=self.SizeT,
+                SizeZ=self.SizeZ,
+                TimeIncrement=self.TimeIncrement,
+                PhysicalSizeZ=self.PhysicalSizeZ,
+                PhysicalSizeY=self.PhysicalSizeY,
+                PhysicalSizeX=self.PhysicalSizeX,
             )
         else:
             h5f.close()
@@ -1419,7 +1428,7 @@ class createDataStructWin(QMainWindow):
         )
         msg.information(
             self, 'Microscopy files location', txt, 
-            buttonsTexts=('Cancel', 'Done')
+            buttonsTexts=('Cancel', widgets.okPushButton('Done'))
         )
         if msg.cancel:
             return False

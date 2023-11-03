@@ -26,7 +26,7 @@ Installation using Anaconda (recommended)
 
 6. **Update pip** using ``python -m pip install --upgrade pip``
     Pip is an application which is included in Python. It manages programmes and updates it. In this case, we tell pip to update itself.
-7. **Install Cell-ACDC** using ``pip install "cellacdc[gui]"``
+7. **Install Cell-ACDC** using ``pip install "cellacdc"``
     This tells pip to install Cell-ACDC, specifically the version with an user interface.
 
 Advanced install methods
@@ -53,7 +53,7 @@ Installation using Pip
 4. Navigate to a folder where you want to create the virtual environment
 5. Create a virtual environment: Windows: ``py -m venv acdc``, macOS/Unix ``python3 -m venv acdc``
 6. Activate the environment: Windows: ``.\acdc\Scripts\activate``, macOS/Unix: ``source acdc/bin/activate``
-7. Install Cell-ACDC with the command ``pip install "cellacdc[gui]"``. Note that if you know you are going to **need tensorflow** (for segmentation models like YeaZ) you can run the command ``pip install "cellacdc[all]"``, or ``pip install tensorflow`` before or after installing Cell-ACDC.
+7. Install Cell-ACDC with the command ``pip install "cellacdc"``. Note that if you know you are going to **need tensorflow** (for segmentation models like YeaZ) you can run the command ``pip install "cellacdc[all]"``, or ``pip install tensorflow`` before or after installing Cell-ACDC.
 
 Install from source
 ~~~~~~~~~~~~~~~~~~~

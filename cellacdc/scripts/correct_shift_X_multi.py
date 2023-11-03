@@ -1,22 +1,14 @@
 import os
-
 import argparse
-
 import re
-
 import skimage.io
-
 import numpy as np
-
-from acdctools.plot import imshow
-
-#import threading
-
 import concurrent.futures
-
 import copy
-
 import json
+
+from cellacdc import load
+from cellacdc.plot import imshow
 
 
 #Change this if your data structure is different:#
@@ -123,7 +115,7 @@ def shiftingstuff_main(shift, tif_data, tif_path, NEW_PATH_SUF):
 
 def shiftingstuff_other(shifttif, NEW_PATH_SUF):
     if shifttif[0] != 0:
-        tif_data = skimage.io.imread(shifttif[1])
+        tif_data = load.imread(shifttif[1])
         shiftingstuff_main(shifttif[0], tif_data, shifttif[1], NEW_PATH_SUF)
         del tif_data
     return
@@ -155,7 +147,7 @@ def sequential(NEW_PATH_SUF):
     tif_files_master = []
     for i, tif_path in enumerate(base_file_paths):
         shift = PRESET_SHIFT
-        tif_data = skimage.io.imread(tif_path)
+        tif_data = load.imread(tif_path)
         print('You are looking at:\n' + str(tif_path) + '\nPlease close the window after inspecting if the shift value is right in order to proceed.')
         shift = finding_shift(tif_data, shift, NEW_PATH_SUF)
         tif_files_master.append([shift, tif_path])
