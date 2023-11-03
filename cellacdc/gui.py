@@ -15652,10 +15652,9 @@ class guiWin(QMainWindow):
         posData.allData_li[posData.frame_i]['regionprops'] = posData.rp.copy()
         posData.allData_li[posData.frame_i]['labels'] = posData.lab.copy()
         posData.allData_li[posData.frame_i]['IDs'] = posData.IDs.copy()
-        if hasattr(self, 'manualBackgroundLab'):
-            posData.allData_li[posData.frame_i]['manualBackgroundLab'] = (
-                posData.manualBackgroundLab
-            )
+        posData.allData_li[posData.frame_i]['manualBackgroundLab'] = (
+            posData.manualBackgroundLab
+        )
 
         # Store dynamic metadata
         is_cell_dead_li = [False]*len(posData.rp)

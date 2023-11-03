@@ -991,6 +991,7 @@ class loadData:
             load_dataPrep_ROIcoords=False,
             load_customAnnot=False,
             load_customCombineMetrics=False,
+            load_manual_bkgr_lab=False,
             getTifPath=False,
             end_filename_segm='',
             new_endname='',
@@ -1522,6 +1523,8 @@ class loadData:
         return filepath
 
     def saveManualBackgroundData(self, data: np.ndarray):
+        if data is None:
+            return 
         filepath = self.getManualBackgroudDataFilepath()
         np.savez_compressed(filepath, data)
 
@@ -2580,7 +2583,10 @@ def format_number_list(text): #indentation for number points in tooltips. Implem
     indentNo = 0
 
     for line in lines:
-        if line.strip().startswith(("0. ", "1. ", "2. ", "3. ", "4. ", "5. ", "6. ", "7. ", "8. ", "9. ")):
+        if line.strip().startswith((
+                "0. ", "1. ", "2. ", "3. ", "4. ", 
+                "5. ", "6. ", "7. ", "8. ", "9. "
+            )):
             indent = True
             formatted_line = line
             indentNo = len(line) - len(line.lstrip())
