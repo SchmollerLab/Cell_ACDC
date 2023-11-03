@@ -597,6 +597,9 @@ class browseFileButton(PushButton):
             self._file_types = ';;'.join(s_li)
             self._file_types = f'{self._file_types};;All Files (*)'
 
+    def setStartPath(self, start_path):
+        self._start_dir = start_path
+    
     def browse(self):
         if self._openFolder:
             fileDialog = QFileDialog.getExistingDirectory
