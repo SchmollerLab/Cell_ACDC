@@ -39,6 +39,7 @@ from .utils import toObjCoords as utilsToObjCoords
 from .utils import acdcToSymDiv as utilsSymDiv
 from .utils import trackSubCellObjects as utilsTrackSubCell
 from .utils import createConnected3Dsegm as utilsConnected3Dsegm
+from .utils import filterObjFromCoordsTable as utilsFilterObjsFromTable
 from .utils import stack2Dinto3Dsegm as utilsStack2Dto3D
 from .utils import computeMultiChannel as utilsComputeMultiCh
 from .utils import applyTrackFromTable as utilsApplyTrackFromTab
@@ -403,6 +404,7 @@ class mainWin(QMainWindow):
         segmMenu = utilsMenu.addMenu('Segmentation')
         segmMenu.addAction(self.createConnected3Dsegm)
         segmMenu.addAction(self.stack2Dto3DsegmAction)
+        segmMenu.addAction(self.filterObjsFromTableAction)
 
         trackingMenu = utilsMenu.addMenu('Tracking')
         trackingMenu.addAction(self.trackSubCellFeaturesAction)
@@ -708,7 +710,10 @@ class mainWin(QMainWindow):
         )
         self.createConnected3Dsegm = QAction(
             'Create connected 3D segmentation mask from z-slices segmentation...'
-        )  
+        ) 
+        self.filterObjsFromTableAction = QAction(
+            'Filter segmented objects using a table of coordinates (e.g., centroids)...'
+        ) 
         self.stack2Dto3DsegmAction = QAction(
             'Stack 2D segmentation objects into 3D objects...'
         )  
@@ -778,6 +783,9 @@ class mainWin(QMainWindow):
         )
         self.createConnected3Dsegm.triggered.connect(
             self.launchConnected3DsegmActionUtil
+        )
+        self.filterObjsFromTableAction.triggered.connect(
+            self.launchFilterObjsFromTableActionUtil
         )
         self.stack2Dto3DsegmAction.triggered.connect(
             self.launchStack2Dto3DsegmActionUtil
@@ -1200,6 +1208,25 @@ class mainWin(QMainWindow):
             parent=self
         )
         self.connected3DsegmWin.show()
+    
+    def launchFilterObjsFromTableActionUtil(self):
+        self.logger.info(f'Launching utility "{self.sender().text()}"')
+        selectedExpPaths = self.getSelectedExpPaths(
+            'Create connected 3D segmentation mask'
+        )
+        if selectedExpPaths is None:
+            return
+        
+        title = 'Filter segmented objects from coordinates'
+        infoText = 'Launching Filter segmented objects from coordinates process...'
+        progressDialogueTitle = 'Filtering objects'
+        self.filterObjsFromTableWin = (
+                utilsFilterObjsFromTable.FilterObjsFromCoordsTable(
+                selectedExpPaths, self.app, title, infoText, 
+                progressDialogueTitle, parent=self
+            )
+        )
+        self.filterObjsFromTableWin.show()
     
     def launchStack2Dto3DsegmActionUtil(self):
         self.logger.info(f'Launching utility "{self.sender().text()}"')

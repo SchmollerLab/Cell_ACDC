@@ -128,13 +128,13 @@ Resources
 
 Contact
 =======
-**Do not hesitate to contact me** here on GitHub (by opening an issue)
-or directly at my email padovaf@tcd.ie for any problem and/or feedback
+**Do not hesitate to contact us** here on GitHub (by opening an issue)
+or directly at the email padovaf@tcd.ie for any problem and/or feedback
 on how to improve the user experience!
 
-Important links
-===============
+Contributing
+============
 
-* `GitHub <https://github.com/SchmollerLab/Cell_ACDC>`__
-* `Publication <https://bmcbiol.biomedcentral.com/articles/10.1186/s12915-022-01372-6>`__
-* `Forum <https://forum.image.sc/tag/Cell-ACDC>`__
+At Cell-ACDC we encourage contributions to the code! Please read our 
+`contributing guide <https://github.com/SchmollerLab/Cell_ACDC/blob/main/CONTRIBUTING.rst>`_ 
+to get started.

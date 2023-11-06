@@ -3871,3 +3871,94 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                 )
                 
         self.signals.finished.emit(self)
+
+class FilterObjsFromCoordsTable(BaseWorkerUtil):
+    sigAskAppendName = Signal(str, list)
+    sigAborted = Signal()
+
+    def __init__(self, mainWin):
+        super().__init__(mainWin)
+
+    @worker_exception_handler
+    def run(self):
+        debugging = False
+        expPaths = self.mainWin.expPaths
+        tot_exp = len(expPaths)
+        self.signals.initProgressBar.emit(0)
+        for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
+            self.errors = {}
+            tot_pos = len(pos_foldernames)
+
+            self.mainWin.infoText = f'Select <b>segmentation file to connect</b>'
+            abort = self.emitSelectSegmFiles(exp_path, pos_foldernames)
+            if abort:
+                self.sigAborted.emit()
+                return
+            
+            # Ask appendend name
+            self.mutex.lock()
+            self.sigAskAppendName.emit(
+                self.mainWin.endFilenameSegm, self.mainWin.existingSegmEndNames
+            )
+            self.waitCond.wait(self.mutex)
+            self.mutex.unlock()
+            if self.abort:
+                self.sigAborted.emit()
+                return
+
+            appendedName = self.appendedName
+            self.signals.initProgressBar.emit(len(pos_foldernames))
+            for p, pos in enumerate(pos_foldernames):
+                if self.abort:
+                    self.sigAborted.emit()
+                    return
+
+                self.logger.log(
+                    f'Processing experiment n. {i+1}/{tot_exp}, '
+                    f'{pos} ({p+1}/{tot_pos})'
+                )
+
+                images_path = os.path.join(exp_path, pos, 'Images')
+                endFilenameSegm = self.mainWin.endFilenameSegm
+                ls = myutils.listdir(images_path)
+                file_path = [
+                    os.path.join(images_path, f) for f in ls 
+                    if f.endswith(f'{endFilenameSegm}.npz')
+                ][0]
+                
+                posData = load.loadData(file_path, '')
+
+                self.signals.sigUpdatePbarDesc.emit(f'Processing {posData.pos_path}')
+
+                posData.getBasenameAndChNames()
+                posData.buildPaths()
+
+                posData.loadOtherFiles(
+                    load_segm_data=True,
+                    load_acdc_df=True,
+                    load_metadata=True,
+                    end_filename_segm=endFilenameSegm
+                )
+                if posData.segm_data.ndim == 3:
+                    posData.segm_data = posData.segm_data[np.newaxis]
+                
+                self.logger.log('Connecting 3D objects...')
+                
+                numFrames = len(posData.segm_data)
+                self.signals.sigInitInnerPbar.emit(numFrames)
+                connectedSegmData = np.zeros_like(posData.segm_data)
+                for frame_i, lab in enumerate(posData.segm_data):
+                    connected_lab = core.connect_3Dlab_zboundaries(lab)
+                    connectedSegmData[frame_i] = connected_lab
+
+                    self.signals.sigUpdateInnerPbar.emit(1)
+
+                self.logger.log('Saving connected 3D segmentation file...')
+                segmFilename, ext = os.path.splitext(posData.segm_npz_path)
+                newSegmFilepath = f'{segmFilename}_{appendedName}.npz'
+                connectedSegmData = np.squeeze(connectedSegmData)
+                np.savez_compressed(newSegmFilepath, connectedSegmData)
+                
+                self.signals.progressBar.emit(1)
+
+        self.signals.finished.emit(self)
