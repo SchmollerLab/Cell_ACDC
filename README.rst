@@ -151,5 +151,5 @@ Contributing
 ============
 
 At Cell-ACDC we encourage contributions to the code! Please read our 
-`contributing guide <https://github.com/SchmollerLab/Cell_ACDC/blob/main/CONTRIBUTING.rst>`_ 
+`contributing guide <https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/contributing.rst>`_ 
 to get started.

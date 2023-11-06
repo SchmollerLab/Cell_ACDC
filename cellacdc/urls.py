@@ -1,4 +1,4 @@
-contribute_url = 'https://github.com/SchmollerLab/Cell_ACDC/blob/main/CONTRIBUTING.rst'
+contribute_url = 'https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/contributing.rst'
 
 github_url = 'https://github.com/SchmollerLab/Cell_ACDC'
 

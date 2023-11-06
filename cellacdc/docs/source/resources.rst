@@ -1,5 +1,5 @@
-Other
-=====
+Resources
+=========
 
 .. contents::
 
@@ -24,9 +24,3 @@ Usage
 For details about how to use Cell-ACDC please read the User Manual
 downloadable from
 `here <https://github.com/SchmollerLab/Cell_ACDC/tree/main/UserManual>`__
-
-How to contribute
------------------
-
-Contributions to Cell-ACDC are always very welcome! For more details see
-instructions `here <https://github.com/SchmollerLab/Cell_ACDC/blob/main/CONTRIBUTING.rst>`__.
