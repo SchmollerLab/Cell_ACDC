@@ -2,7 +2,7 @@
    :width: 80
 
 |acdclogo| Cell-ACDC
-=====================
+====================
 
 A GUI-based Python framework for **segmentation**, **tracking**, **cell cycle annotations** and **quantification** of microscopy data
 -------------------------------------------------------------------------------------------------------------------------------------
