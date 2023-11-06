@@ -86,6 +86,7 @@ class signals(QObject):
     sigRecovery = Signal(object)
     sigInitInnerPbar = Signal(int)
     sigUpdateInnerPbar = Signal(int)
+    sigSelectFile = Signal(str, str, str)
 
 class AutoPilotWorker(QObject):
     finished = Signal()
@@ -1890,6 +1891,13 @@ class BaseWorkerUtil(QObject):
     def emitSelectSegmFiles(self, exp_path, pos_foldernames):
         self.mutex.lock()
         self.signals.sigSelectSegmFiles.emit(exp_path, pos_foldernames)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        return self.abort
+    
+    def emitSelectFile(self, start_dir, caption='', filters='All files (*.)'):
+        self.mutex.lock()
+        self.signals.sigSelectFile.emit(start_dir, caption, filters)
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
         return self.abort
@@ -3875,10 +3883,87 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
 class FilterObjsFromCoordsTable(BaseWorkerUtil):
     sigAskAppendName = Signal(str, list)
     sigAborted = Signal()
+    sigSetColumnsNames = Signal(object, object, object)
 
     def __init__(self, mainWin):
         super().__init__(mainWin)
 
+    def emitSetColumnsNames(self, columns, categories, optionalCategories):
+        self.mutex.lock()
+        self.sigSetColumnsNames.emit(columns, categories, optionalCategories)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        return self.abort 
+    
+    def getColumnsCategories(
+            self, df_coords, exp_path, pos_foldernames, endFilenameSegm
+        ):
+        columns = df_coords.columns.to_list()
+        categories = ['X coord. column', 'Y coord. column']
+        optionalCategories = []
+        
+        images_path = os.path.join(exp_path, pos_foldernames[0], 'Images')
+        metadata_df = load.load_metadata_df(images_path)
+        SizeT = float(metadata_df.at['SizeT', 'values'])
+        SizeZ = float(metadata_df.at['SizeZ', 'values'])
+        
+        segmData = load.load_segm_file(
+            images_path, end_name_segm_file=endFilenameSegm
+        )
+        
+        if segmData.ndim == 4:
+            categories.append('Z coord. column')
+            categories.append('Frame index column')
+        elif segmData.ndim == 3:
+            if SizeZ > 1 and SizeT == 1:
+                # 3D z-stack data
+                categories.append('Z coord. column')
+            else:
+                optionalCategories.append('Z coord. column')
+                
+            if SizeT > 1:
+                # 3D time-lapse
+                categories.append('Frame index column')
+            else:
+                optionalCategories.append('Frame index column')
+        else:
+            optionalCategories.append('Z coord. column')
+            optionalCategories.append('Frame index column')
+        
+        if len(pos_foldernames) > 1:
+            categories.append('Position_n')
+        else:
+            optionalCategories.append('Position_n')
+        
+        return columns, categories, optionalCategories
+        
+    def getDfCoords(
+            self, df_coords, selectedColumnsPerCategory, pos_foldername, frame_i
+        ):
+        pos_col = selectedColumnsPerCategory.get('Position_n', 'None')
+        frame_i_col = selectedColumnsPerCategory.get(
+            'Frame index column', 'None'
+        )
+        x_col = selectedColumnsPerCategory['X coord. column']
+        y_col = selectedColumnsPerCategory['Y coord. column']
+        if pos_col != 'None':
+            df_coords = df_coords[df_coords[pos_col] == pos_foldername]
+        if frame_i_col != 'None':
+            df_coords = df_coords[df_coords[frame_i_col] == frame_i]
+        
+        xy_cols = [x_col, y_col]
+        
+        df_out = pd.DataFrame(
+            index=df_coords.index, 
+            data=df_coords[xy_cols].values,
+            columns=['x', 'y']
+        )
+        z_col = selectedColumnsPerCategory.get('Z coord. column', 'None')
+        if z_col != 'None':
+            df_out['z'] =  df_coords[z_col]
+        
+        return df_out
+    
     @worker_exception_handler
     def run(self):
         debugging = False
@@ -3889,16 +3974,46 @@ class FilterObjsFromCoordsTable(BaseWorkerUtil):
             self.errors = {}
             tot_pos = len(pos_foldernames)
 
-            self.mainWin.infoText = f'Select <b>segmentation file to connect</b>'
+            self.mainWin.infoText = f'Select <b>segmentation file to filter</b>'
             abort = self.emitSelectSegmFiles(exp_path, pos_foldernames)
             if abort:
                 self.sigAborted.emit()
                 return
+            endFilenameSegm = self.mainWin.endFilenameSegm
+            
+            self.logger.log('Asking to select the CSV table file...')
+            
+            abort = self.emitSelectFile(
+                exp_path, 'Select CSV table file with coordinates to filter',
+                'CSV (*.csv)'
+            )
+            if abort:
+                self.sigAborted.emit()
+                return
+            
+            self.logger.log(
+                f'Loading table file `{self.mainWin.selectedFilepath}`..'
+            )
+            df_coords = pd.read_csv(self.mainWin.selectedFilepath)
+            
+            columns, categories, optionalCategories = self.getColumnsCategories(
+                df_coords, exp_path, pos_foldernames, endFilenameSegm
+            )            
+            
+            abort = self.emitSetColumnsNames(
+                columns, categories, optionalCategories
+            )
+            if abort:
+                self.sigAborted.emit()
+                return
+            
+            selectedColumnsPerCategory = self.mainWin.selectedColumnsPerCategory
             
             # Ask appendend name
             self.mutex.lock()
             self.sigAskAppendName.emit(
-                self.mainWin.endFilenameSegm, self.mainWin.existingSegmEndNames
+                self.mainWin.endFilenameSegm, 
+                self.mainWin.existingSegmEndNames
             )
             self.waitCond.wait(self.mutex)
             self.mutex.unlock()
@@ -3919,7 +4034,6 @@ class FilterObjsFromCoordsTable(BaseWorkerUtil):
                 )
 
                 images_path = os.path.join(exp_path, pos, 'Images')
-                endFilenameSegm = self.mainWin.endFilenameSegm
                 ls = myutils.listdir(images_path)
                 file_path = [
                     os.path.join(images_path, f) for f in ls 
@@ -3939,25 +4053,36 @@ class FilterObjsFromCoordsTable(BaseWorkerUtil):
                     load_metadata=True,
                     end_filename_segm=endFilenameSegm
                 )
-                if posData.segm_data.ndim == 3:
+                if posData.SizeT == 1:
                     posData.segm_data = posData.segm_data[np.newaxis]
                 
-                self.logger.log('Connecting 3D objects...')
+                self.logger.log('Filtering objects...')
                 
                 numFrames = len(posData.segm_data)
                 self.signals.sigInitInnerPbar.emit(numFrames)
-                connectedSegmData = np.zeros_like(posData.segm_data)
+                filteredSegmData = np.zeros_like(posData.segm_data)
                 for frame_i, lab in enumerate(posData.segm_data):
-                    connected_lab = core.connect_3Dlab_zboundaries(lab)
-                    connectedSegmData[frame_i] = connected_lab
+                    df_coords_frame_i = self.getDfCoords(
+                        df_coords, selectedColumnsPerCategory, pos, frame_i
+                    )
+                    if df_coords_frame_i.empty:
+                        num_frames_missing = len(posData.segm_data[frame_i:])
+                        self.signals.sigUpdateInnerPbar.emit(num_frames_missing)
+                        filteredSegmData = filteredSegmData[:frame_i]
+                        break
+                    
+                    filtered_lab = core.filter_segm_objs_from_table_coords(
+                        lab, df_coords_frame_i
+                    )
+                    filteredSegmData[frame_i] = filtered_lab
 
                     self.signals.sigUpdateInnerPbar.emit(1)
 
-                self.logger.log('Saving connected 3D segmentation file...')
+                self.logger.log('Saving filtered segmentation file...')
                 segmFilename, ext = os.path.splitext(posData.segm_npz_path)
                 newSegmFilepath = f'{segmFilename}_{appendedName}.npz'
-                connectedSegmData = np.squeeze(connectedSegmData)
-                np.savez_compressed(newSegmFilepath, connectedSegmData)
+                filteredSegmData = np.squeeze(filteredSegmData)
+                np.savez_compressed(newSegmFilepath, filteredSegmData)
                 
                 self.signals.progressBar.emit(1)
 

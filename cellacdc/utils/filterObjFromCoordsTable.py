@@ -17,6 +17,7 @@ class FilterObjsFromCoordsTable(NewThreadMultipleExpBaseUtil):
     def runWorker(self):
         self.worker = workers.FilterObjsFromCoordsTable(self)
         self.worker.sigAskAppendName.connect(self.askAppendName)
+        self.worker.sigSetColumnsNames.connect(self.setColumnsNames)
         self.worker.sigAborted.connect(self.workerAborted)
         super().runWorker(self.worker)
     
@@ -35,7 +36,8 @@ class FilterObjsFromCoordsTable(NewThreadMultipleExpBaseUtil):
             hintText='Insert a name for the <b>filtered segmentation</b> file:',
             existingNames=existingEndnames, 
             helpText=helpText, 
-            allowEmpty=False
+            allowEmpty=False,
+            parent=self
         )
         win.exec_()
         if win.cancel:
@@ -46,6 +48,20 @@ class FilterObjsFromCoordsTable(NewThreadMultipleExpBaseUtil):
         self.worker.appendedName = win.entryText
         self.worker.waitCond.wakeAll()
     
+    def setColumnsNames(self, columns, categories, optionalCategories):
+        win = apps.SetColumnNamesDialog(
+            columns, categories, optionalCategories=optionalCategories, 
+            parent=self
+        )
+        win.exec_()
+        if win.cancel:
+            self.worker.abort = True
+            self.worker.waitCond.wakeAll()
+            return 
+        
+        self.selectedColumnsPerCategory = win.selectedColumns
+        self.worker.waitCond.wakeAll()
+    
     def workerAborted(self):
         self.workerFinished(None, aborted=True)
     
@@ -53,7 +69,7 @@ class FilterObjsFromCoordsTable(NewThreadMultipleExpBaseUtil):
         if aborted:
             txt = 'Filter segmented objects from coordinates table process aborted.'
         else:
-            txt = 'Filter segmented objects from coordinates table.'
+            txt = 'Filter segmented objects from coordinates table process completed.'
         self.logger.info(txt)
         msg = widgets.myMessageBox(wrapText=False, showCentered=False)
         if aborted:

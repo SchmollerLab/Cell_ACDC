@@ -12831,3 +12831,99 @@ class ScaleBarPropertiesDialog(widgets.QBaseDialog):
     def ok_cb(self):
         self.cancel = False
         self.close()
+
+class SetColumnNamesDialog(widgets.QBaseDialog):
+    def __init__(
+            self, columnNames, categories, 
+            optionalCategories=None, parent=None
+        ):
+        super().__init__(parent)
+        
+        if not optionalCategories:
+            optionalCategories = None
+        
+        self.cancel = True
+        
+        mainLayout = QVBoxLayout()
+        
+        mainLayout.addWidget(QLabel(html_utils.paragraph(
+            'Assign a column to the following categories:<br>'
+        )))
+        
+        self.categoriesWidgets = {}
+        formLayout = QFormLayout()
+        for row, category in enumerate(categories):
+            combobox = widgets.ComboBox()
+            combobox.addItems(columnNames)
+            if optionalCategories is not None:
+                text = f'* {category}'
+            else:
+                text = category
+            formLayout.addRow(text, combobox)
+            self.categoriesWidgets[category] = combobox
+        
+        if optionalCategories is not None:
+            optionalItems = ['None', *columnNames]
+            for row, category in enumerate(optionalCategories):
+                combobox = widgets.ComboBox()
+                combobox.addItems(optionalItems)
+                formLayout.addRow(category, combobox)
+                self.categoriesWidgets[category] = combobox
+        
+        mainLayout.addLayout(formLayout)
+        if optionalCategories is not None:
+            mainLayout.addSpacing(10)
+            mainLayout.addWidget(QLabel(html_utils.paragraph(
+                '* mandatory', font_size='11px'
+            )))
+        
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+        
+        
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(buttonsLayout)
+        
+        self.setLayout(mainLayout)
+
+        self.setFont(font)
+    
+    def _warnNonUniqueCategories(self, category_1, category_2):
+        txt = html_utils.paragraph(f"""
+            The following categories have the same column assigned to it.<br><br>
+            Columns assigned to categories <b>must be unique</b>.<br><br>
+            Categories with the same column:
+            {html_utils.to_list((category_1, category_2))}
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(self, 'Non-unique columns', txt)
+    
+    def _checkUniqueNames(self):
+        self.textToCategoryMapper = {}
+        for category, combobox in self.categoriesWidgets.items():
+            if combobox.text() == 'None':
+                continue
+            
+            if combobox.text() not in self.textToCategoryMapper:
+                self.textToCategoryMapper[combobox.text()] = category
+                continue
+            
+            sameCategory = self.textToCategoryMapper[combobox.text()]
+            self._warnNonUniqueCategories(category, sameCategory)
+            return False
+        
+        return True
+    
+    def ok_cb(self):
+        proceed = self._checkUniqueNames()
+        if not proceed:
+            return
+        
+        self.selectedColumns = {
+            category:combobox.text() 
+            for category, combobox in self.categoriesWidgets.items() 
+        }
+        self.cancel = False
+        self.close()

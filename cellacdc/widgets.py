@@ -7019,6 +7019,9 @@ class ComboBox(QComboBox):
         self._valueChanged = False
         self.currentTextChanged.connect(self.emitTextChanged)
     
+    def text(self):
+        return self.currentText()
+    
     def emitTextChanged(self, text):
         self._valueChanged = True
         self.sigTextChanged.emit(text)

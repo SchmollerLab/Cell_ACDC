@@ -37,7 +37,8 @@ class CreateConnected3Dsegm(NewThreadMultipleExpBaseUtil):
             hintText='Insert a name for the <b>new 3D segmentation</b> file:',
             existingNames=existingEndnames, 
             helpText=helpText, 
-            allowEmpty=False
+            allowEmpty=False,
+            parent=self
         )
         win.exec_()
         if win.cancel:
