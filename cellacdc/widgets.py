@@ -2341,6 +2341,7 @@ class myMessageBox(QDialog):
             )
             self.currentRow += 1
 
+        self.layout.addItem(QSpacerItem(20, 20))
         self.layout.addLayout(
             self.buttonsLayout, self.currentRow, 0, 1, 2,
             alignment=Qt.AlignRight
