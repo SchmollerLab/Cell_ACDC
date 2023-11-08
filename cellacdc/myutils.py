@@ -51,6 +51,8 @@ from . import models_list_file_path
 from . import github_home_url
 from . import try_input_install_package
 
+ArgSpec = namedtuple('ArgSpec', ['name', 'default', 'type', 'desc'])
+
 def get_module_name(script_file_path):
     parts = pathlib.Path(script_file_path).parts
     parts = list(parts[parts.index('cellacdc')+1:])
@@ -731,16 +733,17 @@ def listdir(path):
         and not f == 'recovery'
     ])
 
-def insertModelArgSpect(params, param_name, param_value, param_type=None):
-    ArgSpec = namedtuple('ArgSpec', ['name', 'default', 'type'])
-    
+def insertModelArgSpect(
+        params, param_name, param_value, param_type=None, desc=''
+    ):
     updated_params = []
     for param in params:
         if param.name == param_name:
             if param_type is None:
                 param_type = param.type
             new_param = ArgSpec(
-                name=param_name, default=param_value, type=param_type
+                name=param_name, default=param_value, type=param_type,
+                desc=desc
             )
             updated_params.append(new_param)
         else:
@@ -748,23 +751,16 @@ def insertModelArgSpect(params, param_name, param_value, param_type=None):
     return updated_params
 
 def getModelArgSpec(acdcSegment):
-    ArgSpec = namedtuple('ArgSpec', ['name', 'default', 'type'])
-
     init_ArgSpec = inspect.getfullargspec(acdcSegment.Model.__init__)
     init_kwargs_type_hints = typing.get_type_hints(acdcSegment.Model.__init__)
     try:
         init_ArgSpec.args.remove('segm_data')
     except Exception as e:
         pass
-    init_params = []
-    if len(init_ArgSpec.args)>1:
-        for arg, default in zip(init_ArgSpec.args[1:], init_ArgSpec.defaults):
-            if arg in init_kwargs_type_hints:
-                _type = init_kwargs_type_hints[arg]
-            else:
-                _type = type(default)
-            param = ArgSpec(name=arg, default=default, type=_type)
-            init_params.append(param)
+    init_doc = acdcSegment.Model.__init__.__doc__
+    init_params = params_to_ArgSpec(
+        init_ArgSpec, init_kwargs_type_hints, 1, init_doc
+    )
 
     segment_ArgSpec = inspect.getfullargspec(acdcSegment.Model.segment)
     segment_kwargs_type_hints = typing.get_type_hints(acdcSegment.Model.segment)
@@ -773,60 +769,108 @@ def getModelArgSpec(acdcSegment):
     except Exception as e:
         pass
     
-    segment_params = []
-    if len(segment_ArgSpec.args)>2:
-        iter = zip(segment_ArgSpec.args[2:], segment_ArgSpec.defaults)
-        for arg, default in iter:
-            if arg in segment_kwargs_type_hints:
-                _type = segment_kwargs_type_hints[arg]
-            else:
-                _type = type(default)
-            param = ArgSpec(name=arg, default=default, type=_type)
-            segment_params.append(param)
+    segment_doc = acdcSegment.Model.segment.__doc__
+    segment_params = params_to_ArgSpec(
+        segment_ArgSpec, segment_kwargs_type_hints, 2, segment_doc
+    )
     return init_params, segment_params
 
-def getTrackerArgSpec(trackerModule, realTime=False):
-    ArgSpec = namedtuple('ArgSpec', ['name', 'default', 'type'])
+def parse_model_param_doc(name, next_param_name=None, docstring=None):
+    if docstring is None:
+        return ''
+    
+    try:
+        # Extract parameter description from 'param : ...'
+        start_text = f'{name} : '
+        doc_start_idx = docstring.find(start_text) + len(start_text)
+        
+        if next_param_name is None:
+            doc_stop_idx = docstring.find('Returns')
+        else:
+            doc_stop_idx = docstring.find(f'{next_param_name} : ')
 
+        param_doc = docstring[doc_start_idx:doc_stop_idx]
+        
+        # Start at first end of line
+        param_doc = param_doc[param_doc.find('\n')+1:]
+        
+        # Replace multiples spaces with single space
+        param_doc = re.sub(' +', ' ', param_doc)
+        
+        # Remove trailing spaces
+        param_doc = param_doc.strip()
+    except Exception as err:
+        param_doc = ''
+    
+    return param_doc
+
+def params_to_ArgSpec(
+        fullargspecs, type_hints, start_idx, docstring, args_to_skip=None
+    ):
+    params = []
+    if len(fullargspecs.args) <= start_idx:
+        return params
+    
+    if fullargspecs.defaults is None:
+        return params
+    
+    if args_to_skip is None:
+        args_to_skip = set()
+    
+    ip = start_idx
+    num_params = len(fullargspecs.args)
+    for arg, default in zip(fullargspecs.args[ip:], fullargspecs.defaults):
+        if arg in args_to_skip:
+            continue
+        
+        if arg in type_hints:
+            _type = type_hints[arg]
+        else:
+            _type = type(default)
+        
+        next_param_name = None
+        if ip+1 < num_params:
+            next_param_name = fullargspecs.args[ip+1]
+        
+        param_doc = parse_model_param_doc(
+            arg, 
+            next_param_name=next_param_name,
+            docstring=docstring
+        )
+        param = ArgSpec(
+            name=arg, default=default, type=_type, desc=param_doc
+        )
+        params.append(param)
+        ip += 1
+    return params
+
+def getTrackerArgSpec(trackerModule, realTime=False):
     init_ArgSpec = inspect.getfullargspec(trackerModule.tracker.__init__)
     init_kwargs_type_hints = typing.get_type_hints(
         trackerModule.tracker.__init__
     )
-    init_params = []
-    if len(init_ArgSpec.args)>1 and init_ArgSpec.defaults is not None:
-        for arg, default in zip(init_ArgSpec.args[1:], init_ArgSpec.defaults):
-            if arg in init_kwargs_type_hints:
-                _type = init_kwargs_type_hints[arg]
-            else:
-                _type = type(default)
-            param = ArgSpec(name=arg, default=default, type=_type)
-            init_params.append(param)
-
+    init_doc = trackerModule.tracker.__init__.__doc__
+    init_params = params_to_ArgSpec(
+        init_ArgSpec, init_kwargs_type_hints, 1, init_doc
+    )
     if realTime:
         track_ArgSpec = inspect.getfullargspec(trackerModule.tracker.track_frame)
+        track_kwargs_type_hints = typing.get_type_hints(
+            trackerModule.tracker.track_frame
+        )
+        track_doc = trackerModule.tracker.track_frame.__doc__
     else:
         track_ArgSpec = inspect.getfullargspec(trackerModule.tracker.track)
-    track_params = []
-    track_kwargs_type_hints = typing.get_type_hints(
-        trackerModule.tracker.track
-    )
-    # Start at first kwarg
-    if len(track_ArgSpec.args)>1 and track_ArgSpec.defaults is not None:
-        kwargs_start_idx = len(track_ArgSpec.args) - len(track_ArgSpec.defaults)
-        iter = zip(
-            track_ArgSpec.args[kwargs_start_idx:], track_ArgSpec.defaults
+        track_kwargs_type_hints = typing.get_type_hints(
+            trackerModule.tracker.track
         )
-        for arg, default in iter:
-            if arg == 'signals':
-                continue
-            if arg == 'export_to':
-                continue
-            if arg in track_kwargs_type_hints:
-                _type = track_kwargs_type_hints[arg]
-            else:
-                _type = type(default)
-            param = ArgSpec(name=arg, default=default, type=_type)
-            track_params.append(param)
+        track_doc = trackerModule.tracker.track.__doc__
+    
+    kwargs_start_idx = len(track_ArgSpec.args) - len(track_ArgSpec.defaults)
+    track_params = params_to_ArgSpec(
+        track_ArgSpec, track_kwargs_type_hints, kwargs_start_idx, track_doc,
+        args_to_skip={'signals', 'export_to'}
+    )
     return init_params, track_params
 
 def getDefault_SegmInfo_df(posData, filename):

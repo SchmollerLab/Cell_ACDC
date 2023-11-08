@@ -7,9 +7,8 @@ import matplotlib.pyplot as plt
 
 from importlib import import_module
 
+from cellacdc._run import _setup_app
 from cellacdc import apps, myutils, widgets, data, core, load
-
-from qtpy.QtWidgets import QApplication, QStyleFactory
 
 import skimage.color
 
@@ -35,9 +34,8 @@ posData.loadOtherFiles(load_segm_data=False, load_metadata=True)
 
 img = image_data[FRAME_I]
 
-# Ask which model to use --> Test if new model is visible
-app = QApplication(sys.argv)
-app.setStyle(QStyleFactory.create('Fusion'))
+app, splashScreen = _setup_app(splashscreen=True)  
+splashScreen.close()
 
 cellacdc_path = os.path.dirname(os.path.abspath(__file__))
 models = myutils.get_list_of_models()

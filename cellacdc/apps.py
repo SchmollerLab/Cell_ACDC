@@ -10478,6 +10478,11 @@ class QDialogModelParams(QDialog):
             groupBoxLayout.addWidget(self.channelCombobox, start_row, 1, 1, 2)
             if self.currentChannelName is not None:
                 self.channelCombobox.setCurrentText(self.currentChannelName)
+            infoText = (
+                'This tracker requires the intensity image as input.'
+            )
+            infoButton = self.getInfoButton('Input image', infoText)
+            groupBoxLayout.addWidget(infoButton, start_row, 3)
             start_row += 1
         
         if self.model_name.find('cellpose') != -1 and addChannelSelector:
@@ -10485,6 +10490,12 @@ class QDialogModelParams(QDialog):
             groupBoxLayout.addWidget(label, start_row, 0, alignment=Qt.AlignRight)
             self.channelsCombobox = widgets.QCenteredComboBox()
             groupBoxLayout.addWidget(self.channelsCombobox, start_row, 1, 1, 2)
+            infoText = (
+                'Some cellpose models can merge two channels (e.g., cyto + '
+                'nucleus) to obtain better perfomance.'
+            )
+            infoButton = self.getInfoButton('Second channel', infoText)
+            groupBoxLayout.addWidget(infoButton, start_row, 3)
             start_row += 1
 
         if self.segmFileEndnames is not None and addChannelSelector:
@@ -10576,7 +10587,11 @@ class QDialogModelParams(QDialog):
                 valueSetter = QLineEdit.setText
                 valueGetter = QLineEdit.text
                 groupBoxLayout.addWidget(lineEdit, row, 1, 1, 2)
-
+            
+            if ArgSpec.desc:
+                infoButton = self.getInfoButton(ArgSpec.name, ArgSpec.desc)
+                groupBoxLayout.addWidget(infoButton, row, 3)
+            
             argsInfo = ArgWidget(
                 name=ArgSpec.name,
                 type=ArgSpec.type,
@@ -10587,9 +10602,31 @@ class QDialogModelParams(QDialog):
             )
             ArgsWidgets_list.append(argsInfo)
 
+        groupBoxLayout.setColumnStretch(0, 0)
+        groupBoxLayout.setColumnStretch(1, 1)
+        groupBoxLayout.setColumnStretch(3, 0)
+        
         groupBox.setLayout(groupBoxLayout)
         return groupBox, ArgsWidgets_list
 
+    def getInfoButton(self, param_name, infoText):
+        infoButton = widgets.infoPushButton()
+        infoButton.param_name = param_name
+        infoButton.setToolTip(
+            f'Click to get more info about `{param_name}` parameter...'
+        )
+        infoButton.infoText = infoText
+        infoButton.clicked.connect(self.showInfoParam)
+        return infoButton
+    
+    def showInfoParam(self):
+        text = self.sender().infoText
+        text = text.replace('\n', '<br>')
+        text = html_utils.paragraph(text)
+        param_name = self.sender().param_name
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.information(self, f'Info about `{param_name}` parameter', text)
+    
     def restoreDefaultInit(self):
         for argWidget in self.init_argsWidgets:
             defaultVal = argWidget.defaultVal
