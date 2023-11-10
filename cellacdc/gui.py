@@ -1,3 +1,4 @@
+import gc
 import sys
 import os
 import shutil
@@ -1384,6 +1385,10 @@ class guiWin(QMainWindow):
         # fileToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
         fileToolBar.setMovable(False)
 
+        self.segmNdimIndicatorAction = fileToolBar.addWidget(
+            self.segmNdimIndicator
+        )
+        self.segmNdimIndicatorAction.setVisible(False)
         fileToolBar.addAction(self.newAction)
         fileToolBar.addAction(self.openAction)
         fileToolBar.addAction(self.manageVersionsAction)
@@ -2442,6 +2447,11 @@ class guiWin(QMainWindow):
 
     def gui_createActions(self):
         # File actions
+        self.segmNdimIndicator = widgets.ToolButtonTextIcon(text='')
+        self.segmNdimIndicator.setCheckable(True)
+        self.segmNdimIndicator.setChecked(True)
+        self.segmNdimIndicator.setDisabled(True)        
+        
         self.newAction = QAction(self)
         self.newAction.setText("&New")
         self.newAction.setIcon(QIcon(":file-new.svg"))
@@ -12277,9 +12287,15 @@ class guiWin(QMainWindow):
                 {editIDinfo}<br><br>
                 Do you want to keep these edits or ignore them?
             """)
-            _, keepManualEditButton, _ = msg.question(
+            keepManualEditButton = widgets.okPushButton(
+                'Keep manually edited IDs'
+            )
+            ignoreButton = widgets.noPushButton(
+                'Ignore manually edited IDs'
+            )
+            msg.question(
                 self, 'Repeat tracking mode', txt, 
-                buttonsTexts=('Keep manually edited IDs', 'Ignore')
+                buttonsTexts=(keepManualEditButton, ignoreButton)
             )
             if msg.cancel:
                 return
@@ -14502,6 +14518,13 @@ class guiWin(QMainWindow):
         self.initManualBackgroundImage()
 
         self.setWindowTitle(f'Cell-ACDC - GUI - "{posData.exp_path}"')
+
+        if self.isSegm3D:
+            self.segmNdimIndicator.setText('3D')
+        else:
+            self.segmNdimIndicator.setText('2D')
+            
+        self.segmNdimIndicatorAction.setVisible(True)
 
         self.guiTabControl.addChannels([posData.user_ch_name])
         self.showPropsDockButton.setDisabled(False)
@@ -20767,6 +20790,8 @@ class guiWin(QMainWindow):
         self.restoreDefaultColors()
         self.curvToolButton.setChecked(False)
 
+        self.segmNdimIndicatorAction.setVisible(False)
+        
         self.navigateToolBar.hide()
         self.ccaToolBar.hide()
         self.editToolBar.hide()
