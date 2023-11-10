@@ -782,6 +782,10 @@ def parse_model_param_doc(name, next_param_name=None, docstring=None):
     try:
         # Extract parameter description from 'param : ...'
         start_text = f'{name} : '
+        if docstring.find(start_text) == -1:
+            # Parameter not present in docstring
+            return ''
+        
         doc_start_idx = docstring.find(start_text) + len(start_text)
         
         if next_param_name is None:
