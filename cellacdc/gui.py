@@ -1,3 +1,4 @@
+import gc
 import sys
 import os
 import shutil
@@ -12277,9 +12278,15 @@ class guiWin(QMainWindow):
                 {editIDinfo}<br><br>
                 Do you want to keep these edits or ignore them?
             """)
-            _, keepManualEditButton, _ = msg.question(
+            keepManualEditButton = widgets.okPushButton(
+                'Keep manually edited IDs'
+            )
+            ignoreButton = widgets.noPushButton(
+                'Ignore manually edited IDs'
+            )
+            msg.question(
                 self, 'Repeat tracking mode', txt, 
-                buttonsTexts=('Keep manually edited IDs', 'Ignore')
+                buttonsTexts=(keepManualEditButton, ignoreButton)
             )
             if msg.cancel:
                 return
