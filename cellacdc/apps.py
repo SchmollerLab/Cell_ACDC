@@ -10326,20 +10326,20 @@ class QDialogModelParams(QDialog):
 
         cancelButton = widgets.cancelPushButton(' Cancel ')
         okButton = widgets.okPushButton(' Ok ')
-        infoButton = widgets.infoPushButton(' Help... ')
+        # infoButton = widgets.infoPushButton(' Help... ')
         # restoreDefaultButton = widgets.reloadPushButton('Restore default')
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
         buttonsLayout.addSpacing(20)
-        buttonsLayout.addWidget(infoButton)
+        # buttonsLayout.addWidget(infoButton)
         # buttonsLayout.addWidget(restoreDefaultButton)
         buttonsLayout.addWidget(okButton)
 
         buttonsLayout.setContentsMargins(0, 10, 0, 10)
 
         okButton.clicked.connect(self.ok_cb)
-        infoButton.clicked.connect(self.info_params)
+        # infoButton.clicked.connect(self.info_params)
         cancelButton.clicked.connect(self.close)
         # restoreDefaultButton.clicked.connect(self.restoreDefault)
 
@@ -10752,38 +10752,6 @@ class QDialogModelParams(QDialog):
             postProcessSection, 'applyPostProcessing'
         )
         self.postProcessGroupbox.setChecked(applyPostProcessing)
-
-    def info_params(self):
-        from cellacdc.models import CELLPOSE_MODELS, STARDIST_MODELS, OMNI_MODELS
-        self.infoWin = widgets.myMessageBox()
-        self.infoWin.setWindowTitle('Model parameters info')
-        self.infoWin.setIcon()
-        cp_models = [f'&nbsp;&nbsp;- {m}'for m in CELLPOSE_MODELS]
-        cp_models = '<br>'.join(cp_models)
-        stardist_models = [f'  - {m}'for m in STARDIST_MODELS]
-        stardist_models = '<br>'.join(stardist_models)
-        if OMNI_MODELS:
-            omni_models = [f'  - {m}'for m in OMNI_MODELS]
-            omni_models = '<br>'.join(omni_models)
-        
-        _models = None
-        if self.model_name.lower() == 'cellpose':
-            _models = cp_models
-        elif self.model_name.lower() == 'stardist':
-            _models = stardist_models
-        elif self.model_name.lower() == 'omnipose':
-            _models = omni_models
-        if _models is None:
-            return
-             
-        txt = html_utils.paragraph(
-            'These are the following models available for '
-            f'<code>{self.model_name}</code>:<br><br>'
-            f'{_models}<br>'
-        )
-        self.infoWin.addText(txt)
-        self.infoWin.addButton(' Ok ')
-        self.infoWin.show()
 
     def createSeeHereLabel(self, url):
         htmlTxt = f'<a href=\"{url}">here</a>'
