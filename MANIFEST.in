@@ -20,6 +20,8 @@ exclude cellacdc/temp/segm_last_sel.csv
 exclude cellacdc/temp/settings.csv
 exclude cellacdc/utils/deprecated
 
+prune cellacdc/docs/source/images
+
 exclude cellacdc/models/YeastMate/detectron2
 exclude cellacdc/models/YeastMate/pycocotools
 
