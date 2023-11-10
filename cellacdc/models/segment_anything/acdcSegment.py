@@ -49,13 +49,17 @@ class Model:
             min_mask_region_area=min_mask_region_area,
         )
     
-    def segment(self, image: np.ndarray, automatic_removal_of_background: bool=True) -> np.ndarray:
+    def segment(
+            self, image: np.ndarray, 
+            automatic_removal_of_background: bool=True
+        ) -> np.ndarray:
         is_rgb_image = image.shape[-1] == 3 or image.shape[-1] == 4
         is_z_stack = (image.ndim==3 and not is_rgb_image) or (image.ndim==4)
         if is_rgb_image:
             labels = np.zeros(image.shape[:-1], dtype=np.uint32)
         else:
             labels = np.zeros(image.shape, dtype=np.uint32)
+        
         if is_z_stack:
             for z, img in enumerate(image):
                 labels[z] = self._segment_2D_image(img)

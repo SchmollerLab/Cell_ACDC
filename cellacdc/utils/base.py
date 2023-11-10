@@ -107,7 +107,10 @@ class NewThreadMultipleExpBaseUtil(QDialog):
         )     
         self.worker.signals.sigSelectSpotmaxRun.connect(
             self.selectSpotmaxRun
-        )   
+        )  
+        self.worker.signals.sigSelectFile.connect(
+            self.selectFile
+        )  
         self.worker.signals.sigPermissionError.connect(self.warnPermissionError)
         self.worker.signals.initProgressBar.connect(self.workerInitProgressbar)
         self.worker.signals.sigInitInnerPbar.connect(self.workerInitInnerPbar)
@@ -254,7 +257,22 @@ class NewThreadMultipleExpBaseUtil(QDialog):
         
         self.selectedSpotmaxRuns = selectWindow.selectedItemsText
         self.worker.waitCond.wakeAll()
-        
+    
+    def selectFile(self, start_dir, caption, filters):
+        from qtpy.compat import getopenfilename
+        filepath = getopenfilename(
+            parent=self, 
+            caption=caption,
+            basedir=start_dir,
+            filters=filters
+        )[0]
+        if not filepath:
+            self.worker.abort = True
+            self.worker.waitCond.wakeAll()
+            return
+
+        self.selectedFilepath = filepath
+        self.worker.waitCond.wakeAll()
     
     def selectSegmFileLoadData(self, exp_path, pos_foldernames):
         # Get end name of every existing segmentation file

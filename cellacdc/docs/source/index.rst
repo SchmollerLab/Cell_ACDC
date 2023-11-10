@@ -75,12 +75,13 @@ Contents
    citation
    installation
    getting-started
+   contributing
    tooltips
    models
    bdir_corr
    datastruc
    release-notes
-   other
+   resources
 
 Important links
 ---------------

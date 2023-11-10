@@ -10478,6 +10478,11 @@ class QDialogModelParams(QDialog):
             groupBoxLayout.addWidget(self.channelCombobox, start_row, 1, 1, 2)
             if self.currentChannelName is not None:
                 self.channelCombobox.setCurrentText(self.currentChannelName)
+            infoText = (
+                'This tracker requires the intensity image as input.'
+            )
+            infoButton = self.getInfoButton('Input image', infoText)
+            groupBoxLayout.addWidget(infoButton, start_row, 3)
             start_row += 1
         
         if self.model_name.find('cellpose') != -1 and addChannelSelector:
@@ -10485,6 +10490,12 @@ class QDialogModelParams(QDialog):
             groupBoxLayout.addWidget(label, start_row, 0, alignment=Qt.AlignRight)
             self.channelsCombobox = widgets.QCenteredComboBox()
             groupBoxLayout.addWidget(self.channelsCombobox, start_row, 1, 1, 2)
+            infoText = (
+                'Some cellpose models can merge two channels (e.g., cyto + '
+                'nucleus) to obtain better perfomance.'
+            )
+            infoButton = self.getInfoButton('Second channel', infoText)
+            groupBoxLayout.addWidget(infoButton, start_row, 3)
             start_row += 1
 
         if self.segmFileEndnames is not None and addChannelSelector:
@@ -10576,7 +10587,11 @@ class QDialogModelParams(QDialog):
                 valueSetter = QLineEdit.setText
                 valueGetter = QLineEdit.text
                 groupBoxLayout.addWidget(lineEdit, row, 1, 1, 2)
-
+            
+            if ArgSpec.desc:
+                infoButton = self.getInfoButton(ArgSpec.name, ArgSpec.desc)
+                groupBoxLayout.addWidget(infoButton, row, 3)
+            
             argsInfo = ArgWidget(
                 name=ArgSpec.name,
                 type=ArgSpec.type,
@@ -10587,9 +10602,32 @@ class QDialogModelParams(QDialog):
             )
             ArgsWidgets_list.append(argsInfo)
 
+        groupBoxLayout.setColumnStretch(0, 0)
+        groupBoxLayout.setColumnStretch(1, 1)
+        groupBoxLayout.setColumnStretch(3, 0)
+        
         groupBox.setLayout(groupBoxLayout)
         return groupBox, ArgsWidgets_list
 
+    def getInfoButton(self, param_name, infoText):
+        infoButton = widgets.infoPushButton()
+        infoButton.param_name = param_name
+        infoButton.setToolTip(
+            f'Click to get more info about `{param_name}` parameter...'
+        )
+        infoButton.infoText = infoText
+        infoButton.clicked.connect(self.showInfoParam)
+        return infoButton
+    
+    def showInfoParam(self):
+        text = self.sender().infoText
+        text = text.replace('\n', '<br>')
+        text = html_utils.rst_urls_to_html(text)
+        text = html_utils.paragraph(text)
+        param_name = self.sender().param_name
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.information(self, f'Info about `{param_name}` parameter', text)
+    
     def restoreDefaultInit(self):
         for argWidget in self.init_argsWidgets:
             defaultVal = argWidget.defaultVal
@@ -12829,5 +12867,101 @@ class ScaleBarPropertiesDialog(widgets.QBaseDialog):
         return kwargs
     
     def ok_cb(self):
+        self.cancel = False
+        self.close()
+
+class SetColumnNamesDialog(widgets.QBaseDialog):
+    def __init__(
+            self, columnNames, categories, 
+            optionalCategories=None, parent=None
+        ):
+        super().__init__(parent)
+        
+        if not optionalCategories:
+            optionalCategories = None
+        
+        self.cancel = True
+        
+        mainLayout = QVBoxLayout()
+        
+        mainLayout.addWidget(QLabel(html_utils.paragraph(
+            'Assign a column to the following categories:<br>'
+        )))
+        
+        self.categoriesWidgets = {}
+        formLayout = QFormLayout()
+        for row, category in enumerate(categories):
+            combobox = widgets.ComboBox()
+            combobox.addItems(columnNames)
+            if optionalCategories is not None:
+                text = f'* {category}'
+            else:
+                text = category
+            formLayout.addRow(text, combobox)
+            self.categoriesWidgets[category] = combobox
+        
+        if optionalCategories is not None:
+            optionalItems = ['None', *columnNames]
+            for row, category in enumerate(optionalCategories):
+                combobox = widgets.ComboBox()
+                combobox.addItems(optionalItems)
+                formLayout.addRow(category, combobox)
+                self.categoriesWidgets[category] = combobox
+        
+        mainLayout.addLayout(formLayout)
+        if optionalCategories is not None:
+            mainLayout.addSpacing(10)
+            mainLayout.addWidget(QLabel(html_utils.paragraph(
+                '* mandatory', font_size='11px'
+            )))
+        
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+        
+        
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(buttonsLayout)
+        
+        self.setLayout(mainLayout)
+
+        self.setFont(font)
+    
+    def _warnNonUniqueCategories(self, category_1, category_2):
+        txt = html_utils.paragraph(f"""
+            The following categories have the same column assigned to it.<br><br>
+            Columns assigned to categories <b>must be unique</b>.<br><br>
+            Categories with the same column:
+            {html_utils.to_list((category_1, category_2))}
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(self, 'Non-unique columns', txt)
+    
+    def _checkUniqueNames(self):
+        self.textToCategoryMapper = {}
+        for category, combobox in self.categoriesWidgets.items():
+            if combobox.text() == 'None':
+                continue
+            
+            if combobox.text() not in self.textToCategoryMapper:
+                self.textToCategoryMapper[combobox.text()] = category
+                continue
+            
+            sameCategory = self.textToCategoryMapper[combobox.text()]
+            self._warnNonUniqueCategories(category, sameCategory)
+            return False
+        
+        return True
+    
+    def ok_cb(self):
+        proceed = self._checkUniqueNames()
+        if not proceed:
+            return
+        
+        self.selectedColumns = {
+            category:combobox.text() 
+            for category, combobox in self.categoriesWidgets.items() 
+        }
         self.cancel = False
         self.close()

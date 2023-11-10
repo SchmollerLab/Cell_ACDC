@@ -2341,6 +2341,7 @@ class myMessageBox(QDialog):
             )
             self.currentRow += 1
 
+        self.layout.addItem(QSpacerItem(20, 20))
         self.layout.addLayout(
             self.buttonsLayout, self.currentRow, 0, 1, 2,
             alignment=Qt.AlignRight
@@ -7018,6 +7019,9 @@ class ComboBox(QComboBox):
         self._previousText = None
         self._valueChanged = False
         self.currentTextChanged.connect(self.emitTextChanged)
+    
+    def text(self):
+        return self.currentText()
     
     def emitTextChanged(self, text):
         self._valueChanged = True

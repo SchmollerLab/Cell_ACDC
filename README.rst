@@ -2,7 +2,7 @@
    :width: 80
 
 |acdclogo| Cell-ACDC
-=====================
+====================
 
 A GUI-based Python framework for **segmentation**, **tracking**, **cell cycle annotations** and **quantification** of microscopy data
 -------------------------------------------------------------------------------------------------------------------------------------
@@ -97,6 +97,7 @@ our* \ `publication <https://bmcbiol.biomedcentral.com/articles/10.1186/s12915-0
 
 Is it only about segmentation?
 ------------------------------
+
 Of course not! Cell-ACDC automatically computes **several single-cell
 numerical features** such as cell area and cell volume, plus the mean,
 max, median, sum and quantiles of any additional fluorescent channel's
@@ -126,15 +127,29 @@ Resources
 - **Report issues, request a feature or ask questions** by opening a new issue `here <https://github.com/SchmollerLab/Cell_ACDC/issues>`__
 - X `thread <https://twitter.com/frank_pado/status/1443957038841794561?s=20>`__
 
+Citing Cell-ACDC and the available models
+=========================================
+
+If you find Cell-ACDC useful, please cite it as follows:
+
+   Padovani, F., Mairhörmann, B., Falter-Braun, P., Lengefeld, J. & 
+   Schmoller, K. M. Segmentation, tracking and cell cycle analysis of live-cell 
+   imaging data with Cell-ACDC. *BMC Biology* 20, 174 (2022). 
+   DOI: `10.1186/s12915-022-01372-6 <https://doi.org/10.1186/s12915-022-01372-6>`_ 
+
+**IMPORTANT**: when citing Cell-ACDC make sure to also cite the paper of the 
+segmentation models and trackers you used! 
+See `here <https://cell-acdc.readthedocs.io/en/latest/citation.html>`_ for a list of models currently available in Cell-ACDC.
+
 Contact
 =======
-**Do not hesitate to contact me** here on GitHub (by opening an issue)
-or directly at my email padovaf@tcd.ie for any problem and/or feedback
+**Do not hesitate to contact us** here on GitHub (by opening an issue)
+or directly at the email padovaf@tcd.ie for any problem and/or feedback
 on how to improve the user experience!
 
-Important links
-===============
+Contributing
+============
 
-* `GitHub <https://github.com/SchmollerLab/Cell_ACDC>`__
-* `Publication <https://bmcbiol.biomedcentral.com/articles/10.1186/s12915-022-01372-6>`__
-* `Forum <https://forum.image.sc/tag/Cell-ACDC>`__
+At Cell-ACDC we encourage contributions to the code! Please read our 
+`contributing guide <https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/contributing.rst>`_ 
+to get started.

@@ -2200,3 +2200,15 @@ class SegmKernel(_WorkflowKernel):
 
         self.logger_func(f'{posData.relPath} segmented!')
         self.signals.finished.emit(t_end-t0)
+
+def filter_segm_objs_from_table_coords(lab, df):
+    cols = []
+    if lab.ndim == 3:
+        cols = ['z']
+    cols.extend(('y', 'x'))
+    coords = df[cols].values.T
+    IDs_to_keep = lab[tuple(coords)]
+    mask_to_keep = np.isin(lab, IDs_to_keep)
+    filtered_lab = lab.copy()
+    filtered_lab[~mask_to_keep] = 0
+    return filtered_lab

@@ -2,7 +2,7 @@ from .. import apps, myutils, workers, widgets, html_utils
 
 from .base import NewThreadMultipleExpBaseUtil
 
-class CreateConnected3Dsegm(NewThreadMultipleExpBaseUtil):
+class FilterObjsFromCoordsTable(NewThreadMultipleExpBaseUtil):
     def __init__(
             self, expPaths, app, title: str, infoText: str, 
             progressDialogueTitle: str, parent=None
@@ -15,8 +15,9 @@ class CreateConnected3Dsegm(NewThreadMultipleExpBaseUtil):
         self.expPaths = expPaths
     
     def runWorker(self):
-        self.worker = workers.CreateConnected3Dsegm(self)
+        self.worker = workers.FilterObjsFromCoordsTable(self)
         self.worker.sigAskAppendName.connect(self.askAppendName)
+        self.worker.sigSetColumnsNames.connect(self.setColumnsNames)
         self.worker.sigAborted.connect(self.workerAborted)
         super().runWorker(self.worker)
     
@@ -26,15 +27,13 @@ class CreateConnected3Dsegm(NewThreadMultipleExpBaseUtil):
     def askAppendName(self, basename, existingEndnames):
         helpText = (
             """
-            The new 3D segmentation file will be saved with a different 
-            file name.<br><br>
-            Insert a name to append to the end of the new name. The rest of 
-            the name will be the same as the original file.
+            You can choose to save a new file for the filtered segmentation 
+            or overwrite the existing one.
             """
         )
         win = apps.filenameDialog(
             basename=basename,
-            hintText='Insert a name for the <b>new 3D segmentation</b> file:',
+            hintText='Insert a name for the <b>filtered segmentation</b> file:',
             existingNames=existingEndnames, 
             helpText=helpText, 
             allowEmpty=False,
@@ -49,14 +48,28 @@ class CreateConnected3Dsegm(NewThreadMultipleExpBaseUtil):
         self.worker.appendedName = win.entryText
         self.worker.waitCond.wakeAll()
     
+    def setColumnsNames(self, columns, categories, optionalCategories):
+        win = apps.SetColumnNamesDialog(
+            columns, categories, optionalCategories=optionalCategories, 
+            parent=self
+        )
+        win.exec_()
+        if win.cancel:
+            self.worker.abort = True
+            self.worker.waitCond.wakeAll()
+            return 
+        
+        self.selectedColumnsPerCategory = win.selectedColumns
+        self.worker.waitCond.wakeAll()
+    
     def workerAborted(self):
         self.workerFinished(None, aborted=True)
     
     def workerFinished(self, worker, aborted=False):
         if aborted:
-            txt = '3D segmentation mask creation process aborted.'
+            txt = 'Filter segmented objects from coordinates table process aborted.'
         else:
-            txt = '3D segmentation mask creation process completed.'
+            txt = 'Filter segmented objects from coordinates table process completed.'
         self.logger.info(txt)
         msg = widgets.myMessageBox(wrapText=False, showCentered=False)
         if aborted:

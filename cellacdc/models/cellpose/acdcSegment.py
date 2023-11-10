@@ -43,38 +43,39 @@ class Model:
     def _eval(self, image, **kwargs):
         return self.model.eval(image.astype(np.float32), **kwargs)[0]
     
-    def _initialize_image(self, image):
+    def _initialize_image(self, image):        
         # See cellpose.gui.io._initialize_images
         if image.ndim > 3:
-            # make tiff Z x channels x W x H
-            if image.shape[0]<4:
-                # tiff is channels x Z x W x H
-                image = np.transpose(image, (1,0,2,3))
-            elif image.shape[-1]<4:
-                # tiff is Z x W x H x channels
-                image = np.transpose(image, (0,3,1,2))
-            # fill in with blank channels to make 3 channels
-            if image.shape[1] < 3:
-                shape = image.shape
-                shape_to_concat = (shape[0], 3-shape[1], shape[2], shape[3])
-                to_concat = np.zeros(shape_to_concat, dtype=np.uint8)
-                image = np.concatenate((image, to_concat), axis=1)
-            image = np.transpose(image, (0,2,3,1))
+            raise TypeError(
+                f'Image is 4D with shape {image.shape}.'
+                'Only 2D or 3D images are supported by cellpose in Cell-ACDC'
+            )
+            # # make tiff Z x channels x W x H
+            # if image.shape[0]<4:
+            #     # tiff is channels x Z x W x H
+            #     image = np.transpose(image, (1,0,2,3))
+            # elif image.shape[-1]<4:
+            #     # tiff is Z x W x H x channels
+            #     image = np.transpose(image, (0,3,1,2))
+            # # fill in with blank channels to make 3 channels
+            # if image.shape[1] < 3:
+            #     shape = image.shape
+            #     shape_to_concat = (shape[0], 3-shape[1], shape[2], shape[3])
+            #     to_concat = np.zeros(shape_to_concat, dtype=np.uint8)
+            #     image = np.concatenate((image, to_concat), axis=1)
+            # image = np.transpose(image, (0,2,3,1))
         elif image.ndim==3:
-            if image.shape[0] < 5:
-                image = np.transpose(image, (1,2,0))
+            # if image.shape[0] < 5:
+            #     # Move first axis to last since we interpret this as RGB channels
+            #     image = np.transpose(image, (1,2,0))
             if image.shape[-1] < 3:
                 shape = image.shape
-                #if parent.autochannelbtn.isChecked():
-                #    image = normalize99(image) * 255
                 shape_to_concat = (shape[0], shape[1], 3-shape[2])
                 to_concat = np.zeros(shape_to_concat,dtype=type(image[0,0,0]))
                 image = np.concatenate((image, to_concat), axis=-1)
                 image = image[np.newaxis,...]
             elif image.shape[-1]<5 and image.shape[-1]>2:
                 image = image[:,:,:3]
-                #if parent.autochannelbtn.isChecked():
-                #    image = normalize99(image) * 255
                 image = image[np.newaxis,...]
         else:
             image = image[np.newaxis,...]    
@@ -88,6 +89,7 @@ class Model:
         image *= 255
         if image.ndim < 4:
             image = image[:,:,:,np.newaxis]
+        
         return image
     
     def to_rgb_stack(self, first_ch_data, second_ch_data):
