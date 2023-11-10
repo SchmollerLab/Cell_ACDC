@@ -1709,7 +1709,13 @@ class guiWin(QMainWindow):
         self.widgetsWithShortcut['Annotate cell as dead'] = self.ripCellButton
 
         editToolBar.addAction(self.addDelRoiAction)
-        editToolBar.addAction(self.addDelPolyLineRoiAction)
+        # editToolBar.addAction(self.addDelPolyLineRoiAction)
+        
+        self.addDelPolyLineRoiAction = editToolBar.addWidget(
+            self.addDelPolyLineRoiButton
+        )
+        self.addDelPolyLineRoiAction.roiType = 'polyline'
+        
         editToolBar.addAction(self.delBorderObjAction)
 
         self.addDelRoiAction.toolbar = editToolBar
@@ -2747,13 +2753,12 @@ class guiWin(QMainWindow):
         self.addDelRoiAction.setIcon(QIcon(":addDelRoi.svg"))
         
         
-        self.addDelPolyLineRoiAction = QAction(self)
-        self.addDelPolyLineRoiAction.setCheckable(True)
-        self.addDelPolyLineRoiAction.roiType = 'polyline'
-        self.addDelPolyLineRoiAction.setIcon(QIcon(":addDelPolyLineRoi.svg"))
-
-        self.checkableButtons.append(self.addDelPolyLineRoiAction)
-        self.LeftClickButtons.append(self.addDelPolyLineRoiAction)
+        self.addDelPolyLineRoiButton = QToolButton(self)
+        self.addDelPolyLineRoiButton.setCheckable(True)
+        self.addDelPolyLineRoiButton.setIcon(QIcon(":addDelPolyLineRoi.svg"))
+        
+        self.checkableButtons.append(self.addDelPolyLineRoiButton)
+        self.LeftClickButtons.append(self.addDelPolyLineRoiButton)
        
 
         self.delBorderObjAction = QAction(self)
@@ -3036,7 +3041,7 @@ class guiWin(QMainWindow):
         self.segmentToolAction.triggered.connect(self.segmentToolActionTriggered)
 
         self.addDelRoiAction.triggered.connect(self.addDelROI)
-        self.addDelPolyLineRoiAction.toggled.connect(self.addDelPolyLineRoi_cb)
+        self.addDelPolyLineRoiButton.toggled.connect(self.addDelPolyLineRoi_cb)
         self.delBorderObjAction.triggered.connect(self.delBorderObj)
         
         self.brushAutoFillCheckbox.toggled.connect(self.brushAutoFillToggled)
@@ -5580,7 +5585,7 @@ class guiWin(QMainWindow):
         
         drawRulerLine = (
             (self.rulerButton.isChecked() 
-            or self.addDelPolyLineRoiAction.isChecked())
+            or self.addDelPolyLineRoiButton.isChecked())
             and self.tempSegmentON and not event.isExit()
         )
         if drawRulerLine:
@@ -5792,7 +5797,7 @@ class guiWin(QMainWindow):
             and noModifier
         )
         setAddDelPolyLineCursor = (
-            self.addDelPolyLineRoiAction.isChecked() and not event.isExit()
+            self.addDelPolyLineRoiButton.isChecked() and not event.isExit()
             and noModifier
         )
         setLabelRoiCircCursor = (
@@ -6659,7 +6664,7 @@ class guiWin(QMainWindow):
         eraserON = self.eraserButton.isChecked()
         rulerON = self.rulerButton.isChecked()
         wandON = self.wandToolButton.isChecked() and not isPanImageClick
-        polyLineRoiON = self.addDelPolyLineRoiAction.isChecked()
+        polyLineRoiON = self.addDelPolyLineRoiButton.isChecked()
         labelRoiON = self.labelRoiButton.isChecked()
         keepObjON = self.keepIDsButton.isChecked()
         separateON = self.separateBudButton.isChecked()
@@ -9459,7 +9464,7 @@ class guiWin(QMainWindow):
     def addDelPolyLineRoi_cb(self, checked):
         if checked:
             self.disconnectLeftClickButtons()
-            self.uncheckLeftClickButtons(self.addDelPolyLineRoiAction)
+            self.uncheckLeftClickButtons(self.addDelPolyLineRoiButton)
             self.connectLeftClickButtons()
             if self.isSnapshot:
                 self.fixCcaDfAfterEdit('Delete IDs using ROI')
@@ -10699,7 +10704,7 @@ class guiWin(QMainWindow):
         self.wandToolButton.toggled.connect(self.wand_cb)
         self.labelRoiButton.toggled.connect(self.labelRoi_cb)
         self.expandLabelToolButton.toggled.connect(self.expandLabelCallback)
-        self.addDelPolyLineRoiAction.toggled.connect(self.addDelPolyLineRoi_cb)
+        self.addDelPolyLineRoiButton.toggled.connect(self.addDelPolyLineRoi_cb)
         self.manualBackgroundButton.toggled.connect(self.manualBackground_cb)
         for action in self.pointsLayersToolbar.actions()[1:]:
             if not hasattr(action, 'layerTypeIdx'):

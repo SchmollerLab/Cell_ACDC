@@ -1,4 +1,5 @@
 from functools import wraps
+import html
 import re
 import sys
 
@@ -100,6 +101,17 @@ def paragraph(txt, font_size='13px', font_color=None, wrap=True, center=False):
     if center:
         s = re.sub(r'<p style="(.*)">', r'<p style="\1; text-align:center">', s)
     return s
+
+def rst_urls_to_html(rst_text):
+    links = re.findall(r'`(.*) ?<(.*)>`_', rst_text)
+    html_text = rst_text
+    for text, link in links:
+        if not text:
+            text = link
+        repl = href_tag(text.rstrip(), link)
+        pattern = fr'`{text} ?<{link}>`_'
+        html_text = re.sub(pattern, repl, html_text)
+    return html_text
 
 # Syntax highlighting html
 func_color = (111/255,66/255,205/255) # purplish
