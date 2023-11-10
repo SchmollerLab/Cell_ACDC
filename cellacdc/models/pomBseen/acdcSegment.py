@@ -1,4 +1,4 @@
-from pomBseen.main import pomBseg
+from pombseen.main import pomBseg
 
 class Model:
     def __init__(self):
