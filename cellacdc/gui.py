@@ -1,4 +1,3 @@
-import gc
 import sys
 import os
 import shutil
@@ -13,10 +12,8 @@ import uuid
 import json
 import pprint
 import psutil
-from importlib import import_module
 from functools import partial
 from tqdm import tqdm
-from natsort import natsorted
 from collections import Counter
 import time
 import cv2
@@ -35,8 +32,6 @@ import skimage.draw
 import skimage.exposure
 import skimage.transform
 import skimage.segmentation
-
-from PIL import Image, ImageFont, ImageDraw
 
 from functools import wraps
 from skimage.color import gray2rgb, gray2rgba, label2rgb
@@ -15414,6 +15409,15 @@ class guiWin(QMainWindow):
                     configPars, posData.combineMetricsConfig
                 )
 
+    def getEmptyStoredDataDict(self):
+        return {
+            'regionprops': None,
+            'labels': None,
+            'acdc_df': None,
+            'delROIs_info': { 'rois': [], 'delMasks': [], 'delIDsROI': []},
+            'IDs': []
+        }
+    
     def initPosAttr(self):
         exp_path = self.data[self.pos_i].exp_path
         pos_foldernames = myutils.get_pos_foldernames(exp_path)
@@ -15467,13 +15471,9 @@ class guiWin(QMainWindow):
 
             posData.ol_labels_data = None
 
-            posData.allData_li = [{
-                'regionprops': None,
-                'labels': None,
-                'acdc_df': None,
-                'delROIs_info': { 'rois': [], 'delMasks': [], 'delIDsROI': []},
-                'IDs': []
-            } for i in range(posData.SizeT)]
+            posData.allData_li = [
+                self.getEmptyStoredDataDict() for i in range(posData.SizeT)
+            ]
 
             posData.ccaStatus_whenEmerged = {}
 
@@ -15617,14 +15617,7 @@ class guiWin(QMainWindow):
 
     def unstore_data(self):
         posData = self.data[self.pos_i]
-        posData.allData_li[posData.frame_i] = {
-            'regionprops': [],
-            'labels': None,
-            'acdc_df': None,
-            'delROIs_info': {
-                'rois': [], 'delMasks': [], 'delIDsROI': []
-            }
-        }
+        posData.allData_li[posData.frame_i] = self.getEmptyStoredDataDict()
     
     def getStoredSegmData(self):
         posData = self.data[self.pos_i]
@@ -20231,14 +20224,14 @@ class guiWin(QMainWindow):
         
         prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
         existing = True
-        if prev_rp is None:
+        try:
+            prev_IDs = posData.allData_li[posData.frame_i-1]['IDs']
+        except Exception as err:
             prev_lab, existing = self.get_labels(
                 frame_i=posData.frame_i-1, return_existing=True
             )
             prev_rp = skimage.measure.regionprops(prev_lab)
-            prev_IDs = [obj.label for obj in prev_rp]
-        else:
-            prev_IDs = posData.allData_li[posData.frame_i-1]['IDs']
+            prev_IDs = [obj.label for obj in prev_rp]            
 
         curr_IDs = posData.IDs
         curr_delRoiIDs = self.getStoredDelRoiIDs()
@@ -20469,14 +20462,7 @@ class guiWin(QMainWindow):
                 break
             
             posData.segm_data[i] = posData.allData_li[i]['labels']
-            posData.allData_li[i] = {
-                'regionprops': [],
-                'labels': None,
-                'acdc_df': None,
-                'delROIs_info': {
-                    'rois': [], 'delMasks': [], 'delIDsROI': []
-                }
-            }
+            posData.allData_li[i] = self.getEmptyStoredDataDict()
 
     def removeAllItems(self):
         self.ax1.clear()
