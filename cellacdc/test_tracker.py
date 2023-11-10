@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 
 import skimage.measure
 
-from cellacdc import apps, myutils, widgets, load, html_utils
+from cellacdc import core, myutils, widgets, load, html_utils
 
 from qtpy.QtWidgets import QApplication, QStyleFactory
 
@@ -16,6 +16,12 @@ try:
     pytest.skip('skipping this test since it is gui based', allow_module_level=True)
 except Exception as e:
     pass
+
+from cellacdc._run import _setup_app
+
+# Ask which model to use --> Test if new model is visible
+app, splashScreen = _setup_app(splashscreen=True)  
+splashScreen.close()
 
 gdrive_path = myutils.get_gdrive_path()
 
@@ -35,6 +41,7 @@ end_filename_segm = 'segm'# 'segm_test'
 START_FRAME = 0 
 STOP_FRAME = 20
 PLOT_FRAME = 10
+SAVE = False
 SCRUMBLE_IDs = False
 
 posData = load.loadData(
@@ -47,17 +54,12 @@ posData.loadOtherFiles(
     end_filename_segm=end_filename_segm
 )
 
-# Ask which model to use --> Test if new model is visible
-app = QApplication(sys.argv)
-app.setStyle(QStyleFactory.create('Fusion'))
-
 trackers = myutils.get_list_of_trackers()
 txt = html_utils.paragraph('''
-    Do you want to track the objects?<br><br>
-    If yes, <b>select the tracker</b> to use<br><br>
+    <b>Select the tracker</b> to use<br><br>
 ''')
 win = widgets.QDialogListbox(
-    'Track objects?', txt, trackers, multiSelection=False, parent=None
+    'Select tracker', txt, trackers, multiSelection=False, parent=None
 )
 win.exec_()
 
@@ -70,6 +72,9 @@ trackerName = win.selectedItemsText[0]
 tracker, track_params = myutils.init_tracker(
     posData, trackerName, qparent=None
 )
+if track_params is None:
+    exit('Execution aborted')
+    
 lab_stack = posData.segm_data[START_FRAME:STOP_FRAME+1]
 
 print(track_params.keys())
@@ -95,24 +100,24 @@ if SCRUMBLE_IDs:
 
 print(f'Tracking data with shape {lab_stack.shape}')
 
+trackerInputImage = None
 if 'image' in track_params:
     trackerInputImage = track_params.pop('image')[START_FRAME:STOP_FRAME+1]
+
+tracked_stack = core.tracker_track(
+    lab_stack, tracker, track_params, 
+    intensity_img=trackerInputImage,
+    logger_func=print
+)
+
+if SAVE:
     try:
-        tracked_stack = tracker.track(
-            lab_stack, trackerInputImage, **track_params
+        np.savez_compressed(
+            posData.segm_npz_path.replace('segm', 'segm_tracked'), 
+            tracked_stack
         )
     except Exception as e:
-        traceback.print_exc()
-        tracked_stack = tracker.track(lab_stack, **track_params)
-else:
-    tracked_stack = tracker.track(lab_stack, **track_params)
-
-try:
-    np.savez_compressed(
-        posData.segm_npz_path.replace('segm', 'segm_tracked'), tracked_stack
-    )
-except Exception as e:
-    import pdb; pdb.set_trace()
+        import pdb; pdb.set_trace()
 
 fig, ax = plt.subplots(2, 2)
 ax = ax.flatten()

@@ -2212,3 +2212,27 @@ def filter_segm_objs_from_table_coords(lab, df):
     filtered_lab = lab.copy()
     filtered_lab[~mask_to_keep] = 0
     return filtered_lab
+
+def tracker_track(
+        video_to_track, tracker, track_params, intensity_img=None,
+        logger_func=print
+    ):
+    if intensity_img is not None:
+        try:
+            tracked_video = tracker.track(
+                video_to_track, intensity_img, **track_params
+            )
+        except TypeError:
+            # User accidentally loaded image data but the tracker doesn't
+            # need it
+            logger_func(
+                'Image data is not required by this tracker, ignoring it...'
+            )
+            tracked_video = tracker.track(
+                video_to_track, **track_params
+            )
+    else:
+        tracked_video = tracker.track(
+            video_to_track, **track_params
+        )
+    return tracked_video

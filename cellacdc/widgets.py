@@ -1662,13 +1662,14 @@ class QCenteredComboBox(QComboBox):
     
     def eventFilter(self, lineEdit, event):
         # Reimplement show popup on click
-        if event.type() == QEvent.Type.MouseButtonPress:
+        if event.type() == QEvent.Type.MouseButtonPress and self.isEnabled():
             if self._isPopupVisibile:
                 self.hidePopup()
                 self._isPopupVisibile = False
             else:
                 self.showPopup()
                 self._isPopupVisibile = True
+            return True
         return False
 
 class AlphaNumericComboBox(QCenteredComboBox):
