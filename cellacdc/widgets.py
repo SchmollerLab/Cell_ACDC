@@ -7265,3 +7265,30 @@ class ToolButtonTextIcon(rightClickToolButton):
         
         p.drawText(rect, Qt.AlignCenter, self._text)
         p.end()
+
+class RulerPlotItem(pg.PlotDataItem):
+    def __init__(self, *args, **kwargs):
+        self.labelItem = pg.LabelItem()
+        super().__init__(*args, **kwargs)
+        
+    def setData(self, *args, lengthText='', **kwargs):
+        super().setData(*args, **kwargs)
+        self.labelItem.setText('')
+        if not lengthText:
+            return
+        self.setLengthText(lengthText)
+    
+    def setLengthText(self, lengthText):
+        xx, yy = self.getData()
+        x0, x1 = sorted(xx)
+        y0, y1 = sorted(yy)
+        xc = round(x0 + (x1-x0)/2)
+        yc = round(y0 + (y1-y0)/2)
+        self.labelItem.setText(lengthText, size='11px', color='r')
+        # xc = x0 + self._length/2
+        wl = self.labelItem.itemRect().width()
+        hl = self.labelItem.itemRect().height()
+        xl = xc-wl/2
+        yt = y0-hl    
+        self.labelItem.item.setPos(xl, yt)
+        
