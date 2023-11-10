@@ -73,12 +73,9 @@ tracker, track_params = myutils.init_tracker(
     posData, trackerName, qparent=None
 )
 if track_params is None:
-    exit('Execution aborted')
-    
-lab_stack = posData.segm_data[START_FRAME:STOP_FRAME+1]
+    exit('Execution aborted')    
 
-print(track_params.keys())
-import pdb; pdb.set_trace()
+lab_stack = posData.segm_data[START_FRAME:STOP_FRAME+1]
 
 if SCRUMBLE_IDs:
     # Scrumble IDs last frame
@@ -104,6 +101,11 @@ trackerInputImage = None
 if 'image' in track_params:
     trackerInputImage = track_params.pop('image')[START_FRAME:STOP_FRAME+1]
 
+if 'image_channel_name' in track_params:
+    # Store the channel name for the tracker for loading it 
+    # in case of multiple pos
+    track_params.pop('image_channel_name')
+
 tracked_stack = core.tracker_track(
     lab_stack, tracker, track_params, 
     intensity_img=trackerInputImage,
@@ -119,10 +121,21 @@ if SAVE:
     except Exception as e:
         import pdb; pdb.set_trace()
 
-fig, ax = plt.subplots(2, 2)
-ax = ax.flatten()
-ax[0].imshow(lab_stack[PLOT_FRAME-START_FRAME-1])
-ax[1].imshow(lab_stack[PLOT_FRAME-START_FRAME])
-ax[2].imshow(tracked_stack[PLOT_FRAME-START_FRAME-1])
-ax[3].imshow(tracked_stack[PLOT_FRAME-START_FRAME])
-plt.show()
+from cellacdc.plot import imshow
+
+images = [
+    lab_stack[PLOT_FRAME-START_FRAME-1], 
+    lab_stack[PLOT_FRAME-START_FRAME],
+    tracked_stack[PLOT_FRAME-START_FRAME-1], 
+    tracked_stack[PLOT_FRAME-START_FRAME]
+]
+titles = [
+    f'Untracked labels at frame {PLOT_FRAME}',
+    f'Untracked labels at frame {PLOT_FRAME+1}',
+    f'TRACKED labels at frame {PLOT_FRAME}',
+    f'TRACKED labels at frame {PLOT_FRAME+1}',
+]
+imshow(
+    *images, axis_titles=titles,
+    max_ncols=2
+)
