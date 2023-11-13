@@ -26,16 +26,18 @@ def ident_no_mothers(IoA_matrix, IoA_thresh_daughter=0.4, min_daughter=2, max_da
 
 
 class tracker:
-    def __init__(self, **params):
-        self.params = params
+    def __init__(self):
+        pass
 
-    def track(self, segm_video, signals=None,
-              IoA_thresh = 0.8,
-              IoA_thresh_daughter = 0.45,
-              IoA_thresh_aggr = 0.5,
-              Min_daughter = 2,
-              Max_daughter = 2
-              ):
+    def track(
+            self, segm_video,
+            signals=None,
+            IoA_thresh = 0.8,
+            IoA_thresh_daughter = 0.45,
+            IoA_thresh_aggr = 0.5,
+            Min_daughter = 2,
+            Max_daughter = 2
+        ):
         tracked_video = np.zeros_like(segm_video)
         pbar = tqdm(total=len(segm_video), desc='Tracking', ncols=100)
         for frame_i, lab in enumerate(segm_video):

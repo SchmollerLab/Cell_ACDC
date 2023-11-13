@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 
 import skimage.measure
 
-from cellacdc import apps, myutils, widgets, load, html_utils
+from cellacdc import apps, myutils, widgets, load, html_utils, core
 
 from qtpy.QtWidgets import QApplication, QStyleFactory
 
@@ -17,24 +17,22 @@ try:
 except Exception as e:
     pass
 
-gdrive_path = myutils.get_gdrive_path()
+# gdrive_path = myutils.get_gdrive_path()
 
 test_img_path = (
     # os.path.join(gdrive_path, *(r'01_Postdoc_HMGU\Python_MyScripts\MIA\Git\DeepSea\data\test_images\A11_z007_c001.png').split('\\')"
     # os.path.join(gdrive_path, *(r'01_Postdoc_HMGU\Python_MyScripts\MIA\Git\DeepSea\data\test_images\train_A11_z001_c001.png').split('\\')"
     # os.path.join(gdrive_path, *(r'01_Postdoc_HMGU\Python_MyScripts\MIA\Git\Cell_ACDC\data\test_images\test_cellpose.tif').split('\\')"
     # os.path.join(gdrive_path, *(r'01_Postdoc_HMGU\Python_MyScripts\MIA\Git\Cell_ACDC\data\test_images\test_YeaZ.tif').split('\\')"
-    os.path.join(
-        gdrive_path, 
-        *(r'01_Postdoc_HMGU\Python_MyScripts\MIA\Git\Cell_ACDC\data\test_timelapse\Yagya_Kurt_presentation\Position_6\Images\SCGE_5strains_23092021_Dia_Ph3.tif').split('\\'))
+    os.path.abspath(r'C:\Users\SchmollerLab\Documents\Timon\FredChang_FissionYeast-20231110T122951Z-001\FredChang_FissionYeast\20210908_122322_acdc\Images\bknapp_Movie_S1.tif')
     # os.path.join(gdrive_path, *(r'01_Postdoc_HMGU\Python_MyScripts\MIA\Git\DeepSea\data\test_tracking\Position_1\Images\A3_03_1_1_Phase Contrast.tif').split('\\')"
 )
 
-channel_name = 'Phase Contrast'
-end_filename_segm = 'segm'# 'segm_test'
+channel_name = '_aligned'
+end_filename_segm = '_segm'# 'segm_test'
 START_FRAME = 0 
-STOP_FRAME = 20
-PLOT_FRAME = 10
+STOP_FRAME = 449
+PLOT_FRAME = 449
 SCRUMBLE_IDs = False
 
 posData = load.loadData(
@@ -72,8 +70,8 @@ tracker, track_params = myutils.init_tracker(
 )
 lab_stack = posData.segm_data[START_FRAME:STOP_FRAME+1]
 
-print(track_params.keys())
-import pdb; pdb.set_trace()
+# print(track_params.keys())
+# import pdb; pdb.set_trace()
 
 if SCRUMBLE_IDs:
     # Scrumble IDs last frame
@@ -95,24 +93,31 @@ if SCRUMBLE_IDs:
 
 print(f'Tracking data with shape {lab_stack.shape}')
 
-if 'image' in track_params:
-    trackerInputImage = track_params.pop('image')[START_FRAME:STOP_FRAME+1]
-    try:
-        tracked_stack = tracker.track(
-            lab_stack, trackerInputImage, **track_params
-        )
-    except Exception as e:
-        traceback.print_exc()
-        tracked_stack = tracker.track(lab_stack, **track_params)
-else:
-    tracked_stack = tracker.track(lab_stack, **track_params)
+# if 'image' in track_params:
+#     trackerInputImage = track_params.pop('image')[START_FRAME:STOP_FRAME+1]
+#     try:
+#         tracked_stack = tracker.track(
+#             lab_stack, trackerInputImage, **track_params
+#         )
+#     except Exception as e:
+#         traceback.print_exc()
+#         tracked_stack = tracker.track(lab_stack, **track_params)
+# else:
+#     tracked_stack = tracker.track(lab_stack, **track_params)
 
-try:
-    np.savez_compressed(
-        posData.segm_npz_path.replace('segm', 'segm_tracked'), tracked_stack
-    )
-except Exception as e:
-    import pdb; pdb.set_trace()
+start_frame_i = 0
+stop_frame_n = len(lab_stack)
+tracked_stack = core.tracker_track(
+    lab_stack, tracker, track_params, start_frame_i, 
+    stop_frame_n, logger_func=print
+)
+
+# try:
+#     np.savez_compressed(
+#         posData.segm_npz_path.replace('segm', 'segm_tracked'), tracked_stack
+#     )
+# except Exception as e:
+#     import pdb; pdb.set_trace()
 
 fig, ax = plt.subplots(2, 2)
 ax = ax.flatten()

@@ -146,7 +146,7 @@ def track_frame(
         # Skip empty frames
         return lab
 
-    if IoA_matrix.size == 0:
+    if IoA_matrix is None:
         IoA_matrix, IDs_curr_untracked, IDs_prev = calc_IoA_matrix(
             lab, prev_lab, rp, prev_rp, IDs_curr_untracked=IDs_curr_untracked
         )
