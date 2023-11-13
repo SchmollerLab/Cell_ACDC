@@ -17,14 +17,12 @@ from importlib import import_module
 from math import pow, ceil, floor
 from functools import wraps, partial
 from collections import namedtuple, Counter
-import natsort
 from tqdm import tqdm
 import requests
 import zipfile
 import numpy as np
 import pandas as pd
 import skimage
-from distutils.dir_util import copy_tree
 import inspect
 import typing
 
@@ -782,6 +780,10 @@ def parse_model_param_doc(name, next_param_name=None, docstring=None):
     try:
         # Extract parameter description from 'param : ...'
         start_text = f'{name} : '
+        if docstring.find(start_text) == -1:
+            # Parameter not present in docstring
+            return ''
+        
         doc_start_idx = docstring.find(start_text) + len(start_text)
         
         if next_param_name is None:
@@ -865,13 +867,20 @@ def getTrackerArgSpec(trackerModule, realTime=False):
             trackerModule.tracker.track
         )
         track_doc = trackerModule.tracker.track.__doc__
-    
+
     kwargs_start_idx = len(track_ArgSpec.args) - len(track_ArgSpec.defaults)
     track_params = params_to_ArgSpec(
         track_ArgSpec, track_kwargs_type_hints, kwargs_start_idx, track_doc,
         args_to_skip={'signals', 'export_to'}
     )
     return init_params, track_params
+
+def isIntensityImgRequiredForTracker(trackerModule):
+    track_ArgSpec = inspect.getfullargspec(trackerModule.tracker.track)
+    num_args = len(track_ArgSpec.args) - len(track_ArgSpec.defaults)
+    # If the number of args is 3 then we have `self, labels, image` as args 
+    # which means the tracker requires the image 
+    return num_args == 3                          
 
 def getDefault_SegmInfo_df(posData, filename):
     mid_slice = int(posData.SizeZ/2)
@@ -2086,6 +2095,9 @@ def init_tracker(
         init_argspecs, track_argspecs = getTrackerArgSpec(
             trackerModule, realTime=realTime
         )
+        intensityImgRequiredForTracker = isIntensityImgRequiredForTracker(
+            trackerModule
+        )
         if init_argspecs or track_argspecs:
             try:
                 url = trackerModule.url_help()
@@ -2103,12 +2115,19 @@ def init_tracker(
                 df_metadata = posData.metadata_df
             except Exception as e:
                 df_metadata = None
+            
+            if not intensityImgRequiredForTracker:
+                currentChannelName = None
+            
             paramsWin = apps.QDialogModelParams(
                 init_argspecs, track_argspecs, trackerName, url=url,
                 channels=channels, is_tracker=True,
                 currentChannelName=currentChannelName,
                 df_metadata=df_metadata
             )
+            if not intensityImgRequiredForTracker and channels is not None:
+                paramsWin.channelCombobox.setDisabled(True)
+                
             paramsWin.exec_()
             if not paramsWin.cancel:
                 init_params = paramsWin.init_kwargs

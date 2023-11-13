@@ -2214,6 +2214,7 @@ def filter_segm_objs_from_table_coords(lab, df):
     return filtered_lab
 
 def tracker_track(
+<<<<<<< HEAD
         video_to_track, tracker, track_params, start_frame_i, stop_frame_n, 
         logger_func=print
     ):
@@ -2223,6 +2224,15 @@ def tracker_track(
         try:
             tracked_video = tracker.track(
                 video_to_track, trackerInputImage, **track_params
+=======
+        video_to_track, tracker, track_params, intensity_img=None,
+        logger_func=print
+    ):
+    if intensity_img is not None:
+        try:
+            tracked_video = tracker.track(
+                video_to_track, intensity_img, **track_params
+>>>>>>> 7bbd5c0e2c63ca78b98005f5e2c731b3c9d155d6
             )
         except TypeError:
             # User accidentally loaded image data but the tracker doesn't

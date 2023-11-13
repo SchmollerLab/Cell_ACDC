@@ -1,3 +1,4 @@
+import gc
 import sys
 import os
 import shutil
@@ -1384,6 +1385,10 @@ class guiWin(QMainWindow):
         # fileToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
         fileToolBar.setMovable(False)
 
+        self.segmNdimIndicatorAction = fileToolBar.addWidget(
+            self.segmNdimIndicator
+        )
+        self.segmNdimIndicatorAction.setVisible(False)
         fileToolBar.addAction(self.newAction)
         fileToolBar.addAction(self.openAction)
         fileToolBar.addAction(self.manageVersionsAction)
@@ -2442,6 +2447,11 @@ class guiWin(QMainWindow):
 
     def gui_createActions(self):
         # File actions
+        self.segmNdimIndicator = widgets.ToolButtonTextIcon(text='')
+        self.segmNdimIndicator.setCheckable(True)
+        self.segmNdimIndicator.setChecked(True)
+        self.segmNdimIndicator.setDisabled(True)        
+        
         self.newAction = QAction(self)
         self.newAction.setText("&New")
         self.newAction.setIcon(QIcon(":file-new.svg"))
@@ -3855,13 +3865,14 @@ class guiWin(QMainWindow):
 
         # Ruler plotItem and scatterItem
         rulerPen = pg.mkPen(color='r', style=Qt.DashLine, width=2)
-        self.ax1_rulerPlotItem = pg.PlotDataItem(pen=rulerPen)
+        self.ax1_rulerPlotItem = widgets.RulerPlotItem(pen=rulerPen)
         self.ax1_rulerAnchorsItem = pg.ScatterPlotItem(
             symbol='o', size=9,
             brush=pg.mkBrush((255,0,0,50)),
             pen=pg.mkPen((255,0,0), width=2), tip=None
         )
         self.topLayerItems.append(self.ax1_rulerPlotItem)
+        self.topLayerItems.append(self.ax1_rulerPlotItem.labelItem)
         self.topLayerItems.append(self.ax1_rulerAnchorsItem)
 
         # Start point of polyline roi
@@ -6981,8 +6992,10 @@ class guiWin(QMainWindow):
                 xxRA, yyRA = self.ax1_rulerAnchorsItem.getData()
                 if self.isCtrlDown:
                     ydata = yyRA[0]
+                lengthText = self.getRulerLengthText()
                 self.ax1_rulerPlotItem.setData(
-                    [xxRA[0], xdata], [yyRA[0], ydata]
+                    [xxRA[0], xdata], [yyRA[0], ydata],
+                    lengthText=lengthText
                 )
                 self.ax1_rulerAnchorsItem.setData(
                     [xxRA[0], xdata], [yyRA[0], ydata]
@@ -10024,6 +10037,12 @@ class guiWin(QMainWindow):
         txt = self._addRulerMeasurementText(txt)
         return txt
     
+    def getRulerLengthText(self):
+        text = self.wcLabel.text()
+        lengthText = re.findall(r'length = (.*)\)', text)[0]
+        lengthText = lengthText.replace('pxl', 'pixels')
+        return f'{lengthText})'
+    
     def _addRulerMeasurementText(self, txt):
         posData = self.data[self.pos_i]
         xx, yy = self.ax1_rulerPlotItem.getData()
@@ -10033,7 +10052,7 @@ class guiWin(QMainWindow):
         lenPxl = math.sqrt((xx[0]-xx[1])**2 + (yy[0]-yy[1])**2)
         pxlToUm = posData.PhysicalSizeX
         length_txt = (
-            f'length={lenPxl:.2f} pxl ({lenPxl*pxlToUm:.2f} μm)'
+            f'length = {int(lenPxl)} pxl ({lenPxl*pxlToUm:.2f} μm)'
         )
         txt = f'{txt} | <b>Measurement</b>: {length_txt}'
         return txt
@@ -12277,9 +12296,15 @@ class guiWin(QMainWindow):
                 {editIDinfo}<br><br>
                 Do you want to keep these edits or ignore them?
             """)
-            _, keepManualEditButton, _ = msg.question(
+            keepManualEditButton = widgets.okPushButton(
+                'Keep manually edited IDs'
+            )
+            ignoreButton = widgets.noPushButton(
+                'Ignore manually edited IDs'
+            )
+            msg.question(
                 self, 'Repeat tracking mode', txt, 
-                buttonsTexts=('Keep manually edited IDs', 'Ignore')
+                buttonsTexts=(keepManualEditButton, ignoreButton)
             )
             if msg.cancel:
                 return
@@ -14502,6 +14527,13 @@ class guiWin(QMainWindow):
         self.initManualBackgroundImage()
 
         self.setWindowTitle(f'Cell-ACDC - GUI - "{posData.exp_path}"')
+
+        if self.isSegm3D:
+            self.segmNdimIndicator.setText('3D')
+        else:
+            self.segmNdimIndicator.setText('2D')
+            
+        self.segmNdimIndicatorAction.setVisible(True)
 
         self.guiTabControl.addChannels([posData.user_ch_name])
         self.showPropsDockButton.setDisabled(False)
@@ -20767,6 +20799,8 @@ class guiWin(QMainWindow):
         self.restoreDefaultColors()
         self.curvToolButton.setChecked(False)
 
+        self.segmNdimIndicatorAction.setVisible(False)
+        
         self.navigateToolBar.hide()
         self.ccaToolBar.hide()
         self.editToolBar.hide()

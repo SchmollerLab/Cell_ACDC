@@ -1662,13 +1662,14 @@ class QCenteredComboBox(QComboBox):
     
     def eventFilter(self, lineEdit, event):
         # Reimplement show popup on click
-        if event.type() == QEvent.Type.MouseButtonPress:
+        if event.type() == QEvent.Type.MouseButtonPress and self.isEnabled():
             if self._isPopupVisibile:
                 self.hidePopup()
                 self._isPopupVisibile = False
             else:
                 self.showPopup()
                 self._isPopupVisibile = True
+            return True
         return False
 
 class AlphaNumericComboBox(QCenteredComboBox):
@@ -7232,3 +7233,63 @@ class SearchLineEdit(QLineEdit):
         if super().text() == 'Search...':
             return ''
         return super().text()
+
+class ToolButtonTextIcon(rightClickToolButton):
+    def __init__(self, text='', parent=None):
+        super().__init__(parent=parent)
+        self._text = text
+        self._penColor = _palettes.text_pen_color()
+    
+    def setText(self, text):
+        self._text = text
+        self.update()
+    
+    def paintEvent(self, event):
+        QToolButton.paintEvent(self, event)
+        p = QPainter(self)
+        
+        pen = pg.mkPen(color=self._penColor, width=2)
+        p.setPen(pen)
+        
+        w, h = self.width(), self.height()
+        sf = 0.7
+        rect_w = w*sf
+        rect_h = h*sf
+        x = (w-rect_w)/2
+        y = (h-rect_h)/2
+        rect = QRectF(x, y, rect_w, rect_h) 
+        
+        font = p.font()
+        font.setBold(True)
+        font.setPixelSize(int(h/len(self._text)))
+        p.setFont(font)
+        
+        p.drawText(rect, Qt.AlignCenter, self._text)
+        p.end()
+
+class RulerPlotItem(pg.PlotDataItem):
+    def __init__(self, *args, **kwargs):
+        self.labelItem = pg.LabelItem()
+        super().__init__(*args, **kwargs)
+        
+    def setData(self, *args, lengthText='', **kwargs):
+        super().setData(*args, **kwargs)
+        self.labelItem.setText('')
+        if not lengthText:
+            return
+        self.setLengthText(lengthText)
+    
+    def setLengthText(self, lengthText):
+        xx, yy = self.getData()
+        x0, x1 = sorted(xx)
+        y0, y1 = sorted(yy)
+        xc = round(x0 + (x1-x0)/2)
+        yc = round(y0 + (y1-y0)/2)
+        self.labelItem.setText(lengthText, size='11px', color='r')
+        # xc = x0 + self._length/2
+        wl = self.labelItem.itemRect().width()
+        hl = self.labelItem.itemRect().height()
+        xl = xc-wl/2
+        yt = y0-hl    
+        self.labelItem.item.setPos(xl, yt)
+        

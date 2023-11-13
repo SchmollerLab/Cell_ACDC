@@ -6,11 +6,28 @@ import skimage.measure
 
 from cellacdc import models
 
+class AvailableModels:
+    values = models.STARDIST_MODELS
+
 class Model:
     def __init__(
-            self, model_name='2D_versatile_fluo',
+            self, 
+            model_name: AvailableModels='2D_versatile_fluo',
             load_stardist_3D=False
         ):
+        """_summary_
+
+        Parameters
+        ----------
+        model_name : str, optional
+            Name of the pre-trained model to load. 
+            
+            Available models are '2D_versatile_fluo', '2D_versatile_he', and 
+            '2D_paper_dsb2018'.
+            
+            Default is '2D_versatile_fluo'
+        """        
+        
         stardist_default_models = models.STARDIST_MODELS
         stardist_path = os.path.dirname(os.path.abspath(__file__))
         T_cell_path = os.path.join(stardist_path, 'model', 'T_cell')

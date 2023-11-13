@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 
 import skimage.measure
 
-from cellacdc import apps, myutils, widgets, load, html_utils, core
+from cellacdc import core, myutils, widgets, load, html_utils
 
 from qtpy.QtWidgets import QApplication, QStyleFactory
 
@@ -17,7 +17,13 @@ try:
 except Exception as e:
     pass
 
-# gdrive_path = myutils.get_gdrive_path()
+from cellacdc._run import _setup_app
+
+# Ask which model to use --> Test if new model is visible
+app, splashScreen = _setup_app(splashscreen=True)  
+splashScreen.close()
+
+gdrive_path = myutils.get_gdrive_path()
 
 test_img_path = (
     # os.path.join(gdrive_path, *(r'01_Postdoc_HMGU\Python_MyScripts\MIA\Git\DeepSea\data\test_images\A11_z007_c001.png').split('\\')"
@@ -33,6 +39,7 @@ end_filename_segm = '_segm'# 'segm_test'
 START_FRAME = 0 
 STOP_FRAME = 449
 PLOT_FRAME = 449
+SAVE = False
 SCRUMBLE_IDs = False
 
 posData = load.loadData(
@@ -45,17 +52,12 @@ posData.loadOtherFiles(
     end_filename_segm=end_filename_segm
 )
 
-# Ask which model to use --> Test if new model is visible
-app = QApplication(sys.argv)
-app.setStyle(QStyleFactory.create('Fusion'))
-
 trackers = myutils.get_list_of_trackers()
 txt = html_utils.paragraph('''
-    Do you want to track the objects?<br><br>
-    If yes, <b>select the tracker</b> to use<br><br>
+    <b>Select the tracker</b> to use<br><br>
 ''')
 win = widgets.QDialogListbox(
-    'Track objects?', txt, trackers, multiSelection=False, parent=None
+    'Select tracker', txt, trackers, multiSelection=False, parent=None
 )
 win.exec_()
 
@@ -68,10 +70,10 @@ trackerName = win.selectedItemsText[0]
 tracker, track_params = myutils.init_tracker(
     posData, trackerName, qparent=None
 )
-lab_stack = posData.segm_data[START_FRAME:STOP_FRAME+1]
+if track_params is None:
+    exit('Execution aborted')    
 
-# print(track_params.keys())
-# import pdb; pdb.set_trace()
+lab_stack = posData.segm_data[START_FRAME:STOP_FRAME+1]
 
 if SCRUMBLE_IDs:
     # Scrumble IDs last frame
@@ -93,36 +95,45 @@ if SCRUMBLE_IDs:
 
 print(f'Tracking data with shape {lab_stack.shape}')
 
-# if 'image' in track_params:
-#     trackerInputImage = track_params.pop('image')[START_FRAME:STOP_FRAME+1]
-#     try:
-#         tracked_stack = tracker.track(
-#             lab_stack, trackerInputImage, **track_params
-#         )
-#     except Exception as e:
-#         traceback.print_exc()
-#         tracked_stack = tracker.track(lab_stack, **track_params)
-# else:
-#     tracked_stack = tracker.track(lab_stack, **track_params)
+trackerInputImage = None
+if 'image' in track_params:
+    trackerInputImage = track_params.pop('image')[START_FRAME:STOP_FRAME+1]
 
-start_frame_i = 0
-stop_frame_n = len(lab_stack)
+if 'image_channel_name' in track_params:
+    # Store the channel name for the tracker for loading it 
+    # in case of multiple pos
+    track_params.pop('image_channel_name')
+
 tracked_stack = core.tracker_track(
-    lab_stack, tracker, track_params, start_frame_i, 
-    stop_frame_n, logger_func=print
+    lab_stack, tracker, track_params, 
+    intensity_img=trackerInputImage,
+    logger_func=print
 )
 
-# try:
-#     np.savez_compressed(
-#         posData.segm_npz_path.replace('segm', 'segm_tracked'), tracked_stack
-#     )
-# except Exception as e:
-#     import pdb; pdb.set_trace()
+if SAVE:
+    try:
+        np.savez_compressed(
+            posData.segm_npz_path.replace('segm', 'segm_tracked'), 
+            tracked_stack
+        )
+    except Exception as e:
+        import pdb; pdb.set_trace()
 
-fig, ax = plt.subplots(2, 2)
-ax = ax.flatten()
-ax[0].imshow(lab_stack[PLOT_FRAME-START_FRAME-1])
-ax[1].imshow(lab_stack[PLOT_FRAME-START_FRAME])
-ax[2].imshow(tracked_stack[PLOT_FRAME-START_FRAME-1])
-ax[3].imshow(tracked_stack[PLOT_FRAME-START_FRAME])
-plt.show()
+from cellacdc.plot import imshow
+
+images = [
+    lab_stack[PLOT_FRAME-START_FRAME-1], 
+    lab_stack[PLOT_FRAME-START_FRAME],
+    tracked_stack[PLOT_FRAME-START_FRAME-1], 
+    tracked_stack[PLOT_FRAME-START_FRAME]
+]
+titles = [
+    f'Untracked labels at frame {PLOT_FRAME}',
+    f'Untracked labels at frame {PLOT_FRAME+1}',
+    f'TRACKED labels at frame {PLOT_FRAME}',
+    f'TRACKED labels at frame {PLOT_FRAME+1}',
+]
+imshow(
+    *images, axis_titles=titles,
+    max_ncols=2
+)

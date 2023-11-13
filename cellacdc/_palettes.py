@@ -66,6 +66,13 @@ def _dark_disabled_colors():
     }
     return disabled_colors
 
+def text_pen_color():
+    scheme = get_color_scheme()
+    if scheme == 'light':
+        return '#4d4d4d'
+    else:
+        return '#d9d9d9'
+
 def _dark_colors():
     colors = {
         'Window': (50, 50, 50, 255),
