@@ -3865,13 +3865,14 @@ class guiWin(QMainWindow):
 
         # Ruler plotItem and scatterItem
         rulerPen = pg.mkPen(color='r', style=Qt.DashLine, width=2)
-        self.ax1_rulerPlotItem = pg.PlotDataItem(pen=rulerPen)
+        self.ax1_rulerPlotItem = widgets.RulerPlotItem(pen=rulerPen)
         self.ax1_rulerAnchorsItem = pg.ScatterPlotItem(
             symbol='o', size=9,
             brush=pg.mkBrush((255,0,0,50)),
             pen=pg.mkPen((255,0,0), width=2), tip=None
         )
         self.topLayerItems.append(self.ax1_rulerPlotItem)
+        self.topLayerItems.append(self.ax1_rulerPlotItem.labelItem)
         self.topLayerItems.append(self.ax1_rulerAnchorsItem)
 
         # Start point of polyline roi
@@ -6991,8 +6992,10 @@ class guiWin(QMainWindow):
                 xxRA, yyRA = self.ax1_rulerAnchorsItem.getData()
                 if self.isCtrlDown:
                     ydata = yyRA[0]
+                lengthText = self.getRulerLengthText()
                 self.ax1_rulerPlotItem.setData(
-                    [xxRA[0], xdata], [yyRA[0], ydata]
+                    [xxRA[0], xdata], [yyRA[0], ydata],
+                    lengthText=lengthText
                 )
                 self.ax1_rulerAnchorsItem.setData(
                     [xxRA[0], xdata], [yyRA[0], ydata]
@@ -10034,6 +10037,12 @@ class guiWin(QMainWindow):
         txt = self._addRulerMeasurementText(txt)
         return txt
     
+    def getRulerLengthText(self):
+        text = self.wcLabel.text()
+        lengthText = re.findall(r'length = (.*)\)', text)[0]
+        lengthText = lengthText.replace('pxl', 'pixels')
+        return f'{lengthText})'
+    
     def _addRulerMeasurementText(self, txt):
         posData = self.data[self.pos_i]
         xx, yy = self.ax1_rulerPlotItem.getData()
@@ -10043,7 +10052,7 @@ class guiWin(QMainWindow):
         lenPxl = math.sqrt((xx[0]-xx[1])**2 + (yy[0]-yy[1])**2)
         pxlToUm = posData.PhysicalSizeX
         length_txt = (
-            f'length={lenPxl:.2f} pxl ({lenPxl*pxlToUm:.2f} μm)'
+            f'length = {int(lenPxl)} pxl ({lenPxl*pxlToUm:.2f} μm)'
         )
         txt = f'{txt} | <b>Measurement</b>: {length_txt}'
         return txt

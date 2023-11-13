@@ -1514,29 +1514,19 @@ class trackingWorker(QObject):
 
         self.progress.emit('Tracking process started...')
 
+        trackerInputImage = None
         self.track_params['signals'] = self.signals
         if 'image' in self.track_params:
             trackerInputImage = self.track_params.pop('image')
             start_frame_i = self.mainWin.start_n-1
             stop_frame_n = self.mainWin.stop_n
             trackerInputImage = trackerInputImage[start_frame_i:stop_frame_n]
-            try:
-                tracked_video = self.tracker.track(
-                    self.video_to_track, trackerInputImage, **self.track_params
-                )
-            except TypeError:
-                # User accidentally loaded image data but the tracker doesn't
-                # need it
-                self.progress.emit(
-                    'Image data is not required by this tracker, ignoring it...'
-                )
-                tracked_video = self.tracker.track(
-                    self.video_to_track, **self.track_params
-                )
-        else:
-            tracked_video = self.tracker.track(
-                self.video_to_track, **self.track_params
-            )
+        
+        tracked_video = core.tracker_track(
+            self.video_to_track, self.tracker, self.track_params, 
+            intensity_img=trackerInputImage,
+            logger_func=self.progress.emit
+        )
 
         # Relabel first frame objects back to IDs they had before tracking
         # (to ensure continuity with past untracked frames)

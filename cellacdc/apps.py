@@ -10479,7 +10479,9 @@ class QDialogModelParams(QDialog):
             if self.currentChannelName is not None:
                 self.channelCombobox.setCurrentText(self.currentChannelName)
             infoText = (
-                'This tracker requires the intensity image as input.'
+                'Some trackers require the intensity image as input.<br><br>'
+                'If the selector is disabled, the tracker you selected '
+                'does not require it.'
             )
             infoButton = self.getInfoButton('Input image', infoText)
             groupBoxLayout.addWidget(infoButton, start_row, 3)

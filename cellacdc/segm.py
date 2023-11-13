@@ -146,6 +146,9 @@ class segmWin(QMainWindow):
         self.processFinished = False
         self.buttonToRestore = buttonToRestore
         self.mainWin = mainWin
+        if mainWin is not None:
+            self.app = mainWin.app
+            
         self._version = version
         
         self.isSegmWorkerRunning = False
@@ -628,10 +631,11 @@ class segmWin(QMainWindow):
         selectROI = False
         msg = widgets.myMessageBox(showCentered=False, wrapText=False)
         txt = html_utils.paragraph(
-            'Do you want to segment only a rectangular '
-            '<b>region-of-interest (ROI)</b>?<br><br>'
+            'Do you want to segment only a rectangular <b>'
+            'region-of-interest (ROI)</b>?<br><br>'
             'NOTE: If a ROI is already present from the data prep step, Cell-ACDC '
             'will use it.<br>'
+            'If not, the data prep window will open and you can select one.<br>'
             'If you want to modify it, abort the process now and repeat the '
             'data prep step.'
         )
@@ -695,7 +699,9 @@ class segmWin(QMainWindow):
                 launchDataPrep = True
 
         if launchDataPrep:
-            dataPrepWin = dataPrep.dataPrepWin()
+            dataPrepWin = dataPrep.dataPrepWin(
+                mainWin=self.mainWin, version=self._version
+            )
             dataPrepWin.show()
             if selectROI:
                 dataPrepWin.titleText = (
