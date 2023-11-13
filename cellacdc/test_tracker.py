@@ -1,15 +1,8 @@
 import os
-import traceback
 import sys
 import numpy as np
-
-import matplotlib.pyplot as plt
-
 import skimage.measure
-
 from cellacdc import core, myutils, widgets, load, html_utils
-
-from qtpy.QtWidgets import QApplication, QStyleFactory
 
 try:
     import pytest
@@ -39,7 +32,7 @@ end_filename_segm = '_segm'# 'segm_test'
 START_FRAME = 0 
 STOP_FRAME = 449
 PLOT_FRAME = 449
-SAVE = False
+SAVE = True
 SCRUMBLE_IDs = False
 
 posData = load.loadData(
@@ -121,19 +114,21 @@ if SAVE:
 
 from cellacdc.plot import imshow
 
-images = [
-    lab_stack[PLOT_FRAME-START_FRAME-1], 
-    lab_stack[PLOT_FRAME-START_FRAME],
-    tracked_stack[PLOT_FRAME-START_FRAME-1], 
-    tracked_stack[PLOT_FRAME-START_FRAME]
-]
-titles = [
-    f'Untracked labels at frame {PLOT_FRAME}',
-    f'Untracked labels at frame {PLOT_FRAME+1}',
-    f'TRACKED labels at frame {PLOT_FRAME}',
-    f'TRACKED labels at frame {PLOT_FRAME+1}',
-]
+# images = [
+#     lab_stack[PLOT_FRAME-START_FRAME-1], 
+#     lab_stack[PLOT_FRAME-START_FRAME],
+#     tracked_stack[PLOT_FRAME-START_FRAME-1], 
+#     tracked_stack[PLOT_FRAME-START_FRAME]
+# ]
+# titles = [
+#     f'Untracked labels at frame {PLOT_FRAME}',
+#     f'Untracked labels at frame {PLOT_FRAME+1}',
+#     f'TRACKED labels at frame {PLOT_FRAME}',
+#     f'TRACKED labels at frame {PLOT_FRAME+1}',
+# ]
+
+
 imshow(
-    *images, axis_titles=titles,
-    max_ncols=2
-)
+    posData.loadChannelData(''),
+    tracked_stack,
+    showIDs=[1])

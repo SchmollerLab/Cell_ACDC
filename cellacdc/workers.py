@@ -1520,22 +1520,13 @@ class trackingWorker(QObject):
         if 'image' in self.track_params:
             start_frame_i = self.mainWin.start_n-1
             stop_frame_n = self.mainWin.stop_n
-<<<<<<< HEAD
-        else:
-            start_frame_i = 0
-            stop_frame_n = len(self.video_to_track)
 
-        tracked_video = core.tracker_track(
-            self.video_to_track, self.tracker, self.track_params, start_frame_i, 
-            stop_frame_n, logger_func=self.progress.emit
-=======
             trackerInputImage = trackerInputImage[start_frame_i:stop_frame_n]
         
         tracked_video = core.tracker_track(
             self.video_to_track, self.tracker, self.track_params, 
             intensity_img=trackerInputImage,
             logger_func=self.progress.emit
->>>>>>> 7bbd5c0e2c63ca78b98005f5e2c731b3c9d155d6
         )
 
         # Relabel first frame objects back to IDs they had before tracking

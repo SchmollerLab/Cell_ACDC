@@ -6712,6 +6712,19 @@ class ImShow(QBaseWindow):
         print('')
         print('*'*60)
 
+    def showIDs(self):
+        for i, plotItem in enumerate(self.PlotItems):
+            imageItem = self.ImageItems[i]
+            lab = imageItem.image
+            rp = skimage.measure.regionprops(lab)
+            for obj in rp:
+                yc, xc = obj.centroid
+                textItem = pg.TextItem(
+                    text=str(obj.label), anchor=(0.5,0.5),
+                )
+                textItem.setPos(xc, yc)
+                plotItem.addItem(textItem)
+
     def show(self, block=False, screenToWindowRatio=None):
         super().show(block=block)
         if screenToWindowRatio is None:

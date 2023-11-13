@@ -50,7 +50,8 @@ def imshow(
         parent=None, 
         window_title='Cell-ACDC image viewer',
         color_scheme=None, 
-        link_scrollbars=True
+        link_scrollbars=True,
+        showIDs: list=None
     ):
     if isinstance(images[0], dict):
         images_dict = images[0]
@@ -109,6 +110,7 @@ def imshow(
         win.drawPoints(points_coords)
     if points_data is not None:
         win.setPointsData(points_data)
+    win.showIDs()
     win.run(block=block, showMaximised=showMaximised, screenToWindowRatio=0.8)
     return win
 
