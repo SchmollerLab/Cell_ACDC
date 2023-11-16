@@ -49,7 +49,7 @@ from . import models_list_file_path
 from . import github_home_url
 from . import try_input_install_package
 
-ArgSpec = namedtuple('ArgSpec', ['name', 'default', 'type', 'desc'])
+ArgSpec = namedtuple('ArgSpec', ['name', 'default', 'type', 'desc', 'docstring'])
 
 def get_module_name(script_file_path):
     parts = pathlib.Path(script_file_path).parts
@@ -732,7 +732,8 @@ def listdir(path):
     ])
 
 def insertModelArgSpect(
-        params, param_name, param_value, param_type=None, desc=''
+        params, param_name, param_value, param_type=None, desc='',
+        docstring=''
     ):
     updated_params = []
     for param in params:
@@ -741,7 +742,7 @@ def insertModelArgSpect(
                 param_type = param.type
             new_param = ArgSpec(
                 name=param_name, default=param_value, type=param_type,
-                desc=desc
+                desc=desc, docstring=docstring
             )
             updated_params.append(new_param)
         else:
@@ -769,9 +770,26 @@ def getModelArgSpec(acdcSegment):
     
     segment_doc = acdcSegment.Model.segment.__doc__
     segment_params = params_to_ArgSpec(
-        segment_ArgSpec, segment_kwargs_type_hints, 2, segment_doc
+        segment_ArgSpec, segment_kwargs_type_hints, 2, segment_doc,
     )
     return init_params, segment_params
+
+def _get_doc_stop_idx(docstring, next_param_name=None):
+    if next_param_name is not None:
+        doc_stop_idx = docstring.find(f'{next_param_name} : ')
+    
+    if doc_stop_idx > 1:
+        return doc_stop_idx
+        
+    doc_stop_idx = docstring.find('Returns')
+    if doc_stop_idx > 1:
+        return doc_stop_idx
+    
+    doc_stop_idx = docstring.find('Notes')
+    if doc_stop_idx > 1:
+        return doc_stop_idx 
+    
+    return -1
 
 def parse_model_param_doc(name, next_param_name=None, docstring=None):
     if docstring is None:
@@ -785,11 +803,9 @@ def parse_model_param_doc(name, next_param_name=None, docstring=None):
             return ''
         
         doc_start_idx = docstring.find(start_text) + len(start_text)
-        
-        if next_param_name is None:
-            doc_stop_idx = docstring.find('Returns')
-        else:
-            doc_stop_idx = docstring.find(f'{next_param_name} : ')
+        doc_stop_idx = _get_doc_stop_idx(
+            docstring, next_param_name=next_param_name
+        )
 
         param_doc = docstring[doc_start_idx:doc_stop_idx]
         
@@ -840,7 +856,8 @@ def params_to_ArgSpec(
             docstring=docstring
         )
         param = ArgSpec(
-            name=arg, default=default, type=_type, desc=param_doc
+            name=arg, default=default, type=_type, desc=param_doc,
+            docstring=docstring
         )
         params.append(param)
         ip += 1

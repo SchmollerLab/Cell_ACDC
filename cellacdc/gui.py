@@ -17318,7 +17318,6 @@ class guiWin(QMainWindow):
         # Load overlay frames and align if needed
         filename = os.path.basename(fluo_path)
         filename_noEXT, ext = os.path.splitext(filename)
-        printl(filename_noEXT, ext)
         if ext == '.npy' or ext == '.npz':
             fluo_data = np.load(fluo_path)
             try:

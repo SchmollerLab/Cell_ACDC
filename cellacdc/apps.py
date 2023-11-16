@@ -10359,7 +10359,7 @@ class QDialogModelParams(QDialog):
                 force_postprocess_2D=force_postprocess_2D
             )
             postProcessGroupbox.setCheckable(True)
-            postProcessGroupbox.setChecked(True)
+            postProcessGroupbox.setChecked(False)
             self.postProcessGroupbox = postProcessGroupbox
 
             scrollAreaLayout.addSpacing(15)
@@ -10487,7 +10487,12 @@ class QDialogModelParams(QDialog):
             groupBoxLayout.addWidget(infoButton, start_row, 3)
             start_row += 1
         
-        if self.model_name.find('cellpose') != -1 and addChannelSelector:
+        addSecondChannelSelector = addChannelSelector
+        if addSecondChannelSelector:
+            if ArgSpecs_list[0].docstring.lower().find('single channel only') != -1:
+                addSecondChannelSelector = False
+        
+        if self.model_name.find('cellpose') != -1 and addSecondChannelSelector:
             label = QLabel('Second channel (optional):  ')
             groupBoxLayout.addWidget(label, start_row, 0, alignment=Qt.AlignRight)
             self.channelsCombobox = widgets.QCenteredComboBox()
@@ -10499,7 +10504,7 @@ class QDialogModelParams(QDialog):
             infoButton = self.getInfoButton('Second channel', infoText)
             groupBoxLayout.addWidget(infoButton, start_row, 3)
             start_row += 1
-
+        
         if self.segmFileEndnames is not None and addChannelSelector:
             label = QLabel('Segmentation file (optional):  ')
             groupBoxLayout.addWidget(label, start_row, 0, alignment=Qt.AlignRight)
