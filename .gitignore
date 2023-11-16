@@ -43,6 +43,7 @@ cellacdc/metrics/*
 !cellacdc/metrics/CV.py
 !cellacdc/metrics/combine_metrics_example.py
 cellacdc/models/beno
+cellacdc/models/Simone_cellpose
 cellacdc/timon_tests
 cellacdc/models/test_segm_model
 cellacdc/trackers/example
