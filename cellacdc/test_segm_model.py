@@ -20,22 +20,28 @@ except Exception as e:
 
 gdrive_path = myutils.get_gdrive_path()
 
-FRAME_I = 300
+FRAME_I = None # 300
 # test_data = data.Cdc42TimeLapseData()
 # # image_data = test_data.image_data()
 # image_data = test_data.cdc42_data()
 
-test_data = data.YeastTimeLapseAnnotated()
+test_data = data.pomBseenDualChannelData()
 image_data = test_data.image_data()
-segm_data = test_data.segm_data()
+# segm_data = test_data.segm_data()
 images_path = test_data.images_path
 posData = test_data.posData()
 posData.loadOtherFiles(load_segm_data=False, load_metadata=True)
 
-img = image_data[FRAME_I]
+if FRAME_I is None:
+    img = image_data
+else:
+    img = image_data[FRAME_I]
 
 app, splashScreen = _setup_app(splashscreen=True)  
 splashScreen.close()
+
+from cellacdc.plot import imshow
+imshow(img)
 
 cellacdc_path = os.path.dirname(os.path.abspath(__file__))
 models = myutils.get_list_of_models()
@@ -117,7 +123,5 @@ if model_name == 'YeastMate':
     cca_df = model.predictCcaState(img)
     print(cca_df)
 
-fig, ax = plt.subplots(1, 2)
-ax[0].imshow(img)
-ax[1].imshow(lab)
-plt.show()
+from cellacdc.plot import imshow
+imshow(img, lab)

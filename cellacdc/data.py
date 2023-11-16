@@ -66,6 +66,31 @@ class YeastTimeLapseAnnotated(_Data):
         from . import load
         return load.loadData(self.intensity_image_path, 'Dia_Ph3')
 
+class pomBseenDualChannelData(_Data):
+    def __init__(self):
+        images_path = os.path.join(
+            data_path, 'test_pomBseen', 'dual_channel', 
+            'Position_3', 'Images'
+        )
+        intensity_image_path = os.path.join(
+            images_path, 'Demo_two_channel_input_image_BF.tif'
+        )
+        acdc_df_path = os.path.join(
+            images_path, 'SCGE_5strains_23092021_acdc_output.csv'
+        )
+        segm_path = os.path.join(
+            images_path, 'Demo_two_channel_input_image_segm_bf.npz'
+        )
+        basename = 'SCGE_5strains_23092021_'
+        super().__init__(
+            images_path, intensity_image_path, acdc_df_path, segm_path,
+            basename
+        )
+    
+    def posData(self):
+        from . import load
+        return load.loadData(self.intensity_image_path, 'BF')
+
 class _YeastTimeLapseAnnotatedJordan(_Data):
     def __init__(self, custom_data_path=None):
         if custom_data_path is not None:
