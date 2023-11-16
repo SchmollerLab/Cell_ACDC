@@ -17311,13 +17311,14 @@ class guiWin(QMainWindow):
         fluo_data = np.squeeze(skimage.io.imread(fluo_path))
         return fluo_data
 
-    def load_fluo_data(self, fluo_path):
+    def load_fluo_data(self, fluo_path, isGuiThread=True):
         self.logger.info(f'Loading fluorescence image data from "{fluo_path}"...')
         bkgrData = None
         posData = self.data[self.pos_i]
         # Load overlay frames and align if needed
         filename = os.path.basename(fluo_path)
         filename_noEXT, ext = os.path.splitext(filename)
+        printl(filename_noEXT, ext)
         if ext == '.npy' or ext == '.npz':
             fluo_data = np.load(fluo_path)
             try:
@@ -17355,12 +17356,13 @@ class guiWin(QMainWindow):
                 if os.path.exists(bkgrData_path):
                     bkgrData = np.load(bkgrData_path)
         else:
-            txt = html_utils.paragraph(
-                f'File format {ext} is not supported!\n'
-                'Choose either .tif or .npz files.'
-            )
-            msg = widgets.myMessageBox()
-            msg.critical(self, 'File not supported', txt)
+            if isGuiThread:
+                txt = html_utils.paragraph(
+                    f'File format {ext} is not supported!\n'
+                    'Choose either .tif or .npz files.'
+                )
+                msg = widgets.myMessageBox()
+                msg.critical(self, 'File not supported', txt)
             return None, None
 
         return fluo_data, bkgrData

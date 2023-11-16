@@ -1086,7 +1086,7 @@ class calcMetricsWorker(QObject):
 
                     self.logger.log(f'Loading {fluoChName} data...')
                     fluo_data, bkgrData = self.mainWin.gui.load_fluo_data(
-                        fluo_path
+                        fluo_path, isGuiThread=False
                     )
                     if fluo_data is None:
                         continue
@@ -1099,7 +1099,7 @@ class calcMetricsWorker(QObject):
                     posData.loadedFluoChannels.add(fluoChName)
                     posData.fluo_data_dict[filename] = fluo_data
                     posData.fluo_bkgrData_dict[filename] = bkgrData
-
+                
                 # Recreate allData_li attribute of the gui
                 posData.allData_li = []
                 for frame_i, lab in enumerate(posData.segm_data[:stopFrameNum]):
