@@ -1691,6 +1691,37 @@ def img_to_float(img):
         img = img/img_max
     return img
 
+def float_img_to_dtype(img, dtype):
+    if img.dtype == dtype:
+        return img
+    
+    img_max = img.max()
+    if img_max > 1.0:
+        raise TypeError(
+            'Images of float data type with values greater than 1.0 cannot '
+            f'be safely casted to {dtype}.'
+            f'The max value of the input image is {img_max:.3f}'
+        )
+    
+    img_min = img.min()
+    if img_min < -1.0:
+        raise TypeError(
+            'Images of float data type with values smaller than -1.0 cannot '
+            f'be safely casted to {dtype}.'
+            f'The minumum value of the input image is {img_min:.3f}'
+        )
+
+    if dtype == np.uint8:
+        return skimage.img_as_ubyte(img)
+    
+    if dtype == np.uin16:
+        return skimage.img_as_uint(img)
+    
+    raise TypeError(
+        f'Invalid output data type `{dtype}`. '
+        'Valid output data types are `np.uin8` and `np.uint16`'
+    )
+
 def scale_float(data):
     val = data[tuple([0]*data.ndim)]
     if isinstance(val, (np.floating, float)):
