@@ -12,7 +12,7 @@ class Model:
             radius=1.0,
             amount=1.0,
             block_size = 15,
-            offset = -5.5,
+            offset = -2.5,
             inverse_bw_max_pix = 600,
             footprint = 'default',
             clear_border_conn = 8,
@@ -40,7 +40,7 @@ class Model:
         block_size : int, optional
             _description_, by default 15
         offset : float, optional
-            _description_, by default -5.5
+            Percentage of maximum pixel value, by default -2.5
         inverse_bw_max_pix : int, optional
             _description_, by default 600
         footprint : str, optional
