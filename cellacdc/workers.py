@@ -2992,7 +2992,7 @@ class ConcatAcdcDfsWorker(BaseWorkerUtil):
                 'Saving multiple experiments concatenated file to '
                 f'"{acdc_dfs_allexp_filepath}"'
             )
-            to_format_func = getattr(acdc_df_allpos, self._to_format)
+            to_format_func = getattr(acdc_df_allexp, self._to_format)
             to_format_func(acdc_dfs_allexp_filepath)
 
         self.signals.finished.emit(self)

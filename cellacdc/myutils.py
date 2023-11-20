@@ -1206,6 +1206,12 @@ def _model_url(model_name, return_alternative=False):
         ]
         file_size = [124408122]
         alternative_url = ''
+    elif model_name == 'Cellpose_germlineNuclei':
+        url = [
+            'https://hmgubox2.helmholtz-muenchen.de/index.php/s/AXG6fFfD8o5GZ83/download/cellpose_germlineNuclei_2023'
+        ]
+        file_size = [26570752]
+        alternative_url = ''
     else:
         return
     if return_alternative:
@@ -1421,6 +1427,13 @@ def download_model(model_name):
     elif model_name == 'YeaZ_v2':
         try:
             _download_yeaz_models()
+            return True
+        except Exception as e:
+            traceback.print_exc()
+            return False
+    elif model_name == 'Cellpose_germlineNuclei':
+        try:
+            _download_cellpose_germlineNuclei_model()
             return True
         except Exception as e:
             traceback.print_exc()
@@ -2361,6 +2374,26 @@ def _download_yeaz_models():
     temp_model_path = tempfile.mkdtemp()
     _, final_model_path = (
         get_model_path('YeaZ_v2', create_temp_dir=False)
+    )
+    for url, file_size in zip(urls, file_sizes):
+        filename = url.split('/')[-1]
+        final_dst = os.path.join(final_model_path, filename)
+        if os.path.exists(final_dst):            
+            continue
+
+        temp_dst = os.path.join(temp_model_path, filename)
+        download_url(
+            url, temp_dst, file_size=file_size, desc='TAPIR',
+            verbose=False
+        )
+        
+        shutil.move(temp_dst, final_dst)
+
+def _download_cellpose_germlineNuclei_model():
+    urls, file_sizes = _model_url('Cellpose_germlineNuclei')
+    temp_model_path = tempfile.mkdtemp()
+    _, final_model_path = (
+        get_model_path('Cellpose_germlineNuclei', create_temp_dir=False)
     )
     for url, file_size in zip(urls, file_sizes):
         filename = url.split('/')[-1]
