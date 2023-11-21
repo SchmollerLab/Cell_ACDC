@@ -14194,7 +14194,7 @@ class guiWin(QMainWindow):
                 return
             self.newSegmEndName = win.entryText
         else:
-            if len(existingSegmEndNames) > 1:
+            if len(existingSegmEndNames) > 0:
                 win = apps.QDialogMultiSegmNpz(
                     existingSegmEndNames, self.exp_path, parent=self,
                     addNewFileButton=True, basename=posData.basename
