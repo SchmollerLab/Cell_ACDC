@@ -1,9 +1,8 @@
 from pombseen.main import pomBsegNuc
 
 class Model:
-    def __init__(self, seg):
-        self.seg = seg
-        pass
+    def __init__(self, segm_data):
+        self.segm_data = segm_data
 
     def segment(
             self,
@@ -39,6 +38,9 @@ class Model:
             Segmented image
         """       
 
-        segmented_img = pomBsegNuc(image, self.seg, connectivity, offset, min_size, max_size, max_nuclei, rel_size_max)
+        segmented_img = pomBsegNuc(
+            image, self.segm_data, connectivity, offset, min_size, max_size, 
+            max_nuclei, rel_size_max
+        )
 
         return segmented_img
