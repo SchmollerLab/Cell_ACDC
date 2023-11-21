@@ -10488,7 +10488,7 @@ class QDialogModelParams(QDialog):
             start_row += 1
         
         addSecondChannelSelector = addChannelSelector
-        if addSecondChannelSelector:
+        if addSecondChannelSelector and ArgSpecs_list[0].docstring is not None:
             if ArgSpecs_list[0].docstring.lower().find('single channel only') != -1:
                 addSecondChannelSelector = False
         

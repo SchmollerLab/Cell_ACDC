@@ -792,7 +792,7 @@ def _get_doc_stop_idx(docstring, next_param_name=None):
     return -1
 
 def parse_model_param_doc(name, next_param_name=None, docstring=None):
-    if docstring is None:
+    if not docstring:
         return ''
     
     try:
