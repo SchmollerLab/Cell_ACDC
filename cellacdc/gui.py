@@ -1366,6 +1366,7 @@ class guiWin(QMainWindow):
         menuBar.addMenu(self.settingsMenu)
         self.settingsMenu.addAction(self.toggleColorSchemeAction)
         self.settingsMenu.addAction(self.editShortcutsAction)
+        self.settingsMenu.addAction(self.showMirroredCursorAction)
         self.settingsMenu.addSeparator()
 
         # Mode menu (actions added when self.modeComboBox is created)
@@ -2621,6 +2622,17 @@ class guiWin(QMainWindow):
             'Customize keyboard shortcuts...', self
         )
         self.editShortcutsAction.setShortcut('Ctrl+K')
+        
+        self.showMirroredCursorAction = QAction(
+            'Show mirrored cursor on images', self
+        )
+        self.showMirroredCursorAction.setCheckable(True)
+        if 'showMirroredCursor' in self.df_settings.index:
+            checked = self.df_settings.at['showMirroredCursor', 'value'] == 'Yes'
+            self.showMirroredCursorAction.setChecked(checked)
+        else:
+            self.showMirroredCursorAction.setChecked(True)
+        self.showMirroredCursorAction.setShortcut('Ctrl+M')
 
         self.editTextIDsColorAction = QAction('Text annotation color...', self)
         self.editTextIDsColorAction.setDisabled(True)
@@ -2818,6 +2830,9 @@ class guiWin(QMainWindow):
 
         self.toggleColorSchemeAction.triggered.connect(self.onToggleColorScheme)
         self.editShortcutsAction.triggered.connect(self.editShortcuts_cb)
+        self.showMirroredCursorAction.toggled.connect(
+            self.showMirroredCursorToggled
+        )
 
         # Connect Help actions
         self.tipsAction.triggered.connect(self.showTipsAndTricks)
@@ -2865,6 +2880,15 @@ class guiWin(QMainWindow):
         ))
         self.df_settings.at['colorScheme', 'value'] = self._colorScheme
         self.df_settings.to_csv(settings_csv_path)
+    
+    def showMirroredCursorToggled(self, checked):
+        value = 'Yes' if checked else 'No'
+        self.df_settings.at['showMirroredCursor', 'value'] = value
+        self.df_settings.to_csv(settings_csv_path)
+        
+        if not checked:
+            self.ax1_cursor.setData([], [])
+            self.ax2_cursor.setData([], [])                
         
     def gui_connectEditActions(self):
         self.showInExplorerAction.setEnabled(True)
@@ -5564,6 +5588,7 @@ class guiWin(QMainWindow):
         self.gui_hoverEventImg1(event, isHoverImg1=False)
         setMirroredCursor = (
             self.app.overrideCursor() is None and not event.isExit()
+            and self.showMirroredCursorAction.isChecked()
         )
         if setMirroredCursor:
             x, y = event.pos()
@@ -5722,7 +5747,7 @@ class guiWin(QMainWindow):
         
         setMirroredCursor = (
             self.app.overrideCursor() is None and not event.isExit()
-            and isHoverImg1
+            and isHoverImg1 and self.showMirroredCursorAction.isChecked()
         )
         if setMirroredCursor:
             x, y = event.pos()
