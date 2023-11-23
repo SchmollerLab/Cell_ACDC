@@ -1366,6 +1366,7 @@ class guiWin(QMainWindow):
         menuBar.addMenu(self.settingsMenu)
         self.settingsMenu.addAction(self.toggleColorSchemeAction)
         self.settingsMenu.addAction(self.editShortcutsAction)
+        self.settingsMenu.addAction(self.showMirroredCursorAction)
         self.settingsMenu.addSeparator()
 
         # Mode menu (actions added when self.modeComboBox is created)
@@ -2621,6 +2622,17 @@ class guiWin(QMainWindow):
             'Customize keyboard shortcuts...', self
         )
         self.editShortcutsAction.setShortcut('Ctrl+K')
+        
+        self.showMirroredCursorAction = QAction(
+            'Show mirrored cursor on images', self
+        )
+        self.showMirroredCursorAction.setCheckable(True)
+        if 'showMirroredCursor' in self.df_settings.index:
+            checked = self.df_settings.at['showMirroredCursor', 'value'] == 'Yes'
+            self.showMirroredCursorAction.setChecked(checked)
+        else:
+            self.showMirroredCursorAction.setChecked(True)
+        self.showMirroredCursorAction.setShortcut('Ctrl+M')
 
         self.editTextIDsColorAction = QAction('Text annotation color...', self)
         self.editTextIDsColorAction.setDisabled(True)
@@ -2818,6 +2830,9 @@ class guiWin(QMainWindow):
 
         self.toggleColorSchemeAction.triggered.connect(self.onToggleColorScheme)
         self.editShortcutsAction.triggered.connect(self.editShortcuts_cb)
+        self.showMirroredCursorAction.toggled.connect(
+            self.showMirroredCursorToggled
+        )
 
         # Connect Help actions
         self.tipsAction.triggered.connect(self.showTipsAndTricks)
@@ -2865,7 +2880,54 @@ class guiWin(QMainWindow):
         ))
         self.df_settings.at['colorScheme', 'value'] = self._colorScheme
         self.df_settings.to_csv(settings_csv_path)
+    
+    def showMirroredCursorToggled(self, checked):
+        value = 'Yes' if checked else 'No'
+        self.df_settings.at['showMirroredCursor', 'value'] = value
+        self.df_settings.to_csv(settings_csv_path)
         
+        if not checked:
+            self.clearCursors()
+    
+    def clearCursors(self):
+        self.ax1_cursor.setData([], [])
+        self.ax2_cursor.setData([], [])              
+        self.setHoverToolSymbolData(
+            [], [], (self.ax2_BrushCircle, self.ax1_BrushCircle),
+        )  
+        eraserCursors = (
+            self.ax1_EraserCircle, self.ax2_EraserCircle,
+            self.ax1_EraserX, self.ax2_EraserX
+        )
+        self.setHoverToolSymbolData([], [], eraserCursors)
+    
+    def activeEraserCircleCursors(self, isHoverImg1):
+        if self.showMirroredCursorAction.isChecked():
+            return self.ax1_EraserCircle, self.ax2_EraserCircle
+        
+        if isHoverImg1:
+            return self.ax1_EraserCircle,
+        else:
+            return self.ax2_EraserCircle,
+    
+    def activeEraserXCursors(self, isHoverImg1):
+        if self.showMirroredCursorAction.isChecked():
+            return self.ax1_EraserX, self.ax2_EraserX
+        
+        if isHoverImg1:
+            return self.ax1_EraserX,
+        else:
+            return self.ax2_EraserX,
+    
+    def activeBrushCircleCursors(self, isHoverImg1):
+        if self.showMirroredCursorAction.isChecked():
+            return self.ax1_BrushCircle, self.ax2_BrushCircle
+        
+        if isHoverImg1:
+            return self.ax1_BrushCircle,
+        else:
+            return self.ax2_BrushCircle,
+    
     def gui_connectEditActions(self):
         self.showInExplorerAction.setEnabled(True)
         self.setEnabledFileToolbar(True)
@@ -5564,6 +5626,7 @@ class guiWin(QMainWindow):
         self.gui_hoverEventImg1(event, isHoverImg1=False)
         setMirroredCursor = (
             self.app.overrideCursor() is None and not event.isExit()
+            and self.showMirroredCursorAction.isChecked()
         )
         if setMirroredCursor:
             x, y = event.pos()
@@ -5650,18 +5713,19 @@ class guiWin(QMainWindow):
         # Draw eraser circle
         if cursorsInfo['setEraserCursor']:
             x, y = event.pos()
-            self.updateEraserCursor(x, y)
+            self.updateEraserCursor(x, y, isHoverImg1=isHoverImg1)
             self.hideItemsHoverBrush(xy=(x, y))
         else:
-            self.setHoverToolSymbolData(
-                [], [], (self.ax1_EraserCircle, self.ax2_EraserCircle,
-                         self.ax1_EraserX, self.ax2_EraserX)
+            eraserCursors = (
+                self.ax1_EraserCircle, self.ax2_EraserCircle,
+                self.ax1_EraserX, self.ax2_EraserX
             )
+            self.setHoverToolSymbolData([], [], eraserCursors)
 
         # Draw Brush circle
         if cursorsInfo['setBrushCursor']:
             x, y = event.pos()
-            self.updateBrushCursor(x, y)
+            self.updateBrushCursor(x, y, isHoverImg1=isHoverImg1)
             self.hideItemsHoverBrush(xy=(x, y))
         else:
             self.setHoverToolSymbolData(
@@ -5722,7 +5786,7 @@ class guiWin(QMainWindow):
         
         setMirroredCursor = (
             self.app.overrideCursor() is None and not event.isExit()
-            and isHoverImg1
+            and isHoverImg1 and self.showMirroredCursorAction.isChecked()
         )
         if setMirroredCursor:
             x, y = event.pos()
@@ -5985,7 +6049,7 @@ class guiWin(QMainWindow):
         # Draw eraser circle
         if setEraserCursor:
             x, y = event.pos()
-            self.updateEraserCursor(x, y)
+            self.updateEraserCursor(x, y, isHoverImg1=False)
         else:
             self.setHoverToolSymbolData(
                 [], [], (self.ax1_EraserCircle, self.ax2_EraserCircle,
@@ -5995,7 +6059,7 @@ class guiWin(QMainWindow):
         # Draw Brush circle
         if setBrushCursor:
             x, y = event.pos()
-            self.updateBrushCursor(x, y)
+            self.updateBrushCursor(x, y, isHoverImg1=False)
         else:
             self.setHoverToolSymbolData(
                 [], [], (self.ax2_BrushCircle, self.ax1_BrushCircle),
@@ -10979,7 +11043,7 @@ class guiWin(QMainWindow):
             # self.setAllTextAnnotations()
             self.ax1BrushHoverID = 0
 
-    def updateBrushCursor(self, x, y):
+    def updateBrushCursor(self, x, y, isHoverImg1=True):
         if x is None:
             return
 
@@ -10990,15 +11054,14 @@ class guiWin(QMainWindow):
         if not (xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y):
             return
 
-        posData = self.data[self.pos_i]
         size = self.brushSizeSpinbox.value()*2
         self.setHoverToolSymbolData(
-            [x], [y], (self.ax2_BrushCircle, self.ax1_BrushCircle),
+            [x], [y], self.activeBrushCircleCursors(isHoverImg1),
             size=size
         )
         self.setHoverToolSymbolColor(
             xdata, ydata, self.ax2_BrushCirclePen,
-            (self.ax2_BrushCircle, self.ax1_BrushCircle),
+            self.activeBrushCircleCursors(isHoverImg1),
             self.brushButton, brush=self.ax2_BrushCircleBrush
         )
     
@@ -11305,26 +11368,24 @@ class guiWin(QMainWindow):
         if not self.isMovingLabel:
             self.highlightSearchedID(ID)
 
-    def updateEraserCursor(self, x, y):
+    def updateEraserCursor(self, x, y, isHoverImg1=True):
         if x is None:
             return
 
         xdata, ydata = int(x), int(y)
         _img = self.currentLab2D
         Y, X = _img.shape
-        posData = self.data[self.pos_i]
 
         if not (xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y):
             return
 
-        posData = self.data[self.pos_i]
         size = self.brushSizeSpinbox.value()*2
         self.setHoverToolSymbolData(
-            [x], [y], (self.ax1_EraserCircle, self.ax2_EraserCircle),
+            [x], [y], self.activeEraserCircleCursors(isHoverImg1),
             size=size
         )
         self.setHoverToolSymbolData(
-            [x], [y], (self.ax1_EraserX, self.ax2_EraserX),
+            [x], [y], self.activeEraserXCursors(isHoverImg1),
             size=int(size/2)
         )
 
@@ -11335,7 +11396,7 @@ class guiWin(QMainWindow):
         if not isMouseDrag:
             self.setHoverToolSymbolColor(
                 xdata, ydata, self.eraserCirclePen,
-                (self.ax2_EraserCircle, self.ax1_EraserCircle),
+                self.activeEraserCircleCursors(isHoverImg1),
                 self.eraserButton, hoverRGB=None
             )
 
@@ -14194,7 +14255,7 @@ class guiWin(QMainWindow):
                 return
             self.newSegmEndName = win.entryText
         else:
-            if len(existingSegmEndNames) > 1:
+            if len(existingSegmEndNames) > 0:
                 win = apps.QDialogMultiSegmNpz(
                     existingSegmEndNames, self.exp_path, parent=self,
                     addNewFileButton=True, basename=posData.basename

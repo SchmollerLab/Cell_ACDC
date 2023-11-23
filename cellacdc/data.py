@@ -76,12 +76,12 @@ class pomBseenDualChannelData(_Data):
             images_path, 'Demo_two_channel_input_image_BF.tif'
         )
         acdc_df_path = os.path.join(
-            images_path, 'SCGE_5strains_23092021_acdc_output.csv'
+            images_path, 'Demo_two_channel_input_image_acdc_output.csv'
         )
         segm_path = os.path.join(
             images_path, 'Demo_two_channel_input_image_segm_bf.npz'
         )
-        basename = 'SCGE_5strains_23092021_'
+        basename = 'Demo_two_channel_input_image_'
         super().__init__(
             images_path, intensity_image_path, acdc_df_path, segm_path,
             basename
