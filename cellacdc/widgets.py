@@ -7292,4 +7292,58 @@ class RulerPlotItem(pg.PlotDataItem):
         xl = xc-wl/2
         yt = y0-hl    
         self.labelItem.item.setPos(xl, yt)
+
+class VectorLineEdit(QLineEdit):
+    valueChanged = Signal(object)
+    
+    def __init__(self, parent=None, initial=None):
+        super().__init__(parent)
         
+        float_re = float_regex()
+        vector_regex = fr'\(?\[?{float_re}(,\s?{float_re})+\)?\]?'
+        regex = fr'^{vector_regex}$|^{float_re}$'
+        self.validRegex = regex
+        
+        regExp = QRegularExpression(regex)
+        self.setValidator(QRegularExpressionValidator(regExp))
+        self.setAlignment(Qt.AlignCenter)
+        
+        self.textChanged.connect(self.emitValueChanged)
+        if initial is None:
+            self.setText('0.0')
+        
+        font = QFont()
+        font.setPixelSize(11)
+        self.setFont(font)
+    
+    def emitValueChanged(self, text):
+        val = self.value()
+        m = re.match(self.validRegex, self.text())
+        if m is None:
+            self.setStyleSheet(LINEEDIT_INVALID_ENTRY_STYLESHEET)
+        else:
+            self.setStyleSheet('')
+            self.valueChanged.emit(self.value())
+    
+    def setValue(self, value):
+        self.setText(value)
+    
+    def setText(self, text):
+        super().setText(str(text))
+    
+    def value(self):
+        m = re.match(self.validRegex, self.text())
+        if m is None:
+            return 0.0
+        else:
+            try: 
+                value = float(self.text())
+                return value
+            except Exception as e:
+                text = self.text()
+                text = text.replace('(', '')
+                text = text.replace(')', '')
+                text = text.replace('[', '')
+                text = text.replace(']', '')
+                values = text.split(',')
+                return [float(value) for value in values]

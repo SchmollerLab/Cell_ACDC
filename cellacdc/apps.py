@@ -74,6 +74,7 @@ from . import widgets
 from . import user_profile_path
 from . import features
 from . import _core
+from . import types
 from .regex import float_regex
 
 POSITIVE_FLOAT_REGEX = float_regex(allow_negative=False)
@@ -10562,10 +10563,26 @@ class QDialogModelParams(QDialog):
             try:
                 values = ArgSpec.type().values
                 isCustomListType = True
-            except Exception as e:
+            except Exception as err:
                 isCustomListType = False
             
-            if ArgSpec.type == bool:
+            isVectorEntry = False
+            try:
+                if isinstance(ArgSpec.type(), types.Vector):
+                    isVectorEntry = True
+            except Exception as err:
+                pass
+            
+            if isVectorEntry:
+                vectorLineEdit = widgets.VectorLineEdit()
+                vectorLineEdit.setValue(ArgSpec.default)
+                defaultVal = ArgSpec.default
+                valueSetter = widgets.VectorLineEdit.setValue
+                valueGetter = widgets.VectorLineEdit.value
+                widget = vectorLineEdit
+                groupBoxLayout.addWidget(vectorLineEdit, row, 1, 1, 2)
+            
+            elif ArgSpec.type == bool:
                 booleanGroup = QButtonGroup()
                 booleanGroup.setExclusive(True)
                 checkBox = widgets.Toggle()
