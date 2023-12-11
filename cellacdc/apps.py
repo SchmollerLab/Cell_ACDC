@@ -74,6 +74,7 @@ from . import widgets
 from . import user_profile_path
 from . import features
 from . import _core
+from . import types
 from .regex import float_regex
 
 POSITIVE_FLOAT_REGEX = float_regex(allow_negative=False)
@@ -10457,6 +10458,39 @@ class QDialogModelParams(QDialog):
             value = None
         return value
 
+    def criticalSegmFileRequiredButNoneAvailable(self):
+        txt = html_utils.paragraph(f"""
+            <b>{self.model_name}</b> model 
+            <b>requires an additional segmentation file</b> 
+            but there are none available!<br><br>
+            Please, segment the correct channel before using {self.model_name}.
+            <br><br>Thank you for you patience!
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.critical(self, 'Segmentation file required', txt)
+        raise FileNotFoundError(
+            'Model requires segmentation file but none are available.'
+        )
+    
+    
+    def checkAddSegmEndnameCombobox(self, ArgSpec, groupBoxLayout, row):
+        if ArgSpec.name != 'Auxiliary segmentation file':
+            return False
+        
+        if self.segmFileEndnames is None or not self.segmFileEndnames:
+            self.criticalSegmFileRequiredButNoneAvailable()
+        
+        label = QLabel(f'{ArgSpec.name}:  ')
+        groupBoxLayout.addWidget(
+            label, row, 0, alignment=Qt.AlignRight
+        )
+        items = self.segmFileEndnames
+        self.segmEndnameCombobox = widgets.QCenteredComboBox()
+        self.segmEndnameCombobox.addItems(items)
+        groupBoxLayout.addWidget(self.segmEndnameCombobox, row, 1, 1, 2)
+        return True
+        
+    
     def createGroupParams(self, ArgSpecs_list, groupName, addChannelSelector=False):
         ArgWidget = namedtuple(
             'ArgsWidgets',
@@ -10488,7 +10522,7 @@ class QDialogModelParams(QDialog):
             start_row += 1
         
         addSecondChannelSelector = addChannelSelector
-        if addSecondChannelSelector:
+        if addSecondChannelSelector and ArgSpecs_list[0].docstring is not None:
             if ArgSpecs_list[0].docstring.lower().find('single channel only') != -1:
                 addSecondChannelSelector = False
         
@@ -10499,19 +10533,11 @@ class QDialogModelParams(QDialog):
             groupBoxLayout.addWidget(self.channelsCombobox, start_row, 1, 1, 2)
             infoText = (
                 'Some cellpose models can merge two channels (e.g., cyto + '
-                'nucleus) to obtain better perfomance.'
+                'nucleus) to obtain better perfomance.\n\n'
+                'Select a channel as additional input to the model.'
             )
             infoButton = self.getInfoButton('Second channel', infoText)
             groupBoxLayout.addWidget(infoButton, start_row, 3)
-            start_row += 1
-        
-        if self.segmFileEndnames is not None and addChannelSelector:
-            label = QLabel('Segmentation file (optional):  ')
-            groupBoxLayout.addWidget(label, start_row, 0, alignment=Qt.AlignRight)
-            items = ['None', *self.segmFileEndnames]
-            self.segmEndnameCombobox = widgets.QCenteredComboBox()
-            self.segmEndnameCombobox.addItems(items)
-            groupBoxLayout.addWidget(self.segmEndnameCombobox, start_row, 1, 1, 2)
             start_row += 1
         
         for row, ArgSpec in enumerate(ArgSpecs_list):
@@ -10522,7 +10548,14 @@ class QDialogModelParams(QDialog):
                 pass
             
             row = row + start_row
-            var_name = ArgSpec.name.replace('_', ' ')
+            skip = self.checkAddSegmEndnameCombobox(
+                ArgSpec, groupBoxLayout, row
+            )
+            if skip:
+                continue
+            
+            arg_name = ArgSpec.name         
+            var_name = arg_name.replace('_', ' ')
             var_name = f'{var_name[0].upper()}{var_name[1:]}'
             label = QLabel(f'{var_name}:  ')
             metadata_val = self.getValueFromMetadata(ArgSpec.name)
@@ -10530,10 +10563,26 @@ class QDialogModelParams(QDialog):
             try:
                 values = ArgSpec.type().values
                 isCustomListType = True
-            except Exception as e:
+            except Exception as err:
                 isCustomListType = False
             
-            if ArgSpec.type == bool:
+            isVectorEntry = False
+            try:
+                if isinstance(ArgSpec.type(), types.Vector):
+                    isVectorEntry = True
+            except Exception as err:
+                pass
+            
+            if isVectorEntry:
+                vectorLineEdit = widgets.VectorLineEdit()
+                vectorLineEdit.setValue(ArgSpec.default)
+                defaultVal = ArgSpec.default
+                valueSetter = widgets.VectorLineEdit.setValue
+                valueGetter = widgets.VectorLineEdit.value
+                widget = vectorLineEdit
+                groupBoxLayout.addWidget(vectorLineEdit, row, 1, 1, 2)
+            
+            elif ArgSpec.type == bool:
                 booleanGroup = QButtonGroup()
                 booleanGroup.setExclusive(True)
                 checkBox = widgets.Toggle()
@@ -10784,11 +10833,13 @@ class QDialogModelParams(QDialog):
     def ok_cb(self, checked):
         self.cancel = False
         self.init_kwargs = self.argsWidgets_to_kwargs(self.init_argsWidgets)
-        if hasattr(self, 'segmEndnameCombobox'):
-            self.init_kwargs['segm_endname'] = self.segmEndnameCombobox.currentText()
         self.model_kwargs = self.argsWidgets_to_kwargs(
             self.argsWidgets
         )
+        if hasattr(self, 'segmEndnameCombobox'):
+            self.init_kwargs['segm_endname'] = (
+                self.segmEndnameCombobox.currentText()
+            )
         if self.postProcessGroupbox is not None:
             self.applyPostProcessing = self.postProcessGroupbox.isChecked()
         self.secondChannelName = None

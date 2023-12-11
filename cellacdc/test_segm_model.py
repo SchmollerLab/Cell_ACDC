@@ -94,8 +94,8 @@ if win.cancel:
 # Initialize model
 segm_data = None
 init_kwargs = win.init_kwargs
-segm_endname = init_kwargs.pop('segm_endname')
-if segm_endname != 'None':
+segm_endname = init_kwargs.pop('segm_endname', None)
+if segm_endname is not None:
     segm_filepath, _ = load.get_path_from_endname(segm_endname, images_path)
     segm_data = np.load(segm_filepath)['arr_0']
 
@@ -108,16 +108,10 @@ is_segment3DT_available = any(
     [name=='segment3DT' for name in dir(model)]
 )
 
-import pdb; pdb.set_trace()
-
 if img.ndim == 3 and (img.shape[-1] == 3 or img.shape[-1] == 4):
     img = skimage.color.rgb2gray(img)
 
-print(img.shape)
-
 lab = core.segm_model_segment(model, img, win.model_kwargs, frame_i=FRAME_I)
-
-print(lab.shape)
 
 if model_name == 'YeastMate':
     cca_df = model.predictCcaState(img)

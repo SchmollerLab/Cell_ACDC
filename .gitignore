@@ -44,7 +44,6 @@ cellacdc/metrics/*
 !cellacdc/metrics/combine_metrics_example.py
 cellacdc/models/beno
 cellacdc/models/Simone_cellpose
-cellacdc/models/Cellpose_germlineNuclei
 cellacdc/timon_tests
 cellacdc/models/test_segm_model
 cellacdc/trackers/example
@@ -57,7 +56,7 @@ cellacdc/test_download_model.py
 cellacdc/test_segm.npy
 cellacdc/_profile/spline_to_obj/regression.ipynb
 cellacdc/deprecated
-cellacdc/bioformats/jars/.old_bioformats_package.jar
+cellacdc/bioformats/jars/.old_bioformats_package*
 cellacdc/java
 cellacdc/javabridge_cp37
 cellacdc/javabridge_cp38

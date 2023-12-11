@@ -752,15 +752,12 @@ def insertModelArgSpect(
 def getModelArgSpec(acdcSegment):
     init_ArgSpec = inspect.getfullargspec(acdcSegment.Model.__init__)
     init_kwargs_type_hints = typing.get_type_hints(acdcSegment.Model.__init__)
-    try:
-        init_ArgSpec.args.remove('segm_data')
-    except Exception as e:
-        pass
     init_doc = acdcSegment.Model.__init__.__doc__
     init_params = params_to_ArgSpec(
-        init_ArgSpec, init_kwargs_type_hints, 1, init_doc
+        init_ArgSpec, init_kwargs_type_hints, init_doc
     )
-
+    init_params = add_segm_data_param(init_params, init_ArgSpec)
+    
     segment_ArgSpec = inspect.getfullargspec(acdcSegment.Model.segment)
     segment_kwargs_type_hints = typing.get_type_hints(acdcSegment.Model.segment)
     try:
@@ -770,8 +767,9 @@ def getModelArgSpec(acdcSegment):
     
     segment_doc = acdcSegment.Model.segment.__doc__
     segment_params = params_to_ArgSpec(
-        segment_ArgSpec, segment_kwargs_type_hints, 2, segment_doc,
+        segment_ArgSpec, segment_kwargs_type_hints, segment_doc,
     )
+    
     return init_params, segment_params
 
 def _get_doc_stop_idx(docstring, next_param_name=None):
@@ -792,7 +790,7 @@ def _get_doc_stop_idx(docstring, next_param_name=None):
     return -1
 
 def parse_model_param_doc(name, next_param_name=None, docstring=None):
-    if docstring is None:
+    if not docstring:
         return ''
     
     try:
@@ -822,12 +820,38 @@ def parse_model_param_doc(name, next_param_name=None, docstring=None):
     
     return param_doc
 
+def add_segm_data_param(init_params, init_argspecs):
+    if init_argspecs.defaults is None:
+        num_kwargs = 0
+    else:
+        num_kwargs = len(init_argspecs.defaults)
+    
+    # Segm model requires segm data --> add it to params
+    num_args = len(init_argspecs.args) - num_kwargs
+    if num_args == 1:
+        # Args is only self --> segm data not needed
+        return init_params
+    
+    desc = (
+'This model requires an additional segmentation file as input.\n\n'
+'Please, select which segmentation file to provide to the model.'
+    )
+    
+    segm_data_argspec = ArgSpec(
+        name='Auxiliary segmentation file', 
+        default='', 
+        type=str, 
+        desc=desc,
+        docstring=None
+    )
+    
+    init_params.insert(0, segm_data_argspec)
+    return init_params
+
 def params_to_ArgSpec(
-        fullargspecs, type_hints, start_idx, docstring, args_to_skip=None
+        fullargspecs, type_hints, docstring, args_to_skip=None
     ):
     params = []
-    if len(fullargspecs.args) <= start_idx:
-        return params
     
     if fullargspecs.defaults is None:
         return params
@@ -835,8 +859,11 @@ def params_to_ArgSpec(
     if args_to_skip is None:
         args_to_skip = set()
     
-    ip = start_idx
     num_params = len(fullargspecs.args)
+    ip = num_params - len(fullargspecs.defaults)
+    if ip < 0:
+        return params
+    
     for arg, default in zip(fullargspecs.args[ip:], fullargspecs.defaults):
         if arg in args_to_skip:
             continue
@@ -856,7 +883,10 @@ def params_to_ArgSpec(
             docstring=docstring
         )
         param = ArgSpec(
-            name=arg, default=default, type=_type, desc=param_doc,
+            name=arg, 
+            default=default, 
+            type=_type, 
+            desc=param_doc,
             docstring=docstring
         )
         params.append(param)
@@ -870,7 +900,7 @@ def getTrackerArgSpec(trackerModule, realTime=False):
     )
     init_doc = trackerModule.tracker.__init__.__doc__
     init_params = params_to_ArgSpec(
-        init_ArgSpec, init_kwargs_type_hints, 1, init_doc
+        init_ArgSpec, init_kwargs_type_hints, init_doc
     )
     if realTime:
         track_ArgSpec = inspect.getfullargspec(trackerModule.tracker.track_frame)
@@ -885,9 +915,8 @@ def getTrackerArgSpec(trackerModule, realTime=False):
         )
         track_doc = trackerModule.tracker.track.__doc__
 
-    kwargs_start_idx = len(track_ArgSpec.args) - len(track_ArgSpec.defaults)
     track_params = params_to_ArgSpec(
-        track_ArgSpec, track_kwargs_type_hints, kwargs_start_idx, track_doc,
+        track_ArgSpec, track_kwargs_type_hints, track_doc,
         args_to_skip={'signals', 'export_to'}
     )
     return init_params, track_params

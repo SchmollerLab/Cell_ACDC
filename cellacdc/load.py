@@ -950,7 +950,7 @@ class loadData:
         if askMultiSegmFunc is None:
             return segm_files
 
-        is_multi_npz = len(segm_files)>1
+        is_multi_npz = len(segm_files)>0
         if is_multi_npz and askMultiSegmFunc is not None:
             askMultiSegmFunc(segm_files, self, waitCond)
             endFilename = self.selectedItemText[len(self.basename):]

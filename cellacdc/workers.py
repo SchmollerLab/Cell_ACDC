@@ -2919,6 +2919,7 @@ class ConcatAcdcDfsWorker(BaseWorkerUtil):
             acdc_df_allpos = pd.concat(
                 acdc_dfs, keys=keys, names=['Position_n', 'Cell_ID']
             )
+            acdc_df_allpos['experiment_folderpath'] = exp_path
             
             basename, chNames = myutils.getBasenameAndChNames(
                 images_path, useExt=('.tif', '.h5')
