@@ -8,8 +8,7 @@ import matplotlib.pyplot as plt
 import skimage.measure
 
 from cellacdc import core, myutils, widgets, load, html_utils
-
-from qtpy.QtWidgets import QApplication, QStyleFactory
+from cellacdc import data
 
 try:
     import pytest
@@ -23,30 +22,16 @@ from cellacdc._run import _setup_app
 app, splashScreen = _setup_app(splashscreen=True)  
 splashScreen.close()
 
-gdrive_path = myutils.get_gdrive_path()
-
-test_img_path = (
-    # os.path.join(gdrive_path, *(r'01_Postdoc_HMGU\Python_MyScripts\MIA\Git\DeepSea\data\test_images\A11_z007_c001.png').split('\\')"
-    # os.path.join(gdrive_path, *(r'01_Postdoc_HMGU\Python_MyScripts\MIA\Git\DeepSea\data\test_images\train_A11_z001_c001.png').split('\\')"
-    # os.path.join(gdrive_path, *(r'01_Postdoc_HMGU\Python_MyScripts\MIA\Git\Cell_ACDC\data\test_images\test_cellpose.tif').split('\\')"
-    # os.path.join(gdrive_path, *(r'01_Postdoc_HMGU\Python_MyScripts\MIA\Git\Cell_ACDC\data\test_images\test_YeaZ.tif').split('\\')"
-    os.path.join(
-        gdrive_path, 
-        *(r'01_Postdoc_HMGU\Python_MyScripts\MIA\Git\Cell_ACDC\data\test_timelapse\Yagya_Kurt_presentation\Position_6\Images\SCGE_5strains_23092021_Dia_Ph3.tif').split('\\'))
-    # os.path.join(gdrive_path, *(r'01_Postdoc_HMGU\Python_MyScripts\MIA\Git\DeepSea\data\test_tracking\Position_1\Images\A3_03_1_1_Phase Contrast.tif').split('\\')"
-)
-
 channel_name = 'Phase Contrast'
 end_filename_segm = 'segm'# 'segm_test'
 START_FRAME = 0 
-STOP_FRAME = 20
-PLOT_FRAME = 10
+STOP_FRAME = 5
+PLOT_FRAME = 2
 SAVE = False
 SCRUMBLE_IDs = False
 
-posData = load.loadData(
-    test_img_path, channel_name
-)
+test_data = data.BABYtestData()
+posData = test_data.posData()
 posData.loadImgData()
 posData.loadOtherFiles(
     load_segm_data=True, 

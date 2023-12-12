@@ -1717,6 +1717,12 @@ def to_uint8(img):
     img = np.round(img_to_float(img)*255).astype(np.uint8)
     return img
 
+def to_uint16(img):
+    if img.dtype == np.uint16:
+        return img
+    img = np.round(img_to_float(img)*65535).astype(np.uint16)
+    return img
+
 def img_to_float(img):
     img_max = np.max(img)
     # Check if float outside of -1, 1
@@ -1940,6 +1946,9 @@ def check_install_cellpose():
         printl(traceback.format_exc())
         _inform_install_package_failed('cellpose')
 
+def check_install_baby():
+    check_install_package('baby', pypi_name='baby-seg')
+
 def check_install_yeaz():
     check_install_package('torch')
     check_install_package('yeaz')
@@ -1949,12 +1958,57 @@ def check_install_segment_anything():
     check_install_package('segment_anything')
 
 def check_install_package(
-        pkg_name: str, pypi_name='', note='', parent=None, 
-        raise_on_cancel=True, logger_func=print, is_cli=False,
-        caller_name='Cell-ACDC', upgrade=False
+        pkg_name: str, 
+        import_pkg_name: str='',
+        pypi_name='', 
+        note='', 
+        parent=None, 
+        raise_on_cancel=True, 
+        logger_func=print, 
+        is_cli=False,
+        caller_name='Cell-ACDC', 
+        upgrade=False
     ):
+    """Try to import a package. If import fails, ask user to install it 
+    automatically.
+
+    Parameters
+    ----------
+    pkg_name : str
+        The name of the package that is displayed to the user.
+    import_pkg_name : str, optional
+        The name of the package as it should be imported (case sensitive).
+        If empty string, `pkg_name` will be imported instead. Default is ''
+    pypi_name : str, optional
+        The name of the package to be installed with pip.
+        If empty string, `pkg_name` will be installed instead. Default is ''
+    note : str, optional
+        Additional text to display to the user. Default is ''
+    parent : _type_, optional
+        Calling QtWidget. Default is None
+    raise_on_cancel : bool, optional
+        Raise exception if processed cancelled. Default is True
+    logger_func : _type_, optional
+        Function used to log text. Default is print
+    is_cli : bool, optional
+        If True, message will be displayed in the terminal. 
+        If False, message will be displayed in a Qt message box.
+        Default is False
+    caller_name : str, optional
+        Program calling this function. Default is 'Cell-ACDC'
+    upgrade : bool, optional
+        If True, pip will upgrade the package. Default is False
+
+    Raises
+    ------
+    ModuleNotFoundError
+        Error raised if process is cancelled and `raise_on_cancel=True`.
+    """    
+    if not import_pkg_name:
+        import_pkg_name = pkg_name
+    
     try:
-        import_module(pkg_name)
+        import_module(import_pkg_name)
     except ModuleNotFoundError:
         
         proceed = _install_package_msg(

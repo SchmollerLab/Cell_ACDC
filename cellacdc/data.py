@@ -177,3 +177,28 @@ class YeastMitoTimelapse(_Data):
             self.images_path, 
             'Point0019_ChannelGFP,mCardinal,Ph-3_Seq0019_s5_segm_7slices.npz'
         ))['arr_0']
+
+class BABYtestData(_Data):
+    def __init__(self):
+        images_path = os.path.join(
+            data_path, 'test_BABY', 'evolve_testG_Brightfield', 'Position_1', 
+            'Images'
+        )
+        intensity_image_path = os.path.join(
+            images_path, 'evolve_testG_Brightfield.tif'
+        )
+        acdc_df_path = os.path.join(
+            images_path, 'evolve_testG_acdc_output.csv'
+        )
+        segm_path = os.path.join(
+            images_path, 'evolve_testG_segm.npz'
+        )
+        basename = 'evolve_testG_'
+        super().__init__(
+            images_path, intensity_image_path, acdc_df_path, segm_path,
+            basename
+        )
+    
+    def posData(self):
+        from . import load
+        return load.loadData(self.intensity_image_path, 'Brightfield')
