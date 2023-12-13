@@ -48,6 +48,7 @@ from . import user_profile_path, recentPaths_path
 from . import models_list_file_path
 from . import github_home_url
 from . import try_input_install_package
+from . import _warnings
 
 ArgSpec = namedtuple('ArgSpec', ['name', 'default', 'type', 'desc', 'docstring'])
 
@@ -1724,19 +1725,46 @@ def to_uint16(img):
     return img
 
 def img_to_float(img):
+    input_img_dtype = img.dtype
     img_max = np.max(img)
     # Check if float outside of -1, 1
-    if img_max <= 1:
+    if img_max <= 1.0 and issubclass(input_img_dtype, (np.floating, float)):
         return img
 
     uint8_max = np.iinfo(np.uint8).max
     uint16_max = np.iinfo(np.uint16).max
-    if img_max <= uint8_max:
+    uint32_max = np.iinfo(np.uint32).max
+    
+    img = img.astype(float)
+    
+    if input_img_dtype == np.uint8:
+        # Input image is 8-bit
+        img = img/uint8_max
+    elif input_img_dtype == np.uint16:
+        # Input image is 16-bit
+        img = img/uint16_max    
+    elif input_img_dtype == np.uint32:
+        # Input image is 32-bit
+        img = img/uint32_max
+    elif img_max <= uint8_max:
+        # Input image is probably 8-bit
+        _warnings.warn_image_overflow_dtype(input_img_dtype, img_max, '8-bit')
         img = img/uint8_max
     elif img_max <= uint16_max:
+        # Input image is probably 16-bit
+        _warnings.warn_image_overflow_dtype(input_img_dtype, img_max, '16-bit')
         img = img/uint16_max
+    elif img_max <= uint32_max:
+        # Input image is probably 32-bit
+        _warnings.warn_image_overflow_dtype(input_img_dtype, img_max, '32-bit')
+        img = img/uint32_max
     else:
-        img = img/img_max
+        # Input image is a non-supported data type
+        raise TypeError(
+            f'The maximum value in the image is {img_max} which is greater than the '
+            f'maximum value supported of {uint32_max} (32-bit). '
+            'Please consider converting your images to 32-bit or 16-bit first.'
+        )
     return img
 
 def float_img_to_dtype(img, dtype):

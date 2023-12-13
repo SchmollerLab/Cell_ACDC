@@ -181,11 +181,11 @@ def printl(*objects, pretty=False, is_decorator=False, **kwargs):
     idx = 2 if is_decorator else 1
     callingframe = outerframes[idx].frame
     callingframe_info = inspect.getframeinfo(callingframe)
-    filpath = callingframe_info.filename
-    filename = os.path.basename(filpath)
+    filepath = callingframe_info.filename
+    filename = os.path.basename(filepath)
     print_func = pprint if pretty else print
     print('*'*30)
-    print(f'{timestap} - File "{filename}", line {callingframe_info.lineno}:')
+    print(f'{timestap} - File `{filename}`, "{filepath}", line {callingframe_info.lineno}:')
     if 'sep' not in kwargs:
         kwargs['sep'] = ', '
     if pretty:
