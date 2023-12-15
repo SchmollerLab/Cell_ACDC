@@ -34,7 +34,7 @@ def calc_IoA_matrix(lab, prev_lab, rp, prev_rp, IDs_curr_untracked=None):
                 IoA_matrix[i, j] = IoA
     return IoA_matrix, IDs_curr_untracked, IDs_prev
 
-def assign(IoA_matrix, IDs_curr_untracked, IDs_prev, IoA_thresh=0.4):
+def assign(IoA_matrix, IDs_curr_untracked, IDs_prev, IoA_thresh=0.4, aggr_track=None, IoA_thresh_aggr=0.4):
     # Determine max IoA between IDs and assign tracked ID if IoA >= IoA_thresh
     if IoA_matrix.size == 0:
         return [], []
@@ -46,9 +46,13 @@ def assign(IoA_matrix, IDs_curr_untracked, IDs_prev, IoA_thresh=0.4):
     if DEBUG:
         printl(f'IDs in previous frame: {IDs_prev}')
     for i, j in enumerate(max_IoA_col_idx):
+        if i in aggr_track:
+            IoA_thresh_temp = IoA_thresh_aggr
+        else:
+            IoA_thresh_temp = IoA_thresh
         max_IoU = IoA_matrix[i,j]
         count = counts_dict[j]
-        if max_IoU >= IoA_thresh:
+        if max_IoU >= IoA_thresh_temp:
             tracked_ID = IDs_prev[j]
             if count == 1:
                 old_ID = IDs_curr_untracked[i]
@@ -136,18 +140,20 @@ def track_frame(
         prev_lab, prev_rp, lab, rp, IDs_curr_untracked=None,
         uniqueID=None, setBrushID_func=None, posData=None,
         assign_unique_new_IDs=True, IoA_thresh=0.4, debug=False,
-        return_all=False
+        return_all=False, aggr_track=None, IoA_matrix=None, IoA_thresh_aggr=None, IDs_prev=None
     ):
     if not np.any(lab):
         # Skip empty frames
         return lab
 
-    IoA_matrix, IDs_curr_untracked, IDs_prev = calc_IoA_matrix(
-        lab, prev_lab, rp, prev_rp, IDs_curr_untracked=IDs_curr_untracked
-    )
+    if IoA_matrix is None:
+        IoA_matrix, IDs_curr_untracked, IDs_prev = calc_IoA_matrix(
+            lab, prev_lab, rp, prev_rp, IDs_curr_untracked=IDs_curr_untracked
+        )
+
     old_IDs, tracked_IDs = assign(
         IoA_matrix, IDs_curr_untracked, IDs_prev,
-        IoA_thresh=IoA_thresh
+        IoA_thresh=IoA_thresh, aggr_track=aggr_track, IoA_thresh_aggr=IoA_thresh_aggr
     )
 
     if posData is None and uniqueID is None:
