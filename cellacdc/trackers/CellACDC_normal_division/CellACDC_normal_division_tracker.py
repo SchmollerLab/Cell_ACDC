@@ -1,29 +1,28 @@
 import os
 from cellacdc.trackers.CellACDC.CellACDC_tracker import track_frame, calc_IoA_matrix
-
+from cellacdc.core import printl
 import numpy as np
 from skimage.measure import regionprops
 from tqdm import tqdm
 
-def ident_no_mothers(IoA_matrix, IoA_thresh_daughter=0.4, min_daughter=2, max_daughter=2):
+def ident_no_mothers(IoA_matrix, IoA_thresh_daughter, min_daughter, max_daughter):
     # Find cells which dont have several bad overlaps in next frame, implying they have not split  
+    mothers = []
     aggr_track = []
     daughter_range = range(min_daughter, max_daughter+1, 1)
     IoA_thresholded = IoA_matrix >= IoA_thresh_daughter
-
-    for i in range(IoA_matrix.shape[0]):
-
-        
-        high_IoA_indices = np.where(IoA_thresholded[i])[0]
+    for i in range(IoA_matrix.shape[1]):
+        high_IoA_indices = np.where(IoA_thresholded[:, i])[0]
         
         if not high_IoA_indices.size:
             continue
         elif not len(high_IoA_indices) in daughter_range:
-            aggr_track.append(i)
+            aggr_track.extend(high_IoA_indices)
+        else:
+            mothers.extend(high_IoA_indices)
 
+    # print(f"{IoA_thresholded}, Mothers: {mothers}, AggTrack: {aggr_track}")
     return aggr_track
-
-
 
 class tracker:
     def __init__(self):
@@ -53,10 +52,11 @@ class tracker:
 
             IoA_matrix, IDs_curr_untracked, IDs_prev = calc_IoA_matrix(lab, prev_lab, rp, prev_rp)
             aggr_track = ident_no_mothers(IoA_matrix, IoA_thresh_daughter=IoA_thresh_daughter, min_daughter=Min_daughter, max_daughter=Max_daughter)
+            # print(f'Frame: {frame_i}, {len(IoA_matrix) - len(aggr_track)}')
             tracked_lab = track_frame(
                 prev_lab, prev_rp, lab, rp, IoA_thresh=IoA_thresh,IoA_matrix=IoA_matrix, aggr_track=aggr_track, IoA_thresh_aggr=IoA_thresh_aggr, IDs_curr_untracked=IDs_curr_untracked, IDs_prev=IDs_prev
             )
-            
+            # printl(f'Frame: {frame_i}, No mothers: {aggr_track} IoA_matrix: \n{IoA_matrix}')
             tracked_video[frame_i] = tracked_lab
             self.updateGuiProgressBar(signals)
             pbar.update()

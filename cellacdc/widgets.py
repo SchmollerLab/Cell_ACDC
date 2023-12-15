@@ -6282,6 +6282,7 @@ class ScrollBarWithNumericControl(QWidget):
 
         self.spinbox.valueChanged.connect(self.spinboxValueChanged)
         self.scrollbar.valueChanged.connect(self.scrollbarValueChanged)
+
         if add_max_proj_button:
             self.maxProjCheckbox.toggled.connect(self.maxProjToggled)
     
@@ -6384,7 +6385,10 @@ class ImShow(QBaseWindow):
     def __init__(self, parent=None, link_scrollbars=True):
         super().__init__(parent=parent)
         self._linkedScrollbars = link_scrollbars
+
         self._autoLevels = True
+
+        self.textItems = []  # PrelimFix
     
     def _getGraphicsScrollbar(self, idx, image, imageItem, maximum):
         proxy = QGraphicsProxyWidget(imageItem)
@@ -6407,6 +6411,10 @@ class ImShow(QBaseWindow):
         img = self._get2Dimg(imageItem, scrollbar.image)
         imageItem.setImage(img, autoLevels=self._autoLevels)
         self.setPointsVisible(imageItem)
+
+        self.updateIDs()
+
+
         if not self._linkedScrollbars:
             return
         if len(self.ImageItems) == 1:
@@ -6731,6 +6739,17 @@ class ImShow(QBaseWindow):
                 )
                 textItem.setPos(xc, yc)
                 plotItem.addItem(textItem)
+                self.textItems.append(textItem)
+
+    def clearLabels(self): # This is very slow and causes some errors, need to refactor at some point
+        for plotItem in self.PlotItems:
+            for textItem in self.textItems:
+                plotItem.removeItem(textItem)
+        self.textItems = []  
+
+    def updateIDs(self):
+        self.clearLabels()
+        self.showIDs()
 
     def show(self, block=False, screenToWindowRatio=None):
         super().show(block=block)
