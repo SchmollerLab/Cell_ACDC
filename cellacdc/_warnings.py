@@ -1,7 +1,7 @@
-from . import widgets, html_utils
 from . import issues_url
 
 def warnTooManyItems(mainWin, numItems, qparent):
+    from . import widgets, html_utils
     mainWin.logger.info(
         '[WARNING]: asking user what to do with too many graphical items...'
     )
@@ -25,6 +25,7 @@ def warnTooManyItems(mainWin, numItems, qparent):
     return msg.cancel, msg.clickedButton==switchToLowResButton
 
 def warnRestartCellACDCcolorModeToggled(scheme, app_name='Cell-ACDC', parent=None):
+    from . import widgets, html_utils
     msg = widgets.myMessageBox(wrapText=False)
     txt = (
         'In order for the change to take effect, '
@@ -42,3 +43,19 @@ def warnRestartCellACDCcolorModeToggled(scheme, app_name='Cell-ACDC', parent=Non
         txt = f'{txt}<br><br>{note_txt}'
     txt = html_utils.paragraph(txt)
     msg.information(parent, f'Restart {app_name}', txt)
+
+class DataTypeWarning(RuntimeWarning):
+    def __init__(self, message):
+        self._message = message
+    
+    def __str__(self):
+        return repr(self._message)
+
+def warn_image_overflow_dtype(input_dtype, max_value, inferred_dtype):
+    import warnings
+    warnings.warn(
+        f'The input image has data type {input_dtype}. Since it is neither '
+        f'8-bit, 16-bit, nor 32-bit the data was inferred as {inferred_dtype} '
+        f'from the max value of the image of {max_value}.', 
+        DataTypeWarning
+    )

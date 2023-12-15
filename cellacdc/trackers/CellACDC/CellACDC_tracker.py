@@ -209,7 +209,8 @@ class tracker:
                 signals.innerProgressBar.emit(1)
                 return
 
-        signals.progressBar.emit(1)
+        if hasattr(signals, 'progressBar'):
+            signals.progressBar.emit(1)
 
     def save_output(self):
         pass

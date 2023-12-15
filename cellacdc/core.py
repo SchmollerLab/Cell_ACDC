@@ -1722,6 +1722,7 @@ class SegmKernel(_WorkflowKernel):
     @exception_handler_cli      
     def init_args_from_params(self, workflow_params, logger_func):
         args = workflow_params['initialization'].copy()
+        args['use3DdataFor2Dsegm'] = workflow_params.get('use3DdataFor2Dsegm', False)
         args['model_kwargs'] = workflow_params['segmentation_model_params']
         args['track_params'] = workflow_params.get('tracker_params', {})
         args['standard_postrocess_kwargs'] = (
@@ -1761,6 +1762,7 @@ class SegmKernel(_WorkflowKernel):
             isSegm3D,
             use_ROI,
             second_channel_name,
+            use3DdataFor2Dsegm,
             model_kwargs, 
             track_params,
             SizeT, 
@@ -1786,6 +1788,7 @@ class SegmKernel(_WorkflowKernel):
         self.do_save = do_save
         self.image_channel_tracker = image_channel_tracker
         self.isSegm3D = isSegm3D
+        self.use3DdataFor2Dsegm = use3DdataFor2Dsegm
         self.use_ROI = use_ROI
         self.second_channel_name = second_channel_name
         self.logger_func = logger_func
@@ -1929,7 +1932,7 @@ class SegmKernel(_WorkflowKernel):
 
         if posData.SizeT > 1:
             self.t0 = 0
-            if posData.SizeZ > 1 and not self.isSegm3D:
+            if posData.SizeZ > 1 and not self.isSegm3D and not self.use3DdataFor2Dsegm:
                 # 2D segmentation on 3D data over time
                 img_data = posData.img_data
                 if self.second_channel_name is not None:
@@ -1974,7 +1977,7 @@ class SegmKernel(_WorkflowKernel):
                         img_data[i] = np.median(img, axis=0)
                         if self.second_channel_name is not None:
                             second_ch_data[i] = np.median(second_ch_img, axis=0)
-            elif posData.SizeZ > 1 and self.isSegm3D:
+            elif posData.SizeZ > 1 and (self.isSegm3D or self.use3DdataFor2Dsegm):
                 # 3D segmentation on 3D data over time
                 img_data = posData.img_data[self.t0:stop_i]
                 postprocess_img = img_data
@@ -2068,7 +2071,7 @@ class SegmKernel(_WorkflowKernel):
         if posData.SizeT > 1:
             if self.innerPbar_available and self.signals is not None:
                 self.signals.resetInnerPbar.emit(len(img_data))
-
+            
             if self.is_segment3DT_available:
                 self.model_kwargs['signals'] = (
                     self.signals, self.innerPbar_available
@@ -2082,7 +2085,7 @@ class SegmKernel(_WorkflowKernel):
                     # emit one pos done
                     self.signals.progressBar.emit(1)
             else:
-                lab_stack = np.zeros(img_data.shape, np.uint32)
+                lab_stack = []
                 pbar = tqdm(total=len(img_data), ncols=100)
                 for t, img in enumerate(img_data):
                     if self.second_channel_name is not None:
@@ -2090,13 +2093,14 @@ class SegmKernel(_WorkflowKernel):
                     lab = segm_model_segment(
                         self.model, img, self.model_kwargs, frame_i=t
                     )
-                    lab_stack[t] = lab
+                    lab_stack.append(lab)
                     if self.innerPbar_available:
                         self.signals.innerProgressBar.emit(1)
                     else:
                         self.signals.progressBar.emit(1)
                     pbar.update()
                 pbar.close()
+                lab_stack = np.array(lab_stack, dtype=np.uint32)
                 if self.innerPbar_available:
                     # emit one pos done
                     self.signals.progressBar.emit(1)

@@ -102,6 +102,7 @@ class segmWorker(QRunnable):
             mainWin.isSegm3D,
             use_ROI,
             mainWin.secondChannelName,
+            mainWin.use3DdataFor2Dsegm,
             mainWin.model_kwargs,
             mainWin.track_params,
             mainWin.SizeT, 
@@ -672,18 +673,30 @@ class segmWin(QMainWindow):
                 isSegmInfoPresent = False
                 break
         
+        self.use3DdataFor2Dsegm = False
+        if posData.SizeZ > 1 and not self.isSegm3D:
+            cancel, use3DdataFor2Dsegm = self.askHowToHandle2DsegmOn3Ddata()
+            if cancel:
+                abort = self.doAbort()
+                if abort:
+                    self.close()
+                    return
+            self.use3DdataFor2Dsegm = use3DdataFor2Dsegm
+        
         segm2D_never_visualized_dataPrep = (
             not self.isSegm3D
             and posData.SizeZ > 1
             and not isSegmInfoPresent
+            and not self.use3DdataFor2Dsegm
         )
         segm2D_on_3D_visualized = (
             not self.isSegm3D
             and posData.SizeZ > 1
             and isSegmInfoPresent
+            and not self.use3DdataFor2Dsegm
         )
         launchDataPrep = False
-
+        
         if segm2D_never_visualized_dataPrep:
             launchDataPrep = True
         if selectROI:
@@ -783,7 +796,7 @@ class segmWin(QMainWindow):
                 load_metadata=True
             )
             posData.isSegm3D = self.isSegm3D
-        elif posData.SizeZ > 1 and not self.isSegm3D:
+        elif posData.SizeZ > 1 and not self.isSegm3D and not self.use3DdataFor2Dsegm:
             df = posData.segmInfo_df.loc[posData.filename]
             zz = df['z_slice_used_dataPrep'].to_list()
 
@@ -923,6 +936,7 @@ class segmWin(QMainWindow):
             'isSegm3D': self.isSegm3D,
             'use_ROI': not self.ROIdeactivatedByUser,
             'second_channel_name': self.secondChannelName,
+            'use3DdataFor2Dsegm': self.use3DdataFor2Dsegm,
         }
         metadata_params = {
             'SizeT': self.SizeT,
@@ -1079,6 +1093,24 @@ class segmWin(QMainWindow):
             askNewName = False
             return askNewName
 
+    def askHowToHandle2DsegmOn3Ddata(self):
+        txt = html_utils.paragraph(
+            'How do you want to handle 3D data?'
+        )
+        use3DButton = widgets.threeDPushButton(
+            'Pass all z-slices to the model'
+        )
+        convertTo2DButton = widgets.twoDPushButton(
+            'Use or select z-slices or projection from Data prep'
+        )
+        buttons = (
+            'Cancel', use3DButton, convertTo2DButton
+        )
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.question(self, 'How to handle 3D data', txt, buttonsTexts=buttons)
+        
+        return msg.cancel, msg.clickedButton == use3DButton
+    
     def selectSegmFile(self, segm_files, isOverwrite, msg, button):
         action = 'overwrite' if isOverwrite else 'concatenate to'
         selectSegmFileWin = widgets.QDialogListbox(

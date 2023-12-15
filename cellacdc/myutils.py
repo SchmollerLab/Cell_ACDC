@@ -48,6 +48,7 @@ from . import user_profile_path, recentPaths_path
 from . import models_list_file_path
 from . import github_home_url
 from . import try_input_install_package
+from . import _warnings
 
 ArgSpec = namedtuple('ArgSpec', ['name', 'default', 'type', 'desc', 'docstring'])
 
@@ -116,12 +117,15 @@ def filterCommonStart(images_path):
 def get_salute_string():
     time_now = datetime.datetime.now().time()
     time_end_morning = datetime.time(12,00,00)
+    time_end_lunch = datetime.time(13,00,00)
     time_end_afternoon = datetime.time(15,00,00)
     time_end_evening = datetime.time(20,00,00)
     time_end_night = datetime.time(4,00,00)
     if time_now >= time_end_night and time_now < time_end_morning:
         return 'Have a good day!'
-    elif time_now >= time_end_morning and time_now < time_end_afternoon:
+    elif time_now >= time_end_morning and time_now < time_end_lunch:
+        return 'Enjoy your lunch!'
+    elif time_now >= time_end_lunch and time_now < time_end_afternoon:
         return 'Have a good afternoon!'
     elif time_now >= time_end_afternoon and time_now < time_end_evening:
         return 'Have a good evening!'
@@ -1717,20 +1721,53 @@ def to_uint8(img):
     img = np.round(img_to_float(img)*255).astype(np.uint8)
     return img
 
+def to_uint16(img):
+    if img.dtype == np.uint16:
+        return img
+    img = np.round(img_to_float(img)*65535).astype(np.uint16)
+    return img
+
 def img_to_float(img):
+    input_img_dtype = img.dtype
     img_max = np.max(img)
     # Check if float outside of -1, 1
-    if img_max <= 1:
+    if img_max <= 1.0 and issubclass(input_img_dtype, (np.floating, float)):
         return img
 
     uint8_max = np.iinfo(np.uint8).max
     uint16_max = np.iinfo(np.uint16).max
-    if img_max <= uint8_max:
+    uint32_max = np.iinfo(np.uint32).max
+    
+    img = img.astype(float)
+    
+    if input_img_dtype == np.uint8:
+        # Input image is 8-bit
+        img = img/uint8_max
+    elif input_img_dtype == np.uint16:
+        # Input image is 16-bit
+        img = img/uint16_max    
+    elif input_img_dtype == np.uint32:
+        # Input image is 32-bit
+        img = img/uint32_max
+    elif img_max <= uint8_max:
+        # Input image is probably 8-bit
+        _warnings.warn_image_overflow_dtype(input_img_dtype, img_max, '8-bit')
         img = img/uint8_max
     elif img_max <= uint16_max:
+        # Input image is probably 16-bit
+        _warnings.warn_image_overflow_dtype(input_img_dtype, img_max, '16-bit')
         img = img/uint16_max
+    elif img_max <= uint32_max:
+        # Input image is probably 32-bit
+        _warnings.warn_image_overflow_dtype(input_img_dtype, img_max, '32-bit')
+        img = img/uint32_max
     else:
-        img = img/img_max
+        # Input image is a non-supported data type
+        raise TypeError(
+            f'The maximum value in the image is {img_max} which is greater than the '
+            f'maximum value supported of {uint32_max} (32-bit). '
+            'Please consider converting your images to 32-bit or 16-bit first.'
+        )
     return img
 
 def float_img_to_dtype(img, dtype):
@@ -1940,6 +1977,9 @@ def check_install_cellpose():
         printl(traceback.format_exc())
         _inform_install_package_failed('cellpose')
 
+def check_install_baby():
+    check_install_package('baby', pypi_name='baby-seg')
+
 def check_install_yeaz():
     check_install_package('torch')
     check_install_package('yeaz')
@@ -1949,12 +1989,57 @@ def check_install_segment_anything():
     check_install_package('segment_anything')
 
 def check_install_package(
-        pkg_name: str, pypi_name='', note='', parent=None, 
-        raise_on_cancel=True, logger_func=print, is_cli=False,
-        caller_name='Cell-ACDC', upgrade=False
+        pkg_name: str, 
+        import_pkg_name: str='',
+        pypi_name='', 
+        note='', 
+        parent=None, 
+        raise_on_cancel=True, 
+        logger_func=print, 
+        is_cli=False,
+        caller_name='Cell-ACDC', 
+        upgrade=False
     ):
+    """Try to import a package. If import fails, ask user to install it 
+    automatically.
+
+    Parameters
+    ----------
+    pkg_name : str
+        The name of the package that is displayed to the user.
+    import_pkg_name : str, optional
+        The name of the package as it should be imported (case sensitive).
+        If empty string, `pkg_name` will be imported instead. Default is ''
+    pypi_name : str, optional
+        The name of the package to be installed with pip.
+        If empty string, `pkg_name` will be installed instead. Default is ''
+    note : str, optional
+        Additional text to display to the user. Default is ''
+    parent : _type_, optional
+        Calling QtWidget. Default is None
+    raise_on_cancel : bool, optional
+        Raise exception if processed cancelled. Default is True
+    logger_func : _type_, optional
+        Function used to log text. Default is print
+    is_cli : bool, optional
+        If True, message will be displayed in the terminal. 
+        If False, message will be displayed in a Qt message box.
+        Default is False
+    caller_name : str, optional
+        Program calling this function. Default is 'Cell-ACDC'
+    upgrade : bool, optional
+        If True, pip will upgrade the package. Default is False
+
+    Raises
+    ------
+    ModuleNotFoundError
+        Error raised if process is cancelled and `raise_on_cancel=True`.
+    """    
+    if not import_pkg_name:
+        import_pkg_name = pkg_name
+    
     try:
-        import_module(pkg_name)
+        import_module(import_pkg_name)
     except ModuleNotFoundError:
         
         proceed = _install_package_msg(

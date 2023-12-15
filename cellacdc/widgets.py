@@ -6469,11 +6469,9 @@ class ImShow(QBaseWindow):
             return
         
         first_coord = imageItem.ScrollBars[0].value()
+        isMaxProj = imageItem.ScrollBars[0].maxProjCheckbox.isChecked()
         for p, plotItem in enumerate(imageItem.pointsItems):
-            if p == first_coord:
-                plotItem.setVisible(True)
-            else:
-                plotItem.setVisible(False)
+            plotItem.setVisible((isMaxProj) or (p == first_coord))
     
     def setupStatusBar(self):
         self.statusbar = self.statusBar()
@@ -6642,6 +6640,15 @@ class ImShow(QBaseWindow):
         ) 
         return item
 
+    def drawPointsFromDf(self, points_df):
+        yy = points_df['y'].values
+        xx = points_df['x'].values
+        points_coords = np.column_stack((yy, xx))
+        if 'z' in points_df.columns:
+            zz = points_df['z'].values
+            points_coords = np.column_stack((zz, points_coords))
+        self.drawPoints(points_coords)
+    
     def drawPoints(self, points_coords):  
         n_dim = points_coords.shape[1]
         if n_dim == 2:
