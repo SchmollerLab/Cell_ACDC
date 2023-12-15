@@ -34,6 +34,7 @@ from . import (
 from . import transformation
 from .path import copy_or_move_tree
 from . import features
+from . import core
 
 DEBUG = False
 
@@ -1517,9 +1518,9 @@ class trackingWorker(QObject):
         trackerInputImage = None
         self.track_params['signals'] = self.signals
         if 'image' in self.track_params:
-            trackerInputImage = self.track_params.pop('image')
             start_frame_i = self.mainWin.start_n-1
             stop_frame_n = self.mainWin.stop_n
+
             trackerInputImage = trackerInputImage[start_frame_i:stop_frame_n]
         
         tracked_video = core.tracker_track(

@@ -1,5 +1,5 @@
 import os
-from cellacdc.trackers.CellACDC.CellACDC_tracker import  track_frame, calc_IoA_matrix
+from cellacdc.trackers.CellACDC.CellACDC_tracker import track_frame, calc_IoA_matrix
 
 import numpy as np
 from skimage.measure import regionprops
@@ -54,7 +54,7 @@ class tracker:
             IoA_matrix, IDs_curr_untracked, IDs_prev = calc_IoA_matrix(lab, prev_lab, rp, prev_rp)
             aggr_track = ident_no_mothers(IoA_matrix, IoA_thresh_daughter=IoA_thresh_daughter, min_daughter=Min_daughter, max_daughter=Max_daughter)
             tracked_lab = track_frame(
-                prev_lab, prev_rp, lab, rp, IoA_thresh=IoA_thresh, IoA_matrix=IoA_matrix, aggr_track=aggr_track, IoA_thresh_aggr=IoA_thresh_aggr, IDs_curr_untracked=IDs_curr_untracked, IDs_prev=IDs_prev
+                prev_lab, prev_rp, lab, rp, IoA_thresh=IoA_thresh,IoA_matrix=IoA_matrix, aggr_track=aggr_track, IoA_thresh_aggr=IoA_thresh_aggr, IDs_curr_untracked=IDs_curr_untracked, IDs_prev=IDs_prev
             )
             
             tracked_video[frame_i] = tracked_lab
