@@ -403,8 +403,8 @@ def store_copy_acdc_df(posData, acdc_output_csv_path, log_func=printl):
                 keys = natsorted(hdf.keys())
         
         new_key = datetime.now().strftime(TIMESTAMP_HDF)
-        if len(keys) > 10:
-            # Delete oldest df and resave remaining 9
+        if len(keys) > 20:
+            # Delete oldest df and resave remaining 19
             keys.pop(0)
             temp_dirpath = tempfile.mkdtemp()
             filename = os.path.basename(h5_path)
@@ -432,8 +432,8 @@ def store_unsaved_acdc_df(posData, acdc_df_to_store, log_func=printl):
                 keys = natsorted(hdf.keys())
         
         new_key = datetime.now().strftime(TIMESTAMP_HDF)
-        if len(keys) > 10:
-            # Delete oldest df and resave remaining 9
+        if len(keys) > 20:
+            # Delete oldest df and resave remaining 19
             keys.pop(0)
             temp_dirpath = tempfile.mkdtemp()
             filename = os.path.basename(h5_path)
