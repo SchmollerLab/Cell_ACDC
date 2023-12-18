@@ -11,6 +11,7 @@ import skimage.draw
 import skimage.registration
 import skimage.color
 import skimage.filters
+import skimage.segmentation
 import scipy.ndimage.morphology
 
 from math import sqrt
@@ -2240,3 +2241,63 @@ def tracker_track(
             video_to_track, **track_params
         )
     return tracked_video
+
+def _relabel_sequential(segm_data):
+    relabelled, fw, inv = skimage.segmentation.relabel_sequential(segm_data)
+    newIDs = list(inv.in_values)
+    oldIDs = list(inv.out_values)
+    newIDs.append(-1)
+    oldIDs.append(-1)
+    return relabelled, oldIDs, newIDs
+
+def _relabel_sequential_timelapse(segm_data):
+    """Relabel IDs sequentially frame-by-frame
+
+    Parameters
+    ----------
+    segm_data : (T, Z, Y, X) or (T, Y, X) numpy.ndarray of ints
+        Timelapse segmentation data to relabel.
+
+    Returns
+    -------
+    3-tuple of (numpy.ndarray, list, list)
+        First element is the relabelled segmentation data. 
+        Second element is the list of the old IDs.
+        Third element is the list of the new IDs.
+    """    
+    mapper_old_to_new_IDs = {-1: -1}
+    relabelled = np.zeros_like(segm_data)
+    lastID = 0
+    pbar = tqdm(total=len(segm_data), ncols=100, unit=' frame')
+    for frame_i, lab in enumerate(segm_data):
+        if frame_i == 0:
+            relab, newIDs_i, oldIDs_i = _relabel_sequential(lab)
+            mapper_old_to_new_IDs = dict(zip(oldIDs_i, newIDs_i))
+            lastID = max(newIDs_i)
+            relabelled[frame_i] = relab
+            continue
+        
+        rp = skimage.measure.regionprops(lab)
+        for obj in rp:
+            newID = mapper_old_to_new_IDs.get(obj.label)
+            if newID is not None:
+                # ID was already mapped in prev iter --> use it
+                relabelled[frame_i][obj.slice][obj.image] = newID
+                continue
+            
+            newID = lastID + 1
+            relabelled[frame_i][obj.slice][obj.image] = newID
+            mapper_old_to_new_IDs[obj.label] = newID
+            lastID += 1
+        pbar.update()
+    pbar.close()
+    oldIDs = list(mapper_old_to_new_IDs.keys())
+    newIDs = list(mapper_old_to_new_IDs.values())
+    return relabelled, oldIDs, newIDs
+
+def relabel_sequential(segm_data, is_timelapse=False):
+    if is_timelapse:
+        relabelled, oldIDs, newIDs = _relabel_sequential_timelapse(segm_data)
+    else:
+        relabelled, oldIDs, newIDs = _relabel_sequential(segm_data)
+    return relabelled, oldIDs, newIDs
