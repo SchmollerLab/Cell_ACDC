@@ -196,9 +196,7 @@ class relabelSequentialWorker(QObject):
         self.mutex = QMutex()
         self.waitCond = QWaitCondition()
 
-    def progressNewIDs(self, inv):
-        newIDs = inv.in_values
-        oldIDs = inv.out_values
+    def progressNewIDs(self, oldIDs, newIDs):
         li = list(zip(oldIDs, newIDs))
         s = '\n'.join([str(pair).replace(',', ' -->') for pair in li])
         s = f'IDs relabelled as follows:\n{s}'
@@ -222,27 +220,23 @@ class relabelSequentialWorker(QObject):
             if lab is None:
                 break
             segm_data.append(lab)
-            if frame_i == current_frame_i:
-                break
+            # if frame_i == current_frame_i:
+            #     break
 
         if not segm_data:
-            segm_data = np.array(current_lab)
+            segm_data = np.array([current_lab])
 
         segm_data = np.array(segm_data)
-        segm_data, fw, inv = skimage.segmentation.relabel_sequential(
-            segm_data
+        segm_data, oldIDs, newIDs = core.relabel_sequential(
+            segm_data, is_timelapse=posData.SizeT>1
         )
-        self.progressNewIDs(inv)
+        self.progressNewIDs(oldIDs, newIDs)
         self.sigRemoveItemsGUI.emit(np.max(segm_data))
 
         self.progress.emit(
             'Updating stored data and cell cycle annotations '
             '(if present)...'
         )
-        newIDs = list(inv.in_values)
-        oldIDs = list(inv.out_values)
-        newIDs.append(-1)
-        oldIDs.append(-1)
 
         mainWin.updateAnnotatedIDs(oldIDs, newIDs, logger=self.progress.emit)
         mainWin.store_data(mainThread=False)
@@ -3455,7 +3449,7 @@ class guiWin(QMainWindow):
         bottomLeftLayout.addLayout(
             navWidgetsLayout, row, 0, alignment=Qt.AlignRight
         )
-        bottomLeftLayout.addWidget(self.navigateScrollBar, row, 1, 1, 2)        
+        bottomLeftLayout.addWidget(self.navigateScrollBar, row, 1, 1, 2) 
         sp = self.navigateScrollBar.sizePolicy()
         sp.setRetainSizeWhenHidden(True)
         self.navigateScrollBar.setSizePolicy(sp)
@@ -7558,14 +7552,8 @@ class guiWin(QMainWindow):
             self.startRelabellingWorker(posData)
         else:
             self.storeUndoRedoStates(False)
-            posData.lab, fw, inv = skimage.segmentation.relabel_sequential(
-                posData.lab
-            )
+            posData.lab, oldIDs, newIDs = core.relabel_sequential(posData.lab)
             # Update annotations based on relabelling
-            newIDs = list(inv.in_values)
-            oldIDs = list(inv.out_values)
-            newIDs.append(-1)
-            oldIDs.append(-1)
             self.update_cca_df_relabelling(posData, oldIDs, newIDs)
             self.updateAnnotatedIDs(oldIDs, newIDs, logger=self.logger.info)
             self.store_data()
@@ -10525,12 +10513,6 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         mode = text
         prevMode = self.modeComboBox.previousText()
-        if prevMode == 'Segmentation and Tracking':
-            posData.last_tracked_i = self.get_last_tracked_i()
-            if posData.last_tracked_i > 0:
-                self.lastTrackedFrameLabel.setText(
-                    f'Tracked until frame n. {posData.last_tracked_i+1}'
-                )
         self.annotateToolbar.setVisible(False)
         self.store_data(autosave=False)
         self.copyContourButton.setChecked(False)
@@ -16639,7 +16621,6 @@ class guiWin(QMainWindow):
     def initSegmTrackMode(self):
         posData = self.data[self.pos_i]
         last_tracked_i = self.get_last_tracked_i()
-
         if posData.frame_i > last_tracked_i:
             # Prompt user to go to last tracked frame
             msg = widgets.myMessageBox()
@@ -16680,9 +16661,12 @@ class guiWin(QMainWindow):
         
         self.navigateScrollBar.setMaximum(last_tracked_i+1)
         self.navSpinBox.setMaximum(last_tracked_i+1)
+        self.lastTrackedFrameLabel.setText(
+            f'Last checked frame n. = {last_tracked_i+1}'
+        )
 
         self.checkTrackingEnabled()
-
+    
     @exception_handler
     def initCca(self):
         posData = self.data[self.pos_i]

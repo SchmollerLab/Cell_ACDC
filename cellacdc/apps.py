@@ -12991,3 +12991,316 @@ class SetColumnNamesDialog(widgets.QBaseDialog):
         }
         self.cancel = False
         self.close()
+
+class CombineFeaturesCalculator(widgets.QBaseDialog):
+    sigOk = Signal(object)
+    
+    def __init__(
+            self, features_groups: dict, 
+            group_name_to_col_mapper: dict=None,
+            title='Combine features calculator',
+            parent=None
+        ):
+        super().__init__(parent)
+        
+        self.cancel = True
+        
+        self.setWindowTitle(title)
+        self.initAttributes()
+        
+        mainLayout = QVBoxLayout()
+        equationLayout = QHBoxLayout()
+        
+        metricsTreeWidget = QTreeWidget()
+        metricsTreeWidget.setHeaderHidden(True)
+        metricsTreeWidget.setFont(font)
+        self.metricsTreeWidget = metricsTreeWidget
+        
+        for groupName, features in features_groups.items():
+            topLevelTreeWidgetItem = QTreeWidgetItem(metricsTreeWidget)
+            topLevelTreeWidgetItem.setText(0, groupName)
+            metricsTreeWidget.addTopLevelItem(topLevelTreeWidgetItem)
+            self.addTreeItems(
+                topLevelTreeWidgetItem, features, isCol=True, 
+                name_to_col_mapper=group_name_to_col_mapper.get(groupName)
+            )
+            
+        operatorsLayout = self.createOperatorsLayout()
+        newFeatureNameLayout = self.createNewFeatureNameLayout()
+        equationDisplayLayout = self.createEquationDisplayLayout()
+        
+        equationLayout.addLayout(newFeatureNameLayout)
+        equationLayout.addWidget(QLabel(' = '))
+        equationLayout.addLayout(equationDisplayLayout)
+        equationLayout.setStretch(0,1)
+        equationLayout.setStretch(1,0)
+        equationLayout.setStretch(2,2)
+        
+        testOutputLayout = self.createTestOutputLayout()
+        buttonsLayout = self.createButtonsOutputLayout()
+        
+        instructions = html_utils.paragraph("""
+            <b>Double-click</b> on any of the <b>available measurements</b>
+            to add it to the equation.<br><br>
+            Before clicking the `Ok` button, check that the equation returns 
+            the expected result by clicking the `Test output` button. 
+        """)
+        
+        mainLayout.addWidget(QLabel(instructions))
+        mainLayout.addWidget(QLabel('Available measurements:'))
+        mainLayout.addWidget(metricsTreeWidget)
+        mainLayout.addLayout(operatorsLayout)
+        mainLayout.addLayout(equationLayout)
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(buttonsLayout)
+        mainLayout.addLayout(testOutputLayout)
+
+        
+        metricsTreeWidget.itemDoubleClicked.connect(self.addFeatureName)
+        self.setLayout(mainLayout)
+        self.setFont(font)
+
+        self.setStyleSheet(TREEWIDGET_STYLESHEET)
+    
+    def expandAll(self):
+        for i in range(self.metricsTreeWidget.topLevelItemCount()):
+            topLevelItem = self.metricsTreeWidget.topLevelItem(i)
+            topLevelItem.setExpanded(True)
+    
+    def addTreeItems(
+            self, parentItem, itemsText, isCol=False, name_to_col_mapper=None
+        ):
+        for text in itemsText:
+            _item = QTreeWidgetItem(parentItem)
+            _item.setText(0, text)
+            parentItem.addChild(_item)
+            if isCol:
+                _item.isCol = True
+            _item.variable_name = text
+            if name_to_col_mapper is None:
+                continue
+            
+            col_name = name_to_col_mapper.get(text, None)
+            if col_name is None:
+                continue
+            
+            _item.variable_name = col_name
+            
+    
+    def addFeatureName(self, item, column):
+        if not hasattr(item, 'isCol'):
+            return
+
+        colName = item.variable_name
+        text = f'{self.equationDisplay.toPlainText()}{colName}'
+        self.equationDisplay.setPlainText(text)
+        self.clearLenghts.append(len(colName))
+        self.equationColNames.append(colName)
+    
+    def clearEquation(self):
+        self.isOperatorMode = False
+        self.equationDisplay.setPlainText('')
+        self.initAttributes()
+    
+    def createButtonsOutputLayout(self):
+        buttonsLayout = QHBoxLayout()
+
+        cancelButton = widgets.cancelPushButton('Cancel')
+        helpButton = widgets.infoPushButton('  Help...')
+        testButton = widgets.calcPushButton('Test output')
+        okButton = widgets.okPushButton(' Ok ')
+        okButton.setDisabled(True)
+        self.okButton = okButton
+
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(cancelButton)
+        buttonsLayout.addSpacing(20)
+        buttonsLayout.addWidget(helpButton)
+        buttonsLayout.addWidget(testButton)
+        buttonsLayout.addWidget(okButton)
+        
+        helpButton.clicked.connect(self.showHelp)
+        okButton.clicked.connect(self.ok_cb)
+        cancelButton.clicked.connect(self.close)
+        testButton.clicked.connect(self.test_cb)
+        
+        return buttonsLayout
+
+    def ok_cb(self):
+        if not self.newFeatureNameLineEdit.text():
+            self.warnEmptyEquationName()
+            return
+        
+        self.equation = self.equationDisplay.toPlainText()
+        self.newFeatureName = self.newFeatureNameLineEdit.text()
+        self.cancel = False
+        self.close()
+        self.sigOk.emit(self)
+    
+    def test_cb(self):
+        # Evaluate equation with random inputs
+        equation = self.equationDisplay.toPlainText()
+        random_data = np.random.rand(1, len(self.equationColNames))*5
+        df = pd.DataFrame(
+            data=random_data,
+            columns=self.equationColNames
+        ).round(5)
+        newColName = self.newFeatureNameLineEdit.text()
+        try:
+            df[newColName] = df.eval(equation)
+        except Exception as e:
+            traceback.print_exc()
+            self.testOutputDisplay.setHtml(html_utils.paragraph(e))
+            self.testOutputDisplay.setStyleSheet("border: 2px solid red")
+            return
+
+        self.testOutputDisplay.setStyleSheet("border: 2px solid green")
+        self.okButton.setDisabled(False)
+
+        result = df.round(5).iloc[0][newColName]
+
+        # Substitute numbers into equation
+        inputs = df.iloc[0]
+        equation_numbers = equation
+        for c, col in enumerate(self.equationColNames):
+            equation_numbers = equation_numbers.replace(col, str(inputs[c]))
+
+        # Format output into html text
+        cols = self.equationColNames
+        inputs_txt = [f'{col} = {input}' for col, input in zip(cols, inputs)]
+        list_html = html_utils.to_list(inputs_txt)
+        text = html_utils.paragraph(f"""
+            By substituting the following random inputs:
+            {list_html}
+            we get the equation:<br><br>
+            &nbsp;&nbsp;<code>{newColName} = {equation_numbers}</code><br><br>
+            that <b>equals to</b>:<br><br>
+            &nbsp;&nbsp;<code>{newColName} = {result}</code>
+        """)
+        self.testOutputDisplay.setHtml(text)
+    
+    def warnEmptyEquationName(self):
+        msg = widgets.myMessageBox()
+        txt = html_utils.paragraph("""
+            "New measurement name" field <b>cannot be empty</b>!
+        """)
+        msg.critical(
+            self, 'Empty new measurement name', txt
+        )
+    
+    def showHelp(self):
+        pass
+    
+    def createTestOutputLayout(self):
+        testOutputLayout = QVBoxLayout()
+        testOutputLayout.addWidget(QLabel('Result of test with random inputs:'))
+        testOutputDisplay = QTextEdit()
+        testOutputDisplay.setReadOnly(True)
+        self.testOutputDisplay = testOutputDisplay
+        testOutputLayout.addWidget(testOutputDisplay)
+        testOutputLayout.setStretch(0,0)
+        testOutputLayout.setStretch(1,1)
+        
+        return testOutputLayout
+    
+    def createEquationDisplayLayout(self):
+        equationDisplayLayout = QVBoxLayout()
+        equationDisplayLayout.addWidget(QLabel('Equation:'))
+        equationDisplay = QPlainTextEdit()
+        # equationDisplay.setReadOnly(True)
+        self.equationDisplay = equationDisplay
+        equationDisplayLayout.addWidget(equationDisplay)
+        equationDisplayLayout.setStretch(0,0)
+        equationDisplayLayout.setStretch(1,1)
+        return equationDisplayLayout
+    
+    def createNewFeatureNameLayout(self):
+        newFeatureNameLayout = QVBoxLayout()
+        newFeatureNameLineEdit = widgets.alphaNumericLineEdit()
+        newFeatureNameLineEdit.setAlignment(Qt.AlignCenter)
+        self.newFeatureNameLineEdit = newFeatureNameLineEdit
+        newFeatureNameLayout.addStretch(1)
+        newFeatureNameLayout.addWidget(QLabel('New measurement name:'))
+        newFeatureNameLayout.addWidget(newFeatureNameLineEdit)
+        newFeatureNameLayout.addStretch(1)
+        return newFeatureNameLayout
+    
+    def createOperatorsLayout(self):
+        operatorsLayout = QHBoxLayout()
+        operatorsLayout.addStretch(1)
+
+        iconSize = 24
+
+        self.operatorButtons = []
+        self.operators = [
+            ('add', '+'),
+            ('subtract', '-'),
+            ('multiply', '*'),
+            ('divide', '/'),
+            ('open_bracket', '('),
+            ('close_bracket', ')'),
+            ('square', '**2'),
+            ('pow', '**'),
+            ('ln', 'log('),
+            ('log10', 'log10('),
+        ]
+        operatorFont = QFont()
+        operatorFont.setPixelSize(16)
+        for name, text in self.operators:
+            button = QPushButton()
+            button.setIcon(QIcon(f':{name}.svg'))
+            button.setIconSize(QSize(iconSize,iconSize))
+            button.text = text
+            operatorsLayout.addWidget(button)
+            self.operatorButtons.append(button)
+            button.clicked.connect(self.addOperator)
+            # button.setFont(operatorFont)
+
+        clearButton = QPushButton()
+        clearButton.setIcon(QIcon(':clear.svg'))
+        clearButton.setIconSize(QSize(iconSize,iconSize))
+        clearButton.setFont(operatorFont)
+
+        clearEntryButton = QPushButton()
+        clearEntryButton.setIcon(QIcon(':backspace.svg'))
+        clearEntryButton.setFont(operatorFont)
+        clearEntryButton.setIconSize(QSize(iconSize,iconSize))
+
+        operatorsLayout.addWidget(clearButton)
+        operatorsLayout.addWidget(clearEntryButton)
+        operatorsLayout.addStretch(1)
+        
+        clearButton.clicked.connect(self.clearEquation)
+        clearEntryButton.clicked.connect(self.clearEntryEquation)
+        
+        return operatorsLayout
+
+    def addOperator(self):
+        button = self.sender()
+        text = f'{self.equationDisplay.toPlainText()}{button.text}'
+        self.equationDisplay.setPlainText(text)
+        self.clearLenghts.append(len(button.text))
+
+    def clearEquation(self):
+        self.isOperatorMode = False
+        self.equationDisplay.setPlainText('')
+        self.initAttributes()
+    
+    def initAttributes(self):
+        self.clearLenghts = []
+        self.equationColNames = []
+        self.channelLessColnames = []
+    
+    def clearEntryEquation(self):
+        if not self.clearLenghts:
+            return
+
+        text = self.equationDisplay.toPlainText()
+        newText = text[:-self.clearLenghts[-1]]
+        clearedText = text[-self.clearLenghts[-1]:]
+        self.clearLenghts.pop(-1)
+        self.equationDisplay.setPlainText(newText)
+        if clearedText in self.equationColNames:
+            self.equationColNames.remove(clearedText)
+        if clearedText in self.channelLessColnames:
+            self.channelLessColnames.remove(clearedText)
