@@ -20655,7 +20655,8 @@ class guiWin(QMainWindow):
             return
 
         undoId = uuid.uuid4()
-        self.storeUndoRedoCca(posData.frame_i, posData.cca_df, undoId)
+        if posData.cca_df is not None:
+            self.storeUndoRedoCca(posData.frame_i, posData.cca_df, undoId)
         
         selectedTime = selectVersion.selectedTimestamp
 
@@ -20663,7 +20664,7 @@ class guiWin(QMainWindow):
         self.logger.info(f'Loading file from {selectedTime}...')
 
         key_to_load = selectVersion.selectedKey
-        h5_filepath = selectVersion.neverSavedHDFfilepath
+        h5_filepath = selectVersion.HDFfilepath
         acdc_df = pd.read_hdf(h5_filepath, key=key_to_load)
         posData.acdc_df = acdc_df
         frames = acdc_df.index.get_level_values(0)
@@ -20673,7 +20674,8 @@ class guiWin(QMainWindow):
         for frame_i in range(last_visited_frame_i+1):
             posData.frame_i = frame_i
             self.get_data()
-            self.storeUndoRedoCca(posData.frame_i, posData.cca_df, undoId)
+            if posData.cca_df is not None:
+                self.storeUndoRedoCca(posData.frame_i, posData.cca_df, undoId)
             if posData.allData_li[frame_i]['labels'] is None:
                 pbar.update()
                 continue
@@ -20693,6 +20695,7 @@ class guiWin(QMainWindow):
         posData.frame_i = current_frame_i
         self.get_data(debug=False)
         self.updateAllImages()
+        self.logger.info('Annotations correctly recovered.')
 
     def warnUserCreationImagesFolder(self, images_path):
         msg = widgets.myMessageBox(wrapText=False)
