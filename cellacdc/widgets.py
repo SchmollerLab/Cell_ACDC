@@ -6727,8 +6727,14 @@ class ImShow(QBaseWindow):
         print('')
         print('*'*60)
 
-    def showIDs(self):
+    def showIDs(self, annotate_labels_idxs=None, init=False):
+        if init:
+            self.annotate_labels_idxs = annotate_labels_idxs
+        if self.annotate_labels_idxs is None:
+            return
         for i, plotItem in enumerate(self.PlotItems):
+            if i not in self.annotate_labels_idxs:
+                continue
             imageItem = self.ImageItems[i]
             lab = imageItem.image
             rp = skimage.measure.regionprops(lab)
@@ -6749,7 +6755,10 @@ class ImShow(QBaseWindow):
 
     def updateIDs(self):
         self.clearLabels()
-        self.showIDs()
+        try:
+            self.showIDs(annotate_labels_idxs=self.annotate_labels_idxs)
+        except Exception as err:
+            pass
 
     def show(self, block=False, screenToWindowRatio=None):
         super().show(block=block)

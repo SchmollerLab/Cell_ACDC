@@ -125,4 +125,5 @@ from cellacdc.plot import imshow
 imshow(
     posData.loadChannelData(''),
     tracked_stack,
-    showIDs=[1])
+    lab_stack,
+    annotate_labels_idxs=[1, 2])

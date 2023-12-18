@@ -34,7 +34,7 @@ def calc_IoA_matrix(lab, prev_lab, rp, prev_rp, IDs_curr_untracked=None):
                 IoA_matrix[i, j] = IoA
     return IoA_matrix, IDs_curr_untracked, IDs_prev
 
-def assign(IoA_matrix, IDs_curr_untracked, IDs_prev, IoA_thresh=0.4, aggr_track=None, IoA_thresh_aggr=0.4):
+def assign(IoA_matrix, IDs_curr_untracked, IDs_prev, IoA_thresh=0.4, aggr_track=None, IoA_thresh_aggr=0.4, Record_lineage=False, IoA_thresh_daughter=None, Min_daughter=None, Max_daughter=None):
     # Determine max IoA between IDs and assign tracked ID if IoA >= IoA_thresh
     if IoA_matrix.size == 0:
         return [], []
@@ -43,8 +43,10 @@ def assign(IoA_matrix, IDs_curr_untracked, IDs_prev, IoA_thresh=0.4, aggr_track=
     counts_dict = dict(zip(unique_col_idx, counts))
     tracked_IDs = []
     old_IDs = []
+
     if DEBUG:
         printl(f'IDs in previous frame: {IDs_prev}')
+
     for i, j in enumerate(max_IoA_col_idx):
         if i in aggr_track:
             IoA_thresh_temp = IoA_thresh_aggr
@@ -61,17 +63,19 @@ def assign(IoA_matrix, IDs_curr_untracked, IDs_prev, IoA_thresh=0.4, aggr_track=
                 old_ID = IDs_curr_untracked[old_ID_idx]
             tracked_IDs.append(tracked_ID)
             old_IDs.append(old_ID)
+
     return old_IDs, tracked_IDs
 
 def indexAssignment(
         old_IDs, tracked_IDs, IDs_curr_untracked, lab, rp, uniqueID,
-        remove_untracked=False, assign_unique_new_IDs=True
+        remove_untracked=False, assign_unique_new_IDs=True, return_assignments=False
     ):
     if DEBUG:
         printl('%'*30)
     # Replace untracked IDs with tracked IDs and new IDs with increasing num
     new_untracked_IDs = [ID for ID in IDs_curr_untracked if ID not in old_IDs]
     tracked_lab = lab
+    assignments = {}
     if DEBUG:
         txt = (f"""
 Assign new IDs uniquely = {assign_unique_new_IDs}
@@ -88,6 +92,7 @@ Assign new IDs uniquely = {assign_unique_new_IDs}
         core.lab_replace_values(
             tracked_lab, rp, new_untracked_IDs, new_tracked_IDs
         )
+        assignments = dict(zip(new_untracked_IDs, new_tracked_IDs))
         if DEBUG:
             txt = (f"""
 Current IDs: {IDs_curr_untracked}
@@ -134,7 +139,11 @@ New IDs replacing old IDs: {tracked_IDs}
             for _ID, replacingID in zip(old_IDs, tracked_IDs):
                 txt = f'{txt}{_ID} --> {replacingID}\n'
             printl(txt)
-    return tracked_lab
+
+    if not return_assignments:
+        return tracked_lab
+    else: 
+        return tracked_lab, assignments
 
 def track_frame(
         prev_lab, prev_rp, lab, rp, IDs_curr_untracked=None,
@@ -165,13 +174,21 @@ def track_frame(
         setBrushID_func(useCurrentLab=False)
         uniqueID = posData.brushID+1
 
-    tracked_lab = indexAssignment(
-        old_IDs, tracked_IDs, IDs_curr_untracked,
-        lab.copy(), rp, uniqueID,
-        assign_unique_new_IDs=assign_unique_new_IDs
-    )
+    if not return_all:
+        tracked_lab = indexAssignment(
+            old_IDs, tracked_IDs, IDs_curr_untracked,
+            lab.copy(), rp, uniqueID,
+            assign_unique_new_IDs=assign_unique_new_IDs
+        )
+    else:
+        tracked_lab, assignments = indexAssignment(
+            old_IDs, tracked_IDs, IDs_curr_untracked,
+            lab.copy(), rp, uniqueID,
+            assign_unique_new_IDs=assign_unique_new_IDs, return_assignments=return_all
+        )
+
     if return_all:
-        return tracked_lab, IoA_matrix
+        return tracked_lab, IoA_matrix, assignments
     else:
         return tracked_lab
 
