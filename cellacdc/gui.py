@@ -2008,10 +2008,10 @@ class guiWin(QMainWindow):
         self.editIDLabelAction.setDisabled(True)
 
         brushEraserToolBar.addWidget(QLabel(' '))
-        self.editIDcheckbox = QCheckBox('Auto-ID')
-        self.editIDcheckbox.setChecked(True)
-        self.editIDcheckboxAction = brushEraserToolBar.addWidget(self.editIDcheckbox)
-        self.editIDcheckboxAction.setVisible(False)
+        self.autoIDcheckbox = QCheckBox('Auto-ID')
+        self.autoIDcheckbox.setChecked(True)
+        self.autoIDcheckboxAction = brushEraserToolBar.addWidget(self.autoIDcheckbox)
+        self.autoIDcheckboxAction.setVisible(False)
 
         self.brushSizeSpinbox = widgets.SpinBox(disableKeyPress=True)
         self.brushSizeSpinbox.setValue(4)
@@ -2993,7 +2993,7 @@ class guiWin(QMainWindow):
         self.enableSmartTrackAction.toggled.connect(self.enableSmartTrack)
         # Brush/Eraser size action
         self.brushSizeSpinbox.valueChanged.connect(self.brushSize_cb)
-        self.editIDcheckbox.toggled.connect(self.autoIDtoggled)
+        self.autoIDcheckbox.toggled.connect(self.autoIDtoggled)
         # Mode
         self.modeActionGroup.triggered.connect(self.changeModeFromMenu)
         self.modeComboBox.sigTextChanged.connect(self.changeMode)
@@ -6204,7 +6204,7 @@ class guiWin(QMainWindow):
             self.update_rp(update_IDs=self.isNewID)
 
             # t1 = time.perf_counter()
-            if self.editIDcheckbox.isChecked():
+            if self.autoIDcheckbox.isChecked():
                 self.tracking(enforce=True, assign_unique_new_IDs=False)
 
             # t2 = time.perf_counter()
@@ -6342,7 +6342,7 @@ class guiWin(QMainWindow):
             try:
                 self.splineToObj(isRightClick=True)
                 self.update_rp()
-                self.tracking(enforce=True, assign_unique_new_IDs=False)
+                self.trackManuallyAddedObject(posData.brushID, True)
                 if self.isSnapshot:
                     self.fixCcaDfAfterEdit('Add new ID with curvature tool')
                     self.updateAllImages()
@@ -6390,8 +6390,8 @@ class guiWin(QMainWindow):
             self.update_rp(update_IDs=self.isNewID)
             
             # Repeat tracking
-            if self.editIDcheckbox.isChecked():
-                self.tracking(enforce=True, assign_unique_new_IDs=False)
+            if self.autoIDcheckbox.isChecked():
+                self.trackManuallyAddedObject(posData.brushID, self.isNewID)
 
             # Update images
             if self.isNewID:
@@ -6419,7 +6419,7 @@ class guiWin(QMainWindow):
             self.update_rp()
 
             # Repeat tracking
-            self.tracking(enforce=True, assign_unique_new_IDs=False)
+            self.trackManuallyAddedObject(posData.brushID, self.isNewID)
 
             if self.isSnapshot:
                 self.fixCcaDfAfterEdit('Add new ID with magic-wand')
@@ -7170,7 +7170,7 @@ class guiWin(QMainWindow):
                 self.splineHoverON = False
                 self.splineToObj()
                 self.update_rp()
-                self.tracking(enforce=True, assign_unique_new_IDs=False)
+                self.trackManuallyAddedObject(posData.brushID, True)
                 if self.isSnapshot:
                     self.fixCcaDfAfterEdit('Add new ID with curvature tool')
                     self.updateAllImages()
@@ -7187,12 +7187,14 @@ class guiWin(QMainWindow):
             # Store undo state before modifying stuff
             self.storeUndoRedoStates(False)
 
+            self.isNewID = False
             posData.brushID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if posData.brushID == 0:
                 self.setBrushID()
                 self.updateLookuptable(
                     lenNewLut=posData.brushID+1
                 )
+                self.isNewID = True
             self.brushColor = self.img2.lut[posData.brushID]/255
 
             # NOTE: flood is on mousedrag or release
@@ -8121,7 +8123,7 @@ class guiWin(QMainWindow):
         if self.isPowerBrush() and not ctrl:
             return 0        
 
-        if not self.editIDcheckbox.isChecked():
+        if not self.autoIDcheckbox.isChecked():
             return self.editIDspinbox.value()
 
         ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
@@ -11018,7 +11020,7 @@ class guiWin(QMainWindow):
         self.update_rp()
         
         # Repeat tracking
-        if self.editIDcheckbox.isChecked():
+        if self.autoIDcheckbox.isChecked():
             self.tracking(enforce=True, assign_unique_new_IDs=False)
         
         self.store_data()
@@ -11246,7 +11248,7 @@ class guiWin(QMainWindow):
     def showEditIDwidgets(self, visible):
         self.editIDLabelAction.setVisible(visible)
         self.editIDspinboxAction.setVisible(visible)
-        self.editIDcheckboxAction.setVisible(visible)
+        self.autoIDcheckboxAction.setVisible(visible)
     
     def resetCursors(self):
         self.ax1_cursor.setData([], [])
@@ -11658,8 +11660,8 @@ class guiWin(QMainWindow):
         if self.brushButton.isChecked():
             try:
                 n = int(ev.text())
-                if self.editIDcheckbox.isChecked():
-                    self.editIDcheckbox.setChecked(False)
+                if self.autoIDcheckbox.isChecked():
+                    self.autoIDcheckbox.setChecked(False)
                 if self.typingEditID:
                     ID = int(f'{self.editIDspinbox.value()}{n}')
                 else:
@@ -11737,7 +11739,7 @@ class guiWin(QMainWindow):
                 return
 
             if self.brushButton.isChecked() and self.typingEditID:
-                self.editIDcheckbox.setChecked(True)
+                self.autoIDcheckbox.setChecked(True)
                 self.typingEditID = False
                 return
             
@@ -18942,6 +18944,9 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         if frame_i is None:
             frame_i = posData.frame_i
+        if frame_i < 0:
+            frame_i = 0
+            frame_i = posData.frame_i = 0
         idx = (posData.filename, frame_i)
         zProjHow_L0 = self.zProjComboBox.currentText()
         if isLayer0:
@@ -20482,9 +20487,31 @@ class guiWin(QMainWindow):
         else:
             return False
 
+    def trackManuallyAddedObject(self, added_ID, isNewID):
+        if self.isSnapshot:
+            return 
+        
+        posData = self.data[self.pos_i]
+        tracked_lab = self.tracking(
+            enforce=True, assign_unique_new_IDs=False, return_lab=True
+        )
+        
+        last_validated_frame_i = self.navigateScrollBar.maximum()-1
+        if posData.frame_i < last_validated_frame_i and isNewID:
+            # Frame already visited --> track only new object
+            mask = posData.lab == added_ID
+            trackedID = tracked_lab[mask][0]
+            if posData.IDs_idxs.get(trackedID) is None:
+                # Track only if the tracked ID for the new object does not 
+                # already exist
+                posData.lab[mask] = tracked_lab[mask]
+        else:
+            posData.lab = tracked_lab
+        self.update_rp()
+    
     # @exec_time
     def tracking(
-            self, onlyIDs=[], enforce=False, DoManualEdit=True,
+            self, enforce=False, DoManualEdit=True,
             storeUndo=False, prev_lab=None, prev_rp=None,
             return_lab=False, assign_unique_new_IDs=True,
             separateByLabel=True
@@ -20566,6 +20593,9 @@ class guiWin(QMainWindow):
         except ValueError:
             tracked_lab = self.get_2Dlab(posData.lab)
 
+        if return_lab:
+            return tracked_lab
+        
         # Update labels, regionprops and determine new and lost IDs
         posData.lab = tracked_lab
         self.update_rp()
