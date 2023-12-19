@@ -185,7 +185,7 @@ def printl(*objects, pretty=False, is_decorator=False, **kwargs):
     filename = os.path.basename(filepath)
     print_func = pprint if pretty else print
     print('*'*30)
-    print(f'{timestap} - File `{filename}`, "{filepath}", line {callingframe_info.lineno}:')
+    print(f'{timestap} - File "{filepath}", line {callingframe_info.lineno}:')
     if 'sep' not in kwargs:
         kwargs['sep'] = ', '
     if pretty:

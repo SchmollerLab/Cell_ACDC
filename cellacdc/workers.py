@@ -1407,7 +1407,7 @@ class loadDataWorker(QObject):
             posData.setTempPaths(createFolder=False)
             isRecoveredDataPresent = (
                 os.path.exists(posData.segm_npz_temp_path)
-                or os.path.exists(posData.acdc_output_temp_csv_path)
+                or posData.isRecoveredAcdcDfPresent()
             )
             if isRecoveredDataPresent and not self.mainWin.newSegmEndName:
                 if not self.recoveryAsked:
@@ -1429,13 +1429,7 @@ class loadDataWorker(QObject):
                             posData.images_path, segm_filename
                         )
                     
-                    acdc_df_temp_path = posData.acdc_output_temp_csv_path
-                    if os.path.exists(acdc_df_temp_path):
-                        acdc_df_filename = os.path.basename(acdc_df_temp_path)
-                        posData.acdc_output_csv_path = os.path.join(
-                            posData.images_path, acdc_df_filename
-                        )
-                        posData.loadAcdcDf(acdc_df_temp_path)
+                    posData.loadMostRecentUnsavedAcdcDf()
 
             # Allow single 2D/3D image
             if posData.SizeT == 1:

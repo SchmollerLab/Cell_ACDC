@@ -6,16 +6,18 @@ import inspect
 import re
 import traceback
 import time
-import datetime
+from datetime import datetime
 import inspect
 import logging
 import uuid
 import json
 import pprint
 import psutil
+import zipfile
 from functools import partial
 from tqdm import tqdm
 from collections import Counter
+from natsort import natsorted
 import time
 import cv2
 import math
@@ -796,10 +798,6 @@ class saveDataWorker(QObject):
                     )
                     all_frames_acdc_df.to_csv(acdc_output_csv_path)
                     posData.acdc_df = all_frames_acdc_df
-                    try:
-                        os.remove(posData.acdc_output_temp_csv_path)
-                    except Exception as e:
-                        pass
                 except PermissionError:
                     err_msg = (
                         'The below file is open in another app '
@@ -883,7 +881,7 @@ class guiWin(QMainWindow):
     def _printl(
             self, *objects, is_decorator=False, **kwargs
         ):
-        timestap = datetime.datetime.now().strftime('%H:%M:%S')
+        timestap = datetime.now().strftime('%H:%M:%S')
         currentframe = inspect.currentframe()
         outerframes = inspect.getouterframes(currentframe)
         idx = 2 if is_decorator else 1
@@ -7542,6 +7540,11 @@ class guiWin(QMainWindow):
             return
         self.store_data()
         posData = self.data[self.pos_i]
+        # acdc_df_concat = self.getConcatAcdcDf()
+        # load.store_unsaved_acdc_df(
+        #     posData, acdc_df_concat, 
+        #     log_func=self.logger.info
+        # )
         if posData.SizeT > 1:
             self.progressWin = apps.QDialogWorkerProgress(
                 title='Re-labelling sequential', parent=self,
@@ -9346,48 +9349,83 @@ class guiWin(QMainWindow):
         otherBudID = posData.cca_df.at[otherMothID, 'relative_ID']
         
         self.logger.info(
-            'Swapping assignments:\n'
-            f'  * Bud ID {budID} --> {otherMothID}\n'
-            f'  * Bud ID {otherBudID} --> {mothID}'
+            f'Swapping assignments (requested at frame n. {posData.frame_i+1}):\n'
+            f'  * Bud ID {budID} --> mother ID {otherMothID}\n'
+            f'  * Bud ID {otherBudID} --> mother ID {mothID}'
         )
         
-        pairs = (
-            (otherMothID, budID),
-            (otherBudID, mothID),
-            (budID, otherMothID),
-            (mothID, otherBudID)
-        )
+        correct_pairings = {
+            otherBudID: mothID,
+            budID: otherMothID
+        }
         
-        for ID1, ID2 in pairs:
-            posData.cca_df.at[ID1, 'relative_ID'] = ID2
-            posData.cca_df.at[ID1, 'corrected_assignment'] = True
+        for correct_budID, correct_mothID in correct_pairings.items():
+            posData.cca_df.at[correct_budID, 'relative_ID'] = correct_mothID
+            posData.cca_df.at[correct_mothID, 'relative_ID'] = correct_budID
+            posData.cca_df.at[correct_budID, 'corrected_assignment'] = True
+            posData.cca_df.at[correct_mothID, 'corrected_assignment'] = True
         self.store_cca_df()
         
         self.updateAllImages()
         
-        for i in range(posData.SizeT):
-            if i == posData.frame_i:
-                continue
+        # Correct past frames
+        corrected_budIDs_past = set()
+        for past_i in range(posData.frame_i-1, -1, -1):
+            if len(corrected_budIDs_past) == 2:
+                break
             
             # Get cca_df for ith frame from allData_li
-            cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
+            cca_df_i = self.get_cca_df(frame_i=past_i, return_df=True)
+            for correct_budID, correct_mothID in correct_pairings.items():
+                if correct_budID in corrected_budIDs_past:
+                    continue
+                
+                if correct_budID not in cca_df_i.index:
+                    # Bud does not exist anymore in the past
+                    corrected_budIDs_past.add(correct_budID)
+                    continue
+                
+                cca_df_i.at[correct_budID, 'relative_ID'] = correct_mothID
+                cca_df_i.at[correct_mothID, 'relative_ID'] = correct_budID
+                cca_df_i.at[correct_budID, 'corrected_assignment'] = True
+                cca_df_i.at[correct_mothID, 'corrected_assignment'] = True
+            
+            self.store_cca_df(frame_i=past_i, cca_df=cca_df_i, autosave=False)
+        
+        # Correct future frames
+        corrected_budIDs_future = set()
+        for future_i in range(posData.frame_i+1, posData.SizeT):
+            if len(corrected_budIDs_future) == 2:
+                break
+            
+            # Get cca_df for ith frame from allData_li
+            cca_df_i = self.get_cca_df(frame_i=future_i, return_df=True)
             if cca_df_i is None:
                 # ith frame was not visited yet
                 break
             
-            self.storeUndoRedoCca(i, cca_df_i, undoId)
+            for correct_budID, correct_mothID in correct_pairings.items():
+                if correct_budID in corrected_budIDs_future:
+                    # Bud already corrected in the future
+                    continue
+                
+                if correct_budID not in cca_df_i.index:
+                    # Bud disappeared in the future
+                    corrected_budIDs_future.add(correct_budID)
+                    continue
+                
+                ccs_bud = cca_df_i.at[correct_budID, 'cell_cycle_stage']
+                if ccs_bud == 'G1':
+                    # bud divided in the future, stop correcting
+                    corrected_budIDs_future.add(correct_budID)
+                    continue
+                
+                cca_df_i.at[correct_budID, 'relative_ID'] = correct_mothID
+                cca_df_i.at[correct_mothID, 'relative_ID'] = correct_budID
+                cca_df_i.at[correct_budID, 'corrected_assignment'] = True
+                cca_df_i.at[correct_mothID, 'corrected_assignment'] = True
             
-            for ID1, ID2 in pairs:
-                try:
-                    ccs = cca_df_i.at[ID1, 'cell_cycle_stage']
-                    if ccs != 'S':
-                        continue
-                    cca_df_i.at[ID1, 'relative_ID'] = ID2
-                    cca_df_i.at[ID1, 'corrected_assignment'] = True
-                except KeyError:
-                    pass
-            
-            self.store_cca_df(frame_i=i, cca_df=cca_df_i, autosave=False)
+            self.store_cca_df(frame_i=future_i, cca_df=cca_df_i, autosave=False)
         
     def getClosedSplineCoords(self):
         xxS, yyS = self.curvPlotItem.getData()
@@ -10011,6 +10049,28 @@ class guiWin(QMainWindow):
         for button in self.LeftClickButtons:
             if button.isChecked():
                 return button
+    
+    def getConcatAcdcDf(self):
+        acdc_dfs = []
+        keys = []
+        posData = self.data[self.pos_i]
+        for frame_i, data_dict in enumerate(posData.allData_li):
+            lab = data_dict['labels']
+            if lab is None:
+                break
+            
+            acdc_df = data_dict['acdc_df']
+            if acdc_df is None:
+                break
+            
+            acdc_dfs.append(acdc_df)
+            keys.append(frame_i)
+        
+        if not acdc_dfs:
+            return
+        
+        return pd.concat(acdc_dfs, keys=keys, names=['frame_i'])
+            
     
     def checkHighlightScaleBar(self, x, y, activeToolButton):
         if not hasattr(self, 'scaleBar'):
@@ -11535,15 +11595,32 @@ class guiWin(QMainWindow):
         #     myutils.setRetainSizePolicy(alphaScrollBar.label, retain=checked)
         
         QTimer.singleShot(200, self.resizeGui)
-
+        
+    def resizeLeaveSpaceTerminalBelow(self):
+        self.setWindowState(Qt.WindowMaximized)
+        QTimer.singleShot(200, self._resizeLeaveSpaceTerminalBelow)
+    
+    def _resizeLeaveSpaceTerminalBelow(self):
+        geometry = self.geometry()
+        left = geometry.left()
+        top = geometry.top()
+        width = geometry.width()
+        height = geometry.height()
+        self.setGeometry(left, top+10, width, height-200)
+        
     @exception_handler
     def keyPressEvent(self, ev):
+        ctrl = ev.modifiers() == Qt.ControlModifier
+        if ctrl and ev.key() == Qt.Key_D:
+            self.resizeLeaveSpaceTerminalBelow()
+            return
+       
         if ev.key() == Qt.Key_Q and self.debug:
             printl(self.contoursImage.shape)
             printl(self.contoursImage.max(axis=(0, 1)))
             from cellacdc.plot import imshow
             imshow(self.contoursImage[:, :, 0], self.erasedLab)
-            
+        
         if not self.dataIsLoaded:
             self.logger.info(
                 '[WARNING]: Data not loaded yet. '
@@ -14418,18 +14495,29 @@ class guiWin(QMainWindow):
             recovered_file_path = posData.segm_npz_temp_path
             if os.path.exists(posData.segm_npz_path):
                 last_modified_time_unsaved = (
-                    datetime.datetime.fromtimestamp(
+                    datetime.fromtimestamp(
                         os.path.getmtime(posData.segm_npz_path)
                     ).strftime("%a %d. %b. %y - %H:%M:%S")
                 )
         else:
-            recovered_file_path = posData.acdc_output_temp_csv_path
-        
-        if os.path.exists(recovered_file_path):
-            last_modified_time_saved = (
-                datetime.datetime.fromtimestamp(
-                    os.path.getmtime(recovered_file_path)
+            posData.setTempPaths()
+            if os.path.exists(posData.unsaved_acdc_df_autosave_path):
+                zip_path = posData.unsaved_acdc_df_autosave_path
+                with zipfile.ZipFile(zip_path, mode='r') as zip:
+                    csv_names = natsorted(set(zip.namelist()))
+                iso_key = csv_names[-1][:-4]
+                most_recent_unsaved_acdc_df_datetime = datetime.strptime(
+                    iso_key, load.ISO_TIMESTAMP_FORMAT
+                )
+                last_modified_time_unsaved = (
+                    most_recent_unsaved_acdc_df_datetime
                 ).strftime("%a %d. %b. %y - %H:%M:%S")
+        
+        if os.path.exists(posData.acdc_output_csv_path):
+            acdc_df_mtime = os.path.getmtime(posData.acdc_output_csv_path)
+            timestamp = datetime.fromtimestamp(acdc_df_mtime)
+            last_modified_time_saved = timestamp.strftime(
+                "%a %d. %b. %y - %H:%M:%S"
             )
         else:
             last_modified_time_saved = 'Null'
@@ -14551,7 +14639,8 @@ class guiWin(QMainWindow):
         posData.setTempPaths(createFolder=False)
         loaded_acdc_df_filename = os.path.basename(posData.acdc_output_csv_path)
 
-        if os.path.exists(posData.acdc_output_backup_h5_path):
+        
+        if os.path.exists(posData.acdc_output_backup_zip_path):
             self.manageVersionsAction.setDisabled(False)
             self.manageVersionsAction.setToolTip(
                 f'Load an older version of the `{loaded_acdc_df_filename}` file '
@@ -20663,9 +20752,9 @@ class guiWin(QMainWindow):
         self.modeComboBox.setCurrentText('Viewer')
         self.logger.info(f'Loading file from {selectedTime}...')
 
-        key_to_load = selectVersion.selectedKey
-        h5_filepath = selectVersion.HDFfilepath
-        acdc_df = pd.read_hdf(h5_filepath, key=key_to_load)
+        acdc_df = load.read_acdc_df_from_archive(
+            selectVersion.archiveFilePath, selectVersion.selectedKey
+        )
         posData.acdc_df = acdc_df
         frames = acdc_df.index.get_level_values(0)
         last_visited_frame_i = frames.max()
@@ -20743,7 +20832,7 @@ class guiWin(QMainWindow):
         dirname = os.path.basename(dirpath)
         do_copy = True
         if dirname != 'Images':
-            timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             acdc_folder = f'{timestamp}_acdc'
             exp_path = os.path.join(dirpath, acdc_folder, 'Images')
             proceed, do_copy = self.warnUserCreationImagesFolder(exp_path)
