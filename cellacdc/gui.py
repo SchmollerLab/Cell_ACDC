@@ -14152,7 +14152,7 @@ class guiWin(QMainWindow):
                 return
 
             if posData.frame_i <= 0 and mode == 'Cell cycle analysis':
-                IDs = [obj.label for obj in posData.rp]
+                # posData.IDs = [obj.label for obj in posData.rp]
                 editCcaWidget = apps.editCcaTableWidget(
                     posData.cca_df, posData.SizeT, parent=self,
                     title='Initialize cell cycle annotations'
@@ -20395,15 +20395,15 @@ class guiWin(QMainWindow):
         #     pass
         
         prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
+        prev_IDs = posData.allData_li[posData.frame_i-1]['IDs']
         existing = True
-        try:
-            prev_IDs = posData.allData_li[posData.frame_i-1]['IDs']
-        except Exception as err:
+        if not prev_IDs:
             prev_lab, existing = self.get_labels(
                 frame_i=posData.frame_i-1, return_existing=True
             )
             prev_rp = skimage.measure.regionprops(prev_lab)
-            prev_IDs = [obj.label for obj in prev_rp]            
+            prev_IDs = [obj.label for obj in prev_rp]     
+            posData.allData_li[posData.frame_i-1]['IDs'] = prev_IDs     
 
         curr_IDs = posData.IDs
         curr_delRoiIDs = self.getStoredDelRoiIDs()
@@ -20416,7 +20416,7 @@ class guiWin(QMainWindow):
             ID for ID in curr_IDs if ID not in prev_IDs 
             and ID not in curr_delRoiIDs
         ]
-        
+
         # IDs_with_holes = [
         #     obj.label for obj in posData.rp if obj.area/obj.filled_area < 1
         # ]
