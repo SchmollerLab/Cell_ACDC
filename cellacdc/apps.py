@@ -12313,8 +12313,8 @@ class SelectAcdcDfVersionToRestore(widgets.QBaseDialog):
         
         self.savedListBox = None
         if os.path.exists(posData.acdc_output_backup_zip_path):
-            h5_filepath = posData.acdc_output_backup_zip_path
-            self.savedArchivefilepath = h5_filepath
+            zip_path = posData.acdc_output_backup_zip_path
+            self.savedArchivefilepath = zip_path
             with zipfile.ZipFile(zip_path, mode='r') as zip:
                 csv_names = natsorted(zip.namelist(), reverse=True)
             
@@ -12322,7 +12322,7 @@ class SelectAcdcDfVersionToRestore(widgets.QBaseDialog):
 
             self.savedKeys = keys
             f = load.ISO_TIMESTAMP_FORMAT
-            timestamps = [datetime.datetime.strptime(key[1:], f) for key in keys]
+            timestamps = [datetime.datetime.strptime(key, f) for key in keys]
             items = [date.strftime(r'%d %b %Y, %H:%M:%S') for date in timestamps]
             mainLayout.addWidget(QLabel('Saved annotations:'))
             self.savedListBox = widgets.listWidget()
