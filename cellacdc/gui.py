@@ -7894,8 +7894,8 @@ class guiWin(QMainWindow):
         self.worker.waitCond.wakeAll()
 
     def keepToolActiveActionToggled(self, checked):
-        parentToolButton = self.sender().parentWidget()
-        toolName = re.findall('Toggle "(.*)"', parentToolButton.toolTip())[0]
+        parentToolButton = self.sender().parent()
+        toolName = re.findall(r'Name: (.*)', parentToolButton.toolTip())[0]
         self.df_settings.at[toolName, 'value'] = 'keepActive'
         self.df_settings.to_csv(self.settings_csv_path)
 
