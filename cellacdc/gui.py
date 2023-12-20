@@ -7446,6 +7446,9 @@ class guiWin(QMainWindow):
                     xdata, ydata = int(x), int(y)
 
             button = self.doCustomAnnotation(ID, fromClick=True)
+            if button is None:
+                return
+            
             keepActive = self.customAnnotDict[button]['state']['keepActive']
             if not keepActive:
                 button.setChecked(False)
@@ -11619,10 +11622,11 @@ class guiWin(QMainWindow):
             return
        
         if ev.key() == Qt.Key_Q and self.debug:
-            printl(self.contoursImage.shape)
-            printl(self.contoursImage.max(axis=(0, 1)))
-            from cellacdc.plot import imshow
-            imshow(self.contoursImage[:, :, 0], self.erasedLab)
+            posData = self.data[self.pos_i]
+            buttons = list(self.customAnnotDict.keys())
+            for button in buttons:
+                annotatedIDs = self.customAnnotDict[button]['annotatedIDs'][self.pos_i]
+                annotIDs_frame_i = annotatedIDs.get(posData.frame_i, [])
         
         if not self.dataIsLoaded:
             self.logger.info(
@@ -13179,10 +13183,8 @@ class guiWin(QMainWindow):
             state = self.customAnnotDict[button]['state']
             acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
             if acdc_df is None:
-                # visiting new frame for single time-point annot type do nothing
-                return
-
-            acdc_df[state['name']] = 0
+                self.store_data(autosave=False)
+            acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
 
             xx, yy = [], []
             for annotID in annotIDs_frame_i:
@@ -15304,6 +15306,7 @@ class guiWin(QMainWindow):
 
         self.clearOverlayLabelsItems()
         self.clearManualBackgroundAnnotations()
+        self.clearCustomAnnot()
     
     def clearPointsLayers(self):
         for action in self.pointsLayersToolbar.actions()[1:]:
@@ -15323,6 +15326,11 @@ class guiWin(QMainWindow):
     def clearAllItems(self):
         self.clearAx1Items()
         self.clearAx2Items()
+        
+    def clearCustomAnnot(self):
+        for button in self.customAnnotDict.keys():
+            scatterPlotItem = self.customAnnotDict[button]['scatterPlotItem']
+            scatterPlotItem.setData([], [])
 
     def clearCurvItems(self, removeItems=True):
         try:
