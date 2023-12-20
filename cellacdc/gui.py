@@ -13632,7 +13632,8 @@ class guiWin(QMainWindow):
             model.setupLogger(self.logger)
         except Exception as e:
             pass
-
+        
+        self.extendSegmDataIfNeeded(stopFrameNum)
         self.reInitLastSegmFrame(from_frame_i=startFrameNum-1)
 
         self.titleLabel.setText(
@@ -20642,6 +20643,21 @@ class guiWin(QMainWindow):
         )
         return msg.cancel
 
+    def extendSegmDataIfNeeded(self, stopFrameNum):
+        posData = self.data[self.pos_i]
+        segmSizeT = len(posData.segm_data)
+        if stopFrameNum <= segmSizeT:
+            return
+        numFramesToAdd = stopFrameNum - segmSizeT
+        posData.allData_li.extend(
+            [self.getEmptyStoredDataDict() for i in range(numFramesToAdd)]
+        )
+        lab_shape = posData.segm_data[0].shape
+        shapeToAdd = (numFramesToAdd, *lab_shape)
+        additionalSegmData = np.zeros(shapeToAdd, dtype=posData.segm_data.dtype)
+        extendedSegmData = np.concatenate((posData.segm_data, additionalSegmData))
+        posData.segm_data = extendedSegmData
+    
     def reInitLastSegmFrame(self, checked=True, from_frame_i=None):
         cancel = self.warnReinitLastSegmFrame()
         if cancel:

@@ -428,6 +428,12 @@ def _store_acdc_df_archive(zip_path, acdc_df_to_store):
         with zipfile.ZipFile(zip_path, mode='r') as zip:
             csv_names = natsorted(set(zip.namelist()))
     
+    new_key = datetime.now().strftime(ISO_TIMESTAMP_FORMAT)
+    csv_name = f'{new_key}.csv'
+    if csv_name in csv_names:
+        # Do not save duplicates within the same second
+        return
+    
     if len(csv_names) > 20:
         # Delete oldest df and resave remaining 19
         csv_names.pop(0)
@@ -441,8 +447,7 @@ def _store_acdc_df_archive(zip_path, acdc_df_to_store):
         zip_path, temp_zip_path, csv_names, compression_opts
     )
         
-    new_key = datetime.now().strftime(ISO_TIMESTAMP_FORMAT)
-    csv_name = f'{new_key}.csv'
+    
     compression_opts['archive_name'] = csv_name
     acdc_df = pd_bool_to_int(acdc_df_to_store, inplace=False)
     acdc_df.to_csv(temp_zip_path, compression=compression_opts, mode='a')
