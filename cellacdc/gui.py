@@ -1397,7 +1397,7 @@ class guiWin(QMainWindow):
         self.redoAction.setEnabled(False)
 
         # Navigation toolbar
-        navigateToolBar = QToolBar("Navigation", self)
+        navigateToolBar = widgets.ToolBar("Navigation", self)
         navigateToolBar.setContextMenuPolicy(Qt.PreventContextMenu)
         # navigateToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
         self.addToolBar(navigateToolBar)
@@ -1441,7 +1441,7 @@ class guiWin(QMainWindow):
         self.LeftClickButtons.append(self.rulerButton)
 
         # fluorescence image color widget
-        colorsToolBar = QToolBar("Colors", self)
+        colorsToolBar = widgets.ToolBar("Colors", self)
 
         self.overlayColorButton = pg.ColorButton(self, color=(230,230,230))
         self.overlayColorButton.setDisabled(True)
@@ -1456,7 +1456,7 @@ class guiWin(QMainWindow):
         self.navigateToolBar = navigateToolBar
 
         # cca toolbar
-        ccaToolBar = QToolBar("Cell cycle annotations", self)
+        ccaToolBar = widgets.ToolBar("Cell cycle annotations", self)
         self.addToolBar(ccaToolBar)
 
         # Assign mother to bud button
@@ -1492,8 +1492,9 @@ class guiWin(QMainWindow):
         self.functionsNotTested3D.append(self.editCcaToolAction)
 
         # Edit toolbar
-        editToolBar = QToolBar("Edit", self)
+        editToolBar = widgets.ToolBar("Edit", self)
         editToolBar.setContextMenuPolicy(Qt.PreventContextMenu)
+        
         self.addToolBar(editToolBar)
 
         self.brushButton = QToolButton(self)
@@ -1772,7 +1773,7 @@ class guiWin(QMainWindow):
 
     def gui_createAnnotateToolbar(self):
         # Edit toolbar
-        self.annotateToolbar = QToolBar("Custom annotations", self)
+        self.annotateToolbar = widgets.ToolBar("Custom annotations", self)
         self.annotateToolbar.setContextMenuPolicy(Qt.PreventContextMenu)
         self.addToolBar(Qt.LeftToolBarArea, self.annotateToolbar)
         self.annotateToolbar.addAction(self.loadCustomAnnotationsAction)
@@ -1979,7 +1980,7 @@ class guiWin(QMainWindow):
         self.addToolBarBreak()
         
         # Edit toolbar
-        modeToolBar = QToolBar("Mode", self)
+        modeToolBar = widgets.ToolBar("Mode", self)
         self.addToolBar(modeToolBar)
 
         self.modeComboBox = widgets.ComboBox()
@@ -1993,7 +1994,7 @@ class guiWin(QMainWindow):
         self.modeToolBar = modeToolBar
         
         # Widgets toolbar
-        brushEraserToolBar = QToolBar("Widgets", self)
+        brushEraserToolBar = widgets.ToolBar("Widgets", self)
         self.addToolBar(Qt.TopToolBarArea, brushEraserToolBar)
         self.controlToolBars.append(brushEraserToolBar)
 
@@ -2046,7 +2047,7 @@ class guiWin(QMainWindow):
         brushEraserToolBar.setVisible(False)
         self.brushEraserToolBar = brushEraserToolBar
 
-        self.wandControlsToolbar = QToolBar("Magic wand controls", self)
+        self.wandControlsToolbar = widgets.ToolBar("Magic wand controls", self)
         self.wandToleranceSlider = widgets.sliderWithSpinBox(
             title='Tolerance', title_loc='in_line'
         )
@@ -2069,8 +2070,8 @@ class guiWin(QMainWindow):
         self.controlToolBars.append(self.wandControlsToolbar)
 
         separatorW = 5
-        self.labelRoiToolbar = QToolBar("Magic labeller controls", self)
-        self.labelRoiToolbar.addWidget(QLabel('ROI depth (n. of z-slices): '))
+        self.labelRoiToolbar = widgets.ToolBar("Magic labeller controls", self)
+        self.labelRoiToolbar.addWidget(QLabel('ROI n. of z-slices: '))
         self.labelRoiZdepthSpinbox = widgets.SpinBox(disableKeyPress=True)
         self.labelRoiToolbar.addWidget(self.labelRoiZdepthSpinbox)
 
@@ -2079,11 +2080,11 @@ class guiWin(QMainWindow):
         self.labelRoiToolbar.addWidget(widgets.QHWidgetSpacer(width=separatorW))
 
         self.labelRoiReplaceExistingObjectsCheckbox = QCheckBox(
-            'Remove objects touched by new objects'
+            'Remove objs. touched by new ones'
         )
         self.labelRoiToolbar.addWidget(self.labelRoiReplaceExistingObjectsCheckbox)
         self.labelRoiAutoClearBorderCheckbox = QCheckBox(
-            'Clear ROI borders before adding new objects'
+            'Clear ROI borders before adding new objs.'
         )
         self.labelRoiAutoClearBorderCheckbox.setChecked(True)
         self.labelRoiToolbar.addWidget(self.labelRoiAutoClearBorderCheckbox)
@@ -2094,7 +2095,7 @@ class guiWin(QMainWindow):
 
         group = QButtonGroup()
         group.setExclusive(True)
-        self.labelRoiIsRectRadioButton = QRadioButton('Rectangular ROI')
+        self.labelRoiIsRectRadioButton = QRadioButton('Rect. ROI')
         self.labelRoiIsRectRadioButton.setChecked(True)
         self.labelRoiIsFreeHandRadioButton = QRadioButton('Freehand ROI')
         self.labelRoiIsCircularRadioButton = QRadioButton('Circular ROI')
@@ -2104,7 +2105,7 @@ class guiWin(QMainWindow):
         self.labelRoiToolbar.addWidget(self.labelRoiIsRectRadioButton)
         self.labelRoiToolbar.addWidget(self.labelRoiIsFreeHandRadioButton)
         self.labelRoiToolbar.addWidget(self.labelRoiIsCircularRadioButton)
-        self.labelRoiToolbar.addWidget(QLabel(' Circular ROI radius (pixel): '))
+        self.labelRoiToolbar.addWidget(QLabel(' | Radius (pixel): '))
         self.labelRoiCircularRadiusSpinbox = widgets.SpinBox(disableKeyPress=True)
         self.labelRoiCircularRadiusSpinbox.setMinimum(1)
         self.labelRoiCircularRadiusSpinbox.setValue(11)
@@ -2199,7 +2200,7 @@ class guiWin(QMainWindow):
             self.labelRoiViewCurrentModel
         )
 
-        self.keepIDsToolbar = QToolBar("Keep IDs controls", self)
+        self.keepIDsToolbar = widgets.ToolBar("Keep IDs controls", self)
         self.keepIDsConfirmAction = QAction()
         self.keepIDsConfirmAction.setIcon(QIcon(":greenTick.svg"))
         self.keepIDsConfirmAction.setToolTip('Apply "keep IDs" selection')
@@ -2225,7 +2226,7 @@ class guiWin(QMainWindow):
         self.keptIDsLineEdit.sigIDsChanged.connect(self.updateKeepIDs)
         self.keepIDsConfirmAction.triggered.connect(self.applyKeepObjects)
         
-        self.autoPilotZoomToObjToolbar = QToolBar("Auto-zoom to objects", self)
+        self.autoPilotZoomToObjToolbar = widgets.ToolBar("Auto-zoom to objects", self)
         self.autoPilotZoomToObjToolbar.setContextMenuPolicy(Qt.PreventContextMenu)
         self.addToolBar(Qt.TopToolBarArea, self.autoPilotZoomToObjToolbar)
         # self.autoPilotZoomToObjToolbar.setIconSize(QSize(16, 16))
@@ -2266,7 +2267,7 @@ class guiWin(QMainWindow):
         self.autoPilotZoomToObjToolbar.addWidget(toggle.label)
         self.autoPilotZoomToObjToolbar.addWidget(toggle)
         
-        self.pointsLayersToolbar = QToolBar("Points layers", self)
+        self.pointsLayersToolbar = widgets.ToolBar("Points layers", self)
         self.pointsLayersToolbar.setContextMenuPolicy(Qt.PreventContextMenu)
         self.addToolBar(Qt.TopToolBarArea, self.pointsLayersToolbar)
         self.pointsLayersToolbar.addWidget(QLabel('Points layers:  '))
@@ -2310,7 +2311,7 @@ class guiWin(QMainWindow):
         
         # Empty toolbar to avoid weird ranges on image when showing the 
         # other toolbars --> placeholder
-        placeHolderToolbar = QToolBar("Place holder", self)
+        placeHolderToolbar = widgets.ToolBar("Place holder", self)
         self.addToolBar(Qt.TopToolBarArea, placeHolderToolbar)
         placeHolderToolbar.addWidget(QToolButton(self))
         placeHolderToolbar.setMovable(False)
@@ -23196,7 +23197,7 @@ class guiWin(QMainWindow):
         self.showPropsDockButton.setMaximumHeight(60)
         
         for toolbar in self.controlToolBars:
-            toolbar.setFixedHeight(
+            toolbar.setMinimumHeight(
                 self.placeHolderToolbar.sizeHint().height()
             )
 

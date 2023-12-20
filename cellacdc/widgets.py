@@ -2603,6 +2603,11 @@ def macShortcutToWindows(shortcut: str):
 class ToolBar(QToolBar):
     def __init__(self, *args) -> None:
         super().__init__(*args)
+        for child in self.children(): 
+            if child.objectName() == 'qt_toolbar_ext_button':
+                self.extendButton = child
+                self.extendButton.setIcon(QIcon(":expand.svg"))
+                break
     
     def addSeparator(self, width=5):
         self.addWidget(QHWidgetSpacer(width=width))
