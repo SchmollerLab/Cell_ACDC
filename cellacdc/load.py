@@ -1180,7 +1180,7 @@ class loadData:
                 )
             except AttributeError as e:
                 # traceback.print_exc()
-                self.last_tracked_i = None
+                se.last_tracked_i = None
 
         if create_new_segm:
             self.setFilePaths(new_endname)
@@ -2728,3 +2728,9 @@ def get_tooltips_from_docs():
 
             tipdict[name] = f"Name: {title}\nShortcut: {shortcut}\n\n{desc}"
     return tipdict
+
+def save_df_to_csv_temp_path(df, csv_filename, **to_csv_kwargs):
+    tempDir = tempfile.mkdtemp()
+    tempFilepath = os.path.join(tempDir, csv_filename)
+    df.to_csv(tempFilepath, **to_csv_kwargs)
+    return tempFilepath

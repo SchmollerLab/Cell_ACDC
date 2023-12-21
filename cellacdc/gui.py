@@ -1343,6 +1343,14 @@ class guiWin(QMainWindow):
 
         trackingMenu.addAction(self.repeatTrackingMenuAction)
         trackingMenu.aboutToShow.connect(self.nonViewerEditMenuOpened)
+        
+        if self.mainWin is not None:
+            trackingMenu.addAction(
+                self.mainWin.applyTrackingFromTableAction
+            )
+            trackingMenu.addAction(
+                self.mainWin.applyTrackingFromTrackMateXMLAction
+            )
 
         # Measurements menu
         measurementsMenu = menuBar.addMenu("&Measurements")

@@ -43,6 +43,7 @@ from .utils import filterObjFromCoordsTable as utilsFilterObjsFromTable
 from .utils import stack2Dinto3Dsegm as utilsStack2Dto3D
 from .utils import computeMultiChannel as utilsComputeMultiCh
 from .utils import applyTrackFromTable as utilsApplyTrackFromTab
+from .utils import applyTrackFromTrackMateXML as utilsApplyTrackFromTrackMate
 from .info import utilsInfo
 from . import is_win, is_linux, settings_folderpath, issues_url
 from . import settings_csv_path
@@ -409,6 +410,7 @@ class mainWin(QMainWindow):
         trackingMenu = utilsMenu.addMenu('Tracking')
         trackingMenu.addAction(self.trackSubCellFeaturesAction)
         trackingMenu.addAction(self.applyTrackingFromTableAction)
+        trackingMenu.addAction(self.applyTrackingFromTrackMateXMLAction)
         
         self.trackingMenu = trackingMenu
 
@@ -723,6 +725,9 @@ class mainWin(QMainWindow):
         self.applyTrackingFromTableAction = QAction(
             'Apply tracking info from tabular data...'
         )
+        self.applyTrackingFromTrackMateXMLAction = QAction(
+            'Apply tracking info from TrackMate XML file...'
+        )
         self.batchConverterAction = QAction(
             'Create required data structure from image files...'
         )
@@ -818,6 +823,9 @@ class mainWin(QMainWindow):
         self.showLogsAction.triggered.connect(self.showLogFiles)
         self.applyTrackingFromTableAction.triggered.connect(
             self.launchApplyTrackingFromTableUtil
+        )
+        self.applyTrackingFromTrackMateXMLAction.triggered.connect(
+            self.launchApplyTrackingFromTrackMateXML
         )
         
         self.debugAction.triggered.connect(self._debug)
@@ -1076,6 +1084,34 @@ class mainWin(QMainWindow):
         self.win = apps.selectPositionsMultiExp(expPaths)
         self.win.show() 
     
+    def launchApplyTrackingFromTrackMateXML(self):
+        posPath = self.getSelectedPosPath('Apply tracking info from tabular data')
+        if posPath is None:
+            return
+        
+        title = 'Apply tracking info from TrackMate XML file utility'
+        infoText = 'Launching apply tracking info from from TrackMate XML data...'
+        self.applyTrackMateXMLWin = (
+            utilsApplyTrackFromTrackMate.ApplyTrackingInfoFromTrackMateUtil(
+                self.app, title, infoText, parent=self, 
+                callbackOnFinished=self.applyTrackingFromTackmateXMLFinished
+            )
+        )
+        self.applyTrackMateXMLWin.show()
+        func = partial(
+            self._runApplyTrackingFromTrackMateXML, posPath, 
+            self.applyTrackMateXMLWin
+        )
+        QTimer.singleShot(200, func)
+    
+    def _runApplyTrackingFromTrackMateXML(self, posPath, win):
+        success = win.run(posPath)
+        if not success:
+            self.logger.info(
+                'Apply tracking info from TrackMate XML ABORTED by the user.'
+            )
+            win.close()  
+    
     def launchApplyTrackingFromTableUtil(self):
         posPath = self.getSelectedPosPath('Apply tracking info from tabular data')
         if posPath is None:
@@ -1103,6 +1139,15 @@ class mainWin(QMainWindow):
             )
             win.close()          
         
+    def applyTrackingFromTackmateXMLFinished(self):
+        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        txt = html_utils.paragraph(
+            'Apply tracking info from TrackMate XML data completed.'
+        )
+        msg.information(self, 'Process completed', txt)
+        self.logger.info('Apply tracking info from TrackMate XML data completed.')
+        self.applyTrackWin.close()
+    
     def applyTrackingFromTableFinished(self):
         msg = widgets.myMessageBox(showCentered=False, wrapText=False)
         txt = html_utils.paragraph(
@@ -1111,7 +1156,6 @@ class mainWin(QMainWindow):
         msg.information(self, 'Process completed', txt)
         self.logger.info('Apply tracking info from tabular data completed.')
         self.applyTrackWin.close()
-
     
     def launchNapariUtil(self, action):
         myutils.check_install_package('napari', parent=self)

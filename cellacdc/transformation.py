@@ -1,3 +1,6 @@
+import xml.etree.ElementTree as ET 
+
+import pandas as pd
 import numpy as np
 
 from skimage.transform import resize
@@ -50,3 +53,32 @@ def del_objs_outside_segm_roi(segm_roi, segm):
         cleared_segm[segm==del_ID] = 0
         clearedIDs.append(del_ID)
     return cleared_segm, clearedIDs
+
+def trackmate_xml_to_df(xml_file):
+    IDs = []
+    xx = []
+    yy = []
+    zz = []
+    frame_idxs = []
+    tree = ET.parse(xml_file)
+    Tracks = tree.getroot()
+
+    for i, particle in enumerate(Tracks):
+        ID = i+1
+        for t, detection in enumerate(particle):
+            attrib = detection.attrib
+            IDs.append(ID)
+            xx.append(attrib['x'])
+            yy.append(attrib['y'])
+            zz.append(attrib['z'])
+            frame_idxs.append(attrib['t'])
+    
+    df = pd.DataFrame({
+        'frame_i': frame_idxs,
+        'ID': IDs, 
+        'x': xx,
+        'y': yy,
+        'z': zz
+    })
+    return df
+        
