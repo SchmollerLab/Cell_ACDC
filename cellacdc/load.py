@@ -1180,7 +1180,7 @@ class loadData:
                 )
             except AttributeError as e:
                 # traceback.print_exc()
-                se.last_tracked_i = None
+                self.last_tracked_i = None
 
         if create_new_segm:
             self.setFilePaths(new_endname)
