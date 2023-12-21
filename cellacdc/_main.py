@@ -1146,7 +1146,7 @@ class mainWin(QMainWindow):
         )
         msg.information(self, 'Process completed', txt)
         self.logger.info('Apply tracking info from TrackMate XML data completed.')
-        self.applyTrackWin.close()
+        self.applyTrackMateXMLWin.close()
     
     def applyTrackingFromTableFinished(self):
         msg = widgets.myMessageBox(showCentered=False, wrapText=False)
