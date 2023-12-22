@@ -144,6 +144,7 @@
     <file alias="addDelPolyLineRoi_cursor.svg">resources/icons/addDelPolyLineRoi_cursor_dark.svg</file>
     <file alias="fill_holes.svg">resources/icons/fill_holes_dark.svg</file>
     <file alias="find.svg">resources/icons/find_dark.svg</file>
+    <file alias="browser.svg">resources/icons/browser_dark.svg</file>
     <file alias="skip_forward_new_ID.svg">resources/icons/skip_forward_new_ID_dark.svg</file>
     <file alias="expand.svg">resources/icons/expand_dark.svg</file>
     <file alias="collapse.svg">resources/icons/collapse_dark.svg</file>

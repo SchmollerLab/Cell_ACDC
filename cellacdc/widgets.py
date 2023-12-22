@@ -517,6 +517,16 @@ class showInFileManagerButton(PushButton):
         self._text = myutils.get_show_in_file_manager_text()
         self.setText(self._text)
 
+class OpenUrlButton(PushButton):
+    def __init__(self, url, *args, **kwargs):
+        self._url = url
+        super().__init__(*args, **kwargs)
+        self.setIcon(QIcon(':folder-open.svg'))
+        self.clicked.connect(self.openUrl)
+    
+    def openUrl(self):
+        QDesktopServices.openUrl(QUrl(self._url))
+
 class LessThanPushButton(PushButton):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -2258,6 +2268,12 @@ class myMessageBox(QDialog):
         self.buttonsLayout.addWidget(self.showInFileManagButton)
         func = partial(myutils.showInExplorer, path)
         self.showInFileManagButton.clicked.connect(func)
+    
+    def addBrowseUrlButton(self, url, button_text=''):
+        if txt is None:
+            txt = 'Reveal in Finder...' if is_mac else 'Show in Explorer...'
+        self.openUrlButton = OpenUrlButton(url, button_text)
+        self.buttonsLayout.addWidget(self.openUrlButton)
 
     def addCancelButton(self, button=None, connect=False):
         if button is None:
@@ -2478,7 +2494,8 @@ class myMessageBox(QDialog):
     def _template(
             self, parent, title, message, detailsText=None,
             buttonsTexts=None, layouts=None, widgets=None,
-            commands=None, path_to_browse=None, browse_button_text=None
+            commands=None, path_to_browse=None, browse_button_text=None,
+            url_to_open=None, open_url_button_text='Open url'
         ):
         if parent is not None:
             self.setParent(parent)
@@ -2504,6 +2521,11 @@ class myMessageBox(QDialog):
         if path_to_browse is not None:
             self.addShowInFileManagerButton(
                 path_to_browse, txt=browse_button_text
+            )
+        
+        if url_to_open is not None:
+            self.addBrowseUrlButton(
+                url_to_open, button_text=open_url_button_text
             )
         
         buttons = []
