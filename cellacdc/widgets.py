@@ -279,6 +279,11 @@ class PushButton(QPushButton):
         if hoverable:
             self.installEventFilter(self)
     
+    def setRetainSizeWhenHidden(self, retainSize):
+        sp = self.sizePolicy()
+        sp.setRetainSizeWhenHidden(retainSize)
+        self.setSizePolicy(sp)
+    
     def eventFilter(self, object, event):
         if event.type() == QEvent.Type.HoverEnter:
             self.setFlat(False)
@@ -339,6 +344,11 @@ class zoomPushButton(PushButton):
     
     def setIconZoomIn(self):
         self.setIcon(QIcon(':zoom_in.svg'))
+
+class WarningButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setIcon(QIcon(':warning.svg'))
 
 class reloadPushButton(PushButton):
     def __init__(self, *args, **kwargs):

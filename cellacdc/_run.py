@@ -173,6 +173,13 @@ def _setup_gui_libraries():
     
     try:
         import pyqtgraph
+        pg_major, pg_minor, pg_patch = pyqtgraph.__version__
+        if pg_major < 1:
+            raise ModuleNotFoundError('pyqtgraph must be upgraded')
+        if pg_minor < 3:
+            raise ModuleNotFoundError('pyqtgraph must be upgraded')
+        if pg_patch < 3:
+            raise ModuleNotFoundError('pyqtgraph must be upgraded')
     except ModuleNotFoundError:
         import subprocess
         subprocess.check_call(
