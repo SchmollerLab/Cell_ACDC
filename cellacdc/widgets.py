@@ -521,7 +521,7 @@ class OpenUrlButton(PushButton):
     def __init__(self, url, *args, **kwargs):
         self._url = url
         super().__init__(*args, **kwargs)
-        self.setIcon(QIcon(':folder-open.svg'))
+        self.setIcon(QIcon(':browser.svg'))
         self.clicked.connect(self.openUrl)
     
     def openUrl(self):
@@ -2270,8 +2270,6 @@ class myMessageBox(QDialog):
         self.showInFileManagButton.clicked.connect(func)
     
     def addBrowseUrlButton(self, url, button_text=''):
-        if txt is None:
-            txt = 'Reveal in Finder...' if is_mac else 'Show in Explorer...'
         self.openUrlButton = OpenUrlButton(url, button_text)
         self.buttonsLayout.addWidget(self.openUrlButton)
 
