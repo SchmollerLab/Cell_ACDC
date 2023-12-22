@@ -173,7 +173,8 @@ def _setup_gui_libraries():
     
     try:
         import pyqtgraph
-        pg_major, pg_minor, pg_patch = pyqtgraph.__version__
+        version = pyqtgraph.__version__.split('.')
+        pg_major, pg_minor, pg_patch = [int(val) for val in version]
         if pg_major < 1:
             raise ModuleNotFoundError('pyqtgraph must be upgraded')
         if pg_minor < 3:
