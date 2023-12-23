@@ -239,7 +239,7 @@ def _setup_app(splashscreen=False, icon_path=None, logo_path=None, scheme=None):
     
     if icon_path is None:
         icon_path = os.path.join(resources_folderpath, 'icon.ico')
-        app.setWindowIcon(QIcon(icon_path))
+    app.setWindowIcon(QIcon(icon_path))
     
     if logo_path is None:
         logo_path = os.path.join(resources_folderpath, 'logo.png')
