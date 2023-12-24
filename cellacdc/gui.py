@@ -13188,6 +13188,7 @@ class guiWin(QMainWindow):
             annotIDs_frame_i = annotatedIDs.get(posData.frame_i, [])
             
             if button.isChecked() and ID > 0:
+                # Annotate only if existing ID and the button is checkedchecked
                 if ID in annotIDs_frame_i:
                     annotIDs_frame_i.remove(ID)
                 elif ID != 0:
