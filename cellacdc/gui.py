@@ -7453,7 +7453,7 @@ class guiWin(QMainWindow):
                     y, x = posData.rp[obj_idx].centroid
                     xdata, ydata = int(x), int(y)
 
-            button = self.doCustomAnnotation(ID, fromClick=True)
+            button = self.doCustomAnnotation(ID)
             if button is None:
                 return
             
@@ -10584,6 +10584,7 @@ class guiWin(QMainWindow):
     def changeMode(self, text):
         self.reconnectUndoRedo()
         self.updateModeMenuAction()
+        self.clearCustomAnnot()
         posData = self.data[self.pos_i]
         mode = text
         prevMode = self.modeComboBox.previousText()
@@ -10642,9 +10643,11 @@ class guiWin(QMainWindow):
             self.removeAlldelROIsCurrentFrame()
             self.annotateToolbar.setVisible(True)
             self.clearGhost()
+            self.doCustomAnnotation(0)
         elif mode == 'Snapshot':
             self.reconnectUndoRedo()
             self.setEnabledSnapshotMode()
+            self.doCustomAnnotation(0)
 
     def setEnabledSnapshotMode(self):
         posData = self.data[self.pos_i]
@@ -11631,10 +11634,10 @@ class guiWin(QMainWindow):
        
         if ev.key() == Qt.Key_Q and self.debug:
             posData = self.data[self.pos_i]
-            buttons = list(self.customAnnotDict.keys())
-            for button in buttons:
-                annotatedIDs = self.customAnnotDict[button]['annotatedIDs'][self.pos_i]
+            for button, info in self.customAnnotDict.items():
+                annotatedIDs = info['annotatedIDs'][self.pos_i]
                 annotIDs_frame_i = annotatedIDs.get(posData.frame_i, [])
+                printl(info.state['name'], annotIDs_frame_i)       
         
         if not self.dataIsLoaded:
             self.logger.info(
@@ -13158,10 +13161,15 @@ class guiWin(QMainWindow):
             pen=pg.mkPen(width=3, color=symbolColor)
         )
 
-    def doCustomAnnotation(self, ID, fromClick=False):
+    def doCustomAnnotation(self, ID):
+        mode = self.modeComboBox.currentText()
+        if not self.isSnapshot and mode != 'Custom annotations':
+            # Do not show annotations if timelapse and mode not annotations
+            return
+        
         # NOTE: pass 0 for ID to not add
         posData = self.data[self.pos_i]
-        if self.viewAllCustomAnnotAction.isChecked() and not fromClick:
+        if self.viewAllCustomAnnotAction.isChecked():
             # User requested to show all annotations --> iterate all buttons
             # Unless it actively clicked to annotate --> avoid annotating object
             # with all the annotations present
@@ -13178,10 +13186,12 @@ class guiWin(QMainWindow):
         for button in buttons:
             annotatedIDs = self.customAnnotDict[button]['annotatedIDs'][self.pos_i]
             annotIDs_frame_i = annotatedIDs.get(posData.frame_i, [])
-            if ID in annotIDs_frame_i:
-                annotIDs_frame_i.remove(ID)
-            elif ID != 0:
-                annotIDs_frame_i.append(ID)
+            
+            if button.isChecked() and ID > 0:
+                if ID in annotIDs_frame_i:
+                    annotIDs_frame_i.remove(ID)
+                elif ID != 0:
+                    annotIDs_frame_i.append(ID)
 
             annotPerButton = self.customAnnotDict[button]
             allAnnotedIDs = annotPerButton['annotatedIDs']
