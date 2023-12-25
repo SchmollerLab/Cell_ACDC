@@ -171,21 +171,21 @@ pd.set_option("display.max_columns", 20)
 pd.set_option("display.max_rows", 200)
 pd.set_option('display.expand_frame_repr', False)
 
-def printl(*objects, pretty=False, is_decorator=False, **kwargs):
+def printl(*objects, pretty=False, is_decorator=False, idx=1, **kwargs):
     # Copy current stdout, reset to default __stdout__ and then restore current
     current_stdout = sys.stdout
     sys.stdout = sys.__stdout__
     timestap = datetime.now().strftime('%H:%M:%S')
     currentframe = inspect.currentframe()
     outerframes = inspect.getouterframes(currentframe)
-    idx = 2 if is_decorator else 1
+    idx = idx+1 if is_decorator else idx
     callingframe = outerframes[idx].frame
     callingframe_info = inspect.getframeinfo(callingframe)
     filepath = callingframe_info.filename
     filename = os.path.basename(filepath)
     print_func = pprint if pretty else print
     print('*'*30)
-    print(f'{timestap} - File `{filename}`, "{filepath}", line {callingframe_info.lineno}:')
+    print(f'{timestap} - File "{filepath}", line {callingframe_info.lineno}:')
     if 'sep' not in kwargs:
         kwargs['sep'] = ', '
     if pretty:

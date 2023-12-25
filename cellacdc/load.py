@@ -17,6 +17,7 @@ import skimage.filters
 from datetime import datetime
 from tifffile import TiffFile
 import tifffile
+import zipfile
 from natsort import natsorted
 
 import skimage
@@ -65,7 +66,7 @@ last_selected_groupboxes_measurements_path = os.path.join(
 channel_file_formats = (
     '_aligned.h5', '.h5', '_aligned.npz', '.tif'
 )
-TIMESTAMP_HDF = r'iso%Y%m%d%H%M%S'
+ISO_TIMESTAMP_FORMAT = r'iso%Y%m%d%H%M%S'
 
 def read_json(json_path, logger_func=print, desc='custom annotations'):
     json_data = {}
@@ -353,6 +354,15 @@ def _add_will_divide_column(acdc_df):
 
     return acdc_df
 
+def _parse_loaded_acdc_df(acdc_df):
+    acdc_df = acdc_df.set_index(['frame_i', 'Cell_ID']).sort_index()
+    # remove duplicates saved by mistake or bugs
+    duplicated = acdc_df.index.duplicated(keep='first')
+    acdc_df = acdc_df[~duplicated]
+    acdc_df = pd_bool_to_int(acdc_df, acdc_df_bool_cols, inplace=True)
+    acdc_df = pd_int_to_bool(acdc_df, acdc_df_bool_cols)
+    return acdc_df
+
 def _load_acdc_df_file(acdc_df_file_path):
     acdc_df = pd.read_csv(acdc_df_file_path, dtype=acdc_df_str_cols)
     try:
@@ -360,12 +370,7 @@ def _load_acdc_df_file(acdc_df_file_path):
         acdc_df[acdc_df_drop_cca.columns] = acdc_df_drop_cca
     except KeyError:
         pass
-    acdc_df = acdc_df.set_index(['frame_i', 'Cell_ID']).sort_index()
-    # remove duplicates saved by mistake or bugs
-    duplicated = acdc_df.index.duplicated(keep='first')
-    acdc_df = acdc_df[~duplicated]
-    acdc_df = pd_bool_to_int(acdc_df, acdc_df_bool_cols, inplace=True)
-    acdc_df = pd_int_to_bool(acdc_df, acdc_df_bool_cols)
+    acdc_df = _parse_loaded_acdc_df(acdc_df)
     acdc_df = _add_will_divide_column(acdc_df)
     return acdc_df
 
@@ -396,76 +401,89 @@ def store_copy_acdc_df(posData, acdc_output_csv_path, log_func=printl):
             .set_index(['frame_i', 'Cell_ID'])
         )
         posData.setTempPaths()
-        h5_path = posData.acdc_output_backup_h5_path
-        keys = []
-        if os.path.exists(h5_path):
-            with pd.HDFStore(h5_path, mode='a') as hdf:
-                keys = natsorted(hdf.keys())
-        
-        new_key = datetime.now().strftime(TIMESTAMP_HDF)
-        if len(keys) > 10:
-            # Delete oldest df and resave remaining 9
-            keys.pop(0)
-            temp_dirpath = tempfile.mkdtemp()
-            filename = os.path.basename(h5_path)
-            temp_h5_filepath = os.path.join(temp_dirpath, filename)
-            with pd.HDFStore(temp_h5_filepath, mode='a') as hdf:
-                for key in keys:
-                    old_df = pd.read_hdf(h5_path, key=key)
-                    hdf.append(key, old_df)
-            shutil.move(temp_h5_filepath, h5_path)
-            shutil.rmtree(temp_dirpath)
-        
-        with pd.HDFStore(h5_path, mode='a') as hdf:
-            hdf.append(new_key, df)
+        zip_path = posData.acdc_output_backup_zip_path
+        _store_acdc_df_archive(zip_path, df)
     except Exception as e:
         log_func(traceback.format_exc())
 
+def _copy_acdc_dfs_to_temp_archive(
+        zip_path, temp_zip_path, csv_names, compression_opts
+    ):
+    if not os.path.exists(zip_path): 
+        return
+    
+    with zipfile.ZipFile(zip_path, mode='r') as zip:
+        for csv_name in csv_names:
+            acdc_df = pd.read_csv(zip.open(csv_name))
+            acdc_df = _parse_loaded_acdc_df(acdc_df)
+            acdc_df = pd_bool_to_int(acdc_df, inplace=False)
+            compression_opts['archive_name'] = csv_name
+            acdc_df.to_csv(
+                temp_zip_path, compression=compression_opts, mode='a'
+            )
+
+def _store_acdc_df_archive(zip_path, acdc_df_to_store):
+    csv_names = []
+    if os.path.exists(zip_path):
+        with zipfile.ZipFile(zip_path, mode='r') as zip:
+            csv_names = natsorted(set(zip.namelist()))
+    
+    new_key = datetime.now().strftime(ISO_TIMESTAMP_FORMAT)
+    csv_name = f'{new_key}.csv'
+    if csv_name in csv_names:
+        # Do not save duplicates within the same second
+        return
+    
+    if len(csv_names) > 20:
+        # Delete oldest df and resave remaining 19
+        csv_names.pop(0)
+    
+    zip_filename = os.path.basename(zip_path)
+    temp_zip_filename = zip_filename.replace('.csv', '_temp.csv')
+    temp_dirpath = tempfile.mkdtemp()
+    temp_zip_path = os.path.join(temp_dirpath, temp_zip_filename)
+    compression_opts = {'method': 'zip', 'compresslevel': zipfile.ZIP_STORED}
+    _copy_acdc_dfs_to_temp_archive(
+        zip_path, temp_zip_path, csv_names, compression_opts
+    )
+        
+    
+    compression_opts['archive_name'] = csv_name
+    acdc_df = pd_bool_to_int(acdc_df_to_store, inplace=False)
+    acdc_df.to_csv(temp_zip_path, compression=compression_opts, mode='a')
+    shutil.move(temp_zip_path, zip_path)
+    shutil.rmtree(temp_dirpath)
+
 def store_unsaved_acdc_df(posData, acdc_df_to_store, log_func=printl):
-    try:        
-        df = acdc_df_to_store
+    try:
         posData.setTempPaths()
-        h5_path = posData.unsaved_acdc_df_autosave_path
-        keys = []
-        if os.path.exists(h5_path):
-            with pd.HDFStore(h5_path, mode='a') as hdf:
-                keys = natsorted(hdf.keys())
-        
-        new_key = datetime.now().strftime(TIMESTAMP_HDF)
-        if len(keys) > 10:
-            # Delete oldest df and resave remaining 9
-            keys.pop(0)
-            temp_dirpath = tempfile.mkdtemp()
-            filename = os.path.basename(h5_path)
-            temp_h5_filepath = os.path.join(temp_dirpath, filename)
-            with pd.HDFStore(temp_h5_filepath, mode='a') as hdf:
-                for key in keys:
-                    if key is None:
-                        continue
-                    old_df = pd.read_hdf(h5_path, key=key)
-                    hdf.append(key, old_df)
-            shutil.move(temp_h5_filepath, h5_path)
-            shutil.rmtree(temp_dirpath)
-        
-        with pd.HDFStore(h5_path, mode='a') as hdf:
-            hdf.append(new_key, df)
-    except Exception as e:
+        zip_path = posData.unsaved_acdc_df_autosave_path
+        _store_acdc_df_archive(zip_path, acdc_df_to_store)
+    except Exception as err:
         pass
-        # log_func(traceback.format_exc())
 
 def get_last_stored_unsaved_acdc_df(posData):
-    h5_path = posData.unsaved_acdc_df_autosave_path
-    if not os.path.exists(h5_path):
+    zip_path = posData.unsaved_acdc_df_autosave_path
+    if not os.path.exists(zip_path):
         return
     
-    try:
-        with pd.HDFStore(h5_path, mode='r') as hdf:
-            keys = natsorted(hdf.keys())
-        return pd.read_hdf(keys[-1])
-    except Exception as e:
-        return
+    with zipfile.ZipFile(zip_path, mode='r') as zip:
+        csv_names = natsorted(zip.namelist())
     
-    
+    csv_name = csv_names[-1]
+    acdc_df = read_acdc_df_from_archive(zip_path, csv_name)
+    return acdc_df
+
+def read_acdc_df_from_archive(archive_path, key):
+    if not key.endswith('.csv'):
+        csv_name = f'{key}.csv'
+    else:
+        csv_name = key
+    with zipfile.ZipFile(archive_path, 'r') as zip:
+        acdc_df = pd.read_csv(zip.open(csv_name))
+    acdc_df = _parse_loaded_acdc_df(acdc_df)
+    return acdc_df
+
 def get_user_ch_paths(images_paths, user_ch_name):
     user_ch_file_paths = []
     for images_path in images_paths:
@@ -1170,6 +1188,14 @@ class loadData:
         self.getCustomAnnotatedIDs()
         self.setNotFoundData()
     
+    def loadMostRecentUnsavedAcdcDf(self):
+        acdc_df = get_last_stored_unsaved_acdc_df(self)
+        if acdc_df is None:
+            return
+        self.acdc_df = acdc_df
+        self.acdc_df_found = True
+        self.last_tracked_i = max(self.acdc_df.index.get_level_values(0))
+    
     def loadAcdcDf(self, filePath, updatePaths=True, return_df=False):
         acdc_df = _load_acdc_df_file(filePath)
         if updatePaths:
@@ -1810,6 +1836,28 @@ class loadData:
         with open(self.segm_hyperparams_ini_path, 'w') as configfile:
             cp.write(configfile)
     
+    def isRecoveredAcdcDfPresent(self):
+        self.setTempPaths()
+        zip_path = self.unsaved_acdc_df_autosave_path
+        if not os.path.exists(zip_path):
+            return False
+        
+        if not os.path.exists(self.acdc_output_csv_path):
+            acdc_df_mtime = 0
+        else:
+            acdc_df_mtime = os.path.getmtime(self.acdc_output_csv_path)
+        
+        acdc_df_mdatetime = datetime.fromtimestamp(acdc_df_mtime)
+        
+        with zipfile.ZipFile(zip_path, mode='r') as zip:
+            csv_names = natsorted(set(zip.namelist()))
+        
+        iso_key = csv_names[-1][:-4]
+        most_recent_unsaved_acdc_df_datetime = datetime.strptime(
+            iso_key, ISO_TIMESTAMP_FORMAT
+        )
+        return most_recent_unsaved_acdc_df_datetime > acdc_df_mdatetime
+    
     def setTempPaths(self, createFolder=True):
         temp_folder = os.path.join(self.images_path, 'recovery')
         self.recoveryFolderPath = temp_folder
@@ -1818,19 +1866,16 @@ class loadData:
         segm_filename = os.path.basename(self.segm_npz_path)
         acdc_df_filename = os.path.basename(self.acdc_output_csv_path)
         self.segm_npz_temp_path = os.path.join(temp_folder, segm_filename)
-        self.acdc_output_temp_csv_path = os.path.join(
-            temp_folder, acdc_df_filename
-        )
-        self.acdc_output_backup_h5_path = os.path.join(
-            temp_folder, acdc_df_filename.replace('.csv', '.h5')
+        self.acdc_output_backup_zip_path = os.path.join(
+            temp_folder, acdc_df_filename.replace('.csv', '.zip')
         )
         unsaved_acdc_df_filename = acdc_df_filename.replace(
-            '.csv', '_autosave.h5'
+            '.csv', '_autosave.zip'
         )
         self.unsaved_acdc_df_autosave_path = os.path.join(
             temp_folder, unsaved_acdc_df_filename
         )
-
+        
     def buildPaths(self):
         if self.basename.endswith('_'):
             basename = self.basename
@@ -2683,3 +2728,9 @@ def get_tooltips_from_docs():
 
             tipdict[name] = f"Name: {title}\nShortcut: {shortcut}\n\n{desc}"
     return tipdict
+
+def save_df_to_csv_temp_path(df, csv_filename, **to_csv_kwargs):
+    tempDir = tempfile.mkdtemp()
+    tempFilepath = os.path.join(tempDir, csv_filename)
+    df.to_csv(tempFilepath, **to_csv_kwargs)
+    return tempFilepath

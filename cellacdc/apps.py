@@ -3,6 +3,7 @@ import sys
 import re
 import datetime
 import pathlib
+import zipfile
 from heapq import nlargest
 import matplotlib
 import matplotlib.pyplot as plt
@@ -12311,15 +12312,17 @@ class SelectAcdcDfVersionToRestore(widgets.QBaseDialog):
         mainLayout.addWidget(QLabel(instructionsLabel))
         
         self.savedListBox = None
-        if os.path.exists(posData.acdc_output_backup_h5_path):
-            h5_filepath = posData.acdc_output_backup_h5_path
-            self.savedHDFfilepath = h5_filepath
-            with pd.HDFStore(h5_filepath, mode='r') as hdf:
-                keys = natsorted(hdf.keys())
+        if os.path.exists(posData.acdc_output_backup_zip_path):
+            zip_path = posData.acdc_output_backup_zip_path
+            self.savedArchivefilepath = zip_path
+            with zipfile.ZipFile(zip_path, mode='r') as zip:
+                csv_names = natsorted(zip.namelist(), reverse=True)
+            
+            keys = [csv_name[:-4] for csv_name in csv_names]
 
             self.savedKeys = keys
-            f = load.TIMESTAMP_HDF
-            timestamps = [datetime.datetime.strptime(key[1:], f) for key in keys]
+            f = load.ISO_TIMESTAMP_FORMAT
+            timestamps = [datetime.datetime.strptime(key, f) for key in keys]
             items = [date.strftime(r'%d %b %Y, %H:%M:%S') for date in timestamps]
             mainLayout.addWidget(QLabel('Saved annotations:'))
             self.savedListBox = widgets.listWidget()
@@ -12331,14 +12334,18 @@ class SelectAcdcDfVersionToRestore(widgets.QBaseDialog):
         
         self.neverSavedListBox = None
         if os.path.exists(posData.unsaved_acdc_df_autosave_path):
-            h5_filepath = posData.unsaved_acdc_df_autosave_path
-            self.neverSavedHDFfilepath = h5_filepath
-            with pd.HDFStore(h5_filepath, mode='r') as hdf:
-                keys = natsorted(hdf.keys())
+            zip_path = posData.unsaved_acdc_df_autosave_path
+            self.neverSavedArchivefilepath = zip_path
+            with zipfile.ZipFile(zip_path, mode='r') as zip:
+                csv_names = natsorted(zip.namelist(), reverse=True)
             
+            keys = [csv_name[:-4] for csv_name in csv_names]
+            printl(keys)
             self.neverSavedKeys = keys
-            f = load.TIMESTAMP_HDF
-            timestamps = [datetime.datetime.strptime(key[1:], f) for key in keys]
+            f = load.ISO_TIMESTAMP_FORMAT
+            timestamps = [
+                datetime.datetime.strptime(key, f) for key in keys
+            ]
             items = [date.strftime(r'%d %b %Y, %H:%M:%S') for date in timestamps]
             mainLayout.addWidget(QLabel('Never saved annotations:'))
             self.neverSavedListBox = widgets.listWidget()
@@ -12368,7 +12375,7 @@ class SelectAcdcDfVersionToRestore(widgets.QBaseDialog):
                 if item.isSelected():
                     self.selectedTimestamp = item.text()
                     self.selectedKey = self.savedKeys[i]
-                    self.HDFfilepath = self.savedHDFfilepath
+                    self.archiveFilePath = self.savedArchivefilepath
                     break
         except Exception as e:
             pass
@@ -12379,7 +12386,7 @@ class SelectAcdcDfVersionToRestore(widgets.QBaseDialog):
                 if item.isSelected():
                     self.selectedTimestamp = item.text()
                     self.selectedKey = self.neverSavedKeys[i]
-                    self.HDFfilepath = self.neverSavedHDFfilepath
+                    self.archiveFilePath = self.neverSavedArchivefilepath
                     break
         except Exception as e:
             pass

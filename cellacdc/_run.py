@@ -173,6 +173,14 @@ def _setup_gui_libraries():
     
     try:
         import pyqtgraph
+        version = pyqtgraph.__version__.split('.')
+        pg_major, pg_minor, pg_patch = [int(val) for val in version]
+        # if pg_major < 1:
+        #     raise ModuleNotFoundError('pyqtgraph must be upgraded')
+        if pg_minor < 13:
+            raise ModuleNotFoundError('pyqtgraph must be upgraded')
+        if pg_patch < 3:
+            raise ModuleNotFoundError('pyqtgraph must be upgraded')
     except ModuleNotFoundError:
         import subprocess
         subprocess.check_call(
@@ -231,7 +239,7 @@ def _setup_app(splashscreen=False, icon_path=None, logo_path=None, scheme=None):
     
     if icon_path is None:
         icon_path = os.path.join(resources_folderpath, 'icon.ico')
-        app.setWindowIcon(QIcon(icon_path))
+    app.setWindowIcon(QIcon(icon_path))
     
     if logo_path is None:
         logo_path = os.path.join(resources_folderpath, 'logo.png')

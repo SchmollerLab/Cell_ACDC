@@ -279,6 +279,11 @@ class PushButton(QPushButton):
         if hoverable:
             self.installEventFilter(self)
     
+    def setRetainSizeWhenHidden(self, retainSize):
+        sp = self.sizePolicy()
+        sp.setRetainSizeWhenHidden(retainSize)
+        self.setSizePolicy(sp)
+    
     def eventFilter(self, object, event):
         if event.type() == QEvent.Type.HoverEnter:
             self.setFlat(False)
@@ -339,6 +344,11 @@ class zoomPushButton(PushButton):
     
     def setIconZoomIn(self):
         self.setIcon(QIcon(':zoom_in.svg'))
+
+class WarningButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setIcon(QIcon(':warning.svg'))
 
 class reloadPushButton(PushButton):
     def __init__(self, *args, **kwargs):
@@ -506,6 +516,16 @@ class showInFileManagerButton(PushButton):
     def setDefaultText(self):
         self._text = myutils.get_show_in_file_manager_text()
         self.setText(self._text)
+
+class OpenUrlButton(PushButton):
+    def __init__(self, url, *args, **kwargs):
+        self._url = url
+        super().__init__(*args, **kwargs)
+        self.setIcon(QIcon(':browser.svg'))
+        self.clicked.connect(self.openUrl)
+    
+    def openUrl(self):
+        QDesktopServices.openUrl(QUrl(self._url))
 
 class LessThanPushButton(PushButton):
     def __init__(self, *args, **kwargs):
@@ -2248,6 +2268,10 @@ class myMessageBox(QDialog):
         self.buttonsLayout.addWidget(self.showInFileManagButton)
         func = partial(myutils.showInExplorer, path)
         self.showInFileManagButton.clicked.connect(func)
+    
+    def addBrowseUrlButton(self, url, button_text=''):
+        self.openUrlButton = OpenUrlButton(url, button_text)
+        self.buttonsLayout.addWidget(self.openUrlButton)
 
     def addCancelButton(self, button=None, connect=False):
         if button is None:
@@ -2468,7 +2492,8 @@ class myMessageBox(QDialog):
     def _template(
             self, parent, title, message, detailsText=None,
             buttonsTexts=None, layouts=None, widgets=None,
-            commands=None, path_to_browse=None, browse_button_text=None
+            commands=None, path_to_browse=None, browse_button_text=None,
+            url_to_open=None, open_url_button_text='Open url'
         ):
         if parent is not None:
             self.setParent(parent)
@@ -2494,6 +2519,11 @@ class myMessageBox(QDialog):
         if path_to_browse is not None:
             self.addShowInFileManagerButton(
                 path_to_browse, txt=browse_button_text
+            )
+        
+        if url_to_open is not None:
+            self.addBrowseUrlButton(
+                url_to_open, button_text=open_url_button_text
             )
         
         buttons = []
@@ -2603,6 +2633,11 @@ def macShortcutToWindows(shortcut: str):
 class ToolBar(QToolBar):
     def __init__(self, *args) -> None:
         super().__init__(*args)
+        for child in self.children(): 
+            if child.objectName() == 'qt_toolbar_ext_button':
+                self.extendButton = child
+                self.extendButton.setIcon(QIcon(":expand.svg"))
+                break
     
     def addSeparator(self, width=5):
         self.addWidget(QHWidgetSpacer(width=width))

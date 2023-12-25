@@ -6,16 +6,18 @@ import inspect
 import re
 import traceback
 import time
-import datetime
+from datetime import datetime
 import inspect
 import logging
 import uuid
 import json
 import pprint
 import psutil
+import zipfile
 from functools import partial
 from tqdm import tqdm
 from collections import Counter
+from natsort import natsorted
 import time
 import cv2
 import math
@@ -796,10 +798,6 @@ class saveDataWorker(QObject):
                     )
                     all_frames_acdc_df.to_csv(acdc_output_csv_path)
                     posData.acdc_df = all_frames_acdc_df
-                    try:
-                        os.remove(posData.acdc_output_temp_csv_path)
-                    except Exception as e:
-                        pass
                 except PermissionError:
                     err_msg = (
                         'The below file is open in another app '
@@ -883,7 +881,7 @@ class guiWin(QMainWindow):
     def _printl(
             self, *objects, is_decorator=False, **kwargs
         ):
-        timestap = datetime.datetime.now().strftime('%H:%M:%S')
+        timestap = datetime.now().strftime('%H:%M:%S')
         currentframe = inspect.currentframe()
         outerframes = inspect.getouterframes(currentframe)
         idx = 2 if is_decorator else 1
@@ -1345,6 +1343,14 @@ class guiWin(QMainWindow):
 
         trackingMenu.addAction(self.repeatTrackingMenuAction)
         trackingMenu.aboutToShow.connect(self.nonViewerEditMenuOpened)
+        
+        if self.mainWin is not None:
+            trackingMenu.addAction(
+                self.mainWin.applyTrackingFromTableAction
+            )
+            trackingMenu.addAction(
+                self.mainWin.applyTrackingFromTrackMateXMLAction
+            )
 
         # Measurements menu
         measurementsMenu = menuBar.addMenu("&Measurements")
@@ -1399,7 +1405,7 @@ class guiWin(QMainWindow):
         self.redoAction.setEnabled(False)
 
         # Navigation toolbar
-        navigateToolBar = QToolBar("Navigation", self)
+        navigateToolBar = widgets.ToolBar("Navigation", self)
         navigateToolBar.setContextMenuPolicy(Qt.PreventContextMenu)
         # navigateToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
         self.addToolBar(navigateToolBar)
@@ -1443,7 +1449,7 @@ class guiWin(QMainWindow):
         self.LeftClickButtons.append(self.rulerButton)
 
         # fluorescence image color widget
-        colorsToolBar = QToolBar("Colors", self)
+        colorsToolBar = widgets.ToolBar("Colors", self)
 
         self.overlayColorButton = pg.ColorButton(self, color=(230,230,230))
         self.overlayColorButton.setDisabled(True)
@@ -1458,7 +1464,7 @@ class guiWin(QMainWindow):
         self.navigateToolBar = navigateToolBar
 
         # cca toolbar
-        ccaToolBar = QToolBar("Cell cycle annotations", self)
+        ccaToolBar = widgets.ToolBar("Cell cycle annotations", self)
         self.addToolBar(ccaToolBar)
 
         # Assign mother to bud button
@@ -1494,8 +1500,9 @@ class guiWin(QMainWindow):
         self.functionsNotTested3D.append(self.editCcaToolAction)
 
         # Edit toolbar
-        editToolBar = QToolBar("Edit", self)
+        editToolBar = widgets.ToolBar("Edit", self)
         editToolBar.setContextMenuPolicy(Qt.PreventContextMenu)
+        
         self.addToolBar(editToolBar)
 
         self.brushButton = QToolButton(self)
@@ -1774,7 +1781,7 @@ class guiWin(QMainWindow):
 
     def gui_createAnnotateToolbar(self):
         # Edit toolbar
-        self.annotateToolbar = QToolBar("Custom annotations", self)
+        self.annotateToolbar = widgets.ToolBar("Custom annotations", self)
         self.annotateToolbar.setContextMenuPolicy(Qt.PreventContextMenu)
         self.addToolBar(Qt.LeftToolBarArea, self.annotateToolbar)
         self.annotateToolbar.addAction(self.loadCustomAnnotationsAction)
@@ -1981,7 +1988,7 @@ class guiWin(QMainWindow):
         self.addToolBarBreak()
         
         # Edit toolbar
-        modeToolBar = QToolBar("Mode", self)
+        modeToolBar = widgets.ToolBar("Mode", self)
         self.addToolBar(modeToolBar)
 
         self.modeComboBox = widgets.ComboBox()
@@ -1995,7 +2002,7 @@ class guiWin(QMainWindow):
         self.modeToolBar = modeToolBar
         
         # Widgets toolbar
-        brushEraserToolBar = QToolBar("Widgets", self)
+        brushEraserToolBar = widgets.ToolBar("Widgets", self)
         self.addToolBar(Qt.TopToolBarArea, brushEraserToolBar)
         self.controlToolBars.append(brushEraserToolBar)
 
@@ -2010,10 +2017,10 @@ class guiWin(QMainWindow):
         self.editIDLabelAction.setDisabled(True)
 
         brushEraserToolBar.addWidget(QLabel(' '))
-        self.editIDcheckbox = QCheckBox('Auto-ID')
-        self.editIDcheckbox.setChecked(True)
-        self.editIDcheckboxAction = brushEraserToolBar.addWidget(self.editIDcheckbox)
-        self.editIDcheckboxAction.setVisible(False)
+        self.autoIDcheckbox = QCheckBox('Auto-ID')
+        self.autoIDcheckbox.setChecked(True)
+        self.autoIDcheckboxAction = brushEraserToolBar.addWidget(self.autoIDcheckbox)
+        self.autoIDcheckboxAction.setVisible(False)
 
         self.brushSizeSpinbox = widgets.SpinBox(disableKeyPress=True)
         self.brushSizeSpinbox.setValue(4)
@@ -2048,7 +2055,7 @@ class guiWin(QMainWindow):
         brushEraserToolBar.setVisible(False)
         self.brushEraserToolBar = brushEraserToolBar
 
-        self.wandControlsToolbar = QToolBar("Magic wand controls", self)
+        self.wandControlsToolbar = widgets.ToolBar("Magic wand controls", self)
         self.wandToleranceSlider = widgets.sliderWithSpinBox(
             title='Tolerance', title_loc='in_line'
         )
@@ -2071,8 +2078,8 @@ class guiWin(QMainWindow):
         self.controlToolBars.append(self.wandControlsToolbar)
 
         separatorW = 5
-        self.labelRoiToolbar = QToolBar("Magic labeller controls", self)
-        self.labelRoiToolbar.addWidget(QLabel('ROI depth (n. of z-slices): '))
+        self.labelRoiToolbar = widgets.ToolBar("Magic labeller controls", self)
+        self.labelRoiToolbar.addWidget(QLabel('ROI n. of z-slices: '))
         self.labelRoiZdepthSpinbox = widgets.SpinBox(disableKeyPress=True)
         self.labelRoiToolbar.addWidget(self.labelRoiZdepthSpinbox)
 
@@ -2081,11 +2088,11 @@ class guiWin(QMainWindow):
         self.labelRoiToolbar.addWidget(widgets.QHWidgetSpacer(width=separatorW))
 
         self.labelRoiReplaceExistingObjectsCheckbox = QCheckBox(
-            'Remove objects touched by new objects'
+            'Remove objs. touched by new ones'
         )
         self.labelRoiToolbar.addWidget(self.labelRoiReplaceExistingObjectsCheckbox)
         self.labelRoiAutoClearBorderCheckbox = QCheckBox(
-            'Clear ROI borders before adding new objects'
+            'Clear ROI borders before adding new objs.'
         )
         self.labelRoiAutoClearBorderCheckbox.setChecked(True)
         self.labelRoiToolbar.addWidget(self.labelRoiAutoClearBorderCheckbox)
@@ -2096,7 +2103,7 @@ class guiWin(QMainWindow):
 
         group = QButtonGroup()
         group.setExclusive(True)
-        self.labelRoiIsRectRadioButton = QRadioButton('Rectangular ROI')
+        self.labelRoiIsRectRadioButton = QRadioButton('Rect. ROI')
         self.labelRoiIsRectRadioButton.setChecked(True)
         self.labelRoiIsFreeHandRadioButton = QRadioButton('Freehand ROI')
         self.labelRoiIsCircularRadioButton = QRadioButton('Circular ROI')
@@ -2106,7 +2113,7 @@ class guiWin(QMainWindow):
         self.labelRoiToolbar.addWidget(self.labelRoiIsRectRadioButton)
         self.labelRoiToolbar.addWidget(self.labelRoiIsFreeHandRadioButton)
         self.labelRoiToolbar.addWidget(self.labelRoiIsCircularRadioButton)
-        self.labelRoiToolbar.addWidget(QLabel(' Circular ROI radius (pixel): '))
+        self.labelRoiToolbar.addWidget(QLabel(' | Radius (pixel): '))
         self.labelRoiCircularRadiusSpinbox = widgets.SpinBox(disableKeyPress=True)
         self.labelRoiCircularRadiusSpinbox.setMinimum(1)
         self.labelRoiCircularRadiusSpinbox.setValue(11)
@@ -2201,7 +2208,7 @@ class guiWin(QMainWindow):
             self.labelRoiViewCurrentModel
         )
 
-        self.keepIDsToolbar = QToolBar("Keep IDs controls", self)
+        self.keepIDsToolbar = widgets.ToolBar("Keep IDs controls", self)
         self.keepIDsConfirmAction = QAction()
         self.keepIDsConfirmAction.setIcon(QIcon(":greenTick.svg"))
         self.keepIDsConfirmAction.setToolTip('Apply "keep IDs" selection')
@@ -2227,7 +2234,7 @@ class guiWin(QMainWindow):
         self.keptIDsLineEdit.sigIDsChanged.connect(self.updateKeepIDs)
         self.keepIDsConfirmAction.triggered.connect(self.applyKeepObjects)
         
-        self.autoPilotZoomToObjToolbar = QToolBar("Auto-zoom to objects", self)
+        self.autoPilotZoomToObjToolbar = widgets.ToolBar("Auto-zoom to objects", self)
         self.autoPilotZoomToObjToolbar.setContextMenuPolicy(Qt.PreventContextMenu)
         self.addToolBar(Qt.TopToolBarArea, self.autoPilotZoomToObjToolbar)
         # self.autoPilotZoomToObjToolbar.setIconSize(QSize(16, 16))
@@ -2268,7 +2275,7 @@ class guiWin(QMainWindow):
         self.autoPilotZoomToObjToolbar.addWidget(toggle.label)
         self.autoPilotZoomToObjToolbar.addWidget(toggle)
         
-        self.pointsLayersToolbar = QToolBar("Points layers", self)
+        self.pointsLayersToolbar = widgets.ToolBar("Points layers", self)
         self.pointsLayersToolbar.setContextMenuPolicy(Qt.PreventContextMenu)
         self.addToolBar(Qt.TopToolBarArea, self.pointsLayersToolbar)
         self.pointsLayersToolbar.addWidget(QLabel('Points layers:  '))
@@ -2312,7 +2319,7 @@ class guiWin(QMainWindow):
         
         # Empty toolbar to avoid weird ranges on image when showing the 
         # other toolbars --> placeholder
-        placeHolderToolbar = QToolBar("Place holder", self)
+        placeHolderToolbar = widgets.ToolBar("Place holder", self)
         self.addToolBar(Qt.TopToolBarArea, placeHolderToolbar)
         placeHolderToolbar.addWidget(QToolButton(self))
         placeHolderToolbar.setMovable(False)
@@ -2995,7 +3002,7 @@ class guiWin(QMainWindow):
         self.enableSmartTrackAction.toggled.connect(self.enableSmartTrack)
         # Brush/Eraser size action
         self.brushSizeSpinbox.valueChanged.connect(self.brushSize_cb)
-        self.editIDcheckbox.toggled.connect(self.autoIDtoggled)
+        self.autoIDcheckbox.toggled.connect(self.autoIDtoggled)
         # Mode
         self.modeActionGroup.triggered.connect(self.changeModeFromMenu)
         self.modeComboBox.sigTextChanged.connect(self.changeMode)
@@ -6206,7 +6213,7 @@ class guiWin(QMainWindow):
             self.update_rp(update_IDs=self.isNewID)
 
             # t1 = time.perf_counter()
-            if self.editIDcheckbox.isChecked():
+            if self.autoIDcheckbox.isChecked():
                 self.tracking(enforce=True, assign_unique_new_IDs=False)
 
             # t2 = time.perf_counter()
@@ -6344,7 +6351,7 @@ class guiWin(QMainWindow):
             try:
                 self.splineToObj(isRightClick=True)
                 self.update_rp()
-                self.tracking(enforce=True, assign_unique_new_IDs=False)
+                self.trackManuallyAddedObject(posData.brushID, True)
                 if self.isSnapshot:
                     self.fixCcaDfAfterEdit('Add new ID with curvature tool')
                     self.updateAllImages()
@@ -6392,8 +6399,8 @@ class guiWin(QMainWindow):
             self.update_rp(update_IDs=self.isNewID)
             
             # Repeat tracking
-            if self.editIDcheckbox.isChecked():
-                self.tracking(enforce=True, assign_unique_new_IDs=False)
+            if self.autoIDcheckbox.isChecked():
+                self.trackManuallyAddedObject(posData.brushID, self.isNewID)
 
             # Update images
             if self.isNewID:
@@ -6421,7 +6428,7 @@ class guiWin(QMainWindow):
             self.update_rp()
 
             # Repeat tracking
-            self.tracking(enforce=True, assign_unique_new_IDs=False)
+            self.trackManuallyAddedObject(posData.brushID, self.isNewID)
 
             if self.isSnapshot:
                 self.fixCcaDfAfterEdit('Add new ID with magic-wand')
@@ -7172,7 +7179,7 @@ class guiWin(QMainWindow):
                 self.splineHoverON = False
                 self.splineToObj()
                 self.update_rp()
-                self.tracking(enforce=True, assign_unique_new_IDs=False)
+                self.trackManuallyAddedObject(posData.brushID, True)
                 if self.isSnapshot:
                     self.fixCcaDfAfterEdit('Add new ID with curvature tool')
                     self.updateAllImages()
@@ -7189,12 +7196,14 @@ class guiWin(QMainWindow):
             # Store undo state before modifying stuff
             self.storeUndoRedoStates(False)
 
+            self.isNewID = False
             posData.brushID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if posData.brushID == 0:
                 self.setBrushID()
                 self.updateLookuptable(
                     lenNewLut=posData.brushID+1
                 )
+                self.isNewID = True
             self.brushColor = self.img2.lut[posData.brushID]/255
 
             # NOTE: flood is on mousedrag or release
@@ -7444,7 +7453,10 @@ class guiWin(QMainWindow):
                     y, x = posData.rp[obj_idx].centroid
                     xdata, ydata = int(x), int(y)
 
-            button = self.doCustomAnnotation(ID, fromClick=True)
+            button = self.doCustomAnnotation(ID)
+            if button is None:
+                return
+            
             keepActive = self.customAnnotDict[button]['state']['keepActive']
             if not keepActive:
                 button.setChecked(False)
@@ -7542,6 +7554,11 @@ class guiWin(QMainWindow):
             return
         self.store_data()
         posData = self.data[self.pos_i]
+        # acdc_df_concat = self.getConcatAcdcDf()
+        # load.store_unsaved_acdc_df(
+        #     posData, acdc_df_concat, 
+        #     log_func=self.logger.info
+        # )
         if posData.SizeT > 1:
             self.progressWin = apps.QDialogWorkerProgress(
                 title='Re-labelling sequential', parent=self,
@@ -7888,8 +7905,8 @@ class guiWin(QMainWindow):
         self.worker.waitCond.wakeAll()
 
     def keepToolActiveActionToggled(self, checked):
-        parentToolButton = self.sender().parentWidget()
-        toolName = re.findall('Toggle "(.*)"', parentToolButton.toolTip())[0]
+        parentToolButton = self.sender().parent()
+        toolName = re.findall(r'Name: (.*)', parentToolButton.toolTip())[0]
         self.df_settings.at[toolName, 'value'] = 'keepActive'
         self.df_settings.to_csv(self.settings_csv_path)
 
@@ -8118,7 +8135,7 @@ class guiWin(QMainWindow):
         if self.isPowerBrush() and not ctrl:
             return 0        
 
-        if not self.editIDcheckbox.isChecked():
+        if not self.autoIDcheckbox.isChecked():
             return self.editIDspinbox.value()
 
         ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
@@ -9346,48 +9363,83 @@ class guiWin(QMainWindow):
         otherBudID = posData.cca_df.at[otherMothID, 'relative_ID']
         
         self.logger.info(
-            'Swapping assignments:\n'
-            f'  * Bud ID {budID} --> {otherMothID}\n'
-            f'  * Bud ID {otherBudID} --> {mothID}'
+            f'Swapping assignments (requested at frame n. {posData.frame_i+1}):\n'
+            f'  * Bud ID {budID} --> mother ID {otherMothID}\n'
+            f'  * Bud ID {otherBudID} --> mother ID {mothID}'
         )
         
-        pairs = (
-            (otherMothID, budID),
-            (otherBudID, mothID),
-            (budID, otherMothID),
-            (mothID, otherBudID)
-        )
+        correct_pairings = {
+            otherBudID: mothID,
+            budID: otherMothID
+        }
         
-        for ID1, ID2 in pairs:
-            posData.cca_df.at[ID1, 'relative_ID'] = ID2
-            posData.cca_df.at[ID1, 'corrected_assignment'] = True
+        for correct_budID, correct_mothID in correct_pairings.items():
+            posData.cca_df.at[correct_budID, 'relative_ID'] = correct_mothID
+            posData.cca_df.at[correct_mothID, 'relative_ID'] = correct_budID
+            posData.cca_df.at[correct_budID, 'corrected_assignment'] = True
+            posData.cca_df.at[correct_mothID, 'corrected_assignment'] = True
         self.store_cca_df()
         
         self.updateAllImages()
         
-        for i in range(posData.SizeT):
-            if i == posData.frame_i:
-                continue
+        # Correct past frames
+        corrected_budIDs_past = set()
+        for past_i in range(posData.frame_i-1, -1, -1):
+            if len(corrected_budIDs_past) == 2:
+                break
             
             # Get cca_df for ith frame from allData_li
-            cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
+            cca_df_i = self.get_cca_df(frame_i=past_i, return_df=True)
+            for correct_budID, correct_mothID in correct_pairings.items():
+                if correct_budID in corrected_budIDs_past:
+                    continue
+                
+                if correct_budID not in cca_df_i.index:
+                    # Bud does not exist anymore in the past
+                    corrected_budIDs_past.add(correct_budID)
+                    continue
+                
+                cca_df_i.at[correct_budID, 'relative_ID'] = correct_mothID
+                cca_df_i.at[correct_mothID, 'relative_ID'] = correct_budID
+                cca_df_i.at[correct_budID, 'corrected_assignment'] = True
+                cca_df_i.at[correct_mothID, 'corrected_assignment'] = True
+            
+            self.store_cca_df(frame_i=past_i, cca_df=cca_df_i, autosave=False)
+        
+        # Correct future frames
+        corrected_budIDs_future = set()
+        for future_i in range(posData.frame_i+1, posData.SizeT):
+            if len(corrected_budIDs_future) == 2:
+                break
+            
+            # Get cca_df for ith frame from allData_li
+            cca_df_i = self.get_cca_df(frame_i=future_i, return_df=True)
             if cca_df_i is None:
                 # ith frame was not visited yet
                 break
             
-            self.storeUndoRedoCca(i, cca_df_i, undoId)
+            for correct_budID, correct_mothID in correct_pairings.items():
+                if correct_budID in corrected_budIDs_future:
+                    # Bud already corrected in the future
+                    continue
+                
+                if correct_budID not in cca_df_i.index:
+                    # Bud disappeared in the future
+                    corrected_budIDs_future.add(correct_budID)
+                    continue
+                
+                ccs_bud = cca_df_i.at[correct_budID, 'cell_cycle_stage']
+                if ccs_bud == 'G1':
+                    # bud divided in the future, stop correcting
+                    corrected_budIDs_future.add(correct_budID)
+                    continue
+                
+                cca_df_i.at[correct_budID, 'relative_ID'] = correct_mothID
+                cca_df_i.at[correct_mothID, 'relative_ID'] = correct_budID
+                cca_df_i.at[correct_budID, 'corrected_assignment'] = True
+                cca_df_i.at[correct_mothID, 'corrected_assignment'] = True
             
-            for ID1, ID2 in pairs:
-                try:
-                    ccs = cca_df_i.at[ID1, 'cell_cycle_stage']
-                    if ccs != 'S':
-                        continue
-                    cca_df_i.at[ID1, 'relative_ID'] = ID2
-                    cca_df_i.at[ID1, 'corrected_assignment'] = True
-                except KeyError:
-                    pass
-            
-            self.store_cca_df(frame_i=i, cca_df=cca_df_i, autosave=False)
+            self.store_cca_df(frame_i=future_i, cca_df=cca_df_i, autosave=False)
         
     def getClosedSplineCoords(self):
         xxS, yyS = self.curvPlotItem.getData()
@@ -10012,6 +10064,28 @@ class guiWin(QMainWindow):
             if button.isChecked():
                 return button
     
+    def getConcatAcdcDf(self):
+        acdc_dfs = []
+        keys = []
+        posData = self.data[self.pos_i]
+        for frame_i, data_dict in enumerate(posData.allData_li):
+            lab = data_dict['labels']
+            if lab is None:
+                break
+            
+            acdc_df = data_dict['acdc_df']
+            if acdc_df is None:
+                break
+            
+            acdc_dfs.append(acdc_df)
+            keys.append(frame_i)
+        
+        if not acdc_dfs:
+            return
+        
+        return pd.concat(acdc_dfs, keys=keys, names=['frame_i'])
+            
+    
     def checkHighlightScaleBar(self, x, y, activeToolButton):
         if not hasattr(self, 'scaleBar'):
             return
@@ -10510,6 +10584,7 @@ class guiWin(QMainWindow):
     def changeMode(self, text):
         self.reconnectUndoRedo()
         self.updateModeMenuAction()
+        self.clearCustomAnnot()
         posData = self.data[self.pos_i]
         mode = text
         prevMode = self.modeComboBox.previousText()
@@ -10568,9 +10643,11 @@ class guiWin(QMainWindow):
             self.removeAlldelROIsCurrentFrame()
             self.annotateToolbar.setVisible(True)
             self.clearGhost()
+            self.doCustomAnnotation(0)
         elif mode == 'Snapshot':
             self.reconnectUndoRedo()
             self.setEnabledSnapshotMode()
+            self.doCustomAnnotation(0)
 
     def setEnabledSnapshotMode(self):
         posData = self.data[self.pos_i]
@@ -10958,7 +11035,7 @@ class guiWin(QMainWindow):
         self.update_rp()
         
         # Repeat tracking
-        if self.editIDcheckbox.isChecked():
+        if self.autoIDcheckbox.isChecked():
             self.tracking(enforce=True, assign_unique_new_IDs=False)
         
         self.store_data()
@@ -11186,7 +11263,7 @@ class guiWin(QMainWindow):
     def showEditIDwidgets(self, visible):
         self.editIDLabelAction.setVisible(visible)
         self.editIDspinboxAction.setVisible(visible)
-        self.editIDcheckboxAction.setVisible(visible)
+        self.autoIDcheckboxAction.setVisible(visible)
     
     def resetCursors(self):
         self.ax1_cursor.setData([], [])
@@ -11535,15 +11612,33 @@ class guiWin(QMainWindow):
         #     myutils.setRetainSizePolicy(alphaScrollBar.label, retain=checked)
         
         QTimer.singleShot(200, self.resizeGui)
-
+        
+    def resizeLeaveSpaceTerminalBelow(self):
+        self.setWindowState(Qt.WindowMaximized)
+        QTimer.singleShot(200, self._resizeLeaveSpaceTerminalBelow)
+    
+    def _resizeLeaveSpaceTerminalBelow(self):
+        geometry = self.geometry()
+        left = geometry.left()
+        top = geometry.top()
+        width = geometry.width()
+        height = geometry.height()
+        self.setGeometry(left, top+10, width, height-200)
+        
     @exception_handler
     def keyPressEvent(self, ev):
+        ctrl = ev.modifiers() == Qt.ControlModifier
+        if ctrl and ev.key() == Qt.Key_D:
+            self.resizeLeaveSpaceTerminalBelow()
+            return
+       
         if ev.key() == Qt.Key_Q and self.debug:
-            printl(self.contoursImage.shape)
-            printl(self.contoursImage.max(axis=(0, 1)))
-            from cellacdc.plot import imshow
-            imshow(self.contoursImage[:, :, 0], self.erasedLab)
-            
+            posData = self.data[self.pos_i]
+            for button, info in self.customAnnotDict.items():
+                annotatedIDs = info['annotatedIDs'][self.pos_i]
+                annotIDs_frame_i = annotatedIDs.get(posData.frame_i, [])
+                printl(info.state['name'], annotIDs_frame_i)       
+        
         if not self.dataIsLoaded:
             self.logger.info(
                 '[WARNING]: Data not loaded yet. '
@@ -11581,8 +11676,8 @@ class guiWin(QMainWindow):
         if self.brushButton.isChecked():
             try:
                 n = int(ev.text())
-                if self.editIDcheckbox.isChecked():
-                    self.editIDcheckbox.setChecked(False)
+                if self.autoIDcheckbox.isChecked():
+                    self.autoIDcheckbox.setChecked(False)
                 if self.typingEditID:
                     ID = int(f'{self.editIDspinbox.value()}{n}')
                 else:
@@ -11660,7 +11755,7 @@ class guiWin(QMainWindow):
                 return
 
             if self.brushButton.isChecked() and self.typingEditID:
-                self.editIDcheckbox.setChecked(True)
+                self.autoIDcheckbox.setChecked(True)
                 self.typingEditID = False
                 return
             
@@ -13066,10 +13161,15 @@ class guiWin(QMainWindow):
             pen=pg.mkPen(width=3, color=symbolColor)
         )
 
-    def doCustomAnnotation(self, ID, fromClick=False):
+    def doCustomAnnotation(self, ID):
+        mode = self.modeComboBox.currentText()
+        if not self.isSnapshot and mode != 'Custom annotations':
+            # Do not show annotations if timelapse and mode not annotations
+            return
+        
         # NOTE: pass 0 for ID to not add
         posData = self.data[self.pos_i]
-        if self.viewAllCustomAnnotAction.isChecked() and not fromClick:
+        if self.viewAllCustomAnnotAction.isChecked():
             # User requested to show all annotations --> iterate all buttons
             # Unless it actively clicked to annotate --> avoid annotating object
             # with all the annotations present
@@ -13086,10 +13186,13 @@ class guiWin(QMainWindow):
         for button in buttons:
             annotatedIDs = self.customAnnotDict[button]['annotatedIDs'][self.pos_i]
             annotIDs_frame_i = annotatedIDs.get(posData.frame_i, [])
-            if ID in annotIDs_frame_i:
-                annotIDs_frame_i.remove(ID)
-            elif ID != 0:
-                annotIDs_frame_i.append(ID)
+            
+            if button.isChecked() and ID > 0:
+                # Annotate only if existing ID and the button is checkedchecked
+                if ID in annotIDs_frame_i:
+                    annotIDs_frame_i.remove(ID)
+                elif ID != 0:
+                    annotIDs_frame_i.append(ID)
 
             annotPerButton = self.customAnnotDict[button]
             allAnnotedIDs = annotPerButton['annotatedIDs']
@@ -13099,10 +13202,8 @@ class guiWin(QMainWindow):
             state = self.customAnnotDict[button]['state']
             acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
             if acdc_df is None:
-                # visiting new frame for single time-point annot type do nothing
-                return
-
-            acdc_df[state['name']] = 0
+                self.store_data(autosave=False)
+            acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
 
             xx, yy = [], []
             for annotID in annotIDs_frame_i:
@@ -13552,7 +13653,8 @@ class guiWin(QMainWindow):
             model.setupLogger(self.logger)
         except Exception as e:
             pass
-
+        
+        self.extendSegmDataIfNeeded(stopFrameNum)
         self.reInitLastSegmFrame(from_frame_i=startFrameNum-1)
 
         self.titleLabel.setText(
@@ -14073,7 +14175,7 @@ class guiWin(QMainWindow):
                 return
 
             if posData.frame_i <= 0 and mode == 'Cell cycle analysis':
-                IDs = [obj.label for obj in posData.rp]
+                # posData.IDs = [obj.label for obj in posData.rp]
                 editCcaWidget = apps.editCcaTableWidget(
                     posData.cca_df, posData.SizeT, parent=self,
                     title='Initialize cell cycle annotations'
@@ -14418,18 +14520,29 @@ class guiWin(QMainWindow):
             recovered_file_path = posData.segm_npz_temp_path
             if os.path.exists(posData.segm_npz_path):
                 last_modified_time_unsaved = (
-                    datetime.datetime.fromtimestamp(
+                    datetime.fromtimestamp(
                         os.path.getmtime(posData.segm_npz_path)
                     ).strftime("%a %d. %b. %y - %H:%M:%S")
                 )
         else:
-            recovered_file_path = posData.acdc_output_temp_csv_path
-        
-        if os.path.exists(recovered_file_path):
-            last_modified_time_saved = (
-                datetime.datetime.fromtimestamp(
-                    os.path.getmtime(recovered_file_path)
+            posData.setTempPaths()
+            if os.path.exists(posData.unsaved_acdc_df_autosave_path):
+                zip_path = posData.unsaved_acdc_df_autosave_path
+                with zipfile.ZipFile(zip_path, mode='r') as zip:
+                    csv_names = natsorted(set(zip.namelist()))
+                iso_key = csv_names[-1][:-4]
+                most_recent_unsaved_acdc_df_datetime = datetime.strptime(
+                    iso_key, load.ISO_TIMESTAMP_FORMAT
+                )
+                last_modified_time_unsaved = (
+                    most_recent_unsaved_acdc_df_datetime
                 ).strftime("%a %d. %b. %y - %H:%M:%S")
+        
+        if os.path.exists(posData.acdc_output_csv_path):
+            acdc_df_mtime = os.path.getmtime(posData.acdc_output_csv_path)
+            timestamp = datetime.fromtimestamp(acdc_df_mtime)
+            last_modified_time_saved = timestamp.strftime(
+                "%a %d. %b. %y - %H:%M:%S"
             )
         else:
             last_modified_time_saved = 'Null'
@@ -14551,7 +14664,8 @@ class guiWin(QMainWindow):
         posData.setTempPaths(createFolder=False)
         loaded_acdc_df_filename = os.path.basename(posData.acdc_output_csv_path)
 
-        if os.path.exists(posData.acdc_output_backup_h5_path):
+        
+        if os.path.exists(posData.acdc_output_backup_zip_path):
             self.manageVersionsAction.setDisabled(False)
             self.manageVersionsAction.setToolTip(
                 f'Load an older version of the `{loaded_acdc_df_filename}` file '
@@ -15211,6 +15325,7 @@ class guiWin(QMainWindow):
 
         self.clearOverlayLabelsItems()
         self.clearManualBackgroundAnnotations()
+        self.clearCustomAnnot()
     
     def clearPointsLayers(self):
         for action in self.pointsLayersToolbar.actions()[1:]:
@@ -15230,6 +15345,11 @@ class guiWin(QMainWindow):
     def clearAllItems(self):
         self.clearAx1Items()
         self.clearAx2Items()
+        
+    def clearCustomAnnot(self):
+        for button in self.customAnnotDict.keys():
+            scatterPlotItem = self.customAnnotDict[button]['scatterPlotItem']
+            scatterPlotItem.setData([], [])
 
     def clearCurvItems(self, removeItems=True):
         try:
@@ -18853,6 +18973,9 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         if frame_i is None:
             frame_i = posData.frame_i
+        if frame_i < 0:
+            frame_i = 0
+            frame_i = posData.frame_i = 0
         idx = (posData.filename, frame_i)
         zProjHow_L0 = self.zProjComboBox.currentText()
         if isLayer0:
@@ -20301,15 +20424,15 @@ class guiWin(QMainWindow):
         #     pass
         
         prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
+        prev_IDs = posData.allData_li[posData.frame_i-1]['IDs']
         existing = True
-        try:
-            prev_IDs = posData.allData_li[posData.frame_i-1]['IDs']
-        except Exception as err:
+        if not prev_IDs:
             prev_lab, existing = self.get_labels(
                 frame_i=posData.frame_i-1, return_existing=True
             )
             prev_rp = skimage.measure.regionprops(prev_lab)
-            prev_IDs = [obj.label for obj in prev_rp]            
+            prev_IDs = [obj.label for obj in prev_rp]     
+            posData.allData_li[posData.frame_i-1]['IDs'] = prev_IDs     
 
         curr_IDs = posData.IDs
         curr_delRoiIDs = self.getStoredDelRoiIDs()
@@ -20322,7 +20445,7 @@ class guiWin(QMainWindow):
             ID for ID in curr_IDs if ID not in prev_IDs 
             and ID not in curr_delRoiIDs
         ]
-        
+
         # IDs_with_holes = [
         #     obj.label for obj in posData.rp if obj.area/obj.filled_area < 1
         # ]
@@ -20393,9 +20516,31 @@ class guiWin(QMainWindow):
         else:
             return False
 
+    def trackManuallyAddedObject(self, added_ID, isNewID):
+        if self.isSnapshot:
+            return 
+        
+        posData = self.data[self.pos_i]
+        tracked_lab = self.tracking(
+            enforce=True, assign_unique_new_IDs=False, return_lab=True
+        )
+        
+        last_validated_frame_i = self.navigateScrollBar.maximum()-1
+        if posData.frame_i < last_validated_frame_i and isNewID:
+            # Frame already visited --> track only new object
+            mask = posData.lab == added_ID
+            trackedID = tracked_lab[mask][0]
+            if posData.IDs_idxs.get(trackedID) is None:
+                # Track only if the tracked ID for the new object does not 
+                # already exist
+                posData.lab[mask] = tracked_lab[mask]
+        else:
+            posData.lab = tracked_lab
+        self.update_rp()
+    
     # @exec_time
     def tracking(
-            self, onlyIDs=[], enforce=False, DoManualEdit=True,
+            self, enforce=False, DoManualEdit=True,
             storeUndo=False, prev_lab=None, prev_rp=None,
             return_lab=False, assign_unique_new_IDs=True,
             separateByLabel=True
@@ -20477,6 +20622,9 @@ class guiWin(QMainWindow):
         except ValueError:
             tracked_lab = self.get_2Dlab(posData.lab)
 
+        if return_lab:
+            return tracked_lab
+        
         # Update labels, regionprops and determine new and lost IDs
         posData.lab = tracked_lab
         self.update_rp()
@@ -20522,6 +20670,21 @@ class guiWin(QMainWindow):
         )
         return msg.cancel
 
+    def extendSegmDataIfNeeded(self, stopFrameNum):
+        posData = self.data[self.pos_i]
+        segmSizeT = len(posData.segm_data)
+        if stopFrameNum <= segmSizeT:
+            return
+        numFramesToAdd = stopFrameNum - segmSizeT
+        posData.allData_li.extend(
+            [self.getEmptyStoredDataDict() for i in range(numFramesToAdd)]
+        )
+        lab_shape = posData.segm_data[0].shape
+        shapeToAdd = (numFramesToAdd, *lab_shape)
+        additionalSegmData = np.zeros(shapeToAdd, dtype=posData.segm_data.dtype)
+        extendedSegmData = np.concatenate((posData.segm_data, additionalSegmData))
+        posData.segm_data = extendedSegmData
+    
     def reInitLastSegmFrame(self, checked=True, from_frame_i=None):
         cancel = self.warnReinitLastSegmFrame()
         if cancel:
@@ -20655,16 +20818,17 @@ class guiWin(QMainWindow):
             return
 
         undoId = uuid.uuid4()
-        self.storeUndoRedoCca(posData.frame_i, posData.cca_df, undoId)
+        if posData.cca_df is not None:
+            self.storeUndoRedoCca(posData.frame_i, posData.cca_df, undoId)
         
         selectedTime = selectVersion.selectedTimestamp
 
         self.modeComboBox.setCurrentText('Viewer')
         self.logger.info(f'Loading file from {selectedTime}...')
 
-        key_to_load = selectVersion.selectedKey
-        h5_filepath = selectVersion.neverSavedHDFfilepath
-        acdc_df = pd.read_hdf(h5_filepath, key=key_to_load)
+        acdc_df = load.read_acdc_df_from_archive(
+            selectVersion.archiveFilePath, selectVersion.selectedKey
+        )
         posData.acdc_df = acdc_df
         frames = acdc_df.index.get_level_values(0)
         last_visited_frame_i = frames.max()
@@ -20673,7 +20837,8 @@ class guiWin(QMainWindow):
         for frame_i in range(last_visited_frame_i+1):
             posData.frame_i = frame_i
             self.get_data()
-            self.storeUndoRedoCca(posData.frame_i, posData.cca_df, undoId)
+            if posData.cca_df is not None:
+                self.storeUndoRedoCca(posData.frame_i, posData.cca_df, undoId)
             if posData.allData_li[frame_i]['labels'] is None:
                 pbar.update()
                 continue
@@ -20693,6 +20858,7 @@ class guiWin(QMainWindow):
         posData.frame_i = current_frame_i
         self.get_data(debug=False)
         self.updateAllImages()
+        self.logger.info('Annotations correctly recovered.')
 
     def warnUserCreationImagesFolder(self, images_path):
         msg = widgets.myMessageBox(wrapText=False)
@@ -20740,7 +20906,7 @@ class guiWin(QMainWindow):
         dirname = os.path.basename(dirpath)
         do_copy = True
         if dirname != 'Images':
-            timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             acdc_folder = f'{timestamp}_acdc'
             exp_path = os.path.join(dirpath, acdc_folder, 'Images')
             proceed, do_copy = self.warnUserCreationImagesFolder(exp_path)
@@ -23074,7 +23240,7 @@ class guiWin(QMainWindow):
         self.showPropsDockButton.setMaximumHeight(60)
         
         for toolbar in self.controlToolBars:
-            toolbar.setFixedHeight(
+            toolbar.setMinimumHeight(
                 self.placeHolderToolbar.sizeHint().height()
             )
 
