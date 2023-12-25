@@ -6,6 +6,18 @@ from skimage.measure import regionprops
 from tqdm import tqdm
 import pandas as pd
 
+def reorg_daughter_cells(lineage_tree_frame, max_daughter):
+    new_columns = [f'Sister {i+1}' for i in range(max_daughter-1)]
+    sister_columns = lineage_tree_frame['Sister IDs'].apply(pd.Series)
+    
+    # Explicitly convert the columns to integers while preserving NaN
+    sister_columns = sister_columns.applymap(lambda x: int(x) if not pd.isna(x) else x)
+    
+    lineage_tree_frame[new_columns] = sister_columns
+    lineage_tree_frame = lineage_tree_frame.drop(columns=['Sister IDs'])
+
+    return lineage_tree_frame
+
 def ident_no_mothers(IoA_matrix, IoA_thresh_daughter, min_daughter, max_daughter):
     # Find cells which dont have several bad overlaps in next frame, implying they have not split  
     mother_daughters = []
@@ -24,7 +36,6 @@ def ident_no_mothers(IoA_matrix, IoA_thresh_daughter, min_daughter, max_daughter
         else:
             mother_daughters.append((j, high_IoA_indices))
 
-    # print(f"{IoA_thresholded}, Mothers: {mothers}, AggTrack: {aggr_track}")
     return aggr_track, mother_daughters
 
 class tracker:
@@ -43,13 +54,9 @@ class tracker:
         ):
         tracked_video = np.zeros_like(segm_video)
         pbar = tqdm(total=len(segm_video), desc='Tracking', ncols=100)
-
-        # if record_lineage == True:
-        #     lineage_tree = []
             
         for frame_i, lab in enumerate(segm_video):
             added_lineage_tree = []
-
 
             if frame_i == 0:
                 tracked_video[frame_i] = lab
@@ -60,9 +67,9 @@ class tracker:
                     for obj in rp:
                         label = obj.label
                         families.append([(label, 0)])
-                        added_lineage_tree.append((0, 1, label, -1, -2, label, ""))
-
-                lineage_list = [pd.DataFrame(added_lineage_tree, columns=['Frame', 'Division frame', 'Daughter ID', 'Mother ID', 'Generation', 'Origin ID', 'Sister IDs'])]
+                        added_lineage_tree.append((0, 1, label, -1, -2, label, [np.nan] * (max_daughter-1)))
+                lineage_tree_frame = pd.DataFrame(added_lineage_tree, columns=['Frame', 'Division frame', 'Daughter ID', 'Mother ID', 'Generation', 'Origin ID', 'Sister IDs'])
+                lineage_list = [lineage_tree_frame]
                 pbar.update()
                 continue
 
@@ -73,17 +80,12 @@ class tracker:
 
             IoA_matrix, IDs_curr_untracked, IDs_prev = calc_IoA_matrix(lab, prev_lab, rp, prev_rp)
             aggr_track, mother_daughters = ident_no_mothers(IoA_matrix, IoA_thresh_daughter=IoA_thresh_daughter, min_daughter=min_daughter, max_daughter=max_daughter)
-
-            # print(f'Frame: {frame_i}, {len(IoA_matrix) - len(aggr_track)}')                  
-
             tracked_lab, IoA_matrix, assignments = track_frame(
                 prev_lab, prev_rp, lab, rp, IoA_thresh=IoA_thresh,IoA_matrix=IoA_matrix, aggr_track=aggr_track, IoA_thresh_aggr=IoA_thresh_aggressive, IDs_curr_untracked=IDs_curr_untracked, IDs_prev=IDs_prev, return_all=True
             )
-            # printl(f'Frame: {frame_i}, No mothers: {aggr_track} IoA_matrix: \n{IoA_matrix}')
             tracked_video[frame_i] = tracked_lab
 
             if record_lineage and mother_daughters:
-
 
                 for mother, daughters in mother_daughters:
                     mother_ID = IDs_prev[mother]
@@ -108,20 +110,22 @@ class tracker:
                     for i, daughter_ID in enumerate(daughter_IDs):
                         daughter_IDs_copy = daughter_IDs.copy()
                         daughter_IDs_copy.pop(i)
+                        daughter_IDs_copy = daughter_IDs_copy + [np.nan] * (max_daughter - len(daughter_IDs_copy) -1)
                         added_lineage_tree.append((frame_i, daughter_ID, mother_ID, generation, origin_id, daughter_IDs_copy))
-
-            added_lineage_tree = pd.DataFrame(added_lineage_tree, columns=['Division frame', 'Daughter ID', 'Mother ID', 'Generation', 'Origin ID', 'Sister IDs'])
-            lineage_tree_frame = pd.concat([lineage_list[-1][['Division frame', 'Daughter ID', 'Mother ID', 'Generation', 'Origin ID', 'Sister IDs']], added_lineage_tree], axis=0)
-            lineage_tree_frame['Frame'] = frame_i
-            lineage_tree_frame = lineage_tree_frame[['Frame', 'Division frame', 'Daughter ID', 'Mother ID', 'Generation', 'Origin ID', 'Sister IDs']]
-            lineage_list.append(lineage_tree_frame)
+            if record_lineage:
+                added_lineage_tree = pd.DataFrame(added_lineage_tree, columns=['Division frame', 'Daughter ID', 'Mother ID', 'Generation', 'Origin ID', 'Sister IDs'])
+                lineage_tree_frame = pd.concat([lineage_list[-1][['Division frame', 'Daughter ID', 'Mother ID', 'Generation', 'Origin ID', 'Sister IDs']], added_lineage_tree], axis=0)
+                lineage_tree_frame['Frame'] = frame_i
+                lineage_tree_frame = lineage_tree_frame[['Frame', 'Division frame', 'Daughter ID', 'Mother ID', 'Generation', 'Origin ID', 'Sister IDs']]            
+                lineage_list.append(lineage_tree_frame)
 
             self.updateGuiProgressBar(signals)
             pbar.update()
 
         if record_lineage:
             df_final = pd.concat(lineage_list)
-            df_final.to_csv('lineage_tree.csv', index=False)
+            df_final = reorg_daughter_cells(df_final, max_daughter)
+            df_final.to_csv('lineage_tree.csv', index=False, na_rep='nan', float_format='%.0f') # well this feels like cheating, but I couldn't for the life of me fix the sister IDs converting to floats and empty instead of nan. Also obv the path is just a temporary solution
 
         pbar.close()
         return tracked_video

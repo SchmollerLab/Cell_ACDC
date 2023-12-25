@@ -17,13 +17,13 @@ from cellacdc._run import _setup_app
 app, splashScreen = _setup_app(splashscreen=True)  
 splashScreen.close()
 
-path = r"C:\Users\SchmollerLab\Documents\Timon\Fission_Yeast_ACDC_paper\drive-download-20231012T131754Z-001\20210908_122322_acdc\Images\bknapp_Movie_S1.tif"
+path = r"C:\Users\timon\Documents\ACDC_Data\FredChang_FissionYeast\annotated\Images\bknapp_Movie_S1.tif"
 
 channel_name = 'bknapp_Movie_S1'
 end_filename_segm = 'segm'# 'segm_test'
 START_FRAME = 0 
-STOP_FRAME = 449
-PLOT_FRAME = 449
+STOP_FRAME = 499
+PLOT_FRAME = 499
 SAVE = True
 SCRUMBLE_IDs = False
 
@@ -36,7 +36,7 @@ posData.loadImgData()
 posData.loadOtherFiles(
     load_segm_data=True, 
     load_metadata=True,
-    end_filename_segm=end_filename_segm
+    # end_filename_segm=end_filename_segm
 )
 
 trackers = myutils.get_list_of_trackers()

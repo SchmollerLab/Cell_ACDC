@@ -48,8 +48,11 @@ def assign(IoA_matrix, IDs_curr_untracked, IDs_prev, IoA_thresh=0.4, aggr_track=
         printl(f'IDs in previous frame: {IDs_prev}')
 
     for i, j in enumerate(max_IoA_col_idx):
-        if i in aggr_track:
-            IoA_thresh_temp = IoA_thresh_aggr
+        if aggr_track:
+            if i in aggr_track:
+                IoA_thresh_temp = IoA_thresh_aggr
+            else:
+                IoA_thresh_temp = IoA_thresh
         else:
             IoA_thresh_temp = IoA_thresh
         max_IoU = IoA_matrix[i,j]
