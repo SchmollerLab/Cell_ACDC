@@ -106,7 +106,6 @@ def imshow(
         autoLevelsOnScroll=autoLevelsOnScroll
     )
     if points_coords_df is not None:
-        printl(points_coords_df)
         win.drawPointsFromDf(points_coords_df) 
     if points_coords is not None:
         points_coords = np.round(points_coords).astype(int)
