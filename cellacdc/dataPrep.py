@@ -1011,36 +1011,52 @@ class dataPrepWin(QMainWindow):
             int(pos.split('_')[-1]) for pos in currentSubPosFolders
         ]
         startPosNumber = max(currentSubPosNumbers, default=0) + 1
+        basename = posData.basename
         for p, cropROI in enumerate(posData.cropROIs):
-            subPosFolder = f'Position_{p+startPosNumber}'
+            cropNum = p+startPosNumber
+            subPosFolder = f'Position_{cropNum}'
             subPosFolderPath = os.path.join(parentSubPosPath, subPosFolder)
             subImagesPath = os.path.join(subPosFolderPath, 'Images')
             os.makedirs(subImagesPath)
+            
+            cropBasename = f'{basename}_crop{cropNum}_'
             
             _iter = self.getAllChannelsPaths(posData)
             for uncropped_data, npz_path, tif_path in _iter:
                 cropped_data, _ = self.crop(uncropped_data, posData, cropROI)
                 npz_filename = os.path.basename(npz_path)
                 tif_filename = os.path.basename(tif_path)
-                sub_npz_filepath = os.path.join(subImagesPath, npz_filename)
-                sub_tif_filepath = os.path.join(subImagesPath, tif_filename)
+                npz_endname = npz_filename[len(basename):]
+                tif_endname = tif_filename[len(basename):]
+                crop_npz_filename = f'{cropBasename}{npz_endname}'
+                crop_tif_filename = f'{cropBasename}{tif_endname}'
+                sub_npz_filepath = os.path.join(subImagesPath, crop_npz_filename)
+                sub_tif_filepath = os.path.join(subImagesPath, crop_tif_filename)
                 self.saveCroppedChannel(
                     cropped_data, sub_npz_filepath, sub_tif_filepath, 
                     posData
                 )
             
             segm_filename = os.path.basename(posData.segm_npz_path)
-            sub_segm_filepath = os.path.join(subImagesPath, segm_filename)
+            segm_endname = segm_filename[len(basename):]
+            crop_segm_filename = f'{cropBasename}{segm_endname}'
+            sub_segm_filepath = os.path.join(subImagesPath, crop_segm_filename)
             self.saveCroppedSegmData(posData, sub_segm_filepath, cropROI)
             
             acdc_df_filename = os.path.basename(posData.acdc_output_csv_path)
-            acdc_df_filepath = os.path.join(subImagesPath, acdc_df_filename)
+            acdc_df_endname = acdc_df_filename[len(basename):]
+            crop_acdc_df_filename = f'{cropBasename}{acdc_df_endname}'
+            acdc_df_filepath = os.path.join(subImagesPath, crop_acdc_df_filename)
             self.correctAcdcDfCrop(posData, acdc_df_filepath, cropROI)
             
             try:
                 df_roi = posData.dataPrep_ROIcoords.loc[[p]]
-                df_roi_filename = os.path.basename(posData.dataPrepROI_coords_path)
-                df_roi_filepath = os.path.join(subImagesPath, df_roi_filename)
+                df_roi_filename = os.path.basename(
+                    posData.dataPrepROI_coords_path
+                )
+                df_roi_endname = df_roi_filename[len(basename):]
+                crop_df_roi_filename = f'{cropBasename}{df_roi_endname}'
+                df_roi_filepath = os.path.join(subImagesPath, crop_df_roi_filename)
                 df_roi.to_csv(df_roi_filepath)
             except IndexError:
                 pass
@@ -1054,7 +1070,9 @@ class dataPrepWin(QMainWindow):
                 )
                 if not copy_file:
                     continue
-                sub_filepath = os.path.join(subImagesPath, file)
+                endname = file[len(basename):]
+                crop_filename = f'{cropBasename}{endname}'
+                sub_filepath = os.path.join(subImagesPath, crop_filename)
                 if os.path.exists(sub_filepath):
                     continue
                 
