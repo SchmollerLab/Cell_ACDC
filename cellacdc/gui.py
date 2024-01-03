@@ -1323,7 +1323,9 @@ class guiWin(QMainWindow):
 
         self.segmVideoMenu.addAction(self.addCustomModelVideoAction)
 
-        SegmMenu.addAction(self.SegmActionRW)
+        # SegmMenu.addAction(self.SegmActionRW)
+        self.SegmActionRW.setVisible(False)
+        self.SegmActionRW.setDisabled(True)
         SegmMenu.addAction(self.postProcessSegmAction)
         SegmMenu.addAction(self.autoSegmAction)
         SegmMenu.addAction(self.relabelSequentialAction)
@@ -13637,6 +13639,11 @@ class guiWin(QMainWindow):
         if model_name == 'thresholding':
             win.model_kwargs = autoThreshWin.segment_kwargs
 
+        self.standardPostProcessKwargs = win.postProcessGroupbox.kwargs()
+        self.customPostProcessFeatures = win.selectedFeaturesRange()
+        self.customPostProcessGroupedFeatures = win.groupedFeatures()
+        self.applyPostProcessing = win.applyPostProcessing
+        
         secondChannelData = None
         if win.secondChannelName is not None:
             secondChannelData = self.getSecondChannelData()
