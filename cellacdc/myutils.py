@@ -1727,6 +1727,31 @@ def to_uint16(img):
     img = np.round(img_to_float(img)*65535).astype(np.uint16)
     return img
 
+def elided_text(text, max_len=50, elid_idx=None):
+    if len(text) <= max_len:
+        return text
+
+    if elid_idx is None:
+        elid_idx = int(max_len/2)
+    if elid_idx >= max_len:
+        elid_idx = max_len - 1
+    idx1 = elid_idx
+    idx2 = elid_idx - max_len
+    text = f'{text[:idx1]}...{text[idx2:]}'
+    return text
+
+def to_relative_path(path, levels=3, prefix='...'):
+    path = path.replace('\\', '/')
+    parts = path.split('/')
+    if levels >= len(parts):
+        return path
+    parts = parts[-levels:]
+    rel_path = '/'.join(parts)
+    rel_path.replace('/', os.sep)
+    if prefix:
+        rel_path = f'{prefix}{os.sep}{rel_path}'
+    return rel_path
+
 def img_to_float(img):
     input_img_dtype = img.dtype
     img_max = np.max(img)
