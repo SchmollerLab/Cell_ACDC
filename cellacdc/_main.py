@@ -1061,7 +1061,7 @@ class mainWin(QMainWindow):
             Are you adding Position folders one by one? If yes, you do not 
             need to do that.<br><br>
             Simply select the parent folder containing the Position 
-            folders and<br><br>
+            folders and<br>
             Cell-ACDC will ask you later which Positions you want 
             to concatenate.<br><br>
             Do you want to continue?<br><br>
