@@ -2257,6 +2257,7 @@ class select_exp_folder:
         values = []
         for pos in pos_foldernames:
             is_prepped = False
+            are_zslices_selected = False
             pos_path = os.path.join(exp_path, pos)
             images_path = f'{exp_path}/{pos}/Images'
             filenames = myutils.listdir(images_path)
@@ -2276,8 +2277,12 @@ class select_exp_folder:
                 elif filename.endswith('bkgrRoiData.npz'):
                     is_prepped = True
                     break
+                elif filename.endswith('segmInfo.csv'):
+                    are_zslices_selected = True
             if is_prepped:
                 values.append(f'{pos} (already prepped)')
+            elif are_zslices_selected:
+                values.append(f'{pos} (z-slices selected)')
             else:
                 values.append(pos)
         self.values = values
