@@ -860,6 +860,12 @@ class loadData:
         self.metadata_df.to_csv(last_entries_metadata_path)
     
     def saveCustomAnnotationParams(self):
+        if not hasattr(self, 'customAnnot'):
+            return 
+        
+        if not self.customAnnot:
+            return
+        
         with open(self.custom_annot_json_path, mode='w') as file:
             json.dump(self.customAnnot, file, indent=2)
 

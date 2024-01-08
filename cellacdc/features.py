@@ -183,7 +183,10 @@ def custom_post_process_segm(
         posData, grouped_features, lab, img, frame_i, filename, channel, 
         bkgrData
     )
-    filtered_df = filter_acdc_df_by_features_range(features_range, df)
+    try:
+        filtered_df = filter_acdc_df_by_features_range(features_range, df)
+    except Exception as err:
+        return lab
     filtered_lab = np.zeros_like(lab)
     rp = skimage.measure.regionprops(lab)
     for obj in rp:

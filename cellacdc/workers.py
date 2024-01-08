@@ -2152,6 +2152,7 @@ class PostProcessSegmWorker(QObject):
         self.customPostProcessFeatures = customPostProcessFeatures
         self.mainWin = mainWin
     
+    @worker_exception_handler
     def run(self):
         mainWin = self.mainWin
         data = mainWin.data
@@ -2190,7 +2191,7 @@ class PostProcessSegmWorker(QObject):
                 processed_lab = core.post_process_segm(
                     lab, return_delIDs=False, **kwargs
                 )
-                if mainWin.customPostProcessFeatures:
+                if self.customPostProcessFeatures:
                     processed_lab = features.custom_post_process_segm(
                         posData, 
                         self.customPostProcessGroupedFeatures, 

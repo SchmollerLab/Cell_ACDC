@@ -21,7 +21,8 @@ from qtpy.QtGui import (
     QFontDatabase, QIcon, QDesktopServices, QFont, QColor, 
     QPalette
 )
-import qtpy.compat 
+import qtpy.compat
+from torch import exp_ 
 
 from . import (
     dataPrep, segm, gui, dataStruct, load, help, myutils,
@@ -955,6 +956,7 @@ class mainWin(QMainWindow):
         
         expPaths = {}
         mostRecentPath = myutils.getMostRecentPath()
+        warn_exp_already_selected = True
         while True:
             if exp_folderpath is None:
                 exp_path = qtpy.compat.getexistingdirectory(
@@ -968,6 +970,7 @@ class mainWin(QMainWindow):
                 myutils.addToRecentPaths(exp_path)
             else: 
                 exp_path = exp_folderpath
+            selected_path = exp_path
             baseFolder = os.path.basename(exp_path)
             isPosFolder = (
                 re.search('Position_(\d+)$', baseFolder) is not None
@@ -1005,7 +1008,18 @@ class mainWin(QMainWindow):
                         return
                     continue
             
-            expPaths[exp_path] = posFolders
+            if exp_path in expPaths:
+                if warn_exp_already_selected:
+                    proceed = self.warnExpPathAlreadySelected(
+                        selected_path, exp_path
+                    )
+                    if not proceed:
+                        self.logger.info(f'{utilityName} aborted by the user.')
+                        return
+                    warn_exp_already_selected = False
+                expPaths[exp_path].extend(posFolders)
+            else:
+                expPaths[exp_path] = posFolders
             mostRecentPath = exp_path
             msg = widgets.myMessageBox(wrapText=False)
             txt = html_utils.paragraph("""
@@ -1038,6 +1052,29 @@ class mainWin(QMainWindow):
             selectedExpPaths = expPaths
         
         return selectedExpPaths
+    
+    def warnExpPathAlreadySelected(self, selected_path, exp_path):
+        selected_text = myutils.to_relative_path(selected_path)
+        exp_text = myutils.to_relative_path(exp_path)
+        txt = html_utils.paragraph(f""" 
+            The experiment folder of the selected path was already previously selected.<br><br>
+            Are you adding Position folders one by one? If yes, you do not 
+            need to do that.<br><br>
+            Simply select the parent folder containing the Position 
+            folders and<br>
+            Cell-ACDC will ask you later which Positions you want 
+            to concatenate.<br><br>
+            Do you want to continue?<br><br>
+            Selected path: <code>{selected_text}</code><br><br>
+            Experiment path: <code>{exp_text}</code>
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(
+            self, 'Folder already selected!', txt, 
+            buttonsTexts=('Cancel', 'Yes'), 
+            path_to_browse=selected_path
+        )
+        return not msg.cancel
     
     def _debug(self):
         printl('ciao')
