@@ -26,7 +26,7 @@ class _Data:
         return filename[len(self.basename):]
     
     def acdc_df(self):
-        return load._load_acdc_df_file(self.acdc_output_csv_path)
+        return load._load_acdc_df_file(self.acdc_df_path)
     
     def image_data(self):
         return load.load_image_file(self.intensity_image_path)
