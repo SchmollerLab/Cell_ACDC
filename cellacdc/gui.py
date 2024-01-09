@@ -20531,6 +20531,8 @@ class guiWin(QMainWindow):
         tracked_lab = self.tracking(
             enforce=True, assign_unique_new_IDs=False, return_lab=True
         )
+        if tracked_lab is None:
+            return
         
         last_validated_frame_i = self.navigateScrollBar.maximum()-1
         if posData.frame_i < last_validated_frame_i and isNewID:
