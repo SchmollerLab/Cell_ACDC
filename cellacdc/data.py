@@ -26,7 +26,7 @@ class _Data:
         return filename[len(self.basename):]
     
     def acdc_df(self):
-        return load._load_acdc_df_file(self.acdc_df_path)
+        return load._load_acdc_df_file(self.acdc_output_csv_path)
     
     def image_data(self):
         return load.load_image_file(self.intensity_image_path)
@@ -40,6 +40,30 @@ class _Data:
         dtypes = {col: type(value) for col, value in base_cca_df.items()}
         cca_df = cca_df.astype(dtypes)
         return cca_df
+
+class FissionYeastAnnotated(_Data):
+    def __init__(self):
+        images_path = os.path.join(
+            data_path, 'test_symm_div_acdc_tracker', 'Images', 
+        )
+        intensity_image_path = os.path.join(
+            images_path, 'bknapp_Movie_S1.tif'
+        )
+        acdc_df_path = os.path.join(
+            images_path, 'bknapp_Movie_S1_acdc_output.csv'
+        )
+        segm_path = os.path.join(
+            images_path, 'bknapp_Movie_S1_segm.npz'
+        )
+        basename = 'bknapp_Movie_S1_'
+        super().__init__(
+            images_path, intensity_image_path, acdc_df_path, segm_path,
+            basename
+        )
+    
+    def posData(self):
+        from . import load
+        return load.loadData(self.intensity_image_path, '')
 
 class YeastTimeLapseAnnotated(_Data):
     def __init__(self):

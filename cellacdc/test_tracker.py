@@ -3,7 +3,7 @@ import sys
 import numpy as np
 import skimage.measure
 from cellacdc import core, myutils, widgets, load, html_utils
-from cellacdc import data
+from cellacdc import data, data_path
 
 try:
     import pytest
@@ -17,7 +17,9 @@ from cellacdc._run import _setup_app
 app, splashScreen = _setup_app(splashscreen=True)  
 splashScreen.close()
 
-path = r"C:\Users\SchmollerLab\Documents\Timon\Fission_Yeast_ACDC_paper\drive-download-20231012T131754Z-001\20210908_122322_acdc\Images\bknapp_Movie_S1.tif"
+path = (
+    os.path.join(data_path, 'test_symm_div_acdc_tracker', 'Images', 'bknapp_Movie_S1.tif')
+)
 
 channel_name = 'bknapp_Movie_S1'
 end_filename_segm = 'segm'# 'segm_test'
@@ -30,7 +32,9 @@ SCRUMBLE_IDs = False
 # test_data = data.BABYtestData()
 # posData = test_data.posData()
 
-posData = load.loadData(path, channel_name)
+test_data = data.FissionYeastAnnotated()
+posData = test_data.posData()
+posData.acdc_output_csv_path = test_data.acdc_df_path
 
 posData.loadImgData()
 posData.loadOtherFiles(
@@ -96,6 +100,8 @@ tracked_stack = core.tracker_track(
     intensity_img=trackerInputImage,
     logger_func=print
 )
+
+posData.fromTrackerToAcdcDf(tracker, tracked_stack, save=True)
 
 if SAVE:
     try:
