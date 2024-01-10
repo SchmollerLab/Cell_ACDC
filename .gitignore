@@ -61,7 +61,7 @@ cellacdc/java
 cellacdc/javabridge_cp37
 cellacdc/javabridge_cp38
 cellacdc/javabridge_linux
-cellacdc/tables/paper_plot_data
+tables/paper_plot_data.zip
 instructions/
 benchmarks/
 .vscode/
