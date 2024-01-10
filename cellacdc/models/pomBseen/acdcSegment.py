@@ -66,6 +66,10 @@ class Model:
         if footprint == 'default':
             footprint = None
         
+        # Make sure block_size is odd
+        if block_size % 2 == 0:
+            block_size += 1
+        
         segmented_img = pomBseg(
             image, sharpen_image, radius, amount, block_size, offset, 
             footprint, inverse_bw_max_pix, connectivity, clear_border_conn, 
