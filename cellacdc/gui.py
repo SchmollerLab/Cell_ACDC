@@ -918,6 +918,9 @@ class guiWin(QMainWindow):
     def run(self, module='acdc_gui', logs_path=None):
         global print, printl
         
+        self.setWindowIcon()
+        self.setWindowTitle()
+        
         self.is_win = sys.platform.startswith("win")
         if self.is_win:
             self.openFolderText = 'Show in Explorer...'
@@ -965,9 +968,6 @@ class guiWin(QMainWindow):
         self.AutoPilot = None
         self.widgetsWithShortcut = {}
         self.invertBwAlreadyCalledOnce = False
-
-        self.setWindowTitle("Cell-ACDC - GUI")
-        self.setWindowIcon(QIcon(":icon.ico"))
 
         self.checkableButtons = []
         self.LeftClickButtons = []
@@ -1033,6 +1033,14 @@ class guiWin(QMainWindow):
         # self.installEventFilter(self)
         
         self.logger.info('GUI ready.')
+    
+    def setWindowIcon(self, icon=None):
+        if icon is None:
+            icon = QIcon(":icon.ico")
+        super().setWindowIcon(icon)
+    
+    def setWindowTitle(self, title="Cell-ACDC - GUI"):
+        super().setWindowTitle(title)
     
     def initProfileModels(self):
         self.logger.info('Initiliazing profilers...')
