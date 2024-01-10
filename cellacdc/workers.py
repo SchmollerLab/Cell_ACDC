@@ -4073,3 +4073,24 @@ class FilterObjsFromCoordsTable(BaseWorkerUtil):
                 self.signals.progressBar.emit(1)
 
         self.signals.finished.emit(self)
+
+class ScreenRecorderWorker(QObject):
+    sigGrabScreen = Signal()
+    finished = Signal()
+
+    def __init__(self, screenRecorderWin, folder_path):
+        QObject.__init__(self)
+        self.screenRecorderWin = screenRecorderWin
+        self.folder_path = folder_path
+    
+    def run(self):
+        for i in range(4):
+            fn = f'shot_{i:03}.jpg'
+            grab_path = os.path.join(self.folder_path, fn)
+            screen = self.screenRecorderWin.screen()
+            screenshot = screen.grabWindow(self.screenRecorderWin.winId())
+            screenshot.save(grab_path, 'jpg')
+            print(grab_path)
+            time.sleep(0.2)
+
+        self.finished.emit()

@@ -1,53 +1,34 @@
 import os
 import sys
 import time
+from tkinter import Y
 
 import numpy as np
 import pandas as pd
 
-from qtpy.QtWidgets import QMainWindow, QApplication, QFrame
-from qtpy.QtCore import Qt, QPoint, QRect, QObject, Signal, QThread
+from qtpy.QtWidgets import QMainWindow, QFrame
+from qtpy.QtCore import Qt, QPoint, QRect, QThread
 from qtpy.QtGui import QBrush, QColor, QPen, QPainter
 
-from cellacdc import cellacdc_path, settings_folderpath, user_profile_path
+from .. import settings_csv_path
+from .. import user_data_folderpath
+from .. import workers
 
-import pathlib
-USER_PATH = user_profile_path
-
-class screenRecorderWorker(QObject):
-    sigGrabScreen = Signal()
-    finished = Signal()
-
-    def __init__(self):
-        QObject.__init__(self)
-
-    def run(self):
-        path = os.path.join(USER_PATH, 'Documents', 'acdc_test_grab_screen')
-        for i in range(4):
-            fn = f'shot_{i:03}.jpg'
-            grab_path = os.path.join(path, f'shot_{i:03}.jpg')
-            screen = win.screen()
-            screenshot = screen.grabWindow(win.winId())
-            screenshot.save(grab_path, 'jpg')
-            time.sleep(0.2)
-
-        self.finished.emit()
-
-class myFrame(QFrame):
-    def __init__(self, parent=None):
+class ScreenRecorderFrame(QFrame):
+    def __init__(self, app, parent=None):
         super().__init__(parent)
         self.setMouseTracking(True)
-        self.parent = parent
+        self._parent = parent
         # Border tolerance to trigger resizing
         self.px = 10
         self.app = app
-
+    
     def mousePressEvent(self, event):
         x, y = event.pos().x(), event.pos().y()
-        # x00, y00 = self.parent.x0-self.px, self.parent.y0-self.px
-        x01, y01 = self.parent.x0+self.px, self.parent.y0+self.px
-        x10, y10 = self.parent.x1-self.px, self.parent.y1-self.px
-        # x11, y11 = self.parent.x1+self.px, self.parent.y1+self.px
+        # x00, y00 = self._parent.x0-self.px, self._parent.y0-self.px
+        x01, y01 = self._parent.x0+self.px, self._parent.y0+self.px
+        x10, y10 = self._parent.x1-self.px, self._parent.y1-self.px
+        # x11, y11 = self._parent.x1+self.px, self._parent.y1+self.px
         if y<y10 and y>y01 and x<x10 and x>x01:
             # Cursor click inside rectangle
             self.app.setOverrideCursor(Qt.ClosedHandCursor)
@@ -60,10 +41,10 @@ class myFrame(QFrame):
             return
 
         x, y = event.pos().x(), event.pos().y()
-        x00, y00 = self.parent.x0-self.px, self.parent.y0-self.px
-        x01, y01 = self.parent.x0+self.px, self.parent.y0+self.px
-        x10, y10 = self.parent.x1-self.px, self.parent.y1-self.px
-        x11, y11 = self.parent.x1+self.px, self.parent.y1+self.px
+        x00, y00 = self._parent.x0-self.px, self._parent.y0-self.px
+        x01, y01 = self._parent.x0+self.px, self._parent.y0+self.px
+        x10, y10 = self._parent.x1-self.px, self._parent.y1-self.px
+        x11, y11 = self._parent.x1+self.px, self._parent.y1+self.px
         if y<y10 and y>y01 and x<x10 and x>x01:
             # Cursor inside rectangle
             self.app.setOverrideCursor(Qt.OpenHandCursor)
@@ -104,49 +85,50 @@ class myFrame(QFrame):
             while self.app.overrideCursor() is not None:
                 self.app.restoreOverrideCursor()
 
-class screenRecorder(QMainWindow):
-    def __init__(self, app):
+class ScreenRecorderWindow(QMainWindow):
+    def __init__(self, app, parent, parentName):
         super().__init__()
         self.setWindowFlags(
-            Qt.FramelessWindowHint # | Qt.WindowStaysOnTopHint
+            Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
         )
         self.app = app
+        self.parentWin = parent
+        self.parentWinName = parentName
 
         self.topLeft_points = []
-        self.topLeft_screen = QPoint(0, 0)
-        self.bottomRight_screen = None
-        self.loadLastRect()
-
+        self.xymax = None
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WA_TransparentForMouseEvents)
 
-        frame = myFrame(self)
+        frame = ScreenRecorderFrame(app, parent=self)
         frame.setMouseTracking(True)
         frame.setStyleSheet("background-color: rgba(255, 255, 255, 0)")
         self.setCentralWidget(frame)
         self.frame = frame
 
     def loadLastRect(self):
-        self.settings_csv_path = os.path.join(settings_folderpath, 'settings.csv')
-        if not os.path.exists(self.settings_csv_path):
+        if not os.path.exists(settings_csv_path):
             self.x0, self.y0, self.x1, self.y1 = 100, 100, 400, 300
             return
 
+        idx = f'screenRecorder_rect_{self.parentWinName}'
         self.df_settings = pd.read_csv(
-            self.settings_csv_path, index_col='setting'
+            settings_csv_path, index_col='setting'
         )
-        if 'screenRecorder_rect' in self.df_settings.index:
-            s = self.df_settings.at['screenRecorder_rect', 'value']
+        if idx in self.df_settings.index:
+            s = self.df_settings.at[idx, 'value']
             coords = [int(d) for d in s.split(',')]
             self.x0, self.y0, self.x1, self.y1 = coords
         else:
-            self.x0, self.y0, self.x1, self.y1 = 100, 100, 400, 300
+            self.x0, self.y0, self.x1, self.y1 = (
+                self.xmin, self.ymin, self.xmax, self.ymax
+            )
 
     def getRectPoints(self):
         x1, y1 = self.x1, self.y1
         x0, y0 = self.x0, self.y0
-        yy = [0, y0, y1, self.b]
-        xx = [0, x0, x1, self.r]
+        yy = [0, y0, y1, self.ymax]
+        xx = [0, x0, x1, self.xmax]
         self.topLeft_points = []
         self.bottomRight_points = []
         for i, y in enumerate(yy[:3]):
@@ -155,7 +137,7 @@ class screenRecorder(QMainWindow):
                 self.bottomRight_points.append(QPoint(xx[j+1], yy[i+1]))
 
     def paintEvent(self, event):
-        if self.bottomRight_screen is None:
+        if self.xymax is None:
             return
 
         self.getRectPoints()
@@ -166,7 +148,7 @@ class screenRecorder(QMainWindow):
         qp.setPen(Qt.NoPen)
 
         if not self.topLeft_points:
-            rect = QRect(self.topLeft_screen, self.bottomRight_screen)
+            rect = QRect(self.xymin, self.xymax)
             qp.drawRect(rect)
             return
 
@@ -182,46 +164,66 @@ class screenRecorder(QMainWindow):
             br = QBrush(QColor(20, 20, 20, 0))
             qp.setBrush(br)
             pen = QPen(QColor(255, 255, 255, 150))
+            pen.setWidth(0)
+            print(pen.width())
             pen.setStyle(Qt.DashLine)
             qp.setPen(pen)
             qp.drawRect(QRect(*spotlightWindow))
 
     def mousePressEvent(self, event):
         pass
-
+    
+    def boundXYtoScreen(self, x, y):
+        xmin = self.xmin
+        ymin = self.ymin
+        xmax = self.xmax - 1
+        ymax = self.ymax - 1
+        if x < xmin:
+            x = xmin
+        elif x > xmax:
+            x = xmax
+        
+        if y < xmin:
+            y = ymin
+        elif y > ymax:
+            y = ymax
+        
+        return x, y        
+    
     def mouseMoveEvent(self, event):
+        x, y = event.pos().x(), event.pos().y()
+        x, y = self.boundXYtoScreen(x, y)
         if self.app.overrideCursor() == Qt.SizeFDiagCursor:
             if self.frame.corner == 'topLeft':
-                self.x0, self.y0 = event.pos().x(), event.pos().y()
+                self.x0, self.y0 = x, y
                 self.update()
             else:
                 # bottomRight
-                self.x1, self.y1 = event.pos().x(), event.pos().y()
+                self.x1, self.y1 = x, y
                 self.update()
         elif self.app.overrideCursor() == Qt.SizeBDiagCursor:
             if self.frame.corner == 'bottomLeft':
-                self.x0, self.y1 = event.pos().x(), event.pos().y()
+                self.x0, self.y1 = x, y
                 self.update()
             else:
                 # topRight
-                self.x1, self.y0 = event.pos().x(), event.pos().y()
+                self.x1, self.y0 = x, y
                 self.update()
         elif self.app.overrideCursor() == Qt.SizeHorCursor:
             if self.frame.corner == 'left':
-                self.x0 = event.pos().x()
+                self.x0 = x
                 self.update()
             else:
-                self.x1 = event.pos().x()
+                self.x1 = x
                 self.update()
         elif self.app.overrideCursor() == Qt.SizeVerCursor:
             if self.frame.corner == 'top':
-                self.y0 = event.pos().y()
+                self.y0 = y
                 self.update()
             else:
-                self.y1 = event.pos().y()
+                self.y1 = y
                 self.update()
         elif self.app.overrideCursor() == Qt.ClosedHandCursor:
-            x, y = event.pos().x(), event.pos().y()
             deltax, deltay = x-self.frame.xc, y-self.frame.yc
             self.x0, self.y0 = self.x0+deltax, self.y0+deltay
             self.x1, self.y1 = self.x1+deltax, self.y1+deltay
@@ -236,7 +238,9 @@ class screenRecorder(QMainWindow):
 
     def startRecorder(self):
         self.thread = QThread()
-        self.screenGrabWorker = screenRecorderWorker()
+        self.screenGrabWorker = workers.ScreenRecorderWorker(
+            self, user_data_folderpath
+        )
 
         self.screenGrabWorker.moveToThread(self.thread)
         self.screenGrabWorker.finished.connect(self.thread.quit)
@@ -245,6 +249,7 @@ class screenRecorder(QMainWindow):
 
         self.thread.started.connect(self.screenGrabWorker.run)
         self.thread.start()
+        print('Recording started...')
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Escape:
@@ -255,9 +260,13 @@ class screenRecorder(QMainWindow):
 
     def show(self):
         self.showMaximized()
-        self.r = win.geometry().width()
-        self.b = win.geometry().height()
-        self.bottomRight_screen = QPoint(self.r, self.b)
+        self.xmax = self.parentWin.geometry().right()
+        self.ymax = self.parentWin.geometry().bottom()
+        self.xmin = self.parentWin.geometry().left()
+        self.ymin = self.parentWin.geometry().top()
+        self.xymin = QPoint(self.xmin, self.ymin)
+        self.xymax = QPoint(self.xmax, self.ymax)
+        self.loadLastRect()
         self.raise_()
         self.update()
 
@@ -265,9 +274,3 @@ class screenRecorder(QMainWindow):
     #     self.begin = event.pos()
     #     self.end = event.pos()
     #     self.update()
-
-if __name__ == '__main__':
-    app = QApplication([])
-    win = screenRecorder(app)
-    win.show()
-    app.exec_()
