@@ -178,6 +178,9 @@ instance/
 
 # Sphinx documentation
 docs/_build/
+docs/build/
+cellacdc/docs/_build/
+cellacdc/docs/build/
 
 # PyBuilder
 target/
