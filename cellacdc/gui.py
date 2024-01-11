@@ -887,11 +887,11 @@ class guiWin(QMainWindow):
         idx = 2 if is_decorator else 1
         callingframe = outerframes[idx].frame
         callingframe_info = inspect.getframeinfo(callingframe)
-        filpath = callingframe_info.filename
-        filename = os.path.basename(filpath)
+        filepath = callingframe_info.filename
+        filename = os.path.basename(filepath)
         self.logger.info('*'*30)
         self.logger.info(
-            f'{timestap} - File "{filename}", line {callingframe_info.lineno}:'
+            f'File "{filepath}", line {callingframe_info.lineno} - {timestap}:'
         )
         if kwargs.get('pretty'):
             txt = pprint.pformat(objects[0])
@@ -950,6 +950,7 @@ class guiWin(QMainWindow):
         self.slideshowWin = None
         self.ccaTableWin = None
         self.customAnnotButton = None
+        self.ccaIntegrityCheckerWorker = None
         self.dataIsLoaded = False
         self.highlightedID = 0
         self.hoverLabelID = 0
@@ -11652,10 +11653,8 @@ class guiWin(QMainWindow):
        
         if ev.key() == Qt.Key_Q and self.debug:
             posData = self.data[self.pos_i]
-            for button, info in self.customAnnotDict.items():
-                annotatedIDs = info['annotatedIDs'][self.pos_i]
-                annotIDs_frame_i = annotatedIDs.get(posData.frame_i, [])
-                printl(info.state['name'], annotIDs_frame_i)       
+            curr_df = posData.allData_li[posData.frame_i]['acdc_df']
+            printl(curr_df.loc[2][['cell_cycle_stage', 'generation_num']])     
         
         if not self.dataIsLoaded:
             self.logger.info(
@@ -16257,7 +16256,7 @@ class guiWin(QMainWindow):
                 ID for ID in posData.new_IDs
                 if ID not in correctedAssignIDs
             ]
-
+        
         # Check if new IDs exist some time in the past
         found_cca_df_IDs = self.checkCcaPastFramesNewIDs()
 
@@ -16276,13 +16275,12 @@ class guiWin(QMainWindow):
             posData.cca_df = prev_cca_df
         else:
             posData.cca_df = curr_df[self.cca_df_colnames].copy()
-
+        
         # concatenate new IDs found in past frames (before frame_i-1)
         if found_cca_df_IDs is not None:
             cca_df = pd.concat([posData.cca_df, *found_cca_df_IDs])
             unique_idx = ~cca_df.index.duplicated(keep='first')
             posData.cca_df = cca_df[unique_idx]
-        
 
         # If there are no new IDs we are done
         if not posData.new_IDs:
@@ -16296,12 +16294,20 @@ class guiWin(QMainWindow):
         IDsCellsG1 = set(prev_df_G1.index)
         if lastVisited or enforceAll:
             # If we are repeating auto cca for last visited frame
-            # then we also add the cells in G1 that we already know
-            # at current frame
+            # then we also add the cells in G1 that appears in current frame
+            # Note that potential mother cells must be either appearing in 
+            # current frame or in G1 also at previous frame. 
+            # If we would consider cells that are in G1 at current frame 
+            # but not in previous frame, assigning a bud to it would 
+            # result in no G1 at all for the mother cell.
             df_G1 = posData.cca_df[posData.cca_df['cell_cycle_stage']=='G1']
-            IDsCellsG1.update(df_G1.index)
+            current_G1_IDs = df_G1.index
+            new_cell_G1 = [
+                ID for ID in current_G1_IDs if ID not in prev_cca_df.index
+            ]
+            IDsCellsG1.update(new_cell_G1)
 
-        # remove cells that disappeared
+        # Remove cells that disappeared
         IDsCellsG1 = [ID for ID in IDsCellsG1 if ID in posData.IDs]
 
         numCellsG1 = len(IDsCellsG1)
@@ -16360,14 +16366,20 @@ class guiWin(QMainWindow):
         cost = np.full((numCellsG1, numNewCells), np.inf)
         for obj in posData.rp:
             ID = obj.label
-            if ID in IDsCellsG1:
-                cont = self.getObjContours(obj)
+            try:
                 i = IDsCellsG1.index(ID)
-                for j, newID_cont in enumerate(newIDs_contours):
-                    min_dist, nearest_xy = self.nearest_point_2Dyx(
-                        cont, newID_cont
-                    )
-                    cost[i, j] = min_dist
+            except ValueError:
+                continue
+
+            cont = self.getObjContours(obj)
+            i = IDsCellsG1.index(ID)
+            
+            # Get distance from cell in G1 and all other new cells
+            for j, newID_cont in enumerate(newIDs_contours):
+                min_dist, nearest_xy = self.nearest_point_2Dyx(
+                    cont, newID_cont
+                )
+                cost[i, j] = min_dist
 
         # Run hungarian (munkres) assignment algorithm
         row_idx, col_idx = scipy.optimize.linear_sum_assignment(cost)
@@ -16383,7 +16395,6 @@ class guiWin(QMainWindow):
                 relID = posData.cca_df.at[budID, 'relative_ID']
                 if relID in prev_cca_df.index:
                     posData.cca_df.loc[relID] = prev_cca_df.loc[relID]
-
 
             posData.cca_df.at[mothID, 'relative_ID'] = budID
             posData.cca_df.at[mothID, 'cell_cycle_stage'] = 'S'
@@ -17046,8 +17057,13 @@ class guiWin(QMainWindow):
         worker.enqueue(posData)
     
     def enqCcaIntegrityChecker(self):
+        if self.ccaIntegrityCheckerWorker is None:
+            return
         posData = self.data[self.pos_i]  
         self.ccaIntegrityCheckerWorker.enqueue(posData)
+    
+    def ccaIntegrityCheckerWorkerDestroyed(self):
+        self.ccaIntegrityCheckerWorker = None
     
     def drawAllMothBudLines(self):
         posData = self.data[self.pos_i]
@@ -21631,6 +21647,7 @@ class guiWin(QMainWindow):
         worker.finished.connect(worker.deleteLater)
         ccaCheckerThread.finished.connect(ccaCheckerThread.deleteLater)
 
+        worker.destroyed.connect(self.ccaIntegrityCheckerWorkerDestroyed)
         worker.sigDone.connect(self.ccaCheckerWorkerDone)
         worker.progress.connect(self.workerProgress)
         worker.finished.connect(self.ccaCheckerWorkerClosed)
