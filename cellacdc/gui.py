@@ -16288,10 +16288,18 @@ class guiWin(QMainWindow):
         IDsCellsG1 = set(prev_df_G1.index)
         if lastVisited or enforceAll:
             # If we are repeating auto cca for last visited frame
-            # then we also add the cells in G1 that we already know
-            # at current frame
+            # then we also add the cells in G1 that appears in current frame
+            # Note that potential mother cells must be either appearing in 
+            # current frame or in G1 also at previous frame. 
+            # If we would consider cells that are in G1 at current frame 
+            # but not in previous frame, assigning a bud to it would 
+            # result in no G1 at all for the mother cell.
             df_G1 = posData.cca_df[posData.cca_df['cell_cycle_stage']=='G1']
-            IDsCellsG1.update(df_G1.index)
+            current_G1_IDs = df_G1.index
+            new_cell_G1 = [
+                ID for ID in current_G1_IDs if ID not in prev_cca_df.index
+            ]
+            IDsCellsG1.update(new_cell_G1)
 
         # remove cells that disappeared
         IDsCellsG1 = [ID for ID in IDsCellsG1 if ID in posData.IDs]
