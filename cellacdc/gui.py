@@ -1919,6 +1919,9 @@ class guiWin(QMainWindow):
     def autoSaveWorkerDone(self):
         self.setStatusBarLabel(log=False)
     
+    def ccaCheckerWorkerDone(self):
+        self.setStatusBarLabel(log=False)
+    
     def autoSaveWorkerClosed(self, worker):
         if self.autoSaveActiveWorkers:
             self.logger.info('Autosaving worker closed.')
@@ -1927,6 +1930,9 @@ class guiWin(QMainWindow):
             except Exception as e:
                 pass
 
+    def ccaCheckerWorkerClosed(self, worker):
+        self.logger.info('Cell cycle annotations integrity checker stopped.')            
+    
     def gui_createMainLayout(self):
         mainLayout = QGridLayout()
         row, col = 0, 1 # Leave column 1 for the overlay labels gradient editor
@@ -10601,6 +10607,7 @@ class guiWin(QMainWindow):
         self.annotateToolbar.setVisible(False)
         self.store_data(autosave=False)
         self.copyContourButton.setChecked(False)
+        self.stopCcaIntegrityCheckerWorker()
         if mode == 'Segmentation and Tracking':
             self.trackingMenu.setDisabled(False)
             self.modeToolBar.setVisible(True)
@@ -10616,6 +10623,7 @@ class guiWin(QMainWindow):
                 self.store_cca_df()
             self.restorePrevAnnotOptions()
         elif mode == 'Cell cycle analysis':
+            self.startCcaIntegrityCheckerWorker()
             proceed = self.initCca()
             if proceed:
                 self.applyDelROIs()
@@ -17022,6 +17030,7 @@ class guiWin(QMainWindow):
         
         if autosave:
             self.enqAutosave()
+            self.enqCcaIntegrityChecker()
     
     def turnOffAutoSaveWorker(self):
         self.autoSaveToggle.setChecked(False)
@@ -17035,6 +17044,10 @@ class guiWin(QMainWindow):
         worker, thread = self.autoSaveActiveWorkers[-1]
         self.statusBarLabel.setText('Autosaving...')
         worker.enqueue(posData)
+    
+    def enqCcaIntegrityChecker(self):
+        posData = self.data[self.pos_i]  
+        self.ccaIntegrityCheckerWorker.enqueue(posData)
     
     def drawAllMothBudLines(self):
         posData = self.data[self.pos_i]
@@ -21596,6 +21609,43 @@ class guiWin(QMainWindow):
             self.AutoPilot.timer.stop()
         self.AutoPilot = None
 
+    def startCcaIntegrityCheckerWorker(self):
+        if not hasattr(self, 'data'):
+            return
+        
+        if not self.dataIsLoaded:
+            return
+        
+        ccaCheckerThread = QThread()
+        self.ccaCheckerMutex = QMutex()
+        self.ccaCheckerWaitCond = QWaitCondition()
+        
+        worker = workers.CcaIntegrityCheckerWorker(
+            self.ccaCheckerMutex, self.ccaCheckerWaitCond
+        )
+        self.ccaIntegrityCheckerWorker = worker
+        self.ccaCheckerThread = ccaCheckerThread
+        
+        worker.moveToThread(ccaCheckerThread)
+        worker.finished.connect(ccaCheckerThread.quit)
+        worker.finished.connect(worker.deleteLater)
+        ccaCheckerThread.finished.connect(ccaCheckerThread.deleteLater)
+
+        worker.sigDone.connect(self.ccaCheckerWorkerDone)
+        worker.progress.connect(self.workerProgress)
+        worker.finished.connect(self.ccaCheckerWorkerClosed)
+        
+        ccaCheckerThread.started.connect(worker.run)
+        ccaCheckerThread.start()
+        
+        self.logger.info('Cell cycle annotations integrity checker started.')
+    
+    def stopCcaIntegrityCheckerWorker(self):
+        try:
+            self.ccaIntegrityCheckerWorker._stop()
+        except Exception as err:
+            pass
+    
     def loadFluo_cb(self, checked=True, fluo_channels=None):
         if fluo_channels is None:
             posData = self.data[self.pos_i]
@@ -23131,6 +23181,8 @@ class guiWin(QMainWindow):
             self.waitCloseAutoSaveWorkerLoop.exec_()
             progressWin.workerFinished = True
             progressWin.close()
+        
+        self.stopCcaIntegrityCheckerWorker()
         
         # Close the inifinte loop of the thread
         if self.lazyLoader is not None:

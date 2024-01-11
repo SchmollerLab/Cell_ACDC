@@ -4094,3 +4094,93 @@ class ScreenRecorderWorker(QObject):
             time.sleep(0.2)
 
         self.finished.emit()
+
+class CcaIntegrityCheckerWorker(QObject):
+    finished = Signal(object)
+    critical = Signal(object)
+    progress = Signal(str, object)
+    sigDone = Signal()
+    
+    def __init__(self, mutex, waitCond):
+        QObject.__init__(self)
+        self.logger = workerLogger(self.progress)
+        self.mutex = mutex
+        self.waitCond = waitCond
+        self.exit = False
+        self.isFinished = False
+        self.abortChecking = False
+        self.isChecking = False
+        self.isPaused = False
+        self.debug = True
+        self.dataQ = deque(maxlen=5)
+    
+    def pause(self):
+        if DEBUG:
+            self.logger.log('Cell cycle annotations checker is idle.')
+        self.mutex.lock()
+        self.isPaused = True
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        self.isPaused = False
+    
+    def enqueue(self, posData):
+        # First stop previous checking
+        if self.isChecking:
+            self.abortChecking = True
+        self._enqueue(posData)
+    
+    def _enqueue(self, posData):
+        if self.debug:
+            self.logger.log('Enqueing posData...')
+        self.dataQ.append(posData)
+        if len(self.dataQ) == 1:
+            # Wake worker upon inserting first element
+            self.abort = False
+            self.waitCond.wakeAll()
+    
+    def _stop(self):
+        self.exit = True
+        self.waitCond.wakeAll()
+    
+    def abort(self):
+        self.abortChecking = True
+        while not len(self.dataQ) == 0:
+            data = self.dataQ.pop()
+            del data
+        self._stop()
+    
+    def check(self, posData):
+        self.isChecking = True
+        for frame_i, data_dict in enumerate(posData.allData_li):
+            if self.abortChecking:
+                break
+        
+        self.abortChecking = False
+        self.isChecking = False
+    
+    @worker_exception_handler
+    def run(self):
+        while True:
+            if self.exit:
+                self.logger.log('Closing cell cycle integrity checker worker...')
+                break
+            elif not len(self.dataQ) == 0:
+                if self.debug:
+                    self.logger.log(
+                        'Checking integrity of cell cycle annotations '
+                        f'({len(self.dataQ)})...'
+                    )
+                data = self.dataQ.pop()
+                try:
+                    self.check(data)
+                except Exception as e:
+                    error = traceback.format_exc()
+                    print('*'*40)
+                    self.logger.log(error)
+                    print('='*40)
+                if len(self.dataQ) == 0:
+                    self.sigDone.emit()
+            else:
+                self.pause()
+        self.isFinished = True
+        self.finished.emit(self)
