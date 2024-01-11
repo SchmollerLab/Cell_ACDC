@@ -2271,7 +2271,7 @@ def _relabel_sequential_timelapse(segm_data):
     pbar = tqdm(total=len(segm_data), ncols=100, unit=' frame')
     for frame_i, lab in enumerate(segm_data):
         if frame_i == 0:
-            relab, newIDs_i, oldIDs_i = _relabel_sequential(lab)
+            relab, oldIDs_i, newIDs_i = _relabel_sequential(lab)
             mapper_old_to_new_IDs = dict(zip(oldIDs_i, newIDs_i))
             lastID = max(newIDs_i)
             relabelled[frame_i] = relab
@@ -2283,12 +2283,11 @@ def _relabel_sequential_timelapse(segm_data):
             if newID is not None:
                 # ID was already mapped in prev iter --> use it
                 relabelled[frame_i][obj.slice][obj.image] = newID
-                continue
-            
-            newID = lastID + 1
+            else:
+                newID = lastID + 1
+                mapper_old_to_new_IDs[obj.label] = newID
+                lastID += 1
             relabelled[frame_i][obj.slice][obj.image] = newID
-            mapper_old_to_new_IDs[obj.label] = newID
-            lastID += 1
         pbar.update()
     pbar.close()
     oldIDs = list(mapper_old_to_new_IDs.keys())
