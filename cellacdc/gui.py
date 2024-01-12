@@ -20559,9 +20559,9 @@ class guiWin(QMainWindow):
                 # Track only if the tracked ID for the new object does not 
                 # already exist
                 posData.lab[mask] = tracked_lab[mask]
+            self.update_rp()
         else:
             posData.lab = tracked_lab
-        self.update_rp()
     
     # @exec_time
     def tracking(
