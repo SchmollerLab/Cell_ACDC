@@ -29,6 +29,8 @@ def to_plain_text(html_text):
     html_text = re.sub(r' +', ' ', html_text)
     html_text = html_text.replace('\n ', '\n')
     html_text = html_text.strip('\n')
+    html_text = html_text.replace('<code>', '`')
+    html_text = html_text.replace('</code>', '`')
     html_text = html_text.replace('<br>', '\n')
     html_text = html_text.replace('<li>', '\n  * ')
     html_text = re.sub(r'</\w+>', '', html_text)

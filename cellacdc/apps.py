@@ -8245,70 +8245,90 @@ will be applied (see below).<br><br>
             in zip(relatValues, historyValues, genNumValues, emergFrameValues)
         ]
         
-        # if any(check_rel):
-        #     msg = widgets.myMessageBox(wrapText=False)
-        #     txt = html_utils.paragraph(""" 
-        #         Some cells are mother or bud of itself!<br><br>
-        #         Make sure that the relative ID is different from the Cell ID.
-        #     """)
-        #     msg.critical(self, 'Some IDs are equal to relative ID', txt)
-        #     return None
-        # elif any(check_unknown_mothers):
-        #     txt = html_utils.paragraph("""
-        #         We recommend to set <b>generation number to 2 for mother cells 
-        #         with unknown history<br>
-        #         that just appeared</b> (i.e., first cell cycle in the video).<br><br>
-        #         While it is allowed to insert any number, knowing that these 
-        #         cells start at generation number 2<br>
-        #         <b>makes downstream analysis easier</b>.<br><br>
-        #         What do you want to do?
-        #     """)
-        #     correctButtonText = ' Fine, let me correct. '
-        #     keepButtonText = ' Keep the generation number that I chose. '
-        #     buttonsTexts = (correctButtonText, keepButtonText)
-        #     msg = widgets.myMessageBox(wrapText=False, showCentered=False)
-        #     msg.warning(self, 'Recommendation', txt, buttonsTexts=buttonsTexts)
-        #     if msg.cancel or msg.clickedButton == correctButtonText:
-        #         return None
-        # elif any(check_buds_S):
-        #     QMessageBox().critical(self,
-        #         'Bud in S/G2/M not in 0 Generation number',
-        #         'Some buds '
-        #         'in S phase do not have 0 as Generation number!\n'
-        #         'Buds in S phase must have 0 as "Generation number"',
-        #         QMessageBox.StandardButton.Ok)
-        #     return None
-        # elif any(check_mothers):
-        #     QMessageBox().critical(self,
-        #         'Mother not in >=1 Generation number',
-        #         'Some mother cells do not have >=1 as "Generation number"!\n'
-        #         'Mothers MUST have >1 "Generation number"',
-        #         QMessageBox.StandardButton.Ok)
-        #     return None
-        # elif any(check_buds_G1):
-        #     QMessageBox().critical(self,
-        #         'Buds in G1!',
-        #         'Some buds are in G1 phase!\n'
-        #         'Buds MUST be in S/G2/M phase',
-        #         QMessageBox.StandardButton.Ok)
-        #     return None
-        # elif num_moth_S != num_bud_S:
-        #     QMessageBox().critical(self,
-        #         'Number of mothers-buds mismatch!',
-        #         f'There are {num_moth_S} mother cells in "S/G2/M" phase,'
-        #         f'but there are {num_bud_S} bud cells.\n\n'
-        #         'The number of mothers and buds in "S/G2/M" '
-        #         'phase must be equal!',
-        #         QMessageBox.StandardButton.Ok)
-        #     return None
-        # elif any(check_relID_S):
-        #     QMessageBox().critical(self,
-        #         'Relative\'s ID of cells in S/G2/M = -1',
-        #         'Some cells are in "S/G2/M" phase but have -1 as Relative\'s ID!\n'
-        #         'Cells in "S/G2/M" phase must have an existing '
-        #         'ID as Relative\'s ID!',
-        #         QMessageBox.StandardButton.Ok)
-        #     return None
+        if any(check_rel):
+            msg = widgets.myMessageBox(wrapText=False)
+            txt = html_utils.paragraph(""" 
+                Some cells are mother or bud of itself!<br><br>
+                Make sure that the relative ID is different from the Cell ID.
+            """)
+            msg.critical(self, 'Some IDs are equal to relative ID', txt)
+            return None
+        elif any(check_unknown_mothers):
+            txt = html_utils.paragraph("""
+                We recommend to set <b>generation number to 2 for mother cells 
+                with unknown history<br>
+                that just appeared</b> (i.e., first cell cycle in the video).<br><br>
+                While it is allowed to insert any number, knowing that these 
+                cells start at generation number 2<br>
+                <b>makes downstream analysis easier</b>.<br><br>
+                What do you want to do?
+            """)
+            correctButtonText = ' Fine, let me correct. '
+            keepButtonText = ' Keep the generation number that I chose. '
+            buttonsTexts = (correctButtonText, keepButtonText)
+            msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+            msg.warning(self, 'Recommendation', txt, buttonsTexts=buttonsTexts)
+            if msg.cancel or msg.clickedButton == correctButtonText:
+                return None
+        elif any(check_buds_S):
+            msg = widgets.myMessageBox(wrapText=False)
+            title = (
+                'Bud in S/G2/M not in 0 Generation number'
+            )
+            txt = html_utils.paragraph(
+                'Some buds '
+                'in S phase do not have 0 as Generation number!<br>'
+                'Buds in S phase must have 0 as "Generation number"'
+            )
+            msg.critical(self, title, txt)
+            return None
+        elif any(check_mothers):
+            msg = widgets.myMessageBox(wrapText=False)
+            title = (
+                'Mother not in >=1 Generation number'
+            )
+            txt = html_utils.paragraph(
+                'Some mother cells do not have >=1 as "Generation number"!<br>'
+                'Mothers MUST have >1 "Generation number"'
+            )
+            msg.critical(self, title, txt)
+            return None
+        elif any(check_buds_G1):
+            msg = widgets.myMessageBox(wrapText=False)
+            title = (
+                'Buds in G1!'
+            )
+            txt = html_utils.paragraph(
+                'Some buds are in G1 phase!<br><br>'
+                'Buds MUST be in S/G2/M phase'
+            )
+            msg.critical(self, title, txt)
+            return None
+        elif num_moth_S != num_bud_S:
+            msg = widgets.myMessageBox(wrapText=False)
+            title = (
+                'Number of mothers-buds mismatch!'
+            )
+            txt = html_utils.paragraph(
+                f'There are {num_moth_S} mother cells in "S/G2/M" phase,'
+                f'but there are {num_bud_S} bud cells.<br><br>'
+                'The number of mothers and buds in "S/G2/M" '
+                'phase must be equal!'
+            )
+            msg.critical(self, title, txt)
+            return None
+        elif any(check_relID_S):
+            msg = widgets.myMessageBox(wrapText=False)
+            title = (
+                'Relative\'s ID of cells in S/G2/M = -1'
+            )
+            txt = html_utils.paragraph(
+                'Some cells are in "S/G2/M" phase but have -1 as Relative\'s ID!<br>'
+                'Cells in "S/G2/M" phase must have an existing '
+                'ID as Relative\'s ID!'
+            )
+            msg.critical(self, title, txt)
+            return None
         
         corrected_assignment = self.inputCca_df['corrected_assignment']
         cca_df = pd.DataFrame({

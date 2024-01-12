@@ -2305,6 +2305,7 @@ class CcaIntegrityChecker:
     def __init__(self, cca_df):
         self.cca_df = cca_df
         self.cca_df_S = cca_df[cca_df['cell_cycle_stage'] == 'S']
+        self.cca_df_G1 = cca_df[cca_df['cell_cycle_stage'] == 'G1']
 
     def get_num_mothers_and_buds_in_S(self):
         cca_df_S = self.cca_df_S
@@ -2341,3 +2342,50 @@ class CcaIntegrityChecker:
             G1_not_present_mask[G1_not_present_mask].index.to_list()
         )
         return IDs_cycles_without_G1
+    
+    def get_bud_IDs_gen_num_nonzero(self):
+        cca_df_S = self.cca_df_S
+        cca_df_S_buds = cca_df_S[cca_df_S['relationship'] == 'bud']
+        bud_IDs_gen_num_nonzero = (
+            cca_df_S_buds[cca_df_S_buds['generation_num'] != 0]
+            .index.to_list()
+        )
+        return bud_IDs_gen_num_nonzero
+    
+    def get_moth_IDs_gen_num_non_greater_one(self):
+        cca_df_S = self.cca_df_S
+        cca_df_S_moths = cca_df_S[cca_df_S['relationship'] == 'mother']
+        moth_IDs_gen_num_non_greater_one = (
+            cca_df_S_moths[cca_df_S_moths['generation_num'] < 1]
+            .index.to_list()
+        )
+        return moth_IDs_gen_num_non_greater_one
+    
+    def get_buds_G1(self):
+        cca_df_S = self.cca_df_S
+        cca_df_S_buds = cca_df_S[cca_df_S['relationship'] == 'bud']
+        buds_G1 = (
+            cca_df_S_buds[cca_df_S_buds['cell_cycle_stage'] == 'G1']
+            .index.to_list()
+        )
+        return buds_G1
+    
+    def get_cell_S_rel_ID_zero(self):
+        cca_df_S = self.cca_df_S
+        cell_S_rel_ID_zero = (
+            cca_df_S[cca_df_S['relative_ID'] < 1]
+            .index.to_list()
+        )
+        return cell_S_rel_ID_zero
+    
+    def get_ID_rel_ID_mismatches(self):
+        ID_rel_ID_mismatches = []
+        for row in self.cca_df_S.itertuples():
+            ID = row.Index
+            relID = row.relative_ID
+            relID_of_relID = self.cca_df.at[relID, 'relative_ID']
+            
+            if relID_of_relID != ID:
+                ID_rel_ID_mismatches.append((ID, relID, relID_of_relID))
+        
+        return ID_rel_ID_mismatches

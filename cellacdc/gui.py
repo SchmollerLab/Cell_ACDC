@@ -72,7 +72,7 @@ from . import exception_handler
 from . import base_cca_df, graphLayoutBkgrColor, darkBkgrColor
 from . import load, prompts, apps, workers, html_utils
 from . import core, myutils, dataPrep, widgets
-from . import _warnings
+from . import _warnings, issues_url
 from . import measurements, printl
 from . import colors, filters, annotate
 from . import user_manual_url
@@ -9108,16 +9108,6 @@ class guiWin(QMainWindow):
         )
         return not msg.cancel
     
-    def checkMothExcludedOrDead(self, budID, mothID):
-        posData = self.data[self.pos_i]
-        acdc_df_i = posData.allData_li[posData.frame_i]['acdc_df']
-        is_moth_dead = acdc_df_i.at[mothID, 'is_cell_dead']
-        is_moth_excluded = acdc_df_i.at[mothID, 'is_cell_excluded']
-        if not is_moth_dead and not is_moth_excluded:
-            return True
-        proceed = self.warnDeadOrExcludedMothers([budID], [mothID])
-        return proceed
-        
     def startBlinkingPairingItem(self, budIDs, mothIDs):
         self.ax1_newMothBudLinesItem.setOpacity(0.2)
         self.ax1_oldMothBudLinesItem.setOpacity(0.2)
@@ -13751,24 +13741,32 @@ class guiWin(QMainWindow):
             self.lazyLoader.pause()
         raise error
     
-    @exception_handler
     def ccaIntegrityWorkerCritical(self, error):
-        txt = html_utils.paragraph("""
+        try:
+            raise error
+        except Exception as err:
+            self.logger.exception(traceback.format_exc())
+        
+        href = f'<a href="{issues_url}">GitHub page</a>'
+        txt = html_utils.paragraph(f"""
             Unfortunately the experimental feature 
             <code>check cell cycle annotations integrity</code> raised a 
             critical error.<br><br>
             Cell-ACDC will now disable this feature to allow you to keep 
             using the software.<br><br>
             However, <b>we kindly ask you to report the issue</b> on our 
-            GitHub page, thank you very much!<br><br>
-            After closing this window you will get the error message 
-            with details on how to report the issue.
+            {href}, thank you very much!<br><br>
+            Please, <b>include the log file when reporting the issue</b>.<br><br>
+            Log file location:
         """)
         msg = widgets.myMessageBox(wrapText=False)
-        msg.warning(self, 'Experimental feature error', txt)
+        msg.warning(
+            self, 'Experimental feature error', txt,
+            commands=(self.log_path,),
+            path_to_browse=self.logs_path
+        )
         self.disableCcaIntegrityChecker()
-        raise error
-    
+        
     @exception_handler
     def workerCritical(self, error):
         if self.progressWin is not None:

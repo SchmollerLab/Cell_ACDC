@@ -1509,8 +1509,7 @@ class trackingWorker(QObject):
 
     @worker_exception_handler
     def run(self):
-        self.mutex.lock()
-
+        self.mutex.lock()        
         self.progress.emit('Tracking process started...')
 
         trackerInputImage = None
@@ -4207,12 +4206,103 @@ class CcaIntegrityCheckerWorker(QObject):
         )
         self.sigWarning.emit(txt, category)
         return False
-        
-    def check(self, posData):
+    
+    def _check_buds_gen_num_zero(self, checker, frame_i):
+        bud_IDs_gen_num_nonzero = (
+            checker.get_bud_IDs_gen_num_nonzero()
+        )
+        if len(bud_IDs_gen_num_nonzero) == 0:
+            return True
+
+        category = 'buds whose generation number is not zero'
+        txt = html_utils.paragraph(
+            f'At frame n. {frame_i+1} '
+            'the following bud IDs have generation number different from 0:'
+            f'<br><br>{bud_IDs_gen_num_nonzero}'
+        )
+        self.sigWarning.emit(txt, category)
+        return False
+    
+    def _check_mothers_gen_num_greater_one(self, checker, frame_i):
+        moth_IDs_gen_num_non_greater_one = (
+            checker.get_moth_IDs_gen_num_non_greater_one()
+        )
+        if len(moth_IDs_gen_num_non_greater_one) == 0:
+            return True
+
+        category = 'mothers whose generation number is < 1'
+        txt = html_utils.paragraph(
+            f'At frame n. {frame_i+1} '
+            'the following mother cells have generation number < 1:'
+            f'<br><br>{moth_IDs_gen_num_non_greater_one}'
+        )
+        self.sigWarning.emit(txt, category)
+        return False
+    
+    def _check_buds_G1(self, checker, frame_i):
+        buds_G1 = (
+            checker.get_buds_G1()
+        )
+        if len(buds_G1) == 0:
+            return True
+
+        category = 'buds in G1'
+        txt = html_utils.paragraph(
+            f'At frame n. {frame_i+1} '
+            'the following bud IDs are in G1 (buds must be in S):'
+            f'<br><br>{buds_G1}'
+        )
+        self.sigWarning.emit(txt, category)
+        return False
+    
+    def _check_cell_S_rel_ID_zero(self, checker, frame_i):
+        cell_S_rel_ID_zero = (
+            checker.get_cell_S_rel_ID_zero()
+        )
+        if len(cell_S_rel_ID_zero) == 0:
+            return True
+
+        category = 'buds in G1'
+        txt = html_utils.paragraph(
+            f'At frame n. {frame_i+1} '
+            'the following cell IDs in S phase do not have '
+            '<code>relative_ID > 0</code>:'
+            f'<br><br>{cell_S_rel_ID_zero}'
+        )
+        self.sigWarning.emit(txt, category)
+        return False
+    
+    def _check_ID_rel_ID_mismatches(self, checker, frame_i):
+        ID_rel_ID_mismatches = (
+            checker.get_ID_rel_ID_mismatches()
+        )
+        if len(ID_rel_ID_mismatches) == 0:
+            return True
+
+        items = [
+            f'Cell ID {ID} has relative ID = {relID}, '
+            f'while cell ID {relID} has relative ID = {relID_of_relID}'
+            for ID, relID, relID_of_relID in ID_rel_ID_mismatches
+        ]
+        category = '`ID-relative_ID` mismatches'
+        txt = html_utils.paragraph(
+            f'At frame n. {frame_i+1} '
+            'there are the following `ID-relative_ID` mismatches:'
+            f'{html_utils.to_list(items)}'
+        )
+        self.sigWarning.emit(txt, category)
+        return False
+    
+    def check(self, posData):    
         self.isChecking = True
         checkpoints = (
             '_check_equality_num_mothers_buds_in_S',
             '_check_mothers_multiple_buds',
+            '_check_buds_gen_num_zero',
+            '_check_mothers_gen_num_greater_one',
+            '_check_buds_G1',
+            '_check_cell_S_rel_ID_zero',
+            '_check_ID_rel_ID_mismatches'
         )
         cca_dfs = []
         keys = []
@@ -4273,13 +4363,7 @@ class CcaIntegrityCheckerWorker(QObject):
                         f'({len(self.dataQ)})...'
                     )
                 data = self.dataQ.pop()
-                try:
-                    self.check(data)
-                except Exception as e:
-                    error = traceback.format_exc()
-                    print('*'*40)
-                    self.logger.log(error)
-                    print('='*40)
+                self.check(data)
                 if len(self.dataQ) == 0:
                     self.sigDone.emit()
             else:
