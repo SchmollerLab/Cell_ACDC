@@ -1512,6 +1512,7 @@ class trackingWorker(QObject):
         trackerInputImage = None
         self.track_params['signals'] = self.signals
         if 'image' in self.track_params:
+            trackerInputImage = self.track_params.pop('image')
             start_frame_i = self.mainWin.start_n-1
             stop_frame_n = self.mainWin.stop_n
 
