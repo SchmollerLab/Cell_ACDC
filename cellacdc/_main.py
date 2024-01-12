@@ -22,7 +22,6 @@ from qtpy.QtGui import (
     QPalette
 )
 import qtpy.compat
-from torch import exp_ 
 
 from . import (
     dataPrep, segm, gui, dataStruct, load, help, myutils,

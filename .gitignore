@@ -61,6 +61,7 @@ cellacdc/java
 cellacdc/javabridge_cp37
 cellacdc/javabridge_cp38
 cellacdc/javabridge_linux
+tables/paper_plot_data.zip
 instructions/
 benchmarks/
 .vscode/
@@ -177,6 +178,9 @@ instance/
 
 # Sphinx documentation
 docs/_build/
+docs/build/
+cellacdc/docs/_build/
+cellacdc/docs/build/
 
 # PyBuilder
 target/

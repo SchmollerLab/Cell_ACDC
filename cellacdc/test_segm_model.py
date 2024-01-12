@@ -20,13 +20,14 @@ except Exception as e:
 
 gdrive_path = myutils.get_gdrive_path()
 
-FRAME_I = 0 # 300
+FRAME_I = None # 0 # 300
 # test_data = data.Cdc42TimeLapseData()
 # # image_data = test_data.image_data()
 # image_data = test_data.cdc42_data()
 
-# test_data = data.pomBseenDualChannelData()
-test_data = data.BABYtestData()
+test_data = data.pomBseenDualChannelData()
+# test_data = data.BABYtestData()
+
 image_data = test_data.image_data()
 # segm_data = test_data.segm_data()
 images_path = test_data.images_path
@@ -119,8 +120,6 @@ lab = core.segm_model_segment(model, img, win.model_kwargs, frame_i=FRAME_I)
 if model_name == 'YeastMate':
     cca_df = model.predictCcaState(img)
     print(cca_df)
-
-import pdb; pdb.set_trace()
 
 from cellacdc.plot import imshow
 imshow(img, lab)

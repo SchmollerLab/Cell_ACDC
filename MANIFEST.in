@@ -21,6 +21,7 @@ exclude cellacdc/temp/settings.csv
 exclude cellacdc/utils/deprecated
 
 prune cellacdc/docs/source/images
+prune .github
 
 exclude cellacdc/models/YeastMate/detectron2
 exclude cellacdc/models/YeastMate/pycocotools

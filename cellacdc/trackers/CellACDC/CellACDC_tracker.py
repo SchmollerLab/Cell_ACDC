@@ -69,21 +69,81 @@ def assign(IoA_matrix, IDs_curr_untracked, IDs_prev, IoA_thresh=0.4, aggr_track=
 
     return old_IDs, tracked_IDs
 
+def log_debugging(what, **kwargs):
+    if not DEBUG:
+        return
+    
+    if what == 'start':
+        printl('----------------START INDEX ASSIGNMENT----------------')
+        printl(
+            f'Current IDs: {kwargs["IDs_curr_untracked"]}\n'
+            f'Previous IDs: {kwargs["old_IDs"]}'
+        )
+    if what == 'assign_unique':
+        txt = (f"""
+Assign new IDs uniquely = {kwargs['assign_unique_new_IDs']}
+""")
+        printl(txt)
+    elif what == 'new_untracked_and_assign_unique':
+        new_untracked_IDs = kwargs['new_untracked_IDs']
+        new_tracked_IDs = kwargs['new_tracked_IDs']
+        txt = (f"""
+Current IDs: {kwargs['IDs_curr_untracked']}
+Previous IDs: {kwargs['old_IDs']}
+New objects that get a new big ID: {new_untracked_IDs}
+New unique IDs for the new objects: {new_tracked_IDs}
+""")
+        printl(txt)
+        txt = ''
+        for _ID, replacingID in zip(new_untracked_IDs, new_tracked_IDs):
+            txt = f'{txt}{_ID} --> {replacingID}\n'
+        printl(txt)
+    elif what == 'new_untracked_and_tracked':
+        new_untracked_IDs = kwargs['new_untracked_IDs']
+        new_tracked_IDs = kwargs['new_tracked_IDs']
+        new_IDs_in_trackedIDs = kwargs['new_IDs_in_trackedIDs']
+        txt = (f"""
+New tracked IDs that already exists: {new_IDs_in_trackedIDs}
+Previous IDs: {kwargs['old_IDs']}
+New objects that get a new big ID: {new_untracked_IDs}
+New unique IDs for the new objects: {new_tracked_IDs}
+""")
+        printl(txt)
+        txt = ''
+        for _ID, replacingID in zip(new_IDs_in_trackedIDs, new_tracked_IDs):
+            txt = f'{txt}{_ID} --> {replacingID}\n'
+        printl(txt)
+    elif what == 'tracked':
+        old_IDs = kwargs['old_IDs']
+        tracked_IDs = kwargs['tracked_IDs']
+        txt = (f"""
+Old IDs to be tracked: {old_IDs}
+New IDs replacing old IDs: {tracked_IDs}
+""")
+        printl(txt)
+        txt = ''
+        for _ID, replacingID in zip(old_IDs, tracked_IDs):
+            txt = f'{txt}{_ID} --> {replacingID}\n'
+        printl(txt)
+        
 def indexAssignment(
         old_IDs, tracked_IDs, IDs_curr_untracked, lab, rp, uniqueID,
         remove_untracked=False, assign_unique_new_IDs=True, return_assignments=False
     ):
-    if DEBUG:
-        printl('%'*30)
+    log_debugging(
+        'start', 
+        IDs_curr_untracked=IDs_curr_untracked,
+        old_IDs=old_IDs
+    )
+    
     # Replace untracked IDs with tracked IDs and new IDs with increasing num
     new_untracked_IDs = [ID for ID in IDs_curr_untracked if ID not in old_IDs]
     tracked_lab = lab
     assignments = {}
-    if DEBUG:
-        txt = (f"""
-Assign new IDs uniquely = {assign_unique_new_IDs}
-""")
-        printl(txt)
+    log_debugging(
+        'assign_unique', 
+        assign_unique_new_IDs=assign_unique_new_IDs
+    )
     if new_untracked_IDs and assign_unique_new_IDs:
         # Relabel new untracked IDs (i.e., new cells) unique IDs
         if remove_untracked:
@@ -96,52 +156,43 @@ Assign new IDs uniquely = {assign_unique_new_IDs}
             tracked_lab, rp, new_untracked_IDs, new_tracked_IDs
         )
         assignments = dict(zip(new_untracked_IDs, new_tracked_IDs))
-        if DEBUG:
-            txt = (f"""
-Current IDs: {IDs_curr_untracked}
-Previous IDs: {old_IDs}
-New objects that get a new big ID: {new_untracked_IDs}
-New unique IDs for the new objects: {new_tracked_IDs}
-""")
-            printl(txt)
-            txt = ''
-            for _ID, replacingID in zip(new_untracked_IDs, new_tracked_IDs):
-                txt = f'{txt}{_ID} --> {replacingID}\n'
-            printl(txt)
+        log_debugging(
+            'new_untracked_and_assign_unique', 
+            IDs_curr_untracked=IDs_curr_untracked,
+            old_IDs=old_IDs,
+            new_untracked_IDs=new_untracked_IDs,
+            new_tracked_IDs=new_tracked_IDs
+        )
     elif new_untracked_IDs and tracked_IDs:
         # If we don't replace unique new IDs we check that tracked IDs are
         # not already existing to avoid duplicates
-        new_IDs_in_trackedIDs = [ID for ID in new_untracked_IDs if ID in tracked_IDs]
-        new_tracked_IDs = [uniqueID+i for i in range(len(new_IDs_in_trackedIDs))]
+        new_IDs_in_trackedIDs = [
+            ID for ID in new_untracked_IDs if ID in tracked_IDs
+        ]
+        new_tracked_IDs = [
+            uniqueID+i for i in range(len(new_IDs_in_trackedIDs))
+        ]
         core.lab_replace_values(
             tracked_lab, rp, new_IDs_in_trackedIDs, new_tracked_IDs
         )
-        if DEBUG:
-            txt = (f"""
-New tracked IDs that already exists: {new_IDs_in_trackedIDs}
-Previous IDs: {old_IDs}
-New objects that get a new big ID: {new_untracked_IDs}
-New unique IDs for the new objects: {new_tracked_IDs}
-""")
-            printl(txt)
-            txt = ''
-            for _ID, replacingID in zip(new_IDs_in_trackedIDs, new_tracked_IDs):
-                txt = f'{txt}{_ID} --> {replacingID}\n'
-            printl(txt)
+        log_debugging(
+            'new_untracked_and_tracked', 
+            new_IDs_in_trackedIDs=new_IDs_in_trackedIDs,
+            old_IDs=old_IDs,
+            new_untracked_IDs=new_untracked_IDs,
+            new_tracked_IDs=new_tracked_IDs
+        )
     if tracked_IDs:
         core.lab_replace_values(
             tracked_lab, rp, old_IDs, tracked_IDs, in_place=True
         )
-        if DEBUG:
-            txt = (f"""
-Old IDs to be tracked: {old_IDs}
-New IDs replacing old IDs: {tracked_IDs}
-""")
-            printl(txt)
-            txt = ''
-            for _ID, replacingID in zip(old_IDs, tracked_IDs):
-                txt = f'{txt}{_ID} --> {replacingID}\n'
-            printl(txt)
+        log_debugging(
+            'tracked', 
+            tracked_IDs=tracked_IDs,
+            old_IDs=old_IDs,
+            new_untracked_IDs=new_untracked_IDs,
+            new_tracked_IDs=new_tracked_IDs
+        )
 
     if not return_assignments:
         return tracked_lab
@@ -174,7 +225,7 @@ def track_frame(
         ) + 1
     elif uniqueID is None:
         # Compute starting unique ID
-        setBrushID_func(useCurrentLab=False)
+        setBrushID_func(useCurrentLab=True)
         uniqueID = posData.brushID+1
 
     if not return_all:
