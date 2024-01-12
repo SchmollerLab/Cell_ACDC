@@ -1,14 +1,9 @@
 import os
-import traceback
 import sys
 import numpy as np
-
-import matplotlib.pyplot as plt
-
 import skimage.measure
-
 from cellacdc import core, myutils, widgets, load, html_utils
-from cellacdc import data
+from cellacdc import data, data_path
 
 try:
     import pytest
@@ -22,21 +17,30 @@ from cellacdc._run import _setup_app
 app, splashScreen = _setup_app(splashscreen=True)  
 splashScreen.close()
 
-channel_name = 'Phase Contrast'
+path = (
+    os.path.join(data_path, 'test_symm_div_acdc_tracker', 'Images', 'bknapp_Movie_S1.tif')
+)
+
+channel_name = 'bknapp_Movie_S1'
 end_filename_segm = 'segm'# 'segm_test'
 START_FRAME = 0 
-STOP_FRAME = 5
-PLOT_FRAME = 2
-SAVE = False
+STOP_FRAME = 499
+PLOT_FRAME = 499
+SAVE = True
 SCRUMBLE_IDs = False
 
-test_data = data.BABYtestData()
+# test_data = data.BABYtestData()
+# posData = test_data.posData()
+
+test_data = data.FissionYeastAnnotated()
 posData = test_data.posData()
+posData.acdc_output_csv_path = test_data.acdc_df_path
+
 posData.loadImgData()
 posData.loadOtherFiles(
     load_segm_data=True, 
     load_metadata=True,
-    end_filename_segm=end_filename_segm
+    # end_filename_segm=end_filename_segm
 )
 
 trackers = myutils.get_list_of_trackers()
@@ -97,6 +101,8 @@ tracked_stack = core.tracker_track(
     logger_func=print
 )
 
+posData.fromTrackerToAcdcDf(tracker, tracked_stack, save=True)
+
 if SAVE:
     try:
         np.savez_compressed(
@@ -108,19 +114,22 @@ if SAVE:
 
 from cellacdc.plot import imshow
 
-images = [
-    lab_stack[PLOT_FRAME-START_FRAME-1], 
-    lab_stack[PLOT_FRAME-START_FRAME],
-    tracked_stack[PLOT_FRAME-START_FRAME-1], 
-    tracked_stack[PLOT_FRAME-START_FRAME]
-]
-titles = [
-    f'Untracked labels at frame {PLOT_FRAME}',
-    f'Untracked labels at frame {PLOT_FRAME+1}',
-    f'TRACKED labels at frame {PLOT_FRAME}',
-    f'TRACKED labels at frame {PLOT_FRAME+1}',
-]
+# images = [
+#     lab_stack[PLOT_FRAME-START_FRAME-1], 
+#     lab_stack[PLOT_FRAME-START_FRAME],
+#     tracked_stack[PLOT_FRAME-START_FRAME-1], 
+#     tracked_stack[PLOT_FRAME-START_FRAME]
+# ]
+# titles = [
+#     f'Untracked labels at frame {PLOT_FRAME}',
+#     f'Untracked labels at frame {PLOT_FRAME+1}',
+#     f'TRACKED labels at frame {PLOT_FRAME}',
+#     f'TRACKED labels at frame {PLOT_FRAME+1}',
+# ]
+
+
 imshow(
-    *images, axis_titles=titles,
-    max_ncols=2
-)
+    posData.loadChannelData(''),
+    tracked_stack,
+    lab_stack,
+    annotate_labels_idxs=[1, 2])

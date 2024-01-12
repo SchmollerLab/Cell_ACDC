@@ -6317,6 +6317,7 @@ class ScrollBarWithNumericControl(QWidget):
 
         self.spinbox.valueChanged.connect(self.spinboxValueChanged)
         self.scrollbar.valueChanged.connect(self.scrollbarValueChanged)
+
         if add_max_proj_button:
             self.maxProjCheckbox.toggled.connect(self.maxProjToggled)
     
@@ -6419,7 +6420,10 @@ class ImShow(QBaseWindow):
     def __init__(self, parent=None, link_scrollbars=True):
         super().__init__(parent=parent)
         self._linkedScrollbars = link_scrollbars
+
         self._autoLevels = True
+
+        self.textItems = []
     
     def _getGraphicsScrollbar(self, idx, image, imageItem, maximum):
         proxy = QGraphicsProxyWidget(imageItem)
@@ -6442,6 +6446,10 @@ class ImShow(QBaseWindow):
         img = self._get2Dimg(imageItem, scrollbar.image)
         imageItem.setImage(img, autoLevels=self._autoLevels)
         self.setPointsVisible(imageItem)
+
+        self.updateIDs()
+
+
         if not self._linkedScrollbars:
             return
         if len(self.ImageItems) == 1:
@@ -6753,6 +6761,41 @@ class ImShow(QBaseWindow):
         print(point_data)
         print('')
         print('*'*60)
+
+    def annotateObjectIDs(self, annotate_labels_idxs=None, init=False):
+        if init:
+            self.annotate_labels_idxs = annotate_labels_idxs
+            self.textItems = [{} for _ in self.PlotItems] 
+        if self.annotate_labels_idxs is None:
+            return
+        for i, plotItem in enumerate(self.PlotItems):
+            if i not in self.annotate_labels_idxs:
+                continue
+            plotTextItems = self.textItems[i]
+            imageItem = self.ImageItems[i]
+            lab = imageItem.image
+            rp = skimage.measure.regionprops(lab)
+            for obj in rp:
+                textItem = plotTextItems.get(obj.label)
+                yc, xc = obj.centroid[-2:]
+                if textItem is None:
+                    textItem = pg.TextItem(text='', anchor=(0.5,0.5), color='r')
+                    plotItem.addItem(textItem)
+                    plotTextItems[obj.label] = textItem
+                textItem.setText(str(obj.label))
+                textItem.setPos(xc, yc)
+
+    def clearLabels(self):
+        for textItems in self.textItems:
+            for textItem in textItems.values():
+                textItem.setText('') 
+
+    def updateIDs(self):
+        self.clearLabels()
+        try:
+            self.annotateObjectIDs(annotate_labels_idxs=self.annotate_labels_idxs)
+        except Exception as err:
+            pass
 
     def show(self, block=False, screenToWindowRatio=None):
         super().show(block=block)

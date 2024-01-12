@@ -34,7 +34,7 @@ def calc_IoA_matrix(lab, prev_lab, rp, prev_rp, IDs_curr_untracked=None):
                 IoA_matrix[i, j] = IoA
     return IoA_matrix, IDs_curr_untracked, IDs_prev
 
-def assign(IoA_matrix, IDs_curr_untracked, IDs_prev, IoA_thresh=0.4):
+def assign(IoA_matrix, IDs_curr_untracked, IDs_prev, IoA_thresh=0.4, aggr_track=None, IoA_thresh_aggr=0.4, Record_lineage=False, IoA_thresh_daughter=None, Min_daughter=None, Max_daughter=None):
     # Determine max IoA between IDs and assign tracked ID if IoA >= IoA_thresh
     if IoA_matrix.size == 0:
         return [], []
@@ -43,12 +43,21 @@ def assign(IoA_matrix, IDs_curr_untracked, IDs_prev, IoA_thresh=0.4):
     counts_dict = dict(zip(unique_col_idx, counts))
     tracked_IDs = []
     old_IDs = []
+
     if DEBUG:
         printl(f'IDs in previous frame: {IDs_prev}')
+
     for i, j in enumerate(max_IoA_col_idx):
+        if aggr_track:
+            if i in aggr_track:
+                IoA_thresh_temp = IoA_thresh_aggr
+            else:
+                IoA_thresh_temp = IoA_thresh
+        else:
+            IoA_thresh_temp = IoA_thresh
         max_IoU = IoA_matrix[i,j]
         count = counts_dict[j]
-        if max_IoU >= IoA_thresh:
+        if max_IoU >= IoA_thresh_temp:
             tracked_ID = IDs_prev[j]
             if count == 1:
                 old_ID = IDs_curr_untracked[i]
@@ -57,6 +66,7 @@ def assign(IoA_matrix, IDs_curr_untracked, IDs_prev, IoA_thresh=0.4):
                 old_ID = IDs_curr_untracked[old_ID_idx]
             tracked_IDs.append(tracked_ID)
             old_IDs.append(old_ID)
+
     return old_IDs, tracked_IDs
 
 def log_debugging(what, **kwargs):
@@ -118,7 +128,7 @@ New IDs replacing old IDs: {tracked_IDs}
         
 def indexAssignment(
         old_IDs, tracked_IDs, IDs_curr_untracked, lab, rp, uniqueID,
-        remove_untracked=False, assign_unique_new_IDs=True
+        remove_untracked=False, assign_unique_new_IDs=True, return_assignments=False
     ):
     log_debugging(
         'start', 
@@ -129,6 +139,7 @@ def indexAssignment(
     # Replace untracked IDs with tracked IDs and new IDs with increasing num
     new_untracked_IDs = [ID for ID in IDs_curr_untracked if ID not in old_IDs]
     tracked_lab = lab
+    assignments = {}
     log_debugging(
         'assign_unique', 
         assign_unique_new_IDs=assign_unique_new_IDs
@@ -144,6 +155,7 @@ def indexAssignment(
         core.lab_replace_values(
             tracked_lab, rp, new_untracked_IDs, new_tracked_IDs
         )
+        assignments = dict(zip(new_untracked_IDs, new_tracked_IDs))
         log_debugging(
             'new_untracked_and_assign_unique', 
             IDs_curr_untracked=IDs_curr_untracked,
@@ -163,42 +175,48 @@ def indexAssignment(
         core.lab_replace_values(
             tracked_lab, rp, new_IDs_in_trackedIDs, new_tracked_IDs
         )
-        log_debugging(
-            'new_untracked_and_tracked', 
-            new_IDs_in_trackedIDs=new_IDs_in_trackedIDs,
-            old_IDs=old_IDs,
-            new_untracked_IDs=new_untracked_IDs,
-            new_tracked_IDs=new_tracked_IDs
-        )
+        # log_debugging( #This may have been caused by merging, but new_tracked_IDs is referenced before assignment
+        #     'new_untracked_and_tracked', 
+        #     new_IDs_in_trackedIDs=new_IDs_in_trackedIDs,
+        #     old_IDs=old_IDs,
+        #     new_untracked_IDs=new_untracked_IDs,
+        #     new_tracked_IDs=new_tracked_IDs
+        # )
     if tracked_IDs:
         core.lab_replace_values(
             tracked_lab, rp, old_IDs, tracked_IDs, in_place=True
         )
-        log_debugging(
-            'tracked', 
-            tracked_IDs=tracked_IDs,
-            old_IDs=old_IDs,
-            new_untracked_IDs=new_untracked_IDs,
-            new_tracked_IDs=new_tracked_IDs
-        )
-    return tracked_lab
+        # log_debugging( # same as above
+        #     'tracked', 
+        #     tracked_IDs=tracked_IDs,
+        #     old_IDs=old_IDs,
+        #     new_untracked_IDs=new_untracked_IDs,
+        #     new_tracked_IDs=new_tracked_IDs
+        # )
+
+    if not return_assignments:
+        return tracked_lab
+    else: 
+        return tracked_lab, assignments
 
 def track_frame(
         prev_lab, prev_rp, lab, rp, IDs_curr_untracked=None,
         uniqueID=None, setBrushID_func=None, posData=None,
         assign_unique_new_IDs=True, IoA_thresh=0.4, debug=False,
-        return_all=False
+        return_all=False, aggr_track=None, IoA_matrix=None, IoA_thresh_aggr=None, IDs_prev=None
     ):
     if not np.any(lab):
         # Skip empty frames
         return lab
-    
-    IoA_matrix, IDs_curr_untracked, IDs_prev = calc_IoA_matrix(
-        lab, prev_lab, rp, prev_rp, IDs_curr_untracked=IDs_curr_untracked
-    )
+
+    if IoA_matrix is None:
+        IoA_matrix, IDs_curr_untracked, IDs_prev = calc_IoA_matrix(
+            lab, prev_lab, rp, prev_rp, IDs_curr_untracked=IDs_curr_untracked
+        )
+
     old_IDs, tracked_IDs = assign(
         IoA_matrix, IDs_curr_untracked, IDs_prev,
-        IoA_thresh=IoA_thresh
+        IoA_thresh=IoA_thresh, aggr_track=aggr_track, IoA_thresh_aggr=IoA_thresh_aggr
     )
 
     if posData is None and uniqueID is None:
@@ -210,13 +228,21 @@ def track_frame(
         setBrushID_func(useCurrentLab=True)
         uniqueID = posData.brushID+1
 
-    tracked_lab = indexAssignment(
-        old_IDs, tracked_IDs, IDs_curr_untracked,
-        lab.copy(), rp, uniqueID,
-        assign_unique_new_IDs=assign_unique_new_IDs
-    )
+    if not return_all:
+        tracked_lab = indexAssignment(
+            old_IDs, tracked_IDs, IDs_curr_untracked,
+            lab.copy(), rp, uniqueID,
+            assign_unique_new_IDs=assign_unique_new_IDs
+        )
+    else:
+        tracked_lab, assignments = indexAssignment(
+            old_IDs, tracked_IDs, IDs_curr_untracked,
+            lab.copy(), rp, uniqueID,
+            assign_unique_new_IDs=assign_unique_new_IDs, return_assignments=return_all
+        )
+
     if return_all:
-        return tracked_lab, IoA_matrix
+        return tracked_lab, IoA_matrix, assignments
     else:
         return tracked_lab
 
