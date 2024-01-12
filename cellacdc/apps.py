@@ -8186,34 +8186,56 @@ will be applied (see below).<br><br>
         genNumValues = [var.value() for var in self.genNumSpinBoxes]
         relIDValues = [int(var.currentText()) for var in self.relIDComboBoxes]
         relatValues = [var.currentText() for var in self.relationshipComboBoxes]
-        emergFrameValues = [var.value()-1 if var.value()>0 else -1
-                            for var in self.emergFrameSpinBoxes]
-        divisFrameValues = [var.value()-1 if var.value()>0 else -1
-                            for var in self.divisFrameSpinBoxes]
-        historyValues = [var.isChecked() for var in self.historyKnownCheckBoxes]
+        emergFrameValues = [
+            var.value()-1 if var.value()>0 else -1
+            for var in self.emergFrameSpinBoxes
+        ]
+        divisFrameValues = [
+            var.value()-1 if var.value()>0 else -1
+            for var in self.divisFrameSpinBoxes
+        ]
+        historyValues = [
+            var.isChecked() for var in self.historyKnownCheckBoxes
+        ]
         check_rel = [ID == relID for ID, relID in zip(self.IDs, relIDValues)]
+        
         # Buds in S phase must have 0 as number of cycles
-        check_buds_S = [ccs=='S' and rel_ship=='bud' and not numc==0
-                        for ccs, rel_ship, numc
-                        in zip(ccsValues, relatValues, genNumValues)]
+        check_buds_S = [
+            ccs=='S' and rel_ship=='bud' and not numc==0
+            for ccs, rel_ship, numc
+            in zip(ccsValues, relatValues, genNumValues)
+        ]
+        
         # Mother cells must have at least 1 as number of cycles if history known
-        check_mothers = [rel_ship=='mother' and not numc>=1
-                         if is_history_known else False
-                         for rel_ship, numc, is_history_known
-                         in zip(relatValues, genNumValues, historyValues)]
+        check_mothers = [
+            rel_ship=='mother' and not numc>=1
+            if is_history_known else False
+            for rel_ship, numc, is_history_known
+            in zip(relatValues, genNumValues, historyValues)
+        ]
+        
         # Buds cannot be in G1
-        check_buds_G1 = [ccs=='G1' and rel_ship=='bud'
-                         for ccs, rel_ship
-                         in zip(ccsValues, relatValues)]
+        check_buds_G1 = [
+            ccs=='G1' and rel_ship=='bud' for ccs, rel_ship
+            in zip(ccsValues, relatValues)
+        ]
+        
         # The number of cells in S phase must be half mothers and half buds
-        num_moth_S = len([0 for ccs, rel_ship in zip(ccsValues, relatValues)
-                            if ccs=='S' and rel_ship=='mother'])
-        num_bud_S = len([0 for ccs, rel_ship in zip(ccsValues, relatValues)
-                            if ccs=='S' and rel_ship=='bud'])
+        num_moth_S = len([
+            0 for ccs, rel_ship in zip(ccsValues, relatValues)
+            if ccs=='S' and rel_ship=='mother'
+        ])
+        num_bud_S = len([
+            0 for ccs, rel_ship in zip(ccsValues, relatValues)
+            if ccs=='S' and rel_ship=='bud'
+        ])
+        
         # Cells in S phase cannot have -1 as relative's ID
-        check_relID_S = [ccs=='S' and relID==-1
-                         for ccs, relID
-                         in zip(ccsValues, relIDValues)]
+        check_relID_S = [
+            ccs=='S' and relID==-1
+            for ccs, relID in zip(ccsValues, relIDValues)
+        ]
+        
         # Mother cells with unknown history at emergence is recommended to have
         # generation number = 2 (easier downstream analysis)
         check_unknown_mothers = [
@@ -8222,69 +8244,71 @@ will be applied (see below).<br><br>
             for rel_ship, is_history_known, gen_num, emerg_frame_i
             in zip(relatValues, historyValues, genNumValues, emergFrameValues)
         ]
-        if any(check_rel):
-            QMessageBox().critical(self,
-                    'Cell ID = Relative\'s ID', 'Some cells are '
-                    'mother or bud of itself. Make sure that the Relative\'s ID'
-                    ' is different from the Cell ID!',
-                    QMessageBox.StandardButton.Ok)
-            return None
-        elif any(check_unknown_mothers):
-            txt = html_utils.paragraph("""
-                We recommend to set <b>generation number to 2 for mother cells 
-                with unknown history<br>
-                that just appeared</b> (i.e., first cell cycle in the video).<br><br>
-                While it is allowed to insert any number, knowing that these 
-                cells start at generation number 2<br>
-                <b>makes downstream analysis easier</b>.<br><br>
-                What do you want to do?
-            """)
-            correctButtonText = ' Fine, let me correct. '
-            keepButtonText = ' Keep the generation number that I chose. '
-            buttonsTexts = (correctButtonText, keepButtonText)
-            msg = widgets.myMessageBox(wrapText=False, showCentered=False)
-            msg.warning(self, 'Recommendation', txt, buttonsTexts=buttonsTexts)
-            if msg.cancel or msg.clickedButton == correctButtonText:
-                return None
-        elif any(check_buds_S):
-            QMessageBox().critical(self,
-                'Bud in S/G2/M not in 0 Generation number',
-                'Some buds '
-                'in S phase do not have 0 as Generation number!\n'
-                'Buds in S phase must have 0 as "Generation number"',
-                QMessageBox.StandardButton.Ok)
-            return None
-        elif any(check_mothers):
-            QMessageBox().critical(self,
-                'Mother not in >=1 Generation number',
-                'Some mother cells do not have >=1 as "Generation number"!\n'
-                'Mothers MUST have >1 "Generation number"',
-                QMessageBox.StandardButton.Ok)
-            return None
-        elif any(check_buds_G1):
-            QMessageBox().critical(self,
-                'Buds in G1!',
-                'Some buds are in G1 phase!\n'
-                'Buds MUST be in S/G2/M phase',
-                QMessageBox.StandardButton.Ok)
-            return None
-        elif num_moth_S != num_bud_S:
-            QMessageBox().critical(self,
-                'Number of mothers-buds mismatch!',
-                f'There are {num_moth_S} mother cells in "S/G2/M" phase,'
-                f'but there are {num_bud_S} bud cells.\n\n'
-                'The number of mothers and buds in "S/G2/M" '
-                'phase must be equal!',
-                QMessageBox.StandardButton.Ok)
-            return None
-        elif any(check_relID_S):
-            QMessageBox().critical(self,
-                'Relative\'s ID of cells in S/G2/M = -1',
-                'Some cells are in "S/G2/M" phase but have -1 as Relative\'s ID!\n'
-                'Cells in "S/G2/M" phase must have an existing '
-                'ID as Relative\'s ID!',
-                QMessageBox.StandardButton.Ok)
-            return None
+        
+        # if any(check_rel):
+        #     msg = widgets.myMessageBox(wrapText=False)
+        #     txt = html_utils.paragraph(""" 
+        #         Some cells are mother or bud of itself!<br><br>
+        #         Make sure that the relative ID is different from the Cell ID.
+        #     """)
+        #     msg.critical(self, 'Some IDs are equal to relative ID', txt)
+        #     return None
+        # elif any(check_unknown_mothers):
+        #     txt = html_utils.paragraph("""
+        #         We recommend to set <b>generation number to 2 for mother cells 
+        #         with unknown history<br>
+        #         that just appeared</b> (i.e., first cell cycle in the video).<br><br>
+        #         While it is allowed to insert any number, knowing that these 
+        #         cells start at generation number 2<br>
+        #         <b>makes downstream analysis easier</b>.<br><br>
+        #         What do you want to do?
+        #     """)
+        #     correctButtonText = ' Fine, let me correct. '
+        #     keepButtonText = ' Keep the generation number that I chose. '
+        #     buttonsTexts = (correctButtonText, keepButtonText)
+        #     msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        #     msg.warning(self, 'Recommendation', txt, buttonsTexts=buttonsTexts)
+        #     if msg.cancel or msg.clickedButton == correctButtonText:
+        #         return None
+        # elif any(check_buds_S):
+        #     QMessageBox().critical(self,
+        #         'Bud in S/G2/M not in 0 Generation number',
+        #         'Some buds '
+        #         'in S phase do not have 0 as Generation number!\n'
+        #         'Buds in S phase must have 0 as "Generation number"',
+        #         QMessageBox.StandardButton.Ok)
+        #     return None
+        # elif any(check_mothers):
+        #     QMessageBox().critical(self,
+        #         'Mother not in >=1 Generation number',
+        #         'Some mother cells do not have >=1 as "Generation number"!\n'
+        #         'Mothers MUST have >1 "Generation number"',
+        #         QMessageBox.StandardButton.Ok)
+        #     return None
+        # elif any(check_buds_G1):
+        #     QMessageBox().critical(self,
+        #         'Buds in G1!',
+        #         'Some buds are in G1 phase!\n'
+        #         'Buds MUST be in S/G2/M phase',
+        #         QMessageBox.StandardButton.Ok)
+        #     return None
+        # elif num_moth_S != num_bud_S:
+        #     QMessageBox().critical(self,
+        #         'Number of mothers-buds mismatch!',
+        #         f'There are {num_moth_S} mother cells in "S/G2/M" phase,'
+        #         f'but there are {num_bud_S} bud cells.\n\n'
+        #         'The number of mothers and buds in "S/G2/M" '
+        #         'phase must be equal!',
+        #         QMessageBox.StandardButton.Ok)
+        #     return None
+        # elif any(check_relID_S):
+        #     QMessageBox().critical(self,
+        #         'Relative\'s ID of cells in S/G2/M = -1',
+        #         'Some cells are in "S/G2/M" phase but have -1 as Relative\'s ID!\n'
+        #         'Cells in "S/G2/M" phase must have an existing '
+        #         'ID as Relative\'s ID!',
+        #         QMessageBox.StandardButton.Ok)
+        #     return None
         
         corrected_assignment = self.inputCca_df['corrected_assignment']
         cca_df = pd.DataFrame({

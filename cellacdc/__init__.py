@@ -238,6 +238,8 @@ base_cca_df = {
     'will_divide': 0
 }
 
+cca_df_colnames = list(base_cca_df.keys())
+
 lineage_tree_cols = [
     'Cell_ID_tree',
     'generation_num_tree',

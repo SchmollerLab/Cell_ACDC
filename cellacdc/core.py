@@ -2300,3 +2300,14 @@ def relabel_sequential(segm_data, is_timelapse=False):
     else:
         relabelled, oldIDs, newIDs = _relabel_sequential(segm_data)
     return relabelled, oldIDs, newIDs
+
+class CcaIntegrityChecker:
+    def __init__(self, cca_df):
+        self.cca_df = cca_df
+        self.cca_df_S = cca_df[cca_df['cell_cycle_stage'] == 'S']
+
+    def get_num_mothers_and_buds_in_S(self):
+        cca_df_S = self.cca_df_S
+        num_buds = len(cca_df_S['relationship'] == 'bud')
+        num_mothers = len(cca_df_S['relationship'] == 'mother')
+        return num_mothers, num_buds

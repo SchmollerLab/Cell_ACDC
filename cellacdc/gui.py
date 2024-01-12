@@ -1923,6 +1923,22 @@ class guiWin(QMainWindow):
     def ccaCheckerWorkerDone(self):
         self.setStatusBarLabel(log=False)
     
+    def warnCcaIntegrity(self, txt, category):
+        self.logger.info(f'[WARNING]: {html_utils.to_plain_text(txt)}')
+        
+        if 'disable_all' in self.disabled_cca_warnings:
+            return
+        
+        if category in self.disabled_cca_warnings:
+            return
+        
+        if txt in self.disabled_cca_warnings:
+            return
+        
+        disabled_warning = _warnings.warn_cca_integrity(txt, category)
+        if disabled_warning:
+            self.disabled_cca_warnings.add(disabled_warning)
+        
     def autoSaveWorkerClosed(self, worker):
         if self.autoSaveActiveWorkers:
             self.logger.info('Autosaving worker closed.')
@@ -15470,7 +15486,7 @@ class guiWin(QMainWindow):
         if self.imgCmapName != 'grey':
             # To ensure mapping to colors we need to normalize image
             self.normalizeByMaxAction.setChecked(True)
-
+    
     def initGlobalAttr(self):
         self.setOverlayColors()
 
@@ -15528,6 +15544,8 @@ class guiWin(QMainWindow):
         self.UserEnforced_Tracking = False
 
         self.ax1BrushHoverID = 0
+        
+        self.disabled_cca_warnings = set()
 
         self.last_pos_i = -1
         self.last_frame_i = -1
@@ -21651,6 +21669,7 @@ class guiWin(QMainWindow):
         worker.sigDone.connect(self.ccaCheckerWorkerDone)
         worker.progress.connect(self.workerProgress)
         worker.finished.connect(self.ccaCheckerWorkerClosed)
+        worker.sigWarning.connect(self.warnCcaIntegrity)
         
         ccaCheckerThread.started.connect(worker.run)
         ccaCheckerThread.start()

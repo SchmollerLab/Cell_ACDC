@@ -34,6 +34,7 @@ from . import (
 from . import transformation
 from .path import copy_or_move_tree
 from . import features
+from . import cca_df_colnames
 
 DEBUG = False
 
@@ -4100,6 +4101,7 @@ class CcaIntegrityCheckerWorker(QObject):
     critical = Signal(object)
     progress = Signal(str, object)
     sigDone = Signal()
+    sigWarning = Signal(str, str)
     
     def __init__(self, mutex, waitCond):
         QObject.__init__(self)
@@ -4149,10 +4151,42 @@ class CcaIntegrityCheckerWorker(QObject):
             del data
         self._stop()
     
+    def _check_equality_num_mothers_buds_in_S(self, checker, frame_i):
+        num_moth_S, num_buds = checker.get_num_mothers_and_buds_in_S()
+        if num_moth_S == num_buds:
+            return True
+        
+        category = 'number of buds different from number of mothers in S phase'
+        ul_items = [
+            f'Number of buds = {num_buds}', 
+            f'Number of mothers in S phase = {num_moth_S}'
+        ]
+        txt = html_utils.paragraph(
+            f'At frame n. {frame_i+1} the number of buds and number of '
+            'mother cells in S phase are different!'
+            f'{html_utils.to_list(ul_items)}'
+        )
+        self.sigWarning.emit(txt, category)
+        return False
+    
     def check(self, posData):
         self.isChecking = True
         for frame_i, data_dict in enumerate(posData.allData_li):
             if self.abortChecking:
+                break
+            
+            lab = data_dict['labels']
+            if lab is None:
+                break
+            
+            acdc_df = data_dict['acdc_df']
+            cca_df = acdc_df[cca_df_colnames]
+            checker = core.CcaIntegrityChecker(cca_df)
+            
+            proceed = self._check_equality_num_mothers_buds_in_S(
+                checker, frame_i
+            )
+            if not proceed:
                 break
         
         self.abortChecking = False

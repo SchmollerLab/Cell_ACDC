@@ -59,3 +59,46 @@ def warn_image_overflow_dtype(input_dtype, max_value, inferred_dtype):
         f'from the max value of the image of {max_value}.', 
         DataTypeWarning
     )
+
+def warn_cca_integrity(self, txt, category):
+    from . import html_utils, widgets
+    from qtpy.QtWidgets import QCheckBox
+    
+    preamble = html_utils.paragraph(
+        'WARNING: <b>integrity of cell cycle annotations</b> '
+        'might be <b>compromised</b>:'
+    )
+    
+    msg_text = f'{preamble}{txt}'
+    
+    stopSpecificMessageCheckbox = QCheckBox(
+        'Stop warning with this specific message'
+    )
+    stopCategoryCheckbox = QCheckBox(
+        f'Stop warning about "{category}"'
+    )
+    disableAllWarningsCheckbox = QCheckBox(
+        'Disable all warnings'
+    )
+    
+    checkboxes = (
+        stopSpecificMessageCheckbox, 
+        stopCategoryCheckbox, 
+        disableAllWarningsCheckbox
+    )
+    
+    msg = widgets.myMessageBox(wrapText=False)
+    msg.warning(
+        self, 'Annotations integrity warning', msg_text, 
+        widgets=checkboxes
+    )
+    if stopSpecificMessageCheckbox.isChecked():
+        return txt
+    
+    if stopCategoryCheckbox.isChecked():
+        return category
+    
+    if disableAllWarningsCheckbox.isChecked():
+        return 'disable_all'
+    
+    return ''
