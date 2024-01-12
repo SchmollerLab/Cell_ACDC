@@ -11,7 +11,7 @@ def reorg_daughter_cells(lineage_tree_frame, max_daughter):
     new_columns = [f'sister_ID_tree_{i+1}' for i in range(max_daughter-1)]
     sister_columns = lineage_tree_frame['sister_ID_tree'].apply(pd.Series) 
     lineage_tree_frame[new_columns] = sister_columns
-    lineage_tree_frame['sister_ID_tree'] = lineage_tree_frame['sister_ID_tree'].str[0].astype('Int64')
+    lineage_tree_frame['sister_ID_tree'] = sister_columns[0]
 
     return lineage_tree_frame
 
@@ -47,17 +47,6 @@ def added_lineage_tree_to_cca_df(added_lineage_tree):
     cca_df['root_ID_tree'] = [row[4] for row in added_lineage_tree]
     cca_df['sister_ID_tree'] = [row[5] for row in added_lineage_tree]
     return cca_df
-
-def track_frame(previous_frame_labels, current_frame_labels, IoA_thresh_daughter, min_daughter, max_daughter, IoA_thresh, IoA_thresh_aggressive):
-    if not np.any(current_frame_labels):
-        # Skip empty frames
-        return current_frame_labels
-
-    segm_video = [previous_frame_labels, current_frame_labels]
-    tracker = normal_division_tracker(segm_video, IoA_thresh_daughter, min_daughter, max_daughter, IoA_thresh, IoA_thresh_aggressive)
-    tracker.track_frame(1)
-    tracked_video = tracker.get_tracked_video
-    return tracked_video[-1]
 
 def create_lineage_tree_video(segm_video, IoA_thresh_daughter, min_daughter, max_daughter):
     tree = normal_division_lineage_tree(segm_video[0])
@@ -139,6 +128,7 @@ class normal_division_lineage_tree:
             added_lineage_tree.append((-1, label, -1, -2, label, [-1] * (max_daughter-1)))
 
         cca_df = added_lineage_tree_to_cca_df(added_lineage_tree)
+        cca_df = reorg_daughter_cells(cca_df, max_daughter)
         self.lineage_list = [cca_df]
 
 
@@ -173,6 +163,7 @@ class normal_division_lineage_tree:
 
         cca_df = added_lineage_tree_to_cca_df(added_lineage_tree)
         cca_df = pd.concat([self.lineage_list[-1], cca_df], axis=0)
+        cca_df = reorg_daughter_cells(cca_df, self.max_daughter)
         self.lineage_list.append(cca_df)
 
 class tracker:
@@ -219,6 +210,17 @@ class tracker:
         tracked_video = tracker.tracked_video            
         pbar.close()
         return tracked_video
+    
+    def track_frame(previous_frame_labels, current_frame_labels, IoA_thresh_daughter, min_daughter, max_daughter, IoA_thresh, IoA_thresh_aggressive):
+        if not np.any(current_frame_labels):
+            # Skip empty frames
+            return current_frame_labels
+
+        segm_video = [previous_frame_labels, current_frame_labels]
+        tracker = normal_division_tracker(segm_video, IoA_thresh_daughter, min_daughter, max_daughter, IoA_thresh, IoA_thresh_aggressive)
+        tracker.track_frame(1)
+        tracked_video = tracker.get_tracked_video
+        return tracked_video[-1]
     
     def updateGuiProgressBar(self, signals):
         if signals is None:

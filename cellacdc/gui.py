@@ -21509,9 +21509,9 @@ class guiWin(QMainWindow):
             posData, rtTracker, qparent=self
         )
         self.logger.info(f'{rtTracker} tracker successfully initialized.')
-        if 'image_channel_name' in self.track_params:
+        if 'image_channel_name' in self.track_frame_params:
             # Remove the channel name since it was already loaded in init_tracker
-            del self.track_params['image_channel_name']
+            del self.track_frame_params['image_channel_name']
 
     def initFluoData(self):
         if len(self.ch_names) <= 1:
