@@ -2510,6 +2510,8 @@ class myMessageBox(QDialog):
                 self.addLayout(layout)
 
         if widgets is not None:
+            self.layout.addItem(QSpacerItem(20, 20), self.currentRow, 1)
+            self.currentRow += 1
             if myutils.is_iterable(widgets):
                 for widget in widgets:
                     self.addWidget(widget)

@@ -1935,7 +1935,7 @@ class guiWin(QMainWindow):
         if txt in self.disabled_cca_warnings:
             return
         
-        disabled_warning = _warnings.warn_cca_integrity(txt, category)
+        disabled_warning = _warnings.warn_cca_integrity(txt, category, self)
         if disabled_warning:
             self.disabled_cca_warnings.add(disabled_warning)
         
@@ -9285,7 +9285,7 @@ class guiWin(QMainWindow):
 
         self.updateAllImages()
 
-        self.checkMultiBudMoth(draw=True)
+        # self.checkMultiBudMoth(draw=True)
         self.store_cca_df()
         self.checkMothersExcludedOrDead()
 
@@ -10426,7 +10426,8 @@ class guiWin(QMainWindow):
         if editCcaWidget.cancel:
             return
         posData.cca_df = editCcaWidget.cca_df
-        self.checkMultiBudMoth()
+        self.store_cca_df()
+        # self.checkMultiBudMoth()
         self.updateAllImages()
     
     @exception_handler
@@ -13751,6 +13752,24 @@ class guiWin(QMainWindow):
         raise error
     
     @exception_handler
+    def ccaIntegrityWorkerCritical(self, error):
+        txt = html_utils.paragraph("""
+            Unfortunately the experimental feature 
+            <code>check cell cycle annotations integrity</code> raised a 
+            critical error.<br><br>
+            Cell-ACDC will now disable this feature to allow you to keep 
+            using the software.<br><br>
+            However, <b>we kindly ask you to report the issue</b> on our 
+            GitHub page, thank you very much!<br><br>
+            After closing this window you will get the error message 
+            with details on how to report the issue.
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(self, 'Experimental feature error', txt)
+        self.disableCcaIntegrityChecker()
+        raise error
+    
+    @exception_handler
     def workerCritical(self, error):
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
@@ -15500,6 +15519,7 @@ class guiWin(QMainWindow):
         self.filteredData = {}
 
         self.splineHoverON = False
+        self._isCcaIntegrityCheckedDisabled = False
         self.tempSegmentON = False
         self.isCtrlDown = False
         self.typingEditID = False
@@ -15968,37 +15988,6 @@ class guiWin(QMainWindow):
         min_dist = np.min(dist)
         return min_dist, nearest_point
 
-    def checkMultiBudMoth(self, draw=False):
-        posData = self.data[self.pos_i]
-        mode = str(self.modeComboBox.currentText())
-        if mode.find('Cell cycle') == -1:
-            posData.multiBud_mothIDs = []
-            return
-
-        cca_df_S = posData.cca_df[posData.cca_df['cell_cycle_stage'] == 'S']
-        cca_df_S_bud = cca_df_S[cca_df_S['relationship'] == 'bud']
-        relIDs_of_S_bud = cca_df_S_bud['relative_ID']
-        duplicated_relIDs_mask = relIDs_of_S_bud.duplicated(keep=False)
-        duplicated_cca_df_S = cca_df_S_bud[duplicated_relIDs_mask]
-        multiBud_mothIDs = duplicated_cca_df_S['relative_ID'].unique()
-        posData.multiBud_mothIDs = multiBud_mothIDs
-        multiBudInfo = []
-        for multiBud_ID in multiBud_mothIDs:
-            duplicatedBuds_df = cca_df_S_bud[
-                                    cca_df_S_bud['relative_ID'] == multiBud_ID]
-            duplicatedBudIDs = duplicatedBuds_df.index.to_list()
-            info = f'Mother ID {multiBud_ID} has bud IDs {duplicatedBudIDs}'
-            multiBudInfo.append(info)
-        if multiBudInfo:
-            multiBudInfo_format = '\n'.join(multiBudInfo)
-            self.MultiBudMoth_msg = QMessageBox()
-            self.MultiBudMoth_msg.setWindowTitle(
-                                  'Mother with multiple buds assigned to it!')
-            self.MultiBudMoth_msg.setText(multiBudInfo_format)
-            self.MultiBudMoth_msg.setIcon(self.MultiBudMoth_msg.Warning)
-            self.MultiBudMoth_msg.setDefaultButton(self.MultiBudMoth_msg.Ok)
-            self.MultiBudMoth_msg.exec_()
-
     def isCurrentFrameCcaVisited(self):
         posData = self.data[self.pos_i]
         curr_df = posData.allData_li[posData.frame_i]['acdc_df']
@@ -16118,7 +16107,7 @@ class guiWin(QMainWindow):
             return notEnoughG1Cells, proceed
         if posData.cca_df.isna().any(axis=None):
             raise ValueError('Cell cycle analysis table contains NaNs')
-        self.checkMultiBudMoth()
+        # self.checkMultiBudMoth()
         self.checkMothersExcludedOrDead()
         return notEnoughG1Cells, proceed
 
@@ -21650,6 +21639,9 @@ class guiWin(QMainWindow):
         if not self.dataIsLoaded:
             return
         
+        if self._isCcaIntegrityCheckedDisabled:
+            return
+        
         ccaCheckerThread = QThread()
         self.ccaCheckerMutex = QMutex()
         self.ccaCheckerWaitCond = QWaitCondition()
@@ -21668,6 +21660,7 @@ class guiWin(QMainWindow):
         worker.destroyed.connect(self.ccaIntegrityCheckerWorkerDestroyed)
         worker.sigDone.connect(self.ccaCheckerWorkerDone)
         worker.progress.connect(self.workerProgress)
+        worker.critical.connect(self.ccaIntegrityWorkerCritical)
         worker.finished.connect(self.ccaCheckerWorkerClosed)
         worker.sigWarning.connect(self.warnCcaIntegrity)
         
@@ -21675,6 +21668,10 @@ class guiWin(QMainWindow):
         ccaCheckerThread.start()
         
         self.logger.info('Cell cycle annotations integrity checker started.')
+    
+    def disableCcaIntegrityChecker(self):
+        self._isCcaIntegrityCheckedDisabled = True
+        self.stopCcaIntegrityCheckerWorker()
     
     def stopCcaIntegrityCheckerWorker(self):
         try:

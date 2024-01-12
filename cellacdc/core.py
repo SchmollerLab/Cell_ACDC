@@ -2308,6 +2308,36 @@ class CcaIntegrityChecker:
 
     def get_num_mothers_and_buds_in_S(self):
         cca_df_S = self.cca_df_S
-        num_buds = len(cca_df_S['relationship'] == 'bud')
-        num_mothers = len(cca_df_S['relationship'] == 'mother')
+        cca_df_S_buds = cca_df_S[cca_df_S['relationship'] == 'bud']
+        cca_df_S_mothers = cca_df_S[cca_df_S['relationship'] == 'mother']
+        num_buds = len(cca_df_S_buds)
+        num_mothers = len(cca_df_S_mothers)
         return num_mothers, num_buds
+    
+    def get_mother_IDs_with_multiple_buds(self):
+        cca_df_S = self.cca_df_S
+        cca_df_S_buds = cca_df_S[cca_df_S['relationship'] == 'bud']
+        mothers_of_buds = cca_df_S_buds['relative_ID']
+        mother_IDs_with_multiple_buds = (
+            mothers_of_buds[mothers_of_buds.duplicated()]
+        )
+        return mother_IDs_with_multiple_buds.values
+    
+    def get_IDs_cycles_without_G1(self, global_cca_df):
+        global_cca_df_moths_hist_known = (
+            global_cca_df[
+                (global_cca_df['relationship'] == 'mother') 
+                & (global_cca_df['is_history_known'] > 0)
+            ]
+        )
+        grouped_cycles = global_cca_df_moths_hist_known.reset_index().groupby(
+            ['Cell_ID', 'generation_num']
+        )
+        G1_not_present_mask = (
+            grouped_cycles['cell_cycle_stage']
+            .agg(lambda x: ~x.eq('G1').any())
+        )
+        IDs_cycles_without_G1 = (
+            G1_not_present_mask[G1_not_present_mask].index.to_list()
+        )
+        return IDs_cycles_without_G1

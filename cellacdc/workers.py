@@ -45,6 +45,10 @@ def worker_exception_handler(func):
             func(self)
         except Exception as error:
             try:
+                self.dataQ.clear()
+            except Exception as err:
+                pass
+            try:
                 self.signals.critical.emit(error)
             except AttributeError:
                 self.critical.emit(error)
@@ -4153,6 +4157,7 @@ class CcaIntegrityCheckerWorker(QObject):
     
     def _check_equality_num_mothers_buds_in_S(self, checker, frame_i):
         num_moth_S, num_buds = checker.get_num_mothers_and_buds_in_S()
+        
         if num_moth_S == num_buds:
             return True
         
@@ -4169,10 +4174,52 @@ class CcaIntegrityCheckerWorker(QObject):
         self.sigWarning.emit(txt, category)
         return False
     
+    def _check_mothers_multiple_buds(self, checker, frame_i):
+        mother_IDs_with_multiple_buds = (
+            checker.get_mother_IDs_with_multiple_buds()
+        )
+        if len(mother_IDs_with_multiple_buds) == 0:
+            return True
+
+        category = 'mother cells with multiple buds'
+        txt = html_utils.paragraph(
+            f'At frame n. {frame_i+1} '
+            'the following mother cells have <b>multiple buds</b> assigned to it'
+            f'<br><br>{mother_IDs_with_multiple_buds}'
+        )
+        self.sigWarning.emit(txt, category)
+        return False
+    
+    def _check_cells_without_G1(self, checker, global_cca_df):
+        IDs_cycles_without_G1 = (
+            checker.get_IDs_cycles_without_G1(global_cca_df)
+        )
+        if len(IDs_cycles_without_G1) == 0:
+            return True
+
+        category = 'cell cycles without G1'
+        txt = html_utils.paragraph(
+            'Cell-ACDC requires that every cell cycle has at least '
+            'one frame in G1.<br>'
+            'The following pairs of (ID, generation number) do not satisfy '
+            'this condition:<br><br>'
+            f'{IDs_cycles_without_G1}'
+        )
+        self.sigWarning.emit(txt, category)
+        return False
+        
     def check(self, posData):
         self.isChecking = True
+        checkpoints = (
+            '_check_equality_num_mothers_buds_in_S',
+            '_check_mothers_multiple_buds',
+        )
+        cca_dfs = []
+        keys = []
+        check_integrity_globally = True
         for frame_i, data_dict in enumerate(posData.allData_li):
             if self.abortChecking:
+                check_integrity_globally = False
                 break
             
             lab = data_dict['labels']
@@ -4180,14 +4227,35 @@ class CcaIntegrityCheckerWorker(QObject):
                 break
             
             acdc_df = data_dict['acdc_df']
-            cca_df = acdc_df[cca_df_colnames]
+            try:
+                cca_df = acdc_df[cca_df_colnames]
+            except KeyError as error:
+                break
+            
             checker = core.CcaIntegrityChecker(cca_df)
             
-            proceed = self._check_equality_num_mothers_buds_in_S(
-                checker, frame_i
-            )
+            for checkpoint in checkpoints:
+                proceed = getattr(self, checkpoint)(checker, frame_i)
+                if not proceed:
+                    break
+            
             if not proceed:
+                check_integrity_globally = False
                 break
+            
+            cca_dfs.append(cca_df)
+            keys.append(frame_i)
+        
+        if check_integrity_globally and len(cca_dfs)>1:
+            global_checkpoints = (
+                '_check_cells_without_G1',
+            )
+            # Check integrity globally
+            global_cca_df = pd.concat(cca_dfs, keys=keys, names=['frame_i'])
+            for checkpoint in global_checkpoints:
+                proceed = getattr(self, checkpoint)(checker, global_cca_df)
+                if not proceed:
+                    break
         
         self.abortChecking = False
         self.isChecking = False

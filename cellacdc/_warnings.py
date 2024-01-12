@@ -60,7 +60,7 @@ def warn_image_overflow_dtype(input_dtype, max_value, inferred_dtype):
         DataTypeWarning
     )
 
-def warn_cca_integrity(self, txt, category):
+def warn_cca_integrity(txt, category, qparent):
     from . import html_utils, widgets
     from qtpy.QtWidgets import QCheckBox
     
@@ -89,7 +89,7 @@ def warn_cca_integrity(self, txt, category):
     
     msg = widgets.myMessageBox(wrapText=False)
     msg.warning(
-        self, 'Annotations integrity warning', msg_text, 
+        qparent, 'Annotations integrity warning', msg_text, 
         widgets=checkboxes
     )
     if stopSpecificMessageCheckbox.isChecked():
