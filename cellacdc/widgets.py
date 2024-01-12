@@ -6423,7 +6423,7 @@ class ImShow(QBaseWindow):
 
         self._autoLevels = True
 
-        self.textItems = []  # PrelimFix
+        self.textItems = []
     
     def _getGraphicsScrollbar(self, idx, image, imageItem, maximum):
         proxy = QGraphicsProxyWidget(imageItem)
@@ -6762,36 +6762,38 @@ class ImShow(QBaseWindow):
         print('')
         print('*'*60)
 
-    def showIDs(self, annotate_labels_idxs=None, init=False):
+    def annotateObjectIDs(self, annotate_labels_idxs=None, init=False):
         if init:
             self.annotate_labels_idxs = annotate_labels_idxs
+            self.textItems = [{} for _ in self.PlotItems] 
         if self.annotate_labels_idxs is None:
             return
         for i, plotItem in enumerate(self.PlotItems):
             if i not in self.annotate_labels_idxs:
                 continue
+            plotTextItems = self.textItems[i]
             imageItem = self.ImageItems[i]
             lab = imageItem.image
             rp = skimage.measure.regionprops(lab)
             for obj in rp:
-                yc, xc = obj.centroid
-                textItem = pg.TextItem(
-                    text=str(obj.label), anchor=(0.5,0.5),
-                )
+                textItem = plotTextItems.get(obj.label)
+                yc, xc = obj.centroid[-2:]
+                if textItem is None:
+                    textItem = pg.TextItem(text='', anchor=(0.5,0.5), color='r')
+                    plotItem.addItem(textItem)
+                    plotTextItems[obj.label] = textItem
+                textItem.setText(str(obj.label))
                 textItem.setPos(xc, yc)
-                plotItem.addItem(textItem)
-                self.textItems.append(textItem)
 
-    def clearLabels(self): # This is very slow and causes some errors, need to refactor at some point
-        for plotItem in self.PlotItems:
-            for textItem in self.textItems:
-                plotItem.removeItem(textItem)
-        self.textItems = []  
+    def clearLabels(self):
+        for textItems in self.textItems:
+            for textItem in textItems.values():
+                textItem.setText('') 
 
     def updateIDs(self):
         self.clearLabels()
         try:
-            self.showIDs(annotate_labels_idxs=self.annotate_labels_idxs)
+            self.annotateObjectIDs(annotate_labels_idxs=self.annotate_labels_idxs)
         except Exception as err:
             pass
 

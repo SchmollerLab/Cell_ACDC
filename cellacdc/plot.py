@@ -113,7 +113,7 @@ def imshow(
         win.drawPoints(points_coords)
     if points_data is not None:
         win.setPointsData(points_data)
-    win.showIDs(annotate_labels_idxs=annotate_labels_idxs, init=True)
+    win.annotateObjectIDs(annotate_labels_idxs=annotate_labels_idxs, init=True)
     win.run(block=block, showMaximised=showMaximised, screenToWindowRatio=0.8)
     return win
 
