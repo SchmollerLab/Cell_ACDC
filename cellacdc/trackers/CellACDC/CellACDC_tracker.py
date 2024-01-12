@@ -175,24 +175,24 @@ def indexAssignment(
         core.lab_replace_values(
             tracked_lab, rp, new_IDs_in_trackedIDs, new_tracked_IDs
         )
-        log_debugging(
-            'new_untracked_and_tracked', 
-            new_IDs_in_trackedIDs=new_IDs_in_trackedIDs,
-            old_IDs=old_IDs,
-            new_untracked_IDs=new_untracked_IDs,
-            new_tracked_IDs=new_tracked_IDs
-        )
+        # log_debugging( #This may have been caused by merging, but new_tracked_IDs is referenced before assignment
+        #     'new_untracked_and_tracked', 
+        #     new_IDs_in_trackedIDs=new_IDs_in_trackedIDs,
+        #     old_IDs=old_IDs,
+        #     new_untracked_IDs=new_untracked_IDs,
+        #     new_tracked_IDs=new_tracked_IDs
+        # )
     if tracked_IDs:
         core.lab_replace_values(
             tracked_lab, rp, old_IDs, tracked_IDs, in_place=True
         )
-        log_debugging(
-            'tracked', 
-            tracked_IDs=tracked_IDs,
-            old_IDs=old_IDs,
-            new_untracked_IDs=new_untracked_IDs,
-            new_tracked_IDs=new_tracked_IDs
-        )
+        # log_debugging( # same as above
+        #     'tracked', 
+        #     tracked_IDs=tracked_IDs,
+        #     old_IDs=old_IDs,
+        #     new_untracked_IDs=new_untracked_IDs,
+        #     new_tracked_IDs=new_tracked_IDs
+        # )
 
     if not return_assignments:
         return tracked_lab

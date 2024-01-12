@@ -21524,7 +21524,7 @@ class guiWin(QMainWindow):
         self.logger.info(f'Initializing {rtTracker} tracker...')
         posData = self.data[self.pos_i]
         self.realTimeTracker, self.track_frame_params = myutils.init_tracker(
-            posData, rtTracker, qparent=self
+            posData, rtTracker, qparent=self, realTime=True
         )
         self.logger.info(f'{rtTracker} tracker successfully initialized.')
         if 'image_channel_name' in self.track_frame_params:

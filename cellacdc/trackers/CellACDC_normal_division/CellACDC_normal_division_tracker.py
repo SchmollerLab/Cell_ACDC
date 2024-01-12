@@ -87,31 +87,28 @@ class normal_division_tracker:
         if prev_rp is None:
             prev_rp = regionprops(prev_lab)
 
-        IoA_matrix, self.IDs_curr_untracked, self.IDs_prev = calc_IoA_matrix(
-                                                                    lab, 
-                                                                    prev_lab, 
-                                                                    self.rp, 
-                                                                    prev_rp
-                                                                    )
-        aggr_track, self.mother_daughters = ident_no_mothers(
-                                                        IoA_matrix, 
-                                                        IoA_thresh_daughter=self.IoA_thresh_daughter, 
-                                                        min_daughter=self.min_daughter, 
-                                                        max_daughter=self.max_daughter
-                                                        )
-        self.tracked_lab, IoA_matrix, self.assignments = track_frame_base(
-                                                            prev_lab, 
-                                                            prev_rp, 
-                                                            lab, 
-                                                            self.rp, 
-                                                            IoA_thresh=self.IoA_thresh,
-                                                            IoA_matrix=IoA_matrix, 
-                                                            aggr_track=aggr_track, 
-                                                            IoA_thresh_aggr=self.IoA_thresh_aggressive, 
-                                                            IDs_curr_untracked=self.IDs_curr_untracked, 
-                                                            IDs_prev=self.IDs_prev, 
-                                                            return_all=True
-                                                            )
+        IoA_matrix, self.IDs_curr_untracked, self.IDs_prev = calc_IoA_matrix(lab, 
+                                                                             prev_lab, 
+                                                                             self.rp, 
+                                                                             prev_rp
+                                                                             )
+        aggr_track, self.mother_daughters = ident_no_mothers(IoA_matrix, 
+                                                             IoA_thresh_daughter=self.IoA_thresh_daughter, 
+                                                             min_daughter=self.min_daughter, 
+                                                             max_daughter=self.max_daughter
+                                                             )
+        self.tracked_lab, IoA_matrix, self.assignments = track_frame_base(prev_lab, 
+                                                                          prev_rp, 
+                                                                          lab, 
+                                                                          self.rp, 
+                                                                          IoA_thresh=self.IoA_thresh,
+                                                                          IoA_matrix=IoA_matrix, 
+                                                                          aggr_track=aggr_track, 
+                                                                          IoA_thresh_aggr=self.IoA_thresh_aggressive, 
+                                                                          IDs_curr_untracked=self.IDs_curr_untracked, 
+                                                                          IDs_prev=self.IDs_prev, 
+                                                                          return_all=True
+                                                                          )
         self.tracked_video[frame_i] = self.tracked_lab
 
 class normal_division_lineage_tree:
@@ -170,16 +167,15 @@ class tracker:
     def __init__(self):
         pass
 
-    def track(
-            self, 
-            segm_video,
-            signals=None,
-            IoA_thresh = 0.8,
-            IoA_thresh_daughter = 0.25,
-            IoA_thresh_aggressive = 0.5,
-            min_daughter = 2,
-            max_daughter = 2,
-            record_lineage = True
+    def track(self, 
+              segm_video,
+              signals=None,
+              IoA_thresh = 0.8,
+              IoA_thresh_daughter = 0.25,
+              IoA_thresh_aggressive = 0.5,
+              min_daughter = 2,
+              max_daughter = 2,
+              record_lineage = True
         ):
 
         pbar = tqdm(total=len(segm_video), desc='Tracking', ncols=100)
@@ -211,7 +207,16 @@ class tracker:
         pbar.close()
         return tracked_video
     
-    def track_frame(previous_frame_labels, current_frame_labels, IoA_thresh_daughter, min_daughter, max_daughter, IoA_thresh, IoA_thresh_aggressive):
+    def track_frame(self, 
+                    previous_frame_labels, 
+                    current_frame_labels, 
+                    IoA_thresh = 0.8,
+                    IoA_thresh_daughter = 0.25,
+                    IoA_thresh_aggressive = 0.5,
+                    min_daughter = 2,
+                    max_daughter = 2,
+                    ):
+        
         if not np.any(current_frame_labels):
             # Skip empty frames
             return current_frame_labels
@@ -219,7 +224,7 @@ class tracker:
         segm_video = [previous_frame_labels, current_frame_labels]
         tracker = normal_division_tracker(segm_video, IoA_thresh_daughter, min_daughter, max_daughter, IoA_thresh, IoA_thresh_aggressive)
         tracker.track_frame(1)
-        tracked_video = tracker.get_tracked_video
+        tracked_video = tracker.tracked_video
         return tracked_video[-1]
     
     def updateGuiProgressBar(self, signals):
