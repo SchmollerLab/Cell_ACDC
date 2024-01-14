@@ -8344,10 +8344,46 @@ will be applied (see below).<br><br>
             }, index=self.IDs
         )
         cca_df.index.name = 'Cell_ID'
+        
+        # Check that every pair of cells in S are relative of each other
+        proceed = self.check_ID_rel_ID_mismatches(cca_df)
+        if not proceed:
+            return None
+            
         d = dict.fromkeys(cca_df.select_dtypes(np.int64).columns, np.int32)
         cca_df = cca_df.astype(d)
         return cca_df
 
+    def check_ID_rel_ID_mismatches(self, cca_df):
+        ID_rel_ID_mismatches = []
+        for row in cca_df.itertuples():
+            if row.cell_cycle_stage == 'G1':
+                continue
+            
+            ID = row.Index
+            relID = row.relative_ID
+            relID_of_relID = cca_df.at[relID, 'relative_ID']
+            
+            if relID_of_relID != ID:
+                ID_rel_ID_mismatches.append((ID, relID, relID_of_relID))
+        
+        if not ID_rel_ID_mismatches:
+            return True
+        
+        items = [
+            f'Cell ID {ID} has relative ID = {relID}, '
+            f'while cell ID {relID} has relative ID = {relID_of_relID}'
+            for ID, relID, relID_of_relID in ID_rel_ID_mismatches
+        ]
+        title = '`ID-relative_ID` mismatches'
+        txt = html_utils.paragraph(
+            f'`ID-relative_ID` mismatches:'
+            f'{html_utils.to_list(items)}'
+        )
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.critical(self, title, txt)
+        return False
+    
     def ok_cb(self, checked):
         cca_df = self.getCca_df()
         if cca_df is None:
