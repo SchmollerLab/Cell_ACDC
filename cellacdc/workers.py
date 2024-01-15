@@ -1,4 +1,3 @@
-import sys
 import re
 import os
 import time
@@ -44,6 +43,10 @@ def worker_exception_handler(func):
         try:
             func(self)
         except Exception as error:
+            try:
+                self.dataQ.clear()
+            except Exception as err:
+                pass
             try:
                 self.signals.critical.emit(error)
             except AttributeError:
@@ -1505,13 +1508,13 @@ class trackingWorker(QObject):
 
     @worker_exception_handler
     def run(self):
-        self.mutex.lock()
-
+        self.mutex.lock()        
         self.progress.emit('Tracking process started...')
 
         trackerInputImage = None
         self.track_params['signals'] = self.signals
         if 'image' in self.track_params:
+            trackerInputImage = self.track_params.pop('image')
             start_frame_i = self.mainWin.start_n-1
             stop_frame_n = self.mainWin.stop_n
 
