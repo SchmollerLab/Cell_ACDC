@@ -15710,7 +15710,9 @@ class guiWin(QMainWindow):
                 'Delete ID': False, 'Edit ID': False, 'Keep ID': False
             }
             
-            posData.all_tracked_lost_IDs = {}
+            posData.tracked_lost_centroids = {
+                frame_i:set() for frame_i in range(posData.SizeT)
+            }
 
             posData.doNotShowAgain_BinID = False
             posData.UndoFutFrames_BinID = False
@@ -20487,9 +20489,7 @@ class guiWin(QMainWindow):
             prev_IDs = [obj.label for obj in prev_rp]     
             posData.allData_li[posData.frame_i-1]['IDs'] = prev_IDs     
         
-        tracked_lost_IDs = posData.all_tracked_lost_IDs.get(
-            posData.frame_i, set()
-        )
+        tracked_lost_IDs = self.getTrackedLostIDs()
         curr_IDs = posData.IDs
         curr_delRoiIDs = self.getStoredDelRoiIDs()
         prev_delRoiIDs = self.getStoredDelRoiIDs(frame_i=posData.frame_i-1)
@@ -20680,10 +20680,7 @@ class guiWin(QMainWindow):
             try:
                 frame_i = posData.frame_i
                 tracked_lab, tracked_lost_IDs = tracked_result
-                posData.all_tracked_lost_IDs[frame_i] = (
-                    posData.all_tracked_lost_IDs.get(frame_i, set())
-                    .update(tracked_lost_IDs)
-                )
+                self.setTrackedLostCentroids(tracked_lab, tracked_lost_IDs)
             except Exception as err:
                 tracked_lab = tracked_result
             
@@ -20707,6 +20704,45 @@ class guiWin(QMainWindow):
             self.statusBarLabel.setText, staturBarLabelText
         ))
 
+    def setTrackedLostCentroids(self, tracked_lab, tracked_lost_IDs):
+        """Store centroids of those IDs the tracker decided is fine to lose 
+        (e.g., upon standard cell division the ID of the mother is fone)
+
+        Parameters
+        ----------
+        tracked_lab : (Z, Y, X) or (Y, X) array of ints
+            Array of tracked objects
+        tracked_lost_IDs : iterable
+            List-like container of the IDs that is fine to lose from previous
+            frame to current frame
+        
+        Note
+        ----
+        This function stores the centroids because the user could change IDs 
+        in multiple ways. Storing centroids is more robust.
+        """        
+        posData = self.data[self.pos_i]
+        frame_i = posData.frame_i
+        
+        rp = skimage.measure.regionprops(tracked_lab)
+        for obj in rp:
+            if obj.label not in tracked_lost_IDs:
+                continue
+            
+            int_centroid = tuple([int(val) for val in obj.centroid])
+            posData.tracked_lost_centroids[frame_i].add(int_centroid)
+    
+    def getTrackedLostIDs(self):
+        trackedLostIDs = set()
+        posData = self.data[self.pos_i]
+        
+        for centroid in posData.tracked_lost_centroids[posData.frame_i]:
+            ID = posData.lab[centroid]
+            if ID == 0:
+                continue
+            trackedLostIDs.add(ID)
+        return trackedLostIDs            
+    
     def manuallyEditTracking(self, tracked_lab, allIDs):
         posData = self.data[self.pos_i]
         infoToRemove = []
