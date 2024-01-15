@@ -2300,3 +2300,92 @@ def relabel_sequential(segm_data, is_timelapse=False):
     else:
         relabelled, oldIDs, newIDs = _relabel_sequential(segm_data)
     return relabelled, oldIDs, newIDs
+
+class CcaIntegrityChecker:
+    def __init__(self, cca_df):
+        self.cca_df = cca_df
+        self.cca_df_S = cca_df[cca_df['cell_cycle_stage'] == 'S']
+        self.cca_df_G1 = cca_df[cca_df['cell_cycle_stage'] == 'G1']
+
+    def get_num_mothers_and_buds_in_S(self):
+        cca_df_S = self.cca_df_S
+        cca_df_S_buds = cca_df_S[cca_df_S['relationship'] == 'bud']
+        cca_df_S_mothers = cca_df_S[cca_df_S['relationship'] == 'mother']
+        num_buds = len(cca_df_S_buds)
+        num_mothers = len(cca_df_S_mothers)
+        return num_mothers, num_buds
+    
+    def get_mother_IDs_with_multiple_buds(self):
+        cca_df_S = self.cca_df_S
+        cca_df_S_buds = cca_df_S[cca_df_S['relationship'] == 'bud']
+        mothers_of_buds = cca_df_S_buds['relative_ID']
+        mother_IDs_with_multiple_buds = (
+            mothers_of_buds[mothers_of_buds.duplicated()]
+        )
+        return mother_IDs_with_multiple_buds.values
+    
+    def get_IDs_cycles_without_G1(self, global_cca_df):
+        global_cca_df_moths_hist_known = (
+            global_cca_df[
+                (global_cca_df['relationship'] == 'mother') 
+                & (global_cca_df['is_history_known'] > 0)
+            ]
+        )
+        grouped_cycles = global_cca_df_moths_hist_known.reset_index().groupby(
+            ['Cell_ID', 'generation_num']
+        )
+        G1_not_present_mask = (
+            grouped_cycles['cell_cycle_stage']
+            .agg(lambda x: ~x.eq('G1').any())
+        )
+        IDs_cycles_without_G1 = (
+            G1_not_present_mask[G1_not_present_mask].index.to_list()
+        )
+        return IDs_cycles_without_G1
+    
+    def get_bud_IDs_gen_num_nonzero(self):
+        cca_df_S = self.cca_df_S
+        cca_df_S_buds = cca_df_S[cca_df_S['relationship'] == 'bud']
+        bud_IDs_gen_num_nonzero = (
+            cca_df_S_buds[cca_df_S_buds['generation_num'] != 0]
+            .index.to_list()
+        )
+        return bud_IDs_gen_num_nonzero
+    
+    def get_moth_IDs_gen_num_non_greater_one(self):
+        cca_df_S = self.cca_df_S
+        cca_df_S_moths = cca_df_S[cca_df_S['relationship'] == 'mother']
+        moth_IDs_gen_num_non_greater_one = (
+            cca_df_S_moths[cca_df_S_moths['generation_num'] < 1]
+            .index.to_list()
+        )
+        return moth_IDs_gen_num_non_greater_one
+    
+    def get_buds_G1(self):
+        cca_df_S = self.cca_df_S
+        cca_df_S_buds = cca_df_S[cca_df_S['relationship'] == 'bud']
+        buds_G1 = (
+            cca_df_S_buds[cca_df_S_buds['cell_cycle_stage'] == 'G1']
+            .index.to_list()
+        )
+        return buds_G1
+    
+    def get_cell_S_rel_ID_zero(self):
+        cca_df_S = self.cca_df_S
+        cell_S_rel_ID_zero = (
+            cca_df_S[cca_df_S['relative_ID'] < 1]
+            .index.to_list()
+        )
+        return cell_S_rel_ID_zero
+    
+    def get_ID_rel_ID_mismatches(self):
+        ID_rel_ID_mismatches = []
+        for row in self.cca_df_S.itertuples():
+            ID = row.Index
+            relID = row.relative_ID
+            relID_of_relID = self.cca_df.at[relID, 'relative_ID']
+            
+            if relID_of_relID != ID:
+                ID_rel_ID_mismatches.append((ID, relID, relID_of_relID))
+        
+        return ID_rel_ID_mismatches

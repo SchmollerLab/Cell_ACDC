@@ -25,6 +25,19 @@ def tag(text, tag_info='p style="font-size:10pt"'):
     text = f'<{tag_info}>{text}</{tag}>'
     return text
 
+def to_plain_text(html_text):
+    html_text = re.sub(r' +', ' ', html_text)
+    html_text = html_text.replace('\n ', '\n')
+    html_text = html_text.strip('\n')
+    html_text = html_text.replace('<code>', '`')
+    html_text = html_text.replace('</code>', '`')
+    html_text = html_text.replace('<br>', '\n')
+    html_text = html_text.replace('<li>', '\n  * ')
+    html_text = re.sub(r'</\w+>', '', html_text)
+    html_text = re.sub(r'<.+>', '', html_text)
+    html_text = html_text.strip('\n')
+    return html_text
+
 def href_tag(text, url):
     txt = tag(text, tag_info=f'a href="{url}"')
     return txt

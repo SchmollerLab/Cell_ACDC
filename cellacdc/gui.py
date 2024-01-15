@@ -72,7 +72,7 @@ from . import exception_handler
 from . import base_cca_df, graphLayoutBkgrColor, darkBkgrColor
 from . import load, prompts, apps, workers, html_utils
 from . import core, myutils, dataPrep, widgets
-from . import _warnings
+from . import _warnings, issues_url
 from . import measurements, printl
 from . import colors, filters, annotate
 from . import user_manual_url
@@ -887,11 +887,11 @@ class guiWin(QMainWindow):
         idx = 2 if is_decorator else 1
         callingframe = outerframes[idx].frame
         callingframe_info = inspect.getframeinfo(callingframe)
-        filpath = callingframe_info.filename
-        filename = os.path.basename(filpath)
+        filepath = callingframe_info.filename
+        filename = os.path.basename(filepath)
         self.logger.info('*'*30)
         self.logger.info(
-            f'{timestap} - File "{filename}", line {callingframe_info.lineno}:'
+            f'File "{filepath}", line {callingframe_info.lineno} - {timestap}:'
         )
         if kwargs.get('pretty'):
             txt = pprint.pformat(objects[0])
@@ -950,6 +950,7 @@ class guiWin(QMainWindow):
         self.slideshowWin = None
         self.ccaTableWin = None
         self.customAnnotButton = None
+        self.ccaIntegrityCheckerWorker = None
         self.dataIsLoaded = False
         self.highlightedID = 0
         self.hoverLabelID = 0
@@ -1919,6 +1920,25 @@ class guiWin(QMainWindow):
     def autoSaveWorkerDone(self):
         self.setStatusBarLabel(log=False)
     
+    def ccaCheckerWorkerDone(self):
+        self.setStatusBarLabel(log=False)
+    
+    def warnCcaIntegrity(self, txt, category):
+        self.logger.info(f'[WARNING]: {html_utils.to_plain_text(txt)}')
+        
+        if 'disable_all' in self.disabled_cca_warnings:
+            return
+        
+        if category in self.disabled_cca_warnings:
+            return
+        
+        if txt in self.disabled_cca_warnings:
+            return
+        
+        disabled_warning = _warnings.warn_cca_integrity(txt, category, self)
+        if disabled_warning:
+            self.disabled_cca_warnings.add(disabled_warning)
+        
     def autoSaveWorkerClosed(self, worker):
         if self.autoSaveActiveWorkers:
             self.logger.info('Autosaving worker closed.')
@@ -1927,6 +1947,9 @@ class guiWin(QMainWindow):
             except Exception as e:
                 pass
 
+    def ccaCheckerWorkerClosed(self, worker):
+        self.logger.info('Cell cycle annotations integrity checker stopped.')            
+    
     def gui_createMainLayout(self):
         mainLayout = QGridLayout()
         row, col = 0, 1 # Leave column 1 for the overlay labels gradient editor
@@ -9085,16 +9108,6 @@ class guiWin(QMainWindow):
         )
         return not msg.cancel
     
-    def checkMothExcludedOrDead(self, budID, mothID):
-        posData = self.data[self.pos_i]
-        acdc_df_i = posData.allData_li[posData.frame_i]['acdc_df']
-        is_moth_dead = acdc_df_i.at[mothID, 'is_cell_dead']
-        is_moth_excluded = acdc_df_i.at[mothID, 'is_cell_excluded']
-        if not is_moth_dead and not is_moth_excluded:
-            return True
-        proceed = self.warnDeadOrExcludedMothers([budID], [mothID])
-        return proceed
-        
     def startBlinkingPairingItem(self, budIDs, mothIDs):
         self.ax1_newMothBudLinesItem.setOpacity(0.2)
         self.ax1_oldMothBudLinesItem.setOpacity(0.2)
@@ -9177,6 +9190,8 @@ class guiWin(QMainWindow):
             - User released mouse button on a cell in G1 (checked at release time)
             - The new mother MUST be in G1 for all the frames of the bud life
               --> if not warn
+            - The new mother MUST have appeared in current frame OR be already 
+              in G1 in previous frame, otherwise there would be no G1 cycle 
 
         Result:
             - The bud only changes relative ID to the new mother
@@ -9262,7 +9277,7 @@ class guiWin(QMainWindow):
 
         self.updateAllImages()
 
-        self.checkMultiBudMoth(draw=True)
+        # self.checkMultiBudMoth(draw=True)
         self.store_cca_df()
         self.checkMothersExcludedOrDead()
 
@@ -10403,7 +10418,8 @@ class guiWin(QMainWindow):
         if editCcaWidget.cancel:
             return
         posData.cca_df = editCcaWidget.cca_df
-        self.checkMultiBudMoth()
+        self.store_cca_df()
+        # self.checkMultiBudMoth()
         self.updateAllImages()
     
     @exception_handler
@@ -10601,6 +10617,7 @@ class guiWin(QMainWindow):
         self.annotateToolbar.setVisible(False)
         self.store_data(autosave=False)
         self.copyContourButton.setChecked(False)
+        self.stopCcaIntegrityCheckerWorker()
         if mode == 'Segmentation and Tracking':
             self.trackingMenu.setDisabled(False)
             self.modeToolBar.setVisible(True)
@@ -10616,6 +10633,7 @@ class guiWin(QMainWindow):
                 self.store_cca_df()
             self.restorePrevAnnotOptions()
         elif mode == 'Cell cycle analysis':
+            self.startCcaIntegrityCheckerWorker()
             proceed = self.initCca()
             if proceed:
                 self.applyDelROIs()
@@ -11644,10 +11662,8 @@ class guiWin(QMainWindow):
        
         if ev.key() == Qt.Key_Q and self.debug:
             posData = self.data[self.pos_i]
-            for button, info in self.customAnnotDict.items():
-                annotatedIDs = info['annotatedIDs'][self.pos_i]
-                annotIDs_frame_i = annotatedIDs.get(posData.frame_i, [])
-                printl(info.state['name'], annotIDs_frame_i)       
+            curr_df = posData.allData_li[posData.frame_i]['acdc_df']
+            printl(curr_df.loc[2][['cell_cycle_stage', 'generation_num']])     
         
         if not self.dataIsLoaded:
             self.logger.info(
@@ -13727,6 +13743,32 @@ class guiWin(QMainWindow):
             self.lazyLoader.pause()
         raise error
     
+    def ccaIntegrityWorkerCritical(self, error):
+        try:
+            raise error
+        except Exception as err:
+            self.logger.exception(traceback.format_exc())
+        
+        href = f'<a href="{issues_url}">GitHub page</a>'
+        txt = html_utils.paragraph(f"""
+            Unfortunately the experimental feature 
+            <code>check cell cycle annotations integrity</code> raised a 
+            critical error.<br><br>
+            Cell-ACDC will now disable this feature to allow you to keep 
+            using the software.<br><br>
+            However, <b>we kindly ask you to report the issue</b> on our 
+            {href}, thank you very much!<br><br>
+            Please, <b>include the log file when reporting the issue</b>.<br><br>
+            Log file location:
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(
+            self, 'Experimental feature error', txt,
+            commands=(self.log_path,),
+            path_to_browse=self.logs_path
+        )
+        self.disableCcaIntegrityChecker()
+        
     @exception_handler
     def workerCritical(self, error):
         if self.progressWin is not None:
@@ -15463,7 +15505,7 @@ class guiWin(QMainWindow):
         if self.imgCmapName != 'grey':
             # To ensure mapping to colors we need to normalize image
             self.normalizeByMaxAction.setChecked(True)
-
+    
     def initGlobalAttr(self):
         self.setOverlayColors()
 
@@ -15477,6 +15519,7 @@ class guiWin(QMainWindow):
         self.filteredData = {}
 
         self.splineHoverON = False
+        self._isCcaIntegrityCheckedDisabled = False
         self.tempSegmentON = False
         self.isCtrlDown = False
         self.typingEditID = False
@@ -15521,6 +15564,8 @@ class guiWin(QMainWindow):
         self.UserEnforced_Tracking = False
 
         self.ax1BrushHoverID = 0
+        
+        self.disabled_cca_warnings = set()
 
         self.last_pos_i = -1
         self.last_frame_i = -1
@@ -15943,37 +15988,6 @@ class guiWin(QMainWindow):
         min_dist = np.min(dist)
         return min_dist, nearest_point
 
-    def checkMultiBudMoth(self, draw=False):
-        posData = self.data[self.pos_i]
-        mode = str(self.modeComboBox.currentText())
-        if mode.find('Cell cycle') == -1:
-            posData.multiBud_mothIDs = []
-            return
-
-        cca_df_S = posData.cca_df[posData.cca_df['cell_cycle_stage'] == 'S']
-        cca_df_S_bud = cca_df_S[cca_df_S['relationship'] == 'bud']
-        relIDs_of_S_bud = cca_df_S_bud['relative_ID']
-        duplicated_relIDs_mask = relIDs_of_S_bud.duplicated(keep=False)
-        duplicated_cca_df_S = cca_df_S_bud[duplicated_relIDs_mask]
-        multiBud_mothIDs = duplicated_cca_df_S['relative_ID'].unique()
-        posData.multiBud_mothIDs = multiBud_mothIDs
-        multiBudInfo = []
-        for multiBud_ID in multiBud_mothIDs:
-            duplicatedBuds_df = cca_df_S_bud[
-                                    cca_df_S_bud['relative_ID'] == multiBud_ID]
-            duplicatedBudIDs = duplicatedBuds_df.index.to_list()
-            info = f'Mother ID {multiBud_ID} has bud IDs {duplicatedBudIDs}'
-            multiBudInfo.append(info)
-        if multiBudInfo:
-            multiBudInfo_format = '\n'.join(multiBudInfo)
-            self.MultiBudMoth_msg = QMessageBox()
-            self.MultiBudMoth_msg.setWindowTitle(
-                                  'Mother with multiple buds assigned to it!')
-            self.MultiBudMoth_msg.setText(multiBudInfo_format)
-            self.MultiBudMoth_msg.setIcon(self.MultiBudMoth_msg.Warning)
-            self.MultiBudMoth_msg.setDefaultButton(self.MultiBudMoth_msg.Ok)
-            self.MultiBudMoth_msg.exec_()
-
     def isCurrentFrameCcaVisited(self):
         posData = self.data[self.pos_i]
         curr_df = posData.allData_li[posData.frame_i]['acdc_df']
@@ -16093,7 +16107,7 @@ class guiWin(QMainWindow):
             return notEnoughG1Cells, proceed
         if posData.cca_df.isna().any(axis=None):
             raise ValueError('Cell cycle analysis table contains NaNs')
-        self.checkMultiBudMoth()
+        # self.checkMultiBudMoth()
         self.checkMothersExcludedOrDead()
         return notEnoughG1Cells, proceed
 
@@ -16249,7 +16263,7 @@ class guiWin(QMainWindow):
                 ID for ID in posData.new_IDs
                 if ID not in correctedAssignIDs
             ]
-
+        
         # Check if new IDs exist some time in the past
         found_cca_df_IDs = self.checkCcaPastFramesNewIDs()
 
@@ -16268,13 +16282,12 @@ class guiWin(QMainWindow):
             posData.cca_df = prev_cca_df
         else:
             posData.cca_df = curr_df[self.cca_df_colnames].copy()
-
+        
         # concatenate new IDs found in past frames (before frame_i-1)
         if found_cca_df_IDs is not None:
             cca_df = pd.concat([posData.cca_df, *found_cca_df_IDs])
             unique_idx = ~cca_df.index.duplicated(keep='first')
             posData.cca_df = cca_df[unique_idx]
-        
 
         # If there are no new IDs we are done
         if not posData.new_IDs:
@@ -16301,7 +16314,7 @@ class guiWin(QMainWindow):
             ]
             IDsCellsG1.update(new_cell_G1)
 
-        # remove cells that disappeared
+        # Remove cells that disappeared
         IDsCellsG1 = [ID for ID in IDsCellsG1 if ID in posData.IDs]
 
         numCellsG1 = len(IDsCellsG1)
@@ -16360,14 +16373,20 @@ class guiWin(QMainWindow):
         cost = np.full((numCellsG1, numNewCells), np.inf)
         for obj in posData.rp:
             ID = obj.label
-            if ID in IDsCellsG1:
-                cont = self.getObjContours(obj)
+            try:
                 i = IDsCellsG1.index(ID)
-                for j, newID_cont in enumerate(newIDs_contours):
-                    min_dist, nearest_xy = self.nearest_point_2Dyx(
-                        cont, newID_cont
-                    )
-                    cost[i, j] = min_dist
+            except ValueError:
+                continue
+
+            cont = self.getObjContours(obj)
+            i = IDsCellsG1.index(ID)
+            
+            # Get distance from cell in G1 and all other new cells
+            for j, newID_cont in enumerate(newIDs_contours):
+                min_dist, nearest_xy = self.nearest_point_2Dyx(
+                    cont, newID_cont
+                )
+                cost[i, j] = min_dist
 
         # Run hungarian (munkres) assignment algorithm
         row_idx, col_idx = scipy.optimize.linear_sum_assignment(cost)
@@ -16383,7 +16402,6 @@ class guiWin(QMainWindow):
                 relID = posData.cca_df.at[budID, 'relative_ID']
                 if relID in prev_cca_df.index:
                     posData.cca_df.loc[relID] = prev_cca_df.loc[relID]
-
 
             posData.cca_df.at[mothID, 'relative_ID'] = budID
             posData.cca_df.at[mothID, 'cell_cycle_stage'] = 'S'
@@ -17030,6 +17048,7 @@ class guiWin(QMainWindow):
         
         if autosave:
             self.enqAutosave()
+            self.enqCcaIntegrityChecker()
     
     def turnOffAutoSaveWorker(self):
         self.autoSaveToggle.setChecked(False)
@@ -17043,6 +17062,15 @@ class guiWin(QMainWindow):
         worker, thread = self.autoSaveActiveWorkers[-1]
         self.statusBarLabel.setText('Autosaving...')
         worker.enqueue(posData)
+    
+    def enqCcaIntegrityChecker(self):
+        if self.ccaIntegrityCheckerWorker is None:
+            return
+        posData = self.data[self.pos_i]  
+        self.ccaIntegrityCheckerWorker.enqueue(posData)
+    
+    def ccaIntegrityCheckerWorkerDestroyed(self):
+        self.ccaIntegrityCheckerWorker = None
     
     def drawAllMothBudLines(self):
         posData = self.data[self.pos_i]
@@ -21604,6 +21632,53 @@ class guiWin(QMainWindow):
             self.AutoPilot.timer.stop()
         self.AutoPilot = None
 
+    def startCcaIntegrityCheckerWorker(self):
+        if not hasattr(self, 'data'):
+            return
+        
+        if not self.dataIsLoaded:
+            return
+        
+        if self._isCcaIntegrityCheckedDisabled:
+            return
+        
+        ccaCheckerThread = QThread()
+        self.ccaCheckerMutex = QMutex()
+        self.ccaCheckerWaitCond = QWaitCondition()
+        
+        worker = workers.CcaIntegrityCheckerWorker(
+            self.ccaCheckerMutex, self.ccaCheckerWaitCond
+        )
+        self.ccaIntegrityCheckerWorker = worker
+        self.ccaCheckerThread = ccaCheckerThread
+        
+        worker.moveToThread(ccaCheckerThread)
+        worker.finished.connect(ccaCheckerThread.quit)
+        worker.finished.connect(worker.deleteLater)
+        ccaCheckerThread.finished.connect(ccaCheckerThread.deleteLater)
+
+        worker.destroyed.connect(self.ccaIntegrityCheckerWorkerDestroyed)
+        worker.sigDone.connect(self.ccaCheckerWorkerDone)
+        worker.progress.connect(self.workerProgress)
+        worker.critical.connect(self.ccaIntegrityWorkerCritical)
+        worker.finished.connect(self.ccaCheckerWorkerClosed)
+        worker.sigWarning.connect(self.warnCcaIntegrity)
+        
+        ccaCheckerThread.started.connect(worker.run)
+        ccaCheckerThread.start()
+        
+        self.logger.info('Cell cycle annotations integrity checker started.')
+    
+    def disableCcaIntegrityChecker(self):
+        self._isCcaIntegrityCheckedDisabled = True
+        self.stopCcaIntegrityCheckerWorker()
+    
+    def stopCcaIntegrityCheckerWorker(self):
+        try:
+            self.ccaIntegrityCheckerWorker._stop()
+        except Exception as err:
+            pass
+    
     def loadFluo_cb(self, checked=True, fluo_channels=None):
         if fluo_channels is None:
             posData = self.data[self.pos_i]
@@ -23139,6 +23214,8 @@ class guiWin(QMainWindow):
             self.waitCloseAutoSaveWorkerLoop.exec_()
             progressWin.workerFinished = True
             progressWin.close()
+        
+        self.stopCcaIntegrityCheckerWorker()
         
         # Close the inifinte loop of the thread
         if self.lazyLoader is not None:
