@@ -20678,10 +20678,9 @@ class guiWin(QMainWindow):
             # Check if tracker also returns a list-like of IDs that is fine to
             # loose (e.g., upon standard cell division)
             try:
-                frame_i = posData.frame_i
                 tracked_lab, tracked_lost_IDs = tracked_result
                 self.setTrackedLostCentroids(tracked_lab, tracked_lost_IDs)
-            except Exception as err:
+            except ValueError as err:
                 tracked_lab = tracked_result
             
             if DoManualEdit:
