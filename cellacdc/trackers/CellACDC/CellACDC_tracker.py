@@ -80,19 +80,22 @@ def log_debugging(what, **kwargs):
             f'Previous IDs: {kwargs["old_IDs"]}'
         )
     if what == 'assign_unique':
-        txt = (f"""
-Assign new IDs uniquely = {kwargs['assign_unique_new_IDs']}
-""")
+        assign_unique_new_IDs = kwargs['assign_unique_new_IDs']
+        txt = (
+            f'Assign new IDs uniquely = {assign_unique_new_IDs}'
+        )
         printl(txt)
     elif what == 'new_untracked_and_assign_unique':
         new_untracked_IDs = kwargs['new_untracked_IDs']
         new_tracked_IDs = kwargs['new_tracked_IDs']
-        txt = (f"""
-Current IDs: {kwargs['IDs_curr_untracked']}
-Previous IDs: {kwargs['old_IDs']}
-New objects that get a new big ID: {new_untracked_IDs}
-New unique IDs for the new objects: {new_tracked_IDs}
-""")
+        IDs_curr_untracked = kwargs['IDs_curr_untracked']
+        old_IDs = kwargs['old_IDs']
+        txt = (
+            f'Current IDs: {IDs_curr_untracked}\n'
+            f'Previous IDs: {old_IDs}\n'
+            f'New objects that get a new big ID: {new_untracked_IDs}\n'
+            f'New unique IDs for the new objects: {new_tracked_IDs}'
+        )
         printl(txt)
         txt = ''
         for _ID, replacingID in zip(new_untracked_IDs, new_tracked_IDs):
@@ -102,12 +105,13 @@ New unique IDs for the new objects: {new_tracked_IDs}
         new_untracked_IDs = kwargs['new_untracked_IDs']
         new_tracked_IDs = kwargs['new_tracked_IDs']
         new_IDs_in_trackedIDs = kwargs['new_IDs_in_trackedIDs']
-        txt = (f"""
-New tracked IDs that already exists: {new_IDs_in_trackedIDs}
-Previous IDs: {kwargs['old_IDs']}
-New objects that get a new big ID: {new_untracked_IDs}
-New unique IDs for the new objects: {new_tracked_IDs}
-""")
+        old_IDs = kwargs['old_IDs']
+        txt = (
+            f'New tracked IDs that already exists: {new_IDs_in_trackedIDs}\n'
+            f'Previous IDs: {old_IDs}\n'
+            f'New objects that get a new big ID: {new_untracked_IDs}\n'
+            f'New unique IDs for the new objects: {new_tracked_IDs}'
+        )
         printl(txt)
         txt = ''
         for _ID, replacingID in zip(new_IDs_in_trackedIDs, new_tracked_IDs):
@@ -116,10 +120,10 @@ New unique IDs for the new objects: {new_tracked_IDs}
     elif what == 'tracked':
         old_IDs = kwargs['old_IDs']
         tracked_IDs = kwargs['tracked_IDs']
-        txt = (f"""
-Old IDs to be tracked: {old_IDs}
-New IDs replacing old IDs: {tracked_IDs}
-""")
+        txt = (
+            f'Old IDs to be tracked: {old_IDs}\n'
+            f'New IDs replacing old IDs: {tracked_IDs}'
+        )
         printl(txt)
         txt = ''
         for _ID, replacingID in zip(old_IDs, tracked_IDs):
@@ -175,24 +179,22 @@ def indexAssignment(
         core.lab_replace_values(
             tracked_lab, rp, new_IDs_in_trackedIDs, new_tracked_IDs
         )
-        # log_debugging( #This may have been caused by merging, but new_tracked_IDs is referenced before assignment
-        #     'new_untracked_and_tracked', 
-        #     new_IDs_in_trackedIDs=new_IDs_in_trackedIDs,
-        #     old_IDs=old_IDs,
-        #     new_untracked_IDs=new_untracked_IDs,
-        #     new_tracked_IDs=new_tracked_IDs
-        # )
+        log_debugging(
+            'new_untracked_and_tracked', 
+            new_IDs_in_trackedIDs=new_IDs_in_trackedIDs,
+            old_IDs=old_IDs,
+            new_untracked_IDs=new_untracked_IDs,
+            new_tracked_IDs=new_tracked_IDs
+        )
     if tracked_IDs:
         core.lab_replace_values(
             tracked_lab, rp, old_IDs, tracked_IDs, in_place=True
         )
-        # log_debugging( # same as above
-        #     'tracked', 
-        #     tracked_IDs=tracked_IDs,
-        #     old_IDs=old_IDs,
-        #     new_untracked_IDs=new_untracked_IDs,
-        #     new_tracked_IDs=new_tracked_IDs
-        # )
+        log_debugging(
+            'tracked', 
+            tracked_IDs=tracked_IDs,
+            old_IDs=old_IDs,
+        )
 
     if not return_assignments:
         return tracked_lab
