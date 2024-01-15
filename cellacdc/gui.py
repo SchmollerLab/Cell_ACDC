@@ -20601,6 +20601,7 @@ class guiWin(QMainWindow):
             posData.lab = tracked_lab
     
     # @exec_time
+    @exception_handler
     def tracking(
             self, enforce=False, DoManualEdit=True,
             storeUndo=False, prev_lab=None, prev_rp=None,
@@ -20634,9 +20635,13 @@ class guiWin(QMainWindow):
             else:
                 do_tracking = True
 
+            printl("Tracking")
+
             if not do_tracking:
                 self.setLostNewOldPrevIDs()
                 return
+
+            printl("Tracking again")
 
             """Tracking starts here"""
             staturBarLabelText = self.statusBarLabel.text()
@@ -20671,16 +20676,23 @@ class guiWin(QMainWindow):
                     use_scipy=True
                 )
             else:
+                printl("1")
                 tracked_result = self.realTimeTracker.track_frame(
                     prev_lab, posData.lab, **self.track_frame_params
                 )
+                printl("2")
+
+            printl(len(tracked_result))
 
             # Check if tracker also returns a list-like of IDs that is fine to
             # loose (e.g., upon standard cell division)
             try:
                 tracked_lab, tracked_lost_IDs = tracked_result
+                from cellacdc.plot import imshow
+                imshow(tracked_lab)
                 self.setTrackedLostCentroids(tracked_lab, tracked_lost_IDs)
             except ValueError as err:
+                printl(traceback.format_exc())
                 tracked_lab = tracked_result
             
             if DoManualEdit:

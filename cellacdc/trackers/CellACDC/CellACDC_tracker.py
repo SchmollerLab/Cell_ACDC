@@ -8,7 +8,7 @@ from skimage.segmentation import relabel_sequential
 
 from cellacdc import core, printl
 
-DEBUG = False
+DEBUG = True
 
 def calc_IoA_matrix(lab, prev_lab, rp, prev_rp, IDs_curr_untracked=None):
     IDs_prev = []

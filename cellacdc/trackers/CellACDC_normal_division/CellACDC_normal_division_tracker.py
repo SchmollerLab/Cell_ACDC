@@ -183,8 +183,7 @@ class tracker:
               min_daughter = 2,
               max_daughter = 2,
               record_lineage = True
-        ):
-
+        ):      
         pbar = tqdm(total=len(segm_video), desc='Tracking', ncols=100)
             
         for frame_i, lab in enumerate(segm_video):
@@ -231,12 +230,14 @@ class tracker:
         segm_video = [previous_frame_labels, current_frame_labels]
         tracker = normal_division_tracker(segm_video, IoA_thresh_daughter, min_daughter, max_daughter, IoA_thresh, IoA_thresh_aggressive)
         tracker.track_frame(1)
+        tracked_video = tracker.tracked_video
 
         mothers, _ = tracker.mother_daughters
-        mothers = [tracker.IDs_prev[mother] for mother in mothers]
+        IDs_prev = tracker.IDs_prev
+        # mothers = {IDs_prev[mother] for mother in mothers}
 
-        tracked_video = tracker.tracked_video
-        
+        printl(mothers)
+
         return tracked_video[-1], mothers
     
     def updateGuiProgressBar(self, signals):
