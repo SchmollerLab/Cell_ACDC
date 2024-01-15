@@ -15709,6 +15709,8 @@ class guiWin(QMainWindow):
             posData.includeUnvisitedInfo = {
                 'Delete ID': False, 'Edit ID': False, 'Keep ID': False
             }
+            
+            posData.all_tracked_lost_IDs = {}
 
             posData.doNotShowAgain_BinID = False
             posData.UndoFutFrames_BinID = False
@@ -20084,7 +20086,7 @@ class guiWin(QMainWindow):
 
     # @exec_time
     def setAllTextAnnotations(self, labelsToSkip=None):
-        delROIsIDs = self.setTitleText()
+        delROIsIDs = self.setLostNewOldPrevIDs()
         posData = self.data[self.pos_i]
         self.textAnnot[0].setAnnotations(
             posData=posData, labelsToSkip=labelsToSkip, 
@@ -20461,7 +20463,7 @@ class guiWin(QMainWindow):
         self.updateAllImages()
 
     # @exec_time
-    def setTitleText(self):
+    def setLostNewOldPrevIDs(self):
         posData = self.data[self.pos_i]
         if posData.frame_i == 0:
             posData.lost_IDs = []
@@ -20476,21 +20478,24 @@ class guiWin(QMainWindow):
         
         prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
         prev_IDs = posData.allData_li[posData.frame_i-1]['IDs']
-        existing = True
+        lab_existing = True
         if not prev_IDs:
-            prev_lab, existing = self.get_labels(
+            prev_lab, lab_existing = self.get_labels(
                 frame_i=posData.frame_i-1, return_existing=True
             )
             prev_rp = skimage.measure.regionprops(prev_lab)
             prev_IDs = [obj.label for obj in prev_rp]     
             posData.allData_li[posData.frame_i-1]['IDs'] = prev_IDs     
-
+        
+        tracked_lost_IDs = posData.all_tracked_lost_IDs.get(
+            posData.frame_i, set()
+        )
         curr_IDs = posData.IDs
         curr_delRoiIDs = self.getStoredDelRoiIDs()
         prev_delRoiIDs = self.getStoredDelRoiIDs(frame_i=posData.frame_i-1)
         lost_IDs = [
             ID for ID in prev_IDs if ID not in curr_IDs 
-            and ID not in prev_delRoiIDs
+            and ID not in prev_delRoiIDs and ID not in tracked_lost_IDs
         ]
         new_IDs = [
             ID for ID in curr_IDs if ID not in prev_IDs 
@@ -20505,8 +20510,14 @@ class guiWin(QMainWindow):
         posData.new_IDs = new_IDs
         posData.old_IDs = prev_IDs
         posData.IDs = curr_IDs
+        self.setTitleText(
+            lost_IDs, new_IDs, IDs_with_holes, lab_existing
+        )
+        return curr_delRoiIDs
+    
+    def setTitleText(self, lost_IDs, new_IDs, IDs_with_holes, lab_existing):
         warn_txt = ''
-        if existing:
+        if lab_existing:
             htmlTxt = ''
         else:
             htmlTxt = f'<font color="white">Never segmented frame. </font>'
@@ -20530,12 +20541,10 @@ class guiWin(QMainWindow):
             )
         if not htmlTxt:
             warn_txt = 'Looking good'
-            color = 'w'
             htmlTxt = (
                 f'<font color="{self.titleColor}">{warn_txt}</font>'
             )
         self.titleLabel.setText(htmlTxt)
-        return curr_delRoiIDs
 
     def separateByLabelling(self, lab, rp, maxID=None):
         """
@@ -20606,7 +20615,7 @@ class guiWin(QMainWindow):
                 or self.isSnapshot
             )
             if skipTracking:
-                self.setTitleText()
+                self.setLostNewOldPrevIDs()
                 return
 
             # Disable tracking for already visited frames
@@ -20626,7 +20635,7 @@ class guiWin(QMainWindow):
                 do_tracking = True
 
             if not do_tracking:
-                self.setTitleText()
+                self.setLostNewOldPrevIDs()
                 return
 
             """Tracking starts here"""
@@ -20649,7 +20658,7 @@ class guiWin(QMainWindow):
                 prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
 
             if self.trackWithAcdcAction.isChecked():
-                tracked_lab = CellACDC_tracker.track_frame(
+                tracked_result = CellACDC_tracker.track_frame(
                     prev_lab, prev_rp, posData.lab, posData.rp,
                     IDs_curr_untracked=posData.IDs,
                     setBrushID_func=self.setBrushID,
@@ -20657,15 +20666,27 @@ class guiWin(QMainWindow):
                     assign_unique_new_IDs=assign_unique_new_IDs
                 )
             elif self.trackWithYeazAction.isChecked():
-                tracked_lab = self.tracking_yeaz.correspondence(
+                tracked_result = self.tracking_yeaz.correspondence(
                     prev_lab, posData.lab, use_modified_yeaz=True,
                     use_scipy=True
                 )
             else:
-                tracked_lab = self.realTimeTracker.track_frame(
+                tracked_result = self.realTimeTracker.track_frame(
                     prev_lab, posData.lab, **self.track_frame_params
                 )
 
+            # Check if tracker also returns a list-like of IDs that is fine to
+            # loose (e.g., upon standard cell division)
+            try:
+                frame_i = posData.frame_i
+                tracked_lab, tracked_lost_IDs = tracked_result
+                posData.all_tracked_lost_IDs[frame_i] = (
+                    posData.all_tracked_lost_IDs.get(frame_i, set())
+                    .update(tracked_lost_IDs)
+                )
+            except Exception as err:
+                tracked_lab = tracked_result
+            
             if DoManualEdit:
                 # Correct tracking with manually changed IDs
                 rp = skimage.measure.regionprops(tracked_lab)
