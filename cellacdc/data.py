@@ -64,6 +64,30 @@ class FissionYeastAnnotated(_Data):
     def posData(self):
         from . import load
         return load.loadData(self.intensity_image_path, '')
+    
+class DeepSeaAnnotation(_Data):
+    def __init__(self):
+        images_path = os.path.join(
+            data_path, 'deep_sea', 'Images', 
+        )
+        intensity_image_path = os.path.join(
+            images_path, 'set_22_MESC.tif'
+        )
+        acdc_df_path = os.path.join(
+            images_path, 'set_22_MESC_acdc_output.csv'
+        )
+        segm_path = os.path.join(
+            images_path, 'set_22_MESC_segm.tif'
+        )
+        basename = 'set_22_MESC_'
+        super().__init__(
+            images_path, intensity_image_path, acdc_df_path, segm_path,
+            basename
+        )
+    
+    def posData(self):
+        from . import load
+        return load.loadData(self.intensity_image_path, '')
 
 class YeastTimeLapseAnnotated(_Data):
     def __init__(self):

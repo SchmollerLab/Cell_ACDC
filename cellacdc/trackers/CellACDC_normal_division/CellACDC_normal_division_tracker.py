@@ -60,7 +60,14 @@ def create_lineage_tree_video(segm_video, IoA_thresh_daughter, min_daughter, max
     return tree.lineage_list
 
 class normal_division_tracker:
-    def __init__(self, segm_video, IoA_thresh_daughter, min_daughter, max_daughter, IoA_thresh, IoA_thresh_aggressive):
+    def __init__(self, 
+                 segm_video, 
+                 IoA_thresh_daughter, 
+                 min_daughter, 
+                 max_daughter, 
+                 IoA_thresh, 
+                 IoA_thresh_aggressive):
+        
         self.IoA_thresh_daughter = IoA_thresh_daughter
         self.min_daughter = min_daughter
         self.max_daughter = max_daughter
@@ -224,8 +231,13 @@ class tracker:
         segm_video = [previous_frame_labels, current_frame_labels]
         tracker = normal_division_tracker(segm_video, IoA_thresh_daughter, min_daughter, max_daughter, IoA_thresh, IoA_thresh_aggressive)
         tracker.track_frame(1)
+
+        mothers, _ = tracker.mother_daughters
+        mothers = [tracker.IDs_prev[mother] for mother in mothers]
+
         tracked_video = tracker.tracked_video
-        return tracked_video[-1]
+        
+        return tracked_video[-1], mothers
     
     def updateGuiProgressBar(self, signals):
         if signals is None:

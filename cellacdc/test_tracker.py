@@ -18,21 +18,21 @@ app, splashScreen = _setup_app(splashscreen=True)
 splashScreen.close()
 
 path = (
-    os.path.join(data_path, 'test_symm_div_acdc_tracker', 'Images', 'bknapp_Movie_S1.tif')
+    os.path.join(data_path, 'deep_sea', 'Images', 'set_22_MESC.tif')
 )
 
-channel_name = 'bknapp_Movie_S1'
+channel_name = 'set_22_MESC'
 end_filename_segm = 'segm'# 'segm_test'
 START_FRAME = 0 
-STOP_FRAME = 499
-PLOT_FRAME = 499
+STOP_FRAME = 30
+# PLOT_FRAME = 499
 SAVE = True
 SCRUMBLE_IDs = False
 
 # test_data = data.BABYtestData()
 # posData = test_data.posData()
 
-test_data = data.FissionYeastAnnotated()
+test_data = data.DeepSeaAnnotation()
 posData = test_data.posData()
 posData.acdc_output_csv_path = test_data.acdc_df_path
 
@@ -63,7 +63,7 @@ tracker, track_params = myutils.init_tracker(
 )
 if track_params is None:
     exit('Execution aborted')    
-
+print(posData.segm_data.shape)
 lab_stack = posData.segm_data[START_FRAME:STOP_FRAME+1]
 
 if SCRUMBLE_IDs:
