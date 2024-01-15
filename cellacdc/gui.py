@@ -9190,6 +9190,8 @@ class guiWin(QMainWindow):
             - User released mouse button on a cell in G1 (checked at release time)
             - The new mother MUST be in G1 for all the frames of the bud life
               --> if not warn
+            - The new mother MUST have appeared in current frame OR be already 
+              in G1 in previous frame, otherwise there would be no G1 cycle 
 
         Result:
             - The bud only changes relative ID to the new mother
