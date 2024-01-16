@@ -20607,90 +20607,86 @@ class guiWin(QMainWindow):
             return_lab=False, assign_unique_new_IDs=True,
             separateByLabel=True
         ):
-        try:
-            posData = self.data[self.pos_i]
-            mode = str(self.modeComboBox.currentText())
-            skipTracking = (
-                posData.frame_i == 0 or mode.find('Tracking') == -1
-                or self.isSnapshot
+        posData = self.data[self.pos_i]
+        mode = str(self.modeComboBox.currentText())
+        skipTracking = (
+            posData.frame_i == 0 or mode.find('Tracking') == -1
+            or self.isSnapshot
+        )
+        if skipTracking:
+            self.setLostNewOldPrevIDs()
+            return
+
+        # Disable tracking for already visited frames
+        trackingDisabled = self.checkTrackingEnabled()
+
+        if enforce or self.UserEnforced_Tracking:
+            # Tracking enforced by the user
+            do_tracking = True
+        elif self.UserEnforced_DisabledTracking:
+            # Tracking specifically DISABLED by the user
+            do_tracking = False
+        elif trackingDisabled:
+            # User did not choose what to do --> tracking disabled for
+            # visited frames and enabled for never visited frames
+            do_tracking = False
+        else:
+            do_tracking = True
+
+        if not do_tracking:
+            self.setLostNewOldPrevIDs()
+            return
+
+        """Tracking starts here"""
+        staturBarLabelText = self.statusBarLabel.text()
+        self.statusBarLabel.setText('Tracking...')
+
+        if storeUndo:
+            # Store undo state before modifying stuff
+            self.storeUndoRedoStates(False)
+
+        # First separate by labelling
+        if separateByLabel:
+            setRp = self.separateByLabelling(posData.lab, posData.rp)
+            if setRp:
+                self.update_rp()
+
+        if prev_lab is None:
+            prev_lab = posData.allData_li[posData.frame_i-1]['labels']
+        if prev_rp is None:
+            prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
+
+        if self.trackWithAcdcAction.isChecked():
+            tracked_result = CellACDC_tracker.track_frame(
+                prev_lab, prev_rp, posData.lab, posData.rp,
+                IDs_curr_untracked=posData.IDs,
+                setBrushID_func=self.setBrushID,
+                posData=posData,
+                assign_unique_new_IDs=assign_unique_new_IDs
             )
-            if skipTracking:
-                self.setLostNewOldPrevIDs()
-                return
+        elif self.trackWithYeazAction.isChecked():
+            tracked_result = self.tracking_yeaz.correspondence(
+                prev_lab, posData.lab, use_modified_yeaz=True,
+                use_scipy=True
+            )
+        else:
+            tracked_result = self.realTimeTracker.track_frame(
+                prev_lab, posData.lab, **self.track_frame_params
+            )
 
-            # Disable tracking for already visited frames
-            trackingDisabled = self.checkTrackingEnabled()
-
-            if enforce or self.UserEnforced_Tracking:
-                # Tracking enforced by the user
-                do_tracking = True
-            elif self.UserEnforced_DisabledTracking:
-                # Tracking specifically DISABLED by the user
-                do_tracking = False
-            elif trackingDisabled:
-                # User did not choose what to do --> tracking disabled for
-                # visited frames and enabled for never visited frames
-                do_tracking = False
-            else:
-                do_tracking = True
-
-            if not do_tracking:
-                self.setLostNewOldPrevIDs()
-                return
-
-            """Tracking starts here"""
-            staturBarLabelText = self.statusBarLabel.text()
-            self.statusBarLabel.setText('Tracking...')
-
-            if storeUndo:
-                # Store undo state before modifying stuff
-                self.storeUndoRedoStates(False)
-
-            # First separate by labelling
-            if separateByLabel:
-                setRp = self.separateByLabelling(posData.lab, posData.rp)
-                if setRp:
-                    self.update_rp()
-
-            if prev_lab is None:
-                prev_lab = posData.allData_li[posData.frame_i-1]['labels']
-            if prev_rp is None:
-                prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
-
-            if self.trackWithAcdcAction.isChecked():
-                tracked_result = CellACDC_tracker.track_frame(
-                    prev_lab, prev_rp, posData.lab, posData.rp,
-                    IDs_curr_untracked=posData.IDs,
-                    setBrushID_func=self.setBrushID,
-                    posData=posData,
-                    assign_unique_new_IDs=assign_unique_new_IDs
-                )
-            elif self.trackWithYeazAction.isChecked():
-                tracked_result = self.tracking_yeaz.correspondence(
-                    prev_lab, posData.lab, use_modified_yeaz=True,
-                    use_scipy=True
-                )
-            else:
-                tracked_result = self.realTimeTracker.track_frame(
-                    prev_lab, posData.lab, **self.track_frame_params
-                )
-
-            # Check if tracker also returns a list-like of IDs that is fine to
-            # loose (e.g., upon standard cell division)
-            try:
-                tracked_lab, tracked_lost_IDs = tracked_result
-                self.setTrackedLostCentroids(tracked_lab, tracked_lost_IDs)
-            except ValueError as err:
-                tracked_lab = tracked_result
-            
-            if DoManualEdit:
-                # Correct tracking with manually changed IDs
-                rp = skimage.measure.regionprops(tracked_lab)
-                IDs = [obj.label for obj in rp]
-                self.manuallyEditTracking(tracked_lab, IDs)
-
-        except ValueError:
-            tracked_lab = self.get_2Dlab(posData.lab)
+        # Check if tracker also returns a list-like of IDs that is fine to
+        # loose (e.g., upon standard cell division)
+        try:
+            tracked_lab, tracked_lost_IDs = tracked_result
+            self.setTrackedLostCentroids(tracked_lab, tracked_lost_IDs)
+        except ValueError as err:
+            tracked_lab = tracked_result
+        
+        if DoManualEdit:
+            # Correct tracking with manually changed IDs
+            rp = skimage.measure.regionprops(tracked_lab)
+            IDs = [obj.label for obj in rp]
+            self.manuallyEditTracking(tracked_lab, IDs)
 
         if return_lab:
             return tracked_lab
