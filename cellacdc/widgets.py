@@ -3409,6 +3409,11 @@ class SpinBox(QSpinBox):
         elif control == QStyle.SubControl.SC_SpinBoxDown:
             self.sigDownClicked.emit()
 
+    # def focusOutEvent(self, event):
+    #     self.editingFinished.emit()
+    #     super().focusOutEvent(event)
+    #     printl('emitted')
+    
     def keyPressEvent(self, event) -> None:
         isBackSpaceKey = event.key() == Qt.Key_Backspace
         isDeleteKey = event.key() == Qt.Key_Delete

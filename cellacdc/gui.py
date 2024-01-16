@@ -21091,7 +21091,7 @@ class guiWin(QMainWindow):
         self.gui_createLazyLoader()
 
         try:
-            self.navSpinBox.disconnect()
+            self.navSpinBox.valueChanged.disconnect()
         except Exception as e:
             pass
         
