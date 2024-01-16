@@ -34,6 +34,7 @@ from . import transformation
 from .path import copy_or_move_tree
 from . import features
 from . import core
+from . import cca_df_colnames
 
 DEBUG = False
 
@@ -4098,3 +4099,275 @@ class ScreenRecorderWorker(QObject):
             time.sleep(0.2)
 
         self.finished.emit()
+
+class CcaIntegrityCheckerWorker(QObject):
+    finished = Signal(object)
+    critical = Signal(object)
+    progress = Signal(str, object)
+    sigDone = Signal()
+    sigWarning = Signal(str, str)
+    
+    def __init__(self, mutex, waitCond):
+        QObject.__init__(self)
+        self.logger = workerLogger(self.progress)
+        self.mutex = mutex
+        self.waitCond = waitCond
+        self.exit = False
+        self.isFinished = False
+        self.abortChecking = False
+        self.isChecking = False
+        self.isPaused = False
+        self.debug = False
+        self.dataQ = deque(maxlen=5)
+    
+    def pause(self):
+        if self.debug:
+            self.logger.log('Cell cycle annotations checker is idle.')
+        self.mutex.lock()
+        self.isPaused = True
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        self.isPaused = False
+    
+    def enqueue(self, posData):
+        # First stop previous checking
+        if self.isChecking:
+            self.abortChecking = True
+        self._enqueue(posData)
+    
+    def _enqueue(self, posData):
+        if self.debug:
+            self.logger.log('Enqueing posData...')
+        self.dataQ.append(posData)
+        if len(self.dataQ) == 1:
+            # Wake worker upon inserting first element
+            self.abort = False
+            self.waitCond.wakeAll()
+    
+    def _stop(self):
+        self.exit = True
+        self.waitCond.wakeAll()
+    
+    def abort(self):
+        self.abortChecking = True
+        while not len(self.dataQ) == 0:
+            data = self.dataQ.pop()
+            del data
+        self._stop()
+    
+    def _check_equality_num_mothers_buds_in_S(self, checker, frame_i):
+        num_moth_S, num_buds = checker.get_num_mothers_and_buds_in_S()
+        
+        if num_moth_S == num_buds:
+            return True
+        
+        category = 'number of buds different from number of mothers in S phase'
+        ul_items = [
+            f'Number of buds = {num_buds}', 
+            f'Number of mothers in S phase = {num_moth_S}'
+        ]
+        txt = html_utils.paragraph(
+            f'At frame n. {frame_i+1} the number of buds and number of '
+            'mother cells in S phase are different!'
+            f'{html_utils.to_list(ul_items)}'
+        )
+        self.sigWarning.emit(txt, category)
+        return False
+    
+    def _check_mothers_multiple_buds(self, checker, frame_i):
+        mother_IDs_with_multiple_buds = (
+            checker.get_mother_IDs_with_multiple_buds()
+        )
+        if len(mother_IDs_with_multiple_buds) == 0:
+            return True
+
+        category = 'mother cells with multiple buds'
+        txt = html_utils.paragraph(
+            f'At frame n. {frame_i+1} '
+            'the following mother cells have <b>multiple buds</b> assigned to it'
+            f'<br><br>{mother_IDs_with_multiple_buds}'
+        )
+        self.sigWarning.emit(txt, category)
+        return False
+    
+    def _check_cells_without_G1(self, checker, global_cca_df):
+        IDs_cycles_without_G1 = (
+            checker.get_IDs_cycles_without_G1(global_cca_df)
+        )
+        if len(IDs_cycles_without_G1) == 0:
+            return True
+
+        category = 'cell cycles without G1'
+        txt = html_utils.paragraph(
+            'Cell-ACDC requires that every cell cycle has at least '
+            'one frame in G1.<br>'
+            'The following pairs of (ID, generation number) do not satisfy '
+            'this condition:<br><br>'
+            f'{IDs_cycles_without_G1}'
+        )
+        self.sigWarning.emit(txt, category)
+        return False
+    
+    def _check_buds_gen_num_zero(self, checker, frame_i):
+        bud_IDs_gen_num_nonzero = (
+            checker.get_bud_IDs_gen_num_nonzero()
+        )
+        if len(bud_IDs_gen_num_nonzero) == 0:
+            return True
+
+        category = 'buds whose generation number is not zero'
+        txt = html_utils.paragraph(
+            f'At frame n. {frame_i+1} '
+            'the following bud IDs have generation number different from 0:'
+            f'<br><br>{bud_IDs_gen_num_nonzero}'
+        )
+        self.sigWarning.emit(txt, category)
+        return False
+    
+    def _check_mothers_gen_num_greater_one(self, checker, frame_i):
+        moth_IDs_gen_num_non_greater_one = (
+            checker.get_moth_IDs_gen_num_non_greater_one()
+        )
+        if len(moth_IDs_gen_num_non_greater_one) == 0:
+            return True
+
+        category = 'mothers whose generation number is < 1'
+        txt = html_utils.paragraph(
+            f'At frame n. {frame_i+1} '
+            'the following mother cells have generation number < 1:'
+            f'<br><br>{moth_IDs_gen_num_non_greater_one}'
+        )
+        self.sigWarning.emit(txt, category)
+        return False
+    
+    def _check_buds_G1(self, checker, frame_i):
+        buds_G1 = (
+            checker.get_buds_G1()
+        )
+        if len(buds_G1) == 0:
+            return True
+
+        category = 'buds in G1'
+        txt = html_utils.paragraph(
+            f'At frame n. {frame_i+1} '
+            'the following bud IDs are in G1 (buds must be in S):'
+            f'<br><br>{buds_G1}'
+        )
+        self.sigWarning.emit(txt, category)
+        return False
+    
+    def _check_cell_S_rel_ID_zero(self, checker, frame_i):
+        cell_S_rel_ID_zero = (
+            checker.get_cell_S_rel_ID_zero()
+        )
+        if len(cell_S_rel_ID_zero) == 0:
+            return True
+
+        category = 'buds in G1'
+        txt = html_utils.paragraph(
+            f'At frame n. {frame_i+1} '
+            'the following cell IDs in S phase do not have '
+            '<code>relative_ID > 0</code>:'
+            f'<br><br>{cell_S_rel_ID_zero}'
+        )
+        self.sigWarning.emit(txt, category)
+        return False
+    
+    def _check_ID_rel_ID_mismatches(self, checker, frame_i):
+        ID_rel_ID_mismatches = (
+            checker.get_ID_rel_ID_mismatches()
+        )
+        if len(ID_rel_ID_mismatches) == 0:
+            return True
+
+        items = [
+            f'Cell ID {ID} has relative ID = {relID}, '
+            f'while cell ID {relID} has relative ID = {relID_of_relID}'
+            for ID, relID, relID_of_relID in ID_rel_ID_mismatches
+        ]
+        category = '`ID-relative_ID` mismatches'
+        txt = html_utils.paragraph(
+            f'At frame n. {frame_i+1} '
+            'there are the following `ID-relative_ID` mismatches:'
+            f'{html_utils.to_list(items)}'
+        )
+        self.sigWarning.emit(txt, category)
+        return False
+    
+    def check(self, posData):    
+        self.isChecking = True
+        checkpoints = (
+            '_check_equality_num_mothers_buds_in_S',
+            '_check_mothers_multiple_buds',
+            '_check_buds_gen_num_zero',
+            '_check_mothers_gen_num_greater_one',
+            '_check_buds_G1',
+            '_check_cell_S_rel_ID_zero',
+            '_check_ID_rel_ID_mismatches'
+        )
+        cca_dfs = []
+        keys = []
+        check_integrity_globally = True
+        for frame_i, data_dict in enumerate(posData.allData_li):
+            if self.abortChecking:
+                check_integrity_globally = False
+                break
+            
+            lab = data_dict['labels']
+            if lab is None:
+                break
+            
+            acdc_df = data_dict['acdc_df']
+            try:
+                cca_df = acdc_df[cca_df_colnames]
+            except KeyError as error:
+                break
+            
+            checker = core.CcaIntegrityChecker(cca_df)
+            
+            for checkpoint in checkpoints:
+                proceed = getattr(self, checkpoint)(checker, frame_i)
+                if not proceed:
+                    break
+            
+            if not proceed:
+                check_integrity_globally = False
+                break
+            
+            cca_dfs.append(cca_df)
+            keys.append(frame_i)
+        
+        if check_integrity_globally and len(cca_dfs)>1:
+            global_checkpoints = (
+                '_check_cells_without_G1',
+            )
+            # Check integrity globally
+            global_cca_df = pd.concat(cca_dfs, keys=keys, names=['frame_i'])
+            for checkpoint in global_checkpoints:
+                proceed = getattr(self, checkpoint)(checker, global_cca_df)
+                if not proceed:
+                    break
+        
+        self.abortChecking = False
+        self.isChecking = False
+    
+    @worker_exception_handler
+    def run(self):
+        while True:
+            if self.exit:
+                self.logger.log('Closing cell cycle integrity checker worker...')
+                break
+            elif not len(self.dataQ) == 0:
+                if self.debug:
+                    self.logger.log(
+                        'Checking integrity of cell cycle annotations '
+                        f'({len(self.dataQ)})...'
+                    )
+                data = self.dataQ.pop()
+                self.check(data)
+                if len(self.dataQ) == 0:
+                    self.sigDone.emit()
+            else:
+                self.pause()
+        self.isFinished = True
+        self.finished.emit(self)
