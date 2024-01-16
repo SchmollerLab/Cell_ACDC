@@ -17973,6 +17973,7 @@ class guiWin(QMainWindow):
 
         self.loadClickEntryDfs(tableEndName)
 
+    @exception_handler
     def addPointsLayer(self):
         if self.addPointsWin.cancel:
             self.logger.info('Adding points layer cancelled.')
@@ -18188,12 +18189,14 @@ class guiWin(QMainWindow):
                     )
                 continue
             
-            if self.isSegm3D:
+            framePointsData = action.pointsData[posData.frame_i]
+            if 'x' not in framePointsData:
+                # 3D points
                 zProjHow = self.zProjComboBox.currentText()
                 isZslice = zProjHow == 'single z-slice'
                 if isZslice:
-                    zSlice = self.z_lab()
-                    z_data = action.pointsData[posData.frame_i].get(zSlice)
+                    zSlice = self.zSliceScrollBar.sliderPosition()
+                    z_data = framePointsData.get(zSlice)
                     if z_data is None:
                         # There are no objects on this z-slice
                         action.scatterItem.clear()
@@ -18202,13 +18205,13 @@ class guiWin(QMainWindow):
                 else:
                     xx, yy = [], []
                     # z-projection --> draw all points
-                    for z, z_data in action.pointsData[posData.frame_i].items():
+                    for z, z_data in framePointsData.items():
                         xx.extend(z_data['x'])
                         yy.extend(z_data['y'])
             else:
                 # 2D segmentation
-                xx = action.pointsData[posData.frame_i]['x']
-                yy = action.pointsData[posData.frame_i]['y']
+                xx = framePointsData['x']
+                yy = framePointsData['y']
 
             action.scatterItem.setData(xx, yy)
 
