@@ -3001,7 +3001,7 @@ class guiWin(QMainWindow):
             self.repeatTrackingVideo
         )
         for rtTrackerAction in self.trackingAlgosGroup.actions():
-            rtTrackerAction.toggled.connect(self.storeTrackingAlgo)
+            rtTrackerAction.toggled.connect(self.rtTrackerActionToggled)
 
         self.delObjsOutSegmMaskAction.triggered.connect(
             self.delObjsOutSegmMaskActionTriggered
@@ -7635,7 +7635,7 @@ class guiWin(QMainWindow):
                 mappedAnnotIDs[frame_i] = mappedIDs
             customAnnotValues['annotatedIDs'][self.pos_i] = mappedAnnotIDs
 
-    def storeTrackingAlgo(self, checked):
+    def rtTrackerActionToggled(self, checked):
         if not checked:
             return
 
@@ -7654,6 +7654,7 @@ class guiWin(QMainWindow):
             """)
             msg.information(self, 'Info about YeaZ', info_txt, msg.Ok)
         
+        self.isRealTimeTrackerInitialized = False
         self.initRealTimeTracker()
 
     def findID(self):
@@ -14759,7 +14760,6 @@ class guiWin(QMainWindow):
         self.initPosAttr()
         self.initMetrics()
         self.initFluoData()
-        self.initRealTimeTracker()
         self.createChannelNamesActions()
         self.addActionsLutItemContextMenu(self.imgGrad)
         
@@ -15535,6 +15535,7 @@ class guiWin(QMainWindow):
         self.editIDmergeIDs = True
         self.doNotAskAgainExistingID = False
         self.doubleRightClickTimeElapsed = False
+        self.isRealTimeTrackerInitialized = False
         self.isDoubleRightClick = False
         self.highlightedIDopts = None
         self.keptObjectsIDs = widgets.KeptObjectIDsList(
@@ -16831,6 +16832,7 @@ class guiWin(QMainWindow):
         )
 
         self.checkTrackingEnabled()
+        self.initRealTimeTracker()
     
     @exception_handler
     def initCca(self):
@@ -21599,6 +21601,9 @@ class guiWin(QMainWindow):
         if rtTracker == 'Cell-ACDC':
             return
         if rtTracker == 'YeaZ':
+            return
+        
+        if self.isRealTimeTrackerInitialized:
             return
         
         self.logger.info(f'Initializing {rtTracker} tracker...')
