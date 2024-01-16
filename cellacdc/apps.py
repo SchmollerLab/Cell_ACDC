@@ -7941,8 +7941,6 @@ class editCcaTableWidget(QDialog):
         )
         okButton = widgets.okPushButton('Ok')
 
-        
-
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
         buttonsLayout.addSpacing(20)
