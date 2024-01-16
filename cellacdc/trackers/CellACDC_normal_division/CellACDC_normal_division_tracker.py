@@ -231,13 +231,15 @@ class tracker:
         tracker = normal_division_tracker(segm_video, IoA_thresh_daughter, min_daughter, max_daughter, IoA_thresh, IoA_thresh_aggressive)
         tracker.track_frame(1)
         tracked_video = tracker.tracked_video
-
-        mothers, _ = tracker.mother_daughters
+        
+        mother_daughters_pairs = tracker.mother_daughters
+        printl(mother_daughters_pairs)
         IDs_prev = tracker.IDs_prev
-        # mothers = {IDs_prev[mother] for mother in mothers}
+        printl(IDs_prev)
+        mothers = {IDs_prev[mother[0]] for mother in mother_daughters_pairs}
 
         printl(mothers)
-
+        printl(tracked_video[-1], mothers)
         return tracked_video[-1], mothers
     
     def updateGuiProgressBar(self, signals):
