@@ -4,13 +4,12 @@ import operator
 import time
 import re
 import datetime
-from matplotlib.pyplot import text
 import numpy as np
 import pandas as pd
 import math
 import traceback
 import logging
-import difflib
+
 from functools import partial
 from math import ceil
 
@@ -19,6 +18,8 @@ import skimage.morphology
 
 from matplotlib.colors import ListedColormap, LinearSegmentedColormap
 import matplotlib.pyplot as plt
+import matplotlib
+from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 from qtpy.QtCore import (
     Signal, QTimer, Qt, QPoint, QUrl, Property,
@@ -32,7 +33,8 @@ from qtpy.QtCore import (
 from qtpy.QtGui import (
     QFont, QPalette, QColor, QPen, QKeyEvent, QBrush, QPainter,
     QRegularExpressionValidator, QIcon, QPixmap, QKeySequence, QLinearGradient,
-    QShowEvent, QDesktopServices, QFontMetrics, QGuiApplication, QLinearGradient 
+    QShowEvent, QDesktopServices, QFontMetrics, QGuiApplication, QLinearGradient,
+    QImage 
 )
 from qtpy.QtWidgets import (
     QTextEdit, QLabel, QProgressBar, QHBoxLayout, QToolButton, QCheckBox,
@@ -64,6 +66,7 @@ LISTWIDGET_STYLESHEET = _palettes.ListWidgetStyleSheet()
 BASE_COLOR = _palettes.base_color()
 PROGRESSBAR_QCOLOR = _palettes.QProgressBarColor()
 PROGRESSBAR_HIGHLIGHTEDTEXT_QCOLOR = _palettes.QProgressBarHighlightedTextColor()
+TEXT_COLOR = _palettes.text_float_rgba()
 
 font = QFont()
 font.setPixelSize(12)
@@ -2285,22 +2288,24 @@ class myMessageBox(QDialog):
         if connect:
             self.cancelButton.clicked.connect(self.buttonCallBack)
 
+    def splitLatexBlocks(self, text):
+        texts = re.split(r"(<latex>.+)?</latex>", text)
+        return texts        
+
     def addText(self, text):
-        label = QLabel(self)
-        label.setText(text)
-        label.setWordWrap(self.wrapText)
-        label.setOpenExternalLinks(True)
-        self.labels.append(label)
+        texts = self.splitLatexBlocks()
+        labelsWidget = LabelsWidget(texts, wrapText=self.wrapText)
+        self.labels.extend(labelsWidget.labels)
         if self.scrollableText:
             textWidget = QScrollArea()
             textWidget.setFrameStyle(QFrame.Shape.NoFrame)
-            textWidget.setWidget(label)
+            textWidget.setWidget(labelsWidget)
         else:
-            textWidget = label
+            textWidget = labelsWidget
 
         self.layout.addWidget(textWidget, self.currentRow, 1)#, alignment=Qt.AlignTop)
         self.currentRow += 1
-        return label
+        return labelsWidget
     
     def addCopiableCommand(self, command):
         copiableCommandWidget = CopiableCommandWidget(command)
@@ -7443,3 +7448,106 @@ class VectorLineEdit(QLineEdit):
                 text = text.replace(']', '')
                 values = text.split(',')
                 return [float(value) for value in values]
+
+class LatexLabel(QLabel):
+    def __init__(self, latexText, parent=None):
+        super().__init__(parent)
+        
+        latexText = latexText.replace('<latex>', '$')
+        if not latexText.startswith('$'):
+            latexText = f'${latexText}'
+        
+        if not latexText.endswith('$'):
+            latexText = f'{latexText}$'
+        
+        latexText = latexText.replace('<br>', '\n')
+        
+        pixmap = self.mathTex_to_QPixmap(latexText)
+        self.setPixmap(pixmap)
+    
+    def mathTex_to_QPixmap(self, mathTex):
+        #---- set up a mpl figure instance ----
+
+        fig = matplotlib.figure.Figure()
+        fig.patch.set_facecolor('none')
+        fig.set_canvas(FigureCanvasAgg(fig))
+        renderer = fig.canvas.get_renderer()
+
+        #---- plot the mathTex expression ----
+
+        ax = fig.add_axes([0, 0, 1, 1])
+        ax.axis('off')
+        ax.patch.set_facecolor('none')
+        t = ax.text(
+            0, 0, mathTex, 
+            ha='left', va='bottom', 
+            fontsize=11, 
+            color=TEXT_COLOR
+        )
+
+        #---- fit figure size to text artist ----
+
+        fwidth, fheight = fig.get_size_inches()
+        fig_bbox = fig.get_window_extent(renderer)
+
+        text_bbox = t.get_window_extent(renderer)
+
+        tight_fwidth = text_bbox.width * fwidth / fig_bbox.width
+        tight_fheight = text_bbox.height * fheight / fig_bbox.height
+
+        fig.set_size_inches(tight_fwidth, tight_fheight)
+
+        #---- convert mpl figure to QPixmap ----
+
+        buf, size = fig.canvas.print_to_buffer()
+        qimage = QImage.rgbSwapped(QImage(
+            buf, size[0], size[1], QImage.Format_ARGB32)
+        )
+        qpixmap = QPixmap(qimage)
+
+        return qpixmap
+        
+
+class LabelsWidget(QWidget):
+    def __init__(self, texts, wrapText=False, parent=None):
+        super().__init__(parent=parent)
+        
+        layout = QVBoxLayout()
+        
+        texts = self.fixParagraphTags(texts)
+        
+        self.labels = []
+        for text in texts:
+            if text.startswith('<latex>'):
+                label = LatexLabel(text)
+            else:
+                label = QLabel(text)
+                label.setWordWrap(wrapText)
+                label.setOpenExternalLinks(True)
+            
+            layout.addWidget(label)
+            self.labels.append(label)
+        
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.setLayout(layout)
+    
+    def fixParagraphTags(self, texts):
+        firstText = texts[0]
+        if firstText.find('<p style=') == -1:
+            return texts
+        
+        openTag = re.search(r'<p style="[\w\-\:\;]+">', firstText).group()
+        printl(openTag)
+        
+        fixedTexts = []
+        for text in fixedTexts:
+            if text.find('</p>') == -1:
+                text = f'{text}<\p>'
+            
+            if text.find(openTag) == -1:
+                text = f'{openTag}{text}'
+            
+            fixedTexts.append(text)
+            printl(text)
+        return fixedTexts
+            
