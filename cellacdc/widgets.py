@@ -2452,6 +2452,10 @@ class myMessageBox(QDialog):
             w, h = self.width(), self.height()
             left = int(screenLeft + screenWidth/2 - w/2)
             top = int(screenTop + screenHeight/2 - h/2)
+            if top < screenTop:
+                top = screenTop
+            if left < screenLeft:
+                left = screenLeft
             self.move(left, top)
 
         self._h = self.height()
