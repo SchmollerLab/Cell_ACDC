@@ -2293,7 +2293,7 @@ class myMessageBox(QDialog):
         return texts        
 
     def addText(self, text):
-        texts = self.splitLatexBlocks()
+        texts = self.splitLatexBlocks(text)
         labelsWidget = LabelsWidget(texts, wrapText=self.wrapText)
         self.labels.extend(labelsWidget.labels)
         if self.scrollableText:
@@ -7519,13 +7519,15 @@ class LabelsWidget(QWidget):
         self.labels = []
         for text in texts:
             if text.startswith('<latex>'):
+                layout.addSpacing(10)
                 label = LatexLabel(text)
+                layout.addWidget(label)
+                layout.addSpacing(10)
             else:
                 label = QLabel(text)
                 label.setWordWrap(wrapText)
                 label.setOpenExternalLinks(True)
-            
-            layout.addWidget(label)
+                layout.addWidget(label)
             self.labels.append(label)
         
         layout.setContentsMargins(0, 0, 0, 0)
@@ -7537,10 +7539,13 @@ class LabelsWidget(QWidget):
             return texts
         
         openTag = re.search(r'<p style="[\w\-\:\;]+">', firstText).group()
-        printl(openTag)
         
         fixedTexts = []
-        for text in fixedTexts:
+        for text in texts:
+            if text.startswith('<latex>'):
+                fixedTexts.append(text)
+                continue
+                
             if text.find('</p>') == -1:
                 text = f'{text}<\p>'
             
@@ -7548,6 +7553,5 @@ class LabelsWidget(QWidget):
                 text = f'{openTag}{text}'
             
             fixedTexts.append(text)
-            printl(text)
         return fixedTexts
             
