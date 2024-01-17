@@ -41,6 +41,24 @@ def _light_colors():
     }
     return colors
 
+def _get_highligth_header_background_rgba():
+    scheme = get_color_scheme()
+    if scheme == 'light':
+        window_rgba = _light_colors()['Window']
+        return tuple([val-40 for val in window_rgba])
+    else:
+        window_rgba = _dark_colors()['Window']
+        return tuple([val+40 for val in window_rgba])
+
+def _get_highligth_text_background_rgba():
+    scheme = get_color_scheme()
+    if scheme == 'light':
+        window_rgba = _light_colors()['Window']
+        return tuple([val-20 for val in window_rgba])
+    else:
+        window_rgba = _dark_colors()['Window']
+        return tuple([val+20 for val in window_rgba])
+
 def _light_disabled_colors():
     disabled_colors = {
         'ButtonText': (150, 150, 150, 255), 

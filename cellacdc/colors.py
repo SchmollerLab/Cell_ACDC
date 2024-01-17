@@ -181,4 +181,8 @@ def get_greedy_lut(lab, lut, ids=None):
     greedy_lut[list(color_idxs.keys())] = lut[list(color_idxs.values())]
 
     return greedy_lut
-    
+
+def rgb_uint_to_html_hex(rgb):
+    r, g, b = rgb
+    hex_color = f'#{r:02x}{g:02x}{b:02x}'
+    return hex_color
