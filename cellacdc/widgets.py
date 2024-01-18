@@ -2289,7 +2289,7 @@ class myMessageBox(QDialog):
             self.cancelButton.clicked.connect(self.buttonCallBack)
 
     def splitLatexBlocks(self, text):
-        texts = re.split(r"(<latex>.+)?</latex>", text)
+        texts = re.split(r"(<latex.*?>.+?)</latex>", text)
         return texts        
 
     def addText(self, text):
@@ -7481,7 +7481,7 @@ class LatexLabel(QLabel):
         t = ax.text(
             0, 0, mathTex, 
             ha='left', va='bottom', 
-            fontsize=11, 
+            fontsize=13, 
             color=TEXT_COLOR
         )
 
@@ -7517,12 +7517,20 @@ class LabelsWidget(QWidget):
         texts = self.fixParagraphTags(texts)
         
         self.labels = []
-        for text in texts:
+        for t, text in enumerate(texts):
+            if not text:
+                continue
             if text.startswith('<latex>'):
                 layout.addSpacing(10)
                 label = LatexLabel(text)
-                layout.addWidget(label)
-                layout.addSpacing(10)
+                layout.addWidget(label, alignment=Qt.AlignCenter)
+                try:
+                    # Add spacing only if next text is not a formula
+                    nextText = texts[t+1]
+                    if not nextText.startswith('<latex>'):
+                        layout.addSpacing(10)
+                except IndexError:
+                    layout.addSpacing(10)
             else:
                 label = QLabel(text)
                 label.setWordWrap(wrapText)
@@ -7538,19 +7546,31 @@ class LabelsWidget(QWidget):
         if firstText.find('<p style=') == -1:
             return texts
         
-        openTag = re.search(r'<p style="[\w\-\:\;]+">', firstText).group()
+        searched = re.search(r'<p style="[\w\-\:\;]+">', firstText)
+        if searched is None:
+            openTag = '<p style="font-size:13px;">'
+        else:
+            openTag = searched.group()
+        
+        not_allowed = {' ', '\n'}
         
         fixedTexts = []
         for text in texts:
             if text.startswith('<latex>'):
                 fixedTexts.append(text)
                 continue
-                
+            
+            if set(text) <= not_allowed:
+                # Ignore texts that are made of only \n and spaces
+                continue
+            
             if text.find('</p>') == -1:
                 text = f'{text}<\p>'
             
             if text.find(openTag) == -1:
                 text = f'{openTag}{text}'
+            
+            text = text.replace('\n', '')
             
             fixedTexts.append(text)
         return fixedTexts
