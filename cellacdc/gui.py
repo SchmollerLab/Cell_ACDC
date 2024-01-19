@@ -1942,12 +1942,19 @@ class guiWin(QMainWindow):
         if txt in self.disabled_cca_warnings:
             return
         
+        if self.isWarningCcaIntegrity:
+            # Some other warning is still open --> avoid opening another one
+            return
+        
+        self.isWarningCcaIntegrity = True
         disabled_warning = _warnings.warn_cca_integrity(
             txt, category, self, 
             go_to_frame_callback=self.goToFrameNumber
         )
         if disabled_warning:
             self.disabled_cca_warnings.add(disabled_warning)
+        
+        self.isWarningCcaIntegrity = False
         
     def autoSaveWorkerClosed(self, worker):
         if self.autoSaveActiveWorkers:
@@ -15546,6 +15553,7 @@ class guiWin(QMainWindow):
         self.doNotAskAgainExistingID = False
         self.doubleRightClickTimeElapsed = False
         self.isRealTimeTrackerInitialized = False
+        self.isWarningCcaIntegrity = False
         self.isDoubleRightClick = False
         self.highlightedIDopts = None
         self.keptObjectsIDs = widgets.KeptObjectIDsList(
