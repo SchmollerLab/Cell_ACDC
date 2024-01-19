@@ -44,8 +44,6 @@ if (WindowsIdx != -1)
 TIFFs = path;
 File.makeDirectory(TIFFs);
 
-
-
 for (s = 0; s < sEnd; s++) {
 	id = czi_folder + "/" + ids[s];
 	print(id);
@@ -60,7 +58,7 @@ for (s = 0; s < sEnd; s++) {
 	seriesNum = s+1;
 	run("Bio-Formats Importer", "open=["+id+"] color_mode=Default rois_import=[ROI manager] split_channels view=Hyperstack stack_order=XYCZT use_virtual_stack series_"+seriesNum);
 //	//run("Bio-Formats Importer", "open=["+id+"] color_mode=Default rois_import=[ROI manager] split_focal split_timepoints view=Hyperstack stack_order=XYCZT use_virtual_stack series_"+(s+1));
-	name = File.nameWithoutExtension;
+	filenameNoExtension = File.nameWithoutExtension;
 	Ext.getSizeC(sizeC); //Gets the number of channels in the current series.
 	print("Saving s="+seriesNum+"/"+sEnd+"..."); //Display message
 	pos_path = TIFFs+"/Position_"+seriesNum;
@@ -69,10 +67,20 @@ for (s = 0; s < sEnd; s++) {
 	File.makeDirectory(images_path);
 	C = 0;
 	CEnd = sizeC;
+
+	// Create metadata file with basename
+    pos_num = nss(seriesNum, sEnd);
+    print("Creating metadata file for Position_" + seriesNum);
+    basename_string = filenameNoExtension + "_s" + pos_num + "_";
+    metadata_filepath = images_path + "/" + basename_string + "metadata.csv";
+    metadata_file = File.open(metadata_filepath);
+    values = "Description,values\nbasename," + basename_string;
+    print(metadata_file, values);
+    File.close(metadata_file);
 		
 	for (c=C; c<CEnd; c++) { //for loop for iterating through the channels
 		print("    Saving channel="+c+1+"/"+CEnd+"..."); //Display message
-		scTif = images_path+"/"+name+"_s"+nss(seriesNum, 11)+"_"+channels[c]+".tif";		
+		scTif = images_path + "/" + basename_string + channels[c] + ".tif";		
 		selectImage(1);
 		saveAs("Tiff", scTif);
 		close();
