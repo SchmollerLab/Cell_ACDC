@@ -822,6 +822,8 @@ def parse_model_param_doc(name, next_param_name=None, docstring=None):
     except Exception as err:
         param_doc = ''
     
+    param_doc = param_doc.replace(', optional', '')
+    
     return param_doc
 
 def add_segm_data_param(init_params, init_argspecs):

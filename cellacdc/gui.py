@@ -1923,6 +1923,13 @@ class guiWin(QMainWindow):
     def ccaCheckerWorkerDone(self):
         self.setStatusBarLabel(log=False)
     
+    def goToFrameNumber(self, frame_n):
+        posData = self.data[self.pos_i]
+        posData.frame_i = frame_n - 1
+        self.get_data()
+        self.updateAllImages(updateFilters=True)
+        self.updateScrollbars()
+    
     def warnCcaIntegrity(self, txt, category):
         self.logger.info(f'[WARNING]: {html_utils.to_plain_text(txt)}')
         
@@ -1935,7 +1942,10 @@ class guiWin(QMainWindow):
         if txt in self.disabled_cca_warnings:
             return
         
-        disabled_warning = _warnings.warn_cca_integrity(txt, category, self)
+        disabled_warning = _warnings.warn_cca_integrity(
+            txt, category, self, 
+            go_to_frame_callback=self.goToFrameNumber
+        )
         if disabled_warning:
             self.disabled_cca_warnings.add(disabled_warning)
         
@@ -14398,7 +14408,7 @@ class guiWin(QMainWindow):
             self.newSegmEndName = win.entryText
         else:
             if len(existingSegmEndNames) > 0:
-                win = apps.QDialogMultiSegmNpz(
+                win = apps.SelectSegmFileDialog(
                     existingSegmEndNames, self.exp_path, parent=self,
                     addNewFileButton=True, basename=posData.basename
                 )

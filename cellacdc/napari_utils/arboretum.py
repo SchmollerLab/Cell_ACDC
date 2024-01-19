@@ -57,7 +57,7 @@ class NapariArboretumDialog(base.MainThreadSinglePosUtilBase):
         )
 
         if len(existingEndnames) > 1:
-            win = apps.QDialogMultiSegmNpz(
+            win = apps.SelectSegmFileDialog(
                 existingEndnames, images_path, parent=self, 
                 basename=posData.basename
             )

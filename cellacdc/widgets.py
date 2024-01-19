@@ -337,6 +337,11 @@ class okPushButton(PushButton):
         # QShortcut(Qt.Key_Return, self, self.click)
         # QShortcut(Qt.Key_Enter, self, self.click)
 
+class NavigatePushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setIcon(QIcon(':navigate.svg'))
+
 class zoomPushButton(PushButton):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

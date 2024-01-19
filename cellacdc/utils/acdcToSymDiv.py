@@ -152,7 +152,7 @@ class AcdcToSymDivUtil(QDialog):
             self.worker.waitCond.wakeAll()
             return
 
-        win = apps.QDialogMultiSegmNpz(
+        win = apps.SelectSegmFileDialog(
             existingSegmEndNames, exp_path, parent=self
         )
         win.exec_()
