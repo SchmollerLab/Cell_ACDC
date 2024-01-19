@@ -1,11 +1,19 @@
 .. |acdclogo| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/6bf8442b6a33d41fa9de09a2098c6c2b9efbcff1/cellacdc/resources/logo.svg
    :width: 80
 
+.. |githublogo| image:: images/github_logo.png
+   :width: 32
+   :target: https://github.com/SchmollerLab/Cell_ACDC
+
+.. _GitHub: https://github.com/SchmollerLab/Cell_ACDC
+
 |acdclogo| Cell-ACDC
-=====================
+====================
 
 A GUI-based Python framework for **segmentation**, **tracking**, **cell cycle annotations** and **quantification** of microscopy data
 -------------------------------------------------------------------------------------------------------------------------------------
+
+|githublogo| Source code on `GitHub`_
 
 *Written in Python 3 by* \ `Francesco Padovani <https://github.com/ElpadoCan>`__ \ *and* \ `Benedikt Mairhoermann <https://github.com/Beno71>`__\ *.*
 
@@ -86,6 +94,6 @@ Contents
 Important links
 ---------------
 
-* `GitHub <https://github.com/SchmollerLab/Cell_ACDC>`__
-* `Publication <https://bmcbiol.biomedcentral.com/articles/10.1186/s12915-022-01372-6>`__
-* `Forum <https://forum.image.sc/tag/Cell-ACDC>`__
+* `GitHub <https://github.com/SchmollerLab/Cell_ACDC>`_
+* `Publication <https://bmcbiol.biomedcentral.com/articles/10.1186/s12915-022-01372-6>`_
+* `Forum <https://forum.image.sc/tag/Cell-ACDC>`_

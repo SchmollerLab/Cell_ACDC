@@ -1017,6 +1017,7 @@ class AddPointsLayerDialog(widgets.QBaseDialog):
         self.xColName.label = QLabel('X coord. column: ')
         typeLayout.addWidget(self.xColName.label, row, 1)
         typeLayout.addWidget(self.xColName, row, 2)
+        self.xColName.currentTextChanged.connect(self.checkColNameX)
         self.fromTableRadiobutton.widgets.append(self.xColName)
 
         row += 1
@@ -1025,6 +1026,7 @@ class AddPointsLayerDialog(widgets.QBaseDialog):
         self.yColName.label = QLabel('Y coord. column: ')
         typeLayout.addWidget(self.yColName.label, row, 1)
         typeLayout.addWidget(self.yColName, row, 2)
+        self.yColName.currentTextChanged.connect(self.checkColNameY)
         self.fromTableRadiobutton.widgets.append(self.yColName)
 
         row += 1
@@ -1033,6 +1035,7 @@ class AddPointsLayerDialog(widgets.QBaseDialog):
         self.zColName.label = QLabel('Z coord. column: ')
         typeLayout.addWidget(self.zColName.label, row, 1)
         typeLayout.addWidget(self.zColName, row, 2)
+        self.zColName.currentTextChanged.connect(self.checkColNameZ)
         self.fromTableRadiobutton.widgets.append(self.zColName)
 
         row += 1
@@ -1151,7 +1154,7 @@ class AddPointsLayerDialog(widgets.QBaseDialog):
         '======================================================================'
 
         self.appearanceGroupbox = _PointsLayerAppearanceGroupbox()
-        self.appearanceGroupbox.sizeSpinBox.setValue(1)
+        self.appearanceGroupbox.sizeSpinBox.setValue(3)
 
         buttonsLayout = widgets.CancelOkButtonsLayout()
 
@@ -1264,6 +1267,47 @@ class AddPointsLayerDialog(widgets.QBaseDialog):
         _state = self.appearanceGroupbox.state() 
         return _state
 
+    def _checkSelectedColName(self, colName, label):
+        labelsToCheck = ['z', 'y', 'x']
+        labelsToCheck.remove(label)
+        for labelToCheck in labelsToCheck:
+            if colName.find(labelToCheck) != -1:
+                break
+        else:
+            return True
+
+        txt = html_utils.paragraph(f"""
+            Are you sure that the {label.upper()} coord. column should contain 
+            the letter <code>{labelToCheck}<code>?
+        """)
+        
+        msg = widgets.myMessageBox(wrapText=False)
+        _, noButton, yesButton = msg.warning(
+            self, 'Check column name', txt, 
+            buttonsTexts=('Cancel', 'No, let me correct it', 'Yes, I am')
+        )
+        if msg.cancel or msg.clickedButton == noButton:
+            return False
+        return True
+    
+    def checkColNameX(self, text):
+        accepted = self._checkSelectedColName(text, 'x')
+        if accepted: 
+            return
+        self.xColName.setCurrentText('None')
+    
+    def checkColNameY(self, text):
+        accepted = self._checkSelectedColName(text, 'y')
+        if accepted: 
+            return
+        self.yColName.setCurrentText('None')
+    
+    def checkColNameZ(self, text):
+        accepted = self._checkSelectedColName(text, 'z')
+        if accepted: 
+            return
+        self.zColName.setCurrentText('None')
+
     def ok_cb(self):
         self.pointsData = {}
         self.weighingChannel = ''
@@ -1279,9 +1323,9 @@ class AddPointsLayerDialog(widgets.QBaseDialog):
                     xColName = self.xColName.currentText()
                     yColName = self.yColName.currentText()
                     zColName = self.zColName.currentText()
-
+                    
                     self._df_to_pointsData(
-                        df, tColName, xColName, yColName, zColName
+                        df, tColName, zColName, yColName, xColName
                     )
                         
                 except Exception as e:
@@ -1361,7 +1405,7 @@ class AddPointsLayerDialog(widgets.QBaseDialog):
                 # Use integer z
                 zz = df_frame[zColName]
                 self.pointsData[frame_i] = {} 
-                for z in zz:
+                for z in zz.values:
                     df_z = df_frame[df_frame[zColName] == z]
                     z_int = round(z)
                     if z_int in self.pointsData[frame_i]:
@@ -7940,8 +7984,6 @@ class editCcaTableWidget(QDialog):
             'Apply changes to future frames...'
         )
         okButton = widgets.okPushButton('Ok')
-
-        
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)

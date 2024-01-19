@@ -36,6 +36,8 @@ class Model:
                 gpu=gpu, net_avg=net_avg, model_type=model_type
             )
         
+        self.is_rgb = False
+        
     def setupLogger(self, logger):
         models.models_logger = logger
     
@@ -50,7 +52,7 @@ class Model:
     
     def _initialize_image(self, image):        
         # See cellpose.gui.io._initialize_images
-        if image.ndim > 3:
+        if image.ndim > 3 and not self.is_rgb:
             raise TypeError(
                 f'Image is 4D with shape {image.shape}.'
                 'Only 2D or 3D images are supported by cellpose in Cell-ACDC'
@@ -115,6 +117,8 @@ class Model:
         G_slice = tuple(G_slice)
 
         rgb_stack[G_slice] = second_ch_data
+        
+        self.is_rgb = True
 
         return rgb_stack
         

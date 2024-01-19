@@ -3001,7 +3001,7 @@ class guiWin(QMainWindow):
             self.repeatTrackingVideo
         )
         for rtTrackerAction in self.trackingAlgosGroup.actions():
-            rtTrackerAction.toggled.connect(self.storeTrackingAlgo)
+            rtTrackerAction.toggled.connect(self.rtTrackerActionToggled)
 
         self.delObjsOutSegmMaskAction.triggered.connect(
             self.delObjsOutSegmMaskActionTriggered
@@ -7635,7 +7635,7 @@ class guiWin(QMainWindow):
                 mappedAnnotIDs[frame_i] = mappedIDs
             customAnnotValues['annotatedIDs'][self.pos_i] = mappedAnnotIDs
 
-    def storeTrackingAlgo(self, checked):
+    def rtTrackerActionToggled(self, checked):
         if not checked:
             return
 
@@ -7654,6 +7654,7 @@ class guiWin(QMainWindow):
             """)
             msg.information(self, 'Info about YeaZ', info_txt, msg.Ok)
         
+        self.isRealTimeTrackerInitialized = False
         self.initRealTimeTracker()
 
     def findID(self):
@@ -14759,7 +14760,6 @@ class guiWin(QMainWindow):
         self.initPosAttr()
         self.initMetrics()
         self.initFluoData()
-        self.initRealTimeTracker()
         self.createChannelNamesActions()
         self.addActionsLutItemContextMenu(self.imgGrad)
         
@@ -15535,6 +15535,7 @@ class guiWin(QMainWindow):
         self.editIDmergeIDs = True
         self.doNotAskAgainExistingID = False
         self.doubleRightClickTimeElapsed = False
+        self.isRealTimeTrackerInitialized = False
         self.isDoubleRightClick = False
         self.highlightedIDopts = None
         self.keptObjectsIDs = widgets.KeptObjectIDsList(
@@ -16831,6 +16832,7 @@ class guiWin(QMainWindow):
         )
 
         self.checkTrackingEnabled()
+        self.initRealTimeTracker()
     
     @exception_handler
     def initCca(self):
@@ -17971,6 +17973,7 @@ class guiWin(QMainWindow):
 
         self.loadClickEntryDfs(tableEndName)
 
+    @exception_handler
     def addPointsLayer(self):
         if self.addPointsWin.cancel:
             self.logger.info('Adding points layer cancelled.')
@@ -18186,12 +18189,14 @@ class guiWin(QMainWindow):
                     )
                 continue
             
-            if self.isSegm3D:
+            framePointsData = action.pointsData[posData.frame_i]
+            if 'x' not in framePointsData:
+                # 3D points
                 zProjHow = self.zProjComboBox.currentText()
                 isZslice = zProjHow == 'single z-slice'
                 if isZslice:
-                    zSlice = self.z_lab()
-                    z_data = action.pointsData[posData.frame_i].get(zSlice)
+                    zSlice = self.zSliceScrollBar.sliderPosition()
+                    z_data = framePointsData.get(zSlice)
                     if z_data is None:
                         # There are no objects on this z-slice
                         action.scatterItem.clear()
@@ -18200,13 +18205,13 @@ class guiWin(QMainWindow):
                 else:
                     xx, yy = [], []
                     # z-projection --> draw all points
-                    for z, z_data in action.pointsData[posData.frame_i].items():
+                    for z, z_data in framePointsData.items():
                         xx.extend(z_data['x'])
                         yy.extend(z_data['y'])
             else:
                 # 2D segmentation
-                xx = action.pointsData[posData.frame_i]['x']
-                yy = action.pointsData[posData.frame_i]['y']
+                xx = framePointsData['x']
+                yy = framePointsData['y']
 
             action.scatterItem.setData(xx, yy)
 
@@ -20608,101 +20613,86 @@ class guiWin(QMainWindow):
             return_lab=False, assign_unique_new_IDs=True,
             separateByLabel=True
         ):
-        try:
-            posData = self.data[self.pos_i]
-            mode = str(self.modeComboBox.currentText())
-            skipTracking = (
-                posData.frame_i == 0 or mode.find('Tracking') == -1
-                or self.isSnapshot
+        posData = self.data[self.pos_i]
+        mode = str(self.modeComboBox.currentText())
+        skipTracking = (
+            posData.frame_i == 0 or mode.find('Tracking') == -1
+            or self.isSnapshot
+        )
+        if skipTracking:
+            self.setLostNewOldPrevIDs()
+            return
+
+        # Disable tracking for already visited frames
+        trackingDisabled = self.checkTrackingEnabled()
+
+        if enforce or self.UserEnforced_Tracking:
+            # Tracking enforced by the user
+            do_tracking = True
+        elif self.UserEnforced_DisabledTracking:
+            # Tracking specifically DISABLED by the user
+            do_tracking = False
+        elif trackingDisabled:
+            # User did not choose what to do --> tracking disabled for
+            # visited frames and enabled for never visited frames
+            do_tracking = False
+        else:
+            do_tracking = True
+
+        if not do_tracking:
+            self.setLostNewOldPrevIDs()
+            return
+
+        """Tracking starts here"""
+        staturBarLabelText = self.statusBarLabel.text()
+        self.statusBarLabel.setText('Tracking...')
+
+        if storeUndo:
+            # Store undo state before modifying stuff
+            self.storeUndoRedoStates(False)
+
+        # First separate by labelling
+        if separateByLabel:
+            setRp = self.separateByLabelling(posData.lab, posData.rp)
+            if setRp:
+                self.update_rp()
+
+        if prev_lab is None:
+            prev_lab = posData.allData_li[posData.frame_i-1]['labels']
+        if prev_rp is None:
+            prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
+
+        if self.trackWithAcdcAction.isChecked():
+            tracked_result = CellACDC_tracker.track_frame(
+                prev_lab, prev_rp, posData.lab, posData.rp,
+                IDs_curr_untracked=posData.IDs,
+                setBrushID_func=self.setBrushID,
+                posData=posData,
+                assign_unique_new_IDs=assign_unique_new_IDs
             )
-            if skipTracking:
-                self.setLostNewOldPrevIDs()
-                return
+        elif self.trackWithYeazAction.isChecked():
+            tracked_result = self.tracking_yeaz.correspondence(
+                prev_lab, posData.lab, use_modified_yeaz=True,
+                use_scipy=True
+            )
+        else:
+            tracked_result = self.realTimeTracker.track_frame(
+                prev_lab, posData.lab, **self.track_frame_params
+            )
 
-            # Disable tracking for already visited frames
-            trackingDisabled = self.checkTrackingEnabled()
-
-            if enforce or self.UserEnforced_Tracking:
-                # Tracking enforced by the user
-                do_tracking = True
-            elif self.UserEnforced_DisabledTracking:
-                # Tracking specifically DISABLED by the user
-                do_tracking = False
-            elif trackingDisabled:
-                # User did not choose what to do --> tracking disabled for
-                # visited frames and enabled for never visited frames
-                do_tracking = False
-            else:
-                do_tracking = True
-
-            printl("Tracking")
-
-            if not do_tracking:
-                self.setLostNewOldPrevIDs()
-                return
-
-            printl("Tracking again")
-
-            """Tracking starts here"""
-            staturBarLabelText = self.statusBarLabel.text()
-            self.statusBarLabel.setText('Tracking...')
-
-            if storeUndo:
-                # Store undo state before modifying stuff
-                self.storeUndoRedoStates(False)
-
-            # First separate by labelling
-            if separateByLabel:
-                setRp = self.separateByLabelling(posData.lab, posData.rp)
-                if setRp:
-                    self.update_rp()
-
-            if prev_lab is None:
-                prev_lab = posData.allData_li[posData.frame_i-1]['labels']
-            if prev_rp is None:
-                prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
-
-            if self.trackWithAcdcAction.isChecked():
-                tracked_result = CellACDC_tracker.track_frame(
-                    prev_lab, prev_rp, posData.lab, posData.rp,
-                    IDs_curr_untracked=posData.IDs,
-                    setBrushID_func=self.setBrushID,
-                    posData=posData,
-                    assign_unique_new_IDs=assign_unique_new_IDs
-                )
-            elif self.trackWithYeazAction.isChecked():
-                tracked_result = self.tracking_yeaz.correspondence(
-                    prev_lab, posData.lab, use_modified_yeaz=True,
-                    use_scipy=True
-                )
-            else:
-                printl("1")
-                tracked_result = self.realTimeTracker.track_frame(
-                    prev_lab, posData.lab, **self.track_frame_params
-                )
-                printl("2")
-
-            printl(len(tracked_result))
-
-            # Check if tracker also returns a list-like of IDs that is fine to
-            # loose (e.g., upon standard cell division)
-            try:
-                tracked_lab, tracked_lost_IDs = tracked_result
-                from cellacdc.plot import imshow
-                imshow(tracked_lab)
-                self.setTrackedLostCentroids(tracked_lab, tracked_lost_IDs)
-            except ValueError as err:
-                printl(traceback.format_exc())
-                tracked_lab = tracked_result
-            
-            if DoManualEdit:
-                # Correct tracking with manually changed IDs
-                rp = skimage.measure.regionprops(tracked_lab)
-                IDs = [obj.label for obj in rp]
-                self.manuallyEditTracking(tracked_lab, IDs)
-
-        except ValueError:
-            tracked_lab = self.get_2Dlab(posData.lab)
+        # Check if tracker also returns a list-like of IDs that is fine to
+        # loose (e.g., upon standard cell division)
+        try:
+            tracked_lab, tracked_lost_IDs = tracked_result
+            self.setTrackedLostCentroids(tracked_lab, tracked_lost_IDs)
+        except ValueError as err:
+            tracked_lab = tracked_result
+        
+        if DoManualEdit:
+            # Correct tracking with manually changed IDs
+            rp = skimage.measure.regionprops(tracked_lab)
+            IDs = [obj.label for obj in rp]
+            self.manuallyEditTracking(tracked_lab, IDs)
 
         if return_lab:
             return tracked_lab
@@ -21105,7 +21095,7 @@ class guiWin(QMainWindow):
         self.gui_createLazyLoader()
 
         try:
-            self.navSpinBox.disconnect()
+            self.navSpinBox.valueChanged.disconnect()
         except Exception as e:
             pass
         
@@ -21615,6 +21605,9 @@ class guiWin(QMainWindow):
         if rtTracker == 'Cell-ACDC':
             return
         if rtTracker == 'YeaZ':
+            return
+        
+        if self.isRealTimeTrackerInitialized:
             return
         
         self.logger.info(f'Initializing {rtTracker} tracker...')
