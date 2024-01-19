@@ -2302,7 +2302,9 @@ def relabel_sequential(segm_data, is_timelapse=False):
     return relabelled, oldIDs, newIDs
 
 class CcaIntegrityChecker:
-    def __init__(self, cca_df):
+    def __init__(self, cca_df, lab, lab_IDs):
+        self.lab = lab
+        self.lab_IDs = lab_IDs
         self.cca_df = cca_df
         self.cca_df_S = cca_df[cca_df['cell_cycle_stage'] == 'S']
         self.cca_df_G1 = cca_df[cca_df['cell_cycle_stage'] == 'G1']
@@ -2389,3 +2391,15 @@ class CcaIntegrityChecker:
                 ID_rel_ID_mismatches.append((ID, relID, relID_of_relID))
         
         return ID_rel_ID_mismatches
+
+    def get_lonely_cells_in_S(self):
+        lonely_cells_in_S = []
+        for row in self.cca_df_S.itertuples():
+            ID = row.Index            
+            if row.relative_ID in self.lab_IDs:
+                continue
+            
+            # ID is in S but its relative_ID does not exist in lab
+            lonely_cells_in_S.append(ID)
+        
+        return lonely_cells_in_S

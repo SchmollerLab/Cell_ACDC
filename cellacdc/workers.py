@@ -4274,9 +4274,7 @@ class CcaIntegrityCheckerWorker(QObject):
         return False
     
     def _check_ID_rel_ID_mismatches(self, checker, frame_i):
-        ID_rel_ID_mismatches = (
-            checker.get_ID_rel_ID_mismatches()
-        )
+        ID_rel_ID_mismatches = checker.get_ID_rel_ID_mismatches()
         if len(ID_rel_ID_mismatches) == 0:
             return True
 
@@ -4290,6 +4288,21 @@ class CcaIntegrityCheckerWorker(QObject):
             f'At frame n. {frame_i+1} '
             'there are the following `ID-relative_ID` mismatches:'
             f'{html_utils.to_list(items)}'
+        )
+        self.sigWarning.emit(txt, category)
+        return False
+    
+    def _check_lonely_cells_in_S(self, checker, frame_i):
+        lonely_cells_in_S = checker.get_lonely_cells_in_S()
+        if len(lonely_cells_in_S) == 0:
+            return True
+
+        category = 'Lovely cells in S phase'
+        txt = html_utils.paragraph(
+            f'At frame n. {frame_i+1} '
+            'the following cell IDs are in `S` phase but their `relative_ID` '
+            f'does not exist:<br><br>'
+            f'{lonely_cells_in_S}'
         )
         self.sigWarning.emit(txt, category)
         return False
@@ -4323,7 +4336,8 @@ class CcaIntegrityCheckerWorker(QObject):
             except KeyError as error:
                 break
             
-            checker = core.CcaIntegrityChecker(cca_df)
+            IDs = data_dict['IDs']
+            checker = core.CcaIntegrityChecker(cca_df, lab, IDs)
             
             for checkpoint in checkpoints:
                 proceed = getattr(self, checkpoint)(checker, frame_i)

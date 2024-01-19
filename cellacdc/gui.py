@@ -8689,11 +8689,13 @@ class guiWin(QMainWindow):
         
         self.enqAutosave()
     
-    def storeWillDivide(self, ID, relID):
+    def storeWillDivide(self, ID, relID, frame_i=None):
         posData = self.data[self.pos_i]
+        if frame_i is None:
+            frame_i = posData.frame_i
 
         # Store in the past S frames that division has been annotated
-        for frame_i in range(posData.frame_i, 0, -1):
+        for frame_i in range(frame_i, 0, -1):
             past_cca_df = self.get_cca_df(frame_i=frame_i, return_df=True)
             if past_cca_df is None:
                 return
@@ -8712,11 +8714,67 @@ class guiWin(QMainWindow):
                 cca_df=past_cca_df, frame_i=frame_i, autosave=False
             )
 
-    def annotateDivision(self, cca_df, ID, relID):
+    def annotateDivisionFutureFramesSwapMothers(
+            self, cca_df_at_future_division, correct_mothID, frame_i
+        ):
+        """This method is called as part of `guiWin.swapMothers`. 
+        
+        It annotates cell division and propagates that to future frames to the 
+        mother cell that stops having the correct bud because division between 
+        wrong bud and other wrong mother was annotated in the future. 
+
+        Parameters
+        ----------
+        cca_df_at_future_division : pd.DataFrame
+            _description_
+        correct_mothID : int
+            Mother ID to assign division
+        frame_i : int
+            Frame since when the mother ID stops having the correct bud because 
+            the correct bud was assigned as divided from the wrong mother
+        """        
+        posData = self.data[self.pos_i]
+        
+        wrongBudID = cca_df_at_future_division.at[
+            correct_mothID, 'relative_ID'
+        ]
+        self.annotateDivision(
+            cca_df_at_future_division, correct_mothID, wrongBudID, 
+            frame_i=frame_i
+        )
+        cca_df_at_future_division.at[
+            correct_mothID, 'corrected_assignment'] = True
+        self.store_cca_df(
+            frame_i=frame_i, cca_df=cca_df_at_future_division, autosave=False
+        )
+        
+        ccaStatusToRestore = cca_df_at_future_division.loc[correct_mothID]
+        for future_i in range(frame_i+1, posData.SizeT):            
+            # Get cca_df for ith frame from allData_li
+            cca_df_i = self.get_cca_df(frame_i=future_i, return_df=True)
+            if cca_df_i is None:
+                # ith frame was not visited yet
+                break
+            
+            ccs = cca_df_i.at[correct_mothID, 'cell_cycle_stage']
+            if ccs == 'G1':
+                # Mother cell in G1 again, stop correcting
+                break
+            
+            cca_df_i.loc[correct_mothID] = ccaStatusToRestore
+            cca_df_i.at[correct_mothID, 'corrected_assignment'] = True
+            
+            self.store_cca_df(frame_i=future_i, cca_df=cca_df_i, autosave=False)
+            
+            
+    
+    def annotateDivision(self, cca_df, ID, relID, frame_i=None):
         # Correct as follows:
         # For frame_i > 0 --> assign to G1 and +1 on generation number
         # For frame == 0 --> reinitialize to unknown cells
         posData = self.data[self.pos_i]
+        if frame_i is None:
+            frame_i = posData.frame_i
 
         self.storeWillDivide(ID, relID)
 
@@ -8724,13 +8782,13 @@ class guiWin(QMainWindow):
         cca_df.at[ID, 'cell_cycle_stage'] = 'G1'
         cca_df.at[relID, 'cell_cycle_stage'] = 'G1'
         
-        if posData.frame_i > 0:
+        if frame_i > 0:
             gen_num_clickedID = cca_df.at[ID, 'generation_num']
             cca_df.at[ID, 'generation_num'] += 1
-            cca_df.at[ID, 'division_frame_i'] = posData.frame_i    
+            cca_df.at[ID, 'division_frame_i'] = frame_i    
             gen_num_relID = cca_df.at[relID, 'generation_num']
             cca_df.at[relID, 'generation_num'] = gen_num_relID+1
-            cca_df.at[relID, 'division_frame_i'] = posData.frame_i
+            cca_df.at[relID, 'division_frame_i'] = frame_i
             if gen_num_clickedID < gen_num_relID:
                 cca_df.at[ID, 'relationship'] = 'mother'
             else:
@@ -9392,6 +9450,7 @@ class guiWin(QMainWindow):
         
         self.swapMothers()
     
+    @exception_handler
     def swapMothers(self):
         posData = self.data[self.pos_i]
         
@@ -9423,31 +9482,42 @@ class guiWin(QMainWindow):
             posData.cca_df.at[correct_mothID, 'corrected_assignment'] = True
         self.store_cca_df()
         
-        self.updateAllImages()
-        
         # Correct past frames
         corrected_budIDs_past = set()
         for past_i in range(posData.frame_i-1, -1, -1):
+            
             if len(corrected_budIDs_past) == 2:
                 break
             
-            # Get cca_df for ith frame from allData_li
-            cca_df_i = self.get_cca_df(frame_i=past_i, return_df=True)
             for correct_budID, correct_mothID in correct_pairings.items():
+                # Get cca_df for ith frame from allData_li
+                cca_df_i = self.get_cca_df(frame_i=past_i, return_df=True)
+            
                 if correct_budID in corrected_budIDs_past:
                     continue
                 
                 if correct_budID not in cca_df_i.index:
                     # Bud does not exist anymore in the past
-                    corrected_budIDs_past.add(correct_budID)
+                    if correct_budID not in corrected_budIDs_past:
+                        corrected_budIDs_past.add(correct_budID)
+                    
+                    if len(corrected_budIDs_past) < 2:
+                        self.restoreMotherToBeforeWrongBudWasAssignedToIt(
+                            correct_mothID, cca_df_i, past_i
+                        )
                     continue
                 
                 cca_df_i.at[correct_budID, 'relative_ID'] = correct_mothID
                 cca_df_i.at[correct_mothID, 'relative_ID'] = correct_budID
                 cca_df_i.at[correct_budID, 'corrected_assignment'] = True
                 cca_df_i.at[correct_mothID, 'corrected_assignment'] = True
+                
+                # Set mother cell cycle stage to S in case it is not
+                cca_df_i.at[correct_mothID, 'cell_cycle_stage'] = 'S'
             
-            self.store_cca_df(frame_i=past_i, cca_df=cca_df_i, autosave=False)
+                self.store_cca_df(
+                    frame_i=past_i, cca_df=cca_df_i, autosave=False
+                )
         
         # Correct future frames
         corrected_budIDs_future = set()
@@ -9473,8 +9543,15 @@ class guiWin(QMainWindow):
                 
                 ccs_bud = cca_df_i.at[correct_budID, 'cell_cycle_stage']
                 if ccs_bud == 'G1':
-                    # bud divided in the future, stop correcting
-                    corrected_budIDs_future.add(correct_budID)
+                    # Bud divided in the future, annotate division between 
+                    # correct mother and wrong bud and then stop correcting
+                    if correct_budID not in corrected_budIDs_future:
+                        corrected_budIDs_future.add(correct_budID)
+                    
+                    if len(corrected_budIDs_future) < 2: 
+                        self.annotateDivisionFutureFramesSwapMothers(
+                            cca_df_i, correct_mothID, future_i
+                        )
                     continue
                 
                 cca_df_i.at[correct_budID, 'relative_ID'] = correct_mothID
@@ -9484,6 +9561,69 @@ class guiWin(QMainWindow):
             
             self.store_cca_df(frame_i=future_i, cca_df=cca_df_i, autosave=False)
         
+        self.updateAllImages()
+    
+    def restoreMotherToBeforeWrongBudWasAssignedToIt(
+            self, correct_mothID, cca_df_at_correct_bud_ID_disappearance, 
+            frame_i
+        ):
+        """This method is called as part of `guiWin.swapMothers`. 
+        
+        It restores the mother cell cycle annotations to the status it had 
+        before the wrong bud was assigned to it. 
+        
+        We need to do it only if the swapMothers past frames loop is still 
+        iterating to correct the other bud
+        
+        When we swap mothers in the past frames it can be that the correct bud 
+        ID stops existing (before emergence). In this case the correct mother 
+        still has the wrong bud assigned to ID so we need to restore the status 
+        it had before the wrong bud was assigned to it. 
+        
+        To determine the status we go back until the wrong bud disappear. That 
+        is the frame before the wrong bud was assigned to the mother we want to 
+        correct. This is the status we want to restore.
+
+        Parameters
+        ----------
+        correct_mothID : int
+            ID of the correct mother
+        cca_df_at_correct_bud_ID_disappearance : pd.DataFrame
+            Cell cycle annotations DataFrame when the correct bud ID stopped 
+            existing (before emergence)
+        frame_i : int
+            Frame index when the correct bud ID stopped existing 
+            (before emergence)
+        
+        Note
+        ----
+        When we go back in time it could be that the wrong bud never disappears 
+        becuase it is already emerged at frame 0. In this case the status we 
+        want to restore at is the default G1 status at frame 0. 
+        """        
+        wrongBudID = cca_df_at_correct_bud_ID_disappearance.at[
+            correct_mothID, 'relative_ID'
+        ]
+        mothCcaBeforeWrongBudID = base_cca_df
+        # Search in the past for status of mother before wrong bud emerged
+        for past_i in range(frame_i, -1, -1):
+            cca_df_i = self.get_cca_df(frame_i=past_i, return_df=True)
+            if wrongBudID not in cca_df_i.index:
+                mothCcaBeforeWrongBudID = cca_df_i.loc[correct_mothID]
+                break
+        
+        # Restore in past frames the correct mother status
+        for past_i in range(frame_i, -1, -1):
+            cca_df_i = self.get_cca_df(frame_i=past_i, return_df=True)
+            if wrongBudID in cca_df_i.index:
+                cca_df_i.loc[correct_mothID] = mothCcaBeforeWrongBudID
+                cca_df_i.at[correct_mothID, 'corrected_assignment'] = True
+                self.store_cca_df(
+                    frame_i=past_i, cca_df=cca_df_i, autosave=False
+                )
+            else:
+                break
+    
     def getClosedSplineCoords(self):
         xxS, yyS = self.curvPlotItem.getData()
         bbox_area = (xxS.max()-xxS.min())*(yyS.max()-yyS.min())
