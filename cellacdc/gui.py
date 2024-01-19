@@ -17152,6 +17152,11 @@ class guiWin(QMainWindow):
 
             df = df.drop(columns=self.cca_df_colnames)
             posData.allData_li[i]['acdc_df'] = df
+        
+        if posData.acdc_df is not None:
+            frames = posData.acdc_df.index.get_level_values(0)
+            if from_frame_i in frames:
+                posData.acdc_df = posData.acdc_df.loc[:from_frame_i]
 
     def get_cca_df(self, frame_i=None, return_df=False):
         # cca_df is None unless the metadata contains cell cycle annotations
@@ -20748,6 +20753,7 @@ class guiWin(QMainWindow):
         tracked_lab = self.tracking(
             enforce=True, assign_unique_new_IDs=False, return_lab=True
         )
+        
         if tracked_lab is None:
             return
         
@@ -20760,9 +20766,10 @@ class guiWin(QMainWindow):
                 # Track only if the tracked ID for the new object does not 
                 # already exist
                 posData.lab[mask] = tracked_lab[mask]
-            self.update_rp()
         else:
             posData.lab = tracked_lab
+        self.update_rp()
+        # self.updateAllImages()
     
     # @exec_time
     def tracking(
@@ -20977,6 +20984,11 @@ class guiWin(QMainWindow):
             
             posData.segm_data[i] = posData.allData_li[i]['labels']
             posData.allData_li[i] = self.getEmptyStoredDataDict()
+        
+        if posData.acdc_df is not None:
+            frames = posData.acdc_df.index.get_level_values(0)
+            if from_frame_i in frames:
+                posData.acdc_df = posData.acdc_df.loc[:from_frame_i]
 
     def removeAllItems(self):
         self.ax1.clear()
