@@ -20685,7 +20685,7 @@ class guiWin(QMainWindow):
         try:
             tracked_lab, tracked_lost_IDs = tracked_result
             self.setTrackedLostCentroids(tracked_lab, tracked_lost_IDs)
-        except ValueError as err:
+        except ValueError as err:#
             tracked_lab = tracked_result
         
         if DoManualEdit:
@@ -20724,7 +20724,6 @@ class guiWin(QMainWindow):
         """        
         posData = self.data[self.pos_i]
         frame_i = posData.frame_i
-        
         rp = skimage.measure.regionprops(tracked_lab)
         for obj in rp:
             if obj.label not in tracked_lost_IDs:
@@ -20736,7 +20735,6 @@ class guiWin(QMainWindow):
     def getTrackedLostIDs(self):
         trackedLostIDs = set()
         posData = self.data[self.pos_i]
-        
         for centroid in posData.tracked_lost_centroids[posData.frame_i]:
             ID = posData.lab[centroid]
             if ID == 0:
