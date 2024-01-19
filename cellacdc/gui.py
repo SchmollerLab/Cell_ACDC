@@ -20485,6 +20485,7 @@ class guiWin(QMainWindow):
         
         prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
         prev_IDs = posData.allData_li[posData.frame_i-1]['IDs']
+        prev_lab = None
         lab_existing = True
         if not prev_IDs:
             prev_lab, lab_existing = self.get_labels(
@@ -20494,7 +20495,7 @@ class guiWin(QMainWindow):
             prev_IDs = [obj.label for obj in prev_rp]     
             posData.allData_li[posData.frame_i-1]['IDs'] = prev_IDs     
         
-        tracked_lost_IDs = self.getTrackedLostIDs()
+        tracked_lost_IDs = self.getTrackedLostIDs(prev_lab=prev_lab)
         curr_IDs = posData.IDs
         curr_delRoiIDs = self.getStoredDelRoiIDs()
         prev_delRoiIDs = self.getStoredDelRoiIDs(frame_i=posData.frame_i-1)
@@ -20683,7 +20684,7 @@ class guiWin(QMainWindow):
         # loose (e.g., upon standard cell division)
         try:
             tracked_lab, tracked_lost_IDs = tracked_result
-            self.setTrackedLostCentroids(tracked_lab, tracked_lost_IDs)
+            self.setTrackedLostCentroids(prev_rp, tracked_lost_IDs)
         except ValueError as err:
             tracked_lab = tracked_result
         
@@ -20704,14 +20705,14 @@ class guiWin(QMainWindow):
             self.statusBarLabel.setText, staturBarLabelText
         ))
 
-    def setTrackedLostCentroids(self, tracked_lab, tracked_lost_IDs):
+    def setTrackedLostCentroids(self, prev_rp, tracked_lost_IDs):
         """Store centroids of those IDs the tracker decided is fine to lose 
         (e.g., upon standard cell division the ID of the mother is fone)
 
         Parameters
         ----------
-        tracked_lab : (Z, Y, X) or (Y, X) array of ints
-            Array of tracked objects
+        prev_rp : skimage.measure.RegionProperties
+            List of region properties of the object in previous frame
         tracked_lost_IDs : iterable
             List-like container of the IDs that is fine to lose from previous
             frame to current frame
@@ -20724,20 +20725,24 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         frame_i = posData.frame_i
         
-        rp = skimage.measure.regionprops(tracked_lab)
-        for obj in rp:
+        for obj in prev_rp:
             if obj.label not in tracked_lost_IDs:
                 continue
             
             int_centroid = tuple([int(val) for val in obj.centroid])
             posData.tracked_lost_centroids[frame_i].add(int_centroid)
     
-    def getTrackedLostIDs(self):
+    def getTrackedLostIDs(self, prev_lab=None):
         trackedLostIDs = set()
         posData = self.data[self.pos_i]
         
+        if prev_lab is None:
+            prev_lab, lab_existing = self.get_labels(
+                frame_i=posData.frame_i-1, return_existing=True
+            )
+        
         for centroid in posData.tracked_lost_centroids[posData.frame_i]:
-            ID = posData.lab[centroid]
+            ID = prev_lab[centroid]
             if ID == 0:
                 continue
             trackedLostIDs.add(ID)
