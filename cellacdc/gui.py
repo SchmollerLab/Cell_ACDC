@@ -11663,8 +11663,11 @@ class guiWin(QMainWindow):
        
         if ev.key() == Qt.Key_Q and self.debug:
             posData = self.data[self.pos_i]
-            curr_df = posData.allData_li[posData.frame_i]['acdc_df']
-            printl(curr_df.loc[2][['cell_cycle_stage', 'generation_num']])     
+            frame_i = posData.frame_i
+            printl(frame_i-1, posData.tracked_lost_centroids[frame_i-1])  
+            printl(frame_i, posData.tracked_lost_centroids[frame_i])  
+            printl(self.getTrackedLostIDs())     
+            printl(posData.lost_IDs)
         
         if not self.dataIsLoaded:
             self.logger.info(
@@ -16546,7 +16549,7 @@ class guiWin(QMainWindow):
             else:
                 posData.lab[mask] = ID
 
-    def get_2Drp(self, lab=None):
+    def get_2Drp(self, lab=None):  
         if self.isSegm3D:
             if lab is None:
                 # self.currentLab2D is defined at self.setImageImg2()
@@ -16570,13 +16573,47 @@ class guiWin(QMainWindow):
             posData.lab = lab2D
 
     def get_labels(self, is_stored=False, frame_i=None, return_existing=False):
+        """_summary_
+
+        Parameters
+        ----------
+        is_stored : bool, optional
+            If True load the labels array from the stored posData.allData_li, 
+            i.e., from RAM. Default is False
+        frame_i : int, optional
+            If None, use the current frame index. Default is  None
+        return_existing : bool, optional
+            If True, the second return element will be a boolean that 
+            is True if the labels array was found stored in `posData.allData_li`. 
+            Default is  False
+
+        Returns
+        -------
+        numpy.ndarray or tuple of (numpy.ndarray, bool)
+            The first element is the labels array requested. If `return_existing` 
+            is True then this method also returns a second boolean element that 
+            is True if the labels array was found in in `posData.allData_li`.
+        
+        Note
+        ----
+        
+        If `is_stored == True` then this method will try to get the stored 
+        labels array. If any error occurs then the returned labels are the 
+        saved ones in the segmentation file (i.e., from hard drive).
+        
+        """        
         posData = self.data[self.pos_i]
         if frame_i is None:
             frame_i = posData.frame_i
         existing = True
+        
         if is_stored:
-            labels = posData.allData_li[frame_i]['labels'].copy()
-        else:
+            try:
+                labels = posData.allData_li[frame_i]['labels'].copy()
+            except Exception as err:
+                is_stored = False
+        
+        if not is_stored:
             try:
                 labels = posData.segm_data[frame_i].copy()
             except IndexError:
@@ -20485,17 +20522,16 @@ class guiWin(QMainWindow):
         
         prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
         prev_IDs = posData.allData_li[posData.frame_i-1]['IDs']
-        prev_lab = None
         lab_existing = True
-        if not prev_IDs:
-            prev_lab, lab_existing = self.get_labels(
-                frame_i=posData.frame_i-1, return_existing=True
-            )
-            prev_rp = skimage.measure.regionprops(prev_lab)
-            prev_IDs = [obj.label for obj in prev_rp]     
-            posData.allData_li[posData.frame_i-1]['IDs'] = prev_IDs     
+        # if not prev_IDs:
+        #     prev_lab, lab_existing = self.get_labels(
+        #         frame_i=posData.frame_i-1, return_existing=True
+        #     )
+        #     prev_rp = skimage.measure.regionprops(prev_lab)
+        #     prev_IDs = [obj.label for obj in prev_rp]     
+        #     posData.allData_li[posData.frame_i-1]['IDs'] = prev_IDs     
         
-        tracked_lost_IDs = self.getTrackedLostIDs(prev_lab=prev_lab)
+        tracked_lost_IDs, prev_lab = self.getTrackedLostIDs()
         curr_IDs = posData.IDs
         curr_delRoiIDs = self.getStoredDelRoiIDs()
         prev_delRoiIDs = self.getStoredDelRoiIDs(frame_i=posData.frame_i-1)
@@ -20507,7 +20543,6 @@ class guiWin(QMainWindow):
             ID for ID in curr_IDs if ID not in prev_IDs 
             and ID not in curr_delRoiIDs
         ]
-
         # IDs_with_holes = [
         #     obj.label for obj in posData.rp if obj.area/obj.filled_area < 1
         # ]
@@ -20733,21 +20768,26 @@ class guiWin(QMainWindow):
             int_centroid = tuple([int(val) for val in obj.centroid])
             posData.tracked_lost_centroids[frame_i].add(int_centroid)
     
-    def getTrackedLostIDs(self, prev_lab=None):
+    def getTrackedLostIDs(self, prev_lab=None, frame_i=None):
         trackedLostIDs = set()
         posData = self.data[self.pos_i]
         
+        if frame_i is None:
+            frame_i = posData.frame_i
+        
         if prev_lab is None:
             prev_lab, lab_existing = self.get_labels(
-                frame_i=posData.frame_i-1, return_existing=True
+                frame_i=frame_i-1, 
+                return_existing=True,
+                is_stored=True
             )
         
-        for centroid in posData.tracked_lost_centroids[posData.frame_i]:
+        for centroid in posData.tracked_lost_centroids[frame_i]:
             ID = prev_lab[centroid]
             if ID == 0:
                 continue
             trackedLostIDs.add(ID)
-        return trackedLostIDs            
+        return trackedLostIDs, prev_lab            
     
     def manuallyEditTracking(self, tracked_lab, allIDs):
         posData = self.data[self.pos_i]
