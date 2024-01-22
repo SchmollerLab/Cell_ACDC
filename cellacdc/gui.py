@@ -8694,24 +8694,27 @@ class guiWin(QMainWindow):
         if frame_i is None:
             frame_i = posData.frame_i
 
-        # Store in the past S frames that division has been annotated
-        for frame_i in range(frame_i, 0, -1):
-            past_cca_df = self.get_cca_df(frame_i=frame_i, return_df=True)
+        # Store in the past frames that division has been annotated
+        for past_frame_i in range(frame_i, 0, -1):
+            past_cca_df = self.get_cca_df(frame_i=past_frame_i, return_df=True)
             if past_cca_df is None:
                 return
             
+            if frame_i == past_frame_i:
+                gen_num = past_cca_df.at[ID, 'generation_num']
+                
             if ID not in past_cca_df.index:
                 return
             
-            ccs = past_cca_df.at[ID, 'cell_cycle_stage']
-            if ccs == 'G1':
+            if past_cca_df.at[ID, 'generation_num'] != gen_num:
+                # Cell cycle finished
                 return
             
             past_cca_df.at[ID, 'will_divide'] = 1
             past_cca_df.at[relID, 'will_divide'] = 1
 
             self.store_cca_df(
-                cca_df=past_cca_df, frame_i=frame_i, autosave=False
+                cca_df=past_cca_df, frame_i=past_frame_i, autosave=False
             )
 
     def annotateDivisionFutureFramesSwapMothers(
@@ -11820,8 +11823,10 @@ class guiWin(QMainWindow):
        
         if ev.key() == Qt.Key_Q and self.debug:
             posData = self.data[self.pos_i]
-            curr_df = posData.allData_li[posData.frame_i]['acdc_df']
-            printl(curr_df.loc[2][['cell_cycle_stage', 'generation_num']])     
+            frame_i = posData.frame_i
+            printl(frame_i-1, posData.tracked_lost_centroids[frame_i-1])  
+            printl(frame_i, posData.tracked_lost_centroids[frame_i])  
+            printl(self.getTrackedLostIDs())
         
         if not self.dataIsLoaded:
             self.logger.info(
@@ -16727,16 +16732,60 @@ class guiWin(QMainWindow):
         else:
             posData.lab = lab2D
 
-    def get_labels(self, is_stored=False, frame_i=None, return_existing=False):
+    def get_labels(
+            self, 
+            from_store=False, 
+            frame_i=None, 
+            return_existing=False,
+            return_copy=True
+        ):
+        """Get the labels array.
+        
+        Parameters
+        ----------
+        from_store : bool, optional
+            If True load the labels array from the stored posData.allData_li, 
+            i.e., from RAM. Default is False
+        frame_i : int, optional
+            If None, use the current frame index. Default is  None
+        return_existing : bool, optional
+            If True, the second return element will be a boolean that 
+            is True if the labels array was found stored in `posData.allData_li`. 
+            Default is  False
+        return_copy : bool, optional
+            If True returns a copy of the labels array
+
+        Returns
+        -------
+        numpy.ndarray or tuple of (numpy.ndarray, bool)
+            The first element is the labels array requested. If `return_existing` 
+            is True then this method also returns a second boolean element that 
+            is True if the labels array was found in in `posData.allData_li`.
+        
+        Note
+        ----
+        
+        If `from_store` is True then this method will try to get the stored 
+        labels array. If any error occurs then the returned labels are the 
+        saved ones in the segmentation file (i.e., from hard drive).
+        
+        """   
         posData = self.data[self.pos_i]
         if frame_i is None:
             frame_i = posData.frame_i
+        
         existing = True
-        if is_stored:
-            labels = posData.allData_li[frame_i]['labels'].copy()
-        else:
+        if from_store:
             try:
-                labels = posData.segm_data[frame_i].copy()
+                labels = posData.allData_li[frame_i]['labels']
+                if labels is None:
+                    from_store = False
+            except Exception as err:
+                from_store = False
+        
+        if not from_store:
+            try:
+                labels = posData.segm_data[frame_i]
             except IndexError:
                 existing = False
                 # Visting a frame that was not segmented --> empty masks
@@ -16745,6 +16794,11 @@ class guiWin(QMainWindow):
                 else:
                     shape = (posData.SizeY, posData.SizeX)
                 labels = np.zeros(shape, dtype=np.uint32)
+                return_copy = False
+        
+        if return_copy:
+            labels = labels.copy()
+            
         if return_existing:
             return labels, existing
         else:
@@ -16830,7 +16884,7 @@ class guiWin(QMainWindow):
         else:
             # Requested frame was already visited. Load from RAM.
             never_visited = False
-            posData.lab = self.get_labels(is_stored=True)
+            posData.lab = self.get_labels(from_store=True)
             posData.rp = skimage.measure.regionprops(posData.lab)
             df = posData.allData_li[posData.frame_i]['acdc_df']
             binnedIDs_df = df[df['is_cell_excluded']>0]
@@ -20632,6 +20686,30 @@ class guiWin(QMainWindow):
             return
         self.updateAllImages()
 
+    def getPrevFrameIDs(self, current_frame_i=None):
+        posData = self.data[self.pos_i]
+        if current_frame_i is None:
+            current_frame_i = posData.frame_i
+        
+        if current_frame_i is None:
+            return []
+        
+        prev_frame_i = current_frame_i - 1
+        prevIDs = posData.allData_li[prev_frame_i]['IDs']
+        
+        if prevIDs:
+            return prevIDs
+        
+        # IDs in previous frame were not stored --> load prev lab from HDD
+        prev_lab = self.get_labels(
+            from_store=False, 
+            frame_i=prev_frame_i,
+            return_copy=False
+        )
+        rp = skimage.measure.regionprops(prev_lab)
+        prevIDs = [obj.label for obj in rp]
+        return prevIDs
+            
     # @exec_time
     def setLostNewOldPrevIDs(self):
         posData = self.data[self.pos_i]
@@ -20646,19 +20724,8 @@ class guiWin(QMainWindow):
         # elif self.modeComboBox.currentText() == 'Viewer':
         #     pass
         
-        prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
-        prev_IDs = posData.allData_li[posData.frame_i-1]['IDs']
-        prev_lab = None
-        lab_existing = True
-        if not prev_IDs:
-            prev_lab, lab_existing = self.get_labels(
-                frame_i=posData.frame_i-1, return_existing=True
-            )
-            prev_rp = skimage.measure.regionprops(prev_lab)
-            prev_IDs = [obj.label for obj in prev_rp]     
-            posData.allData_li[posData.frame_i-1]['IDs'] = prev_IDs     
-        
-        tracked_lost_IDs = self.getTrackedLostIDs(prev_lab=prev_lab)
+        prev_IDs = self.getPrevFrameIDs()  
+        tracked_lost_IDs = self.getTrackedLostIDs()
         curr_IDs = posData.IDs
         curr_delRoiIDs = self.getStoredDelRoiIDs()
         prev_delRoiIDs = self.getStoredDelRoiIDs(frame_i=posData.frame_i-1)
@@ -20680,16 +20747,24 @@ class guiWin(QMainWindow):
         posData.old_IDs = prev_IDs
         posData.IDs = curr_IDs
         self.setTitleText(
-            lost_IDs, new_IDs, IDs_with_holes, lab_existing
+            lost_IDs, new_IDs, IDs_with_holes
         )
         return curr_delRoiIDs
     
-    def setTitleText(self, lost_IDs, new_IDs, IDs_with_holes, lab_existing):
+    def setTitleText(self, lost_IDs, new_IDs, IDs_with_holes):
         warn_txt = ''
-        if lab_existing:
+        try:
+            posData = self.data[self.pos_i]
+            posData.segm_data[posData.frame_i]
+            prev_segmented = True
+        except IndexError:
+            prev_segmented = False
+            
+        if prev_segmented:
             htmlTxt = ''
         else:
             htmlTxt = f'<font color="white">Never segmented frame. </font>'
+        
         if lost_IDs:
             lost_IDs_format = myutils.get_trimmed_list(lost_IDs)
             warn_txt = f'IDs lost in current frame: {lost_IDs_format}'
@@ -20897,13 +20972,19 @@ class guiWin(QMainWindow):
             int_centroid = tuple([int(val) for val in obj.centroid])
             posData.tracked_lost_centroids[frame_i].add(int_centroid)
     
-    def getTrackedLostIDs(self, prev_lab=None):
+    def getTrackedLostIDs(self, prev_lab=None, frame_i=None):
         trackedLostIDs = set()
         posData = self.data[self.pos_i]
         
+        if frame_i is None:
+            frame_i = posData.frame_i
+            
         if prev_lab is None:
-            prev_lab, lab_existing = self.get_labels(
-                frame_i=posData.frame_i-1, return_existing=True
+            prev_lab = self.get_labels(
+                from_store=True, 
+                frame_i=posData.frame_i-1, 
+                return_existing=False,
+                return_copy=False
             )
         
         for centroid in posData.tracked_lost_centroids[posData.frame_i]:
