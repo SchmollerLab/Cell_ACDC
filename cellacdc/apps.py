@@ -10162,7 +10162,7 @@ class QDialogZsliceAbsent(QDialog):
         if hasattr(self, 'loop'):
             self.loop.exit()
 
-class QDialogMultiSegmNpz(QDialog):
+class SelectSegmFileDialog(QDialog):
     def __init__(
             self, images_ls, parent_path, parent=None, 
             addNewFileButton=False, basename='', infoText=None
@@ -10188,11 +10188,11 @@ class QDialogMultiSegmNpz(QDialog):
         super().__init__(parent)
 
         informativeText = html_utils.paragraph(f"""
-            The loaded Position folders contains
-            <b>multipe segmentation masks</b><br>
+            The loaded Position folders already contains
+            <b>{len(self.existingEndNames)} segmentation masks</b><br>
         """)
 
-        self.setWindowTitle('Multiple segm.npz files detected')
+        self.setWindowTitle('Segmentation files detected')
         is_win = sys.platform.startswith("win")
 
         mainLayout = QVBoxLayout()

@@ -311,7 +311,7 @@ class NewThreadMultipleExpBaseUtil(QDialog):
         else:
             infoText = None
 
-        win = apps.QDialogMultiSegmNpz(
+        win = apps.SelectSegmFileDialog(
             existingSegmEndNames, exp_path, parent=self, infoText=infoText
         )
         win.exec_()
@@ -472,7 +472,7 @@ class MainThreadSinglePosUtilBase(QDialog):
         else:
             infoText = None
 
-        win = apps.QDialogMultiSegmNpz(
+        win = apps.SelectSegmFileDialog(
             existingSegmEndNames, posPath, parent=self, infoText=infoText
         )
         win.exec_()

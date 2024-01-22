@@ -148,6 +148,7 @@
     <file alias="skip_forward_new_ID.svg">resources/icons/skip_forward_new_ID_dark.svg</file>
     <file alias="expand.svg">resources/icons/expand_dark.svg</file>
     <file alias="collapse.svg">resources/icons/collapse_dark.svg</file>
+    <file alias="navigate.svg">resources/icons/navigate_dark.svg</file>
     <file alias="info.svg">resources/icons/info_dark.svg</file>
     <file alias="help.svg">resources/icons/help_dark.svg</file>
     <file alias="addCustomAnnotation.svg">resources/icons/addCustomAnnotation_dark.svg</file>

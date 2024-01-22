@@ -1,3 +1,6 @@
+from functools import partial
+import re
+
 from . import issues_url
 
 def warnTooManyItems(mainWin, numItems, qparent):
@@ -60,7 +63,7 @@ def warn_image_overflow_dtype(input_dtype, max_value, inferred_dtype):
         DataTypeWarning
     )
 
-def warn_cca_integrity(txt, category, qparent):
+def warn_cca_integrity(txt, category, qparent, go_to_frame_callback=None):
     from . import html_utils, widgets
     from qtpy.QtWidgets import QCheckBox
     
@@ -88,10 +91,20 @@ def warn_cca_integrity(txt, category, qparent):
     )
     
     msg = widgets.myMessageBox(wrapText=False)
+    if go_to_frame_callback is not None and txt.find('At frame n.') != -1:
+        frame_n = re.findall(r'At frame n. (\d+)', txt)[0]
+        goToFrameButton = widgets.NavigatePushButton(f'Go to frame n. {frame_n}')
+        goToFrameButton = msg.addButton(goToFrameButton)
+        goToFrameButton.disconnect()
+        goToFrameButton.clicked.connect(
+            partial(go_to_frame_callback, int(frame_n))
+        )
+        
     msg.warning(
         qparent, 'Annotations integrity warning', msg_text, 
         widgets=checkboxes
     )
+    
     if stopSpecificMessageCheckbox.isChecked():
         return txt
     
