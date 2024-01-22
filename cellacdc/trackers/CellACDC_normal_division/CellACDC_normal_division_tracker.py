@@ -1,13 +1,23 @@
 import os
 from cellacdc.trackers.CellACDC.CellACDC_tracker import calc_IoA_matrix
 from cellacdc.trackers.CellACDC.CellACDC_tracker import track_frame as track_frame_base
-from cellacdc.core import getBaseCca_df,printl
+from cellacdc.core import getBaseCca_df, printl
 import numpy as np
 from skimage.measure import regionprops
 from tqdm import tqdm
 import pandas as pd
 
-def reorg_daughter_cells(lineage_tree_frame, max_daughter):
+def reorg_daughter_cells(lineage_tree_frame, max_daughter):    
+    """
+    Reorganizes the daughter cells in the lineage tree frame.
+
+    Args:
+        lineage_tree_frame (pandas.DataFrame): The lineage tree frame containing the daughter cells.
+        max_daughter (int): The maximum number of daughter cells.
+
+    Returns:
+        pandas.DataFrame: The lineage tree frame with reorganized daughter cells (e.g. 'daughter_ID_tree_1', 'daughter_ID_tree_2', ...)
+    """
     new_columns = [f'sister_ID_tree_{i+1}' for i in range(max_daughter-1)]
     sister_columns = lineage_tree_frame['sister_ID_tree'].apply(pd.Series) 
     lineage_tree_frame[new_columns] = sister_columns
@@ -17,7 +27,20 @@ def reorg_daughter_cells(lineage_tree_frame, max_daughter):
 
 
 def ident_no_mothers(IoA_matrix, IoA_thresh_daughter, min_daughter, max_daughter):
-    # Find cells which dont have several bad overlaps in next frame, implying they have not split  
+    """
+    Identifies cells that have not undergone division based on the input IoA matrix.
+
+    Args:
+        IoA_matrix (numpy.ndarray): Matrix representing the Intersection over Area (IoA) values between cells.
+        IoA_thresh_daughter (float): Threshold value for considering a cell as a daughter cell.
+        min_daughter (int): Minimum number of daughter cells required for considering a cell as a mother cell.
+        max_daughter (int): Maximum number of daughter cells required for considering a cell as a mother cell.
+
+    Returns:
+        tuple: A tuple containing two elements:
+            - aggr_track (list): A list of indices of cells that have not undergone division.
+            - mother_daughters (list): A list of tuples, where each tuple contains the index of a mother cell and a list of indices of its daughter cells. (INDICIES ARE BASED ON THE INPUT IoA MATRIX)
+    """
     mother_daughters = []
     aggr_track = []
     daughter_range = range(min_daughter, max_daughter+1, 1)
@@ -37,7 +60,27 @@ def ident_no_mothers(IoA_matrix, IoA_thresh_daughter, min_daughter, max_daughter
     return aggr_track, mother_daughters
 
 def added_lineage_tree_to_cca_df(added_lineage_tree):
-    #The input has following columns: 'Division frame', 'Daughter ID'("ID"), 'Mother ID', 'Generation', 'Origin ID', 'Sister IDs'
+    """
+    Converts the added lineage tree into a DataFrame with specific columns (see getBaseCca_df from cellacdc.core for more details). 
+
+    Args:
+        added_lineage_tree (list): The input lineage tree with the following columns:
+            - 'Division frame'
+            - 'Daughter ID' ("ID")
+            - 'Mother ID'
+            - 'Generation'
+            - 'Origin ID'
+            - 'Sister IDs'
+
+    Returns:
+        pandas.DataFrame: The converted DataFrame with the following additional columns:
+            - 'emerg_frame_i'
+            - 'division_frame_i'
+            - 'generation_num_tree'
+            - 'parent_ID_tree'
+            - 'root_ID_tree'
+            - 'sister_ID_tree'
+    """
 
     cca_df = getBaseCca_df([row[1] for row in added_lineage_tree], with_tree_cols=True)
     cca_df['emerg_frame_i'] = [row[0] for row in added_lineage_tree]
@@ -49,6 +92,19 @@ def added_lineage_tree_to_cca_df(added_lineage_tree):
     return cca_df
 
 def create_lineage_tree_video(segm_video, IoA_thresh_daughter, min_daughter, max_daughter):
+    """
+    Creates a lineage tree for a video of segmented frames (Currently not in use).
+
+    Args:
+        segm_video (list): A list of segmented frames.
+        IoA_thresh_daughter (float): IoA threshold for identifying daughter cells.
+        min_daughter (int): Minimum number of daughter cells.
+        max_daughter (int): Maximum number of daughter cells.
+
+    Returns:
+        list: A list representing the lineage tree.
+
+    """
     tree = normal_division_lineage_tree(segm_video[0])
     for i, frame in enumerate(segm_video[1:], start=1):
         rp = regionprops(frame)
@@ -59,7 +115,51 @@ def create_lineage_tree_video(segm_video, IoA_thresh_daughter, min_daughter, max
         tree.create_tracked_frame_tree(i, mother_daughters, IDs_prev, IDs_curr_untracked, assignments)
     return tree.lineage_list
 
+def filter_current_IDs(df, current_IDs):  
+    """
+    Filters for current IDs.
+
+    Args:
+        df (pandas.DataFrame): The DataFrame containing the IDs.
+        indices_to_remove (list): A list of indices NOT to be removed.
+
+    Returns:
+        pandas.DataFrame: The DataFrame with only the current IDs.
+    """
+    return df[df.index.isin(current_IDs)]
+
 class normal_division_tracker:
+    """
+    A class that tracks cell divisions in a video sequence.
+
+    Args:
+        segm_video (ndarray): The segmented video sequence.
+        IoA_thresh_daughter (float): The IoA threshold for identifying daughter cells.
+        min_daughter (int): The minimum number of daughter cells.
+        max_daughter (int): The maximum number of daughter cells.
+        IoA_thresh (float): The IoA threshold for tracking cells.
+        IoA_thresh_aggressive (float): The aggressive IoA threshold for tracking cells.
+
+    Attributes:
+        IoA_thresh_daughter (float): The IoA threshold for identifying daughter cells.
+        min_daughter (int): The minimum number of daughter cells.
+        max_daughter (int): The maximum number of daughter cells.
+        IoA_thresh (float): The IoA threshold for tracking cells.
+        IoA_thresh_aggressive (float): The aggressive IoA threshold for tracking cells.
+        segm_video (ndarray): The segmented video sequence.
+        tracked_video (ndarray): The tracked video sequence.
+        assignments (dict): A dictionary mapping untracked cell IDs to tracked cell IDs. (Only NEW cells are in this dictionary, so things the tracker could not assign to a cell in the previous frame and was given a new unique ID.)
+        IDs_prev (list): A list mapping index from IoA matrix to IDs. (Index in list = Index in IoA matrix)
+        rp (list): The region properties of the current frame.
+        mother_daughters (list): A list of tuples, where each tuple contains the index of a mother cell and a list of indices of its daughter cells. (INDICIES ARE BASED ON THE INPUT IoA MATRIX)
+        IDs_curr_untracked (list): A list of current cell IDs that are untracked. (INDICIES ARE BASED ON THE INPUT IoA MATRIX)
+        tracked_IDs (set): A set of all cell IDs in current frame after tracking.
+        tracked_lab (ndarray): The tracked current frame.
+
+    Methods:
+        track_frame: Tracks a single frame in the video sequence.
+    """
+
     def __init__(self, 
                  segm_video, 
                  IoA_thresh_daughter, 
@@ -67,7 +167,18 @@ class normal_division_tracker:
                  max_daughter, 
                  IoA_thresh, 
                  IoA_thresh_aggressive):
-        
+        """
+        Initializes the normal_division_tracker object.
+
+        Args:
+            segm_video (ndarray): The segmented video sequence.
+            IoA_thresh_daughter (float): The IoA threshold for identifying daughter cells.
+            min_daughter (int): The minimum number of daughter cells.
+            max_daughter (int): The maximum number of daughter cells.
+            IoA_thresh (float): The IoA threshold for tracking cells. Applied first before further accessing if cell has divided.
+            IoA_thresh_aggressive (float): The aggressive IoA threshold for tracking cells. Applied when the tracker thinks that a cell has NOT divided.
+        """
+
         self.IoA_thresh_daughter = IoA_thresh_daughter
         self.min_daughter = min_daughter
         self.max_daughter = max_daughter
@@ -79,7 +190,17 @@ class normal_division_tracker:
         self.tracked_video[0] = segm_video[0]
 
     def track_frame(self, frame_i, lab=None, prev_lab=None, rp=None, prev_rp=None):
-        
+        """
+        Tracks a single frame in the video sequence.
+
+        Args:
+            frame_i (int): The index of the frame to track.
+            lab (ndarray, optional): The segmented labels of the current frame. Defaults to None.
+            prev_lab (ndarray, optional): The segmented labels of the previous frame. Defaults to None.
+            rp (list, optional): The region properties of the current frame. Defaults to None.
+            prev_rp (list, optional): The region properties of the previous frame. Defaults to None.
+        """
+
         if lab is None:
             lab = self.segm_video[frame_i]
 
@@ -104,7 +225,7 @@ class normal_division_tracker:
                                                              min_daughter=self.min_daughter, 
                                                              max_daughter=self.max_daughter
                                                              )
-        self.tracked_lab, IoA_matrix, self.assignments = track_frame_base(prev_lab, 
+        self.tracked_lab, IoA_matrix, self.assignments, tracked_IDs = track_frame_base(prev_lab, 
                                                                           prev_rp, 
                                                                           lab, 
                                                                           self.rp, 
@@ -116,39 +237,73 @@ class normal_division_tracker:
                                                                           IDs_prev=self.IDs_prev, 
                                                                           return_all=True
                                                                           )
+        self.tracked_IDs = set(tracked_IDs).union(set(self.assignments.values()))
         self.tracked_video[frame_i] = self.tracked_lab
 
 class normal_division_lineage_tree:
+    """
+    Represents a lineage tree for normal cell divisions.
+
+    Attributes:
+    - max_daughter: Maximum number of daughter cells per division.
+    - families: List of families in the lineage tree. (Each member of a family is represented as a list of tuples (label, generation))
+    - lineage_list: List of lineage dataframes representing the lineage tree.
+
+    Methods:
+    - __init__(self, lab, max_daughter): Initializes the normal_division_lineage_tree object.
+    - create_tracked_frame_tree(self, frame_i, mother_daughters, IDs_prev, IDs_curr_untracked, assignments, curr_IDs): Creates df for the specified frame and appends it to lineage_list.
+    """
     def __init__(self, lab, max_daughter):
-        self.max_daughter = max_daughter
+            """
+            Initializes the CellACDC_normal_division_tracker object.
 
-        self.families = []
-        added_lineage_tree = []
+            Parameters:
+            lab (ndarray): The labeled image of cells.
+            max_daughter (int): The maximum number of daughter cells expected.
 
-        rp = regionprops(lab.copy())
-        for obj in rp:
-            label = obj.label
-            self.families.append([(label, 0)])
-            added_lineage_tree.append((-1, label, -1, -2, label, [-1] * (max_daughter-1)))
+            Returns:
+            - None
+            """
+            self.max_daughter = max_daughter
+            self.families = []
+            added_lineage_tree = []
 
-        cca_df = added_lineage_tree_to_cca_df(added_lineage_tree)
-        cca_df = reorg_daughter_cells(cca_df, max_daughter)
-        self.lineage_list = [cca_df]
+            rp = regionprops(lab.copy())
+            for obj in rp:
+                label = obj.label
+                self.families.append([(label, 0)])
+                added_lineage_tree.append((-1, label, -1, -2, label, [-1] * (max_daughter-1)))
+
+            cca_df = added_lineage_tree_to_cca_df(added_lineage_tree)
+            cca_df = reorg_daughter_cells(cca_df, max_daughter)
+            self.lineage_list = [cca_df]
 
 
-    def create_tracked_frame_tree(self, frame_i, mother_daughters, IDs_prev, IDs_curr_untracked, assignments):
+    def create_tracked_frame_tree(self, frame_i, mother_daughters, IDs_prev, IDs_curr_untracked, assignments, curr_IDs):
+        """
+        Creates a tracked frame tree based on the given parameters.
+
+        Parameters:
+        - frame_i: Index of the current frame.
+        - mother_daughters: List of tuples representing mother-daughter cell relationships.
+        - IDs_prev: List mapping previous cell IDs to current cell IDs.
+        - IDs_curr_untracked: List of current cell IDs that are untracked.
+        - assignments: Dictionary mapping untracked cell IDs to tracked cell IDs.
+        - curr_IDs: List of current cell IDs.
+
+        Returns:
+        - None
+        """
         added_lineage_tree = []
         for mother, daughters in mother_daughters:
             mother_ID = IDs_prev[mother]
             daughter_IDs = []
 
             for daughter in daughters:
-                # printl(frame_i, assignments, IDs_curr_untracked)
-                daughter_IDs.append(assignments[IDs_curr_untracked[daughter]])
+                daughter_IDs.append(assignments[IDs_curr_untracked[daughter]]) # this works because daughter is a single ID. New items wont be in assignments but not in daughter so its fine *pew*
 
             for family in self.families:
                 for member in family:
-                    # printl(families)
                     if mother_ID == member[0]:
                         origin_id = family[0][0]
                         generation = member[1] + 1
@@ -164,14 +319,31 @@ class normal_division_lineage_tree:
                 daughter_IDs_copy = daughter_IDs_copy + [-1] * (self.max_daughter - len(daughter_IDs_copy) -1)
                 added_lineage_tree.append((frame_i, daughter_ID, mother_ID, generation, origin_id, daughter_IDs_copy))
 
-
         cca_df = added_lineage_tree_to_cca_df(added_lineage_tree)
         cca_df = pd.concat([self.lineage_list[-1], cca_df], axis=0)
         cca_df = reorg_daughter_cells(cca_df, self.max_daughter)
+        cca_df = filter_current_IDs(cca_df, curr_IDs)
+
         self.lineage_list.append(cca_df)
 
 class tracker:
+    """
+    Class representing a tracker for cell division in a video sequence. (Adapted from CellACDC_tracker.py)
+
+    Attributes:
+        None
+
+    Methods:
+        __init__(): Initializes the tracker object.
+        track(): Tracks cell division in the video sequence.
+        track_frame(): Tracks cell division in a single frame.
+        updateGuiProgressBar(): Updates the GUI progress bar. (Used for GUI communication)
+        save_output(): Saves the output of the tracker.
+    """
     def __init__(self):
+        """
+        Initializes the CellACDC_normal_division_tracker object.
+        """
         pass
 
     def track(self, 
@@ -183,7 +355,23 @@ class tracker:
               min_daughter = 2,
               max_daughter = 2,
               record_lineage = True
-        ):      
+        ):
+        """
+        Tracks the segmented video frames and returns the tracked video.
+
+        Args:
+            segm_video (list): List of segmented video frames.
+            signals (list, optional): List of signals. Defaults to None. (Used for GUI communication)
+            IoA_thresh (float, optional): IoA threshold. Defaults to 0.8. (Used for tracking cells before even looking if a cell has divided)
+            IoA_thresh_daughter (float, optional): IoA threshold for daughter cells. Defaults to 0.25. (Used for identifying daughter cells)
+            IoA_thresh_aggressive (float, optional): Aggressive IoA threshold. Defaults to 0.5. (Used when the tracker thinks that a cell has NOT divided)
+            min_daughter (int, optional): Minimum number of daughter cells. Defaults to 2. 
+            max_daughter (int, optional): Maximum number of daughter cells. Defaults to 2.
+            record_lineage (bool, optional): Flag to record lineage. Defaults to True. 
+
+        Returns:
+            list: Tracked video frames.
+        """
         pbar = tqdm(total=len(segm_video), desc='Tracking', ncols=100)
             
         for frame_i, lab in enumerate(segm_video):
@@ -201,7 +389,11 @@ class tracker:
                 IDs_prev = tracker.IDs_prev
                 assignments = tracker.assignments
                 IDs_curr_untracked = tracker.IDs_curr_untracked
-                tree.create_tracked_frame_tree(frame_i, mother_daughters, IDs_prev, IDs_curr_untracked, assignments)
+                curr_IDs_legacy = tracker.tracked_IDs
+                rp = regionprops(tracker.tracked_lab)
+                curr_IDs = {obj.label for obj in rp}
+                # printl(f'''Frame {frame_i}:\n{len(curr_IDs)} cells, {curr_IDs}\n{len(curr_IDs_legacy)} cells, {curr_IDs_legacy}\n{set(curr_IDs)-set(curr_IDs_legacy)}''')
+                tree.create_tracked_frame_tree(frame_i, mother_daughters, IDs_prev, IDs_curr_untracked, assignments, curr_IDs)
 
             self.updateGuiProgressBar(signals)
             pbar.update()
@@ -222,6 +414,22 @@ class tracker:
                     min_daughter = 2,
                     max_daughter = 2,
                     ):
+        """
+        Tracks cell division in a single frame. (This is used for real time tracking in the GUI)
+
+        Args:
+            previous_frame_labels: Labels of the previous frame.
+            current_frame_labels: Labels of the current frame.
+            IoA_thresh (float, optional): IoA threshold. Defaults to 0.8. (Used for tracking cells before even looking if a cell has divided)
+            IoA_thresh_daughter (float, optional): IoA threshold for daughter cells. Defaults to 0.25. (Used for identifying daughter cells)
+            IoA_thresh_aggressive (float, optional): Aggressive IoA threshold. Defaults to 0.5. (Used when the tracker thinks that a cell has NOT divided)
+            min_daughter: Minimum number of daughter cells. Default is 2.
+            max_daughter: Maximum number of daughter cells. Default is 2.
+
+        Returns:
+            tracked_video: Tracked video sequence.
+            mothers: Set of IDs of mother cells in the current frame. (Used in GUI so it doesn't complain if IDs are missing)
+        """
         
         if not np.any(current_frame_labels):
             # Skip empty frames
@@ -239,6 +447,15 @@ class tracker:
         return tracked_video[-1], mothers
     
     def updateGuiProgressBar(self, signals):
+        """
+        Updates the GUI progress bar.
+
+        Args:
+            signals: Signals object for GUI communication.
+
+        Returns:
+            None
+        """
         if signals is None:
             return
         
@@ -251,4 +468,13 @@ class tracker:
         signals.progressBar.emit(1)
 
     def save_output(self):
+        """
+        Used to signal to the rest of the program that the lineage tree should be saved.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
         pass
