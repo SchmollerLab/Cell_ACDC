@@ -3475,6 +3475,11 @@ class guiWin(QMainWindow):
             'mean z-projection',
             'median z-proj.'
         ])
+        
+        self.switchPlaneButton = widgets.SwitchPlaneButton()
+        self.switchPlaneButton.setToolTip(
+            'Switch viewed plane'
+        )
 
         self.zSliceOverlay_SB = widgets.ScrollBar(Qt.Horizontal)
         _z_label = QLabel('Overlay z-slice  ')
@@ -3550,6 +3555,7 @@ class guiWin(QMainWindow):
         )
         bottomLeftLayout.addWidget(self.zSliceScrollBar, row, 1, 1, 2)
         bottomLeftLayout.addWidget(self.zProjComboBox, row, 3)
+        bottomLeftLayout.addWidget(self.switchPlaneButton, row, 4)
         self.zSliceSpinbox.connectValueChanged(self.onZsliceSpinboxValueChange)
         self.zSliceSpinbox.editingFinished.connect(self.zSliceScrollBarReleased)
 
@@ -10465,6 +10471,8 @@ class guiWin(QMainWindow):
             self.zSliceScrollBar.show()
             self.zSliceCheckbox.show()
             self.zSliceSpinbox.show()
+            self.switchPlaneButton.show()
+            self.switchPlaneButton.setDisabled(False)
             self.SizeZlabel.show()
         else:
             myutils.setRetainSizePolicy(self.zSliceScrollBar, retain=False)
@@ -10478,6 +10486,8 @@ class guiWin(QMainWindow):
             self.zSliceCheckbox.hide()
             self.zSliceSpinbox.hide()
             self.SizeZlabel.hide()
+            self.switchPlaneButton.hide()
+            self.switchPlaneButton.setDisabled(True)
 
     def reInitCca(self):
         if not self.isSnapshot:
@@ -10794,6 +10804,7 @@ class guiWin(QMainWindow):
         self.store_data(autosave=False)
         self.copyContourButton.setChecked(False)
         self.stopCcaIntegrityCheckerWorker()
+        self.zSliceScrollBar.setDisabled(True)
         if mode == 'Segmentation and Tracking':
             self.trackingMenu.setDisabled(False)
             self.modeToolBar.setVisible(True)
@@ -10831,6 +10842,7 @@ class guiWin(QMainWindow):
             self.setEnabledEditToolbarButton(enabled=False)
             self.setEnabledCcaToolbar(enabled=False)
             self.removeAlldelROIsCurrentFrame()
+            self.zSliceScrollBar.setDisabled(False)
             # currentMode = self.drawIDsContComboBox.currentText()
             # self.drawIDsContComboBox.clear()
             # self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxCcaItems)
@@ -10852,7 +10864,31 @@ class guiWin(QMainWindow):
             self.reconnectUndoRedo()
             self.setEnabledSnapshotMode()
             self.doCustomAnnotation(0)
+            self.zSliceScrollBar.setDisabled(False)
 
+    def disableEditingSnapshotMode(self):
+        posData = self.data[self.pos_i]
+        self.manuallyEditCcaAction.setDisabled(True)
+        for action in self.segmActions:
+            action.setDisabled(True)
+        self.SegmActionRW.setDisabled(True)
+        if posData.SizeT == 1:
+            self.segmVideoMenu.setDisabled(True)
+        self.postProcessSegmAction.setDisabled(True)
+        self.autoSegmAction.setDisabled(True)
+        self.ccaToolBar.setVisible(False)
+        self.editToolBar.setVisible(False)
+        for action in self.ccaToolBar.actions():
+            button = self.editToolBar.widgetForAction(action)
+            if button is not None:
+                button.setDisabled(True)
+            action.setVisible(False)
+        for action in self.editToolBar.actions():
+            button = self.editToolBar.widgetForAction(action)
+            action.setVisible(False)
+            if button is not None:
+                button.setDisabled(True)
+    
     def setEnabledSnapshotMode(self):
         posData = self.data[self.pos_i]
         self.manuallyEditCcaAction.setDisabled(False)
@@ -15381,6 +15417,7 @@ class guiWin(QMainWindow):
                 self.zSliceScrollBar.sliderReleased.disconnect()
                 self.zProjComboBox.currentTextChanged.disconnect()
                 self.zProjComboBox.activated.disconnect()
+                self.switchPlaneButton.clicked.disconnect()
             except Exception as e:
                 pass
             self.zSliceScrollBar.actionTriggered.connect(
@@ -15391,6 +15428,7 @@ class guiWin(QMainWindow):
             )
             self.zProjComboBox.currentTextChanged.connect(self.updateZproj)
             self.zProjComboBox.activated.connect(self.clearComboBoxFocus)
+            self.switchPlaneButton.clicked.connect(self.switchPlaneClicked)
 
         posData = self.data[self.pos_i]
         if posData.SizeT == 1:
@@ -15458,7 +15496,8 @@ class guiWin(QMainWindow):
             posData = self.data[self.pos_i]
             idx = (posData.filename, posData.frame_i)
             z = self.zSliceScrollBar.sliderPosition()
-            posData.segmInfo_df.at[idx, 'z_slice_used_gui'] = z
+            if self.switchPlaneButton.depthAxes() == 'z': 
+                posData.segmInfo_df.at[idx, 'z_slice_used_gui'] = z
             self.zSliceSpinbox.setValueNoEmit(z+1)
             img = self.getImage()
             self.img1.setImage(
@@ -15481,13 +15520,65 @@ class guiWin(QMainWindow):
         self.zSliceScrollBarStartedMoving = True
         self.update_z_slice(self.zSliceScrollBar.sliderPosition())
     
+    def switchPlaneClicked(self):
+        posData = self.data[self.pos_i]
+        self.zProjComboBox.setCurrentText('single z-slice')
+        self.switchPlaneButton.switchPlane()
+        depthAxes = self.switchPlaneButton.depthAxes()
+        if depthAxes != 'z':
+            # Disable projections on plane that is not xy
+            self.zProjComboBox.setCurrentText('single z-slice')
+            self.zProjComboBox.setDisabled(True)
+            
+            # Disable annotations on a plane that is not yz
+            self.onDoubleSpaceBar()
+            self.setDisabledAnnotCheckBoxesLeft(True)
+            self.setDisabledAnnotCheckBoxesRight(True)
+            self.overlayButton.setChecked(False)
+            self.overlayButton.setDisabled(True)
+        else:
+            self.zProjComboBox.setDisabled(False)
+            self.onDoubleSpaceBar()
+            self.setDisabledAnnotCheckBoxesLeft(False)
+            self.setDisabledAnnotCheckBoxesRight(False)
+            self.overlayButton.setDisabled(False)
+            self.updateZsliceScrollbar(posData.frame_i)
+        
+        SizeY, SizeX = posData.img_data[posData.frame_i].shape[-2:]
+        
+        if self.isSnapshot and depthAxes != 'z':
+            # Disable editing when the plane is not xy
+            self.disableEditingSnapshotMode()
+        elif self.isSnapshot:
+            # Re-enable editing in snapshot mode when the plane is xy
+            self.setEnabledSnapshotMode()
+        
+        if depthAxes == 'z':
+            maxSliceNum = posData.SizeZ
+        elif depthAxes == 'y':
+            maxSliceNum = SizeY
+        else:
+            maxSliceNum = SizeX
+        
+        maxSliceText = f'/{maxSliceNum}'
+        self.SizeZlabel.setText(maxSliceText)
+        self.zSliceCheckbox.setText(f'{depthAxes}-slice')
+        self.zSliceScrollBar.setMaximum(maxSliceNum-1)
+        self.zSliceSpinbox.setMaximum(maxSliceNum)
+        if depthAxes != 'z':
+            self.zSliceScrollBar.setSliderPosition(int(maxSliceNum/2))
+            
+        self.updateAllImages()
+        QTimer.singleShot(200, self.autoRange)
+    
     def onZsliceSpinboxValueChange(self, value):
         self.zSliceScrollBar.setSliderPosition(value-1)
 
     def update_z_slice(self, z):
         posData = self.data[self.pos_i]
         idx = (posData.filename, posData.frame_i)
-        posData.segmInfo_df.at[idx, 'z_slice_used_gui'] = z
+        if self.switchPlaneButton.depthAxes() == 'z': 
+            posData.segmInfo_df.at[idx, 'z_slice_used_gui'] = z
         self.updateAllImages(computePointsLayers=False)
 
     def updateOverlayZslice(self, z):
@@ -19268,6 +19359,13 @@ class guiWin(QMainWindow):
         if frame_i < 0:
             frame_i = 0
             frame_i = posData.frame_i = 0
+        
+        axis_slice = self.zSliceScrollBar.value() - 1
+        if self.switchPlaneButton.depthAxes() == 'x':
+            return imgData[:, :, axis_slice].copy()
+        elif self.switchPlaneButton.depthAxes() == 'y':
+            return imgData[:, axis_slice].copy()
+        
         idx = (posData.filename, frame_i)
         zProjHow_L0 = self.zProjComboBox.currentText()
         if isLayer0:
@@ -19287,15 +19385,18 @@ class guiWin(QMainWindow):
         if zProjHow == 'single z-slice':
             img = imgData[z].copy()
         elif zProjHow == 'max z-projection':
-            img = imgData.max(axis=0).copy()
+            img = imgData.max(axis=0)
         elif zProjHow == 'mean z-projection':
-            img = imgData.mean(axis=0).copy()
+            img = imgData.mean(axis=0)
         elif zProjHow == 'median z-proj.':
-            img = np.median(imgData, axis=0).copy()
+            img = np.median(imgData, axis=0)
         return img
 
     def updateZsliceScrollbar(self, frame_i):
         posData = self.data[self.pos_i]
+        if self.switchPlaneButton.depthAxes() != 'z':
+            return
+            
         idx = (posData.filename, frame_i)
         try:
             z = posData.segmInfo_df.at[idx, 'z_slice_used_gui']
@@ -22269,6 +22370,23 @@ class guiWin(QMainWindow):
         
         self.setDrawAnnotComboboxText()
 
+    def setDisabledAnnotCheckBoxesLeft(self, disabled):
+        self.annotIDsCheckbox.setDisabled(disabled)
+        self.annotCcaInfoCheckbox.setDisabled(disabled)
+        self.annotContourCheckbox.setDisabled(disabled)
+        self.annotSegmMasksCheckbox.setDisabled(disabled)
+        self.drawMothBudLinesCheckbox.setDisabled(disabled)
+        self.annotNumZslicesCheckbox.setDisabled(disabled)
+        self.drawNothingCheckbox.setDisabled(disabled)
+    
+    def setDisabledAnnotCheckBoxesRight(self, disabled):
+        self.annotIDsCheckboxRight.setDisabled(disabled)
+        self.annotCcaInfoCheckboxRight.setDisabled(disabled)
+        self.annotContourCheckboxRight.setDisabled(disabled)
+        self.annotSegmMasksCheckboxRight.setDisabled(disabled)
+        self.drawMothBudLinesCheckboxRight.setDisabled(disabled)
+        self.annotNumZslicesCheckboxRight.setDisabled(disabled)
+    
     def annotOptionClickedRight(self, clicked=True, sender=None):
         if sender is None:
             sender = self.sender()

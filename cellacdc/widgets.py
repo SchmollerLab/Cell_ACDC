@@ -342,6 +342,25 @@ class NavigatePushButton(PushButton):
         super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':navigate.svg'))
 
+class SwitchPlaneButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setIcon(QIcon(':switch_2d_plane.svg'))
+        self._planes = ('xy', 'zy', 'zx')
+        self._idx = 0
+    
+    def switchPlane(self):
+        self._idx += 1
+    
+    def plane(self):
+        return self._planes[self._idx % 3]
+
+    def depthAxes(self):
+        plane = self.plane()
+        for axes in 'xyz':
+            if axes not in plane:
+                return axes
+
 class zoomPushButton(PushButton):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
