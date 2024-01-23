@@ -7603,4 +7603,17 @@ class LabelsWidget(QWidget):
             
             fixedTexts.append(text)
         return fixedTexts
-            
+
+class SwitchPlaneCombobox(QComboBox):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.addItems(['xy', 'zy', 'zx'])
+    
+    def plane(self):
+        return self.currentText()
+
+    def depthAxes(self):
+        plane = self.plane()
+        for axes in 'xyz':
+            if axes not in plane:
+                return axes

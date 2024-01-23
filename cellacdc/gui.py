@@ -3476,8 +3476,8 @@ class guiWin(QMainWindow):
             'median z-proj.'
         ])
         
-        self.switchPlaneButton = widgets.SwitchPlaneButton()
-        self.switchPlaneButton.setToolTip(
+        self.switchPlaneCombobox = widgets.SwitchPlaneCombobox()
+        self.switchPlaneCombobox.setToolTip(
             'Switch viewed plane'
         )
 
@@ -3555,7 +3555,7 @@ class guiWin(QMainWindow):
         )
         bottomLeftLayout.addWidget(self.zSliceScrollBar, row, 1, 1, 2)
         bottomLeftLayout.addWidget(self.zProjComboBox, row, 3)
-        bottomLeftLayout.addWidget(self.switchPlaneButton, row, 4)
+        bottomLeftLayout.addWidget(self.switchPlaneCombobox, row, 4)
         self.zSliceSpinbox.connectValueChanged(self.onZsliceSpinboxValueChange)
         self.zSliceSpinbox.editingFinished.connect(self.zSliceScrollBarReleased)
 
@@ -10471,8 +10471,8 @@ class guiWin(QMainWindow):
             self.zSliceScrollBar.show()
             self.zSliceCheckbox.show()
             self.zSliceSpinbox.show()
-            self.switchPlaneButton.show()
-            self.switchPlaneButton.setDisabled(False)
+            self.switchPlaneCombobox.show()
+            self.switchPlaneCombobox.setDisabled(False)
             self.SizeZlabel.show()
         else:
             myutils.setRetainSizePolicy(self.zSliceScrollBar, retain=False)
@@ -10486,8 +10486,8 @@ class guiWin(QMainWindow):
             self.zSliceCheckbox.hide()
             self.zSliceSpinbox.hide()
             self.SizeZlabel.hide()
-            self.switchPlaneButton.hide()
-            self.switchPlaneButton.setDisabled(True)
+            self.switchPlaneCombobox.hide()
+            self.switchPlaneCombobox.setDisabled(True)
 
     def reInitCca(self):
         if not self.isSnapshot:
@@ -15417,7 +15417,7 @@ class guiWin(QMainWindow):
                 self.zSliceScrollBar.sliderReleased.disconnect()
                 self.zProjComboBox.currentTextChanged.disconnect()
                 self.zProjComboBox.activated.disconnect()
-                self.switchPlaneButton.clicked.disconnect()
+                self.switchPlaneCombobox.clicked.disconnect()
             except Exception as e:
                 pass
             self.zSliceScrollBar.actionTriggered.connect(
@@ -15428,7 +15428,9 @@ class guiWin(QMainWindow):
             )
             self.zProjComboBox.currentTextChanged.connect(self.updateZproj)
             self.zProjComboBox.activated.connect(self.clearComboBoxFocus)
-            self.switchPlaneButton.clicked.connect(self.switchPlaneClicked)
+            self.switchPlaneCombobox.currentTextChanged.connect(
+                self.switchViewedPlane
+            )
 
         posData = self.data[self.pos_i]
         if posData.SizeT == 1:
@@ -15496,7 +15498,7 @@ class guiWin(QMainWindow):
             posData = self.data[self.pos_i]
             idx = (posData.filename, posData.frame_i)
             z = self.zSliceScrollBar.sliderPosition()
-            if self.switchPlaneButton.depthAxes() == 'z': 
+            if self.switchPlaneCombobox.depthAxes() == 'z': 
                 posData.segmInfo_df.at[idx, 'z_slice_used_gui'] = z
             self.zSliceSpinbox.setValueNoEmit(z+1)
             img = self.getImage()
@@ -15520,11 +15522,10 @@ class guiWin(QMainWindow):
         self.zSliceScrollBarStartedMoving = True
         self.update_z_slice(self.zSliceScrollBar.sliderPosition())
     
-    def switchPlaneClicked(self):
+    def switchViewedPlane(self, plane):
         posData = self.data[self.pos_i]
         self.zProjComboBox.setCurrentText('single z-slice')
-        self.switchPlaneButton.switchPlane()
-        depthAxes = self.switchPlaneButton.depthAxes()
+        depthAxes = self.switchPlaneCombobox.depthAxes()
         if depthAxes != 'z':
             # Disable projections on plane that is not xy
             self.zProjComboBox.setCurrentText('single z-slice')
@@ -15577,7 +15578,7 @@ class guiWin(QMainWindow):
     def update_z_slice(self, z):
         posData = self.data[self.pos_i]
         idx = (posData.filename, posData.frame_i)
-        if self.switchPlaneButton.depthAxes() == 'z': 
+        if self.switchPlaneCombobox.depthAxes() == 'z': 
             posData.segmInfo_df.at[idx, 'z_slice_used_gui'] = z
         self.updateAllImages(computePointsLayers=False)
 
@@ -19361,9 +19362,9 @@ class guiWin(QMainWindow):
             frame_i = posData.frame_i = 0
         
         axis_slice = self.zSliceScrollBar.value() - 1
-        if self.switchPlaneButton.depthAxes() == 'x':
+        if self.switchPlaneCombobox.depthAxes() == 'x':
             return imgData[:, :, axis_slice].copy()
-        elif self.switchPlaneButton.depthAxes() == 'y':
+        elif self.switchPlaneCombobox.depthAxes() == 'y':
             return imgData[:, axis_slice].copy()
         
         idx = (posData.filename, frame_i)
@@ -19394,7 +19395,7 @@ class guiWin(QMainWindow):
 
     def updateZsliceScrollbar(self, frame_i):
         posData = self.data[self.pos_i]
-        if self.switchPlaneButton.depthAxes() != 'z':
+        if self.switchPlaneCombobox.depthAxes() != 'z':
             return
             
         idx = (posData.filename, frame_i)
