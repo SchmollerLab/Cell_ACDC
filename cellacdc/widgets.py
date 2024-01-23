@@ -4155,12 +4155,14 @@ class objIntesityMeasurQGBox(QGroupBox):
         items.sort()
         nameFuncDict = {}
         for name, desc in metricsDesc.items():
-            if name not in metricsFunc.keys():
-                continue
-            if name.find('dataPrepBkgr')!=-1 or  name.find('manualBkgr')!=-1:
+            if name.find('_dataPrepBkgr')!=-1 or  name.find('_manualBkgr')!=-1:
                 # Skip dataPrepBkgr and manualBkgr since in the dock widget 
                 # we display only autoBkgr metrics
                 continue
+            if name.startswith('concentration_'):
+                # We use amount function because dividing by volume is taken 
+                # care in the GUI
+                name = 'amount_autoBkgr'
             nameFuncDict[desc] = metricsFunc[name]
 
         funcionCombobox = QComboBox()

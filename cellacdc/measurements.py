@@ -725,7 +725,6 @@ def _get_metrics_names(is_manual_bkgr_present=False):
         'q75': '75 percentile',
         'q05': '5 percentile',
         'q95': '95 percentile',
-        
     }
     return metrics_names
 
