@@ -22215,6 +22215,7 @@ class guiWin(QMainWindow):
                     action.setChecked(False)
                     self.textAnnot[0].setGenNumTreeAnnotationsEnabled(False)
                     break
+        self.setAllTextAnnotations()
     
     def annotOptionClicked(self, clicked=True, sender=None):
         if sender is None:

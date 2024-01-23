@@ -26,12 +26,13 @@ font_bold_path = os.path.join(
 )
 
 def get_obj_text_label_annot(
-        obj, cca_df: pd.DataFrame, is_tree_annot: bool, add_num_zslices: bool
+        obj, acdc_df: pd.DataFrame, is_tree_annot: bool, add_num_zslices: bool
     ) -> str:
-    if is_tree_annot and cca_df is not None:
+    if is_tree_annot and acdc_df is not None:
         try:
-            annot_label = cca_df.at[obj.label, 'Cell_ID_tree']
-        except Exception as e:
+            annot_label = acdc_df.at[obj.label, 'Cell_ID_tree']
+        except Exception as err:
+            print(traceback.format_exc())
             annot_label = obj.label
     else:
         annot_label = obj.label
@@ -43,11 +44,11 @@ def get_obj_text_label_annot(
     return f'{annot_label} ({num_z_slices})'
 
 def get_obj_text_cca_annot(
-        obj, cca_df: pd.DataFrame, is_tree_annot: bool    
+        obj, acdc_df: pd.DataFrame, is_tree_annot: bool    
     ) -> str:
     ID = obj.label
     try:
-        cca_df_obj = cca_df.loc[ID]
+        cca_df_obj = acdc_df.loc[ID]
     except Exception as e:
         return str(ID), None
     
@@ -74,22 +75,22 @@ def get_obj_text_cca_annot(
     return txt, cca_df_obj
 
 def get_obj_text_annot_opts(
-        obj, cca_df: pd.DataFrame, is_cca_annot: bool, is_new_obj: bool, 
+        obj, acdc_df: pd.DataFrame, is_cca_annot: bool, is_new_obj: bool, 
         add_num_zslices: bool, is_label_tree_annot: bool, 
         is_gen_num_tree_annot: bool, frame_i: int
     ) -> dict: 
-    if cca_df is None or not is_cca_annot:
+    if acdc_df is None or not is_cca_annot:
         bold = False
         if is_new_obj:
             color_name = 'new_object'
         else:
             color_name = 'label'
         text = get_obj_text_label_annot(
-            obj, cca_df, is_label_tree_annot, add_num_zslices
+            obj, acdc_df, is_label_tree_annot, add_num_zslices
         )
     else:
         text, cca_df_obj = get_obj_text_cca_annot(
-            obj, cca_df, is_gen_num_tree_annot
+            obj, acdc_df, is_gen_num_tree_annot
         )
         if cca_df_obj is None:
             opts = {'text': text, 'color_name': 'label', 'bold': False}
@@ -487,8 +488,9 @@ class TextAnnotations:
                 continue
 
             isNewObject = obj.label in posData.new_IDs
+            acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
             objOpts = get_obj_text_annot_opts(
-                obj, posData.cca_df, isCcaAnnot, isNewObject,
+                obj, acdc_df, isCcaAnnot, isNewObject,
                 isAnnotateNumZslices, isLabelTreeAnnotation, 
                 isGenNumTreeAnnotation, posData.frame_i
             )
