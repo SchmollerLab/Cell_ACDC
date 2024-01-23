@@ -352,6 +352,9 @@ class SwitchPlaneButton(PushButton):
     def switchPlane(self):
         self._idx += 1
     
+    def setPlane(self, plane):
+        self._idx = self._planes.index(plane)
+    
     def plane(self):
         return self._planes[self._idx % 3]
 
