@@ -22,7 +22,7 @@ if GUI_INSTALLED:
     from . import qrc_resources
     from . import _run
 
-from . import load
+from . import load, cca_df_colnames
 from . import myutils, prompts, widgets, html_utils, printl
 
 def configuration_dialog():
@@ -694,3 +694,51 @@ def calculate_effect_size_glass(data, group1, group2, cat_column='size_category'
     glass_s = np.std(data_gr2[val_column])
     effect_size = (np.mean(data_gr1[val_column])- np.mean(data_gr2[val_column])) / glass_s
     return effect_size
+
+def add_derived_cell_cycle_columns(acdc_df: pd.DataFrame):
+    if 'cell_cycle_stage' not in acdc_df.columns:
+        return acdc_df
+    
+    cca_df_idx = acdc_df.cell_cycle_stage.dropna().index
+    cca_df = acdc_df.loc[cca_df_idx][cca_df_colnames]
+    acdc_df['end_of_cell_cycle_frame_i'] = np.nan
+    
+    will_divice_cca_df_S = cca_df[
+        (cca_df.cell_cycle_stage == 'S') & (cca_df.will_divide > 0)
+    ].reset_index()
+    
+    cca_df['end_of_cell_cycle_frame_i'] = -1
+    grouped_ID_gen_num = will_divice_cca_df_S.groupby(
+        ['Cell_ID', 'generation_num']
+    )
+                
+    end_cc_frame_i_per_cycle = grouped_ID_gen_num.agg(
+        end_of_cell_cycle_frame_i=('frame_i', 'max')
+    )
+    
+    cca_df_with_gen_num_idx = (
+        cca_df.reset_index()
+        .set_index(['Cell_ID', 'generation_num'])
+        .sort_index()
+    )
+    
+    for row in end_cc_frame_i_per_cycle.itertuples():
+        ID, gen_num = row.Index
+        end_cc_frame_i = row.end_of_cell_cycle_frame_i
+        idx = (ID, gen_num)
+        cca_df_with_gen_num_idx.loc[idx, 'end_of_cell_cycle_frame_i'] = (
+            end_cc_frame_i
+        )
+    
+    cca_df = (
+        cca_df_with_gen_num_idx.reset_index()
+        .set_index(['frame_i', 'Cell_ID'])
+        .sort_index()
+    )
+    
+    acdc_df.loc[cca_df_idx, 'end_of_cell_cycle_frame_i'] = (
+        cca_df['end_of_cell_cycle_frame_i']
+    )
+    return acdc_df
+    
+    

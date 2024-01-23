@@ -81,6 +81,7 @@ from . import qutils, autopilot, QtScoped
 from . import _palettes
 from . import transformation
 from . import measure
+from . import cca_functions
 from .trackers.CellACDC import CellACDC_tracker
 from .cca_functions import _calc_rot_vol
 from .myutils import exec_time, setupLogger
@@ -329,6 +330,17 @@ class saveDataWorker(QObject):
                     col = 'z_slice_used_dataPrep'
                     z_slice = posData.segmInfo_df.at[idx, col]
         return True
+    
+    def addDerivedCellCycleColumns(self, all_frames_acdc_df):
+        try:
+            all_frame_acdc_df = cca_functions.add_derived_cell_cycle_columns(
+                all_frames_acdc_df
+            )
+        except Exception as err:
+            self.progress.emit(traceback.format_exc())
+        
+        return all_frames_acdc_df
+        
     
     def _emitSigDebug(self, stuff_to_debug):
         self.mutex.lock()
@@ -788,6 +800,9 @@ class saveDataWorker(QObject):
                 self.addAdditionalMetadata(posData, all_frames_acdc_df)
 
                 all_frames_acdc_df = self._removeDeprecatedRows(
+                    all_frames_acdc_df
+                )
+                all_frames_acdc_df = self.addDerivedCellCycleColumns(
                     all_frames_acdc_df
                 )
                 try:
@@ -20747,12 +20762,12 @@ class guiWin(QMainWindow):
         posData.old_IDs = prev_IDs
         posData.IDs = curr_IDs
         self.setTitleText(
-            lost_IDs, new_IDs, IDs_with_holes
+            lost_IDs, new_IDs, IDs_with_holes, tracked_lost_IDs
         )
         return curr_delRoiIDs
     
-    def setTitleText(self, lost_IDs, new_IDs, IDs_with_holes):
-        warn_txt = ''
+    def setTitleText(self, lost_IDs, new_IDs, IDs_with_holes, tracked_lost_IDs):
+        title = ''
         try:
             posData = self.data[self.pos_i]
             posData.segm_data[posData.frame_i]
@@ -20767,26 +20782,35 @@ class guiWin(QMainWindow):
         
         if lost_IDs:
             lost_IDs_format = myutils.get_trimmed_list(lost_IDs)
-            warn_txt = f'IDs lost in current frame: {lost_IDs_format}'
+            title = f'IDs lost in current frame: {lost_IDs_format}'
             htmlTxt = (
-                f'<font color="red">{warn_txt}</font>'
+                f'<font color="red">{title}</font>'
             )
+        
         if new_IDs:
             new_IDs_format = myutils.get_trimmed_list(new_IDs)
-            warn_txt = f'New IDs in current frame: {new_IDs_format}'
+            title = f'New IDs in current frame: {new_IDs_format}'
             htmlTxt = (
-                f'{htmlTxt}, <font color="green">{warn_txt}</font>'
+                f'{htmlTxt}, <font color="green">{title}</font>'
             )
+        
+        if tracked_lost_IDs:
+            tracked_lost_IDs_format = myutils.get_trimmed_list(tracked_lost_IDs)
+            title = f'IDs that splitted: {tracked_lost_IDs_format}'
+            htmlTxt = (
+                f'<font color="orange">{title}</font>'
+            )
+            
         if IDs_with_holes:
             IDs_with_holes_format = myutils.get_trimmed_list(IDs_with_holes)
-            warn_txt = f'IDs with holes: {IDs_with_holes_format}'
+            title = f'IDs with holes: {IDs_with_holes_format}'
             htmlTxt = (
-                f'{htmlTxt}, <font color="red">{warn_txt}</font>'
+                f'{htmlTxt}, <font color="red">{title}</font>'
             )
         if not htmlTxt:
-            warn_txt = 'Looking good'
+            title = 'Looking good'
             htmlTxt = (
-                f'<font color="{self.titleColor}">{warn_txt}</font>'
+                f'<font color="{self.titleColor}">{title}</font>'
             )
         self.titleLabel.setText(htmlTxt)
 
