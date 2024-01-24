@@ -69,8 +69,10 @@ Additional options include:
 * **Closing** the application and all active modules
 * Toggle switch for **dark mode**
 
-Creating Data Structures
-------------------------
+.. _creating-data-structure:
+
+Creating Data Structure
+-----------------------
 **0. Create data structure from microscopy/image file(s)...**
 
 The first step in analysing data with Cell-ACDC is creating a **suitable data structure** from raw microscopy files. This can be done completely automated using module 0.

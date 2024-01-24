@@ -82,6 +82,7 @@ Contents
    overview
    citation
    installation
+   data-structure
    getting-started
    contributing
    tooltips
