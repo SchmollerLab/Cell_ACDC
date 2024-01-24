@@ -4,14 +4,7 @@ def combine_metrics_example(
         signal, autoBkgr, dataPrepBkgr, objectRp, metrics_values, image, lab,
         correct_with_bkgr=False, which_bkgr='auto', isSegm3D=False
     ):
-    """Function used to show how to combine multiple metrics in a custom function.
-
-    NOTE 1: Make sure to call the function with the same name as the Python file
-    containing this function (e.g., this file is called CV.py and the function
-    is called CV)
-
-    NOTE 2: Make sure that this function returns a single number. You will need
-    one .py for each additional custom metric.
+    """Shows how to combine multiple metrics in a custom function.
 
     Parameters
     ----------
@@ -51,12 +44,20 @@ def combine_metrics_example(
     -------
     float
         Numerical value of the computed metric
+    
+    Notes
+    -----
+    
+    1. The function must have the same name as the Python file containing it 
+       (e.g., this file is called CV.py and the function is called CV)
 
+    2. The function must return a single number. You will need
+       one .py for each additional custom metric.
+    
+    This implementation shows how to compute the concentration for all the 
+    available channels. Concentration is calculated as the ratio between 
+    columns ending with `_amount_autoBkgr` and `cell_vol_fl`. 
     """
-    # Here we show the code required to compute the concentration for ALL channels
-    # by taking the ratio between the two metrics 'amount' and 'cell_vol_fl'.
-    # Since there are different columns for amount, (i.e. 'mCitrine_amount_autoBkgr')
-    # we can take the key that ends with '_amount_autoBkgr'.
     _amount_key = [key for key in metrics_values if key.endswith('_amount_autoBkgr')][0]
     _amount = metrics_values[_amount_key]
     cell_vol_fl = metrics_values['cell_vol_fl']
