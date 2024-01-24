@@ -82,6 +82,7 @@ from . import _palettes
 from . import transformation
 from . import measure
 from . import cca_functions
+from . import data_structure_docs_url
 from .trackers.CellACDC import CellACDC_tracker
 from .cca_functions import _calc_rot_vol
 from .myutils import exec_time, setupLogger
@@ -21774,7 +21775,7 @@ class guiWin(QMainWindow):
         return images_paths
     
     def criticalInvalidPosFolder(self, exp_path):
-        href = f'<a href="{user_manual_url}">user manual</a>'
+        href = html_utils.href_tag('here', data_structure_docs_url)
         txt = html_utils.paragraph(f"""
             The selected folder:<br><br>
             
@@ -21792,11 +21793,16 @@ class guiWin(QMainWindow):
             be called either <code>Position_n</code><br>
             (with <code>n</code> being an integer) or <code>Images</code>.<br><br>
             
-            You can find <b>more information</b> in the {href} at the 
-            section<br>
-            "Create required data structure from microscopy file(s)"
+            For more information about the correct folder structure see {href}.
         """)
         msg = widgets.myMessageBox(wrapText=False)
+        helpButton = widgets.helpPushButton('Help...')
+        msg.addButton(helpButton)
+        helpButton.clicked.disconnect()
+        helpButton.clicked.connect(
+            partial(myutils.browse_url, data_structure_docs_url)
+        )
+        msg.addShowInFileManagerButton(exp_path)
         msg.critical(
             self, 'Incompatible folder', txt
         )

@@ -467,6 +467,10 @@ def check_git_installed(parent=None):
         )
         return False
 
+def browse_url(url):
+    import webbrowser
+    webbrowser.open(url)
+
 def install_java():
     try:
         subprocess.check_call(['javac', '-version'])

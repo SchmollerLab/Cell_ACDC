@@ -206,6 +206,7 @@ models_list_file_path = os.path.join(settings_folderpath, 'custom_models_paths.i
 recentPaths_path = os.path.join(settings_folderpath, 'recentPaths.csv')
 user_manual_url = 'https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf'
 github_home_url = 'https://github.com/SchmollerLab/Cell_ACDC'
+data_structure_docs_url = 'https://cell-acdc.readthedocs.io/en/latest/data-structure.html'
 
 # Use to get the acdc_output file name from `segm_filename` as 
 # `m = re.sub(segm_re_pattern, '_acdc_output', segm_filename)`
