@@ -8,10 +8,18 @@ an automatic fashion.
 
 Here, instead we will focus on how the folder structure should look like. 
 
-There are two different folder levels:
+.. important:: 
+    
+    We do not recommend creating the folder structure manually. Here we only 
+    want to provide more details about how the folder structure look like. 
+    To create the folder structure automatically from a microscopy file use 
+    either module 0 of Cell-ACDC (explained here :ref:`creating-data-structure`) 
+    or Fiji macros that you can find `here <https://github.com/SchmollerLab/Cell_ACDC/tree/main/FijiMacros>_`.
 
-1. The experiment folder with arbitrary name
-2. The position folder with name ``Position_1``, ``Position_2``, etc. 
+In Cell-ACDC we refer to the folders with two names:
+
+1. The experiment folder with an arbitrary name
+2. The position folder with names like ``Position_1``, ``Position_2``, etc. 
 
 The experiment folder is a folder that typically identifies a specific experiment 
 and it contains one or more position folders. 
