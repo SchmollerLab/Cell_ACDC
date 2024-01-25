@@ -334,7 +334,7 @@ class saveDataWorker(QObject):
     
     def addDerivedCellCycleColumns(self, all_frames_acdc_df):
         try:
-            all_frame_acdc_df = cca_functions.add_derived_cell_cycle_columns(
+            all_frames_acdc_df = cca_functions.add_derived_cell_cycle_columns(
                 all_frames_acdc_df
             )
         except Exception as err:
