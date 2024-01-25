@@ -342,7 +342,6 @@ class saveDataWorker(QObject):
         
         return all_frames_acdc_df
         
-    
     def _emitSigDebug(self, stuff_to_debug):
         self.mutex.lock()
         self.sigDebug.emit(stuff_to_debug)
@@ -8717,7 +8716,7 @@ class guiWin(QMainWindow):
             frame_i = posData.frame_i
 
         # Store in the past frames that division has been annotated
-        for past_frame_i in range(frame_i, 0, -1):
+        for past_frame_i in range(frame_i-1, -1, -1):
             past_cca_df = self.get_cca_df(frame_i=past_frame_i, return_df=True)
             if past_cca_df is None:
                 return
@@ -8726,10 +8725,11 @@ class guiWin(QMainWindow):
                 gen_num = past_cca_df.at[ID, 'generation_num']
                 
             if ID not in past_cca_df.index:
+                # ID is a bud and is not emerged yet here
                 return
             
             if past_cca_df.at[ID, 'generation_num'] != gen_num:
-                # Cell cycle finished
+                # ID is a mother and the cell cycle is finished here
                 return
             
             past_cca_df.at[ID, 'will_divide'] = 1
@@ -8789,9 +8789,7 @@ class guiWin(QMainWindow):
             cca_df_i.loc[correct_mothID] = ccaStatusToRestore
             cca_df_i.at[correct_mothID, 'corrected_assignment'] = True
             
-            self.store_cca_df(frame_i=future_i, cca_df=cca_df_i, autosave=False)
-            
-            
+            self.store_cca_df(frame_i=future_i, cca_df=cca_df_i, autosave=False)            
     
     def annotateDivision(self, cca_df, ID, relID, frame_i=None):
         # Correct as follows:

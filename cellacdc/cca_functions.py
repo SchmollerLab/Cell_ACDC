@@ -695,10 +695,7 @@ def calculate_effect_size_glass(data, group1, group2, cat_column='size_category'
     effect_size = (np.mean(data_gr1[val_column])- np.mean(data_gr2[val_column])) / glass_s
     return effect_size
 
-def add_derived_cell_cycle_columns(acdc_df: pd.DataFrame):
-    if 'cell_cycle_stage' not in acdc_df.columns:
-        return acdc_df
-    
+def _add_end_of_frame_i_column(acdc_df):
     cca_df_idx = acdc_df.cell_cycle_stage.dropna().index
     cca_df = acdc_df.loc[cca_df_idx][cca_df_colnames]
     acdc_df['end_of_cell_cycle_frame_i'] = np.nan
@@ -739,6 +736,34 @@ def add_derived_cell_cycle_columns(acdc_df: pd.DataFrame):
     acdc_df.loc[cca_df_idx, 'end_of_cell_cycle_frame_i'] = (
         cca_df['end_of_cell_cycle_frame_i']
     )
+    return acdc_df
+
+def _extend_will_divide_to_G1(acdc_df):
+    acdc_df = acdc_df.reset_index()
+    acdc_df_will_divide_true = acdc_df[acdc_df['will_divide'] > 0]
+    grouped = acdc_df_will_divide_true.groupby(['Cell_ID', 'generation_num'])
+    for (ID, gen_num) in grouped.groups.keys():
+        mask = (
+            (acdc_df['Cell_ID'] == ID)
+            & (acdc_df['generation_num'] == gen_num)
+        )
+        acdc_df.loc[mask, 'will_divide'] = 1.0
+    acdc_df = (
+        acdc_df.reset_index()
+        .set_index(['frame_i', 'Cell_ID'])
+        .sort_index()
+    )
+    import pdb; pdb.set_trace()
+    return acdc_df
+    
+
+def add_derived_cell_cycle_columns(acdc_df: pd.DataFrame):
+    if 'cell_cycle_stage' not in acdc_df.columns:
+        return acdc_df
+    
+    acdc_df = _extend_will_divide_to_G1(acdc_df)
+    acdc_df = _add_end_of_frame_i_column(acdc_df)
+    
     return acdc_df
     
     
