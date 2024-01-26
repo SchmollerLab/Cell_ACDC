@@ -1321,6 +1321,7 @@ class loadData:
         if not save:
             return acdc_df
 
+        acdc_df = pd_bool_to_int(acdc_df, inplace=False)
         acdc_df.to_csv(self.acdc_output_csv_path)
         self.loadAcdcDf(self.acdc_output_csv_path)
 
