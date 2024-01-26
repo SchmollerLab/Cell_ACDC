@@ -8721,7 +8721,8 @@ class guiWin(QMainWindow):
             if past_cca_df is None:
                 return
             
-            if frame_i == past_frame_i:
+            if frame_i-1 == past_frame_i:
+                # Get generation number at first iteration
                 gen_num = past_cca_df.at[ID, 'generation_num']
                 
             if ID not in past_cca_df.index:
