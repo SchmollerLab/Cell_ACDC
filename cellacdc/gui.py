@@ -10804,7 +10804,6 @@ class guiWin(QMainWindow):
         self.store_data(autosave=False)
         self.copyContourButton.setChecked(False)
         self.stopCcaIntegrityCheckerWorker()
-        self.zSliceScrollBar.setDisabled(True)
         if mode == 'Segmentation and Tracking':
             self.trackingMenu.setDisabled(False)
             self.modeToolBar.setVisible(True)
@@ -10842,7 +10841,6 @@ class guiWin(QMainWindow):
             self.setEnabledEditToolbarButton(enabled=False)
             self.setEnabledCcaToolbar(enabled=False)
             self.removeAlldelROIsCurrentFrame()
-            self.zSliceScrollBar.setDisabled(False)
             # currentMode = self.drawIDsContComboBox.currentText()
             # self.drawIDsContComboBox.clear()
             # self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxCcaItems)
@@ -10864,7 +10862,6 @@ class guiWin(QMainWindow):
             self.reconnectUndoRedo()
             self.setEnabledSnapshotMode()
             self.doCustomAnnotation(0)
-            self.zSliceScrollBar.setDisabled(False)
 
     def disableEditingSnapshotMode(self):
         posData = self.data[self.pos_i]
@@ -15537,6 +15534,7 @@ class guiWin(QMainWindow):
             self.setDisabledAnnotCheckBoxesRight(True)
             self.overlayButton.setChecked(False)
             self.overlayButton.setDisabled(True)
+            self.setZprojDisabled(True, storePrevState=True)
         else:
             self.zProjComboBox.setDisabled(False)
             self.onDoubleSpaceBar()
@@ -15544,6 +15542,7 @@ class guiWin(QMainWindow):
             self.setDisabledAnnotCheckBoxesRight(False)
             self.overlayButton.setDisabled(False)
             self.updateZsliceScrollbar(posData.frame_i)
+            self.restoreZprojWidgetsEnabled()
         
         SizeY, SizeX = posData.img_data[posData.frame_i].shape[-2:]
         
@@ -15606,7 +15605,15 @@ class guiWin(QMainWindow):
             self.setZprojDisabled(True)
             self.updateAllImages()
     
-    def setZprojDisabled(self, disabled):
+    def setZprojDisabled(self, disabled, storePrevState=False):
+        if storePrevState:
+            self._ZprojWidgersEnabledState = {
+                self.zSliceScrollBar: disabled,
+                self.zSliceSpinbox: disabled,
+                self.zSliceCheckbox: disabled,
+            }
+        else:
+            self._ZprojWidgersEnabledState = None
         self.zSliceScrollBar.setDisabled(disabled)
         self.zSliceSpinbox.setDisabled(disabled)
         self.zSliceCheckbox.setDisabled(disabled)
@@ -15615,11 +15622,20 @@ class guiWin(QMainWindow):
             if button == self.eraserButton:
                 continue
             action.setDisabled(disabled)
+            if storePrevState:
+                self._ZprojWidgersEnabledState[action] = disabled
             try:
                 button.setChecked(False)
             except Exception as err:
                 pass
     
+    def restoreZprojWidgetsEnabled(self):
+        if self._ZprojWidgersEnabledState is None:
+            return
+
+        for qobject, disabled in self._ZprojWidgersEnabledState.items():
+            qobject.setDisabled(disabled)
+        
     def clearAx2Items(self, onlyHideText=False):
         self.ax2_binnedIDs_ScatterPlot.clear()
         self.ax2_ripIDs_ScatterPlot.clear()
@@ -15811,6 +15827,7 @@ class guiWin(QMainWindow):
         self.keptObjectsIDs = widgets.KeptObjectIDsList(
             self.keptIDsLineEdit, self.keepIDsConfirmAction
         )
+        self._ZprojWidgersEnabledState = None
         self.imgValueFormatter = 'd'
         self.rawValueFormatter = 'd'
         self.lastHoverID = -1

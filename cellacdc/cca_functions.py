@@ -753,10 +753,8 @@ def _extend_will_divide_to_G1(acdc_df):
         .set_index(['frame_i', 'Cell_ID'])
         .sort_index()
     )
-    import pdb; pdb.set_trace()
     return acdc_df
     
-
 def add_derived_cell_cycle_columns(acdc_df: pd.DataFrame):
     if 'cell_cycle_stage' not in acdc_df.columns:
         return acdc_df

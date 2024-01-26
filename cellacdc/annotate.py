@@ -492,9 +492,9 @@ class TextAnnotations:
 
             isNewObject = obj.label in posData.new_IDs
             acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
-            if posData.cca_df is not None:
+            if posData.cca_df is not None and acdc_df is not None:
                 cols = posData.cca_df.columns
-                idx = posData.cca_df.index
+                idx = posData.cca_df.index.intersection(acdc_df.index)
                 acdc_df.loc[idx, cols] = posData.cca_df
             objOpts = get_obj_text_annot_opts(
                 obj, acdc_df, isCcaAnnot, isNewObject,

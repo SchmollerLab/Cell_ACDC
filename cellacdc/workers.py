@@ -4330,7 +4330,7 @@ class CcaIntegrityCheckerWorker(QObject):
             if lab is None:
                 break
             
-            acdc_df = data_dict['acdc_df']
+            acdc_df = data_dict['acdc_df'].copy()
             try:
                 cca_df = acdc_df[cca_df_colnames]
             except KeyError as error:
