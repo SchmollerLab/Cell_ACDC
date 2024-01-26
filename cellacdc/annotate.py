@@ -52,7 +52,10 @@ def get_obj_text_cca_annot(
     except Exception as e:
         return str(ID), None
     
-    ccs = cca_df_obj['cell_cycle_stage']
+    try:
+        ccs = cca_df_obj['cell_cycle_stage']
+    except Exception as err:
+        return str(ID), None 
 
     try:
         generation_num = int(cca_df_obj['generation_num'])
@@ -489,6 +492,10 @@ class TextAnnotations:
 
             isNewObject = obj.label in posData.new_IDs
             acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
+            if posData.cca_df is not None:
+                cols = posData.cca_df.columns
+                idx = posData.cca_df.index
+                acdc_df.loc[idx, cols] = posData.cca_df
             objOpts = get_obj_text_annot_opts(
                 obj, acdc_df, isCcaAnnot, isNewObject,
                 isAnnotateNumZslices, isLabelTreeAnnotation, 
