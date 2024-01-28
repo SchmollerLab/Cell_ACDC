@@ -2215,9 +2215,10 @@ class select_exp_folder:
         
         try:
             colnames = ['frame_i', *cca_df_colnames]
-            cca_df = acdc_df.dropna()[colnames]
+            cca_df = acdc_df[colnames].dropna()
         except Exception as e:
             return text
+
         last_cca_frame_i = max(cca_df['frame_i'], default=None)
         if last_cca_frame_i is None:
             return text

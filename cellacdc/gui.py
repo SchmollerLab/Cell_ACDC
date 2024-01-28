@@ -7979,7 +7979,12 @@ class guiWin(QMainWindow):
     def keepToolActiveActionToggled(self, checked):
         parentToolButton = self.sender().parent()
         toolName = re.findall(r'Name: (.*)', parentToolButton.toolTip())[0]
-        self.df_settings.at[toolName, 'value'] = 'keepActive'
+        if checked:
+            self.df_settings.at[toolName, 'value'] = 'keepActive'
+        else:
+            self.df_settings = self.df_settings.drop(
+                index=toolName, errors='ignore'
+            )
         self.df_settings.to_csv(self.settings_csv_path)
 
     def determineSlideshowWinPos(self):
