@@ -4307,6 +4307,17 @@ class CcaIntegrityCheckerWorker(QObject):
         self.sigWarning.emit(txt, category)
         return False
     
+    def _get_cca_df_copy(self, acdc_df):
+        try:
+            cca_df = pd.DataFrame(
+                data=acdc_df[cca_df_colnames].values,
+                columns=cca_df_colnames,
+                index=acdc_df.index
+            )
+            return cca_df
+        except KeyError as error:
+            return 
+        
     def check(self, posData):    
         self.isChecking = True
         checkpoints = (
@@ -4331,9 +4342,9 @@ class CcaIntegrityCheckerWorker(QObject):
                 break
             
             acdc_df = data_dict['acdc_df']
-            try:
-                cca_df = acdc_df[cca_df_colnames].copy()
-            except KeyError as error:
+            cca_df = self._get_cca_df_copy(acdc_df)
+            if cca_df is None:
+                # There are no annotations at frame_i --> stop
                 break
             
             IDs = data_dict['IDs']
