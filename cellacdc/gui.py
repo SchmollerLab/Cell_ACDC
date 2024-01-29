@@ -8726,14 +8726,14 @@ class guiWin(QMainWindow):
             if past_cca_df is None:
                 return
             
-            if frame_i-1 == past_frame_i:
-                # Get generation number at first iteration
-                gen_num = past_cca_df.at[ID, 'generation_num']
-                
             if ID not in past_cca_df.index:
                 # ID is a bud and is not emerged yet here
                 return
             
+            if frame_i-1 == past_frame_i:
+                # Get generation number at first iteration
+                gen_num = past_cca_df.at[ID, 'generation_num']
+                
             if past_cca_df.at[ID, 'generation_num'] != gen_num:
                 # ID is a mother and the cell cycle is finished here
                 return
@@ -17389,6 +17389,7 @@ class guiWin(QMainWindow):
         if acdc_df is None:
             self.store_data()
             acdc_df = posData.allData_li[i]['acdc_df']
+        
         if 'cell_cycle_stage' in acdc_df.columns:
             # Cell cycle info already present --> overwrite with new
             df = acdc_df
