@@ -4593,6 +4593,16 @@ class ROI(pg.ROI):
             _slice = (slice(tmin, tmax), *_slice)
         return _slice
         
+class DelROI(pg.ROI):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+    
+    def clearPoints(self):
+        """
+        Remove all handles and segments.
+        """
+        while len(self.handles) > 0:
+            self.removeHandle(self.handles[0]['item'])
 
 class PlotCurveItem(pg.PlotCurveItem):    
     def __init__(self, *args, **kargs):

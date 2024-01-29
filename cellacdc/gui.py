@@ -8398,11 +8398,11 @@ class guiWin(QMainWindow):
     def removeDelROI(self, event):
         posData = self.data[self.pos_i]
 
-        if isinstance(self.roi_to_del, pg.PolyLineROI):
-            self.roi_to_del.clearPoints()
-        else:
-            self.roi_to_del.setPos((0,0))
-            self.roi_to_del.setSize((0,0))
+        # if isinstance(self.roi_to_del, pg.PolyLineROI):
+        #     self.roi_to_del.clearPoints()
+        # # else:
+        # #     self.roi_to_del.setPos((0,0))
+        # #     self.roi_to_del.setSize((0,0))
         
         delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
         idx = delROIs_info['rois'].index(self.roi_to_del)
@@ -8444,6 +8444,8 @@ class guiWin(QMainWindow):
         posData.lab = posData.allData_li[posData.frame_i]['labels']                   
         self.get_data()
         self.store_data()
+        
+        self.updateAllImages()
 
     # @exec_time
     def getPolygonBrush(self, yxc2, Y, X):
@@ -9741,7 +9743,7 @@ class guiWin(QMainWindow):
         self.df_settings.to_csv(self.settings_csv_path)
 
     def addDelROI(self, event):       
-        roi = self.getDelROI()
+        roi = self.createDelROI()
         self.addRoiToDelRoiInfo(roi)
         if not self.labelsGrad.showLabelsImgAction.isChecked():
             self.ax1.addItem(roi)
@@ -9835,7 +9837,7 @@ class guiWin(QMainWindow):
         ymax = Y if yRange[1] >= Y else yRange[1]
         return int(ymin), int(ymax), int(xmin), int(xmax)
 
-    def getDelROI(self, xl=None, yb=None, w=32, h=32, anchors=None):
+    def createDelROI(self, xl=None, yb=None, w=32, h=32, anchors=None):
         posData = self.data[self.pos_i]
         if xl is None:
             xRange, yRange = self.ax1.viewRange()
@@ -9843,7 +9845,7 @@ class guiWin(QMainWindow):
             yb = 0 if yRange[0] < 0 else yRange[0]
         Y, X = self.currentLab2D.shape
         if anchors is None:
-            roi = pg.ROI(
+            roi = widgets.DelROI(
                 [xl, yb], [w, h],
                 rotatable=False,
                 removable=True,
@@ -9891,7 +9893,11 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         ROImask = self.getDelRoiMask(roi)
         delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
-        idx = delROIs_info['rois'].index(roi)
+        try:
+            idx = delROIs_info['rois'].index(roi)
+        except Exception as err:
+            return 
+        
         delMask = delROIs_info['delMasks'][idx]
         delIDs = delROIs_info['delIDsROI'][idx]
         overlapROIdelIDs = np.unique(delMask[ROImask])
@@ -11879,9 +11885,15 @@ class guiWin(QMainWindow):
         if ev.key() == Qt.Key_Q and self.debug:
             posData = self.data[self.pos_i]
             frame_i = posData.frame_i
-            printl(frame_i-1, posData.tracked_lost_centroids[frame_i-1])  
-            printl(frame_i, posData.tracked_lost_centroids[frame_i])  
-            printl(self.getTrackedLostIDs())
+            delROIs_info = posData.allData_li[frame_i]['delROIs_info']
+            printl(frame_i)
+            for roi in delROIs_info['rois']:
+                printl(roi.size(), roi.pos())
+            
+            printl(frame_i-1)
+            delROIs_info = posData.allData_li[frame_i-1]['delROIs_info']
+            for roi in delROIs_info['rois']:
+                printl(roi.size(), roi.pos())
         
         if not self.dataIsLoaded:
             self.logger.info(
@@ -17062,7 +17074,7 @@ class guiWin(QMainWindow):
                     [x0, y0, w, h] not in delROIshapes[posData.frame_i]
                 )
                 if addROI:
-                    roi = self.getDelROI(xl=x0, yb=y0, w=w, h=h)
+                    roi = self.createDelROI(xl=x0, yb=y0, w=w, h=h)
                     for i in range(posData.frame_i, last_tracked_num):
                         delROIs_info_i = posData.allData_li[i]['delROIs_info']
                         delROIs_info_i['rois'].append(roi)
@@ -21225,6 +21237,8 @@ class guiWin(QMainWindow):
             frames = posData.acdc_df.index.get_level_values(0)
             if from_frame_i in frames:
                 posData.acdc_df = posData.acdc_df.loc[:from_frame_i]
+        
+        self.removeAlldelROIsCurrentFrame()
 
     def removeAllItems(self):
         self.ax1.clear()
