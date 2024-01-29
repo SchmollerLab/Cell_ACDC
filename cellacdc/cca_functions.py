@@ -739,6 +739,7 @@ def _add_end_of_frame_i_column(acdc_df):
     return acdc_df
 
 def _extend_will_divide_to_G1(acdc_df):
+    acdc_df = acdc_df.drop(columns=['level_0', 'index'], errors='ignore')
     acdc_df = acdc_df.reset_index()
     acdc_df_will_divide_true = acdc_df[acdc_df['will_divide'] > 0]
     grouped = acdc_df_will_divide_true.groupby(['Cell_ID', 'generation_num'])

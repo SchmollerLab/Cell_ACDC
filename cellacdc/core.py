@@ -1249,8 +1249,9 @@ class LineageTree:
         cells with unknown history have 'normalized_gen_num' starting from 2
         (required by the logic of _build_tree)
         '''
+        acdc_df = acdc_df.drop(columns=['level_0', 'index'], errors='ignore')
         acdc_df = (
-            acdc_df.reset_index(drop=True)
+            acdc_df.reset_index()
             .drop(columns='index', errors='ignore')
         )
 

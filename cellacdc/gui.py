@@ -486,6 +486,7 @@ class saveDataWorker(QObject):
         time_seconds_cols = df.filter(regex='time_seconds.*').columns
         df = df.drop(columns=time_seconds_cols, errors='ignore')
         df = df.drop(columns='relative_ID_tree', errors='ignore')
+        df = df.drop(columns=['level_0', 'index'], errors='ignore')
 
         return df
 
