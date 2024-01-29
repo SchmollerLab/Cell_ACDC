@@ -1249,7 +1249,10 @@ class LineageTree:
         cells with unknown history have 'normalized_gen_num' starting from 2
         (required by the logic of _build_tree)
         '''
-        acdc_df = acdc_df.reset_index().drop(columns='index', errors='ignore')
+        acdc_df = (
+            acdc_df.reset_index(drop=True)
+            .drop(columns='index', errors='ignore')
+        )
 
         # Get the starting generation number of the unknown mother cells
         df_emerg = acdc_df.groupby('Cell_ID').agg('first')

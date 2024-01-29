@@ -267,6 +267,7 @@ class relabelSequentialWorker(QObject):
 class saveDataWorker(QObject):
     finished = Signal()
     progress = Signal(str)
+    sigLog = Signal(str)
     progressBar = Signal(int, int, float)
     critical = Signal(object)
     addMetricsCritical = Signal(str, str)
@@ -335,10 +336,10 @@ class saveDataWorker(QObject):
     def addDerivedCellCycleColumns(self, all_frames_acdc_df):
         try:
             all_frames_acdc_df = cca_functions.add_derived_cell_cycle_columns(
-                all_frames_acdc_df
+                all_frames_acdc_df.copy()
             )
         except Exception as err:
-            self.progress.emit(traceback.format_exc())
+            self.sigLog.emit(traceback.format_exc())
         
         return all_frames_acdc_df
         
@@ -12178,8 +12179,9 @@ class guiWin(QMainWindow):
         elif ev.isAutoRepeat() and ev.key() == Qt.Key_Z and self.isZmodifier:
             self.zKeptDown = True
         elif ev.key() == Qt.Key_Z and self.isZmodifier:
+            posData = self.data[self.pos_i]
             self.isZmodifier = False
-            if not self.zKeptDown:
+            if not self.zKeptDown and posData.SizeZ > 1:
                 self.zSliceCheckbox.setChecked(not self.zSliceCheckbox.isChecked())
             self.zKeptDown = False
 
@@ -13991,6 +13993,9 @@ class guiWin(QMainWindow):
             self.progressWin.workerFinished = True
             self.progressWin.close()
         raise error
+    
+    def workerLog(self, text):
+        self.logger.info(text)
     
     def saveDataWorkerCritical(self, error):
         self.logger.info(
@@ -23416,6 +23421,7 @@ class guiWin(QMainWindow):
         if finishedCallback is not None:
             self.worker.finished.connect(finishedCallback)
         self.worker.progress.connect(self.saveDataProgress)
+        self.worker.sigLog.connect(self.workerLog)
         self.worker.progressBar.connect(self.saveDataUpdatePbar)
         # self.worker.metricsPbarProgress.connect(self.saveDataUpdateMetricsPbar)
         self.worker.critical.connect(self.saveDataWorkerCritical)
