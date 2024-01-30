@@ -89,6 +89,7 @@ Contents
    models
    bdir_corr
    datastruc
+   troubleshooting/index
    release-notes
    resources
 
