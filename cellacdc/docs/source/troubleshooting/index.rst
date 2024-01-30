@@ -1,6 +1,8 @@
 Troubleshooting
 ===============
 
+List of issues:
+
 .. toctree:: 
     :maxdepth: 1
 
