@@ -10520,18 +10520,19 @@ class guiWin(QMainWindow):
             if msg.cancel:
                 return
             
-            self.reset_will_divide_info()
-            # Go to previous frame without storing and then back to current
+            self.resetWillDivideInfo()
             if posData.frame_i > 0:
-                posData.frame_i -= 1
-                self.get_data()
-                self.remove_future_cca_df(posData.frame_i)
-                self.next_frame()
+                # Reset all future frames
+                self.remove_future_cca_df(posData.frame_i+1)
+                self.updateAllImages()
             else:
+                # Reset everything since we are on first frame
                 posData.cca_df = self.getBaseCca_df()
                 self.remove_future_cca_df(posData.frame_i)
                 self.store_data()
-                self.updateAllImages()
+            self.updateAllImages()
+            self.navigateScrollBar.setMaximum(posData.frame_i+1)
+            self.navSpinBox.setMaximum(posData.frame_i+1)
         else:
             # Store undo state before modifying stuff
             self.storeUndoRedoStates(False)
@@ -17311,35 +17312,49 @@ class guiWin(QMainWindow):
             self.get_cca_df()
         return proceed
 
-    def reset_will_divide_info(self):
+    def resetWillDivideInfo(self):
         posData = self.data[self.pos_i]
         
         posData.cca_df['will_divide'] = 0
         self.store_cca_df()
         
-        IDs_in_S = posData.cca_df[posData.cca_df.cell_cycle_stage == 'S'].index
+        cca_df = posData.cca_df
+        cca_df_S = cca_df[cca_df.cell_cycle_stage == 'S']
+        
+        IDs_gen_num_in_S = (
+            cca_df_S.reset_index()
+            .set_index(['Cell_ID', 'generation_num'])
+        ).index
 
         # Reset will divide to 0 in the past S frames where division 
         # has been annotated
-        for frame_i in range(posData.frame_i, 0, -1):
+        for frame_i in range(posData.frame_i-1, -1, -1):
             past_cca_df = self.get_cca_df(frame_i=frame_i, return_df=True)
             if past_cca_df is None:
                 return
             
-            # Gest IDs that are still in S in the past and reset will_divide to 0
-            past_cca_df_S = past_cca_df[past_cca_df.cell_cycle_stage == 'S']
-            IDs_in_S_past = past_cca_df_S.index.intersection(IDs_in_S)
-            if len(IDs_in_S_past) == 0:
+            # Get IDs that are still in the generation number that we need to 
+            # reset to will_divide = 0
+            past_cca_df = (
+                past_cca_df.reset_index()
+                .set_index(['Cell_ID', 'generation_num'])
+            )
+            past_IDs_gen_num_in_S = past_cca_df.index.intersection(
+                IDs_gen_num_in_S
+            )
+            if len(past_IDs_gen_num_in_S) == 0:
                 return
             
-            past_cca_df.loc[IDs_in_S_past, 'will_divide'] = 0
+            past_cca_df.loc[past_IDs_gen_num_in_S, 'will_divide'] = 0
+            past_cca_df = past_cca_df.reset_index().set_index('Cell_ID')
+            
             self.store_cca_df(
                 cca_df=past_cca_df, frame_i=frame_i, autosave=False
             )
     
     def remove_future_cca_df(self, from_frame_i):
         posData = self.data[self.pos_i]
-        self.last_cca_frame_i = posData.frame_i
+        self.last_cca_frame_i = from_frame_i
         self.setNavigateScrollBarMaximum()
         for i in range(from_frame_i, posData.SizeT):
             df = posData.allData_li[i]['acdc_df']
