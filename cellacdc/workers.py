@@ -4341,8 +4341,7 @@ class CcaIntegrityCheckerWorker(QObject):
             if lab is None:
                 break
             
-            acdc_df = data_dict['acdc_df']
-            cca_df = self._get_cca_df_copy(acdc_df)
+            cca_df = data_dict.get('cca_df')
             if cca_df is None:
                 # There are no annotations at frame_i --> stop
                 break

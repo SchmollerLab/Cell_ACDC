@@ -17403,6 +17403,10 @@ class guiWin(QMainWindow):
             if self.ccaTableWin is not None and mainThread:
                 self.ccaTableWin.updateTable(posData.cca_df)
 
+        # Store copy for cca integrity worker
+        if self.ccaIntegrityCheckerWorker is not None:
+            posData.allData_li[i]['cca_df'] = cca_df.copy()
+        
         acdc_df = posData.allData_li[i]['acdc_df']
         if acdc_df is None:
             self.store_data()
