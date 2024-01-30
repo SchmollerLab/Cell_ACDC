@@ -10815,7 +10815,8 @@ class guiWin(QMainWindow):
         mode = text
         prevMode = self.modeComboBox.previousText()
         self.annotateToolbar.setVisible(False)
-        self.store_data(autosave=False)
+        if prevMode != 'Viewer':
+            self.store_data(autosave=False)
         self.copyContourButton.setChecked(False)
         self.stopCcaIntegrityCheckerWorker()
         if mode == 'Segmentation and Tracking':
@@ -11886,15 +11887,8 @@ class guiWin(QMainWindow):
         if ev.key() == Qt.Key_Q and self.debug:
             posData = self.data[self.pos_i]
             frame_i = posData.frame_i
-            delROIs_info = posData.allData_li[frame_i]['delROIs_info']
-            printl(frame_i)
-            for roi in delROIs_info['rois']:
-                printl(roi.size(), roi.pos())
-            
-            printl(frame_i-1)
-            delROIs_info = posData.allData_li[frame_i-1]['delROIs_info']
-            for roi in delROIs_info['rois']:
-                printl(roi.size(), roi.pos())
+            printl(posData.allData_li[posData.frame_i]['labels'] is None)
+            printl(self.get_last_tracked_i())
         
         if not self.dataIsLoaded:
             self.logger.info(
@@ -16200,6 +16194,34 @@ class guiWin(QMainWindow):
             segm_data.append(lab)
         return np.array(segm_data)
     
+    def trackNewIDtoNewIDsFutureFrame(self, newID, newIDmask):
+        posData = self.data[self.pos_i]
+        newID_lab = np.zeros_like(posData.lab)
+        newID_lab[newIDmask] = newID
+        newLab_rp = [posData.rp[posData.IDs_idxs[newID]]]
+        newLab_IDs = [newID]
+        
+        nextLab = posData.allData_li[posData.frame_i+1]['labels']
+        if nextLab is None:
+            return
+        
+        nextRp = posData.allData_li[posData.frame_i+1]['regionprops']
+        
+        tracked_lab = self.trackFrame(
+            nextLab, nextRp, newID_lab, newLab_rp, newLab_IDs,
+            assign_unique_new_IDs=False
+        )
+        trackedID = tracked_lab[newID_lab>0][0]
+        if trackedID == newID:
+            # Object does not exist in future frame --> do not track
+            return
+        
+        if posData.IDs_idxs.get(trackedID) is not None:
+            # Tracked ID already exists --> do not track to avoid merging
+            return
+                
+        return trackedID
+    
     @exception_handler
     def store_data(
             self, pos_i=None, enforce=True, debug=False, mainThread=True,
@@ -17147,6 +17169,7 @@ class guiWin(QMainWindow):
     def initSegmTrackMode(self):
         posData = self.data[self.pos_i]
         last_tracked_i = self.get_last_tracked_i()
+        
         if posData.frame_i > last_tracked_i:
             # Prompt user to go to last tracked frame
             msg = widgets.myMessageBox()
@@ -17232,7 +17255,7 @@ class guiWin(QMainWindow):
             posData.UndoRedoStates[0] = []
             self.undoAction.setEnabled(False)
             self.redoAction.setEnabled(False)
-
+        
         if posData.frame_i > last_cca_frame_i:
             # Prompt user to go to last annotated frame
             msg = widgets.myMessageBox()
@@ -21007,6 +21030,30 @@ class guiWin(QMainWindow):
             return False
 
     def trackManuallyAddedObject(self, added_ID, isNewID):
+        """Track objects added manually on frame that were already visited.
+
+        Parameters
+        ----------
+        added_ID : int
+            ID of the object added manually
+        isNewID : bool
+            If True, the added object is new
+        
+        Notes
+        -----
+        This method tracks the new added object against the previous frame 
+        labels. If the ID determined by tracking is different from `added_ID` 
+        (meaning that tracking thinks the new ID should be changed to the 
+        tracked ID) and the tracked ID is not already existing (which would 
+        otherwise causing merging) we assign the tracked ID to the object with 
+        `added_ID`. 
+        
+        If instead the tracked ID is the same as `added_ID` we are dealing 
+        with a truly new object. In this case we want to try tracking it against 
+        the next frame (since the next frame was already validated). 
+        As before, we assign the tracked ID (against the next frame) only if 
+        not already existing in current frame (to avoid merging).    
+        """        
         if self.isSnapshot:
             return 
         
@@ -21020,17 +21067,61 @@ class guiWin(QMainWindow):
         
         last_validated_frame_i = self.navigateScrollBar.maximum()-1
         if posData.frame_i < last_validated_frame_i and isNewID:
+            prevIDs = posData.allData_li[posData.frame_i-1]['IDs']
             # Frame already visited --> track only new object
             mask = posData.lab == added_ID
             trackedID = tracked_lab[mask][0]
-            if posData.IDs_idxs.get(trackedID) is None:
-                # Track only if the tracked ID for the new object does not 
-                # already exist
-                posData.lab[mask] = tracked_lab[mask]
+            isTrackedIDalreadyPresentAndNotNew = (
+                posData.IDs_idxs.get(trackedID) is not None
+                and added_ID != trackedID
+            )
+            if isTrackedIDalreadyPresentAndNotNew:
+                return
+            
+            isTrackedIDinPrevIDs = trackedID in prevIDs
+            if isTrackedIDinPrevIDs:
+                posData.lab[mask] = trackedID
+            else:
+                trackedID = self.trackNewIDtoNewIDsFutureFrame(added_ID, mask)
+                if trackedID is None:
+                    return
+                posData.lab[mask] = trackedID
         else:
             posData.lab = tracked_lab
         self.update_rp()
         # self.updateAllImages()
+    
+    def trackFrame(
+            self, prev_lab, prev_rp, currentLab, currentRp, currentIDs,
+            assign_unique_new_IDs=True
+        ):        
+        if self.trackWithAcdcAction.isChecked():
+            tracked_result = CellACDC_tracker.track_frame(
+                prev_lab, prev_rp, currentLab, currentRp,
+                IDs_curr_untracked=currentIDs,
+                setBrushID_func=self.setBrushID,
+                posData=self.data[self.pos_i],
+                assign_unique_new_IDs=assign_unique_new_IDs
+            )
+        elif self.trackWithYeazAction.isChecked():
+            tracked_result = self.tracking_yeaz.correspondence(
+                prev_lab, currentLab, use_modified_yeaz=True,
+                use_scipy=True
+            )
+        else:
+            tracked_result = self.realTimeTracker.track_frame(
+                prev_lab, currentLab, **self.track_frame_params
+            )
+
+        # Check if tracker also returns a list-like of IDs that is fine to
+        # loose (e.g., upon standard cell division)
+        try:
+            tracked_lab, tracked_lost_IDs = tracked_result
+            self.setTrackedLostCentroids(prev_rp, tracked_lost_IDs)
+        except ValueError as err:
+            tracked_lab = tracked_result
+        
+        return tracked_lab
     
     # @exec_time
     def tracking(
@@ -21087,32 +21178,11 @@ class guiWin(QMainWindow):
             prev_lab = posData.allData_li[posData.frame_i-1]['labels']
         if prev_rp is None:
             prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
-
-        if self.trackWithAcdcAction.isChecked():
-            tracked_result = CellACDC_tracker.track_frame(
-                prev_lab, prev_rp, posData.lab, posData.rp,
-                IDs_curr_untracked=posData.IDs,
-                setBrushID_func=self.setBrushID,
-                posData=posData,
-                assign_unique_new_IDs=assign_unique_new_IDs
-            )
-        elif self.trackWithYeazAction.isChecked():
-            tracked_result = self.tracking_yeaz.correspondence(
-                prev_lab, posData.lab, use_modified_yeaz=True,
-                use_scipy=True
-            )
-        else:
-            tracked_result = self.realTimeTracker.track_frame(
-                prev_lab, posData.lab, **self.track_frame_params
-            )
-
-        # Check if tracker also returns a list-like of IDs that is fine to
-        # loose (e.g., upon standard cell division)
-        try:
-            tracked_lab, tracked_lost_IDs = tracked_result
-            self.setTrackedLostCentroids(prev_rp, tracked_lost_IDs)
-        except ValueError as err:
-            tracked_lab = tracked_result
+        
+        tracked_lab = self.trackFrame(
+            prev_lab, prev_rp, posData.lab, posData.rp, posData.IDs,
+            assign_unique_new_IDs=assign_unique_new_IDs
+        )
         
         if DoManualEdit:
             # Correct tracking with manually changed IDs
