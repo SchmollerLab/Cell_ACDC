@@ -17396,6 +17396,8 @@ class guiWin(QMainWindow):
                 self.get_data()
                 if self.onlyTracking:
                     self.tracking(enforce=True)
+                elif not posData.IDs:
+                    continue
                 else:
                     maxID = max(posData.IDs, default=0) + 1
                     for old_ID, new_ID in editIDwin.how:
