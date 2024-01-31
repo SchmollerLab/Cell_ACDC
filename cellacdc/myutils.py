@@ -1830,7 +1830,7 @@ def float_img_to_dtype(img, dtype):
     if dtype == np.uint8:
         return skimage.img_as_ubyte(img)
     
-    if dtype == np.uin16:
+    if dtype == np.uint16:
         return skimage.img_as_uint(img)
     
     raise TypeError(
