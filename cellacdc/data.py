@@ -5,7 +5,7 @@ from pyparsing import col
 
 import tifffile
 
-from . import data_path, load, base_cca_df
+from . import data_path, load, base_cca_dict, cca_df_colnames
 
 class _Data:
     def __init__(
@@ -36,8 +36,8 @@ class _Data:
     
     def cca_df(self):
         acdc_df = load._load_acdc_df_file(self.acdc_df_path).dropna()
-        cca_df = acdc_df[list(base_cca_df.keys())]
-        dtypes = {col: type(value) for col, value in base_cca_df.items()}
+        cca_df = acdc_df[cca_df_colnames]
+        dtypes = {col: type(value) for col, value in base_cca_dict.items()}
         cca_df = cca_df.astype(dtypes)
         return cca_df
 

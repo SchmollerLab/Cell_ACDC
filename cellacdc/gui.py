@@ -69,7 +69,8 @@ from . import qrc_resources
 
 # Custom modules
 from . import exception_handler
-from . import base_cca_df, graphLayoutBkgrColor, darkBkgrColor
+from . import base_cca_dict, graphLayoutBkgrColor, darkBkgrColor
+from . import cca_df_colnames
 from . import load, prompts, apps, workers, html_utils
 from . import core, myutils, dataPrep, widgets
 from . import _warnings, issues_url
@@ -8598,19 +8599,15 @@ class guiWin(QMainWindow):
             cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
             is_cell_existing = is_bud_existing = ID in cca_df_i.index
             if not is_cell_existing:
-                cca_df_ID = pd.Series({
-                    'cell_cycle_stage': 'S',
-                    'generation_num': 0,
-                    'relative_ID': -1,
-                    'relationship': 'bud',
-                    'emerg_frame_i': i+1,
-                    'division_frame_i': -1,
-                    'is_history_known': True,
-                    'corrected_assignment': False,
-                    'will_divide': 0,
-                })
+                bud_cca_dict = base_cca_dict.copy()
+                bud_cca_dict['cell_cycle_stage'] = 'S'
+                bud_cca_dict['generation_num'] = 0
+                bud_cca_dict['relationship'] = 'bud'
+                bud_cca_dict['emerg_frame_i'] = i+1
+                bud_cca_dict['is_history_known'] = True
+                cca_df_ID = pd.Series(bud_cca_dict)
                 return cca_df_ID
-
+    
     def setHistoryKnowledge(self, ID, cca_df):
         posData = self.data[self.pos_i]
         is_history_known = cca_df.at[ID, 'is_history_known']
@@ -9637,7 +9634,7 @@ class guiWin(QMainWindow):
         wrongBudID = cca_df_at_correct_bud_ID_disappearance.at[
             correct_mothID, 'relative_ID'
         ]
-        mothCcaBeforeWrongBudID = base_cca_df
+        mothCcaBeforeWrongBudID = base_cca_dict
         # Search in the past for status of mother before wrong bud emerged
         for past_i in range(frame_i, -1, -1):
             cca_df_i = self.get_cca_df(frame_i=past_i, return_df=True)
@@ -10521,14 +10518,13 @@ class guiWin(QMainWindow):
                 return
             
             self.resetWillDivideInfo()
-            if posData.frame_i > 0:
-                # Reset all future frames
-                self.remove_future_cca_df(posData.frame_i+1)
-                self.updateAllImages()
-            else:
+            # Reset all future frames
+            self.remove_future_cca_df(
+                posData.frame_i+1, reset_will_divide=False
+            )
+            if posData.frame_i == 0:
                 # Reset everything since we are on first frame
                 posData.cca_df = self.getBaseCca_df()
-                self.remove_future_cca_df(posData.frame_i)
                 self.store_data()
             self.updateAllImages()
             self.navigateScrollBar.setMaximum(posData.frame_i+1)
@@ -15883,11 +15879,11 @@ class guiWin(QMainWindow):
         self.isRightClickDragImg1 = False
         self.clickObjYc, self.clickObjXc = None, None
 
-        self.cca_df_colnames = list(base_cca_df.keys())
+        self.cca_df_colnames = cca_df_colnames
         self.cca_df_dtypes = [
             str, int, int, str, int, int, bool, bool, int
         ]
-        self.cca_df_default_values = list(base_cca_df.values())
+        self.cca_df_default_values = list(base_cca_dict.values())
         self.cca_df_int_cols = [
             'generation_num',
             'relative_ID',
@@ -16680,17 +16676,7 @@ class guiWin(QMainWindow):
                 proceed = True
                 # Annotate the new IDs with unknown history
                 for ID in posData.new_IDs:
-                    posData.cca_df.loc[ID] = pd.Series({
-                        'cell_cycle_stage': 'G1',
-                        'generation_num': 2,
-                        'relative_ID': -1,
-                        'relationship': 'mother',
-                        'emerg_frame_i': -1,
-                        'division_frame_i': -1,
-                        'is_history_known': False,
-                        'corrected_assignment': False,
-                        'will_divide': 0
-                    })
+                    posData.cca_df.loc[ID] = pd.Series(base_cca_dict)
                     cca_df_ID = self.getStatusKnownHistoryBud(ID)
                     posData.ccaStatus_whenEmerged[ID] = cca_df_ID
             else:
@@ -16744,18 +16730,16 @@ class guiWin(QMainWindow):
             posData.cca_df.at[mothID, 'relative_ID'] = budID
             posData.cca_df.at[mothID, 'cell_cycle_stage'] = 'S'
 
-            posData.cca_df.loc[budID] = pd.Series({
-                'cell_cycle_stage': 'S',
-                'generation_num': 0,
-                'relative_ID': mothID,
-                'relationship': 'bud',
-                'emerg_frame_i': posData.frame_i,
-                'division_frame_i': -1,
-                'is_history_known': True,
-                'corrected_assignment': False,
-                'will_divide': 0
-            })
-
+            bud_cca_dict = base_cca_dict.copy()
+            bud_cca_dict['cell_cycle_stage'] = 'S'
+            bud_cca_dict['generation_num'] = 0
+            bud_cca_dict['relative_ID'] = mothID
+            bud_cca_dict['relationship'] = 'bud'
+            bud_cca_dict['emerg_frame_i'] = posData.frame_i
+            bud_cca_dict['is_history_known'] = True
+            bud_cca_dict['corrected_assignment'] = False
+            posData.cca_df.loc[budID] = pd.Series(bud_cca_dict)
+            posData.cca_df.at[budID]
 
         # Keep only existing IDs
         posData.cca_df = posData.cca_df.loc[posData.IDs]
@@ -17126,29 +17110,7 @@ class guiWin(QMainWindow):
     def getBaseCca_df(self):
         posData = self.data[self.pos_i]
         IDs = [obj.label for obj in posData.rp]
-        cc_stage = ['G1' for ID in IDs]
-        num_cycles = [2]*len(IDs)
-        relationship = ['mother' for ID in IDs]
-        related_to = [-1]*len(IDs)
-        emerg_frame_i = [-1]*len(IDs)
-        division_frame_i = [-1]*len(IDs)
-        is_history_known = [False]*len(IDs)
-        corrected_assignment = [False]*len(IDs)
-        will_divide = [0]*len(IDs)
-        cca_df = pd.DataFrame({
-            'cell_cycle_stage': cc_stage,
-            'generation_num': num_cycles,
-            'relative_ID': related_to,
-            'relationship': relationship,
-            'emerg_frame_i': emerg_frame_i,
-            'division_frame_i': division_frame_i,
-            'is_history_known': is_history_known,
-            'corrected_assignment': corrected_assignment,
-            'will_divide': will_divide
-            },
-            index=IDs
-        )
-        cca_df.index.name = 'Cell_ID'
+        cca_df = core.getBaseCca_df(IDs)
         return cca_df
     
     def get_last_tracked_i(self):
@@ -17335,13 +17297,19 @@ class guiWin(QMainWindow):
             self.get_cca_df()
         return proceed
 
-    def resetWillDivideInfo(self):
+    def resetWillDivideInfo(self, from_frame_i=None):
         posData = self.data[self.pos_i]
+        if from_frame_i is None:
+            from_frame_i = posData.frame_i
+            cca_df = posData.cca_df
+        else:
+            cca_df = self.get_cca_df(frame_i=from_frame_i, return_df=True)
         
-        posData.cca_df['will_divide'] = 0
-        self.store_cca_df()
+        cca_df['will_divide'] = 0
         
-        cca_df = posData.cca_df
+        if from_frame_i == posData.frame_i:
+            self.store_cca_df()
+        
         cca_df_S = cca_df[cca_df.cell_cycle_stage == 'S']
         
         IDs_gen_num_in_S = (
@@ -17351,7 +17319,7 @@ class guiWin(QMainWindow):
 
         # Reset will divide to 0 in the past S frames where division 
         # has been annotated
-        for frame_i in range(posData.frame_i-1, -1, -1):
+        for frame_i in range(from_frame_i-1, -1, -1):
             past_cca_df = self.get_cca_df(frame_i=frame_i, return_df=True)
             if past_cca_df is None:
                 return
@@ -17375,7 +17343,7 @@ class guiWin(QMainWindow):
                 cca_df=past_cca_df, frame_i=frame_i, autosave=False
             )
     
-    def remove_future_cca_df(self, from_frame_i):
+    def remove_future_cca_df(self, from_frame_i, reset_will_divide=True):
         posData = self.data[self.pos_i]
         self.last_cca_frame_i = from_frame_i
         self.setNavigateScrollBarMaximum()
@@ -17396,6 +17364,9 @@ class guiWin(QMainWindow):
             frames = posData.acdc_df.index.get_level_values(0)
             if from_frame_i in frames:
                 posData.acdc_df = posData.acdc_df.loc[:from_frame_i]
+        
+        if reset_will_divide:
+            self.resetWillDivideInfo(from_frame_i=from_frame_i)
 
     def get_cca_df(self, frame_i=None, return_df=False):
         # cca_df is None unless the metadata contains cell cycle annotations

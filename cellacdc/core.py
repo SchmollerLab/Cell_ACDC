@@ -22,7 +22,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from . import load, myutils
-from . import base_cca_df, printl
+from . import cca_df_colnames, printl
 from . import features
 from . import error_up_str
 from . import issues_url
@@ -839,7 +839,8 @@ def getBaseCca_df(IDs, with_tree_cols=False):
         'division_frame_i': division_frame_i,
         'is_history_known': is_history_known,
         'corrected_assignment': corrected_assignment,
-        'will_divide': [0]*len(IDs)
+        'will_divide': [0]*len(IDs),
+        'automatic_divsion': [0]*len(IDs),
     }, index=IDs)
     if with_tree_cols:
         cca_df['generation_num_tree'] = [1]*len(IDs)
@@ -1226,7 +1227,7 @@ class LineageTree:
         acdc_df = acdc_df.drop(columns=['index', 'level_0'], errors='ignore')
         self.acdc_df = acdc_df.set_index(['frame_i', 'Cell_ID'])
         self.df = acdc_df.copy()
-        self.cca_df_colnames = list(base_cca_df.keys())
+        self.cca_df_colnames = cca_df_colnames
         self.log = logging_func
     
     def build(self):

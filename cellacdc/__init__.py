@@ -227,7 +227,7 @@ cite_url = 'https://bmcbiol.biomedcentral.com/articles/10.1186/s12915-022-01372-
 issues_url = 'https://github.com/SchmollerLab/Cell_ACDC/issues'
 
 # Initialize variables that need to be globally accessible
-base_cca_df = {
+base_cca_dict = {
     'cell_cycle_stage': 'G1',
     'generation_num': 2,
     'relative_ID': -1,
@@ -236,10 +236,11 @@ base_cca_df = {
     'division_frame_i': -1,
     'is_history_known': False,
     'corrected_assignment': False,
-    'will_divide': 0
+    'will_divide': 0,
+    'automatic_divsion': 0
 }
 
-cca_df_colnames = list(base_cca_df.keys())
+cca_df_colnames = list(base_cca_dict.keys())
 
 lineage_tree_cols = [
     'Cell_ID_tree',

@@ -70,7 +70,7 @@ from . import issues_url
 from . import myutils
 from . import qutils
 from . import _palettes
-from . import base_cca_df
+from . import base_cca_dict
 from . import widgets
 from . import user_profile_path
 from . import features

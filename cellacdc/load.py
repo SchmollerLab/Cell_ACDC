@@ -41,14 +41,14 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 
 from . import prompts
 from . import myutils, measurements, config
-from . import base_cca_df, base_acdc_df, html_utils, settings_folderpath, printl
+from . import base_cca_dict, base_acdc_df, html_utils, settings_folderpath
+from . import cca_df_colnames, printl
 from . import ignore_exception, cellacdc_path
 from . import qrc_resources_path, qrc_resources_light_path
 from . import qrc_resources_dark_path
 from . import models_path
 from . import tooltips_rst_filepath
 
-cca_df_colnames = list(base_cca_df.keys())
 acdc_df_bool_cols = [
     'is_cell_dead',
     'is_cell_excluded',
@@ -1766,7 +1766,7 @@ class loadData:
             if ID in acdc_df_IDs:
                 continue
             idx = (frame_i, ID)
-            self.acdc_df.loc[idx, cca_df_colnames] = base_cca_df.values()
+            self.acdc_df.loc[idx, cca_df_colnames] = base_cca_dict.values()
             for col, val in base_acdc_df.items():
                 if not isnan(self.acdc_df.at[idx, col]):
                     continue
