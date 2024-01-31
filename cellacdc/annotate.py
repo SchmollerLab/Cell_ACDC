@@ -96,7 +96,11 @@ def get_obj_text_annot_opts(
             obj, acdc_df, is_gen_num_tree_annot
         )
         if cca_df_obj is None:
-            opts = {'text': text, 'color_name': 'label', 'bold': False}
+            if is_new_obj:
+                color_name = 'new_object'
+            else:
+                color_name = 'label'
+            opts = {'text': text, 'color_name': color_name, 'bold': False}
             return opts
         
         ccs = cca_df_obj['cell_cycle_stage']
