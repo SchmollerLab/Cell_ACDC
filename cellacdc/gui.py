@@ -5002,53 +5002,7 @@ class guiWin(QMainWindow):
             self.current_frame_i = posData.frame_i
 
             if applyFutFrames:
-                # Store data for current frame
-                self.store_data()
-                if endFrame_i is None:
-                    self.app.restoreOverrideCursor()
-                    return
-                segmSizeT = len(posData.segm_data)
-                for i in range(posData.frame_i+1, segmSizeT):
-                    lab = posData.allData_li[i]['labels']
-                    if lab is None and not includeUnvisited:
-                        self.enqAutosave()
-                        break
-
-                    if lab is not None:
-                        # Visited frame
-                        posData.frame_i = i
-                        self.get_data()
-                        if self.onlyTracking:
-                            self.tracking(enforce=True)
-                        else:
-                            maxID = max(posData.IDs) + 1
-                            for old_ID, new_ID in editID.how:
-                                if new_ID in posData.lab:
-                                    tempID = maxID + 1 # posData.lab.max() + 1
-                                    posData.lab[posData.lab == old_ID] = tempID
-                                    posData.lab[posData.lab == new_ID] = old_ID
-                                    posData.lab[posData.lab == tempID] = new_ID
-                                    maxID += 1
-                                else:
-                                    posData.lab[posData.lab == old_ID] = new_ID
-                            self.update_rp(draw=False)
-                        self.store_data(autosave=i==endFrame_i)
-                    elif includeUnvisited:
-                        # Unvisited frame (includeUnvisited = True)
-                        lab = posData.segm_data[i]
-                        for old_ID, new_ID in editID.how:
-                            if new_ID in lab:
-                                tempID = lab.max() + 1
-                                lab[lab == old_ID] = tempID
-                                lab[lab == new_ID] = old_ID
-                                lab[lab == tempID] = new_ID
-                            else:
-                                lab[lab == old_ID] = new_ID
-
-                # Back to current frame
-                posData.frame_i = self.current_frame_i
-                self.get_data()
-                self.app.restoreOverrideCursor()
+                self.changeIDfutureFrames(endFrame_i, editID, includeUnvisited)
         
         elif (right_click or left_click) and self.keepIDsButton.isChecked():
             x, y = event.pos().x(), event.pos().y()
@@ -17421,6 +17375,57 @@ class guiWin(QMainWindow):
         else:
             posData.cca_df = cca_df
 
+    def changeIDfutureFrames(self, endFrame_i, editIDwin, includeUnvisited):
+        posData = self.data[self.pos_i]
+        # Store data for current frame
+        self.store_data()
+        if endFrame_i is None:
+            self.app.restoreOverrideCursor()
+            return
+        
+        segmSizeT = len(posData.segm_data)
+        for i in range(posData.frame_i+1, segmSizeT):
+            lab = posData.allData_li[i]['labels']
+            if lab is None and not includeUnvisited:
+                self.enqAutosave()
+                break
+
+            if lab is not None:
+                # Visited frame
+                posData.frame_i = i
+                self.get_data()
+                if self.onlyTracking:
+                    self.tracking(enforce=True)
+                else:
+                    maxID = max(posData.IDs, default=0) + 1
+                    for old_ID, new_ID in editIDwin.how:
+                        if new_ID in posData.lab:
+                            tempID = maxID + 1 # posData.lab.max() + 1
+                            posData.lab[posData.lab == old_ID] = tempID
+                            posData.lab[posData.lab == new_ID] = old_ID
+                            posData.lab[posData.lab == tempID] = new_ID
+                            maxID += 1
+                        else:
+                            posData.lab[posData.lab == old_ID] = new_ID
+                    self.update_rp(draw=False)
+                self.store_data(autosave=i==endFrame_i)
+            elif includeUnvisited:
+                # Unvisited frame (includeUnvisited = True)
+                lab = posData.segm_data[i]
+                for old_ID, new_ID in editIDwin.how:
+                    if new_ID in lab:
+                        tempID = lab.max() + 1
+                        lab[lab == old_ID] = tempID
+                        lab[lab == new_ID] = old_ID
+                        lab[lab == tempID] = new_ID
+                    else:
+                        lab[lab == old_ID] = new_ID
+        
+        # Back to current frame
+        posData.frame_i = self.current_frame_i
+        self.get_data()
+        self.app.restoreOverrideCursor()
+    
     def unstore_cca_df(self):
         posData = self.data[self.pos_i]
         acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
