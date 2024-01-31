@@ -10369,7 +10369,7 @@ class guiWin(QMainWindow):
         how = action.text()
         self.df_settings.at['how_normIntensities', 'value'] = how
         self.df_settings.to_csv(self.settings_csv_path)
-        self.updateAllImages(addFupdateFilters=True)
+        self.updateAllImages(updateFilters=True)
         self.updateImageValueFormatter()
 
     def setLastUserNormAction(self):

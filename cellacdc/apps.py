@@ -8387,6 +8387,14 @@ will be applied (see below).<br><br>
         )
         cca_df.index.name = 'Cell_ID'
         
+        # Add missing columns
+        for column, default in base_cca_dict.items():
+            if column in cca_df.columns:
+                continue
+            
+            value = self.inputCca_df.get(column, default=default)
+            cca_df[column] = value
+            
         # Check that every pair of cells in S are relative of each other
         proceed = self.check_ID_rel_ID_mismatches(cca_df)
         if not proceed:
