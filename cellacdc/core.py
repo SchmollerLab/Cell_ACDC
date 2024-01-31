@@ -22,7 +22,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from . import load, myutils
-from . import base_cca_df, printl
+from . import cca_df_colnames, printl, base_cca_dict, base_cca_tree_dict
 from . import features
 from . import error_up_str
 from . import issues_url
@@ -822,32 +822,13 @@ def annotate_lineage_tree_from_labels(tracked_labels, labels_to_IDs_mapper):
     return cca_dfs
 
 def getBaseCca_df(IDs, with_tree_cols=False):
-    cc_stage = ['G1' for ID in IDs]
-    num_cycles = [2]*len(IDs)
-    relationship = ['mother' for ID in IDs]
-    related_to = [-1]*len(IDs)
-    emerg_frame_i = [-1]*len(IDs)
-    division_frame_i = [-1]*len(IDs)
-    is_history_known = [False]*len(IDs)
-    corrected_assignment = [False]*len(IDs)
-    cca_df = pd.DataFrame({
-        'cell_cycle_stage': cc_stage,
-        'generation_num': num_cycles,
-        'relative_ID': related_to,
-        'relationship': relationship,
-        'emerg_frame_i': emerg_frame_i,
-        'division_frame_i': division_frame_i,
-        'is_history_known': is_history_known,
-        'corrected_assignment': corrected_assignment,
-        'will_divide': [0]*len(IDs)
-    }, index=IDs)
+    row_data = base_cca_dict
     if with_tree_cols:
-        cca_df['generation_num_tree'] = [1]*len(IDs)
-        cca_df['Cell_ID_tree'] = IDs
-        cca_df['parent_ID_tree'] = [-1]*len(IDs)
-        cca_df['root_ID_tree'] = [-1]*len(IDs)
-        cca_df['sister_ID_tree'] = [-1]*len(IDs)
-    
+        row_data = {**base_cca_dict, **base_cca_tree_dict}
+    data = [row_data]*len(IDs)
+    cca_df = pd.DataFrame(data, index=IDs)    
+    if with_tree_cols:
+       cca_df['Cell_ID_tree'] = IDs
     cca_df.index.name = 'Cell_ID'
     return cca_df
 
@@ -1226,7 +1207,7 @@ class LineageTree:
         acdc_df = acdc_df.drop(columns=['index', 'level_0'], errors='ignore')
         self.acdc_df = acdc_df.set_index(['frame_i', 'Cell_ID'])
         self.df = acdc_df.copy()
-        self.cca_df_colnames = list(base_cca_df.keys())
+        self.cca_df_colnames = cca_df_colnames
         self.log = logging_func
     
     def build(self):

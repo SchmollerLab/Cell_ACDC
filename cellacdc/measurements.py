@@ -10,7 +10,7 @@ from importlib import import_module
 import skimage.measure
 from tqdm import tqdm
 
-from . import core, base_cca_df, html_utils, config, printl
+from . import core, base_cca_dict, cca_df_colnames, html_utils, config, printl
 from . import user_profile_path
 
 import warnings
@@ -90,7 +90,6 @@ def get_all_acdc_df_colnames():
     all_acdc_df_colnames.append('frame_i')
     all_acdc_df_colnames.append('time_seconds')
     all_acdc_df_colnames.append('Cell_ID')
-    cca_df_colnames = list(base_cca_df.keys())
     all_acdc_df_colnames.extend(cca_df_colnames)
     additional_colnames = [
         'is_cell_dead',
