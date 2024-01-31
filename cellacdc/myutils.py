@@ -1766,9 +1766,10 @@ def to_relative_path(path, levels=3, prefix='...'):
 
 def img_to_float(img):
     input_img_dtype = img.dtype
+    value = img[(0,) * img.ndim]
     img_max = np.max(img)
     # Check if float outside of -1, 1
-    if img_max <= 1.0 and issubclass(input_img_dtype, (np.floating, float)):
+    if img_max <= 1.0 and isinstance(value, (np.floating, float)):
         return img
 
     uint8_max = np.iinfo(np.uint8).max
