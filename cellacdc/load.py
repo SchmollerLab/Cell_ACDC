@@ -354,6 +354,25 @@ def _add_will_divide_column(acdc_df):
 
     return acdc_df
 
+def _add_missing_columns(acdc_df):
+    if 'cell_cycle_stage' not in acdc_df.columns:
+        return acdc_df
+    
+    last_index_cca_df = acdc_df[['cell_cycle_stage']].last_valid_index()
+    
+    for col, default in base_cca_dict.items():
+        if col == 'will_divide':
+            # Already taken care by _add_will_divide_column
+            continue
+        
+        if col in acdc_df.columns:
+            continue
+        
+        acdc_df[col] = np.nan
+        acdc_df.loc[:last_index_cca_df, col] = default
+    
+    return acdc_df
+
 def _parse_loaded_acdc_df(acdc_df):
     acdc_df = acdc_df.set_index(['frame_i', 'Cell_ID']).sort_index()
     # remove duplicates saved by mistake or bugs
@@ -363,14 +382,20 @@ def _parse_loaded_acdc_df(acdc_df):
     acdc_df = pd_int_to_bool(acdc_df, acdc_df_bool_cols)
     return acdc_df
 
+def _remove_redundant_columns(acdc_df):
+    acdc_df = acdc_df.drop(columns=['index', 'level_0'], errors='ignore')
+    return acdc_df
+
 def _load_acdc_df_file(acdc_df_file_path):
     acdc_df = pd.read_csv(acdc_df_file_path, dtype=acdc_df_str_cols)
+    acdc_df = _remove_redundant_columns(acdc_df)
     try:
         acdc_df_drop_cca = acdc_df.drop(columns=cca_df_colnames).fillna(0)
         acdc_df[acdc_df_drop_cca.columns] = acdc_df_drop_cca
     except KeyError:
         pass
     acdc_df = _parse_loaded_acdc_df(acdc_df)
+    acdc_df = _add_missing_columns(acdc_df)
     acdc_df = _add_will_divide_column(acdc_df)
     return acdc_df
 
@@ -2239,10 +2264,11 @@ class select_exp_folder:
             for filename in filenames:
                 if filename.find('acdc_output.csv') != -1:
                     last_tracked_i_found = True
-                    acdc_df_path = f'{images_path}/{filename}'
-                    acdc_df = pd.read_csv(acdc_df_path, dtype=acdc_df_str_cols)
-                    last_tracked_i = max(acdc_df['frame_i'])
+                    acdc_df_path = os.path.join(images_path, filename)
+                    acdc_df = _load_acdc_df_file(acdc_df_path).reset_index()
+                    last_tracked_i = acdc_df['frame_i'].max()
                     break
+            
             if last_tracked_i_found:
                 text = f'{pos} (Last tracked frame: {last_tracked_i+1})'
                 text = self.append_last_cca_frame(acdc_df, text)

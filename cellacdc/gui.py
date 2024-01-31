@@ -8670,7 +8670,7 @@ class guiWin(QMainWindow):
         
         self.enqAutosave()
     
-    def storeWillDivide(self, ID, relID, frame_i=None):
+    def annotateWillDivide(self, ID, relID, frame_i=None):
         posData = self.data[self.pos_i]
         if frame_i is None:
             frame_i = posData.frame_i
@@ -8760,7 +8760,7 @@ class guiWin(QMainWindow):
         if frame_i is None:
             frame_i = posData.frame_i
 
-        self.storeWillDivide(ID, relID)
+        self.annotateWillDivide(ID, relID)
 
         store = False
         cca_df.at[ID, 'cell_cycle_stage'] = 'G1'
@@ -9216,17 +9216,13 @@ class guiWin(QMainWindow):
                     # The bud emerged together with the mother because
                     # they appeared together from outside of the fov
                     # and they were trated as new IDs bud in S0
-                    cca_status_before_bud_emerg = pd.Series({
-                        'cell_cycle_stage': 'S',
-                        'generation_num': 0,
-                        'relative_ID': -1,
-                        'relationship': 'bud',
-                        'emerg_frame_i': i+1,
-                        'division_frame_i': -1,
-                        'is_history_known': True,
-                        'corrected_assignment': False,
-                        'will_divide': 0
-                    })
+                    bud_cca_dict = base_cca_dict.copy()
+                    bud_cca_dict['cell_cycle_stage'] = 'S'
+                    bud_cca_dict['generation_num'] = 0
+                    bud_cca_dict['relationship'] = 'bud'
+                    bud_cca_dict['emerg_frame_i'] = i+1
+                    bud_cca_dict['is_history_known'] = True
+                    cca_status_before_bud_emerg = pd.Series(bud_cca_dict)
                     return cca_status_before_bud_emerg
         
         # Mother did not have a status before bud emergence because it was
@@ -15839,14 +15835,12 @@ class guiWin(QMainWindow):
         ]
         self.cca_df_default_values = list(base_cca_dict.values())
         self.cca_df_int_cols = [
-            'generation_num',
-            'relative_ID',
-            'emerg_frame_i',
-            'division_frame_i'
+            col for col in cca_df_colnames 
+            if isinstance(base_cca_dict[col], int)
         ]
         self.cca_df_bool_col = [
-            'is_history_known',
-            'corrected_assignment'
+            col for col in cca_df_colnames 
+            if isinstance(base_cca_dict[col], bool)
         ]
     
     def initMetricsToSave(self, posData):
@@ -16363,7 +16357,10 @@ class guiWin(QMainWindow):
 
         for IDgone in ScellsIDsGone:
             relID = prev_cca_df.at[IDgone, 'relative_ID']
-            self.annotateDivision(prev_cca_df, IDgone, relID)
+            self.annotateDisappearedBeforeDivision(relID, IDgone, prev_cca_df)
+            self.annotateDivision(
+                prev_cca_df, IDgone, relID, frame_i=posData.frame_i-1
+            )
             self.annotateDivisionCurrentFrameRelativeIDgone(relID)
             automaticallyDividedIDs.append(relID)
             
@@ -16380,6 +16377,30 @@ class guiWin(QMainWindow):
         posData.cca_df.at[ID, 'division_frame_i'] = posData.frame_i-1
         posData.cca_df.at[ID, 'relationship'] = 'mother'
 
+    def annotateDisappearedBeforeDivision(
+            self, relID, IDgone, cca_df, frame_i=None
+        ):
+        posData = self.data[self.pos_i]        
+        gen_num = cca_df.at[relID, 'generation_num']
+        if frame_i is None:
+            frame_i = posData.frame_i
+        
+        for past_frame_i in range(frame_i-1, -1, -1):
+            past_cca_df = self.get_cca_df(frame_i=past_frame_i, return_df=True)
+            if past_cca_df is None:
+                return
+            
+            if past_cca_df.at[relID, 'generation_num'] != gen_num:
+                # ID is a mother and the cell cycle is finished here
+                return
+            
+            past_cca_df.at[IDgone, 'disappears_before_division'] = 1
+            past_cca_df.at[relID, 'daughter_disappears_before_division'] = 1
+            
+            self.store_cca_df(
+                cca_df=past_cca_df, frame_i=past_frame_i, autosave=False
+            )
+    
     @exception_handler
     def attempt_auto_cca(self, enforceAll=False):
         posData = self.data[self.pos_i]
@@ -16693,7 +16714,6 @@ class guiWin(QMainWindow):
             bud_cca_dict['is_history_known'] = True
             bud_cca_dict['corrected_assignment'] = False
             posData.cca_df.loc[budID] = pd.Series(bud_cca_dict)
-            posData.cca_df.at[budID]
 
         # Keep only existing IDs
         posData.cca_df = posData.cca_df.loc[posData.IDs]
@@ -17332,11 +17352,6 @@ class guiWin(QMainWindow):
         df = posData.allData_li[i]['acdc_df']
         if df is not None:
             if 'cell_cycle_stage' in df.columns:
-                if 'is_history_known' not in df.columns:
-                    df['is_history_known'] = True
-                if 'corrected_assignment' not in df.columns:
-                    # Compatibility with those acdc_df analysed with prev vers.
-                    df['corrected_assignment'] = True
                 cca_df = df[self.cca_df_colnames].copy()
         if cca_df is None and self.isSnapshot:
             cca_df = self.getBaseCca_df()
