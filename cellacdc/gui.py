@@ -14199,15 +14199,21 @@ class guiWin(QMainWindow):
 
     def viewCcaTable(self):
         posData = self.data[self.pos_i]
-        self.logger.info('========================')
-        self.logger.info('CURRENT Cell cycle analysis table:')
-        self.logger.info(posData.cca_df)
-        self.logger.info('------------------------')
-        self.logger.info(f'STORED Cell cycle analysis table for frame {posData.frame_i+1}:')
+        
         df = posData.allData_li[posData.frame_i]['acdc_df']
+        for column in posData.cca_df.columns:
+            header = (
+                '================================================\n'
+                f'CURRENT vs STORED `{column}` column'
+                f'for frame number {posData.frame_i+1}:\n'
+            )
+            df_compare = posData.cca_df[[column]].copy()
+            df_compare[f'STORED_{column}'] = df[column]
+            text = f'{header}{df_compare}'
+            self.logger.info(text)
+        
         if 'cell_cycle_stage' in df.columns:
             cca_df = df[self.cca_df_colnames]
-            self.logger.info(cca_df)
             cca_df = cca_df.merge(
                 posData.cca_df, how='outer', left_index=True, right_index=True,
                 suffixes=('_STORED', '_CURRENT')

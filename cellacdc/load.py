@@ -2287,7 +2287,7 @@ class select_exp_folder:
             is_prepped = False
             are_zslices_selected = False
             pos_path = os.path.join(exp_path, pos)
-            images_path = f'{exp_path}/{pos}/Images'
+            images_path = os.path.join(pos_path, 'Images')
             filenames = myutils.listdir(images_path)
             for filename in filenames:
                 if filename.endswith('dataPrepROIs_coords.csv'):
