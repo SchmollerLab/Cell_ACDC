@@ -29,7 +29,50 @@ class ConcatWin(NewThreadMultipleExpBaseUtil):
         self.worker.sigAborted.connect(self.workerAborted)
         self.worker.sigAskAppendName.connect(self.askAppendName)
         self.worker.sigSetMeasurements.connect(self.askSetMeasurements)
+        self.worker.sigAskCopyCca.connect(self.askCopyCcaFromAcdcOutput)
         super().runWorker(self.worker)
+    
+    def askCopyCcaFromAcdcOutput(self, images_path):
+        acdc_output_tables = []
+        for file in myutils.listdir(images_path):
+            if not file.endswith('.csv'):
+                continue
+            
+            idx = file.find('acdc_output') == -1
+            if idx:
+                continue
+            
+            acdc_output_tables.append(file[idx:])
+        
+        if not acdc_output_tables:
+            self.worker.waitCond.wakeAll()
+            return
+        
+        txt = html_utils.paragraph(
+            'Do you want to <b>copy cell cycle annotations</b><br>'
+            'from one of the tables below?<br><br>'
+            'If yes, please select from which table you want to copy from:'
+        )
+        noButton = widgets.noPushButton('No, do not copy')
+        selectTableNameWin = widgets.QDialogListbox(
+            'Copy cell cycle annotations?', txt,
+            acdc_output_tables, multiSelection=False, parent=self, 
+            additionalButtons=(noButton,)
+        )
+        noButton.clicked.connect(selectTableNameWin.ok_cb)
+        selectTableNameWin.exec_()
+        selectedTableNames = selectTableNameWin.selectedItemsText
+        if selectTableNameWin.cancel or not selectedTableNames:
+            self.worker.abort = True
+            self.worker.waitCond.wakeAll()
+            return
+
+        if selectTableNameWin.clickedButton == noButton:
+            self.worker.waitCond.wakeAll()
+            return
+        
+        self.worker.setAcdcOutputEndname(selectedTableNames[0])        
+        self.worker.waitCond.wakeAll()
     
     def askSetMeasurements(self, kwargs):
         loadedChNames = kwargs['loadedChNames']

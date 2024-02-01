@@ -15841,8 +15841,7 @@ class guiWin(QMainWindow):
         ]
         self.cca_df_default_values = list(base_cca_dict.values())
         self.cca_df_int_cols = [
-            col for col in cca_df_colnames 
-            if isinstance(base_cca_dict[col], int)
+            col for col in cca_df_colnames if type(base_cca_dict[col]) == int
         ]
         self.cca_df_bool_col = [
             col for col in cca_df_colnames 
@@ -17007,7 +17006,7 @@ class guiWin(QMainWindow):
                                 df['is_history_known'] = True
                             if 'corrected_assignment' not in df.columns:
                                 df['corrected_assignment'] = True
-                            df = df.drop(labels=self.cca_df_colnames, axis=1)
+                            df = df.drop(columns=self.cca_df_colnames)
                         else:
                             # Convert to ints since there were NaN
                             cols = self.cca_df_int_cols

@@ -34,7 +34,7 @@ from . import transformation
 from .path import copy_or_move_tree
 from . import features
 from . import core
-from . import cca_df_colnames
+from . import cca_df_colnames, lineage_tree_cols
 
 DEBUG = False
 
@@ -92,6 +92,7 @@ class signals(QObject):
     sigInitInnerPbar = Signal(int)
     sigUpdateInnerPbar = Signal(int)
     sigSelectFile = Signal(str, str, str)
+    sigAskCopyCca = Signal(str)
 
 class AutoPilotWorker(QObject):
     finished = Signal()
@@ -3737,6 +3738,7 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
             self._final_ext = '.csv'
         elif format.startswith('XLS'):
             self._final_ext = '.xlsx'
+        self.acdcOutputEndname = None
     
     def emitSetMeasurements(self, kwargs):
         self.mutex.lock()
@@ -3751,6 +3753,43 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
 
+    def emitAskCopyCca(self, images_path):
+        self.mutex.lock()
+        self.signals.sigAskCopyCca.emit(images_path)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+    
+    def setAcdcOutputEndname(self, acdcOutputEndname):
+        self.acdcOutputEndname = acdcOutputEndname
+    
+    def getAcdcDf(self, images_path):
+        if self.acdcOutputEndname is None:
+            return
+        
+        for file in myutils.listdir(images_path):
+            if not file.endswith(self.acdcOutputEndname):
+                continue
+            
+            filepath = os.path.join(images_path, file)
+            acdc_df = pd.read_csv(filepath, index_col=['frame_i', 'Cell_ID'])
+            return acdc_df
+    
+    def copyCcaColsFromAcdcDf(self, df, acdc_df):
+        if acdc_df is None:
+            return df
+        
+        for col in cca_df_colnames:
+            if col not in acdc_df.columns:
+                continue
+            df[col] = acdc_df[col]
+        
+        for col in lineage_tree_cols:
+            if col not in acdc_df.columns:
+                continue
+            df[col] = acdc_df[col]
+        
+        return df
+    
     @worker_exception_handler
     def run(self):
         from spotmax import DFs_FILENAMES
@@ -3792,6 +3831,15 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                     self.sigAborted.emit()
                     return
 
+                images_path = os.path.join(exp_path, pos, 'Images')
+                if p == 0:
+                    self.emitAskCopyCca(images_path)
+                    if self.abort:
+                        self.sigAborted.emit()
+                        return
+                
+                acdc_df = self.getAcdcDf(images_path)
+                
                 self.logger.log(
                     f'Processing experiment n. {i+1}/{tot_exp}, '
                     f'{pos} ({p+1}/{tot_pos})'
@@ -3831,8 +3879,12 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                         df_spots = spotmax.io.load_spots_table(
                             spotmax_output_path, df_spots_filename
                         )
+                        df_spots = self.copyCcaColsFromAcdcDf(df_spots, acdc_df)
                         df_aggregated = pd.read_csv(
                             aggr_filepath, index_col=['frame_i', 'Cell_ID']
+                        )
+                        df_aggregated = self.copyCcaColsFromAcdcDf(
+                            df_aggregated, acdc_df
                         )
                         key = (run, analysis_step, desc, ext_spots)
                         if key not in dfs_spots:
@@ -3863,7 +3915,7 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                 run, analysis_step, desc, _ = key
                 filename = (
                     f'multipos_{run}{analysis_step}{desc}'
-                    f'_aggregated_{self._final_ext}'
+                    f'_aggregated{self._final_ext}'
                 )
                 spotmax.io.save_concat_dfs(
                     dfs, pos_keys, allpos_folderpath, filename, self._final_ext
