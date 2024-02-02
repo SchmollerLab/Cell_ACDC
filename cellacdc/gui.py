@@ -8701,7 +8701,7 @@ class guiWin(QMainWindow):
             )
 
     def annotateDivisionFutureFramesSwapMothers(
-            self, cca_df_at_future_division, correct_mothID, frame_i
+            self, cca_df_at_future_division, mothIDofDisappearedBud, frame_i
         ):
         """This method is called as part of `guiWin.swapMothers`. 
         
@@ -8713,28 +8713,42 @@ class guiWin(QMainWindow):
         ----------
         cca_df_at_future_division : pd.DataFrame
             _description_
-        correct_mothID : int
-            Mother ID to assign division
+        mothIDofDisappearedBud : int
+            Mother ID of the disappeared bud
         frame_i : int
             Frame since when the mother ID stops having the correct bud because 
             the correct bud was assigned as divided from the wrong mother
         """        
         posData = self.data[self.pos_i]
         
-        wrongBudID = cca_df_at_future_division.at[
-            correct_mothID, 'relative_ID'
+        relativeIDofMothID = cca_df_at_future_division.at[
+            mothIDofDisappearedBud, 'relative_ID'
         ]
+        if relativeIDofMothID not in cca_df_at_future_division.index:
+            # Also wrong bud ID disappeared
+            return
+        
+        relativeIDofMothIDrelationship = cca_df_at_future_division.at[
+            relativeIDofMothID, 'relationship'
+        ]
+        if relativeIDofMothIDrelationship != 'bud':
+            # The wrong bud ID is a cell in G1 from future cycle --> 
+            # the actual wrong bud ID disappeared too.
+            return
+        
+        wrongBudID = relativeIDofMothID
+        
         self.annotateDivision(
-            cca_df_at_future_division, correct_mothID, wrongBudID, 
+            cca_df_at_future_division, mothIDofDisappearedBud, wrongBudID, 
             frame_i=frame_i
         )
         cca_df_at_future_division.at[
-            correct_mothID, 'corrected_assignment'] = True
+            mothIDofDisappearedBud, 'corrected_assignment'] = True
         self.store_cca_df(
             frame_i=frame_i, cca_df=cca_df_at_future_division, autosave=False
         )
         
-        ccaStatusToRestore = cca_df_at_future_division.loc[correct_mothID]
+        ccaStatusToRestore = cca_df_at_future_division.loc[mothIDofDisappearedBud]
         for future_i in range(frame_i+1, posData.SizeT):            
             # Get cca_df for ith frame from allData_li
             cca_df_i = self.get_cca_df(frame_i=future_i, return_df=True)
@@ -8742,13 +8756,13 @@ class guiWin(QMainWindow):
                 # ith frame was not visited yet
                 break
             
-            ccs = cca_df_i.at[correct_mothID, 'cell_cycle_stage']
+            ccs = cca_df_i.at[mothIDofDisappearedBud, 'cell_cycle_stage']
             if ccs == 'G1':
                 # Mother cell in G1 again, stop correcting
                 break
             
-            cca_df_i.loc[correct_mothID] = ccaStatusToRestore
-            cca_df_i.at[correct_mothID, 'corrected_assignment'] = True
+            cca_df_i.loc[mothIDofDisappearedBud] = ccaStatusToRestore
+            cca_df_i.at[mothIDofDisappearedBud, 'corrected_assignment'] = True
             
             self.store_cca_df(frame_i=future_i, cca_df=cca_df_i, autosave=False)            
     
@@ -9503,10 +9517,6 @@ class guiWin(QMainWindow):
                 self.store_cca_df(
                     frame_i=past_i, cca_df=cca_df_i, autosave=False
                 )
-        
-        printl(
-            posData.allData_li[34]['acdc_df'].loc[[1, 97], ['cell_cycle_stage', 'relative_ID']]
-        )
         
         # Correct future frames
         corrected_budIDs_future = set()
