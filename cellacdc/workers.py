@@ -4373,6 +4373,7 @@ class CcaIntegrityCheckerWorker(QObject):
     def check(self, posData):    
         self.isChecking = True
         checkpoints = (
+            '_check_lonely_cells_in_S',
             '_check_equality_num_mothers_buds_in_S',
             '_check_mothers_multiple_buds',
             '_check_buds_gen_num_zero',

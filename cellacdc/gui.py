@@ -9428,6 +9428,8 @@ class guiWin(QMainWindow):
         if msg.cancel:
             return
         
+        posData = self.data[self.pos_i]
+        
         self.swapMothers()
     
     @exception_handler
@@ -9466,6 +9468,8 @@ class guiWin(QMainWindow):
         corrected_budIDs_past = set()
         for past_i in range(posData.frame_i-1, -1, -1):
             
+            # printl(past_i)
+            
             if len(corrected_budIDs_past) == 2:
                 break
             
@@ -9475,11 +9479,10 @@ class guiWin(QMainWindow):
             
                 if correct_budID in corrected_budIDs_past:
                     continue
-                
+
                 if correct_budID not in cca_df_i.index:
                     # Bud does not exist anymore in the past
-                    if correct_budID not in corrected_budIDs_past:
-                        corrected_budIDs_past.add(correct_budID)
+                    corrected_budIDs_past.add(correct_budID)
                     
                     if len(corrected_budIDs_past) < 2:
                         self.restoreMotherToBeforeWrongBudWasAssignedToIt(
@@ -9493,11 +9496,17 @@ class guiWin(QMainWindow):
                 cca_df_i.at[correct_mothID, 'corrected_assignment'] = True
                 
                 # Set mother cell cycle stage to S in case it is not
-                cca_df_i.at[correct_mothID, 'cell_cycle_stage'] = 'S'
+                if cca_df_i.at[correct_mothID, 'cell_cycle_stage'] == 'G1':
+                    cca_df_i.at[correct_mothID, 'cell_cycle_stage'] = 'S'
+                    cca_df_i.at[correct_mothID, 'generation_num'] -= 1
             
                 self.store_cca_df(
                     frame_i=past_i, cca_df=cca_df_i, autosave=False
                 )
+        
+        printl(
+            posData.allData_li[34]['acdc_df'].loc[[1, 97], ['cell_cycle_stage', 'relative_ID']]
+        )
         
         # Correct future frames
         corrected_budIDs_future = set()
@@ -9544,30 +9553,16 @@ class guiWin(QMainWindow):
         self.updateAllImages()
     
     def restoreMotherToBeforeWrongBudWasAssignedToIt(
-            self, correct_mothID, cca_df_at_correct_bud_ID_disappearance, 
+            self, mothIDofDisappearedBud, 
+            cca_df_at_correct_bud_ID_disappearance, 
             frame_i
         ):
         """This method is called as part of `guiWin.swapMothers`. 
-        
-        It restores the mother cell cycle annotations to the status it had 
-        before the wrong bud was assigned to it. 
-        
-        We need to do it only if the swapMothers past frames loop is still 
-        iterating to correct the other bud
-        
-        When we swap mothers in the past frames it can be that the correct bud 
-        ID stops existing (before emergence). In this case the correct mother 
-        still has the wrong bud assigned to ID so we need to restore the status 
-        it had before the wrong bud was assigned to it. 
-        
-        To determine the status we go back until the wrong bud disappear. That 
-        is the frame before the wrong bud was assigned to the mother we want to 
-        correct. This is the status we want to restore.
 
         Parameters
         ----------
-        correct_mothID : int
-            ID of the correct mother
+        mothIDofDisappearedBud : int
+            Mother ID of the disappeared bud
         cca_df_at_correct_bud_ID_disappearance : pd.DataFrame
             Cell cycle annotations DataFrame when the correct bud ID stopped 
             existing (before emergence)
@@ -9577,27 +9572,58 @@ class guiWin(QMainWindow):
         
         Note
         ----
+        It restores the mother cell cycle annotations to the status it had 
+        before the wrong bud was assigned to it. 
+        
+        We need to do it only if the swapMothers past frames loop is still 
+        iterating to correct the other bud.
+        
+        We also need to do this only if the wrong bud ID is actually a bud.
+        
+        When we swap mothers in the past frames it can be that the correct bud 
+        ID stops existing (before emergence). In this case the correct mother 
+        still has the wrong bud assigned to ID so we need to restore the status 
+        it had before the wrong bud was assigned to it. 
+        
+        To determine the status we go back until the wrong bud disappear. That 
+        is the frame before the wrong bud was assigned to the mother we want to 
+        correct. This is the status we want to restore.
+        
         When we go back in time it could be that the wrong bud never disappears 
         becuase it is already emerged at frame 0. In this case the status we 
         want to restore at is the default G1 status at frame 0. 
-        """        
-        wrongBudID = cca_df_at_correct_bud_ID_disappearance.at[
-            correct_mothID, 'relative_ID'
+        """      
+        relativeIDofMothID = cca_df_at_correct_bud_ID_disappearance.at[
+            mothIDofDisappearedBud, 'relative_ID'
         ]
+        if relativeIDofMothID not in cca_df_at_correct_bud_ID_disappearance.index:
+            # Also wrong bud ID disappeared
+            return
+        
+        relativeIDofMothIDrelationship = cca_df_at_correct_bud_ID_disappearance.at[
+            relativeIDofMothID, 'relationship'
+        ]
+        if relativeIDofMothIDrelationship != 'bud':
+            # The wrong bud ID is a cell in G1 from previous cycle --> 
+            # the actual wrong bud ID disappeared too.
+            return
+        
+        wrongBudID = relativeIDofMothID
+        
         mothCcaBeforeWrongBudID = base_cca_dict
         # Search in the past for status of mother before wrong bud emerged
         for past_i in range(frame_i, -1, -1):
             cca_df_i = self.get_cca_df(frame_i=past_i, return_df=True)
             if wrongBudID not in cca_df_i.index:
-                mothCcaBeforeWrongBudID = cca_df_i.loc[correct_mothID]
+                mothCcaBeforeWrongBudID = cca_df_i.loc[mothIDofDisappearedBud]
                 break
-        
+               
         # Restore in past frames the correct mother status
         for past_i in range(frame_i, -1, -1):
             cca_df_i = self.get_cca_df(frame_i=past_i, return_df=True)
             if wrongBudID in cca_df_i.index:
-                cca_df_i.loc[correct_mothID] = mothCcaBeforeWrongBudID
-                cca_df_i.at[correct_mothID, 'corrected_assignment'] = True
+                cca_df_i.loc[mothIDofDisappearedBud] = mothCcaBeforeWrongBudID
+                cca_df_i.at[mothIDofDisappearedBud, 'corrected_assignment'] = True
                 self.store_cca_df(
                     frame_i=past_i, cca_df=cca_df_i, autosave=False
                 )
