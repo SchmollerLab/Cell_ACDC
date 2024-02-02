@@ -6646,7 +6646,7 @@ class guiWin(QMainWindow):
                 self.onMotherNotInG1(ID)
                 self.assignBudMothButton.setChecked(True)
             else:
-                self.assignBudMoth()
+                self.annotateBudToDifferentMother()
 
             if not self.assignBudMothButton.findChild(QAction).isChecked():
                 self.assignBudMothButton.setChecked(False)
@@ -9247,7 +9247,7 @@ class guiWin(QMainWindow):
         return cca_status_before_bud_emerg
         
 
-    def assignBudMoth(self):
+    def annotateBudToDifferentMother(self):
         """
         This function is used for correcting automatic mother-bud assignment.
 
@@ -9442,23 +9442,132 @@ class guiWin(QMainWindow):
         if msg.cancel:
             return
         
-        posData = self.data[self.pos_i]
+        pairings = self.checkSwapMothersEligibility()
+        if pairings is None:
+            self.logger.info('Swapping mothers is not possible.')
+            return
         
-        self.swapMothers()
+        self.swapMothers(*pairings)
     
-    @exception_handler
-    def swapMothers(self):
+    def _checkBudFutureNoDivision(self, budID, start_frame_i):
         posData = self.data[self.pos_i]
         
-        # Store cca_df for undo action
-        undoId = uuid.uuid4()
-        self.storeUndoRedoCca(posData.frame_i, posData.cca_df, undoId)
+        future_i = start_frame_i
+        for future_i in range(start_frame_i, posData.SizeT):
+            # Get cca_df for ith frame from allData_li
+            cca_df_i = self.get_cca_df(frame_i=future_i, return_df=True)
+            if cca_df_i is None:
+                # ith frame was not visited yet
+                return
+            
+            if budID not in cca_df_i.index:
+                # Bud disappears in the future --> fine
+                return
+            
+            ccs = cca_df_i.at[budID, 'cell_cycle_stage']
+            if ccs == 'G1':
+                return future_i, cca_df_i.at[budID, 'relative_ID']
+    
+    def warnBudAnnotatedDividedInFuture(
+            self, budID, motherID, future_division_frame_i
+        ):
+        posData = self.data[self.pos_i]
+        
+        txt = html_utils.paragraph(f"""
+            Bud ID {budID} is annotated as divided from mother ID at frame n. 
+            {future_division_frame_i+1},<br>
+            therefore it is not possible to swap mother cells.<br><br>
+            We recommend reinitializing cell cycle annotations on any frame<br>
+            between frames number {posData.frame_i+1} and 
+            {future_division_frame_i} before attempting to swap mother 
+            cells.<br><br>
+            Thank you for your patience!
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(self, 'Swap mothers not possible', txt)
+        return
+    
+    def _checkMothInG1beforeBudEmergence(self, motherID, budID, start_frame_i):
+        """Check that mother is in G1 on the frame before bud emergence
+
+        Parameters
+        ----------
+        motherID : int
+            ID of mother cell
+        budID : int
+            ID of bud
+        start_frame_i : int
+            Frame index from which to start checking in the past
+        """        
+        for past_i in range(start_frame_i, -1, -1):
+            cca_df_i = self.get_cca_df(frame_i=past_i, return_df=True)            
+            if budID not in cca_df_i.index:
+                if cca_df_i.at[motherID, 'cell_cycle_stage'] != 'G1':
+                    return past_i
+                break
+    
+    def warnMotherNotAtLeastOneFrameG1(self, budID, motherID, frame_no_G1):
+        posData = self.data[self.pos_i]
+        
+        txt = html_utils.paragraph(f"""
+            Assigning bud ID {budID} to cell ID {motherID} cannot be 
+            done because cell ID {motherID} is not in G1 at frame n. 
+            {frame_no_G1}.<br><br>
+            This would result in no G1 phase between previous cell cycle of 
+            cell ID {motherID} and current one. 
+            This is unfortunately not allowed.<br><br>
+            One possible solution is to annotate division on cell ID 
+            {motherID} on any frame before frame n. {frame_no_G1}.<br><br>
+            Thank you for your patience!
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(self, 'Swap mothers not possible', txt)
+        return
+    
+    def checkSwapMothersEligibility(self):
+        posData = self.data[self.pos_i]
         
         lab2D = self.get_2Dlab(posData.lab)
         budID = lab2D[self.yClickBud, self.xClickBud]
         otherMothID = lab2D[self.yClickMoth, self.xClickMoth]
         mothID = posData.cca_df.at[budID, 'relative_ID']
         otherBudID = posData.cca_df.at[otherMothID, 'relative_ID']
+        
+        for _budID in (budID, otherBudID):
+            result = self._checkBudFutureNoDivision(
+                _budID, posData.frame_i
+            )
+            if result is None:
+                continue
+            
+            self.warnBudAnnotatedDividedInFuture(_budID, *result)
+            return
+        
+        correct_pairings = {
+            otherBudID: mothID,
+            budID: otherMothID
+        }
+        for correctBudID, correctMothID in correct_pairings.items():
+            frame_no_G1 = self._checkMothInG1beforeBudEmergence(
+                correctMothID, correctBudID, posData.frame_i
+            )
+            if frame_no_G1 is None:
+                continue
+            
+            self.warnMotherNotAtLeastOneFrameG1(
+                correctBudID, correctMothID, frame_no_G1
+            )
+            return
+        
+        return budID, otherBudID, otherMothID, mothID
+    
+    @exception_handler
+    def swapMothers(self, budID, otherBudID, otherMothID, mothID):
+        posData = self.data[self.pos_i]
+        
+        # Store cca_df for undo action
+        undoId = uuid.uuid4()
+        self.storeUndoRedoCca(posData.frame_i, posData.cca_df, undoId)
         
         self.logger.info(
             f'Swapping assignments (requested at frame n. {posData.frame_i+1}):\n'
@@ -9557,6 +9666,11 @@ class guiWin(QMainWindow):
                 cca_df_i.at[correct_mothID, 'relative_ID'] = correct_budID
                 cca_df_i.at[correct_budID, 'corrected_assignment'] = True
                 cca_df_i.at[correct_mothID, 'corrected_assignment'] = True
+                
+                # Set mother cell cycle stage to S in case it is not
+                if cca_df_i.at[correct_mothID, 'cell_cycle_stage'] == 'G1':
+                    cca_df_i.at[correct_mothID, 'cell_cycle_stage'] = 'S'
+                    cca_df_i.at[correct_mothID, 'generation_num'] -= 1
             
             self.store_cca_df(frame_i=future_i, cca_df=cca_df_i, autosave=False)
         
