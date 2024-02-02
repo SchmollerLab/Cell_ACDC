@@ -17298,8 +17298,8 @@ class guiWin(QMainWindow):
 
         # Reset will divide to 0 in the past S frames where division 
         # has been annotated
-        for frame_i in range(from_frame_i-1, -1, -1):
-            past_cca_df = self.get_cca_df(frame_i=frame_i, return_df=True)
+        for past_frame_i in range(from_frame_i-1, -1, -1):
+            past_cca_df = self.get_cca_df(frame_i=past_frame_i, return_df=True)
             if past_cca_df is None:
                 return
             
@@ -17319,7 +17319,7 @@ class guiWin(QMainWindow):
             past_cca_df = past_cca_df.reset_index().set_index('Cell_ID')
             
             self.store_cca_df(
-                cca_df=past_cca_df, frame_i=frame_i, autosave=False
+                cca_df=past_cca_df, frame_i=past_frame_i, autosave=False
             )
     
     def remove_future_cca_df(self, from_frame_i, reset_will_divide=True):
@@ -17450,12 +17450,11 @@ class guiWin(QMainWindow):
         
         if 'cell_cycle_stage' in acdc_df.columns:
             # Cell cycle info already present --> overwrite with new
-            df = acdc_df
-            df[self.cca_df_colnames] = cca_df
-            posData.allData_li[i]['acdc_df'] = df.copy()
+            acdc_df[self.cca_df_colnames] = cca_df[self.cca_df_colnames]
+            posData.allData_li[i]['acdc_df'] = acdc_df.copy()
         elif cca_df is not None:
             df = acdc_df.join(cca_df, how='left')
-            posData.allData_li[i]['acdc_df'] = df.copy()
+            posData.allData_li[i]['acdc_df'] = acdc_df.copy()
         
         if autosave:
             self.enqAutosave()
