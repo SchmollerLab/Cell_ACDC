@@ -61,12 +61,12 @@ try:
     spotmax_logo_path = os.path.join(
         spotmax_filepath, 'resources', 'spotMAX_logo.svg'
     )
-    SPOTMAX = True
+    SPOTMAX_INSTALLED = True
 except Exception as e:
     # traceback.print_exc()
     if not isinstance(e, ModuleNotFoundError):
         traceback.print_exc()
-    SPOTMAX = False
+    SPOTMAX_INSTALLED = False
 
 def restart():
     QCoreApplication.quit()
@@ -182,7 +182,7 @@ class mainWin(QMainWindow):
         self.guiButton = guiButton
         modulesButtonsGroupBoxLayout.addWidget(guiButton)
 
-        if SPOTMAX:
+        if SPOTMAX_INSTALLED:
             spotmaxButton = QPushButton('  4. Launch spotMAX...')
             spotmaxButton.setIcon(QIcon(spotmax_logo_path))
             spotmaxButton.setIconSize(QSize(iconSize,iconSize))
@@ -420,7 +420,8 @@ class mainWin(QMainWindow):
         
         concatMenu = utilsMenu.addMenu('Concatenate')
         concatMenu.addAction(self.concatAcdcDfsAction)    
-        concatMenu.addAction(self.concatSpotmaxDfsAction) 
+        if SPOTMAX_INSTALLED:
+            concatMenu.addAction(self.concatSpotmaxDfsAction) 
 
         utilsMenu.addAction(self.toSymDivAction)                 
         utilsMenu.addAction(self.batchConverterAction)
@@ -736,11 +737,12 @@ class mainWin(QMainWindow):
         )
         # self.TiffToHDFAction = QAction('Convert .tif file(s) to .h5py...')
         self.concatAcdcDfsAction = QAction(
-            'Concatenate acdc output tables from multiple Positions...'
+            'Concatenate acdc output tables from multiple Positions and experiments...'
         )
-        self.concatSpotmaxDfsAction = QAction(
-            'Concatenate spotMAX output tables from multiple Positions...'
-        )
+        if SPOTMAX_INSTALLED:
+            self.concatSpotmaxDfsAction = QAction(
+                'Concatenate spotMAX output tables from multiple Positions and experiments...'
+            )
         self.calcMetricsAcdcDf = QAction(
             'Compute measurements for one or more experiments...'
         )
@@ -775,9 +777,10 @@ class mainWin(QMainWindow):
         )
         self.alignAction.triggered.connect(self.launchAlignUtil)
         self.concatAcdcDfsAction.triggered.connect(self.launchConcatUtil)
-        self.concatSpotmaxDfsAction.triggered.connect(
-            self.launchConcatSpotmaxUtil
-        )
+        if SPOTMAX_INSTALLED:
+            self.concatSpotmaxDfsAction.triggered.connect(
+                self.launchConcatSpotmaxUtil
+            )
         self.npzToNpyAction.triggered.connect(self.launchConvertFormatUtil)
         self.npzToTiffAction.triggered.connect(self.launchConvertFormatUtil)
         self.TiffToNpzAction.triggered.connect(self.launchConvertFormatUtil)
