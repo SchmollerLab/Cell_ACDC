@@ -248,6 +248,14 @@ lineage_tree_cols = [
     'sister_ID_tree'
 ]
 
+lineage_tree_cols_std_val = [
+    -1,
+    -1,
+    -1,
+    -1,
+    -1
+]
+
 base_acdc_df = {
     'is_cell_dead': False,
     'is_cell_excluded': False,

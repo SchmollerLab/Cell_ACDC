@@ -69,7 +69,7 @@ from . import qrc_resources
 
 # Custom modules
 from . import exception_handler
-from . import base_cca_df, graphLayoutBkgrColor, darkBkgrColor
+from . import base_cca_df, lineage_tree_cols, lineage_tree_cols_std_val, graphLayoutBkgrColor, darkBkgrColor
 from . import load, prompts, apps, workers, html_utils
 from . import core, myutils, dataPrep, widgets
 from . import _warnings, issues_url
@@ -85,7 +85,7 @@ from .trackers.CellACDC import CellACDC_tracker
 from .cca_functions import _calc_rot_vol
 from .myutils import exec_time, setupLogger
 from .help import welcome, about
-
+from .trackers.CellACDC_normal_division.CellACDC_normal_division_tracker import normal_division_lineage_tree
 np.seterr(invalid='ignore')
 
 if os.name == 'nt':
@@ -183,6 +183,12 @@ def resetViewRange(func):
         QTimer.singleShot(200, self.resetRange)
         return result
     return inner_function
+
+def get_obj_by_label(rp, target_label):
+    for obj in rp:
+        if obj.label == target_label:
+            return obj
+    return None
 
 class relabelSequentialWorker(QObject):
     finished = Signal()
@@ -1761,7 +1767,8 @@ class guiWin(QMainWindow):
             'Segmentation and Tracking',
             'Cell cycle analysis',
             'Viewer',
-            'Custom annotations'
+            'Custom annotations',
+            'Normal division: Lineage tree',
         ]
         self.modeActionGroup = QActionGroup(self.modeMenu)
         for mode in self.modeItems:
@@ -7597,7 +7604,7 @@ class guiWin(QMainWindow):
         self.df_settings.at['pxMode', 'value'] = int(checked)
         self.updateAllImages()
 
-    def relabelSequentialCallback(self):
+    def relabelSequentialCallback(self): 
         mode = str(self.modeComboBox.currentText())
         if mode == 'Viewer' or mode == 'Cell cycle analysis':
             self.startBlinkingModeCB()
@@ -7737,7 +7744,7 @@ class guiWin(QMainWindow):
         self.navSpinBox.setValue(next_frame_i+1)
         self.framesScrollBarReleased()
 
-    def workerProgress(self, text, loggerLevel='INFO'):
+    def workerProgress(self, text, loggerLevel='INFO'): # used in cca and lin tree
         if self.progressWin is not None:
             self.progressWin.logConsole.append(text)
         self.logger.log(getattr(logging, loggerLevel), text)
@@ -10658,6 +10665,15 @@ class guiWin(QMainWindow):
             action.setVisible(enabled)
             button.setEnabled(enabled)
 
+    # def setEnabledCcaToolbar(self, enabled=False):
+    #     self.manuallyEditCcaAction.setDisabled(False)
+    #     self.viewCcaTableAction.setDisabled(False)
+    #     self.ccaToolBar.setVisible(enabled)
+    #     for action in self.ccaToolBar.actions():
+    #         button = self.ccaToolBar.widgetForAction(action)
+    #         action.setVisible(enabled)
+    #         button.setEnabled(enabled)
+
     def setEnabledEditToolbarButton(self, enabled=False):
         for action in self.segmActions:
             action.setEnabled(enabled)
@@ -10834,6 +10850,22 @@ class guiWin(QMainWindow):
             self.reconnectUndoRedo()
             self.setEnabledSnapshotMode()
             self.doCustomAnnotation(0)
+        elif mode == 'Normal division: Lineage tree': # Mode activation for lineage tree
+            # self.startLinTreeIntegrityCheckerWorker() # need to replace (postponed)
+            proceed = self.initLinTree()
+            if proceed:
+                self.applyDelROIs()
+            self.modeToolBar.setVisible(True)
+            self.realTimeTrackingToggle.setDisabled(True)
+            self.realTimeTrackingToggle.label.setDisabled(True)
+            if proceed:
+                self.setEnabledEditToolbarButton(enabled=False)
+                if self.isSnapshot:
+                    self.editToolBar.setVisible(True)
+                # self.setEnabledCcaToolbar(enabled=True) # need to replace
+                self.removeAlldelROIsCurrentFrame()
+                self.setAnnotOptionsLin_treeMode()
+                self.clearGhost()
 
     def setEnabledSnapshotMode(self):
         posData = self.data[self.pos_i]
@@ -14392,31 +14424,44 @@ class guiWin(QMainWindow):
             if not proceed:
                 return
 
-            if posData.frame_i <= 0 and mode == 'Cell cycle analysis':
-                # posData.IDs = [obj.label for obj in posData.rp]
-                editCcaWidget = apps.editCcaTableWidget(
-                    posData.cca_df, posData.SizeT, parent=self,
-                    title='Initialize cell cycle annotations'
-                )
-                editCcaWidget.sigApplyChangesFutureFrames.connect(
-                    self.applyManualCcaChangesFutureFrames
-                )
-                editCcaWidget.exec_()
-                if editCcaWidget.cancel:
-                    return
-                if posData.cca_df is not None:
-                    is_cca_same_as_stored = (
-                        (posData.cca_df == editCcaWidget.cca_df).all(axis=None)
+            if posData.frame_i <= 0:
+                if mode == 'Cell cycle analysis':
+                    # posData.IDs = [obj.label for obj in posData.rp]
+                    editCcaWidget = apps.editCcaTableWidget(
+                        posData.cca_df, posData.SizeT, parent=self,
+                        title='Initialize cell cycle annotations'
                     )
-                    if not is_cca_same_as_stored:
-                        reinit_cca = self.warnEditingWithCca_df(
-                            'Re-initialize cell cyle annotations first frame',
-                            return_answer=True
+                    editCcaWidget.sigApplyChangesFutureFrames.connect(
+                        self.applyManualCcaChangesFutureFrames
+                    )
+                    editCcaWidget.exec_()
+                    if editCcaWidget.cancel:
+                        return
+                    if posData.cca_df is not None:
+                        is_cca_same_as_stored = (
+                            (posData.cca_df == editCcaWidget.cca_df).all(axis=None)
                         )
-                        if reinit_cca:
-                            self.remove_future_cca_df(0)
-                posData.cca_df = editCcaWidget.cca_df
-                self.store_cca_df()
+                        if not is_cca_same_as_stored:
+                            reinit_cca = self.warnEditingWithCca_df(
+                                'Re-initialize cell cyle annotations first frame',
+                                return_answer=True
+                            )
+                            if reinit_cca:
+                                self.remove_future_cca_df(0)
+                    posData.cca_df = editCcaWidget.cca_df
+                    self.store_cca_df()
+                if mode == 'Normal division: Lineage tree':
+                    # editTreeWidget = apps.editlin_treeTableWidget(... still need to implement
+                    self.lineage_tree = normal_division_lineage_tree(posData.segm_data[posData.frame_i],) 
+                                                                    #  max_daughter = self.max_daughter,
+                                                                    #  min_daughter = self.min_daughter,
+                                                                    #  IoA_thresh_daughter = self.IoA_thresh_daughter)
+
+            # elif posData.frame_i <= 0 and mode == 'Normal division: Lineage tree':
+            #     editTreeWidget = apps.editlin_treeTableWidget(
+            #         posData.cca_df, posData.SizeT, parent=self,
+            #         title='Initialize cell cycle annotations'
+            #         )
 
             # Store data for current frame
             if mode != 'Viewer':
@@ -14469,6 +14514,9 @@ class guiWin(QMainWindow):
             if posData.frame_i > self.last_cca_frame_i:
                 self.navigateScrollBar.setMaximum(posData.frame_i+1)
                 self.navSpinBox.setMaximum(posData.frame_i+1)
+        elif mode == 'Normal division: Lineage tree':
+            self.navigateScrollBar.setMaximum(posData.frame_i+1)
+            self.navSpinBox.setMaximum(posData.frame_i+1)
 
     def prev_frame(self):
         posData = self.data[self.pos_i]
@@ -15754,6 +15802,22 @@ class guiWin(QMainWindow):
             'is_history_known',
             'corrected_assignment'
         ]
+
+        self.lin_tree_df_colnames = list(base_cca_df.keys()) + lineage_tree_cols
+        # self.lin_tree_df_dtypes = [ #dk if i need this, for now ignored
+        #     str, int, int, str, int, int, bool, bool, int
+        # ]
+        self.lin_tree_df_default_values = list(base_cca_df.values()) + lineage_tree_cols_std_val
+        self.lin_tree_df_int_cols = [
+            'generation_num',
+            'relative_ID',
+            'emerg_frame_i',
+            'division_frame_i'
+        ]
+        self.lin_tree_df_bool_col = [
+            'is_history_known',
+            'corrected_assignment'
+        ]
     
     def initMetricsToSave(self, posData):
         posData.setLoadedChannelNames()
@@ -15831,7 +15895,7 @@ class guiWin(QMainWindow):
             'regionprops': None,
             'labels': None,
             'acdc_df': None,
-            'delROIs_info': { 'rois': [], 'delMasks': [], 'delIDsROI': []},
+            'delROIs_info': {'rois': [], 'delMasks': [], 'delIDsROI': []},
             'IDs': []
         }
     
@@ -16260,22 +16324,37 @@ class guiWin(QMainWindow):
 
     @exception_handler
     def attempt_auto_cca(self, enforceAll=False):
-        posData = self.data[self.pos_i]
-        notEnoughG1Cells, proceed = self.autoCca_df(
-            enforceAll=enforceAll
-        )
-        if not proceed:
-            return notEnoughG1Cells, proceed
         mode = str(self.modeComboBox.currentText())
-        if posData.cca_df is None or mode.find('Cell cycle') == -1:
+        posData = self.data[self.pos_i]
+
+        if mode == 'Cell cycle analysis':
+            notEnoughG1Cells, proceed = self.autoCca_df(
+                enforceAll=enforceAll
+            )
+            if not proceed:
+                return notEnoughG1Cells, proceed
+            
+            # mode = str(self.modeComboBox.currentText())
+            if posData.cca_df is None: # ???
+                notEnoughG1Cells = False
+                proceed = True
+                return notEnoughG1Cells, proceed
+            if posData.cca_df.isna().any(axis=None):
+                raise ValueError('Cell cycle analysis table contains NaNs')
+            # self.checkMultiBudMoth()
+            self.checkMothersExcludedOrDead()
+            return notEnoughG1Cells, proceed
+
+        elif mode == 'Normal division: Lineage tree':
+            self.autoLinTree_df()
             notEnoughG1Cells = False
             proceed = True
             return notEnoughG1Cells, proceed
-        if posData.cca_df.isna().any(axis=None):
-            raise ValueError('Cell cycle analysis table contains NaNs')
-        # self.checkMultiBudMoth()
-        self.checkMothersExcludedOrDead()
-        return notEnoughG1Cells, proceed
+            
+        else: # ???
+            notEnoughG1Cells = False
+            proceed = True
+            return notEnoughG1Cells, proceed
 
     def highlightIDs(self, IDs, pen):
         pass
@@ -16362,6 +16441,67 @@ class guiWin(QMainWindow):
 
         posData.frame_i = current_frame_i
         self.get_data()
+
+    def initMissingFramesLinTree(self, last_lin_tree_frame_i, current_frame_i): # done need testing
+        """
+        Initializes lineage tree annotations of missing past frames. Largely same to initMissingFramesCca
+
+        Args:
+            last_lin_tree_frame_i (int): The index of the last lineage tree frame.
+            current_frame_i (int): The index of the current frame.
+
+        Returns:
+            None
+        """
+
+        self.logger.info(
+            'Initialising lineage tree annotations of missing past frames...'
+        )
+        posData = self.data[self.pos_i]
+        current_frame_i = posData.frame_i
+        
+        # Initialize empty lineage tree annotations for missing frames
+        annotated_lin_tree_dfs = []
+        for frame_i in range(last_lin_tree_frame_i+1):
+            acdc_df = posData.allData_li[frame_i]['acdc_df']
+            if 'generation_num_tree' in acdc_df.columns: # may need to change this, not exactly sure how df is initialized
+                continue
+            
+            acdc_df[self.lin_tree_df] = ''
+        
+        # Collect annotated lineage tree dataframes
+        annotated_lin_tree_dfs = [
+            posData.allData_li[i]['acdc_df'][self.lin_tree_df_colnames]
+            for i in range(last_lin_tree_frame_i+1)
+        ]
+        keys = range(last_lin_tree_frame_i+1)
+        names = ['frame_i', 'Cell_ID']
+        annotated_lin_tree_df = (
+            pd.concat(annotated_lin_tree_dfs, keys=keys, names=names)
+            .reset_index()
+            .set_index(['Cell_ID', 'frame_i'])
+            .sort_index()
+        )
+        
+        last_annotated_lin_tree_df = annotated_lin_tree_df.groupby(level=0).last()
+        lin_tree_df_colnames = self.lin_tree_df_colnames
+        pbar = tqdm(total=current_frame_i-last_lin_tree_frame_i+1, ncols=100)
+        
+        # Update current frames with lineage tree annotations
+        for frame_i in range(last_lin_tree_frame_i, current_frame_i+1):
+            posData.frame_i = frame_i
+            self.get_data(lin_tree=True)
+            lin_tree_df = self.getBaselin_tree_df()
+
+            idx = last_annotated_lin_tree_df.index.intersection(lin_tree_df.index)
+            lin_tree_df.loc[idx, lin_tree_df_colnames] = last_annotated_lin_tree_df.loc[idx]
+
+            self.store_lin_tree_df(lin_tree_df=lin_tree_df, frame_i=frame_i, autosave=False)
+            pbar.update()
+        pbar.close()
+
+        posData.frame_i = current_frame_i
+        self.get_data(lin_tree=True)
 
     def autoCca_df(self, enforceAll=False):
         """
@@ -16592,6 +16732,51 @@ class guiWin(QMainWindow):
         proceed = True
         return notEnoughG1Cells, proceed
 
+    def autoLinTree_df(self, enforceAll=False):
+        proceed = True
+        notEnoughG1Cells = False
+        posData = self.data[self.pos_i]
+        frame_i = posData.frame_i
+        mode = str(self.modeComboBox.currentText())
+
+        # Skip if not the right mode
+        if mode != 'Normal division: Lineage tree':
+            return notEnoughG1Cells, proceed
+
+        # Make sure that this is a visited frame in segmentation tracking mode
+        if posData.allData_li[frame_i]['labels'] is None: # may need to change this
+            proceed = self.warnFrameNeverVisitedSegmMode()
+            return notEnoughG1Cells, proceed
+        
+        lab = posData.allData_li[frame_i]['labels']
+        prev_lab = posData.allData_li[frame_i-1]['labels']
+        rp = posData.allData_li[frame_i]['regionprops']
+        prev_rp = posData.allData_li[frame_i-1]['regionprops']
+
+        self.lineage_tree.real_time_tree(frame_i, lab, prev_lab, rp=rp, prev_rp=prev_rp)
+
+        # printl(self.lineage_tree.lineage_list[-1])
+
+        lin_tree_df = self.lineage_tree.lineage_list[-1]
+        lin_tree_df_prev = self.lineage_tree.lineage_list[-2]
+   
+        if lin_tree_df.shape[0] > lin_tree_df_prev.shape[0]: # check if new cells have arrived
+            new_cells = lin_tree_df.index.difference(lin_tree_df_prev.index) # I could use this for the if already but this is probably faster for frames where nothing changes
+            for ax in (0, 1):
+                if not self.areMothBudLinesRequested(ax):
+                    continue
+                for ID in new_cells:
+                    curr_obj = get_obj_by_label(rp, ID)
+                    lin_tree_df_ID = lin_tree_df.loc[ID]
+
+                    lin_tree_df_mother_ID = lin_tree_df_prev.loc[lin_tree_df_ID["parent_ID_tree"]]
+                    mother_obj = get_obj_by_label(prev_rp, lin_tree_df_ID["parent_ID_tree"])
+
+                    emerg_frame_i = lin_tree_df_ID["emerg_frame_i"]
+                    isNew = emerg_frame_i == frame_i 
+
+                    self.drawObjLin_TreeMothBudLines(ax, curr_obj, mother_obj, isNew, ID=ID)
+
     def getObjBbox(self, obj_bbox):
         if self.isSegm3D and len(obj_bbox)==6:
             obj_bbox = (obj_bbox[1], obj_bbox[2], obj_bbox[4], obj_bbox[5])
@@ -16798,7 +16983,7 @@ class guiWin(QMainWindow):
         return editID_info
 
     @get_data_exception_handler
-    def get_data(self, debug=False):
+    def get_data(self, debug=False, lin_tree=False): # done need to test
         posData = self.data[self.pos_i]
         proceed_cca = True
         if posData.frame_i > 2:
@@ -16832,6 +17017,23 @@ class guiWin(QMainWindow):
                 )
                 proceed_cca = False
                 return proceed_cca, never_visited
+
+            elif str(self.modeComboBox.currentText()) == 'Normal division: Lineage tree':
+                # Warn that we are visiting a frame that was never segm-checked
+                # on cell cycle analysis mode
+                msg = widgets.myMessageBox()
+                txt = html_utils.paragraph(
+                    'Segmentation and Tracking was <b>never checked from '
+                    f'frame {posData.frame_i+1} onwards</b>.<br><br>'
+                    'To ensure correct lineage tree analysis you have to '
+                    'first visit the frames after '
+                    f'{posData.frame_i+1} with "Segmentation and Tracking" mode.'
+                )
+                warn_cca = msg.critical(#???
+                    self, 'Never checked segmentation on requested frame', txt                    
+                )
+                proceed_cca = False
+                return proceed_cca, never_visited
             # Requested frame was never visited before. Load from HDD
             posData.lab = self.get_labels()
             posData.rp = skimage.measure.regionprops(posData.lab)
@@ -16861,9 +17063,25 @@ class guiWin(QMainWindow):
                             # Convert to ints since there were NaN
                             cols = self.cca_df_int_cols
                             df[cols] = df[cols].astype(int)
+
+                    elif 'generation_num_tree' in df.columns: # may need to change this, not exactly sure how df is initialized 
+                        if any(df['cell_cycle_stage'].isna()):
+                            if 'is_history_known' not in df.columns:
+                                df['is_history_known'] = True
+                            if 'corrected_assignment' not in df.columns:
+                                df['corrected_assignment'] = True #???
+                            df = df.drop(labels=self.lin_tree_df_colnames, axis=1)
+                        else:
+                            # Convert to ints since there were NaN
+                            cols = self.lin_tree_df_int_cols
+                            df[cols] = df[cols].astype(int)
                     i = posData.frame_i
                     posData.allData_li[i]['acdc_df'] = df.copy()
-            self.get_cca_df()
+
+            if not lin_tree:
+                self.get_cca_df()
+            else:
+                self.get_lin_tree_df()
         else:
             # Requested frame was already visited. Load from RAM.
             never_visited = False
@@ -16876,7 +17094,10 @@ class guiWin(QMainWindow):
             posData.ripIDs = set(ripIDs_df.index)
             posData.editID_info = self._get_editID_info(df)
             self.setManualBackgroundLab(load_from_store=True, debug=debug)
-            self.get_cca_df()
+            if not lin_tree:
+                self.get_cca_df()
+            else:
+                self.get_lin_tree_df()
 
         self.update_rp_metadata(draw=False)
         posData.IDs = [obj.label for obj in posData.rp]
@@ -16936,7 +17157,11 @@ class guiWin(QMainWindow):
                 posData.cca_df.at[ID, col] = val
         self.store_cca_df()
 
-    def getBaseCca_df(self):
+    def getBaseCca_df(self): # may refactor in fututre
+        # posData = self.data[self.pos_i]
+        # IDs = [obj.label for obj in posData.rp]
+        # cca_df = core.getBaseCca_df(IDs, with_tree_cols=True)
+        # return cca_df
         posData = self.data[self.pos_i]
         IDs = [obj.label for obj in posData.rp]
         cc_stage = ['G1' for ID in IDs]
@@ -16962,6 +17187,18 @@ class guiWin(QMainWindow):
             index=IDs
         )
         cca_df.index.name = 'Cell_ID'
+        return cca_df
+
+    def getBaselin_tree_df(self):
+        """
+        Retrieves the baseline tree dataframe for the current position. (Based on core.getBaseCca_df)
+
+        Returns:
+            pandas.DataFrame: The baseline tree dataframe with tree columns.
+        """
+        posData = self.data[self.pos_i]
+        IDs = [obj.label for obj in posData.rp]
+        cca_df = core.getBaseCca_df(IDs, with_tree_cols=True)
         return cca_df
     
     def get_last_tracked_i(self):
@@ -17146,6 +17383,136 @@ class guiWin(QMainWindow):
         else:
             self.get_cca_df()
         return proceed
+    
+    @exception_handler
+    def initLinTree(self): # done need testing
+        """
+        Initializes the lineage tree analysis.
+
+        This method checks if the tracking has been previously checked and saved. If not, it displays a message to the user.
+        It also prompts the user to go to the last annotated frame and restart the lineage tree analysis if necessary.
+        Finally, it initializes the necessary data structures and updates the GUI.
+
+        Returns:
+            bool: True if the initialization is successful, nothing otherwise.
+        """
+        posData = self.data[self.pos_i]
+        last_tracked_i = self.get_last_tracked_i()
+        defaultMode = 'Viewer'
+        if last_tracked_i == 0:
+            # Display message to the user
+            txt = html_utils.paragraph(
+                'On this dataset either you <b>never checked</b> that the segmentation '
+                'and tracking are <b>correct</b> or you did not save yet.<br><br>'
+                'If you already visited some frames with "Segmentation and tracking" '
+                'mode save data before switching to "Normal division: Lineage Tree".<br><br>'
+                'Otherwise you first have to check (and eventually correct) some frames '
+                'in "Segmentation and Tracking" mode before proceeding '
+                'with lineage tree analysis.')
+            msg = widgets.myMessageBox()
+            msg.critical(
+                self, 'Tracking was never checked', txt
+            )
+            self.modeComboBox.setCurrentText(defaultMode)
+            return
+
+        proceed = True
+        i = 0
+        # Determine last annotated frame index
+        for i, dict_frame_i in enumerate(posData.allData_li): 
+            df = dict_frame_i['acdc_df']
+            if df is None:
+                break
+            elif 'generation_num_tree' not in df.columns: # may need to change this, not exactly sure how df is initialized
+                break
+        
+        last_lin_tree_frame_i = i if i==0 or i+1==len(posData.allData_li) else i-1
+
+        if last_lin_tree_frame_i == 0:
+            # Remove undoable actions from segmentation mode
+            posData.UndoRedoStates[0] = []
+            self.undoAction.setEnabled(False)
+            self.redoAction.setEnabled(False)
+
+        if posData.frame_i > last_lin_tree_frame_i:
+            # Prompt user to go to last annotated frame
+            msg = widgets.myMessageBox()
+            txt = html_utils.paragraph(f"""
+                The <b>last annotated frame</b> is frame {last_lin_tree_frame_i+1}.<br><br>
+                Do you want to restart lineage tree analysis from frame 
+                {last_lin_tree_frame_i+1}?<br>
+            """)
+            _, yesButton, stayButton = msg.warning(
+                self, 'Go to last annotated frame?', txt, 
+                buttonsTexts=(
+                    'Cancel', f'Yes, go to frame {last_lin_tree_frame_i+1}', 
+                    'No, stay on current frame')
+            )
+            if yesButton == msg.clickedButton:
+                msg = 'Looking good!'
+                self.last_lin_tree_frame_i = last_lin_tree_frame_i
+                posData.frame_i = last_lin_tree_frame_i
+                self.titleLabel.setText(msg, color=self.titleColor)
+                self.get_data(lin_tree=True)
+                self.updateAllImages(updateFilters=True) # i dont think I need to change this
+                self.updateScrollbars() # i dont think I need to change this
+            elif stayButton == msg.clickedButton:
+                self.initMissingFramesLinTree(last_lin_tree_frame_i, posData.frame_i)
+                last_lin_tree_frame_i = posData.frame_i
+                msg = 'Lineage tree analysis initialised!'
+                self.titleLabel.setText(msg, color='g')
+            elif msg.cancel:
+                msg = 'Lineage tree analysis aborted.'
+                self.logger.info(msg)
+                self.titleLabel.setText(msg, color=self.titleColor)
+                self.modeComboBox.setCurrentText(defaultMode)
+                proceed = False
+                return
+            
+        elif posData.frame_i < last_lin_tree_frame_i:
+            # Prompt user to go to last annotated frame
+            msg = widgets.myMessageBox()
+            txt = html_utils.paragraph(f"""
+                The <b>last annotated frame</b> is frame {last_lin_tree_frame_i+1}.<br><br>
+                Do you want to restart lineage tree analysis from frame
+                {last_lin_tree_frame_i+1}?<br>
+            """)
+            goTo_last_annotated_frame_i = msg.question(
+                self, 'Go to last annotated frame?', txt, 
+                buttonsTexts=('Yes', 'No', 'Cancel')
+            )[0]
+            if goTo_last_annotated_frame_i == msg.clickedButton:
+                msg = 'Looking good!'
+                self.titleLabel.setText(msg, color=self.titleColor)
+                self.last_lin_tree_frame_i = last_lin_tree_frame_i
+                posData.frame_i = last_lin_tree_frame_i
+                self.get_data(lin_tree=True)
+                self.updateAllImages(updateFilters=True) # i dont think I need to change this
+                self.updateScrollbars() # i dont think I need to change this
+            elif msg.cancel:
+                msg = 'Lineage tree analysis aborted.'
+                self.logger.info(msg)
+                self.titleLabel.setText(msg, color=self.titleColor)
+                self.modeComboBox.setCurrentText(defaultMode)
+                proceed = False
+                return
+        else:
+            self.get_data(lin_tree=True)
+
+        self.last_lin_tree_frame_i = last_lin_tree_frame_i
+
+        self.navigateScrollBar.setMaximum(last_lin_tree_frame_i+1)
+        self.navSpinBox.setMaximum(last_lin_tree_frame_i+1)
+
+        if posData.lin_tree_df is None:
+            posData.lin_tree_df = self.getBaselin_tree_df()
+            self.store_lin_tree_df()
+            msg = 'Lineage tree analysis initialized!'
+            self.logger.info(msg)
+            self.titleLabel.setText(msg, color=self.titleColor)
+        else:
+            self.get_lin_tree_df()
+        return proceed
 
     def reset_will_divide_info(self):
         posData = self.data[self.pos_i]
@@ -17219,6 +17586,30 @@ class guiWin(QMainWindow):
         else:
             posData.cca_df = cca_df
 
+    def get_lin_tree_df(self, frame_i=None, return_df=False):
+        # lin_tree_df is None unless the metadata contains cell cycle annotations
+        # NOTE: cell cycle annotations are either from the current session
+        # or loaded from HDD in "initPosAttr" with a .question to the user
+        posData = self.data[self.pos_i]
+        lin_tree_df = None
+        i = posData.frame_i if frame_i is None else frame_i
+        df = posData.allData_li[i]['acdc_df']
+        if df is not None:
+            if 'generation_num_tree' in df.columns:  # may need to change this, not exactly sure how df is initialized
+                if 'is_history_known' not in df.columns:
+                    df['is_history_known'] = True
+                if 'corrected_assignment' not in df.columns:
+                    # Compatibility with those acdc_df analysed with prev vers.
+                    df['corrected_assignment'] = True
+                lin_tree_df = df[self.lin_tree_df_colnames].copy()
+        if lin_tree_df is None and self.isSnapshot:
+            lin_tree_df = self.getBaselin_tree_df()
+            posData.lin_tree_df = lin_tree_df
+        if return_df:
+            return lin_tree_df
+        else:
+            posData.lin_tree_df = lin_tree_df
+
     def unstore_cca_df(self):
         posData = self.data[self.pos_i]
         acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
@@ -17255,6 +17646,44 @@ class guiWin(QMainWindow):
         if autosave:
             self.enqAutosave()
             self.enqCcaIntegrityChecker()
+
+    def store_lin_tree_df( # done need to test
+        self, pos_i=None, frame_i=None, lin_tree_df=None, mainThread=True, autosave=True
+    ):
+        """
+        Stores the lineage tree DataFrame for a given position and frame index.
+
+        Args:
+            pos_i (int, optional): The index of the position. Defaults to None.
+            frame_i (int, optional): The index of the frame. Defaults to None.
+            lin_tree_df (DataFrame, optional): The lineage tree DataFrame to store. Defaults to None.
+            mainThread (bool, optional): Flag indicating if the function is called from the main thread. Defaults to True.
+            autosave (bool, optional): Flag indicating if autosave should be performed. Defaults to True.
+        """
+        pos_i = self.pos_i if pos_i is None else pos_i
+        posData = self.data[pos_i]
+        i = posData.frame_i if frame_i is None else frame_i
+        if lin_tree_df is None:
+            lin_tree_df = posData.lin_tree_df
+            # if self.lin_tree_TableWin is not None and mainThread: #??? # Need to add later
+            #     self.lin_tree_TableWin.updateTable(posData.lin_tree_df) #??? # This is for "View --> View cell cycle annotations..." etc.
+
+        acdc_df = posData.allData_li[i]['acdc_df']
+        if acdc_df is None:
+            self.store_data()
+            acdc_df = posData.allData_li[i]['acdc_df']
+        if 'generation_num_tree' in acdc_df.columns: # may need to change this, not exactly sure how df is initialized
+            # Cell cycle info already present --> overwrite with new
+            df = acdc_df
+            df[self.lin_tree_df_colnames] = lin_tree_df
+            posData.allData_li[i]['acdc_df'] = df.copy()
+        elif lin_tree_df is not None:
+            df = acdc_df.join(lin_tree_df, how='left')
+            posData.allData_li[i]['acdc_df'] = df.copy()
+
+        if autosave:
+            self.enqAutosave()
+            # self.enqlin_treeIntegrityChecker() # Need to add later
     
     def turnOffAutoSaveWorker(self):
         self.autoSaveToggle.setChecked(False)
@@ -17283,7 +17712,7 @@ class guiWin(QMainWindow):
         for obj in posData.rp:
             self.drawObjMothBudLines(obj, posData, ax=0)
             self.drawObjMothBudLines(obj, posData, ax=1)
-    
+
     def drawObjMothBudLines(self, obj, posData, ax=0):
         if not self.areMothBudLinesRequested(ax):
             return
@@ -17324,6 +17753,25 @@ class guiWin(QMainWindow):
         y2, x2 = self.getObjCentroid(relative_ID_obj.centroid)
         xx, yy = core.get_line(y1, x1, y2, x2, dashed=True)
         scatterItem.addPoints(xx, yy)
+    
+    def drawObjLin_TreeMothBudLines(self, ax, obj, mother_obj, isNew, ID=None):
+        if not self.areMothBudLinesRequested(ax):
+            return
+
+        if not ID:
+            ID = obj.label
+        
+        isObjVisible = self.isObjVisible(obj.bbox)
+        if not isObjVisible:
+            return
+
+        scatterItem = self.getMothBudLineScatterItem(ax, isNew)
+
+        y1, x1 = self.getObjCentroid(obj.centroid)
+        y2, x2 = self.getObjCentroid(mother_obj.centroid)
+        xx, yy = core.get_line(y1, x1, y2, x2, dashed=True)
+        scatterItem.addPoints(xx, yy)
+        printl(y1, x1, y2, x2)
 
     def getObjCentroid(self, obj_centroid):
         if self.isSegm3D:
@@ -20437,7 +20885,7 @@ class guiWin(QMainWindow):
         
         self.highlightSearchedID(self.highlightedID, force=True)        
 
-        if self.ccaTableWin is not None:
+        if self.ccaTableWin is not None: # need to add for lin tree, later
             self.ccaTableWin.updateTable(posData.cca_df)
 
         self.doCustomAnnotation(0)
@@ -21944,6 +22392,43 @@ class guiWin(QMainWindow):
         ccaCheckerThread.start()
         
         self.logger.info('Cell cycle annotations integrity checker started.')
+
+    def startLinTreeIntegrityCheckerWorker(self): # not done
+        if not hasattr(self, 'data'):
+            return
+        
+        if not self.dataIsLoaded:
+            return
+        
+        if self._isLinTreeIntegrityCheckedDisabled:
+            return
+        
+        LinTreeCheckerThread = QThread()
+        self.LinTreeCheckerMutex = QMutex()
+        self.LinTreeCheckerWaitCond = QWaitCondition()
+        
+        worker = workers.LinTreeIntegrityCheckerWorker( # need to add workers.LinTreeIntegrityCheckerWorker
+            self.LinTreeCheckerMutex, self.LinTreeCheckerWaitCond
+        )
+        self.LinTreeIntegrityCheckerWorker = worker
+        self.LinTreeCheckerThread = LinTreeCheckerThread
+        
+        worker.moveToThread(LinTreeCheckerThread)
+        worker.finished.connect(LinTreeCheckerThread.quit)
+        worker.finished.connect(worker.deleteLater) # double check if this works after adding workers.LinTreeIntegrityCheckerWorker
+        LinTreeCheckerThread.finished.connect(LinTreeCheckerThread.deleteLater)
+
+        worker.destroyed.connect(self.LinTreeIntegrityCheckerWorkerDestroyed) # need to add
+        worker.sigDone.connect(self.LinTreeCheckerWorkerDone) # need to add
+        worker.progress.connect(self.workerProgress)
+        worker.critical.connect(self.LinTreeIntegrityWorkerCritical) # need to add
+        worker.finished.connect(self.LinTreeCheckerWorkerClosed) # need to add
+        worker.sigWarning.connect(self.warnLinTreeIntegrity) # need to add
+        
+        LinTreeCheckerThread.started.connect(worker.run)
+        LinTreeCheckerThread.start()
+        
+        self.logger.info('Lin Tree annotations integrity checker started.')
     
     def disableCcaIntegrityChecker(self):
         self._isCcaIntegrityCheckedDisabled = True
@@ -22264,6 +22749,16 @@ class guiWin(QMainWindow):
         self.annotIDsCheckbox.setChecked(False)
         self.drawMothBudLinesCheckbox.setChecked(False)
         self.setDrawAnnotComboboxText()
+
+    def setAnnotOptionsLin_treeMode(self):
+        # self.prevAnnotOptions = self.storeCurrentAnnotOptions_ax1(
+        #     return_value=True
+        # )
+        self.annotCcaInfoCheckbox.setChecked(False)
+        self.annotIDsCheckbox.setChecked(True)
+        self.drawMothBudLinesCheckbox.setChecked(False)
+        self.setDrawAnnotComboboxText()
+        self.showTreeInfoCheckbox.setChecked(True)
     
     def setDrawAnnotComboboxText(self):
         if self.annotIDsCheckbox.isChecked():

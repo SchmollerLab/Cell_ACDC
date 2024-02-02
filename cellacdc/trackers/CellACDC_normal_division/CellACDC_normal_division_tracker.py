@@ -26,7 +26,7 @@ def reorg_daughter_cells(lineage_tree_frame, max_daughter):
     return lineage_tree_frame
 
 
-def ident_no_mothers(IoA_matrix, IoA_thresh_daughter, min_daughter, max_daughter):
+def mother_daughter_assign(IoA_matrix, IoA_thresh_daughter, min_daughter, max_daughter):
     """
     Identifies cells that have not undergone division based on the input IoA matrix.
 
@@ -110,7 +110,7 @@ def create_lineage_tree_video(segm_video, IoA_thresh_daughter, min_daughter, max
         rp = regionprops(frame)
         prev_rp = regionprops(segm_video[i-1])
         IoA_matrix, IDs_curr_untracked, IDs_prev = calc_IoA_matrix(frame, segm_video[i-1], rp, prev_rp)
-        _, mother_daughters = ident_no_mothers(IoA_matrix, IoA_thresh_daughter, min_daughter, max_daughter)
+        _, mother_daughters = mother_daughter_assign(IoA_matrix, IoA_thresh_daughter, min_daughter, max_daughter)
         assignments = IDs_curr_untracked #bc we dont track the frame
         tree.create_tracked_frame_tree(i, mother_daughters, IDs_prev, IDs_curr_untracked, assignments)
     return tree.lineage_list
@@ -220,29 +220,29 @@ class normal_division_tracker:
                                                                              self.rp, 
                                                                              prev_rp
                                                                              )
-        aggr_track, self.mother_daughters = ident_no_mothers(IoA_matrix, 
+        aggr_track, self.mother_daughters = mother_daughter_assign(IoA_matrix, 
                                                              IoA_thresh_daughter=self.IoA_thresh_daughter, 
                                                              min_daughter=self.min_daughter, 
                                                              max_daughter=self.max_daughter
                                                              )
         self.tracked_lab, IoA_matrix, self.assignments, tracked_IDs = track_frame_base(prev_lab, 
-                                                                          prev_rp, 
-                                                                          lab, 
-                                                                          self.rp, 
-                                                                          IoA_thresh=self.IoA_thresh,
-                                                                          IoA_matrix=IoA_matrix, 
-                                                                          aggr_track=aggr_track, 
-                                                                          IoA_thresh_aggr=self.IoA_thresh_aggressive, 
-                                                                          IDs_curr_untracked=self.IDs_curr_untracked, 
-                                                                          IDs_prev=self.IDs_prev, 
-                                                                          return_all=True
-                                                                          )
+                                                                                       prev_rp, 
+                                                                                       lab, 
+                                                                                       self.rp, 
+                                                                                       IoA_thresh=self.IoA_thresh,
+                                                                                       IoA_matrix=IoA_matrix, 
+                                                                                       aggr_track=aggr_track, 
+                                                                                       IoA_thresh_aggr=self.IoA_thresh_aggressive, 
+                                                                                       IDs_curr_untracked=self.IDs_curr_untracked, 
+                                                                                       IDs_prev=self.IDs_prev, 
+                                                                                       return_all=True
+                                                                                       )
         self.tracked_IDs = set(tracked_IDs).union(set(self.assignments.values()))
         self.tracked_video[frame_i] = self.tracked_lab
 
 class normal_division_lineage_tree:
     """
-    Represents a lineage tree for normal cell divisions.
+    Represents a lineage tree for normal cell divisions. Initializes the lineage tree with the first labeled frame, then updates the lineage tree with each subsequent frame (create_tracked_frame_tree).
 
     Attributes:
     - max_daughter: Maximum number of daughter cells per division.
@@ -253,54 +253,65 @@ class normal_division_lineage_tree:
     - __init__(self, lab, max_daughter): Initializes the normal_division_lineage_tree object.
     - create_tracked_frame_tree(self, frame_i, mother_daughters, IDs_prev, IDs_curr_untracked, assignments, curr_IDs): Creates df for the specified frame and appends it to lineage_list.
     """
-    def __init__(self, lab, max_daughter):
+
+    def __init__(self, lab, max_daughter=2, min_daughter=2, IoA_thresh_daughter=0.25):
+# remove the defaults when proper passing is done
             """
             Initializes the CellACDC_normal_division_tracker object.
 
             Parameters:
             lab (ndarray): The labeled image of cells.
-            max_daughter (int): The maximum number of daughter cells expected.
+            max_daughter (int, optional): The maximum number of daughter cells expected.
+            min_daughter (int, optional): The minimum number of daughter cells expected.
+            IoA_thresh_daughter (float, optional): The threshold for intersection over area (IoA) for daughter cells.
 
             Returns:
-            - None
+            None
             """
             self.max_daughter = max_daughter
+            self.min_daughter = min_daughter 
+            self.IoA_thresh_daughter = IoA_thresh_daughter
+
             self.families = []
             added_lineage_tree = []
 
             rp = regionprops(lab.copy())
             for obj in rp:
                 label = obj.label
-                self.families.append([(label, 0)])
-                added_lineage_tree.append((-1, label, -1, -2, label, [-1] * (max_daughter-1)))
+                self.families.append([(label, 1)])
+                added_lineage_tree.append((-1, label, -1, 1, label, [-1] * (max_daughter-1)))
 
             cca_df = added_lineage_tree_to_cca_df(added_lineage_tree)
             cca_df = reorg_daughter_cells(cca_df, max_daughter)
             self.lineage_list = [cca_df]
 
-
-    def create_tracked_frame_tree(self, frame_i, mother_daughters, IDs_prev, IDs_curr_untracked, assignments, curr_IDs):
+    def create_tracked_frame_tree(self, frame_i, mother_daughters, IDs_prev, IDs_curr_untracked, assignments, curr_IDs):        
         """
         Creates a tracked frame tree based on the given parameters.
 
         Parameters:
-        - frame_i: Index of the current frame.
-        - mother_daughters: List of tuples representing mother-daughter cell relationships.
-        - IDs_prev: List mapping previous cell IDs to current cell IDs.
-        - IDs_curr_untracked: List of current cell IDs that are untracked.
-        - assignments: Dictionary mapping untracked cell IDs to tracked cell IDs.
-        - curr_IDs: List of current cell IDs.
+        - frame_i (int): Index of the current frame.
+        - mother_daughters (list): List of tuples representing mother-daughter cell relationships.
+        - IDs_prev (list): List mapping previous cell IDs to current cell IDs.
+        - IDs_curr_untracked (list): List of current cell IDs that are untracked.
+        - assignments (dict): Dictionary mapping untracked cell IDs to tracked cell IDs.
+        - curr_IDs (list): List of current cell IDs.
+
 
         Returns:
         - None
         """
+
         added_lineage_tree = []
         for mother, daughters in mother_daughters:
             mother_ID = IDs_prev[mother]
             daughter_IDs = []
 
             for daughter in daughters:
-                daughter_IDs.append(assignments[IDs_curr_untracked[daughter]]) # this works because daughter is a single ID. New items wont be in assignments but not in daughter so its fine *pew*
+                if assignments:
+                    daughter_IDs.append(assignments[IDs_curr_untracked[daughter]]) # this works because daughter is a single ID. New items wont be in assignments but not in daughter so its fine *pew*
+                else:
+                    daughter_IDs.append(IDs_curr_untracked[daughter])
 
             for family in self.families:
                 for member in family:
@@ -326,6 +337,39 @@ class normal_division_lineage_tree:
 
         self.lineage_list.append(cca_df)
 
+    def real_time_tree(self, frame_i, lab, prev_lab, rp=None, prev_rp=None): #TODO: make this ingnore corrected stuff (for later)           
+        """
+        Calculates the real-time tree of cell divisions based on the input labels and region properties.
+
+        Args:
+            frame_i (int): The index of the current frame.
+            lab (ndarray): The label image of the current frame.
+            prev_lab (ndarray): The label image of the previous frame.
+            rp (list, optional): The region properties of the current frame.
+            prev_rp (list, optional): The region properties of the previous frame.
+
+        Returns:
+            None
+        """
+        if not np.any(rp):
+            rp = regionprops(lab)
+
+        if not np.any(prev_rp):
+            prev_rp = regionprops(prev_lab)
+
+        IoA_matrix, IDs_curr_untracked, IDs_prev = calc_IoA_matrix(lab,
+                                                                   prev_lab, 
+                                                                   rp, 
+                                                                   prev_rp
+                                                                   )
+        aggr_track, mother_daughters = mother_daughter_assign(IoA_matrix, 
+                                                              IoA_thresh_daughter=self.IoA_thresh_daughter, 
+                                                              min_daughter=self.min_daughter, 
+                                                              max_daughter=self.max_daughter
+                                                              )
+
+        self.create_tracked_frame_tree(frame_i, mother_daughters, IDs_prev, IDs_curr_untracked, None, set(IDs_curr_untracked))
+        
 class tracker:
     """
     Class representing a tracker for cell division in a video sequence. (Adapted from CellACDC_tracker.py)
@@ -389,11 +433,12 @@ class tracker:
                 IDs_prev = tracker.IDs_prev
                 assignments = tracker.assignments
                 IDs_curr_untracked = tracker.IDs_curr_untracked
-                curr_IDs_legacy = tracker.tracked_IDs
+                # curr_IDs_legacy = tracker.tracked_IDs
                 rp = regionprops(tracker.tracked_lab)
                 curr_IDs = {obj.label for obj in rp}
                 # printl(f'''Frame {frame_i}:\n{len(curr_IDs)} cells, {curr_IDs}\n{len(curr_IDs_legacy)} cells, {curr_IDs_legacy}\n{set(curr_IDs)-set(curr_IDs_legacy)}''')
-                tree.create_tracked_frame_tree(frame_i, mother_daughters, IDs_prev, IDs_curr_untracked, assignments, curr_IDs)
+                if record_lineage:
+                    tree.create_tracked_frame_tree(frame_i, mother_daughters, IDs_prev, IDs_curr_untracked, assignments, curr_IDs)
 
             self.updateGuiProgressBar(signals)
             pbar.update()

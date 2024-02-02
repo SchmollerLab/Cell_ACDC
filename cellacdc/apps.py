@@ -8469,6 +8469,275 @@ will be applied (see below).<br><br>
         if hasattr(self, 'loop'):
             self.loop.exit()
 
+class editlin_treeTableWidget(editCcaTableWidget):
+    def __init__(self, cca_df, SizeT, title='Edit cell cycle annotations', 
+            parent=None, current_frame_i=0):
+        self.inputCca_df = cca_df
+        self.cancel = True
+        self.SizeT = SizeT
+        self.cca_df = None
+        self.current_frame_i = current_frame_i
+
+        super().__init__(parent)
+        self.setWindowTitle(title)
+
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+
+        # Layouts
+        mainLayout = QVBoxLayout()
+        headerLayout = QGridLayout()
+        tableLayout = QGridLayout()
+        buttonsLayout = QHBoxLayout()
+        self.scrollArea = QScrollArea()
+        self.viewBox = QWidget()
+
+        # Header labels
+        col = 0
+        row = 0
+        IDsLabel = QLabel('Cell ID')
+        AC = Qt.AlignCenter
+        IDsLabel.setAlignment(AC)
+        headerLayout.addWidget(IDsLabel, 0, col, alignment=AC)
+
+        col += 1
+        ccsLabel = QLabel('Cell cycle stage')
+        ccsLabel.setAlignment(Qt.AlignCenter)
+        headerLayout.addWidget(ccsLabel, 0, col, alignment=AC)
+
+        col += 1
+        relIDLabel = QLabel('Relative ID')
+        relIDLabel.setAlignment(Qt.AlignCenter)
+        headerLayout.addWidget(relIDLabel, 0, col, alignment=AC)
+
+        col += 1
+        genNumLabel = QLabel('Generation number')
+        genNumLabel.setAlignment(Qt.AlignCenter)
+        headerLayout.addWidget(genNumLabel, 0, col, alignment=AC)
+        genNumColWidth = genNumLabel.sizeHint().width()
+
+        col += 1
+        relationshipLabel = QLabel('Relationship')
+        relationshipLabel.setAlignment(Qt.AlignCenter)
+        headerLayout.addWidget(relationshipLabel, 0, col, alignment=AC)
+
+        col += 1
+        emergFrameLabel = QLabel('Emerging frame num.')
+        emergFrameLabel.setAlignment(Qt.AlignCenter)
+        headerLayout.addWidget(emergFrameLabel, 0, col, alignment=AC)
+
+        col += 1
+        divitionFrameLabel = QLabel('Division frame num.')
+        divitionFrameLabel.setAlignment(Qt.AlignCenter)
+        headerLayout.addWidget(divitionFrameLabel, 0, col, alignment=AC)
+
+        col += 1
+        historyKnownLabel = QLabel('Is history known?')
+        historyKnownLabel.setAlignment(Qt.AlignCenter)
+        headerLayout.addWidget(historyKnownLabel, 0, col, alignment=AC)
+
+        col += 1
+        generation_num_tree = QLabel('Generation number (tree)')
+        generation_num_tree.setAlignment(Qt.AlignCenter)
+        headerLayout.addWidget(generation_num_tree, 0, col, alignment=AC)
+        
+        col += 1
+        Cell_ID_tree = QLabel('Cell ID (tree)')
+        Cell_ID_tree.setAlignment(Qt.AlignCenter)
+        headerLayout.addWidget(Cell_ID_tree, 0, col, alignment=AC)
+
+        col += 1
+        parent_ID_tree = QLabel('Mother ID (tree)')
+        parent_ID_tree.setAlignment(Qt.AlignCenter)
+        headerLayout.addWidget(parent_ID_tree, 0, col, alignment=AC)
+
+        col += 1
+        root_ID_tree = QLabel('Root ID (tree)')
+        root_ID_tree.setAlignment(Qt.AlignCenter)
+        headerLayout.addWidget(root_ID_tree, 0, col, alignment=AC)
+
+        col += 1 # may need to change in the future
+        sister_ID_tree = QLabel('Sister ID (tree)')
+        sister_ID_tree.setAlignment(Qt.AlignCenter)
+        headerLayout.addWidget(sister_ID_tree, 0, col, alignment=AC)
+
+        self.headerLayout = headerLayout
+
+        # Add buttons
+        cancelButton = widgets.cancelPushButton('Cancel')
+        moreInfoButton = widgets.helpPushButton('More info...')
+        moreInfoButton.setIcon(QIcon(':info.svg'))
+        applyToFutureFramesbutton = widgets.futurePushButton(
+            'Apply changes to future frames...'
+        )
+        okButton = widgets.okPushButton('Ok')
+
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(cancelButton)
+        buttonsLayout.addSpacing(20)
+        buttonsLayout.addWidget(moreInfoButton)
+        buttonsLayout.addWidget(applyToFutureFramesbutton)
+        buttonsLayout.addWidget(okButton)
+
+        # Scroll area properties
+        self.scrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.scrollArea.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.scrollArea.setFrameStyle(QFrame.Shape.NoFrame)
+        self.scrollArea.setWidgetResizable(True)
+
+        # Add layouts
+        self.viewBox.setLayout(tableLayout)
+        self.scrollArea.setWidget(self.viewBox)
+        mainLayout.addLayout(headerLayout)
+        mainLayout.addWidget(self.scrollArea)
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(buttonsLayout)
+
+        # Populate table Layout
+        IDs = cca_df.index
+        self.IDs = IDs.to_list()
+        relIDsOptions = [str(ID) for ID in IDs]
+        relIDsOptions.insert(0, '-1')
+        self.IDlabels = []
+        self.ccsComboBoxes = []
+        self.genNumSpinBoxes = []
+        self.relIDComboBoxes = []
+        self.relationshipComboBoxes = []
+        self.emergFrameSpinBoxes = []
+        self.divisFrameSpinBoxes = []
+        self.emergFrameSpinPrevValues = []
+        self.divisFrameSpinPrevValues = []
+        self.historyKnownCheckBoxes = []
+        self.generation_num_tree = []
+        self.Cell_ID_tree = []
+        self.parent_ID_tree = []
+        self.root_ID_tree = []
+        self.sister_ID_tree = []
+
+        for row, ID in enumerate(IDs):
+            col = 0
+            IDlabel = QLabel(f'{ID}')
+            IDlabel.setAlignment(Qt.AlignCenter)
+            tableLayout.addWidget(IDlabel, row+1, col, alignment=AC)
+            self.IDlabels.append(IDlabel)
+
+            col += 1
+            ccsComboBox = QComboBox()
+            ccsComboBox.setFocusPolicy(Qt.StrongFocus)
+            ccsComboBox.installEventFilter(self)
+            ccsComboBox.addItems(['G1', 'S/G2/M'])
+            ccsValue = cca_df.at[ID, 'cell_cycle_stage']
+            if ccsValue == 'S':
+                ccsValue = 'S/G2/M'
+            ccsComboBox.setCurrentText(ccsValue)
+            tableLayout.addWidget(ccsComboBox, row+1, col, alignment=AC)
+            self.ccsComboBoxes.append(ccsComboBox)
+            ccsComboBox.activated.connect(self.clearComboboxFocus)
+
+            col += 1
+            relIDComboBox = QComboBox()
+            relIDComboBox.setFocusPolicy(Qt.StrongFocus)
+            relIDComboBox.installEventFilter(self)
+            relIDComboBox.addItems(relIDsOptions)
+            relIDComboBox.setCurrentText(str(cca_df.at[ID, 'relative_ID']))
+            tableLayout.addWidget(relIDComboBox, row+1, col)
+            self.relIDComboBoxes.append(relIDComboBox)
+            relIDComboBox.currentIndexChanged.connect(self.setRelID)
+            relIDComboBox.activated.connect(self.clearComboboxFocus)
+
+            col += 1
+            genNumSpinBox = QSpinBox()
+            genNumSpinBox.setFocusPolicy(Qt.StrongFocus)
+            genNumSpinBox.installEventFilter(self)
+            genNumSpinBox.setValue(2)
+            genNumSpinBox.setMaximum(2147483647)
+            genNumSpinBox.setAlignment(Qt.AlignCenter)
+            genNumSpinBox.setFixedWidth(int(genNumColWidth*2/3))
+            genNumSpinBox.setValue(cca_df.at[ID, 'generation_num'])
+            tableLayout.addWidget(genNumSpinBox, row+1, col, alignment=AC)
+            self.genNumSpinBoxes.append(genNumSpinBox)
+
+            col += 1
+            relationshipComboBox = QComboBox()
+            relationshipComboBox.setFocusPolicy(Qt.StrongFocus)
+            relationshipComboBox.installEventFilter(self)
+            relationshipComboBox.addItems(['mother', 'bud'])
+            relationshipComboBox.setCurrentText(cca_df.at[ID, 'relationship'])
+            tableLayout.addWidget(relationshipComboBox, row+1, col)
+            self.relationshipComboBoxes.append(relationshipComboBox)
+            relationshipComboBox.currentIndexChanged.connect(
+                                                self.relationshipChanged_cb)
+            relationshipComboBox.activated.connect(self.clearComboboxFocus)
+
+            col += 1
+            emergFrameSpinBox = QSpinBox()
+            emergFrameSpinBox.setFocusPolicy(Qt.StrongFocus)
+            emergFrameSpinBox.installEventFilter(self)
+            emergFrameSpinBox.setMaximum(SizeT)
+            emergFrameSpinBox.setMinimum(-1)
+            emergFrameSpinBox.setValue(-1)
+            emergFrameSpinBox.setAlignment(Qt.AlignCenter)
+            emergFrameSpinBox.setFixedWidth(int(genNumColWidth*2/3))
+            emergFrame_i = cca_df.at[ID, 'emerg_frame_i']
+            val = emergFrame_i+1 if emergFrame_i>=0 else -1
+            emergFrameSpinBox.setValue(val)
+            tableLayout.addWidget(emergFrameSpinBox, row+1, col, alignment=AC)
+            self.emergFrameSpinBoxes.append(emergFrameSpinBox)
+            self.emergFrameSpinPrevValues.append(emergFrameSpinBox.value())
+            emergFrameSpinBox.valueChanged.connect(self.skip0emergFrame)
+
+
+            col += 1
+            divisFrameSpinBox = QSpinBox()
+            divisFrameSpinBox.setFocusPolicy(Qt.StrongFocus)
+            divisFrameSpinBox.installEventFilter(self)
+            divisFrameSpinBox.setMinimum(-1)
+            divisFrameSpinBox.setMaximum(SizeT)
+            divisFrameSpinBox.setValue(-1)
+            divisFrameSpinBox.setAlignment(Qt.AlignCenter)
+            divisFrameSpinBox.setFixedWidth(int(genNumColWidth*2/3))
+            divisFrame_i = cca_df.at[ID, 'division_frame_i']
+            val = divisFrame_i+1 if divisFrame_i>=0 else -1
+            divisFrameSpinBox.setValue(val)
+            tableLayout.addWidget(divisFrameSpinBox, row+1, col, alignment=AC)
+            self.divisFrameSpinBoxes.append(divisFrameSpinBox)
+            self.divisFrameSpinPrevValues.append(divisFrameSpinBox.value())
+            divisFrameSpinBox.valueChanged.connect(self.skip0divisFrame)
+
+            col += 1
+            HistoryCheckBox = QCheckBox()
+            HistoryCheckBox.setChecked(bool(cca_df.at[ID, 'is_history_known']))
+            tableLayout.addWidget(HistoryCheckBox, row+1, col, alignment=AC)
+            self.historyKnownCheckBoxes.append(HistoryCheckBox)
+
+            col += 1
+            generation_num_treeSpinBox = QSpinBox()
+            generation_num_treeSpinBox.setFocusPolicy(Qt.StrongFocus)
+            generation_num_treeSpinBox.installEventFilter(self)
+            generation_num_treeSpinBox.setValue(cca_df.at[ID, 'generation_num_tree'])
+            generation_num_treeSpinBox.setMinimum(0)
+            generation_num_treeSpinBox.setMaximum(2147483647)
+            generation_num_treeSpinBox.setAlignment(Qt.AlignCenter)
+            generation_num_treeSpinBox.setFixedWidth(int(genNumColWidth*2/3))
+            tableLayout.addWidget(generation_num_treeSpinBox, row+1, col, alignment=AC)
+            self.generation_num_treeSpinBox.append(divisFrameSpinBox)
+            self.divisFrameSpinPrevValues.append(generation_num_treeSpinBox.value())
+            generation_num_treeSpinBox.valueChanged.connect(self.skip0divisFrame)
+
+            
+
+
+
+
+        self.setLayout(mainLayout)
+
+        # Connect to events
+        okButton.clicked.connect(self.ok_cb)
+        cancelButton.clicked.connect(self.cancel_cb)
+        moreInfoButton.clicked.connect(self.moreInfo)
+        applyToFutureFramesbutton.clicked.connect(self.applyToFutureFrames)
+
+        # self.setModal(True)
+        
 class askStopFrameSegm(QDialog):
     def __init__(
             self, user_ch_file_paths, user_ch_name, parent=None
