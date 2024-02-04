@@ -29,7 +29,7 @@ class ConcatWin(NewThreadMultipleExpBaseUtil):
         self.worker.sigAborted.connect(self.workerAborted)
         self.worker.sigAskAppendName.connect(self.askAppendName)
         self.worker.sigSetMeasurements.connect(self.askSetMeasurements)
-        self.worker.sigAskCopyCca.connect(self.askCopyCcaFromAcdcOutput)
+        self.worker.signals.sigAskCopyCca.connect(self.askCopyCcaFromAcdcOutput)
         super().runWorker(self.worker)
     
     def askCopyCcaFromAcdcOutput(self, images_path):
