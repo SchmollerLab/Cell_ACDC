@@ -3583,7 +3583,7 @@ class guiWin(QMainWindow):
     def gui_createLabWidgets(self):
         bottomRightLayout = QVBoxLayout()
         self.rightBottomGroupbox = widgets.GroupBox(
-            'Annotate right image indipendent of left image', 
+            'Annotate right image independent of left image', 
             keyPressCallback=self.resetFocus
         )
         self.rightBottomGroupbox.setCheckable(True)
