@@ -4169,7 +4169,7 @@ class CcaIntegrityCheckerWorker(QObject):
         self.abortChecking = False
         self.isChecking = False
         self.isPaused = False
-        self.debug = True
+        self.debug = False
         self.dataQ = deque(maxlen=10)
     
     def pause(self):

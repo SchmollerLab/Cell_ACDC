@@ -9027,7 +9027,7 @@ class guiWin(QMainWindow):
                 The solution is to remove cell division anotation on cell
                 {new_mothID} (right-click on it on current frame) and then
                 annotate division on any frame before current frame number {i+1}.
-                This will gurantee a G1 duration of cell {new_mothID}
+                This will gurantee a G1 duration for the cell {new_mothID}
                 of <b>at least 1 frame</b>. Thanks.
             """)
             msg = widgets.myMessageBox()
@@ -9059,10 +9059,9 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         eligible = True
 
-        G1_duration = 0
         # Check future frames
-        for i in range(posData.frame_i, posData.SizeT):
-            cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
+        for future_i in range(posData.frame_i, posData.SizeT):
+            cca_df_i = self.get_cca_df(frame_i=future_i, return_df=True)
 
             if cca_df_i is None:
                 # ith frame was not visited yet
@@ -9079,21 +9078,20 @@ class guiWin(QMainWindow):
             ccs = cca_df_i.at[new_mothID, 'cell_cycle_stage']
             if ccs != 'G1':
                 cancel, apply = self.warnMotherNotEligible(
-                    new_mothID, budID, i, 'not_G1_in_the_future'
+                    new_mothID, budID, future_i, 'not_G1_in_the_future'
                 )
                 if apply:
-                    self.remove_future_cca_df(i)
+                    self.remove_future_cca_df(future_i)
                     break
-                if cancel or (G1_duration == 1 and i != last_cca_frame_i):
+                if cancel or (G1_duration == 1 and future_i != last_cca_frame_i):
                     eligible = False
                     return eligible
 
-            G1_duration += 1
-
+        G1_duration_past = 0
         # Check past frames
-        for i in range(posData.frame_i-1, -1, -1):
+        for past_i in range(posData.frame_i-1, -1, -1):
             # Get cca_df for ith frame from allData_li
-            cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
+            cca_df_i = self.get_cca_df(frame_i=past_i, return_df=True)
 
             is_bud_existing = budID in cca_df_i.index
             is_moth_existing = new_mothID in cca_df_i.index
@@ -9107,7 +9105,7 @@ class guiWin(QMainWindow):
                 # Requested mother not in G1 in the past
                 # during the life of the bud (is_bud_existing = True)
                 self.warnMotherNotEligible(
-                    new_mothID, budID, i, 'not_G1_in_the_past'
+                    new_mothID, budID, past_i, 'not_G1_in_the_past'
                 )
                 eligible = False
                 return eligible
@@ -9116,9 +9114,9 @@ class guiWin(QMainWindow):
                 # Stop counting G1 duration of the requested mother
                 break
 
-            G1_duration += 1
+            G1_duration_past += 1
 
-        if G1_duration == 1:
+        if G1_duration_past == 0:
             # G1_duration of the mother is single frame --> not eligible
             eligible = False
             self.warnMotherNotEligible(
