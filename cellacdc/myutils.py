@@ -224,6 +224,18 @@ def get_trimmed_list(li: list, max_num_digits=10):
         li_str = f"[{', '.join(map(str, li_str))}]"
     return li_str
 
+def get_trimmed_dict(di: dict, max_num_digits=10):
+    di_str = di.copy()
+    total_num_digits = sum([len(str(key)) + len(str(val)) for key, val in di.items()])
+    avg_num_digits = total_num_digits / len(di)
+    max_num_vals = int(round(max_num_digits / avg_num_digits))
+    if total_num_digits > max_num_digits:
+        keys = list(di_str.keys())
+        for key in keys[max_num_vals:-max_num_vals]:
+            del di_str[key]
+        di_str[keys[max_num_vals]] = "..."
+    return f"[{', '.join([f'{key} -> {val}' for key, val in di_str.items()])}]"
+
 def _bytes_to_MB(size_bytes):
     factor = pow(2, -20)
     size_MB = round(size_bytes*factor)

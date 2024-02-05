@@ -128,6 +128,32 @@ def filter_current_IDs(df, current_IDs):
     """
     return df[df.index.isin(current_IDs)]
 
+def IoA_index_daughter_to_ID(daughters, assignments, IDs_curr_untracked):
+    """
+    Converts a list of daughter indices (IoA Matrix) to their corresponding IDs.
+
+    Parameters:
+    daughters (list): List of daughter indices.
+    assignments (dict): Dictionary mapping IDs to assigned values.
+    IDs_curr_untracked (list): List of current untracked IDs.
+
+    Returns:
+    list: List of daughter IDs.
+    
+    """
+
+    if daughters is None:
+        return
+    
+    daughter_IDs = []
+    for daughter in daughters:
+        if assignments:
+            daughter_IDs.append(assignments[IDs_curr_untracked[daughter]]) # this works because daughter is a single ID. New items wont be in assignments but not in daughter so its fine *pew*
+        else:
+            daughter_IDs.append(IDs_curr_untracked[daughter])
+
+    return daughter_IDs
+
 class normal_division_tracker:
     """
     A class that tracks cell divisions in a video sequence.
@@ -271,6 +297,7 @@ class normal_division_lineage_tree:
             self.max_daughter = max_daughter
             self.min_daughter = min_daughter 
             self.IoA_thresh_daughter = IoA_thresh_daughter
+            self.mother_daughters = []
 
             self.families = []
             added_lineage_tree = []
@@ -304,14 +331,9 @@ class normal_division_lineage_tree:
 
         added_lineage_tree = []
         for mother, daughters in mother_daughters:
-            mother_ID = IDs_prev[mother]
-            daughter_IDs = []
 
-            for daughter in daughters:
-                if assignments:
-                    daughter_IDs.append(assignments[IDs_curr_untracked[daughter]]) # this works because daughter is a single ID. New items wont be in assignments but not in daughter so its fine *pew*
-                else:
-                    daughter_IDs.append(IDs_curr_untracked[daughter])
+            mother_ID = IDs_prev[mother]
+            daughter_IDs = IoA_index_daughter_to_ID(daughters, assignments, IDs_curr_untracked)
 
             for family in self.families:
                 for member in family:
@@ -357,18 +379,36 @@ class normal_division_lineage_tree:
         if not np.any(prev_rp):
             prev_rp = regionprops(prev_lab)
 
-        IoA_matrix, IDs_curr_untracked, IDs_prev = calc_IoA_matrix(lab,
+        IoA_matrix, self.IDs_curr_untracked, self.IDs_prev = calc_IoA_matrix(lab,
                                                                    prev_lab, 
                                                                    rp, 
                                                                    prev_rp
                                                                    )
-        aggr_track, mother_daughters = mother_daughter_assign(IoA_matrix, 
+        aggr_track, self.mother_daughters = mother_daughter_assign(IoA_matrix, 
                                                               IoA_thresh_daughter=self.IoA_thresh_daughter, 
                                                               min_daughter=self.min_daughter, 
                                                               max_daughter=self.max_daughter
                                                               )
 
-        self.create_tracked_frame_tree(frame_i, mother_daughters, IDs_prev, IDs_curr_untracked, None, set(IDs_curr_untracked))
+        self.create_tracked_frame_tree(frame_i, self.mother_daughters, self.IDs_prev, self.IDs_curr_untracked, None, set(self.IDs_curr_untracked))
+
+    def dict_curr_frame(self): # not done
+        """
+        Creates a dictionary mapping mother IDs to daughter IDs for the current frame.
+
+        Returns:
+            dict: A dictionary where the keys are mother IDs and the values are daughter IDs.
+        """
+        if not self.mother_daughters:
+            return {}
+        
+        mother_IDs = [self.IDs_prev[mother] for mother, _ in self.mother_daughters]
+        daughters = [daughter for _, daughter in self.mother_daughters]
+        daughters = [daughter for sublist in daughters for daughter in sublist]
+        daughter_IDs = IoA_index_daughter_to_ID(daughters, None, self.IDs_curr_untracked)
+        printl(zip(mother_IDs, daughter_IDs))
+        printl(dict(zip(mother_IDs, daughter_IDs)))
+        return dict(zip(mother_IDs, daughter_IDs))
         
 class tracker:
     """

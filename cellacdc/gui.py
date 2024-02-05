@@ -883,6 +883,8 @@ class guiWin(QMainWindow):
 
         self.setAcceptDrops(True)
         self._appName = 'Cell-ACDC'
+
+        self.lineage_tree = None
     
     def _printl(
             self, *objects, is_decorator=False, **kwargs
@@ -16460,46 +16462,46 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         current_frame_i = posData.frame_i
         
-        # Initialize empty lineage tree annotations for missing frames
-        annotated_lin_tree_dfs = []
-        for frame_i in range(last_lin_tree_frame_i+1):
-            acdc_df = posData.allData_li[frame_i]['acdc_df']
-            if 'generation_num_tree' in acdc_df.columns: # may need to change this, not exactly sure how df is initialized
-                continue
+        # # Initialize empty lineage tree annotations for missing frames
+        # annotated_lin_tree_dfs = []
+        # for frame_i in range(last_lin_tree_frame_i+1):
+        #     acdc_df = posData.allData_li[frame_i]['acdc_df']
+        #     if 'generation_num_tree' in acdc_df.columns: # may need to change this, not exactly sure how df is initialized
+        #         continue
             
-            acdc_df[self.lin_tree_df] = ''
+        #     acdc_df[self.lin_tree_df] = ''
         
-        # Collect annotated lineage tree dataframes
-        annotated_lin_tree_dfs = [
-            posData.allData_li[i]['acdc_df'][self.lin_tree_df_colnames]
-            for i in range(last_lin_tree_frame_i+1)
-        ]
-        keys = range(last_lin_tree_frame_i+1)
-        names = ['frame_i', 'Cell_ID']
-        annotated_lin_tree_df = (
-            pd.concat(annotated_lin_tree_dfs, keys=keys, names=names)
-            .reset_index()
-            .set_index(['Cell_ID', 'frame_i'])
-            .sort_index()
-        )
+        # # Collect annotated lineage tree dataframes
+        # annotated_lin_tree_dfs = [
+        #     posData.allData_li[i]['acdc_df'][self.lin_tree_df_colnames]
+        #     for i in range(last_lin_tree_frame_i+1)
+        # ]
+        # keys = range(last_lin_tree_frame_i+1)
+        # names = ['frame_i', 'Cell_ID']
+        # annotated_lin_tree_df = (
+        #     pd.concat(annotated_lin_tree_dfs, keys=keys, names=names)
+        #     .reset_index()
+        #     .set_index(['Cell_ID', 'frame_i'])
+        #     .sort_index()
+        # )
         
-        last_annotated_lin_tree_df = annotated_lin_tree_df.groupby(level=0).last()
-        lin_tree_df_colnames = self.lin_tree_df_colnames
-        pbar = tqdm(total=current_frame_i-last_lin_tree_frame_i+1, ncols=100)
+        # last_annotated_lin_tree_df = annotated_lin_tree_df.groupby(level=0).last()
+        # lin_tree_df_colnames = self.lin_tree_df_colnames
+        # pbar = tqdm(total=current_frame_i-last_lin_tree_frame_i+1, ncols=100)
         
-        # Update current frames with lineage tree annotations
-        for frame_i in range(last_lin_tree_frame_i, current_frame_i+1):
-            posData.frame_i = frame_i
-            self.get_data(lin_tree=True)
-            lin_tree_df = self.getBaselin_tree_df()
+        # # Update current frames with lineage tree annotations
+        # for frame_i in range(last_lin_tree_frame_i, current_frame_i+1):
+        #     posData.frame_i = frame_i
+        #     self.get_data(lin_tree=True)
+        #     lin_tree_df = self.getBaselin_tree_df()
 
-            idx = last_annotated_lin_tree_df.index.intersection(lin_tree_df.index)
-            lin_tree_df.loc[idx, lin_tree_df_colnames] = last_annotated_lin_tree_df.loc[idx]
+        #     idx = last_annotated_lin_tree_df.index.intersection(lin_tree_df.index)
+        #     lin_tree_df.loc[idx, lin_tree_df_colnames] = last_annotated_lin_tree_df.loc[idx]
 
-            self.store_lin_tree_df(lin_tree_df=lin_tree_df, frame_i=frame_i, autosave=False)
-            pbar.update()
-        pbar.close()
-
+        #     self.store_lin_tree_df(lin_tree_df=lin_tree_df, frame_i=frame_i, autosave=False)
+        #     pbar.update()
+        # pbar.close()
+        self.lineage_tree = normal_division_lineage_tree(posData.segm_data[posData.frame_i],) 
         posData.frame_i = current_frame_i
         self.get_data(lin_tree=True)
 
@@ -16756,26 +16758,6 @@ class guiWin(QMainWindow):
         self.lineage_tree.real_time_tree(frame_i, lab, prev_lab, rp=rp, prev_rp=prev_rp)
 
         # printl(self.lineage_tree.lineage_list[-1])
-
-        lin_tree_df = self.lineage_tree.lineage_list[-1]
-        lin_tree_df_prev = self.lineage_tree.lineage_list[-2]
-   
-        if lin_tree_df.shape[0] > lin_tree_df_prev.shape[0]: # check if new cells have arrived
-            new_cells = lin_tree_df.index.difference(lin_tree_df_prev.index) # I could use this for the if already but this is probably faster for frames where nothing changes
-            for ax in (0, 1):
-                if not self.areMothBudLinesRequested(ax):
-                    continue
-                for ID in new_cells:
-                    curr_obj = get_obj_by_label(rp, ID)
-                    lin_tree_df_ID = lin_tree_df.loc[ID]
-
-                    lin_tree_df_mother_ID = lin_tree_df_prev.loc[lin_tree_df_ID["parent_ID_tree"]]
-                    mother_obj = get_obj_by_label(prev_rp, lin_tree_df_ID["parent_ID_tree"])
-
-                    emerg_frame_i = lin_tree_df_ID["emerg_frame_i"]
-                    isNew = emerg_frame_i == frame_i 
-
-                    self.drawObjLin_TreeMothBudLines(ax, curr_obj, mother_obj, isNew, ID=ID)
 
     def getObjBbox(self, obj_bbox):
         if self.isSegm3D and len(obj_bbox)==6:
@@ -17754,6 +17736,41 @@ class guiWin(QMainWindow):
         xx, yy = core.get_line(y1, x1, y2, x2, dashed=True)
         scatterItem.addPoints(xx, yy)
     
+    def drawAllLineageTreeLines(self):
+        if self.lineage_tree is None:
+            return
+        
+        if len(self.lineage_tree.lineage_list) <= 2:
+            return
+
+        posData = self.data[self.pos_i]
+        lin_tree_df = self.lineage_tree.lineage_list[-1]
+        lin_tree_df_prev = self.lineage_tree.lineage_list[-2]
+        frame_i = posData.frame_i
+        rp = posData.allData_li[frame_i]['regionprops']
+        prev_rp = posData.allData_li[frame_i-1]['regionprops']
+
+
+        if lin_tree_df.shape[0] > lin_tree_df_prev.shape[0]: # check if new cells have arrived
+            new_cells = lin_tree_df.index.difference(lin_tree_df_prev.index) # I could use this for the if already but this is probably faster for frames where nothing changes
+            if new_cells.shape[0] == 0:
+                return
+            
+            for ax in (0, 1):
+                if not self.areMothBudLinesRequested(ax):
+                    continue
+                for ID in new_cells:
+                    curr_obj = get_obj_by_label(rp, ID)
+                    lin_tree_df_ID = lin_tree_df.loc[ID]
+
+                    lin_tree_df_mother_ID = lin_tree_df_prev.loc[lin_tree_df_ID["parent_ID_tree"]]
+                    mother_obj = get_obj_by_label(prev_rp, lin_tree_df_ID["parent_ID_tree"])
+
+                    emerg_frame_i = lin_tree_df_ID["emerg_frame_i"]
+                    isNew = emerg_frame_i == frame_i 
+
+                    self.drawObjLin_TreeMothBudLines(ax, curr_obj, mother_obj, isNew, ID=ID)
+
     def drawObjLin_TreeMothBudLines(self, ax, obj, mother_obj, isNew, ID=None):
         if not self.areMothBudLinesRequested(ax):
             return
@@ -17771,7 +17788,8 @@ class guiWin(QMainWindow):
         y2, x2 = self.getObjCentroid(mother_obj.centroid)
         xx, yy = core.get_line(y1, x1, y2, x2, dashed=True)
         scatterItem.addPoints(xx, yy)
-        printl(y1, x1, y2, x2)
+        self.ax1_newMothBudLinesItem.setData(xx, yy)
+        self.ax1_oldMothBudLinesItem.setData(xx, yy)
 
     def getObjCentroid(self, obj_centroid):
         if self.isSegm3D:
@@ -20880,7 +20898,11 @@ class guiWin(QMainWindow):
         delROIsIDs = self.setAllTextAnnotations()    
         self.setAllContoursImages(delROIsIDs=delROIsIDs)
 
+        mode = self.modeComboBox.currentText()
         self.drawAllMothBudLines()
+        if mode == 'Normal division: Lineage tree':
+            self.drawAllLineageTreeLines()
+
         self.highlightLostNew()
         
         self.highlightSearchedID(self.highlightedID, force=True)        
@@ -21168,17 +21190,33 @@ class guiWin(QMainWindow):
         return curr_delRoiIDs
     
     def setTitleText(self, lost_IDs, new_IDs, IDs_with_holes, lab_existing):
+        mode = self.modeComboBox.currentText()
         warn_txt = ''
         if lab_existing:
             htmlTxt = ''
         else:
             htmlTxt = f'<font color="white">Never segmented frame. </font>'
-        if lost_IDs:
+        if lost_IDs and mode != 'Normal division: Lineage tree':
             lost_IDs_format = myutils.get_trimmed_list(lost_IDs)
             warn_txt = f'IDs lost in current frame: {lost_IDs_format}'
             htmlTxt = (
                 f'<font color="red">{warn_txt}</font>'
             )
+
+
+        if mode == 'Normal division: Lineage tree' and lost_IDs: # and self.lineage_tree and self.lineage_tree.dict_curr_frame():
+            lost_IDs_format = myutils.get_trimmed_list(lost_IDs)
+            warn_txt = f'New daughter cells: {lost_IDs_format}'
+            htmlTxt = (
+                f'<font color="green">{warn_txt}</font>'
+            )
+            
+            # pairs_format = myutils.get_trimmed_dict(self.lineage_tree.dict_curr_frame())
+            # warn_txt = f'Split cells: {pairs_format}'
+            # htmlTxt = (
+            #     f'<font color="green">{warn_txt}</font>'
+            # )
+
         if new_IDs:
             new_IDs_format = myutils.get_trimmed_list(new_IDs)
             warn_txt = f'New IDs in current frame: {new_IDs_format}'
@@ -22754,8 +22792,8 @@ class guiWin(QMainWindow):
         # self.prevAnnotOptions = self.storeCurrentAnnotOptions_ax1(
         #     return_value=True
         # )
-        self.annotCcaInfoCheckbox.setChecked(False)
-        self.annotIDsCheckbox.setChecked(True)
+        self.annotCcaInfoCheckbox.setChecked(True)
+        self.annotIDsCheckbox.setChecked(False)
         self.drawMothBudLinesCheckbox.setChecked(False)
         self.setDrawAnnotComboboxText()
         self.showTreeInfoCheckbox.setChecked(True)
