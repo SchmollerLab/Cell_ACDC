@@ -17415,7 +17415,7 @@ class guiWin(QMainWindow):
 
         self.navigateScrollBar.setMaximum(last_cca_frame_i+1)
         self.navSpinBox.setMaximum(last_cca_frame_i+1)
-
+        
         if posData.cca_df is None:
             posData.cca_df = self.getBaseCca_df()
             self.store_cca_df()
@@ -17424,6 +17424,7 @@ class guiWin(QMainWindow):
             self.titleLabel.setText(msg, color=self.titleColor)
         else:
             self.get_cca_df()
+            
         return proceed
 
     def resetWillDivideInfo(self, from_frame_i=None):
@@ -17601,10 +17602,10 @@ class guiWin(QMainWindow):
         if 'cell_cycle_stage' in acdc_df.columns:
             # Cell cycle info already present --> overwrite with new
             acdc_df[self.cca_df_colnames] = cca_df[self.cca_df_colnames]
-            posData.allData_li[i]['acdc_df'] = acdc_df.copy()
+            posData.allData_li[i]['acdc_df'] = acdc_df
         elif cca_df is not None:
             df = acdc_df.join(cca_df, how='left')
-            posData.allData_li[i]['acdc_df'] = acdc_df.copy()
+            posData.allData_li[i]['acdc_df'] = df
         
         if autosave:
             self.enqAutosave()
