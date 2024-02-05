@@ -8229,16 +8229,6 @@ class guiWin(QMainWindow):
                     self.isHoverZneighID = True
                 else:
                     hoverID = 0
-                
-                # printl(
-                #     f'{doNotLinkThroughZ = },', 
-                #     f'{ID_z_under = },'
-                #     f'{hoverIDa = }',
-                #     f'{hoverIDb = }',
-                #     f'{hoverIDc = }',
-                #     f'{hoverID = }',
-                #     f'{self.brushHoverCenterModeAction = }'
-                # )
         else:
             if self.brushButton.isChecked() and self.isShiftDown:
                 # Force new ID with brush and Shift
@@ -9599,9 +9589,6 @@ class guiWin(QMainWindow):
         # Correct past frames
         corrected_budIDs_past = set()
         for past_i in range(posData.frame_i-1, -1, -1):
-            
-            # printl(past_i)
-            
             if len(corrected_budIDs_past) == 2:
                 break
             
@@ -12042,7 +12029,6 @@ class guiWin(QMainWindow):
                     self.typingEditID = True
                 self.editIDspinbox.setValue(ID)
             except Exception as e:
-                # printl(traceback.format_exc())
                 pass
         
         if isManualTrackingActive:
@@ -12055,7 +12041,6 @@ class guiWin(QMainWindow):
                     self.typingEditID = True
                 self.manualTrackingToolbar.spinboxID.setValue(ID)
             except Exception as e:
-                # printl(traceback.format_exc())
                 pass
         
         elif isManualBackgroundActive:
@@ -12070,7 +12055,6 @@ class guiWin(QMainWindow):
                     self.typingEditID = True
                 self.manualBackgroundToolbar.spinboxID.setValue(ID)
             except Exception as e:
-                # printl(traceback.format_exc())
                 pass
         
         isTypingIDFunctionChecked = (
@@ -16400,11 +16384,7 @@ class guiWin(QMainWindow):
         else:
             # Filter or add IDs that were not stored yet
             acdc_df = acdc_df.drop(columns=['time_seconds'], errors='ignore')
-            try:
-                acdc_df = acdc_df.reindex(IDs, fill_value=0)
-            except Exception as e:
-                printl(IDs)
-                printl(acdc_df.index)
+            acdc_df = acdc_df.reindex(IDs, fill_value=0)
             acdc_df['is_cell_dead'] = is_cell_dead_li
             acdc_df['is_cell_excluded'] = is_cell_excluded_li
             acdc_df['x_centroid'] = xx_centroid
@@ -16795,8 +16775,6 @@ class guiWin(QMainWindow):
 
         # Remove cells that disappeared
         IDsCellsG1 = [ID for ID in IDsCellsG1 if ID in posData.IDs]
-
-        printl(IDsCellsG1)
         
         numCellsG1 = len(IDsCellsG1)
         numNewCells = len(posData.new_IDs)
@@ -16862,6 +16840,9 @@ class guiWin(QMainWindow):
         # Run hungarian (munkres) assignment algorithm
         row_idx, col_idx = scipy.optimize.linear_sum_assignment(cost)
         
+        # New mother cells
+        newMothIDs = {IDsCellsG1[i] for i in row_idx}
+        
         # Assign buds to mothers
         for i, j in zip(row_idx, col_idx):
             mothID = IDsCellsG1[i]
@@ -16869,10 +16850,11 @@ class guiWin(QMainWindow):
             
             relID = None
             # If we are repeating assignment for the bud then we also have to
-            # correct the possibily wrong mother first
+            # correct the possibily wrong mother --> it goes back to 
+            # G1 if it's not a mother that we assign now
             if budID in posData.cca_df.index:
                 relID = posData.cca_df.at[budID, 'relative_ID']
-                if relID in prev_cca_df.index:
+                if relID in prev_cca_df.index and relID not in newMothIDs:
                     posData.cca_df.loc[relID] = prev_cca_df.loc[relID]
 
             posData.cca_df.at[mothID, 'relative_ID'] = budID
@@ -16887,13 +16869,6 @@ class guiWin(QMainWindow):
             bud_cca_dict['is_history_known'] = True
             bud_cca_dict['corrected_assignment'] = False
             posData.cca_df.loc[budID] = pd.Series(bud_cca_dict)
-            
-            if posData.cca_df.at[2, 'cell_cycle_stage'] == 'G1':
-                printl(budID, mothID, relID)
-
-        printl(
-            posData.cca_df.loc[[2], ['cell_cycle_stage']]
-        )
         
         # Keep only existing IDs
         posData.cca_df = posData.cca_df.loc[posData.IDs]
@@ -18517,7 +18492,6 @@ class guiWin(QMainWindow):
                 nextID_idx = ID_idx - 1
             obj = posData.rp[nextID_idx]
         except Exception as e:
-            # printl(traceback.format_exc())
             self.logger.info(
                 f'Auto-pilot restarted from first ID'
             )
@@ -18760,7 +18734,6 @@ class guiWin(QMainWindow):
             if not action.button.isChecked():
                 continue
             
-            # printl(action.pointsData, action.layerTypeIdx)
             if posData.frame_i not in action.pointsData:
                 if action.layerTypeIdx != 4:
                     self.logger.info(
@@ -21522,9 +21495,6 @@ class guiWin(QMainWindow):
 
         if hasattr(self, 'contoursImage'):
             self.initContoursImage()
-        
-        # for items in self.graphLayout.items.items():
-        #     printl(items)
     
     def createUserChannelNameAction(self):
         self.userChNameAction = QAction(self)
