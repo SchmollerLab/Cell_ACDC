@@ -9060,6 +9060,7 @@ class guiWin(QMainWindow):
         eligible = True
 
         # Check future frames
+        G1_duration_future = 0
         for future_i in range(posData.frame_i, posData.SizeT):
             cca_df_i = self.get_cca_df(frame_i=future_i, return_df=True)
 
@@ -9083,9 +9084,13 @@ class guiWin(QMainWindow):
                 if apply:
                     self.remove_future_cca_df(future_i)
                     break
-                if cancel or (G1_duration == 1 and future_i != last_cca_frame_i):
+                isG1singleFrame = G1_duration_future == 1
+                isFutureFrameNotLastAnnot = future_i != last_cca_frame_i
+                if cancel or (isG1singleFrame and isFutureFrameNotLastAnnot):
                     eligible = False
                     return eligible
+            
+            G1_duration_future += 1
 
         G1_duration_past = 0
         # Check past frames
