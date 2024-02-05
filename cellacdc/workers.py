@@ -4169,8 +4169,8 @@ class CcaIntegrityCheckerWorker(QObject):
         self.abortChecking = False
         self.isChecking = False
         self.isPaused = False
-        self.debug = False
-        self.dataQ = deque(maxlen=5)
+        self.debug = True
+        self.dataQ = deque(maxlen=10)
     
     def pause(self):
         if self.debug:
@@ -4193,7 +4193,7 @@ class CcaIntegrityCheckerWorker(QObject):
         self.dataQ.append(posData)
         if len(self.dataQ) == 1:
             # Wake worker upon inserting first element
-            self.abort = False
+            self.abortChecking = False
             self.waitCond.wakeAll()
     
     def _stop(self):

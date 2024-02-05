@@ -968,7 +968,7 @@ class guiWin(QMainWindow):
         self.slideshowWin = None
         self.ccaTableWin = None
         self.customAnnotButton = None
-        self.ccaIntegrityCheckerWorker = None
+        self.ccaCheckerRunning = False
         self.dataIsLoaded = False
         self.highlightedID = 0
         self.hoverLabelID = 0
@@ -1983,7 +1983,8 @@ class guiWin(QMainWindow):
                 pass
 
     def ccaCheckerWorkerClosed(self, worker):
-        self.logger.info('Cell cycle annotations integrity checker stopped.')            
+        self.logger.info('Cell cycle annotations integrity checker stopped.') 
+        self.ccaCheckerRunning = False           
     
     def gui_createMainLayout(self):
         mainLayout = QGridLayout()
@@ -8915,15 +8916,15 @@ class guiWin(QMainWindow):
 
         if self.ccaTableWin is not None:
             self.ccaTableWin.updateTable(posData.cca_df)
-
+        
         # Correct future frames
-        for i in range(posData.frame_i+1, posData.SizeT):
-            cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
+        for future_i in range(posData.frame_i+1, posData.SizeT):
+            cca_df_i = self.get_cca_df(frame_i=future_i, return_df=True)
             if cca_df_i is None:
                 # ith frame was not visited yet
                 break
 
-            self.storeUndoRedoCca(i, cca_df_i, undoId)
+            self.storeUndoRedoCca(future_i, cca_df_i, undoId)
             IDs = cca_df_i.index
             if ID not in IDs:
                 # For some reason ID disappeared from this frame
@@ -8937,26 +8938,32 @@ class guiWin(QMainWindow):
                         # Cell is in G1 in the future again so stop annotating
                         break
                     self.annotateDivision(cca_df_i, ID, relID)
-                    self.store_cca_df(frame_i=i, cca_df=cca_df_i, autosave=False)
+                    self.store_cca_df(
+                        frame_i=future_i, cca_df=cca_df_i, autosave=False
+                    )
                 else:
                     if ccs == 'S':
                         # Cell is in S in the future again so stop undoing (break)
                         # also leave a 1 frame duration G1 to avoid a continuous
                         # S phase
                         self.annotateDivision(cca_df_i, ID, relID)
-                        self.store_cca_df(frame_i=i, cca_df=cca_df_i, autosave=False)
+                        self.store_cca_df(
+                            frame_i=future_i, cca_df=cca_df_i, autosave=False
+                        )
                         break
-                    store = self.undoDivisionAnnotation(cca_df_i, ID, relID)
-                    self.store_cca_df(frame_i=i, cca_df=cca_df_i, autosave=False)
-
+                    self.undoDivisionAnnotation(cca_df_i, ID, relID)
+                    self.store_cca_df(
+                        frame_i=future_i, cca_df=cca_df_i, autosave=False
+                    )
+        
         # Correct past frames
-        for i in range(posData.frame_i-1, -1, -1):
-            cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
+        for past_i in range(posData.frame_i-1, -1, -1):
+            cca_df_i = self.get_cca_df(frame_i=past_i, return_df=True)
             if ID not in cca_df_i.index or relID not in cca_df_i.index:
                 # Bud did not exist at frame_i = i
                 break
 
-            self.storeUndoRedoCca(i, cca_df_i, undoId)
+            self.storeUndoRedoCca(past_i, cca_df_i, undoId)
             ccs = cca_df_i.at[ID, 'cell_cycle_stage']
             relID = cca_df_i.at[ID, 'relative_ID']
             ccs_relID = cca_df_i.at[relID, 'cell_cycle_stage']
@@ -8965,7 +8972,9 @@ class guiWin(QMainWindow):
                 break
             else:
                 store = self.undoDivisionAnnotation(cca_df_i, ID, relID)
-                self.store_cca_df(frame_i=i, cca_df=cca_df_i, autosave=False)
+                self.store_cca_df(
+                    frame_i=past_i, cca_df=cca_df_i, autosave=False
+                )
         
         self.enqAutosave()
 
@@ -11982,9 +11991,10 @@ class guiWin(QMainWindow):
        
         if ev.key() == Qt.Key_Q and self.debug:
             posData = self.data[self.pos_i]
-            frame_i = posData.frame_i
-            printl(posData.allData_li[posData.frame_i]['labels'] is None)
-            printl(self.get_last_tracked_i())
+            printl(
+                posData.allData_li[31]['acdc_df']
+                .loc[[2], ['cell_cycle_stage']]
+            )
         
         if not self.dataIsLoaded:
             self.logger.info(
@@ -16155,7 +16165,9 @@ class guiWin(QMainWindow):
                 for i in range(last_tracked_num):
                     posData.frame_i = i
                     self.get_data()
-                    self.store_data(enforce=True, autosave=False)
+                    self.store_data(
+                        enforce=True, autosave=False, store_cca_df_copy=True
+                    )
                     # self.load_delROIs_info(delROIshapes, last_tracked_num)
 
                 # Ask whether to resume from last frame
@@ -16324,7 +16336,7 @@ class guiWin(QMainWindow):
     @exception_handler
     def store_data(
             self, pos_i=None, enforce=True, debug=False, mainThread=True,
-            autosave=True
+            autosave=True, store_cca_df_copy=False
         ):
         pos_i = self.pos_i if pos_i is None else pos_i
         posData = self.data[pos_i]
@@ -16403,7 +16415,10 @@ class guiWin(QMainWindow):
             posData.allData_li[posData.frame_i]['acdc_df'] = acdc_df
     
         self.pointsLayerDataToDf(posData)
-        self.store_cca_df(pos_i=pos_i, mainThread=mainThread, autosave=autosave)
+        self.store_cca_df(
+            pos_i=pos_i, mainThread=mainThread, autosave=autosave, 
+            store_cca_df_copy=store_cca_df_copy
+        )
 
     def nearest_point_2Dyx(self, points, all_others):
         """
@@ -16781,6 +16796,8 @@ class guiWin(QMainWindow):
         # Remove cells that disappeared
         IDsCellsG1 = [ID for ID in IDsCellsG1 if ID in posData.IDs]
 
+        printl(IDsCellsG1)
+        
         numCellsG1 = len(IDsCellsG1)
         numNewCells = len(posData.new_IDs)
         if numCellsG1 < numNewCells:
@@ -16844,12 +16861,13 @@ class guiWin(QMainWindow):
 
         # Run hungarian (munkres) assignment algorithm
         row_idx, col_idx = scipy.optimize.linear_sum_assignment(cost)
-
+        
         # Assign buds to mothers
         for i, j in zip(row_idx, col_idx):
             mothID = IDsCellsG1[i]
             budID = posData.new_IDs[j]
-
+            
+            relID = None
             # If we are repeating assignment for the bud then we also have to
             # correct the possibily wrong mother first
             if budID in posData.cca_df.index:
@@ -16869,7 +16887,14 @@ class guiWin(QMainWindow):
             bud_cca_dict['is_history_known'] = True
             bud_cca_dict['corrected_assignment'] = False
             posData.cca_df.loc[budID] = pd.Series(bud_cca_dict)
+            
+            if posData.cca_df.at[2, 'cell_cycle_stage'] == 'G1':
+                printl(budID, mothID, relID)
 
+        printl(
+            posData.cca_df.loc[[2], ['cell_cycle_stage']]
+        )
+        
         # Keep only existing IDs
         posData.cca_df = posData.cca_df.loc[posData.IDs]
 
@@ -17580,7 +17605,7 @@ class guiWin(QMainWindow):
 
     def store_cca_df(
             self, pos_i=None, frame_i=None, cca_df=None, mainThread=True,
-            autosave=True
+            autosave=True, store_cca_df_copy=False
         ):
         pos_i = self.pos_i if pos_i is None else pos_i
         posData = self.data[pos_i]
@@ -17589,10 +17614,6 @@ class guiWin(QMainWindow):
             cca_df = posData.cca_df
             if self.ccaTableWin is not None and mainThread:
                 self.ccaTableWin.updateTable(posData.cca_df)
-
-        # Store copy for cca integrity worker
-        if self.ccaIntegrityCheckerWorker is not None and cca_df is not None:
-            posData.allData_li[i]['cca_df'] = cca_df.copy()
         
         acdc_df = posData.allData_li[i]['acdc_df']
         if acdc_df is None:
@@ -17606,6 +17627,13 @@ class guiWin(QMainWindow):
         elif cca_df is not None:
             df = acdc_df.join(cca_df, how='left')
             posData.allData_li[i]['acdc_df'] = df
+        
+        # Store copy for cca integrity worker
+        if self.ccaCheckerRunning and cca_df is not None:
+            posData.allData_li[i]['cca_df'] = cca_df.copy()
+        
+        if store_cca_df_copy and cca_df is not None:
+            posData.allData_li[i]['cca_df'] = cca_df.copy()
         
         if autosave:
             self.enqAutosave()
@@ -17625,13 +17653,10 @@ class guiWin(QMainWindow):
         worker.enqueue(posData)
     
     def enqCcaIntegrityChecker(self):
-        if self.ccaIntegrityCheckerWorker is None:
+        if not self.ccaCheckerRunning:
             return
         posData = self.data[self.pos_i]  
         self.ccaIntegrityCheckerWorker.enqueue(posData)
-    
-    def ccaIntegrityCheckerWorkerDestroyed(self):
-        self.ccaIntegrityCheckerWorker = None
     
     def drawAllMothBudLines(self):
         posData = self.data[self.pos_i]
@@ -22384,7 +22409,6 @@ class guiWin(QMainWindow):
         worker.finished.connect(worker.deleteLater)
         ccaCheckerThread.finished.connect(ccaCheckerThread.deleteLater)
 
-        worker.destroyed.connect(self.ccaIntegrityCheckerWorkerDestroyed)
         worker.sigDone.connect(self.ccaCheckerWorkerDone)
         worker.progress.connect(self.workerProgress)
         worker.critical.connect(self.ccaIntegrityWorkerCritical)
@@ -22393,6 +22417,8 @@ class guiWin(QMainWindow):
         
         ccaCheckerThread.started.connect(worker.run)
         ccaCheckerThread.start()
+        
+        self.ccaCheckerRunning = True
         
         self.logger.info('Cell cycle annotations integrity checker started.')
     
