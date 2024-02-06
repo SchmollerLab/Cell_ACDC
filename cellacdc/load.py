@@ -96,6 +96,13 @@ def remove_duplicates_file(filepath):
     with open(filepath, 'w') as file:
         file.write(unique_text)
 
+def to_csv_through_temp(df, csv_path):
+    filename = os.path.basename(csv_path)
+    with tempfile.TemporaryDirectory() as temp_dir:
+        tmp_filepath = os.path.join(temp_dir, filename)
+        df.to_csv(tmp_filepath)
+        shutil.copy2(tmp_filepath, csv_path)
+
 def get_all_acdc_folders(user_profile_path):
     models = myutils.get_list_of_models()
     acdc_folders = [f'acdc-{model}' for model in models]

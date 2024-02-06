@@ -725,7 +725,8 @@ class mainWin(QMainWindow):
             'Stack 2D segmentation objects into 3D objects...'
         )  
         self.trackSubCellFeaturesAction = QAction(
-            'Track and/or count sub-cellular objects (assign same ID as the cell they belong to)...'
+            'Track and/or count sub-cellular objects (assign same ID as the '
+            'cell they belong to)...'
         )    
         self.applyTrackingFromTableAction = QAction(
             'Apply tracking info from tabular data...'

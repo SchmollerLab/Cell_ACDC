@@ -9024,15 +9024,17 @@ class guiWin(QMainWindow):
             apply = False
         elif why == 'single_frame_G1_duration':
             err_msg = html_utils.paragraph(f"""
-                Assigning bud ID {budID} to cell in G1
-                (ID={new_mothID}) would result in no G1 phase at all between
-                previous cell cycle and current cell cycle.
-                This is very confusing for me, sorry.<br><br>
-                The solution is to remove cell division anotation on cell
-                {new_mothID} (right-click on it on current frame) and then
-                annotate division on any frame before current frame number {i+1}.
+                Assigning bud ID {budID} to cell ID {new_mothID} would result 
+                in <b>no G1 phase at all</b> between previous cell cycle and 
+                current cell cycle (see frame n. {i+1}).<br><br>
+                
+                The solution is to annotate division on cell ID {new_mothID} 
+                on any frame before the frame number {i+1}, and then 
+                proceed to correcting the bud assignment.<br><br>
+                
                 This will gurantee a G1 duration for the cell {new_mothID}
-                of <b>at least 1 frame</b>. Thanks.
+                of <b>at least 1 frame</b>.<br><br>
+                Thank you for your patience!
             """)
             msg = widgets.myMessageBox()
             msg.warning(
@@ -9096,7 +9098,6 @@ class guiWin(QMainWindow):
             
             G1_duration_future += 1
 
-        G1_duration_past = 0
         # Check past frames
         for past_i in range(posData.frame_i-1, -1, -1):
             # Get cca_df for ith frame from allData_li
@@ -9119,18 +9120,15 @@ class guiWin(QMainWindow):
                 eligible = False
                 return eligible
 
-            if ccs != 'G1':
-                # Stop counting G1 duration of the requested mother
+            if not is_bud_existing:
+                # Bud stop existing --> check that mother is still in G1
+                if ccs != 'G1':
+                    eligible = False
+                    self.warnMotherNotEligible(
+                        new_mothID, budID, past_i, 'single_frame_G1_duration'
+                    )
                 break
-
-            G1_duration_past += 1
-
-        if G1_duration_past == 0:
-            # G1_duration of the mother is single frame --> not eligible
-            eligible = False
-            self.warnMotherNotEligible(
-                new_mothID, budID, posData.frame_i, 'single_frame_G1_duration'
-            )
+            
         return eligible
     
     def checkMothersExcludedOrDead(self):
