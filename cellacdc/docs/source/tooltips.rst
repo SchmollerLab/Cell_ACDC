@@ -263,6 +263,12 @@
     :height: 16px
     :width: 16px
 
+.. |labelRoiTrangeCheckbox| image:: images/segmentTrangeLabelRoiDocsImage.svg
+    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/label_roi.svg
+    :alt: reInitCcaAction icon
+    :height: 16px
+    :width: 16px
+
 GUI tools
 =========
 
@@ -357,6 +363,7 @@ Edit tools: Segmentation and tracking
 * **Repeat tracking (** |repeatTrackingAction| **"Shift+T"):** Repeat tracking on current frame. Tracking method can be changed in ``Tracking --> Select real-time tracking algorithm``
 * **Manual tracking (** |manualTrackingButton| **"T"):** Select ID to track and right-click on an object to assign that ID.
 * **Reset last segmented frame (** |reinitLastSegmFrameAction| **):** Reset last segmented frame to current one. NOTE: This will re-enable real-time tracking for all the future frames.
+* **Segment range of frames (** |labelRoiTrangeCheckbox| **):** Segment a range of frames with the "Magic labeller" tool. 
 
 Edit tools: Cell cycle analysis
 -------------------------------

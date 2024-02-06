@@ -1013,13 +1013,13 @@ class guiWin(QMainWindow):
         self.gui_createActions()
         self.gui_createMenuBar()
 
-        
-
         self.gui_createToolBars()
         self.gui_createControlsToolbar()
         self.gui_createShowPropsButton()
         self.gui_createRegionPropsDockWidget()
         self.gui_createQuickSettingsWidgets()
+        self.setTooltips()
+        self.gui_populateToolSettingsMenu()
 
         self.autoSaveGarbageWorkers = []
         self.autoSaveActiveWorkers = []
@@ -1794,10 +1794,6 @@ class guiWin(QMainWindow):
         self.editToolBar.setVisible(False)
         self.navigateToolBar.setVisible(False)
 
-        self.setTooltips()
-
-        self.gui_populateToolSettingsMenu()
-
         self.gui_createAnnotateToolbar()
 
         # toolbarSize = 58
@@ -2433,11 +2429,19 @@ class guiWin(QMainWindow):
 
         self.settingsMenu.addSeparator()
 
+        keepToolActiveNames = {
+            'Segment range of frames': self.labelRoiTrangeCheckbox
+        }
         for button in self.checkableQButtonsGroup.buttons():
             if button.toolTip() == "":
                 toolName = "MISSING"
+                continue
             else:
                 toolName = re.findall(r'Name: (.*)', button.toolTip())[0]
+            keepToolActiveNames[toolName] = button
+        
+        keepToolActiveNames = dict(natsorted(keepToolActiveNames.items()))
+        for toolName, button in keepToolActiveNames.items():
             menu = self.settingsMenu.addMenu(f'{toolName} tool')
             action = QAction(button)
             action.setText('Keep tool active after using it')
@@ -11399,6 +11403,13 @@ class guiWin(QMainWindow):
             self.progressWin.workerFinished = True
             self.progressWin.close()
             self.progressWin = None  
+        
+        uncheckLabelRoiTRange = (
+            self.labelRoiTrangeCheckbox.isChecked()
+            and not self.labelRoiTrangeCheckbox.findChild(QAction).isChecked()
+        )
+        if uncheckLabelRoiTRange:
+            self.labelRoiTrangeCheckbox.setChecked(False)
 
     def restoreHoverObjBrush(self):
         posData = self.data[self.pos_i]
@@ -11981,10 +11992,7 @@ class guiWin(QMainWindow):
        
         if ev.key() == Qt.Key_Q and self.debug:
             posData = self.data[self.pos_i]
-            printl(
-                posData.allData_li[31]['acdc_df']
-                .loc[[2], ['cell_cycle_stage']]
-            )
+            printl(self.labelRoiTrangeCheckbox.findChild(QAction).isChecked())
         
         if not self.dataIsLoaded:
             self.logger.info(

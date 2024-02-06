@@ -51,6 +51,7 @@ from . import printl
 from . import _warnings
 from . import exception_handler
 from . import user_profile_path
+from . import cellacdc_path
 
 from . import qrc_resources
 
@@ -103,6 +104,9 @@ class mainWin(QMainWindow):
         python_version = f'{py_ver.major}.{py_ver.minor}.{py_ver.micro}'
         self.logger.info(
             f'Using Qt {QtCore.__version__} with Python {python_version}'
+        )
+        self.logger.info(
+            f'Cell-ACDC installation directory: "{cellacdc_path}"'
         )
         
         if not is_linux:
