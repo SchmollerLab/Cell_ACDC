@@ -209,10 +209,10 @@ def _get_groups_data(
         else:
             group_df['x'] = group_xx
         col_name = f'{z};;{name_str}'
-        dfs.append(group_df.set_index('x')[[col_name]])
+        dfs.append(group_df[[col_name, 'x']].dropna().set_index('x'))
         
         yticks_labels.append(f'{name}'.strip('()'))
-
+    
     try:
         df_data = pd.concat(dfs, names=[x], axis=1).sort_index()
     except pd.errors.InvalidIndexError as err:
@@ -394,6 +394,80 @@ def heatmap(
         block: bool=False,
         imshow_kwargs: dict=None
     ):
+    """Generate heatmap plot from data
+
+    Parameters
+    ----------
+    data : Union[pd.DataFrame, np.ndarray]
+        Table containing the data in long-format
+    x : str, optional
+        Name of the column used for the x-axis, by default ''
+    z : str, optional
+        Name of the column used for the z-axis, i.e., the values that 
+        determine the color of each pixel, by default ''
+    y_grouping : Union[str, List[str]], optional
+        Column or list of columns that identifies a single row in the 
+        heatmap, by default ''
+    sort_groups : bool, optional
+        _description_, by default True
+    normalize_x : bool, optional
+        _description_, by default False
+    zeroize_x : bool, optional
+        _description_, by default False
+    x_bin_size : int, optional
+        _description_, by default None
+    x_label_loc : str, optional
+        _description_, by default 'right'
+    x_labels : np.ndarray, optional
+        _description_, by default None
+    add_x_0_label : bool, optional
+        _description_, by default False
+    convert_time_how : str, optional
+        _description_, by default None
+    xlabel : str, optional
+        _description_, by default None
+    num_decimals_xticks_labels : int, optional
+        _description_, by default None
+    force_x_to_int : bool, optional
+        _description_, by default False
+    z_min : Union[int, float], optional
+        _description_, by default None
+    z_max : Union[int, float], optional
+        _description_, by default None
+    stretch_height_factor : float, optional
+        _description_, by default None
+    stretch_width_factor : float, optional
+        _description_, by default None
+    group_label_depth : int, optional
+        _description_, by default 1
+    num_xticks : int, optional
+        _description_, by default 6
+    colormap : Union[str, matplotlib.colors.Colormap], optional
+        _description_, by default 'viridis'
+    missing_values_color : _type_, optional
+        _description_, by default None
+    colorbar_pad : float, optional
+        _description_, by default 0.07
+    colorbar_size : float, optional
+        _description_, by default 0.05
+    colorbar_label : str, optional
+        _description_, by default ''
+    ax : plt.Axes, optional
+        _description_, by default None
+    fig : plt.Figure, optional
+        _description_, by default None
+    backend : str, optional
+        _description_, by default 'matplotlib'
+    block : bool, optional
+        _description_, by default False
+    imshow_kwargs : dict, optional
+        _description_, by default None
+
+    Returns
+    -------
+    _type_
+        _description_
+    """    
     
     if ax is None:
         fig, ax = plt.subplots()
