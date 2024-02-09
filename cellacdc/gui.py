@@ -9152,7 +9152,7 @@ class guiWin(QMainWindow):
                     new_mothID, budID, future_i, 'not_G1_in_the_future'
                 )
                 if apply:
-                    self.remove_future_cca_df(future_i)
+                    self.resetCcaFuture(future_i)
                     break
                 isG1singleFrame = G1_duration_future == 1
                 isFutureFrameNotLastAnnot = future_i != last_cca_frame_i
@@ -10684,7 +10684,7 @@ class guiWin(QMainWindow):
             
             self.resetWillDivideInfo()
             # Reset all future frames
-            self.remove_future_cca_df(
+            self.resetCcaFuture(
                 posData.frame_i+1, reset_will_divide=False
             )
             if posData.frame_i == 0:
@@ -12810,7 +12810,7 @@ class guiWin(QMainWindow):
                 return
             
             self.logger.info(f'Removing annotations from frame n. {start_n}.')
-            self.remove_future_cca_df(start_n-1)
+            self.resetCcaFuture(start_n-1)
 
         video_to_track = posData.segm_data
         for frame_i in range(start_n-1, stop_n):
@@ -14651,7 +14651,7 @@ class guiWin(QMainWindow):
                             return_answer=True
                         )
                         if reinit_cca:
-                            self.remove_future_cca_df(0)
+                            self.resetCcaFuture(0)
                 posData.cca_df = editCcaWidget.cca_df
                 self.store_cca_df()
 
@@ -17555,11 +17555,13 @@ class guiWin(QMainWindow):
                 cca_df=past_cca_df, frame_i=past_frame_i, autosave=False
             )
     
-    def remove_future_cca_df(self, from_frame_i, reset_will_divide=True):
+    def resetCcaFuture(self, from_frame_i, reset_will_divide=True):
         posData = self.data[self.pos_i]
         self.last_cca_frame_i = from_frame_i
         self.setNavigateScrollBarMaximum()
         for i in range(from_frame_i, posData.SizeT):
+            posData.allData_li[i].pop('cca_df', None)
+            
             df = posData.allData_li[i]['acdc_df']
             if df is None:
                 # No more saved info to delete
@@ -20158,7 +20160,7 @@ class guiWin(QMainWindow):
             self.store_data()
             posData.frame_i -= 1
             self.get_data()
-            self.remove_future_cca_df(posData.frame_i)
+            self.resetCcaFuture(posData.frame_i)
             self.next_frame(warn=False)
         else:
             if dropDelIDsNoteText and posData.cca_df is not None:
@@ -20174,7 +20176,7 @@ class guiWin(QMainWindow):
                 self.store_data()
                 posData.frame_i -= 1
                 self.get_data()
-                self.remove_future_cca_df(posData.frame_i)
+                self.resetCcaFuture(posData.frame_i)
                 self.next_frame()
         
         if get_answer:
