@@ -3580,6 +3580,8 @@ class IntLineEdit(QLineEdit):
         self._minimum = -np.inf
         
         self._regExp = r'\d+'
+        if allowNegative:
+            self._regExp = r'-?\d+'
 
         regExp = QRegularExpression(self._regExp)
         self.setValidator(QRegularExpressionValidator(regExp))
