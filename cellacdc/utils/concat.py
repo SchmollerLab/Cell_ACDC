@@ -193,12 +193,16 @@ class ConcatWin(NewThreadMultipleExpBaseUtil):
         self.worker.waitCond.wakeAll()
     
     def askFolderWhereToSaveAllExp(self, allExp_filename):
-        txt = html_utils.paragraph(f"""
+        txt = ("""
             After clicking "Ok" you will be asked to <b>select a folder where you
             want to save the file</b><br>
             with the <b>concatenated tables</b> from the multiple experiments selected<br>
-            (the filename will be <code>{allExp_filename}</code>)
+            
         """)
+        if allExp_filename:
+            txt = f'{txt}(the filename will be <code>{allExp_filename}</code>)'
+        
+        txt = html_utils.paragraph(txt)
         msg = widgets.myMessageBox(wrapText=False, showCentered=False)
         msg.information(self, 'Select folder', txt)
         if msg.cancel:
@@ -208,7 +212,7 @@ class ConcatWin(NewThreadMultipleExpBaseUtil):
     
         mostRecentPath = myutils.getMostRecentPath()
         save_to_dir = QFileDialog.getExistingDirectory(
-            self, f'Select folder where to save {allExp_filename}', 
+            self, f'Select folder where to save multiple experiments table', 
             mostRecentPath
         )
         if not save_to_dir:
