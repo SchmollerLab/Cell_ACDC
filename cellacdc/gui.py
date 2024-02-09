@@ -3209,10 +3209,13 @@ class guiWin(QMainWindow):
         self.viewCcaTableAction.triggered.connect(self.viewCcaTable)
 
         self.guiTabControl.propsQGBox.idSB.valueChanged.connect(
-            self.updatePropsWidget
+            self.propsWidgetIDvalueChanged
         )
         self.guiTabControl.highlightCheckbox.toggled.connect(
-            self.highlightIDcheckBoxToggled
+            self.highlightIDonHoverCheckBoxToggled
+        )
+        self.guiTabControl.highlightSearchedCheckbox.toggled.connect(
+            self.highlightSearchedIDcheckBoxToggled
         )
         intensMeasurQGBox = self.guiTabControl.intensMeasurQGBox
         intensMeasurQGBox.additionalMeasCombobox.currentTextChanged.connect(
@@ -5516,8 +5519,12 @@ class guiWin(QMainWindow):
             return True
         return False
 
-    def highlightIDcheckBoxToggled(self, checked):
-        if not checked:
+    def highlightIDonHoverCheckBoxToggled(self, checked):
+        doHighlight = (
+            self.guiTabControl.highlightCheckbox.isChecked()
+            or self.guiTabControl.highlightSearchedCheckbox.isChecked()
+        )
+        if not doHighlight:
             self.highlightedID = 0
             self.initLookupTableLab()
         else:
@@ -5525,14 +5532,57 @@ class guiWin(QMainWindow):
             self.highlightSearchedID(self.highlightedID, force=True)
             self.updatePropsWidget(self.highlightedID)
         self.updateAllImages()
+    
+    def highlightSearchedIDcheckBoxToggled(self, checked):
+        self.highlightIDonHoverCheckBoxToggled(checked)
+        if checked:
+            posData = self.data[self.pos_i]
+            self.highlightedID = self.getHighlightedID()
+            if self.highlightedID == 0:
+                return
+            objIdx = posData.IDs_idxs[self.highlightedID]
+            obj_idx = posData.IDs_idxs.get(self.highlightedID)
+            if obj_idx is None:
+                return
+            obj = posData.rp[objIdx]
+            self.goToZsliceSearchedID(obj) 
+    
+    def setHighlightID(self, doHighlight):
+        if not doHighlight:
+            self.highlightedID = 0
+            self.initLookupTableLab()
+        else:
+            self.highlightedID = self.guiTabControl.propsQGBox.idSB.value()
+            self.highlightSearchedID(self.highlightedID, force=True)
+            self.updatePropsWidget(self.highlightedID)
+        self.updateAllImages()
+    
+    def propsWidgetIDvalueChanged(self, ID):
+        posData = self.data[self.pos_i]
+        if ID == 0:
+            self.updatePropsWidget(int(ID))
+            return
+        
+        propsQGBox = self.guiTabControl.propsQGBox
+        obj_idx = posData.IDs_idxs.get(ID)
+        if obj_idx is None:
+            s = f'Object ID {int(ID):d} does not exist'
+            propsQGBox.notExistingIDLabel.setText(s)
+            return
+        
+        obj = posData.rp[obj_idx]
+        self.goToZsliceSearchedID(obj)
+        self.updatePropsWidget(int(ID))
 
-    def updatePropsWidget(self, ID):
+    def updatePropsWidget(self, ID, fromHover=False):
         if isinstance(ID, str):
             # Function called by currentTextChanged of channelCombobox or
             # additionalMeasCombobox. We set self.currentPropsID = 0 to force update
             ID = self.guiTabControl.propsQGBox.idSB.value()
             self.currentPropsID = -1
 
+        ID = int(ID)
+        
         update = (
             self.propsDockWidget.isVisible()
             and ID != 0 and ID!=self.currentPropsID
@@ -5551,20 +5601,29 @@ class guiWin(QMainWindow):
             # empty segmentation mask
             return
 
-        if self.guiTabControl.highlightCheckbox.isChecked():
+        if fromHover and not self.guiTabControl.highlightCheckbox.isChecked():
+            # Do not highlight on hover
+            return
+        
+        doHighlight = (
+            self.guiTabControl.highlightCheckbox.isChecked()
+            or self.guiTabControl.highlightSearchedCheckbox.isChecked()
+        )
+        if doHighlight:
             self.highlightSearchedID(ID)
 
         propsQGBox = self.guiTabControl.propsQGBox
 
-        if ID not in posData.IDs:
-            s = f'Object ID {ID} does not exist'
+        obj_idx = posData.IDs_idxs.get(ID)
+        if obj_idx is None:
+            s = f'Object ID {int(ID):d} does not exist'
             propsQGBox.notExistingIDLabel.setText(s)
             return
 
         propsQGBox.notExistingIDLabel.setText('')
         self.currentPropsID = ID
         propsQGBox.idSB.setValue(ID)
-        obj_idx = posData.IDs.index(ID)
+        
         obj = posData.rp[obj_idx]
 
         if self.isSegm3D:
@@ -5706,7 +5765,7 @@ class guiWin(QMainWindow):
             Y, X = _img.shape[:2]
             if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
                 ID = self.currentLab2D[ydata, xdata]
-                self.updatePropsWidget(ID)
+                self.updatePropsWidget(ID, fromHover=True)
                 activeToolButton = self.getActiveToolButton()
                 hoverText = self.hoverValuesFormatted(
                     xdata, ydata, activeToolButton, isHoverImg1
@@ -7667,6 +7726,11 @@ class guiWin(QMainWindow):
         searchIDdialog.exec_()
         if searchIDdialog.cancel:
             return
+
+        objIdx = posData.IDs_idxs[searchIDdialog.EntryID]
+        obj = posData.rp[objIdx]
+        self.goToZsliceSearchedID(obj)
+        
         self.highlightSearchedID(searchIDdialog.EntryID)
         propsQGBox = self.guiTabControl.propsQGBox
         propsQGBox.idSB.setValue(searchIDdialog.EntryID)
@@ -11486,7 +11550,7 @@ class guiWin(QMainWindow):
             self.highlightedID = 0
             self.highLightIDLayerImg1.clear()
             self.highLightIDLayerRightImage.clear()
-            self.highlightIDcheckBoxToggled(False)
+            self.setHighlightID(False)
     
     def setAllIDs(self):
         for posData in self.data:
@@ -13572,9 +13636,9 @@ class guiWin(QMainWindow):
 
             posData.allData_li[posData.frame_i]['acdc_df'] = acdc_df
         
-        if self.highlightedID != 0:
-            self.highlightedID = 0
-            self.highlightIDcheckBoxToggled(False)
+        # if self.highlightedID != 0:
+        #     self.highlightedID = 0
+        #     self.setHighlightID(False)
 
         if buttons:
             return buttons[0]
@@ -13656,7 +13720,7 @@ class guiWin(QMainWindow):
             )
             if clearAnnotation:    
                 self.clearScatterPlotCustomAnnotButton(button)
-            self.highlightIDcheckBoxToggled(False)
+            self.setHighlightID(False)
             self.resetCursor()
     
     def resetCursor(self):
@@ -14857,6 +14921,8 @@ class guiWin(QMainWindow):
     @exception_handler
     def startLoadDataWorker(self, user_ch_file_paths, user_ch_name, firstPosData):
         self.funcDescription = 'loading data'
+        
+        self.guiTabControl.propsQGBox.idSB.setValue(0)
 
         self.thread = QThread()
         self.loadDataMutex = QMutex()
@@ -15635,6 +15701,7 @@ class guiWin(QMainWindow):
             self.setOverlayLabelsItems()
             self.drawPointsLayers(computePointsLayers=False)
             self.zSliceScrollBarStartedMoving = False
+            self.highlightSearchedID(self.highlightedID, force=True) 
 
     def zSliceScrollBarReleased(self):
         self.tempLayerImg1.setImage(self.emptyLab)
@@ -15702,6 +15769,8 @@ class guiWin(QMainWindow):
         idx = (posData.filename, posData.frame_i)
         if self.switchPlaneCombobox.depthAxes() == 'z': 
             posData.segmInfo_df.at[idx, 'z_slice_used_gui'] = z
+        
+        self.highlightedID = self.getHighlightedID()
         self.updateAllImages(computePointsLayers=False)
 
     def updateOverlayZslice(self, z):
@@ -20170,7 +20239,11 @@ class guiWin(QMainWindow):
             except IndexError:
                 return
 
-        self.highlightSearchedID(hoverID, isHover=True)
+        posData = self.data[self.pos_i]
+        objIdx = posData.IDs_idxs[hoverID]
+        obj = posData.rp[objIdx]
+        self.goToZsliceSearchedID(obj)
+        self.highlightSearchedID(hoverID)
     
     def highlightHoverIDsKeptObj(self, x, y, hoverID=None):
         if hoverID is None:
@@ -20179,17 +20252,50 @@ class guiWin(QMainWindow):
             except IndexError:
                 return
 
-        self.highlightSearchedID(hoverID, isHover=True)
+        self.highlightSearchedID(hoverID)
+        
+        posData = self.data[self.pos_i]
+        objIdx = posData.IDs_idxs[hoverID]
+        obj = posData.rp[objIdx]
+        self.goToZsliceSearchedID(obj)
+        
         for ID in self.keptObjectsIDs:
             self.highlightLabelID(ID)
 
-    def highlightSearchedID(self, ID, force=False, isHover=False):
+    def getHighlightedID(self):
+        if self.highlightedID > 0:
+            return self.highlightedID
+        
+        doHighlight = (
+            self.propsDockWidget.isVisible() 
+            and (
+                self.guiTabControl.highlightCheckbox.isChecked()
+                or self.guiTabControl.highlightSearchedCheckbox.isChecked()
+            )
+        )
+        if not doHighlight:
+            return 0
+        
+        return self.guiTabControl.propsQGBox.idSB.value()
+    
+    def highlightSearchedID(self, ID, force=False):
         if ID == 0:
             return
 
         if ID == self.highlightedID and not force:
             return
 
+        doHighlight = (
+            self.propsDockWidget.isVisible() 
+            and (
+                self.guiTabControl.highlightCheckbox.isChecked()
+                or self.guiTabControl.highlightSearchedCheckbox.isChecked()
+            )
+        )
+        if doHighlight:
+            self.highlightedID = self.guiTabControl.propsQGBox.idSB.value()
+            ID = self.highlightedID
+        
         if self.highlightedID > 0:
             self.clearHighlightedText()
         
@@ -20198,25 +20304,25 @@ class guiWin(QMainWindow):
 
         posData = self.data[self.pos_i]
 
+        self.highlightedID = ID
+
+        objIdx = posData.IDs_idxs.get(ID)
+        if objIdx is None:
+            return
+        
+        obj = posData.rp[objIdx]
+        isObjVisible = self.isObjVisible(obj.bbox)
+        if not isObjVisible:
+            return
+        
+        self.textAnnot[0].grayOutAnnotations()
+        self.textAnnot[1].grayOutAnnotations()
+
         how_ax1 = self.drawIDsContComboBox.currentText()
         how_ax2 = self.getAnnotateHowRightImage()
         isOverlaySegm_ax1 = how_ax1.find('segm. masks') != -1 
         isOverlaySegm_ax2 = how_ax2.find('segm. masks') != -1
-
-        self.highlightedID = ID
-
-        if ID not in posData.IDs:
-            return
-
-        self.textAnnot[0].grayOutAnnotations()
-        self.textAnnot[1].grayOutAnnotations()
-
-        objIdx = posData.IDs.index(ID)
-        obj = posData.rp[objIdx]
-
-        if not isHover:
-            self.goToZsliceSearchedID(obj)
-
+        
         if isOverlaySegm_ax1 or isOverlaySegm_ax2:
             alpha = self.imgGrad.labelsAlphaSlider.value()
             highlightedLab = np.zeros_like(self.currentLab2D)
@@ -20805,9 +20911,7 @@ class guiWin(QMainWindow):
         self.setAllContoursImages(delROIsIDs=delROIsIDs)
 
         self.drawAllMothBudLines()
-        self.highlightLostNew()
-        
-        self.highlightSearchedID(self.highlightedID, force=True)        
+        self.highlightLostNew()      
 
         if self.ccaTableWin is not None:
             self.ccaTableWin.updateTable(posData.cca_df)
@@ -20818,6 +20922,8 @@ class guiWin(QMainWindow):
         self.updateTempLayerKeepIDs()
         self.drawPointsLayers(computePointsLayers=computePointsLayers)
         self.setManualBackgroundImage()
+        
+        self.highlightSearchedID(self.highlightedID, force=True)  
     
     def deleteIDFromLab(self, lab, delID):
         delMask = np.zeros(lab.shape, dtype=bool)
@@ -23930,7 +24036,8 @@ class guiWin(QMainWindow):
         if self.highlightedID != 0:
             self.highlightedID = 0
             self.guiTabControl.highlightCheckbox.setChecked(False)
-            self.highlightIDcheckBoxToggled(False)
+            self.guiTabControl.highlightSearchedCheckbox.setChecked(False)
+            self.setHighlightID(False)
             # self.updateAllImages()
         try:
             self.polyLineRoi.clearPoints()
@@ -24022,7 +24129,7 @@ class guiWin(QMainWindow):
     def showPropsDockWidget(self, checked=False):
         if self.showPropsDockButton.isExpand:
             self.propsDockWidget.setVisible(False)
-            self.highlightIDcheckBoxToggled(False)
+            self.setHighlightID(False)
         else:
             self.highlightedID = self.guiTabControl.propsQGBox.idSB.value()
             if self.isSegm3D:

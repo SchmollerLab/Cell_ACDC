@@ -12,6 +12,7 @@ import sys
 import difflib
 from scipy.stats import binned_statistic
 import warnings
+from typing import Iterable
 
 from . import GUI_INSTALLED
 if GUI_INSTALLED:
@@ -765,4 +766,56 @@ def add_derived_cell_cycle_columns(acdc_df: pd.DataFrame):
     
     return acdc_df
     
+def add_generation_num_of_relative_ID(
+        acdc_df, prefix_index: Iterable[str]=None, reset_index=True
+    ):
+    relID_index_col = ['frame_i', 'relative_ID', 'Cell_ID']
+    ID_index_col = ['frame_i', 'Cell_ID', 'relative_ID']
     
+    if prefix_index is not None:
+        relID_index_col = [*prefix_index, *relID_index_col]
+        ID_index_col = [*prefix_index, *ID_index_col]
+    
+    if reset_index:
+        acdc_df = acdc_df.reset_index()
+    
+    acdc_df_by_rel_ID = acdc_df.set_index(relID_index_col)
+    acdc_df_by_rel_ID.index
+    relative_ID_idx = acdc_df_by_rel_ID.index
+
+    acdc_df_by_frame_i = acdc_df.set_index(ID_index_col)
+    relative_ID_idx = relative_ID_idx.intersection(acdc_df_by_frame_i.index)
+    acdc_df_by_frame_i['generation_num_relID'] = -1
+
+    acdc_df_by_frame_i.loc[relative_ID_idx, 'generation_num_relID'] = (
+        acdc_df_by_rel_ID.loc[relative_ID_idx, 'generation_num']
+    )
+
+    # Fix where generation_num_relID is still -1
+    to_fix_mask = acdc_df_by_frame_i.generation_num_relID == -1
+    acdc_df_to_fix = (
+        acdc_df_by_frame_i[to_fix_mask]
+        .reset_index()
+        .set_index(['Position_n', 'frame_i', 'relative_ID'])
+    )
+
+    acdc_df_by_cellID = (
+        acdc_df_by_rel_ID.reset_index()
+        .set_index(['Position_n', 'frame_i', 'Cell_ID'])
+    )
+    # Intersection takes care of disappearing relative_IDs
+    fixing_idx = acdc_df_to_fix.index.intersection(acdc_df_by_cellID.index)
+
+    acdc_df_to_fix.loc[fixing_idx, 'generation_num_relID'] = (
+        acdc_df_by_cellID.loc[fixing_idx, 'generation_num'].values
+    )
+    index_to_fix = acdc_df_by_frame_i[to_fix_mask].index
+    acdc_df_by_frame_i.loc[index_to_fix, 'generation_num_relID'] = (
+        acdc_df_to_fix['generation_num_relID'].values
+    )
+    
+    acdc_df_with_col = acdc_df_by_frame_i.reset_index()
+    return acdc_df_with_col
+    
+    
+        

@@ -4213,10 +4213,20 @@ class guiTabControl(QTabWidget):
         self.propsQGBox = objPropsQGBox(parent=self.propsTab)
         self.intensMeasurQGBox = objIntesityMeasurQGBox(parent=self.propsTab)
 
-        self.highlightCheckbox = QCheckBox('Highlight objects')
-        self.highlightCheckbox.setChecked(True)
+        self.highlightCheckbox = QCheckBox('Highlight objects on mouse hover')
+        self.highlightCheckbox.setChecked(False)
+        
+        self.highlightSearchedCheckbox = QCheckBox('Highlight searched object')
+        self.highlightSearchedCheckbox.setChecked(True)
 
-        layout.addWidget(self.highlightCheckbox)
+        highlightLayout = QHBoxLayout()
+        highlightLayout.addWidget(self.highlightCheckbox)
+        highlightLayout.addStretch(1)
+        highlightLayout.addWidget(QLabel('|'))
+        highlightLayout.addStretch(1)
+        highlightLayout.addWidget(self.highlightSearchedCheckbox)
+        
+        layout.addLayout(highlightLayout)
         layout.addWidget(self.propsQGBox)
         layout.addWidget(self.intensMeasurQGBox)  
         layout.addStretch(1)     
