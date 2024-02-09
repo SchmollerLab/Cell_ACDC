@@ -14481,11 +14481,11 @@ class guiWin(QMainWindow):
         if posData.SizeZ > 1:
             self.updateZsliceScrollbar(posData.frame_i)
             idx = (posData.filename, posData.frame_i)
-            try:
-                how = posData.segmInfo_df.at[idx, 'which_z_proj_gui']
-            except ValueError as e:
-                how = posData.segmInfo_df.loc[idx, 'which_z_proj_gui'].iloc[0] 
-            self.zProjComboBox.setCurrentText(how)
+            # try:
+            #     how = posData.segmInfo_df.at[idx, 'which_z_proj_gui']
+            # except ValueError as e:
+            #     how = posData.segmInfo_df.loc[idx, 'which_z_proj_gui'].iloc[0] 
+            # self.zProjComboBox.setCurrentText(how)
             self.zSliceScrollBar.setMaximum(posData.SizeZ-1)
             self.zSliceSpinbox.setMaximum(posData.SizeZ)
             self.SizeZlabel.setText(f'/{posData.SizeZ}')
@@ -15168,13 +15168,13 @@ class guiWin(QMainWindow):
         )
 
         self.navigateScrollBar.setSliderPosition(posData.frame_i+1)
-        if posData.SizeZ > 1:
-            idx = (posData.filename, posData.frame_i)
-            try:
-                how = posData.segmInfo_df.at[idx, 'which_z_proj_gui']
-            except ValueError as e:
-                how = posData.segmInfo_df.loc[idx, 'which_z_proj_gui'].iloc[0] 
-            self.zProjComboBox.setCurrentText(how)
+        # if posData.SizeZ > 1:
+        #     idx = (posData.filename, posData.frame_i)
+        #     try:
+        #         how = posData.segmInfo_df.at[idx, 'which_z_proj_gui']
+        #     except ValueError as e:
+        #         how = posData.segmInfo_df.loc[idx, 'which_z_proj_gui'].iloc[0] 
+        #     self.zProjComboBox.setCurrentText(how)
 
         # Connect events at the end of loading data process
         self.gui_connectGraphicsEvents()
@@ -15718,13 +15718,17 @@ class guiWin(QMainWindow):
             self.zProjComboBox.setCurrentText('single z-slice')
             self.zProjComboBox.setDisabled(True)
             
+            # Clear annotations
+            self.clearAllItems()
+            self.setHighlightID(False)
+            
             # Disable annotations on a plane that is not yz
             self.onDoubleSpaceBar()
             self.setDisabledAnnotCheckBoxesLeft(True)
             self.setDisabledAnnotCheckBoxesRight(True)
             self.overlayButton.setChecked(False)
             self.overlayButton.setDisabled(True)
-            self.setZprojDisabled(True, storePrevState=True)
+            # self.setZprojDisabled(True, storePrevState=True)
         else:
             self.zProjComboBox.setDisabled(False)
             self.onDoubleSpaceBar()
@@ -15732,7 +15736,7 @@ class guiWin(QMainWindow):
             self.setDisabledAnnotCheckBoxesRight(False)
             self.overlayButton.setDisabled(False)
             self.updateZsliceScrollbar(posData.frame_i)
-            self.restoreZprojWidgetsEnabled()
+            # self.restoreZprojWidgetsEnabled()
         
         SizeY, SizeX = posData.img_data[posData.frame_i].shape[-2:]
         
@@ -15768,7 +15772,7 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         idx = (posData.filename, posData.frame_i)
         if self.switchPlaneCombobox.depthAxes() == 'z': 
-            posData.segmInfo_df.at[idx, 'z_slice_used_gui'] = z
+            posData.segmInfo_df.loc[idx:, 'z_slice_used_gui'] = z
         
         self.highlightedID = self.getHighlightedID()
         self.updateAllImages(computePointsLayers=False)
@@ -22783,6 +22787,7 @@ class guiWin(QMainWindow):
         self.annotSegmMasksCheckboxRight.setDisabled(disabled)
         self.drawMothBudLinesCheckboxRight.setDisabled(disabled)
         self.annotNumZslicesCheckboxRight.setDisabled(disabled)
+        self.drawNothingCheckboxRight.setDisabled(disabled)
     
     def annotOptionClickedRight(self, clicked=True, sender=None):
         if sender is None:
