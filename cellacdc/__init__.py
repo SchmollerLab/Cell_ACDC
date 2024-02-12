@@ -259,6 +259,10 @@ base_acdc_df = {
     'was_manually_edited': 0
 }
 
+base_acdc_df_cols = list(base_acdc_df.keys())
+
+all_non_metrics_cols = [*base_acdc_df_cols, *cca_df_colnames, *lineage_tree_cols]
+
 is_linux = sys.platform.startswith('linux')
 is_mac = sys.platform == 'darwin'
 is_win = sys.platform.startswith("win")

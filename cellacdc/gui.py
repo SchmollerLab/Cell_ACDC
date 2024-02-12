@@ -1282,6 +1282,8 @@ class guiWin(QMainWindow):
         fileMenu = QMenu("&File", self)
         self.fileMenu = fileMenu
         menuBar.addMenu(fileMenu)
+        if self.debug:
+            fileMenu.addAction(self.createEmptyDataAction)
         fileMenu.addAction(self.newAction)
         fileMenu.addAction(self.openAction)
         fileMenu.addAction(self.openFileAction)
@@ -2527,6 +2529,11 @@ class guiWin(QMainWindow):
         self.segmNdimIndicator.setChecked(True)
         self.segmNdimIndicator.setDisabled(True)        
         
+        if self.debug:
+            self.createEmptyDataAction = QAction(self)
+            self.createEmptyDataAction.setText("DEBUG: Create empty data")
+            
+        
         self.newAction = QAction(self)
         self.newAction.setText("&New")
         self.newAction.setIcon(QIcon(":file-new.svg"))
@@ -2885,6 +2892,8 @@ class guiWin(QMainWindow):
 
     def gui_connectActions(self):
         # Connect File actions
+        if self.debug:
+            self.createEmptyDataAction.triggered.connect(self._createEmptyData)
         self.newAction.triggered.connect(self.newFile)
         self.openAction.triggered.connect(self.openFolder)
         self.openFileAction.triggered.connect(self.openFile)
@@ -21644,7 +21653,43 @@ class guiWin(QMainWindow):
             # traceback.print_exc()
             pass
 
-    # Slots
+    @exception_handler
+    def _createEmptyData(self):
+        self.MostRecentPath = self.getMostRecentPath()
+        exp_path = QFileDialog.getExistingDirectory(
+            self,
+            'Select experiment folder where to create empty data',
+            self.MostRecentPath
+        )
+        if not exp_path:
+            return
+        
+        pos_path = os.path.join(exp_path, 'Position_1')
+        images_path = os.path.join(pos_path, 'Images')
+        if os.path.exists(images_path):
+            raise FileExistsError(f'The following path already exists "{images_path}"')
+
+        os.makedirs(images_path, exist_ok=True)
+        
+        basename = 'test_empty_'
+        tif_filename = f'{basename}channel_1.tif'
+        tif_filepath = os.path.join(images_path, tif_filename)
+        empty_img = np.zeros((256,256), dtype=np.uint8)
+        empty_img[0,0] = 255
+        skimage.io.imsave(tif_filepath, empty_img)
+        
+        metadata_filename = f'{basename}metadata.csv'
+        metadata_filepath = os.path.join(images_path, metadata_filename)
+        df_metadata = pd.DataFrame({
+            'Description': ['basename'],
+            'values': [basename]
+        })
+        df_metadata.to_csv(metadata_filepath, index=False)
+        
+        self.isNewFile = True
+        self._openFolder(exp_path=images_path)
+
+    
     def newFile(self):
         self.newSegmEndName = ''
         self.isNewFile = True
@@ -22024,7 +22069,7 @@ class guiWin(QMainWindow):
                 self.MostRecentPath
             )
 
-        if exp_path == '':
+        if not exp_path:
             self.openAction.setEnabled(True)
             return
 

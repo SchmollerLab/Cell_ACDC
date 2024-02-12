@@ -27,6 +27,7 @@ from . import features
 from . import error_up_str
 from . import issues_url
 from . import exception_handler_cli
+from . import all_non_metrics_cols
 
 class HeadlessSignal:
     def __init__(self, *args):
@@ -296,6 +297,31 @@ def connect_3Dlab_zboundaries(lab):
 def stack_2Dlab_to_3D(lab, SizeZ):
     return np.tile(lab, (SizeZ, 1, 1))
 
+def track_sub_cell_objects_third_segm_acdc_df(
+        track_parent_objs_segm_data, parent_objs_acdc_df
+    ):
+    if parent_objs_acdc_df is None:
+        return
+    
+    keys = []
+    dfs = []
+    for frame_i, lab in enumerate(track_parent_objs_segm_data):
+        rp = skimage.measure.regionprops(lab)
+        IDs = [obj.label for obj in rp]
+        if frame_i not in parent_objs_acdc_df.index.get_level_values(0):
+            acdc_df_frame_i = myutils.getBaseAcdcDf(rp)
+        else:
+            acdc_df_frame_i = parent_objs_acdc_df.loc[frame_i]
+            cols = acdc_df_frame_i.columns.intersection(all_non_metrics_cols)
+            acdc_df_frame_i = acdc_df_frame_i[cols]
+        
+        dfs.append(acdc_df_frame_i)
+        keys.append(frame_i)
+    third_segm_acdc_df = pd.concat(
+        dfs, keys=keys, names=['frame_i', 'Cell_ID']
+    )
+    return third_segm_acdc_df
+    
 def track_sub_cell_objects_acdc_df(
         tracked_subobj_segm_data, subobj_acdc_df, all_old_sub_ids,
         all_num_objects_per_cells, SizeT=None, sigProgress=None, 
@@ -328,7 +354,8 @@ def track_sub_cell_objects_acdc_df(
                     sub_acdc_df_frame_i['relative_ID'].replace(old_sub_ids)
                 )
 
-        sub_acdc_df_list.append(sub_acdc_df_frame_i)
+        cols = sub_acdc_df_frame_i.columns.intersection(all_non_metrics_cols)
+        sub_acdc_df_list.append(sub_acdc_df_frame_i.loc[sub_ids, cols])
         keys_sub.append(frame_i)
         
         if tracked_cells_segm_data is not None:
@@ -343,6 +370,9 @@ def track_sub_cell_objects_acdc_df(
             else:
                 acdc_df_frame_i = cells_acdc_df.loc[frame_i].copy()
 
+            cols = acdc_df_frame_i.columns.intersection(all_non_metrics_cols)
+            acdc_df_frame_i = acdc_df_frame_i[cols]
+            
             acdc_df_frame_i['num_sub_cell_objs_per_cell'] = 0
             acdc_df_frame_i.loc[IDs_with_sub_obj, 'num_sub_cell_objs_per_cell'] = ([
                 num_objects_per_cells[id] for id in IDs_with_sub_obj
@@ -353,10 +383,11 @@ def track_sub_cell_objects_acdc_df(
         if sigProgress is not None:
             sigProgress.emit(1)
             
-    tracked_acdc_df = None
     sub_tracked_acdc_df = pd.concat(
         sub_acdc_df_list, keys=keys_sub, names=['frame_i', 'Cell_ID']
     )
+    
+    tracked_acdc_df = None
     if tracked_cells_segm_data is not None:
         tracked_acdc_df = pd.concat(
             acdc_df_list, keys=keys_cells, names=['frame_i', 'Cell_ID']

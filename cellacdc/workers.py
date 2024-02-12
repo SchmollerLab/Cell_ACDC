@@ -2139,6 +2139,24 @@ class TrackSubCellObjectsWorker(BaseWorkerUtil):
                         posData.images_path, trackedAcdcDfFilename
                     )
                     trackedAcdcDf.to_csv(trackedAcdcDfPath)
+                    
+                    if self.createThirdSegm:
+                        if posData.SizeT == 1:
+                            parentSegmData = parentSegmData[np.newaxis]
+                        subAcdcDfFilename = (
+                            subSegmFilename.replace('.npz', '.csv')
+                            .replace('segm', 'acdc_output')
+                        )
+                        diffAcdcDfPath = (
+                            f'{subAcdcDfFilename}_{appendedName}'
+                            f'_{self.thirdSegmAppendedText}.csv'
+                        )
+                        third_segm_acdc_df = (
+                            core.track_sub_cell_objects_third_segm_acdc_df(
+                                parentSegmData, trackedAcdcDf
+                            )
+                        )
+                        third_segm_acdc_df.to_csv(diffAcdcDfPath)
 
                 self.signals.progressBar.emit(1)
 
