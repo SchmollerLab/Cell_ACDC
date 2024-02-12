@@ -1040,6 +1040,7 @@ class calcMetricsWorker(QObject):
                 self.mainWin.gui.last_pos = numPos
 
                 self.mainWin.gui.isSegm3D = posData.getIsSegm3D()
+                posData.isSegm3D = self.mainWin.gui.isSegm3D
 
                 # Allow single 2D/3D image
                 if posData.SizeT == 1:
@@ -2077,6 +2078,7 @@ class TrackSubCellObjectsWorker(BaseWorkerUtil):
                 subSegmFilename, ext = os.path.splitext(posData.segm_npz_path)
                 trackedSubPath = f'{subSegmFilename}_{appendedName}.npz'
                 np.savez_compressed(trackedSubPath, trackedSubSegmData)
+                posData.saveIsSegm3Dmetadata(trackedSubPath)
 
                 if trackedCellsSegmData is not None:
                     cellsSegmFilename, ext = os.path.splitext(segmCellsPath)
@@ -2102,6 +2104,7 @@ class TrackSubCellObjectsWorker(BaseWorkerUtil):
                         f'_{self.thirdSegmAppendedText}.npz'
                     )
                     np.savez_compressed(diffSegmPath, diffSegmData)
+                    posData.saveIsSegm3Dmetadata(diffSegmPath)
                     del diffSegmData
 
                 self.logger.log('Generating acdc_output tables...')  

@@ -1541,6 +1541,14 @@ class loadData:
                     additional_metadata_path, desc='additional metadata'
                 )
 
+    def saveIsSegm3Dmetadata(self, segm_npz_path):
+        segmFilename = os.path.basename(segm_npz_path)
+        segmFilename = os.path.splitext(segmFilename)[0]
+        segmEndName = segmFilename[len(self.basename):]
+        isSegm3Dkey = f'{segmEndName}_isSegm3D'
+        self.metadata_df.at[isSegm3Dkey, 'values'] = self.isSegm3D
+        self.metadata_df.to_csv(self.metadata_csv_path)
+    
     def additionalMetadataValues(self):
         additionalMetadataValues = {}
         for name in self.metadata_df.index:
