@@ -677,7 +677,9 @@ def get_obj_contours(
         retrieveMode = cv2.RETR_EXTERNAL
     
     if obj_image is None:
-        obj_image = obj.image.astype(np.uint8)
+        obj_image = obj.image
+    
+    obj_image = obj_image.astype(np.uint8)
     
     if obj_bbox is None and not local:
         obj_bbox = obj.bbox

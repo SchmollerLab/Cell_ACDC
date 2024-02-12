@@ -328,17 +328,14 @@ def _critical_exception_gui(self, func_name):
     err_msg = html_utils.paragraph(f"""
         Error in function <code>{func_name}</code>.<br><br>
         More details below or in the terminal/console.<br><br>
-        Note that the <b>error details</b> from this session are
-        also <b>saved in the following log file</b>:
-        <br><br>
-        <code>{log_path}</code>
-        <br><br>
         You can <b>report</b> this error by opening an issue
         on our {href}.<br><br>
-        Please <b>send the log file</b> when reporting a bug, thanks!
+        Please <b>send the log file</b> when reporting the error, thanks!<br><br>
+        NOTE: the <b>log file</b> with the <b>error details</b> can be found 
+        here:
     """)
 
-    msg.critical(self, 'Critical error', err_msg)
+    msg.critical(self, 'Critical error', err_msg, commands=(log_path,))
     self.is_error_state = True
 
 def exception_handler_cli(func):
