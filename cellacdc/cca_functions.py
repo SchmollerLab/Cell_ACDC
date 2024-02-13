@@ -796,12 +796,12 @@ def add_generation_num_of_relative_ID(
     acdc_df_to_fix = (
         acdc_df_by_frame_i[to_fix_mask]
         .reset_index()
-        .set_index(['Position_n', 'frame_i', 'relative_ID'])
+        .set_index([*prefix_index, 'frame_i', 'relative_ID'])
     )
 
     acdc_df_by_cellID = (
         acdc_df_by_rel_ID.reset_index()
-        .set_index(['Position_n', 'frame_i', 'Cell_ID'])
+        .set_index([*prefix_index, 'frame_i', 'Cell_ID'])
     )
     # Intersection takes care of disappearing relative_IDs
     fixing_idx = acdc_df_to_fix.index.intersection(acdc_df_by_cellID.index)
