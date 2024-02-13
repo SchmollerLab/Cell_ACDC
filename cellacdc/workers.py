@@ -3993,7 +3993,7 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                     dfs, keys, multiexp_dst_folderpath, 
                     multiexp_filename, 
                     extension, 
-                    names=['experiment_foldername', 'experiment_folderpath']
+                    names=['experiment_folderpath', 'experiment_foldername']
                 )
         
         self.signals.finished.emit(self)
