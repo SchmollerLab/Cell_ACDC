@@ -17526,12 +17526,13 @@ class guiWin(QMainWindow):
         else:
             cca_df = self.get_cca_df(frame_i=from_frame_i, return_df=True)
         
-        cca_df['will_divide'] = 0
+        cca_df_S_mask = cca_df.cell_cycle_stage == 'S'
+        cca_df.loc[cca_df_S_mask, 'will_divide'] = 0
+        
+        cca_df_S = cca_df[cca_df_S_mask]
         
         if from_frame_i == posData.frame_i:
             self.store_cca_df()
-        
-        cca_df_S = cca_df[cca_df.cell_cycle_stage == 'S']
         
         IDs_gen_num_in_S = (
             cca_df_S.reset_index()
@@ -17567,14 +17568,17 @@ class guiWin(QMainWindow):
     def resetCcaFuture(self, from_frame_i, reset_will_divide=True):
         posData = self.data[self.pos_i]
         self.last_cca_frame_i = from_frame_i
-        self.setNavigateScrollBarMaximum()
+        if reset_will_divide:
+            self.resetWillDivideInfo(from_frame_i=from_frame_i)
+            
+        self.setNavigateScrollBarMaximum() 
         for i in range(from_frame_i, posData.SizeT):
             posData.allData_li[i].pop('cca_df', None)
             
             df = posData.allData_li[i]['acdc_df']
             if df is None:
                 # No more saved info to delete
-                return
+                break
 
             if 'cell_cycle_stage' not in df.columns:
                 # No cell cycle info present
@@ -17587,10 +17591,38 @@ class guiWin(QMainWindow):
             frames = posData.acdc_df.index.get_level_values(0)
             if from_frame_i in frames:
                 posData.acdc_df = posData.acdc_df.loc[:from_frame_i]
-        
-        if reset_will_divide:
-            self.resetWillDivideInfo(from_frame_i=from_frame_i)
 
+    def resetFutureCcaColCurrentFrame(self):
+        posData = self.data[self.pos_i]
+        
+        cca_df_S_mask = posData.cca_df.cell_cycle_stage == 'S'
+        posData.cca_df.loc[cca_df_S_mask, 'will_divide'] = 0
+        
+        mothers_mask = (
+            (posData.cca_df.relationship == 'mother')
+            & cca_df_S_mask
+        )
+        bud_mask = posData.cca_df.relationship == 'bud'
+        
+        posData.cca_df.loc[mothers_mask, 'daughter_disappears_before_division'] = 0
+        posData.cca_df.loc[bud_mask, 'disappears_before_division'] = 0
+        
+        cca_df = self.get_cca_df(frame_i=posData.frame_i, return_df=True)
+        if cca_df is not None:
+            cca_df_S_mask = cca_df.cell_cycle_stage == 'S'
+            cca_df.loc[cca_df_S_mask, 'will_divide'] = 0
+            
+            mothers_mask = (
+                (cca_df.relationship == 'mother')
+                & cca_df_S_mask
+            )
+            bud_mask = cca_df.relationship == 'bud'
+            
+            cca_df.loc[mothers_mask, 'daughter_disappears_before_division'] = 0
+            cca_df.loc[bud_mask, 'disappears_before_division'] = 0
+        
+        self.store_data()
+    
     def get_cca_df(self, frame_i=None, return_df=False):
         # cca_df is None unless the metadata contains cell cycle annotations
         # NOTE: cell cycle annotations are either from the current session
@@ -20166,11 +20198,9 @@ class guiWin(QMainWindow):
             return msg.clickedButton == removeAnnotButton
         
         if msg.clickedButton == removeAnnotButton:
-            self.store_data()
-            posData.frame_i -= 1
-            self.get_data()
-            self.resetCcaFuture(posData.frame_i)
-            self.next_frame(warn=False)
+            self.resetFutureCcaColCurrentFrame()
+            self.resetCcaFuture(posData.frame_i+1)
+            self.updateAllImages()
         else:
             if dropDelIDsNoteText and posData.cca_df is not None:
                 delIDs = [
