@@ -10394,7 +10394,8 @@ class QDialogModelParams(QDialog):
             self, init_params, segment_params, model_name, is_tracker=False,
             url=None, parent=None, initLastParams=True, posData=None, 
             channels=None, currentChannelName=None, segmFileEndnames=None,
-            df_metadata=None, force_postprocess_2D=False, model_module=None
+            df_metadata=None, force_postprocess_2D=False, model_module=None,
+            action_type=''
         ):
         self.cancel = True
         super().__init__(parent)
@@ -10439,8 +10440,15 @@ class QDialogModelParams(QDialog):
             partial(loadFunc, f'{self.model_name}.init', self.init_argsWidgets)
         )
 
+        if action_type:
+            runGroupboxTitle = f'Parameters for {action_type}'
+        elif is_tracker:
+            runGroupboxTitle = 'Parameters for tracking'
+        else:
+            runGroupboxTitle = 'Parameters for segmentation'
+        
         segmentGroupBox, self.argsWidgets = self.createGroupParams(
-            segment_params, 'Parameters for segmentation', 
+            segment_params, runGroupboxTitle, 
             addChannelSelector=True
         ) 
         self.segmentGroupBox = segmentGroupBox

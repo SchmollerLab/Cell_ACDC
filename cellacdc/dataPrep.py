@@ -171,7 +171,7 @@ class dataPrepWin(QMainWindow):
 
     def gui_createActions(self):
         # File actions
-        self.openAction = QAction(QIcon(":folder-open.svg"), "&Open...", self)
+        self.openFolderAction = QAction(QIcon(":folder-open.svg"), "&Open...", self)
         self.exitAction = QAction("&Exit", self)
         self.showInExplorerAction = QAction(QIcon(":drawer.svg"),
                                     "&Show in Explorer/Finder", self)
@@ -182,10 +182,10 @@ class dataPrepWin(QMainWindow):
         #                                 "Jump to 10 frames ahead", self)
         # self.jumpBackwardAction = QAction(QIcon(":arrow-down.svg"),
         #                                 "Jump to 10 frames back", self)
-        self.openAction.setShortcut("Ctrl+O")
+        self.openFolderAction.setShortcut("Ctrl+O")
         # self.jumpForwardAction.setShortcut("up")
         # self.jumpBackwardAction.setShortcut("down")
-        self.openAction.setShortcut("Ctrl+O")
+        self.openFolderAction.setShortcut("Ctrl+O")
 
         self.loadPosAction = QAction("Load different Position...", self)
         self.loadPosAction.setShortcut("Shift+P")
@@ -232,7 +232,7 @@ class dataPrepWin(QMainWindow):
         # File menu
         fileMenu = QMenu("&File", self)
         menuBar.addMenu(fileMenu)
-        fileMenu.addAction(self.openAction)
+        fileMenu.addAction(self.openFolderAction)
         # Open Recent submenu
         self.openRecentMenu = fileMenu.addMenu("Open Recent")
 
@@ -248,7 +248,7 @@ class dataPrepWin(QMainWindow):
         # fileToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
         fileToolBar.setMovable(False)
 
-        fileToolBar.addAction(self.openAction)
+        fileToolBar.addAction(self.openFolderAction)
         fileToolBar.addAction(self.showInExplorerAction)
         fileToolBar.addAction(self.startAction)
         fileToolBar.addAction(self.cropAction)
@@ -282,7 +282,7 @@ class dataPrepWin(QMainWindow):
         navigateToolbar.addWidget(self.ROIshapeLabel)
 
     def gui_connectActions(self):
-        self.openAction.triggered.connect(self.openFolder)
+        self.openFolderAction.triggered.connect(self.openFolder)
         # Connect Open Recent to dynamically populate it
         self.openRecentMenu.aboutToShow.connect(self.populateOpenRecent)
         self.exitAction.triggered.connect(self.close)
@@ -2226,7 +2226,7 @@ class dataPrepWin(QMainWindow):
         proceed = self.init_data(user_ch_file_paths, user_ch_name)
 
         if not proceed:
-            self.openAction.setEnabled(True)
+            self.openFolderAction.setEnabled(True)
             return
 
         # Connect events at the end of loading data process
@@ -2251,7 +2251,7 @@ class dataPrepWin(QMainWindow):
                 self.titleText,
                 color='w')
 
-        self.openAction.setEnabled(True)
+        self.openFolderAction.setEnabled(True)
         self.startAction.setEnabled(True)
         self.showInExplorerAction.setEnabled(True)
         self.setImageNameText()
@@ -2278,7 +2278,7 @@ class dataPrepWin(QMainWindow):
         self.gui_addPlotItems()
 
         self.setCenterAlignmentTitle()
-        self.openAction.setEnabled(False)
+        self.openFolderAction.setEnabled(False)
 
     def openRecentFile(self, path):
         self.logger.info(f'Opening recent folder: {path}')
@@ -2296,7 +2296,7 @@ class dataPrepWin(QMainWindow):
         self.addToRecentPaths(exp_path)
 
         if exp_path == '':
-            self.openAction.setEnabled(True)
+            self.openFolderAction.setEnabled(True)
             self.titleLabel.setText(
                 'File --> Open or Open recent to start the process',
                 color='w')
@@ -2330,7 +2330,7 @@ class dataPrepWin(QMainWindow):
                 self.titleLabel.setText(
                     'File --> Open or Open recent to start the process',
                     color='w')
-                self.openAction.setEnabled(True)
+                self.openFolderAction.setEnabled(True)
                 return
 
             select_folder.QtPrompt(self, values, allow_abort=False)
@@ -2338,7 +2338,7 @@ class dataPrepWin(QMainWindow):
                 self.titleLabel.setText(
                     'File --> Open or Open recent to start the process',
                     color='w')
-                self.openAction.setEnabled(True)
+                self.openFolderAction.setEnabled(True)
                 return
 
             images_paths = []
@@ -2349,7 +2349,7 @@ class dataPrepWin(QMainWindow):
                 self.titleLabel.setText(
                     'File --> Open or Open recent to start the process',
                     color='w')
-                self.openAction.setEnabled(True)
+                self.openFolderAction.setEnabled(True)
                 return
 
         elif is_pos_folder:
@@ -2376,7 +2376,7 @@ class dataPrepWin(QMainWindow):
                 self.titleLabel.setText(
                     'File --> Open or Open recent to start the process',
                     color='w')
-                self.openAction.setEnabled(True)
+                self.openFolderAction.setEnabled(True)
                 return
             
             if not ch_names:
@@ -2390,7 +2390,7 @@ class dataPrepWin(QMainWindow):
                 self.titleLabel.setText(
                     'File --> Open or Open recent to start the process',
                     color='w')
-                self.openAction.setEnabled(True)
+                self.openFolderAction.setEnabled(True)
                 return
             user_ch_name = ch_name_selector.user_ch_name
 

@@ -1,15 +1,28 @@
 import os
 
-from cellacdc.models.cellpose_v2 import acdcSegment as cp
-from cellpose import models
+from cellacdc import myutils
+
+from cellacdc.models.cellpose_v2 import acdcSegment as acdc_cp2
+
+class AvailableModels:
+    major_version = myutils.get_cellpose_major_version()
+    if major_version == 3:
+        from ..cellpose_v3 import CELLPOSE_V3_MODELS
+        values = CELLPOSE_V3_MODELS
+    else:
+        from . import CELLPOSE_V2_MODELS
+        values = CELLPOSE_V2_MODELS
 
 class Model:
-    def __init__(self, model_path: os.PathLike = '', net_avg=False, gpu=False):
-        self.acdcCellpose = cp.Model()
-        self.acdcCellpose.model = models.CellposeModel(
-            gpu=gpu, net_avg=net_avg, pretrained_model=model_path
-        )
-
+    def __init__(
+            self, 
+            model_type: AvailableModels='cyto3', 
+            net_avg=False, 
+            gpu=False,
+            device='None'
+        ):
+        self.acdcCellpose = acdc_cp2.Model(model_type, net_avg=net_avg, gpu=gpu)
+        
     def segment(
             self, image,
             diameter=0.0,

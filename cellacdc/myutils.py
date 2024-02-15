@@ -909,6 +909,27 @@ def params_to_ArgSpec(
         ip += 1
     return params
 
+def getClassArgSpecs(classModule, runMethodName='run'):
+    init_ArgSpec = inspect.getfullargspec(classModule.__init__)
+    init_kwargs_type_hints = typing.get_type_hints(
+        classModule.__init__
+    )
+    init_doc = classModule.__init__.__doc__
+    init_params = params_to_ArgSpec(
+        init_ArgSpec, init_kwargs_type_hints, init_doc
+    )
+    
+    run_ArgSpec = inspect.getfullargspec(getattr(classModule, runMethodName))
+    run_kwargs_type_hints = typing.get_type_hints(
+        getattr(classModule, runMethodName)
+    )
+    run_doc = getattr(classModule, runMethodName).__doc__
+    run_params = params_to_ArgSpec(
+        run_ArgSpec, run_kwargs_type_hints, run_doc,
+        args_to_skip={'signals', 'export_to'}
+    )
+    return init_params, run_params
+
 def getTrackerArgSpec(trackerModule, realTime=False):
     init_ArgSpec = inspect.getfullargspec(trackerModule.tracker.__init__)
     init_kwargs_type_hints = typing.get_type_hints(
@@ -2003,17 +2024,45 @@ def check_napari_plugin(plugin_name, module_name, parent=None):
 def _install_pip_package(pkg_name):
     subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-U', pkg_name])
 
-def check_install_cellpose():
-    check_install_package('cellpose')
+def check_cellpose_version(version: str):
+    major_requested = int(version.split('.')[0])
+    cancel = False
     try:
         import pkg_resources
-        version = pkg_resources.get_distribution("cellpose").version
-        major = int(version.split('.')[0])
-        if major < 2:
-            _install_pip_package('cellpose')
-    except Exception as e:
-        printl(traceback.format_exc())
-        _inform_install_package_failed('cellpose')
+        installed_version = pkg_resources.get_distribution("cellpose").version
+        major_installed = int(installed_version.split('.')[0])
+        is_version_correct = major_installed == major_requested
+        if not is_version_correct:
+            cancel = _warnings.warn_installing_different_cellpose_version(
+                version, installed_version
+            )
+    except Exception as err:
+        is_version_correct = False
+    
+    if cancel:
+        raise ModuleNotFoundError('Cellpose installation cancelled by the user.')
+    return is_version_correct
+
+def check_install_cellpose(version: str='2.0'):
+    is_version_correct = check_cellpose_version(version)
+    if is_version_correct:
+        return
+    
+    next_version = int(version.split('.')[0])+1
+    next_version = f'{next_version}.0'
+    
+    check_install_package(
+        'cellpose', 
+        pypi_name=f'cellpose>={version},<{next_version}',
+        import_pkg_name='cellpose',
+        force_upgrade=True
+    )
+
+def get_cellpose_major_version():
+    import pkg_resources
+    installed_version = pkg_resources.get_distribution("cellpose").version
+    major_installed = int(installed_version.split('.')[0])
+    return major_installed
 
 def check_install_baby():
     check_install_package('baby', pypi_name='baby-seg')
@@ -2026,6 +2075,13 @@ def check_install_segment_anything():
     check_install_package('torchvision')
     check_install_package('segment_anything')
 
+def is_gui_running():
+    if not GUI_INSTALLED:
+        return False
+    
+    return QCoreApplication.instance() is not None
+        
+
 def check_install_package(
         pkg_name: str, 
         import_pkg_name: str='',
@@ -2036,6 +2092,7 @@ def check_install_package(
         logger_func=print, 
         is_cli=False,
         caller_name='Cell-ACDC', 
+        force_upgrade=False,
         upgrade=False
     ):
     """Try to import a package. If import fails, ask user to install it 
@@ -2065,8 +2122,11 @@ def check_install_package(
         Default is False
     caller_name : str, optional
         Program calling this function. Default is 'Cell-ACDC'
+    force_upgrade : bool, optional
+        If True, we force the upgrade even if package is installed.
     upgrade : bool, optional
-        If True, pip will upgrade the package. Default is False
+        If True, pip will upgrade the package. This value is True if 
+        `force_upgrade` is True. Default is False
 
     Raises
     ------
@@ -2076,10 +2136,16 @@ def check_install_package(
     if not import_pkg_name:
         import_pkg_name = pkg_name
     
+    if not is_gui_running():
+        is_cli=True
+    
     try:
         import_module(import_pkg_name)
+        if force_upgrade:
+            upgrade = True
+            raise ModuleNotFoundError(
+                f'User requested to forcefully upgrade the package "{pkg_name}"')
     except ModuleNotFoundError:
-        
         proceed = _install_package_msg(
             pkg_name, note=note, parent=parent, upgrade=upgrade,
             is_cli=is_cli, caller_name=caller_name, logger_func=logger_func,
@@ -2181,9 +2247,14 @@ def _install_package_cli_msg(
     if not pkg_command:
         pkg_command = pkg_name
     
+    if upgrade:
+        action = 'upgrade'
+    else:
+        action = 'install'
+        
     separator = '-'*60
     txt = (
-        f'{separator}\n{caller_name} needs to install {pkg_name}\n\n'
+        f'{separator}\n{caller_name} needs to {action} {pkg_name}\n\n'
         'You can choose to install it now or stop the process and install it '
         'later with the following command:\n\n'
         f'pip install --upgrade {pkg_command}\n'
@@ -2217,7 +2288,9 @@ def _install_package_gui_msg(
     
     if not pkg_command:
         pkg_command = pkg_name
-        
+    
+    command_html = pkg_command.lower().replace('<', '&lt;').replace('>', '&gt;')
+
     txt = html_utils.paragraph(f"""
         {caller_name} is going to <b>download and {install_text}</b>
         <code>{pkg_name}</code>.<br><br>
@@ -2227,7 +2300,7 @@ def _install_package_gui_msg(
         You might have to <b>restart {caller_name}</b>.<br><br>
         <b>IMPORTANT:</b> If the installation fails please install
         <code>{pkg_name}</code> manually with the follwing command:<br><br>
-        <code>pip install --upgrade {pkg_command.lower()}</code><br><br>
+        <code>pip install --upgrade {command_html}</code><br><br>
         Alternatively, you can cancel the process and try later.
     """)
     if note:
@@ -2616,3 +2689,26 @@ def parse_model_params(model_argspecs, model_params):
             value = float(value)
         parsed_model_params[argspec.name] = value
     return parsed_model_params
+
+def init_cellpose_denoise_model():
+    from . import apps
+    
+    from cellacdc.models.cellpose_v3._denoise import (
+        CellposeDenoiseModel, url_help
+    )
+
+    init_argspecs, run_argspecs = getClassArgSpecs(CellposeDenoiseModel)
+    url = url_help()
+    
+    paramsWin = apps.QDialogModelParams(
+        init_argspecs, run_argspecs, 'Cellpose 3.0', 
+        url=url, is_tracker=True, action_type='denoising'
+    )
+    paramsWin.exec_()
+    if paramsWin.cancel:
+        return
+    
+    init_params = paramsWin.init_kwargs
+    run_params = paramsWin.model_kwargs
+    denoise_model = CellposeDenoiseModel(**init_params)
+    return denoise_model, init_params, run_params

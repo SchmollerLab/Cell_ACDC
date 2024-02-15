@@ -2,18 +2,19 @@ import numpy as np
 
 import skimage.filters
 
-from qtpy import QtGui
-from qtpy.QtCore import Qt, Signal
-from qtpy.QtWidgets import (
-    QDialog, QVBoxLayout, QFormLayout, QHBoxLayout, QComboBox, QDoubleSpinBox,
-    QSlider, QCheckBox, QPushButton, QLabel, QGroupBox, QGridLayout,
-    QWidget
-)
+from . import GUI_INSTALLED, core, myutils
 
-from . import widgets, core, myutils
-
-font = QtGui.QFont()
-font.setPixelSize(13)
+if GUI_INSTALLED:
+    from . import widgets
+    from qtpy import QtGui
+    from qtpy.QtCore import Qt, Signal
+    from qtpy.QtWidgets import (
+        QDialog, QVBoxLayout, QFormLayout, QHBoxLayout, QComboBox, QDoubleSpinBox,
+        QSlider, QCheckBox, QPushButton, QLabel, QGroupBox, QGridLayout,
+        QWidget
+    )
+    font = QtGui.QFont()
+    font.setPixelSize(13)
 
 class FilterBaseDialog(QDialog):
     sigClose = Signal(object)
@@ -439,3 +440,17 @@ class entropyFilterDialog(FilterBaseDialog):
     def show(self):
         super().show()
         self.resize(int(self.width()*1.3), self.height())
+
+def cellpose_v3_run_denoise(
+        image,
+        run_params,
+        denoise_model=None, 
+        init_params=None,
+    ):
+    if denoise_model is None:
+        from cellacdc.models.cellpose_v3 import _denoise
+        denoise_model = _denoise.CellposeDenoiseModel(**init_params)
+    
+    denoised_img = denoise_model.run(image, **run_params)
+    return denoised_img
+    

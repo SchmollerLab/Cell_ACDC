@@ -8,33 +8,50 @@ import skimage.filters
 import skimage.measure
 
 from cellpose import models
-from cellacdc.models import CELLPOSE_MODELS
-from cellacdc import printl
+from cellacdc import printl, myutils
 
 class AvailableModels:
-    values = CELLPOSE_MODELS
+    major_version = myutils.get_cellpose_major_version()
+    if major_version == 3:
+        from ..cellpose_v3 import CELLPOSE_V3_MODELS
+        values = CELLPOSE_V3_MODELS
+    else:
+        from . import CELLPOSE_V2_MODELS
+        values = CELLPOSE_V2_MODELS
 
 class Model:
     def __init__(
             self, 
             model_type: AvailableModels='cyto', 
             net_avg=False, 
-            gpu=False
+            gpu=False,
+            device='None'
         ):
-        if model_type not in CELLPOSE_MODELS:
-            err_msg = (
-                f'"{model_type}" not available. '
-                f'Available models are {CELLPOSE_MODELS}'
-            )
-            raise NameError(err_msg)
-        if model_type=='cyto':
-            self.model = models.Cellpose(
-                gpu=gpu, net_avg=net_avg, model_type=model_type
-            )
+        if device == 'None':
+            device = None
+            
+        major_version = myutils.get_cellpose_major_version()
+        if major_version == 3:
+            if model_type=='cyto3':
+                self.model = models.Cellpose(
+                    gpu=gpu, model_type=model_type, device=device
+                )
+            else:
+                diam_mean = 17.0 if model_type=="nuclei" else 30.0
+                self.model = models.CellposeModel(
+                    gpu=gpu, 
+                    diam_mean=diam_mean,
+                    model_type=model_type
+                )
         else:
-            self.model = models.CellposeModel(
-                gpu=gpu, net_avg=net_avg, model_type=model_type
-            )
+            if model_type=='cyto':
+                self.model = models.Cellpose(
+                    gpu=gpu, net_avg=net_avg, model_type=model_type
+                )
+            else:
+                self.model = models.CellposeModel(
+                    gpu=gpu, net_avg=net_avg, model_type=model_type
+                )
         
         self.is_rgb = False
         
@@ -49,55 +66,6 @@ class Model:
     
     def _eval(self, image, **kwargs):
         return self.model.eval(image.astype(np.float32), **kwargs)[0]
-    
-    def _initialize_image(self, image):        
-        # See cellpose.gui.io._initialize_images
-        if image.ndim > 3 and not self.is_rgb:
-            raise TypeError(
-                f'Image is 4D with shape {image.shape}.'
-                'Only 2D or 3D images are supported by cellpose in Cell-ACDC'
-            )
-            # # make tiff Z x channels x W x H
-            # if image.shape[0]<4:
-            #     # tiff is channels x Z x W x H
-            #     image = np.transpose(image, (1,0,2,3))
-            # elif image.shape[-1]<4:
-            #     # tiff is Z x W x H x channels
-            #     image = np.transpose(image, (0,3,1,2))
-            # # fill in with blank channels to make 3 channels
-            # if image.shape[1] < 3:
-            #     shape = image.shape
-            #     shape_to_concat = (shape[0], 3-shape[1], shape[2], shape[3])
-            #     to_concat = np.zeros(shape_to_concat, dtype=np.uint8)
-            #     image = np.concatenate((image, to_concat), axis=1)
-            # image = np.transpose(image, (0,2,3,1))
-        elif image.ndim==3:
-            # if image.shape[0] < 5:
-            #     # Move first axis to last since we interpret this as RGB channels
-            #     image = np.transpose(image, (1,2,0))
-            if image.shape[-1] < 3:
-                shape = image.shape
-                shape_to_concat = (shape[0], shape[1], 3-shape[2])
-                to_concat = np.zeros(shape_to_concat,dtype=type(image[0,0,0]))
-                image = np.concatenate((image, to_concat), axis=-1)
-                image = image[np.newaxis,...]
-            elif image.shape[-1]<5 and image.shape[-1]>2:
-                image = image[:,:,:3]
-                image = image[np.newaxis,...]
-        else:
-            image = image[np.newaxis,...]    
-        
-        img_min = image.min() 
-        img_max = image.max()
-        image = image.astype(np.float32)
-        image -= img_min
-        if img_max > img_min + 1e-3:
-            image /= (img_max - img_min)
-        image *= 255
-        if image.ndim < 4:
-            image = image[:,:,:,np.newaxis]
-        
-        return image
     
     def to_rgb_stack(self, first_ch_data, second_ch_data):
         # The 'cyto' model can work with a second channel (e.g., nucleus).
@@ -182,14 +150,63 @@ class Model:
         if not segment_3D_volume and isZstack:
             labels = np.zeros(image.shape, dtype=np.uint32)
             for i, _img in enumerate(image):
-                _img = self._initialize_image(_img)
+                _img = _initialize_image(_img, self.is_rgb)
                 lab = self._eval(_img, **eval_kwargs)
                 labels[i] = lab
             labels = skimage.measure.label(labels>0)
         else:
-            image = self._initialize_image(image)  
+            image = _initialize_image(image, self.is_rgb)  
             labels = self._eval(image, **eval_kwargs)
         return labels
+
+def _initialize_image(image, is_rgb=False):        
+    # See cellpose.gui.io._initialize_images
+    if image.ndim > 3 and not is_rgb:
+        raise TypeError(
+            f'Image is 4D with shape {image.shape}.'
+            'Only 2D or 3D images are supported by cellpose in Cell-ACDC'
+        )
+        # # make tiff Z x channels x W x H
+        # if image.shape[0]<4:
+        #     # tiff is channels x Z x W x H
+        #     image = np.transpose(image, (1,0,2,3))
+        # elif image.shape[-1]<4:
+        #     # tiff is Z x W x H x channels
+        #     image = np.transpose(image, (0,3,1,2))
+        # # fill in with blank channels to make 3 channels
+        # if image.shape[1] < 3:
+        #     shape = image.shape
+        #     shape_to_concat = (shape[0], 3-shape[1], shape[2], shape[3])
+        #     to_concat = np.zeros(shape_to_concat, dtype=np.uint8)
+        #     image = np.concatenate((image, to_concat), axis=1)
+        # image = np.transpose(image, (0,2,3,1))
+    elif image.ndim==3:
+        # if image.shape[0] < 5:
+        #     # Move first axis to last since we interpret this as RGB channels
+        #     image = np.transpose(image, (1,2,0))
+        if image.shape[-1] < 3:
+            shape = image.shape
+            shape_to_concat = (shape[0], shape[1], 3-shape[2])
+            to_concat = np.zeros(shape_to_concat,dtype=type(image[0,0,0]))
+            image = np.concatenate((image, to_concat), axis=-1)
+            image = image[np.newaxis,...]
+        elif image.shape[-1]<5 and image.shape[-1]>2:
+            image = image[:,:,:3]
+            image = image[np.newaxis,...]
+    else:
+        image = image[np.newaxis,...]    
+    
+    img_min = image.min() 
+    img_max = image.max()
+    image = image.astype(np.float32)
+    image -= img_min
+    if img_max > img_min + 1e-3:
+        image /= (img_max - img_min)
+    image *= 255
+    if image.ndim < 4:
+        image = image[:,:,:,np.newaxis]
+    
+    return image
 
 def url_help():
     return 'https://cellpose.readthedocs.io/en/latest/api.html'

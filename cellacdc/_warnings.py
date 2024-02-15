@@ -1,6 +1,8 @@
 from functools import partial
 import re
 
+from cellacdc import html_utils, myutils, widgets
+
 from . import issues_url
 
 def warnTooManyItems(mainWin, numItems, qparent):
@@ -115,3 +117,38 @@ def warn_cca_integrity(txt, category, qparent, go_to_frame_callback=None):
         return 'disable_all'
     
     return ''
+
+def warn_installing_different_cellpose_version(
+        requested_version, installed_version
+    ):
+    if not myutils.is_gui_running():
+        print(
+            f'[WARNING]: You requested to install `Cellpose {requested_version}` '
+            f'but you already have `Cellpose {installed_version}`.\n\n'
+            f'If you proceed, Cell-ACDC will *uninstall* `{installed_version}` ' 
+            f'and will install `{requested_version}`.'
+        )
+        return False
+    
+    note_text = """
+    You can still proceed and let Cell-ACDC take care of 
+    uninstalling/installing the right versions every time you request it.
+    """
+    txt = html_utils.paragraph(f"""
+        [WARNING]: You requested to install 
+        <code>Cellpose {requested_version}</code>, however you <b>already have</b> 
+        <code>Cellpose {installed_version}</code>.<br><br>
+        If you proceed, Cell-ACDC will <b>uninstall</b> <code>{installed_version}</code> 
+        and will install <code>{requested_version}</code>.<br><br>
+        If you plan to use both versions, we recommend installing Cell-ACDC 
+        again in a <b>different environment</b><br> where you can keep one 
+        version of Cellpose per environment.<br><br>
+        Thank you for your patience!<br>
+        {html_utils.to_note(note_text)}
+    """)
+    msg = widgets.myMessageBox(wrapText=False)
+    msg.warning(
+        None, 'Cellpose already installed', txt, 
+        buttonsTexts=('Cancel', 'Ok')
+    )
+    return msg.cancel

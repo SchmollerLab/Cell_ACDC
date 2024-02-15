@@ -4,7 +4,7 @@
     :height: 16px
     :width: 16px
 
-.. |openAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/folder-open.svg
+.. |openFolderAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/folder-open.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/folder-open.svg 
     :alt: folder-open icon
     :height: 16px
@@ -280,7 +280,7 @@ Overview of all tools available in the GUI.
 File control
 ------------
 * **New File (** |newAction| **"Ctrl+N"):**  Create a new empty segmentation file.
-* **Load Folder (** |openAction| **"Ctrl+O"):** Loads folder.
+* **Load Folder (** |openFolderAction| **"Ctrl+O"):** Loads folder.
 * **Load older version (** |manageVersionsAction| **):** Load an older version of the ``acdc_output.csv`` file (table with annotations and measurements).
 * **Save (** |saveAction| **"Ctrl+Alt+S"):** Save.
 * **Quick save ("Ctrl+S"):** Save only segm. file.

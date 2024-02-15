@@ -2,13 +2,25 @@ from functools import wraps
 import html
 import re
 import sys
+import textwrap
 
 from . import GUI_INSTALLED
+
+from ._palettes import (
+    _get_highligth_header_background_rgba, _get_highligth_text_background_rgba
+)
+from .colors import rgb_uint_to_html_hex
 
 if GUI_INSTALLED:
     from matplotlib.colors import to_hex
 
 is_mac = sys.platform == 'darwin'
+
+RST_NOTE_DIR_RGBA = _get_highligth_header_background_rgba()
+RST_NOTE_DIR_HEX_COLOR = rgb_uint_to_html_hex(RST_NOTE_DIR_RGBA[:3])
+
+RST_NOTE_TXT_RGBA = _get_highligth_text_background_rgba()
+RST_NOTE_TXT_HEX_COLOR = rgb_uint_to_html_hex(RST_NOTE_TXT_RGBA[:3])
 
 def _tag(tag_info='p style="font-size:10px"'):
     def wrapper(func):
@@ -125,6 +137,30 @@ def rst_urls_to_html(rst_text):
         pattern = fr'`{text} ?<{link}>`_'
         html_text = re.sub(pattern, repl, html_text)
     return html_text
+
+def to_admonition(text, admonition_type='note'):
+    if text.find('<br>') == -1:
+        wrapped_list = textwrap.wrap(text, width=110)
+        text = '<br>'.join(wrapped_list)
+    title = admonition_type.capitalize()
+    title_row = tag(
+        f'<td><b>! {title}</b></td>', 
+        tag_info=f'tr bgcolor="{RST_NOTE_DIR_HEX_COLOR}"'
+    )
+    text_row = tag(
+        f'<td>{text}</td>', 
+        tag_info=f'tr bgcolor="{RST_NOTE_TXT_HEX_COLOR}"'
+    )
+    admonition_html = (
+        '<table cellspacing=0 cellpadding=5>'
+        f'{title_row}{text_row}'
+        '</table><br>'
+    )
+    return admonition_html
+
+def to_note(note_text):
+    note_html = to_admonition(note_text, admonition_type='note')
+    return note_html
 
 # Syntax highlighting html
 func_color = (111/255,66/255,205/255) # purplish

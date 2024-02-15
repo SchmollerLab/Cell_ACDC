@@ -88,6 +88,7 @@ from .trackers.CellACDC import CellACDC_tracker
 from .cca_functions import _calc_rot_vol
 from .myutils import exec_time, setupLogger
 from .help import welcome, about
+from .plot import imshow
 
 np.seterr(invalid='ignore')
 
@@ -1285,7 +1286,7 @@ class guiWin(QMainWindow):
         if self.debug:
             fileMenu.addAction(self.createEmptyDataAction)
         fileMenu.addAction(self.newAction)
-        fileMenu.addAction(self.openAction)
+        fileMenu.addAction(self.openFolderAction)
         fileMenu.addAction(self.openFileAction)
         # Open Recent submenu
         self.openRecentMenu = fileMenu.addMenu("Open Recent")
@@ -1319,9 +1320,12 @@ class guiWin(QMainWindow):
         ImageMenu = menuBar.addMenu("&Image")
         ImageMenu.addSeparator()
         ImageMenu.addAction(self.imgPropertiesAction)
-        filtersMenu = ImageMenu.addMenu("Filters")
+        
+        filtersMenu = menuBar.addMenu("Filters")
         for filtersDict in self.filtersWins.values():
             filtersMenu.addAction(filtersDict['action'])
+        
+        filtersMenu.addAction(self.cp3denoiseAction)
         
         ImageMenu.addAction(self.addScaleBarAction)
         normalizeIntensitiesMenu = ImageMenu.addMenu("Normalize intensities")
@@ -1422,7 +1426,8 @@ class guiWin(QMainWindow):
         )
         self.segmNdimIndicatorAction.setVisible(False)
         fileToolBar.addAction(self.newAction)
-        fileToolBar.addAction(self.openAction)
+        fileToolBar.addAction(self.openFolderAction)
+        fileToolBar.addAction(self.openFileAction)
         fileToolBar.addAction(self.manageVersionsAction)
         fileToolBar.addAction(self.saveAction)
         fileToolBar.addAction(self.showInExplorerAction)
@@ -2537,7 +2542,7 @@ class guiWin(QMainWindow):
         self.newAction = QAction(self)
         self.newAction.setText("&New")
         self.newAction.setIcon(QIcon(":file-new.svg"))
-        self.openAction = QAction(
+        self.openFolderAction = QAction(
             QIcon(":folder-open.svg"), "&Load folder...", self
         )
         self.openFileAction = QAction(
@@ -2565,7 +2570,7 @@ class guiWin(QMainWindow):
         self.redoAction = QAction(QIcon(":redo.svg"), "Redo", self)
         # String-based key sequences
         self.newAction.setShortcut("Ctrl+N")
-        self.openAction.setShortcut("Ctrl+O")
+        self.openFolderAction.setShortcut("Ctrl+O")
         self.loadPosAction.setShortcut("Shift+P")
         self.saveAsAction.setShortcut("Ctrl+Shift+S")
         self.saveAction.setShortcut("Ctrl+Alt+S")
@@ -2733,6 +2738,8 @@ class guiWin(QMainWindow):
         self.viewCcaTableAction.setDisabled(True)
         self.viewCcaTableAction.setShortcut('Ctrl+P')
         
+        self.cp3denoiseAction = QAction('Cellpose 3.0 denoising', self)
+        
         self.addScaleBarAction = QAction('Add scale bar', self)
         self.addScaleBarAction.setCheckable(True)
 
@@ -2895,7 +2902,7 @@ class guiWin(QMainWindow):
         if self.debug:
             self.createEmptyDataAction.triggered.connect(self._createEmptyData)
         self.newAction.triggered.connect(self.newFile)
-        self.openAction.triggered.connect(self.openFolder)
+        self.openFolderAction.triggered.connect(self.openFolder)
         self.openFileAction.triggered.connect(self.openFile)
         self.manageVersionsAction.triggered.connect(self.manageVersions)
         self.saveAction.triggered.connect(self.saveData)
@@ -3075,6 +3082,8 @@ class guiWin(QMainWindow):
 
         self.reinitLastSegmFrameAction.triggered.connect(self.reInitLastSegmFrame)
 
+        self.cp3denoiseAction.triggered.connect(self.cp3denoiseActionTriggered)
+        
         # self.repeatAutoCcaAction.triggered.connect(self.repeatAutoCca)
         self.manuallyEditCcaAction.triggered.connect(self.manualEditCca)
         self.addScaleBarAction.toggled.connect(self.addScaleBar)
@@ -10775,6 +10784,27 @@ class guiWin(QMainWindow):
     def manualEditCcaToolbarActionTriggered(self):
         self.manualEditCca()
     
+    def cp3denoiseActionTriggered(self):
+        self.logger.info('Initializing Cellpose denoising model...')
+        output = myutils.init_cellpose_denoise_model()
+        if output is None:
+            self.logger.info('Cellpose 3.0 denoising process cancelled')
+            return
+
+        img = self.getDisplayedImg1()
+        denoise_model, init_params, run_params = output
+        denoised_image = filters.cellpose_v3_run_denoise(
+            img,
+            run_params,
+            denoise_model=denoise_model, 
+            init_params=None,
+        )
+        imshow(
+            img, denoised_image, 
+            axis_titles=['Input image', 'Denoised image']
+        )
+        
+        
     def manualEditCca(self, checked=True):
         posData = self.data[self.pos_i]
         editCcaWidget = apps.editCcaTableWidget(
@@ -10901,7 +10931,7 @@ class guiWin(QMainWindow):
     def setEnabledFileToolbar(self, enabled):
         for action in self.fileToolBar.actions():
             button = self.fileToolBar.widgetForAction(action)
-            if action == self.openAction or action == self.newAction:
+            if action == self.openFolderAction or action == self.newAction:
                 continue
             if action == self.manageVersionsAction:
                 continue
@@ -15213,7 +15243,7 @@ class guiWin(QMainWindow):
             isNextFrameVisible and self.labelsGrad.showNextFrameAction.isEnabled()
         )
         self.updateScrollbars()
-        self.openAction.setEnabled(True)
+        self.openFolderAction.setEnabled(True)
         self.editTextIDsColorAction.setDisabled(False)
         self.imgPropertiesAction.setEnabled(True)
         self.navigateToolBar.setVisible(True)
@@ -22020,7 +22050,7 @@ class guiWin(QMainWindow):
             self.removeCustomAnnotButton(button, save=False, askHow=False)
 
     def loadingDataAborted(self):
-        self.openAction.setEnabled(True)
+        self.openFolderAction.setEnabled(True)
         self.titleLabel.setText('Loading data aborted.')
     
     def cleanUpOnError(self):
@@ -22100,12 +22130,12 @@ class guiWin(QMainWindow):
             )
 
         if not exp_path:
-            self.openAction.setEnabled(True)
+            self.openFolderAction.setEnabled(True)
             return
 
         self.reInitGui()
 
-        self.openAction.setEnabled(False)
+        self.openFolderAction.setEnabled(False)
 
         if self.slideshowWin is not None:
             self.slideshowWin.close()
@@ -22170,7 +22200,7 @@ class guiWin(QMainWindow):
             )
             self.ch_names = ch_names
             if not ch_names:
-                self.openAction.setEnabled(True)
+                self.openFolderAction.setEnabled(True)
                 self.criticalNoTifFound(images_path)
                 return
             if len(ch_names) > 1:
@@ -22179,7 +22209,7 @@ class guiWin(QMainWindow):
                     self, ch_names, CbLabel=CbLabel
                 )
                 if ch_name_selector.was_aborted:
-                    self.openAction.setEnabled(True)
+                    self.openFolderAction.setEnabled(True)
                     return
                 skip_channels.extend([
                     ch for ch in ch_names if ch!=ch_name_selector.channel_name
@@ -22220,7 +22250,7 @@ class guiWin(QMainWindow):
         self.num_pos = len(user_ch_file_paths)
         proceed = self.loadSelectedData(user_ch_file_paths, user_ch_name)
         if not proceed:
-            self.openAction.setEnabled(True)
+            self.openFolderAction.setEnabled(True)
             return
     
     def _loadFromExperimentFolder(self, exp_path):
@@ -22228,7 +22258,7 @@ class guiWin(QMainWindow):
         values = select_folder.get_values_segmGUI(exp_path)
         if not values:
             self.criticalInvalidPosFolder(exp_path)
-            self.openAction.setEnabled(True)
+            self.openFolderAction.setEnabled(True)
             return []
 
         if len(values) > 1:
@@ -23888,8 +23918,6 @@ class guiWin(QMainWindow):
 
         self.thread.start()
         
-        
-    
     def _workerDebug(self, stuff_to_debug):
         pass
         # from acdctools.plot import imshow
