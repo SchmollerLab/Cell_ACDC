@@ -3,6 +3,7 @@ import os
 from cellacdc import myutils
 
 from cellacdc.models.cellpose_v2 import acdcSegment as acdc_cp2
+from . import _denoise
 
 class AvailableModels:
     major_version = myutils.get_cellpose_major_version()
@@ -17,11 +18,42 @@ class Model:
     def __init__(
             self, 
             model_type: AvailableModels='cyto3', 
-            net_avg=False, 
             gpu=False,
-            device='None'
+            device='None',
+            denoise_before_segmentation=False,
+            denoise_model_type: _denoise.DenoiseModelTypes='one-click', 
+            denoise_mode: _denoise.DenoiseModes='denoise',
         ):
-        self.acdcCellpose = acdc_cp2.Model(model_type, net_avg=net_avg, gpu=gpu)
+        """Initialize cellpose 3.0 denoising model
+
+        Parameters
+        ----------
+        gpu : bool, optional
+            If True and PyTorch for your GPU is correctly installed, 
+            denoising and segmentation processes will run on the GPU. 
+            Default is False
+        device : torch.device or int or None
+            If not None, this is the device used for running the model
+            (torch.device('cuda') or torch.device('cpu')). 
+            It overrides `gpu`, recommended if you want to use a specific GPU 
+            (e.g. torch.device('cuda:1'). Default is None
+        denoise_before_segmentation : bool, optional
+            If True, run denoising before segmentation. Default is False
+        denoise_model_type : str, optional
+            Either 'one-click' or 'nuclei'. Default is 'one-click'
+        denoise_mode : str, optional
+            Either 'denoise' or 'deblur'. Default is 'denoise'
+        """ 
+        self.acdcCellpose = acdc_cp2.Model(
+            model_type, gpu=gpu, device=device
+        )
+        self.denoiseModel = None
+        if denoise_before_segmentation:
+            self.denoiseModel = _denoise.CellposeDenoiseModel(
+                gpu=gpu, 
+                denoise_model_type=denoise_model_type, 
+                denoise_mode=denoise_mode
+            )
         
     def segment(
             self, image,
@@ -33,10 +65,63 @@ class Model:
             anisotropy=0.0,
             normalize=True,
             resample=True,
-            segment_3D_volume=False            
+            segment_3D_volume=False,
+            denoise_normalize=False,
+            rescale_intensity_low_val_perc=0.0, 
+            rescale_intensity_high_val_perc=100.0, 
+            sharpen=0,
+            low_percentile=1.0, 
+            high_percentile=99.0,
+            title_norm=0,
+            norm3D=False            
         ):
+        """Run cellpose 3.0 denoising + segmentation model
+
+        Parameters
+        ----------
+        image : (Y, X) or (Z, Y, X) numpy.ndarray
+            2D or 3D image (z-stack). 
+        diameter : float, optional
+            Diameter of expected objects. If 0.0, it uses 30.0 for "one-click" 
+            and 17.0 for "nuclei". Default is 0.0
+        normalize : bool, optional
+            If True, normalize image using the other parameters.  Default is False
+        rescale_intensity_low_val_perc : float, optional
+            Rescale intensities so that this is the minimum value in the image. 
+            Default is 0.0
+        rescale_intensity_high_val_perc : float, optional
+            Rescale intensities so that this is the maximum value in the image. 
+            Default is 100.0
+        sharpen : int, optional
+            Sharpen image with high pass filter, recommended to be 1/4-1/8 
+            diameter of cells in pixels. Default is 0.
+        low_percentile : float, optional
+            Lower percentile for normalizing image. Default is 1.0
+        high_percentile : float, optional
+            Higher percentile for normalizing image. Default is 99.0
+        title_norm : int, optional
+            Compute normalization in tiles across image to brighten dark areas. 
+            To turn it on set to window size in pixels (e.g. 100). Default is 0
+        norm3D : bool, optional
+            Compute normalization across entire z-stack rather than 
+            plane-by-plane in stitching mode. Default is False
+        """ 
+        
+        input_image = image
+        if self.denoiseModel is not None:
+            input_image = self.denoiseModel.run(
+                image,
+                normalize=denoise_normalize, 
+                rescale_intensity_low_val_perc=rescale_intensity_low_val_perc, 
+                rescale_intensity_high_val_perc=rescale_intensity_high_val_perc, 
+                sharpen=sharpen,
+                low_percentile=low_percentile, 
+                high_percentile=high_percentile,
+                title_norm=title_norm,
+                norm3D=norm3D
+            )
         labels = self.acdcCellpose.segment(
-            image,
+            input_image,
             diameter=diameter,
             flow_threshold=flow_threshold,
             cellprob_threshold=cellprob_threshold,

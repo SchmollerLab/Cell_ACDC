@@ -83,7 +83,7 @@ class CellposeDenoiseModel(DenoiseModel):
             title_norm=0,
             norm3D=False
         ):
-        """Run cellpose v2 denoise model
+        """Run cellpose 3.0 denoise model
 
         Parameters
         ----------
@@ -101,15 +101,18 @@ class CellposeDenoiseModel(DenoiseModel):
             Rescale intensities so that this is the maximum value in the image. 
             Default is 100.0
         sharpen : int, optional
-            _description_. Default is 0
+            Sharpen image with high pass filter, recommended to be 1/4-1/8 
+            diameter of cells in pixels. Default is 0.
         low_percentile : float, optional
-            _description_. Default is 1.0
+            Lower percentile for normalizing image. Default is 1.0
         high_percentile : float, optional
-            _description_. Default is 99.0
+            Higher percentile for normalizing image. Default is 99.0
         title_norm : int, optional
-            _description_. Default is 0
+            Compute normalization in tiles across image to brighten dark areas. 
+            To turn it on set to window size in pixels (e.g. 100). Default is 0
         norm3D : bool, optional
-            _description_. Default is False
+            Compute normalization across entire z-stack rather than 
+            plane-by-plane in stitching mode. Default is False
         """ 
         isRGB = image.shape[-1] == 3 or image.shape[-1] == 4
         channels = [0,0] if not isRGB else [1,2]
