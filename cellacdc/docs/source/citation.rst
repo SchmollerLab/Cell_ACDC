@@ -8,14 +8,17 @@ If you use Cell-ACDC in your publication, please cite:
    cycle analysis of live-cell imaging data with Cell-ACDC*. BMC Biol
    20, 174 (2022) https://doi.org/10.1186/s12915-022-01372-6
 
-**IMPORTANT**: when citing Cell-ACDC make sure to also cite the paper of the 
-segmentation models and trackers you used! 
-Below you find the links to the models currently available in Cell-ACDC.
+.. important:: 
+
+   Wwhen citing Cell-ACDC make sure to also cite the paper of the 
+   segmentation models and trackers you used! 
+   Below you find the links to the models currently available in Cell-ACDC.
 
 Segmentation models
 -------------------
 
-- `Cellpose <https://www.nature.com/articles/s41592-020-01018-x>`_
+- `Cellpose v2 <https://www.nature.com/articles/s41592-022-01663-4>`_
+- `Cellpose v3 <https://www.biorxiv.org/content/10.1101/2024.02.10.579780v1>`_
 - `YeaZ <https://www.nature.com/articles/s41467-020-19557-4>`_
 - `StarDist <https://github.com/stardist/stardist#how-to-cite>`_
 - `Segment Anything Model (SAM) <https://arxiv.org/abs/2304.02643>`_
