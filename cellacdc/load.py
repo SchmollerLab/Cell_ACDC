@@ -2186,7 +2186,7 @@ class loadData:
                         idx_to_drop.append(name)
 
                 self.metadata_df = self.metadata_df.drop(idx_to_drop)
-        self.metadataToCsv(signals=signals, mutex=signals, waitCond=waitCond)
+        self.metadataToCsv(signals=signals, mutex=mutex, waitCond=waitCond)
         self.metadata_df.to_csv(last_entries_metadata_path)
         if additionalMetadata is not None:
             with open(additional_metadata_path, mode='w') as file:
