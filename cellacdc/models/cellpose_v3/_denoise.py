@@ -1,4 +1,7 @@
 import numpy as np
+from tqdm import tqdm
+
+from cellacdc import printl
 
 from cellpose.denoise import DenoiseModel
 
@@ -117,9 +120,13 @@ class CellposeDenoiseModel(DenoiseModel):
         isRGB = image.shape[-1] == 3 or image.shape[-1] == 4
         channels = [0,0] if not isRGB else [1,2]
         
+        isZstack = False
+        if not isRGB and image.ndim == 3:
+            isZstack = True
+        
         if diameter == 0:
             diameter = 30.0 if self.nstr == 'cyto3' else 17.0
-        
+
         input_image = _initialize_image(image)
         normalize_params = self._get_normalize_params(
             input_image,
@@ -132,13 +139,24 @@ class CellposeDenoiseModel(DenoiseModel):
             title_norm=0,
             norm3D=False
         )
-        denoised_data = self.eval(
-            input_image, 
-            channels=channels, 
-            diameter=diameter,
-            normalize=normalize_params,
-        )
-        denoised_img = denoised_data[...,0]
+        eval_kwargs = {
+            'channels': channels, 
+            'diameter': diameter, 
+            'normalize': normalize
+        }
+        if isZstack:
+            denoised_img = np.zeros(image.shape, dtype=np.float32)
+            pbar = tqdm(
+                total=len(denoised_img), ncols=100, desc='Denoising z-slice: '
+            )
+            for z, img in enumerate(input_image):
+                denoised_z_data = self.eval(img, **eval_kwargs)
+                denoised_img[z] = denoised_z_data[...,0]
+                pbar.update()
+            pbar.close()
+        else:
+            denoised_data = self.eval(input_image, **eval_kwargs)
+            denoised_img = denoised_data[...,0]
         return denoised_img
         
 def url_help():

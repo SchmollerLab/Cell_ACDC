@@ -2738,7 +2738,7 @@ class guiWin(QMainWindow):
         self.viewCcaTableAction.setDisabled(True)
         self.viewCcaTableAction.setShortcut('Ctrl+P')
         
-        self.cp3denoiseAction = QAction('Cellpose 3.0 denoising', self)
+        self.cp3denoiseAction = QAction('Cellpose 3.0 denoising...', self)
         
         self.addScaleBarAction = QAction('Add scale bar', self)
         self.addScaleBarAction.setCheckable(True)
@@ -10784,6 +10784,26 @@ class guiWin(QMainWindow):
     def manualEditCcaToolbarActionTriggered(self):
         self.manualEditCca()
     
+    def askGet2Dor3Dimage(self):
+        txt = html_utils.paragraph("""
+            Do you want to test the denoising on the visualized 2D image or 
+            on the entire 3D z-stack?                           
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        _, use3Dbutton, use2Dbutton = msg.question(
+            self, '3D denoising?', txt, 
+            buttonsTexts=('Cancel', 'Denoise 3D z-stack', 'Denoise 2D image')
+        )
+        if msg.cancel:
+            return 
+        
+        if msg.clickedButton == use3Dbutton:
+            posData = self.data[self.pos_i]
+            zslice = self.zSliceScrollBar.value() - 1
+            return posData.img_data[posData.frame_i, zslice]
+        else:
+            return self.getDisplayedImg1()
+    
     def cp3denoiseActionTriggered(self):
         self.logger.info('Initializing Cellpose denoising model...')
         output = myutils.init_cellpose_denoise_model()
@@ -10791,7 +10811,13 @@ class guiWin(QMainWindow):
             self.logger.info('Cellpose 3.0 denoising process cancelled')
             return
 
-        img = self.getDisplayedImg1()
+        if not self.isSegm3D:
+            img = self.getDisplayedImg1()
+        else:
+            img = self.askGet2Dor3Dimage()
+            if img is None:
+                self.logger.info('Cellpose 3.0 denoising process cancelled')
+                return
         denoise_model, init_params, run_params = output
         denoised_image = filters.cellpose_v3_run_denoise(
             img,
@@ -13956,7 +13982,9 @@ class guiWin(QMainWindow):
             )
             _, segment3DButton, _ = msg.question(
                 self, '3D segmentation?', txt,
-                buttonsTexts=('Cancel', 'Segment 3D z-stack', 'Segment 2D z-slice')
+                buttonsTexts=(
+                    'Cancel', 'Segment 3D z-stack', 'Segment 2D z-slice'
+                )
             )
             if msg.cancel:
                 self.titleLabel.setText('Segmentation process aborted.')

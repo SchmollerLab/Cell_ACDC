@@ -281,7 +281,7 @@ File control
 ------------
 * **New File (** |newAction| **"Ctrl+N"):**  Create a new empty segmentation file.
 * **Load Folder (** |openFolderAction| **"Ctrl+O"):** Loads folder.
-* **Load older version (** |manageVersionsAction| **):** Load an older version of the ``acdc_output.csv`` file (table with annotations and measurements).
+* **Load older version (** |manageVersionsAction| **):** Load an older saved or unsaved version of the ``acdc_output.csv`` file (table with annotations and measurements).
 * **Save (** |saveAction| **"Ctrl+Alt+S"):** Save.
 * **Quick save ("Ctrl+S"):** Save only segm. file.
 * **Show in explorer (** |showInExplorerAction| **):** Opens explorer with currently loaded folder.
