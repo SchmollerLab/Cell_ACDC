@@ -25,8 +25,9 @@ FRAME_I = None # 0 # 300
 # # image_data = test_data.image_data()
 # image_data = test_data.cdc42_data()
 
-test_data = data.pomBseenDualChannelData()
+# test_data = data.pomBseenDualChannelData()
 # test_data = data.BABYtestData()
+test_data = data.YeastMitoSnapshotData()
 
 image_data = test_data.image_data()
 # segm_data = test_data.segm_data()

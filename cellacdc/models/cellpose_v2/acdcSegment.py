@@ -102,6 +102,57 @@ class Model:
             resample=True,
             segment_3D_volume=False            
         ):
+        """_summary_
+
+        Parameters
+        ----------
+        image : (Y, X) or (Z, Y, X) numpy.ndarray
+            Input image. Either 2D or 3D z-stack.
+        diameter : float, optional
+            Average diameter (in pixels) of the obejcts of interest. 
+            Default is 0.0
+        flow_threshold : float, optional
+            Flow error threshold (all cells with errors below threshold are 
+            kept) (not used for 3D). Default is 0.4
+        cellprob_threshold : float, optional
+            All pixels with value above threshold will be part of an object. 
+            Decrease this value to find more and larger masks. Default is 0.0
+        stitch_threshold : float, optional
+            If `stitch_threshold` is greater than 0.0 and `segment_3D_volume` 
+            is False, masks are stitched in 3D to return volume segmentation. 
+            Default is 0.0
+        min_size : int, optional
+            Minimum number of pixels per mask, you can turn off this filter 
+            with `min_size = -1`. Default is 15
+        anisotropy : float, optional
+            For 3D segmentation, optional rescaling factor (e.g. set to 2.0 if 
+            Z is sampled half as dense as X or Y). Default is 0.0
+        normalize : bool, optional
+            If True, normalize image using the other parameters. 
+            Default is True
+        resample : bool, optional
+            Run dynamics at original image size (will be slower but create 
+            more accurate boundaries). Default is True
+        segment_3D_volume : bool, optional
+            If True and input `image` is a 3D z-stack the entire z-stack 
+            is passed to cellpose model. If False, Cell-ACDC will force one 
+            z-slice at the time. Best results with 3D data are obtained by 
+            passing the entire z-stack, but with a `stitch_threshold` greater 
+            than 0 (e.g., 0.4). This way cellpose will internally segment 
+            slice-by-slice and it will merge the resulting z-slice masks 
+            belonging to the same object. 
+            Default is False
+
+        Returns
+        -------
+        np.ndarray of ints
+            Segmentations masks array
+
+        Raises
+        ------
+        TypeError
+            `stitch_threshold` must be 0 when segmenting slice-by-slice.
+        """        
         # Preprocess image
         # image = image/image.max()
         # image = skimage.filters.gaussian(image, sigma=1)

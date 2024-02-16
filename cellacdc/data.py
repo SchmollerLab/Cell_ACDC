@@ -226,3 +226,28 @@ class BABYtestData(_Data):
     def posData(self):
         from . import load
         return load.loadData(self.intensity_image_path, 'Brightfield')
+
+class YeastMitoSnapshotData(_Data):
+    def __init__(self):
+        images_path = os.path.join(
+            data_path, 'test_snapshots', 'mtDNA_Anika', 'Position_10', 
+            'Images'
+        )
+        intensity_image_path = os.path.join(
+            images_path, 'ASY15-1_0nM-10_s10_mNeon.tif'
+        )
+        acdc_df_path = os.path.join(
+            images_path, 'ASY15-1_0nM-10_s10_acdc_output.csv'
+        )
+        segm_path = os.path.join(
+            images_path, 'ASY15-1_0nM-10_s10_segm.npz'
+        )
+        basename = 'ASY15-1_0nM-10_s10_'
+        super().__init__(
+            images_path, intensity_image_path, acdc_df_path, segm_path,
+            basename
+        )
+    
+    def posData(self):
+        from . import load
+        return load.loadData(self.intensity_image_path, 'mNeon')
