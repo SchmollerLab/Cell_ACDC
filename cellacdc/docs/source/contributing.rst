@@ -1,3 +1,5 @@
+.. _contributing-guide:
+
 How to contribute to Cell-ACDC
 ==============================
 

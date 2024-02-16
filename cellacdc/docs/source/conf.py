@@ -22,6 +22,7 @@ extensions = [
     'sphinx.ext.autosummary',
     'sphinx.ext.intersphinx',
     'sphinxcontrib.email',
+    'sphinx_tabs.tabs',
     'sphinx_copybutton'
 ]
 
