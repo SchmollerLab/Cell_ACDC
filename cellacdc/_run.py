@@ -80,7 +80,7 @@ def _install_tables(parent_software='Cell-ACDC'):
 
         return True
     
-def _setup_gui_libraries():
+def _setup_gui_libraries(caller_name='Cell-ACDC'):
     from . import try_input_install_package
     warn_restart = False
     
@@ -95,8 +95,8 @@ def _setup_gui_libraries():
         import qtpy
     except ModuleNotFoundError as e:
         txt = (
-            'Cell-ACDC needs to install the package `qtpy`.\n\n'
-            'You can let Cell-ACDC install it now, or you can abort '
+            f'{caller_name} needs to install the package `qtpy`.\n\n'
+            f'You can let {caller_name} install it now, or you can abort '
             'and install it manually with the command `pip install qtpy`.'
         )
         print('-'*60)
@@ -129,17 +129,17 @@ def _setup_gui_libraries():
         from qtpy.QtCore import Qt
     except Exception as e:
         txt = (
-            'Since version 1.3.1 Cell-ACDC does not install a GUI library by default.\n\n'
-            f'You can let Cell-ACDC install it now (default library is `{default_qt}`), '
-            'or you can abort (press "n")\n'
-            'and install a compatible GUI library with one of '
+            f'{caller_name} needs to install a GUI library (default library is '
+            f'`{default_qt}`).\n\n'
+            'You can install it now or you can close (press "n") and install\n'
+            'a compatible GUI library with one of '
             'the following commands:\n\n'
             '    * pip install PyQt6\n'
             '    * pip install PyQt5 (or `conda install pyqt`)\n'
             '    * pip install PySide2\n'
             '    * pip install PySide6\n\n'
             f'Note: if `{default_qt}` installation fails, you could try installing any '
-            'of the other libraries.\n\n'
+            'of the other libraries.\n'
         )
         print('-'*60)
         print(txt)
@@ -200,7 +200,7 @@ def _setup_gui_libraries():
     if warn_restart:
         print('*'*60)
         input(
-            '[WARNING]: Cell-ACDC had to install the required GUI libraries. '
+            f'[NOTE]: {caller_name} had to install the required GUI libraries. '
             'Please, re-start the software. Thank you for your patience! '
             '(Press any key to exit). '
         )
