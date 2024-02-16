@@ -10935,6 +10935,8 @@ class guiWin(QMainWindow):
                 continue
             if action == self.manageVersionsAction:
                 continue
+            if action == self.openFileAction:
+                continue
             action.setEnabled(enabled)
             button.setEnabled(enabled)
 
