@@ -104,6 +104,15 @@ Install stable version
         
     This tells pip to install Cell-ACDC.
 
+Updating to the latest stable version of Cell-ACDC 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To update to the latest version of Cell-ACDC , open the terminal, activate the 
+``acdc`` environment with the command ``conda activate acdc`` and the run the 
+follwing command::
+        
+    pip install --upgrade cellacdc
+
 
 .. _install-latest-version:
 
@@ -188,6 +197,15 @@ Install latest version
         pip install "git+https://github.com/SchmollerLab/Cell_ACDC.git"
         
     This tells pip to install Cell-ACDC.
+
+Updating to the latest version of Cell-ACDC 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To update to the latest version of Cell-ACDC , open the terminal, activate the 
+``acdc`` environment with the command ``conda activate acdc`` and the run the 
+follwing command::
+        
+    pip install --upgrade "git+https://github.com/SchmollerLab/Cell_ACDC.git"
 
 
 .. _install-from-source:
