@@ -566,6 +566,8 @@ class LessThanPushButton(PushButton):
             self.setFlat(True)
 
 class showDetailsButton(PushButton):
+    sigToggled = Signal(bool)
+    
     def __init__(self, *args, txt='Show details...', parent=None):
         super().__init__(txt, parent)
         # self.setText(txt)
@@ -575,16 +577,18 @@ class showDetailsButton(PushButton):
         self.setIcon(self.uncheckedIcon)
         self.toggled.connect(self.onClicked)
         self.setCheckable(True)
-        w = self.sizeHint().width()
+        w = self.sizeHint().width() + 10
         self.setFixedWidth(w)
 
     def onClicked(self, checked):
         if checked:
-            self.setText(' Hide details   ')
+            self.setText(self.txt.replace('Show', 'Hide'))
             self.setIcon(self.checkedIcon)
         else:
             self.setText(self.txt)
             self.setIcon(self.uncheckedIcon)
+        
+        self.sigToggled.emit(checked)
 
 class cancelPushButton(PushButton):
     def __init__(self, *args, **kwargs):
@@ -4256,9 +4260,13 @@ class expandCollapseButton(PushButton):
         if self.isExpand:
             self.setIcon(QIcon(":collapse.svg"))
             self.isExpand = False
+            if self.text():
+                self.setText(self.text().replace('Hide', 'Show'))
         else:
             self.setIcon(QIcon(":expand.svg"))
             self.isExpand = True
+            if self.text():
+                self.setText(self.text().replace('Show', 'Hide'))
         self.sigClicked.emit()
 
     def eventFilter(self, object, event):
