@@ -18818,6 +18818,9 @@ class guiWin(QMainWindow):
                     framePointsData[zSlice]['x'].append(x)
                     framePointsData[zSlice]['y'].append(y)
                 action.pointsData[posData.frame_i] = framePointsData
+            else:
+                action.pointsData[posData.frame_i]['x'].append(x)
+                action.pointsData[posData.frame_i]['y'].append(y)
     
     def editPointsLayerAppearance(self, button):
         win = apps.EditPointsLayerAppearanceDialog(parent=self)
