@@ -7777,6 +7777,8 @@ class PointsScatterPlotItem(pg.ScatterPlotItem):
         data = kwargs.get('data')
         if data is None:
             return
+        if len(data) == 0:
+            return
         first_point_data = data[0]
         if not isinstance(first_point_data, (int, str)):
             return
