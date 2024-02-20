@@ -92,7 +92,8 @@ class Model:
             coordinates of the input points for SAM. 
             
             It must contain the columns ('x', 'y', 'id') with an optional 
-            'z' column for segmentation of 3D z-stack data (slice-by-slice). 
+            'z' column for segmentation of 3D z-stack data (slice-by-slice) and 
+            a 'frame_i' columns for time-lapse data. 
             
             If not 'None', `input_points_path` will be ignored and this will be used 
             instead. 
@@ -144,18 +145,18 @@ class Model:
         else:
             self.model = SamPredictor(sam)
     
-    def _get_input_points(self, is_z_stack):
-        if self._input_points_df is None:
+    def _get_input_points(self, is_z_stack, df_points):
+        if df_points is None:
             return None, None
         
         if is_z_stack:
             input_points = defaultdict(dict)
             input_labels = defaultdict(dict)
             neg_input_points_df = (
-                self._input_points_df[self._input_points_df['id'] == 0]
+                df_points[df_points['id'] == 0]
                 .set_index('z')
             )
-            for (z, id), sub_df in self._input_points_df.groupby(['z', 'id']):
+            for (z, id), sub_df in df_points.groupby(['z', 'id']):
                 if id == 0:
                     continue
                 
@@ -180,10 +181,10 @@ class Model:
             input_points = {}
             input_labels = {}
             neg_input_points_df = (
-                self._input_points_df[self._input_points_df['id'] == 0]
+                df_points[df_points['id'] == 0]
             )
             neg_input_points_data = neg_input_points_df[['x', 'y']].to_numpy()
-            for id, df_id in self._input_points_df.groupby('id'):
+            for id, df_id in df_points.groupby('id'):
                 if id == 0:
                     continue
                 
@@ -202,7 +203,9 @@ class Model:
         return input_points, input_labels
     
     def segment(
-            self, image: np.ndarray, 
+            self, 
+            image: np.ndarray, 
+            frame_i: int,
             automatic_removal_of_background: bool=True
         ) -> np.ndarray:
         is_rgb_image = image.shape[-1] == 3 or image.shape[-1] == 4
@@ -212,7 +215,17 @@ class Model:
         else:
             labels = np.zeros(image.shape, dtype=np.uint32)
         
-        input_points, input_labels = self._get_input_points(is_z_stack)
+        if self._input_points_df is None:
+            df_points = None
+        elif 'frame_i' in self._input_points_df.columns:
+            mask = self._input_points_df['frame_i'] == frame_i
+            df_points = self._input_points_df[mask]
+        else:
+            df_points = self._input_points_df
+            
+        input_points, input_labels = self._get_input_points(
+            is_z_stack, df_points
+        )
         
         if is_z_stack:
             for z, img in enumerate(image):
