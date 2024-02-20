@@ -1136,7 +1136,8 @@ class AddPointsLayerDialog(widgets.QBaseDialog):
         
         row += 1
         instructionsText = html_utils.paragraph(
-            '<br><i>Left-click</i> to annotate a new point.<br>'
+            '<br><i>Left-click</i> to annotate a new point with a new id.<br>'
+            '<i>Righ-click</i> to annotate a point with the same id<br>'
             '<i>Click</i> on point to delete it', font_size='11px'
         )
         self.instructionsLabel = QLabel(instructionsText)
@@ -3936,7 +3937,7 @@ class DeltaTrackerParamsWin(QDialog):
         paramsLayout.addWidget(modelPathLineEdit, row, 1)
         browseButton = widgets.browseFileButton(
             title='Select Original Images',
-            ext={'': ('.tif',)},
+            ext={'TIFF': ('.tif',)},
             start_dir=start_dir
         )
         if posData is not None:
@@ -10712,7 +10713,15 @@ class QDialogModelParams(QDialog):
             except Exception as err:
                 pass
             
-            if isVectorEntry:
+            isCustomWidget = hasattr(ArgSpec.type, 'isWidget')
+            
+            if isCustomWidget:
+                widget = ArgSpec.type()
+                defaultVal = ArgSpec.default
+                valueSetter = ArgSpec.type.setValue
+                valueGetter = ArgSpec.type.value
+                groupBoxLayout.addWidget(widget, row, 1, 1, 2)
+            elif isVectorEntry:
                 vectorLineEdit = widgets.VectorLineEdit()
                 vectorLineEdit.setValue(ArgSpec.default)
                 defaultVal = ArgSpec.default
@@ -10720,7 +10729,6 @@ class QDialogModelParams(QDialog):
                 valueGetter = widgets.VectorLineEdit.value
                 widget = vectorLineEdit
                 groupBoxLayout.addWidget(vectorLineEdit, row, 1, 1, 2)
-            
             elif ArgSpec.type == bool:
                 booleanGroup = QButtonGroup()
                 booleanGroup.setExclusive(True)

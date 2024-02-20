@@ -2661,6 +2661,14 @@ def init_segm_model(acdcSegment, posData, init_kwargs):
     else:
         segm_data = None
     
+    # Initialize input_points_df for SAM model
+    input_points_filepath = init_kwargs.pop('input_points_path', '')
+    if input_points_filepath:
+        input_points_df = init_sam_input_points_df(
+            posData, input_points_filepath
+        )
+        init_kwargs['input_points_df'] = input_points_df
+    
     try:
         # Models introduced before 1.3.2 do not have the segm_data as input
         model = acdcSegment.Model(**init_kwargs)
@@ -2712,3 +2720,29 @@ def init_cellpose_denoise_model():
     run_params = paramsWin.model_kwargs
     denoise_model = CellposeDenoiseModel(**init_params)
     return denoise_model, init_params, run_params
+
+def init_sam_input_points_df(posData, input_points_filepath):
+    input_points_df = None
+    if os.path.exists(input_points_filepath):
+        input_points_df = pd.read_csv(input_points_filepath)
+    else:
+        # input_points_filepath is actually and endname
+        for file in listdir(posData.images_path):
+            if file.endswith(input_points_filepath):
+                filepath = os.path.join(posData.images_path, file)
+                input_points_df = pd.read_csv(filepath)
+                break
+    
+    if input_points_df is None:
+        raise FileNotFoundError(
+            f'Could not find input points table from file "input_points_filepath"'
+        )
+    
+    for col in ('x', 'y', 'id'):
+        if col not in input_points_df.columns:
+            raise KeyError(
+                f'Input points table is missing colum {col}. It must have '
+                'the colums (x, y, id)'
+            )
+    
+    return input_points_df

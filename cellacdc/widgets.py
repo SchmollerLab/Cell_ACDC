@@ -632,6 +632,26 @@ class browseFileButton(PushButton):
             self, *args, ext=None, title='Select file', start_dir='', 
             openFolder=False, **kwargs
         ):
+        """PushButton with sigPathSelected Signal to select file or folder
+
+        Parameters
+        ----------
+        ext : dict or None, optional
+            If not None, this is a dictionary of 
+            {'FILE NAME': ['.ext1', '.ext2', ...]}. 
+            For example, to allow only selection of CSV files, 
+            pass {'CSV': ['.csv']}. 
+            
+            Note that the 'FILE NAME' is arbitrary. Default is None
+        title : str, optional
+            Title of the File Manager window. Default is 'Select file'
+        start_dir : str, optional
+            Directory where the File Manager window will initially be open. 
+            Default is ''
+        openFolder : bool, optional
+            If True, allows for selection of folders instead of files. 
+            Default is False
+        """        
         super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':folder-open.svg'))
         self.clicked.connect(self.browse)
@@ -644,6 +664,8 @@ class browseFileButton(PushButton):
             s_li = []
             for name, extensions in ext.items():
                 _s = ''
+                if isinstance(extensions, str):
+                    extensions = [extensions]
                 for ext in extensions:
                     _s = f'{_s}*{ext} '
                 s_li.append(f'{name} {_s.strip()}')
@@ -3952,7 +3974,7 @@ class channelMetricsQGBox(QGroupBox):
         checked : bool
             State of the checkbox toggled
         checkbox : QtWidgets.QCheckBox, optional
-            The checkbox that has been toggled, by default None. If None 
+            The checkbox that has been toggled. Default is None. If None 
             use `self.sender()`
         """        
         if self.is_concat:
@@ -7647,3 +7669,141 @@ class SwitchPlaneCombobox(QComboBox):
         for axes in 'xyz':
             if axes not in plane:
                 return axes
+
+class SamInputPointsWidget(QWidget):
+    isWidget = True
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        
+        _layout = QHBoxLayout()
+        
+        self.lineEntry = ElidingLineEdit(parent=self)
+        self.lineEntry.setAlignment(Qt.AlignCenter)
+        
+        self.editButton = editPushButton()
+        self.browseButton = browseFileButton(
+            ext={'CSV': '.csv'}, 
+            start_dir=myutils.getMostRecentPath()
+        )
+        
+        _layout.addWidget(self.lineEntry)
+        _layout.addWidget(self.editButton)
+        _layout.addWidget(self.browseButton)
+        
+        _layout.setStretch(0, 1)
+        _layout.setStretch(1, 0)
+        _layout.setStretch(1, 0)
+        
+        self.browseButton.sigPathSelected.connect(self.browseCsvFiles)
+        self.editButton.clicked.connect(self.showInfoEditPoints)
+        
+        _layout.setContentsMargins(0, 0, 0, 0)
+        self.setLayout(_layout)
+    
+    def showInfoEditPoints(self):
+        note = html_utils.to_note(
+            'When adding points with the mouse left button you will create a '
+            'new object for each point. To add multiple points for the same '
+            'object click the right button.'
+        )
+        txt = html_utils.paragraph(f"""
+            To add input points for Segment Anything open the GUI (module 3), 
+            load the data, and then click on the button<br>
+            on the top toolbar called <code>Add points layer</code>.<br><br>
+            Select the option "Add points by clicking" and click on the image 
+            to add points.<br><br>
+            Finally, save the table and browse to the saved file on this widget.
+            <br>{note}
+        """)
+        msg = myMessageBox(wrapText=False)
+        msg.information(self, 'Info edit points', txt)
+    
+    def criticalMissingColumn(self, filepath, missing_col):
+        txt = html_utils.paragraph(f"""
+            [ERROR]: The selected table does not contain the column 
+            <code>{missing_col}</code>.<br><br>
+            A valid table must contain the columns <code>(x, y, id)</code> 
+            with an additional <code>z</code> column for 3D z-stacks data.
+        """)
+        msg = myMessageBox(wrapText=False)
+        msg.critical(self, 'Invalid table', txt)
+    
+    def setValue(self, value: str):
+        self.lineEntry.setText(value)
+    
+    def value(self):
+        return self.lineEntry.text()
+    
+    def browseCsvFiles(self, filepath):
+        # Check if metadata.csv file exists with basename and set only the 
+        # endname of the file
+        df_points = pd.read_csv(filepath)
+        for col in ('x', 'y', 'id'):
+            if col not in df_points.columns:
+                self.criticalMissingColumn(filepath, col)
+                return
+        
+        folderpath = os.path.dirname(filepath)
+        basename = None
+        for file in myutils.listdir(folderpath):
+            if file.endswith('metadata.csv'):
+                metadata_csv_path = os.path.join(folderpath, file)
+                df = pd.read_csv(metadata_csv_path, index_col='Description')
+                try:
+                    basename = df.at['basename', 'values']
+                except Exception as e:
+                    basename = None
+                break
+        
+        if basename is None:
+            self.lineEntry.setText(filepath)
+        else:
+            filename = os.path.basename(filepath)
+            endname = filename[len(basename):]
+            self.lineEntry.setText(endname)
+
+class PointsScatterPlotItem(pg.ScatterPlotItem):
+    def __init__(self, *args, ax=None, **kwargs):
+        self._textItems = {}
+        super().__init__(*args, **kwargs)
+        self._font = QFont()
+        self._font.setPixelSize(12)
+        self.ax = ax
+    
+    def setData(self, *args, **kwargs):
+        self.clearTextItems()
+        super().setData(*args, **kwargs)
+        data = kwargs.get('data')
+        if data is None:
+            return
+        first_point_data = data[0]
+        if not isinstance(first_point_data, (int, str)):
+            return
+        
+        xx, yy = args
+        for x, y, point_data in zip(xx, yy, data):
+            text = str(point_data)
+            textItem = self._textItems.get((x, y), None)
+            if textItem is None:
+                textItem = pg.TextItem(text=text, color='r', anchor=(0, 1))
+                textItem.setFont(self._font)
+                self._textItems[(x, y)] = textItem
+                self.ax.addItem(textItem)
+            else:
+                textItem.setText(text)
+            textItem.setPos(x, y)
+    
+    def clearTextItems(self):
+        for textItem in self._textItems.values():
+            textItem.setText('')
+    
+    def clear(self):
+        super().clear()
+        self.clearTextItems()
+    
+    def setVisible(self, visible):
+        super().setVisible(visible)
+        for textItem in self._textItems.values():
+            if textItem.toPlainText():
+                textItem.setVisible(visible)

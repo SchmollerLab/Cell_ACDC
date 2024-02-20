@@ -7142,14 +7142,20 @@ class guiWin(QMainWindow):
             
             self.isMouseDragImg1 = True
 
-        elif left_click and canAddPoint:
-            x, y = event.pos().x(), event.pos().y()
+        elif canAddPoint:
             action = addPointsByClickingButton.action
+            x, y = event.pos().x(), event.pos().y()
             hoveredPoints = action.scatterItem.pointsAt(event.pos())
             if hoveredPoints:
                 self.removeClickedPoints(action, hoveredPoints)
             else:
-                self.addClickedPoint(action, x, y)
+                if right_click:
+                    id = addPointsByClickingButton.pointIdSpinbox.value()
+                else:
+                    id = addPointsByClickingButton.pointIdSpinbox.value()
+                    id = self.getClickedPointNewId(action, id)
+                    addPointsByClickingButton.pointIdSpinbox.setValue(id)
+                self.addClickedPoint(action, x, y, id)
             self.drawPointsLayers(computePointsLayers=False)
         
         elif left_click and canRuler or canPolyLine:
@@ -15937,7 +15943,7 @@ class guiWin(QMainWindow):
     def clearPointsLayers(self):
         for action in self.pointsLayersToolbar.actions()[1:]:
             try:
-                action.scatterItem.setData([], [])
+                action.scatterItem.clear()
                 # action.pointsData = {}
             except Exception as e:
                 continue
@@ -18477,11 +18483,24 @@ class guiWin(QMainWindow):
             posData = self.data[self.pos_i]
             tableEndName = tableEndName[len(posData.basename):]
             self.loadClickEntryDfs(tableEndName)
-            
-        toolButton.clickEntryTableEndName = tableEndName
         
+        toolButton.clickEntryTableEndName = tableEndName
+        self.checkableQButtonsGroup.addButton(toolButton)
         toolButton.toggled.connect(self.addPointsByClickingButtonToggled)
         self.addPointsByClickingButtonToggled(sender=toolButton)
+        
+        pointIdSpinbox = widgets.SpinBox()
+        pointIdSpinbox.setMinimum(0)
+        pointIdSpinbox.setValue(1)
+        pointIdSpinbox.label = QLabel(' Point id: ')
+        pointIdSpinbox.labelAction = self.pointsLayersToolbar.addWidget(
+            pointIdSpinbox.label
+        )
+        pointIdSpinbox.action = self.pointsLayersToolbar.addWidget(
+            pointIdSpinbox
+        )
+        pointIdSpinbox.toolButton = toolButton
+        toolButton.pointIdSpinbox = pointIdSpinbox
         
         saveAction = QAction(
             QIcon(":file-save.svg"), 
@@ -18491,6 +18510,10 @@ class guiWin(QMainWindow):
         saveAction.triggered.connect(self.savePointsAddedByClicking)
         saveAction.toolButton = toolButton
         self.pointsLayersToolbar.addAction(saveAction)
+        
+        self.pointsLayersToolbar.addWidget(widgets.QVLine())
+        self.pointsLayersToolbar.addWidget(widgets.QHWidgetSpacer(width=5))
+        
         self.pointsLayerDfsToData(posData)
     
     def autoPilotZoomToObjToggled(self, checked):
@@ -18555,11 +18578,17 @@ class guiWin(QMainWindow):
                     for z, df_zlice in df_frame.groupby('z'):
                         xx = df_zlice['x'].to_list()
                         yy = df_zlice['y'].to_list()
-                        action.pointsData[frame_i][z] = {'x': xx, 'y': yy}
+                        ids = df_zlice['id'].to_list()
+                        action.pointsData[frame_i][z] = {
+                            'x': xx, 'y': yy, 'id': ids
+                        }
                 else:
                     xx = df_frame['x'].to_list()
                     yy = df_frame['y'].to_list()
-                    action.pointsData[frame_i][z] = {'x': xx, 'y': yy}
+                    ids = df_frame['id'].to_list()
+                    action.pointsData[frame_i] = {
+                        'x': xx, 'y': yy, 'id': ids
+                    }
             
     def pointsLayerDataToDf(self, posData):
         for action in self.pointsLayersToolbar.actions()[1:]:
@@ -18571,16 +18600,21 @@ class guiWin(QMainWindow):
             # if posData.clickEntryPointsDfs.get(tableEndName) is None:
             #     continue
             
-            df = pd.DataFrame(columns=['frame_i', 'Cell_ID', 'z', 'y', 'x'])
+            df = pd.DataFrame(
+                columns=['frame_i', 'Cell_ID', 'z', 'y', 'x', 'id']
+            )
             frames_vals = []
             IDs = []
             zz = []
             yy = []
             xx = []
+            ids = []
             for frame_i, framePointsData in action.pointsData.items():
                 if self.isSegm3D:
                     for z, zSlicePointsData in framePointsData.items():
-                        yyxx = zip(zSlicePointsData['y'], zSlicePointsData['x'])
+                        yyxx = zip(
+                            zSlicePointsData['y'], zSlicePointsData['x']
+                        )
                         for y, x in yyxx:
                             ID = posData.lab[int(z), int(y), int(x)]
                             frames_vals.append(frame_i)
@@ -18588,6 +18622,7 @@ class guiWin(QMainWindow):
                             zz.append(z)
                             yy.append(y)
                             xx.append(x)
+                        ids.extend(zSlicePointsData['ids'])
                 else:
                     yyxx = zip(framePointsData['y'], framePointsData['x'])
                     for y, x in yyxx:
@@ -18596,10 +18631,12 @@ class guiWin(QMainWindow):
                         IDs.append(ID)
                         yy.append(y)
                         xx.append(x)
+                    ids.extend(framePointsData['id'])
             df['frame_i'] = frames_vals
             df['Cell_ID'] = IDs
             df['y'] = yy
             df['x'] = xx
+            df['id'] = ids
             if zz:
                 df['z'] = zz
             posData.clickEntryPointsDfs[tableEndName] = df
@@ -18723,8 +18760,8 @@ class guiWin(QMainWindow):
         pointSize = self.addPointsWin.pointSize
         r,g,b,a = color.getRgb()
 
-        scatterItem = pg.ScatterPlotItem(
-            [], [], symbol=symbol, pxMode=False, size=pointSize,
+        scatterItem = widgets.PointsScatterPlotItem(
+            [], [], ax=self.ax1, symbol=symbol, pxMode=False, size=pointSize,
             brush=pg.mkBrush(color=(r,g,b,100)),
             pen=pg.mkPen(width=2, color=(r,g,b)),
             hoverable=True, hoverBrush=pg.mkBrush((r,g,b,200)), 
@@ -18773,7 +18810,12 @@ class guiWin(QMainWindow):
             filepath = os.path.join(posData.images_path, csv_filename)
             if not os.path.exists(filepath):
                 continue
-            posData.clickEntryPointsDfs[tableEndName] = pd.read_csv(filepath)
+            
+            df = pd.read_csv(filepath)
+            if 'id' not in df.columns:
+                df['id'] = range(1, len(df)+1)
+            posData.clickEntryPointsDfs[tableEndName] = df
+            
         try:
             self.addPointsWin.loadButton.confirmAction()
         except Exception as err:
@@ -18792,11 +18834,30 @@ class guiWin(QMainWindow):
             if zSlice is not None:
                 framePointsData[zSlice]['x'].remove(x)
                 framePointsData[zSlice]['y'].remove(y)
+                framePointsData[zSlice]['id'].remove(point.data())
             else:
                 framePointsData['x'].remove(x)
                 framePointsData['y'].remove(y)
+                framePointsData['id'].remove(point.data())
     
-    def addClickedPoint(self, action, x, y):
+    def getClickedPointNewId(self, action, current_id):
+        posData = self.data[self.pos_i]
+        framePointsData = action.pointsData.get(posData.frame_i)
+        if framePointsData is None:
+            return 1
+        if self.isSegm3D:
+            new_id = 1
+            for z_data in action.pointsData[posData.frame_i].values():
+                max_id = max(z_data.get('id', 0))
+                if max_id > new_id:
+                    new_id = max_id
+        else:
+            new_id = max(framePointsData.get('id', 0)) + 1
+        if current_id >= new_id:
+            return current_id
+        return new_id
+        
+    def addClickedPoint(self, action, x, y, id):
         x, y = round(x, 2), round(y, 2)
         posData = self.data[self.pos_i]
         framePointsData = action.pointsData.get(posData.frame_i)
@@ -18804,23 +18865,27 @@ class guiWin(QMainWindow):
             if self.isSegm3D:
                 zSlice = self.z_lab()
                 action.pointsData[posData.frame_i] = {
-                    zSlice: {'x': [x], 'y': [y]}
+                    zSlice: {'x': [x], 'y': [y], 'id': [id]}
                 }
             else:
-                action.pointsData[posData.frame_i] = {'x': [x], 'y': [y]}
+                action.pointsData[posData.frame_i] = {
+                    'x': [x], 'y': [y], 'id': [id]
+                }
         else:
             if self.isSegm3D:
                 zSlice = self.z_lab()
                 z_data = action.pointsData[posData.frame_i].get(zSlice)
                 if z_data is None:
-                    framePointsData[zSlice] = {'x': [x], 'y': [y]}
+                    framePointsData[zSlice] = {'x': [x], 'y': [y], 'id': [id]}
                 else:
                     framePointsData[zSlice]['x'].append(x)
                     framePointsData[zSlice]['y'].append(y)
+                    framePointsData[zSlice]['id'].append(id)
                 action.pointsData[posData.frame_i] = framePointsData
             else:
                 action.pointsData[posData.frame_i]['x'].append(x)
                 action.pointsData[posData.frame_i]['y'].append(y)
+                action.pointsData[posData.frame_i]['id'].append(id)
     
     def editPointsLayerAppearance(self, button):
         win = apps.EditPointsLayerAppearanceDialog(parent=self)
@@ -18942,19 +19007,21 @@ class guiWin(QMainWindow):
                         # There are no objects on this z-slice
                         action.scatterItem.clear()
                         return
-                    xx, yy = z_data['x'], z_data['y']
+                    xx, yy, ids = z_data['x'], z_data['y'], z_data['id']
                 else:
-                    xx, yy = [], []
+                    xx, yy, ids = [], [], []
                     # z-projection --> draw all points
                     for z, z_data in framePointsData.items():
                         xx.extend(z_data['x'])
                         yy.extend(z_data['y'])
+                        ids.extend(z_data['id'])
             else:
                 # 2D segmentation
                 xx = framePointsData['x']
                 yy = framePointsData['y']
+                ids = framePointsData['id']
 
-            action.scatterItem.setData(xx, yy)
+            action.scatterItem.setData(xx, yy, data=ids)
 
     def overlay_cb(self, checked):
         self.UserNormAction, _, _ = self.getCheckNormAction()
