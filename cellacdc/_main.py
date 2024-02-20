@@ -19,7 +19,7 @@ from qtpy.QtCore import (
 )
 from qtpy.QtGui import (
     QFontDatabase, QIcon, QDesktopServices, QFont, QColor, 
-    QPalette
+    QPalette, QGuiApplication
 )
 import qtpy.compat
 
@@ -84,6 +84,7 @@ class mainWin(QMainWindow):
         self.app = app
         scheme = self.getColorScheme()
         self.welcomeGuide = None
+        self._do_restart = False
         
         super().__init__(parent)
         self.setWindowTitle("Cell-ACDC")
@@ -1098,8 +1099,25 @@ class mainWin(QMainWindow):
         secondWin.setLayout(layout)
         secondWin.exec_()
     
+    def askRestartAcdc(self):
+        txt = html_utils.paragraph(
+            'Are you sure you want to restart Cell-ACDC?<br>'
+        )
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(self, 'Restart?', txt, buttonsTexts=('Cancel', 'Yes'))
+        return msg.cancel
+    
     def keyPressEvent(self, event):
-        return
+        modifiers = QGuiApplication.keyboardModifiers()
+        ctrl_shift = modifiers == Qt.ControlModifier | Qt.ShiftModifier
+        if ctrl_shift and event.key() == Qt.Key_R:
+            cancel = self.askRestartAcdc()
+            if not cancel:
+                event.ignore()
+                self._do_restart = True
+                self.close()
+                return
+        return super().keyPressEvent(event)
         printl('ciao')
         from qtpy.QtWidgets import QDialog, QTreeWidget, QTreeWidgetItem
         secondWin = QDialog(self)
@@ -1841,7 +1859,7 @@ class mainWin(QMainWindow):
                 event.ignore()
                 return
 
-        if self.sender() == self.restartButton:
+        if self._do_restart:
             try:
                 restart()
             except Exception as e:
