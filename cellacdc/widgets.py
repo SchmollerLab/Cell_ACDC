@@ -2357,7 +2357,7 @@ class myMessageBox(QDialog):
         else:
             textWidget = labelsWidget
 
-        self.layout.addWidget(textWidget, self.currentRow, 1)#, alignment=Qt.AlignTop)
+        self.layout.addWidget(textWidget, self.currentRow, 1)
         self.currentRow += 1
         return labelsWidget
     
@@ -2425,7 +2425,11 @@ class myMessageBox(QDialog):
             )
             self.currentRow += 1
 
-        self.layout.addItem(QSpacerItem(20, 20))
+        # spacer
+        self.layout.addItem(QSpacerItem(10, 10), self.currentRow, 1)
+        self.currentRow += 1
+        
+        # buttons
         self.layout.addLayout(
             self.buttonsLayout, self.currentRow, 0, 1, 2,
             alignment=Qt.AlignRight
@@ -2433,6 +2437,11 @@ class myMessageBox(QDialog):
 
         # Details
         if self.detailsTextWidget is not None:
+            # spacer
+            self.currentRow += 1
+            self.layout.addItem(QSpacerItem(20, 20), self.currentRow, 1)
+            
+            # detailsTextWidget
             self.currentRow += 1
             self.layout.addWidget(
                 self.detailsTextWidget, self.currentRow, 0, 1, 2

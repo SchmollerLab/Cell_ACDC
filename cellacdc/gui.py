@@ -981,6 +981,7 @@ class guiWin(QMainWindow):
         self.isSegm3D = False
         self.newSegmEndName = ''
         self.closeGUI = False
+        self.warnKeyPressedMsg = None
         self.img1ChannelGradients = {}
         self.filtersWins = {}
         self.AutoPilotProfile = autopilot.AutoPilotProfile()
@@ -12415,14 +12416,19 @@ class guiWin(QMainWindow):
         if canRepeat:
             return
         if ev.isAutoRepeat() and not ev.key() == Qt.Key_Z:
-            msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+            if self.warnKeyPressedMsg is not None:
+                return
+            self.warnKeyPressedMsg = widgets.myMessageBox(
+                showCentered=False, wrapText=False
+            )
             txt = html_utils.paragraph(f"""
             Please, <b>do not keep the key "{ev.text().upper()}" 
             pressed.</b><br><br>
             It confuses me :)<br><br>
             Thanks!
             """)
-            msg.warning(self, 'Release the key, please',txt)
+            self.warnKeyPressedMsg.warning(self, 'Release the key, please', txt)
+            self.warnKeyPressedMsg = None
         elif ev.isAutoRepeat() and ev.key() == Qt.Key_Z and self.isZmodifier:
             self.zKeptDown = True
         elif ev.key() == Qt.Key_Z and self.isZmodifier:
@@ -12914,15 +12920,21 @@ class guiWin(QMainWindow):
         prev_lab = self.get_2Dlab(posData.lab).copy()
         self.tracking(enforce=True, DoManualEdit=False)
         if posData.editID_info:
-            editIDinfo = [
-                f'Replace ID {posData.lab[y,x]} with {newID}'
+            editedIDsInfo = {
+                posData.lab[y,x]:newID 
                 for y, x, newID in posData.editID_info
+                if posData.lab[y,x] != newID
+            }
+            editedIDsInfoItems = [
+                f'ID {oldID} --> {newID}'
+                for oldID, newID in editedIDsInfo.items()
             ]
+            editIDul = html_utils.to_list(editedIDsInfoItems)
             msg = widgets.myMessageBox()
             txt = html_utils.paragraph(f"""
-                You requested to repeat tracking but there are the following
-                manually edited IDs:<br><br>
-                {editIDinfo}<br><br>
+                You requested to repeat tracking but <b>there are manually 
+                edited IDs</b> (see edited IDs in the details section below)
+                <br><br>
                 Do you want to keep these edits or ignore them?
             """)
             keepManualEditButton = widgets.okPushButton(
@@ -12933,7 +12945,8 @@ class guiWin(QMainWindow):
             )
             msg.question(
                 self, 'Repeat tracking mode', txt, 
-                buttonsTexts=(keepManualEditButton, ignoreButton)
+                buttonsTexts=(keepManualEditButton, ignoreButton), 
+                detailsText=editIDul
             )
             if msg.cancel:
                 return
@@ -16327,7 +16340,7 @@ class guiWin(QMainWindow):
                 if last_tracked_num>1:
                     msg = widgets.myMessageBox()
                     txt = html_utils.paragraph(
-                        'TCell-ACDCdetected a previous session ended '
+                        'Cell-ACDC detected a previous session ended '
                         f'at frame {last_tracked_num}.<br><br>'
                         f'Do you want to <b>resume from frame '
                         f'{last_tracked_num}?</b>'
@@ -20081,7 +20094,10 @@ class guiWin(QMainWindow):
             brushImage[toLocalSlice][mask] = ID
         
         if self.annotContourCheckbox.isChecked():
-            obj = skimage.measure.regionprops(brushImage)[0]
+            try:
+                obj = skimage.measure.regionprops(brushImage)[0]
+            except IndexError:
+                return
             objContour = [self.getObjContours(obj)]
             # objContour = core.get_obj_contours(
             #     obj_image=(brushImage>0).astype(np.uint8), local=True
@@ -21482,7 +21498,7 @@ class guiWin(QMainWindow):
             return False
 
     def trackManuallyAddedObject(self, added_ID, isNewID):
-        """Track objects added manually on frame that were already visited.
+        """Track objects added manually on frame that was already visited.
 
         Parameters
         ----------
@@ -21513,14 +21529,13 @@ class guiWin(QMainWindow):
         tracked_lab = self.tracking(
             enforce=True, assign_unique_new_IDs=False, return_lab=True
         )
-        
         if tracked_lab is None:
             return
         
         last_validated_frame_i = self.navigateScrollBar.maximum()-1
         if posData.frame_i < last_validated_frame_i and isNewID:
-            prevIDs = posData.allData_li[posData.frame_i-1]['IDs']
             # Frame already visited --> track only new object
+            prevIDs = posData.allData_li[posData.frame_i-1]['IDs']
             mask = posData.lab == added_ID
             trackedID = tracked_lab[mask][0]
             isTrackedIDalreadyPresentAndNotNew = (
@@ -21538,10 +21553,10 @@ class guiWin(QMainWindow):
                 if trackedID is None:
                     return
                 posData.lab[mask] = trackedID
-        else:
-            posData.lab = tracked_lab
-        self.update_rp()
-        # self.updateAllImages()
+            self.update_rp()
+        # else:
+        #     posData.lab = tracked_lab
+                   
     
     def trackFrame(
             self, prev_lab, prev_rp, currentLab, currentRp, currentIDs,
@@ -21611,7 +21626,7 @@ class guiWin(QMainWindow):
         if not do_tracking:
             self.setLostNewOldPrevIDs()
             return
-
+        
         """Tracking starts here"""
         staturBarLabelText = self.statusBarLabel.text()
         self.statusBarLabel.setText('Tracking...')
@@ -21709,7 +21724,7 @@ class guiWin(QMainWindow):
         maxID = max(allIDs, default=1)
         for y, x, new_ID in posData.editID_info:
             old_ID = tracked_lab[y, x]
-            if old_ID == 0:
+            if old_ID == 0 or old_ID == new_ID:
                 infoToRemove.append((y, x, new_ID))
                 continue
             if new_ID in allIDs:
