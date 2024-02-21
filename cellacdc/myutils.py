@@ -357,7 +357,7 @@ def checkDataIntegrity(filenames, parent_path, parentQWidget=None):
     if not startWithSameChar:
         msg = widgets.myMessageBox()
         txt = html_utils.paragraph(
-            'The system detected files inside the folder '
+            'Cell-ACDC detected files inside the folder '
             'that <b>do not start with the same, common basename</b>.<br><br>'
             'To ensure correct loading of the data, the folder where '
             'the file(s) is/are should either contain a single image file or'
@@ -2735,7 +2735,8 @@ def init_sam_input_points_df(posData, input_points_filepath):
     
     if input_points_df is None:
         raise FileNotFoundError(
-            f'Could not find input points table from file "input_points_filepath"'
+            f'Could not find input points table from file "input_points_filepath" '
+            'Perhaps, you forgot to save the table?'
         )
     
     for col in ('x', 'y', 'id'):

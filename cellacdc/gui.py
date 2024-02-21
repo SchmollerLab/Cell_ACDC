@@ -9079,7 +9079,7 @@ class guiWin(QMainWindow):
                 A second solution is to assign bud ID {budID} to cell
                 {new_mothID} anyway by clicking "Apply".<br><br>
                 However to ensure correctness of
-                future assignments the system will delete any cell cycle
+                future assignments Cell-ACDC will delete any cell cycle
                 information from frame {i+1} to the end. Therefore, you
                 will have to visit those frames again.<br><br>
                 The deletion of cell cycle information
@@ -16327,7 +16327,7 @@ class guiWin(QMainWindow):
                 if last_tracked_num>1:
                     msg = widgets.myMessageBox()
                     txt = html_utils.paragraph(
-                        'The system detected a previous session ended '
+                        'TCell-ACDCdetected a previous session ended '
                         f'at frame {last_tracked_num}.<br><br>'
                         f'Do you want to <b>resume from frame '
                         f'{last_tracked_num}?</b>'
@@ -18864,11 +18864,11 @@ class guiWin(QMainWindow):
         if self.isSegm3D:
             new_id = 1
             for z_data in action.pointsData[posData.frame_i].values():
-                max_id = max(z_data.get('id', 0))
+                max_id = max(z_data.get('id', 0), default=0)
                 if max_id > new_id:
                     new_id = max_id
         else:
-            new_id = max(framePointsData.get('id', 0)) + 1
+            new_id = max(framePointsData.get('id', 0), default=0) + 1
         if current_id >= new_id:
             return current_id
         return new_id
@@ -22087,6 +22087,9 @@ class guiWin(QMainWindow):
         msg.addShowInFileManagerButton(images_path)
         msg.critical(self, err_title, err_msg)
 
+    def reinitStoredSegmModels(self):
+        self.models = [None]*len(self.models)
+    
     def reInitGui(self):
         self.placeHolderToolbar.setVisible(False)
         
@@ -22118,6 +22121,7 @@ class guiWin(QMainWindow):
         self.gui_createPlotItems()
         self.setUncheckedAllButtons()
         self.restoreDefaultColors()
+        self.reinitStoredSegmModels()
         self.curvToolButton.setChecked(False)
 
         self.segmNdimIndicatorAction.setVisible(False)

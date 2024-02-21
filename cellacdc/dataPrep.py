@@ -2124,7 +2124,7 @@ class dataPrepWin(QMainWindow):
         if numFramesWith0s>0 and posData.loaded_shifts is not None:
             msg = widgets.myMessageBox()
             txt = html_utils.paragraph("""
-                The system detected that the .tif file contains <b>LREADY 
+                Cell-ACDC detected that the .tif file contains <b>LREADY 
                 aligned data</b>.<br><br>
                 Using the found "align_shifts.npy" file to align would result 
                 in misalignemnt of the data.<br><br>

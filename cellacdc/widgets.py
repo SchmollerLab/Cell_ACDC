@@ -57,6 +57,7 @@ from . import qrc_resources, printl, settings_folderpath
 from . import colors, config
 from . import html_path
 from . import _palettes
+from . import load
 from .regex import float_regex
 
 LINEEDIT_WARNING_STYLESHEET = _palettes.lineedit_warning_stylesheet()
@@ -7744,6 +7745,7 @@ class SamInputPointsWidget(QWidget):
                 self.criticalMissingColumn(filepath, col)
                 return
         
+        # Check if basename is present in metadata
         folderpath = os.path.dirname(filepath)
         basename = None
         for file in myutils.listdir(folderpath):
@@ -7755,6 +7757,27 @@ class SamInputPointsWidget(QWidget):
                 except Exception as e:
                     basename = None
                 break
+        
+        # Check if file is inside images folder and get basename
+        is_images_folder = folderpath.endswith('Images')
+        if is_images_folder:
+            images_path = folderpath
+            img_filepath = None
+            for file in myutils.listdir(images_path):
+                if file.endswith('.tif'):
+                    img_filepath = os.path.join(images_path, file)
+                    break
+                
+                if file.endswith('aligned.npz'):
+                    img_filepath = os.path.join(images_path, file)
+                    break
+                
+            if img_filepath is not None:
+                posData = load.loadData(img_filepath, '', QParent=self)
+                posData.getBasenameAndChNames()
+                filename = os.path.basename(filepath)
+                if filename.startswith(posData.basename):
+                    basename = posData.basename
         
         if basename is None:
             self.lineEntry.setText(filepath)

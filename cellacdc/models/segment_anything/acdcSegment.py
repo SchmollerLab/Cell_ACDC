@@ -327,9 +327,11 @@ class Model:
         elif len(input_points) == 0:
             return labels
         else:
-            if (self._embedded_img is None 
-                or not np.allclose(img, self._embedded_img)
-                ): 
+            try:
+                init_embeddings = not np.allclose(img, self._embedded_img)
+            except Exception as err:
+                init_embeddings = True
+            if init_embeddings: 
                 # Create embeddings only if new image
                 self.model.set_image(img)
                 self._embedded_img = img
