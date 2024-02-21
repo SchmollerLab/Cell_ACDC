@@ -7027,7 +7027,7 @@ class guiWin(QMainWindow):
 
         # Allow right-click or middle-click actions on both images
         eventOnImg2 = (
-            (right_click or middle_click)
+            (right_click or (middle_click and not canAddPoint))
             and (mode=='Segmentation and Tracking' or self.isSnapshot)
             and not isAnnotateDivision and not manualBackgroundON
         )
@@ -7151,9 +7151,12 @@ class guiWin(QMainWindow):
             else:
                 if right_click:
                     id = addPointsByClickingButton.pointIdSpinbox.value()
-                else:
+                elif left_click:
                     id = addPointsByClickingButton.pointIdSpinbox.value()
                     id = self.getClickedPointNewId(action, id)
+                    addPointsByClickingButton.pointIdSpinbox.setValue(id)
+                elif middle_click:
+                    id = 0
                     addPointsByClickingButton.pointIdSpinbox.setValue(id)
                 self.addClickedPoint(action, x, y, id)
             self.drawPointsLayers(computePointsLayers=False)

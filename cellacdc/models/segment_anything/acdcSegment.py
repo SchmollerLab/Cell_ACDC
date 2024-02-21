@@ -75,12 +75,27 @@ class Model:
             'None'. Default is 1
         input_points_path : str, optional
             If not empty, this is the path to the CSV file with the coordinates 
-            of the input points for SAM. 
-            It must contain the columns ('x', 'y', 'id') with an optional 
-            'z' column for segmentation of 3D z-stack data (slice-by-slice). 
+            of the input points for SAM. It must contain the columns 
+            ('x', 'y', 'id') with an optional 'z' column for segmentation of 3D 
+            z-stack data (slice-by-slice) and a 'frame_i' columns for 
+            time-lapse data. 
             
-            To enter the points manually, click on the edit button on the left 
-            of the browse button. 
+            Note that `id = 0` will be used for the negative points, i.e. those 
+            objects (like the background) that should not be segmented.
+            
+            In the Cell-ACDC GUI (module 3) you can click to add points and 
+            save them to a file whose path or endname can be provided for the 
+            `input_points_path`. To do so, click on the "Add points layer" 
+            button on the top toolbar and choose "Add points with mouse clicks". 
+            
+            To add a new point for a new object click with the mouse left 
+            button. To add points to the same object click with the right 
+            button. The 'id' of the point will be visible next to the point 
+            symbol. To delete a point click on the point. 
+            
+            To add negative points click with the middle button (Cmd+click on 
+            macOS) or enter 0 in the "Point id" numeric control (top toolbar) 
+            and then right-click to add points with the current id.   
             
             To load the coordinates from a CSV file click on the browse button.
             
@@ -93,7 +108,9 @@ class Model:
             
             It must contain the columns ('x', 'y', 'id') with an optional 
             'z' column for segmentation of 3D z-stack data (slice-by-slice) and 
-            a 'frame_i' columns for time-lapse data. 
+            a 'frame_i' columns for time-lapse data. Note that `id = 0` will 
+            be used for the negative points, i.e. those objects (like the 
+            background) that should not be segmented.
             
             If not 'None', `input_points_path` will be ignored and this will be used 
             instead. 
@@ -208,6 +225,34 @@ class Model:
             frame_i: int,
             automatic_removal_of_background: bool=True
         ) -> np.ndarray:
+        
+        """_summary_
+
+        image : ([Z], Y, X, [C]) numpy.ndarray
+            Input image. It can be grayscale 2D (Y, X), or 3D (Z, Y, X) for 
+            z-stack data, or it can have additional dimension C for the RGB 
+            channels.
+        
+        frame_i : int
+            Frame index (starting from 0). Used to get the input points from 
+            `input_points_df` with timelapse data. Ignored if the 
+            `input_points_df` does not have the 'frame_i' column.
+        
+        automatic_removal_of_background : bool, optional
+            If True, the background object will be removed. The background 
+            object is defined as the largest object touching the borders of the 
+            image. Used only with automatic generator without input prompts, 
+            i.e., `input_points_path` is empty and `input_points_df` is equal 
+            to 'None'.
+        
+        Returns
+        -------
+        ([Z], Y, X) numpy.ndarray of ints
+            Output labelled masks with the same shape as input image but without 
+            the channel dimension. Every pixel belonging to the same object 
+            will have the same integer ID. ID = 0 is for the background.
+        """        
+        
         is_rgb_image = image.shape[-1] == 3 or image.shape[-1] == 4
         is_z_stack = (image.ndim==3 and not is_rgb_image) or (image.ndim==4)
         if is_rgb_image:
@@ -239,7 +284,7 @@ class Model:
             labels = skimage.measure.label(labels>0)
         else:
             labels = self._segment_2D_image(image, input_points, input_labels)
-        if automatic_removal_of_background:
+        if automatic_removal_of_background and input_points is None:
             labels = self._remove_background(labels)
         return labels
 

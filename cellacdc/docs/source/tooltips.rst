@@ -296,7 +296,7 @@ View options
 * **Skip forward to new object (** |skipToNewIdAction| **"Page up"):** Skip forward to the frame where a new object appears.
 * | **Overlay channels (** |overlayButton| **):** Right-click on the button to overlay additional channels. To overlay a different channel right-click on the colorbar on the left of the image. Use the colorbar ticks to adjust the selected channel's intensity. You can also adjust the opacity of the selected channel with the "Alpha <channel_name>" scrollbar below the image. 
   | Note: This button has a green background if you successfully 'loaded fluorescence data'
-* **Add points layer (** |addPointsLayerAction| **):** Add points layer as a scatter plot
+* **Add points layer (** |addPointsLayerAction| **):** Add points layer as a scatter plot. This can be used to visualize points from a table or add points with clicking and then use these points for models like Segment Anything (input prompts).
 * **Add contours from different segmentation file (** |overlayLabelsButton| **):** Add contours layer from another segmentation file
 * **Ruler (** |rulerButton| **):** Draw a straight line and show its length. Length is displayed on the bottom-right corner.
 
