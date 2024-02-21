@@ -1507,7 +1507,7 @@ class guiWin(QMainWindow):
         self.assignBudMothButton = QToolButton(self)
         self.assignBudMothButton.setIcon(QIcon(":assign-motherbud.svg"))
         self.assignBudMothButton.setCheckable(True)
-        self.assignBudMothButton.setShortcut('a')
+        self.assignBudMothButton.setShortcut('A')
         self.assignBudMothButton.setVisible(False)
         self.assignBudMothButton.action = ccaToolBar.addWidget(self.assignBudMothButton)
         self.checkableButtons.append(self.assignBudMothButton)
@@ -1519,7 +1519,7 @@ class guiWin(QMainWindow):
         self.setIsHistoryKnownButton = QToolButton(self)
         self.setIsHistoryKnownButton.setIcon(QIcon(":history.svg"))
         self.setIsHistoryKnownButton.setCheckable(True)
-        self.setIsHistoryKnownButton.setShortcut('u')
+        self.setIsHistoryKnownButton.setShortcut('U')
         self.setIsHistoryKnownButton.setVisible(False)
         self.setIsHistoryKnownButton.action = ccaToolBar.addWidget(self.setIsHistoryKnownButton)
         self.checkableButtons.append(self.setIsHistoryKnownButton)
@@ -1562,7 +1562,7 @@ class guiWin(QMainWindow):
         self.curvToolButton = QToolButton(self)
         self.curvToolButton.setIcon(QIcon(":curvature-tool.svg"))
         self.curvToolButton.setCheckable(True)
-        self.curvToolButton.setShortcut('c')
+        self.curvToolButton.setShortcut('C')
         self.curvToolButton.action = editToolBar.addWidget(self.curvToolButton)
         self.LeftClickButtons.append(self.curvToolButton)
         self.functionsNotTested3D.append(self.curvToolButton)
@@ -1572,7 +1572,7 @@ class guiWin(QMainWindow):
         self.wandToolButton = QToolButton(self)
         self.wandToolButton.setIcon(QIcon(":magic_wand.svg"))
         self.wandToolButton.setCheckable(True)
-        self.wandToolButton.setShortcut('w')
+        self.wandToolButton.setShortcut('W')
         self.wandToolButton.action = editToolBar.addWidget(self.wandToolButton)
         self.LeftClickButtons.append(self.wandToolButton)
         self.functionsNotTested3D.append(self.wandToolButton)
@@ -1588,7 +1588,7 @@ class guiWin(QMainWindow):
         self.copyContourButton = QToolButton(self)
         self.copyContourButton.setIcon(QIcon(":copyContour.svg"))
         self.copyContourButton.setCheckable(True)
-        self.copyContourButton.setShortcut('v')
+        self.copyContourButton.setShortcut('V')
         self.copyContourButton.action = editToolBar.addWidget(
             self.copyContourButton
         )
@@ -1602,7 +1602,7 @@ class guiWin(QMainWindow):
         self.labelRoiButton = widgets.rightClickToolButton(parent=self)
         self.labelRoiButton.setIcon(QIcon(":label_roi.svg"))
         self.labelRoiButton.setCheckable(True)
-        self.labelRoiButton.setShortcut('l')
+        self.labelRoiButton.setShortcut('L')
         self.labelRoiButton.action = editToolBar.addWidget(self.labelRoiButton)
         self.LeftClickButtons.append(self.labelRoiButton)
         self.checkableButtons.append(self.labelRoiButton)
@@ -1612,7 +1612,7 @@ class guiWin(QMainWindow):
 
         self.segmentToolAction = QAction('Segment with last used model', self)
         self.segmentToolAction.setIcon(QIcon(":segment.svg"))
-        self.segmentToolAction.setShortcut('r')
+        self.segmentToolAction.setShortcut('R')
         self.widgetsWithShortcut['Repeat segmentation'] = self.segmentToolAction
         editToolBar.addAction(self.segmentToolAction)
         
@@ -1634,7 +1634,7 @@ class guiWin(QMainWindow):
             'Select a segmentation file and delete all objects on the background', 
             self
         )
-        self.delObjsOutSegmMaskAction.setShortcut('i')
+        self.delObjsOutSegmMaskAction.setShortcut('I')
         self.widgetsWithShortcut['Delete all objects outside segm'] = (
             self.delObjsOutSegmMaskAction
         )
@@ -1643,7 +1643,7 @@ class guiWin(QMainWindow):
         self.hullContToolButton = QToolButton(self)
         self.hullContToolButton.setIcon(QIcon(":hull.svg"))
         self.hullContToolButton.setCheckable(True)
-        self.hullContToolButton.setShortcut('o')
+        self.hullContToolButton.setShortcut('O')
         self.hullContToolButton.action = editToolBar.addWidget(self.hullContToolButton)
         self.checkableButtons.append(self.hullContToolButton)
         self.checkableQButtonsGroup.addButton(self.hullContToolButton)
@@ -1653,7 +1653,7 @@ class guiWin(QMainWindow):
         self.fillHolesToolButton = QToolButton(self)
         self.fillHolesToolButton.setIcon(QIcon(":fill_holes.svg"))
         self.fillHolesToolButton.setCheckable(True)
-        self.fillHolesToolButton.setShortcut('f')
+        self.fillHolesToolButton.setShortcut('F')
         self.fillHolesToolButton.action = editToolBar.addWidget(self.fillHolesToolButton)
         self.checkableButtons.append(self.fillHolesToolButton)
         self.checkableQButtonsGroup.addButton(self.fillHolesToolButton)
@@ -1663,7 +1663,7 @@ class guiWin(QMainWindow):
         self.moveLabelToolButton = QToolButton(self)
         self.moveLabelToolButton.setIcon(QIcon(":moveLabel.svg"))
         self.moveLabelToolButton.setCheckable(True)
-        self.moveLabelToolButton.setShortcut('p')
+        self.moveLabelToolButton.setShortcut('P')
         self.moveLabelToolButton.action = editToolBar.addWidget(self.moveLabelToolButton)
         self.checkableButtons.append(self.moveLabelToolButton)
         self.checkableQButtonsGroup.addButton(self.moveLabelToolButton)
@@ -1672,7 +1672,7 @@ class guiWin(QMainWindow):
         self.expandLabelToolButton = QToolButton(self)
         self.expandLabelToolButton.setIcon(QIcon(":expandLabel.svg"))
         self.expandLabelToolButton.setCheckable(True)
-        self.expandLabelToolButton.setShortcut('e')
+        self.expandLabelToolButton.setShortcut('E')
         self.expandLabelToolButton.action = editToolBar.addWidget(self.expandLabelToolButton)
         self.expandLabelToolButton.hide()
         self.checkableButtons.append(self.expandLabelToolButton)
@@ -1683,7 +1683,7 @@ class guiWin(QMainWindow):
         self.editIDbutton = QToolButton(self)
         self.editIDbutton.setIcon(QIcon(":edit-id.svg"))
         self.editIDbutton.setCheckable(True)
-        self.editIDbutton.setShortcut('n')
+        self.editIDbutton.setShortcut('N')
         editToolBar.addWidget(self.editIDbutton)
         self.checkableButtons.append(self.editIDbutton)
         self.checkableQButtonsGroup.addButton(self.editIDbutton)
@@ -1692,7 +1692,7 @@ class guiWin(QMainWindow):
         self.separateBudButton = QToolButton(self)
         self.separateBudButton.setIcon(QIcon(":separate-bud.svg"))
         self.separateBudButton.setCheckable(True)
-        self.separateBudButton.setShortcut('s')
+        self.separateBudButton.setShortcut('S')
         self.separateBudButton.action = editToolBar.addWidget(self.separateBudButton)
         self.checkableButtons.append(self.separateBudButton)
         self.checkableQButtonsGroup.addButton(self.separateBudButton)
@@ -1702,7 +1702,7 @@ class guiWin(QMainWindow):
         self.mergeIDsButton = QToolButton(self)
         self.mergeIDsButton.setIcon(QIcon(":merge-IDs.svg"))
         self.mergeIDsButton.setCheckable(True)
-        self.mergeIDsButton.setShortcut('m')
+        self.mergeIDsButton.setShortcut('M')
         self.mergeIDsButton.action = editToolBar.addWidget(self.mergeIDsButton)
         self.checkableButtons.append(self.mergeIDsButton)
         self.checkableQButtonsGroup.addButton(self.mergeIDsButton)
@@ -1713,7 +1713,7 @@ class guiWin(QMainWindow):
         self.keepIDsButton.setIcon(QIcon(":keep_objects.svg"))
         self.keepIDsButton.setCheckable(True)
         self.keepIDsButton.action = editToolBar.addWidget(self.keepIDsButton)
-        self.keepIDsButton.setShortcut('k')
+        self.keepIDsButton.setShortcut('K')
         self.checkableButtons.append(self.keepIDsButton)
         self.checkableQButtonsGroup.addButton(self.keepIDsButton)
         # self.functionsNotTested3D.append(self.keepIDsButton)
@@ -1722,7 +1722,7 @@ class guiWin(QMainWindow):
         self.binCellButton = QToolButton(self)
         self.binCellButton.setIcon(QIcon(":bin.svg"))
         self.binCellButton.setCheckable(True)
-        # self.binCellButton.setShortcut('r')
+        # self.binCellButton.setShortcut('R')
         self.binCellButton.action = editToolBar.addWidget(self.binCellButton)
         self.checkableButtons.append(self.binCellButton)
         self.checkableQButtonsGroup.addButton(self.binCellButton)
@@ -1739,7 +1739,7 @@ class guiWin(QMainWindow):
         self.ripCellButton = QToolButton(self)
         self.ripCellButton.setIcon(QIcon(":rip.svg"))
         self.ripCellButton.setCheckable(True)
-        self.ripCellButton.setShortcut('d')
+        self.ripCellButton.setShortcut('D')
         self.ripCellButton.action = editToolBar.addWidget(self.ripCellButton)
         self.checkableButtons.append(self.ripCellButton)
         self.checkableQButtonsGroup.addButton(self.ripCellButton)
@@ -2569,14 +2569,14 @@ class guiWin(QMainWindow):
         self.undoAction = QAction(QIcon(":undo.svg"), "Undo", self)
         self.redoAction = QAction(QIcon(":redo.svg"), "Redo", self)
         # String-based key sequences
-        self.newAction.setShortcut("Ctrl+N")
-        self.openFolderAction.setShortcut("Ctrl+O")
-        self.loadPosAction.setShortcut("Shift+P")
-        self.saveAsAction.setShortcut("Ctrl+Shift+S")
-        self.saveAction.setShortcut("Ctrl+Alt+S")
-        self.quickSaveAction.setShortcut("Ctrl+S")
-        self.undoAction.setShortcut("Ctrl+Z")
-        self.redoAction.setShortcut("Ctrl+Y")
+        self.newAction.setShortcut('Ctrl+N')
+        self.openFolderAction.setShortcut('Ctrl+O')
+        self.loadPosAction.setShortcut('Shift+P')
+        self.saveAsAction.setShortcut('Ctrl+Shift+S')
+        self.saveAction.setShortcut('Ctrl+Alt+S')
+        self.quickSaveAction.setShortcut('Ctrl+S')
+        self.undoAction.setShortcut('Ctrl+Z')
+        self.redoAction.setShortcut('Ctrl+Y')
         self.nextAction.setShortcut(Qt.Key_Right)
         self.prevAction.setShortcut(Qt.Key_Left)
         self.addAction(self.nextAction)
@@ -3296,7 +3296,7 @@ class guiWin(QMainWindow):
 
         self.highLowResToggle = widgets.Toggle()
         self.widgetsWithShortcut['High resolution'] = self.highLowResToggle
-        self.highLowResToggle.setShortcut('y')
+        self.highLowResToggle.setShortcut('Y')
         highLowResTooltip = (
             'Resolution of the text annotations. High resolution results '
             'in slower update of the annotations.\n'
@@ -14039,6 +14039,9 @@ class guiWin(QMainWindow):
         )
 
         self.model = model
+        
+        if not askSegmParams:
+            self.updateSegmModelKwargs(model_name)
 
         self.thread = QThread()
         self.worker = workers.segmWorker(
@@ -14056,6 +14059,12 @@ class guiWin(QMainWindow):
 
         self.thread.started.connect(self.worker.run)
         self.thread.start()
+    
+    def updateSegmModelKwargs(self, model_name):
+        if model_name == 'segment_anything':
+            # Update the input points dataframe if points layer is active
+            input_df = self.pointsLayerDataToDf(self.data[self.pos_i])
+            self.model_kwargs['input_points_df'] = input_df
     
     def selectZtoolZvalueChanged(self, whichZ, z):
         self.update_z_slice(z)
@@ -18593,7 +18602,8 @@ class guiWin(QMainWindow):
                         'x': xx, 'y': yy, 'id': ids
                     }
             
-    def pointsLayerDataToDf(self, posData):
+    def pointsLayerDataToDf(self, posData, getOnlyActive=False):
+        df = None
         for action in self.pointsLayersToolbar.actions()[1:]:
             if not hasattr(action, 'button'):
                 continue
@@ -18602,6 +18612,8 @@ class guiWin(QMainWindow):
             tableEndName = action.button.clickEntryTableEndName
             # if posData.clickEntryPointsDfs.get(tableEndName) is None:
             #     continue
+            if getOnlyActive and not action.button.isChecked():
+                continue
             
             df = pd.DataFrame(
                 columns=['frame_i', 'Cell_ID', 'z', 'y', 'x', 'id']
@@ -18643,6 +18655,7 @@ class guiWin(QMainWindow):
             if zz:
                 df['z'] = zz
             posData.clickEntryPointsDfs[tableEndName] = df
+        return df
     
     def restartZoomAutoPilot(self):
         if not self.autoPilotZoomToObjToggle.isChecked():

@@ -161,7 +161,96 @@ class Model:
             )
         else:
             self.model = SamPredictor(sam)
+        
+        self._embedded_img = None
     
+    def segment(
+            self, 
+            image: np.ndarray, 
+            frame_i: int,
+            automatic_removal_of_background: bool=True,
+            input_points_df: DataFrame='None',
+        ) -> np.ndarray:
+        
+        """_summary_
+
+        image : ([Z], Y, X, [C]) numpy.ndarray
+            Input image. It can be grayscale 2D (Y, X), or 3D (Z, Y, X) for 
+            z-stack data, or it can have additional dimension C for the RGB 
+            channels.
+        
+        frame_i : int
+            Frame index (starting from 0). Used to get the input points from 
+            `input_points_df` with timelapse data. Ignored if the 
+            `input_points_df` does not have the 'frame_i' column.
+        
+        automatic_removal_of_background : bool, optional
+            If True, the background object will be removed. The background 
+            object is defined as the largest object touching the borders of the 
+            image. Used only with automatic generator without input prompts, 
+            i.e., `input_points_path` is empty and `input_points_df` is equal 
+            to 'None'.
+        
+        input_points_df : pd.DataFrame or 'None', optional
+            If not 'None', this is a pandas DataFrame (a table) with the 
+            coordinates of the input points for SAM. 
+            
+            It must contain the columns ('x', 'y', 'id') with an optional 
+            'z' column for segmentation of 3D z-stack data (slice-by-slice) and 
+            a 'frame_i' columns for time-lapse data. Note that `id = 0` will 
+            be used for the negative points, i.e. those objects (like the 
+            background) that should not be segmented.
+            
+            If not 'None', and there is already an `input_points_df` from the 
+            `__init__` (initialization of the model) method it will be 
+            overwritten with the new table.
+        
+        Returns
+        -------
+        ([Z], Y, X) numpy.ndarray of ints
+            Output labelled masks with the same shape as input image but without 
+            the channel dimension. Every pixel belonging to the same object 
+            will have the same integer ID. ID = 0 is for the background.
+        """        
+        
+        if isinstance(input_points_df, pd.DataFrame):
+            self._input_points_df = input_points_df
+        
+        is_rgb_image = image.shape[-1] == 3 or image.shape[-1] == 4
+        is_z_stack = (image.ndim==3 and not is_rgb_image) or (image.ndim==4)
+        if is_rgb_image:
+            labels = np.zeros(image.shape[:-1], dtype=np.uint32)
+        else:
+            labels = np.zeros(image.shape, dtype=np.uint32)
+        
+        if self._input_points_df is None:
+            df_points = None
+        elif 'frame_i' in self._input_points_df.columns:
+            mask = self._input_points_df['frame_i'] == frame_i
+            df_points = self._input_points_df[mask]
+        else:
+            df_points = self._input_points_df
+            
+        input_points, input_labels = self._get_input_points(
+            is_z_stack, df_points
+        )
+        
+        if is_z_stack:
+            for z, img in enumerate(image):
+                input_points_z = None
+                if input_points is not None:
+                    input_points_z = input_points.get(z, [])
+                    input_labels_z = input_labels.get(z, [])
+                labels[z] = self._segment_2D_image(
+                    img, input_points_z, input_labels_z
+                )
+            labels = skimage.measure.label(labels>0)
+        else:
+            labels = self._segment_2D_image(image, input_points, input_labels)
+        if automatic_removal_of_background and input_points is None:
+            labels = self._remove_background(labels)
+        return labels
+
     def _get_input_points(self, is_z_stack, df_points):
         if df_points is None:
             return None, None
@@ -219,75 +308,7 @@ class Model:
         
         return input_points, input_labels
     
-    def segment(
-            self, 
-            image: np.ndarray, 
-            frame_i: int,
-            automatic_removal_of_background: bool=True
-        ) -> np.ndarray:
-        
-        """_summary_
-
-        image : ([Z], Y, X, [C]) numpy.ndarray
-            Input image. It can be grayscale 2D (Y, X), or 3D (Z, Y, X) for 
-            z-stack data, or it can have additional dimension C for the RGB 
-            channels.
-        
-        frame_i : int
-            Frame index (starting from 0). Used to get the input points from 
-            `input_points_df` with timelapse data. Ignored if the 
-            `input_points_df` does not have the 'frame_i' column.
-        
-        automatic_removal_of_background : bool, optional
-            If True, the background object will be removed. The background 
-            object is defined as the largest object touching the borders of the 
-            image. Used only with automatic generator without input prompts, 
-            i.e., `input_points_path` is empty and `input_points_df` is equal 
-            to 'None'.
-        
-        Returns
-        -------
-        ([Z], Y, X) numpy.ndarray of ints
-            Output labelled masks with the same shape as input image but without 
-            the channel dimension. Every pixel belonging to the same object 
-            will have the same integer ID. ID = 0 is for the background.
-        """        
-        
-        is_rgb_image = image.shape[-1] == 3 or image.shape[-1] == 4
-        is_z_stack = (image.ndim==3 and not is_rgb_image) or (image.ndim==4)
-        if is_rgb_image:
-            labels = np.zeros(image.shape[:-1], dtype=np.uint32)
-        else:
-            labels = np.zeros(image.shape, dtype=np.uint32)
-        
-        if self._input_points_df is None:
-            df_points = None
-        elif 'frame_i' in self._input_points_df.columns:
-            mask = self._input_points_df['frame_i'] == frame_i
-            df_points = self._input_points_df[mask]
-        else:
-            df_points = self._input_points_df
-            
-        input_points, input_labels = self._get_input_points(
-            is_z_stack, df_points
-        )
-        
-        if is_z_stack:
-            for z, img in enumerate(image):
-                input_points_z = None
-                if input_points is not None:
-                    input_points_z = input_points.get(z, [])
-                    input_labels_z = input_labels.get(z, [])
-                labels[z] = self._segment_2D_image(
-                    img, input_points_z, input_labels_z
-                )
-            labels = skimage.measure.label(labels>0)
-        else:
-            labels = self._segment_2D_image(image, input_points, input_labels)
-        if automatic_removal_of_background and input_points is None:
-            labels = self._remove_background(labels)
-        return labels
-
+    
     def _segment_2D_image(
             self, image: np.ndarray, 
             input_points: np.ndarray, 
@@ -306,7 +327,12 @@ class Model:
         elif len(input_points) == 0:
             return labels
         else:
-            self.model.set_image(img)
+            if (self._embedded_img is None 
+                or not np.allclose(img, self._embedded_img)
+                ): 
+                # Create embeddings only if new image
+                self.model.set_image(img)
+                self._embedded_img = img
             for id, point_coords in input_points.items():
                 point_labels = input_labels[id]
                 multimask_output = len(point_coords)==1
