@@ -2,9 +2,8 @@ INSTALL_BTRACK = False
 
 try:
     import btrack
-    import pkg_resources
-
-    version = pkg_resources.get_distribution("btrack").version
+    from cellacdc.myutils import get_package_version 
+    version = get_package_version('btrack')  
     minor = version.split('.')[1]
     if int(minor) < 5:
         INSTALL_BTRACK = True
