@@ -16473,15 +16473,14 @@ class guiWin(QMainWindow):
     
     def trackNewIDtoNewIDsFutureFrame(self, newID, newIDmask):
         posData = self.data[self.pos_i]
-        newID_lab = np.zeros_like(posData.lab)
-        newID_lab[newIDmask] = newID
-        newLab_rp = [posData.rp[posData.IDs_idxs[newID]]]
-        newLab_IDs = [newID]
-        
         nextLab = posData.allData_li[posData.frame_i+1]['labels']
         if nextLab is None:
             return
         
+        newID_lab = np.zeros_like(posData.lab)
+        newID_lab[newIDmask] = newID
+        newLab_rp = [posData.rp[posData.IDs_idxs[newID]]]
+        newLab_IDs = [newID]        
         nextRp = posData.allData_li[posData.frame_i+1]['regionprops']
         
         tracked_lab = self.trackFrame(
@@ -21525,6 +21524,9 @@ class guiWin(QMainWindow):
         if self.isSnapshot:
             return 
         
+        if not isNewID:
+            return
+        
         posData = self.data[self.pos_i]
         tracked_lab = self.tracking(
             enforce=True, assign_unique_new_IDs=False, return_lab=True
@@ -21532,30 +21534,27 @@ class guiWin(QMainWindow):
         if tracked_lab is None:
             return
         
-        last_validated_frame_i = self.navigateScrollBar.maximum()-1
-        if posData.frame_i < last_validated_frame_i and isNewID:
-            # Frame already visited --> track only new object
-            prevIDs = posData.allData_li[posData.frame_i-1]['IDs']
-            mask = posData.lab == added_ID
-            trackedID = tracked_lab[mask][0]
-            isTrackedIDalreadyPresentAndNotNew = (
-                posData.IDs_idxs.get(trackedID) is not None
-                and added_ID != trackedID
-            )
-            if isTrackedIDalreadyPresentAndNotNew:
+        # Track only new object
+        prevIDs = posData.allData_li[posData.frame_i-1]['IDs']
+        mask = posData.lab == added_ID
+        trackedID = tracked_lab[mask][0]
+        isTrackedIDalreadyPresentAndNotNew = (
+            posData.IDs_idxs.get(trackedID) is not None
+            and added_ID != trackedID
+        )
+        if isTrackedIDalreadyPresentAndNotNew:
+            return
+        
+        isTrackedIDinPrevIDs = trackedID in prevIDs
+        if isTrackedIDinPrevIDs:
+            posData.lab[mask] = trackedID
+        else:
+            # New object where we can try to track against next frame
+            trackedID = self.trackNewIDtoNewIDsFutureFrame(added_ID, mask)
+            if trackedID is None:
                 return
-            
-            isTrackedIDinPrevIDs = trackedID in prevIDs
-            if isTrackedIDinPrevIDs:
-                posData.lab[mask] = trackedID
-            else:
-                trackedID = self.trackNewIDtoNewIDsFutureFrame(added_ID, mask)
-                if trackedID is None:
-                    return
-                posData.lab[mask] = trackedID
-            self.update_rp()
-        # else:
-        #     posData.lab = tracked_lab
+            posData.lab[mask] = trackedID
+        self.update_rp()
                    
     
     def trackFrame(
