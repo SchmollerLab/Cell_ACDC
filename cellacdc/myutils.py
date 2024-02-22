@@ -1077,10 +1077,14 @@ def _jdk_exists(jre_path):
                     return dir_path
     return ''
 
+def get_package_version(import_pkg_name):
+    import importlib.metadata
+    version =  importlib.metadata.version(import_pkg_name)
+    return version
+
 def check_upgrade_javabridge():
-    import pkg_resources
     try:
-        version = pkg_resources.get_distribution("javabridge").version
+        version =  get_package_version('javabridge')
     except Exception as e:
         return
     patch = int(version.split('.')[2])
@@ -2024,12 +2028,35 @@ def check_napari_plugin(plugin_name, module_name, parent=None):
 def _install_pip_package(pkg_name):
     subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-U', pkg_name])
 
+def uninstall_pip_package(pkg_name):
+    subprocess.check_call(
+        [sys.executable, '-m', 'pip', 'uninstall', '-y', pkg_name]
+    )
+
+def uninstall_omnipose_acdc():
+    """Uninstall omnipose-acdc if present. Since v1.5.0 it is not needed.
+    """    
+    import json
+    pip_list_output = subprocess.check_output(
+        [sys.executable, '-m', 'pip', 'list', '--format', 'json']
+    )
+    installed_packages = json.loads(pip_list_output)
+    pkgs_to_uninstall = []
+    for package_info in installed_packages:
+        if package_info['name'] == 'omnipose-acdc':
+            pkgs_to_uninstall.append('omnipose-acdc')
+        elif package_info['name'] == 'cellpose-omni-acdc':
+            pkgs_to_uninstall.append('cellpose-omni-acdc')
+
+    for pkg_to_uninstall in pkgs_to_uninstall:
+        uninstall_pip_package(pkg_to_uninstall)
+
+
 def check_cellpose_version(version: str):
     major_requested = int(version.split('.')[0])
     cancel = False
     try:
-        import pkg_resources
-        installed_version = pkg_resources.get_distribution("cellpose").version
+        installed_version = get_package_version('cellpose')
         major_installed = int(installed_version.split('.')[0])
         is_version_correct = major_installed == major_requested
         if not is_version_correct:
@@ -2059,8 +2086,7 @@ def check_install_cellpose(version: str='2.0'):
     )
 
 def get_cellpose_major_version():
-    import pkg_resources
-    installed_version = pkg_resources.get_distribution("cellpose").version
+    installed_version = get_package_version('cellpose')
     major_installed = int(installed_version.split('.')[0])
     return major_installed
 
@@ -2080,7 +2106,23 @@ def is_gui_running():
         return False
     
     return QCoreApplication.instance() is not None
-        
+
+def check_pkg_version(import_pkg_name, min_version, raise_err=True):
+    is_version_correct = False
+    try:
+        from packaging import version
+        installed_version = get_package_version(import_pkg_name)  
+        if version.parse(installed_version) > version.parse(min_version):
+            is_version_correct = True
+    except Exception as err:
+        is_version_correct = False
+    
+    if raise_err and not is_version_correct:
+        raise ModuleNotFoundError(
+            f'{import_pkg_name}>{min_version} not installed.'
+        )
+    else:
+        return is_version_correct
 
 def check_install_package(
         pkg_name: str, 
@@ -2093,7 +2135,8 @@ def check_install_package(
         is_cli=False,
         caller_name='Cell-ACDC', 
         force_upgrade=False,
-        upgrade=False
+        upgrade=False, 
+        min_version=''
     ):
     """Try to import a package. If import fails, ask user to install it 
     automatically.
@@ -2127,6 +2170,10 @@ def check_install_package(
     upgrade : bool, optional
         If True, pip will upgrade the package. This value is True if 
         `force_upgrade` is True. Default is False
+    min_version : str, optional
+        If not empty it must be a valid version `major[.minor][.patch]` where 
+        minor and patch are optional. If the installed package is older the 
+        upgrade will be forced. 
 
     Raises
     ------
@@ -2145,6 +2192,8 @@ def check_install_package(
             upgrade = True
             raise ModuleNotFoundError(
                 f'User requested to forcefully upgrade the package "{pkg_name}"')
+        if min_version:
+            check_pkg_version(import_pkg_name, min_version)
     except ModuleNotFoundError:
         proceed = _install_package_msg(
             pkg_name, note=note, parent=parent, upgrade=upgrade,
@@ -2181,8 +2230,7 @@ def get_chained_attr(_object, _name):
     return _object
 
 def check_matplotlib_version(qparent=None):
-    import pkg_resources
-    mpl_version = pkg_resources.get_distribution("matplotlib").version
+    mpl_version = get_package_version('matplotlib')  
     mpl_version_digits = mpl_version.split('.')
 
     mpl_version = float(f'{mpl_version_digits[0]}.{mpl_version_digits[1]}')
