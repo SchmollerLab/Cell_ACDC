@@ -7538,7 +7538,7 @@ class TreeSelectorDialog(widgets.QBaseDialog):
             self, title='Tree selector', infoTxt='', parent=None,
             multiSelection=True, widthFactor=None, heightFactor=None,
             expandOnDoubleClick=False, isTopLevelSelectable=True,
-            allItemsExpanded=True
+            allItemsExpanded=True, allowNoSelection=True
         ):
         super().__init__(parent)
 
@@ -7550,6 +7550,7 @@ class TreeSelectorDialog(widgets.QBaseDialog):
         self.allItemsExpanded = allItemsExpanded
         self.mainLayout = QVBoxLayout()
         self._isTopLevelSelectable = isTopLevelSelectable
+        self.allowNoSelection = allowNoSelection
 
         if infoTxt:
             self.mainLayout.addWidget(QLabel(html_utils.paragraph(infoTxt)))
@@ -7646,7 +7647,19 @@ class TreeSelectorDialog(widgets.QBaseDialog):
                     self._selectedItems[topLevelName].append(childItem.text(0))
         return self._selectedItems
 
+    def warnSelectionIsEmpty(self):
+        txt = html_utils.paragraph("""
+            You did not select anything :(.<br><br>
+            Please press <code>Cancel</code> to exit without selecting items. 
+            Thanks! 
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(self, 'Selection is empty', txt)
+    
     def ok_cb(self):
+        if not self.allowNoSelection and not self.selectedItems():
+            self.warnSelectionIsEmpty()
+            return
         self.cancel = False
         self.close()
     
