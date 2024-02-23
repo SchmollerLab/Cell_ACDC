@@ -1286,7 +1286,7 @@ class loadData:
         if return_df:
             return acdc_df
     
-    def getSpotmaxH5files(self):
+    def getSpotmaxSingleSpotsfiles(self):
         from spotmax.core import DFs_FILENAMES
         spotmax_files = myutils.listdir(self.spotmax_out_path)
         patterns = [

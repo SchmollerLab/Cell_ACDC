@@ -10269,6 +10269,7 @@ class guiWin(QMainWindow):
             filterWin.close()
             self.filteredData = {}
             self.filtersWins[filterName]['window'] = None
+            self.isFilterPreviewChecked = True
             self.updateAllImages()
     
     def filterWinClosed(self, filterWin):
@@ -10317,8 +10318,9 @@ class guiWin(QMainWindow):
             imageItem.setImage(img)
 
     def previewFilterToggled(self, checked, filterWin, channelName):
+        self.isFilterPreviewChecked = checked
         if checked:
-            self.applyGaussBlur(filterWin, channelName)
+            self.applyFilter(channelName)
         else:
             self.updateAllImages()
 
@@ -16105,6 +16107,7 @@ class guiWin(QMainWindow):
 
         self.filteredData = {}
 
+        self.isFilterPreviewChecked = True
         self.splineHoverON = False
         self._isCcaIntegrityCheckedDisabled = False
         self.tempSegmentON = False
@@ -20733,8 +20736,8 @@ class guiWin(QMainWindow):
         else:
             posData = self.data[self.pos_i]
             filteredData = self.filteredData.get(self.user_ch_name)
-            if filteredData is None:
-                # Filtered data not existing
+            if filteredData is None or not self.isFilterPreviewChecked:
+                # Filtered data not existing or preview not requested
                 img = self.getImage()
             elif posData.SizeZ > 1:
                 # 3D filtered data (see self.applyFilter)
