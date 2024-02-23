@@ -9070,7 +9070,7 @@ class guiWin(QMainWindow):
                 The requested cell in G1 (ID={new_mothID})
                 at future frame {i+1} has a bud assigned to it,
                 therefore it cannot be assigned as the mother
-                of bud ID {budID}.<br>
+                of bud ID {budID}.<br><br>
                 You can assign a cell as the mother of bud ID {budID}
                 only if this cell is in G1 for the
                 entire life of the bud.<br><br>
@@ -10710,11 +10710,8 @@ class guiWin(QMainWindow):
             if msg.cancel:
                 return
             
-            self.resetWillDivideInfo()
             # Reset all future frames
-            self.resetCcaFuture(
-                posData.frame_i+1, reset_will_divide=False
-            )
+            self.resetCcaFuture(posData.frame_i+1)
             if posData.frame_i == 0:
                 # Reset everything since we are on first frame
                 posData.cca_df = self.getBaseCca_df()
@@ -14802,10 +14799,19 @@ class guiWin(QMainWindow):
             else:
                 self.navigateScrollBar.setMaximum(posData.frame_i+1)
                 self.navSpinBox.setMaximum(posData.frame_i+1)
+            self.lastTrackedFrameLabel.setText(
+                f'Last checked frame n. = {self.navSpinBox.maximum()}'
+            )
         elif mode == 'Cell cycle analysis':
             if posData.frame_i > self.last_cca_frame_i:
                 self.navigateScrollBar.setMaximum(posData.frame_i+1)
                 self.navSpinBox.setMaximum(posData.frame_i+1)
+            else:
+                self.navigateScrollBar.setMaximum(self.last_cca_frame_i+1)
+                self.navSpinBox.setMaximum(self.last_cca_frame_i+1)
+            self.lastTrackedFrameLabel.setText(
+                f'Last cc annot. frame n. = {self.last_cca_frame_i+1}'
+            )
 
     def prev_frame(self):
         posData = self.data[self.pos_i]
@@ -17596,6 +17602,9 @@ class guiWin(QMainWindow):
 
         self.navigateScrollBar.setMaximum(last_cca_frame_i+1)
         self.navSpinBox.setMaximum(last_cca_frame_i+1)
+        self.lastTrackedFrameLabel.setText(
+            f'Last cc annot. frame n. = {last_cca_frame_i+1}'
+        )
         
         if posData.cca_df is None:
             posData.cca_df = self.getBaseCca_df()
@@ -17605,62 +17614,75 @@ class guiWin(QMainWindow):
             self.titleLabel.setText(msg, color=self.titleColor)
         else:
             self.get_cca_df()
-            
+        
+        self.enqCcaIntegrityChecker()
+        
         return proceed
 
-    def resetWillDivideInfo(self, from_frame_i=None):
-        posData = self.data[self.pos_i]
-        if from_frame_i is None:
-            from_frame_i = posData.frame_i
-            cca_df = posData.cca_df
-        else:
-            cca_df = self.get_cca_df(frame_i=from_frame_i, return_df=True)
-        
-        cca_df_S_mask = cca_df.cell_cycle_stage == 'S'
-        cca_df.loc[cca_df_S_mask, 'will_divide'] = 0
-        
-        cca_df_S = cca_df[cca_df_S_mask]
-        
-        if from_frame_i == posData.frame_i:
-            self.store_cca_df()
-        
-        IDs_gen_num_in_S = (
-            cca_df_S.reset_index()
-            .set_index(['Cell_ID', 'generation_num'])
-        ).index
+    def getStartCcaDfWillDivide(self, from_frame_i):
+        """Get the reference cca_df for resetting will_divide. It tries 
+        requested frame and previous frame. This is needed when we try to 
+        reset one frame in the future too much and we actually need 
+        previous frame
 
-        # Reset will divide to 0 in the past S frames where division 
-        # has been annotated
-        for past_frame_i in range(from_frame_i-1, -1, -1):
-            past_cca_df = self.get_cca_df(frame_i=past_frame_i, return_df=True)
-            if past_cca_df is None:
-                return
-            
-            # Get IDs that are still in the generation number that we need to 
-            # reset to will_divide = 0
-            past_cca_df = (
-                past_cca_df.reset_index()
-                .set_index(['Cell_ID', 'generation_num'])
-            )
-            past_IDs_gen_num_in_S = past_cca_df.index.intersection(
-                IDs_gen_num_in_S
-            )
-            if len(past_IDs_gen_num_in_S) == 0:
-                return
-            
-            past_cca_df.loc[past_IDs_gen_num_in_S, 'will_divide'] = 0
-            past_cca_df = past_cca_df.reset_index().set_index('Cell_ID')
-            
-            self.store_cca_df(
-                cca_df=past_cca_df, frame_i=past_frame_i, autosave=False
-            )
-    
-    def resetCcaFuture(self, from_frame_i, reset_will_divide=True):
+        Parameters
+        ----------
+        from_frame_i : int
+            Start frame index
+        
+        Returns
+        -------
+        int
+            Requested frame or previous frame if cca_df at requested frame is 
+            None.
+        pd.DataFrame
+            cca_df at requested frame or previous frame if cca_df at requested 
+            frame is None. 
+        """        
         posData = self.data[self.pos_i]
-        self.last_cca_frame_i = from_frame_i
-        if reset_will_divide:
-            self.resetWillDivideInfo(from_frame_i=from_frame_i)
+        for frame_i in range(from_frame_i, from_frame_i-2, -1):
+            if frame_i < 0:
+                return 0, None
             
+            if from_frame_i == posData.frame_i:
+                cca_df = posData.cca_df
+            else:
+                cca_df = self.get_cca_df(frame_i=from_frame_i, return_df=True)
+            if cca_df is not None:
+                return frame_i, cca_df
+        
+        return from_frame_i, None 
+    
+    def resetWillDivideInfo(self):
+        posData = self.data[self.pos_i]
+        cca_dfs = []
+        keys = []
+        for frame_i in range(0, posData.SizeT):
+            cca_df = self.get_cca_df(frame_i=frame_i, return_df=True)
+            if cca_df is None:
+                break
+            
+            cca_dfs.append(cca_df)
+            keys.append(frame_i)
+        
+        if not cca_dfs:
+            return
+        
+        global_cca_df = pd.concat(cca_dfs, keys=keys, names=['frame_i'])
+        global_cca_df = load._fix_will_divide(global_cca_df)
+        for frame_i in range(0, posData.SizeT):
+            try:
+                cca_df = global_cca_df.loc[frame_i]
+            except KeyError as err:
+                break
+            
+            self.store_cca_df(frame_i=frame_i, cca_df=cca_df, autosave=False)
+        
+        self.get_cca_df()
+    
+    def resetCcaFuture(self, from_frame_i):
+        posData = self.data[self.pos_i]
+        self.last_cca_frame_i = from_frame_i-1
         self.setNavigateScrollBarMaximum() 
         for i in range(from_frame_i, posData.SizeT):
             posData.allData_li[i].pop('cca_df', None)
@@ -17681,6 +17703,8 @@ class guiWin(QMainWindow):
             frames = posData.acdc_df.index.get_level_values(0)
             if from_frame_i in frames:
                 posData.acdc_df = posData.acdc_df.loc[:from_frame_i]
+        
+        self.resetWillDivideInfo()
 
     def resetFutureCcaColCurrentFrame(self):
         posData = self.data[self.pos_i]
@@ -22151,6 +22175,7 @@ class guiWin(QMainWindow):
         alpha = self.imgGrad.labelsAlphaSlider.value()
         self.labelsLayerImg1.setOpacity(alpha)
         self.labelsLayerRightImg.setOpacity(alpha)
+        self.lastTrackedFrameLabel.setText('')
     
     def reinitPointsLayers(self):
         for action in self.pointsLayersToolbar.actions()[1:]:

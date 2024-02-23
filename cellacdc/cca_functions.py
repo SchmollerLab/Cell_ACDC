@@ -817,5 +817,68 @@ def add_generation_num_of_relative_ID(
     acdc_df_with_col = acdc_df_by_frame_i.reset_index()
     return acdc_df_with_col
     
+def get_IDs_gen_num_will_divide_wrong(global_cca_df):
+    """Get a list of (ID, gen_num) of cells whose `will_divide`>0 but the 
+    next generation does not exist (i.e., `will_divide` is wrong)
+
+    Parameters
+    ----------
+    global_cca_df : pd.DataFrame
+        DataFrame with cc annotations for every frame and Cell_ID
+
+    Returns
+    -------
+    list of tuples
+        List of (ID, gen_num) of cells whose `will_divide`>0 but the 
+        next generation does not exist (i.e., `will_divide` is wrong)
     
-        
+    Notes
+    -----
+    To get the (ID, gen_num) where `will_divide` is wrong we first get an 
+    index of (ID, gen_num) where `will_divide`>0. 
+     
+    Then we get the same index but with (ID, gen_num+1) which is the next 
+    generation. 
+    
+    Finally we check if (ID, gen_num+1) actually exists in the annotations. 
+    If not, those are wrongly annotated with `will_divide`>0. To check for 
+    the existence we get the difference between the next gen index and the 
+    whole DataFrame (i.e., get the (ID, gen_num+1) that do not exist in 
+    annotations).
+    """    
+    global_cca_will_divide = (
+        global_cca_df[(global_cca_df['will_divide'] > 0)]
+    ).reset_index()
+    
+    ID_gen_num_index = (
+        global_cca_df.reset_index()
+        .set_index(['Cell_ID', 'generation_num'])
+        .index
+    )
+    
+    # Next generation index
+    next_gen_will_divide_cca_df = (
+        global_cca_will_divide[['Cell_ID', 'generation_num']].copy()
+    )
+    next_gen_will_divide_cca_df['generation_num'] += 1
+    next_gen_will_divide_index = (
+        next_gen_will_divide_cca_df.reset_index()
+        .set_index(['Cell_ID', 'generation_num'])
+        .index
+    )
+    
+    # (ID, gen_num) list of cells with will_divide>0 but whose next 
+    # generation number actually does not exist
+    IDs_will_divide_next_gen_does_not_exist = (
+        next_gen_will_divide_index.difference(ID_gen_num_index)
+        .to_frame().to_numpy() # .to_list()
+    )
+    IDs_will_divide_next_gen_does_not_exist[:, -1] -= 1
+    
+    IDs_will_divide_wrong = list(zip(
+        IDs_will_divide_next_gen_does_not_exist[:,0], 
+        IDs_will_divide_next_gen_does_not_exist[:, 1]
+    ))
+    return IDs_will_divide_wrong
+    
+    

@@ -4328,9 +4328,27 @@ class CcaIntegrityCheckerWorker(QObject):
         txt = html_utils.paragraph(
             'Cell-ACDC requires that every cell cycle has at least '
             'one frame in G1.<br>'
-            'The following pairs of (ID, generation number) do not satisfy '
-            'this condition:<br><br>'
+            'The following pairs of <code>(ID, generation number)</code> '
+            'do not satisfy this condition:<br><br>'
             f'{IDs_cycles_without_G1}'
+        )
+        self.sigWarning.emit(txt, category)
+        return False
+    
+    def _check_will_divide_is_true(self, checker, global_cca_df):
+        IDs_will_divide_wrong = (
+            checker.get_IDs_gen_num_will_divide_wrong(global_cca_df)
+        )
+        if len(IDs_will_divide_wrong) == 0:
+            return True
+
+        category = '`will_divide` is wrong'
+        txt = html_utils.paragraph(
+            'Cell-ACDC found that `will_divide` is annotated as True on the '
+            'following <code>(ID, generation number)</code> cell<br>'
+            'despite the fact that division is still not annotated on '
+            'these cells <br><br>:'
+            f'{IDs_will_divide_wrong}'
         )
         self.sigWarning.emit(txt, category)
         return False
@@ -4492,6 +4510,7 @@ class CcaIntegrityCheckerWorker(QObject):
         if check_integrity_globally and len(cca_dfs)>1:
             global_checkpoints = (
                 '_check_cells_without_G1',
+                '_check_will_divide_is_true'
             )
             # Check integrity globally
             global_cca_df = pd.concat(cca_dfs, keys=keys, names=['frame_i'])

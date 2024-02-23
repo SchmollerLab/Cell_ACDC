@@ -28,6 +28,7 @@ from . import error_up_str
 from . import issues_url
 from . import exception_handler_cli
 from . import all_non_metrics_cols
+from . import cca_functions
 
 class HeadlessSignal:
     def __init__(self, *args):
@@ -2386,6 +2387,12 @@ class CcaIntegrityChecker:
             G1_not_present_mask[G1_not_present_mask].index.to_list()
         )
         return IDs_cycles_without_G1
+
+    def get_IDs_gen_num_will_divide_wrong(self, global_cca_df):
+        IDs_will_divide_wrong = cca_functions.get_IDs_gen_num_will_divide_wrong(
+            global_cca_df
+        )
+        return IDs_will_divide_wrong
     
     def get_bud_IDs_gen_num_nonzero(self):
         cca_df_S = self.cca_df_S

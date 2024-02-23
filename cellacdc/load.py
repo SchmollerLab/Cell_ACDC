@@ -34,6 +34,7 @@ if GUI_INSTALLED:
     )
     import pyqtgraph as pg
     pg.setConfigOption('imageAxisOrder', 'row-major')
+    from . import apps
     from . import widgets
     
 import warnings
@@ -48,6 +49,7 @@ from . import qrc_resources_path, qrc_resources_light_path
 from . import qrc_resources_dark_path
 from . import models_path
 from . import tooltips_rst_filepath
+from . import cca_functions
 
 acdc_df_bool_cols = [
     'is_cell_dead',
@@ -361,6 +363,46 @@ def _add_will_divide_column(acdc_df):
 
     return acdc_df
 
+def _fix_will_divide(acdc_df):
+    """Resetting annotaions in GUI sometimes does not fully reset `will_divide` 
+    column. Here we set `will_divide` back to 0 for those cells whose 
+    next generation does not exist (division was not annotated)
+
+    Parameters
+    ----------
+    acdc_df : pd.DataFrame
+        Annotations and metrics dataframe (from the `acdc_output` CSV file) 
+        with ['frame_i', 'Cell_ID'] as index
+
+    Returns
+    -------
+    pd.DataFrame
+        acdc_df with `will_divide` corrected.
+    """ 
+    required_cols = ['frame_i', 'Cell_ID', 'generation_num', 'will_divide']
+    
+    cca_df_mask = ~acdc_df['cell_cycle_stage'].isna()
+    cca_df = acdc_df[cca_df_mask].reset_index()[required_cols]
+    
+    IDs_will_divide_wrong = (
+        cca_functions.get_IDs_gen_num_will_divide_wrong(cca_df)
+    )
+    if not IDs_will_divide_wrong:
+        return acdc_df
+    
+    cca_df = cca_df.reset_index().set_index(['Cell_ID', 'generation_num'])   
+    cca_df.loc[IDs_will_divide_wrong, 'will_divide'] = 0
+    cca_df = cca_df.reset_index()
+    acdc_df = acdc_df.reset_index()
+
+    cca_df = cca_df.set_index(['frame_i', 'Cell_ID'])
+    acdc_df = acdc_df.set_index(['frame_i', 'Cell_ID'])
+    
+    cca_df_index = cca_df_mask[cca_df_mask].index
+    acdc_df.loc[cca_df_index, 'will_divide'] = cca_df['will_divide']
+    
+    return acdc_df
+
 def _add_missing_columns(acdc_df):
     if 'cell_cycle_stage' not in acdc_df.columns:
         return acdc_df
@@ -404,6 +446,7 @@ def _load_acdc_df_file(acdc_df_file_path):
     acdc_df = _parse_loaded_acdc_df(acdc_df)
     acdc_df = _add_missing_columns(acdc_df)
     acdc_df = _add_will_divide_column(acdc_df)
+    acdc_df = _fix_will_divide(acdc_df)
     return acdc_df
 
 def load_acdc_df_file(images_path, end_name_acdc_df_file='segm', return_path=False):
