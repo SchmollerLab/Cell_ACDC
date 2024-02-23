@@ -1977,6 +1977,22 @@ class guiWin(QMainWindow):
             self.disabled_cca_warnings.add(disabled_warning)
         
         self.isWarningCcaIntegrity = False
+    
+    def fixWillDivide(self, warning_txt, IDs_will_divide_wrong):
+        self.logger.info(warning_txt)
+        self.logger.info('Fixing `will_divide` information...')
+        
+        global_cca_df = self.getConcatCcaDf()
+        global_cca_df = (
+            global_cca_df.reset_index()
+            .set_index(['Cell_ID', 'generation_num'])
+        )
+        global_cca_df.loc[IDs_will_divide_wrong, 'will_divide'] = 0
+        global_cca_df = (
+            global_cca_df.reset_index()
+            .set_index(['frame_i', 'Cell_ID'])
+        )
+        self.storeFromConcatCcaDf(global_cca_df)
         
     def autoSaveWorkerClosed(self, worker):
         if self.autoSaveActiveWorkers:
@@ -17656,7 +17672,7 @@ class guiWin(QMainWindow):
         
         return from_frame_i, None 
     
-    def resetWillDivideInfo(self):
+    def getConcatCcaDf(self):
         posData = self.data[self.pos_i]
         cca_dfs = []
         keys = []
@@ -17672,7 +17688,9 @@ class guiWin(QMainWindow):
             return
         
         global_cca_df = pd.concat(cca_dfs, keys=keys, names=['frame_i'])
-        global_cca_df = load._fix_will_divide(global_cca_df)
+        return global_cca_df
+    
+    def storeFromConcatCcaDf(self, global_cca_df):
         for frame_i in range(0, posData.SizeT):
             try:
                 cca_df = global_cca_df.loc[frame_i]
@@ -17682,6 +17700,14 @@ class guiWin(QMainWindow):
             self.store_cca_df(frame_i=frame_i, cca_df=cca_df, autosave=False)
         
         self.get_cca_df()
+    
+    def resetWillDivideInfo(self):
+        global_cca_df = self.getConcatCcaDf()
+        if global_cca_df is None:
+            return
+        
+        global_cca_df = load._fix_will_divide(global_cca_df)
+        self.storeFromConcatCcaDf(global_cca_df)
     
     def resetCcaFuture(self, from_frame_i):
         posData = self.data[self.pos_i]
@@ -22772,6 +22798,7 @@ class guiWin(QMainWindow):
         worker.critical.connect(self.ccaIntegrityWorkerCritical)
         worker.finished.connect(self.ccaCheckerWorkerClosed)
         worker.sigWarning.connect(self.warnCcaIntegrity)
+        worker.sigFixWillDivide.connect(self.fixWillDivide)
         
         ccaCheckerThread.started.connect(worker.run)
         ccaCheckerThread.start()

@@ -4233,6 +4233,7 @@ class CcaIntegrityCheckerWorker(QObject):
     progress = Signal(str, object)
     sigDone = Signal()
     sigWarning = Signal(str, str)
+    sigFixWillDivide = Signal(str, list)
     
     def __init__(self, mutex, waitCond):
         QObject.__init__(self)
@@ -4342,7 +4343,6 @@ class CcaIntegrityCheckerWorker(QObject):
         if len(IDs_will_divide_wrong) == 0:
             return True
 
-        category = '`will_divide` is wrong'
         txt = html_utils.paragraph(
             'Cell-ACDC found that `will_divide` is annotated as True on the '
             'following <code>(ID, generation number)</code> cell<br>'
@@ -4350,7 +4350,7 @@ class CcaIntegrityCheckerWorker(QObject):
             'these cells <br><br>:'
             f'{IDs_will_divide_wrong}'
         )
-        self.sigWarning.emit(txt, category)
+        self.sigFixWillDivide.emit(txt, IDs_will_divide_wrong)
         return False
     
     def _check_buds_gen_num_zero(self, checker, frame_i):
