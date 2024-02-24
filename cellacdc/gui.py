@@ -809,6 +809,7 @@ class saveDataWorker(QObject):
                 all_frames_acdc_df = self.addDerivedCellCycleColumns(
                     all_frames_acdc_df
                 )
+                all_frames_acdc_df = load._fix_will_divide(all_frames_acdc_df)
                 try:
                     # Save segmentation metadata
                     load.store_copy_acdc_df(
