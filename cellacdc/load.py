@@ -379,6 +379,9 @@ def _fix_will_divide(acdc_df):
     pd.DataFrame
         acdc_df with `will_divide` corrected.
     """ 
+    if 'cell_cycle_stage' not in acdc_df.columns:
+        return acdc_df
+    
     required_cols = ['frame_i', 'Cell_ID', 'generation_num', 'will_divide']
     
     cca_df_mask = ~acdc_df['cell_cycle_stage'].isna()
