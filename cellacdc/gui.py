@@ -17692,6 +17692,7 @@ class guiWin(QMainWindow):
         return global_cca_df
     
     def storeFromConcatCcaDf(self, global_cca_df):
+        posData = self.data[self.pos_i]
         for frame_i in range(0, posData.SizeT):
             try:
                 cca_df = global_cca_df.loc[frame_i]
