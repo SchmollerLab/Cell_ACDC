@@ -2248,6 +2248,12 @@ class CreateConnected3Dsegm(BaseWorkerUtil):
     def __init__(self, mainWin):
         super().__init__(mainWin)
 
+    def criticalSegmIsNot3D(self):
+        raise TypeError(
+            'Input segmentation masks are not 3D. You can use this utility '
+            'only on 3D z-stack data or 4D z-stack over time data.'
+        )
+    
     @worker_exception_handler
     def run(self):
         debugging = False
@@ -2297,7 +2303,8 @@ class CreateConnected3Dsegm(BaseWorkerUtil):
                 
                 posData = load.loadData(file_path, '')
 
-                self.signals.sigUpdatePbarDesc.emit(f'Processing {posData.pos_path}')
+                self.signals.sigUpdatePbarDesc.emit(
+                    f'Processing {posData.pos_path}')
 
                 posData.getBasenameAndChNames()
                 posData.buildPaths()
@@ -2317,6 +2324,9 @@ class CreateConnected3Dsegm(BaseWorkerUtil):
                 self.signals.sigInitInnerPbar.emit(numFrames)
                 connectedSegmData = np.zeros_like(posData.segm_data)
                 for frame_i, lab in enumerate(posData.segm_data):
+                    if lab.ndim != 3:
+                        self.criticalSegmIsNot3D()
+                        
                     connected_lab = core.connect_3Dlab_zboundaries(lab)
                     connectedSegmData[frame_i] = connected_lab
 
