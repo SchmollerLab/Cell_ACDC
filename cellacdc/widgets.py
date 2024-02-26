@@ -6515,8 +6515,16 @@ class _ImShowImageItem(pg.ImageItem):
     def setOtherImagesCursors(self, cursors):
         self._cursors = cursors
     
+    def clearCursors(self):
+        for p, cursor in enumerate(self._cursors):
+            if p == self._idx:
+                continue
+            
+            cursor.setData([], [])
+    
     def hoverEvent(self, event):
         if event.isExit():
+            self.clearCursors()
             self.sigDataHover.emit('')
             return
         
@@ -6524,6 +6532,7 @@ class _ImShowImageItem(pg.ImageItem):
         xdata, ydata = int(x), int(y)
         value = self._getHoverImageValue(xdata, ydata)
         if value is None:
+            self.clearCursors()
             self.sigDataHover.emit('')
             return
         
