@@ -6500,8 +6500,20 @@ class ImShowPlotItem(pg.PlotItem):
 class _ImShowImageItem(pg.ImageItem):
     sigDataHover = Signal(str)
 
-    def __init__(self) -> None:
+    def __init__(self, idx) -> None:
         super().__init__()
+        self._idx = idx
+        self._cursors = []
+    
+    def _getHoverImageValue(self, xdata, ydata):
+        try:
+            value = self.image[ydata, xdata]
+            return value
+        except Exception as err:
+            return
+    
+    def setOtherImagesCursors(self, cursors):
+        self._cursors = cursors
     
     def hoverEvent(self, event):
         if event.isExit():
@@ -6510,18 +6522,26 @@ class _ImShowImageItem(pg.ImageItem):
         
         x, y = event.pos()
         xdata, ydata = int(x), int(y)
+        value = self._getHoverImageValue(xdata, ydata)
+        if value is None:
+            self.sigDataHover.emit('')
+            return
+        
         try:
-            value = self.image[ydata, xdata]
-            try:
-                self.sigDataHover.emit(
-                    f'x={xdata}, y={ydata}, {value = :.4f}'
-                )
-            except Exception as e:
-                self.sigDataHover.emit(
-                    f'x={xdata}, y={ydata}, {[val for val in value]}'
-                )
+            self.sigDataHover.emit(
+                f'x={xdata}, y={ydata}, {value = :.4f}'
+            )
         except Exception as e:
-            self.sigDataHover.emit('Null') 
+            self.sigDataHover.emit(
+                f'x={xdata}, y={ydata}, {[val for val in value]}'
+            )
+        
+        for p, cursor in enumerate(self._cursors):
+            if p == self._idx:
+                continue
+            
+            cursor.setData([x], [y])
+            
 
 class ImShow(QBaseWindow):
     def __init__(self, parent=None, link_scrollbars=True):
@@ -6680,7 +6700,7 @@ class ImShow(QBaseWindow):
                 self.graphicLayout.addItem(plot, row=row, col=col)
                 self.PlotItems.append(plot)
 
-                imageItem = _ImShowImageItem()
+                imageItem = _ImShowImageItem(i)
                 plot.addItem(imageItem)
                 self.ImageItems.append(imageItem)
                 imageItem.gridPos = (row, col)
@@ -6819,7 +6839,7 @@ class ImShow(QBaseWindow):
                 imageItem = self.ImageItems[p]
                 imageItem.pointsItems = []
                 scrollbar = imageItem.ScrollBars[0]
-                for first_coord in range(scrollbar.maximum()):
+                for first_coord in range(scrollbar.maximum()+1):
                     pointsItem = self._createPointsScatterItem()
                     pointsItem.z = first_coord
                     plotItem.addItem(pointsItem)
@@ -6830,6 +6850,19 @@ class ImShow(QBaseWindow):
                     pointsItem.setVisible(False)
                     imageItem.pointsItems.append(pointsItem)
                 self.setPointsVisible(imageItem)
+    
+    def setupDuplicatedCursors(self):
+        self.cursors = []
+        for p, plotItem in enumerate(self.PlotItems):
+            cursor = pg.ScatterPlotItem(
+                symbol='+', pxMode=True, pen=pg.mkPen('k', width=1),
+                brush=pg.mkBrush('w'), size=16, tip=None
+            )
+            self.cursors.append(cursor)
+            plotItem.addItem(cursor)
+        
+        for imageItem in self.ImageItems:
+            imageItem.setOtherImagesCursors(self.cursors)
     
     def setPointsData(self, points_data):
         points_df = pd.DataFrame({

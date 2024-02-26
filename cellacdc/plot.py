@@ -52,7 +52,8 @@ def imshow(
         window_title='Cell-ACDC image viewer',
         color_scheme=None, 
         link_scrollbars=True,
-        annotate_labels_idxs: List[int]=None
+        annotate_labels_idxs: List[int]=None,
+        show_duplicated_cursor=True
     ):
     if isinstance(images[0], dict):
         images_dict = images[0]
@@ -113,6 +114,8 @@ def imshow(
         win.drawPoints(points_coords)
     if points_data is not None:
         win.setPointsData(points_data)
+    if show_duplicated_cursor:
+        win.setupDuplicatedCursors()
     win.annotateObjectIDs(annotate_labels_idxs=annotate_labels_idxs, init=True)
     win.run(block=block, showMaximised=showMaximised, screenToWindowRatio=0.8)
     return win
