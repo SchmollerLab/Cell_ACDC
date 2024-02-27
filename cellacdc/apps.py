@@ -13228,6 +13228,14 @@ class CombineFeaturesCalculator(widgets.QBaseDialog):
 
         self.setStyleSheet(TREEWIDGET_STYLESHEET)
     
+    def setExpandedAll(self, expanded):
+        if expanded:
+            self.expandAll()
+        else:
+            for i in range(self.metricsTreeWidget.topLevelItemCount()):
+                topLevelItem = self.metricsTreeWidget.topLevelItem(i)
+                topLevelItem.setExpanded(False)
+    
     def expandAll(self):
         for i in range(self.metricsTreeWidget.topLevelItemCount()):
             topLevelItem = self.metricsTreeWidget.topLevelItem(i)
