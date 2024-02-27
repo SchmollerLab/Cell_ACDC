@@ -2927,6 +2927,9 @@ class guiWin(QMainWindow):
         self.saveAsAction.triggered.connect(self.saveAsData)
         self.quickSaveAction.triggered.connect(self.quickSave)
         self.autoSaveToggle.toggled.connect(self.autoSaveToggled)
+        self.ccaIntegrCheckerToggle.toggled.connect(
+            self.ccaIntegrCheckerToggled
+        )
         self.annotLostObjsToggle.toggled.connect(self.annotLostObjsToggled)
         self.highLowResToggle.clicked.connect(self.highLoweResClicked)
         self.showInExplorerAction.triggered.connect(self.showInExplorer_cb)
@@ -3301,6 +3304,22 @@ class guiWin(QMainWindow):
         autoSaveLabel = QLabel('Autosave segm.')
         autoSaveLabel.setToolTip(autoSaveTooltip)
         layout.addRow(autoSaveLabel, self.autoSaveToggle)
+        
+        self.ccaIntegrCheckerToggle = widgets.Toggle()
+        ccaIntegrCheckerToggleTooltip = (
+            'Toggle background cell cycle annotations integrity checker ON/OFF'
+        )
+        self.ccaIntegrCheckerToggle.setChecked(False)
+        self.ccaIntegrCheckerToggle.setToolTip(ccaIntegrCheckerToggleTooltip)
+        label = QLabel('Cc. annot. integr. checker')
+        label.setToolTip(ccaIntegrCheckerToggleTooltip)
+        layout.addRow(label, self.ccaIntegrCheckerToggle)
+        self._isCcaIntegrityCheckerDisabled = True
+        if 'is_cca_integrity_checker_activated' in self.df_settings.index:
+            idx = 'is_cca_integrity_checker_activated'
+            val = int(self.df_settings.at[idx, 'value'])
+            self._isCcaIntegrityCheckerDisabled = not val
+            self.ccaIntegrCheckerToggle.setChecked(not val)
         
         self.annotLostObjsToggle = widgets.Toggle()
         annotLostObjsToggleTooltip = (
@@ -16126,7 +16145,6 @@ class guiWin(QMainWindow):
 
         self.isFilterPreviewChecked = True
         self.splineHoverON = False
-        self._isCcaIntegrityCheckedDisabled = False
         self.tempSegmentON = False
         self.isCtrlDown = False
         self.typingEditID = False
@@ -22777,7 +22795,7 @@ class guiWin(QMainWindow):
         if not self.dataIsLoaded:
             return
         
-        if self._isCcaIntegrityCheckedDisabled:
+        if self._isCcaIntegrityCheckerDisabled:
             return
         
         ccaCheckerThread = QThread()
@@ -22810,7 +22828,7 @@ class guiWin(QMainWindow):
         self.logger.info('Cell cycle annotations integrity checker started.')
     
     def disableCcaIntegrityChecker(self):
-        self._isCcaIntegrityCheckedDisabled = True
+        self._isCcaIntegrityCheckerDisabled = True
         self.stopCcaIntegrityCheckerWorker()
     
     def stopCcaIntegrityCheckerWorker(self):
@@ -24151,6 +24169,21 @@ class guiWin(QMainWindow):
         
         # if checked:
         #     self.gui_createAutoSaveWorker()
+    
+    def ccaIntegrCheckerToggled(self, checked):
+        self._isCcaIntegrityCheckerDisabled = not checked
+        self.df_settings.at['is_cca_integrity_checker_activated', 'value'] = (
+            int(checked)
+        )
+        self.df_settings.to_csv(self.settings_csv_path)
+        mode = self.modeComboBox.currentText()
+        if mode != 'Cell cycle analysis':
+            return
+        
+        if checked:
+            self.startCcaIntegrityCheckerWorker()
+        else:
+            self.disableCcaIntegrityChecker()
     
     def warnErrorsCustomMetrics(self):
         win = apps.ComputeMetricsErrorsDialog(
