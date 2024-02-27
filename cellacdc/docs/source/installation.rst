@@ -198,6 +198,12 @@ Install latest version
         
     This tells pip to install Cell-ACDC.
 
+    .. important::
+    
+        On Windows, if you get the error ``ERROR: Cannot find the command 'git'`` 
+        you need to install ``git`` first. Install it from 
+        `here <https://git-scm.com/download/win>`_.
+
 Updating to the latest version of Cell-ACDC 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -232,8 +238,11 @@ If you want to try out experimental features (and, if you have time, maybe repor
     
         git clone https://github.com/SchmollerLab/Cell_ACDC.git
 
-    If you are on Windows you might need to install ``git`` first. 
-    Install it from `here <https://git-scm.com/download/win>`_.
+    .. important::
+    
+        On Windows, if you get the error ``ERROR: Cannot find the command 'git'`` 
+        you need to install ``git`` first. Install it from 
+        `here <https://git-scm.com/download/win>`_.
 
 4. **Navigate to the Cell_ACDC folder** with the following command:
    
