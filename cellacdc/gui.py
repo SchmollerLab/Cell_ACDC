@@ -3311,7 +3311,7 @@ class guiWin(QMainWindow):
         )
         self.ccaIntegrCheckerToggle.setChecked(False)
         self.ccaIntegrCheckerToggle.setToolTip(ccaIntegrCheckerToggleTooltip)
-        label = QLabel('Cc. annot. integr. checker')
+        label = QLabel('Cc annot. checker')
         label.setToolTip(ccaIntegrCheckerToggleTooltip)
         layout.addRow(label, self.ccaIntegrCheckerToggle)
         self._isCcaIntegrityCheckerDisabled = True
