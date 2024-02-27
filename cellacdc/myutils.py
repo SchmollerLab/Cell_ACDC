@@ -1282,6 +1282,24 @@ def _model_url(model_name, return_alternative=False):
         ]
         file_size = [26570752]
         alternative_url = ''
+    elif model_name == 'omnipose':
+        url = [
+            'https://hmgubox2.helmholtz-muenchen.de/index.php/s/DynLkocWRbQfyRp/download/bact_fluor_cptorch_0'
+            'https://hmgubox2.helmholtz-muenchen.de/index.php/s/2248Eoyozp3Ezj2/download/bact_fluor_omnitorch_0',
+            'https://hmgubox2.helmholtz-muenchen.de/index.php/s/GiacDfXGerxE7PT/download/bact_phase_omnitorch_0',
+            'https://hmgubox2.helmholtz-muenchen.de/index.php/s/DDq8s3CgnG2Yw6H/download/cyto2_omnitorch_0',
+            'https://hmgubox2.helmholtz-muenchen.de/index.php/s/MM5meM2J5HbWqXR/download/plant_cptorch_0',
+            'https://hmgubox2.helmholtz-muenchen.de/index.php/s/aap7znrWq5sE6JQ/download/plant_omnitorch_0',
+        ]
+        file_size = [
+            26558464,
+            26558464,
+            26558464,
+            26558464,
+            26558464,
+            75071488
+        ]
+        alternative_url = ''
     else:
         return
     if return_alternative:
@@ -1323,7 +1341,7 @@ def _download_deepsea_models():
 
         temp_dst = os.path.join(temp_model_path, filename)
         download_url(
-            url, temp_dst, file_size=file_size, desc='segment_anything',
+            url, temp_dst, file_size=file_size, desc='deepsea',
             verbose=False
         )
         
@@ -1507,6 +1525,12 @@ def download_model(model_name):
             return True
         except Exception as e:
             traceback.print_exc()
+            return False
+    elif model_name == 'omnipose':
+        try:
+            _download_omnipose_models()
+            return True
+        except Exception as err:
             return False
     elif model_name != 'YeastMate' and model_name != 'YeaZ':
         # We manage only YeastMate and YeaZ
@@ -2656,7 +2680,7 @@ def _download_yeaz_models():
 
         temp_dst = os.path.join(temp_model_path, filename)
         download_url(
-            url, temp_dst, file_size=file_size, desc='TAPIR',
+            url, temp_dst, file_size=file_size, desc='YeaZ_v2',
             verbose=False
         )
         
@@ -2676,7 +2700,25 @@ def _download_cellpose_germlineNuclei_model():
 
         temp_dst = os.path.join(temp_model_path, filename)
         download_url(
-            url, temp_dst, file_size=file_size, desc='TAPIR',
+            url, temp_dst, file_size=file_size, desc='Cellpose_germlineNuclei',
+            verbose=False
+        )
+        
+        shutil.move(temp_dst, final_dst)
+
+def _download_omnipose_models():
+    urls, file_sizes = _model_url('omnipose')
+    temp_model_path = tempfile.mkdtemp()
+    final_model_path = os.path.expanduser('~\.cellpose\models')
+    for url, file_size in zip(urls, file_sizes):
+        filename = url.split('/')[-1]
+        final_dst = os.path.join(final_model_path, filename)
+        if os.path.exists(final_dst):            
+            continue
+
+        temp_dst = os.path.join(temp_model_path, filename)
+        download_url(
+            url, temp_dst, file_size=file_size, desc='omnipose',
             verbose=False
         )
         
