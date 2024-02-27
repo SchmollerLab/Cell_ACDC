@@ -104,6 +104,19 @@ Install stable version
         
     This tells pip to install Cell-ACDC.
 
+8. **Install the GUI libraries**:
+
+    After successful installation, you should be able to **run Cell-ACDC with 
+    the command** ``acdc``. Remember to **always activate** the ``acdc`` 
+    environment with the command ``conda activate acdc`` every time you 
+    open a new terminal before starting Cell-ACDC.
+    
+    The first time you run Cell-ACDC you will be guided through the automatic 
+    installation of the GUI libraries. Simply answer ``y`` in the terminal when 
+    asked. 
+
+    At the end you might have to re-start Cell-ACDC. 
+
 Updating to the latest stable version of Cell-ACDC 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -201,8 +214,23 @@ Install latest version
     .. important::
     
         On Windows, if you get the error ``ERROR: Cannot find the command 'git'`` 
-        you need to install ``git`` first. Install it from 
-        `here <https://git-scm.com/download/win>`_.
+        you need to install ``git`` first. Close the terminal and install it 
+        from `here <https://git-scm.com/download/win>`_. After installation, 
+        you can restart from here, but **remember to activate the ``acdc`` 
+        environment first** with the command ``conda activate acdc``.
+
+8. **Install the GUI libraries**:
+
+    After successful installation, you should be able to **run Cell-ACDC with 
+    the command** ``acdc``. Remember to **always activate** the ``acdc`` 
+    environment with the command ``conda activate acdc`` every time you 
+    open a new terminal before starting Cell-ACDC.
+    
+    The first time you run Cell-ACDC you will be guided through the automatic 
+    installation of the GUI libraries. Simply answer ``y`` in the terminal when 
+    asked. 
+
+    At the end you might have to re-start Cell-ACDC.  
 
 Updating to the latest version of Cell-ACDC 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -241,8 +269,10 @@ If you want to try out experimental features (and, if you have time, maybe repor
     .. important::
     
         On Windows, if you get the error ``ERROR: Cannot find the command 'git'`` 
-        you need to install ``git`` first. Install it from 
-        `here <https://git-scm.com/download/win>`_.
+        you need to install ``git`` first. Close the terminal and install it 
+        from `here <https://git-scm.com/download/win>`_. After installation, 
+        you can restart from here, but **remember to activate the ``acdc`` 
+        environment first** with the command ``conda activate acdc``.
 
 4. **Navigate to the Cell_ACDC folder** with the following command:
    
@@ -321,6 +351,19 @@ If you want to try out experimental features (and, if you have time, maybe repor
     The ``.`` at the end of the command means that you want to install from 
     the current folder in the terminal. This must be the ``Cell_ACDC`` folder 
     that you cloned before. 
+
+10. **Install the GUI libraries**:
+
+    After successful installation, you should be able to **run Cell-ACDC with 
+    the command** ``acdc``. Remember to **always activate** the ``acdc`` 
+    environment with the command ``conda activate acdc`` every time you 
+    open a new terminal before starting Cell-ACDC.
+    
+    The first time you run Cell-ACDC you will be guided through the automatic 
+    installation of the GUI libraries. Simply answer ``y`` in the terminal when 
+    asked. 
+
+    At the end you might have to re-start Cell-ACDC. 
 
 
 Updating Cell-ACDC installed from source
