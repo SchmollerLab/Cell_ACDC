@@ -58,6 +58,7 @@ from . import colors, config
 from . import html_path
 from . import _palettes
 from . import load
+from . import apps
 from .regex import float_regex
 
 LINEEDIT_WARNING_STYLESHEET = _palettes.lineedit_warning_stylesheet()
@@ -171,34 +172,6 @@ removeHSVcmaps()
 cmaps, Gradients = addGradients()
 GradientsLabels = Gradients.copy()
 GradientsImage = Gradients.copy()
-
-class QBaseDialog(QDialog):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-
-    def exec_(self, resizeWidthFactor=None):
-        if resizeWidthFactor is not None:
-            self.show()
-            self.resize(int(self.width()*resizeWidthFactor), self.height())
-        self.show(block=True)
-
-    def show(self, block=False):
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
-        super().show()
-        if block:
-            self.loop = QEventLoop()
-            self.loop.exec_()
-
-    def closeEvent(self, event):
-        if hasattr(self, 'loop'):
-            self.loop.exit()
-    
-    def keyPressEvent(self, event) -> None:
-        if event.key() == Qt.Key_Escape:
-            event.ignore()
-            return
-            
-        super().keyPressEvent(event)
 
 class XStream(QObject):
     _stdout = None
@@ -819,57 +792,6 @@ class CustomAnnotationScatterPlotItem(BaseScatterPlotItem):
     def __init__(self, *args, **kargs):
         super().__init__(*args, **kargs)
 
-class QInput(QBaseDialog):
-    def __init__(self, parent=None, title='Input'):
-        self.cancel = True
-        self.allowEmpty = True
-
-        super().__init__(parent)
-
-        self.setWindowTitle(title)
-
-        self.mainLayout = QVBoxLayout()
-
-        self.infoLabel = QLabel()
-        self.mainLayout.addWidget(self.infoLabel)
-
-        promptLayout = QHBoxLayout()
-        self.promptLabel = QLabel()
-        promptLayout.addWidget(self.promptLabel)
-        self.lineEdit = QLineEdit()
-        promptLayout.addWidget(self.lineEdit)
-
-        buttonsLayout = CancelOkButtonsLayout()
-
-        buttonsLayout.okButton.clicked.connect(self.ok_cb)
-        buttonsLayout.cancelButton.clicked.connect(self.close)
-
-        self.mainLayout.addLayout(promptLayout)
-        self.mainLayout.addSpacing(20)
-        self.mainLayout.addLayout(buttonsLayout)
-
-        self.buttonsLayout = buttonsLayout
-
-        self.setFont(font)
-        self.setLayout(self.mainLayout)
-    
-    def askText(self, prompt, infoText='', allowEmpty=False):
-        self.allowEmpty = allowEmpty
-        if infoText:
-            infoText = f'{infoText}<br>'
-            self.infoLabel.setText(html_utils.paragraph(infoText))
-        self.promptLabel.setText(prompt)
-        self.exec_(resizeWidthFactor=1.5)
-
-    def ok_cb(self):
-        self.answer = self.lineEdit.text()
-        if not self.allowEmpty and not self.answer:
-            msg = myMessageBox(showCentered=False)
-            msg.critical(self, 'Empty', 'Entry cannot be empty.')
-            return
-        self.cancel = False
-        self.close()
-
 class ElidingLineEdit(QLineEdit):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1430,7 +1352,7 @@ class ExpandableListBox(QComboBox):
             center=True
         )
 
-        self.listW = QDialogListbox(
+        self.listW = apps.QDialogListbox(
             'Select Positions to save', infoTxt,
             [], multiSelection=True, parent=self
         )
@@ -4571,7 +4493,7 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
             pass
     
     def _askNameColormap(self):
-        inputWin = QInput(parent=self._parent, title='Colormap name')
+        inputWin = apps.QInput(parent=self._parent, title='Colormap name')
         inputWin.askText('Insert a name for the colormap: ', allowEmpty=False)
         if inputWin.cancel:
             return
@@ -5427,7 +5349,7 @@ class labelsGradientWidget(pg.GradientWidget):
             pass
     
     def _askNameColormap(self):
-        inputWin = QInput(parent=self._parent, title='Colormap name')
+        inputWin = apps.QInput(parent=self._parent, title='Colormap name')
         inputWin.askText('Insert a name for the colormap: ', allowEmpty=False)
         if inputWin.cancel:
             return
@@ -7883,3 +7805,288 @@ class PointsScatterPlotItem(pg.ScatterPlotItem):
         for textItem in self._textItems.values():
             if textItem.toPlainText():
                 textItem.setVisible(visible)
+
+class installJavaDialog(myMessageBox):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self.setWindowTitle('Install Java')
+        self.setIcon('SP_MessageBoxWarning')
+
+        txt_macOS = html_utils.paragraph("""
+            Your system doesn't have the <code>Java Development Kit</code>
+            installed<br> and/or a C++ compiler which is required for the installation of
+            <code>javabridge</code><br><br>
+            <b>Cell-ACDC is now going to install Java for you</b>.<br><br>
+            <i><b>NOTE: After clicking on "Install", follow the instructions<br>
+            on the terminal</b>. You will be asked to confirm steps and insert<br>
+            your password to allow the installation.</i><br><br>
+            If you prefer to do it manually, cancel the process<br>
+            and follow the instructions below.
+        """)
+
+        txt_windows = html_utils.paragraph("""
+            Unfortunately, installing pre-compiled version of
+            <code>javabridge</code> <b>failed</b>.<br><br>
+            Cell-ACDC is going to <b>try to compile it now</b>.<br><br>
+            However, <b>before proceeding</b>, you need to install
+            <code>Java Development Kit</code><br> and a <b>C++ compiler</b>.<br><br>
+            <b>See instructions below on how to install it.</b>
+        """)
+
+        if not is_win:
+            self.instructionsButton = self.addButton('Show intructions...')
+            self.instructionsButton.setCheckable(True)
+            self.instructionsButton.disconnect()
+            self.instructionsButton.clicked.connect(self.showInstructions)
+            installButton = self.addButton('Install')
+            installButton.disconnect()
+            installButton.clicked.connect(self.installJava)
+            txt = txt_macOS
+        else:
+            okButton = self.addButton('Ok')
+            txt = txt_windows
+
+        self.cancelButton = self.addButton('Cancel')
+
+        label = self.addText(txt)
+        label.setWordWrap(False)
+
+        self.resizeCount = 0
+
+    def addInstructionsWindows(self):
+        self.scrollArea = QScrollArea()
+        _container = QWidget()
+        _layout = QVBoxLayout()
+        for t, text in enumerate(myutils.install_javabridge_instructions_text()):
+            label = QLabel()
+            label.setText(text)
+            if (t == 1 or t == 2):
+                label.setOpenExternalLinks(True)
+                label.setTextInteractionFlags(Qt.TextBrowserInteraction)
+                code_layout = QHBoxLayout()
+                code_layout.addWidget(label)
+                copyButton = QToolButton()
+                copyButton.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+                copyButton.setIcon(QIcon(':edit-copy.svg'))
+                copyButton.setText('Copy link')
+                if t==1:
+                    copyButton.textToCopy = myutils.jdk_windows_url()
+                    code_layout.addWidget(copyButton, alignment=Qt.AlignLeft)
+                else:
+                    copyButton.textToCopy = myutils.cpp_windows_url()
+                    screenshotButton = QToolButton()
+                    screenshotButton.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+                    screenshotButton.setIcon(QIcon(':cog.svg'))
+                    screenshotButton.setText('See screenshot')
+                    code_layout.addWidget(screenshotButton, alignment=Qt.AlignLeft)
+                    code_layout.addWidget(copyButton, alignment=Qt.AlignLeft)
+                    screenshotButton.clicked.connect(self.viewScreenshot)
+                copyButton.clicked.connect(self.copyToClipboard)
+                code_layout.setStretch(0, 2)
+                code_layout.setStretch(1, 0)
+                _layout.addLayout(code_layout)
+            else:
+                _layout.addWidget(label)
+
+
+        _container.setLayout(_layout)
+        self.scrollArea.setWidget(_container)
+        self.currentRow += 1
+        self.layout.addWidget(
+            self.scrollArea, self.currentRow, 1, alignment=Qt.AlignTop
+        )
+
+        # Stretch last row
+        self.currentRow += 1
+        self.layout.setRowStretch(self.currentRow, 1)
+
+    def viewScreenshot(self, checked=False):
+        self.screenShotWin = view_visualcpp_screenshot()
+        self.screenShotWin.show()
+
+    def addInstructionsMacOS(self):
+        self.scrollArea = QScrollArea()
+        _container = QWidget()
+        _layout = QVBoxLayout()
+        for t, text in enumerate(myutils.install_javabridge_instructions_text()):
+            label = QLabel()
+            label.setText(text)
+            # label.setWordWrap(True)
+            if (t == 1 or t == 2):
+                label.setWordWrap(True)
+                code_layout = QHBoxLayout()
+                code_layout.addWidget(label)
+                copyButton = QToolButton()
+                copyButton.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+                copyButton.setIcon(QIcon(':edit-copy.svg'))
+                copyButton.setText('Copy')
+                if t==1:
+                    copyButton.textToCopy = myutils._install_homebrew_command()
+                else:
+                    copyButton.textToCopy = myutils._brew_install_java_command()
+                copyButton.clicked.connect(self.copyToClipboard)
+                code_layout.addWidget(copyButton, alignment=Qt.AlignLeft)
+                # code_layout.addStretch(1)
+                code_layout.setStretch(0, 2)
+                code_layout.setStretch(1, 0)
+                _layout.addLayout(code_layout)
+            else:
+                _layout.addWidget(label)
+        _container.setLayout(_layout)
+        self.scrollArea.setWidget(_container)
+        self.currentRow += 1
+        self.layout.addWidget(
+            self.scrollArea, self.currentRow, 1, alignment=Qt.AlignTop
+        )
+
+        # Stretch last row
+        self.currentRow += 1
+        self.layout.setRowStretch(self.currentRow, 1)
+        self.scrollArea.hide()
+
+    def addInstructionsLinux(self):
+        self.scrollArea = QScrollArea()
+        _container = QWidget()
+        _layout = QVBoxLayout()
+        for t, text in enumerate(myutils.install_javabridge_instructions_text()):
+            label = QLabel()
+            label.setText(text)
+            # label.setWordWrap(True)
+            if (t == 1 or t == 2 or t==3):
+                label.setWordWrap(True)
+                code_layout = QHBoxLayout()
+                code_layout.addWidget(label)
+                copyButton = QToolButton()
+                copyButton.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+                copyButton.setIcon(QIcon(':edit-copy.svg'))
+                copyButton.setText('Copy')
+                if t==1:
+                    copyButton.textToCopy = myutils._apt_update_command()
+                elif t==2:
+                    copyButton.textToCopy = myutils._apt_install_java_command()
+                elif t==3:
+                    copyButton.textToCopy = myutils._apt_gcc_command()
+                copyButton.clicked.connect(self.copyToClipboard)
+                code_layout.addWidget(copyButton, alignment=Qt.AlignLeft)
+                # code_layout.addStretch(1)
+                code_layout.setStretch(0, 2)
+                code_layout.setStretch(1, 0)
+                _layout.addLayout(code_layout)
+            else:
+                _layout.addWidget(label)
+        _container.setLayout(_layout)
+        self.scrollArea.setWidget(_container)
+        self.currentRow += 1
+        self.layout.addWidget(
+            self.scrollArea, self.currentRow, 1, alignment=Qt.AlignTop
+        )
+
+        # Stretch last row
+        self.currentRow += 1
+        self.layout.setRowStretch(self.currentRow, 1)
+        self.scrollArea.hide()
+
+    def copyToClipboard(self):
+        cb = QApplication.clipboard()
+        cb.clear(mode=cb.Clipboard)
+        cb.setText(self.sender().textToCopy, mode=cb.Clipboard)
+        print('Command copied!')
+
+    def showInstructions(self, checked):
+        if checked:
+            self.instructionsButton.setText('Hide instructions')
+            self.origHeight = self.height()
+            self.resize(self.width(), self.height()+300)
+            self.scrollArea.show()
+        else:
+            self.instructionsButton.setText('Show instructions...')
+            self.scrollArea.hide()
+            func = partial(self.resize, self.width(), self.origHeight)
+            QTimer.singleShot(50, func)
+
+    def installJava(self):
+        import subprocess
+        try:
+            if is_mac:
+                try:
+                    subprocess.check_call(['brew', 'update'])
+                except Exception as e:
+                    subprocess.run(
+                        myutils._install_homebrew_command(),
+                        check=True, text=True, shell=True
+                    )
+                subprocess.run(
+                    myutils._brew_install_java_command(),
+                    check=True, text=True, shell=True
+                )
+            elif is_linux:
+                subprocess.run(
+                    myutils._apt_gcc_command()(),
+                    check=True, text=True, shell=True
+                )
+                subprocess.run(
+                    myutils._apt_update_command()(),
+                    check=True, text=True, shell=True
+                )
+                subprocess.run(
+                    myutils._apt_install_java_command()(),
+                    check=True, text=True, shell=True
+                )
+            self.close()
+        except Exception as e:
+            print('=======================')
+            traceback.print_exc()
+            print('=======================')
+            msg = myMessageBox(wrapText=False)
+            err_msg = html_utils.paragraph("""
+                Automatic installation of Java failed.<br><br>
+                Please, try manually by following the instructions provided
+                below (click on "Show instructions..." button). Thanks
+            """)
+            msg.critical(
+               self, 'Java installation failed', err_msg
+            )
+
+    def show(self, block=False):
+        super().show(block=False)
+        print(is_linux)
+        if is_win:
+            self.addInstructionsWindows()
+        elif is_mac:
+            self.addInstructionsMacOS()
+        elif is_linux:
+            self.addInstructionsLinux()
+        self.move(self.pos().x(), 20)
+        if is_win:
+            self.resize(self.width(), self.height()+200)
+        if block:
+            self._block()
+
+    def exec_(self):
+        self.show(block=True)
+
+class selectTrackerGUI(QDialogListbox):
+    def __init__(
+            self, SizeT, currentFrameNo=1, parent=None
+        ):
+        trackers = myutils.get_list_of_trackers()
+        super().__init__(
+            'Select tracker', 'Select one of the following trackers',
+            trackers, multiSelection=False, parent=parent
+        )
+        self.setWindowTitle('Select tracker')
+
+        self.selectFramesGroupbox = selectStartStopFrames(
+            SizeT, currentFrameNum=currentFrameNo, parent=parent
+        )
+
+        self.mainLayout.insertWidget(1, self.selectFramesGroupbox)
+
+    def ok_cb(self, event):
+        if self.selectFramesGroupbox.warningLabel.text():
+            return
+        else:
+            self.startFrame = self.selectFramesGroupbox.startFrame_SB.value()
+            self.stopFrame = self.selectFramesGroupbox.stopFrame_SB.value()
+            super().ok_cb(event)

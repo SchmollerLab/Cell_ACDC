@@ -104,272 +104,6 @@ class AcdcSPlashScreen(QSplashScreen):
         pass
 
 
-class installJavaDialog(widgets.myMessageBox):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-
-        self.setWindowTitle('Install Java')
-        self.setIcon('SP_MessageBoxWarning')
-
-        txt_macOS = ("""
-        <p style="font-size:13px">
-            Your system doesn't have the <code>Java Development Kit</code>
-            installed<br> and/or a C++ compiler which is required for the installation of
-            <code>javabridge</code><br><br>
-            <b>Cell-ACDC is now going to install Java for you</b>.<br><br>
-            <i><b>NOTE: After clicking on "Install", follow the instructions<br>
-            on the terminal</b>. You will be asked to confirm steps and insert<br>
-            your password to allow the installation.</i><br><br>
-            If you prefer to do it manually, cancel the process<br>
-            and follow the instructions below.
-        </p>
-        """)
-
-        txt_windows = ("""
-        <p style="font-size:13px">
-            Unfortunately, installing pre-compiled version of
-            <code>javabridge</code> <b>failed</b>.<br><br>
-            Cell-ACDC is going to <b>try to compile it now</b>.<br><br>
-            However, <b>before proceeding</b>, you need to install
-            <code>Java Development Kit</code><br> and a <b>C++ compiler</b>.<br><br>
-            <b>See instructions below on how to install it.</b>
-        </p>
-        """)
-
-        if not is_win:
-            self.instructionsButton = self.addButton('Show intructions...')
-            self.instructionsButton.setCheckable(True)
-            self.instructionsButton.disconnect()
-            self.instructionsButton.clicked.connect(self.showInstructions)
-            installButton = self.addButton('Install')
-            installButton.disconnect()
-            installButton.clicked.connect(self.installJava)
-            txt = txt_macOS
-        else:
-            okButton = self.addButton('Ok')
-            txt = txt_windows
-
-        self.cancelButton = self.addButton('Cancel')
-
-        label = self.addText(txt)
-        label.setWordWrap(False)
-
-        self.resizeCount = 0
-
-    def addInstructionsWindows(self):
-        self.scrollArea = QScrollArea()
-        _container = QWidget()
-        _layout = QVBoxLayout()
-        for t, text in enumerate(myutils.install_javabridge_instructions_text()):
-            label = QLabel()
-            label.setText(text)
-            if (t == 1 or t == 2):
-                label.setOpenExternalLinks(True)
-                label.setTextInteractionFlags(Qt.TextBrowserInteraction)
-                code_layout = QHBoxLayout()
-                code_layout.addWidget(label)
-                copyButton = QToolButton()
-                copyButton.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-                copyButton.setIcon(QIcon(':edit-copy.svg'))
-                copyButton.setText('Copy link')
-                if t==1:
-                    copyButton.textToCopy = myutils.jdk_windows_url()
-                    code_layout.addWidget(copyButton, alignment=Qt.AlignLeft)
-                else:
-                    copyButton.textToCopy = myutils.cpp_windows_url()
-                    screenshotButton = QToolButton()
-                    screenshotButton.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-                    screenshotButton.setIcon(QIcon(':cog.svg'))
-                    screenshotButton.setText('See screenshot')
-                    code_layout.addWidget(screenshotButton, alignment=Qt.AlignLeft)
-                    code_layout.addWidget(copyButton, alignment=Qt.AlignLeft)
-                    screenshotButton.clicked.connect(self.viewScreenshot)
-                copyButton.clicked.connect(self.copyToClipboard)
-                code_layout.setStretch(0, 2)
-                code_layout.setStretch(1, 0)
-                _layout.addLayout(code_layout)
-            else:
-                _layout.addWidget(label)
-
-
-        _container.setLayout(_layout)
-        self.scrollArea.setWidget(_container)
-        self.currentRow += 1
-        self.layout.addWidget(
-            self.scrollArea, self.currentRow, 1, alignment=Qt.AlignTop
-        )
-
-        # Stretch last row
-        self.currentRow += 1
-        self.layout.setRowStretch(self.currentRow, 1)
-
-    def viewScreenshot(self, checked=False):
-        self.screenShotWin = widgets.view_visualcpp_screenshot()
-        self.screenShotWin.show()
-
-    def addInstructionsMacOS(self):
-        self.scrollArea = QScrollArea()
-        _container = QWidget()
-        _layout = QVBoxLayout()
-        for t, text in enumerate(myutils.install_javabridge_instructions_text()):
-            label = QLabel()
-            label.setText(text)
-            # label.setWordWrap(True)
-            if (t == 1 or t == 2):
-                label.setWordWrap(True)
-                code_layout = QHBoxLayout()
-                code_layout.addWidget(label)
-                copyButton = QToolButton()
-                copyButton.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-                copyButton.setIcon(QIcon(':edit-copy.svg'))
-                copyButton.setText('Copy')
-                if t==1:
-                    copyButton.textToCopy = myutils._install_homebrew_command()
-                else:
-                    copyButton.textToCopy = myutils._brew_install_java_command()
-                copyButton.clicked.connect(self.copyToClipboard)
-                code_layout.addWidget(copyButton, alignment=Qt.AlignLeft)
-                # code_layout.addStretch(1)
-                code_layout.setStretch(0, 2)
-                code_layout.setStretch(1, 0)
-                _layout.addLayout(code_layout)
-            else:
-                _layout.addWidget(label)
-        _container.setLayout(_layout)
-        self.scrollArea.setWidget(_container)
-        self.currentRow += 1
-        self.layout.addWidget(
-            self.scrollArea, self.currentRow, 1, alignment=Qt.AlignTop
-        )
-
-        # Stretch last row
-        self.currentRow += 1
-        self.layout.setRowStretch(self.currentRow, 1)
-        self.scrollArea.hide()
-
-    def addInstructionsLinux(self):
-        self.scrollArea = QScrollArea()
-        _container = QWidget()
-        _layout = QVBoxLayout()
-        for t, text in enumerate(myutils.install_javabridge_instructions_text()):
-            label = QLabel()
-            label.setText(text)
-            # label.setWordWrap(True)
-            if (t == 1 or t == 2 or t==3):
-                label.setWordWrap(True)
-                code_layout = QHBoxLayout()
-                code_layout.addWidget(label)
-                copyButton = QToolButton()
-                copyButton.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-                copyButton.setIcon(QIcon(':edit-copy.svg'))
-                copyButton.setText('Copy')
-                if t==1:
-                    copyButton.textToCopy = myutils._apt_update_command()
-                elif t==2:
-                    copyButton.textToCopy = myutils._apt_install_java_command()
-                elif t==3:
-                    copyButton.textToCopy = myutils._apt_gcc_command()
-                copyButton.clicked.connect(self.copyToClipboard)
-                code_layout.addWidget(copyButton, alignment=Qt.AlignLeft)
-                # code_layout.addStretch(1)
-                code_layout.setStretch(0, 2)
-                code_layout.setStretch(1, 0)
-                _layout.addLayout(code_layout)
-            else:
-                _layout.addWidget(label)
-        _container.setLayout(_layout)
-        self.scrollArea.setWidget(_container)
-        self.currentRow += 1
-        self.layout.addWidget(
-            self.scrollArea, self.currentRow, 1, alignment=Qt.AlignTop
-        )
-
-        # Stretch last row
-        self.currentRow += 1
-        self.layout.setRowStretch(self.currentRow, 1)
-        self.scrollArea.hide()
-
-    def copyToClipboard(self):
-        cb = QApplication.clipboard()
-        cb.clear(mode=cb.Clipboard)
-        cb.setText(self.sender().textToCopy, mode=cb.Clipboard)
-        print('Command copied!')
-
-    def showInstructions(self, checked):
-        if checked:
-            self.instructionsButton.setText('Hide instructions')
-            self.origHeight = self.height()
-            self.resize(self.width(), self.height()+300)
-            self.scrollArea.show()
-        else:
-            self.instructionsButton.setText('Show instructions...')
-            self.scrollArea.hide()
-            func = partial(self.resize, self.width(), self.origHeight)
-            QTimer.singleShot(50, func)
-
-    def installJava(self):
-        import subprocess
-        try:
-            if is_mac:
-                try:
-                    subprocess.check_call(['brew', 'update'])
-                except Exception as e:
-                    subprocess.run(
-                        myutils._install_homebrew_command(),
-                        check=True, text=True, shell=True
-                    )
-                subprocess.run(
-                    myutils._brew_install_java_command(),
-                    check=True, text=True, shell=True
-                )
-            elif is_linux:
-                subprocess.run(
-                    myutils._apt_gcc_command()(),
-                    check=True, text=True, shell=True
-                )
-                subprocess.run(
-                    myutils._apt_update_command()(),
-                    check=True, text=True, shell=True
-                )
-                subprocess.run(
-                    myutils._apt_install_java_command()(),
-                    check=True, text=True, shell=True
-                )
-            self.close()
-        except Exception as e:
-            print('=======================')
-            traceback.print_exc()
-            print('=======================')
-            msg = QMessageBox()
-            err_msg = ("""
-            <p style="font-size:13px">
-                Automatic installation of Java failed.<br><br>
-                Please, try manually by following the instructions provided
-                with the "Show instructions..." button. Thanks
-            </p>
-            """)
-            msg.critical(
-               self, 'Java installation failed', err_msg, msg.Ok
-            )
-
-    def show(self, block=False):
-        super().show(block=False)
-        print(is_linux)
-        if is_win:
-            self.addInstructionsWindows()
-        elif is_mac:
-            self.addInstructionsMacOS()
-        elif is_linux:
-            self.addInstructionsLinux()
-        self.move(self.pos().x(), 20)
-        if is_win:
-            self.resize(self.width(), self.height()+200)
-        if block:
-            self._block()
-
-    def exec_(self):
-        self.show(block=True)
-
 def addCustomModelMessages(QParent=None):
     modelFilePath = None
     msg = widgets.myMessageBox(showCentered=False, wrapText=False)
@@ -406,6 +140,34 @@ def addCustomModelMessages(QParent=None):
             return
     
     return modelFilePath
+
+class QBaseDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+    def exec_(self, resizeWidthFactor=None):
+        if resizeWidthFactor is not None:
+            self.show()
+            self.resize(int(self.width()*resizeWidthFactor), self.height())
+        self.show(block=True)
+
+    def show(self, block=False):
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        super().show()
+        if block:
+            self.loop = QEventLoop()
+            self.loop.exec_()
+
+    def closeEvent(self, event):
+        if hasattr(self, 'loop'):
+            self.loop.exit()
+    
+    def keyPressEvent(self, event) -> None:
+        if event.key() == Qt.Key_Escape:
+            event.ignore()
+            return
+            
+        super().keyPressEvent(event)
 
 class customAnnotationDialog(QDialog):
     sigDeleteSelecAnnot = Signal(object)
@@ -931,7 +693,7 @@ class _PointsLayerAppearanceGroupbox(QGroupBox):
         }
         return _state
 
-class AddPointsLayerDialog(widgets.QBaseDialog):
+class AddPointsLayerDialog(QBaseDialog):
     sigClosed = Signal()
     sigCriticalReadTable = Signal(str)
     sigLoadedTable = Signal(object)
@@ -1437,7 +1199,7 @@ class AddPointsLayerDialog(widgets.QBaseDialog):
         self.move(left, top)
 
 
-class EditPointsLayerAppearanceDialog(widgets.QBaseDialog):
+class EditPointsLayerAppearanceDialog(QBaseDialog):
     sigClosed = Signal()
 
     def __init__(self, parent=None):
@@ -1684,7 +1446,7 @@ class wandToleranceWidget(QFrame):
 
         self.setLayout(self.slider.layout)
 
-class TrackSubCellObjectsDialog(widgets.QBaseDialog):
+class TrackSubCellObjectsDialog(QBaseDialog):
     def __init__(self, basename='', parent=None):
         self.cancel = True
         super().__init__(parent=parent)
@@ -1815,7 +1577,7 @@ class TrackSubCellObjectsDialog(widgets.QBaseDialog):
         }
         self.close()
 
-class SetMeasurementsDialog(widgets.QBaseDialog):
+class SetMeasurementsDialog(QBaseDialog):
     sigClosed = Signal()
     sigCancel = Signal()
     sigRestart = Signal()
@@ -4364,7 +4126,7 @@ class PreProcessRecipeWidget(QWidget):
 
         self.setLayout(mainLayout)
 
-class MultiTimePointFilePattern(widgets.QBaseDialog):
+class MultiTimePointFilePattern(QBaseDialog):
     def __init__(self, fileName, folderPath, readPatternFunc=None, parent=None):
         super().__init__(parent)
 
@@ -4598,7 +4360,7 @@ class MultiTimePointFilePattern(widgets.QBaseDialog):
     def showEvent(self, event) -> None:
         self.channelNameLE.setFocus()
 
-class OrderableListWidgetDialog(widgets.QBaseDialog):
+class OrderableListWidgetDialog(QBaseDialog):
     def __init__(
             self, items, title='Select items', infoTxt='', helpText='', 
             parent=None
@@ -4650,7 +4412,7 @@ class OrderableListWidgetDialog(widgets.QBaseDialog):
         self.close()
 
 
-class QDialogAutomaticThresholding(widgets.QBaseDialog):
+class QDialogAutomaticThresholding(QBaseDialog):
     def __init__(self, parent=None, isSegm3D=True):
         super().__init__(parent)
 
@@ -4765,7 +4527,7 @@ class QDialogAutomaticThresholding(widgets.QBaseDialog):
             return
         self.segment3Dcheckbox.setChecked(section.getboolean('segment_3D_volume'))
 
-class ApplyTrackTableSelectColumnsDialog(widgets.QBaseDialog):
+class ApplyTrackTableSelectColumnsDialog(QBaseDialog):
     def __init__(self, df, parent=None):
         super().__init__(parent)
 
@@ -4977,7 +4739,7 @@ class QDialogSelectModel(QDialog):
         if hasattr(self, 'loop'):
             self.loop.exit()
 
-class ViewTextDialog(widgets.QBaseDialog):
+class ViewTextDialog(QBaseDialog):
     def __init__(self, text, parent=None):
         super().__init__(parent)
 
@@ -5002,7 +4764,7 @@ class ViewTextDialog(widgets.QBaseDialog):
         self.setLayout(mainLayout)
         self.setFont(font)
 
-class startStopFramesDialog(widgets.QBaseDialog):
+class startStopFramesDialog(QBaseDialog):
     def __init__(
             self, SizeT, currentFrameNum=0, parent=None,
             windowTitle='Select frame range to segment'
@@ -5053,31 +4815,6 @@ class startStopFramesDialog(widgets.QBaseDialog):
 
         if block:
             super().show(block=True)
-
-class selectTrackerGUI(widgets.QDialogListbox):
-    def __init__(
-            self, SizeT, currentFrameNo=1, parent=None
-        ):
-        trackers = myutils.get_list_of_trackers()
-        super().__init__(
-            'Select tracker', 'Select one of the following trackers',
-            trackers, multiSelection=False, parent=parent
-        )
-        self.setWindowTitle('Select tracker')
-
-        self.selectFramesGroupbox = widgets.selectStartStopFrames(
-            SizeT, currentFrameNum=currentFrameNo, parent=parent
-        )
-
-        self.mainLayout.insertWidget(1, self.selectFramesGroupbox)
-
-    def ok_cb(self, event):
-        if self.selectFramesGroupbox.warningLabel.text():
-            return
-        else:
-            self.startFrame = self.selectFramesGroupbox.startFrame_SB.value()
-            self.stopFrame = self.selectFramesGroupbox.stopFrame_SB.value()
-            widgets.QDialogListbox.ok_cb(self, event)
 
 class QDialogAppendTextFilename(QDialog):
     def __init__(self, filename, ext, parent=None, font=None):
@@ -5840,7 +5577,7 @@ class QDialogMetadata(QDialog):
         if hasattr(self, 'loop'):
             self.loop.exit()
 
-class QCropZtool(widgets.QBaseDialog):
+class QCropZtool(QBaseDialog):
     sigClose = Signal()
     sigZvalueChanged = Signal(str, int)
     sigReset = Signal()
@@ -6308,7 +6045,7 @@ class FutureFramesAction_QDialog(QDialog):
         if hasattr(self, 'loop'):
             self.loop.exit()
 
-class ComputeMetricsErrorsDialog(widgets.QBaseDialog):
+class ComputeMetricsErrorsDialog(QBaseDialog):
     def __init__(
             self, errorsDict, log_path='', parent=None, 
             log_type='custom_metrics'
@@ -6650,7 +6387,7 @@ class PostProcessSegmParams(QGroupBox):
         msg = widgets.myMessageBox(showCentered=False)
         msg.information(self, title, html_utils.paragraph(txt))
 
-class PostProcessSegmDialog(widgets.QBaseDialog):
+class PostProcessSegmDialog(QBaseDialog):
     sigClosed = Signal()
     sigValueChanged = Signal(object, object)
     sigEditingFinished = Signal()
@@ -7531,7 +7268,7 @@ class imageViewer(QMainWindow):
         if left is not None and top is not None:
             self.setGeometry(left, top, 850, 800)
 
-class TreeSelectorDialog(widgets.QBaseDialog):
+class TreeSelectorDialog(QBaseDialog):
     sigItemDoubleClicked = Signal(object)
 
     def __init__(
@@ -7670,7 +7407,7 @@ class TreeSelectorDialog(widgets.QBaseDialog):
         if self.heightFactor is not None:
             self.resize(self.width(), int(self.height()*self.heightFactor))
 
-class TreesSelectorDialog(widgets.QBaseDialog):
+class TreesSelectorDialog(QBaseDialog):
     def __init__(
             self, trees, groupsDescr=None, title='Trees selector', 
             infoTxt='', parent=None
@@ -7743,7 +7480,7 @@ class TreesSelectorDialog(widgets.QBaseDialog):
         self.close()
 
 
-class MultiListSelector(widgets.QBaseDialog):
+class MultiListSelector(QBaseDialog):
     def __init__(
             self, lists: dict, groupsDescr: dict=None, 
             title='Lists selector', infoTxt='', parent=None
@@ -7804,7 +7541,7 @@ class MultiListSelector(widgets.QBaseDialog):
             ]
         self.close()
 
-class selectPositionsMultiExp(widgets.QBaseDialog):
+class selectPositionsMultiExp(QBaseDialog):
     def __init__(self, expPaths: dict, infoPaths: dict=None, parent=None):
         super().__init__(parent=parent)
 
@@ -8879,7 +8616,7 @@ class QLineEditDialog(QDialog):
         if hasattr(self, 'loop'):
             self.loop.exit()
 
-class NumericEntryDialog(widgets.QBaseDialog):
+class NumericEntryDialog(QBaseDialog):
     def __init__(
             self, title='Entry a value', currentValue=0,
             instructions='Entry value', parent=None, 
@@ -11201,7 +10938,7 @@ class warnVisualCppRequired(QMessageBox):
         if self.screenShotWin is not None:
             self.screenShotWin.close()
 
-class combineMetricsEquationDialog(widgets.QBaseDialog):
+class combineMetricsEquationDialog(QBaseDialog):
     sigOk = Signal(object)
 
     def __init__(
@@ -11641,7 +11378,7 @@ class combineMetricsEquationDialog(widgets.QBaseDialog):
         """)
         self.testOutputDisplay.setHtml(text)
 
-class stopFrameDialog(widgets.QBaseDialog):
+class stopFrameDialog(QBaseDialog):
     def __init__(self, posDatas, parent=None):
         super().__init__(parent=parent)
 
@@ -11774,7 +11511,7 @@ class pgTestWindow(QWidget):
         self.setLayout(layout)
 
 
-class CombineMetricsMultiDfsDialog(widgets.QBaseDialog):
+class CombineMetricsMultiDfsDialog(QBaseDialog):
     sigOk = Signal(object, object)
     sigClose = Signal(bool)
 
@@ -12118,7 +11855,7 @@ class CombineMetricsMultiDfsDialog(widgets.QBaseDialog):
             self, 'Empty new measurement name', txt
         )
 
-class CombineMetricsMultiDfsSummaryDialog(widgets.QBaseDialog):
+class CombineMetricsMultiDfsSummaryDialog(QBaseDialog):
     sigLoadAdditionalAcdcDf = Signal()
 
     def __init__(
@@ -12381,7 +12118,7 @@ class CombineMetricsMultiDfsSummaryDialog(widgets.QBaseDialog):
     def showEvent(self, event) -> None:
         self.resize(int(self.width()*2), self.height())
 
-class ShortcutEditorDialog(widgets.QBaseDialog):
+class ShortcutEditorDialog(QBaseDialog):
     def __init__(self, widgetsWithShortcut: dict, parent=None):
         self.cancel = True
         super().__init__(parent)
@@ -12451,7 +12188,7 @@ class ShortcutEditorDialog(widgets.QBaseDialog):
         self.resize(int(self.width()*1.2), self.height())
         self.move(self.x(), 100)
 
-class SelectAcdcDfVersionToRestore(widgets.QBaseDialog):
+class SelectAcdcDfVersionToRestore(QBaseDialog):
     def __init__(self, posData, parent=None):
         super().__init__(parent=parent)
         
@@ -12562,7 +12299,7 @@ class SelectAcdcDfVersionToRestore(widgets.QBaseDialog):
             item = otherListBox.item(i)
             item.setSelected(False)
 
-class ChangeUserProfileFolderPathDialog(widgets.QBaseDialog):
+class ChangeUserProfileFolderPathDialog(QBaseDialog):
     def __init__(self, posData, parent=None):
         super().__init__(parent=parent)
         
@@ -12670,7 +12407,7 @@ class SelectFeaturesRange:
         self.selectButton.setText(selectedMetricName)
         self.featureGroup = selectedMetricGroup
 
-class SelectFeaturesRangeDialog(widgets.QBaseDialog):
+class SelectFeaturesRangeDialog(QBaseDialog):
     sigValueChanged = Signal(object)
     
     def __init__(self, posData=None, parent=None, force_postprocess_2D=False):
@@ -12836,7 +12573,7 @@ def get_existing_directory(allow_images_path=True, **kwargs):
         msg = widgets.myMessageBox()
         msg.warning(kwargs['parent'], 'Cannot save here', txt)
 
-class ScaleBarPropertiesDialog(widgets.QBaseDialog):
+class ScaleBarPropertiesDialog(QBaseDialog):
     sigValueChanged = Signal(object)
     
     def __init__(
@@ -13062,7 +12799,7 @@ class ScaleBarPropertiesDialog(widgets.QBaseDialog):
         self.cancel = False
         self.close()
 
-class SetColumnNamesDialog(widgets.QBaseDialog):
+class SetColumnNamesDialog(QBaseDialog):
     def __init__(
             self, columnNames, categories, 
             optionalCategories=None, parent=None
@@ -13158,7 +12895,7 @@ class SetColumnNamesDialog(widgets.QBaseDialog):
         self.cancel = False
         self.close()
 
-class CombineFeaturesCalculator(widgets.QBaseDialog):
+class CombineFeaturesCalculator(QBaseDialog):
     sigOk = Signal(object)
     
     def __init__(
@@ -13478,3 +13215,54 @@ class CombineFeaturesCalculator(widgets.QBaseDialog):
             self.equationColNames.remove(clearedText)
         if clearedText in self.channelLessColnames:
             self.channelLessColnames.remove(clearedText)
+
+class QInput(QBaseDialog):
+    def __init__(self, parent=None, title='Input'):
+        self.cancel = True
+        self.allowEmpty = True
+
+        super().__init__(parent)
+
+        self.setWindowTitle(title)
+
+        self.mainLayout = QVBoxLayout()
+
+        self.infoLabel = QLabel()
+        self.mainLayout.addWidget(self.infoLabel)
+
+        promptLayout = QHBoxLayout()
+        self.promptLabel = QLabel()
+        promptLayout.addWidget(self.promptLabel)
+        self.lineEdit = QLineEdit()
+        promptLayout.addWidget(self.lineEdit)
+
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+
+        self.mainLayout.addLayout(promptLayout)
+        self.mainLayout.addSpacing(20)
+        self.mainLayout.addLayout(buttonsLayout)
+
+        self.buttonsLayout = buttonsLayout
+
+        self.setFont(font)
+        self.setLayout(self.mainLayout)
+    
+    def askText(self, prompt, infoText='', allowEmpty=False):
+        self.allowEmpty = allowEmpty
+        if infoText:
+            infoText = f'{infoText}<br>'
+            self.infoLabel.setText(html_utils.paragraph(infoText))
+        self.promptLabel.setText(prompt)
+        self.exec_(resizeWidthFactor=1.5)
+
+    def ok_cb(self):
+        self.answer = self.lineEdit.text()
+        if not self.allowEmpty and not self.answer:
+            msg = widgets.myMessageBox(showCentered=False)
+            msg.critical(self, 'Empty', 'Entry cannot be empty.')
+            return
+        self.cancel = False
+        self.close()

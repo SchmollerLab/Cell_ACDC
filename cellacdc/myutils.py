@@ -476,8 +476,8 @@ def install_java():
         subprocess.check_call(['javac', '-version'])
         return False
     except Exception as e:
-        from . import apps
-        win = apps.installJavaDialog()
+        from . import widgets
+        win = widgets.installJavaDialog()
         win.exec_()
         return win.clickedButton == win.cancelButton
 

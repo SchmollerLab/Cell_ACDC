@@ -12894,7 +12894,7 @@ class guiWin(QMainWindow):
     @exception_handler
     def repeatTrackingVideo(self):
         posData = self.data[self.pos_i]
-        win = apps.selectTrackerGUI(
+        win = widgets.selectTrackerGUI(
             posData.SizeT, currentFrameNo=posData.frame_i+1
         )
         win.exec_()
