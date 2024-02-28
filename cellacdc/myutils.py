@@ -320,6 +320,7 @@ def getMostRecentPath():
 def addToRecentPaths(exp_path, logger=None):
     if not os.path.exists(exp_path):
         return
+    exp_path = exp_path.replace('\\', '/')
     if os.path.exists(recentPaths_path):
         try:
             df = pd.read_csv(recentPaths_path, index_col='index')

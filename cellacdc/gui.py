@@ -1083,6 +1083,9 @@ class guiWin(QMainWindow):
         
         if os.path.exists(recent_paths_path):
             df = pd.read_csv(recent_paths_path, index_col='index')
+            df['path'] = df['path'].str.replace('\\', '/')
+            df = df.drop_duplicates(subset=['path'])
+            df.to_csv(recent_paths_path)
             if 'opened_last_on' in df.columns:
                 df = df.sort_values('opened_last_on', ascending=False)
             recentPaths = df['path'].to_list()
