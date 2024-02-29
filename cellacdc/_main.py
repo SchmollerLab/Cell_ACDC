@@ -1476,13 +1476,11 @@ class mainWin(QMainWindow):
         aicsimageio_href = html_utils.href_tag('<b>AICSImageIO</b>', aicsimageio_url)
         issues_href = f'<a href="{issues_url}">GitHub page</a>'
         txt = html_utils.paragraph(f"""
-            Cell-ACDC can use the {bioformats_href} or the {aicsimageio_href}  
-            libraries to read microscopy files.<br><br>
+            To process microsocpy files, Cell-ACDC uses the {bioformats_href}.<br><br>
             <b>Bio-Formats requires Java</b> and a python package called <code>javabridge</code>,<br>
             that will be automatically installed if missing.<br><br>
             We recommend using Bio-Formats, since it can read the metadata of the file,<br> 
             such as pixel size, numerical aperture etc.<br><br>
-            If <b>Bio-Formats fails, try using AICSImageIO</b>.<br><br>
             Alternatively, if you <b>already pre-processed your microsocpy files into .tif 
             files</b>,<br>
             you can choose to simply re-structure them into the Cell-ACDC compatible 
