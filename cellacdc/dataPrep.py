@@ -794,6 +794,9 @@ class dataPrepWin(QMainWindow):
                 event.ignore()
                 return
         
+        if not hasattr(posData, 'cropROIs'):
+            return
+        
         if posData.cropROIs is None:
             return
         
@@ -1758,7 +1761,7 @@ class dataPrepWin(QMainWindow):
                 if msg.cancel:
                     self.cropAction.setEnabled(True)
                     self.titleLabel.setText('Process aborted', color='w')
-                    break
+                    return
                 if yes == msg.clickedButton:
                     doZip = True
             if doZip:
@@ -1767,27 +1770,27 @@ class dataPrepWin(QMainWindow):
             success = self.alignData(self.user_ch_name, posData)
             if not success:
                 self.titleLabel.setText('Data prep cancelled.', color='r')
-                break
+                return
             if posData.SizeZ>1:
                 posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
-        else:
-            # For loop did not break, proceed with the rest
-            self.update_img()
-            self.logger.info('Done.')
-            self.addROIs()
-            self.saveROIcoords(False, self.data[self.pos_i])
-            self.saveBkgrROIs(self.data[self.pos_i])
-            self.cropAction.setEnabled(True)
-            if posData.SizeZ>1:
-                self.cropZaction.setEnabled(True)
-            txt = (
-                'Data successfully prepped. You can now crop the images or '
-                'place the background ROIs, or close the program'
-            )
-            self.titleLabel.setText(txt, color='w')
-            msg = widgets.myMessageBox(wrapText=False)
-            txt = html_utils.paragraph(txt)
-            msg.information(self, 'Dataprep completed', txt)
+
+        # For loop did not break, proceed with the rest
+        self.update_img()
+        self.logger.info('Done.')
+        self.addROIs()
+        self.saveROIcoords(False, self.data[self.pos_i])
+        self.saveBkgrROIs(self.data[self.pos_i])
+        self.cropAction.setEnabled(True)
+        if posData.SizeZ>1:
+            self.cropZaction.setEnabled(True)
+        txt = (
+            'Data successfully prepped. You can now crop the images or '
+            'place the background ROIs, or close the program'
+        )
+        self.titleLabel.setText(txt, color='w')
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(txt)
+        msg.information(self, 'Dataprep completed', txt)
 
     def setStandardRoiShape(self, text):
         posData = self.data[self.pos_i]
