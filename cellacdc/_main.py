@@ -1491,9 +1491,9 @@ class mainWin(QMainWindow):
             will be happy to help you out.<br><br>
             How do you want to proceed?          
         """)
-        useAICSImageIO = QPushButton(
-            QIcon(':AICS_logo.svg'), ' Use AICSImageIO ', msg
-        )
+        # useAICSImageIO = QPushButton(
+        #     QIcon(':AICS_logo.svg'), ' Use AICSImageIO ', msg
+        # )
         useBioFormatsButton = QPushButton(
             QIcon(':ome.svg'), ' Use Bio-Formats ', msg
         )
