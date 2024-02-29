@@ -1503,7 +1503,10 @@ class mainWin(QMainWindow):
         msg.question(
             self, 'How to structure files', txt, 
             buttonsTexts=(
-                'Cancel', useBioFormatsButton, useAICSImageIO, restructButton
+                'Cancel', 
+                useBioFormatsButton, 
+                # useAICSImageIO, 
+                restructButton
             )
         )
         if msg.cancel:
