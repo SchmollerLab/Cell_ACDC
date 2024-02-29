@@ -77,13 +77,21 @@ Install stable version
 
        .. tabs::
 
-           .. tab:: Windows
+            .. tab:: Windows
 
-               .. figure:: images/conda_activate_acdc_windows.png
-                   :width: 100%
+                .. figure:: ../images/conda_activate_acdc_windows.png
+                    :width: 100%
 
-                   Anaconda Prompt after activating the ``acdc`` environment 
-                   with the command ``conda activate acdc``.
+                    Anaconda Prompt after activating the ``acdc`` environment 
+                    with the command ``conda activate acdc``.
+            
+            .. tab:: macOS
+
+                .. figure:: ../images/conda_activate_acdc_macOS.png
+                    :width: 100%
+
+                    Terminal app after activating the ``acdc`` environment 
+                    with the command ``conda activate acdc``.
 
 
 6. **Update pip** with the following command:
@@ -184,13 +192,21 @@ Install latest version
 
        .. tabs::
 
-           .. tab:: Windows
+            .. tab:: Windows
 
-               .. figure:: images/conda_activate_acdc_windows.png
-                   :width: 100%
+                .. figure:: ../images/conda_activate_acdc_windows.png
+                    :width: 100%
 
-                   Anaconda Prompt after activating the ``acdc`` environment 
-                   with the command ``conda activate acdc``.
+                    Anaconda Prompt after activating the ``acdc`` environment 
+                    with the command ``conda activate acdc``.
+            
+            .. tab:: macOS
+
+                .. figure:: ../images/conda_activate_acdc_macOS.png
+                    :width: 100%
+
+                    Terminal app after activating the ``acdc`` environment 
+                    with the command ``conda activate acdc``.
 
 
 6. **Update pip** with the following command:
@@ -324,13 +340,21 @@ If you want to try out experimental features (and, if you have time, maybe repor
 
        .. tabs::
 
-           .. tab:: Windows
+            .. tab:: Windows
 
-               .. figure:: images/conda_activate_acdc_windows.png
-                   :width: 100%
+                .. figure:: ../images/conda_activate_acdc_windows.png
+                    :width: 100%
 
-                   Anaconda Prompt after activating the ``acdc`` environment 
-                   with the command ``conda activate acdc``.
+                    Anaconda Prompt after activating the ``acdc`` environment 
+                    with the command ``conda activate acdc``.
+            
+            .. tab:: macOS
+
+                .. figure:: ../images/conda_activate_acdc_macOS.png
+                    :width: 100%
+
+                    Terminal app after activating the ``acdc`` environment 
+                    with the command ``conda activate acdc``.
 
 8. **Update pip** with the following command:
    
