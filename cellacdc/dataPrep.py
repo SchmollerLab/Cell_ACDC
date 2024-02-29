@@ -121,7 +121,7 @@ class dataPrepWin(QMainWindow):
         self.cropZtool = None
         self.AutoPilotProfile = autopilot.AutoPilotProfile()
         self.AutoPilot = None
-        self.dataIsLoaded = False
+        self.isDataLoaded = False
 
         # When we load dataprep from other modules we usually disable
         # start because we only want to select the z-slice
@@ -417,7 +417,7 @@ class dataPrepWin(QMainWindow):
             pass
     
     def loadPosTriggered(self):
-        if not self.dataIsLoaded:
+        if not self.isDataLoaded:
             return
         
         self.startAutomaticLoadingPos()
@@ -2272,7 +2272,7 @@ class dataPrepWin(QMainWindow):
 
     def initLoading(self):
         self.progressWin = None
-        self.dataIsLoaded = False
+        self.isDataLoaded = False
         # Remove all items from a previous session if open is pressed again
         self.removeAllItems()
         self.gui_addPlotItems()
@@ -2402,7 +2402,7 @@ class dataPrepWin(QMainWindow):
         self.loadFiles(exp_path, user_ch_file_paths, user_ch_name)
         self.setCenterAlignmentTitle()
 
-        self.dataIsLoaded = True
+        self.isDataLoaded = True
 
     def setFontSizeROIlabels(self):
         Y, X = self.img.image.shape

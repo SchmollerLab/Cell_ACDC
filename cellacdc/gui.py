@@ -971,7 +971,7 @@ class guiWin(QMainWindow):
         self.ccaTableWin = None
         self.customAnnotButton = None
         self.ccaCheckerRunning = False
-        self.dataIsLoaded = False
+        self.isDataLoaded = False
         self.highlightedID = 0
         self.hoverLabelID = 0
         self.expandingID = -1
@@ -1210,7 +1210,7 @@ class guiWin(QMainWindow):
             )
 
             autoActivate = (
-                self.dataIsLoaded and not
+                self.isDataLoaded and not
                 overlap and not
                 posData.disableAutoActivateViewerWindow
             )
@@ -1244,7 +1244,7 @@ class guiWin(QMainWindow):
             )
 
             autoActivate = (
-                self.dataIsLoaded and not
+                self.isDataLoaded and not
                 overlap and not
                 posData.disableAutoActivateViewerWindow
             )
@@ -1405,6 +1405,8 @@ class guiWin(QMainWindow):
         self.settingsMenu = QMenu("Settings", self)
         menuBar.addMenu(self.settingsMenu)
         self.settingsMenu.addAction(self.toggleColorSchemeAction)
+        self.settingsMenu.addAction(self.pxModeAction)
+        self.settingsMenu.addAction(self.highLowResAction)
         self.settingsMenu.addAction(self.editShortcutsAction)
         self.settingsMenu.addAction(self.showMirroredCursorAction)
         self.settingsMenu.addSeparator()
@@ -1892,7 +1894,7 @@ class guiWin(QMainWindow):
         if not hasattr(self, 'data'):
             return
         
-        if not self.dataIsLoaded:
+        if not self.isDataLoaded:
             return 
         
         if self.autoSaveActiveWorkers:
@@ -2721,9 +2723,38 @@ class guiWin(QMainWindow):
         self.reInitCcaAction.setVisible(False)
 
         self.toggleColorSchemeAction = QAction(
-            'Switch to light mode'
+            'Switch to light theme'
         )
         self.gui_updateSwitchColorSchemeActionText()
+        
+        self.pxModeAction = widgets.CheckableAction(
+            'Fixed size text annotations'
+        )
+        self.pxModeAction.setChecked(True)
+        pxModeTooltip = (
+            'When the text annotations are with fixed size they scale relative '
+            'to the object when zooming in/out (fixed size in pixels).\n'
+            'This is typically faster to render, but it makes annotations '
+            'smaller/larger when zooming in/out, respectively.\n\n'
+            'Try activating it to speed up the annotation of many objects '
+            'in high resolution mode.\n\n'
+            'After activating it, you might need to increase the font size '
+            'from the menu on the top menubar `Edit --> Font size`.'
+        )
+        self.pxModeAction.setToolTip(pxModeTooltip)
+        
+        self.highLowResAction = widgets.CheckableAction(
+            'High resolution text annotations'
+        )
+        self.widgetsWithShortcut['High resolution'] = self.highLowResAction
+        self.highLowResAction.setShortcut('Y')
+        highLowResTooltip = (
+            'Resolution of the text annotations. High resolution results '
+            'in slower update of the annotations.\n'
+            'Not recommended with a number of segmented objects > 500.\n\n'
+            'Shortcut: "Y" key'
+        )
+        self.highLowResAction.setToolTip(highLowResTooltip)
         
         self.editShortcutsAction = QAction(
             'Customize keyboard shortcuts...', self
@@ -2913,9 +2944,9 @@ class guiWin(QMainWindow):
     
     def gui_updateSwitchColorSchemeActionText(self):
         if self._colorScheme == 'dark':
-            txt = 'Switch to light mode'
+            txt = 'Switch to light theme'
         else:
-            txt = 'Switch to dark mode'
+            txt = 'Switch to dark theme'
         self.toggleColorSchemeAction.setText(txt)
 
     def gui_connectActions(self):
@@ -2934,7 +2965,7 @@ class guiWin(QMainWindow):
             self.ccaIntegrCheckerToggled
         )
         self.annotLostObjsToggle.toggled.connect(self.annotLostObjsToggled)
-        self.highLowResToggle.clicked.connect(self.highLoweResClicked)
+        self.highLowResAction.clicked.connect(self.highLowResToggled)
         self.showInExplorerAction.triggered.connect(self.showInExplorer_cb)
         self.exitAction.triggered.connect(self.close)
         self.undoAction.triggered.connect(self.undo)
@@ -2943,6 +2974,7 @@ class guiWin(QMainWindow):
         self.prevAction.triggered.connect(self.prevActionTriggered)
 
         self.toggleColorSchemeAction.triggered.connect(self.onToggleColorScheme)
+        self.pxModeAction.clicked.connect(self.pxModeActionToggled)
         self.editShortcutsAction.triggered.connect(self.editShortcuts_cb)
         self.showMirroredCursorAction.toggled.connect(
             self.showMirroredCursorToggled
@@ -3317,11 +3349,9 @@ class guiWin(QMainWindow):
         label = QLabel('Cc annot. checker')
         label.setToolTip(ccaIntegrCheckerToggleTooltip)
         layout.addRow(label, self.ccaIntegrCheckerToggle)
-        self._isCcaIntegrityCheckerDisabled = True
         if 'is_cca_integrity_checker_activated' in self.df_settings.index:
             idx = 'is_cca_integrity_checker_activated'
             val = int(self.df_settings.at[idx, 'value'])
-            self._isCcaIntegrityCheckerDisabled = not val
             self.ccaIntegrCheckerToggle.setChecked(not val)
         
         self.annotLostObjsToggle = widgets.Toggle()
@@ -3334,20 +3364,6 @@ class guiWin(QMainWindow):
         label.setToolTip(annotLostObjsToggleTooltip)
         layout.addRow(label, self.annotLostObjsToggle)
 
-        self.highLowResToggle = widgets.Toggle()
-        self.widgetsWithShortcut['High resolution'] = self.highLowResToggle
-        self.highLowResToggle.setShortcut('Y')
-        highLowResTooltip = (
-            'Resolution of the text annotations. High resolution results '
-            'in slower update of the annotations.\n'
-            'Not recommended with a number of segmented objects > 500.\n\n'
-            'Shortcut: "Y" key'
-        )
-        highResLabel = QLabel('High resolution')
-        highResLabel.setToolTip(highLowResTooltip)
-        self.highLowResToggle.setToolTip(highLowResTooltip)
-        layout.addRow(highResLabel, self.highLowResToggle)
-
         self.realTimeTrackingToggle = widgets.Toggle()
         self.realTimeTrackingToggle.setChecked(True)
         self.realTimeTrackingToggle.setDisabled(True)
@@ -3355,25 +3371,6 @@ class guiWin(QMainWindow):
         label.setDisabled(True)
         self.realTimeTrackingToggle.label = label
         layout.addRow(label, self.realTimeTrackingToggle)
-
-        self.pxModeToggle = widgets.Toggle()
-        self.pxModeToggle.setChecked(True)
-        pxModeTooltip = (
-            'With "Pixel mode" active, the text annotations scales relative '
-            'to the object when zooming in/out (fixed size in pixels).\n'
-            'This is typically faster to render, but it makes annotations '
-            'smaller/larger when zooming in/out, respectively.\n\n'
-            'Try activating it to speed up the annotation of many objects '
-            'in high resolution mode.\n\n'
-            'After activating it, you might need to increase the font size '
-            'from the menu on the top menubar `Edit --> Font size`.'
-        )
-        pxModeLabel = QLabel('Pixel mode')
-        self.pxModeToggle.label = pxModeLabel
-        pxModeLabel.setToolTip(pxModeTooltip)
-        self.pxModeToggle.setToolTip(pxModeTooltip)
-        self.pxModeToggle.clicked.connect(self.pxModeToggled)
-        layout.addRow(pxModeLabel, self.pxModeToggle)
 
         # Font size
         self.fontSizeSpinBox = widgets.SpinBox()
@@ -4233,7 +4230,7 @@ class guiWin(QMainWindow):
         if not allIDs:
             allIDs = list(range(100))
         
-        self.highLowResToggle.setChecked(True)
+        self.highLowResAction.setChecked(True)
         numItems = len(allIDs)
         if numItems > 1500:
             cancel, switchToLowRes = _warnings.warnTooManyItems(
@@ -4245,10 +4242,10 @@ class guiWin(QMainWindow):
                 self.loadingDataAborted()
                 return
             if switchToLowRes:
-                self.highLowResToggle.setChecked(False)
+                self.highLowResAction.setChecked(False)
             else:
                 # Many items requires pxMode active to be fast enough
-                self.pxModeToggle.setChecked(True)
+                self.pxModeAction.setChecked(True)
 
         self.logger.info(f'Creating graphical items...')
 
@@ -4299,8 +4296,8 @@ class guiWin(QMainWindow):
     
     def gui_createTextAnnotItems(self, allIDs):
         self.textAnnot = {}
-        isHighResolution = self.highLowResToggle.isChecked()
-        pxMode = self.pxModeToggle.isChecked()
+        isHighResolution = self.highLowResAction.isChecked()
+        pxMode = self.pxModeAction.isChecked()
         for ax in range(2):
             ax_textAnnot = annotate.TextAnnotations()
             ax_textAnnot.initFonts(self.fontSize)
@@ -7699,12 +7696,19 @@ class guiWin(QMainWindow):
         else:
             self.labelRoiCircularRadiusSpinbox.setDisabled(True)
     
-    def pxModeToggled(self, checked):
-        if self.highLowResToggle.isChecked():
+    def pxModeActionToggled(self, checked):
+        self.df_settings.at['pxMode', 'value'] = int(checked)
+        self.df_settings.to_csv(self.settings_csv_path)
+        
+        if not self.isDataLoaded:
+            return
+        
+        if self.highLowResAction.isChecked():
             for ax in range(2):
                 self.textAnnot[ax].setPxMode(checked)
-        self.df_settings.at['pxMode', 'value'] = int(checked)
+        
         self.updateAllImages()
+        printl('clicked')
 
     def relabelSequentialCallback(self):
         mode = str(self.modeComboBox.currentText())
@@ -10698,7 +10702,7 @@ class guiWin(QMainWindow):
         allIDs = posData.allIDs
         for ax in range(2):
             self.textAnnot[ax].changeFontSize(self.fontSize)
-        if self.highLowResToggle.isChecked():
+        if self.highLowResAction.isChecked():
             self.setAllTextAnnotations()
         else:
             self.updateAllImages()
@@ -12171,7 +12175,7 @@ class guiWin(QMainWindow):
             posData = self.data[self.pos_i]
             printl(self.labelRoiTrangeCheckbox.findChild(QAction).isChecked())
         
-        if not self.dataIsLoaded:
+        if not self.isDataLoaded:
             self.logger.info(
                 '[WARNING]: Data not loaded yet. '
                 'Key pressing events are not connected.'
@@ -15425,7 +15429,7 @@ class guiWin(QMainWindow):
 
         QTimer.singleShot(200, self.resizeGui)
 
-        self.dataIsLoaded = True
+        self.isDataLoaded = True
         self.isDataLoading = False
         self.gui_createAutoSaveWorker()
     
@@ -21425,7 +21429,7 @@ class guiWin(QMainWindow):
             self.ax1_lostObjScatterItem.setSize(self.contLineWeight+2)
     
     def annotLostObjsToggled(self, checked):
-        if not self.dataIsLoaded:
+        if not self.isDataLoaded:
             return
         self.updateAllImages()
 
@@ -22199,7 +22203,7 @@ class guiWin(QMainWindow):
         self.zKeptDown = False
         self.askRepeatSegment3D = True
         self.askZrangeSegm3D = True
-        self.dataIsLoaded = False
+        self.isDataLoaded = False
         self.retainSizeLutItems = False
         self.setMeasWinState = None
         self.showPropsDockButton.setDisabled(True)
@@ -22774,7 +22778,7 @@ class guiWin(QMainWindow):
         return fluo_path, filename
     
     def loadPosTriggered(self):
-        if not self.dataIsLoaded:
+        if not self.isDataLoaded:
             return
         
         self.startAutomaticLoadingPos()
@@ -22795,10 +22799,10 @@ class guiWin(QMainWindow):
         if not hasattr(self, 'data'):
             return
         
-        if not self.dataIsLoaded:
+        if not self.isDataLoaded:
             return
         
-        if self._isCcaIntegrityCheckerDisabled:
+        if not self.ccaIntegrCheckerToggle.isChecked():
             return
         
         ccaCheckerThread = QThread()
@@ -22831,7 +22835,6 @@ class guiWin(QMainWindow):
         self.logger.info('Cell cycle annotations integrity checker started.')
     
     def disableCcaIntegrityChecker(self):
-        self._isCcaIntegrityCheckerDisabled = True
         self.stopCcaIntegrityCheckerWorker()
     
     def stopCcaIntegrityCheckerWorker(self):
@@ -24139,11 +24142,14 @@ class guiWin(QMainWindow):
         # self.worker.waitCond.wakeAll()
     
     def changeTextResolution(self):
-        mode = 'high' if self.highLowResToggle.isChecked() else 'low'
+        mode = 'high' if self.highLowResAction.isChecked() else 'low'
         self.logger.info(
             f'Switching to {mode} for the text annnotations...'
         )
-        self.pxModeToggle.setDisabled(not self.highLowResToggle.isChecked())
+        self.pxModeAction.setDisabled(not self.highLowResAction.isChecked())
+        if not self.isDataLoaded:
+            return
+        
         self.setAllIDs()
         posData = self.data[self.pos_i]
         allIDs = posData.allIDs
@@ -24152,7 +24158,7 @@ class guiWin(QMainWindow):
         self.textAnnot[1].changeResolution(mode, allIDs, self.ax2, img_shape)
         self.updateAllImages()
     
-    def highLoweResClicked(self, clicked=True):
+    def highLowResToggled(self, clicked=True):
         self.changeTextResolution()
     
     def autoSaveClose(self):
@@ -24174,7 +24180,6 @@ class guiWin(QMainWindow):
         #     self.gui_createAutoSaveWorker()
     
     def ccaIntegrCheckerToggled(self, checked):
-        self._isCcaIntegrityCheckerDisabled = not checked
         self.df_settings.at['is_cca_integrity_checker_activated', 'value'] = (
             int(checked)
         )
@@ -24316,7 +24321,7 @@ class guiWin(QMainWindow):
             return True
         if self.titleLabel.text == 'Saved!':
             return True
-        if not self.dataIsLoaded:
+        if not self.isDataLoaded:
             return True
         
         msg = widgets.myMessageBox()

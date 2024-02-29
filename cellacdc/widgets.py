@@ -1352,7 +1352,7 @@ class ExpandableListBox(QComboBox):
             center=True
         )
 
-        self.listW = apps.QDialogListbox(
+        self.listW = QDialogListbox(
             'Select Positions to save', infoTxt,
             [], multiSelection=True, parent=self
         )
@@ -8090,3 +8090,20 @@ class selectTrackerGUI(QDialogListbox):
             self.startFrame = self.selectFramesGroupbox.startFrame_SB.value()
             self.stopFrame = self.selectFramesGroupbox.stopFrame_SB.value()
             super().ok_cb(event)
+
+class CheckableAction(QAction):
+    clicked = Signal(bool)
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        
+        self.setCheckable(True)
+        self.toggled.connect(self.emitClicked)
+    
+    def emitClicked(self, checked):
+        self.clicked.emit(checked)
+    
+    def setChecked(self, checked):
+        self.toggled.disconnect()
+        super().setChecked(checked)
+        self.toggled.connect(self.emitClicked)
