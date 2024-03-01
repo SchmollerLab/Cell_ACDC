@@ -30,9 +30,7 @@ def matplotlib_cmap_to_lut(
         cmap = plt.get_cmap(cmap)
     
     rgbs = [cmap(i) for i in np.linspace(0,1,n_colors)]
-    lut = np.zeros((256, 4), dtype=np.uint8)
-    for i, rgb in enumerate(rgbs):
-        lut[i] = [int(c*255) for c in rgb]
+    lut = (np.array(rgbs)*255).astype(np.uint8)
     return lut
 
 def imshow(

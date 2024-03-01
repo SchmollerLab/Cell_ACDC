@@ -5123,7 +5123,7 @@ class QDialogMetadata(QDialog):
             )
             if disableToggle:
                 self.isSegm3Dtoggle.setDisabled(True)
-        self.isSegm3DLabel = QLabel('3D segmentation (z-stacks)')
+        self.isSegm3DLabel = QLabel('Work with 3D segmentation masks (z-stack)')
         gridLayout.addWidget(
             self.isSegm3DLabel, row, 0, alignment=Qt.AlignRight
         )

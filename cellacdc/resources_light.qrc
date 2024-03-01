@@ -156,6 +156,7 @@
     <file alias="toolbar.png">resources/screenshots/toolbar.png</file>
     <file alias="toolTip.png">resources/screenshots/toolTip.png</file>
     <file alias="visualcpp.png">resources/screenshots/visual_studio_settings.png</file>
+    <file alias="toggle_3D_screenshot.png">resources/screenshots/toggle_3D_screenshot.png</file>
     <file alias="Ubuntu-Bold.ttf">resources/fonts/Ubuntu-Bold.ttf</file>
     <file alias="Ubuntu-Regular.ttf">resources/fonts/Ubuntu-Regular.ttf</file>
     <file alias="Ubuntu-Italic.ttf">resources/fonts/Ubuntu-Italic.ttf</file>

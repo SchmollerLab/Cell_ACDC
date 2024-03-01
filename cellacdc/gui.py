@@ -2555,7 +2555,7 @@ class guiWin(QMainWindow):
         self.segmNdimIndicator = widgets.ToolButtonTextIcon(text='')
         self.segmNdimIndicator.setCheckable(True)
         self.segmNdimIndicator.setChecked(True)
-        self.segmNdimIndicator.setDisabled(True)        
+        # self.segmNdimIndicator.setDisabled(True)        
         
         if self.debug:
             self.createEmptyDataAction = QAction(self)
@@ -2563,23 +2563,23 @@ class guiWin(QMainWindow):
             
         
         self.newAction = QAction(self)
-        self.newAction.setText("&New")
+        self.newAction.setText("&New Segmentation File...")
         self.newAction.setIcon(QIcon(":file-new.svg"))
         self.openFolderAction = QAction(
-            QIcon(":folder-open.svg"), "&Load folder...", self
+            QIcon(":folder-open.svg"), "&Load Folder...", self
         )
         self.openFileAction = QAction(
-            QIcon(":image.svg"),"&Open image/video file...", self
+            QIcon(":image.svg"),"&Open Image/Video File...", self
         )
         self.manageVersionsAction = QAction(
-            QIcon(":manage_versions.svg"), "Load older versions...", self
+            QIcon(":manage_versions.svg"), "Load Older Versions...", self
         )
         self.manageVersionsAction.setDisabled(True)
         self.saveAction = QAction(QIcon(":file-save.svg"), "Save", self)
         self.saveAsAction = QAction("Save as...", self)
-        self.quickSaveAction = QAction("Save only segm. file", self)
-        self.loadFluoAction = QAction("Load fluorescence images...", self)
-        self.loadPosAction = QAction("Load different Position...", self)
+        self.quickSaveAction = QAction("Save Only Segmentation Masks", self)
+        self.loadFluoAction = QAction("Load Fluorescence Images...", self)
+        self.loadPosAction = QAction("Load Different Position...", self)
         # self.reloadAction = QAction(
         #     QIcon(":reload.svg"), "Reload segmentation file", self
         # )
@@ -2953,6 +2953,7 @@ class guiWin(QMainWindow):
         # Connect File actions
         if self.debug:
             self.createEmptyDataAction.triggered.connect(self._createEmptyData)
+        self.segmNdimIndicator.clicked.connect(self.segmNdimIndicatorClicked)
         self.newAction.triggered.connect(self.newFile)
         self.openFolderAction.triggered.connect(self.openFolder)
         self.openFileAction.triggered.connect(self.openFile)
@@ -21959,6 +21960,36 @@ class guiWin(QMainWindow):
         self.isNewFile = True
         self._openFolder(exp_path=images_path)
 
+    
+    def segmNdimIndicatorClicked(self):
+        ndimText = self.segmNdimIndicator.text()
+        if ndimText == '2D':
+            alternativeNdimText = '3D'
+            toggleText = 'activate'
+        else:
+            alternativeNdimText = '2D'
+            toggleText = 'de-activate'
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(f"""
+            This indicator shows that you are working with {ndimText} 
+            segmentation masks.<br><br>
+            
+            If instead, you want to work with {alternativeNdimText} segmentation, 
+            you need to initialize a new segmentation file.<br><br>
+            
+            To do so, go the menu on the top menubar <code>File --> 
+            New Segmentation File...</code> and,<br>
+            at the dialog where you insert the metadata (Number of z-slices, 
+            pixel size, etc.),<br> 
+            <b>{toggleText}</b> the parameter called <code>Work with 3D 
+            segmentation masks (z-stack)</code><br> 
+            as indicated in this screenshot:<br>
+        """)
+        msg.information(
+            self, 'Segmentation nmber of dimensions info', txt,
+            image_paths=':toggle_3D_screenshot.png'
+        )
+        self.segmNdimIndicator.setChecked(True)
     
     def newFile(self):
         self.newSegmEndName = ''

@@ -59,6 +59,7 @@ from . import html_path
 from . import _palettes
 from . import load
 from . import apps
+from . import plot
 from .regex import float_regex
 
 LINEEDIT_WARNING_STYLESHEET = _palettes.lineedit_warning_stylesheet()
@@ -2211,6 +2212,7 @@ class myMessageBox(QDialog):
         self.widgets = []
         self.layouts = []
         self.labels = []
+        self._pixmapLabels = []
         self.detailsTextWidget = None
         self.showInFileManagButton = None
         self.visibleDetails = False
@@ -2240,6 +2242,13 @@ class myMessageBox(QDialog):
 
         self.layout.addWidget(label, 0, 0, alignment=Qt.AlignTop)
 
+    def addImage(self, image_path):
+        pixmap = QPixmap(image_path)
+        label = QLabel()
+        label.setPixmap(pixmap)
+        self.layout.addWidget(label, self.currentRow, 1)
+        self.currentRow += 1
+    
     def addShowInFileManagerButton(self, path, txt=None):
         if txt is None:
             txt = 'Reveal in Finder...' if is_mac else 'Show in Explorer...'
@@ -2487,15 +2496,25 @@ class myMessageBox(QDialog):
             self, parent, title, message, detailsText=None,
             buttonsTexts=None, layouts=None, widgets=None,
             commands=None, path_to_browse=None, browse_button_text=None,
-            url_to_open=None, open_url_button_text='Open url'
+            url_to_open=None, open_url_button_text='Open url', 
+            image_paths=None
         ):
         if parent is not None:
             self.setParent(parent)
         self.setWindowTitle(title)
         self.addText(message)
         if commands is not None:
+            if isinstance(commands, str):
+                commands = (commands,)
             for command in commands:
                 self.addCopiableCommand(command)
+        
+        if image_paths is not None:
+            if isinstance(image_paths, str):
+                image_paths = (image_paths,)
+            for image_path in image_paths:
+                self.addImage(image_path)
+        
         if layouts is not None:
             if myutils.is_iterable(layouts):
                 for layout in layouts:
@@ -6411,7 +6430,43 @@ class ImShowPlotItem(pg.PlotItem):
         self.autoBtn.mode = 'manual'
         self.invertY(True)
         self.setAspectLocked(True)
+        self.addImageItem(kargs.get('imageItem'))
+    
+    def addImageItem(self, imageItem):
+        self.imageItem = imageItem
+        if imageItem is None:
+            return
         
+        self.setupContextMenu()
+        self.addItem(imageItem)
+    
+    def setupContextMenu(self):
+        shuffleCmapAction = QAction('Shuffle colormap', self.vb.menu)
+        shuffleCmapAction.triggered.connect(self.shuffleColormap)
+        self.vb.menu.addAction(shuffleCmapAction)
+        
+        self.resetCmapAction = QAction('Reset colormap', self.vb.menu)
+        self.resetCmapAction.triggered.connect(self.resetColormap)
+        self.vb.menu.addAction(self.resetCmapAction)
+        self.resetCmapAction.setDisabled(True)
+    
+    def shuffleColormap(self):
+        N = self.imageItem._numLevels
+        colors = self.imageItem.lut/255
+        cmap = LinearSegmentedColormap.from_list('shuffled', colors, N=N)
+        lut = plot.matplotlib_cmap_to_lut(cmap, n_colors=N)
+        if not self.resetCmapAction.isEnabled():
+            self._defaultLut = lut.copy()
+        bkgrColor = lut[0].copy()
+        np.random.shuffle(lut)
+        lut[0] = bkgrColor
+        self.imageItem.setLookupTable(lut)
+        self.imageItem.update()
+        self.resetCmapAction.setDisabled(False)
+    
+    def resetColormap(self):
+        self.imageItem.setLookupTable(self._defaultLut)
+    
     def autoBtnClicked(self):
         self.autoRange()
     
@@ -6443,6 +6498,15 @@ class _ImShowImageItem(pg.ImageItem):
                 continue
             
             cursor.setData([], [])
+    
+    def setImage(self, *args, **kwargs):
+        super().setImage(*args, **kwargs)
+        if not args:
+            return
+        image = args[0]
+        self._imageMax = image.max()
+        self._imageMin = image.min()
+        self._numLevels = self._imageMax - self._imageMin
     
     def hoverEvent(self, event):
         if event.isExit():
@@ -6632,7 +6696,7 @@ class ImShow(QBaseWindow):
                 self.PlotItems.append(plot)
 
                 imageItem = _ImShowImageItem(i)
-                plot.addItem(imageItem)
+                plot.addImageItem(imageItem)
                 self.ImageItems.append(imageItem)
                 imageItem.gridPos = (row, col)
                 imageItem.ScrollBars = []
@@ -7399,6 +7463,9 @@ class ToolButtonTextIcon(rightClickToolButton):
     def setText(self, text):
         self._text = text
         self.update()
+    
+    def text(self):
+        return self._text
     
     def paintEvent(self, event):
         QToolButton.paintEvent(self, event)
