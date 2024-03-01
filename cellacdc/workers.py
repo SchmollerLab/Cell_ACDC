@@ -511,9 +511,10 @@ class AutoSaveWorker(QObject):
         self.isPaused = False
         self.dataQ = deque(maxlen=5)
         self.isAutoSaveON = False
+        self.debug = False
     
     def pause(self):
-        if DEBUG:
+        if self.debug:
             self.logger.log('Autosaving is idle.')
         self.mutex.lock()
         self.isPaused = True
@@ -528,7 +529,7 @@ class AutoSaveWorker(QObject):
         self._enqueue(posData)
     
     def _enqueue(self, posData):
-        if DEBUG:
+        if self.debug:
             self.logger.log('Enqueing posData autosave...')
         self.dataQ.append(posData)
         if len(self.dataQ) == 1:
@@ -554,7 +555,7 @@ class AutoSaveWorker(QObject):
                 self.logger.log('Closing autosaving worker...')
                 break
             elif not len(self.dataQ) == 0:
-                if DEBUG:
+                if self.debug:
                     self.logger.log('Autosaving...')
                 data = self.dataQ.pop()
                 try:
@@ -570,7 +571,7 @@ class AutoSaveWorker(QObject):
                 self.pause()
         self.isFinished = True
         self.finished.emit(self)
-        if DEBUG:
+        if self.debug:
             self.logger.log('Autosave finished signal emitted')
     
     def getLastTrackedFrame(self, posData):
@@ -586,7 +587,7 @@ class AutoSaveWorker(QObject):
             return last_tracked_i
     
     def saveData(self, posData):
-        if DEBUG:
+        if self.debug:
             self.logger.log('Started autosaving...')
         
         self.isSaving = True
@@ -655,10 +656,9 @@ class AutoSaveWorker(QObject):
                     acdc_df_li, keys=keys,
                     names=['frame_i', 'time_seconds', 'Cell_ID']
                 )
-                h5_filepath = posData.unsaved_acdc_df_autosave_path
                 self._save_acdc_df(all_frames_acdc_df, posData)
 
-        if DEBUG:
+        if self.debug:
             self.logger.log(f'Autosaving done.')
             self.logger.log(f'Aborted autosaving {self.abortSaving}.')
 
@@ -4498,7 +4498,7 @@ class CcaIntegrityCheckerWorker(QObject):
             if lab is None:
                 break
             
-            cca_df = data_dict.get('cca_df')
+            cca_df = data_dict.get('cca_df_checker')
             if cca_df is None:
                 # There are no annotations at frame_i --> stop
                 break

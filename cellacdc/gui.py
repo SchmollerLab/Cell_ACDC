@@ -17901,7 +17901,7 @@ class guiWin(QMainWindow):
         
         # Store copy for cca integrity worker
         if self.ccaCheckerRunning and cca_df is not None:
-            posData.allData_li[i]['cca_df'] = cca_df.copy()
+            posData.allData_li[i]['cca_df_checker'] = cca_df.copy()
         
         if store_cca_df_copy and cca_df is not None:
             posData.allData_li[i]['cca_df'] = cca_df.copy()

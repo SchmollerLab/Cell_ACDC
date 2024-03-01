@@ -12228,13 +12228,16 @@ class SelectAcdcDfVersionToRestore(QBaseDialog):
                 self.onItemSelectionChanged
             )
         
+        recovery_folderpath = posData.recoveryFolderpath()
+        unsaved_recovery_folderpath = os.path.join(
+            recovery_folderpath, 'never_saved'
+        )
+        self.neverSavedFolderpath = unsaved_recovery_folderpath
+        files = myutils.listdir(unsaved_recovery_folderpath)
+        csv_files = [file for file in files if file.endswith('.csv')]
         self.neverSavedListBox = None
-        if os.path.exists(posData.unsaved_acdc_df_autosave_path):
-            zip_path = posData.unsaved_acdc_df_autosave_path
-            self.neverSavedArchivefilepath = zip_path
-            with zipfile.ZipFile(zip_path, mode='r') as zip:
-                csv_names = natsorted(zip.namelist(), reverse=True)
-            
+        if csv_files:
+            csv_names = natsorted(csv_files)
             keys = [csv_name[:-4] for csv_name in csv_names]
             printl(keys)
             self.neverSavedKeys = keys
@@ -12282,7 +12285,7 @@ class SelectAcdcDfVersionToRestore(QBaseDialog):
                 if item.isSelected():
                     self.selectedTimestamp = item.text()
                     self.selectedKey = self.neverSavedKeys[i]
-                    self.archiveFilePath = self.neverSavedArchivefilepath
+                    self.archiveFilePath = self.neverSavedFolderpath
                     break
         except Exception as e:
             pass

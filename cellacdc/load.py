@@ -578,8 +578,14 @@ def read_acdc_df_from_archive(archive_path, key):
         csv_name = f'{key}.csv'
     else:
         csv_name = key
-    with zipfile.ZipFile(archive_path, 'r') as zip:
-        acdc_df = pd.read_csv(zip.open(csv_name))
+    
+    if archive_path.endswith('.zip'):
+        with zipfile.ZipFile(archive_path, 'r') as zip:
+            acdc_df = pd.read_csv(zip.open(csv_name))
+    else:
+        csv_path = os.path.join(archive_path, f'{key}.csv')
+        acdc_df = pd.read_csv(csv_path)
+        
     acdc_df = _parse_loaded_acdc_df(acdc_df)
     return acdc_df
 
