@@ -1,4 +1,4 @@
-INSTALL_BTRACK = False
+UPGRADE_BTRACK = False
 
 try:
     import btrack
@@ -6,22 +6,15 @@ try:
     version = get_package_version('btrack')  
     minor = version.split('.')[1]
     if int(minor) < 5:
-        INSTALL_BTRACK = True
+        UPGRADE_BTRACK = True
 except Exception as e:
-    INSTALL_BTRACK = True
+    pass
 
-if INSTALL_BTRACK:
-    pkg_name = 'BayesianTracker'
-    import os
-    import sys
-    import subprocess
-    from qtpy.QtWidgets import QMessageBox
-    from cellacdc import myutils
-    cancel = myutils._install_package_msg(pkg_name)
-    if cancel:
-        raise ModuleNotFoundError(
-            f'User aborted {pkg_name} installation'
-        )
-    subprocess.check_call(
-        [sys.executable, '-m', 'pip', 'install', '-U', 'btrack']
-    )
+from cellacdc import myutils
+
+myutils.check_install_package(
+    'Bayesian Tracker',
+    import_pkg_name='btrack',
+    pypi_name='btrack', 
+    force_upgrade=UPGRADE_BTRACK
+)

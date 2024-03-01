@@ -1,3 +1,5 @@
+from collections import defaultdict
+
 import pandas as pd
 import numpy as np
 import trackpy as tp
@@ -16,12 +18,38 @@ class tracker:
     def _set_frame_features(self, lab, frame_i, tp_df):
         rp = skimage.measure.regionprops(lab)
         for obj in rp:
-            yc, xc = obj.centroid
+            if len(obj.centroid) == 2:
+                yc, xc = obj.centroid
+                zc = None
+            else:
+                zc, yc, xc = obj.centroid
             tp_df['x'].append(xc)
             tp_df['y'].append(yc)
+            if zc is not None:
+                tp_df['z'].append(zc)
             tp_df['frame'].append(frame_i)
             tp_df['ID'].append(obj.label)
 
+    def _get_pos_columns(
+            tp_df, PhysicalSizeX, PhysicalSizeY, PhysicalSizeZ,
+        ):
+        is_3D = 'z' in tp_df.columns
+        if PhysicalSizeX == PhysicalSizeY == PhysicalSizeZ:
+            if is_3D:
+                return ['z', 'x', 'y']
+            else:
+                return ['x', 'y']
+        
+        pos_columns = []
+        if is_3D:
+            tp_df['z_um'] = tp_df['x'] * PhysicalSizeX
+            pos_columns.append('z_um')
+            
+        tp_df['x_um'] = tp_df['x'] * PhysicalSizeY
+        tp_df['y_um'] = tp_df['y'] * PhysicalSizeZ
+        pos_columns = [*pos_columns, 'y_um', 'x_um']
+        return pos_columns        
+        
     def track(
             self, segm_video,
             search_range=10.0,
@@ -33,6 +61,9 @@ class tracker:
             link_strategy = 'recursive',
             signals=None, 
             export_to=None,
+            PhysicalSizeX=1.0,
+            PhysicalSizeY=1.0,
+            PhysicalSizeZ=1.0,
             export_to_extension='.csv'
         ):
         # Handle string input for adaptive_stop
@@ -43,10 +74,15 @@ class tracker:
                 adaptive_stop = float(adaptive_stop)
         
         # Build tp DataFrame --> https://soft-matter.github.io/trackpy/v0.5.0/generated/trackpy.link.html#trackpy.link
-        tp_df = {'x': [], 'y': [], 'frame': [], 'ID': []}
+        tp_df = defaultdict(list)
         for frame_i, lab in enumerate(segm_video):
             self._set_frame_features(lab, frame_i, tp_df)
+            
         tp_df = pd.DataFrame(tp_df)
+        
+        pos_columns = self._get_pos_columns(
+            tp_df, PhysicalSizeX, PhysicalSizeY, PhysicalSizeZ,
+        )
 
         # Run tracker
         if dynamic_predictor:
@@ -61,6 +97,7 @@ class tracker:
             adaptive_step=adaptive_step,
             neighbor_strategy=neighbor_strategy,
             link_strategy=link_strategy,
+            pos_columns=pos_columns
         ).set_index('frame')
         
         if export_to is not None:
