@@ -552,6 +552,26 @@ def store_unsaved_acdc_df(recovery_folderpath, df, log_func=printl):
     csv_path = os.path.join(unsaved_recovery_folderpath, csv_name)
     df.to_csv(csv_path)
 
+def get_last_stored_unsaved_acdc_df_filepath(recovery_folderpath):
+    if not os.path.exists(recovery_folderpath):
+        return
+    
+    unsaved_recovery_folderpath = os.path.join(
+        recovery_folderpath, 'never_saved'
+    )
+    if not os.path.exists(unsaved_recovery_folderpath):
+        return
+    
+    files = myutils.listdir(unsaved_recovery_folderpath)
+    csv_files = [file for file in files if file.endswith('.csv')]
+    if not csv_files:
+        return
+    
+    csv_files = natsorted(csv_files)
+    csv_name = csv_files[-1]
+    acdc_df = pd.read_csv(os.path.join(unsaved_recovery_folderpath, csv_name))
+    return os.path.join(unsaved_recovery_folderpath, csv_name)
+
 def get_last_stored_unsaved_acdc_df(recovery_folderpath):
     if not os.path.exists(recovery_folderpath):
         return
@@ -567,6 +587,7 @@ def get_last_stored_unsaved_acdc_df(recovery_folderpath):
     if not csv_files:
         return
     
+    csv_files = natsorted(csv_files)
     csv_name = csv_files[-1]
     acdc_df = pd.read_csv(os.path.join(unsaved_recovery_folderpath, csv_name))
     acdc_df = _parse_loaded_acdc_df(acdc_df)
@@ -1957,10 +1978,17 @@ class loadData:
             cp.write(configfile)
     
     def isRecoveredAcdcDfPresent(self):
-        self.setTempPaths()
-        zip_path = self.unsaved_acdc_df_autosave_path
-        if not os.path.exists(zip_path):
-            return False
+        recovery_folderpath = self.recoveryFolderpath()
+        unsaved_recovery_folderpath = os.path.join(
+            recovery_folderpath, 'never_saved'
+        )
+        if not os.path.exists(unsaved_recovery_folderpath):
+            return
+        
+        files = myutils.listdir(unsaved_recovery_folderpath)
+        csv_files = [file for file in files if file.endswith('.csv')]
+        if not csv_files:
+            return
         
         if not os.path.exists(self.acdc_output_csv_path):
             acdc_df_mtime = 0
@@ -1969,10 +1997,8 @@ class loadData:
         
         acdc_df_mdatetime = datetime.fromtimestamp(acdc_df_mtime)
         
-        with zipfile.ZipFile(zip_path, mode='r') as zip:
-            csv_names = natsorted(set(zip.namelist()))
-        
-        iso_key = csv_names[-1][:-4]
+        csv_files = natsorted(csv_files)
+        iso_key = csv_files[-1][:-4]
         most_recent_unsaved_acdc_df_datetime = datetime.strptime(
             iso_key, ISO_TIMESTAMP_FORMAT
         )

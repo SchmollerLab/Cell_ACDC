@@ -12239,7 +12239,6 @@ class SelectAcdcDfVersionToRestore(QBaseDialog):
         if csv_files:
             csv_names = natsorted(csv_files)
             keys = [csv_name[:-4] for csv_name in csv_names]
-            printl(keys)
             self.neverSavedKeys = keys
             f = load.ISO_TIMESTAMP_FORMAT
             timestamps = [

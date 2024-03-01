@@ -15272,9 +15272,8 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         posData.setTempPaths(createFolder=False)
         loaded_acdc_df_filename = os.path.basename(posData.acdc_output_csv_path)
-
         
-        if os.path.exists(posData.acdc_output_backup_zip_path):
+        if os.path.exists(posData.recoveryFolderpath()):
             self.manageVersionsAction.setDisabled(False)
             self.manageVersionsAction.setToolTip(
                 f'Load an older version of the `{loaded_acdc_df_filename}` file '
@@ -21970,6 +21969,10 @@ class guiWin(QMainWindow):
             alternativeNdimText = '2D'
             toggleText = 'de-activate'
         msg = widgets.myMessageBox(wrapText=False)
+        important_txt = ("""
+            The toggle to activate 3D segmentation is visible only when 
+            the <code>Number of z-slices</code> is greater than 1.
+        """)
         txt = html_utils.paragraph(f"""
             This indicator shows that you are working with {ndimText} 
             segmentation masks.<br><br>
@@ -21983,7 +21986,9 @@ class guiWin(QMainWindow):
             pixel size, etc.),<br> 
             <b>{toggleText}</b> the parameter called <code>Work with 3D 
             segmentation masks (z-stack)</code><br> 
-            as indicated in this screenshot:<br>
+            as indicated in the screenshot below<br>.
+            {html_utils.to_admonition(important_txt, admonition_type='note')}
+            <br>
         """)
         msg.information(
             self, 'Segmentation nmber of dimensions info', txt,

@@ -677,9 +677,10 @@ class AutoSaveWorker(QObject):
             load.store_unsaved_acdc_df(recovery_folderpath, recovery_acdc_df)
             return
 
-        saved_acdc_df = pd.read_csv(
-            posData.acdc_output_csv_path
-        ).set_index(['frame_i', 'Cell_ID'])
+        saved_acdc_df = (
+            pd.read_csv(posData.acdc_output_csv_path)
+            .set_index(['frame_i', 'Cell_ID'])
+        )
         
         recovery_acdc_df = (
             recovery_acdc_df.reset_index().set_index(['frame_i', 'Cell_ID'])
@@ -693,47 +694,23 @@ class AutoSaveWorker(QObject):
             recovery_acdc_df = df_left.join(df_right, how='left')
         except Exception as error:
             self.logger.log(f'[WARNING]: {error}')
-                
-        equals = []
-        for col in recovery_acdc_df.columns:
-            if col not in saved_acdc_df.columns:
-                # recovery_acdc_df has a new col --> definitely not the same
-                equals = [False]
-                break
-            
-            try:
-                col_equals = (saved_acdc_df[col] == recovery_acdc_df[col]).all()
-            except Exception as e:
-                equals = [False]
-                break
-            
-            equals.append(col_equals)
         
-        # Check if last stored acdc_df is equal
-        last_unsaved_acdc_df = load.get_last_stored_unsaved_acdc_df(
+        # Check if last saved acdc_df is equal
+        last_unsaved_csv_path = load.get_last_stored_unsaved_acdc_df_filepath(
             recovery_folderpath
         )
-        if all(equals) and last_unsaved_acdc_df is not None:
-            equals = []
-            for col in last_unsaved_acdc_df.columns:
-                if col not in saved_acdc_df.columns:
-                    # recovery_acdc_df has a new col --> definitely not the same
-                    equals = [False]
-                    break
-                
-                try:
-                    col_equals = (
-                        saved_acdc_df[col] == last_unsaved_acdc_df[col]).all()
-                except Exception as e:
-                    equals = [False]
-                    break
-                
-                equals.append(col_equals)
-
-        if not all(equals):
-            load.store_unsaved_acdc_df(recovery_folderpath, recovery_acdc_df)
-            # recovery_acdc_df.to_csv(recovery_path)
-
+        if last_unsaved_csv_path is None:
+            reference_acdc_df = saved_acdc_df
+        else:
+            reference_acdc_df = (
+                pd.read_csv(last_unsaved_csv_path)
+                .set_index(['frame_i', 'Cell_ID'])
+            )
+        
+        if myutils.are_acdc_dfs_equal(recovery_acdc_df, reference_acdc_df):
+            return
+        
+        load.store_unsaved_acdc_df(recovery_folderpath, recovery_acdc_df)
 
 class segmWorker(QObject):
     finished = Signal(np.ndarray, float)
@@ -4256,7 +4233,7 @@ class CcaIntegrityCheckerWorker(QObject):
         self.abortChecking = False
         self.isChecking = False
         self.isPaused = False
-        self.debug = True
+        self.debug = False
         self.dataQ = deque(maxlen=10)
     
     def pause(self):
@@ -4351,6 +4328,8 @@ class CcaIntegrityCheckerWorker(QObject):
         # NOTE: unfortunately this function performs pandas manipulations 
         # that are either not thread-safe or in any case are freezing the 
         # GUI. For now we don't run this until we find a solution
+        return True
+    
         IDs_will_divide_wrong = (
             checker.get_IDs_gen_num_will_divide_wrong(global_cca_df)
         )
