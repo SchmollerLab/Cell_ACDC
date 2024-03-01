@@ -4256,7 +4256,7 @@ class CcaIntegrityCheckerWorker(QObject):
         self.abortChecking = False
         self.isChecking = False
         self.isPaused = False
-        self.debug = False
+        self.debug = True
         self.dataQ = deque(maxlen=10)
     
     def pause(self):
@@ -4348,6 +4348,9 @@ class CcaIntegrityCheckerWorker(QObject):
         return False
     
     def _check_will_divide_is_true(self, checker, global_cca_df):
+        # NOTE: unfortunately this function performs pandas manipulations 
+        # that are either not thread-safe or in any case are freezing the 
+        # GUI. For now we don't run this until we find a solution
         IDs_will_divide_wrong = (
             checker.get_IDs_gen_num_will_divide_wrong(global_cca_df)
         )
@@ -4519,10 +4522,10 @@ class CcaIntegrityCheckerWorker(QObject):
             keys.append(frame_i)
         
         if check_integrity_globally and len(cca_dfs)>1:
-            global_checkpoints = (
+            global_checkpoints = [
                 '_check_cells_without_G1',
-                '_check_will_divide_is_true'
-            )
+                # '_check_will_divide_is_true'
+            ]
             # Check integrity globally
             global_cca_df = pd.concat(cca_dfs, keys=keys, names=['frame_i'])
             for checkpoint in global_checkpoints:
@@ -4532,6 +4535,7 @@ class CcaIntegrityCheckerWorker(QObject):
         
         self.abortChecking = False
         self.isChecking = False
+        time.sleep(1)
     
     @worker_exception_handler
     def run(self):
