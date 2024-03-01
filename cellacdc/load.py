@@ -569,7 +569,7 @@ def get_last_stored_unsaved_acdc_df_filepath(recovery_folderpath):
     
     csv_files = natsorted(csv_files)
     csv_name = csv_files[-1]
-    acdc_df = pd.read_csv(os.path.join(unsaved_recovery_folderpath, csv_name))
+    
     return os.path.join(unsaved_recovery_folderpath, csv_name)
 
 def get_last_stored_unsaved_acdc_df(recovery_folderpath):
