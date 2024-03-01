@@ -532,24 +532,45 @@ def _store_acdc_df_archive(zip_path, acdc_df_to_store):
     shutil.move(temp_zip_path, zip_path)
     shutil.rmtree(temp_dirpath)
 
-def store_unsaved_acdc_df(posData, acdc_df_to_store, log_func=printl):
-    try:
-        posData.setTempPaths()
-        zip_path = posData.unsaved_acdc_df_autosave_path
-        _store_acdc_df_archive(zip_path, acdc_df_to_store)
-    except Exception as err:
-        pass
+def store_unsaved_acdc_df(recovery_folderpath, df, log_func=printl):
+    new_key = datetime.now().strftime(ISO_TIMESTAMP_FORMAT)
+    csv_name = f'{new_key}.csv'
+    unsaved_recovery_folderpath = os.path.join(
+        recovery_folderpath, 'never_saved'
+    )
+    if not os.path.exists(unsaved_recovery_folderpath):
+        os.mkdir(unsaved_recovery_folderpath)
+    
+    files = myutils.listdir(unsaved_recovery_folderpath)
+    csv_files = [file for file in files if file.endswith('.csv')]
+    if len(files) > 20:
+        csv_files = natsorted(csv_files)
+        files_to_remove = csv_files[:-20]
+        for file_to_remove in files_to_remove:
+            os.remove(os.path.join(unsaved_recovery_folderpath, file_to_remove))
+    
+    csv_path = os.path.join(unsaved_recovery_folderpath, csv_name)
+    df.to_csv(csv_path)
 
-def get_last_stored_unsaved_acdc_df(posData):
-    zip_path = posData.unsaved_acdc_df_autosave_path
-    if not os.path.exists(zip_path):
+def get_last_stored_unsaved_acdc_df(recovery_folderpath):
+    if not os.path.exists(recovery_folderpath):
         return
     
-    with zipfile.ZipFile(zip_path, mode='r') as zip:
-        csv_names = natsorted(zip.namelist())
+    unsaved_recovery_folderpath = os.path.join(
+        recovery_folderpath, 'never_saved'
+    )
+    if not os.path.exists(unsaved_recovery_folderpath):
+        return
     
-    csv_name = csv_names[-1]
-    acdc_df = read_acdc_df_from_archive(zip_path, csv_name)
+    files = myutils.listdir(unsaved_recovery_folderpath)
+    csv_files = [file for file in files if file.endswith('.csv')]
+    if not csv_files:
+        return
+    
+    csv_name = csv_files[-1]
+    acdc_df = pd.read_csv(os.path.join(unsaved_recovery_folderpath, csv_name))
+    acdc_df = _parse_loaded_acdc_df(acdc_df)
+    
     return acdc_df
 
 def read_acdc_df_from_archive(archive_path, key):
@@ -1950,6 +1971,12 @@ class loadData:
             iso_key, ISO_TIMESTAMP_FORMAT
         )
         return most_recent_unsaved_acdc_df_datetime > acdc_df_mdatetime
+    
+    def recoveryFolderpath(self, create_if_missing=True):
+        recovery_folder = os.path.join(self.images_path, 'recovery')
+        if not os.path.exists(recovery_folder) and create_if_missing:
+            os.mkdir(recovery_folder)
+        return recovery_folder
     
     def setTempPaths(self, createFolder=True):
         temp_folder = os.path.join(self.images_path, 'recovery')

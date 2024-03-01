@@ -672,8 +672,9 @@ class AutoSaveWorker(QObject):
             np.savez_compressed(recovery_path, np.squeeze(data))
     
     def _save_acdc_df(self, recovery_acdc_df, posData):
+        recovery_folderpath = posData.recoveryFolderpath()
         if not os.path.exists(posData.acdc_output_csv_path):
-            load.store_unsaved_acdc_df(posData, recovery_acdc_df)
+            load.store_unsaved_acdc_df(recovery_folderpath, recovery_acdc_df)
             return
 
         saved_acdc_df = pd.read_csv(
@@ -710,7 +711,7 @@ class AutoSaveWorker(QObject):
         
         # Check if last stored acdc_df is equal
         last_unsaved_acdc_df = load.get_last_stored_unsaved_acdc_df(
-            posData
+            recovery_folderpath
         )
         if all(equals) and last_unsaved_acdc_df is not None:
             equals = []
@@ -730,7 +731,7 @@ class AutoSaveWorker(QObject):
                 equals.append(col_equals)
 
         if not all(equals):
-            load.store_unsaved_acdc_df(posData, recovery_acdc_df)
+            load.store_unsaved_acdc_df(recovery_folderpath, recovery_acdc_df)
             # recovery_acdc_df.to_csv(recovery_path)
 
 
