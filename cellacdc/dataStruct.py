@@ -1407,9 +1407,9 @@ class createDataStructWin(QMainWindow):
         win = apps.QDialogCombobox(
             'Raw data structure',
             [
-                'Single microscopy file with one or more positions',
-                'Multiple microscopy files, one for each position',
-                'Multiple microscopy files, one for each channel',
+                'Single microscopy file with multiple positions',
+                'One or more microscopy files, one for each position',
+                'One or more microscopy files, one for each channel',
                 'NONE of the above'
             ],
             infoText, CbLabel='', parent=self

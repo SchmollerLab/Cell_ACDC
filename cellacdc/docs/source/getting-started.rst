@@ -93,9 +93,9 @@ This will open a window in which you can choose how you want to proceed.
 
 After choosing an option, another window will open prompting you to select **what kind of data** you want to extract from the raw microscopy file:
 
-* Single microscopy file with one or more positions
-* Multiple microscopy files, one for each position
-* Multiple microscopy files, one for each channel
+* Single microscopy file with multiple positions
+* One or more microscopy files, one for each position
+* One or more microscopy files, one for each channel
 * NONE of the above
 
 Please select the appropriate option. Afterwards, you are prompted to **create an empty folder** in which only the microscopy file(s) are present. After doing so, select "Done". Next, you will be prompted to select this folder. After selecting the **destination folder**, which by default is the folder you selected in the step before, Cell-ACDC will attempt to load OEM metadata.
