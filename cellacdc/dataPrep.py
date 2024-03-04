@@ -577,10 +577,10 @@ class dataPrepWin(QMainWindow):
         if self.startAction.isEnabled() or self.onlySelectingZslice:
             return
 
+        posData = self.data[self.pos_i]
         if not hasattr(posData, 'cropROIs'):
             return
         
-        posData = self.data[self.pos_i]
         for cropROI in posData.cropROIs:
             self.addAndConnectROI(cropROI)
 

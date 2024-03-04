@@ -9,6 +9,7 @@ import pandas as pd
 import math
 import traceback
 import logging
+import textwrap
 
 from functools import partial
 from math import ceil
@@ -281,7 +282,7 @@ class PushButton(QPushButton):
         textLabel = QLabel(self._text)
         textLabel.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         textLabel.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-        self.layout().addWidget(textLabel)
+        self._layout().addWidget(textLabel)
         super().show()
     
     def confirmAction(self):
@@ -2197,21 +2198,23 @@ class myMessageBox(QDialog):
         self.cancelButton = None
         self.okButton = None
         self.clickedButton = None
+        self.alreadyShown = False
         self.allowClose = allowClose
 
         self.showCentered = showCentered
 
         self.scrollableText = scrollableText
 
-        self.layout = QGridLayout()
+        self._layout = QGridLayout()
         self.commandsLayout = None
-        self.layout.setHorizontalSpacing(20)
+        self._layout.setHorizontalSpacing(20)
         self.buttonsLayout = QHBoxLayout()
         self.buttonsLayout.setSpacing(2)
         self.buttons = []
         self.widgets = []
         self.layouts = []
         self.labels = []
+        self.labelsWidgets = []
         self._pixmapLabels = []
         self.detailsTextWidget = None
         self.showInFileManagButton = None
@@ -2221,8 +2224,8 @@ class myMessageBox(QDialog):
         self.currentRow = 0
         self._w = None
 
-        self.layout.setColumnStretch(1, 1)
-        self.setLayout(self.layout)
+        self._layout.setColumnStretch(1, 1)
+        self.setLayout(self._layout)
         
         self.setFont(font)
 
@@ -2240,13 +2243,13 @@ class myMessageBox(QDialog):
         pixmap = icon.pixmap(60, 60)
         label.setPixmap(pixmap)
 
-        self.layout.addWidget(label, 0, 0, alignment=Qt.AlignTop)
+        self._layout.addWidget(label, 0, 0, alignment=Qt.AlignTop)
 
     def addImage(self, image_path):
         pixmap = QPixmap(image_path)
         label = QLabel()
         label.setPixmap(pixmap)
-        self.layout.addWidget(label, self.currentRow, 1)
+        self._layout.addWidget(label, self.currentRow, 1)
         self.currentRow += 1
     
     def addShowInFileManagerButton(self, path, txt=None):
@@ -2280,6 +2283,7 @@ class myMessageBox(QDialog):
     def addText(self, text):
         texts = self.splitLatexBlocks(text)
         labelsWidget = LabelsWidget(texts, wrapText=self.wrapText)
+        self.labelsWidgets.append(labelsWidget)
         self.labels.extend(labelsWidget.labels)
         if self.scrollableText:
             textWidget = QScrollArea()
@@ -2288,13 +2292,18 @@ class myMessageBox(QDialog):
         else:
             textWidget = labelsWidget
 
-        self.layout.addWidget(textWidget, self.currentRow, 1)
+        self._layout.addWidget(textWidget, self.currentRow, 1)
         self.currentRow += 1
         return labelsWidget
     
     def addCopiableCommand(self, command):
         copiableCommandWidget = CopiableCommandWidget(command)
-        self.layout.addWidget(copiableCommandWidget, self.currentRow, 1)
+        screenWidth = self.screen().size().width()
+        sizeHint = copiableCommandWidget.sizeHint()
+        width = sizeHint.width()
+        if width > screenWidth:
+            copiableCommandWidget = addWidgetToScrollArea(copiableCommandWidget)
+        self._layout.addWidget(copiableCommandWidget, self.currentRow, 1)
         self.currentRow += 1
     
     def copyToClipboard(self):
@@ -2324,12 +2333,12 @@ class myMessageBox(QDialog):
         self.doNotShowAgainCheckbox = QCheckBox(text)
 
     def addWidget(self, widget):
-        self.layout.addWidget(widget, self.currentRow, 1)
+        self._layout.addWidget(widget, self.currentRow, 1)
         self.widgets.append(widget)
         self.currentRow += 1
 
     def addLayout(self, layout):
-        self.layout.addLayout(layout, self.currentRow, 1)
+        self._layout.addLayout(layout, self.currentRow, 1)
         self.layouts.append(layout)
         self.currentRow += 1
 
@@ -2337,11 +2346,13 @@ class myMessageBox(QDialog):
         self._w = w
 
     def show(self, block=False):
+        self.endOfScrollableRow = self.currentRow
+        
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         # spacer
         spacer = QSpacerItem(10, 10)
-        self.layout.addItem(spacer, self.currentRow, 1)
-        self.layout.setRowStretch(self.currentRow, 0)
+        self._layout.addItem(spacer, self.currentRow, 1)
+        self._layout.setRowStretch(self.currentRow, 0)
 
         # buttons
         self.currentRow += 1
@@ -2351,17 +2362,17 @@ class myMessageBox(QDialog):
 
         # Do not show again checkbox
         if self.doNotShowAgainCheckbox is not None:
-            self.layout.addWidget(
+            self._layout.addWidget(
                 self.doNotShowAgainCheckbox, self.currentRow, 1, 1, 2
             )
             self.currentRow += 1
-
+        
         # spacer
-        self.layout.addItem(QSpacerItem(10, 10), self.currentRow, 1)
+        self._layout.addItem(QSpacerItem(10, 10), self.currentRow, 1)
         self.currentRow += 1
         
         # buttons
-        self.layout.addLayout(
+        self._layout.addLayout(
             self.buttonsLayout, self.currentRow, 0, 1, 2,
             alignment=Qt.AlignRight
         )
@@ -2370,22 +2381,24 @@ class myMessageBox(QDialog):
         if self.detailsTextWidget is not None:
             # spacer
             self.currentRow += 1
-            self.layout.addItem(QSpacerItem(20, 20), self.currentRow, 1)
+            self._layout.addItem(QSpacerItem(20, 20), self.currentRow, 1)
             
             # detailsTextWidget
             self.currentRow += 1
-            self.layout.addWidget(
+            self._layout.addWidget(
                 self.detailsTextWidget, self.currentRow, 0, 1, 2
             )
 
         # spacer
         self.currentRow += 1
         spacer = QSpacerItem(10, 10)
-        self.layout.addItem(spacer, self.currentRow, 1)
-        self.layout.setRowStretch(self.currentRow, 0)
+        self._layout.addItem(spacer, self.currentRow, 1)
+        self._layout.setRowStretch(self.currentRow, 0)
 
         super().show()
         QTimer.singleShot(5, self._resize)
+        
+        self.alreadyShown = True
 
         if block:
             self._block()
@@ -2462,6 +2475,25 @@ class myMessageBox(QDialog):
         if self.okButton is not None:
             self.okButton.setFocus()
 
+        screen = self.screen()
+        screenWidth = screen.size().width()
+        screenHeight = screen.size().height()
+        
+        width = self.width()
+        height = self.height()
+        if width > screenWidth-10:
+            factor = np.ceil(width/screenWidth)
+            # Force wrap Text
+            for labelWidget in self.labelsWidgets:
+                lineLength = int(labelWidget.nCharsLongestLine/factor)
+                for label in labelWidget.labels:
+                    text = label.text()
+                    chunks = textwrap.wrap(text, lineLength)
+                    text = '<br>'.join(chunks)
+                    label.setText(text)
+            
+            QTimer.singleShot(100, self._resizeWrappedText)
+        
         if self.widgets:
             return
 
@@ -2476,6 +2508,12 @@ class myMessageBox(QDialog):
         # self.timer.timeout.connect(self._resizeHeight)
         # self.timer.start(1)
 
+    def _resizeWrappedText(self):
+        screenWidth = self.screen().size().width() - 5
+        self.resize(screenWidth, self.height())
+        screenLeft = self.screen().geometry().left()
+        self.move(screenLeft, self.geometry().top())
+    
     def _resizeHeight(self):
         try:
             # Resize until a "Unable to set geometry" warning is captured
@@ -2523,7 +2561,7 @@ class myMessageBox(QDialog):
                 self.addLayout(layout)
 
         if widgets is not None:
-            self.layout.addItem(QSpacerItem(20, 20), self.currentRow, 1)
+            self._layout.addItem(QSpacerItem(20, 20), self.currentRow, 1)
             self.currentRow += 1
             if myutils.is_iterable(widgets):
                 for widget in widgets:
@@ -5688,7 +5726,7 @@ class sliderWithSpinBox(QWidget):
         layout.setColumnStretch(col, 6)
         layout.setColumnStretch(col+1, 1)
 
-        self.layout = layout
+        self._layout = layout
         self.lastCol = col+1
         self.sliderCol = row+1
 
@@ -5916,7 +5954,7 @@ class PostProcessSegmSlider(sliderWithSpinBox):
 
         self.label = label
         self.checkbox = QCheckBox('Disable')
-        self.layout.addWidget(self.checkbox, self.sliderCol, self.lastCol+1)
+        self._layout.addWidget(self.checkbox, self.sliderCol, self.lastCol+1)
         self.checkbox.toggled.connect(self.onCheckBoxToggled)
         self.valueChanged.connect(self.checkExpandRange)
     
@@ -6122,7 +6160,6 @@ class CopiableCommandWidget(QGroupBox):
         super().__init__(parent)
         
         layout = QHBoxLayout()
-        self.setLayout(layout)
         
         txt = html_utils.paragraph(
             f'<code>{command}</code>', font_size=font_size
@@ -6138,6 +6175,8 @@ class CopiableCommandWidget(QGroupBox):
         copyButton.clicked.connect(self.copyToClipboard)
         layout.addWidget(copyButton)
         layout.addStretch(1)
+        
+        self.setLayout(layout)        
     
     def copyToClipboard(self):
         cb = QApplication.clipboard()
@@ -7638,6 +7677,7 @@ class LabelsWidget(QWidget):
         
         texts = self.fixParagraphTags(texts)
         
+        self.textLengths = []
         self.labels = []
         for t, text in enumerate(texts):
             if not text:
@@ -7658,7 +7698,14 @@ class LabelsWidget(QWidget):
                 label.setWordWrap(wrapText)
                 label.setOpenExternalLinks(True)
                 layout.addWidget(label)
+                if wrapText:
+                    self.textLengths.append(1)
+                self.textLengths.extend(
+                    [len(line) for line in text.split('<br>')]
+                )
             self.labels.append(label)
+        
+        self.nCharsLongestLine = max(self.textLengths)
         
         layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(layout)
@@ -7960,13 +8007,13 @@ class installJavaDialog(myMessageBox):
         _container.setLayout(_layout)
         self.scrollArea.setWidget(_container)
         self.currentRow += 1
-        self.layout.addWidget(
+        self._layout.addWidget(
             self.scrollArea, self.currentRow, 1, alignment=Qt.AlignTop
         )
 
         # Stretch last row
         self.currentRow += 1
-        self.layout.setRowStretch(self.currentRow, 1)
+        self._layout.setRowStretch(self.currentRow, 1)
 
     def viewScreenshot(self, checked=False):
         self.screenShotWin = view_visualcpp_screenshot()
@@ -8003,13 +8050,13 @@ class installJavaDialog(myMessageBox):
         _container.setLayout(_layout)
         self.scrollArea.setWidget(_container)
         self.currentRow += 1
-        self.layout.addWidget(
+        self._layout.addWidget(
             self.scrollArea, self.currentRow, 1, alignment=Qt.AlignTop
         )
 
         # Stretch last row
         self.currentRow += 1
-        self.layout.setRowStretch(self.currentRow, 1)
+        self._layout.setRowStretch(self.currentRow, 1)
         self.scrollArea.hide()
 
     def addInstructionsLinux(self):
@@ -8045,13 +8092,13 @@ class installJavaDialog(myMessageBox):
         _container.setLayout(_layout)
         self.scrollArea.setWidget(_container)
         self.currentRow += 1
-        self.layout.addWidget(
+        self._layout.addWidget(
             self.scrollArea, self.currentRow, 1, alignment=Qt.AlignTop
         )
 
         # Stretch last row
         self.currentRow += 1
-        self.layout.setRowStretch(self.currentRow, 1)
+        self._layout.setRowStretch(self.currentRow, 1)
         self.scrollArea.hide()
 
     def copyToClipboard(self):
@@ -8157,6 +8204,17 @@ class selectTrackerGUI(QDialogListbox):
             self.startFrame = self.selectFramesGroupbox.startFrame_SB.value()
             self.stopFrame = self.selectFramesGroupbox.stopFrame_SB.value()
             super().ok_cb(event)
+
+def addWidgetToScrollArea(widget):
+    container = QWidget()
+    layout = QVBoxLayout()
+    layout.addWidget(widget)
+    layout.addStretch(1)
+    container.setLayout(layout)
+    scrollArea = QScrollArea()
+    scrollArea.setWidgetResizable(True)
+    scrollArea.setWidget(container)
+    return scrollArea
 
 class CheckableAction(QAction):
     clicked = Signal(bool)
