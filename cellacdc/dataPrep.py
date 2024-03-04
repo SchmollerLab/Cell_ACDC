@@ -217,12 +217,40 @@ class dataPrepWin(QMainWindow):
         self.interpAction.setEnabled(False)
 
 
-        self.cropAction = QAction(QIcon(":crop.svg"), "Crop and save", self)
+        self.cropAction = QAction(QIcon(":crop.svg"), "Crop XY", self)
+        self.cropAction.setToolTip(
+            'Crop XY.\n\n'
+            'If the button is disabled you need to click on the Start button '
+            'first.\n\n'
+            'You can add as many crop ROIs as needed. If you use more than '
+            'one, the cropped data will be saved into sub-folders of each '
+            'cropped Position\n\n'
+            'After adjusting the crop ROIs, click this button to apply the '
+            'crop and activate the save button.\n\n'
+            'To save the cropped data click the Save button.'
+        )
         self.cropAction.setEnabled(False)
 
         self.cropZaction = QAction(QIcon(":cropZ.svg"), "Crop z-slices", self)
+        self.cropZaction.setToolTip(
+            'Crop upper and bottom Z-slices.\n\n'
+            'If the button is disabled you need to click on the Start button '
+            'first.\n\n'
+            'USAGE: Click this button, adjust the lower and upper z-slices '
+            'and click on "Apply crop" to activate the save button.\n\n'
+            'To save the cropped data click the Save button.'
+        )
         self.cropZaction.setEnabled(False)
         self.cropZaction.setCheckable(True)
+        
+        self.cropAndSaveAction = QAction(
+            QIcon(":file-save.svg"), "Crop and save", self)
+        self.cropAndSaveAction.setEnabled(False)
+        self.cropAndSaveAction.setToolTip(
+            'Save the cropped data.\n\n'
+            'If the button is disabled you need to apply any of the two crops '
+            'available first (see buttons on the left).'
+        )
 
         self.startAction = QAction(QIcon(":start.svg"), "Start process!", self)
         self.startAction.setEnabled(False)
@@ -253,6 +281,7 @@ class dataPrepWin(QMainWindow):
         fileToolBar.addAction(self.startAction)
         fileToolBar.addAction(self.cropAction)
         fileToolBar.addAction(self.cropZaction)
+        fileToolBar.addAction(self.cropAndSaveAction)
 
         navigateToolbar = QToolBar("Navigate", self)
         # navigateToolbar.setIconSize(QSize(toolbarSize, toolbarSize))
@@ -289,7 +318,8 @@ class dataPrepWin(QMainWindow):
         self.showInExplorerAction.triggered.connect(self.showInExplorer)
         self.addCropRoiActon.triggered.connect(self.addCropROI)
         self.addBkrgRoiActon.triggered.connect(self.addDefaultBkgrROI)
-        self.cropAction.triggered.connect(self.crop_cb)
+        self.cropAction.triggered.connect(self.applyCropYX)
+        self.cropAndSaveAction.triggered.connect(self.cropAndSave)
         self.cropZaction.toggled.connect(self.openCropZtool)
         self.startAction.triggered.connect(self.prepData)
         self.interpAction.triggered.connect(self.interp_z)
@@ -498,10 +528,10 @@ class dataPrepWin(QMainWindow):
             df =  posData.segmInfo_df
             idx = (posData.filename, frame_i)
             try:
-                z = posData.segmInfo_df.at[idx, 'z_slice_used_dataPrep']
+                z = df.at[idx, 'z_slice_used_dataPrep']
             except Exception as e:
-                duplicated_idx = posData.segmInfo_df.index.duplicated()
-                posData.segmInfo_df = posData.segmInfo_df[~duplicated_idx]
+                duplicated_idx = df.index.duplicated()
+                posData.segmInfo_df = df[~duplicated_idx]
                 z = posData.segmInfo_df.at[idx, 'z_slice_used_dataPrep']
                 
             zProjHow = posData.segmInfo_df.at[idx, 'which_z_proj']
@@ -547,6 +577,9 @@ class dataPrepWin(QMainWindow):
         if self.startAction.isEnabled() or self.onlySelectingZslice:
             return
 
+        if not hasattr(posData, 'cropROIs'):
+            return
+        
         posData = self.data[self.pos_i]
         for cropROI in posData.cropROIs:
             self.addAndConnectROI(cropROI)
@@ -556,6 +589,9 @@ class dataPrepWin(QMainWindow):
             return
 
         posData = self.data[self.pos_i]
+        if not hasattr(posData, 'cropROIs'):
+            return 
+        
         if posData.cropROIs is None:
             return
 
@@ -624,18 +660,19 @@ class dataPrepWin(QMainWindow):
 
     @exception_handler
     def crop(self, data, posData, cropROI):
+        croppedData = data
         x0, y0 = [int(round(c)) for c in cropROI.pos()]
         w, h = [int(round(c)) for c in cropROI.size()]
         if data.ndim == 4:
-            croppedData = data[:, :, y0:y0+h, x0:x0+w]
+            croppedData = croppedData[:, :, y0:y0+h, x0:x0+w]
         elif data.ndim == 3:
-            croppedData = data[:, y0:y0+h, x0:x0+w]
+            croppedData = croppedData[:, y0:y0+h, x0:x0+w]
         elif data.ndim == 2:
-            croppedData = data[y0:y0+h, x0:x0+w]
+            croppedData = croppedData[y0:y0+h, x0:x0+w]
 
         SizeZ = posData.SizeZ
 
-        if posData.SizeZ > 1 and self.cropZtool is not None:
+        if posData.SizeZ > 1:
             idx = (posData.filename, 0)
             try:
                 lower_z = int(posData.segmInfo_df.at[idx, 'crop_lower_z_slice'])
@@ -646,10 +683,10 @@ class dataPrepWin(QMainWindow):
                 upper_z = int(posData.segmInfo_df.at[idx, 'crop_upper_z_slice'])
             except KeyError:
                 upper_z = posData.SizeZ
-            if data.ndim == 4:
-                croppedData = data[:, lower_z:upper_z+1]
-            elif data.ndim == 3:
-                croppedData = data[lower_z:upper_z+1]
+            if croppedData.ndim == 4:
+                croppedData = croppedData[:, lower_z:upper_z+1]
+            elif croppedData.ndim == 3:
+                croppedData = croppedData[lower_z:upper_z+1]
             SizeZ = upper_z-lower_z+1
         return croppedData, SizeZ
 
@@ -1132,12 +1169,14 @@ class dataPrepWin(QMainWindow):
     def openCropZtool(self, checked):
         posData = self.data[self.pos_i]
         if checked:
+            self.zSliceToRestore = self.zSliceScrollBar.value()
             self.cropZtool = apps.QCropZtool(posData.SizeZ, parent=self)
             self.cropZtool.sigClose.connect(self.cropZtoolClosed)
             self.cropZtool.sigZvalueChanged.connect(self.cropZtoolvalueChanged)
-            self.cropZtool.sigCrop.connect(self.crop_cb)
+            self.cropZtool.sigCrop.connect(self.applyCropZslices)
             self.cropZtool.show()
         else:
+            self.zSliceToRestore = None
             self.cropZtool.close()
             self.cropZtool = None
             # Restore original z-slice
@@ -1153,10 +1192,6 @@ class dataPrepWin(QMainWindow):
         posData = self.data[self.pos_i]
         img = self.getImage(posData, posData.img_data, self.frame_i, force_z=z)
         self.img.setImage(img)
-        df = posData.segmInfo_df
-        for frame_i in range(posData.SizeT):
-            idx = (posData.filename, frame_i)
-            posData.segmInfo_df[f'crop_{whichZ}_z_slice'] = z
 
     def cropZtoolReset(self):
         posData = self.data[self.pos_i]
@@ -1202,6 +1237,10 @@ class dataPrepWin(QMainWindow):
 
             if posData.SizeZ > 1:
                 # Save segmInfo
+                posData.segmInfo_df = posData.segmInfo_df.drop(
+                    columns=['crop_lower_z_slice', 'crop_upper_z_slice'], 
+                    errors='ignore'
+                )
                 posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
 
             # Get crop shape and print it
@@ -1239,8 +1278,34 @@ class dataPrepWin(QMainWindow):
             
             yield croppedShapes, posData, SizeZ, doCrop
     
+    def applyCropZslices(self, low_z, high_z):
+        self.logger.info(f'Cropping z-slices range {low_z}-{high_z}')
+        for posData in self.data:
+            posData.segmInfo_df['crop_lower_z_slice'] = low_z
+            posData.segmInfo_df['crop_upper_z_slice'] = high_z
+            posData.SizeZ = (high_z - low_z) + 1
+            if posData.SizeT > 1:
+                posData.img_data = posData.img_data[:, low_z:high_z+1].copy()
+            else:
+                posData.img_data = posData.img_data[low_z:high_z+1].copy()
+        
+        self.zSliceScrollBar.setValue(self.zSliceToRestore-low_z)
+        self.update_img()
+        self.cropAndSaveAction.setEnabled(True)
+    
+    def applyCropYX(self):
+        for posData in self.data:
+            for cropROI in posData.cropROIs:
+                x0, y0 = [int(round(c)) for c in cropROI.pos()]
+                w, h = [int(round(c)) for c in cropROI.size()]
+                cropMask = np.zeros(posData.img_data.shape, dtype=bool)
+                cropMask[..., y0:y0+h, x0:x0+w] = True
+                posData.img_data[~cropMask] = 0
+        self.update_img()        
+        self.cropAndSaveAction.setEnabled(True)            
+    
     @exception_handler
-    def crop_cb(self):
+    def cropAndSave(self):
         # msg = QMessageBox()
         # doSave = msg.question(
         #     self, 'Save data?', 'Do you want to save?',
@@ -1259,11 +1324,10 @@ class dataPrepWin(QMainWindow):
                 continue
             
             croppedShapes, posData, SizeZ, doCrop = cropInfo
-            
-            if SizeZ != posData.SizeZ:
-                # Update metadata with cropped SizeZ
-                posData.metadata_df.at['SizeZ', 'values'] = SizeZ
-                posData.metadata_df.to_csv(posData.metadata_csv_path)
+
+            # Update metadata with cropped SizeZ
+            posData.metadata_df.at['SizeZ', 'values'] = SizeZ
+            posData.metadata_df.to_csv(posData.metadata_csv_path)
 
             self.logger.info(f'Cropping {posData.relPath}...')
             self.titleLabel.setText(
@@ -1292,6 +1356,8 @@ class dataPrepWin(QMainWindow):
         msg = widgets.myMessageBox()
         txt = html_utils.paragraph(txt.replace('! ', '!<br><br>'))
         msg.information(self, 'Data prep done', txt)
+        
+        self.cropAndSaveAction.setEnabled(False) 
     
     def removeAllHandles(self, roi):
         for handle in roi.handles:
@@ -1304,13 +1370,19 @@ class dataPrepWin(QMainWindow):
     
     def disconnectROIs(self, posData):
         for cropROI in posData.cropROIs:
-            cropROI.disconnect()
+            try:
+                cropROI.disconnect()
+            except Exception as err:
+                pass
             cropROI.translatable = False
             cropROI.resizable = False
             self.removeAllHandles(cropROI)
 
         for roi in posData.bkgrROIs:
-            roi.disconnect()
+            try:
+                roi.disconnect()
+            except Exception as err:
+                pass
             roi.translatable = False
             roi.resizable = False
             roi.removable = False
@@ -1345,8 +1417,8 @@ class dataPrepWin(QMainWindow):
         txt = html_utils.paragraph(f"""
             {info_text}
             Saving cropped data <b>cannot be undone</b>.<br><br>
-            Do you want to crop or simply save the ROI coordinates<br>
-            for the segmentation step?
+            If you just want to save the ROI coordinates<br>
+            for the segmentation step, cancel the cropping process.
         """)
         _, yesButton = msg.warning(
             self, 'Crop?', txt, 
@@ -2282,6 +2354,9 @@ class dataPrepWin(QMainWindow):
 
         self.setCenterAlignmentTitle()
         self.openFolderAction.setEnabled(False)
+        self.cropAndSaveAction.setDisabled(True)
+        self.cropZaction.setEnabled(False)
+        self.cropAction.setEnabled(False)
 
     def openRecentFile(self, path):
         self.logger.info(f'Opening recent folder: {path}')
@@ -2438,8 +2513,36 @@ class dataPrepWin(QMainWindow):
         # cursor.clearSelection()
         # self.titleLabel.item.setTextCursor(cursor)
 
+    def askCropAndSave(self):
+        if not self.cropAndSaveAction.isEnabled():
+            return True
+        
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph("""
+            You seem to have cropping information that you did not save.<br><br> 
+            Do you want to save cropped data?
+        """)
+        buttonsTexts = (
+            'Cancel', 'No, close data-prep', 'Yes, save cropped data'
+        )
+        _, noButton, yesButton = msg.question(
+            self, 'Save cropped data?', txt, buttonsTexts=buttonsTexts
+        )
+        if msg.cancel:
+            return False
+        
+        if msg.clickedButton == yesButton:
+            self.cropAndSave()
+        
+        return True
+    
     def closeEvent(self, event):
         self.saveWindowGeometry()
+        
+        proceed = self.askCropAndSave()
+        if not proceed:
+            event.ignore()
+            return
 
         if self.buttonToRestore is not None:
             button, color, text = self.buttonToRestore

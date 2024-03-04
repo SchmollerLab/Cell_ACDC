@@ -1257,15 +1257,15 @@ def add_metrics_instructions():
     similar to the example below:<br><br>
     Pseudo-code:
     <pre><code>
-    {def_sh} {CV_sh}{open_par_sh}{args_sh}{close_par_sh}:
-        {if_sh} correct_with_bkgr:
-            {if_sh} which_bkgr {equal_sh}{equal_sh} 'auto':
-                signal {equal_sh} signal - autoBkgr
-            {elif_sh} dataPrepBkgr {is_not_sh} None:
-                signal {equal_sh} signal - dataPrepBkgr
+    {def_sh} {CV_sh}{open_par_sh}{args_sh}{close_par_sh}:<br>
+        {if_sh} correct_with_bkgr:<br>
+            {if_sh} which_bkgr {equal_sh}{equal_sh} 'auto':<br>
+                signal {equal_sh} signal - autoBkgr<br>
+            {elif_sh} dataPrepBkgr {is_not_sh} None:<br>
+                signal {equal_sh} signal - dataPrepBkgr<br>
 
-        <i># Here goes your custom metric computation</i>
-        CV = {np_std_sh}(signal)/{np_mean_sh}(signal)
+        <i># Here goes your custom metric computation</i><br>
+        CV = {np_std_sh}(signal)/{np_mean_sh}(signal)<br>
 
         {return_sh} CV
     </code></pre>

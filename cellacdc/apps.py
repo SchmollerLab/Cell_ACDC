@@ -5581,10 +5581,10 @@ class QCropZtool(QBaseDialog):
     sigClose = Signal()
     sigZvalueChanged = Signal(str, int)
     sigReset = Signal()
-    sigCrop = Signal()
+    sigCrop = Signal(int, int)
 
     def __init__(
-            self, SizeZ, cropButtonText='Crop and save', parent=None, 
+            self, SizeZ, cropButtonText='Apply crop', parent=None, 
             addDoNotShowAgain=False, title='Select z-slices'
         ):
         super().__init__(parent)
@@ -5664,7 +5664,10 @@ class QCropZtool(QBaseDialog):
 
     def emitCrop(self):
         self.cancel = False
-        self.sigCrop.emit()
+        low_z = self.lowerZscrollbar.value()
+        high_z = self.upperZscrollbar.value()
+        self.sigCrop.emit(low_z, high_z)
+        self.close()
 
     def updateScrollbars(self, lower_z, upper_z):
         self.lowerZscrollbar.setValue(lower_z)
