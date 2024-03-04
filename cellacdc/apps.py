@@ -1442,7 +1442,7 @@ class wandToleranceWidget(QFrame):
 
         self.slider = widgets.sliderWithSpinBox(title='Tolerance')
         self.slider.setMaximum(255)
-        self.slider.layout.setColumnStretch(2, 21)
+        self.slider._layout.setColumnStretch(2, 21)
 
         self.setLayout(self.slider.layout)
 

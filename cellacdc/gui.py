@@ -2159,12 +2159,12 @@ class guiWin(QMainWindow):
         self.wandAutoFillCheckbox = QCheckBox('Auto-fill holes')
 
         col = 3
-        self.wandToleranceSlider.layout.addWidget(
+        self.wandToleranceSlider._layout.addWidget(
             self.wandAutoFillCheckbox, 0, col
         )
 
         col += 1
-        self.wandToleranceSlider.layout.setColumnStretch(col, 21)
+        self.wandToleranceSlider._layout.setColumnStretch(col, 21)
 
         self.wandControlsToolbar.addWidget(self.wandToleranceSlider)
 
