@@ -2589,7 +2589,7 @@ class QDialogMetadataXML(QDialog):
         self.PhysicalSizeX_DSB.setSingleStep(0.001)
         self.PhysicalSizeX_DSB.setDecimals(7)
         self.PhysicalSizeX_DSB.setValue(PhysicalSizeX)
-        txt = 'Pixel width:  '
+        txt = 'Pixel width (X):  '
         label = QLabel(txt)
         entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
         entriesLayout.addWidget(self.PhysicalSizeX_DSB, row, 1)
@@ -2617,7 +2617,7 @@ class QDialogMetadataXML(QDialog):
         self.PhysicalSizeY_DSB.setSingleStep(0.001)
         self.PhysicalSizeY_DSB.setDecimals(7)
         self.PhysicalSizeY_DSB.setValue(PhysicalSizeY)
-        txt = 'Pixel height:  '
+        txt = 'Pixel height (Y):  '
         label = QLabel(txt)
         entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
         entriesLayout.addWidget(self.PhysicalSizeY_DSB, row, 1)
@@ -2637,7 +2637,7 @@ class QDialogMetadataXML(QDialog):
         self.PhysicalSizeZ_DSB.setSingleStep(0.001)
         self.PhysicalSizeZ_DSB.setDecimals(7)
         self.PhysicalSizeZ_DSB.setValue(PhysicalSizeZ)
-        txt = 'Voxel depth:  '
+        txt = 'Voxel depth (Z):  '
         self.PSZlabel = QLabel(txt)
         entriesLayout.addWidget(self.PSZlabel, row, 0, alignment=Qt.AlignRight)
         entriesLayout.addWidget(self.PhysicalSizeZ_DSB, row, 1)
