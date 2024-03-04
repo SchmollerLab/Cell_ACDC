@@ -79,7 +79,7 @@ Install stable version
 
             .. tab:: Windows
 
-                .. figure:: ../images/conda_activate_acdc_windows.png
+                .. figure:: images/conda_activate_acdc_windows.png
                     :width: 100%
 
                     Anaconda Prompt after activating the ``acdc`` environment 
@@ -87,7 +87,7 @@ Install stable version
             
             .. tab:: macOS
 
-                .. figure:: ../images/conda_activate_acdc_macOS.png
+                .. figure:: images/conda_activate_acdc_macOS.png
                     :width: 100%
 
                     Terminal app after activating the ``acdc`` environment 
@@ -194,7 +194,7 @@ Install latest version
 
             .. tab:: Windows
 
-                .. figure:: ../images/conda_activate_acdc_windows.png
+                .. figure:: images/conda_activate_acdc_windows.png
                     :width: 100%
 
                     Anaconda Prompt after activating the ``acdc`` environment 
@@ -202,7 +202,7 @@ Install latest version
             
             .. tab:: macOS
 
-                .. figure:: ../images/conda_activate_acdc_macOS.png
+                .. figure:: images/conda_activate_acdc_macOS.png
                     :width: 100%
 
                     Terminal app after activating the ``acdc`` environment 
@@ -232,8 +232,8 @@ Install latest version
         On Windows, if you get the error ``ERROR: Cannot find the command 'git'`` 
         you need to install ``git`` first. Close the terminal and install it 
         from `here <https://git-scm.com/download/win>`_. After installation, 
-        you can restart from here, but **remember to activate the ``acdc`` 
-        environment first** with the command ``conda activate acdc``.
+        you can restart from here, but **remember to activate the **``acdc`` 
+        **environment first** with the command ``conda activate acdc``.
 
 8. **Install the GUI libraries**:
 
@@ -287,8 +287,8 @@ If you want to try out experimental features (and, if you have time, maybe repor
         On Windows, if you get the error ``ERROR: Cannot find the command 'git'`` 
         you need to install ``git`` first. Close the terminal and install it 
         from `here <https://git-scm.com/download/win>`_. After installation, 
-        you can restart from here, but **remember to activate the ``acdc`` 
-        environment first** with the command ``conda activate acdc``.
+        you can restart from here, but **remember to activate the **``acdc`` 
+        **environment first** with the command ``conda activate acdc``.
 
 4. **Navigate to the Cell_ACDC folder** with the following command:
    
@@ -342,7 +342,7 @@ If you want to try out experimental features (and, if you have time, maybe repor
 
             .. tab:: Windows
 
-                .. figure:: ../images/conda_activate_acdc_windows.png
+                .. figure:: images/conda_activate_acdc_windows.png
                     :width: 100%
 
                     Anaconda Prompt after activating the ``acdc`` environment 
@@ -350,7 +350,7 @@ If you want to try out experimental features (and, if you have time, maybe repor
             
             .. tab:: macOS
 
-                .. figure:: ../images/conda_activate_acdc_macOS.png
+                .. figure:: images/conda_activate_acdc_macOS.png
                     :width: 100%
 
                     Terminal app after activating the ``acdc`` environment 
