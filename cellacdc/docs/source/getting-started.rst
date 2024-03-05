@@ -54,6 +54,7 @@ Top ribbon options include:
         * Re-apply data prep steps to selected channels
         * Align or revert alignment
         * Rename files by appending additional text
+ 
 * Settings
     * Allows manipulation of the **user profile** path.
 * Napari
@@ -142,12 +143,32 @@ Each position is saved in a separate folder. The metadata are stored both in a T
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/DataStruc6.png?raw=true
     :alt: Creating Data Structures: Window for checking order of dimensions
 
-.. figure:: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/DataStruc7.png?raw=true
-    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/DataStruc7.png?raw=true
-    :alt: Creating Data Structures: Data structure
+Data-structure created by Cell-ACDC
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Preparing data for further analysis
------------------------------------
+.. code-block:: 
+
+    Experiment folder
+    ├── Position_1
+    │   └── Images
+    │       ├── basename_s01_metadataXML.txt
+    │       ├── basename_s01_metadata.csv
+    │       ├── basename_s01_ChannelName1.tif
+    │       ├── basename_s01_ChannelName2.tif
+    │       ...
+    ├── Position_2
+    │   └── Images
+    │       ├── basename_s01_metadataXML.txt
+    │       ...
+    └── Position_n
+        └── Images
+            ├── basename_s0n_metadataXML.txt
+            ...
+
+
+Preparing data for further analysis (Data-prep)
+-----------------------------------------------
+
 **1. Launch data prep module…**
 
 .. |starticon| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/cellacdc/resources/icons/start.svg
@@ -170,6 +191,12 @@ Preparing data for further analysis
 
 .. |crop| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/cellacdc/resources/icons/crop.svg
     :target: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/cellacdc/resources/icons/crop.svg
+    :alt: crop icon
+    :height: 16px
+    :width: 16px
+
+.. |save| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/cellacdc/resources/icons/file-save.svg
+    :target: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/cellacdc/resources/icons/file-save.svg
     :alt: crop icon
     :height: 16px
     :width: 16px
@@ -225,12 +252,25 @@ Next, select **"start"** (|starticon|) from the buttons bar. This will **start t
     For time-lapse microscopy you can load only one position at a time. Select multiple positions only if you have single 3D z-stacks or single 2D images.
 
 
-Afterwards, the **region of interest (ROI)** as well as the **background ROI (Bkgr. ROI)** can be adjusted. This is done through drag and drop on the edges and resizing on the turquoise rhombuses. Make sure that the ROI covers all cells of interest on all frames and that the Bkgr. ROI is on an area without cells. **Multiple ROIs** (|add_crop_ROI|) **and Bkgr. ROIs** (|bkgrRoiicon|) can be added through the corresponding buttons. **Right click** on one of the frames to show an interaction menu through which you can **remove** it. Once all is set, press the **"Crop"** (|crop|) button. **This will overwrite the previous files**. The window may become **unresponsive**. Alternatively, only a single stack can be cropped using the **"Crop only current stack"** (|cropZ|) button. 
+Afterwards, the **region of interest (ROI)** as well as the **background ROI 
+(Bkgr. ROI)** can be adjusted. This is done through drag and drop on the edges 
+and resizing on the turquoise rhombuses. Make sure that the ROI covers all cells 
+of interest on all frames and that the Bkgr. ROI is on an area without cells. 
+**Multiple ROIs** (|add_crop_ROI|) **and Bkgr. ROIs** (|bkgrRoiicon|) can be 
+added through the corresponding buttons. **Right click** on one of the frames 
+to show an interaction menu through which you can **remove** it. 
+If you are working with 3D z-stacks and you want to crop z-slices click on the 
+**"Crop z-slices"** (|cropZ|) button. 
+Once all is set, press the **"Crop XY"** (|crop|) button to preview the crop.
 
+To save the cropped data, click on the **"Save cropped data"** (|save|) button. 
+**This will overwrite the previous files**. The window may become **unresponsive**. 
 
 .. note::
 
-    If the Bkgr. ROI is not visible, a standard Bkgr. ROI is applied. If you want to set a Bkgr. ROI, press the Bkgr. ROI button (|bkgrRoiicon|) which should add one.
+    If the Bkgr. ROI is not visible, background from data-prep will not be 
+    computed. If you want to set a Bkgr. ROI, press the Bkgr. ROI button 
+    (|bkgrRoiicon|) to add as many background ROIs as needed.
 
 Data such as the selected frame is stored in segmInfo.csv, while aligned.npz stores the alignment data.
 
@@ -244,14 +284,8 @@ Data such as the selected frame is stored in segmInfo.csv, while aligned.npz sto
     :alt: Data preparation: Image properties
     :width: 300
 
-.. figure:: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/DataPrep3.png?raw=true
-    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/DataPrep3.png?raw=true
-    :alt: Data preparation: Main GUI for data preparation
-
-.. figure:: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/DataPrep4.png?raw=true
-    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/DataPrep4.png?raw=true
-    :alt: Data preparation: Data structure
-    :width: 300
+.. figure:: images/dataprep_window_screenshot.svg
+    :alt: Data preparation: Window for data preparation
 
 Segmentation and tracking
 -------------------------
