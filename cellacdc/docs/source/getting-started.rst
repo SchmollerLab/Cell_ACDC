@@ -259,6 +259,19 @@ of interest on all frames and that the Bkgr. ROI is on an area without cells.
 **Multiple ROIs** (|add_crop_ROI|) **and Bkgr. ROIs** (|bkgrRoiicon|) can be 
 added through the corresponding buttons. **Right click** on one of the frames 
 to show an interaction menu through which you can **remove** it. 
+
+.. tip:: 
+
+    The background ROIs are used to compute background values from those areas. 
+    These values will be saved in the ``acdc_output`` CSV table that you can 
+    create with the module 3 ``Launch GUI...``. The background values specific 
+    to these ROIs will be called ``<ChannelName>_dataPrepBkgr_bkgrVal_<metric_name>``, where 
+    ``<metric_name>`` will be the ``median``, ``mean``, etc. 
+
+    Additionally, the median of the background will be used to compute background 
+    corrected measurements like ``amount_dataPrepBkgr`` (i.e., background corrected 
+    sum intensity) and ``concentration_dataPrepBkgr``.
+
 If you are working with 3D z-stacks and you want to crop z-slices click on the 
 **"Crop z-slices"** (|cropZ|) button. 
 Once all is set, press the **"Crop XY"** (|crop|) button to preview the crop.
