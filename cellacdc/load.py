@@ -36,6 +36,9 @@ if GUI_INSTALLED:
     pg.setConfigOption('imageAxisOrder', 'row-major')
     from . import apps
     from . import widgets
+    from . import qrc_resources_path, qrc_resources_light_path
+    from . import qrc_resources_dark_path
+    
     
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -45,8 +48,6 @@ from . import myutils, measurements, config
 from . import base_cca_dict, base_acdc_df, html_utils, settings_folderpath
 from . import cca_df_colnames, printl
 from . import ignore_exception, cellacdc_path
-from . import qrc_resources_path, qrc_resources_light_path
-from . import qrc_resources_dark_path
 from . import models_path
 from . import tooltips_rst_filepath
 from . import cca_functions
