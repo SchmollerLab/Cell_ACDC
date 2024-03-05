@@ -50,6 +50,7 @@ from . import qrc_resources_dark_path
 from . import models_path
 from . import tooltips_rst_filepath
 from . import cca_functions
+from . import sorted_cols
 
 acdc_df_bool_cols = [
     'is_cell_dead',
@@ -468,6 +469,25 @@ def load_acdc_df_file(images_path, end_name_acdc_df_file='segm', return_path=Fal
             return None, ''
         else:
             return
+
+def save_acdc_df_file(acdc_df, csv_path, custom_annot_columns=None):
+    if custom_annot_columns is not None:
+        new_order_cols = [*sorted_cols, *custom_annot_columns]
+    else:
+        new_order_cols = sorted_cols
+    
+    for col in new_order_cols.copy():
+        if col in acdc_df.columns:
+            continue
+        new_order_cols.remove(col)
+    
+    for col in acdc_df.columns:
+        if col in new_order_cols:
+            continue
+        new_order_cols.append(col)
+    
+    acdc_df = acdc_df[new_order_cols]
+    acdc_df.to_csv(csv_path)
 
 def store_copy_acdc_df(posData, acdc_output_csv_path, log_func=printl):
     try:
@@ -984,6 +1004,12 @@ class loadData:
         if not os.path.exists(settings_folderpath):
             return
         self.metadata_df.to_csv(last_entries_metadata_path)
+    
+    def getCustomAnnotColumnNames(self):
+        if not hasattr(self, 'customAnnot'):
+            return 
+        
+        return natsorted(self.customAnnot.keys())
     
     def saveCustomAnnotationParams(self):
         if not hasattr(self, 'customAnnot'):

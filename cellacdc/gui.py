@@ -810,13 +810,17 @@ class saveDataWorker(QObject):
                     all_frames_acdc_df
                 )
                 all_frames_acdc_df = load._fix_will_divide(all_frames_acdc_df)
+                custom_annot_columns = posData.getCustomAnnotColumnNames()
                 try:
                     # Save segmentation metadata
                     load.store_copy_acdc_df(
                         posData, acdc_output_csv_path, 
                         log_func=self.progress.emit
                     )
-                    all_frames_acdc_df.to_csv(acdc_output_csv_path)
+                    load.save_acdc_df_file(
+                        all_frames_acdc_df, acdc_output_csv_path, 
+                        custom_annot_columns=custom_annot_columns
+                    )
                     posData.acdc_df = all_frames_acdc_df
                 except PermissionError:
                     err_msg = (
@@ -833,9 +837,9 @@ class saveDataWorker(QObject):
                     # Save segmentation metadata
                     all_frames_acdc_df.to_csv(acdc_output_csv_path)
                     posData.acdc_df = all_frames_acdc_df
-                except Exception as e:
+                except Exception as err:
                     self.mutex.lock()
-                    self.critical.emit(traceback.format_exc())
+                    self.critical.emit(err)
                     self.waitCond.wait(self.mutex)
                     self.mutex.unlock()
 
@@ -13639,9 +13643,11 @@ class guiWin(QMainWindow):
 
         if only_temp:
             return
-
+        
         # Save to pos path
         for posData in self.data:
+            if not posData.customAnnot:
+                continue
             with open(posData.custom_annot_json_path, mode='w') as file:
                 json.dump(posData.customAnnot, file, indent=2)
 
@@ -14306,6 +14312,7 @@ class guiWin(QMainWindow):
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
             self.progressWin.close()
+        self.logger.info(error)
         raise error
     
     def workerLog(self, text):
@@ -20525,6 +20532,9 @@ class guiWin(QMainWindow):
             except IndexError:
                 return
 
+        if hoverID == 0:
+            return
+        
         posData = self.data[self.pos_i]
         objIdx = posData.IDs_idxs[hoverID]
         obj = posData.rp[objIdx]
