@@ -1338,7 +1338,7 @@ class loadData:
             return acdc_df
     
     def getSpotmaxSingleSpotsfiles(self):
-        from spotmax.core import DFs_FILENAMES
+        from spotmax import DFs_FILENAMES
         spotmax_files = myutils.listdir(self.spotmax_out_path)
         patterns = [
             filename.replace('*rn*', '').replace('*desc*', '')
