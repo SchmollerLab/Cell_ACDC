@@ -2843,20 +2843,23 @@ def are_acdc_dfs_equal(df_left, df_right):
     if df_left.shape != df_right.shape:
         return False
     
-    for col in df_left.columns:
-        if col not in df_right.columns:
-            return False
-        
-        try:
-            eq_mask = np.isclose(df_left[col], df_right[col], equal_nan=True)
-        except Exception as err:
-            # Data type is string
-            eq_mask = df_left[col] == df_right[col]
-        
-        nan_mask = ((df_left[col].isna()) & (df_right[col].isna()))
-        equality_mask = (eq_mask) | (nan_mask)
-        if not equality_mask.all():
-            return False
+    try:
+        for col in df_left.columns:
+            if col not in df_right.columns:
+                return False
+            
+            try:
+                eq_mask = np.isclose(df_left[col], df_right[col], equal_nan=True)
+            except Exception as err:
+                # Data type is string
+                eq_mask = df_left[col] == df_right[col]
+            
+            nan_mask = ((df_left[col].isna()) & (df_right[col].isna()))
+            equality_mask = (eq_mask) | (nan_mask)
+            if not equality_mask.all():
+                return False
+    except Exception as err:
+        return False
     
     return True
         

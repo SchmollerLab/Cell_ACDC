@@ -3812,7 +3812,7 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
     
     @worker_exception_handler
     def run(self):
-        from spotmax import DFs_FILENAMES
+        from spotmax import DFs_FILENAMES, DF_REF_CH_FILENAME
         import spotmax.io
         
         debugging = False
@@ -3821,6 +3821,7 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
         self.signals.initProgressBar.emit(0)
         spotmax_dfs_spots_allexp = defaultdict(lambda: defaultdict(list))
         spotmax_dfs_aggr_allexp = defaultdict(lambda: defaultdict(list))
+        ref_ch_dfs_allexp = defaultdict(lambda: defaultdict(list))
         for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
             self.errors = {}
             tot_pos = len(pos_foldernames)
@@ -3843,9 +3844,11 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
             selectedSpotmaxRuns = self.mainWin.selectedSpotmaxRuns
 
             self.signals.initProgressBar.emit(len(pos_foldernames))
-            dfs_spots = {}
-            dfs_aggr = {}
-            pos_runs = {}
+            dfs_spots = defaultdict(list)
+            dfs_aggr = defaultdict(list)
+            dfs_ref_ch = defaultdict(list)
+            pos_runs = defaultdict(list)
+            pos_runs_ref_ch = defaultdict(list)
             for p, pos in enumerate(pos_foldernames):
                 if self.abort:
                     self.sigAborted.emit()
@@ -3878,7 +3881,8 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                             spotmax_output_path, aggr_filename
                         )
                         if not os.path.exists(aggr_filepath):
-                            continue
+                            continue                        
+                        
                         df_spots_filename = f'{run_filename}.h5'
                         spots_filepath = os.path.join(
                             spotmax_output_path, df_spots_filename
@@ -3907,13 +3911,32 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                             df_aggregated, acdc_df
                         )
                         key = (run, analysis_step, desc, ext_spots)
-                        if key not in dfs_spots:
-                            dfs_spots[key] = []
-                            dfs_aggr[key] = []
-                            pos_runs[key] = []
                         dfs_spots[key].append(df_spots)
                         dfs_aggr[key].append(df_aggregated)
                         pos_runs[key].append(pos)
+                    
+                    ref_ch_id_text = re.findall(
+                        r'\*rn\*(.*)\*desc\*', DF_REF_CH_FILENAME
+                    )[0]
+                    ref_ch_filename = (
+                        DF_REF_CH_FILENAME.replace('*rn*', run)
+                    )
+                    ref_ch_filename = (
+                        ref_ch_filename.replace('*desc*', desc)
+                    )
+                    ref_ch_filepath = os.path.join(
+                        spotmax_output_path, ref_ch_filename
+                    )
+                    if not os.path.exists(ref_ch_filepath):
+                        continue
+                    
+                    df_ref_ch = pd.read_csv(
+                        ref_ch_filepath, index_col=['frame_i', 'Cell_ID']
+                    )
+                    df_ref_ch = self.copyCcaColsFromAcdcDf(df_ref_ch, acdc_df)
+                    ref_ch_key = (run, ref_ch_id_text, desc)
+                    dfs_ref_ch[ref_ch_key].append(df_ref_ch)
+                    pos_runs_ref_ch[ref_ch_key].append(pos)
 
                 self.signals.progressBar.emit(1)        
             
@@ -3949,40 +3972,64 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                 spotmax_dfs_aggr_allexp[filename]['keys'].append(
                     (exp_path, exp_name)
                 )
+            
+            for key, dfs in dfs_ref_ch.items():
+                run, ref_ch_id_text, desc = key
+                pos_keys = pos_runs_ref_ch[key]
+                filename = (
+                    f'multipos_{run}{ref_ch_id_text}{desc}{self._final_ext}'
+                )
+                df_ref_ch_concat = spotmax.io.save_concat_dfs(
+                    dfs, pos_keys, allpos_folderpath, filename, self._final_ext
+                )
+                ref_ch_dfs_allexp[filename]['dfs'].append(df_ref_ch_concat)
+                ref_ch_dfs_allexp[filename]['keys'].append(
+                    (exp_path, exp_name)
+                )
         
         multiexp_dst_folderpath = ''
         if len(expPaths) > 1:
-            multiexp_dst_folderpath = self.emitAskFolderWhereToSaveMultiExp()
-            if multiexp_dst_folderpath is None:
-                return
-            for filename, items in spotmax_dfs_spots_allexp.items():
-                keys = items['keys']
-                dfs = items['dfs']
-                multiexp_filename = f'multiexp_{filename}'
-                extension = os.path.splitext(filename)[-1]
-                spotmax.io.save_concat_dfs(
-                    dfs, keys, multiexp_dst_folderpath, 
-                    multiexp_filename, 
-                    extension
-                )
-                    
-        if len(expPaths) > 1:
-            if not multiexp_dst_folderpath:
-                multiexp_dst_folderpath = self.emitAskFolderWhereToSaveMultiExp()
-                if multiexp_dst_folderpath is None:
-                    return
-                
-            for filename, items in spotmax_dfs_aggr_allexp.items():
-                keys = items['keys']
-                dfs = items['dfs']
-                multiexp_filename = f'multiexp_{filename}'
-                extension = os.path.splitext(filename)[-1]
-                spotmax.io.save_concat_dfs(
-                    dfs, keys, multiexp_dst_folderpath, 
-                    multiexp_filename, 
-                    extension, 
-                    names=['experiment_folderpath', 'experiment_foldername']
-                )
+            self.signals.finished.emit(self)
+            return
+        
+        multiexp_dst_folderpath = self.emitAskFolderWhereToSaveMultiExp()
+        if multiexp_dst_folderpath is None:
+            return
+        
+        for filename, items in spotmax_dfs_spots_allexp.items():
+            keys = items['keys']
+            dfs = items['dfs']
+            multiexp_filename = f'multiexp_{filename}'
+            extension = os.path.splitext(filename)[-1]
+            spotmax.io.save_concat_dfs(
+                dfs, keys, multiexp_dst_folderpath, 
+                multiexp_filename, 
+                extension
+            )
+            
+        for filename, items in spotmax_dfs_aggr_allexp.items():
+            keys = items['keys']
+            dfs = items['dfs']
+            multiexp_filename = f'multiexp_{filename}'
+            extension = os.path.splitext(filename)[-1]
+            spotmax.io.save_concat_dfs(
+                dfs, keys, multiexp_dst_folderpath, 
+                multiexp_filename, 
+                extension, 
+                names=['experiment_folderpath', 'experiment_foldername']
+            )
+        
+        for filename, items in spotmax_dfs_aggr_allexp.items():
+            keys = items['keys']
+            dfs = items['dfs']
+            multiexp_filename = f'multiexp_{filename}'
+            extension = os.path.splitext(filename)[-1]
+            spotmax.io.save_concat_dfs(
+                dfs, keys, multiexp_dst_folderpath, 
+                multiexp_filename, 
+                extension, 
+                names=['experiment_folderpath', 'experiment_foldername']
+            )
         
         self.signals.finished.emit(self)
 

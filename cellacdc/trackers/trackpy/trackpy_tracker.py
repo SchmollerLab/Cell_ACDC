@@ -31,7 +31,7 @@ class tracker:
             tp_df['ID'].append(obj.label)
 
     def _get_pos_columns(
-            tp_df, PhysicalSizeX, PhysicalSizeY, PhysicalSizeZ,
+            self, tp_df, PhysicalSizeX, PhysicalSizeY, PhysicalSizeZ,
         ):
         is_3D = 'z' in tp_df.columns
         if PhysicalSizeX == PhysicalSizeY == PhysicalSizeZ:

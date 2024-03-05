@@ -10394,7 +10394,7 @@ class QDialogModelParams(QDialog):
         groupBoxLayout = QGridLayout()
 
         start_row = 0
-        if self.is_tracker and self.channels is not None:
+        if self.is_tracker and self.channels is not None and addChannelSelector:
             label = QLabel(f'Input image:  ')
             groupBoxLayout.addWidget(
                 label, start_row, 0, alignment=Qt.AlignRight
