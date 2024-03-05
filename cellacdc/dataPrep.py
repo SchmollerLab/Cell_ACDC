@@ -248,6 +248,7 @@ class dataPrepWin(QMainWindow):
             'To save the cropped data click the Save button.'
         )
         self.cropZaction.setEnabled(False)
+        self.cropZaction.setCheckable(True)
         
         self.cropAndSaveAction = QAction(
             QIcon(":file-save.svg"), "Crop and save", self)
