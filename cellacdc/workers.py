@@ -3869,7 +3869,7 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                     exp_path, pos, 'spotMAX_output'
                 )
                 for run_desc in selectedSpotmaxRuns:
-                    run, desc = run_desc.split('...')
+                    run, desc = run_desc.split('_...')
                     for _, pattern_filename in DFs_FILENAMES.items():
                         run_filename = pattern_filename.replace('*rn*', run)
                         run_filename = run_filename.replace('*desc*', desc)
@@ -3951,7 +3951,7 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                 )
         
         multiexp_dst_folderpath = ''
-        if len(spotmax_dfs_spots_allexp) > 1:
+        if len(expPaths) > 1:
             multiexp_dst_folderpath = self.emitAskFolderWhereToSaveMultiExp()
             if multiexp_dst_folderpath is None:
                 return
@@ -3966,7 +3966,7 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                     extension
                 )
                     
-        if len(spotmax_dfs_aggr_allexp) > 1:
+        if len(expPaths) > 1:
             if not multiexp_dst_folderpath:
                 multiexp_dst_folderpath = self.emitAskFolderWhereToSaveMultiExp()
                 if multiexp_dst_folderpath is None:

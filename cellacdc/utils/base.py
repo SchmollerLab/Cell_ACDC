@@ -2,6 +2,7 @@ import os
 import sys
 import traceback
 
+from natsort import natsorted
 from qtpy.QtCore import Qt, QThread, QSize
 from qtpy.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel
@@ -237,7 +238,7 @@ class NewThreadMultipleExpBaseUtil(QDialog):
             self.worker.waitCond.wakeAll()
             return
         
-        items = [f'{run}...{desc}' for run, desc in all_runs]
+        items = natsorted([f'{run}_...{desc}' for run, desc in all_runs])
         if len(items) == 1:
             self.selectedSpotmaxRuns = items
             self.worker.waitCond.wakeAll()

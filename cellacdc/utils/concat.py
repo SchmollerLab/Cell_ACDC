@@ -20,8 +20,10 @@ class ConcatWin(NewThreadMultipleExpBaseUtil):
         self.expPaths = expPaths
         if title.find('spotMAX') != -1:
             self.worker_func = workers.ConcatSpotmaxDfsWorker
+            self._infoText = 'spotMAX'
         else:
             self.worker_func = workers.ConcatAcdcDfsWorker
+            self._infoText = 'acdc_output'
     
     def runWorker(self, format='CSV'):
         self.worker = self.worker_func(self, format=format)
@@ -229,9 +231,9 @@ class ConcatWin(NewThreadMultipleExpBaseUtil):
     
     def workerFinished(self, worker, aborted=False):
         if aborted:
-            txt = 'Concatenating <code>acdc_output</code> tables aborted.'
+            txt = f'Concatenating <code>{self._infoText}</code> tables aborted.'
         else:
-            txt = 'Concatenating <code>acdc_output</code> tables completed.'
+            txt = f'Concatenating <code>{self._infoText}</code> tables completed.'
         self.logger.info(txt)
         msg = widgets.myMessageBox(wrapText=False, showCentered=False)
         if aborted:
