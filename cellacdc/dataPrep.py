@@ -692,19 +692,19 @@ class dataPrepWin(QMainWindow):
         if posData.SizeZ > 1:
             idx = (posData.filename, 0)
             try:
-                lower_z = int(posData.segmInfo_df.at[idx, 'crop_lower_z_slice'])
+                lower_z = int(posData.segmInfo_df['crop_lower_z_slice'].iloc[0])
             except KeyError:
                 lower_z = 0
 
             try:
-                upper_z = int(posData.segmInfo_df.at[idx, 'crop_upper_z_slice'])
+                upper_z = int(posData.segmInfo_df['crop_upper_z_slice'].iloc[0])
             except KeyError:
-                upper_z = posData.SizeZ
+                upper_z = posData.SizeZ-1
             if croppedData.ndim == 4:
                 croppedData = croppedData[:, lower_z:upper_z+1]
             elif croppedData.ndim == 3:
                 croppedData = croppedData[lower_z:upper_z+1]
-            SizeZ = upper_z-lower_z
+            SizeZ = (upper_z-lower_z)+1
         return croppedData, SizeZ
 
     def saveBkgrROIs(self, posData):
@@ -1223,14 +1223,13 @@ class dataPrepWin(QMainWindow):
         if self.cropZtool is None:
             return
 
-        idx = (posData.filename, 0)
         try:
-            lower_z = int(posData.segmInfo_df.at[idx, 'crop_lower_z_slice'])
+            lower_z = int(posData.segmInfo_df['crop_lower_z_slice'].iloc[0])
         except KeyError:
             lower_z = 0
 
         try:
-            upper_z = int(posData.segmInfo_df.at[idx, 'crop_upper_z_slice'])
+            upper_z = int(posData.segmInfo_df['crop_upper_z_slice'].iloc[0])
         except KeyError:
             upper_z = posData.SizeZ
 
@@ -1251,14 +1250,6 @@ class dataPrepWin(QMainWindow):
     def getCroppedData(self):
         for p, posData in enumerate(self.data):
             self.saveBkgrROIs(posData)
-
-            if posData.SizeZ > 1:
-                # Save segmInfo
-                posData.segmInfo_df = posData.segmInfo_df.drop(
-                    columns=['crop_lower_z_slice', 'crop_upper_z_slice'], 
-                    errors='ignore'
-                )
-                posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
 
             # Get crop shape and print it
             data = posData.img_data
@@ -1305,13 +1296,13 @@ class dataPrepWin(QMainWindow):
         for posData in self.data:
             posData.segmInfo_df['crop_lower_z_slice'] = low_z
             posData.segmInfo_df['crop_upper_z_slice'] = high_z
-            posData.SizeZ = high_z - low_z
             if posData.SizeT > 1:
-                posData.img_data = posData.img_data[:, low_z:high_z+1].copy()
+                posData.img_data[:, :low_z] = 0
+                posData.img_data[:, high_z+1:] = 0
             else:
-                posData.img_data = posData.img_data[low_z:high_z+1].copy()
+                posData.img_data[:low_z] = 0
+                posData.img_data[high_z+1:] = 0
         
-        self.zSliceScrollBar.setValue(self.zSliceToRestore-low_z)
         self.update_img()
     
     def applyCropYX(self):
@@ -1340,12 +1331,11 @@ class dataPrepWin(QMainWindow):
                 # Process cancelled by the user
                 return
             
-            printl(cropInfo)
-            
             if cropInfo == 'continue':
                 continue
             
             croppedShapes, posData, SizeZ, doCrop = cropInfo
+            posData.SizeZ = SizeZ
 
             # Update metadata with cropped SizeZ
             posData.metadata_df.at['SizeZ', 'values'] = SizeZ
@@ -1370,6 +1360,13 @@ class dataPrepWin(QMainWindow):
         
         for posData in self.data:
             self.disconnectROIs(posData)
+            if posData.SizeZ > 1:
+                # Save segmInfo
+                posData.segmInfo_df = posData.segmInfo_df.drop(
+                    columns=['crop_lower_z_slice', 'crop_upper_z_slice'], 
+                    errors='ignore'
+                )
+                posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
 
         txt = (
             'Saved! You can close the program or load another position.'
@@ -1449,12 +1446,13 @@ class dataPrepWin(QMainWindow):
                 {html_utils.to_list(croppedShapes, ordered=True)}
             """)
         important = html_utils.to_admonition(
-            'Saving cropped data <b>cannot be undone</b>.'
+            'Saving cropped data <b>cannot be undone</b>.', 
+            admonition_type='Important'
         )
         msg = widgets.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(f"""
-            {info_text}
-            {important}
+            {info_text}<br>
+            {important}<br>
             The ROI coordinates were already saved in the file ending with <br>
             <code>dataPrepROIs_coords.csv</code>.<br><br>
             You can use them in the segmentation process to segment only in the 
@@ -1781,7 +1779,7 @@ class dataPrepWin(QMainWindow):
             self.progressWin.logConsole.append(text)
         self.logger.log(getattr(logging, loggerLevel), text)
     
-    def startAlignDataWorker(self, posData, align, user_ch_name):
+    def startAlignDataWorker(self, posData, align, user_ch_name, progressText):
         # Disable clicks on image during alignment
         self.img.mousePressEvent = None
         
@@ -1789,7 +1787,7 @@ class dataPrepWin(QMainWindow):
             self.progressWin = apps.QDialogWorkerProgress(
                 title='Aligning data', 
                 parent=self,
-                pbarDesc=f'Aligning all channels based on "{user_ch_name}" channel...'
+                pbarDesc=progressText
             )
             self.progressWin.show(self.app)
             self.progressWin.mainPbar.setMaximum(0)
@@ -2140,6 +2138,7 @@ class dataPrepWin(QMainWindow):
     
     def alignData(self, user_ch_name, posData):
         align = False
+        progressText = 'Aligning data...'
         if posData.SizeT > 1:
             msg = widgets.myMessageBox(showCentered=False)
             if posData.loaded_shifts is not None:
@@ -2170,6 +2169,7 @@ class dataPrepWin(QMainWindow):
                 align = False
                 # Create 0, 0 shifts to perform 0 alignment
                 posData.loaded_shifts = np.zeros((self.num_frames,2), int)
+                progressText = 'Skipping alignment...'
             else:
                 if posData.loaded_shifts is not None:
                     # Discard current shifts since we want to repeat it
@@ -2188,12 +2188,10 @@ class dataPrepWin(QMainWindow):
         self.align = align
 
         if align:
-            self.logger.info('Aligning data...')
-            self.titleLabel.setText(
-                'Aligning data...(check progress in terminal)',
-                color='w')
+            self.logger.info(progressText)
+            self.titleLabel.setText(progressText, color='w')
 
-        self.startAlignDataWorker(posData, align, user_ch_name)
+        self.startAlignDataWorker(posData, align, user_ch_name, progressText)
         self.waitAlignDataWorker()
         
         return not self.alignDataWorker.doAbort

@@ -1586,6 +1586,49 @@ def download_model(model_name):
         traceback.print_exc()
         return False
 
+# def get_tiff_metadata(
+#         image_arr,
+#         SizeT=None, 
+#         SizeZ=None, 
+#         PhysicalSizeZ=None,
+#         PhysicalSizeX=None, 
+#         PhysicalSizeY=None,
+#         TimeIncrement=None
+#     ):
+#     SizeY, SizeX = image_arr.shape[-2:]
+#     Type = str(image_arr.dtype)
+    
+#     metadata = {
+#         'SizeX': SizeX,
+#         'SizeY': SizeY,
+#         'Type': Type
+#     }
+    
+#     axes = 'YX'
+#     if SizeZ is not None and SizeZ > 1:
+#         axes = f'Z{axes}'
+#         metadata['SizeZ'] = SizeZ
+        
+#     if SizeT is not None and SizeT > 1:
+#         axes = f'T{axes}'
+#         metadata['SizeT'] = SizeT
+        
+#     metadata['axes'] = axes
+    
+#     if PhysicalSizeX is not None:
+#         metadata['PhysicalSizeX'] = PhysicalSizeX
+    
+#     if PhysicalSizeY is not None:
+#         metadata['PhysicalSizeY'] = PhysicalSizeY
+    
+#     if PhysicalSizeZ is not None:
+#         metadata['PhysicalSizeZ'] = PhysicalSizeZ
+    
+#     if TimeIncrement is not None:
+#         metadata['TimeIncrement'] = TimeIncrement
+    
+#     return metadata
+
 def get_tiff_metadata(
         image_arr,
         SizeT=None, 
@@ -1655,7 +1698,9 @@ def to_tiff(
     )
     
     try:
-        tifffile.imwrite(new_path, data, metadata=metadata)
+        tifffile.imwrite(
+            new_path, data, metadata=metadata, imagej=True
+        )
     except Exception as err:
         tifffile.imwrite(new_path, data)
 

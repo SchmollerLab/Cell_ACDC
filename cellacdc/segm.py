@@ -36,6 +36,7 @@ from . import workers
 from . import _palettes
 from . import cellacdc_path, settings_folderpath, recentPaths_path
 from . import features
+from . import urls
 
 if os.name == 'nt':
     try:
@@ -279,6 +280,44 @@ class segmWin(QMainWindow):
             screenWidth = screen.size().width()
             self.resize(int(screenWidth*0.5), int(screenHeight*0.6))
 
+    def askHowToHandleROI(self, posData):
+        if posData.dataPrep_ROIcoords is None:
+            href = html_utils.href_tag('here', urls.dataprep_docs)
+            txt = html_utils.paragraph(f"""
+                Do you want to segment only a rectangluar sub-region (ROI) of 
+                the image?<br><br>
+                If yes, Cell-ACDC will launch the Data-prep module later.<br><br>
+                See {href} for more details on how to use the Data-prep module.       
+            """)
+        elif int(posData.dataPrep_ROIcoords.at[(0, 'cropped'), 'value']) > 0:
+            # Data is cropped, do not ask to segment a roi
+            return False, False
+        else:
+            SizeY, SizeX = posData.img_data.shape[-2:]
+            x0 = int(posData.dataPrep_ROIcoords.at[(0, 'x_left'), 'value'])
+            x1 = int(posData.dataPrep_ROIcoords.at[(0, 'x_left'), 'value'])
+            y0 = int(posData.dataPrep_ROIcoords.at[(0, 'y_top'), 'value'])
+            y1 = int(posData.dataPrep_ROIcoords.at[(0, 'y_bottom'), 'value'])
+            if x0 == 0 and y0 == 0 and y1==SizeY and y1 == SizeX:
+                # ROI is present but with same shape as image --> ignore
+                return False, False
+            
+            note = html_utils.to_admonition("""
+                If you need to modify the existing ROI, cancel the process 
+                now and launch Data-prep again.
+            """)
+            txt = html_utils.paragraph(f"""
+                Cell-ACDC detected a ROI from Data-prep step.<br><br>
+                Do you want to use it to segment only in this ROI region you 
+                selected in the Data-prep step?<br><br>
+                {note}             
+            """)
+        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        _, yesButton, noButton = msg.question(self, 'ROI?', txt,
+            buttonsTexts = ('Cancel','Yes','No')
+        )
+        return msg.cancel, msg.clickedButton == yesButton
+    
     def main(self):
         self.getMostRecentPath()
         exp_path = QFileDialog.getExistingDirectory(
@@ -630,27 +669,15 @@ class segmWin(QMainWindow):
 
         # Ask ROI
         selectROI = False
-        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
-        txt = html_utils.paragraph(
-            'Do you want to segment only a rectangular <b>'
-            'region-of-interest (ROI)</b>?<br><br>'
-            'NOTE: If a ROI is already present from the data prep step, Cell-ACDC '
-            'will use it.<br>'
-            'If not, the data prep window will open and you can select one.<br>'
-            'If you want to modify it, abort the process now and repeat the '
-            'data prep step.'
-        )
-        _, yesButton, noButton = msg.question(self, 'ROI?', txt,
-            buttonsTexts = ('Cancel','Yes','No')
-        )
-        if msg.cancel:
+        cancel, useROI = self.askHowToHandleROI(posData)
+        if cancel:
             abort = self.doAbort()
             if abort:
                 self.close()
                 return
 
         self.ROIdeactivatedByUser = False
-        if msg.clickedButton == yesButton:
+        if useROI:
             # User requested ROI but it was not present --> ask later
             selectROI = posData.dataPrep_ROIcoords is None
         else:

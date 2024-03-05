@@ -76,6 +76,7 @@ from . import user_profile_path
 from . import features
 from . import _core
 from . import types
+from . import plot
 from .regex import float_regex
 
 POSITIVE_FLOAT_REGEX = float_regex(allow_negative=False)
@@ -5525,7 +5526,7 @@ class QDialogMetadata(QDialog):
         if not valid4D:
             txt = (f"""
                 You loaded <b>4D data</b>, hence the number of frames MUST be
-                <b>{T}</b><br> nd the number of z-slices MUST be <b>{Z}</b>.<br><br>
+                <b>{T}</b><br> and the number of z-slices MUST be <b>{Z}</b>.<br><br>
                 What do you want to do?
             """)
         if not valid3D:
@@ -6896,6 +6897,8 @@ class imageViewer(QMainWindow):
             self.zSliceScrollBar.setVisible(False)
             _z_label.setVisible(False)
 
+        printl(self.zSliceScrollBar.isEnabled())
+        
         self.img_Widglayout.setContentsMargins(100, 0, 50, 0)
         self.zSliceScrollBar.valueChanged.connect(self.update_z_slice)
 
@@ -8350,12 +8353,13 @@ class askStopFrameSegm(QDialog):
         print('Loading image data...')
         posData.loadImgData()
         posData.frame_i = spinBox.value()-1
-        self.slideshowWin = imageViewer(
-            posData=posData, spinBox=spinBox
-        )
-        self.slideshowWin.update_img()
-        # self.slideshowWin.framesScrollBar.setDisabled(True)
-        self.slideshowWin.show()
+        plot.imshow(posData.img_data, lut='gray')
+        # self.slideshowWin = imageViewer(
+        #     posData=posData, spinBox=spinBox
+        # )
+        # self.slideshowWin.update_img()
+        # # self.slideshowWin.framesScrollBar.setDisabled(True)
+        # self.slideshowWin.show()
 
     def exec_(self):
         self.show(block=True)

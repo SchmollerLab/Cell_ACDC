@@ -315,7 +315,7 @@ class mainWin(QMainWindow):
             load.remove_duplicates_file(path)
     
     def dragEnterEvent(self, event) -> None:
-        printl(event)
+        ...
     
     def log(self, text):
         self.logger.info(text)
