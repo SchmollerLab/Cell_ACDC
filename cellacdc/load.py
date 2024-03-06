@@ -1321,7 +1321,7 @@ class loadData:
 
         if self.metadataFound is not None and self.metadataFound:
             self.extractMetadata()
-
+        
         # Check if there is the old segm.npy
         if not self.segmFound and not create_new_segm:
             for file in ls:
@@ -1346,6 +1346,31 @@ class loadData:
 
         self.getCustomAnnotatedIDs()
         self.setNotFoundData()
+        self.checkAndFixZsliceSegmInfo()
+    
+    def checkAndFixZsliceSegmInfo(self):
+        if not hasattr(self, 'segmInfo_df'):
+            return
+        
+        if self.segmInfo_df is None:
+            return
+        
+        if self.SizeZ == 1:
+            return
+        
+        middleZslice = int(self.SizeZ/2)
+        
+        try:
+            mask = self.segmInfo_df['z_slice_used_dataPrep'] >= self.SizeZ
+            self.segmInfo_df[mask] = middleZslice
+        except Exception as err:
+            pass
+        
+        try:
+            mask = self.segmInfo_df['z_slice_used_gui'] >= self.SizeZ
+            self.segmInfo_df[mask] = middleZslice
+        except Exception as err:
+            pass
     
     def loadMostRecentUnsavedAcdcDf(self):
         acdc_df = get_last_stored_unsaved_acdc_df(self)

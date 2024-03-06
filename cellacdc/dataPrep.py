@@ -1292,7 +1292,9 @@ class dataPrepWin(QMainWindow):
                 yield croppedShapes, posData, SizeZ, doCrop
     
     def applyCropZslices(self, low_z, high_z):
-        self.logger.info(f'Cropping z-slices range {low_z}-{high_z}')
+        self.logger.info(
+            f'Previewing cropped z-slices in the range ({low_z+1},{high_z+1})...'
+        )
         for posData in self.data:
             posData.segmInfo_df['crop_lower_z_slice'] = low_z
             posData.segmInfo_df['crop_upper_z_slice'] = high_z
@@ -1304,6 +1306,22 @@ class dataPrepWin(QMainWindow):
                 posData.img_data[high_z+1:] = 0
         
         self.update_img()
+        note_text = (
+            f'Done. Z-slices outside of the range ({low_z+1},{high_z+1}) '
+            'will appear black now. To save cropped data, click on the "Save" '
+            'button on the top toolbar.'
+        )
+        self.logger.info(note_text)
+        
+        txt = html_utils.paragraph(f"""
+            Cropping z-slice applied.<br><br>
+            Note that this is just a preview where the z-slices outside of the 
+            range ({low_z+1},{high_z+1}) will look black.<br><br>
+            <b>To save cropped data</b>, click on the <code>Save cropped data</code> 
+            button on the top toolbar.
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.information(self, 'Preview cropped z-slices', txt)
     
     def applyCropYX(self):
         for posData in self.data:
@@ -1362,6 +1380,12 @@ class dataPrepWin(QMainWindow):
             self.disconnectROIs(posData)
             if posData.SizeZ > 1:
                 # Save segmInfo
+                try:
+                    low_z = posData.segmInfo_df['crop_lower_z_slice']
+                    posData.segmInfo_df['z_slice_used_dataPrep'] -= low_z
+                except Exception as err:
+                    pass 
+                
                 posData.segmInfo_df = posData.segmInfo_df.drop(
                     columns=['crop_lower_z_slice', 'crop_upper_z_slice'], 
                     errors='ignore'

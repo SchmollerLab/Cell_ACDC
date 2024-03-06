@@ -140,7 +140,7 @@ def rst_urls_to_html(rst_text):
 
 def to_admonition(text, admonition_type='note'):
     if text.find('<br>') == -1:
-        wrapped_list = textwrap.wrap(text, width=110)
+        wrapped_list = textwrap.wrap(text, width=130)
         text = '<br>'.join(wrapped_list)
     title = admonition_type.capitalize()
     title_row = tag(

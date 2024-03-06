@@ -3491,6 +3491,9 @@ class SpinBox(QSpinBox):
         self.valueChanged.disconnect()
         self.setValue(value)
         self.valueChanged.connect(self._valueChangedFunction)
+    
+    def wheelEvent(self, event):
+        event.ignore()
 
 class ReadOnlyLineEdit(QLineEdit):
     def __init__(self, parent=None):
