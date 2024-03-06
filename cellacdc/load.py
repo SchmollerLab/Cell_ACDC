@@ -1362,13 +1362,15 @@ class loadData:
         
         try:
             mask = self.segmInfo_df['z_slice_used_dataPrep'] >= self.SizeZ
-            self.segmInfo_df[mask] = middleZslice
+            valid_idx = mask[mask].index
+            self.segmInfo_df.loc[valid_idx, 'z_slice_used_dataPrep'] = middleZslice
         except Exception as err:
             pass
         
         try:
             mask = self.segmInfo_df['z_slice_used_gui'] >= self.SizeZ
-            self.segmInfo_df[mask] = middleZslice
+            valid_idx = mask[mask].index
+            self.segmInfo_df.loc[valid_idx, 'z_slice_used_gui'] = middleZslice
         except Exception as err:
             pass
     
