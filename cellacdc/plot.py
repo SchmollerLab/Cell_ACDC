@@ -51,7 +51,8 @@ def imshow(
         color_scheme=None, 
         link_scrollbars=True,
         annotate_labels_idxs: List[int]=None,
-        show_duplicated_cursor=True
+        show_duplicated_cursor=True, 
+        infer_rgb=True
     ):
     if isinstance(images[0], dict):
         images_dict = images[0]
@@ -89,7 +90,11 @@ def imshow(
         casted_images.append(image)
 
     app = _run._setup_app()
-    win = widgets.ImShow(parent=parent, link_scrollbars=link_scrollbars)
+    win = widgets.ImShow(
+        parent=parent, 
+        link_scrollbars=link_scrollbars,
+        infer_rgb=infer_rgb
+    )
     win.setWindowTitle(window_title)
     if app is not None:
         win.app = app

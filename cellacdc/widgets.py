@@ -6581,9 +6581,10 @@ class _ImShowImageItem(pg.ImageItem):
             
 
 class ImShow(QBaseWindow):
-    def __init__(self, parent=None, link_scrollbars=True):
+    def __init__(self, parent=None, link_scrollbars=True, infer_rgb=True):
         super().__init__(parent=parent)
         self._linkedScrollbars = link_scrollbars
+        self._infer_rgb = infer_rgb
 
         self._autoLevels = True
 
@@ -6743,8 +6744,8 @@ class ImShow(QBaseWindow):
                 imageItem.gridPos = (row, col)
                 imageItem.ScrollBars = []
                 
-                is_rgb = image.shape[-1] == 3
-                is_rgba = image.shape[-1] == 4
+                is_rgb = image.shape[-1] == 3 and self._infer_rgb
+                is_rgba = image.shape[-1] == 4 and self._infer_rgb
                 does_not_require_scrollbars = (
                     image.ndim == 2
                     or (image.ndim == 3 and (is_rgb or is_rgba))
@@ -6803,8 +6804,8 @@ class ImShow(QBaseWindow):
             else:
                 self._autoLevels = True
             
-            is_rgb = image.shape[-1] == 3
-            is_rgba = image.shape[-1] == 4
+            is_rgb = image.shape[-1] == 3 and self._infer_rgb
+            is_rgba = image.shape[-1] == 4 and self._infer_rgb
             does_not_require_scrollbars = (
                 image.ndim == 2
                 or (image.ndim == 3 and (is_rgb or is_rgba))
