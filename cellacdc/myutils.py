@@ -1697,6 +1697,17 @@ def to_tiff(
         TimeIncrement=TimeIncrement
     )
     
+    # # Potential alternative 
+    # hyperstack = tifffile.memmap(
+    #     new_path,
+    #     shape=img.shape,
+    #     dtype=img.dtype,
+    #     imagej=True,
+    #     metadata={'axes': 'TZYX'},
+    # )
+    # hyperstack[:] = img
+    # hyperstack.flush()
+    
     try:
         tifffile.imwrite(
             new_path, data, metadata=metadata, imagej=True

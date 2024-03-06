@@ -671,6 +671,22 @@ def get_segm_files(images_path):
     ]
     return segm_files            
 
+def load_segmInfo_df(pos_path):
+    images_path = os.path.join(pos_path, 'Images')
+    for file in myutils.listdir(images_path):
+        if file.endswith('segmInfo.csv'):
+            csv_path = os.path.join(images_path, file)
+            df = pd.read_csv(csv_path)
+            df = df.set_index(['filename', 'frame_i']).sort_index()
+            df = df[~df.index.duplicated()]
+            return df
+
+def segmInfo_df_use_middle_z_slice_where_missing(pos_path):
+    experiment_folderpath = os.path.dirname(pos_path)
+    pos_foldernames = myutils.get_pos_foldernames(experiment_folderpath)
+    for pos in pos_foldernames:
+        ...
+
 def get_filename_from_channel(
         images_path, channel_name, not_allowed_ends=None, logger=None,
         basename=None, skip_channels=None

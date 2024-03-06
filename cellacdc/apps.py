@@ -9827,7 +9827,7 @@ class QDialogZsliceAbsent(QDialog):
         self.cancel = True
 
         super().__init__(parent)
-        self.setWindowTitle('z-slice info absent!')
+        self.setWindowTitle('Reference z-slice info absent')
 
         mainLayout = QVBoxLayout()
         buttonsLayout = QGridLayout()

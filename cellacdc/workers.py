@@ -960,7 +960,7 @@ class calcMetricsWorker(QObject):
                 for p, posData in enumerate(posDatas):
                     self.allPosDataInputs[p]['stopFrameNum'] = posData.stopFrameNum
                 # remove posDatas from memory for timelapse data
-                del posDatas
+                # del posDatas
             else:
                 for p, posData in enumerate(posDatas):
                     self.allPosDataInputs[p]['stopFrameNum'] = 1
@@ -1008,13 +1008,19 @@ class calcMetricsWorker(QObject):
                     )
                     continue
 
-                if posData.SizeT > 1:
-                    self.mainWin.gui.data = [None]*numPos
-                else:
-                    self.mainWin.gui.data = posDatas
+                # if posData.SizeT > 1:
+                #     self.mainWin.gui.data = [None]*numPos
+                # else:
+                #     self.mainWin.gui.data = posDatas
 
+                if p == 0:
+                    self.mainWin.gui.data = posDatas
+                else:
+                    self.mainWin.gui.data[p-1] = posDatas[p-1]
+                    
                 self.mainWin.gui.pos_i = p
                 self.mainWin.gui.data[p] = posData
+                
                 self.mainWin.gui.last_pos = numPos
 
                 self.mainWin.gui.isSegm3D = posData.getIsSegm3D()
