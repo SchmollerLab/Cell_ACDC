@@ -101,13 +101,17 @@ def imshow(
     win.setupMainLayout()
     win.setupStatusBar()
     win.setupGraphicLayout(
-        *casted_images, hide_axes=hide_axes, max_ncols=max_ncols,
+        *casted_images, 
+        hide_axes=hide_axes, 
+        max_ncols=max_ncols,
         color_scheme=color_scheme
     )
     if axis_titles is not None:
         win.setupTitles(*axis_titles)
     win.showImages(
-        *casted_images, luts=luts, autoLevels=autoLevels, 
+        *casted_images, 
+        luts=luts, 
+        autoLevels=autoLevels, 
         autoLevelsOnScroll=autoLevelsOnScroll
     )
     if points_coords_df is not None:

@@ -476,7 +476,7 @@ class TextAnnotations:
         labelsToSkip = kwargs.get('labelsToSkip')
         posData = kwargs['posData']
         delROIsIDs = kwargs.get('delROIsIDs', [])
-        isObjVisible = kwargs.get('isVisibleCheckFunc')
+        isObjVisibleFunc = kwargs.get('isVisibleCheckFunc')
         highlightedID = kwargs.get('highlightedID')
         annotateLost = kwargs.get('annotateLost')
         isCcaAnnot = self.isCcaAnnot()
@@ -488,7 +488,7 @@ class TextAnnotations:
                 if labelsToSkip.get(obj.label, False):
                     continue
             
-            if not isObjVisible(obj.bbox):
+            if not isObjVisibleFunc(obj.bbox):
                 continue
             
             if obj.label in delROIsIDs:
@@ -522,6 +522,9 @@ class TextAnnotations:
                     continue
                 
                 if obj.label in delROIsIDs:
+                    continue
+                
+                if not isObjVisibleFunc(obj.bbox):
                     continue
                 
                 objOpts = {
