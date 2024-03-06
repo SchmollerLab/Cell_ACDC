@@ -152,7 +152,7 @@ def to_admonition(text, admonition_type='note'):
         tag_info=f'tr bgcolor="{RST_NOTE_TXT_HEX_COLOR}"'
     )
     admonition_html = (
-        '<table cellspacing=0 cellpadding=5>'
+        '<table cellspacing=0 cellpadding=5 width=100%>'
         f'{title_row}{text_row}'
         '</table><br>'
     )
