@@ -73,7 +73,7 @@ def added_lineage_tree_to_cca_df(added_lineage_tree):
             - 'Sister IDs'
 
     Returns:
-        pandas.DataFrame: The converted DataFrame with the following additional columns:
+        pandas.DataFrame: The converted DataFrame with the following columns:
             - 'emerg_frame_i'
             - 'division_frame_i'
             - 'generation_num_tree'
@@ -105,7 +105,7 @@ def create_lineage_tree_video(segm_video, IoA_thresh_daughter, min_daughter, max
         list: A list representing the lineage tree.
 
     """
-    tree = normal_division_lineage_tree(segm_video[0])
+    tree = normal_division_lineage_tree(lab=segm_video[0])
     for i, frame in enumerate(segm_video[1:], start=1):
         rp = regionprops(frame)
         prev_rp = regionprops(segm_video[i-1])
@@ -153,6 +153,89 @@ def IoA_index_daughter_to_ID(daughters, assignments, IDs_curr_untracked):
             daughter_IDs.append(IDs_curr_untracked[daughter])
 
     return daughter_IDs
+
+def add_member_fam_from_df(families, df):
+    """
+    Updates the families list based on the input DataFrame. If new families are found, they are added to the list. This is probably an overly complicated way of doing this, but it works...
+
+    Args:
+        families (list): List of families in the lineage tree.
+        df (pandas.DataFrame): The DataFrame containing the lineage tree.
+
+    Returns:
+        list: The updated list of families. For details see attribute disc. of normal_division_lineage_tree.
+    """
+
+    additions = []
+
+    for index, row in df.iterrows():
+        for family in families:
+            in_family = False
+            parent_in_family = False
+
+            if row['root_ID_tree'] == family[0][0]: # find the right family
+                for member in family: 
+                    if index == member[0]: # already in the family
+                        in_family = True
+                        break
+
+                if not in_family:
+                    family.append((index, row['generation_num_tree']))
+                    additions.append((family[0][0], index))
+                    break
+        else:
+            families.append([(index, 1)]) # add new family if for loop is exhaused and no family is found
+
+    return families
+
+
+def del_member_fam_from_df(families, df):
+    """
+    Corrects families list based on the input DataFrame. If the cell is in a family it should not belong (based on Root ID) it is delted from that family.
+    If this is slow it can be optimized by putting it together with update_fam_from_df
+
+    Args:
+        families (list): List of families in the lineage tree.
+        df (pandas.DataFrame): The DataFrame containing the lineage tree.
+
+    Returns:
+        list: The updated list of families. For details see attribute disc. of normal_division_lineage_tree.
+    """
+
+    deletions = []
+    
+    for index, row in df.iterrows():
+        for family in families:
+            if row['root_ID_tree'] != family[0][0]: # find families which should not have the cell
+                for i, member in enumerate(family): 
+                    if index == member[0]: # this cant be right!
+                        family.pop(i) # remove the cell from the family
+                        deletions.append((family[0][0], index)) # add to deletions list
+                        break
+
+
+
+
+    return families, deletions
+
+def update_generation_from_df(families, df):
+    for fam in families:
+        for member in fam:
+            member[1] = df.loc[member[0], 'generation_num_tree'] 
+
+    return families
+
+def propagate_generation_from_fams(families, df_li):
+    for fam in families:
+        for member in fam:
+            daughters = set()
+            parent_indx = -1 # this is default
+            for df in df_li:
+                if member[0] in df.index:
+                    df.loc[member[0], 'generation_num_tree'] = member[1]
+                    parent_indx = df.loc[member[0], 'parent_ID_tree']
+                daughters = daughters + set(df.loc[df['parent_ID_tree'] == member[0]].index.tolist())
+
 
 class normal_division_tracker:
     """
@@ -268,38 +351,47 @@ class normal_division_tracker:
 
 class normal_division_lineage_tree:
     """
-    Represents a lineage tree for normal cell divisions. Initializes the lineage tree with the first labeled frame, then updates the lineage tree with each subsequent frame (create_tracked_frame_tree).
+    Represents a lineage tree for normal cell divisions. Initializes the lineage tree with the first labeled frame, then updates the lineage tree with each subsequent frame (create_tracked_frame_tree). 
 
     Attributes:
     - max_daughter: Maximum number of daughter cells per division.
-    - families: List of families in the lineage tree. (Each member of a family is represented as a list of tuples (label, generation))
+    - families: List of families in the lineage tree. (List of families. Each family itself is a list of touples (ID, generation))    
     - lineage_list: List of lineage dataframes representing the lineage tree.
 
     Methods:
     - __init__(self, lab, max_daughter): Initializes the normal_division_lineage_tree object.
     - create_tracked_frame_tree(self, frame_i, mother_daughters, IDs_prev, IDs_curr_untracked, assignments, curr_IDs): Creates df for the specified frame and appends it to lineage_list.
+    - real_time_tree(self, frame_i, lab, prev_lab, rp=None, prev_rp=None): Calculates the real-time tree of cell divisions based on the input labels and region properties.
+    - dict_curr_frame(self): NOT DONE DEVELOPING Creates a dictionary mapping mother IDs to daughter IDs for the current frame.
     """
 
-    def __init__(self, lab, max_daughter=2, min_daughter=2, IoA_thresh_daughter=0.25):
-# remove the defaults when proper passing is done
-            """
-            Initializes the CellACDC_normal_division_tracker object.
+    def __init__(self, lab=None, max_daughter=2, min_daughter=2, IoA_thresh_daughter=0.25, first_df=None):
+        """
+        Initializes the CellACDC_normal_division_tracker object.
 
-            Parameters:
-            lab (ndarray): The labeled image of cells.
-            max_daughter (int, optional): The maximum number of daughter cells expected.
-            min_daughter (int, optional): The minimum number of daughter cells expected.
-            IoA_thresh_daughter (float, optional): The threshold for intersection over area (IoA) for daughter cells.
+        Parameters:
+        - lab (ndarray): The labeled image of cells.
+        - max_daughter (int, optional): The maximum number of daughter cells expected.
+        - min_daughter (int, optional): The minimum number of daughter cells expected.
+        - IoA_thresh_daughter (float, optional): The threshold for intersection over area (IoA) for daughter cells.
 
-            Returns:
-            None
-            """
-            self.max_daughter = max_daughter
-            self.min_daughter = min_daughter 
-            self.IoA_thresh_daughter = IoA_thresh_daughter
-            self.mother_daughters = []
+        Returns:
+        None
+        """
+        if lab is None and first_df is None:
+            raise ValueError('Either lab or first_df must be provided.')
+        
+        if lab and first_df:
+            raise ValueError('Only one of lab and first_df can be provided.')
+        
+        self.max_daughter = max_daughter
+        self.min_daughter = min_daughter 
+        self.IoA_thresh_daughter = IoA_thresh_daughter
+        self.mother_daughters = [] # just for the dict_curr_frame stuff...
 
-            self.families = []
+        self.families = []
+
+        if lab:
             added_lineage_tree = []
 
             rp = regionprops(lab.copy())
@@ -311,6 +403,10 @@ class normal_division_lineage_tree:
             cca_df = added_lineage_tree_to_cca_df(added_lineage_tree)
             cca_df = reorg_daughter_cells(cca_df, max_daughter)
             self.lineage_list = [cca_df]
+
+        elif first_df:
+            self.lineage_list = [first_df]
+            self.families.append([(label, 1) for label in first_df.index])
 
     def create_tracked_frame_tree(self, frame_i, mother_daughters, IDs_prev, IDs_curr_untracked, assignments, curr_IDs):        
         """
@@ -335,16 +431,24 @@ class normal_division_lineage_tree:
             mother_ID = IDs_prev[mother]
             daughter_IDs = IoA_index_daughter_to_ID(daughters, assignments, IDs_curr_untracked)
 
+            found = False  # flag to track if a family was associated
+
             for family in self.families:
                 for member in family:
                     if mother_ID == member[0]:
                         origin_id = family[0][0]
                         generation = member[1] + 1
                         family.extend([(daughter_ID, generation) for daughter_ID in daughter_IDs])
+                        found = True  # family was associated
                         break
-                else: 
-                    continue
-                break
+                if found:
+                    break
+
+            if not found:  # if no family was associated
+                printl(f"Warning: No family could be associated. Creating a new family for cells {daughter_IDs}.")
+                # create a new family
+                generation = 1
+                self.families.append([(daughter_ID, generation) for daughter_ID in daughter_IDs])
 
             for i, daughter_ID in enumerate(daughter_IDs):
                 daughter_IDs_copy = daughter_IDs.copy()
@@ -409,7 +513,46 @@ class normal_division_lineage_tree:
         printl(zip(mother_IDs, daughter_IDs))
         printl(dict(zip(mother_IDs, daughter_IDs)))
         return dict(zip(mother_IDs, daughter_IDs))
-        
+    
+    def insert_lineage_df(self, lineage_df, frame_i, propagate_back=False, propagate_fwd=False, update_fams=True):
+        """
+        Inserts a lineage DataFrame to the lineage list at given position. If the position is greater than the length of the lineage list, a warning is printed.
+        If the position is less than the length of the lineage list, the lineage DataFrame at the given position is replaced. The change can be propagated to the end of the lineage list, in both ways, or not at all, and also if the internal variables are updated or not. Assumes taht the segmentaion has not changed siginficantly, so IDs must be the same.
+
+        Args:
+            lineage_df (pandas.DataFrame): The lineage DataFrame to insert.
+            frame_i (int): The index of the frame.
+
+        Returns:
+            None
+        """
+        if frame_i == len(self.lineage_list):
+            self.lineage_list.append(lineage_df)
+            if update_fams == True:
+                new_fam = update_fam_from_df(self.families, lineage_df)
+                new_fam = correct_fam_from_df(new_fam, lineage_df)
+
+            if propagate_back == True:
+
+
+        elif frame_i < len(self.lineage_list):
+            self.lineage_list[frame_i] = lineage_df
+            if update_fams == True:
+                self.families = update_fam_from_df(self.families, lineage_df)
+                self.families = correct_fam_from_df(self.families, lineage_df)
+
+            if propagate_back == True:
+
+
+        elif frame_i > len(self.lineage_list):
+            printl(f'WARNING: Frame {frame_i} was inserted. The lineage list was only {len(self.lineage_list)} frames long, so the last known lineage tree was copy pasted up to frame {frame_i}')
+            if update_fams == True:
+                self.families = update_fam_from_df(self.families, lineage_df)
+                self.families = correct_fam_from_df(self.families, lineage_df)
+
+
+    def load_lineage_df_list():
+
 class tracker:
     """
     Class representing a tracker for cell division in a video sequence. (Adapted from CellACDC_tracker.py)
@@ -462,7 +605,7 @@ class tracker:
             if frame_i == 0:
                 tracker = normal_division_tracker(segm_video, IoA_thresh_daughter, min_daughter, max_daughter, IoA_thresh, IoA_thresh_aggressive)
                 if record_lineage:
-                    tree = normal_division_lineage_tree(lab, max_daughter)
+                    tree = normal_division_lineage_tree(lab=lab, max_daughter=max_daughter)
                 pbar.update()
                 continue
 
