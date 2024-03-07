@@ -225,16 +225,252 @@ def update_generation_from_df(families, df):
 
     return families
 
-def propagate_generation_from_fams(families, df_li):
-    for fam in families:
-        for member in fam:
-            daughters = set()
-            parent_indx = -1 # this is default
-            for df in df_li:
-                if member[0] in df.index:
-                    df.loc[member[0], 'generation_num_tree'] = member[1]
-                    parent_indx = df.loc[member[0], 'parent_ID_tree']
-                daughters = daughters + set(df.loc[df['parent_ID_tree'] == member[0]].index.tolist())
+# def propagate_generation_from_fams(families, df_li):
+    # for fam in families:
+    #     for member in fam:
+    #         daughters = set()
+    #         parent_indx = -1 # this is default
+    #         for df in df_li:
+    #             if member[0] in df.index:
+    #                 df.loc[member[0], 'generation_num_tree'] = member[1]
+    #                 parent_indx = df.loc[member[0], 'parent_ID_tree']
+    #             daughters = daughters + set(df.loc[df['parent_ID_tree'] == member[0]].index.tolist())
+
+def generate_fam_dict_from_df_li(df_li):
+
+    family_dict = {}
+
+    for i, df in enumerate(df_li):
+        df['frame_i'] = i
+        df.reset_index(inplace=True)
+        df.set_index(['frame_i', 'Cell_ID'], inplace=True)
+        df_fams = df.groupby('root_ID_tree')
+
+        for root_id, df_fam in df_fams:
+            # root_id = df_fam.iloc[0]['root_ID_tree']
+            if root_id not in family_dict.keys(): 
+                family_dict[root_id] = df_fam
+            else:
+                family_dict[root_id] = pd.concat([family_dict[root_id], df_fam])
+                
+    return family_dict
+
+def create_unique_Cell_ID_df(family_dict):
+    general_df = pd.concat(family_dict.values())
+    general_df.reset_index(inplace=True)
+    general_df.drop_duplicates(subset='Cell_ID', inplace=True)
+    general_df.set_index(['Cell_ID'], inplace=True)
+    return general_df
+
+def general_df_to_family_dict(general_df):
+    family_dict = {}
+    general_df_fams = general_df.groupby('root_ID_tree')
+
+    for root_id, df_fam in general_df_fams:
+        family_dict[root_id] = df_fam
+
+    return family_dict
+    
+
+
+def update_dict_from_df(family_dict, df, frame_i, max_daughter=2):
+    """
+    Update a dictionary of dataframes (families) with new rows from a given dataframe for a specific frame. The resulting df for the entire family and all frames will not be consistent, but the single frame inserted should be.
+    Please note that teh following things are to update the dict: parent_ID_tree, Cell_ID (Derived from this the following is corrected: generation_num_tree, root_ID_tree, sister_ID_tree).
+
+    Args:
+        family_dict (dict): A dictionary containing dataframes as values.
+        df (pd.DataFrame): The dataframe containing new rows to be added.
+        frame_i (int): The frame index.
+
+    Returns:
+        dict: The updated dictionary with new rows added.
+
+    """
+    df['frame_i'] = frame_i
+    IDs_covered = set()
+    df.reset_index(inplace=True)
+
+    # we first need to correct generation_num_tree, root_ID_tree, sister_ID_tree
+    unique_Cell_ID_df = create_unique_Cell_ID_df(family_dict)
+    corrected_df = pd.DataFrame()
+
+    for _, Cell_info in df.iterrows(): # similar code is used in update_dict_consistency in the part which handles daughters
+        parent_cell = unique_Cell_ID_df.loc[Cell_info['parent_ID_tree']]
+        Cell_info['generation_num_tree'] = parent_cell['generation_num_tree'] + 1
+        Cell_info['root_ID_tree'] = parent_cell['root_ID_tree']
+        sister_cell = unique_Cell_ID_df.loc[unique_Cell_ID_df['parent_ID_tree'] == Cell_info['parent_ID_tree']]['Cell_ID']
+        Cell_info['sister_ID_tree'] = list(sister_cell)
+        corrected_df = corrected_df.append(Cell_info)
+
+    corrected_df = reorg_daughter_cells(corrected_df, max_daughter) # this might cause some problems
+    df = corrected_df.set_index(['frame_i', 'Cell_ID'], inplace=False)
+    for key, df_fam in family_dict.items():
+        df_fam = df_fam[df_fam['frame_i'] != frame_i] # select all frames except the current one
+        new_rows = df[df['root_ID_tree'] == key]
+        df_fam = pd.concat([df_fam, new_rows])
+        df_fam.sort_values(by=['frame_i', 'index'], inplace=True)
+        family_dict[key] = df_fam
+
+        IDs_covered.update(new_rows.index.get_level_values(1))
+
+    IDs_not_covered = set(df.index.get_level_values(1)) - IDs_covered
+    if IDs_not_covered:
+        for ID in IDs_not_covered:
+            series = df.loc[(frame_i, ID)]
+            family_dict[series['root_ID_tree']] = series.to_frame().T
+    
+    return family_dict
+
+def update_dict_consistency(family_dict=None, fixed_frame_i=None, fixed_df=None, Cell_IDs=None, consider_children=True, fwd=False, bck=False, general_df=None, columns_to_replace=None) # families_to_consider=set(), iter=0):
+
+    if consider_children and not fwd: # enforce that fwd is true when considering children
+        raise ValueError('consider_children can\'t be true while fwd is not.')
+    
+    if not general_df and family_dict: # if we have a family dict we can create a general df
+        general_df = pd.concat(family_dict.values()).reset_index()
+    elif not general_df and not family_dict: # if we have nothing we have a problem
+        raise ValueError('Either general_df or family_dict must be provided.')
+    
+    if not columns_to_replace: # if we don't have a list of columns to replace we take all columns except frame_i (default)
+        columns_to_replace = general_df.columns[general_df.columns != 'frame_i']
+
+    if not fixed_df and general_df: # if we don't have a given fixed df we take the one from the general df
+        fixed_df = general_df.loc[fixed_frame_i].set_index('Cell_ID')
+    elif fixed_df: # if we have a fixed df we are all good
+        fixed_df = fixed_df.set_index('Cell_ID')
+    else: # if we have neither we have a problem
+        raise ValueError('Either fixed_frame_df or fixed_df must be provided.')
+
+    if not Cell_IDs: # if we don't have a list of Cell_IDs we take all Cell_IDs from the fixed_df (default)
+        Cell_IDs = fixed_df.index
+
+
+    if not fixed_frame_i:
+        if fwd and bck: # this splits the df into two parts, only one is edited. Since there is no fixed frame we split so it also edits frame_i
+            general_df_keep = pd.DataFrame()
+            general_df_change = general_df
+        elif fwd:
+            general_df_keep = general_df[general_df['frame_i'] < fixed_frame_i]
+            general_df_change = general_df[general_df['frame_i'] >= fixed_frame_i]
+        elif bck:
+            general_df_keep = general_df[general_df['frame_i'] > fixed_frame_i]
+            general_df_change = general_df[general_df['frame_i'] <= fixed_frame_i]
+        else:
+            raise ValueError('one or both of fwd or bck must be True if fixed_frame_i is provided.')
+    else:
+        if fwd and bck: # this splits the df into two parts, only one is edited. Since there is a fixed frame we split so it doesn't edit frame_i
+            general_df_keep = general_df[general_df['frame_i'] == fixed_frame_i]
+            general_df_change = general_df[general_df['frame_i'] != fixed_frame_i]
+        elif fwd:
+            general_df_keep = general_df[general_df['frame_i'] <= fixed_frame_i]
+            general_df_change = general_df[general_df['frame_i'] > fixed_frame_i]
+        elif bck:
+            general_df_keep = general_df[general_df['frame_i'] >= fixed_frame_i]
+            general_df_change = general_df[general_df['frame_i'] < fixed_frame_i]
+        else:
+            raise ValueError('one or both of fwd or bck must be True if fixed_frame_i is provided.')
+
+    for Cell_id in Cell_IDs: # replace values for the cells in the general df
+
+        general_df_change.set_index('Cell_ID', inplace=True) # probably not necessarily necessary
+        for idx in general_df_change.index[general_df_change.index == Cell_id]: # we basically iterate over all instances where Cell_ID is the index
+            general_df_change.loc[idx, columns_to_replace] = fixed_df.loc[Cell_id, columns_to_replace] # we replace all but the frame_i column
+
+    general_df = pd.concat([general_df_keep, general_df_change]) # we put the df back together
+
+    if consider_children: # this also enforces that fwd is true (See ValueError above)
+        unique_df = general_df.reset_index()
+        unique_df.drop_duplicates(subset='Cell_ID', inplace=True)
+        unique_df.set_index(['Cell_ID'], inplace=True) # we drop all duplicates (different frames) to reduce overhead
+
+        children_df = unique_df[unique_df['parent_ID_tree'].isin(Cell_IDs)] # we select all children of the cells we are considering
+        if children_df.empty: # if there are no children we are done
+            family_dict = general_df_to_family_dict(general_df)
+            return family_dict
+        else: # else we construct a new fixed_df and run the update recursively.
+            new_children_df = pd.DataFrame()
+            for Cell_id, row in children_df.iterrows(): # we need to edit the daughters to be consistent
+                parent_cell = unique_df.loc[row['parent_ID_tree']]
+                row['generation_num_tree'] = parent_cell['generation_num_tree'] + 1
+                row['root_ID_tree'] = parent_cell['root_ID_tree']
+                sister_cell = unique_df.loc[unique_df['parent_ID_tree'] == row['parent_ID_tree']]['Cell_ID']
+                row['sister_ID_tree'] = list(sister_cell)
+                new_children_df = new_children_df.append(row)
+                
+            family_dict = update_dict_consistency(fixed_df=new_children_df, columns_to_replace=columns_to_replace, general_df=general_df, fwd=fwd, bck=bck, consider_children=consider_children)
+            return family_dict
+    else:
+        family_dict = general_df_to_family_dict(general_df)
+        return family_dict
+    
+
+    # Search for the family that contains the cell
+    # cells = pd.DataFrame()
+    # for key, df_fam in family_dict.items():
+    #     for Cell_ID in Cell_IDs:
+    #         if (fixed_frame_i, Cell_ID) in df_fam.index:
+    #             cells[Cell_ID] = df_fam.loc[fixed_frame_i, Cell_ID]
+    #             continue
+
+    # parents = dict()
+    # for key, df_fam in family_dict.items():
+    #     if (fixed_frame_i, Cell_ID) in df_fam.index:
+    #         parent_candidates.append(df_fam.loc[fixed_frame_i, cell['parent_ID_tree']])
+
+    # iterate over families
+
+
+    # for key, df_fam in family_dict.items():
+    #     if key not in families_to_consider and iter > 0:
+    #         continue
+        # #see if the cell is not in the family or is supposed to go into this family. This also considers that children will be in the same family and make sure that we ignore these families in the future. 
+        # if iter == 0:
+        #     for cell_ID in Cell_IDs:
+        #         if (df_fam['Cell_ID'] == cell_ID).any() or fixed_frame_df.loc[cell_ID]['root_ID_tree'] == key:
+        #             families_to_consider.add(key)
+
+        # if key not in families_to_consider:
+        #     continue
+
+        # if fwd and bck:
+        #     df_fam_keep = df_fam[df_fam['frame_i'] == fixed_frame_i]
+        #     df_fam_change = df_fam[df_fam['frame_i'] != fixed_frame_i]
+        # elif fwd:
+        #     df_fam_keep = df_fam[df_fam['frame_i'] <= fixed_frame_i]
+        #     df_fam_change = df_fam[df_fam['frame_i'] > fixed_frame_i]
+        # elif bck:
+        #     df_fam_keep = df_fam[df_fam['frame_i'] >= fixed_frame_i]
+        #     df_fam_change = df_fam[df_fam['frame_i'] < fixed_frame_i]
+        # else:
+        #     raise ValueError('one or both of fwd or bck must be True.')
+        
+        # df_fam_change.set_index('Cell_ID', inplace=True)
+        # fixed_frame_df.set_index('Cell_ID', inplace=True)
+
+        # for key, cell in fixed_frame_df.iterrows(): # replace values for families it changed
+        #     if fixed_frame_df['root_ID_tree'] == key:
+        #         df_fam_change.drop(key, inplace=True) # first delete if it is already in the family but the info has just changed
+        #         general_df
+        #     else: # delete from families it doesn't belong to
+        #         df_fam_change.drop(key, inplace=True)
+
+
+        # if consider_children:
+        #     children = df_fam_copy[df_fam_copy['parent_ID_tree'].isin(Cell_IDs)]
+        #     if not children.empty:
+        #         family_dict = update_dict_consistency(family_dict, fixed_frame_i, children.index, consider_children, fwd, bck, families_to_consider, iter+1)
+        
+
+
+    # return family_dict, general_df
+
+
+def check_dict_consistency(family_dict):
+
+def dict_to_fam_lists():
+    
+def dict_to_df_li():
 
 
 class normal_division_tracker:
@@ -529,8 +765,8 @@ class normal_division_lineage_tree:
         if frame_i == len(self.lineage_list):
             self.lineage_list.append(lineage_df)
             if update_fams == True:
-                new_fam = update_fam_from_df(self.families, lineage_df)
-                new_fam = correct_fam_from_df(new_fam, lineage_df)
+                new_fam = add_member_fam_from_df(self.families, lineage_df)
+                new_fam = del_member_fam_from_df(new_fam, lineage_df)
 
             if propagate_back == True:
 
@@ -538,8 +774,8 @@ class normal_division_lineage_tree:
         elif frame_i < len(self.lineage_list):
             self.lineage_list[frame_i] = lineage_df
             if update_fams == True:
-                self.families = update_fam_from_df(self.families, lineage_df)
-                self.families = correct_fam_from_df(self.families, lineage_df)
+                self.families = add_member_fam_from_df(self.families, lineage_df)
+                self.families = del_member_fam_from_df(self.families, lineage_df)
 
             if propagate_back == True:
 
@@ -547,8 +783,8 @@ class normal_division_lineage_tree:
         elif frame_i > len(self.lineage_list):
             printl(f'WARNING: Frame {frame_i} was inserted. The lineage list was only {len(self.lineage_list)} frames long, so the last known lineage tree was copy pasted up to frame {frame_i}')
             if update_fams == True:
-                self.families = update_fam_from_df(self.families, lineage_df)
-                self.families = correct_fam_from_df(self.families, lineage_df)
+                self.families = add_member_fam_from_df(self.families, lineage_df)
+                self.families = del_member_fam_from_df(self.families, lineage_df)
 
 
     def load_lineage_df_list():
