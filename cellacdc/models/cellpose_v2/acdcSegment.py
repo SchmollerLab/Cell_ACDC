@@ -119,7 +119,7 @@ class Model:
             Decrease this value to find more and larger masks. Default is 0.0
         stitch_threshold : float, optional
             If `stitch_threshold` is greater than 0.0 and `segment_3D_volume` 
-            is False, masks are stitched in 3D to return volume segmentation. 
+            is True, masks are stitched in 3D to return volume segmentation. 
             Default is 0.0
         min_size : int, optional
             Minimum number of pixels per mask, you can turn off this filter 

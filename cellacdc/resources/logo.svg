@@ -8,7 +8,7 @@
    style="enable-background:new 0 0 96.4 96.4;"
    xml:space="preserve"
    sodipodi:docname="logo.svg"
-   inkscape:version="1.1.1 (3bf5ae0d25, 2021-09-20)"
+   inkscape:version="1.3 (0e150ed6c4, 2023-07-21)"
    inkscape:export-filename="G:\My Drive\01_Postdoc_HMGU\Python_MyScripts\MIA\Git\Cell_ACDC\cellacdc\resources\logo.png"
    inkscape:export-xdpi="300"
    inkscape:export-ydpi="300"
@@ -29,16 +29,13 @@
      cy="18.0362"
      r="14.5193"
      gradientUnits="userSpaceOnUse"
-     xlink:href="#SVGID_2_">
-	<stop
+     xlink:href="#SVGID_2_">&#10;	<stop
    offset="0"
    style="stop-color:#FFF200"
-   id="stop11499" />
-	<stop
+   id="stop11499" />&#10;	<stop
    offset="1"
    style="stop-color:#A97C50"
-   id="stop11501" />
-</radialGradient><marker
+   id="stop11501" />&#10;</radialGradient><marker
      style="overflow:visible;"
      id="marker1526"
      refX="0.0"
@@ -114,68 +111,53 @@
    inkscape:pageopacity="0"
    inkscape:pageshadow="2"
    inkscape:window-width="1920"
-   inkscape:window-height="1017"
+   inkscape:window-height="1129"
    id="namedview29"
    showgrid="false"
    inkscape:zoom="4.8362455"
-   inkscape:cx="21.400899"
+   inkscape:cx="21.504285"
    inkscape:cy="57.172449"
    inkscape:window-x="1912"
    inkscape:window-y="-8"
    inkscape:window-maximized="1"
    inkscape:current-layer="Layer_1"
-   inkscape:pagecheckerboard="0" />
-<style
+   inkscape:pagecheckerboard="0"
+   inkscape:showpageshadow="2"
+   inkscape:deskcolor="#d1d1d1" />&#10;<style
    type="text/css"
-   id="style2">
-	.st0{fill:url(#SVGID_1_);stroke:#986828;stroke-width:0.5;stroke-miterlimit:10;}
-	.st1{fill:url(#SVGID_2_);stroke:#000000;stroke-width:0.5;stroke-miterlimit:10;}
-	.st2{fill:none;stroke:#ED2024;stroke-width:8;stroke-miterlimit:10;}
-	.st3{fill:none;stroke:#ED2024;stroke-width:8;stroke-miterlimit:10;stroke-dasharray:8.6115,6.4586;}
-</style>
-<radialGradient
+   id="style2">&#10;	.st0{fill:url(#SVGID_1_);stroke:#986828;stroke-width:0.5;stroke-miterlimit:10;}&#10;	.st1{fill:url(#SVGID_2_);stroke:#000000;stroke-width:0.5;stroke-miterlimit:10;}&#10;	.st2{fill:none;stroke:#ED2024;stroke-width:8;stroke-miterlimit:10;}&#10;	.st3{fill:none;stroke:#ED2024;stroke-width:8;stroke-miterlimit:10;stroke-dasharray:8.6115,6.4586;}&#10;</style>&#10;<radialGradient
    id="SVGID_1_-1"
    cx="71.091797"
    cy="18.0362"
    r="14.5193"
    gradientUnits="userSpaceOnUse"
-   xlink:href="#SVGID_2_">
-	<stop
+   xlink:href="#SVGID_2_">&#10;	<stop
    offset="0"
    style="stop-color:#fffbe5;stop-opacity:1"
-   id="stop4" />
-	<stop
+   id="stop4" />&#10;	<stop
    offset="1"
    style="stop-color:#ff0028;stop-opacity:1"
-   id="stop6" />
-</radialGradient>
-<path
-   class="st0"
-   d="M80.6,5.5c5.8,4.4,6.3,13.6,1.1,20.5c-5.2,6.9-14.2,9-20,4.6S55.3,17,60.5,10.1S74.7,1.1,80.6,5.5z"
-   id="path9"
-   style="fill-opacity:1;fill:url(#SVGID_1_-1);stroke:#cd0000;stroke-opacity:1" />
-<radialGradient
+   id="stop6" />&#10;</radialGradient>&#10;&#10;<radialGradient
    id="SVGID_2_"
    cx="42.6751"
    cy="59.2862"
    r="32.6995"
    gradientTransform="matrix(1 0 0 1.15 0 -8.8929)"
-   gradientUnits="userSpaceOnUse">
-	<stop
+   gradientUnits="userSpaceOnUse">&#10;	<stop
    offset="0"
    style="stop-color:#858585"
-   id="stop11" />
-	<stop
+   id="stop11" />&#10;	<stop
    offset="1"
    style="stop-color:#383838"
-   id="stop13" />
-</radialGradient>
-<path
-   class="st1"
-   d="M59.1,28.2c14.6,7.7,19.2,27.9,10.1,45.1S40.9,98.1,26.3,90.4S7.1,62.5,16.1,45.3S44.4,20.4,59.1,28.2z"
-   id="path16" />
-
-<path
-   id="path1695"
-   style="fill:#ffe700;fill-opacity:1;stroke:#454545;stroke-width:1;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
-   d="M 72.134453,16.411327 37.424209,47.16014 48.29675,48.789283 34.26424,72.559148 68.273802,42.914576 57.507739,41.20257 Z" /></svg>
+   id="stop13" />&#10;</radialGradient>&#10;&#10;&#10;<g
+   id="g1"><path
+     class="st0"
+     d="M80.6,5.5c5.8,4.4,6.3,13.6,1.1,20.5c-5.2,6.9-14.2,9-20,4.6S55.3,17,60.5,10.1S74.7,1.1,80.6,5.5z"
+     id="path9"
+     style="fill-opacity:1;fill:url(#SVGID_1_-1);stroke:#cd0000;stroke-opacity:1" /><path
+     class="st1"
+     d="M59.1,28.2c14.6,7.7,19.2,27.9,10.1,45.1S40.9,98.1,26.3,90.4S7.1,62.5,16.1,45.3S44.4,20.4,59.1,28.2z"
+     id="path16" /><path
+     id="path1695"
+     style="fill:#ffe700;fill-opacity:1;stroke:#454545;stroke-width:1;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+     d="M 72.134453,16.411327 37.424209,47.16014 48.29675,48.789283 34.26424,72.559148 68.273802,42.914576 57.507739,41.20257 Z" /></g></svg>
