@@ -2065,13 +2065,19 @@ class KeptObjectIDsList(list):
 class ScatterPlotItem(pg.ScatterPlotItem):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._itemBrush = kwargs['brush']
-        self._itemPen = kwargs['pen']
+        self.updateBrushAndPen(**kwargs)
+        
+    def updateBrushAndPen(self, **kwargs):
+        brush = kwargs.get('brush')
+        if brush is not None:
+            self._itemBrush = brush
+        pen = kwargs.get('pen')
+        if pen is not None:
+            self._itemPen = pen
     
     def setData(self, *args, **kwargs):
         super().setData(*args, **kwargs)
-        self._itemBrush = kwargs['brush']
-        self._itemPen = kwargs['pen']
+        self.updateBrushAndPen(**kwargs)        
     
     def itemBrush(self):
         return self._itemBrush
