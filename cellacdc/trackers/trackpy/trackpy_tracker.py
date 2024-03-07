@@ -40,6 +40,9 @@ class tracker:
             else:
                 return ['x', 'y']
         
+        if PhysicalSizeX == PhysicalSizeY and not is_3D:
+            return ['x', 'y']
+        
         pos_columns = []
         if is_3D:
             tp_df['z_um'] = tp_df['z'] * PhysicalSizeZ
