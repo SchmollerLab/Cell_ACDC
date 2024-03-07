@@ -69,6 +69,26 @@ class tracker:
             PhysicalSizeZ=1.0,
             export_to_extension='.csv'
         ):
+        """_summary_
+
+        Parameters
+        ----------
+        search_range : float, optional
+            Radius of the circle centerd at the object at previous frame where 
+            to search for the object at current frame. Roughly speaking, 
+            this is the maximum distance the object is allowed to travel 
+            between frames to be considered the same object. 
+            
+            The unit is pixels for isotropic data (typically 2D over time) and 
+            in micrometers for anisotropic data (typically 3D over time).
+            
+            Default is 10.0.
+
+        Returns
+        -------
+        (T, Y, X) or (T, Z, Y, X) np.array of ints
+            Tracked segmentation masks with the same shape as input `segm_video`.
+        """        
         # Handle string input for adaptive_stop
         if isinstance(adaptive_stop, str):
             if adaptive_stop == 'None':
