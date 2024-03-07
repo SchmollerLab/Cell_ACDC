@@ -36,7 +36,7 @@ class tracker:
         is_3D = 'z' in tp_df.columns
         if PhysicalSizeX == PhysicalSizeY == PhysicalSizeZ:
             if is_3D:
-                return ['z', 'x', 'y']
+                return ['x', 'y', 'z']
             else:
                 return ['x', 'y']
         
