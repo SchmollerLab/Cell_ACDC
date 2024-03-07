@@ -16,9 +16,9 @@ development. In that case see this section :ref:`contributing-guide`.
     scientific Python environments, I highly recommend reading 
     `this guide <python-guide>`__ by Dr. Robert Haase.
 
-* `Install stable version <install-stable-version>`_
-* `Install latest version <install-latest-version>`_
-* `Install from source <install-from-source>`_
+* :ref:`Install stable version <install-stable-version>`
+* :ref:`Install latest version <install-latest-version>`
+* :ref:`Install from source <install-from-source-developer-version>`
 
 .. _install-stable-version:
 
@@ -267,7 +267,7 @@ follwing command::
     pip install --upgrade "git+https://github.com/SchmollerLab/Cell_ACDC.git"
 
 
-.. _install-from-source:
+.. _install-from-source-developer-version:
 
 Install from source (developer version)
 ---------------------------------------
