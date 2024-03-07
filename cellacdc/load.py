@@ -1371,6 +1371,9 @@ class loadData:
         if self.segmInfo_df is None:
             return
         
+        if not hasattr(self, 'SizeZ'):
+            return
+        
         if self.SizeZ == 1:
             return
         
