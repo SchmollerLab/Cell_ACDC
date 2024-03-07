@@ -42,11 +42,11 @@ class tracker:
         
         pos_columns = []
         if is_3D:
-            tp_df['z_um'] = tp_df['x'] * PhysicalSizeX
+            tp_df['z_um'] = tp_df['z'] * PhysicalSizeZ
             pos_columns.append('z_um')
             
-        tp_df['x_um'] = tp_df['x'] * PhysicalSizeY
-        tp_df['y_um'] = tp_df['y'] * PhysicalSizeZ
+        tp_df['x_um'] = tp_df['x'] * PhysicalSizeX
+        tp_df['y_um'] = tp_df['y'] * PhysicalSizeY
         pos_columns = [*pos_columns, 'y_um', 'x_um']
         return pos_columns        
         
