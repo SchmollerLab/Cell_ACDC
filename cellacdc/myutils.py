@@ -49,6 +49,7 @@ from . import models_list_file_path
 from . import github_home_url
 from . import try_input_install_package
 from . import _warnings
+from . import urls
 
 ArgSpec = namedtuple('ArgSpec', ['name', 'default', 'type', 'desc', 'docstring'])
 
@@ -471,6 +472,9 @@ def check_git_installed(parent=None):
 def browse_url(url):
     import webbrowser
     webbrowser.open(url)
+
+def browse_docs():
+    browse_url(urls.docs_homepage)
 
 def install_java():
     try:

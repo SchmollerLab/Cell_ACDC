@@ -15,3 +15,5 @@ user_manual_url = 'https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManua
 cite_url = 'https://bmcbiol.biomedcentral.com/articles/10.1186/s12915-022-01372-6'
 
 dataprep_docs = 'https://cell-acdc.readthedocs.io/en/latest/getting-started.html#preparing-data-for-further-analysis-data-prep'
+
+docs_homepage = 'https://cell-acdc.readthedocs.io/en/latest'

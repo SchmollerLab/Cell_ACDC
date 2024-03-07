@@ -766,7 +766,7 @@ class mainWin(QMainWindow):
         )
 
         self.welcomeGuideAction = QAction('Welcome Guide')
-        self.userManualAction = QAction('User manual...')
+        self.userManualAction = QAction('User documentation...')
         self.aboutAction = QAction('About Cell-ACDC')
         self.citeAction = QAction('Cite us...')
         self.contributeAction = QAction('Contribute...')
@@ -823,7 +823,7 @@ class mainWin(QMainWindow):
         self.aboutAction.triggered.connect(self.showAbout)
         self.renameAction.triggered.connect(self.launchRenameUtil)
 
-        self.userManualAction.triggered.connect(myutils.showUserManual)
+        self.userManualAction.triggered.connect(myutils.browse_docs)
         self.contributeAction.triggered.connect(self.showContribute)
         self.citeAction.triggered.connect(
             partial(QDesktopServices.openUrl, QUrl(cite_url))

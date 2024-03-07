@@ -2708,7 +2708,7 @@ class guiWin(QMainWindow):
         # self.cutAction.setShortcut(QKeySequence.StandardKey.Cut)
         # Help actions
         self.tipsAction = QAction("Tips and tricks...", self)
-        self.UserManualAction = QAction("User Manual...", self)
+        self.UserManualAction = QAction("User Documentation...", self)
         self.aboutAction = QAction("About Cell-ACDC", self)
         # self.aboutAction = QAction("&About...", self)
 
@@ -2987,7 +2987,7 @@ class guiWin(QMainWindow):
 
         # Connect Help actions
         self.tipsAction.triggered.connect(self.showTipsAndTricks)
-        self.UserManualAction.triggered.connect(myutils.showUserManual)
+        self.UserManualAction.triggered.connect(myutils.browse_docs)
         self.aboutAction.triggered.connect(self.showAbout)
         # Connect Open Recent to dynamically populate it
         # self.openRecentMenu.aboutToShow.connect(self.populateOpenRecent)

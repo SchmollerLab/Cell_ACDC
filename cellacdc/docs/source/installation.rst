@@ -224,7 +224,16 @@ Install latest version
     .. code-block:: 
         
         pip install "git+https://github.com/SchmollerLab/Cell_ACDC.git"
-        
+    
+    .. tip:: 
+
+        If you **already have the stable version** and you want to upgrade to the 
+        latest version run the following command instead:
+
+        .. code-block::
+
+            pip install --upgrade "git+https://github.com/SchmollerLab/Cell_ACDC.git"
+
     This tells pip to install Cell-ACDC.
 
     .. important::
@@ -232,7 +241,7 @@ Install latest version
         On Windows, if you get the error ``ERROR: Cannot find the command 'git'`` 
         you need to install ``git`` first. Close the terminal and install it 
         from `here <https://git-scm.com/download/win>`_. After installation, 
-        you can restart from here, but **remember to activate the **``acdc`` 
+        you can restart from here, but **remember to activate the** ``acdc`` 
         **environment first** with the command ``conda activate acdc``.
 
 8. **Install the GUI libraries**:
@@ -287,7 +296,7 @@ If you want to try out experimental features (and, if you have time, maybe repor
         On Windows, if you get the error ``ERROR: Cannot find the command 'git'`` 
         you need to install ``git`` first. Close the terminal and install it 
         from `here <https://git-scm.com/download/win>`_. After installation, 
-        you can restart from here, but **remember to activate the **``acdc`` 
+        you can restart from here, but **remember to activate the** ``acdc`` 
         **environment first** with the command ``conda activate acdc``.
 
 4. **Navigate to the Cell_ACDC folder** with the following command:
