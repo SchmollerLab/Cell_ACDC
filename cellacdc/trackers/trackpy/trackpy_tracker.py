@@ -75,14 +75,27 @@ class tracker:
         ----------
         search_range : float, optional
             Radius of the circle centerd at the object at previous frame where 
-            to search for the object at current frame. Roughly speaking, 
-            this is the maximum distance the object is allowed to travel 
-            between frames to be considered the same object. 
+            to search for the object at current frame. 
+            
+            This is equivalent to the maximum distance the object is allowed 
+            to travel between frames to be considered the same object. 
             
             The unit is pixels for isotropic data (typically 2D over time) and 
             in micrometers for anisotropic data (typically 3D over time).
             
             Default is 10.0.
+        adaptive_stop : float, optional
+            If not None, when encountering an oversize subnet, retry by progressively
+            reducing search_range until the subnet is solvable. If search_range
+            becomes <= adaptive_stop, give up and raise a SubnetOversizeException.
+        adaptive_step : float, optional
+            Reduce search_range by multiplying it by this factor.
+        neighbor_strategy : {'KDTree', 'BTree'}
+            Algorithm used to identify nearby features. Default 'KDTree'.
+        link_strategy : {'recursive', 'nonrecursive', 'numba', 'hybrid', 'drop', 'auto'}
+            Algorithm used to resolve subnetworks of nearby particles
+            'auto' uses hybrid (numba+recursive) if available
+            'drop' causes particles in subnetworks to go unlinked
 
         Returns
         -------
