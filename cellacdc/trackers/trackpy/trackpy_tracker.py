@@ -47,7 +47,7 @@ class tracker:
             
         tp_df['x_um'] = tp_df['x'] * PhysicalSizeX
         tp_df['y_um'] = tp_df['y'] * PhysicalSizeY
-        pos_columns = [*pos_columns, 'y_um', 'x_um']
+        pos_columns = ['x_um', 'y_um', *pos_columns]
         return pos_columns        
         
     def track(
