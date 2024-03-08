@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import h5py
 import traceback
+from tqdm import tqdm
 
 import skimage.io
 import skimage.measure
@@ -1512,19 +1513,20 @@ class trackingWorker(QObject):
             intensity_img=trackerInputImage,
             logger_func=self.progress.emit
         )
-
+        printl('1')
         # Relabel first frame objects back to IDs they had before tracking
         # (to ensure continuity with past untracked frames)
         tracked_video = self._relabel_first_frame_labels(tracked_video)
+        printl(2)
         acdc_df = self.posData.fromTrackerToAcdcDf(
             self.tracker, tracked_video, start_frame_i=self.mainWin.start_n-1
         )
-
+        printl(3)
         # Store new tracked video
         current_frame_i = self.posData.frame_i
-        
+        printl(4)
         self.trackingOnNeverVisitedFrames = False
-        for rel_frame_i, lab in enumerate(tracked_video):
+        for rel_frame_i, lab in tqdm(enumerate(tracked_video), desc='Storing tracked video', total=len(tracked_video)):
             frame_i = rel_frame_i + self.mainWin.start_n - 1
 
             if acdc_df is not None:
@@ -1549,9 +1551,11 @@ class trackingWorker(QObject):
 
         # Back to current frame
         self.posData.frame_i = current_frame_i
+        printl(5)
         self.mainWin.get_data()
+        printl(6)
         self.mainWin.store_data(autosave=True)
-
+        printl(7)
         self.mutex.unlock()
         self.finished.emit()
 
