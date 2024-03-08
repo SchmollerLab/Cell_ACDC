@@ -147,7 +147,7 @@ class tracker:
         tp_out_df['particle'] += 1 # trackpy starts from 0 with tracked ids
         # Generate tracked video data
         tracked_video = np.zeros_like(segm_video)
-        for frame_i, lab in tqdm(enumerate(segm_video), desc='Generating tracked video', total=len(segm_video)):
+        for frame_i, lab in enumerate(segm_video):
             rp = skimage.measure.regionprops(lab)
             tracked_lab = lab.copy()
             tp_out_df_frame = tp_out_df.loc[frame_i]
