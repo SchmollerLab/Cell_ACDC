@@ -1553,12 +1553,10 @@ class trackingWorker(QObject):
         acdc_df = self.posData.fromTrackerToAcdcDf(
             self.tracker, tracked_video, start_frame_i=self.mainWin.start_n-1
         )
-
         # Store new tracked video
         current_frame_i = self.posData.frame_i
-        
         self.trackingOnNeverVisitedFrames = False
-        for rel_frame_i, lab in enumerate(tracked_video):
+        for rel_frame_i, lab in tqdm(enumerate(tracked_video), desc='Storing tracked video', total=len(tracked_video)):
             frame_i = rel_frame_i + self.mainWin.start_n - 1
 
             if acdc_df is not None:
@@ -1585,7 +1583,6 @@ class trackingWorker(QObject):
         self.posData.frame_i = current_frame_i
         self.mainWin.get_data()
         self.mainWin.store_data(autosave=True)
-
         self.mutex.unlock()
         self.finished.emit()
 

@@ -11,6 +11,8 @@ from ..CellACDC import CellACDC_tracker
 
 from cellacdc import apps, printl
 
+from tqdm import tqdm
+
 DEBUG = False
 
 class tracker:
@@ -120,18 +122,16 @@ class tracker:
         pbar.close()
             
         tp_df = pd.DataFrame(tp_df)
-        
         pos_columns = self._get_pos_columns(
             tp_df, PhysicalSizeX, PhysicalSizeY, PhysicalSizeZ,
         )
-
         # Run tracker
         if dynamic_predictor:
             predictor = tp.predict.NearestVelocityPredict()
         else:
             predictor = tp
 
-        tp_df = predictor.link_df(
+        tp_out_df = predictor.link_df(
             tp_df, search_range,
             memory=int(memory),
             adaptive_stop=adaptive_stop, 
@@ -142,16 +142,15 @@ class tracker:
         ).set_index('frame')
         
         if export_to is not None:
-            tp_df.to_csv(export_to)
+            tp_out_df.to_csv(export_to)
         
-        tp_df['particle'] += 1 # trackpy starts from 0 with tracked ids
-
+        tp_out_df['particle'] += 1 # trackpy starts from 0 with tracked ids
         # Generate tracked video data
         tracked_video = np.zeros_like(segm_video)
-        for frame_i, lab in enumerate(segm_video):
+        for frame_i, lab in tqdm(enumerate(segm_video), desc='Generating tracked video', total=len(segm_video)):
             rp = skimage.measure.regionprops(lab)
             tracked_lab = lab.copy()
-            tp_df_frame = tp_df.loc[frame_i]
+            tp_out_df_frame = tp_out_df.loc[frame_i]
 
             IDs_curr_untracked = [obj.label for obj in rp]
 
@@ -163,12 +162,12 @@ class tracker:
                 continue
             
             try:
-                tracked_IDs = tp_df_frame['particle'].astype(int).to_list()
-                old_IDs = tp_df_frame['ID'].astype(int).to_list()
+                tracked_IDs = tp_out_df_frame['particle'].astype(int).to_list()
+                old_IDs = tp_out_df_frame['ID'].astype(int).to_list()
             except AttributeError:
                 # Single cell
-                tracked_IDs = [int(tp_df_frame['particle'])]
-                old_IDs = [int(tp_df_frame['ID'])]
+                tracked_IDs = [int(tp_out_df_frame['particle'])]
+                old_IDs = [int(tp_out_df_frame['ID'])]
             
             if not tracked_IDs:
                 # No cells tracked
