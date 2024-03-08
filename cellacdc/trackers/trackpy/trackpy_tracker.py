@@ -117,20 +117,15 @@ class tracker:
             self._set_frame_features(lab, frame_i, tp_df)
             
         tp_df = pd.DataFrame(tp_df)
-        printl(tp_df.shape)
         pos_columns = self._get_pos_columns(
             tp_df, PhysicalSizeX, PhysicalSizeY, PhysicalSizeZ,
         )
-        printl(pos_columns)
         # Run tracker
         if dynamic_predictor:
             predictor = tp.predict.NearestVelocityPredict()
         else:
             predictor = tp
 
-        tp_df.to_csv('C:/Users/mairhoermann/Documents/phd-code/Cell_ACDC/notebooks/tp_df.csv', index=False)
-        printl('Performing tracking with trackpy...')
-        printl(tp_df.shape, search_range, memory, adaptive_stop, adaptive_step, neighbor_strategy, link_strategy, pos_columns)
         tp_out_df = predictor.link_df(
             tp_df, search_range,
             memory=int(memory),
