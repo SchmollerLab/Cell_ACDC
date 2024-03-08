@@ -57,7 +57,7 @@ class tracker:
             self, segm_video,
             search_range=10.0,
             memory=0,
-            adaptive_stop: float=None, 
+            adaptive_stop: float=1.0, 
             adaptive_step=0.95,
             dynamic_predictor=False,
             neighbor_strategy='KDTree',

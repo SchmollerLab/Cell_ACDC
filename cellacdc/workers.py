@@ -44,14 +44,19 @@ def worker_exception_handler(func):
         try:
             func(self)
         except Exception as error:
+            printl(traceback.format_exc())
             try:
                 self.dataQ.clear()
             except Exception as err:
                 pass
             try:
-                self.signals.critical.emit(error)
-            except AttributeError:
                 self.critical.emit(error)
+            except Exception as err:
+                self.signals.critical.emit(error)
+            try:
+                self.mutex.unlock()
+            except Exception as err:
+                pass
     return run
 
 class workerLogger:
@@ -1497,7 +1502,7 @@ class trackingWorker(QObject):
     def run(self):
         self.mutex.lock()        
         self.progress.emit('Tracking process started...')
-
+        
         trackerInputImage = None
         self.track_params['signals'] = self.signals
         if 'image' in self.track_params:
