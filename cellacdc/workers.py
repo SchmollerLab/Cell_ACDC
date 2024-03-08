@@ -1494,12 +1494,15 @@ class trackingWorker(QObject):
 
     def _relabel_first_frame_labels(self, tracked_video):
         first_untracked_lab = self._get_first_untracked_lab()
+        printl(first_untracked_lab.shape)
         self.mainWin.setAllIDs()
+        printl('All IDs set')
         max_allIDs = max(self.posData.allIDs, default=0)
         max_tracked_video = tracked_video.max()
         overall_max = max(max_allIDs, max_tracked_video)
         uniqueID = overall_max + 1
         first_tracked_lab = tracked_video[0]
+        printl('Assigning unique IDs to first untracked video')
         for obj in skimage.measure.regionprops(first_untracked_lab):
             trackedID = first_tracked_lab[obj.slice][obj.image].flat[0]
             if trackedID == obj.label:
@@ -1547,7 +1550,7 @@ class trackingWorker(QObject):
         
         self._setProgressBarIndefiniteWait()
         
-        self.progress.emit('Almost done...')
+        self.progress.emit('Generating annotations...')
 
         # Relabel first frame objects back to IDs they had before tracking
         # (to ensure continuity with past untracked frames)
