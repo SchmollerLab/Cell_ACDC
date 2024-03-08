@@ -18,6 +18,8 @@ import skimage.measure
 
 import queue
 
+from tqdm import tqdm
+
 from tifffile.tifffile import TiffFile
 
 from qtpy.QtCore import (
@@ -1556,7 +1558,10 @@ class trackingWorker(QObject):
         # Store new tracked video
         current_frame_i = self.posData.frame_i
         self.trackingOnNeverVisitedFrames = False
-        for rel_frame_i, lab in tqdm(enumerate(tracked_video), desc='Storing tracked video', total=len(tracked_video)):
+        self.progress.emit(
+            'Storing tracked video...')
+        pbar = tqdm(total=len(tracked_video), ncols=100)
+        for rel_frame_i, lab in enumerate(tracked_video):
             frame_i = rel_frame_i + self.mainWin.start_n - 1
 
             if acdc_df is not None:
@@ -1578,6 +1583,9 @@ class trackingWorker(QObject):
                 self.posData.frame_i = frame_i
                 self.mainWin.get_data()
                 self.mainWin.store_data(autosave=False)
+            
+            pbar.update()
+        pbar.close()
 
         # Back to current frame
         self.posData.frame_i = current_frame_i
