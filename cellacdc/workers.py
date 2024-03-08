@@ -49,10 +49,20 @@ def worker_exception_handler(func):
                 self.dataQ.clear()
             except Exception as err:
                 pass
+            
+            # Some workers have both self.critical and self.signals.critical 
+            # errors but only one of them is connected --> emit both just 
+            # in case
             try:
                 self.critical.emit(error)
             except Exception as err:
                 self.signals.critical.emit(error)
+                
+            try:
+                self.signals.critical.emit(error)
+            except Exception as err:
+                self.critical.emit(error)
+            
             try:
                 self.mutex.unlock()
             except Exception as err:
@@ -1498,10 +1508,25 @@ class trackingWorker(QObject):
             tracked_video[tracked_video==trackedID] = obj.label
         return tracked_video
 
+    def _setProgressBarIndefiniteWait(self):
+        try:
+            if hasattr(self.signals, 'innerPbar_available'):
+                if self.signals.innerPbar_available:
+                    # Use inner pbar of the GUI widget (top pbar is for positions)
+                    self.signals.innerProgressBar.setMinimum(0)
+                    self.signals.innerProgressBar.setMaximum(0)
+                    return
+            else:
+                self.signals.progressBar.setMinimum(0)
+                self.signals.progressBar.setMaximum(0)
+        except Exception as err:
+            pass
+    
     @worker_exception_handler
     def run(self):
         self.mutex.lock()        
-        self.progress.emit('Tracking process started...')
+        self.progress.emit(
+            'Tracking process started (more details in the terminal)...')
         
         trackerInputImage = None
         self.track_params['signals'] = self.signals
@@ -1517,6 +1542,10 @@ class trackingWorker(QObject):
             intensity_img=trackerInputImage,
             logger_func=self.progress.emit
         )
+        
+        self._setProgressBarIndefiniteWait()
+        
+        self.progress.emit('Almost done...')
 
         # Relabel first frame objects back to IDs they had before tracking
         # (to ensure continuity with past untracked frames)

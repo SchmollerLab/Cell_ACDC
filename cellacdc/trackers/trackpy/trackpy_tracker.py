@@ -4,6 +4,8 @@ import pandas as pd
 import numpy as np
 import trackpy as tp
 
+from tqdm import tqdm
+
 import skimage.measure
 from ..CellACDC import CellACDC_tracker
 
@@ -111,8 +113,11 @@ class tracker:
         
         # Build tp DataFrame --> https://soft-matter.github.io/trackpy/v0.5.0/generated/trackpy.link.html#trackpy.link
         tp_df = defaultdict(list)
+        pbar = tqdm(total=len(segm_video), ncols=100)
         for frame_i, lab in enumerate(segm_video):
             self._set_frame_features(lab, frame_i, tp_df)
+            pbar.update()
+        pbar.close()
             
         tp_df = pd.DataFrame(tp_df)
         

@@ -1601,6 +1601,12 @@ class loadData:
             else:
                 return self.segm_data.ndim == 3
 
+    def getBytesImageData(self):
+        if not hasattr(self, 'img_data'):
+            return 0
+        
+        return sys.getsizeof(self.img_data)
+    
     def extractMetadata(self):
         self.metadata_df['values'] = self.metadata_df['values'].astype(str)
         if 'SizeT' in self.metadata_df.index:

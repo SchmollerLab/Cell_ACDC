@@ -10504,6 +10504,7 @@ class QDialogModelParams(QDialog):
                     spinBox.setValue(ArgSpec.default)
                 else:
                     spinBox.setValue(int(metadata_val))
+                    spinBox.isMetadataValue = True
                 defaultVal = ArgSpec.default
                 valueSetter = QSpinBox.setValue
                 valueGetter = QSpinBox.value
@@ -10515,6 +10516,7 @@ class QDialogModelParams(QDialog):
                     doubleSpinBox.setValue(ArgSpec.default)
                 else:
                     doubleSpinBox.setValue(float(metadata_val))
+                    doubleSpinBox.isMetadataValue = True
                 widget = doubleSpinBox
                 defaultVal = ArgSpec.default
                 valueSetter = widgets.FloatLineEdit.setValue
@@ -10656,6 +10658,8 @@ class QDialogModelParams(QDialog):
                 except Exception as err:
                     pass
             widget = argWidget.widget
+            if hasattr(widget, 'isMetadataValue'):
+                continue
             if val is None:
                 continue
             casters = [lambda x: x, int, float, str, bool]

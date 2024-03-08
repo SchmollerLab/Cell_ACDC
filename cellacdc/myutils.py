@@ -2542,7 +2542,7 @@ def init_tracker(
                 init_argspecs, track_argspecs, trackerName, url=url,
                 channels=channels, is_tracker=True,
                 currentChannelName=currentChannelName,
-                df_metadata=df_metadata
+                df_metadata=df_metadata, posData=posData
             )
             if not intensityImgRequiredForTracker and channels is not None:
                 paramsWin.channelCombobox.setDisabled(True)

@@ -7956,19 +7956,20 @@ class guiWin(QMainWindow):
                 )
             )
             if msg.clickedButton == disableTrackingButton:
+                self.logger.info('Disabling real time tracking...')
                 self.realTimeTrackingToggle.setChecked(False)
-                posData = self.data[self.pos_i]
-                current_frame_i = posData.frame_i
-                for frame_i in range(self.start_n-1, self.stop_n):
-                    posData.frame_i = frame_i
-                    self.get_data()
-                    self.store_data(autosave=frame_i==self.stop_n-1)
-                posData.last_tracked_i = frame_i
-                self.setNavigateScrollBarMaximum()
+                # posData = self.data[self.pos_i]
+                # current_frame_i = posData.frame_i
+                # for frame_i in range(self.start_n-1, self.stop_n):
+                #     posData.frame_i = frame_i
+                #     self.get_data()
+                #     self.store_data(autosave=frame_i==self.stop_n-1)
+                # posData.last_tracked_i = frame_i
+                # self.setNavigateScrollBarMaximum()
 
-                # Back to current frame
-                posData.frame_i = current_frame_i
-                self.get_data()
+                # # Back to current frame
+                # posData.frame_i = current_frame_i
+                # self.get_data()
         posData = self.data[self.pos_i]
         self.updateAllImages()
         self.titleLabel.setText('Done', color='w')
@@ -14892,17 +14893,6 @@ class guiWin(QMainWindow):
         data = []
         numPos = len(user_ch_file_paths)
         self.user_ch_file_paths = user_ch_file_paths
-
-        required_ram = myutils.getMemoryFootprint(user_ch_file_paths)
-        if required_ram >= 5e8:
-            # Disable autosave for data > 500MB
-            self.autoSaveToggle.setChecked(False)
-
-        proceed = self.checkMemoryRequirements(required_ram)
-        if not proceed:
-            self.loadingDataAborted()
-            return
-
         
         self.logger.info(f'Reading {user_ch_name} channel metadata...')
         # Get information from first loaded position
@@ -14974,6 +14964,17 @@ class guiWin(QMainWindow):
                 selectedSegmEndName = list(existingSegmEndNames)[0]
 
         posData.loadImgData()
+        
+        required_ram = posData.getBytesImageData()
+        if required_ram >= 5e8:
+            # Disable autosave for data > 500MB
+            self.autoSaveToggle.setChecked(False)
+
+        proceed = self.checkMemoryRequirements(required_ram)
+        if not proceed:
+            self.loadingDataAborted()
+            return
+        
         posData.loadOtherFiles(
             load_segm_data=True,
             load_metadata=True,
