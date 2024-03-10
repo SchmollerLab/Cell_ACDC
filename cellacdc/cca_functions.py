@@ -371,16 +371,17 @@ def load_acdc_output_only(
         file_names,
         image_folders,
         positions,
-        segm_endname
+        segm_endnames
     ):
     """
     Function to load only the acdc output.
     Use when fluorescent file is too big to load into RAM.
     #TODO: move to cca_functions
     """
-    acdc_output_endname = segm_endname.replace('segm', 'acdc_output')
+    
     overall_df = pd.DataFrame()
     for file_idx, file in enumerate(file_names):
+        acdc_output_endname = segm_endnames[file_idx].replace('segm', 'acdc_output')
         for pos_idx, pos_dir in enumerate(image_folders[file_idx]):
             try:
                 cc_stage_path = glob.glob(
