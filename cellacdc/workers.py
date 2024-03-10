@@ -1494,23 +1494,17 @@ class trackingWorker(QObject):
 
     def _relabel_first_frame_labels(self, tracked_video):
         first_untracked_lab = self._get_first_untracked_lab()
-        printl(first_untracked_lab.shape)
         self.mainWin.setAllIDs()
-        printl('All IDs set')
         max_allIDs = max(self.posData.allIDs, default=0)
         max_tracked_video = tracked_video.max()
         overall_max = max(max_allIDs, max_tracked_video)
         uniqueID = overall_max + 1
         first_tracked_lab = tracked_video[0]
-        printl('Assigning unique IDs to first untracked video')
-        for obj in skimage.measure.regionprops(first_untracked_lab):
-            trackedID = first_tracked_lab[obj.slice][obj.image].flat[0]
-            if trackedID == obj.label:
-                continue
-            if obj.label in tracked_video[1:]:
-                tracked_video[tracked_video==obj.label] = uniqueID
-                uniqueID += 1
-            tracked_video[tracked_video==trackedID] = obj.label
+        
+        tracked_video = transformation.retrack_based_on_untracked_first_frame(
+            tracked_video, first_tracked_lab, first_untracked_lab, 
+            uniqueID=uniqueID        
+        )
         return tracked_video
 
     def _setProgressBarIndefiniteWait(self):

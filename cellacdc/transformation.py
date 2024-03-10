@@ -4,13 +4,15 @@ import pandas as pd
 import numpy as np
 
 from skimage.transform import resize
-from skimage.measure import regionprops
+import skimage.measure
+
+from tqdm import tqdm
 
 from . import printl
 
 def resize_lab(lab, output_shape, rp=None):
     if rp is None:
-        rp = regionprops(lab)
+        rp = skimage.measure.regionprops(lab)
     _lab_obj_to_resize = np.zeros(lab.shape, dtype=np.float16)
     lab_resized = np.zeros(output_shape, dtype=np.uint32)
     for obj in rp:
@@ -81,4 +83,75 @@ def trackmate_xml_to_df(xml_file):
         'z': zz
     })
     return df
-        
+
+def retrack_based_on_untracked_first_frame(
+        tracked_video, first_tracked_lab, first_untracked_lab, 
+        uniqueID=None        
+    ):
+    first_tracked_rp = skimage.measure.regionprops(first_tracked_lab)
+    first_tracked_IDs = [obj.label for obj in first_tracked_rp]
+    
+    tracked_to_untracked_mapper = {}
+    for obj in first_tracked_rp:
+        untracked_ID = first_untracked_lab[obj.slice][obj.image][0]
+        if untracked_ID == obj.label:
+            continue
+        tracked_to_untracked_mapper[obj.label] = untracked_ID
+
+    first_untracked_rp = skimage.measure.regionprops(first_untracked_lab)
+    first_untracked_IDs = [obj.label for obj in first_untracked_rp]
+    
+    if uniqueID is None:
+        uniqueID = np.max(tracked_video) + 1
+    uniqueIDs = np.arange(uniqueID, uniqueID+len(first_untracked_IDs))
+
+    untracked_to_unique_mapper = (
+        dict(zip(first_untracked_IDs, uniqueIDs))
+    )
+    
+    pbar = tqdm(total=len(tracked_video), ncols=100)
+    for frame_i, tracked_lab in enumerate(tracked_video):
+        rp_tracked = skimage.measure.regionprops(tracked_lab)
+        for obj_tracked in rp_tracked:
+            new_unique_ID = untracked_to_unique_mapper.get(obj_tracked.label)
+            if new_unique_ID is None:
+                # Untracked ID not present in tracked labels
+                pbar.update()
+                continue
+            # Replace untracked ID with a unique ID to prevent merging when later 
+            # we will replace tracked IDs of first frame to their corresponding 
+            # untracked ID
+            tracked_video[frame_i][obj_tracked.slice][obj_tracked.image] = (
+                new_unique_ID
+            )
+            untracked_ID = tracked_to_untracked_mapper.get(obj_tracked.label)
+            if untracked_ID is None:
+                pbar.update()
+                continue
+            
+            # Update tracked to untracked mapper because now tracked_video 
+            # changed and we would not find the same ID later
+            tracked_to_untracked_mapper[new_unique_ID] = (
+                tracked_to_untracked_mapper.pop(obj_tracked.label)
+            )
+        pbar.update()
+    pbar.close()
+    
+    pbar = tqdm(total=len(tracked_video), ncols=100)
+    for frame_i, tracked_lab in enumerate(tracked_video):
+        rp_tracked = skimage.measure.regionprops(tracked_lab)
+        for obj_tracked in rp_tracked:
+            untracked_ID = tracked_to_untracked_mapper.get(obj_tracked.label)
+            if untracked_ID is None:
+                # Untracked ID not present in tracked labels
+                pbar.update()
+                continue
+            # Replace tracked ID of first frame to the untracked ID of the 
+            # reference 
+            tracked_video[frame_i][obj_tracked.slice][obj_tracked.image] = (
+                untracked_ID
+            )
+        pbar.update()
+    pbar.close()
+    
+    return tracked_video
