@@ -1544,17 +1544,20 @@ class trackingWorker(QObject):
         
         self._setProgressBarIndefiniteWait()
         
-        self.progress.emit('Generating annotations...')
-
+        
+        self.progress.emit('Re-tracking first frame to ensure continuity...')
         # Relabel first frame objects back to IDs they had before tracking
         # (to ensure continuity with past untracked frames)
         tracked_video = self._relabel_first_frame_labels(tracked_video)
+        
+        self.progress.emit('Generating annotations...')
         acdc_df = self.posData.fromTrackerToAcdcDf(
             self.tracker, tracked_video, start_frame_i=self.mainWin.start_n-1
         )
         # Store new tracked video
         current_frame_i = self.posData.frame_i
         self.trackingOnNeverVisitedFrames = False
+        print('')
         self.progress.emit(
             'Storing tracked video...')
         pbar = tqdm(total=len(tracked_video), ncols=100)
