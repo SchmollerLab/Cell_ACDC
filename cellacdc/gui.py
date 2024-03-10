@@ -5326,9 +5326,10 @@ class guiWin(QMainWindow):
         lab_2D[expandedObjCoords] = self.expandingID
 
         self.set_2Dlab(lab_2D)
-
-        self.update_rp()
         self.currentLab2D = lab_2D
+        
+        self.update_rp()
+        
         if self.labelsGrad.showLabelsImgAction.isChecked():
             self.img2.setImage(img=self.currentLab2D, autoLevels=False)
 
@@ -18006,6 +18007,17 @@ class guiWin(QMainWindow):
         objOpts = self.getObjTextAnnotOpts(obj, 'Draw only IDs', ax=1)
         return objOpts
 
+    # @exec_time
+    def _update_zslices_rp(self):
+        if not self.isSegm3D:
+            return
+        
+        posData = self.data[self.pos_i]
+        posData.zSlicesRp = {}
+        for z, lab2d in enumerate(posData.lab):
+            lab2d_rp = skimage.measure.regionprops(lab2d)
+            posData.zSlicesRp[z] = {obj.label:obj for obj in lab2d_rp}
+    
     @exception_handler
     def update_rp(self, draw=True, debug=False, update_IDs=True):
         posData = self.data[self.pos_i]
@@ -18019,7 +18031,8 @@ class guiWin(QMainWindow):
                 IDs_idxs[obj.label] = idx
             posData.IDs = IDs
             posData.IDs_idxs = IDs_idxs
-        self.update_rp_metadata(draw=draw)
+        self.update_rp_metadata(draw=draw)        
+        self._update_zslices_rp()
 
     def extendLabelsLUT(self, lenNewLut):
         posData = self.data[self.pos_i]
@@ -21075,14 +21088,16 @@ class guiWin(QMainWindow):
             isVisibleCheckFunc=self.isObjVisible,
             highlightedID=self.highlightedID, 
             delROIsIDs=delROIsIDs,
-            annotateLost=self.annotLostObjsToggle.isChecked()
+            annotateLost=self.annotLostObjsToggle.isChecked(), 
+            getCurrentZfunc=self.z_lab
         )
         self.textAnnot[1].setAnnotations(
             posData=posData, labelsToSkip=labelsToSkip, 
             isVisibleCheckFunc=self.isObjVisible,
             highlightedID=self.highlightedID, 
             delROIsIDs=delROIsIDs,
-            annotateLost=self.annotLostObjsToggle.isChecked()
+            annotateLost=self.annotLostObjsToggle.isChecked(), 
+            getCurrentZfunc=self.z_lab
         )
         self.textAnnot[0].update()
         self.textAnnot[1].update()

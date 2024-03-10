@@ -479,6 +479,8 @@ class TextAnnotations:
         isObjVisibleFunc = kwargs.get('isVisibleCheckFunc')
         highlightedID = kwargs.get('highlightedID')
         annotateLost = kwargs.get('annotateLost')
+        getCurrentZfunc = kwargs.get('getCurrentZfunc')
+        currentZ = getCurrentZfunc(checkIfProj=True)
         isCcaAnnot = self.isCcaAnnot()
         isAnnotateNumZslices = self.isAnnotateNumZslices()
         isLabelTreeAnnotation = self.isLabelTreeAnnotation()
@@ -505,8 +507,15 @@ class TextAnnotations:
                 isAnnotateNumZslices, isLabelTreeAnnotation, 
                 isGenNumTreeAnnotation, posData.frame_i
             )
-            yc, xc = obj.centroid[-2:]
             
+            yc, xc = obj.centroid[-2:]
+            try:
+                rp_zslice = posData.zSlicesRp[currentZ]
+                obj_2d = rp_zslice[obj.label]
+                yc, xc = obj_2d.centroid
+            except Exception as err:
+                pass
+                
             pos = (int(xc), int(yc))
             objData = self.item.addObjAnnot(pos, draw=False, **objOpts)
             objData['data'] = obj.label
