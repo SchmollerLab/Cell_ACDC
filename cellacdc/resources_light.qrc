@@ -113,6 +113,7 @@
     <file alias="greenTick.svg">resources/icons/greenTick.svg</file>
     <file alias="browser.svg">resources/icons/browser.svg</file>
     <file alias="addPointsLayer.svg">resources/icons/addPointsLayer.svg</file>
+    <file alias="pointsLayer.svg">resources/icons/pointsLayer.svg</file>
     <file alias="no.svg">resources/icons/no.svg</file>
     <file alias="yesGray.svg">resources/icons/yesGray.svg</file>
     <file alias="bkgrRoi.svg">resources/icons/bkgrRoi.svg</file>

@@ -1475,9 +1475,10 @@ class guiWin(QMainWindow):
         # self.checkableButtons.append(self.overlayButton)
         # self.checkableQButtonsGroup.addButton(self.overlayButton)
 
-        self.addPointsLayerAction = QAction('Add points layer', self)
-        self.addPointsLayerAction.setIcon(QIcon(":addPointsLayer.svg"))
-        navigateToolBar.addAction(self.addPointsLayerAction)
+        self.togglePointsLayerAction = QAction('Activate points layer', self)
+        self.togglePointsLayerAction.setCheckable(True)
+        self.togglePointsLayerAction.setIcon(QIcon(":pointsLayer.svg"))
+        navigateToolBar.addAction(self.togglePointsLayerAction)
 
         self.overlayLabelsButton = widgets.rightClickToolButton(parent=self)
         self.overlayLabelsButton.setIcon(QIcon(":overlay_labels.svg"))
@@ -2377,6 +2378,12 @@ class guiWin(QMainWindow):
         self.pointsLayersToolbar = widgets.ToolBar("Points layers", self)
         self.pointsLayersToolbar.setContextMenuPolicy(Qt.PreventContextMenu)
         self.addToolBar(Qt.TopToolBarArea, self.pointsLayersToolbar)
+        self.addPointsLayerAction = QAction('Add points layer', self)
+        self.addPointsLayerAction.setIcon(QIcon(":addPointsLayer.svg"))
+        self.pointsLayersToolbar.addAction(self.addPointsLayerAction)
+        self.addPointsLayerAction.triggered.connect(
+            self.addPointsLayerTriggered
+        )
         self.pointsLayersToolbar.addWidget(QLabel('Points layers:  '))
         # self.pointsLayersToolbar.setIconSize(QSize(16, 16))
         self.pointsLayersToolbar.setVisible(False)
@@ -3086,7 +3093,7 @@ class guiWin(QMainWindow):
         self.isEditActionsConnected = True
 
         self.overlayButton.toggled.connect(self.overlay_cb)
-        self.addPointsLayerAction.triggered.connect(self.addPointsLayer_cb)
+        self.togglePointsLayerAction.toggled.connect(self.pointsLayerToggled)
         self.overlayLabelsButton.toggled.connect(self.overlayLabels_cb)
         self.overlayButton.sigRightClick.connect(self.showOverlayContextMenu)
         self.labelRoiButton.sigRightClick.connect(self.showLabelRoiContextMenu)
@@ -6068,7 +6075,7 @@ class guiWin(QMainWindow):
             and noModifier
         )
         setAddPointCursor = (
-            self.pointsLayersToolbar.isVisible() and not event.isExit()
+            self.togglePointsLayerAction.isChecked() and not event.isExit()
             and noModifier
         )
         overrideCursor = self.app.overrideCursor()
@@ -7039,7 +7046,8 @@ class guiWin(QMainWindow):
             and not manualBackgroundON
         )
         canAddPoint = (
-            addPointsByClickingButton is not None and not wandON 
+            self.togglePointsLayerAction.isChecked()
+            and addPointsByClickingButton is not None and not wandON 
             and not curvToolON and not brushON
             and not dragImgLeft and not brushON and not rulerON
             and not polyLineRoiON and not labelRoiON  and not keepObjON
@@ -7063,7 +7071,9 @@ class guiWin(QMainWindow):
             event.ignore()
             return
 
-        if mode == 'Viewer' and not canRuler:
+        isAllowedActionViewer = (canAddPoint or canRuler)
+        
+        if mode == 'Viewer' and not isAllowedActionViewer:
             self.startBlinkingModeCB()
             event.ignore()
             return
@@ -15454,7 +15464,7 @@ class guiWin(QMainWindow):
         maxXRange = int((xmax-xmin)*1.5)
         self.ax1.setLimits(maxYRange=maxYRange, maxXRange=maxXRange)
         self.bottomScrollArea._resizeVertical()
-        QTimer.singleShot(300, self.autoRange)
+        QTimer.singleShot(200, self.autoRange)
     
     def setVisible3DsegmWidgets(self):
         self.annotNumZslicesCheckbox.setVisible(self.isSegm3D)
@@ -16179,6 +16189,7 @@ class guiWin(QMainWindow):
         self.isRealTimeTrackerInitialized = False
         self.isWarningCcaIntegrity = False
         self.isDoubleRightClick = False
+        self.pointsLayersNeverToggled = True
         self.highlightedIDopts = None
         self.keptObjectsIDs = widgets.KeptObjectIDsList(
             self.keptIDsLineEdit, self.keepIDsConfirmAction
@@ -18569,9 +18580,15 @@ class guiWin(QMainWindow):
                 except Exception as e:
                     pass
     
-    def addPointsLayer_cb(self):
-        self.pointsLayersToolbar.setVisible(True)
-        self.autoPilotZoomToObjToolbar.setVisible(True)
+    def pointsLayerToggled(self, checked):
+        self.pointsLayersToolbar.setVisible(checked)
+        self.autoPilotZoomToObjToolbar.setVisible(checked)
+        if self.pointsLayersNeverToggled:
+            self.addPointsLayerAction.trigger()
+        self.pointsLayersNeverToggled = False
+        QTimer.singleShot(200, self.autoRange)
+    
+    def addPointsLayerTriggered(self):
         posData = self.data[self.pos_i]
         self.addPointsWin = apps.AddPointsLayerDialog(
             channelNames=posData.chNames, imagesPath=posData.images_path, 

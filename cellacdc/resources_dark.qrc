@@ -110,6 +110,7 @@
     <file alias="okButton.svg">resources/icons/okButton_dark.svg</file>
     <file alias="greenTick.svg">resources/icons/greenTick_dark.svg</file>
     <file alias="addPointsLayer.svg">resources/icons/addPointsLayer_dark.svg</file>
+    <file alias="pointsLayer.svg">resources/icons/pointsLayer.svg</file>
     <file alias="no.svg">resources/icons/no_dark.svg</file>
     <file alias="yesGray.svg">resources/icons/yesGray_dark.svg</file>
     <file alias="bkgrRoi.svg">resources/icons/bkgrRoi_dark.svg</file>
