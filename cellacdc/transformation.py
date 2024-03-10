@@ -116,7 +116,6 @@ def retrack_based_on_untracked_first_frame(
             new_unique_ID = untracked_to_unique_mapper.get(obj_tracked.label)
             if new_unique_ID is None:
                 # Untracked ID not present in tracked labels
-                pbar.update()
                 continue
             # Replace untracked ID with a unique ID to prevent merging when later 
             # we will replace tracked IDs of first frame to their corresponding 
@@ -126,7 +125,6 @@ def retrack_based_on_untracked_first_frame(
             )
             untracked_ID = tracked_to_untracked_mapper.get(obj_tracked.label)
             if untracked_ID is None:
-                pbar.update()
                 continue
             
             # Update tracked to untracked mapper because now tracked_video 
@@ -144,7 +142,6 @@ def retrack_based_on_untracked_first_frame(
             untracked_ID = tracked_to_untracked_mapper.get(obj_tracked.label)
             if untracked_ID is None:
                 # Untracked ID not present in tracked labels
-                pbar.update()
                 continue
             # Replace tracked ID of first frame to the untracked ID of the 
             # reference 
