@@ -1478,6 +1478,7 @@ class trackingWorker(QObject):
         self.mainWin = mainWin
         self.posData = posData
         self.mutex = QMutex()
+        self.signals = signals()
         self.waitCond = QWaitCondition()
         self.tracker = self.mainWin.tracker
         self.track_params = self.mainWin.track_params
@@ -1499,11 +1500,9 @@ class trackingWorker(QObject):
         max_tracked_video = tracked_video.max()
         overall_max = max(max_allIDs, max_tracked_video)
         uniqueID = overall_max + 1
-        first_tracked_lab = tracked_video[0]
         
         tracked_video = transformation.retrack_based_on_untracked_first_frame(
-            tracked_video, first_tracked_lab, first_untracked_lab, 
-            uniqueID=uniqueID        
+            tracked_video, first_untracked_lab, uniqueID=uniqueID        
         )
         return tracked_video
 
@@ -1512,12 +1511,10 @@ class trackingWorker(QObject):
             if hasattr(self.signals, 'innerPbar_available'):
                 if self.signals.innerPbar_available:
                     # Use inner pbar of the GUI widget (top pbar is for positions)
-                    self.signals.innerProgressBar.setMinimum(0)
-                    self.signals.innerProgressBar.setMaximum(0)
+                    self.signals.sigInitInnerPbar.emit(1)
                     return
             else:
-                self.signals.progressBar.setMinimum(0)
-                self.signals.progressBar.setMaximum(0)
+                self.signals.initProgressBar.emit(1)
         except Exception as err:
             pass
     

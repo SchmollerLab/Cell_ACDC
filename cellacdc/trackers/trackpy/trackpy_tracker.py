@@ -15,6 +15,15 @@ from tqdm import tqdm
 
 DEBUG = False
 
+class SearchRangeUnits:
+    values = ['micrometre', 'pixels']
+
+class NeighborStrategies:
+    values = ['KDTree', 'BTree']
+
+class LinkStrategies:
+    values = ['recursive', 'nonrecursive', 'numba', 'hybrid', 'drop', 'auto']
+
 class tracker:
     def __init__(self) -> None:
         pass
@@ -35,17 +44,15 @@ class tracker:
             tp_df['ID'].append(obj.label)
 
     def _get_pos_columns(
-            self, tp_df, PhysicalSizeX, PhysicalSizeY, PhysicalSizeZ,
+            self, tp_df, PhysicalSizeX, PhysicalSizeY, PhysicalSizeZ, 
+            search_range_unit
         ):
         is_3D = 'z' in tp_df.columns
-        if PhysicalSizeX == PhysicalSizeY == PhysicalSizeZ:
+        if search_range_unit == 'pixels':
             if is_3D:
                 return ['x', 'y', 'z']
             else:
                 return ['x', 'y']
-        
-        if PhysicalSizeX == PhysicalSizeY and not is_3D:
-            return ['x', 'y']
         
         pos_columns = []
         if is_3D:
@@ -59,13 +66,14 @@ class tracker:
         
     def track(
             self, segm_video,
+            search_range_unit: SearchRangeUnits='micrometre',
             search_range=10.0,
             memory=0,
             adaptive_stop: float=1.0, 
             adaptive_step=0.95,
             dynamic_predictor=False,
-            neighbor_strategy='KDTree',
-            link_strategy = 'recursive',
+            neighbor_strategy: NeighborStrategies='KDTree',
+            link_strategy: LinkStrategies='recursive',
             signals=None, 
             export_to=None,
             PhysicalSizeX=1.0,
@@ -77,6 +85,9 @@ class tracker:
 
         Parameters
         ----------
+        search_range_unit : {'micrometres', 'pixels'}, default 'micrometres'
+            Physical unit of the `search_range`. If 'pixels', PhysicalSizes will 
+            be ignored.  
         search_range : float, optional
             Radius of the circle centerd at the object at previous frame where 
             to search for the object at current frame. 
@@ -88,13 +99,13 @@ class tracker:
             in micrometers for anisotropic data (typically 3D over time).
             
             Default is 10.0.
-        adaptive_stop : float, optional
+        adaptive_stop : float, default 1.0
             If not None, when encountering an oversize subnet, retry by progressively
             reducing search_range until the subnet is solvable. If search_range
             becomes <= adaptive_stop, give up and raise a SubnetOversizeException.
-        adaptive_step : float, optional
+        adaptive_step : float, default 0.95
             Reduce search_range by multiplying it by this factor.
-        neighbor_strategy : {'KDTree', 'BTree'}
+        neighbor_strategy : {'KDTree', 'BTree'}, default 'KDTree'
             Algorithm used to identify nearby features. Default 'KDTree'.
         link_strategy : {'recursive', 'nonrecursive', 'numba', 'hybrid', 'drop', 'auto'}
             Algorithm used to resolve subnetworks of nearby particles
@@ -113,24 +124,28 @@ class tracker:
             else:
                 adaptive_stop = float(adaptive_stop)
         
+        self.setProgressBarMaximum(signals, len(segm_video))
+        
         # Build tp DataFrame --> https://soft-matter.github.io/trackpy/v0.5.0/generated/trackpy.link.html#trackpy.link
         tp_df = defaultdict(list)
         pbar = tqdm(total=len(segm_video), ncols=100)
         for frame_i, lab in enumerate(segm_video):
             self._set_frame_features(lab, frame_i, tp_df)
             pbar.update()
+            self.updateGuiProgressBar(signals)
         pbar.close()
             
         tp_df = pd.DataFrame(tp_df)
         pos_columns = self._get_pos_columns(
-            tp_df, PhysicalSizeX, PhysicalSizeY, PhysicalSizeZ,
+            tp_df, PhysicalSizeX, PhysicalSizeY, PhysicalSizeZ, 
+            search_range_unit
         )
         # Run tracker
         if dynamic_predictor:
             predictor = tp.predict.NearestVelocityPredict()
         else:
             predictor = tp
-
+        
         tp_out_df = predictor.link_df(
             tp_df, search_range,
             memory=int(memory),
@@ -145,12 +160,18 @@ class tracker:
             tp_out_df.to_csv(export_to)
         
         tp_out_df['particle'] += 1 # trackpy starts from 0 with tracked ids
+        
         # Generate tracked video data
         tracked_video = np.zeros_like(segm_video)
         for frame_i, lab in enumerate(segm_video):
             rp = skimage.measure.regionprops(lab)
             tracked_lab = lab.copy()
-            tp_out_df_frame = tp_out_df.loc[frame_i]
+            try:
+                tp_out_df_frame = tp_out_df.loc[frame_i]
+            except KeyError as err:
+                # Tracked lab is empty --> no frame was added to dataframe
+                tracked_video[frame_i] = tracked_lab
+                continue
 
             IDs_curr_untracked = [obj.label for obj in rp]
 
@@ -192,6 +213,18 @@ class tracker:
         
         return tracked_video
     
+    def setProgressBarMaximum(self, signals, num_frames):
+        if signals is None:
+            return
+        
+        if hasattr(signals, 'innerPbar_available'):
+            if signals.innerPbar_available:
+                # Use inner pbar of the GUI widget (top pbar is for positions)
+                signals.sigInitInnerPbar.emit(num_frames*2)
+                return
+        
+        signals.initProgressBar.emit(num_frames*2)
+        
     def updateGuiProgressBar(self, signals):
         if signals is None:
             return

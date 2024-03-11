@@ -85,11 +85,39 @@ def trackmate_xml_to_df(xml_file):
     return df
 
 def retrack_based_on_untracked_first_frame(
-        tracked_video, first_tracked_lab, first_untracked_lab, 
-        uniqueID=None        
+        tracked_video, first_untracked_lab, uniqueID=None        
     ):
+    """Re-tack the objects in the first frame of `tracked_video` to have the 
+    same IDs as in `first_untracked_lab`
+
+    Parameters
+    ----------
+    tracked_video : (T, Y, X) or (T, Z, Y, X) of ints
+        Array with the segmentation instances of the tracked objects
+    first_untracked_lab : (Y, X) or (Z, Y, X) of ints
+        Array with the segmentation instances of the objects in the first 
+        frame before they were tracked
+    uniqueID : int, optional
+        If not None, it will be used as first of the unique IDs. 
+        If None, this will be initialized to the maximum in `tracked_video`. 
+        Default is None.
+
+    Returns
+    -------
+    (T, Y, X) or (T, Z, Y, X) of ints
+        Tracked video where the objects in the first frame has the same IDs as 
+        in `first_untracked_lab`. 
+    
+    Notes
+    -----
+    The idea of this function is to ensure that objects in the first frame 
+    before and after tracking have the same IDs. This is needed to ensure 
+    continuity of obejct IDs when tracking portions of the video in 
+    different batches.    
+    """    
+    
+    first_tracked_lab = tracked_video[0]
     first_tracked_rp = skimage.measure.regionprops(first_tracked_lab)
-    first_tracked_IDs = [obj.label for obj in first_tracked_rp]
     
     tracked_to_untracked_mapper = {}
     for obj in first_tracked_rp:
@@ -98,6 +126,9 @@ def retrack_based_on_untracked_first_frame(
             continue
         tracked_to_untracked_mapper[obj.label] = untracked_ID
 
+    if not tracked_to_untracked_mapper:
+        return tracked_video
+    
     first_untracked_rp = skimage.measure.regionprops(first_untracked_lab)
     first_untracked_IDs = [obj.label for obj in first_untracked_rp]
     
@@ -117,15 +148,18 @@ def retrack_based_on_untracked_first_frame(
             if new_unique_ID is None:
                 # Untracked ID not present in tracked labels
                 continue
+            
+            untracked_ID = tracked_to_untracked_mapper.get(obj_tracked.label)
+            if untracked_ID is None:
+                # No need to make ID unique because it will not change later
+                continue
+            
             # Replace untracked ID with a unique ID to prevent merging when later 
             # we will replace tracked IDs of first frame to their corresponding 
             # untracked ID
             tracked_video[frame_i][obj_tracked.slice][obj_tracked.image] = (
                 new_unique_ID
             )
-            untracked_ID = tracked_to_untracked_mapper.get(obj_tracked.label)
-            if untracked_ID is None:
-                continue
             
             # Update tracked to untracked mapper because now tracked_video 
             # changed and we would not find the same ID later

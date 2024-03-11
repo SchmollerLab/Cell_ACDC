@@ -8014,10 +8014,15 @@ class guiWin(QMainWindow):
         self.thread.finished.connect(self.thread.deleteLater)
 
         # Custom signals
-        self.trackingWorker.signals = workers.signals()
         self.trackingWorker.signals.progress = self.trackingWorker.progress
         self.trackingWorker.signals.progressBar.connect(
             self.workerUpdateProgressbar
+        )
+        self.trackingWorker.signals.initProgressBar.connect(
+            self.workerInitProgressbar
+        )
+        self.trackingWorker.signals.sigInitInnerPbar.connect(
+            self.workerInitInnerPbar
         )
         self.trackingWorker.progress.connect(self.workerProgress)
         self.trackingWorker.critical.connect(self.workerCritical)
