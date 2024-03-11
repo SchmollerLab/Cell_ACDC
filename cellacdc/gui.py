@@ -157,7 +157,8 @@ def get_data_exception_handler(func):
                 One possbile explanation is that either the
                 <code>{acdc_df_filename}</code> file<br>
                 or the segmentation file <code>{segm_filename}</code><br>
-                <b>are corrupted/damaged</b>.<br><br>
+                <b>are being synchronized by a cloud service (e.g., Google Drive 
+                or OneDrive) or they are corrupted/damaged</b>.<br><br>
                 <b>Try moving these files</b> (one by one) outside of the
                 <code>{os.path.dirname(posData.relPath)}</code> folder
                 <br>and reloading the data.<br><br>
@@ -3574,7 +3575,7 @@ class guiWin(QMainWindow):
         self.zSliceOverlay_SB.setDisabled(True)
 
         self.img1BottomGroupbox = self.gui_getImg1BottomWidgets()
-
+    
     def gui_getImg1BottomWidgets(self):
         bottomLeftLayout = QGridLayout()
         self.bottomLeftLayout = bottomLeftLayout
@@ -10946,8 +10947,13 @@ class guiWin(QMainWindow):
     
     def annotateRightHowCombobox_cb(self, idx):
         how = self.annotateRightHowCombobox.currentText()
-        self.df_settings.at['how_draw_right_annotations', 'value'] = how
-        self.df_settings.to_csv(self.settings_csv_path)
+        saveSettings = True
+        if hasattr(self.annotateRightHowCombobox, 'saveSettings'):
+            saveSettings = self.annotateRightHowCombobox.saveSettings
+        
+        if saveSettings:
+            self.df_settings.at['how_draw_right_annotations', 'value'] = how
+            self.df_settings.to_csv(self.settings_csv_path)
 
         self.textAnnot[1].setCcaAnnot(
             self.annotCcaInfoCheckboxRight.isChecked()
@@ -10960,8 +10966,13 @@ class guiWin(QMainWindow):
 
     def drawIDsContComboBox_cb(self, idx):
         how = self.drawIDsContComboBox.currentText()
-        self.df_settings.at['how_draw_annotations', 'value'] = how
-        self.df_settings.to_csv(self.settings_csv_path)
+        saveSettings = True
+        if hasattr(self.drawIDsContComboBox, 'saveSettings'):
+            saveSettings = self.drawIDsContComboBox.saveSettings
+        
+        if saveSettings:
+            self.df_settings.at['how_draw_annotations', 'value'] = how
+            self.df_settings.to_csv(self.settings_csv_path)
 
         self.textAnnot[0].setCcaAnnot(self.annotCcaInfoCheckbox.isChecked())
         self.textAnnot[0].setLabelAnnot(self.annotIDsCheckbox.isChecked())
@@ -11122,6 +11133,7 @@ class guiWin(QMainWindow):
         self.copyContourButton.setChecked(False)
         self.stopCcaIntegrityCheckerWorker()
         if mode == 'Segmentation and Tracking':
+            self.setSwitchViewedPlaneDisabled(True)
             self.trackingMenu.setDisabled(False)
             self.modeToolBar.setVisible(True)
             self.lastTrackedFrameLabel.setText('')
@@ -11136,6 +11148,7 @@ class guiWin(QMainWindow):
                 self.store_cca_df()
             self.restorePrevAnnotOptions()
         elif mode == 'Cell cycle analysis':
+            self.setSwitchViewedPlaneDisabled(True)
             self.startCcaIntegrityCheckerWorker()
             proceed = self.initCca()
             if proceed:
@@ -11152,6 +11165,7 @@ class guiWin(QMainWindow):
                 self.setAnnotOptionsCcaMode()
                 self.clearGhost()
         elif mode == 'Viewer':
+            self.setSwitchViewedPlaneDisabled(False)
             self.modeToolBar.setVisible(True)
             self.realTimeTrackingToggle.setDisabled(True)
             self.realTimeTrackingToggle.label.setDisabled(True)
@@ -11166,6 +11180,7 @@ class guiWin(QMainWindow):
             self.navSpinBox.setMaximum(posData.SizeT)
             self.clearGhost()
         elif mode == 'Custom annotations':
+            self.setSwitchViewedPlaneDisabled(True)
             self.modeToolBar.setVisible(True)
             self.realTimeTrackingToggle.setDisabled(True)
             self.realTimeTrackingToggle.label.setDisabled(True)
@@ -11176,11 +11191,12 @@ class guiWin(QMainWindow):
             self.clearGhost()
             self.doCustomAnnotation(0)
         elif mode == 'Snapshot':
+            self.setSwitchViewedPlaneDisabled(False)
             self.reconnectUndoRedo()
             self.setEnabledSnapshotMode()
             self.doCustomAnnotation(0)
 
-    def disableEditingSnapshotMode(self):
+    def disableEditingViewPlaneNotXY(self):
         posData = self.data[self.pos_i]
         self.manuallyEditCcaAction.setDisabled(True)
         for action in self.segmActions:
@@ -11203,22 +11219,23 @@ class guiWin(QMainWindow):
             if button is not None:
                 button.setDisabled(True)
     
-    def setEnabledSnapshotMode(self):
+    def setEnabledEditingViewPlaneXY(self):
         posData = self.data[self.pos_i]
         self.manuallyEditCcaAction.setDisabled(False)
         self.viewCcaTableAction.setDisabled(False)
         for action in self.segmActions:
             action.setDisabled(False)
         self.SegmActionRW.setDisabled(False)
-        if posData.SizeT == 1:
-            self.segmVideoMenu.setDisabled(True)
-        self.relabelSequentialAction.setDisabled(False)
+
+        self.segmVideoMenu.setDisabled(True)
         self.trackingMenu.setDisabled(True)
+        self.modeToolBar.setVisible(False)
+        
+        self.relabelSequentialAction.setDisabled(False)
         self.postProcessSegmAction.setDisabled(False)
         self.autoSegmAction.setDisabled(False)
         self.ccaToolBar.setVisible(True)
         self.editToolBar.setVisible(True)
-        self.modeToolBar.setVisible(False)
         self.reinitLastSegmFrameAction.setVisible(False)
         for action in self.ccaToolBar.actions():
             button = self.ccaToolBar.widgetForAction(action)
@@ -12043,6 +12060,9 @@ class guiWin(QMainWindow):
             self.updateAllImages()
     
     def storeCurrentAnnotOptions_ax1(self, return_value=False):
+        if self.annotOptionsToRestore is not None:
+            return
+        
         checkboxes = [
             'annotIDsCheckbox',
             'annotCcaInfoCheckbox',
@@ -12058,9 +12078,12 @@ class guiWin(QMainWindow):
             annotOptions[checkboxName] = checkbox.isChecked()
         if return_value:
             return annotOptions
-        self.annotOptions = annotOptions
+        self.annotOptionsToRestore = annotOptions
         
     def storeCurrentAnnotOptions_ax2(self):
+        if self.annotOptionsToRestoreRight is not None:
+            return
+        
         checkboxes = [
             'annotIDsCheckboxRight',
             'annotCcaInfoCheckboxRight',
@@ -12070,40 +12093,65 @@ class guiWin(QMainWindow):
             'annotNumZslicesCheckboxRight',
             'drawNothingCheckboxRight',
         ]
-        self.annotOptionsRight = {}
+        self.annotOptionsToRestoreRight = {}
         for checkboxName in checkboxes:
             checkbox = getattr(self, checkboxName)
-            self.annotOptionsRight[checkboxName] = checkbox.isChecked()
+            self.annotOptionsToRestoreRight[checkboxName] = checkbox.isChecked()
     
     def restoreAnnotOptions_ax1(self, options=None):
-        if options is None and not hasattr(self, 'annotOptions'):
+        if options is None and not hasattr(self, 'annotOptionsToRestore'):
             return
 
         if options is None:
-            options = self.annotOptions
+            options = self.annotOptionsToRestore
+        
+        if options is None:
+            return
             
         for option, state in options.items():
             checkbox = getattr(self, option)
             checkbox.setChecked(state)
         
         self.setDrawAnnotComboboxText()
+        self.annotOptionsToRestore = None
     
     def restoreAnnotOptions_ax2(self):
-        if not hasattr(self, 'annotOptionsRight'):
+        if not hasattr(self, 'annotOptionsToRestoreRight'):
             return
 
-        for option, state in self.annotOptionsRight.items():
+        if self.annotOptionsToRestoreRight is None:
+            return
+
+        for option, state in self.annotOptionsToRestoreRight.items():
             checkbox = getattr(self, option)
             checkbox.setChecked(state)
         
         self.setDrawAnnotComboboxText()
+        self.annotOptionsToRestoreRight = None
 
+    def setDrawNothingAnnotations(self):
+        self.storeCurrentAnnotOptions_ax1()
+        self.storeCurrentAnnotOptions_ax2()
+        self.drawNothingCheckbox.setChecked(True)
+        self.annotOptionClicked(
+            sender=self.drawNothingCheckbox, saveSettings=False)
+        self.drawNothingCheckboxRight.setChecked(True)
+        self.annotOptionClickedRight(
+            sender=self.drawNothingCheckboxRight, saveSettings=False
+        )
+    
+    def restoreAnnotationsOptions(self):
+        self.restoreAnnotOptions_ax1()
+        self.restoreAnnotOptions_ax2()
+    
     def onDoubleSpaceBar(self):
         how = self.drawIDsContComboBox.currentText()
         if how.find('nothing') == -1:
             self.storeCurrentAnnotOptions_ax1()
             self.drawNothingCheckbox.setChecked(True)
-            self.annotOptionClicked(sender=self.drawNothingCheckbox)
+            self.annotOptionClicked(
+                sender=self.drawNothingCheckbox, saveSettings=False
+            )
         else:
             self.restoreAnnotOptions_ax1()
         
@@ -12111,7 +12159,9 @@ class guiWin(QMainWindow):
         if how.find('nothing') == -1:
             self.storeCurrentAnnotOptions_ax2()
             self.drawNothingCheckboxRight.setChecked(True)
-            self.annotOptionClickedRight(sender=self.drawNothingCheckboxRight)
+            self.annotOptionClickedRight(
+                sender=self.drawNothingCheckboxRight, saveSettings=False
+            )
         else:
             self.restoreAnnotOptions_ax2()
 
@@ -13735,6 +13785,9 @@ class guiWin(QMainWindow):
         mode = self.modeComboBox.currentText()
         if not self.isSnapshot and mode != 'Custom annotations':
             # Do not show annotations if timelapse and mode not annotations
+            return
+        
+        if self.switchPlaneCombobox.depthAxes() != 'z': 
             return
         
         # NOTE: pass 0 for ID to not add
@@ -15884,6 +15937,15 @@ class guiWin(QMainWindow):
         self.zSliceScrollBarStartedMoving = True
         self.update_z_slice(self.zSliceScrollBar.sliderPosition())
     
+    def setSwitchViewedPlaneDisabled(self, disabled):
+        posData = self.data[self.pos_i]
+        if posData.SizeZ == 1:
+            return
+
+        self.switchPlaneCombobox.setDisabled(disabled)
+        if disabled:
+            self.switchPlaneCombobox.setCurrentIndex(0)
+    
     def switchViewedPlane(self, plane):
         posData = self.data[self.pos_i]
         self.zProjComboBox.setCurrentText('single z-slice')
@@ -15898,7 +15960,7 @@ class guiWin(QMainWindow):
             self.setHighlightID(False)
             
             # Disable annotations on a plane that is not yz
-            self.onDoubleSpaceBar()
+            self.setDrawNothingAnnotations()
             self.setDisabledAnnotCheckBoxesLeft(True)
             self.setDisabledAnnotCheckBoxesRight(True)
             self.overlayButton.setChecked(False)
@@ -15906,7 +15968,7 @@ class guiWin(QMainWindow):
             # self.setZprojDisabled(True, storePrevState=True)
         else:
             self.zProjComboBox.setDisabled(False)
-            self.onDoubleSpaceBar()
+            self.restoreAnnotationsOptions()
             self.setDisabledAnnotCheckBoxesLeft(False)
             self.setDisabledAnnotCheckBoxesRight(False)
             self.overlayButton.setDisabled(False)
@@ -15915,12 +15977,12 @@ class guiWin(QMainWindow):
         
         SizeY, SizeX = posData.img_data[posData.frame_i].shape[-2:]
         
-        if self.isSnapshot and depthAxes != 'z':
+        if depthAxes != 'z' and self.isSnapshot:
             # Disable editing when the plane is not xy
-            self.disableEditingSnapshotMode()
+            self.disableEditingViewPlaneNotXY()
         elif self.isSnapshot:
             # Re-enable editing in snapshot mode when the plane is xy
-            self.setEnabledSnapshotMode()
+            self.setEnabledEditingViewPlaneXY()
         
         if depthAxes == 'z':
             maxSliceNum = posData.SizeZ
@@ -16203,6 +16265,8 @@ class guiWin(QMainWindow):
         self.imgValueFormatter = 'd'
         self.rawValueFormatter = 'd'
         self.lastHoverID = -1
+        self.annotOptionsToRestore = None
+        self.annotOptionsToRestoreRight = None
 
         # Second channel used by cellpose
         self.secondChannelName = None
@@ -17145,10 +17209,21 @@ class guiWin(QMainWindow):
         if checkIfProj and self.zProjComboBox.currentText() != 'single z-slice':
             return
         
-        if self.isSegm3D:
-            return self.zSliceScrollBar.sliderPosition()
+        if not self.isSegm3D:
+            return 
+        
+        idx = self.zSliceScrollBar.sliderPosition()
+        if not self.switchPlaneCombobox.isEnabled():
+            return idx
+        
+        depthAxes = self.switchPlaneCombobox.depthAxes()
+        if depthAxes == 'z':
+            return idx
+        elif depthAxes == 'y':
+            return (slice(None), idx)
         else:
-            return
+            return (slice(None), slice(None), idx)
+                
 
     def get_2Dlab(self, lab, force_z=True):
         if self.isSegm3D:
@@ -18370,6 +18445,10 @@ class guiWin(QMainWindow):
             obj.dead = ID in posData.ripIDs
     
     def annotate_rip_and_bin_IDs(self, updateLabel=False):
+        depthAxes = self.switchPlaneCombobox.depthAxes()
+        if self.switchPlaneCombobox.isEnabled() and depthAxes != 'z':
+            return 
+        
         posData = self.data[self.pos_i]
         binnedIDs_xx = []
         binnedIDs_yy = []
@@ -19580,6 +19659,10 @@ class guiWin(QMainWindow):
         return obj.image[local_z]
 
     def isObjVisible(self, obj_bbox, debug=False):
+        depthAxes = self.switchPlaneCombobox.depthAxes()
+        if self.switchPlaneCombobox.isEnabled() and depthAxes != 'z':
+            return False
+        
         if self.isSegm3D:
             zProjHow = self.zProjComboBox.currentText()
             isZslice = zProjHow == 'single z-slice'
@@ -23125,7 +23208,7 @@ class guiWin(QMainWindow):
                     break
         self.setAllTextAnnotations()
     
-    def annotOptionClicked(self, clicked=True, sender=None):
+    def annotOptionClicked(self, clicked=True, sender=None, saveSettings=True):
         if sender is None:
             sender = self.sender()
         # First manually set exclusive with uncheckable
@@ -23175,7 +23258,7 @@ class guiWin(QMainWindow):
             self.annotIDsCheckbox.setChecked(True)
             self.drawNothingCheckbox.setChecked(False)
         
-        self.setDrawAnnotComboboxText()
+        self.setDrawAnnotComboboxText(saveSettings=saveSettings)
 
     def setDisabledAnnotCheckBoxesLeft(self, disabled):
         self.annotIDsCheckbox.setDisabled(disabled)
@@ -23195,7 +23278,9 @@ class guiWin(QMainWindow):
         self.annotNumZslicesCheckboxRight.setDisabled(disabled)
         self.drawNothingCheckboxRight.setDisabled(disabled)
     
-    def annotOptionClickedRight(self, clicked=True, sender=None):
+    def annotOptionClickedRight(
+            self, clicked=True, sender=None, saveSettings=True
+        ):
         if sender is None:
             sender = self.sender()
         # First manually set exclusive with uncheckable
@@ -23245,7 +23330,7 @@ class guiWin(QMainWindow):
             self.annotIDsCheckboxRight.setChecked(True)
             self.drawNothingCheckboxRight.setChecked(False)
 
-        self.setDrawAnnotComboboxTextRight()
+        self.setDrawAnnotComboboxTextRight(saveSettings=saveSettings)
 
     def setAnnotOptionsCcaMode(self):
         self.prevAnnotOptions = self.storeCurrentAnnotOptions_ax1(
@@ -23256,7 +23341,7 @@ class guiWin(QMainWindow):
         self.drawMothBudLinesCheckbox.setChecked(False)
         self.setDrawAnnotComboboxText()
     
-    def setDrawAnnotComboboxText(self):
+    def setDrawAnnotComboboxText(self, saveSettings=True):
         if self.annotIDsCheckbox.isChecked():
             if self.annotContourCheckbox.isChecked():
                 t = 'Draw IDs and contours'
@@ -23290,9 +23375,10 @@ class guiWin(QMainWindow):
         if t == self.drawIDsContComboBox.currentText():
             self.drawIDsContComboBox_cb(0)
         
+        self.drawIDsContComboBox.saveSettings = saveSettings
         self.drawIDsContComboBox.setCurrentText(t)
 
-    def setDrawAnnotComboboxTextRight(self):
+    def setDrawAnnotComboboxTextRight(self, saveSettings=True):
         if self.annotIDsCheckboxRight.isChecked():
             if self.annotContourCheckboxRight.isChecked():
                 t = 'Draw IDs and contours'
@@ -23325,6 +23411,8 @@ class guiWin(QMainWindow):
 
         if t == self.annotateRightHowCombobox.currentText():
             self.annotateRightHowCombobox_cb(0)
+        
+        self.annotateRightHowCombobox.saveSettings = saveSettings
         self.annotateRightHowCombobox.setCurrentText(t)
         
     def getOverlayItems(self, channelName):
