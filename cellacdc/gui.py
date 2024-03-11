@@ -3373,7 +3373,7 @@ class guiWin(QMainWindow):
         )
         self.annotLostObjsToggle.setChecked(True)
         self.annotLostObjsToggle.setToolTip(annotLostObjsToggleTooltip)
-        label = QLabel('Annotate lost objects')
+        label = QLabel('Annot. lost objects')
         label.setToolTip(annotLostObjsToggleTooltip)
         layout.addRow(label, self.annotLostObjsToggle)
 
