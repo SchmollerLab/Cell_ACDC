@@ -2683,9 +2683,11 @@ def get_pip_install_cellacdc_version_command(version=None):
     if is_dev_version:
         commit_hash = version[commit_hash_idx+2:].split('.')[0]
         command = f'pip install --upgrade "git+{github_home_url}.git@{commit_hash}"'
+        command_github = None
     else:
         command = f'pip install --upgrade cellacdc=={version}'
-    return command
+        command_github = f'pip install --upgrade "git+{urls.github_url}@{version}"'
+    return command, command_github  
 
 def get_git_pull_checkout_cellacdc_version_commands(version=None):
     if version is None:

@@ -52,7 +52,9 @@ class QDialogAbout(QDialog):
         titleLabel.setText(txt)
         
         # '{next_version}.dev{distance}+{scm letter}{revision hash}'
-        command = get_pip_install_cellacdc_version_command(version=version)
+        command, command_github = get_pip_install_cellacdc_version_command(
+            version=version
+        )
         commandLabel = QLabel(html_utils.paragraph(
             f'<b>To install this specific version</b> '
             f'on a new environment or <b>to upgrade/downgrade</b> in an '
@@ -62,6 +64,16 @@ class QDialogAbout(QDialog):
         commandWidget = widgets.CopiableCommandWidget(
             command=command, font_size='11px'
         )
+        
+        if command_github is not None:
+            commandLabelGh = QLabel(html_utils.paragraph(
+                f'<b>If the command above fails</b>, it means that this '
+                f'specific version was <b>not released on PyPi</b> yet.<br><br>'
+                'In that case, you need to run the following command instead:'
+            ))
+            commandGhWidget = widgets.CopiableCommandWidget(
+                command=command_github, font_size='11px'
+            )
         
         commandWidgetsGit = []
         git_commands = get_git_pull_checkout_cellacdc_version_commands(version)
@@ -157,10 +169,24 @@ class QDialogAbout(QDialog):
         howToInstallLayout.addWidget(commandLabel, alignment=Qt.AlignLeft)
         howToInstallLayout.addWidget(commandWidget, alignment=Qt.AlignLeft)
         
+        if command_github is not None:
+            howToInstallLayout.addWidget(commandLabelGh, alignment=Qt.AlignLeft)
+            howToInstallLayout.addWidget(commandGhWidget, alignment=Qt.AlignLeft)
+        
         if git_commands:
             howToInstallLayout.addWidget(commandLabelGit, alignment=Qt.AlignLeft)
             for widget in commandWidgetsGit:
                 howToInstallLayout.addWidget(widget, alignment=Qt.AlignLeft)
+        
+        howToInstallLayout.addSpacing(20)
+        importantText = html_utils.to_admonition("""
+            Whenever you run commands with <code>pip</code> <b>make sure to 
+            FIRST activate the correct environment</b> (e.g. with 
+            <code>conda activate acdc</b>)
+        """, admonition_type='important')
+        
+        howToInstallLayout.addWidget(QLabel(importantText))
+        
         # layout.addWidget(self.howToInstallWidget, row, 0, 1, 3)
         howToInstallLayout.addLayout(buttonsLayout)
         self.howToInstallDialog.hide()
