@@ -2409,10 +2409,12 @@ class myMessageBox(QDialog):
         if block:
             self._block()
 
-    def setDetailedText(self, text, visible=False):
+    def setDetailedText(self, text, visible=False, wrap=True):
         text = text.replace('\n', '<br>')
         self.detailsTextWidget = QTextEdit(text)
         self.detailsTextWidget.setReadOnly(True)
+        if not wrap:
+            self.detailsTextWidget.setLineWrapMode(QTextEdit.NoWrap)
         self.detailsButton = showDetailsButton()
         self.detailsButton.setCheckable(True)
         self.detailsButton.clicked.connect(self._showDetails)
@@ -2541,7 +2543,7 @@ class myMessageBox(QDialog):
             buttonsTexts=None, layouts=None, widgets=None,
             commands=None, path_to_browse=None, browse_button_text=None,
             url_to_open=None, open_url_button_text='Open url', 
-            image_paths=None
+            image_paths=None, wrapDetails=True
         ):
         if parent is not None:
             self.setParent(parent)
@@ -2598,7 +2600,7 @@ class myMessageBox(QDialog):
                 buttons.append(button)
         
         if detailsText is not None:
-            self.setDetailedText(detailsText, visible=True)
+            self.setDetailedText(detailsText, visible=True, wrap=wrapDetails)
         return buttons
 
     def critical(self, *args, showDialog=True, **kwargs):
