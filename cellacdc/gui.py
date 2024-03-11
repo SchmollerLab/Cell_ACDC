@@ -11219,7 +11219,7 @@ class guiWin(QMainWindow):
             if button is not None:
                 button.setDisabled(True)
     
-    def setEnabledEditingViewPlaneXY(self):
+    def setEnabledSnapshotMode(self):
         posData = self.data[self.pos_i]
         self.manuallyEditCcaAction.setDisabled(False)
         self.viewCcaTableAction.setDisabled(False)
@@ -15982,7 +15982,7 @@ class guiWin(QMainWindow):
             self.disableEditingViewPlaneNotXY()
         elif self.isSnapshot:
             # Re-enable editing in snapshot mode when the plane is xy
-            self.setEnabledEditingViewPlaneXY()
+            self.setEnabledSnapshotMode()
         
         if depthAxes == 'z':
             maxSliceNum = posData.SizeZ
