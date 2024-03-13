@@ -253,9 +253,13 @@ base_cca_tree_dict = {
 
 lineage_tree_cols = list(base_cca_tree_dict.keys())
 
-base_acdc_df = {
+default_annot_df = {
     'is_cell_dead': False,
     'is_cell_excluded': False,
+}
+
+base_acdc_df = {
+    **default_annot_df,
     'was_manually_edited': 0
 }
 

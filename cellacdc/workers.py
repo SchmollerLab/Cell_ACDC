@@ -36,7 +36,7 @@ from . import transformation
 from .path import copy_or_move_tree
 from . import features
 from . import core
-from . import cca_df_colnames, lineage_tree_cols
+from . import cca_df_colnames, lineage_tree_cols, default_annot_df
 
 DEBUG = False
 
@@ -3829,15 +3829,21 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
         if acdc_df is None:
             return df
         
+        idx = df.index.intersection(acdc_df.index)
         for col in cca_df_colnames:
             if col not in acdc_df.columns:
                 continue
-            df[col] = acdc_df[col]
+            df.loc[idx, col] = acdc_df.loc[idx, col]
         
         for col in lineage_tree_cols:
             if col not in acdc_df.columns:
                 continue
-            df[col] = acdc_df[col]
+            df.loc[idx, col] = acdc_df.loc[idx, col]
+        
+        for col in default_annot_df.keys():
+            if col not in acdc_df.columns:
+                continue
+            df.loc[idx, col] = acdc_df.loc[idx, col]
         
         return df
     
