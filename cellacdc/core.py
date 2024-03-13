@@ -2183,7 +2183,6 @@ class SegmKernel(_WorkflowKernel):
                         lab_stack, postprocess_img, 0, posData.filename, 
                         posData.self.user_ch_name, self.custom_postproc_features
                     )
-            
 
         if posData.SizeT > 1 and self.do_tracking:     
             self.logger_func(f'\nTracking with {self.tracker_name} tracker...')       
