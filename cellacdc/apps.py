@@ -10615,14 +10615,10 @@ class QDialogModelParams(QDialog):
         return configPars
 
     def setValuesFromParams(self, init_params, segment_params):
-        if self.configPars is None:
-            return
-
         sections = {
             f'{self.model_name}.init': (init_params, self.init_argsWidgets),
             f'{self.model_name}.segment': (segment_params, self.argsWidgets)
         }
-        
         for section, values in sections.items():
             params, argWidgetList = values
             for argWidget in argWidgetList:
