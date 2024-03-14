@@ -515,7 +515,7 @@ class movePushButton(PushButton):
 class showInFileManagerButton(PushButton):
     def __init__(self, *args, setDefaultText=False, **kwargs):
         super().__init__(*args, **kwargs)
-        self.setIcon(QIcon(':folder-open.svg'))
+        self.setIcon(QIcon(':drawer.svg'))
         if setDefaultText:
             self.setDefaultText()
     
