@@ -24719,7 +24719,7 @@ class guiWin(QMainWindow):
         h = self.showPropsDockButton.height()
 
         self.showPropsDockButton.setMaximumWidth(15)
-        self.showPropsDockButton.setMaximumHeight(60)
+        self.showPropsDockButton.setMaximumHeight(120)
         
         for toolbar in self.controlToolBars:
             toolbar.setMinimumHeight(
