@@ -143,7 +143,7 @@ class tracker:
             If not None, uses this as starting ID for all the untracked objects.
             If None, this will be calculated based on the two input frames.
         """        
-        to_track_tracked_IDs_2nd_step = None
+        to_track_tracked_objs_2nd_step = None
         
         prev_rp = skimage.measure.regionprops(prev_frame_lab)
         curr_rp = skimage.measure.regionprops(current_frame_lab)
@@ -171,7 +171,7 @@ class tracker:
         }
         
         if not lost_rp_mapper:
-            return tracked_lab_1st_step, to_track_tracked_IDs_2nd_step
+            return tracked_lab_1st_step, to_track_tracked_objs_2nd_step
         
         new_rp_mapper = {
             obj.label: obj for obj in tracked_rp_1st_step 
@@ -179,20 +179,20 @@ class tracker:
         }
         
         if not new_rp_mapper:
-            return tracked_lab_1st_step, to_track_tracked_IDs_2nd_step
+            return tracked_lab_1st_step, to_track_tracked_objs_2nd_step
         
         ndim = current_frame_lab.ndim
         lost_IDs_coords = np.zeros((len(lost_rp_mapper), ndim))
-        lost_IDs_idx_to_ID_mapper = {}
+        lost_IDs_idx_to_obj_mapper = {}
         for lost_idx, lost_obj in enumerate(lost_rp_mapper.values()):
             lost_IDs_coords[lost_idx] = lost_obj.centroid
-            lost_IDs_idx_to_ID_mapper[lost_idx] = lost_obj.label
+            lost_IDs_idx_to_obj_mapper[lost_idx] = lost_obj
         
         new_IDs_coords = np.zeros((len(new_rp_mapper), ndim))
-        new_IDs_idx_to_ID_mapper = {}
+        new_IDs_idx_to_obj_mapper = {}
         for new_idx, new_obj in enumerate(new_rp_mapper.values()):
             new_IDs_coords[new_idx] = new_obj.centroid
-            new_IDs_idx_to_ID_mapper[new_idx] = new_obj.label
+            new_IDs_idx_to_obj_mapper[new_idx] = new_obj
         
         if self._search_range_unit == 'micrometre':
             if ndim == 3:
@@ -209,16 +209,22 @@ class tracker:
         assignments = scipy.optimize.linear_sum_assignment(dist_matrix)
         IDs_to_track = []
         tracked_IDs_2nd_step = []
+        if self._annot_obj_2nd_step:
+            objs_to_track = []
+            tracked_objs_2nd_step = []
         for i, j in zip(*assignments):
             dist = dist_matrix[i, j]
             if dist > lost_IDs_search_range:
                 continue
             
-            IDs_to_track.append(new_IDs_idx_to_ID_mapper[j])
-            tracked_IDs_2nd_step.append(lost_IDs_idx_to_ID_mapper[i])
+            IDs_to_track.append(new_IDs_idx_to_obj_mapper[j].label)
+            tracked_IDs_2nd_step.append(lost_IDs_idx_to_obj_mapper[i].label)
+            if self._annot_obj_2nd_step:
+                objs_to_track.append(new_IDs_idx_to_obj_mapper[j])
+                tracked_objs_2nd_step.append(lost_IDs_idx_to_obj_mapper[i])
         
         if not IDs_to_track:
-            return tracked_lab_1st_step, to_track_tracked_IDs_2nd_step
+            return tracked_lab_1st_step, to_track_tracked_objs_2nd_step
         
         tracked_lab_2nd_step = cellacdc.core.lab_replace_values(
             tracked_lab_1st_step, 
@@ -228,9 +234,11 @@ class tracker:
         )
         
         if self._annot_obj_2nd_step:
-            to_track_tracked_IDs_2nd_step = (IDs_to_track, tracked_IDs_2nd_step)
+            to_track_tracked_objs_2nd_step = (
+                objs_to_track, tracked_objs_2nd_step
+            )
         
-        return tracked_lab_2nd_step, to_track_tracked_IDs_2nd_step
+        return tracked_lab_2nd_step, to_track_tracked_objs_2nd_step
     
     def updateGuiProgressBar(self, signals):
         if signals is None:

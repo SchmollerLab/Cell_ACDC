@@ -4279,6 +4279,7 @@ class guiWin(QMainWindow):
             size=self.mothBudLineWeight, pen=None
         )
         self.ax1_lostObjScatterItem = self.gui_getLostObjScatterItem()
+        self.yellowContourScatterItem = self.gui_getLostObjScatterItem()
 
         brush = pg.mkBrush((0,255,0,200))
         pen = pg.mkPen('g', width=1)
@@ -7647,6 +7648,7 @@ class guiWin(QMainWindow):
         self.ax1.addItem(self.ax1_newMothBudLinesItem)
         self.ax1.addItem(self.ax1_lostObjScatterItem)
         self.ax1.addItem(self.ccaFailedScatterItem)
+        self.ax1.addItem(self.yellowContourScatterItem)
 
         self.ax2.addItem(self.ax2_contoursImageItem)
         self.ax2.addItem(self.ax2_oldMothBudLinesItem)
@@ -16102,6 +16104,7 @@ class guiWin(QMainWindow):
         self.ax1_oldMothBudLinesItem.setData([], [])
         self.ax1_lostObjScatterItem.setData([], [])
         self.ccaFailedScatterItem.setData([], [])
+        self.yellowContourScatterItem.setData([], [])
         
         self.clearPointsLayers()
 
@@ -16441,6 +16444,7 @@ class guiWin(QMainWindow):
             posData.tracked_lost_centroids = {
                 frame_i:set() for frame_i in range(posData.SizeT)
             }
+            posData.acdcTracker2stepsAnnotInfo = {}
 
             posData.doNotShowAgain_BinID = False
             posData.UndoFutFrames_BinID = False
@@ -21346,6 +21350,7 @@ class guiWin(QMainWindow):
         self.updateTempLayerKeepIDs()
         self.drawPointsLayers(computePointsLayers=computePointsLayers)
         self.setManualBackgroundImage()
+        self.annotateAssignedObjsAcdcTrackerSecondStep()
         
         self.highlightSearchedID(self.highlightedID, force=True)  
     
@@ -21906,10 +21911,33 @@ class guiWin(QMainWindow):
             tracked_lost_IDs = args[0]
             self.setTrackedLostCentroids(prev_rp, tracked_lost_IDs)
         elif self._rtTrackerName == 'CellACDC_2steps':
-            to_track_tracked_IDs_2nd_step = args[0]
-            if to_track_tracked_IDs_2nd_step is None:
+            if args[0] is None:
                 return
-    
+            posData = self.data[self.pos_i]
+            posData.acdcTracker2stepsAnnotInfo[posData.frame_i] = args[0]
+            
+    def annotateAssignedObjsAcdcTrackerSecondStep(self):
+        posData = self.data[self.pos_i]
+        annotInfo = posData.acdcTracker2stepsAnnotInfo.get(posData.frame_i)
+        if annotInfo is None:
+            return
+        
+        new_objs_1st_step, lost_objs_1st_step = annotInfo
+        for lostObj, newObj in zip(lost_objs_1st_step, new_objs_1st_step):
+            allContours = self.getObjContours(lostObj, all_external=True) 
+            for objContours in allContours:
+                isObjVisible = self.isObjVisible(newObj.bbox)
+                if not isObjVisible:
+                    continue
+                xx = objContours[:,0] + 0.5
+                yy = objContours[:,1] + 0.5
+                self.yellowContourScatterItem.addPoints(xx, yy)
+                
+            y1, x1 = self.getObjCentroid(lostObj.centroid)
+            y2, x2 = self.getObjCentroid(newObj.centroid)
+            xx, yy = core.get_line(y1, x1, y2, x2, dashed=False)
+            self.ax1_oldMothBudLinesItem.addPoints(xx, yy)
+                        
     def setTrackedLostCentroids(self, prev_rp, tracked_lost_IDs):
         """Store centroids of those IDs the tracker decided is fine to lose 
         (e.g., upon standard cell division the ID of the mother is fone)
@@ -22030,6 +22058,9 @@ class guiWin(QMainWindow):
             
             posData.segm_data[i] = posData.allData_li[i]['labels']
             posData.allData_li[i] = self.getEmptyStoredDataDict()
+            
+            posData.tracked_lost_centroids[i] = set()
+            posData.acdcTracker2stepsAnnotInfo.pop(i, None)
         
         if posData.acdc_df is not None:
             frames = posData.acdc_df.index.get_level_values(0)
