@@ -213,12 +213,9 @@ def del_member_fam_from_df(families, df):
                         deletions.append((family[0][0], index)) # add to deletions list
                         break
 
-
-
-
     return families, deletions
 
-def update_generation_from_df(families, df):
+def update_generation_from_df(families, df): # may need to differentiate for cells which are not in df
     for fam in families:
         for member in fam:
             member[1] = df.loc[member[0], 'generation_num_tree'] 
@@ -262,7 +259,7 @@ def create_unique_Cell_ID_df(family_dict):
     general_df.set_index(['Cell_ID'], inplace=True)
     return general_df
 
-def general_df_to_family_dict(general_df):
+def general_df_to_family_dict(general_df): # general are all dfs concatenated
     family_dict = {}
     general_df_fams = general_df.groupby('root_ID_tree')
 
@@ -270,13 +267,13 @@ def general_df_to_family_dict(general_df):
         family_dict[root_id] = df_fam
 
     return family_dict
-    
-
 
 def update_dict_from_df(family_dict, df, frame_i, max_daughter=2):
     """
     Update a dictionary of dataframes (families) with new rows from a given dataframe for a specific frame. The resulting df for the entire family and all frames will not be consistent, but the single frame inserted should be.
-    Please note that teh following things are to update the dict: parent_ID_tree, Cell_ID (Derived from this the following is corrected: generation_num_tree, root_ID_tree, sister_ID_tree).
+    Please note that the following things are used to update the dict: parent_ID_tree, Cell_ID (Derived from this the following is corrected: generation_num_tree, root_ID_tree, sister_ID_tree).
+    All other columns are copy pasted from input df.
+    In the future it might make sense to add optons to replace.
 
     Args:
         family_dict (dict): A dictionary containing dataframes as values.
@@ -322,7 +319,7 @@ def update_dict_from_df(family_dict, df, frame_i, max_daughter=2):
     
     return family_dict
 
-def update_dict_consistency(family_dict=None, fixed_frame_i=None, fixed_df=None, Cell_IDs=None, consider_children=True, fwd=False, bck=False, general_df=None, columns_to_replace=None) # families_to_consider=set(), iter=0):
+def update_dict_consistency(family_dict=None, fixed_frame_i=None, fixed_df=None, Cell_IDs=None, consider_children=True, fwd=False, bck=False, general_df=None, columns_to_replace=None): # families_to_consider=set(), iter=0):
 
     if consider_children and not fwd: # enforce that fwd is true when considering children
         raise ValueError('consider_children can\'t be true while fwd is not.')
@@ -336,6 +333,7 @@ def update_dict_consistency(family_dict=None, fixed_frame_i=None, fixed_df=None,
         columns_to_replace = general_df.columns[general_df.columns != 'frame_i']
 
     if not fixed_df and general_df: # if we don't have a given fixed df we take the one from the general df
+        general_df.set_index(['frame_i', 'Cell_ID'], inplace=True)
         fixed_df = general_df.loc[fixed_frame_i].set_index('Cell_ID')
     elif fixed_df: # if we have a fixed df we are all good
         fixed_df = fixed_df.set_index('Cell_ID')
@@ -467,11 +465,29 @@ def update_dict_consistency(family_dict=None, fixed_frame_i=None, fixed_df=None,
 
 
 def check_dict_consistency(family_dict):
+    printl('Checking consistency of family_dict not implemented yet.')
+    consistant = True
+    return consistant #placeholder for later implementation
 
-def dict_to_fam_lists():
+def dict_to_fams(family_dict):
+    families = []
+    for key, df_fam in family_dict.items():
+        familiy = [(key, df_fam.loc[key, 'generation_num_tree'])] # first entry is the root ID (should be first cell)
+        df_fam = df_fam.drop(key)
+        familiy = familiy + list(zip(df_fam['Cell_ID'].tolist(), df_fam['generation_num_tree'].tolist()))
+        families.append(familiy)
+    return families
     
-def dict_to_df_li():
+def dict_to_df_li(family_dict): # may need to drop some columns
+    df_list = []
+    general_df = pd.concat(family_dict.values())
+    general_df.sort_values(by='frame_i', inplace=True)
+    df_group = general_df.groupby('frame_i')
+    for _, df in df_group:
+        df.drop('frame_i', axis=1, inplace=True)
+        df_list.append(df)
 
+    return df_list
 
 class normal_division_tracker:
     """
@@ -566,10 +582,10 @@ class normal_division_tracker:
                                                                              prev_rp
                                                                              )
         aggr_track, self.mother_daughters = mother_daughter_assign(IoA_matrix, 
-                                                             IoA_thresh_daughter=self.IoA_thresh_daughter, 
-                                                             min_daughter=self.min_daughter, 
-                                                             max_daughter=self.max_daughter
-                                                             )
+                                                                IoA_thresh_daughter=self.IoA_thresh_daughter, 
+                                                                min_daughter=self.min_daughter, 
+                                                                max_daughter=self.max_daughter
+                                                                )
         self.tracked_lab, IoA_matrix, self.assignments, tracked_IDs = track_frame_base(prev_lab, 
                                                                                        prev_rp, 
                                                                                        lab, 
@@ -578,10 +594,7 @@ class normal_division_tracker:
                                                                                        IoA_matrix=IoA_matrix, 
                                                                                        aggr_track=aggr_track, 
                                                                                        IoA_thresh_aggr=self.IoA_thresh_aggressive, 
-                                                                                       IDs_curr_untracked=self.IDs_curr_untracked, 
-                                                                                       IDs_prev=self.IDs_prev, 
-                                                                                       return_all=True
-                                                                                       )
+                                                                                       IDs_curr_untracked=self.IDs_curr_untracked, IDs_prev=self.IDs_prev, return_all=True)
         self.tracked_IDs = set(tracked_IDs).union(set(self.assignments.values()))
         self.tracked_video[frame_i] = self.tracked_lab
 
@@ -624,6 +637,7 @@ class normal_division_lineage_tree:
         self.min_daughter = min_daughter 
         self.IoA_thresh_daughter = IoA_thresh_daughter
         self.mother_daughters = [] # just for the dict_curr_frame stuff...
+        self.family_dict = {}
 
         self.families = []
 
@@ -719,16 +733,8 @@ class normal_division_lineage_tree:
         if not np.any(prev_rp):
             prev_rp = regionprops(prev_lab)
 
-        IoA_matrix, self.IDs_curr_untracked, self.IDs_prev = calc_IoA_matrix(lab,
-                                                                   prev_lab, 
-                                                                   rp, 
-                                                                   prev_rp
-                                                                   )
-        aggr_track, self.mother_daughters = mother_daughter_assign(IoA_matrix, 
-                                                              IoA_thresh_daughter=self.IoA_thresh_daughter, 
-                                                              min_daughter=self.min_daughter, 
-                                                              max_daughter=self.max_daughter
-                                                              )
+        IoA_matrix, self.IDs_curr_untracked, self.IDs_prev = calc_IoA_matrix(lab, prev_lab, rp, prev_rp)
+        aggr_track, self.mother_daughters = mother_daughter_assign(IoA_matrix, IoA_thresh_daughter=self.IoA_thresh_daughter, min_daughter=self.min_daughter, max_daughter=self.max_daughter)
 
         self.create_tracked_frame_tree(frame_i, self.mother_daughters, self.IDs_prev, self.IDs_curr_untracked, None, set(self.IDs_curr_untracked))
 
@@ -750,10 +756,10 @@ class normal_division_lineage_tree:
         printl(dict(zip(mother_IDs, daughter_IDs)))
         return dict(zip(mother_IDs, daughter_IDs))
     
-    def insert_lineage_df(self, lineage_df, frame_i, propagate_back=False, propagate_fwd=False, update_fams=True):
+    def insert_lineage_df(self, lineage_df, frame_i, propagate_back=False, propagate_fwd=False, update_fams=True, consider_children=True):
         """
         Inserts a lineage DataFrame to the lineage list at given position. If the position is greater than the length of the lineage list, a warning is printed.
-        If the position is less than the length of the lineage list, the lineage DataFrame at the given position is replaced. The change can be propagated to the end of the lineage list, in both ways, or not at all, and also if the internal variables are updated or not. Assumes taht the segmentaion has not changed siginficantly, so IDs must be the same.
+        If the position is less than the length of the lineage list, the lineage DataFrame at the given position is replaced. The change can be propagated to the end of the lineage list, in both ways, or not at all, and also if the internal variables are updated or not. Assumes that the segmentaion has not changed siginficantly, so IDs must be the same.
 
         Args:
             lineage_df (pandas.DataFrame): The lineage DataFrame to insert.
@@ -762,32 +768,55 @@ class normal_division_lineage_tree:
         Returns:
             None
         """
+        # if not self.family_dict: # better to just convert it for now, if it is fast enough this way.
+
         if frame_i == len(self.lineage_list):
+            self.family_dict = generate_fam_dict_from_df_li(self.lineage_list)
+
             self.lineage_list.append(lineage_df)
-            if update_fams == True:
-                new_fam = add_member_fam_from_df(self.families, lineage_df)
-                new_fam = del_member_fam_from_df(new_fam, lineage_df)
+
+            self.family_dict = update_dict_from_df(self.family_dict, lineage_df, frame_i, self.max_daughter)
 
             if propagate_back == True:
-
+                self.family_dict = update_dict_consistency(family_dict=self.family_dict, fixed_frame_i=frame_i, fixed_df=lineage_df, consider_children=consider_children, fwd=False, bck=True)
+                self.lineage_list = dict_to_df_li(self.family_dict)
+            if update_fams == True:
+                self.families = dict_to_fams(self.family_dict)
 
         elif frame_i < len(self.lineage_list):
+            self.family_dict = generate_fam_dict_from_df_li(self.lineage_list)
+
             self.lineage_list[frame_i] = lineage_df
+
+            self.family_dict = update_dict_from_df(self.family_dict, lineage_df, frame_i, self.max_daughter)
+
+            if propagate_back == True or propagate_fwd == True:
+                self.family_dict = update_dict_consistency(family_dict=self.family_dict, fixed_frame_i=frame_i, fixed_df=lineage_df, consider_children=consider_children, fwd=propagate_fwd, bck=propagate_back)
+                self.lineage_list = dict_to_df_li(self.family_dict)
             if update_fams == True:
-                self.families = add_member_fam_from_df(self.families, lineage_df)
-                self.families = del_member_fam_from_df(self.families, lineage_df)
-
-            if propagate_back == True:
-
+                self.families = dict_to_fams(self.family_dict)
 
         elif frame_i > len(self.lineage_list):
             printl(f'WARNING: Frame {frame_i} was inserted. The lineage list was only {len(self.lineage_list)} frames long, so the last known lineage tree was copy pasted up to frame {frame_i}')
+
+            self.lineage_list = self.lineage_list + [self.lineage_list[-1]] * (frame_i - len(self.lineage_list))
+
+            self.family_dict = generate_fam_dict_from_df_li(self.lineage_list)
+
+            self.lineage_list.append(lineage_df)
+
+            self.family_dict = update_dict_from_df(self.family_dict, lineage_df, frame_i, self.max_daughter)
+
+            if propagate_back == True or propagate_fwd == True:
+                self.family_dict = update_dict_consistency(family_dict=self.family_dict, fixed_frame_i=frame_i, fixed_df=lineage_df, consider_children=consider_children, fwd=propagate_fwd, bck=propagate_back)
+                self.lineage_list = dict_to_df_li(self.family_dict)
             if update_fams == True:
-                self.families = add_member_fam_from_df(self.families, lineage_df)
-                self.families = del_member_fam_from_df(self.families, lineage_df)
+                self.families = dict_to_fams(self.family_dict)
 
-
-    def load_lineage_df_list():
+    def load_lineage_df_list(self, df_li):
+        self.family_dict = generate_fam_dict_from_df_li(df_li)
+        self.families = dict_to_fams(self.family_dict)
+        self.lineage_list = dict_to_fams(self.family_dict)
 
 class tracker:
     """

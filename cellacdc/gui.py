@@ -19984,7 +19984,7 @@ class guiWin(QMainWindow):
     # @exec_time
     def setTempImg1Eraser(self, mask, init=False, toLocalSlice=None, ax=0):
         if init:
-            self.erasedLab = np.zeros_like(self.currentLab2D)  
+            self.erasedLab = np.zeros_like(self.currentLab2D)
 
         if ax == 0:
             how = self.drawIDsContComboBox.currentText()
