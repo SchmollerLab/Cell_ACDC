@@ -1384,6 +1384,7 @@ class guiWin(QMainWindow):
         for rtTrackerAction in self.trackingAlgosGroup.actions():
             selectTrackAlgoMenu.addAction(rtTrackerAction)
 
+        trackingMenu.addAction(self.editRtTrackerParamsAction)
         trackingMenu.addAction(self.repeatTrackingVideoAction)
 
         trackingMenu.addAction(self.repeatTrackingMenuAction)
@@ -2666,6 +2667,10 @@ class guiWin(QMainWindow):
             QIcon(":repeat-tracking.svg"), "Repeat tracking", self
         )
 
+        self.editRtTrackerParamsAction = QAction(
+            'Edit real-time tracker parameters...', self
+        )
+        
         self.repeatTrackingMenuAction = QAction(
             'Repeat tracking on current frame...', self
         )
@@ -3127,7 +3132,9 @@ class guiWin(QMainWindow):
         )
         for rtTrackerAction in self.trackingAlgosGroup.actions():
             rtTrackerAction.toggled.connect(self.rtTrackerActionToggled)
-
+        self.editRtTrackerParamsAction.triggered.connect(
+            self.initRealTimeTracker
+        )
         self.delObjsOutSegmMaskAction.triggered.connect(
             self.delObjsOutSegmMaskActionTriggered
         )
@@ -21766,7 +21773,26 @@ class guiWin(QMainWindow):
                 return
             posData.lab[mask] = trackedID
         self.update_rp()
-                   
+    
+    def trackFrameCustomTracker(self, prev_lab, currentLab):
+        try:
+            tracked_result = self.realTimeTracker.track_frame(
+                prev_lab, currentLab,
+                unique_ID=self.setBrushID(),
+                **self.track_frame_params
+            )
+        except TypeError as err:
+            if str(err).find('an unexpected keyword argument \'unique_ID\'') != -1:
+                rtTracker = self._rtTrackerName
+                raise TypeError(
+                    f'The `track_frame` method of the "{rtTracker}" tracker '
+                    'does not have the `unique_ID` keyword argument. '
+                    'Please add `unique_ID=None` to the `track_frame` method, '
+                    'thanks.'
+                )
+            else:
+                raise err
+        return tracked_result
     
     def trackFrame(
             self, prev_lab, prev_rp, currentLab, currentRp, currentIDs,
@@ -21786,15 +21812,12 @@ class guiWin(QMainWindow):
                 use_scipy=True
             )
         else:
-            tracked_result = self.realTimeTracker.track_frame(
-                prev_lab, currentLab, **self.track_frame_params
-            )
+            tracked_result = self.trackFrameCustomTracker(prev_lab, currentLab)
 
-        # Check if tracker also returns a list-like of IDs that is fine to
-        # loose (e.g., upon standard cell division)
+        # Check if tracker also returns additional info
         try:
             tracked_lab, tracked_lost_IDs = tracked_result
-            self.setTrackedLostCentroids(prev_rp, tracked_lost_IDs)
+            self.handleAdditionalInfoRealTimeTracker(prev_rp, tracked_lost_IDs)
         except ValueError as err:
             tracked_lab = tracked_result
         
@@ -21878,6 +21901,15 @@ class guiWin(QMainWindow):
             self.statusBarLabel.setText, staturBarLabelText
         ))
 
+    def handleAdditionalInfoRealTimeTracker(self, prev_rp, *args):
+        if self._rtTrackerName == 'CellACDC_normal_division':
+            tracked_lost_IDs = args[0]
+            self.setTrackedLostCentroids(prev_rp, tracked_lost_IDs)
+        elif self._rtTrackerName == 'CellACDC_2steps':
+            to_track_tracked_IDs_2nd_step = args[0]
+            if to_track_tracked_IDs_2nd_step is None:
+                return
+    
     def setTrackedLostCentroids(self, prev_rp, tracked_lost_IDs):
         """Store centroids of those IDs the tracker decided is fine to lose 
         (e.g., upon standard cell division the ID of the mother is fone)
@@ -22865,7 +22897,7 @@ class guiWin(QMainWindow):
             self, 'No valid files found!', err_msg, buttonsTexts=('Ok',)
         )
     
-    def initRealTimeTracker(self):
+    def initRealTimeTracker(self, force=False):
         for rtTrackerAction in self.trackingAlgosGroup.actions():
             if rtTrackerAction.isChecked():
                 break
@@ -22876,14 +22908,21 @@ class guiWin(QMainWindow):
         if rtTracker == 'YeaZ':
             return
         
-        if self.isRealTimeTrackerInitialized:
+        if self.isRealTimeTrackerInitialized and not force:
             return
         
         self.logger.info(f'Initializing {rtTracker} tracker...')
+        self._rtTrackerName = rtTracker
         posData = self.data[self.pos_i]
-        self.realTimeTracker, self.track_frame_params = myutils.init_tracker(
+        realTimeTracker, track_frame_params = myutils.init_tracker(
             posData, rtTracker, qparent=self, realTime=True
         )
+        if realTimeTracker is None:
+            self.logger.info(f'{rtTracker} tracker initialization cancelled.')
+            return
+        
+        self.realTimeTracker = realTimeTracker
+        self.track_frame_params = track_frame_params
         self.logger.info(f'{rtTracker} tracker successfully initialized.')
         if 'image_channel_name' in self.track_frame_params:
             # Remove the channel name since it was already loaded in init_tracker

@@ -1,4 +1,5 @@
 import os
+from typing import List
 
 from tqdm import tqdm
 
@@ -131,9 +132,53 @@ def log_debugging(what, **kwargs):
         printl(txt)
         
 def indexAssignment(
-        old_IDs, tracked_IDs, IDs_curr_untracked, lab, rp, uniqueID,
-        remove_untracked=False, assign_unique_new_IDs=True, return_assignments=False
+        old_IDs: List[int], 
+        tracked_IDs: List[int], 
+        IDs_curr_untracked: List[int], 
+        lab: 'np.ndarray[int]', 
+        rp: 'regionprops', 
+        uniqueID: int,
+        remove_untracked=False, 
+        assign_unique_new_IDs=True, 
+        return_assignments=False
     ):
+    """Replace `old_IDs` in `lab` with `tracked_IDs` while making sure to 
+    avoid merging IDs.
+
+    Parameters
+    ----------
+    old_IDs : list of ints
+        IDs that must be replaced with `tracked_IDs`
+    tracked_IDs : list of ints
+        IDs that replace `old_IDs`
+    IDs_curr_untracked : list of ints
+        All IDs in `lab` (including IDs that are not tracked)
+    lab : (Y, X) or (Z, Y, X) array of ints
+        Segmentation masks with `IDs_curr_untracked` objects
+    rp : list of skimage.measure._regionprops.RegionProperties
+        List of RegionProperties of the objects in `lab`
+    uniqueID : int
+        Starting unique ID that is going to replace those objects whose ID is 
+        not tracked but they might require a new (unique) one to avoid merging.
+    remove_untracked : bool, optional
+        If True, those objects that were not tracked will be removed. 
+        Default is False
+    assign_unique_new_IDs : bool, optional
+        If True, uses `uniqueID` to replace the ID of the untracked objects. 
+        Default is True
+    return_assignments : bool, optional
+        If True, returns a dictionary where the keys are the untracked 
+        IDs and the values are the unique IDs that replaced untracked IDs. 
+        Default is False
+
+    Returns
+    -------
+    tracked_lab : (Y, X) or (Z, Y, X) array of ints
+        Segmentation masks with IDs replaced according to input tracking 
+        information.
+    assignments: dict
+        Returned only if `return_assignments` is True.
+    """    
     log_debugging(
         'start', 
         IDs_curr_untracked=IDs_curr_untracked,
@@ -205,7 +250,8 @@ def track_frame(
         prev_lab, prev_rp, lab, rp, IDs_curr_untracked=None,
         uniqueID=None, setBrushID_func=None, posData=None,
         assign_unique_new_IDs=True, IoA_thresh=0.4, debug=False,
-        return_all=False, aggr_track=None, IoA_matrix=None, IoA_thresh_aggr=None, IDs_prev=None
+        return_all=False, aggr_track=None, IoA_matrix=None, 
+        IoA_thresh_aggr=None, IDs_prev=None, return_prev_IDs=False
     ):
     if not np.any(lab):
         # Skip empty frames
@@ -218,7 +264,8 @@ def track_frame(
 
     old_IDs, tracked_IDs = assign(
         IoA_matrix, IDs_curr_untracked, IDs_prev,
-        IoA_thresh=IoA_thresh, aggr_track=aggr_track, IoA_thresh_aggr=IoA_thresh_aggr
+        IoA_thresh=IoA_thresh, aggr_track=aggr_track, 
+        IoA_thresh_aggr=IoA_thresh_aggr
     )
 
     if posData is None and uniqueID is None:
@@ -240,11 +287,14 @@ def track_frame(
         tracked_lab, assignments = indexAssignment(
             old_IDs, tracked_IDs, IDs_curr_untracked,
             lab.copy(), rp, uniqueID,
-            assign_unique_new_IDs=assign_unique_new_IDs, return_assignments=return_all
+            assign_unique_new_IDs=assign_unique_new_IDs, 
+            return_assignments=return_all
         )
 
     if return_all:
         return tracked_lab, IoA_matrix, assignments
+    elif return_prev_IDs: 
+        return tracked_lab, IDs_prev
     else:
         return tracked_lab
 

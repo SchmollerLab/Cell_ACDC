@@ -10444,6 +10444,14 @@ class QDialogModelParams(QDialog):
             except Exception as err:
                 pass
             
+            try:
+                # If a parameter if None, python initializes it to 
+                # typing.Optional and we need to access the first type
+                ArgSpec.type.__args__[0]().not_a_param
+                continue
+            except Exception as err:
+                pass
+            
             row = row + start_row
             skip = self.checkAddSegmEndnameCombobox(
                 ArgSpec, groupBoxLayout, row

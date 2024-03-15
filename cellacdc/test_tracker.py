@@ -18,7 +18,8 @@ app, splashScreen = _setup_app(splashscreen=True)
 splashScreen.close()
 
 path = (
-    os.path.join(data_path, 'test_symm_div_acdc_tracker', 'Images', 'bknapp_Movie_S1.tif')
+    os.path.join(
+        data_path, 'test_symm_div_acdc_tracker', 'Images', 'bknapp_Movie_S1.tif')
 )
 
 channel_name = 'bknapp_Movie_S1'
@@ -26,7 +27,8 @@ end_filename_segm = 'segm'# 'segm_test'
 START_FRAME = 0 
 STOP_FRAME = 499
 PLOT_FRAME = 499
-SAVE = True
+SAVE = False
+REAL_TIME_TRACKER = True
 SCRUMBLE_IDs = False
 
 # test_data = data.BABYtestData()
@@ -59,7 +61,7 @@ trackerName = win.selectedItemsText[0]
 
 # Load tracker
 tracker, track_params = myutils.init_tracker(
-    posData, trackerName, qparent=None
+    posData, trackerName, qparent=None, realTime=REAL_TIME_TRACKER
 )
 if track_params is None:
     exit('Execution aborted')    
