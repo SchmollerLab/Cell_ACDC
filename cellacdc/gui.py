@@ -141,6 +141,7 @@ def get_data_exception_handler(func):
                 if self.progressWin is not None:
                     self.progressWin.workerFinished = True
                     self.progressWin.close()
+                    self.progressWin = None
             except AttributeError:
                 pass
             result = None
@@ -4259,6 +4260,7 @@ class guiWin(QMainWindow):
             if cancel:
                 self.progressWin.workerFinished = True
                 self.progressWin.close()
+                self.progressWin = None
                 self.loadingDataAborted()
                 return
             if switchToLowRes:
@@ -4312,6 +4314,7 @@ class guiWin(QMainWindow):
         self.gui_add_ax_cursors()
         self.progressWin.workerFinished = True
         self.progressWin.close()
+        self.progressWin = None
 
         self.loadingDataCompleted()
     
@@ -7944,12 +7947,14 @@ class guiWin(QMainWindow):
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
             self.progressWin.close()
+            self.progressWin = None
 
     @exception_handler
     def trackingWorkerFinished(self):
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
             self.progressWin.close()
+            self.progressWin = None
         self.logger.info('Worker process ended.')
         askDisableRealTimeTracking = (
             self.trackingWorker.trackingOnNeverVisitedFrames
@@ -14357,6 +14362,7 @@ class guiWin(QMainWindow):
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
             self.progressWin.close()
+            self.progressWin = None
             self.lazyLoader.pause()
         raise error
     
@@ -14391,6 +14397,7 @@ class guiWin(QMainWindow):
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
             self.progressWin.close()
+            self.progressWin = None
         self.logger.info(error)
         raise error
     
