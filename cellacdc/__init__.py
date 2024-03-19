@@ -241,7 +241,7 @@ base_cca_df = {
 cca_df_colnames = list(base_cca_df.keys())
 
 lineage_tree_cols = [
-    'Cell_ID_tree',
+    # 'Cell_ID_tree',
     'generation_num_tree',
     'parent_ID_tree',
     'root_ID_tree',

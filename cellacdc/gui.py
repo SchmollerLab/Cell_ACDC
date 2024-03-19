@@ -10797,6 +10797,10 @@ class guiWin(QMainWindow):
         self.store_data(autosave=False)
         self.copyContourButton.setChecked(False)
         self.stopCcaIntegrityCheckerWorker()
+
+        if prevMode == 'Normal division: Lineage tree':
+            self.lineage_tree = None
+
         if mode == 'Segmentation and Tracking':
             self.trackingMenu.setDisabled(False)
             self.modeToolBar.setVisible(True)
@@ -10858,6 +10862,7 @@ class guiWin(QMainWindow):
         elif mode == 'Normal division: Lineage tree': # Mode activation for lineage tree
             # self.startLinTreeIntegrityCheckerWorker() # need to replace (postponed)
             proceed = self.initLinTree()
+            self.setNavigateScrollBarMaximum()
             if proceed:
                 self.applyDelROIs()
             self.modeToolBar.setVisible(True)
@@ -14457,11 +14462,17 @@ class guiWin(QMainWindow):
                     self.store_cca_df()
                 if mode == 'Normal division: Lineage tree':
                     # editTreeWidget = apps.editlin_treeTableWidget(... still need to implement
-                    self.lineage_tree = normal_division_lineage_tree(lab=posData.segm_data[posData.frame_i],) 
-                                                                    #  max_daughter = self.max_daughter,
-                                                                    #  min_daughter = self.min_daughter,
-                                                                    #  IoA_thresh_daughter = self.IoA_thresh_daughter)
-                    self.lineage_tree.frames_for_dfs = [posData.frame_i]
+                    if not self.lineage_tree:
+                        df_li = [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))]
+                        printl('here')
+                        self.lineage_tree = normal_division_lineage_tree()
+                                                                        # lab=posData.segm_data[posData.frame_i],) 
+                                                                        # max_daughter = self.max_daughter,
+                                                                        # min_daughter = self.min_daughter,
+                                                                        # IoA_thresh_daughter = self.IoA_thresh_daughter)
+                        
+
+                        self.lineage_tree.load_lineage_df_list(df_li, lab=posData.segm_data[posData.frame_i])
                     # printl(self.lineage_tree.lineage_list[-1])
                     # printl(len(self.lineage_tree.lineage_list))
                     # printl(self.lineage_tree.frames_for_dfs)
@@ -14523,8 +14534,13 @@ class guiWin(QMainWindow):
                 self.navigateScrollBar.setMaximum(posData.frame_i+1)
                 self.navSpinBox.setMaximum(posData.frame_i+1)
         elif mode == 'Normal division: Lineage tree':
-            self.navigateScrollBar.setMaximum(posData.frame_i+1)
-            self.navSpinBox.setMaximum(posData.frame_i+1)
+            if self.lineage_tree is None:
+                self.navigateScrollBar.setMaximum(posData.frame_i+1)
+                self.navSpinBox.setMaximum(posData.frame_i+1)
+            else:
+                printl(max(self.lineage_tree.frames_for_dfs)+1)
+                self.navigateScrollBar.setMaximum(max(self.lineage_tree.frames_for_dfs)+1)
+                self.navSpinBox.setMaximum(max(self.lineage_tree.frames_for_dfs)+1)
 
     def prev_frame(self):
         posData = self.data[self.pos_i]
@@ -16484,8 +16500,11 @@ class guiWin(QMainWindow):
 
         if not self.lineage_tree:
             min_frame_i = missing_frames[0]
-            self.lineage_tree = normal_division_lineage_tree(lab=posData.segm_data[min_frame_i])
-            self.lineage_tree.frames_for_dfs = [min_frame_i]
+            printl('here')
+
+            self.lineage_tree = normal_division_lineage_tree()
+            df_li = [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))]
+            self.lineage_tree.load_lineage_df_list(df_li, lab=posData.segm_data[min_frame_i]) # here the lab should be 0 when relevant, as otherwise acdc_df should not be empty. If it is not emptry, lab is ignored 
             missing_frames.pop(0)
 
         for frame_i in missing_frames:
@@ -16963,7 +16982,7 @@ class guiWin(QMainWindow):
         ]
         return editID_info
 
-    @get_data_exception_handler
+    # @get_data_exception_handler
     def get_data(self, debug=False, lin_tree=False): # done go thru w/ F again
         posData = self.data[self.pos_i]
         proceed_cca = True
@@ -17087,8 +17106,9 @@ class guiWin(QMainWindow):
                 printl('Trying to laod from RAM, when is this supposed to happen?')
                 if not self.lineage_tree:
                     printl('This is when its supposed to happen? (Lienage tree was not init)')
-                    self.lineage_tree = normal_division_lineage_tree(lab=posData.lab)
-                    self.lineage_tree.frames_for_dfs = [posData.frame_i]
+                    self.lineage_tree = normal_division_lineage_tree()
+                    df_li = [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))]
+                    self.lineage_tree.load_lineage_df_list(df_li, lab=posData.allData_li)
 
             if not lin_tree:
                 self.get_cca_df()
@@ -17485,8 +17505,10 @@ class guiWin(QMainWindow):
         self.navSpinBox.setMaximum(last_lin_tree_frame_i+1)
 
         if self.lineage_tree is None:
-            self.lineage_tree = normal_division_lineage_tree(lab=posData.lab)
-            self.lineage_tree.frames_for_dfs = [posData.frame_i]
+            printl('here')
+            self.lineage_tree = normal_division_lineage_tree()
+            df_li = [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))]
+            self.lineage_tree.load_lineage_df_list(df_li, lab=posData.lab)
             msg = 'Lineage tree analysis initialized!'
             self.logger.info(msg)
             self.titleLabel.setText(msg, color=self.titleColor)
@@ -21843,6 +21865,7 @@ class guiWin(QMainWindow):
         except Exception as e:
             pass
 
+        self.lineage_tree = None
         self.isZmodifier = False
         self.zKeptDown = False
         self.askRepeatSegment3D = True
