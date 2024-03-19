@@ -84,6 +84,7 @@ Contents
    installation
    data-structure
    getting-started
+   data-structure-fiji
    contributing
    tooltips
    models

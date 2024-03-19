@@ -76,9 +76,22 @@ Creating Data Structure
 -----------------------
 **0. Create data structure from microscopy/image file(s)...**
 
-The first step in analysing data with Cell-ACDC is creating a **suitable data structure** from raw microscopy files. This can be done completely automated using module 0.
+The first step in analysing data with Cell-ACDC is creating a 
+**suitable data structure** from raw microscopy files. This can be done c
+ompletely automated using module 0.
 
-To start off, launch the module by pressing on the corresponding button in the main menu.
+.. warning:: 
+
+    If you are on **MacOS** you will need to use the **ImageJ/Fiji macros** to 
+    create the data structure. See the section :ref:`data-structure-fiji` 
+    for details about how to use the macros.
+    
+    This is because the library ``python-bioformats`` does not work on MacOS. 
+    We are working on alternatives, but in the meantime the Fiji macros will 
+    work just fine. Thank you for you patience.
+
+To start off, launch the module by pressing on the corresponding button in 
+the main menu.
 
 This will open a window in which you can choose how you want to proceed.
 
