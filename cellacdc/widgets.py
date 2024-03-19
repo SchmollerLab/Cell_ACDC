@@ -4298,9 +4298,9 @@ class expandCollapseButton(PushButton):
             self.setFlat(True)
         return False
 
-class view_visualcpp_screenshot(QWidget):
+class view_visualcpp_screenshot(QDialog):
     def __init__(self, parent=None):
-        super().__init__()
+        super().__init__(parent)
         layout = QHBoxLayout()
 
         self.setWindowTitle('Visual Studio Builld Tools installation')
@@ -7722,6 +7722,10 @@ class LabelsWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(layout)
     
+    def setWordWrap(self, wordWrap):
+        for label in self.labels:
+            label.setWordWrap(wordWrap)
+    
     def fixParagraphTags(self, texts):
         firstText = texts[0]
         if firstText.find('<p style=') == -1:
@@ -8028,7 +8032,7 @@ class installJavaDialog(myMessageBox):
         self._layout.setRowStretch(self.currentRow, 1)
 
     def viewScreenshot(self, checked=False):
-        self.screenShotWin = view_visualcpp_screenshot()
+        self.screenShotWin = view_visualcpp_screenshot(parent=self)
         self.screenShotWin.show()
 
     def addInstructionsMacOS(self):
