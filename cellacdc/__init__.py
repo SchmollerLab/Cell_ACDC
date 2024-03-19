@@ -317,6 +317,11 @@ def _critical_exception_gui(self, func_name):
     from . import widgets, html_utils
     result = None
     traceback_str = traceback.format_exc()
+    
+    if self.is_error_state:
+        printl(traceback_str)
+        return
+    
     if hasattr(self, 'logger'):
         self.logger.exception(traceback_str)
     else:
@@ -336,6 +341,8 @@ def _critical_exception_gui(self, func_name):
         log_path = 'NULL'
     else:
         log_path = self.log_path
+    
+    self.is_error_state = True
     msg.setDetailedText(traceback_str, visible=True)
     href = f'<a href="{issues_url}">GitHub page</a>'
     err_msg = html_utils.paragraph(f"""
@@ -349,8 +356,7 @@ def _critical_exception_gui(self, func_name):
     """)
 
     msg.critical(self, 'Critical error', err_msg, commands=(log_path,))
-    self.is_error_state = True
-
+    
 def exception_handler_cli(func):
     @wraps(func)
     def inner_function(self, *args, **kwargs):

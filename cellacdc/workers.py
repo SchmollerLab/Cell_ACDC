@@ -2082,12 +2082,15 @@ class TrackSubCellObjectsWorker(BaseWorkerUtil):
                 )
 
                 numFrames = min((len(segmDataCells), len(posData.segm_data)))
+                segmDataCells = segmDataCells[:numFrames]
+                posData.segm_data = posData.segm_data[:numFrames]
+                
                 self.signals.sigInitInnerPbar.emit(numFrames*2)
                 
                 self.logger.log('Tracking sub-cellular objects...')
                 tracked = core.track_sub_cell_objects(
                     segmDataCells, posData.segm_data, self.IoAthresh, 
-                    how=self.trackingMode, SizeT=posData.SizeT, 
+                    how=self.trackingMode, SizeT=numFrames, 
                     sigProgress=self.signals.sigUpdateInnerPbar,
                     relabel_sub_obj_lab=self.relabelSubObjLab
                 )
