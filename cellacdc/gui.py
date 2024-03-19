@@ -14471,7 +14471,6 @@ class guiWin(QMainWindow):
                                                                         # min_daughter = self.min_daughter,
                                                                         # IoA_thresh_daughter = self.IoA_thresh_daughter)
                         
-
                         self.lineage_tree.load_lineage_df_list(df_li, lab=posData.segm_data[posData.frame_i])
                     # printl(self.lineage_tree.lineage_list[-1])
                     # printl(len(self.lineage_tree.lineage_list))
@@ -14538,7 +14537,6 @@ class guiWin(QMainWindow):
                 self.navigateScrollBar.setMaximum(posData.frame_i+1)
                 self.navSpinBox.setMaximum(posData.frame_i+1)
             else:
-                printl(max(self.lineage_tree.frames_for_dfs)+1)
                 self.navigateScrollBar.setMaximum(max(self.lineage_tree.frames_for_dfs)+1)
                 self.navSpinBox.setMaximum(max(self.lineage_tree.frames_for_dfs)+1)
 
@@ -16214,6 +16212,7 @@ class guiWin(QMainWindow):
             except Exception as e:
                 printl(IDs)
                 printl(acdc_df.index)
+                printl(e)
             acdc_df['is_cell_dead'] = is_cell_dead_li
             acdc_df['is_cell_excluded'] = is_cell_excluded_li
             acdc_df['x_centroid'] = xx_centroid
@@ -17065,8 +17064,8 @@ class guiWin(QMainWindow):
 
             if self.lineage_tree and self.lineage_tree.frames_for_dfs and lin_tree:
                 if posData.frame_i in self.lineage_tree.frames_for_dfs:
-                    df = self.lineage_tree.lineage_list[self.lineage_tree.frames_for_dfs.index(posData.frame_i)]
-                    df = posData.acdc_df.loc[posData.frame_i].copy()
+                    df = self.lineage_tree.export_df(self.lineage_tree.frames_for_dfs.index(posData.frame_i))
+                    # df = posData.acdc_df.loc[posData.frame_i].copy()
                     binnedIDs_df = df[df['is_cell_excluded']>0]
                     binnedIDs = set(binnedIDs_df.index).union(posData.binnedIDs) # ???
                     posData.binnedIDs = binnedIDs
@@ -17083,7 +17082,8 @@ class guiWin(QMainWindow):
                             df[cols] = df[cols].astype(int)
 
                     i = posData.frame_i
-                    self.lineage_tree.lineage_list[i] = df.copy()
+                    printl('aslkjdnfblksa')
+                    self.lineage_tree.lineage_list[i] = df.copy() #!!!
 
             if not lin_tree:
                 self.get_cca_df()
@@ -17108,7 +17108,7 @@ class guiWin(QMainWindow):
                     printl('This is when its supposed to happen? (Lienage tree was not init)')
                     self.lineage_tree = normal_division_lineage_tree()
                     df_li = [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))]
-                    self.lineage_tree.load_lineage_df_list(df_li, lab=posData.allData_li)
+                    self.lineage_tree.load_lineage_df_list(df_li, lab=posData.lab)
 
             if not lin_tree:
                 self.get_cca_df()
@@ -17603,8 +17603,9 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         lin_tree_df = None
         i = posData.frame_i if frame_i is None else frame_i
+        df = None
         if self.lineage_tree and self.lineage_tree.frames_for_dfs:
-            df = self.lineage_tree.lineage_list[self.lineage_tree.frames_for_dfs.index(i)]
+            df = self.lineage_tree.export_df(self.lineage_tree.frames_for_dfs.index(i))
         if df is not None:
             if 'generation_num_tree' in df.columns:  # may need to change this, not exactly sure how df is initialized
                 if 'is_history_known' not in df.columns:
@@ -17681,7 +17682,20 @@ class guiWin(QMainWindow):
             printl('frames_for_dfs not present (links dfs to frames)')
             return
         
-        lin_tree_list = list(zip(self.lineage_tree.frames_for_dfs, self.lineage_tree.lineage_list))
+        dfs_new = []
+        lineage_copy = self.lineage_tree.lineage_list.copy()
+        for df in lineage_copy:
+            df = (df
+                  .reset_index()
+                  .set_index('Cell_ID')
+                  )
+
+            if 'frame_i' in df.columns:
+                df = df.drop('frame_i', axis=1)
+            
+            dfs_new.append(df)
+
+        lin_tree_list = list(zip(self.lineage_tree.frames_for_dfs, dfs_new))
 
         if not force_all and not specific:
             dont_sync = self.already_synced_lin_tree
@@ -17705,6 +17719,7 @@ class guiWin(QMainWindow):
             self.already_synced_lin_tree.add(frame_i)
 
     def acdc_df_to_lin_tree(self, specific=[]):
+        raise NotImplementedError('This is not implemented yet')
 
         posData = self.data[self.pos_i]
         
@@ -17762,6 +17777,10 @@ class guiWin(QMainWindow):
         if posData.cca_df is None:
             return 
 
+        mode = str(self.modeComboBox.currentText())
+        if mode == 'Normal division: Lineage Tree':
+            return
+
         ID = obj.label
         try:
             cca_df_ID = posData.cca_df.loc[ID]
@@ -17805,8 +17824,8 @@ class guiWin(QMainWindow):
 
         posData = self.data[self.pos_i]
         frame_i = posData.frame_i
-        lin_tree_df = self.lineage_tree.lineage_list[self.lineage_tree.frames_for_dfs.index(frame_i)]
-        lin_tree_df_prev = self.lineage_tree.lineage_list[self.lineage_tree.frames_for_dfs.index(frame_i)-1]
+        lin_tree_df = self.lineage_tree.export_df(self.lineage_tree.frames_for_dfs.index(frame_i))
+        lin_tree_df_prev = self.lineage_tree.export_df(self.lineage_tree.frames_for_dfs.index(frame_i)-1)
         rp = posData.allData_li[frame_i]['regionprops']
         prev_rp = posData.allData_li[frame_i-1]['regionprops']
 

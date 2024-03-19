@@ -19,7 +19,7 @@ def reorg_daughter_cells(lineage_tree_frame, max_daughter):
         pandas.DataFrame: The lineage tree frame with reorganized daughter cells (e.g. 'daughter_ID_tree_1', 'daughter_ID_tree_2', ...)
     """
     new_columns = [f'sister_ID_tree_{i+1}' for i in range(max_daughter-1)]
-    sister_columns = lineage_tree_frame['sister_ID_tree'].apply(pd.Series) 
+    sister_columns = lineage_tree_frame['sister_ID_tree'].apply(pd.Series)
     lineage_tree_frame[new_columns] = sister_columns
     lineage_tree_frame['sister_ID_tree'] = sister_columns[0]
 
@@ -125,6 +125,10 @@ def filter_current_IDs(df, current_IDs):
     Returns:
         pandas.DataFrame: The DataFrame with only the current IDs.
     """
+    df = (df
+          .reset_index()
+          .set_index('Cell_ID')
+          )
     return df[df.index.isin(current_IDs)]
 
 def IoA_index_daughter_to_ID(daughters, assignments, IDs_curr_untracked):
@@ -231,10 +235,12 @@ def generate_fam_dict_from_df_li(df_li, frames_for_df_li=None):
 
     for i, df in zip(frames_for_df_li, df_li):
         df['frame_i'] = i
-        df.reset_index(inplace=True)
-        df.set_index(['frame_i', 'Cell_ID'], inplace=True)
+        df = (df
+              .reset_index()
+              .set_index(['frame_i', 'Cell_ID'])
+              )
         df_fams = df.groupby('root_ID_tree')
-
+        
         for root_id, df_fam in df_fams:
             # root_id = df_fam.iloc[0]['root_ID_tree']
             if root_id not in family_dict.keys(): 
@@ -246,9 +252,11 @@ def generate_fam_dict_from_df_li(df_li, frames_for_df_li=None):
 
 def create_unique_Cell_ID_df(family_dict):
     general_df = pd.concat(family_dict.values())
-    general_df.reset_index(inplace=True)
-    general_df.drop_duplicates(subset='Cell_ID', inplace=True)
-    general_df.set_index(['Cell_ID'], inplace=True)
+    general_df = (general_df
+                  .reset_index()
+                  .drop_duplicates(subset='Cell_ID')
+                  .set_index('Cell_ID')
+                  )
     return general_df
 
 def general_df_to_family_dict(general_df): # general are all dfs concatenated
@@ -278,7 +286,7 @@ def update_dict_from_df(family_dict, df, frame_i, max_daughter=2):
     """
     df['frame_i'] = frame_i
     IDs_covered = set()
-    df.reset_index(inplace=True)
+    df = df.reset_index()
 
     # we first need to correct generation_num_tree, root_ID_tree, sister_ID_tree
     unique_Cell_ID_df = create_unique_Cell_ID_df(family_dict)
@@ -293,12 +301,15 @@ def update_dict_from_df(family_dict, df, frame_i, max_daughter=2):
         corrected_df = corrected_df.append(Cell_info)
 
     corrected_df = reorg_daughter_cells(corrected_df, max_daughter) # this might cause some problems
-    df = corrected_df.set_index(['frame_i', 'Cell_ID'], inplace=False)
+    df = (corrected_df
+          .reset_index()
+          .set_index(['frame_i', 'Cell_ID'])
+          )
     for key, df_fam in family_dict.items():
         df_fam = df_fam[df_fam['frame_i'] != frame_i] # select all frames except the current one
         new_rows = df[df['root_ID_tree'] == key]
         df_fam = pd.concat([df_fam, new_rows])
-        df_fam.sort_values(by=['frame_i', 'index'], inplace=True)
+        df_fam = df_fam.sort_values(by=['frame_i', 'index'])
         family_dict[key] = df_fam
 
         IDs_covered.update(new_rows.index.get_level_values(1))
@@ -325,10 +336,18 @@ def update_dict_consistency(family_dict=None, fixed_frame_i=None, fixed_df=None,
         columns_to_replace = general_df.columns[general_df.columns != 'frame_i']
 
     if not fixed_df and general_df: # if we don't have a given fixed df we take the one from the general df
-        general_df.set_index(['frame_i', 'Cell_ID'], inplace=True)
-        fixed_df = general_df.loc[fixed_frame_i].set_index('Cell_ID')
+        general_df = (general_df
+                      .reset_index()
+                      .set_index(['frame_i', 'Cell_ID'])
+                      )
+        fixed_df = (general_df
+                    .loc[fixed_frame_i]
+                    .reset_index()
+                    .set_index('Cell_ID'))
     elif fixed_df: # if we have a fixed df we are all good
-        fixed_df = fixed_df.set_index('Cell_ID')
+        fixed_df = (fixed_df
+                    .reset_index()
+                    .set_index('Cell_ID'))
     else: # if we have neither we have a problem
         raise ValueError('Either fixed_frame_df or fixed_df must be provided.')
 
@@ -362,7 +381,9 @@ def update_dict_consistency(family_dict=None, fixed_frame_i=None, fixed_df=None,
 
     for Cell_id in Cell_IDs: # replace values for the cells in the general df
 
-        general_df_change.set_index('Cell_ID', inplace=True) # probably not necessarily necessary
+        general_df_change = (general_df_change
+                             .reset_index()
+                             .set_index('Cell_ID')) # probably not necessarily necessary
         for idx in general_df_change.index[general_df_change.index == Cell_id]: # we basically iterate over all instances where Cell_ID is the index
             general_df_change.loc[idx, columns_to_replace] = fixed_df.loc[Cell_id, columns_to_replace] # we replace all but the frame_i column
 
@@ -370,8 +391,11 @@ def update_dict_consistency(family_dict=None, fixed_frame_i=None, fixed_df=None,
 
     if consider_children: # this also enforces that fwd is true (See ValueError above)
         unique_df = general_df.reset_index()
-        unique_df.drop_duplicates(subset='Cell_ID', inplace=True)
-        unique_df.set_index(['Cell_ID'], inplace=True) # we drop all duplicates (different frames) to reduce overhead
+        unique_df = (unique_df
+                     .drop_duplicates(subset='Cell_ID')
+                     .reset_index()
+                     .set_index('Cell_ID')
+                     ) # we drop all duplicates (different frames) to reduce overhead
 
         children_df = unique_df[unique_df['parent_ID_tree'].isin(Cell_IDs)] # we select all children of the cells we are considering
         if children_df.empty: # if there are no children we are done
@@ -401,23 +425,34 @@ def check_dict_consistency(family_dict):
 def dict_to_fams(family_dict):
     families = []
     for key, df_fam in family_dict.items():
-        df_fam.reset_index(inplace=True)
+        df_fam = (df_fam
+                  .reset_index()
+                  .set_index('Cell_ID'))
         familiy = [(key, df_fam.loc[key, 'generation_num_tree'])] # first entry is the root ID (should be first cell)
-        df_fam = df_fam.drop(key)
+        df_fam = (df_fam
+                  .drop(key)
+                  .reset_index())
         familiy = familiy + list(zip(df_fam['Cell_ID'].tolist(), df_fam['generation_num_tree'].tolist()))
         families.append(familiy)
     return families
     
 def dict_to_df_li(family_dict): # may need to drop some columns
     df_list = []
+
     general_df = pd.concat(family_dict.values())
-    general_df.sort_values(by='frame_i', inplace=True)
+    general_df = (general_df
+                  .reset_index()
+                  .sort_values(by='frame_i')
+                  )
+    
+    frames_for_dfs = list(general_df['frame_i'].unique())
+
     df_group = general_df.groupby('frame_i')
     for _, df in df_group:
-        df.drop('frame_i', axis=1, inplace=True)
+        df = df.drop('frame_i', axis=1)
         df_list.append(df)
 
-    return df_list
+    return df_list, frames_for_dfs
 
 class normal_division_tracker:
     """
@@ -569,13 +604,16 @@ class normal_division_lineage_tree:
 
         self.families = []
 
-        self.init_lineage_tree(lab, first_df)
+        if lab or first_df:
+            self.init_lineage_tree(lab, first_df)
+
+        printl('Lineage tree initialized.')
 
     def init_lineage_tree(self, lab=None, first_df=None):
-        if lab and first_df:
+        if lab.any() and first_df:
             raise ValueError('Only one of lab and first_df can be provided.')
     
-        if lab:
+        if lab.any():
             added_lineage_tree = []
 
             rp = regionprops(lab.copy())
@@ -644,7 +682,6 @@ class normal_division_lineage_tree:
         cca_df = pd.concat([self.lineage_list[-1], cca_df], axis=0)
         cca_df = reorg_daughter_cells(cca_df, self.max_daughter)
         cca_df = filter_current_IDs(cca_df, curr_IDs)
-
         self.lineage_list.append(cca_df)
 
     def real_time_tree(self, frame_i, lab, prev_lab, rp=None, prev_rp=None): #TODO: make this ingnore corrected stuff (for later)           
@@ -713,7 +750,7 @@ class normal_division_lineage_tree:
 
             if propagate_back == True:
                 self.family_dict = update_dict_consistency(family_dict=self.family_dict, fixed_frame_i=frame_i, fixed_df=lineage_df, consider_children=consider_children, fwd=False, bck=True)
-                self.lineage_list = dict_to_df_li(self.family_dict)
+                self.lineage_list, self.frames_for_dfs = dict_to_df_li(self.family_dict)
             if update_fams == True:
                 self.families = dict_to_fams(self.family_dict)
 
@@ -726,7 +763,7 @@ class normal_division_lineage_tree:
 
             if propagate_back == True or propagate_fwd == True:
                 self.family_dict = update_dict_consistency(family_dict=self.family_dict, fixed_frame_i=frame_i, fixed_df=lineage_df, consider_children=consider_children, fwd=propagate_fwd, bck=propagate_back)
-                self.lineage_list = dict_to_df_li(self.family_dict)
+                self.lineage_list, self.frames_for_dfs  = dict_to_df_li(self.family_dict)
             if update_fams == True:
                 self.families = dict_to_fams(self.family_dict)
 
@@ -743,11 +780,12 @@ class normal_division_lineage_tree:
 
             if propagate_back == True or propagate_fwd == True:
                 self.family_dict = update_dict_consistency(family_dict=self.family_dict, fixed_frame_i=frame_i, fixed_df=lineage_df, consider_children=consider_children, fwd=propagate_fwd, bck=propagate_back)
-                self.lineage_list = dict_to_df_li(self.family_dict)
+                self.lineage_list, self.frames_for_dfs  = dict_to_df_li(self.family_dict)
             if update_fams == True:
                 self.families = dict_to_fams(self.family_dict)
 
     def load_lineage_df_list(self, df_li, lab=None, first_df=None):
+        printl('loading!')
         df_li_new = []
         for i, df in enumerate(df_li):
             if 'sister_ID_tree' in df.columns and not (df['sister_ID_tree'] == 0).all():
@@ -757,12 +795,26 @@ class normal_division_lineage_tree:
                 df_li_new.append(df)
 
         if not self.frames_for_dfs:
+            printl('Init...')
             self.init_lineage_tree(lab=lab, first_df=first_df)
             self.family_dict = generate_fam_dict_from_df_li(self.lineage_list)
+            self.frames_for_dfs = list(range(len(self.lineage_list)))
+            printl(self.frames_for_dfs)
         else:
             self.family_dict = generate_fam_dict_from_df_li(df_li, frames_for_df_li=self.frames_for_dfs)
             self.families = dict_to_fams(self.family_dict)
-            self.lineage_list = dict_to_df_li(self.family_dict)
+            self.lineage_list, self.frames_for_dfs = dict_to_df_li(self.family_dict)
+
+    def export_df(self, frame_i):
+        df = self.lineage_list[frame_i].copy()
+        df = (df
+              .reset_index()
+              .set_index('Cell_ID')
+              )
+        if 'frame_i' in df.columns:
+            df = df.drop('frame_i', axis=1)
+        
+        return df
 
 class tracker:
     """
