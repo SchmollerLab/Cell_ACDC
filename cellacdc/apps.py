@@ -763,12 +763,14 @@ class AddPointsLayerDialog(QBaseDialog):
         
         row += 1
         self.tablePath = widgets.ElidingLineEdit()
-        self.tablePath.label = QLabel('Table file path (.csv): ')
+        self.tablePath.label = QLabel('Table file path: ')
         typeLayout.addWidget(self.tablePath.label, row, 1)
         typeLayout.addWidget(self.tablePath, row, 2)
         self.fromTableRadiobutton.widgets.append(self.tablePath)
 
-        browseButton = widgets.browseFileButton(start_dir=imagesPath)
+        browseButton = widgets.browseFileButton(
+            start_dir=imagesPath, ext={'Table': ['.csv', '.h5']}
+        )
         typeLayout.addWidget(browseButton, row, 3)
         browseButton.sigPathSelected.connect(self.tablePathSelected)
         self.browseTableButton = browseButton
@@ -976,11 +978,21 @@ class AddPointsLayerDialog(QBaseDialog):
                 widget.label.setDisabled(not enabled)
             except:
                 pass
+    
+    def _readTable(self, path):
+        if path.endswith('.csv'):
+            df = pd.read_csv(path)
+        elif path.endswith('.h5'):
+            with pd.HDFStore(path) as h5:
+                keys = h5.keys()
+                dfs = [h5.get(key) for key in keys]
+            df = pd.concat(dfs, keys=keys, names=['h5_key'])
+        return df
             
     def tablePathSelected(self, path):
         self.tablePath.setText(path)
         try:
-            df = pd.read_csv(path)
+            df = self._readTable(path)
             self.xColName.addItems(df.columns)
             self.yColName.addItems(df.columns)
             self.zColName.addItems(df.columns)
@@ -1082,7 +1094,7 @@ class AddPointsLayerDialog(QBaseDialog):
                 return
             else:
                 try:
-                    df = pd.read_csv(tablePath)
+                    df = self._readTable(tablePath)
                     tColName = self.tColName.currentText()
                     xColName = self.xColName.currentText()
                     yColName = self.yColName.currentText()
@@ -1122,7 +1134,7 @@ class AddPointsLayerDialog(QBaseDialog):
                 return
             zz = self.manualZspinbox.values()
             tt = [t+1 for t in self.manualTspinbox.values()]
-            df = pd.DataFrame({'x': xx, 'y': yy})
+            df = pd.DataFrame({'x': xx, 'y': yy, 'id': np.arange(1, len(xx)+1)})
             if tt:
                 df['t'] = tt
                 tCol = 't'
@@ -1159,6 +1171,9 @@ class AddPointsLayerDialog(QBaseDialog):
         self.close()
     
     def _df_to_pointsData(self, df, tColName, zColName, yColName, xColName):
+        if 'id' not in df.columns:
+            df['id'] = ''
+            
         if tColName != 'None':
             grouped = df.groupby(tColName)
         else:
@@ -1166,6 +1181,7 @@ class AddPointsLayerDialog(QBaseDialog):
         
         for frame_i, df_frame in grouped:
             if zColName != 'None':
+                df_frame[zColName] = df_frame[zColName].round().astype(int)
                 # Use integer z
                 zz = df_frame[zColName]
                 self.pointsData[frame_i] = {} 
@@ -1176,12 +1192,14 @@ class AddPointsLayerDialog(QBaseDialog):
                         continue
                     self.pointsData[frame_i][z_int] = {
                         'x': df_z[xColName].to_list(),
-                        'y': df_z[yColName].to_list()
+                        'y': df_z[yColName].to_list(), 
+                        'id': df_z['id'].to_list(), 
                     }
             else:
                 self.pointsData[frame_i] = {
                     'x': df[xColName].to_list(),
-                    'y': df[yColName].to_list(),
+                    'y': df[yColName].to_list(), 
+                    'id': df['id'].to_list(), 
                 }
     
     def showEvent(self, event) -> None:

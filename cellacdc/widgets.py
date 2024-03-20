@@ -7912,6 +7912,8 @@ class PointsScatterPlotItem(pg.ScatterPlotItem):
         xx, yy = args
         for x, y, point_data in zip(xx, yy, data):
             text = str(point_data)
+            if not text:
+                continue
             textItem = self._textItems.get((x, y), None)
             if textItem is None:
                 textItem = pg.TextItem(text=text, color='r', anchor=(0, 1))
