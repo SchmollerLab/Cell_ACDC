@@ -1394,7 +1394,7 @@ class loadData:
             pass
     
     def loadMostRecentUnsavedAcdcDf(self):
-        acdc_df = get_last_stored_unsaved_acdc_df(self)
+        acdc_df = get_last_stored_unsaved_acdc_df(self.recoveryFolderpath())
         if acdc_df is None:
             return
         self.acdc_df = acdc_df
