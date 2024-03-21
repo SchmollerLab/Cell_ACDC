@@ -60,7 +60,7 @@ def to_list(items, ordered=False):
     txt = tag(items_txt, tag_info=list_tag)
     return txt
 
-def span(text, color='r'):
+def span(text, color='r', font_size=None, bold=False):
     try:
         c = to_hex(color)
     except Exception as e:
@@ -72,7 +72,12 @@ def span(text, color='r'):
             c = 'black'
         else:
             c = color
-    return f'<span style="color: {c}">{text}</span>'
+    span_text = f'<span style="color: {c}">{text}</span>'
+    if font_size is not None:
+        span_text = span_text.replace('">', f'; font-size: {font_size};">')
+    if bold:
+        span_text = span_text.replace('">', f'; font-weight:bold;">')
+    return span_text
 
 def css_head(txt):
     # if is_mac:

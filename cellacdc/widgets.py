@@ -7909,20 +7909,29 @@ class PointsScatterPlotItem(pg.ScatterPlotItem):
         if not isinstance(first_point_data, (int, str)):
             return
         
-        xx, yy = args
-        for x, y, point_data in zip(xx, yy, data):
-            text = str(point_data)
+        color = self.opts['brush'].color()
+        size = self.opts['size']
+        radius = size/2
+        # xx, yy = args
+        # for x, y, point_data in zip(xx, yy, data):
+        for point in self.points():
+            text = str(point.data())
             if not text:
                 continue
-            textItem = self._textItems.get((x, y), None)
+            
+            hexColor = color.name()
+            htmlText = html_utils.span(
+                text, color=hexColor, font_size='13pt', bold=True
+            )
+            x, y = point.pos().x(), point.pos().y()
+            textItem = self._textItems.get((x, y))
             if textItem is None:
-                textItem = pg.TextItem(text=text, color='r', anchor=(0, 1))
-                textItem.setFont(self._font)
+                textItem = pg.TextItem(html=htmlText, anchor=(0, 1))
                 self._textItems[(x, y)] = textItem
                 self.ax.addItem(textItem)
             else:
-                textItem.setText(text)
-            textItem.setPos(x, y)
+                textItem.setHtml(htmlText)
+            textItem.setPos(x+radius-0.5, y-radius+0.5)
     
     def clearTextItems(self):
         for textItem in self._textItems.values():
@@ -8250,3 +8259,16 @@ class CheckableAction(QAction):
         self.toggled.disconnect()
         super().setChecked(checked)
         self.toggled.connect(self.emitClicked)
+
+class OddSpinBox(SpinBox):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        
+        self.setSingleStep(2)
+        self.editingFinished.connect(self.roundToOdd)
+    
+    def roundToOdd(self):
+        if self.value() % 2 == 1:
+            return
+        
+        self.setValue(self.value()+1)

@@ -5900,6 +5900,9 @@ class guiWin(QMainWindow):
             x, y = event.pos()
             self.updateBrushCursor(x, y, isHoverImg1=isHoverImg1)
             self.hideItemsHoverBrush(xy=(x, y))
+        elif cursorsInfo['setAddPointCursor']:
+            x, y = event.pos()
+            self.setHoverCircleAddPoint(x, y)
         else:
             self.setHoverToolSymbolData(
                 [], [], (self.ax2_BrushCircle, self.ax1_BrushCircle),
@@ -6943,7 +6946,7 @@ class guiWin(QMainWindow):
             and not wandON and not polyLineRoiON and not labelRoiON
             and not middle_click and not keepObjON and not separateON
             and not manualBackgroundON
-            and addPointsByClickingButton is None
+            and not self.togglePointsLayerAction.isChecked()
         )
         if isPanImageClick:
             dragImgLeft = True
@@ -18812,13 +18815,13 @@ class guiWin(QMainWindow):
             
             df = posData.clickEntryPointsDfs[tableEndName]
             
-            if self.isSegm3D and df['z'].isna().any():
+            if posData.SizeZ > 1 and df['z'].isna().any():
                 self.warnLoadedPointsTableIsNot3D(tableEndName)
                 return
             
             for frame_i, df_frame in df.groupby('frame_i'):
                 action.pointsData[frame_i] = {}
-                if self.isSegm3D:
+                if posData.SizeZ > 1:
                     for z, df_zlice in df_frame.groupby('z'):
                         xx = df_zlice['x'].to_list()
                         yy = df_zlice['y'].to_list()
@@ -18857,19 +18860,22 @@ class guiWin(QMainWindow):
             xx = []
             ids = []
             for frame_i, framePointsData in action.pointsData.items():
-                if self.isSegm3D:
+                if posData.SizeZ > 1:
                     for z, zSlicePointsData in framePointsData.items():
                         yyxx = zip(
                             zSlicePointsData['y'], zSlicePointsData['x']
                         )
                         for y, x in yyxx:
-                            ID = posData.lab[int(z), int(y), int(x)]
+                            if self.isSegm3D:
+                                ID = posData.lab[int(z), int(y), int(x)]
+                            else:
+                                ID = posData.lab[int(y), int(x)]
                             frames_vals.append(frame_i)
                             IDs.append(ID)
                             zz.append(z)
                             yy.append(y)
                             xx.append(x)
-                        ids.extend(zSlicePointsData['ids'])
+                        ids.extend(zSlicePointsData['id'])
                 else:
                     yyxx = zip(framePointsData['y'], framePointsData['x'])
                     for y, x in yyxx:
@@ -18933,6 +18939,8 @@ class guiWin(QMainWindow):
         self.connectLeftClickButtons()
         action = sender.action
         action.scatterItem.setVisible(True)
+        self.ax1_BrushCircle.setBrush(action.brushColor)
+        self.ax1_BrushCircle.setPen(action.penColor)
     
     def autoZoomNextObj(self):
         self.sender().setValue(self.sender().value() - 1)
@@ -19006,6 +19014,7 @@ class guiWin(QMainWindow):
         symbol = self.addPointsWin.symbol
         color = self.addPointsWin.color
         pointSize = self.addPointsWin.pointSize
+        zRadius = int((self.addPointsWin.zHeight-1)/2)
         r,g,b,a = color.getRgb()
 
         scatterItem = widgets.PointsScatterPlotItem(
@@ -19029,13 +19038,19 @@ class guiWin(QMainWindow):
         action.state = self.addPointsWin.state()
 
         toolButton.action = action
+        action.brushColor = (r,g,b,100)
+        action.penColor = (r,g,b)
+        action.pointSize = pointSize
+        action.zRadius = zRadius
         action.button = toolButton
         action.scatterItem = scatterItem
         action.layerType = self.addPointsWin.layerType
         action.layerTypeIdx = self.addPointsWin.layerTypeIdx
         action.pointsData = self.addPointsWin.pointsData
+        action.snapToMax = False
         
         if self.addPointsWin.layerType.startswith('Click to annotate point'):
+            action.snapToMax = self.addPointsWin.snapToMaxToggle.isChecked()
             isLoadedDf = self.addPointsWin.clickEntryIsLoadedDf
             self.setupAddPointsByClicking(toolButton, isLoadedDf)
             if self.addPointsWin.autoPilotToggle.isChecked():
@@ -19072,13 +19087,13 @@ class guiWin(QMainWindow):
     def removeClickedPoints(self, action, points):
         posData = self.data[self.pos_i]
         framePointsData = action.pointsData[posData.frame_i]
-        if self.isSegm3D:
-            zSlice = self.z_lab()
+        if posData.SizeZ > 1:
+            zSlice = self.zSliceScrollBar.sliderPosition()
         else:
             zSlice = None
         for point in points:
             pos = point.pos()
-            x, y = pos.x(), pos.y()
+            x, y = pos.x()-0.5, pos.y()-0.5
             if zSlice is not None:
                 framePointsData[zSlice]['x'].remove(x)
                 framePointsData[zSlice]['y'].remove(y)
@@ -19093,7 +19108,7 @@ class guiWin(QMainWindow):
         framePointsData = action.pointsData.get(posData.frame_i)
         if framePointsData is None:
             return 1
-        if self.isSegm3D:
+        if posData.SizeZ > 1:
             new_id = 1
             for z_data in action.pointsData[posData.frame_i].values():
                 max_id = max(z_data.get('id', 0), default=0)
@@ -19104,14 +19119,30 @@ class guiWin(QMainWindow):
         if current_id >= new_id:
             return current_id
         return new_id
-        
+    
+    def setHoverCircleAddPoint(self, x, y):
+        addPointsByClickingButton = self.buttonAddPointsByClickingActive()
+        if addPointsByClickingButton is None:
+            return
+        action = addPointsByClickingButton.action
+        self.setHoverToolSymbolData(
+            [x], [y], (self.ax1_BrushCircle,),
+            size=action.pointSize
+        )
+    
     def addClickedPoint(self, action, x, y, id):
         x, y = round(x, 2), round(y, 2)
         posData = self.data[self.pos_i]
         framePointsData = action.pointsData.get(posData.frame_i)
+        if action.snapToMax:
+            radius = round(action.pointSize/2)
+            rr, cc = skimage.draw.disk((round(y), round(x)), radius)
+            idx_max = (self.img1.image[rr, cc]).argmax()
+            y, x = rr[idx_max], cc[idx_max]
+
         if framePointsData is None:
-            if self.isSegm3D:
-                zSlice = self.z_lab()
+            if posData.SizeZ > 1:
+                zSlice = self.zSliceScrollBar.sliderPosition()
                 action.pointsData[posData.frame_i] = {
                     zSlice: {'x': [x], 'y': [y], 'id': [id]}
                 }
@@ -19120,8 +19151,8 @@ class guiWin(QMainWindow):
                     'x': [x], 'y': [y], 'id': [id]
                 }
         else:
-            if self.isSegm3D:
-                zSlice = self.z_lab()
+            if posData.SizeZ > 1:
+                zSlice = self.zSliceScrollBar.sliderPosition()
                 z_data = action.pointsData[posData.frame_i].get(zSlice)
                 if z_data is None:
                     framePointsData[zSlice] = {'x': [x], 'y': [y], 'id': [id]}
@@ -19145,6 +19176,7 @@ class guiWin(QMainWindow):
         symbol = win.symbol
         color = win.color
         pointSize = win.pointSize
+        zRadius = int((win.zHeight-1)/2)
         r,g,b,a = color.getRgb()
 
         scatterItem = button.action.scatterItem
@@ -19153,6 +19185,11 @@ class guiWin(QMainWindow):
         scatterItem.setBrush(pg.mkBrush(color=(r,g,b,100)), update=False)
         scatterItem.setPen(pg.mkPen(width=2, color=(r,g,b)), update=False)
         scatterItem.setSize(pointSize, update=True)
+        
+        button.action.brushColor = (r,g,b,100)
+        button.action.penColor = (r,g,b)
+        button.action.pointSize = pointSize
+        button.action.zRadius = zRadius
 
         button.action.state = win.state()
     
@@ -19249,13 +19286,17 @@ class guiWin(QMainWindow):
                 zProjHow = self.zProjComboBox.currentText()
                 isZslice = zProjHow == 'single z-slice'
                 if isZslice:
+                    xx, yy, ids = [], [], []
                     zSlice = self.zSliceScrollBar.sliderPosition()
-                    z_data = framePointsData.get(zSlice)
-                    if z_data is None:
-                        # There are no objects on this z-slice
-                        action.scatterItem.clear()
-                        return
-                    xx, yy, ids = z_data['x'], z_data['y'], z_data['id']
+                    zRadius = action.zRadius
+                    zRange = range(zSlice-zRadius, zSlice+zRadius+1)
+                    for z in zRange:
+                        z_data = framePointsData.get(z)
+                        if z_data is None:
+                            continue
+                        xx.extend(z_data['x'])
+                        yy.extend(z_data['y'])
+                        ids.extend(z_data['id'])
                 else:
                     xx, yy, ids = [], [], []
                     # z-projection --> draw all points
@@ -19269,6 +19310,8 @@ class guiWin(QMainWindow):
                 yy = framePointsData['y']
                 ids = framePointsData['id']
 
+            xx = np.array(xx) + 0.5
+            yy = np.array(yy) + 0.5
             action.scatterItem.setData(xx, yy, data=ids)
 
     def overlay_cb(self, checked):
@@ -22451,6 +22494,7 @@ class guiWin(QMainWindow):
         self.reinitPointsLayers()
         self.gui_createPlotItems()
         self.setUncheckedAllButtons()
+        self.setUncheckedPointsLayers()
         self.restoreDefaultColors()
         self.reinitStoredSegmModels()
         self.curvToolButton.setChecked(False)
@@ -24625,9 +24669,13 @@ class guiWin(QMainWindow):
                 pass
         del self.data
 
+    def setUncheckedPointsLayers(self):
+        self.togglePointsLayerAction.setChecked(False)
+    
     def onEscape(self):
         self.setUncheckedAllButtons()
         self.setUncheckedAllCustomAnnotButtons()
+        self.setUncheckedPointsLayers()
         if hasattr(self, 'tempLayerImg1'):
             self.tempLayerImg1.setImage(self.emptyLab)
         self.isMouseDragImg1 = False

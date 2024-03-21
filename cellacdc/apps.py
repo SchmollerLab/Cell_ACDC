@@ -647,8 +647,20 @@ class _PointsLayerAppearanceGroupbox(QGroupBox):
             self.sizeSpinBox, stretchWidget=True,
             labelTextLeft='Size: ', parent=self
         )
-        layout.addFormWidget(self.sizeWidget, align=Qt.AlignLeft, row=row)
+        layout.addFormWidget(self.sizeWidget, row=row)
         '----------------------------------------------------------------------' 
+        
+        '----------------------------------------------------------------------' 
+        row += 1
+        self.zHeightSpinBox = widgets.OddSpinBox()
+        self.zHeightSpinBox.setValue(1)
+        self.zHeightSpinBox.setMinimum(1)
+        self.zHeightWidget = widgets.formWidget(
+            self.zHeightSpinBox, stretchWidget=True,
+            labelTextLeft='Z- height: ', parent=self
+        )
+        layout.addFormWidget(self.zHeightWidget, row=row)
+        '----------------------------------------------------------------------'
 
         '----------------------------------------------------------------------' 
         row += 1
@@ -670,6 +682,7 @@ class _PointsLayerAppearanceGroupbox(QGroupBox):
         self.colorButton.setColor(state['color'])
         self.symbolWidget.widget.setCurrentText(state['symbol'])
         self.sizeSpinBox.setValue(state['pointSize'])
+        self.zHeightSpinBox.setValue(state['zHeight'])
     
     def selectColor(self):
         color = self.colorButton.color()
@@ -690,6 +703,7 @@ class _PointsLayerAppearanceGroupbox(QGroupBox):
             'symbol': self.symbolWidget.widget.currentText(), 
             'color': (r,g,b),
             'pointSize': self.sizeSpinBox.value(),
+            'zHeight': self.zHeightSpinBox.value(),
             'shortcut': self.shortcutWidget.widget.text()
         }
         return _state
@@ -868,6 +882,20 @@ class AddPointsLayerDialog(QBaseDialog):
         self.clickEntryRadiobutton.widgets = [] 
         
         row += 1
+        self.snapToMaxToggle = widgets.Toggle()
+        self.snapToMaxToggle.label = QLabel('Snap to closest maximum: ')
+        typeLayout.addWidget(self.snapToMaxToggle.label, row, 1)
+        typeLayout.addWidget(
+            self.snapToMaxToggle, row, 2, alignment=Qt.AlignCenter
+        )
+        self.snapToMaxInfoButton = widgets.infoPushButton()
+        typeLayout.addWidget(self.snapToMaxInfoButton, row, 3)
+        
+        self.snapToMaxInfoButton.clicked.connect(self.showSnapToMaxButton)
+        self.clickEntryRadiobutton.widgets.append(self.snapToMaxToggle)
+        self.clickEntryRadiobutton.widgets.append(self.snapToMaxInfoButton)
+        
+        row += 1
         self.autoPilotToggle = widgets.Toggle()
         self.autoPilotToggle.label = QLabel('Use auto-pilot: ')
         typeLayout.addWidget(self.autoPilotToggle.label, row, 1)
@@ -965,6 +993,16 @@ class AddPointsLayerDialog(QBaseDialog):
             <b>previous object</b> by pressing <code>Backspace</code>.
         """)
         msg.information(self, 'Auto-pilot info', txt)
+    
+    def showSnapToMaxButton(self):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph("""
+            With <bSnap to closest maximum</b> mode active, Cell-ACDC will 
+            <b>automatically add the point</b><br>
+            to the closest maximum within the point footprint (defined in 
+            the appearance settings).
+        """)
+        msg.information(self, 'Snap to closest maximum info', txt)
     
     def closeEvent(self, event):
         self.sigClosed.emit()
@@ -1165,6 +1203,7 @@ class AddPointsLayerDialog(QBaseDialog):
         self.symbolText = symbol
         self.color = self.appearanceGroupbox.colorButton.color()
         self.pointSize = self.appearanceGroupbox.sizeSpinBox.value()
+        self.zHeight = self.appearanceGroupbox.zHeightSpinBox.value()
         shortcutWidget = self.appearanceGroupbox.shortcutWidget
         self.shortcut = shortcutWidget.widget.text()
         self.keySequence = shortcutWidget.widget.keySequence
@@ -1264,6 +1303,7 @@ class EditPointsLayerAppearanceDialog(QBaseDialog):
         self.symbol = re.findall(r"\'(.+)\'", symbol)[0]
         self.color = self.appearanceGroupbox.colorButton.color()
         self.pointSize = self.appearanceGroupbox.sizeSpinBox.value()
+        self.zHeight = self.appearanceGroupbox.zHeightSpinBox.value()
         shortcutWidget = self.appearanceGroupbox.shortcutWidget
         self.shortcut = shortcutWidget.widget.text()
         self.keySequence = shortcutWidget.widget.keySequence
