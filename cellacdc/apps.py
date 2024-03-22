@@ -10892,6 +10892,13 @@ class downloadModel:
         model_exists = myutils.check_model_exists(model_path, model_name)
         if not model_exists:
             self.warnDownloadModel(model_path, self.model_name)
+        try:
+            self._parent.logger.info(
+                f'Downloading {self.model_name} model(s) to "{model_path}"'
+            )
+        except Exception as err:
+            pass
+        
         success = myutils.download_model(self.model_name)
         if not success:
             self.criticalDowloadFailed()

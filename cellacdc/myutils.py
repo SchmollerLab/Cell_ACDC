@@ -1295,6 +1295,7 @@ def _model_url(model_name, return_alternative=False):
             'https://hmgubox2.helmholtz-muenchen.de/index.php/s/DDq8s3CgnG2Yw6H/download/cyto2_omnitorch_0',
             'https://hmgubox2.helmholtz-muenchen.de/index.php/s/MM5meM2J5HbWqXR/download/plant_cptorch_0',
             'https://hmgubox2.helmholtz-muenchen.de/index.php/s/aap7znrWq5sE6JQ/download/plant_omnitorch_0',
+            'https://hmgubox2.helmholtz-muenchen.de/index.php/s/w5M46x9qr8zLHZH/download/size_cyto2_omnitorch_0.npy'
         ]
         file_size = [
             26558464,
@@ -1302,7 +1303,8 @@ def _model_url(model_name, return_alternative=False):
             26558464,
             26558464,
             26558464,
-            75071488
+            75071488,
+            4096
         ]
         alternative_url = ''
     else:
