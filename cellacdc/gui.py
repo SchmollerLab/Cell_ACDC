@@ -15934,7 +15934,7 @@ class guiWin(QMainWindow):
             if self.switchPlaneCombobox.depthAxes() == 'z': 
                 posData.segmInfo_df.at[idx, 'z_slice_used_gui'] = z
             self.zSliceSpinbox.setValueNoEmit(z+1)
-            img = self.getImage()
+            img = self._getImageupdateAllImages(None, False)
             self.img1.setImage(
                 img, next_frame_image=self.nextFrameImage(),
                 scrollbar_value=posData.frame_i+2
@@ -18700,7 +18700,7 @@ class guiWin(QMainWindow):
             parent=self
         )
         cmap = matplotlib.colormaps['gist_rainbow']
-        i = np.random.default_rng().uniform()
+        i = np.random.default_rng(seed=123).uniform()
         for action in self.pointsLayersToolbar.actions()[1:]:
             if not hasattr(action, 'layerTypeIdx'):
                 continue
