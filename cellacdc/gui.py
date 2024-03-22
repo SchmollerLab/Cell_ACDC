@@ -19114,7 +19114,7 @@ class guiWin(QMainWindow):
         if posData.SizeZ > 1:
             new_id = 1
             for z_data in action.pointsData[posData.frame_i].values():
-                max_id = max(z_data.get('id', 0), default=0)
+                max_id = max(z_data.get('id', 0), default=0) + 1
                 if max_id > new_id:
                     new_id = max_id
         else:
