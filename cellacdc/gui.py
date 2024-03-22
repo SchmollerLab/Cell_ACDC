@@ -6089,8 +6089,11 @@ class guiWin(QMainWindow):
             and not event.isExit()
             and noModifier
         )
+        addPointsByClickingButton = self.buttonAddPointsByClickingActive()
         setAddPointCursor = (
-            self.togglePointsLayerAction.isChecked() and not event.isExit()
+            self.togglePointsLayerAction.isChecked() 
+            and addPointsByClickingButton is not None
+            and not event.isExit()
             and noModifier
         )
         overrideCursor = self.app.overrideCursor()
