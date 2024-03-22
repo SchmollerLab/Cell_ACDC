@@ -4,4 +4,4 @@ import subprocess
 
 from cellacdc import myutils
 
-myutils.check_install_package('omnipose', pypi_name='omnipose_acdc')
+myutils.check_install_omnipose()

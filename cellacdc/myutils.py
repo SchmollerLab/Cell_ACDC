@@ -2209,6 +2209,24 @@ def check_pkg_version(import_pkg_name, min_version, raise_err=True):
     else:
         return is_version_correct
 
+def install_package_conda(conda_pkg_name, channel='conda-forge'):
+    subprocess.check_call(
+        ['conda', 'install', '-c', channel, '-y', conda_pkg_name]
+    )
+
+def check_install_omnipose():
+    try:
+        import_module('omnipose')
+        return
+    except ModuleNotFoundError:
+        pass
+    
+    try:
+        check_install_package('omnipose', pypi_name='omnipose_acdc')
+    except Exception as err:
+        install_package_conda('mahotas')
+        _install_pip_package('omnipose-acdc')
+    
 def check_install_package(
         pkg_name: str, 
         import_pkg_name: str='',
