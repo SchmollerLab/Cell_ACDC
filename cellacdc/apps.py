@@ -10651,6 +10651,7 @@ class QDialogModelParams(QDialog):
         text = self.sender().infoText
         text = text.replace('\n', '<br>')
         text = html_utils.rst_urls_to_html(text)
+        text = html_utils.rst_to_html(text)
         text = html_utils.paragraph(text)
         param_name = self.sender().param_name
         msg = widgets.myMessageBox(wrapText=False)
