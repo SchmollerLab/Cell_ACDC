@@ -785,7 +785,7 @@ def getModelArgSpec(acdcSegment):
     
     return init_params, segment_params
 
-def _get_doc_stop_idx(docstring, next_param_name=None, debug=False):
+def _get_doc_stop_idx(docstring, start_idx, next_param_name=None, debug=False):
     if debug:
         import pdb; pdb.set_trace()
     
@@ -793,7 +793,12 @@ def _get_doc_stop_idx(docstring, next_param_name=None, debug=False):
         doc_stop_idx = docstring.find(f'{next_param_name} : ')
         if doc_stop_idx > 1:
             return doc_stop_idx
-        
+    
+    docstring_from_start = docstring[start_idx:]
+    next_param_searched = re.search(r'\w+ : ', docstring_from_start)
+    if next_param_searched is not None:
+        return next_param_searched.start(0) + start_idx
+    
     doc_stop_idx = docstring.find('Returns')
     if doc_stop_idx > 1:
         return doc_stop_idx
@@ -818,9 +823,8 @@ def parse_model_param_doc(name, next_param_name=None, docstring=None):
         doc_start_idx = docstring.find(start_text) + len(start_text)
         
         doc_stop_idx = _get_doc_stop_idx(
-            docstring, next_param_name=next_param_name
+            docstring, doc_start_idx, next_param_name=next_param_name
         )
-
         if doc_stop_idx == -1:
             doc_stop_idx = len(docstring)
         

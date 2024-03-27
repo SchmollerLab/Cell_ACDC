@@ -28,7 +28,7 @@ START_FRAME = 0
 STOP_FRAME = 499
 PLOT_FRAME = 499
 SAVE = False
-REAL_TIME_TRACKER = True
+REAL_TIME_TRACKER = False
 SCRUMBLE_IDs = False
 
 # test_data = data.BABYtestData()

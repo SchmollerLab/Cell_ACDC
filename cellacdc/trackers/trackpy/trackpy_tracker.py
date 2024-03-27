@@ -100,16 +100,17 @@ class tracker:
             
             Default is 10.0.
         adaptive_stop : float, default 1.0
-            If not None, when encountering an oversize subnet, retry by progressively
-            reducing search_range until the subnet is solvable. If search_range
-            becomes <= adaptive_stop, give up and raise a SubnetOversizeException.
+            If not None, when encountering an oversize subnet, retry by 
+            progressively reducing search_range until the subnet is solvable. 
+            If search_range becomes less or equal than `adaptive_stop`, give up 
+            and raise a `SubnetOversizeException`.
         adaptive_step : float, default 0.95
             Reduce search_range by multiplying it by this factor.
         neighbor_strategy : {'KDTree', 'BTree'}, default 'KDTree'
             Algorithm used to identify nearby features. Default 'KDTree'.
         link_strategy : {'recursive', 'nonrecursive', 'numba', 'hybrid', 'drop', 'auto'}
             Algorithm used to resolve subnetworks of nearby particles
-            'auto' uses hybrid (numba+recursive) if available
+            'auto' uses hybrid (numba + recursive) if available
             'drop' causes particles in subnetworks to go unlinked
 
         Returns
