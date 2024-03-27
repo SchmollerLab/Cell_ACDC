@@ -25,7 +25,6 @@ class tracker:
     def __init__(
             self, 
             annotate_objects_tracked_second_step=True,
-            search_range_unit: SearchRangeUnits='pixels',
             PhysicalSizeX=1.0,
             PhysicalSizeY=1.0,
             PhysicalSizeZ=1.0,
@@ -40,11 +39,6 @@ class tracker:
             first step (based on overlap) and the objects in current frame that 
             were matched according to the second step (based on search range). 
             Default is True
-        search_range_unit : {'pixels', 'micrometre'}, optional
-            Physical unit of the parameter `lost_IDs_search_range`. If 
-            `micrometre`, distances will be converted using the pixel sizes. 
-            See the parameters `PixelSizeX`, `PixelSizeY`, and `PixelSizeZ`. 
-            Default is 'pixels'
         PhysicalSizeX : float, optional
             Pixel size in the x-direction in 'micrometre/pixel'. This will be 
             ignored if `search_range_unit` is `pixels`. Default is 1.0
@@ -56,13 +50,13 @@ class tracker:
             ignored if `search_range_unit` is `pixels`. Default is 1.0. 
         """        
         self._annot_obj_2nd_step = annotate_objects_tracked_second_step
-        self._search_range_unit = search_range_unit
         self._pixel_yx_size = (PhysicalSizeY, PhysicalSizeX)
         self._voxel_zyx_size = (PhysicalSizeZ, PhysicalSizeY, PhysicalSizeX)
         
     def track(
             self, segm_video,
             overlap_threshold=0.4,
+            search_range_unit: SearchRangeUnits='pixels',
             lost_IDs_search_range=10,
             signals: cellacdc.workers.signals=None,
             export_to_extension='.csv', 
@@ -81,6 +75,11 @@ class tracker:
             in previous frame and are of the objects in previous frame. 
             All new objects will undergo a second step of matching based on 
             the `lost_IDs_search_range`. Default is 0.4
+        search_range_unit : {'pixels', 'micrometre'}, optional
+            Physical unit of the parameter `lost_IDs_search_range`. If 
+            `micrometre`, distances will be converted using the pixel sizes. 
+            See the parameters `PixelSizeX`, `PixelSizeY`, and `PixelSizeZ`. 
+            Default is 'pixels'
         lost_IDs_search_range : int, optional
             Maximum distance that a new object (according to `overlap_threshold`) 
             can travel between two consecutive frames to be considered as 
@@ -101,8 +100,9 @@ class tracker:
             if frame_i == 0:
                 continue
             prev_frame_lab = tracked_video[frame_i-1]
-            tracked_lab = self.track_frame(
+            tracked_lab, _ = self.track_frame(
                 prev_frame_lab, lab, 
+                search_range_unit=search_range_unit,
                 overlap_threshold=overlap_threshold, 
                 lost_IDs_search_range=lost_IDs_search_range
             )
@@ -113,6 +113,7 @@ class tracker:
     def track_frame(
             self, prev_frame_lab, current_frame_lab,
             overlap_threshold=0.4,
+            search_range_unit: SearchRangeUnits='pixels',
             lost_IDs_search_range=10,
             unique_ID: Integer=None
         ):
@@ -133,6 +134,11 @@ class tracker:
             in previous frame and are of the objects in previous frame. 
             All new objects will undergo a second step of matching based on 
             the `lost_IDs_search_range`. Default is 0.4
+        search_range_unit : {'pixels', 'micrometre'}, optional
+            Physical unit of the parameter `lost_IDs_search_range`. If 
+            `micrometre`, distances will be converted using the pixel sizes. 
+            See the parameters `PixelSizeX`, `PixelSizeY`, and `PixelSizeZ`. 
+            Default is 'pixels'
         lost_IDs_search_range : int, optional
             Maximum distance that a new object (according to `overlap_threshold`) 
             can travel between two consecutive frames to be considered as 
@@ -194,7 +200,7 @@ class tracker:
             new_IDs_coords[new_idx] = new_obj.centroid
             new_IDs_idx_to_obj_mapper[new_idx] = new_obj
         
-        if self._search_range_unit == 'micrometre':
+        if search_range_unit == 'micrometre':
             if ndim == 3:
                 scaling = self._voxel_zyx_size
             else:
