@@ -1281,7 +1281,11 @@ class loadData:
                 self.loaded_shifts = np.load(filePath)
             elif loadSegmInfo and file.endswith('segmInfo.csv'):
                 self.segmInfoFound = True
-                remove_duplicates_file(filePath)
+                try:
+                    remove_duplicates_file(filePath)
+                except Exception as err:
+                    printl(filePath)
+                    printl(traceback.format_exc())
                 df = pd.read_csv(filePath).dropna()
                 if 'filename' not in df.columns:
                     df['filename'] = self.filename

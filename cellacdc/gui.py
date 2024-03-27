@@ -5283,12 +5283,15 @@ class guiWin(QMainWindow):
             if not self.ripCellButton.findChild(QAction).isChecked():
                 self.ripCellButton.setChecked(False)
 
+    def resetExpandLabel(self):
+        self.expandingID = -1
+    
     def expandLabelCallback(self, checked):
         self.disconnectLeftClickButtons()
         self.uncheckLeftClickButtons(self.sender())
         self.connectLeftClickButtons()
         self.expandFootprintSize = 1
-
+    
     def expandLabel(self, dilation=True):
         posData = self.data[self.pos_i]
         if self.hoverLabelID == 0:
@@ -14915,6 +14918,7 @@ class guiWin(QMainWindow):
                 posData.frame_i -= 1
                 self.get_data()
                 return
+            self.resetExpandLabel()
             self.updateAllImages(updateFilters=True)
             self.updateViewerWindow()
             self.setNavigateScrollBarMaximum()
@@ -14968,6 +14972,7 @@ class guiWin(QMainWindow):
             self.removeAlldelROIsCurrentFrame()
             posData.frame_i -= 1
             _, never_visited = self.get_data()
+            self.resetExpandLabel()
             self.postProcessing()
             self.tracking()
             self.updateAllImages(updateFilters=True)
