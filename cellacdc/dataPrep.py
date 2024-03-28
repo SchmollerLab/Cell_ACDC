@@ -13,7 +13,6 @@ import pandas as pd
 import scipy.interpolate
 import skimage
 import skimage.io
-from sympy import Or
 from tqdm import tqdm
 from functools import partial, wraps
 from tifffile.tifffile import TiffWriter, TiffFile
