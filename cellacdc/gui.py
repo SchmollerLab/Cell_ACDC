@@ -17088,7 +17088,7 @@ class guiWin(QMainWindow):
         prev_cca_df = acdc_df[self.cca_df_colnames].copy()
 
         if posData.cca_df is None:
-            posData.cca_df = prev_cca_df
+            posData.cca_df = prev_cca_df.copy()
         else:
             posData.cca_df = curr_df[self.cca_df_colnames].copy()
         
@@ -17105,9 +17105,13 @@ class guiWin(QMainWindow):
             return notEnoughG1Cells, proceed
 
         # Get cells in G1 (exclude dead) and check if there are enough cells in G1
-        prev_df_G1 = prev_cca_df[prev_cca_df['cell_cycle_stage']=='G1']
-        prev_df_G1 = prev_df_G1[~acdc_df.loc[prev_df_G1.index]['is_cell_dead']]
-        IDsCellsG1 = set(prev_df_G1.index)
+        try:
+            prev_df_G1 = prev_cca_df[prev_cca_df['cell_cycle_stage']=='G1']
+            prev_df_G1 = prev_df_G1[~acdc_df.loc[prev_df_G1.index]['is_cell_dead']]
+            IDsCellsG1 = set(prev_df_G1.index)
+        except Exception as err:
+            IDsCellsG1 = set()
+            
         if lastVisited or enforceAll:
             # If we are repeating auto cca for last visited frame
             # then we also add the cells in G1 that appears in current frame
