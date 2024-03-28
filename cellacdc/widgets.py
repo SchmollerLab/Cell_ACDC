@@ -35,7 +35,7 @@ from qtpy.QtGui import (
     QFont, QPalette, QColor, QPen, QKeyEvent, QBrush, QPainter,
     QRegularExpressionValidator, QIcon, QPixmap, QKeySequence, QLinearGradient,
     QShowEvent, QDesktopServices, QFontMetrics, QGuiApplication, QLinearGradient,
-    QImage 
+    QImage, QCursor
 )
 from qtpy.QtWidgets import (
     QTextEdit, QLabel, QProgressBar, QHBoxLayout, QToolButton, QCheckBox,
@@ -1726,9 +1726,34 @@ class listWidget(QListWidget):
             item = self.item(i)
             item.setSizeHint(QSize(0, height))
 
+class OrderableListWidget(QWidget):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._labels = []
+    
+    def setLabelsColor(self, selected):
+        if selected:
+            stylesheet = 'color : black'
+        else:
+            stylesheet = ''
+            
+        for label in self._labels:
+            label.setStyleSheet(stylesheet)
+    
+    def addLabel(self, label):
+        self._labels.append(label)
+
 class OrderableList(listWidget):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
+        self.setMouseTracking(True)
+        self.itemEntered.connect(self.onItemEntered)
+    
+    def onItemEntered(self, enteredItem):
+        enteredRow = self.row(enteredItem)
+        for i in range(self.count()):
+            item = self.item(i)
+            item._container.setLabelsColor(i == enteredRow)
     
     def addItems(self, items):
         self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
@@ -1736,13 +1761,16 @@ class OrderableList(listWidget):
         nn = [str(n) for n in range(1, nr_items+1)]
         for i, item in enumerate(items):
             itemW = QListWidgetItem()
-            itemContainer = QWidget()
+            itemContainer = OrderableListWidget()
             itemText = QLabel(item)
+            tableNrLabel = QLabel('| Table nr.')
+            itemContainer.addLabel(tableNrLabel)
+            itemContainer.addLabel(itemText)
             itemLayout = QHBoxLayout()
             itemNumberWidget = QComboBox()
             itemNumberWidget.addItems(nn)
             itemLayout.addWidget(itemText)
-            itemLayout.addWidget(QLabel('| Table nr.'))
+            itemLayout.addWidget(tableNrLabel)
             itemLayout.addWidget(itemNumberWidget)
             itemContainer.setLayout(itemLayout)
             itemLayout.setSizeConstraint(QLayout.SizeConstraint.SetFixedSize)
@@ -1751,13 +1779,14 @@ class OrderableList(listWidget):
             self.setItemWidget(itemW, itemContainer)
             itemW._text = item
             itemW._nrWidget = itemNumberWidget
+            itemW._container = itemContainer
             itemNumberWidget.setDisabled(True)
             itemNumberWidget.textActivated.connect(self.onTextActivated)
             itemNumberWidget._currentNr = 1
             itemNumberWidget.row = i
         
         self.itemSelectionChanged.connect(self.onItemSelectionChanged)
-    
+        
     def keyPressEvent(self, event) -> None:
         if event.key() == Qt.Key_Escape:
             self.clearSelection()
@@ -1773,10 +1802,8 @@ class OrderableList(listWidget):
     def onItemSelectionChanged(self):
         for i in range(self.count()):
             item = self.item(i)
-            if item.isSelected():
-                item._nrWidget.setDisabled(False)
-            else:
-                item._nrWidget.setDisabled(True)
+            item._container.setLabelsColor(item.isSelected())
+            item._nrWidget.setDisabled(not item.isSelected())
             if item._nrWidget.currentText() != '1':
                 item._nrWidget.setCurrentText('1')
                 item._currentNr = 1
