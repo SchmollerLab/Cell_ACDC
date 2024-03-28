@@ -68,6 +68,13 @@ def text_float_rgba():
         text_rgba = _dark_colors()['Text']
         return tuple([val/255 for val in text_rgba])
 
+def get_disabled_colors():
+    scheme = get_color_scheme()
+    if scheme == 'light':
+        return _light_disabled_colors()
+    else:
+        return _dark_disabled_colors()
+
 def _light_disabled_colors():
     disabled_colors = {
         'ButtonText': (150, 150, 150, 255), 

@@ -88,6 +88,7 @@ PRE_PROCESSING_STEPS = [
 
 TREEWIDGET_STYLESHEET = _palettes.TreeWidgetStyleSheet()
 LISTWIDGET_STYLESHEET = _palettes.ListWidgetStyleSheet()
+BACKGROUND_RGBA = _palettes.get_disabled_colors()['Button']
 
 font = QFont()
 font.setPixelSize(12)
@@ -11992,7 +11993,8 @@ class CombineMetricsMultiDfsSummaryDialog(QBaseDialog):
         self.equationsList = widgets.TreeWidget()
         self.equationsList.setFont(font)
         self.equationsList.setHeaderLabels(['Metric', 'Expression'])
-        self.equationsList.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.equationsList.setSelectionMode(
+            QAbstractItemView.SelectionMode.ExtendedSelection)
 
         equationsButtonsLayout = QVBoxLayout()
         addEquationButton = widgets.addPushButton('Add metric')
@@ -12162,8 +12164,9 @@ class CombineMetricsMultiDfsSummaryDialog(QBaseDialog):
     def addEquation(self, newColname, expression):
         if self.editedIndex is not None:
             self.equationsList.invisibleRootItem().removeChild(self.editedItem)
+        bkgrColor = QColor(*BACKGROUND_RGBA[:3], 200)
         item = widgets.TreeWidgetItem(
-            self.equationsList, columnColors=[None, QColor(230,230,230,200)]
+            self.equationsList, columnColors=[None, bkgrColor]
         )
         item.setText(0, newColname)
         item.setText(1, expression)
