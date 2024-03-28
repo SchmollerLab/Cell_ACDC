@@ -13,6 +13,7 @@ import pandas as pd
 import scipy.interpolate
 import skimage
 import skimage.io
+from sympy import Or
 from tqdm import tqdm
 from functools import partial, wraps
 from tifffile.tifffile import TiffWriter, TiffFile
@@ -1076,7 +1077,7 @@ class dataPrepWin(QMainWindow):
             subImagesPath = os.path.join(subPosFolderPath, 'Images')
             os.makedirs(subImagesPath)
             
-            cropBasename = f'{basename}_crop{cropNum}_'
+            cropBasename = f'{basename}crop{cropNum}_'
             
             _iter = self.getAllChannelsPaths(posData)
             for uncropped_data, npz_path, tif_path in _iter:
@@ -1118,24 +1119,32 @@ class dataPrepWin(QMainWindow):
             except IndexError:
                 pass
             
-            for file in myutils.listdir(posData.images_path):
+            for file in myutils.listdir(posData.images_path):                
                 copy_file = (
-                    file.endswith('metadata.csv')
-                    or file.endswith('bkgrRoiData.npz')
+                    file.endswith('bkgrRoiData.npz')
                     or file.endswith('dataPrep_bkgrROIs.json')
                     or file.endswith('segmInfo.csv')
                 )
-                if not copy_file:
+                is_metadata_file = file.endswith('metadata.csv')
+                if not copy_file and not is_metadata_file:
                     continue
-                endname = file[len(basename):]
+                
+                src_filepath = os.path.join(posData.images_path, file)
+                endname = file[len(basename):]                
                 crop_filename = f'{cropBasename}{endname}'
                 sub_filepath = os.path.join(subImagesPath, crop_filename)
                 if os.path.exists(sub_filepath):
                     continue
                 
-                src_filepath = os.path.join(posData.images_path, file)
-                shutil.copyfile(src_filepath, sub_filepath)
-    
+                if copy_file:
+                    shutil.copyfile(src_filepath, sub_filepath)
+                elif is_metadata_file:
+                    df_metadata = pd.read_csv(
+                        src_filepath, index_col='Description'
+                    )       
+                    df_metadata.at['basename', 'values'] = cropBasename
+                    df_metadata.to_csv(sub_filepath)
+                    
     def saveROIcoords(self, doCrop, posData):
         dfs = []
         keys = []
