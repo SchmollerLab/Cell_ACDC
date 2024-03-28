@@ -1727,9 +1727,14 @@ class listWidget(QListWidget):
             item.setSizeHint(QSize(0, height))
 
 class OrderableListWidget(QWidget):
+    sigEnterEvent = Signal(object)
+    
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._labels = []
+    
+    def setParentItem(self, item):
+        self._item = item
     
     def setLabelsColor(self, selected):
         if selected:
@@ -1739,6 +1744,16 @@ class OrderableListWidget(QWidget):
             
         for label in self._labels:
             label.setStyleSheet(stylesheet)
+    
+    def enterEvent(self, event):
+        super().enterEvent(event)
+        self.setLabelsColor(True)
+        self.sigEnterEvent.emit(self._item)
+    
+    # def leaveEvent(self, event):
+    #     super().leaveEvent(event)
+    #     self.setLabelsColor(self._item.isSelected())
+    #     printl('leave', self._item.isSelected())
     
     def addLabel(self, label):
         self._labels.append(label)
@@ -1753,7 +1768,13 @@ class OrderableList(listWidget):
         enteredRow = self.row(enteredItem)
         for i in range(self.count()):
             item = self.item(i)
-            item._container.setLabelsColor(i == enteredRow)
+            item._container.setLabelsColor(i == enteredRow or item.isSelected())
+    
+    def leaveEvent(self, event):
+        super().leaveEvent(event)
+        for i in range(self.count()):
+            item = self.item(i)
+            item._container.setLabelsColor(item.isSelected())
     
     def addItems(self, items):
         self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
@@ -1762,6 +1783,7 @@ class OrderableList(listWidget):
         for i, item in enumerate(items):
             itemW = QListWidgetItem()
             itemContainer = OrderableListWidget()
+            itemContainer.setParentItem(itemW)
             itemText = QLabel(item)
             tableNrLabel = QLabel('| Table nr.')
             itemContainer.addLabel(tableNrLabel)
@@ -1784,6 +1806,7 @@ class OrderableList(listWidget):
             itemNumberWidget.textActivated.connect(self.onTextActivated)
             itemNumberWidget._currentNr = 1
             itemNumberWidget.row = i
+            itemContainer.sigEnterEvent.connect(self.onItemEntered)
         
         self.itemSelectionChanged.connect(self.onItemSelectionChanged)
         
