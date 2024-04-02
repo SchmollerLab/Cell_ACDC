@@ -140,8 +140,6 @@ def retrack_based_on_untracked_first_frame(
         dict(zip(first_untracked_IDs, uniqueIDs))
     )
     
-    printl(untracked_to_unique_mapper, pretty=True)
-    
     pbar = tqdm(total=len(tracked_video), ncols=100)
     for frame_i, tracked_lab in enumerate(tracked_video):
         rp_tracked = skimage.measure.regionprops(tracked_lab)
