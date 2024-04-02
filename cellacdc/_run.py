@@ -2,6 +2,7 @@ import os
 import shutil
 import sys
 from importlib import import_module
+import traceback
 
 def _install_tables(parent_software='Cell-ACDC'):
     from . import try_input_install_package
@@ -128,6 +129,7 @@ def _setup_gui_libraries(caller_name='Cell-ACDC'):
     try:
         from qtpy.QtCore import Qt
     except Exception as e:
+        traceback.print_exc()
         txt = (
             f'{caller_name} needs to install a GUI library (default library is '
             f'`{default_qt}`).\n\n'
