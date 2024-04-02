@@ -178,7 +178,9 @@ def retrack_based_on_untracked_first_frame(
                 continue
             # Replace tracked ID of first frame to the untracked ID of the 
             # reference 
-            tracked_video[tracked_video==obj_tracked.label] = untracked_ID
+            tracked_video[frame_i][obj_tracked.slice][obj_tracked.image] = (
+                untracked_ID
+            )
         pbar.update()
     pbar.close()
     
