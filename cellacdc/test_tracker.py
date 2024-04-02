@@ -4,6 +4,7 @@ import numpy as np
 import skimage.measure
 from cellacdc import core, myutils, widgets, load, html_utils
 from cellacdc import data, data_path
+from cellacdc import transformation
 
 try:
     import pytest
@@ -11,6 +12,7 @@ try:
 except Exception as e:
     pass
 
+import qtpy.compat
 from cellacdc._run import _setup_app
 
 # Ask which model to use --> Test if new model is visible
@@ -25,8 +27,8 @@ path = (
 channel_name = 'bknapp_Movie_S1'
 end_filename_segm = 'segm'# 'segm_test'
 START_FRAME = 0 
-STOP_FRAME = 499
-PLOT_FRAME = 499
+STOP_FRAME = 10
+PLOT_FRAME = 1
 SAVE = False
 REAL_TIME_TRACKER = False
 SCRUMBLE_IDs = False
@@ -34,9 +36,23 @@ SCRUMBLE_IDs = False
 # test_data = data.BABYtestData()
 # posData = test_data.posData()
 
-test_data = data.FissionYeastAnnotated()
-posData = test_data.posData()
-posData.acdc_output_csv_path = test_data.acdc_df_path
+# test_data = data.FissionYeastAnnotated()
+
+test_data = None
+
+if test_data is None:
+    tif_filepath, _ = qtpy.compat.getopenfilename(filters=('Images (*.tif)'))
+    if not tif_filepath:
+        exit('Execution cancelled.')
+    
+    images_path = os.path.dirname(tif_filepath)
+    basename = os.path.commonprefix(myutils.listdir(images_path))
+    filename, ext = os.path.splitext(os.path.basename(tif_filepath))
+    channel = filename[len(basename):]
+    posData = load.loadData(tif_filepath, channel)
+else:
+    posData = test_data.posData()
+    posData.acdc_output_csv_path = test_data.acdc_df_path
 
 posData.loadImgData()
 posData.loadOtherFiles(
@@ -105,6 +121,14 @@ tracked_stack = core.tracker_track(
 
 posData.fromTrackerToAcdcDf(tracker, tracked_stack, save=True)
 
+first_untracked_lab = lab_stack[0]
+uniqueID = max(np.max(lab_stack), np.max(tracked_stack)) + 1
+print(uniqueID)
+
+tracked_video = transformation.retrack_based_on_untracked_first_frame(
+    tracked_stack, first_untracked_lab, uniqueID=uniqueID        
+)
+
 if SAVE:
     try:
         np.savez_compressed(
@@ -113,6 +137,8 @@ if SAVE:
         )
     except Exception as e:
         import pdb; pdb.set_trace()
+
+
 
 from cellacdc.plot import imshow
 

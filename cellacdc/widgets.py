@@ -1,3 +1,4 @@
+from collections import defaultdict
 import os
 import sys
 import operator
@@ -10,6 +11,7 @@ import math
 import traceback
 import logging
 import textwrap
+import random
 
 from functools import partial
 from math import ceil
@@ -6647,6 +6649,7 @@ class ImShow(QBaseWindow):
         self._autoLevels = True
 
         self.textItems = []
+        self.group_to_idx_mapper = {'': 0}
     
     def _getGraphicsScrollbar(self, idx, image, imageItem, maximum):
         proxy = QGraphicsProxyWidget(imageItem)
@@ -6736,8 +6739,9 @@ class ImShow(QBaseWindow):
         
         first_coord = imageItem.ScrollBars[0].value()
         isMaxProj = imageItem.ScrollBars[0].maxProjCheckbox.isChecked()
-        for p, plotItem in enumerate(imageItem.pointsItems):
-            plotItem.setVisible((isMaxProj) or (p == first_coord))
+        for pointsItems in imageItem.pointsItems.values():
+            for p, plotItem in enumerate(pointsItems):
+                plotItem.setVisible((isMaxProj) or (p == first_coord))
     
     def setupStatusBar(self):
         self.statusbar = self.statusBar()
@@ -6896,47 +6900,66 @@ class ImShow(QBaseWindow):
                 plot.vb.setYLink(plots[0].vb)
                 plot.vb.setXLink(plots[0].vb)
     
-    def _createPointsScatterItem(self, data=None):
+    def _createPointsScatterItem(self, group, data=None):
+        cmap = matplotlib.colormaps['jet_r']
+        idx = self.group_to_idx_mapper[group]
+        r, g, b = [round(c*255) for c in cmap(idx)][:3]
         item = pg.ScatterPlotItem(
             [], [], symbol='o', pxMode=False, size=3,
-            brush=pg.mkBrush(color=(255,0,0,100)),
-            pen=pg.mkPen(width=2, color=(255,0,0)),
-            hoverable=True, hoverBrush=pg.mkBrush((255,0,0,200)), 
+            brush=pg.mkBrush(color=(r,g,b,100)),
+            pen=pg.mkPen(width=2, color=(r,g,b)),
+            hoverable=True, hoverBrush=pg.mkBrush((r,g,b,200)), 
             tip=None, data=data
         ) 
         return item
 
-    def drawPointsFromDf(self, points_df):
-        yy = points_df['y'].values
-        xx = points_df['x'].values
-        points_coords = np.column_stack((yy, xx))
-        if 'z' in points_df.columns:
-            zz = points_df['z'].values
-            points_coords = np.column_stack((zz, points_coords))
-        self.drawPoints(points_coords)
+    def drawPointsFromDf(self, points_df, points_groups=None):
+        if isinstance(points_groups, str):
+            points_groups = [points_groups]
+            
+        if points_groups is None:
+            grouped = [('', points_df)]
+            groups = ['']
+        else:
+            grouped = points_df.groupby(points_groups)
+            groups = grouped.groups.keys()
+        
+        idxs_space = np.linspace(0, 1, len(groups))
+        self.group_to_idx_mapper = dict(zip(groups, idxs_space))
+
+        for group, df in grouped:
+            yy = df['y'].values
+            xx = df['x'].values
+            points_coords = np.column_stack((yy, xx))
+            if 'z' in df.columns:
+                zz = df['z'].values
+                points_coords = np.column_stack((zz, points_coords))
+            if len(group) == 1:
+                group = group[0]
+            self.drawPoints(points_coords, group=group)
     
-    def drawPoints(self, points_coords):  
+    def drawPoints(self, points_coords, group=''):  
         n_dim = points_coords.shape[1]
         if n_dim == 2:
             zz = [0]*len(points_coords)
             self.points_coords = np.column_stack((zz, points_coords))
             for p, plotItem in enumerate(self.PlotItems):
                 imageItem = self.ImageItems[p]
-                pointsItem = self._createPointsScatterItem()
+                pointsItem = self._createPointsScatterItem(group, data=group)
                 pointsItem.z = 0
                 plotItem.addItem(pointsItem)
                 xx = points_coords[:, 1] + 0.5
                 yy = points_coords[:, 0] + 0.5   
                 pointsItem.setData(xx, yy)
-                imageItem.pointsItems = [pointsItem]
+                imageItem.pointsItems = {group: [pointsItem]}
         elif n_dim == 3:
             self.points_coords = points_coords
             for p, plotItem in enumerate(self.PlotItems):
                 imageItem = self.ImageItems[p]
-                imageItem.pointsItems = []
+                imageItem.pointsItems = defaultdict(list)
                 scrollbar = imageItem.ScrollBars[0]
                 for first_coord in range(scrollbar.maximum()+1):
-                    pointsItem = self._createPointsScatterItem()
+                    pointsItem = self._createPointsScatterItem(group, data=group)
                     pointsItem.z = first_coord
                     plotItem.addItem(pointsItem)
                     coords = points_coords[points_coords[:,0] == first_coord]
@@ -6944,7 +6967,7 @@ class ImShow(QBaseWindow):
                     yy = coords[:, 1] + 0.5
                     pointsItem.setData(xx, yy)
                     pointsItem.setVisible(False)
-                    imageItem.pointsItems.append(pointsItem)
+                    imageItem.pointsItems[group].append(pointsItem)
                 self.setPointsVisible(imageItem)
     
     def setupDuplicatedCursors(self):
@@ -6982,8 +7005,9 @@ class ImShow(QBaseWindow):
         
         for p, plotItem in enumerate(self.PlotItems):
             imageItem = self.ImageItems[p]
-            for pointsItem in imageItem.pointsItems:
-                pointsItem.sigClicked.connect(self.pointsClicked)
+            for pointsItems in imageItem.pointsItems.values():
+                for pointsItem in pointsItems:
+                    pointsItem.sigClicked.connect(self.pointsClicked)
         
     def pointsClicked(self, item, points, event):
         point = points[0]

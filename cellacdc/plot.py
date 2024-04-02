@@ -37,6 +37,7 @@ def imshow(
         *images: Union[np.ndarray, dict], 
         points_coords: np.ndarray=None, 
         points_coords_df: pd.DataFrame=None,
+        points_groups: List[str]=None,
         points_data: Union[np.ndarray, pd.DataFrame, pd.Series]=None,
         hide_axes: bool=True, 
         lut: Union[Iterable, matplotlib.colors.Colormap, str]=None, 
@@ -115,7 +116,7 @@ def imshow(
         autoLevelsOnScroll=autoLevelsOnScroll
     )
     if points_coords_df is not None:
-        win.drawPointsFromDf(points_coords_df) 
+        win.drawPointsFromDf(points_coords_df, points_groups=points_groups) 
     if points_coords is not None:
         points_coords = np.round(points_coords).astype(int)
         win.drawPoints(points_coords)

@@ -6955,8 +6955,6 @@ class imageViewer(QMainWindow):
             self.zSliceScrollBar.setDisabled(True)
             self.zSliceScrollBar.setVisible(False)
             _z_label.setVisible(False)
-
-        printl(self.zSliceScrollBar.isEnabled())
         
         self.img_Widglayout.setContentsMargins(100, 0, 50, 0)
         self.zSliceScrollBar.valueChanged.connect(self.update_z_slice)
