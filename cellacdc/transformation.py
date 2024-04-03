@@ -168,14 +168,33 @@ def retrack_based_on_untracked_first_frame(
         pbar.update()
     pbar.close()
     
+    uniqueID = np.max(tracked_video) + 1
+    
+    untracked_to_unique_mapper = {}
     pbar = tqdm(total=len(tracked_video), ncols=100)
     for frame_i, tracked_lab in enumerate(tracked_video):
         rp_tracked = skimage.measure.regionprops(tracked_lab)
+        rp_tracked_dict = {obj.label:obj for obj in rp_tracked}
         for obj_tracked in rp_tracked:
             untracked_ID = tracked_to_untracked_mapper.get(obj_tracked.label)
             if untracked_ID is None:
                 # Untracked ID not present in tracked labels
                 continue
+            
+            untracked_obj = rp_tracked_dict.get(untracked_ID)
+            if untracked_obj is not None:
+                new_unique_ID = untracked_to_unique_mapper.get(untracked_ID)
+                if new_unique_ID is None:
+                    new_unique_ID = uniqueID
+                    untracked_to_unique_mapper[untracked_ID] = new_unique_ID
+                    uniqueID += 1
+                
+                # Make sure to change existing IDs to unique
+                lab = tracked_video[frame_i]
+                lab[untracked_obj.slice][untracked_obj.image] = (
+                    new_unique_ID
+                )
+            
             # Replace tracked ID of first frame to the untracked ID of the 
             # reference 
             tracked_video[frame_i][obj_tracked.slice][obj_tracked.image] = (

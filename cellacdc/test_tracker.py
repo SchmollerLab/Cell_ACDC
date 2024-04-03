@@ -5,6 +5,7 @@ import skimage.measure
 from cellacdc import core, myutils, widgets, load, html_utils
 from cellacdc import data, data_path
 from cellacdc import transformation
+from cellacdc.plot import imshow
 
 try:
     import pytest
@@ -27,7 +28,7 @@ path = (
 channel_name = 'bknapp_Movie_S1'
 end_filename_segm = 'segm'# 'segm_test'
 START_FRAME = 0 
-STOP_FRAME = 10
+STOP_FRAME = 372
 PLOT_FRAME = 1
 SAVE = False
 REAL_TIME_TRACKER = False
@@ -41,7 +42,10 @@ SCRUMBLE_IDs = False
 test_data = None
 
 if test_data is None:
-    tif_filepath, _ = qtpy.compat.getopenfilename(filters=('Images (*.tif)'))
+    tif_filepath, _ = qtpy.compat.getopenfilename(
+        basedir=myutils.getMostRecentPath(),
+        filters=('Images (*.tif)')
+    )
     if not tif_filepath:
         exit('Execution cancelled.')
     
@@ -60,6 +64,10 @@ posData.loadOtherFiles(
     load_metadata=True,
     # end_filename_segm=end_filename_segm
 )
+
+lab_stack = posData.segm_data[START_FRAME:STOP_FRAME+1]
+
+imshow(lab_stack, axis_titles=['Before tracking'], annotate_labels_idxs=[0])
 
 trackers = myutils.get_list_of_trackers()
 txt = html_utils.paragraph('''
@@ -81,8 +89,6 @@ tracker, track_params = myutils.init_tracker(
 )
 if track_params is None:
     exit('Execution aborted')    
-
-lab_stack = posData.segm_data[START_FRAME:STOP_FRAME+1]
 
 if SCRUMBLE_IDs:
     # Scrumble IDs last frame
@@ -123,10 +129,9 @@ posData.fromTrackerToAcdcDf(tracker, tracked_stack, save=True)
 
 first_untracked_lab = lab_stack[0]
 uniqueID = max(np.max(lab_stack), np.max(tracked_stack)) + 1
-print(uniqueID)
 
-tracked_video = transformation.retrack_based_on_untracked_first_frame(
-    tracked_stack, first_untracked_lab, uniqueID=uniqueID        
+retracked_video = transformation.retrack_based_on_untracked_first_frame(
+    tracked_stack.copy(), first_untracked_lab, uniqueID=uniqueID        
 )
 
 if SAVE:
@@ -139,25 +144,16 @@ if SAVE:
         import pdb; pdb.set_trace()
 
 
-
-from cellacdc.plot import imshow
-
-# images = [
-#     lab_stack[PLOT_FRAME-START_FRAME-1], 
-#     lab_stack[PLOT_FRAME-START_FRAME],
-#     tracked_stack[PLOT_FRAME-START_FRAME-1], 
-#     tracked_stack[PLOT_FRAME-START_FRAME]
-# ]
-# titles = [
-#     f'Untracked labels at frame {PLOT_FRAME}',
-#     f'Untracked labels at frame {PLOT_FRAME+1}',
-#     f'TRACKED labels at frame {PLOT_FRAME}',
-#     f'TRACKED labels at frame {PLOT_FRAME+1}',
-# ]
-
-
 imshow(
     posData.loadChannelData(''),
     tracked_stack,
+    retracked_video,
     lab_stack,
-    annotate_labels_idxs=[1, 2])
+    axis_titles=[
+        'Intensity channel', 
+        'After tracking',
+        'After re-tracking first frame', 
+        'Before tracking'
+    ],
+    annotate_labels_idxs=[1, 2, 3]
+)
