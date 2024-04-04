@@ -5687,13 +5687,6 @@ class guiWin(QMainWindow):
         if fromHover and not self.guiTabControl.highlightCheckbox.isChecked():
             # Do not highlight on hover
             return
-        
-        doHighlight = (
-            self.guiTabControl.highlightCheckbox.isChecked()
-            or self.guiTabControl.highlightSearchedCheckbox.isChecked()
-        )
-        if doHighlight:
-            self.highlightSearchedID(ID)
 
         propsQGBox = self.guiTabControl.propsQGBox
 
@@ -5706,6 +5699,13 @@ class guiWin(QMainWindow):
         propsQGBox.notExistingIDLabel.setText('')
         self.currentPropsID = ID
         propsQGBox.idSB.setValue(ID)
+        
+        doHighlight = (
+            self.guiTabControl.highlightCheckbox.isChecked()
+            or self.guiTabControl.highlightSearchedCheckbox.isChecked()
+        )
+        if doHighlight:
+            self.highlightSearchedID(ID)
         
         obj = posData.rp[obj_idx]
 
