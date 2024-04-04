@@ -17,3 +17,9 @@ cite_url = 'https://bmcbiol.biomedcentral.com/articles/10.1186/s12915-022-01372-
 dataprep_docs = 'https://cell-acdc.readthedocs.io/en/latest/getting-started.html#preparing-data-for-further-analysis-data-prep'
 
 docs_homepage = 'https://cell-acdc.readthedocs.io/en/latest'
+
+bioformats_jar_home_url = 'https://downloads.openmicroscopy.org/bio-formats/7.2.0/artifacts/bioformats_package.jar'
+
+bioformats_jar_hmgu_url = 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/NnGCP7nGKHz9Tds/download/bioformats_package.jar'
+
+bioformats_download_page = 'https://www.openmicroscopy.org/bio-formats/downloads/'

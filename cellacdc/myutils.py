@@ -1369,6 +1369,43 @@ def download_manual():
         download_url(url, manual_file_path, file_size=1727470)
     return manual_file_path
 
+def download_bioformats_jar(
+        qparent=None, logger_info=print, logger_exception=print
+    ):
+    dst_filepath = os.path.join(
+        cellacdc_path, 'bioformats', 'jars', 'bioformats_package.jar'
+    )
+    if os.path.exists(dst_filepath):
+        return True, dst_filepath
+    urls_to_try = (urls.bioformats_jar_home_url, urls.bioformats_jar_hmgu_url)
+    success = False
+    for url in urls_to_try:
+        try:
+            logger_info(
+                f'Downloading `bioformats_package.jar`...'
+            )
+            download_url(url, dst_filepath, file_size=43233280)
+            success = True
+            break
+        except Exception as err:
+            success = False
+            traceback_str = traceback.format_exc()
+            logger_exception(traceback_str)
+            continue
+    
+    if success:
+        return True, dst_filepath
+
+    _warnings.warn_download_bioformats_jar_failed(dst_filepath, qparent=qparent)
+    raise ModuleNotFoundError(
+        'Bioformats package jar could not be downloaded. Please, '
+        f'download it from here {urls.bioformats_download_page} and '
+        f'place it in the following path "{dst_filepath}". '
+        'Thank you for your patience!'
+    )
+    return False, dst_filepath
+        
+
 def showUserManual():
     manual_file_path = download_manual()
     showInExplorer(manual_file_path)

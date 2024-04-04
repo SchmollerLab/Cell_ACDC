@@ -1,9 +1,11 @@
+import os
 from functools import partial
 import re
 
 from cellacdc import html_utils, myutils, widgets
 
 from . import issues_url
+from . import urls
 
 def warnTooManyItems(mainWin, numItems, qparent):
     from . import widgets, html_utils
@@ -150,5 +152,21 @@ def warn_installing_different_cellpose_version(
     msg.warning(
         None, 'Cellpose already installed', txt, 
         buttonsTexts=('Cancel', 'Ok')
+    )
+    return msg.cancel
+
+def warn_download_bioformats_jar_failed(jar_dst_filepath, qparent=None):
+    href = html_utils.href_tag('here', urls.bioformats_download_page)
+    txt = html_utils.paragraph(f"""
+        [WARNING]: <b>Download of <code>bioformats_package.jar</code> failed.
+        </b><br><br>
+        
+        Please, download it from {href}, and place the jar file here:
+    """)
+    msg = widgets.myMessageBox(wrapText=False)
+    msg.warning(
+        qparent, 'Download of bioformats failed', txt, 
+        commands=(jar_dst_filepath,), 
+        path_to_browse=os.path.dirname(jar_dst_filepath)
     )
     return msg.cancel

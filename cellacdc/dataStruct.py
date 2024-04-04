@@ -38,6 +38,7 @@ from . import apps, myutils, widgets, html_utils, printl
 from . import load, settings_csv_path
 from . import _palettes
 from . import recentPaths_path, cellacdc_path, settings_folderpath
+from . import urls
 
 if os.name == 'nt':
     try:
@@ -1020,6 +1021,10 @@ class createDataStructWin(QMainWindow):
             self.close()
             raise OSError('This module is supported ONLY on Windows 10/10 and macOS')
 
+        success, jar_dst_path = myutils.download_bioformats_jar(
+            qparent=self, logger_info=self.logger.info, 
+            logger_exception=self.logger.exception
+        )
         global bioformats, javabridge
         self.logger.info('Checking if Java is installed...')
         myutils.check_upgrade_javabridge()
