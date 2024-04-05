@@ -16,6 +16,9 @@ requirements_new.txt
 
 yeast_toolbox/
 
+.setup.cfg
+setup.cfg
+
 # Starting from pip 21.3 setup.py is not needed anymore
 # and we rely only on setup.cfg for env
 setup.py
