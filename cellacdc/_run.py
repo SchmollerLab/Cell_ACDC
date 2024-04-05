@@ -50,7 +50,7 @@ def _install_tables(parent_software='Cell-ACDC'):
                 try:
                     import subprocess
                     subprocess.check_call(
-                        ['conda', 'install', '-y', 'pytables']
+                        ['conda', 'install', '-y', 'pytables'], shell=True
                     )
                 except Exception as err:
                     import traceback
@@ -157,7 +157,7 @@ def _setup_gui_libraries(caller_name='Cell-ACDC'):
                 import subprocess
                 if is_mac_arm64:
                     subprocess.check_call(
-                        ['conda', 'install', '-y', 'pyqt']
+                        ['conda', 'install', '-y', 'pyqt'], shell=True
                     )
                 else:
                     subprocess.check_call(

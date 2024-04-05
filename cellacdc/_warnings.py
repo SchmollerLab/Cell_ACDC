@@ -6,6 +6,7 @@ from cellacdc import html_utils, myutils
 
 from . import issues_url
 from . import urls
+from . import error_below, error_close
 
 def warnTooManyItems(mainWin, numItems, qparent):
     from . import widgets, html_utils
@@ -172,3 +173,11 @@ def warn_download_bioformats_jar_failed(jar_dst_filepath, qparent=None):
         path_to_browse=os.path.dirname(jar_dst_filepath)
     )
     return msg.cancel
+
+def log_pytorch_not_installed():
+    print(error_below)
+    print(
+        'PyTorch is not installed. See here how to install it '
+        f'{urls.install_pytorch}'
+    )
+    print(error_close)

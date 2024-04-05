@@ -6224,17 +6224,16 @@ class CopiableCommandWidget(QGroupBox):
         
         layout = QHBoxLayout()
         
-        txt = html_utils.paragraph(
-            f'<code>{command}</code>', font_size=font_size
-        )
-        label = QLabel(txt)
+        label = QLabel(self)
+        self.label = label
+        self._font_size = font_size
+        self.setCommand(command, font_size=font_size)
         label.setTextInteractionFlags(
             Qt.TextBrowserInteraction | Qt.TextSelectableByKeyboard
         )
         layout.addWidget(label)
         layout.addWidget(QVLine(shadow='Plain', color='#4d4d4d'))
         copyButton = copyPushButton('Copy', flat=True, hoverable=True)
-        copyButton._command = command
         copyButton.clicked.connect(self.copyToClipboard)
         layout.addWidget(copyButton)
         layout.addStretch(1)
@@ -6244,8 +6243,22 @@ class CopiableCommandWidget(QGroupBox):
     def copyToClipboard(self):
         cb = QApplication.clipboard()
         cb.clear(mode=cb.Clipboard)
-        cb.setText(self.sender()._command, mode=cb.Clipboard)
+        cb.setText(self._command, mode=cb.Clipboard)
         print('Command copied!')
+    
+    def setCommand(self, command, font_size=None):
+        if font_size is None:
+            font_size = self._font_size
+        
+        self._command = command
+        txt = html_utils.paragraph(
+            f'<code>{command}</code>', font_size=font_size
+        )
+        self.label.setText(txt)
+    
+    def command(self):
+        return self._command
+        
 
 def PostProcessSegmWidget(
         minimum, maximum, value, useSliders, isFloat=False, normalize=False,

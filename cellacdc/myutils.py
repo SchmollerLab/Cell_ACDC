@@ -38,7 +38,7 @@ if GUI_INSTALLED:
     from qtpy.QtWidgets import QMessageBox
     from qtpy.QtCore import Signal, QObject, QCoreApplication
     
-    from . import widgets
+    from . import widgets, apps
     from . import config
     
 from . import core, load
@@ -448,7 +448,7 @@ def store_custom_model_path(model_file_path):
 
 def check_git_installed(parent=None):
     try:
-        subprocess.check_call(['git', '--version'])
+        subprocess.check_call(['git', '--version'], shell=True)
         return True
     except Exception as e:
         print('='*20)
@@ -478,7 +478,7 @@ def browse_docs():
 
 def install_java():
     try:
-        subprocess.check_call(['javac', '-version'])
+        subprocess.check_call(['javac', '-version'], shell=True)
         return False
     except Exception as e:
         from . import widgets
@@ -2222,11 +2222,11 @@ def check_install_baby():
     check_install_package('baby', pypi_name='baby-seg')
 
 def check_install_yeaz():
-    check_install_package('torch')
+    check_install_torch()
     check_install_package('yeaz')
 
 def check_install_segment_anything():
-    check_install_package('torchvision')
+    check_install_torch()
     check_install_package('segment_anything')
 
 def is_gui_running():
@@ -2254,16 +2254,8 @@ def check_pkg_version(import_pkg_name, min_version, raise_err=True):
 
 def install_package_conda(conda_pkg_name, channel='conda-forge'):
     subprocess.check_call(
-        ['conda', 'install', '-c', channel, '-y', conda_pkg_name]
+        ['conda', 'install', '-c', channel, '-y', conda_pkg_name], shell=True
     )
-
-def is_conda_env():
-    try:
-        conda_env_list_out = subprocess.check_output(['conda', 'env', 'list'])
-    except Exception as err:
-        return False
-    
-    envs_paths = conda_env_list_out.split('\n')
 
 def check_install_omnipose():
     try:
@@ -2277,7 +2269,33 @@ def check_install_omnipose():
     except Exception as err:
         install_package_conda('mahotas')
         _install_pip_package('omnipose-acdc')
+
+def _run_command(command, shell=True):
+    args = command.split(' ')
+    subprocess.check_call(args, shell=shell)
+
+def check_install_torch(is_cli=False, caller_name='Cell-ACDC', qparent=None):
+    try:
+        import torch
+        import torchvision
+        return
+    except Exception as err:
+        traceback.print_exc()
     
+    if is_cli:
+        _warnings.log_pytorch_not_installed() 
+        return
+    
+    win = apps.InstallPyTorchDialog(parent=qparent, caller_name=caller_name)
+    win.exec_()
+    if win.cancel:
+        _warnings.log_pytorch_not_installed() 
+        return
+    
+    command = win.command
+    print(f'Running command: "{command}"')
+    _run_command(command)    
+
 def check_install_package(
         pkg_name: str, 
         import_pkg_name: str='',
@@ -2517,9 +2535,11 @@ def _install_tensorflow():
     cpu = platform.processor()
     if is_mac and cpu == 'arm':
         args = ['conda', 'install', '-y', '-c', 'conda-forge', 'tensorflow']
+        shell = True
     else:
         args = [sys.executable, '-m', 'pip', 'install', '-U', 'tensorflow']
-    subprocess.check_call(args)
+        shell = False
+    subprocess.check_call(args, shell=shell)
 
 def _install_segment_anything():
     args = [

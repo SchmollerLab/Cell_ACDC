@@ -23,3 +23,5 @@ bioformats_jar_home_url = 'https://downloads.openmicroscopy.org/bio-formats/7.2.
 bioformats_jar_hmgu_url = 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/NnGCP7nGKHz9Tds/download/bioformats_package.jar'
 
 bioformats_download_page = 'https://www.openmicroscopy.org/bio-formats/downloads/'
+
+install_pytorch = 'https://pytorch.org/get-started/locally/'

@@ -64,6 +64,7 @@ import qtpy.compat
 from . import exception_handler
 from . import load, prompts, core, measurements, html_utils
 from . import is_mac, is_win, is_linux, settings_folderpath, config
+from . import is_conda_env, pytorch_commands
 from . import qrc_resources, printl
 from . import colors
 from . import issues_url
@@ -77,6 +78,7 @@ from . import features
 from . import _core
 from . import types
 from . import plot
+from . import urls
 from .regex import float_regex
 
 POSITIVE_FLOAT_REGEX = float_regex(allow_negative=False)
@@ -13348,5 +13350,114 @@ class QInput(QBaseDialog):
             msg = widgets.myMessageBox(showCentered=False)
             msg.critical(self, 'Empty', 'Entry cannot be empty.')
             return
+        self.cancel = False
+        self.close()
+
+class InstallPyTorchDialog(QBaseDialog):
+    def __init__(self, parent=None, caller_name='Cell-ACDC'):
+        super().__init__(parent=parent)
+        
+        self.cancel = True
+        
+        mainLayout = QVBoxLayout()
+        
+        innerLayout = QGridLayout()
+        
+        iconLabel = QLabel(self)
+        standardIcon = getattr(QStyle, 'SP_MessageBoxInformation')
+        icon = self.style().standardIcon(standardIcon)
+        pixmap = icon.pixmap(60, 60)
+        iconLabel.setPixmap(pixmap)
+        innerLayout.addWidget(iconLabel, 0, 0, alignment=Qt.AlignTop)
+        
+        href = html_utils.href_tag('How to install PyTorch', urls.install_pytorch)
+        important = html_utils.to_admonition("""
+            Should you choose to install PyTorch yourself, <b>make sure to 
+            activate<br>
+            the correct <code>acdc</code> environment first</b>.
+        """, admonition_type='important')
+        
+        infoText = html_utils.paragraph(f"""
+            {caller_name} needs to <b>install the package</b> <code>PyTorch</code>.<br><br>
+            Select your preferences and click ok to install it now. 
+            You will have to <b>confirm the installation in the terminal</b>.<br><br>
+            Alternatively, you can close {caller_name} and run the command 
+            yourself.<br><br>
+            For more details see this guide: {href}<br>
+            {important}
+        """)
+        innerLayout.addWidget(QLabel(infoText), 0, 1)
+        innerLayout.addItem(QSpacerItem(10, 10), 1, 1)
+        
+        preferencesLayout = QGridLayout()
+        
+        row = 0
+        self.osCombobox = QComboBox()
+        self.osCombobox.addItems(['Linux', 'Mac', 'Windows'])
+        preferencesLayout.addWidget(QLabel('Your OS'), row, 0)
+        preferencesLayout.addWidget(self.osCombobox, row, 1)
+        
+        if is_mac:
+            self.osCombobox.setCurrentText('Mac')
+        elif is_win:
+            self.osCombobox.setCurrentText('Windows')
+        
+        row += 1
+        self.pkgManagerCombobox = QComboBox()
+        self.pkgManagerCombobox.addItems(['Conda', 'Pip'])
+        if not is_conda_env():
+            self.pkgManagerCombobox.setCurrentText('Pip')
+            self.pkgManagerCombobox.setDisabled(True)
+        
+        preferencesLayout.addWidget(QLabel('Package manager'), row, 0)
+        preferencesLayout.addWidget(self.pkgManagerCombobox, row, 1)
+        
+        row += 1
+        self.cmptPlatformCombobox = QComboBox()
+        self.cmptPlatformCombobox.addItems(
+            ['CPU', 'CUDA 11.8 (NVIDIA GPU)', 'CUDA 12.1 (NVIDIA GPU)']
+        )
+        
+        preferencesLayout.addWidget(QLabel('Compute Platform'), row, 0)
+        preferencesLayout.addWidget(self.cmptPlatformCombobox, row, 1)
+        
+        row += 1
+        self.commandWidget = widgets.CopiableCommandWidget(
+            command='pip install torch'
+        )
+        preferencesLayout.addWidget(QLabel('Run this command: '), row, 0)
+        preferencesLayout.addWidget(self.commandWidget, row, 1, 1, 2)
+        
+        innerLayout.addLayout(preferencesLayout, 2, 1)
+        innerLayout.setColumnStretch(0, 0)
+        innerLayout.setColumnStretch(1, 0)
+        innerLayout.setColumnStretch(2, 1)
+        
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+        
+        mainLayout.addLayout(innerLayout)
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(buttonsLayout)
+        
+        self.setLayout(mainLayout)
+        
+        self.osCombobox.currentTextChanged.connect(self.updateCommand)
+        self.pkgManagerCombobox.currentTextChanged.connect(self.updateCommand)
+        self.cmptPlatformCombobox.currentTextChanged.connect(self.updateCommand)
+        
+        self.updateCommand()
+    
+    def updateCommand(self, *args, **kwargs):
+        osText = self.osCombobox.currentText()
+        pkgManager = self.pkgManagerCombobox.currentText()
+        cmptPlatform = self.cmptPlatformCombobox.currentText()
+        command = pytorch_commands[osText][pkgManager][cmptPlatform]
+        self.commandWidget.setCommand(command)
+    
+    def ok_cb(self):
+        self.command = self.commandWidget.command()
         self.cancel = False
         self.close()
