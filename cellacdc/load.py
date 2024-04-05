@@ -2375,10 +2375,16 @@ class loadData:
 
                 self.metadata_df = self.metadata_df.drop(idx_to_drop)
         self.metadataToCsv(signals=signals, mutex=mutex, waitCond=waitCond)
-        self.metadata_df.to_csv(last_entries_metadata_path)
+        try:
+            self.metadata_df.to_csv(last_entries_metadata_path)
+        except PermissionError:
+            pass
         if additionalMetadata is not None:
-            with open(additional_metadata_path, mode='w') as file:
-                json.dump(additionalMetadata, file, indent=2)
+            try:
+                with open(additional_metadata_path, mode='w') as file:
+                    json.dump(additionalMetadata, file, indent=2)
+            except PermissionError:
+                pass
 
     def criticalExtNotValid(self, signals=None):
         err_title = f'File extension {self.ext} not valid.'
