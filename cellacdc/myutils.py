@@ -2257,6 +2257,14 @@ def install_package_conda(conda_pkg_name, channel='conda-forge'):
         ['conda', 'install', '-c', channel, '-y', conda_pkg_name]
     )
 
+def is_conda_env():
+    try:
+        conda_env_list_out = subprocess.check_output(['conda', 'env', 'list'])
+    except Exception as err:
+        return False
+    
+    envs_paths = conda_env_list_out.split('\n')
+
 def check_install_omnipose():
     try:
         import_module('omnipose')

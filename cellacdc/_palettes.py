@@ -2,9 +2,10 @@ import os
 import pandas as pd
 import re
 
-from qtpy import QtGui, QtWidgets, QtCore
+from cellacdc import printl, settings_csv_path, GUI_INSTALLED
 
-from cellacdc import printl, settings_csv_path
+if GUI_INSTALLED:
+    from qtpy import QtGui
 
 def _highlight_rgba():
     scheme = get_color_scheme()
@@ -132,7 +133,7 @@ def getPainterColor():
     else:
         return _dark_colors()['Text']
 
-def getPaletteColorScheme(palette: QtGui.QPalette, scheme='light'):
+def getPaletteColorScheme(palette: 'QtGui.QPalette', scheme='light'):
     if scheme == 'light':
         colors = _light_colors()
         disabled_colors = _light_disabled_colors()

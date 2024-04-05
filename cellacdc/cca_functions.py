@@ -16,15 +16,13 @@ from typing import Iterable
 
 from . import GUI_INSTALLED
 if GUI_INSTALLED:
-    from qtpy.QtGui import QIcon
-    from qtpy.QtWidgets import QApplication, QStyleFactory, QFileDialog
-    from qtpy import QtCore
-    from . import apps, widgets
+    from qtpy.QtWidgets import QFileDialog
+    from . import widgets
     from . import qrc_resources
     from . import _run
 
 from . import load, cca_df_colnames
-from . import myutils, prompts, widgets, html_utils, printl
+from . import myutils, prompts, html_utils, printl
 
 def configuration_dialog():
     app, _ = _run._setup_app(splashscreen=False)

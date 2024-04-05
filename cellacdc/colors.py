@@ -5,13 +5,16 @@ import skimage.segmentation
 import skimage.measure
 
 from collections.abc import Callable, Sequence
-from pyqtgraph.colormap import ColorMap
-
 import numpy as np
-import matplotlib
-import colorsys
-import matplotlib.pyplot as plt
-from matplotlib.colors import LinearSegmentedColormap
+
+from . import GUI_INSTALLED
+
+if GUI_INSTALLED:
+    from pyqtgraph.colormap import ColorMap
+    import matplotlib
+    import colorsys
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import LinearSegmentedColormap
 
 try:
     import networkx as nx
