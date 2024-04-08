@@ -245,13 +245,80 @@ def getMemoryFootprint(files_list):
 def get_logs_path():
     return logs_path
 
-def setupLogger(module='gui', logs_path=None):
+class Logger(logging.Logger):
+    def __init__(
+            self,
+            module='base', 
+            name='cellacdc-logger', 
+            level=logging.DEBUG
+        ):
+        super().__init__(f'{name}-{module}', level=level)
+        self._stdout = sys.stdout
+    
+    def write(self, text, log_to_file=True):
+        """Capture print statements, print to terminal and log text to 
+        the open log file
+
+        Parameters
+        ----------
+        text : str
+            Text to log
+        log_to_file : bool, optional
+            If True, call `info` method with `text`. Default is True
+        """        
+        self._stdout.write(text)
+        if not log_to_file:
+            return
+        
+        if text == '\n':
+            return
+        
+        self.debug(text)
+
+    def close(self):
+        for handler in self.handlers:
+            handler.close()
+            self.removeHandler(handler)
+        sys.stdout = self._stdout
+    
+    def __del__(self):
+        sys.stdout = self._stdout
+    
+    def info(self, text):
+        super().info(text)
+        self.write(f'{text}\n', log_to_file=False)
+    
+    def warning(self, text):
+        super().warning(text)
+        self.write(f'[WARNING]: {text}\n', log_to_file=False)
+    
+    def error(self, text):
+        super().error(text)
+        self.write(f'[ERROR]: {text}\n', log_to_file=False)
+    
+    def critical(self, text):
+        super().critical(text)
+        self.write(f'[CRITICAL]: {text}\n', log_to_file=False)
+    
+    def exception(self, text):
+        super().exception(text)
+        self.write(f'[ERROR]: {text}\n', log_to_file=False)
+    
+    def log(self, level, text):
+        super().log(level, text)
+        levelName = self.getLevelName(level)
+        self.write(f'[{levelName}]: {text}\n', log_to_file=False)
+    
+    def flush(self):
+        pass
+
+def setupLogger(module='base', logs_path=None):
     if logs_path is None:
         logs_path = get_logs_path()
     
-    logger = logging.getLogger(f'cellacdc-logger-{module}')
-    logger.setLevel(logging.INFO)
-
+    logger = Logger(module=module)
+    sys.stdout = logger
+    
     if not os.path.exists(logs_path):
         os.mkdir(logs_path)
     else:
@@ -274,7 +341,7 @@ def setupLogger(module='gui', logs_path=None):
     log_path = os.path.join(logs_path, log_filename)
 
     output_file_handler = logging.FileHandler(log_path, mode='w')
-    stdout_handler = logging.StreamHandler(sys.stdout)
+    # stdout_handler = logging.StreamHandler(sys.stdout)
 
     # Format your logs (optional)
     formatter = logging.Formatter(
@@ -282,16 +349,17 @@ def setupLogger(module='gui', logs_path=None):
         '------------------------\n'
         '%(message)s\n'
         '------------------------\n',
-        datefmt='%d-%m-%Y, %H:%M:%S')
+        datefmt='%d-%m-%Y, %H:%M:%S'
+    )
     output_file_handler.setFormatter(formatter)
 
     logger.addHandler(output_file_handler)
-    logger.addHandler(stdout_handler)
+    # logger.addHandler(stdout_handler)
     
-    if module == 'gui':
-        qt_handler = widgets.QtHandler()
-        qt_handler.setFormatter(logging.Formatter("%(message)s"))
-        logger.addHandler(qt_handler)
+    # if module == 'gui' and GUI_INSTALLED:
+    #     qt_handler = widgets.QtHandler()
+    #     qt_handler.setFormatter(logging.Formatter("%(message)s"))
+    #     logger.addHandler(qt_handler)
 
     return logger, logs_path, log_path, log_filename
 

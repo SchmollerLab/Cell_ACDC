@@ -162,7 +162,7 @@ try:
     import seaborn
     GUI_INSTALLED = True
 except Exception as e:
-    GUI_INSTALLED = False
+    GUI_INSTALLED = False        
 
 import pandas as pd
 
@@ -172,10 +172,10 @@ pd.set_option("display.max_columns", 20)
 pd.set_option("display.max_rows", 200)
 pd.set_option('display.expand_frame_repr', False)
 
+open_printl_str = '*'*100
+close_printl_str = '='*100
+
 def printl(*objects, pretty=False, is_decorator=False, idx=1, **kwargs):
-    # Copy current stdout, reset to default __stdout__ and then restore current
-    current_stdout = sys.stdout
-    sys.stdout = sys.__stdout__
     timestap = datetime.now().strftime('%H:%M:%S')
     currentframe = inspect.currentframe()
     outerframes = inspect.getouterframes(currentframe)
@@ -183,17 +183,21 @@ def printl(*objects, pretty=False, is_decorator=False, idx=1, **kwargs):
     callingframe = outerframes[idx].frame
     callingframe_info = inspect.getframeinfo(callingframe)
     filepath = callingframe_info.filename
-    filename = os.path.basename(filepath)
-    print_func = pprint if pretty else print
-    print('*'*30)
-    print(f'File "{filepath}", line {callingframe_info.lineno} - {timestap}:')
-    if 'sep' not in kwargs:
-        kwargs['sep'] = ', '
+    fileinfo_str = (
+        f'File "{filepath}", line {callingframe_info.lineno} - {timestap}:'
+    )
     if pretty:
-        del kwargs['sep']
-    print_func(*objects, **kwargs)
-    print('='*30)
-    sys.stdout = current_stdout
+        print(open_printl_str)
+        print(fileinfo_str)
+        for o, object in enumerate(objects):
+            text = str(object)                
+            pprint(text, **kwargs)
+        print(close_printl_str)
+    else:
+        sep = kwargs.get('sep', ', ')
+        text = sep.join([str(object) for object in objects])
+        text = f'{open_printl_str}\n{fileinfo_str}\n{text}\n{close_printl_str}'
+        print(text)
 
 parent_path = os.path.dirname(cellacdc_path)
 html_path = os.path.join(cellacdc_path, '_html')

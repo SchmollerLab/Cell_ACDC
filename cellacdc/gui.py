@@ -24752,13 +24752,7 @@ class guiWin(QMainWindow):
         self.clearMemory()
 
         self.logger.info('Closing GUI logger...')
-        handlers = self.logger.handlers[:]
-        for handler in handlers:
-            handler.close()
-            self.logger.removeHandler(handler)
-        
-        # Restore default stdout that was overweritten by setupLogger
-        sys.stdout = self.logger.default_stdout
+        self.logger.close()
         
         if self.lazyLoader is None:
             self.sigClosed.emit(self)
