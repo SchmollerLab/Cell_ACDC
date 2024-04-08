@@ -354,7 +354,6 @@ def setupLogger(module='base', logs_path=None):
     output_file_handler.setFormatter(formatter)
 
     logger.addHandler(output_file_handler)
-    # logger.addHandler(stdout_handler)
     
     # if module == 'gui' and GUI_INSTALLED:
     #     qt_handler = widgets.QtHandler()
