@@ -273,6 +273,9 @@ class Logger(logging.Logger):
         if text == '\n':
             return
         
+        if not text:
+            return 
+        
         self.debug(text)
 
     def close(self):
@@ -307,7 +310,8 @@ class Logger(logging.Logger):
     def log(self, level, text):
         super().log(level, text)
         levelName = logging.getLevelName(level)
-        self.write(f'[{levelName}]: {text}\n', log_to_file=False)
+        getattr(self, levelName.lower())(text)
+        # self.write(f'[{levelName}]: {text}\n', log_to_file=False)
     
     def flush(self):
         pass
@@ -354,6 +358,8 @@ def setupLogger(module='base', logs_path=None):
     output_file_handler.setFormatter(formatter)
 
     logger.addHandler(output_file_handler)
+    
+    logger.info(f'Initialized log file "{log_path}"')
     
     # if module == 'gui' and GUI_INSTALLED:
     #     qt_handler = widgets.QtHandler()
