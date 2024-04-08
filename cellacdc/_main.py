@@ -99,16 +99,7 @@ class mainWin(QMainWindow):
         self.logger = logger
         self.log_path = log_path
         self.log_filename = log_filename
-        self.logs_path = logs_path
-
-        py_ver = sys.version_info
-        python_version = f'{py_ver.major}.{py_ver.minor}.{py_ver.micro}'
-        self.logger.info(
-            f'Using Qt {QtCore.__version__} with Python {python_version}'
-        )
-        self.logger.info(
-            f'Cell-ACDC installation directory: "{cellacdc_path}"'
-        )
+        self.logs_path = logs_path        
         
         if not is_linux:
             self.loadFonts()

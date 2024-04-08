@@ -358,6 +358,16 @@ def setupLogger(module='base', logs_path=None):
     
     logger.info(f'Initialized log file "{log_path}"')
     
+    py_ver = sys.version_info
+    python_version = f'{py_ver.major}.{py_ver.minor}.{py_ver.micro}'
+    logger.info(f'Running Python v{python_version} from "{sys.exec_prefix}"')
+    
+    if GUI_INSTALLED:
+        from qtpy import QtCore
+        logger.info(f'Using Qt version {QtCore.__version__}')
+    
+    logger.info(f'Cell-ACDC installation directory: "{cellacdc_path}"')
+    
     # if module == 'gui' and GUI_INSTALLED:
     #     qt_handler = widgets.QtHandler()
     #     qt_handler.setFormatter(logging.Formatter("%(message)s"))
