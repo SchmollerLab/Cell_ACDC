@@ -24536,6 +24536,8 @@ class guiWin(QMainWindow):
     def saveDataFinished(self):
         if self.saveWin.aborted or self.worker.abort:
             self.titleLabel.setText('Saving process cancelled.', color='r')
+        elif self._isQuickSave:
+            self.titleLabel.setText('Segmentation file saved (not the table)')
         else:
             self.titleLabel.setText('Saved!')
         self.saveWin.workerFinished = True
