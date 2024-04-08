@@ -903,32 +903,7 @@ class guiWin(QMainWindow):
 
         self.setAcceptDrops(True)
         self._appName = 'Cell-ACDC'
-    
-    def _printl(
-            self, *objects, is_decorator=False, **kwargs
-        ):
-        timestap = datetime.now().strftime('%H:%M:%S')
-        currentframe = inspect.currentframe()
-        outerframes = inspect.getouterframes(currentframe)
-        idx = 2 if is_decorator else 1
-        callingframe = outerframes[idx].frame
-        callingframe_info = inspect.getframeinfo(callingframe)
-        filepath = callingframe_info.filename
-        filename = os.path.basename(filepath)
-        self.logger.info('*'*30)
-        self.logger.info(
-            f'File "{filepath}", line {callingframe_info.lineno} - {timestap}:'
-        )
-        if kwargs.get('pretty'):
-            txt = pprint.pformat(objects[0])
-        else:
-            txt = ', '.join([str(x) for x in objects])
-        self.logger.info(txt)
-        self.logger.info('='*30)
-    
-    def _print(self, *objects):
-        self.logger.info(', '.join([str(x) for x in objects]))
-
+        
     def setTooltips(self): #laoding tooltips for GUI from .\Cell_ACDC\docs\source\tooltips.rst
         tooltips = load.get_tooltips_from_docs()
 
@@ -941,9 +916,7 @@ class guiWin(QMainWindow):
 
             getattr(self, key).setToolTip(tooltip)
 
-    def run(self, module='acdc_gui', logs_path=None):
-        global print, printl
-        
+    def run(self, module='acdc_gui', logs_path=None):        
         self.setWindowIcon()
         self.setWindowTitle()
         
@@ -965,9 +938,6 @@ class guiWin(QMainWindow):
         self.log_path = log_path
         self.log_filename = log_filename
         self.logs_path = logs_path
-
-        # print = self._print
-        printl = self._printl
 
         self.initProfileModels()
         self.loadLastSessionSettings()
@@ -1035,7 +1005,7 @@ class guiWin(QMainWindow):
 
         self.gui_connectActions()
         self.gui_createStatusBar()
-        self.gui_createTerminalWidget()
+        # self.gui_createTerminalWidget()
 
         self.gui_createGraphicsPlots()
         self.gui_addGraphicsItems()
@@ -7746,7 +7716,6 @@ class guiWin(QMainWindow):
                 self.textAnnot[ax].setPxMode(checked)
         
         self.updateAllImages()
-        printl('clicked')
 
     def relabelSequentialCallback(self):
         mode = str(self.modeComboBox.currentText())
@@ -11823,6 +11792,9 @@ class guiWin(QMainWindow):
         self.thread.start()
     
     def storeViewRange(self):
+        if not hasattr(self, 'isRangeReset'):
+            return
+        
         if not self.isRangeReset:
             return
         self.ax1_viewRange = self.ax1.viewRange()
@@ -12267,8 +12239,10 @@ class guiWin(QMainWindow):
             return
        
         if ev.key() == Qt.Key_Q and self.debug:
-            posData = self.data[self.pos_i]
-            printl(self.labelRoiTrangeCheckbox.findChild(QAction).isChecked())
+            # posData = self.data[self.pos_i]
+            # printl(self.labelRoiTrangeCheckbox.findChild(QAction).isChecked())
+            print('ciao')
+            printl('long ciao')
         
         if not self.isDataLoaded:
             self.logger.info(
@@ -14423,7 +14397,7 @@ class guiWin(QMainWindow):
     
     def lazyLoaderWorkerClosed(self):
         if self.lazyLoader.salute:
-            print('Cell-ACDC GUI closed.')     
+            self.logger.info('Cell-ACDC GUI closed.')     
             self.sigClosed.emit(self)
         
         self.lazyLoader = None

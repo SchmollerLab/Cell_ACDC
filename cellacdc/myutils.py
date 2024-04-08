@@ -287,24 +287,24 @@ class Logger(logging.Logger):
     def __del__(self):
         sys.stdout = self._stdout
     
-    def info(self, text):
-        super().info(text)
+    def info(self, text, *args, **kwargs):
+        super().info(text, *args, **kwargs)
         self.write(f'{text}\n', log_to_file=False)
     
-    def warning(self, text):
-        super().warning(text)
+    def warning(self, text, *args, **kwargs):
+        super().warning(text, *args, **kwargs)
         self.write(f'[WARNING]: {text}\n', log_to_file=False)
     
-    def error(self, text):
-        super().error(text)
+    def error(self, text, *args, **kwargs):
+        super().error(text, *args, **kwargs)
         self.write(f'[ERROR]: {text}\n', log_to_file=False)
     
-    def critical(self, text):
-        super().critical(text)
+    def critical(self, text, *args, **kwargs):
+        super().critical(text, *args, **kwargs)
         self.write(f'[CRITICAL]: {text}\n', log_to_file=False)
     
-    def exception(self, text):
-        super().exception(text)
+    def exception(self, text, *args, **kwargs):
+        super().exception(text, *args, **kwargs)
         self.write(f'[ERROR]: {text}\n', log_to_file=False)
     
     def log(self, level, text):
@@ -314,7 +314,7 @@ class Logger(logging.Logger):
         # self.write(f'[{levelName}]: {text}\n', log_to_file=False)
     
     def flush(self):
-        pass
+        self._stdout.flush()
 
 def setupLogger(module='base', logs_path=None):
     if logs_path is None:
@@ -336,8 +336,6 @@ def setupLogger(module='base', logs_path=None):
                     os.remove(file)
                 except Exception as e:
                     pass
-    
-    logger.default_stdout = sys.stdout
 
     date_time = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     id = uuid4()
@@ -345,7 +343,6 @@ def setupLogger(module='base', logs_path=None):
     log_path = os.path.join(logs_path, log_filename)
 
     output_file_handler = logging.FileHandler(log_path, mode='w')
-    # stdout_handler = logging.StreamHandler(sys.stdout)
 
     # Format your logs (optional)
     formatter = logging.Formatter(
