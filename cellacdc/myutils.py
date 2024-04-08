@@ -306,7 +306,7 @@ class Logger(logging.Logger):
     
     def log(self, level, text):
         super().log(level, text)
-        levelName = self.getLevelName(level)
+        levelName = logging.getLevelName(level)
         self.write(f'[{levelName}]: {text}\n', log_to_file=False)
     
     def flush(self):
