@@ -2583,6 +2583,7 @@ def _install_package_gui_msg(
         pkg_command = pkg_name
     
     command_html = pkg_command.lower().replace('<', '&lt;').replace('>', '&gt;')
+    command = f'pip install --upgrade {command_html}'
 
     txt = html_utils.paragraph(f"""
         {caller_name} is going to <b>download and {install_text}</b>
@@ -2591,16 +2592,16 @@ def _install_package_gui_msg(
         before continuing.<br>
         Progress will be displayed on the terminal<br><br>
         You might have to <b>restart {caller_name}</b>.<br><br>
-        <b>IMPORTANT:</b> If the installation fails please install
-        <code>{pkg_name}</code> manually with the follwing command:<br><br>
-        <code>pip install --upgrade {command_html}</code><br><br>
-        Alternatively, you can cancel the process and try later.
+        Alternatively, you can cancel the process and try later.<br><br>
+        To install later, or if the installation fails, run the following 
+        command:
     """)
     if note:
         txt = f'{txt}{note}'
     _, okButton = msg.information(
         parent, f'Install {pkg_name}', txt, 
-        buttonsTexts=('Cancel', 'Ok')
+        buttonsTexts=('Cancel', 'Ok'), 
+        commands=(command,)
     )
     return msg.clickedButton == okButton
 
