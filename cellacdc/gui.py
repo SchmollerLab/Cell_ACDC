@@ -934,6 +934,8 @@ class guiWin(QMainWindow):
             logger.info(f'Initializing GUI v{self._version}')
         else:
             logger.info(f'Initializing GUI...')
+        
+        self.module = module
         self.logger = logger
         self.log_path = log_path
         self.log_filename = log_filename
@@ -22537,7 +22539,10 @@ class guiWin(QMainWindow):
     
     def cleanUpOnError(self):
         self.onEscape()
-        txt = 'WARNING: Cell-ACDC is in error state. Please, restart.'
+        caller = 'Cell-ACDC'
+        if self.module.startswith('spotmax'):
+            caller = 'spotMAX'
+        txt = f'WARNING: {caller} is in error state. Please, restart.'
         _hl = '===================================='
         self.titleLabel.setText(txt, color='r')
         self.logger.info(f'{_hl}\n{txt}\n{_hl}')
