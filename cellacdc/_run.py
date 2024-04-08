@@ -5,7 +5,7 @@ from importlib import import_module
 import traceback
 
 def _install_tables(parent_software='Cell-ACDC'):
-    from . import try_input_install_package
+    from . import try_input_install_package, is_conda_env
     try:
         import tables
         return False
@@ -32,26 +32,43 @@ def _install_tables(parent_software='Cell-ACDC'):
             )
             print('-'*60)
             print(txt)
-            command_txt = 'pip install --upgrade tables'
+            if is_conda_env():
+                command_txt = 'conda install tables'
+                alt_command_txt = 'pip install --upgrade tables'
+                cmd_args = command_txt.split(' ')
+                alt_cmd_args = [sys.executable, '-m', *command_txt.split(' ')]
+                pkg_mng = 'conda'
+                alt_pkg_mng = 'pip'
+                shell = True
+                alt_shell = False
+            else:
+                alt_command_txt = 'conda install tables'
+                command_txt = 'pip install --upgrade tables'
+                cmd_args = [sys.executable, '-m', *command_txt.split(' ')]
+                alt_cmd_args = alt_command_txt.split(' ')
+                pkg_mng = 'pip'
+                alt_pkg_mng = 'conda'
+                shell = False
+                alt_shell = True
+                
             answer = try_input_install_package('tables', command_txt)
+            
             if answer.lower() == 'y' or not answer:
+                import subprocess
                 try:
-                    import subprocess
-                    subprocess.check_call(
-                        [sys.executable, '-m', 'pip', 'install', '-U', 'tables']
-                    )
+                    subprocess.check_call(cmd_args, shell=shell)
+                    break
                 except Exception as err:
-                    print('-'*60)
+                    print('-'*100)
                     print(
-                        '[WARNING]: Installation of `tables` with pip failed. '
-                        'Trying with conda...'
+                        f'[WARNING]: Installation of `tables` with '
+                        f'{pkg_mng} failed. Trying with {alt_pkg_mng}...'
                     )
-                    print('-'*60)
+                    print('-'*100)
+                
                 try:
-                    import subprocess
-                    subprocess.check_call(
-                        ['conda', 'install', '-y', 'pytables'], shell=True
-                    )
+                    subprocess.check_call(alt_cmd_args, shell=alt_shell)
+                    break
                 except Exception as err:
                     import traceback
                     traceback.print_exc()
