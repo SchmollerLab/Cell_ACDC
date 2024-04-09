@@ -18,7 +18,9 @@ def reorg_daughter_cells(lineage_tree_frame, max_daughter):
     Returns:
         pandas.DataFrame: The lineage tree frame with reorganized daughter cells (e.g. 'daughter_ID_tree_1', 'daughter_ID_tree_2', ...)
     """
+    printl('Reorganizing daughter cells...')
     new_columns = [f'sister_ID_tree_{i+1}' for i in range(max_daughter-1)]
+    # lineage_tree_frame['sister_ID_tree'] = lineage_tree_frame['sister_ID_tree'].apply(lambda x: x + [-1]*(max_daughter-len(x)) if len(x) < max_daughter else x) # fill in -1 for fewer daughters (I think this is handled in other parts of the code already)
     sister_columns = lineage_tree_frame['sister_ID_tree'].apply(pd.Series)
     lineage_tree_frame[new_columns] = sister_columns
     lineage_tree_frame['sister_ID_tree'] = sister_columns[0]
@@ -226,28 +228,30 @@ def update_generation_from_df(families, df): # may need to differentiate for cel
 
 def generate_fam_dict_from_df_li(df_li, frames_for_df_li=None):
 
+    # df_li = df_li.copy()
     family_dict = {}
 
     if not frames_for_df_li:
         frames_for_df_li = range(len(df_li))
 
-    
-
     for i, df in zip(frames_for_df_li, df_li):
-        df['frame_i'] = i
-        df = (df
-              .reset_index()
-              .set_index(['frame_i', 'Cell_ID'])
-              )
         df_fams = df.groupby('root_ID_tree')
-        
         for root_id, df_fam in df_fams:
+            if root_id == 0:
+                printl(f'''Root ID is 0. This is not allowed. Frame: {i}, Cell_ID(s): {df_fam.index.to_string()} \n
+                        This is probably because the savedata is corrupted and a frame is only partially saved.''')
+                continue
             # root_id = df_fam.iloc[0]['root_ID_tree']
+            df_fam["frame_i"] = i
+            df_fam = (df_fam
+                      .reset_index()
+                      .set_index(['frame_i', 'Cell_ID'])
+                    )
             if root_id not in family_dict.keys(): 
                 family_dict[root_id] = df_fam
             else:
                 family_dict[root_id] = pd.concat([family_dict[root_id], df_fam])
-                
+
     return family_dict
 
 def create_unique_Cell_ID_df(family_dict):
@@ -284,6 +288,7 @@ def update_dict_from_df(family_dict, df, frame_i, max_daughter=2):
         dict: The updated dictionary with new rows added.
 
     """
+    df = df.copy()
     df['frame_i'] = frame_i
     IDs_covered = set()
     df = df.reset_index()
@@ -427,7 +432,10 @@ def dict_to_fams(family_dict):
     for key, df_fam in family_dict.items():
         df_fam = (df_fam
                   .reset_index()
-                  .set_index('Cell_ID'))
+                  .set_index('Cell_ID')
+                  )
+        df_fam = df_fam[~df_fam.index.duplicated(keep='first')]
+        
         familiy = [(key, df_fam.loc[key, 'generation_num_tree'])] # first entry is the root ID (should be first cell)
         df_fam = (df_fam
                   .drop(key)
@@ -449,7 +457,16 @@ def dict_to_df_li(family_dict): # may need to drop some columns
 
     df_group = general_df.groupby('frame_i')
     for _, df in df_group:
-        df = df.drop('frame_i', axis=1)
+        df = (df
+              .drop('frame_i', axis=1)
+              .reset_index()
+              .set_index('Cell_ID')
+              )
+        if "level_0" in df.columns:
+            df = df.drop(columns="level_0")
+        if "index" in df.columns:
+            df = df.drop(columns="index")
+
         df_list.append(df)
 
     return df_list, frames_for_dfs
@@ -684,14 +701,14 @@ class normal_division_lineage_tree:
         cca_df = filter_current_IDs(cca_df, curr_IDs)
         self.lineage_list.append(cca_df)
 
-    def real_time_tree(self, frame_i, lab, prev_lab, rp=None, prev_rp=None): #TODO: make this ingnore corrected stuff (for later)           
+    def real_time_tree(self, frame_i, lab, prev_lab, rp=None, prev_rp=None):        
         """
         Calculates the real-time tree of cell divisions based on the input labels and region properties.
 
         Args:
             frame_i (int): The index of the current frame.
-            lab (ndarray): The label image of the current frame.
-            prev_lab (ndarray): The label image of the previous frame.
+            lab (ndarray): The labeled image of the current frame.
+            prev_lab (ndarray): The labeled image of the previous frame.
             rp (list, optional): The region properties of the current frame.
             prev_rp (list, optional): The region properties of the previous frame.
 
@@ -784,35 +801,49 @@ class normal_division_lineage_tree:
             if update_fams == True:
                 self.families = dict_to_fams(self.family_dict)
 
-    def load_lineage_df_list(self, df_li, lab=None, first_df=None):
-        printl('loading!')
+    def load_lineage_df_list(self, df_li):
+        # SUpport for first_frame was removed since it is not necessary, just make the df_li correct...
+        # Also the tree needs to be init before. Also if df_li does not contain any relevenat dfs, nothing happens
+        printl('Loading!')
         df_li_new = []
         for i, df in enumerate(df_li):
-            if 'sister_ID_tree' in df.columns and not (df['sister_ID_tree'] == 0).all():
-                # printl(f'Found sister_ID_tree in df {i}')
-                # printl(df['sister_ID_tree'].head())
+            if 'frame_i' in df.columns:
+                df = df.drop('frame_i', axis=1)
+            if 'generation_num_tree' in df.columns and not (df['generation_num_tree'] == 0).all():
+                df = (df
+                        .reset_index()
+                        .set_index('Cell_ID')
+                        )
+                
+                if "level_0" in df.columns:
+                    df = df.drop(columns="level_0")
+                if "index" in df.columns:
+                    df = df.drop(columns="index")
+
                 self.frames_for_dfs.append(i)
                 df_li_new.append(df)
 
-        if not self.frames_for_dfs:
-            printl('Init...')
-            self.init_lineage_tree(lab=lab, first_df=first_df)
-            self.family_dict = generate_fam_dict_from_df_li(self.lineage_list)
-            self.frames_for_dfs = list(range(len(self.lineage_list)))
-            printl(self.frames_for_dfs)
-        else:
-            self.family_dict = generate_fam_dict_from_df_li(df_li, frames_for_df_li=self.frames_for_dfs)
+        if df_li_new:
+            self.lineage_list = df_li_new
+            self.family_dict = generate_fam_dict_from_df_li(self.lineage_list, frames_for_df_li=self.frames_for_dfs)
             self.families = dict_to_fams(self.family_dict)
             self.lineage_list, self.frames_for_dfs = dict_to_df_li(self.family_dict)
 
     def export_df(self, frame_i):
         df = self.lineage_list[frame_i].copy()
+        
         df = (df
               .reset_index()
               .set_index('Cell_ID')
               )
+        
         if 'frame_i' in df.columns:
             df = df.drop('frame_i', axis=1)
+
+        if "level_0" in df.columns:
+            df = df.drop(columns="level_0")
+        if "index" in df.columns:
+            df = df.drop(columns="index")
         
         return df
 

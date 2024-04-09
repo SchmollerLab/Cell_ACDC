@@ -782,6 +782,10 @@ class saveDataWorker(QObject):
                 self.progressBar.emit(0, 0, 0)
 
             if acdc_df_li:
+                columns = set()	
+                for df in acdc_df_li:
+                    columns.update(df.reset_index().columns)
+                test_df = pd.concat(acdc_df_li).reset_index()
                 all_frames_acdc_df = pd.concat(
                     acdc_df_li, keys=keys,
                     names=['frame_i', 'time_seconds', 'Cell_ID']
@@ -11862,11 +11866,72 @@ class guiWin(QMainWindow):
        
         if ev.key() == Qt.Key_Q and self.debug:
             posData = self.data[self.pos_i]
-            frame_i = posData.frame_i
-            printl(frame_i-1, posData.tracked_lost_centroids[frame_i-1])  
-            printl(frame_i, posData.tracked_lost_centroids[frame_i])  
-            printl(self.getTrackedLostIDs())     
-            printl(posData.lost_IDs)
+            columns = set()	
+            for frame_i in range(len(posData.allData_li)):
+                acdc_df = posData.allData_li[frame_i]['acdc_df']
+                if acdc_df is not None:
+                    columns.update(acdc_df.reset_index().columns)
+            printl(f"Columns in acdc_df: {columns}")
+
+            from pandasgui import show as pgshow
+            lin_tree_df = pd.DataFrame()
+            for i, df in enumerate(self.lineage_tree.lineage_list):
+                df = df.copy()
+                # df = df.reset_index()
+                df["frame_i"] = self.lineage_tree.frames_for_dfs[i]
+                lin_tree_df = pd.concat([lin_tree_df, df])
+
+            if not isinstance(lin_tree_df.index, pd.RangeIndex):
+                lin_tree_df = lin_tree_df.reset_index()
+
+            lin_tree_df = (lin_tree_df
+                          .set_index(["frame_i", "Cell_ID"])
+                          .sort_index()
+                          )
+
+            acdc_df = pd.DataFrame()
+            posData = self.data[self.pos_i]
+            df_li = [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))]
+            for i, df in enumerate(df_li):
+                df = df.copy()
+                df = df.reset_index()
+                df["frame_i"] = i
+                acdc_df = pd.concat([acdc_df, df])
+
+            acdc_df = (acdc_df
+                          .set_index(["frame_i", "Cell_ID"])
+                          .sort_index()
+                          )
+
+            # for key, value in self.lineage_tree.family_dict.items():
+
+            families = pd.DataFrame()
+            for family in self.lineage_tree.families:
+                family_name = family[0][0]
+                family_df = pd.DataFrame(family, columns=["Cell_ID", "generation_num_tree"])
+                family_df["family_name"] = family_name
+                family_df = family_df.set_index("family_name")
+                families = pd.concat([families, family_df])
+
+            lin_tree_dict_df = pd.DataFrame()
+            for key, df in self.lineage_tree.family_dict.items():
+                df = df.reset_index()
+                df["family_name"] = key
+                lin_tree_dict_df = pd.concat([lin_tree_dict_df, df])
+
+            lin_tree_dict_df = (lin_tree_dict_df
+                .set_index(["family_name", "frame_i", "Cell_ID"])
+                .sort_index()
+                )
+            
+            # for i, df in enumerate([acdc_df, lin_tree_df, families, lin_tree_dict_df]):
+            #     printl(f"Columns: {df.columns} for df {i}" )
+            #     if (df.columns == df.index.name).any():
+            #         printl(f"Index name: {df.index.name} for df {i}!!!" )
+
+            if "level_0" in lin_tree_df.columns:
+                lin_tree_df=lin_tree_df.drop(columns="level_0")
+            pgshow(acdc_df, lin_tree_df, families, lin_tree_dict_df)# , *[posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))], )
         
         if not self.dataIsLoaded:
             self.logger.info(
@@ -14460,18 +14525,13 @@ class guiWin(QMainWindow):
                                 self.remove_future_cca_df(0)
                     posData.cca_df = editCcaWidget.cca_df
                     self.store_cca_df()
-                if mode == 'Normal division: Lineage tree':
+                elif mode == 'Normal division: Lineage tree':
                     # editTreeWidget = apps.editlin_treeTableWidget(... still need to implement
                     if not self.lineage_tree:
                         df_li = [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))]
                         printl('here')
-                        self.lineage_tree = normal_division_lineage_tree()
-                                                                        # lab=posData.segm_data[posData.frame_i],) 
-                                                                        # max_daughter = self.max_daughter,
-                                                                        # min_daughter = self.min_daughter,
-                                                                        # IoA_thresh_daughter = self.IoA_thresh_daughter)
-                        
-                        self.lineage_tree.load_lineage_df_list(df_li, lab=posData.segm_data[posData.frame_i])
+                        self.lineage_tree = normal_division_lineage_tree()           
+                        self.lineage_tree.load_lineage_df_list(df_li)
                     # printl(self.lineage_tree.lineage_list[-1])
                     # printl(len(self.lineage_tree.lineage_list))
                     # printl(self.lineage_tree.frames_for_dfs)
@@ -16491,30 +16551,29 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         current_frame_i = posData.frame_i
 
+        if not self.lineage_tree: # init lin tree if not done already
+
+            self.lineage_tree = normal_division_lineage_tree()
+            df_li = [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))]
+            self.lineage_tree.load_lineage_df_list(df_li)
+
         missing_frames = list(range(current_frame_i+1))
         present_frames = self.lineage_tree.frames_for_dfs if self.lineage_tree else []
         present_frames = [] if not present_frames else present_frames # deal with None
         missing_frames = [frame_i for frame_i in missing_frames if frame_i not in present_frames]
         missing_frames.sort()
 
-        if not self.lineage_tree:
-            min_frame_i = missing_frames[0]
-            printl('here')
-
-            self.lineage_tree = normal_division_lineage_tree()
-            df_li = [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))]
-            self.lineage_tree.load_lineage_df_list(df_li, lab=posData.segm_data[min_frame_i]) # here the lab should be 0 when relevant, as otherwise acdc_df should not be empty. If it is not emptry, lab is ignored 
-            missing_frames.pop(0)
-
         for frame_i in missing_frames:
             lab = posData.allData_li[frame_i]['labels']
             prev_lab = posData.allData_li[frame_i-1]['labels']
             rp = posData.allData_li[frame_i]['regionprops']
             prev_rp = posData.allData_li[frame_i-1]['regionprops']
-            self.lineage_tree.frames_for_dfs.append(frame_i)
+            # i might need to change this if I need support for only partially missing frames... Although I probably never have to care about that though
+            self.lineage_tree.frames_for_dfs.append(frame_i) 
             self.lineage_tree.real_time_tree(frame_i, lab, prev_lab, rp=rp, prev_rp=prev_rp)
-            self.lin_tree_to_acdc_df()
+            # self.lin_tree_to_acdc_df()
 
+        self.lin_tree_to_acdc_df()
         posData.frame_i = current_frame_i
         self.get_data(lin_tree=True)
 
@@ -17064,6 +17123,7 @@ class guiWin(QMainWindow):
 
             if self.lineage_tree and self.lineage_tree.frames_for_dfs and lin_tree:
                 if posData.frame_i in self.lineage_tree.frames_for_dfs:
+                    printl('dongding')
                     df = self.lineage_tree.export_df(self.lineage_tree.frames_for_dfs.index(posData.frame_i))
                     # df = posData.acdc_df.loc[posData.frame_i].copy()
                     binnedIDs_df = df[df['is_cell_excluded']>0]
@@ -17082,12 +17142,13 @@ class guiWin(QMainWindow):
                             df[cols] = df[cols].astype(int)
 
                     i = posData.frame_i
-                    printl('aslkjdnfblksa')
+                    raise NotImplementedError('Need to implement this')
                     self.lineage_tree.lineage_list[i] = df.copy() #!!!
 
             if not lin_tree:
                 self.get_cca_df()
             else:
+                printl('get_lin_tree_df')
                 self.get_lin_tree_df()
         else:
             # Requested frame was already visited. Load from RAM.
@@ -17108,7 +17169,7 @@ class guiWin(QMainWindow):
                     printl('This is when its supposed to happen? (Lienage tree was not init)')
                     self.lineage_tree = normal_division_lineage_tree()
                     df_li = [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))]
-                    self.lineage_tree.load_lineage_df_list(df_li, lab=posData.lab)
+                    self.lineage_tree.load_lineage_df_list(df_li)
 
             if not lin_tree:
                 self.get_cca_df()
@@ -17421,12 +17482,17 @@ class guiWin(QMainWindow):
             return
 
         proceed = True
-
+        last_lin_tree_frame_i = 0
         # Determine last annotated frame index
-        if self.lineage_tree and self.lineage_tree.frames_for_dfs:
-            last_lin_tree_frame_i = max(self.lineage_tree.frames_for_dfs)
-        else:
-            last_lin_tree_frame_i = 0
+        for i, dict_frame_i in enumerate(posData.allData_li):
+            df = dict_frame_i['acdc_df']
+            if df is None:
+                break
+            elif 'generation_num_tree' not in df.columns or np.all(df['generation_num_tree'] == 0):
+                break
+            else:
+                last_lin_tree_frame_i = i
+
 
         if last_lin_tree_frame_i == 0:
             # Remove undoable actions from segmentation mode
@@ -17508,7 +17574,8 @@ class guiWin(QMainWindow):
             printl('here')
             self.lineage_tree = normal_division_lineage_tree()
             df_li = [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))]
-            self.lineage_tree.load_lineage_df_list(df_li, lab=posData.lab)
+            self.lineage_tree.load_lineage_df_list(df_li)
+
             msg = 'Lineage tree analysis initialized!'
             self.logger.info(msg)
             self.titleLabel.setText(msg, color=self.titleColor)
@@ -17602,9 +17669,9 @@ class guiWin(QMainWindow):
 
         posData = self.data[self.pos_i]
         lin_tree_df = None
-        i = posData.frame_i if frame_i is None else frame_i
         df = None
         if self.lineage_tree and self.lineage_tree.frames_for_dfs:
+            i = posData.frame_i if frame_i is None else frame_i
             df = self.lineage_tree.export_df(self.lineage_tree.frames_for_dfs.index(i))
         if df is not None:
             if 'generation_num_tree' in df.columns:  # may need to change this, not exactly sure how df is initialized
@@ -17617,7 +17684,8 @@ class guiWin(QMainWindow):
         if lin_tree_df is None and self.isSnapshot:
             printl('Lineage tree for snapshots is not supported :(')
 
-        # may need to create one if none is given already :3    
+        # may need to create one if none is given already :3
+
         if return_df:
             return lin_tree_df
         else:
@@ -17684,6 +17752,20 @@ class guiWin(QMainWindow):
         
         dfs_new = []
         lineage_copy = self.lineage_tree.lineage_list.copy()
+        lin_tree_list = list(zip(range(len(self.lineage_tree.frames_for_dfs)), self.lineage_tree.frames_for_dfs))
+
+        if not force_all and not specific:
+            dont_sync = self.already_synced_lin_tree
+            dont_sync = {frame for frame in dont_sync if not frame in force}
+            dont_sync.update(ignore)
+
+            lin_tree_list = [x for x in lin_tree_list if x[1] not in dont_sync]
+
+        if specific:
+            lin_tree_list = [x for x in lin_tree_list if x[1] in specific]
+
+        frame_pos, filtered_frames = zip(*lin_tree_list)
+        lineage_copy = [lineage_copy[pos] for pos in frame_pos]
         for df in lineage_copy:
             df = (df
                   .reset_index()
@@ -17692,29 +17774,25 @@ class guiWin(QMainWindow):
 
             if 'frame_i' in df.columns:
                 df = df.drop('frame_i', axis=1)
+
+            if 'level_0' in df.columns:
+                df = df.drop('level_0', axis=1)
             
             dfs_new.append(df)
 
-        lin_tree_list = list(zip(self.lineage_tree.frames_for_dfs, dfs_new))
-
-        if not force_all and not specific:
-            dont_sync = self.already_synced_lin_tree
-            dont_sync = {frame for frame in dont_sync if not frame in force}
-            dont_sync.update(ignore)
-
-            lin_tree_list = [x for x in lin_tree_list if x[0] not in dont_sync]
-
-        if specific:
-            lin_tree_list = [x for x in lin_tree_list if x[0] in specific]
+        lin_tree_list = list(zip(filtered_frames, dfs_new))
 
         posData = self.data[self.pos_i]
 
         for frame_i, lin_tree_df in lin_tree_list:
             lin_tree_df = lin_tree_df[self.lin_tree_df_colnames] # drop all columns which are not needed
             acdc_df = posData.allData_li[frame_i]['acdc_df']
+            lin_tree_df = (lin_tree_df
+                           .reset_index()
+                           .set_index('Cell_ID')
+                           )
 
             acdc_df.loc[lin_tree_df.index, self.lin_tree_df_colnames] = lin_tree_df[self.lin_tree_df_colnames]
-
             posData.allData_li[frame_i]['acdc_df'] = acdc_df
             self.already_synced_lin_tree.add(frame_i)
 
