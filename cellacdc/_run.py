@@ -33,7 +33,7 @@ def _install_tables(parent_software='Cell-ACDC'):
             print('-'*60)
             print(txt)
             if is_conda_env():
-                command_txt = 'conda install tables'
+                command_txt = 'conda install pytables'
                 alt_command_txt = 'pip install --upgrade tables'
                 cmd_args = command_txt.split(' ')
                 alt_cmd_args = [sys.executable, '-m', *command_txt.split(' ')]
@@ -42,7 +42,7 @@ def _install_tables(parent_software='Cell-ACDC'):
                 shell = True
                 alt_shell = False
             else:
-                alt_command_txt = 'conda install tables'
+                alt_command_txt = 'conda install pytables'
                 command_txt = 'pip install --upgrade tables'
                 cmd_args = [sys.executable, '-m', *command_txt.split(' ')]
                 alt_cmd_args = alt_command_txt.split(' ')
