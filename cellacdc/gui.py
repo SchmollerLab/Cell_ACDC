@@ -190,6 +190,48 @@ def get_obj_by_label(rp, target_label):
             return obj
     return None
 
+def find_distances_ID(rps, point=None, ID=None):
+    if ID is not None and point is None:
+        try:
+            point = [rp.centroid for rp in rps if rp.label == ID][0]
+        except IndexError:
+            raise(ValueError(f'ID {ID} not found in regionprops (list of cells).'))
+
+    elif ID is None and point is None:
+        raise(ValueError('Either ID or point must be provided.'))
+
+    elif ID is not None and point is not None:
+        raise(ValueError('Only one of ID or point must be provided.'))
+    
+    point = point[::-1] # rp are in (y, x) format (or (z, y, x) for 3D data) so I need to reverse order
+    point=np.array([point])
+    centroids = np.array([rp.centroid for rp in rps])
+    diff = point[:, np.newaxis] - centroids
+    dist_matrix = np.linalg.norm(diff, axis=2)
+    return dist_matrix
+
+def sort_IDs_dist(rps, point=None, ID=None):
+    if ID is not None and point is None:
+        try:
+            point = [rp.centroid for rp in rps if rp.label == ID][0]
+        except IndexError:
+            raise(ValueError(f'ID {ID} not found in regionprops (list of cells).'))
+
+    elif ID is None and point is None:
+        raise(ValueError('Either ID or point must be provided.'))
+
+    elif ID is not None and point is not None:
+        raise(ValueError('Only one of ID or point must be provided.'))
+    
+
+    IDs = [rp.label for rp in rps]    
+    dist_matrix = find_distances_ID(rps, point=point)
+    dist_matrix = np.squeeze(dist_matrix)
+
+    sorted_ids = sorted(zip(dist_matrix, IDs))
+    sorted_ids = [ID for _, ID in sorted_ids]
+    return sorted_ids
+
 class relabelSequentialWorker(QObject):
     finished = Signal()
     critical = Signal(object)
@@ -1769,6 +1811,21 @@ class guiWin(QMainWindow):
         editToolBar.setVisible(False)
         self.reinitLastSegmFrameAction.toolbar = editToolBar
         self.functionsNotTested3D.append(self.reinitLastSegmFrameAction)
+
+
+        self.editLin_TreeBar = widgets.ToolBar("Lin Tree Edit", self)
+        self.editLin_TreeBar.setContextMenuPolicy(Qt.PreventContextMenu)
+        
+        self.addToolBar(self.editLin_TreeBar)
+
+        self.findNextMotherButton = QToolButton(self)
+        self.findNextMotherButton.setIcon(QIcon(":magic_wand.svg"))
+        self.findNextMotherButton.setCheckable(True)
+        self.editLin_TreeBar.addWidget(self.findNextMotherButton)
+        self.checkableButtons.append(self.findNextMotherButton)
+        self.LeftClickButtons.append(self.findNextMotherButton)
+        self.findNextMotherButton.keyPressShortcut = Qt.Key_F
+        self.widgetsWithShortcut['findNextMother'] = self.findNextMotherButton
         
         modes_availible = [
             'Segmentation and Tracking',
@@ -1791,6 +1848,8 @@ class guiWin(QMainWindow):
         self.editToolBar = editToolBar
         self.editToolBar.setVisible(False)
         self.navigateToolBar.setVisible(False)
+        self.editLin_TreeBar.setVisible(False)
+
 
         self.setTooltips()
 
@@ -6811,6 +6870,8 @@ class guiWin(QMainWindow):
             self.copyContourButton.isChecked()
             and self.ax1_lostObjScatterItem.hoverLostID>0
         )
+        findMotherButtonON = self.findNextMotherButton.isChecked()
+        printl(right_click, findMotherButtonON)
 
         # Check if right-click on segment of polyline roi to add segment
         segments = self.gui_getHoveredSegmentsPolyLineRoi()
@@ -6875,7 +6936,7 @@ class guiWin(QMainWindow):
         isOnlyRightClick = (
             right_click and canAnnotateDivision and not isAnnotateDivision
             and not isMod and not is_right_click_action_ON
-            and not is_right_click_custom_ON and not copyContourON
+            and not is_right_click_custom_ON and not copyContourON and not findMotherButtonON
         )
         
         if isOnlyRightClick:
@@ -7526,6 +7587,15 @@ class guiWin(QMainWindow):
             keepActive = self.customAnnotDict[button]['state']['keepActive']
             if not keepActive:
                 button.setChecked(False)
+
+        elif right_click and findMotherButtonON:
+            x, y = event.pos().x(), event.pos().y()
+            printl(f'Clicked on x={x}, y={y}')
+            point = int(x), int(y)
+            ID = self.get_2Dlab(posData.lab)[ydata, xdata]
+            printl(f'Clicked on ID={ID}')
+            sorted_IDs = sort_IDs_dist(posData.rp, point=point)
+            printl(sorted_IDs)
 
     def gui_addCreatedAxesItems(self):
         self.ax1.addItem(self.ax1_contoursImageItem)
@@ -10804,6 +10874,7 @@ class guiWin(QMainWindow):
 
         if prevMode == 'Normal division: Lineage tree':
             self.lineage_tree = None
+            self.editLin_TreeBar.setVisible(False)
 
         if mode == 'Segmentation and Tracking':
             self.trackingMenu.setDisabled(False)
@@ -10876,10 +10947,10 @@ class guiWin(QMainWindow):
                 self.setEnabledEditToolbarButton(enabled=False)
                 if self.isSnapshot:
                     self.editToolBar.setVisible(True)
-                # self.setEnabledCcaToolbar(enabled=True) # need to replace
                 self.removeAlldelROIsCurrentFrame()
                 self.setAnnotOptionsLin_treeMode()
                 self.clearGhost()
+                self.editLin_TreeBar.setVisible(True)
 
     def setEnabledSnapshotMode(self):
         posData = self.data[self.pos_i]
@@ -17571,7 +17642,6 @@ class guiWin(QMainWindow):
         self.navSpinBox.setMaximum(last_lin_tree_frame_i+1)
 
         if self.lineage_tree is None:
-            printl('here')
             self.lineage_tree = normal_division_lineage_tree()
             df_li = [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))]
             self.lineage_tree.load_lineage_df_list(df_li)
