@@ -47,6 +47,7 @@ from .utils import applyTrackFromTrackMateXML as utilsApplyTrackFromTrackMate
 from .info import utilsInfo
 from . import is_win, is_linux, settings_folderpath, issues_url
 from . import settings_csv_path
+from . import path
 from . import printl
 from . import _warnings
 from . import exception_handler
@@ -971,54 +972,42 @@ class mainWin(QMainWindow):
                 exp_path = exp_folderpath
             selected_path = exp_path
             baseFolder = os.path.basename(exp_path)
-            isPosFolder = (
-                re.search('Position_(\d+)$', baseFolder) is not None
-                and os.path.exists(os.path.join(exp_path, 'Images'))
-            )
+            isPosFolder = myutils.is_pos_folderpath(exp_path)
             isImagesFolder = baseFolder == 'Images'
             if isImagesFolder:
                 posPath = os.path.dirname(exp_path)
                 posFolders = [os.path.basename(posPath)]
                 exp_path = os.path.dirname(posPath)
+                selected_exp_paths = {exp_path:posFolders}
             elif isPosFolder:
                 posPath = exp_path
                 posFolders = [os.path.basename(posPath)]
                 exp_path = os.path.dirname(exp_path)
+                selected_exp_paths = {exp_path:posFolders}
             else:
-                posFolders = myutils.get_pos_foldernames(exp_path)
-                if not posFolders:
-                    msg = widgets.myMessageBox()
-                    msg.addShowInFileManagerButton(
-                        exp_path, txt='Show selected folder...'
-                    )
-                    _ls = "\n".join(os.listdir(exp_path))
-                    msg.setDetailedText(f'Files present in the folder:\n{_ls}')
-                    txt = html_utils.paragraph(f"""
-                        The selected folder:<br><br>
-                        <code>{exp_path}</code><br><br>
-                        does not contain any valid Position folders.<br>
-                    """)
-                    msg.warning(
-                        self, 'Not valid folder', txt,
-                        buttonsTexts=('Cancel', 'Try again')
-                    )
-                    if msg.cancel:
+                self.logger.info(f'Scanning selected folder "{exp_path}"...')
+                selected_exp_paths = path.get_posfolderpaths_walk(exp_path)
+                if not selected_exp_paths:
+                    cancel = self.warnNoValidExpPaths(exp_path)
+                    if cancel:
                         self.logger.info(f'{utilityName} aborted by the user.')
                         return
                     continue
             
-            if exp_path in expPaths:
-                if warn_exp_already_selected:
-                    proceed = self.warnExpPathAlreadySelected(
-                        selected_path, exp_path
-                    )
-                    if not proceed:
-                        self.logger.info(f'{utilityName} aborted by the user.')
-                        return
-                    warn_exp_already_selected = False
-                expPaths[exp_path].extend(posFolders)
-            else:
-                expPaths[exp_path] = posFolders
+            for exp_path, pos_folders in selected_exp_paths.items():
+                if exp_path in expPaths:
+                    if warn_exp_already_selected:
+                        proceed = self.warnExpPathAlreadySelected(
+                            selected_path, exp_path
+                        )
+                        if not proceed:
+                            self.logger.info(f'{utilityName} aborted by the user.')
+                            return
+                        warn_exp_already_selected = False
+                    expPaths[exp_path].extend(pos_folders)
+                else:
+                    expPaths[exp_path] = pos_folders
+            
             mostRecentPath = exp_path
             msg = widgets.myMessageBox(wrapText=False)
             txt = html_utils.paragraph("""
@@ -1051,6 +1040,22 @@ class mainWin(QMainWindow):
             selectedExpPaths = expPaths
         
         return selectedExpPaths
+    
+    def warnNoValidExpPaths(self, selected_path):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph("""
+            The selected folder does 
+            <b>not contain any valid experiment folders</b>.
+        """)
+        command = selected_path.replace('\\', os.sep)
+        command = selected_path.replace('/', os.sep)
+        msg.warning(
+            self, 'No valid folders found', txt,
+            buttonsTexts=('Cancel', 'Try again'), 
+            commands=(command,), 
+            path_to_browse=selected_path
+        )
+        return msg.cancel
     
     def warnExpPathAlreadySelected(self, selected_path, exp_path):
         selected_text = myutils.to_relative_path(selected_path)

@@ -1,3 +1,4 @@
+from collections import defaultdict
 import os
 import sys
 import shutil
@@ -8,6 +9,7 @@ from natsort import natsorted
 
 from . import is_mac, is_linux
 from . import printl
+from . import myutils
 
 def listdir(path):
     return natsorted([
@@ -92,3 +94,22 @@ def copy_or_move_tree(
         if sigUpdatePbar is not None:
             sigUpdatePbar.emit(1)
     return files_failed_move
+
+def get_posfolderpaths_walk(folderpath):
+    pos_folderpaths = defaultdict(set)
+    for root, dirs, files in os.walk(folderpath):
+        if not root.endswith('Images'):
+            continue
+        
+        pos_folderpath = os.path.dirname(root)
+        if not myutils.is_pos_folderpath(pos_folderpath):
+            continue
+        
+        exp_path = os.path.dirname(pos_folderpath).replace('\\', '/')
+        pos_foldername = os.path.basename(pos_folderpath)
+        pos_folderpaths[exp_path].add(pos_foldername)
+    
+    for exp_path in pos_folderpaths.keys():
+        pos_folderpaths[exp_path] = natsorted(pos_folderpaths[exp_path])
+    
+    return pos_folderpaths

@@ -3094,4 +3094,11 @@ def are_acdc_dfs_equal(df_left, df_right):
         return False
     
     return True
-        
+
+def is_pos_folderpath(folderpath):
+    foldername = os.path.basename(folderpath)
+    is_valid_pos_folder = (
+        re.search('Position_(\d+)$', foldername) is not None
+        and os.path.exists(os.path.join(folderpath, 'Images'))
+    )
+    return is_valid_pos_folder
