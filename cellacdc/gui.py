@@ -19298,8 +19298,8 @@ class guiWin(QMainWindow):
                 yy = framePointsData['y']
                 ids = framePointsData['id']
 
-            xx = np.array(xx) + 0.5
-            yy = np.array(yy) + 0.5
+            xx = np.array(xx) # + 0.5
+            yy = np.array(yy) # + 0.5
             action.scatterItem.setData(xx, yy, data=ids)
 
     def overlay_cb(self, checked):
