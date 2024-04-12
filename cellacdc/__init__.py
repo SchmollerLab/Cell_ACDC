@@ -1,3 +1,4 @@
+from genericpath import isfile
 import os
 import sys
 import shutil
@@ -75,13 +76,22 @@ if cellacdc_installation_path != site_packages:
 else:
     IS_CLONED = False
     settings_folderpath = os.path.join(user_profile_path, '.acdc-settings')
-    
+
+def copytree(src, dst):
+    os.makedirs(dst, exist_ok=True)
+    for name in os.listdir(old_temp_path):
+        src_filepath = os.path.join(src, name)
+        dst_filepath = os.path.join(dst, name)
+        if os.path.isdir(src_filepath):
+            copytree(src_filepath, dst_filepath)
+        elif os.path.isfile(src_filepath):
+            shutil.copy2(src_filepath, dst_filepath)
+
 if not os.path.exists(settings_folderpath):
     os.makedirs(settings_folderpath, exist_ok=True)
 if os.path.exists(old_temp_path):
     try:
-        from distutils.dir_util import copy_tree
-        copy_tree(old_temp_path, settings_folderpath)
+        copytree(old_temp_path, settings_folderpath)
         shutil.rmtree(old_temp_path)
     except Exception as e:
         print('*'*60)
