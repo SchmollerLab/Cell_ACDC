@@ -6951,7 +6951,8 @@ class ImShow(QBaseWindow):
                 group = group[0]
             self.drawPoints(points_coords, group=group)
     
-    def drawPoints(self, points_coords, group=''):  
+    def drawPoints(self, points_coords: np.ndarray, group=''):  
+        offset = 0.5 if np.issubdtype(points_coords.dtype, np.integer) else 0
         n_dim = points_coords.shape[1]
         if n_dim == 2:
             zz = [0]*len(points_coords)
@@ -6961,8 +6962,8 @@ class ImShow(QBaseWindow):
                 pointsItem = self._createPointsScatterItem(group, data=group)
                 pointsItem.z = 0
                 plotItem.addItem(pointsItem)
-                xx = points_coords[:, 1] + 0.5
-                yy = points_coords[:, 0] + 0.5   
+                xx = points_coords[:, 1] + offset
+                yy = points_coords[:, 0] + offset  
                 pointsItem.setData(xx, yy)
                 imageItem.pointsItems = {group: [pointsItem]}
         elif n_dim == 3:
@@ -6976,8 +6977,8 @@ class ImShow(QBaseWindow):
                     pointsItem.z = first_coord
                     plotItem.addItem(pointsItem)
                     coords = points_coords[points_coords[:,0] == first_coord]
-                    xx = coords[:, 2] + 0.5
-                    yy = coords[:, 1] + 0.5
+                    xx = coords[:, 2] + offset
+                    yy = coords[:, 1] + offset
                     pointsItem.setData(xx, yy)
                     pointsItem.setVisible(False)
                     imageItem.pointsItems[group].append(pointsItem)
