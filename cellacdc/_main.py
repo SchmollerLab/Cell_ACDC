@@ -994,6 +994,7 @@ class mainWin(QMainWindow):
                         return
                     continue
             
+            is_multi_pos = False
             for exp_path, pos_folders in selected_exp_paths.items():
                 if exp_path in expPaths:
                     if warn_exp_already_selected:
@@ -1007,6 +1008,9 @@ class mainWin(QMainWindow):
                     expPaths[exp_path].extend(pos_folders)
                 else:
                     expPaths[exp_path] = pos_folders
+                
+                if len(pos_folders) > 1 and not is_multi_pos:
+                    is_multi_pos = True
             
             mostRecentPath = exp_path
             msg = widgets.myMessageBox(wrapText=False)
@@ -1024,7 +1028,7 @@ class mainWin(QMainWindow):
             self.logger.info(f'{utilityName} aborted by the user.')
             return
 
-        if len(expPaths) > 1 or len(posFolders) > 1:
+        if len(expPaths) > 1 or is_multi_pos:
             infoPaths = self.getInfoPosStatus(expPaths)
             selectPosWin = apps.selectPositionsMultiExp(
                 expPaths, 
