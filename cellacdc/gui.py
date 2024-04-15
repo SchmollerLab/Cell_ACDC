@@ -4466,14 +4466,14 @@ class guiWin(QMainWindow):
     @exception_handler
     def gui_mousePressEventImg2(self, event):
         modifiers = QGuiApplication.keyboardModifiers()
-        ctrl = modifiers == Qt.ControlModifier
         alt = modifiers == Qt.AltModifier
+        shift = modifiers == Qt.ShiftModifier
         isMod = alt
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
-        left_click = event.button() == Qt.MouseButton.LeftButton and not isMod
+        left_click = event.button() == Qt.MouseButton.LeftButton and not alt
         middle_click = self.isMiddleClick(event, modifiers)
-        right_click = event.button() == Qt.MouseButton.RightButton and not isMod
+        right_click = event.button() == Qt.MouseButton.RightButton and not alt
         isPanImageClick = self.isPanImageClick(event, modifiers)
         eraserON = self.eraserButton.isChecked()
         brushON = self.brushButton.isChecked()
@@ -4483,7 +4483,7 @@ class guiWin(QMainWindow):
         # Drag image if neither brush or eraser are On pressed
         dragImg = (
             left_click and not eraserON and not
-            brushON and not separateON and not middle_click
+            brushON and not middle_click
         )
         if isPanImageClick:
             dragImg = True
@@ -4546,7 +4546,7 @@ class guiWin(QMainWindow):
             self.startBlinkingModeCB()
             event.ignore()
             return
-
+        
         # Left-click is used for brush, eraser, separate bud, curvature tool
         # and magic labeller
         # Brush and eraser are mutually exclusive but we want to keep the eraser
@@ -4742,7 +4742,7 @@ class guiWin(QMainWindow):
                 )
                 success = True
                 # self.set_2Dlab(lab2D)
-            elif not ctrl:
+            elif not shift:
                 lab2D, success = self.auto_separate_bud_ID(
                     ID, self.get_2Dlab(posData.lab), posData.rp, max_ID
                 )
@@ -5259,10 +5259,14 @@ class guiWin(QMainWindow):
         self.expandingID = -1
     
     def expandLabelCallback(self, checked):
-        self.disconnectLeftClickButtons()
-        self.uncheckLeftClickButtons(self.sender())
-        self.connectLeftClickButtons()
-        self.expandFootprintSize = 1
+        if checked:
+            self.disconnectLeftClickButtons()
+            self.uncheckLeftClickButtons(self.sender())
+            self.connectLeftClickButtons()
+            self.expandFootprintSize = 1
+        else:
+            self.hoverLabelID = 0
+            self.updateAllImages()
     
     def expandLabel(self, dilation=True):
         posData = self.data[self.pos_i]
@@ -7070,10 +7074,13 @@ class guiWin(QMainWindow):
             self.startBlinkingModeCB()
             event.ignore()
             return
-
+        
         # Allow right-click or middle-click actions on both images
         eventOnImg2 = (
-            (right_click or (middle_click and not canAddPoint))
+            (
+                right_click or (middle_click and not canAddPoint) 
+                # or (left_click and separateON)
+            )
             and (mode=='Segmentation and Tracking' or self.isSnapshot)
             and not isAnnotateDivision and not manualBackgroundON
         )
@@ -11708,6 +11715,8 @@ class guiWin(QMainWindow):
         for posData in self.data:
             posData.allIDs = set()
             for frame_i in range(len(posData.segm_data)):
+                if frame_i >= len(posData.allData_li):
+                    break
                 lab = posData.allData_li[frame_i]['labels']
                 if lab is None:
                     rp = skimage.measure.regionprops(posData.segm_data[frame_i])
