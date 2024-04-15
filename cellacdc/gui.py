@@ -932,6 +932,7 @@ class guiWin(QMainWindow):
 
         self.lineage_tree = None
         self.already_synced_lin_tree = set()
+        self.right_click_ID = None
     
     def _printl(
             self, *objects, is_decorator=False, **kwargs
@@ -6871,7 +6872,6 @@ class guiWin(QMainWindow):
             and self.ax1_lostObjScatterItem.hoverLostID>0
         )
         findMotherButtonON = self.findNextMotherButton.isChecked()
-        printl(right_click, findMotherButtonON)
 
         # Check if right-click on segment of polyline roi to add segment
         segments = self.gui_getHoveredSegmentsPolyLineRoi()
@@ -7589,13 +7589,53 @@ class guiWin(QMainWindow):
                 button.setChecked(False)
 
         elif right_click and findMotherButtonON:
+            if posData.frame_i == 0:
+                return
+            
+            if not self.right_click_ID:
+                self.right_click_i = 0
+                self.right_click_ID = 0
+
             x, y = event.pos().x(), event.pos().y()
-            printl(f'Clicked on x={x}, y={y}')
             point = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
-            printl(f'Clicked on ID={ID}')
-            sorted_IDs = sort_IDs_dist(posData.rp, point=point)
-            printl(sorted_IDs)
+            if self.right_click_ID != ID:
+                self.right_click_i = 0
+                self.right_click_ID = ID
+            elif event.modifiers() & Qt.ShiftModifier:
+                self.right_click_i -= 1
+            else:
+                self.right_click_i += 1
+
+            if ID == 0:
+                return
+            
+            printl(f'Clicked on ID={ID} for the {self.right_click_i} time')
+
+            prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
+            sorted_IDs = sort_IDs_dist(prev_rp, point=point)
+            
+            prev_IDs = {rp.label for rp in prev_rp}
+            missing_IDs = prev_IDs - set(posData.IDs) 
+            filtered_IDs = [ID for ID in sorted_IDs if ID in missing_IDs]
+            if len(filtered_IDs) == 0:
+                printl('No mother candidates found.')
+                return
+
+            i = self.right_click_i % len(filtered_IDs)
+            if self.right_click_i < 0:
+                i = -i
+            new_mother = filtered_IDs[i]
+
+
+            lin_tree_df = self.lineage_tree.export_df(posData.frame_i)
+            printl(lin_tree_df.index, lin_tree_df.columns, lin_tree_df.index.name)
+            lin_tree_df.loc[ID]['mother'] = new_mother
+            printl(lin_tree_df)
+            posData.allData_li[posData.frame_i]['acdc_df'][self.lin_tree_df_colnames] = posData.acdc_df = lin_tree_df[self.lin_tree_df_colnames]
+            self.lineage_tree.insert_lineage_df(lin_tree_df, posData.frame_i)
+            self.drawAllLineageTreeLines()
+            printl(sorted_IDs, filtered_IDs, missing_IDs, set(posData.IDs), prev_IDs, new_mother, self.right_click_i, i)
 
     def gui_addCreatedAxesItems(self):
         self.ax1.addItem(self.ax1_contoursImageItem)
@@ -14668,8 +14708,12 @@ class guiWin(QMainWindow):
                 self.navigateScrollBar.setMaximum(posData.frame_i+1)
                 self.navSpinBox.setMaximum(posData.frame_i+1)
             else:
-                self.navigateScrollBar.setMaximum(max(self.lineage_tree.frames_for_dfs)+1)
-                self.navSpinBox.setMaximum(max(self.lineage_tree.frames_for_dfs)+1)
+                if self.lineage_tree.frames_for_dfs:
+                    i = max(self.lineage_tree.frames_for_dfs)
+                else:
+                    i = 0
+                self.navigateScrollBar.setMaximum( i+1)
+                self.navSpinBox.setMaximum(i+1)
 
     def prev_frame(self):
         posData = self.data[self.pos_i]
@@ -16624,7 +16668,7 @@ class guiWin(QMainWindow):
 
         if not self.lineage_tree: # init lin tree if not done already
 
-            self.lineage_tree = normal_division_lineage_tree()
+            self.lineage_tree = normal_division_lineage_tree(lab = posData.allData_li[0]['labels'])
             df_li = [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))]
             self.lineage_tree.load_lineage_df_list(df_li)
 
@@ -17238,7 +17282,7 @@ class guiWin(QMainWindow):
                 printl('Trying to laod from RAM, when is this supposed to happen?')
                 if not self.lineage_tree:
                     printl('This is when its supposed to happen? (Lienage tree was not init)')
-                    self.lineage_tree = normal_division_lineage_tree()
+                    self.lineage_tree = normal_division_lineage_tree(lab = posData.allData_li[0]['labels'])
                     df_li = [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))]
                     self.lineage_tree.load_lineage_df_list(df_li)
 
@@ -17642,7 +17686,7 @@ class guiWin(QMainWindow):
         self.navSpinBox.setMaximum(last_lin_tree_frame_i+1)
 
         if self.lineage_tree is None:
-            self.lineage_tree = normal_division_lineage_tree()
+            self.lineage_tree = normal_division_lineage_tree(lab = posData.allData_li[0]['labels'])
             df_li = [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))]
             self.lineage_tree.load_lineage_df_list(df_li)
 
@@ -17834,6 +17878,11 @@ class guiWin(QMainWindow):
         if specific:
             lin_tree_list = [x for x in lin_tree_list if x[1] in specific]
 
+
+        if lin_tree_list == []:
+            printl('No frames to sync')
+            return
+        
         frame_pos, filtered_frames = zip(*lin_tree_list)
         lineage_copy = [lineage_copy[pos] for pos in frame_pos]
         for df in lineage_copy:
@@ -17865,6 +17914,10 @@ class guiWin(QMainWindow):
             acdc_df.loc[lin_tree_df.index, self.lin_tree_df_colnames] = lin_tree_df[self.lin_tree_df_colnames]
             posData.allData_li[frame_i]['acdc_df'] = acdc_df
             self.already_synced_lin_tree.add(frame_i)
+            # print(lin_tree_list)
+            # printl(lin_tree_df)
+            # printl(acdc_df)
+
 
     def acdc_df_to_lin_tree(self, specific=[]):
         raise NotImplementedError('This is not implemented yet')

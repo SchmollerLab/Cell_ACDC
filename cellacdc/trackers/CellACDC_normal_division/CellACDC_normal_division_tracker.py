@@ -18,7 +18,6 @@ def reorg_daughter_cells(lineage_tree_frame, max_daughter):
     Returns:
         pandas.DataFrame: The lineage tree frame with reorganized daughter cells (e.g. 'daughter_ID_tree_1', 'daughter_ID_tree_2', ...)
     """
-    printl('Reorganizing daughter cells...')
     new_columns = [f'sister_ID_tree_{i+1}' for i in range(max_daughter-1)]
     # lineage_tree_frame['sister_ID_tree'] = lineage_tree_frame['sister_ID_tree'].apply(lambda x: x + [-1]*(max_daughter-len(x)) if len(x) < max_daughter else x) # fill in -1 for fewer daughters (I think this is handled in other parts of the code already)
     sister_columns = lineage_tree_frame['sister_ID_tree'].apply(pd.Series)
@@ -609,8 +608,8 @@ class normal_division_lineage_tree:
         Returns:
         None
         """
-        # if lab is None and first_df is None:
-        #     raise ValueError('Either lab or first_df must be provided.')
+        if lab is None and first_df is None:
+            raise ValueError('Either lab or first_df must be provided')
         
         self.max_daughter = max_daughter
         self.min_daughter = min_daughter 
@@ -621,8 +620,7 @@ class normal_division_lineage_tree:
 
         self.families = []
 
-        if lab or first_df:
-            self.init_lineage_tree(lab, first_df)
+        self.init_lineage_tree(lab, first_df)
 
         printl('Lineage tree initialized.')
 
