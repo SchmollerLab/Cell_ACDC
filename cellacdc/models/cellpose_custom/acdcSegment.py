@@ -1,14 +1,27 @@
 import os
 
-from cellacdc.models.cellpose_v2 import acdcSegment as cp
+from cellacdc import printl
+
+from cellacdc.myutils import get_cellpose_major_version
+cp_version = get_cellpose_major_version(errors='ignore')
+if cp_version is None or cp_version == 2:
+    from cellacdc.models.cellpose_v2 import acdcSegment as cp
+else:
+    from cellacdc.models.cellpose_v3 import acdcSegment as cp
+    
 from cellpose import models
 
 class Model:
     def __init__(self, model_path: os.PathLike = '', net_avg=False, gpu=False):
         self.acdcCellpose = cp.Model()
-        self.acdcCellpose.model = models.CellposeModel(
-            gpu=gpu, net_avg=net_avg, pretrained_model=model_path
-        )
+        try:
+            self.acdcCellpose.model = models.CellposeModel(
+                gpu=gpu, net_avg=net_avg, pretrained_model=model_path
+            )
+        except Exception as err:
+            self.acdcCellpose.model = models.CellposeModel(
+                gpu=gpu, pretrained_model=model_path
+            )
 
     def segment(
             self, image,
