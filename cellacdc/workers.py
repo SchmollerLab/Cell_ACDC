@@ -3836,16 +3836,28 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
         for col in cca_df_colnames:
             if col not in acdc_df.columns:
                 continue
+            
+            if col not in self.selectedColumns:
+                continue
+            
             df.loc[idx, col] = acdc_df.loc[idx, col]
         
         for col in lineage_tree_cols:
             if col not in acdc_df.columns:
                 continue
+            
+            if col not in self.selectedColumns:
+                continue
+            
             df.loc[idx, col] = acdc_df.loc[idx, col]
         
         for col in default_annot_df.keys():
             if col not in acdc_df.columns:
                 continue
+            
+            if col not in self.selectedColumns:
+                continue
+            
             df.loc[idx, col] = acdc_df.loc[idx, col]
         
         return df
@@ -3861,11 +3873,58 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
 
         return self.allExpSaveFolder
     
+    def askSelectMeasurements(self, exp_path, posFoldernames):
+        acdc_dfs = []
+        keys = []
+        for p, pos in enumerate(posFoldernames):
+            if self.abort:
+                self.sigAborted.emit()
+                return False
+
+            images_path = os.path.join(exp_path, pos, 'Images')
+            acdc_df = self.getAcdcDf(images_path)
+            if acdc_df is None:
+                continue
+            
+            acdc_dfs.append(acdc_df)
+            keys.append(pos)
+        
+        if not acdc_dfs:
+            return True
+        
+        acdc_df_allpos = pd.concat(
+            acdc_dfs, keys=keys, names=['Position_n', 'frame_i', 'Cell_ID']
+        )
+        acdc_df_allpos['experiment_folderpath'] = exp_path
+        basename, chNames = myutils.getBasenameAndChNames(
+            images_path, useExt=('.tif', '.h5')
+        )
+        df_metadata = load.load_metadata_df(images_path)
+        SizeZ = df_metadata.at['SizeZ', 'values']
+        SizeZ = int(float(SizeZ))
+        existing_colnames = acdc_df_allpos.columns
+        isSegm3D = any([col.endswith('3D') for col in existing_colnames])
+        
+        kwargs = {
+            'loadedChNames': chNames, 
+            'notLoadedChNames': [],
+            'isZstack': SizeZ > 1,
+            'isSegm3D': isSegm3D,
+            'existing_colnames': existing_colnames
+        }
+        self.emitSetMeasurements(kwargs)
+        if self.abort:
+            self.sigAborted.emit()
+            return False
+        
+        return True
+    
     @worker_exception_handler
     def run(self):
         from spotmax import DFs_FILENAMES, DF_REF_CH_FILENAME
         import spotmax.io
         
+        self.selectedColumns = None
         debugging = False
         expPaths = self.mainWin.expPaths
         tot_exp = len(expPaths)
@@ -3911,7 +3970,11 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                     if self.abort:
                         self.sigAborted.emit()
                         return
-                
+                    
+                    self.askSelectMeasurements(exp_path, pos_foldernames)
+                    if self.abort:
+                        return              
+                    
                 acdc_df = self.getAcdcDf(images_path)
                 
                 self.logger.log(
@@ -3953,8 +4016,12 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                         )[0]
                         df_spots = spotmax.io.load_spots_table(
                             spotmax_output_path, df_spots_filename
-                        )
+                        ).reset_index().set_index(['frame_i', 'Cell_ID'])
                         df_spots = self.copyCcaColsFromAcdcDf(df_spots, acdc_df)
+                        df_spots = (
+                            df_spots.reset_index()
+                            .set_index(['frame_i', 'Cell_ID', 'spot_id'])
+                        )
                         df_aggregated = pd.read_csv(
                             aggr_filepath, index_col=['frame_i', 'Cell_ID']
                         )
@@ -3990,6 +4057,10 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                     pos_runs_ref_ch[ref_ch_key].append(pos)
 
                 self.signals.progressBar.emit(1)        
+            
+            self.signals.initProgressBar.emit(0)
+            
+            self.logger.log('Saving concantenated files...')
             
             allpos_folderpath = os.path.join(exp_path, 'spotMAX_multipos_output')
             os.makedirs(allpos_folderpath, exist_ok=True)
