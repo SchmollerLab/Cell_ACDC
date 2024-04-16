@@ -9,7 +9,7 @@ A GUI-based Python framework for **segmentation**, **tracking**, **cell cycle an
 
 *Written in Python 3 by* \ `Francesco Padovani <https://github.com/ElpadoCan>`__ \ *and* \ `Benedikt Mairhoermann <https://github.com/Beno71>`__\ *.*
 
-.. image:: https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-windows_pyqt5.yml/badge.svg
+.. |build_win_pyqt5| image:: https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-windows_pyqt5.yml/badge.svg
    :target: https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-windows_pyqt5.yml
    :alt: Build Status (Windows PyQt5)
 
@@ -56,6 +56,8 @@ A GUI-based Python framework for **segmentation**, **tracking**, **cell cycle an
 .. image:: https://readthedocs.org/projects/cell-acdc/badge/?version=latest
     :target: https://cell-acdc.readthedocs.io/en/latest/?badge=latest
     :alt: Documentation Status
+
+|build_win_pyqt5|
 
 |
 
