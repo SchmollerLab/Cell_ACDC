@@ -57,9 +57,9 @@ A GUI-based Python framework for **segmentation**, **tracking**, **cell cycle an
     :target: https://cell-acdc.readthedocs.io/en/latest/?badge=latest
     :alt: Documentation Status
 
-|build_win_pyqt5||build_ubuntu_pyqt5||build_macos_pyqt5||build_win_pyqt6|
-|build_macos_pyqt6||py_version||pypi_version||downloads_month||license|
-|repo_size||doi||docs|
+|build_win_pyqt5| |build_ubuntu_pyqt5| |build_macos_pyqt5| |build_win_pyqt6|
+|build_macos_pyqt6||py_version| |pypi_version| |downloads_month| |license|
+|repo_size| |doi| |docs|
 
 |
 
