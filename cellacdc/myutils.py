@@ -2259,6 +2259,16 @@ def uninstall_omnipose_acdc():
     for pkg_to_uninstall in pkgs_to_uninstall:
         uninstall_pip_package(pkg_to_uninstall)
 
+def get_cellpose_major_version(errors='raise'):
+    major_installed = None
+    try:
+        installed_version = get_package_version('cellpose')
+        major_installed = int(installed_version.split('.')[0])
+    except Exception as err:
+        if errors == 'raise':
+            raise err
+    
+    return major_installed
 
 def check_cellpose_version(version: str):
     major_requested = int(version.split('.')[0])
@@ -2292,11 +2302,6 @@ def check_install_cellpose(version: str='2.0'):
         import_pkg_name='cellpose',
         force_upgrade=True
     )
-
-def get_cellpose_major_version():
-    installed_version = get_package_version('cellpose')
-    major_installed = int(installed_version.split('.')[0])
-    return major_installed
 
 def check_install_baby():
     check_install_package('baby', pypi_name='baby-seg')
