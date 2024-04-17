@@ -933,6 +933,8 @@ class guiWin(QMainWindow):
         self.lineage_tree = None
         self.already_synced_lin_tree = set()
         self.right_click_ID = None
+        self.original_df = None
+        self.curr_original_df_i = None
     
     def _printl(
             self, *objects, is_decorator=False, **kwargs
@@ -7592,50 +7594,69 @@ class guiWin(QMainWindow):
             if posData.frame_i == 0:
                 return
             
-            if not self.right_click_ID:
-                self.right_click_i = 0
-                self.right_click_ID = 0
+            self.find_mother_action(posData, event, ydata, xdata)
 
-            x, y = event.pos().x(), event.pos().y()
-            point = int(x), int(y)
-            ID = self.get_2Dlab(posData.lab)[ydata, xdata]
-            if self.right_click_ID != ID:
-                self.right_click_i = 0
-                self.right_click_ID = ID
-            elif event.modifiers() & Qt.ShiftModifier:
-                self.right_click_i -= 1
-            else:
-                self.right_click_i += 1
+    def find_mother_action(self, posData, event, ydata, xdata):
+        if self.original_df is None: # is this fine? # keep the original df in memory for later use if user wants to discard changes
+            self.original_df = self.lineage_tree.export_df(posData.frame_i)
+            self.curr_original_df_i = posData.frame_i
+        elif self.curr_original_df_i != posData.frame_i:
+            self.original_df = self.lineage_tree.export_df(posData.frame_i)
+            self.curr_original_df_i = posData.frame_i
+        
+        if not self.right_click_ID:
+            self.right_click_i = 0
+            self.right_click_ID = 0
 
-            if ID == 0:
-                return
-            
-            printl(f'Clicked on ID={ID} for the {self.right_click_i} time')
+        x, y = event.pos().x(), event.pos().y()
+        point = int(x), int(y)
+        ID = self.get_2Dlab(posData.lab)[ydata, xdata]
 
-            prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
-            sorted_IDs = sort_IDs_dist(prev_rp, point=point)
-            
-            prev_IDs = {rp.label for rp in prev_rp}
-            missing_IDs = prev_IDs - set(posData.IDs) 
-            filtered_IDs = [ID for ID in sorted_IDs if ID in missing_IDs]
-            if len(filtered_IDs) == 0:
-                printl('No mother candidates found.')
-                return
+        if ID == 0:
+            return
+
+        if self.right_click_ID != ID:
+            self.right_click_i = 0
+            self.right_click_ID = ID
+            self.original_mother_skipped = False
+        elif event.modifiers() & Qt.ShiftModifier:
+            self.right_click_i -= 1
+        else:
+            self.right_click_i += 1
+
+        lin_tree_df = self.lineage_tree.export_df(posData.frame_i)
+
+        printl(f'Clicked on ID={ID} for the {self.right_click_i} time')
+
+        prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
+        sorted_IDs = sort_IDs_dist(prev_rp, point=point)
+        
+        prev_IDs = {rp.label for rp in prev_rp}
+        missing_IDs = prev_IDs - set(posData.IDs) 
+        filtered_IDs = [ID for ID in sorted_IDs if ID in missing_IDs]
+        if len(filtered_IDs) == 0:
+            printl('No mother candidates found.')
+            return
+
+        i = self.right_click_i % len(filtered_IDs)
+        if self.right_click_i < 0:
+            i = -i
+        new_mother = filtered_IDs[i]
+
+        if lin_tree_df.loc[ID]['parent_ID_tree'] == new_mother and self.original_mother_skipped == False: # if a mother is already present, skip it 
+            self.right_click_i += 1
+            self.original_mother_skipped = True
 
             i = self.right_click_i % len(filtered_IDs)
             if self.right_click_i < 0:
                 i = -i
             new_mother = filtered_IDs[i]
 
-
-            lin_tree_df = self.lineage_tree.export_df(posData.frame_i)
-            printl(lin_tree_df.index, lin_tree_df.columns, lin_tree_df.index.name)
-            lin_tree_df.loc[ID]['mother'] = new_mother
-            printl(lin_tree_df)
-            posData.allData_li[posData.frame_i]['acdc_df'][self.lin_tree_df_colnames] = posData.acdc_df = lin_tree_df[self.lin_tree_df_colnames]
-            self.lineage_tree.insert_lineage_df(lin_tree_df, posData.frame_i)
-            self.drawAllLineageTreeLines()
-            printl(sorted_IDs, filtered_IDs, missing_IDs, set(posData.IDs), prev_IDs, new_mother, self.right_click_i, i)
+        lin_tree_df.at[ID, 'parent_ID_tree'] = new_mother
+        self.lineage_tree.insert_lineage_df(lin_tree_df, posData.frame_i)
+        printl(sorted_IDs, filtered_IDs, missing_IDs, set(posData.IDs), prev_IDs, new_mother, self.right_click_i, i)
+        printl(f'Assigned {new_mother} as mother of {ID} in frame {posData.frame_i}')
+        self.drawAllLineageTreeLines()
 
     def gui_addCreatedAxesItems(self):
         self.ax1.addItem(self.ax1_contoursImageItem)
@@ -12040,8 +12061,15 @@ class guiWin(QMainWindow):
             #     if (df.columns == df.index.name).any():
             #         printl(f"Index name: {df.index.name} for df {i}!!!" )
 
+            if "level_0" in acdc_df.columns:
+                acdc_df=acdc_df.drop(columns="level_0")
             if "level_0" in lin_tree_df.columns:
                 lin_tree_df=lin_tree_df.drop(columns="level_0")
+            if "level_0" in families.columns:
+                families=families.drop(columns="level_0")
+            if "level_0" in lin_tree_dict_df.columns:
+                lin_tree_dict_df=lin_tree_dict_df.drop(columns="level_0")
+
             pgshow(acdc_df, lin_tree_df, families, lin_tree_dict_df)# , *[posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))], )
         
         if not self.dataIsLoaded:
@@ -14643,6 +14671,7 @@ class guiWin(QMainWindow):
                         printl('here')
                         self.lineage_tree = normal_division_lineage_tree()           
                         self.lineage_tree.load_lineage_df_list(df_li)
+
                     # printl(self.lineage_tree.lineage_list[-1])
                     # printl(len(self.lineage_tree.lineage_list))
                     # printl(self.lineage_tree.frames_for_dfs)
@@ -14670,6 +14699,7 @@ class guiWin(QMainWindow):
                 posData.frame_i -= 1
                 self.get_data()
                 return
+            
             self.updateAllImages(updateFilters=True)
             self.updateViewerWindow()
             self.setNavigateScrollBarMaximum()
@@ -14684,6 +14714,30 @@ class guiWin(QMainWindow):
             msg = 'You reached the last segmented frame!'
             self.logger.info(msg)
             self.titleLabel.setText(msg, color=self.titleColor)
+
+    def lin_tree_ask_changes(self):
+        mode = str(self.modeComboBox.currentText())
+        if mode != 'Normal division: Lineage tree':
+            return
+        
+        if not self.lineage_tree:
+            return
+        
+        posData = self.data[self.pos_i]
+        
+        if self.curr_original_df_i != posData.frame_i:
+            return
+        
+        new_df = self.lineage_tree.export_df(posData.frame_i)
+        original_df = self.original_df
+
+        if original_df.equals(new_df):
+            return
+        
+        printl('WIP')
+
+
+
 
     def setNavigateScrollBarMaximum(self):
         posData = self.data[self.pos_i]
@@ -16332,6 +16386,9 @@ class guiWin(QMainWindow):
 
         if mode == 'Viewer' and not enforce:
             return
+
+        self.lin_tree_ask_changes()
+        printl('Ask Francesco if this is the right position to also avoid outdated non lin tree data from the df to drip into acdc_df')
 
         posData.allData_li[posData.frame_i]['regionprops'] = posData.rp.copy()
         posData.allData_li[posData.frame_i]['labels'] = posData.lab.copy()
@@ -18016,6 +18073,12 @@ class guiWin(QMainWindow):
         xx, yy = core.get_line(y1, x1, y2, x2, dashed=True)
         scatterItem.addPoints(xx, yy)
     
+    def clearAllCellToCellLines(self):
+        self.ax1_newMothBudLinesItem.setData([], [])
+        self.ax1_oldMothBudLinesItem.setData([], [])
+        self.ax2_newMothBudLinesItem.setData([], [])
+        self.ax2_oldMothBudLinesItem.setData([], [])
+
     def drawAllLineageTreeLines(self):
         if self.lineage_tree is None:
             return
@@ -18023,8 +18086,10 @@ class guiWin(QMainWindow):
         if len(self.lineage_tree.lineage_list) <= 2:
             return
 
+        self.clearAllCellToCellLines()
         posData = self.data[self.pos_i]
         frame_i = posData.frame_i
+        printl(self.lineage_tree.frames_for_dfs)
         lin_tree_df = self.lineage_tree.export_df(self.lineage_tree.frames_for_dfs.index(frame_i))
         lin_tree_df_prev = self.lineage_tree.export_df(self.lineage_tree.frames_for_dfs.index(frame_i)-1)
         rp = posData.allData_li[frame_i]['regionprops']
