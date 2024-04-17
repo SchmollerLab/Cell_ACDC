@@ -6623,6 +6623,7 @@ class guiWin(QMainWindow):
             if self.secondChannelName is not None:
                 secondChannelData = self.getSecondChannelData()
                 roiSecondChannel = secondChannelData[self.labelRoiSlice]
+                printl()
             
             isTimelapse = self.labelRoiTrangeCheckbox.isChecked()
             if isTimelapse:
@@ -23243,17 +23244,17 @@ class guiWin(QMainWindow):
             tRangeLen = 1
 
         if tRangeLen > 1:
-            tRange = (start_frame_i, stop_frame_n)
-            fluo_img_data = fluo_data[start_frame_i:stop_frame_n]
+            # fluo_img_data = fluo_data[start_frame_i:stop_frame_n]
             if self.isSegm3D or posData.SizeZ == 1:
-                return fluo_img_data
+                return fluo_data
             else:
-                T, Z, Y, X = fluo_img_data.shape
-                secondChannelData = np.zeros((T, Y, X), dtype=fluo_img_data.dtype)
-                for frame_i, fluo_img in enumerate(fluo_img_data):
+                T, Z, Y, X = fluo_data.shape
+                secondChannelData = np.zeros((T, Y, X), dtype=fluo_data.dtype)
+                for frame_i, fluo_img in enumerate(fluo_data):
                     secondChannelData[frame_i] = self.get_2Dimg_from_3D(
-                        fluo_img_data, frame_i=frame_i
+                        fluo_data, frame_i=frame_i
                     )
+                return secondChannelData
         else:
             fluo_img_data = fluo_data[posData.frame_i]
             if self.isSegm3D or posData.SizeZ == 1:
