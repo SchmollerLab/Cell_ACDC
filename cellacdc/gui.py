@@ -23245,7 +23245,7 @@ class guiWin(QMainWindow):
         if tRangeLen > 1:
             tRange = (start_frame_i, stop_frame_n)
             fluo_img_data = fluo_data[start_frame_i:stop_frame_n]
-            if self.isSegm3D:
+            if self.isSegm3D or posData.SizeZ == 1:
                 return fluo_img_data
             else:
                 T, Z, Y, X = fluo_img_data.shape
@@ -23256,7 +23256,7 @@ class guiWin(QMainWindow):
                     )
         else:
             fluo_img_data = fluo_data[posData.frame_i]
-            if self.isSegm3D:
+            if self.isSegm3D or posData.SizeZ == 1:
                 return fluo_img_data
             else:
                 return self.get_2Dimg_from_3D(fluo_img_data)
