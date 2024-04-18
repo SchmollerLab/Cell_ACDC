@@ -2971,6 +2971,7 @@ class ConcatAcdcDfsWorker(BaseWorkerUtil):
 
                 self.signals.progressBar.emit(1)
 
+            self.signals.initProgressBar.emit(0)
             acdc_df_allpos = pd.concat(
                 acdc_dfs, keys=keys, names=['Position_n', 'Cell_ID']
             )
@@ -3828,7 +3829,7 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
             acdc_df = pd.read_csv(filepath, index_col=['frame_i', 'Cell_ID'])
             return acdc_df
     
-    def copyCcaColsFromAcdcDf(self, df, acdc_df):
+    def copyCcaColsFromAcdcDf(self, df, acdc_df, debug=False):
         if acdc_df is None:
             return df
         
@@ -3836,7 +3837,7 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
         for col in cca_df_colnames:
             if col not in acdc_df.columns:
                 continue
-            
+        
             if col not in self.selectedColumns:
                 continue
             
@@ -3856,6 +3857,12 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                 continue
             
             if col not in self.selectedColumns:
+                continue
+            
+            df.loc[idx, col] = acdc_df.loc[idx, col]
+        
+        for col in self.selectedColumns:
+            if col not in acdc_df.columns:
                 continue
             
             df.loc[idx, col] = acdc_df.loc[idx, col]
@@ -4017,7 +4024,9 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                         df_spots = spotmax.io.load_spots_table(
                             spotmax_output_path, df_spots_filename
                         ).reset_index().set_index(['frame_i', 'Cell_ID'])
-                        df_spots = self.copyCcaColsFromAcdcDf(df_spots, acdc_df)
+                        df_spots = self.copyCcaColsFromAcdcDf(
+                            df_spots, acdc_df, debug=p==0
+                        )
                         df_spots = (
                             df_spots.reset_index()
                             .set_index(['frame_i', 'Cell_ID', 'spot_id'])
