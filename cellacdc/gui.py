@@ -5266,6 +5266,7 @@ class guiWin(QMainWindow):
             self.expandFootprintSize = 1
         else:
             self.hoverLabelID = 0
+            self.expandingID = 0
             self.updateAllImages()
     
     def expandLabel(self, dilation=True):

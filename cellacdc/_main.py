@@ -1118,33 +1118,6 @@ class mainWin(QMainWindow):
                 self.close()
                 return
         return super().keyPressEvent(event)
-        printl('ciao')
-        from qtpy.QtWidgets import QDialog, QTreeWidget, QTreeWidgetItem
-        secondWin = QDialog(self)
-
-        layout = QVBoxLayout()
-
-        widget = QTreeWidget()
-        item = QTreeWidgetItem(['ciao'])
-        widget.addTopLevelItem(item)
-        
-        layout.addWidget(widget)
-        secondWin.setLayout(layout)
-        secondWin.exec_()
-        # win = apps.TreesSelectorDialog(
-        #     {'tree1': {'topLevel': ['child1']}}
-        # )
-        # win.exec_()
-        # pass
-        # win = apps.combineMetricsEquationDialog(
-        #     ['channel_1', 'channel_2'], False, False, debug=True, closeOnOk=False
-        # )
-        # win.exec_()
-        expPaths = {
-            r'/Users/francesco.padovani/Library/CloudStorage/GoogleDrive-padovaf@tcd.ie/My Drive/01_Postdoc_HMGU/Python_MyScripts/MIA/Git/ChromRings/data/13_nucleolus_nucleus_profile/Fed_with_spotmax_3Dseg': ['Position_1', 'Position_3'],
-        }
-        self.win = apps.selectPositionsMultiExp(expPaths)
-        self.win.show() 
     
     def launchApplyTrackingFromTrackMateXML(self):
         posPath = self.getSelectedPosPath('Apply tracking info from tabular data')

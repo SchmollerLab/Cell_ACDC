@@ -368,6 +368,9 @@ def setupLogger(module='base', logs_path=None):
     
     logger.info(f'Cell-ACDC installation directory: "{cellacdc_path}"')
     
+    logger.info(f'System version: {sys.version}')
+    logger.info(f'Platform: {platform.platform()}')
+    
     # if module == 'gui' and GUI_INSTALLED:
     #     qt_handler = widgets.QtHandler()
     #     qt_handler.setFormatter(logging.Formatter("%(message)s"))
