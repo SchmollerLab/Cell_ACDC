@@ -49,13 +49,12 @@ body:
         Full error or terminal output..
       render: Shell
     
-  - type: inout
+  - type: input
     attributes:
       label: "Log file:"
-      description: You can find the log files location from the menu `Help --> Show log files...` 
+      description: You can find the log files from the menu `Help --> Show log files...` 
       placeholder: |
         Drag and drop here the relevant log file...
-      render: Shell
 
   - type: textarea
     attributes:
