@@ -3833,6 +3833,9 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
         if acdc_df is None:
             return df
         
+        if debug:
+            printl(acdc_df.columns.to_list(), pretty=True)
+        
         idx = df.index.intersection(acdc_df.index)
         for col in cca_df_colnames:
             if col not in acdc_df.columns:
@@ -3866,6 +3869,9 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                 continue
             
             df.loc[idx, col] = acdc_df.loc[idx, col]
+            
+            if debug and col == 'cell_vol_fl':
+                printl(df[[col]])
         
         return df
     
@@ -4025,7 +4031,7 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                             spotmax_output_path, df_spots_filename
                         ).reset_index().set_index(['frame_i', 'Cell_ID'])
                         df_spots = self.copyCcaColsFromAcdcDf(
-                            df_spots, acdc_df, debug=p==0
+                            df_spots, acdc_df, debug=False
                         )
                         df_spots = (
                             df_spots.reset_index()

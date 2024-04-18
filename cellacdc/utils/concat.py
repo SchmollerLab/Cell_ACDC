@@ -40,8 +40,8 @@ class ConcatWin(NewThreadMultipleExpBaseUtil):
             if not file.endswith('.csv'):
                 continue
             
-            idx = file.find('acdc_output') == -1
-            if idx:
+            idx = file.find('acdc_output')
+            if idx == -1:
                 continue
             
             acdc_output_tables.append(file[idx:])
