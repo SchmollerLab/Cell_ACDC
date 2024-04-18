@@ -16629,7 +16629,12 @@ class guiWin(QMainWindow):
     
     def trackNewIDtoNewIDsFutureFrame(self, newID, newIDmask):
         posData = self.data[self.pos_i]
-        nextLab = posData.allData_li[posData.frame_i+1]['labels']
+        try:
+            nextLab = posData.allData_li[posData.frame_i+1]['labels']
+        except IndexError:
+            # This is last frame --> there are no future frames
+            return
+        
         if nextLab is None:
             return
         
@@ -20729,6 +20734,9 @@ class guiWin(QMainWindow):
 
         self.highlightSearchedID(hoverID)
         
+        if hoverID == 0:
+            return
+        
         posData = self.data[self.pos_i]
         objIdx = posData.IDs_idxs[hoverID]
         obj = posData.rp[objIdx]
@@ -21809,7 +21817,12 @@ class guiWin(QMainWindow):
         # Track only new object
         prevIDs = posData.allData_li[posData.frame_i-1]['IDs']
         mask = posData.lab == added_ID
-        trackedID = tracked_lab[mask][0]
+        try:
+            trackedID = tracked_lab[mask][0]
+        except IndexError as err:
+            # added_ID is not present
+            return 
+        
         isTrackedIDalreadyPresentAndNotNew = (
             posData.IDs_idxs.get(trackedID) is not None
             and added_ID != trackedID
@@ -22554,7 +22567,7 @@ class guiWin(QMainWindow):
         if self.module.startswith('spotmax'):
             caller = 'spotMAX'
         txt = f'WARNING: {caller} is in error state. Please, restart.'
-        _hl = '===================================='
+        _hl = '*'*100
         self.titleLabel.setText(txt, color='r')
         self.logger.info(f'{_hl}\n{txt}\n{_hl}')
 
