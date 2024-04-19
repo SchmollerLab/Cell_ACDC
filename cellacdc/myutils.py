@@ -316,6 +316,31 @@ class Logger(logging.Logger):
     def flush(self):
         self._stdout.flush()
 
+def delete_older_log_files(logs_path):
+    if not os.path.exists(logs_path):
+        return
+    
+    log_files = os.listdir(logs_path)
+    for log_file in log_files:
+        if not log_file.endswith('.log'):
+            continue
+        
+        log_filepath = os.path.join(logs_path, log_file)
+        try:
+            mtime = os.path.getmtime(log_filepath)
+        except Exception as err:
+            continue
+        
+        mdatetime = datetime.datetime.fromtimestamp(mtime)
+        days = (datetime.datetime.now() - mdatetime).days
+        if days < 7:
+            continue
+
+        try:
+            os.remove(log_filepath)
+        except Exception as err:
+            continue
+
 def setupLogger(module='base', logs_path=None):
     if logs_path is None:
         logs_path = get_logs_path()
@@ -323,19 +348,9 @@ def setupLogger(module='base', logs_path=None):
     logger = Logger(module=module)
     sys.stdout = logger
     
+    delete_older_log_files(logs_path)
     if not os.path.exists(logs_path):
         os.mkdir(logs_path)
-    else:
-        # Keep 20 most recent logs
-        ls = listdir(logs_path)
-        if len(ls)>20:
-            ls = [os.path.join(logs_path, f) for f in ls]
-            ls.sort(key=lambda x: os.path.getmtime(x))
-            for file in ls[:-20]:
-                try:
-                    os.remove(file)
-                except Exception as e:
-                    pass
 
     date_time = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     id = uuid4()
