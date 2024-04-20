@@ -1030,6 +1030,7 @@ class guiWin(QMainWindow):
 
         self.initShortcuts()
         self.show()
+        self.resizeRangeWelcomeText()
         # self.installEventFilter(self)
         
         self.logger.info('GUI ready.')
@@ -12254,8 +12255,7 @@ class guiWin(QMainWindow):
         if ev.key() == Qt.Key_Q and self.debug:
             # posData = self.data[self.pos_i]
             # printl(self.labelRoiTrangeCheckbox.findChild(QAction).isChecked())
-            print('ciao')
-            printl('long ciao')
+            printl(self.ax1.infoTextItem.pos())
         
         if not self.isDataLoaded:
             self.logger.info(
@@ -18909,6 +18909,15 @@ class guiWin(QMainWindow):
         
         self.autoPilotZoomToObjSpinBox.setValue(posData.IDs[0])
         self.zoomToObj(posData.rp[0])
+    
+    def resizeRangeWelcomeText(self):
+        xRange, yRange = self.ax1.viewRange()
+        deltaX = xRange[1] - xRange[0]
+        deltaY = yRange[1] - yRange[0]
+        self.ax1.setXRange(0, deltaX)
+        self.ax1.setYRange(0, deltaY)
+        # self.ax1.setXRange(0, 0)
+        # self.ax1.setYRange(0, 0)
     
     def zoomToObj(self, obj=None):
         if not hasattr(self, 'data'):
