@@ -2350,7 +2350,10 @@ def check_install_omnipose():
         _install_pip_package('omnipose-acdc')
 
 def _run_command(command, shell=True):
-    args = command.split(' ')
+    if command.find('conda') == -1:
+        args = command.split(' ')
+    else:
+        args = command
     subprocess.check_call(args, shell=shell)
 
 def check_install_torch(is_cli=False, caller_name='Cell-ACDC', qparent=None):
