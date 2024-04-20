@@ -169,7 +169,7 @@ try:
         pass
     from qtpy import QtCore
     import pyqtgraph
-    import seaborn
+    import matplotlib
     GUI_INSTALLED = True
 except Exception as e:
     GUI_INSTALLED = False        

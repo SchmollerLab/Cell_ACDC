@@ -316,6 +316,31 @@ class Logger(logging.Logger):
     def flush(self):
         self._stdout.flush()
 
+def delete_older_log_files(logs_path):
+    if not os.path.exists(logs_path):
+        return
+    
+    log_files = os.listdir(logs_path)
+    for log_file in log_files:
+        if not log_file.endswith('.log'):
+            continue
+        
+        log_filepath = os.path.join(logs_path, log_file)
+        try:
+            mtime = os.path.getmtime(log_filepath)
+        except Exception as err:
+            continue
+        
+        mdatetime = datetime.datetime.fromtimestamp(mtime)
+        days = (datetime.datetime.now() - mdatetime).days
+        if days < 7:
+            continue
+
+        try:
+            os.remove(log_filepath)
+        except Exception as err:
+            continue
+
 def setupLogger(module='base', logs_path=None):
     if logs_path is None:
         logs_path = get_logs_path()
@@ -323,19 +348,9 @@ def setupLogger(module='base', logs_path=None):
     logger = Logger(module=module)
     sys.stdout = logger
     
+    delete_older_log_files(logs_path)
     if not os.path.exists(logs_path):
         os.mkdir(logs_path)
-    else:
-        # Keep 20 most recent logs
-        ls = listdir(logs_path)
-        if len(ls)>20:
-            ls = [os.path.join(logs_path, f) for f in ls]
-            ls.sort(key=lambda x: os.path.getmtime(x))
-            for file in ls[:-20]:
-                try:
-                    os.remove(file)
-                except Exception as e:
-                    pass
 
     date_time = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     id = uuid4()
@@ -367,6 +382,9 @@ def setupLogger(module='base', logs_path=None):
         logger.info(f'Using Qt version {QtCore.__version__}')
     
     logger.info(f'Cell-ACDC installation directory: "{cellacdc_path}"')
+    
+    logger.info(f'System version: {sys.version}')
+    logger.info(f'Platform: {platform.platform()}')
     
     # if module == 'gui' and GUI_INSTALLED:
     #     qt_handler = widgets.QtHandler()
@@ -2259,6 +2277,16 @@ def uninstall_omnipose_acdc():
     for pkg_to_uninstall in pkgs_to_uninstall:
         uninstall_pip_package(pkg_to_uninstall)
 
+def get_cellpose_major_version(errors='raise'):
+    major_installed = None
+    try:
+        installed_version = get_package_version('cellpose')
+        major_installed = int(installed_version.split('.')[0])
+    except Exception as err:
+        if errors == 'raise':
+            raise err
+    
+    return major_installed
 
 def check_cellpose_version(version: str):
     major_requested = int(version.split('.')[0])
@@ -2292,11 +2320,6 @@ def check_install_cellpose(version: str='2.0'):
         import_pkg_name='cellpose',
         force_upgrade=True
     )
-
-def get_cellpose_major_version():
-    installed_version = get_package_version('cellpose')
-    major_installed = int(installed_version.split('.')[0])
-    return major_installed
 
 def check_install_baby():
     check_install_package('baby', pypi_name='baby-seg')
@@ -3100,7 +3123,7 @@ def are_acdc_dfs_equal(df_left, df_right):
 def is_pos_folderpath(folderpath):
     foldername = os.path.basename(folderpath)
     is_valid_pos_folder = (
-        re.search('Position_(\d+)$', foldername) is not None
+        re.search('^Position_(\d+)$', foldername) is not None
         and os.path.exists(os.path.join(folderpath, 'Images'))
     )
     return is_valid_pos_folder

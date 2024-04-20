@@ -2528,8 +2528,9 @@ class select_exp_folder:
     def get_values_cca(self, exp_path):
         self.exp_path = exp_path
         pos_foldernames = natsorted(myutils.listdir(exp_path))
-        pos_foldernames = [pos for pos in pos_foldernames
-                               if re.match(r'Position_(\d+)', pos)]
+        pos_foldernames = [
+            pos for pos in pos_foldernames if re.match(r'^Position_(\d+)', pos)
+        ]
         self.pos_foldernames = pos_foldernames
         values = []
         for pos in pos_foldernames:

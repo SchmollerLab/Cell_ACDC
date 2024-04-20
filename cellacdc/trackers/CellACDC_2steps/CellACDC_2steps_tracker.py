@@ -8,7 +8,6 @@ import pandas as pd
 import scipy.optimize
 
 import skimage.measure
-from sympy import Segment
 
 import cellacdc.workers
 import cellacdc.core

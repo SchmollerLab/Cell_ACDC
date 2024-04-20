@@ -49,6 +49,7 @@ class NewThreadMultipleExpBaseUtil(QDialog):
         self.log_path = log_path
         self.log_filename = log_filename
         self.logs_path = logs_path
+        self.is_error_state = False
 
         self.expPaths = expPaths
         self.app = app

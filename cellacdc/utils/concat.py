@@ -40,8 +40,8 @@ class ConcatWin(NewThreadMultipleExpBaseUtil):
             if not file.endswith('.csv'):
                 continue
             
-            idx = file.find('acdc_output') == -1
-            if idx:
+            idx = file.find('acdc_output')
+            if idx == -1:
                 continue
             
             acdc_output_tables.append(file[idx:])
@@ -102,6 +102,8 @@ class ConcatWin(NewThreadMultipleExpBaseUtil):
             if self.setMeasurementsWin.nonMeasurementsGroupbox.isChecked():
                 groupbox = self.setMeasurementsWin.nonMeasurementsGroupbox
                 for checkBox in groupbox.checkBoxes: 
+                    if not checkBox.isEnabled():
+                        continue
                     if not checkBox.isChecked():
                         continue
                     colname = checkBox.text()
@@ -114,6 +116,9 @@ class ConcatWin(NewThreadMultipleExpBaseUtil):
                 continue
             
             for checkBox in chNameGroupbox.checkBoxes:
+                if not checkBox.isEnabled():
+                    continue
+                
                 if not checkBox.isChecked():
                     continue
                 colname = checkBox.text()
@@ -121,6 +126,9 @@ class ConcatWin(NewThreadMultipleExpBaseUtil):
         
         if self.setMeasurementsWin.sizeMetricsQGBox.isChecked():
             for checkBox in self.setMeasurementsWin.sizeMetricsQGBox.checkBoxes:
+                if not checkBox.isEnabled():
+                    continue
+                
                 if not checkBox.isChecked():
                     continue
                 colname = checkBox.text()
@@ -129,6 +137,9 @@ class ConcatWin(NewThreadMultipleExpBaseUtil):
         selectedPropsNames = []
         if self.setMeasurementsWin.regionPropsQGBox.isChecked():
             for checkBox in self.setMeasurementsWin.regionPropsQGBox.checkBoxes:
+                if not checkBox.isEnabled():
+                    continue
+                
                 if not checkBox.isChecked():
                     continue
                 colname = checkBox.text()
@@ -146,6 +157,9 @@ class ConcatWin(NewThreadMultipleExpBaseUtil):
             win = self.setMeasurementsWin
             checkBoxes = win.mixedChannelsCombineMetricsQGBox.checkBoxes
             for checkBox in checkBoxes:
+                if not checkBox.isEnabled():
+                    continue
+                
                 if not checkBox.isChecked():
                     continue
                 colname = checkBox.text()

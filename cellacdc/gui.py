@@ -4466,14 +4466,14 @@ class guiWin(QMainWindow):
     @exception_handler
     def gui_mousePressEventImg2(self, event):
         modifiers = QGuiApplication.keyboardModifiers()
-        ctrl = modifiers == Qt.ControlModifier
         alt = modifiers == Qt.AltModifier
+        shift = modifiers == Qt.ShiftModifier
         isMod = alt
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
-        left_click = event.button() == Qt.MouseButton.LeftButton and not isMod
+        left_click = event.button() == Qt.MouseButton.LeftButton and not alt
         middle_click = self.isMiddleClick(event, modifiers)
-        right_click = event.button() == Qt.MouseButton.RightButton and not isMod
+        right_click = event.button() == Qt.MouseButton.RightButton and not alt
         isPanImageClick = self.isPanImageClick(event, modifiers)
         eraserON = self.eraserButton.isChecked()
         brushON = self.brushButton.isChecked()
@@ -4483,7 +4483,7 @@ class guiWin(QMainWindow):
         # Drag image if neither brush or eraser are On pressed
         dragImg = (
             left_click and not eraserON and not
-            brushON and not separateON and not middle_click
+            brushON and not middle_click
         )
         if isPanImageClick:
             dragImg = True
@@ -4546,7 +4546,7 @@ class guiWin(QMainWindow):
             self.startBlinkingModeCB()
             event.ignore()
             return
-
+        
         # Left-click is used for brush, eraser, separate bud, curvature tool
         # and magic labeller
         # Brush and eraser are mutually exclusive but we want to keep the eraser
@@ -4742,7 +4742,7 @@ class guiWin(QMainWindow):
                 )
                 success = True
                 # self.set_2Dlab(lab2D)
-            elif not ctrl:
+            elif not shift:
                 lab2D, success = self.auto_separate_bud_ID(
                     ID, self.get_2Dlab(posData.lab), posData.rp, max_ID
                 )
@@ -5259,10 +5259,15 @@ class guiWin(QMainWindow):
         self.expandingID = -1
     
     def expandLabelCallback(self, checked):
-        self.disconnectLeftClickButtons()
-        self.uncheckLeftClickButtons(self.sender())
-        self.connectLeftClickButtons()
-        self.expandFootprintSize = 1
+        if checked:
+            self.disconnectLeftClickButtons()
+            self.uncheckLeftClickButtons(self.sender())
+            self.connectLeftClickButtons()
+            self.expandFootprintSize = 1
+        else:
+            self.hoverLabelID = 0
+            self.expandingID = 0
+            self.updateAllImages()
     
     def expandLabel(self, dilation=True):
         posData = self.data[self.pos_i]
@@ -6619,6 +6624,7 @@ class guiWin(QMainWindow):
             if self.secondChannelName is not None:
                 secondChannelData = self.getSecondChannelData()
                 roiSecondChannel = secondChannelData[self.labelRoiSlice]
+                printl()
             
             isTimelapse = self.labelRoiTrangeCheckbox.isChecked()
             if isTimelapse:
@@ -7070,10 +7076,13 @@ class guiWin(QMainWindow):
             self.startBlinkingModeCB()
             event.ignore()
             return
-
+        
         # Allow right-click or middle-click actions on both images
         eventOnImg2 = (
-            (right_click or (middle_click and not canAddPoint))
+            (
+                right_click or (middle_click and not canAddPoint) 
+                # or (left_click and separateON)
+            )
             and (mode=='Segmentation and Tracking' or self.isSnapshot)
             and not isAnnotateDivision and not manualBackgroundON
         )
@@ -11708,6 +11717,8 @@ class guiWin(QMainWindow):
         for posData in self.data:
             posData.allIDs = set()
             for frame_i in range(len(posData.segm_data)):
+                if frame_i >= len(posData.allData_li):
+                    break
                 lab = posData.allData_li[frame_i]['labels']
                 if lab is None:
                     rp = skimage.measure.regionprops(posData.segm_data[frame_i])
@@ -16618,7 +16629,12 @@ class guiWin(QMainWindow):
     
     def trackNewIDtoNewIDsFutureFrame(self, newID, newIDmask):
         posData = self.data[self.pos_i]
-        nextLab = posData.allData_li[posData.frame_i+1]['labels']
+        try:
+            nextLab = posData.allData_li[posData.frame_i+1]['labels']
+        except IndexError:
+            # This is last frame --> there are no future frames
+            return
+        
         if nextLab is None:
             return
         
@@ -20718,6 +20734,9 @@ class guiWin(QMainWindow):
 
         self.highlightSearchedID(hoverID)
         
+        if hoverID == 0:
+            return
+        
         posData = self.data[self.pos_i]
         objIdx = posData.IDs_idxs[hoverID]
         obj = posData.rp[objIdx]
@@ -21798,7 +21817,12 @@ class guiWin(QMainWindow):
         # Track only new object
         prevIDs = posData.allData_li[posData.frame_i-1]['IDs']
         mask = posData.lab == added_ID
-        trackedID = tracked_lab[mask][0]
+        try:
+            trackedID = tracked_lab[mask][0]
+        except IndexError as err:
+            # added_ID is not present
+            return 
+        
         isTrackedIDalreadyPresentAndNotNew = (
             posData.IDs_idxs.get(trackedID) is not None
             and added_ID != trackedID
@@ -22543,7 +22567,7 @@ class guiWin(QMainWindow):
         if self.module.startswith('spotmax'):
             caller = 'spotMAX'
         txt = f'WARNING: {caller} is in error state. Please, restart.'
-        _hl = '===================================='
+        _hl = '*'*100
         self.titleLabel.setText(txt, color='r')
         self.logger.info(f'{_hl}\n{txt}\n{_hl}')
 
@@ -23234,20 +23258,20 @@ class guiWin(QMainWindow):
             tRangeLen = 1
 
         if tRangeLen > 1:
-            tRange = (start_frame_i, stop_frame_n)
-            fluo_img_data = fluo_data[start_frame_i:stop_frame_n]
-            if self.isSegm3D:
-                return fluo_img_data
+            # fluo_img_data = fluo_data[start_frame_i:stop_frame_n]
+            if self.isSegm3D or posData.SizeZ == 1:
+                return fluo_data
             else:
-                T, Z, Y, X = fluo_img_data.shape
-                secondChannelData = np.zeros((T, Y, X), dtype=fluo_img_data.dtype)
-                for frame_i, fluo_img in enumerate(fluo_img_data):
+                T, Z, Y, X = fluo_data.shape
+                secondChannelData = np.zeros((T, Y, X), dtype=fluo_data.dtype)
+                for frame_i, fluo_img in enumerate(fluo_data):
                     secondChannelData[frame_i] = self.get_2Dimg_from_3D(
-                        fluo_img_data, frame_i=frame_i
+                        fluo_data, frame_i=frame_i
                     )
+                return secondChannelData
         else:
             fluo_img_data = fluo_data[posData.frame_i]
-            if self.isSegm3D:
+            if self.isSegm3D or posData.SizeZ == 1:
                 return fluo_img_data
             else:
                 return self.get_2Dimg_from_3D(fluo_img_data)

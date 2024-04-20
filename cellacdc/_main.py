@@ -994,6 +994,7 @@ class mainWin(QMainWindow):
                         return
                     continue
             
+            is_multi_pos = False
             for exp_path, pos_folders in selected_exp_paths.items():
                 if exp_path in expPaths:
                     if warn_exp_already_selected:
@@ -1007,6 +1008,9 @@ class mainWin(QMainWindow):
                     expPaths[exp_path].extend(pos_folders)
                 else:
                     expPaths[exp_path] = pos_folders
+                
+                if len(pos_folders) > 1 and not is_multi_pos:
+                    is_multi_pos = True
             
             mostRecentPath = exp_path
             msg = widgets.myMessageBox(wrapText=False)
@@ -1024,7 +1028,7 @@ class mainWin(QMainWindow):
             self.logger.info(f'{utilityName} aborted by the user.')
             return
 
-        if len(expPaths) > 1 or len(posFolders) > 1:
+        if len(expPaths) > 1 or is_multi_pos:
             infoPaths = self.getInfoPosStatus(expPaths)
             selectPosWin = apps.selectPositionsMultiExp(
                 expPaths, 
@@ -1114,33 +1118,6 @@ class mainWin(QMainWindow):
                 self.close()
                 return
         return super().keyPressEvent(event)
-        printl('ciao')
-        from qtpy.QtWidgets import QDialog, QTreeWidget, QTreeWidgetItem
-        secondWin = QDialog(self)
-
-        layout = QVBoxLayout()
-
-        widget = QTreeWidget()
-        item = QTreeWidgetItem(['ciao'])
-        widget.addTopLevelItem(item)
-        
-        layout.addWidget(widget)
-        secondWin.setLayout(layout)
-        secondWin.exec_()
-        # win = apps.TreesSelectorDialog(
-        #     {'tree1': {'topLevel': ['child1']}}
-        # )
-        # win.exec_()
-        # pass
-        # win = apps.combineMetricsEquationDialog(
-        #     ['channel_1', 'channel_2'], False, False, debug=True, closeOnOk=False
-        # )
-        # win.exec_()
-        expPaths = {
-            r'/Users/francesco.padovani/Library/CloudStorage/GoogleDrive-padovaf@tcd.ie/My Drive/01_Postdoc_HMGU/Python_MyScripts/MIA/Git/ChromRings/data/13_nucleolus_nucleus_profile/Fed_with_spotmax_3Dseg': ['Position_1', 'Position_3'],
-        }
-        self.win = apps.selectPositionsMultiExp(expPaths)
-        self.win.show() 
     
     def launchApplyTrackingFromTrackMateXML(self):
         posPath = self.getSelectedPosPath('Apply tracking info from tabular data')
