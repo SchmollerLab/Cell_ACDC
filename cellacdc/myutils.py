@@ -2333,9 +2333,8 @@ def check_pkg_version(import_pkg_name, min_version, raise_err=True):
         return is_version_correct
 
 def install_package_conda(conda_pkg_name, channel='conda-forge'):
-    subprocess.check_call(
-        ['conda', 'install', '-c', channel, '-y', conda_pkg_name], shell=True
-    )
+    commad = f'conda install -c {channel} -y {conda_pkg_name}'
+    subprocess.check_call([commad], shell=True)
 
 def check_install_omnipose():
     try:
@@ -2615,7 +2614,7 @@ def _install_package_gui_msg(
 def _install_tensorflow():
     cpu = platform.processor()
     if is_mac and cpu == 'arm':
-        args = ['conda', 'install', '-y', '-c', 'conda-forge', 'tensorflow']
+        args = ['conda install -y -c conda-forge tensorflow']
         shell = True
     else:
         args = [sys.executable, '-m', 'pip', 'install', '-U', 'tensorflow']

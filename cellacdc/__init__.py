@@ -429,11 +429,16 @@ def ignore_exception(func):
 
 def is_conda_env():
     python_exec_path = sys.exec_prefix
-    if python_exec_path.find('conda') == -1:
+    is_conda_python = (
+        python_exec_path.find('conda') != -1
+        or python_exec_path.find('mambaforge') != -1
+        or python_exec_path.find('miniforge') != -1
+    )
+    if not is_conda_python:
         return False
     
     try:
-        args = ['conda', '-V']
+        args = ['conda -V']
         is_conda_present = subprocess.check_call(args, shell=True) == 0
     except Exception as err:
         return False
