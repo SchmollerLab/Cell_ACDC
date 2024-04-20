@@ -176,7 +176,6 @@ def _setup_gui_libraries(caller_name='Cell-ACDC'):
                     subprocess.check_call(
                         ['conda install -y pyqt'], shell=True
                     )
-                    import pdb; pdb.set_trace()
                 else:
                     subprocess.check_call(
                         [sys.executable, '-m', 'pip', 'install', '-U', 'PyQt6']
