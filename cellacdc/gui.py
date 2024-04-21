@@ -4182,6 +4182,9 @@ class guiWin(QMainWindow):
     
     def gui_createOverlayColors(self):
         fluoChannels = [ch for ch in self.ch_names if ch != self.user_ch_name]
+        self.logger.info(
+            f'Number of TIFF files detected: {len(fluoChannels)}'
+        )
         self.overlayColors = {}
         for c, ch in enumerate(fluoChannels):
             if f'{ch}_rgb' in self.df_settings.index:
@@ -4189,6 +4192,10 @@ class guiWin(QMainWindow):
                 rgb = tuple([int(val) for val in rgb_text.split('_')])
                 self.overlayColors[ch] = rgb
             else:
+                if c >= len(self.overlayRGBs):
+                    i = c/len(fluoChannels)
+                    rgb = tuple([round(c*255) for c in self.overlayCmap(i)][:3])
+                    self.overlayRGBs.append(rgb)
                 self.overlayColors[ch] = self.overlayRGBs[c]
     
     def gui_createOverlayItems(self):
@@ -15377,6 +15384,14 @@ class guiWin(QMainWindow):
     def loadingDataCompleted(self):
         self.isDataLoading = True
         posData = self.data[self.pos_i]
+        files_format = '\n'.join([
+            f'  - {file}' for file in posData.images_folder_files
+        ])
+        sep = '-'*100
+        self.logger.info(
+            f'{sep}\nFiles present in the first Position folder loaded:\n\n'
+            f'{files_format}\n{sep}'
+        )
         self.placeHolderToolbar.setVisible(True)
         self.updateImageValueFormatter()
         self.checkManageVersions()
@@ -18586,9 +18601,9 @@ class guiWin(QMainWindow):
             (49, 222, 134),
             (22, 108, 27)
         ]
-        cmap = matplotlib.colormaps['hsv']
+        self.overlayCmap = matplotlib.colormaps['hsv']
         self.overlayRGBs.extend(
-            [tuple([round(c*255) for c in cmap(i)][:3]) 
+            [tuple([round(c*255) for c in self.overlayCmap(i)][:3]) 
             for i in np.linspace(0,1,8)]
         )
 
