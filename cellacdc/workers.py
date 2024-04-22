@@ -2623,7 +2623,9 @@ class RestructMultiTimepointsWorker(BaseWorkerUtil):
                             shape = (SizeT, *img.shape)
                             videoData = np.zeros(shape, dtype=img.dtype)
                         videoData[frame_i] = img
-                        frameNumber = int(re.findall(fr'_(\d+){ext}', file)[0])
+                        pattern = self.frame_name_pattern
+                        frameNumberMatch = re.findall(pattern, file)[0][1]
+                        frameNumber = int(frameNumberMatch)
                         frameNumbers.append(frameNumber)
                     except Exception as e:
                         self.logger.log(traceback.format_exc())

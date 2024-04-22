@@ -4217,17 +4217,16 @@ class MultiTimePointFilePattern(QBaseDialog):
         
         noteLayout = QHBoxLayout()
         noteText = html_utils.paragraph("""
-            channels <em>do not need to have the same number of frames</em>, 
+            Channels <em>do not need to have the same number of frames</em>, 
             however, Cell-ACDC will place<br>
             the frames at the right frame number 
             (given by <code>timepoint</code> number at the end<br>
-            of the filename) and it will fill missing frames with zeros.<br><br>
+            of the filename) and it will fill missing frames with zeros.
         """)
         noteLayout.addWidget(
-            QLabel(html_utils.paragraph('NOTE:')), 
-            alignment=(Qt.AlignTop | Qt.AlignRight)
+            QLabel(html_utils.to_admonition(noteText)), 
+            # alignment=(Qt.AlignTop | Qt.AlignRight)
         )
-        noteLayout.addWidget(QLabel(noteText))
 
         mainLayout.addWidget(QLabel(infoText))
         mainLayout.addLayout(noteLayout)

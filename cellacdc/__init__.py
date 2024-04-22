@@ -333,7 +333,7 @@ def _critical_exception_gui(self, func_name):
     result = None
     traceback_str = traceback.format_exc()
     
-    if self.is_error_state:
+    if hasattr(self, 'is_error_state') and self.is_error_state:
         printl(traceback_str)
         return
     

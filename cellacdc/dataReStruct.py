@@ -13,21 +13,38 @@ from qtpy.QtWidgets import QFileDialog
 
 from . import apps, html_utils, myutils, printl, widgets, workers
 
-frame_name_pattern = r'_(day)*(\d+)\.[A-Za-z0-9]+'
+# Frame number must be at the end with .ext, e.g., _t01.tif
+frame_name_patterns = (
+    r'_(day)?(\d+)\.[A-Za-z0-9]+$', 
+    r'_(t)?(\d+)\.[A-Za-z0-9]+$'
+)
+
+def get_frame_num_and_pattern(filename):
+    matching_frame_name_pattern = r'^\.+'
+    for frame_name_pattern in frame_name_patterns:
+        try:
+            frameNumber = re.findall(frame_name_pattern, filename)[0][1]
+            matching_frame_name_pattern = frame_name_pattern
+            break
+        except Exception as e:
+            frameNumber = None
+    return matching_frame_name_pattern, frameNumber
 
 def readFilenamePattern(fileName):
-    try:
-        frameNumber = re.findall(frame_name_pattern, fileName)[0][1]
-    except Exception as e:
-        frameNumber = None
+    matching_frame_name_pattern, frameNumber = get_frame_num_and_pattern(
+        fileName
+    )
     
-    s = re.sub(frame_name_pattern, '', fileName)
+    s = re.sub(matching_frame_name_pattern, '', fileName)
 
     for i, c in enumerate(s[::-1]):
         if c == '_':
             break
     channelName = s[-i:]
     posName = s[:-i-1]
+    if channelName.endswith('.tif'):
+        channelName = channelName[:-4]
+        
     return posName, frameNumber, channelName
 
 
@@ -89,7 +106,6 @@ def run(mainWin):
         return False
     
     mainWin.log('[Data Re-Struct] Checking file format of loaded files...')
-    printl(rootFolderPath)
     validFilenames = checkFileFormat(rootFolderPath, mainWin)
     if not validFilenames:
         return False
@@ -190,10 +206,14 @@ def _run_multi_files_timepoints(
     if win.cancel:
         return False
     
+    matching_frame_name_pattern, frameNumber = get_frame_num_and_pattern(
+        sampleFilename
+    )
     mainWin.thread = QThread()
     mainWin.restructWorker = workers.RestructMultiTimepointsWorker(
-        win.allChannels, frame_name_pattern, win.basename, validFilenames,
-        rootFolderPath, dstFolderPath, segmFolderPath=win.segmFolderPath
+        win.allChannels, matching_frame_name_pattern, win.basename, 
+        validFilenames, rootFolderPath, dstFolderPath, 
+        segmFolderPath=win.segmFolderPath
     )
     mainWin.restructWorker.moveToThread(mainWin.thread)
     mainWin.restructWorker.signals.finished.connect(mainWin.thread.quit)
