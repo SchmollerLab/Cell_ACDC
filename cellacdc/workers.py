@@ -1,5 +1,6 @@
 import re
 import os
+import shutil
 import time
 import json
 from collections import defaultdict, deque
@@ -3980,6 +3981,7 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
             dfs_ref_ch = defaultdict(list)
             pos_runs = defaultdict(list)
             pos_runs_ref_ch = defaultdict(list)
+            pos_ini_filepaths = {}
             for p, pos in enumerate(pos_foldernames):
                 if self.abort:
                     self.sigAborted.emit()
@@ -4008,6 +4010,11 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                 )
                 for run_desc in selectedSpotmaxRuns:
                     run, desc = run_desc.split('_...')
+                    ini_filename = f'{run}_analysis_parameters{desc}.ini'
+                    ini_filepath = os.path.join(
+                        spotmax_output_path, ini_filename
+                    )
+                    pos_ini_filepaths[(run, desc)] = ini_filepath
                     for _, pattern_filename in DFs_FILENAMES.items():
                         run_filename = pattern_filename.replace('*rn*', run)
                         run_filename = run_filename.replace('*desc*', desc)
@@ -4092,6 +4099,7 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
             for key, dfs in dfs_spots.items():
                 pos_keys = pos_runs[key]
                 run, analysis_step, desc, ext_spots = key
+                
                 if ext_spots == '.csv':
                     ext_spots = self._final_ext
                 filename = f'multipos_{run}{analysis_step}{desc}{ext_spots}'
@@ -4102,6 +4110,14 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                 spotmax_dfs_spots_allexp[filename]['dfs'].append(df_spots_concat)
                 spotmax_dfs_spots_allexp[filename]['keys'].append(
                     (exp_path, exp_name)
+                )
+                ini_filepath = pos_ini_filepaths[(run, desc)]
+                ini_filename = os.path.basename(ini_filepath)
+                dst_ini_filepath = os.path.join(allpos_folderpath, ini_filename)
+                if not os.path.exists(dst_ini_filepath):
+                    shutil.copy2(ini_filepath, dst_ini_filepath)
+                spotmax_dfs_spots_allexp[filename]['ini_filepath'].append(
+                    dst_ini_filepath
                 )
             
             for key, dfs in dfs_aggr.items():
@@ -4156,6 +4172,13 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                 extension,
                 names=names
             )
+            ini_filepath = items['ini_filepath'][0]
+            ini_filename = os.path.basename(ini_filepath)
+            dst_ini_filepath = os.path.join(
+                multiexp_dst_folderpath, ini_filename
+            )
+            if not os.path.exists(dst_ini_filepath):
+                shutil.copy2(ini_filepath, dst_ini_filepath)
             
         for filename, items in spotmax_dfs_aggr_allexp.items():
             keys = items['keys']
