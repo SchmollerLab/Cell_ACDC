@@ -20,6 +20,7 @@ frame_name_patterns = (
 )
 
 def get_frame_num_and_pattern(filename):
+    # Start with random un-matching pattern
     matching_frame_name_pattern = r'^\.+'
     for frame_name_pattern in frame_name_patterns:
         try:
