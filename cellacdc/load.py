@@ -1292,7 +1292,7 @@ class loadData:
                     df['filename'] = self.filename
                 df = df.set_index(['filename', 'frame_i']).sort_index()
                 df = df[~df.index.duplicated()]
-                self.segmInfo_df = df
+                self.segmInfo_df = df.sort_index()
                 self.segmInfo_df.to_csv(filePath)
             elif load_delROIsInfo and file.endswith('delROIsInfo.npz'):
                 self.delROIsInfoFound = True

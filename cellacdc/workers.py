@@ -917,10 +917,11 @@ class calcMetricsWorker(QObject):
             self.logger.log('-'*30)
             expFoldername = os.path.basename(exp_path)
 
-            abort = self.emitSelectSegmFiles(exp_path, pos_foldernames)
-            if abort:
-                self.signals.finished.emit(self)
-                return
+            if i == 0:
+                abort = self.emitSelectSegmFiles(exp_path, pos_foldernames)
+                if abort:
+                    self.signals.finished.emit(self)
+                    return
 
             for p, pos in enumerate(pos_foldernames):
                 if self.abort:
@@ -1054,7 +1055,7 @@ class calcMetricsWorker(QObject):
                     f'ACDC output file name: {os.path.basename(posData.acdc_output_csv_path)}'
                 )
 
-                if p == 0:
+                if p == 0 and i==0:
                     self.mutex.lock()
                     self.signals.sigInitAddMetrics.emit(
                         posData, self.allPosDataInputs
@@ -2926,13 +2927,14 @@ class ConcatAcdcDfsWorker(BaseWorkerUtil):
             self.errors = {}
             tot_pos = len(pos_foldernames)
             
-            abort = self.emitSelectAcdcOutputFiles(
-                exp_path, pos_foldernames, infoText=' to combine',
-                allowSingleSelection=True, multiSelection=False
-            )
-            if abort:
-                self.sigAborted.emit()
-                return
+            if i == 0:
+                abort = self.emitSelectAcdcOutputFiles(
+                    exp_path, pos_foldernames, infoText=' to combine',
+                    allowSingleSelection=True, multiSelection=False
+                )
+                if abort:
+                    self.sigAborted.emit()
+                    return
 
             selectedAcdcOutputEndname = self.mainWin.selectedAcdcOutputEndnames[0]
 
@@ -2988,17 +2990,18 @@ class ConcatAcdcDfsWorker(BaseWorkerUtil):
             existing_colnames = acdc_df_allpos.columns
             isSegm3D = any([col.endswith('3D') for col in existing_colnames])
             
-            kwargs = {
-                'loadedChNames': chNames, 
-                'notLoadedChNames': [],
-                'isZstack': SizeZ > 1,
-                'isSegm3D': isSegm3D,
-                'existing_colnames': existing_colnames
-            }
-            self.emitSetMeasurements(kwargs)
-            if self.abort:
-                self.sigAborted.emit()
-                return
+            if i == 0:
+                kwargs = {
+                    'loadedChNames': chNames, 
+                    'notLoadedChNames': [],
+                    'isZstack': SizeZ > 1,
+                    'isSegm3D': isSegm3D,
+                    'existing_colnames': existing_colnames
+                }
+                self.emitSetMeasurements(kwargs)
+                if self.abort:
+                    self.sigAborted.emit()
+                    return
             
             selected_cols = [
                 col for col in self.selectedColumns 
@@ -3007,17 +3010,18 @@ class ConcatAcdcDfsWorker(BaseWorkerUtil):
             acdc_df_allpos = acdc_df_allpos[selected_cols]
             acdc_dfs_allexp.append(acdc_df_allpos)
             exp_name = os.path.basename(exp_path)
-            keys_exp.append(exp_name)
+            keys_exp.append((exp_path, exp_name))
 
             allpos_dir = os.path.join(exp_path, 'AllPos_acdc_output')
             if not os.path.exists(allpos_dir):
                 os.mkdir(allpos_dir)
             
             allPos_acdc_df_basename = f'AllPos_{selectedAcdcOutputEndname}'
-            self.emitAskAppendName(allPos_acdc_df_basename)
-            if self.abort:
-                self.sigAborted.emit()
-                return
+            if i == 0:
+                self.emitAskAppendName(allPos_acdc_df_basename)
+                if self.abort:
+                    self.sigAborted.emit()
+                    return
             
             acdc_dfs_allpos_filepath = os.path.join(
                 allpos_dir, self.concat_df_filename
@@ -3042,7 +3046,8 @@ class ConcatAcdcDfsWorker(BaseWorkerUtil):
                 return
             
             acdc_df_allexp = pd.concat(
-                acdc_dfs_allexp, keys=keys_exp, names=['experiment_foldername']
+                acdc_dfs_allexp, keys=keys_exp, 
+                names=['experiment_folderpath', 'experiment_foldername']
             )
             acdc_dfs_allexp_filepath = os.path.join(
                 self.allExpSaveFolder, allExp_filename
@@ -3951,13 +3956,14 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
             self.errors = {}
             tot_pos = len(pos_foldernames)
             
-            abort = self.emitSelectSpotmaxRun(
-                exp_path, pos_foldernames, infoText=' to combine',
-                allowSingleSelection=True, multiSelection=False
-            )
-            if abort:
-                self.sigAborted.emit()
-                return
+            if i == 0:
+                abort = self.emitSelectSpotmaxRun(
+                    exp_path, pos_foldernames, infoText=' to combine',
+                    allowSingleSelection=True, multiSelection=False
+                )
+                if abort:
+                    self.sigAborted.emit()
+                    return
 
             if self.skipExp:
                 self.logger.log(
@@ -3980,7 +3986,7 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                     return
 
                 images_path = os.path.join(exp_path, pos, 'Images')
-                if p == 0:
+                if p == 0 and i == 0:
                     self.emitAskCopyCca(images_path)
                     if self.abort:
                         self.sigAborted.emit()

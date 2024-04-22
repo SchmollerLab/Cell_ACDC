@@ -16038,7 +16038,11 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         idx = (posData.filename, posData.frame_i)
         if self.switchPlaneCombobox.depthAxes() == 'z': 
-            posData.segmInfo_df.loc[idx:, 'z_slice_used_gui'] = z
+            try:
+                posData.segmInfo_df.loc[idx:, 'z_slice_used_gui'] = z
+            except Exception as err:
+                printl(posData.segmInfo_df)
+                printl(idx)
         
         self.highlightedID = self.getHighlightedID()
         self.updateAllImages(computePointsLayers=False)
