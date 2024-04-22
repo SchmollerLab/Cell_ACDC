@@ -35,7 +35,7 @@ def _install_tables(parent_software='Cell-ACDC'):
             if is_conda_env():
                 command_txt = 'conda install pytables'
                 alt_command_txt = 'pip install --upgrade tables'
-                cmd_args = command_txt.split(' ')
+                cmd_args = command_txt
                 alt_cmd_args = [sys.executable, '-m', *command_txt.split(' ')]
                 pkg_mng = 'conda'
                 alt_pkg_mng = 'pip'
@@ -99,7 +99,7 @@ def _install_tables(parent_software='Cell-ACDC'):
         return True
     
 def _setup_gui_libraries(caller_name='Cell-ACDC'):
-    from . import try_input_install_package
+    from . import try_input_install_package, is_conda_env
     warn_restart = False
     
     # Force PyQt6 if available
@@ -172,9 +172,9 @@ def _setup_gui_libraries(caller_name='Cell-ACDC'):
             answer = try_input_install_package(pkg_name, commnad_txt)
             if answer.lower() == 'y' or not answer:
                 import subprocess
-                if is_mac_arm64:
+                if is_mac_arm64 and is_conda_env():
                     subprocess.check_call(
-                        ['conda', 'install', '-y', 'pyqt'], shell=True
+                        ['conda install -y pyqt'], shell=True
                     )
                 else:
                     subprocess.check_call(
