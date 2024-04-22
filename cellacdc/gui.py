@@ -14729,12 +14729,31 @@ class guiWin(QMainWindow):
             return
         
         new_df = self.lineage_tree.export_df(posData.frame_i)
-        original_df = self.original_df
+        original_df = self.original_df.copy()
 
         if original_df.equals(new_df):
             return
         
-        printl('WIP')
+        
+        columns = new_df.columns
+        for col in columns:
+            if col.startswith('sister_ID_tree'):
+                new_df = new_df.drop(col, axis=1)
+
+        columns = original_df.columns
+        for col in columns:
+            if col.startswith('sister_ID_tree'):
+                original_df = original_df.drop(col, axis=1)
+       
+        
+        from pandasgui import show as pgshow
+        pgshow(original_df, new_df)
+        differences = original_df.compare(new_df)
+        
+        pgshow(differences)
+
+        printl(f'The following changes were made to the frame: {differences}')
+        
 
 
 
@@ -16388,7 +16407,6 @@ class guiWin(QMainWindow):
             return
 
         self.lin_tree_ask_changes()
-        printl('Ask Francesco if this is the right position to also avoid outdated non lin tree data from the df to drip into acdc_df')
 
         posData.allData_li[posData.frame_i]['regionprops'] = posData.rp.copy()
         posData.allData_li[posData.frame_i]['labels'] = posData.lab.copy()
@@ -18089,7 +18107,6 @@ class guiWin(QMainWindow):
         self.clearAllCellToCellLines()
         posData = self.data[self.pos_i]
         frame_i = posData.frame_i
-        printl(self.lineage_tree.frames_for_dfs)
         lin_tree_df = self.lineage_tree.export_df(self.lineage_tree.frames_for_dfs.index(frame_i))
         lin_tree_df_prev = self.lineage_tree.export_df(self.lineage_tree.frames_for_dfs.index(frame_i)-1)
         rp = posData.allData_li[frame_i]['regionprops']

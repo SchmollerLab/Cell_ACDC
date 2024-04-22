@@ -7,24 +7,25 @@ from skimage.measure import regionprops
 from tqdm import tqdm
 import pandas as pd
 
-def reorg_daughter_cells(lineage_tree_frame, max_daughter):    
+def reorg_daughter_cells(lineage_tree_frame):    
     """
     Reorganizes the daughter cells in the lineage tree frame.
 
     Args:
         lineage_tree_frame (pandas.DataFrame): The lineage tree frame containing the daughter cells.
-        max_daughter (int): The maximum number of daughter cells.
 
     Returns:
         pandas.DataFrame: The lineage tree frame with reorganized daughter cells (e.g. 'daughter_ID_tree_1', 'daughter_ID_tree_2', ...)
     """
-    if not isinstance(lineage_tree_frame["sister_ID_tree"], list):
-        return lineage_tree_frame
+    # if not isinstance(lineage_tree_frame["sister_ID_tree"], list):
+    #     return lineage_tree_frame
 
-    new_columns = [f'sister_ID_tree_{i+1}' for i in range(max_daughter-1)]
-    lineage_tree_frame['sister_ID_tree'] = lineage_tree_frame['sister_ID_tree'].apply(lambda x: x + [-1]*(max_daughter-1-len(x)) if len(x) < max_daughter-1 else x) # fill in -1 for fewer daughters (I think this is handled in other parts of the code already)
+    # lineage_tree_frame['sister_ID_tree'] = lineage_tree_frame['sister_ID_tree'].apply(lambda x: x + [-1]*(max_daughter-1-len(x)) if len(x) < max_daughter-1 else x) # fill in -1 for fewer daughters (I think this is handled in other parts of the code already)
     sister_columns = lineage_tree_frame['sister_ID_tree'].apply(pd.Series)
-    printl(sister_columns, new_columns)
+
+    max_daughter = sister_columns.shape[1]
+    new_columns = [f'sister_ID_tree_{i}' for i in range(max_daughter)]
+
     lineage_tree_frame[new_columns] = sister_columns
     lineage_tree_frame['sister_ID_tree'] = sister_columns[0]
 
@@ -310,21 +311,23 @@ def update_dict_from_df(family_dict, df, frame_i, max_daughter=2):
         parent_cell = unique_Cell_ID_df.loc[Cell_info['parent_ID_tree']]
         Cell_info['generation_num_tree'] = parent_cell['generation_num_tree'] + 1
         Cell_info['root_ID_tree'] = parent_cell['root_ID_tree']
-        sister_cell = unique_Cell_ID_df.loc[unique_Cell_ID_df['parent_ID_tree'] == Cell_info['parent_ID_tree']].index # the index is the Cell_ID
-        Cell_info['sister_ID_tree'] = list(sister_cell)#
+        sister_cell_2 = set(df.loc[df['parent_ID_tree'] == Cell_info['parent_ID_tree'], 'Cell_ID'])
+        sister_cell_2.remove(Cell_info['Cell_ID'])
+        Cell_info['sister_ID_tree'] = list(sister_cell_2)
         corrected_df = pd.concat([corrected_df, Cell_info.to_frame().T])
 
-    corrected_df = reorg_daughter_cells(corrected_df, max_daughter) # this might cause some problems
-    if not df.index.equals(pd.RangeIndex(start=0, stop=len(df))):
-        df = (corrected_df
-            .reset_index()
-            .set_index(['frame_i', 'Cell_ID'])
-            )
-    else:
-        df = corrected_df.set_index(['frame_i', 'Cell_ID'])
+    corrected_df = reorg_daughter_cells(corrected_df) # this might cause some problems
+
+    # if not corrected_df.index.equals(pd.RangeIndex(start=0, stop=len(df))):
+    #     corrected_df = (corrected_df
+    #         .reset_index()
+    #         .set_index(['frame_i', 'Cell_ID'])
+    #         )
+    # else:
+    #     corrected_df = corrected_df.set_index(['frame_i', 'Cell_ID'])
 
     for key, df_fam in family_dict.items():
-        if not df.index.equals(pd.RangeIndex(start=0, stop=len(df))):
+        if not df_fam.index.equals(pd.RangeIndex(start=0, stop=len(df))):
 
             df_fam = (df_fam
                     .reset_index()
@@ -336,17 +339,29 @@ def update_dict_from_df(family_dict, df, frame_i, max_daughter=2):
             df_fam = df_fam.drop(columns='level_0')
 
         df_fam = df_fam[df_fam['frame_i'] != frame_i] # select all frames except the current one
-        new_rows = df[df['root_ID_tree'] == key]
+        new_rows = corrected_df[corrected_df['root_ID_tree'] == key]
         df_fam = pd.concat([df_fam, new_rows])
         df_fam = df_fam.sort_values(by=['frame_i', 'Cell_ID'])
         family_dict[key] = df_fam
 
+        if not new_rows.index.equals(pd.RangeIndex(start=0, stop=len(df))):
+            new_rows = (new_rows
+                    .reset_index()
+                    )
+        new_rows = new_rows.set_index(['frame_i', 'Cell_ID'])
+
         IDs_covered.update(new_rows.index.get_level_values(1))
 
-    IDs_not_covered = set(df.index.get_level_values(1)) - IDs_covered
+    if not corrected_df.index.equals(pd.RangeIndex(start=0, stop=len(df))):
+        corrected_df = (corrected_df
+                    .reset_index()
+                    )
+    corrected_df = corrected_df.set_index(['frame_i', 'Cell_ID'])
+
+    IDs_not_covered = set(corrected_df.index.get_level_values(1)) - IDs_covered
     if IDs_not_covered:
         for ID in IDs_not_covered:
-            series = df.loc[(frame_i, ID)]
+            series = corrected_df.loc[(frame_i, ID)]
             family_dict[series['root_ID_tree']] = series.to_frame().T
     
     return family_dict
@@ -478,12 +493,19 @@ def dict_to_df_li(family_dict): # may need to drop some columns
     df_list = []
 
     general_df = pd.concat(family_dict.values())
-    general_df = (general_df
-                  .reset_index()
-                  .sort_values(by='frame_i')
-                  )
+    if not general_df.index.equals(pd.RangeIndex(start=0, stop=len(general_df))):
+        general_df = (general_df.reset_index())
+
+    general_df = general_df.sort_values(by=['frame_i', 'Cell_ID'])
+
+    if 'index' in general_df.columns:
+        general_df = general_df.drop(columns='index')
+
+    if 'level_0' in general_df.columns:
+        general_df = general_df.drop(columns='level_0')
     
-    frames = general_df['frame_i'].unique()
+    frames = general_df['frame_i'].unique().astype(int)
+
     frames = frames[~np.isnan(frames)]
     frames_for_dfs = [int(frame) for frame in frames]
 
@@ -671,7 +693,7 @@ class normal_division_lineage_tree:
                 added_lineage_tree.append((-1, label, -1, 1, label, [-1] * (self.max_daughter-1)))
 
             cca_df = added_lineage_tree_to_cca_df(added_lineage_tree)
-            cca_df = reorg_daughter_cells(cca_df, self.max_daughter)
+            cca_df = reorg_daughter_cells(cca_df)
             self.lineage_list = [cca_df]
 
         elif first_df:
@@ -720,15 +742,15 @@ class normal_division_lineage_tree:
                 generation = 1
                 self.families.append([(daughter_ID, generation) for daughter_ID in daughter_IDs])
 
-            for i, daughter_ID in enumerate(daughter_IDs):
+            for daughter_ID in daughter_IDs:
                 daughter_IDs_copy = daughter_IDs.copy()
-                daughter_IDs_copy.pop(i)
+                daughter_IDs_copy.remove(daughter_ID)
                 daughter_IDs_copy = daughter_IDs_copy + [-1] * (self.max_daughter - len(daughter_IDs_copy) -1)
                 added_lineage_tree.append((frame_i, daughter_ID, mother_ID, generation, origin_id, daughter_IDs_copy))
 
         cca_df = added_lineage_tree_to_cca_df(added_lineage_tree)
         cca_df = pd.concat([self.lineage_list[-1], cca_df], axis=0)
-        cca_df = reorg_daughter_cells(cca_df, self.max_daughter)
+        cca_df = reorg_daughter_cells(cca_df)
         cca_df = filter_current_IDs(cca_df, curr_IDs)
         self.lineage_list.append(cca_df)
 
@@ -804,6 +826,7 @@ class normal_division_lineage_tree:
                 self.family_dict = update_dict_consistency(family_dict=self.family_dict, fixed_frame_i=frame_i, fixed_df=lineage_df, consider_children=consider_children, fwd=False, bck=True)
             if update_fams == True:
                 self.families = dict_to_fams(self.family_dict)
+
             self.lineage_list, self.frames_for_dfs = dict_to_df_li(self.family_dict)
 
 
@@ -819,6 +842,11 @@ class normal_division_lineage_tree:
                 self.family_dict = update_dict_consistency(family_dict=self.family_dict, fixed_frame_i=frame_i, fixed_df=lineage_df, consider_children=consider_children, fwd=propagate_fwd, bck=propagate_back)
             if update_fams == True:
                 self.families = dict_to_fams(self.family_dict)
+
+            # from pandasgui import show as pgshow
+            # dfs = self.family_dict.values()
+            # pgshow(*dfs, *self.lineage_list)
+                
             self.lineage_list, self.frames_for_dfs  = dict_to_df_li(self.family_dict)
 
         elif frame_i > len(self.lineage_list):
