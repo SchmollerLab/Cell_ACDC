@@ -4109,6 +4109,61 @@ class channelMetricsQGBox(QGroupBox):
             groupbox.checkFavouriteFuncs()
         self.doNotWarn = False
 
+class PixelSizeGroupbox(QGroupBox):
+    sigValueChanged = Signal(float, float, float)
+    sigReset = Signal()
+    
+    def __init__(self, parent=None):
+        super().__init__('Pixel size', parent)
+        
+        mainLayout = QGridLayout()
+        
+        row = 0
+        label = QLabel('Pixel width (μm): ')
+        self.pixelWidthWidget = FloatLineEdit(initial=1.0)
+        mainLayout.addWidget(label, row, 0)
+        mainLayout.addWidget(self.pixelWidthWidget, row, 1)
+        
+        row += 1
+        label = QLabel('Pixel height (μm): ')
+        self.pixelHeightWidget = FloatLineEdit(initial=1.0)
+        mainLayout.addWidget(label, row, 0)
+        mainLayout.addWidget(self.pixelHeightWidget, row, 1)
+        
+        row += 1
+        label = QLabel('Voxel depth (μm): ')
+        self.voxelDepthWidget = FloatLineEdit(initial=1.0)
+        mainLayout.addWidget(label, row, 0)
+        mainLayout.addWidget(self.voxelDepthWidget, row, 1)
+        
+        row += 1
+        resetButton = reloadPushButton('Reset')
+        mainLayout.addWidget(
+            resetButton, row, 1, alignment=Qt.AlignRight
+        )
+        
+        row += 1
+        mainLayout.addWidget(QHLine(), row, 0, 1, 2)
+        
+        mainLayout.setColumnStretch(0, 0)
+        mainLayout.setColumnStretch(1, 1)
+
+        self.setLayout(mainLayout)
+        
+        self.pixelWidthWidget.valueChanged.connect(self.emitValueChanged)
+        self.pixelHeightWidget.valueChanged.connect(self.emitValueChanged)
+        self.voxelDepthWidget.valueChanged.connect(self.emitValueChanged)
+        resetButton.clicked.connect(self.emitReset)
+    
+    def emitReset(self):
+        self.sigReset.emit()
+    
+    def emitValueChanged(self, value):
+        PhysicalSizeX = self.pixelWidthWidget.value()
+        PhysicalSizeY = self.pixelHeightWidget.value()
+        PhysicalSizeZ = self.voxelDepthWidget.value()
+        self.sigValueChanged.emit(PhysicalSizeX, PhysicalSizeY, PhysicalSizeZ)
+
 class objPropsQGBox(QGroupBox):
     def __init__(self, parent=None):
         QGroupBox.__init__(self, 'Properties', parent)
@@ -4285,11 +4340,14 @@ class guiTabControl(QTabWidget):
     def __init__(self, *args):
         super().__init__(args[0])
 
+        self._defaultPixelSize = None
+        
         self.propsTab = QScrollArea(self)
 
         container = QWidget()
         layout = QVBoxLayout()
 
+        self.pixelSizeQGBox = PixelSizeGroupbox(parent=self.propsTab)
         self.propsQGBox = objPropsQGBox(parent=self.propsTab)
         self.intensMeasurQGBox = objIntesityMeasurQGBox(parent=self.propsTab)
 
@@ -4307,6 +4365,7 @@ class guiTabControl(QTabWidget):
         highlightLayout.addWidget(self.highlightSearchedCheckbox)
         
         layout.addLayout(highlightLayout)
+        layout.addWidget(self.pixelSizeQGBox)
         layout.addWidget(self.propsQGBox)
         layout.addWidget(self.intensMeasurQGBox)  
         layout.addStretch(1)     
@@ -4315,9 +4374,43 @@ class guiTabControl(QTabWidget):
         self.propsTab.setWidgetResizable(True)
         self.propsTab.setWidget(container)
         self.addTab(self.propsTab, 'Measurements')
-
+        
+        self.pixelSizeQGBox.sigValueChanged.connect(self.pixelSizeChanged)
+        self.pixelSizeQGBox.sigReset.connect(self.resetPixelSize)
+    
     def addChannels(self, channels):
         self.intensMeasurQGBox.addChannels(channels)
+    
+    def resetPixelSize(self):
+        if self._defaultPixelSize is None:
+            return
+        
+        self.initPixelSize(*self._defaultPixelSize)
+    
+    def initPixelSize(self, PhysicalSizeX, PhysicalSizeY, PhysicalSizeZ):
+        self.pixelSizeQGBox.pixelWidthWidget.setValue(PhysicalSizeX)
+        self.pixelSizeQGBox.pixelHeightWidget.setValue(PhysicalSizeY)
+        self.pixelSizeQGBox.voxelDepthWidget.setValue(PhysicalSizeZ)
+        self._defaultPixelSize = (PhysicalSizeX, PhysicalSizeY, PhysicalSizeZ)
+    
+    def pixelSizeChanged(self, PhysicalSizeX, PhysicalSizeY, PhysicalSizeZ):
+        propsQGBox = self.propsQGBox
+        yx_pxl_to_um2 = PhysicalSizeY*PhysicalSizeX
+        vox_rot_to_fl = float(PhysicalSizeY)*pow(float(PhysicalSizeX), 2)
+        vox_3D_to_fl = PhysicalSizeZ*PhysicalSizeY*PhysicalSizeX
+        
+        area_pxl = propsQGBox.cellAreaPxlSB.value()
+        area_um2 = area_pxl*yx_pxl_to_um2
+        propsQGBox.cellAreaUm2DSB.setValue(area_um2)
+        
+        vol_rot_vox = propsQGBox.cellVolVoxSB.value()
+        vol_rot_fl = vol_rot_vox*vox_rot_to_fl
+        propsQGBox.cellVolFlDSB.setValue(vol_rot_fl)
+        
+        vol_3D_vox = propsQGBox.cellVolVox3D_SB.value()
+        vol_3D_fl = vol_3D_vox*vox_3D_to_fl
+        propsQGBox.cellVolFl3D_DSB.setValue(vol_3D_fl)
+        
 
 class expandCollapseButton(PushButton):
     sigClicked = Signal()

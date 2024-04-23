@@ -2061,7 +2061,7 @@ class guiWin(QMainWindow):
         self.propsDockWidget.setAllowedAreas(
             Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea
         )
-
+        
         self.addDockWidget(side, self.propsDockWidget)
         self.propsDockWidget.hide()
 
@@ -5714,8 +5714,11 @@ class guiWin(QMainWindow):
 
         propsQGBox.cellAreaPxlSB.setValue(area_pxl)
 
-        PhysicalSizeY = posData.PhysicalSizeY
-        PhysicalSizeX = posData.PhysicalSizeX
+        pixelSizeQGBox = self.guiTabControl.pixelSizeQGBox
+        PhysicalSizeX = pixelSizeQGBox.pixelWidthWidget.value()
+        PhysicalSizeY = pixelSizeQGBox.pixelHeightWidget.value()
+        PhysicalSizeZ = pixelSizeQGBox.voxelDepthWidget.value()
+        
         yx_pxl_to_um2 = PhysicalSizeY*PhysicalSizeX
 
         area_um2 = area_pxl*yx_pxl_to_um2
@@ -8182,6 +8185,10 @@ class guiWin(QMainWindow):
             self.ax1_rulerPlotItem.setData([], [])
             self.ax1_rulerAnchorsItem.setData([], [])
 
+    def updatePixelSize(self):
+        posData = self.data[self.pos_i]
+        ...
+    
     def editImgProperties(self, checked=True):
         posData = self.data[self.pos_i]
         posData.askInputMetadata(
@@ -8192,6 +8199,7 @@ class guiWin(QMainWindow):
             save=True, singlePos=True,
             askSegm3D=False
         )
+        self.updatePixelSize()
 
     def setHoverToolSymbolData(self, xx, yy, ScatterItems, size=None):
         if not xx:
@@ -15405,6 +15413,7 @@ class guiWin(QMainWindow):
         self.updateImageValueFormatter()
         self.checkManageVersions()
         self.initManualBackgroundImage()
+        self.initPixelSizePropsDockWidget()
 
         self.setWindowTitle(f'Cell-ACDC - GUI - "{posData.exp_path}"')
 
@@ -16046,9 +16055,11 @@ class guiWin(QMainWindow):
     def update_z_slice(self, z):
         posData = self.data[self.pos_i]
         idx = (posData.filename, posData.frame_i)
+        fn = posData.filename
+        i = posData.frame_i
         if self.switchPlaneCombobox.depthAxes() == 'z': 
             try:
-                posData.segmInfo_df.loc[idx:, 'z_slice_used_gui'] = z
+                posData.segmInfo_df.loc[fn].loc[i:, 'z_slice_used_gui'] = z
             except Exception as err:
                 printl(posData.segmInfo_df)
                 printl(idx)
@@ -22331,7 +22342,7 @@ class guiWin(QMainWindow):
         )
         win.run()
         self.newWindows.append(win)
-        
+    
     def helpNewFile(self):
         msg = widgets.myMessageBox(showCentered=False)
         href = f'<a href="{user_manual_url}">user manual</a>'
@@ -24758,9 +24769,31 @@ class guiWin(QMainWindow):
         except Exception as e:
             pass
     
+    def askCloseAllWindows(self):
+        txt = html_utils.paragraph("""
+            There are other open windows that were created from this window.
+            <br><br>
+            If you proceed, the <b>other windows will be closed too.<br>
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(
+            self, 'Open windows', txt, 
+            buttonsTexts=('Cancel', 'Ok, close now')
+        )
+        return msg.cancel
+    
     def closeEvent(self, event):
         self.onEscape()
         self.saveWindowGeometry()
+        
+        if self.newWindows:
+            cancel = self.askCloseAllWindows()
+            if cancel:
+                event.ignore()
+                return
+
+            for window in self.newWindows:
+                window.close()
 
         if self.slideshowWin is not None:
             self.slideshowWin.close()
@@ -24769,6 +24802,7 @@ class guiWin(QMainWindow):
         
         proceed = self.askSaveOnClosing(event)
         if not proceed:
+            event.ignore()
             return
 
         self.autoSaveClose()
@@ -24834,6 +24868,15 @@ class guiWin(QMainWindow):
         self.defaultToolBarButtonColor = c
         self.doublePressKeyButtonColor = '#fa693b'
 
+    def initPixelSizePropsDockWidget(self):
+        posData = self.data[self.pos_i]
+        PhysicalSizeX = posData.PhysicalSizeX
+        PhysicalSizeY = posData.PhysicalSizeY
+        PhysicalSizeZ = posData.PhysicalSizeZ
+        self.guiTabControl.initPixelSize(
+            PhysicalSizeX, PhysicalSizeY, PhysicalSizeZ
+        )
+    
     def showPropsDockWidget(self, checked=False):
         if self.showPropsDockButton.isExpand:
             self.propsDockWidget.setVisible(False)
