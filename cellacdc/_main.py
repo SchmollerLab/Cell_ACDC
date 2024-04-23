@@ -1605,14 +1605,19 @@ class mainWin(QMainWindow):
 
     def launchGui(self, checked=False):
         self.logger.info('Opening GUI...')
-        guiWin = gui.guiWin(self.app, mainWin=self, version=self._version)
+        guiWin = gui.guiWin(
+            self.app, mainWin=self, version=self._version, 
+            launcherSlot=self.launchGui
+        )
         self.guiWins.append(guiWin)
         guiWin.sigClosed.connect(self.guiClosed)
         guiWin.run()
     
     def launchSpotmaxGui(self, checked=False):
         self.logger.info('Launching spotMAX...')
-        spotmaxWin = spotmaxRun.run_gui(app=self.app)
+        spotmaxWin = spotmaxRun.run_gui(
+            app=self.app, mainWin=self, launcherSlot=self.launchSpotmaxGui
+        )
         spotmaxWin.sigClosed.connect(self.spotmaxGuiClosed)
         self.spotmaxWins.append(spotmaxWin)
     

@@ -904,7 +904,7 @@ class loadData:
         self.imgPath = imgPath
         self.user_ch_name = user_ch_name
         self.images_path = os.path.dirname(imgPath)
-        self.images_folder_files = myutils.listdir(self.images_path)
+        self.images_folder_files = os.listdir(self.images_path)
         self.pos_path = os.path.dirname(self.images_path)
         self.spotmax_out_path = os.path.join(self.pos_path, 'spotMAX_output')
         self.exp_path = os.path.dirname(self.pos_path)

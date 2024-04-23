@@ -882,7 +882,7 @@ class guiWin(QMainWindow):
 
     def __init__(
             self, app, parent=None, buttonToRestore=None,
-            mainWin=None, version=None
+            mainWin=None, version=None, launcherSlot=None
         ):
         """Initializer."""
 
@@ -897,6 +897,7 @@ class guiWin(QMainWindow):
         self.debug = parser_args['debug']
 
         self.buttonToRestore = buttonToRestore
+        self.launcherSlot = launcherSlot
         self.mainWin = mainWin
         self.app = app
         self.closeGUI = False
@@ -944,6 +945,7 @@ class guiWin(QMainWindow):
         self.initProfileModels()
         self.loadLastSessionSettings()
 
+        self.newWindows = []
         self.progressWin = None
         self.slideshowWin = None
         self.ccaTableWin = None
@@ -1270,14 +1272,18 @@ class guiWin(QMainWindow):
         if self.debug:
             fileMenu.addAction(self.createEmptyDataAction)
         fileMenu.addAction(self.newAction)
+        fileMenu.addAction(self.newWindowAction)
+        fileMenu.addSeparator()
         fileMenu.addAction(self.openFolderAction)
         fileMenu.addAction(self.openFileAction)
         # Open Recent submenu
         self.openRecentMenu = fileMenu.addMenu("Open Recent")
+        fileMenu.addSeparator()
         fileMenu.addAction(self.manageVersionsAction)
         fileMenu.addAction(self.saveAction)
         fileMenu.addAction(self.saveAsAction)
         fileMenu.addAction(self.quickSaveAction)
+        fileMenu.addSeparator()
         fileMenu.addAction(self.loadFluoAction)
         fileMenu.addAction(self.loadPosAction)
         # Separator
@@ -2548,6 +2554,7 @@ class guiWin(QMainWindow):
             self.createEmptyDataAction = QAction(self)
             self.createEmptyDataAction.setText("DEBUG: Create empty data")
             
+        self.newWindowAction = QAction("New Window", self)
         
         self.newAction = QAction(self)
         self.newAction.setText("&New Segmentation File...")
@@ -2579,6 +2586,7 @@ class guiWin(QMainWindow):
         self.undoAction = QAction(QIcon(":undo.svg"), "Undo", self)
         self.redoAction = QAction(QIcon(":redo.svg"), "Redo", self)
         # String-based key sequences
+        self.newWindowAction.setShortcut('Ctrl+Shift+N')
         self.newAction.setShortcut('Ctrl+N')
         self.openFolderAction.setShortcut('Ctrl+O')
         self.loadPosAction.setShortcut('Shift+P')
@@ -2945,6 +2953,7 @@ class guiWin(QMainWindow):
         if self.debug:
             self.createEmptyDataAction.triggered.connect(self._createEmptyData)
         self.segmNdimIndicator.clicked.connect(self.segmNdimIndicatorClicked)
+        self.newWindowAction.triggered.connect(self.openNewWindow)
         self.newAction.triggered.connect(self.newFile)
         self.openFolderAction.triggered.connect(self.openFolder)
         self.openFileAction.triggered.connect(self.openFile)
@@ -22310,6 +22319,19 @@ class guiWin(QMainWindow):
         else:
             self._openFile()
     
+    def openNewWindow(self):
+        self.logger.info('Opening a new window...')
+        if self.launcherSlot is not None:
+            self.launcherSlot()
+            return
+
+        winClass = self.__class__
+        win = winClass(
+            self.app, parent=self, mainWin=self.mainWin, version=self._version
+        )
+        win.run()
+        self.newWindows.append(win)
+        
     def helpNewFile(self):
         msg = widgets.myMessageBox(showCentered=False)
         href = f'<a href="{user_manual_url}">user manual</a>'
