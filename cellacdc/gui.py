@@ -14745,19 +14745,84 @@ class guiWin(QMainWindow):
             if col.startswith('sister_ID_tree'):
                 original_df = original_df.drop(col, axis=1)
        
-        
-        from pandasgui import show as pgshow
-        pgshow(original_df, new_df)
         differences = original_df.compare(new_df)
+        if differences.empty:
+            return
         
-        pgshow(differences)
+        if not differences.index.name == 'Cell_ID':
+            if differences.index is not pd.RangeIndex:
+                differences = (differences.reset_index())
 
-        printl(f'The following changes were made to the frame: {differences}')
+            differences = differences.set_index('Cell_ID')
+
+        differences = differences['parent_ID_tree']
+
+        differences = differences.reset_index()
+
+        msg = widgets.myMessageBox()
+
+        txt = """<table>
+                    <tr>
+                        <th>ID:</th>
+                        <th>old parent --></th>
+                        <th>new parent</th>
+                    </tr>"""
+
+        for diff in differences.itertuples():
+            ID = str(int(diff.Cell_ID))
+            old_parent = str(int(diff.self))
+            new_parent = str(int(diff.other))
+            
+            txt += f'''<tr>
+                            <td>{ID}</td>
+                            <td>{old_parent}</td>
+                            <td>{new_parent}</td>
+                        </tr>'''
+        txt += '''</table>
+        Do you want to keep, propgagte or discard the changes?'''
+
+        css = r'''
+            <style>
+                table, th, td {
+                    border: 1px solid grey;
+                    border-collapse: collapse;
+                }
+                th, td {
+                    padding: 5px;
+                }
+            </style>
+        '''
+
+        txt = css + html_utils.paragraph('<b>Changes made in this frame</b><br>' + txt)
+
+        keep_btn, propagate_btn, discard_btn, cencel_btn = msg.question(self,
+                      'Changes in lineage tree', 
+                      txt,
+                      buttonsTexts=('Keep', 'Propagate', 'Discard', 'Cancel'),)
         
+        if msg.clickedButton == keep_btn:
+            printl('Should become allow scrolling but no edits!')
+            self.lin_tree_to_acdc_df(specific={posData.frame_i})
+            self.original_df = None
+            self.curr_original_df_i = -1
 
+        elif msg.clickedButton == propagate_btn:
+            printl('propagate, WIP')
+            
+        elif msg.clickedButton == discard_btn:
+            printl('discard')
+            self.lineage_tree.lineage_list[self.curr_original_df_i] = self.original_df
+            self.lin_tree_to_acdc_df(specific={posData.frame_i}) # probably not necessary but just in case
+            self.original_df = None
+            self.curr_original_df_i = -1
+            
 
-
-
+        elif msg.clickedButton == cencel_btn:
+            # Go back to current frame
+            posData.frame_i = self.curr_original_df_i 
+            self.get_data()
+            printl('cancel')
+        
     def setNavigateScrollBarMaximum(self):
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
@@ -16074,6 +16139,7 @@ class guiWin(QMainWindow):
         ]
 
         self.lin_tree_df_colnames = list(base_cca_df.keys()) + lineage_tree_cols
+        self.lin_tree_df_colnames_only = set(lineage_tree_cols)
         # self.lin_tree_df_dtypes = [ #dk if i need this, for now ignored
         #     str, int, int, str, int, int, bool, bool, int
         # ]
@@ -17325,7 +17391,8 @@ class guiWin(QMainWindow):
                     posData.editID_info.extend(self._get_editID_info(df))
                     if 'generation_num_tree' in df.columns: # may need to change this, not exactly sure how df is initialized 
                         if any(df['generation_num_tree'].isna()):
-                            df = df.drop(labels=self.lin_tree_df_colnames, axis=1)
+                            lin_tree_colnames = list(self.lin_tree_df_colnames_only)
+                            df = df.drop(labels=lin_tree_colnames, axis=1)
                         else:
                             # Convert to ints since there were NaN
                             cols = self.lin_tree_df_int_cols
@@ -17979,14 +18046,22 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
 
         for frame_i, lin_tree_df in lin_tree_list:
-            lin_tree_df = lin_tree_df[self.lin_tree_df_colnames] # drop all columns which are not needed
             acdc_df = posData.allData_li[frame_i]['acdc_df']
-            lin_tree_df = (lin_tree_df
-                           .reset_index()
-                           .set_index('Cell_ID')
-                           )
+            if lin_tree_df.index.name != 'Cell_ID':
+                if lin_tree_df.index is not pd.RangeIndex:
+                    lin_tree_df = (lin_tree_df
+                                .reset_index()
+                                .set_index('Cell_ID')
+                                )
+                else:
+                    lin_tree_df = lin_tree_df.set_index('Cell_ID')
 
-            acdc_df.loc[lin_tree_df.index, self.lin_tree_df_colnames] = lin_tree_df[self.lin_tree_df_colnames]
+            sister_col_names = [col for col in lin_tree_df.columns if col.startswith('sister_ID_tree')]
+            self.lin_tree_df_colnames_only.update(sister_col_names)
+            lin_tree_colnames = list(self.lin_tree_df_colnames_only)
+            printl(sister_col_names, lin_tree_colnames,self.lin_tree_df_colnames_only)
+
+            acdc_df.loc[lin_tree_df.index, lin_tree_colnames] = lin_tree_df[lin_tree_colnames]
             posData.allData_li[frame_i]['acdc_df'] = acdc_df
             self.already_synced_lin_tree.add(frame_i)
             # print(lin_tree_list)

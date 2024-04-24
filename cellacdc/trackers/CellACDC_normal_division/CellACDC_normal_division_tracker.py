@@ -880,10 +880,11 @@ class normal_division_lineage_tree:
             if 'frame_i' in df.columns:
                 df = df.drop('frame_i', axis=1)
             if 'generation_num_tree' in df.columns and not (df['generation_num_tree'] == 0).all():
-                df = (df
-                        .reset_index()
-                        .set_index('Cell_ID')
-                        )
+                if not df.index.name == 'Cell_ID':
+                    df = (df
+                            .reset_index()
+                            .set_index('Cell_ID')
+                            )
                 
                 if "level_0" in df.columns:
                     df = df.drop(columns="level_0")
