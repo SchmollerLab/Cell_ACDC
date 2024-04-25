@@ -797,12 +797,23 @@ def get_endnames_from_basename(basename, filenames):
     return [os.path.splitext(f)[0][len(basename):] for f in filenames]
 
 def get_path_from_endname(end_name, images_path):
+    end_name, ext = myutils.remove_known_extension(end_name)
+    basename = os.path.commonprefix(myutils.listdir(images_path))
+    searched_file = f'{basename}{end_name}{ext}'
+    for file in myutils.listdir(images_path):
+        filename, ext = os.path.splitext(file)
+        if file == searched_file:
+            return os.path.join(images_path, file), file
+        elif filename == searched_file:
+            return os.path.join(images_path, file), file
+    
     for file in myutils.listdir(images_path):
         filename, ext = os.path.splitext(file)
         if file.endswith(end_name):
             return os.path.join(images_path, file), file
         elif filename.endswith(end_name):
             return os.path.join(images_path, file), file
+    
     return '', ''
 
 def pd_int_to_bool(acdc_df, colsToCast=None):

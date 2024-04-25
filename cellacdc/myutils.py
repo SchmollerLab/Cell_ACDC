@@ -32,7 +32,7 @@ import tifffile
 import skimage.io
 import skimage.measure
 
-from . import GUI_INSTALLED
+from . import GUI_INSTALLED, KNOWN_EXTENSIONS
 
 if GUI_INSTALLED:
     from qtpy.QtWidgets import QMessageBox
@@ -133,6 +133,13 @@ def get_salute_string():
     else:
         return 'Have a good night!'
 
+def remove_known_extension(name):
+    for ext in KNOWN_EXTENSIONS:
+        if name.endswith(ext):
+            return name[:-len(ext)], ext
+
+    return name, ''
+    
 def getCustomAnnotTooltip(annotState):
     toolTip = (
         f'Name: {annotState["name"]}\n\n'

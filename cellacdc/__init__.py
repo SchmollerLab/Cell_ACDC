@@ -7,6 +7,10 @@ import subprocess
 import pathlib
 import numpy as np
 
+KNOWN_EXTENSIONS = (
+    '.tif', '.npz', '.npy', '.h5', '.json', '.csv', '.txt'
+)
+
 def user_data_dir():
     r"""
     Get OS specific data directory path for Cell-ACDC.
