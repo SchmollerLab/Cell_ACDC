@@ -1,0 +1,6 @@
+PyQt6==6.6.0
+PyQt6-Qt6==6.6.0
+qtpy
+pyqtgraph
+seaborn
+tables
