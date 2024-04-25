@@ -1,8 +1,8 @@
 [build-system]
 requires = [
-  "setuptools>=61.2",
+  "setuptools>=64",
   "wheel",
-  "setuptools_scm[toml]>=6.2"
+  "setuptools_scm[toml]>=8"
 ]
 build-backend = "setuptools.build_meta"
 
@@ -119,7 +119,7 @@ exclude = [
 namespaces = false
 
 [tool.setuptools_scm]
-write_to = "cellacdc/_version.py"
+version_file = "cellacdc/_version.py"
 
 # Ignore DeprecationWarnings
 [tool.pytest.ini_options]
