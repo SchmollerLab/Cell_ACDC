@@ -23718,7 +23718,7 @@ class guiWin(QMainWindow):
             gradItem.show()
     
     def setRetainSizePolicyLutItems(self):
-        if self.retainSizeLutItems:
+        if not self.retainSizeLutItems:
             return
         for channel, items in self.overlayLayersItems.items():
             _, lutItem, alphaSB = items
