@@ -125,6 +125,8 @@ Install stable version
 
     At the end you might have to re-start Cell-ACDC. 
 
+    .. include:: _gui_packages.rst
+
 Updating to the latest stable version of Cell-ACDC 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -256,6 +258,8 @@ Install latest version
     asked. 
 
     At the end you might have to re-start Cell-ACDC.  
+
+    .. include:: _gui_packages.rst
 
 Updating to the latest version of Cell-ACDC 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -397,6 +401,8 @@ If you want to try out experimental features (and, if you have time, maybe repor
     asked. 
 
     At the end you might have to re-start Cell-ACDC. 
+
+    .. include:: _gui_packages.rst
 
 
 Updating Cell-ACDC installed from source
