@@ -35,8 +35,9 @@ def _install_tables(parent_software='Cell-ACDC'):
             if is_conda_env():
                 command_txt = 'conda install pytables'
                 alt_command_txt = 'pip install --upgrade tables'
-                cmd_args = command_txt
-                alt_cmd_args = [sys.executable, '-m', *command_txt.split(' ')]
+                cmd_args = [command_txt]
+                alt_cmd_args1 = command_txt.split(' ')
+                alt_cmd_args2 = [sys.executable, '-m', *command_txt.split(' ')]
                 pkg_mng = 'conda'
                 alt_pkg_mng = 'pip'
                 shell = True
@@ -45,7 +46,8 @@ def _install_tables(parent_software='Cell-ACDC'):
                 alt_command_txt = 'conda install pytables'
                 command_txt = 'pip install --upgrade tables'
                 cmd_args = [sys.executable, '-m', *command_txt.split(' ')]
-                alt_cmd_args = alt_command_txt.split(' ')
+                alt_cmd_args1 = alt_command_txt.split(' ')
+                alt_cmd_args2 = [alt_command_txt]
                 pkg_mng = 'pip'
                 alt_pkg_mng = 'conda'
                 shell = False
@@ -61,13 +63,24 @@ def _install_tables(parent_software='Cell-ACDC'):
                 except Exception as err:
                     print('-'*100)
                     print(
+                        f'[WARNING]: Installation with command `{cmd_args}` '
+                        f'failed. Trying with `{alt_cmd_args1}`...'
+                    )
+                    print('-'*100)
+                
+                try:
+                    subprocess.check_call(alt_cmd_args1, shell=alt_shell)
+                    break
+                except Exception as err:
+                    print('-'*100)
+                    print(
                         f'[WARNING]: Installation of `tables` with '
                         f'{pkg_mng} failed. Trying with {alt_pkg_mng}...'
                     )
                     print('-'*100)
                 
                 try:
-                    subprocess.check_call(alt_cmd_args, shell=alt_shell)
+                    subprocess.check_call(alt_cmd_args2, shell=alt_shell)
                     break
                 except Exception as err:
                     import traceback
