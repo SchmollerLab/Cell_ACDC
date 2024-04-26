@@ -153,7 +153,7 @@ def _setup_gui_libraries(caller_name='Cell-ACDC'):
             'You can install it now or you can close (press "n") and install\n'
             'a compatible GUI library with one of '
             'the following commands:\n\n'
-            '    * pip install PyQt6\n'
+            '    * pip install PyQt6==6.6.0 PyQt6-Qt6==6.6.0\n'
             '    * pip install PyQt5 (or `conda install pyqt`)\n'
             '    * pip install PySide2\n'
             '    * pip install PySide6\n\n'
@@ -162,11 +162,12 @@ def _setup_gui_libraries(caller_name='Cell-ACDC'):
         )
         print('-'*60)
         print(txt)
+        pip_command = 'pip install -U PyQt6==6.6.0 PyQt6-Qt6==6.6.0'
         if is_mac_arm64:
             commnad_txt = 'conda install -y pyqt'
             pkg_name = 'pyqt'
         else:
-            commnad_txt = 'pip install -U PyQt6'
+            commnad_txt = pip_command
             pkg_name = 'PyQt6'
         while True:
             answer = try_input_install_package(pkg_name, commnad_txt)
@@ -177,9 +178,8 @@ def _setup_gui_libraries(caller_name='Cell-ACDC'):
                         ['conda install -y pyqt'], shell=True
                     )
                 else:
-                    subprocess.check_call(
-                        [sys.executable, '-m', 'pip', 'install', '-U', 'PyQt6']
-                    )
+                    pip_args = pip_command.split()
+                    subprocess.check_call([sys.executable, '-m', *pip_args])
                 warn_restart = True
                 break
             elif answer.lower() == 'n':
