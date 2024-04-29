@@ -13438,11 +13438,11 @@ class InstallPyTorchDialog(QBaseDialog):
         )
         preferencesLayout.addWidget(QLabel('Run this command: '), row, 0)
         preferencesLayout.addWidget(self.commandWidget, row, 1, 1, 2)
+        preferencesLayout.setColumnStretch(0, 0)
+        preferencesLayout.setColumnStretch(1, 0)
+        preferencesLayout.setColumnStretch(2, 1)
         
         innerLayout.addLayout(preferencesLayout, 2, 1)
-        innerLayout.setColumnStretch(0, 0)
-        innerLayout.setColumnStretch(1, 0)
-        innerLayout.setColumnStretch(2, 1)
         
         buttonsLayout = widgets.CancelOkButtonsLayout()
 

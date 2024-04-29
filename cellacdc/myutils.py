@@ -2403,7 +2403,7 @@ def check_install_torch(is_cli=False, caller_name='Cell-ACDC', qparent=None):
         traceback.print_exc()
     
     if is_cli:
-        _warnings.log_pytorch_not_installed() 
+        _install_pytorch_cli() 
         return
     
     win = apps.InstallPyTorchDialog(parent=qparent, caller_name=caller_name)
@@ -2579,6 +2579,88 @@ def _install_package_msg(
             logger_func=logger_func
         )
     return proceed
+
+def get_cli_multi_choice_question(question, choices):
+    choices_format = [f'{i+1}) {choice}.' for i, choice in enumerate(choices)]
+    choices_format = ' '.join(choices_format)
+    choices_opts = '/'.join([str(i) for i in range(1, len(choices)+1)])
+    text = f'{question} {choices_format} q) Quit. ({choices_opts})?: '
+    return text
+
+def _install_pytorch_cli(
+        caller_name='Cell-ACDC', action='install', logger_func=print
+    ):
+    from cellacdc import pytorch_commands
+    separator = '-'*60
+    txt = (
+        f'{separator}\n{caller_name} needs to {action} PyTorch\n\n'
+        'You can choose to install it now or stop the process and install it '
+        'later. To install it correctly, we need to know your preferences.\n'
+    )
+    logger_func(txt)
+    questions = {
+        'Choose your OS:': ('Windows', 'Mac', 'Linux'), 
+        'Package manager:': ('Conda', 'Pip'), 
+        'Compute platform:': (
+            'CPU', 'CUDA 11.8 (NVIDIA GPU)', 'CUDA 12.1 (NVIDIA GPU)'
+        )
+    }
+    selected_command = pytorch_commands.copy()
+    selected_preferences = []
+    for question, choices in questions.items():
+        input_txt = get_cli_multi_choice_question(question, choices)
+        while True:
+            answer = input(input_txt)
+            if answer.lower() == 'q':
+                exit('Execution stopped by the user.')
+            
+            try:
+                idx = int(answer) - 1
+                if idx >= len(choices):
+                    raise TypeError('Not a valid answer')
+            except Exception as err:
+                print('-'*100)
+                logger_func(
+                    f'"{answer}" is not a valid answer.'
+                    'Choose one of the options or "q" to quit.'
+                )
+                print('^'*100)
+                continue
+            
+            preference = choices[idx]
+            selected_command = selected_command[preference]
+            selected_preferences.append(preference)
+            print('')
+            break
+    
+    print('-'*100)
+    selected_preferences = ', '.join(selected_preferences)
+    logger_func(f'Selected preferences: {selected_preferences}')
+    print('-'*100)
+    logger_func(f'Command:\n\n{selected_command}\n')
+    while True:
+        answer = input('Do you want to run the command now ([y]/n)?: ')
+        if answer.lower() == 'n':
+            exit('Execution stopped by the user.')
+        
+        if answer.lower() == 'y' or not answer:
+            break
+        
+        print('-'*100)
+        print(
+            f'"{answer}" is not a valid answer. '
+            'Choose "y" for yes or "n" for no.'
+        )
+        print('^'*100)
+    
+    if selected_command.startswith('conda'):
+        try:
+            subprocess.check_call([selected_command], shell=True)
+        except Exception as err:
+            subprocess.check_call(selected_command.split(), shell=True)
+    else:
+        args = selected_command.split()[1:]
+        subprocess.check_call([sys.executable, *args], shell=True)
 
 def _install_package_cli_msg(
         pkg_name, note='', upgrade=False, caller_name='Cell-ACDC',
