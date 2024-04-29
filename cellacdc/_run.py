@@ -37,7 +37,7 @@ def _install_tables(parent_software='Cell-ACDC'):
                 alt_command_txt = 'pip install --upgrade tables'
                 cmd_args = [command_txt]
                 alt_cmd_args1 = command_txt.split(' ')
-                alt_cmd_args2 = [sys.executable, '-m', *command_txt.split(' ')]
+                alt_cmd_args2 = [sys.executable, '-m', *alt_command_txt.split(' ')]
                 pkg_mng = 'conda'
                 alt_pkg_mng = 'pip'
                 shell = True
@@ -56,11 +56,12 @@ def _install_tables(parent_software='Cell-ACDC'):
             answer = try_input_install_package('tables', command_txt)
             
             if answer.lower() == 'y' or not answer:
-                import subprocess
+                import subprocess, traceback
                 try:
                     subprocess.check_call(cmd_args, shell=shell)
                     break
                 except Exception as err:
+                    traceback.print_exc()
                     print('-'*100)
                     print(
                         f'[WARNING]: Installation with command `{cmd_args}` '
@@ -69,9 +70,10 @@ def _install_tables(parent_software='Cell-ACDC'):
                     print('-'*100)
                 
                 try:
-                    subprocess.check_call(alt_cmd_args1, shell=alt_shell)
+                    subprocess.check_call(alt_cmd_args1, shell=shell)
                     break
                 except Exception as err:
+                    traceback.print_exc()
                     print('-'*100)
                     print(
                         f'[WARNING]: Installation of `tables` with '
@@ -79,6 +81,7 @@ def _install_tables(parent_software='Cell-ACDC'):
                     )
                     print('-'*100)
                 
+                import pdb; pdb.set_trace()
                 try:
                     subprocess.check_call(alt_cmd_args2, shell=alt_shell)
                     break
@@ -95,8 +98,8 @@ def _install_tables(parent_software='Cell-ACDC'):
                     
                     log_func(
                         f'{msg_type}: Installation of `tables` failed. '
-                        'Please report the issue here (**including the error message above**): '
-                        f'{issues_url}'
+                        'Please report the issue here (**including the error '
+                        f'message above**): {issues_url}'
                     )
                     print('^'*60)
                 finally:
