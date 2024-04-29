@@ -2403,7 +2403,7 @@ def check_install_torch(is_cli=False, caller_name='Cell-ACDC', qparent=None):
         traceback.print_exc()
     
     if is_cli:
-        _install_pytorch_cli() 
+        _install_pytorch_cli(caller_name=caller_name) 
         return
     
     win = apps.InstallPyTorchDialog(parent=qparent, caller_name=caller_name)

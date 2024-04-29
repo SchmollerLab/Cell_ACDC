@@ -1032,7 +1032,7 @@ class guiWin(QMainWindow):
 
         self.initShortcuts()
         self.show()
-        self.resizeRangeWelcomeText()
+        QTimer.singleShot(100, self.resizeRangeWelcomeText)
         # self.installEventFilter(self)
         
         self.logger.info('GUI ready.')
