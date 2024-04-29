@@ -5039,7 +5039,7 @@ class QDialogMetadata(QDialog):
             parent=None, font=None, imgDataShape=None, posData=None,
             singlePos=False, askSegm3D=True, additionalValues=None,
             forceEnableAskSegm3D=False, SizeT_metadata=None, 
-            SizeZ_metadata=None
+            SizeZ_metadata=None, basename=''
         ):
         self.cancel = True
         self.ask_TimeIncrement = ask_TimeIncrement
@@ -5067,6 +5067,18 @@ class QDialogMetadata(QDialog):
             mainLayout.addWidget(label, alignment=Qt.AlignCenter)
 
         row = 0
+        self.basenameLineEdit = None
+        if basename:
+            gridLayout.addWidget(
+                QLabel('Basename (read-only)'), row, 0, alignment=Qt.AlignRight
+            )
+            self.basenameLineEdit = QLineEdit()
+            self.basenameLineEdit.setReadOnly(True)
+            self.basenameLineEdit.setText(basename)
+            self.basenameLineEdit.setAlignment(Qt.AlignCenter)
+            gridLayout.addWidget(self.basenameLineEdit, row, 1)
+            row += 1
+        
         gridLayout.addWidget(
             QLabel('Number of frames (SizeT)'), row, 0, alignment=Qt.AlignRight
         )

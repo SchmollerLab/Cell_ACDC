@@ -2260,6 +2260,10 @@ class loadData:
                     proceed_anyway = self._warnMultiPosTimeLapse(SizeT_metadata)
                     if not proceed_anyway:
                         return False
+        
+        basename = ''
+        if hasattr(self, 'basename'):
+            basename = self.basename
         metadataWin = apps.QDialogMetadata(
             self.SizeT, self.SizeZ, self.TimeIncrement,
             self.PhysicalSizeZ, self.PhysicalSizeY, self.PhysicalSizeX,
@@ -2268,7 +2272,8 @@ class loadData:
             posData=self, singlePos=singlePos, askSegm3D=askSegm3D,
             additionalValues=self._additionalMetadataValues,
             forceEnableAskSegm3D=forceEnableAskSegm3D, 
-            SizeT_metadata=SizeT_metadata, SizeZ_metadata=SizeZ_metadata
+            SizeT_metadata=SizeT_metadata, SizeZ_metadata=SizeZ_metadata, 
+            basename=basename
         )
         metadataWin.exec_()
         if metadataWin.cancel:

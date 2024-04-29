@@ -1994,10 +1994,10 @@ class pgScatterSymbolsCombobox(QComboBox):
 
 
 class alphaNumericLineEdit(QLineEdit):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, additionalChars=''):
         super().__init__(parent)
 
-        self.validPattern = '^[a-zA-Z0-9_-]+$'
+        self.validPattern = f'^[a-zA-Z0-9_-{additionalChars}]+$'
         regExp = QRegularExpression(self.validPattern)
         self.setValidator(QRegularExpressionValidator(regExp))
 

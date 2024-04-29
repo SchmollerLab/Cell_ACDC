@@ -8184,10 +8184,6 @@ class guiWin(QMainWindow):
             self.tempSegmentON = False
             self.ax1_rulerPlotItem.setData([], [])
             self.ax1_rulerAnchorsItem.setData([], [])
-
-    def updatePixelSize(self):
-        posData = self.data[self.pos_i]
-        ...
     
     def editImgProperties(self, checked=True):
         posData = self.data[self.pos_i]
@@ -8199,7 +8195,6 @@ class guiWin(QMainWindow):
             save=True, singlePos=True,
             askSegm3D=False
         )
-        self.updatePixelSize()
 
     def setHoverToolSymbolData(self, xx, yy, ScatterItems, size=None):
         if not xx:

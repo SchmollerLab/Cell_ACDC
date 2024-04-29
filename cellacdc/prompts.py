@@ -44,6 +44,7 @@ class select_channel_name:
         
         chNames_found = False
         channel_names = set()
+        basename = None
         if metadata_csv_path is not None:
             df = pd.read_csv(metadata_csv_path)
             basename = None
@@ -97,11 +98,13 @@ class select_channel_name:
                         if chName not in channel_names:
                             channel_names.append(chName)
                 return channel_names, False
-
+        
         # Find basename as intersection of filenames
         channel_names = set()
         self.basenameNotFound = False
         isBasenamePresent = myutils.checkDataIntegrity(filenames, images_path)
+        if basename is None:
+            basename = filenames[0]
         basename = filenames[0]
         for file in filenames:
             # Determine the basename based on intersection of all .tif
@@ -122,6 +125,8 @@ class select_channel_name:
                 continue
             sm = difflib.SequenceMatcher(None, file, basename)
             i, j, k = sm.find_longest_match(0, len(file), 0, len(basename))
+            if i > 0:
+                continue
             basename = file[i:i+k]
         self.basename = basename
         basenameNotFound = [False]
