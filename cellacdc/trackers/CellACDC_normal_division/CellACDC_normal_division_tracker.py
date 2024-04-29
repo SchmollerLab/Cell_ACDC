@@ -2,6 +2,7 @@ import os
 from cellacdc.trackers.CellACDC.CellACDC_tracker import calc_IoA_matrix
 from cellacdc.trackers.CellACDC.CellACDC_tracker import track_frame as track_frame_base
 from cellacdc.core import getBaseCca_df, printl
+from cellacdc.myutils import checked_reset_index
 import numpy as np
 from skimage.measure import regionprops
 from tqdm import tqdm
@@ -131,10 +132,8 @@ def filter_current_IDs(df, current_IDs):
     Returns:
         pandas.DataFrame: The DataFrame with only the current IDs.
     """
-    df = (df
-          .reset_index()
-          .set_index('Cell_ID')
-          )
+    df = checked_reset_index(df)
+    df = df.set_index('Cell_ID')
     return df[df.index.isin(current_IDs)]
 
 def IoA_index_daughter_to_ID(daughters, assignments, IDs_curr_untracked):
@@ -247,10 +246,8 @@ def generate_fam_dict_from_df_li(df_li, frames_for_df_li=None):
                 continue
             # root_id = df_fam.iloc[0]['root_ID_tree']
             df_fam["frame_i"] = i
-            df_fam = (df_fam
-                      .reset_index()
-                      .set_index(['frame_i', 'Cell_ID'])
-                    )
+            df_fam = checked_reset_index(df_fam)
+            df_fam = df_fam.set_index(['frame_i', 'Cell_ID'])
             if root_id not in family_dict.keys(): 
                 family_dict[root_id] = df_fam
             else:
@@ -260,8 +257,8 @@ def generate_fam_dict_from_df_li(df_li, frames_for_df_li=None):
 
 def family_dict_to_unique_Cell_ID_df(family_dict):
     general_df = pd.concat(family_dict.values())
+    general_df = checked_reset_index(general_df)
     general_df = (general_df
-                  .reset_index()
                   .drop_duplicates(subset='Cell_ID')
                   .set_index('Cell_ID')
                   )
@@ -300,8 +297,7 @@ def update_dict_from_df(family_dict, df, frame_i, max_daughter=2):
     df['frame_i'] = frame_i
     IDs_covered = set()
 
-    if not df.index.equals(pd.RangeIndex(start=0, stop=len(df))):
-        df = df.reset_index()
+    df = checked_reset_index(df)
 
     # we first need to correct generation_num_tree, root_ID_tree, sister_ID_tree
     unique_Cell_ID_df = family_dict_to_unique_Cell_ID_df(family_dict)
@@ -327,11 +323,7 @@ def update_dict_from_df(family_dict, df, frame_i, max_daughter=2):
     #     corrected_df = corrected_df.set_index(['frame_i', 'Cell_ID'])
 
     for key, df_fam in family_dict.items():
-        if not df_fam.index.equals(pd.RangeIndex(start=0, stop=len(df))):
-
-            df_fam = (df_fam
-                    .reset_index()
-                    )
+        df_fam = checked_reset_index(df_fam)
         
         if 'index' in df_fam.columns:
             df_fam = df_fam.drop(columns='index')
@@ -344,18 +336,12 @@ def update_dict_from_df(family_dict, df, frame_i, max_daughter=2):
         df_fam = df_fam.sort_values(by=['frame_i', 'Cell_ID'])
         family_dict[key] = df_fam
 
-        if not new_rows.index.equals(pd.RangeIndex(start=0, stop=len(df))):
-            new_rows = (new_rows
-                    .reset_index()
-                    )
+        new_rows = checked_reset_index(new_rows)
         new_rows = new_rows.set_index(['frame_i', 'Cell_ID'])
 
         IDs_covered.update(new_rows.index.get_level_values(1))
 
-    if not corrected_df.index.equals(pd.RangeIndex(start=0, stop=len(df))):
-        corrected_df = (corrected_df
-                    .reset_index()
-                    )
+    corrected_df = checked_reset_index(corrected_df)
     corrected_df = corrected_df.set_index(['frame_i', 'Cell_ID'])
 
     IDs_not_covered = set(corrected_df.index.get_level_values(1)) - IDs_covered
@@ -377,32 +363,38 @@ def update_dict_consistency(family_dict=None, fixed_frame_i=None, fixed_df=None,
         raise ValueError('Either general_df or family_dict must be provided.')
     
     if not columns_to_replace: # if we don't have a list of columns to replace we take all columns except frame_i (default)
-        columns_to_replace = general_df.columns[general_df.columns != 'frame_i']
+        # columns_to_replace = general_df.columns.tolist()
+        # keep_cols = ['frame_i', 'Cell_ID']
+        # columns_to_replace = [col for col in columns_to_replace if col not in keep_cols]
+        columns_to_replace = ['generation_num_tree', 'root_ID_tree', 'sister_ID_tree'] # also implement search for sisters and add extra required columns, i just made a quick list here
 
-    if general_df.index.equals(pd.RangeIndex(start=0, stop=len(df))):
-        general_df = general_df.set_index(['frame_i', 'Cell_ID'])
-    else:
-        general_df = general_df.reset_index().set_index(['frame_i', 'Cell_ID'])
+    general_df = checked_reset_index(general_df)
+    general_df = general_df.set_index(['frame_i', 'Cell_ID'])
 
 
-    if not fixed_df and general_df: # if we don't have a given fixed df we take the one from the general df
-        general_df = (general_df
-                      .reset_index()
-                      .set_index(['frame_i', 'Cell_ID'])
-                      )
+    if fixed_df is None and general_df is not None: # if we don't have a given fixed df we take the one from the general df
+        general_df = checked_reset_index(general_df)
+        general_df = general_df.set_index(['frame_i', 'Cell_ID'])   
+
         fixed_df = (general_df
                     .loc[fixed_frame_i]
-                    .reset_index()
+                    .reset_index() # this is fine
                     .set_index('Cell_ID'))
-    elif fixed_df: # if we have a fixed df we are all good
-        fixed_df = (fixed_df
-                    .reset_index()
-                    .set_index('Cell_ID'))
+        
+    elif fixed_df is not None: # if we have a fixed df we are all good
+        fixed_df  = checked_reset_index(fixed_df)
+        fixed_df = fixed_df.set_index('Cell_ID')
     else: # if we have neither we have a problem
         raise ValueError('Either fixed_frame_df or fixed_df must be provided.')
 
     if not Cell_IDs: # if we don't have a list of Cell_IDs we take all Cell_IDs from the fixed_df (default)
         Cell_IDs = fixed_df.index
+
+    general_df = checked_reset_index(general_df)
+
+    from pandasgui import show as pgshow
+    printl(f'Showing general_df and fixed_df')
+    pgshow(general_df, fixed_df, Cell_IDs)
 
     if not fixed_frame_i:
         if fwd and bck: # this splits the df into two parts, only one is edited. Since there is no fixed frame we split so it also edits frame_i
@@ -428,22 +420,27 @@ def update_dict_consistency(family_dict=None, fixed_frame_i=None, fixed_df=None,
             general_df_change = general_df[general_df['frame_i'] < fixed_frame_i]
         else:
             raise ValueError('one or both of fwd or bck must be True if fixed_frame_i is provided.')
+        
+
+    general_df_change = checked_reset_index(general_df_change)
+    frames = general_df_change['frame_i'].unique().astype(int)
+    general_df_change = general_df_change.set_index(['Cell_ID', 'frame_i'])
+    
 
     for Cell_id in Cell_IDs: # replace values for the cells in the general df
+        for frame in frames:
+            general_df_change.loc[[Cell_id, frame], columns_to_replace] = fixed_df.loc[Cell_id, columns_to_replace] # we replace necessary (Need to define still)
 
-        general_df_change = (general_df_change
-                             .reset_index()
-                             .set_index('Cell_ID')) # probably not necessarily necessary
-        for idx in general_df_change.index[general_df_change.index == Cell_id]: # we basically iterate over all instances where Cell_ID is the index
-            general_df_change.loc[idx, columns_to_replace] = fixed_df.loc[Cell_id, columns_to_replace] # we replace all but the frame_i column
+    general_df_keep = checked_reset_index(general_df_keep)
+
 
     general_df = pd.concat([general_df_keep, general_df_change]) # we put the df back together
 
     if consider_children: # this also enforces that fwd is true (See ValueError above)
-        unique_df = general_df.reset_index()
+        unique_df = checked_reset_index(general_df)
         unique_df = (unique_df
                      .drop_duplicates(subset='Cell_ID')
-                     .reset_index()
+                     .reset_index() # this is fine
                      .set_index('Cell_ID')
                      ) # we drop all duplicates (different frames) to reduce overhead
 
@@ -475,16 +472,14 @@ def check_dict_consistency(family_dict):
 def dict_to_fams(family_dict):
     families = []
     for key, df_fam in family_dict.items():
-        df_fam = (df_fam
-                  .reset_index()
-                  .set_index('Cell_ID')
-                  )
+        df_fam = checked_reset_index(df_fam).set_index('Cell_ID')
+
         df_fam = df_fam[~df_fam.index.duplicated(keep='first')]
         
         familiy = [(key, df_fam.loc[key, 'generation_num_tree'])] # first entry is the root ID (should be first cell)
         df_fam = (df_fam
                   .drop(key)
-                  .reset_index())
+                  .reset_index()) # this is fine
         familiy = familiy + list(zip(df_fam['Cell_ID'].tolist(), df_fam['generation_num_tree'].tolist()))
         families.append(familiy)
     return families
@@ -493,8 +488,7 @@ def dict_to_df_li(family_dict): # may need to drop some columns
     df_list = []
 
     general_df = pd.concat(family_dict.values())
-    if not general_df.index.equals(pd.RangeIndex(start=0, stop=len(general_df))):
-        general_df = (general_df.reset_index())
+    general_df = checked_reset_index(general_df)
 
     general_df = general_df.sort_values(by=['frame_i', 'Cell_ID'])
 
@@ -513,7 +507,7 @@ def dict_to_df_li(family_dict): # may need to drop some columns
     for _, df in df_group:
         df = (df
               .drop('frame_i', axis=1)
-              .reset_index()
+              .reset_index() # i dorp later
               .set_index('Cell_ID')
               )
         if "level_0" in df.columns:
@@ -841,7 +835,10 @@ class normal_division_lineage_tree:
             if propagate_back == True or propagate_fwd == True:
                 self.family_dict = update_dict_consistency(family_dict=self.family_dict, fixed_frame_i=frame_i, fixed_df=lineage_df, consider_children=consider_children, fwd=propagate_fwd, bck=propagate_back)
             if update_fams == True:
+                from pandasgui import show as pgshow
+                pgshow(*self.family_dict.values())
                 self.families = dict_to_fams(self.family_dict)
+
 
             # from pandasgui import show as pgshow
             # dfs = self.family_dict.values()

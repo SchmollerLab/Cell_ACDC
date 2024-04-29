@@ -236,6 +236,13 @@ def get_trimmed_dict(di: dict, max_num_digits=10):
         di_str[keys[max_num_vals]] = "..."
     return f"[{', '.join([f'{key} -> {val}' for key, val in di_str.items()])}]"
 
+def checked_reset_index(df):
+    if df.index.names is None or df.index.names == [None]:
+        return df.reset_index(drop=True)
+    else:
+        return df.reset_index()
+
+
 def _bytes_to_MB(size_bytes):
     factor = pow(2, -20)
     size_MB = round(size_bytes*factor)

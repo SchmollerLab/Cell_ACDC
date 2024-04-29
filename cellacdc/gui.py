@@ -14807,7 +14807,10 @@ class guiWin(QMainWindow):
             self.curr_original_df_i = -1
 
         elif msg.clickedButton == propagate_btn:
-            printl('propagate, WIP')
+            lin_tree_df = self.lineage_tree.export_df(posData.frame_i)
+            from pandasgui import show as pgshow
+            pgshow(lin_tree_df)
+            self.lineage_tree.insert_lineage_df(lin_tree_df, posData.frame_i, propagate_back=True, propagate_fwd=True, update_fams=True, consider_children=False)
             
         elif msg.clickedButton == discard_btn:
             printl('discard')
@@ -14819,9 +14822,8 @@ class guiWin(QMainWindow):
 
         elif msg.clickedButton == cencel_btn:
             # Go back to current frame
-            posData.frame_i = self.curr_original_df_i 
-            self.get_data()
-            printl('cancel')
+            self.cancel_lin_tree_changes = True
+            printl('cancel, WIP no idea how to do this since the function is called in store_data, which is kind of in between the triggering key press and the actual change in the frame')
         
     def setNavigateScrollBarMaximum(self):
         posData = self.data[self.pos_i]
