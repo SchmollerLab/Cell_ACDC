@@ -74,17 +74,19 @@ for (s = 0; s < sEnd; s++) {
     basename_string = filenameNoExtension + "_s" + pos_num + "_";
     metadata_filepath = images_path + "/" + basename_string + "metadata.csv";
     metadata_file = File.open(metadata_filepath);
-    values = "Description,values\nbasename," + basename_string;
-    print(metadata_file, values);
-    File.close(metadata_file);
-		
+    metadata_str = "Description,values\nbasename," + basename_string;
+    
 	for (c=C; c<CEnd; c++) { //for loop for iterating through the channels
 		print("    Saving channel="+c+1+"/"+CEnd+"..."); //Display message
 		scTif = images_path + "/" + basename_string + channels[c] + ".tif";		
 		selectImage(1);
 		saveAs("Tiff", scTif);
 		close();
+		channel_desc = "channel_" + c + "_name";
+		metadata_str = metadata_str + "\n" + channel_desc + "," + channels[c];
 	}
+	print(metadata_file, metadata_str);
+	File.close(metadata_file);
 	print("Saved!");
 }
 
