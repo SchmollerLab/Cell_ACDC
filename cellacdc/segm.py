@@ -551,6 +551,11 @@ class segmWin(QMainWindow):
                 self.close()
                 return
 
+        myutils.log_segm_params(
+            model_name, win.init_kwargs, win.model_kwargs, 
+            logger_func=self.logger.info
+        )
+        
         if model_name != 'thresholding':
             self.model_kwargs = win.model_kwargs
         self.standardPostProcessKwargs = win.postProcessGroupbox.kwargs()

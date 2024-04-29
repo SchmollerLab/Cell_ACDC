@@ -3224,3 +3224,26 @@ def is_pos_folderpath(folderpath):
         and os.path.exists(os.path.join(folderpath, 'Images'))
     )
     return is_valid_pos_folder
+
+def log_segm_params(model_name, init_params, segm_params, logger_func=print):
+    init_params_format = [
+        f'  * {option} = {value}' for option, value in init_params.items()
+    ]
+    init_params_format = '\n'.join(init_params_format)
+    
+    segm_params_format = [
+        f'  * {option} = {value}' for option, value in segm_params.items()
+    ]
+    segm_params_format = '\n'.join(segm_params_format)
+    
+    separator = '-'*100
+    params_format = (
+        f'{separator}\n'
+        f'Model name: {model_name}\n\n'
+        'Initialization parameters:\n\n'
+        f'{init_params_format}\n\n'
+        'Segmentation parameters:\n\n'
+        f'{segm_params_format}\n'
+        f'{separator}'
+    )
+    logger_func(params_format)

@@ -14002,8 +14002,8 @@ class guiWin(QMainWindow):
                 model_name=model_name, askSegmParams=True
             )
         else:
-            self.repeatSegm(model_name=self.segmModelName)
-
+            self.repeatSegm(model_name=self.segmModelName)        
+    
     @exception_handler
     def repeatSegm(self, model_name='', askSegmParams=False, is_label_roi=False):
         if model_name == 'thresholding':
@@ -14096,6 +14096,11 @@ class guiWin(QMainWindow):
                 self.titleLabel.setText('Segmentation process cancelled.')
                 return
 
+            myutils.log_segm_params(
+                model_name, win.init_kwargs, win.model_kwargs, 
+                logger_func=self.logger.info
+            )
+            
             if model_name != 'thresholding':
                 self.model_kwargs = win.model_kwargs
             self.standardPostProcessKwargs = win.postProcessGroupbox.kwargs()
@@ -14300,6 +14305,11 @@ class guiWin(QMainWindow):
         if model_name == 'thresholding':
             win.model_kwargs = autoThreshWin.segment_kwargs
 
+        myutils.log_segm_params(
+            model_name, win.init_kwargs, win.model_kwargs, 
+            logger_func=self.logger.info
+        )
+        
         self.standardPostProcessKwargs = win.postProcessGroupbox.kwargs()
         self.customPostProcessFeatures = win.selectedFeaturesRange()
         self.customPostProcessGroupedFeatures = win.groupedFeatures()
