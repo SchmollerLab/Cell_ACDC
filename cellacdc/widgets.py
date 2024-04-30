@@ -8475,3 +8475,7 @@ class OddSpinBox(SpinBox):
             return
         
         self.setValue(self.value()+1)
+
+class TimestampItem(LabelItem):
+    def __init__(self):
+        super().__init__(self)
