@@ -24513,6 +24513,10 @@ class guiWin(QMainWindow):
         if self.exportToVideoPreferences['filepath'].endswith('.mp4'):
             try:
                 self.exportToVideoExporter.avi_to_mp4()
+                try:
+                    os.remove(self.exportToVideoPreferences['avi_filepath'])
+                except Exception as err:
+                    pass
             except Exception as err:
                 self.logger.exception(traceback.format_exc())
                 self.logger.info(
