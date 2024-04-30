@@ -12752,7 +12752,7 @@ class ScaleBarPropertiesDialog(QBaseDialog):
             locCombobox, labelTextLeft='Location'
         )
         locCombobox.addItems(
-            ['Top-left', 'Top-right', 'Bottom-left', 'Bottom-right', 'Custom']
+            ['Bottom-right', 'Bottom-left', 'Top-left', 'Top-right', 'Custom']
         )
         loc = properties.get('loc')
         if isinstance(loc, str):
@@ -13480,7 +13480,8 @@ class ExportToVideoParametersDialog(QBaseDialog):
     
     def __init__(
             self, parent=None, startFolderpath='', startFilename='', 
-            startFrameNum=1, SizeT=1
+            startFrameNum=1, SizeT=1, isScaleBarPresent=False, 
+            isTimestampPresent=False
         ):
         self.cancel = True
         
@@ -13543,6 +13544,7 @@ class ExportToVideoParametersDialog(QBaseDialog):
         gridLayout.addWidget(
             self.addScaleBarToggle, row, 1, alignment=Qt.AlignCenter
         )
+        self.addScaleBarToggle.setChecked(isScaleBarPresent)
         
         row += 1
         gridLayout.addWidget(QLabel('Add timestamp:'), row, 0)
@@ -13550,6 +13552,7 @@ class ExportToVideoParametersDialog(QBaseDialog):
         gridLayout.addWidget(
             self.addTimestampToggle, row, 1, alignment=Qt.AlignCenter
         )
+        self.addTimestampToggle.setChecked(isTimestampPresent)
         
         row += 1
         gridLayout.addWidget(QLabel('Save a PNG for each frame:'), row, 0)
@@ -13661,4 +13664,112 @@ class ExportToVideoParametersDialog(QBaseDialog):
         self.cancel = False
         self.sigOk.emit(self.preferences())
         self.selected_preferences = self.preferences()
+        self.close()
+    
+class TimestampPropertiesDialog(QBaseDialog):
+    sigValueChanged = Signal(object)
+    
+    def __init__(self, parent=None, **properties):
+        super().__init__(parent=parent)
+        
+        self.cancel = True
+        self.setWindowTitle('Timestamp preferences')
+        
+        mainLayout = QVBoxLayout()
+        
+        formLayout = widgets.FormLayout()
+        formLayout.setVerticalSpacing(10)
+        formLayout.setHorizontalSpacing(50)
+        
+        row = 0
+        self.colorButton = widgets.myColorButton(color=(255, 255, 255))
+        if properties.get('color') is not None:
+            self.colorButton.setColor(properties.get('color'))
+        colorFormWidget = widgets.formWidget(
+            self.colorButton, labelTextLeft='Color',
+            widgetAlignment=Qt.AlignCenter, stretchWidget=False
+        )
+        formLayout.addFormWidget(
+            colorFormWidget, row=row, 
+            leftLabelAlignment=Qt.AlignLeft
+        ) 
+        
+        row += 1
+        fontSizeWidget = widgets.FontSizeWidget()
+        if properties.get('font_size') is not None:
+            fontSizeWidget.setValue(properties.get('font_size'))
+        else:
+            fontSizeWidget.setValue(12)
+        fontSizeFormWidget = widgets.formWidget(
+            fontSizeWidget, labelTextLeft='Font size (px)'
+        )
+        self.fontSizeWidget = fontSizeWidget
+        formLayout.addFormWidget(
+            fontSizeFormWidget, row=row, 
+            leftLabelAlignment=Qt.AlignLeft
+        )
+        
+        row += 1
+        locCombobox = QComboBox()
+        locFormWidget = widgets.formWidget(
+            locCombobox, labelTextLeft='Location'
+        )
+        locCombobox.addItems(
+            ['Top-left', 'Top-right', 'Bottom-left', 'Bottom-right', 'Custom']
+        )
+        loc = properties.get('loc')
+        if isinstance(loc, str):
+            locCombobox.setCurrentText(loc)
+        formLayout.addFormWidget(
+            locFormWidget, row=row, 
+            leftLabelAlignment=Qt.AlignLeft
+        )       
+        self.locCombobox = locCombobox
+        
+        mainLayout.addLayout(formLayout)
+        
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+        
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(buttonsLayout)
+        mainLayout.addStretch()
+        
+        self.setLayout(mainLayout)
+        self.setFont(font)
+        
+        self.colorButton.clicked.disconnect()
+        self.colorButton.clicked.connect(self.selectColor)
+        
+        self.locCombobox.currentTextChanged.connect(self.onValueChanged)
+        self.fontSizeWidget.sigTextChanged.connect(self.onValueChanged)
+    
+    def onValueChanged(self, object):
+        self.sigValueChanged.emit(self.kwargs())
+    
+    def selectColor(self):
+        color = self.colorButton.color()
+        self.colorButton.origColor = color
+        self.colorButton.colorDialog.setCurrentColor(color)
+        self.colorButton.colorDialog.setWindowFlags(
+            Qt.Window | Qt.WindowStaysOnTopHint
+        )
+        self.colorButton.colorDialog.setParent(self)
+        self.colorButton.colorDialog.open()
+        w = self.width()
+        left = self.pos().x()
+        colorDialogTop = self.colorButton.colorDialog.pos().y()
+        self.colorButton.colorDialog.move(w+left+10, colorDialogTop)
+    
+    def kwargs(self):
+        kwargs = {
+            'color': self.colorButton.color(),
+            'loc': self.locCombobox.currentText().lower(),
+            'font_size': self.fontSizeWidget.text(),
+        }
+        return kwargs
+    
+    def ok_cb(self):
+        self.cancel = False
         self.close()

@@ -5439,6 +5439,11 @@ class guiWin(QMainWindow):
                 self.scaleBar.move(x, y)
                 return
         
+        if hasattr(self, 'timestamp'):
+            if self.timestamp.isHighlighted() and self.timestamp.clicked:
+                self.timestamp.move(x, y)
+                return
+        
         mode = str(self.modeComboBox.currentText())
         if mode == 'Viewer':
             return
@@ -5863,6 +5868,7 @@ class guiWin(QMainWindow):
                     xdata, ydata, activeToolButton, isHoverImg1
                 )
                 self.checkHighlightScaleBar(x, y, activeToolButton)
+                self.checkHighlightTimestamp(x, y, activeToolButton)
                 self.wcLabel.setText(hoverText)
         else:
             self.clickedOnBud = False
@@ -6268,6 +6274,12 @@ class guiWin(QMainWindow):
             if self.scaleBar.isHighlighted():
                 self.scaleBar.showContextMenu(x, y)
                 return
+        
+        if hasattr(self, 'timestamp'):
+            if self.timestamp.isHighlighted():
+                self.timestamp.showContextMenu(x, y)
+                return
+            
         self.imgGrad.gradient.menu.popup(QPoint(int(x), int(y)))
     
     def gui_rightImageShowContextMenu(self, event):
@@ -6525,6 +6537,11 @@ class guiWin(QMainWindow):
         if hasattr(self, 'scaleBar'):
             if self.scaleBar.isHighlighted() and self.scaleBar.clicked:
                 self.scaleBar.clicked = False
+                return
+        
+        if hasattr(self, 'timestamp'):
+            if self.timestamp.isHighlighted() and self.timestamp.clicked:
+                self.timestamp.clicked = False
                 return
         
         sendRightClickImg2 = (
@@ -7097,6 +7114,10 @@ class guiWin(QMainWindow):
             if hasattr(self, 'scaleBar'):
                 if self.scaleBar.isHighlighted():
                     self.scaleBar.clicked = True
+                    return
+            if hasattr(self, 'timestamp'):
+                if self.timestamp.isHighlighted():
+                    self.timestamp.clicked = True
                     return
             pg.ImageItem.mousePressEvent(self.img1, event)
             event.ignore()
@@ -10445,7 +10466,25 @@ class guiWin(QMainWindow):
                 self.UserEnforced_Tracking = True
 
     def addTimestamp(self, checked):
-        ...
+        if checked:
+            posData = self.data[self.pos_i]
+            Y, X = self.img1.image.shape
+            win = apps.TimestampPropertiesDialog(parent=self)
+            win.show()
+            self.timestamp = widgets.TimestampItem(
+                Y, X, secondsPerFrame=posData.TimeIncrement
+            )
+            self.timestamp.sigEditProperties.connect(
+                self.editTimestampProperties
+            )
+            self.timestamp.addToAxis(self.ax1)
+            self.timestamp.draw(posData.frame_i, **win.kwargs())
+            win.sigValueChanged.connect(self.updateTimestamp)
+            win.exec_()
+        else:
+            self.scaleBar.removeFromAxis(self.ax1)
+        
+        self.imgGrad.addTimestampAction.setChecked(checked)
     
     def addScaleBar(self, checked):
         if checked:
@@ -10472,6 +10511,10 @@ class guiWin(QMainWindow):
     def updateScaleBar(self, scaleBarKwargs):
         self.scaleBar.draw(**scaleBarKwargs)
     
+    def updateTimestamp(self, timeStampKwargs):
+        posData = self.data[self.pos_i]
+        self.timestamp.draw(posData.frame_i, **timeStampKwargs)
+    
     def editScaleBarProperties(self, properties):
         Y, X = self.img1.image.shape
         posData = self.data[self.pos_i]
@@ -10480,7 +10523,12 @@ class guiWin(QMainWindow):
         )
         win.sigValueChanged.connect(self.updateScaleBar)
         win.exec_()
-        
+    
+    def editTimestampProperties(self, properties):
+        win = apps.TimestampPropertiesDialog(parent=self, **properties)
+        win.sigValueChanged.connect(self.updateTimestamp)
+        win.show()
+    
     def invertBw(self, checked, update=True):
         self.invertBwAlreadyCalledOnce = True
         
@@ -10600,6 +10648,39 @@ class guiWin(QMainWindow):
         
         return pd.concat(acdc_dfs, keys=keys, names=['frame_i'])
             
+    
+    def checkHighlightTimestamp(self, x, y, activeToolButton):
+        if not hasattr(self, 'timestamp'):
+            return
+        
+        if not self.addTimestampAction.isChecked():
+            return
+        
+        if activeToolButton is not None:
+            return
+        
+        if hasattr(self, 'scaleBar'):
+            if self.scaleBar.isHighlighted():
+                return
+        
+        ymin, xmin, ymax, xmax = self.timestamp.bbox()
+        if x < xmin:
+            self.timestamp.setHighlighted(False)
+            return
+        
+        if x > xmax:
+            self.timestamp.setHighlighted(False)
+            return
+        
+        if y < ymin:
+            self.timestamp.setHighlighted(False)
+            return
+        
+        if y > ymax:
+            self.timestamp.setHighlighted(False)
+            return
+
+        self.timestamp.setHighlighted(True)
     
     def checkHighlightScaleBar(self, x, y, activeToolButton):
         if not hasattr(self, 'scaleBar'):
@@ -21475,7 +21556,18 @@ class guiWin(QMainWindow):
         self.setManualBackgroundImage()
         self.annotateAssignedObjsAcdcTrackerSecondStep()
         
-        self.highlightSearchedID(self.highlightedID, force=True)  
+        self.highlightSearchedID(self.highlightedID, force=True) 
+        self.updateTimestampFrame() 
+    
+    def updateTimestampFrame(self):
+        if not hasattr(self, 'timestamp'):
+            return
+        
+        if not self.addTimestampAction.isChecked():
+            return
+        
+        posData = self.data[self.pos_i]
+        self.timestamp.setText(posData.frame_i)
     
     def deleteIDFromLab(self, lab, delID):
         delMask = np.zeros(lab.shape, dtype=bool)
@@ -24465,7 +24557,9 @@ class guiWin(QMainWindow):
         win = apps.ExportToVideoParametersDialog(
             parent=self, startFolderpath=posData.pos_path, 
             startFilename=filename, startFrameNum=posData.frame_i+1, 
-            SizeT=posData.SizeT
+            SizeT=posData.SizeT, 
+            isScaleBarPresent=self.addScaleBarAction.isChecked(), 
+            isTimestampPresent=self.addTimestampAction.isChecked()
         )
         win.sigAddScaleBar.connect(self.exportToVideoAddScaleBar)
         win.sigAddTimestamp.connect(self.exportToVideoAddTimestamp)

@@ -4953,7 +4953,7 @@ class myHistogramLUTitem(baseHistogramLUTitem):
         # Add timestamp action
         self.addTimestampAction = QAction('Add timestamp', self)
         self.addTimestampAction.setCheckable(True)
-        self.addTimestampAction.triggered.connect(self.emitAddScaleBar)
+        self.addTimestampAction.triggered.connect(self.emitAddTimestamp)
         self.gradient.menu.addAction(self.addTimestampAction)
 
         # Invert bw action
@@ -7280,14 +7280,14 @@ class LabelItem(pg.LabelItem):
         super().__init__(*args, **kwargs)
     
     def bbox(self):
-        xl, yl = self.item.pos().x(), self.item.pos().y()
+        xl, yl = self.pos().x(), self.pos().y()
         wl, hl = self.itemRect().width(), self.itemRect().height()
         return yl, xl, yl+hl, xl+wl
     
     def setBold(self, bold=True):
-        self.origPos = self.item.pos()
+        self.origPos = self.pos()
         self.setText(self.text, bold=bold)
-        self.item.setPos(self.origPos)
+        self.setPos(self.origPos)
 
 class ScaleBar(QGraphicsObject): 
     sigEditProperties = Signal(object)
@@ -7418,7 +7418,7 @@ class ScaleBar(QGraphicsObject):
         hl = self.labelItem.itemRect().height()
         xl = xc-wl/2
         yt = y0-hl    
-        self.labelItem.item.setPos(xl, yt)
+        self.labelItem.setPos(xl, yt)
     
     def getStartXCoordFromLoc(self, loc):
         if loc == 'custom':
@@ -7768,7 +7768,7 @@ class RulerPlotItem(pg.PlotDataItem):
         hl = self.labelItem.itemRect().height()
         xl = xc-wl/2
         yt = y0-hl    
-        self.labelItem.item.setPos(xl, yt)
+        self.labelItem.setPos(xl, yt)
 
 class VectorLineEdit(QLineEdit):
     valueChanged = Signal(object)
@@ -8477,5 +8477,144 @@ class OddSpinBox(SpinBox):
         self.setValue(self.value()+1)
 
 class TimestampItem(LabelItem):
-    def __init__(self):
+    sigEditProperties = Signal(object)
+    
+    def __init__(self, SizeY, SizeX, secondsPerFrame=1, parent=None):
+        self._secondsPerFrame = secondsPerFrame
+        self._x_pad = 3
+        self._y_pad = 2
+        self.SizeY = SizeY
+        self.SizeX = SizeX
+        self._highlighted = False
+        self._parent = parent
+        self.clicked = False
         super().__init__(self)
+        self.createContextMenu()
+    
+    def createContextMenu(self):
+        self.contextMenu = QMenu()
+        action = QAction('Edit properties...', self.contextMenu)
+        action.triggered.connect(self.emitEditProperties)
+        self.contextMenu.addSeparator()
+        self.contextMenu.addAction(action)
+    
+    def emitEditProperties(self):
+        self.setHighlighted(False)
+        self.sigEditProperties.emit(self.properties())
+    
+    def isHighlighted(self):
+        return self._highlighted
+        
+    def setHighlighted(self, highlighted):
+        if self._highlighted and highlighted:
+            return
+        
+        if not self._highlighted and not highlighted:
+            return
+        
+        super().setText(self.text, bold=highlighted)
+        
+        self._highlighted = highlighted
+    
+    def showContextMenu(self, x, y):
+        self.contextMenu.popup(QPoint(int(x), int(y)))
+    
+    def properties(self):
+        properties = {
+            'color': self._color,
+            'loc': self._loc,
+            'font_size': float(self._font_size[:-2]),
+        }
+        return properties
+
+    def draw(self, frame_i, **kwargs):
+        self.setProperties(**kwargs)
+        self.update(frame_i)
+    
+    def update(self, frame_i):
+        self.setPosFromLoc()
+        self.setText(frame_i)
+    
+    def setPosFromLoc(self):
+        textHeight = self.itemRect().height()
+        textWidth = self.itemRect().width()
+        if self._loc == 'custom':
+            pos = self.pos()
+            x0, y0 = pos.x(), pos.y()
+        elif self._loc.find('top') != -1:
+            y0 = self._y_pad
+        else:
+            y0 = self.SizeY - textHeight
+        
+        if self._loc.find('left') != -1:
+            x0 = self._x_pad
+        else:
+            x0 = self.SizeX - textWidth
+        
+        self.setPos(x0, y0)
+    
+    def setProperties(
+            self, 
+            color=(255, 255, 255), 
+            font_size='13px', 
+            loc='top-left',
+        ):
+        self._color = color
+        self._loc = loc
+        self._font_size = font_size
+
+    def move(self, x, y):
+        self.setPos(x, y)
+    
+    def setText(self, frame_i):
+        if not isinstance(frame_i, int):
+            return
+        seconds = frame_i*self._secondsPerFrame
+        timedelta = datetime.timedelta(seconds=round(seconds))
+        super().setText(
+            str(timedelta), color=self._color, size=self._font_size
+        )
+    
+    def addToAxis(self, ax):
+        ax.addItem(self)
+
+class FontSizeWidget(QWidget):
+    sigTextChanged = Signal(str)
+    
+    def __init__(self, parent=None, unit='px', initalVal=12):
+        super().__init__(parent)
+        
+        layout = QHBoxLayout()
+        
+        self.spinbox = SpinBox()    
+        self.spinbox.setValue(initalVal)    
+        layout.addWidget(self.spinbox)
+        
+        self.unitLabel = QLabel(unit)
+        layout.addWidget(self.unitLabel)
+        
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setStretch(0, 1)
+        layout.setStretch(1, 0)
+        
+        self.setLayout(layout)
+        
+        self.spinbox.valueChanged.connect(self.emitTextChanged)
+    
+    def emitTextChanged(self, value):
+        self.sigTextChanged.emit(self.text())
+    
+    def setValue(self, value):
+        if isinstance(value, str):
+            value = int(value.replace(self.unitLabel.text(), '').strip())
+        self.spinbox.setValue(value)
+    
+    def setText(self, text):
+        value = int(value.replace(self.unitLabel.text(), '').strip())
+        self.setValue(value)
+    
+    def text(self):
+        return f'{self.spinbox.value()}{self.unitLabel.text()}'
+    
+    def value(self):
+        return self.spinbox.value()
