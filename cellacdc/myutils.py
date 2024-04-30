@@ -2762,6 +2762,34 @@ def import_tracker_module(tracker_name):
     tracker_module = import_module(module_name)
     return tracker_module
 
+def download_ffmpeg():    
+    ffmpeg_folderpath = os.path.join(user_profile_path, 'acdc-ffmpeg')
+    if is_win:
+        url = 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/rXioWZpwjwn9JTT/download/windows_ffmpeg-7.0-full_build.zip'
+        file_size = 173477888
+        ffmep_exec_path = os.path.join(ffmpeg_folderpath, 'bin', 'ffmpeg.exe')
+    elif is_mac:
+        url = 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/We7rcTLzqAP4zf7/download/mac_ffmpeg.zip'
+        file_size = 25288704
+        ffmep_exec_path = os.path.join(ffmpeg_folderpath, 'ffmpeg')
+    elif is_linux:
+        ffmep_exec_path = ''
+        return ffmep_exec_path
+    
+    if os.path.exists(ffmep_exec_path):
+        return ffmep_exec_path.replace('\\', os.sep).replace('/', os.sep)
+    
+    print('Downloading FFMPEG...')
+    temp_dir = tempfile.mkdtemp()
+    temp_zip_path = os.path.join(temp_dir, 'acdc-ffmpeg.zip')
+    
+    download_url(
+        url, temp_zip_path, verbose=True, file_size=file_size,
+    )
+    extract_zip(temp_zip_path, ffmpeg_folderpath)
+    
+    return ffmep_exec_path.replace('\\', os.sep).replace('/', os.sep)
+
 def init_tracker(
         posData, trackerName, realTime=False, qparent=None, 
         return_init_params=False

@@ -879,6 +879,7 @@ class guiWin(QMainWindow):
     """Main Window."""
 
     sigClosed = Signal(object)
+    sigExportFrame = Signal()
 
     def __init__(
             self, app, parent=None, buttonToRestore=None,
@@ -1284,6 +1285,8 @@ class guiWin(QMainWindow):
         fileMenu.addAction(self.saveAsAction)
         fileMenu.addAction(self.quickSaveAction)
         fileMenu.addSeparator()
+        fileMenu.addAction(self.exportToVideoAction)
+        fileMenu.addSeparator()
         fileMenu.addAction(self.loadFluoAction)
         fileMenu.addAction(self.loadPosAction)
         # Separator
@@ -1318,6 +1321,7 @@ class guiWin(QMainWindow):
         filtersMenu.addAction(self.cp3denoiseAction)
         
         ImageMenu.addAction(self.addScaleBarAction)
+        ImageMenu.addAction(self.addTimestampAction)
         normalizeIntensitiesMenu = ImageMenu.addMenu("Normalize intensities")
         normalizeIntensitiesMenu.addAction(self.normalizeRawAction)
         normalizeIntensitiesMenu.addAction(self.normalizeToFloatAction)
@@ -2571,6 +2575,7 @@ class guiWin(QMainWindow):
         self.manageVersionsAction.setDisabled(True)
         self.saveAction = QAction(QIcon(":file-save.svg"), "Save", self)
         self.saveAsAction = QAction("Save as...", self)
+        self.exportToVideoAction = QAction("Export to video...", self)
         self.quickSaveAction = QAction("Save Only Segmentation Masks", self)
         self.loadFluoAction = QAction("Load Fluorescence Images...", self)
         self.loadPosAction = QAction("Load Different Position...", self)
@@ -2591,6 +2596,7 @@ class guiWin(QMainWindow):
         self.openFolderAction.setShortcut('Ctrl+O')
         self.loadPosAction.setShortcut('Shift+P')
         self.saveAsAction.setShortcut('Ctrl+Shift+S')
+        self.exportToVideoAction.setShortcut('Ctrl+Shift+E')
         self.saveAction.setShortcut('Ctrl+Alt+S')
         self.quickSaveAction.setShortcut('Ctrl+S')
         self.undoAction.setShortcut('Ctrl+Z')
@@ -2793,6 +2799,9 @@ class guiWin(QMainWindow):
         
         self.addScaleBarAction = QAction('Add scale bar', self)
         self.addScaleBarAction.setCheckable(True)
+        
+        self.addTimestampAction = QAction('Add timestamp', self)
+        self.addTimestampAction.setCheckable(True)
 
         self.invertBwAction = QAction('Invert black/white', self)
         self.invertBwAction.setCheckable(True)
@@ -2960,6 +2969,7 @@ class guiWin(QMainWindow):
         self.manageVersionsAction.triggered.connect(self.manageVersions)
         self.saveAction.triggered.connect(self.saveData)
         self.saveAsAction.triggered.connect(self.saveAsData)
+        self.exportToVideoAction.triggered.connect(self.exportToVideoTriggered)
         self.quickSaveAction.triggered.connect(self.quickSave)
         self.autoSaveToggle.toggled.connect(self.autoSaveToggled)
         self.ccaIntegrCheckerToggle.toggled.connect(
@@ -3146,6 +3156,7 @@ class guiWin(QMainWindow):
         # self.repeatAutoCcaAction.triggered.connect(self.repeatAutoCca)
         self.manuallyEditCcaAction.triggered.connect(self.manualEditCca)
         self.addScaleBarAction.toggled.connect(self.addScaleBar)
+        self.addTimestampAction.toggled.connect(self.addTimestamp)
         self.invertBwAction.toggled.connect(self.invertBw)
         self.saveLabColormapAction.triggered.connect(self.saveLabelsColormap)
 
@@ -3267,6 +3278,7 @@ class guiWin(QMainWindow):
 
         self.imgGrad.sigLookupTableChanged.connect(self.imgGradLUT_cb)
         self.imgGrad.sigAddScaleBar.connect(self.addScaleBarAction.setChecked)
+        self.imgGrad.sigAddTimestamp.connect(self.addTimestampAction.setChecked)
         self.imgGrad.gradient.sigGradientChangeFinished.connect(
             self.imgGradLUTfinished_cb
         )
@@ -7860,7 +7872,6 @@ class guiWin(QMainWindow):
         self.findNextNewIdWorker = workers.FindNextNewIdWorker(posData, self)
         self.findNextNewIdWorker.moveToThread(self._thread)
         
-        self.findNextNewIdWorker.moveToThread(self._thread)
         self.findNextNewIdWorker.signals.finished.connect(self._thread.quit)
         self.findNextNewIdWorker.signals.finished.connect(
             self.findNextNewIdWorker.deleteLater
@@ -10433,6 +10444,9 @@ class guiWin(QMainWindow):
                 self.UserEnforced_DisabledTracking = False
                 self.UserEnforced_Tracking = True
 
+    def addTimestamp(self, checked):
+        ...
+    
     def addScaleBar(self, checked):
         if checked:
             posData = self.data[self.pos_i]
@@ -12273,8 +12287,7 @@ class guiWin(QMainWindow):
        
         if ev.key() == Qt.Key_Q and self.debug:
             # posData = self.data[self.pos_i]
-            # printl(self.labelRoiTrangeCheckbox.findChild(QAction).isChecked())
-            printl(self.ax1.infoTextItem.pos())
+            pass
         
         if not self.isDataLoaded:
             self.logger.info(
@@ -23626,6 +23639,7 @@ class guiWin(QMainWindow):
         )
         
         lutItem.removeAddScaleBarAction()
+        lutItem.removeAddTimestampAction()
         lutItem.restoreState(self.df_settings)
         lutItem.setImageItem(imageItem)
         lutItem.vb.raiseContextMenu = lambda x: None
@@ -24317,6 +24331,155 @@ class guiWin(QMainWindow):
         self.setStatusBarLabel()
         self.saveData()
 
+    def startExportToVideoWorker(self, preferences):
+        self.setDisabled(True)
+        
+        self.progressWin = apps.QDialogWorkerProgress(
+            title='Exporting to video', parent=self.mainWin,
+            pbarDesc='Exporting to video...'
+        )
+        self.progressWin.show(self.app)
+        self.exportToVideoStopFrameNum = preferences['stop_frame_num']
+        self.numFramesExported = 0
+        self.progressWin.mainPbar.setMaximum(
+            preferences['stop_frame_num'] - preferences['start_frame_num'] + 1
+        )
+        self.exportToVideoPreferences = preferences
+        
+        self.store_data()
+        posData = self.data[self.pos_i]
+        self.exportToVideoFrameIdxToRestore = posData.frame_i
+        self.exportToVideoCurrentFrameIdx = preferences['start_frame_num'] - 1
+        
+        from . import exporters
+        self.exportToVideoImageExporter = exporters.ImageExporter(
+            self.ax1, save_pngs=preferences['save_pngs']
+        )
+        self.exportToVideoExporter = exporters.VideoExporter(
+            preferences['avi_filepath'], preferences['fps']
+        )
+        
+        QTimer.singleShot(200, self.updateAndExportFrame)
+    
+    def updateAndExportFrame(self):
+        if self.exportToVideoCurrentFrameIdx == self.exportToVideoStopFrameNum:
+            self.progressWin.mainPbar.setMaximum(0)
+            self.progressWin.mainPbar.setValue(0)
+            QTimer.singleShot(50, self.exportingFramesFinished)
+            return
+        
+        posData = self.data[self.pos_i]
+        posData.frame_i = self.exportToVideoCurrentFrameIdx                 
+        self.get_data()
+        self.updateAllImages()
+        success = self.exportFrame()
+        if success is None:
+            self.exportingVideoCritical()
+            return
+        
+        self.exportToVideoCurrentFrameIdx += 1
+        self.progressWin.mainPbar.update(1)
+
+        QTimer.singleShot(50, self.updateAndExportFrame)
+    
+    @exception_handler
+    def exportFrame(self):
+        nd = self.exportToVideoPreferences['num_digits']
+        idx = str(self.exportToVideoCurrentFrameIdx).zfill(nd)
+        filename = self.exportToVideoPreferences['filename']
+        png_filename = f'{idx}_{filename}.png'
+        pngs_folderpath = self.exportToVideoPreferences['pngs_folderpath']
+        
+        png_filepath = os.path.join(pngs_folderpath, png_filename)
+        img_bgr = self.exportToVideoImageExporter.export(png_filepath)
+        self.exportToVideoExporter.add_frame(img_bgr)
+        return True
+    
+    def exportingVideoCritical(self):
+        self.setDisabled(False)
+        
+        self.progressWin.workerFinished = True
+        self.progressWin.close()
+        self.progressWin = None
+        
+        self.logger.info('Exporting video process failed.')
+    
+    def exportingFramesFinished(self):
+        if not self.exportToVideoPreferences['save_pngs']:
+            self.logger.info('Removing PNGs...')
+            try:
+                shutil.rmtree(self.exportToVideoPreferences['pngs_folderpath'])
+            except Exception as err:
+                pass
+            
+        self.logger.info('Saving video...')
+        
+        self.exportToVideoExporter.release()
+        
+        # Run ffmpeg new process
+        conversion_to_mp4_successful = True
+        if self.exportToVideoPreferences['filepath'].endswith('.mp4'):
+            try:
+                self.exportToVideoExporter.avi_to_mp4()
+            except Exception as err:
+                self.logger.exception(traceback.format_exc())
+                self.logger.info(
+                    'Conversion to MP4 failed. See traceback above.'
+                )
+                conversion_to_mp4_successful = False
+                self.exportToVideoPreferences['filepath'] = (
+                    self.exportToVideoExporter._avi_filepath
+                )
+        
+        self.exportToVideoFinished(conversion_to_mp4_successful)
+        
+    def exportToVideoFinished(self, conversion_to_mp4_successful):
+        self.progressWin.workerFinished = True
+        self.progressWin.close()
+        self.progressWin = None
+        
+        # Back to current frame
+        posData = self.data[self.pos_i]
+        posData.frame_i = self.exportToVideoFrameIdxToRestore                 
+        self.get_data()
+        self.store_data()
+        self.updateAllImages()
+        
+        self.setDisabled(False)
+        
+        prompts.exportToVideoFinished(
+            self.exportToVideoPreferences, conversion_to_mp4_successful, 
+            qparent=self
+        )
+    
+    def exportToVideoAddScaleBar(self, checked):
+        self.addScaleBarAction.setChecked(checked)
+    
+    def exportToVideoAddTimestamp(self, checked):
+        self.addTimestampAction.setChecked(checked)
+    
+    def exportToVideoTriggered(self):
+        posData = self.data[self.pos_i]
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f'{timestamp}_acdc_exported_video'
+        win = apps.ExportToVideoParametersDialog(
+            parent=self, startFolderpath=posData.pos_path, 
+            startFilename=filename, startFrameNum=posData.frame_i+1, 
+            SizeT=posData.SizeT
+        )
+        win.sigAddScaleBar.connect(self.exportToVideoAddScaleBar)
+        win.sigAddTimestamp.connect(self.exportToVideoAddTimestamp)
+        win.exec_()
+        if win.cancel:
+            self.logger.info('Export to video process cancelled')
+            return
+        
+        cancel = _warnings.warnExportToVideo(qparent=self)
+        if win.cancel:
+            self.logger.info('Export to video process cancelled')
+            return
+        
+        self.startExportToVideoWorker(win.selected_preferences)        
 
     def saveDataPermissionError(self, err_msg):
         msg = QMessageBox()
@@ -24788,6 +24951,7 @@ class guiWin(QMainWindow):
         return msg.cancel
     
     def closeEvent(self, event):
+        self.setDisabled(False)
         self.onEscape()
         self.saveWindowGeometry()
         

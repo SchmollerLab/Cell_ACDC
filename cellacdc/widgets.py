@@ -796,22 +796,31 @@ class CustomAnnotationScatterPlotItem(BaseScatterPlotItem):
     def __init__(self, *args, **kargs):
         super().__init__(*args, **kargs)
 
-class ElidingLineEdit(QLineEdit):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-    
-    def __init__(self, parent=None):
+class ElidingLineEdit(QLineEdit):    
+    def __init__(self, parent=None, minWidth=None):
         super().__init__(parent)
         self._text = ''
+        self._minWidth = minWidth
+        if minWidth is not None:
+            self.setMinimumWidth(minWidth)
+        
+        self.textEdited.connect(self.setText)
     
     def setText(self, text: str, width=None, elide=True) -> None:
         if width is None:
+            width = self._minWidth
+        
+        if width is None:
             width = self.width()
+
+        if width > self.width():
+            self.resize(width, self.height())
+        
         self._text = text
         if not elide:
             super().setText(text)
             return
-
+        
         fm = QFontMetrics(self.font())
         elidedText = fm.elidedText(text, Qt.ElideLeft, width)
         
@@ -4917,6 +4926,7 @@ class myHistogramLUTitem(baseHistogramLUTitem):
     sigGradientMenuEvent = Signal(object)
     sigTickColorAccepted = Signal(object)
     sigAddScaleBar = Signal(bool)
+    sigAddTimestamp = Signal(bool)
 
     def __init__(
             self, parent=None, name='image', axisLabel='', isViewer=False, 
@@ -4939,6 +4949,12 @@ class myHistogramLUTitem(baseHistogramLUTitem):
         self.addScaleBarAction.setCheckable(True)
         self.addScaleBarAction.triggered.connect(self.emitAddScaleBar)
         self.gradient.menu.addAction(self.addScaleBarAction)
+        
+        # Add timestamp action
+        self.addTimestampAction = QAction('Add timestamp', self)
+        self.addTimestampAction.setCheckable(True)
+        self.addTimestampAction.triggered.connect(self.emitAddScaleBar)
+        self.gradient.menu.addAction(self.addTimestampAction)
 
         # Invert bw action
         self.invertBwAction = QAction('Invert black/white', self)
@@ -5055,8 +5071,14 @@ class myHistogramLUTitem(baseHistogramLUTitem):
     def removeAddScaleBarAction(self):
         self.gradient.menu.removeAction(self.addScaleBarAction)
     
+    def removeAddTimestampAction(self):
+        self.gradient.menu.removeAction(self.addTimestampAction)
+    
     def emitAddScaleBar(self):
         self.sigAddScaleBar.emit(self.addScaleBarAction.isChecked())
+    
+    def emitAddTimestamp(self):
+        self.sigAddTimestamp.emit(self.addTimestampAction.isChecked())
     
     def gradientMenuEventFilter(self, object, event):
         if event.type() == QEvent.Type.MouseMove:

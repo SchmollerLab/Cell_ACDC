@@ -7,12 +7,9 @@ import numpy as np
 import pandas as pd
 import sys
 
-
 from . import GUI_INSTALLED
 
 if GUI_INSTALLED:
-    import tkinter as tk
-    from tkinter import ttk
     from qtpy.QtWidgets import (
         QApplication, QPushButton, QHBoxLayout, QLabel, QSizePolicy
     )
@@ -329,3 +326,38 @@ class select_channel_name:
         self.was_aborted = True
         if self.allow_abort:
             exit('Execution aborted by the user')
+
+def exportToVideoFinished(
+        preferences, conversion_to_mp4_successful, qparent=None
+    ):
+    from cellacdc import widgets
+    
+    txt = 'Exporting to video finished!'
+    
+    msg_type = 'information'
+    if not conversion_to_mp4_successful:
+        from . import urls
+        github_href = html_utils.href_tag('GitHub page', urls.issues_url)
+        msg_type = 'warning'
+        txt = (
+            f'{txt}<br><br>'
+            'WARNING: <b>Conversion to MP4 failed</b>. '
+            'Video file was saved as AVI instead. '
+            f'Feel free to report the issue on our {github_href}'
+        )
+    
+    txt = f'{txt}<br><br>Files were saved here:'
+    
+    txt = html_utils.paragraph(txt)
+    
+    
+    folderpath = os.path.dirname(preferences['filepath'])
+    commands = [preferences['filepath']]
+    if preferences['save_pngs']:
+        commands.append(preferences['pngs_folderpath'])
+    
+    msg = widgets.myMessageBox(wrapText=False)
+    getattr(msg, msg_type)(
+        qparent, 'Exporting video finished', txt, 
+        commands=commands, path_to_browse=folderpath
+    )

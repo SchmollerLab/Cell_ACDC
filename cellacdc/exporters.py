@@ -1,0 +1,83 @@
+import numpy as np
+import cv2
+
+import skimage.io
+import skimage.color
+
+import pyqtgraph.exporters
+
+from . import transformation, printl, myutils
+
+class ImageExporter(pyqtgraph.exporters.ImageExporter):
+    def __init__(self, item, background=(0, 0, 0, 0), save_pngs=True):
+        super().__init__(item)
+        self._save_pngs = save_pngs
+    
+        self.parameters()['background'] = (0, 0, 0, 0)
+    
+    def export(self, filepath):
+        super().export(filepath)
+        
+        # Remove padding
+        img = skimage.io.imread(filepath)
+        img_gray = img.sum(axis=2)
+        
+        _, crop_slice = transformation.remove_zeros_padding_2D(
+            img_gray, return_crop_slice=True
+        )
+        
+        img_cropped = img[crop_slice]
+        
+        if self._save_pngs:
+            skimage.io.imsave(filepath, img_cropped)
+
+        img_bgr = cv2.cvtColor(img_cropped, cv2.COLOR_RGBA2BGR)
+        
+        return img_bgr
+
+class VideoExporter:
+    def __init__(self, avi_filepath, fps):
+        self.writer = None
+        self._avi_filepath = avi_filepath
+        self._fps = fps
+    
+    def add_frame(self, img_bgr):
+        if self.writer is None:
+            height, width = img_bgr.shape[:-1]
+            self.writer = cv2.VideoWriter(
+                self._avi_filepath, 0, self._fps, (width, height)
+            )
+        self.writer.write(img_bgr)
+    
+    def release(self):
+        self.writer.release()
+    
+    def avi_to_mp4(self):
+        avi_to_mp4(self._avi_filepath)
+
+def avi_to_mp4(in_filepath_avi, out_filepath_mp4=None):
+    import subprocess
+    ffmep_exec_path = myutils.download_ffmpeg()
+    
+    if out_filepath_mp4 is None:
+        out_filepath_mp4 = in_filepath_avi.replace('.avi', '.mp4')
+    
+    ffmep_exec_path = ffmep_exec_path.replace('\\', '/')
+    out_filepath_mp4 = out_filepath_mp4.replace('\\', '/')
+    in_filepath_avi = in_filepath_avi.replace('\\', '/')
+    
+    args = [
+        ffmep_exec_path, '-i', f'{in_filepath_avi}', '-c:v', 'libx264', 
+        '-crf', '18', '-an', f'{out_filepath_mp4}'
+    ]
+    
+    command = ' '.join(args)
+    separator = '-'*100
+    print(
+        f'{separator}\n'
+        f'Converting to MP4 with the following command:\n\n'
+        f'`{command}`\n'
+        f'{separator}'
+    )
+    
+    subprocess.check_call(args)

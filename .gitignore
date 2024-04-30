@@ -2,6 +2,7 @@
 tweets
 figures
 outreach
+external_pkgs
 .acdc-settings/
 !cellacdc/resources/figures
 .vs

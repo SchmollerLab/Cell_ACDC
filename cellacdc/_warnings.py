@@ -181,3 +181,18 @@ def log_pytorch_not_installed():
         f'{urls.install_pytorch}'
     )
     print(error_close)
+
+def warnExportToVideo(qparent=None):
+    from cellacdc import widgets
+    txt = html_utils.paragraph(f"""
+        Exporting to video will start now.<br><br>
+        During this process, the GUI will <b>automatically update the images</b> 
+        to save the video frames.<br><br>
+        Please, <b>do not close the window during this process</b>, thanks!
+    """)
+    msg = widgets.myMessageBox(wrapText=False)
+    msg.warning(
+        qparent, 'Export to video is starting', txt, 
+        buttonsTexts=('Cancel', 'Ok')
+    )
+    return msg.cancel

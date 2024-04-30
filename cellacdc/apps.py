@@ -13472,3 +13472,193 @@ class InstallPyTorchDialog(QBaseDialog):
         self.command = self.commandWidget.command()
         self.cancel = False
         self.close()
+
+class ExportToVideoParametersDialog(QBaseDialog):
+    sigOk = Signal(dict)
+    sigAddScaleBar = Signal(bool)
+    sigAddTimestamp = Signal(bool)
+    
+    def __init__(
+            self, parent=None, startFolderpath='', startFilename='', 
+            startFrameNum=1, SizeT=1
+        ):
+        self.cancel = True
+        
+        super().__init__(parent=parent)
+        
+        self.setWindowTitle('Preferences for output video')
+        
+        mainLayout = QVBoxLayout()
+        
+        gridLayout = QGridLayout()
+        
+        row = 0
+        gridLayout.addWidget(QLabel('Start frame number:'), row, 0)
+        self.startFrameNumberEntry = widgets.IntLineEdit(allowNegative=False)
+        self.startFrameNumberEntry.setMinimum(1)
+        self.startFrameNumberEntry.setValue(startFrameNum)
+        gridLayout.addWidget(self.startFrameNumberEntry, row, 1)
+        
+        row += 1
+        gridLayout.addWidget(QLabel('Stop frame number:'), row, 0)
+        self.stopFrameNumberEntry = widgets.IntLineEdit(allowNegative=False)
+        self.stopFrameNumberEntry.setMaximum(SizeT)
+        self.stopFrameNumberEntry.setValue(SizeT)
+        gridLayout.addWidget(self.stopFrameNumberEntry, row, 1)
+        
+        row += 1
+        gridLayout.addWidget(QLabel('File format:'), row, 0)
+        self.fileFormatCombobox = QComboBox()
+        self.fileFormatCombobox.addItems(['MP4', 'AVI'])
+        gridLayout.addWidget(self.fileFormatCombobox, row, 1)
+        
+        row += 1
+        gridLayout.addWidget(QLabel('Frame rate (FPS):'), row, 0)
+        self.fpsWidget = widgets.FloatLineEdit(allowNegative=False)
+        self.fpsWidget.setValue(10.0)
+        gridLayout.addWidget(self.fpsWidget, row, 1)
+        
+        row += 1
+        gridLayout.addWidget(QLabel('Folder path:'), row, 0)
+        self.folderPathLineEdit = widgets.ElidingLineEdit(minWidth=240)
+        self.folderPathLineEdit.setText(startFolderpath)
+        gridLayout.addWidget(self.folderPathLineEdit, row, 1)
+        self.browseButton = widgets.browseFileButton(
+            start_dir=startFolderpath, openFolder=True
+        )
+        gridLayout.addWidget(self.browseButton, row, 2)
+        
+        row += 1
+        gridLayout.addWidget(QLabel('Filename:'), row, 0)
+        self.filenameLineEdit = widgets.alphaNumericLineEdit()
+        self.filenameLineEdit.setAlignment(Qt.AlignCenter)
+        self.filenameLineEdit.setText(startFilename)
+        gridLayout.addWidget(self.filenameLineEdit, row, 1)
+        self.fileFormatLabel = QLabel('.mp4')
+        gridLayout.addWidget(self.fileFormatLabel, row, 2)
+        
+        row += 1
+        gridLayout.addWidget(QLabel('Add Scale Bar:'), row, 0)
+        self.addScaleBarToggle = widgets.Toggle()
+        gridLayout.addWidget(
+            self.addScaleBarToggle, row, 1, alignment=Qt.AlignCenter
+        )
+        
+        row += 1
+        gridLayout.addWidget(QLabel('Add timestamp:'), row, 0)
+        self.addTimestampToggle = widgets.Toggle()
+        gridLayout.addWidget(
+            self.addTimestampToggle, row, 1, alignment=Qt.AlignCenter
+        )
+        
+        row += 1
+        gridLayout.addWidget(QLabel('Save a PNG for each frame:'), row, 0)
+        self.saveFramesToggle = widgets.Toggle()
+        gridLayout.addWidget(
+            self.saveFramesToggle, row, 1, alignment=Qt.AlignCenter
+        )
+        
+        gridLayout.setColumnStretch(0, 0)
+        gridLayout.setColumnStretch(1, 1)
+        gridLayout.setColumnStretch(2, 0)
+        
+        self.fileFormatCombobox.currentTextChanged.connect(
+            self.updateFileFormat
+        )
+        self.browseButton.sigPathSelected.connect(self.updateFolderPath)
+        self.addScaleBarToggle.toggled.connect(self.addScaleBarToggled)
+        self.addTimestampToggle.toggled.connect(self.addTimestampToggled)
+        
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout.okButton.setText('Export')
+        
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+        
+        mainLayout.addLayout(gridLayout)
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(buttonsLayout)
+        
+        self.setLayout(mainLayout)
+    
+    def addScaleBarToggled(self, checked):
+        self.sigAddScaleBar.emit(checked)
+    
+    def addTimestampToggled(self, checked):
+        self.sigAddTimestamp.emit(checked)
+    
+    def updateFolderPath(self, folderPath):
+        self.folderPathLineEdit.setText(folderPath)
+        self.browseButton.setStartPath(folderPath)
+    
+    def updateFileFormat(self, fileFormat):
+        self.fileFormatLabel.setText(f'.{fileFormat.lower()}')
+    
+    def validateFolderPath(self):
+        folderPath = self.folderPathLineEdit.text()
+        if os.path.exists(folderPath) and os.path.isdir(folderPath):
+            return True
+        
+        text = html_utils.paragraph(
+            'The selected folder path is not a valid folder or does not exist'
+        )
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(self, 'Not a valid folder', text)
+        return False
+    
+    def validateFilename(self):
+        filename = self.filenameLineEdit.text()
+        if filename:
+            return True
+        
+        text = html_utils.paragraph(
+            'The filename cannot be empty!'
+        )
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(self, 'Not a valid folder', text)
+        return False
+    
+    def validate(self):
+        proceed = self.validateFolderPath()
+        if not proceed:
+            return False
+        
+        proceed = self.validateFilename()
+        if not proceed:
+            return False
+        
+        return True
+    
+    def preferences(self, makedirs=True):
+        filename = f'{self.filenameLineEdit.text()}{self.fileFormatLabel.text()}'
+        avi_filename = f'{self.filenameLineEdit.text()}.avi'
+        avi_filepath = os.path.join(self.folderPathLineEdit.text(), avi_filename)
+        png_foldername = (
+            f'{self.filenameLineEdit.text()}_frames_PNG'
+        )
+        pngs_folderpath = os.path.join(
+            self.folderPathLineEdit.text(), png_foldername
+        )
+        if makedirs:
+            os.makedirs(pngs_folderpath, exist_ok=True)
+        preferences = {
+            'start_frame_num': self.startFrameNumberEntry.value(),
+            'stop_frame_num': self.stopFrameNumberEntry.value(),
+            'filepath': os.path.join(self.folderPathLineEdit.text(), filename), 
+            'filename': self.filenameLineEdit.text(),
+            'avi_filepath': avi_filepath,
+            'pngs_folderpath': pngs_folderpath,
+            'num_digits': len(str(self.stopFrameNumberEntry.value())),
+            'fps': self.fpsWidget.value(),
+            'save_pngs':  self.saveFramesToggle.isChecked(),
+        }
+        return preferences
+    
+    def ok_cb(self):
+        proceed = self.validate()
+        if not proceed:
+            return
+        self.cancel = False
+        self.sigOk.emit(self.preferences())
+        self.selected_preferences = self.preferences()
+        self.close()
