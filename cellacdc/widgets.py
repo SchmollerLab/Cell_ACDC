@@ -8610,7 +8610,7 @@ class FontSizeWidget(QWidget):
         self.spinbox.setValue(value)
     
     def setText(self, text):
-        value = int(value.replace(self.unitLabel.text(), '').strip())
+        value = int(text.replace(self.unitLabel.text(), '').strip())
         self.setValue(value)
     
     def text(self):
