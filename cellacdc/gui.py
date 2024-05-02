@@ -1285,7 +1285,10 @@ class guiWin(QMainWindow):
         fileMenu.addAction(self.saveAsAction)
         fileMenu.addAction(self.quickSaveAction)
         fileMenu.addSeparator()
-        fileMenu.addAction(self.exportToVideoAction)
+        
+        self.exportMenu = fileMenu.addMenu('Export')
+        self.exportMenu.addAction(self.exportToVideoAction)
+        self.exportMenu.addAction(self.exportToImageAction)
         fileMenu.addSeparator()
         fileMenu.addAction(self.loadFluoAction)
         fileMenu.addAction(self.loadPosAction)
@@ -2575,7 +2578,8 @@ class guiWin(QMainWindow):
         self.manageVersionsAction.setDisabled(True)
         self.saveAction = QAction(QIcon(":file-save.svg"), "Save", self)
         self.saveAsAction = QAction("Save as...", self)
-        self.exportToVideoAction = QAction("Export to video...", self)
+        self.exportToVideoAction = QAction("&Video...", self)
+        self.exportToImageAction = QAction("&Image...", self)
         self.quickSaveAction = QAction("Save Only Segmentation Masks", self)
         self.loadFluoAction = QAction("Load Fluorescence Images...", self)
         self.loadPosAction = QAction("Load Different Position...", self)
@@ -2596,7 +2600,8 @@ class guiWin(QMainWindow):
         self.openFolderAction.setShortcut('Ctrl+O')
         self.loadPosAction.setShortcut('Shift+P')
         self.saveAsAction.setShortcut('Ctrl+Shift+S')
-        self.exportToVideoAction.setShortcut('Ctrl+Shift+E')
+        self.exportToVideoAction.setShortcut('Ctrl+Shift+V')
+        self.exportToImageAction.setShortcut('Ctrl+Shift+I')
         self.saveAction.setShortcut('Ctrl+Alt+S')
         self.quickSaveAction.setShortcut('Ctrl+S')
         self.undoAction.setShortcut('Ctrl+Z')
@@ -2970,6 +2975,7 @@ class guiWin(QMainWindow):
         self.saveAction.triggered.connect(self.saveData)
         self.saveAsAction.triggered.connect(self.saveAsData)
         self.exportToVideoAction.triggered.connect(self.exportToVideoTriggered)
+        self.exportToImageAction.triggered.connect(self.exportToImageTriggered)
         self.quickSaveAction.triggered.connect(self.quickSave)
         self.autoSaveToggle.toggled.connect(self.autoSaveToggled)
         self.ccaIntegrCheckerToggle.toggled.connect(
@@ -3853,6 +3859,10 @@ class guiWin(QMainWindow):
         self.imgGrad.gradient.menu.addAction(
             self.labelsGrad.showNextFrameAction
         )
+        
+        self.imgGrad.gradient.menu.addSeparator()
+        
+        self.imgGrad.gradient.menu.addMenu(self.exportMenu)            
         
         # Add actions to view menu
         self.viewMenu.addAction(self.labelsGrad.showLabelsImgAction)
@@ -15852,6 +15862,7 @@ class guiWin(QMainWindow):
             else:
                 self.manualBackgroundAction.setVisible(False)
                 self.manualBackgroundAction.setDisabled(True)
+            self.exportToVideoAction.setDisabled(True)
         else:
             self.annotateToolbar.setVisible(False)
             self.realTimeTrackingToggle.setDisabled(False)
@@ -15881,6 +15892,7 @@ class guiWin(QMainWindow):
             self.manualBackgroundAction.setVisible(False)
             self.manualBackgroundAction.setDisabled(True)
             self.labelsGrad.showNextFrameAction.setDisabled(False)
+            self.exportToVideoAction.setDisabled(False)
 
     def checkIfAutoSegm(self):
         """
@@ -24573,12 +24585,15 @@ class guiWin(QMainWindow):
             return
         
         cancel = _warnings.warnExportToVideo(qparent=self)
-        if win.cancel:
+        if cancel:
             self.logger.info('Export to video process cancelled')
             return
         
         self.startExportToVideoWorker(win.selected_preferences)        
 
+    def exportToImageTriggered(self):
+        printl('ciao')
+    
     def saveDataPermissionError(self, err_msg):
         msg = QMessageBox()
         msg.critical(self, 'Permission denied', err_msg, msg.Ok)

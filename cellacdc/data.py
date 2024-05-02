@@ -1,7 +1,6 @@
 import os
 
 import numpy as np
-from pyparsing import col
 
 import tifffile
 
