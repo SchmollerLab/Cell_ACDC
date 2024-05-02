@@ -29,11 +29,15 @@ class ImageExporter(pyqtgraph.exporters.ImageExporter):
         img_cropped = img[crop_slice]
         
         if self._save_pngs:
-            skimage.io.imsave(filepath, img_cropped)
+            skimage.io.imsave(filepath, img_cropped, check_contrast=False)
 
         img_bgr = cv2.cvtColor(img_cropped, cv2.COLOR_RGBA2BGR)
         
         return img_bgr
+
+class SVGExporter(pyqtgraph.exporters.SVGExporter):
+    def __init__(self, item):
+        super().__init__(item)
 
 class VideoExporter:
     def __init__(self, avi_filepath, fps):

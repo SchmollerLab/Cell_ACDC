@@ -13777,6 +13777,7 @@ class TimestampPropertiesDialog(QBaseDialog):
 class ExportToImageParametersDialog(QBaseDialog):
     sigOk = Signal(dict)
     sigAddScaleBar = Signal(bool)
+    sigRangeChanged = Signal(object)
     
     def __init__(
             self, parent=None, startFolderpath='', startFilename='', 
@@ -13793,7 +13794,7 @@ class ExportToImageParametersDialog(QBaseDialog):
         gridLayout = QGridLayout()
         
         row = 0
-        gridLayout.addWidget(QLabel('View range x-axis:'), row, 0)
+        gridLayout.addWidget(QLabel('View range X axis:'), row, 0)
         self.xRangeSelector = widgets.RangeSelector()
         if startViewRange is not None:
             xRange, yRange = startViewRange
@@ -13801,7 +13802,7 @@ class ExportToImageParametersDialog(QBaseDialog):
         gridLayout.addWidget(self.xRangeSelector, row, 1)
         
         row += 1
-        gridLayout.addWidget(QLabel('View range y-axis:'), row, 0)
+        gridLayout.addWidget(QLabel('View range Y axis:'), row, 0)
         self.yRangeSelector = widgets.RangeSelector()
         if startViewRange is not None:
             xRange, yRange = startViewRange
@@ -13811,14 +13812,8 @@ class ExportToImageParametersDialog(QBaseDialog):
         row += 1
         gridLayout.addWidget(QLabel('File format:'), row, 0)
         self.fileFormatCombobox = QComboBox()
-        self.fileFormatCombobox.addItems(['MP4', 'AVI'])
+        self.fileFormatCombobox.addItems(['SVG', 'PNG', 'TIF', 'JPEG'])
         gridLayout.addWidget(self.fileFormatCombobox, row, 1)
-        
-        row += 1
-        gridLayout.addWidget(QLabel('Frame rate (FPS):'), row, 0)
-        self.fpsWidget = widgets.FloatLineEdit(allowNegative=False)
-        self.fpsWidget.setValue(10.0)
-        gridLayout.addWidget(self.fpsWidget, row, 1)
         
         row += 1
         gridLayout.addWidget(QLabel('Folder path:'), row, 0)
@@ -13836,7 +13831,9 @@ class ExportToImageParametersDialog(QBaseDialog):
         self.filenameLineEdit.setAlignment(Qt.AlignCenter)
         self.filenameLineEdit.setText(startFilename)
         gridLayout.addWidget(self.filenameLineEdit, row, 1)
-        self.fileFormatLabel = QLabel('.mp4')
+        self.fileFormatLabel = QLabel(
+            f'.{self.fileFormatCombobox.currentText().lower()}'
+        )
         gridLayout.addWidget(self.fileFormatLabel, row, 2)
         
         row += 1
@@ -13847,31 +13844,13 @@ class ExportToImageParametersDialog(QBaseDialog):
         )
         self.addScaleBarToggle.setChecked(isScaleBarPresent)
         
-        row += 1
-        gridLayout.addWidget(QLabel('Add timestamp:'), row, 0)
-        self.addTimestampToggle = widgets.Toggle()
-        gridLayout.addWidget(
-            self.addTimestampToggle, row, 1, alignment=Qt.AlignCenter
-        )
-        self.addTimestampToggle.setChecked(isTimestampPresent)
-        
-        row += 1
-        gridLayout.addWidget(QLabel('Save a PNG for each frame:'), row, 0)
-        self.saveFramesToggle = widgets.Toggle()
-        gridLayout.addWidget(
-            self.saveFramesToggle, row, 1, alignment=Qt.AlignCenter
-        )
-        
-        gridLayout.setColumnStretch(0, 0)
-        gridLayout.setColumnStretch(1, 1)
-        gridLayout.setColumnStretch(2, 0)
-        
         self.fileFormatCombobox.currentTextChanged.connect(
             self.updateFileFormat
         )
         self.browseButton.sigPathSelected.connect(self.updateFolderPath)
         self.addScaleBarToggle.toggled.connect(self.addScaleBarToggled)
-        self.addTimestampToggle.toggled.connect(self.addTimestampToggled)
+        self.xRangeSelector.sigRangeChanged.connect(self.rangeChanged)
+        self.yRangeSelector.sigRangeChanged.connect(self.rangeChanged)
         
         buttonsLayout = widgets.CancelOkButtonsLayout()
         buttonsLayout.okButton.setText('Export')
@@ -13885,11 +13864,18 @@ class ExportToImageParametersDialog(QBaseDialog):
         
         self.setLayout(mainLayout)
     
+    def updateViewRangeExportToImageDialog(self, viewBox, viewRange, changed):
+        xRange, yRange = viewRange
+        self.xRangeSelector.setRangeNoEmit(*xRange)
+        self.yRangeSelector.setRangeNoEmit(*yRange)
+    
+    def rangeChanged(self, *args):
+        xRange = self.xRangeSelector.range()
+        yRange = self.yRangeSelector.range()
+        self.sigRangeChanged.emit((xRange, yRange))
+    
     def addScaleBarToggled(self, checked):
         self.sigAddScaleBar.emit(checked)
-    
-    def addTimestampToggled(self, checked):
-        self.sigAddTimestamp.emit(checked)
     
     def updateFolderPath(self, folderPath):
         self.folderPathLineEdit.setText(folderPath)
@@ -13933,28 +13919,13 @@ class ExportToImageParametersDialog(QBaseDialog):
         
         return True
     
-    def preferences(self, makedirs=True):
+    def preferences(self):
         filename = f'{self.filenameLineEdit.text()}{self.fileFormatLabel.text()}'
-        avi_filename = f'{self.filenameLineEdit.text()}.avi'
-        avi_filepath = os.path.join(self.folderPathLineEdit.text(), avi_filename)
-        png_foldername = (
-            f'{self.filenameLineEdit.text()}_frames_PNG'
-        )
-        pngs_folderpath = os.path.join(
-            self.folderPathLineEdit.text(), png_foldername
-        )
-        if makedirs:
-            os.makedirs(pngs_folderpath, exist_ok=True)
         preferences = {
-            'start_frame_num': self.startFrameNumberEntry.value(),
-            'stop_frame_num': self.stopFrameNumberEntry.value(),
+            'view_range_x': self.xRangeSelector.range(),
+            'view_range_y': self.yRangeSelector.range(),
             'filepath': os.path.join(self.folderPathLineEdit.text(), filename), 
             'filename': self.filenameLineEdit.text(),
-            'avi_filepath': avi_filepath,
-            'pngs_folderpath': pngs_folderpath,
-            'num_digits': len(str(self.stopFrameNumberEntry.value())),
-            'fps': self.fpsWidget.value(),
-            'save_pngs':  self.saveFramesToggle.isChecked(),
         }
         return preferences
     

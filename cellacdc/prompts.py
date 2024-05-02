@@ -259,6 +259,20 @@ class select_channel_name:
         if self.allow_abort:
             exit('Execution aborted by the user')
 
+def exportToImageFinished(filepath, qparent=None):
+    from cellacdc import widgets
+    
+    txt = 'Exporting to image done!'
+    txt = f'{txt}<br><br>Files were saved here:'
+    
+    txt = html_utils.paragraph(txt)
+    msg = widgets.myMessageBox(wrapText=False)
+    msg.information(
+        qparent, 'Exporting image finished', txt, 
+        commands=(filepath,), 
+        path_to_browse=os.path.dirname(filepath)
+    )
+
 def exportToVideoFinished(
         preferences, conversion_to_mp4_successful, qparent=None
     ):

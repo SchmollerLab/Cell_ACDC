@@ -84,6 +84,7 @@ from . import transformation
 from . import measure
 from . import cca_functions
 from . import data_structure_docs_url
+from . import exporters
 from .trackers.CellACDC import CellACDC_tracker
 from .cca_functions import _calc_rot_vol
 from .myutils import exec_time, setupLogger
@@ -188,6 +189,24 @@ def resetViewRange(func):
             result = func(self, *args, **kwargs)
         QTimer.singleShot(200, self.resetRange)
         return result
+    return inner_function
+
+def disableWindow(func):
+    @wraps(func)
+    def inner_function(self, *args, **kwargs):
+        self.setDisabled(True)
+        try:
+            if func.__code__.co_argcount==1 and func.__defaults__ is None:
+                result = func(self)
+            elif func.__code__.co_argcount>1 and func.__defaults__ is None:
+                result = func(self, *args)
+            else:
+                result = func(self, *args, **kwargs)
+            return result
+        except Exception as err:
+            raise err
+        finally:
+            self.setDisabled(False)
     return inner_function
 
 class relabelSequentialWorker(QObject):
@@ -24455,7 +24474,6 @@ class guiWin(QMainWindow):
         self.exportToVideoFrameIdxToRestore = posData.frame_i
         self.exportToVideoCurrentFrameIdx = preferences['start_frame_num'] - 1
         
-        from . import exporters
         self.exportToVideoImageExporter = exporters.ImageExporter(
             self.ax1, save_pngs=preferences['save_pngs']
         )
@@ -24560,7 +24578,7 @@ class guiWin(QMainWindow):
             qparent=self
         )
     
-    def exportToVideoAddScaleBar(self, checked):
+    def exportAddScaleBar(self, checked):
         self.addScaleBarAction.setChecked(checked)
     
     def exportToVideoAddTimestamp(self, checked):
@@ -24577,7 +24595,7 @@ class guiWin(QMainWindow):
             isScaleBarPresent=self.addScaleBarAction.isChecked(), 
             isTimestampPresent=self.addTimestampAction.isChecked()
         )
-        win.sigAddScaleBar.connect(self.exportToVideoAddScaleBar)
+        win.sigAddScaleBar.connect(self.exportAddScaleBar)
         win.sigAddTimestamp.connect(self.exportToVideoAddTimestamp)
         win.exec_()
         if win.cancel:
@@ -24591,8 +24609,53 @@ class guiWin(QMainWindow):
         
         self.startExportToVideoWorker(win.selected_preferences)        
 
+    def setViewRangeFromExportToImageDialog(self, viewRange, win=None):
+        self.ax1.vb.sigRangeChanged.disconnect()
+        xRange, yRange = viewRange
+        self.ax1.vb.setRange(xRange=xRange, yRange=yRange)
+        self.ax1.vb.sigRangeChanged.connect(
+            win.updateViewRangeExportToImageDialog
+        )
+    
+    @disableWindow
+    def exportToImage(self, preferences):        
+        filepath = preferences['filepath']
+        self.logger.info(f'Saving image to "{filepath}"...')
+        
+        if filepath.endswith('.svg'):
+            exporter = exporters.SVGExporter(self.ax1)
+        else:
+            exporter = exporters.ImageExporter(self.ax1)
+        exporter.export(filepath)
+        self.logger.info(f'Image saved.')
+        
+        self.setDisabled(False)
+        prompts.exportToImageFinished(filepath, qparent=self)
+    
     def exportToImageTriggered(self):
-        printl('ciao')
+        posData = self.data[self.pos_i]
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f'{timestamp}_acdc_exported_image'
+        win = apps.ExportToImageParametersDialog(
+            parent=self, startFolderpath=posData.pos_path, 
+            startFilename=filename, 
+            startViewRange=self.ax1.viewRange(),
+            isScaleBarPresent=self.addScaleBarAction.isChecked(), 
+        )
+        win.sigAddScaleBar.connect(self.exportAddScaleBar)
+        win.sigRangeChanged.connect(
+            partial(self.setViewRangeFromExportToImageDialog, win=win)
+        )
+        self.ax1.vb.sigRangeChanged.connect(
+            win.updateViewRangeExportToImageDialog
+        )
+        win.exec_()
+        self.ax1.vb.sigRangeChanged.disconnect()
+        if win.cancel:
+            self.logger.info('Export to image process cancelled')
+            return
+    
+        self.exportToImage(win.selected_preferences)
     
     def saveDataPermissionError(self, err_msg):
         msg = QMessageBox()

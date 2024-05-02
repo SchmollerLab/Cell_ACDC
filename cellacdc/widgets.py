@@ -8627,8 +8627,8 @@ class RangeSelector(QWidget):
         
         layout = QHBoxLayout()
         
-        self.lowSpinbox = SpinBox()
-        self.highSpinbox = SpinBox()
+        self.lowSpinbox = DoubleSpinBox()
+        self.highSpinbox = DoubleSpinBox()
         
         layout.addWidget(self.lowSpinbox)
         layout.addWidget(self.highSpinbox)
@@ -8636,5 +8636,30 @@ class RangeSelector(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(layout)
         
-        self.lowSpinbox.valueChanged.connect(self.onValueChanged)
-        self.highSpinbox.valueChanged.connect(self.onValueChanged)
+        self.lowSpinbox.valueChanged.connect(self.lowValueChanged)
+        self.highSpinbox.valueChanged.connect(self.highValueChanged)
+    
+    def lowValueChanged(self, value):        
+        self.emitRangeChanged()
+        
+    def highValueChanged(self, value):
+        self.emitRangeChanged()
+    
+    def emitRangeChanged(self):
+        self.sigRangeChanged.emit(*self.range())
+    
+    def setRangeNoEmit(self, lowValue, highValue, decimals=3):
+        self.lowSpinbox.valueChanged.disconnect()
+        self.highSpinbox.valueChanged.disconnect()
+        
+        self.setRange(round(lowValue, 3), round(highValue, 3))
+        
+        self.lowSpinbox.valueChanged.connect(self.lowValueChanged)
+        self.highSpinbox.valueChanged.connect(self.highValueChanged)
+    
+    def setRange(self, lowValue, highValue):
+        self.lowSpinbox.setValue(lowValue)
+        self.highSpinbox.setValue(highValue)
+    
+    def range(self):
+        return self.lowSpinbox.value(), self.highSpinbox.value()
