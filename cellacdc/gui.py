@@ -22703,7 +22703,8 @@ class guiWin(QMainWindow):
         self.retainSizeLutItems = False
         self.setMeasWinState = None
         self.showPropsDockButton.setDisabled(True)
-
+        self.lutItemsLayout.clear()
+        
         self.reinitWidgetsPos()
         self.removeAllItems()
         self.reinitCustomAnnot()
