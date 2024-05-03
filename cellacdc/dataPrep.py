@@ -1159,9 +1159,6 @@ class dataPrepWin(QMainWindow):
                 endname = file[len(basename):]                
                 crop_filename = f'{cropBasename}{endname}'
                 sub_filepath = os.path.join(subImagesPath, crop_filename)
-                printl(
-                    sub_filepath, crop_filename, endname, basename, sep='\n'
-                )
                 if os.path.exists(sub_filepath):
                     continue
                 
