@@ -13481,8 +13481,8 @@ class ExportToVideoParametersDialog(QBaseDialog):
     
     def __init__(
             self, parent=None, startFolderpath='', startFilename='', 
-            startFrameNum=1, SizeT=1, isScaleBarPresent=False, 
-            isTimestampPresent=False
+            startFrameNum=1, SizeT=1, SizeZ=1, isTimelapseVideo=True, 
+            isScaleBarPresent=False, isTimestampPresent=False 
         ):
         self.cancel = True
         
@@ -13494,19 +13494,24 @@ class ExportToVideoParametersDialog(QBaseDialog):
         
         gridLayout = QGridLayout()
         
+        navVar = 'frame number' if isTimelapseVideo else 'z-slice'
+        maxNavVar = SizeT if isTimelapseVideo else SizeZ
+        
+        self.isTimelapseVideo = isTimelapseVideo
+        
         row = 0
-        gridLayout.addWidget(QLabel('Start frame number:'), row, 0)
-        self.startFrameNumberEntry = widgets.IntLineEdit(allowNegative=False)
-        self.startFrameNumberEntry.setMinimum(1)
-        self.startFrameNumberEntry.setValue(startFrameNum)
-        gridLayout.addWidget(self.startFrameNumberEntry, row, 1)
+        gridLayout.addWidget(QLabel(f'Start {navVar}:'), row, 0)
+        self.startNavVarNumberEntry = widgets.IntLineEdit(allowNegative=False)
+        self.startNavVarNumberEntry.setMinimum(1)
+        self.startNavVarNumberEntry.setValue(startFrameNum)
+        gridLayout.addWidget(self.startNavVarNumberEntry, row, 1)
         
         row += 1
-        gridLayout.addWidget(QLabel('Stop frame number:'), row, 0)
-        self.stopFrameNumberEntry = widgets.IntLineEdit(allowNegative=False)
-        self.stopFrameNumberEntry.setMaximum(SizeT)
-        self.stopFrameNumberEntry.setValue(SizeT)
-        gridLayout.addWidget(self.stopFrameNumberEntry, row, 1)
+        gridLayout.addWidget(QLabel(f'Stop {navVar}:'), row, 0)
+        self.stopNavVarNumberEntry = widgets.IntLineEdit(allowNegative=False)
+        self.stopNavVarNumberEntry.setMaximum(maxNavVar)
+        self.stopNavVarNumberEntry.setValue(maxNavVar)
+        gridLayout.addWidget(self.stopNavVarNumberEntry, row, 1)
         
         row += 1
         gridLayout.addWidget(QLabel('File format:'), row, 0)
@@ -13547,13 +13552,14 @@ class ExportToVideoParametersDialog(QBaseDialog):
         )
         self.addScaleBarToggle.setChecked(isScaleBarPresent)
         
-        row += 1
-        gridLayout.addWidget(QLabel('Add timestamp:'), row, 0)
-        self.addTimestampToggle = widgets.Toggle()
-        gridLayout.addWidget(
-            self.addTimestampToggle, row, 1, alignment=Qt.AlignCenter
-        )
-        self.addTimestampToggle.setChecked(isTimestampPresent)
+        if isTimelapseVideo:
+            row += 1
+            gridLayout.addWidget(QLabel('Add timestamp:'), row, 0)
+            self.addTimestampToggle = widgets.Toggle()
+            gridLayout.addWidget(
+                self.addTimestampToggle, row, 1, alignment=Qt.AlignCenter
+            )
+            self.addTimestampToggle.setChecked(isTimestampPresent)
         
         row += 1
         gridLayout.addWidget(QLabel('Save a PNG for each frame:'), row, 0)
@@ -13571,7 +13577,8 @@ class ExportToVideoParametersDialog(QBaseDialog):
         )
         self.browseButton.sigPathSelected.connect(self.updateFolderPath)
         self.addScaleBarToggle.toggled.connect(self.addScaleBarToggled)
-        self.addTimestampToggle.toggled.connect(self.addTimestampToggled)
+        if isTimelapseVideo:
+            self.addTimestampToggle.toggled.connect(self.addTimestampToggled)
         
         buttonsLayout = widgets.CancelOkButtonsLayout()
         buttonsLayout.okButton.setText('Export')
@@ -13646,15 +13653,16 @@ class ExportToVideoParametersDialog(QBaseDialog):
         if makedirs:
             os.makedirs(pngs_folderpath, exist_ok=True)
         preferences = {
-            'start_frame_num': self.startFrameNumberEntry.value(),
-            'stop_frame_num': self.stopFrameNumberEntry.value(),
+            'start_nav_var_num': self.startNavVarNumberEntry.value(),
+            'stop_nav_var_num': self.stopNavVarNumberEntry.value(),
             'filepath': os.path.join(self.folderPathLineEdit.text(), filename), 
             'filename': self.filenameLineEdit.text(),
             'avi_filepath': avi_filepath,
             'pngs_folderpath': pngs_folderpath,
-            'num_digits': len(str(self.stopFrameNumberEntry.value())),
+            'num_digits': len(str(self.stopNavVarNumberEntry.value())),
             'fps': self.fpsWidget.value(),
             'save_pngs':  self.saveFramesToggle.isChecked(),
+            'is_timelapse': self.isTimelapseVideo
         }
         return preferences
     

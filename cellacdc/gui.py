@@ -15593,6 +15593,10 @@ class guiWin(QMainWindow):
 
         self.enableZstackWidgets(posData.SizeZ > 1)
         # self.showHighlightZneighCheckbox()
+        
+        self.exportToVideoAction.setDisabled(
+            posData.SizeZ == 1 and posData.SizeT == 1
+        )
 
         self.img1BottomGroupbox.show()
 
@@ -15881,7 +15885,6 @@ class guiWin(QMainWindow):
             else:
                 self.manualBackgroundAction.setVisible(False)
                 self.manualBackgroundAction.setDisabled(True)
-            self.exportToVideoAction.setDisabled(True)
         else:
             self.annotateToolbar.setVisible(False)
             self.realTimeTrackingToggle.setDisabled(False)
@@ -15910,8 +15913,7 @@ class guiWin(QMainWindow):
             self.showTreeInfoCheckbox.show()
             self.manualBackgroundAction.setVisible(False)
             self.manualBackgroundAction.setDisabled(True)
-            self.labelsGrad.showNextFrameAction.setDisabled(False)
-            self.exportToVideoAction.setDisabled(False)
+            self.labelsGrad.showNextFrameAction.setDisabled(False)        
 
     def checkIfAutoSegm(self):
         """
@@ -24462,17 +24464,25 @@ class guiWin(QMainWindow):
             pbarDesc='Exporting to video...'
         )
         self.progressWin.show(self.app)
-        self.exportToVideoStopFrameNum = preferences['stop_frame_num']
+        self.exportToVideoStopNavVarNum = preferences['stop_nav_var_num']
         self.numFramesExported = 0
         self.progressWin.mainPbar.setMaximum(
-            preferences['stop_frame_num'] - preferences['start_frame_num'] + 1
+            preferences['stop_nav_var_num'] 
+            - preferences['start_nav_var_num'] + 1
         )
         self.exportToVideoPreferences = preferences
         
         self.store_data()
         posData = self.data[self.pos_i]
-        self.exportToVideoFrameIdxToRestore = posData.frame_i
-        self.exportToVideoCurrentFrameIdx = preferences['start_frame_num'] - 1
+        if self.exportToVideoPreferences['is_timelapse']:
+            self.exportToVideoNavVarIdxToRestore = posData.frame_i
+        else:
+            self.exportToVideoNavVarIdxToRestore = (
+                self.zSliceScrollBar.sliderPosition()
+            )
+        self.exportToVideoCurrentNavVarIdx = (
+            preferences['start_nav_var_num'] - 1
+        )
         
         self.exportToVideoImageExporter = exporters.ImageExporter(
             self.ax1, save_pngs=preferences['save_pngs']
@@ -24484,22 +24494,26 @@ class guiWin(QMainWindow):
         QTimer.singleShot(200, self.updateAndExportFrame)
     
     def updateAndExportFrame(self):
-        if self.exportToVideoCurrentFrameIdx == self.exportToVideoStopFrameNum:
+        if self.exportToVideoCurrentNavVarIdx == self.exportToVideoStopNavVarNum:
             self.progressWin.mainPbar.setMaximum(0)
             self.progressWin.mainPbar.setValue(0)
             QTimer.singleShot(50, self.exportingFramesFinished)
             return
         
         posData = self.data[self.pos_i]
-        posData.frame_i = self.exportToVideoCurrentFrameIdx                 
-        self.get_data()
-        self.updateAllImages()
+        if self.exportToVideoPreferences['is_timelapse']:
+            posData.frame_i = self.exportToVideoCurrentNavVarIdx                 
+            self.get_data()
+            self.updateAllImages()
+        else:
+            self.update_z_slice(self.exportToVideoCurrentNavVarIdx)
+            
         success = self.exportFrame()
         if success is None:
             self.exportingVideoCritical()
             return
         
-        self.exportToVideoCurrentFrameIdx += 1
+        self.exportToVideoCurrentNavVarIdx += 1
         self.progressWin.mainPbar.update(1)
 
         QTimer.singleShot(50, self.updateAndExportFrame)
@@ -24507,7 +24521,7 @@ class guiWin(QMainWindow):
     @exception_handler
     def exportFrame(self):
         nd = self.exportToVideoPreferences['num_digits']
-        idx = str(self.exportToVideoCurrentFrameIdx).zfill(nd)
+        idx = str(self.exportToVideoCurrentNavVarIdx).zfill(nd)
         filename = self.exportToVideoPreferences['filename']
         png_filename = f'{idx}_{filename}.png'
         pngs_folderpath = self.exportToVideoPreferences['pngs_folderpath']
@@ -24565,11 +24579,14 @@ class guiWin(QMainWindow):
         self.progressWin = None
         
         # Back to current frame
-        posData = self.data[self.pos_i]
-        posData.frame_i = self.exportToVideoFrameIdxToRestore                 
-        self.get_data()
-        self.store_data()
-        self.updateAllImages()
+        if self.exportToVideoPreferences['is_timelapse']:
+            posData = self.data[self.pos_i]
+            posData.frame_i = self.exportToVideoNavVarIdxToRestore                 
+            self.get_data()
+            self.store_data()
+            self.updateAllImages()
+        else:
+            self.update_z_slice(self.exportToVideoNavVarIdxToRestore)
         
         self.setDisabled(False)
         
@@ -24584,14 +24601,40 @@ class guiWin(QMainWindow):
     def exportToVideoAddTimestamp(self, checked):
         self.addTimestampAction.setChecked(checked)
     
+    def askTimelapseOrZslicesVideo(self):
+        txt = html_utils.paragraph("""
+            Do you want to record a video of scrolling through the z-slices or 
+            a Timelapse video?
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        _, timelapseButton = msg.question(
+            self, 'Z-slices or Timelapse video?', txt,
+            buttonsTexts=('Z-slices', 'Timelapse')
+        )
+        if msg.cancel:
+            return 
+        
+        return msg.clickedButton == timelapseButton
+    
     def exportToVideoTriggered(self):
         posData = self.data[self.pos_i]
+        
+        doTimelapseVideo = posData.SizeT > 1
+        if posData.SizeT > 1 and posData.SizeZ > 1:
+            doTimelapseVideo = self.askTimelapseOrZslicesVideo()
+        
+        if doTimelapseVideo is None:
+            self.logger.info('Export to video process cancelled')
+            return
+        
+        mode = 'timelapse' if doTimelapseVideo else 'z_slices'
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f'{timestamp}_acdc_exported_video'
+        filename = f'{timestamp}_acdc_exported_{mode}_video'
         win = apps.ExportToVideoParametersDialog(
             parent=self, startFolderpath=posData.pos_path, 
             startFilename=filename, startFrameNum=posData.frame_i+1, 
-            SizeT=posData.SizeT, 
+            SizeT=posData.SizeT, SizeZ=posData.SizeZ,
+            isTimelapseVideo=doTimelapseVideo,
             isScaleBarPresent=self.addScaleBarAction.isChecked(), 
             isTimestampPresent=self.addTimestampAction.isChecked()
         )
