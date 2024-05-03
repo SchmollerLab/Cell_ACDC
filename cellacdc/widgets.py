@@ -6223,7 +6223,7 @@ class GhostContourItem(pg.PlotDataItem):
         else:
             self.label.setText(f'{ID}', size=fontSize)
             w, h = self.label.itemRect().width(), self.label.itemRect().height()
-            self.label.item.setPos(x_cursor, y_cursor-h)
+            self.label.setPos(x_cursor, y_cursor-h)
     
     def clear(self):
         self.setData([], [])

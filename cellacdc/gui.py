@@ -21211,8 +21211,8 @@ class guiWin(QMainWindow):
             textItem.setText(f'{obj.label}')
             if textItem not in self.ax1.items:
                 self.ax1.addItem(textItem)
-                yc, xc = obj.centroid
-                textItem.setPos(xc, yc)
+            yc, xc = obj.centroid
+            textItem.setPos(xc, yc)
         
         cv2.drawContours(
             posData.manualBackgroundImage, contours, -1, (255, 0, 0, 200), 1
