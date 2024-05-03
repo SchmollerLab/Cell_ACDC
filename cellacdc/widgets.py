@@ -805,19 +805,25 @@ class ElidingLineEdit(QLineEdit):
             self.setMinimumWidth(minWidth)
         
         self.textEdited.connect(self.setText)
+        self.installEventFilter(self)
+        self._elide = True
     
     def setText(self, text: str, width=None, elide=True) -> None:
         if width is None:
             width = self._minWidth
         
         if width is None:
-            width = self.width()
+            try:
+                textToPrevRatio = len(text)/len(self.text())
+                width = round(self.width()*textToPrevRatio)
+            except ZeroDivisionError:
+                width = self.width()
 
         if width > self.width():
-            self.resize(width, self.height())
-        
+            width = self.width()
+            
         self._text = text
-        if not elide:
+        if not elide or not self._elide:
             super().setText(text)
             return
         
@@ -835,12 +841,21 @@ class ElidingLineEdit(QLineEdit):
         self.setText(self._text, width=newWidth)
         event.accept()
     
+    def eventFilter(self, a0: 'QObject', a1: 'QEvent') -> bool:
+        isFocusIn = a1.type() == QEvent.Type.FocusIn
+        if isFocusIn and (self.isReadOnly() or not self.isEnabled()):
+            self.clearFocus()
+            return True
+        return super().eventFilter(a0, a1)
+    
     def focusInEvent(self, event):
         super().focusInEvent(event)
+        self._elide = False
         self.setText(self._text, elide=False)
         self.setCursorPosition(len(self.text()))
 
     def focusOutEvent(self, event):
+        self._elide = True
         super().focusOutEvent(event)
         self.setText(self._text)
 

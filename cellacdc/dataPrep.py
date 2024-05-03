@@ -621,7 +621,9 @@ class dataPrepWin(QMainWindow):
                 cropROI.sigRegionChangeFinished.disconnect()
             except TypeError:
                 pass
-
+        
+        for c, cropROI in enumerate(posData.cropROIs):
+            cropROI.label.setText(f'ROI n. {c+1}')
 
     def updateBkgrROIs(self):
         if self.startAction.isEnabled() or self.onlySelectingZslice:
@@ -791,6 +793,9 @@ class dataPrepWin(QMainWindow):
             posData.bkgrROIs.remove(self.roi_to_del)
         except Exception as e:
             posData.cropROIs.remove(self.roi_to_del)
+            for c, cropROI in enumerate(posData.cropROIs):
+                cropROI.label.setText(f'ROI n. {c+1}')
+                
         self.ax1.removeItem(self.roi_to_del.label)
         self.ax1.removeItem(self.roi_to_del)
         if not posData.bkgrROIs:
@@ -926,19 +931,59 @@ class dataPrepWin(QMainWindow):
         except Exception as e:
             pass
     
-    def saveSingleCrop(self, posData, cropROI):
+    def saveSingleCrop(self, posData, cropROI, dstPath):
+        if dstPath != posData.images_path:
+            currentSubPosFolders = myutils.get_pos_foldernames(dstPath)
+            currentSubPosNumbers = [
+                int(pos.split('_')[-1]) for pos in currentSubPosFolders
+            ]
+            startPosNumber = max(currentSubPosNumbers, default=0) + 1
+            cropNum = startPosNumber
+            subPosFolder = f'Position_{cropNum}'
+            subPosFolderPath = os.path.join(dstPath, subPosFolder)
+            subImagesPath = os.path.join(subPosFolderPath, 'Images')
+            os.makedirs(subImagesPath)
+        else:
+            subImagesPath = dstPath
+        
         # Save channels (npz AND tif)
         _iter = self.getAllChannelsPaths(posData)
         for uncropped_data, npz_path, tif_path in _iter:
             cropped_data, _ = self.crop(uncropped_data, posData, cropROI)
+            npz_filename = os.path.basename(npz_path)
+            tif_filename = os.path.basename(tif_path)
+            sub_npz_filepath = os.path.join(subImagesPath, npz_filename)
+            sub_tif_filepath = os.path.join(subImagesPath, tif_filename)
             self.saveCroppedChannel(
-                cropped_data, npz_path, tif_path, posData
+                cropped_data, sub_npz_filepath, sub_tif_filepath, posData
             )
 
-        self.saveCroppedSegmData(posData, posData.segm_npz_path, cropROI)
-        self.correctAcdcDfCrop(posData, posData.acdc_output_csv_path, cropROI)
+        segm_filename = os.path.basename(posData.segm_npz_path)
+        sub_segm_filepath = os.path.join(subImagesPath, segm_filename)
+        self.saveCroppedSegmData(posData, sub_segm_filepath, cropROI)
+        
+        acdc_df_filename = os.path.basename(posData.segm_npz_path)
+        sub_acdc_df_filepath = os.path.join(subImagesPath, acdc_df_filename)
+        self.correctAcdcDfCrop(posData, sub_acdc_df_filepath, cropROI)
+        
+        self.saveMasterFolderPathTxt(posData, subImagesPath)
     
-    def startCropWorker(self, posData):
+    def saveMasterFolderPathTxt(self, posData, subImagesPath, basename=None):
+        subImagesPath = subImagesPath.replace('\\', '/')
+        parentImagesPath = posData.images_path.replace('\\', '/')
+        if parentImagesPath == subImagesPath:
+            return
+        
+        if basename is None:
+            basename = posData.basename
+            
+        filename = f'{basename}master_position.txt'
+        filepath = os.path.join(subImagesPath, filename)
+        masterPos = posData.pos_path.replace('\\', os.sep).replace('/', os.sep)
+        with open(filepath, 'w') as txt:
+            txt.write(masterPos)
+    
+    def startCropWorker(self, posData, dstPath):
         # Disable clicks on image during alignment
         self.img.mousePressEvent = None
         
@@ -953,7 +998,7 @@ class dataPrepWin(QMainWindow):
         
         self._thread = QThread()
         
-        self.cropWorker = workers.DataPrepCropWorker(posData, self)
+        self.cropWorker = workers.DataPrepCropWorker(posData, self, dstPath)
         self.cropWorker.moveToThread(self._thread)
         
         self.cropWorker.moveToThread(self._thread)
@@ -1026,51 +1071,27 @@ class dataPrepWin(QMainWindow):
         self._thread.start()
         return self.saveBkgrDataWorker
     
-    def saveCroppedData(self, posData):
-        # Get metadata from tif
-        with TiffFile(posData.tif_path) as tif:
-            metadata = tif.imagej_metadata
-
+    def saveCroppedData(self, posData, cropDstPaths):
         if len(posData.cropROIs) == 1:
-            worker = self.startCropWorker(posData)
+            worker = self.startCropWorker(posData, cropDstPaths[0])
             self.waitWorker(worker)
         else:
-            self.saveMultiCrops(posData)
+            self.saveMultiCrops(posData, cropDstPaths)
 
         self.logger.info(f'{posData.pos_foldername} saved!')
         print(f'--------------------------------')
         print('')
     
-    def saveMultiCrops(self, posData):
-        txt = html_utils.paragraph("""
-            You will now be asked to <b>choose a location</b> where to save multiple 
-            Positions from each crop ROI.
-        """)
-        msg = widgets.myMessageBox()
-        msg.information(
-            self, 'Select folder where to save multiple crops', txt
-        )
-        if msg.cancel:
-            self.logger.info('Cropping process cancelled.')
-            return
-        
-        parentSubPosPath = getexistingdirectory(
-            parent=self,
-            caption='Select folder where to save multiple crops', 
-            basedir=posData.pos_path
-        )
-        if not parentSubPosPath:
-            self.logger.info('Cropping process cancelled.')
-            return
-        
-        currentSubPosFolders = myutils.get_pos_foldernames(parentSubPosPath)
-        currentSubPosNumbers = [
-            int(pos.split('_')[-1]) for pos in currentSubPosFolders
-        ]
-        startPosNumber = max(currentSubPosNumbers, default=0) + 1
+    def saveMultiCrops(self, posData, cropDstPaths):        
         basename = posData.basename
         for p, cropROI in enumerate(posData.cropROIs):
-            cropNum = p+startPosNumber
+            parentSubPosPath = cropDstPaths[p]
+            currentSubPosFolders = myutils.get_pos_foldernames(parentSubPosPath)
+            currentSubPosNumbers = [
+                int(pos.split('_')[-1]) for pos in currentSubPosFolders
+            ]
+            startPosNumber = max(currentSubPosNumbers, default=0) + 1
+            cropNum = startPosNumber
             subPosFolder = f'Position_{cropNum}'
             subPosFolderPath = os.path.join(parentSubPosPath, subPosFolder)
             subImagesPath = os.path.join(subPosFolderPath, 'Images')
@@ -1106,6 +1127,10 @@ class dataPrepWin(QMainWindow):
             acdc_df_filepath = os.path.join(subImagesPath, crop_acdc_df_filename)
             self.correctAcdcDfCrop(posData, acdc_df_filepath, cropROI)
             
+            self.saveMasterFolderPathTxt(
+                posData, subImagesPath, basename=cropBasename
+            )
+            
             try:
                 df_roi = posData.dataPrep_ROIcoords.loc[[p]]
                 df_roi_filename = os.path.basename(
@@ -1113,7 +1138,9 @@ class dataPrepWin(QMainWindow):
                 )
                 df_roi_endname = df_roi_filename[len(basename):]
                 crop_df_roi_filename = f'{cropBasename}{df_roi_endname}'
-                df_roi_filepath = os.path.join(subImagesPath, crop_df_roi_filename)
+                df_roi_filepath = os.path.join(
+                    subImagesPath, crop_df_roi_filename
+                )
                 df_roi.to_csv(df_roi_filepath)
             except IndexError:
                 pass
@@ -1132,6 +1159,9 @@ class dataPrepWin(QMainWindow):
                 endname = file[len(basename):]                
                 crop_filename = f'{cropBasename}{endname}'
                 sub_filepath = os.path.join(subImagesPath, crop_filename)
+                printl(
+                    sub_filepath, crop_filename, endname, basename, sep='\n'
+                )
                 if os.path.exists(sub_filepath):
                     continue
                 
@@ -1255,7 +1285,7 @@ class dataPrepWin(QMainWindow):
         self.cropZaction.setChecked(False)
         self.cropZaction.toggled.connect(self.openCropZtool)
 
-    def getCroppedData(self):
+    def getCroppedData(self, askCropping=True):
         for p, posData in enumerate(self.data):
             self.saveBkgrROIs(posData)
 
@@ -1272,7 +1302,7 @@ class dataPrepWin(QMainWindow):
             
             proceed = True
             if isCropped:
-                if p == 0:
+                if p == 0 and askCropping:
                     proceed = self.askCropping(
                         data.shape, croppedShapes
                     )
@@ -1343,16 +1373,33 @@ class dataPrepWin(QMainWindow):
     
     @exception_handler
     def cropAndSave(self):
-        # msg = QMessageBox()
-        # doSave = msg.question(
-        #     self, 'Save data?', 'Do you want to save?',
-        #     msg.Yes | msg.No
-        # )
-        # if doSave == msg.No:
-        #     return
+        cropPaths = {}
+        for cropInfo in self.getCroppedData(askCropping=True):
+            if cropInfo is None:
+                # Process cancelled by the user
+                return
 
+            if cropInfo == 'continue':
+                continue
+            
+            croppedShapes, posData, SizeZ, doCrop = cropInfo
+            if len(croppedShapes) == 1:
+                masterPath = posData.images_path
+            else:
+                masterPath = posData.pos_path
+            
+            cropPaths[masterPath] = len(croppedShapes)
+            
+        win = apps.DataPrepSubCropsPathsDialog(cropPaths=cropPaths)
+        win.exec_()
+        if win.cancel:
+            txt = 'Cropping cancelled.'
+            self.titleLabel.setText(txt, color='r')
+            return
+
+        dstPaths = win.folderPaths
         self.cropAction.setDisabled(True)
-        for cropInfo in self.getCroppedData():
+        for cropInfo in self.getCroppedData(askCropping=False):
             if cropInfo is None:
                 # Process cancelled by the user
                 return
@@ -1377,12 +1424,18 @@ class dataPrepWin(QMainWindow):
             self.logger.info(f'Cropped data shape:\n{croppedShapesFormat}')
             self.saveROIcoords(doCrop, posData)
 
-            self.logger.info('Starting crop worker...')
+            self.logger.info('Saving background data...')
             
             worker = self.startSaveBkgrDataWorker(posData)
             self.waitWorker(worker)
             
-            self.saveCroppedData(posData)
+            if len(croppedShapes) == 1:
+                masterPath = posData.images_path
+            else:
+                masterPath = posData.pos_path
+            
+            self.logger.info('Cropping...')
+            self.saveCroppedData(posData, dstPaths[masterPath])
         
         for posData in self.data:
             self.disconnectROIs(posData)
@@ -1517,11 +1570,11 @@ class dataPrepWin(QMainWindow):
         )
         return cropROI
 
-    def setROIprops(self, roi):
+    def setROIprops(self, roi, roiNumber=1):
         xl, yt = [int(round(c)) for c in roi.pos()]
 
         roi.handleSize = 7
-        roi.label = pg.TextItem('ROI', color='r')
+        roi.label = pg.TextItem(f'ROI n. {roiNumber}', color='r')
         roi.label.setFont(self.roiLabelFont)
         # hLabel = roi.label.rect().bottom()
         roi.label.setPos(xl, yt)
@@ -1964,11 +2017,12 @@ class dataPrepWin(QMainWindow):
             posData.cropROIs = []
             if posData.dataPrep_ROIcoords is None:
                 cropROI = self.getDefaultROI()
-                self.setROIprops(cropROI)
+                self.setROIprops(cropROI, roiNumber=1)
                 posData.cropROIs.append(cropROI)
             else:
                 df = posData.dataPrep_ROIcoords
                 grouped = df.groupby(level=0)
+                n = 1
                 for roi_id, df_roi in grouped:
                     df_roi = df_roi.loc[roi_id]
                     xl = df_roi.at['x_left', 'value']
@@ -1984,8 +2038,9 @@ class dataPrepWin(QMainWindow):
                         scaleSnap=True,
                         translateSnap=True
                     )
-                    self.setROIprops(cropROI)
+                    self.setROIprops(cropROI, roiNumber=n)
                     posData.cropROIs.append(cropROI)
+                    n += 1
              
         self.addAndConnectCropROIs()
 
@@ -2055,8 +2110,8 @@ class dataPrepWin(QMainWindow):
 
     def addCropROI(self):
         cropROI = self.getDefaultROI(shrinkFactor=0.5)
-        self.setROIprops(cropROI)
         posData = self.data[self.pos_i]
+        self.setROIprops(cropROI, roiNumber=len(posData.cropROIs)+1)
         posData.cropROIs.append(cropROI)
         self.addAndConnectROI(cropROI)
 

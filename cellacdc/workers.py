@@ -1955,16 +1955,19 @@ class DataPrepSaveBkgrDataWorker(QObject):
         self.signals.finished.emit(self)
 
 class DataPrepCropWorker(QObject):
-    def __init__(self, posData, dataPrepWin):
+    def __init__(self, posData, dataPrepWin, dstPath):
         QObject.__init__(self)
         self.signals = signals()
         self.logger = workerLogger(self.signals.progress)
         self.posData = posData
         self.dataPrepWin = dataPrepWin
+        self.dstPath = dstPath
     
     @worker_exception_handler
     def run(self):
-        self.dataPrepWin.saveSingleCrop(self.posData, self.posData.cropROIs[0])
+        self.dataPrepWin.saveSingleCrop(
+            self.posData, self.posData.cropROIs[0], self.dstPath
+        )
         self.signals.finished.emit(self)
 
 class TrackSubCellObjectsWorker(BaseWorkerUtil):
