@@ -403,9 +403,7 @@ def setupLogger(module='base', logs_path=None):
 def get_pos_foldernames(exp_path):
     ls = listdir(exp_path)
     pos_foldernames = [
-        pos for pos in ls if pos.find('Position_')!=-1
-        and os.path.isdir(os.path.join(exp_path, pos))
-        and os.path.exists(os.path.join(exp_path, pos, 'Images'))
+        pos for pos in ls if is_pos_folderpath(os.path.join(exp_path, pos))
     ]
     return pos_foldernames
 
@@ -3249,6 +3247,7 @@ def is_pos_folderpath(folderpath):
     foldername = os.path.basename(folderpath)
     is_valid_pos_folder = (
         re.search('^Position_(\d+)$', foldername) is not None
+        and os.path.isdir(folderpath)
         and os.path.exists(os.path.join(folderpath, 'Images'))
     )
     return is_valid_pos_folder
