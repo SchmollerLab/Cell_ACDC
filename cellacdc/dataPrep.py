@@ -931,6 +931,55 @@ class dataPrepWin(QMainWindow):
         except Exception as e:
             pass
     
+    def copyAdditionalFilesToCropFolder(
+            self, posData, subImagesPath, cropBasename, cropIdx=0
+        ):
+        subImagesPath = subImagesPath.replace('\\', '/')
+        parentImagesPath = posData.images_path.replace('\\', '/')
+        if parentImagesPath == subImagesPath:
+            return
+        
+        basename = posData.basename
+        try:
+            df_roi = posData.dataPrep_ROIcoords.loc[[cropIdx]]
+            df_roi_filename = os.path.basename(
+                posData.dataPrepROI_coords_path
+            )
+            df_roi_endname = df_roi_filename[len(basename):]
+            crop_df_roi_filename = f'{cropBasename}{df_roi_endname}'
+            df_roi_filepath = os.path.join(
+                subImagesPath, crop_df_roi_filename
+            )
+            df_roi.to_csv(df_roi_filepath)
+        except IndexError:
+            pass
+        
+        for file in myutils.listdir(posData.images_path):                
+            copy_file = (
+                file.endswith('bkgrRoiData.npz')
+                or file.endswith('dataPrep_bkgrROIs.json')
+                or file.endswith('segmInfo.csv')
+            )
+            is_metadata_file = file.endswith('metadata.csv')
+            if not copy_file and not is_metadata_file:
+                continue
+            
+            src_filepath = os.path.join(posData.images_path, file)
+            endname = file[len(basename):]                
+            crop_filename = f'{cropBasename}{endname}'
+            sub_filepath = os.path.join(subImagesPath, crop_filename)
+            if os.path.exists(sub_filepath):
+                continue
+            
+            if copy_file:
+                shutil.copyfile(src_filepath, sub_filepath)
+            elif is_metadata_file:
+                df_metadata = pd.read_csv(
+                    src_filepath, index_col='Description'
+                )       
+                df_metadata.at['basename', 'values'] = cropBasename
+                df_metadata.to_csv(sub_filepath)
+    
     def saveSingleCrop(self, posData, cropROI, dstPath):
         if dstPath != posData.images_path:
             currentSubPosFolders = myutils.get_pos_foldernames(dstPath)
@@ -943,30 +992,52 @@ class dataPrepWin(QMainWindow):
             subPosFolderPath = os.path.join(dstPath, subPosFolder)
             subImagesPath = os.path.join(subPosFolderPath, 'Images')
             os.makedirs(subImagesPath)
+            cropBasename = f'{posData.basename}crop{cropNum}_'
         else:
             subImagesPath = dstPath
+            cropBasename = posData.basename
         
-        # Save channels (npz AND tif)
+        self._saveCroppedData(posData, subImagesPath, cropROI, cropBasename)
+    
+    def _saveCroppedData(
+            self, posData, subImagesPath, cropROI, cropBasename, cropIdx=0
+        ):
+        basename = posData.basename
         _iter = self.getAllChannelsPaths(posData)
         for uncropped_data, npz_path, tif_path in _iter:
             cropped_data, _ = self.crop(uncropped_data, posData, cropROI)
             npz_filename = os.path.basename(npz_path)
             tif_filename = os.path.basename(tif_path)
-            sub_npz_filepath = os.path.join(subImagesPath, npz_filename)
-            sub_tif_filepath = os.path.join(subImagesPath, tif_filename)
+            npz_endname = npz_filename[len(basename):]
+            tif_endname = tif_filename[len(basename):]
+            crop_npz_filename = f'{cropBasename}{npz_endname}'
+            crop_tif_filename = f'{cropBasename}{tif_endname}'
+            sub_npz_filepath = os.path.join(subImagesPath, crop_npz_filename)
+            sub_tif_filepath = os.path.join(subImagesPath, crop_tif_filename)
             self.saveCroppedChannel(
-                cropped_data, sub_npz_filepath, sub_tif_filepath, posData
+                cropped_data, sub_npz_filepath, sub_tif_filepath, 
+                posData
             )
-
+        
         segm_filename = os.path.basename(posData.segm_npz_path)
-        sub_segm_filepath = os.path.join(subImagesPath, segm_filename)
+        segm_endname = segm_filename[len(basename):]
+        crop_segm_filename = f'{cropBasename}{segm_endname}'
+        sub_segm_filepath = os.path.join(subImagesPath, crop_segm_filename)
         self.saveCroppedSegmData(posData, sub_segm_filepath, cropROI)
         
-        acdc_df_filename = os.path.basename(posData.segm_npz_path)
-        sub_acdc_df_filepath = os.path.join(subImagesPath, acdc_df_filename)
-        self.correctAcdcDfCrop(posData, sub_acdc_df_filepath, cropROI)
+        acdc_df_filename = os.path.basename(posData.acdc_output_csv_path)
+        acdc_df_endname = acdc_df_filename[len(basename):]
+        crop_acdc_df_filename = f'{cropBasename}{acdc_df_endname}'
+        acdc_df_filepath = os.path.join(subImagesPath, crop_acdc_df_filename)
+        self.correctAcdcDfCrop(posData, acdc_df_filepath, cropROI)
         
-        self.saveMasterFolderPathTxt(posData, subImagesPath)
+        self.saveMasterFolderPathTxt(
+            posData, subImagesPath, basename=cropBasename
+        )
+        
+        self.copyAdditionalFilesToCropFolder(
+            posData, subImagesPath, cropBasename, cropIdx=cropIdx
+        )
     
     def saveMasterFolderPathTxt(self, posData, subImagesPath, basename=None):
         subImagesPath = subImagesPath.replace('\\', '/')
@@ -1099,77 +1170,9 @@ class dataPrepWin(QMainWindow):
             
             cropBasename = f'{basename}crop{cropNum}_'
             
-            _iter = self.getAllChannelsPaths(posData)
-            for uncropped_data, npz_path, tif_path in _iter:
-                cropped_data, _ = self.crop(uncropped_data, posData, cropROI)
-                npz_filename = os.path.basename(npz_path)
-                tif_filename = os.path.basename(tif_path)
-                npz_endname = npz_filename[len(basename):]
-                tif_endname = tif_filename[len(basename):]
-                crop_npz_filename = f'{cropBasename}{npz_endname}'
-                crop_tif_filename = f'{cropBasename}{tif_endname}'
-                sub_npz_filepath = os.path.join(subImagesPath, crop_npz_filename)
-                sub_tif_filepath = os.path.join(subImagesPath, crop_tif_filename)
-                self.saveCroppedChannel(
-                    cropped_data, sub_npz_filepath, sub_tif_filepath, 
-                    posData
-                )
-            
-            segm_filename = os.path.basename(posData.segm_npz_path)
-            segm_endname = segm_filename[len(basename):]
-            crop_segm_filename = f'{cropBasename}{segm_endname}'
-            sub_segm_filepath = os.path.join(subImagesPath, crop_segm_filename)
-            self.saveCroppedSegmData(posData, sub_segm_filepath, cropROI)
-            
-            acdc_df_filename = os.path.basename(posData.acdc_output_csv_path)
-            acdc_df_endname = acdc_df_filename[len(basename):]
-            crop_acdc_df_filename = f'{cropBasename}{acdc_df_endname}'
-            acdc_df_filepath = os.path.join(subImagesPath, crop_acdc_df_filename)
-            self.correctAcdcDfCrop(posData, acdc_df_filepath, cropROI)
-            
-            self.saveMasterFolderPathTxt(
-                posData, subImagesPath, basename=cropBasename
+            self._saveCroppedData(
+                posData, subImagesPath, cropROI, cropBasename, cropIdx=p
             )
-            
-            try:
-                df_roi = posData.dataPrep_ROIcoords.loc[[p]]
-                df_roi_filename = os.path.basename(
-                    posData.dataPrepROI_coords_path
-                )
-                df_roi_endname = df_roi_filename[len(basename):]
-                crop_df_roi_filename = f'{cropBasename}{df_roi_endname}'
-                df_roi_filepath = os.path.join(
-                    subImagesPath, crop_df_roi_filename
-                )
-                df_roi.to_csv(df_roi_filepath)
-            except IndexError:
-                pass
-            
-            for file in myutils.listdir(posData.images_path):                
-                copy_file = (
-                    file.endswith('bkgrRoiData.npz')
-                    or file.endswith('dataPrep_bkgrROIs.json')
-                    or file.endswith('segmInfo.csv')
-                )
-                is_metadata_file = file.endswith('metadata.csv')
-                if not copy_file and not is_metadata_file:
-                    continue
-                
-                src_filepath = os.path.join(posData.images_path, file)
-                endname = file[len(basename):]                
-                crop_filename = f'{cropBasename}{endname}'
-                sub_filepath = os.path.join(subImagesPath, crop_filename)
-                if os.path.exists(sub_filepath):
-                    continue
-                
-                if copy_file:
-                    shutil.copyfile(src_filepath, sub_filepath)
-                elif is_metadata_file:
-                    df_metadata = pd.read_csv(
-                        src_filepath, index_col='Description'
-                    )       
-                    df_metadata.at['basename', 'values'] = cropBasename
-                    df_metadata.to_csv(sub_filepath)
                     
     def saveROIcoords(self, doCrop, posData):
         dfs = []
