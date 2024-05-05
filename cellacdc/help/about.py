@@ -1,6 +1,7 @@
 import os
 import sys
 import cellacdc
+import platform
 from functools import partial
 
 from qtpy.QtWidgets import (
@@ -46,6 +47,9 @@ class QDialogAbout(QDialog):
         <p style="font-size:13px; font-family:ubuntu">
             Qt {QtCore.__version__}<br>
             Python {python_version}<br>
+        </p>
+        <p style="font-size:13px; font-family:ubuntu">
+            Platform: {platform.platform()}<br>
         </p>
         """)
 
