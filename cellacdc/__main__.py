@@ -54,7 +54,9 @@ def main():
     run()
 
 def run_gui():
-    from ._run import _setup_gui_libraries
+    from ._run import _setup_gui_libraries, _setup_symlink_app_name_macos
+    
+    _setup_symlink_app_name_macos()
     
     _setup_gui_libraries()
     

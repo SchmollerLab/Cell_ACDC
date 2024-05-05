@@ -113,7 +113,34 @@ def _install_tables(parent_software='Cell-ACDC'):
                 )
 
         return True
+
+def _setup_symlink_app_name_macos():
+    from . import is_mac, printl
+    if not is_mac:
+        return
     
+    import subprocess
+    acdc_binary_path = os.path.dirname(sys.executable)
+    symlink = os.path.join(acdc_binary_path, 'Cell-ACDC')
+    if os.path.exists(symlink):
+        return
+    
+    for acdc_exec_name in ('acdc', 'cellacdc'):
+        acdc_exec_path = os.path.join(acdc_binary_path, acdc_exec_name)
+        try:
+            with open(acdc_exec_path, 'r') as bin:
+                acdc_exec_text = bin.read()
+                shebang = acdc_exec_text.split('\n')[0][2:]
+            if not os.path.exists(symlink):
+                command = f'ln -s {shebang} {symlink}'
+                subprocess.check_call(command, shell=True)
+            acdc_exec_text = acdc_exec_text.replace(shebang, symlink)
+            with open(acdc_exec_path, 'w') as bin:
+                bin.write(acdc_exec_text)
+        except Exception as err:
+            printl(traceback.format_exc())
+            print('[WARNING]: Failed at creating Cell-ACDC symlink')
+
 def _setup_gui_libraries(caller_name='Cell-ACDC'):
     from . import try_input_install_package, is_conda_env
     warn_restart = False
