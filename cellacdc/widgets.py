@@ -2381,10 +2381,14 @@ class myMessageBox(QDialog):
     def addCopiableCommand(self, command):
         copiableCommandWidget = CopiableCommandWidget(command)
         screenWidth = self.screen().size().width()
+        maxWidth = int(0.75*screenWidth)
         sizeHint = copiableCommandWidget.sizeHint()
         width = sizeHint.width()
-        if width > screenWidth:
-            copiableCommandWidget = addWidgetToScrollArea(copiableCommandWidget)
+        if width > maxWidth:
+            copiableCommandWidget = addWidgetToScrollArea(
+                copiableCommandWidget, 
+                resizeMinHeightNoVerticalScrollbar=True
+            )
         self._layout.addWidget(copiableCommandWidget, self.currentRow, 1)
         self.currentRow += 1
     
@@ -2563,18 +2567,18 @@ class myMessageBox(QDialog):
         screenWidth = screen.size().width()
         screenHeight = screen.size().height()
         
-        width = self.width()
-        height = self.height()
-        if width > screenWidth-10:
-            factor = np.ceil(width/screenWidth)
-            # Force wrap Text
-            for labelWidget in self.labelsWidgets:
-                lineLength = int(labelWidget.nCharsLongestLine/factor)
-                for label in labelWidget.labels:
-                    text = label.text()
-                    chunks = textwrap.wrap(text, lineLength)
-                    text = '<br>'.join(chunks)
-                    label.setText(text)
+        # Check Force wrap Text
+        for labelWidget in self.labelsWidgets:
+            textWidth = labelWidget.width()
+            if not textWidth > screenWidth-10:
+                continue
+            factor = np.ceil(textWidth/screenWidth)
+            lineLength = int(labelWidget.nCharsLongestLine/factor)
+            for label in labelWidget.labels:
+                text = label.text()
+                chunks = textwrap.wrap(text, lineLength)
+                text = '<br>'.join(chunks)
+                label.setText(text)
             
             QTimer.singleShot(100, self._resizeWrappedText)
         
@@ -8450,7 +8454,11 @@ class selectTrackerGUI(QDialogListbox):
             self.stopFrame = self.selectFramesGroupbox.stopFrame_SB.value()
             super().ok_cb(event)
 
-def addWidgetToScrollArea(widget):
+def addWidgetToScrollArea(
+        widget, 
+        resizeMinWidthNoHorizontalScrollbar=False, 
+        resizeMinHeightNoVerticalScrollbar=False
+    ):
     container = QWidget()
     layout = QVBoxLayout()
     layout.addWidget(widget)
@@ -8459,6 +8467,19 @@ def addWidgetToScrollArea(widget):
     scrollArea = QScrollArea()
     scrollArea.setWidgetResizable(True)
     scrollArea.setWidget(container)
+    
+    if resizeMinWidthNoHorizontalScrollbar:
+        scrollArea.setMinimumWidth(
+            container.sizeHint().width()
+            + scrollArea.verticalScrollBar().sizeHint().width()
+        )
+    
+    if resizeMinHeightNoVerticalScrollbar:
+        scrollArea.setMinimumHeight(
+            container.sizeHint().height()
+            + scrollArea.horizontalScrollBar().sizeHint().height()
+        )
+    
     return scrollArea
 
 class CheckableAction(QAction):
