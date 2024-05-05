@@ -441,16 +441,19 @@ def is_conda_env():
     if not is_conda_python:
         return False
     
+    stdout = subprocess.DEVNULL
     try:
         args = ['conda', '-V']
-        is_conda_present = subprocess.check_call(args, shell=True) == 0
+        is_conda_present = subprocess.check_call(
+            args, shell=True, stdout=stdout) == 0
         return True
     except Exception as err:
         pass
     
     try:
         args = ['conda -V']
-        is_conda_present = subprocess.check_call(args, shell=True) == 0
+        is_conda_present = subprocess.check_call(
+            args, shell=True, stdout=stdout) == 0
         return True
     except Exception as err:
         return False
