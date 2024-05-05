@@ -115,6 +115,11 @@ def _install_tables(parent_software='Cell-ACDC'):
         return True
 
 def _setup_symlink_app_name_macos():
+    """On Mac generate a symlink from the Python path defined in the shebang 
+    of the `acdc` binary called Cell-ACDC and modify the shebang to run 
+    the acdc binary from the symlink. This will correctly display Cell-ACDC 
+    in the menubar instead of Python.
+    """    
     from . import is_mac, printl
     if not is_mac:
         return
