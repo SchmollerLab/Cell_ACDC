@@ -352,7 +352,7 @@ def update_dict_from_df(family_dict, df, frame_i, max_daughter=2):
     
     return family_dict
 
-def update_dict_consistency(family_dict=None, fixed_frame_i=None, fixed_df=None, Cell_IDs=None, consider_children=True, fwd=False, bck=False, general_df=None, columns_to_replace=None): # families_to_consider=set(), iter=0):
+def update_dict_consistency(family_dict=None, fixed_frame_i=None, fixed_df=None, Cell_IDs_fixed=None, consider_children=True, fwd=False, bck=False, general_df=None, columns_to_replace=None): # families_to_consider=set(), iter=0):
 
     if consider_children and not fwd: # enforce that fwd is true when considering children
         raise ValueError('consider_children can\'t be true while fwd is not.')
@@ -373,8 +373,6 @@ def update_dict_consistency(family_dict=None, fixed_frame_i=None, fixed_df=None,
 
 
     if fixed_df is None and general_df is not None: # if we don't have a given fixed df we take the one from the general df
-        general_df = checked_reset_index(general_df)
-        general_df = general_df.set_index(['frame_i', 'Cell_ID'])   
 
         fixed_df = (general_df
                     .loc[fixed_frame_i]
@@ -387,14 +385,10 @@ def update_dict_consistency(family_dict=None, fixed_frame_i=None, fixed_df=None,
     else: # if we have neither we have a problem
         raise ValueError('Either fixed_frame_df or fixed_df must be provided.')
 
-    if not Cell_IDs: # if we don't have a list of Cell_IDs we take all Cell_IDs from the fixed_df (default)
-        Cell_IDs = fixed_df.index
+    if not Cell_IDs_fixed: # if we don't have a list of Cell_IDs_fixed we take all Cell_IDs_fixed from the fixed_df (default)
+        Cell_IDs_fixed = fixed_df.index
 
     general_df = checked_reset_index(general_df)
-
-    from pandasgui import show as pgshow
-    printl(f'Showing general_df and fixed_df')
-    pgshow(general_df, fixed_df, Cell_IDs)
 
     if not fixed_frame_i:
         if fwd and bck: # this splits the df into two parts, only one is edited. Since there is no fixed frame we split so it also edits frame_i
@@ -427,14 +421,25 @@ def update_dict_consistency(family_dict=None, fixed_frame_i=None, fixed_df=None,
     general_df_change = general_df_change.set_index(['Cell_ID', 'frame_i'])
     
 
-    for Cell_id in Cell_IDs: # replace values for the cells in the general df
+    for Cell_ID in Cell_IDs_fixed: # replace values for the cells in the general df # definely needs to be optimized
         for frame in frames:
-            general_df_change.loc[[Cell_id, frame], columns_to_replace] = fixed_df.loc[Cell_id, columns_to_replace] # we replace necessary (Need to define still)
+            if Cell_ID not in general_df_change.loc[(slice(None), frame), :].index.get_level_values(0): # if the cell is not in the frame we skip it
+                continue
+
+            general_df_change.loc[(Cell_ID, frame), columns_to_replace] = fixed_df.loc[Cell_ID, columns_to_replace] # we replace necessary (Need to define still)
 
     general_df_keep = checked_reset_index(general_df_keep)
+    general_df_change  = checked_reset_index(general_df_change)
+
+    printl('general_df_keep, general_df_change')
+    import pandasgui
+    pandasgui.show(general_df_keep, general_df_change)
 
 
     general_df = pd.concat([general_df_keep, general_df_change]) # we put the df back together
+
+    import pandasgui
+    pandasgui.show(general_df)
 
     if consider_children: # this also enforces that fwd is true (See ValueError above)
         unique_df = checked_reset_index(general_df)
@@ -444,7 +449,7 @@ def update_dict_consistency(family_dict=None, fixed_frame_i=None, fixed_df=None,
                      .set_index('Cell_ID')
                      ) # we drop all duplicates (different frames) to reduce overhead
 
-        children_df = unique_df[unique_df['parent_ID_tree'].isin(Cell_IDs)] # we select all children of the cells we are considering
+        children_df = unique_df[unique_df['parent_ID_tree'].isin(Cell_IDs_fixed)] # we select all children of the cells we are considering
         if children_df.empty: # if there are no children we are done
             family_dict = general_df_to_family_dict(general_df)
             return family_dict
@@ -475,11 +480,15 @@ def dict_to_fams(family_dict):
         df_fam = checked_reset_index(df_fam).set_index('Cell_ID')
 
         df_fam = df_fam[~df_fam.index.duplicated(keep='first')]
+        # import pandasgui
+        # pandasgui.show(df_fam)
+        # printl(key)
         
         familiy = [(key, df_fam.loc[key, 'generation_num_tree'])] # first entry is the root ID (should be first cell)
         df_fam = (df_fam
                   .drop(key)
-                  .reset_index()) # this is fine
+                  .reset_index()
+                  ) # this is fine
         familiy = familiy + list(zip(df_fam['Cell_ID'].tolist(), df_fam['generation_num_tree'].tolist()))
         families.append(familiy)
     return families
@@ -819,6 +828,7 @@ class normal_division_lineage_tree:
             if propagate_back == True:
                 self.family_dict = update_dict_consistency(family_dict=self.family_dict, fixed_frame_i=frame_i, fixed_df=lineage_df, consider_children=consider_children, fwd=False, bck=True)
             if update_fams == True:
+                printl('Here!')
                 self.families = dict_to_fams(self.family_dict)
 
             self.lineage_list, self.frames_for_dfs = dict_to_df_li(self.family_dict)
@@ -833,10 +843,14 @@ class normal_division_lineage_tree:
             self.family_dict = update_dict_from_df(self.family_dict, lineage_df, frame_i, self.max_daughter)
 
             if propagate_back == True or propagate_fwd == True:
+                import pandasgui
+                printl('Here!')
+                pandasgui.show(*self.family_dict.values())
                 self.family_dict = update_dict_consistency(family_dict=self.family_dict, fixed_frame_i=frame_i, fixed_df=lineage_df, consider_children=consider_children, fwd=propagate_fwd, bck=propagate_back)
             if update_fams == True:
-                from pandasgui import show as pgshow
-                pgshow(*self.family_dict.values())
+                printl('Here!')
+                import pandasgui
+                pandasgui.show(*self.family_dict.values())
                 self.families = dict_to_fams(self.family_dict)
 
 
@@ -864,6 +878,7 @@ class normal_division_lineage_tree:
             if propagate_back == True or propagate_fwd == True:
                 self.family_dict = update_dict_consistency(family_dict=self.family_dict, fixed_frame_i=frame_i, fixed_df=lineage_df, consider_children=consider_children, fwd=propagate_fwd, bck=propagate_back)
             if update_fams == True:
+                printl('Here!')
                 self.families = dict_to_fams(self.family_dict)
             self.lineage_list, self.frames_for_dfs  = dict_to_df_li(self.family_dict)
 
@@ -894,6 +909,7 @@ class normal_division_lineage_tree:
         if df_li_new:
             self.lineage_list = df_li_new
             self.family_dict = generate_fam_dict_from_df_li(self.lineage_list, frames_for_df_li=self.frames_for_dfs)
+            printl('Here!')
             self.families = dict_to_fams(self.family_dict)
             self.lineage_list, self.frames_for_dfs = dict_to_df_li(self.family_dict)
 
