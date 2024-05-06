@@ -1446,7 +1446,8 @@ class loadData:
             else:
                 continue
             valid_files.append(file)
-        return valid_files
+        
+        return reversed(valid_files)
 
     def askBooleanSegm(self):
         segmFilename = os.path.basename(self.segm_npz_path)
