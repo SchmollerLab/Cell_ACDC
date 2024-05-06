@@ -3021,7 +3021,7 @@ class guiWin(QMainWindow):
         # Connect Help actions
         self.tipsAction.triggered.connect(self.showTipsAndTricks)
         self.UserManualAction.triggered.connect(myutils.browse_docs)
-        self.openLogFileAction.triggere.connect(self.openLogFile)
+        self.openLogFileAction.triggered.connect(self.openLogFile)
         self.aboutAction.triggered.connect(self.showAbout)
         # Connect Open Recent to dynamically populate it
         # self.openRecentMenu.aboutToShow.connect(self.populateOpenRecent)
