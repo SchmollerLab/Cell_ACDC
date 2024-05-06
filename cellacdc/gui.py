@@ -1429,6 +1429,7 @@ class guiWin(QMainWindow):
 
         # Help menu
         helpMenu = menuBar.addMenu("&Help")
+        helpMenu.addAction(self.openLogFileAction)
         helpMenu.addAction(self.tipsAction)
         helpMenu.addAction(self.UserManualAction)
         helpMenu.addSeparator()
@@ -2734,6 +2735,7 @@ class guiWin(QMainWindow):
         # Help actions
         self.tipsAction = QAction("Tips and tricks...", self)
         self.UserManualAction = QAction("User Documentation...", self)
+        self.openLogFileAction = QAction("Open log file...", self)
         self.aboutAction = QAction("About Cell-ACDC", self)
         # self.aboutAction = QAction("&About...", self)
 
@@ -3019,6 +3021,7 @@ class guiWin(QMainWindow):
         # Connect Help actions
         self.tipsAction.triggered.connect(self.showTipsAndTricks)
         self.UserManualAction.triggered.connect(myutils.browse_docs)
+        self.openLogFileAction.triggere.connect(self.openLogFile)
         self.aboutAction.triggered.connect(self.showAbout)
         # Connect Open Recent to dynamically populate it
         # self.openRecentMenu.aboutToShow.connect(self.populateOpenRecent)
@@ -25054,6 +25057,10 @@ class guiWin(QMainWindow):
         self.aboutWin = about.QDialogAbout(parent=self)
         self.aboutWin.show()
 
+    def openLogFile(self):
+        self.logger.info(f'Opening log file "{self.log_path}"...')
+        myutils.showInExplorer(self.log_path)
+    
     def showTipsAndTricks(self):
         self.welcomeWin = welcome.welcomeWin()
         self.welcomeWin.showAndSetSize()
