@@ -63,6 +63,7 @@ from . import _palettes
 from . import load
 from . import apps
 from . import plot
+from . import annotate
 from .regex import float_regex
 
 LINEEDIT_WARNING_STYLESHEET = _palettes.lineedit_warning_stylesheet()
@@ -2958,6 +2959,7 @@ class ToolButtonCustomColor(rightClickToolButton):
 
 class PointsLayerToolButton(ToolButtonCustomColor):
     sigEditAppearance = Signal(object)
+    sigShowIdsToggled = Signal(object, bool)
 
     def __init__(self, symbol, color='r', parent=None):
         super().__init__(symbol, color=color, parent=parent)
@@ -2970,8 +2972,17 @@ class PointsLayerToolButton(ToolButtonCustomColor):
         editAction = QAction('Edit points appearance...')
         editAction.triggered.connect(self.editAppearance)
         contextMenu.addAction(editAction)
+        
+        showIdsAction = QAction('Show point ids')
+        showIdsAction.setCheckable(True)
+        showIdsAction.setChecked(True)
+        contextMenu.addAction(showIdsAction)
+        showIdsAction.toggled.connect(self.emitShowIdsToggled)
 
         contextMenu.exec(event.globalPos())
+    
+    def emitShowIdsToggled(self, checked):
+        self.sigShowIdsToggled.emit(self, checked)
     
     def editAppearance(self):
         self.sigEditAppearance.emit(self)
@@ -8113,12 +8124,20 @@ class SamInputPointsWidget(QWidget):
 
 class PointsScatterPlotItem(pg.ScatterPlotItem):
     def __init__(self, *args, ax=None, **kwargs):
-        self._textItems = {}
+        self.textItem = annotate.TextAnnotationsScatterItem(
+            size=12, anchor=(1.0, 1.0)
+        )
+        self.textItem.createSymbols(
+            [str(id) for id in range(200)], includeBold=False
+        )
+        # self._textItems = {}
         super().__init__(*args, **kwargs)
+        self.textItem.setParentItem(self)
         self._font = QFont()
         self._font.setPixelSize(12)
+        self.drawIds = True
         self.ax = ax
-    
+        
     def setData(self, *args, **kwargs):
         self.clearTextItems()
         super().setData(*args, **kwargs)
@@ -8131,7 +8150,11 @@ class PointsScatterPlotItem(pg.ScatterPlotItem):
         if not isinstance(first_point_data, (int, str)):
             return
         
+        if not self.drawIds:
+            return
+        
         color = self.opts['brush'].color()
+        self.textItem.setColors({'id': color.getRgb()})
         size = self.opts['size']
         radius = size/2
         # xx, yy = args
@@ -8141,23 +8164,38 @@ class PointsScatterPlotItem(pg.ScatterPlotItem):
             if not text:
                 continue
             
-            hexColor = color.name()
-            htmlText = html_utils.span(
-                text, color=hexColor, font_size='13pt', bold=True
-            )
             x, y = point.pos().x(), point.pos().y()
-            textItem = self._textItems.get((x, y))
-            if textItem is None:
-                textItem = pg.TextItem(html=htmlText, anchor=(0, 1))
-                self._textItems[(x, y)] = textItem
-                self.ax.addItem(textItem)
-            else:
-                textItem.setHtml(htmlText)
-            textItem.setPos(x+radius-0.5, y-radius+0.5)
-    
+            xt, yt = x+radius-0.5, y-radius+0.5
+            opts = {
+                'text': text, 
+                'bold': False, 
+                'color_name': 'id', 
+            }
+            data = self.textItem.addObjAnnot(
+                (xt, yt), anchor=(-0.3, 1.3), **opts
+            )
+            self.textItem.appendData(data, opts['text'])
+        
+        self.textItem.draw()
+            # hexColor = color.name()
+            # htmlText = html_utils.span(
+            #     text, color=hexColor, font_size='13pt', bold=True
+            # )
+            
+            # textItem = self._textItems.get((x, y))
+            # if textItem is None:
+            #     textItem = pg.TextItem(html=htmlText, anchor=(0, 1))
+            #     textItem.setParentItem(self)
+            #     self._textItems[(x, y)] = textItem
+            #     self.ax.addItem(textItem)
+            # else:
+            #     textItem.setHtml(htmlText)
+            # textItem.setPos(x+radius-0.5, y-radius+0.5)      
+        
     def clearTextItems(self):
-        for textItem in self._textItems.values():
-            textItem.setText('')
+        self.textItem.clearData()
+        # for textItem in self._textItems.values():
+        #     textItem.setText('')
     
     def clear(self):
         super().clear()

@@ -695,7 +695,7 @@ def texts_to_pg_scatter_symbols(
             pbar.update()
         tr = QtGui.QTransform()
         tr.scale(scale, scale)
-        tr.translate(-br.x() - br.width()/2., -br.y() - br.height()/2.)
+        tr.translate(-br.x() - br.width()*0.5, -br.y() - br.height()*0.5)
         symbols[text] = tr.map(symbol)
         scales[text] = scale
         if progress:

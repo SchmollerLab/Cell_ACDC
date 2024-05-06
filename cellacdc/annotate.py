@@ -201,8 +201,12 @@ class TextAnnotationsImageItem(pg.ImageItem):
         return self._colors
 
 class TextAnnotationsScatterItem(pg.ScatterPlotItem):
-    def __init__(self, *args, **kargs):
+    def __init__(self, *args, anchor=(0.5, 0.5), **kargs):
         super().__init__(*args, **kargs)
+        self.initFonts(kargs.get('size', 10))
+        self.texts = []
+        self.annotData = []
+        self._anchor = anchor
     
     def clearData(self):
         self.setData([], [])
@@ -228,16 +232,19 @@ class TextAnnotationsScatterItem(pg.ScatterPlotItem):
     def init(self, *args):
         pass
 
-    def initSymbols(self, allIDs):
+    def initSymbols(self, allIDs, onlyIDs=False):
         annotTexts = ['?']
         for ID in allIDs:
             annotTexts.append(str(ID))
-            annotTexts.append(f'{ID}?')
-        for gen_num in range(20):
-            annotTexts.append(f'G1-{gen_num}')
-            annotTexts.append(f'G1-{gen_num}?')
-            annotTexts.append(f'S-{gen_num}')
-            annotTexts.append(f'S-{gen_num}?')
+            if not onlyIDs:
+                annotTexts.append(f'{ID}?')
+            
+        if not onlyIDs:
+            for gen_num in range(20):
+                annotTexts.append(f'G1-{gen_num}')
+                annotTexts.append(f'G1-{gen_num}?')
+                annotTexts.append(f'S-{gen_num}')
+                annotTexts.append(f'S-{gen_num}?')
         
         if hasattr(self, 'symbolsBold'):
             # Symbols already created in prev. session --> add missing ones
@@ -246,31 +253,34 @@ class TextAnnotationsScatterItem(pg.ScatterPlotItem):
             # Symbols never created --> create now
             self.createSymbols(annotTexts)
     
-    def addSymbols(self, annotTexts):
+    def addSymbols(self, annotTexts, includeBold=True):
         for text in annotTexts:
-            self.symbolsBold[text] = self.getObjTextAnnotSymbol(
-                text, bold=True, initSizes=False
-            )
+            if includeBold:
+                self.symbolsBold[text] = self.getObjTextAnnotSymbol(
+                    text, bold=True, initSizes=False
+                )
             self.symbolsRegular[text] = self.getObjTextAnnotSymbol(
                 text, bold=True, initSizes=False
             )
-        self.initSizes()
+        self.initSizes(includeBold=includeBold)
 
-    def createSymbols(self, annotTexts):
-        self.symbolsBold, self.scalesBold = plot.texts_to_pg_scatter_symbols(
-            annotTexts, font=self.fontBold, return_scales=True
-        )
+    def createSymbols(self, annotTexts, includeBold=True):
+        if includeBold:
+            self.symbolsBold, self.scalesBold = plot.texts_to_pg_scatter_symbols(
+                annotTexts, font=self.fontBold, return_scales=True
+            )
 
         self.symbolsRegular, scalesRegular = plot.texts_to_pg_scatter_symbols(
             annotTexts, font=self.fontRegular, return_scales=True
         )
         self.scalesRegular = scalesRegular
-        self.initSizes()
+        self.initSizes(includeBold=includeBold)
     
-    def initSizes(self):
-        self.sizesBold = plot.get_symbol_sizes(
-            self.scalesBold, self.symbolsBold, self.fontSize
-        )
+    def initSizes(self, includeBold=True):
+        if includeBold:
+            self.sizesBold = plot.get_symbol_sizes(
+                self.scalesBold, self.symbolsBold, self.fontSize
+            )
         self.sizesRegular = plot.get_symbol_sizes(
             self.scalesRegular, self.symbolsRegular, self.fontSize
         )
@@ -356,7 +366,23 @@ class TextAnnotationsScatterItem(pg.ScatterPlotItem):
         pointItem.setBrush(self._brushes['new_object'])
         pointItem.setPen(self._pens['new_object'])
 
-    def addObjAnnot(self, pos, draw=False, **objOpts):        
+    def modifyPosAnchor(self, pointOpts, anchor, symbol):
+        if anchor is None:
+            return pointOpts
+        
+        xa, ya = anchor
+        if (xa, ya) == (0.5, 0.5):
+            return pointOpts
+        
+        br = symbol.boundingRect()
+        xf = br.width()*(anchor[0]-0.5)
+        yf = br.height()*(anchor[1]-0.5)
+        x, y = pointOpts['pos']
+        pointOpts['pos'] = (x-xf, y-yf)
+        
+        return pointOpts      
+    
+    def addObjAnnot(self, pos, draw=False, anchor=None, **objOpts):        
         text = objOpts['text']
         bold = objOpts['bold']
         symbol = self.getObjTextAnnotSymbol(text, bold)
@@ -374,6 +400,7 @@ class TextAnnotationsScatterItem(pg.ScatterPlotItem):
         pointOpts['symbol'] = symbol
         pointOpts['size'] = size
         pointOpts['pos'] = tuple(pos)
+        pointOpts = self.modifyPosAnchor(pointOpts, anchor, symbol)
 
         if draw:
             self.addPoints([pointOpts])

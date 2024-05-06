@@ -7011,7 +7011,7 @@ class guiWin(QMainWindow):
             and not wandON and not polyLineRoiON and not labelRoiON
             and not middle_click and not keepObjON and not separateON
             and not manualBackgroundON
-            and not self.togglePointsLayerAction.isChecked()
+            and addPointsByClickingButton is None
         )
         if isPanImageClick:
             dragImgLeft = True
@@ -19225,6 +19225,7 @@ class guiWin(QMainWindow):
             toolButton.setShortcut(self.addPointsWin.keySequence)
         toolButton.toggled.connect(self.pointLayerToolbuttonToggled)
         toolButton.sigEditAppearance.connect(self.editPointsLayerAppearance)
+        toolButton.sigShowIdsToggled.connect(self.showPointsLayerIdsToggled)
         
         action = self.pointsLayersToolbar.addWidget(toolButton)
         action.state = self.addPointsWin.state()
@@ -19357,6 +19358,10 @@ class guiWin(QMainWindow):
                 action.pointsData[posData.frame_i]['x'].append(x)
                 action.pointsData[posData.frame_i]['y'].append(y)
                 action.pointsData[posData.frame_i]['id'].append(id)
+    
+    def showPointsLayerIdsToggled(self, button, checked):
+        button.action.scatterItem.drawIds = checked
+        self.drawPointsLayers()
     
     def editPointsLayerAppearance(self, button):
         win = apps.EditPointsLayerAppearanceDialog(parent=self)
