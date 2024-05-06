@@ -18886,13 +18886,18 @@ class guiWin(QMainWindow):
             self.addPointsWin.appearanceGroupbox.colorButton.setColor(rgb)
             break
         self.addPointsWin.sigCriticalReadTable.connect(self.logger.info)
-        self.addPointsWin.sigLoadedTable.connect(self.logger.info)
+        self.addPointsWin.sigLoadedTable.connect(self.logLoadedTablePointsLayer)
         self.addPointsWin.sigClosed.connect(self.addPointsLayer)
         self.addPointsWin.sigCheckClickEntryTableEndnameExists.connect(
             self.checkClickEntryTableEndnameExists
         )
         self.addPointsWin.show()
-        
+    
+    def logLoadedTablePointsLayer(self, df):
+        separator = f'-'*100
+        text = f'{separator}\nLoaded table:\n\n{df.head(10)}\n{separator}'
+        self.logger.info(text)
+    
     def buttonAddPointsByClickingActive(self):
         for action in self.pointsLayersToolbar.actions()[1:]:
             if not hasattr(action, 'layerTypeIdx'):

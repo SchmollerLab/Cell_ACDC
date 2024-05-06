@@ -1030,7 +1030,20 @@ class AddPointsLayerDialog(QBaseDialog):
                 dfs = [h5.get(key) for key in keys]
             df = pd.concat(dfs, keys=keys, names=['h5_key'])
         return df
-            
+    
+    def tryAutoFillColNames(self, df):
+        if 'x' in df.columns:
+            self.xColName.setCurrentText('x')
+        
+        if 'x' in df.columns:
+            self.yColName.setCurrentText('y')
+        
+        if 'x' in df.columns:
+            self.zColName.setCurrentText('z')
+        
+        if 'x' in df.columns:
+            self.tColName.setCurrentText('frame_i')
+    
     def tablePathSelected(self, path):
         self.tablePath.setText(path)
         try:
@@ -1039,6 +1052,7 @@ class AddPointsLayerDialog(QBaseDialog):
             self.yColName.addItems(df.columns)
             self.zColName.addItems(df.columns)
             self.tColName.addItems(df.columns)
+            self.tryAutoFillColNames(df)
             self.sigLoadedTable.emit(df)
             self.browseTableButton.confirmAction()
         except Exception as e:
