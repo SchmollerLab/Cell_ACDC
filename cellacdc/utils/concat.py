@@ -191,6 +191,11 @@ class ConcatWin(NewThreadMultipleExpBaseUtil):
             self._ext = '.csv'
         else:
             self._ext = '.xlsx'
+            myutils.check_install_package(
+                'OpenPyXL', 
+                import_pkg_name='openpyxl', 
+                pypi_name='XlsxWriter'
+            )
         self.runWorker(format=selectFormatWin.selectedItemsText[0])
     
     def askAppendName(self, basename, existingEndnames):

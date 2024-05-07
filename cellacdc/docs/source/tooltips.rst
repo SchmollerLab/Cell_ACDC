@@ -350,7 +350,7 @@ Edit tools: Segmentation and tracking
 * **Edit ID (** |editIDbutton| **"N"):** Manually change ID of a cell by right-clicking on cell.
 * **Manual bud separation (** |separateBudButton| **"S"):** Separate mother-bud fused together or separate objects that have the same ID. Right-click to attempt automatic separation or Shift+right-click to skip automatic attemp and go straight to manual mode.
 * **Merge IDs (** |mergeIDsButton| **"M"):** Merge/fuse two objects together. 
-    * Usage: right-click on one of the two objects and release on the second object to merge (drag-and-drop).
+    * Usage: right-click on one of the two objects, keep the button clicked and release on the second object to merge (drag-and-drop).
 * **Select object masks to keep (** |keepIDsButton| **"K"):** Select the objects to keep. Press "Enter" to confirm selection or "Esc" to clear the selection. After confirming, all the NON selected objects will be deleted. Right- or left-click on objects to keep.
 * **Remove object from analysis (** |binCellButton| **):** Annotate that a cell is removed from downstream analysis. ``is_cell_excluded`` set to ``True`` in ``acdc_output.csv`` table. Done by right-clicking.
 * **Annotate cell as dead (** |ripCellButton| **"D"):** Annotate that a cell is dead. ``is_cell_dead`` set to ``True`` in ``acdc_output.csv`` table.
