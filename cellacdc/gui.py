@@ -9736,7 +9736,9 @@ class guiWin(QMainWindow):
         msg.warning(self, 'Swap mothers not possible', txt)
         return
     
-    def _checkMothInG1beforeBudEmergence(self, motherID, budID, start_frame_i):
+    def _checkMothInG1beforeBudEmergence(
+            self, motherID, budID, wrongBudID, start_frame_i
+        ):
         """Check that mother is in G1 on the frame before bud emergence
 
         Parameters
@@ -9751,8 +9753,13 @@ class guiWin(QMainWindow):
         for past_i in range(start_frame_i, -1, -1):
             cca_df_i = self.get_cca_df(frame_i=past_i, return_df=True)            
             if budID not in cca_df_i.index:
-                if cca_df_i.at[motherID, 'cell_cycle_stage'] != 'G1':
-                    return past_i
+                if cca_df_i.at[motherID, 'cell_cycle_stage'] == 'G1':
+                    return
+                
+                budID_prev_cycle = cca_df_i.at[motherID, 'relative_ID']
+                if budID_prev_cycle != wrongBudID:
+                    return past_i + 1
+                
                 break
     
     def warnMotherNotAtLeastOneFrameG1(self, budID, motherID, frame_no_G1):
@@ -9793,16 +9800,20 @@ class guiWin(QMainWindow):
             return
         
         correct_pairings = {
-            otherBudID: mothID,
-            budID: otherMothID
+            otherBudID: mothID, budID: otherMothID
+        }
+        wrong_pairings = {
+            mothID: budID, otherMothID: otherBudID
         }
         for correctBudID, correctMothID in correct_pairings.items():
+            wrongBudID = wrong_pairings[correctMothID]
             frame_no_G1 = self._checkMothInG1beforeBudEmergence(
-                correctMothID, correctBudID, posData.frame_i
+                correctMothID, correctBudID, wrongBudID, posData.frame_i
             )
             if frame_no_G1 is None:
                 continue
             
+            printl(correctMothID, correctBudID, frame_no_G1, posData.frame_i)
             self.warnMotherNotAtLeastOneFrameG1(
                 correctBudID, correctMothID, frame_no_G1
             )
