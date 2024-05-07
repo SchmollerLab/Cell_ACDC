@@ -22717,6 +22717,7 @@ class guiWin(QMainWindow):
         self.setMeasWinState = None
         self.showPropsDockButton.setDisabled(True)
         self.lutItemsLayout.clear()
+        self.lutItemsLayout.addItem(self.imgGrad, row=0, col=0)
         
         self.reinitWidgetsPos()
         self.removeAllItems()
