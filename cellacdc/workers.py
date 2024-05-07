@@ -695,8 +695,9 @@ class AutoSaveWorker(QObject):
             load.store_unsaved_acdc_df(recovery_folderpath, recovery_acdc_df)
             return
 
+        saved_acdc_df_path = posData.acdc_output_csv_path
         saved_acdc_df = (
-            pd.read_csv(posData.acdc_output_csv_path)
+            pd.read_csv(saved_acdc_df_path, dtype=load.acdc_df_str_cols)
             .set_index(['frame_i', 'Cell_ID'])
         )
         
@@ -721,7 +722,7 @@ class AutoSaveWorker(QObject):
             reference_acdc_df = saved_acdc_df
         else:
             reference_acdc_df = (
-                pd.read_csv(last_unsaved_csv_path)
+                pd.read_csv(last_unsaved_csv_path, dtype=load.acdc_df_str_cols)
                 .set_index(['frame_i', 'Cell_ID'])
             )
         
