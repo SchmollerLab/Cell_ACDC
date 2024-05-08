@@ -9528,12 +9528,19 @@ class guiWin(QMainWindow):
         if budID == new_mothID:
             return
 
-        # Allow partial initialization of cca_df with mouse
-        singleFrameCca = (
-            (posData.frame_i == 0 and budID != new_mothID)
-            or (self.isSnapshot and budID != new_mothID)
-        )
-        if singleFrameCca:
+        if not self.isSnapshot:
+            eligible = self.checkMothEligibility(budID, new_mothID)
+            if not eligible:
+                return
+
+            budEligible = self.checkChangeMotherBudEligible(
+                budID, posData.frame_i
+            )
+            if not budEligible:
+                return        
+        
+        # Allow partial initialization of cca_df with mouse      
+        if  posData.frame_i == 0:
             newMothCcs = posData.cca_df.at[new_mothID, 'cell_cycle_stage']
             if not newMothCcs == 'G1':
                 err_msg = (
@@ -9563,12 +9570,7 @@ class guiWin(QMainWindow):
             self.store_cca_df()
             return
 
-        curr_mothID = posData.cca_df.at[budID, 'relative_ID']
-
-        eligible = self.checkMothEligibility(budID, new_mothID)
-        if not eligible:
-            return
-
+        curr_mothID = posData.cca_df.at[budID, 'relative_ID']        
         if curr_mothID in posData.cca_df.index:
             curr_moth_cca = self.getStatus_RelID_BeforeEmergence(
                 budID, curr_mothID
@@ -9720,22 +9722,22 @@ class guiWin(QMainWindow):
                 return future_i, cca_df_i.at[budID, 'relative_ID']
     
     def warnBudAnnotatedDividedInFuture(
-            self, budID, motherID, future_division_frame_i
+            self, budID, motherID, future_division_frame_i, 
+            action='swap mother cells'
         ):
         posData = self.data[self.pos_i]
         
         txt = html_utils.paragraph(f"""
-            Bud ID {budID} is annotated as divided from mother ID at frame n. 
-            {future_division_frame_i+1},<br>
-            therefore it is not possible to swap mother cells.<br><br>
-            We recommend reinitializing cell cycle annotations on any frame<br>
-            between frames number {posData.frame_i+1} and 
-            {future_division_frame_i} before attempting to swap mother 
-            cells.<br><br>
+            Bud ID {budID} is annotated as divided from mother ID {motherID} 
+            at frame n. {future_division_frame_i+1},<br>
+            therefore it is not possible to {action}.<br><br>
+            We <b>recommend reinitializing cell cycle annotations</b> on any 
+            frame<br> between frames number {posData.frame_i+1} and 
+            {future_division_frame_i} before attempting to {action}.<br><br>
             Thank you for your patience!
         """)
         msg = widgets.myMessageBox(wrapText=False)
-        msg.warning(self, 'Swap mothers not possible', txt)
+        msg.warning(self, action.title(), txt)
         return
     
     def _checkMothInG1beforeBudEmergence(
@@ -9782,6 +9784,16 @@ class guiWin(QMainWindow):
         msg.warning(self, 'Swap mothers not possible', txt)
         return
     
+    def checkChangeMotherBudEligible(self, budID, frame_i):
+        result = self._checkBudFutureNoDivision(budID, frame_i)
+        if result is None:
+            return True
+        
+        self.warnBudAnnotatedDividedInFuture(
+            budID, *result, action='change mother cell'
+        )
+        return False
+    
     def checkSwapMothersEligibility(self):
         posData = self.data[self.pos_i]
         
@@ -9815,7 +9827,6 @@ class guiWin(QMainWindow):
             if frame_no_G1 is None:
                 continue
             
-            printl(correctMothID, correctBudID, frame_no_G1, posData.frame_i)
             self.warnMotherNotAtLeastOneFrameG1(
                 correctBudID, correctMothID, frame_no_G1
             )
