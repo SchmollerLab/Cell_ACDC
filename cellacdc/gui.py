@@ -1820,16 +1820,34 @@ class guiWin(QMainWindow):
         self.editLin_TreeBar.setContextMenuPolicy(Qt.PreventContextMenu)
         
         self.addToolBar(self.editLin_TreeBar)
+        self.editLin_TreeGroup = QButtonGroup()
+        self.editLin_TreeGroup.setExclusive(True)
 
         self.findNextMotherButton = QToolButton(self)
-        self.findNextMotherButton.setIcon(QIcon(":magic_wand.svg"))
+        self.findNextMotherButton.setIcon(QIcon(":magnGlass.svg"))
         self.findNextMotherButton.setCheckable(True)
         self.editLin_TreeBar.addWidget(self.findNextMotherButton)
-        self.checkableButtons.append(self.findNextMotherButton)
-        self.LeftClickButtons.append(self.findNextMotherButton)
+        self.editLin_TreeGroup.addButton(self.findNextMotherButton)
         self.findNextMotherButton.keyPressShortcut = Qt.Key_F
         self.widgetsWithShortcut['findNextMother'] = self.findNextMotherButton
-        
+
+        self.unknownLineageButton = QToolButton(self)
+        self.unknownLineageButton.setIcon(QIcon(":history.svg"))
+        self.unknownLineageButton.setCheckable(True)
+        self.editLin_TreeBar.addWidget(self.unknownLineageButton)
+        self.editLin_TreeGroup.addButton(self.unknownLineageButton)
+        self.unknownLineageButton.keyPressShortcut = Qt.Key_U
+        self.widgetsWithShortcut['unknownLineage'] = self.unknownLineageButton
+
+        self.noToolLinTreeButton = QToolButton(self)
+        self.noToolLinTreeButton.setIcon(QIcon(":arrow_cursor.svg"))
+        self.noToolLinTreeButton.setCheckable(True)
+        self.editLin_TreeBar.addWidget(self.noToolLinTreeButton)
+        self.editLin_TreeGroup.addButton(self.noToolLinTreeButton)
+        self.noToolLinTreeButton.keyPressShortcut = Qt.Key_N
+        self.widgetsWithShortcut['noToolLinTree'] = self.noToolLinTreeButton
+
+
         modes_availible = [
             'Segmentation and Tracking',
             'Cell cycle analysis',
@@ -6873,7 +6891,9 @@ class guiWin(QMainWindow):
             self.copyContourButton.isChecked()
             and self.ax1_lostObjScatterItem.hoverLostID>0
         )
-        findMotherButtonON = self.findNextMotherButton.isChecked()
+        findNextMotherButtonON = self.findNextMotherButton.isChecked()
+        unknownLineageButtonON = self.unknownLineageButton.isChecked()
+
 
         # Check if right-click on segment of polyline roi to add segment
         segments = self.gui_getHoveredSegmentsPolyLineRoi()
@@ -6938,7 +6958,7 @@ class guiWin(QMainWindow):
         isOnlyRightClick = (
             right_click and canAnnotateDivision and not isAnnotateDivision
             and not isMod and not is_right_click_action_ON
-            and not is_right_click_custom_ON and not copyContourON and not findMotherButtonON
+            and not is_right_click_custom_ON and not copyContourON and not findNextMotherButtonON and not unknownLineageButtonON
         )
         
         if isOnlyRightClick:
@@ -7590,7 +7610,7 @@ class guiWin(QMainWindow):
             if not keepActive:
                 button.setChecked(False)
 
-        elif right_click and findMotherButtonON:
+        elif right_click and findNextMotherButtonON:
             if posData.frame_i == 0:
                 return
             
@@ -14828,11 +14848,13 @@ class guiWin(QMainWindow):
             # Go back to current frame
             self.cancel_lin_tree_changes = True
             printl('cancel, WIP no idea how to do this since the function is called in store_data, which is kind of in between the triggering key press and the actual change in the frame')
-
     
         self.nextAction.setDisabled(False)
         self.prevAction.setDisabled(False)
         self.navigateScrollBar.setDisabled(False)
+        self.lin_tree_to_acdc_df(force_all=True)
+
+    
         
     def setNavigateScrollBarMaximum(self):
         posData = self.data[self.pos_i]
@@ -18070,7 +18092,7 @@ class guiWin(QMainWindow):
             sister_col_names = [col for col in lin_tree_df.columns if col.startswith('sister_ID_tree')]
             self.lin_tree_df_colnames_only.update(sister_col_names)
             lin_tree_colnames = list(self.lin_tree_df_colnames_only)
-            printl(sister_col_names, lin_tree_colnames,self.lin_tree_df_colnames_only)
+            # printl(sister_col_names, lin_tree_colnames,self.lin_tree_df_colnames_only)
 
             acdc_df.loc[lin_tree_df.index, lin_tree_colnames] = lin_tree_df[lin_tree_colnames]
             posData.allData_li[frame_i]['acdc_df'] = acdc_df
