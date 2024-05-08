@@ -1,7 +1,6 @@
 import traceback
 import sys
-import typing
-from typing import Union, Iterable, List
+from typing import Union, Iterable, List, Literal
 
 import pandas as pd
 import numpy as np
@@ -592,18 +591,21 @@ def _binned_mean_stats(x, y, bins, bins_min_count):
     return bin_centers, bin_means, bin_std, std_err
 
 def binned_means_plot(
-        x: typing.Union[str, typing.Iterable] = None, 
-        y: typing.Union[str, typing.Iterable] = None, 
-        bins: typing.Union[int, typing.Iterable] = 10, 
+        x: Union[str, Iterable] = None, 
+        y: Union[str, Iterable] = None, 
+        bins: Union[int, Iterable] = 10, 
         bins_min_count: int = 1,
         data: pd.DataFrame = None,
+        ci_plot: Literal['errorbar', 'fill_between']='errorbar',
         scatter: bool = True,
+        line_plot = True,
         use_std_err: bool = True,
         color = None,
         label = None,
         scatter_kws = None,
         errorbar_kws = None,
-        ax: matplotlib.axes.Axes = None,
+        fill_between_kws = None,
+        ax: plt.Axes = None,
         scatter_colors = None
     ):
     if ax is None:
@@ -629,9 +631,6 @@ def binned_means_plot(
     if 'alpha' not in scatter_kws:
         scatter_kws['alpha'] = 0.3
     
-    if errorbar_kws is None:
-        errorbar_kws = {'capsize': 3, 'lw': 2}
-    
     if label is None:
         label = ''
     
@@ -642,7 +641,31 @@ def binned_means_plot(
     if scatter:
         ax.scatter(x, y, color=scatter_colors, **scatter_kws)
     yerr = std_err if use_std_err else std
-    ax.errorbar(xe, ye, yerr=yerr, color=color, label=label, **errorbar_kws)
+    
+    if ci_plot == 'errorbar':
+        if errorbar_kws is None:
+            errorbar_kws = {'capsize': 3, 'lw': 2}
+        
+        if not line_plot:
+            fmt = '.'
+        else:
+            fmt = ''
+            
+        ax.errorbar(
+            xe, ye, yerr=yerr, fmt=fmt, color=color, label=label, **errorbar_kws
+        )
+    elif ci_plot == 'fill_between':
+        if fill_between_kws is None:
+            fill_between_kws = {'alpha': 0.3}
+        
+        if line_plot:
+            ax.plot(xe, ye, color=color, label=label)
+            label = ''
+            
+        ax.fill_between(
+            xe, ye-yerr, ye+yerr, color=color, label=label, **fill_between_kws
+        )
+        
 
     return ax
 
@@ -672,7 +695,7 @@ def get_symbol_sizes(scales: dict, symbols: dict, size: int):
     return sizes
 
 def texts_to_pg_scatter_symbols(
-        texts: typing.Union[str, list], font=None, progress=True,
+        texts: Union[str, list], font=None, progress=True,
         return_scales=False
     ):
     if font is None:
