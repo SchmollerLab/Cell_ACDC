@@ -5009,7 +5009,7 @@ class guiWin(QMainWindow):
                 editID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
-                         'Enter here ID that you want to replace with a new one',
+                        'Enter here ID that you want to replace with a new one',
                     parent=self, allowedValues=posData.IDs,
                     defaultTxt=str(nearest_ID)
                 )
@@ -5091,6 +5091,8 @@ class guiWin(QMainWindow):
                     if not math.isnan(y) and not math.isnan(y):
                         y, x = int(y), int(x)
                         posData.editID_info.append((y, x, new_ID))
+                
+                self.updateAssignedObjsAcdcTrackerSecondStep(new_ID)
 
             # Update rps
             self.update_rp()
@@ -15056,6 +15058,7 @@ class guiWin(QMainWindow):
             # Store data for current frame
             if mode != 'Viewer':
                 self.store_data(debug=False)
+            
             # Go to next frame
             posData.frame_i += 1
             self.removeAlldelROIsCurrentFrame()
@@ -22192,7 +22195,33 @@ class guiWin(QMainWindow):
                 return
             posData = self.data[self.pos_i]
             posData.acdcTracker2stepsAnnotInfo[posData.frame_i] = args[0]
-            
+    
+    def updateAssignedObjsAcdcTrackerSecondStep(self, newID):
+        posData = self.data[self.pos_i]
+        annotInfo = posData.acdcTracker2stepsAnnotInfo.get(posData.frame_i)
+        if annotInfo is None:
+            return
+        
+        new_objs_1st_step, lost_objs_1st_step = annotInfo
+        correct_new_objs, correct_lost_objs = [], []
+        for lostObj, newObj in zip(lost_objs_1st_step, new_objs_1st_step):
+            newObj_ID = posData.lab[newObj.slice][newObj.image][0]
+            if newObj_ID == newID:
+                # The ID of the new object tracked with 2nd step was 
+                # manually edit --> do not annotate its linking to lost obj anymore
+                continue
+            correct_new_objs.append(newObj)
+            correct_lost_objs.append(lostObj)
+        
+        if not correct_new_objs:
+            posData.acdcTracker2stepsAnnotInfo[posData.frame_i] = None
+        else:
+            posData.acdcTracker2stepsAnnotInfo[posData.frame_i] = (
+                correct_new_objs, correct_lost_objs
+            )
+        self.annotateAssignedObjsAcdcTrackerSecondStep()
+        
+     
     def annotateAssignedObjsAcdcTrackerSecondStep(self):
         posData = self.data[self.pos_i]
         annotInfo = posData.acdcTracker2stepsAnnotInfo.get(posData.frame_i)
