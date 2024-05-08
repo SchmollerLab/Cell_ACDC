@@ -454,7 +454,11 @@ def _load_acdc_df_file(acdc_df_file_path):
     acdc_df = _fix_will_divide(acdc_df)
     return acdc_df
 
-def load_acdc_df_file(images_path, end_name_acdc_df_file='segm', return_path=False):
+def load_acdc_df_file(
+        images_path, 
+        end_name_acdc_df_file='acdc_output', 
+        return_path=False
+    ):
     if not end_name_acdc_df_file.endswith('.csv'):
         end_name_acdc_df_file = f'{end_name_acdc_df_file}.csv'
     for file in myutils.listdir(images_path):

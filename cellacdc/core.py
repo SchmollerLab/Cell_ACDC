@@ -1372,6 +1372,7 @@ class LineageTree:
             else:
                 # Cell appeared in S in previous frame
                 idx = (start_frame_i-1, ID)
+                # import pdb; pdb.set_trace()
                 was_bud = self.acdc_df.loc[idx, 'relationship'] == 'bud'
                 if was_bud:
                     # This is a bud of the first frame where the algorithm 
