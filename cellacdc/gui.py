@@ -22037,6 +22037,7 @@ class guiWin(QMainWindow):
         tracked_lab = self.tracking(
             enforce=True, assign_unique_new_IDs=False, return_lab=True
         )
+        self.clearAssignedObjsSecondStep()
         if tracked_lab is None:
             return
         
@@ -22063,8 +22064,11 @@ class guiWin(QMainWindow):
             # New object where we can try to track against next frame
             trackedID = self.trackNewIDtoNewIDsFutureFrame(added_ID, mask)
             if trackedID is None:
+                self.clearAssignedObjsSecondStep()
                 return
             posData.lab[mask] = trackedID
+        
+        self.keepOnlyNewIDAssignedObjsSecondStep(trackedID)
         self.update_rp()
     
     def trackFrameCustomTracker(self, prev_lab, currentLab):
@@ -22115,6 +22119,10 @@ class guiWin(QMainWindow):
             tracked_lab = tracked_result
         
         return tracked_lab
+    
+    def clearAssignedObjsSecondStep(self):
+        posData = self.data[self.pos_i]
+        posData.acdcTracker2stepsAnnotInfo[posData.frame_i] = None
     
     # @exec_time
     def tracking(
@@ -22204,6 +22212,31 @@ class guiWin(QMainWindow):
             posData = self.data[self.pos_i]
             posData.acdcTracker2stepsAnnotInfo[posData.frame_i] = args[0]
     
+    def keepOnlyNewIDAssignedObjsSecondStep(self, trackedID):
+        posData = self.data[self.pos_i]
+        annotInfo = posData.acdcTracker2stepsAnnotInfo.get(posData.frame_i)
+        
+        if annotInfo is None:
+            return 
+        
+        new_objs_1st_step, lost_objs_1st_step = annotInfo
+        correct_new_objs, correct_lost_objs = [], []
+        for lostObj, newObj in zip(lost_objs_1st_step, new_objs_1st_step):
+            newObj_ID = posData.lab[newObj.slice][newObj.image][0]
+            if newObj_ID != trackedID:
+                continue
+            
+            correct_new_objs.append(newObj)
+            correct_lost_objs.append(lostObj)
+        
+        if not correct_new_objs:
+            posData.acdcTracker2stepsAnnotInfo[posData.frame_i] = None
+        else:
+            posData.acdcTracker2stepsAnnotInfo[posData.frame_i] = (
+                correct_new_objs, correct_lost_objs
+            )
+        # self.annotateAssignedObjsAcdcTrackerSecondStep()
+    
     def updateAssignedObjsAcdcTrackerSecondStep(self, newID):
         posData = self.data[self.pos_i]
         annotInfo = posData.acdcTracker2stepsAnnotInfo.get(posData.frame_i)
@@ -22251,6 +22284,8 @@ class guiWin(QMainWindow):
             y2, x2 = self.getObjCentroid(newObj.centroid)
             xx, yy = core.get_line(y1, x1, y2, x2, dashed=False)
             self.ax1_oldMothBudLinesItem.addPoints(xx, yy)
+        
+        posData.acdcTracker2stepsAnnotInfo[posData.frame_i] = None
                         
     def setTrackedLostCentroids(self, prev_rp, tracked_lost_IDs):
         """Store centroids of those IDs the tracker decided is fine to lose 
