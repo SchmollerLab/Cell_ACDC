@@ -3,6 +3,7 @@ from functools import partial
 from natsort import natsorted
 
 from .. import myutils, apps, load, printl, core, widgets
+from .. import exception_handler
 from ..utils import base
 
 from qtpy.QtCore import QTimer, Signal
@@ -22,6 +23,7 @@ class NapariArboretumDialog(base.MainThreadSinglePosUtilBase):
         func = partial(self.launchNapariArboretum, posPath)
         QTimer.singleShot(200, func)
 
+    @exception_handler
     def launchNapariArboretum(self, posPath):
         images_path = os.path.join(posPath, 'Images')
         ls = myutils.listdir(images_path)
@@ -82,7 +84,7 @@ class NapariArboretumDialog(base.MainThreadSinglePosUtilBase):
 
         self.logger.info('Building arboretum lineage tree...')
         acdc_df = posData.acdc_df.reset_index()
-        tree = core.LineageTree(acdc_df)
+        tree = core.LineageTree(acdc_df, logging_func=self.logger.info)
         tracks_data, graph, properties = tree.to_arboretum()
 
         props = natsorted(acdc_df.columns.to_list())

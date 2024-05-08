@@ -1246,7 +1246,7 @@ class LineageTree:
         self.debug = debug
     
     def build(self):
-        print('Building lineage tree...')
+        self.log('Building lineage tree...')
         try:
             df_G1 = self.acdc_df[self.acdc_df['cell_cycle_stage'] == 'G1']
             self.df_G1 = df_G1[self.cca_df_colnames].copy()
@@ -1255,7 +1255,7 @@ class LineageTree:
             return error
         
         self.df = self.add_lineage_tree_table_to_acdc_df()
-        print('Lineage tree built successfully!')
+        self.log('Lineage tree built successfully!')
     
     def _normalize_gen_num(self, acdc_df):
         '''
