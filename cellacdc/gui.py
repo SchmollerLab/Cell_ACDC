@@ -9737,7 +9737,7 @@ class guiWin(QMainWindow):
             Thank you for your patience!
         """)
         msg = widgets.myMessageBox(wrapText=False)
-        msg.warning(self, action.title(), txt)
+        msg.warning(self, f'{action} not possible'.title(), txt)
         return
     
     def _checkMothInG1beforeBudEmergence(
