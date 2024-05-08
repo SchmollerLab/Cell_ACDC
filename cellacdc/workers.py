@@ -4596,7 +4596,7 @@ class CcaIntegrityCheckerWorker(QObject):
         category = 'mothers whose generation number is < 1'
         txt = html_utils.paragraph(
             f'At frame n. {frame_i+1} '
-            'the following mother cells have generation number < 1:'
+            'the following mother cells have generation number &lt; 1:'
             f'<br><br>{moth_IDs_gen_num_non_greater_one}'
         )
         self.sigWarning.emit(txt, category)
@@ -4705,6 +4705,7 @@ class CcaIntegrityCheckerWorker(QObject):
                 break
             
             cca_df = data_dict.get('cca_df_checker')
+            printl(frame_i, cca_df)
             if cca_df is None:
                 # There are no annotations at frame_i --> stop
                 break

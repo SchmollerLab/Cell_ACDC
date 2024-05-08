@@ -9880,7 +9880,7 @@ class guiWin(QMainWindow):
                 # Set mother cell cycle stage to S in case it is not
                 if cca_df_i.at[correct_mothID, 'cell_cycle_stage'] == 'G1':
                     cca_df_i.at[correct_mothID, 'cell_cycle_stage'] = 'S'
-                    cca_df_i.at[correct_mothID, 'generation_num'] -= 1
+                    # cca_df_i.at[correct_mothID, 'generation_num'] -= 1
             
                 self.store_cca_df(
                     frame_i=past_i, cca_df=cca_df_i, autosave=False
@@ -9929,7 +9929,7 @@ class guiWin(QMainWindow):
                 # Set mother cell cycle stage to S in case it is not
                 if cca_df_i.at[correct_mothID, 'cell_cycle_stage'] == 'G1':
                     cca_df_i.at[correct_mothID, 'cell_cycle_stage'] = 'S'
-                    cca_df_i.at[correct_mothID, 'generation_num'] -= 1
+                    # cca_df_i.at[correct_mothID, 'generation_num'] -= 1
             
             self.store_cca_df(frame_i=future_i, cca_df=cca_df_i, autosave=False)
         
@@ -18186,6 +18186,15 @@ class guiWin(QMainWindow):
                 continue
             acdc_df.drop(col, axis=1, inplace=True)
 
+    def store_cca_df_checker(self, posData, frame_i, cca_df):
+        if not self.ccaCheckerRunning:
+            return
+        
+        if cca_df is None:
+            return
+        
+        posData.allData_li[frame_i]['cca_df_checker'] = cca_df.copy()
+    
     def store_cca_df(
             self, pos_i=None, frame_i=None, cca_df=None, mainThread=True,
             autosave=True, store_cca_df_copy=False
@@ -18212,8 +18221,7 @@ class guiWin(QMainWindow):
             posData.allData_li[i]['acdc_df'] = df
         
         # Store copy for cca integrity worker
-        if self.ccaCheckerRunning and cca_df is not None:
-            posData.allData_li[i]['cca_df_checker'] = cca_df.copy()
+        self.store_cca_df_checker(posData, i, cca_df)
         
         if store_cca_df_copy and cca_df is not None:
             posData.allData_li[i]['cca_df'] = cca_df.copy()
@@ -23394,7 +23402,21 @@ class guiWin(QMainWindow):
         
         self.ccaCheckerRunning = True
         
+        self.initCcaIntegrityChecker()
+        
         self.logger.info('Cell cycle annotations integrity checker started.')
+    
+    def initCcaIntegrityChecker(self):
+        posData = self.data[self.pos_i]
+        for frame_i, data_frame_i in enumerate(posData.allData_li):
+            lab = data_frame_i['labels']
+            if lab is None:
+                break
+            
+            cca_df = self.get_cca_df(frame_i, return_df=True)
+            self.store_cca_df_checker(posData, frame_i, cca_df)
+        
+        self.enqCcaIntegrityChecker()
     
     def disableCcaIntegrityChecker(self):
         self.stopCcaIntegrityCheckerWorker()
