@@ -9707,6 +9707,9 @@ class guiWin(QMainWindow):
         
         future_i = start_frame_i
         for future_i in range(start_frame_i, posData.SizeT):
+            if future_i == 0:
+                continue
+            
             # Get cca_df for ith frame from allData_li
             cca_df_i = self.get_cca_df(frame_i=future_i, return_df=True)
             if cca_df_i is None:
