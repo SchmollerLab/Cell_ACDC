@@ -2022,7 +2022,8 @@ class alphaNumericLineEdit(QLineEdit):
     def __init__(self, parent=None, additionalChars=''):
         super().__init__(parent)
 
-        self.validPattern = f'^[a-zA-Z0-9_-{additionalChars}]+$'
+        self.validPattern = fr'^[a-zA-Z0-9{additionalChars}_\-]+$'
+
         regExp = QRegularExpression(self.validPattern)
         self.setValidator(QRegularExpressionValidator(regExp))
 
