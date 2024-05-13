@@ -137,9 +137,7 @@ def get_lut_from_colors(colors, name='mycmap', N=256, to_uint8=False):
         lut = (lut*255).astype(np.uint8)
     return lut
 
-def invertRGB(self, rgb_img):
-    if self.imgCmapName != 'grey':
-        return
+def invertRGB(rgb_img, max_val=1.0):
     # see https://forum.image.sc/t/invert-rgb-image-without-changing-colors/33571
     R = rgb_img[:, :, 0]
     G = rgb_img[:, :, 1]
@@ -147,10 +145,17 @@ def invertRGB(self, rgb_img):
     GB_mean = np.mean([G, B], axis=0)
     RB_mean = np.mean([R, B], axis=0)
     RG_mean = np.mean([R, G], axis=0)
-    rgb_img[:, :, 0] = 1-GB_mean
-    rgb_img[:, :, 1] = 1-RB_mean
-    rgb_img[:, :, 2] = 1-RG_mean
+    rgb_img[:, :, 0] = max_val-GB_mean
+    rgb_img[:, :, 1] = max_val-RB_mean
+    rgb_img[:, :, 2] = max_val-RG_mean
     return rgb_img
+
+def rescale_RGB(rgb_img, saturation_val=1.0):
+    rescaled_rgb = rgb_img-rgb_img.min()
+    max_val = rescaled_rgb.max()
+    brightness = saturation_val/max_val
+    return rescaled_rgb*brightness
+    
 
 def get_greedy_lut(lab, lut, ids=None):    
     expanded = skimage.segmentation.expand_labels(lab, distance=7)

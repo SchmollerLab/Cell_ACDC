@@ -11131,7 +11131,7 @@ class guiWin(QMainWindow):
         if saveSettings:
             self.df_settings.at['how_draw_right_annotations', 'value'] = how
             self.df_settings.to_csv(self.settings_csv_path)
-
+        
         self.textAnnot[1].setCcaAnnot(
             self.annotCcaInfoCheckboxRight.isChecked()
         )

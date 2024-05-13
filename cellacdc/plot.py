@@ -6,6 +6,8 @@ import pandas as pd
 import numpy as np
 import scipy.stats
 
+import skimage.measure
+
 import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib
@@ -19,7 +21,7 @@ from qtpy import QtGui
 
 from . import printl
 from . import widgets, _core, error_below, error_close
-from . import _run
+from . import _run, core
 
 def matplotlib_cmap_to_lut(
         cmap: Union[Iterable, matplotlib.colors.Colormap, str], 
@@ -732,6 +734,51 @@ def texts_to_pg_scatter_symbols(
     else:
         return symbols
 
+def plt_contours(ax, lab=None, rp=None, plot_kwargs=None, only_IDs=None):
+    if rp is None:
+        rp = skimage.measure.regionprops(lab)
+
+    if plot_kwargs is None:
+        plot_kwargs = {}
+    
+    for obj in rp:
+        if only_IDs is not None and obj.label not in only_IDs:
+            continue
+        
+        contours = core.get_obj_contours(obj)
+        ax.plot(contours[:, 0], contours[:, 1], **plot_kwargs)
+
+def plt_moth_bud_lines(
+        ax, cca_df, lab=None, rp=None, plot_kwargs=None, 
+        only_moth_IDs=None
+    ):
+    if rp is None:
+        rp = skimage.measure.regionprops(lab)
+
+    if plot_kwargs is None:
+        plot_kwargs = {}
+    
+    rp_mapper = {obj.label:obj for obj in rp}
+    
+    for obj in rp:
+        ccs = cca_df.at[obj.label, 'cell_cycle_stage']
+        if ccs == 'G1':
+            continue
+        
+        status = cca_df.at[obj.label, 'relationship']
+        if status == 'mother':
+            continue
+        
+        mothID = cca_df.at[obj.label, 'relative_ID']
+        if only_moth_IDs is not None and mothID not in only_moth_IDs:
+            continue
+        
+        moth_obj = rp_mapper[mothID]
+        
+        y1, x1 = obj.centroid
+        y2, x2 = moth_obj.centroid
+        
+        ax.plot([x1, x2], [y1, y2], **plot_kwargs)
 
 if __name__ == '__main__':
     x = np.arange(0, 1000).astype(float)
@@ -749,3 +796,4 @@ if __name__ == '__main__':
     )
     
     plt.show()
+    
