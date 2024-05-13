@@ -8738,3 +8738,18 @@ class RangeSelector(QWidget):
     
     def range(self):
         return self.lowSpinbox.value(), self.highSpinbox.value()
+
+class PreProcessingSelector(QComboBox):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        
+        self._textToWidgetsMapper = {
+            'Gaussian filter (smooth)': {
+                'Sigma: ': VectorLineEdit
+            }
+        }
+        
+        self.addItems(self._textToWidgetsMapper.keys())
+        
+    def widgets(self):
+        return self._textToWidgetsMapper[self.currentText()]

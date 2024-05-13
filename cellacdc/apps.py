@@ -4112,97 +4112,6 @@ class QDialogCombobox(QDialog):
         if hasattr(self, 'loop'):
             self.loop.exit()
 
-class _PreProcessRecipeList(QWidget):
-    sigItemSelected = Signal(object)
-    
-    def __init__(self, parent=None) -> None:
-        super().__init__(parent)
-
-        mainLayout = QVBoxLayout()
-
-        listLayout = QHBoxLayout()
-        self.listWidget = widgets.listWidget()
-        listLayout.addWidget(self.listWidget)
-        self.listWidget.setItemHeight(height=40)
-
-        listButtonsLayout = QVBoxLayout()
-        addStepButton = widgets.addPushButton(' Add step ')
-        self.removeStepButton = widgets.subtractPushButton('Remove step')
-        self.removeStepButton.setDisabled(True)
-        self.moveStepUpButton = widgets.arrowUpPushButton(
-            'Move step up', alignIconLeft=True
-        )
-        self.moveStepDownButton = widgets.arrowDownPushButton('Move step down')
-        self.moveStepUpButton.setDisabled(True)
-        self.moveStepDownButton.setDisabled(True)
-
-        listButtonsLayout.addWidget(addStepButton)
-        listButtonsLayout.addWidget(self.removeStepButton)
-        listButtonsLayout.addWidget(self.moveStepUpButton)
-        listButtonsLayout.addWidget(self.moveStepDownButton)
-        listButtonsLayout.addStretch()
-        listLayout.addLayout(listButtonsLayout)
-
-        listLayout.setStretch(0,1)
-        listLayout.setStretch(1,0)
-
-        mainLayout.addLayout(listLayout)
-
-        addStepButton.clicked.connect(self.addStep)
-        self.removeStepButton.clicked.connect(self.removeStep)
-        self.listWidget.itemSelectionChanged.connect(self.itemSelected)
-
-        self.setLayout(mainLayout)
-    
-    def itemSelected(self):
-        if self.listWidget.count() > 1:
-            self.moveStepDownButton.setDisabled(False)
-            self.moveStepUpButton.setDisabled(False)
-        self.removeStepButton.setDisabled(False)
-        self.sigItemSelected.emit(self.listWidget.currentItem())
-
-    def addStep(self):
-        selectStepWindow = widgets.QDialogListbox(
-            'Select pre-processing step',
-            'SSelect pre-processing step to add\n',
-            PRE_PROCESSING_STEPS, multiSelection=False, parent=self
-        )
-        selectStepWindow.exec_()
-        if selectStepWindow.cancel:
-            return
-        
-        selectedStep = selectStepWindow.selectedItemsText[0]
-        selectedStepItem = QListWidgetItem(selectedStep)
-        self.listWidget.addItem(selectedStepItem)
-        self.listWidget.setCurrentItem(selectedStepItem)
-
-    def removeStep(self):
-        item = self.listWidget.takeItem(self.listWidget.currentRow())
-        del item
-
-    def moveStepUp(self):
-        currentRow = self.listWidget.currentRow()
-        currentItem = self.listWidget.takeItem(currentRow)
-        self.listWidget.insertItem(currentRow-1, currentItem)
-
-    def moveStepDown(self):
-        pass
-
-class PreProcessRecipeWidget(QWidget):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-
-        self.setWindowTitle('Create image pre-processing recipe')
-
-        mainLayout = QVBoxLayout()
-
-        recipeListLayout = QHBoxLayout()
-        self.recipeListWidget = _PreProcessRecipeList()
-
-        mainLayout.addWidget(self.recipeListWidget)
-
-        self.setLayout(mainLayout)
-
 class MultiTimePointFilePattern(QBaseDialog):
     def __init__(self, fileName, folderPath, readPatternFunc=None, parent=None):
         super().__init__(parent)
@@ -10238,7 +10147,7 @@ class QDialogModelParams(QDialog):
             url=None, parent=None, initLastParams=True, posData=None, 
             channels=None, currentChannelName=None, segmFileEndnames=None,
             df_metadata=None, force_postprocess_2D=False, model_module=None,
-            action_type=''
+            action_type='', addPreProcessParams=True
         ):
         self.cancel = True
         super().__init__(parent)
@@ -10252,9 +10161,12 @@ class QDialogModelParams(QDialog):
         
         if is_tracker:
             self.ini_filename = 'last_params_trackers.ini'
+            addPreProcessParams = False
         else:
             self.ini_filename = 'last_params_segm_models.ini'
 
+        self.addPreProcessParams = addPreProcessParams
+        
         self.model_name = model_name
 
         self.setWindowTitle(f'{model_name} parameters')
@@ -10267,6 +10179,13 @@ class QDialogModelParams(QDialog):
         self.scrollArea = widgets.ScrollArea()
         scrollAreaLayout = QVBoxLayout()
         self.scrollArea.setVerticalLayout(scrollAreaLayout)
+        
+        self.preProcessParamsGroupbox = None
+        if addPreProcessParams:
+            self.preProcessParamsGroupbox = PreProcessParamsGroupbox(
+                parent=self
+            )
+            scrollAreaLayout.addWidget(self.preProcessParamsGroupbox)
         
         initGroupBox, self.init_argsWidgets = self.createGroupParams(
             init_params, 'Parameters for model initialization'
@@ -10900,8 +10819,8 @@ class QDialogModelParams(QDialog):
         height = self.scrollArea.minimumHeightNoScrollbar() + 70
         self.move(self.pos().x(), 20)
         screenHeight = self.screen().size().height()
-        if height >= screenHeight - 100:
-            height = screenHeight - 100
+        if height >= screenHeight - 150:
+            height = screenHeight - 150
         self.resize(self.width(), height)
 
 class downloadModel:
@@ -14132,3 +14051,100 @@ class DataPrepSubCropsPathsDialog(QBaseDialog):
         self.folderPaths = self.paths()
         self.cancel = False
         self.close()
+
+class PreProcessParamsGroupbox(QGroupBox):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        
+        self.setTitle('Pre-processing')
+        self.setCheckable(True)
+        
+        self.gridLayout = QGridLayout()        
+        self.row = -1
+        self.stepsWidgets = []
+        
+        self.gridLayout.setColumnStretch(0, 0)
+        self.gridLayout.setColumnStretch(1, 1)
+        self.gridLayout.setColumnStretch(2, 0)
+        self.gridLayout.setColumnStretch(3, 0)
+        
+        self.addStep()
+        
+        self.setLayout(self.gridLayout)
+    
+    def addStep(self):
+        stepWidgets = {}
+        
+        self.row += 1
+        
+        label = QLabel(f'Step {len(self.stepsWidgets)+1}: ')
+        self.gridLayout.addWidget(label, self.row, 0)
+        stepWidgets['stepLabel'] = label
+        
+        selector = widgets.PreProcessingSelector()
+        self.gridLayout.addWidget(selector, self.row, 1)
+        stepWidgets['selector'] = selector
+        
+        addButton = widgets.addPushButton()
+        self.gridLayout.addWidget(addButton, self.row, 2)
+        addButton.clicked.connect(self.addStep)
+        stepWidgets['addButton'] = addButton
+
+        delButton = widgets.delPushButton()
+        self.gridLayout.addWidget(delButton, self.row, 3)
+        delButton.clicked.connect(self.removeStep)
+        delButton.idx = len(self.stepsWidgets)
+        stepWidgets['delButton'] = delButton
+        
+        self.row += 1
+        stepWidgets['widgets'] = []
+        for labelText, widgetFunc in selector.widgets().items():
+            label = QLabel(labelText)
+            self.gridLayout.addWidget(label, self.row, 0) 
+            widget = widgetFunc()
+            self.gridLayout.addWidget(widget, self.row, 1)
+            self.row += 1
+            stepWidgets['widgets'].append((label, widget))
+
+        hline = widgets.QHLine()
+        self.gridLayout.addWidget(hline, self.row, 0, 1, 4)
+        stepWidgets['hline'] = hline
+        self.row += 1
+        
+        self.stepsWidgets.append(stepWidgets)
+        
+    def removeStep(self, checked=False, idx=None):
+        if len(self.stepsWidgets) == 1:
+            self.setChecked(False)
+            return
+        
+        if idx is None:
+            idx = self.sender().idx
+        
+        stepWidgets = self.stepsWidgets[idx]
+        self.gridLayout.removeWidget(stepWidgets['stepLabel'])
+        self.gridLayout.removeWidget(stepWidgets['selector'])
+        self.gridLayout.removeWidget(stepWidgets['addButton'])
+        self.gridLayout.removeWidget(stepWidgets['delButton'])
+        self.gridLayout.removeWidget(stepWidgets['hline'])
+        for label, widget in stepWidgets['widgets']:
+            self.gridLayout.removeWidget(label)    
+            self.gridLayout.removeWidget(widget)
+        
+        for s, stepWidgets in enumerate(self.stepsWidgets):
+            label.setText(f'Step {s+1}: ')
+        
+        del self.stepsWidgets[idx]
+    
+    def recipe(self):
+        recipe = []
+        for stepWidgets in enumerate(self.stepsWidgets):
+            method = stepWidgets['selector'].currentText()
+            step_kwargs = {}
+            for label, widget in stepWidgets['widgets']:
+                step_kwargs[label.text().lower()] = widget.value()
+            recipe.append({
+                'method': method, 'kwargs': step_kwargs
+            })
+        
+        return recipe
