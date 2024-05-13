@@ -22,11 +22,14 @@ def reorg_daughter_cells(lineage_tree_frame):
     #     return lineage_tree_frame
 
     # lineage_tree_frame['sister_ID_tree'] = lineage_tree_frame['sister_ID_tree'].apply(lambda x: x + [-1]*(max_daughter-1-len(x)) if len(x) < max_daughter-1 else x) # fill in -1 for fewer daughters (I think this is handled in other parts of the code already)
-    sister_columns = lineage_tree_frame['sister_ID_tree'].apply(pd.Series)
+    old_sister_columns = {col for col in lineage_tree_frame.columns if col.startswith('sister_ID_tree')}
+
+    sister_columns = lineage_tree_frame['sister_ID_tree'].apply(pd.Series).fillna(0)
 
     max_daughter = sister_columns.shape[1]
     new_columns = [f'sister_ID_tree_{i}' for i in range(max_daughter)]
 
+    lineage_tree_frame = lineage_tree_frame.drop(columns=old_sister_columns)
     lineage_tree_frame[new_columns] = sister_columns
     lineage_tree_frame['sister_ID_tree'] = sister_columns[0]
 
@@ -277,7 +280,7 @@ def general_df_to_family_dict(general_df): # general are all dfs concatenated
 #     frames = general_dict.groupby('frame_i')
 
 
-def update_dict_from_df(family_dict, df, frame_i, max_daughter=2):
+def update_dict_from_df(family_dict, df, frame_i):
     """
     Update a dictionary of dataframes (families) with new rows from a given dataframe for a specific frame. The resulting df for the entire family and all frames will not be consistent, but the single frame inserted should be.
     Please note that the following things are used to update the dict: parent_ID_tree, Cell_ID (Derived from this the following is corrected: generation_num_tree, root_ID_tree, sister_ID_tree).
@@ -304,6 +307,13 @@ def update_dict_from_df(family_dict, df, frame_i, max_daughter=2):
     corrected_df = pd.DataFrame()
 
     for _, Cell_info in df.iterrows(): # similar code is used in update_dict_consistency in the part which handles daughters
+        if Cell_info['parent_ID_tree'] == -1: # handle case where a cell was changed to unknown parent
+            Cell_info['generation_num_tree'] = 1
+            Cell_info['root_ID_tree'] = Cell_info['Cell_ID']
+            Cell_info['sister_ID_tree'] = 0
+            corrected_df = pd.concat([corrected_df, Cell_info.to_frame().T])
+            continue
+
         parent_cell = unique_Cell_ID_df.loc[Cell_info['parent_ID_tree']]
         Cell_info['generation_num_tree'] = parent_cell['generation_num_tree'] + 1
         Cell_info['root_ID_tree'] = parent_cell['root_ID_tree']
@@ -345,11 +355,24 @@ def update_dict_from_df(family_dict, df, frame_i, max_daughter=2):
     corrected_df = corrected_df.set_index(['frame_i', 'Cell_ID'])
 
     IDs_not_covered = set(corrected_df.index.get_level_values(1)) - IDs_covered
+
     if IDs_not_covered:
         for ID in IDs_not_covered:
-            series = corrected_df.loc[(frame_i, ID)]
-            family_dict[series['root_ID_tree']] = series.to_frame().T
-    
+            df_ID = corrected_df.loc[[(frame_i, ID)]]
+            df_ID = checked_reset_index(df_ID)
+            df_ID = df_ID.set_index(['frame_i', 'Cell_ID'])
+            df_ID = checked_reset_index(df_ID)
+            family_dict[df_ID.iloc[0]['root_ID_tree']] = df_ID
+
+
+    del_keys = set()
+    for key, df_fam in family_dict.items():
+        if df_fam.empty:
+            del_keys.add(key)
+
+    for key in del_keys:
+        del family_dict[key]
+
     return family_dict
 
 def update_dict_consistency(family_dict=None, fixed_frame_i=None, fixed_df=None, Cell_IDs_fixed=None, consider_children=True, fwd=False, bck=False, general_df=None, columns_to_replace=None): # families_to_consider=set(), iter=0):
@@ -452,6 +475,12 @@ def update_dict_consistency(family_dict=None, fixed_frame_i=None, fixed_df=None,
         else: # else we construct a new fixed_df and run the update recursively.
             new_children_df = pd.DataFrame()
             for Cell_id, row in children_df.iterrows(): # we need to edit the daughters to be consistent
+                if row['parent_ID_tree'] == -1: # handle case where a cell was changed to unknown parent
+                    row['generation_num_tree'] = 1
+                    row['root_ID_tree'] = row['Cell_ID']
+                    row['sister_ID_tree'] = 0
+                    new_children_df = new_children_df.append(row)
+                    continue
                 parent_cell = unique_df.loc[row['parent_ID_tree']]
                 row['generation_num_tree'] = parent_cell['generation_num_tree'] + 1
                 row['root_ID_tree'] = parent_cell['root_ID_tree']
@@ -460,6 +489,7 @@ def update_dict_consistency(family_dict=None, fixed_frame_i=None, fixed_df=None,
                 new_children_df = new_children_df.append(row)
                 
             family_dict = update_dict_consistency(fixed_df=new_children_df, columns_to_replace=columns_to_replace, general_df=general_df, fwd=fwd, bck=bck, consider_children=consider_children)
+
             return family_dict
     else:
         family_dict = general_df_to_family_dict(general_df)
@@ -502,6 +532,7 @@ def dict_to_df_li(family_dict): # may need to drop some columns
     frames = general_df['frame_i'].unique().astype(int)
 
     frames = frames[~np.isnan(frames)]
+    printl('Here!')
     frames_for_dfs = [int(frame) for frame in frames]
 
     df_group = general_df.groupby('frame_i')
@@ -806,12 +837,14 @@ class normal_division_lineage_tree:
         """
         if list(range(len(self.lineage_list))) != self.frames_for_dfs:
             raise ValueError('Frames for dfs is not correct. This is not properly supported and I think I might drop self.frames_for_dfs in the future...')
-
+        
+        general_df = pd.concat(self.family_dict.values()).reset_index()
+        printl(max(general_df['frame_i']))
         if frame_i == len(self.lineage_list):
-            if not self.family_dict: # generate the family_dict if it is not present
-                self.family_dict = generate_fam_dict_from_df_li(self.lineage_list)
+            self.family_dict = generate_fam_dict_from_df_li(self.lineage_list)
 
             self.lineage_list.append(lineage_df)
+            printl('Here!')
             self.frames_for_dfs.append(frame_i)
 
             self.family_dict = update_dict_from_df(self.family_dict, lineage_df, frame_i, self.max_daughter)
@@ -823,24 +856,30 @@ class normal_division_lineage_tree:
                 printl('Here!')
                 self.families = dict_to_fams(self.family_dict)
 
+            printl('Here!')
             self.lineage_list, self.frames_for_dfs = dict_to_df_li(self.family_dict)
 
 
         elif frame_i < len(self.lineage_list):
-            if not self.family_dict: # generate the family_dict if it is not present
-                self.family_dict = generate_fam_dict_from_df_li(self.lineage_list)
+            self.family_dict = generate_fam_dict_from_df_li(self.lineage_list)
 
             self.lineage_list[frame_i] = lineage_df
 
-            self.family_dict = update_dict_from_df(self.family_dict, lineage_df, frame_i, self.max_daughter)
+            general_df = pd.concat(self.family_dict.values()).reset_index()
+            printl(max(general_df['frame_i']))
+            self.family_dict = update_dict_from_df(self.family_dict, lineage_df, frame_i)
 
             if propagate_back == True or propagate_fwd == True:
                 self.family_dict = update_dict_consistency(family_dict=self.family_dict, fixed_frame_i=frame_i, fixed_df=lineage_df, consider_children=consider_children, fwd=propagate_fwd, bck=propagate_back)
 
             if update_fams == True:
                 self.families = dict_to_fams(self.family_dict)
-                
-            self.lineage_list, self.frames_for_dfs  = dict_to_df_li(self.family_dict)
+
+            printl(len(self.lineage_list))
+            self.lineage_list, self.frames_for_dfs = dict_to_df_li(self.family_dict)
+            printl('Here!')
+            printl(len(self.lineage_list))
+
 
         elif frame_i > len(self.lineage_list):
             printl(f'WARNING: Frame_i {frame_i} was inserted. The lineage list was only {len(self.lineage_list)} frames long, so the last known lineage tree was copy pasted up to frame_i {frame_i}')
@@ -854,6 +893,7 @@ class normal_division_lineage_tree:
 
             frame_is = list(range(len(self.lineage_list)-original_length))
             self.frames_for_dfs = self.frames_for_dfs + frame_is
+            printl('Here!')
 
             self.family_dict = update_dict_from_df(self.family_dict, lineage_df, frame_i, self.max_daughter)
 
@@ -863,6 +903,7 @@ class normal_division_lineage_tree:
                 printl('Here!')
                 self.families = dict_to_fams(self.family_dict)
             self.lineage_list, self.frames_for_dfs  = dict_to_df_li(self.family_dict)
+            printl('Here!')
 
 
     def load_lineage_df_list(self, df_li):
@@ -886,6 +927,7 @@ class normal_division_lineage_tree:
                     df = df.drop(columns="index")
 
                 self.frames_for_dfs.append(i)
+                printl('Here!')
                 df_li_new.append(df)
 
         if df_li_new:
@@ -893,6 +935,7 @@ class normal_division_lineage_tree:
             self.family_dict = generate_fam_dict_from_df_li(self.lineage_list, frames_for_df_li=self.frames_for_dfs)
             self.families = dict_to_fams(self.family_dict)
             self.lineage_list, self.frames_for_dfs = dict_to_df_li(self.family_dict)
+            printl('Here!')
 
     def export_df(self, frame_i):
         df = self.lineage_list[frame_i].copy()
