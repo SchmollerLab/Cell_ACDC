@@ -25,3 +25,5 @@ bioformats_jar_hmgu_url = 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/Nn
 bioformats_download_page = 'https://www.openmicroscopy.org/bio-formats/downloads/'
 
 install_pytorch = 'https://pytorch.org/get-started/locally/'
+
+fiji_downloads = 'https://imagej.net/software/fiji/downloads'

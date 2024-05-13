@@ -39,6 +39,8 @@ from . import load, settings_csv_path
 from . import _palettes
 from . import recentPaths_path, cellacdc_path, settings_folderpath
 from . import urls
+from . import acdc_fiji_path
+from . import fiji_macros
 
 if os.name == 'nt':
     try:
@@ -1729,24 +1731,100 @@ class createDataStructWin(QMainWindow):
             self.mainWin.setWindowState(Qt.WindowActive)
             self.mainWin.raise_()
 
-
-if __name__ == "__main__":
-    print('Launching data structure module...')
-    # Handle high resolution displays:
-    if hasattr(Qt, 'AA_EnableHighDpiScaling'):
-        QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
-    if hasattr(Qt, 'AA_UseHighDpiPixmaps'):
-        QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
-    # Create the application
-    app = QApplication(sys.argv)
-    app.setStyle(QStyleFactory.create('Fusion'))
-    app.setWindowIcon(QtGui.QIcon(":icon.ico"))
-    try:
-        win = createDataStructWin(allowExit=True)
-        win.show()
-        win.setWindowState(Qt.WindowActive)
-        win.raise_()
-        win.logger.info('Starting main process...')
-        win.main()
-    except OSError:
-        traceback.print_exc()
+class InitFijiMacro:
+    def __init__(self, acdcLauncher):
+        self.acdcLauncher = acdcLauncher
+        self.logger = self.acdcLauncher.logger
+    
+    def run(self):
+        txt = (f"""    
+            In order to run Bio-Formats on your system, Cell-ACDC will use 
+            <b>Fiji (ImageJ) from the command line</b>.<br><br>
+            The process entails the creation of a macro (.ijm) file and 
+            its execution from the command line.<br><br>
+            If you prefer to run the macro yourself, you can go through 
+            its creation process and cancel its execution later.
+        """)
+        commands = None
+        if not myutils.run_fiji_command():
+            try:
+                shutil.rmtree(acdc_fiji_path)
+            except Exception as err:
+                pass
+            href = html_utils.href_tag('here', urls.fiji_downloads)
+            note_download_txt = (f"""
+                Before continuing, Fiji will be <b>automatically downloaded
+                now</b>.<br><br>
+                If the download fails, please download the zip file from {href} 
+                and unzip it in the following location:
+            """)
+            txt = f'{txt}<br><br>{note_download_txt}'
+            commands = (acdc_fiji_path,)
+            
+        txt = html_utils.paragraph(txt)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.information(
+            self.acdcLauncher, 'Running Fiji in the command line', txt, 
+            buttonsTexts=('Cancel', 'Ok'),
+            commands=commands
+        )
+        if msg.cancel:
+            self.cancel()
+            return
+        
+        myutils.download_fiji(logger_func=self.logger.info)
+        
+        win = apps.InitFijiMacroDialog(parent=self.acdcLauncher)
+        win.exec_()
+        if win.cancel:
+            self.cancel()
+            return
+        
+        macro_filepath = fiji_macros.init_macro(*win.init_macro_args)
+        macro_command = fiji_macros.command_run_macro(macro_command)
+        
+        txt = html_utils.paragraph("""
+            Cell-ACDC will now run the macro in the terminal.<br><br>
+            During the process, the <b>GUI will be unresponsive</b>, while 
+            progress will be displayed in the terminal.<br><br>
+            If you prefer, you can stop the process now and run the command 
+            yourself, or even run the macro directly from the Fiji GUI.<br><br>
+            Command to run the macro:
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.information(
+            self.acdcLauncher, 'Fiji macro command', txt, 
+            buttonsTexts=('Cancel', 'Ok'),
+            commands=(macro_filepath)
+        )
+        if msg.cancel:
+            self.cancel()
+            return
+        
+        success = fiji_macros.run_macro(macro_command)
+        if success:
+            txt = html_utils.paragraph("""
+                Macro execution completed successfully. 
+                Path to the macro file:
+            """)
+            msg_func = 'information'
+        else:
+            href = html_utils.href_tag('GitHub page', urls.issues_url)
+            txt = html_utils.paragraph(f"""
+                Macro execution completed with errors. More details in the 
+                terminal.<br><br> 
+                If you cannot solve this, please report the issue on our 
+                {href}<br><br>
+                Path to the macro file:
+            """)
+            msg_func = 'information'
+        
+        msg = widgets.myMessageBox(wrapText=False)
+        getattr(msg, msg_func)(
+            self.acdcLauncher, 'Macro execution completed', txt
+        )
+    
+    def cancel(self):
+        self.logger.info('Running Bio-Formats from Fiji process cancelled.')
+        
+        

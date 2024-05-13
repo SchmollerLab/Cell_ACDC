@@ -8,6 +8,7 @@ import pyqtgraph.exporters
 
 from . import transformation, printl, myutils
 from . import is_mac, is_win
+from . import acdc_ffmpeg_path
 
 class ImageExporter(pyqtgraph.exporters.ImageExporter):
     def __init__(self, item, background=(0, 0, 0, 0), save_pngs=True):
@@ -78,7 +79,7 @@ def avi_to_mp4(in_filepath_avi, out_filepath_mp4=None):
     _run_ffmpeg(ffmep_exec_path, args)
 
 def _run_ffmpeg(ffmep_exec_path, command_args):
-    import subprocess
+    import subprocess, os
     
     full_command = ' '.join(command_args)
     full_command = f'{ffmep_exec_path} {full_command}'
@@ -94,9 +95,10 @@ def _run_ffmpeg(ffmep_exec_path, command_args):
         subprocess.check_call(full_command)
         return
     
+    ffmpeg_exec_path = os.path.join(acdc_ffmpeg_path, 'ffmpeg')
     if is_mac:
-        args_add_to_path = ['export' 'PATH=$PATH:~/acdc-appdata']
-        subprocess.check_call(args_add_to_path, shell=True)
+        args_ffmpeg_executable = [f'chmod 755 {ffmpeg_exec_path}']
+        subprocess.check_call(args_ffmpeg_executable, shell=True)
     
     ffmpeg_args = ['ffmpeg', *command_args]
     try:

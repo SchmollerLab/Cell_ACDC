@@ -43,7 +43,7 @@ if GUI_INSTALLED:
     
 from . import core, load
 from . import html_utils, is_linux, is_win, is_mac, issues_url, is_mac_arm64
-from . import cellacdc_path, printl, settings_folderpath, logs_path
+from . import cellacdc_path, printl, acdc_fiji_path, logs_path
 from . import user_profile_path, recentPaths_path
 from . import models_list_file_path
 from . import github_home_url
@@ -2561,6 +2561,30 @@ def _inform_install_package_failed(pkg_name, parent=None, do_exit=True):
     )
     print('^'*50)
 
+def download_fiji(logger_func=print):
+    url = None
+    if is_mac:
+        url = 'https://downloads.micron.ox.ac.uk/fiji_update/mirrors/fiji-latest/fiji-macosx.zip'
+        file_size = 474_525_405
+    
+    if url is None:
+        return
+
+    if os.path.exists(get_fiji_exec_folderpath()):
+        return
+    
+    os.makedirs(acdc_fiji_path)
+    
+    temp_dir = tempfile.mkdtemp()
+    zip_dst = os.path.join(temp_dir, 'fiji-macosx.zip')
+    logger_func(f'Downloading Fiji to "{acdc_fiji_path}"...')
+    download_url(
+        url, zip_dst, verbose=False, file_size=file_size
+    )
+    extract_zip(zip_dst, acdc_fiji_path)
+    
+    return acdc_fiji_path
+
 def _install_package_msg(
         pkg_name, note='', parent=None, upgrade=False, caller_name='Cell-ACDC',
         is_cli=False, pkg_command='', logger_func=print
@@ -2761,7 +2785,7 @@ def import_tracker_module(tracker_name):
     return tracker_module
 
 def download_ffmpeg():    
-    ffmpeg_folderpath = os.path.join(user_profile_path, 'acdc-ffmpeg')
+    ffmpeg_folderpath = acdc_ffmpeg_path
     if is_win:
         url = 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/rXioWZpwjwn9JTT/download/windows_ffmpeg-7.0-full_build.zip'
         file_size = 173477888
@@ -2787,6 +2811,46 @@ def download_ffmpeg():
     extract_zip(temp_zip_path, ffmpeg_folderpath)
     
     return ffmep_exec_path.replace('\\', os.sep).replace('/', os.sep)
+
+def get_fiji_exec_folderpath():
+    if is_mac:
+        return os.path.join(
+            acdc_fiji_path, 'Fiji.app', 'Contents', 'MacOS', 'ImageJ-macosx'
+        )
+
+def get_fiji_base_command():
+    if not os.path.exists(acdc_fiji_path):
+        return
+    
+    command = None
+    if is_mac:
+        command = f'{get_fiji_exec_folderpath()} --headless'
+
+    return command
+    
+def _init_fiji_cli():
+    if not is_win:
+        args_add_to_path = [f'chmod 755 {get_fiji_exec_folderpath()}']
+        subprocess.check_call(args_add_to_path, shell=True)
+
+def run_fiji_command(command=None, logger_func=print):
+    if command is None:
+        command = get_fiji_base_command()
+    
+    if command is None:
+        logger_func('[WARNING]: Fiji is not present.')
+        return False
+    
+    _init_fiji_cli()
+    
+    commands = (command, command.split())
+    for args in commands:
+        try:
+            subprocess.check_call(args, shell=True)
+            return True
+        except Exception as err:
+            continue
+    return False
 
 def init_tracker(
         posData, trackerName, realTime=False, qparent=None, 
