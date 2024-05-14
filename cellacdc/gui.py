@@ -7145,13 +7145,14 @@ class guiWin(QMainWindow):
         
         # Enable dragging of the image window or the scalebar
         if dragImgLeft and not isCustomAnnot:
+            x, y = event.pos().x(), event.pos().y()
             if hasattr(self, 'scaleBar'):
                 if self.scaleBar.isHighlighted():
-                    self.scaleBar.clicked = True
+                    self.scaleBar.mousePressed(x, y)
                     return
             if hasattr(self, 'timestamp'):
                 if self.timestamp.isHighlighted():
-                    self.timestamp.clicked = True
+                    self.timestamp.mousePressed(x, y)
                     return
             pg.ImageItem.mousePressEvent(self.img1, event)
             event.ignore()

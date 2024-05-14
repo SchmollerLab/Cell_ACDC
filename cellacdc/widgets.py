@@ -7348,6 +7348,8 @@ class ScaleBar(QGraphicsObject):
     
     def isHighlighted(self):
         return self._highlighted
+    
+    
         
     def setHighlighted(self, highlighted):
         if self._highlighted and highlighted:
@@ -7379,12 +7381,15 @@ class ScaleBar(QGraphicsObject):
         }
         return properties
     
-    def move(self, xc, yc):
+    def move(self, xm, ym):
         self._loc = 'Custom'
         
-        x0 = xc - self._length/2
+        Dy = ym - self.yc
+        Dx = xm - self.xc
+        
+        x0 = self.x0c + Dx
         x1 = x0 + self._length
-        y0 = y1 = yc
+        y0 = y1 = self.y0c + Dy
         self.plotItem.setData([x0, x1], [y0, y0])
         self.setTextPos()
     
@@ -7512,6 +7517,13 @@ class ScaleBar(QGraphicsObject):
         ymax = max(y_line_max, y_lab_max)
         xmax = max(x_line_max, x_lab_max)
         return ymin, xmin, ymax, xmax
+    
+    def mousePressed(self, x, y):
+        self.clicked = True
+        self.xc, self.yc = x, y
+        xx, yy = self.plotItem.getData()
+        self.x0c = xx[0]
+        self.y0c = yy[0]
     
     def removeFromAxis(self, ax):
         ax.removeItem(self.labelItem)
@@ -8573,6 +8585,9 @@ class TimestampItem(LabelItem):
         self.contextMenu.addSeparator()
         self.contextMenu.addAction(action)
     
+    def mousePressed(self, x, y):
+        self.clicked = True
+    
     def emitEditProperties(self):
         self.setHighlighted(False)
         self.sigEditProperties.emit(self.properties())
@@ -8638,8 +8653,18 @@ class TimestampItem(LabelItem):
         self._loc = loc
         self._font_size = font_size
 
-    def move(self, x, y):
-        self.setPos(x, y)
+    def move(self, xm, ym):
+        Dy = ym - self.yc
+        Dx = xm - self.xc
+        x0 = self.x0c + Dx
+        y0 = self.y0c + Dy
+        self.setPos(x0, y0)
+    
+    def mousePressed(self, x, y):
+        self.clicked = True
+        self.xc, self.yc = x, y
+        self.x0c = self.pos().x()
+        self.y0c = self.pos().y()
     
     def setText(self, frame_i):
         if not isinstance(frame_i, int):
