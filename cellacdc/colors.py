@@ -194,3 +194,16 @@ def rgb_uint_to_html_hex(rgb):
     r, g, b = rgb
     hex_color = f'#{r:02x}{g:02x}{b:02x}'
     return hex_color
+
+def merge_two_grayscale_imgs(
+        img1, img2, rgb1, rgb2, alpha=0.5,
+        brightness1=1.0, brightness2=1.0, dtype=np.uint8
+    ):
+    img1_rgb = (skimage.color.gray2rgb(img1)*rgb1).astype(dtype)
+    img2_rgb = (skimage.color.gray2rgb(img2)*rgb2).astype(dtype)
+    
+    merge = (
+        alpha*img1_rgb*brightness1 + (1-alpha)*img2_rgb*brightness2
+    ).astype(dtype)
+    
+    return merge
