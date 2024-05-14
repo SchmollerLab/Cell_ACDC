@@ -1781,7 +1781,7 @@ class InitFijiMacro:
             return
         
         macro_filepath = fiji_macros.init_macro(*win.init_macro_args)
-        macro_command = fiji_macros.command_run_macro(macro_command)
+        macro_command = fiji_macros.command_run_macro(macro_filepath)
         
         txt = html_utils.paragraph("""
             Cell-ACDC will now run the macro in the terminal.<br><br>
