@@ -14148,3 +14148,185 @@ class PreProcessParamsGroupbox(QGroupBox):
             })
         
         return recipe
+
+class InitFijiMacroDialog(QBaseDialog):
+    def __init__(self, parent=None):
+        self.cancel = True
+        
+        super().__init__(parent=parent)
+        
+        mainLayout = QVBoxLayout()
+        
+        infoLabel = QLabel(html_utils.paragraph(
+            """ 
+            Place all the <b>raw microscopy files in a folder without any other 
+            file</b><br>
+            and provide the following information:
+            """
+        ))
+        mainLayout.addWidget(infoLabel)
+        
+        gridLayout = QGridLayout()       
+         
+        row = 0
+        label = QLabel('Files internal structure: ')
+        gridLayout.addWidget(label, row, 0)
+        self.filesStructureCombobox = QComboBox()
+        self.filesStructureCombobox.addItems([
+            'Positions (aka "series") embedded in the file',
+            'Positions (aka "series") separated, one for each file'
+        ])
+        gridLayout.addWidget(self.filesStructureCombobox, row, 1)
+        infoButton = widgets.infoPushButton()
+        gridLayout.addWidget(infoButton, row, 2)
+        infoButton.clicked.connect(self.showInfoFileStructure)
+        
+        row += 1
+        label = QLabel('Folder with raw microscopy files: ')
+        gridLayout.addWidget(label, row, 0)
+        self.folderPathLineEdit = widgets.ElidingLineEdit()
+        gridLayout.addWidget(self.folderPathLineEdit, row, 1)
+        browseButton = widgets.browseFileButton(openFolder=True)
+        gridLayout.addWidget(browseButton, row, 2)
+        browseButton.sigPathSelected.connect(
+            partial(self.updateFolderPath, lineEdit=self.folderPathLineEdit)
+        )
+        
+        row += 1
+        label = QLabel('Channel(s) name: ')
+        gridLayout.addWidget(label, row, 0)
+        self.channelNamesLineEdit = widgets.alphaNumericLineEdit(
+            additionalChars=' ,'
+        )
+        gridLayout.addWidget(self.channelNamesLineEdit, row, 1)
+        infoButton = widgets.infoPushButton()
+        gridLayout.addWidget(infoButton, row, 2)
+        infoButton.clicked.connect(self.showInfoChannelName)
+        
+        
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+        
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+        
+        gridLayout.setColumnStretch(0, 0)
+        gridLayout.setColumnStretch(1, 1)
+        gridLayout.setColumnStretch(2, 0)
+        
+        mainLayout.addLayout(gridLayout)
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(buttonsLayout)
+        
+        self.setLayout(mainLayout)
+    
+    def showInfoFileStructure(self):
+        txt = html_utils.paragraph("""
+            Select whether the microscopy files contains multiple "series".<br><br>
+            This typically depends on how you acquired the images at the 
+            microscope, i.e., you generated multiple microscopy files 
+            (e.g., snapshots), or you setup automatic acquisition of multiple 
+            positions.
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.information(self, 'Files structure info', txt)
+    
+    def showInfoChannelName(self):
+        txt = html_utils.paragraph("""
+            Enter the channels name. Separate multiple channels with a comma.<br><br>
+            The channel names will be used to name the individual TIFF files 
+            (one for each channel).
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.information(self, 'Files structure info', txt)
+    
+    def updateFolderPath(self, path, lineEdit=''):
+        lineEdit.setText(path)
+    
+    def warnPathEmpty(self):
+        txt = html_utils.paragraph("""
+            Folder path <b>cannot be empty</b>.
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(self, 'Empty folder path', txt)
+    
+    def warnSelectedPathDoesNotExist(self, path):
+        txt = html_utils.paragraph("""
+            The selected path <b>does not exist</b>.<br><br>
+            Selected path:
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(self, 'Folder path does not exist', txt, commands=(path,))
+    
+    def warnSelectedPathNotAFolder(self, path):
+        txt = html_utils.paragraph("""
+            The selected path is <b>not a folder</b>.<br><br>
+            Selected path:
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(self, 'Selected path not a folder', txt, commands=(path,))
+    
+    def warnMultipleExtensionsPresent(self, path, extensions):
+        txt = html_utils.paragraph(f"""
+            The selected path <b>contains files with different extensions</b>.
+            <br><br>
+            Extensions present: <code>{extensions}</code><br><br>
+            Please, make sure that all the files in the folder have the same 
+            extension before proceeding.<br><br>
+            Selected path:
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(
+            self, 'Multiple file extensions detected', txt, commands=(path,)
+        )
+    
+    def warnChannelNamesEmpty(self):
+        txt = html_utils.paragraph("""
+            Channel(s) name <b>cannot be empty</b>.
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(self, 'Empty channel name', txt)
+    
+    def validate(self):
+        path = self.folderPath()
+        if not path:
+            self.warnPathEmpty()
+            return False
+        
+        if not os.path.exists(path):
+            self.warnSelectedPathDoesNotExist(path)
+            return False
+        
+        if not os.path.isdir(path):
+            self.warnSelectedPathNotAFolder(path)
+            return False
+        
+        files = os.listdir(path)
+        extensions = set([os.path.splittext(file)[1] for file in files])
+        if len(extensions) > 1:
+            self.warnMultipleExtensionsPresent(path, extensions)
+            return False
+
+        if not self.channelNamesLineEdit.text():
+            self.warnChannelNamesEmpty()
+            return False
+        
+        return True
+    
+    def folderPath(self):
+        return self.folderPathLineEdit.text()
+    
+    def ok_cb(self):
+        proceed = self.validate()
+        if not proceed:
+            return
+        
+        self.selectedFolderPath = self.folderPath()
+        self.filesStructure = self.filesStructureCombobox.currentText()
+        is_multiple_files = self.filesStructure.find('separated') != -1
+        self.init_macro_args = (
+            self.folderPath(), is_multiple_files, 
+            self.channelNamesLineEdit.text().split(',')
+            
+        )
+        self.cancel = False
+        self.close()

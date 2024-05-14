@@ -45,7 +45,7 @@ from .utils import computeMultiChannel as utilsComputeMultiCh
 from .utils import applyTrackFromTable as utilsApplyTrackFromTab
 from .utils import applyTrackFromTrackMateXML as utilsApplyTrackFromTrackMate
 from .info import utilsInfo
-from . import is_win, is_linux, settings_folderpath, issues_url
+from . import is_win, is_linux, settings_folderpath, issues_url, is_mac
 from . import settings_csv_path
 from . import path
 from . import printl
@@ -635,7 +635,8 @@ class mainWin(QMainWindow):
         self.workerFinished()
         msg = widgets.myMessageBox(wrapText=False)
         txt = html_utils.paragraph("""
-            To make this change effective, please restart Cell-ACDC. Thanks!
+            To make this change effective, please <b>restart</b> Cell-ACDC.<br><br>
+            Thanks!
         """)
         self.statusBarLayout.addWidget(QLabel(html_utils.paragraph(
             '<i>Restart Cell-ACDC for the change to take effect</i>', 
@@ -1487,20 +1488,27 @@ class mainWin(QMainWindow):
         
         useBioFormats = msg.clickedButton == useBioFormatsButton
         if self.dataStructButton.isEnabled() and useBioFormats:
-            self.dataStructButton.setPalette(self.defaultButtonPalette)
-            self.dataStructButton.setText(
-                '0. Restart Cell-ACDC to enable module 0 again.')
-            self.dataStructButton.setToolTip(
-                'Due to an interal limitation of the Java Virtual Machine\n'
-                'moduel 0 can be launched only once.\n'
-                'To use it again close and reopen Cell-ACDC'
-            )
-            self.dataStructButton.setDisabled(True)
-            self.dataStructWin = dataStruct.createDataStructWin(
-                parent=self, version=self._version
-            )
-            self.dataStructWin.show()
-            self.dataStructWin.main()
+            if is_win:
+                self.dataStructButton.setPalette(self.defaultButtonPalette)
+                self.dataStructButton.setText(
+                    '0. Restart Cell-ACDC to enable module 0 again.')
+                self.dataStructButton.setToolTip(
+                    'Due to an interal limitation of the Java Virtual Machine\n'
+                    'moduel 0 can be launched only once.\n'
+                    'To use it again close and reopen Cell-ACDC'
+                )
+                self.dataStructButton.setDisabled(True)
+                self.dataStructWin = dataStruct.createDataStructWin(
+                    parent=self, version=self._version
+                )
+                self.dataStructWin.show()
+                self.dataStructWin.main()
+            elif is_mac:
+                self.dataStructWin = (
+                    dataStruct.InitFijiMacro(self)
+                )
+                self.dataStructWin.run()
+                self.restoreDefaultButtons()
         elif msg.clickedButton == restructButton:
             self.progressWin = apps.QDialogWorkerProgress(
                 title='Re-structure image files log', parent=self,
