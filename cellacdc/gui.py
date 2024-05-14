@@ -10541,7 +10541,7 @@ class guiWin(QMainWindow):
             win.sigValueChanged.connect(self.updateTimestamp)
             win.exec_()
         else:
-            self.scaleBar.removeFromAxis(self.ax1)
+            self.timestamp.removeFromAxis(self.ax1)
         
         self.imgGrad.addTimestampAction.setChecked(checked)
     

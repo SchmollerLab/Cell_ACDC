@@ -8652,6 +8652,9 @@ class TimestampItem(LabelItem):
     
     def addToAxis(self, ax):
         ax.addItem(self)
+    
+    def removeFromAxis(self, ax):
+        ax.removeItem(self)
 
 class FontSizeWidget(QWidget):
     sigTextChanged = Signal(str)
