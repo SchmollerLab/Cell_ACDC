@@ -14170,10 +14170,25 @@ class InitFijiMacroDialog(QBaseDialog):
         gridLayout.addWidget(label, row, 0)
         self.folderPathLineEdit = widgets.ElidingLineEdit()
         gridLayout.addWidget(self.folderPathLineEdit, row, 1)
-        browseButton = widgets.browseFileButton(openFolder=True)
+        browseButton = widgets.browseFileButton(
+            openFolder=True, start_dir=myutils.getMostRecentPath()
+        )
         gridLayout.addWidget(browseButton, row, 2)
         browseButton.sigPathSelected.connect(
             partial(self.updateFolderPath, lineEdit=self.folderPathLineEdit)
+        )
+        
+        row += 1
+        label = QLabel('Folder where to save Position folders: ')
+        gridLayout.addWidget(label, row, 0)
+        self.dstFolderPathLineEdit = widgets.ElidingLineEdit()
+        gridLayout.addWidget(self.dstFolderPathLineEdit, row, 1)
+        browseButton = widgets.browseFileButton(
+            openFolder=True, start_dir=myutils.getMostRecentPath()
+        )
+        gridLayout.addWidget(browseButton, row, 2)
+        browseButton.sigPathSelected.connect(
+            partial(self.updateFolderPath, lineEdit=self.dstFolderPathLineEdit)
         )
         
         row += 1
@@ -14225,25 +14240,27 @@ class InitFijiMacroDialog(QBaseDialog):
     
     def updateFolderPath(self, path, lineEdit=''):
         lineEdit.setText(path)
-    
-    def warnPathEmpty(self):
-        txt = html_utils.paragraph("""
-            Folder path <b>cannot be empty</b>.
+        myutils.addToRecentPaths(path)
+        self.sender().setStartPath(path)
+        
+    def warnPathEmpty(self, desc: str):
+        txt = html_utils.paragraph(f"""
+            {desc.title()} folder path <b>cannot be empty</b>.
         """)
         msg = widgets.myMessageBox(wrapText=False)
         msg.warning(self, 'Empty folder path', txt)
     
-    def warnSelectedPathDoesNotExist(self, path):
-        txt = html_utils.paragraph("""
-            The selected path <b>does not exist</b>.<br><br>
+    def warnSelectedPathDoesNotExist(self, path, desc):
+        txt = html_utils.paragraph(f"""
+            The selected {desc} path <b>does not exist</b>.<br><br>
             Selected path:
         """)
         msg = widgets.myMessageBox(wrapText=False)
         msg.warning(self, 'Folder path does not exist', txt, commands=(path,))
     
-    def warnSelectedPathNotAFolder(self, path):
-        txt = html_utils.paragraph("""
-            The selected path is <b>not a folder</b>.<br><br>
+    def warnSelectedPathNotAFolder(self, path, desc):
+        txt = html_utils.paragraph(f"""
+            The selected {desc} path is <b>not a folder</b>.<br><br>
             Selected path:
         """)
         msg = widgets.myMessageBox(wrapText=False)
@@ -14270,28 +14287,68 @@ class InitFijiMacroDialog(QBaseDialog):
         msg = widgets.myMessageBox(wrapText=False)
         msg.warning(self, 'Empty channel name', txt)
     
+    def dstFolderPath(self):
+        return self.dstFolderPathLineEdit.text()
+    
+    def checkPosFoldersExisting(self):
+        dstPath = self.dstFolderPath()
+        pos_foldernames = myutils.get_pos_foldernames(dstPath)
+        if not pos_foldernames:
+            return True
+        
+        proceed = self.warnPosFoldersExistingDstPath(dstPath)
+        return proceed
+    
+    def warnPosFoldersExistingDstPath(self, dstPath):
+        txt = html_utils.paragraph(f"""
+            The selected path <b>already contains Position folders</b>.<br><br>
+            If you continue, the present Position folders might be 
+            <b>OVERWRITTEN</b>.<br><br>
+            Do you want to continue?
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        _, yesButton = msg.warning(
+            self, 'Existing Position folders detected', txt, 
+            path_to_browse=dstPath, 
+            buttonsTexts=(
+                'No, let me change destination', 
+                'Yes, overwrite existing folders'
+            )
+        )
+        return msg.clickedButton == yesButton
+    
     def validate(self):
-        path = self.folderPath()
-        if not path:
-            self.warnPathEmpty()
-            return False
+        srcPath = self.folderPath()
+        dstPath = self.dstFolderPath()
         
-        if not os.path.exists(path):
-            self.warnSelectedPathDoesNotExist(path)
-            return False
+        paths = {
+            'source': srcPath, 'destination': dstPath
+        }
+        for desc, path in paths.items():
+            if not path:
+                self.warnPathEmpty(desc)
+                return False
+            
+            if not os.path.exists(path):
+                self.warnSelectedPathDoesNotExist(path, desc)
+                return False
+            
+            if not os.path.isdir(path):
+                self.warnSelectedPathNotAFolder(path, desc)
+                return False
         
-        if not os.path.isdir(path):
-            self.warnSelectedPathNotAFolder(path)
-            return False
-        
-        files = os.listdir(path)
-        extensions = set([os.path.splittext(file)[1] for file in files])
+        files = os.listdir(srcPath)
+        extensions = set([os.path.splitext(file)[1] for file in files])
         if len(extensions) > 1:
-            self.warnMultipleExtensionsPresent(path, extensions)
+            self.warnMultipleExtensionsPresent(srcPath, extensions)
             return False
 
         if not self.channelNamesLineEdit.text():
             self.warnChannelNamesEmpty()
+            return False
+        
+        proceed = self.checkPosFoldersExisting()
+        if not proceed:
             return False
         
         return True
@@ -14307,10 +14364,11 @@ class InitFijiMacroDialog(QBaseDialog):
         self.selectedFolderPath = self.folderPath()
         self.filesStructure = self.filesStructureCombobox.currentText()
         is_multiple_files = self.filesStructure.find('separated') != -1
-        self.init_macro_args = (
-            self.folderPath(), is_multiple_files, 
-            self.channelNamesLineEdit.text().split(',')
-            
-        )
+        self.init_macro_kwargs = {
+            'source_dir': self.folderPath(), 
+            'dst_dir': self.dstFolderPath(),
+            'is_multiple_files': is_multiple_files, 
+            'channels': self.channelNamesLineEdit.text().split(',')
+        }
         self.cancel = False
         self.close()

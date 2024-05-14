@@ -1746,7 +1746,7 @@ class InitFijiMacro:
             its creation process and cancel its execution later.
         """)
         commands = None
-        if not myutils.run_fiji_command():
+        if not os.path.exists(myutils.get_fiji_exec_folderpath()):
             try:
                 shutil.rmtree(acdc_fiji_path)
             except Exception as err:
@@ -1780,8 +1780,8 @@ class InitFijiMacro:
             self.cancel()
             return
         
-        macro_filepath = fiji_macros.init_macro(*win.init_macro_args)
-        macro_command = fiji_macros.command_run_macro(macro_command)
+        macro_filepath = fiji_macros.init_macro(**win.init_macro_kwargs)
+        macro_command = fiji_macros.command_run_macro(macro_filepath)
         
         txt = html_utils.paragraph("""
             Cell-ACDC will now run the macro in the terminal.<br><br>
@@ -1794,13 +1794,21 @@ class InitFijiMacro:
         msg = widgets.myMessageBox(wrapText=False)
         msg.information(
             self.acdcLauncher, 'Fiji macro command', txt, 
-            buttonsTexts=('Cancel', 'Ok'),
-            commands=(macro_filepath)
+            buttonsTexts=('Cancel', 'Ok, run now'),
+            commands=(macro_command,), 
+            path_to_browse=os.path.dirname(macro_filepath)
         )
         if msg.cancel:
             self.cancel()
             return
         
+        sep = '-'*100
+        self.acdcLauncher.logger.info(
+            f'{sep}\n'
+            'Running Fiji macro with following command:\n\n'
+            f'  {macro_command}'
+            f'\n{sep}'
+        )
         success = fiji_macros.run_macro(macro_command)
         if success:
             txt = html_utils.paragraph("""

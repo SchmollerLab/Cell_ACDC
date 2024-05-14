@@ -18,20 +18,8 @@ Ext.getSeriesCount(seriesCount);
 filename = File.getName(id);
 print("Number of series in "+ filename +" is: "+seriesCount);
 
-//Create folder
-path = File.getParent(id);
-wpath= replace(path, "/", "\\");
-osInfo = getInfo("os.name");
-WindowsIdx = indexOf(osInfo, "Windows");
-if (WindowsIdx != -1)
-{
-	exec("cmd /c C:\\Windows\\explorer.exe \""+ wpath +"\"");
-} else {
-	exec("open " + path);
-}
-folder = path;
-MIA = folder;
-File.makeDirectory(MIA);
+// Get destination folder
+dst_path = ...;
 
 //open each series by splitting channels and saving them separately into .tif files
 S = 1; //start from S series (from 1)
@@ -48,7 +36,7 @@ for (s=S-1; s<End; s++) { //for loop for iterating through the series
 	Ext.getSizeC(sizeC); //Gets the number of channels in the current series.
 	//Ext.getSizeZ(sizeZ); //Gets the number of focal planes in the current series.
 	print("Saving s="+seriesNum+"/"+End+"..."); //Display message
-	pos_path = folder+"/Position_"+seriesNum;
+	pos_path = dst_path+"/Position_"+seriesNum;
 	File.makeDirectory(pos_path);
 	images_path = pos_path+"/Images";
 	File.makeDirectory(images_path);

@@ -1442,6 +1442,7 @@ class mainWin(QMainWindow):
 
         QTimer.singleShot(100, self._showDataStructWin)
 
+    @exception_handler
     def _showDataStructWin(self):
         msg = widgets.myMessageBox(wrapText=False, showCentered=False)
         bioformats_url = 'https://www.openmicroscopy.org/bio-formats/'

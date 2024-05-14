@@ -30,20 +30,8 @@ if (files_folder_name != "raw_microscopy_files") {
 	files_folder = files_folder_new;
 }
 
-//Create TIFFs folder
-path = File.getParent(files_folder);
-wpath= replace(path, "/", "\\");
-osInfo = getInfo("os.name");
-WindowsIdx = indexOf(osInfo, "Windows");
-if (WindowsIdx != -1)
- {
-	exec("cmd /c C:\\Windows\\explorer.exe \""+ wpath +"\"");
-} else {
-	exec("open " + path);
-}
-
-TIFFs = path;
-File.makeDirectory(TIFFs);
+// Get destination folder
+dst_path = ...;
 
 for (s = 0; s < sEnd; s++) {
 	id = files_folder + "/" + ids[s];
@@ -62,7 +50,7 @@ for (s = 0; s < sEnd; s++) {
 	filenameNoExtension = File.nameWithoutExtension;
 	Ext.getSizeC(sizeC); //Gets the number of channels in the current series.
 	print("Saving s="+seriesNum+"/"+sEnd+"..."); //Display message
-	pos_path = TIFFs+"/Position_"+seriesNum;
+	pos_path = dst_path+"/Position_"+seriesNum;
 	File.makeDirectory(pos_path);
 	images_path = pos_path+"/Images";
 	File.makeDirectory(images_path);
