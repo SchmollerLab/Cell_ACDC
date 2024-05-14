@@ -43,7 +43,7 @@ if GUI_INSTALLED:
     
 from . import core, load
 from . import html_utils, is_linux, is_win, is_mac, issues_url, is_mac_arm64
-from . import cellacdc_path, printl, acdc_fiji_path, logs_path
+from . import cellacdc_path, printl, acdc_fiji_path, logs_path, acdc_ffmpeg_path
 from . import user_profile_path, recentPaths_path
 from . import models_list_file_path
 from . import github_home_url
