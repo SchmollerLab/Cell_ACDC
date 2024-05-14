@@ -24601,8 +24601,13 @@ class guiWin(QMainWindow):
         self.store_data()
         posData = self.data[self.pos_i]
         if self.exportToVideoPreferences['is_timelapse']:
+            # Go to requested start frame 
+            posData.frame_i = preferences['start_nav_var_num'] - 1           
+            self.get_data()
+            self.updateAllImages()
             self.exportToVideoNavVarIdxToRestore = posData.frame_i
         else:
+            self.update_z_slice(preferences['start_nav_var_num'] - 1)
             self.exportToVideoNavVarIdxToRestore = (
                 self.zSliceScrollBar.sliderPosition()
             )
@@ -24711,6 +24716,7 @@ class guiWin(QMainWindow):
             self.get_data()
             self.store_data()
             self.updateAllImages()
+            self.navigateScrollBar.setSliderPosition(posData.frame_i+1)
         else:
             self.update_z_slice(self.exportToVideoNavVarIdxToRestore)
         
