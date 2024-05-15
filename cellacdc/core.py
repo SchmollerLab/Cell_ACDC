@@ -1671,7 +1671,16 @@ def brownian(x0, n, dt, delta, out=None):
 
     return out
 
-def segm_model_segment(model, image, model_kwargs, frame_i=None):
+def preprocess_image_from_recipe(image, recipe: dict):
+    # here apply recipe
+    return image
+
+def segm_model_segment(
+        model, image, model_kwargs, frame_i=None, preproc_recipe=None
+    ):
+    if preproc_recipe is not None:
+        image = preprocess_image_from_recipe(image, preproc_recipe)
+        
     try:
         lab = model.segment(image, **model_kwargs)
     except Exception as e:
