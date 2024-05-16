@@ -33,9 +33,8 @@ from . import prompts, load, myutils, apps, core, dataPrep, widgets
 from . import qrc_resources, html_utils, printl
 from . import exception_handler
 from . import workers
-from . import _palettes
-from . import cellacdc_path, settings_folderpath, recentPaths_path
-from . import features
+from . import recentPaths_path
+from . import config
 from . import urls
 
 if os.name == 'nt':
@@ -114,7 +113,8 @@ class segmWorker(QRunnable):
             signals=self.signals,
             logger_func=self.signals.progress.emit,
             innerPbar_available=mainWin.innerPbar_available,
-            is_segment3DT_available=mainWin.is_segment3DT_available
+            is_segment3DT_available=mainWin.is_segment3DT_available, 
+            preproc_recipe=mainWin.preproc_recipe
         )
     
     def run_kernel(self, mainWin):
@@ -550,24 +550,31 @@ class segmWin(QMainWindow):
             if abort:
                 self.close()
                 return
-
-        myutils.log_segm_params(
-            model_name, win.init_kwargs, win.model_kwargs, 
-            logger_func=self.logger.info
-        )
         
         if model_name != 'thresholding':
             self.model_kwargs = win.model_kwargs
-        self.standardPostProcessKwargs = win.postProcessGroupbox.kwargs()
-        self.customPostProcessFeatures = win.selectedFeaturesRange()
-        self.customPostProcessGroupedFeatures = win.groupedFeatures()
+        self.standardPostProcessKwargs = win.standardPostProcessKwargs
+        self.customPostProcessFeatures = win.customPostProcessFeatures
+        self.customPostProcessGroupedFeatures = (
+            win.customPostProcessGroupedFeatures
+        )
 
         self.applyPostProcessing = win.applyPostProcessing
         self.secondChannelName = win.secondChannelName
+        
+        myutils.log_segm_params(
+            model_name, win.init_kwargs, win.model_kwargs, 
+            logger_func=self.logger.info, 
+            preproc_recipe=win.preproc_recipe, 
+            apply_post_process=self.applyPostProcessing, 
+            standard_postprocess_kwargs=self.standardPostProcessKwargs, 
+            custom_postprocess_features=self.customPostProcessFeatures
+        )
 
         init_kwargs = win.init_kwargs
         self.init_model_kwargs = init_kwargs
-
+        self.preproc_recipe = win.preproc_recipe
+        
         # Initialize model
         use_gpu = init_kwargs.get('gpu', False)
         proceed = myutils.check_cuda(model_name, use_gpu, qparent=self)
@@ -576,13 +583,13 @@ class segmWin(QMainWindow):
             if abort:
                 self.close()
                 return
-
+        
         self.model = myutils.init_segm_model(acdcSegment, posData, init_kwargs) 
         try:
             self.model.setupLogger(self.logger)
         except Exception as e:
             pass
-
+        
         self.predictCcaState_model = None
 
         self.is_segment3DT_available = False
@@ -595,25 +602,7 @@ class segmWin(QMainWindow):
         if len(user_ch_file_paths)>1 and posData.SizeT>1:
             self.addPbar(add_inner=True)
             self.innerPbar_available = True
-
-
-        # if posData.SizeT == 1:
-        #     # Ask if I should predict budding
-        #     msg = widgets.myMessageBox(wrapText=False)
-        #     _, yesButton, noButton = msg.question(
-        #         self, 'Predict budding?',
-        #         'Do you want to automatically predict which cells are budding<br>'
-        #         'using <b>YeastMate</b> (relevant only to budding yeast cells)?',
-        #         buttonsTexts=('Cancel', 'Yes', 'No')
-        #     )
-        #     if msg.clickedButton == yesButton:
-        #         self.setPredictBuddingModel()
-        #     elif msg.cancel:
-        #         abort = self.doAbort()
-        #         if abort:
-        #             self.close()
-        #             return
-
+            
         # Check if there are segmentation already computed
         self.selectedSegmFile = None
         self.endFilenameSegm = 'segm.npz'
@@ -640,7 +629,7 @@ class segmWin(QMainWindow):
 
         if self.selectedSegmFile is not None:
             self.endFilenameSegm = self.selectedSegmFile[len(posData.basename):]
-
+        
         if askNewName:
             self.isNewSegmFile = True
             win = apps.filenameDialog(
@@ -669,7 +658,9 @@ class segmWin(QMainWindow):
             **self.customPostProcessFeatures
         }
         posData.saveSegmHyperparams(
-            model_name, self.model_kwargs, post_process_params
+            model_name, self.init_model_kwargs, self.model_kwargs, 
+            post_process_params=post_process_params, 
+            preproc_recipe=self.preproc_recipe
         )
 
         # Ask ROI
@@ -987,8 +978,13 @@ class segmWin(QMainWindow):
             'init_tracker_params': self.tracker_init_params,
             'tracker_params': track_params,
             'standard_postprocess_features': self.standardPostProcessKwargs,
-            'custom_postprocess_features': self.customPostProcessFeatures
+            'custom_postprocess_features': self.customPostProcessFeatures, 
         }
+        preprocessing_items = config.preprocess_recipe_to_ini_items(
+            self.preproc_recipe
+        )
+        ini_items = {**ini_items, **preprocessing_items}
+                
         grouped_features = self.customPostProcessGroupedFeatures
         for category, metrics_names in grouped_features.items():
             category_params = {}

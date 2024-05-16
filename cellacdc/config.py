@@ -2,6 +2,12 @@ import argparse
 import configparser
 import pprint
 
+from typing import get_type_hints 
+
+import re
+
+from . import printl
+
 class ConfigParser(configparser.ConfigParser):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -73,3 +79,79 @@ except:
     print('Importing from notebook, ignoring Cell-ACDC argument parser...')
     parser_args = {}
     parser_args['debug'] = False
+
+def preprocessing_mapper():
+    from cellacdc import preprocess, types
+    from inspect import getmembers, isfunction
+    functions = getmembers(preprocess, isfunction)
+    mapper = {}
+    for func_name, func in functions:
+        if func_name.startswith('_'):
+            continue
+        
+        method = func_name.title()
+        mapper[method] = {
+            'widgets': {}, 'function': func
+        }
+        type_hints = get_type_hints(func)
+        for param, type_hint in type_hints.items():
+            # widget must be implemented in cellacdc.widgets module
+            if type_hint == types.Vector:
+                widget = 'VectorLineEdit'
+            elif type_hint == float:
+                widget = 'FloatLineEdit'
+            elif type_hint == str:
+                widget = 'LineEdit'
+            elif type_hint == int:
+                widget = 'IntLineEdit'
+            
+            mapper[method]['widgets'][param.capitalize()] = widget
+    
+    return mapper
+
+def preprocess_recipe_to_ini_items(preproc_recipe):
+    if preproc_recipe is None:
+        return {}
+    
+    ini_items = {}
+    for s, step in enumerate(preproc_recipe):
+        section = f'preprocess.step{s+1}'
+        ini_items[section] = {}
+        ini_items[section]['method'] = step['method']
+        for option, value in step['kwargs'].items():
+            ini_items[section][option] = str(value)
+    return ini_items
+
+def preprocess_ini_items_to_recipe(ini_items):
+    recipe = {}
+    
+    for section, section_items in ini_items.items():
+        if not section.startswith('preprocess.step'):
+            continue
+        
+        step_n = int(re.findall(r'step(\d+)', section)[0])
+        recipe[step_n] = {'method': section_items['method']}
+        kwargs = {}
+        for option, value_str in section_items.items():
+            if option == 'method':
+                continue
+            
+            value = value_str
+            if isinstance(value_str, str):
+                for _type in (int, float, str):
+                    try:
+                        value = _type(value_str)
+                        break
+                    except Exception as e:
+                        continue
+            
+            kwargs[option] = value
+            
+        recipe[step_n]['kwargs'] = kwargs
+    
+    recipe = [value for key, value in sorted(recipe.items())]
+    
+    if not recipe:
+        return
+    
+    return recipe

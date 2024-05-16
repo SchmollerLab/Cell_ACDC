@@ -2042,7 +2042,9 @@ class loadData:
             cp.write(configfile)
 
     def saveSegmHyperparams(
-            self, model_name='', hyperparams=None, post_process_params=None
+            self, model_name, init_kwargs, segment_kwargs, 
+            post_process_params=None, 
+            preproc_recipe=None
         ):
         cp = config.ConfigParser()
 
@@ -2050,30 +2052,43 @@ class loadData:
             cp.read(self.segm_hyperparams_ini_path)
         
         segmEndName = self.getSegmEndname()
-        section = segmEndName
         segm_filename = os.path.basename(self.segm_npz_path)
-        if section not in cp:
-            cp[section] = {}
 
-        cp[section]['segmentation_filename'] = segm_filename
+        metadata_section = f'{segmEndName}.metadata'
+        cp[metadata_section] = {}
+        
+        cp[metadata_section]['segmentation_filename'] = segm_filename
+        cp[metadata_section]['segmented_channel'] = self.user_ch_name
+        now = datetime.now().strftime(r'%Y-%m-%d %H:%M:%S')
+        cp[metadata_section]['segmented_on'] = now
+        cp[metadata_section]['model_name'] = model_name
 
-        cp[section]['segmented_channel'] = self.user_ch_name
-
-        now = datetime.now().strftime(r'%Y-%m-%d_%H:%M:%S')
-        cp[section]['last_saved_or_edited'] = now
-
-        if model_name:
-            cp[section]['model_name'] = model_name
-
-        if hyperparams is not None:            
-            cp[section] = {'segmented_channel': self.user_ch_name}
-            for key, value in hyperparams.items():
-                cp[section][key] = str(value)
+        init_section = f'{segmEndName}.init'
+        cp[init_section] = {}
+        for key, value in init_kwargs.items():
+            cp[init_section][key] = str(value)
+        
+        segment_section = f'{segmEndName}.segment'
+        cp[segment_section] = {}
+        for key, value in segment_kwargs.items():
+            cp[segment_section][key] = str(value)
 
         if post_process_params is not None:
+            post_process_section = f'{segmEndName}.postprocess'
+            cp[post_process_section] = {}
             for key, value in post_process_params.items():
-                cp[section][key] = str(value)
+                cp[post_process_section][key] = str(value)
 
+        if preproc_recipe is not None:
+            preproc_ini_items = config.preprocess_recipe_to_ini_items(
+                preproc_recipe
+            )
+            for preproc_section, section_items in preproc_ini_items.items():
+                segm_preproc_section = f'{segmEndName}.{preproc_section}'
+                cp[segm_preproc_section] = {}
+                for key, value in section_items.items():
+                    cp[segm_preproc_section][key] = str(value)
+        
         with open(self.segm_hyperparams_ini_path, 'w') as configfile:
             cp.write(configfile)
     

@@ -392,5 +392,9 @@ def run_cli(ini_filepath):
     if workflow_type == 'segmentation and/or tracking':
         run_segm_workflow(workflow_params, logger, log_path)
     
+    logger.info('**********************************************')
+    logger.info(f'Cell-ACDC command-line closed. {myutils.get_salute_string()}')
+    logger.info('**********************************************')
+    
     
     

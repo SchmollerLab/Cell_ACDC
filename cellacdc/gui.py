@@ -643,8 +643,7 @@ class saveDataWorker(QObject):
                 if posData.pos_foldername not in posToSave:
                     self.progress.emit(f'Skipping {posData.relPath}')
                     continue
-            
-            # posData.saveSegmHyperparams()
+
             posData.saveCustomAnnotationParams()
             current_frame_i = posData.frame_i
 
@@ -14206,6 +14205,7 @@ class guiWin(QMainWindow):
             except AttributeError:
                 url = None
             
+            self.preproc_recipe = None
             initLastParams = True
             if model_name == 'thresholding':
                 win = apps.QDialogAutomaticThresholding(
@@ -14249,19 +14249,27 @@ class guiWin(QMainWindow):
                 self.logger.info('Segmentation process cancelled.')
                 self.titleLabel.setText('Segmentation process cancelled.')
                 return
-
-            myutils.log_segm_params(
-                model_name, win.init_kwargs, win.model_kwargs, 
-                logger_func=self.logger.info
-            )
             
             if model_name != 'thresholding':
                 self.model_kwargs = win.model_kwargs
-            self.standardPostProcessKwargs = win.postProcessGroupbox.kwargs()
-            self.customPostProcessFeatures = win.selectedFeaturesRange()
-            self.customPostProcessGroupedFeatures = win.groupedFeatures()
+            
+            self.standardPostProcessKwargs = win.standardPostProcessKwargs
+            self.customPostProcessFeatures = win.customPostProcessFeatures
+            self.customPostProcessGroupedFeatures = (
+                win.customPostProcessGroupedFeatures
+            )
             self.applyPostProcessing = win.applyPostProcessing
             self.secondChannelName = win.secondChannelName
+            self.preproc_recipe = win.preproc_recipe
+            
+            myutils.log_segm_params(
+                model_name, win.init_kwargs, win.model_kwargs, 
+                logger_func=self.logger.info, 
+                preproc_recipe=win.preproc_recipe, 
+                apply_post_process=self.applyPostProcessing, 
+                standard_postprocess_kwargs=self.standardPostProcessKwargs, 
+                custom_postprocess_features=self.customPostProcessFeatures
+            )
 
             use_gpu = win.init_kwargs.get('gpu', False)
             proceed = myutils.check_cuda(model_name, use_gpu, qparent=self)
@@ -14276,18 +14284,6 @@ class guiWin(QMainWindow):
             except Exception as e:
                 pass
             self.models[idx] = model
-
-            postProcessParams = {
-                'applied_postprocessing': self.applyPostProcessing
-            }
-            postProcessParams = {
-                **postProcessParams, 
-                **self.standardPostProcessKwargs,
-                **self.customPostProcessFeatures
-            }
-            posData.saveSegmHyperparams(
-                model_name, self.model_kwargs, postProcessParams
-            )
             model.model_name = model_name
         else:
             model = self.models[idx]
@@ -14459,15 +14455,22 @@ class guiWin(QMainWindow):
         if model_name == 'thresholding':
             win.model_kwargs = autoThreshWin.segment_kwargs
 
+        self.standardPostProcessKwargs = win.standardPostProcessKwargs
+        self.customPostProcessFeatures = win.customPostProcessFeatures
+        self.customPostProcessGroupedFeatures = (
+            win.customPostProcessGroupedFeatures
+        )
+        self.applyPostProcessing = win.applyPostProcessing
+        self.preproc_recipe = win.preproc_recipe
+        
         myutils.log_segm_params(
             model_name, win.init_kwargs, win.model_kwargs, 
-            logger_func=self.logger.info
+            logger_func=self.logger.info, 
+            preproc_recipe=win.preproc_recipe, 
+            apply_post_process=self.applyPostProcessing, 
+            standard_postprocess_kwargs=self.standardPostProcessKwargs, 
+            custom_postprocess_features=self.customPostProcessFeatures
         )
-        
-        self.standardPostProcessKwargs = win.postProcessGroupbox.kwargs()
-        self.customPostProcessFeatures = win.selectedFeaturesRange()
-        self.customPostProcessGroupedFeatures = win.groupedFeatures()
-        self.applyPostProcessing = win.applyPostProcessing
         
         secondChannelData = None
         if win.secondChannelName is not None:

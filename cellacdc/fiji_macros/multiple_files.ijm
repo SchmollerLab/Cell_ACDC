@@ -92,6 +92,7 @@ for (s = 0; s < sEnd; s++) {
 }
 
 print("All done!");
+run("Quit");
 
 function nss(n, numPos){
 	ss = "";

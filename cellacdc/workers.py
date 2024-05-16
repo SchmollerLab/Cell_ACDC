@@ -407,8 +407,9 @@ class LabelRoiWorker(QObject):
                 img, secondChannelImg
             )
         
-        lab = self.Gui.labelRoiModel.segment(
-            img, **self.Gui.model_kwargs
+        lab = core.segm_model_segment(
+            self.Gui.labelRoiModel, img, self.Gui.model_kwargs, 
+            preproc_recipe=self.Gui.preproc_recipe
         )
         if self.Gui.applyPostProcessing:
             lab = core.post_process_segm(
@@ -800,11 +801,14 @@ class segmVideoWorker(QObject):
 
     def __init__(self, posData, paramWin, model, startFrameNum, stopFrameNum):
         QObject.__init__(self)
-        self.standardPostProcessKwargs = paramWin.postProcessGroupbox.kwargs()
+        self.standardPostProcessKwargs = paramWin.standardPostProcessKwargs
         self.applyPostProcessing = paramWin.applyPostProcessing
-        self.customPostProcessFeatures = paramWin.selectedFeaturesRange()
-        self.customPostProcessGroupedFeatures = paramWin.groupedFeatures()
+        self.customPostProcessFeatures = paramWin.customPostProcessFeatures
+        self.customPostProcessGroupedFeatures = (
+            paramWin.customPostProcessGroupedFeatures
+        )
         self.model_kwargs = paramWin.model_kwargs
+        self.preproc_recipe = paramWin.preproc_recipe
         self.secondChannelName = paramWin.secondChannelName
         self.model = model
         self.posData = posData
@@ -859,7 +863,8 @@ class segmVideoWorker(QObject):
                 img = img[z_slice]
                 
             lab = core.segm_model_segment(
-                self.model, img, self.model_kwargs, frame_i=frame_i
+                self.model, img, self.model_kwargs, frame_i=frame_i, 
+                preproc_recipe=self.preproc_recipe
             )
             if self.applyPostProcessing:
                 lab = core.post_process_segm(

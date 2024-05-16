@@ -10185,7 +10185,11 @@ class QDialogModelParams(QDialog):
             self.preProcessParamsGroupbox = PreProcessParamsGroupbox(
                 parent=self
             )
+            self.preProcessParamsGroupbox.setChecked(False)
             scrollAreaLayout.addWidget(self.preProcessParamsGroupbox)
+            self.preProcessParamsGroupbox.sigLoadRecipe.connect(
+                self.loadPreprocRecipe
+            )
         
         initGroupBox, self.init_argsWidgets = self.createGroupParams(
             init_params, 'Parameters for model initialization'
@@ -10311,6 +10315,22 @@ class QDialogModelParams(QDialog):
         self.setLayout(mainLayout)
         self.setFont(font)
         # self.setModal(True)
+    
+    def loadPreprocRecipe(self):
+        if self.configPars is None:
+            return
+        
+        preprocConfigPars = {}
+        for section in self.configPars.sections():
+            if not section.startswith(f'{self.model_name}.preprocess'):
+                continue      
+            
+            preprocConfigPars[section] = self.configPars[section]
+        
+        if not preprocConfigPars:
+            return
+        
+        self.preProcessParamsGroupbox.loadRecipe(preprocConfigPars)
     
     def connectCustomSignals(self, model_module):
         if model_module is None:
@@ -10749,6 +10769,10 @@ class QDialogModelParams(QDialog):
 
     def ok_cb(self, checked):
         self.cancel = False
+        self.preproc_recipe = None
+        if self.preProcessParamsGroupbox is not None:
+            self.preproc_recipe = self.preProcessParamsGroupbox.recipe()
+            
         self.init_kwargs = self.argsWidgets_to_kwargs(self.init_argsWidgets)
         self.model_kwargs = self.argsWidgets_to_kwargs(
             self.argsWidgets
@@ -10767,12 +10791,24 @@ class QDialogModelParams(QDialog):
         self.inputChannelName = 'None'
         if self.channelCombobox is not None:
             self.inputChannelName = self.channelCombobox.currentText()
+        
+        self.standardPostProcessKwargs = self.postProcessGroupbox.kwargs()
+        self.customPostProcessFeatures = self.selectedFeaturesRange()
+        self.customPostProcessGroupedFeatures = self.groupedFeatures()
         self._saveParams()
         self.close()
 
     def _saveParams(self):
         if self.configPars is None:
             self.configPars = config.ConfigParser()
+        
+        if self.preProcessParamsGroupbox is not None:
+            preprocCp = self.preProcessParamsGroupbox.recipeConfigPars(
+                self.model_name
+            )
+            for section in preprocCp.sections():
+                self.configPars[section] = preprocCp[section]
+        
         self.configPars[f'{self.model_name}.init'] = {}
         self.configPars[f'{self.model_name}.segment'] = {}
         for key, val in self.init_kwargs.items():
@@ -10799,6 +10835,8 @@ class QDialogModelParams(QDialog):
         with open(self.ini_path, 'w') as configfile:
             self.configPars.write(configfile)
 
+        print(f'Segmentation parameters saved at "{self.ini_path}"')
+        
     def exec_(self):
         self.show(block=True)
 
@@ -14052,12 +14090,19 @@ class DataPrepSubCropsPathsDialog(QBaseDialog):
         self.cancel = False
         self.close()
 
-class PreProcessParamsGroupbox(QGroupBox):
+class PreProcessParamsGroupbox(QWidget):
+    sigLoadRecipe = Signal()
+    
     def __init__(self, parent=None):
         super().__init__(parent)
         
-        self.setTitle('Pre-processing')
-        self.setCheckable(True)
+        mainLayout = QVBoxLayout()
+        
+        groupbox = QGroupBox()
+        self.groupbox = groupbox
+        
+        groupbox.setTitle('Pre-processing')
+        groupbox.setCheckable(True)
         
         self.gridLayout = QGridLayout()        
         self.row = -1
@@ -14067,11 +14112,60 @@ class PreProcessParamsGroupbox(QGroupBox):
         self.gridLayout.setColumnStretch(1, 1)
         self.gridLayout.setColumnStretch(2, 0)
         self.gridLayout.setColumnStretch(3, 0)
+        groupbox.setLayout(self.gridLayout)
+        
+        buttonsLayout = QHBoxLayout()
+        # saveRecipeButton = widgets.savePushButton()
+        loadRecipeButton = widgets.reloadPushButton('Load last parameters')
+        
+        buttonsLayout.addStretch(1)
+        # buttonsLayout.addWidget(saveRecipeButton)
+        buttonsLayout.addWidget(loadRecipeButton)
+        
+        loadRecipeButton.clicked.connect(self.emitLoadRecipe)
+        
+        mainLayout.addWidget(groupbox)
+        mainLayout.addLayout(buttonsLayout)
         
         self.addStep()
         
-        self.setLayout(self.gridLayout)
+        mainLayout.setContentsMargins(0, 0, 0, 0)
+        self.setLayout(mainLayout)
     
+    def setChecked(self, checked):
+        self.groupbox.setChecked(checked)
+    
+    def emitLoadRecipe(self):
+        self.sigLoadRecipe.emit()
+    
+    def loadRecipe(self, configPars: dict):
+        for stepWidgets in self.stepsWidgets:
+            stepWidgets['delButton'].click()
+        
+        configPars = self.sortStepsConfigPars(configPars)
+        for i in range(1, len(configPars)):
+            self.stepsWidgets[i-1]['addButton'].click()
+        
+        for s, (section, section_items) in enumerate(configPars.items()):
+            method = section_items['method']
+            self.stepsWidgets[s]['selector'].setCurrentText(method)
+            for label, widget in self.stepsWidgets[s]['widgets']:
+                option = label.text().lower()
+                value = section_items[option]
+                widget.setText(value)
+        
+        self.setChecked(True)
+    
+    def sortStepsConfigPars(self, configPars: dict):
+        sortedConfigPars = {}
+        sortedKeys = sorted(
+            configPars.keys(), 
+            key=lambda key: int(re.findall(r'step(\d+)', key)[0])
+        )
+        for key in sortedKeys:
+            sortedConfigPars[key] = configPars[key]
+        return sortedConfigPars
+        
     def addStep(self):
         stepWidgets = {}
         
@@ -14098,10 +14192,10 @@ class PreProcessParamsGroupbox(QGroupBox):
         
         self.row += 1
         stepWidgets['widgets'] = []
-        for labelText, widgetFunc in selector.widgets().items():
+        for labelText, widgetName in selector.widgets().items():
             label = QLabel(labelText)
             self.gridLayout.addWidget(label, self.row, 0) 
-            widget = widgetFunc()
+            widget = getattr(widgets, widgetName)()
             self.gridLayout.addWidget(widget, self.row, 1)
             self.row += 1
             stepWidgets['widgets'].append((label, widget))
@@ -14136,9 +14230,15 @@ class PreProcessParamsGroupbox(QGroupBox):
         
         del self.stepsWidgets[idx]
     
+    def isChecked(self):
+        return self.groupbox.isChecked()
+    
     def recipe(self):
         recipe = []
-        for stepWidgets in enumerate(self.stepsWidgets):
+        if not self.groupbox.isChecked():
+            return recipe
+        
+        for stepWidgets in self.stepsWidgets:
             method = stepWidgets['selector'].currentText()
             step_kwargs = {}
             for label, widget in stepWidgets['widgets']:
@@ -14148,6 +14248,19 @@ class PreProcessParamsGroupbox(QGroupBox):
             })
         
         return recipe
+    
+    def recipeConfigPars(self, model_name):
+        cp = config.ConfigParser()
+        if not self.groupbox.isChecked():
+            return cp
+        
+        for s, step in enumerate(self.recipe()):
+            section = f'{model_name}.preprocess.step{s+1}'
+            cp[section] = {}
+            cp[section]['method'] = step['method']
+            for option, value in step['kwargs'].items():
+                cp[section][option] = str(value)
+        return cp
 
 class InitFijiMacroDialog(QBaseDialog):
     def __init__(self, parent=None):

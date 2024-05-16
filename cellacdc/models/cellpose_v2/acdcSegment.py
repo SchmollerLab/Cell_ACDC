@@ -29,7 +29,7 @@ class Model:
         ):
         if device == 'None':
             device = None
-            
+        
         major_version = myutils.get_cellpose_major_version()
         if major_version == 3:
             if model_type=='cyto3':
