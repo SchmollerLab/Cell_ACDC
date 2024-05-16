@@ -89,9 +89,9 @@ def preprocessing_mapper():
         if func_name.startswith('_'):
             continue
         
-        method = func_name.title()
+        method = func_name.title().replace('_', ' ')
         mapper[method] = {
-            'widgets': {}, 'function': func
+            'widgets': {}, 'function': func, 'docstring': func.__doc__
         }
         type_hints = get_type_hints(func)
         for param, type_hint in type_hints.items():
@@ -155,3 +155,5 @@ def preprocess_ini_items_to_recipe(ini_items):
         return
     
     return recipe
+
+PREPROCESS_MAPPER = preprocessing_mapper()

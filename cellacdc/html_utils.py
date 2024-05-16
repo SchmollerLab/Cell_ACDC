@@ -143,10 +143,14 @@ def rst_urls_to_html(rst_text):
         html_text = re.sub(pattern, repl, html_text)
     return html_text
 
-def rst_to_html(rst_text):
+def rst_to_html(rst_text, parse_urls=False):
+    if parse_urls:
+        rst_text = rst_urls_to_html(rst_text)
     valid_chars = r'[,A-Za-z0-9μ\-\.=_ \<\>\(\)\\\&;]'
     html_text = re.sub(rf'``({valid_chars}+)``', r'<code>\1</code>', rst_text)
     html_text = re.sub(rf'`({valid_chars}+)`', r'<code>\1</code>', html_text)
+    html_text = html_text.replace('\n', '<br>')
+    
     return html_text
 
 def to_admonition(text, admonition_type='note'):

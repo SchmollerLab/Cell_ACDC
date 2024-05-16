@@ -40,6 +40,31 @@ def gaussian_filter(
         image, sigma: types.Vector, 
         use_gpu=False, logger_func=print
     ):
+    """Multi-dimensional Gaussian filter
+
+    Parameters
+    ----------
+    image : numpy.ndarray
+        Input image (grayscale or color) to filter.
+    sigma : types.Vector
+        Standard deviation for Gaussian kernel. The standard deviations of the 
+        Gaussian filter are given for each axis as a sequence, or as a single 
+        number, in which case it is equal for all axes.
+    use_gpu : bool, optional
+        If True, uses `cupy` instead of `skimage.filters., by default False
+    logger_func : _type_, optional
+        Function used to log information, by default print
+
+    Returns
+    -------
+    numpy.ndarray
+        The filtered image
+
+    See also
+    --------
+    Wikipedia link: `Gaussian blur <https://en.wikipedia.org/wiki/Gaussian_blur>`_
+    
+    """    
     try:
         if len(sigma) > 1 and sigma[0] == 0:
             return image

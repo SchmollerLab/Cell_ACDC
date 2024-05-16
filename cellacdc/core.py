@@ -31,6 +31,7 @@ from . import all_non_metrics_cols
 from . import cca_functions
 from . import config
 from . import preprocess
+from .config import PREPROCESS_MAPPER
 
 class HeadlessSignal:
     def __init__(self, *args):
@@ -1673,7 +1674,6 @@ def brownian(x0, n, dt, delta, out=None):
 
     return out
 
-PREPROCESS_MAPPER = config.preprocessing_mapper()
 def preprocess_image_from_recipe(image, recipe: dict):
     for step in recipe:
         method = step['method']

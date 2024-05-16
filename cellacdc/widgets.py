@@ -64,7 +64,9 @@ from . import load
 from . import apps
 from . import plot
 from . import annotate
+from . import urls
 from .regex import float_regex
+from .config import PREPROCESS_MAPPER
 
 LINEEDIT_WARNING_STYLESHEET = _palettes.lineedit_warning_stylesheet()
 LINEEDIT_INVALID_ENTRY_STYLESHEET = _palettes.lineedit_invalid_entry_stylesheet()
@@ -8782,7 +8784,21 @@ class PreProcessingSelector(QComboBox):
     def __init__(self, parent=None):
         super().__init__(parent)
         
-        self.addItems(config.preprocessing_mapper().keys())
+        self.addItems(PREPROCESS_MAPPER.keys())
+    
+    def htmlInfo(self):
+        href = html_utils.href_tag('GitHub page', urls.issues_url)
+        docstring = PREPROCESS_MAPPER[self.currentText()]['docstring']
+        if docstring is None:
+            text = 'This function is not documented, yet.'
+        else:
+            text = html_utils.rst_to_html(docstring, parse_urls=True)
+        text = (
+            f'{text}<br><br>'
+            f'Feel free to submit an issue on our {href} if you '
+            'need help with this filter.'
+        )
+        return text
         
     def widgets(self):
-        return config.preprocessing_mapper()[self.currentText()]['widgets']
+        return PREPROCESS_MAPPER[self.currentText()]['widgets']

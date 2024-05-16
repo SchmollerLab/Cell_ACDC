@@ -14112,6 +14112,7 @@ class PreProcessParamsGroupbox(QWidget):
         self.gridLayout.setColumnStretch(1, 1)
         self.gridLayout.setColumnStretch(2, 0)
         self.gridLayout.setColumnStretch(3, 0)
+        self.gridLayout.setColumnStretch(4, 0)
         groupbox.setLayout(self.gridLayout)
         
         buttonsLayout = QHBoxLayout()
@@ -14179,13 +14180,18 @@ class PreProcessParamsGroupbox(QWidget):
         self.gridLayout.addWidget(selector, self.row, 1)
         stepWidgets['selector'] = selector
         
+        infoButton = widgets.infoPushButton()
+        self.gridLayout.addWidget(infoButton, self.row, 2)
+        infoButton.clicked.connect(partial(self.showInfo, selector=selector))
+        stepWidgets['infoButton'] = infoButton
+        
         addButton = widgets.addPushButton()
-        self.gridLayout.addWidget(addButton, self.row, 2)
+        self.gridLayout.addWidget(addButton, self.row, 3)
         addButton.clicked.connect(self.addStep)
         stepWidgets['addButton'] = addButton
 
         delButton = widgets.delPushButton()
-        self.gridLayout.addWidget(delButton, self.row, 3)
+        self.gridLayout.addWidget(delButton, self.row, 4)
         delButton.clicked.connect(self.removeStep)
         delButton.idx = len(self.stepsWidgets)
         stepWidgets['delButton'] = delButton
@@ -14201,12 +14207,24 @@ class PreProcessParamsGroupbox(QWidget):
             stepWidgets['widgets'].append((label, widget))
 
         hline = widgets.QHLine()
-        self.gridLayout.addWidget(hline, self.row, 0, 1, 4)
+        self.gridLayout.addWidget(hline, self.row, 0, 1, 5)
         stepWidgets['hline'] = hline
         self.row += 1
         
         self.stepsWidgets.append(stepWidgets)
+    
+    def showInfo(self, checked=False, selector=None):
+        printl(selector)
+        if selector is None:
+            return
         
+        htmlText = selector.htmlInfo()
+        htmlText = html_utils.paragraph(htmlText)
+        
+        method = selector.currentText()
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.information(self, f'Info about `{method}`', htmlText)
+    
     def removeStep(self, checked=False, idx=None):
         if len(self.stepsWidgets) == 1:
             self.setChecked(False)
@@ -14218,6 +14236,7 @@ class PreProcessParamsGroupbox(QWidget):
         stepWidgets = self.stepsWidgets[idx]
         self.gridLayout.removeWidget(stepWidgets['stepLabel'])
         self.gridLayout.removeWidget(stepWidgets['selector'])
+        self.gridLayout.removeWidget(stepWidgets['infoButton'])
         self.gridLayout.removeWidget(stepWidgets['addButton'])
         self.gridLayout.removeWidget(stepWidgets['delButton'])
         self.gridLayout.removeWidget(stepWidgets['hline'])
