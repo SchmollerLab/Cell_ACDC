@@ -8771,13 +8771,7 @@ class PreProcessingSelector(QComboBox):
     def __init__(self, parent=None):
         super().__init__(parent)
         
-        self._textToWidgetsMapper = {
-            'Gaussian filter (smooth)': {
-                'Sigma: ': VectorLineEdit
-            }
-        }
-        
-        self.addItems(self._textToWidgetsMapper.keys())
+        self.addItems(config.preprocessing_mapper().keys())
         
     def widgets(self):
-        return self._textToWidgetsMapper[self.currentText()]
+        return config.preprocessing_mapper()[self.currentText()]['widgets']

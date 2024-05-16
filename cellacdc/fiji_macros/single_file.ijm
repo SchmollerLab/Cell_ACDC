@@ -75,8 +75,8 @@ for (s=S-1; s<End; s++) { //for loop for iterating through the series
 	print(metadata_file, metadata_str);
     File.close(metadata_file);
 }
-print("Conversion to TIFFs finished!");
-
+print("Conversion finished!");
+run("Quit");
 
 function nss(n, numPos){
 	ss = "";

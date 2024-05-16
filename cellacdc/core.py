@@ -29,6 +29,8 @@ from . import issues_url
 from . import exception_handler_cli
 from . import all_non_metrics_cols
 from . import cca_functions
+from . import config
+from . import preprocess
 
 class HeadlessSignal:
     def __init__(self, *args):
@@ -1672,7 +1674,12 @@ def brownian(x0, n, dt, delta, out=None):
     return out
 
 def preprocess_image_from_recipe(image, recipe: dict):
-    # here apply recipe
+    mapper = config.preprocessing_mapper()
+    for step in recipe:
+        for method, kwargs in step.items():
+            func_name = mapper[method]['function']
+            func = getattr(preprocess, func_name)
+            image = func(image, **kwargs)
     return image
 
 def segm_model_segment(
@@ -1776,7 +1783,9 @@ class SegmKernel(_WorkflowKernel):
     @exception_handler_cli      
     def init_args_from_params(self, workflow_params, logger_func):
         args = workflow_params['initialization'].copy()
-        args['use3DdataFor2Dsegm'] = workflow_params.get('use3DdataFor2Dsegm', False)
+        args['use3DdataFor2Dsegm'] = workflow_params.get(
+            'use3DdataFor2Dsegm', False
+        )
         args['model_kwargs'] = workflow_params['segmentation_model_params']
         args['track_params'] = workflow_params.get('tracker_params', {})
         args['standard_postrocess_kwargs'] = (
@@ -1798,6 +1807,11 @@ class SegmKernel(_WorkflowKernel):
         args['init_tracker_kwargs'] = (
             workflow_params.get('init_tracker_params', {})
         )
+        
+        args['preproc_recipe'] = config.preprocess_ini_items_to_recipe(
+            workflow_params
+        )
+        
         self.init_args(**args)
     
     @exception_handler_cli
@@ -1823,6 +1837,7 @@ class SegmKernel(_WorkflowKernel):
             SizeZ,
             tracker_name='',
             model=None,
+            preproc_recipe=None,
             init_model_kwargs=None,
             init_tracker_kwargs=None,
             tracker=None,
@@ -1852,6 +1867,7 @@ class SegmKernel(_WorkflowKernel):
         self.init_model_kwargs = init_model_kwargs
         self.init_tracker_kwargs = init_tracker_kwargs
         self.is_segment3DT_available = is_segment3DT_available
+        self.preproc_recipe = preproc_recipe
         if signals is None:
             self.signals = KernelCliSignals(logger_func)
         else:
@@ -2145,7 +2161,8 @@ class SegmKernel(_WorkflowKernel):
                     if self.second_channel_name is not None:
                         img = self.model.to_rgb_stack(img, second_ch_data[t])
                     lab = segm_model_segment(
-                        self.model, img, self.model_kwargs, frame_i=t
+                        self.model, img, self.model_kwargs, frame_i=t, 
+                        preproc_recipe=self.preproc_recipe
                     )
                     lab_stack.append(lab)
                     if self.innerPbar_available:

@@ -2,6 +2,8 @@ import argparse
 import configparser
 import pprint
 
+import re
+
 class ConfigParser(configparser.ConfigParser):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -73,3 +75,61 @@ except:
     print('Importing from notebook, ignoring Cell-ACDC argument parser...')
     parser_args = {}
     parser_args['debug'] = False
+
+def preprocessing_mapper():
+    mapper = {
+        'Gaussian filter (smooth)': {
+            'widgets': {
+                'Sigma': 'VectorLineEdit' # must be in widgets module
+            }, 
+            'function': 'gaussian_filter' # must be in preprocess module
+        }
+    }
+    return mapper
+
+def preprocess_recipe_to_ini_items(preproc_recipe):
+    if preproc_recipe is None:
+        return {}
+    
+    ini_items = {}
+    for s, step in enumerate(preproc_recipe):
+        section = f'preprocess.step{s+1}'
+        ini_items[section] = {}
+        ini_items[section]['method'] = step['method']
+        for option, value in step['kwargs'].items():
+            ini_items[section][option] = str(value)
+    return ini_items
+
+def preprocess_ini_items_to_recipe(ini_items):
+    recipe = {}
+    
+    for section, section_items in ini_items.items():
+        if not section.startswith('preprocess.step'):
+            continue
+        
+        step_n = int(re.findall(r'step(\d+)', section)[0])
+        recipe[step_n] = {'method': section_items['method']}
+        kwargs = {}
+        for option, value_str in section_items.items():
+            if option == 'method':
+                continue
+            
+            value = value_str
+            if isinstance(value_str, str):
+                for _type in (int, float, str):
+                    try:
+                        value = _type(value_str)
+                        break
+                    except Exception as e:
+                        continue
+            
+            kwargs[option] = value
+            
+        recipe[step_n]['kwargs'] = kwargs
+    
+    recipe = [value for key, value in sorted(recipe.items())]
+    
+    if not recipe:
+        return
+    
+    return recipe

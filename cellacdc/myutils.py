@@ -32,7 +32,7 @@ import tifffile
 import skimage.io
 import skimage.measure
 
-from . import GUI_INSTALLED, KNOWN_EXTENSIONS
+from . import GUI_INSTALLED, KNOWN_EXTENSIONS, is_conda_env
 
 if GUI_INSTALLED:
     from qtpy.QtWidgets import QMessageBox
@@ -2319,12 +2319,15 @@ def check_install_cellpose(version: str='2.0'):
     next_version = int(version.split('.')[0])+1
     next_version = f'{next_version}.0'
     
-    check_install_package(
-        'cellpose', 
-        pypi_name=f'cellpose>={version},<{next_version}',
-        import_pkg_name='cellpose',
-        force_upgrade=True
-    )
+    if is_conda_env():
+        install_package_conda(f'"cellpose>={version},<{next_version}"')
+    else:
+        check_install_package(
+            'cellpose', 
+            pypi_name=f'cellpose>={version},<{next_version}',
+            import_pkg_name='cellpose',
+            force_upgrade=True
+        )
 
 def check_install_baby():
     check_install_package('baby', pypi_name='baby-seg')
@@ -3195,7 +3198,7 @@ def init_segm_model(acdcSegment, posData, init_kwargs):
             segm_data = np.load(segm_filepath)['arr_0']
     else:
         segm_data = None
-    
+
     # Initialize input_points_df for SAM model
     input_points_filepath = init_kwargs.pop('input_points_path', '')
     if input_points_filepath:
@@ -3316,7 +3319,10 @@ def is_pos_folderpath(folderpath):
     )
     return is_valid_pos_folder
 
-def log_segm_params(model_name, init_params, segm_params, logger_func=print):
+def log_segm_params(
+        model_name, init_params, segm_params, logger_func=print, 
+        preproc_recipe=None
+    ):
     init_params_format = [
         f'  * {option} = {value}' for option, value in init_params.items()
     ]
@@ -3327,10 +3333,23 @@ def log_segm_params(model_name, init_params, segm_params, logger_func=print):
     ]
     segm_params_format = '\n'.join(segm_params_format)
     
+    preproc_recipe_format = None
+    if preproc_recipe is not None:
+        preproc_recipe_format = []
+        for s, step in enumerate(preproc_recipe):
+            preproc_recipe_format.append(f'  * Step {s+1}')
+            method = step['method']
+            preproc_recipe_format.append(f'     - Method: {method}')
+            for option, value in step['kwargs'].items():
+                preproc_recipe_format.append(f'     - {option}: {value}')
+        preproc_recipe_format = '\n'.join(preproc_recipe_format)    
+    
     separator = '-'*100
     params_format = (
         f'{separator}\n'
         f'Model name: {model_name}\n\n'
+        'Preprocessing recipe:\n\n'
+        f'{preproc_recipe_format}\n\n'
         'Initialization parameters:\n\n'
         f'{init_params_format}\n\n'
         'Segmentation parameters:\n\n'

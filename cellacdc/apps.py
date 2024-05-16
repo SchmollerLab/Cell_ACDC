@@ -10322,10 +10322,13 @@ class QDialogModelParams(QDialog):
         
         preprocConfigPars = {}
         for section in self.configPars.sections():
-            if not section.startswith(f'{self.model_name}.preprocessing'):
+            if not section.startswith(f'{self.model_name}.preprocess'):
                 continue      
             
             preprocConfigPars[section] = self.configPars[section]
+        
+        if not preprocConfigPars:
+            return
         
         self.preProcessParamsGroupbox.loadRecipe(preprocConfigPars)
     
@@ -10828,7 +10831,7 @@ class QDialogModelParams(QDialog):
         with open(self.ini_path, 'w') as configfile:
             self.configPars.write(configfile)
 
-        print(f'Segmentation workflow saved at "{self.ini_path}"')
+        print(f'Segmentation parameters saved at "{self.ini_path}"')
         
     def exec_(self):
         self.show(block=True)
@@ -14143,7 +14146,7 @@ class PreProcessParamsGroupbox(QWidget):
             method = section_items['method']
             self.stepsWidgets[s]['selector'].setCurrentText(method)
             for label, widget in self.stepsWidgets[s]['widgets']:
-                option = label.title()
+                option = label.text().lower()
                 value = section_items[option]
                 widget.setText(value)
         
@@ -14185,10 +14188,10 @@ class PreProcessParamsGroupbox(QWidget):
         
         self.row += 1
         stepWidgets['widgets'] = []
-        for labelText, widgetFunc in selector.widgets().items():
+        for labelText, widgetName in selector.widgets().items():
             label = QLabel(labelText)
             self.gridLayout.addWidget(label, self.row, 0) 
-            widget = widgetFunc()
+            widget = getattr(widgets, widgetName)()
             self.gridLayout.addWidget(widget, self.row, 1)
             self.row += 1
             stepWidgets['widgets'].append((label, widget))
@@ -14245,7 +14248,7 @@ class PreProcessParamsGroupbox(QWidget):
     def recipeConfigPars(self, model_name):
         cp = config.ConfigParser()
         if not self.groupbox.isChecked():
-            return {}
+            return cp
         
         for s, step in enumerate(self.recipe()):
             section = f'{model_name}.preprocess.step{s+1}'
