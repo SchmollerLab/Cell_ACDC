@@ -2,7 +2,11 @@ import argparse
 import configparser
 import pprint
 
+from typing import get_type_hints 
+
 import re
+
+from . import printl
 
 class ConfigParser(configparser.ConfigParser):
     def __init__(self, *args, **kwargs):
@@ -77,14 +81,32 @@ except:
     parser_args['debug'] = False
 
 def preprocessing_mapper():
-    mapper = {
-        'Gaussian filter (smooth)': {
-            'widgets': {
-                'Sigma': 'VectorLineEdit' # must be in widgets module
-            }, 
-            'function': 'gaussian_filter' # must be in preprocess module
+    from cellacdc import preprocess, types
+    from inspect import getmembers, isfunction
+    functions = getmembers(preprocess, isfunction)
+    mapper = {}
+    for func_name, func in functions:
+        if func_name.startswith('_'):
+            continue
+        
+        method = func_name.title()
+        mapper[method] = {
+            'widgets': {}, 'function': func
         }
-    }
+        type_hints = get_type_hints(func)
+        for param, type_hint in type_hints.items():
+            # widget must be implemented in cellacdc.widgets module
+            if type_hint == types.Vector:
+                widget = 'VectorLineEdit'
+            elif type_hint == float:
+                widget = 'FloatLineEdit'
+            elif type_hint == str:
+                widget = 'LineEdit'
+            elif type_hint == int:
+                widget = 'IntLineEdit'
+            
+            mapper[method]['widgets'][param.capitalize()] = widget
+    
     return mapper
 
 def preprocess_recipe_to_ini_items(preproc_recipe):

@@ -1673,21 +1673,34 @@ def brownian(x0, n, dt, delta, out=None):
 
     return out
 
+PREPROCESS_MAPPER = config.preprocessing_mapper()
 def preprocess_image_from_recipe(image, recipe: dict):
-    mapper = config.preprocessing_mapper()
     for step in recipe:
-        for method, kwargs in step.items():
-            func_name = mapper[method]['function']
-            func = getattr(preprocess, func_name)
-            image = func(image, **kwargs)
+        method = step['method']
+        func = PREPROCESS_MAPPER[method]['function']
+        kwargs = step['kwargs']
+        image = func(image, **kwargs)
+    
     return image
 
 def segm_model_segment(
-        model, image, model_kwargs, frame_i=None, preproc_recipe=None
+        model, image, model_kwargs, frame_i=None, preproc_recipe=None, 
+        is_timelapse_model=False
     ):
     if preproc_recipe is not None:
-        image = preprocess_image_from_recipe(image, preproc_recipe)
-        
+        if is_timelapse_model:
+            filtered_image = np.zeros(image.shape)
+            for i, img in enumerate(image):
+                img = preprocess_image_from_recipe(img, preproc_recipe)
+                filtered_image[i] = img
+            image = filtered_image # .astype(image.dtype)
+        else:
+            image = preprocess_image_from_recipe(image, preproc_recipe)
+    
+    if is_timelapse_model:
+        segm_data = model.segment3DT(image, **model_kwargs)
+        return segm_data             
+    
     try:
         lab = model.segment(image, **model_kwargs)
     except Exception as e:
@@ -2148,8 +2161,10 @@ class SegmKernel(_WorkflowKernel):
                 )
                 if self.second_channel_name is not None:
                     img_data = self.model.to_rgb_stack(img_data, second_ch_data)
-                lab_stack = self.model.segment3DT(
-                    img_data, **self.model_kwargs
+                lab_stack = segm_model_segment(
+                    self.model, img_data, self.model_kwargs, 
+                    is_timelapse_model=True, 
+                    preproc_recipe=self.preproc_recipe
                 )
                 if self.innerPbar_available:
                     # emit one pos done
@@ -2160,6 +2175,7 @@ class SegmKernel(_WorkflowKernel):
                 for t, img in enumerate(img_data):
                     if self.second_channel_name is not None:
                         img = self.model.to_rgb_stack(img, second_ch_data[t])
+                        
                     lab = segm_model_segment(
                         self.model, img, self.model_kwargs, frame_i=t, 
                         preproc_recipe=self.preproc_recipe
@@ -2178,8 +2194,11 @@ class SegmKernel(_WorkflowKernel):
         else:
             if self.second_channel_name is not None:
                 img_data = self.model.to_rgb_stack(img_data, second_ch_data)
-        
-            lab_stack = self.model.segment(img_data, **self.model_kwargs)
+
+            lab_stack = segm_model_segment(
+                self.model, img_data, self.model_kwargs, frame_i=0, 
+                preproc_recipe=self.preproc_recipe
+            )
             self.signals.progressBar.emit(1)
             # lab_stack = smooth_contours(lab_stack, radius=2)
 

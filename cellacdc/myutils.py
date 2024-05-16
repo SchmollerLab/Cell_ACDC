@@ -3321,7 +3321,8 @@ def is_pos_folderpath(folderpath):
 
 def log_segm_params(
         model_name, init_params, segm_params, logger_func=print, 
-        preproc_recipe=None
+        preproc_recipe=None, apply_post_process=False, 
+        standard_postprocess_kwargs=None, custom_postprocess_features=None
     ):
     init_params_format = [
         f'  * {option} = {value}' for option, value in init_params.items()
@@ -3344,6 +3345,22 @@ def log_segm_params(
                 preproc_recipe_format.append(f'     - {option}: {value}')
         preproc_recipe_format = '\n'.join(preproc_recipe_format)    
     
+    standard_postproc_format = None
+    if apply_post_process and standard_postprocess_kwargs is not None:
+        standard_postproc_format = [
+            f'  * {option} = {value}' 
+            for option, value in standard_postprocess_kwargs.items()
+        ]
+        standard_postproc_format = '\n'.join(standard_postproc_format)
+    
+    custom_postproc_format = None
+    if apply_post_process and custom_postprocess_features is not None:
+        custom_postproc_format = [
+            f'  * {feature} = ({low}, {high})'
+            for feature, (low, high) in custom_postprocess_features.items()
+        ]
+        custom_postproc_format = '\n'.join(custom_postproc_format)
+    
     separator = '-'*100
     params_format = (
         f'{separator}\n'
@@ -3353,7 +3370,11 @@ def log_segm_params(
         'Initialization parameters:\n\n'
         f'{init_params_format}\n\n'
         'Segmentation parameters:\n\n'
-        f'{segm_params_format}\n'
+        f'{segm_params_format}\n\n'
+        'Post-processing:\n\n'
+        f'{standard_postproc_format}\n\n'
+        'Custom post-processing:\n\n'
+        f'{custom_postproc_format}\n'
         f'{separator}'
     )
     logger_func(params_format)

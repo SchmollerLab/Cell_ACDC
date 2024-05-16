@@ -10791,6 +10791,10 @@ class QDialogModelParams(QDialog):
         self.inputChannelName = 'None'
         if self.channelCombobox is not None:
             self.inputChannelName = self.channelCombobox.currentText()
+        
+        self.standardPostProcessKwargs = self.postProcessGroupbox.kwargs()
+        self.customPostProcessFeatures = self.selectedFeaturesRange()
+        self.customPostProcessGroupedFeatures = self.groupedFeatures()
         self._saveParams()
         self.close()
 

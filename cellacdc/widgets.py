@@ -8767,6 +8767,17 @@ class RangeSelector(QWidget):
     def range(self):
         return self.lowSpinbox.value(), self.highSpinbox.value()
 
+class LineEdit(QLineEdit):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAlignment(Qt.AlignCenter)
+    
+    def value(self):
+        return self.text()
+
+    def setValue(self, value):
+        self.setText(str(value))
+
 class PreProcessingSelector(QComboBox):
     def __init__(self, parent=None):
         super().__init__(parent)

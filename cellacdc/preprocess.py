@@ -16,6 +16,7 @@ import skimage.filters
 import skimage.exposure
 
 from . import error_up_str
+from . import types
 
 SQRT_2 = math.sqrt(2)
 
@@ -35,7 +36,10 @@ def remove_hot_pixels(image, logger_func=print, progress=True):
         filtered[z] = skimage.morphology.opening(img)
     return filtered
 
-def gaussian_filter(image, sigma, use_gpu=False, logger_func=print):
+def gaussian_filter(
+        image, sigma: types.Vector, 
+        use_gpu=False, logger_func=print
+    ):
     try:
         if len(sigma) > 1 and sigma[0] == 0:
             return image
@@ -71,7 +75,7 @@ def gaussian_filter(image, sigma, use_gpu=False, logger_func=print):
         filtered = skimage.filters.gaussian(image, sigma=sigma)
     return filtered
 
-def ridge_filter(image, sigmas):
+def ridge_filter(image, sigmas: types.Vector):
     input_shape = image.shape
     filtered = skimage.filters.sato(
         np.squeeze(image), sigmas=sigmas, black_ridges=False
@@ -79,7 +83,8 @@ def ridge_filter(image, sigmas):
     return filtered
 
 def spot_detector_filter(
-        image, spots_zyx_radii_pxl, use_gpu=False, logger_func=print, lab=None
+        image, spots_zyx_radii_pxl: types.Vector, use_gpu=False, 
+        logger_func=print, lab=None
     ):
     spots_zyx_radii_pxl = np.array(spots_zyx_radii_pxl)
     if image.ndim == 2 and len(spots_zyx_radii_pxl) == 3:
@@ -92,12 +97,12 @@ def spot_detector_filter(
             f'Sharpening filter input sigmas cannot be 0. `zyx_sigma1 = {sigma1}`'
         )
         
-    blurred1 = gaussian(
+    blurred1 = gaussian_filter(
         image, sigma1, use_gpu=use_gpu, logger_func=logger_func
     )
     
     sigma2 = SQRT_2*sigma1
-    blurred2 = gaussian(
+    blurred2 = gaussian_filter(
         image, sigma2, use_gpu=use_gpu, logger_func=logger_func
     )
     

@@ -116,11 +116,10 @@ if img.ndim == 3 and (img.shape[-1] == 3 or img.shape[-1] == 4):
 
 print('Input image shape: ', img.shape)
 
-lab = core.segm_model_segment(model, img, win.model_kwargs, frame_i=FRAME_I)
-
-if model_name == 'YeastMate':
-    cca_df = model.predictCcaState(img)
-    print(cca_df)
+lab = core.segm_model_segment(
+    model, img, win.model_kwargs, frame_i=FRAME_I, 
+    preproc_recipe=win.preproc_recipe,
+)
 
 from cellacdc.plot import imshow
 imshow(img, lab)

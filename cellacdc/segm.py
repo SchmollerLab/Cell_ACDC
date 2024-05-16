@@ -113,7 +113,8 @@ class segmWorker(QRunnable):
             signals=self.signals,
             logger_func=self.signals.progress.emit,
             innerPbar_available=mainWin.innerPbar_available,
-            is_segment3DT_available=mainWin.is_segment3DT_available
+            is_segment3DT_available=mainWin.is_segment3DT_available, 
+            preproc_recipe=mainWin.preproc_recipe
         )
     
     def run_kernel(self, mainWin):
@@ -549,22 +550,26 @@ class segmWin(QMainWindow):
             if abort:
                 self.close()
                 return
-
-        myutils.log_segm_params(
-            model_name, win.init_kwargs, win.model_kwargs, 
-            logger_func=self.logger.info, preproc_recipe=win.preproc_recipe
-        )
-        
-        printl(model_name)
         
         if model_name != 'thresholding':
             self.model_kwargs = win.model_kwargs
-        self.standardPostProcessKwargs = win.postProcessGroupbox.kwargs()
-        self.customPostProcessFeatures = win.selectedFeaturesRange()
-        self.customPostProcessGroupedFeatures = win.groupedFeatures()
+        self.standardPostProcessKwargs = win.standardPostProcessKwargs
+        self.customPostProcessFeatures = win.customPostProcessFeatures
+        self.customPostProcessGroupedFeatures = (
+            win.customPostProcessGroupedFeatures
+        )
 
         self.applyPostProcessing = win.applyPostProcessing
         self.secondChannelName = win.secondChannelName
+        
+        myutils.log_segm_params(
+            model_name, win.init_kwargs, win.model_kwargs, 
+            logger_func=self.logger.info, 
+            preproc_recipe=win.preproc_recipe, 
+            apply_post_process=self.applyPostProcessing, 
+            standard_postprocess_kwargs=self.standardPostProcessKwargs, 
+            custom_postprocess_features=self.customPostProcessFeatures
+        )
 
         init_kwargs = win.init_kwargs
         self.init_model_kwargs = init_kwargs
@@ -653,7 +658,9 @@ class segmWin(QMainWindow):
             **self.customPostProcessFeatures
         }
         posData.saveSegmHyperparams(
-            model_name, self.model_kwargs, post_process_params
+            model_name, self.init_model_kwargs, self.model_kwargs, 
+            post_process_params=post_process_params, 
+            preproc_recipe=self.preproc_recipe
         )
 
         # Ask ROI
