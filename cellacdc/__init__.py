@@ -1,4 +1,3 @@
-from genericpath import isfile
 import os
 import sys
 import shutil
@@ -7,9 +6,73 @@ import subprocess
 import pathlib
 import numpy as np
 
+from typing import Iterable
+
 KNOWN_EXTENSIONS = (
     '.tif', '.npz', '.npy', '.h5', '.json', '.csv', '.txt'
 )
+
+def _warn_ask_install_package(commands: Iterable[str], note_txt=''):
+    open_str = '='*100
+    sep_str = '-'*100
+    commands_txt = '\n'.join([f'  {command}' for command in commands])
+    text = (
+        f'SpotMAX needs to run the following commands{note_txt}:\n\n'
+        f'{commands_txt}\n\n'
+    )
+    question = (
+        'How do you want to proceed?: '
+        '1) Run the commands now. '
+        'q) Quit, I will run the commands myself (1/q): '
+    )
+    print(open_str)
+    print(text)
+    
+    message_on_exit = (
+        '[WARNING]: Execution aborted. Run the following commands before '
+        f'running spotMAX again:\n\n{commands_txt}\n'
+    )
+    msg_on_invalid = (
+        '$answer is not a valid answer. '
+        'Type "1" to run the commands now or "q" to quit.'
+    )
+    try:
+        while True:
+            answer = input(question)
+            if answer == 'q':
+                print(open_str)
+                exit(message_on_exit)
+            elif answer == '1':
+                break
+            else:
+                print(sep_str)
+                print(msg_on_invalid.replace('$answer', answer))
+                print(sep_str)
+    except Exception as err:
+        traceback.print_exc()
+        print(open_str)
+        print(message_on_exit)
+
+def _run_pip_commands(commands: Iterable[str]):
+    import subprocess
+    for command in commands:
+        try:
+            subprocess.check_call([sys.executable, '-m', *command.split()])
+        except Exception as err:
+            pass
+    
+try:
+    import requests
+except Exception as err:
+    print('SpotMAX detected corrupted library, fixing it now...')
+    commands = (
+        'pip uninstall -y charset-normalizer', 
+        'pip install --upgrade charset-normalizer'
+    )
+    _warn_ask_install_package(
+        commands, note_txt=' (fixing charset-normalizer package)'
+    )
+    _run_pip_commands(commands)
 
 def user_data_dir():
     r"""
