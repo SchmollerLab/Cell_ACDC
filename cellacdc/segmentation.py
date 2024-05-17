@@ -79,7 +79,7 @@ def find_contours(
         considered neighbors. A connectivity of 1 (default) means
         pixels sharing an edge (in 2D) or a face (in 3D) will be
         considered neighbors. A connectivity of `label_img.ndim` means
-        pixels sharing a corner will be considered neighbors, by default 1.
+        pixels sharing a corner will be considered neighbors. Default is 1.
     mode : str, optional
         How to mark the boundaries:
         - thick: any pixel not completely surrounded by pixels of the

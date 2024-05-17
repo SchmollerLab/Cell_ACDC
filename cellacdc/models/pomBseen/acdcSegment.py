@@ -30,33 +30,33 @@ class Model:
         image : (Y, X) np.ndarray
             Input image
         connectivity : int, optional
-            _description_, by default 1
+            _description_. Default is 1
         sharpen_image : bool, optional
-            _description_, by default False
+            _description_. Default is False
         radius : float, optional
-            _description_, by default 1.0
+            _description_. Default is 1.0
         amount : float, optional
-            _description_, by default 1.0
+            _description_. Default is 1.0
         block_size : int, optional
-            _description_, by default 15
+            _description_. Default is 15
         offset : float, optional
-            Percentage of maximum pixel value, by default -2.5
+            Percentage of maximum pixel value. Default is -2.5
         inverse_bw_max_pix : int, optional
-            _description_, by default 600
+            _description_. Default is 600
         footprint : str, optional
-            _description_, by default 'default'
+            _description_. Default is 'default'
         clear_border_conn : int, optional
-            _description_, by default 8
+            _description_. Default is 8
         clear_border_max_pix : int, optional
-            _description_, by default 1200
+            _description_. Default is 1200
         ConvexFilterSlope : float, optional
-            _description_, by default 12.8571
+            _description_. Default is 12.8571
         ConvexFilterIntercept : float, optional
-            _description_, by default 12.5
+            _description_. Default is 12.5
         min_size : int, optional
-            _description_, by default 500
+            _description_. Default is 500
         max_size : int, optional
-            _description_, by default 100000
+            _description_. Default is 100000
 
         Returns
         -------

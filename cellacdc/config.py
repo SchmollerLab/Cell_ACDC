@@ -91,7 +91,10 @@ def preprocessing_mapper():
         
         method = func_name.title().replace('_', ' ')
         mapper[method] = {
-            'widgets': {}, 'function': func, 'docstring': func.__doc__
+            'widgets': {}, 
+            'function': func, 
+            'docstring': func.__doc__, 
+            'args': []
         }
         type_hints = get_type_hints(func)
         for param, type_hint in type_hints.items():
@@ -106,6 +109,7 @@ def preprocessing_mapper():
                 widget = 'IntLineEdit'
             
             mapper[method]['widgets'][param.capitalize()] = widget
+            mapper[method]['args'].append(param)
     
     return mapper
 

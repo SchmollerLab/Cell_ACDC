@@ -8792,7 +8792,10 @@ class PreProcessingSelector(QComboBox):
         if docstring is None:
             text = 'This function is not documented, yet.'
         else:
-            text = html_utils.rst_to_html(docstring, parse_urls=True)
+            text = html_utils.rst_docstring_to_html(
+                docstring, 
+                args_subset=PREPROCESS_MAPPER[self.currentText()]['args']
+            )
         text = (
             f'{text}<br><br>'
             f'Feel free to submit an issue on our {href} if you '

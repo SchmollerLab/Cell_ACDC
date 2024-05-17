@@ -413,67 +413,67 @@ def heatmap(
     data : Union[pd.DataFrame, np.ndarray]
         Table containing the data in long-format
     x : str, optional
-        Name of the column used for the x-axis, by default ''
+        Name of the column used for the x-axis. Default is ''
     z : str, optional
         Name of the column used for the z-axis, i.e., the values that 
-        determine the color of each pixel, by default ''
+        determine the color of each pixel. Default is ''
     y_grouping : Union[str, List[str]], optional
         Column or list of columns that identifies a single row in the 
-        heatmap, by default ''
+        heatmap. Default is ''
     sort_groups : bool, optional
-        _description_, by default True
+        _description_. Default is True
     normalize_x : bool, optional
-        _description_, by default False
+        _description_. Default is False
     zeroize_x : bool, optional
-        _description_, by default False
+        _description_. Default is False
     x_bin_size : int, optional
-        _description_, by default None
+        _description_. Default is None
     x_label_loc : str, optional
-        _description_, by default 'right'
+        _description_. Default is 'right'
     x_labels : np.ndarray, optional
-        _description_, by default None
+        _description_. Default is None
     add_x_0_label : bool, optional
-        _description_, by default False
+        _description_. Default is False
     convert_time_how : str, optional
-        _description_, by default None
+        _description_. Default is None
     xlabel : str, optional
-        _description_, by default None
+        _description_. Default is None
     num_decimals_xticks_labels : int, optional
-        _description_, by default None
+        _description_. Default is None
     force_x_to_int : bool, optional
-        _description_, by default False
+        _description_. Default is False
     z_min : Union[int, float], optional
-        _description_, by default None
+        _description_. Default is None
     z_max : Union[int, float], optional
-        _description_, by default None
+        _description_. Default is None
     stretch_height_factor : float, optional
-        _description_, by default None
+        _description_. Default is None
     stretch_width_factor : float, optional
-        _description_, by default None
+        _description_. Default is None
     group_label_depth : int, optional
-        _description_, by default 1
+        _description_. Default is 1
     num_xticks : int, optional
-        _description_, by default 6
+        _description_. Default is 6
     colormap : Union[str, matplotlib.colors.Colormap], optional
-        _description_, by default 'viridis'
+        _description_. Default is 'viridis'
     missing_values_color : _type_, optional
-        _description_, by default None
+        _description_. Default is None
     colorbar_pad : float, optional
-        _description_, by default 0.07
+        _description_. Default is 0.07
     colorbar_size : float, optional
-        _description_, by default 0.05
+        _description_. Default is 0.05
     colorbar_label : str, optional
-        _description_, by default ''
+        _description_. Default is ''
     ax : plt.Axes, optional
-        _description_, by default None
+        _description_. Default is None
     fig : plt.Figure, optional
-        _description_, by default None
+        _description_. Default is None
     backend : str, optional
-        _description_, by default 'matplotlib'
+        _description_. Default is 'matplotlib'
     block : bool, optional
-        _description_, by default False
+        _description_. Default is False
     imshow_kwargs : dict, optional
-        _description_, by default None
+        _description_. Default is None
 
     Returns
     -------

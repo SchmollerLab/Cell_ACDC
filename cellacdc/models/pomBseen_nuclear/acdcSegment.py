@@ -22,15 +22,15 @@ class Model:
         image : (Y, X) np.ndarray
             Input image
         offset : float
-            Percentage of maximum pixel value, by default 0
+            Percentage of maximum pixel value. Default is 0
         min_size : int
-            Min size of nucleus, by default 0
+            Min size of nucleus. Default is 0
         max_size : int
-            Max size of nucleus, by default 100000
+            Max size of nucleus. Default is 100000
         max_nuclei : int
-            Maximum number of nuclei per cell, by default 2
+            Maximum number of nuclei per cell. Default is 2
         rel_size_max : float
-            Maximum size of nucleus in respect to cell, by default 0.3
+            Maximum size of nucleus in respect to cell. Default is 0.3
 
         Returns
         -------

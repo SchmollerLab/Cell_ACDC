@@ -14214,7 +14214,6 @@ class PreProcessParamsGroupbox(QWidget):
         self.stepsWidgets.append(stepWidgets)
     
     def showInfo(self, checked=False, selector=None):
-        printl(selector)
         if selector is None:
             return
         

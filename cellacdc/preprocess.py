@@ -51,19 +51,19 @@ def gaussian_filter(
         Gaussian filter are given for each axis as a sequence, or as a single 
         number, in which case it is equal for all axes.
     use_gpu : bool, optional
-        If True, uses `cupy` instead of `skimage.filters., by default False
-    logger_func : _type_, optional
-        Function used to log information, by default print
+        If True, uses `cupy` instead of `skimage.filters.gaussian`. 
+        Default is False
+    logger_func : callable, optional
+        Function used to log information. Default is print
 
     Returns
     -------
-    numpy.ndarray
+    filtered_image : numpy.ndarray
         The filtered image
 
     See also
     --------
     Wikipedia link: `Gaussian blur <https://en.wikipedia.org/wiki/Gaussian_blur>`_
-    
     """    
     try:
         if len(sigma) > 1 and sigma[0] == 0:
