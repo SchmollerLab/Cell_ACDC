@@ -3,6 +3,7 @@ import numpy as np
 import skimage.filters
 
 from . import GUI_INSTALLED, core, myutils
+from . import preprocess
 
 if GUI_INSTALLED:
     from . import widgets
@@ -441,16 +442,57 @@ class entropyFilterDialog(FilterBaseDialog):
         super().show()
         self.resize(int(self.width()*1.3), self.height())
 
-def cellpose_v3_run_denoise(
-        image,
-        run_params,
-        denoise_model=None, 
-        init_params=None,
-    ):
-    if denoise_model is None:
-        from cellacdc.models.cellpose_v3 import _denoise
-        denoise_model = _denoise.CellposeDenoiseModel(**init_params)
+class RidgeFilterDialog(FilterBaseDialog):
+    def __init__(self, layersChannelNames, parent=None, **kwargs):
+        currentChannel = kwargs['currentChannel']
+
+        super().__init__(
+            layersChannelNames, 'Ridge filter', parent=parent,
+            currentChannel=currentChannel        
+        )
+        
+        mainLayout = QVBoxLayout()
+        formLayout = QFormLayout()
+        buttonsLayout = QHBoxLayout()
+
+        mainLayout.addWidget(self.channelsWidget)
+        
+        self.sigmasWidget = widgets.VectorLineEdit()
+        self.sigmasWidget.setValue(1.0)
+        self.sigmas = (1.0,)
+        formLayout.addRow('Sigmas (comma separated):  ', self.sigmasWidget)
+        
+        self.PreviewCheckBox = QCheckBox("Preview")
+        self.PreviewCheckBox.setChecked(True)
+
+        mainLayout.addLayout(formLayout)
+        mainLayout.addWidget(self.PreviewCheckBox)
+        
+        closeButton = widgets.cancelPushButton('Close')
+
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(closeButton)
+        buttonsLayout.setContentsMargins(0, 10, 0, 0)
+
+        mainLayout.addLayout(buttonsLayout)
+        
+        self.PreviewCheckBox.toggled.connect(self.preview_cb)
+        self.channelsComboBox.currentTextChanged.connect(self.apply)
+        self.sigmasWidget.valueChanged.connect(self.sigmasChanged)
+        closeButton.clicked.connect(self.close)
+
+        self.setLayout(mainLayout)
     
-    denoised_img = denoise_model.run(image, **run_params)
-    return denoised_img
+    def sigmasChanged(self, value):
+        if isinstance(value, float):
+            self.sigmas = (value,)
+        else:
+            self.sigmas = value
+        self.apply()
     
+    def filter(self, image):
+        return preprocess.ridge_filter(image, self.sigmas)
+    
+    # def show(self):
+    #     super().show()
+    #     self.resize(int(self.width()*1.3), self.height())

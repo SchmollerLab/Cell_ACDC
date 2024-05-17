@@ -2497,3 +2497,16 @@ class CcaIntegrityChecker:
             lonely_cells_in_S.append(ID)
         
         return lonely_cells_in_S
+
+def cellpose_v3_run_denoise(
+        image,
+        run_params,
+        denoise_model=None, 
+        init_params=None,
+    ):
+    if denoise_model is None:
+        from cellacdc.models.cellpose_v3 import _denoise
+        denoise_model = _denoise.CellposeDenoiseModel(**init_params)
+    
+    denoised_img = denoise_model.run(image, **run_params)
+    return denoised_img

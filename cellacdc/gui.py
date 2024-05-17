@@ -2905,9 +2905,9 @@ class guiWin(QMainWindow):
         self.filtersWins[name]['dialogueApp'] = filters.gaussBlurDialog
         self.filtersWins[name]['window'] = None
 
-        diffGaussFilterAction = QAction('Sharpen (DoG filter)...', self)
+        diffGaussFilterAction = QAction('Sharpen (Spot detector)...', self)
         diffGaussFilterAction.setCheckable(True)
-        name = 'Sharpen (DoG filter)'
+        name = 'Sharpen (Spot detector)'
         diffGaussFilterAction.filterName = name
         self.filtersWins[name] = {}
         self.filtersWins[name]['action'] = diffGaussFilterAction
@@ -2933,6 +2933,15 @@ class guiWin(QMainWindow):
         self.filtersWins[name] = {}
         self.filtersWins[name]['action'] = entropyFilterAction
         self.filtersWins[name]['dialogueApp'] = filters.entropyFilterDialog
+        self.filtersWins[name]['window'] = None
+        
+        ridgetFilterAction = QAction('Ridge filter...', self)
+        ridgetFilterAction.setCheckable(True)
+        name = 'Ridge filter'
+        ridgetFilterAction.filterName = name
+        self.filtersWins[name] = {}
+        self.filtersWins[name]['action'] = ridgetFilterAction
+        self.filtersWins[name]['dialogueApp'] = filters.RidgeFilterDialog
         self.filtersWins[name]['window'] = None
 
         self.imgPropertiesAction = QAction('Properties...', self)
@@ -11071,7 +11080,7 @@ class guiWin(QMainWindow):
                 self.logger.info('Cellpose 3.0 denoising process cancelled')
                 return
         denoise_model, init_params, run_params = output
-        denoised_image = filters.cellpose_v3_run_denoise(
+        denoised_image = core.cellpose_v3_run_denoise(
             img,
             run_params,
             denoise_model=denoise_model, 
