@@ -10449,10 +10449,14 @@ class guiWin(QMainWindow):
             self.filtersWins[filterName]['window'] = filterWin
             filterWin.action = self.sender()
             filterWin.sigClose.connect(self.filterWinClosed)
-            filterWin.sigApplyFilter.connect(self.applyFilter)
+            filterWin.sigApplyFilter.connect(
+                partial(
+                    self.applyFilterFromDialog, filterWin=filterWin
+                )
+            )
             filterWin.sigPreviewToggled.connect(self.previewFilterToggled)
             filterWin.show()
-            filterWin.apply()
+            QTimer.singleShot(100, filterWin.apply)
         elif filterWin is not None:
             filterWin.disconnect()
             filterWin.close()
@@ -10461,7 +10465,56 @@ class guiWin(QMainWindow):
             self.isFilterPreviewChecked = True
             self.updateAllImages()
     
+    def applyFilterFromDialog(self, channelName, filterWin=None):
+        if not filterWin.PreviewCheckBox.isChecked():
+            return
+        
+        QTimer.singleShot(100, partial(self.applyFilter, channelName))
+    
+    # def startAndWaitApplyFilterWorker(self, filterFunc, inputImageData):
+    #     # self.progressWin = apps.QDialogWorkerProgress(
+    #     #     title='Filtering image', parent=self.mainWin,
+    #     #     pbarDesc='Filtering image...'
+    #     # )
+    #     # self.progressWin.show(self.app)
+    #     # self.progressWin.mainPbar.setMaximum(0)
+        
+    #     self.statusBarLabel.setText('Filtering image...')
+        
+    #     self.filterWorkerThread = QThread()
+    #     self.filterWorker = workers.ApplyImageFilterWorker(
+    #         filterFunc, inputImageData
+    #     )
+        
+    #     self.filterWorker.moveToThread(self.filterWorkerThread)
+    #     self.filterWorker.finished.connect(self.filterWorkerThread.quit)
+    #     self.filterWorker.finished.connect(self.filterWorker.deleteLater)
+    #     self.filterWorkerThread.finished.connect(
+    #         self.filterWorkerThread.deleteLater
+    #     )
+
+    #     self.filterWorker.progress.connect(self.workerProgress)
+    #     self.filterWorker.critical.connect(self.workerCritical)
+    #     # self.filterWorker.finished.connect(self.workerFinished)
+    #     self.filterWorker.finished.connect(self.applyFilterWorkerFinished)
+        
+    #     self.filterWorkerThread.started.connect(self.filterWorker.run)
+    #     self.filterWorkerThread.start()
+        
+    #     self.setDisabled(True)
+    #     self.filterLoop = QEventLoop()
+    #     self.filterLoop.exec_()
+        
+    #     return self.filterWorker.filtered_data
+    
+    # def applyFilterWorkerFinished(self, filteredData):
+    #     self.setDisabled(False)
+    #     self.filterWorker.filtered_data = filteredData
+    #     self.filterLoop.exit()
+    #     self.setStatusBarLabel()
+    
     def filterWinClosed(self, filterWin):
+        self.setDisabled(False)
         action = filterWin.action
         filterWin = None
         action.setChecked(False)
@@ -10481,6 +10534,7 @@ class guiWin(QMainWindow):
             filterWin = filterDict['window']
             if filterWin is None:
                 continue
+            
             filteredData = filterWin.filter(filteredData)
             storeFiltered = True
 

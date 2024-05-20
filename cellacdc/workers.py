@@ -4766,3 +4766,19 @@ class CcaIntegrityCheckerWorker(QObject):
                 self.pause()
         self.isFinished = True
         self.finished.emit(self)
+    
+class ApplyImageFilterWorker(QObject):
+    finished = Signal(object)
+    critical = Signal(object)
+    progress = Signal(str)
+    
+    def __init__(self, filter_func, input_data):
+        QObject.__init__(self)
+        self.filter_func = filter_func
+        self.input_data = input_data
+    
+    @worker_exception_handler
+    def run(self):
+        self.progress.emit('Filtering image...')
+        filtered_data = self.filter_func(self.input_data)
+        self.finished.emit(filtered_data)

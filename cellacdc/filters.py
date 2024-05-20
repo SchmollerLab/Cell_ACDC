@@ -2,6 +2,8 @@ import numpy as np
 
 import skimage.filters
 
+from cellacdc import html_utils
+
 from . import GUI_INSTALLED, core, myutils
 from . import preprocess
 
@@ -71,64 +73,73 @@ class gaussBlurDialog(FilterBaseDialog):
         )
         
         mainLayout = QVBoxLayout()
-        formLayout = QFormLayout()
+        gridLayout = QGridLayout()
         buttonsLayout = QHBoxLayout()
 
         mainLayout.addWidget(self.channelsWidget)
 
-        self.sigmaQDSB = QDoubleSpinBox()
-        self.sigmaQDSB.setAlignment(Qt.AlignCenter)
-        self.sigmaQDSB.setSingleStep(0.5)
-        self.sigmaQDSB.setValue(1.0)
-        formLayout.addRow('Gaussian filter sigma:  ', self.sigmaQDSB)
-        formLayout.setContentsMargins(0, 10, 0, 10)
-
-        self.sigmaSlider = QSlider(Qt.Horizontal)
-        self.sigmaSlider.setMinimum(0)
-        self.sigmaSlider.setMaximum(100)
-        self.sigmaSlider.setValue(20)
+        self.sigmaWidget = widgets.VectorLineEdit()
         self.sigma = 1.0
-        self.sigmaSlider.setTickPosition(QSlider.TickPosition.TicksBelow)
-        self.sigmaSlider.setTickInterval(10)
-
+        self.sigmaWidget.setValue(self.sigma)
+        self.sigmaWidget.setMinimum(0)
+        label = QLabel('Gaussian filter sigma:  ')
+        gridLayout.addWidget(label, 0, 0)
+        gridLayout.addWidget(self.sigmaWidget, 0, 1)
+        stepUpButton = widgets.addPushButton()
+        stepDownButton = widgets.subtractPushButton()
+        gridLayout.addWidget(stepDownButton, 0, 2)
+        gridLayout.addWidget(stepUpButton, 0, 3)
+        for i in range(4):
+            gridLayout.setColumnStretch(i, int(i==1))
+        
         self.PreviewCheckBox = QCheckBox("Preview")
         self.PreviewCheckBox.setChecked(True)
+        
+        self.warnLabel = QLabel()
 
-        mainLayout.addLayout(formLayout)
-        mainLayout.addWidget(self.sigmaSlider)
+        mainLayout.addLayout(gridLayout)
+        mainLayout.addWidget(self.warnLabel)
         mainLayout.addWidget(self.PreviewCheckBox)
 
         closeButton = widgets.cancelPushButton('Close')
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(closeButton)
-        buttonsLayout.setContentsMargins(0, 10, 0, 0)
 
+        mainLayout.addSpacing(10)
         mainLayout.addLayout(buttonsLayout)
 
+        stepUpButton.clicked.connect(self.increaseSigmaValue)
+        stepDownButton.clicked.connect(self.decreaseSigmaValue)
         self.PreviewCheckBox.toggled.connect(self.preview_cb)
-        self.sigmaSlider.sliderMoved.connect(self.sigmaSliderMoved)
-        self.sigmaQDSB.valueChanged.connect(self.sigmaQDSB_valueChanged)
+        self.sigmaWidget.valueChangeFinished.connect(self.sigmaValueChanged)
         self.channelsComboBox.currentTextChanged.connect(self.apply)
         closeButton.clicked.connect(self.close)
 
         self.setLayout(mainLayout)
     
+    def increaseSigmaValue(self):
+        self.sigmaWidget.increaseValue(0.5)
+    
+    def decreaseSigmaValue(self):
+        self.sigmaWidget.decreaseValue(0.5)
+    
     def filter(self, image):
+        if not isinstance(self.sigma, float):
+            if image.ndim != len(self.sigma):
+                self.warnLenSigmaNotEqualImageNumDim(image.ndim)
+                return image
+        self.warnLabel.setText('')
         return skimage.filters.gaussian(image, self.sigma)
 
-    def sigmaQDSB_valueChanged(self, val):
+    def warnLenSigmaNotEqualImageNumDim(self, ndim):
+        self.warnLabel.setText(html_utils.span(
+            'Number of multiple sigmas must be equal to image number '
+            f'of dimensions (={ndim})', font_size='9px'
+        ))
+    
+    def sigmaValueChanged(self, val):
         self.sigma = val
-        self.sigmaSlider.sliderMoved.disconnect()
-        self.sigmaSlider.setSliderPosition(int(val*20))
-        self.sigmaSlider.sliderMoved.connect(self.sigmaSliderMoved)
-        self.apply()
-
-    def sigmaSliderMoved(self, intVal):
-        self.sigma = intVal/20
-        self.sigmaQDSB.valueChanged.disconnect()
-        self.sigmaQDSB.setValue(self.sigma)
-        self.sigmaQDSB.valueChanged.connect(self.sigmaSliderMoved)
         self.apply()
     
     def show(self):
@@ -478,7 +489,7 @@ class RidgeFilterDialog(FilterBaseDialog):
         
         self.PreviewCheckBox.toggled.connect(self.preview_cb)
         self.channelsComboBox.currentTextChanged.connect(self.apply)
-        self.sigmasWidget.valueChanged.connect(self.sigmasChanged)
+        self.sigmasWidget.valueChangeFinished.connect(self.sigmasChanged)
         closeButton.clicked.connect(self.close)
 
         self.setLayout(mainLayout)

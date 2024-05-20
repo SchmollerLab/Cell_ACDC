@@ -7817,9 +7817,12 @@ class RulerPlotItem(pg.PlotDataItem):
 
 class VectorLineEdit(QLineEdit):
     valueChanged = Signal(object)
+    valueChangeFinished = Signal(object)
     
     def __init__(self, parent=None, initial=None):
         super().__init__(parent)
+        
+        self._minimum = -np.inf
         
         float_re = float_regex()
         vector_regex = fr'\(?\[?{float_re}(,\s?{float_re})+\)?\]?'
@@ -7831,6 +7834,7 @@ class VectorLineEdit(QLineEdit):
         self.setAlignment(Qt.AlignCenter)
         
         self.textChanged.connect(self.emitValueChanged)
+        self.editingFinished.connect(self.emitValueChangeFinished)
         if initial is None:
             self.setText('0.0')
         
@@ -7838,37 +7842,88 @@ class VectorLineEdit(QLineEdit):
         font.setPixelSize(11)
         self.setFont(font)
     
-    def emitValueChanged(self, text):
-        val = self.value()
-        m = re.match(self.validRegex, self.text())
+    def emitValueChangeFinished(self):
+        value = self.value()
+        self.textChanged.disconnect()
+        self.editingFinished.disconnect()
+        self.setValue(value)
+        self.textChanged.connect(self.emitValueChanged)
+        self.editingFinished.connect(self.emitValueChangeFinished)
+        
+        self.emitValueChanged(self.text(), signal=self.valueChangeFinished)
+        
+    def emitValueChanged(self, text, signal=None):
+        m = re.match(self.validRegex, text)
         if m is None:
             self.setStyleSheet(LINEEDIT_INVALID_ENTRY_STYLESHEET)
+            return
+
+        if signal is None:
+            signal = self.valueChanged
+        
+        self.setStyleSheet('')
+        signal.emit(self.value())
+    
+    def increaseValue(self, step):
+        value = self.value()
+        if isinstance(value, (float, int)):
+            value += step
         else:
-            self.setStyleSheet('')
-            self.valueChanged.emit(self.value())
+            value = [val+step for val in value]
+            value = str(value).lstrip('[').rstrip(']')
+        self.setValue(value)
+        self.emitValueChangeFinished()
+    
+    def decreaseValue(self, step):
+        value = self.value()
+        if isinstance(value, (float, int)):
+            value -= step
+        else:
+            value = [val-step for val in value]
+            value = str(value).lstrip('[').rstrip(']')
+        self.setText(value)
+        self.emitValueChangeFinished()
     
     def setValue(self, value):
+        if isinstance(value, (float, int)):
+            if value < self._minimum:
+                value = self._minimum
+        else:
+            clipped = []
+            for val in value:
+                if val < self._minimum:
+                    val = self._minimum
+                clipped.append(val)
+            value = str(clipped).lstrip('[').rstrip(']')
         self.setText(value)
     
     def setText(self, text):
         super().setText(str(text))
     
+    def clipValue(self, val: float):
+        if val < self._minimum:
+            val = self._minimum
+        return val
+    
     def value(self):
         m = re.match(self.validRegex, self.text())
         if m is None:
             return 0.0
-        else:
-            try: 
-                value = float(self.text())
-                return value
-            except Exception as e:
-                text = self.text()
-                text = text.replace('(', '')
-                text = text.replace(')', '')
-                text = text.replace('[', '')
-                text = text.replace(']', '')
-                values = text.split(',')
-                return [float(value) for value in values]
+        
+        try: 
+            value = self.clipValue(float(self.text()))
+            return value
+        except Exception as e:
+            text = self.text()
+            text = text.replace('(', '')
+            text = text.replace(')', '')
+            text = text.replace('[', '')
+            text = text.replace(']', '')
+            values = text.split(',')
+            return [self.clipValue(float(value)) for value in values]
+    
+    def setMinimum(self, minimum):
+        self._minimum = float(minimum)
 
 class LatexLabel(QLabel):
     def __init__(self, latexText, parent=None):
