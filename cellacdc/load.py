@@ -440,8 +440,14 @@ def _remove_redundant_columns(acdc_df):
     acdc_df = acdc_df.drop(columns=['index', 'level_0'], errors='ignore')
     return acdc_df
 
+def read_acdc_df_csv(acdc_df_filepath, index_col=None):
+    acdc_df = pd.read_csv(
+        acdc_df_filepath, dtype=acdc_df_str_cols, index_col=index_col
+    )
+    return acdc_df
+
 def _load_acdc_df_file(acdc_df_file_path):
-    acdc_df = pd.read_csv(acdc_df_file_path, dtype=acdc_df_str_cols)
+    acdc_df = read_acdc_df_csv(acdc_df_file_path)
     acdc_df = _remove_redundant_columns(acdc_df)
     try:
         acdc_df_drop_cca = acdc_df.drop(columns=cca_df_colnames).fillna(0)
