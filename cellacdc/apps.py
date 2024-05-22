@@ -830,6 +830,8 @@ class AddPointsLayerDialog(QBaseDialog):
         self.fromTableRadiobutton.widgets.append(self.tColName)
 
         if SizeT == 1:
+            self.tColName.clear()
+            self.tColName.addItem('None')
             self.tColName.label.setVisible(False)
             self.tColName.setVisible(False)
         
@@ -1035,13 +1037,13 @@ class AddPointsLayerDialog(QBaseDialog):
         if 'x' in df.columns:
             self.xColName.setCurrentText('x')
         
-        if 'x' in df.columns:
+        if 'y' in df.columns:
             self.yColName.setCurrentText('y')
         
-        if 'x' in df.columns:
+        if 'z' in df.columns:
             self.zColName.setCurrentText('z')
         
-        if 'x' in df.columns:
+        if 'frame_i' in df.columns:
             self.tColName.setCurrentText('frame_i')
     
     def tablePathSelected(self, path):
