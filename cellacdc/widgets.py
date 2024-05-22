@@ -8273,9 +8273,7 @@ class PointsScatterPlotItem(pg.ScatterPlotItem):
     
     def setVisible(self, visible):
         super().setVisible(visible)
-        for textItem in self._textItems.values():
-            if textItem.toPlainText():
-                textItem.setVisible(visible)
+        self.textItem.setVisible(visible)
 
 class installJavaDialog(myMessageBox):
     def __init__(self, parent=None):

@@ -15787,6 +15787,10 @@ class guiWin(QMainWindow):
         self.isDataLoading = False
         self.gui_createAutoSaveWorker()
     
+    def removeAxLimits(self):
+        self.ax1.vb.state['limits']['xLimits'] = [-1E307, +1E307]
+        self.ax1.vb.state['limits']['yLimits'] = [-1E307, +1E307]
+    
     def resizeGui(self):
         self.ax1.vb.state['limits']['xRange'] = [None, None]
         self.ax1.vb.state['limits']['yRange'] = [None, None]
@@ -15797,7 +15801,10 @@ class guiWin(QMainWindow):
         (xmin, xmax), (ymin, ymax) = self.ax1.viewRange()
         maxYRange = int((ymax-ymin)*1.5)
         maxXRange = int((xmax-xmin)*1.5)
-        self.ax1.setLimits(maxYRange=maxYRange, maxXRange=maxXRange)
+        self.ax1.setLimits(
+            maxYRange=maxYRange, 
+            maxXRange=maxXRange
+        )
         self.bottomScrollArea._resizeVertical()
         QTimer.singleShot(200, self.autoRange)
     
@@ -19198,6 +19205,9 @@ class guiWin(QMainWindow):
         deltaY = yRange[1] - yRange[0]
         self.ax1.setXRange(0, deltaX)
         self.ax1.setYRange(0, deltaY)
+        self.ax1.setLimits(
+            xMin=0, xMax=deltaX, yMin=0, yMax=deltaY
+        )
         # self.ax1.setXRange(0, 0)
         # self.ax1.setYRange(0, 0)
     
@@ -22892,6 +22902,7 @@ class guiWin(QMainWindow):
         self.setUncheckedPointsLayers()
         self.restoreDefaultColors()
         self.reinitStoredSegmModels()
+        self.removeAxLimits()
         self.curvToolButton.setChecked(False)
 
         self.segmNdimIndicatorAction.setVisible(False)
