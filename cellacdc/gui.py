@@ -7664,7 +7664,8 @@ class guiWin(QMainWindow):
             self.right_click_i += 1
 
         return point, ID
-
+    
+    @exec_time
     def find_mother_action(self, posData, event, ydata, xdata):
 
         point, ID = self.repeat_click_and_backup(posData, event, ydata, xdata)
@@ -7673,8 +7674,6 @@ class guiWin(QMainWindow):
             return
 
         lin_tree_df = self.lineage_tree.export_df(posData.frame_i)
-
-        # printl(f'Clicked on ID={ID} for the {self.right_click_i} time')
 
         prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
         sorted_IDs = sort_IDs_dist(prev_rp, point=point)
@@ -7701,11 +7700,10 @@ class guiWin(QMainWindow):
             new_mother = filtered_IDs[i]
 
         lin_tree_df.at[ID, 'parent_ID_tree'] = new_mother
-        self.lineage_tree.insert_lineage_df(lin_tree_df, posData.frame_i)
-        # printl(sorted_IDs, filtered_IDs, missing_IDs, set(posData.IDs), prev_IDs, new_mother, self.right_click_i, i)
-        # printl(f'Assigned {new_mother} as mother of {ID} in frame {posData.frame_i}')
+        self.lineage_tree.insert_lineage_df(lin_tree_df, posData.frame_i, propagate_back=False, propagate_fwd=False, update_fams=False, consider_children=False)
         self.drawAllLineageTreeLines()
 
+    @exec_time
     def annotate_unknown_lineage_action(self, posData, event, ydata, xdata):
         point, ID = self.repeat_click_and_backup(posData, event, ydata, xdata)
 
@@ -12114,9 +12112,9 @@ class guiWin(QMainWindow):
                 acdc_df = pd.concat([acdc_df, df])
 
             acdc_df = (acdc_df
-                          .set_index(["frame_i", "Cell_ID"])
-                          .sort_index()
-                          )
+                       .set_index(["frame_i", "Cell_ID"])
+                       .sort_index()
+                       )
 
             # for key, value in self.lineage_tree.family_dict.items():
 
@@ -12128,16 +12126,10 @@ class guiWin(QMainWindow):
                 family_df = family_df.set_index("family_name")
                 families = pd.concat([families, family_df])
 
-            lin_tree_dict_df = pd.DataFrame()
-            for key, df in self.lineage_tree.family_dict.items():
-                df = df.reset_index()
-                df["family_name"] = key
-                lin_tree_dict_df = pd.concat([lin_tree_dict_df, df])
-
-            lin_tree_dict_df = (lin_tree_dict_df
-                .set_index(["family_name", "frame_i", "Cell_ID"])
-                .sort_index()
-                )
+            # lin_tree_dict_df = (lin_tree_dict_df
+            #     .set_index(["family_name", "frame_i", "Cell_ID"])
+            #     .sort_index()
+            #     )
             
             # for i, df in enumerate([acdc_df, lin_tree_df, families, lin_tree_dict_df]):
             #     printl(f"Columns: {df.columns} for df {i}" )
@@ -12150,10 +12142,8 @@ class guiWin(QMainWindow):
                 lin_tree_df=lin_tree_df.drop(columns="level_0")
             if "level_0" in families.columns:
                 families=families.drop(columns="level_0")
-            if "level_0" in lin_tree_dict_df.columns:
-                lin_tree_dict_df=lin_tree_dict_df.drop(columns="level_0")
 
-            pgshow(acdc_df, lin_tree_df, families, lin_tree_dict_df)# , *[posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))], )
+            pgshow(acdc_df, lin_tree_df, families)
         
         if not self.dataIsLoaded:
             self.logger.info(
@@ -17533,7 +17523,6 @@ class guiWin(QMainWindow):
                     self.lineage_tree = normal_division_lineage_tree(lab = posData.allData_li[0]['labels'])
                     df_li = [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))]
                     self.lineage_tree.load_lineage_df_list(df_li)
-                    printl('Here!')
 
             if not lin_tree:
                 self.get_cca_df()
