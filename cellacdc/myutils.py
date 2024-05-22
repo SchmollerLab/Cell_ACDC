@@ -348,6 +348,26 @@ def delete_older_log_files(logs_path):
         except Exception as err:
             continue
 
+def _log_system_info(logger, log_path, is_cli=False, also_spotmax=False):
+    logger.info(f'Initialized log file "{log_path}"')
+    
+    py_ver = sys.version_info
+    python_version = f'{py_ver.major}.{py_ver.minor}.{py_ver.micro}'
+    logger.info(f'Running Python v{python_version} from "{sys.exec_prefix}"')    
+    logger.info(f'Cell-ACDC installation directory: "{cellacdc_path}"')
+    logger.info(f'System version: {sys.version}')
+    logger.info(f'Platform: {platform.platform()}')
+    
+    if GUI_INSTALLED and not is_cli:
+        from qtpy import QtCore
+        logger.info(f'Using Qt version {QtCore.__version__}')
+    
+    if not also_spotmax:
+        return
+    
+    from spotmax import spotmax_path
+    logger.info(f'SpotMAX installation directory: "{spotmax_path}"')
+
 def setupLogger(module='base', logs_path=None):
     if logs_path is None:
         logs_path = get_logs_path()
@@ -378,20 +398,7 @@ def setupLogger(module='base', logs_path=None):
 
     logger.addHandler(output_file_handler)
     
-    logger.info(f'Initialized log file "{log_path}"')
-    
-    py_ver = sys.version_info
-    python_version = f'{py_ver.major}.{py_ver.minor}.{py_ver.micro}'
-    logger.info(f'Running Python v{python_version} from "{sys.exec_prefix}"')
-    
-    if GUI_INSTALLED:
-        from qtpy import QtCore
-        logger.info(f'Using Qt version {QtCore.__version__}')
-    
-    logger.info(f'Cell-ACDC installation directory: "{cellacdc_path}"')
-    
-    logger.info(f'System version: {sys.version}')
-    logger.info(f'Platform: {platform.platform()}')
+    _log_system_info(logger, log_path)
     
     # if module == 'gui' and GUI_INSTALLED:
     #     qt_handler = widgets.QtHandler()
