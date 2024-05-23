@@ -650,6 +650,7 @@ def read_version(logger=None, return_success=False):
             logger('-'*40)
             logger(
                 '[WARNING]: Cell-ACDC could not determine the current version. '
+                'Returning the version determined at installation time. '
                 'See details above.'
             )
             logger('='*40)
