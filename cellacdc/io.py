@@ -3,16 +3,6 @@ import re
 
 from . import path
 
-def get_filepath_from_endname(folder_path, endname, ext=None):
-    if ext is not None:
-        endn_wit_ext = f'{endname}{ext}'
-    else:
-        endn_wit_ext = endname
-    
-    for file in path.listdir(folder_path):
-        if file.endswith(endname) or file.endswith(endn_wit_ext):
-            return os.path.join(folder_path, file)
-
 def get_filepath_from_channel_name(images_path, channel_name):
     h5_aligned_path = ''
     h5_path = ''
