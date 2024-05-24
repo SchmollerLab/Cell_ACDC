@@ -657,7 +657,7 @@ class AutoSaveWorker(QObject):
             if not np.any(lab):
                 continue
 
-            acdc_df = load.pd_bool_to_int(acdc_df, inplace=False)
+            acdc_df = load.pd_bool_to_int(acdc_df, inplace=True)
             acdc_df_li.append(acdc_df)
             key = (frame_i, posData.TimeIncrement*frame_i)
             keys.append(key)

@@ -512,6 +512,16 @@ class TextAnnotations:
         isAnnotateNumZslices = self.isAnnotateNumZslices()
         isLabelTreeAnnotation = self.isLabelTreeAnnotation()
         isGenNumTreeAnnotation = self.isGenNumTreeAnnotation()
+        
+        acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
+        if posData.cca_df is not None and acdc_df is not None:
+            cols = posData.cca_df.columns
+            idx = posData.cca_df.index.intersection(acdc_df.index)
+            acdc_df.loc[idx, cols] = posData.cca_df
+        
+        if acdc_df is None and posData.cca_df is not None:
+            acdc_df = posData.cca_df
+        
         for obj in posData.rp:
             if labelsToSkip is not None:
                 if labelsToSkip.get(obj.label, False):
@@ -524,11 +534,7 @@ class TextAnnotations:
                 continue
 
             isNewObject = obj.label in posData.new_IDs
-            acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
-            if posData.cca_df is not None and acdc_df is not None:
-                cols = posData.cca_df.columns
-                idx = posData.cca_df.index.intersection(acdc_df.index)
-                acdc_df.loc[idx, cols] = posData.cca_df
+            
             objOpts = get_obj_text_annot_opts(
                 obj, acdc_df, isCcaAnnot, isNewObject,
                 isAnnotateNumZslices, isLabelTreeAnnotation, 
