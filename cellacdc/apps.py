@@ -10785,6 +10785,7 @@ class QDialogModelParams(QDialog):
             )
         if self.postProcessGroupbox is not None:
             self.applyPostProcessing = self.postProcessGroupbox.isChecked()
+            self.standardPostProcessKwargs = self.postProcessGroupbox.kwargs()
         self.secondChannelName = None
         if hasattr(self, 'channelsCombobox'):
             self.secondChannelName = self.channelsCombobox.currentText()
@@ -10794,7 +10795,6 @@ class QDialogModelParams(QDialog):
         if self.channelCombobox is not None:
             self.inputChannelName = self.channelCombobox.currentText()
         
-        self.standardPostProcessKwargs = self.postProcessGroupbox.kwargs()
         self.customPostProcessFeatures = self.selectedFeaturesRange()
         self.customPostProcessGroupedFeatures = self.groupedFeatures()
         self._saveParams()
