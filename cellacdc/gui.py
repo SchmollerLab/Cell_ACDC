@@ -85,7 +85,7 @@ from .trackers.CellACDC import CellACDC_tracker
 from .cca_functions import _calc_rot_vol
 from .myutils import exec_time, setupLogger
 from .help import welcome, about
-from .trackers.CellACDC_normal_division.CellACDC_normal_division_tracker import normal_division_lineage_tree
+from .trackers.CellACDC_normal_division.CellACDC_normal_division_tracker import normal_division_lineage_tree, reorg_sister_cells_for_export
 np.seterr(invalid='ignore')
 
 if os.name == 'nt':
@@ -1894,9 +1894,16 @@ class guiWin(QMainWindow):
 
     def PropegateLinTreeAction(self):
         printl('PropegateLinTreeAction')
+        self.nextAction.setDisabled(True)
+        self.prevAction.setDisabled(True)
+        self.navigateScrollBar.setDisabled(True)
         posData = self.data[self.pos_i]
-        lin_tree_df = self.lineage_tree.export_df(posData.frame_i)
-        self.lineage_tree.insert_lineage_df(lin_tree_df, posData.frame_i, propagate_back=True, propagate_fwd=True, update_fams=True, consider_children=True)
+        self.lineage_tree.propagate(posData.frame_i)
+        self.lin_tree_to_acdc_df(force_all=True)
+        self.nextAction.setDisabled(False)
+        self.prevAction.setDisabled(False)
+        self.navigateScrollBar.setDisabled(False)
+
 
 
     def gui_createAnnotateToolbar(self):
@@ -7637,10 +7644,10 @@ class guiWin(QMainWindow):
 
     def repeat_click_and_backup(self, posData, event, ydata, xdata):
         if self.original_df is None: # is this fine? # keep the original df in memory for later use if user wants to discard changes
-            self.original_df = self.lineage_tree.export_df(posData.frame_i)
+            self.original_df = self.lineage_tree.lineage_list[posData.frame_i]
             self.curr_original_df_i = posData.frame_i
         elif self.curr_original_df_i != posData.frame_i:
-            self.original_df = self.lineage_tree.export_df(posData.frame_i)
+            self.original_df = self.lineage_tree.lineage_list[posData.frame_i]
             self.curr_original_df_i = posData.frame_i
         
         if not self.right_click_ID:
@@ -7700,7 +7707,7 @@ class guiWin(QMainWindow):
             new_mother = filtered_IDs[i]
 
         lin_tree_df.at[ID, 'parent_ID_tree'] = new_mother
-        self.lineage_tree.insert_lineage_df(lin_tree_df, posData.frame_i, propagate_back=False, propagate_fwd=False, update_fams=False, consider_children=False)
+        self.lineage_tree.insert_lineage_df(lin_tree_df, posData.frame_i, quick=True, consider_children=False, update_fams=False)
         self.drawAllLineageTreeLines()
 
     @exec_time
@@ -7712,7 +7719,7 @@ class guiWin(QMainWindow):
 
         lin_tree_df = self.lineage_tree.export_df(posData.frame_i)
         lin_tree_df.at[ID, 'parent_ID_tree'] = -1
-        self.lineage_tree.insert_lineage_df(lin_tree_df, posData.frame_i)
+        self.lineage_tree.insert_lineage_df(lin_tree_df, posData.frame_i, quick=True, consider_children=False, update_fams=False)
         self.drawAllLineageTreeLines()
 
     def gui_addCreatedAxesItems(self):
@@ -14844,7 +14851,7 @@ class guiWin(QMainWindow):
 
         txt = """<table>
                     <tr>
-                        <th>ID:</th>
+                        <th>ID</th>
                         <th>old parent --></th>
                         <th>new parent</th>
                     </tr>"""
@@ -14882,13 +14889,12 @@ class guiWin(QMainWindow):
                       buttonsTexts=('Propagate', 'Discard', 'Cancel'),)
 
         if msg.clickedButton == propagate_btn:
-            lin_tree_df = self.lineage_tree.export_df(posData.frame_i)
-            self.lineage_tree.insert_lineage_df(lin_tree_df, posData.frame_i, propagate_back=True, propagate_fwd=True, update_fams=True, consider_children=True)
+            self.lineage_tree.propagate(posData.frame_i)
             self.original_df = None
             self.curr_original_df_i = -1
+            self.lin_tree_to_acdc_df(force_all=True)
             
         elif msg.clickedButton == discard_btn:
-            printl('discard')
             self.lineage_tree.lineage_list[self.curr_original_df_i] = self.original_df
             self.lin_tree_to_acdc_df(specific={posData.frame_i}) # probably not necessary but just in case
             self.original_df = None
@@ -14899,16 +14905,18 @@ class guiWin(QMainWindow):
             # Go back to current frame
             msg = widgets.myMessageBox()
             txt = html_utils.paragraph('''
-            Changes were cept but not propegated!\n
-            Please make sure to come back and propegate them,\n
+            Changes were cept but not propegated!
+            Please make sure to come back and propegate them,
             otherwise your table might be inconsistent!
+            There is a button for this next to the edit buttons.
+            Please also do not visit new frames!
+            
             ''')
             msg.warning(self, 'Changes kept but not propegated!', txt)
             self.lin_tree_to_acdc_df(specific={posData.frame_i})
             self.original_df = None
             self.curr_original_df_i = -1
-
-        self.lin_tree_to_acdc_df(force_all=True)
+                        
         self.nextAction.setDisabled(False)
         self.prevAction.setDisabled(False)
         self.navigateScrollBar.setDisabled(False)
@@ -18129,6 +18137,8 @@ class guiWin(QMainWindow):
             if i not in lin_tree_set:
                 continue
 
+
+            df = reorg_sister_cells_for_export(df)
             df = (df
                   .reset_index()
                   .set_index('Cell_ID')

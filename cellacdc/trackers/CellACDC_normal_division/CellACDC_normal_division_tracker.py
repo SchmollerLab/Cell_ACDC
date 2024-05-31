@@ -9,7 +9,7 @@ from tqdm import tqdm
 import pandas as pd
 from cellacdc.myutils import exec_time
 
-def reorg_daughter_cells(lineage_tree_frame):    
+def reorg_sister_cells_for_export(lineage_tree_frame):    
     """
     Reorganizes the daughter cells in the lineage tree frame.
 
@@ -35,6 +35,14 @@ def reorg_daughter_cells(lineage_tree_frame):
     lineage_tree_frame['sister_ID_tree'] = sister_columns[0]
 
     return lineage_tree_frame
+
+def reorg_sister_cells_for_inport(df):
+    sister_cols = [col for col in df.columns if col.startswith('sister_ID_tree')] # handeling sister columns
+    df['sister_ID_tree'] = df[sister_cols].apply(lambda x: {i for i in x if i not in {0, -1}}, axis=1)
+    df['sister_ID_tree'] = df['sister_ID_tree'].apply(lambda x: list(x) if x else [-1])
+    sister_cols.remove('sister_ID_tree')
+    df = df.drop(columns=sister_cols)
+    return df
 
 def mother_daughter_assign(IoA_matrix, IoA_thresh_daughter, min_daughter, max_daughter):
     """
@@ -184,7 +192,6 @@ def add_member_fam_from_df(families, df):
     for index, row in df.iterrows():
         for family in families:
             in_family = False
-            parent_in_family = False
 
             if row['root_ID_tree'] == family[0][0]: # find the right family
                 for member in family: 
@@ -234,126 +241,10 @@ def update_generation_from_df(families, df): # may need to differentiate for cel
 
     return families
 
-@exec_time
-def generate_gen_df_from_df_li(df_li):
-    df_li = df_li.copy()
-    for i, df in enumerate(df_li):
-        df = checked_reset_index(df)
-        if 'frame_i' not in df.columns:
-            df['frame_i'] = i
-
-        df = df.set_index(['frame_i', 'Cell_ID'])
-        df_li[i] = df
-    
-    general_df = pd.concat(df_li)
-    general_df = general_df.sort_values(by=['frame_i', 'Cell_ID'])
-    return general_df
-
-    raise NotImplementedError('This function is being phased out.')
-
-    # df_li = df_li.copy()
-    family_dict = {}
-
-    if not frames_for_df_li:
-        frames_for_df_li = range(len(df_li))
-
-    for i, df in zip(frames_for_df_li, df_li):
-        df_fams = df.groupby('root_ID_tree')
-        for root_id, df_fam in df_fams:
-            if root_id == 0:
-                printl(f'''Root ID is 0. This is not allowed. Frame: {i}, Cell_ID(s): {df_fam.index.to_string()} \n
-                        This is probably because the savedata is corrupted and a frame is only partially saved.''')
-                continue
-            # root_id = df_fam.iloc[0]['root_ID_tree']
-            df_fam["frame_i"] = i
-            df_fam = checked_reset_index(df_fam)
-            df_fam = df_fam.set_index(['frame_i', 'Cell_ID'])
-            if root_id not in family_dict.keys(): 
-                family_dict[root_id] = df_fam
-            else:
-                family_dict[root_id] = pd.concat([family_dict[root_id], df_fam])
-
-    return family_dict
-
-def family_dict_to_unique_Cell_ID_df(family_dict):
-    raise NotImplementedError('This function is being phased out.')
-    general_df = pd.concat(family_dict.values())
-    general_df = checked_reset_index(general_df)
-    general_df = (general_df
-                  .drop_duplicates(subset='Cell_ID')
-                  .set_index('Cell_ID')
-                  )
-    return general_df
-
-def general_df_to_family_dict(general_df): # general are all dfs concatenated
-    raise NotImplementedError('This function is being phased out.')
-    family_dict = {}
-    general_df_fams = general_df.groupby('root_ID_tree')
-
-    for root_id, df_fam in general_df_fams:
-        family_dict[root_id] = df_fam
-
-    return family_dict
-
 # def general_dict_to_df_li(general_dict):
 #     frames = general_dict.groupby('frame_i')
 
-
-def update_gen_df_from_df(general_df, df, frame_i):
-    """
-    Update a dictionary of dataframes (families) with new rows from a given dataframe for a specific frame. The resulting df for the entire family and all frames will not be consistent, but the single frame inserted should be.
-    Please note that the following things are used to update the dict: parent_ID_tree, Cell_ID (Derived from this the following is corrected: generation_num_tree, root_ID_tree, sister_ID_tree).
-    All other columns are copy pasted from input df.
-    In the future it might make sense to add optons to replace.
-
-    Args:
-        family_dict (dict): A dictionary containing dataframes as values.
-        df (pd.DataFrame): The dataframe containing new rows to be added.
-        frame_i (int): The frame index.
-
-    Returns:
-        dict: The updated dictionary with new rows added.
-
-    """
-    df = df.copy()
-    df['frame_i'] = frame_i
-
-    df = checked_reset_index(df)
-
-    # we first need to correct generation_num_tree, root_ID_tree, sister_ID_tree
-    general_df = checked_reset_index(general_df)
-    unique_Cell_ID_df = (general_df
-                         .drop_duplicates(subset='Cell_ID')
-                         .set_index('Cell_ID')
-                         )
-    corrected_df = pd.DataFrame()
-
-    for _, Cell_info in df.iterrows(): # similar code is used in update_dict_consistency in the part which handles daughters
-        if Cell_info['parent_ID_tree'] == -1: # handle case where a cell was changed to unknown parent
-            Cell_info['generation_num_tree'] = 1
-            Cell_info['root_ID_tree'] = Cell_info['Cell_ID']
-            Cell_info['sister_ID_tree'] = 0
-            corrected_df = pd.concat([corrected_df, Cell_info.to_frame().T])
-            continue
-
-        parent_cell = unique_Cell_ID_df.loc[Cell_info['parent_ID_tree']]
-        Cell_info['generation_num_tree'] = parent_cell['generation_num_tree'] + 1
-        Cell_info['root_ID_tree'] = parent_cell['root_ID_tree']
-        sister_cell_2 = set(df.loc[df['parent_ID_tree'] == Cell_info['parent_ID_tree'], 'Cell_ID'])
-        sister_cell_2.remove(Cell_info['Cell_ID'])
-        Cell_info['sister_ID_tree'] = list(sister_cell_2)
-        corrected_df = pd.concat([corrected_df, Cell_info.to_frame().T])
-
-    corrected_df = reorg_daughter_cells(corrected_df) # this might cause some problems
-
-    general_df = general_df[general_df['frame_i'] != frame_i] # select all frames except the current one
-    general_df = pd.concat([general_df, corrected_df])
-    general_df = general_df.sort_values(by=['frame_i', 'Cell_ID'])
-
-    return general_df
-
 def update_consistency(fixed_frame_i=None, fixed_df=None, Cell_IDs_fixed_df=None, consider_children=True, fwd=False, bck=False, general_df=None, columns_to_replace=None, count=0): # families_to_consider=set(), iter=0):
-    printl(count)
     count += 1
     if consider_children and not fwd: # enforce that fwd is true when considering children
         raise ValueError('consider_children can\'t be true while fwd is not.')
@@ -391,17 +282,10 @@ def update_consistency(fixed_frame_i=None, fixed_df=None, Cell_IDs_fixed_df=None
 
     general_df = checked_reset_index(general_df)
 
-    if not fixed_frame_i:
-        printl('When is this supposed to happen?')
+    if not fixed_frame_i: # this is for propagation mainly 
         if fwd and bck: # this splits the df into two parts, only one is edited. Since there is no fixed frame we split so it also edits frame_i
             general_df_keep = pd.DataFrame()
             general_df_change = general_df
-        # elif fwd:
-        #     general_df_keep = general_df[general_df['frame_i'] < fixed_frame_i]
-        #     general_df_change = general_df[general_df['frame_i'] >= fixed_frame_i]
-        # elif bck:
-        #     general_df_keep = general_df[general_df['frame_i'] > fixed_frame_i]
-        #     general_df_change = general_df[general_df['frame_i'] <= fixed_frame_i]
         else:
             raise ValueError('fwd or bck must be True if fixed_frame_i is provided.')
     else:
@@ -423,21 +307,23 @@ def update_consistency(fixed_frame_i=None, fixed_df=None, Cell_IDs_fixed_df=None
     general_df_change = general_df_change.set_index('Cell_ID')
 
     
-    sister_cols = {col for col in general_df_change.columns if col.startswith('sister_ID_tree')} # handeling sister columns
-    sister_cols_2 = {col for col in fixed_df.columns if col.startswith('sister_ID_tree')}
-    columns_to_replace_loc = sister_cols.union(columns_to_replace).union(sister_cols_2)
-    columns_to_replace_loc = list(columns_to_replace_loc)
+    # sister_cols = {col for col in general_df_change.columns if col.startswith('sister_ID_tree')} # should be all irrelevant now that I always have a list for the sister cells
+    # sister_cols_2 = {col for col in fixed_df.columns if col.startswith('sister_ID_tree')}
+    # columns_diff = sister_cols - sister_cols_2
+    # fixed_df[list(columns_diff)] = 0
+    # columns_to_replace_loc = sister_cols.union(columns_to_replace).union(sister_cols_2)
+    # columns_to_replace_loc = list(columns_to_replace_loc)
 
     occ_cells = general_df_change.index.value_counts() # for repeateing the lines enough times
 
     for Cell_ID in Cell_IDs_fixed_df: # replace values for the cells in the general df # definely needs to be optimized
         occ_cell = occ_cells[Cell_ID]
-        Cell_df = pd.concat([fixed_df.loc[Cell_ID, columns_to_replace_loc]]*occ_cell, axis=1).transpose()
+        Cell_df = pd.concat([fixed_df.loc[Cell_ID, columns_to_replace]]*occ_cell, axis=1).transpose()
         Cell_df.index.name = 'Cell_ID'
-        general_df_change.loc[[Cell_ID], columns_to_replace_loc] = Cell_df # we replace necessary columns
+        general_df_change.loc[[Cell_ID], columns_to_replace] = Cell_df # we replace necessary columns
 
     general_df_keep = checked_reset_index(general_df_keep)
-    general_df_change  = checked_reset_index(general_df_change)
+    general_df_change = checked_reset_index(general_df_change)
 
     general_df = pd.concat([general_df_keep, general_df_change]) # we put the df back together
 
@@ -456,17 +342,17 @@ def update_consistency(fixed_frame_i=None, fixed_df=None, Cell_IDs_fixed_df=None
         else: # else we construct a new fixed_df and run the update recursively.
             new_children_df = []
             for _, row in children_df.iterrows(): # we need to edit the daughters to be consistent
-                # if row['parent_ID_tree'] == -1: # handle case where a cell was changed to unknown parent Probably not necessary here 
-                #     row['generation_num_tree'] = 1
-                #     row['root_ID_tree'] = row['Cell_ID']
-                #     row['sister_ID_tree'] = 0
-                #     new_children_df = new_children_df.append(row)
-                #     continue
                 parent_cell = unique_df.loc[row['parent_ID_tree']]
                 row['generation_num_tree'] = parent_cell['generation_num_tree'] + 1
                 row['root_ID_tree'] = parent_cell['root_ID_tree']
-                sister_cell = unique_df[unique_df['parent_ID_tree'] == row['parent_ID_tree']].index
-                row['sister_ID_tree'] = list(sister_cell)
+                sister_cell = unique_df[unique_df['parent_ID_tree'] == row['parent_ID_tree']].index # index here should be the Cell_ID
+                try:
+                    sister_cell = list(sister_cell)
+                except TypeError:
+                    sister_cell = [sister_cell]
+
+                sister_cell.remove(row['Cell_ID'])
+                row['sister_ID_tree'] = sister_cell
                 new_children_df.append(row)
 
             new_children_df = pd.DataFrame(new_children_df)
@@ -489,44 +375,10 @@ def gen_df_to_fams(general_df):
     general_df = general_df[~general_df.index.duplicated(keep='first')]
     fam_groups = general_df.groupby('root_ID_tree')
     for root_id, fam in fam_groups:
+        fam = fam.sort_values('frame_i')
         families.append(list(zip(fam.index, fam['generation_num_tree'])))
 
     return families
-
-@exec_time  
-def gen_df_to_df_li(general_df): # may need to optimize
-    df_list = []
-
-    general_df = checked_reset_index(general_df)
-
-    general_df = general_df.sort_values(by=['frame_i', 'Cell_ID'])
-
-    if 'index' in general_df.columns:
-        general_df = general_df.drop(columns='index')
-
-    if 'level_0' in general_df.columns:
-        general_df = general_df.drop(columns='level_0')
-    
-    frames = general_df['frame_i'].unique().astype(int)
-
-    frames = frames[~np.isnan(frames)]
-    frames_for_dfs = {int(frame) for frame in frames}
-
-    df_group = general_df.groupby('frame_i')
-    for _, df in df_group:
-        df = (df
-              .drop('frame_i', axis=1)
-              .reset_index() # i dorp later
-              .set_index('Cell_ID')
-              )
-        if "level_0" in df.columns:
-            df = df.drop(columns="level_0")
-        if "index" in df.columns:
-            df = df.drop(columns="index")
-
-        df_list.append(df)
-
-    return df_list, frames_for_dfs
 
 class normal_division_tracker:
     """
@@ -675,6 +527,7 @@ class normal_division_lineage_tree:
         self.mother_daughters = [] # just for the dict_curr_frame stuff...
         self.frames_for_dfs = set([frame_i])
         self.general_df = {}
+        self.need_update_gen_df = False # this is only when using the quick option in update_gen_df_from_df
 
         self.families = []
 
@@ -696,7 +549,6 @@ class normal_division_lineage_tree:
                 added_lineage_tree.append((-1, label, -1, 1, label, [-1] * (self.max_daughter-1)))
 
             cca_df = added_lineage_tree_to_cca_df(added_lineage_tree)
-            cca_df = reorg_daughter_cells(cca_df)
             self.lineage_list = [cca_df]
 
         elif first_df:
@@ -753,7 +605,6 @@ class normal_division_lineage_tree:
 
         cca_df = added_lineage_tree_to_cca_df(added_lineage_tree)
         cca_df = pd.concat([self.lineage_list[-1], cca_df], axis=0)
-        cca_df = reorg_daughter_cells(cca_df)
         cca_df = filter_current_IDs(cca_df, curr_IDs)
         self.lineage_list.append(cca_df)
 
@@ -800,8 +651,124 @@ class normal_division_lineage_tree:
         printl(dict(zip(mother_IDs, daughter_IDs)))
         return dict(zip(mother_IDs, daughter_IDs))
     
+
     @exec_time
-    def insert_lineage_df(self, lineage_df, frame_i, propagate_back=False, propagate_fwd=False, update_fams=True, consider_children=True):
+    def generate_gen_df_from_df_li(self, df_li, force=False):
+        if not force and not self.need_update_gen_df:
+            return
+        
+        self.need_update_gen_df = False
+        df_li = df_li.copy()
+        for i, df in enumerate(df_li):
+            df = checked_reset_index(df)
+            if 'frame_i' not in df.columns:
+                df['frame_i'] = i
+
+            df = df.set_index(['frame_i', 'Cell_ID'])
+            df_li[i] = df
+        
+        general_df = pd.concat(df_li)
+        general_df = general_df.sort_values(by=['frame_i', 'Cell_ID'])
+        self.general_df = general_df
+
+    def update_gen_df_from_df(self, df, frame_i):
+        """
+        Update a dictionary of dataframes (families) with new rows from a given dataframe for a specific frame. The resulting df for the entire family and all frames will not be consistent, but the single frame inserted should be.
+        Please note that the following things are used to update the dict: parent_ID_tree, Cell_ID (Derived from this the following is corrected: generation_num_tree, root_ID_tree, sister_ID_tree).
+        All other columns are copy pasted from input df.
+        In the future it might make sense to add optons to replace.
+
+        Args:
+            family_dict (dict): A dictionary containing dataframes as values.
+            df (pd.DataFrame): The dataframe containing new rows to be added.
+            frame_i (int): The frame index.
+
+        Returns:
+            dict: The updated dictionary with new rows added.
+
+        """
+
+        self.generate_gen_df_from_df_li(self.lineage_list)
+
+        df = df.copy()
+        df['frame_i'] = frame_i
+
+        df = checked_reset_index(df)
+
+        # we first need to correct generation_num_tree, root_ID_tree, sister_ID_tree
+        self.general_df = checked_reset_index(self.general_df)
+        unique_Cell_ID_df = (self.general_df
+                            .drop_duplicates(subset='Cell_ID')
+                            .set_index('Cell_ID')
+                            )
+        corrected_df = pd.DataFrame()
+
+        for _, Cell_info in df.iterrows(): # similar code is used in update_dict_consistency in the part which handles daughters
+            if Cell_info['parent_ID_tree'] == -1: # handle case where a cell was changed to unknown parent
+                Cell_info['generation_num_tree'] = 1
+                Cell_info['root_ID_tree'] = Cell_info['Cell_ID']
+                Cell_info['sister_ID_tree'] = [-1]
+                corrected_df = pd.concat([corrected_df, Cell_info.to_frame().T])
+                continue
+
+            parent_cell = unique_Cell_ID_df.loc[Cell_info['parent_ID_tree']]
+            Cell_info['generation_num_tree'] = parent_cell['generation_num_tree'] + 1
+            Cell_info['root_ID_tree'] = parent_cell['root_ID_tree']
+            sister_cell_2 = set(df.loc[df['parent_ID_tree'] == Cell_info['parent_ID_tree'], 'Cell_ID'])
+            sister_cell_2.remove(Cell_info['Cell_ID'])
+            if sister_cell_2 == set():
+                sister_cell_2 = [-1]
+            try:
+                Cell_info['sister_ID_tree'] = list(sister_cell_2)
+            except TypeError:
+                Cell_info['sister_ID_tree'] = [sister_cell_2]
+
+            corrected_df = pd.concat([corrected_df, Cell_info.to_frame().T])
+
+        self.general_df = self.general_df[self.general_df['frame_i'] != frame_i] # select all frames except the current one
+        self.general_df = pd.concat([self.general_df, corrected_df])
+        self.general_df = self.general_df.sort_values(by=['frame_i', 'Cell_ID'])
+
+    @exec_time  
+    def gen_df_to_df_li(self): # may need to optimize
+        
+        df_list = []
+
+        self.generate_gen_df_from_df_li(self.lineage_list)
+            
+        self.general_df = checked_reset_index(self.general_df)
+
+        self.general_df = self.general_df.sort_values(by=['frame_i', 'Cell_ID'])
+
+        if 'index' in self.general_df.columns:
+            self.general_df = self.general_df.drop(columns='index')
+
+        if 'level_0' in self.general_df.columns:
+            self.general_df = self.general_df.drop(columns='level_0')
+        
+        frames = self.general_df['frame_i'].unique().astype(int)
+
+        frames = frames[~np.isnan(frames)]
+        frames_for_dfs = {int(frame) for frame in frames}
+
+        df_group = self.general_df.groupby('frame_i')
+        for _, df in df_group:
+            df = (df
+                .drop('frame_i', axis=1)
+                .reset_index() # i dorp later
+                .set_index('Cell_ID')
+                )
+            if "level_0" in df.columns:
+                df = df.drop(columns="level_0")
+            if "index" in df.columns:
+                df = df.drop(columns="index")
+
+            df_list.append(df)
+
+        self.lineage_list, self.frames_for_dfs = df_list, frames_for_dfs
+
+    @exec_time
+    def insert_lineage_df(self, lineage_df, frame_i, propagate_back=False, propagate_fwd=False, update_fams=True, consider_children=True, quick=False):
         """
         Inserts a lineage DataFrame to the lineage list at given position. If the position is greater than the length of the lineage list, a warning is printed.
         If the position is less than the length of the lineage list, the lineage DataFrame at the given position is replaced. The change can be propagated to the end of the lineage list, in both ways, or not at all, and also if the internal variables are updated or not. Assumes that the segmentaion has not changed siginficantly, so IDs must be the same.
@@ -809,41 +776,47 @@ class normal_division_lineage_tree:
         Args:
             lineage_df (pandas.DataFrame): The lineage DataFrame to insert.
             frame_i (int): The index of the frame.
+            quick (bool, optional): If True, the function will not update the general_df, families, or lineage_list. Defaults to False.
 
         Returns:
             None
         """
-        if set(range(len(self.lineage_list))) != self.frames_for_dfs:
-            raise ValueError('Frames for dfs is not correct. This is not properly supported and I think I might drop self.frames_for_dfs in the future...')
+
+        if quick and not propagate_back and not propagate_fwd and not update_fams and not consider_children:
+            self.need_update_gen_df = True
+        elif quick and (propagate_back or propagate_fwd or update_fams or consider_children):
+            raise ValueError('Quick is True, other options are not supported.')
         
+        lineage_df = reorg_sister_cells_for_inport(lineage_df)
         #general_df = pd.concat(self.family_dict.values()).reset_index()
         if frame_i == len(self.lineage_list):
-            self.general_df = generate_gen_df_from_df_li(self.lineage_list)
+            if not quick:
+                self.generate_gen_df_from_df_li(self.lineage_list, force=True)
 
             self.lineage_list.append(lineage_df)
-            printl('Here!')
             self.frames_for_dfs.add(frame_i)
 
-            self.general_df = update_gen_df_from_df(self.general_df, lineage_df, frame_i, self.max_daughter)
-            
+            if not quick:
+                self.update_gen_df_from_df(lineage_df, frame_i)
 
             if propagate_back == True:
                 self.general_df = update_consistency(general_df=self.general_df, fixed_frame_i=frame_i, fixed_df=lineage_df, consider_children=consider_children, fwd=False, bck=True)
             if update_fams == True:
-                printl('Here!')
                 self.families = gen_df_to_fams(self.general_df)
 
-            printl('Here!')
-            self.lineage_list, self.frames_for_dfs = gen_df_to_df_li(self.general_df)
+            if not quick:
+                self.gen_df_to_df_li()
 
 
         elif frame_i < len(self.lineage_list):
-            self.general_df = generate_gen_df_from_df_li(self.lineage_list)
+
+            if not quick:
+                self.generate_gen_df_from_df_li(self.lineage_list, force=True)
 
             self.lineage_list[frame_i] = lineage_df
 
-            #general_df = pd.concat(self.family_dict.values()).reset_index()
-            self.general_df = update_gen_df_from_df(self.general_df, lineage_df, frame_i)
+            if not quick:
+                self.update_gen_df_from_df(lineage_df, frame_i)
 
             if propagate_back == True or propagate_fwd == True:
                 self.general_df = update_consistency(general_df=self.general_df, fixed_frame_i=frame_i, fixed_df=lineage_df, consider_children=consider_children, fwd=propagate_fwd, bck=propagate_back)
@@ -851,7 +824,8 @@ class normal_division_lineage_tree:
             if update_fams == True:
                 self.families = gen_df_to_fams(self.general_df)
 
-            self.lineage_list, self.frames_for_dfs = gen_df_to_df_li(self.general_df)
+            if not quick:
+                self.gen_df_to_df_li()
 
 
         elif frame_i > len(self.lineage_list):
@@ -860,23 +834,32 @@ class normal_division_lineage_tree:
             original_length = len(self.lineage_list)
             self.lineage_list = self.lineage_list + [self.lineage_list[-1]] * (frame_i - len(self.lineage_list))
 
-            self.general_df = generate_gen_df_from_df_li(self.lineage_list)
+            if not quick:
+                self.generate_gen_df_from_df_li(self.lineage_list, force=True)
 
             self.lineage_list.append(lineage_df)
 
             frame_is = set(range(len(self.lineage_list)-original_length))
             self.frames_for_dfs = self.frames_for_dfs | frame_is
-            printl('Here!')
 
-            self.general_df = update_gen_df_from_df(self.general_df, lineage_df, frame_i, self.max_daughter)
+            if not quick:
+                self.update_gen_df_from_df(lineage_df, frame_i)
 
             if propagate_back == True or propagate_fwd == True:
                 self.general_df = update_consistency(general_df=self.general_df, fixed_frame_i=frame_i, fixed_df=lineage_df, consider_children=consider_children, fwd=propagate_fwd, bck=propagate_back)
             if update_fams == True:
-                printl('Here!')
                 self.families = gen_df_to_fams(self.general_df)
-            self.lineage_list, self.frames_for_dfs = gen_df_to_df_li(self.general_df)
-            printl('Here!')
+
+            if not quick:
+                self.gen_df_to_df_li()
+
+    def propagate(self, frame_i):
+        self.generate_gen_df_from_df_li(self.lineage_list, force=True)
+        lineage_df = self.lineage_list[frame_i]
+        self.update_gen_df_from_df(lineage_df, frame_i)
+        self.general_df = update_consistency(general_df=self.general_df, fixed_frame_i=frame_i, consider_children=True, fwd=True, bck=True)
+        self.families = gen_df_to_fams(self.general_df)
+        self.gen_df_to_df_li()
 
 
     def load_lineage_df_list(self, df_li):
@@ -899,17 +882,19 @@ class normal_division_lineage_tree:
                 if "index" in df.columns:
                     df = df.drop(columns="index")
 
+                df = reorg_sister_cells_for_inport(df)
                 self.frames_for_dfs.add(i)
                 df_li_new.append(df)
 
         if df_li_new:
             self.lineage_list = df_li_new
-            self.general_df = generate_gen_df_from_df_li(self.lineage_list)
+            self.generate_gen_df_from_df_li(self.lineage_list, force=True)
             self.families = gen_df_to_fams(self.general_df)
-            self.lineage_list, self.frames_for_dfs = gen_df_to_df_li(self.general_df)
+            self.gen_df_to_df_li()
 
     def export_df(self, frame_i):
         df = self.lineage_list[frame_i].copy()
+        df = reorg_sister_cells_for_export(df)
         
         df = (df
               .reset_index()
@@ -993,8 +978,7 @@ class tracker:
                 rp = regionprops(tracker.tracked_lab)
                 curr_IDs = {obj.label for obj in rp}
                 # printl(f'''Frame {frame_i}:\n{len(curr_IDs)} cells, {curr_IDs}\n{len(curr_IDs_legacy)} cells, {curr_IDs_legacy}\n{set(curr_IDs)-set(curr_IDs_legacy)}''')
-                if record_lineage:
-                    tree.create_tracked_frame_tree(frame_i, mother_daughters, IDs_prev, IDs_curr_untracked, assignments, curr_IDs)
+                tree.create_tracked_frame_tree(frame_i, mother_daughters, IDs_prev, IDs_curr_untracked, assignments, curr_IDs)
 
             self.updateGuiProgressBar(signals)
             pbar.update()
