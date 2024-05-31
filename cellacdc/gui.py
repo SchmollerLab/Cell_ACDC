@@ -21765,7 +21765,6 @@ class guiWin(QMainWindow):
                     self.store_data(autosave=False)
                 elif includeUnvisited:
                     # Unvisited frame (includeUnvisited = True)
-                    lab, _ = posData.segm_data[i]
                     lab, _ = self.deleteIDFromLab(lab, delID)
 
         # Back to current frame
