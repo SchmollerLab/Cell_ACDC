@@ -9,6 +9,12 @@ from tqdm import tqdm
 import pandas as pd
 from cellacdc.myutils import exec_time
 
+def filter_cols(df):
+    lin_tree_cols = {'generation_num_tree', 'root_ID_tree', 'sister_ID_tree', 'parent_ID_tree', 'parent_ID_tree', 'emerg_frame_i', 'division_frame_i'}
+    sis_cols = {col for col in df.columns if col.startswith('sister_ID_tree')}
+    lin_tree_cols = lin_tree_cols | sis_cols
+    return df[list(lin_tree_cols)]
+
 def reorg_sister_cells_for_export(lineage_tree_frame):    
     """
     Reorganizes the daughter cells in the lineage tree frame.
@@ -37,11 +43,18 @@ def reorg_sister_cells_for_export(lineage_tree_frame):
     return lineage_tree_frame
 
 def reorg_sister_cells_for_inport(df):
-    sister_cols = [col for col in df.columns if col.startswith('sister_ID_tree')] # handeling sister columns
-    df['sister_ID_tree'] = df[sister_cols].apply(lambda x: {i for i in x if i not in {0, -1}}, axis=1)
-    df['sister_ID_tree'] = df['sister_ID_tree'].apply(lambda x: list(x) if x else [-1])
-    sister_cols.remove('sister_ID_tree')
-    df = df.drop(columns=sister_cols)
+    try:
+        sister_cols = [col for col in df.columns if col.startswith('sister_ID_tree')] # handeling sister columns
+        df['sister_ID_tree'] = df[sister_cols].apply(lambda x: {i for i in x if i not in {0, -1}}, axis=1)
+        df['sister_ID_tree'] = df['sister_ID_tree'].apply(lambda x: list(x) if x else [-1])
+        sister_cols.remove('sister_ID_tree')
+        df = df.drop(columns=sister_cols)
+    except Exception as e:
+        import pandasgui
+        printl(df.columns)
+        printl(e)
+        pandasgui.show(df)
+        exit()
     return df
 
 def mother_daughter_assign(IoA_matrix, IoA_thresh_daughter, min_daughter, max_daughter):
@@ -100,7 +113,8 @@ def added_lineage_tree_to_cca_df(added_lineage_tree):
             - 'sister_ID_tree'
     """
 
-    cca_df = getBaseCca_df([row[1] for row in added_lineage_tree], with_tree_cols=True)
+    cca_df = pd.DataFrame()
+    cca_df['Cell_ID'] = [row[1] for row in added_lineage_tree]
     cca_df['emerg_frame_i'] = [row[0] for row in added_lineage_tree]
     cca_df['division_frame_i'] = [row[0] for row in added_lineage_tree]
     cca_df['generation_num_tree'] = [row[3] for row in added_lineage_tree]
@@ -244,7 +258,7 @@ def update_generation_from_df(families, df): # may need to differentiate for cel
 # def general_dict_to_df_li(general_dict):
 #     frames = general_dict.groupby('frame_i')
 
-def update_consistency(fixed_frame_i=None, fixed_df=None, Cell_IDs_fixed_df=None, consider_children=True, fwd=False, bck=False, general_df=None, columns_to_replace=None, count=0): # families_to_consider=set(), iter=0):
+def update_consistency(fixed_frame_i=None, fixed_df=None, Cell_IDs_fixed=None, consider_children=True, fwd=False, bck=False, general_df=None, columns_to_replace=None, count=0): # families_to_consider=set(), iter=0):
     count += 1
     if consider_children and not fwd: # enforce that fwd is true when considering children
         raise ValueError('consider_children can\'t be true while fwd is not.')
@@ -255,12 +269,13 @@ def update_consistency(fixed_frame_i=None, fixed_df=None, Cell_IDs_fixed_df=None
     general_df = checked_reset_index(general_df)
     general_df = general_df.set_index(['frame_i', 'Cell_ID'])
 
-    if Cell_IDs_fixed_df is not None:
+    if Cell_IDs_fixed is not None:
         general_df = general_df.reset_index()
         fixed_df = general_df.drop_duplicates(subset='Cell_ID')
         general_df = general_df.set_index(['frame_i', 'Cell_ID'])
         fixed_df = checked_reset_index(fixed_df)
-        fixed_df = fixed_df[fixed_df['Cell_ID'].isin(Cell_IDs_fixed_df)]
+        fixed_df = fixed_df[fixed_df['Cell_ID'].isin(Cell_IDs_fixed)]
+        fixed_df = fixed_df[fixed_df['frame_i'] == fixed_frame_i]
         fixed_df = fixed_df.set_index('Cell_ID')
 
     elif fixed_df is None and general_df is not None and fixed_frame_i: # if we don't have a given fixed df we take the one from the general df
@@ -277,8 +292,8 @@ def update_consistency(fixed_frame_i=None, fixed_df=None, Cell_IDs_fixed_df=None
     else: # if we have neither we have a problem
         raise ValueError('Either fixed_frame_df or fixed_df must be provided.')
 
-    if not Cell_IDs_fixed_df: # if we don't have a list of Cell_IDs_fixed_df we take all Cell_IDs_fixed_df from the fixed_df (default)
-        Cell_IDs_fixed_df = fixed_df.index
+    if not Cell_IDs_fixed: # if we don't have a list of Cell_IDs_fixed_df we take all Cell_IDs_fixed_df from the fixed_df (default)
+        Cell_IDs_fixed = fixed_df.index
 
     general_df = checked_reset_index(general_df)
 
@@ -316,7 +331,7 @@ def update_consistency(fixed_frame_i=None, fixed_df=None, Cell_IDs_fixed_df=None
 
     occ_cells = general_df_change.index.value_counts() # for repeateing the lines enough times
 
-    for Cell_ID in Cell_IDs_fixed_df: # replace values for the cells in the general df # definely needs to be optimized
+    for Cell_ID in Cell_IDs_fixed: # replace values for the cells in the general df # definely needs to be optimized
         occ_cell = occ_cells[Cell_ID]
         Cell_df = pd.concat([fixed_df.loc[Cell_ID, columns_to_replace]]*occ_cell, axis=1).transpose()
         Cell_df.index.name = 'Cell_ID'
@@ -335,7 +350,7 @@ def update_consistency(fixed_frame_i=None, fixed_df=None, Cell_IDs_fixed_df=None
                     )
                       # we drop all duplicates (different frames) to reduce overhead
 
-        children_df = unique_df[unique_df['parent_ID_tree'].isin(Cell_IDs_fixed_df)] # we select all children of the cells we are considering
+        children_df = unique_df[unique_df['parent_ID_tree'].isin(Cell_IDs_fixed)] # we select all children of the cells we are considering
         children_df = checked_reset_index(children_df)
         if children_df.empty: # if there are no children we are done
             return general_df
@@ -363,7 +378,6 @@ def update_consistency(fixed_frame_i=None, fixed_df=None, Cell_IDs_fixed_df=None
                                             fixed_df=new_children_df,
                                             consider_children=consider_children,
                                             count=count)
-
             return general_df
     else:
         return general_df
@@ -782,12 +796,16 @@ class normal_division_lineage_tree:
             None
         """
 
+        if quick == False:
+            raise ValueError('Quick is not supported anymore (for now).')
+
         if quick and not propagate_back and not propagate_fwd and not update_fams and not consider_children:
             self.need_update_gen_df = True
         elif quick and (propagate_back or propagate_fwd or update_fams or consider_children):
             raise ValueError('Quick is True, other options are not supported.')
         
         lineage_df = reorg_sister_cells_for_inport(lineage_df)
+        lineage_df = filter_cols(lineage_df)
         #general_df = pd.concat(self.family_dict.values()).reset_index()
         if frame_i == len(self.lineage_list):
             if not quick:
@@ -853,11 +871,11 @@ class normal_division_lineage_tree:
             if not quick:
                 self.gen_df_to_df_li()
 
-    def propagate(self, frame_i):
+    def propagate(self, frame_i, Cell_IDs_fixed=None):
         self.generate_gen_df_from_df_li(self.lineage_list, force=True)
         lineage_df = self.lineage_list[frame_i]
         self.update_gen_df_from_df(lineage_df, frame_i)
-        self.general_df = update_consistency(general_df=self.general_df, fixed_frame_i=frame_i, consider_children=True, fwd=True, bck=True)
+        self.general_df = update_consistency(general_df=self.general_df, fixed_frame_i=frame_i, consider_children=True, fwd=True, bck=True, Cell_IDs_fixed=Cell_IDs_fixed)
         self.families = gen_df_to_fams(self.general_df)
         self.gen_df_to_df_li()
 
@@ -871,17 +889,15 @@ class normal_division_lineage_tree:
             if 'frame_i' in df.columns:
                 df = df.drop('frame_i', axis=1)
             if 'generation_num_tree' in df.columns and not (df['generation_num_tree'] == 0).all():
+
+
                 if not df.index.name == 'Cell_ID':
                     df = (df
                             .reset_index()
                             .set_index('Cell_ID')
                             )
                 
-                if "level_0" in df.columns:
-                    df = df.drop(columns="level_0")
-                if "index" in df.columns:
-                    df = df.drop(columns="index")
-
+                df = filter_cols(df)
                 df = reorg_sister_cells_for_inport(df)
                 self.frames_for_dfs.add(i)
                 df_li_new.append(df)

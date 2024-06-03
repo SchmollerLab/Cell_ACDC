@@ -1847,12 +1847,12 @@ class guiWin(QMainWindow):
         self.noToolLinTreeButton.keyPressShortcut = Qt.Key_N
         self.widgetsWithShortcut['noToolLinTree'] = self.noToolLinTreeButton
 
-        self.PropegateLinTreeButton = QToolButton(self)
-        self.PropegateLinTreeButton.setIcon(QIcon(":compute.svg"))
-        self.editLin_TreeBar.addWidget(self.PropegateLinTreeButton)
-        self.PropegateLinTreeButton.keyPressShortcut = Qt.Key_P
-        self.widgetsWithShortcut['PropegateLinTree'] = self.PropegateLinTreeButton
-        self.PropegateLinTreeButton.clicked.connect(self.PropegateLinTreeAction)
+        self.propagateLinTreeButton = QToolButton(self)
+        self.propagateLinTreeButton.setIcon(QIcon(":compute.svg"))
+        self.editLin_TreeBar.addWidget(self.propagateLinTreeButton)
+        self.propagateLinTreeButton.keyPressShortcut = Qt.Key_P
+        self.widgetsWithShortcut['propagateLinTree'] = self.propagateLinTreeButton
+        self.propagateLinTreeButton.clicked.connect(self.propagateLinTreeAction)
 
         modes_availible = [
             'Segmentation and Tracking',
@@ -1892,8 +1892,8 @@ class guiWin(QMainWindow):
         # brushEraserToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
         # modeToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
 
-    def PropegateLinTreeAction(self):
-        printl('PropegateLinTreeAction')
+    def propagateLinTreeAction(self):
+        printl('propagateLinTreeAction')
         self.nextAction.setDisabled(True)
         self.prevAction.setDisabled(True)
         self.navigateScrollBar.setDisabled(True)
@@ -14889,7 +14889,7 @@ class guiWin(QMainWindow):
                       buttonsTexts=('Propagate', 'Discard', 'Cancel'),)
 
         if msg.clickedButton == propagate_btn:
-            self.lineage_tree.propagate(posData.frame_i)
+            self.lineage_tree.propagate(posData.frame_i, Cell_IDs_fixed=differences.Cell_ID.unique())
             self.original_df = None
             self.curr_original_df_i = -1
             self.lin_tree_to_acdc_df(force_all=True)
@@ -14905,14 +14905,14 @@ class guiWin(QMainWindow):
             # Go back to current frame
             msg = widgets.myMessageBox()
             txt = html_utils.paragraph('''
-            Changes were cept but not propegated!
-            Please make sure to come back and propegate them,
+            Changes were cept but not propagated!
+            Please make sure to come back and propagate them,
             otherwise your table might be inconsistent!
             There is a button for this next to the edit buttons.
             Please also do not visit new frames!
             
             ''')
-            msg.warning(self, 'Changes kept but not propegated!', txt)
+            msg.warning(self, 'Changes kept but not propagated!', txt)
             self.lin_tree_to_acdc_df(specific={posData.frame_i})
             self.original_df = None
             self.curr_original_df_i = -1
@@ -18044,7 +18044,7 @@ class guiWin(QMainWindow):
                 if 'corrected_assignment' not in df.columns:
                     # Compatibility with those acdc_df analysed with prev vers.
                     df['corrected_assignment'] = True
-                lin_tree_df = df[list(self.lin_tree_df_colnames)].copy()
+                lin_tree_df = df.copy()
         if lin_tree_df is None and self.isSnapshot:
             printl('Lineage tree for snapshots is not supported :(')
 
@@ -18110,10 +18110,6 @@ class guiWin(QMainWindow):
         if self.lineage_tree is None:
             return
         
-        if not self.lineage_tree.frames_for_dfs:
-            printl('frames_for_dfs not present (links dfs to frames)')
-            return
-        
         df_for_sync = []
         lineage_copy = self.lineage_tree.lineage_list.copy()
         lin_tree_set = self.lineage_tree.frames_for_dfs.copy()
@@ -18171,6 +18167,10 @@ class guiWin(QMainWindow):
             copy_lin_tree_df_colnames.update(sister_col_names)
             lin_tree_colnames = list(copy_lin_tree_df_colnames)
             acdc_df.loc[lin_tree_df.index, lin_tree_colnames] = lin_tree_df[lin_tree_colnames]
+            
+            if np.all(acdc_df['generation_num']==2): # check if generation_num is all just the default value and if yes, replace it with the tree values
+                acdc_df['generation_num'] = acdc_df['generation_num_tree']
+
             posData.allData_li[frame_i]['acdc_df'] = acdc_df
             self.already_synced_lin_tree.add(frame_i)
             # print(lin_tree_list)
