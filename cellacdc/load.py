@@ -1736,9 +1736,10 @@ class loadData:
         
         self._additionalMetadataValues = {}
         for name in self.metadata_df.index:
-            if name.startswith('__'):
+            if name.startswith('__') and len(name) > 2:
                 value = self.metadata_df.at[name, 'values']
                 self._additionalMetadataValues[name] = value
+        
         if not self._additionalMetadataValues:
             # Load metadata values saved in temp folder
             if os.path.exists(additional_metadata_path):

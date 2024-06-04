@@ -5568,6 +5568,8 @@ class QDialogMetadata(QDialog):
     def show(self, block=False):
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         super().show()
+        printl(self.basenameLineEdit.sizeHint())
+        printl(self.basenameLineEdit.width())
         if block:
             self.loop = QEventLoop()
             self.loop.exec_()
@@ -14434,7 +14436,7 @@ class InitFijiMacroDialog(QBaseDialog):
             return False
         
         files = os.listdir(path)
-        extensions = set([os.path.splittext(file)[1] for file in files])
+        extensions = set([os.path.splitext(file)[1] for file in files])
         if len(extensions) > 1:
             self.warnMultipleExtensionsPresent(path, extensions)
             return False
