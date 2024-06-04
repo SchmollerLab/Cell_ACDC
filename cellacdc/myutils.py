@@ -1964,10 +1964,20 @@ def get_list_of_models():
         _path = os.path.join(models_path, name)
         if not os.path.exists(_path):
             continue
-        if os.path.isdir(_path) and not name.endswith('__') and name != 'thresholding':
-            models.add(name)
+        
+        if not os.path.isdir(_path):
+            continue
+        
+        if name.endswith('__'):
+            continue
+        
+        if not os.path.exists(os.path.join(_path, 'acdcSegment.py')):
+            continue
+        
         if name == 'thresholding':
-            models.add('Automatic thresholding')
+            name = 'Automatic thresholding'
+        
+        models.add(name)
     if not os.path.exists(models_list_file_path):
         return natsorted(list(models))
     
