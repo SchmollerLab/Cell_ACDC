@@ -13,7 +13,7 @@ def init_macro(
         channels: Iterable[str]
     ):
     macros_folderpath = os.path.join(acdc_fiji_path, 'macros')
-    os.makedirs(exist_ok=True)
+    os.makedirs(macros_folderpath, exist_ok=True)
     
     macros_template_folderpath = os.path.dirname(os.path.abspath(__file__))
     macro_template_filename = (
