@@ -2835,7 +2835,7 @@ def get_fiji_base_command():
     
     command = None
     if is_mac:
-        command = f'{get_fiji_exec_folderpath()} --headless'
+        command = f'{get_fiji_exec_folderpath()}'
 
     return command
     

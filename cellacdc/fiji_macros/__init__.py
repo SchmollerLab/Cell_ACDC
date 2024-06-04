@@ -35,8 +35,6 @@ def init_macro(
     files_path = f'"{files_path}"'
     macro_txt = macro_txt.replace('id = ...', f'id = {files_path}')
     
-    print(macro_txt)
-    
     date_time = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     id = uuid4()
     macro_filename = f'{date_time}_{id}_{macro_template_filename}'
@@ -48,7 +46,7 @@ def init_macro(
 
 def command_run_macro(macro_filepath):
     exec_path = myutils.get_fiji_exec_folderpath()
-    command = f'{exec_path} --headless -macro {macro_filepath}'
+    command = f'{exec_path} -macro {macro_filepath}'
     return command
 
 def run_macro(macro_command):
