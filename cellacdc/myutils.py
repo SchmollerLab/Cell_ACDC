@@ -2337,15 +2337,12 @@ def check_install_cellpose(version: str='2.0'):
     next_version = int(version.split('.')[0])+1
     next_version = f'{next_version}.0'
     
-    if is_conda_env():
-        install_package_conda(f'"cellpose>={version},<{next_version}"')
-    else:
-        check_install_package(
-            'cellpose', 
-            pypi_name=f'cellpose>={version},<{next_version}',
-            import_pkg_name='cellpose',
-            force_upgrade=True
-        )
+    check_install_package(
+        'cellpose', 
+        pypi_name=f'cellpose>={version},<{next_version}',
+        import_pkg_name='cellpose',
+        force_upgrade=True
+    )
 
 def check_install_baby():
     check_install_package('baby', pypi_name='baby-seg')

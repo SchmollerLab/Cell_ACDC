@@ -31,6 +31,8 @@ class Model:
             device = None
         
         major_version = myutils.get_cellpose_major_version()
+        print(f'Initializing Cellpose v{major_version}...')
+        
         if major_version == 3:
             if model_type=='cyto3':
                 self.model = models.Cellpose(
