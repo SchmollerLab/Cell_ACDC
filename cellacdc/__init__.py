@@ -327,15 +327,35 @@ base_cca_dict = {
 
 cca_df_colnames = list(base_cca_dict.keys())
 
-base_cca_tree_dict = {
-    'Cell_ID_tree': -1,
-    'generation_num_tree': 1,
-    'parent_ID_tree': -1,
-    'root_ID_tree': -1,
-    'sister_ID_tree': -1
+base_cca_dict = {
+    'cell_cycle_stage': 'G1',
+    'generation_num': 2,
+    'relative_ID': -1,
+    'relationship': 'mother',
+    'emerg_frame_i': -1,
+    'division_frame_i': -1,
+    'is_history_known': False,
+    'corrected_assignment': False,
+    'will_divide': 0,
+    'daughter_disappears_before_division': 0,
+    'disappears_before_division': 0
 }
 
-lineage_tree_cols = list(base_cca_tree_dict.keys())
+lineage_tree_cols = [
+    # 'Cell_ID_tree',
+    'generation_num_tree',
+    'parent_ID_tree',
+    'root_ID_tree',
+    'sister_ID_tree'
+]
+
+lineage_tree_cols_std_val = [
+    -1,
+    -1,
+    -1,
+    -1,
+    -1
+]
 
 default_annot_df = {
     'is_cell_dead': False,

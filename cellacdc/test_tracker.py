@@ -21,17 +21,15 @@ app, splashScreen = _setup_app(splashscreen=True)
 splashScreen.close()
 
 path = (
-    os.path.join(
-        data_path, 'test_symm_div_acdc_tracker', 'Images', 'bknapp_Movie_S1.tif')
+    os.path.join(data_path, r'test_symm_div_acdc_tracker\Images\bknapp_Movie_S1.tif')
 )
 
 channel_name = 'bknapp_Movie_S1'
 end_filename_segm = 'segm'# 'segm_test'
 START_FRAME = 0 
-STOP_FRAME = 372
-PLOT_FRAME = 1
-SAVE = False
-REAL_TIME_TRACKER = False
+STOP_FRAME = 499
+# PLOT_FRAME = 499
+SAVE = True
 SCRUMBLE_IDs = False
 
 # test_data = data.BABYtestData()
@@ -89,6 +87,8 @@ tracker, track_params = myutils.init_tracker(
 )
 if track_params is None:
     exit('Execution aborted')    
+print(posData.segm_data.shape)
+lab_stack = posData.segm_data[START_FRAME:STOP_FRAME+1]
 
 if SCRUMBLE_IDs:
     # Scrumble IDs last frame
