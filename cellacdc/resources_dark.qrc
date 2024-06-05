@@ -25,6 +25,7 @@
     <file alias="cross_cursor.svg">resources/icons/cross_cursor_dark.svg</file>
     <file alias="file-new.svg">resources/icons/file-new_dark.svg</file>
     <file alias="file-open.svg">resources/icons/file-open_dark.svg</file>
+    <file alias="arrow_cursor.svg">resources/icons/arrow_cursor_dark.svg</file>
     <file alias="file-save.svg">resources/icons/file-save_dark.svg</file>
     <file alias="file-exit.svg">resources/icons/file-exit_dark.svg</file>
     <file alias="edit-copy.svg">resources/icons/edit-copy_dark.svg</file>

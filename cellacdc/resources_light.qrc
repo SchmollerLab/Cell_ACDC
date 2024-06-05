@@ -40,6 +40,7 @@
     <file alias="arrow-left.svg">resources/icons/arrow-left.svg</file>
     <file alias="arrow-right.svg">resources/icons/arrow-right.svg</file>
     <file alias="arrow-up.svg">resources/icons/arrow-up.svg</file>
+    <file alias="arrow_cursor.svg">resources/icons/arrow_cursor.svg</file>
     <file alias="arrow_current.svg">resources/icons/arrow_current.svg</file>
     <file alias="cog_play.svg">resources/icons/cog_play.svg</file>
     <file alias="arrow_future.svg">resources/icons/arrow_future.svg</file>
