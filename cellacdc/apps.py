@@ -5001,6 +5001,11 @@ class QDialogMetadata(QDialog):
             self.basenameLineEdit = QLineEdit()
             self.basenameLineEdit.setReadOnly(True)
             self.basenameLineEdit.setText(basename)
+            minWidth = (
+                self.basenameLineEdit.fontMetrics()
+                .boundingRect(basename).width() + 10
+            )
+            self.basenameLineEdit.setMinimumWidth(minWidth)
             self.basenameLineEdit.setAlignment(Qt.AlignCenter)
             gridLayout.addWidget(self.basenameLineEdit, row, 1)
             row += 1
@@ -5568,8 +5573,6 @@ class QDialogMetadata(QDialog):
     def show(self, block=False):
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         super().show()
-        printl(self.basenameLineEdit.sizeHint())
-        printl(self.basenameLineEdit.width())
         if block:
             self.loop = QEventLoop()
             self.loop.exec_()
