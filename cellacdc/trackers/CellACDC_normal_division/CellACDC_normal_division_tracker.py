@@ -29,7 +29,7 @@ def filter_cols(df):
 def reorg_sister_cells_for_export(lineage_tree_frame):
     """
     Reorganizes the daughter cells in the lineage tree frame for export.
-    Tranlates the lists from 'sister_ID_tree' to 'sister_ID_tree_1', 'sister_ID_tree_2',
+    Translates the lists from 'sister_ID_tree' to 'sister_ID_tree_1', 'sister_ID_tree_2',
     while leaving the first entry from the list in 'sister_ID_tree'
 
     Parameters:
@@ -38,6 +38,9 @@ def reorg_sister_cells_for_export(lineage_tree_frame):
     Returns:
     - pandas.DataFrame: The lineage tree frame with reorganized daughter cells (e.g. 'daughter_ID_tree_1', 'daughter_ID_tree_2', ...)
     """
+    if lineage_tree_frame.empty:
+        return lineage_tree_frame
+    
     old_sister_columns = {col for col in lineage_tree_frame.columns if col.startswith('sister_ID_tree')}
 
     sister_columns = lineage_tree_frame['sister_ID_tree'].apply(pd.Series)
@@ -617,6 +620,7 @@ class normal_division_lineage_tree:
         Returns:
         - None
         """
+        printl('Initializing lineage tree.')
         if lab.any() and first_df:
             raise ValueError('Only one of lab and first_df can be provided.')
 
@@ -1026,6 +1030,10 @@ class normal_division_lineage_tree:
         - pandas.DataFrame: The dataframe for frame_i.
         """
         df = self.lineage_list[frame_i].copy()
+
+        if df.empty:
+            printl(f'Warning: No dataframe for frame {frame_i} found.')
+
         df = reorg_sister_cells_for_export(df)
 
         df = (df

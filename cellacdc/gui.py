@@ -2016,11 +2016,6 @@ class guiWin(QMainWindow):
         self.navigateToolBar.setVisible(False)
         self.editLin_TreeBar.setVisible(False)
 
-
-        self.setTooltips()
-
-        self.gui_populateToolSettingsMenu()
-
         self.gui_createAnnotateToolbar()
 
         # toolbarSize = 58
@@ -15555,6 +15550,10 @@ class guiWin(QMainWindow):
         
         if already_accepted_lost:
             return True
+
+        self.nextAction.setDisabled(True)
+        self.prevAction.setDisabled(True)
+        self.navigateScrollBar.setDisabled(True)
         
         msg = widgets.myMessageBox()
         warn_msg = html_utils.paragraph(
@@ -15572,8 +15571,14 @@ class guiWin(QMainWindow):
         doNotWarnLostCells = not checkBox.isChecked()
         self.warnLostCellsAction.setChecked(doNotWarnLostCells)
         if msg.clickedButton == noButton:
+            self.nextAction.setDisabled(False)
+            self.prevAction.setDisabled(False)
+            self.navigateScrollBar.setDisabled(False)
             return False
         
+        self.nextAction.setDisabled(False)
+        self.prevAction.setDisabled(False)
+        self.navigateScrollBar.setDisabled(False)
         if not hasattr(posData, 'accepted_lost_IDs'):
             posData.accepted_lost_IDs = {}
         if frame_i not in posData.accepted_lost_IDs:
@@ -17857,6 +17862,8 @@ class guiWin(QMainWindow):
             notEnoughG1Cells = False
             proceed = True
             return notEnoughG1Cells, proceed
+        
+
 
     def highlightIDs(self, IDs, pen):
         pass
@@ -18267,6 +18274,7 @@ class guiWin(QMainWindow):
         rp = posData.allData_li[frame_i]['regionprops']
         prev_rp = posData.allData_li[frame_i-1]['regionprops']
 
+        printl("ding")
         self.lineage_tree.real_time(frame_i, lab, prev_lab, rp=rp, prev_rp=prev_rp)
         self.lin_tree_to_acdc_df()
         self.lineage_tree.frames_for_dfs.add(frame_i)
@@ -19528,7 +19536,10 @@ class guiWin(QMainWindow):
             lin_tree_colnames = lin_tree_df.columns
             acdc_df.loc[lin_tree_df.index, lin_tree_colnames] = lin_tree_df[lin_tree_colnames]
             
-            if np.all(acdc_df['generation_num']==2): # check if generation_num is all just the default value and if yes, replace it with the tree values
+            try:
+                if np.all(acdc_df['generation_num']==2): # check if generation_num is all just the default value and if yes, replace it with the tree values
+                    acdc_df['generation_num'] = acdc_df['generation_num_tree']
+            except KeyError:
                 acdc_df['generation_num'] = acdc_df['generation_num_tree']
 
             posData.allData_li[frame_i]['acdc_df'] = acdc_df
@@ -23506,7 +23517,8 @@ class guiWin(QMainWindow):
     def trackFrame(
             self, prev_lab, prev_rp, currentLab, currentRp, currentIDs,
             assign_unique_new_IDs=True
-        ):        
+        ):
+        printl(f'Tracking frame {self.data[self.pos_i].frame_i}...')
         if self.trackWithAcdcAction.isChecked():
             tracked_result = CellACDC_tracker.track_frame(
                 prev_lab, prev_rp, currentLab, currentRp,
@@ -23527,8 +23539,10 @@ class guiWin(QMainWindow):
         try:
             tracked_lab, tracked_lost_IDs = tracked_result
             self.handleAdditionalInfoRealTimeTracker(prev_rp, tracked_lost_IDs)
+            printl(f'Tracked lost IDs: {tracked_lost_IDs}')
         except ValueError as err:
             tracked_lab = tracked_result
+            printl(err)
         
         return tracked_lab
     
@@ -23747,7 +23761,7 @@ class guiWin(QMainWindow):
             if ID == 0:
                 continue
             trackedLostIDs.add(ID)
-        return trackedLostIDs, prev_lab            
+        return trackedLostIDs #, prev_lab            
     
     def manuallyEditTracking(self, tracked_lab, allIDs):
         posData = self.data[self.pos_i]
