@@ -22,6 +22,7 @@
     <file alias="clear.svg">resources/icons/math/clear_dark.svg</file>
     <file alias="less_than.svg">resources/icons/math/less_than_dark.svg</file>
     <file alias="view.svg">resources/icons/view_dark.svg</file>
+    <file alias="auto-pilot.svg">resources/icons/auto-pilot_dark.svg</file>
     <file alias="cross_cursor.svg">resources/icons/cross_cursor_dark.svg</file>
     <file alias="file-new.svg">resources/icons/file-new_dark.svg</file>
     <file alias="file-open.svg">resources/icons/file-open_dark.svg</file>

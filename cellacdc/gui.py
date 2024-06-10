@@ -1472,6 +1472,8 @@ class guiWin(QMainWindow):
         self.slideshowButton.setShortcut('Ctrl+W')
         navigateToolBar.addWidget(self.slideshowButton)
         
+        navigateToolBar.addAction(self.autoPilotButton)
+        
         # navigateToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
         navigateToolBar.addAction(self.skipToNewIdAction)
 
@@ -2634,6 +2636,11 @@ class guiWin(QMainWindow):
         self.newAction.setStatusTip(newTip)
         self.newAction.setWhatsThis("Create a new empty segmentation file")
 
+        self.autoPilotButton = QAction(self)
+        self.autoPilotButton.setIcon(QIcon(":auto-pilot.svg"))
+        self.autoPilotButton.setCheckable(True)
+        self.autoPilotButton.setShortcut('Ctrl+Shift+A')
+        
         self.findIdAction = QAction(self)
         self.findIdAction.setIcon(QIcon(":find.svg"))
         self.findIdAction.setShortcut('Ctrl+F')
@@ -3140,6 +3147,7 @@ class guiWin(QMainWindow):
         self.loadPosAction.triggered.connect(self.loadPosTriggered)
         # self.reloadAction.triggered.connect(self.reload_cb)
         self.findIdAction.triggered.connect(self.findID)
+        self.autoPilotButton.toggled.connect(self.autoPilotToggled)
         self.skipToNewIdAction.triggered.connect(self.skipForwardToNewID)        
         self.slideshowButton.toggled.connect(self.launchSlideshow)
         
@@ -7901,6 +7909,12 @@ class guiWin(QMainWindow):
         self.isRealTimeTrackerInitialized = False
         self.initRealTimeTracker()
 
+    def autoPilotToggled(self, checked):
+        self.autoPilotZoomToObjToolbar.setVisible(checked)
+        if checked:
+            self.autoPilotZoomToObjToggle.setChecked(False)
+            self.autoPilotZoomToObjToggle.toggle()
+    
     def findID(self):
         posData = self.data[self.pos_i]
         searchIDdialog = apps.QLineEditDialog(
