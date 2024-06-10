@@ -1013,9 +1013,11 @@ class normal_division_lineage_tree:
         printl('Loading!')
         df_li_new = []
         for i, df in enumerate(df_li):
-            if 'frame_i' in df.columns:
-                df = df.drop('frame_i', axis=1)
-            if 'generation_num_tree' in df.columns and not (df['generation_num_tree'] == 0).all():
+            if ('generation_num_tree' in df.columns 
+                and not (df['generation_num_tree'] == 0).any()
+                and not df['generation_num_tree'].isnull().any() 
+                and not df["generation_num_tree"].isna().any() 
+                and not df["generation_num_tree"].empty):
 
                 if not df.index.name == 'Cell_ID':
                     df = (df

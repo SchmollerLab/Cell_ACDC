@@ -2036,6 +2036,9 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         self.lineage_tree.propagate(posData.frame_i)
         self.lin_tree_to_acdc_df(force_all=True)
+        if posData.frame_i == self.curr_original_df_i:
+            self.original_df = self.lineage_tree.lineage_list[posData.frame_i]
+
         self.nextAction.setDisabled(False)
         self.prevAction.setDisabled(False)
         self.navigateScrollBar.setDisabled(False)
@@ -19541,7 +19544,7 @@ class guiWin(QMainWindow):
             acdc_df.loc[lin_tree_df.index, lin_tree_colnames] = lin_tree_df[lin_tree_colnames]
             
             try:
-                if np.all(acdc_df['generation_num']==2): # check if generation_num is all just the default value and if yes, replace it with the tree values
+                if np.all(acdc_df['generation_num']==2) and not (acdc_df['generation_num_tree'].isna().all()): # check if generation_num is all just the default value and if yes, replace it with the tree values
                     acdc_df['generation_num'] = acdc_df['generation_num_tree']
             except KeyError:
                 acdc_df['generation_num'] = acdc_df['generation_num_tree']

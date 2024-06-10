@@ -32,7 +32,7 @@ def get_obj_text_label_annot(
         try:
             annot_label = acdc_df.at[obj.label, 'Cell_ID_tree']
         except Exception as err:
-            print(traceback.format_exc())
+            # print(traceback.format_exc())
             annot_label = obj.label
     else:
         annot_label = obj.label
