@@ -1187,6 +1187,7 @@ class tracker:
         IDs_prev = tracker.IDs_prev
         mothers = {IDs_prev[mother[0]] for mother in mother_daughters_pairs}
 
+        printl(mothers)
         return tracked_video[-1], mothers
 
     def updateGuiProgressBar(self, signals):
