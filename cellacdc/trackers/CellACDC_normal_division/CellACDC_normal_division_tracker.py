@@ -54,6 +54,21 @@ def reorg_sister_cells_for_export(lineage_tree_frame):
 
     return lineage_tree_frame
 
+def reorg_sister_cells_inner_func(row):
+    """
+    Reorganizes the sister cells in a row of a DataFrame. Used as an inner function for apply.
+
+    Parameters:
+    - row (pandas.Series): The input row of the DataFrame (alredy filtered for the sister columns).
+    Returns:
+    - pandas.Series: The reorganized row with the sister cells.
+    """
+
+    values = {i for i in row if i not in {0, -1} and not np.isnan(i)} or {-1}
+    values = list(values) if values else [-1]
+    return values
+
+
 def reorg_sister_cells_for_inport(df):
     """
     Reorganizes the sister cells for import.
@@ -71,9 +86,8 @@ def reorg_sister_cells_for_inport(df):
     Returns:
     - df (pandas.DataFrame): The modified DataFrame with reorganized sister cells.
     """
-    sister_cols = [col for col in df.columns if col.startswith('sister_ID_tree')] # handeling sister columns
-    df.loc[:, 'sister_ID_tree'] = df[sister_cols].apply(lambda x: {i for i in x if i not in {0, -1}}, axis=1)
-    df.loc[:, 'sister_ID_tree'] = df['sister_ID_tree'].apply(lambda x: list(x) if x else [-1])
+    sister_cols = [col for col in df.columns if col.startswith('sister_ID_tree')] # handling sister columns
+    df.loc[:, 'sister_ID_tree'] = df[sister_cols].apply(reorg_sister_cells_inner_func, axis=1)
     sister_cols.remove('sister_ID_tree')
     df = df.drop(columns=sister_cols)
     return df
@@ -142,6 +156,7 @@ def added_lineage_tree_to_cca_df(added_lineage_tree):
     cca_df['parent_ID_tree'] = [row[2] for row in added_lineage_tree]
     cca_df['root_ID_tree'] = [row[4] for row in added_lineage_tree]
     cca_df['sister_ID_tree'] = [row[5] for row in added_lineage_tree]
+    cca_df = cca_df.set_index('Cell_ID')
     return cca_df
 
 def create_lineage_tree_video(segm_video, IoA_thresh_daughter, min_daughter, max_daughter):
