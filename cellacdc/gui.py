@@ -19044,6 +19044,8 @@ class guiWin(QMainWindow):
         toolButton.toggled.connect(self.addPointsByClickingButtonToggled)
         self.addPointsByClickingButtonToggled(sender=toolButton)
         
+        toolButton.setToolTip(tableEndName)
+        
         pointIdSpinbox = widgets.SpinBox()
         pointIdSpinbox.setMinimum(0)
         pointIdSpinbox.setValue(1)
@@ -19160,6 +19162,8 @@ class guiWin(QMainWindow):
         
         endname = df_filename[len(posData.basename):]
         action.loadedDfInfo['endname'] = endname    
+        
+        action.button.setToolTip(endname)
     
     def pointsLayerClicksDfsToData(self, posData):
         for action in self.pointsLayersToolbar.actions()[1:]:
@@ -19544,6 +19548,11 @@ class guiWin(QMainWindow):
     def showPointsLayerIdsToggled(self, button, checked):
         button.action.scatterItem.drawIds = checked
         self.drawPointsLayers()
+    
+    def removePointsLayer(self, button):
+        button.setChecked(False)
+        self.ax1.removeItem(button.action.scatterItem)
+        self.pointsLayersToolbar.removeAction(button.action)
     
     def editPointsLayerAppearance(self, button):
         win = apps.EditPointsLayerAppearanceDialog(parent=self)

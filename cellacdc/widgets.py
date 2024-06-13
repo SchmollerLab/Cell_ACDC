@@ -2963,6 +2963,7 @@ class ToolButtonCustomColor(rightClickToolButton):
 class PointsLayerToolButton(ToolButtonCustomColor):
     sigEditAppearance = Signal(object)
     sigShowIdsToggled = Signal(object, bool)
+    sigRemove = Signal(object)
 
     def __init__(self, symbol, color='r', parent=None):
         super().__init__(symbol, color=color, parent=parent)
@@ -2976,6 +2977,10 @@ class PointsLayerToolButton(ToolButtonCustomColor):
         editAction.triggered.connect(self.editAppearance)
         contextMenu.addAction(editAction)
         
+        removeAction = QAction('Remove points')
+        removeAction.triggered.connect(self.emitRemove)
+        contextMenu.addAction(removeAction)
+        
         showIdsAction = QAction('Show point ids')
         showIdsAction.setCheckable(True)
         showIdsAction.setChecked(True)
@@ -2983,6 +2988,9 @@ class PointsLayerToolButton(ToolButtonCustomColor):
         showIdsAction.toggled.connect(self.emitShowIdsToggled)
 
         contextMenu.exec(event.globalPos())
+    
+    def emitRemove(self):
+        self.sigRemove.emit(self)
     
     def emitShowIdsToggled(self, checked):
         self.sigShowIdsToggled.emit(self, checked)
