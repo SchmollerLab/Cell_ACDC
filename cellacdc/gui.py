@@ -19670,10 +19670,11 @@ class guiWin(QMainWindow):
                 continue
             
             framePointsData = action.pointsData[posData.frame_i]
+  
             if 'x' not in framePointsData:
                 # 3D points
                 zProjHow = self.zProjComboBox.currentText()
-                isZslice = zProjHow == 'single z-slice'
+                isZslice = (zProjHow == 'single z-slice' and posData.SizeZ > 1)
                 if isZslice:
                     xx, yy, ids = [], [], []
                     zSlice = self.zSliceScrollBar.sliderPosition()
