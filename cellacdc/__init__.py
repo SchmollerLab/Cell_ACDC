@@ -64,6 +64,7 @@ def _run_pip_commands(commands: Iterable[str]):
 try:
     import requests
 except Exception as err:
+    import traceback
     traceback.print_exc()
     print('We detected a corrupted library, fixing it now...')
     commands = (
