@@ -64,7 +64,8 @@ def _run_pip_commands(commands: Iterable[str]):
 try:
     import requests
 except Exception as err:
-    print('SpotMAX detected corrupted library, fixing it now...')
+    traceback.print_exc()
+    print('We detected a corrupted library, fixing it now...')
     commands = (
         'pip uninstall -y charset-normalizer', 
         'pip install --upgrade charset-normalizer'
