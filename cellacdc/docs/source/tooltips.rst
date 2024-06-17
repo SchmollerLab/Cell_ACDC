@@ -46,6 +46,12 @@
     :height: 16px
     :width: 16px
 
+.. |autoPilotButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/find.svg
+    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/auto-pilot.svg 
+    :alt: autoPilotButton icon
+    :height: 16px
+    :width: 16px
+
 .. |slideshowButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/eye-plus.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/eye-plus.svg 
     :alt: slideshowButton icon
@@ -298,6 +304,7 @@ View options
 ------------
 * **Find ID (** |findIdAction| **"Ctrl+F"):** Find and highlight ID. Press "Esc" to clear highlighted object.
 * **Open Slideshow (** |slideshowButton| **"Ctrl+W"):** Opens slideshow.
+* **Auto-pilot (** |autoPilotButton| **"Ctrl+W"):** Press arrow up/down to navigate and view segmented objects one by one.
 * **Skip forward to new object (** |skipToNewIdAction| **"Page up"):** Skip forward to the frame where a new object appears.
 * | **Overlay channels (** |overlayButton| **):** Right-click on the button to overlay additional channels. To overlay a different channel right-click on the colorbar on the left of the image. Use the colorbar ticks to adjust the selected channel's intensity. You can also adjust the opacity of the selected channel with the "Alpha <channel_name>" scrollbar below the image. 
   | Note: This button has a green background if you successfully 'loaded fluorescence data'

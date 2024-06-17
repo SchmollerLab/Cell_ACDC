@@ -64,7 +64,9 @@ def _run_pip_commands(commands: Iterable[str]):
 try:
     import requests
 except Exception as err:
-    print('SpotMAX detected corrupted library, fixing it now...')
+    import traceback
+    traceback.print_exc()
+    print('We detected a corrupted library, fixing it now...')
     commands = (
         'pip uninstall -y charset-normalizer', 
         'pip install --upgrade charset-normalizer'
@@ -563,7 +565,7 @@ pytorch_commands = {
         'Pip': {
             'CPU': 'python -m pip install torch torchvision',
             'CUDA 11.8 (NVIDIA GPU)': 'python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118',
-            'CUDA 12.1 (NVIDIA GPU)': 'python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118'
+            'CUDA 12.1 (NVIDIA GPU)': 'python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121'
         }
     },
     'Mac': {

@@ -61,6 +61,7 @@
     <file alias="close.svg">resources/icons/close.svg</file>
     <file alias="manage_versions.svg">resources/icons/manage_versions.svg</file>
     <file alias="prep.svg">resources/icons/prep.svg</file>
+    <file alias="auto-pilot.svg">resources/icons/auto-pilot.svg</file>
     <file alias="continue.svg">resources/icons/continue.svg</file>
     <file alias="eraser.svg">resources/icons/eraser.svg</file>
     <file alias="brush-cursor.png">resources/icons/brush-cursor.png</file>

@@ -3032,3 +3032,49 @@ def save_df_to_csv_temp_path(df, csv_filename, **to_csv_kwargs):
     tempFilepath = os.path.join(tempDir, csv_filename)
     df.to_csv(tempFilepath, **to_csv_kwargs)
     return tempFilepath
+
+def loaded_df_to_points_data(df, t_col, z_col, y_col, x_col):
+    points_data = {}
+    if 'id' not in df.columns:
+        df['id'] = ''
+        
+    if t_col != 'None':
+        grouped = df.groupby(t_col)
+    else:
+        grouped = [(0, df)]
+    
+    for frame_i, df_frame in grouped:
+        if z_col != 'None':
+            df_frame[z_col] = df_frame[z_col].round().astype(int)
+            # Use integer z
+            zz = df_frame[z_col]
+            points_data[frame_i] = {} 
+            for z in zz.values:
+                df_z = df_frame[df_frame[z_col] == z]
+                z_int = round(z)
+                if z_int in points_data[frame_i]:
+                    continue
+                points_data[frame_i][z_int] = {
+                    'x': df_z[x_col].to_list(),
+                    'y': df_z[y_col].to_list(), 
+                    'id': df_z['id'].to_list(), 
+                }
+        else:
+            points_data[frame_i] = {
+                'x': df[x_col].to_list(),
+                'y': df[y_col].to_list(), 
+                'id': df['id'].to_list(), 
+            }
+    return points_data
+
+def load_df_points_layer(filepath):
+    df = None
+    if filepath.endswith('.csv'):
+        df = pd.read_csv(filepath)
+    elif filepath.endswith('.h5'):
+        with pd.HDFStore(filepath) as h5:
+            keys = h5.keys()
+            dfs = [h5.get(key) for key in keys]
+        df = pd.concat(dfs, keys=keys, names=['h5_key'])
+    return df
+    

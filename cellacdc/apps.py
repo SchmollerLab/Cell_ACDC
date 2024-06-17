@@ -1024,14 +1024,7 @@ class AddPointsLayerDialog(QBaseDialog):
                 pass
     
     def _readTable(self, path):
-        if path.endswith('.csv'):
-            df = pd.read_csv(path)
-        elif path.endswith('.h5'):
-            with pd.HDFStore(path) as h5:
-                keys = h5.keys()
-                dfs = [h5.get(key) for key in keys]
-            df = pd.concat(dfs, keys=keys, names=['h5_key'])
-        return df
+        return load.load_df_points_layer(path)
     
     def tryAutoFillColNames(self, df):
         if 'x' in df.columns:
@@ -1144,29 +1137,39 @@ class AddPointsLayerDialog(QBaseDialog):
 
     def ok_cb(self):
         self.pointsData = {}
+        self.loadedDfInfo = None
         self.weighingChannel = ''
         if self.fromTableRadiobutton.isChecked():
             tablePath = self.tablePath.text()
             if not tablePath:
                 self.criticalEmptyTablePath()
                 return
-            else:
-                try:
-                    df = self._readTable(tablePath)
-                    tColName = self.tColName.currentText()
-                    xColName = self.xColName.currentText()
-                    yColName = self.yColName.currentText()
-                    zColName = self.zColName.currentText()
+            
+            try:
+                df = self._readTable(tablePath)
+                tColName = self.tColName.currentText()
+                xColName = self.xColName.currentText()
+                yColName = self.yColName.currentText()
+                zColName = self.zColName.currentText()
+                
+                self.loadedDfInfo = {
+                    'filepath': tablePath,
+                    't': tColName, 
+                    'z': zColName, 
+                    'y': yColName, 
+                    'x': xColName
+                }
+                
+                self._df_to_pointsData(
+                    df, tColName, zColName, yColName, xColName
+                )
                     
-                    self._df_to_pointsData(
-                        df, tColName, zColName, yColName, xColName
-                    )
-                        
-                except Exception as e:
-                    traceback_format = traceback.format_exc()
-                    self.sigCriticalReadTable.emit(traceback_format)
-                    self.criticalReadTable(tablePath, traceback_format)
-                    return
+            except Exception as e:
+                traceback_format = traceback.format_exc()
+                self.sigCriticalReadTable.emit(traceback_format)
+                self.criticalReadTable(tablePath, traceback_format)
+                return
+            
             if self.xColName.currentText() == 'None':
                 self.criticalColNameIsNone('x')
                 return
@@ -1230,36 +1233,9 @@ class AddPointsLayerDialog(QBaseDialog):
         self.close()
     
     def _df_to_pointsData(self, df, tColName, zColName, yColName, xColName):
-        if 'id' not in df.columns:
-            df['id'] = ''
-            
-        if tColName != 'None':
-            grouped = df.groupby(tColName)
-        else:
-            grouped = [(0, df)]
-        
-        for frame_i, df_frame in grouped:
-            if zColName != 'None':
-                df_frame[zColName] = df_frame[zColName].round().astype(int)
-                # Use integer z
-                zz = df_frame[zColName]
-                self.pointsData[frame_i] = {} 
-                for z in zz.values:
-                    df_z = df_frame[df_frame[zColName] == z]
-                    z_int = round(z)
-                    if z_int in self.pointsData[frame_i]:
-                        continue
-                    self.pointsData[frame_i][z_int] = {
-                        'x': df_z[xColName].to_list(),
-                        'y': df_z[yColName].to_list(), 
-                        'id': df_z['id'].to_list(), 
-                    }
-            else:
-                self.pointsData[frame_i] = {
-                    'x': df[xColName].to_list(),
-                    'y': df[yColName].to_list(), 
-                    'id': df['id'].to_list(), 
-                }
+        self.pointsData = load.loaded_df_to_points_data(
+            df, tColName, zColName, yColName, xColName
+        )
     
     def showEvent(self, event) -> None:
         self.resize(int(self.width()*1.25), self.height())

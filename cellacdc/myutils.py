@@ -25,6 +25,7 @@ import pandas as pd
 import skimage
 import inspect
 import typing
+from typing import List
 
 from natsort import natsorted
 
@@ -866,7 +867,7 @@ def clipSelemMask(mask, shape, Yc, Xc, copy=True):
     return mask, mask_slice
 
 
-def listdir(path):
+def listdir(path) -> List[str]:
     return natsorted([
         f for f in os.listdir(path)
         if not f.startswith('.')
