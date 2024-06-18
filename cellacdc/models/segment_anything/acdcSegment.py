@@ -308,7 +308,6 @@ class Model:
         
         return input_points, input_labels
     
-    
     def _segment_2D_image(
             self, image: np.ndarray, 
             input_points: np.ndarray, 

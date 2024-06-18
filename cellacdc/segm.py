@@ -551,6 +551,18 @@ class segmWin(QMainWindow):
                 self.close()
                 return
         
+        sam_only_embeddings = False
+        sam_also_embeddings = False
+        if model_name == 'segment_anything':
+            sam_only_embeddings, sam_also_embeddings, cancel = (
+                self.askSamSaveEmbeddings()
+            )
+            if cancel:
+                abort = self.doAbort()
+                if abort:
+                    self.close()
+                    return
+        
         if model_name != 'thresholding':
             self.model_kwargs = win.model_kwargs
         self.standardPostProcessKwargs = win.standardPostProcessKwargs
@@ -1048,6 +1060,26 @@ class segmWin(QMainWindow):
         
         config_filepath = os.path.join(folder_path, config_filename)
         self._saveConfigurationFile(config_filepath)
+    
+    def askSamSaveEmbeddings(self):
+        txt = html_utils.paragraph("""
+        Segment Anything Model generates image embeddings that you 
+        can use later in module 3<br>
+        for <b>much faster interactive segmentation</b> (with points or bounding boxes 
+        prompts).<br><br>
+        Do you want to <b>save the image embeddings</b>?
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        _, saveOnlyButton, saveButton, _ = msg.question(
+            self, 'Save SAM Image Embeddings?', txt, 
+            buttonsTexts=(
+                'Cancel', 'Save only embeddings', 'Save also embeddings', 
+                'Do not save embeddings'
+            )
+        )
+        sam_only_embeddings = msg.clickedButton == saveOnlyButton
+        sam_also_embeddings = msg.clickedButton == saveButton
+        return sam_only_embeddings, sam_also_embeddings, msg.cancel
     
     def askRunNowOrSaveConfigFile(self):
         txt = html_utils.paragraph("""
