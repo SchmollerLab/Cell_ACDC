@@ -15010,7 +15010,7 @@ class guiWin(QMainWindow):
                 self.get_data()
 
     def next_pos(self):
-        self.store_data(debug=False)
+        self.store_data(debug=True, autosave=False)
         prev_pos_i = self.pos_i
         if self.pos_i < self.num_pos-1:
             self.pos_i += 1
@@ -15044,7 +15044,7 @@ class guiWin(QMainWindow):
         self.initManualBackgroundObject()
 
     def prev_pos(self):
-        self.store_data(debug=False)
+        self.store_data(debug=False, autosave=False)
         prev_pos_i = self.pos_i
         if self.pos_i > 0:
             self.pos_i -= 1
