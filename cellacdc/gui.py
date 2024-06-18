@@ -2685,6 +2685,9 @@ class guiWin(QMainWindow):
         self.repeatTrackingAction = QAction(
             QIcon(":repeat-tracking.svg"), "Repeat tracking", self
         )
+        self.repeatTrackingAction.setShortcut('Shift+T')
+        self.widgetsWithShortcut['Repeat Tracking'] = self.repeatTrackingAction
+        
 
         self.editRtTrackerParamsAction = QAction(
             'Edit real-time tracker parameters...', self
@@ -12503,7 +12506,8 @@ class guiWin(QMainWindow):
             return
        
         if ev.key() == Qt.Key_Q and self.debug:
-            # posData = self.data[self.pos_i]
+            printl(self.repeatTrackingAction.shortcut())
+            printl(self.repeatTrackingAction.shortcut().toString())
             pass
         
         if not self.isDataLoaded:
@@ -20211,6 +20215,8 @@ class guiWin(QMainWindow):
     def setShortcuts(self, shortcuts: dict, save=True):
         for name, (text, shortcut) in shortcuts.items():
             widget = self.widgetsWithShortcut[name]
+            if shortcut is None:
+                shortcut = QKeySequence()
             if hasattr(widget, 'keyPressShortcut'):
                 widget.keyPressShortcut = shortcut
             else:
