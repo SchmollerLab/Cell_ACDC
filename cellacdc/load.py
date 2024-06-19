@@ -2183,6 +2183,7 @@ class loadData:
         self.segm_hyperparams_ini_path = f'{base_path}segm_hyperparams.ini'
         self.custom_annot_json_path = f'{base_path}custom_annot_params.json'
         self.custom_combine_metrics_path = f'{base_path}custom_combine_metrics.ini'
+        self.tracked_lost_centroids_json_path = f'{base_path}tracked_lost_IDs.json'
     
     def get_btrack_export_path(self):
         btrack_path = self.segm_npz_path.replace('.npz', '.h5')
@@ -2456,6 +2457,66 @@ class loadData:
             return None
         elif signals is not None:
             raise FileNotFoundError(err_title)
+        
+    def saveTrackedLostCentroids(self, tracked_lost_centroids_list=None):
+        if not self.tracked_lost_centroids:
+            return
+        
+        tracked_lost_centroids_list = {k: list(v) for k, v in self.tracked_lost_centroids.items()}
+
+        printl(tracked_lost_centroids_list)
+        try:
+            with open(self.tracked_lost_centroids_json_path, 'w') as json_file:
+                json.dump(tracked_lost_centroids_list, json_file, indent=4)
+        except PermissionError:
+            print('='*20)
+            traceback.print_exc()
+            print('='*20)
+            permissionErrorTxt = html_utils.paragraph(
+                f'The below file is open in another app (Excel maybe?).<br><br>'
+                f'{self.tracked_lost_centroids_json_path}<br><br>'
+                'Close file and then press "Ok", or press "Cancel" to abort.'
+            )
+            msg = widgets.myMessageBox(self.parent)
+            msg.warning(
+                self, 'Permission denied', permissionErrorTxt, buttonsTexts=('Cancel', 'Ok')
+            )
+            if msg.cancel:
+                return
+            
+            self.saveTrackedLostCentroids(tracked_lost_centroids_list=tracked_lost_centroids_list)
+
+    def loadTrackedLostCentroids(self):
+        try:
+            with open(self.tracked_lost_centroids_json_path, 'r') as json_file:
+                tracked_lost_centroids_list = json.load(json_file)
+                self.tracked_lost_centroids = {int(k): set(v) for k, v in tracked_lost_centroids_list.items()}
+        except FileNotFoundError:
+            print(f"No file found at {self.tracked_lost_centroids_json_path}")
+            self.tracked_lost_centroids = {
+                frame_i:set() for frame_i in range(self.SizeT)
+                }
+        except PermissionError:
+            print('='*20)
+            traceback.print_exc()
+            print('='*20)
+            permissionErrorTxt = html_utils.paragraph(
+                f'The below file is open in another app (Excel maybe?).<br><br>'
+                f'{self.tracked_lost_centroids_json_path}<br><br>'
+                'Close file and then press "Ok", or press "Cancel" to abort.'
+            )
+            msg = widgets.myMessageBox(self.parent)
+            msg.warning(
+                self, 'Permission denied', permissionErrorTxt, buttonsTexts=('Cancel', 'Ok')
+            )
+            if msg.cancel:
+                self.tracked_lost_centroids = {
+                    frame_i:set() for frame_i in range(self.SizeT)
+                    }
+                return
+            
+            self.loadTrackedLostCentroids()
+        printl(self.tracked_lost_centroids)
 
 class select_exp_folder:
     def __init__(self):

@@ -764,6 +764,8 @@ class saveDataWorker(QObject):
             posData.saveCustomAnnotationParams()
             current_frame_i = posData.frame_i
 
+            posData.saveTrackedLostCentroids()
+
             if not self.mainWin.isSnapshot:
                 last_tracked_i = self.mainWin.last_tracked_i
                 if last_tracked_i is None:
@@ -17403,9 +17405,7 @@ class guiWin(QMainWindow):
                 'Delete ID': False, 'Edit ID': False, 'Keep ID': False
             }
             
-            posData.tracked_lost_centroids = {
-                frame_i:set() for frame_i in range(posData.SizeT)
-            }
+            posData.loadTrackedLostCentroids()
             posData.acdcTracker2stepsAnnotInfo = {}
 
             posData.doNotShowAgain_BinID = False
@@ -23719,6 +23719,7 @@ class guiWin(QMainWindow):
     def handleAdditionalInfoRealTimeTracker(self, prev_rp, *args):
         if self._rtTrackerName == 'CellACDC_normal_division':
             tracked_lost_IDs = args[0]
+            printl(f'Tracked lost IDs: {tracked_lost_IDs}')
             self.setTrackedLostCentroids(prev_rp, tracked_lost_IDs)
         elif self._rtTrackerName == 'CellACDC_2steps':
             if args[0] is None:
@@ -23803,7 +23804,7 @@ class guiWin(QMainWindow):
                         
     def setTrackedLostCentroids(self, prev_rp, tracked_lost_IDs):
         """Store centroids of those IDs the tracker decided is fine to lose 
-        (e.g., upon standard cell division the ID of the mother is fone)
+        (e.g., upon standard cell division the ID of the mother is fine)
 
         Parameters
         ----------
