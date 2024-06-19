@@ -633,7 +633,7 @@ class AutoSaveWorker(QObject):
         
         keys = []
         acdc_df_li = []
-
+        
         for frame_i, data_dict in enumerate(posData.allData_li[:end_i+1]):
             if self.abortSaving:
                 break
@@ -668,7 +668,7 @@ class AutoSaveWorker(QObject):
         if not self.abortSaving:            
             if self.isAutoSaveON:
                 segm_data = np.squeeze(saved_segm_data)
-                self._saveSegm(segm_npz_path, posData.segm_npz_path, segm_data)
+                self._saveSegm(segm_npz_path, segm_data)
             
             if acdc_df_li:
                 all_frames_acdc_df = pd.concat(
@@ -684,7 +684,7 @@ class AutoSaveWorker(QObject):
         self.abortSaving = False
         self.isSaving = False
     
-    def _saveSegm(self, recovery_path, main_segm_path, data):
+    def _saveSegm(self, recovery_path, data):
         if np.all(self.savedSegmData == data):
             return
         else:

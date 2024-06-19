@@ -2490,7 +2490,8 @@ class loadData:
         try:
             with open(self.tracked_lost_centroids_json_path, 'r') as json_file:
                 tracked_lost_centroids_list = json.load(json_file)
-                self.tracked_lost_centroids = {int(k): set(v) for k, v in tracked_lost_centroids_list.items()}
+                printl(tracked_lost_centroids_list)
+                self.tracked_lost_centroids = {int(k): {tuple(int(val) for val in centroid) for centroid in v} for k, v in tracked_lost_centroids_list.items()}
         except FileNotFoundError:
             print(f"No file found at {self.tracked_lost_centroids_json_path}")
             self.tracked_lost_centroids = {

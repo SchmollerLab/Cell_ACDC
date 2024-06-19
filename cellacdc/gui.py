@@ -2901,6 +2901,9 @@ class guiWin(QMainWindow):
         self.repeatTrackingAction = QAction(
             QIcon(":repeat-tracking.svg"), "Repeat tracking", self
         )
+        self.repeatTrackingAction.setShortcut('Shift+T')
+        self.widgetsWithShortcut['Repeat Tracking'] = self.repeatTrackingAction
+        
 
         self.editRtTrackerParamsAction = QAction(
             'Edit real-time tracker parameters...', self
@@ -12990,6 +12993,8 @@ class guiWin(QMainWindow):
                 pgshow(acdc_df, lin_tree_df, families)
             else:
                 pgshow(acdc_df)
+
+            printl(posData.tracked_lost_centroids)
         
         if not self.isDataLoaded:
             self.logger.info(
@@ -15491,7 +15496,7 @@ class guiWin(QMainWindow):
                 self.get_data()
 
     def next_pos(self):
-        self.store_data(debug=False)
+        self.store_data(debug=True, autosave=False)
         prev_pos_i = self.pos_i
         if self.pos_i < self.num_pos-1:
             self.pos_i += 1
@@ -15525,7 +15530,7 @@ class guiWin(QMainWindow):
         self.initManualBackgroundObject()
 
     def prev_pos(self):
-        self.store_data(debug=False)
+        self.store_data(debug=False, autosave=False)
         prev_pos_i = self.pos_i
         if self.pos_i > 0:
             self.pos_i -= 1
@@ -15610,6 +15615,9 @@ class guiWin(QMainWindow):
             posData.accepted_lost_IDs[frame_i] = []
         
         posData.accepted_lost_IDs[frame_i].extend(posData.lost_IDs)
+        # This section is adding the lost cells to tracked_lost_centroids... TBH I dont know why this wasnt done in the first place
+        accepted_lost_centroids = {tuple(int(val) for val in posData.rp[ID].centroid) for ID in posData.lost_IDs}
+        posData.tracked_lost_centroids[frame_i] = posData.tracked_lost_centroids[frame_i] | (accepted_lost_centroids)
         return True
         
     def next_frame(self, warn=True):
@@ -21535,6 +21543,8 @@ class guiWin(QMainWindow):
     def setShortcuts(self, shortcuts: dict, save=True):
         for name, (text, shortcut) in shortcuts.items():
             widget = self.widgetsWithShortcut[name]
+            if shortcut is None:
+                shortcut = QKeySequence()
             if hasattr(widget, 'keyPressShortcut'):
                 widget.keyPressShortcut = shortcut
             else:
