@@ -1099,7 +1099,8 @@ class tracker:
               IoA_thresh_aggressive = 0.5,
               min_daughter = 2,
               max_daughter = 2,
-              record_lineage = True
+              record_lineage = True,
+              return_tracked_lost_centroids = True
         ):
         """
         Tracks the segmented video frames and returns the tracked video. (Used for module 2)
@@ -1117,7 +1118,13 @@ class tracker:
         Returns:
         - list: Tracked video frames.
         """
+        if not record_lineage and return_tracked_lost_centroids:
+            raise ValueError('return_tracked_lost_centroids can only be True if record_lineage is True.')
+        
         pbar = tqdm(total=len(segm_video), desc='Tracking', ncols=100)
+
+        if return_tracked_lost_centroids:
+            self.tracked_lost_centroids = {frame: [] for frame in range(len(segm_video))}
 
         for frame_i, lab in enumerate(segm_video):
             if frame_i == 0:
@@ -1137,6 +1144,7 @@ class tracker:
                 rp = regionprops(tracker.tracked_lab)
                 curr_IDs = {obj.label for obj in rp}
                 tree.create_tracked_frame(frame_i, mother_daughters, IDs_prev, IDs_curr_untracked, assignments, curr_IDs)
+                # tree.
 
             self.updateGuiProgressBar(signals)
             pbar.update()

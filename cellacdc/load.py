@@ -2183,7 +2183,7 @@ class loadData:
         self.segm_hyperparams_ini_path = f'{base_path}segm_hyperparams.ini'
         self.custom_annot_json_path = f'{base_path}custom_annot_params.json'
         self.custom_combine_metrics_path = f'{base_path}custom_combine_metrics.ini'
-        self.tracked_lost_centroids_json_path = f'{base_path}tracked_lost_IDs.json'
+        self.tracked_lost_centroids_json_path = f'{base_path}tracked_lost_centroids.json'
     
     def get_btrack_export_path(self):
         btrack_path = self.segm_npz_path.replace('.npz', '.h5')
@@ -2490,7 +2490,6 @@ class loadData:
         try:
             with open(self.tracked_lost_centroids_json_path, 'r') as json_file:
                 tracked_lost_centroids_list = json.load(json_file)
-                printl(tracked_lost_centroids_list)
                 self.tracked_lost_centroids = {int(k): {tuple(int(val) for val in centroid) for centroid in v} for k, v in tracked_lost_centroids_list.items()}
         except FileNotFoundError:
             print(f"No file found at {self.tracked_lost_centroids_json_path}")
@@ -2517,7 +2516,6 @@ class loadData:
                 return
             
             self.loadTrackedLostCentroids()
-        printl(self.tracked_lost_centroids)
 
 class select_exp_folder:
     def __init__(self):

@@ -1972,7 +1972,7 @@ class guiWin(QMainWindow):
         self.editLin_TreeBar.addWidget(self.findNextMotherButton)
         self.editLin_TreeGroup.addButton(self.findNextMotherButton)
         self.findNextMotherButton.keyPressShortcut = Qt.Key_F
-        self.widgetsWithShortcut['findNextMother'] = self.findNextMotherButton
+        self.widgetsWithShortcut['Find next potential mother (lineage tree)'] = self.findNextMotherButton
 
         self.unknownLineageButton = QToolButton(self)
         self.unknownLineageButton.setIcon(QIcon(":history.svg"))
@@ -1980,7 +1980,7 @@ class guiWin(QMainWindow):
         self.editLin_TreeBar.addWidget(self.unknownLineageButton)
         self.editLin_TreeGroup.addButton(self.unknownLineageButton)
         self.unknownLineageButton.keyPressShortcut = Qt.Key_U
-        self.widgetsWithShortcut['unknownLineage'] = self.unknownLineageButton
+        self.widgetsWithShortcut['Unknown lineage (lineage tree)'] = self.unknownLineageButton
 
         self.noToolLinTreeButton = QToolButton(self)
         self.noToolLinTreeButton.setIcon(QIcon(":arrow_cursor.svg"))
@@ -1988,13 +1988,13 @@ class guiWin(QMainWindow):
         self.editLin_TreeBar.addWidget(self.noToolLinTreeButton)
         self.editLin_TreeGroup.addButton(self.noToolLinTreeButton)
         self.noToolLinTreeButton.keyPressShortcut = Qt.Key_N
-        self.widgetsWithShortcut['noToolLinTree'] = self.noToolLinTreeButton
+        self.widgetsWithShortcut['No tool (lineage tree)'] = self.noToolLinTreeButton
 
         self.propagateLinTreeButton = QToolButton(self)
         self.propagateLinTreeButton.setIcon(QIcon(":compute.svg"))
         self.editLin_TreeBar.addWidget(self.propagateLinTreeButton)
         self.propagateLinTreeButton.keyPressShortcut = Qt.Key_P
-        self.widgetsWithShortcut['propagateLinTree'] = self.propagateLinTreeButton
+        self.widgetsWithShortcut['Propagate (lineage tree)'] = self.propagateLinTreeButton
         self.propagateLinTreeButton.clicked.connect(self.propagateLinTreeAction)
 
         modes_availible = [
