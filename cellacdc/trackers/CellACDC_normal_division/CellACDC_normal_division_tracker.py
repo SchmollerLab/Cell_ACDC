@@ -667,7 +667,6 @@ class normal_division_lineage_tree:
         - assignments (dict): Dictionary mapping untracked cell IDs to tracked cell IDs.
         - curr_IDs (list): List of current cell IDs.
 
-
         Returns:
         - None
         """
@@ -1144,13 +1143,22 @@ class tracker:
                 rp = regionprops(tracker.tracked_lab)
                 curr_IDs = {obj.label for obj in rp}
                 tree.create_tracked_frame(frame_i, mother_daughters, IDs_prev, IDs_curr_untracked, assignments, curr_IDs)
-                # tree.
+
+                self.tracked_lost_centroids[frame_i] = []
+                for IoA_index_pair in mother_daughters:
+                    mother_ID = IDs_prev[IoA_index_pair[0]]
+                    for region in rp:
+                        if region.label == mother_ID:
+                            self.tracked_lost_centroids[frame_i].append(region.centroid)
+                            break
 
             self.updateGuiProgressBar(signals)
             pbar.update()
 
         if record_lineage:
             self.cca_dfs = tree.lineage_list
+            # here we would also save make sure to save self.tracked_lost_centroids, but since we already assigned it correctly from the get go we dont need to do that
+
 
         tracked_video = tracker.tracked_video
         pbar.close()
@@ -1193,7 +1201,7 @@ class tracker:
 
         mother_daughters_pairs = tracker.mother_daughters
         IDs_prev = tracker.IDs_prev
-        mothers = {IDs_prev[mother[0]] for mother in mother_daughters_pairs}
+        mothers = {IDs_prev[pair[0]] for pair in mother_daughters_pairs}
 
         printl(mothers)
         return tracked_video[-1], mothers

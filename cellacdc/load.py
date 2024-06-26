@@ -1556,6 +1556,11 @@ class loadData:
         acdc_df.to_csv(self.acdc_output_csv_path)
         self.loadAcdcDf(self.acdc_output_csv_path)
 
+        if not hasattr(tracker, 'tracked_lost_centroids'):
+            return
+        
+        self.saveTrackedLostCentroids(tracker.tracked_lost_centroids)
+
     def getAcdcDfEndname(self):
         if not hasattr(self, 'acdc_output_csv_path'):
             return
@@ -2458,11 +2463,18 @@ class loadData:
         elif signals is not None:
             raise FileNotFoundError(err_title)
         
-    def saveTrackedLostCentroids(self, tracked_lost_centroids_list=None):
-        if not self.tracked_lost_centroids:
+    def saveTrackedLostCentroids(self, tracked_lost_centroids_list=None, _tracked_lost_centroids_list=None):
+        if not (self.tracked_lost_centroids or tracked_lost_centroids_list or _tracked_lost_centroids_list):
             return
         
-        tracked_lost_centroids_list = {k: list(v) for k, v in self.tracked_lost_centroids.items()}
+        if tracked_lost_centroids_list is not None:
+            tracked_lost_centroids_list = {k: v for k, v in enumerate(tracked_lost_centroids_list)}
+
+        if _tracked_lost_centroids_list is not None:
+            tracked_lost_centroids_list = _tracked_lost_centroids_list
+
+        if tracked_lost_centroids_list is None:
+            tracked_lost_centroids_list = {k: list(v) for k, v in self.tracked_lost_centroids.items()}
 
         printl(tracked_lost_centroids_list)
         try:
@@ -2484,7 +2496,7 @@ class loadData:
             if msg.cancel:
                 return
             
-            self.saveTrackedLostCentroids(tracked_lost_centroids_list=tracked_lost_centroids_list)
+            self.saveTrackedLostCentroids(_tracked_lost_centroids_list=tracked_lost_centroids_list)
 
     def loadTrackedLostCentroids(self):
         try:
