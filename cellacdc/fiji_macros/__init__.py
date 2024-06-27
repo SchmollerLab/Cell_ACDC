@@ -32,7 +32,7 @@ def init_macro(
         f'channels = newArray({channels_macro})'
     )
     files_path = files_folderpath.replace('\\', '/')
-    files_path = f'"{files_path}"'
+    files_path = f'"{files_path}/"'
     macro_txt = macro_txt.replace('id = ...', f'id = {files_path}')
     
     date_time = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
