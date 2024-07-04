@@ -525,10 +525,11 @@ class segmWin(QMainWindow):
         except AttributeError:
             url = None
         
-        win = prompts.init_segm_model_params(
+        out = prompts.init_segm_model_params(
             posData, model_name, init_params, segment_params, 
             help_url=url, qparent=self, init_last_params=False
         )
+        win = out.get('win')
         if win is None:
             abort = self.doAbort()
             if abort:

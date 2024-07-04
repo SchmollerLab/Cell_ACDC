@@ -1703,8 +1703,10 @@ def segm_model_segment(
     
     # Some models have `start_z_slice` kwarg
     try:
-        model_kwargs['start_z_slice'] = start_z_slice
-        lab = model.segment(image, frame_i, posData=posData, **model_kwargs)
+        lab = model.segment(
+            image, frame_i, posData=posData, start_z_slice=start_z_slice, 
+            **model_kwargs
+        )
         return lab
     except TypeError as err:
         if str(err).find('unexpected keyword argument') == -1:
@@ -1715,7 +1717,7 @@ def segm_model_segment(
     try:
         lab = model.segment(image, frame_i, posData=posData, **model_kwargs)
         return lab
-    except Exception as err:
+    except TypeError as err:
         if str(err).find('unexpected keyword argument') == -1:
             # Raise error since it's not about the missing posData kwarg
             raise err
@@ -1724,10 +1726,8 @@ def segm_model_segment(
     try:
         lab = model.segment(image, frame_i, **model_kwargs)
         return lab
-    except Exception as err:
-        if str(err).find('required positional argument') == -1:
-            # Raise error since it's not about the missing frame_i arg
-            raise err
+    except TypeError as err:
+        pass
 
     lab = model.segment(image, **model_kwargs)
     return lab
