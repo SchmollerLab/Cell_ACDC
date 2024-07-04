@@ -114,7 +114,7 @@ class segmWorker(QRunnable):
             logger_func=self.signals.progress.emit,
             innerPbar_available=mainWin.innerPbar_available,
             is_segment3DT_available=mainWin.is_segment3DT_available, 
-            preproc_recipe=mainWin.preproc_recipe
+            preproc_recipe=mainWin.preproc_recipe, 
         )
     
     def run_kernel(self, mainWin):
@@ -392,8 +392,6 @@ class segmWin(QMainWindow):
         elif is_images_folder:
             images_paths = [exp_path]
 
-        self.save = True
-
         user_ch_file_paths = []
         for images_path in images_paths:
             print('')
@@ -526,42 +524,16 @@ class segmWin(QMainWindow):
             url = acdcSegment.url_help()
         except AttributeError:
             url = None
-
-        _SizeZ = None
-        if self.isSegm3D:
-            _SizeZ = posData.SizeZ
-        segm_files = load.get_segm_files(posData.images_path)
-        existingSegmEndnames = load.get_existing_segm_endnames(
-            posData.basename, segm_files
+        
+        win = prompts.init_segm_model_params(
+            posData, model_name, init_params, segment_params, 
+            help_url=url, qparent=self, init_last_params=False
         )
-        win = apps.QDialogModelParams(
-            init_params,
-            segment_params,
-            model_name, parent=self,
-            url=url, posData=posData,
-            segmFileEndnames=existingSegmEndnames,
-            df_metadata=posData.metadata_df
-        )
-        win.setChannelNames(posData.chNames)
-        win.exec_()
-
-        if win.cancel:
+        if win is None:
             abort = self.doAbort()
             if abort:
                 self.close()
                 return
-        
-        sam_only_embeddings = False
-        sam_also_embeddings = False
-        if model_name == 'segment_anything':
-            sam_only_embeddings, sam_also_embeddings, cancel = (
-                self.askSamSaveEmbeddings()
-            )
-            if cancel:
-                abort = self.doAbort()
-                if abort:
-                    self.close()
-                    return
         
         if model_name != 'thresholding':
             self.model_kwargs = win.model_kwargs
@@ -627,8 +599,10 @@ class segmWin(QMainWindow):
             if len(segm_files) > 0:
                 isMultiSegm = True
                 break
-
-        if isMultiSegm:
+        
+        sam_only_embeddings = self.model_kwargs.get('only_embeddings', False)
+        self.save = not sam_only_embeddings
+        if isMultiSegm and not sam_only_embeddings:
             askNewName = self.askMultipleSegm(
                 segm_files, isTimelapse=posData.SizeT>1
             )
@@ -638,11 +612,11 @@ class segmWin(QMainWindow):
                 if abort:
                     self.close()
                     return
-
+        
         if self.selectedSegmFile is not None:
             self.endFilenameSegm = self.selectedSegmFile[len(posData.basename):]
         
-        if askNewName:
+        if askNewName and self.save:
             self.isNewSegmFile = True
             win = apps.filenameDialog(
                 basename=f'{posData.basename}segm',
@@ -1060,26 +1034,6 @@ class segmWin(QMainWindow):
         
         config_filepath = os.path.join(folder_path, config_filename)
         self._saveConfigurationFile(config_filepath)
-    
-    def askSamSaveEmbeddings(self):
-        txt = html_utils.paragraph("""
-        Segment Anything Model generates image embeddings that you 
-        can use later in module 3<br>
-        for <b>much faster interactive segmentation</b> (with points or bounding boxes 
-        prompts).<br><br>
-        Do you want to <b>save the image embeddings</b>?
-        """)
-        msg = widgets.myMessageBox(wrapText=False)
-        _, saveOnlyButton, saveButton, _ = msg.question(
-            self, 'Save SAM Image Embeddings?', txt, 
-            buttonsTexts=(
-                'Cancel', 'Save only embeddings', 'Save also embeddings', 
-                'Do not save embeddings'
-            )
-        )
-        sam_only_embeddings = msg.clickedButton == saveOnlyButton
-        sam_also_embeddings = msg.clickedButton == saveButton
-        return sam_only_embeddings, sam_also_embeddings, msg.cancel
     
     def askRunNowOrSaveConfigFile(self):
         txt = html_utils.paragraph("""

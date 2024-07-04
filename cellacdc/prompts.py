@@ -15,6 +15,7 @@ if GUI_INSTALLED:
     )
     from qtpy.QtCore import Qt
     from qtpy.QtGui import QFont
+    from . import widgets, apps
 
 from . import myutils, printl, html_utils, load
 from . import settings_folderpath
@@ -307,3 +308,130 @@ def exportToVideoFinished(
         qparent, 'Exporting video finished', txt, 
         commands=commands, path_to_browse=folderpath
     )
+
+def askSamSaveEmbeddings(qparent=None):
+    txt = html_utils.paragraph("""
+    Segment Anything Model generates image embeddings that you 
+    can use later in module 3<br>
+    for <b>much faster interactive segmentation</b> (with points or bounding boxes 
+    prompts).<br><br>
+    Do you want to <b>save the image embeddings</b>?
+    """)
+    saveOnlyButton = widgets.BedPushButton('Save only embeddings')
+    saveButton = widgets.BedPlusLabelPushButton('Save also embeddings')
+    saveOnlyButton = widgets.BedPushButton('Save only embeddings')
+    msg = widgets.myMessageBox(wrapText=False)
+    _, saveOnlyButton, saveButton, _ = msg.question(
+        qparent, 'Save SAM Image Embeddings?', txt, 
+        buttonsTexts=(
+            'Cancel', saveOnlyButton, saveButton, 
+            widgets.NoBedPushButton('Do not save embeddings')
+        )
+    )
+    sam_only_embeddings = msg.clickedButton == saveOnlyButton
+    sam_also_embeddings = msg.clickedButton == saveButton
+    return sam_only_embeddings, sam_also_embeddings, msg.cancel
+
+def askSamLoadEmbeddings(
+        sam_embeddings_path, qparent=None, is_gui_caller=False
+    ):
+    txt = html_utils.paragraph("""
+    Cell-ACDC detected <b>previously saved Segment Anything image embeddings</b> 
+    (see file path below).<br><br>
+    If you load the embeddings, computation time will be much lower.<br><br>
+    Do you want to <b>load the image embeddings</b>?
+    """)
+    msg = widgets.myMessageBox(wrapText=False)
+    loadButton = widgets.BedPlusLabelPushButton('Load embeddings and segment')
+    doNotLoadButton = widgets.NoBedPushButton('Do not load embeddings')
+    buttons = (loadButton, doNotLoadButton)
+    if is_gui_caller:
+        loadOnlyEmbedButton = widgets.BedPushButton('Only load embeddings')
+        buttons = (loadOnlyEmbedButton, *buttons)
+    
+    msg.question(
+        qparent, 'Load SAM Image Embeddings?', txt, 
+        buttonsTexts=('Cancel', *buttons), 
+        commands=(sam_embeddings_path,), 
+        path_to_browse=os.path.dirname(sam_embeddings_path)
+    )
+    loadEmbed = msg.clickedButton == loadButton
+    onlyLoadEmbed = False
+    if is_gui_caller:
+        onlyLoadEmbed = msg.clickedButton == loadOnlyEmbedButton
+    return loadEmbed, onlyLoadEmbed, msg.cancel
+
+def init_segm_model_params(
+        posData, model_name, init_params, segment_params, 
+        qparent=None, help_url=None, init_last_params=False, 
+        check_sam_embeddings=True, is_gui_caller=False
+    ):
+    out = {}
+    
+    is_sam_model = (
+        model_name == 'segment_anything' and check_sam_embeddings
+    )
+    
+    # If SAM with prompts and embeddings were prev saved, asks to load them
+    load_sam_embed = False
+    only_load_sam_embed = False
+    sam_embeddings_exist = os.path.exists(posData.sam_embeddings_path)
+    sam_embeddings_loaded = hasattr(posData, 'sam_embeddings')
+    if is_sam_model and sam_embeddings_exist and not sam_embeddings_loaded:
+        load_sam_embed, only_load_sam_embed, cancel = askSamLoadEmbeddings(
+            posData.sam_embeddings_path, qparent=qparent, 
+            is_gui_caller=is_gui_caller
+        )
+        if cancel:
+            return out
+    
+    out['load_sam_embeddings'] = only_load_sam_embed or load_sam_embed
+    if only_load_sam_embed:
+        return out
+    
+    segm_files = load.get_segm_files(posData.images_path)
+    existingSegmEndnames = load.get_existing_segm_endnames(
+        posData.basename, segm_files
+    )
+    win = apps.QDialogModelParams(
+        init_params,
+        segment_params,
+        model_name, parent=qparent,
+        url=help_url, 
+        initLastParams=init_last_params, 
+        posData=posData,
+        segmFileEndnames=existingSegmEndnames,
+        df_metadata=posData.metadata_df,
+        force_postprocess_2D=True
+    )
+    win.setChannelNames(posData.chNames)
+    win.exec_()
+    if win.cancel:
+        return out
+    
+    if load_sam_embed:
+        win.model_kwargs['use_loaded_embeddings'] = True
+        posData.loadSamEmbeddings()
+    
+    ask_sam_embeddings = (
+        model_name == 'segment_anything' 
+        and not load_sam_embed
+        and check_sam_embeddings
+    )
+    # If SAM and embeddings were not laoded, asks to save them
+    if ask_sam_embeddings:
+        sam_only_embeddings, sam_also_embeddings, cancel = (
+            askSamSaveEmbeddings(qparent=qparent)
+        )
+        if cancel:
+            return out
+
+        win.model_kwargs['only_embeddings'] = sam_only_embeddings
+        win.model_kwargs['save_embeddings'] = (
+            sam_only_embeddings or sam_also_embeddings
+        )
+    
+    out['win'] = win
+    
+    return out
+    

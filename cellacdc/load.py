@@ -1196,6 +1196,76 @@ class loadData:
         
         return stop_frame_num
     
+    def getSamEmbeddingsPath(self):
+        sam_embed_filename = (
+            f'{self.basename}_{self.user_ch_name}_sam_embeddings.pt'
+        )
+        sam_embeddings_path = os.path.join(self.images_path, sam_embed_filename)
+        return sam_embeddings_path
+    
+    def storeSamEmbeddings(self, samAcdcSegment, frame_i=0, z=0):
+        # See here how to save embeddings
+        # https://github.com/facebookresearch/segment-anything/issues/217
+        
+        if not hasattr(self, 'sam_embeddings'):
+            self.sam_embeddings = {}
+        
+        if frame_i not in self.sam_embeddings:
+            self.sam_embeddings[frame_i] = {}
+        
+        if hasattr(samAcdcSegment.model, 'predictor'):
+            predictor = samAcdcSegment.model.predictor
+        else:
+            predictor = samAcdcSegment.model
+        
+        embedding = {
+            'original_size': predictor.original_size,
+            'input_size': predictor.input_size,
+            'features': predictor.features,
+            'is_image_set': True,
+        }
+        self.sam_embeddings[frame_i][z] = embedding
+    
+    def saveSamEmbeddings(self, logger_func=print):  
+        if not hasattr(self, 'sam_embeddings'):
+            return 
+        
+        logger_func(
+            f'\nSaving SAM image embeddings to "{self.sam_embeddings_path}"...'
+        )
+        import torch
+        torch.save(self.sam_embeddings, self.sam_embeddings_path)
+        
+    def loadSamEmbeddings(self, force_reload=False, logger_func=None):
+        if hasattr(self, 'sam_embeddings') and not force_reload:
+            return 
+        
+        if not os.path.exists(self.sam_embeddings_path):
+            return
+        
+        if logger_func is not None:
+            logger_func(
+                f'\nLoading SAM image embeddings from "{self.sam_embeddings_path}"...'
+            )
+        
+        import torch
+        self.sam_embeddings = torch.load(self.sam_embeddings_path)
+    
+    def getSamEmbeddings(self, frame_i=0, z=0):
+        if not hasattr(self, 'sam_embeddings'):
+            return 
+        
+        frame_embeddings = self.sam_embeddings.get(frame_i)
+        if frame_embeddings is None:
+            return
+        
+        img_embeddings = frame_embeddings.get(z)
+        if img_embeddings is None:
+            return
+            
+        return img_embeddings
+        
+     
     def loadOtherFiles(
             self,
             load_segm_data=True,
@@ -2182,8 +2252,13 @@ class loadData:
         self.post_proc_mot_metrics = f'{base_path}post_proc_mot_metrics'
         self.segm_hyperparams_ini_path = f'{base_path}segm_hyperparams.ini'
         self.custom_annot_json_path = f'{base_path}custom_annot_params.json'
-        self.custom_combine_metrics_path = f'{base_path}custom_combine_metrics.ini'
-    
+        self.custom_combine_metrics_path = (
+            f'{base_path}custom_combine_metrics.ini'
+        )
+        self.sam_embeddings_path =(
+            f'{base_path}{self.user_ch_name}_sam_embeddings.pt'
+        )
+        
     def get_btrack_export_path(self):
         btrack_path = self.segm_npz_path.replace('.npz', '.h5')
         btrack_path = btrack_path.replace('_segm', '_btrack_tracks')

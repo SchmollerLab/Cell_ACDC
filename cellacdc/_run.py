@@ -3,6 +3,7 @@ import shutil
 import sys
 from importlib import import_module
 import traceback
+from tqdm import tqdm
 
 def _install_tables(parent_software='Cell-ACDC'):
     from . import try_input_install_package, is_conda_env
@@ -374,9 +375,12 @@ def run_segm_workflow(workflow_params, logger, log_path):
     kernel.init_args_from_params(workflow_params, logger.info)
     ch_filepaths = kernel.parse_paths(workflow_params)
     stop_frame_nums = kernel.parse_stop_frame_numbers(workflow_params)
+    pbar = tqdm(total=len(ch_filepaths), ncols=100)
     for ch_filepath, stop_frame_n in zip(ch_filepaths, stop_frame_nums):
-        logger.info(f'Processing "{ch_filepath}"...')
+        logger.info(f'\nProcessing "{ch_filepath}"...')
         kernel.run(ch_filepath, stop_frame_n)
+        pbar.update()
+    pbar.close()
 
 def run_cli(ini_filepath):
     from cellacdc import myutils

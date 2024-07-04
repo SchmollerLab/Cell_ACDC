@@ -1685,7 +1685,7 @@ def preprocess_image_from_recipe(image, recipe: dict):
 
 def segm_model_segment(
         model, image, model_kwargs, frame_i=None, preproc_recipe=None, 
-        is_timelapse_model=False
+        is_timelapse_model=False, posData=None, start_z_slice=0
     ):
     if preproc_recipe is not None:
         if is_timelapse_model:
@@ -1701,10 +1701,35 @@ def segm_model_segment(
         segm_data = model.segment3DT(image, **model_kwargs)
         return segm_data             
     
+    # Some models have `start_z_slice` kwarg
     try:
-        lab = model.segment(image, **model_kwargs)
-    except Exception as e:
+        model_kwargs['start_z_slice'] = start_z_slice
+        lab = model.segment(image, frame_i, posData=posData, **model_kwargs)
+        return lab
+    except TypeError as err:
+        if str(err).find('unexpected keyword argument') == -1:
+            # Raise error since it's not about the missing posData kwarg
+            raise err
+    
+    # Some models have posData as kwarg and frame_i as second arg
+    try:
+        lab = model.segment(image, frame_i, posData=posData, **model_kwargs)
+        return lab
+    except Exception as err:
+        if str(err).find('unexpected keyword argument') == -1:
+            # Raise error since it's not about the missing posData kwarg
+            raise err
+    
+    # Some models have frame_i as second arg
+    try:
         lab = model.segment(image, frame_i, **model_kwargs)
+        return lab
+    except Exception as err:
+        if str(err).find('required positional argument') == -1:
+            # Raise error since it's not about the missing frame_i arg
+            raise err
+
+    lab = model.segment(image, **model_kwargs)
     return lab
 
 class _WorkflowKernel:
@@ -1857,7 +1882,7 @@ class SegmKernel(_WorkflowKernel):
             signals=None,
             logger_func=print,
             innerPbar_available=False,
-            is_segment3DT_available=False
+            is_segment3DT_available=False, 
         ):
         self.user_ch_name = user_ch_name
         self.segm_endname = segm_endname
@@ -1896,7 +1921,7 @@ class SegmKernel(_WorkflowKernel):
     @exception_handler_cli
     def init_segm_model(self, posData):
         self.signals.progress.emit(
-            f'Initializing {self.model_name} segmentation model...'
+            f'\nInitializing {self.model_name} segmentation model...'
         )
         acdcSegment = myutils.import_segment_module(self.model_name)
         init_argspecs, segment_argspecs = myutils.getModelArgSpec(acdcSegment)
@@ -1977,7 +2002,8 @@ class SegmKernel(_WorkflowKernel):
             posData.setFilePaths(endName)
 
         segmFilename = os.path.basename(posData.segm_npz_path)
-        self.logger_func(f'Segmentation file {segmFilename}...')
+        if self.do_save:
+            self.logger_func(f'\nSegmentation file {segmFilename}...')
 
         posData.SizeT = self.SizeT
         if self.SizeZ > 1:
@@ -2142,13 +2168,13 @@ class SegmKernel(_WorkflowKernel):
                         second_ch_data = second_ch_data[y0:y1, x0:x1]
                 postprocess_img = img_data
 
-        self.logger_func(f'Image shape = {img_data.shape}')
+        self.logger_func(f'\nImage shape = {img_data.shape}')
 
         if self.model is None:
             self.init_segm_model(posData)
         
         """Segmentation routine"""
-        self.logger_func(f'Segmenting with {self.model_name}...')
+        self.logger_func(f'\nSegmenting with {self.model_name}...')
         t0 = time.perf_counter()
         # self.logger_func(f'Segmenting with {model} (Ctrl+C to abort)...')
         if posData.SizeT > 1:
@@ -2164,7 +2190,8 @@ class SegmKernel(_WorkflowKernel):
                 lab_stack = segm_model_segment(
                     self.model, img_data, self.model_kwargs, 
                     is_timelapse_model=True, 
-                    preproc_recipe=self.preproc_recipe
+                    preproc_recipe=self.preproc_recipe, 
+                    posData=posData
                 )
                 if self.innerPbar_available:
                     # emit one pos done
@@ -2178,7 +2205,8 @@ class SegmKernel(_WorkflowKernel):
                         
                     lab = segm_model_segment(
                         self.model, img, self.model_kwargs, frame_i=t, 
-                        preproc_recipe=self.preproc_recipe
+                        preproc_recipe=self.preproc_recipe, 
+                        posData=posData
                     )
                     lab_stack.append(lab)
                     if self.innerPbar_available:
@@ -2197,11 +2225,14 @@ class SegmKernel(_WorkflowKernel):
 
             lab_stack = segm_model_segment(
                 self.model, img_data, self.model_kwargs, frame_i=0, 
-                preproc_recipe=self.preproc_recipe
+                preproc_recipe=self.preproc_recipe, 
+                posData=posData
             )
             self.signals.progressBar.emit(1)
             # lab_stack = smooth_contours(lab_stack, radius=2)
 
+        posData.saveSamEmbeddings(logger_func=self.logger_func)
+        
         if self.do_postprocess:
             if posData.SizeT > 1:
                 pbar = tqdm(total=len(lab_stack), ncols=100)
@@ -2291,7 +2322,7 @@ class SegmKernel(_WorkflowKernel):
 
         t_end = time.perf_counter()
 
-        self.logger_func(f'{posData.relPath} segmented!')
+        self.logger_func(f'\n{posData.relPath} done.')
         self.signals.finished.emit(t_end-t0)
 
 def filter_segm_objs_from_table_coords(lab, df):

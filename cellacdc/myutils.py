@@ -3242,7 +3242,9 @@ def _parse_bool_str(value):
 def parse_model_params(model_argspecs, model_params):
     parsed_model_params = {}
     for row, argspec in enumerate(model_argspecs):
-        value = model_params[argspec.name]
+        value = model_params.get(argspec.name)
+        if value is None:
+            continue
         if argspec.type == bool:
             value = _parse_bool_str(value)
         elif argspec.type == int:

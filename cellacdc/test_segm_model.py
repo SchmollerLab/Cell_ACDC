@@ -9,6 +9,7 @@ from importlib import import_module
 
 from cellacdc._run import _setup_app
 from cellacdc import apps, myutils, widgets, data, core, load
+from cellacdc import prompts
 
 import skimage.color
 
@@ -94,6 +95,18 @@ win.exec_()
 if win.cancel:
     exit('Execution cancelled.')
 
+sam_only_embeddings = False
+sam_also_embeddings = False
+if model_name == 'segment_anything':
+    sam_only_embeddings, sam_also_embeddings, cancel = (
+        prompts.askSamSaveEmbeddings()
+    )
+    if cancel:
+        exit('Segmentation routine cancelled.')
+
+if sam_only_embeddings or sam_also_embeddings:
+    win.model_kwargs['save_embeddings'] = True
+
 # Initialize model
 segm_data = None
 init_kwargs = win.init_kwargs
@@ -118,7 +131,7 @@ print('Input image shape: ', img.shape)
 
 lab = core.segm_model_segment(
     model, img, win.model_kwargs, frame_i=FRAME_I, 
-    preproc_recipe=win.preproc_recipe,
+    preproc_recipe=win.preproc_recipe, posData=posData
 )
 
 from cellacdc.plot import imshow
