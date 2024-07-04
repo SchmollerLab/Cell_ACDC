@@ -318,6 +318,24 @@ class okPushButton(PushButton):
         # QShortcut(Qt.Key_Return, self, self.click)
         # QShortcut(Qt.Key_Enter, self, self.click)
 
+class BedPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setIcon(QIcon(':bed.svg'))
+
+class BedPlusLabelPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setIcon(QIcon(':bed_plus_label.svg'))
+        iconH = self.iconSize().height()
+        iconW = int(iconH*2.5)
+        self.setIconSize(QSize(iconW, iconH))
+
+class NoBedPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setIcon(QIcon(':no_bed.svg'))
+
 class NavigatePushButton(PushButton):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

@@ -14238,8 +14238,43 @@ class guiWin(QMainWindow):
         else:
             self.repeatSegm(model_name=self.segmModelName)        
     
+    def initSegmModelParams(
+            self, model_name, acdcSegment, init_params, segment_params, 
+            is_label_roi=False, initLastParams=False
+        ):
+        posData = self.data[self.pos_i]        
+        try:
+            url = acdcSegment.url_help()
+        except AttributeError:
+            url = None
+        
+        text_if_cancelled = 'Segmentation process cancelled.'
+        out = prompts.init_segm_model_params(
+            posData, model_name, init_params, segment_params, 
+            help_url=url, qparent=self, init_last_params=initLastParams, 
+            check_sam_embeddings=not is_label_roi, is_gui_caller=True
+        )
+        if out.get('load_sam_embeddings', False):
+            self.logger.info('Loading Segment Anything image embeddings...')
+            for _posData in self.data:
+                _posData.loadSamEmbeddings(logger_func=None)
+            text_if_cancelled = 'SAM embeddings loaded.'
+            
+        win = out.get('win')
+        if win is None:
+            self.logger.info(text_if_cancelled)
+            self.titleLabel.setText(text_if_cancelled)
+            return
+        
+        if model_name != 'thresholding':
+            self.model_kwargs = win.model_kwargs
+        
+        return win
+    
     @exception_handler
-    def repeatSegm(self, model_name='', askSegmParams=False, is_label_roi=False):
+    def repeatSegm(
+            self, model_name='', askSegmParams=False, is_label_roi=False
+        ):
         if model_name == 'thresholding':
             # thresholding model is stored as 'Automatic thresholding'
             # at line of code `models.append('Automatic thresholding')`
@@ -14305,34 +14340,14 @@ class guiWin(QMainWindow):
                     segment_params, 'gauss_sigma', gauss_sigma
                 )
                 initLastParams = False
-
-            _SizeZ = None
-            if self.isSegm3D:
-                _SizeZ = posData.SizeZ
             
-            segm_files = load.get_segm_files(posData.images_path)
-            existingSegmEndnames = load.get_existing_segm_endnames(
-                posData.basename, segm_files
+            win = self.initSegmModelParams(
+                model_name, acdcSegment, init_params, segment_params, 
+                is_label_roi=is_label_roi, 
+                initLastParams=initLastParams
             )
-            win = apps.QDialogModelParams(
-                init_params,
-                segment_params,
-                model_name, parent=self,
-                url=url, initLastParams=initLastParams, 
-                posData=posData,
-                segmFileEndnames=existingSegmEndnames,
-                df_metadata=posData.metadata_df,
-                force_postprocess_2D=True
-            )
-            win.setChannelNames(posData.chNames)
-            win.exec_()
-            if win.cancel:
-                self.logger.info('Segmentation process cancelled.')
-                self.titleLabel.setText('Segmentation process cancelled.')
+            if win is None:
                 return
-            
-            if model_name != 'thresholding':
-                self.model_kwargs = win.model_kwargs
             
             self.standardPostProcessKwargs = win.standardPostProcessKwargs
             self.customPostProcessFeatures = win.customPostProcessFeatures
@@ -14508,33 +14523,11 @@ class guiWin(QMainWindow):
             if autoThreshWin.cancel:
                 return
         
-        _SizeZ = None
-        if self.isSegm3D:
-            _SizeZ = posData.SizeZ  
-        
-        segm_files = load.get_segm_files(posData.images_path)
-        existingSegmEndnames = load.get_existing_segm_endnames(
-            posData.basename, segm_files
+        win = self.initSegmModelParams(
+            model_name, acdcSegment, init_params, segment_params
         )
-        win = apps.QDialogModelParams(
-            init_params,
-            segment_params,
-            model_name, 
-            parent=self,
-            url=url, 
-            posData=posData,
-            segmFileEndnames=existingSegmEndnames,
-            df_metadata=posData.metadata_df
-        )
-        win.setChannelNames(posData.chNames)
-        win.exec_()
-        if win.cancel:
-            self.logger.info('Segmentation process cancelled.')
-            self.titleLabel.setText('Segmentation process cancelled.')
+        if win is None:
             return
-        
-        if model_name == 'thresholding':
-            win.model_kwargs = autoThreshWin.segment_kwargs
 
         self.standardPostProcessKwargs = win.standardPostProcessKwargs
         self.customPostProcessFeatures = win.customPostProcessFeatures
@@ -14599,6 +14592,7 @@ class guiWin(QMainWindow):
         self.worker.critical.connect(self.workerCritical)
         self.worker.finished.connect(self.segmVideoWorkerFinished)
         self.worker.progressBar.connect(self.workerUpdateProgressbar)
+        self.worker.progress.connect(self.workerProgress)
 
         self.thread.started.connect(self.worker.run)
         self.thread.start()
@@ -15700,6 +15694,8 @@ class guiWin(QMainWindow):
         self.gui_connectGraphicsEvents()
         if not self.isEditActionsConnected:
             self.gui_connectEditActions()
+            self.normalizeToFloatAction.setChecked(True)
+            
         self.navSpinBox.connectValueChanged(self.navigateSpinboxValueChanged)
 
         self.setFramesSnapshotMode()
