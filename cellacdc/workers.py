@@ -766,6 +766,7 @@ class segmWorker(QObject):
         if self.z_range is not None:
             start_z_slice, _ = self.z_range
         elif not self.mainWin.segment3D and posData.isSegm3D:
+            idx = (posData.filename, posData.frame_i)
             start_z_slice = posData.segmInfo_df.at[idx, 'z_slice_used_gui']
         
         _lab = core.segm_model_segment(
