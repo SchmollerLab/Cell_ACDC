@@ -71,8 +71,9 @@ content-type = "text/x-rst"
 [project.optional-dependencies]
 gui = [
     "qtpy",
-    "pyqtgraph>=0.13.3",
+    "pyqtgraph>=0.13.7",
     "seaborn",
+    "PyQt6",
 ]
 pyqt6 = [
     "PyQt6",
