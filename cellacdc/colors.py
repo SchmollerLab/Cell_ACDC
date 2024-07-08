@@ -207,3 +207,13 @@ def merge_two_grayscale_imgs(
     ).astype(dtype)
     
     return merge
+
+def pg_ticks_to_colormap(ticks):
+    positions = []
+    colors = []
+    for pos, color in ticks:
+        positions.append(pos)
+        colors.append(color)
+    
+    cmap = ColorMap(positions, colors)
+    return cmap

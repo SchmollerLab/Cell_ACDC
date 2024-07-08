@@ -409,7 +409,8 @@ class LabelRoiWorker(QObject):
         
         lab = core.segm_model_segment(
             self.Gui.labelRoiModel, img, self.Gui.model_kwargs, 
-            preproc_recipe=self.Gui.preproc_recipe
+            preproc_recipe=self.Gui.preproc_recipe, 
+            posData=self.posData
         )
         if self.Gui.applyPostProcessing:
             lab = core.post_process_segm(
@@ -754,7 +755,6 @@ class segmWorker(QObject):
         t0 = time.perf_counter()
         if self.mainWin.segment3D:
             img = self.mainWin.getDisplayedZstack()
-            SizeZ = len(img)
             if self.z_range is not None:
                 startZ, stopZ = self.z_range
                 img = img[startZ:stopZ+1]
@@ -767,10 +767,20 @@ class segmWorker(QObject):
         if self.secondChannelData is not None:
             img = self.mainWin.model.to_rgb_stack(img, self.secondChannelData)
 
+        start_z_slice = 0
+        if self.z_range is not None:
+            start_z_slice, _ = self.z_range
+        elif not self.mainWin.segment3D and posData.isSegm3D:
+            idx = (posData.filename, posData.frame_i)
+            start_z_slice = posData.segmInfo_df.at[idx, 'z_slice_used_gui']
+        
         _lab = core.segm_model_segment(
             self.mainWin.model, img, self.mainWin.model_kwargs, 
-            frame_i=posData.frame_i
+            frame_i=posData.frame_i, 
+            posData=posData, 
+            start_z_slice=start_z_slice
         )
+        posData.saveSamEmbeddings(logger_func=self.logger.info)
         if self.mainWin.applyPostProcessing:
             _lab = core.post_process_segm(
                 _lab, **self.mainWin.standardPostProcessKwargs
@@ -783,7 +793,8 @@ class segmWorker(QObject):
                 )
         
         if self.z_range is not None:
-            # 3D segmentation of a z-slices range
+            # 3D segmentation of a z-slices subset
+            startZ, stopZ = self.z_range
             lab[startZ:stopZ+1] = _lab
         elif not self.mainWin.segment3D and posData.isSegm3D:
             # 3D segmentation but segmented current z-slice
@@ -803,6 +814,7 @@ class segmVideoWorker(QObject):
     debug = Signal(object)
     critical = Signal(object)
     progressBar = Signal(int)
+    progress = Signal(str, object)
 
     def __init__(self, posData, paramWin, model, startFrameNum, stopFrameNum):
         QObject.__init__(self)
@@ -819,6 +831,7 @@ class segmVideoWorker(QObject):
         self.posData = posData
         self.startFrameNum = startFrameNum
         self.stopFrameNum = stopFrameNum
+        self.logger = workerLogger(self.progress)
 
     def _check_extend_segm_data(self, segm_data, stop_frame_num):
         if stop_frame_num <= len(segm_data):
@@ -851,7 +864,7 @@ class segmVideoWorker(QObject):
         self.posData.segm_data = self._check_extend_segm_data(
             self.posData.segm_data, self.stopFrameNum
         )
-        img_data = imgData = self.posData.img_data[self.startFrameNum-1:self.stopFrameNum]
+        img_data = self.posData.img_data[self.startFrameNum-1:self.stopFrameNum]
         is4D = img_data.ndim == 4
         is2D_segm = self.posData.segm_data.ndim == 3
         if is4D and is2D_segm:
@@ -869,8 +882,10 @@ class segmVideoWorker(QObject):
                 
             lab = core.segm_model_segment(
                 self.model, img, self.model_kwargs, frame_i=frame_i, 
-                preproc_recipe=self.preproc_recipe
+                preproc_recipe=self.preproc_recipe, 
+                posData=self.posData
             )
+            self.posData.saveSamEmbeddings(logger_func=self.logger.log)
             if self.applyPostProcessing:
                 lab = core.post_process_segm(
                     lab, **self.standardPostProcessKwargs

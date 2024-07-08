@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   viewBox="0 0 1600 512"
+   version="1.1"
+   id="svg1"
+   sodipodi:docname="bed_plus_label_dark.svg"
+   inkscape:version="1.3 (0e150ed6c4, 2023-07-21)"
+   width="1600"
+   height="512"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs1">
+    <inkscape:path-effect
+       effect="spiro"
+       id="path-effect2392"
+       is_visible="true"
+       lpeversion="1" />
+    <inkscape:path-effect
+       effect="spiro"
+       id="path-effect2536"
+       is_visible="true"
+       lpeversion="1" />
+  </defs>
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="0.43505859"
+     inkscape:cx="779.20539"
+     inkscape:cy="198.8238"
+     inkscape:window-width="1920"
+     inkscape:window-height="1129"
+     inkscape:window-x="1912"
+     inkscape:window-y="-8"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg1" />
+  <!--!Font Awesome Free 6.5.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2024 Fonticons, Inc.-->
+  <path
+     d="m 32,32 c 17.7,0 32,14.3 32,32 V 320 H 288 V 160 c 0,-17.7 14.3,-32 32,-32 h 224 c 53,0 96,43 96,96 v 224 c 0,17.7 -14.3,32 -32,32 -17.7,0 -32,-14.3 -32,-32 V 416 H 352 320 64 v 32 C 64,465.7 49.7,480 32,480 14.3,480 0,465.7 0,448 V 64 C 0,46.3 14.3,32 32,32 Z m 144,96 a 80,80 0 1 1 0,160 80,80 0 1 1 0,-160 z"
+     id="path1"
+     style="fill:#d9d9d9;fill-opacity:1;stroke:#e5e5e5;stroke-opacity:1" />
+  <g
+     id="g2"
+     transform="matrix(19.444441,0,0,19.444441,623.97238,22.66671)"
+     style="fill:#f80000;fill-opacity:1;stroke:#db0000;stroke-opacity:1">
+    <path
+       style="fill:#f80000;stroke:#db0000;stroke-width:2.26772;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;fill-opacity:1"
+       d="m 11.999999,4.1338598 2e-6,15.7322802"
+       id="path2390"
+       inkscape:path-effect="#path-effect2392"
+       inkscape:original-d="m 11.999999,4.1338598 2e-6,15.7322802" />
+    <path
+       style="fill:#f80000;stroke:#db0000;stroke-width:2.26772;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;fill-opacity:1"
+       d="m 19.866142,11.999999 -15.7322835,2e-6"
+       id="path2390-7"
+       inkscape:path-effect="#path-effect2536"
+       inkscape:original-d="m 19.866142,11.999999 -15.7322835,2e-6" />
+  </g>
+  <g
+     id="g3"
+     transform="matrix(4.6161526,0,0,4.6161526,-5753.1625,-3563.6698)"
+     style="fill:none;fill-opacity:1">
+    <path
+       style="fill:none;fill-opacity:1;stroke:#e5e5e5;stroke-width:7;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       d="m 1481.5,775.49997 7.1205,44.50322 62.9721,59.41182 37.8277,-36.3814 -66.5323,-64.64093 z"
+       id="path3942-5" />
+    <circle
+       style="fill:none;fill-opacity:1;fill-rule:evenodd;stroke:#e5e5e5;stroke-width:4;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:10;stroke-opacity:1"
+       id="path4630-9"
+       cx="1503.043"
+       cy="796.23108"
+       r="9.9125872" />
+  </g>
+</svg>

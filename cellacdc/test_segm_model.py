@@ -9,6 +9,7 @@ from importlib import import_module
 
 from cellacdc._run import _setup_app
 from cellacdc import apps, myutils, widgets, data, core, load
+from cellacdc import prompts
 
 import skimage.color
 
@@ -34,6 +35,7 @@ image_data = test_data.image_data()
 images_path = test_data.images_path
 posData = test_data.posData()
 posData.loadOtherFiles(load_segm_data=False, load_metadata=True)
+posData.buildPaths()
 
 if FRAME_I is None:
     img = image_data
@@ -78,19 +80,11 @@ try:
 except AttributeError:
     url = None
 
-segm_files = load.get_segm_files(test_data.images_path)
-existingSegmEndnames = load.get_existing_segm_endnames(
-    test_data.basename, segm_files
+out = prompts.init_segm_model_params(
+    posData, model_name, init_params, segment_params, 
+    help_url=url, qparent=None, init_last_params=True
 )
-win = apps.QDialogModelParams(
-    init_params,
-    segment_params,
-    model_name, url=url,
-    segmFileEndnames=existingSegmEndnames,
-    posData=posData
-)
-
-win.exec_()
+win = out.get('win')
 if win.cancel:
     exit('Execution cancelled.')
 
@@ -102,11 +96,8 @@ if segm_endname is not None:
     segm_filepath, _ = load.get_path_from_endname(segm_endname, images_path)
     segm_data = np.load(segm_filepath)['arr_0']
 
-try:
-    model = acdcSegment.Model(**win.init_kwargs)
-except Exception as e:
-    model = acdcSegment.Model(segm_data, **win.init_kwargs)
 
+model = myutils.init_segm_model(acdcSegment, posData, win.init_kwargs)
 is_segment3DT_available = any(
     [name=='segment3DT' for name in dir(model)]
 )
@@ -118,7 +109,7 @@ print('Input image shape: ', img.shape)
 
 lab = core.segm_model_segment(
     model, img, win.model_kwargs, frame_i=FRAME_I, 
-    preproc_recipe=win.preproc_recipe,
+    preproc_recipe=win.preproc_recipe, posData=posData
 )
 
 from cellacdc.plot import imshow

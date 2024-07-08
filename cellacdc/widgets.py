@@ -318,6 +318,24 @@ class okPushButton(PushButton):
         # QShortcut(Qt.Key_Return, self, self.click)
         # QShortcut(Qt.Key_Enter, self, self.click)
 
+class BedPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setIcon(QIcon(':bed.svg'))
+
+class BedPlusLabelPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setIcon(QIcon(':bed_plus_label.svg'))
+        iconH = self.iconSize().height()
+        iconW = int(iconH*2.5)
+        self.setIconSize(QSize(iconW, iconH))
+
+class NoBedPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setIcon(QIcon(':no_bed.svg'))
+
 class NavigatePushButton(PushButton):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -4590,6 +4608,10 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
         self.gradient.menu.removeAction(RGB_ation)
 
         # Add custom colormap action
+        self.customCmapsMenu = self.gradient.menu.addMenu('Custom colormaps')
+        self.customCmapsMenu.aboutToShow.connect(self.onShowCustomCmapsMenu)
+        self.customCmapsMenu.triggered.connect(self.customCmapsMenuTriggered)
+        
         self.saveColormapAction = QAction(
             'Save current colormap...', self
         )
@@ -4610,6 +4632,14 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
 
         # Disable histogram default context Menu event
         self.vb.raiseContextMenu = lambda x: None
+    
+    def onShowCustomCmapsMenu(self):
+        self.customCmapsMenu.show()
+    
+    def customCmapsMenuTriggered(self, action):
+        cmap = action.cmap
+        self.gradient.colorMapMenuClicked(cmap)
+        self.gradient.showTicks(True)
     
     def setAxisLabel(self, text):
         self.labelText = text
@@ -4725,25 +4755,28 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
     def invertCurrentColormap(self, inverted, debug=False):
         self.setGradient(self.invertGradient(self.lastGradient))
     
-    def addCustomGradient(self, gradient_name, gradient_ticks):
+    def addCustomGradient(self, gradient_name, gradient_ticks, restore=True):
         self.originalLength = self.gradient.length
         self.gradient.length = 100
-        self.gradient.restoreState(gradient_ticks)
+        if restore:
+            self.gradient.restoreState(gradient_ticks)
         gradient = self.gradient.getGradient()
         action = CustomGradientMenuAction(gradient, gradient_name, self.gradient)
-        action.triggered.connect(self.gradient.contextMenuClicked)
+        # action.triggered.connect(self.gradient.contextMenuClicked)
         action.delButton.clicked.connect(self.removeCustomGradient)
-        self.gradient.menu.insertAction(self.saveColormapAction, action)
+        action.cmap = colors.pg_ticks_to_colormap(gradient_ticks['ticks'])
+        # self.gradient.menu.insertAction(self.saveColormapAction, action)
+        self.customCmapsMenu.addAction(action)
         self.gradient.length = self.originalLength
         GradientsImage[gradient_name] = gradient_ticks
     
     def removeCustomGradient(self):
         button = self.sender()
         action = button.action
-        self.gradient.menu.removeAction(action)
+        self.customCmapsMenu.removeAction(action)
         cp = config.ConfigParser()
         cp.read(custom_cmaps_filepath)
-        cp.remove_section(f'labels.{action.name}')
+        cp.remove_section(f'image.{action.name}')
         with open(custom_cmaps_filepath, mode='w') as file:
             cp.write(file)
     
@@ -4778,14 +4811,14 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
         SECTION = f'{self.name}.{cmapName}'
         cp[SECTION] = {}
 
-        gradient_ticks = []
+        # gradient_ticks = []
         state = self.gradient.saveState()
         for key, value in state.items():
             if key != 'ticks':
                 continue
             for t, tick in enumerate(value):
                 pos, rgb = tick
-                gradient_ticks.append((pos, rgb))
+                # gradient_ticks.append((pos, rgb))
                 rgb = ','.join([str(c) for c in rgb])
                 val = f'{pos},{rgb}'
                 cp[SECTION][f'tick_{t}_pos_rgb'] = val
@@ -4793,7 +4826,7 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
         with open(custom_cmaps_filepath, mode='w') as file:
             cp.write(file)
         
-        self.addCustomGradient(SECTION, gradient_ticks)
+        self.addCustomGradient(cmapName, state, restore=False)
     
     def tickColorAccepted(self):
         self.gradient.currentColorAccepted()
@@ -5510,6 +5543,10 @@ class labelsGradientWidget(pg.GradientWidget):
         self.menu.removeAction(RGB_ation)
 
         # Add custom colormap action
+        self.customCmapsMenu = self.menu.addMenu('Custom colormaps')
+        self.customCmapsMenu.aboutToShow.connect(self.onShowCustomCmapsMenu)
+        self.customCmapsMenu.triggered.connect(self.customCmapsMenuTriggered)
+        
         self.saveColormapAction = QAction(
             'Save current colormap...', self
         )
@@ -5592,16 +5629,27 @@ class labelsGradientWidget(pg.GradientWidget):
         self.showLabelsImgAction.toggled.connect(self.showLabelsImageToggled)
         self.showNextFrameAction.toggled.connect(self.showNextFrameToggled)
     
-    def addCustomGradient(self, gradient_name, gradient_ticks):
+    def onShowCustomCmapsMenu(self):
+        self.customCmapsMenu.show()
+    
+    def customCmapsMenuTriggered(self, action):
+        cmap = action.cmap
+        self.item.colorMapMenuClicked(cmap)
+        self.item.showTicks(True)
+    
+    def addCustomGradient(self, gradient_name, gradient_ticks, restore=True):
         currentState = self.item.saveState()
         self.originalLength = self.item.length
         self.item.length = 100
-        self.item.restoreState(gradient_ticks)
+        if restore:
+            self.item.restoreState(gradient_ticks)
         gradient = self.item.getGradient()
         action = CustomGradientMenuAction(gradient, gradient_name, self.item)
-        action.triggered.connect(self.item.contextMenuClicked)
+        # action.triggered.connect(self.item.contextMenuClicked)
         action.delButton.clicked.connect(self.removeCustomGradient)
-        self.item.menu.insertAction(self.saveColormapAction, action)
+        action.cmap = colors.pg_ticks_to_colormap(gradient_ticks['ticks'])
+        # self.item.menu.insertAction(self.saveColormapAction, action)
+        self.customCmapsMenu.addAction(action)
         self.item.length = self.originalLength
         self.item.restoreState(currentState)
         GradientsLabels[gradient_name] = gradient_ticks
@@ -5609,7 +5657,7 @@ class labelsGradientWidget(pg.GradientWidget):
     def removeCustomGradient(self):
         button = self.sender()
         action = button.action
-        self.item.menu.removeAction(action)
+        self.customCmapsMenu.removeAction(action)
         cp = config.ConfigParser()
         cp.read(custom_cmaps_filepath)
         cp.remove_section(f'labels.{action.name}')
@@ -5660,7 +5708,7 @@ class labelsGradientWidget(pg.GradientWidget):
         with open(custom_cmaps_filepath, mode='w') as file:
             cp.write(file)
         
-        self.addCustomGradient(cmapName, state)
+        self.addCustomGradient(cmapName, state, restore=False)
     
     def isRightImageVisible(self):
         return (

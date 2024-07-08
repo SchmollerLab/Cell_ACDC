@@ -114,7 +114,7 @@ class segmWorker(QRunnable):
             logger_func=self.signals.progress.emit,
             innerPbar_available=mainWin.innerPbar_available,
             is_segment3DT_available=mainWin.is_segment3DT_available, 
-            preproc_recipe=mainWin.preproc_recipe
+            preproc_recipe=mainWin.preproc_recipe, 
         )
     
     def run_kernel(self, mainWin):
@@ -392,8 +392,6 @@ class segmWin(QMainWindow):
         elif is_images_folder:
             images_paths = [exp_path]
 
-        self.save = True
-
         user_ch_file_paths = []
         for images_path in images_paths:
             print('')
@@ -526,26 +524,13 @@ class segmWin(QMainWindow):
             url = acdcSegment.url_help()
         except AttributeError:
             url = None
-
-        _SizeZ = None
-        if self.isSegm3D:
-            _SizeZ = posData.SizeZ
-        segm_files = load.get_segm_files(posData.images_path)
-        existingSegmEndnames = load.get_existing_segm_endnames(
-            posData.basename, segm_files
+        
+        out = prompts.init_segm_model_params(
+            posData, model_name, init_params, segment_params, 
+            help_url=url, qparent=self, init_last_params=False
         )
-        win = apps.QDialogModelParams(
-            init_params,
-            segment_params,
-            model_name, parent=self,
-            url=url, posData=posData,
-            segmFileEndnames=existingSegmEndnames,
-            df_metadata=posData.metadata_df
-        )
-        win.setChannelNames(posData.chNames)
-        win.exec_()
-
-        if win.cancel:
+        win = out.get('win')
+        if win is None:
             abort = self.doAbort()
             if abort:
                 self.close()
@@ -615,8 +600,10 @@ class segmWin(QMainWindow):
             if len(segm_files) > 0:
                 isMultiSegm = True
                 break
-
-        if isMultiSegm:
+        
+        sam_only_embeddings = self.model_kwargs.get('only_embeddings', False)
+        self.save = not sam_only_embeddings
+        if isMultiSegm and not sam_only_embeddings:
             askNewName = self.askMultipleSegm(
                 segm_files, isTimelapse=posData.SizeT>1
             )
@@ -626,11 +613,11 @@ class segmWin(QMainWindow):
                 if abort:
                     self.close()
                     return
-
+        
         if self.selectedSegmFile is not None:
             self.endFilenameSegm = self.selectedSegmFile[len(posData.basename):]
         
-        if askNewName:
+        if askNewName and self.save:
             self.isNewSegmFile = True
             win = apps.filenameDialog(
                 basename=f'{posData.basename}segm',
