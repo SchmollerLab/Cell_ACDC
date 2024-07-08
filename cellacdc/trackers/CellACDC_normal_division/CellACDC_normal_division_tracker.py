@@ -1176,53 +1176,69 @@ class tracker:
         pbar = tqdm(total=len(segm_video), desc='Tracking', ncols=100)
 
         if return_tracked_lost_centroids:
-            self.tracked_lost_centroids = {frame: [] for frame in range(len(segm_video))}
+            self.tracked_lost_centroids = {
+                frame: [] for frame in range(len(segm_video))
+            }
 
         for frame_i, lab in enumerate(segm_video):
             if frame_i == 0:
-                tracker = normal_division_tracker(segm_video, IoA_thresh_daughter, min_daughter, max_daughter, IoA_thresh, IoA_thresh_aggressive)
+                tracker = normal_division_tracker(
+                    segm_video, IoA_thresh_daughter, min_daughter, 
+                    max_daughter, IoA_thresh, IoA_thresh_aggressive
+                )
                 if record_lineage:
-                    tree = normal_division_lineage_tree(lab=lab, max_daughter=max_daughter,min_daughter=min_daughter, IoA_thresh_daughter=IoA_thresh_daughter)
+                    tree = normal_division_lineage_tree(
+                        lab=lab, max_daughter=max_daughter,
+                        min_daughter=min_daughter, 
+                        IoA_thresh_daughter=IoA_thresh_daughter
+                    )
                 pbar.update()
-                prev_IDs = {obj.label for obj in regionprops(segm_video[0])}
+                rp = regionprops(segm_video[0])
+                prev_IDs = {obj.label for obj in rp}
+                prev_rp = rp
                 continue
 
             tracker.track_frame(frame_i)
 
-            if record_lineage:
-                mother_daughters = tracker.mother_daughters
-                IDs_prev = tracker.IDs_prev
-                assignments = tracker.assignments
-                IDs_curr_untracked = tracker.IDs_curr_untracked
-                rp = regionprops(tracker.tracked_lab)
-                curr_IDs = {obj.label for obj in rp}
-                new_IDs = curr_IDs - prev_IDs
-                # new_IDs = new_IDs - set([0])
-                tree.create_tracked_frame(frame_i, mother_daughters, IDs_prev, IDs_curr_untracked, assignments, curr_IDs, new_IDs)
-                # printl(new_IDs, curr_IDs, prev_IDs)
-                tracked_lost_centroids_loc = []
-                for mother, _ in mother_daughters:
-                    mother_ID = IDs_prev[mother]
-                    
-                    found = False
-                    for obj in prev_rp:
-                        if obj.label == mother_ID:
-                            tracked_lost_centroids_loc.append(obj.centroid)
-                            found = True
-                            break
-                    if not found:
-                        labels = [obj.label for obj in rp]
-                        printl(mother, mother_ID, IDs_curr_untracked, labels)
-                        raise ValueError('Something went wrong with the tracked lost centroids.')
+            if not record_lineage:
+                continue
 
-
-                if len(mother_daughters) != len(tracked_lost_centroids_loc):
-                    raise ValueError('Something went wrong with the tracked lost centroids.')
+            mother_daughters = tracker.mother_daughters
+            IDs_prev = tracker.IDs_prev
+            assignments = tracker.assignments
+            IDs_curr_untracked = tracker.IDs_curr_untracked
+            rp = regionprops(tracker.tracked_lab)
+            curr_IDs = {obj.label for obj in rp}
+            new_IDs = curr_IDs - prev_IDs
+            # new_IDs = new_IDs - set([0])
+            tree.create_tracked_frame(
+                frame_i, mother_daughters, IDs_prev, IDs_curr_untracked, 
+                assignments, curr_IDs, new_IDs
+            )
+            # printl(new_IDs, curr_IDs, prev_IDs)
+            tracked_lost_centroids_loc = []
+            for mother, _ in mother_daughters:
+                mother_ID = IDs_prev[mother]
                 
-                self.tracked_lost_centroids[frame_i] = tracked_lost_centroids_loc
+                found = False
+                for obj in prev_rp:
+                    if obj.label == mother_ID:
+                        tracked_lost_centroids_loc.append(obj.centroid)
+                        found = True
+                        break
+                if not found:
+                    labels = [obj.label for obj in rp]
+                    printl(mother, mother_ID, IDs_curr_untracked, labels)
+                    raise ValueError('Something went wrong with the tracked lost centroids.')
 
-                prev_IDs = curr_IDs.copy()
-                prev_rp = rp.copy()
+
+            if len(mother_daughters) != len(tracked_lost_centroids_loc):
+                raise ValueError('Something went wrong with the tracked lost centroids.')
+            
+            self.tracked_lost_centroids[frame_i] = tracked_lost_centroids_loc
+
+            prev_IDs = curr_IDs.copy()
+            prev_rp = rp.copy()
 
             self.updateGuiProgressBar(signals)
             pbar.update()
