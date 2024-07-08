@@ -657,7 +657,7 @@ class normal_division_lineage_tree:
         Returns:
         - None
         """
-        printl('Initializing lineage tree.')
+        print('Initializing lineage tree...')
         if lab.any() and first_df:
             raise ValueError('Only one of lab and first_df can be provided.')
 
@@ -1058,10 +1058,13 @@ class normal_division_lineage_tree:
         """
         # Support for first_frame was removed since it is not necessary, just make the df_li correct...
         # Also the tree needs to be init before. Also if df_li does not contain any relevenat dfs, nothing happens
-        printl('Loading!')
+        print('Loading lineage data...')
         df_li_new = []
 
         for i, df in enumerate(df_li):
+            if df is None:
+                continue
+
             if ('generation_num_tree' in df.columns 
                 and not (df['generation_num_tree'] == 0).any()
                 and not df['generation_num_tree'].isnull().any() 
@@ -1125,7 +1128,7 @@ class tracker:
     Class representing a tracker for cell division in a video sequence. (Adapted from trackers.CellACDC.CellACDC_tracker.py)
 
     Attributes:
-    - None
+    - cca_dfs_auto (list): List of lineage dataframes for export.
 
     Methods:
     - __init__(): Initializes the tracker object.
@@ -1229,7 +1232,7 @@ class tracker:
             for i in range(len(tree.lineage_list)):
                 cca_li.append(tree.export_df(i))
 
-            self.cca_dfs = cca_li
+            self.cca_dfs_auto = cca_li
             # here we would also save make sure to save self.tracked_lost_centroids, but since we already assigned it correctly from the get go we dont need to do that
 
 

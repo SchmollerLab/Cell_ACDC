@@ -1596,12 +1596,22 @@ class loadData:
     def fromTrackerToAcdcDf(
             self, tracker, tracked_video, save=False, start_frame_i=0
         ):
-        if not hasattr(tracker, 'cca_dfs'):
+        cca_dfs_attr = hasattr(tracker, 'cca_dfs')
+        cca_dfs_auto_attr = hasattr(tracker, 'cca_dfs_auto')
+
+        if hasattr(tracker, 'tracked_lost_centroids'):
+            self.saveTrackedLostCentroids(tracker.tracked_lost_centroids)
+
+        if not cca_dfs_attr and not cca_dfs_auto_attr:
             return
         
-        keys = list(range(start_frame_i, len(tracker.cca_dfs)))
-        acdc_df = pd.concat(tracker.cca_dfs, keys=keys, names=['frame_i'])
-        import pandasgui
+        if cca_dfs_attr:
+            keys = list(range(start_frame_i, len(tracker.cca_dfs)))
+            acdc_df = pd.concat(tracker.cca_dfs, keys=keys, names=['frame_i'])
+        else:
+            keys = list(range(start_frame_i, len(tracker.cca_dfs_auto)))
+            acdc_df = pd.concat(tracker.cca_dfs_auto, keys=keys, names=['frame_i'])
+
         acdc_df['is_cell_dead'] = 0
         acdc_df['is_cell_excluded'] = 0
         acdc_df['was_manually_edited'] = 0
@@ -1613,27 +1623,8 @@ class loadData:
             for obj in rp:
                 centroid = obj.centroid
                 yc, xc = obj.centroid[-2:]
-                try:
-                    acdc_df.at[(frame_i, obj.label), 'x_centroid'] = int(xc)
-                    acdc_df.at[(frame_i, obj.label), 'y_centroid'] = int(yc)
-                except Exception as e:
-                    acdc_df.to_parquet(os.path.join(os.path.expanduser("~"), 'acdc_df.parquet'))
-                    printl(acdc_df.index.names)
-                    for level in range(acdc_df.index.nlevels):
-                        level_dtype = acdc_df.index.get_level_values(level).dtype
-                        print(f"Level {level} dtype:", level_dtype)
-                    duplicated_indices = acdc_df.index.duplicated(keep=False)
-                    duplicated = acdc_df.index[duplicated_indices]
-                    printl(duplicated.unique())
-
-                    
-                    printl(acdc_df.loc[(frame_i, obj.label), 'x_centroid'])
-                    printl(xc)
-                    printl(yc)
-                    traceback.print_exc()
-                    import pandasgui
-                    pandasgui.show(acdc_df)
-                    raise e
+                acdc_df.at[(frame_i, obj.label), 'x_centroid'] = int(xc)
+                acdc_df.at[(frame_i, obj.label), 'y_centroid'] = int(yc)
 
                 if len(centroid) == 3:
                     if 'z_centroid' not in acdc_df.columns:
@@ -1645,13 +1636,11 @@ class loadData:
             return acdc_df
 
         acdc_df = pd_bool_to_int(acdc_df, inplace=False)
-        acdc_df.to_csv(self.acdc_output_csv_path)
-        self.loadAcdcDf(self.acdc_output_csv_path)
-
-        if not hasattr(tracker, 'tracked_lost_centroids'):
-            return
-        
-        self.saveTrackedLostCentroids(tracker.tracked_lost_centroids)
+        if cca_dfs_attr:
+            acdc_df.to_csv(self.acdc_output_csv_path)
+            self.loadAcdcDf(self.acdc_output_csv_path)
+        elif cca_dfs_auto_attr:
+            acdc_df.to_csv(self.acdc_output_auto_csv_path)
 
     def getAcdcDfEndname(self):
         if not hasattr(self, 'acdc_output_csv_path'):
@@ -2286,6 +2275,7 @@ class loadData:
             f'{base_path}{self.user_ch_name}_sam_embeddings.pt'
         )
         self.tracked_lost_centroids_json_path = f'{base_path}tracked_lost_centroids.json'
+        self.acdc_output_auto_csv_path = f'{base_path}acdc_output_auto.csv'
     
     def get_btrack_export_path(self):
         btrack_path = self.segm_npz_path.replace('.npz', '.h5')
