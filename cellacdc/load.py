@@ -957,6 +957,7 @@ class loadData:
                 if file.endswith(f'{user_ch_name}.h5'):
                     self.non_aligned_ext = '.h5'
                     break
+        self.tracked_lost_centroids = None
     
     def attempFixBasenameBug(self):
         '''Attempt removing _s(\d+)_ from filenames if not present in basename
@@ -1530,6 +1531,7 @@ class loadData:
         
         keys = list(range(start_frame_i, len(tracker.cca_dfs)))
         acdc_df = pd.concat(tracker.cca_dfs, keys=keys, names=['frame_i'])
+        import pandasgui
         acdc_df['is_cell_dead'] = 0
         acdc_df['is_cell_excluded'] = 0
         acdc_df['was_manually_edited'] = 0
@@ -1541,8 +1543,28 @@ class loadData:
             for obj in rp:
                 centroid = obj.centroid
                 yc, xc = obj.centroid[-2:]
-                acdc_df.at[(frame_i, obj.label), 'x_centroid'] = int(xc)
-                acdc_df.at[(frame_i, obj.label), 'y_centroid'] = int(yc)
+                try:
+                    acdc_df.at[(frame_i, obj.label), 'x_centroid'] = int(xc)
+                    acdc_df.at[(frame_i, obj.label), 'y_centroid'] = int(yc)
+                except Exception as e:
+                    acdc_df.to_parquet(os.path.join(os.path.expanduser("~"), 'acdc_df.parquet'))
+                    printl(acdc_df.index.names)
+                    for level in range(acdc_df.index.nlevels):
+                        level_dtype = acdc_df.index.get_level_values(level).dtype
+                        print(f"Level {level} dtype:", level_dtype)
+                    duplicated_indices = acdc_df.index.duplicated(keep=False)
+                    duplicated = acdc_df.index[duplicated_indices]
+                    printl(duplicated.unique())
+
+                    
+                    printl(acdc_df.loc[(frame_i, obj.label), 'x_centroid'])
+                    printl(xc)
+                    printl(yc)
+                    traceback.print_exc()
+                    import pandasgui
+                    pandasgui.show(acdc_df)
+                    raise e
+
                 if len(centroid) == 3:
                     if 'z_centroid' not in acdc_df.columns:
                         acdc_df['z_centroid'] = 0
@@ -2464,19 +2486,20 @@ class loadData:
             raise FileNotFoundError(err_title)
         
     def saveTrackedLostCentroids(self, tracked_lost_centroids_list=None, _tracked_lost_centroids_list=None):
+
         if not (self.tracked_lost_centroids or tracked_lost_centroids_list or _tracked_lost_centroids_list):
             return
-        
-        if tracked_lost_centroids_list is not None:
-            tracked_lost_centroids_list = {k: v for k, v in enumerate(tracked_lost_centroids_list)}
 
         if _tracked_lost_centroids_list is not None:
             tracked_lost_centroids_list = _tracked_lost_centroids_list
 
-        if tracked_lost_centroids_list is None:
+        elif tracked_lost_centroids_list is not None:
+            tracked_lost_centroids_list = {k: v for k, v in tracked_lost_centroids_list.items()}
+
+        else:
             tracked_lost_centroids_list = {k: list(v) for k, v in self.tracked_lost_centroids.items()}
 
-        printl(tracked_lost_centroids_list)
+        # printl(tracked_lost_centroids_list)
         try:
             with open(self.tracked_lost_centroids_json_path, 'w') as json_file:
                 json.dump(tracked_lost_centroids_list, json_file, indent=4)

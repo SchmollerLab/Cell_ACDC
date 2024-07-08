@@ -6,6 +6,7 @@ class Model:
     def segment(
             self,
             image,
+            frame_i,
             skip_segmentation = True,
         ):
         """Skips the segmentation step and instead uses the provided segmentation data.
@@ -22,4 +23,4 @@ class Model:
             Segmented image (same as segm_data)
         """      
         
-        return self.segm_data
+        return self.segm_data[frame_i]

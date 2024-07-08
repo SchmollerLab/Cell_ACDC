@@ -1971,7 +1971,7 @@ class guiWin(QMainWindow):
         self.findNextMotherButton.setCheckable(True)
         self.editLin_TreeBar.addWidget(self.findNextMotherButton)
         self.editLin_TreeGroup.addButton(self.findNextMotherButton)
-        self.findNextMotherButton.keyPressShortcut = Qt.Key_F
+        self.findNextMotherButton.setShortcut('F')
         self.widgetsWithShortcut['Find next potential mother (lineage tree)'] = self.findNextMotherButton
 
         self.unknownLineageButton = QToolButton(self)
@@ -1979,7 +1979,7 @@ class guiWin(QMainWindow):
         self.unknownLineageButton.setCheckable(True)
         self.editLin_TreeBar.addWidget(self.unknownLineageButton)
         self.editLin_TreeGroup.addButton(self.unknownLineageButton)
-        self.unknownLineageButton.keyPressShortcut = Qt.Key_U
+        self.unknownLineageButton.setShortcut('U')
         self.widgetsWithShortcut['Unknown lineage (lineage tree)'] = self.unknownLineageButton
 
         self.noToolLinTreeButton = QToolButton(self)
@@ -1987,13 +1987,13 @@ class guiWin(QMainWindow):
         self.noToolLinTreeButton.setCheckable(True)
         self.editLin_TreeBar.addWidget(self.noToolLinTreeButton)
         self.editLin_TreeGroup.addButton(self.noToolLinTreeButton)
-        self.noToolLinTreeButton.keyPressShortcut = Qt.Key_N
+        self.noToolLinTreeButton.setShortcut('N')
         self.widgetsWithShortcut['No tool (lineage tree)'] = self.noToolLinTreeButton
 
         self.propagateLinTreeButton = QToolButton(self)
         self.propagateLinTreeButton.setIcon(QIcon(":compute.svg"))
         self.editLin_TreeBar.addWidget(self.propagateLinTreeButton)
-        self.propagateLinTreeButton.keyPressShortcut = Qt.Key_P
+        self.propagateLinTreeButton.setShortcut('P')
         self.widgetsWithShortcut['Propagate (lineage tree)'] = self.propagateLinTreeButton
         self.propagateLinTreeButton.clicked.connect(self.propagateLinTreeAction)
 
@@ -15616,7 +15616,10 @@ class guiWin(QMainWindow):
         
         posData.accepted_lost_IDs[frame_i].extend(posData.lost_IDs)
         # This section is adding the lost cells to tracked_lost_centroids... TBH I dont know why this wasnt done in the first place
-        accepted_lost_centroids = {tuple(int(val) for val in posData.rp[ID].centroid) for ID in posData.lost_IDs}
+        prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
+        prev_IDs_idxs = posData.allData_li[posData.frame_i-1]['IDs_idxs']
+        printl(posData.lost_IDs, [region.label for region in posData.rp], [region.label for region in prev_rp])
+        accepted_lost_centroids = {tuple(int(val) for val in prev_rp[prev_IDs_idxs[ID]].centroid) for ID in posData.lost_IDs}
         posData.tracked_lost_centroids[frame_i] = posData.tracked_lost_centroids[frame_i] | (accepted_lost_centroids)
         return True
         
@@ -17649,6 +17652,9 @@ class guiWin(QMainWindow):
         posData.allData_li[posData.frame_i]['IDs'] = posData.IDs.copy()
         posData.allData_li[posData.frame_i]['manualBackgroundLab'] = (
             posData.manualBackgroundLab
+        )
+        posData.allData_li[posData.frame_i]['IDs_idxs'] = (
+            posData.IDs_idxs.copy()
         )
 
         # Store dynamic metadata
@@ -23600,12 +23606,9 @@ class guiWin(QMainWindow):
             )
         except TypeError as err:
             if str(err).find('an unexpected keyword argument \'unique_ID\'') != -1:
-                rtTracker = self._rtTrackerName
-                raise TypeError(
-                    f'The `track_frame` method of the "{rtTracker}" tracker '
-                    'does not have the `unique_ID` keyword argument. '
-                    'Please add `unique_ID=None` to the `track_frame` method, '
-                    'thanks.'
+                tracked_result = self.realTimeTracker.track_frame(
+                    prev_lab, currentLab,
+                    **self.track_frame_params
                 )
             else:
                 raise err

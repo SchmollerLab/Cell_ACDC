@@ -3230,6 +3230,7 @@ def init_segm_model(acdcSegment, posData, init_kwargs):
             segm_filepath, _ = load.get_path_from_endname(
                 segm_endname, posData.images_path
             )
+            printl(f'Loading segmentation data from "{segm_filepath}"...')
             segm_data = np.load(segm_filepath)['arr_0']
     else:
         segm_data = None
