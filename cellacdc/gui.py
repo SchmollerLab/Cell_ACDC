@@ -6917,7 +6917,6 @@ class guiWin(QMainWindow):
             if self.secondChannelName is not None:
                 secondChannelData = self.getSecondChannelData()
                 roiSecondChannel = secondChannelData[self.labelRoiSlice]
-                printl()
             
             isTimelapse = self.labelRoiTrangeCheckbox.isChecked()
             if isTimelapse:
@@ -8030,7 +8029,7 @@ class guiWin(QMainWindow):
         missing_IDs = prev_IDs - set(posData.IDs) 
         filtered_IDs = [ID for ID in sorted_IDs if ID in missing_IDs]
         if len(filtered_IDs) == 0:
-            printl('No mother candidates found.')
+            self.logger.info('No mother candidates found.')
             return
 
         i = self.right_click_i % len(filtered_IDs)
@@ -15587,9 +15586,13 @@ class guiWin(QMainWindow):
         # This section is adding the lost cells to tracked_lost_centroids... TBH I dont know why this wasnt done in the first place
         prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
         prev_IDs_idxs = posData.allData_li[posData.frame_i-1]['IDs_idxs']
-        printl(posData.lost_IDs, [region.label for region in posData.rp], [region.label for region in prev_rp])
-        accepted_lost_centroids = {tuple(int(val) for val in prev_rp[prev_IDs_idxs[ID]].centroid) for ID in posData.lost_IDs}
-        posData.tracked_lost_centroids[frame_i] = posData.tracked_lost_centroids[frame_i] | (accepted_lost_centroids)
+        accepted_lost_centroids = {
+            tuple(int(val) for val in prev_rp[prev_IDs_idxs[ID]].centroid) 
+            for ID in posData.lost_IDs
+        }
+        posData.tracked_lost_centroids[frame_i] = (
+            posData.tracked_lost_centroids[frame_i] | (accepted_lost_centroids)
+        )
         return True
         
     def next_frame(self, warn=True):
@@ -17984,11 +17987,9 @@ class guiWin(QMainWindow):
         current_frame_i = posData.frame_i
 
         if not self.lineage_tree: # init lin tree if not done already
-
             self.lineage_tree = normal_division_lineage_tree(lab = posData.allData_li[0]['labels'])
             df_li = [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))]
             self.lineage_tree.load_lineage_df_list(df_li)
-            printl('Here!')
 
         missing_frames = list(range(current_frame_i+1))
         present_frames = list(self.lineage_tree.frames_for_dfs) if self.lineage_tree else []
@@ -18604,7 +18605,6 @@ class guiWin(QMainWindow):
 
             if self.lineage_tree and self.lineage_tree.frames_for_dfs and lin_tree:
                 if posData.frame_i in self.lineage_tree.frames_for_dfs:
-                    printl('dongding')
                     df = self.lineage_tree.export_df(posData.frame_i)
                     # df = posData.acdc_df.loc[posData.frame_i].copy()
                     binnedIDs_df = df[df['is_cell_excluded']>0]
@@ -18633,7 +18633,6 @@ class guiWin(QMainWindow):
             if not lin_tree:
                 self.get_cca_df()
             else:
-                printl('get_lin_tree_df')
                 self.get_lin_tree_df()
         else:
             # Requested frame was already visited. Load from RAM.
@@ -18648,13 +18647,10 @@ class guiWin(QMainWindow):
                 posData.ripIDs = set(ripIDs_df.index)
                 posData.editID_info = self._get_editID_info(df)
                 self.setManualBackgroundLab(load_from_store=True, debug=debug)
-            else: # need to load into the class here, for now ignored
-                printl('Trying to laod from RAM, when is this supposed to happen?')
-                if not self.lineage_tree:
-                    printl('This is when its supposed to happen? (Lienage tree was not init)')
-                    self.lineage_tree = normal_division_lineage_tree(lab = posData.allData_li[0]['labels'])
-                    df_li = [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))]
-                    self.lineage_tree.load_lineage_df_list(df_li)
+            elif not self.lineage_tree:
+                self.lineage_tree = normal_division_lineage_tree(lab = posData.allData_li[0]['labels'])
+                df_li = [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))]
+                self.lineage_tree.load_lineage_df_list(df_li)
 
             if not lin_tree:
                 self.get_cca_df()
@@ -19047,7 +19043,6 @@ class guiWin(QMainWindow):
             self.lineage_tree = normal_division_lineage_tree(lab = posData.allData_li[0]['labels'])
             df_li = [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))]
             self.lineage_tree.load_lineage_df_list(df_li)
-            printl('Here!')
 
             msg = 'Lineage tree analysis initialized!'
             self.logger.info(msg)
@@ -19274,7 +19269,9 @@ class guiWin(QMainWindow):
                     df['corrected_assignment'] = True
                 lin_tree_df = df.copy()
         if lin_tree_df is None and self.isSnapshot:
-            printl('Lineage tree for snapshots is not supported :(')
+            self.logger.info(
+                '[WARNING]: Lineage tree for snapshots is not supported :('
+            )
 
         # may need to create one if none is given already :3
 
@@ -19371,7 +19368,6 @@ class guiWin(QMainWindow):
 
 
         if lin_tree_set == []:
-            printl('No frames to sync')
             return
         
         for i, df in enumerate(lineage_copy):
@@ -23460,7 +23456,7 @@ class guiWin(QMainWindow):
             self, prev_lab, prev_rp, currentLab, currentRp, currentIDs,
             assign_unique_new_IDs=True
         ):
-        printl(f'Tracking frame {self.data[self.pos_i].frame_i}...')
+        # printl(f'Tracking frame {self.data[self.pos_i].frame_i}...')
         if self.trackWithAcdcAction.isChecked():
             tracked_result = CellACDC_tracker.track_frame(
                 prev_lab, prev_rp, currentLab, currentRp,
@@ -23481,10 +23477,9 @@ class guiWin(QMainWindow):
         try:
             tracked_lab, tracked_lost_IDs = tracked_result
             self.handleAdditionalInfoRealTimeTracker(prev_rp, tracked_lost_IDs)
-            printl(f'Tracked lost IDs: {tracked_lost_IDs}')
         except ValueError as err:
             tracked_lab = tracked_result
-            printl(err)
+            self.logger.exception(err)
         
         return tracked_lab
     
@@ -23574,7 +23569,6 @@ class guiWin(QMainWindow):
     def handleAdditionalInfoRealTimeTracker(self, prev_rp, *args):
         if self._rtTrackerName == 'CellACDC_normal_division':
             tracked_lost_IDs = args[0]
-            printl(f'Tracked lost IDs: {tracked_lost_IDs}')
             self.setTrackedLostCentroids(prev_rp, tracked_lost_IDs)
         elif self._rtTrackerName == 'CellACDC_2steps':
             if args[0] is None:
