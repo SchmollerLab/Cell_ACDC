@@ -1052,31 +1052,6 @@ class guiWin(QMainWindow):
         self.right_click_ID = None
         self.original_df = None
         self.curr_original_df_i = None
-    
-    def _printl(
-            self, *objects, is_decorator=False, **kwargs
-        ):
-        timestap = datetime.now().strftime('%H:%M:%S')
-        currentframe = inspect.currentframe()
-        outerframes = inspect.getouterframes(currentframe)
-        idx = 2 if is_decorator else 1
-        callingframe = outerframes[idx].frame
-        callingframe_info = inspect.getframeinfo(callingframe)
-        filepath = callingframe_info.filename
-        filename = os.path.basename(filepath)
-        self.logger.info('*'*30)
-        self.logger.info(
-            f'File "{filepath}", line {callingframe_info.lineno} - {timestap}:'
-        )
-        if kwargs.get('pretty'):
-            txt = pprint.pformat(objects[0])
-        else:
-            txt = ', '.join([str(x) for x in objects])
-        self.logger.info(txt)
-        self.logger.info('='*30)
-    
-    def _print(self, *objects):
-        self.logger.info(', '.join([str(x) for x in objects]))
 
     def setTooltips(self): #laoding tooltips for GUI from .\Cell_ACDC\docs\source\tooltips.rst
         tooltips = load.get_tooltips_from_docs()
@@ -18542,7 +18517,7 @@ class guiWin(QMainWindow):
         ]
         return editID_info
 
-    # @get_data_exception_handler
+    @get_data_exception_handler
     def get_data(self, debug=False, lin_tree=False): # done go thru w/ F again
         posData = self.data[self.pos_i]
         proceed_cca = True
