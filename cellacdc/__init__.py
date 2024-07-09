@@ -313,6 +313,8 @@ cite_url = 'https://bmcbiol.biomedcentral.com/articles/10.1186/s12915-022-01372-
 issues_url = 'https://github.com/SchmollerLab/Cell_ACDC/issues'
 
 # Initialize variables that need to be globally accessible
+
+
 base_cca_dict = {
     'cell_cycle_stage': 'G1',
     'generation_num': 2,
@@ -326,7 +328,6 @@ base_cca_dict = {
     'daughter_disappears_before_division': 0,
     'disappears_before_division': 0
 }
-
 cca_df_colnames = list(base_cca_dict.keys())
 
 base_cca_tree_dict = {
@@ -338,6 +339,22 @@ base_cca_tree_dict = {
 }
 
 lineage_tree_cols = list(base_cca_tree_dict.keys())
+
+# lineage_tree_cols = [
+#     # 'Cell_ID_tree',
+#     'generation_num_tree',
+#     'parent_ID_tree',
+#     'root_ID_tree',
+#     'sister_ID_tree'
+# ]
+
+lineage_tree_cols_std_val = [
+    -1,
+    -1,
+    -1,
+    -1,
+    -1
+]
 
 default_annot_df = {
     'is_cell_dead': False,

@@ -35,7 +35,7 @@ def calc_IoA_matrix(lab, prev_lab, rp, prev_rp, IDs_curr_untracked=None):
                 IoA_matrix[i, j] = IoA
     return IoA_matrix, IDs_curr_untracked, IDs_prev
 
-def assign(IoA_matrix, IDs_curr_untracked, IDs_prev, IoA_thresh=0.4, aggr_track=None, IoA_thresh_aggr=0.4, Record_lineage=False, IoA_thresh_daughter=None, Min_daughter=None, Max_daughter=None):
+def assign(IoA_matrix, IDs_curr_untracked, IDs_prev, IoA_thresh=0.4, aggr_track=None, IoA_thresh_aggr=0.4, daughters_list=None):
     # Determine max IoA between IDs and assign tracked ID if IoA >= IoA_thresh
     if IoA_matrix.size == 0:
         return [], []
@@ -49,6 +49,10 @@ def assign(IoA_matrix, IDs_curr_untracked, IDs_prev, IoA_thresh=0.4, aggr_track=
         printl(f'IDs in previous frame: {IDs_prev}')
 
     for i, j in enumerate(max_IoA_col_idx):
+        if daughters_list is not None:
+            if i in daughters_list:
+                continue
+
         if aggr_track:
             if i in aggr_track:
                 IoA_thresh_temp = IoA_thresh_aggr
@@ -204,7 +208,7 @@ def indexAssignment(
         core.lab_replace_values(
             tracked_lab, rp, new_untracked_IDs, new_tracked_IDs
         )
-        assignments = dict(zip(new_untracked_IDs, new_tracked_IDs))
+        assignments.update(dict(zip(new_untracked_IDs, new_tracked_IDs)))
         log_debugging(
             'new_untracked_and_assign_unique', 
             IDs_curr_untracked=IDs_curr_untracked,
@@ -224,6 +228,7 @@ def indexAssignment(
         core.lab_replace_values(
             tracked_lab, rp, new_IDs_in_trackedIDs, new_tracked_IDs
         )
+        assignments.update(dict(zip(new_IDs_in_trackedIDs, new_tracked_IDs)))
         log_debugging(
             'new_untracked_and_tracked', 
             new_IDs_in_trackedIDs=new_IDs_in_trackedIDs,
@@ -235,6 +240,7 @@ def indexAssignment(
         core.lab_replace_values(
             tracked_lab, rp, old_IDs, tracked_IDs, in_place=True
         )
+        assignments.update(dict(zip(old_IDs, tracked_IDs)))
         log_debugging(
             'tracked', 
             tracked_IDs=tracked_IDs,
@@ -251,7 +257,8 @@ def track_frame(
         uniqueID=None, setBrushID_func=None, posData=None,
         assign_unique_new_IDs=True, IoA_thresh=0.4, debug=False,
         return_all=False, aggr_track=None, IoA_matrix=None, 
-        IoA_thresh_aggr=None, IDs_prev=None, return_prev_IDs=False
+        IoA_thresh_aggr=None, IDs_prev=None, return_prev_IDs=False,
+        mother_daughters=None
     ):
     if not np.any(lab):
         # Skip empty frames
@@ -262,10 +269,15 @@ def track_frame(
             lab, prev_lab, rp, prev_rp, IDs_curr_untracked=IDs_curr_untracked
         )
 
+    daughters_list = []
+    if mother_daughters:
+        for _, daughters in mother_daughters:
+            daughters_list.extend(daughters)
+
     old_IDs, tracked_IDs = assign(
         IoA_matrix, IDs_curr_untracked, IDs_prev,
         IoA_thresh=IoA_thresh, aggr_track=aggr_track, 
-        IoA_thresh_aggr=IoA_thresh_aggr
+        IoA_thresh_aggr=IoA_thresh_aggr, daughters_list=daughters_list
     )
 
     if posData is None and uniqueID is None:
@@ -291,10 +303,10 @@ def track_frame(
             return_assignments=return_all
         )
 
+    # old_new_ids = dict(zip(old_IDs, tracked_IDs)) # for now not used, but could be useful in the future
+    
     if return_all:
-        return tracked_lab, IoA_matrix, assignments
-    elif return_prev_IDs: 
-        return tracked_lab, IDs_prev
+        return tracked_lab, IoA_matrix, assignments, tracked_IDs # remove tracked_IDs and change code in CellACDC_tracker.py if causing problems
     else:
         return tracked_lab
 

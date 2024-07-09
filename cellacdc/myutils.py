@@ -233,6 +233,25 @@ def get_trimmed_list(li: list, max_num_digits=10):
         li_str = f"[{', '.join(map(str, li_str))}]"
     return li_str
 
+def get_trimmed_dict(di: dict, max_num_digits=10):
+    di_str = di.copy()
+    total_num_digits = sum([len(str(key)) + len(str(val)) for key, val in di.items()])
+    avg_num_digits = total_num_digits / len(di)
+    max_num_vals = int(round(max_num_digits / avg_num_digits))
+    if total_num_digits > max_num_digits:
+        keys = list(di_str.keys())
+        for key in keys[max_num_vals:-max_num_vals]:
+            del di_str[key]
+        di_str[keys[max_num_vals]] = "..."
+    return f"[{', '.join([f'{key} -> {val}' for key, val in di_str.items()])}]"
+
+def checked_reset_index(df):
+    if df.index.names is None or df.index.names == [None]:
+        return df.reset_index(drop=True)
+    else:
+        return df.reset_index()
+
+
 def _bytes_to_MB(size_bytes):
     factor = pow(2, -20)
     size_MB = round(size_bytes*factor)
@@ -3211,6 +3230,7 @@ def init_segm_model(acdcSegment, posData, init_kwargs):
             segm_filepath, _ = load.get_path_from_endname(
                 segm_endname, posData.images_path
             )
+            printl(f'Loading segmentation data from "{segm_filepath}"...')
             segm_data = np.load(segm_filepath)['arr_0']
     else:
         segm_data = None

@@ -8210,7 +8210,7 @@ will be applied (see below).<br><br>
     def closeEvent(self, event):
         if hasattr(self, 'loop'):
             self.loop.exit()
-
+       
 class askStopFrameSegm(QDialog):
     def __init__(
             self, user_ch_file_paths, user_ch_name, parent=None
@@ -10141,6 +10141,12 @@ class QDialogModelParams(QDialog):
         self.segmFileEndnames = segmFileEndnames
         self.df_metadata = df_metadata
         self.force_postprocess_2D = force_postprocess_2D
+
+        if segment_params[0].name.lower().find('skip_segmentation') != -1:
+            self.skipSegmentation = True
+            addPreProcessParams = False
+        else:
+            self.skipSegmentation = False
         
         if is_tracker:
             self.ini_filename = 'last_params_trackers.ini'
@@ -10189,60 +10195,62 @@ class QDialogModelParams(QDialog):
             partial(loadFunc, f'{self.model_name}.init', self.init_argsWidgets)
         )
 
-        if action_type:
-            runGroupboxTitle = f'Parameters for {action_type}'
-        elif is_tracker:
-            runGroupboxTitle = 'Parameters for tracking'
-        else:
-            runGroupboxTitle = 'Parameters for segmentation'
-        
-        segmentGroupBox, self.argsWidgets = self.createGroupParams(
-            segment_params, runGroupboxTitle, 
-            addChannelSelector=True
-        ) 
-        self.segmentGroupBox = segmentGroupBox
-        segmentDefaultButton = widgets.reloadPushButton('Restore default')
-        segmentLoadLastSelButton = QPushButton('Load last parameters')
-        segmentButtonsLayout = QHBoxLayout()
-        segmentButtonsLayout.addStretch(1)
-        segmentButtonsLayout.addWidget(segmentDefaultButton)
-        segmentButtonsLayout.addWidget(segmentLoadLastSelButton)
-        segmentDefaultButton.clicked.connect(self.restoreDefaultSegment)
-        section = f'{self.model_name}.segment'
-        segmentLoadLastSelButton.clicked.connect(
-            partial(loadFunc, section, self.argsWidgets)
-        )
+        if not self.skipSegmentation:
+            if action_type:
+                runGroupboxTitle = f'Parameters for {action_type}'
+            elif is_tracker:
+                runGroupboxTitle = 'Parameters for tracking'
+            else:
+                runGroupboxTitle = 'Parameters for segmentation'
+            
+            segmentGroupBox, self.argsWidgets = self.createGroupParams(
+                segment_params, runGroupboxTitle, 
+                addChannelSelector=True
+            ) 
+            self.segmentGroupBox = segmentGroupBox
+            segmentDefaultButton = widgets.reloadPushButton('Restore default')
+            segmentLoadLastSelButton = QPushButton('Load last parameters')
+            segmentButtonsLayout = QHBoxLayout()
+            segmentButtonsLayout.addStretch(1)
+            segmentButtonsLayout.addWidget(segmentDefaultButton)
+            segmentButtonsLayout.addWidget(segmentLoadLastSelButton)
+            segmentDefaultButton.clicked.connect(self.restoreDefaultSegment)
+            section = f'{self.model_name}.segment'
+            segmentLoadLastSelButton.clicked.connect(
+                partial(loadFunc, section, self.argsWidgets)
+            )
 
         cancelButton = widgets.cancelPushButton(' Cancel ')
         okButton = widgets.okPushButton(' Ok ')
-        # infoButton = widgets.infoPushButton(' Help... ')
-        # restoreDefaultButton = widgets.reloadPushButton('Restore default')
+            # infoButton = widgets.infoPushButton(' Help... ')
+            # restoreDefaultButton = widgets.reloadPushButton('Restore default')
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
         buttonsLayout.addSpacing(20)
-        # buttonsLayout.addWidget(infoButton)
-        # buttonsLayout.addWidget(restoreDefaultButton)
+            # buttonsLayout.addWidget(infoButton)
+            # buttonsLayout.addWidget(restoreDefaultButton)
         buttonsLayout.addWidget(okButton)
 
         buttonsLayout.setContentsMargins(0, 10, 0, 10)
 
         okButton.clicked.connect(self.ok_cb)
-        # infoButton.clicked.connect(self.info_params)
+            # infoButton.clicked.connect(self.info_params)
         cancelButton.clicked.connect(self.close)
-        # restoreDefaultButton.clicked.connect(self.restoreDefault)
+            # restoreDefaultButton.clicked.connect(self.restoreDefault)
 
         scrollAreaLayout.addWidget(initGroupBox)
         scrollAreaLayout.addLayout(initButtonsLayout)
-        scrollAreaLayout.addSpacing(15)
-        scrollAreaLayout.addStretch(1)
-        scrollAreaLayout.addWidget(segmentGroupBox)
-        scrollAreaLayout.addLayout(segmentButtonsLayout)
+        if not self.skipSegmentation:
+            scrollAreaLayout.addSpacing(15)
+            scrollAreaLayout.addStretch(1)
+            scrollAreaLayout.addWidget(segmentGroupBox)
+            scrollAreaLayout.addLayout(segmentButtonsLayout)
 
         self.postProcessGroupbox = None
         
         if not is_tracker:
-            # Add minimum size spinbox whihc is valid for all models
+            # Add minimum size spinbox which is valid for all models
             postProcessGroupbox = PostProcessSegmParams(
                 'Post-processing segmentation parameters', posData,
                 force_postprocess_2D=force_postprocess_2D
@@ -10285,9 +10293,10 @@ class QDialogModelParams(QDialog):
 
         if initLastParams:
             initLoadLastSelButton.click()
-            segmentLoadLastSelButton.click()
+            if not self.skipSegmentation:
+                segmentLoadLastSelButton.click()
         
-        if not is_tracker:
+        if not is_tracker and not self.skipSegmentation:
             postProcLoadLastSelButton.click()
 
         try:
@@ -10298,6 +10307,7 @@ class QDialogModelParams(QDialog):
         self.setLayout(mainLayout)
         self.setFont(font)
         # self.setModal(True)
+
     
     def loadPreprocRecipe(self):
         if self.configPars is None:
@@ -10757,9 +10767,12 @@ class QDialogModelParams(QDialog):
             self.preproc_recipe = self.preProcessParamsGroupbox.recipe()
             
         self.init_kwargs = self.argsWidgets_to_kwargs(self.init_argsWidgets)
-        self.model_kwargs = self.argsWidgets_to_kwargs(
-            self.argsWidgets
-        )
+        if not self.skipSegmentation:
+            self.model_kwargs = self.argsWidgets_to_kwargs(
+                self.argsWidgets
+            )
+        else:
+            self.model_kwargs = {}
         if hasattr(self, 'segmEndnameCombobox'):
             self.init_kwargs['segm_endname'] = (
                 self.segmEndnameCombobox.currentText()

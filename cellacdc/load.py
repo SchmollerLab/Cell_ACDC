@@ -957,6 +957,7 @@ class loadData:
                 if file.endswith(f'{user_ch_name}.h5'):
                     self.non_aligned_ext = '.h5'
                     break
+        self.tracked_lost_centroids = None
     
     def attempFixBasenameBug(self):
         '''Attempt removing _s(\d+)_ from filenames if not present in basename
@@ -1595,11 +1596,22 @@ class loadData:
     def fromTrackerToAcdcDf(
             self, tracker, tracked_video, save=False, start_frame_i=0
         ):
-        if not hasattr(tracker, 'cca_dfs'):
+        cca_dfs_attr = hasattr(tracker, 'cca_dfs')
+        cca_dfs_auto_attr = hasattr(tracker, 'cca_dfs_auto')
+
+        if hasattr(tracker, 'tracked_lost_centroids'):
+            self.saveTrackedLostCentroids(tracker.tracked_lost_centroids)
+
+        if not cca_dfs_attr and not cca_dfs_auto_attr:
             return
         
-        keys = list(range(start_frame_i, len(tracker.cca_dfs)))
-        acdc_df = pd.concat(tracker.cca_dfs, keys=keys, names=['frame_i'])
+        if cca_dfs_attr:
+            keys = list(range(start_frame_i, len(tracker.cca_dfs)))
+            acdc_df = pd.concat(tracker.cca_dfs, keys=keys, names=['frame_i'])
+        else:
+            keys = list(range(start_frame_i, len(tracker.cca_dfs_auto)))
+            acdc_df = pd.concat(tracker.cca_dfs_auto, keys=keys, names=['frame_i'])
+
         acdc_df['is_cell_dead'] = 0
         acdc_df['is_cell_excluded'] = 0
         acdc_df['was_manually_edited'] = 0
@@ -1613,6 +1625,7 @@ class loadData:
                 yc, xc = obj.centroid[-2:]
                 acdc_df.at[(frame_i, obj.label), 'x_centroid'] = int(xc)
                 acdc_df.at[(frame_i, obj.label), 'y_centroid'] = int(yc)
+
                 if len(centroid) == 3:
                     if 'z_centroid' not in acdc_df.columns:
                         acdc_df['z_centroid'] = 0
@@ -1623,8 +1636,11 @@ class loadData:
             return acdc_df
 
         acdc_df = pd_bool_to_int(acdc_df, inplace=False)
-        acdc_df.to_csv(self.acdc_output_csv_path)
-        self.loadAcdcDf(self.acdc_output_csv_path)
+        if cca_dfs_attr:
+            acdc_df.to_csv(self.acdc_output_csv_path)
+            self.loadAcdcDf(self.acdc_output_csv_path)
+        elif cca_dfs_auto_attr:
+            acdc_df.to_csv(self.acdc_output_auto_csv_path)
 
     def getAcdcDfEndname(self):
         if not hasattr(self, 'acdc_output_csv_path'):
@@ -2258,7 +2274,9 @@ class loadData:
         self.sam_embeddings_path =(
             f'{base_path}{self.user_ch_name}_sam_embeddings.pt'
         )
-        
+        self.tracked_lost_centroids_json_path = f'{base_path}tracked_lost_centroids.json'
+        self.acdc_output_auto_csv_path = f'{base_path}acdc_output_auto.csv'
+    
     def get_btrack_export_path(self):
         btrack_path = self.segm_npz_path.replace('.npz', '.h5')
         btrack_path = btrack_path.replace('_segm', '_btrack_tracks')
@@ -2531,6 +2549,73 @@ class loadData:
             return None
         elif signals is not None:
             raise FileNotFoundError(err_title)
+        
+    def saveTrackedLostCentroids(self, tracked_lost_centroids_list=None, _tracked_lost_centroids_list=None):
+
+        if not (self.tracked_lost_centroids or tracked_lost_centroids_list or _tracked_lost_centroids_list):
+            return
+
+        if _tracked_lost_centroids_list is not None:
+            tracked_lost_centroids_list = _tracked_lost_centroids_list
+
+        elif tracked_lost_centroids_list is not None:
+            tracked_lost_centroids_list = {k: v for k, v in tracked_lost_centroids_list.items()}
+
+        else:
+            tracked_lost_centroids_list = {k: list(v) for k, v in self.tracked_lost_centroids.items()}
+
+        # printl(tracked_lost_centroids_list)
+        try:
+            with open(self.tracked_lost_centroids_json_path, 'w') as json_file:
+                json.dump(tracked_lost_centroids_list, json_file, indent=4)
+        except PermissionError:
+            print('='*20)
+            traceback.print_exc()
+            print('='*20)
+            permissionErrorTxt = html_utils.paragraph(
+                f'The below file is open in another app (Excel maybe?).<br><br>'
+                f'{self.tracked_lost_centroids_json_path}<br><br>'
+                'Close file and then press "Ok", or press "Cancel" to abort.'
+            )
+            msg = widgets.myMessageBox(self.parent)
+            msg.warning(
+                self, 'Permission denied', permissionErrorTxt, buttonsTexts=('Cancel', 'Ok')
+            )
+            if msg.cancel:
+                return
+            
+            self.saveTrackedLostCentroids(_tracked_lost_centroids_list=tracked_lost_centroids_list)
+
+    def loadTrackedLostCentroids(self):
+        try:
+            with open(self.tracked_lost_centroids_json_path, 'r') as json_file:
+                tracked_lost_centroids_list = json.load(json_file)
+                self.tracked_lost_centroids = {int(k): {tuple(int(val) for val in centroid) for centroid in v} for k, v in tracked_lost_centroids_list.items()}
+        except FileNotFoundError:
+            print(f"No file found at {self.tracked_lost_centroids_json_path}")
+            self.tracked_lost_centroids = {
+                frame_i:set() for frame_i in range(self.SizeT)
+                }
+        except PermissionError:
+            print('='*20)
+            traceback.print_exc()
+            print('='*20)
+            permissionErrorTxt = html_utils.paragraph(
+                f'The below file is open in another app (Excel maybe?).<br><br>'
+                f'{self.tracked_lost_centroids_json_path}<br><br>'
+                'Close file and then press "Ok", or press "Cancel" to abort.'
+            )
+            msg = widgets.myMessageBox(self.parent)
+            msg.warning(
+                self, 'Permission denied', permissionErrorTxt, buttonsTexts=('Cancel', 'Ok')
+            )
+            if msg.cancel:
+                self.tracked_lost_centroids = {
+                    frame_i:set() for frame_i in range(self.SizeT)
+                    }
+                return
+            
+            self.loadTrackedLostCentroids()
 
 class select_exp_folder:
     def __init__(self):
