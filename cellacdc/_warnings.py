@@ -174,6 +174,42 @@ def warn_download_bioformats_jar_failed(jar_dst_filepath, qparent=None):
     )
     return msg.cancel
 
+def warnNotEnoughG1Cells(numCellsG1, frame_i, numNewCells, qparent=None):
+    from cellacdc import widgets
+    if numCellsG1 == 0:
+        G1_text = 'no cells'
+    else:
+        G1_text = f'only {numCellsG1} cells'
+    text = html_utils.paragraph(
+        f'In the next frame <b>{numNewCells} new object(s)</b> will '
+        'appear (highlighted in green on left image).<br><br>'
+        
+        f'However, in the previous frame (frame n. {frame_i}) there are '
+        f'<b>{G1_text}</b> in G1 available.<br><br>'
+        
+        'Note that cells <b>must be in G1 in the previous frame too</b>, '
+        'because if they are in G1<br>'
+        'only at current frame, assigning a bud to it would result in no '
+        'G1 phase at all between current<br>'
+        'and previous cell cycle.<br>'
+        
+        'You can either cancel the operation and annotate division on previous '
+        'frames or continue.<br><br>'
+        
+        'If you continue the <b>new cell</b> will be annotated as a '
+        '<b>cell in G1 with unknown history</b>.<br><br>'
+        
+        'Do you want to continue?<br>'
+    )
+    
+    msg = widgets.myMessageBox(wrapText=False)
+    _, yesButton = msg.warning(
+        qparent, 'No cells in G1!', text, 
+        buttonsTexts=('Cancel', 'Continue anyway (new cells will start in G1)')
+    )
+    return msg.clickedButton == yesButton
+    
+
 def log_pytorch_not_installed():
     print(error_below)
     print(
