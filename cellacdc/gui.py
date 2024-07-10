@@ -15653,6 +15653,7 @@ class guiWin(QMainWindow):
             if notEnoughG1Cells or not proceed:
                 posData.frame_i -= 1
                 self.get_data()
+                self.setAllTextAnnotations()
                 return
             self.resetExpandLabel()
             self.updateAllImages(updateFilters=True)
@@ -18034,39 +18035,30 @@ class guiWin(QMainWindow):
         if posData.allData_li[posData.frame_i]['labels'] is None:
             proceed = self.warnFrameNeverVisitedSegmMode()
             return notEnoughG1Cells, proceed
-
+        
         # Determine if this is the last visited frame for repeating
         # bud assignment on non manually corrected_assignment buds.
         # The idea is that the user could have assigned division on a cell
         # by going previous and we want to check if this cell could be a
         # "better" mother for those non manually corrected buds
-        lastVisited = False
         curr_df = posData.allData_li[posData.frame_i]['acdc_df']
-        if curr_df is not None:
-            if 'cell_cycle_stage' in curr_df.columns and not enforceAll:
-                posData.new_IDs = [
-                    ID for ID in posData.new_IDs
-                    if curr_df.at[ID, 'is_history_known']
-                    and curr_df.at[ID, 'cell_cycle_stage'] == 'S'
-                ]
-                if posData.frame_i+1 < posData.SizeT:
-                    next_df = posData.allData_li[posData.frame_i+1]['acdc_df']
-                    if next_df is None:
-                        lastVisited = True
-                    else:
-                        if 'cell_cycle_stage' not in next_df.columns:
-                            lastVisited = True
-                else:
-                    lastVisited = True
+        isLastVisitedAgain = self.isLastVisitedAgainCca(
+            curr_df, enforceAll=enforceAll
+        )
         
+        frameAlreadyAnnotated = (
+            posData.cca_df is not None
+            and not enforceAll
+            and not isLastVisitedAgain
+        )
         # Use stored cca_df and do not modify it with automatic stuff
-        if posData.cca_df is not None and not enforceAll and not lastVisited:
+        if frameAlreadyAnnotated:
             return notEnoughG1Cells, proceed
-
+        
         # Keep only correctedAssignIDs if requested
         # For the last visited frame we perform assignment again only on
         # IDs where we didn't manually correct assignment
-        if lastVisited and not enforceAll:
+        if isLastVisitedAgain and not enforceAll:
             try:
                 correctedAssignIDs = curr_df[
                     curr_df['corrected_assignment']].index
@@ -18115,8 +18107,10 @@ class guiWin(QMainWindow):
             IDsCellsG1 = set(prev_df_G1.index)
         except Exception as err:
             IDsCellsG1 = set()
-            
-        if lastVisited or enforceAll:
+        
+        printl(IDsCellsG1, isLastVisitedAgain)
+        
+        if isLastVisitedAgain or enforceAll:
             # If we are repeating auto cca for last visited frame
             # then we also add the cells in G1 that appears in current frame
             # Note that potential mother cells must be either appearing in 
@@ -18137,35 +18131,9 @@ class guiWin(QMainWindow):
         numCellsG1 = len(IDsCellsG1)
         numNewCells = len(posData.new_IDs)
         if numCellsG1 < numNewCells:
-            self.highlightNewCellNotEnoughG1cells(posData.new_IDs)
-            msg = widgets.myMessageBox()
-            text = html_utils.paragraph(
-                f'In the next frame <b>{numNewCells} new object(s)</b> will '
-                'appear (highlighted in green on left image).<br><br>'
-                f'However there are <b>only {numCellsG1} object(s)</b> '
-                'in G1 available.<br><br>'
-                'You can either cancel the operation and "free" a cell '
-                'by first annotating division or continue.<br><br>'
-                'If you continue the <b>new cell</b> will be annotated as a '
-                '<b>cell in G1 with unknown history</b>.<br><br>'
-                'Do you want to continue?<br>'
+            notEnoughG1Cells, proceed = self.handleNoCellsInG1(
+                numCellsG1, numNewCells
             )
-            _, yesButton = msg.warning(
-                self, 'No cells in G1!', text,
-                buttonsTexts=('Cancel', 'Yes')
-            )
-            if msg.clickedButton == yesButton:
-                notEnoughG1Cells = False
-                proceed = True
-                # Annotate the new IDs with unknown history
-                for ID in posData.new_IDs:
-                    posData.cca_df.loc[ID] = pd.Series(base_cca_dict)
-                    cca_df_ID = self.getStatusKnownHistoryBud(ID)
-                    posData.ccaStatus_whenEmerged[ID] = cca_df_ID
-            else:
-                notEnoughG1Cells = True
-                proceed = False
-            self.ccaFailedScatterItem.setData([], [])
             return notEnoughG1Cells, proceed
 
         # Compute new IDs contours
@@ -22760,6 +22728,40 @@ class guiWin(QMainWindow):
             obj, 'lost_object', f'{obj.label}?', False
         )
     
+    def isLastVisitedAgainCca(self, curr_df, enforceAll=False):
+        # Determine if this is the last visited frame for repeating
+        # bud assignment on non manually corrected_assignment buds.
+        # The idea is that the user could have assigned division on a cell
+        # by going previous and we want to check if this cell could be a
+        # "better" mother for those non manually corrected buds
+        posData = self.data[self.pos_i]
+        if curr_df is None:
+            return False
+        
+        if 'cell_cycle_stage' not in curr_df.columns:
+            return False
+        
+        if enforceAll:
+            return False
+        
+        lastVisited = False
+        posData.new_IDs = [
+            ID for ID in posData.new_IDs
+            if curr_df.at[ID, 'is_history_known']
+            and curr_df.at[ID, 'cell_cycle_stage'] == 'S'
+        ]
+        if posData.frame_i+1 < posData.SizeT:
+            next_df = posData.allData_li[posData.frame_i+1]['acdc_df']
+            if next_df is None:
+                lastVisited = True
+            else:
+                if 'cell_cycle_stage' not in next_df.columns:
+                    lastVisited = True
+        else:
+            lastVisited = True
+        
+        return lastVisited
+    
     def highlightNewCellNotEnoughG1cells(self, IDsCellsG1):
         posData = self.data[self.pos_i]
         for obj in posData.rp:
@@ -22774,6 +22776,28 @@ class guiWin(QMainWindow):
                 obj, 'green', f'{obj.label}?', False
             )
 
+    def handleNoCellsInG1(self, numCellsG1, numNewCells):
+        posData = self.data[self.pos_i]
+        self.highlightNewCellNotEnoughG1cells(posData.new_IDs)
+        continueAnyway = _warnings.warnNotEnoughG1Cells(
+            numCellsG1, posData.frame_i, numNewCells, qparent=self
+        )
+        if continueAnyway:
+            notEnoughG1Cells = False
+            proceed = True
+            # Annotate the new IDs with unknown history
+            for ID in posData.new_IDs:
+                posData.cca_df.loc[ID] = pd.Series(base_cca_dict)
+                cca_df_ID = self.getStatusKnownHistoryBud(ID)
+                posData.ccaStatus_whenEmerged[ID] = cca_df_ID
+        else:
+            notEnoughG1Cells = True
+            proceed = False
+        
+        # Clear new cells annotations
+        self.ccaFailedScatterItem.setData([], [])
+        return notEnoughG1Cells, proceed
+    
     def addObjContourToContoursImage(
             self, ID=0, obj=None, ax=0, thickness=None, color=None
         ):        
@@ -22854,7 +22878,9 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         if current_frame_i is None:
             current_frame_i = posData.frame_i
-            
+        
+        printl(current_frame_i)
+        
         next_frame_i = current_frame_i + 1
         if next_frame_i >= len(posData.img_data):
             img = posData.img_data[-1]
