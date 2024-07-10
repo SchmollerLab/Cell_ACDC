@@ -22533,9 +22533,10 @@ class guiWin(QMainWindow):
         img = self._getImageupdateAllImages(image, updateFilters)
         if self.equalizeHistPushButton.isChecked():
             img = skimage.exposure.equalize_adapthist(img)
+        posData = self.data[self.pos_i]
         self.img1.setImage(
             img, next_frame_image=self.nextFrameImage(),
-            scrollbar_value=self.navigateScrollBar.value()+2
+            scrollbar_value=posData.frame_i+2
         )
     
     def getContoursImageItem(self, ax):
@@ -22878,8 +22879,6 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         if current_frame_i is None:
             current_frame_i = posData.frame_i
-        
-        printl(current_frame_i)
         
         next_frame_i = current_frame_i + 1
         if next_frame_i >= len(posData.img_data):
