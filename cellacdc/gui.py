@@ -23852,13 +23852,19 @@ class guiWin(QMainWindow):
                 return_existing=False,
                 return_copy=False
             )
-        
-        for centroid in posData.tracked_lost_centroids[frame_i]:
+
+        try:
+            tracked_lost_centroids = posData.tracked_lost_centroids[frame_i]
+        except KeyError:
+            return trackedLostIDs
+
+        for centroid in tracked_lost_centroids:
             ID = prev_lab[centroid]
             if ID == 0:
                 continue
             trackedLostIDs.add(ID)
-        return trackedLostIDs #, prev_lab            
+        return trackedLostIDs
+
     
     def manuallyEditTracking(self, tracked_lab, allIDs):
         posData = self.data[self.pos_i]
