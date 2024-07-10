@@ -22,7 +22,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from . import load, myutils
-from . import cca_df_colnames, printl, base_cca_dict # , base_cca_tree_dict
+from . import cca_df_colnames, printl, base_cca_dict, base_cca_tree_dict
 from . import features
 from . import error_up_str
 from . import issues_url

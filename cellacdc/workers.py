@@ -703,14 +703,9 @@ class AutoSaveWorker(QObject):
             .set_index(['frame_i', 'Cell_ID'])
         )
         
-        if 'frame_i' in recovery_acdc_df.columns:
-            recovery_acdc_df = recovery_acdc_df.drop(columns='frame_i')
-            # printl('Where is column frame_i coming from?')
-        
-        recovery_acdc_df = (recovery_acdc_df
-                            .reset_index()
-                            .set_index(['frame_i', 'Cell_ID'])
-                            )
+        recovery_acdc_df = (
+            recovery_acdc_df.reset_index().set_index(['frame_i', 'Cell_ID'])
+        )
         try:
             # Try to insert into the recovery_acdc_df any column that was saved
             # but is not in the recovered df (e.g., metrics)
