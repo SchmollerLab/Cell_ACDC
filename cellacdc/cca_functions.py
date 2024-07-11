@@ -99,7 +99,7 @@ def find_available_channels(filenames, first_pos_dir):
 
 def get_segm_endname(images_path, basename):
     segm_files = load.get_segm_files(images_path)
-    segm_endnames = load.get_existing_segm_endnames(
+    segm_endnames = load.get_endnames(
         basename, segm_files
     )
     if not segm_endnames:

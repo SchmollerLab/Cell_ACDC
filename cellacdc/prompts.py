@@ -390,7 +390,7 @@ def init_segm_model_params(
         return out
     
     segm_files = load.get_segm_files(posData.images_path)
-    existingSegmEndnames = load.get_existing_segm_endnames(
+    existingSegmEndnames = load.get_endnames(
         posData.basename, segm_files
     )
     win = apps.QDialogModelParams(

@@ -12401,7 +12401,7 @@ class guiWin(QMainWindow):
     def delObjsOutSegmMaskActionTriggered(self):
         posData = self.data[self.pos_i]
         segm_files = load.get_segm_files(posData.images_path)
-        existingSegmEndnames = load.get_existing_segm_endnames(
+        existingSegmEndnames = load.get_endnames(
             posData.basename, segm_files
         )
         selectSegmWin = widgets.QDialogListbox(
@@ -15888,7 +15888,7 @@ class guiWin(QMainWindow):
             _posData = load.loadData(filePath, user_ch_name)
             _posData.getBasenameAndChNames()
             segm_files = load.get_segm_files(_posData.images_path)
-            _existingEndnames = load.get_existing_segm_endnames(
+            _existingEndnames = load.get_endnames(
                 _posData.basename, segm_files
             )
             existingSegmEndNames.update(_existingEndnames)
@@ -26000,7 +26000,7 @@ class guiWin(QMainWindow):
         existingEndnames = set()
         for _posData in self.data:
             segm_files = load.get_segm_files(_posData.images_path)
-            _existingEndnames = load.get_existing_segm_endnames(
+            _existingEndnames = load.get_endnames(
                 _posData.basename, segm_files
             )
             existingEndnames.update(_existingEndnames)

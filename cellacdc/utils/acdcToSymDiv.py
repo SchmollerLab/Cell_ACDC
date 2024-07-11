@@ -142,7 +142,7 @@ class AcdcToSymDivUtil(QDialog):
             _posData = load.loadData(filePath, chName)
             _posData.getBasenameAndChNames()
             segm_files = load.get_segm_files(_posData.images_path)
-            _existingEndnames = load.get_existing_segm_endnames(
+            _existingEndnames = load.get_endnames(
                 _posData.basename, segm_files
             )
             existingSegmEndNames.update(_existingEndnames)

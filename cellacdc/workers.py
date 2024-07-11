@@ -38,6 +38,7 @@ from .path import copy_or_move_tree
 from . import features
 from . import core
 from . import cca_df_colnames, lineage_tree_cols, default_annot_df
+from . import cca_df_colnames_with_tree
 
 DEBUG = False
 
@@ -111,6 +112,7 @@ class signals(QObject):
     sigUpdateInnerPbar = Signal(int)
     sigSelectFile = Signal(str, str, str)
     sigAskCopyCca = Signal(str)
+    sigSelectFilesWithText = Signal(str, object, str, object)
 
 class AutoPilotWorker(QObject):
     finished = Signal()
@@ -1585,8 +1587,11 @@ class trackingWorker(QObject):
             frame_i = rel_frame_i + self.mainWin.start_n - 1
 
             if acdc_df is not None:
+                cca_cols = acdc_df.columns.intersection(
+                    cca_df_colnames_with_tree
+                )
                 # Store cca_df if it is an output of the tracker
-                cca_df = acdc_df.loc[frame_i][self.mainWin.cca_df_colname]
+                cca_df = acdc_df.loc[frame_i][cca_cols]
                 self.mainWin.store_cca_df(
                     frame_i=frame_i, cca_df=cca_df, mainThread=False,
                     autosave=False
@@ -1925,6 +1930,17 @@ class BaseWorkerUtil(QObject):
     def emitSelectSegmFiles(self, exp_path, pos_foldernames):
         self.mutex.lock()
         self.signals.sigSelectSegmFiles.emit(exp_path, pos_foldernames)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        return self.abort
+    
+    def emitSelectFilesWithText(
+            self, exp_path, pos_foldernames, with_text, ext=None
+        ):
+        self.mutex.lock()
+        self.signals.sigSelectFilesWithText.emit(
+            exp_path, pos_foldernames, with_text, ext
+        )
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
         return self.abort
@@ -3086,6 +3102,87 @@ class ConcatAcdcDfsWorker(BaseWorkerUtil):
 
         self.signals.finished.emit(self)
 
+class FromImajeJroiToSegmNpzWorker(BaseWorkerUtil):
+    sigSelectRoisProps = Signal(str, object)
+    
+    def __init__(self, mainWin):
+        super().__init__(mainWin)
+    
+    def emitSelectRoisProps(self, roi_filepath, TZYX_shape):
+        self.mutex.lock()
+        self.sigSelectRoisProps.emit(roi_filepath, TZYX_shape)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        return self.abort
+    
+    @worker_exception_handler
+    def run(self):
+        expPaths = self.mainWin.expPaths
+        tot_exp = len(expPaths)
+        self.signals.initProgressBar.emit(0)
+        for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
+            self.errors = {}
+            tot_pos = len(pos_foldernames)
+
+            abort = self.emitSelectFilesWithText(
+                exp_path, pos_foldernames, 'imagej_rois', ext='.zip'
+            )
+            if abort:
+                self.signals.finished.emit(self)
+                return
+            
+            for p, pos in enumerate(pos_foldernames):
+                if self.abort:
+                    self.signals.finished.emit(self)
+                    return
+
+                self.logger.log(
+                    f'Processing experiment n. {i+1}/{tot_exp}, '
+                    f'{pos} ({p+1}/{tot_pos})'
+                )
+
+                images_path = os.path.join(exp_path, pos, 'Images')
+                endFilenameRoi = self.mainWin.endFilenameWithText
+                ls = myutils.listdir(images_path)
+                rois_filepaths = [
+                    os.path.join(images_path, f) for f in ls 
+                    if f.endswith(f'{endFilenameRoi}.zip')
+                ]
+                
+                if not rois_filepaths:
+                    self.logger.log(
+                        '[WARNING]: The following Position folder does not '
+                        f'contain any file ending with {endFilenameRoi}. '
+                        f'Skipping it. "{os.path.join(exp_path, pos)}")'
+                    )
+                    continue
+                    
+                rois_filepath = rois_filepaths[0]
+                
+                self.logger.log('Loading image data to get image shape...')
+                TZYX_shape = load.get_tzyx_shape(images_path)
+                abort = self.emitSelectRoisProps(rois_filepath, TZYX_shape)
+                if abort:
+                    self.signals.finished.emit(self)
+                    return
+                
+                self.logger.log('Generating segm mask from ROIs...')
+                segm_data = myutils.from_imagej_rois_to_segm_data(
+                    TZYX_shape, self.IDsToRoisMapper, self.rescaleRoisSizes, 
+                    self.repeatRoisZslicesRange
+                )
+                
+                
+                segm_filepath = (rois_filepath
+                    .replace('imagej_rois', 'segm')
+                    .replace('.zip', '.npz')
+                )
+                self.logger.log(f'Saving segm mask to "{segm_filepath}"...')
+                np.savez_compressed(segm_filepath, segm_data)
+        
+        self.signals.finished.emit(self)
+                
+        
 class ToImajeJroiWorker(BaseWorkerUtil):
     def __init__(self, mainWin):
         super().__init__(mainWin)
@@ -3120,10 +3217,21 @@ class ToImajeJroiWorker(BaseWorkerUtil):
                 images_path = os.path.join(exp_path, pos, 'Images')
                 endFilenameSegm = self.mainWin.endFilenameSegm
                 ls = myutils.listdir(images_path)
-                file_path = [
+                
+                files_path = [
                     os.path.join(images_path, f) for f in ls 
                     if f.endswith(f'{endFilenameSegm}.npz')
-                ][0]
+                ]
+                
+                if not files_path:
+                    self.logger.log(
+                        '[WARNING]: The following Position folder does not '
+                        f'contain any file ending with {endFilenameSegm}. '
+                        f'Skipping it. "{os.path.join(exp_path, pos)}")'
+                    )
+                    continue
+                
+                file_path = files_path[0]
                 
                 posData = load.loadData(file_path, '')
 
@@ -3182,10 +3290,7 @@ class ToSymDivWorker(QObject):
         self.signals.sigSelectSegmFiles.emit(exp_path, pos_foldernames)
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
-        if self.abort:
-            return True
-        else:
-            return False
+        return self.abort
 
     @worker_exception_handler
     def run(self):

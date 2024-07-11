@@ -317,6 +317,20 @@ def load_segm_file(images_path, end_name_segm_file='segm', return_path=False):
         else:
             return 
 
+def get_tzyx_shape(images_path):
+    df_metadata = load_metadata_df(images_path)
+    channel = df_metadata.at['channel_0_name', 'values']
+    img_filepath = get_filename_from_channel(images_path, channel)
+    img_data = load_image_file(img_filepath)
+    if img_data.ndim == 4:
+        return img_data.shape
+    
+    SizeZ = int(df_metadata.at['SizeZ', 'values'])
+    SizeT = int(df_metadata.at['SizeT', 'values'])
+    YX = img_data.shape[-2:]
+    return (SizeT, SizeZ, *YX)
+    
+
 def load_metadata_df(images_path):
     for file in myutils.listdir(images_path):
         if not file.endswith('metadata.csv'):
@@ -681,6 +695,20 @@ def get_segm_files(images_path):
     ]
     return segm_files            
 
+def get_files_with(images_path: os.PathLike, with_text: str, ext: str=None):
+    ls = myutils.listdir(images_path)
+    found_files = []
+    for file in ls:
+        if file.find(with_text) == -1:
+            continue
+        
+        if ext is not None and not file.endswith(ext):
+            continue
+        
+        found_files.append(file)
+    
+    return found_files
+
 def load_segmInfo_df(pos_path):
     images_path = os.path.join(pos_path, 'Images')
     for file in myutils.listdir(images_path):
@@ -781,14 +809,11 @@ def load_image_file(filepath):
         img_data = imread(filepath)
     return np.squeeze(img_data)
 
-def get_existing_segm_endnames(basename, segm_files):
+def get_endnames(basename, files):
     existing_endnames = []
-    for f in segm_files:
+    for f in files:
         filename, _ = os.path.splitext(f)
         endname = filename[len(basename):]
-        # Remove the 'segm_' part
-        # endname = endname.replace('segm', '', 1).replace('_', '', 1)
-        # endname = endname.replace('_', '', 1)
         existing_endnames.append(endname)
     return existing_endnames
 

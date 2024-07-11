@@ -54,7 +54,7 @@ class NapariArboretumDialog(base.MainThreadSinglePosUtilBase):
         posData.loadImgData()
 
         segm_files = load.get_segm_files(posData.images_path)
-        existingEndnames = load.get_existing_segm_endnames(
+        existingEndnames = load.get_endnames(
             posData.basename, segm_files
         )
 

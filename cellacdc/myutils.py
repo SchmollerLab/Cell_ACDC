@@ -1909,38 +1909,103 @@ def from_lab_to_obj_coords(lab):
         dfs.append(df_obj)
     df = pd.concat(dfs, keys = keys, names=['Cell_ID', 'idx']).droplevel('idx')
     return df
+
+def lab2d_to_rois(ImagejRoi, lab2D, ndigits, t=None, z=None):
+    rp = skimage.measure.regionprops(lab2D)
+    rois = []
+    for obj in rp:
+        cont = core.get_obj_contours(obj)
+        yc, xc = obj.centroid
+        x_str = str((int(xc))).zfill(ndigits)
+        y_str = str((int(yc))).zfill(ndigits)
+        name = f'{x_str}-{y_str}'
+        if z is not None:
+            z_str = str(z).zfill(ndigits)
+            name = f'{z_str}-{name}'
         
+        if t is not None:
+            t_str = str(t).zfill(ndigits)
+            name = f'{t_str}-{name}'
+        
+        name = f'id={obj.label}-{t_str}-{name}'
+        
+        roi = ImagejRoi.frompoints(
+            cont, name=name, t=t, z=z, group=obj.label
+        )
+        rois.append(roi)
+    return rois
 
 def from_lab_to_imagej_rois(lab, ImagejRoi, t=0, SizeT=1, max_ID=None):
     if max_ID is None:
         max_ID = lab.max()
-    rois = []
+    
+    if SizeT == 1:
+        t = None
+    
+    SizeY, SizeX = lab.shape[-2:]
+    ndigitsT = len(str(SizeT))
+    ndigitsY = len(str(SizeY))
+    ndigitsX = len(str(SizeX))
+    
     if lab.ndim == 3:
+        rois = []
         SizeZ = len(lab)
+        ndigitsZ = len(str(SizeZ))
+        ndigits = max(ndigitsT, ndigitsZ, ndigitsY, ndigitsX)
         for z, lab2D in enumerate(lab):
-            rp = skimage.measure.regionprops(lab2D)
-            for obj in rp:
-                cont = core.get_obj_contours(obj)
-                t_str = str(t).zfill(len(str(SizeT)))
-                z_str = str(z).zfill(len(str(SizeZ)))
-                id_str = str(obj.label).zfill(len(str(max_ID)))
-                name = f't={t_str}-z={z_str}-id={id_str}'
-                roi = ImagejRoi.frompoints(
-                    cont, name=name, t=t
-                )
-                rois.append(roi)
+            z_rois = lab2d_to_rois(ImagejRoi, lab2D, ndigits, t=t, z=z)
+        rois.extend(z_rois)
     else:
-        rp = skimage.measure.regionprops(lab)
-        for obj in rp:
-            cont = core.get_obj_contours(obj)
-            t_str = str(t).zfill(len(str(SizeT)))
-            id_str = str(obj.label).zfill(len(str(max_ID)))
-            name = f't={t_str}-id={id_str}'
-            roi = ImagejRoi.frompoints(
-                cont, name=name, t=t
-            )
-            rois.append(roi)
+        rois = lab2d_to_rois(ImagejRoi, lab2D, ndigits, t=t)
     return rois
+
+def from_imagej_rois_to_segm_data(
+        TZYX_shape, ID_to_roi_mapper, rescale_rois_sizes, 
+        repeat_2d_rois_zslices_range
+    ):
+    SizeT, SizeZ, SizeY, SizeX = TZYX_shape
+    segm_data = np.zeros(TZYX_shape, dtype=np.uint32)
+    for ID, roi in ID_to_roi_mapper.items():
+        name = roi.name
+        name_parts = name.split('-')
+        zz = [0]
+        if len(name_parts) == 2 and SizeZ > 1:
+            # 2D roi in 3D segm data --> place 2D roi on each z-slice
+            zz = range(*repeat_2d_rois_zslices_range)
+        
+        elif len(name_parts) > 2 and SizeZ > 1:
+            # 2D roi from a 3D roi --> place at requested z-slice
+            zz = [int(name_parts[-3])]
+        
+        tt = [0]*len(zz)
+        if SizeT > 1:
+            tt = [roi.t_position]*len(zz)
+        
+        y0, x0 = roi.top, roi.left
+        contours = roi.integer_coordinates + (x0, y0)
+        xx = contours[:, 0]
+        yy = contours[:, 1]
+        if rescale_rois_sizes is not None:        
+            rescale_z = rescale_rois_sizes['Z']
+            rescale_y = rescale_rois_sizes['Y']
+            rescale_x = rescale_rois_sizes['X']
+            
+            factor_z = rescale_z[1]/rescale_z[0]
+            factor_y = rescale_y[1]/rescale_y[0]
+            factor_x = rescale_x[1]/rescale_x[0]
+            
+            xx = np.round(xx * factor_x).astype(int)
+            yy = np.round(yy * factor_y).astype(int)
+            
+        for t, z in zip(tt, zz):
+            if rescale_rois_sizes is not None:
+                z = round(z*factor_z)
+            
+            rr, cc = skimage.draw.polygon(yy, xx)
+            segm_data[t, z, rr, cc] = ID
+    
+    return np.squeeze(segm_data)
+            
 
 def get_list_of_real_time_trackers():
     trackers = get_list_of_trackers()

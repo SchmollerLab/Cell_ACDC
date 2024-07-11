@@ -35,6 +35,7 @@ from .utils import align as utilsAlign
 from .utils import compute as utilsCompute
 from .utils import repeat as utilsRepeat
 from .utils import toImageJroi as utilsToImageJroi
+from .utils import fromImageJroiToSegm as utilsFromImageJroi
 from .utils import toObjCoords as utilsToObjCoords
 from .utils import acdcToSymDiv as utilsSymDiv
 from .utils import trackSubCellObjects as utilsTrackSubCell
@@ -397,6 +398,7 @@ class mainWin(QMainWindow):
         convertMenu.addAction(self.TiffToNpzAction)
         convertMenu.addAction(self.h5ToNpzAction)
         convertMenu.addAction(self.toImageJroiAction)
+        convertMenu.addAction(self.fromImageJroiAction)
         convertMenu.addAction(self.toObjsCoordsAction)
 
         segmMenu = utilsMenu.addMenu('Segmentation')
@@ -704,7 +706,10 @@ class mainWin(QMainWindow):
         self.TiffToNpzAction = QAction('Convert .tif file(s) to _segm.npz...')
         self.h5ToNpzAction = QAction('Convert .h5 file(s) to _segm.npz...')
         self.toImageJroiAction = QAction(
-            'Convert .npz segmentation file(s) to ImageJ ROIs...'
+            'Convert Cell-ACDC segmentation file(s) (segm.npz) to ImageJ ROIs...'
+        )
+        self.fromImageJroiAction = QAction(
+            'Convert ImageJ ROIs to Cell-ACDC segmentation file(s) (segm.npz)...'
         )
         self.toObjsCoordsAction = QAction(
             'Convert .npz segmentation file(s) to object coordinates (CSV)...'
@@ -784,6 +789,9 @@ class mainWin(QMainWindow):
         self.npzToTiffAction.triggered.connect(self.launchConvertFormatUtil)
         self.TiffToNpzAction.triggered.connect(self.launchConvertFormatUtil)
         self.h5ToNpzAction.triggered.connect(self.launchConvertFormatUtil)
+        self.fromImageJroiAction.triggered.connect(
+            self.launchFromImageJroiToSegmUtil
+        )
         self.toImageJroiAction.triggered.connect(self.launchToImageJroiUtil)
         self.toObjsCoordsAction.triggered.connect(
             self.launchToObjectsCoordsUtil
@@ -1233,6 +1241,27 @@ class mainWin(QMainWindow):
             parent=self
         )
         self.toObjCoordsWin.show()
+    
+    def launchFromImageJroiToSegmUtil(self):
+        self.logger.info(f'Launching utility "{self.sender().text()}"')
+        myutils.check_install_package('roifile', parent=self)
+
+        import roifile
+
+        selectedExpPaths = self.getSelectedExpPaths(
+            'From ImageJ ROIs to _segm.npz'
+        )
+        if selectedExpPaths is None:
+            return
+        
+        title = 'Convert ImageJ ROIs to _segm.npz file(s)'
+        infoText = 'Launching ImageJ ROIs conversion process...'
+        progressDialogueTitle = 'Converting ImageJ ROIs to _segm.npz file(s)'
+        self.toImageJroiWin = utilsFromImageJroi.fromImageJRoiToSegmUtil(
+            selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
+            parent=self
+        )
+        self.toImageJroiWin.show() 
     
     def launchToImageJroiUtil(self):
         self.logger.info(f'Launching utility "{self.sender().text()}"')
