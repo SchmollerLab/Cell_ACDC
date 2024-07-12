@@ -3492,3 +3492,8 @@ def pairwise(iterable):
     for b in iterator:
         yield a, b
         a = b
+
+def append_text_filename(filename: str, text_to_append: str):
+    filename_noext, ext = os.path.splitext(filename)
+    filename_out = f'{filename_noext}{text_to_append}{ext}'
+    return filename_out

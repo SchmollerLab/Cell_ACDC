@@ -39,6 +39,7 @@ from . import features
 from . import core
 from . import cca_df_colnames, lineage_tree_cols, default_annot_df
 from . import cca_df_colnames_with_tree
+from .utils import resize
 
 DEBUG = False
 
@@ -3159,12 +3160,13 @@ class FromImajeJroiToSegmNpzWorker(BaseWorkerUtil):
                     
                 rois_filepath = rois_filepaths[0]
                 
-                self.logger.log('Loading image data to get image shape...')
-                TZYX_shape = load.get_tzyx_shape(images_path)
-                abort = self.emitSelectRoisProps(rois_filepath, TZYX_shape)
-                if abort:
-                    self.signals.finished.emit(self)
-                    return
+                if p == 0:
+                    self.logger.log('Loading image data to get image shape...')
+                    TZYX_shape = load.get_tzyx_shape(images_path)
+                    abort = self.emitSelectRoisProps(rois_filepath, TZYX_shape)
+                    if abort:
+                        self.signals.finished.emit(self)
+                        return
                 
                 self.logger.log('Generating segm mask from ROIs...')
                 segm_data = myutils.from_imagej_rois_to_segm_data(
@@ -4918,4 +4920,50 @@ class MoveTempFilesWorker(QObject):
             tempDir = os.path.dirname(src)
             shutil.rmtree(tempDir)
             self.signals.progressBar.emit(1)
+        self.signals.finished.emit(self)
+
+class ResizeUtilWorker(BaseWorkerUtil):
+    sigSetResizeProps = Signal()
+    
+    def emitSetResizeProps(self):
+        self.mutex.lock()
+        self.sigSetResizeProps.emit()
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        return self.abort
+    
+    def __init__(self, mainWin):
+        super().__init__(mainWin)
+    
+    @worker_exception_handler
+    def run(self):
+        expPaths = self.mainWin.expPaths
+        tot_exp = len(expPaths)
+        self.signals.initProgressBar.emit(0)
+        for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
+            abort = self.emitSetResizeProps()
+            if abort:
+                self.signals.finished.emit(self)
+                return
+            
+            tot_pos = len(pos_foldernames)
+            for p, pos in enumerate(pos_foldernames):
+                if self.abort:
+                    self.signals.finished.emit(self)
+                    return
+
+                self.logger.log(
+                    f'Processing experiment n. {i+1}/{tot_exp}, '
+                    f'{pos} ({p+1}/{tot_pos})'
+                )
+                images_path = os.path.join(exp_path, pos, 'Images')
+                
+                rf = self.resizeFactor
+                text_to_append = self.textToAppend
+                images_path_out = self.expFolderpathOut
+                resize.run(
+                    images_path, rf, text_to_append=text_to_append, 
+                    images_path_out=images_path_out
+                )                
+                
         self.signals.finished.emit(self)

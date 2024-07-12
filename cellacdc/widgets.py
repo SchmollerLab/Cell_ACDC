@@ -1470,12 +1470,25 @@ class ExpandableListBox(QComboBox):
 
 
 class filePathControl(QFrame):
-    def __init__(self, parent=None):
+    def __init__(
+            self, parent=None, browseFolder=False, 
+            fileManagerTitle='Select file', 
+            validExtensions=None, 
+            startFolder='', 
+            elide=False
+        ):
         super().__init__(parent)
 
         layout = QHBoxLayout()
-        self.le = QLineEdit()
-        self.browseButton = browseFileButton()
+        if elide:
+            self.le = ElidingLineEdit()
+        else:
+            self.le = QLineEdit()
+            
+        self.browseButton = browseFileButton(
+            openFolder=browseFolder, title=fileManagerTitle, 
+            ext=validExtensions, start_dir=startFolder
+        )
 
         layout.addWidget(self.le)
         layout.addWidget(self.browseButton)

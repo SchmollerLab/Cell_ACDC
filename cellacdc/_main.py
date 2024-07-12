@@ -35,6 +35,7 @@ from .utils import align as utilsAlign
 from .utils import compute as utilsCompute
 from .utils import repeat as utilsRepeat
 from .utils import toImageJroi as utilsToImageJroi
+from .utils.resize import util as utilsResizePositionsUtil
 from .utils import fromImageJroiToSegm as utilsFromImageJroi
 from .utils import toObjCoords as utilsToObjCoords
 from .utils import acdcToSymDiv as utilsSymDiv
@@ -406,10 +407,11 @@ class mainWin(QMainWindow):
         segmMenu.addAction(self.stack2Dto3DsegmAction)
         segmMenu.addAction(self.filterObjsFromTableAction)
 
-        trackingMenu = utilsMenu.addMenu('Tracking')
+        trackingMenu = utilsMenu.addMenu('Tracking and lineage')
         trackingMenu.addAction(self.trackSubCellFeaturesAction)
         trackingMenu.addAction(self.applyTrackingFromTableAction)
         trackingMenu.addAction(self.applyTrackingFromTrackMateXMLAction)
+        trackingMenu.addAction(self.toSymDivAction)        
         
         self.trackingMenu = trackingMenu
 
@@ -422,10 +424,13 @@ class mainWin(QMainWindow):
         if SPOTMAX_INSTALLED:
             concatMenu.addAction(self.concatSpotmaxDfsAction) 
 
-        utilsMenu.addAction(self.toSymDivAction)                 
-        utilsMenu.addAction(self.batchConverterAction)
-        utilsMenu.addAction(self.repeatDataPrepAction)
-        utilsMenu.addAction(self.alignAction)
+        dataPrepMenu = utilsMenu.addMenu('Pre-processing')
+                 
+        dataPrepMenu.addAction(self.batchConverterAction)
+        dataPrepMenu.addAction(self.repeatDataPrepAction)
+        dataPrepMenu.addAction(self.alignAction)
+        dataPrepMenu.addAction(self.resizeImagesAction)
+        
         utilsMenu.addAction(self.renameAction)
 
         self.utilsMenu = utilsMenu
@@ -763,6 +768,9 @@ class mainWin(QMainWindow):
             'View lineage tree in napari-arboretum...'
         )
 
+        self.resizeImagesAction = QAction(
+            'Reisize images (downscale or upscale) in one or more experiments...'
+        )
         self.welcomeGuideAction = QAction('Welcome Guide')
         self.userManualAction = QAction('User documentation...')
         self.aboutAction = QAction('About Cell-ACDC')
@@ -792,6 +800,7 @@ class mainWin(QMainWindow):
         self.fromImageJroiAction.triggered.connect(
             self.launchFromImageJroiToSegmUtil
         )
+        self.resizeImagesAction.triggered.connect(self.launchResizeUtil)
         self.toImageJroiAction.triggered.connect(self.launchToImageJroiUtil)
         self.toObjsCoordsAction.triggered.connect(
             self.launchToObjectsCoordsUtil
@@ -1262,6 +1271,24 @@ class mainWin(QMainWindow):
             parent=self
         )
         self.toImageJroiWin.show() 
+    
+    def launchResizeUtil(self):
+        self.logger.info(f'Launching utility "{self.sender().text()}"')
+        
+        selectedExpPaths = self.getSelectedExpPaths(
+            'From _segm.npz to ImageJ ROIs'
+        )
+        if selectedExpPaths is None:
+            return
+        
+        title = 'Resize images'
+        infoText = 'Launching resizing images process...'
+        progressDialogueTitle = 'Resize images'
+        self.resizeUtilWin = utilsResizePositionsUtil.ResizePositionsUtil(
+            selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
+            parent=self
+        )
+        self.resizeUtilWin.show()
     
     def launchToImageJroiUtil(self):
         self.logger.info(f'Launching utility "{self.sender().text()}"')
