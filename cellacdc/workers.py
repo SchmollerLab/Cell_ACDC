@@ -5,7 +5,7 @@ import time
 import json
 from collections import defaultdict, deque
 
-from typing import Union, List
+from typing import Union, List, Dict
 
 from pprint import pprint
 from functools import wraps, partial
@@ -274,14 +274,14 @@ class AlignDataWorker(QObject):
                 self.logger.log(f'Saving: {_npz}')
                 temp_npz = self.dataPrepWin.getTempfilePath(_npz)
                 np.savez_compressed(temp_npz, aligned_frames)
-                self.dataPrepWin.moveTempFile(temp_npz, _npz)
+                self.dataPrepWin.storeTempFileMove(temp_npz, _npz)
                 np.save(self.posData.align_shifts_path, self.posData.loaded_shifts)
                 self.posData.all_npz_paths[i] = _npz
 
                 self.logger.log(f'Saving: {tif}')
                 temp_tif = self.dataPrepWin.getTempfilePath(tif)
                 myutils.to_tiff(temp_tif, aligned_frames)
-                self.dataPrepWin.moveTempFile(temp_tif, tif)
+                self.dataPrepWin.storeTempFileMove(temp_tif, tif)
                 self.posData.img_data = load.imread(tif)
 
         _zip = zip(self.posData.tif_paths, self.posData.npz_paths)
@@ -324,13 +324,13 @@ class AlignDataWorker(QObject):
                 self.logger.log(f'Saving: {_npz}')
                 temp_npz = self.dataPrepWin.getTempfilePath(_npz)
                 np.savez_compressed(temp_npz, aligned_frames)
-                self.dataPrepWin.moveTempFile(temp_npz, _npz)
+                self.dataPrepWin.storeTempFileMove(temp_npz, _npz)
                 self.posData.all_npz_paths[i] = _npz
 
                 self.logger.log(f'Saving: {tif}')
                 temp_tif = self.dataPrepWin.getTempfilePath(tif)
                 myutils.to_tiff(temp_tif, aligned_frames)
-                self.dataPrepWin.moveTempFile(temp_tif, tif)
+                self.dataPrepWin.storeTempFileMove(temp_tif, tif)
 
         if not aligned:
             return
@@ -356,7 +356,7 @@ class AlignDataWorker(QObject):
         self.logger.log(f'Saving: {self.posData.segm_npz_path}')
         temp_npz = self.dataPrepWin.getTempfilePath(self.posData.segm_npz_path)
         np.savez_compressed(temp_npz, self.posData.segm_data)
-        self.dataPrepWin.moveTempFile(temp_npz, self.posData.segm_npz_path)
+        self.dataPrepWin.storeTempFileMove(temp_npz, self.posData.segm_npz_path)
 
     @worker_exception_handler
     def run(self):     
@@ -4902,3 +4902,20 @@ class ApplyImageFilterWorker(QObject):
         self.progress.emit('Filtering image...')
         filtered_data = self.filter_func(self.input_data)
         self.finished.emit(filtered_data)
+
+class MoveTempFilesWorker(QObject):
+    def __init__(self, temp_files_to_move: Dict[os.PathLike, os.PathLike]):
+        QObject.__init__(self)
+        self.signals = signals()
+        self.logger = workerLogger(self.signals.progress)
+        self.temp_files_to_move = temp_files_to_move
+    
+    @worker_exception_handler
+    def run(self):
+        for src, dst in self.temp_files_to_move.items():
+            self.logger.log(f'Saving channel data to: {dst}...')
+            shutil.move(src, dst)
+            tempDir = os.path.dirname(src)
+            shutil.rmtree(tempDir)
+            self.signals.progressBar.emit(1)
+        self.signals.finished.emit(self)
