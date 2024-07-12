@@ -488,7 +488,9 @@ class segmWin(QMainWindow):
                 return
         
         # Ask which model
-        win = apps.QDialogSelectModel(parent=self)
+        win = apps.QDialogSelectModel(
+            parent=self, addSkipSegmButton=posData.SizeT>1
+        )
         win.exec_()
         if win.cancel:
             abort = self.doAbort()

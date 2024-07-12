@@ -4599,7 +4599,7 @@ class ApplyTrackTableSelectColumnsDialog(QBaseDialog):
 
 
 class QDialogSelectModel(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, addSkipSegmButton=False):
         self.cancel = True
         super().__init__(parent)
         self.setWindowTitle('Select model')
@@ -4637,6 +4637,10 @@ class QDialogSelectModel(QDialog):
         bottomLayout.addStretch(1)
         bottomLayout.addWidget(cancelButton)
         bottomLayout.addSpacing(20)
+        if addSkipSegmButton:
+            skipSegmButton = widgets.SkipPushButton('Skip segmentation')
+            bottomLayout.addWidget(skipSegmButton)
+            skipSegmButton.clicked.connect(self.skipSegm)
         bottomLayout.addWidget(okButton)
         bottomLayout.setContentsMargins(0, 10, 0, 0)
 
@@ -4649,6 +4653,11 @@ class QDialogSelectModel(QDialog):
         cancelButton.clicked.connect(self.cancel_cb)
 
         self.setStyleSheet(LISTWIDGET_STYLESHEET)
+    
+    def skipSegm(self):
+        self.cancel = False
+        self.selectedModel = 'skip_segmentation'
+        self.close()
     
     def keyPressEvent(self, event: QKeyEvent) -> None:
         if event.key() == Qt.Key_Escape:
@@ -10374,15 +10383,26 @@ class QDialogModelParams(QDialog):
         return value
 
     def criticalSegmFileRequiredButNoneAvailable(self):
+        model_name = f'{self.model_name} model'
+        action_txt = (
+            'Please, segment the correct channel before using '
+            f'{self.model_name}.'
+        )
+        if self.model_name == 'skip_segmentation':
+            model_name = 'Skipping the segmentation'
+            action_txt = (
+                'To be able to skip the segmentation step, you need '
+                'create at least one segmentation file.'
+            )
         txt = html_utils.paragraph(f"""
-            <b>{self.model_name}</b> model 
+            <b>{model_name}</b> 
             <b>requires an additional segmentation file</b> 
             but there are none available!<br><br>
-            Please, segment the correct channel before using {self.model_name}.
+            {action_txt}
             <br><br>Thank you for you patience!
         """)
         msg = widgets.myMessageBox(wrapText=False)
-        msg.critical(self, 'Segmentation file required', txt)
+        msg.warning(self, 'Segmentation file required', txt)
         raise FileNotFoundError(
             'Model requires segmentation file but none are available.'
         )

@@ -44,6 +44,7 @@
     <file alias="arrow_future.svg">resources/icons/arrow_future_dark.svg</file>
     <file alias="arrow_future_all.svg">resources/icons/arrow_future_all_dark.svg</file>
     <file alias="arrow-down.svg">resources/icons/arrow-down_dark.svg</file>
+    <file alias="skip_arrow.svg">resources/icons/skip_arrow_dark.svg</file>
     <file alias="del_objs_out_segm.svg">resources/icons/del_objs_out_segm_dark.svg</file>
     <file alias="showDown.svg">resources/icons/showDown_dark.svg</file>
     <file alias="terminal_up.svg">resources/icons/terminal_up_dark.svg</file>

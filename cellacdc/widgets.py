@@ -318,6 +318,11 @@ class okPushButton(PushButton):
         # QShortcut(Qt.Key_Return, self, self.click)
         # QShortcut(Qt.Key_Enter, self, self.click)
 
+class SkipPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setIcon(QIcon(':skip_arrow.svg'))
+
 class BedPushButton(PushButton):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

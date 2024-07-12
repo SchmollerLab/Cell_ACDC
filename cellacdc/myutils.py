@@ -2056,6 +2056,9 @@ def get_list_of_models():
         if name.endswith('__'):
             continue
         
+        if name == 'skip_segmentation':
+            continue
+        
         if not os.path.exists(os.path.join(_path, 'acdcSegment.py')):
             continue
         
