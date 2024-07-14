@@ -14596,7 +14596,7 @@ class ImageJRoisToSegmManager(QBaseDialog):
             ID = int(item.text(1))
             self.IDsToRoisMapper[ID] = self.rois[roiName]
         
-        numRois = len(self.roisNamesTreeWidget.topLevelItemCount())
+        numRois = self.roisNamesTreeWidget.topLevelItemCount()
         self.areAllRoisSelected = len(self.IDsToRoisMapper) == numRois
         
         self.rescaleSizes = self.rescaleRoisGroupbox.inputOutputSizes()
