@@ -3180,7 +3180,7 @@ class FromImajeJroiToSegmNpzWorker(BaseWorkerUtil):
                 else:
                     # Use same ID of previous position
                     rois = roifile.roiread(rois_filepath)
-                    IDsToRoisMapper = {i+i: roi for roi in enumerate(rois)}
+                    IDsToRoisMapper = {i+i: roi for i, roi in enumerate(rois)}
                     self.IDsToRoisMapper = {
                         ID: IDsToRoisMapper[ID] 
                         for ID in self.IDsToRoisMapper.keys()
