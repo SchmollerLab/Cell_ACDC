@@ -601,15 +601,32 @@ def _calculate_flu_signal(seg_mask, channel_data, channels, cc_data, is_timelaps
     channel_data is a list-like of TYX arrays, one for each channel.
     channels are the name of the channels in the tuple.
     cc_data the output of acdc.
-    """
+    """        
     max_frame = cc_data.frame_i.max()
     df = pd.DataFrame(columns=['frame_i', 'Cell_ID'])
     bg_medians = []
+    
+    if seg_mask.ndim == 4:
+        raise TypeError(
+            '4D segmentation masks not supported. '
+            'Feel free to request the new feature on our GitHub page '
+            'https://github.com/SchmollerLab/Cell_ACDC/issues'
+        )
+    
+    for i, ch_img in enumerate(channel_data):
+        if ch_img.ndim == 3:
+            continue
+        
+        # Use sum projections for 4D data
+        channel_data[i] = ch_img.sum(axis=1)
+    
     for ch_idx, ch_array in enumerate(channel_data):
         if ch_array is None:
             bg_medians.append(None)
         else:
-            bg_index = np.logical_and(seg_mask[:max_frame+1]==0, ch_array[:max_frame+1]!=0)
+            bg_index = np.logical_and(
+                seg_mask[:max_frame+1]==0, ch_array[:max_frame+1]!=0
+            )
             ch_medians = [np.median(ch_array[t][bg_index[t]]) for t in range(max_frame+1)]
             bg_medians.append(ch_medians)
     if is_timelapse_data:
