@@ -33,6 +33,7 @@ def process_frames(imgs, factor, is_segm=False):
     if images:
         images = sorted(images, key=lambda x: (x[0][0], x[0][1]))
         images = np.array([image_pair[1] for image_pair in images])
+        images = images.reshape(ind_0, ind_1)
 
     return images
 
