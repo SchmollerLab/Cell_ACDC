@@ -12,28 +12,38 @@ import pandas as pd
 from ... import load, myutils
 
 def process_frame(imgs, images_indx, factor, is_segm):
-    ind_0, ind_1 = images_indx
+    T, Z = images_indx
     if not is_segm:
-        img_resized = ndimage.zoom(imgs[ind_0, ind_1], factor, order=3)
+        img_resized = ndimage.zoom(imgs[T, Z], factor, order=3)
     else:
-        img_resized = ndimage.zoom(imgs[ind_0, ind_1], factor, order=0)
+        img_resized = ndimage.zoom(imgs[T, Z], factor, order=0)
     return images_indx, img_resized
 
 def process_frames(imgs, factor, is_segm=False):
 
-    images = []
+    results = []
 
-    ind_0, ind_1 = imgs.shape[0], imgs.shape[1]
-    images_indxs = list(itertools.product(range(ind_0), range(ind_1)))
+    T, Z = imgs.shape[0], imgs.shape[1]
+    images_indxs = list(itertools.product(range(T), range(Z)))
+    images = None
     with ThreadPoolExecutor() as executor:
         futures = [executor.submit(process_frame, imgs, images_indx, factor, is_segm) for images_indx in images_indxs]
         for future in futures:
-            images.append(future.result())
+            results.append(future.result())
     
-    if images:
-        images = sorted(images, key=lambda x: (x[0][0], x[0][1]))
-        images = np.array([image_pair[1] for image_pair in images])
-        images = images.reshape(ind_0, ind_1)
+
+    if not results:
+        raise TypeError("No images to process (or this funciton has a funky error)")
+    
+    images_indx, img_resized = results[0]
+    Y, X = img_resized.shape
+    images = np.zeros((T, Z, Y, X), dtype=img_resized.dtype)
+    
+    for result in results:
+        images_indx, img_resized = result
+
+        t, z = images_indx
+        images[t, z] = img_resized
 
     return images
 
@@ -74,7 +84,7 @@ def save_images(images, filename_in, images_path_out, text_to_append=''):
     print(f"Sampling completed. File saved in:")
     print(f"{images_path_out_file}\n")         
 
-def resize_imgs(images_path_in, factor, images_path_out=None):
+def resize_imgs(images_path_in, factor, images_path_out=None, text_to_append=''):
     if images_path_out is None:
         images_path_out = images_path_in
         
@@ -99,7 +109,9 @@ def resize_imgs(images_path_in, factor, images_path_out=None):
 
         images = process_frames(images, factor)
 
-        save_images(images, filename, images_path_out=images_path_out)
+        save_images(
+            images, filename, images_path_out=images_path_out,
+            text_to_append=text_to_append)
 
 def edit_subs_bkgrROIs(
         images_path_in, factor, images_path_out=None, text_to_append=''
@@ -309,7 +321,7 @@ def resize_segms(
         
         images = load_images(images_path_in, segm_npz_file)
 
-        images = process_frames(images, factor, segm=True)
+        images = process_frames(images, factor, is_segm=True)
 
         save_images(
             images, segm_npz_file, images_path_out=images_path_out, 
@@ -340,6 +352,10 @@ def copy_aux_files(images_path_in, images_path_out=None):
 def run(
         images_path_in, factor, images_path_out=None, text_to_append=''
     ):
+    resize_imgs(
+        images_path_in, factor, text_to_append=text_to_append, 
+        images_path_out=images_path_out
+    )
     edit_subs_bkgrROIs(
         images_path_in, factor, text_to_append=text_to_append, 
         images_path_out=images_path_out
