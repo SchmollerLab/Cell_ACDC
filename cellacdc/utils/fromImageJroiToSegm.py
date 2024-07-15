@@ -12,6 +12,7 @@ class fromImageJRoiToSegmUtil(NewThreadMultipleExpBaseUtil):
             expPaths, app, title, module, infoText, progressDialogueTitle, 
             parent=parent
         )
+        self.qparent = parent
         self.expPaths = expPaths
     
     def runWorker(self):
@@ -19,8 +20,12 @@ class fromImageJRoiToSegmUtil(NewThreadMultipleExpBaseUtil):
         self.worker.sigSelectRoisProps.connect(self.selectRoisProps)
         super().runWorker(self.worker)
     
-    def selectRoisProps(self, roi_filepath, TZYX_shape):
-        win = apps.ImageJRoisToSegmManager(roi_filepath, TZYX_shape)
+    def selectRoisProps(self, roi_filepath, TZYX_shape, is_multi_pos):
+        win = apps.ImageJRoisToSegmManager(
+            roi_filepath, TZYX_shape, 
+            addUseSamePropsForNextPosButton=is_multi_pos,
+            parent=self.qparent
+        )
         win.exec_()
         self.worker.abort = win.cancel
         if win.cancel:
@@ -30,6 +35,8 @@ class fromImageJRoiToSegmUtil(NewThreadMultipleExpBaseUtil):
         self.worker.IDsToRoisMapper = win.IDsToRoisMapper
         self.worker.rescaleRoisSizes = win.rescaleSizes
         self.worker.repeatRoisZslicesRange = win.repeatRoisZslicesRange
+        self.worker.useSamePropsForNextPos = win.useSamePropsForNextPos
+        self.worker.areAllRoisSelected = win.areAllRoisSelected
         self.worker.waitCond.wakeAll()
     
     def showEvent(self, event):

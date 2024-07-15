@@ -14480,7 +14480,10 @@ class InitFijiMacroDialog(QBaseDialog):
         self.close()
     
 class ImageJRoisToSegmManager(QBaseDialog):
-    def __init__(self, rois_filepath, TZYX_shape, parent=None):
+    def __init__(
+            self, rois_filepath, TZYX_shape, 
+            addUseSamePropsForNextPosButton=False, parent=None
+        ):
         import roifile
         
         self.cancel = True
@@ -14510,7 +14513,7 @@ class ImageJRoisToSegmManager(QBaseDialog):
         roisNamesTreeWidget.selectAll()
         mainLayout.addWidget(QLabel('Select ROIs to convert'))
         mainLayout.addWidget(roisNamesTreeWidget)
-        self.roisNamesListWidget = roisNamesTreeWidget
+        self.roisNamesTreeWidget = roisNamesTreeWidget
         mainLayout.addSpacing(10)
         mainLayout.addWidget(widgets.QHLine())
         mainLayout.addSpacing(5)
@@ -14549,6 +14552,16 @@ class ImageJRoisToSegmManager(QBaseDialog):
         mainLayout.addWidget(self.rescaleRoisGroupbox)
         
         buttonsLayout = widgets.CancelOkButtonsLayout()
+        
+        self.useSamePropsForNextPos = False
+        if addUseSamePropsForNextPosButton:
+            useSamePropsForNextPosButton = widgets.reloadPushButton(
+                'Keep the same preferences for all next Positions'
+            )
+            buttonsLayout.insertWidget(3, useSamePropsForNextPosButton)
+            useSamePropsForNextPosButton.clicked.connect(
+                self.useSamePropsForNextPosClicked
+            )
 
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
@@ -14557,6 +14570,10 @@ class ImageJRoisToSegmManager(QBaseDialog):
         mainLayout.addLayout(buttonsLayout)
         
         self.setLayout(mainLayout)
+    
+    def useSamePropsForNextPosClicked(self):
+        self.useSamePropsForNextPos = True
+        self.ok_cb()
     
     def warnRoiSelectionEmpty(self):
         txt = html_utils.paragraph(f"""
@@ -14567,8 +14584,9 @@ class ImageJRoisToSegmManager(QBaseDialog):
         msg.warning(self, 'ROIs selection empty', txt)
     
     def ok_cb(self):
-        selectedRois = self.roisNamesListWidget.selectedItems()
+        selectedRois = self.roisNamesTreeWidget.selectedItems()
         if not selectedRois:
+            self.useSamePropsForNextPos = False
             self.warnRoiSelectionEmpty()
             return
         
@@ -14577,6 +14595,9 @@ class ImageJRoisToSegmManager(QBaseDialog):
             roiName = item.text(0)
             ID = int(item.text(1))
             self.IDsToRoisMapper[ID] = self.rois[roiName]
+        
+        numRois = self.roisNamesTreeWidget.topLevelItemCount()
+        self.areAllRoisSelected = len(self.IDsToRoisMapper) == numRois
         
         self.rescaleSizes = self.rescaleRoisGroupbox.inputOutputSizes()
         self.repeatRoisZslicesRange = None
