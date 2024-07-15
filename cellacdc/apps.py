@@ -14610,7 +14610,7 @@ class ImageJRoisToSegmManager(QBaseDialog):
         self.close()
 
 class ResizeUtilProps(QBaseDialog):
-    def __init__(self, parent=None):        
+    def __init__(self, input_path='', parent=None):        
         self.cancel = True
         super().__init__(parent)
         
@@ -14619,6 +14619,8 @@ class ResizeUtilProps(QBaseDialog):
         mainLayout = QVBoxLayout()
         
         paramsLayout = QGridLayout()
+        
+        self._input_path = input_path
         
         row = 0
         paramsLayout.addWidget(QLabel('Overwrite raw data: '), row, 0)
@@ -14712,11 +14714,16 @@ class ResizeUtilProps(QBaseDialog):
     
     def ok_cb(self):
         self.expFolderpathOut = self.filepathOutControl.path()
-        if self.overwriteToggle.isChecked() and not self.expFolderpathOut:
-            self.warnFolderPathEmpty()
+        self.textToAppend = self.textToAppendLineEdit.text()
+        isAccidentalOverwrite = (
+            not self.overwriteToggle.isChecked()
+            and self.expFolderpathOut == self._input_path
+            and not self.textToAppend
+        )
+        if isAccidentalOverwrite:
+            self.warnTextToAppendEmpty()
             return
         
-        self.textToAppend = self.textToAppendLineEdit.text()
         if not self.textToAppend.startswith('_'):
             self.textToAppend = f'_{self.textToAppend}'
             

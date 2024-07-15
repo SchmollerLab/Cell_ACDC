@@ -3500,3 +3500,27 @@ def append_text_filename(filename: str, text_to_append: str):
     filename_noext, ext = os.path.splitext(filename)
     filename_out = f'{filename_noext}{text_to_append}{ext}'
     return filename_out
+
+def validate_images_path(input_path: os.PathLike, create_dirs_tree=False):
+    is_images_path = input_path.endswith('Images')
+    parent_dir = os.path.dirname(input_path)
+    parent_foldername = os.path.basename(parent_dir)
+    is_pos_folder = (
+        re.search('^Position_(\d+)$', parent_foldername) is not None
+        and os.path.isdir(parent_dir)
+    )
+    if not is_pos_folder:
+        existing_pos_foldernames = get_pos_foldernames(input_path)
+        pos_n = len(existing_pos_foldernames) + 1
+        pos_folderpath = os.path.join(input_path, f'Position_{pos_n}')
+        images_path = os.path.join(pos_folderpath, 'Images')
+    elif is_images_path:
+        pos_folderpath = input_path
+        images_path = os.path.join(pos_folderpath, 'Images')
+    else:
+        images_path = input_path
+    
+    if create_dirs_tree:
+        os.makedirs(images_path, exist_ok=True)
+        
+    return images_path

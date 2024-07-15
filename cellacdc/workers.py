@@ -4938,11 +4938,11 @@ class MoveTempFilesWorker(QObject):
         self.signals.finished.emit(self)
 
 class ResizeUtilWorker(BaseWorkerUtil):
-    sigSetResizeProps = Signal()
+    sigSetResizeProps = Signal(str)
     
-    def emitSetResizeProps(self):
+    def emitSetResizeProps(self, input_path):
         self.mutex.lock()
-        self.sigSetResizeProps.emit()
+        self.sigSetResizeProps.emit(input_path)
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
         return self.abort
@@ -4950,13 +4950,17 @@ class ResizeUtilWorker(BaseWorkerUtil):
     def __init__(self, mainWin):
         super().__init__(mainWin)
     
+    def validateOutputPath(self, path):
+        images_path = myutils.validate_images_path(path, create_dirs_tree=True)
+        return images_path
+    
     @worker_exception_handler
     def run(self):
         expPaths = self.mainWin.expPaths
         tot_exp = len(expPaths)
         self.signals.initProgressBar.emit(0)
         for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
-            abort = self.emitSetResizeProps()
+            abort = self.emitSetResizeProps(exp_path)
             if abort:
                 self.signals.finished.emit(self)
                 return
@@ -4975,7 +4979,7 @@ class ResizeUtilWorker(BaseWorkerUtil):
                 
                 rf = self.resizeFactor
                 text_to_append = self.textToAppend
-                images_path_out = self.expFolderpathOut
+                images_path_out = self.validateOutputPath(self.expFolderpathOut)
                 resize.run(
                     images_path, rf, text_to_append=text_to_append, 
                     images_path_out=images_path_out

@@ -810,12 +810,12 @@ def load_image_file(filepath):
     return np.squeeze(img_data)
 
 def get_endnames(basename, files):
-    existing_endnames = []
+    endnames = []
     for f in files:
         filename, _ = os.path.splitext(f)
         endname = filename[len(basename):]
-        existing_endnames.append(endname)
-    return existing_endnames
+        endnames.append(endname)
+    return endnames
 
 def get_endname_from_channels(filename, channels):
     endname = None

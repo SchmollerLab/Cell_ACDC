@@ -20,8 +20,8 @@ class ResizePositionsUtil(NewThreadMultipleExpBaseUtil):
         self.worker.sigSetResizeProps.connect(self.setResizeProps)
         super().runWorker(self.worker)
     
-    def setResizeProps(self):
-        win = apps.ResizeUtilProps(parent=self._parent)
+    def setResizeProps(self, input_path):
+        win = apps.ResizeUtilProps(input_path=input_path, parent=self._parent)
         win.exec_()
         self.worker.abort = win.cancel
         if win.cancel:
