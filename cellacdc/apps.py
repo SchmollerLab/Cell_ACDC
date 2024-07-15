@@ -58,7 +58,7 @@ from qtpy.QtWidgets import (
     QScrollArea, QFrame, QProgressBar, QGroupBox, QRadioButton,
     QDockWidget, QMessageBox, QStyle, QPlainTextEdit, QSpacerItem,
     QTreeWidget, QTreeWidgetItem, QTextEdit, QSplashScreen, QAction,
-    QListWidgetItem, QActionGroup, QLayout
+    QListWidgetItem, QActionGroup, QHeaderView
 )
 import qtpy.compat
 
@@ -4599,7 +4599,7 @@ class ApplyTrackTableSelectColumnsDialog(QBaseDialog):
 
 
 class QDialogSelectModel(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, addSkipSegmButton=False):
         self.cancel = True
         super().__init__(parent)
         self.setWindowTitle('Select model')
@@ -4637,6 +4637,10 @@ class QDialogSelectModel(QDialog):
         bottomLayout.addStretch(1)
         bottomLayout.addWidget(cancelButton)
         bottomLayout.addSpacing(20)
+        if addSkipSegmButton:
+            skipSegmButton = widgets.SkipPushButton('Skip segmentation')
+            bottomLayout.addWidget(skipSegmButton)
+            skipSegmButton.clicked.connect(self.skipSegm)
         bottomLayout.addWidget(okButton)
         bottomLayout.setContentsMargins(0, 10, 0, 0)
 
@@ -4649,6 +4653,11 @@ class QDialogSelectModel(QDialog):
         cancelButton.clicked.connect(self.cancel_cb)
 
         self.setStyleSheet(LISTWIDGET_STYLESHEET)
+    
+    def skipSegm(self):
+        self.cancel = False
+        self.selectedModel = 'skip_segmentation'
+        self.close()
     
     def keyPressEvent(self, event: QKeyEvent) -> None:
         if event.key() == Qt.Key_Escape:
@@ -9908,7 +9917,8 @@ class QDialogZsliceAbsent(QDialog):
 class SelectSegmFileDialog(QDialog):
     def __init__(
             self, images_ls, parent_path, parent=None, 
-            addNewFileButton=False, basename='', infoText=None
+            addNewFileButton=False, basename='', infoText=None, 
+            fileType='segmentation'
         ):
         self.cancel = True
         self.selectedItemText = ''
@@ -9932,10 +9942,10 @@ class SelectSegmFileDialog(QDialog):
 
         informativeText = html_utils.paragraph(f"""
             The loaded Position folders already contains
-            <b>{len(self.existingEndNames)} segmentation masks</b><br>
+            <b>{len(self.existingEndNames)} {fileType} masks</b><br>
         """)
 
-        self.setWindowTitle('Segmentation files detected')
+        self.setWindowTitle(f'{fileType.capitalize()} files detected')
         is_win = sys.platform.startswith("win")
 
         mainLayout = QVBoxLayout()
@@ -9957,7 +9967,7 @@ class SelectSegmFileDialog(QDialog):
         mainLayout.addLayout(infoLayout)
 
         if infoText is None:
-            infoText = 'Select which segmentation file to load:'
+            infoText = f'Select which {fileType} file to load:'
 
         questionText = html_utils.paragraph(infoText)
         label = QLabel(questionText)
@@ -10373,15 +10383,26 @@ class QDialogModelParams(QDialog):
         return value
 
     def criticalSegmFileRequiredButNoneAvailable(self):
+        model_name = f'{self.model_name} model'
+        action_txt = (
+            'Please, segment the correct channel before using '
+            f'{self.model_name}.'
+        )
+        if self.model_name == 'skip_segmentation':
+            model_name = 'Skipping the segmentation'
+            action_txt = (
+                'To be able to skip the segmentation step, you need '
+                'create at least one segmentation file.'
+            )
         txt = html_utils.paragraph(f"""
-            <b>{self.model_name}</b> model 
+            <b>{model_name}</b> 
             <b>requires an additional segmentation file</b> 
             but there are none available!<br><br>
-            Please, segment the correct channel before using {self.model_name}.
+            {action_txt}
             <br><br>Thank you for you patience!
         """)
         msg = widgets.myMessageBox(wrapText=False)
-        msg.critical(self, 'Segmentation file required', txt)
+        msg.warning(self, 'Segmentation file required', txt)
         raise FileNotFoundError(
             'Model requires segmentation file but none are available.'
         )
@@ -14455,5 +14476,257 @@ class InitFijiMacroDialog(QBaseDialog):
             self.channelNamesLineEdit.text().split(',')
             
         )
+        self.cancel = False
+        self.close()
+    
+class ImageJRoisToSegmManager(QBaseDialog):
+    def __init__(
+            self, rois_filepath, TZYX_shape, 
+            addUseSamePropsForNextPosButton=False, parent=None
+        ):
+        import roifile
+        
+        self.cancel = True
+        super().__init__(parent)
+        
+        self.setWindowTitle('ROI Manager')
+        
+        mainLayout = QVBoxLayout()
+        
+        rois = roifile.roiread(rois_filepath)
+        self.rois = {roi.name: roi for roi in rois}
+        
+        roisNamesTreeWidget = widgets.TreeWidget()
+        roisNamesTreeWidget.setHeaderLabels(['ROI name', 'Cell_ID'])
+        roisNamesTreeWidget.header().setSectionResizeMode(
+            QHeaderView.ResizeToContents
+        )
+        # roisNamesTreeWidget.header().setStretchLastSection(False)
+        for r, roi in enumerate(rois):
+            item = widgets.TreeWidgetItem()
+            item.setText(0, roi.name)
+            item.setText(1, str(r+1))
+            roisNamesTreeWidget.addTopLevelItem(item)
+        roisNamesTreeWidget.setSelectionMode(
+            QAbstractItemView.SelectionMode.ExtendedSelection
+        )
+        roisNamesTreeWidget.selectAll()
+        mainLayout.addWidget(QLabel('Select ROIs to convert'))
+        mainLayout.addWidget(roisNamesTreeWidget)
+        self.roisNamesTreeWidget = roisNamesTreeWidget
+        mainLayout.addSpacing(10)
+        mainLayout.addWidget(widgets.QHLine())
+        mainLayout.addSpacing(5)
+        
+        gridLayout = None
+        self.lowZspinbox = None
+        
+        SizeT, SizeZ, SizeY, SizeX = TZYX_shape
+        if SizeZ > 1:
+            gridLayout = QGridLayout()
+            self.lowZspinbox = widgets.SpinBox()
+            self.lowZspinbox.setMinimum(0)
+            self.lowZspinbox.setMaximum(SizeZ-1)
+            
+            self.highZspinbox = widgets.SpinBox()
+            self.highZspinbox.setMinimum(0)
+            self.highZspinbox.setMaximum(SizeZ-1)
+            self.highZspinbox.setValue(SizeZ-1)
+            
+            gridLayout.addWidget(QLabel('Repeat 2D ROIs over z-range: '), 1, 0)
+            
+            gridLayout.addWidget(QLabel('Start z-slice'), 0, 1)
+            gridLayout.addWidget(self.lowZspinbox, 1, 1)
+            
+            gridLayout.addWidget(QLabel('Stop z-slice'), 0, 2)
+            gridLayout.addWidget(self.highZspinbox, 1, 2)
+        
+        if gridLayout is not None:
+            mainLayout.addLayout(gridLayout)
+            mainLayout.addSpacing(5)
+            mainLayout.addWidget(widgets.QHLine())
+            mainLayout.addSpacing(10)
+        
+        self.rescaleRoisGroupbox = widgets.RescaleImageJroisGroupbox(TZYX_shape)
+        self.rescaleRoisGroupbox.setChecked(False)
+        mainLayout.addWidget(self.rescaleRoisGroupbox)
+        
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+        
+        self.useSamePropsForNextPos = False
+        if addUseSamePropsForNextPosButton:
+            useSamePropsForNextPosButton = widgets.reloadPushButton(
+                'Keep the same preferences for all next Positions'
+            )
+            buttonsLayout.insertWidget(3, useSamePropsForNextPosButton)
+            useSamePropsForNextPosButton.clicked.connect(
+                self.useSamePropsForNextPosClicked
+            )
+
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+        
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(buttonsLayout)
+        
+        self.setLayout(mainLayout)
+    
+    def useSamePropsForNextPosClicked(self):
+        self.useSamePropsForNextPos = True
+        self.ok_cb()
+    
+    def warnRoiSelectionEmpty(self):
+        txt = html_utils.paragraph(f"""
+            You did not select any ROI.<br><br>
+            <b>ROIs selection cannot be empty</b>. Thank you for your patience! 
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(self, 'ROIs selection empty', txt)
+    
+    def ok_cb(self):
+        selectedRois = self.roisNamesTreeWidget.selectedItems()
+        if not selectedRois:
+            self.useSamePropsForNextPos = False
+            self.warnRoiSelectionEmpty()
+            return
+        
+        self.IDsToRoisMapper = {}
+        for item in selectedRois:
+            roiName = item.text(0)
+            ID = int(item.text(1))
+            self.IDsToRoisMapper[ID] = self.rois[roiName]
+        
+        numRois = self.roisNamesTreeWidget.topLevelItemCount()
+        self.areAllRoisSelected = len(self.IDsToRoisMapper) == numRois
+        
+        self.rescaleSizes = self.rescaleRoisGroupbox.inputOutputSizes()
+        self.repeatRoisZslicesRange = None
+        if self.lowZspinbox is not None:
+            self.repeatRoisZslicesRange = (
+                self.lowZspinbox.value(), self.highZspinbox.value()+1
+            )
+        
+        self.cancel = False
+        self.close()
+
+class ResizeUtilProps(QBaseDialog):
+    def __init__(self, parent=None):        
+        self.cancel = True
+        super().__init__(parent)
+        
+        self.setWindowTitle('Resize Data Properties')
+        
+        mainLayout = QVBoxLayout()
+        
+        paramsLayout = QGridLayout()
+        
+        row = 0
+        paramsLayout.addWidget(QLabel('Overwrite raw data: '), row, 0)
+        self.overwriteToggle = widgets.Toggle()
+        self.overwriteToggle.setChecked(True)
+        paramsLayout.addWidget(
+            self.overwriteToggle, row, 1, 1, 2, alignment=Qt.AlignCenter
+        )
+        
+        row += 1
+        paramsLayout.addWidget(
+            QLabel('Folder path for resized images: '), row, 0
+        )
+        self.filepathOutControl = widgets.filePathControl(
+            browseFolder=True, 
+            fileManagerTitle='Select folder where to save resized data', 
+            elide=True, 
+            startFolder=myutils.getMostRecentPath()
+        )
+        self.filepathOutControl.setDisabled(True)
+        paramsLayout.addWidget(self.filepathOutControl, row, 1, 1, 2)
+        
+        row += 1
+        paramsLayout.addWidget(QLabel('Text to append to files: '), row, 0)
+        self.textToAppendLineEdit = widgets.alphaNumericLineEdit()
+        self.textToAppendLineEdit.setAlignment(Qt.AlignCenter)
+        paramsLayout.addWidget(self.textToAppendLineEdit, row, 1, 1, 2)
+        
+        row += 1
+        paramsLayout.addWidget(QLabel('Resize mode: '), row, 0)
+        self.downScaleRadioButton = QRadioButton('Downscale')
+        self.upScaleRadioButton = QRadioButton('Upscale')
+        self.downScaleRadioButton.setChecked(True)
+        paramsLayout.addWidget(
+            self.downScaleRadioButton, row, 1, alignment=Qt.AlignCenter
+        )
+        paramsLayout.addWidget(
+            self.upScaleRadioButton, row, 2, alignment=Qt.AlignCenter
+        )
+        
+        row += 1
+        paramsLayout.addWidget(QLabel('Resize factor: '), row, 0)
+        self.factorSpinbox = widgets.FloatLineEdit(allowNegative=False)
+        self.factorSpinbox.setMinimum(1.0)
+        self.factorSpinbox.setValue(2.0)
+        paramsLayout.addWidget(self.factorSpinbox, row, 1, 1, 2)
+        
+        paramsLayout.setColumnStretch(0, 0)
+        paramsLayout.setVerticalSpacing(10)
+        
+        self.overwriteToggle.toggled.connect(self.overwriteToggled)
+        
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+        
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+        
+        mainLayout.addLayout(paramsLayout)
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(buttonsLayout)
+        mainLayout.addStretch(1)
+        
+        self.textToAppendLineEdit.setText(self._getDefaultTextToAppend())
+        
+        self.setLayout(mainLayout)
+    
+    def _getDefaultTextToAppend(self):
+        rescale_mode = 'up' if self.upScaleRadioButton.isChecked() else 'down'
+        factor = self.factorSpinbox.value()
+        text = f'{rescale_mode}scaled_factor_{factor}'
+        return text
+    
+    def overwriteToggled(self, checked):
+        self.filepathOutControl.setDisabled(checked)
+    
+    def warnFolderPathEmpty(self):
+        txt = html_utils.paragraph("""
+            To prevent overwriting raw data the <code>Folder path for 
+            resized images</code> <b>cannot be empty</b>.
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(self, 'Empty folder path', txt)
+    
+    def warnTextToAppendEmpty(self):
+        txt = html_utils.paragraph("""
+            To prevent overwriting raw data the <b>text to append 
+            cannot be empty</b>.
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(self, 'Empty text to append', txt)
+    
+    def ok_cb(self):
+        self.expFolderpathOut = self.filepathOutControl.path()
+        if self.overwriteToggle.isChecked() and not self.expFolderpathOut:
+            self.warnFolderPathEmpty()
+            return
+        
+        self.textToAppend = self.textToAppendLineEdit.text()
+        if not self.textToAppend.startswith('_'):
+            self.textToAppend = f'_{self.textToAppend}'
+            
+        if self.overwriteToggle.isChecked():
+            self.expFolderpathOut = None
+        
+        factor = self.factorSpinbox.value()
+        self.resizeFactor = (
+            factor if self.upScaleRadioButton.isChecked() else 1/factor
+        )
+        
         self.cancel = False
         self.close()

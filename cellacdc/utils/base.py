@@ -103,7 +103,12 @@ class NewThreadMultipleExpBaseUtil(QDialog):
 
         self.worker.signals.progress.connect(self.workerProgress)
         self.worker.signals.critical.connect(self.workerCritical)
-        self.worker.signals.sigSelectSegmFiles.connect(self.selectSegmFileLoadData)
+        self.worker.signals.sigSelectSegmFiles.connect(
+            self.selectSegmFileLoadData
+        )
+        self.worker.signals.sigSelectFilesWithText.connect(
+            self.selectFileFromFilesWithText
+        )
         self.worker.signals.sigSelectAcdcOutputFiles.connect(
             self.selectAcdcOutputTables
         )     
@@ -276,9 +281,11 @@ class NewThreadMultipleExpBaseUtil(QDialog):
         self.selectedFilepath = filepath
         self.worker.waitCond.wakeAll()
     
-    def selectSegmFileLoadData(self, exp_path, pos_foldernames):
+    def _selectFileFromFilesWithText(
+            self, exp_path, pos_foldernames, with_text, ext
+        ):
         # Get end name of every existing segmentation file
-        existingSegmEndNames = set()
+        existingEndNames = set()
         for p, pos in enumerate(pos_foldernames):
             pos_path = os.path.join(exp_path, pos)
             images_path = os.path.join(pos_path, 'Images')
@@ -295,31 +302,108 @@ class NewThreadMultipleExpBaseUtil(QDialog):
                 )
             _posData = load.loadData(filePath, chName)
             _posData.getBasenameAndChNames()
-            segm_files = load.get_segm_files(_posData.images_path)
-            _existingEndnames = load.get_existing_segm_endnames(
-                _posData.basename, segm_files
+            if with_text == 'segm':
+                found_files = load.get_segm_files(_posData.images_path)
+            else:
+                found_files = load.get_files_with(
+                    _posData.images_path, with_text, ext=ext
+                )
+            _existingEndnames = load.get_endnames(
+                _posData.basename, found_files
             )
-            existingSegmEndNames.update(_existingEndnames)
+            existingEndNames.update(_existingEndnames)
 
-        self.existingSegmEndNames = list(existingSegmEndNames)
-
-        if len(existingSegmEndNames) == 1:
-            self.endFilenameSegm = list(existingSegmEndNames)[0]
-            self.worker.waitCond.wakeAll()
-            return
+        if len(existingEndNames) == 1:
+            return existingEndNames, list(existingEndNames)[0], False
 
         if hasattr(self, 'infoText'):
             infoText = self.infoText
         else:
             infoText = None
 
+        if with_text == 'segm':
+            fileType = 'segmentation'
+        elif with_text == 'imagej_rois':
+            fileType = 'ImageJ ROIs'
+        else:
+            fileType = with_text.split('_')
+    
         win = apps.SelectSegmFileDialog(
-            existingSegmEndNames, exp_path, parent=self, infoText=infoText
+            existingEndNames, exp_path, parent=self, infoText=infoText, 
+            fileType=fileType
         )
         win.exec_()
-        self.endFilenameSegm = win.selectedItemText
-        self.worker.abort = win.cancel
+        return existingEndNames, win.selectedItemText, win.cancel
+    
+    def selectFileFromFilesWithText(
+            self, exp_path, pos_foldernames, with_text, ext
+        ):
+        
+        out = self._selectFileFromFilesWithText(
+            exp_path, pos_foldernames, with_text, ext
+        )
+        existingEndNamesWithText, endFilenameWithText, cancel = out
+        
+        self.existingEndNamesWithText = list(existingEndNamesWithText)
+        self.endFilenameWithText = endFilenameWithText        
+        self.worker.abort = cancel
         self.worker.waitCond.wakeAll()
+    
+    def selectSegmFileLoadData(self, exp_path, pos_foldernames):
+        out = self._selectFileFromFilesWithText(
+            exp_path, pos_foldernames, 'segm', None
+        )
+        existingSegmEndNames, endFilenameSegm, cancel = out
+        
+        self.existingSegmEndNames = list(existingSegmEndNames)
+        self.endFilenameSegm = endFilenameSegm
+        
+        self.worker.abort = cancel
+        self.worker.waitCond.wakeAll()
+        
+        # # Get end name of every existing segmentation file
+        # existingSegmEndNames = set()
+        # for p, pos in enumerate(pos_foldernames):
+        #     pos_path = os.path.join(exp_path, pos)
+        #     images_path = os.path.join(pos_path, 'Images')
+        #     basename, chNames = myutils.getBasenameAndChNames(images_path)
+        #     # Use first found channel, it doesn't matter for metrics
+        #     for chName in chNames:
+        #         filePath = myutils.getChannelFilePath(images_path, chName)
+        #         if filePath:
+        #             break
+        #     else:
+        #         raise FileNotFoundError(
+        #             f'None of the channels "{chNames}" were found in the path '
+        #             f'"{images_path}".'
+        #         )
+        #     _posData = load.loadData(filePath, chName)
+        #     _posData.getBasenameAndChNames()
+        #     segm_files = load.get_segm_files(_posData.images_path)
+        #     _existingEndnames = load.get_endnames(
+        #         _posData.basename, segm_files
+        #     )
+        #     existingSegmEndNames.update(_existingEndnames)
+
+        # self.existingSegmEndNames = list(existingSegmEndNames)
+
+        # if len(existingSegmEndNames) == 1:
+        #     self.endFilenameSegm = list(existingSegmEndNames)[0]
+        #     self.worker.waitCond.wakeAll()
+        #     return
+
+        # if hasattr(self, 'infoText'):
+        #     infoText = self.infoText
+        # else:
+        #     infoText = None
+
+        # win = apps.SelectSegmFileDialog(
+        #     existingSegmEndNames, exp_path, parent=self, infoText=infoText
+        # )
+        # win.exec_()
+        # self.endFilenameSegm = win.selectedItemText
+        # self.worker.abort = win.cancel
+        # self.worker.waitCond.wakeAll()
 
     def skipEvent(self, dummy):
         self.worker.waitCond.wakeAll()
@@ -456,7 +540,7 @@ class MainThreadSinglePosUtilBase(QDialog):
         _posData = load.loadData(filePath, chName)
         _posData.getBasenameAndChNames()
         segm_files = load.get_segm_files(_posData.images_path)
-        _existingEndnames = load.get_existing_segm_endnames(
+        _existingEndnames = load.get_endnames(
             _posData.basename, segm_files
         )
         existingSegmEndNames.update(_existingEndnames)

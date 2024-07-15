@@ -250,11 +250,11 @@ class dataPrepWin(QMainWindow):
         self.cropZaction.setEnabled(False)
         self.cropZaction.setCheckable(True)
         
-        self.cropAndSaveAction = QAction(
+        self.saveAction = QAction(
             QIcon(":file-save.svg"), "Crop and save", self)
-        self.cropAndSaveAction.setEnabled(False)
-        self.cropAndSaveAction.setToolTip(
-            'Save the cropped data.\n\n'
+        self.saveAction.setEnabled(False)
+        self.saveAction.setToolTip(
+            'Save the prepped data.\n\n'
             'If the button is disabled you need to click on the Start button '
             'first.'
         )
@@ -296,7 +296,7 @@ class dataPrepWin(QMainWindow):
         fileToolBar.addAction(self.startAction)
         fileToolBar.addAction(self.cropAction)
         fileToolBar.addAction(self.cropZaction)
-        fileToolBar.addAction(self.cropAndSaveAction)
+        fileToolBar.addAction(self.saveAction)
 
         navigateToolbar = QToolBar("Navigate", self)
         # navigateToolbar.setIconSize(QSize(toolbarSize, toolbarSize))
@@ -336,7 +336,7 @@ class dataPrepWin(QMainWindow):
         self.addCropRoiActon.triggered.connect(self.addCropROI)
         self.addBkrgRoiActon.triggered.connect(self.addDefaultBkgrROI)
         self.cropAction.triggered.connect(self.applyCropYX)
-        self.cropAndSaveAction.triggered.connect(self.cropAndSave)
+        self.saveAction.triggered.connect(self.saveActionTriggered)
         self.cropZaction.toggled.connect(self.openCropZtool)
         self.startAction.triggered.connect(self.prepData)
         self.interpAction.triggered.connect(self.interp_z)
@@ -1371,6 +1371,15 @@ class dataPrepWin(QMainWindow):
                 posData.img_data[~cropMask] = 0
         self.update_img()              
     
+    def saveActionTriggered(self):
+        if self.tempFilesToMove:
+            cancel = self.warnSaveAlignedNotReversible()
+            if not cancel:
+                self.startMoveTempFilesWorker()
+                self.waitMoveTempFilesWorker()
+            
+        self.cropAndSave()
+    
     @exception_handler
     def cropAndSave(self):
         cropPaths = {}
@@ -1461,12 +1470,12 @@ class dataPrepWin(QMainWindow):
         txt = html_utils.paragraph(txt.replace('! ', '!<br><br>'))
         msg.information(self, 'Data prep done', txt)
         
-        self.cropAndSaveAction.setEnabled(False) 
+        self.saveAction.setEnabled(False) 
     
     def setEnabledCropActions(self, enabled):
         self.cropAction.setEnabled(enabled)
         self.cropZaction.setEnabled(enabled)
-        self.cropAndSaveAction.setEnabled(enabled)
+        self.saveAction.setEnabled(enabled)
         if not hasattr(self, 'data'):
             return
         
@@ -1882,12 +1891,12 @@ class dataPrepWin(QMainWindow):
         self.alignDataWorkerWaitCond = QWaitCondition()
         
         self.alignDataWorker = workers.AlignDataWorker(
-            posData, self, self.alignDataWorkerMutex, self.alignDataWorkerWaitCond
+            posData, self, self.alignDataWorkerMutex, 
+            self.alignDataWorkerWaitCond
         )
         self.alignDataWorker.set_attr(align, user_ch_name)
         self.alignDataWorker.moveToThread(self._thread)
         
-        self.alignDataWorker.moveToThread(self._thread)
         self.alignDataWorker.signals.finished.connect(self._thread.quit)
         self.alignDataWorker.signals.finished.connect(
             self.alignDataWorker.deleteLater
@@ -1923,6 +1932,8 @@ class dataPrepWin(QMainWindow):
         self.titleLabel.setText(
             'Prepping data... (check progress in the terminal)',
             color='w')
+
+        self.tempFilesToMove = {}
         doZip = False
         for p, posData in enumerate(self.data):
             self.startAction.setDisabled(True)
@@ -1978,7 +1989,7 @@ class dataPrepWin(QMainWindow):
         self.saveBkgrROIs(self.data[self.pos_i])
         self.setEnabledCropActions(True)
         txt = (
-            'Data successfully prepped. You can now crop the images or '
+            'Data successfully prepped. You can now crop the images, '
             'place the background ROIs, or close the program'
         )
         self.titleLabel.setText(txt, color='w')
@@ -2235,10 +2246,12 @@ class dataPrepWin(QMainWindow):
                 """)
             elif user_ch_name:
                 txt = html_utils.paragraph(f"""
-                    Do you want to <b>align ALL channels</b> based on 
+                    Do you want to <b>align data</b> based on 
                     <code>{user_ch_name}</code> channel?<br><br>
-                    NOTE: If you don't know what to choose, we <b>reccommend</b> 
-                    aligning.
+                    NOTE: Alignment will improve tracking performance, but 
+                    sometimes it can fail completely.<br>
+                    If it fails, you can choose to not save the aligned data 
+                    and keep the raw data.
                 """)
             else:
                 txt = html_utils.paragraph(f"""
@@ -2351,6 +2364,9 @@ class dataPrepWin(QMainWindow):
         shutil.move(source, dst)
         shutil.rmtree(tempDir)
 
+    def storeTempFileMove(self, source, dst):
+        self.tempFilesToMove[source] = dst
+    
     def getMostRecentPath(self):
         if os.path.exists(recentPaths_path):
             df = pd.read_csv(recentPaths_path, index_col='index')
@@ -2642,8 +2658,107 @@ class dataPrepWin(QMainWindow):
         # cursor.clearSelection()
         # self.titleLabel.item.setTextCursor(cursor)
 
+    def askSaveAlignedData(self):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph("""
+            Cell-ACDC detected <b>aligned data that was not saved</b>.<br><br> 
+            Do you want to save the aligned data?
+        """)
+        buttonsTexts = (
+            'Cancel', 'No, close data-prep', 'Yes, save aligned data'
+        )
+        _, noButton, yesAlignButton = msg.question(
+            self, 'Save cropped data?', txt, buttonsTexts=buttonsTexts
+        )
+        return msg.clickedButton == yesAlignButton, msg.cancel
+    
+    def startMoveTempFilesWorker(self):
+        self.progressWin = apps.QDialogWorkerProgress(
+            title='Saving aligned data', 
+            parent=self,
+            pbarDesc='Saving aligned data'
+        )
+        self.progressWin.show(self.app)
+        self.progressWin.mainPbar.setMaximum(len(self.tempFilesToMove))
+        
+        self.saveAlignedThread = QThread()
+        self.saveAlignedWorker = workers.MoveTempFilesWorker(
+            self.tempFilesToMove
+        )
+        
+        self.saveAlignedWorker.moveToThread(self.saveAlignedThread)
+        self.saveAlignedWorker.signals.finished.connect(
+            self.saveAlignedThread.quit
+        )
+        self.saveAlignedWorker.signals.finished.connect(
+            self.saveAlignedWorker.deleteLater
+        )
+        self.saveAlignedThread.finished.connect(
+            self.saveAlignedThread.deleteLater
+        )
+        
+        self.saveAlignedWorker.signals.finished.connect(
+            self.saveAlignedWorkerFinished
+        )
+        self.saveAlignedWorker.signals.progress.connect(self.workerProgress)
+        self.saveAlignedWorker.signals.initProgressBar.connect(
+            self.workerInitProgressbar
+        )
+        self.saveAlignedWorker.signals.progressBar.connect(
+            self.workerUpdateProgressbar
+        )
+        self.saveAlignedWorker.signals.critical.connect(
+            self.workerCritical
+        )
+        
+        self.saveAlignedThread.started.connect(self.saveAlignedWorker.run)
+        self.saveAlignedThread.start()
+
+    def saveAlignedWorkerFinished(self):
+        if self.progressWin is not None:
+            self.progressWin.workerFinished = True
+            self.progressWin.close()
+            self.progressWin = None
+        self.saveAlignedWorkerLoop.exit()
+        self.tempFilesToMove = {}
+    
+    def waitMoveTempFilesWorker(self):
+        self.saveAlignedWorkerLoop = QEventLoop(self)
+        self.saveAlignedWorkerLoop.exec_()
+    
+    def handleAlignedDataOnClosing(self):
+        if not self.tempFilesToMove:
+            return True
+        
+        saveAligned, cancel = self.askSaveAlignedData()
+        if cancel:
+            return False
+        
+        if not saveAligned:
+            return True
+        
+        cancel = self.warnSaveAlignedNotReversible()
+        if cancel:
+            return True
+    
+        self.startMoveTempFilesWorker()
+        self.waitMoveTempFilesWorker()
+        return True
+    
+    def warnSaveAlignedNotReversible(self):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph("""
+            WARNING: Saving the aligned data <b>cannot be undone!</b>.<br><br> 
+            Do you want to continue with saving the aligned data?
+        """)
+        _, yesButton = msg.warning(
+            self, 'Save aligned data?', txt, 
+            buttonsTexts=('Cancel', 'Yes, save aligned data')
+        )
+        return msg.cancel
+    
     def askCropAndSave(self):
-        if not self.cropAndSaveAction.isEnabled():
+        if not self.saveAction.isEnabled():
             return True
         
         msg = widgets.myMessageBox(wrapText=False)
@@ -2667,6 +2782,11 @@ class dataPrepWin(QMainWindow):
     
     def closeEvent(self, event):
         self.saveWindowGeometry()
+        
+        proceed = self.handleAlignedDataOnClosing()
+        if not proceed:
+            event.ignore()
+            return
         
         proceed = self.askCropAndSave()
         if not proceed:

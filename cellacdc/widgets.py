@@ -318,6 +318,11 @@ class okPushButton(PushButton):
         # QShortcut(Qt.Key_Return, self, self.click)
         # QShortcut(Qt.Key_Enter, self, self.click)
 
+class SkipPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setIcon(QIcon(':skip_arrow.svg'))
+
 class BedPushButton(PushButton):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -711,6 +716,7 @@ def getPushButton(buttonText, qparent=None):
     is2Dbutton = buttonText.find(' 2D ') != -1
     isSaveButton = buttonText.lower().find('overwrite') != -1
     isNewFileButton = buttonText.lower().find('rename') != -1
+    isTryAgainButton = buttonText.lower().find('try again') != -1
 
     if isCancelButton:
         button = cancelPushButton(buttonText, qparent)
@@ -736,6 +742,8 @@ def getPushButton(buttonText, qparent=None):
         button = savePushButton(buttonText, qparent)
     elif isNewFileButton:
         button = newFilePushButton(buttonText, qparent)
+    elif isTryAgainButton:
+        button = reloadPushButton(buttonText, qparent)
     else:
         button = QPushButton(buttonText, qparent)
     
@@ -1462,12 +1470,25 @@ class ExpandableListBox(QComboBox):
 
 
 class filePathControl(QFrame):
-    def __init__(self, parent=None):
+    def __init__(
+            self, parent=None, browseFolder=False, 
+            fileManagerTitle='Select file', 
+            validExtensions=None, 
+            startFolder='', 
+            elide=False
+        ):
         super().__init__(parent)
 
         layout = QHBoxLayout()
-        self.le = QLineEdit()
-        self.browseButton = browseFileButton()
+        if elide:
+            self.le = ElidingLineEdit()
+        else:
+            self.le = QLineEdit()
+            
+        self.browseButton = browseFileButton(
+            openFolder=browseFolder, title=fileManagerTitle, 
+            ext=validExtensions, start_dir=startFolder
+        )
 
         layout.addWidget(self.le)
         layout.addWidget(self.browseButton)
@@ -1754,6 +1775,10 @@ class listWidget(QListWidget):
         self.itemHeight = None
         self.setStyleSheet(LISTWIDGET_STYLESHEET)
         self.setFont(font)
+    
+    def setSelectedAll(self, selected):
+        for i in range(self.count()):
+            self.item(i).setSelected(selected)
     
     def addItems(self, labels) -> None:
         super().addItems(labels)
@@ -8917,3 +8942,54 @@ class PreProcessingSelector(QComboBox):
         
     def widgets(self):
         return PREPROCESS_MAPPER[self.currentText()]['widgets']
+
+class RescaleImageJroisGroupbox(QGroupBox):
+    def __init__(self, TZYX_out_shape, parent=None):
+        super().__init__(parent)
+        
+        self.setTitle('Rescale ROIs')
+        self.setCheckable(True)
+        
+        gridLayout = QGridLayout()
+        
+        dims = ('Z', 'Y', 'X')
+        self.widgets = {}
+        for row, SizeD in enumerate(TZYX_out_shape[1:]):
+            if SizeD == 1:
+                continue
+            
+            dim = dims[row]
+            inputSpinbox = SpinBox()
+            inputSpinbox.setMinimum(1)
+            inputSpinbox.setValue(SizeD)
+            
+            outZwidget = QLineEdit()
+            outZwidget.setReadOnly(True)
+            outZwidget.setAlignment(Qt.AlignCenter)
+            # outZwidget.setValue(SizeD)
+            outZwidget.setText(str(SizeD))
+
+            row0 = row*2
+            row1 = row0+1
+            gridLayout.addWidget(QLabel(f'{dim}-dimension: '), row1, 0)
+            
+            gridLayout.addWidget(QLabel('Input size'), row0, 1)
+            gridLayout.addWidget(inputSpinbox, row1, 1)
+            
+            gridLayout.addWidget(QLabel('Output size'), row0, 2)
+            gridLayout.addWidget(outZwidget, row1, 2)
+            
+            self.widgets[dim] = (inputSpinbox, SizeD)
+        
+        self.setLayout(gridLayout)
+    
+    def inputOutputSizes(self):
+        if not self.isChecked():
+            return
+        
+        sizes = {
+            dim: (spinbox.value(), int(SizeD))
+            for dim, (spinbox, SizeD) in self.widgets.items()
+        }
+        return sizes
+        

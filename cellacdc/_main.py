@@ -35,6 +35,8 @@ from .utils import align as utilsAlign
 from .utils import compute as utilsCompute
 from .utils import repeat as utilsRepeat
 from .utils import toImageJroi as utilsToImageJroi
+from .utils.resize import util as utilsResizePositionsUtil
+from .utils import fromImageJroiToSegm as utilsFromImageJroi
 from .utils import toObjCoords as utilsToObjCoords
 from .utils import acdcToSymDiv as utilsSymDiv
 from .utils import trackSubCellObjects as utilsTrackSubCell
@@ -397,6 +399,7 @@ class mainWin(QMainWindow):
         convertMenu.addAction(self.TiffToNpzAction)
         convertMenu.addAction(self.h5ToNpzAction)
         convertMenu.addAction(self.toImageJroiAction)
+        convertMenu.addAction(self.fromImageJroiAction)
         convertMenu.addAction(self.toObjsCoordsAction)
 
         segmMenu = utilsMenu.addMenu('Segmentation')
@@ -404,10 +407,11 @@ class mainWin(QMainWindow):
         segmMenu.addAction(self.stack2Dto3DsegmAction)
         segmMenu.addAction(self.filterObjsFromTableAction)
 
-        trackingMenu = utilsMenu.addMenu('Tracking')
+        trackingMenu = utilsMenu.addMenu('Tracking and lineage')
         trackingMenu.addAction(self.trackSubCellFeaturesAction)
         trackingMenu.addAction(self.applyTrackingFromTableAction)
         trackingMenu.addAction(self.applyTrackingFromTrackMateXMLAction)
+        trackingMenu.addAction(self.toSymDivAction)        
         
         self.trackingMenu = trackingMenu
 
@@ -420,10 +424,13 @@ class mainWin(QMainWindow):
         if SPOTMAX_INSTALLED:
             concatMenu.addAction(self.concatSpotmaxDfsAction) 
 
-        utilsMenu.addAction(self.toSymDivAction)                 
-        utilsMenu.addAction(self.batchConverterAction)
-        utilsMenu.addAction(self.repeatDataPrepAction)
-        utilsMenu.addAction(self.alignAction)
+        dataPrepMenu = utilsMenu.addMenu('Pre-processing')
+                 
+        dataPrepMenu.addAction(self.batchConverterAction)
+        dataPrepMenu.addAction(self.repeatDataPrepAction)
+        dataPrepMenu.addAction(self.alignAction)
+        dataPrepMenu.addAction(self.resizeImagesAction)
+        
         utilsMenu.addAction(self.renameAction)
 
         self.utilsMenu = utilsMenu
@@ -704,7 +711,10 @@ class mainWin(QMainWindow):
         self.TiffToNpzAction = QAction('Convert .tif file(s) to _segm.npz...')
         self.h5ToNpzAction = QAction('Convert .h5 file(s) to _segm.npz...')
         self.toImageJroiAction = QAction(
-            'Convert .npz segmentation file(s) to ImageJ ROIs...'
+            'Convert Cell-ACDC segmentation file(s) (segm.npz) to ImageJ ROIs...'
+        )
+        self.fromImageJroiAction = QAction(
+            'Convert ImageJ ROIs to Cell-ACDC segmentation file(s) (segm.npz)...'
         )
         self.toObjsCoordsAction = QAction(
             'Convert .npz segmentation file(s) to object coordinates (CSV)...'
@@ -758,6 +768,9 @@ class mainWin(QMainWindow):
             'View lineage tree in napari-arboretum...'
         )
 
+        self.resizeImagesAction = QAction(
+            'Reisize images (downscale or upscale) in one or more experiments...'
+        )
         self.welcomeGuideAction = QAction('Welcome Guide')
         self.userManualAction = QAction('User documentation...')
         self.aboutAction = QAction('About Cell-ACDC')
@@ -784,6 +797,10 @@ class mainWin(QMainWindow):
         self.npzToTiffAction.triggered.connect(self.launchConvertFormatUtil)
         self.TiffToNpzAction.triggered.connect(self.launchConvertFormatUtil)
         self.h5ToNpzAction.triggered.connect(self.launchConvertFormatUtil)
+        self.fromImageJroiAction.triggered.connect(
+            self.launchFromImageJroiToSegmUtil
+        )
+        self.resizeImagesAction.triggered.connect(self.launchResizeUtil)
         self.toImageJroiAction.triggered.connect(self.launchToImageJroiUtil)
         self.toObjsCoordsAction.triggered.connect(
             self.launchToObjectsCoordsUtil
@@ -1233,6 +1250,45 @@ class mainWin(QMainWindow):
             parent=self
         )
         self.toObjCoordsWin.show()
+    
+    def launchFromImageJroiToSegmUtil(self):
+        self.logger.info(f'Launching utility "{self.sender().text()}"')
+        myutils.check_install_package('roifile', parent=self)
+
+        import roifile
+
+        selectedExpPaths = self.getSelectedExpPaths(
+            'From ImageJ ROIs to _segm.npz'
+        )
+        if selectedExpPaths is None:
+            return
+        
+        title = 'Convert ImageJ ROIs to _segm.npz file(s)'
+        infoText = 'Launching ImageJ ROIs conversion process...'
+        progressDialogueTitle = 'Converting ImageJ ROIs to _segm.npz file(s)'
+        self.toImageJroiWin = utilsFromImageJroi.fromImageJRoiToSegmUtil(
+            selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
+            parent=self
+        )
+        self.toImageJroiWin.show() 
+    
+    def launchResizeUtil(self):
+        self.logger.info(f'Launching utility "{self.sender().text()}"')
+        
+        selectedExpPaths = self.getSelectedExpPaths(
+            'From _segm.npz to ImageJ ROIs'
+        )
+        if selectedExpPaths is None:
+            return
+        
+        title = 'Resize images'
+        infoText = 'Launching resizing images process...'
+        progressDialogueTitle = 'Resize images'
+        self.resizeUtilWin = utilsResizePositionsUtil.ResizePositionsUtil(
+            selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
+            parent=self
+        )
+        self.resizeUtilWin.show()
     
     def launchToImageJroiUtil(self):
         self.logger.info(f'Launching utility "{self.sender().text()}"')

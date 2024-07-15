@@ -373,6 +373,8 @@ sorted_cols = [
     *sorted_cols, *cca_df_colnames, *lineage_tree_cols, *base_acdc_df_cols
 ]
 
+cca_df_colnames_with_tree = [*cca_df_colnames, *lineage_tree_cols]
+
 all_non_metrics_cols = [*base_acdc_df_cols, *cca_df_colnames, *lineage_tree_cols]
 
 is_linux = sys.platform.startswith('linux')
