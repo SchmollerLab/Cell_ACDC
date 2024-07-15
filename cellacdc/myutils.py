@@ -223,6 +223,9 @@ class utilClass:
     pass
 
 def get_trimmed_list(li: list, max_num_digits=10):
+    if isinstance(li, set):
+        li = list(li)
+
     li_str = li.copy()
     tom_num_digits = sum([len(str(val)) for val in li])
     avg_num_digits = tom_num_digits/len(li)
