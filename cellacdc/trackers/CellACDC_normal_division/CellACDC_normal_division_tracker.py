@@ -1170,8 +1170,8 @@ class tracker:
         Returns:
         - list: Tracked video frames.
         """
-        if not record_lineage and return_tracked_lost_centroids:
-            raise ValueError('return_tracked_lost_centroids can only be True if record_lineage is True.')
+        # if not record_lineage and return_tracked_lost_centroids:
+        #     raise ValueError('return_tracked_lost_centroids can only be True if record_lineage is True.')
         
         pbar = tqdm(total=len(segm_video), desc='Tracking', ncols=100)
 
@@ -1186,7 +1186,7 @@ class tracker:
                     segm_video, IoA_thresh_daughter, min_daughter, 
                     max_daughter, IoA_thresh, IoA_thresh_aggressive
                 )
-                if record_lineage:
+                if record_lineage or return_tracked_lost_centroids:
                     tree = normal_division_lineage_tree(
                         lab=lab, max_daughter=max_daughter,
                         min_daughter=min_daughter, 
@@ -1200,7 +1200,7 @@ class tracker:
 
             tracker.track_frame(frame_i)
 
-            if not record_lineage:
+            if not record_lineage and not return_tracked_lost_centroids:
                 continue
 
             mother_daughters = tracker.mother_daughters
@@ -1216,26 +1216,27 @@ class tracker:
                 assignments, curr_IDs, new_IDs
             )
             # printl(new_IDs, curr_IDs, prev_IDs)
-            tracked_lost_centroids_loc = []
-            for mother, _ in mother_daughters:
-                mother_ID = IDs_prev[mother]
-                
-                found = False
-                for obj in prev_rp:
-                    if obj.label == mother_ID:
-                        tracked_lost_centroids_loc.append(obj.centroid)
-                        found = True
-                        break
-                if not found:
-                    labels = [obj.label for obj in rp]
-                    printl(mother, mother_ID, IDs_curr_untracked, labels)
+            if return_tracked_lost_centroids:
+                tracked_lost_centroids_loc = []
+                for mother, _ in mother_daughters:
+                    mother_ID = IDs_prev[mother]
+                    
+                    found = False
+                    for obj in prev_rp:
+                        if obj.label == mother_ID:
+                            tracked_lost_centroids_loc.append(obj.centroid)
+                            found = True
+                            break
+                    if not found:
+                        labels = [obj.label for obj in rp]
+                        printl(mother, mother_ID, IDs_curr_untracked, labels)
+                        raise ValueError('Something went wrong with the tracked lost centroids.')
+
+
+                if len(mother_daughters) != len(tracked_lost_centroids_loc):
                     raise ValueError('Something went wrong with the tracked lost centroids.')
-
-
-            if len(mother_daughters) != len(tracked_lost_centroids_loc):
-                raise ValueError('Something went wrong with the tracked lost centroids.')
-            
-            self.tracked_lost_centroids[frame_i] = tracked_lost_centroids_loc
+                
+                self.tracked_lost_centroids[frame_i] = tracked_lost_centroids_loc
 
             prev_IDs = curr_IDs.copy()
             prev_rp = rp.copy()
