@@ -7,8 +7,7 @@ from collections import defaultdict, deque
 
 from typing import Union, List, Dict
 
-from pprint import pprint
-from functools import wraps, partial
+from functools import wraps
 import numpy as np
 import pandas as pd
 import h5py
@@ -21,16 +20,14 @@ import queue
 
 from tqdm import tqdm
 
-from tifffile.tifffile import TiffFile
-
 from qtpy.QtCore import (
-    Signal, QObject, QRunnable, QMutex, QWaitCondition, QTimer
+    Signal, QObject, QMutex, QWaitCondition
 )
 
 from cellacdc import html_utils
 
 from . import (
-    load, myutils, core, measurements, prompts, printl, config,
+    load, myutils, core, prompts, printl, config,
     segm_re_pattern
 )
 from . import transformation
