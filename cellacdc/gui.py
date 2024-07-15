@@ -18609,7 +18609,11 @@ class guiWin(QMainWindow):
             posData.rp = skimage.measure.regionprops(posData.lab)
             if not lin_tree:
                 df = posData.allData_li[posData.frame_i]['acdc_df']
-                binnedIDs_df = df[df['is_cell_excluded']>0]
+                try:
+                    binnedIDs_df = df[df['is_cell_excluded']>0]
+                except Exception as err:
+                    df = myutils.fix_acdc_df_dtypes(df)
+                    binnedIDs_df = df[df['is_cell_excluded']>0]
                 posData.binnedIDs = set(binnedIDs_df.index)
                 ripIDs_df = df[df['is_cell_dead']>0]
                 posData.ripIDs = set(ripIDs_df.index)

@@ -3524,3 +3524,7 @@ def validate_images_path(input_path: os.PathLike, create_dirs_tree=False):
         os.makedirs(images_path, exist_ok=True)
         
     return images_path
+
+def fix_acdc_df_dtypes(acdc_df):
+    acdc_df['is_cell_excluded'] = acdc_df['is_cell_excluded'].astype(int)
+    return acdc_df
