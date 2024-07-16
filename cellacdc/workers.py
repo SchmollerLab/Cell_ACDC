@@ -257,6 +257,7 @@ class AlignDataWorker(QObject):
             else:
                 align_func = core.align_frames_2D
                 zz = None
+            
             if self.align:
                 self.signals.initProgressBar.emit(len(tif_data))
                 aligned_frames, shifts = align_func(
@@ -265,7 +266,8 @@ class AlignDataWorker(QObject):
                 )
                 self.posData.loaded_shifts = shifts
             else:
-                aligned_frames = tif_data.copy()
+                aligned_frames = tif_data
+                
             if self.align:
                 self.signals.initProgressBar.emit(0)
                 _npz = f'{os.path.splitext(tif)[0]}_aligned.npz'
@@ -314,7 +316,8 @@ class AlignDataWorker(QObject):
                     sigPyqt=self.signals.progressBar
                 )
             else:
-                aligned_frames = tif_data.copy()
+                aligned_frames = tif_data
+            
             _npz = f'{os.path.splitext(tif)[0]}_aligned.npz'
             
             if self.align:
