@@ -127,28 +127,35 @@ def get_segm_endname(images_path, basename):
     
     
 def calculate_downstream_data(
-    file_names,
-    image_folders,
-    positions,
-    channels,
-    segm_endname,
-    force_recalculation=False
-):
+        file_names,
+        image_folders,
+        positions,
+        channels,
+        segm_endname,
+        force_recalculation=False, 
+        calculate_fluo_metrics=True, 
+        save_features_to_acdc_df=False,
+    ):
     no_of_channels = len(channels)
     overall_df = pd.DataFrame()
     for file_idx, file in enumerate(file_names):
         for pos_idx, pos_dir in enumerate(image_folders[file_idx]):
             channel_data = ('placeholder')*no_of_channels
             print(f'Load files for {file}, {positions[file_idx][pos_idx]}...')
+            acdc_df_path = None
             try:
-                *channel_data, seg_mask, cc_data, metadata, cc_props = (
-                    _load_files(pos_dir, channels, segm_endname)
+                *channel_data, seg_mask, cc_data, metadata, cc_props, acdc_df_path = (
+                    _load_files(
+                        pos_dir, channels, segm_endname, 
+                        load_channels_data=calculate_fluo_metrics
+                    )
                 )
             except TypeError:
                 print(f'File {file}, position {positions[file_idx][pos_idx]} skipped due to missing segmentation mask/CC annotations.')
                 continue
             print(f'Number of cells in position: {len(cc_data.Cell_ID.unique())}')
             print(f'Number of annotated frames in position: {cc_data.frame_i.max()+1}')
+
             cc_data = _rename_columns(cc_data)
             is_timelapse_data, is_zstack_data = False, False
             if int(metadata.loc['SizeT'])>1:
@@ -157,7 +164,7 @@ def calculate_downstream_data(
                 is_zstack_data=True
             if cc_props is not None and not force_recalculation:
                 print('Cell Cycle property data already existing, loaded from disk...')
-                overall_df = pd.concat([overall_df,cc_props], ignore_index=True).reset_index(drop=True)
+                overall_df = pd.concat([overall_df, cc_props], ignore_index=True).reset_index(drop=True)
             else:
                 print(f'Calculate regionprops on each frame based on Segmentation...')
                 rp_df = _calculate_rp_df(seg_mask, is_timelapse_data, is_zstack_data, metadata, max_frame=cc_data.frame_i.max()+1)
@@ -204,6 +211,12 @@ def calculate_downstream_data(
                 save_path = os.path.join(pos_dir, f'{common_prefix}cca_properties_downstream.csv')
                 temp_df.to_csv(save_path, index=False)
                 overall_df = pd.concat([overall_df, temp_df], ignore_index=True).reset_index(drop=True)
+
+            # if save_features_to_acdc_df:
+            #     acdc_df = cc_data.set_index(['frame_i', 'Cell_ID'])
+            #     missing_cols = overall_df.columns.difference(acdc_df.columns)
+            #     acdc_df_path
+            #     import pdb; pdb.set_trace()
 
     print('Done!')
     return overall_df, is_timelapse_data, is_zstack_data
@@ -396,7 +409,33 @@ def load_acdc_output_only(
             overall_df = pd.concat([overall_df, temp_df])
     return overall_df
 
-def _load_files(file_dir, channels, segm_endname):
+def _load_channels_data(file_dir, channel_names, no_of_aligned_files):
+    channel_files = []
+    if no_of_aligned_files > 0:
+        for channel in channel_names:
+            try:
+                ch_aligned_path = glob.glob(os.path.join(f'{file_dir}', f'*{channel}_aligned.npz'))[0]
+                channel_files.append(np.load(ch_aligned_path)['arr_0'])
+            except IndexError:
+                try:
+                    ch_aligned_path = glob.glob(os.path.join(f'{file_dir}', f'*{channel}_aligned.npy'))[0]
+                    channel_files.append(np.load(ch_aligned_path))
+                except IndexError:
+                    print(f'Could not find an aligned file for channel {channel}')
+                    print(f'Resulting data will not contain fluorescent data for this channel')
+                    channel_files.append(None)
+    else:
+        for channel in channel_names:
+            try:
+                ch_not_aligned_path = glob.glob(os.path.join(f'{file_dir}', f'*{channel}*'))[0]
+                channel_files.append(imread(ch_not_aligned_path))
+            except IndexError:
+                print(f'Could not find any file for channel {channel}')
+                print(f'Resulting data will not contain fluorescent data for this channel')
+                channel_files.append(None)
+    return channel_files
+
+def _load_files(file_dir, channels, segm_endname, load_channels_data=True):
     """
     Function to load files of all given channels and the corresponding segmentation masks.
     Check first if aligned files are available and use them if so.
@@ -415,28 +454,9 @@ def _load_files(file_dir, channels, segm_endname):
     if not (seg_mask_available and acdc_output_available):
         return None
     channel_files = []
-    if no_of_aligned_files > 0:
-        for channel in channels:
-            try:
-                ch_aligned_path = glob.glob(os.path.join(f'{file_dir}', f'*{channel}_aligned.npz'))[0]
-                channel_files.append(np.load(ch_aligned_path)['arr_0'])
-            except IndexError:
-                try:
-                    ch_aligned_path = glob.glob(os.path.join(f'{file_dir}', f'*{channel}_aligned.npy'))[0]
-                    channel_files.append(np.load(ch_aligned_path))
-                except IndexError:
-                    print(f'Could not find an aligned file for channel {channel}')
-                    print(f'Resulting data will not contain fluorescent data for this channel')
-                    channel_files.append(None)
-    else:
-        for channel in channels:
-            try:
-                ch_not_aligned_path = glob.glob(os.path.join(f'{file_dir}', f'*{channel}*'))[0]
-                channel_files.append(imread(ch_not_aligned_path))
-            except IndexError:
-                print(f'Could not find any file for channel {channel}')
-                print(f'Resulting data will not contain fluorescent data for this channel')
-                channel_files.append(None)
+    if load_channels_data:
+        channels_data = _load_channels_data(file_dir, channels, no_of_aligned_files)
+        channel_files.extend(channels_data)
 
     # append segmentation file
     try:
@@ -473,7 +493,7 @@ def _load_files(file_dir, channels, segm_endname):
         channel_files.append(pd.read_csv(cc_props_path))
     else:
         channel_files.append(None)
-    return tuple(channel_files)
+    return (*channel_files, cc_stage_path)
 
 def _calculate_rp_df(seg_mask, is_timelapse_data, is_zstack_data, metadata, max_frame=1, label_input=False):
     """
