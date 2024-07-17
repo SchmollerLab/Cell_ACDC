@@ -327,6 +327,7 @@ class Logger(logging.Logger):
     
     def error(self, text, *args, **kwargs):
         super().error(text, *args, **kwargs)
+        self.write(traceback.format_exc())
         self.write(f'[ERROR]: {text}\n', log_to_file=False)
     
     def critical(self, text, *args, **kwargs):
@@ -335,6 +336,7 @@ class Logger(logging.Logger):
     
     def exception(self, text, *args, **kwargs):
         super().exception(text, *args, **kwargs)
+        self.write(traceback.format_exc())
         self.write(f'[ERROR]: {text}\n', log_to_file=False)
     
     def log(self, level, text):

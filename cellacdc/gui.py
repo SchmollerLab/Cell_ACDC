@@ -12896,79 +12896,14 @@ class guiWin(QMainWindow):
             return
        
         if ev.key() == Qt.Key_Q and self.debug:
+            from . import _debug
+            from .plot import imshow
+            # _debug._debug_lineage_tree(self)
             posData = self.data[self.pos_i]
-            columns = set()	
-            for frame_i in range(len(posData.allData_li)):
-                acdc_df = posData.allData_li[frame_i]['acdc_df']
-                if acdc_df is not None:
-                    columns.update(acdc_df.reset_index().columns)
-            printl(f"Columns in acdc_df: {columns}")
-
-            from pandasgui import show as pgshow
-            if self.lineage_tree is not None and self.lineage_tree.lineage_list is not None:
-                lin_tree_df = pd.DataFrame()
-                for i, df in enumerate(self.lineage_tree.lineage_list):
-                    df = df.copy()
-                    # df = df.reset_index()
-                    df["frame_i"] = i
-                    lin_tree_df = pd.concat([lin_tree_df, df])
-
-                if not isinstance(lin_tree_df.index, pd.RangeIndex):
-                    lin_tree_df = lin_tree_df.reset_index()
-
-                lin_tree_df = (lin_tree_df
-                            .set_index(["frame_i", "Cell_ID"])
-                            .sort_index()
-                            )
-                if "level_0" in lin_tree_df.columns:
-                    lin_tree_df=lin_tree_df.drop(columns="level_0")
-
-            acdc_df = pd.DataFrame()
-            posData = self.data[self.pos_i]
-            df_li = [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))]
-            for i, df in enumerate(df_li):
-                df = df.copy()
-                df = df.reset_index()
-                df["frame_i"] = i
-                acdc_df = pd.concat([acdc_df, df])
-
-            acdc_df = (acdc_df
-                       .set_index(["frame_i", "Cell_ID"])
-                       .sort_index()
-                       )
-
-            # for key, value in self.lineage_tree.family_dict.items():
-            if self.lineage_tree is not None and self.lineage_tree.lineage_list is not None:
-                families = pd.DataFrame()
-                for family in self.lineage_tree.families:
-                    family_name = family[0][0]
-                    family_df = pd.DataFrame(family, columns=["Cell_ID", "generation_num_tree"])
-                    family_df["family_name"] = family_name
-                    family_df = family_df.set_index("family_name")
-                    families = pd.concat([families, family_df])
-                if "level_0" in families.columns:
-                    families=families.drop(columns="level_0")
-
-            # lin_tree_dict_df = (lin_tree_dict_df
-            #     .set_index(["family_name", "frame_i", "Cell_ID"])
-            #     .sort_index()
-            #     )
-            
-            # for i, df in enumerate([acdc_df, lin_tree_df, families, lin_tree_dict_df]):
-            #     printl(f"Columns: {df.columns} for df {i}" )
-            #     if (df.columns == df.index.name).any():
-            #         printl(f"Index name: {df.index.name} for df {i}!!!" )
-
-            if "level_0" in acdc_df.columns:
-                acdc_df=acdc_df.drop(columns="level_0")
-
-
-            if self.lineage_tree is not None and self.lineage_tree.lineage_list is not None:
-                pgshow(acdc_df, lin_tree_df, families)
-            else:
-                pgshow(acdc_df)
-
-            printl(posData.tracked_lost_centroids)
+            stored_lab = posData.allData_li[190]['labels']
+            printl(type(stored_lab))
+            lab = posData.segm_data[190]
+            imshow(lab)
         
         if not self.isDataLoaded:
             self.logger.info(
@@ -23056,6 +22991,7 @@ class guiWin(QMainWindow):
                     self.store_data(autosave=False)
                 elif includeUnvisited:
                     # Unvisited frame (includeUnvisited = True)
+                    lab = posData.segm_data[i]
                     lab, _ = self.deleteIDFromLab(lab, delID)
 
         # Back to current frame
@@ -23503,12 +23439,11 @@ class guiWin(QMainWindow):
             tracked_result = self.trackFrameCustomTracker(prev_lab, currentLab)
 
         # Check if tracker also returns additional info
-        try:
+        if isinstance(tracked_result, tuple):
             tracked_lab, tracked_lost_IDs = tracked_result
             self.handleAdditionalInfoRealTimeTracker(prev_rp, tracked_lost_IDs)
-        except ValueError as err:
+        else:
             tracked_lab = tracked_result
-            self.logger.exception(err)
         
         return tracked_lab
     
