@@ -77,6 +77,33 @@ for (s = 0; s < sEnd; s++) {
     metadata_file = File.open(metadata_filepath);
     metadata_str = "Description,values\nbasename," + basename_string;
     
+     // Add sizes to metadata
+    Ext.getSizeT(sizeT);
+   	metadata_str = metadata_str + "\n" + "SizeT," + sizeT;
+    Ext.getSizeZ(sizeZ);
+    metadata_str = metadata_str + "\n" + "SizeZ," + sizeZ;
+    
+    // Add physical sizes to metadata file
+    Ext.getPixelsPhysicalSizeZ(physicalSizeZ);
+    metadata_str = metadata_str + "\n" + "PhysicalSizeZ," + physicalSizeZ;
+    Ext.getPixelsPhysicalSizeY(physicalSizeY);
+    metadata_str = metadata_str + "\n" + "PhysicalSizeY," + physicalSizeY;
+    
+    if (sizeZ > 1) {
+    	Ext.getPixelsPhysicalSizeX(physicalSizeX);
+    	metadata_str = metadata_str + "\n" + "PhysicalSizeX," + physicalSizeX;
+    } else {
+    	print("Image is 2D");
+    }
+    
+    
+    if (sizeT > 1) {
+    	Ext.getPixelsTimeIncrement(timeIncrement);
+    	metadata_str = metadata_str + "\n" + "TimeIncrement," + timeIncrement;
+    } else {
+    	print("Image file is not timelapse");
+    }
+    
 	for (c=C; c<CEnd; c++) { //for loop for iterating through the channels
 		print("    Saving channel="+c+1+"/"+CEnd+"..."); //Display message
 		scTif = images_path + "/" + basename_string + channels[c] + ".tif";		
