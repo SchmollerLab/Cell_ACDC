@@ -3553,7 +3553,7 @@ def validate_images_path(input_path: os.PathLike, create_dirs_tree=False):
     return images_path
 
 def fix_acdc_df_dtypes(acdc_df):
-    acdc_df['is_cell_excluded'] = acdc_df['is_cell_excluded'].astype(int)
+    acdc_df['is_cell_excluded'] = acdc_df['is_cell_excluded'].astype(bool)
     return acdc_df
 
 def _relabel_cca_dfs_and_segm_data(

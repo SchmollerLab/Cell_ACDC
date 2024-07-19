@@ -845,6 +845,9 @@ class saveDataWorker(QObject):
 
                 # Build acdc_df and index it in each frame_i of acdc_df_li
                 try:
+                    # if frame_i == 9:
+                    #     cols = list(base_cca_dict.keys())[:9]
+                    #     printl(acdc_df[cols])
                     acdc_df = load.pd_bool_to_int(acdc_df, inplace=False)
                     rp = data_dict['regionprops']
                     acdc_df['num_objects'] = len(acdc_df)
@@ -12900,10 +12903,9 @@ class guiWin(QMainWindow):
             from .plot import imshow
             # _debug._debug_lineage_tree(self)
             posData = self.data[self.pos_i]
-            stored_lab = posData.allData_li[190]['labels']
-            printl(type(stored_lab))
-            lab = posData.segm_data[190]
-            imshow(lab)
+            printl(posData.cca_df.iloc[:, :9])
+            next_cca_df = self.get_cca_df(return_df=True, frame_i=posData.frame_i+1)
+            printl(next_cca_df.iloc[:, :9])
         
         if not self.isDataLoaded:
             self.logger.info(
@@ -15582,6 +15584,7 @@ class guiWin(QMainWindow):
                 posData.frame_i -= 1
                 self.get_data()
                 return
+            
             self.postProcessing()
             self.tracking(storeUndo=True)
             notEnoughG1Cells, proceed = self.attempt_auto_cca()
@@ -15590,6 +15593,7 @@ class guiWin(QMainWindow):
                 self.get_data()
                 self.setAllTextAnnotations()
                 return
+            
             self.resetExpandLabel()
             self.updateAllImages(updateFilters=True)
             self.updateViewerWindow()
@@ -18421,10 +18425,145 @@ class guiWin(QMainWindow):
         ]
         return editID_info
 
+    def _get_data_unvisited(self, posData, lin_tree=False, debug=False):
+        posData.editID_info = []
+        proceed_cca = True
+        never_visited = True
+        if str(self.modeComboBox.currentText()) == 'Cell cycle analysis':
+            # Warn that we are visiting a frame that was never segm-checked
+            # on cell cycle analysis mode
+            msg = widgets.myMessageBox()
+            txt = html_utils.paragraph(
+                'Segmentation and Tracking was <b>never checked from '
+                f'frame {posData.frame_i+1} onwards</b>.<br><br>'
+                'To ensure correct cell cell cycle analysis you have to '
+                'first visit the frames after '
+                f'{posData.frame_i+1} with "Segmentation and Tracking" mode.'
+            )
+            warn_cca = msg.critical(
+                self, 'Never checked segmentation on requested frame', txt                    
+            )
+            proceed_cca = False
+            return proceed_cca, never_visited
+
+        elif str(self.modeComboBox.currentText()) == 'Normal division: Lineage tree':
+            # Warn that we are visiting a frame that was never segm-checked
+            # on cell cycle analysis mode
+            msg = widgets.myMessageBox()
+            txt = html_utils.paragraph(
+                'Segmentation and Tracking was <b>never checked from '
+                f'frame {posData.frame_i+1} onwards</b>.<br><br>'
+                'To ensure correct lineage tree analysis you have to '
+                'first visit the frames after '
+                f'{posData.frame_i+1} with "Segmentation and Tracking" mode.'
+            )
+            warn_cca = msg.critical(#???
+                self, 'Never checked segmentation on requested frame', txt                    
+            )
+            proceed_cca = False
+            return proceed_cca, never_visited
+        
+        # Requested frame was never visited before. Load from HDD
+        posData.lab = self.get_labels()
+        posData.rp = skimage.measure.regionprops(posData.lab)
+        self.setManualBackgroundLab()
+        if posData.acdc_df is not None and not lin_tree:
+            frames = posData.acdc_df.index.get_level_values(0)
+            if posData.frame_i in frames:
+                # Since there was already segmentation metadata from
+                # previous closed session add it to current metadata
+                df = posData.acdc_df.loc[posData.frame_i].copy()
+                binnedIDs_df = df[df['is_cell_excluded']>0]
+                binnedIDs = set(binnedIDs_df.index).union(posData.binnedIDs) # ???
+                posData.binnedIDs = binnedIDs
+                ripIDs_df = df[df['is_cell_dead']>0]
+                ripIDs = set(ripIDs_df.index).union(posData.ripIDs) # ???
+                posData.ripIDs = ripIDs
+                posData.editID_info.extend(self._get_editID_info(df))
+                # Load cca df into current metadata
+                if 'cell_cycle_stage' in df.columns:
+                    if any(df['cell_cycle_stage'].isna()):
+                        if 'is_history_known' not in df.columns:
+                            df['is_history_known'] = True
+                        if 'corrected_assignment' not in df.columns:
+                            df['corrected_assignment'] = True
+                        df = df.drop(columns=self.cca_df_colnames)
+                    else:
+                        # Convert to ints since there were NaN
+                        cols = self.cca_df_int_cols
+                        df[cols] = df[cols].astype(int)
+
+                i = posData.frame_i
+                posData.allData_li[i]['acdc_df'] = df.copy()
+        
+        if self.lineage_tree and self.lineage_tree.frames_for_dfs and lin_tree:
+            if posData.frame_i in self.lineage_tree.frames_for_dfs:
+                df = self.lineage_tree.export_df(posData.frame_i)
+                # df = posData.acdc_df.loc[posData.frame_i].copy()
+                binnedIDs_df = df[df['is_cell_excluded']>0]
+                binnedIDs = set(binnedIDs_df.index).union(posData.binnedIDs) # ???
+                posData.binnedIDs = binnedIDs
+                ripIDs_df = df[df['is_cell_dead']>0]
+                ripIDs = set(ripIDs_df.index).union(posData.ripIDs) # ???
+                posData.ripIDs = ripIDs
+                posData.editID_info.extend(self._get_editID_info(df))
+                if 'generation_num_tree' in df.columns: # may need to change this, not exactly sure how df is initialized 
+                    if any(df['generation_num_tree'].isna()):
+                        copy_lin_tree_df_colnames = self.lin_tree_df_colnames.copy()
+                        sister_col_names = [col for col in df.columns if col.startswith('sister_ID_tree')]
+                        copy_lin_tree_df_colnames.update(sister_col_names)
+                        lin_tree_colnames = list(copy_lin_tree_df_colnames)
+                        df = df.drop(labels=lin_tree_colnames, axis=1)
+                    else:
+                        # Convert to ints since there were NaN
+                        cols = self.lin_tree_df_int_cols
+                        df[cols] = df[cols].astype(int)
+
+                i = posData.frame_i
+                raise NotImplementedError('Need to implement this')
+                self.lineage_tree.lineage_list[i] = df.copy() #!!!
+
+        if not lin_tree:
+            self.get_cca_df()
+        else:
+            self.get_lin_tree_df()
+        
+        return proceed_cca, never_visited
+    
+    def _get_data_visited(self, posData, lin_tree=False, debug=False):        
+        # Requested frame was already visited. Load from RAM.
+        never_visited = False
+        posData.lab = self.get_labels(from_store=True)
+        posData.rp = skimage.measure.regionprops(posData.lab)
+        if not lin_tree:
+            df = posData.allData_li[posData.frame_i]['acdc_df']
+            try:
+                binnedIDs_df = df[df['is_cell_excluded']>0]
+            except Exception as err:
+                df = myutils.fix_acdc_df_dtypes(df)
+                binnedIDs_df = df[df['is_cell_excluded']>0]
+            posData.binnedIDs = set(binnedIDs_df.index)
+            ripIDs_df = df[df['is_cell_dead']>0]
+            posData.ripIDs = set(ripIDs_df.index)
+            posData.editID_info = self._get_editID_info(df)
+            self.setManualBackgroundLab(load_from_store=True, debug=debug)
+        elif not self.lineage_tree:
+            self.lineage_tree = normal_division_lineage_tree(lab = posData.allData_li[0]['labels'])
+            df_li = [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))]
+            self.lineage_tree.load_lineage_df_list(df_li)
+        
+        if not lin_tree:
+            self.get_cca_df()
+        else:
+            self.get_lin_tree_df()
+        
+        return True, never_visited
+    
     @get_data_exception_handler
-    def get_data(self, debug=False, lin_tree=False): # done go thru w/ F again
+    def get_data(self, debug=False, lin_tree=False): 
         posData = self.data[self.pos_i]
         proceed_cca = True
+        never_visited = False
         if posData.frame_i > 2:
             # Remove undo states from 4 frames back to avoid memory issues
             posData.UndoRedoStates[posData.frame_i-4] = []
@@ -18438,132 +18577,16 @@ class guiWin(QMainWindow):
         self.UndoCount = 0
         # If stored labels is None then it is the first time we visit this frame
         if posData.allData_li[posData.frame_i]['labels'] is None:
-            posData.editID_info = []
-            never_visited = True
-            if str(self.modeComboBox.currentText()) == 'Cell cycle analysis':
-                # Warn that we are visiting a frame that was never segm-checked
-                # on cell cycle analysis mode
-                msg = widgets.myMessageBox()
-                txt = html_utils.paragraph(
-                    'Segmentation and Tracking was <b>never checked from '
-                    f'frame {posData.frame_i+1} onwards</b>.<br><br>'
-                    'To ensure correct cell cell cycle analysis you have to '
-                    'first visit the frames after '
-                    f'{posData.frame_i+1} with "Segmentation and Tracking" mode.'
-                )
-                warn_cca = msg.critical(
-                    self, 'Never checked segmentation on requested frame', txt                    
-                )
-                proceed_cca = False
+            proceed_cca, never_visited =  self._get_data_unvisited(
+                posData, lin_tree=lin_tree
+            )
+            if not proceed_cca:
                 return proceed_cca, never_visited
-
-            elif str(self.modeComboBox.currentText()) == 'Normal division: Lineage tree':
-                # Warn that we are visiting a frame that was never segm-checked
-                # on cell cycle analysis mode
-                msg = widgets.myMessageBox()
-                txt = html_utils.paragraph(
-                    'Segmentation and Tracking was <b>never checked from '
-                    f'frame {posData.frame_i+1} onwards</b>.<br><br>'
-                    'To ensure correct lineage tree analysis you have to '
-                    'first visit the frames after '
-                    f'{posData.frame_i+1} with "Segmentation and Tracking" mode.'
-                )
-                warn_cca = msg.critical(#???
-                    self, 'Never checked segmentation on requested frame', txt                    
-                )
-                proceed_cca = False
-                return proceed_cca, never_visited
-            # Requested frame was never visited before. Load from HDD
-            posData.lab = self.get_labels()
-            posData.rp = skimage.measure.regionprops(posData.lab)
-            self.setManualBackgroundLab()
-            if posData.acdc_df is not None and not lin_tree:
-                frames = posData.acdc_df.index.get_level_values(0)
-                if posData.frame_i in frames:
-                    # Since there was already segmentation metadata from
-                    # previous closed session add it to current metadata
-                    df = posData.acdc_df.loc[posData.frame_i].copy()
-                    binnedIDs_df = df[df['is_cell_excluded']>0]
-                    binnedIDs = set(binnedIDs_df.index).union(posData.binnedIDs) # ???
-                    posData.binnedIDs = binnedIDs
-                    ripIDs_df = df[df['is_cell_dead']>0]
-                    ripIDs = set(ripIDs_df.index).union(posData.ripIDs) # ???
-                    posData.ripIDs = ripIDs
-                    posData.editID_info.extend(self._get_editID_info(df))
-                    # Load cca df into current metadata
-                    if 'cell_cycle_stage' in df.columns:
-                        if any(df['cell_cycle_stage'].isna()):
-                            if 'is_history_known' not in df.columns:
-                                df['is_history_known'] = True
-                            if 'corrected_assignment' not in df.columns:
-                                df['corrected_assignment'] = True
-                            df = df.drop(columns=self.cca_df_colnames)
-                        else:
-                            # Convert to ints since there were NaN
-                            cols = self.cca_df_int_cols
-                            df[cols] = df[cols].astype(int)
-
-                    i = posData.frame_i
-                    posData.allData_li[i]['acdc_df'] = df.copy()
-
-            if self.lineage_tree and self.lineage_tree.frames_for_dfs and lin_tree:
-                if posData.frame_i in self.lineage_tree.frames_for_dfs:
-                    df = self.lineage_tree.export_df(posData.frame_i)
-                    # df = posData.acdc_df.loc[posData.frame_i].copy()
-                    binnedIDs_df = df[df['is_cell_excluded']>0]
-                    binnedIDs = set(binnedIDs_df.index).union(posData.binnedIDs) # ???
-                    posData.binnedIDs = binnedIDs
-                    ripIDs_df = df[df['is_cell_dead']>0]
-                    ripIDs = set(ripIDs_df.index).union(posData.ripIDs) # ???
-                    posData.ripIDs = ripIDs
-                    posData.editID_info.extend(self._get_editID_info(df))
-                    if 'generation_num_tree' in df.columns: # may need to change this, not exactly sure how df is initialized 
-                        if any(df['generation_num_tree'].isna()):
-                            copy_lin_tree_df_colnames = self.lin_tree_df_colnames.copy()
-                            sister_col_names = [col for col in df.columns if col.startswith('sister_ID_tree')]
-                            copy_lin_tree_df_colnames.update(sister_col_names)
-                            lin_tree_colnames = list(copy_lin_tree_df_colnames)
-                            df = df.drop(labels=lin_tree_colnames, axis=1)
-                        else:
-                            # Convert to ints since there were NaN
-                            cols = self.lin_tree_df_int_cols
-                            df[cols] = df[cols].astype(int)
-
-                    i = posData.frame_i
-                    raise NotImplementedError('Need to implement this')
-                    self.lineage_tree.lineage_list[i] = df.copy() #!!!
-
-            if not lin_tree:
-                self.get_cca_df()
-            else:
-                self.get_lin_tree_df()
         else:
-            # Requested frame was already visited. Load from RAM.
-            never_visited = False
-            posData.lab = self.get_labels(from_store=True)
-            posData.rp = skimage.measure.regionprops(posData.lab)
-            if not lin_tree:
-                df = posData.allData_li[posData.frame_i]['acdc_df']
-                try:
-                    binnedIDs_df = df[df['is_cell_excluded']>0]
-                except Exception as err:
-                    df = myutils.fix_acdc_df_dtypes(df)
-                    binnedIDs_df = df[df['is_cell_excluded']>0]
-                posData.binnedIDs = set(binnedIDs_df.index)
-                ripIDs_df = df[df['is_cell_dead']>0]
-                posData.ripIDs = set(ripIDs_df.index)
-                posData.editID_info = self._get_editID_info(df)
-                self.setManualBackgroundLab(load_from_store=True, debug=debug)
-            elif not self.lineage_tree:
-                self.lineage_tree = normal_division_lineage_tree(lab = posData.allData_li[0]['labels'])
-                df_li = [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))]
-                self.lineage_tree.load_lineage_df_list(df_li)
-
-            if not lin_tree:
-                self.get_cca_df()
-            else:
-                self.get_lin_tree_df()
-
+            proceed_cca, never_visited = self._get_data_visited(
+                posData, lin_tree=lin_tree
+            )
+        
         self.update_rp_metadata(draw=False)
         posData.IDs = [obj.label for obj in posData.rp]
         posData.IDs_idxs = {
@@ -18775,11 +18798,19 @@ class guiWin(QMainWindow):
                 Do you want to restart cell cycle analysis from frame
                 {last_cca_frame_i+1}?<br>
             """)
-            goTo_last_annotated_frame_i = msg.question(
+            yesButton, noButton, _ = msg.question(
                 self, 'Go to last annotated frame?', txt, 
                 buttonsTexts=('Yes', 'No', 'Cancel')
-            )[0]
-            if goTo_last_annotated_frame_i == msg.clickedButton:
+            )
+            if msg.cancel:
+                msg = 'Cell cycle analysis aborted.'
+                self.logger.info(msg)
+                self.titleLabel.setText(msg, color=self.titleColor)
+                self.modeComboBox.setCurrentText(defaultMode)
+                proceed = False
+                return
+            
+            if msg.clickedButton == yesButton:
                 msg = 'Looking good!'
                 self.titleLabel.setText(msg, color=self.titleColor)
                 self.last_cca_frame_i = last_cca_frame_i
@@ -18787,13 +18818,6 @@ class guiWin(QMainWindow):
                 self.get_data()
                 self.updateAllImages(updateFilters=True)
                 self.updateScrollbars()
-            elif msg.cancel:
-                msg = 'Cell cycle analysis aborted.'
-                self.logger.info(msg)
-                self.titleLabel.setText(msg, color=self.titleColor)
-                self.modeComboBox.setCurrentText(defaultMode)
-                proceed = False
-                return
         else:
             self.get_data()
 
