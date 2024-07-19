@@ -80,7 +80,7 @@ from . import _core
 from . import types
 from . import plot
 from . import urls
-from .regex import float_regex
+from .acdc_regex import float_regex
 
 POSITIVE_FLOAT_REGEX = float_regex(allow_negative=False)
 PRE_PROCESSING_STEPS = [
@@ -10516,6 +10516,13 @@ class QDialogModelParams(QDialog):
             except Exception as err:
                 pass
             
+            isFolderPath = False
+            try:
+                if isinstance(ArgSpec.type(), types.FolderPath):
+                    isFolderPath = True
+            except Exception as err:
+                pass
+            
             isCustomWidget = hasattr(ArgSpec.type, 'isWidget')
             
             if isCustomWidget:
@@ -10532,6 +10539,14 @@ class QDialogModelParams(QDialog):
                 valueGetter = widgets.VectorLineEdit.value
                 widget = vectorLineEdit
                 groupBoxLayout.addWidget(vectorLineEdit, row, 1, 1, 2)
+            elif isFolderPath:
+                folderPathControl = widgets.FolderPathControl()
+                folderPathControl.setText(str(ArgSpec.default))
+                widget = folderPathControl
+                defaultVal = str(ArgSpec.default)
+                valueSetter = widgets.FolderPathControl.setText
+                valueGetter = widgets.FolderPathControl.path
+                groupBoxLayout.addWidget(folderPathControl, row, 1, 1, 2)
             elif ArgSpec.type == bool:
                 booleanGroup = QButtonGroup()
                 booleanGroup.setExclusive(True)

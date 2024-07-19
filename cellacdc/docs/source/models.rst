@@ -5,24 +5,15 @@ Models for automatic segmentation and tracking
 
 Cell-ACDC has several models which can be used for segmentation of your data, as well as tracking of objects. Using the Segmentation module, or directly in the GUI, these models can be accessed. 
 
-Preinstalled models
--------------------
+Available models
+----------------
 
-The two most important models are:
-    * `YeaZ <https://www.nature.com/articles/s41467-020-19557-4>`__
-    * `Cellpose <https://www.nature.com/articles/s41592-020-01018-x>`__
+Each model has its own strengths and weaknesses, so make sure to try out 
+different models to find the right fit for you. 
 
-This does not mean that you should ignore the other models already included! Each model has its own strengths and weaknesses, so make sure to try out different models to find the right fit for you. Give the corresponding publications a read for further information:
+Give the corresponding publications a read for further information:
 
-* `Segment Anything Model    (SAM) <https://github.com/facebookresearch/segment-anything>`__
-* `StarDist <https://github.com/stardist/stardist>`__
-* `YeastMate <https://github.com/hoerlteam/YeastMate>`__
-* `Omnipose <https://omnipose.readthedocs.io/>`__
-* `Delta <https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1009797>`__
-* `DeepSea <https://doi.org/10.1016/j.crmeth.2023.100500>`__
-* `TAPIR <https://deepmind-tapir.github.io/>`__
-* `Bayesian tracker (btrack) <https://doi.org/10.3389/fcomp.2021.734559>`__
-* `Trackpy <https://soft-matter.github.io/trackpy/dev/introduction.html#citing-trackpy>`__
+.. include:: _models_list.rst
 
 YeaZ
 ~~~~

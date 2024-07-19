@@ -13,6 +13,7 @@ import skimage.color
 import skimage.filters
 import skimage.segmentation
 import scipy.ndimage.morphology
+from itertools import product
 
 from math import sqrt
 from scipy.stats import norm
@@ -2338,28 +2339,28 @@ def filter_segm_objs_from_table_coords(lab, df):
     return filtered_lab
 
 def tracker_track(
-        video_to_track, tracker, track_params, intensity_img=None,
+        segm_data, tracker, track_params, intensity_img=None,
         logger_func=print
     ):
-    if intensity_img is not None:
+    args_to_try = ((intensity_img, ), tuple())
+    kwargs_to_remove = ('', 'signals')
+    for args, kwarg_to_remove in product(args_to_try, kwargs_to_remove):
+        kwargs = track_params.copy()
+        kwargs.pop(kwarg_to_remove, None)
         try:
-            tracked_video = tracker.track(
-                video_to_track, intensity_img, **track_params
-            )
-        except TypeError:
-            # User accidentally loaded image data but the tracker doesn't
-            # need it
-            logger_func(
-                'Image data is not required by this tracker, ignoring it...'
-            )
-            tracked_video = tracker.track(
-                video_to_track, **track_params
-            )
-    else:
-        tracked_video = tracker.track(
-            video_to_track, **track_params
-        )
-    return tracked_video
+            tracked_video = tracker.track(segm_data, *args, **kwargs)
+            return tracked_video
+        except Exception as err:
+            is_unexpected_kwarg = (str(err).find(
+                "got an unexpected keyword argument 'signals'"
+            ) != -1)
+            is_missing_arg = (str(err).find(
+                "missing 1 required positional argument:"
+            ) != -1)
+            if is_unexpected_kwarg or is_missing_arg:
+                continue
+            else:
+                raise err
 
 def _relabel_sequential(segm_data):
     relabelled, fw, inv = skimage.segmentation.relabel_sequential(segm_data)

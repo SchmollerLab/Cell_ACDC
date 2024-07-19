@@ -65,7 +65,7 @@ from . import apps
 from . import plot
 from . import annotate
 from . import urls
-from .regex import float_regex
+from .acdc_regex import float_regex
 from .config import PREPROCESS_MAPPER
 
 LINEEDIT_WARNING_STYLESHEET = _palettes.lineedit_warning_stylesheet()
@@ -1468,7 +1468,6 @@ class ExpandableListBox(QComboBox):
     def showPopup(self) -> None:
         self.listW.show()
 
-
 class filePathControl(QFrame):
     def __init__(
             self, parent=None, browseFolder=False, 
@@ -1512,6 +1511,14 @@ class filePathControl(QFrame):
     def showEvent(self, a0: QShowEvent) -> None:
         self.le.setFixedHeight(self.browseButton.height())
         return super().showEvent(a0)
+
+class FolderPathControl(filePathControl):
+    def __init__(self, **kwargs):
+        super().__init__(
+            browseFolder=True, 
+            fileManagerTitle='Select folder', 
+            **kwargs
+        )
 
 class QHWidgetSpacer(QWidget):
     def __init__(self, width=10, parent=None) -> None:

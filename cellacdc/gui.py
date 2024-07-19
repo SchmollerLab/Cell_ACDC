@@ -18622,14 +18622,10 @@ class guiWin(QMainWindow):
                 posData.cca_df.at[ID, col] = val
         self.store_cca_df()
 
-    def getBaseCca_df(self): # may refactor in fututre
-        # posData = self.data[self.pos_i]
-        # IDs = [obj.label for obj in posData.rp]
-        # cca_df = core.getBaseCca_df(IDs, with_tree_cols=True)
-        # return cca_df
+    def getBaseCca_df(self, with_tree_cols=False): 
         posData = self.data[self.pos_i]
         IDs = [obj.label for obj in posData.rp]
-        cca_df = core.getBaseCca_df(IDs)
+        cca_df = core.getBaseCca_df(IDs, with_tree_cols=with_tree_cols)
         return cca_df
     
     def get_last_tracked_i(self):
@@ -19218,8 +19214,17 @@ class guiWin(QMainWindow):
         
         acdc_df = posData.allData_li[i]['acdc_df']
         if acdc_df is None:
+            current_frame_i = None
+            if frame_i is not None and frame_i != posData.frame_i:
+                current_frame_i = posData.frame_i
+                posData.frame_i = frame_i
+                self.get_data()
             self.store_data()
             acdc_df = posData.allData_li[i]['acdc_df']
+            if current_frame_i is not None:
+                # Back to current frame
+                posData.frame_i = current_frame_i
+                self.get_data(debug=False)
         
         if 'cell_cycle_stage' in acdc_df.columns:
             # Cell cycle info already present --> overwrite with new
