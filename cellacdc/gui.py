@@ -9498,18 +9498,20 @@ class guiWin(QMainWindow):
             # We do not allow undoing division annotation on first frame
             return
 
-        ccs_relID = posData.cca_df.at[relID, 'cell_cycle_stage']
+        if clicked_ccs == 'G1':
+            issue_frame_i = self.checkDivisionCanBeUndone(ID, relID)
+            if issue_frame_i is not None:
+                _warnings.warnDivisionAnnotationCannotBeUndone(
+                    ID, relID, issue_frame_i, qparent=self
+                )
+                return
+        
         if clicked_ccs == 'S':
-            store = self.annotateDivision(posData.cca_df, ID, relID)
+            self.annotateDivision(posData.cca_df, ID, relID)
             self.store_cca_df()
         else:
-            store = self.undoDivisionAnnotation(posData.cca_df, ID, relID)
+            self.undoDivisionAnnotation(posData.cca_df, ID, relID)
             self.store_cca_df()
-
-        obj_idx = posData.IDs.index(ID)
-        relObj_idx = posData.IDs.index(relID)
-        rp_ID = posData.rp[obj_idx]
-        rp_relID = posData.rp[relObj_idx]
 
         # Update cell cycle info LabelItems
         self.ax1_newMothBudLinesItem.setData([], [])
@@ -9534,32 +9536,31 @@ class guiWin(QMainWindow):
             if ID not in IDs:
                 # For some reason ID disappeared from this frame
                 continue
+
+            ccs = cca_df_i.at[ID, 'cell_cycle_stage']
+            relID = cca_df_i.at[ID, 'relative_ID']
+            if clicked_ccs == 'S':
+                if ccs == 'G1':
+                    # Cell is in G1 in the future again so stop annotating
+                    break
+                self.annotateDivision(cca_df_i, ID, relID)
+                self.store_cca_df(
+                    frame_i=future_i, cca_df=cca_df_i, autosave=False
+                )
+            elif ccs == 'S':
+                # Cell is in S in the future again so stop undoing (break)
+                # also leave a 1 frame duration G1 to avoid a continuous
+                # S phase
+                self.annotateDivision(cca_df_i, ID, relID)
+                self.store_cca_df(
+                    frame_i=future_i, cca_df=cca_df_i, autosave=False
+                )
+                break
             else:
-                ccs = cca_df_i.at[ID, 'cell_cycle_stage']
-                relID = cca_df_i.at[ID, 'relative_ID']
-                ccs_relID = cca_df_i.at[relID, 'cell_cycle_stage']
-                if clicked_ccs == 'S':
-                    if ccs == 'G1':
-                        # Cell is in G1 in the future again so stop annotating
-                        break
-                    self.annotateDivision(cca_df_i, ID, relID)
-                    self.store_cca_df(
-                        frame_i=future_i, cca_df=cca_df_i, autosave=False
-                    )
-                else:
-                    if ccs == 'S':
-                        # Cell is in S in the future again so stop undoing (break)
-                        # also leave a 1 frame duration G1 to avoid a continuous
-                        # S phase
-                        self.annotateDivision(cca_df_i, ID, relID)
-                        self.store_cca_df(
-                            frame_i=future_i, cca_df=cca_df_i, autosave=False
-                        )
-                        break
-                    self.undoDivisionAnnotation(cca_df_i, ID, relID)
-                    self.store_cca_df(
-                        frame_i=future_i, cca_df=cca_df_i, autosave=False
-                    )
+                self.undoDivisionAnnotation(cca_df_i, ID, relID)
+                self.store_cca_df(
+                    frame_i=future_i, cca_df=cca_df_i, autosave=False
+                )
         
         # Correct past frames
         for past_i in range(posData.frame_i-1, -1, -1):
@@ -9571,7 +9572,6 @@ class guiWin(QMainWindow):
             self.storeUndoRedoCca(past_i, cca_df_i, undoId)
             ccs = cca_df_i.at[ID, 'cell_cycle_stage']
             relID = cca_df_i.at[ID, 'relative_ID']
-            ccs_relID = cca_df_i.at[relID, 'cell_cycle_stage']
             if ccs == 'S':
                 # We correct only those frames in which the ID was in 'G1'
                 break
@@ -9767,6 +9767,54 @@ class guiWin(QMainWindow):
                 '[WARNING]: checking if mother cell is excluded or dead failed.'
             )
             self.logger.info('^'*60)
+    
+    def checkDivisionCanBeUndone(self, ID, relID):
+        """Check that division annotation can be undone (see Notes section)
+
+        Parameters
+        ----------
+        ID : int
+            Cell ID of the clicked cell in G1
+        relID : _type_
+            Relative ID of the cell that was clicked
+        
+        Notes
+        -----
+        Division annotation can be undone only if `relID` is also in G1 for the
+        entire duration of the correction
+        """        
+        posData = self.data[self.pos_i]
+        
+        ccs_relID = posData.cca_df.at[relID, 'cell_cycle_stage']
+        if ccs_relID == 'S':
+            return posData.frame_i
+        
+        # Check future frames
+        for future_i in range(posData.frame_i+1, posData.SizeT):
+            cca_df_i = self.get_cca_df(frame_i=future_i, return_df=True)
+            if cca_df_i is None:
+                # ith frame was not visited yet
+                break 
+            
+            ccs_relID = cca_df_i.at[relID, 'cell_cycle_stage']
+            if ccs_relID == 'S':
+                return future_i
+        
+        # Check past frames
+        for past_i in range(posData.frame_i-1, -1, -1):
+            cca_df_i = self.get_cca_df(frame_i=past_i, return_df=True)
+            if ID not in cca_df_i.index or relID not in cca_df_i.index:
+                # Bud did not exist at frame_i = i
+                break
+            
+            ccs = cca_df_i.at[ID, 'cell_cycle_stage']
+            if ccs == 'S':
+                break
+            
+            ccs_relID = cca_df_i.at[relID, 'cell_cycle_stage']
+            if ccs_relID == 'S':
+                return future_i           
+            
     
     def stopBlinkingPairItem(self):
         self.ax1_newMothBudLinesItem.setOpacity(1.0)
