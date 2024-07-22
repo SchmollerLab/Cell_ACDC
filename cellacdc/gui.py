@@ -15642,6 +15642,7 @@ class guiWin(QMainWindow):
                 self.setAllTextAnnotations()
                 return
             
+            self.store_zslices_rp()
             self.resetExpandLabel()
             self.updateAllImages(updateFilters=True)
             self.updateViewerWindow()
@@ -17618,6 +17619,7 @@ class guiWin(QMainWindow):
         posData.allData_li[posData.frame_i]['IDs_idxs'] = (
             posData.IDs_idxs.copy()
         )
+        self.store_zslices_rp()
 
         # Store dynamic metadata
         is_cell_dead_li = [False]*len(posData.rp)
@@ -18638,6 +18640,7 @@ class guiWin(QMainWindow):
         posData.IDs_idxs = {
             ID:i for ID, i in zip(posData.IDs, range(len(posData.IDs)))
         }
+        self.get_zslices_rp()
         self.pointsLayerDfsToData(posData)
         return proceed_cca, never_visited
 
@@ -19583,6 +19586,24 @@ class guiWin(QMainWindow):
         objOpts = self.getObjTextAnnotOpts(obj, 'Draw only IDs', ax=1)
         return objOpts
 
+    def store_zslices_rp(self, force_update=False):
+        if not self.isSegm3D:
+            return
+        
+        posData = self.data[self.pos_i]        
+        are_zslices_rp_stored = (
+            posData.allData_li[posData.frame_i].get('z_slices_rp') is not None
+        )
+        if force_update or not are_zslices_rp_stored:
+            self._update_zslices_rp()
+        
+        posData.allData_li[posData.frame_i]['z_slices_rp'] = posData.zSlicesRp
+    
+    def get_zslices_rp(self):
+        posData = self.data[self.pos_i]
+        self.store_zslices_rp()
+        posData.zSlicesRp = posData.allData_li[posData.frame_i]['z_slices_rp']
+    
     # @exec_time
     def _update_zslices_rp(self):
         if not self.isSegm3D:
@@ -19608,7 +19629,7 @@ class guiWin(QMainWindow):
             posData.IDs = IDs
             posData.IDs_idxs = IDs_idxs
         self.update_rp_metadata(draw=draw)        
-        self._update_zslices_rp()
+        self.store_zslices_rp(force_update=True)
 
     def extendLabelsLUT(self, lenNewLut):
         posData = self.data[self.pos_i]

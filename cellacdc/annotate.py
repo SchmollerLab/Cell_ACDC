@@ -550,6 +550,7 @@ class TextAnnotations:
                 pass
                 
             pos = (int(xc), int(yc))
+            
             objData = self.item.addObjAnnot(pos, draw=False, **objOpts)
             objData['data'] = obj.label
             self.item.appendData(objData, objOpts['text'])
