@@ -18976,21 +18976,12 @@ class guiWin(QMainWindow):
             self.get_lin_tree_df()
         return proceed
      
-    def resetCcaFuture(self, from_frame_i):
-        posData = self.data[self.pos_i]
-        for frame_i in range(from_frame_i, from_frame_i-2, -1):
-            if frame_i < 0:
-                return 0, None
-            
-            if from_frame_i == posData.frame_i:
-                cca_df = posData.cca_df
-            else:
-                cca_df = self.get_cca_df(frame_i=from_frame_i, return_df=True)
-            if cca_df is not None:
-                return frame_i, cca_df
+    def isCcaCheckerChecking(self):
+        if not self.ccaCheckerRunning:
+            return False
         
-        return from_frame_i, None 
-    
+        return self.ccaIntegrityCheckerWorker.isChecking
+     
     def getConcatCcaDf(self):
         posData = self.data[self.pos_i]
         cca_dfs = []
@@ -19029,12 +19020,24 @@ class guiWin(QMainWindow):
         global_cca_df = load._fix_will_divide(global_cca_df)
         self.storeFromConcatCcaDf(global_cca_df)
     
+    def ccaCheckerStopChecking(self):
+        if not self.ccaCheckerRunning:
+            return
+        
+        self.ccaIntegrityCheckerWorker.clearQueue()
+        
+        if self.ccaIntegrityCheckerWorker.isChecking:
+            self.ccaIntegrityCheckerWorker.abortChecking = True
+    
     def resetCcaFuture(self, from_frame_i):
         posData = self.data[self.pos_i]
         self.last_cca_frame_i = from_frame_i-1
+        self.ccaCheckerStopChecking()
+            
         self.setNavigateScrollBarMaximum() 
         for i in range(from_frame_i, posData.SizeT):
             posData.allData_li[i].pop('cca_df', None)
+            posData.allData_li[i].pop('cca_df_checker', None)
             
             df = posData.allData_li[i]['acdc_df']
             if df is None:
@@ -19054,7 +19057,7 @@ class guiWin(QMainWindow):
                 posData.acdc_df = posData.acdc_df.loc[:from_frame_i]
         
         self.resetWillDivideInfo()
-
+    
     def resetFutureCcaColCurrentFrame(self):
         posData = self.data[self.pos_i]
         

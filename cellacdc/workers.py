@@ -4629,6 +4629,9 @@ class CcaIntegrityCheckerWorker(QObject):
             self.abortChecking = False
             self.waitCond.wakeAll()
     
+    def clearQueue(self):
+        self.dataQ.clear()
+    
     def _stop(self):
         self.exit = True
         self.waitCond.wakeAll()
@@ -4850,7 +4853,6 @@ class CcaIntegrityCheckerWorker(QObject):
                 break
             
             cca_df = data_dict.get('cca_df_checker')
-            printl(frame_i, cca_df)
             if cca_df is None:
                 # There are no annotations at frame_i --> stop
                 break
