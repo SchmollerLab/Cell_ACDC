@@ -18047,8 +18047,6 @@ class guiWin(QMainWindow):
         except Exception as err:
             IDsCellsG1 = set()
         
-        printl(IDsCellsG1, isLastVisitedAgain)
-        
         if isLastVisitedAgain or enforceAll:
             # If we are repeating auto cca for last visited frame
             # then we also add the cells in G1 that appears in current frame
