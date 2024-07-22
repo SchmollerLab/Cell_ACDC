@@ -19600,6 +19600,9 @@ class guiWin(QMainWindow):
         posData.allData_li[posData.frame_i]['z_slices_rp'] = posData.zSlicesRp
     
     def get_zslices_rp(self):
+        if not self.isSegm3D:
+            return
+        
         posData = self.data[self.pos_i]
         self.store_zslices_rp()
         posData.zSlicesRp = posData.allData_li[posData.frame_i]['z_slices_rp']
