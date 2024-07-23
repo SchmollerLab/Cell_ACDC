@@ -1875,7 +1875,7 @@ def to_tiff(
         TimeIncrement=None
     ):
     if data.dtype != np.uint8 and data.dtype != np.uint16:
-        data = scale_float(data)
+        data = scale_float(data, force_dtype=np.uint16)
         data = skimage.img_as_uint(data)
     
     metadata = get_tiff_metadata(
@@ -2139,7 +2139,7 @@ def to_relative_path(path, levels=3, prefix='...'):
         rel_path = f'{prefix}{os.sep}{rel_path}'
     return rel_path
 
-def img_to_float(img):
+def img_to_float(img, force_dtype=None):
     input_img_dtype = img.dtype
     value = img[(0,) * img.ndim]
     img_max = np.max(img)
@@ -2153,7 +2153,10 @@ def img_to_float(img):
     
     img = img.astype(float)
     
-    if input_img_dtype == np.uint8:
+    if force_dtype is not None:
+        dtype_max = np.iinfo(force_dtype).max
+        img = img/dtype_max
+    elif input_img_dtype == np.uint8:
         # Input image is 8-bit
         img = img/uint8_max
     elif input_img_dtype == np.uint16:
@@ -2214,10 +2217,10 @@ def float_img_to_dtype(img, dtype):
         'Valid output data types are `np.uin8` and `np.uint16`'
     )
 
-def scale_float(data):
+def scale_float(data, force_dtype=None):
     val = data[tuple([0]*data.ndim)]
     if isinstance(val, (np.floating, float)):
-        data = img_to_float(data)
+        data = img_to_float(data, force_dtype=force_dtype)
     return data
 
 def _install_homebrew_command():
