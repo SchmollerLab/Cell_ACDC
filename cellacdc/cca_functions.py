@@ -427,7 +427,9 @@ def _load_channels_data(file_dir, channel_names, no_of_aligned_files):
     else:
         for channel in channel_names:
             try:
-                ch_not_aligned_path = glob.glob(os.path.join(f'{file_dir}', f'*{channel}*'))[0]
+                ch_not_aligned_path = (
+                    glob.glob(os.path.join(f'{file_dir}', f'*{channel}.tif'))[0]
+                )
                 channel_files.append(imread(ch_not_aligned_path))
             except IndexError:
                 print(f'Could not find any file for channel {channel}')
