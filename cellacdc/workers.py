@@ -689,7 +689,12 @@ class AutoSaveWorker(QObject):
         self.isSaving = False
     
     def _saveSegm(self, recovery_path, data):
-        if np.all(self.savedSegmData == data):
+        try:
+            equalToSavedSegm = np.all(self.savedSegmData == data)
+        except Exception as err:
+            return
+        
+        if equalToSavedSegm:
             return
         else:
             np.savez_compressed(recovery_path, np.squeeze(data))

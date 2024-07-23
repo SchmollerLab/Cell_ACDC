@@ -333,10 +333,11 @@ class relabelSequentialWorker(QObject):
     sigRemoveItemsGUI = Signal(int)
     debug = Signal(object)
 
-    def __init__(self, posData, mainWin):
+    def __init__(self, mainWin, posFoldernames):
         QObject.__init__(self)
         self.mainWin = mainWin
-        self.posData = posData
+        self.data = mainWin.data
+        self.posFoldernames = posFoldernames
         self.mutex = QMutex()
         self.waitCond = QWaitCondition()
 
@@ -351,53 +352,58 @@ class relabelSequentialWorker(QObject):
         self.mutex.lock()
 
         self.progress.emit('Relabelling process started...')
-
-        posData = self.posData
-        progressWin = self.mainWin.progressWin
         mainWin = self.mainWin
 
-        current_lab = self.mainWin.get_2Dlab(posData.lab).copy()
-        current_frame_i = posData.frame_i
-        segm_data = []
-        for frame_i, data_dict in enumerate(posData.allData_li):
-            lab = data_dict['labels']
-            if lab is None:
-                break
-            segm_data.append(lab)
-            # if frame_i == current_frame_i:
-            #     break
+        current_pos_i = mainWin.pos_i
+        
+        for p, posData in enumerate(self.data):
+            if posData.pos_foldername not in self.posFoldernames:
+                continue
+            
+            mainWin.pos_i = p
+            current_lab = mainWin.get_2Dlab(posData.lab).copy()
+            current_frame_i = posData.frame_i
+            segm_data = []
+            for frame_i, data_dict in enumerate(posData.allData_li):
+                lab = data_dict['labels']
+                if lab is None:
+                    break
+                segm_data.append(lab)
+                # if frame_i == current_frame_i:
+                #     break
 
-        if not segm_data:
-            segm_data = np.array([current_lab])
+            if not segm_data:
+                segm_data = np.array([current_lab])
 
-        segm_data = np.array(segm_data)
-        segm_data, oldIDs, newIDs = core.relabel_sequential(
-            segm_data, is_timelapse=posData.SizeT>1
-        )
-        self.progressNewIDs(oldIDs, newIDs)
-        self.sigRemoveItemsGUI.emit(np.max(segm_data))
+            segm_data = np.array(segm_data)
+            segm_data, oldIDs, newIDs = core.relabel_sequential(
+                segm_data, is_timelapse=posData.SizeT>1
+            )
+            self.progressNewIDs(oldIDs, newIDs)
+            self.sigRemoveItemsGUI.emit(np.max(segm_data))
 
-        self.progress.emit(
-            'Updating stored data and cell cycle annotations '
-            '(if present)...'
-        )
+            self.progress.emit(
+                'Updating stored data and cell cycle annotations '
+                '(if present)...'
+            )
 
-        mainWin.updateAnnotatedIDs(oldIDs, newIDs, logger=self.progress.emit)
-        mainWin.store_data(mainThread=False)
-
-        for frame_i, lab in enumerate(segm_data):
-            posData.frame_i = frame_i
-            posData.lab = lab
-            mainWin.get_cca_df()
-            if posData.cca_df is not None:
-                mainWin.update_cca_df_relabelling(
-                    posData, oldIDs, newIDs
-                )
-            mainWin.update_rp(draw=False)
+            mainWin.updateAnnotatedIDs(oldIDs, newIDs, logger=self.progress.emit)
             mainWin.store_data(mainThread=False)
 
+            for frame_i, lab in enumerate(segm_data):
+                posData.frame_i = frame_i
+                posData.lab = lab
+                mainWin.get_cca_df()
+                if posData.cca_df is not None:
+                    mainWin.update_cca_df_relabelling(
+                        posData, oldIDs, newIDs
+                    )
+                mainWin.update_rp(draw=False)
+                mainWin.store_data(mainThread=False)
 
         # Go back to current frame
+        mainWin.pos_i = current_pos_i
+        posData = self.data[mainWin.pos_i]
         posData.frame_i = current_frame_i
         mainWin.get_data()
 
@@ -8173,40 +8179,49 @@ class guiWin(QMainWindow):
                 self.textAnnot[ax].setPxMode(checked)
         
         self.updateAllImages()
-
+    
     def relabelSequentialCallback(self): 
         mode = str(self.modeComboBox.currentText())
         if mode == 'Viewer' or mode == 'Cell cycle analysis':
             self.startBlinkingModeCB()
             return
-        self.store_data()
+        
         posData = self.data[self.pos_i]
+        selectedPos = (posData.pos_foldername, )
+        if len(self.data) > 1:
+            selectedPos = self.askSelectPos(action='to process')
+            if selectedPos is None:
+                self.logger.info('Re-labelling process stopped.')
+                return
+        
+        self.store_data()
         # acdc_df_concat = self.getConcatAcdcDf()
         # load.store_unsaved_acdc_df(
         #     posData, acdc_df_concat, 
         #     log_func=self.logger.info
         # )
-        if posData.SizeT > 1:
-            self.progressWin = apps.QDialogWorkerProgress(
-                title='Re-labelling sequential', parent=self,
-                pbarDesc='Relabelling sequential...'
-            )
-            self.progressWin.show(self.app)
-            self.progressWin.mainPbar.setMaximum(0)
-            self.startRelabellingWorker(posData)
-        else:
-            self.storeUndoRedoStates(False)
-            posData.lab, oldIDs, newIDs = core.relabel_sequential(posData.lab)
-            # Update annotations based on relabelling
-            self.update_cca_df_relabelling(posData, oldIDs, newIDs)
-            self.updateAnnotatedIDs(oldIDs, newIDs, logger=self.logger.info)
-            self.store_data()
-            self.update_rp()
-            li = list(zip(oldIDs, newIDs))
-            s = '\n'.join([str(pair).replace(',', ' -->') for pair in li])
-            s = f'IDs relabelled as follows:\n{s}'
-            self.logger.info(s)
-            self.updateAllImages()
+        # if posData.SizeT > 1:
+        self.progressWin = apps.QDialogWorkerProgress(
+            title='Re-labelling sequential', parent=self,
+            pbarDesc='Relabelling sequential...'
+        )
+        self.progressWin.show(self.app)
+        self.progressWin.mainPbar.setMaximum(0)
+        self.startRelabellingWorker(selectedPos)
+        
+        # elif posData:
+        #     self.storeUndoRedoStates(False)
+        #     posData.lab, oldIDs, newIDs = core.relabel_sequential(posData.lab)
+        #     # Update annotations based on relabelling
+        #     self.update_cca_df_relabelling(posData, oldIDs, newIDs)
+        #     self.updateAnnotatedIDs(oldIDs, newIDs, logger=self.logger.info)
+        #     self.store_data()
+        #     self.update_rp()
+        #     li = list(zip(oldIDs, newIDs))
+        #     s = '\n'.join([str(pair).replace(',', ' -->') for pair in li])
+        #     s = f'IDs relabelled as follows:\n{s}'
+        #     self.logger.info(s)
+        #     self.updateAllImages()
     
     def updateAnnotatedIDs(self, oldIDs, newIDs, logger=print):
         logger('Updating annotated IDs...')
@@ -8488,9 +8503,9 @@ class guiWin(QMainWindow):
         self.thread.started.connect(self.trackingWorker.run)
         self.thread.start()
 
-    def startRelabellingWorker(self, posData):
+    def startRelabellingWorker(self, posFoldernames):
         self.thread = QThread()
-        self.worker = relabelSequentialWorker(posData, self)
+        self.worker = relabelSequentialWorker(self, posFoldernames)
         self.worker.moveToThread(self.thread)
         self.worker.finished.connect(self.thread.quit)
         self.worker.finished.connect(self.worker.deleteLater)
@@ -26025,7 +26040,7 @@ class guiWin(QMainWindow):
         save_metrics = msg.clickedButton == yesButton
         return save_metrics, msg.cancel
 
-    def askPosToSave(self):
+    def askSelectPos(self, action='to save'):
         last_pos = 1
         for p, posData in enumerate(self.data):
             acdc_df = posData.allData_li[0]['acdc_df']
@@ -26037,12 +26052,18 @@ class guiWin(QMainWindow):
 
         items = [posData.pos_foldername for posData in self.data]
         selectPosWin = widgets.QDialogListbox(
-            'Select Positions to save', 'Select Positions to save:\n',
+            f'Select Positions {action}', f'Select Positions {action}:\n',
             items, multiSelection=True, parent=self,
             preSelectedItems=items[:last_pos]
         )
         selectPosWin.exec_()
+        if selectPosWin.cancel:
+            return
+        
         return selectPosWin.selectedItemsText
+    
+    def askPosToSave(self):
+        return self.askSelectPos()
         
         last_posfoldername = self.data[last_pos-1].pos_foldername
         msg = widgets.myMessageBox(self)
