@@ -12948,13 +12948,11 @@ class guiWin(QMainWindow):
             return
        
         if ev.key() == Qt.Key_Q and self.debug:
-            from . import _debug
-            from .plot import imshow
+            # from . import _debug
             # _debug._debug_lineage_tree(self)
+            
             posData = self.data[self.pos_i]
-            printl(posData.cca_df.iloc[:, :9])
-            next_cca_df = self.get_cca_df(return_df=True, frame_i=posData.frame_i+1)
-            printl(next_cca_df.iloc[:, :9])
+            printl(posData.allData_li[posData.frame_i]['acdc_df'][['failed_cell_division']])
         
         if not self.isDataLoaded:
             self.logger.info(
@@ -14530,21 +14528,22 @@ class guiWin(QMainWindow):
         for button in buttons:
             annotatedIDs = self.customAnnotDict[button]['annotatedIDs'][self.pos_i]
             annotIDs_frame_i = annotatedIDs.get(posData.frame_i, [])
+            state = self.customAnnotDict[button]['state']
+            acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
             
             if button.isChecked() and ID > 0:
-                # Annotate only if existing ID and the button is checkedchecked
+                # Annotate only if existing ID and the button is checked
                 if ID in annotIDs_frame_i:
                     annotIDs_frame_i.remove(ID)
+                    acdc_df.at[ID, state['name']] = 0
                 elif ID != 0:
                     annotIDs_frame_i.append(ID)
-
+            
             annotPerButton = self.customAnnotDict[button]
             allAnnotedIDs = annotPerButton['annotatedIDs']
             posAnnotedIDs = allAnnotedIDs[self.pos_i]
             posAnnotedIDs[posData.frame_i] = annotIDs_frame_i
-
-            state = self.customAnnotDict[button]['state']
-            acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
+            
             if acdc_df is None:
                 self.store_data(autosave=False)
             acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
@@ -22968,7 +22967,7 @@ class guiWin(QMainWindow):
         )
         if isAutoPilotActive:
             self.pointsLayerAutoPilot('next')
-        else:
+        elif self.zSliceScrollBar.isVisible():
             self.zSliceScrollBar.triggerAction(
                 QAbstractSlider.SliderAction.SliderSingleStepAdd
             )
@@ -22980,7 +22979,7 @@ class guiWin(QMainWindow):
         )
         if isAutoPilotActive:
             self.pointsLayerAutoPilot('prev')
-        else:
+        elif self.zSliceScrollBar.isVisible():
             self.zSliceScrollBar.triggerAction(
                 QAbstractSlider.SliderAction.SliderSingleStepAdd
             )
