@@ -26064,27 +26064,6 @@ class guiWin(QMainWindow):
     
     def askPosToSave(self):
         return self.askSelectPos()
-        
-        last_posfoldername = self.data[last_pos-1].pos_foldername
-        msg = widgets.myMessageBox(self)
-        txt = html_utils.paragraph(f"""
-            Select Positions to save:<br>
-        """
-        )
-        msg.question(
-            self, 'Positions to save'
-        )
-        
-        msg.setWindowTitle('Save all positions?')
-        msg.setIcon(msg.Question)
-        
-        msg.setText(txt)
-        allPosbutton =  QPushButton('Save ALL positions')
-        upToLastButton = QPushButton(f'Save until {last_posfoldername}')
-        msg.addButton(allPosbutton, msg.YesRole)
-        msg.addButton(upToLastButton, msg.NoRole)
-        msg.exec_()
-        return msg.clickedButton() == allPosbutton, last_pos
 
     def saveMetricsCritical(self, traceback_format):
         print('\n====================================')
