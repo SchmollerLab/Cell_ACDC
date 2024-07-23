@@ -2305,6 +2305,15 @@ class guiWin(QMainWindow):
         
         self.modeToolBar = modeToolBar
         
+        self.autoPilotZoomToObjToolbar = widgets.ToolBar("Auto-zoom to objects", self)
+        self.autoPilotZoomToObjToolbar.setContextMenuPolicy(Qt.PreventContextMenu)
+        self.autoPilotZoomToObjToolbar.setMovable(False)
+        self.addToolBar(Qt.TopToolBarArea, self.autoPilotZoomToObjToolbar)
+        # self.autoPilotZoomToObjToolbar.setIconSize(QSize(16, 16))
+        self.autoPilotZoomToObjToolbar.setVisible(False)
+        self.autoPilotZoomToObjToolbar.keepVisibleWhenActive = True
+        self.controlToolBars.append(self.autoPilotZoomToObjToolbar)
+        
         # Widgets toolbar
         brushEraserToolBar = widgets.ToolBar("Widgets", self)
         self.addToolBar(Qt.TopToolBarArea, brushEraserToolBar)
@@ -2537,14 +2546,6 @@ class guiWin(QMainWindow):
 
         self.keptIDsLineEdit.sigIDsChanged.connect(self.updateKeepIDs)
         self.keepIDsConfirmAction.triggered.connect(self.applyKeepObjects)
-        
-        self.autoPilotZoomToObjToolbar = widgets.ToolBar("Auto-zoom to objects", self)
-        self.autoPilotZoomToObjToolbar.setContextMenuPolicy(Qt.PreventContextMenu)
-        self.addToolBar(Qt.TopToolBarArea, self.autoPilotZoomToObjToolbar)
-        # self.autoPilotZoomToObjToolbar.setIconSize(QSize(16, 16))
-        self.autoPilotZoomToObjToolbar.setVisible(False)
-        self.autoPilotZoomToObjToolbar.keepVisibleWhenActive = True
-        self.controlToolBars.append(self.autoPilotZoomToObjToolbar)
         
         # closeToolbarAction = QAction(
         #     QIcon(":cancelButton.svg"), "Close toolbar...", self
@@ -12940,7 +12941,7 @@ class guiWin(QMainWindow):
         self.setGeometry(left, top+10, width, height-200)
         
     @exception_handler
-    def keyPressEvent(self, ev):
+    def keyPressEvent(self, ev):        
         ctrl = ev.modifiers() == Qt.ControlModifier
         if ctrl and ev.key() == Qt.Key_D:
             self.resizeLeaveSpaceTerminalBelow()
@@ -12963,6 +12964,18 @@ class guiWin(QMainWindow):
             return
         if ev.key() == Qt.Key_Control:
             self.isCtrlDown = True
+        
+        if ev.key() == Qt.Key_PageDown:
+            self.onKeyPageDown()
+        
+        if ev.key() == Qt.Key_PageUp:
+            self.onKeyPageUp()
+        
+        if ev.key() == Qt.Key_Home:
+            self.onKeyHome()
+        
+        if ev.key() == Qt.Key_End:
+            self.onKeyEnd()
         
         modifiers = ev.modifiers()
         isAltModifier = modifiers == Qt.AltModifier
@@ -20481,6 +20494,9 @@ class guiWin(QMainWindow):
                     f'[WARNING]: ID {ID} does not exist (add points by clicking)'
                 )
         
+        if obj is None:
+            return
+        
         self.goToZsliceSearchedID(obj)  
         min_row, min_col, max_row, max_col = self.getObjBbox(obj.bbox)
         xRange = min_col-5, max_col+5
@@ -20504,6 +20520,7 @@ class guiWin(QMainWindow):
         self.ax1_BrushCircle.setPen(action.penColor)
     
     def autoZoomNextObj(self):
+        printl(self.sender().value() - 1)
         self.sender().setValue(self.sender().value() - 1)
         self.pointsLayerAutoPilot('next')
         self.setFocusMain()
@@ -22933,7 +22950,41 @@ class guiWin(QMainWindow):
         img = self.normalizeIntensities(img)
         
         return img
-        
+    
+    def onKeyHome(self):
+        self.zSliceScrollBar.triggerAction(
+            QAbstractSlider.SliderAction.SliderSingleStepAdd
+        )
+    
+    def onKeyEnd(self):
+        self.zSliceScrollBar.triggerAction(
+            QAbstractSlider.SliderAction.SliderSingleStepSub
+        )
+    
+    def onKeyPageUp(self):
+        isAutoPilotActive = (
+            self.autoPilotZoomToObjToggle.isChecked()
+            and self.autoPilotZoomToObjToolbar.isVisible()
+        )
+        if isAutoPilotActive:
+            self.pointsLayerAutoPilot('next')
+        else:
+            self.zSliceScrollBar.triggerAction(
+                QAbstractSlider.SliderAction.SliderSingleStepAdd
+            )
+    
+    def onKeyPageDown(self):
+        isAutoPilotActive = (
+            self.autoPilotZoomToObjToggle.isChecked()
+            and self.autoPilotZoomToObjToolbar.isVisible()
+        )
+        if isAutoPilotActive:
+            self.pointsLayerAutoPilot('prev')
+        else:
+            self.zSliceScrollBar.triggerAction(
+                QAbstractSlider.SliderAction.SliderSingleStepAdd
+            )
+    
     def keyUpCallback(
             self, isBrushActive, isWandActive, isExpandLabelActive, 
             isLabelRoiCircActive
@@ -23067,6 +23118,8 @@ class guiWin(QMainWindow):
         return lab, delMask
     
     def deleteIDmiddleClick(self, delID, applyFutFrames, includeUnvisited):
+        self.clearHighlightedID()
+        
         posData = self.data[self.pos_i]
         self.current_frame_i = posData.frame_i
 
@@ -26447,6 +26500,10 @@ class guiWin(QMainWindow):
                 self.abortSavingInitialisation()
                 return True
 
+        if isQuickSave:
+            # Quick save only current pos
+            self.posToSave = {self.data[self.pos_i].pos_foldername}
+        
         if self.isSnapshot:
             self.store_data(mainThread=False)
 
@@ -26756,6 +26813,15 @@ class guiWin(QMainWindow):
     def setUncheckedPointsLayers(self):
         self.togglePointsLayerAction.setChecked(False)
     
+    def clearHighlightedID(self):
+        if self.highlightedID == 0:
+            return
+        
+        self.highlightedID = 0
+        self.guiTabControl.highlightCheckbox.setChecked(False)
+        self.guiTabControl.highlightSearchedCheckbox.setChecked(False)
+        self.setHighlightID(False)
+    
     def onEscape(self):
         self.setUncheckedAllButtons()
         self.setUncheckedAllCustomAnnotButtons()
@@ -26764,12 +26830,7 @@ class guiWin(QMainWindow):
             self.tempLayerImg1.setImage(self.emptyLab)
         self.isMouseDragImg1 = False
         self.typingEditID = False
-        if self.highlightedID != 0:
-            self.highlightedID = 0
-            self.guiTabControl.highlightCheckbox.setChecked(False)
-            self.guiTabControl.highlightSearchedCheckbox.setChecked(False)
-            self.setHighlightID(False)
-            # self.updateAllImages()
+        self.clearHighlightedID()
         try:
             self.polyLineRoi.clearPoints()
         except Exception as e:
