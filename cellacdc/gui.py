@@ -8693,6 +8693,9 @@ class guiWin(QMainWindow):
             if roi_zdepth == posData.SizeZ:
                 z0 = 0
                 z1 = posData.SizeZ
+            elif roi_zdepth == 1:
+                z0 = self.zSliceScrollBar.sliderPosition()
+                z1 = z0 + 1
             else:
                 if roi_zdepth%2 != 0:
                     roi_zdepth +=1
@@ -8702,6 +8705,7 @@ class guiWin(QMainWindow):
                 z0 = z0 if z0>=0 else 0
                 z1 = zc+half_zdepth
                 z1 = z1 if z1<posData.SizeZ else posData.SizeZ
+
             if self.labelRoiIsRectRadioButton.isChecked():
                 labelRoiSlice = self.labelRoiItem.slice(
                     zRange=(z0,z1), tRange=tRange
