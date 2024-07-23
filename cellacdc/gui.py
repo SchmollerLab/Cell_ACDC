@@ -1725,7 +1725,7 @@ class guiWin(QMainWindow):
         self.curvToolButton.setShortcut('C')
         self.curvToolButton.action = editToolBar.addWidget(self.curvToolButton)
         self.LeftClickButtons.append(self.curvToolButton)
-        self.functionsNotTested3D.append(self.curvToolButton)
+        # self.functionsNotTested3D.append(self.curvToolButton)
         self.widgetsWithShortcut['Curvature tool'] = self.curvToolButton
         # self.checkableButtons.append(self.curvToolButton)
 
