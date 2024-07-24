@@ -1341,7 +1341,6 @@ class filenameDialog(QDialog):
 
         self.allowEmpty = allowEmpty
         self.basename = basename
-        self.existingNames = []
         if ext.find('.') == -1:
             ext = f'.{ext}'
         self.ext = ext
@@ -1394,6 +1393,8 @@ class filenameDialog(QDialog):
         cancelButton.clicked.connect(self.close)
         okButton.clicked.connect(self.ok_cb)
         self.lineEdit.textChanged.connect(self.updateFilename)
+        
+        self.existingNames = []
         if existingNames:
             self.existingNames = existingNames
             # self.lineEdit.editingFinished.connect(self.checkExistingNames)
