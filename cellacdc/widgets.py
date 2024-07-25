@@ -8999,4 +8999,3 @@ class RescaleImageJroisGroupbox(QGroupBox):
             for dim, (spinbox, SizeD) in self.widgets.items()
         }
         return sizes
-        
