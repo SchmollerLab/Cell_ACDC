@@ -5015,7 +5015,7 @@ class guiWin(QMainWindow):
             self.storeUndoRedoStates(False)
             max_ID = max(posData.IDs, default=1)
 
-            if self.isSegm3D:
+            if self.isSegm3D and not shift:
                 z = self.zSliceScrollBar.sliderPosition()
                 posData.lab = measure.separate_with_label(
                     posData.lab, posData.rp, [ID], max_ID, 
@@ -19448,7 +19448,9 @@ class guiWin(QMainWindow):
             self.gui_createAutoSaveWorker()
         
         worker, thread = self.autoSaveActiveWorkers[-1]
-        self.statusBarLabel.setText('Autosaving...')
+        self.statusBarLabel.setText(
+            f'{self.statusBarLabel.text()} | Autosaving...'
+        )
         worker.enqueue(posData)
     
     def enqCcaIntegrityChecker(self):
@@ -26094,13 +26096,16 @@ class guiWin(QMainWindow):
         except AttributeError:
             return
 
-        existingEndnames = set()
+        existingFilenames = set()
         for _posData in self.data:
             segm_files = load.get_segm_files(_posData.images_path)
             _existingEndnames = load.get_endnames(
                 _posData.basename, segm_files
             )
-            existingEndnames.update(_existingEndnames)
+            existingFilenames.update([
+                f'{_posData.basename}{endname}.npz' 
+                for endname in _existingEndnames
+            ])
         posData = self.data[self.pos_i]
         if posData.basename.endswith('_'):
             basename = f'{posData.basename}segm'
@@ -26109,7 +26114,7 @@ class guiWin(QMainWindow):
         win = apps.filenameDialog(
             basename=basename,
             hintText='Insert a <b>filename</b> for the segmentation file:<br>',
-            existingNames=existingEndnames
+            existingNames=existingFilenames
         )
         win.exec_()
         if win.cancel:
