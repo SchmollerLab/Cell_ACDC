@@ -1,5 +1,6 @@
 import os
 import sys
+from typing import List
 import traceback
 import tempfile
 import re
@@ -3262,4 +3263,15 @@ def load_df_points_layer(filepath):
             dfs = [h5.get(key) for key in keys]
         df = pd.concat(dfs, keys=keys, names=['h5_key'])
     return df
-    
+
+def get_unique_exp_paths(paths: List):
+    unique_exp_paths = set()
+    for path in paths:
+        folder_type = myutils.determine_folder_type(path)
+        is_pos_folder, is_images_folder, _ = folder_type
+        if is_pos_folder:
+            exp_path = os.path.dirname(path)
+        elif is_images_folder:
+            exp_path = os.path.dirname(os.path.dirname(path))
+        unique_exp_paths.add(exp_path.replace('\\', '/'))
+    return unique_exp_paths
