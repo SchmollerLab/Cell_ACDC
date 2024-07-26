@@ -818,6 +818,17 @@ def get_endnames(basename, files):
         endnames.append(endname)
     return endnames
 
+def get_exp_path(path):
+    folder_type = myutils.determine_folder_type(path)
+    is_pos_folder, is_images_folder, _ = folder_type
+    if is_pos_folder:
+        exp_path = os.path.dirname(path)
+    elif is_images_folder:
+        exp_path = os.path.dirname(os.path.dirname(path))
+    else:
+        exp_path = path
+    return exp_path
+
 def get_endname_from_channels(filename, channels):
     endname = None
     for ch in channels:
@@ -3267,12 +3278,7 @@ def load_df_points_layer(filepath):
 def get_unique_exp_paths(paths: List):
     unique_exp_paths = set()
     for path in paths:
-        folder_type = myutils.determine_folder_type(path)
-        is_pos_folder, is_images_folder, _ = folder_type
-        if is_pos_folder:
-            exp_path = os.path.dirname(path)
-        elif is_images_folder:
-            exp_path = os.path.dirname(os.path.dirname(path))
+        exp_path = get_exp_path(path)
         unique_exp_paths.add(exp_path.replace('\\', '/'))
     return unique_exp_paths
 
