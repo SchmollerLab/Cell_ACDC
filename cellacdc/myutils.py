@@ -432,11 +432,22 @@ def setupLogger(module='base', logs_path=None):
 
     return logger, logs_path, log_path, log_filename
 
-def get_pos_foldernames(exp_path):
-    ls = listdir(exp_path)
-    pos_foldernames = [
-        pos for pos in ls if is_pos_folderpath(os.path.join(exp_path, pos))
-    ]
+def get_pos_foldernames(exp_path, check_if_is_sub_folder=False):
+    if not check_if_is_sub_folder:
+        ls = listdir(exp_path)
+        pos_foldernames = [
+            pos for pos in ls if is_pos_folderpath(os.path.join(exp_path, pos))
+        ]
+    else:
+        folder_type = determine_folder_type(exp_path)
+        is_pos_folder, is_images_folder, _ = folder_type
+        if is_pos_folder:
+            return [os.path.basename(exp_path)]
+        elif is_images_folder:
+            pos_path = os.path.dirname(exp_path)
+            return [os.path.basename(pos_path)]
+        else:
+            return get_pos_foldernames(exp_path)
     return pos_foldernames
 
 def getMostRecentPath():
