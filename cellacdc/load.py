@@ -3282,21 +3282,30 @@ def get_unique_exp_paths(paths: List):
         unique_exp_paths.add(exp_path.replace('\\', '/'))
     return unique_exp_paths
 
+def search_filepath_in_pos_path_from_endname(
+        pos_path, endname, include_spotmax_out=False
+    ):
+    images_path = os.path.join(pos_path, 'Images')
+    spotmax_out_path = os.path.join(pos_path, 'spotMAX_output')
+    if include_spotmax_out and os.path.exists(spotmax_out_path):
+        for sm_file in os.listdir(spotmax_out_path):
+            if endname == sm_file:
+                return os.path.join(spotmax_out_path, sm_file)
+    
+    images_files = myutils.listdir(images_path)
+    sample_filepath = os.path.join(images_path, images_files[0])
+    posData = loadData(sample_filepath, '')
+    posData.getBasenameAndChNames()
+    to_match = f'{posData.basename}{endname}'
+    for file in images_files:
+        if file == to_match:
+            return os.path.join(images_path, file)
+
 def search_filepath_from_endname(exp_path, endname, include_spotmax_out=False):
     pos_foldernames = myutils.get_pos_foldernames(exp_path)
     for pos in pos_foldernames:
-        images_path = os.path.join(exp_path, pos, 'Images')
-        spotmax_out_path = os.path.join(exp_path, pos, 'spotMAX_output')
-        if include_spotmax_out and os.path.exists(spotmax_out_path):
-            for sm_file in os.listdir(spotmax_out_path):
-                if endname == sm_file:
-                    return os.path.join(spotmax_out_path, sm_file)
-        
-        images_files = myutils.listdir(images_path)
-        sample_filepath = os.path.join(images_path, images_files[0])
-        posData = loadData(sample_filepath, '')
-        posData.getBasenameAndChNames()
-        to_match = f'{posData.basename}{endname}'
-        for file in images_files:
-            if file == to_match:
-                return os.path.join(images_path, file)
+        pos_path = os.path.join(exp_path, pos)
+        filepath = search_filepath_in_pos_path_from_endname(
+            pos_path, endname, include_spotmax_out=include_spotmax_out
+        )
+        return filepath
