@@ -1885,9 +1885,17 @@ def to_tiff(
         PhysicalSizeY=None,
         TimeIncrement=None
     ):
-    if data.dtype != np.uint8 and data.dtype != np.uint16:
-        data = scale_float(data, force_dtype=np.uint16)
-        data = skimage.img_as_uint(data)
+    valid_dtypes = (
+        np.uint8, np.uint16, np.float32
+    )
+    is_valid_dtype = False
+    for valid_dtype in valid_dtypes:
+        if np.issubdtype(data.dtype, valid_dtype):
+            is_valid_dtype = True
+            break
+    
+    if not is_valid_dtype:
+        data = data.astype(np.float32)
     
     metadata = get_tiff_metadata(
         data,
@@ -2150,7 +2158,7 @@ def to_relative_path(path, levels=3, prefix='...'):
         rel_path = f'{prefix}{os.sep}{rel_path}'
     return rel_path
 
-def img_to_float(img, force_dtype=None):
+def img_to_float(img, force_dtype=None, force_missing_dtype=None):
     input_img_dtype = img.dtype
     value = img[(0,) * img.ndim]
     img_max = np.max(img)
@@ -2176,6 +2184,8 @@ def img_to_float(img, force_dtype=None):
     elif input_img_dtype == np.uint32:
         # Input image is 32-bit
         img = img/uint32_max
+    elif force_missing_dtype is not None:
+        img = img.astype(force_dtype)
     elif img_max <= uint8_max:
         # Input image is probably 8-bit
         _warnings.warn_image_overflow_dtype(input_img_dtype, img_max, '8-bit')
@@ -2228,10 +2238,14 @@ def float_img_to_dtype(img, dtype):
         'Valid output data types are `np.uin8` and `np.uint16`'
     )
 
-def scale_float(data, force_dtype=None):
+def scale_float(data, force_dtype=None, force_missing_dtype=None):
     val = data[tuple([0]*data.ndim)]
     if isinstance(val, (np.floating, float)):
-        data = img_to_float(data, force_dtype=force_dtype)
+        data = img_to_float(
+            data, 
+            force_dtype=force_dtype, 
+            force_missing_dtype=force_missing_dtype
+        )
     return data
 
 def _install_homebrew_command():
