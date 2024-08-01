@@ -1496,6 +1496,7 @@ class guiWin(QMainWindow):
 
         # Segment menu
         SegmMenu = menuBar.addMenu("&Segment")
+        self.segmentMenu = SegmMenu
         SegmMenu.addSeparator()
         self.segmSingleFrameMenu = SegmMenu.addMenu('Segment displayed frame')
         for action in self.segmActions:
