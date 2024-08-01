@@ -1258,9 +1258,7 @@ class QDialogListbox(QDialog):
         listBox.setCurrentRow(0)
         for i in range(listBox.count()):
             item = listBox.item(i)
-            if item.text() not in preSelectedItems:
-                continue
-            item.setSelected(True)
+            item.setSelected(item.text() in preSelectedItems)
             
         self.listBox = listBox
         if not multiSelection:
