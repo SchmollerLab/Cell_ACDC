@@ -604,6 +604,11 @@ class setPushButton(PushButton):
         super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':cog.svg'))
 
+class TrainPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setIcon(QIcon(':train.svg'))
+
 class noPushButton(PushButton):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

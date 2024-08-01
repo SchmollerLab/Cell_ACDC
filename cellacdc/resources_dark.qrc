@@ -53,6 +53,7 @@
     <file alias="brush.svg">resources/icons/brush_dark.svg</file>
     <file alias="bed.svg">resources/icons/bed_dark.svg</file>
     <file alias="no_bed.svg">resources/icons/no_bed_dark.svg</file>
+    <file alias="train.svg">resources/icons/train.svg</file>
     <file alias="bed_plus_label.svg">resources/icons/bed_plus_label_dark.svg</file>
     <file alias="segment.svg">resources/icons/segment_dark.svg</file>
     <file alias="open_file.svg">resources/icons/open_file_dark.svg</file>
