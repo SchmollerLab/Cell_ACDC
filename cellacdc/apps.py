@@ -12800,7 +12800,7 @@ class ScaleBarPropertiesDialog(QBaseDialog):
         row += 1
         fontSizeSpinbox = widgets.SpinBox()
         if properties.get('font_size') is not None:
-            fontSizeSpinbox.setValue(properties.get('font_size'))
+            fontSizeSpinbox.setValue(int(properties.get('font_size')))
         else:
             fontSizeSpinbox.setValue(12)
         fontSizeFormWidget = widgets.formWidget(
@@ -13800,7 +13800,7 @@ class ExportToImageParametersDialog(QBaseDialog):
         
         super().__init__(parent=parent)
         
-        self.setWindowTitle('Preferences for output video')
+        self.setWindowTitle('Preferences for output image')
         
         mainLayout = QVBoxLayout()
         
