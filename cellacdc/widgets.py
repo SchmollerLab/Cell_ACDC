@@ -6148,6 +6148,7 @@ class ParentImageItem(pg.ImageItem):
         self.linkedImageItem = linkedImageItem
         self.activatingActions = activatingActions
         self.debug = debug
+        self._forceDoNotUpdateLinked = False
     
     def clear(self):
         if self.linkedImageItem is not None:
@@ -6155,6 +6156,9 @@ class ParentImageItem(pg.ImageItem):
         return super().clear()
     
     def isLinkedImageItemActive(self):
+        if self._forceDoNotUpdateLinked:
+            return False
+        
         if self.linkedImageItem is None:
             return False
         
@@ -6200,8 +6204,8 @@ class ParentImageItem(pg.ImageItem):
     
     def setLookupTable(self, lut):
         super().setLookupTable(lut)
-        if self.linkedImageItem is not None:
-            self.linkedImageItem.setLookupTable(lut)
+        # if self.linkedImageItem is not None:
+        #     self.linkedImageItem.setLookupTable(lut)
 
 class ChildImageItem(pg.ImageItem):
     def __init__(self, *args, linkedScrollbar=None, **kwargs):
