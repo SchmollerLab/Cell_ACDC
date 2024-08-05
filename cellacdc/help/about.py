@@ -12,7 +12,7 @@ from qtpy.QtGui import QPixmap
 from qtpy.QtCore import Qt
 from qtpy import QtCore
 
-from ..myutils import read_version
+from ..myutils import read_version, get_date_from_version
 from ..myutils import get_pip_install_cellacdc_version_command
 from ..myutils import get_git_pull_checkout_cellacdc_version_commands
 from .. import widgets, myutils
@@ -29,6 +29,7 @@ class QDialogAbout(QDialog):
         layout = QGridLayout()
         
         version = read_version()
+        release_date = get_date_from_version(version)
         
         py_ver = sys.version_info
         python_version = f'{py_ver.major}.{py_ver.minor}.{py_ver.micro}'
@@ -42,7 +43,8 @@ class QDialogAbout(QDialog):
             </span>
         </p>
         <p style="font-size:14px; font-family:ubuntu">
-            Version {version}
+            Version {version}<br><br>
+            Release date: {release_date}
         </p>
         <p style="font-size:13px; font-family:ubuntu">
             Qt {QtCore.__version__}<br>

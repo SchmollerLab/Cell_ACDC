@@ -703,6 +703,31 @@ def read_version(logger=None, return_success=False):
     else:
         return version
 
+def get_date_from_version(version: str):
+    res_json = requests.get('https://pypi.org/pypi/cellacdc/json').json()
+    pypi_releases_json = res_json['releases']
+    try:
+        version_json = pypi_releases_json[version][0]
+        upload_time = version_json['upload_time_iso_8601']
+        date = datetime.datetime.strptime(upload_time, r'%Y-%m-%dT%H:%M:%S.%fZ')
+        date_str = date.strftime(r'%A %d %B %Y at %H:%M')
+        return date_str
+    except Exception as err:
+        pass
+    
+    try:
+        commit_hash = re.findall(r'\+g([A-Za-z0-9]+)\.d', version)[0]
+        commands = ['git', 'show', commit_hash]
+        commit_log = subprocess.check_output(commands).decode() 
+        date_log = re.findall(r'Date:(.*) \+', commit_log)[0].strip()
+        date = datetime.datetime.strptime(date_log, r'%a %b %d %H:%M:%S %Y')
+        date_str = date.strftime(r'%A %d %B %Y at %H:%M')
+        return date_str
+    except Exception as err:
+        pass
+    
+    return 'ND'  
+
 def showInExplorer(path):
     if is_mac:
         os.system(f'open "{path}"')
