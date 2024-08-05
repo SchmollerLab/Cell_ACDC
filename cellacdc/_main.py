@@ -459,6 +459,8 @@ class mainWin(QMainWindow):
         helpMenu.addAction(self.showLogsAction)
         helpMenu.addSeparator()
         helpMenu.addAction(self.aboutAction)
+        if SPOTMAX_INSTALLED:
+            helpMenu.addAction(self.aboutSmaxAction)
         
         utilsMenu.addAction(self.debugAction)
         self.debugAction.setVisible(False)
@@ -778,6 +780,9 @@ class mainWin(QMainWindow):
         self.contributeAction = QAction('Contribute...')
         self.showLogsAction = QAction('Show log files...')
         
+        if SPOTMAX_INSTALLED:
+            self.aboutSmaxAction = QAction('About SpotMAX')
+        
         self.debugAction = QAction('Daje de mac')
 
     def connectActions(self):
@@ -832,6 +837,8 @@ class mainWin(QMainWindow):
         self.calcMetricsAcdcDf.triggered.connect(self.launchCalcMetricsUtil)
         self.aboutAction.triggered.connect(self.showAbout)
         self.renameAction.triggered.connect(self.launchRenameUtil)
+        if SPOTMAX_INSTALLED:
+            self.aboutSmaxAction.triggered.connect(self.showAboutSmax)
 
         self.userManualAction.triggered.connect(myutils.browse_docs)
         self.contributeAction.triggered.connect(self.showContribute)
@@ -881,6 +888,11 @@ class mainWin(QMainWindow):
     def showAbout(self):
         self.aboutWin = about.QDialogAbout(parent=self)
         self.aboutWin.show()
+    
+    def showAboutSmax(self):
+        from spotmax.dialogs import AboutSpotMAXDialog
+        win = AboutSpotMAXDialog(parent=self)
+        win.exec_()
     
     def getSelectedPosPath(self, utilityName):
         msg = widgets.myMessageBox()

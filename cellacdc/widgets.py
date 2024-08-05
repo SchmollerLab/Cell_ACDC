@@ -519,9 +519,18 @@ class copyPushButton(PushButton):
         super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':edit-copy.svg'))
         self.clicked.connect(self.onClicked)
+        self._text_to_copy = None
+    
+    def setTextToCopy(self, text):
+        self._text_to_copy = text
     
     def onClicked(self):
         self._original_text = self.text()
+        if self._text_to_copy is not None:
+            cb = QApplication.clipboard()
+            cb.clear(mode=cb.Clipboard)
+            cb.setText(self._text_to_copy, mode=cb.Clipboard)
+            
         super().setText('Copied!')
         self.setIcon(QIcon(':greenTick.svg'))
         QTimer.singleShot(2000, self.resetButton)
@@ -544,6 +553,7 @@ class showInFileManagerButton(PushButton):
     def __init__(self, *args, setDefaultText=False, **kwargs):
         super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':drawer.svg'))
+        self._path_to_browse = None
         if setDefaultText:
             self.setDefaultText()
     
@@ -551,6 +561,12 @@ class showInFileManagerButton(PushButton):
         self._text = myutils.get_show_in_file_manager_text()
         self.setText(self._text)
 
+    def setPathToBrowse(self, path: os.PathLike):
+        self._path_to_browse = path
+        self.clicked.connect(partial(myutils.showInExplorer, path))
+    
+        
+    
 class OpenUrlButton(PushButton):
     def __init__(self, url, *args, **kwargs):
         self._url = url
