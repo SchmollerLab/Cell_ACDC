@@ -1572,6 +1572,7 @@ class guiWin(QMainWindow):
         helpMenu.addAction(self.UserManualAction)
         helpMenu.addSeparator()
         helpMenu.addAction(self.aboutAction)
+        self.helpMenu = helpMenu
 
     def gui_createToolBars(self):
         # File toolbar
