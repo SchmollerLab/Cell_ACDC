@@ -8614,7 +8614,7 @@ class NumericEntryDialog(QBaseDialog):
     def __init__(
             self, title='Entry a value', currentValue=0,
             instructions='Entry value', parent=None, 
-            maxValue=None, minValue=None
+            maxValue=None, minValue=None, stretch=False
         ):
         super().__init__(parent=parent)
         self.setWindowTitle(title)
@@ -8637,9 +8637,12 @@ class NumericEntryDialog(QBaseDialog):
             if minValue is not None:
                 self.entryWidget.setMinimum(minValue)
         
-        entryLayout.addStretch(1)
-        entryLayout.addWidget(self.entryWidget)
-        entryLayout.addStretch(1)
+        if stretch:
+            entryLayout.addWidget(self.entryWidget)
+        else:
+            entryLayout.addStretch(1)
+            entryLayout.addWidget(self.entryWidget)
+            entryLayout.addStretch(1)
         
         mainLayout.addLayout(entryLayout)
         mainLayout.addSpacing(20)

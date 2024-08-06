@@ -1386,8 +1386,9 @@ class mainWin(QMainWindow):
         
         SizeZwin = apps.NumericEntryDialog(
             title='Number of z-slices', 
-            instructions='Enter number of z-slices requires',
-            currentValue=1, parent=self
+            instructions='Enter number of z-slices required',
+            currentValue=1, parent=self, 
+            stretch=True
         )
         SizeZwin.exec_()
         if SizeZwin.cancel:
