@@ -11330,7 +11330,12 @@ class guiWin(QMainWindow):
             return txt
 
         lenPxl = math.sqrt((xx[0]-xx[1])**2 + (yy[0]-yy[1])**2)
-        pxlToUm = posData.PhysicalSizeX
+        depthAxes = self.switchPlaneCombobox.depthAxes()
+        if depthAxes != 'z':
+            pxlToUm = posData.PhysicalSizeZ
+        else:
+            pxlToUm = posData.PhysicalSizeX
+        
         length_txt = (
             f'length = {int(lenPxl)} pxl ({lenPxl*pxlToUm:.2f} μm)'
         )
@@ -16911,6 +16916,7 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         self.zProjComboBox.setCurrentText('single z-slice')
         depthAxes = self.switchPlaneCombobox.depthAxes()
+        self.onEscape()
         if depthAxes != 'z':
             # Disable projections on plane that is not xy
             self.zProjComboBox.setCurrentText('single z-slice')

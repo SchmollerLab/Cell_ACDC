@@ -331,7 +331,6 @@ def get_tzyx_shape(images_path):
     YX = img_data.shape[-2:]
     return (SizeT, SizeZ, *YX)
     
-
 def load_metadata_df(images_path):
     for file in myutils.listdir(images_path):
         if not file.endswith('metadata.csv'):
