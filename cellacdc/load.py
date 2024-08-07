@@ -736,6 +736,7 @@ def get_filename_from_channel(
     if basename is None:
         basename = ''
     
+    channel_filepath = ''
     h5_aligned_path = ''
     h5_path = ''
     npz_aligned_path = ''
@@ -761,7 +762,9 @@ def get_filename_from_channel(
             continue
 
         channelDataPath = os.path.join(images_path, file)
-        if file.endswith(f'{basename}{channel_name}_aligned.h5'):
+        if file == f'{basename}{channel_name}':
+            channel_filepath = channelDataPath
+        elif file.endswith(f'{basename}{channel_name}_aligned.h5'):
             h5_aligned_path = channelDataPath
         elif file.endswith(f'{basename}{channel_name}.h5'):
             h5_path = channelDataPath
@@ -770,7 +773,11 @@ def get_filename_from_channel(
         elif file.endswith(f'{basename}{channel_name}.tif'):
             tif_path = channelDataPath
     
-    if h5_aligned_path:
+    if channel_filepath:
+        if logger is not None:
+            logger(f'Using channel file ({channel_filepath})...')
+        return channel_filepath
+    elif h5_aligned_path:
         if logger is not None:
             logger(f'Using .h5 aligned file ({h5_aligned_path})...')
         return h5_aligned_path
@@ -808,6 +815,10 @@ def load_image_file(filepath):
     else:
         img_data = imread(filepath)
     return np.squeeze(img_data)
+
+def load_image_data_from_channel(images_path: os.PathLike, channel_name: str):
+    filepath = get_filename_from_channel(images_path, channel_name)
+    return load_image_file(filepath)
 
 def get_endnames(basename, files):
     endnames = []
