@@ -454,7 +454,6 @@ def track_sub_cell_objects(
             where each dictionary has the new sub-cellular objects' ids as keys and 
             the old (replaced) ids.
     """    
-    
     if SizeT == 1:
         cells_segm_data = cells_segm_data[np.newaxis]
         subobj_segm_data = subobj_segm_data[np.newaxis]

@@ -2129,9 +2129,12 @@ class TrackSubCellObjectsWorker(BaseWorkerUtil):
                     return_path=True
                 )
 
-                numFrames = min((len(segmDataCells), len(posData.segm_data)))
-                segmDataCells = segmDataCells[:numFrames]
-                posData.segm_data = posData.segm_data[:numFrames]
+                if posData.SizeT > 1:
+                    numFrames = min((len(segmDataCells), len(posData.segm_data)))
+                    segmDataCells = segmDataCells[:numFrames]
+                    posData.segm_data = posData.segm_data[:numFrames]
+                else:
+                    numFrames = 1
                 
                 self.signals.sigInitInnerPbar.emit(numFrames*2)
                 
