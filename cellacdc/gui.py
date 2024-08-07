@@ -6104,12 +6104,7 @@ class guiWin(QMainWindow):
             and self.tempSegmentON and not event.isExit()
         )
         if drawRulerLine:
-            x, y = event.pos()
-            xdata, ydata = int(x), int(y)
-            xxRA, yyRA = self.ax1_rulerAnchorsItem.getData()
-            if self.isCtrlDown:
-                ydata = yyRA[0]
-            self.ax1_rulerPlotItem.setData([xxRA[0], xdata], [yyRA[0], ydata])
+            self.drawTempRulerLine(event)
 
         if not event.isExit():
             x, y = event.pos()
@@ -7177,6 +7172,22 @@ class guiWin(QMainWindow):
     def gui_mouseReleaseRightImage(self, event):
         self.gui_mouseReleaseEventImg1(event)
 
+    def drawTempRulerLine(self, event):
+        x, y = event.pos()
+        x1, y1 = int(x), int(y)
+        xxRA, yyRA = self.ax1_rulerAnchorsItem.getData()
+        x0, y0 = xxRA[0], yyRA[0]
+        if self.isCtrlDown:
+            # Snap to closest angle divisible by 15 degrees
+            angle = math.degrees(math.atan2(y1-y0, x1-x0))
+            snap_angle = math.radians(core.closest_n_divisible_by_m(angle, 15))
+            dist = math.dist((x0, y0), (x1, y1))
+            dx = dist * math.cos(snap_angle)
+            dy = dist * math.sin(snap_angle)
+            x1, y1 = x0 + dx, y0 + dy
+            # # ydata = yyRA[0]
+        self.ax1_rulerPlotItem.setData([x0, x1], [y0, y1])
+    
     @exception_handler
     def gui_mousePressEventImg1(self, event):
         self.typingEditID = False

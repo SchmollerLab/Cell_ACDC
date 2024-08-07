@@ -2542,3 +2542,23 @@ def cellpose_v3_run_denoise(
     
     denoised_img = denoise_model.run(image, **run_params)
     return denoised_img
+
+def closest_n_divisible_by_m(n, m) :
+    # Find the quotient
+    q = int(n / m)
+     
+    # 1st possible closest number
+    n1 = m * q
+     
+    # 2nd possible closest number
+    if((n * m) > 0) :
+        n2 = (m * (q + 1)) 
+    else :
+        n2 = (m * (q - 1))
+     
+    # if true, then n1 is the required closest number
+    if (abs(n - n1) < abs(n - n2)) :
+        return n1
+     
+    # else n2 is the required closest number 
+    return n2
