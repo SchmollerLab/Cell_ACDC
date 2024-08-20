@@ -327,6 +327,7 @@ class Logger(logging.Logger):
     
     def error(self, text, *args, **kwargs):
         super().error(text, *args, **kwargs)
+        self.write(traceback.format_exc())
         self.write(f'[ERROR]: {text}\n', log_to_file=False)
     
     def critical(self, text, *args, **kwargs):
@@ -335,6 +336,7 @@ class Logger(logging.Logger):
     
     def exception(self, text, *args, **kwargs):
         super().exception(text, *args, **kwargs)
+        self.write(traceback.format_exc())
         self.write(f'[ERROR]: {text}\n', log_to_file=False)
     
     def log(self, level, text):
@@ -430,11 +432,22 @@ def setupLogger(module='base', logs_path=None):
 
     return logger, logs_path, log_path, log_filename
 
-def get_pos_foldernames(exp_path):
-    ls = listdir(exp_path)
-    pos_foldernames = [
-        pos for pos in ls if is_pos_folderpath(os.path.join(exp_path, pos))
-    ]
+def get_pos_foldernames(exp_path, check_if_is_sub_folder=False):
+    if not check_if_is_sub_folder:
+        ls = listdir(exp_path)
+        pos_foldernames = [
+            pos for pos in ls if is_pos_folderpath(os.path.join(exp_path, pos))
+        ]
+    else:
+        folder_type = determine_folder_type(exp_path)
+        is_pos_folder, is_images_folder, _ = folder_type
+        if is_pos_folder:
+            return [os.path.basename(exp_path)]
+        elif is_images_folder:
+            pos_path = os.path.dirname(exp_path)
+            return [os.path.basename(pos_path)]
+        else:
+            return get_pos_foldernames(exp_path)
     return pos_foldernames
 
 def getMostRecentPath():
@@ -690,6 +703,31 @@ def read_version(logger=None, return_success=False):
     else:
         return version
 
+def get_date_from_version(version: str, package='cellacdc'):
+    try:
+        res_json = requests.get(f'https://pypi.org/pypi/{package}/json').json()
+        pypi_releases_json = res_json['releases']
+        version_json = pypi_releases_json[version][0]
+        upload_time = version_json['upload_time_iso_8601']
+        date = datetime.datetime.strptime(upload_time, r'%Y-%m-%dT%H:%M:%S.%fZ')
+        date_str = date.strftime(r'%A %d %B %Y at %H:%M')
+        return date_str
+    except Exception as err:
+        pass
+    
+    try:
+        commit_hash = re.findall(r'\+g([A-Za-z0-9]+)\.d', version)[0]
+        commands = ['git', 'show', commit_hash]
+        commit_log = subprocess.check_output(commands).decode() 
+        date_log = re.findall(r'Date:(.*) \+', commit_log)[0].strip()
+        date = datetime.datetime.strptime(date_log, r'%a %b %d %H:%M:%S %Y')
+        date_str = date.strftime(r'%A %d %B %Y at %H:%M')
+        return date_str
+    except Exception as err:
+        pass
+    
+    return 'ND'  
+
 def showInExplorer(path):
     if is_mac:
         os.system(f'open "{path}"')
@@ -783,11 +821,16 @@ def getBaseAcdcDf(rp):
     IDs = []
     xx_centroid = []
     yy_centroid = []
+    zz_centroid = []
     for obj in rp:
         xc, yc = obj.centroid[-2:]
         IDs.append(obj.label)
         xx_centroid.append(xc)
         yy_centroid.append(yc)
+        if len(obj.centroid) == 3:
+            zc = obj.centroid[0]
+            zz_centroid.append(zc)
+            
     df = pd.DataFrame(
         {
             'Cell_ID': IDs,
@@ -798,6 +841,9 @@ def getBaseAcdcDf(rp):
             'was_manually_edited': minus1_list
         }
     ).set_index('Cell_ID')
+    if zz_centroid:
+        df['z_centroid'] = zz_centroid
+        
     return df
 
 def getBasenameAndChNames(images_path, useExt=None):
@@ -1864,9 +1910,17 @@ def to_tiff(
         PhysicalSizeY=None,
         TimeIncrement=None
     ):
-    if data.dtype != np.uint8 and data.dtype != np.uint16:
-        data = scale_float(data)
-        data = skimage.img_as_uint(data)
+    valid_dtypes = (
+        np.uint8, np.uint16, np.float32
+    )
+    is_valid_dtype = False
+    for valid_dtype in valid_dtypes:
+        if np.issubdtype(data.dtype, valid_dtype):
+            is_valid_dtype = True
+            break
+    
+    if not is_valid_dtype:
+        data = data.astype(np.float32)
     
     metadata = get_tiff_metadata(
         data,
@@ -2129,7 +2183,7 @@ def to_relative_path(path, levels=3, prefix='...'):
         rel_path = f'{prefix}{os.sep}{rel_path}'
     return rel_path
 
-def img_to_float(img):
+def img_to_float(img, force_dtype=None, force_missing_dtype=None):
     input_img_dtype = img.dtype
     value = img[(0,) * img.ndim]
     img_max = np.max(img)
@@ -2143,7 +2197,10 @@ def img_to_float(img):
     
     img = img.astype(float)
     
-    if input_img_dtype == np.uint8:
+    if force_dtype is not None:
+        dtype_max = np.iinfo(force_dtype).max
+        img = img/dtype_max
+    elif input_img_dtype == np.uint8:
         # Input image is 8-bit
         img = img/uint8_max
     elif input_img_dtype == np.uint16:
@@ -2152,6 +2209,8 @@ def img_to_float(img):
     elif input_img_dtype == np.uint32:
         # Input image is 32-bit
         img = img/uint32_max
+    elif force_missing_dtype is not None:
+        img = img.astype(force_dtype)
     elif img_max <= uint8_max:
         # Input image is probably 8-bit
         _warnings.warn_image_overflow_dtype(input_img_dtype, img_max, '8-bit')
@@ -2204,10 +2263,14 @@ def float_img_to_dtype(img, dtype):
         'Valid output data types are `np.uin8` and `np.uint16`'
     )
 
-def scale_float(data):
+def scale_float(data, force_dtype=None, force_missing_dtype=None):
     val = data[tuple([0]*data.ndim)]
     if isinstance(val, (np.floating, float)):
-        data = img_to_float(data)
+        data = img_to_float(
+            data, 
+            force_dtype=force_dtype, 
+            force_missing_dtype=force_missing_dtype
+        )
     return data
 
 def _install_homebrew_command():
@@ -3330,6 +3393,23 @@ def _parse_bool_str(value):
     elif value == 'False':
         return False
 
+def check_install_trackastra():
+    check_install_package(
+        'Trackastra', 
+        import_pkg_name='trackastra', 
+        pypi_name='trackastra'
+    )
+
+def get_torch_device(gpu=False):
+    import torch
+    if torch.cuda.is_available() and gpu:
+        device = torch.device('cuda')
+    elif torch.backends.mps.is_available():
+        device = torch.device('mps')
+    else:
+        device = torch.device('cpu')
+    return device
+
 def parse_model_params(model_argspecs, model_params):
     parsed_model_params = {}
     for row, argspec in enumerate(model_argspecs):
@@ -3526,5 +3606,165 @@ def validate_images_path(input_path: os.PathLike, create_dirs_tree=False):
     return images_path
 
 def fix_acdc_df_dtypes(acdc_df):
-    acdc_df['is_cell_excluded'] = acdc_df['is_cell_excluded'].astype(int)
+    acdc_df['is_cell_excluded'] = acdc_df['is_cell_excluded'].astype(bool)
     return acdc_df
+
+def _relabel_cca_dfs_and_segm_data(
+        cca_dfs,
+        IDs_mapper,
+        asymm_tracked_segm,
+        progressbar=True,
+    ):
+    # Rename Cell_ID index according to asymmetric cell div convention
+    if progressbar:
+        pbar = tqdm(
+            desc='Applying asymmetric division', 
+            total=len(IDs_mapper), ncols=100
+        )
+    for key, root_ID in IDs_mapper.items():
+        div_frame_i, daughter_ID = key
+        for frame_i in range(div_frame_i, len(asymm_tracked_segm)):
+            cca_dfs[frame_i].rename(
+                index={daughter_ID: root_ID}, inplace=True
+            )
+            lab = asymm_tracked_segm[frame_i]
+            rp = skimage.measure.regionprops(lab)
+            obj_daught = [obj for obj in rp if obj.label == daughter_ID]
+            if not obj_daught:
+                continue
+            
+            obj_daught = obj_daught[0]
+            lab[obj_daught.slice][obj_daught.image] = root_ID
+        
+        if progressbar:
+            pbar.update()
+    
+    if progressbar:
+        pbar.close()
+    
+def df_ctc_to_acdc_df(
+        df_ctc, tracked_segm, cell_division_mode='Normal', return_list=False, 
+        progressbar=True
+    ):
+    """Convert Cell Tracking Challenge DataFrame with annotated division to
+    Cell-ACDC cell cycle annotations DataFrame.
+
+    Parameters
+    ----------
+    df_ctc : pd.DataFrame
+        DataFrame with {'label', 't1', 't2', 'parent'} columns where 
+        't1' is the frame index of cell division.
+    tracked_segm : (T, Y, X) array of ints
+        Array of tracked segmentation labels.
+    cell_division_mode : {'Normal', 'Asymmetric'}, optional
+        Type of cell division. `Normal` is the standard cell division, 
+        where the mother cell divides into two daughter cells. For the 
+        tracking, that means the two daughter cells get a new, unique ID 
+        each. 
+        
+        `Asymmetric` means that the mother cell grows one daughter 
+        cell that eventually divides from the mother (e.g., budding yeast). 
+        For the tracking, this means that the mother cell ID keeps 
+        existing after division and the daughter cell gets a new, unique ID.
+        
+        If `Asymmetric`, the third returned element is the segmentation data 
+        with the asymmetric Cell IDs.  
+    return_list : bool, optional
+        If `True`, the second returned element is the list of created dataframes, 
+        one per frame. Default is False
+    progressbar : bool, optional
+        If `True`, displays a tqdm progressbar. Default is True
+    """    
+    cca_dfs = []
+    keys = []
+    df_ctc = df_ctc.set_index(['t1', 'parent'])
+    
+    if cell_division_mode == 'Asymmetric':
+        asymm_tracked_segm = tracked_segm.copy()
+    
+    asymmetric_IDs_rename_mapper = {}
+    if progressbar:
+        pbar = tqdm(
+            desc='Converting to Cell-ACDC format', 
+            total=len(tracked_segm), ncols=100
+        )
+    for frame_i, lab in enumerate(tracked_segm):
+        rp = skimage.measure.regionprops(lab)
+        IDs = [obj.label for obj in rp]
+        cca_df = core.getBaseCca_df(IDs, with_tree_cols=True)
+        keys.append(frame_i)
+        if frame_i == 0:
+            cca_dfs.append(cca_df)
+            if progressbar:
+                pbar.update()
+            continue
+        
+        # Copy annotations from previous frames
+        prev_cca_df = cca_dfs[frame_i-1]
+        old_IDs = cca_df.index.intersection(prev_cca_df.index)
+        cca_df.loc[old_IDs] = prev_cca_df.loc[old_IDs]
+        
+        try:
+            df_ctc_i = df_ctc.loc[frame_i]
+        except KeyError as err:
+            # No division detected --> nothing to annotate
+            cca_dfs.append(cca_df)
+            if progressbar:
+                pbar.update()
+            continue
+        
+        for parent_ID, df_ctc_i_pID in df_ctc_i.groupby(level=0):
+            daughter_IDs = df_ctc_i_pID['label'].to_list()     
+            
+            if parent_ID == 0:
+                continue
+            
+            cca_df.loc[daughter_IDs, 'parent_ID_tree'] = parent_ID
+            cca_df.loc[daughter_IDs, 'emerg_frame_i'] = frame_i
+            cca_df.loc[daughter_IDs, 'division_frame_i'] = frame_i
+            
+            root_ID = prev_cca_df.at[parent_ID, 'root_ID_tree']
+            if root_ID == -1:
+                root_ID = parent_ID
+            cca_df.loc[daughter_IDs, 'root_ID_tree'] = root_ID
+            
+            cca_df.loc[daughter_IDs[0], 'sister_ID_tree'] = daughter_IDs[1]
+            cca_df.loc[daughter_IDs[1], 'sister_ID_tree'] = daughter_IDs[0]
+            
+            prev_gen_num = prev_cca_df.loc[parent_ID, 'generation_num_tree']
+            cca_df.loc[daughter_IDs, 'generation_num_tree'] = prev_gen_num + 1
+            
+            # Annotate division from df_ctc_i into 
+            if cell_division_mode == 'Asymmetric':
+                # Recycle the root_ID and assign it to one of the daughters
+                replaced_daught_ID = daughter_IDs[1]
+                key = (frame_i, replaced_daught_ID)
+                asymmetric_IDs_rename_mapper[key] = root_ID    
+        
+        cca_dfs.append(cca_df)
+        
+        if progressbar:
+            pbar.update()
+    
+    if progressbar:
+        pbar.close()
+    if asymmetric_IDs_rename_mapper:
+        _relabel_cca_dfs_and_segm_data(
+            cca_dfs,
+            asymmetric_IDs_rename_mapper,
+            asymm_tracked_segm,
+            progressbar=True,
+        )
+    
+    cca_df = pd.concat(cca_dfs, keys=keys, names=['frame_i'])
+    
+    out = [cca_df, None, None]
+    
+    if return_list:
+        out[1] = cca_dfs
+        
+    if cell_division_mode == 'Asymmetric':
+        out[2] = asymm_tracked_segm
+    
+    return out
+        

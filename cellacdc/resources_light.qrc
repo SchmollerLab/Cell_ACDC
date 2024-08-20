@@ -23,6 +23,7 @@
     <file alias="less_than.svg">resources/icons/math/less_than.svg</file>
     <file alias="view.svg">resources/icons/view.svg</file>
     <file alias="magnGlass.svg">resources/icons/magnGlass.svg</file>
+    <file alias="train.svg">resources/icons/train.svg</file>
     <file alias="cross_cursor.svg">resources/icons/cross_cursor.svg</file>
     <file alias="file-new.svg">resources/icons/file-new.svg</file>
     <file alias="file-open.svg">resources/icons/file-open.svg</file>
@@ -129,6 +130,7 @@
     <file alias="edit_cca.svg">resources/icons/edit_cca.svg</file>
     <file alias="home.svg">resources/icons/home.svg</file>
     <file alias="quickStart.svg">resources/icons/quickStart.svg</file>
+    <file alias="orange_question_mark.svg">resources/icons/orange_question_mark.svg</file>
     <file alias="cog.svg">resources/icons/cog.svg</file>
     <file alias="book.svg">resources/icons/book.svg</file>
     <file alias="ruler.svg">resources/icons/ruler.svg</file>

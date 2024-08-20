@@ -80,7 +80,7 @@ from . import _core
 from . import types
 from . import plot
 from . import urls
-from .regex import float_regex
+from .acdc_regex import float_regex
 
 POSITIVE_FLOAT_REGEX = float_regex(allow_negative=False)
 PRE_PROCESSING_STEPS = [
@@ -1341,7 +1341,6 @@ class filenameDialog(QDialog):
 
         self.allowEmpty = allowEmpty
         self.basename = basename
-        self.existingNames = []
         if ext.find('.') == -1:
             ext = f'.{ext}'
         self.ext = ext
@@ -1394,6 +1393,8 @@ class filenameDialog(QDialog):
         cancelButton.clicked.connect(self.close)
         okButton.clicked.connect(self.ok_cb)
         self.lineEdit.textChanged.connect(self.updateFilename)
+        
+        self.existingNames = []
         if existingNames:
             self.existingNames = existingNames
             # self.lineEdit.editingFinished.connect(self.checkExistingNames)
@@ -8613,7 +8614,7 @@ class NumericEntryDialog(QBaseDialog):
     def __init__(
             self, title='Entry a value', currentValue=0,
             instructions='Entry value', parent=None, 
-            maxValue=None, minValue=None
+            maxValue=None, minValue=None, stretch=False
         ):
         super().__init__(parent=parent)
         self.setWindowTitle(title)
@@ -8636,9 +8637,12 @@ class NumericEntryDialog(QBaseDialog):
             if minValue is not None:
                 self.entryWidget.setMinimum(minValue)
         
-        entryLayout.addStretch(1)
-        entryLayout.addWidget(self.entryWidget)
-        entryLayout.addStretch(1)
+        if stretch:
+            entryLayout.addWidget(self.entryWidget)
+        else:
+            entryLayout.addStretch(1)
+            entryLayout.addWidget(self.entryWidget)
+            entryLayout.addStretch(1)
         
         mainLayout.addLayout(entryLayout)
         mainLayout.addSpacing(20)
@@ -10516,6 +10520,13 @@ class QDialogModelParams(QDialog):
             except Exception as err:
                 pass
             
+            isFolderPath = False
+            try:
+                if isinstance(ArgSpec.type(), types.FolderPath):
+                    isFolderPath = True
+            except Exception as err:
+                pass
+            
             isCustomWidget = hasattr(ArgSpec.type, 'isWidget')
             
             if isCustomWidget:
@@ -10532,6 +10543,14 @@ class QDialogModelParams(QDialog):
                 valueGetter = widgets.VectorLineEdit.value
                 widget = vectorLineEdit
                 groupBoxLayout.addWidget(vectorLineEdit, row, 1, 1, 2)
+            elif isFolderPath:
+                folderPathControl = widgets.FolderPathControl()
+                folderPathControl.setText(str(ArgSpec.default))
+                widget = folderPathControl
+                defaultVal = str(ArgSpec.default)
+                valueSetter = widgets.FolderPathControl.setText
+                valueGetter = widgets.FolderPathControl.path
+                groupBoxLayout.addWidget(folderPathControl, row, 1, 1, 2)
             elif ArgSpec.type == bool:
                 booleanGroup = QButtonGroup()
                 booleanGroup.setExclusive(True)
@@ -12784,7 +12803,7 @@ class ScaleBarPropertiesDialog(QBaseDialog):
         row += 1
         fontSizeSpinbox = widgets.SpinBox()
         if properties.get('font_size') is not None:
-            fontSizeSpinbox.setValue(properties.get('font_size'))
+            fontSizeSpinbox.setValue(int(properties.get('font_size')))
         else:
             fontSizeSpinbox.setValue(12)
         fontSizeFormWidget = widgets.formWidget(
@@ -13784,7 +13803,7 @@ class ExportToImageParametersDialog(QBaseDialog):
         
         super().__init__(parent=parent)
         
-        self.setWindowTitle('Preferences for output video')
+        self.setWindowTitle('Preferences for output image')
         
         mainLayout = QVBoxLayout()
         

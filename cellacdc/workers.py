@@ -257,6 +257,7 @@ class AlignDataWorker(QObject):
             else:
                 align_func = core.align_frames_2D
                 zz = None
+            
             if self.align:
                 self.signals.initProgressBar.emit(len(tif_data))
                 aligned_frames, shifts = align_func(
@@ -265,7 +266,8 @@ class AlignDataWorker(QObject):
                 )
                 self.posData.loaded_shifts = shifts
             else:
-                aligned_frames = tif_data.copy()
+                aligned_frames = tif_data
+                
             if self.align:
                 self.signals.initProgressBar.emit(0)
                 _npz = f'{os.path.splitext(tif)[0]}_aligned.npz'
@@ -314,7 +316,8 @@ class AlignDataWorker(QObject):
                     sigPyqt=self.signals.progressBar
                 )
             else:
-                aligned_frames = tif_data.copy()
+                aligned_frames = tif_data
+            
             _npz = f'{os.path.splitext(tif)[0]}_aligned.npz'
             
             if self.align:
@@ -658,7 +661,7 @@ class AutoSaveWorker(QObject):
             if not np.any(lab):
                 continue
 
-            acdc_df = load.pd_bool_to_int(acdc_df, inplace=True)
+            acdc_df = load.pd_bool_to_int(acdc_df, inplace=False)
             acdc_df_li.append(acdc_df)
             key = (frame_i, posData.TimeIncrement*frame_i)
             keys.append(key)
@@ -686,7 +689,12 @@ class AutoSaveWorker(QObject):
         self.isSaving = False
     
     def _saveSegm(self, recovery_path, data):
-        if np.all(self.savedSegmData == data):
+        try:
+            equalToSavedSegm = np.all(self.savedSegmData == data)
+        except Exception as err:
+            return
+        
+        if equalToSavedSegm:
             return
         else:
             np.savez_compressed(recovery_path, np.squeeze(data))
@@ -2121,9 +2129,12 @@ class TrackSubCellObjectsWorker(BaseWorkerUtil):
                     return_path=True
                 )
 
-                numFrames = min((len(segmDataCells), len(posData.segm_data)))
-                segmDataCells = segmDataCells[:numFrames]
-                posData.segm_data = posData.segm_data[:numFrames]
+                if posData.SizeT > 1:
+                    numFrames = min((len(segmDataCells), len(posData.segm_data)))
+                    segmDataCells = segmDataCells[:numFrames]
+                    posData.segm_data = posData.segm_data[:numFrames]
+                else:
+                    numFrames = 1
                 
                 self.signals.sigInitInnerPbar.emit(numFrames*2)
                 
@@ -4626,6 +4637,9 @@ class CcaIntegrityCheckerWorker(QObject):
             self.abortChecking = False
             self.waitCond.wakeAll()
     
+    def clearQueue(self):
+        self.dataQ.clear()
+    
     def _stop(self):
         self.exit = True
         self.waitCond.wakeAll()
@@ -4847,7 +4861,6 @@ class CcaIntegrityCheckerWorker(QObject):
                 break
             
             cca_df = data_dict.get('cca_df_checker')
-            printl(frame_i, cca_df)
             if cca_df is None:
                 # There are no annotations at frame_i --> stop
                 break

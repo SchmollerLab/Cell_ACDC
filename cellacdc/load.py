@@ -1,5 +1,6 @@
 import os
 import sys
+from typing import List
 import traceback
 import tempfile
 import re
@@ -330,7 +331,6 @@ def get_tzyx_shape(images_path):
     YX = img_data.shape[-2:]
     return (SizeT, SizeZ, *YX)
     
-
 def load_metadata_df(images_path):
     for file in myutils.listdir(images_path):
         if not file.endswith('metadata.csv'):
@@ -736,6 +736,7 @@ def get_filename_from_channel(
     if basename is None:
         basename = ''
     
+    channel_filepath = ''
     h5_aligned_path = ''
     h5_path = ''
     npz_aligned_path = ''
@@ -761,7 +762,9 @@ def get_filename_from_channel(
             continue
 
         channelDataPath = os.path.join(images_path, file)
-        if file.endswith(f'{basename}{channel_name}_aligned.h5'):
+        if file == f'{basename}{channel_name}':
+            channel_filepath = channelDataPath
+        elif file.endswith(f'{basename}{channel_name}_aligned.h5'):
             h5_aligned_path = channelDataPath
         elif file.endswith(f'{basename}{channel_name}.h5'):
             h5_path = channelDataPath
@@ -770,7 +773,11 @@ def get_filename_from_channel(
         elif file.endswith(f'{basename}{channel_name}.tif'):
             tif_path = channelDataPath
     
-    if h5_aligned_path:
+    if channel_filepath:
+        if logger is not None:
+            logger(f'Using channel file ({channel_filepath})...')
+        return channel_filepath
+    elif h5_aligned_path:
         if logger is not None:
             logger(f'Using .h5 aligned file ({h5_aligned_path})...')
         return h5_aligned_path
@@ -809,6 +816,10 @@ def load_image_file(filepath):
         img_data = imread(filepath)
     return np.squeeze(img_data)
 
+def load_image_data_from_channel(images_path: os.PathLike, channel_name: str):
+    filepath = get_filename_from_channel(images_path, channel_name)
+    return load_image_file(filepath)
+
 def get_endnames(basename, files):
     endnames = []
     for f in files:
@@ -816,6 +827,17 @@ def get_endnames(basename, files):
         endname = filename[len(basename):]
         endnames.append(endname)
     return endnames
+
+def get_exp_path(path):
+    folder_type = myutils.determine_folder_type(path)
+    is_pos_folder, is_images_folder, _ = folder_type
+    if is_pos_folder:
+        exp_path = os.path.dirname(path)
+    elif is_images_folder:
+        exp_path = os.path.dirname(os.path.dirname(path))
+    else:
+        exp_path = path
+    return exp_path
 
 def get_endname_from_channels(filename, channels):
     endname = None
@@ -3266,4 +3288,38 @@ def load_df_points_layer(filepath):
             dfs = [h5.get(key) for key in keys]
         df = pd.concat(dfs, keys=keys, names=['h5_key'])
     return df
+
+def get_unique_exp_paths(paths: List):
+    unique_exp_paths = set()
+    for path in paths:
+        exp_path = get_exp_path(path)
+        unique_exp_paths.add(exp_path.replace('\\', '/'))
+    return unique_exp_paths
+
+def search_filepath_in_pos_path_from_endname(
+        pos_path, endname, include_spotmax_out=False
+    ):
+    images_path = os.path.join(pos_path, 'Images')
+    spotmax_out_path = os.path.join(pos_path, 'spotMAX_output')
+    if include_spotmax_out and os.path.exists(spotmax_out_path):
+        for sm_file in os.listdir(spotmax_out_path):
+            if endname == sm_file:
+                return os.path.join(spotmax_out_path, sm_file)
     
+    images_files = myutils.listdir(images_path)
+    sample_filepath = os.path.join(images_path, images_files[0])
+    posData = loadData(sample_filepath, '')
+    posData.getBasenameAndChNames()
+    to_match = f'{posData.basename}{endname}'
+    for file in images_files:
+        if file == to_match:
+            return os.path.join(images_path, file)
+
+def search_filepath_from_endname(exp_path, endname, include_spotmax_out=False):
+    pos_foldernames = myutils.get_pos_foldernames(exp_path)
+    for pos in pos_foldernames:
+        pos_path = os.path.join(exp_path, pos)
+        filepath = search_filepath_in_pos_path_from_endname(
+            pos_path, endname, include_spotmax_out=include_spotmax_out
+        )
+        return filepath

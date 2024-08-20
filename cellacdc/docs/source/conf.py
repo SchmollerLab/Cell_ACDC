@@ -57,4 +57,5 @@ exclude_patterns = [
     'Thumbs.db', 
     '.DS_Store', 
     '_gui_packages.rst',
+    '_models_list.rst'
 ]

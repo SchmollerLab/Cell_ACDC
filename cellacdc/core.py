@@ -13,6 +13,7 @@ import skimage.color
 import skimage.filters
 import skimage.segmentation
 import scipy.ndimage.morphology
+from itertools import product
 
 from math import sqrt
 from scipy.stats import norm
@@ -453,7 +454,6 @@ def track_sub_cell_objects(
             where each dictionary has the new sub-cellular objects' ids as keys and 
             the old (replaced) ids.
     """    
-    
     if SizeT == 1:
         cells_segm_data = cells_segm_data[np.newaxis]
         subobj_segm_data = subobj_segm_data[np.newaxis]
@@ -2338,28 +2338,28 @@ def filter_segm_objs_from_table_coords(lab, df):
     return filtered_lab
 
 def tracker_track(
-        video_to_track, tracker, track_params, intensity_img=None,
+        segm_data, tracker, track_params, intensity_img=None,
         logger_func=print
     ):
-    if intensity_img is not None:
+    args_to_try = ((intensity_img, ), tuple())
+    kwargs_to_remove = ('', 'signals')
+    for args, kwarg_to_remove in product(args_to_try, kwargs_to_remove):
+        kwargs = track_params.copy()
+        kwargs.pop(kwarg_to_remove, None)
         try:
-            tracked_video = tracker.track(
-                video_to_track, intensity_img, **track_params
-            )
-        except TypeError:
-            # User accidentally loaded image data but the tracker doesn't
-            # need it
-            logger_func(
-                'Image data is not required by this tracker, ignoring it...'
-            )
-            tracked_video = tracker.track(
-                video_to_track, **track_params
-            )
-    else:
-        tracked_video = tracker.track(
-            video_to_track, **track_params
-        )
-    return tracked_video
+            tracked_video = tracker.track(segm_data, *args, **kwargs)
+            return tracked_video
+        except Exception as err:
+            is_unexpected_kwarg = (str(err).find(
+                "got an unexpected keyword argument 'signals'"
+            ) != -1)
+            is_missing_arg = (str(err).find(
+                "missing 1 required positional argument:"
+            ) != -1)
+            if is_unexpected_kwarg or is_missing_arg:
+                continue
+            else:
+                raise err
 
 def _relabel_sequential(segm_data):
     relabelled, fw, inv = skimage.segmentation.relabel_sequential(segm_data)
@@ -2541,3 +2541,23 @@ def cellpose_v3_run_denoise(
     
     denoised_img = denoise_model.run(image, **run_params)
     return denoised_img
+
+def closest_n_divisible_by_m(n, m) :
+    # Find the quotient
+    q = int(n / m)
+     
+    # 1st possible closest number
+    n1 = m * q
+     
+    # 2nd possible closest number
+    if((n * m) > 0) :
+        n2 = (m * (q + 1)) 
+    else :
+        n2 = (m * (q - 1))
+     
+    # if true, then n1 is the required closest number
+    if (abs(n - n1) < abs(n - n2)) :
+        return n1
+     
+    # else n2 is the required closest number 
+    return n2

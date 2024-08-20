@@ -318,14 +318,13 @@ class convertFileFormatWin(QMainWindow):
         parent_path = os.path.dirname(dst)
         txt = (
             '<b>Done!</b><br><br>'
-            'The file<br><br>'
-            f'<code>{src}</code><br><br>'
-            f'was converted to <b>.{self.to}</b>, and saved to<br><br>'
-            f'<code>{dst}</code>'
+            f'The file below was converted to <b>.{self.to}</b>, and saved'
         )
         msg.addShowInFileManagerButton(parent_path)
         msg.information(
-            self, 'Conversion done!', html_utils.paragraph(txt)
+            self, 'Conversion done!', html_utils.paragraph(txt), 
+            path_to_browse=parent_path, 
+            commands=(src, dst)
         )
 
     def askTxtAppend(self, basename):

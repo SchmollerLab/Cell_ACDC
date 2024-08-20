@@ -232,3 +232,20 @@ def warnExportToVideo(qparent=None):
         buttonsTexts=('Cancel', 'Ok')
     )
     return msg.cancel
+
+def warnDivisionAnnotationCannotBeUndone(ID, relID, issue_frame_i, qparent=None):
+    from cellacdc import widgets
+    txt = html_utils.paragraph(f"""
+        Cell division annotation <b>cannot be undone</b> because Cell ID {relID} 
+        is in 'S' phase at frame n. {issue_frame_i+1}.<br><br>
+        By undoing division annotation, Cell ID {relID} would be restored as 
+        relative of Cell ID {ID}, but this cannot be done.<br><br>
+        The only solution is to go to frame n. {issue_frame_i} and reset the 
+        annotations there.<br><br>
+        Thank you for your patience! 
+    """)
+    msg = widgets.myMessageBox(wrapText=False)
+    msg.warning(
+        qparent, 'Division annotation cannot be undone', txt
+    )
+    return msg.cancel

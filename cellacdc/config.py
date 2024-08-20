@@ -1,12 +1,13 @@
 import argparse
 import configparser
 import pprint
+import os
 
 from typing import get_type_hints 
 
 import re
 
-from . import printl
+from . import printl, debug_true_filepath
 
 class ConfigParser(configparser.ConfigParser):
     def __init__(self, *args, **kwargs):
@@ -75,6 +76,8 @@ try:
 
     parser_args, unknown = ap.parse_known_args()
     parser_args = vars(parser_args)
+    if os.path.exists(debug_true_filepath):
+        parser_args['debug'] = True
 except:
     print('Importing from notebook, ignoring Cell-ACDC argument parser...')
     parser_args = {}

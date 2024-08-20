@@ -1165,7 +1165,7 @@ class tracker:
         - IoA_thresh_aggressive (float, optional): Aggressive IoA threshold. Used when the tracker thinks that a cell has NOT divided. Defaults to 0.5.
         - min_daughter (int, optional): Minimum number of daughter cells. Used for determining if a cell has devided. Defaults to 2.
         - max_daughter (int, optional): Maximum number of daughter cells. Used for determining if a cell has devided. Defaults to 2.
-        - record_lineage (bool, optional): Flag to record and safe lineage. Defaults to True.
+        - record_lineage (bool, optional): Flag to record and save lineage. Defaults to True.
         
         Returns:
         - list: Tracked video frames.

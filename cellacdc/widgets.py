@@ -65,7 +65,7 @@ from . import apps
 from . import plot
 from . import annotate
 from . import urls
-from .regex import float_regex
+from .acdc_regex import float_regex
 from .config import PREPROCESS_MAPPER
 
 LINEEDIT_WARNING_STYLESHEET = _palettes.lineedit_warning_stylesheet()
@@ -519,9 +519,18 @@ class copyPushButton(PushButton):
         super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':edit-copy.svg'))
         self.clicked.connect(self.onClicked)
+        self._text_to_copy = None
+    
+    def setTextToCopy(self, text):
+        self._text_to_copy = text
     
     def onClicked(self):
         self._original_text = self.text()
+        if self._text_to_copy is not None:
+            cb = QApplication.clipboard()
+            cb.clear(mode=cb.Clipboard)
+            cb.setText(self._text_to_copy, mode=cb.Clipboard)
+            
         super().setText('Copied!')
         self.setIcon(QIcon(':greenTick.svg'))
         QTimer.singleShot(2000, self.resetButton)
@@ -544,6 +553,7 @@ class showInFileManagerButton(PushButton):
     def __init__(self, *args, setDefaultText=False, **kwargs):
         super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':drawer.svg'))
+        self._path_to_browse = None
         if setDefaultText:
             self.setDefaultText()
     
@@ -551,6 +561,12 @@ class showInFileManagerButton(PushButton):
         self._text = myutils.get_show_in_file_manager_text()
         self.setText(self._text)
 
+    def setPathToBrowse(self, path: os.PathLike):
+        self._path_to_browse = path
+        self.clicked.connect(partial(myutils.showInExplorer, path))
+    
+        
+    
 class OpenUrlButton(PushButton):
     def __init__(self, url, *args, **kwargs):
         self._url = url
@@ -603,6 +619,11 @@ class setPushButton(PushButton):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':cog.svg'))
+
+class TrainPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setIcon(QIcon(':train.svg'))
 
 class noPushButton(PushButton):
     def __init__(self, *args, **kwargs):
@@ -1253,9 +1274,7 @@ class QDialogListbox(QDialog):
         listBox.setCurrentRow(0)
         for i in range(listBox.count()):
             item = listBox.item(i)
-            if item.text() not in preSelectedItems:
-                continue
-            item.setSelected(True)
+            item.setSelected(item.text() in preSelectedItems)
             
         self.listBox = listBox
         if not multiSelection:
@@ -1468,7 +1487,6 @@ class ExpandableListBox(QComboBox):
     def showPopup(self) -> None:
         self.listW.show()
 
-
 class filePathControl(QFrame):
     def __init__(
             self, parent=None, browseFolder=False, 
@@ -1512,6 +1530,14 @@ class filePathControl(QFrame):
     def showEvent(self, a0: QShowEvent) -> None:
         self.le.setFixedHeight(self.browseButton.height())
         return super().showEvent(a0)
+
+class FolderPathControl(filePathControl):
+    def __init__(self, **kwargs):
+        super().__init__(
+            browseFolder=True, 
+            fileManagerTitle='Select folder', 
+            **kwargs
+        )
 
 class QHWidgetSpacer(QWidget):
     def __init__(self, width=10, parent=None) -> None:
@@ -6138,6 +6164,7 @@ class ParentImageItem(pg.ImageItem):
         self.linkedImageItem = linkedImageItem
         self.activatingActions = activatingActions
         self.debug = debug
+        self._forceDoNotUpdateLinked = False
     
     def clear(self):
         if self.linkedImageItem is not None:
@@ -6145,6 +6172,9 @@ class ParentImageItem(pg.ImageItem):
         return super().clear()
     
     def isLinkedImageItemActive(self):
+        if self._forceDoNotUpdateLinked:
+            return False
+        
         if self.linkedImageItem is None:
             return False
         
@@ -6190,8 +6220,8 @@ class ParentImageItem(pg.ImageItem):
     
     def setLookupTable(self, lut):
         super().setLookupTable(lut)
-        if self.linkedImageItem is not None:
-            self.linkedImageItem.setLookupTable(lut)
+        # if self.linkedImageItem is not None:
+        #     self.linkedImageItem.setLookupTable(lut)
 
 class ChildImageItem(pg.ImageItem):
     def __init__(self, *args, linkedScrollbar=None, **kwargs):
@@ -8992,4 +9022,3 @@ class RescaleImageJroisGroupbox(QGroupBox):
             for dim, (spinbox, SizeD) in self.widgets.items()
         }
         return sizes
-        

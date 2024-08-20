@@ -4,6 +4,7 @@ figures
 outreach
 external_pkgs
 .acdc-settings/
+.debug_true
 !cellacdc/resources/figures
 .vs
 test.py

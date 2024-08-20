@@ -100,6 +100,7 @@ def user_data_dir():
     return os.path.join(os_path, 'Cell_ACDC')
 
 cellacdc_path = os.path.dirname(os.path.abspath(__file__))
+debug_true_filepath = os.path.join(cellacdc_path, '.debug_true')
 qrc_resources_path = os.path.join(cellacdc_path, 'qrc_resources.py')
 qrc_resources_light_path = os.path.join(cellacdc_path, 'qrc_resources_light.py')
 qrc_resources_dark_path = os.path.join(cellacdc_path, 'qrc_resources_dark.py')
