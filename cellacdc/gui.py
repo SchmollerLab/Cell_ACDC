@@ -23732,6 +23732,10 @@ class guiWin(QMainWindow):
             if ID == 0:
                 continue
             trackedLostIDs.add(ID)
+
+        printl(tracked_lost_centroids, 'tracked_lost_centroids')
+        printl(trackedLostIDs, 'trackedLostIDs')
+
         return trackedLostIDs
 
     

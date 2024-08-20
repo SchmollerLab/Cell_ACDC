@@ -1170,8 +1170,8 @@ class tracker:
         Returns:
         - list: Tracked video frames.
         """
-        # if not record_lineage and return_tracked_lost_centroids:
-        #     raise ValueError('return_tracked_lost_centroids can only be True if record_lineage is True.')
+        if not record_lineage and return_tracked_lost_centroids:
+            raise ValueError('return_tracked_lost_centroids can only be True if record_lineage is True.')
         
         pbar = tqdm(total=len(segm_video), desc='Tracking', ncols=100)
 
@@ -1210,33 +1210,32 @@ class tracker:
             rp = regionprops(tracker.tracked_lab)
             curr_IDs = {obj.label for obj in rp}
             new_IDs = curr_IDs - prev_IDs
-            # new_IDs = new_IDs - set([0])
+            print(f'Frame {frame_i}: {new_IDs}, {curr_IDs}, {prev_IDs}')
             tree.create_tracked_frame(
-                frame_i, mother_daughters, IDs_prev, IDs_curr_untracked, 
+                frame_i, mother_daughters, IDs_prev, IDs_curr_untracked,
                 assignments, curr_IDs, new_IDs
             )
             # printl(new_IDs, curr_IDs, prev_IDs)
-            if return_tracked_lost_centroids:
-                tracked_lost_centroids_loc = []
-                for mother, _ in mother_daughters:
-                    mother_ID = IDs_prev[mother]
-                    
-                    found = False
-                    for obj in prev_rp:
-                        if obj.label == mother_ID:
-                            tracked_lost_centroids_loc.append(obj.centroid)
-                            found = True
-                            break
-                    if not found:
-                        labels = [obj.label for obj in rp]
-                        printl(mother, mother_ID, IDs_curr_untracked, labels)
-                        raise ValueError('Something went wrong with the tracked lost centroids.')
-
-
-                if len(mother_daughters) != len(tracked_lost_centroids_loc):
-                    raise ValueError('Something went wrong with the tracked lost centroids.')
+            tracked_lost_centroids_loc = []
+            for mother, _ in mother_daughters:
+                mother_ID = IDs_prev[mother]
                 
-                self.tracked_lost_centroids[frame_i] = tracked_lost_centroids_loc
+                found = False
+                for obj in prev_rp:
+                    if obj.label == mother_ID:
+                        tracked_lost_centroids_loc.append(obj.centroid)
+                        found = True
+                        break
+                if not found:
+                    labels = [obj.label for obj in rp]
+                    printl(mother, mother_ID, IDs_curr_untracked, labels)
+                    raise ValueError('Something went wrong with the tracked lost centroids.')
+
+
+            if len(mother_daughters) != len(tracked_lost_centroids_loc):
+                raise ValueError('Something went wrong with the tracked lost centroids.')
+            
+            self.tracked_lost_centroids[frame_i] = tracked_lost_centroids_loc
 
             prev_IDs = curr_IDs.copy()
             prev_rp = rp.copy()
