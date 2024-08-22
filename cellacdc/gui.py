@@ -23490,7 +23490,7 @@ class guiWin(QMainWindow):
                     f'{htmlTxt}, <font color="green">{title}</font>'
                 )
                 htmlTxtFull = (
-                    f'{htmlTxt}<br><font color="green">{title_full}</font>'
+                    f'{htmlTxtFull}<br><font color="green">{title_full}</font>'
                 )
             else:
                 htmlTxt = (
