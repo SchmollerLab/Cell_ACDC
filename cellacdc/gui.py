@@ -15624,9 +15624,13 @@ class guiWin(QMainWindow):
             tuple(int(val) for val in prev_rp[prev_IDs_idxs[ID]].centroid) 
             for ID in posData.lost_IDs
         }
-        posData.tracked_lost_centroids[frame_i] = (
-            posData.tracked_lost_centroids[frame_i] | (accepted_lost_centroids)
-        )
+        try:
+            posData.tracked_lost_centroids[frame_i] = (
+                posData.tracked_lost_centroids[frame_i] | (accepted_lost_centroids)
+            )
+        except KeyError:
+            posData.tracked_lost_centroids[frame_i] = accepted_lost_centroids
+            printl('KeyError, need to initialize posData.tracked_lost_centroids[frame_i] properly')
         return True
         
     def next_frame(self, warn=True):
@@ -23414,7 +23418,7 @@ class guiWin(QMainWindow):
         curr_delRoiIDs = self.getStoredDelRoiIDs()
         prev_delRoiIDs = self.getStoredDelRoiIDs(frame_i=posData.frame_i-1)
         lost_IDs = [
-            ID for ID in prev_IDs if ID not in curr_IDs 
+            ID for ID in prev_IDs if ID not in curr_IDs
             and ID not in prev_delRoiIDs and ID not in tracked_lost_IDs
         ]
         new_IDs = [
@@ -23437,6 +23441,7 @@ class guiWin(QMainWindow):
     def setTitleText(self, lost_IDs, new_IDs, IDs_with_holes, tracked_lost_IDs):
         mode = self.modeComboBox.currentText()
         title = ''
+        htmlTxtFull = ''
         try:
             posData = self.data[self.pos_i]
             posData.segm_data[posData.frame_i]
@@ -23448,18 +23453,26 @@ class guiWin(QMainWindow):
             htmlTxt = ''
         else:
             htmlTxt = f'<font color="white">Never segmented frame. </font>'
+
         if lost_IDs and mode != 'Normal division: Lineage tree':
             lost_IDs_format = myutils.get_trimmed_list(lost_IDs)
             title = f'IDs lost in current frame: {lost_IDs_format}'
+            title_full = f'IDs lost in current frame: {lost_IDs}'
             htmlTxt = (
                 f'<font color="red">{title}</font>'
             )
-
-        if mode == 'Normal division: Lineage tree' and lost_IDs: # and self.lineage_tree and self.lineage_tree.dict_curr_frame():
+            htmlTxtFull = (
+                f'<font color="red">{title_full}</font>'
+            )
+        elif lost_IDs and mode == 'Normal division: Lineage tree': # and self.lineage_tree and self.lineage_tree.dict_curr_frame():
             lost_IDs_format = myutils.get_trimmed_list(lost_IDs)
             warn_txt = f'Mother cells: {lost_IDs_format}'
+            warn_txt_full = f'Mother cells: {lost_IDs}'
             htmlTxt = (
                 f'<font color="green">{warn_txt}</font>'
+            )
+            htmlTxtFull = (
+                f'<font color="green">{warn_txt_full}</font>'
             )
             
             # pairs_format = myutils.get_trimmed_dict(self.lineage_tree.dict_curr_frame())
@@ -23471,29 +23484,61 @@ class guiWin(QMainWindow):
         if new_IDs:
             new_IDs_format = myutils.get_trimmed_list(new_IDs)
             title = f'New IDs in current frame: {new_IDs_format}'
-            htmlTxt = (
-                f'{htmlTxt}, <font color="green">{title}</font>'
-            )
-        
+            title_full = f'New IDs in current frame: {new_IDs}'
+            if htmlTxt:
+                htmlTxt = (
+                    f'{htmlTxt}, <font color="green">{title}</font>'
+                )
+                htmlTxtFull = (
+                    f'{htmlTxtFull}<br><font color="green">{title_full}</font>'
+                )
+            else:
+                htmlTxt = (
+                    f'<font color="green">{title}</font>'
+                )
+                htmlTxtFull = (
+                    f'<font color="green">{title_full}</font>'
+                )
+                    
         if tracked_lost_IDs:
             tracked_lost_IDs_format = myutils.get_trimmed_list(tracked_lost_IDs)
-            title = f'IDs that splitted: {tracked_lost_IDs_format}'
-            htmlTxt = (
-                f'<font color="orange">{title}</font>'
-            )
+            title = f'Acc. IDs lost: {tracked_lost_IDs_format}'
+            title_full = f'Acc. IDs lost: {tracked_lost_IDs}'
+            if htmlTxt:
+                htmlTxt = htmlTxt +', ' + (
+                    f'<font color="orange">{title}</font>'
+                )
+                htmlTxtFull = htmlTxtFull +'<br>' + (
+                    f'<font color="orange">{title_full}</font>'
+                )
+            else:
+                htmlTxt = (
+                    f'<font color="orange">{title}</font>'
+                )
+                htmlTxtFull = (
+                    f'<font color="orange">{title_full}</font>'
+                )
             
         if IDs_with_holes:
             IDs_with_holes_format = myutils.get_trimmed_list(IDs_with_holes)
             title = f'IDs with holes: {IDs_with_holes_format}'
+            title_full = f'IDs with holes: {IDs_with_holes}'
             htmlTxt = (
                 f'{htmlTxt}, <font color="red">{title}</font>'
             )
+            htmlTxtFull = (
+                f'{title_full}<br><font color="red">{title_full}</font>'
+            )
+
+
         if not htmlTxt:
             title = 'Looking good'
             htmlTxt = (
                 f'<font color="{self.titleColor}">{title}</font>'
             )
+            htmlTxtFull = htmlTxt
         self.titleLabel.setText(htmlTxt)
+        self.titleLabel.setToolTip(htmlTxtFull)
 
     def separateByLabelling(self, lab, rp, maxID=None):
         """
@@ -23834,8 +23879,12 @@ class guiWin(QMainWindow):
                 continue
             
             int_centroid = tuple([int(val) for val in obj.centroid])
-            posData.tracked_lost_centroids[frame_i].add(int_centroid)
-    
+            try:
+                posData.tracked_lost_centroids[frame_i].add(int_centroid)
+            except KeyError:
+                posData.tracked_lost_centroids[frame_i] = {int_centroid}
+                printl('Need to fix probably? Why is this not properly init?')    
+
     def getTrackedLostIDs(self, prev_lab=None, frame_i=None):
         trackedLostIDs = set()
         posData = self.data[self.pos_i]
@@ -23861,6 +23910,10 @@ class guiWin(QMainWindow):
             if ID == 0:
                 continue
             trackedLostIDs.add(ID)
+
+        # printl(tracked_lost_centroids, 'tracked_lost_centroids')
+        # printl(trackedLostIDs, 'trackedLostIDs')
+
         return trackedLostIDs
 
     
