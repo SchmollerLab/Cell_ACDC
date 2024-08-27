@@ -12867,7 +12867,7 @@ class guiWin(QMainWindow):
             checkbox = getattr(self, option)
             checkbox.setChecked(state)
         
-        self.setDrawAnnotComboboxText()
+        self.setDrawAnnotComboboxTextRight()
         self.annotOptionsToRestoreRight = None
 
     def setDrawNothingAnnotations(self):
