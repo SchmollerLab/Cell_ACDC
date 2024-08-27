@@ -16965,6 +16965,7 @@ class guiWin(QMainWindow):
             self.setDrawNothingAnnotations()
             self.setDisabledAnnotCheckBoxesLeft(True)
             self.setDisabledAnnotCheckBoxesRight(True)
+            self.setEnabledAnnotCheckBoxesLeftZdepthAxes()
             self.overlayButton.setChecked(False)
             self.overlayButton.setDisabled(True)
             # self.setZprojDisabled(True, storePrevState=True)
@@ -16999,6 +17000,7 @@ class guiWin(QMainWindow):
         self.zSliceScrollBar.setMaximum(maxSliceNum-1)
         self.zSliceSpinbox.setMaximum(maxSliceNum)
         
+        self.initContoursImage()
         self.updateAllImages()
         QTimer.singleShot(
             200, partial(self.setViewRangeSwitchPlane, previousPlane)
@@ -18353,7 +18355,6 @@ class guiWin(QMainWindow):
         else:
             return (slice(None), slice(None), idx)
                 
-
     def get_2Dlab(self, lab, force_z=True):
         if self.isSegm3D:
             if force_z:
@@ -19652,7 +19653,14 @@ class guiWin(QMainWindow):
 
     def getObjCentroid(self, obj_centroid):
         if self.isSegm3D:
-            return obj_centroid[1:3]
+            depthAxes = self.switchPlaneCombobox.depthAxes()
+            zc, yc, xc = obj_centroid
+            if depthAxes == 'z':
+                return yc, xc 
+            elif depthAxes == 'y':
+                return zc, xc 
+            else:
+                return zc, yc 
         else:
             return obj_centroid
     
@@ -21287,10 +21295,10 @@ class guiWin(QMainWindow):
 
     def initContoursImage(self):
         posData = self.data[self.pos_i]
-        if hasattr(posData, 'lab'):
-            Y, X = posData.lab.shape[-2:]
-        else:
-            Y, X = posData.img_data.shape[-2:]
+        z_slice = self.z_lab()
+        img = posData.img_data[posData.frame_i]
+        Y, X = img[z_slice].shape[-2:]
+            
         self.contoursImage = np.zeros((Y, X, 4), dtype=np.uint8)
     
     def initManualBackgroundImage(self):
@@ -21386,19 +21394,27 @@ class guiWin(QMainWindow):
         return obj.image[local_z]
 
     def isObjVisible(self, obj_bbox, debug=False):
-        depthAxes = self.switchPlaneCombobox.depthAxes()
-        if self.switchPlaneCombobox.isEnabled() and depthAxes != 'z':
-            return False
-        
         if self.isSegm3D:
             zProjHow = self.zProjComboBox.currentText()
             isZslice = zProjHow == 'single z-slice'
             if not isZslice:
                 # required a projection --> all obj are visible
                 return True
-            min_z = obj_bbox[0]
-            max_z = obj_bbox[3]
-            if self.z_lab()>=min_z and self.z_lab()<max_z:
+            
+            depthAxes = self.switchPlaneCombobox.depthAxes()
+            
+            min_z, min_y, min_x, max_z, max_y, max_x = obj_bbox
+            if depthAxes == 'z':
+                min_val, max_val = min_z, max_z
+                val = self.z_lab()
+            elif depthAxes == 'y':
+                min_val, max_val = min_y, max_y
+                val = self.z_lab()[-1]
+            else:
+                min_val, max_val = min_x, max_x
+                val = self.z_lab()[-1]
+            
+            if val >= min_val and val < max_val:
                 return True
             else:
                 return False
@@ -22983,7 +22999,8 @@ class guiWin(QMainWindow):
             highlightedID=self.highlightedID, 
             delROIsIDs=delROIsIDs,
             annotateLost=self.annotLostObjsToggle.isChecked(), 
-            getCurrentZfunc=self.z_lab
+            getCurrentZfunc=self.z_lab, 
+            getObjCentroidFunc=self.getObjCentroid
         )
         self.textAnnot[1].setAnnotations(
             posData=posData, labelsToSkip=labelsToSkip, 
@@ -22991,7 +23008,8 @@ class guiWin(QMainWindow):
             highlightedID=self.highlightedID, 
             delROIsIDs=delROIsIDs,
             annotateLost=self.annotLostObjsToggle.isChecked(), 
-            getCurrentZfunc=self.z_lab
+            getCurrentZfunc=self.z_lab, 
+            getObjCentroidFunc=self.getObjCentroid
         )
         self.textAnnot[0].update()
         self.textAnnot[1].update()
@@ -25383,6 +25401,14 @@ class guiWin(QMainWindow):
         self.drawMothBudLinesCheckbox.setDisabled(disabled)
         self.annotNumZslicesCheckbox.setDisabled(disabled)
         self.drawNothingCheckbox.setDisabled(disabled)
+    
+    def setEnabledAnnotCheckBoxesLeftZdepthAxes(self):
+        self.annotIDsCheckbox.setDisabled(False)
+        self.annotContourCheckbox.setDisabled(False)
+        self.annotIDsCheckbox.setChecked(True)
+        self.annotContourCheckbox.setChecked(True)
+        self.annotOptionClicked(
+            sender=self.annotIDsCheckbox, saveSettings=False)
     
     def setDisabledAnnotCheckBoxesRight(self, disabled):
         self.annotIDsCheckboxRight.setDisabled(disabled)
