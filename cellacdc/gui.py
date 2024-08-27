@@ -16884,7 +16884,11 @@ class guiWin(QMainWindow):
                 img, next_frame_image=self.nextFrameImage(),
                 scrollbar_value=posData.frame_i+2
             )
-            self.setOverlayImages()
+            try:
+                self.setOverlayImages()
+            except Exception as err:
+                pass
+            
             if self.labelsGrad.showLabelsImgAction.isChecked():
                 self.img2.setImage(posData.lab, z=z, autoLevels=False)
             self.updateViewerWindow()
@@ -16911,28 +16915,31 @@ class guiWin(QMainWindow):
             self.switchPlaneCombobox.setCurrentIndex(0)
     
     def _setViewRangeSwitchPlane(self, previousPlane):
+        posData = self.data[self.pos_i]
+        SizeZ = posData.SizeZ
+        SizeY, SizeX = self.img1.image.shape[:2]
         currentPlane = self.switchPlaneCombobox.plane()
         if previousPlane == 'xy':
             if currentPlane == 'zy':
                 self.ax1.setRange(xRange=self.yRangePrev)
-                unusedRange = self.xRangePrev
+                unusedRange = np.clip(self.xRangePrev, 0, SizeX)
             elif currentPlane == 'zx':
                 self.ax1.setRange(xRange=self.xRangePrev)
-                unusedRange = self.yRangePrev
+                unusedRange = np.clip(self.yRangePrev, 0, SizeY)
         elif previousPlane == 'zy':
             if currentPlane == 'xy':
                 self.ax1.setRange(yRange=self.xRangePrev)
-                unusedRange = self.yRangePrev
+                unusedRange = np.clip(self.yRangePrev, 0, SizeZ)
             elif currentPlane == 'zx':
                 self.ax1.setRange(yRange=self.yRangePrev)
-                unusedRange = self.xRangePrev
+                unusedRange = np.clip(self.xRangePrev, 0, SizeY)
         elif previousPlane == 'zx':
             if currentPlane == 'xy':
                 self.ax1.setRange(xRange=self.xRangePrev)
-                unusedRange = self.yRangePrev
+                unusedRange = np.clip(self.yRangePrev, 0, SizeZ)
             elif currentPlane == 'zy':
                 self.ax1.setRange(yRange=self.yRangePrev)
-                unusedRange = self.xRangePrev
+                unusedRange = np.clip(self.xRangePrev, 0, SizeX)
         
         sliceValue = round((unusedRange[0] + unusedRange[1])/2)
         self.zSliceScrollBar.setSliderPosition(sliceValue)
@@ -16966,6 +16973,7 @@ class guiWin(QMainWindow):
             self.setDisabledAnnotCheckBoxesLeft(True)
             self.setDisabledAnnotCheckBoxesRight(True)
             self.setEnabledAnnotCheckBoxesLeftZdepthAxes()
+            self.overlayButtonPrevState = self.overlayButton.isChecked()
             self.overlayButton.setChecked(False)
             self.overlayButton.setDisabled(True)
             # self.setZprojDisabled(True, storePrevState=True)
@@ -16975,6 +16983,8 @@ class guiWin(QMainWindow):
             self.setDisabledAnnotCheckBoxesLeft(False)
             self.setDisabledAnnotCheckBoxesRight(False)
             self.overlayButton.setDisabled(False)
+            if self.overlayButtonPrevState:
+                self.overlayButton.setChecked(self.overlayButtonPrevState)
             self.updateZsliceScrollbar(posData.frame_i)
             # self.restoreZprojWidgetsEnabled()
         
