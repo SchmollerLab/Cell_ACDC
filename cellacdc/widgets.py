@@ -8178,9 +8178,24 @@ class LabelsWidget(QWidget):
         return fixedTexts
 
 class SwitchPlaneCombobox(QComboBox):
+    sigPlaneChanged = Signal(str, str)
+    
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.addItems(['xy', 'zy', 'zx'])
+        self._previousPlane = 'xy'
+        self.currentTextChanged.connect(self.emitPlaneChanged)
+    
+    def emitPlaneChanged(self, plane):
+        self.sigPlaneChanged.emit(self._previousPlane, plane)
+        self._previousPlane = plane
+    
+    def setPlane(self, plane):
+        self.setCurrentText(plane)
+    
+    def setCurrentText(self, text):
+        self._previousPlane = self.plane()
+        super().setCurrentText(text)
     
     def plane(self):
         return self.currentText()

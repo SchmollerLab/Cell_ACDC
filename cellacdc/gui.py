@@ -12988,8 +12988,7 @@ class guiWin(QMainWindow):
             # from . import _debug
             # _debug._debug_lineage_tree(self)
             
-            posData = self.data[self.pos_i]
-            printl(posData.allData_li[posData.frame_i]['acdc_df'][['failed_cell_division']])
+            pass
         
         if not self.isDataLoaded:
             self.logger.info(
@@ -16801,7 +16800,7 @@ class guiWin(QMainWindow):
                 self.zSliceScrollBar.sliderReleased.disconnect()
                 self.zProjComboBox.currentTextChanged.disconnect()
                 self.zProjComboBox.activated.disconnect()
-                self.switchPlaneCombobox.clicked.disconnect()
+                self.switchPlaneCombobox.sigPlaneChanged.disconnect()
             except Exception as e:
                 pass
             self.zSliceScrollBar.actionTriggered.connect(
@@ -16812,7 +16811,7 @@ class guiWin(QMainWindow):
             )
             self.zProjComboBox.currentTextChanged.connect(self.updateZproj)
             self.zProjComboBox.activated.connect(self.clearComboBoxFocus)
-            self.switchPlaneCombobox.currentTextChanged.connect(
+            self.switchPlaneCombobox.sigPlaneChanged.connect(
                 self.switchViewedPlane
             )
 
@@ -16916,8 +16915,45 @@ class guiWin(QMainWindow):
         if disabled:
             self.switchPlaneCombobox.setCurrentIndex(0)
     
-    def switchViewedPlane(self, plane):
+    def _setViewRangeSwitchPlane(self, previousPlane):
+        currentPlane = self.switchPlaneCombobox.plane()
+        if previousPlane == 'xy':
+            if currentPlane == 'zy':
+                self.ax1.setRange(xRange=self.yRangePrev)
+                unusedRange = self.xRangePrev
+            elif currentPlane == 'zx':
+                self.ax1.setRange(xRange=self.xRangePrev)
+                unusedRange = self.yRangePrev
+        elif previousPlane == 'zy':
+            if currentPlane == 'xy':
+                self.ax1.setRange(yRange=self.xRangePrev)
+                unusedRange = self.yRangePrev
+            elif currentPlane == 'zx':
+                self.ax1.setRange(yRange=self.yRangePrev)
+                unusedRange = self.xRangePrev
+        elif previousPlane == 'zx':
+            if currentPlane == 'xy':
+                self.ax1.setRange(xRange=self.xRangePrev)
+                unusedRange = self.yRangePrev
+            elif currentPlane == 'zy':
+                self.ax1.setRange(yRange=self.yRangePrev)
+                unusedRange = self.xRangePrev
+        
+        sliceValue = round((unusedRange[0] + unusedRange[1])/2)
+        self.zSliceScrollBar.setSliderPosition(sliceValue)
+        self.update_z_slice(self.zSliceScrollBar.sliderPosition())
+    
+    def setViewRangeSwitchPlane(self, previousPlane):
+        self.autoRange()
+        QTimer.singleShot(
+            100, partial(self._setViewRangeSwitchPlane, previousPlane)
+        )
+        
+    def switchViewedPlane(self, previousPlane, currentPlane):
         posData = self.data[self.pos_i]
+        self.xRangePrev, self.yRangePrev = self.ax1.viewRange()
+        self.zSlicePrev = self.zSliceScrollBar.sliderPosition()
+        
         self.zProjComboBox.setCurrentText('single z-slice')
         depthAxes = self.switchPlaneCombobox.depthAxes()
         self.onEscape()
@@ -16967,11 +17003,11 @@ class guiWin(QMainWindow):
         self.zSliceCheckbox.setText(f'{depthAxes}-slice')
         self.zSliceScrollBar.setMaximum(maxSliceNum-1)
         self.zSliceSpinbox.setMaximum(maxSliceNum)
-        if depthAxes != 'z':
-            self.zSliceScrollBar.setSliderPosition(int(maxSliceNum/2))
-            
+        
         self.updateAllImages()
-        QTimer.singleShot(200, self.autoRange)
+        QTimer.singleShot(
+            200, partial(self.setViewRangeSwitchPlane, previousPlane)
+        )
     
     def onZsliceSpinboxValueChange(self, value):
         self.zSliceScrollBar.setSliderPosition(value-1)
@@ -23499,7 +23535,7 @@ class guiWin(QMainWindow):
                 htmlTxtFull = (
                     f'<font color="green">{title_full}</font>'
                 )
-                    
+        
         if tracked_lost_IDs:
             tracked_lost_IDs_format = myutils.get_trimmed_list(tracked_lost_IDs)
             title = f'Acc. IDs lost: {tracked_lost_IDs_format}'
