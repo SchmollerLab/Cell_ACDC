@@ -7171,21 +7171,16 @@ class guiWin(QMainWindow):
     @exception_handler
     def gui_mouseReleaseRightImage(self, event):
         self.gui_mouseReleaseEventImg1(event)
-
+    
     def drawTempRulerLine(self, event):
         x, y = event.pos()
         x1, y1 = int(x), int(y)
         xxRA, yyRA = self.ax1_rulerAnchorsItem.getData()
         x0, y0 = xxRA[0], yyRA[0]
         if self.isCtrlDown:
-            # Snap to closest angle divisible by 15 degrees
-            angle = math.degrees(math.atan2(y1-y0, x1-x0))
-            snap_angle = math.radians(core.closest_n_divisible_by_m(angle, 15))
-            dist = math.dist((x0, y0), (x1, y1))
-            dx = dist * math.cos(snap_angle)
-            dy = dist * math.sin(snap_angle)
-            x1, y1 = x0 + dx, y0 + dy
-            # # ydata = yyRA[0]
+            x1, y1 = transformation.snap_xy_to_closest_angle(
+                x0, y0, x1, y1
+            )
         self.ax1_rulerPlotItem.setData([x0, x1], [y0, y1])
     
     @exception_handler
@@ -7552,16 +7547,16 @@ class guiWin(QMainWindow):
             else:
                 self.tempSegmentON = False
                 xxRA, yyRA = self.ax1_rulerAnchorsItem.getData()
+                x0, y0 = xxRA[0], yyRA[0]
                 if self.isCtrlDown:
-                    ydata = yyRA[0]
+                    x1, y1 = transformation.snap_xy_to_closest_angle(
+                        x0, y0, xdata, ydata
+                    )
                 lengthText = self.getRulerLengthText()
                 self.ax1_rulerPlotItem.setData(
-                    [xxRA[0], xdata], [yyRA[0], ydata],
-                    lengthText=lengthText
+                    [x0, x1], [y0, y1], lengthText=lengthText
                 )
-                self.ax1_rulerAnchorsItem.setData(
-                    [xxRA[0], xdata], [yyRA[0], ydata]
-                )
+                self.ax1_rulerAnchorsItem.setData([x0, x1], [y0, y1])
              
             if canPolyLine and not self.startPointPolyLineItem.getData()[0]:
                 # Create and add roi item

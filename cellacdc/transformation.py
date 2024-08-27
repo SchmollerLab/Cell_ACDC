@@ -1,5 +1,6 @@
 import xml.etree.ElementTree as ET 
 
+import math
 import pandas as pd
 import numpy as np
 
@@ -8,7 +9,7 @@ import skimage.measure
 
 from tqdm import tqdm
 
-from . import printl
+from . import printl, core
 
 def resize_lab(lab, output_shape, rp=None):
     if rp is None:
@@ -220,4 +221,12 @@ def remove_zeros_padding_2D(arr, return_crop_slice=False):
     
     return arr[tuple(crop_slice)]
     
-    
+def snap_xy_to_closest_angle(x0, y0, x1, y1, angle_factor=15):
+    # Snap to closest angle divisible by angle_factor degrees
+    angle = math.degrees(math.atan2(y1-y0, x1-x0))
+    snap_angle = math.radians(core.closest_n_divisible_by_m(angle, angle_factor))
+    dist = math.dist((x0, y0), (x1, y1))
+    dx = dist * math.cos(snap_angle)
+    dy = dist * math.sin(snap_angle)
+    x1, y1 = x0 + dx, y0 + dy
+    return x1, y1
