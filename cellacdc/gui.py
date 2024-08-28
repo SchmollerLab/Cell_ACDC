@@ -12983,7 +12983,8 @@ class guiWin(QMainWindow):
             # from . import _debug
             # _debug._debug_lineage_tree(self)
             
-            pass
+            posData = self.data[self.pos_i]
+            printl(posData.binnedIDs)
         
         if not self.isDataLoaded:
             self.logger.info(
@@ -18608,10 +18609,10 @@ class guiWin(QMainWindow):
                 # previous closed session add it to current metadata
                 df = posData.acdc_df.loc[posData.frame_i].copy()
                 binnedIDs_df = df[df['is_cell_excluded']>0]
-                binnedIDs = set(binnedIDs_df.index).union(posData.binnedIDs) # ???
+                binnedIDs = set(binnedIDs_df.index).union(posData.binnedIDs)
                 posData.binnedIDs = binnedIDs
                 ripIDs_df = df[df['is_cell_dead']>0]
-                ripIDs = set(ripIDs_df.index).union(posData.ripIDs) # ???
+                ripIDs = set(ripIDs_df.index).union(posData.ripIDs)
                 posData.ripIDs = ripIDs
                 posData.editID_info.extend(self._get_editID_info(df))
                 # Load cca df into current metadata
@@ -18635,10 +18636,10 @@ class guiWin(QMainWindow):
                 df = self.lineage_tree.export_df(posData.frame_i)
                 # df = posData.acdc_df.loc[posData.frame_i].copy()
                 binnedIDs_df = df[df['is_cell_excluded']>0]
-                binnedIDs = set(binnedIDs_df.index).union(posData.binnedIDs) # ???
+                binnedIDs = set(binnedIDs_df.index).union(posData.binnedIDs)
                 posData.binnedIDs = binnedIDs
                 ripIDs_df = df[df['is_cell_dead']>0]
-                ripIDs = set(ripIDs_df.index).union(posData.ripIDs) # ???
+                ripIDs = set(ripIDs_df.index).union(posData.ripIDs)
                 posData.ripIDs = ripIDs
                 posData.editID_info.extend(self._get_editID_info(df))
                 if 'generation_num_tree' in df.columns: # may need to change this, not exactly sure how df is initialized 
