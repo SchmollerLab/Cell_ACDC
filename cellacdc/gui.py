@@ -15462,11 +15462,6 @@ class guiWin(QMainWindow):
         if posData.SizeZ > 1:
             self.updateZsliceScrollbar(posData.frame_i)
             idx = (posData.filename, posData.frame_i)
-            # try:
-            #     how = posData.segmInfo_df.at[idx, 'which_z_proj_gui']
-            # except ValueError as e:
-            #     how = posData.segmInfo_df.loc[idx, 'which_z_proj_gui'].iloc[0] 
-            # self.zProjComboBox.setCurrentText(how)
             self.zSliceScrollBar.setMaximum(posData.SizeZ-1)
             self.zSliceSpinbox.setMaximum(posData.SizeZ)
             self.SizeZlabel.setText(f'/{posData.SizeZ}')
@@ -16347,13 +16342,6 @@ class guiWin(QMainWindow):
         )
 
         self.navigateScrollBar.setSliderPosition(posData.frame_i+1)
-        # if posData.SizeZ > 1:
-        #     idx = (posData.filename, posData.frame_i)
-        #     try:
-        #         how = posData.segmInfo_df.at[idx, 'which_z_proj_gui']
-        #     except ValueError as e:
-        #         how = posData.segmInfo_df.loc[idx, 'which_z_proj_gui'].iloc[0] 
-        #     self.zProjComboBox.setCurrentText(how)
 
         # Connect events at the end of loading data process
         self.gui_connectGraphicsEvents()
@@ -17050,6 +17038,8 @@ class guiWin(QMainWindow):
         for p, posData in enumerate(self.data[self.pos_i:]):
             idx = (posData.filename, posData.frame_i)
             posData.segmInfo_df.at[idx, 'which_z_proj_gui'] = how
+            posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
+            
         posData = self.data[self.pos_i]
         if how == 'single z-slice':
             self.setZprojDisabled(False)
@@ -21880,8 +21870,11 @@ class guiWin(QMainWindow):
             zProjHow = posData.segmInfo_df.at[idx, 'which_z_proj_gui']
         except ValueError as e:
             zProjHow = posData.segmInfo_df.loc[idx, 'which_z_proj_gui'].iloc[0] 
-        if zProjHow != 'single z-slice':
-            return
+        
+        self.zProjComboBox.setCurrentText(zProjHow)
+        # if zProjHow != 'single z-slice':
+        #     return
+        
         reconnect = False
         try:
             self.zSliceScrollBar.actionTriggered.disconnect()
@@ -21922,15 +21915,15 @@ class guiWin(QMainWindow):
         if posData.SizeZ > 1:
             img = posData.img_data[frame_i]
             self.updateZsliceScrollbar(frame_i)
-            cells_img = self.get_2Dimg_from_3D(img)
+            img = self.get_2Dimg_from_3D(img)
         else:
-            cells_img = posData.img_data[frame_i].copy()
+            img = posData.img_data[frame_i].copy()
         if normalizeIntens:
-            cells_img = self.normalizeIntensities(cells_img)
+            img = self.normalizeIntensities(img)
         if self.imgCmapName != 'grey':
             # Do not invert bw for non grey cmaps
-            return cells_img
-        return cells_img
+            return img
+        return img
 
     def setImageImg2(self, updateLookuptable=True, set_image=True):
         posData = self.data[self.pos_i]
