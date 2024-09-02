@@ -1230,16 +1230,18 @@ class QDialogListbox(QDialog):
             self, title, text, items, cancelText='Cancel',
             multiSelection=True, parent=None,
             additionalButtons=(), includeSelectionHelp=False,
-            allowSingleSelection=True, preSelectedItems=None
+            allowSingleSelection=True, preSelectedItems=None, 
+            allowEmptySelection=True
         ):
         self.cancel = True
         super().__init__(parent)
         self.setWindowTitle(title)
         
         if preSelectedItems is None:
-            preSelectedItems = set()
+            preSelectedItems = items[0]
 
         self.allowSingleSelection = allowSingleSelection
+        self.allowEmptySelection = allowEmptySelection
 
         mainLayout = QVBoxLayout()
         topLayout = QVBoxLayout()
@@ -1372,6 +1374,15 @@ class QDialogListbox(QDialog):
                 item.setSelected(True)
         self.listBox.update()
 
+    def warnSelectionEmpty(self):
+        msg = myMessageBox(wrapText=False, showCentered=False)
+        txt = html_utils.paragraph(
+            'You need to <b>select at least one item!</b>.<br><br>'
+            'Use <code>Ctrl+Click</code> to select multiple items<br>, or<br>'
+            '<code>Shift+Click</code> to select a range of items'
+        )
+        msg.warning(self, 'Selection cannot be empty!', txt)
+    
     def ok_cb(self, checked=False):
         self.clickedButton = self.sender()
         self.cancel = False
@@ -1386,6 +1397,11 @@ class QDialogListbox(QDialog):
             )
             msg.warning(self, 'Select two or more items', txt)
             return
+        
+        if not self.allowEmptySelection:
+            self.warnSelectionEmpty()
+            return
+        
         self.sigSelectionConfirmed.emit(self.selectedItemsText)
         self.close()
 

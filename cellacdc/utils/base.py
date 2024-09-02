@@ -15,6 +15,7 @@ from .. import _critical_exception_gui
 import os
 import traceback
 import logging
+import pprint
 
 import pandas as pd
 
@@ -30,6 +31,14 @@ from .. import (
     gui, load, printl, exception_handler
 )
 
+def log_init_util(logger, expPaths: dict, util_title, util_module):
+    exp_paths_str = pprint.pformat(expPaths, indent=1)
+    
+    logger.info(f'Utility title: "{util_title}"')
+    logger.info(f'Utility module: "{util_module}"')
+    logger.info(f'Selected experiments:\n{exp_paths_str}')
+    
+    
 class NewThreadMultipleExpBaseUtil(QDialog):
     def __init__(
             self, expPaths, app: QApplication, title: str, module: str, 
@@ -45,6 +54,9 @@ class NewThreadMultipleExpBaseUtil(QDialog):
         logger, logs_path, log_path, log_filename = myutils.setupLogger(
             module=module
         )
+        
+        log_init_util(logger, expPaths, title, module)
+        
         self.logger = logger
         self.log_path = log_path
         self.log_filename = log_filename
@@ -196,6 +208,12 @@ class NewThreadMultipleExpBaseUtil(QDialog):
         
         self.existingAcdcOutputEndnames = list(existingAcdcOutputEndnames)
 
+        if len(self.existingAcdcOutputEndnames) == 1:
+            self.worker.abort = False
+            self.selectedAcdcOutputEndnames = self.existingAcdcOutputEndnames
+            self.worker.waitCond.wakeAll()
+            return
+        
         if multiSelection:
             selectWindow = apps.OrderableListWidgetDialog(
             self.existingAcdcOutputEndnames, 
@@ -471,6 +489,9 @@ class MainThreadSinglePosUtilBase(QDialog):
         logger, logs_path, log_path, log_filename = myutils.setupLogger(
             module=module
         )
+        logger.info(f'Utility title: "{title}"')
+        logger.info(f'Utility module: "{module}"')
+        
         self.logger = logger
         self.log_path = log_path
         self.log_filename = log_filename
