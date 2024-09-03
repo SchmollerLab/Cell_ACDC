@@ -4149,12 +4149,12 @@ class guiWin(QMainWindow):
     def gui_setTextAnnotColors(self):
         self.textAnnot[0].setColors(
             self.objLabelAnnotRgb, self.dividedAnnotRgb, self.SphaseAnnotRgb,
-            self.G1phaseAnnotRgba, self.objLostAnnotRgb
+            self.G1phaseAnnotRgba, self.objLostAnnotRgb, self.objLostTrackedAnnotRgb
         )
 
         self.textAnnot[1].setColors(
             self.objLabelAnnotRgb, self.dividedAnnotRgb, self.SphaseAnnotRgb,
-            self.G1phaseAnnotRgba, self.objLostAnnotRgb
+            self.G1phaseAnnotRgba, self.objLostAnnotRgb, self.objLostTrackedAnnotRgb
         )
 
 
@@ -4495,6 +4495,16 @@ class guiWin(QMainWindow):
         )
         return lostObjScatterItem
 
+    def gui_getTrackedLostObjScatterItem(self):
+        self.objLostTrackedAnnotRgb = (0, 255, 0)
+        brush = pg.mkBrush((*self.objLostTrackedAnnotRgb, 150))
+        pen = pg.mkPen(self.objLostTrackedAnnotRgb, width=1)
+        lostObjScatterItem = pg.ScatterPlotItem(
+            size=self.contLineWeight+1, pen=pen, 
+            brush=brush, pxMode=False, symbol='s'
+        )
+        return lostObjScatterItem
+
     def _gui_createGraphicsItems(self):
         posData = self.data[self.pos_i]
         allIDs = set()
@@ -4538,6 +4548,9 @@ class guiWin(QMainWindow):
         self.ax1_lostObjScatterItem = self.gui_getLostObjScatterItem()
         self.yellowContourScatterItem = self.gui_getLostObjScatterItem()
 
+        self.ax1_lostTrackedScatterItem = self.gui_getTrackedLostObjScatterItem()
+        self.greenContourScatterItem = self.gui_getTrackedLostObjScatterItem()
+
         brush = pg.mkBrush((0,255,0,200))
         pen = pg.mkPen('g', width=1)
         self.ccaFailedScatterItem = pg.ScatterPlotItem(
@@ -4555,6 +4568,7 @@ class guiWin(QMainWindow):
             size=self.mothBudLineWeight, pen=None
         )
         self.ax2_lostObjScatterItem = self.gui_getLostObjScatterItem()
+        self.ax2_lostTrackedScatterItem = self.gui_getTrackedLostObjScatterItem()
 
         self.gui_createTextAnnotItems(allIDs)
         self.gui_setTextAnnotColors()
@@ -6749,6 +6763,11 @@ class guiWin(QMainWindow):
             # Update data (rp, etc)
             self.update_rp()
 
+            if not self.isFrameCcaAnnotated():
+                proceed = self.askPropagateChangePast(f'Merge IDs {IDs_to_merge}')
+                if proceed:
+                    self.propagateMergeObjsPast(IDs_to_merge)
+
             # Repeat tracking
             self.tracking(
                 enforce=True, assign_unique_new_IDs=False,
@@ -6760,6 +6779,8 @@ class guiWin(QMainWindow):
                 self.updateAllImages()
             else:
                 self.warnEditingWithCca_df('Merge IDs')
+
+            
             
             if not self.mergeIDsButton.findChild(QAction).isChecked():
                 self.mergeIDsButton.setChecked(False)
@@ -7621,7 +7642,7 @@ class guiWin(QMainWindow):
             self.updateTempLayerKeepIDs()
         
         elif right_click and copyContourON:
-            hoverLostID = self.ax1_lostObjScatterItem.hoverLostID#
+            hoverLostID = self.ax1_lostObjScatterItem.hoverLostID
             lab2D = self.get_2Dlab(posData.lab)
             lab2D[self.lostObjImage == hoverLostID] = hoverLostID
             self.set_2Dlab(lab2D)
@@ -8105,6 +8126,7 @@ class guiWin(QMainWindow):
         self.ax1.addItem(self.ax1_oldMothBudLinesItem)
         self.ax1.addItem(self.ax1_newMothBudLinesItem)
         self.ax1.addItem(self.ax1_lostObjScatterItem)
+        self.ax1.addItem(self.ax1_lostTrackedScatterItem)
         self.ax1.addItem(self.ccaFailedScatterItem)
         self.ax1.addItem(self.yellowContourScatterItem)
 
@@ -8659,6 +8681,9 @@ class guiWin(QMainWindow):
         if not xx:
             self.ax1_lostObjScatterItem.setVisible(True)
             self.ax2_lostObjScatterItem.setVisible(True)
+
+            self.ax1_lostTrackedScatterItem.setVisible(True)
+            self.ax2_lostTrackedScatterItem.setVisible(True)
 
         for item in ScatterItems:
             if size is None:
@@ -10691,6 +10716,9 @@ class guiWin(QMainWindow):
         self.ax1_lostObjScatterItem.setData([], [])
         self.ax2_lostObjScatterItem.setData([], [])
 
+        self.ax1_lostTrackedScatterItem.setData([], [])
+        self.ax2_lostTrackedScatterItem.setData([], [])
+
     def delROImoving(self, roi):
         roi.setPen(color=(255,255,0))
         # First bring back IDs if the ROI moved away
@@ -12193,7 +12221,9 @@ class guiWin(QMainWindow):
         if not checked:
             return
         self.lostObjImage = np.zeros_like(self.currentLab2D)
+        self.lostTrackedObjImage = np.zeros_like(self.currentLab2D)
         self.addLostObjsToImage()
+        self.addTrackedLostObjsToImage()
     
     def lebelRoiTrangeCheckboxToggled(self, checked):
         disabled = not checked
@@ -12398,9 +12428,15 @@ class guiWin(QMainWindow):
 
         if self.ax1_lostObjScatterItem.isVisible():
             self.ax1_lostObjScatterItem.setVisible(False)
+
+        if self.ax1_lostTrackedScatterItem.isVisible():
+            self.ax1_lostTrackedScatterItem.setVisible(False)
         
         if self.ax2_lostObjScatterItem.isVisible():
             self.ax2_lostObjScatterItem.setVisible(False)
+
+        if self.ax2_lostTrackedScatterItem.isVisible():
+            self.ax2_lostTrackedScatterItem.setVisible(False)
 
         # Restore ID previously hovered
         if ID != self.ax1BrushHoverID and not self.isMouseDragImg1:
@@ -12572,6 +12608,9 @@ class guiWin(QMainWindow):
         else:
             self.ax1_lostObjScatterItem.setVisible(True)
             self.ax2_lostObjScatterItem.setVisible(True)
+            self.ax1_lostTrackedScatterItem.setVisible(True)
+            self.ax2_lostTrackedScatterItem.setVisible(True)
+
             self.setHoverToolSymbolData(
                 [], [], (self.ax2_BrushCircle, self.ax1_BrushCircle),
             )
@@ -13324,6 +13363,45 @@ class guiWin(QMainWindow):
     def setUncheckedAllCustomAnnotButtons(self):
         for button in self.customAnnotDict.keys():
             button.setChecked(False)
+
+    def askPropagateChangePast(self, change_txt):
+        txt = html_utils.paragraph(f"""
+            Do you want to propagate the change "{change_txt}" to the past frames?
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        yesButton, _ = msg.question(
+            self, 'Propagate change to past frames', txt, 
+            buttonsTexts=('Yes', 'No')
+        )
+        return msg.clickedButton == yesButton
+
+    def propagateMergeObjsPast(self, IDs_to_merge):
+        self.store_data(autosave=False)
+        posData = self.data[self.pos_i]
+        current_frame_i = posData.frame_i
+        for past_frame_i in range(posData.frame_i-1, -1, -1):
+            posData.frame_i = past_frame_i
+            self.get_data()
+            
+            IDs = posData.allData_li[past_frame_i]['IDs']
+            stop_loop = False
+            for ID in IDs_to_merge:
+                if ID not in IDs:
+                    stop_loop = True
+                    break
+
+                if ID == 0:
+                    continue
+                posData.lab[posData.lab==ID] = self.firstID
+                self.update_rp()
+                
+                self.store_data(autosave=False)
+            
+            if stop_loop:
+                break
+        
+        posData.frame_i = current_frame_i
+        self.get_data()
 
     def propagateChange(
             self, modID, modTxt, doNotShow, UndoFutFrames,
@@ -15624,9 +15702,13 @@ class guiWin(QMainWindow):
             tuple(int(val) for val in prev_rp[prev_IDs_idxs[ID]].centroid) 
             for ID in posData.lost_IDs
         }
-        posData.tracked_lost_centroids[frame_i] = (
-            posData.tracked_lost_centroids[frame_i] | (accepted_lost_centroids)
-        )
+        try:
+            posData.tracked_lost_centroids[frame_i] = (
+                posData.tracked_lost_centroids[frame_i] | (accepted_lost_centroids)
+            )
+        except KeyError:
+            posData.tracked_lost_centroids[frame_i] = accepted_lost_centroids
+            printl('KeyError, need to initialize posData.tracked_lost_centroids[frame_i] properly')
         return True
         
     def next_frame(self, warn=True):
@@ -17067,6 +17149,7 @@ class guiWin(QMainWindow):
         self.ax1_newMothBudLinesItem.setData([], [])
         self.ax1_oldMothBudLinesItem.setData([], [])
         self.ax1_lostObjScatterItem.setData([], [])
+        self.ax1_lostTrackedScatterItem.setData([], [])
         self.ccaFailedScatterItem.setData([], [])
         self.yellowContourScatterItem.setData([], [])
         
@@ -17405,6 +17488,7 @@ class guiWin(QMainWindow):
             posData.curvPlotItems = []
             posData.curvAnchorsItems = []
             posData.curvHoverItems = []
+            posData.trackedLostIDs = set()
 
             posData.HDDmaxID = np.max(posData.segm_data)
 
@@ -17831,6 +17915,7 @@ class guiWin(QMainWindow):
         self.highlightNewIDs_ccaFailed(ScellsIDsGone, rp=prev_rp)
         proceed = self.warnScellsGone(ScellsIDsGone, posData.frame_i)
         self.ax1_lostObjScatterItem.setData([], [])
+        self.ax1_lostTrackedScatterItem.setData([], [])
         if not proceed:
             return True, automaticallyDividedIDs
 
@@ -19355,9 +19440,10 @@ class guiWin(QMainWindow):
         if 'cell_cycle_stage' in acdc_df.columns:
             # Cell cycle info already present --> overwrite with new
             acdc_df[self.cca_df_colnames] = cca_df[self.cca_df_colnames]
-            posData.allData_li[i]['acdc_df'] = acdc_df
+            posData.allData_li[i]['acdc_df'] = acdc_df            
         elif cca_df is not None:
-            df = acdc_df.join(cca_df, how='left')
+            df = acdc_df.drop(cca_df.columns, axis=1, errors='ignore')
+            df = df.join(cca_df, how='left')
             posData.allData_li[i]['acdc_df'] = df
         
         # Store copy for cca integrity worker
@@ -22194,6 +22280,15 @@ class guiWin(QMainWindow):
             self.update_cca_df_snapshots(editTxt, posData)
             self.store_data()
 
+    def isFrameCcaAnnotated(self):
+        posData = self.data[self.pos_i]
+        acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
+        if acdc_df is None:
+            return False
+
+        return 'cell_cycle_stage' in acdc_df.columns
+
+
     def warnEditingWithCca_df(
             self, editTxt, return_answer=False, get_answer=False, 
             get_cancelled=False
@@ -22779,6 +22874,15 @@ class guiWin(QMainWindow):
             data = [obj.label]*len(xx)
             self.ax1_lostObjScatterItem.addPoints(xx, yy, data=data)
             self.ax2_lostObjScatterItem.addPoints(xx, yy)
+
+    def setTrackedLostObjectContour(self, obj):
+        allContours = self.getObjContours(obj, all_external=True)  
+        for objContours in allContours:
+            xx = objContours[:,0] + 0.5
+            yy = objContours[:,1] + 0.5
+            data = [obj.label]*len(xx)
+            self.ax1_lostTrackedScatterItem.addPoints(xx, yy, data=data)
+            self.ax2_lostTrackedScatterItem.addPoints(xx, yy)
     
     def getNearestLostObjID(self, y, x):
         xx, yy = self.ax2_lostObjScatterItem.getData()
@@ -22815,6 +22919,16 @@ class guiWin(QMainWindow):
         for obj in lostObjRp:
             filleObjMask = scipy.ndimage.binary_fill_holes(obj.image)
             self.lostObjImage[obj.slice][filleObjMask] = obj.label
+
+    # def addTrackedLostObjsToImage(self):
+    #     xx, yy = self.ax1_lostTrackedScatterItem.getData()
+    #     xx, yy = np.round(xx-0.5).astype(int), np.round(yy-0.5).astype(int)
+    #     labels = self.ax1_lostTrackedScatterItem.data['data']
+    #     self.lostObjImage[yy, xx] = labels
+    #     lostObjRp = skimage.measure.regionprops(self.lostObjImage)
+    #     for obj in lostObjRp:
+    #         filleObjMask = scipy.ndimage.binary_fill_holes(obj.image)
+    #         self.lostObjImage[obj.slice][filleObjMask] = obj.label
     
     def setCcaIssueContour(self, obj):
         objContours = self.getObjContours(obj, all_external=True)  
@@ -23318,19 +23432,24 @@ class guiWin(QMainWindow):
                 obj=obj, ax=1, thickness=self.contLineWeight+1
             )
         
+        if posData.frame_i == 0:
+            return 
+
         if not self.annotLostObjsToggle.isChecked():
             return
         
-        if not posData.lost_IDs:
-            return
-        
-        if posData.frame_i == 0:
-            return 
-        
+        tracked_lost_IDs = self.getTrackedLostIDs()
+
         prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
+        
         if prev_rp is None:
             return
+
         for obj in prev_rp:
+
+            if obj.label in tracked_lost_IDs:
+                self.setTrackedLostObjectContour(obj)
+
             if obj.label not in posData.lost_IDs:
                 continue
             
@@ -23455,10 +23574,10 @@ class guiWin(QMainWindow):
             title = f'IDs lost in current frame: {lost_IDs_format}'
             title_full = f'IDs lost in current frame: {lost_IDs}'
             htmlTxt = (
-                f'<font color="red">{title}</font>'
+                f'<font color="orange">{title}</font>'
             )
             htmlTxtFull = (
-                f'<font color="red">{title_full}</font>'
+                f'<font color="orange">{title_full}</font>'
             )
         elif lost_IDs and mode == 'Normal division: Lineage tree': # and self.lineage_tree and self.lineage_tree.dict_curr_frame():
             lost_IDs_format = myutils.get_trimmed_list(lost_IDs)
@@ -23483,17 +23602,17 @@ class guiWin(QMainWindow):
             title_full = f'New IDs in current frame: {new_IDs}'
             if htmlTxt:
                 htmlTxt = (
-                    f'{htmlTxt}, <font color="green">{title}</font>'
+                    f'{htmlTxt}, <font color="red">{title}</font>'
                 )
                 htmlTxtFull = (
-                    f'{htmlTxt}<br><font color="green">{title_full}</font>'
+                    f'{htmlTxtFull}<br><font color="red">{title_full}</font>'
                 )
             else:
                 htmlTxt = (
-                    f'<font color="green">{title}</font>'
+                    f'<font color="red">{title}</font>'
                 )
                 htmlTxtFull = (
-                    f'<font color="green">{title_full}</font>'
+                    f'<font color="red">{title_full}</font>'
                 )
                     
         if tracked_lost_IDs:
@@ -23502,17 +23621,17 @@ class guiWin(QMainWindow):
             title_full = f'Acc. IDs lost: {tracked_lost_IDs}'
             if htmlTxt:
                 htmlTxt = htmlTxt +', ' + (
-                    f'<font color="orange">{title}</font>'
+                    f'<font color="green">{title}</font>'
                 )
                 htmlTxtFull = htmlTxtFull +'<br>' + (
-                    f'<font color="orange">{title_full}</font>'
+                    f'<font color="green">{title_full}</font>'
                 )
             else:
                 htmlTxt = (
-                    f'<font color="orange">{title}</font>'
+                    f'<font color="green">{title}</font>'
                 )
                 htmlTxtFull = (
-                    f'<font color="orange">{title_full}</font>'
+                    f'<font color="green">{title_full}</font>'
                 )
             
         if IDs_with_holes:
@@ -23875,10 +23994,15 @@ class guiWin(QMainWindow):
                 continue
             
             int_centroid = tuple([int(val) for val in obj.centroid])
-            posData.tracked_lost_centroids[frame_i].add(int_centroid)
-    
-    def getTrackedLostIDs(self, prev_lab=None, frame_i=None):
+            try:
+                posData.tracked_lost_centroids[frame_i].add(int_centroid)
+            except KeyError:
+                posData.tracked_lost_centroids[frame_i] = {int_centroid}
+                printl('Need to fix probably? Why is this not properly init?')    
+
+    def getTrackedLostIDs(self, prev_lab=None, lab=None, frame_i=None):
         trackedLostIDs = set()
+        retrackedLostcent = set()
         posData = self.data[self.pos_i]
         
         if frame_i is None:
@@ -23892,6 +24016,14 @@ class guiWin(QMainWindow):
                 return_copy=False
             )
 
+        if lab is None:
+            lab = self.get_labels(
+                from_store=True,
+                frame_i=frame_i,
+                return_existing=False,
+                return_copy=False
+            )
+
         try:
             tracked_lost_centroids = posData.tracked_lost_centroids[frame_i]
         except KeyError:
@@ -23901,11 +24033,15 @@ class guiWin(QMainWindow):
             ID = prev_lab[centroid]
             if ID == 0:
                 continue
+
+            if ID == lab[centroid]:
+                retrackedLostcent.add(centroid)
+                continue
+
             trackedLostIDs.add(ID)
 
-        printl(tracked_lost_centroids, 'tracked_lost_centroids')
-        printl(trackedLostIDs, 'trackedLostIDs')
-
+        posData.tracked_lost_centroids[frame_i] = tracked_lost_centroids - retrackedLostcent
+        posData.trackedLostIDs = trackedLostIDs
         return trackedLostIDs
 
     

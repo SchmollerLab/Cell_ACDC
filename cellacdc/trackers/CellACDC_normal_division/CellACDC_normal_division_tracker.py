@@ -134,9 +134,22 @@ def mother_daughter_assign(IoA_matrix, IoA_thresh_daughter, min_daughter, max_da
         else:
             mother_daughters.append((j, high_IoA_indices))
 
-    daughters_li = []
-    for _, daughters in mother_daughters:
-        daughters_li.extend(daughters)
+    should_remove_idx = []
+    for mother, daughters in mother_daughters:
+        for daughter in daughters:
+            high_IoA_greater_1 = np.count_nonzero(IoA_thresholded[daughter]) > 1
+            if high_IoA_greater_1:
+                should_remove_idx.append(True) 
+                break
+        else:
+            should_remove_idx.append(False)
+    
+    # printl(f'length of mother_daughters: {len(mother_daughters), len(should_remove_idx)}')
+    mother_daughters = [mother_daughters[i] for i, remove in enumerate(should_remove_idx) if not remove]
+
+    # daughters_li = []
+    # for _, daughters in mother_daughters:
+    #     daughters_li.extend(daughters)
 
     return aggr_track, mother_daughters
 
@@ -560,7 +573,7 @@ class normal_division_tracker:
             self.rp = rp
 
         if prev_rp is None:
-            prev_rp = regionprops(prev_lab)
+            prev_rp = regionprops(prev_lab.copy())
 
         IoA_matrix, self.IDs_curr_untracked, self.IDs_prev = calc_IoA_matrix(lab,
                                                                              prev_lab,
@@ -572,7 +585,7 @@ class normal_division_tracker:
                                                                         min_daughter=self.min_daughter,
                                                                         max_daughter=self.max_daughter,
                                                                         IoA_thresh_instant=self.IoA_thresh
-                                                                        )        
+                                                                        )
         self.tracked_lab, IoA_matrix, self.assignments, _ = track_frame_base(prev_lab,
                                                                              prev_rp,
                                                                              lab,
@@ -587,7 +600,17 @@ class normal_division_tracker:
                                                                              mother_daughters=self.mother_daughters
                                                                              )
         
-
+        # not_self_assignemtns = {k: v for k, v in self.assignments.items() if k != v}
+        # mother_IDs = [self.IDs_prev[mother] for mother, _ in self.mother_daughters]
+        # daughter_indx = [daughters for _, daughters in self.mother_daughters]
+        # daughter_indx = np.array(daughter_indx)
+        # try:
+        #     daughter_indx = np.concatenate(daughter_indx)
+        # except ValueError:
+        #     pass
+        # daughter_IDs = IoA_index_daughter_to_ID(daughter_indx.tolist(), self.assignments, self.IDs_curr_untracked)
+        # printl(f'Frame {frame_i} tracked, not_self_assignemtns: {not_self_assignemtns}, mothers {mother_IDs}, daughters {daughter_IDs}')
+        
         # self.tracked_IDs = set(tracked_IDs).union(set(self.assignments.values()))
         self.tracked_video[frame_i] = self.tracked_lab
 
@@ -1145,7 +1168,6 @@ class tracker:
 
     def track(self,
               segm_video,
-              signals=None,
               IoA_thresh = 0.8,
               IoA_thresh_daughter = 0.25,
               IoA_thresh_aggressive = 0.5,
@@ -1153,6 +1175,7 @@ class tracker:
               max_daughter = 2,
               record_lineage = True,
               return_tracked_lost_centroids = True,
+              signals = None,
         ):
         """
         Tracks the segmented video frames and returns the tracked video. (Used for module 2)

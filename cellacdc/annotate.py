@@ -555,6 +555,33 @@ class TextAnnotations:
             objData['data'] = obj.label
             self.item.appendData(objData, objOpts['text'])
 
+        if posData.trackedLostIDs:
+            prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
+            if prev_rp is None:
+                self.item.draw()
+                return
+            
+            for obj in prev_rp:
+                if obj.label not in posData.trackedLostIDs:
+                    continue
+
+                if obj.label in delROIsIDs:
+                    continue
+                
+                if not isObjVisibleFunc(obj.bbox):
+                    continue
+
+                objOpts = {
+                    'text': f'{obj.label}',
+                    'color_name': 'tracked_lost_object',
+                    'bold': False,
+                }
+                yc, xc = obj.centroid[-2:]
+                pos = (int(xc), int(yc))
+                objData = self.item.addObjAnnot(pos, draw=False, **objOpts)
+                self.item.appendData(objData, objOpts['text'])
+
+
         if posData.lost_IDs and annotateLost:
             prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
             if prev_rp is None:
@@ -594,7 +621,7 @@ class TextAnnotations:
     
     def setColors(
             self, label, bud_will_divide, S_phase_mother, G1_phase,
-            lost_object, **kwargs
+            lost_object, tracked_lost_object, **kwargs
         ):
         alpha = 200
         if len(G1_phase) == 3:
@@ -608,6 +635,7 @@ class TextAnnotations:
             'G1_phase': G1_phase,
             'new_object': (255,0,0,255),
             'lost_object': (*lost_object, alpha),
+            'tracked_lost_object': (*tracked_lost_object, alpha),
             'grayed': (100,100,100,75),
             'highlight': (255,0,0,200),
             'S_phase_bud': (255,0,0,220),

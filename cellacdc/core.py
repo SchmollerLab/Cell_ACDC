@@ -2341,7 +2341,11 @@ def tracker_track(
         segm_data, tracker, track_params, intensity_img=None,
         logger_func=print
     ):
-    args_to_try = ((intensity_img, ), tuple())
+    if intensity_img is not None:
+        args_to_try = (tuple(), (intensity_img,))
+    else:
+        args_to_try = (tuple(),)
+
     kwargs_to_remove = ('', 'signals')
     for args, kwarg_to_remove in product(args_to_try, kwargs_to_remove):
         kwargs = track_params.copy()
