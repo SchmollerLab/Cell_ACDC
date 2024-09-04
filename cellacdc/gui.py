@@ -1816,11 +1816,25 @@ class guiWin(QMainWindow):
         self.fillHolesToolButton.setIcon(QIcon(":fill_holes.svg"))
         self.fillHolesToolButton.setCheckable(True)
         self.fillHolesToolButton.setShortcut('F')
-        self.fillHolesToolButton.action = editToolBar.addWidget(self.fillHolesToolButton)
+        self.fillHolesToolButton.action = editToolBar.addWidget(
+            self.fillHolesToolButton
+        )
         self.checkableButtons.append(self.fillHolesToolButton)
         self.checkableQButtonsGroup.addButton(self.fillHolesToolButton)
         self.functionsNotTested3D.append(self.fillHolesToolButton)
         self.widgetsWithShortcut['Fill holes'] = self.fillHolesToolButton
+        
+        self.assignNewIDToolButton = QToolButton(self)
+        self.assignNewIDToolButton.setIcon(QIcon(":assign_new_id.svg"))
+        self.assignNewIDToolButton.setCheckable(True)
+        self.assignNewIDToolButton.setShortcut('J')
+        self.assignNewIDToolButton.action = editToolBar.addWidget(
+            self.assignNewIDToolButton
+        )
+        self.checkableButtons.append(self.assignNewIDToolButton)
+        self.checkableQButtonsGroup.addButton(self.assignNewIDToolButton)
+        self.functionsNotTested3D.append(self.assignNewIDToolButton)
+        self.widgetsWithShortcut['Assign new ID'] = self.assignNewIDToolButton
 
         self.moveLabelToolButton = QToolButton(self)
         self.moveLabelToolButton.setIcon(QIcon(":moveLabel.svg"))
@@ -5118,6 +5132,20 @@ class guiWin(QMainWindow):
                 if not self.fillHolesToolButton.findChild(QAction).isChecked():
                     self.fillHolesToolButton.setChecked(False)
 
+        # Assign new ID
+        elif right_click and self.assignNewIDToolButton.isChecked():
+            x, y = event.pos().x(), event.pos().y()
+            xdata, ydata = int(x), int(y)
+            newID = self.setBrushID(return_val=True)
+            clickedID = self.getClickedID(
+                xdata, ydata, text=f'that you want to assign to new ID {newID}'
+            )
+            if clickedID is None:
+                return
+            
+            mapper = [(clickedID, newID)]
+            self.applyEditID(clickedID, posData.IDs.copy(), mapper)
+        
         # Hull contour
         elif right_click and self.hullContToolButton.isChecked():
             x, y = event.pos().x(), event.pos().y()
@@ -5247,7 +5275,7 @@ class guiWin(QMainWindow):
             xdata, ydata = int(x), int(y)
 
             posData.disableAutoActivateViewerWindow = True
-            prev_IDs = posData.IDs.copy()
+            currentIDs = posData.IDs.copy()
             editID = apps.editID_QWidget(
                 ID, posData.IDs, doNotShowAgain=self.doNotAskAgainExistingID,
                 parent=self, entryID=self.getNearestLostObjID(y, x)
@@ -5263,91 +5291,7 @@ class guiWin(QMainWindow):
                 self.editIDmergeIDs = editID.mergeWithExistingID
             self.doNotAskAgainExistingID = editID.doNotAskAgainExistingID
             
-
-            # Ask to propagate change to all future visited frames
-            (UndoFutFrames, applyFutFrames, endFrame_i,
-            doNotShowAgain) = self.propagateChange(
-                ID, 'Edit ID', posData.doNotShowAgain_EditID,
-                posData.UndoFutFrames_EditID, posData.applyFutFrames_EditID,
-                applyTrackingB=True
-            )
-
-            if UndoFutFrames is None:
-                return
-
-            # Store undo state before modifying stuff
-            self.storeUndoRedoStates(UndoFutFrames)
-            maxID = max(posData.IDs, default=0)
-            for old_ID, new_ID in editID.how:
-                if new_ID in prev_IDs and not self.editIDmergeIDs:
-                    tempID = maxID + 1
-                    posData.lab[posData.lab == old_ID] = maxID + 1
-                    posData.lab[posData.lab == new_ID] = old_ID
-                    posData.lab[posData.lab == tempID] = new_ID
-                    maxID += 1
-
-                    old_ID_idx = prev_IDs.index(old_ID)
-                    new_ID_idx = prev_IDs.index(new_ID)
-
-                    # Append information for replicating the edit in tracking
-                    # List of tuples (y, x, replacing ID)
-                    objo = posData.rp[old_ID_idx]
-                    yo, xo = self.getObjCentroid(objo.centroid)
-                    objn = posData.rp[new_ID_idx]
-                    yn, xn = self.getObjCentroid(objn.centroid)
-                    if not math.isnan(yo) and not math.isnan(yn):
-                        yn, xn = int(yn), int(xn)
-                        posData.editID_info.append((yn, xn, new_ID))
-                        yo, xo = int(y), int(x)
-                        posData.editID_info.append((yo, xo, old_ID))
-                else:
-                    posData.lab[posData.lab == old_ID] = new_ID
-                    if new_ID > maxID:
-                        maxID = new_ID
-                    old_ID_idx = posData.IDs.index(old_ID)
-
-                    # Append information for replicating the edit in tracking
-                    # List of tuples (y, x, replacing ID)
-                    obj = posData.rp[old_ID_idx]
-                    y, x = self.getObjCentroid(obj.centroid)
-                    if not math.isnan(y) and not math.isnan(y):
-                        y, x = int(y), int(x)
-                        posData.editID_info.append((y, x, new_ID))
-                
-                self.updateAssignedObjsAcdcTrackerSecondStep(new_ID)
-
-            # Update rps
-            self.update_rp()
-
-            # Since we manually changed an ID we don't want to repeat tracking
-            self.setAllTextAnnotations()
-            self.highlightLostNew()
-            # self.checkIDsMultiContour()
-
-            # Update colors for the edited IDs
-            self.updateLookuptable()
-
-            if self.isSnapshot:
-                self.fixCcaDfAfterEdit('Edit ID')
-                self.updateAllImages()
-            else:
-                self.warnEditingWithCca_df('Edit ID')
-
-            if not self.editIDbutton.findChild(QAction).isChecked():
-                self.editIDbutton.setChecked(False)
-
-            posData.disableAutoActivateViewerWindow = True
-
-            # Perform desired action on future frames
-            posData.doNotShowAgain_EditID = doNotShowAgain
-            posData.UndoFutFrames_EditID = UndoFutFrames
-            posData.applyFutFrames_EditID = applyFutFrames
-            includeUnvisited = posData.includeUnvisitedInfo['Edit ID']
-
-            self.current_frame_i = posData.frame_i
-
-            if applyFutFrames:
-                self.changeIDfutureFrames(endFrame_i, editID, includeUnvisited)
+            self.applyEditID(ID, currentIDs, editID.how)
         
         elif (right_click or left_click) and self.keepIDsButton.isChecked():
             x, y = event.pos().x(), event.pos().y()
@@ -8803,6 +8747,94 @@ class guiWin(QMainWindow):
                 ID = clickedBkgrID.EntryID
         return ID
 
+    def applyEditID(self, clickedID, currentIDs, oldIDnewIDMapper):
+        posData = self.data[self.pos_i]
+        
+        # Ask to propagate change to all future visited frames
+        (UndoFutFrames, applyFutFrames, endFrame_i,
+        doNotShowAgain) = self.propagateChange(
+            clickedID, 'Edit ID', posData.doNotShowAgain_EditID,
+            posData.UndoFutFrames_EditID, posData.applyFutFrames_EditID,
+            applyTrackingB=True
+        )
+
+        if UndoFutFrames is None:
+            return
+
+        # Store undo state before modifying stuff
+        self.storeUndoRedoStates(UndoFutFrames)
+        maxID = max(posData.IDs, default=0)
+        for old_ID, new_ID in oldIDnewIDMapper:
+            if new_ID in currentIDs and not self.editIDmergeIDs:
+                tempID = maxID + 1
+                posData.lab[posData.lab == old_ID] = maxID + 1
+                posData.lab[posData.lab == new_ID] = old_ID
+                posData.lab[posData.lab == tempID] = new_ID
+                maxID += 1
+
+                old_ID_idx = currentIDs.index(old_ID)
+                new_ID_idx = currentIDs.index(new_ID)
+
+                # Append information for replicating the edit in tracking
+                # List of tuples (y, x, replacing ID)
+                objo = posData.rp[old_ID_idx]
+                yo, xo = self.getObjCentroid(objo.centroid)
+                objn = posData.rp[new_ID_idx]
+                yn, xn = self.getObjCentroid(objn.centroid)
+                if not math.isnan(yo) and not math.isnan(yn):
+                    yn, xn = int(yn), int(xn)
+                    posData.editID_info.append((yn, xn, new_ID))
+                    yo, xo = int(y), int(x)
+                    posData.editID_info.append((yo, xo, old_ID))
+            else:
+                posData.lab[posData.lab == old_ID] = new_ID
+                if new_ID > maxID:
+                    maxID = new_ID
+                old_ID_idx = posData.IDs.index(old_ID)
+
+                # Append information for replicating the edit in tracking
+                # List of tuples (y, x, replacing ID)
+                obj = posData.rp[old_ID_idx]
+                y, x = self.getObjCentroid(obj.centroid)
+                if not math.isnan(y) and not math.isnan(y):
+                    y, x = int(y), int(x)
+                    posData.editID_info.append((y, x, new_ID))
+            
+            self.updateAssignedObjsAcdcTrackerSecondStep(new_ID)
+
+        # Update rps
+        self.update_rp()
+
+        # Since we manually changed an ID we don't want to repeat tracking
+        self.setAllTextAnnotations()
+        self.highlightLostNew()
+        # self.checkIDsMultiContour()
+
+        # Update colors for the edited IDs
+        self.updateLookuptable()
+
+        if self.isSnapshot:
+            self.fixCcaDfAfterEdit('Edit ID')
+            self.updateAllImages()
+        else:
+            self.warnEditingWithCca_df('Edit ID')
+
+        if not self.editIDbutton.findChild(QAction).isChecked():
+            self.editIDbutton.setChecked(False)
+
+        posData.disableAutoActivateViewerWindow = True
+
+        # Perform desired action on future frames
+        posData.doNotShowAgain_EditID = doNotShowAgain
+        posData.UndoFutFrames_EditID = UndoFutFrames
+        posData.applyFutFrames_EditID = applyFutFrames
+        includeUnvisited = posData.includeUnvisitedInfo['Edit ID']
+
+        if applyFutFrames:
+            self.changeIDfutureFrames(
+                endFrame_i, oldIDnewIDMapper, includeUnvisited
+            )
+    
     def getHoverID(self, xdata, ydata):
         if not hasattr(self, 'diskMask'):
             return 0
@@ -13375,7 +13407,10 @@ class guiWin(QMainWindow):
             endFrame_i = last_tracked_i
             return UndoFutFrames, applyFutFrames, endFrame_i, doNotShow
         else:
-            addApplyAllButton = modTxt == 'Delete ID' or modTxt == 'Edit ID'
+            addApplyAllButton = (
+                modTxt == 'Delete ID' or modTxt == 'Edit ID' 
+                or modTxt == 'Assign new ID'
+            )
             ffa = apps.FutureFramesAction_QDialog(
                 posData.frame_i+1, last_tracked_i, modTxt, 
                 applyTrackingB=applyTrackingB, parent=self, 
@@ -17462,6 +17497,10 @@ class guiWin(QMainWindow):
             posData.doNotShowAgain_keepID = False
             posData.UndoFutFrames_keepID = False
             posData.applyFutFrames_keepID = False
+            
+            posData.doNotShowAgainAssignNewID = False
+            posData.UndoFutFramesAssignNewID = False
+            posData.applyFutFramesAssignNewID = False
 
             posData.includeUnvisitedInfo = {
                 'Delete ID': False, 'Edit ID': False, 'Keep ID': False
@@ -19246,8 +19285,12 @@ class guiWin(QMainWindow):
         else:
             posData.cca_df = cca_df
 
-    def changeIDfutureFrames(self, endFrame_i, editIDwin, includeUnvisited):
+    def changeIDfutureFrames(
+            self, endFrame_i, oldIDnewIDMapper, includeUnvisited
+        ):
         posData = self.data[self.pos_i]
+        self.current_frame_i = posData.frame_i
+        
         # Store data for current frame
         self.store_data()
         if endFrame_i is None:
@@ -19271,7 +19314,7 @@ class guiWin(QMainWindow):
                     continue
                 else:
                     maxID = max(posData.IDs, default=0) + 1
-                    for old_ID, new_ID in editIDwin.how:
+                    for old_ID, new_ID in oldIDnewIDMapper:
                         if new_ID in posData.lab:
                             tempID = maxID + 1 # posData.lab.max() + 1
                             posData.lab[posData.lab == old_ID] = tempID
@@ -19285,7 +19328,7 @@ class guiWin(QMainWindow):
             elif includeUnvisited:
                 # Unvisited frame (includeUnvisited = True)
                 lab = posData.segm_data[i]
-                for old_ID, new_ID in editIDwin.how:
+                for old_ID, new_ID in oldIDnewIDMapper:
                     if new_ID in lab:
                         tempID = lab.max() + 1
                         lab[lab == old_ID] = tempID
