@@ -5144,7 +5144,7 @@ class guiWin(QMainWindow):
                 return
             
             mapper = [(clickedID, newID)]
-            self.applyEditID(clickedID, posData.IDs.copy(), mapper)
+            self.applyEditID(clickedID, posData.IDs.copy(), mapper, x, y)
         
         # Hull contour
         elif right_click and self.hullContToolButton.isChecked():
@@ -5291,7 +5291,7 @@ class guiWin(QMainWindow):
                 self.editIDmergeIDs = editID.mergeWithExistingID
             self.doNotAskAgainExistingID = editID.doNotAskAgainExistingID
             
-            self.applyEditID(ID, currentIDs, editID.how)
+            self.applyEditID(ID, currentIDs, editID.how, x, y)
         
         elif (right_click or left_click) and self.keepIDsButton.isChecked():
             x, y = event.pos().x(), event.pos().y()
@@ -8747,7 +8747,9 @@ class guiWin(QMainWindow):
                 ID = clickedBkgrID.EntryID
         return ID
 
-    def applyEditID(self, clickedID, currentIDs, oldIDnewIDMapper):
+    def applyEditID(
+            self, clickedID, currentIDs, oldIDnewIDMapper, clicked_x, clicked_y
+        ):
         posData = self.data[self.pos_i]
         
         # Ask to propagate change to all future visited frames
@@ -8784,7 +8786,7 @@ class guiWin(QMainWindow):
                 if not math.isnan(yo) and not math.isnan(yn):
                     yn, xn = int(yn), int(xn)
                     posData.editID_info.append((yn, xn, new_ID))
-                    yo, xo = int(y), int(x)
+                    yo, xo = int(clicked_y), int(clicked_x)
                     posData.editID_info.append((yo, xo, old_ID))
             else:
                 posData.lab[posData.lab == old_ID] = new_ID
