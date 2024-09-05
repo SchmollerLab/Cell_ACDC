@@ -23675,11 +23675,8 @@ class guiWin(QMainWindow):
                 f'<font color="orange">{title}</font>'
             )
             htmlTxtFull = (
-<<<<<<< HEAD
                 f'<font color="orange">{title_full}</font>'
-=======
-                f'<font color="red">{title_full}</font>'
->>>>>>> 2197932ea20a507d07664c7841266496b7097b54
+
             )
         elif lost_IDs and mode == 'Normal division: Lineage tree': # and self.lineage_tree and self.lineage_tree.dict_curr_frame():
             lost_IDs_format = myutils.get_trimmed_list(lost_IDs)
@@ -23704,7 +23701,6 @@ class guiWin(QMainWindow):
             title_full = f'New IDs in current frame: {new_IDs}'
             if htmlTxt:
                 htmlTxt = (
-<<<<<<< HEAD
                     f'{htmlTxt}, <font color="red">{title}</font>'
                 )
                 htmlTxtFull = (
@@ -23717,29 +23713,13 @@ class guiWin(QMainWindow):
                 htmlTxtFull = (
                     f'<font color="red">{title_full}</font>'
                 )
-                    
-=======
-                    f'{htmlTxt}, <font color="green">{title}</font>'
-                )
-                htmlTxtFull = (
-                    f'{htmlTxtFull}<br><font color="green">{title_full}</font>'
-                )
-            else:
-                htmlTxt = (
-                    f'<font color="green">{title}</font>'
-                )
-                htmlTxtFull = (
-                    f'<font color="green">{title_full}</font>'
-                )
-        
->>>>>>> 2197932ea20a507d07664c7841266496b7097b54
+
         if tracked_lost_IDs:
             tracked_lost_IDs_format = myutils.get_trimmed_list(tracked_lost_IDs)
             title = f'Acc. IDs lost: {tracked_lost_IDs_format}'
             title_full = f'Acc. IDs lost: {tracked_lost_IDs}'
             if htmlTxt:
                 htmlTxt = htmlTxt +', ' + (
-<<<<<<< HEAD
                     f'<font color="green">{title}</font>'
                 )
                 htmlTxtFull = htmlTxtFull +'<br>' + (
@@ -23751,19 +23731,6 @@ class guiWin(QMainWindow):
                 )
                 htmlTxtFull = (
                     f'<font color="green">{title_full}</font>'
-=======
-                    f'<font color="orange">{title}</font>'
-                )
-                htmlTxtFull = htmlTxtFull +'<br>' + (
-                    f'<font color="orange">{title_full}</font>'
-                )
-            else:
-                htmlTxt = (
-                    f'<font color="orange">{title}</font>'
-                )
-                htmlTxtFull = (
-                    f'<font color="orange">{title_full}</font>'
->>>>>>> 2197932ea20a507d07664c7841266496b7097b54
                 )
             
         if IDs_with_holes:
@@ -24132,11 +24099,7 @@ class guiWin(QMainWindow):
                 posData.tracked_lost_centroids[frame_i] = {int_centroid}
                 printl('Need to fix probably? Why is this not properly init?')    
 
-<<<<<<< HEAD
     def getTrackedLostIDs(self, prev_lab=None, lab=None, frame_i=None):
-=======
-    def getTrackedLostIDs(self, prev_lab=None, frame_i=None):
->>>>>>> 2197932ea20a507d07664c7841266496b7097b54
         trackedLostIDs = set()
         retrackedLostcent = set()
         posData = self.data[self.pos_i]
@@ -24176,14 +24139,9 @@ class guiWin(QMainWindow):
 
             trackedLostIDs.add(ID)
 
-<<<<<<< HEAD
         posData.tracked_lost_centroids[frame_i] = tracked_lost_centroids - retrackedLostcent
         posData.trackedLostIDs = trackedLostIDs
-=======
-        # printl(tracked_lost_centroids, 'tracked_lost_centroids')
-        # printl(trackedLostIDs, 'trackedLostIDs')
 
->>>>>>> 2197932ea20a507d07664c7841266496b7097b54
         return trackedLostIDs
 
     
