@@ -507,6 +507,7 @@ class TextAnnotations:
         highlightedID = kwargs.get('highlightedID')
         annotateLost = kwargs.get('annotateLost')
         getCurrentZfunc = kwargs.get('getCurrentZfunc')
+        getObjCentroidFunc = kwargs.get('getObjCentroidFunc')
         currentZ = getCurrentZfunc(checkIfProj=True)
         isCcaAnnot = self.isCcaAnnot()
         isAnnotateNumZslices = self.isAnnotateNumZslices()
@@ -541,7 +542,7 @@ class TextAnnotations:
                 isGenNumTreeAnnotation, posData.frame_i
             )
             
-            yc, xc = obj.centroid[-2:]
+            yc, xc = getObjCentroidFunc(obj.centroid)
             try:
                 rp_zslice = posData.zSlicesRp[currentZ]
                 obj_2d = rp_zslice[obj.label]
@@ -602,7 +603,7 @@ class TextAnnotations:
                     'color_name': 'lost_object',
                     'bold': False,
                 }
-                yc, xc = obj.centroid[-2:]
+                yc, xc = getObjCentroidFunc(obj.centroid)
                 pos = (int(xc), int(yc))
                 objData = self.item.addObjAnnot(pos, draw=False, **objOpts)
                 self.item.appendData(objData, objOpts['text'])

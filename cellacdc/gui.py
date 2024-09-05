@@ -1816,11 +1816,25 @@ class guiWin(QMainWindow):
         self.fillHolesToolButton.setIcon(QIcon(":fill_holes.svg"))
         self.fillHolesToolButton.setCheckable(True)
         self.fillHolesToolButton.setShortcut('F')
-        self.fillHolesToolButton.action = editToolBar.addWidget(self.fillHolesToolButton)
+        self.fillHolesToolButton.action = editToolBar.addWidget(
+            self.fillHolesToolButton
+        )
         self.checkableButtons.append(self.fillHolesToolButton)
         self.checkableQButtonsGroup.addButton(self.fillHolesToolButton)
         self.functionsNotTested3D.append(self.fillHolesToolButton)
         self.widgetsWithShortcut['Fill holes'] = self.fillHolesToolButton
+        
+        self.assignNewIDToolButton = QToolButton(self)
+        self.assignNewIDToolButton.setIcon(QIcon(":assign_new_id.svg"))
+        self.assignNewIDToolButton.setCheckable(True)
+        self.assignNewIDToolButton.setShortcut('J')
+        self.assignNewIDToolButton.action = editToolBar.addWidget(
+            self.assignNewIDToolButton
+        )
+        self.checkableButtons.append(self.assignNewIDToolButton)
+        self.checkableQButtonsGroup.addButton(self.assignNewIDToolButton)
+        self.functionsNotTested3D.append(self.assignNewIDToolButton)
+        self.widgetsWithShortcut['Assign new ID'] = self.assignNewIDToolButton
 
         self.moveLabelToolButton = QToolButton(self)
         self.moveLabelToolButton.setIcon(QIcon(":moveLabel.svg"))
@@ -5132,6 +5146,20 @@ class guiWin(QMainWindow):
                 if not self.fillHolesToolButton.findChild(QAction).isChecked():
                     self.fillHolesToolButton.setChecked(False)
 
+        # Assign new ID
+        elif right_click and self.assignNewIDToolButton.isChecked():
+            x, y = event.pos().x(), event.pos().y()
+            xdata, ydata = int(x), int(y)
+            newID = self.setBrushID(return_val=True)
+            clickedID = self.getClickedID(
+                xdata, ydata, text=f'that you want to assign to new ID {newID}'
+            )
+            if clickedID is None:
+                return
+            
+            mapper = [(clickedID, newID)]
+            self.applyEditID(clickedID, posData.IDs.copy(), mapper, x, y)
+        
         # Hull contour
         elif right_click and self.hullContToolButton.isChecked():
             x, y = event.pos().x(), event.pos().y()
@@ -5261,7 +5289,7 @@ class guiWin(QMainWindow):
             xdata, ydata = int(x), int(y)
 
             posData.disableAutoActivateViewerWindow = True
-            prev_IDs = posData.IDs.copy()
+            currentIDs = posData.IDs.copy()
             editID = apps.editID_QWidget(
                 ID, posData.IDs, doNotShowAgain=self.doNotAskAgainExistingID,
                 parent=self, entryID=self.getNearestLostObjID(y, x)
@@ -5277,91 +5305,7 @@ class guiWin(QMainWindow):
                 self.editIDmergeIDs = editID.mergeWithExistingID
             self.doNotAskAgainExistingID = editID.doNotAskAgainExistingID
             
-
-            # Ask to propagate change to all future visited frames
-            (UndoFutFrames, applyFutFrames, endFrame_i,
-            doNotShowAgain) = self.propagateChange(
-                ID, 'Edit ID', posData.doNotShowAgain_EditID,
-                posData.UndoFutFrames_EditID, posData.applyFutFrames_EditID,
-                applyTrackingB=True
-            )
-
-            if UndoFutFrames is None:
-                return
-
-            # Store undo state before modifying stuff
-            self.storeUndoRedoStates(UndoFutFrames)
-            maxID = max(posData.IDs, default=0)
-            for old_ID, new_ID in editID.how:
-                if new_ID in prev_IDs and not self.editIDmergeIDs:
-                    tempID = maxID + 1
-                    posData.lab[posData.lab == old_ID] = maxID + 1
-                    posData.lab[posData.lab == new_ID] = old_ID
-                    posData.lab[posData.lab == tempID] = new_ID
-                    maxID += 1
-
-                    old_ID_idx = prev_IDs.index(old_ID)
-                    new_ID_idx = prev_IDs.index(new_ID)
-
-                    # Append information for replicating the edit in tracking
-                    # List of tuples (y, x, replacing ID)
-                    objo = posData.rp[old_ID_idx]
-                    yo, xo = self.getObjCentroid(objo.centroid)
-                    objn = posData.rp[new_ID_idx]
-                    yn, xn = self.getObjCentroid(objn.centroid)
-                    if not math.isnan(yo) and not math.isnan(yn):
-                        yn, xn = int(yn), int(xn)
-                        posData.editID_info.append((yn, xn, new_ID))
-                        yo, xo = int(y), int(x)
-                        posData.editID_info.append((yo, xo, old_ID))
-                else:
-                    posData.lab[posData.lab == old_ID] = new_ID
-                    if new_ID > maxID:
-                        maxID = new_ID
-                    old_ID_idx = posData.IDs.index(old_ID)
-
-                    # Append information for replicating the edit in tracking
-                    # List of tuples (y, x, replacing ID)
-                    obj = posData.rp[old_ID_idx]
-                    y, x = self.getObjCentroid(obj.centroid)
-                    if not math.isnan(y) and not math.isnan(y):
-                        y, x = int(y), int(x)
-                        posData.editID_info.append((y, x, new_ID))
-                
-                self.updateAssignedObjsAcdcTrackerSecondStep(new_ID)
-
-            # Update rps
-            self.update_rp()
-
-            # Since we manually changed an ID we don't want to repeat tracking
-            self.setAllTextAnnotations()
-            self.highlightLostNew()
-            # self.checkIDsMultiContour()
-
-            # Update colors for the edited IDs
-            self.updateLookuptable()
-
-            if self.isSnapshot:
-                self.fixCcaDfAfterEdit('Edit ID')
-                self.updateAllImages()
-            else:
-                self.warnEditingWithCca_df('Edit ID')
-
-            if not self.editIDbutton.findChild(QAction).isChecked():
-                self.editIDbutton.setChecked(False)
-
-            posData.disableAutoActivateViewerWindow = True
-
-            # Perform desired action on future frames
-            posData.doNotShowAgain_EditID = doNotShowAgain
-            posData.UndoFutFrames_EditID = UndoFutFrames
-            posData.applyFutFrames_EditID = applyFutFrames
-            includeUnvisited = posData.includeUnvisitedInfo['Edit ID']
-
-            self.current_frame_i = posData.frame_i
-
-            if applyFutFrames:
-                self.changeIDfutureFrames(endFrame_i, editID, includeUnvisited)
+            self.applyEditID(ID, currentIDs, editID.how, x, y)
         
         elif (right_click or left_click) and self.keepIDsButton.isChecked():
             x, y = event.pos().x(), event.pos().y()
@@ -7192,21 +7136,16 @@ class guiWin(QMainWindow):
     @exception_handler
     def gui_mouseReleaseRightImage(self, event):
         self.gui_mouseReleaseEventImg1(event)
-
+    
     def drawTempRulerLine(self, event):
         x, y = event.pos()
         x1, y1 = int(x), int(y)
         xxRA, yyRA = self.ax1_rulerAnchorsItem.getData()
         x0, y0 = xxRA[0], yyRA[0]
         if self.isCtrlDown:
-            # Snap to closest angle divisible by 15 degrees
-            angle = math.degrees(math.atan2(y1-y0, x1-x0))
-            snap_angle = math.radians(core.closest_n_divisible_by_m(angle, 15))
-            dist = math.dist((x0, y0), (x1, y1))
-            dx = dist * math.cos(snap_angle)
-            dy = dist * math.sin(snap_angle)
-            x1, y1 = x0 + dx, y0 + dy
-            # # ydata = yyRA[0]
+            x1, y1 = transformation.snap_xy_to_closest_angle(
+                x0, y0, x1, y1
+            )
         self.ax1_rulerPlotItem.setData([x0, x1], [y0, y1])
     
     @exception_handler
@@ -7573,16 +7512,16 @@ class guiWin(QMainWindow):
             else:
                 self.tempSegmentON = False
                 xxRA, yyRA = self.ax1_rulerAnchorsItem.getData()
+                x0, y0 = xxRA[0], yyRA[0]
                 if self.isCtrlDown:
-                    ydata = yyRA[0]
+                    x1, y1 = transformation.snap_xy_to_closest_angle(
+                        x0, y0, xdata, ydata
+                    )
                 lengthText = self.getRulerLengthText()
                 self.ax1_rulerPlotItem.setData(
-                    [xxRA[0], xdata], [yyRA[0], ydata],
-                    lengthText=lengthText
+                    [x0, x1], [y0, y1], lengthText=lengthText
                 )
-                self.ax1_rulerAnchorsItem.setData(
-                    [xxRA[0], xdata], [yyRA[0], ydata]
-                )
+                self.ax1_rulerAnchorsItem.setData([x0, x1], [y0, y1])
              
             if canPolyLine and not self.startPointPolyLineItem.getData()[0]:
                 # Create and add roi item
@@ -8833,6 +8772,96 @@ class guiWin(QMainWindow):
                 ID = clickedBkgrID.EntryID
         return ID
 
+    def applyEditID(
+            self, clickedID, currentIDs, oldIDnewIDMapper, clicked_x, clicked_y
+        ):
+        posData = self.data[self.pos_i]
+        
+        # Ask to propagate change to all future visited frames
+        (UndoFutFrames, applyFutFrames, endFrame_i,
+        doNotShowAgain) = self.propagateChange(
+            clickedID, 'Edit ID', posData.doNotShowAgain_EditID,
+            posData.UndoFutFrames_EditID, posData.applyFutFrames_EditID,
+            applyTrackingB=True
+        )
+
+        if UndoFutFrames is None:
+            return
+
+        # Store undo state before modifying stuff
+        self.storeUndoRedoStates(UndoFutFrames)
+        maxID = max(posData.IDs, default=0)
+        for old_ID, new_ID in oldIDnewIDMapper:
+            if new_ID in currentIDs and not self.editIDmergeIDs:
+                tempID = maxID + 1
+                posData.lab[posData.lab == old_ID] = maxID + 1
+                posData.lab[posData.lab == new_ID] = old_ID
+                posData.lab[posData.lab == tempID] = new_ID
+                maxID += 1
+
+                old_ID_idx = currentIDs.index(old_ID)
+                new_ID_idx = currentIDs.index(new_ID)
+
+                # Append information for replicating the edit in tracking
+                # List of tuples (y, x, replacing ID)
+                objo = posData.rp[old_ID_idx]
+                yo, xo = self.getObjCentroid(objo.centroid)
+                objn = posData.rp[new_ID_idx]
+                yn, xn = self.getObjCentroid(objn.centroid)
+                if not math.isnan(yo) and not math.isnan(yn):
+                    yn, xn = int(yn), int(xn)
+                    posData.editID_info.append((yn, xn, new_ID))
+                    yo, xo = int(clicked_y), int(clicked_x)
+                    posData.editID_info.append((yo, xo, old_ID))
+            else:
+                posData.lab[posData.lab == old_ID] = new_ID
+                if new_ID > maxID:
+                    maxID = new_ID
+                old_ID_idx = posData.IDs.index(old_ID)
+
+                # Append information for replicating the edit in tracking
+                # List of tuples (y, x, replacing ID)
+                obj = posData.rp[old_ID_idx]
+                y, x = self.getObjCentroid(obj.centroid)
+                if not math.isnan(y) and not math.isnan(y):
+                    y, x = int(y), int(x)
+                    posData.editID_info.append((y, x, new_ID))
+            
+            self.updateAssignedObjsAcdcTrackerSecondStep(new_ID)
+
+        # Update rps
+        self.update_rp()
+
+        # Since we manually changed an ID we don't want to repeat tracking
+        self.setAllTextAnnotations()
+        self.highlightLostNew()
+        # self.checkIDsMultiContour()
+
+        # Update colors for the edited IDs
+        self.updateLookuptable()
+
+        if self.isSnapshot:
+            self.fixCcaDfAfterEdit('Edit ID')
+            self.updateAllImages()
+        else:
+            self.warnEditingWithCca_df('Edit ID')
+
+        if not self.editIDbutton.findChild(QAction).isChecked():
+            self.editIDbutton.setChecked(False)
+
+        posData.disableAutoActivateViewerWindow = True
+
+        # Perform desired action on future frames
+        posData.doNotShowAgain_EditID = doNotShowAgain
+        posData.UndoFutFrames_EditID = UndoFutFrames
+        posData.applyFutFrames_EditID = applyFutFrames
+        includeUnvisited = posData.includeUnvisitedInfo['Edit ID']
+
+        if applyFutFrames:
+            self.changeIDfutureFrames(
+                endFrame_i, oldIDnewIDMapper, includeUnvisited
+            )
+    
     def getHoverID(self, xdata, ydata):
         if not hasattr(self, 'diskMask'):
             return 0
@@ -12906,7 +12935,7 @@ class guiWin(QMainWindow):
             checkbox = getattr(self, option)
             checkbox.setChecked(state)
         
-        self.setDrawAnnotComboboxText()
+        self.setDrawAnnotComboboxTextRight()
         self.annotOptionsToRestoreRight = None
 
     def setDrawNothingAnnotations(self):
@@ -13028,7 +13057,7 @@ class guiWin(QMainWindow):
             # _debug._debug_lineage_tree(self)
             
             posData = self.data[self.pos_i]
-            printl(posData.allData_li[posData.frame_i]['acdc_df'][['failed_cell_division']])
+            printl(posData.binnedIDs)
         
         if not self.isDataLoaded:
             self.logger.info(
@@ -13458,7 +13487,10 @@ class guiWin(QMainWindow):
             endFrame_i = last_tracked_i
             return UndoFutFrames, applyFutFrames, endFrame_i, doNotShow
         else:
-            addApplyAllButton = modTxt == 'Delete ID' or modTxt == 'Edit ID'
+            addApplyAllButton = (
+                modTxt == 'Delete ID' or modTxt == 'Edit ID' 
+                or modTxt == 'Assign new ID'
+            )
             ffa = apps.FutureFramesAction_QDialog(
                 posData.frame_i+1, last_tracked_i, modTxt, 
                 applyTrackingB=applyTrackingB, parent=self, 
@@ -15546,11 +15578,6 @@ class guiWin(QMainWindow):
         if posData.SizeZ > 1:
             self.updateZsliceScrollbar(posData.frame_i)
             idx = (posData.filename, posData.frame_i)
-            # try:
-            #     how = posData.segmInfo_df.at[idx, 'which_z_proj_gui']
-            # except ValueError as e:
-            #     how = posData.segmInfo_df.loc[idx, 'which_z_proj_gui'].iloc[0] 
-            # self.zProjComboBox.setCurrentText(how)
             self.zSliceScrollBar.setMaximum(posData.SizeZ-1)
             self.zSliceSpinbox.setMaximum(posData.SizeZ)
             self.SizeZlabel.setText(f'/{posData.SizeZ}')
@@ -16431,13 +16458,6 @@ class guiWin(QMainWindow):
         )
 
         self.navigateScrollBar.setSliderPosition(posData.frame_i+1)
-        # if posData.SizeZ > 1:
-        #     idx = (posData.filename, posData.frame_i)
-        #     try:
-        #         how = posData.segmInfo_df.at[idx, 'which_z_proj_gui']
-        #     except ValueError as e:
-        #         how = posData.segmInfo_df.loc[idx, 'which_z_proj_gui'].iloc[0] 
-        #     self.zProjComboBox.setCurrentText(how)
 
         # Connect events at the end of loading data process
         self.gui_connectGraphicsEvents()
@@ -16879,7 +16899,7 @@ class guiWin(QMainWindow):
                 self.zSliceScrollBar.sliderReleased.disconnect()
                 self.zProjComboBox.currentTextChanged.disconnect()
                 self.zProjComboBox.activated.disconnect()
-                self.switchPlaneCombobox.clicked.disconnect()
+                self.switchPlaneCombobox.sigPlaneChanged.disconnect()
             except Exception as e:
                 pass
             self.zSliceScrollBar.actionTriggered.connect(
@@ -16890,7 +16910,7 @@ class guiWin(QMainWindow):
             )
             self.zProjComboBox.currentTextChanged.connect(self.updateZproj)
             self.zProjComboBox.activated.connect(self.clearComboBoxFocus)
-            self.switchPlaneCombobox.currentTextChanged.connect(
+            self.switchPlaneCombobox.sigPlaneChanged.connect(
                 self.switchViewedPlane
             )
 
@@ -16968,7 +16988,11 @@ class guiWin(QMainWindow):
                 img, next_frame_image=self.nextFrameImage(),
                 scrollbar_value=posData.frame_i+2
             )
-            self.setOverlayImages()
+            try:
+                self.setOverlayImages()
+            except Exception as err:
+                pass
+            
             if self.labelsGrad.showLabelsImgAction.isChecked():
                 self.img2.setImage(posData.lab, z=z, autoLevels=False)
             self.updateViewerWindow()
@@ -16994,8 +17018,48 @@ class guiWin(QMainWindow):
         if disabled:
             self.switchPlaneCombobox.setCurrentIndex(0)
     
-    def switchViewedPlane(self, plane):
+    def _setViewRangeSwitchPlane(self, previousPlane):
         posData = self.data[self.pos_i]
+        SizeZ = posData.SizeZ
+        SizeY, SizeX = self.img1.image.shape[:2]
+        currentPlane = self.switchPlaneCombobox.plane()
+        if previousPlane == 'xy':
+            if currentPlane == 'zy':
+                self.ax1.setRange(xRange=self.yRangePrev)
+                unusedRange = np.clip(self.xRangePrev, 0, SizeX)
+            elif currentPlane == 'zx':
+                self.ax1.setRange(xRange=self.xRangePrev)
+                unusedRange = np.clip(self.yRangePrev, 0, SizeY)
+        elif previousPlane == 'zy':
+            if currentPlane == 'xy':
+                self.ax1.setRange(yRange=self.xRangePrev)
+                unusedRange = np.clip(self.yRangePrev, 0, SizeZ)
+            elif currentPlane == 'zx':
+                self.ax1.setRange(yRange=self.yRangePrev)
+                unusedRange = np.clip(self.xRangePrev, 0, SizeY)
+        elif previousPlane == 'zx':
+            if currentPlane == 'xy':
+                self.ax1.setRange(xRange=self.xRangePrev)
+                unusedRange = np.clip(self.yRangePrev, 0, SizeZ)
+            elif currentPlane == 'zy':
+                self.ax1.setRange(yRange=self.yRangePrev)
+                unusedRange = np.clip(self.xRangePrev, 0, SizeX)
+        
+        sliceValue = round((unusedRange[0] + unusedRange[1])/2)
+        self.zSliceScrollBar.setSliderPosition(sliceValue)
+        self.update_z_slice(self.zSliceScrollBar.sliderPosition())
+    
+    def setViewRangeSwitchPlane(self, previousPlane):
+        self.autoRange()
+        QTimer.singleShot(
+            100, partial(self._setViewRangeSwitchPlane, previousPlane)
+        )
+        
+    def switchViewedPlane(self, previousPlane, currentPlane):
+        posData = self.data[self.pos_i]
+        self.xRangePrev, self.yRangePrev = self.ax1.viewRange()
+        self.zSlicePrev = self.zSliceScrollBar.sliderPosition()
+        
         self.zProjComboBox.setCurrentText('single z-slice')
         depthAxes = self.switchPlaneCombobox.depthAxes()
         self.onEscape()
@@ -17012,6 +17076,8 @@ class guiWin(QMainWindow):
             self.setDrawNothingAnnotations()
             self.setDisabledAnnotCheckBoxesLeft(True)
             self.setDisabledAnnotCheckBoxesRight(True)
+            self.setEnabledAnnotCheckBoxesLeftZdepthAxes()
+            self.overlayButtonPrevState = self.overlayButton.isChecked()
             self.overlayButton.setChecked(False)
             self.overlayButton.setDisabled(True)
             # self.setZprojDisabled(True, storePrevState=True)
@@ -17021,6 +17087,8 @@ class guiWin(QMainWindow):
             self.setDisabledAnnotCheckBoxesLeft(False)
             self.setDisabledAnnotCheckBoxesRight(False)
             self.overlayButton.setDisabled(False)
+            if self.overlayButtonPrevState:
+                self.overlayButton.setChecked(self.overlayButtonPrevState)
             self.updateZsliceScrollbar(posData.frame_i)
             # self.restoreZprojWidgetsEnabled()
         
@@ -17045,11 +17113,12 @@ class guiWin(QMainWindow):
         self.zSliceCheckbox.setText(f'{depthAxes}-slice')
         self.zSliceScrollBar.setMaximum(maxSliceNum-1)
         self.zSliceSpinbox.setMaximum(maxSliceNum)
-        if depthAxes != 'z':
-            self.zSliceScrollBar.setSliderPosition(int(maxSliceNum/2))
-            
+        
+        self.initContoursImage()
         self.updateAllImages()
-        QTimer.singleShot(200, self.autoRange)
+        QTimer.singleShot(
+            200, partial(self.setViewRangeSwitchPlane, previousPlane)
+        )
     
     def onZsliceSpinboxValueChange(self, value):
         self.zSliceScrollBar.setSliderPosition(value-1)
@@ -17085,6 +17154,8 @@ class guiWin(QMainWindow):
         for p, posData in enumerate(self.data[self.pos_i:]):
             idx = (posData.filename, posData.frame_i)
             posData.segmInfo_df.at[idx, 'which_z_proj_gui'] = how
+            posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
+            
         posData = self.data[self.pos_i]
         if how == 'single z-slice':
             self.setZprojDisabled(False)
@@ -17508,6 +17579,10 @@ class guiWin(QMainWindow):
             posData.doNotShowAgain_keepID = False
             posData.UndoFutFrames_keepID = False
             posData.applyFutFrames_keepID = False
+            
+            posData.doNotShowAgainAssignNewID = False
+            posData.UndoFutFramesAssignNewID = False
+            posData.applyFutFramesAssignNewID = False
 
             posData.includeUnvisitedInfo = {
                 'Delete ID': False, 'Edit ID': False, 'Keep ID': False
@@ -18403,7 +18478,6 @@ class guiWin(QMainWindow):
         else:
             return (slice(None), slice(None), idx)
                 
-
     def get_2Dlab(self, lab, force_z=True):
         if self.isSegm3D:
             if force_z:
@@ -18657,10 +18731,10 @@ class guiWin(QMainWindow):
                 # previous closed session add it to current metadata
                 df = posData.acdc_df.loc[posData.frame_i].copy()
                 binnedIDs_df = df[df['is_cell_excluded']>0]
-                binnedIDs = set(binnedIDs_df.index).union(posData.binnedIDs) # ???
+                binnedIDs = set(binnedIDs_df.index).union(posData.binnedIDs)
                 posData.binnedIDs = binnedIDs
                 ripIDs_df = df[df['is_cell_dead']>0]
-                ripIDs = set(ripIDs_df.index).union(posData.ripIDs) # ???
+                ripIDs = set(ripIDs_df.index).union(posData.ripIDs)
                 posData.ripIDs = ripIDs
                 posData.editID_info.extend(self._get_editID_info(df))
                 # Load cca df into current metadata
@@ -18684,10 +18758,10 @@ class guiWin(QMainWindow):
                 df = self.lineage_tree.export_df(posData.frame_i)
                 # df = posData.acdc_df.loc[posData.frame_i].copy()
                 binnedIDs_df = df[df['is_cell_excluded']>0]
-                binnedIDs = set(binnedIDs_df.index).union(posData.binnedIDs) # ???
+                binnedIDs = set(binnedIDs_df.index).union(posData.binnedIDs)
                 posData.binnedIDs = binnedIDs
                 ripIDs_df = df[df['is_cell_dead']>0]
-                ripIDs = set(ripIDs_df.index).union(posData.ripIDs) # ???
+                ripIDs = set(ripIDs_df.index).union(posData.ripIDs)
                 posData.ripIDs = ripIDs
                 posData.editID_info.extend(self._get_editID_info(df))
                 if 'generation_num_tree' in df.columns: # may need to change this, not exactly sure how df is initialized 
@@ -19294,8 +19368,12 @@ class guiWin(QMainWindow):
         else:
             posData.cca_df = cca_df
 
-    def changeIDfutureFrames(self, endFrame_i, editIDwin, includeUnvisited):
+    def changeIDfutureFrames(
+            self, endFrame_i, oldIDnewIDMapper, includeUnvisited
+        ):
         posData = self.data[self.pos_i]
+        self.current_frame_i = posData.frame_i
+        
         # Store data for current frame
         self.store_data()
         if endFrame_i is None:
@@ -19319,7 +19397,7 @@ class guiWin(QMainWindow):
                     continue
                 else:
                     maxID = max(posData.IDs, default=0) + 1
-                    for old_ID, new_ID in editIDwin.how:
+                    for old_ID, new_ID in oldIDnewIDMapper:
                         if new_ID in posData.lab:
                             tempID = maxID + 1 # posData.lab.max() + 1
                             posData.lab[posData.lab == old_ID] = tempID
@@ -19333,7 +19411,7 @@ class guiWin(QMainWindow):
             elif includeUnvisited:
                 # Unvisited frame (includeUnvisited = True)
                 lab = posData.segm_data[i]
-                for old_ID, new_ID in editIDwin.how:
+                for old_ID, new_ID in oldIDnewIDMapper:
                     if new_ID in lab:
                         tempID = lab.max() + 1
                         lab[lab == old_ID] = tempID
@@ -19703,7 +19781,14 @@ class guiWin(QMainWindow):
 
     def getObjCentroid(self, obj_centroid):
         if self.isSegm3D:
-            return obj_centroid[1:3]
+            depthAxes = self.switchPlaneCombobox.depthAxes()
+            zc, yc, xc = obj_centroid
+            if depthAxes == 'z':
+                return yc, xc 
+            elif depthAxes == 'y':
+                return zc, xc 
+            else:
+                return zc, yc 
         else:
             return obj_centroid
     
@@ -21338,10 +21423,10 @@ class guiWin(QMainWindow):
 
     def initContoursImage(self):
         posData = self.data[self.pos_i]
-        if hasattr(posData, 'lab'):
-            Y, X = posData.lab.shape[-2:]
-        else:
-            Y, X = posData.img_data.shape[-2:]
+        z_slice = self.z_lab()
+        img = posData.img_data[posData.frame_i]
+        Y, X = img[z_slice].shape[-2:]
+            
         self.contoursImage = np.zeros((Y, X, 4), dtype=np.uint8)
     
     def initManualBackgroundImage(self):
@@ -21437,19 +21522,27 @@ class guiWin(QMainWindow):
         return obj.image[local_z]
 
     def isObjVisible(self, obj_bbox, debug=False):
-        depthAxes = self.switchPlaneCombobox.depthAxes()
-        if self.switchPlaneCombobox.isEnabled() and depthAxes != 'z':
-            return False
-        
         if self.isSegm3D:
             zProjHow = self.zProjComboBox.currentText()
             isZslice = zProjHow == 'single z-slice'
             if not isZslice:
                 # required a projection --> all obj are visible
                 return True
-            min_z = obj_bbox[0]
-            max_z = obj_bbox[3]
-            if self.z_lab()>=min_z and self.z_lab()<max_z:
+            
+            depthAxes = self.switchPlaneCombobox.depthAxes()
+            
+            min_z, min_y, min_x, max_z, max_y, max_x = obj_bbox
+            if depthAxes == 'z':
+                min_val, max_val = min_z, max_z
+                val = self.z_lab()
+            elif depthAxes == 'y':
+                min_val, max_val = min_y, max_y
+                val = self.z_lab()[-1]
+            else:
+                min_val, max_val = min_x, max_x
+                val = self.z_lab()[-1]
+            
+            if val >= min_val and val < max_val:
                 return True
             else:
                 return False
@@ -21905,8 +21998,11 @@ class guiWin(QMainWindow):
             zProjHow = posData.segmInfo_df.at[idx, 'which_z_proj_gui']
         except ValueError as e:
             zProjHow = posData.segmInfo_df.loc[idx, 'which_z_proj_gui'].iloc[0] 
-        if zProjHow != 'single z-slice':
-            return
+        
+        self.zProjComboBox.setCurrentText(zProjHow)
+        # if zProjHow != 'single z-slice':
+        #     return
+        
         reconnect = False
         try:
             self.zSliceScrollBar.actionTriggered.disconnect()
@@ -21947,15 +22043,15 @@ class guiWin(QMainWindow):
         if posData.SizeZ > 1:
             img = posData.img_data[frame_i]
             self.updateZsliceScrollbar(frame_i)
-            cells_img = self.get_2Dimg_from_3D(img)
+            img = self.get_2Dimg_from_3D(img)
         else:
-            cells_img = posData.img_data[frame_i].copy()
+            img = posData.img_data[frame_i].copy()
         if normalizeIntens:
-            cells_img = self.normalizeIntensities(cells_img)
+            img = self.normalizeIntensities(img)
         if self.imgCmapName != 'grey':
             # Do not invert bw for non grey cmaps
-            return cells_img
-        return cells_img
+            return img
+        return img
 
     def setImageImg2(self, updateLookuptable=True, set_image=True):
         posData = self.data[self.pos_i]
@@ -23062,7 +23158,8 @@ class guiWin(QMainWindow):
             highlightedID=self.highlightedID, 
             delROIsIDs=delROIsIDs,
             annotateLost=self.annotLostObjsToggle.isChecked(), 
-            getCurrentZfunc=self.z_lab
+            getCurrentZfunc=self.z_lab, 
+            getObjCentroidFunc=self.getObjCentroid
         )
         self.textAnnot[1].setAnnotations(
             posData=posData, labelsToSkip=labelsToSkip, 
@@ -23070,7 +23167,8 @@ class guiWin(QMainWindow):
             highlightedID=self.highlightedID, 
             delROIsIDs=delROIsIDs,
             annotateLost=self.annotLostObjsToggle.isChecked(), 
-            getCurrentZfunc=self.z_lab
+            getCurrentZfunc=self.z_lab, 
+            getObjCentroidFunc=self.getObjCentroid
         )
         self.textAnnot[0].update()
         self.textAnnot[1].update()
@@ -23577,7 +23675,11 @@ class guiWin(QMainWindow):
                 f'<font color="orange">{title}</font>'
             )
             htmlTxtFull = (
+<<<<<<< HEAD
                 f'<font color="orange">{title_full}</font>'
+=======
+                f'<font color="red">{title_full}</font>'
+>>>>>>> 2197932ea20a507d07664c7841266496b7097b54
             )
         elif lost_IDs and mode == 'Normal division: Lineage tree': # and self.lineage_tree and self.lineage_tree.dict_curr_frame():
             lost_IDs_format = myutils.get_trimmed_list(lost_IDs)
@@ -23602,6 +23704,7 @@ class guiWin(QMainWindow):
             title_full = f'New IDs in current frame: {new_IDs}'
             if htmlTxt:
                 htmlTxt = (
+<<<<<<< HEAD
                     f'{htmlTxt}, <font color="red">{title}</font>'
                 )
                 htmlTxtFull = (
@@ -23615,12 +23718,28 @@ class guiWin(QMainWindow):
                     f'<font color="red">{title_full}</font>'
                 )
                     
+=======
+                    f'{htmlTxt}, <font color="green">{title}</font>'
+                )
+                htmlTxtFull = (
+                    f'{htmlTxtFull}<br><font color="green">{title_full}</font>'
+                )
+            else:
+                htmlTxt = (
+                    f'<font color="green">{title}</font>'
+                )
+                htmlTxtFull = (
+                    f'<font color="green">{title_full}</font>'
+                )
+        
+>>>>>>> 2197932ea20a507d07664c7841266496b7097b54
         if tracked_lost_IDs:
             tracked_lost_IDs_format = myutils.get_trimmed_list(tracked_lost_IDs)
             title = f'Acc. IDs lost: {tracked_lost_IDs_format}'
             title_full = f'Acc. IDs lost: {tracked_lost_IDs}'
             if htmlTxt:
                 htmlTxt = htmlTxt +', ' + (
+<<<<<<< HEAD
                     f'<font color="green">{title}</font>'
                 )
                 htmlTxtFull = htmlTxtFull +'<br>' + (
@@ -23632,6 +23751,19 @@ class guiWin(QMainWindow):
                 )
                 htmlTxtFull = (
                     f'<font color="green">{title_full}</font>'
+=======
+                    f'<font color="orange">{title}</font>'
+                )
+                htmlTxtFull = htmlTxtFull +'<br>' + (
+                    f'<font color="orange">{title_full}</font>'
+                )
+            else:
+                htmlTxt = (
+                    f'<font color="orange">{title}</font>'
+                )
+                htmlTxtFull = (
+                    f'<font color="orange">{title_full}</font>'
+>>>>>>> 2197932ea20a507d07664c7841266496b7097b54
                 )
             
         if IDs_with_holes:
@@ -24000,7 +24132,11 @@ class guiWin(QMainWindow):
                 posData.tracked_lost_centroids[frame_i] = {int_centroid}
                 printl('Need to fix probably? Why is this not properly init?')    
 
+<<<<<<< HEAD
     def getTrackedLostIDs(self, prev_lab=None, lab=None, frame_i=None):
+=======
+    def getTrackedLostIDs(self, prev_lab=None, frame_i=None):
+>>>>>>> 2197932ea20a507d07664c7841266496b7097b54
         trackedLostIDs = set()
         retrackedLostcent = set()
         posData = self.data[self.pos_i]
@@ -24040,8 +24176,14 @@ class guiWin(QMainWindow):
 
             trackedLostIDs.add(ID)
 
+<<<<<<< HEAD
         posData.tracked_lost_centroids[frame_i] = tracked_lost_centroids - retrackedLostcent
         posData.trackedLostIDs = trackedLostIDs
+=======
+        # printl(tracked_lost_centroids, 'tracked_lost_centroids')
+        # printl(trackedLostIDs, 'trackedLostIDs')
+
+>>>>>>> 2197932ea20a507d07664c7841266496b7097b54
         return trackedLostIDs
 
     
@@ -25480,6 +25622,14 @@ class guiWin(QMainWindow):
         self.drawMothBudLinesCheckbox.setDisabled(disabled)
         self.annotNumZslicesCheckbox.setDisabled(disabled)
         self.drawNothingCheckbox.setDisabled(disabled)
+    
+    def setEnabledAnnotCheckBoxesLeftZdepthAxes(self):
+        self.annotIDsCheckbox.setDisabled(False)
+        self.annotContourCheckbox.setDisabled(False)
+        self.annotIDsCheckbox.setChecked(True)
+        self.annotContourCheckbox.setChecked(True)
+        self.annotOptionClicked(
+            sender=self.annotIDsCheckbox, saveSettings=False)
     
     def setDisabledAnnotCheckBoxesRight(self, disabled):
         self.annotIDsCheckboxRight.setDisabled(disabled)
