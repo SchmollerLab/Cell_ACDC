@@ -197,7 +197,8 @@ def rgb_uint_to_html_hex(rgb):
 
 def merge_two_grayscale_imgs(
         img1, img2, rgb1, rgb2, alpha=0.5,
-        brightness1=1.0, brightness2=1.0, dtype=np.uint8
+        brightness1=1.0, brightness2=1.0, dtype=np.uint8, 
+        inverted=False
     ):
     img1_rgb = (skimage.color.gray2rgb(img1)*rgb1).astype(dtype)
     img2_rgb = (skimage.color.gray2rgb(img2)*rgb2).astype(dtype)
@@ -206,6 +207,13 @@ def merge_two_grayscale_imgs(
         alpha*img1_rgb*brightness1 + (1-alpha)*img2_rgb*brightness2
     ).astype(dtype)
     
+    if inverted:
+        merge_inverted = merge.copy()
+        merge_inverted[..., 0] = 255-((merge[..., 1]+merge[..., 2])/2)
+        merge_inverted[..., 1] = 255-((merge[..., 0]+merge[..., 2])/2)
+        merge_inverted[..., 2] = 255-((merge[..., 1]+merge[..., 0])/2)
+        merge = merge_inverted
+
     return merge
 
 def pg_ticks_to_colormap(ticks):
