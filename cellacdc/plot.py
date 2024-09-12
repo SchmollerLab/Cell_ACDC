@@ -734,7 +734,10 @@ def texts_to_pg_scatter_symbols(
     else:
         return symbols
 
-def plt_contours(ax, lab=None, rp=None, plot_kwargs=None, only_IDs=None):
+def plt_contours(
+        ax, lab=None, rp=None, plot_kwargs=None, only_IDs=None, 
+        clear_borders=True
+    ):
     if rp is None:
         rp = skimage.measure.regionprops(lab)
 
@@ -746,7 +749,14 @@ def plt_contours(ax, lab=None, rp=None, plot_kwargs=None, only_IDs=None):
             continue
         
         contours = core.get_obj_contours(obj)
-        ax.plot(contours[:, 0], contours[:, 1], **plot_kwargs)
+        xx = contours[:, 0]
+        yy = contours[:, 1]
+        if clear_borders:
+            valid_mask = np.logical_and(xx>0.5, yy>0.5)
+            xx = xx[valid_mask]
+            yy = yy[valid_mask]
+            
+        ax.plot(xx, yy, **plot_kwargs)
 
 def plt_moth_bud_lines(
         ax, cca_df, lab=None, rp=None, plot_kwargs=None, 
