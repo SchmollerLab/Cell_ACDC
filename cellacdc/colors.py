@@ -15,6 +15,7 @@ if GUI_INSTALLED:
     import colorsys
     import matplotlib.pyplot as plt
     from matplotlib.colors import LinearSegmentedColormap
+    import seaborn as sns
 
 try:
     import networkx as nx
@@ -225,3 +226,30 @@ def pg_ticks_to_colormap(ticks):
     
     cmap = ColorMap(positions, colors)
     return cmap
+
+def color_palette(name='Okabe_lto', **sns_color_palette_kwargs):
+    """Create seaborn color palette (default or custom ones).
+
+    Parameters
+    ----------
+    name : str, optional
+        Name of the color palette. Default 'Okabe_lto'.
+    
+    References
+    ----------
+    https://thenode.biologists.com/data-visualization-with-flying-colors/research/
+    """
+    if name == 'Okabe_lto':
+        colors = (
+            '#0072B2', 
+            '#F0E442', 
+            '#009E73', 
+            '#56B4E9', 
+            '#E69F00', 
+            '#000000', 
+            '#CC79A7', 
+            '#D55E00', 
+        )
+        return sns.color_palette(colors)
+
+    return sns.color_palette(**sns_color_palette_kwargs)
