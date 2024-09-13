@@ -238,6 +238,7 @@ def color_palette(name='Okabe_lto', **sns_color_palette_kwargs):
     References
     ----------
     https://thenode.biologists.com/data-visualization-with-flying-colors/research/
+    https://www.nature.com/articles/nmeth.1618
     """
     if name == 'Okabe_lto':
         colors = (
@@ -251,5 +252,17 @@ def color_palette(name='Okabe_lto', **sns_color_palette_kwargs):
             '#D55E00', 
         )
         return sns.color_palette(colors)
-
+    elif name == 'Wong':
+        colors = (
+            (0, 0, 0), 
+            (230, 159, 0), 
+            (86, 180, 233), 
+            (0, 158, 115), 
+            (240, 228, 66), 
+            (0, 114, 178), 
+            (213, 94, 0), 
+            (204, 121, 167), 
+        )
+        return sns.color_palette(colors)
+    
     return sns.color_palette(**sns_color_palette_kwargs)
