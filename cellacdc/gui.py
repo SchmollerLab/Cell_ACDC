@@ -19853,6 +19853,8 @@ class guiWin(QMainWindow):
         rp = posData.allData_li[frame_i]['regionprops']
         prev_rp = posData.allData_li[frame_i-1]['regionprops']
 
+        self.setTitleText()
+
 
         if lin_tree_df.shape[0] > lin_tree_df_prev.shape[0]: # check if new cells have arrived
             new_cells = lin_tree_df.index.difference(lin_tree_df_prev.index) # I could use this for the if already but this is probably faster for frames where nothing changes
@@ -23784,7 +23786,7 @@ class guiWin(QMainWindow):
         )
         return curr_delRoiIDs
     
-    def setTitleText(self, lost_IDs, new_IDs, IDs_with_holes, tracked_lost_IDs):
+    def setTitleText(self, lost_IDs=None, new_IDs=None, IDs_with_holes=None, tracked_lost_IDs=None):
         mode = self.modeComboBox.currentText()
         title = ''
         htmlTxtFull = ''
@@ -23799,6 +23801,7 @@ class guiWin(QMainWindow):
             htmlTxt = ''
         else:
             htmlTxt = f'<font color="white">Never segmented frame. </font>'
+            htmlTxtFull = htmlTxt
 
         if lost_IDs and mode != 'Normal division: Lineage tree':
             lost_IDs_format = myutils.get_trimmed_list(lost_IDs)
@@ -23811,22 +23814,6 @@ class guiWin(QMainWindow):
                 f'<font color="orange">{title_full}</font>'
 
             )
-        elif lost_IDs and mode == 'Normal division: Lineage tree': # and self.lineage_tree and self.lineage_tree.dict_curr_frame():
-            lost_IDs_format = myutils.get_trimmed_list(lost_IDs)
-            warn_txt = f'Mother cells: {lost_IDs_format}'
-            warn_txt_full = f'Mother cells: {lost_IDs}'
-            htmlTxt = (
-                f'<font color="green">{warn_txt}</font>'
-            )
-            htmlTxtFull = (
-                f'<font color="green">{warn_txt_full}</font>'
-            )
-            
-            # pairs_format = myutils.get_trimmed_dict(self.lineage_tree.dict_curr_frame())
-            # warn_txt = f'Split cells: {pairs_format}'
-            # htmlTxt = (
-            #     f'<font color="green">{warn_txt}</font>'
-            # )
 
         if new_IDs:
             new_IDs_format = myutils.get_trimmed_list(new_IDs)
@@ -23877,6 +23864,64 @@ class guiWin(QMainWindow):
                 f'{title_full}<br><font color="red">{title_full}</font>'
             )
 
+        if mode == 'Normal division: Lineage tree': # and self.lineage_tree and self.lineage_tree.dict_curr_frame():
+            htmlTxt_li = []
+            htmlTxtFull_li = []
+            
+            try:
+                cells_with_parent, orphan_cells, lost_cells = self.lineage_tree.export_lin_tree_info(posData.frame_i)
+            except IndexError:
+                title = 'Processing lineage tree...'
+                htmlTxt = [f'<font color="{self.titleColor}">{title}</font>']
+                htmlTxtFull = htmlTxt
+                cells_with_parent, orphan_cells, lost_cells = [], [], []
+
+            if orphan_cells:
+                warn_txt = myutils.get_trimmed_list(orphan_cells)
+
+                warn_txt = f'New cells w/out mother: {warn_txt}'
+                warn_txt_full = f'New cells w/out mother: {orphan_cells}'
+
+                warn_txt = f'<font color="red">{warn_txt}</font>'
+                warn_txt_full = f'<font color="red">{warn_txt_full}</font>'
+
+                htmlTxt_li.append(warn_txt)
+                htmlTxtFull_li.append(warn_txt_full)
+
+            if lost_cells:
+                warn_txt = myutils.get_trimmed_list(lost_cells)
+
+                warn_txt = f'Lost cells: {warn_txt}'
+                warn_txt_full = f'Lost cells: {lost_cells}'
+
+                warn_txt = f'<font color="red">{warn_txt}</font>'
+                warn_txt_full = f'<font color="red">{warn_txt_full}</font>'
+
+                htmlTxt_li.append(warn_txt)
+                htmlTxtFull_li.append(warn_txt_full)
+
+            if cells_with_parent:
+                parent_cell_txt_raw = []
+                for cell, parent in cells_with_parent:
+                    parent_cell_txt_raw.append(f'{parent} --> {cell}')
+                parent_cell_txt = myutils.get_trimmed_list(parent_cell_txt_raw)
+
+                parent_cell_txt = f'Parent --> Cell: {parent_cell_txt}'
+                parent_cell_txt_full = f'Parent --> Cell: {parent_cell_txt_raw}'
+
+                parent_cell_txt = f'<font color="green">{parent_cell_txt}</font>'
+                parent_cell_txt_full = f'<font color="green">{parent_cell_txt_full}</font>'
+
+                htmlTxt_li.append(parent_cell_txt)
+                htmlTxtFull_li.append(parent_cell_txt_full)
+
+            if htmlTxt_li == []:
+                title = 'Looking good'
+                htmlTxt = [f'<font color="{self.titleColor}">{title}</font>']
+                htmlTxtFull = htmlTxt
+
+            htmlTxt = ', '.join(htmlTxt_li)
+            htmlTxtFull = '<br>'.join(htmlTxtFull_li)
 
         if not htmlTxt:
             title = 'Looking good'
@@ -23884,6 +23929,7 @@ class guiWin(QMainWindow):
                 f'<font color="{self.titleColor}">{title}</font>'
             )
             htmlTxtFull = htmlTxt
+
         self.titleLabel.setText(htmlTxt)
         self.titleLabel.setToolTip(htmlTxtFull)
 
