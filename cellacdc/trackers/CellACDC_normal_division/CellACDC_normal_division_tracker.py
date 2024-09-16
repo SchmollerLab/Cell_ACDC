@@ -340,7 +340,7 @@ def update_generation_from_df(families, df):
 
     return families
 
-def update_consistency(fixed_frame_i=None, general_df=None, fixed_df=None, Cell_IDs_fixed=None, consider_children=True, fwd=True, bck=True,  columns_to_replace=None, count=0):
+def update_consistency(fixed_frame_i=None, general_df=None, fixed_df=None, Cell_IDs_fixed=None, consider_children=True, fwd=True, bck=True, columns_to_replace=None, count=0):
     """
     - Update the consistency. Cell_IDs_fixed are the Cell_IDs which should be updated, if None all Cell_IDs are updated based on the fixed_df or fixed_frame_i in combination with general_df.
     - There are several ways to call this function:
@@ -355,7 +355,7 @@ def update_consistency(fixed_frame_i=None, general_df=None, fixed_df=None, Cell_
     - fwd (bool): Flag to indicate forward propagation. Should be True!
     - bck (bool): Flag to indicate backward propagation. Should be True!
     - general_df (pd.DataFrame): The general DataFrame.
-    - columns_to_replace (list): The list of columns to replace. (Internal, obsoltete technically, but still used in the function.)
+    - columns_to_replace (list): The list of columns to replace. (Internal, obsolete technically, but still used in the function.)
     - count (int): The count of the update consistency function. (Internal, not used for now.)
 
     Returns:
@@ -367,6 +367,9 @@ def update_consistency(fixed_frame_i=None, general_df=None, fixed_df=None, Cell_
 
     if not columns_to_replace:
         columns_to_replace = ['generation_num_tree', 'root_ID_tree', 'sister_ID_tree', 'parent_ID_tree']
+
+    if not fwd or not bck:
+        raise NotImplementedError('Not tested yet at all!')
 
     general_df = checked_reset_index(general_df)
     general_df = general_df.set_index(['frame_i', 'Cell_ID'])
@@ -394,7 +397,7 @@ def update_consistency(fixed_frame_i=None, general_df=None, fixed_df=None, Cell_
     else: # if we have neither we have a problem
         raise ValueError('Either fixed_frame_df or fixed_df must be provided.')
 
-    if not Cell_IDs_fixed: # if we don't have a list of Cell_IDs_fixed_df we take all Cell_IDs_fixed_df from the fixed_df (default)
+    if Cell_IDs_fixed is None: # if we don't have a list of Cell_IDs_fixed_df we take all Cell_IDs_fixed_df from the fixed_df (default)
         Cell_IDs_fixed = fixed_df.index
 
     general_df = checked_reset_index(general_df)
@@ -407,8 +410,8 @@ def update_consistency(fixed_frame_i=None, general_df=None, fixed_df=None, Cell_
             raise ValueError('fwd or bck must be True if fixed_frame_i is provided.')
     else:
         if fwd and bck: # this splits the df into two parts, only one is edited. Since there is a fixed frame we split so it doesn't edit frame_i
-            general_df_keep = general_df[general_df['frame_i'] == fixed_frame_i]
-            general_df_change = general_df[general_df['frame_i'] != fixed_frame_i]
+            general_df_keep = pd.DataFrame()
+            general_df_change = general_df
         elif fwd:
             general_df_keep = general_df[general_df['frame_i'] <= fixed_frame_i]
             general_df_change = general_df[general_df['frame_i'] > fixed_frame_i]
@@ -421,9 +424,9 @@ def update_consistency(fixed_frame_i=None, general_df=None, fixed_df=None, Cell_
 
     general_df_change = checked_reset_index(general_df_change)
     general_df_change = general_df_change.set_index('Cell_ID')
-    occ_cells = general_df_change.index.value_counts() # for repeateing the lines enough times
-
-    for Cell_ID in Cell_IDs_fixed: # replace values for the cells in the general df # definely needs to be optimized
+    occ_cells = general_df_change.index.value_counts() # for repeating the lines enough times
+    
+    for Cell_ID in Cell_IDs_fixed: # replace values for the cells in the general df # def needs to be optimized
         occ_cell = occ_cells[Cell_ID]
         Cell_df = pd.concat([fixed_df.loc[Cell_ID, columns_to_replace]]*occ_cell, axis=1).transpose()
         Cell_df.index.name = 'Cell_ID'
@@ -1145,6 +1148,35 @@ class normal_division_lineage_tree:
             df = df.drop(columns="index")
 
         return df
+    
+    def export_lin_tree_info(self, frame_i):
+        df_curr = self.lineage_list[frame_i].copy()
+        df_curr = checked_reset_index(df_curr)
+        df_curr = df_curr.set_index('Cell_ID')
+        df_prev = self.lineage_list[frame_i-1].copy()
+        df_prev = checked_reset_index(df_prev)
+        df_prev = df_prev.set_index('Cell_ID')
+
+        new_cells = set(df_curr.index) - set(df_prev.index)
+        lost_cells = set(df_prev.index) - set(df_curr.index)
+
+        cells_with_parent = []
+        orphan_cells = []
+        mother_cells = set()
+
+        for cell in new_cells:
+            cell_row = df_curr.loc[cell]
+            mother = cell_row['parent_ID_tree']
+            if mother == -1:
+                orphan_cells.append(cell)
+            else:
+                cells_with_parent.append((cell, mother))
+                mother_cells.add(mother)
+
+        lost_cells = lost_cells - mother_cells
+
+        return cells_with_parent, orphan_cells, lost_cells
+        
 
 class tracker:
     """

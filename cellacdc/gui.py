@@ -1997,6 +1997,14 @@ class guiWin(QMainWindow):
         self.widgetsWithShortcut['Propagate (lineage tree)'] = self.propagateLinTreeButton
         self.propagateLinTreeButton.clicked.connect(self.propagateLinTreeAction)
 
+        self.viewLinTreeInfoButton = QToolButton(self)
+        self.viewLinTreeInfoButton.setIcon(QIcon(":addCustomAnnotation.svg"))
+        self.editLin_TreeBar.addWidget(self.viewLinTreeInfoButton)
+        self.viewLinTreeInfoButton.setShortcut('S')
+        self.widgetsWithShortcut['View Changes (lineage tree)'] = self.viewLinTreeInfoButton
+        self.viewLinTreeInfoButton.clicked.connect(self.viewLinTreeInfoAction)
+    
+
         modes_availible = [
             'Segmentation and Tracking',
             'Cell cycle analysis',
@@ -13053,8 +13061,8 @@ class guiWin(QMainWindow):
             return
        
         if ev.key() == Qt.Key_Q and self.debug:
-            # from . import _debug
-            # _debug._debug_lineage_tree(self)
+            from . import _debug
+            _debug._debug_lineage_tree(self)
             
             posData = self.data[self.pos_i]
             printl(posData.binnedIDs)
@@ -15817,32 +15825,15 @@ class guiWin(QMainWindow):
             self.logger.info(msg)
             self.titleLabel.setText(msg, color=self.titleColor)
 
-    def lin_tree_ask_changes(self):
-        """
-        Asks the user for changes in the lineage tree.
-
-        This method is called when the user selects the 'Normal division: Lineage tree' mode.
-        It compared the backed up df (self.original_df from repeat_click_and_backup) with the current df (self.lineage_tree.export_df(posData.frame_i)) and propts the user to keep, propagate or discard the changes.
-
-        """
-        mode = str(self.modeComboBox.currentText())
-        if mode != 'Normal division: Lineage tree':
-            return
-        
-        if not self.lineage_tree:
-            return
-        
+    def get_difference_table(self, return_css_separated=False, return_differece=False):
+        # only use when needed, this does not check if it has all the things it needs (like mode and dfs)
         posData = self.data[self.pos_i]
-        
-        if self.curr_original_df_i != posData.frame_i:
-            return
         
         new_df = self.lineage_tree.export_df(posData.frame_i)
         original_df = self.original_df.copy()
 
         if original_df.equals(new_df):
             return
-        
         
         columns = new_df.columns
         for col in columns:
@@ -15875,8 +15866,6 @@ class guiWin(QMainWindow):
         self.prevAction.setDisabled(True)
         self.navigateScrollBar.setDisabled(True)
 
-        msg = widgets.myMessageBox()
-
         txt = """<table>
                     <tr>
                         <th>ID</th>
@@ -15894,8 +15883,7 @@ class guiWin(QMainWindow):
                             <td>{old_parent}</td>
                             <td>{new_parent}</td>
                         </tr>'''
-        txt += '''</table>
-        Do you want to keep, propgagte or discard the changes?'''
+        txt += '</table>'
 
         css = r'''
             <style>
@@ -15908,8 +15896,134 @@ class guiWin(QMainWindow):
                 }
             </style>
         '''
+        if return_css_separated and not return_differece:
+            return css, txt
+        elif return_css_separated and return_differece:
+            return css, txt, differences
+        elif not return_css_separated and return_differece:
+            return txt, differences
+        else:
+            txt = css + html_utils.paragraph(txt)
+            return txt
 
+    def viewLinTreeInfoAction(self):
+        mode = str(self.modeComboBox.currentText())
+        if mode != 'Normal division: Lineage tree':
+            printl('This action is only available in the "Normal division: Lineage tree" mode.')
+            
+            return
+        
+        if not self.lineage_tree:
+            printl('No lineage tree found.')
+            return
+        
+        posData = self.data[self.pos_i]
+
+        if self.curr_original_df_i != posData.frame_i:
+            # could be that this is not entirley true and self.curr_original_df_i just didnt get set right though!
+            txt_changes = '<br>No changes were made in this frame.<br><br>'
+        
+        else:
+            result = self.get_difference_table(return_css_separated=True)
+
+            if result is None:
+                txt_changes = 'No changes were made in this frame.'
+            else:
+                css, txt_changes = result
+
+        txt_changes = '<b>Changes made in this frame</b>:' + txt_changes + '<br><br>'
+        
+        cells_with_parent, orphan_cells, lost_cells = self.lineage_tree.export_lin_tree_info(posData.frame_i)
+
+        if orphan_cells == []:
+            txt_orphan_cells = 'No orphan Cells!'
+        else:
+            txt_orphan_cells = ', '.join([str(cell) for cell in orphan_cells])
+        txt_orphan = f'<b>Orphan cells</b>:<br>{txt_orphan_cells}<br><br>'
+
+        lost_cells = list(lost_cells)
+        if lost_cells == []:
+            txt_lost_cells = 'No lost Cells!'
+        else:
+            txt_lost_cells = ', '.join([str(cell) for cell in lost_cells])
+        txt_lost = f'<b>Lost cells</b>:<br>{txt_lost_cells}<br><br>'
+
+        if cells_with_parent == []:
+            table_cells_with_parent = '<br>No cells with parents!'
+        else:
+            table_cells_with_parent = """<table>
+                        <tr>
+                            <th>Parent ID</th>
+                            <th>ID</th>
+                        </tr>"""
+
+            print(cells_with_parent)
+            for cell, parent in cells_with_parent:
+                table_cells_with_parent += f'''<tr>
+                                <td>{parent}</td>
+                                <td>{cell}</td>
+                            </tr>'''
+            table_cells_with_parent += '</table>'
+
+        txt_cells_with_parents = f'<b>Cells with parents</b>:{table_cells_with_parent} <br><br>'
+
+        css = r'''
+                <style>
+                    table, th, td {
+                        border: 1px solid grey;
+                        border-collapse: collapse;
+                    }
+                    th, td {
+                        padding: 5px;
+                    }
+                </style>
+            '''
+
+        txt = css + html_utils.paragraph(txt_changes + txt_orphan + txt_lost + txt_cells_with_parents)
+
+
+        msg = widgets.myMessageBox()
+
+        msg.information(self,
+                'lineage tree information', 
+                txt
+                )
+
+
+    def lin_tree_ask_changes(self):
+        """
+        Asks the user for changes in the lineage tree.
+
+        This method is called when the user selects the 'Normal division: Lineage tree' mode.
+        It compared the backed up df (self.original_df from repeat_click_and_backup) with the current df (self.lineage_tree.export_df(posData.frame_i)) and propts the user to keep, propagate or discard the changes.
+
+        """
+        mode = str(self.modeComboBox.currentText())
+        if mode != 'Normal division: Lineage tree':
+            return
+        
+        if not self.lineage_tree:
+            return
+        
+        posData = self.data[self.pos_i]
+        
+        if self.curr_original_df_i != posData.frame_i:
+            return
+        
+        result = self.get_difference_table(return_css_separated=True, return_differece=True)
+        if result is None:
+            return
+
+        css, txt, differences = result
+
+        self.nextAction.setDisabled(True)
+        self.prevAction.setDisabled(True)
+        self.navigateScrollBar.setDisabled(True)
+
+        txt = txt + 'Do you want to keep, propgagte or discard the changes?'
         txt = css + html_utils.paragraph('<b>Changes made in this frame</b><br>' + txt)
+
+        msg = widgets.myMessageBox()
 
         propagate_btn, discard_btn, cencel_btn = msg.question(self,
                       'Changes in lineage tree', 
@@ -15937,7 +16051,7 @@ class guiWin(QMainWindow):
             Please make sure to come back and propagate them,
             otherwise your table might be inconsistent!
             There is a button for this next to the edit buttons.
-            Please also do not visit new frames!
+            <b>Please also do not visit new frames!</b>
             
             ''')
             msg.warning(self, 'Changes kept but not propagated!', txt)
