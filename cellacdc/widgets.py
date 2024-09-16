@@ -67,6 +67,7 @@ from . import annotate
 from . import urls
 from .acdc_regex import float_regex
 from .config import PREPROCESS_MAPPER
+from . import _base_widgets
 
 LINEEDIT_WARNING_STYLESHEET = _palettes.lineedit_warning_stylesheet()
 LINEEDIT_INVALID_ENTRY_STYLESHEET = _palettes.lineedit_invalid_entry_stylesheet()
@@ -2353,7 +2354,7 @@ class myLabelItem(pg.LabelItem):
             self.setText(self._prevText)
 
 
-class myMessageBox(QDialog):
+class myMessageBox(_base_widgets.QBaseDialog):
     def __init__(
             self, parent=None, showCentered=True, wrapText=True,
             scrollableText=False, enlargeWidthFactor=0,
@@ -2521,6 +2522,14 @@ class myMessageBox(QDialog):
         self._w = w
 
     def show(self, block=False):
+
+
+        # try:
+        #     if not self.parent().isEnabled():
+        #         self.setDisabled(False)
+        # except Exception as err:
+        #     pass
+
         self.endOfScrollableRow = self.currentRow
         
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
@@ -2824,8 +2833,7 @@ class myMessageBox(QDialog):
         if not self.allowClose:
             event.ignore()
             return
-        if hasattr(self, 'loop'):
-            self.loop.exit()
+        super().closeEvent(event)
 
 class FormLayout(QGridLayout):
     def __init__(self):

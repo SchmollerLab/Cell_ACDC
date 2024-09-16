@@ -326,6 +326,24 @@ def disableWindow(func):
             self.setDisabled(False)
     return inner_function
 
+# def disableGuiMainWindow(func):
+#     @wraps(func)
+#     def inner_function(self, *args, **kwargs):
+#         self.guiWin.setDisabled(True)
+#         try:
+#             if func.__code__.co_argcount==1 and func.__defaults__ is None:
+#                 result = func(self)
+#             elif func.__code__.co_argcount>1 and func.__defaults__ is None:
+#                 result = func(self, *args)
+#             else:
+#                 result = func(self, *args, **kwargs)
+#             return result
+#         except Exception as err:
+#             raise err
+#         finally:
+#             self.guiWin.setDisabled(False)
+#     return inner_function
+
 class relabelSequentialWorker(QObject):
     finished = Signal()
     critical = Signal(object)
@@ -11899,6 +11917,7 @@ class guiWin(QMainWindow):
         self.setDrawAnnotComboboxText()
         self.prevAnnotOptions = None
     
+    @disableWindow
     def changeMode(self, text):
         self.reconnectUndoRedo()
         self.updateModeMenuAction()
