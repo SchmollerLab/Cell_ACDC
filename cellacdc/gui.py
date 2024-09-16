@@ -23867,6 +23867,7 @@ class guiWin(QMainWindow):
                 htmlTxt = f'<font color="{self.titleColor}">{title}</font>'
                 self.titleLabel.setText(htmlTxt)
                 self.titleLabel.setToolTip(htmlTxt)
+                return
 
             parent_cell_txt_raw = []
             if cells_with_parent:
