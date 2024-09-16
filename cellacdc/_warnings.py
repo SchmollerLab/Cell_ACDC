@@ -249,3 +249,14 @@ def warnDivisionAnnotationCannotBeUndone(ID, relID, issue_frame_i, qparent=None)
         qparent, 'Division annotation cannot be undone', txt
     )
     return msg.cancel
+
+def warnCannotAddRemovePointsProjection(qparent=None):
+    from cellacdc import widgets
+    txt = html_utils.paragraph(f"""
+        Points <b>cannot be added or removed in a projection</b>!<br><br>
+        Please, switch to "single z-slice" mode (bottom of the image on 
+        the right of the z-slice scrollbar).<br><br>
+        Thank you for your patience.
+    """)
+    msg = widgets.myMessageBox(wrapText=False)
+    msg.warning(qparent, 'WARNING: Editing points in projection', txt)
