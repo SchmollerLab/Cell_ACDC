@@ -1265,7 +1265,7 @@ class tracker:
             rp = regionprops(tracker.tracked_lab)
             curr_IDs = {obj.label for obj in rp}
             new_IDs = curr_IDs - prev_IDs
-            print(f'Frame {frame_i}: {new_IDs}, {curr_IDs}, {prev_IDs}')
+            # print(f'Frame {frame_i}: {new_IDs}, {curr_IDs}, {prev_IDs}')
             tree.create_tracked_frame(
                 frame_i, mother_daughters, IDs_prev, IDs_curr_untracked,
                 assignments, curr_IDs, new_IDs

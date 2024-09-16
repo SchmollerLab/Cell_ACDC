@@ -2522,14 +2522,6 @@ class myMessageBox(_base_widgets.QBaseDialog):
         self._w = w
 
     def show(self, block=False):
-
-
-        # try:
-        #     if not self.parent().isEnabled():
-        #         self.setDisabled(False)
-        # except Exception as err:
-        #     pass
-
         self.endOfScrollableRow = self.currentRow
         
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)

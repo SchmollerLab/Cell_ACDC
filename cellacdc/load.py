@@ -1670,12 +1670,8 @@ class loadData:
             for obj in rp:
                 centroid = obj.centroid
                 yc, xc = obj.centroid[-2:]
-                try:
-                    acdc_df.at[(frame_i, obj.label), 'x_centroid'] = int(xc)
-                    acdc_df.at[(frame_i, obj.label), 'y_centroid'] = int(yc)
-                except Exception as e:
-                    acdc_df.to_parquet('acdc.parquet')
-                    exit()
+                acdc_df.at[(frame_i, obj.label), 'x_centroid'] = int(xc)
+                acdc_df.at[(frame_i, obj.label), 'y_centroid'] = int(yc)
 
                 if len(centroid) == 3:
                     if 'z_centroid' not in acdc_df.columns:

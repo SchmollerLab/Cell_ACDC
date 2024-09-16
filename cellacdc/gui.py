@@ -326,24 +326,6 @@ def disableWindow(func):
             self.setDisabled(False)
     return inner_function
 
-# def disableGuiMainWindow(func):
-#     @wraps(func)
-#     def inner_function(self, *args, **kwargs):
-#         self.guiWin.setDisabled(True)
-#         try:
-#             if func.__code__.co_argcount==1 and func.__defaults__ is None:
-#                 result = func(self)
-#             elif func.__code__.co_argcount>1 and func.__defaults__ is None:
-#                 result = func(self, *args)
-#             else:
-#                 result = func(self, *args, **kwargs)
-#             return result
-#         except Exception as err:
-#             raise err
-#         finally:
-#             self.guiWin.setDisabled(False)
-#     return inner_function
-
 class relabelSequentialWorker(QObject):
     finished = Signal()
     critical = Signal(object)
@@ -6751,8 +6733,6 @@ class guiWin(QMainWindow):
                 self.updateAllImages()
             else:
                 self.warnEditingWithCca_df('Merge IDs')
-
-            
             
             if not self.mergeIDsButton.findChild(QAction).isChecked():
                 self.mergeIDsButton.setChecked(False)
@@ -13082,8 +13062,8 @@ class guiWin(QMainWindow):
             return
        
         if ev.key() == Qt.Key_Q and self.debug:
-            from . import _debug
-            _debug._debug_lineage_tree(self)
+            # from . import _debug
+            # _debug._debug_lineage_tree(self)
             
             posData = self.data[self.pos_i]
             printl(posData.binnedIDs)
@@ -15930,12 +15910,11 @@ class guiWin(QMainWindow):
     def viewLinTreeInfoAction(self):
         mode = str(self.modeComboBox.currentText())
         if mode != 'Normal division: Lineage tree':
-            printl('This action is only available in the "Normal division: Lineage tree" mode.')
-            
+            self.logger.info('This action is only available in the "Normal division: Lineage tree" mode.')
             return
         
         if not self.lineage_tree:
-            printl('No lineage tree found.')
+            self.logger.info('No lineage tree found.')
             return
         
         posData = self.data[self.pos_i]
@@ -15978,7 +15957,6 @@ class guiWin(QMainWindow):
                             <th>ID</th>
                         </tr>"""
 
-            print(cells_with_parent)
             for cell, parent in cells_with_parent:
                 table_cells_with_parent += f'''<tr>
                                 <td>{parent}</td>
@@ -16002,9 +15980,7 @@ class guiWin(QMainWindow):
 
         txt = css + html_utils.paragraph(txt_changes + txt_orphan + txt_lost + txt_cells_with_parents)
 
-
         msg = widgets.myMessageBox()
-
         msg.information(self,
                 'lineage tree information', 
                 txt
@@ -23808,7 +23784,7 @@ class guiWin(QMainWindow):
         return curr_delRoiIDs
     
 
-    def setTitleFormater(self, htmlTxt_li, htmlTxtFull_li, pretxt, color, IDs):
+    def setTitleFormatter(self, htmlTxt_li, htmlTxtFull_li, pretxt, color, IDs):
         if not IDs:
             return htmlTxt_li, htmlTxtFull_li
         
@@ -23844,19 +23820,18 @@ class guiWin(QMainWindow):
             self.titleLabel.setText(htmlTxt)
             self.titleLabel.setToolTip(htmlTxt)
             return
-
         
         if mode != 'Normal division: Lineage tree':
-            htmlTxt_li, htmlTxtFull_li = self.setTitleFormater(
+            htmlTxt_li, htmlTxtFull_li = self.setTitleFormatter(
                 htmlTxt_li, htmlTxtFull_li, 'IDs lost', 'orange', lost_IDs
             )
-            htmlTxt_li, htmlTxtFull_li = self.setTitleFormater(
+            htmlTxt_li, htmlTxtFull_li = self.setTitleFormatter(
                 htmlTxt_li, htmlTxtFull_li, 'New IDs', 'red', new_IDs
             )
-            htmlTxt_li, htmlTxtFull_li = self.setTitleFormater(
+            htmlTxt_li, htmlTxtFull_li = self.setTitleFormatter(
                 htmlTxt_li, htmlTxtFull_li, 'Acc. IDs lost', 'green', tracked_lost_IDs
             )
-            htmlTxt_li, htmlTxtFull_li = self.setTitleFormater(
+            htmlTxt_li, htmlTxtFull_li = self.setTitleFormatter(
                 htmlTxt_li, htmlTxtFull_li, 'IDs with holes', 'red', IDs_with_holes
             )
         else:
@@ -23874,16 +23849,15 @@ class guiWin(QMainWindow):
                 for cell, parent in cells_with_parent:
                     parent_cell_txt_raw.append(f'{parent} --> {cell}')
 
-            htmlTxt_li, htmlTxtFull_li = self.setTitleFormater(
+            htmlTxt_li, htmlTxtFull_li = self.setTitleFormatter(
                 htmlTxt_li, htmlTxtFull_li, 'New cells w/out mother', 'red', orphan_cells
             )
-            htmlTxt_li, htmlTxtFull_li = self.setTitleFormater(
+            htmlTxt_li, htmlTxtFull_li = self.setTitleFormatter(
                 htmlTxt_li, htmlTxtFull_li, 'Lost cells', 'red', lost_cells
             )
-            htmlTxt_li, htmlTxtFull_li = self.setTitleFormater(
+            htmlTxt_li, htmlTxtFull_li = self.setTitleFormatter(
                 htmlTxt_li, htmlTxtFull_li, 'Parent --> Cell', 'green', parent_cell_txt_raw
             )
-
 
         if not htmlTxt_li:
             title = 'Looking good'
@@ -24270,7 +24244,7 @@ class guiWin(QMainWindow):
         try:
             tracked_lost_centroids = posData.tracked_lost_centroids[frame_i]
         except KeyError:
-            return trackedLostIDs
+            tracked_lost_centroids = set()
 
         for centroid in tracked_lost_centroids:
             ID = prev_lab[centroid]
@@ -24287,7 +24261,6 @@ class guiWin(QMainWindow):
         posData.trackedLostIDs = trackedLostIDs
 
         return trackedLostIDs
-
     
     def manuallyEditTracking(self, tracked_lab, allIDs):
         posData = self.data[self.pos_i]
