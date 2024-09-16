@@ -20616,9 +20616,15 @@ class guiWin(QMainWindow):
         saveAction.triggered.connect(self.savePointsAddedByClicking)
         saveAction.toolButton = toolButton
         self.pointsLayersToolbar.addAction(saveAction)
+        toolButton.actions.append(saveAction)
         
-        self.pointsLayersToolbar.addWidget(widgets.QVLine())
-        self.pointsLayersToolbar.addWidget(widgets.QHWidgetSpacer(width=5))
+        vlineAction = self.pointsLayersToolbar.addWidget(widgets.QVLine())
+        spacerAction = self.pointsLayersToolbar.addWidget(
+            widgets.QHWidgetSpacer(width=5)
+        )
+        
+        toolButton.actions.append(vlineAction)
+        toolButton.actions.append(spacerAction)
         
         self.pointsLayerClicksDfsToData(posData)
     
@@ -20871,7 +20877,6 @@ class guiWin(QMainWindow):
         self.ax1_BrushCircle.setPen(action.penColor)
     
     def autoZoomNextObj(self):
-        printl(self.sender().value() - 1)
         self.sender().setValue(self.sender().value() - 1)
         self.pointsLayerAutoPilot('next')
         self.setFocusMain()
@@ -20956,6 +20961,7 @@ class guiWin(QMainWindow):
         self.ax1.addItem(scatterItem)
 
         toolButton = widgets.PointsLayerToolButton(symbol, color, parent=self)
+        toolButton.actions = []
         toolButton.setCheckable(True)
         toolButton.setChecked(True)
         if self.addPointsWin.keySequence is not None:
@@ -20963,6 +20969,7 @@ class guiWin(QMainWindow):
         toolButton.toggled.connect(self.pointLayerToolbuttonToggled)
         toolButton.sigEditAppearance.connect(self.editPointsLayerAppearance)
         toolButton.sigShowIdsToggled.connect(self.showPointsLayerIdsToggled)
+        toolButton.sigRemove.connect(self.removePointsLayer)
         
         action = self.pointsLayersToolbar.addWidget(toolButton)
         action.state = self.addPointsWin.state()
@@ -21020,12 +21027,16 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         framePointsData = action.pointsData[posData.frame_i]
         if posData.SizeZ > 1:
+            zProjHow = self.zProjComboBox.currentText()
+            if zProjHow != 'single z-slice':
+                _warnings.warnCannotAddRemovePointsProjection()
+                return
             zSlice = self.zSliceScrollBar.sliderPosition()
         else:
             zSlice = None
         for point in points:
             pos = point.pos()
-            x, y = pos.x()-0.5, pos.y()-0.5
+            x, y = pos.x(), pos.y()
             if zSlice is not None:
                 framePointsData[zSlice]['x'].remove(x)
                 framePointsData[zSlice]['y'].remove(y)
@@ -21104,8 +21115,12 @@ class guiWin(QMainWindow):
     
     def removePointsLayer(self, button):
         button.setChecked(False)
+        button.action.scatterItem.setData([], [])
+        button.action.loadedDfInfo = None
         self.ax1.removeItem(button.action.scatterItem)
         self.pointsLayersToolbar.removeAction(button.action)
+        for action in button.actions:
+            self.pointsLayersToolbar.removeAction(action)
     
     def editPointsLayerAppearance(self, button):
         win = apps.EditPointsLayerAppearanceDialog(parent=self)

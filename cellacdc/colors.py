@@ -15,6 +15,7 @@ if GUI_INSTALLED:
     import colorsys
     import matplotlib.pyplot as plt
     from matplotlib.colors import LinearSegmentedColormap
+    import seaborn as sns
 
 try:
     import networkx as nx
@@ -197,7 +198,8 @@ def rgb_uint_to_html_hex(rgb):
 
 def merge_two_grayscale_imgs(
         img1, img2, rgb1, rgb2, alpha=0.5,
-        brightness1=1.0, brightness2=1.0, dtype=np.uint8
+        brightness1=1.0, brightness2=1.0, dtype=np.uint8, 
+        inverted=False
     ):
     img1_rgb = (skimage.color.gray2rgb(img1)*rgb1).astype(dtype)
     img2_rgb = (skimage.color.gray2rgb(img2)*rgb2).astype(dtype)
@@ -206,6 +208,13 @@ def merge_two_grayscale_imgs(
         alpha*img1_rgb*brightness1 + (1-alpha)*img2_rgb*brightness2
     ).astype(dtype)
     
+    if inverted:
+        merge_inverted = merge.copy()
+        merge_inverted[..., 0] = 255-((merge[..., 1]+merge[..., 2])/2)
+        merge_inverted[..., 1] = 255-((merge[..., 0]+merge[..., 2])/2)
+        merge_inverted[..., 2] = 255-((merge[..., 1]+merge[..., 0])/2)
+        merge = merge_inverted
+
     return merge
 
 def pg_ticks_to_colormap(ticks):
@@ -217,3 +226,43 @@ def pg_ticks_to_colormap(ticks):
     
     cmap = ColorMap(positions, colors)
     return cmap
+
+def color_palette(name='Okabe_lto', **sns_color_palette_kwargs):
+    """Create seaborn color palette (default or custom ones).
+
+    Parameters
+    ----------
+    name : str, optional
+        Name of the color palette. Default 'Okabe_lto'.
+    
+    References
+    ----------
+    https://thenode.biologists.com/data-visualization-with-flying-colors/research/
+    https://www.nature.com/articles/nmeth.1618
+    """
+    if name == 'Okabe_lto':
+        colors = (
+            '#0072B2', 
+            '#F0E442', 
+            '#009E73', 
+            '#56B4E9', 
+            '#E69F00', 
+            '#000000', 
+            '#CC79A7', 
+            '#D55E00', 
+        )
+        return sns.color_palette(colors)
+    elif name == 'Wong':
+        colors = (
+            (0, 0, 0), 
+            (230, 159, 0), 
+            (86, 180, 233), 
+            (0, 158, 115), 
+            (240, 228, 66), 
+            (0, 114, 178), 
+            (213, 94, 0), 
+            (204, 121, 167), 
+        )
+        return sns.color_palette(colors)
+    
+    return sns.color_palette(**sns_color_palette_kwargs)
