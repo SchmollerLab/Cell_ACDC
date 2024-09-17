@@ -150,6 +150,8 @@ def addCustomModelMessages(QParent=None):
 class QBaseDialog(_base_widgets.QBaseDialog):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        
+        
 class customAnnotationDialog(QDialog):
     sigDeleteSelecAnnot = Signal(object)
 
@@ -14732,3 +14734,22 @@ class ResizeUtilProps(QBaseDialog):
         
         self.cancel = False
         self.close()
+
+class LogoDialog(QDialog):
+    def __init__(self, logo_path, icon_path, parent=None):
+        super().__init__(parent)
+        
+        layout = QVBoxLayout()
+        
+        self.setWindowFlags(Qt.FramelessWindowHint)
+        # self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint)
+        # self.setAttribute(Qt.WA_TranslucentBackground)
+        # self.setWindowIcon(QIcon(icon_path))
+        
+        labelLogo = QLabel()
+        pixmapLogo = QPixmap(logo_path)
+        labelLogo.setPixmap(pixmapLogo)
+        
+        layout.addWidget(labelLogo)
+    
+        self.setLayout(layout)
