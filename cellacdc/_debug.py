@@ -44,6 +44,8 @@ def _debug_lineage_tree(guiWin):
     posData = guiWin.data[guiWin.pos_i]
     df_li = [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))]
     for i, df in enumerate(df_li):
+        if df is None:
+            continue
         df = df.copy()
         df = df.reset_index()
         df["frame_i"] = i

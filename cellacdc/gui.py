@@ -1997,6 +1997,14 @@ class guiWin(QMainWindow):
         self.widgetsWithShortcut['Propagate (lineage tree)'] = self.propagateLinTreeButton
         self.propagateLinTreeButton.clicked.connect(self.propagateLinTreeAction)
 
+        self.viewLinTreeInfoButton = QToolButton(self)
+        self.viewLinTreeInfoButton.setIcon(QIcon(":addCustomAnnotation.svg"))
+        self.editLin_TreeBar.addWidget(self.viewLinTreeInfoButton)
+        self.viewLinTreeInfoButton.setShortcut('S')
+        self.widgetsWithShortcut['View Changes (lineage tree)'] = self.viewLinTreeInfoButton
+        self.viewLinTreeInfoButton.clicked.connect(self.viewLinTreeInfoAction)
+    
+
         modes_availible = [
             'Segmentation and Tracking',
             'Cell cycle analysis',
@@ -2042,6 +2050,8 @@ class guiWin(QMainWindow):
         self.lin_tree_to_acdc_df(force_all=True)
         if posData.frame_i == self.curr_original_df_i:
             self.original_df = self.lineage_tree.lineage_list[posData.frame_i]
+
+        self.logger.info('Lineage tree propagated.')
 
         self.nextAction.setDisabled(False)
         self.prevAction.setDisabled(False)
@@ -4163,12 +4173,12 @@ class guiWin(QMainWindow):
     def gui_setTextAnnotColors(self):
         self.textAnnot[0].setColors(
             self.objLabelAnnotRgb, self.dividedAnnotRgb, self.SphaseAnnotRgb,
-            self.G1phaseAnnotRgba, self.objLostAnnotRgb
+            self.G1phaseAnnotRgba, self.objLostAnnotRgb, self.objLostTrackedAnnotRgb
         )
 
         self.textAnnot[1].setColors(
             self.objLabelAnnotRgb, self.dividedAnnotRgb, self.SphaseAnnotRgb,
-            self.G1phaseAnnotRgba, self.objLostAnnotRgb
+            self.G1phaseAnnotRgba, self.objLostAnnotRgb, self.objLostTrackedAnnotRgb
         )
 
 
@@ -4509,6 +4519,16 @@ class guiWin(QMainWindow):
         )
         return lostObjScatterItem
 
+    def gui_getTrackedLostObjScatterItem(self):
+        self.objLostTrackedAnnotRgb = (0, 255, 0)
+        brush = pg.mkBrush((*self.objLostTrackedAnnotRgb, 150))
+        pen = pg.mkPen(self.objLostTrackedAnnotRgb, width=1)
+        lostObjScatterItem = pg.ScatterPlotItem(
+            size=self.contLineWeight+1, pen=pen, 
+            brush=brush, pxMode=False, symbol='s'
+        )
+        return lostObjScatterItem
+
     def _gui_createGraphicsItems(self):
         posData = self.data[self.pos_i]
         allIDs = set()
@@ -4552,6 +4572,9 @@ class guiWin(QMainWindow):
         self.ax1_lostObjScatterItem = self.gui_getLostObjScatterItem()
         self.yellowContourScatterItem = self.gui_getLostObjScatterItem()
 
+        self.ax1_lostTrackedScatterItem = self.gui_getTrackedLostObjScatterItem()
+        self.greenContourScatterItem = self.gui_getTrackedLostObjScatterItem()
+
         brush = pg.mkBrush((0,255,0,200))
         pen = pg.mkPen('g', width=1)
         self.ccaFailedScatterItem = pg.ScatterPlotItem(
@@ -4569,6 +4592,7 @@ class guiWin(QMainWindow):
             size=self.mothBudLineWeight, pen=None
         )
         self.ax2_lostObjScatterItem = self.gui_getLostObjScatterItem()
+        self.ax2_lostTrackedScatterItem = self.gui_getTrackedLostObjScatterItem()
 
         self.gui_createTextAnnotItems(allIDs)
         self.gui_setTextAnnotColors()
@@ -6693,6 +6717,11 @@ class guiWin(QMainWindow):
             # Update data (rp, etc)
             self.update_rp()
 
+            if not self.isFrameCcaAnnotated():
+                proceed = self.askPropagateChangePast(f'Merge IDs {IDs_to_merge}')
+                if proceed:
+                    self.propagateMergeObjsPast(IDs_to_merge)
+
             # Repeat tracking
             self.tracking(
                 enforce=True, assign_unique_new_IDs=False,
@@ -7560,7 +7589,7 @@ class guiWin(QMainWindow):
             self.updateTempLayerKeepIDs()
         
         elif right_click and copyContourON:
-            hoverLostID = self.ax1_lostObjScatterItem.hoverLostID#
+            hoverLostID = self.ax1_lostObjScatterItem.hoverLostID
             lab2D = self.get_2Dlab(posData.lab)
             lab2D[self.lostObjImage == hoverLostID] = hoverLostID
             self.set_2Dlab(lab2D)
@@ -8044,6 +8073,7 @@ class guiWin(QMainWindow):
         self.ax1.addItem(self.ax1_oldMothBudLinesItem)
         self.ax1.addItem(self.ax1_newMothBudLinesItem)
         self.ax1.addItem(self.ax1_lostObjScatterItem)
+        self.ax1.addItem(self.ax1_lostTrackedScatterItem)
         self.ax1.addItem(self.ccaFailedScatterItem)
         self.ax1.addItem(self.yellowContourScatterItem)
 
@@ -8598,6 +8628,9 @@ class guiWin(QMainWindow):
         if not xx:
             self.ax1_lostObjScatterItem.setVisible(True)
             self.ax2_lostObjScatterItem.setVisible(True)
+
+            self.ax1_lostTrackedScatterItem.setVisible(True)
+            self.ax2_lostTrackedScatterItem.setVisible(True)
 
         for item in ScatterItems:
             if size is None:
@@ -10720,6 +10753,9 @@ class guiWin(QMainWindow):
         self.ax1_lostObjScatterItem.setData([], [])
         self.ax2_lostObjScatterItem.setData([], [])
 
+        self.ax1_lostTrackedScatterItem.setData([], [])
+        self.ax2_lostTrackedScatterItem.setData([], [])
+
     def delROImoving(self, roi):
         roi.setPen(color=(255,255,0))
         # First bring back IDs if the ROI moved away
@@ -11863,6 +11899,7 @@ class guiWin(QMainWindow):
         self.setDrawAnnotComboboxText()
         self.prevAnnotOptions = None
     
+    @disableWindow
     def changeMode(self, text):
         self.reconnectUndoRedo()
         self.updateModeMenuAction()
@@ -12222,7 +12259,9 @@ class guiWin(QMainWindow):
         if not checked:
             return
         self.lostObjImage = np.zeros_like(self.currentLab2D)
+        self.lostTrackedObjImage = np.zeros_like(self.currentLab2D)
         self.addLostObjsToImage()
+        self.addTrackedLostObjsToImage()
     
     def lebelRoiTrangeCheckboxToggled(self, checked):
         disabled = not checked
@@ -12427,9 +12466,15 @@ class guiWin(QMainWindow):
 
         if self.ax1_lostObjScatterItem.isVisible():
             self.ax1_lostObjScatterItem.setVisible(False)
+
+        if self.ax1_lostTrackedScatterItem.isVisible():
+            self.ax1_lostTrackedScatterItem.setVisible(False)
         
         if self.ax2_lostObjScatterItem.isVisible():
             self.ax2_lostObjScatterItem.setVisible(False)
+
+        if self.ax2_lostTrackedScatterItem.isVisible():
+            self.ax2_lostTrackedScatterItem.setVisible(False)
 
         # Restore ID previously hovered
         if ID != self.ax1BrushHoverID and not self.isMouseDragImg1:
@@ -12601,6 +12646,9 @@ class guiWin(QMainWindow):
         else:
             self.ax1_lostObjScatterItem.setVisible(True)
             self.ax2_lostObjScatterItem.setVisible(True)
+            self.ax1_lostTrackedScatterItem.setVisible(True)
+            self.ax2_lostTrackedScatterItem.setVisible(True)
+
             self.setHoverToolSymbolData(
                 [], [], (self.ax2_BrushCircle, self.ax1_BrushCircle),
             )
@@ -13353,6 +13401,45 @@ class guiWin(QMainWindow):
     def setUncheckedAllCustomAnnotButtons(self):
         for button in self.customAnnotDict.keys():
             button.setChecked(False)
+
+    def askPropagateChangePast(self, change_txt):
+        txt = html_utils.paragraph(f"""
+            Do you want to propagate the change "{change_txt}" to the past frames?
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        yesButton, _ = msg.question(
+            self, 'Propagate change to past frames', txt, 
+            buttonsTexts=('Yes', 'No')
+        )
+        return msg.clickedButton == yesButton
+
+    def propagateMergeObjsPast(self, IDs_to_merge):
+        self.store_data(autosave=False)
+        posData = self.data[self.pos_i]
+        current_frame_i = posData.frame_i
+        for past_frame_i in range(posData.frame_i-1, -1, -1):
+            posData.frame_i = past_frame_i
+            self.get_data()
+            
+            IDs = posData.allData_li[past_frame_i]['IDs']
+            stop_loop = False
+            for ID in IDs_to_merge:
+                if ID not in IDs:
+                    stop_loop = True
+                    break
+
+                if ID == 0:
+                    continue
+                posData.lab[posData.lab==ID] = self.firstID
+                self.update_rp()
+                
+                self.store_data(autosave=False)
+            
+            if stop_loop:
+                break
+        
+        posData.frame_i = current_frame_i
+        self.get_data()
 
     def propagateChange(
             self, modID, modTxt, doNotShow, UndoFutFrames,
@@ -15739,32 +15826,15 @@ class guiWin(QMainWindow):
             self.logger.info(msg)
             self.titleLabel.setText(msg, color=self.titleColor)
 
-    def lin_tree_ask_changes(self):
-        """
-        Asks the user for changes in the lineage tree.
-
-        This method is called when the user selects the 'Normal division: Lineage tree' mode.
-        It compared the backed up df (self.original_df from repeat_click_and_backup) with the current df (self.lineage_tree.export_df(posData.frame_i)) and propts the user to keep, propagate or discard the changes.
-
-        """
-        mode = str(self.modeComboBox.currentText())
-        if mode != 'Normal division: Lineage tree':
-            return
-        
-        if not self.lineage_tree:
-            return
-        
+    def get_difference_table(self, return_css_separated=False, return_differece=False):
+        # only use when needed, this does not check if it has all the things it needs (like mode and dfs)
         posData = self.data[self.pos_i]
-        
-        if self.curr_original_df_i != posData.frame_i:
-            return
         
         new_df = self.lineage_tree.export_df(posData.frame_i)
         original_df = self.original_df.copy()
 
         if original_df.equals(new_df):
             return
-        
         
         columns = new_df.columns
         for col in columns:
@@ -15797,8 +15867,6 @@ class guiWin(QMainWindow):
         self.prevAction.setDisabled(True)
         self.navigateScrollBar.setDisabled(True)
 
-        msg = widgets.myMessageBox()
-
         txt = """<table>
                     <tr>
                         <th>ID</th>
@@ -15816,8 +15884,7 @@ class guiWin(QMainWindow):
                             <td>{old_parent}</td>
                             <td>{new_parent}</td>
                         </tr>'''
-        txt += '''</table>
-        Do you want to keep, propgagte or discard the changes?'''
+        txt += '</table>'
 
         css = r'''
             <style>
@@ -15830,10 +15897,132 @@ class guiWin(QMainWindow):
                 }
             </style>
         '''
+        if return_css_separated and not return_differece:
+            return css, txt
+        elif return_css_separated and return_differece:
+            return css, txt, differences
+        elif not return_css_separated and return_differece:
+            return txt, differences
+        else:
+            txt = css + html_utils.paragraph(txt)
+            return txt
 
+    def viewLinTreeInfoAction(self):
+        mode = str(self.modeComboBox.currentText())
+        if mode != 'Normal division: Lineage tree':
+            self.logger.info('This action is only available in the "Normal division: Lineage tree" mode.')
+            return
+        
+        if not self.lineage_tree:
+            self.logger.info('No lineage tree found.')
+            return
+        
+        posData = self.data[self.pos_i]
+
+        if self.curr_original_df_i != posData.frame_i:
+            # could be that this is not entirley true and self.curr_original_df_i just didnt get set right though!
+            txt_changes = '<br>No changes were made in this frame.<br><br>'
+        
+        else:
+            result = self.get_difference_table(return_css_separated=True)
+
+            if result is None:
+                txt_changes = 'No changes were made in this frame.'
+            else:
+                css, txt_changes = result
+
+        txt_changes = '<b>Changes made in this frame</b>:' + txt_changes + '<br><br>'
+        
+        cells_with_parent, orphan_cells, lost_cells = self.lineage_tree.export_lin_tree_info(posData.frame_i)
+
+        if orphan_cells == []:
+            txt_orphan_cells = 'No orphan Cells!'
+        else:
+            txt_orphan_cells = ', '.join([str(cell) for cell in orphan_cells])
+        txt_orphan = f'<b>Orphan cells</b>:<br>{txt_orphan_cells}<br><br>'
+
+        lost_cells = list(lost_cells)
+        if lost_cells == []:
+            txt_lost_cells = 'No lost Cells!'
+        else:
+            txt_lost_cells = ', '.join([str(cell) for cell in lost_cells])
+        txt_lost = f'<b>Lost cells</b>:<br>{txt_lost_cells}<br><br>'
+
+        if cells_with_parent == []:
+            table_cells_with_parent = '<br>No cells with parents!'
+        else:
+            table_cells_with_parent = """<table>
+                        <tr>
+                            <th>Parent ID</th>
+                            <th>ID</th>
+                        </tr>"""
+
+            for cell, parent in cells_with_parent:
+                table_cells_with_parent += f'''<tr>
+                                <td>{parent}</td>
+                                <td>{cell}</td>
+                            </tr>'''
+            table_cells_with_parent += '</table>'
+
+        txt_cells_with_parents = f'<b>Cells with parents</b>:{table_cells_with_parent} <br><br>'
+
+        css = r'''
+                <style>
+                    table, th, td {
+                        border: 1px solid grey;
+                        border-collapse: collapse;
+                    }
+                    th, td {
+                        padding: 5px;
+                    }
+                </style>
+            '''
+
+        txt = css + html_utils.paragraph(txt_changes + txt_orphan + txt_lost + txt_cells_with_parents)
+
+        msg = widgets.myMessageBox()
+        msg.information(self,
+                'lineage tree information', 
+                txt
+                )
+
+
+    def lin_tree_ask_changes(self):
+        """
+        Asks the user for changes in the lineage tree.
+
+        This method is called when the user selects the 'Normal division: Lineage tree' mode.
+        It compared the backed up df (self.original_df from repeat_click_and_backup) with the current df (self.lineage_tree.export_df(posData.frame_i)) and propts the user to keep, propagate or discard the changes.
+
+        """
+        mode = str(self.modeComboBox.currentText())
+        if mode != 'Normal division: Lineage tree':
+            return
+        
+        if not self.lineage_tree:
+            return
+        
+        posData = self.data[self.pos_i]
+        
+        if self.curr_original_df_i != posData.frame_i:
+            return
+        
+        result = self.get_difference_table(return_css_separated=True, return_differece=True)
+        if result is None:
+            return
+
+        css, txt, differences = result
+
+        self.nextAction.setDisabled(True)
+        self.prevAction.setDisabled(True)
+        self.navigateScrollBar.setDisabled(True)
+
+        txt = txt + 'Do you want to keep, propgagte or discard the changes?'
         txt = css + html_utils.paragraph('<b>Changes made in this frame</b><br>' + txt)
 
-        propagate_btn, discard_btn, cencel_btn = msg.question(self,
+        msg = widgets.myMessageBox()
+
+        propagate_btn, discard_btn, _ = msg.question(self,
                       'Changes in lineage tree', 
                       txt,
                       buttonsTexts=('Propagate', 'Discard', 'Cancel'),)
@@ -15843,29 +16032,34 @@ class guiWin(QMainWindow):
             self.original_df = None
             self.curr_original_df_i = -1
             self.lin_tree_to_acdc_df(force_all=True)
-            
+            self.logger.info('Lineage tree propagated.')
+
         elif msg.clickedButton == discard_btn:
             self.lineage_tree.lineage_list[self.curr_original_df_i] = self.original_df
             self.lin_tree_to_acdc_df(specific={posData.frame_i}) # probably not necessary but just in case
             self.original_df = None
-            self.curr_original_df_i = -1
+            self.curr_original_df_i = -1#
+            self.logger.info('Lineage tree changes discarded.')
             
 
-        elif msg.clickedButton == cencel_btn:
+        elif msg.cancel:
             # Go back to current frame
             msg = widgets.myMessageBox()
             txt = html_utils.paragraph('''
-            Changes were cept but not propagated!
+            Changes were kept but not propagated!
             Please make sure to come back and propagate them,
             otherwise your table might be inconsistent!
             There is a button for this next to the edit buttons.
-            Please also do not visit new frames!
+            <b>Please also do not visit new frames!</b>
             
             ''')
             msg.warning(self, 'Changes kept but not propagated!', txt)
             self.lin_tree_to_acdc_df(specific={posData.frame_i})
             self.original_df = None
             self.curr_original_df_i = -1
+
+            self.logger.info('Lineage tree changes discarded.')
+
                         
         self.nextAction.setDisabled(False)
         self.prevAction.setDisabled(False)
@@ -17142,6 +17336,7 @@ class guiWin(QMainWindow):
         self.ax1_newMothBudLinesItem.setData([], [])
         self.ax1_oldMothBudLinesItem.setData([], [])
         self.ax1_lostObjScatterItem.setData([], [])
+        self.ax1_lostTrackedScatterItem.setData([], [])
         self.ccaFailedScatterItem.setData([], [])
         self.yellowContourScatterItem.setData([], [])
         
@@ -17480,6 +17675,7 @@ class guiWin(QMainWindow):
             posData.curvPlotItems = []
             posData.curvAnchorsItems = []
             posData.curvHoverItems = []
+            posData.trackedLostIDs = set()
 
             posData.HDDmaxID = np.max(posData.segm_data)
 
@@ -17910,6 +18106,7 @@ class guiWin(QMainWindow):
         self.highlightNewIDs_ccaFailed(ScellsIDsGone, rp=prev_rp)
         proceed = self.warnScellsGone(ScellsIDsGone, posData.frame_i)
         self.ax1_lostObjScatterItem.setData([], [])
+        self.ax1_lostTrackedScatterItem.setData([], [])
         if not proceed:
             return True, automaticallyDividedIDs
 
@@ -19437,9 +19634,10 @@ class guiWin(QMainWindow):
         if 'cell_cycle_stage' in acdc_df.columns:
             # Cell cycle info already present --> overwrite with new
             acdc_df[self.cca_df_colnames] = cca_df[self.cca_df_colnames]
-            posData.allData_li[i]['acdc_df'] = acdc_df
+            posData.allData_li[i]['acdc_df'] = acdc_df            
         elif cca_df is not None:
-            df = acdc_df.join(cca_df, how='left')
+            df = acdc_df.drop(cca_df.columns, axis=1, errors='ignore')
+            df = df.join(cca_df, how='left')
             posData.allData_li[i]['acdc_df'] = df
         
         # Store copy for cca integrity worker
@@ -19638,6 +19836,7 @@ class guiWin(QMainWindow):
         rp = posData.allData_li[frame_i]['regionprops']
         prev_rp = posData.allData_li[frame_i-1]['regionprops']
 
+        self.setTitleText()
 
         if lin_tree_df.shape[0] > lin_tree_df_prev.shape[0]: # check if new cells have arrived
             new_cells = lin_tree_df.index.difference(lin_tree_df_prev.index) # I could use this for the if already but this is probably faster for frames where nothing changes
@@ -22309,6 +22508,15 @@ class guiWin(QMainWindow):
             self.update_cca_df_snapshots(editTxt, posData)
             self.store_data()
 
+    def isFrameCcaAnnotated(self):
+        posData = self.data[self.pos_i]
+        acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
+        if acdc_df is None:
+            return False
+
+        return 'cell_cycle_stage' in acdc_df.columns
+
+
     def warnEditingWithCca_df(
             self, editTxt, return_answer=False, get_answer=False, 
             get_cancelled=False
@@ -22894,6 +23102,15 @@ class guiWin(QMainWindow):
             data = [obj.label]*len(xx)
             self.ax1_lostObjScatterItem.addPoints(xx, yy, data=data)
             self.ax2_lostObjScatterItem.addPoints(xx, yy)
+
+    def setTrackedLostObjectContour(self, obj):
+        allContours = self.getObjContours(obj, all_external=True)  
+        for objContours in allContours:
+            xx = objContours[:,0] + 0.5
+            yy = objContours[:,1] + 0.5
+            data = [obj.label]*len(xx)
+            self.ax1_lostTrackedScatterItem.addPoints(xx, yy, data=data)
+            self.ax2_lostTrackedScatterItem.addPoints(xx, yy)
     
     def getNearestLostObjID(self, y, x):
         xx, yy = self.ax2_lostObjScatterItem.getData()
@@ -22930,6 +23147,16 @@ class guiWin(QMainWindow):
         for obj in lostObjRp:
             filleObjMask = scipy.ndimage.binary_fill_holes(obj.image)
             self.lostObjImage[obj.slice][filleObjMask] = obj.label
+
+    # def addTrackedLostObjsToImage(self):
+    #     xx, yy = self.ax1_lostTrackedScatterItem.getData()
+    #     xx, yy = np.round(xx-0.5).astype(int), np.round(yy-0.5).astype(int)
+    #     labels = self.ax1_lostTrackedScatterItem.data['data']
+    #     self.lostObjImage[yy, xx] = labels
+    #     lostObjRp = skimage.measure.regionprops(self.lostObjImage)
+    #     for obj in lostObjRp:
+    #         filleObjMask = scipy.ndimage.binary_fill_holes(obj.image)
+    #         self.lostObjImage[obj.slice][filleObjMask] = obj.label
     
     def setCcaIssueContour(self, obj):
         objContours = self.getObjContours(obj, all_external=True)  
@@ -23435,19 +23662,24 @@ class guiWin(QMainWindow):
                 obj=obj, ax=1, thickness=self.contLineWeight+1
             )
         
+        if posData.frame_i == 0:
+            return 
+
         if not self.annotLostObjsToggle.isChecked():
             return
         
-        if not posData.lost_IDs:
-            return
-        
-        if posData.frame_i == 0:
-            return 
-        
+        tracked_lost_IDs = self.getTrackedLostIDs()
+
         prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
+        
         if prev_rp is None:
             return
+
         for obj in prev_rp:
+
+            if obj.label in tracked_lost_IDs:
+                self.setTrackedLostObjectContour(obj)
+
             if obj.label not in posData.lost_IDs:
                 continue
             
@@ -23551,10 +23783,28 @@ class guiWin(QMainWindow):
         )
         return curr_delRoiIDs
     
-    def setTitleText(self, lost_IDs, new_IDs, IDs_with_holes, tracked_lost_IDs):
+
+    def setTitleFormatter(self, htmlTxt_li, htmlTxtFull_li, pretxt, color, IDs):
+        if not IDs:
+            return htmlTxt_li, htmlTxtFull_li
+        
+        if isinstance(IDs, set):
+            IDs = list(IDs)
+
+        trim_IDs = myutils.get_trimmed_list(IDs)
+        txt = f'{pretxt}: {trim_IDs}'
+        txt_full = f'{pretxt}:<br>{IDs}'
+
+        txt = f'<font color="{color}">{txt}</font>'
+        txt_full = f'<font color="{color}">{txt_full}</font>'
+
+        htmlTxt_li.append(txt)
+        htmlTxtFull_li.append(txt_full)
+
+        return htmlTxt_li, htmlTxtFull_li
+
+    def setTitleText(self, lost_IDs=None, new_IDs=None, IDs_with_holes=None, tracked_lost_IDs=None):
         mode = self.modeComboBox.currentText()
-        title = ''
-        htmlTxtFull = ''
         try:
             posData = self.data[self.pos_i]
             posData.segm_data[posData.frame_i]
@@ -23563,93 +23813,62 @@ class guiWin(QMainWindow):
             prev_segmented = False
             
         if prev_segmented:
-            htmlTxt = ''
+            htmlTxt_li = []
+            htmlTxtFull_li = []
         else:
             htmlTxt = f'<font color="white">Never segmented frame. </font>'
-
-        if lost_IDs and mode != 'Normal division: Lineage tree':
-            lost_IDs_format = myutils.get_trimmed_list(lost_IDs)
-            title = f'IDs lost in current frame: {lost_IDs_format}'
-            title_full = f'IDs lost in current frame: {lost_IDs}'
-            htmlTxt = (
-                f'<font color="red">{title}</font>'
-            )
-            htmlTxtFull = (
-                f'<font color="red">{title_full}</font>'
-            )
-        elif lost_IDs and mode == 'Normal division: Lineage tree': # and self.lineage_tree and self.lineage_tree.dict_curr_frame():
-            lost_IDs_format = myutils.get_trimmed_list(lost_IDs)
-            warn_txt = f'Mother cells: {lost_IDs_format}'
-            warn_txt_full = f'Mother cells: {lost_IDs}'
-            htmlTxt = (
-                f'<font color="green">{warn_txt}</font>'
-            )
-            htmlTxtFull = (
-                f'<font color="green">{warn_txt_full}</font>'
-            )
-            
-            # pairs_format = myutils.get_trimmed_dict(self.lineage_tree.dict_curr_frame())
-            # warn_txt = f'Split cells: {pairs_format}'
-            # htmlTxt = (
-            #     f'<font color="green">{warn_txt}</font>'
-            # )
-
-        if new_IDs:
-            new_IDs_format = myutils.get_trimmed_list(new_IDs)
-            title = f'New IDs in current frame: {new_IDs_format}'
-            title_full = f'New IDs in current frame: {new_IDs}'
-            if htmlTxt:
-                htmlTxt = (
-                    f'{htmlTxt}, <font color="green">{title}</font>'
-                )
-                htmlTxtFull = (
-                    f'{htmlTxtFull}<br><font color="green">{title_full}</font>'
-                )
-            else:
-                htmlTxt = (
-                    f'<font color="green">{title}</font>'
-                )
-                htmlTxtFull = (
-                    f'<font color="green">{title_full}</font>'
-                )
+            self.titleLabel.setText(htmlTxt)
+            self.titleLabel.setToolTip(htmlTxt)
+            return
         
-        if tracked_lost_IDs:
-            tracked_lost_IDs_format = myutils.get_trimmed_list(tracked_lost_IDs)
-            title = f'Acc. IDs lost: {tracked_lost_IDs_format}'
-            title_full = f'Acc. IDs lost: {tracked_lost_IDs}'
-            if htmlTxt:
-                htmlTxt = htmlTxt +', ' + (
-                    f'<font color="orange">{title}</font>'
-                )
-                htmlTxtFull = htmlTxtFull +'<br>' + (
-                    f'<font color="orange">{title_full}</font>'
-                )
-            else:
-                htmlTxt = (
-                    f'<font color="orange">{title}</font>'
-                )
-                htmlTxtFull = (
-                    f'<font color="orange">{title_full}</font>'
-                )
-            
-        if IDs_with_holes:
-            IDs_with_holes_format = myutils.get_trimmed_list(IDs_with_holes)
-            title = f'IDs with holes: {IDs_with_holes_format}'
-            title_full = f'IDs with holes: {IDs_with_holes}'
-            htmlTxt = (
-                f'{htmlTxt}, <font color="red">{title}</font>'
+        if mode != 'Normal division: Lineage tree':
+            htmlTxt_li, htmlTxtFull_li = self.setTitleFormatter(
+                htmlTxt_li, htmlTxtFull_li, 'IDs lost', 'orange', lost_IDs
             )
-            htmlTxtFull = (
-                f'{title_full}<br><font color="red">{title_full}</font>'
+            htmlTxt_li, htmlTxtFull_li = self.setTitleFormatter(
+                htmlTxt_li, htmlTxtFull_li, 'New IDs', 'red', new_IDs
+            )
+            htmlTxt_li, htmlTxtFull_li = self.setTitleFormatter(
+                htmlTxt_li, htmlTxtFull_li, 'Acc. IDs lost', 'green', tracked_lost_IDs
+            )
+            htmlTxt_li, htmlTxtFull_li = self.setTitleFormatter(
+                htmlTxt_li, htmlTxtFull_li, 'IDs with holes', 'red', IDs_with_holes
+            )
+        else:
+            try:
+                cells_with_parent, orphan_cells, lost_cells = self.lineage_tree.export_lin_tree_info(posData.frame_i)
+            except IndexError:
+                title = 'Processing lineage tree...'
+                htmlTxt = f'<font color="{self.titleColor}">{title}</font>'
+                self.titleLabel.setText(htmlTxt)
+                self.titleLabel.setToolTip(htmlTxt)
+                return
+
+            parent_cell_txt_raw = []
+            if cells_with_parent:
+                for cell, parent in cells_with_parent:
+                    parent_cell_txt_raw.append(f'{parent} --> {cell}')
+
+            htmlTxt_li, htmlTxtFull_li = self.setTitleFormatter(
+                htmlTxt_li, htmlTxtFull_li, 'New cells w/out mother', 'red', orphan_cells
+            )
+            htmlTxt_li, htmlTxtFull_li = self.setTitleFormatter(
+                htmlTxt_li, htmlTxtFull_li, 'Lost cells', 'red', lost_cells
+            )
+            htmlTxt_li, htmlTxtFull_li = self.setTitleFormatter(
+                htmlTxt_li, htmlTxtFull_li, 'Parent --> Cell', 'green', parent_cell_txt_raw
             )
 
-
-        if not htmlTxt:
+        if not htmlTxt_li:
             title = 'Looking good'
-            htmlTxt = (
-                f'<font color="{self.titleColor}">{title}</font>'
-            )
-            htmlTxtFull = htmlTxt
+            htmlTxt = f'<font color="{self.titleColor}">{title}</font>'
+            self.titleLabel.setText(htmlTxt)
+            self.titleLabel.setToolTip(htmlTxt)
+            return
+
+        htmlTxt = ', '.join(htmlTxt_li)
+        htmlTxtFull = '<br>'.join(htmlTxtFull_li)
+
         self.titleLabel.setText(htmlTxt)
         self.titleLabel.setToolTip(htmlTxtFull)
 
@@ -23998,8 +24217,9 @@ class guiWin(QMainWindow):
                 posData.tracked_lost_centroids[frame_i] = {int_centroid}
                 printl('Need to fix probably? Why is this not properly init?')    
 
-    def getTrackedLostIDs(self, prev_lab=None, frame_i=None):
+    def getTrackedLostIDs(self, prev_lab=None, lab=None, frame_i=None):
         trackedLostIDs = set()
+        retrackedLostcent = set()
         posData = self.data[self.pos_i]
         
         if frame_i is None:
@@ -24013,22 +24233,34 @@ class guiWin(QMainWindow):
                 return_copy=False
             )
 
+        if lab is None:
+            lab = self.get_labels(
+                from_store=True,
+                frame_i=frame_i,
+                return_existing=False,
+                return_copy=False
+            )
+
         try:
             tracked_lost_centroids = posData.tracked_lost_centroids[frame_i]
         except KeyError:
-            return trackedLostIDs
+            tracked_lost_centroids = set()
 
         for centroid in tracked_lost_centroids:
             ID = prev_lab[centroid]
             if ID == 0:
                 continue
+
+            if ID == lab[centroid]:
+                retrackedLostcent.add(centroid)
+                continue
+
             trackedLostIDs.add(ID)
 
-        # printl(tracked_lost_centroids, 'tracked_lost_centroids')
-        # printl(trackedLostIDs, 'trackedLostIDs')
+        posData.tracked_lost_centroids[frame_i] = tracked_lost_centroids - retrackedLostcent
+        posData.trackedLostIDs = trackedLostIDs
 
         return trackedLostIDs
-
     
     def manuallyEditTracking(self, tracked_lab, allIDs):
         posData = self.data[self.pos_i]

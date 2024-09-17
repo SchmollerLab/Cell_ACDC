@@ -134,9 +134,22 @@ def mother_daughter_assign(IoA_matrix, IoA_thresh_daughter, min_daughter, max_da
         else:
             mother_daughters.append((j, high_IoA_indices))
 
-    daughters_li = []
-    for _, daughters in mother_daughters:
-        daughters_li.extend(daughters)
+    should_remove_idx = []
+    for mother, daughters in mother_daughters:
+        for daughter in daughters:
+            high_IoA_greater_1 = np.count_nonzero(IoA_thresholded[daughter]) > 1
+            if high_IoA_greater_1:
+                should_remove_idx.append(True) 
+                break
+        else:
+            should_remove_idx.append(False)
+    
+    # printl(f'length of mother_daughters: {len(mother_daughters), len(should_remove_idx)}')
+    mother_daughters = [mother_daughters[i] for i, remove in enumerate(should_remove_idx) if not remove]
+
+    # daughters_li = []
+    # for _, daughters in mother_daughters:
+    #     daughters_li.extend(daughters)
 
     return aggr_track, mother_daughters
 
@@ -327,7 +340,7 @@ def update_generation_from_df(families, df):
 
     return families
 
-def update_consistency(fixed_frame_i=None, general_df=None, fixed_df=None, Cell_IDs_fixed=None, consider_children=True, fwd=True, bck=True,  columns_to_replace=None, count=0):
+def update_consistency(fixed_frame_i=None, general_df=None, fixed_df=None, Cell_IDs_fixed=None, consider_children=True, fwd=True, bck=True, columns_to_replace=None, count=0):
     """
     - Update the consistency. Cell_IDs_fixed are the Cell_IDs which should be updated, if None all Cell_IDs are updated based on the fixed_df or fixed_frame_i in combination with general_df.
     - There are several ways to call this function:
@@ -342,7 +355,7 @@ def update_consistency(fixed_frame_i=None, general_df=None, fixed_df=None, Cell_
     - fwd (bool): Flag to indicate forward propagation. Should be True!
     - bck (bool): Flag to indicate backward propagation. Should be True!
     - general_df (pd.DataFrame): The general DataFrame.
-    - columns_to_replace (list): The list of columns to replace. (Internal, obsoltete technically, but still used in the function.)
+    - columns_to_replace (list): The list of columns to replace. (Internal, obsolete technically, but still used in the function.)
     - count (int): The count of the update consistency function. (Internal, not used for now.)
 
     Returns:
@@ -354,6 +367,9 @@ def update_consistency(fixed_frame_i=None, general_df=None, fixed_df=None, Cell_
 
     if not columns_to_replace:
         columns_to_replace = ['generation_num_tree', 'root_ID_tree', 'sister_ID_tree', 'parent_ID_tree']
+
+    if not fwd or not bck:
+        raise NotImplementedError('Not tested yet at all!')
 
     general_df = checked_reset_index(general_df)
     general_df = general_df.set_index(['frame_i', 'Cell_ID'])
@@ -381,7 +397,7 @@ def update_consistency(fixed_frame_i=None, general_df=None, fixed_df=None, Cell_
     else: # if we have neither we have a problem
         raise ValueError('Either fixed_frame_df or fixed_df must be provided.')
 
-    if not Cell_IDs_fixed: # if we don't have a list of Cell_IDs_fixed_df we take all Cell_IDs_fixed_df from the fixed_df (default)
+    if Cell_IDs_fixed is None: # if we don't have a list of Cell_IDs_fixed_df we take all Cell_IDs_fixed_df from the fixed_df (default)
         Cell_IDs_fixed = fixed_df.index
 
     general_df = checked_reset_index(general_df)
@@ -394,8 +410,8 @@ def update_consistency(fixed_frame_i=None, general_df=None, fixed_df=None, Cell_
             raise ValueError('fwd or bck must be True if fixed_frame_i is provided.')
     else:
         if fwd and bck: # this splits the df into two parts, only one is edited. Since there is a fixed frame we split so it doesn't edit frame_i
-            general_df_keep = general_df[general_df['frame_i'] == fixed_frame_i]
-            general_df_change = general_df[general_df['frame_i'] != fixed_frame_i]
+            general_df_keep = pd.DataFrame()
+            general_df_change = general_df
         elif fwd:
             general_df_keep = general_df[general_df['frame_i'] <= fixed_frame_i]
             general_df_change = general_df[general_df['frame_i'] > fixed_frame_i]
@@ -408,9 +424,9 @@ def update_consistency(fixed_frame_i=None, general_df=None, fixed_df=None, Cell_
 
     general_df_change = checked_reset_index(general_df_change)
     general_df_change = general_df_change.set_index('Cell_ID')
-    occ_cells = general_df_change.index.value_counts() # for repeateing the lines enough times
-
-    for Cell_ID in Cell_IDs_fixed: # replace values for the cells in the general df # definely needs to be optimized
+    occ_cells = general_df_change.index.value_counts() # for repeating the lines enough times
+    
+    for Cell_ID in Cell_IDs_fixed: # replace values for the cells in the general df # def needs to be optimized
         occ_cell = occ_cells[Cell_ID]
         Cell_df = pd.concat([fixed_df.loc[Cell_ID, columns_to_replace]]*occ_cell, axis=1).transpose()
         Cell_df.index.name = 'Cell_ID'
@@ -560,7 +576,7 @@ class normal_division_tracker:
             self.rp = rp
 
         if prev_rp is None:
-            prev_rp = regionprops(prev_lab)
+            prev_rp = regionprops(prev_lab.copy())
 
         IoA_matrix, self.IDs_curr_untracked, self.IDs_prev = calc_IoA_matrix(lab,
                                                                              prev_lab,
@@ -572,7 +588,7 @@ class normal_division_tracker:
                                                                         min_daughter=self.min_daughter,
                                                                         max_daughter=self.max_daughter,
                                                                         IoA_thresh_instant=self.IoA_thresh
-                                                                        )        
+                                                                        )
         self.tracked_lab, IoA_matrix, self.assignments, _ = track_frame_base(prev_lab,
                                                                              prev_rp,
                                                                              lab,
@@ -587,7 +603,17 @@ class normal_division_tracker:
                                                                              mother_daughters=self.mother_daughters
                                                                              )
         
-
+        # not_self_assignemtns = {k: v for k, v in self.assignments.items() if k != v}
+        # mother_IDs = [self.IDs_prev[mother] for mother, _ in self.mother_daughters]
+        # daughter_indx = [daughters for _, daughters in self.mother_daughters]
+        # daughter_indx = np.array(daughter_indx)
+        # try:
+        #     daughter_indx = np.concatenate(daughter_indx)
+        # except ValueError:
+        #     pass
+        # daughter_IDs = IoA_index_daughter_to_ID(daughter_indx.tolist(), self.assignments, self.IDs_curr_untracked)
+        # printl(f'Frame {frame_i} tracked, not_self_assignemtns: {not_self_assignemtns}, mothers {mother_IDs}, daughters {daughter_IDs}')
+        
         # self.tracked_IDs = set(tracked_IDs).union(set(self.assignments.values()))
         self.tracked_video[frame_i] = self.tracked_lab
 
@@ -1122,6 +1148,35 @@ class normal_division_lineage_tree:
             df = df.drop(columns="index")
 
         return df
+    
+    def export_lin_tree_info(self, frame_i):
+        df_curr = self.lineage_list[frame_i].copy()
+        df_curr = checked_reset_index(df_curr)
+        df_curr = df_curr.set_index('Cell_ID')
+        df_prev = self.lineage_list[frame_i-1].copy()
+        df_prev = checked_reset_index(df_prev)
+        df_prev = df_prev.set_index('Cell_ID')
+
+        new_cells = set(df_curr.index) - set(df_prev.index)
+        lost_cells = set(df_prev.index) - set(df_curr.index)
+
+        cells_with_parent = []
+        orphan_cells = []
+        mother_cells = set()
+
+        for cell in new_cells:
+            cell_row = df_curr.loc[cell]
+            mother = cell_row['parent_ID_tree']
+            if mother == -1:
+                orphan_cells.append(cell)
+            else:
+                cells_with_parent.append((cell, mother))
+                mother_cells.add(mother)
+
+        lost_cells = lost_cells - mother_cells
+
+        return cells_with_parent, orphan_cells, lost_cells
+        
 
 class tracker:
     """
@@ -1145,7 +1200,6 @@ class tracker:
 
     def track(self,
               segm_video,
-              signals=None,
               IoA_thresh = 0.8,
               IoA_thresh_daughter = 0.25,
               IoA_thresh_aggressive = 0.5,
@@ -1153,6 +1207,7 @@ class tracker:
               max_daughter = 2,
               record_lineage = True,
               return_tracked_lost_centroids = True,
+              signals = None,
         ):
         """
         Tracks the segmented video frames and returns the tracked video. (Used for module 2)
@@ -1170,8 +1225,8 @@ class tracker:
         Returns:
         - list: Tracked video frames.
         """
-        # if not record_lineage and return_tracked_lost_centroids:
-        #     raise ValueError('return_tracked_lost_centroids can only be True if record_lineage is True.')
+        if not record_lineage and return_tracked_lost_centroids:
+            raise ValueError('return_tracked_lost_centroids can only be True if record_lineage is True.')
         
         pbar = tqdm(total=len(segm_video), desc='Tracking', ncols=100)
 
@@ -1210,33 +1265,32 @@ class tracker:
             rp = regionprops(tracker.tracked_lab)
             curr_IDs = {obj.label for obj in rp}
             new_IDs = curr_IDs - prev_IDs
-            # new_IDs = new_IDs - set([0])
+            # print(f'Frame {frame_i}: {new_IDs}, {curr_IDs}, {prev_IDs}')
             tree.create_tracked_frame(
-                frame_i, mother_daughters, IDs_prev, IDs_curr_untracked, 
+                frame_i, mother_daughters, IDs_prev, IDs_curr_untracked,
                 assignments, curr_IDs, new_IDs
             )
             # printl(new_IDs, curr_IDs, prev_IDs)
-            if return_tracked_lost_centroids:
-                tracked_lost_centroids_loc = []
-                for mother, _ in mother_daughters:
-                    mother_ID = IDs_prev[mother]
-                    
-                    found = False
-                    for obj in prev_rp:
-                        if obj.label == mother_ID:
-                            tracked_lost_centroids_loc.append(obj.centroid)
-                            found = True
-                            break
-                    if not found:
-                        labels = [obj.label for obj in rp]
-                        printl(mother, mother_ID, IDs_curr_untracked, labels)
-                        raise ValueError('Something went wrong with the tracked lost centroids.')
-
-
-                if len(mother_daughters) != len(tracked_lost_centroids_loc):
-                    raise ValueError('Something went wrong with the tracked lost centroids.')
+            tracked_lost_centroids_loc = []
+            for mother, _ in mother_daughters:
+                mother_ID = IDs_prev[mother]
                 
-                self.tracked_lost_centroids[frame_i] = tracked_lost_centroids_loc
+                found = False
+                for obj in prev_rp:
+                    if obj.label == mother_ID:
+                        tracked_lost_centroids_loc.append(obj.centroid)
+                        found = True
+                        break
+                if not found:
+                    labels = [obj.label for obj in rp]
+                    printl(mother, mother_ID, IDs_curr_untracked, labels)
+                    raise ValueError('Something went wrong with the tracked lost centroids.')
+
+
+            if len(mother_daughters) != len(tracked_lost_centroids_loc):
+                raise ValueError('Something went wrong with the tracked lost centroids.')
+            
+            self.tracked_lost_centroids[frame_i] = tracked_lost_centroids_loc
 
             prev_IDs = curr_IDs.copy()
             prev_rp = rp.copy()
