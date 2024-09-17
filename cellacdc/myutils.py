@@ -2051,12 +2051,14 @@ def from_imagej_rois_to_segm_data(
             factor_y = rescale_y[1]/rescale_y[0]
             factor_x = rescale_x[1]/rescale_x[0]
             
-            xx = np.round(xx * factor_x).astype(int)
-            yy = np.round(yy * factor_y).astype(int)
+            xx = np.clip(np.round(xx * factor_x).astype(int), 0, SizeX-1)
+            yy = np.clip(np.round(yy * factor_y).astype(int), 0, SizeY-1)
             
         for t, z in zip(tt, zz):
             if rescale_rois_sizes is not None:
                 z = round(z*factor_z)
+                z = z if z<SizeZ else SizeZ
+                z = z if z>=0 else 0
             
             rr, cc = skimage.draw.polygon(yy, xx)
             segm_data[t, z, rr, cc] = ID
