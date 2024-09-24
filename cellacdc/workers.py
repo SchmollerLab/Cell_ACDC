@@ -4220,22 +4220,29 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                                 spotmax_output_path, df_spots_filename
                             )
                             ext_spots = '.csv'
+                        
                         if not os.path.exists(spots_filepath):
                             continue
                         
                         analysis_step = re.findall(
                             r'\*rn\*(.*)\*desc\*', pattern_filename
                         )[0]
-                        df_spots = spotmax.io.load_spots_table(
-                            spotmax_output_path, df_spots_filename
-                        ).reset_index().set_index(['frame_i', 'Cell_ID'])
-                        df_spots = self.copyCcaColsFromAcdcDf(
-                            df_spots, acdc_df, debug=False
-                        )
-                        df_spots = (
-                            df_spots.reset_index()
-                            .set_index(['frame_i', 'Cell_ID', 'spot_id'])
-                        )
+                        try:
+                            df_spots = spotmax.io.load_spots_table(
+                                spotmax_output_path, df_spots_filename
+                            ).reset_index().set_index(['frame_i', 'Cell_ID'])
+                            df_spots = self.copyCcaColsFromAcdcDf(
+                                df_spots, acdc_df, debug=False
+                            )
+                            df_spots = (
+                                df_spots.reset_index()
+                                .set_index(['frame_i', 'Cell_ID', 'spot_id'])
+                            )
+                            dfs_spots[key].append(df_spots)
+                        except Exception as err:
+                            # Skip empty tables when 0 spots where found
+                            pass
+                        
                         df_aggregated = pd.read_csv(
                             aggr_filepath, index_col=['frame_i', 'Cell_ID']
                         )
@@ -4243,7 +4250,6 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                             df_aggregated, acdc_df
                         )
                         key = (run, analysis_step, desc, ext_spots)
-                        dfs_spots[key].append(df_spots)
                         dfs_aggr[key].append(df_aggregated)
                         pos_runs[key].append(pos)
                     
