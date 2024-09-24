@@ -4224,6 +4224,7 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                         if not os.path.exists(spots_filepath):
                             continue
                         
+                        key = (run, analysis_step, desc, ext_spots)
                         analysis_step = re.findall(
                             r'\*rn\*(.*)\*desc\*', pattern_filename
                         )[0]
@@ -4240,7 +4241,11 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                             )
                             dfs_spots[key].append(df_spots)
                         except Exception as err:
-                            # Skip empty tables when 0 spots where found
+                            self.logger.log(err)
+                            self.logger.log(
+                                f'WARNING: Error when reading single-spots '
+                                f'tables. Skipping this Position.'
+                            )
                             pass
                         
                         df_aggregated = pd.read_csv(
@@ -4249,7 +4254,6 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                         df_aggregated = self.copyCcaColsFromAcdcDf(
                             df_aggregated, acdc_df
                         )
-                        key = (run, analysis_step, desc, ext_spots)
                         dfs_aggr[key].append(df_aggregated)
                         pos_runs[key].append(pos)
                     
