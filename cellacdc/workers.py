@@ -4224,10 +4224,10 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                         if not os.path.exists(spots_filepath):
                             continue
                         
-                        key = (run, analysis_step, desc, ext_spots)
                         analysis_step = re.findall(
                             r'\*rn\*(.*)\*desc\*', pattern_filename
                         )[0]
+                        key = (run, analysis_step, desc, ext_spots)
                         try:
                             df_spots = spotmax.io.load_spots_table(
                                 spotmax_output_path, df_spots_filename

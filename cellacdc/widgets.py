@@ -5438,7 +5438,7 @@ class myHistogramLUTitem(baseHistogramLUTitem):
         except AttributeError as err:
             mn, mx = self.getLevels() 
         
-        self.childLutItem.setLevels(min=mn, max=mx)
+        self.childLutItem.setLevels(min=0, max=mx)
     
     
 class labelledQScrollbar(ScrollBar):
