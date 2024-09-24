@@ -4641,6 +4641,7 @@ class BaseGradientEditorItemLabels(pg.GradientEditorItem):
 
 class baseHistogramLUTitem(pg.HistogramLUTItem):
     sigAddColormap = Signal(object, str)
+    sigRescaleIntes = Signal(object)
 
     def __init__(self, name='image', axisLabel='', parent=None, **kwargs):
         pg.GradientEditorItem = BaseGradientEditorItemLabels
@@ -4673,6 +4674,47 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
                 RGB_ation = action
         self.gradient.menu.removeAction(HSV_action)
         self.gradient.menu.removeAction(RGB_ation)
+        
+        # Rescale intensities (LUT)
+        rescaleIntensMenu = self.gradient.menu.addMenu(
+            'Rescale intensities (LUT)'
+        )
+        rescaleActionGroup = QActionGroup(self)
+        rescaleActionGroup.setExclusive(True)
+        
+        self.rescaleEach2DimgAction = QAction(
+            'Rescale each 2D image', rescaleIntensMenu
+        )
+        self.rescaleEach2DimgAction.setCheckable(True)
+        self.rescaleEach2DimgAction.setChecked(True)
+        rescaleActionGroup.addAction(self.rescaleEach2DimgAction)
+        rescaleIntensMenu.addAction(self.rescaleEach2DimgAction)
+        
+        self.rescaleAcrossZstackAction = QAction(
+            'Rescale across z-stack', rescaleIntensMenu
+        )
+        self.rescaleAcrossZstackAction.setCheckable(True)
+        self.rescaleAcrossZstackAction.setChecked(False)
+        rescaleActionGroup.addAction(self.rescaleAcrossZstackAction)
+        rescaleIntensMenu.addAction(self.rescaleAcrossZstackAction)
+        
+        self.rescaleAcrossTimeAction = QAction(
+            'Rescale across time frames', rescaleIntensMenu
+        )
+        self.rescaleAcrossTimeAction.setCheckable(True)
+        self.rescaleAcrossTimeAction.setChecked(False)
+        rescaleActionGroup.addAction(self.rescaleAcrossTimeAction)
+        rescaleIntensMenu.addAction(self.rescaleAcrossTimeAction)
+        
+        self.doNotRescaleAction = QAction(
+            'Do no rescale, display raw image', rescaleIntensMenu
+        )
+        self.doNotRescaleAction.setCheckable(True)
+        rescaleActionGroup.addAction(self.doNotRescaleAction)
+        rescaleIntensMenu.addAction(self.doNotRescaleAction)
+        
+        self.rescaleActionGroup = rescaleActionGroup
+        rescaleActionGroup.triggered.connect(self.rescaleActionTriggered)
 
         # Add custom colormap action
         self.customCmapsMenu = self.gradient.menu.addMenu('Custom colormaps')
@@ -4699,6 +4741,9 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
 
         # Disable histogram default context Menu event
         self.vb.raiseContextMenu = lambda x: None
+    
+    def rescaleActionTriggered(self, action):
+        self.sigRescaleIntes.emit(action)
     
     def onShowCustomCmapsMenu(self):
         self.customCmapsMenu.show()
@@ -5088,6 +5133,8 @@ class myHistogramLUTitem(baseHistogramLUTitem):
             # In the viewer we don't allow additional settings from the menu
             return
         
+        self.childLutItem = None
+        
         # Add scale bar action
         self.addScaleBarAction = QAction('Add scale bar', self)
         self.addScaleBarAction.setCheckable(True)
@@ -5212,6 +5259,9 @@ class myHistogramLUTitem(baseHistogramLUTitem):
         self.highlightedAction = None
         self.lastHoveredAction = None
     
+    def setChildLutItem(self, childLutItem):
+        self.childLutItem = childLutItem
+    
     def removeAddScaleBarAction(self):
         self.gradient.menu.removeAction(self.addScaleBarAction)
     
@@ -5239,7 +5289,9 @@ class myHistogramLUTitem(baseHistogramLUTitem):
                     and self.highlightedAction != hoveredAction
                 ) 
                 if isActionLeft:
-                    if isinstance(self.highlightedAction, highlightableQWidgetAction):
+                    if isinstance(
+                            self.highlightedAction, highlightableQWidgetAction
+                        ):
                         # print('Left a custom action')
                         pass
                 self.highlightedAction = hoveredAction
@@ -5371,6 +5423,24 @@ class myHistogramLUTitem(baseHistogramLUTitem):
             state['ticks'] = ticks
             self.gradient.restoreState(state)
 
+    def regionChanged(self):
+        super().regionChanged()
+        if self.childLutItem is None:
+            return
+        
+        imageItem = self.imageItem()
+        try:
+            mn, mx = imageItem.quickMinMax(targetSize=65536)
+            # mn and mx can still be NaN if the data is all-NaN
+            if mn == mx or imageItem._xp.isnan(mn) or imageItem._xp.isnan(mx):
+                mn = 0
+                mx = 255
+        except AttributeError as err:
+            mn, mx = self.getLevels() 
+        
+        self.childLutItem.setLevels(min=mn, max=mx)
+    
+    
 class labelledQScrollbar(ScrollBar):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -6181,6 +6251,7 @@ class ParentImageItem(pg.ImageItem):
         self.activatingActions = activatingActions
         self.debug = debug
         self._forceDoNotUpdateLinked = False
+        self.autoLevelsEnabled = None
     
     def clear(self):
         if self.linkedImageItem is not None:
@@ -6201,16 +6272,23 @@ class ParentImageItem(pg.ImageItem):
                 return True
         return False
     
-    def setLevels(self, levels, **kargs):
-        if self.linkedImageItem is not None:
-            self.linkedImageItem.setLevels(levels)
-        return super().setLevels(levels, **kargs)
+    # def setLevels(self, levels, **kargs):
+    #     if self.linkedImageItem is not None:
+    #         self.linkedImageItem.setLevels(levels)
+    #     return super().setLevels(levels, **kargs)
+    
+    def setEnableAutoLevels(self, enabled: bool):
+        self.autoLevelsEnabled = enabled
     
     def setImage(
             self, image=None, autoLevels=None, next_frame_image=None, 
             scrollbar_value=None, **kargs
         ):
-        super().setImage(image, autoLevels, **kargs)
+        if autoLevels is None:
+            autoLevels = self.autoLevelsEnabled
+        
+        super().setImage(image, autoLevels=autoLevels, **kargs)
+        
         if not self.isLinkedImageItemActive():
             return
         
@@ -6221,7 +6299,7 @@ class ParentImageItem(pg.ImageItem):
                 autoLevels=autoLevels
             )
         elif image is not None:
-            self.linkedImageItem.setImage(image, autoLevels=autoLevels)
+            self.linkedImageItem.setImage(image)
     
     def updateImage(self, *args, **kargs):
         if self.isLinkedImageItemActive():

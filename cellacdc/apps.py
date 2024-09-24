@@ -13547,6 +13547,18 @@ class ExportToVideoParametersDialog(QBaseDialog):
             self.addTimestampToggle.setChecked(isTimestampPresent)
         
         row += 1
+        gridLayout.addWidget(QLabel('Rescale intensities (LUT):'), row, 0)
+        rescaleItems = ['Rescale each 2D image']
+        if SizeZ > 1:
+            rescaleItems.append('Rescale across z-stack')
+        if isTimelapseVideo:
+            rescaleItems.append('Rescale across time frames')
+        rescaleItems.append('Do no rescale, display raw image')
+        self.rescaleIntensCombobox = QComboBox()
+        self.rescaleIntensCombobox.addItems(rescaleItems)
+        gridLayout.addWidget(self.rescaleIntensCombobox, row, 1)
+        
+        row += 1
         gridLayout.addWidget(QLabel('Save a PNG for each frame:'), row, 0)
         self.saveFramesToggle = widgets.Toggle()
         gridLayout.addWidget(
@@ -13647,7 +13659,8 @@ class ExportToVideoParametersDialog(QBaseDialog):
             'num_digits': len(str(self.stopNavVarNumberEntry.value())),
             'fps': self.fpsWidget.value(),
             'save_pngs':  self.saveFramesToggle.isChecked(),
-            'is_timelapse': self.isTimelapseVideo
+            'is_timelapse': self.isTimelapseVideo,
+            'rescale_intens_how': self.rescaleIntensCombobox.text()
         }
         return preferences
     
