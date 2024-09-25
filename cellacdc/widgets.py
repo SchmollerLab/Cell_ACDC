@@ -681,10 +681,11 @@ class browseFileButton(PushButton):
         super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':folder-open.svg'))
         self.clicked.connect(self.browse)
-        self._file_types = 'All Files (*)'
+        
         self._title = title
         self._start_dir = start_dir
         self._openFolder = openFolder
+        self._file_types = 'All Files (*)'
         if ext is not None:
             s = ''
             s_li = []
