@@ -7633,6 +7633,8 @@ class guiWin(QMainWindow):
                     x1, y1 = transformation.snap_xy_to_closest_angle(
                         x0, y0, xdata, ydata
                     )
+                else:
+                    x1, y1 = xdata, ydata
                 lengthText = self.getRulerLengthText()
                 self.ax1_rulerPlotItem.setData(
                     [x0, x1], [y0, y1], lengthText=lengthText

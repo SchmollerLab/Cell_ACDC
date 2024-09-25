@@ -1,6 +1,6 @@
 //Channels names
-//channels = newArray("mNeon","mKate","BF");
-channels = newArray("phase_contr","mCitrine");
+channels = newArray("BF","EGFP","miRFP");
+//channels = newArray("phase_contr","mCitrine");
 
 macro_path = File.directory();
 
