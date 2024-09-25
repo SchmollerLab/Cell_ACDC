@@ -13463,11 +13463,13 @@ class ExportToVideoParametersDialog(QBaseDialog):
     sigOk = Signal(dict)
     sigAddScaleBar = Signal(bool)
     sigAddTimestamp = Signal(bool)
+    sigRescaleIntensLut = Signal(str)
     
     def __init__(
             self, parent=None, startFolderpath='', startFilename='', 
             startFrameNum=1, SizeT=1, SizeZ=1, isTimelapseVideo=True, 
-            isScaleBarPresent=False, isTimestampPresent=False 
+            isScaleBarPresent=False, isTimestampPresent=False, 
+            currentRescaleIntensHow=''
         ):
         self.cancel = True
         
@@ -13553,9 +13555,12 @@ class ExportToVideoParametersDialog(QBaseDialog):
             rescaleItems.append('Rescale across z-stack')
         if isTimelapseVideo:
             rescaleItems.append('Rescale across time frames')
+        rescaleItems.append('Choose custom levels...')
         rescaleItems.append('Do no rescale, display raw image')
         self.rescaleIntensCombobox = QComboBox()
         self.rescaleIntensCombobox.addItems(rescaleItems)
+        if currentRescaleIntensHow:
+            self.rescaleIntensCombobox.setCurrentText(currentRescaleIntensHow)
         gridLayout.addWidget(self.rescaleIntensCombobox, row, 1)
         
         row += 1
@@ -13577,6 +13582,10 @@ class ExportToVideoParametersDialog(QBaseDialog):
         if isTimelapseVideo:
             self.addTimestampToggle.toggled.connect(self.addTimestampToggled)
         
+        self.rescaleIntensCombobox.currentTextChanged.connect(
+            self.emitRescaleIntens
+        )
+        
         buttonsLayout = widgets.CancelOkButtonsLayout()
         buttonsLayout.okButton.setText('Export')
         
@@ -13588,6 +13597,9 @@ class ExportToVideoParametersDialog(QBaseDialog):
         mainLayout.addLayout(buttonsLayout)
         
         self.setLayout(mainLayout)
+    
+    def emitRescaleIntens(self, how):
+        self.sigRescaleIntensLut.emit(how)
     
     def addScaleBarToggled(self, checked):
         self.sigAddScaleBar.emit(checked)
@@ -13659,8 +13671,7 @@ class ExportToVideoParametersDialog(QBaseDialog):
             'num_digits': len(str(self.stopNavVarNumberEntry.value())),
             'fps': self.fpsWidget.value(),
             'save_pngs':  self.saveFramesToggle.isChecked(),
-            'is_timelapse': self.isTimelapseVideo,
-            'rescale_intens_how': self.rescaleIntensCombobox.text()
+            'is_timelapse': self.isTimelapseVideo
         }
         return preferences
     
@@ -14766,3 +14777,79 @@ class LogoDialog(QDialog):
         layout.addWidget(labelLogo)
     
         self.setLayout(layout)
+
+class SetCustomLevelsLut(QBaseDialog):
+    sigLevelsChanged = Signal(object)
+    
+    def __init__(
+            self, init_min_value=None, 
+            init_max_value=None, 
+            maximum_max_value=None, 
+            parent=None
+        ):
+        super().__init__(parent=parent)
+        
+        self.cancel = True
+        
+        self.setWindowTitle('Custom LUT levels')
+        
+        layout = QVBoxLayout()
+        
+        self.minLevelSlider = widgets.sliderWithSpinBox(
+            title='Mimimum', 
+            title_loc='top', 
+        )
+        self.minLevelSlider.setMinimum(0)
+        if init_max_value is not None:
+            self.minLevelSlider.setMaximum(init_max_value)
+
+        if maximum_max_value is not None:
+            self.minLevelSlider.setMaximum(maximum_max_value)
+            
+        if init_min_value is not None:
+            self.minLevelSlider.setValue(init_min_value)
+        layout.addWidget(self.minLevelSlider)
+        
+        self.maxLevelSlider = widgets.sliderWithSpinBox(
+            title='Maximum', 
+            title_loc='top', 
+        )
+        self.maxLevelSlider.setMinimum(0)
+        if init_max_value is not None:
+            self.maxLevelSlider.setValue(init_max_value)
+        
+        if maximum_max_value is not None:
+            self.maxLevelSlider.setMaximum(maximum_max_value)
+            
+        layout.addWidget(self.maxLevelSlider)
+        
+        self.maxLevelSlider.sigValueChange.connect(self.emitLevelsChanged)
+        self.maxLevelSlider.sigValueChange.connect(self.emitLevelsChanged)
+        
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+        
+        layout.addSpacing(20)
+        layout.addLayout(buttonsLayout)
+        
+        self.setLayout(layout)
+    
+    def sizeHint(self):
+        heightHint = super().sizeHint().height()
+        widthHint = super().sizeHint().width()*2
+        return QSize(widthHint, heightHint)
+        
+    
+    def levels(self):
+        levels = (self.minLevelSlider.value(), self.maxLevelSlider.value())
+        return levels
+    
+    def emitLevelsChanged(self, value):
+        self.sigLevelsChanged.emit(self.levels())
+    
+    def ok_cb(self):
+        self.cancel = False
+        self.selectedLevels = self.levels()
+        self.close()
+        

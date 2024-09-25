@@ -4706,6 +4706,13 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
         rescaleActionGroup.addAction(self.rescaleAcrossTimeAction)
         rescaleIntensMenu.addAction(self.rescaleAcrossTimeAction)
         
+        self.customRescaleAction = QAction(
+            'Choose custom levels...', rescaleIntensMenu
+        )
+        self.customRescaleAction.setCheckable(True)
+        rescaleActionGroup.addAction(self.customRescaleAction)
+        rescaleIntensMenu.addAction(self.customRescaleAction)
+        
         self.doNotRescaleAction = QAction(
             'Do no rescale, display raw image', rescaleIntensMenu
         )
@@ -6167,6 +6174,8 @@ class sliderWithSpinBox(QWidget):
         self.spinBox.valueChanged.connect(self.spinboxValueChanged)
 
         self.slider.valueChanged.disconnect()
+        if valueInt > self.slider.maximum():
+            self.slider.setMaximum(valueInt)
         self.slider.setValue(valueInt)
         self.slider.valueChanged.connect(self.sliderValueChanged)
 
