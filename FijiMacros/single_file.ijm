@@ -1,6 +1,6 @@
 //Channels names
-//channels = newArray("mNeon","mKate","BF");
-channels = newArray("phase_contr","mCitrine");
+channels = newArray("BF","EGFP","miRFP");
+//channels = newArray("phase_contr","mCitrine");
 
 macro_path = File.directory();
 
@@ -82,13 +82,12 @@ for (s=S-1; s<End; s++) { //for loop for iterating through the series
     	print("Image is 2D");
     }
     
-    
-    if (sizeT > 1) {
-    	Ext.getPixelsTimeIncrement(timeIncrement);
-    	metadata_str = metadata_str + "\n" + "TimeIncrement," + timeIncrement;
-    } else {
-    	print("Image file is not timelapse");
-    }
+    //if (sizeT > 1) {
+    //	Ext.getPixelsTimeIncrement(timeIncrement);
+    //	metadata_str = metadata_str + "\n" + "TimeIncrement," + timeIncrement;
+    //} else {
+    //	print("Image file is not timelapse");
+    //}
 	
 	for (c=C; c<CEnd; c++) { //for loop for iterating through the channels
 		selectImage(1);
