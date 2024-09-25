@@ -70,24 +70,17 @@ for (s=S-1; s<End; s++) { //for loop for iterating through the series
     metadata_str = metadata_str + "\n" + "SizeZ," + sizeZ;
     
     // Add physical sizes to metadata file
-    Ext.getPixelsPhysicalSizeZ(physicalSizeZ);
-    metadata_str = metadata_str + "\n" + "PhysicalSizeZ," + physicalSizeZ;
+    Ext.getPixelsPhysicalSizeX(physicalSizeX);
+    metadata_str = metadata_str + "\n" + "PhysicalSizeX," + physicalSizeX;
     Ext.getPixelsPhysicalSizeY(physicalSizeY);
     metadata_str = metadata_str + "\n" + "PhysicalSizeY," + physicalSizeY;
     
     if (sizeZ > 1) {
-    	Ext.getPixelsPhysicalSizeX(physicalSizeX);
-    	metadata_str = metadata_str + "\n" + "PhysicalSizeX," + physicalSizeX;
+    	Ext.getPixelsPhysicalSizeZ(physicalSizeZ);
+    	metadata_str = metadata_str + "\n" + "PhysicalSizeZ," + physicalSizeZ;
     } else {
     	print("Image is 2D");
     }
-    
-    //if (sizeT > 1) {
-    //	Ext.getPixelsTimeIncrement(timeIncrement);
-    //	metadata_str = metadata_str + "\n" + "TimeIncrement," + timeIncrement;
-    //} else {
-    //	print("Image file is not timelapse");
-    //}
 	
 	for (c=C; c<CEnd; c++) { //for loop for iterating through the channels
 		selectImage(1);

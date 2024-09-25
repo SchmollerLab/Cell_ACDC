@@ -18,6 +18,8 @@ from functools import partial
 from tqdm import tqdm
 from collections import Counter
 from natsort import natsorted
+from typing import Literal
+
 import time
 import cv2
 import math
@@ -1481,13 +1483,16 @@ class guiWin(QMainWindow):
         
         ImageMenu.addAction(self.addScaleBarAction)
         ImageMenu.addAction(self.addTimestampAction)
-        normalizeIntensitiesMenu = ImageMenu.addMenu("Normalize intensities")
-        normalizeIntensitiesMenu.addAction(self.normalizeRawAction)
-        normalizeIntensitiesMenu.addAction(self.normalizeToFloatAction)
-        # normalizeIntensitiesMenu.addAction(self.normalizeToUbyteAction)
-        normalizeIntensitiesMenu.addAction(self.normalizeRescale0to1Action)
-        normalizeIntensitiesMenu.addAction(self.normalizeByMaxAction)
-        ImageMenu.addAction(self.invertBwAction)
+        # normalizeIntensitiesMenu = ImageMenu.addMenu("Normalize intensities")
+        # normalizeIntensitiesMenu.addAction(self.normalizeRawAction)
+        # normalizeIntensitiesMenu.addAction(self.normalizeToFloatAction)
+        # # normalizeIntensitiesMenu.addAction(self.normalizeToUbyteAction)
+        # normalizeIntensitiesMenu.addAction(self.normalizeRescale0to1Action)
+        # normalizeIntensitiesMenu.addAction(self.normalizeByMaxAction)
+        # ImageMenu.addAction(self.invertBwAction)
+        
+        self.rescaleIntensMenu = ImageMenu.addMenu('Rescale intensities (LUT)')
+        
         ImageMenu.addAction(self.saveLabColormapAction)
         ImageMenu.addAction(self.shuffleCmapAction)
         ImageMenu.addAction(self.greedyShuffleCmapAction)
@@ -3292,6 +3297,104 @@ class guiWin(QMainWindow):
         self.addCustomModelFrameAction.callback = self.segmFrameCallback
         self.addCustomModelVideoAction.callback = self.segmVideoCallback
     
+    def rescaleIntensExportToVideoDialog(self, how, setImage=True):
+        for action in self.imgGrad.rescaleActionGroup.actions():
+            if action.text() == how:
+                action.trigger()
+                # self.rescaleIntensitiesLut(setImage=setImage)
+                break
+    
+    def customLevelsLutChanged(self, levels):
+        self.img1.setLevels(levels)
+    
+    def rescaleIntensitiesLut(
+            self, 
+            action: QAction=None, 
+            setImage: bool=True
+        ):
+        if not self.isDataLoaded:
+            self.logger.info(
+                'WARNING: Data is not loaded. '
+                'Intensities will be rescaled later.'
+            )
+            return 
+        
+        triggeredByUser = True
+        if action is None:
+            triggeredByUser = False
+            action = self.imgGrad.rescaleActionGroup.checkedAction()
+        
+        posData = self.data[self.pos_i]
+        how = action.text()
+        
+        if how == 'Rescale each 2D image':
+            if how == self.currentRescaleIntensHow:
+                # No need to update since we have autoscale
+                return       
+            
+            self.img1.setEnableAutoLevels(True)
+            if setImage:
+                self.img1.setImage(self.img1.image)
+            return
+        
+        if how == 'Rescale across z-stack':            
+            self.img1.setEnableAutoLevels(False)
+            levels_key = (how, posData.frame_i)
+            levels = posData.lutLevels.get(levels_key)
+            if levels is None:
+                image_data = posData.img_data[posData.frame_i]
+                levels = (image_data.min(), image_data.max())
+            posData.lutLevels[levels_key] = levels
+            self.img1.setLevels(levels)
+        elif how == 'Rescale across time frames':            
+            self.img1.setEnableAutoLevels(False)
+            
+            levels_key = (how, None)
+            levels = posData.lutLevels.get(levels_key)
+            if levels is None:
+                image_data = posData.img_data
+                levels = (image_data.min(), image_data.max())
+                
+            posData.lutLevels[levels_key] = levels
+            self.img1.setLevels(levels)
+        elif how == 'Choose custom levels...':
+            if triggeredByUser:
+                image_data = posData.img_data
+                current_min, current_max = self.img1.getLevels() 
+                dtype_max = np.iinfo(image_data.dtype).max
+                win = apps.SetCustomLevelsLut(
+                    init_min_value=current_min,
+                    init_max_value=current_max,
+                    maximum_max_value=dtype_max,
+                    parent=self
+                )
+                win.sigLevelsChanged.connect(self.customLevelsLutChanged)
+                win.exec_()
+                if win.cancel:
+                    self.logger.info('Custom LUT levels setting cancelled.')
+                    self.rescaleIntensExportToVideoDialog(
+                        self.currentRescaleIntensHow
+                    )
+                    return
+                self.customLevelsLut = win.selectedLevels
+            self.img1.setEnableAutoLevels(False)
+            self.img1.setLevels(self.customLevelsLut)
+        elif how == 'Do no rescale, display raw image':            
+            self.img1.setEnableAutoLevels(False)
+            levels_key = (how, None)
+            levels = posData.lutLevels.get(levels_key)
+            if levels is None:
+                image_data = posData.img_data
+                dtype_max = np.iinfo(image_data.dtype).max
+                levels = (0, dtype_max)
+            posData.lutLevels[levels_key] = levels
+            self.img1.setLevels(levels)
+        
+        self.currentRescaleIntensHow = how
+        
+        if setImage:
+            self.img1.setImage(self.img1.image)
+    
     def onToggleColorScheme(self):
         if self.toggleColorSchemeAction.text().find('light') != -1:
             self._colorScheme = 'light'
@@ -3557,9 +3660,9 @@ class guiWin(QMainWindow):
             self.imgGradLUTfinished_cb
         )
 
-        self.normalizeQActionGroup.triggered.connect(
-            self.normaliseIntensitiesActionTriggered
-        )
+        # self.normalizeQActionGroup.triggered.connect(
+        #     self.normaliseIntensitiesActionTriggered
+        # )
         self.imgPropertiesAction.triggered.connect(self.editImgProperties)
 
         self.relabelSequentialAction.triggered.connect(
@@ -4086,7 +4189,7 @@ class guiWin(QMainWindow):
     def gui_addGraphicsItems(self):
         # Auto image adjustment button
         proxy = QGraphicsProxyWidget()
-        equalizeHistPushButton = QPushButton("Auto-contrast")
+        equalizeHistPushButton = QPushButton("Enhance contrast")
         widthHint = equalizeHistPushButton.sizeHint().width()
         equalizeHistPushButton.setMaximumWidth(widthHint)
         equalizeHistPushButton.setCheckable(True)
@@ -4103,7 +4206,9 @@ class guiWin(QMainWindow):
         self.imgGrad = widgets.myHistogramLUTitem(parent=self, name='image')
         self.imgGrad.restoreState(self.df_settings)
         self.lutItemsLayout.addItem(self.imgGrad, row=0, col=0)
-
+        for action in self.imgGrad.rescaleActionGroup.actions():
+            self.rescaleIntensMenu.addAction(action)
+        
         # Colormap gradient widget
         self.labelsGrad = widgets.labelsGradientWidget(parent=self)
         try:
@@ -4149,6 +4254,8 @@ class guiWin(QMainWindow):
         self.imgGradRight.gradient.menu.addAction(
             self.labelsGrad.showNextFrameAction
         )
+        
+        self.imgGrad.setChildLutItem(self.imgGradRight)
 
         # Title
         self.titleLabel = pg.LabelItem(
@@ -4216,6 +4323,7 @@ class guiWin(QMainWindow):
             )
         )
         self.imgGrad.setImageItem(self.img1)
+        self.imgGrad.sigRescaleIntes.connect(self.rescaleIntensitiesLut)
         self.ax1.addItem(self.img1)
 
         # Right image
@@ -9023,6 +9131,7 @@ class guiWin(QMainWindow):
         action, normalize, how = self.getCheckNormAction()
         if not normalize:
             return img
+        
         if how == 'Do not normalize. Display raw image':
             img = img 
         elif how == 'Convert to floating point format with values [0, 1]':
@@ -11049,7 +11158,7 @@ class guiWin(QMainWindow):
         else:
             img = filteredData
         
-        img = self.normalizeIntensities(img)
+        # img = self.normalizeIntensities(img)
 
         if not setImg:
             return img
@@ -11507,6 +11616,8 @@ class guiWin(QMainWindow):
             self.SizeZlabel.hide()
             self.switchPlaneCombobox.hide()
             self.switchPlaneCombobox.setDisabled(True)
+        
+        self.imgGrad.rescaleAcrossZstackAction.setDisabled(not enabled)
 
     def reInitCca(self):
         if not self.isSnapshot:
@@ -13067,8 +13178,7 @@ class guiWin(QMainWindow):
             # from . import _debug
             # _debug._debug_lineage_tree(self)
             
-            posData = self.data[self.pos_i]
-            printl(posData.binnedIDs)
+            self.rescaleIntensExportToVideoDialog('Choose custom levels...')
         
         if not self.isDataLoaded:
             self.logger.info(
@@ -16687,6 +16797,7 @@ class guiWin(QMainWindow):
 
         self.isDataLoaded = True
         self.isDataLoading = False
+        
         self.gui_createAutoSaveWorker()
     
     def removeAxLimits(self):
@@ -16863,7 +16974,8 @@ class guiWin(QMainWindow):
                 self.drawIDsContComboBox.currentIndexChanged.disconnect()
             except Exception as e:
                 pass
-
+            
+            self.imgGrad.rescaleAcrossTimeAction.setDisabled(True)
             self.repeatTrackingAction.setDisabled(True)
             self.manualTrackingAction.setDisabled(True)
             self.logger.info('Setting GUI mode to "Snapshots"...')
@@ -16893,6 +17005,7 @@ class guiWin(QMainWindow):
                 self.manualBackgroundAction.setVisible(False)
                 self.manualBackgroundAction.setDisabled(True)
         else:
+            self.imgGrad.rescaleAcrossTimeAction.setDisabled(False)
             self.annotateToolbar.setVisible(False)
             self.realTimeTrackingToggle.setDisabled(False)
             self.repeatTrackingAction.setDisabled(False)
@@ -17513,6 +17626,7 @@ class guiWin(QMainWindow):
         self.lastHoverID = -1
         self.annotOptionsToRestore = None
         self.annotOptionsToRestoreRight = None
+        self.currentRescaleIntensHow = 'Rescale each 2D image'
 
         # Second channel used by cellpose
         self.secondChannelName = None
@@ -17728,6 +17842,8 @@ class guiWin(QMainWindow):
             posData.allData_li = [
                 self.getEmptyStoredDataDict() for i in range(posData.SizeT)
             ]
+            
+            posData.lutLevels = {}
 
             posData.ccaStatus_whenEmerged = {}
 
@@ -21535,8 +21651,8 @@ class guiWin(QMainWindow):
         else:
             ol_img = img.copy()
 
-        if normalizeIntens:
-            ol_img = self.normalizeIntensities(ol_img)
+        # if normalizeIntens:
+        #     ol_img = self.normalizeIntensities(ol_img)
         return ol_img
     
     def setTextAnnotZsliceScrolling(self):
@@ -22170,7 +22286,7 @@ class guiWin(QMainWindow):
             rawImg = rawImgData
         return rawImg
         
-    def getImage(self, frame_i=None, normalizeIntens=True):
+    def getImage(self, frame_i=None, normalizeIntens=False):
         posData = self.data[self.pos_i]
         if frame_i is None:
             frame_i = posData.frame_i
@@ -22180,8 +22296,8 @@ class guiWin(QMainWindow):
             img = self.get_2Dimg_from_3D(img)
         else:
             img = posData.img_data[frame_i].copy()
-        if normalizeIntens:
-            img = self.normalizeIntensities(img)
+        # if normalizeIntens:
+        #     img = self.normalizeIntensities(img)
         if self.imgCmapName != 'grey':
             # Do not invert bw for non grey cmaps
             return img
@@ -23332,7 +23448,7 @@ class guiWin(QMainWindow):
         if posData.SizeZ > 1:
             img = self.get_2Dimg_from_3D(img, isLayer0=True)
         
-        img = self.normalizeIntensities(img)
+        # img = self.normalizeIntensities(img)
         
         return img
     
@@ -23441,6 +23557,8 @@ class guiWin(QMainWindow):
         
         self.last_pos_i = self.pos_i
         self.last_frame_i = posData.frame_i
+        
+        self.rescaleIntensitiesLut(setImage=False)
 
         self.setImageImg1(image, updateFilters)       
         self.setImageImg2()
@@ -26604,9 +26722,7 @@ class guiWin(QMainWindow):
         
         posData = self.data[self.pos_i]
         if self.exportToVideoPreferences['is_timelapse']:
-            posData.frame_i = self.exportToVideoCurrentNavVarIdx                 
-            self.get_data()
-            self.updateAllImages()
+            self.goToFrameNumber(self.exportToVideoCurrentNavVarIdx+1)                 
         else:
             self.update_z_slice(self.exportToVideoCurrentNavVarIdx)
             
@@ -26739,10 +26855,12 @@ class guiWin(QMainWindow):
             SizeT=posData.SizeT, SizeZ=posData.SizeZ,
             isTimelapseVideo=doTimelapseVideo,
             isScaleBarPresent=self.addScaleBarAction.isChecked(), 
-            isTimestampPresent=self.addTimestampAction.isChecked()
+            isTimestampPresent=self.addTimestampAction.isChecked(),
+            currentRescaleIntensHow=self.currentRescaleIntensHow
         )
         win.sigAddScaleBar.connect(self.exportAddScaleBar)
         win.sigAddTimestamp.connect(self.exportToVideoAddTimestamp)
+        win.sigRescaleIntensLut.connect(self.rescaleIntensExportToVideoDialog)
         win.exec_()
         if win.cancel:
             self.logger.info('Export to video process cancelled')

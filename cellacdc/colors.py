@@ -201,12 +201,19 @@ def merge_two_grayscale_imgs(
         brightness1=1.0, brightness2=1.0, dtype=np.uint8, 
         inverted=False
     ):
-    img1_rgb = (skimage.color.gray2rgb(img1)*rgb1).astype(dtype)
-    img2_rgb = (skimage.color.gray2rgb(img2)*rgb2).astype(dtype)
+    if img1.max() > 1.0:
+        img1 = skimage.exposure.rescale_intensity(img1, out_range=(0, 1.0))
+        
+    if img2.max() > 1.0:
+        img2 = skimage.exposure.rescale_intensity(img2, out_range=(0, 1.0))
+        
+    img1_bright = np.clip(img1*brightness1, 0, 1.0) 
+    img2_bright = np.clip(img2*brightness1, 0, 1.0)     
     
-    merge = (
-        alpha*img1_rgb*brightness1 + (1-alpha)*img2_rgb*brightness2
-    ).astype(dtype)
+    img1_rgb = (skimage.color.gray2rgb(img1_bright)*rgb1).astype(dtype)
+    img2_rgb = (skimage.color.gray2rgb(img2_bright)*rgb2).astype(dtype)
+    
+    merge = (alpha*img1_rgb + (1-alpha)*img2_rgb).astype(dtype)
     
     if inverted:
         merge_inverted = merge.copy()
