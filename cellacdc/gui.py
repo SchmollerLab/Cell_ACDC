@@ -549,11 +549,23 @@ class saveDataWorker(QObject):
         
         autoBkgr_mask, autoBkgr_mask_proj = autoBkgr_masks
         dataPrepBkgrROI_mask = measurements.get_bkgrROI_mask(posData, isSegm3D)
-
+        
         # Iterate channels
-        iter_channels = zip(posData.loadedChNames, posData.fluo_data_dict.items())
+        iter_channels = zip(
+            posData.loadedChNames, 
+            posData.fluo_data_dict.items()
+        )
         for channel, (filename, channel_data) in iter_channels:
             foregr_img = channel_data[frame_i]
+            
+            iter_other_channels = zip(
+                posData.loadedChNames, 
+                posData.fluo_data_dict.items()
+            )
+            other_channels_foregr_imgs = {
+                ch:ch_data[frame_i] for ch, (_, ch_data) in iter_other_channels
+                if ch != channel
+            }
 
             # Get the z-slice if we have z-stacks
             z = posData.zSliceSegmentation(filename, frame_i)
@@ -576,7 +588,9 @@ class saveDataWorker(QObject):
             df = measurements.add_foregr_metrics(
                 df, rp, channel, foregr_data, foregr_metrics_params[channel], 
                 metrics_func, custom_metrics_params[channel], isSegm3D, 
-                lab, foregr_img, manualBackgrRp=manualBackgrRp,
+                lab, foregr_img, 
+                other_channels_foregr_imgs, 
+                manualBackgrRp=manualBackgrRp,
                 customMetricsCritical=self.customMetricsCritical,
                 z_slice=z
             )
@@ -2676,9 +2690,7 @@ class guiWin(QMainWindow):
 
     def gui_populateToolSettingsMenu(self):
         brushHoverModeActionGroup = QActionGroup(self)
-        brushHoverModeActionGroup.setExclusionPolicy(
-            QActionGroup.ExclusionPolicy.Exclusive
-        )
+        brushHoverModeActionGroup.setExclusive(True)
         self.brushHoverCenterModeAction = QAction()
         self.brushHoverCenterModeAction.setCheckable(True)
         self.brushHoverCenterModeAction.setText(
@@ -11552,9 +11564,7 @@ class guiWin(QMainWindow):
     
     def addFontSizeActions(self, menu, slot):
         fontActionGroup = QActionGroup(self)
-        fontActionGroup.setExclusionPolicy(
-            QActionGroup.ExclusionPolicy.Exclusive
-        )
+        fontActionGroup.setExclusive(True)
         for fontSize in range(4,27):
             action = QAction(self)
             action.setText(str(fontSize))
@@ -25057,7 +25067,7 @@ class guiWin(QMainWindow):
         filenames = myutils.listdir(images_path)
         if ch_name_selector.is_first_call and user_ch_name is None:
             ch_names, _ = ch_name_selector.get_available_channels(
-                    filenames, images_path
+                filenames, images_path
             )
             self.ch_names = ch_names
             if not ch_names:

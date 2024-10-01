@@ -1,3 +1,5 @@
+from typing import Dict
+
 import numpy as np
 import pandas as pd
 import pathlib
@@ -1424,8 +1426,10 @@ def add_size_metrics(
 
 def add_foregr_metrics(
         df, rp, channel, foregr_data, foregr_metrics_params, metrics_func,
-        custom_metrics_params, isSegm3D, lab, foregr_img, z_slice=None,
-        manualBackgrRp=None, customMetricsCritical=None
+        custom_metrics_params, isSegm3D, lab, foregr_img, 
+        other_channels_foregr_imgs: Dict[str, np.ndarray], 
+        z_slice=None, manualBackgrRp=None, 
+        customMetricsCritical=None, 
     ):
     if manualBackgrRp is not None:
         manualBackgrRp = {obj.label for obj in manualBackgrRp}
@@ -1470,14 +1474,20 @@ def add_foregr_metrics(
             items = get_cell_volumes_areas(df)
             (cell_vols_vox, cell_vols_fl, cell_vols_vox_3D, cell_vols_fl_3D,
             cell_areas_pxl, cell_areas_um2) = items
-            custom_error, custom_val = get_custom_metric_value(
+            custom_error, custom_val, custom_col_name = get_custom_metric_value(
                 custom_func, foregr_obj_arr, autoBkgrVal, dataPrepBkgrVal, obj,
                 o, metrics_values, cell_vols_vox, cell_vols_fl, cell_areas_pxl, 
                 cell_areas_um2, foregr_img, lab, isSegm3D, 
+                other_channels_foregr_imgs, col,
                 cell_vols_vox_3D=cell_vols_vox_3D, 
                 cell_vols_fl_3D=cell_vols_fl_3D
             )
-            df.at[ID, col] = custom_val
+            if custom_col_name is None:
+                df.at[ID, col] = custom_val
+            else:
+                for custom_col, value in zip(custom_col_name, custom_val):
+                    df.at[ID, custom_col] = value
+                    
             if customMetricsCritical is not None and custom_error:
                 customMetricsCritical.emit(custom_error, col)
     return df
@@ -1532,59 +1542,52 @@ def add_regionprops_metrics(df, lab, regionprops_to_save, logger_func=None):
 def get_custom_metric_value(
         custom_func, foregr_obj_arr, autoBkgrVal, dataPrepBkgrVal, obj,
         i, metrics_values, cell_vols_vox, cell_vols_fl, cell_areas_pxl, 
-        cell_areas_um2, foregr_img, lab, isSegm3D, cell_vols_vox_3D=None, 
+        cell_areas_um2, foregr_img, lab, isSegm3D, 
+        other_channels_foregr_imgs: Dict[str, np.ndarray], col_name,
+        cell_vols_vox_3D=None, 
         cell_vols_fl_3D=None
     ):
-    # Original custom metrics without obj
-    try:
-        custom_val = custom_func(foregr_obj_arr, autoBkgrVal, dataPrepBkgrVal)
-        return '', custom_val
-    except Exception as e:
-        pass
-        
-    # Metric without the metrics_values
-    try:
-        custom_val = custom_func(
-            foregr_obj_arr, autoBkgrVal, dataPrepBkgrVal, obj
-        )
-        return '', custom_val
-    except Exception as e:
-        pass
-
-    # Metric with the metrics_values         
-    try:
-        metrics_obj = {key:mm[i] for key, mm in metrics_values.items()}
-        metrics_obj['cell_vol_vox'] = cell_vols_vox[i]
-        metrics_obj['cell_vol_fl'] = cell_vols_fl[i]
-        metrics_obj['cell_area_pxl'] = cell_areas_pxl[i]
-        metrics_obj['cell_area_um2'] = cell_areas_um2[i]
-        if isSegm3D and cell_vols_vox_3D is not None and cell_vols_fl_3D is not None:
-            metrics_obj['cell_vol_vox_3D'] = cell_vols_vox_3D[i]
-            metrics_obj['cell_vol_fl_3D'] = cell_vols_fl_3D[i]            
-        custom_val = custom_func(
-            foregr_obj_arr, autoBkgrVal, dataPrepBkgrVal, obj, metrics_obj
-        )
-        return '', custom_val
-    except Exception as e:
-        pass
+    base_args = (foregr_obj_arr, autoBkgrVal, dataPrepBkgrVal)
     
-    # Metric with also image and segmentation mask (lab)
-    try:
-        metrics_obj = {key:mm[i] for key, mm in metrics_values.items()}
-        metrics_obj['cell_vol_vox'] = cell_vols_vox[i]
-        metrics_obj['cell_vol_fl'] = cell_vols_fl[i]
-        metrics_obj['cell_area_pxl'] = cell_areas_pxl[i]
-        metrics_obj['cell_area_um2'] = cell_areas_um2[i]
-        if isSegm3D and cell_vols_vox_3D is not None and cell_vols_fl_3D is not None:
-            metrics_obj['cell_vol_vox_3D'] = cell_vols_vox_3D[i]
-            metrics_obj['cell_vol_fl_3D'] = cell_vols_fl_3D[i] 
-        custom_val = custom_func(
-            foregr_obj_arr, autoBkgrVal, dataPrepBkgrVal, obj, metrics_obj,
-            foregr_img, lab, isSegm3D=isSegm3D
-        )
-        return '', custom_val
-    except Exception as e:
-        return traceback.format_exc(), np.nan
+    metrics_obj = {key:mm[i] for key, mm in metrics_values.items()}
+    metrics_obj['cell_vol_vox'] = cell_vols_vox[i]
+    metrics_obj['cell_vol_fl'] = cell_vols_fl[i]
+    metrics_obj['cell_area_pxl'] = cell_areas_pxl[i]
+    metrics_obj['cell_area_um2'] = cell_areas_um2[i]
+    if isSegm3D and cell_vols_vox_3D is not None and cell_vols_fl_3D is not None:
+        metrics_obj['cell_vol_vox_3D'] = cell_vols_vox_3D[i]
+        metrics_obj['cell_vol_fl_3D'] = cell_vols_fl_3D[i]
+    
+    additional_args_kwargs = (
+        ((), {}),
+        ((obj,), {}), 
+        ((obj, metrics_obj), {}),
+        ((obj, metrics_obj, foregr_img, lab), {'isSegm3D': isSegm3D}),
+    )    
+    error = None
+    for args, kwargs in additional_args_kwargs:
+        try:
+            custom_val = custom_func(*base_args, *args, **kwargs)
+            return '', custom_val, None
+        except Exception as error:
+            continue
+    
+    # Test if custom metric function requires the other channels images
+    custom_vals_vs_other_ch = []
+    col_names = []
+    for other_channel, other_ch_img in other_channels_foregr_imgs.items():
+        other_channel_foregr_img = {other_channel: other_ch_img}
+        try:
+            custom_val = custom_func(
+                *base_args, obj, metrics_obj, foregr_img, lab, 
+                other_channel_foregr_img, isSegm3D=isSegm3D
+            )
+            custom_vals_vs_other_ch.append(custom_val)
+            col_names.append(f'{col_name}_vs_{other_channel}')
+        except Exception as error:
+            return traceback.format_exc(), np.nan, None
+    
+    return '', custom_vals_vs_other_ch, col_names
 
 def get_metrics_params(all_channels_metrics, metrics_func, custom_func_dict):
     channel_names = list(all_channels_metrics.keys())

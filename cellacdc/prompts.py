@@ -89,6 +89,7 @@ class select_channel_name:
                     ends = [
                         ext for ext in channelExt if (file.endswith(ext) 
                         and not file.endswith('btrack_tracks.h5'))
+                        and not file.endswith('edited.h5')
                     ]
                     if ends:
                         endName = file[len(basename):]
@@ -127,8 +128,15 @@ class select_channel_name:
                 continue
             basename = file[i:i+k]
         self.basename = basename
+        
         basenameNotFound = [False]
         for file in filenames:
+            if file.endswith('edited.h5'):
+                continue
+            
+            if file.endswith('btrack_tracks.h5'):
+                continue
+            
             filename, ext = os.path.splitext(file)
             validImageFile = False
             if ext in channelExt:
@@ -136,10 +144,11 @@ class select_channel_name:
             elif file.endswith('aligned.npz'):
                 validImageFile = True
                 filename = filename[:-len('_aligned')]
+            
             if not validImageFile:
                 continue
-
-            channel_name = filename.split(basename)[-1]
+        
+            channel_name = filename.split(basename)[-1]            
             channel_names.add(channel_name)
             if channel_name == filename:
                 # Warn that an intersection could not be found
@@ -158,6 +167,7 @@ class select_channel_name:
                     idx = is_phase_contr_li.index(True)
                     channel_names[0], channel_names[idx] = (
                                       channel_names[idx], channel_names[0])
+        
         return channel_names, any(basenameNotFound)
 
     def _load_last_selection(self):
