@@ -5135,13 +5135,13 @@ class myHistogramLUTitem(baseHistogramLUTitem):
 
         self.name = name
         self._parent = parent
+        
+        self.childLutItem = None
 
         self.isViewer = isViewer
         if isViewer:
             # In the viewer we don't allow additional settings from the menu
             return
-        
-        self.childLutItem = None
         
         # Add scale bar action
         self.addScaleBarAction = QAction('Add scale bar', self)
