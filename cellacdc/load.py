@@ -850,6 +850,22 @@ def get_endname_from_channels(filename, channels):
         elif m is not None:
             return endname
 
+def get_endname_from_filepath(filepath, allow_empty=False):
+    parent_folderpath = os.path.dirname(filepath)
+    if not parent_folderpath.endswith('Images'):
+        return 
+    
+    filename = os.path.basename(filepath)
+    filename_noext, ext = os.path.splitext(filename)
+    images_files = myutils.listdir(parent_folderpath)
+    basename = os.path.commonprefix(images_files)
+    endname = filename_noext[len(basename):]
+    if not endname:
+        endname = basename.split('_')[-1]
+    
+    return endname
+    
+
 def get_endnames_from_basename(basename, filenames):
     return [os.path.splitext(f)[0][len(basename):] for f in filenames]
 

@@ -681,10 +681,11 @@ class browseFileButton(PushButton):
         super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':folder-open.svg'))
         self.clicked.connect(self.browse)
-        self._file_types = 'All Files (*)'
+        
         self._title = title
         self._start_dir = start_dir
         self._openFolder = openFolder
+        self._file_types = 'All Files (*)'
         if ext is not None:
             s = ''
             s_li = []
@@ -5134,13 +5135,13 @@ class myHistogramLUTitem(baseHistogramLUTitem):
 
         self.name = name
         self._parent = parent
+        
+        self.childLutItem = None
 
         self.isViewer = isViewer
         if isViewer:
             # In the viewer we don't allow additional settings from the menu
             return
-        
-        self.childLutItem = None
         
         # Add scale bar action
         self.addScaleBarAction = QAction('Add scale bar', self)
@@ -5445,7 +5446,7 @@ class myHistogramLUTitem(baseHistogramLUTitem):
         except AttributeError as err:
             mn, mx = self.getLevels() 
         
-        self.childLutItem.setLevels(min=0, max=mx)
+        self.childLutItem.setLevels(min=mn, max=mx)
     
     
 class labelledQScrollbar(ScrollBar):
@@ -6241,6 +6242,48 @@ class BaseImageItem(pg.ImageItem):
             self, image=None, **kargs
         ):
         super().__init__(image, **kargs)
+        self.minMaxValuesMapper = None
+        self.pos_i = 0
+        self.z = 0
+        self.frame_i = 0
+    
+    def preComputedMinMaxValues(self, data: dict):
+        self.minMaxValuesMapper = {}
+        for pos_i, posData in enumerate(data):
+            for frame_i, img_data in enumerate(posData.img_data):
+                if img_data.ndim == 2:
+                    img_data = (img_data,)
+                
+                for z, img in enumerate(img_data):
+                    self.minMaxValuesMapper[(pos_i, frame_i, z)] = (
+                        np.nanmin(img), np.nanmax(img)
+                    )
+    
+    def setCurrentPosIndex(self, pos_i: int):
+        self.pos_i = pos_i
+    
+    def setCurrentFrameIndex(self, frame_i: int):
+        self.frame_i = frame_i
+    
+    def setCurrentZsliceIndex(self, z: int):
+        self.z = z
+    
+    def quickMinMax(self, targetSize=1e6):
+        if self.minMaxValuesMapper is None:
+            return super().quickMinMax(targetSize=targetSize)
+        
+        try:
+            key = (self.pos_i, self.frame_i, self.z)
+            return self.minMaxValuesMapper[key]
+        except Exception as err:
+            return super().quickMinMax(targetSize=targetSize)
+        
+
+class BaseLabelsImageItem(pg.ImageItem):
+    def __init__(
+            self, image=None, **kargs
+        ):
+        super().__init__(image, **kargs)
     
     def setImage(self, image=None, **kwargs):
         if image is None:
@@ -6250,7 +6293,7 @@ class BaseImageItem(pg.ImageItem):
             kwargs['autoLevels'] = False
         super().setImage(image, **kwargs)
 
-class ParentImageItem(pg.ImageItem):
+class ParentImageItem(BaseImageItem):
     def __init__(
             self, image=None, linkedImageItem=None, activatingActions=None,
             debug=False, **kargs
@@ -6326,9 +6369,9 @@ class ParentImageItem(pg.ImageItem):
         # if self.linkedImageItem is not None:
         #     self.linkedImageItem.setLookupTable(lut)
 
-class ChildImageItem(pg.ImageItem):
+class ChildImageItem(BaseImageItem):
     def __init__(self, *args, linkedScrollbar=None, **kwargs):
-        pg.ImageItem.__init__(self, *args, **kwargs)
+        BaseImageItem.__init__(self, *args, **kwargs)
         self.linkedScrollbar = linkedScrollbar
     
     def setImage(self, img=None, z=None, scrollbar_value=None, **kargs):
@@ -6337,13 +6380,13 @@ class ChildImageItem(pg.ImageItem):
             kargs['autoLevels'] = False
 
         if img is None:
-            pg.ImageItem.setImage(self, img, **kargs)
+            BaseImageItem.setImage(self, img, **kargs)
             return
 
         if img.ndim == 3 and img.shape[-1] > 4 and z is not None:
-            pg.ImageItem.setImage(self, img[z], **kargs)
+            BaseImageItem.setImage(self, img[z], **kargs)
         else:
-            pg.ImageItem.setImage(self, img, **kargs)
+            BaseImageItem.setImage(self, img, **kargs)
         
         if self.linkedScrollbar is None:
             return

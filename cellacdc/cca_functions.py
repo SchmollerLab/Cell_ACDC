@@ -87,7 +87,7 @@ def configuration_dialog():
         print('******************************')
         print("No positions selected!")
         print('******************************')
-        raise IndexError
+        raise IndexError("No positions selected!")
     return data_dirs, positions, app
 
 def find_available_channels(filenames, first_pos_dir):

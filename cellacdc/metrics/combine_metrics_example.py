@@ -2,7 +2,8 @@ import numpy as np
 
 def combine_metrics_example(
         signal, autoBkgr, dataPrepBkgr, objectRp, metrics_values, image, lab,
-        correct_with_bkgr=False, which_bkgr='auto', isSegm3D=False
+        other_channel_foregr_img, correct_with_bkgr=False, which_bkgr='auto', 
+        isSegm3D=False
     ):
     """Shows how to combine multiple metrics in a custom function.
 
@@ -19,10 +20,10 @@ def combine_metrics_example(
         Median of all the pixels inside the background ROIs added during the
         data prep step (Cell-ACDC module 1).
         Pass None if background correction with this vaue is not needed.
-    objectRp: skimage.measure.RegionProperties class
+    objectRp : skimage.measure.RegionProperties class
         Refer to `skimage.measure.regionprops` for more information
         on the available region properties.
-    metrics_values: dict
+    metrics_values : dict
         Dictionary of metrics values of the specific segmented object 
         (i.e., cell). You can access these values with the name of the 
         specific metric (i.e., column name in the acdc_output.csv file)
@@ -30,10 +31,15 @@ def combine_metrics_example(
             - mCitrine_mean = metrics_values['mCitrine_mean']
             - _mean_key = [key for key in metrics_values if key.endswith('_mean')][0] 
               _mean = metrics_values[_mean_key]
-    image: numpy array
+    image : numpy array
         Image signal being analysed (if time-lapse this is the current frame)
-    lab: numpy array
+    lab : numpy array
         Segmentation mask of `image`
+    other_channel_foregr_img : dict
+        Dictionary with a single key another loaded channel name and values 
+        the corresponding channel signal. Cell-ACDC will run this function 
+        for as many other channles were loaded. Do not include in your custom 
+        function if you don't need it.
     correct_with_bkgr : boolean
         Pass True if you need background correction.
     which_bkgr : string

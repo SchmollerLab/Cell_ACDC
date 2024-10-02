@@ -56,7 +56,7 @@ def _add_combined_metrics_acdc_df(posData, df):
 
 def get_acdc_df_features(
         posData, grouped_features, lab, foregr_img, frame_i, filename,
-        channel, bkgrData
+        channel, bkgrData, other_channels_foregr_imgs
     ):
     posData.fluo_bkgrData_dict[filename] = bkgrData
     yx_pxl_to_um2 = posData.PhysicalSizeY*posData.PhysicalSizeX
@@ -125,7 +125,8 @@ def get_acdc_df_features(
             df = measurements.add_foregr_metrics(
                 df, rp, channel, foregr_data, foregr_metrics_params[channel], 
                 metrics_func, custom_metrics_params[channel], isSegm3D, 
-                lab, foregr_img, customMetricsCritical=None,
+                lab, foregr_img, other_channels_foregr_imgs, 
+                customMetricsCritical=None,
                 z_slice=z
             )
 
@@ -168,7 +169,7 @@ def add_background_metrics_names(
 
 def custom_post_process_segm(
         posData, grouped_features, lab, img, frame_i, filename, channel,
-        features_range, return_delIDs=False
+        features_range, other_channels_foregr_imgs=None, return_delIDs=False
     ):
     isSegm3D = lab.ndim == 3
     isZstack = posData.SizeZ > 1
@@ -181,7 +182,7 @@ def custom_post_process_segm(
     )
     df = get_acdc_df_features(
         posData, grouped_features, lab, img, frame_i, filename, channel, 
-        bkgrData
+        bkgrData, other_channels_foregr_imgs
     )
     try:
         filtered_df = filter_acdc_df_by_features_range(features_range, df)
