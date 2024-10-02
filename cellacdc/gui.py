@@ -23980,7 +23980,7 @@ class guiWin(QMainWindow):
             htmlTxt_li, htmlTxtFull_li = self.setTitleFormatter(
                 htmlTxt_li, htmlTxtFull_li, 'New IDs', 'red', new_IDs
             )
-            htmlTxt_li, c = self.setTitleFormatter(
+            htmlTxt_li, htmlTxtFull_li = self.setTitleFormatter(
                 htmlTxt_li, htmlTxtFull_li, 'Acc. IDs lost', 'green', 
                 tracked_lost_IDs
             )
@@ -24391,7 +24391,7 @@ class guiWin(QMainWindow):
                 return_copy=False
             )
 
-        if not IDs_in_frames:
+        if IDs_in_frames is not None:
             IDs_in_frames = posData.IDs
 
         try:
@@ -24404,7 +24404,7 @@ class guiWin(QMainWindow):
             if ID == 0:
                 continue
 
-            if ID in posData.IDs:
+            if ID in IDs_in_frames:
                 retrackedLostcent.add(centroid)
                 continue
 
