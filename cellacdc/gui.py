@@ -4359,10 +4359,10 @@ class guiWin(QMainWindow):
         self.topLayerItems.append(self.mergeObjsTempLine)
 
         # Overlay segm. masks item
-        self.labelsLayerImg1 = widgets.BaseImageItem()
+        self.labelsLayerImg1 = widgets.BaseLabelsImageItem()
         self.ax1.addItem(self.labelsLayerImg1)
 
-        self.labelsLayerRightImg = widgets.BaseImageItem()
+        self.labelsLayerRightImg = widgets.BaseLabelsImageItem()
         self.ax2.addItem(self.labelsLayerRightImg)
 
         # Red/green border rect item
@@ -16685,6 +16685,11 @@ class guiWin(QMainWindow):
         self.init_segmInfo_df()
         self.connectScrollbars()
         self.initPosAttr()
+        
+        self.logger.info('Pre-computing min and max values of the images...')
+        self.img1.preComputedMinMaxValues(self.data)
+        self.img2.minMaxValuesMapper = self.img1.minMaxValuesMapper
+        
         self.initMetrics()
         self.initFluoData()
         self.createChannelNamesActions()
@@ -17225,6 +17230,7 @@ class guiWin(QMainWindow):
                 posData.segmInfo_df.at[idx, 'z_slice_used_gui'] = z
             self.zSliceSpinbox.setValueNoEmit(z+1)
             img = self._getImageupdateAllImages(None, False)
+            self.img1.setCurrentZsliceIndex(z)
             self.img1.setImage(
                 img, next_frame_image=self.nextFrameImage(),
                 scrollbar_value=posData.frame_i+2
@@ -17970,11 +17976,7 @@ class guiWin(QMainWindow):
         else:
             posData.lab = posData.allData_li[posData.frame_i]['labels']
 
-        img = self.getImage()
-        self.img1.setImage(
-            img, next_frame_image=self.nextFrameImage(),
-            scrollbar_value=posData.frame_i+2
-        )
+        self.setImageImg1(None, False)
         if self.overlayButton.isChecked():
             self.setOverlayImages()
 
@@ -23082,6 +23084,12 @@ class guiWin(QMainWindow):
         if self.equalizeHistPushButton.isChecked():
             img = skimage.exposure.equalize_adapthist(img)
         posData = self.data[self.pos_i]
+        self.img1.setCurrentPosIndex(self.pos_i)
+        self.img1.setCurrentFrameIndex(posData.frame_i)
+        if posData.SizeZ > 1:
+            z = self.zSliceScrollBar.sliderPosition()
+            self.img1.setCurrentZsliceIndex(z)
+            
         self.img1.setImage(
             img, next_frame_image=self.nextFrameImage(),
             scrollbar_value=posData.frame_i+2
@@ -23933,7 +23941,10 @@ class guiWin(QMainWindow):
 
         return htmlTxt_li, htmlTxtFull_li
 
-    def setTitleText(self, lost_IDs=None, new_IDs=None, IDs_with_holes=None, tracked_lost_IDs=None):
+    def setTitleText(   
+            self, lost_IDs=None, new_IDs=None, IDs_with_holes=None, 
+            tracked_lost_IDs=None
+        ):
         mode = self.modeComboBox.currentText()
         try:
             posData = self.data[self.pos_i]
@@ -23959,10 +23970,12 @@ class guiWin(QMainWindow):
                 htmlTxt_li, htmlTxtFull_li, 'New IDs', 'red', new_IDs
             )
             htmlTxt_li, htmlTxtFull_li = self.setTitleFormatter(
-                htmlTxt_li, htmlTxtFull_li, 'Acc. IDs lost', 'green', tracked_lost_IDs
+                htmlTxt_li, htmlTxtFull_li, 'Acc. IDs lost', 'green', 
+                tracked_lost_IDs
             )
             htmlTxt_li, htmlTxtFull_li = self.setTitleFormatter(
-                htmlTxt_li, htmlTxtFull_li, 'IDs with holes', 'red', IDs_with_holes
+                htmlTxt_li, htmlTxtFull_li, 'IDs with holes', 'red', 
+                IDs_with_holes
             )
         else:
             try:
@@ -24387,7 +24400,9 @@ class guiWin(QMainWindow):
 
             trackedLostIDs.add(ID)
 
-        posData.tracked_lost_centroids[frame_i] = tracked_lost_centroids - retrackedLostcent
+        posData.tracked_lost_centroids[frame_i] = (
+            tracked_lost_centroids - retrackedLostcent
+        )
         posData.trackedLostIDs = trackedLostIDs
 
         return trackedLostIDs
