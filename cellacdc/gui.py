@@ -6837,7 +6837,18 @@ class guiWin(QMainWindow):
             # Update data (rp, etc)
             self.update_rp()
 
-            if not self.isFrameCcaAnnotated():
+            ask_back_prop = True
+
+            if posData.frame_i == 0:
+                ask_back_prop = False
+                prev_IDs = []
+            else:
+                prev_IDs = posData.allData_li[posData.frame_i-1]['IDs']
+
+            if  all(ID not in prev_IDs for ID in IDs_to_merge):
+                ask_back_prop = False
+            
+            if not self.isFrameCcaAnnotated() and ask_back_prop:
                 proceed = self.askPropagateChangePast(f'Merge IDs {IDs_to_merge}')
                 if proceed:
                     self.propagateMergeObjsPast(IDs_to_merge)
@@ -23969,11 +23980,14 @@ class guiWin(QMainWindow):
             htmlTxt_li, htmlTxtFull_li = self.setTitleFormatter(
                 htmlTxt_li, htmlTxtFull_li, 'New IDs', 'red', new_IDs
             )
-            htmlTxt_li, htmlTxtFull_li = self.setTitleFormatter(
+            htmlTxt_li, c = self.setTitleFormatter(
                 htmlTxt_li, htmlTxtFull_li, 'Acc. IDs lost', 'green', 
                 tracked_lost_IDs
             )
-            htmlTxtFull_li = htmlTxtFull_li.replace('Acc.', 'Accepted')
+
+            for i, htmlTxtFull in enumerate(htmlTxtFull_li):
+                htmlTxtFull_li[i] = htmlTxtFull.replace('Acc.', 'Accepted')
+
             htmlTxt_li, htmlTxtFull_li = self.setTitleFormatter(
                 htmlTxt_li, htmlTxtFull_li, 'IDs with holes', 'red', 
                 IDs_with_holes
