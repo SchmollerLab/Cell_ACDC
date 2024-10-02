@@ -23973,6 +23973,7 @@ class guiWin(QMainWindow):
                 htmlTxt_li, htmlTxtFull_li, 'Acc. IDs lost', 'green', 
                 tracked_lost_IDs
             )
+            htmlTxtFull_li = htmlTxtFull_li.replace('Acc.', 'Accepted')
             htmlTxt_li, htmlTxtFull_li = self.setTitleFormatter(
                 htmlTxt_li, htmlTxtFull_li, 'IDs with holes', 'red', 
                 IDs_with_holes
