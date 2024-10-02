@@ -11,7 +11,7 @@ from functools import partial
 from qtpy import QtCore, QtWidgets
 from qtpy.QtWidgets import (
     QMainWindow, QVBoxLayout, QPushButton, QLabel, QAction,
-    QMenu, QHBoxLayout, QFileDialog, QGroupBox, QCheckBox
+    QMenu, QHBoxLayout, QFileDialog, QGroupBox, QCheckBox, QSplashScreen
 )
 from qtpy.QtCore import (
     Qt, QProcess, Signal, Slot, QTimer, QSize,
@@ -19,7 +19,7 @@ from qtpy.QtCore import (
 )
 from qtpy.QtGui import (
     QFontDatabase, QIcon, QDesktopServices, QFont, QColor, 
-    QPalette, QGuiApplication
+    QPalette, QGuiApplication, QPixmap
 )
 import qtpy.compat
 
@@ -1691,12 +1691,24 @@ class mainWin(QMainWindow):
         guiWin.run()
     
     def launchSpotmaxGui(self, checked=False):
+        from spotmax import icon_path, logo_path
+        # logoDialog = apps.LogoDialog(logo_path, icon_path, parent=self)
+        
+        splashScreen = QSplashScreen()
+        splashScreen.setPixmap(QPixmap(logo_path))
+        splashScreen.show()
+
+        QTimer.singleShot(300, partial(self._launchSpotMaxGui, splashScreen))
+    
+    def _launchSpotMaxGui(self, splashScreen):
         self.logger.info('Launching spotMAX...')
         spotmaxWin = spotmaxRun.run_gui(
-            app=self.app, mainWin=self, launcherSlot=self.launchSpotmaxGui
+            app=self.app, mainWin=self, launcherSlot=self.launchSpotmaxGui, 
+            
         )
         spotmaxWin.sigClosed.connect(self.spotmaxGuiClosed)
         self.spotmaxWins.append(spotmaxWin)
+        splashScreen.close()
     
     def spotmaxGuiClosed(self, spotmaxWin):
         self.spotmaxWins.remove(spotmaxWin)

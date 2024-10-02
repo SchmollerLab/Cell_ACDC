@@ -78,8 +78,7 @@ def save_images(images, filename_in, images_path_out, text_to_append=''):
     if images_path_out_file.endswith(".tif"):
         skimage.io.imsave(images_path_out_file, images, check_contrast=False)
     elif images_path_out_file.endswith(".npz"):
-        np.savez_compressed(images_path_out_file, images=images)
-        print('Is this the correct way to save this?')
+        np.savez_compressed(images_path_out_file, images)
 
     print(f"Sampling completed. File saved in:")
     print(f"{images_path_out_file}\n")         

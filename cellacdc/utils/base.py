@@ -249,19 +249,9 @@ class NewThreadMultipleExpBaseUtil(QDialog):
         self.worker.waitCond.wakeAll()
 
     def selectSpotmaxRun(
-            self, exp_path, pos_foldernames, infoText, allowSingleSelection,
-            multiSelection
-        ):
-        from spotmax.utils import get_runs_num_and_desc
-        
-        all_runs = get_runs_num_and_desc(
-            exp_path, pos_foldernames=pos_foldernames
-        )
-        if not all_runs:
-            self.worker.skipExp = True
-            self.worker.waitCond.wakeAll()
-            return
-        
+            self, exp_path, pos_foldernames, all_runs, infoText, 
+            allowSingleSelection, multiSelection
+        ):   
         items = natsorted([f'{run}_...{desc}' for run, desc in all_runs])
         if len(items) == 1:
             self.selectedSpotmaxRuns = items

@@ -96,7 +96,7 @@ class signals(QObject):
     sigPermissionError = Signal(str, object)
     sigSelectSegmFiles = Signal(object, object)
     sigSelectAcdcOutputFiles = Signal(object, object, str, bool, bool)
-    sigSelectSpotmaxRun = Signal(object, object, str, bool, bool)
+    sigSelectSpotmaxRun = Signal(object, object, object, str, bool, bool)
     sigSetMeasurements = Signal(object)
     sigInitAddMetrics = Signal(object, object)
     sigUpdatePbarDesc = Signal(str)
@@ -1972,12 +1972,12 @@ class BaseWorkerUtil(QObject):
         return self.abort
 
     def emitSelectSpotmaxRun(
-            self, exp_path, pos_foldernames, infoText='', 
+            self, exp_path, pos_foldernames, all_runs, infoText='', 
             allowSingleSelection=True, multiSelection=True
         ):
         self.mutex.lock()
         self.signals.sigSelectSpotmaxRun.emit(
-            exp_path, pos_foldernames, infoText, allowSingleSelection,
+            exp_path, pos_foldernames, all_runs, infoText, allowSingleSelection,
             multiSelection
         )
         self.waitCond.wait(self.mutex)
@@ -4100,6 +4100,7 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
     @worker_exception_handler
     def run(self):
         from spotmax import DFs_FILENAMES, DF_REF_CH_FILENAME
+        from spotmax.utils import get_runs_num_and_desc
         import spotmax.io
         
         self.selectedColumns = None
@@ -4110,25 +4111,33 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
         spotmax_dfs_spots_allexp = defaultdict(lambda: defaultdict(list))
         spotmax_dfs_aggr_allexp = defaultdict(lambda: defaultdict(list))
         ref_ch_dfs_allexp = defaultdict(lambda: defaultdict(list))
+        runNumberAlreadyAsked = False
+        copyFromCcaAlreadyAsked = False
         for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
             self.errors = {}
             tot_pos = len(pos_foldernames)
             
-            if i == 0:
-                abort = self.emitSelectSpotmaxRun(
-                    exp_path, pos_foldernames, infoText=' to combine',
-                    allowSingleSelection=True, multiSelection=False
-                )
-                if abort:
-                    self.sigAborted.emit()
-                    return
-
-            if self.skipExp:
+            all_runs = get_runs_num_and_desc(
+                exp_path, pos_foldernames=pos_foldernames
+            )
+            if not all_runs:
                 self.logger.log(
                     '[WARNING] The following experiment does not contain '
                     f'valid spotMAX output files. Skipping it. "{exp_path}"'
                 )
                 continue
+            
+            if not runNumberAlreadyAsked:
+                abort = self.emitSelectSpotmaxRun(
+                    exp_path, pos_foldernames, all_runs, 
+                    infoText=' to combine',
+                    allowSingleSelection=True, 
+                    multiSelection=False
+                )
+                if abort:
+                    self.sigAborted.emit()
+                    return
+                runNumberAlreadyAsked = True
             
             selectedSpotmaxRuns = self.mainWin.selectedSpotmaxRuns
 
@@ -4143,9 +4152,20 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                 if self.abort:
                     self.sigAborted.emit()
                     return
-
+                
+                pos_path = os.path.join(exp_path, pos)
+                spotmax_output_path = os.path.join(pos_path, 'spotMAX_output')
+                
+                if not os.path.exists(spotmax_output_path):
+                    self.logger.log(
+                        '[WARNING] The following Position folder does not contain '
+                        f'valid spotMAX output files. Skipping it. "{pos_path}"'
+                    )
+                    continue
+                
                 images_path = os.path.join(exp_path, pos, 'Images')
-                if p == 0 and i == 0:
+                
+                if not copyFromCcaAlreadyAsked:
                     self.emitAskCopyCca(images_path)
                     if self.abort:
                         self.sigAborted.emit()
@@ -4153,7 +4173,8 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                     
                     self.askSelectMeasurements(exp_path, pos_foldernames)
                     if self.abort:
-                        return              
+                        return  
+                    copyFromCcaAlreadyAsked = True            
                     
                 acdc_df = self.getAcdcDf(images_path)
                 
@@ -4162,15 +4183,21 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                     f'{pos} ({p+1}/{tot_pos})'
                 )
 
-                spotmax_output_path = os.path.join(
-                    exp_path, pos, 'spotMAX_output'
-                )
+                
                 for run_desc in selectedSpotmaxRuns:
                     run, desc = run_desc.split('_...')
                     ini_filename = f'{run}_analysis_parameters{desc}.ini'
                     ini_filepath = os.path.join(
                         spotmax_output_path, ini_filename
                     )
+                    if not os.path.exists(ini_filepath):
+                        self.logger.log(
+                            '[WARNING] The following Position folder does not contain '
+                            f'the spotMAX output file for run number {run}. '
+                            f'Skipping it. "{pos_path}"'
+                        )
+                        continue
+                        
                     pos_ini_filepaths[(run, desc)] = ini_filepath
                     for _, pattern_filename in DFs_FILENAMES.items():
                         run_filename = pattern_filename.replace('*rn*', run)
@@ -4193,30 +4220,40 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                                 spotmax_output_path, df_spots_filename
                             )
                             ext_spots = '.csv'
+                        
                         if not os.path.exists(spots_filepath):
                             continue
                         
                         analysis_step = re.findall(
                             r'\*rn\*(.*)\*desc\*', pattern_filename
                         )[0]
-                        df_spots = spotmax.io.load_spots_table(
-                            spotmax_output_path, df_spots_filename
-                        ).reset_index().set_index(['frame_i', 'Cell_ID'])
-                        df_spots = self.copyCcaColsFromAcdcDf(
-                            df_spots, acdc_df, debug=False
-                        )
-                        df_spots = (
-                            df_spots.reset_index()
-                            .set_index(['frame_i', 'Cell_ID', 'spot_id'])
-                        )
+                        key = (run, analysis_step, desc, ext_spots)
+                        try:
+                            df_spots = spotmax.io.load_spots_table(
+                                spotmax_output_path, df_spots_filename
+                            ).reset_index().set_index(['frame_i', 'Cell_ID'])
+                            df_spots = self.copyCcaColsFromAcdcDf(
+                                df_spots, acdc_df, debug=False
+                            )
+                            df_spots = (
+                                df_spots.reset_index()
+                                .set_index(['frame_i', 'Cell_ID', 'spot_id'])
+                            )
+                            dfs_spots[key].append(df_spots)
+                        except Exception as err:
+                            self.logger.log(err)
+                            self.logger.log(
+                                f'WARNING: Error when reading single-spots '
+                                f'tables. Skipping this Position.'
+                            )
+                            pass
+                        
                         df_aggregated = pd.read_csv(
                             aggr_filepath, index_col=['frame_i', 'Cell_ID']
                         )
                         df_aggregated = self.copyCcaColsFromAcdcDf(
                             df_aggregated, acdc_df
                         )
-                        key = (run, analysis_step, desc, ext_spots)
-                        dfs_spots[key].append(df_spots)
                         dfs_aggr[key].append(df_aggregated)
                         pos_runs[key].append(pos)
                     
@@ -4262,17 +4299,19 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                 filename = f'multipos_{run}{analysis_step}{desc}{ext_spots}'
                 df_spots_concat = spotmax.io.save_concat_dfs(
                     dfs, pos_keys, allpos_folderpath, filename, ext_spots, 
-                    names=['Position_n']
+                    names=['Position_n'], return_concat_df=True
                 )
+                df_spots_concat['exp_foldername'] = exp_name
                 spotmax_dfs_spots_allexp[filename]['dfs'].append(df_spots_concat)
                 spotmax_dfs_spots_allexp[filename]['keys'].append(
-                    (exp_path, exp_name)
+                    exp_path
                 )
                 ini_filepath = pos_ini_filepaths[(run, desc)]
                 ini_filename = os.path.basename(ini_filepath)
                 dst_ini_filepath = os.path.join(allpos_folderpath, ini_filename)
                 if not os.path.exists(dst_ini_filepath):
                     shutil.copy2(ini_filepath, dst_ini_filepath)
+                    
                 spotmax_dfs_spots_allexp[filename]['ini_filepath'].append(
                     dst_ini_filepath
                 )
@@ -4286,7 +4325,7 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                 )
                 df_aggr_concat = spotmax.io.save_concat_dfs(
                     dfs, pos_keys, allpos_folderpath, filename, self._final_ext, 
-                    names=['Position_n']
+                    names=['Position_n'], return_concat_df=True
                 )
                 spotmax_dfs_aggr_allexp[filename]['dfs'].append(df_aggr_concat)
                 spotmax_dfs_aggr_allexp[filename]['keys'].append(
@@ -4301,7 +4340,7 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                 )
                 df_ref_ch_concat = spotmax.io.save_concat_dfs(
                     dfs, pos_keys, allpos_folderpath, filename, self._final_ext,
-                    names=['Position_n']
+                    names=['Position_n'], return_concat_df=True
                 )
                 ref_ch_dfs_allexp[filename]['dfs'].append(df_ref_ch_concat)
                 ref_ch_dfs_allexp[filename]['keys'].append(
@@ -4327,7 +4366,7 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                 dfs, keys, multiexp_dst_folderpath, 
                 multiexp_filename, 
                 extension,
-                names=names
+                names=['experiment_folderpath']
             )
             ini_filepath = items['ini_filepath'][0]
             ini_filename = os.path.basename(ini_filepath)
