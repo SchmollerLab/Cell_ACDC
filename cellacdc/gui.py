@@ -24217,7 +24217,7 @@ class guiWin(QMainWindow):
                 posData.tracked_lost_centroids[frame_i] = {int_centroid}
                 printl('Need to fix probably? Why is this not properly init?')    
 
-    def getTrackedLostIDs(self, prev_lab=None, lab=None, frame_i=None):
+    def getTrackedLostIDs(self, prev_lab=None, IDs_in_frames=None, frame_i=None):
         trackedLostIDs = set()
         retrackedLostcent = set()
         posData = self.data[self.pos_i]
@@ -24233,13 +24233,8 @@ class guiWin(QMainWindow):
                 return_copy=False
             )
 
-        if lab is None:
-            lab = self.get_labels(
-                from_store=True,
-                frame_i=frame_i,
-                return_existing=False,
-                return_copy=False
-            )
+        if not IDs_in_frames:
+            IDs_in_frames = posData.IDs
 
         try:
             tracked_lost_centroids = posData.tracked_lost_centroids[frame_i]
@@ -24251,7 +24246,7 @@ class guiWin(QMainWindow):
             if ID == 0:
                 continue
 
-            if ID == lab[centroid]:
+            if ID in posData.IDs:
                 retrackedLostcent.add(centroid)
                 continue
 
