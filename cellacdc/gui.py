@@ -17419,7 +17419,7 @@ class guiWin(QMainWindow):
             self.setZprojDisabled(False)
             self.update_z_slice(self.zSliceScrollBar.sliderPosition())
         else:
-            self.setZprojDisabled(True)
+            self.setZprojDisabled(self.isSegm3D)
             self.updateAllImages()
     
     def setZprojDisabled(self, disabled, storePrevState=False):
