@@ -6837,7 +6837,18 @@ class guiWin(QMainWindow):
             # Update data (rp, etc)
             self.update_rp()
 
-            if not self.isFrameCcaAnnotated():
+            ask_back_prop = True
+
+            if posData.frame_i == 0:
+                ask_back_prop = False
+                prev_IDs = []
+            else:
+                prev_IDs = posData.allData_li[posData.frame_i-1]['IDs']
+
+            if  all(ID not in prev_IDs for ID in IDs_to_merge):
+                ask_back_prop = False
+            
+            if not self.isFrameCcaAnnotated() and ask_back_prop:
                 proceed = self.askPropagateChangePast(f'Merge IDs {IDs_to_merge}')
                 if proceed:
                     self.propagateMergeObjsPast(IDs_to_merge)
@@ -17408,7 +17419,7 @@ class guiWin(QMainWindow):
             self.setZprojDisabled(False)
             self.update_z_slice(self.zSliceScrollBar.sliderPosition())
         else:
-            self.setZprojDisabled(True)
+            self.setZprojDisabled(self.isSegm3D)
             self.updateAllImages()
     
     def setZprojDisabled(self, disabled, storePrevState=False):
@@ -23973,6 +23984,10 @@ class guiWin(QMainWindow):
                 htmlTxt_li, htmlTxtFull_li, 'Acc. IDs lost', 'green', 
                 tracked_lost_IDs
             )
+
+            for i, htmlTxtFull in enumerate(htmlTxtFull_li):
+                htmlTxtFull_li[i] = htmlTxtFull.replace('Acc.', 'Accepted')
+
             htmlTxt_li, htmlTxtFull_li = self.setTitleFormatter(
                 htmlTxt_li, htmlTxtFull_li, 'IDs with holes', 'red', 
                 IDs_with_holes
@@ -24360,7 +24375,7 @@ class guiWin(QMainWindow):
                 posData.tracked_lost_centroids[frame_i] = {int_centroid}
                 printl('Need to fix probably? Why is this not properly init?')    
 
-    def getTrackedLostIDs(self, prev_lab=None, lab=None, frame_i=None):
+    def getTrackedLostIDs(self, prev_lab=None, IDs_in_frames=None, frame_i=None):
         trackedLostIDs = set()
         retrackedLostcent = set()
         posData = self.data[self.pos_i]
@@ -24376,13 +24391,8 @@ class guiWin(QMainWindow):
                 return_copy=False
             )
 
-        if lab is None:
-            lab = self.get_labels(
-                from_store=True,
-                frame_i=frame_i,
-                return_existing=False,
-                return_copy=False
-            )
+        if IDs_in_frames is not None:
+            IDs_in_frames = posData.IDs
 
         try:
             tracked_lost_centroids = posData.tracked_lost_centroids[frame_i]
@@ -24394,7 +24404,7 @@ class guiWin(QMainWindow):
             if ID == 0:
                 continue
 
-            if ID == lab[centroid]:
+            if ID in IDs_in_frames:
                 retrackedLostcent.add(centroid)
                 continue
 
