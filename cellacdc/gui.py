@@ -1411,7 +1411,7 @@ class guiWin(QMainWindow):
         left_click = mouseEvent.button() == Qt.MouseButton.LeftButton
         return modifiers == Qt.AltModifier and left_click
 
-    def isMiddleClick(self, mouseEvent, modifiers):
+    def isDefaultMiddleClick(self, mouseEvent, modifiers):
         if sys.platform == 'darwin':
             middle_click = (
                 mouseEvent.button() == Qt.MouseButton.LeftButton
@@ -1420,6 +1420,20 @@ class guiWin(QMainWindow):
             )
         else:
             middle_click = mouseEvent.button() == Qt.MouseButton.MiddleButton
+        return middle_click
+        
+    def isMiddleClick(self, mouseEvent, modifiers):
+        if self.delObjAction is None:
+            return self.isDefaultMiddleClick(mouseEvent, modifiers)
+        
+        delObjKeySequenceText, delObjQtButton = self.delObjAction
+        middle_click = (
+            mouseEvent.button() == Qt.MouseButton.LeftButton
+            and self.delObjToolAction.isChecked()
+        )
+        
+        printl(middle_click)
+        
         return middle_click
 
     def gui_createCursors(self):
@@ -2683,7 +2697,16 @@ class guiWin(QMainWindow):
         # other toolbars --> placeholder
         placeHolderToolbar = widgets.ToolBar("Place holder", self)
         self.addToolBar(Qt.TopToolBarArea, placeHolderToolbar)
-        placeHolderToolbar.addWidget(QToolButton(self))
+        self.delObjToolAction = QAction(self)
+        self.delObjToolAction.setCheckable(True)
+        self.delObjToolAction.setToolTip(
+            'Customisable delete object action\n\n'
+            'Go to the `Settings --> Customise keyboard shortcuts...` menu '
+            'on the top menubar\n'
+            'to customise the action required to delete '
+            'an object with a click.'
+        )
+        placeHolderToolbar.addAction(self.delObjToolAction)
         placeHolderToolbar.setMovable(False)
         self.placeHolderToolbar = placeHolderToolbar
         self.placeHolderToolbar.setVisible(False)
@@ -21882,6 +21905,19 @@ class guiWin(QMainWindow):
         if 'keyboard.shortcuts' not in cp:
             cp['keyboard.shortcuts'] = {}
         
+        if 'delete_object.action' not in cp:
+            self.delObjAction = None
+        else:
+            delObjKeySequenceText = cp['delete_object.action']['Key sequence']
+            delObjButtonText = cp['delete_object.action']['Mouse button']
+            delObjQtButton = (
+                Qt.MouseButton.LeftButton if delObjButtonText == 'Left click'
+                else Qt.MouseButton.MiddleButton
+            )
+            self.delObjAction = (
+                QKeySequence(delObjKeySequenceText), delObjQtButton
+            )
+        
         shortcuts = {}
         for name, widget in self.widgetsWithShortcut.items():
             if name not in cp.options('keyboard.shortcuts'):
@@ -21928,6 +21964,23 @@ class guiWin(QMainWindow):
         for name, (text, shortcut) in shortcuts.items():
             cp['keyboard.shortcuts'][name] = text
         
+        if self.delObjAction is not None:
+            delObjKeySequence, delObjQtButton = self.delObjAction
+            delObjKeySequenceText = delObjKeySequence.toString()
+            delObjKeySequenceText = (
+                delObjKeySequenceText.encode('ascii', 'ignore').decode('utf-8')
+            )
+            delObjButtonText = (
+                'Left click' if delObjQtButton == Qt.MouseButton.LeftButton
+                else 'Middle click'
+            )
+            cp['delete_object.action'] = {
+                'Key sequence': delObjKeySequenceText, 
+                'Mouse button': delObjButtonText
+            }
+            if delObjKeySequenceText:
+                self.delObjToolAction.setShortcut(delObjKeySequence)
+            
         with open(shortcut_filepath, 'w') as ini:
             cp.write(ini)
     
@@ -21936,6 +21989,8 @@ class guiWin(QMainWindow):
         win.exec_()
         if win.cancel:
             return
+
+        self.delObjAction = win.delObjAction
         self.setShortcuts(win.customShortcuts)
             
     def toggleOverlayColorButton(self, checked=True):

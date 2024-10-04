@@ -1,6 +1,7 @@
 import os
 import sys
 import re
+from typing import Literal
 import datetime
 import pathlib
 from collections import defaultdict
@@ -12200,7 +12201,12 @@ class CombineMetricsMultiDfsSummaryDialog(QBaseDialog):
         self.resize(int(self.width()*2), self.height())
 
 class ShortcutEditorDialog(QBaseDialog):
-    def __init__(self, widgetsWithShortcut: dict, parent=None):
+    def __init__(
+            self, widgetsWithShortcut: dict, 
+            delObjectKey='',
+            delObjectButton: Literal['Middle click', 'Left click']='Middle click',
+            parent=None
+        ):
         self.cancel = True
         super().__init__(parent)
 
@@ -12212,9 +12218,23 @@ class ShortcutEditorDialog(QBaseDialog):
         self.shortcutLineEdits = {}
 
         scrollArea = QScrollArea(self)
+        scrollArea.setWidgetResizable(True)
         scrollAreaWidget = QWidget()
         entriesLayout = QGridLayout()
-        for row, (name, widget) in enumerate(widgetsWithShortcut.items()):
+        
+        self.delObjShortcutLineEdit = widgets.ShortcutLineEdit()
+        self.delObjShortcutLineEdit.setText(delObjectKey)
+        self.delObjButtonCombobox = QComboBox()
+        self.delObjButtonCombobox.addItems(['Middle click', 'Left click'])
+        self.delObjButtonCombobox.setCurrentText(delObjectButton)
+        entriesLayout.addWidget(QLabel('Delete object:'), 0, 0)
+        entriesLayout.addWidget(self.delObjShortcutLineEdit, 0, 1)
+        entriesLayout.addWidget(QLabel(' + '), 0, 2, alignment=Qt.AlignCenter)
+        entriesLayout.addWidget(
+            self.delObjButtonCombobox, 0, 3, alignment=Qt.AlignLeft
+        )
+        
+        for row, (name, widget) in enumerate(widgetsWithShortcut.items(), start=1):
             label = QLabel(f'{name}:')
             shortcutLineEdit = widgets.ShortcutLineEdit()
             if hasattr(widget, 'keyPressShortcut'):
@@ -12230,6 +12250,11 @@ class ShortcutEditorDialog(QBaseDialog):
             entriesLayout.addWidget(label, row, 0)
             entriesLayout.addWidget(shortcutLineEdit, row, 1)
             self.shortcutLineEdits[name] = shortcutLineEdit
+        
+        entriesLayout.setColumnStretch(0, 0)
+        entriesLayout.setColumnStretch(1, 1)
+        entriesLayout.setColumnStretch(2, 0)
+        entriesLayout.setColumnStretch(3, 0)
         
         scrollAreaWidget.setLayout(entriesLayout)
         scrollArea.setWidget(scrollAreaWidget)
@@ -12263,6 +12288,14 @@ class ShortcutEditorDialog(QBaseDialog):
                 self.customShortcuts[name] = (
                     text, shortcutLineEdit.keySequence
                 )
+        delObjButtonText = self.delObjButtonCombobox.currentText()
+        delObjQtButton = (
+            Qt.MouseButton.LeftButton if delObjButtonText == 'Left click'
+            else Qt.MouseButton.MiddleButton
+        )
+        self.delObjAction = (
+            self.delObjShortcutLineEdit.keySequence, delObjQtButton
+        )
         self.close()
     
     def showEvent(self, event) -> None:
