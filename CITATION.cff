@@ -1,6 +1,3 @@
-# This CITATION.cff file was generated with cffinit.
-# Visit https://bit.ly/cffinit to generate yours today!
-
 cff-version: 1.2.0
 title: >-
   Segmentation, tracking and cell cycle analysis of 
@@ -23,10 +20,6 @@ authors:
       Institute of Functional Epigenetics, Helmholtz
       Zentrum München, 85764 Neuherberg, Germany
     orcid: 'https://orcid.org/0000-0001-8012-9303'
-identifiers:
-  - type: doi
-    value: 10.1186/s12915-022-01372-6
-    description: Peer-reviewed paper in BMC Biology
 repository-code: 'https://github.com/SchmollerLab/Cell_ACDC'
 url: 'https://cell-acdc.readthedocs.io/en/latest/'
 preferred-citation:
@@ -65,6 +58,9 @@ preferred-citation:
       Institute of Network Biology, Helmholtz Zentrum
       München, 85764 Neuherberg, Germany
     orcid: 'https://orcid.org/0000-0003-2012-6746'
+  title: >-
+    Segmentation, tracking and cell cycle analysis of 
+    live-cell imaging data with Cell-ACDC
   doi: 10.1186/s12915-022-01372-6
   journal: BMC Biology
   volume: 20
