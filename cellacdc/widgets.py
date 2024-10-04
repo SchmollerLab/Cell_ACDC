@@ -3331,9 +3331,10 @@ class Toggle(QCheckBox):
         p.end()
 
 class ShortcutLineEdit(QLineEdit):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, allowModifiers=False):
         self.keySequence = None
         super().__init__(parent)
+        self._allowModifiers = allowModifiers
         self.setAlignment(Qt.AlignCenter)
     
     def setText(self, text):
@@ -3351,20 +3352,28 @@ class ShortcutLineEdit(QLineEdit):
             self.setText('')
             return
 
-        modifers_value = event.modifiers().value if PYQT6 else event.modifiers()
-        if event.key() == modifers_value:
+        isAltKey = event.key()==Qt.Key_Alt
+        isCtrlKey = event.key()==Qt.Key_Control
+        isShiftKey = event.key()==Qt.Key_Shift
+        isModifierKey = isAltKey or isCtrlKey or isShiftKey
+        
+        modifiers = event.modifiers()
+        modifers_value = modifiers.value if PYQT6 else modifiers
+        if isModifierKey:
             keySequence = QKeySequence(modifers_value).toString()
         else:
             keySequence = QKeySequence(modifers_value | event.key()).toString()
             
         keySequence = keySequence.encode('ascii', 'ignore').decode('utf-8')
-        printl(keySequence, modifers_value, event.key())
         self.setText(keySequence)
         self.key = event.key()
     
     def keyReleaseEvent(self, event: QKeyEvent) -> None:
         if self.text().endswith('+'):
-            self.setText('')
+            if not self._allowModifiers:
+                self.setText('')
+            else:
+                self.setText(self.text().rstrip('+').strip())
             
 
 class selectStartStopFrames(QGroupBox):

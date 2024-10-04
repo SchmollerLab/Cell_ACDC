@@ -12222,16 +12222,17 @@ class ShortcutEditorDialog(QBaseDialog):
         scrollAreaWidget = QWidget()
         entriesLayout = QGridLayout()
         
-        self.delObjShortcutLineEdit = widgets.ShortcutLineEdit()
+        self.delObjShortcutLineEdit = widgets.ShortcutLineEdit(
+            allowModifiers=True
+        )
         self.delObjShortcutLineEdit.setText(delObjectKey)
         self.delObjButtonCombobox = QComboBox()
         self.delObjButtonCombobox.addItems(['Middle click', 'Left click'])
         self.delObjButtonCombobox.setCurrentText(delObjectButton)
         entriesLayout.addWidget(QLabel('Delete object:'), 0, 0)
         entriesLayout.addWidget(self.delObjShortcutLineEdit, 0, 1)
-        entriesLayout.addWidget(QLabel(' + '), 0, 2, alignment=Qt.AlignCenter)
         entriesLayout.addWidget(
-            self.delObjButtonCombobox, 0, 3, alignment=Qt.AlignLeft
+            self.delObjButtonCombobox, 0, 2, alignment=Qt.AlignLeft
         )
         
         for row, (name, widget) in enumerate(widgetsWithShortcut.items(), start=1):
@@ -12254,7 +12255,6 @@ class ShortcutEditorDialog(QBaseDialog):
         entriesLayout.setColumnStretch(0, 0)
         entriesLayout.setColumnStretch(1, 1)
         entriesLayout.setColumnStretch(2, 0)
-        entriesLayout.setColumnStretch(3, 0)
         
         scrollAreaWidget.setLayout(entriesLayout)
         scrollArea.setWidget(scrollAreaWidget)

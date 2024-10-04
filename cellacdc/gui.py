@@ -1425,14 +1425,29 @@ class guiWin(QMainWindow):
     def isMiddleClick(self, mouseEvent, modifiers):
         if self.delObjAction is None:
             return self.isDefaultMiddleClick(mouseEvent, modifiers)
+               
+        delObjKeySequence, delObjQtButton = self.delObjAction
         
-        delObjKeySequenceText, delObjQtButton = self.delObjAction
+        isMatchKey = self.delObjToolAction.isChecked()
+        
+        if not isMatchKey:
+            isAltKeySequence = delObjKeySequence == QKeySequence(Qt.Key_Alt)
+            isAltModifier = modifiers == Qt.AltModifier
+            isMatchKey = isAltKeySequence and isAltModifier
+        
+        if not isMatchKey:
+            isCtrlKeySequence = delObjKeySequence == QKeySequence(Qt.Key_Control)
+            isCtrlModifier = modifiers == Qt.ControlModifier
+            isMatchKey = isCtrlKeySequence and isCtrlModifier
+        
+        if not isMatchKey:
+            isShiftKeySequence = delObjKeySequence == QKeySequence(Qt.Key_Shift)
+            isShiftModifier = modifiers == Qt.ShiftModifier
+            isMatchKey = isShiftKeySequence and isShiftModifier              
+        
         middle_click = (
-            mouseEvent.button() == Qt.MouseButton.LeftButton
-            and self.delObjToolAction.isChecked()
+            mouseEvent.button() == delObjQtButton and isMatchKey
         )
-        
-        printl(middle_click)
         
         return middle_click
 
@@ -21914,10 +21929,13 @@ class guiWin(QMainWindow):
                 Qt.MouseButton.LeftButton if delObjButtonText == 'Left click'
                 else Qt.MouseButton.MiddleButton
             )
+            delObjKeySequence = QKeySequence(delObjKeySequenceText)
             self.delObjAction = (
                 QKeySequence(delObjKeySequenceText), delObjQtButton
             )
-        
+            if delObjKeySequenceText:
+                self.delObjToolAction.setShortcut(delObjKeySequence)
+                        
         shortcuts = {}
         for name, widget in self.widgetsWithShortcut.items():
             if name not in cp.options('keyboard.shortcuts'):
