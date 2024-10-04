@@ -24391,7 +24391,7 @@ class guiWin(QMainWindow):
                 return_copy=False
             )
 
-        if IDs_in_frames is not None:
+        if IDs_in_frames is None:
             IDs_in_frames = posData.IDs
 
         try:
