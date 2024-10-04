@@ -3,13 +3,35 @@
 
 cff-version: 1.2.0
 title: >-
-  Cell-ACDC: segmentation, tracking, annotation and quantification of
-  microscopy imaging data
+  Segmentation, tracking and cell cycle analysis of 
+  live-cell imaging data with Cell-ACDC
 message: >-
   If you use this software, please cite our paper:
   https://doi.org/10.1186/s12915-022-01372-6
 type: software
 authors:
+  - given-names: Francesco
+    family-names: Padovani
+    orcid: 'https://orcid.org/0000-0003-2540-8240'
+    email: francesco.padovani@helmholtz-muenchen.de
+    affiliation: >-
+      Institute of Functional Epigenetics, Helmholtz
+      Zentrum München, 85764 Neuherberg, Germany
+  - given-names: 'Benedikt '
+    family-names: Mairhörmann
+    affiliation: >-
+      Institute of Functional Epigenetics, Helmholtz
+      Zentrum München, 85764 Neuherberg, Germany
+    orcid: 'https://orcid.org/0000-0001-8012-9303'
+identifiers:
+  - type: doi
+    value: 10.1186/s12915-022-01372-6
+    description: Peer-reviewed paper in BMC Biology
+repository-code: 'https://github.com/SchmollerLab/Cell_ACDC'
+url: 'https://cell-acdc.readthedocs.io/en/latest/'
+preferred-citation:
+  type: article
+  authors:
   - given-names: Francesco
     family-names: Padovani
     orcid: 'https://orcid.org/0000-0003-2540-8240'
@@ -43,3 +65,10 @@ authors:
       Institute of Network Biology, Helmholtz Zentrum
       München, 85764 Neuherberg, Germany
     orcid: 'https://orcid.org/0000-0003-2012-6746'
+  doi: 10.1186/s12915-022-01372-6
+  journal: BMC Biology
+  volume: 20
+  issue: 1
+  year: 2022
+  month: 8
+  start: 174
