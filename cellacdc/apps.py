@@ -12223,9 +12223,10 @@ class ShortcutEditorDialog(QBaseDialog):
         entriesLayout = QGridLayout()
         
         self.delObjShortcutLineEdit = widgets.ShortcutLineEdit(
-            allowModifiers=True
+            allowModifiers=True, notAllowedModifier=Qt.AltModifier
         )
-        self.delObjShortcutLineEdit.setText(delObjectKey)
+        if delObjectKey is not None:
+            self.delObjShortcutLineEdit.setText(delObjectKey)
         self.delObjButtonCombobox = QComboBox()
         self.delObjButtonCombobox.addItems(['Middle click', 'Left click'])
         self.delObjButtonCombobox.setCurrentText(delObjectButton)

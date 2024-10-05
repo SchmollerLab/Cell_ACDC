@@ -1427,26 +1427,9 @@ class guiWin(QMainWindow):
             return self.isDefaultMiddleClick(mouseEvent, modifiers)
                
         delObjKeySequence, delObjQtButton = self.delObjAction
-        
-        isMatchKey = self.delObjToolAction.isChecked()
-        
-        if not isMatchKey:
-            isAltKeySequence = delObjKeySequence == QKeySequence(Qt.Key_Alt)
-            isAltModifier = modifiers == Qt.AltModifier
-            isMatchKey = isAltKeySequence and isAltModifier
-        
-        if not isMatchKey:
-            isCtrlKeySequence = delObjKeySequence == QKeySequence(Qt.Key_Control)
-            isCtrlModifier = modifiers == Qt.ControlModifier
-            isMatchKey = isCtrlKeySequence and isCtrlModifier
-        
-        if not isMatchKey:
-            isShiftKeySequence = delObjKeySequence == QKeySequence(Qt.Key_Shift)
-            isShiftModifier = modifiers == Qt.ShiftModifier
-            isMatchKey = isShiftKeySequence and isShiftModifier              
-        
         middle_click = (
-            mouseEvent.button() == delObjQtButton and isMatchKey
+            mouseEvent.button() == delObjQtButton 
+            and self.delObjToolAction.isChecked()
         )
         
         return middle_click
@@ -13225,7 +13208,27 @@ class guiWin(QMainWindow):
         width = geometry.width()
         height = geometry.height()
         self.setGeometry(left, top+10, width, height-200)
+    
+    def checkSetDelObjActionActive(self, isCtrlModifier, isShiftModifier):
+        if self.delObjAction is None:
+            return
         
+        isModifier = isCtrlModifier or isShiftModifier
+        if not isModifier:
+            return
+        
+        delObjKeySequence, delObjQtButton = self.delObjAction
+
+        isCtrlKeySequence = delObjKeySequence == QKeySequence(Qt.Key_Control)
+        if isCtrlKeySequence and isCtrlModifier:
+            self.delObjToolAction.setChecked(True)
+            return
+        
+        isShiftKeySequence = delObjKeySequence == QKeySequence(Qt.Key_Shift)
+        if isShiftKeySequence and isShiftModifier:
+            self.delObjToolAction.setChecked(True)
+            return
+    
     @exception_handler
     def keyPressEvent(self, ev):        
         ctrl = ev.modifiers() == Qt.ControlModifier
@@ -13264,6 +13267,9 @@ class guiWin(QMainWindow):
         isAltModifier = modifiers == Qt.AltModifier
         isCtrlModifier = modifiers == Qt.ControlModifier
         isShiftModifier = modifiers == Qt.ShiftModifier
+        
+        self.checkSetDelObjActionActive(isCtrlModifier, isShiftModifier)
+        
         self.isZmodifier = (
             ev.key()== Qt.Key_Z and not isAltModifier
             and not isCtrlModifier and not isShiftModifier
@@ -13508,6 +13514,7 @@ class guiWin(QMainWindow):
         #     self.drawIDsContComboBox.setCurrentIndex(0)
 
     def keyReleaseEvent(self, ev):
+        self.delObjToolAction.setChecked(False)
         if self.app.overrideCursor() == Qt.SizeAllCursor:
             self.app.restoreOverrideCursor()
         if ev.key() == Qt.Key_Control:
@@ -22003,7 +22010,29 @@ class guiWin(QMainWindow):
             cp.write(ini)
     
     def editShortcuts_cb(self):
-        win = apps.ShortcutEditorDialog(self.widgetsWithShortcut, parent=self)
+        if sys.platform == 'darwin':
+            delObjKeySequenceText = 'Ctrl'
+            delObjButtonText = 'Left click'
+        else:
+            delObjKeySequenceText = ''
+            delObjButtonText = 'Middle click'
+            
+        if self.delObjAction is not None:
+            delObjKeySequence, delObjQtButton = self.delObjAction
+            delObjKeySequenceText = delObjKeySequence.toString()
+            delObjKeySequenceText = (
+                delObjKeySequenceText.encode('ascii', 'ignore').decode('utf-8')
+            )
+            delObjButtonText = (
+                'Left click' if delObjQtButton == Qt.MouseButton.LeftButton
+                else 'Middle click'
+            )
+        win = apps.ShortcutEditorDialog(
+            self.widgetsWithShortcut, 
+            delObjectKey=delObjKeySequenceText,
+            delObjectButton=delObjButtonText,
+            parent=self
+        )
         win.exec_()
         if win.cancel:
             return

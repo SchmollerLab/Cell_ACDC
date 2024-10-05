@@ -3331,10 +3331,13 @@ class Toggle(QCheckBox):
         p.end()
 
 class ShortcutLineEdit(QLineEdit):
-    def __init__(self, parent=None, allowModifiers=False):
+    def __init__(
+            self, parent=None, allowModifiers=False, notAllowedModifier=None
+        ):
         self.keySequence = None
         super().__init__(parent)
         self._allowModifiers = allowModifiers
+        self._notAllowedModifier = notAllowedModifier
         self.setAlignment(Qt.AlignCenter)
     
     def setText(self, text):
@@ -3358,6 +3361,14 @@ class ShortcutLineEdit(QLineEdit):
         isModifierKey = isAltKey or isCtrlKey or isShiftKey
         
         modifiers = event.modifiers()
+        isNotAllowedMod = (
+            self._notAllowedModifier is not None 
+            and modifiers == self._notAllowedModifier
+        )
+        if isNotAllowedMod:
+            self.setText('')
+            return
+        
         modifers_value = modifiers.value if PYQT6 else modifiers
         if isModifierKey:
             keySequence = QKeySequence(modifers_value).toString()
