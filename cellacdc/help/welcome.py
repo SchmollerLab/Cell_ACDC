@@ -1,5 +1,5 @@
 import os, sys
-import pathlib
+from functools import partial
 import webbrowser
 
 import pandas as pd
@@ -888,7 +888,7 @@ class welcomeWin(QWidget):
     def openGUIsingleImage(self):
         if self.mainWin is not None:
             self.mainWin.launchGui()
-            self.mainWin.guiWin.openFile()
+            self.mainWin.guiWins[-1].openFile()
         else:
             self.guiWin = gui.guiWin(self.app)
             self.guiWin.showAndSetSize()
@@ -897,7 +897,10 @@ class welcomeWin(QWidget):
     def openGUIfolder(self, exp_path):
         if self.mainWin is not None:
             self.mainWin.launchGui()
-            self.mainWin.guiWin.openFolder(exp_path=exp_path)
+            guiWin = self.mainWin.guiWins[-1]
+            QTimer.singleShot(
+                200, partial(guiWin.openFolder, exp_path=exp_path)
+            )
         else:
             self.guiWin = gui.guiWin(self.app)
             self.guiWin.showAndSetSize()
