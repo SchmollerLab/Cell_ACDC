@@ -1236,6 +1236,8 @@ class QDialogListbox(QDialog):
             allowEmptySelection=True
         ):
         self.cancel = True
+        items = list(items)
+        
         super().__init__(parent)
         self.setWindowTitle(title)
         

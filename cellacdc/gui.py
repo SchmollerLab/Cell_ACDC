@@ -20682,7 +20682,9 @@ class guiWin(QMainWindow):
         selectOverlayLabels = widgets.QDialogListbox(
             'Select segmentation to overlay',
             'Select segmentation file to overlay:\n',
-            self.existingSegmEndNames, multiSelection=True, parent=self
+            list(self.existingSegmEndNames), 
+            multiSelection=True, 
+            parent=self
         )
         selectOverlayLabels.exec_()
         if selectOverlayLabels.cancel:
