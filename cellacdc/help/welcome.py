@@ -888,6 +888,8 @@ class welcomeWin(QWidget):
     def openGUIsingleImage(self):
         if self.mainWin is not None:
             self.mainWin.launchGui()
+            guiWin = self.mainWin.guiWins[-1]
+            QTimer.singleShot(200, guiWin.openFile)
             self.mainWin.guiWins[-1].openFile()
         else:
             self.guiWin = gui.guiWin(self.app)
