@@ -3332,6 +3332,29 @@ class Toggle(QCheckBox):
 
         p.end()
 
+def QKeyEventToString(event: QKeyEvent, notAllowedModifier=None):
+    isAltKey = event.key()==Qt.Key_Alt
+    isCtrlKey = event.key()==Qt.Key_Control
+    isShiftKey = event.key()==Qt.Key_Shift
+    isModifierKey = isAltKey or isCtrlKey or isShiftKey
+    
+    modifiers = event.modifiers()
+    isNotAllowedMod = (
+        notAllowedModifier is not None and modifiers == notAllowedModifier
+    )
+    if isNotAllowedMod:
+        return 
+    
+    modifers_value = modifiers.value if PYQT6 else modifiers
+    if isModifierKey:
+        keySequenceText = QKeySequence(modifers_value).toString()
+    else:
+        keySequenceText = QKeySequence(modifers_value | event.key()).toString()
+    
+    keySequenceText = keySequenceText.encode('ascii', 'ignore').decode('utf-8')
+    
+    return keySequenceText
+
 class ShortcutLineEdit(QLineEdit):
     def __init__(
             self, parent=None, allowModifiers=False, notAllowedModifier=None
@@ -3357,28 +3380,10 @@ class ShortcutLineEdit(QLineEdit):
             self.setText('')
             return
 
-        isAltKey = event.key()==Qt.Key_Alt
-        isCtrlKey = event.key()==Qt.Key_Control
-        isShiftKey = event.key()==Qt.Key_Shift
-        isModifierKey = isAltKey or isCtrlKey or isShiftKey
-        
-        modifiers = event.modifiers()
-        isNotAllowedMod = (
-            self._notAllowedModifier is not None 
-            and modifiers == self._notAllowedModifier
+        keySequenceText = QKeyEventToString(
+            event, notAllowedModifier=self._notAllowedModifier
         )
-        if isNotAllowedMod:
-            self.setText('')
-            return
-        
-        modifers_value = modifiers.value if PYQT6 else modifiers
-        if isModifierKey:
-            keySequence = QKeySequence(modifers_value).toString()
-        else:
-            keySequence = QKeySequence(modifers_value | event.key()).toString()
-            
-        keySequence = keySequence.encode('ascii', 'ignore').decode('utf-8')
-        self.setText(keySequence)
+        self.setText(keySequenceText)
         self.key = event.key()
     
     def keyReleaseEvent(self, event: QKeyEvent) -> None:

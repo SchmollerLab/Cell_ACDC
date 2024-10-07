@@ -44,7 +44,7 @@ from skimage.color import gray2rgb, gray2rgba, label2rgb
 from qtpy.QtCore import (
     Qt, QPoint, QTextStream, QSize, QRect, QRectF,
     QEventLoop, QTimer, QEvent, QObject, Signal,
-    QThread, QMutex, QWaitCondition, QSettings
+    QThread, QMutex, QWaitCondition, QSettings, PYQT6
 )
 from qtpy.QtGui import (
     QIcon, QKeySequence, QCursor, QGuiApplication, QPixmap, QColor,
@@ -1340,6 +1340,12 @@ class guiWin(QMainWindow):
         else:
             self.openFile(file_path=file_path)
 
+    def changeEvent(self, event):
+        try:
+            self.delObjToolAction.setChecked(False)
+        except Exception as err:
+            return
+    
     def leaveEvent(self, event):
         if self.slideshowWin is not None:
             posData = self.data[self.pos_i]
@@ -13209,25 +13215,44 @@ class guiWin(QMainWindow):
         height = geometry.height()
         self.setGeometry(left, top+10, width, height-200)
     
-    def checkSetDelObjActionActive(self, isCtrlModifier, isShiftModifier):
+    def checkSetDelObjActionActive(self, event):
         if self.delObjAction is None:
             return
         
-        isModifier = isCtrlModifier or isShiftModifier
-        if not isModifier:
-            return
-        
         delObjKeySequence, delObjQtButton = self.delObjAction
-
-        isCtrlKeySequence = delObjKeySequence == QKeySequence(Qt.Key_Control)
-        if isCtrlKeySequence and isCtrlModifier:
-            self.delObjToolAction.setChecked(True)
-            return
+        keySequenceText = widgets.QKeyEventToString(event).rstrip('+')
         
-        isShiftKeySequence = delObjKeySequence == QKeySequence(Qt.Key_Shift)
-        if isShiftKeySequence and isShiftModifier:
+        if keySequenceText == delObjKeySequence.toString():
             self.delObjToolAction.setChecked(True)
-            return
+        
+        # isAltKey = event.key()==Qt.Key_Alt
+        # isCtrlKey = event.key()==Qt.Key_Control
+        # isShiftKey = event.key()==Qt.Key_Shift
+        # isModifierKey = isAltKey or isCtrlKey or isShiftKey
+        
+        # modifiers = event.modifiers()
+        
+        # modifers_value = modifiers.value if PYQT6 else modifiers
+        # if isModifierKey:
+        #     keySequence = QKeySequence(modifers_value).toString()
+        # else:
+        #     keySequence = QKeySequence(modifers_value | event.key()).toString()
+        
+        # isModifier = isCtrlModifier or isShiftModifier
+        # if not isModifier:
+        #     return
+        
+        # delObjKeySequence, delObjQtButton = self.delObjAction
+
+        # isCtrlKeySequence = delObjKeySequence == QKeySequence(Qt.Key_Control)
+        # if isCtrlKeySequence and isCtrlModifier:
+        #     self.delObjToolAction.setChecked(True)
+        #     return
+        
+        # isShiftKeySequence = delObjKeySequence == QKeySequence(Qt.Key_Shift)
+        # if isShiftKeySequence and isShiftModifier:
+        #     self.delObjToolAction.setChecked(True)
+        #     return
     
     @exception_handler
     def keyPressEvent(self, ev):        
@@ -13268,7 +13293,7 @@ class guiWin(QMainWindow):
         isCtrlModifier = modifiers == Qt.ControlModifier
         isShiftModifier = modifiers == Qt.ShiftModifier
         
-        self.checkSetDelObjActionActive(isCtrlModifier, isShiftModifier)
+        self.checkSetDelObjActionActive(ev)
         
         self.isZmodifier = (
             ev.key()== Qt.Key_Z and not isAltModifier
@@ -13514,7 +13539,6 @@ class guiWin(QMainWindow):
         #     self.drawIDsContComboBox.setCurrentIndex(0)
 
     def keyReleaseEvent(self, ev):
-        self.delObjToolAction.setChecked(False)
         if self.app.overrideCursor() == Qt.SizeAllCursor:
             self.app.restoreOverrideCursor()
         if ev.key() == Qt.Key_Control:
@@ -13537,9 +13561,14 @@ class guiWin(QMainWindow):
             or ev.key() == Qt.Key_Down
             or ev.key() == Qt.Key_Control
             or ev.key() == Qt.Key_Backspace
-        )
-        if canRepeat:
+            or self.delObjToolAction.isChecked()
+        )      
+        
+        if canRepeat and ev.isAutoRepeat():
             return
+        
+        self.delObjToolAction.setChecked(False)
+        
         if ev.isAutoRepeat() and not ev.key() == Qt.Key_Z:
             if self.warnKeyPressedMsg is not None:
                 return
@@ -21942,8 +21971,8 @@ class guiWin(QMainWindow):
             self.delObjAction = (
                 QKeySequence(delObjKeySequenceText), delObjQtButton
             )
-            if delObjKeySequenceText:
-                self.delObjToolAction.setShortcut(delObjKeySequence)
+            # if delObjKeySequenceText:
+            #     self.delObjToolAction.setShortcut(delObjKeySequence)
                         
         shortcuts = {}
         for name, widget in self.widgetsWithShortcut.items():
@@ -22005,8 +22034,8 @@ class guiWin(QMainWindow):
                 'Key sequence': delObjKeySequenceText, 
                 'Mouse button': delObjButtonText
             }
-            if delObjKeySequenceText:
-                self.delObjToolAction.setShortcut(delObjKeySequence)
+            # if delObjKeySequenceText:
+            #     self.delObjToolAction.setShortcut(delObjKeySequence)
             
         with open(shortcut_filepath, 'w') as ini:
             cp.write(ini)
