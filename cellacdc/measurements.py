@@ -13,7 +13,7 @@ import skimage.measure
 from tqdm import tqdm
 
 from . import core, base_cca_dict, cca_df_colnames, html_utils, config, printl
-from . import user_profile_path
+from . import user_profile_path, cca_functions
 
 import warnings
 warnings.filterwarnings("ignore", message="Failed to get convex hull image.")
@@ -983,8 +983,20 @@ def get_obj_size_metric(
         else:
             return obj.area*yx_pxl_to_um2
     elif col_name == 'cell_vol_vox':
+        if not hasattr(obj, 'vol_vox'):
+            PhysicalSizeY = PhysicalSizeX = np.sqrt(yx_pxl_to_um2)
+            vol_vox, vol_fl = cca_functions._calc_rot_vol(
+                obj, PhysicalSizeY, PhysicalSizeX
+            )
+            obj.vol_vox, obj.vol_fl = vol_vox, vol_fl
         return obj.vol_vox
     elif col_name == 'cell_vol_fl':
+        if not hasattr(obj, 'vol_fl'):
+            PhysicalSizeY = PhysicalSizeX = np.sqrt(yx_pxl_to_um2)
+            vol_vox, vol_fl = cca_functions._calc_rot_vol(
+                obj, PhysicalSizeY, PhysicalSizeX
+            )
+            obj.vol_vox, obj.vol_fl = vol_vox, vol_fl
         return obj.vol_fl
     elif col_name == 'cell_vol_vox_3D':
         return obj.area
