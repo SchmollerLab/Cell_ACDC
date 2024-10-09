@@ -31,7 +31,7 @@ if GUI_INSTALLED:
     from qtpy import QtGui
     from qtpy.QtCore import Qt, QRect, QRectF
     from qtpy.QtWidgets import (
-        QApplication, QMessageBox
+        QApplication, QMessageBox, QFileDialog
     )
     import pyqtgraph as pg
     pg.setConfigOption('imageAxisOrder', 'row-major')
@@ -3335,3 +3335,25 @@ def search_filepath_from_endname(exp_path, endname, include_spotmax_out=False):
             pos_path, endname, include_spotmax_out=include_spotmax_out
         )
         return filepath
+
+def askOpenCsvFile(
+        title='Open CSV file', 
+        start_dir=None, 
+        qparent=None
+    ):
+    if start_dir is None:
+        start_dir = myutils.getMostRecentPath()
+    
+    file_types = f'CSV files (*.csv);;All Files (*)'
+    
+    fileDialog = QFileDialog.getOpenFileName
+    args = (
+        qparent, 
+        title, 
+        start_dir, 
+        file_types
+    )
+    file_path = fileDialog(*args)
+    if not isinstance(file_path, str):
+        file_path = file_path[0]
+    return file_path

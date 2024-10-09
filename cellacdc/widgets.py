@@ -305,6 +305,11 @@ class PushButton(QPushButton):
         else:
             super().setText(self._text)
 
+class LoadPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setIcon(QIcon(':fork_lift.svg'))
+
 class mergePushButton(PushButton):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
