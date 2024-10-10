@@ -212,7 +212,13 @@ def remove_zeros_padding_2D(arr, return_crop_slice=False):
         pad_ax = arr.sum(axis=ax)
         pad_ax_mask = pad_ax == 0
         pad_ax_mask = pad_ax_mask[:-1] != pad_ax_mask[1:]
-        pad_ax_left, pad_ax_right = np.nonzero(pad_ax_mask)[0][[0,-1]]
+        try:
+            pad_ax_left, pad_ax_right = np.nonzero(pad_ax_mask)[0][[0,-1]]
+        except IndexError:
+            # There are no zeros to remove
+            pad_ax_left = -1
+            pad_ax_right = arr.shape[ax] - 1
+            
         crop_slice.append(slice(pad_ax_left+1, pad_ax_right+1))
     
     crop_slice = tuple(crop_slice)
