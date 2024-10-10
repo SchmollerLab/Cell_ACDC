@@ -208,7 +208,7 @@ def retrack_based_on_untracked_first_frame(
 
 def remove_zeros_padding_2D(arr, return_crop_slice=False):
     crop_slice = []
-    for ax in (1, 0):
+    for i, ax in enumerate((1, 0)):
         pad_ax = arr.sum(axis=ax)
         pad_ax_mask = pad_ax == 0
         pad_ax_mask = pad_ax_mask[:-1] != pad_ax_mask[1:]
@@ -217,7 +217,7 @@ def remove_zeros_padding_2D(arr, return_crop_slice=False):
         except IndexError:
             # There are no zeros to remove
             pad_ax_left = -1
-            pad_ax_right = arr.shape[ax] - 1
+            pad_ax_right = arr.shape[i] - 1
             
         crop_slice.append(slice(pad_ax_left+1, pad_ax_right+1))
     
