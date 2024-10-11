@@ -212,15 +212,15 @@ def remove_padding_2D(arr, val=0, return_crop_slice=False):
         pad_ax = arr.sum(axis=ax)
         pad_ax_mask = pad_ax == val
         pad_ax_left = 0
-        pad_ax_right = arr.shape[a]
         for i, val in enumerate(pad_ax_mask):
             if not val:
                 pad_ax_left = i
                 break  
         
-        for i, val in enumerate(pad_ax_mask[::-1]):
+        pad_ax_right = arr.shape[a]
+        for j, val in enumerate(pad_ax_mask[::-1]):
             if not val:
-                pad_ax_right -= i
+                pad_ax_right -= j
                 break  
         
         crop_slice.append(slice(pad_ax_left, pad_ax_right))
