@@ -210,7 +210,11 @@ def remove_padding_2D(arr, val=0, return_crop_slice=False):
     crop_slice = []
     for a, ax in enumerate((1, 0)):
         pad_ax = arr.sum(axis=ax)
-        pad_ax_mask = pad_ax == val
+        if np.isnan(val):
+            pad_ax_mask = np.isnan(pad_ax)
+        else:
+            pad_ax_mask = pad_ax == val
+            
         pad_ax_left = 0
         for i, val in enumerate(pad_ax_mask):
             if not val:
