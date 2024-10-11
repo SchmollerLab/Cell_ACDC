@@ -24,10 +24,9 @@ class ImageExporter(pyqtgraph.exporters.ImageExporter):
         img = skimage.io.imread(filepath)
         img_gray = img.sum(axis=2)
         
-        _, crop_slice = transformation.remove_zeros_padding_2D(
+        _, crop_slice = transformation.remove_padding_2D(
             img_gray, return_crop_slice=True
         )
-        
         img_cropped = img[crop_slice]
         
         if self._save_pngs:
