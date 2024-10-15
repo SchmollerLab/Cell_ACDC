@@ -8226,7 +8226,7 @@ class guiWin(QMainWindow):
         self.textAnnot[1].addToPlotItem(self.ax2)
     
     def SegForLostIDsAction(self):
-        from models.cellpose_v3 import acdcSegment as acdc_cp3
+        from .models.cellpose_v3 import acdcSegment as acdc_cp3
         model = acdc_cp3.Model()
 
         posData = self.data[self.pos_i]
@@ -8239,16 +8239,20 @@ class guiWin(QMainWindow):
         prev_IDs = {rp.label for rp in prev_rp}
         missing_IDs = prev_IDs - set(posData.IDs)
 
-        img = self.getDisplayedImg1()
+        curr_img = self.getDisplayedImg1()
 
-        new_lab = single_cell_seg(model, prev_lab, curr_lab, img, missing_IDs)
+        new_unique_ID = self.setBrushID(useCurrentLab=True, return_val=True)
+
+        # (model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID, budding, max_daughters, min_daughters, overlap_threshold=0.5, padding=0.4, size_perc_threshold=0.5,*model_args, **model_kwargs)
+
+        new_lab = single_cell_seg(model, prev_lab, curr_lab, curr_img, missing_IDs, new_unique_ID, budding=False, max_daughters=2, min_daughters=2, overlap_threshold=0.5, padding=0.4, size_perc_threshold=0.5)
 
         posData.lab = new_lab
         self.update_rp()
         self.updateAllImages()
         self.store_data()
 
-        printl('Segmentation for lost IDs done.')
+        self.logger.info('Segmentation for lost IDs done.')
     
     def gui_raiseBottomLayoutContextMenu(self, event):
         try:
