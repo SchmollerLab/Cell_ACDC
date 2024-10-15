@@ -6327,6 +6327,24 @@ class BaseLabelsImageItem(pg.ImageItem):
             kwargs['autoLevels'] = False
         super().setImage(image, **kwargs)
 
+class OverlayImageItem(pg.ImageItem):
+    def __init__(
+            self, image=None, **kargs
+        ):
+        super().__init__(image, **kargs)
+        self.autoLevelsEnabled = None
+    
+    def setEnableAutoLevels(self, enabled: bool):
+        self.autoLevelsEnabled = enabled
+    
+    def setImage(
+            self, image=None, autoLevels=None, **kargs
+        ):
+        if autoLevels is None:
+            autoLevels = self.autoLevelsEnabled
+        
+        super().setImage(image, autoLevels=autoLevels, **kargs)
+
 class ParentImageItem(BaseImageItem):
     def __init__(
             self, image=None, linkedImageItem=None, activatingActions=None,

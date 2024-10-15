@@ -3344,12 +3344,13 @@ class guiWin(QMainWindow):
                 break
     
     def customLevelsLutChanged(self, levels):
-        self.img1.setLevels(levels)
+        self.customLevelsImageItem.setLevels(levels)
     
     def rescaleIntensitiesLut(
             self, 
             action: QAction=None, 
-            setImage: bool=True
+            setImage: bool=True,
+            imageItem=None
         ):
         if not self.isDataLoaded:
             self.logger.info(
@@ -3357,6 +3358,9 @@ class guiWin(QMainWindow):
                 'Intensities will be rescaled later.'
             )
             return 
+
+        if imageItem is None:
+            imageItem = self.img1
         
         triggeredByUser = True
         if action is None:
@@ -3371,22 +3375,22 @@ class guiWin(QMainWindow):
                 # No need to update since we have autoscale
                 return       
             
-            self.img1.setEnableAutoLevels(True)
+            imageItem.setEnableAutoLevels(True)
             if setImage:
-                self.img1.setImage(self.img1.image)
+                imageItem.setImage(imageItem.image)
             return
         
         if how == 'Rescale across z-stack':            
-            self.img1.setEnableAutoLevels(False)
+            imageItem.setEnableAutoLevels(False)
             levels_key = (how, posData.frame_i)
             levels = posData.lutLevels.get(levels_key)
             if levels is None:
                 image_data = posData.img_data[posData.frame_i]
                 levels = (image_data.min(), image_data.max())
             posData.lutLevels[levels_key] = levels
-            self.img1.setLevels(levels)
+            imageItem.setLevels(levels)
         elif how == 'Rescale across time frames':            
-            self.img1.setEnableAutoLevels(False)
+            imageItem.setEnableAutoLevels(False)
             
             levels_key = (how, None)
             levels = posData.lutLevels.get(levels_key)
@@ -3395,11 +3399,11 @@ class guiWin(QMainWindow):
                 levels = (image_data.min(), image_data.max())
                 
             posData.lutLevels[levels_key] = levels
-            self.img1.setLevels(levels)
+            imageItem.setLevels(levels)
         elif how == 'Choose custom levels...':
             if triggeredByUser:
                 image_data = posData.img_data
-                current_min, current_max = self.img1.getLevels() 
+                current_min, current_max = imageItem.getLevels() 
                 dtype_max = np.iinfo(image_data.dtype).max
                 win = apps.SetCustomLevelsLut(
                     init_min_value=current_min,
@@ -3407,6 +3411,7 @@ class guiWin(QMainWindow):
                     maximum_max_value=dtype_max,
                     parent=self
                 )
+                self.customLevelsImageItem = imageItem
                 win.sigLevelsChanged.connect(self.customLevelsLutChanged)
                 win.exec_()
                 if win.cancel:
@@ -3416,10 +3421,10 @@ class guiWin(QMainWindow):
                     )
                     return
                 self.customLevelsLut = win.selectedLevels
-            self.img1.setEnableAutoLevels(False)
-            self.img1.setLevels(self.customLevelsLut)
+            imageItem.setEnableAutoLevels(False)
+            imageItem.setLevels(self.customLevelsLut)
         elif how == 'Do no rescale, display raw image':            
-            self.img1.setEnableAutoLevels(False)
+            imageItem.setEnableAutoLevels(False)
             levels_key = (how, None)
             levels = posData.lutLevels.get(levels_key)
             if levels is None:
@@ -3427,12 +3432,12 @@ class guiWin(QMainWindow):
                 dtype_max = np.iinfo(image_data.dtype).max
                 levels = (0, dtype_max)
             posData.lutLevels[levels_key] = levels
-            self.img1.setLevels(levels)
+            imageItem.setLevels(levels)
         
         self.currentRescaleIntensHow = how
         
         if setImage:
-            self.img1.setImage(self.img1.image)
+            imageItem.setImage(imageItem.image)
     
     def onToggleColorScheme(self):
         if self.toggleColorSchemeAction.text().find('light') != -1:
@@ -21947,6 +21952,7 @@ class guiWin(QMainWindow):
             else:
                 ol_img = self.applyFilter(chName, setImg=False)
 
+            self.rescaleIntensitiesLut(setImage=False, imageItem=imageItem)
             imageItem.setImage(ol_img)
         
     def initShortcuts(self):
@@ -26151,11 +26157,21 @@ class guiWin(QMainWindow):
         self.annotateRightHowCombobox.setCurrentText(t)
         
     def getOverlayItems(self, channelName):
-        imageItem = pg.ImageItem()
+        imageItem = widgets.OverlayImageItem()
         imageItem.setOpacity(0.5)
 
         lutItem = widgets.myHistogramLUTitem(
             parent=self, name='image', axisLabel=channelName
+        )
+        if self.isSnapshot:
+            lutItem.rescaleAcrossTimeAction.setDisabled(True)
+        
+        posData = self.data[self.pos_i]
+        if posData.SizeZ == 1:
+            lutItem.rescaleAcrossZstackAction.setDisabled(True)
+        
+        lutItem.sigRescaleIntes.connect(
+            partial(self.rescaleIntensitiesLut, imageItem=imageItem)
         )
         
         lutItem.removeAddScaleBarAction()
