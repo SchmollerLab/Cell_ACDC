@@ -75,8 +75,8 @@ class workerLogger:
     def __init__(self, sigProcess):
         self.sigProcess = sigProcess
 
-    def log(self, message):
-        self.sigProcess.emit(str(message), 'INFO')
+    def log(self, message, level='INFO'):
+        self.sigProcess.emit(str(message), level)
 
 class signals(QObject):
     progress = Signal(str, object)
@@ -4241,11 +4241,12 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                             )
                             dfs_spots[key].append(df_spots)
                         except Exception as err:
-                            self.logger.log(str(err))
+                            self.logger.log(str(err), level='ERROR')
                             self.logger.log(
                                 'WARNING: Error when reading single-spots '
                                 'tables (possibly because there are no spots). '
-                                'Skipping this Position.'
+                                'Skipping this Position.', 
+                                level='WARNING'
                             )
                             pass
                         
