@@ -93,6 +93,7 @@ from .myutils import exec_time, setupLogger
 from .help import welcome, about
 from .trackers.CellACDC_normal_division.CellACDC_normal_division_tracker import normal_division_lineage_tree, reorg_sister_cells_for_export
 from .plot import imshow
+from .localCellTracking import single_cell_seg
 
 np.seterr(invalid='ignore')
 
@@ -1796,6 +1797,14 @@ class guiWin(QMainWindow):
         self.segmentToolAction.setShortcut('R')
         self.widgetsWithShortcut['Repeat segmentation'] = self.segmentToolAction
         editToolBar.addAction(self.segmentToolAction)
+
+        self.SegForLostIDsButton = QToolButton(self)
+        self.SegForLostIDsButton.setIcon(QIcon(":addDelPolyLineRoi_cursor.svg"))
+        editToolBar.addWidget(self.SegForLostIDsButton)
+        self.SegForLostIDsButton.clicked.connect(self.SegForLostIDsAction)
+
+        # self.SegForLostIDsButton.setShortcut('U')
+        # self.widgetsWithShortcut['Unknown lineage (lineage tree)'] = self.SegForLostIDsButton
         
         self.manualBackgroundButton = QToolButton(self)
         self.manualBackgroundButton.setIcon(QIcon(":manual_background.svg"))
@@ -2075,8 +2084,6 @@ class guiWin(QMainWindow):
         self.nextAction.setDisabled(False)
         self.prevAction.setDisabled(False)
         self.navigateScrollBar.setDisabled(False)
-
-
 
     def gui_createAnnotateToolbar(self):
         # Edit toolbar
@@ -8217,6 +8224,31 @@ class guiWin(QMainWindow):
 
         self.textAnnot[0].addToPlotItem(self.ax1)
         self.textAnnot[1].addToPlotItem(self.ax2)
+    
+    def SegForLostIDsAction(self):
+        from models.cellpose_v3 import acdcSegment as acdc_cp3
+        model = acdc_cp3.Model()
+
+        posData = self.data[self.pos_i]
+        frame_i = posData.frame_i
+
+        curr_lab = self.get_2Dlab(posData.lab)
+        prev_lab = self.get_2Dlab(posData.allData_li[frame_i-1]['labels'])
+
+        prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
+        prev_IDs = {rp.label for rp in prev_rp}
+        missing_IDs = prev_IDs - set(posData.IDs)
+
+        img = self.getDisplayedImg1()
+
+        new_lab = single_cell_seg(model, prev_lab, curr_lab, img, missing_IDs)
+
+        posData.lab = new_lab
+        self.update_rp()
+        self.updateAllImages()
+        self.store_data()
+
+        printl('Segmentation for lost IDs done.')
     
     def gui_raiseBottomLayoutContextMenu(self, event):
         try:
