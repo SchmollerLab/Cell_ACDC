@@ -13602,7 +13602,7 @@ class ExportToVideoParametersDialog(QBaseDialog):
             if rescaleIntensHow is not None:
                 rescaleIntensCombobox.setCurrentText(rescaleIntensHow)
             gridLayout.addWidget(rescaleIntensCombobox, row, 1)
-            rescaleIntensCombobox.currentTextChanged.connect(
+            rescaleIntensCombobox.textActivated.connect(
                 partial(self.emitRescaleIntens, channel=channel)
             )
         

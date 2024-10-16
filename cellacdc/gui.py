@@ -3373,7 +3373,7 @@ class guiWin(QMainWindow):
         triggeredByUser = True
         if action is None:
             triggeredByUser = False
-            action = self.imgGrad.rescaleActionGroup.checkedAction()
+            action = imageItem.lutItem.rescaleActionGroup.checkedAction()
         
         posData = self.data[self.pos_i]
         how = action.text()
@@ -3421,7 +3421,6 @@ class guiWin(QMainWindow):
                     maximum_max_value=dtype_max,
                     parent=self
                 )
-                self.customLevelsImageItem = imageItem
                 win.sigLevelsChanged.connect(
                     partial(self.customLevelsLutChanged, imageItem=imageItem)
                 )
@@ -4379,6 +4378,7 @@ class guiWin(QMainWindow):
             )
         )
         self.imgGrad.setImageItem(self.img1)
+        self.img1.lutItem = self.imgGrad
         self.imgGrad.sigRescaleIntes.connect(self.rescaleIntensitiesLut)
         self.ax1.addItem(self.img1)
 
@@ -13282,10 +13282,7 @@ class guiWin(QMainWindow):
             return
        
         if ev.key() == Qt.Key_Q and self.debug:
-            # from . import _debug
-            # _debug._debug_lineage_tree(self)
-            
-            self.rescaleIntensExportToVideoDialog('Choose custom levels...')
+            ...
         
         if not self.isDataLoaded:
             self.logger.info(
@@ -26185,6 +26182,7 @@ class guiWin(QMainWindow):
         lutItem = widgets.myHistogramLUTitem(
             parent=self, name='image', axisLabel=channelName
         )
+        imageItem.lutItem = lutItem
         
         lutItem.removeAddScaleBarAction()
         lutItem.removeAddTimestampAction()
