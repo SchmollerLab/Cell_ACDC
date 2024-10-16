@@ -11671,6 +11671,9 @@ class guiWin(QMainWindow):
             self.switchPlaneCombobox.setDisabled(True)
         
         self.imgGrad.rescaleAcrossZstackAction.setDisabled(not enabled)
+        for ch, overlayItems in self.overlayLayersItems.items():
+            imageItem, lutItem, alphaScrollBar = overlayItems
+            lutItem.rescaleAcrossZstackAction.setDisabled(not enabled)
 
     def reInitCca(self):
         if not self.isSnapshot:
@@ -17138,7 +17141,11 @@ class guiWin(QMainWindow):
             self.showTreeInfoCheckbox.show()
             self.manualBackgroundAction.setVisible(False)
             self.manualBackgroundAction.setDisabled(True)
-            self.labelsGrad.showNextFrameAction.setDisabled(False)        
+            self.labelsGrad.showNextFrameAction.setDisabled(False)  
+        
+        for ch, overlayItems in self.overlayLayersItems.items():
+            imageItem, lutItem, alphaScrollBar = overlayItems
+            lutItem.rescaleAcrossTimeAction.setDisabled(self.isSnapshot)      
 
     def checkIfAutoSegm(self):
         """
@@ -26163,12 +26170,6 @@ class guiWin(QMainWindow):
         lutItem = widgets.myHistogramLUTitem(
             parent=self, name='image', axisLabel=channelName
         )
-        if self.isSnapshot:
-            lutItem.rescaleAcrossTimeAction.setDisabled(True)
-        
-        posData = self.data[self.pos_i]
-        if posData.SizeZ == 1:
-            lutItem.rescaleAcrossZstackAction.setDisabled(True)
         
         lutItem.sigRescaleIntes.connect(
             partial(self.rescaleIntensitiesLut, imageItem=imageItem)
