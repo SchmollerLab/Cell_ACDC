@@ -13497,15 +13497,18 @@ class ExportToVideoParametersDialog(QBaseDialog):
     sigOk = Signal(dict)
     sigAddScaleBar = Signal(bool)
     sigAddTimestamp = Signal(bool)
-    sigRescaleIntensLut = Signal(str)
+    sigRescaleIntensLut = Signal(str, str)
     
     def __init__(
-            self, parent=None, startFolderpath='', startFilename='', 
+            self, channels, parent=None, startFolderpath='', startFilename='', 
             startFrameNum=1, SizeT=1, SizeZ=1, isTimelapseVideo=True, 
             isScaleBarPresent=False, isTimestampPresent=False, 
-            currentRescaleIntensHow=''
+            rescaleIntensChannelHowMapper=None
         ):
         self.cancel = True
+        
+        if rescaleIntensChannelHowMapper is None:
+            rescaleIntensChannelHowMapper = {}
         
         super().__init__(parent=parent)
         
@@ -13582,20 +13585,26 @@ class ExportToVideoParametersDialog(QBaseDialog):
             )
             self.addTimestampToggle.setChecked(isTimestampPresent)
         
-        row += 1
-        gridLayout.addWidget(QLabel('Rescale intensities (LUT):'), row, 0)
-        rescaleItems = ['Rescale each 2D image']
-        if SizeZ > 1:
-            rescaleItems.append('Rescale across z-stack')
-        if isTimelapseVideo:
-            rescaleItems.append('Rescale across time frames')
-        rescaleItems.append('Choose custom levels...')
-        rescaleItems.append('Do no rescale, display raw image')
-        self.rescaleIntensCombobox = QComboBox()
-        self.rescaleIntensCombobox.addItems(rescaleItems)
-        if currentRescaleIntensHow:
-            self.rescaleIntensCombobox.setCurrentText(currentRescaleIntensHow)
-        gridLayout.addWidget(self.rescaleIntensCombobox, row, 1)
+        for channel in channels:
+            row += 1
+            labelText = f'Rescale intensities (LUT) <i>{channel}</i>:'
+            gridLayout.addWidget(QLabel(labelText), row, 0)
+            rescaleItems = ['Rescale each 2D image']
+            if SizeZ > 1:
+                rescaleItems.append('Rescale across z-stack')
+            if isTimelapseVideo:
+                rescaleItems.append('Rescale across time frames')
+            rescaleItems.append('Choose custom levels...')
+            rescaleItems.append('Do no rescale, display raw image')
+            rescaleIntensCombobox = QComboBox()
+            rescaleIntensCombobox.addItems(rescaleItems)
+            rescaleIntensHow = rescaleIntensChannelHowMapper.get(channel)
+            if rescaleIntensHow is not None:
+                rescaleIntensCombobox.setCurrentText(rescaleIntensHow)
+            gridLayout.addWidget(rescaleIntensCombobox, row, 1)
+            rescaleIntensCombobox.currentTextChanged.connect(
+                partial(self.emitRescaleIntens, channel=channel)
+            )
         
         row += 1
         gridLayout.addWidget(QLabel('Save a PNG for each frame:'), row, 0)
@@ -13616,10 +13625,6 @@ class ExportToVideoParametersDialog(QBaseDialog):
         if isTimelapseVideo:
             self.addTimestampToggle.toggled.connect(self.addTimestampToggled)
         
-        self.rescaleIntensCombobox.currentTextChanged.connect(
-            self.emitRescaleIntens
-        )
-        
         buttonsLayout = widgets.CancelOkButtonsLayout()
         buttonsLayout.okButton.setText('Export')
         
@@ -13632,8 +13637,8 @@ class ExportToVideoParametersDialog(QBaseDialog):
         
         self.setLayout(mainLayout)
     
-    def emitRescaleIntens(self, how):
-        self.sigRescaleIntensLut.emit(how)
+    def emitRescaleIntens(self, how, channel=''):
+        self.sigRescaleIntensLut.emit(how, channel)
     
     def addScaleBarToggled(self, checked):
         self.sigAddScaleBar.emit(checked)

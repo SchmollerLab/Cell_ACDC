@@ -3336,15 +3336,20 @@ class guiWin(QMainWindow):
         self.addCustomModelFrameAction.callback = self.segmFrameCallback
         self.addCustomModelVideoAction.callback = self.segmVideoCallback
     
-    def rescaleIntensExportToVideoDialog(self, how, setImage=True):
-        for action in self.imgGrad.rescaleActionGroup.actions():
+    def rescaleIntensExportToVideoDialog(self, how, channel, setImage=True):
+        if channel == self.user_ch_name:
+            lutItem = self.imgGrad
+        else:
+            _, lutItem, _ = self.overlayLayersItems[channel]
+            
+        for action in lutItem.rescaleActionGroup.actions():
             if action.text() == how:
                 action.trigger()
                 # self.rescaleIntensitiesLut(setImage=setImage)
                 break
     
-    def customLevelsLutChanged(self, levels):
-        self.customLevelsImageItem.setLevels(levels)
+    def customLevelsLutChanged(self, levels, imageItem=None):
+        imageItem.setLevels(levels)
     
     def rescaleIntensitiesLut(
             self, 
@@ -3361,6 +3366,9 @@ class guiWin(QMainWindow):
 
         if imageItem is None:
             imageItem = self.img1
+            channel = self.user_ch_name
+        else:
+            channel = imageItem.channelName
         
         triggeredByUser = True
         if action is None:
@@ -3371,7 +3379,7 @@ class guiWin(QMainWindow):
         how = action.text()
         
         if how == 'Rescale each 2D image':
-            if how == self.currentRescaleIntensHow:
+            if how == self.rescaleIntensChannelHowMapper[channel]:
                 # No need to update since we have autoscale
                 return       
             
@@ -3380,25 +3388,27 @@ class guiWin(QMainWindow):
                 imageItem.setImage(imageItem.image)
             return
         
+        lutLevelsCh = posData.lutLevels[channel]
+        
         if how == 'Rescale across z-stack':            
             imageItem.setEnableAutoLevels(False)
             levels_key = (how, posData.frame_i)
-            levels = posData.lutLevels.get(levels_key)
+            levels = lutLevelsCh.get(levels_key)
             if levels is None:
                 image_data = posData.img_data[posData.frame_i]
                 levels = (image_data.min(), image_data.max())
-            posData.lutLevels[levels_key] = levels
+            lutLevelsCh[levels_key] = levels
             imageItem.setLevels(levels)
         elif how == 'Rescale across time frames':            
             imageItem.setEnableAutoLevels(False)
             
             levels_key = (how, None)
-            levels = posData.lutLevels.get(levels_key)
+            levels = lutLevelsCh.get(levels_key)
             if levels is None:
                 image_data = posData.img_data
                 levels = (image_data.min(), image_data.max())
                 
-            posData.lutLevels[levels_key] = levels
+            lutLevelsCh[levels_key] = levels
             imageItem.setLevels(levels)
         elif how == 'Choose custom levels...':
             if triggeredByUser:
@@ -3412,29 +3422,31 @@ class guiWin(QMainWindow):
                     parent=self
                 )
                 self.customLevelsImageItem = imageItem
-                win.sigLevelsChanged.connect(self.customLevelsLutChanged)
+                win.sigLevelsChanged.connect(
+                    partial(self.customLevelsLutChanged, imageItem=imageItem)
+                )
                 win.exec_()
                 if win.cancel:
                     self.logger.info('Custom LUT levels setting cancelled.')
-                    self.rescaleIntensExportToVideoDialog(
-                        self.currentRescaleIntensHow
-                    )
+                    self.updateAllImages()
                     return
-                self.customLevelsLut = win.selectedLevels
+                selectedLevels = win.selectedLevels
+            else:
+                selectedLevels = imageItem.getLevels()
             imageItem.setEnableAutoLevels(False)
-            imageItem.setLevels(self.customLevelsLut)
+            imageItem.setLevels(selectedLevels)
         elif how == 'Do no rescale, display raw image':            
             imageItem.setEnableAutoLevels(False)
             levels_key = (how, None)
-            levels = posData.lutLevels.get(levels_key)
+            levels = lutLevelsCh.get(levels_key)
             if levels is None:
                 image_data = posData.img_data
                 dtype_max = np.iinfo(image_data.dtype).max
                 levels = (0, dtype_max)
-            posData.lutLevels[levels_key] = levels
+            lutLevelsCh[levels_key] = levels
             imageItem.setLevels(levels)
         
-        self.currentRescaleIntensHow = how
+        self.rescaleIntensChannelHowMapper[channel] = how
         
         if setImage:
             imageItem.setImage(imageItem.image)
@@ -17739,7 +17751,9 @@ class guiWin(QMainWindow):
         self.lastHoverID = -1
         self.annotOptionsToRestore = None
         self.annotOptionsToRestoreRight = None
-        self.currentRescaleIntensHow = 'Rescale each 2D image'
+        self.rescaleIntensChannelHowMapper = {
+            self.user_ch_name: 'Rescale each 2D image'
+        }
 
         # Second channel used by cellpose
         self.secondChannelName = None
@@ -17956,7 +17970,7 @@ class guiWin(QMainWindow):
                 self.getEmptyStoredDataDict() for i in range(posData.SizeT)
             ]
             
-            posData.lutLevels = {}
+            posData.lutLevels = {channel: {} for channel in self.ch_names}
 
             posData.ccaStatus_whenEmerged = {}
 
@@ -23205,7 +23219,7 @@ class guiWin(QMainWindow):
         self.labelsGrad.restoreState(df, loadCmap=False)
 
         self.df_settings.to_csv(self.settings_csv_path)
-        self.upateAllImages()
+        self.updateAllImages()
 
     def updateLabelsAlpha(self, value):
         self.df_settings.at['overlaySegmMasksAlpha', 'value'] = value
@@ -26166,13 +26180,10 @@ class guiWin(QMainWindow):
     def getOverlayItems(self, channelName):
         imageItem = widgets.OverlayImageItem()
         imageItem.setOpacity(0.5)
+        imageItem.channelName = channelName
 
         lutItem = widgets.myHistogramLUTitem(
             parent=self, name='image', axisLabel=channelName
-        )
-        
-        lutItem.sigRescaleIntes.connect(
-            partial(self.rescaleIntensitiesLut, imageItem=imageItem)
         )
         
         lutItem.removeAddScaleBarAction()
@@ -26219,6 +26230,13 @@ class guiWin(QMainWindow):
         )
         lutItem.labelsAlphaSlider.valueChanged.connect(
             self.setValueLabelsAlphaSlider
+        )
+        lutItem.sigRescaleIntes.connect(
+            partial(self.rescaleIntensitiesLut, imageItem=imageItem)
+        )
+        
+        self.rescaleIntensChannelHowMapper[channelName] = (
+            'Rescale each 2D image'
         )
 
         self.addActionsLutItemContextMenu(lutItem)
@@ -27031,17 +27049,19 @@ class guiWin(QMainWindow):
             self.logger.info('Export to video process cancelled')
             return
         
+        channels = [self.user_ch_name, *self.checkedOverlayChannels]
         mode = 'timelapse' if doTimelapseVideo else 'z_slices'
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = f'{timestamp}_acdc_exported_{mode}_video'
         win = apps.ExportToVideoParametersDialog(
+            channels,
             parent=self, startFolderpath=posData.pos_path, 
             startFilename=filename, startFrameNum=posData.frame_i+1, 
             SizeT=posData.SizeT, SizeZ=posData.SizeZ,
             isTimelapseVideo=doTimelapseVideo,
             isScaleBarPresent=self.addScaleBarAction.isChecked(), 
             isTimestampPresent=self.addTimestampAction.isChecked(),
-            currentRescaleIntensHow=self.currentRescaleIntensHow
+            rescaleIntensChannelHowMapper=self.rescaleIntensChannelHowMapper
         )
         win.sigAddScaleBar.connect(self.exportAddScaleBar)
         win.sigAddTimestamp.connect(self.exportToVideoAddTimestamp)
