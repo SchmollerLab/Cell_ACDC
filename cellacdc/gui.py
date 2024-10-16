@@ -2904,6 +2904,7 @@ class guiWin(QMainWindow):
 
         # Edit actions
         models = myutils.get_list_of_models()
+        models = models + ['cellpose_v3_local_seg'] # Add cellpose_v3_local_seg for SegForLostIDsAction
         self.segmActions = []
         self.modelNames = []
         self.acdcSegment_li = []
@@ -8226,11 +8227,71 @@ class guiWin(QMainWindow):
         self.textAnnot[1].addToPlotItem(self.ax2)
     
     def SegForLostIDsAction(self):
-        from .models.cellpose_v3 import acdcSegment as acdc_cp3
-        model = acdc_cp3.Model()
-
         posData = self.data[self.pos_i]
         frame_i = posData.frame_i
+
+        model_name = 'cellpose_v3_local_seg'
+        base_model_name = 'cellpose_v3'
+        idx = self.modelNames.index(model_name)
+        acdcSegment = self.acdcSegment_li[idx]
+
+        if acdcSegment is None:
+            self.logger.info(f'Importing {base_model_name}...')
+            acdcSegment = myutils.import_segment_module(base_model_name)
+            self.acdcSegment_li[idx] = acdcSegment
+
+        extra_params = ['budding', 'max_daughters', 'min_daughters', 'overlap_threshold', 'padding', 'size_perc_threshold']
+
+        extra_types = [bool, int, int, float, float, float]
+
+        extra_defaults = [False, 2, 2, 0.5, 0.4, 0.5]
+
+        extra_desc = ['If the cells are budding or not', 
+                      'Max daughters to consider', 
+                      'Min daughters to consider', 
+                      'Overlap threshold with other already segemented cells over which newly segmented cells are discarded', 
+                      'Padding of the box used for new segmentation around the segmentation from the previous frame', 
+                      'Relative size threshold of the new segmentation compared to the segmentation from the previous frame']
+
+        from collections import namedtuple
+        ArgSpec = namedtuple('ArgSpec', ['name', 'default', 'type', 'desc', 'docstring'])
+
+        extra_ArgSpec = []
+        for i, param in enumerate(extra_params):
+            param = ArgSpec(name=param, 
+                            default=extra_defaults[i],
+                            type=extra_types[i],
+                            desc=extra_desc[i],
+                            docstring='')
+
+            extra_ArgSpec.append(param)
+
+        init_params, segment_params = myutils.getModelArgSpec(acdcSegment)
+        segment_params = [arg for arg in segment_params if arg[0] != 'diameter']
+        
+        init_params += extra_ArgSpec
+
+        win = self.initSegmModelParams(
+            model_name, acdcSegment, init_params, segment_params
+        )
+
+        if win is None:
+            self.logger.info('Segmentation for lost IDs cancelled.')
+            return
+
+        init_kwargs_new = {}
+        args_new = {}
+        for key, val in win.init_kwargs.items():
+            if key in extra_params:
+                args_new[key] = val
+            else:
+                init_kwargs_new[key] = val
+
+        model = myutils.init_segm_model(acdcSegment, posData, init_kwargs_new) 
+        try:
+            model.setupLogger(self.logger)
+        except Exception as e:
+            pass
 
         curr_lab = self.get_2Dlab(posData.lab)
         prev_lab = self.get_2Dlab(posData.allData_li[frame_i-1]['labels'])
@@ -8243,9 +8304,7 @@ class guiWin(QMainWindow):
 
         new_unique_ID = self.setBrushID(useCurrentLab=True, return_val=True)
 
-        # (model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID, budding, max_daughters, min_daughters, overlap_threshold=0.5, padding=0.4, size_perc_threshold=0.5,*model_args, **model_kwargs)
-
-        new_lab = single_cell_seg(model, prev_lab, curr_lab, curr_img, missing_IDs, new_unique_ID, budding=False, max_daughters=2, min_daughters=2, overlap_threshold=0.5, padding=0.4, size_perc_threshold=0.5)
+        new_lab = single_cell_seg(model, prev_lab, curr_lab, curr_img, missing_IDs, new_unique_ID, budding=args_new['budding'], max_daughters=args_new['max_daughters'], min_daughters=args_new['min_daughters'], overlap_threshold=args_new['overlap_threshold'], padding=args_new['padding'], size_perc_threshold=args_new['size_perc_threshold'], **win.model_kwargs)
 
         posData.lab = new_lab
         self.update_rp()

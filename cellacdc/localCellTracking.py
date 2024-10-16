@@ -67,7 +67,7 @@ def get_box_coords(rps, prev_lab_shape, ID, padding):
 def single_cell_seg(model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID, budding, max_daughters, min_daughters, overlap_threshold=0.5, padding=0.4, size_perc_threshold=0.5,*model_args, **model_kwargs):
     """
     Function to segment single cells in the current frame using the previous frame segmentation as a reference. 
-    IDs is from the previous frame segmentation, and the current frame should have alredy been tracked so the IDs match! After this, run tracking agian!!!
+    IDs is from the previous frame segmentation, and the current frame should have alredy been tracked so the IDs match!
     Args:
         model: eval funciton used to segment the cells
         prev_lab: previous frame segmentation
