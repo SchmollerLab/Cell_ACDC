@@ -305,6 +305,11 @@ class PushButton(QPushButton):
         else:
             super().setText(self._text)
 
+class LoadPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setIcon(QIcon(':fork_lift.svg'))
+
 class mergePushButton(PushButton):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -1236,6 +1241,8 @@ class QDialogListbox(QDialog):
             allowEmptySelection=True
         ):
         self.cancel = True
+        items = list(items)
+        
         super().__init__(parent)
         self.setWindowTitle(title)
         
@@ -3330,10 +3337,37 @@ class Toggle(QCheckBox):
 
         p.end()
 
+def QKeyEventToString(event: QKeyEvent, notAllowedModifier=None):
+    isAltKey = event.key()==Qt.Key_Alt
+    isCtrlKey = event.key()==Qt.Key_Control
+    isShiftKey = event.key()==Qt.Key_Shift
+    isModifierKey = isAltKey or isCtrlKey or isShiftKey
+    
+    modifiers = event.modifiers()
+    isNotAllowedMod = (
+        notAllowedModifier is not None and modifiers == notAllowedModifier
+    )
+    if isNotAllowedMod:
+        return 
+    
+    modifers_value = modifiers.value if PYQT6 else modifiers
+    if isModifierKey:
+        keySequenceText = QKeySequence(modifers_value).toString()
+    else:
+        keySequenceText = QKeySequence(modifers_value | event.key()).toString()
+    
+    keySequenceText = keySequenceText.encode('ascii', 'ignore').decode('utf-8')
+    
+    return keySequenceText
+
 class ShortcutLineEdit(QLineEdit):
-    def __init__(self, parent=None):
+    def __init__(
+            self, parent=None, allowModifiers=False, notAllowedModifier=None
+        ):
         self.keySequence = None
         super().__init__(parent)
+        self._allowModifiers = allowModifiers
+        self._notAllowedModifier = notAllowedModifier
         self.setAlignment(Qt.AlignCenter)
     
     def setText(self, text):
@@ -3350,19 +3384,19 @@ class ShortcutLineEdit(QLineEdit):
         if event.key() == Qt.Key_Backspace or event.key() == Qt.Key_Delete:
             self.setText('')
             return
-        
-        modifers_value = event.modifiers().value if PYQT6 else event.modifiers()
-        keySequence = QKeySequence(modifers_value | event.key()).toString()
 
-        modifers_value = event.modifiers().value if PYQT6 else event.modifiers()
-        keySequence = QKeySequence(modifers_value | event.key()).toString()
-        keySequence = keySequence.encode('ascii', 'ignore').decode('utf-8')
-        self.setText(keySequence)
+        keySequenceText = QKeyEventToString(
+            event, notAllowedModifier=self._notAllowedModifier
+        )
+        self.setText(keySequenceText)
         self.key = event.key()
     
     def keyReleaseEvent(self, event: QKeyEvent) -> None:
         if self.text().endswith('+'):
-            self.setText('')
+            if not self._allowModifiers:
+                self.setText('')
+            else:
+                self.setText(self.text().rstrip('+').strip())
             
 
 class selectStartStopFrames(QGroupBox):
@@ -6292,6 +6326,24 @@ class BaseLabelsImageItem(pg.ImageItem):
         if autoLevels is None:
             kwargs['autoLevels'] = False
         super().setImage(image, **kwargs)
+
+class OverlayImageItem(pg.ImageItem):
+    def __init__(
+            self, image=None, **kargs
+        ):
+        super().__init__(image, **kargs)
+        self.autoLevelsEnabled = None
+    
+    def setEnableAutoLevels(self, enabled: bool):
+        self.autoLevelsEnabled = enabled
+    
+    def setImage(
+            self, image=None, autoLevels=None, **kargs
+        ):
+        if autoLevels is None:
+            autoLevels = self.autoLevelsEnabled
+        
+        super().setImage(image, autoLevels=autoLevels, **kargs)
 
 class ParentImageItem(BaseImageItem):
     def __init__(

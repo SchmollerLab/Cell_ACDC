@@ -29,6 +29,7 @@
     <file alias="file-new.svg">resources/icons/file-new.svg</file>
     <file alias="file-open.svg">resources/icons/file-open.svg</file>
     <file alias="file-save.svg">resources/icons/file-save.svg</file>
+    <file alias="fork_lift.svg">resources/icons/fork_lift_dark.svg</file>
     <file alias="file-exit.svg">resources/icons/file-exit.svg</file>
     <file alias="edit-copy.svg">resources/icons/edit-copy.svg</file>
     <file alias="load_annotation.svg">resources/icons/load_annotation.svg</file>

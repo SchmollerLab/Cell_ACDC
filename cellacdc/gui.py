@@ -44,7 +44,7 @@ from skimage.color import gray2rgb, gray2rgba, label2rgb
 from qtpy.QtCore import (
     Qt, QPoint, QTextStream, QSize, QRect, QRectF,
     QEventLoop, QTimer, QEvent, QObject, Signal,
-    QThread, QMutex, QWaitCondition, QSettings
+    QThread, QMutex, QWaitCondition, QSettings, PYQT6
 )
 from qtpy.QtGui import (
     QIcon, QKeySequence, QCursor, QGuiApplication, QPixmap, QColor,
@@ -1341,6 +1341,12 @@ class guiWin(QMainWindow):
         else:
             self.openFile(file_path=file_path)
 
+    def changeEvent(self, event):
+        try:
+            self.delObjToolAction.setChecked(False)
+        except Exception as err:
+            return
+    
     def leaveEvent(self, event):
         if self.slideshowWin is not None:
             posData = self.data[self.pos_i]
@@ -1412,7 +1418,7 @@ class guiWin(QMainWindow):
         left_click = mouseEvent.button() == Qt.MouseButton.LeftButton
         return modifiers == Qt.AltModifier and left_click
 
-    def isMiddleClick(self, mouseEvent, modifiers):
+    def isDefaultMiddleClick(self, mouseEvent, modifiers):
         if sys.platform == 'darwin':
             middle_click = (
                 mouseEvent.button() == Qt.MouseButton.LeftButton
@@ -1421,6 +1427,18 @@ class guiWin(QMainWindow):
             )
         else:
             middle_click = mouseEvent.button() == Qt.MouseButton.MiddleButton
+        return middle_click
+        
+    def isMiddleClick(self, mouseEvent, modifiers):
+        if self.delObjAction is None:
+            return self.isDefaultMiddleClick(mouseEvent, modifiers)
+               
+        delObjKeySequence, delObjQtButton = self.delObjAction
+        middle_click = (
+            mouseEvent.button() == delObjQtButton 
+            and self.delObjToolAction.isChecked()
+        )
+        
         return middle_click
 
     def gui_createCursors(self):
@@ -2690,7 +2708,16 @@ class guiWin(QMainWindow):
         # other toolbars --> placeholder
         placeHolderToolbar = widgets.ToolBar("Place holder", self)
         self.addToolBar(Qt.TopToolBarArea, placeHolderToolbar)
-        placeHolderToolbar.addWidget(QToolButton(self))
+        self.delObjToolAction = QAction(self)
+        self.delObjToolAction.setCheckable(True)
+        self.delObjToolAction.setToolTip(
+            'Customisable delete object action\n\n'
+            'Go to the `Settings --> Customise keyboard shortcuts...` menu '
+            'on the top menubar\n'
+            'to customise the action required to delete '
+            'an object with a click.'
+        )
+        placeHolderToolbar.addAction(self.delObjToolAction)
         placeHolderToolbar.setMovable(False)
         self.placeHolderToolbar = placeHolderToolbar
         self.placeHolderToolbar.setVisible(False)
@@ -3317,20 +3344,26 @@ class guiWin(QMainWindow):
         self.addCustomModelFrameAction.callback = self.segmFrameCallback
         self.addCustomModelVideoAction.callback = self.segmVideoCallback
     
-    def rescaleIntensExportToVideoDialog(self, how, setImage=True):
-        for action in self.imgGrad.rescaleActionGroup.actions():
+    def rescaleIntensExportToVideoDialog(self, how, channel, setImage=True):
+        if channel == self.user_ch_name:
+            lutItem = self.imgGrad
+        else:
+            _, lutItem, _ = self.overlayLayersItems[channel]
+            
+        for action in lutItem.rescaleActionGroup.actions():
             if action.text() == how:
                 action.trigger()
                 # self.rescaleIntensitiesLut(setImage=setImage)
                 break
     
-    def customLevelsLutChanged(self, levels):
-        self.img1.setLevels(levels)
+    def customLevelsLutChanged(self, levels, imageItem=None):
+        imageItem.setLevels(levels)
     
     def rescaleIntensitiesLut(
             self, 
             action: QAction=None, 
-            setImage: bool=True
+            setImage: bool=True,
+            imageItem=None
         ):
         if not self.isDataLoaded:
             self.logger.info(
@@ -3338,49 +3371,57 @@ class guiWin(QMainWindow):
                 'Intensities will be rescaled later.'
             )
             return 
+
+        if imageItem is None:
+            imageItem = self.img1
+            channel = self.user_ch_name
+        else:
+            channel = imageItem.channelName
         
         triggeredByUser = True
         if action is None:
             triggeredByUser = False
-            action = self.imgGrad.rescaleActionGroup.checkedAction()
+            action = imageItem.lutItem.rescaleActionGroup.checkedAction()
         
         posData = self.data[self.pos_i]
         how = action.text()
         
         if how == 'Rescale each 2D image':
-            if how == self.currentRescaleIntensHow:
+            if how == self.rescaleIntensChannelHowMapper[channel]:
                 # No need to update since we have autoscale
                 return       
             
-            self.img1.setEnableAutoLevels(True)
+            imageItem.setEnableAutoLevels(True)
             if setImage:
-                self.img1.setImage(self.img1.image)
+                imageItem.setImage(imageItem.image)
             return
         
+        lutLevelsCh = posData.lutLevels[channel]
+        
         if how == 'Rescale across z-stack':            
-            self.img1.setEnableAutoLevels(False)
+            imageItem.setEnableAutoLevels(False)
             levels_key = (how, posData.frame_i)
-            levels = posData.lutLevels.get(levels_key)
+            levels = lutLevelsCh.get(levels_key)
             if levels is None:
                 image_data = posData.img_data[posData.frame_i]
                 levels = (image_data.min(), image_data.max())
-            posData.lutLevels[levels_key] = levels
-            self.img1.setLevels(levels)
+            lutLevelsCh[levels_key] = levels
+            imageItem.setLevels(levels)
         elif how == 'Rescale across time frames':            
-            self.img1.setEnableAutoLevels(False)
+            imageItem.setEnableAutoLevels(False)
             
             levels_key = (how, None)
-            levels = posData.lutLevels.get(levels_key)
+            levels = lutLevelsCh.get(levels_key)
             if levels is None:
                 image_data = posData.img_data
                 levels = (image_data.min(), image_data.max())
                 
-            posData.lutLevels[levels_key] = levels
-            self.img1.setLevels(levels)
+            lutLevelsCh[levels_key] = levels
+            imageItem.setLevels(levels)
         elif how == 'Choose custom levels...':
             if triggeredByUser:
                 image_data = posData.img_data
-                current_min, current_max = self.img1.getLevels() 
+                current_min, current_max = imageItem.getLevels() 
                 dtype_max = np.iinfo(image_data.dtype).max
                 win = apps.SetCustomLevelsLut(
                     init_min_value=current_min,
@@ -3388,32 +3429,34 @@ class guiWin(QMainWindow):
                     maximum_max_value=dtype_max,
                     parent=self
                 )
-                win.sigLevelsChanged.connect(self.customLevelsLutChanged)
+                win.sigLevelsChanged.connect(
+                    partial(self.customLevelsLutChanged, imageItem=imageItem)
+                )
                 win.exec_()
                 if win.cancel:
                     self.logger.info('Custom LUT levels setting cancelled.')
-                    self.rescaleIntensExportToVideoDialog(
-                        self.currentRescaleIntensHow
-                    )
+                    self.updateAllImages()
                     return
-                self.customLevelsLut = win.selectedLevels
-            self.img1.setEnableAutoLevels(False)
-            self.img1.setLevels(self.customLevelsLut)
+                selectedLevels = win.selectedLevels
+            else:
+                selectedLevels = imageItem.getLevels()
+            imageItem.setEnableAutoLevels(False)
+            imageItem.setLevels(selectedLevels)
         elif how == 'Do no rescale, display raw image':            
-            self.img1.setEnableAutoLevels(False)
+            imageItem.setEnableAutoLevels(False)
             levels_key = (how, None)
-            levels = posData.lutLevels.get(levels_key)
+            levels = lutLevelsCh.get(levels_key)
             if levels is None:
                 image_data = posData.img_data
                 dtype_max = np.iinfo(image_data.dtype).max
                 levels = (0, dtype_max)
-            posData.lutLevels[levels_key] = levels
-            self.img1.setLevels(levels)
+            lutLevelsCh[levels_key] = levels
+            imageItem.setLevels(levels)
         
-        self.currentRescaleIntensHow = how
+        self.rescaleIntensChannelHowMapper[channel] = how
         
         if setImage:
-            self.img1.setImage(self.img1.image)
+            imageItem.setImage(imageItem.image)
     
     def onToggleColorScheme(self):
         if self.toggleColorSchemeAction.text().find('light') != -1:
@@ -4343,6 +4386,7 @@ class guiWin(QMainWindow):
             )
         )
         self.imgGrad.setImageItem(self.img1)
+        self.img1.lutItem = self.imgGrad
         self.imgGrad.sigRescaleIntes.connect(self.rescaleIntensitiesLut)
         self.ax1.addItem(self.img1)
 
@@ -11734,6 +11778,9 @@ class guiWin(QMainWindow):
             self.switchPlaneCombobox.setDisabled(True)
         
         self.imgGrad.rescaleAcrossZstackAction.setDisabled(not enabled)
+        for ch, overlayItems in self.overlayLayersItems.items():
+            imageItem, lutItem, alphaScrollBar = overlayItems
+            lutItem.rescaleAcrossZstackAction.setDisabled(not enabled)
 
     def reInitCca(self):
         if not self.isSnapshot:
@@ -13282,7 +13329,46 @@ class guiWin(QMainWindow):
         width = geometry.width()
         height = geometry.height()
         self.setGeometry(left, top+10, width, height-200)
+    
+    def checkSetDelObjActionActive(self, event):
+        if self.delObjAction is None:
+            return
         
+        delObjKeySequence, delObjQtButton = self.delObjAction
+        keySequenceText = widgets.QKeyEventToString(event).rstrip('+')
+        
+        if keySequenceText == delObjKeySequence.toString():
+            self.delObjToolAction.setChecked(True)
+        
+        # isAltKey = event.key()==Qt.Key_Alt
+        # isCtrlKey = event.key()==Qt.Key_Control
+        # isShiftKey = event.key()==Qt.Key_Shift
+        # isModifierKey = isAltKey or isCtrlKey or isShiftKey
+        
+        # modifiers = event.modifiers()
+        
+        # modifers_value = modifiers.value if PYQT6 else modifiers
+        # if isModifierKey:
+        #     keySequence = QKeySequence(modifers_value).toString()
+        # else:
+        #     keySequence = QKeySequence(modifers_value | event.key()).toString()
+        
+        # isModifier = isCtrlModifier or isShiftModifier
+        # if not isModifier:
+        #     return
+        
+        # delObjKeySequence, delObjQtButton = self.delObjAction
+
+        # isCtrlKeySequence = delObjKeySequence == QKeySequence(Qt.Key_Control)
+        # if isCtrlKeySequence and isCtrlModifier:
+        #     self.delObjToolAction.setChecked(True)
+        #     return
+        
+        # isShiftKeySequence = delObjKeySequence == QKeySequence(Qt.Key_Shift)
+        # if isShiftKeySequence and isShiftModifier:
+        #     self.delObjToolAction.setChecked(True)
+        #     return
+    
     @exception_handler
     def keyPressEvent(self, ev):        
         ctrl = ev.modifiers() == Qt.ControlModifier
@@ -13291,10 +13377,7 @@ class guiWin(QMainWindow):
             return
        
         if ev.key() == Qt.Key_Q and self.debug:
-            # from . import _debug
-            # _debug._debug_lineage_tree(self)
-            
-            self.rescaleIntensExportToVideoDialog('Choose custom levels...')
+            ...
         
         if not self.isDataLoaded:
             self.logger.info(
@@ -13321,6 +13404,9 @@ class guiWin(QMainWindow):
         isAltModifier = modifiers == Qt.AltModifier
         isCtrlModifier = modifiers == Qt.ControlModifier
         isShiftModifier = modifiers == Qt.ShiftModifier
+        
+        self.checkSetDelObjActionActive(ev)
+        
         self.isZmodifier = (
             ev.key()== Qt.Key_Z and not isAltModifier
             and not isCtrlModifier and not isShiftModifier
@@ -13587,9 +13673,14 @@ class guiWin(QMainWindow):
             or ev.key() == Qt.Key_Down
             or ev.key() == Qt.Key_Control
             or ev.key() == Qt.Key_Backspace
-        )
-        if canRepeat:
+            or self.delObjToolAction.isChecked()
+        )      
+        
+        if canRepeat and ev.isAutoRepeat():
             return
+        
+        self.delObjToolAction.setChecked(False)
+        
         if ev.isAutoRepeat() and not ev.key() == Qt.Key_Z:
             if self.warnKeyPressedMsg is not None:
                 return
@@ -17154,7 +17245,11 @@ class guiWin(QMainWindow):
             self.showTreeInfoCheckbox.show()
             self.manualBackgroundAction.setVisible(False)
             self.manualBackgroundAction.setDisabled(True)
-            self.labelsGrad.showNextFrameAction.setDisabled(False)        
+            self.labelsGrad.showNextFrameAction.setDisabled(False)  
+        
+        for ch, overlayItems in self.overlayLayersItems.items():
+            imageItem, lutItem, alphaScrollBar = overlayItems
+            lutItem.rescaleAcrossTimeAction.setDisabled(self.isSnapshot)      
 
     def checkIfAutoSegm(self):
         """
@@ -17514,7 +17609,7 @@ class guiWin(QMainWindow):
             self.setZprojDisabled(False)
             self.update_z_slice(self.zSliceScrollBar.sliderPosition())
         else:
-            self.setZprojDisabled(True)
+            self.setZprojDisabled(self.isSegm3D)
             self.updateAllImages()
     
     def setZprojDisabled(self, disabled, storePrevState=False):
@@ -17748,7 +17843,9 @@ class guiWin(QMainWindow):
         self.lastHoverID = -1
         self.annotOptionsToRestore = None
         self.annotOptionsToRestoreRight = None
-        self.currentRescaleIntensHow = 'Rescale each 2D image'
+        self.rescaleIntensChannelHowMapper = {
+            self.user_ch_name: 'Rescale each 2D image'
+        }
 
         # Second channel used by cellpose
         self.secondChannelName = None
@@ -17965,7 +18062,7 @@ class guiWin(QMainWindow):
                 self.getEmptyStoredDataDict() for i in range(posData.SizeT)
             ]
             
-            posData.lutLevels = {}
+            posData.lutLevels = {channel: {} for channel in self.ch_names}
 
             posData.ccaStatus_whenEmerged = {}
 
@@ -20732,7 +20829,9 @@ class guiWin(QMainWindow):
         selectOverlayLabels = widgets.QDialogListbox(
             'Select segmentation to overlay',
             'Select segmentation file to overlay:\n',
-            self.existingSegmEndNames, multiSelection=True, parent=self
+            list(self.existingSegmEndNames), 
+            multiSelection=True, 
+            parent=self
         )
         selectOverlayLabels.exec_()
         if selectOverlayLabels.cancel:
@@ -21966,6 +22065,7 @@ class guiWin(QMainWindow):
             else:
                 ol_img = self.applyFilter(chName, setImg=False)
 
+            self.rescaleIntensitiesLut(setImage=False, imageItem=imageItem)
             imageItem.setImage(ol_img)
         
     def initShortcuts(self):
@@ -21977,6 +22077,22 @@ class guiWin(QMainWindow):
         if 'keyboard.shortcuts' not in cp:
             cp['keyboard.shortcuts'] = {}
         
+        if 'delete_object.action' not in cp:
+            self.delObjAction = None
+        else:
+            delObjKeySequenceText = cp['delete_object.action']['Key sequence']
+            delObjButtonText = cp['delete_object.action']['Mouse button']
+            delObjQtButton = (
+                Qt.MouseButton.LeftButton if delObjButtonText == 'Left click'
+                else Qt.MouseButton.MiddleButton
+            )
+            delObjKeySequence = QKeySequence(delObjKeySequenceText)
+            self.delObjAction = (
+                QKeySequence(delObjKeySequenceText), delObjQtButton
+            )
+            # if delObjKeySequenceText:
+            #     self.delObjToolAction.setShortcut(delObjKeySequence)
+                        
         shortcuts = {}
         for name, widget in self.widgetsWithShortcut.items():
             if name not in cp.options('keyboard.shortcuts'):
@@ -22023,14 +22139,55 @@ class guiWin(QMainWindow):
         for name, (text, shortcut) in shortcuts.items():
             cp['keyboard.shortcuts'][name] = text
         
+        if self.delObjAction is not None:
+            delObjKeySequence, delObjQtButton = self.delObjAction
+            delObjKeySequenceText = delObjKeySequence.toString()
+            delObjKeySequenceText = (
+                delObjKeySequenceText.encode('ascii', 'ignore').decode('utf-8')
+            )
+            delObjButtonText = (
+                'Left click' if delObjQtButton == Qt.MouseButton.LeftButton
+                else 'Middle click'
+            )
+            cp['delete_object.action'] = {
+                'Key sequence': delObjKeySequenceText, 
+                'Mouse button': delObjButtonText
+            }
+            # if delObjKeySequenceText:
+            #     self.delObjToolAction.setShortcut(delObjKeySequence)
+            
         with open(shortcut_filepath, 'w') as ini:
             cp.write(ini)
     
     def editShortcuts_cb(self):
-        win = apps.ShortcutEditorDialog(self.widgetsWithShortcut, parent=self)
+        if sys.platform == 'darwin':
+            delObjKeySequenceText = 'Ctrl'
+            delObjButtonText = 'Left click'
+        else:
+            delObjKeySequenceText = ''
+            delObjButtonText = 'Middle click'
+            
+        if self.delObjAction is not None:
+            delObjKeySequence, delObjQtButton = self.delObjAction
+            delObjKeySequenceText = delObjKeySequence.toString()
+            delObjKeySequenceText = (
+                delObjKeySequenceText.encode('ascii', 'ignore').decode('utf-8')
+            )
+            delObjButtonText = (
+                'Left click' if delObjQtButton == Qt.MouseButton.LeftButton
+                else 'Middle click'
+            )
+        win = apps.ShortcutEditorDialog(
+            self.widgetsWithShortcut, 
+            delObjectKey=delObjKeySequenceText,
+            delObjectButton=delObjButtonText,
+            parent=self
+        )
         win.exec_()
         if win.cancel:
             return
+
+        self.delObjAction = win.delObjAction
         self.setShortcuts(win.customShortcuts)
             
     def toggleOverlayColorButton(self, checked=True):
@@ -23154,7 +23311,7 @@ class guiWin(QMainWindow):
         self.labelsGrad.restoreState(df, loadCmap=False)
 
         self.df_settings.to_csv(self.settings_csv_path)
-        self.upateAllImages()
+        self.updateAllImages()
 
     def updateLabelsAlpha(self, value):
         self.df_settings.at['overlaySegmMasksAlpha', 'value'] = value
@@ -24486,7 +24643,7 @@ class guiWin(QMainWindow):
                 return_copy=False
             )
 
-        if IDs_in_frames is not None:
+        if IDs_in_frames is None:
             IDs_in_frames = posData.IDs
 
         try:
@@ -26113,12 +26270,14 @@ class guiWin(QMainWindow):
         self.annotateRightHowCombobox.setCurrentText(t)
         
     def getOverlayItems(self, channelName):
-        imageItem = pg.ImageItem()
+        imageItem = widgets.OverlayImageItem()
         imageItem.setOpacity(0.5)
+        imageItem.channelName = channelName
 
         lutItem = widgets.myHistogramLUTitem(
             parent=self, name='image', axisLabel=channelName
         )
+        imageItem.lutItem = lutItem
         
         lutItem.removeAddScaleBarAction()
         lutItem.removeAddTimestampAction()
@@ -26164,6 +26323,13 @@ class guiWin(QMainWindow):
         )
         lutItem.labelsAlphaSlider.valueChanged.connect(
             self.setValueLabelsAlphaSlider
+        )
+        lutItem.sigRescaleIntes.connect(
+            partial(self.rescaleIntensitiesLut, imageItem=imageItem)
+        )
+        
+        self.rescaleIntensChannelHowMapper[channelName] = (
+            'Rescale each 2D image'
         )
 
         self.addActionsLutItemContextMenu(lutItem)
@@ -26976,17 +27142,19 @@ class guiWin(QMainWindow):
             self.logger.info('Export to video process cancelled')
             return
         
+        channels = [self.user_ch_name, *self.checkedOverlayChannels]
         mode = 'timelapse' if doTimelapseVideo else 'z_slices'
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = f'{timestamp}_acdc_exported_{mode}_video'
         win = apps.ExportToVideoParametersDialog(
+            channels,
             parent=self, startFolderpath=posData.pos_path, 
             startFilename=filename, startFrameNum=posData.frame_i+1, 
             SizeT=posData.SizeT, SizeZ=posData.SizeZ,
             isTimelapseVideo=doTimelapseVideo,
             isScaleBarPresent=self.addScaleBarAction.isChecked(), 
             isTimestampPresent=self.addTimestampAction.isChecked(),
-            currentRescaleIntensHow=self.currentRescaleIntensHow
+            rescaleIntensChannelHowMapper=self.rescaleIntensChannelHowMapper
         )
         win.sigAddScaleBar.connect(self.exportAddScaleBar)
         win.sigAddTimestamp.connect(self.exportToVideoAddTimestamp)

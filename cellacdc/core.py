@@ -2245,7 +2245,7 @@ class SegmKernel(_WorkflowKernel):
                         lab_filtered = features.custom_post_process_segm(
                             posData, self.custom_postproc_grouped_features, 
                             lab_cleaned, postprocess_img, t, posData.filename, 
-                            posData.self.user_ch_name, self.custom_postproc_features
+                            posData.user_ch_name, self.custom_postproc_features
                         )
                         lab_stack[t] = lab_filtered
                     pbar.update()
@@ -2258,7 +2258,7 @@ class SegmKernel(_WorkflowKernel):
                     lab_stack = features.custom_post_process_segm(
                         posData, self.custom_postproc_grouped_features, 
                         lab_stack, postprocess_img, 0, posData.filename, 
-                        posData.self.user_ch_name, self.custom_postproc_features
+                        posData.user_ch_name, self.custom_postproc_features
                     )
 
         if posData.SizeT > 1 and self.do_tracking:     

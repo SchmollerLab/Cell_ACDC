@@ -67,6 +67,7 @@
     <file alias="manage_versions.svg">resources/icons/manage_versions_dark.svg</file>
     <file alias="prep.svg">resources/icons/prep_dark.svg</file>
     <file alias="continue.svg">resources/icons/continue_dark.svg</file>
+    <file alias="fork_lift.svg">resources/icons/fork_lift_dark.svg</file>
     <file alias="eraser.svg">resources/icons/eraser_dark.svg</file>
     <file alias="brush-cursor.png">resources/icons/brush-cursor.png</file>
     <file alias="undo.svg">resources/icons/undo_dark.svg</file>

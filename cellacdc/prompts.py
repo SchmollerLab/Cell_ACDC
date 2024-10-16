@@ -412,7 +412,7 @@ def init_segm_model_params(
         posData=posData,
         segmFileEndnames=existingSegmEndnames,
         df_metadata=posData.metadata_df,
-        force_postprocess_2D=True
+        force_postprocess_2D=False
     )
     win.setChannelNames(posData.chNames)
     win.exec_()

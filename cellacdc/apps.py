@@ -1,6 +1,7 @@
 import os
 import sys
 import re
+from typing import Literal
 import datetime
 import pathlib
 from collections import defaultdict
@@ -12200,7 +12201,12 @@ class CombineMetricsMultiDfsSummaryDialog(QBaseDialog):
         self.resize(int(self.width()*2), self.height())
 
 class ShortcutEditorDialog(QBaseDialog):
-    def __init__(self, widgetsWithShortcut: dict, parent=None):
+    def __init__(
+            self, widgetsWithShortcut: dict, 
+            delObjectKey='',
+            delObjectButton: Literal['Middle click', 'Left click']='Middle click',
+            parent=None
+        ):
         self.cancel = True
         super().__init__(parent)
 
@@ -12212,9 +12218,25 @@ class ShortcutEditorDialog(QBaseDialog):
         self.shortcutLineEdits = {}
 
         scrollArea = QScrollArea(self)
+        scrollArea.setWidgetResizable(True)
         scrollAreaWidget = QWidget()
         entriesLayout = QGridLayout()
-        for row, (name, widget) in enumerate(widgetsWithShortcut.items()):
+        
+        self.delObjShortcutLineEdit = widgets.ShortcutLineEdit(
+            allowModifiers=True, notAllowedModifier=Qt.AltModifier
+        )
+        if delObjectKey is not None:
+            self.delObjShortcutLineEdit.setText(delObjectKey)
+        self.delObjButtonCombobox = QComboBox()
+        self.delObjButtonCombobox.addItems(['Middle click', 'Left click'])
+        self.delObjButtonCombobox.setCurrentText(delObjectButton)
+        entriesLayout.addWidget(QLabel('Delete object:'), 0, 0)
+        entriesLayout.addWidget(self.delObjShortcutLineEdit, 0, 1)
+        entriesLayout.addWidget(
+            self.delObjButtonCombobox, 0, 2, alignment=Qt.AlignLeft
+        )
+        
+        for row, (name, widget) in enumerate(widgetsWithShortcut.items(), start=1):
             label = QLabel(f'{name}:')
             shortcutLineEdit = widgets.ShortcutLineEdit()
             if hasattr(widget, 'keyPressShortcut'):
@@ -12230,6 +12252,10 @@ class ShortcutEditorDialog(QBaseDialog):
             entriesLayout.addWidget(label, row, 0)
             entriesLayout.addWidget(shortcutLineEdit, row, 1)
             self.shortcutLineEdits[name] = shortcutLineEdit
+        
+        entriesLayout.setColumnStretch(0, 0)
+        entriesLayout.setColumnStretch(1, 1)
+        entriesLayout.setColumnStretch(2, 0)
         
         scrollAreaWidget.setLayout(entriesLayout)
         scrollArea.setWidget(scrollAreaWidget)
@@ -12263,6 +12289,14 @@ class ShortcutEditorDialog(QBaseDialog):
                 self.customShortcuts[name] = (
                     text, shortcutLineEdit.keySequence
                 )
+        delObjButtonText = self.delObjButtonCombobox.currentText()
+        delObjQtButton = (
+            Qt.MouseButton.LeftButton if delObjButtonText == 'Left click'
+            else Qt.MouseButton.MiddleButton
+        )
+        self.delObjAction = (
+            self.delObjShortcutLineEdit.keySequence, delObjQtButton
+        )
         self.close()
     
     def showEvent(self, event) -> None:
@@ -13463,15 +13497,18 @@ class ExportToVideoParametersDialog(QBaseDialog):
     sigOk = Signal(dict)
     sigAddScaleBar = Signal(bool)
     sigAddTimestamp = Signal(bool)
-    sigRescaleIntensLut = Signal(str)
+    sigRescaleIntensLut = Signal(str, str)
     
     def __init__(
-            self, parent=None, startFolderpath='', startFilename='', 
+            self, channels, parent=None, startFolderpath='', startFilename='', 
             startFrameNum=1, SizeT=1, SizeZ=1, isTimelapseVideo=True, 
             isScaleBarPresent=False, isTimestampPresent=False, 
-            currentRescaleIntensHow=''
+            rescaleIntensChannelHowMapper=None
         ):
         self.cancel = True
+        
+        if rescaleIntensChannelHowMapper is None:
+            rescaleIntensChannelHowMapper = {}
         
         super().__init__(parent=parent)
         
@@ -13548,20 +13585,26 @@ class ExportToVideoParametersDialog(QBaseDialog):
             )
             self.addTimestampToggle.setChecked(isTimestampPresent)
         
-        row += 1
-        gridLayout.addWidget(QLabel('Rescale intensities (LUT):'), row, 0)
-        rescaleItems = ['Rescale each 2D image']
-        if SizeZ > 1:
-            rescaleItems.append('Rescale across z-stack')
-        if isTimelapseVideo:
-            rescaleItems.append('Rescale across time frames')
-        rescaleItems.append('Choose custom levels...')
-        rescaleItems.append('Do no rescale, display raw image')
-        self.rescaleIntensCombobox = QComboBox()
-        self.rescaleIntensCombobox.addItems(rescaleItems)
-        if currentRescaleIntensHow:
-            self.rescaleIntensCombobox.setCurrentText(currentRescaleIntensHow)
-        gridLayout.addWidget(self.rescaleIntensCombobox, row, 1)
+        for channel in channels:
+            row += 1
+            labelText = f'Rescale intensities (LUT) <i>{channel}</i>:'
+            gridLayout.addWidget(QLabel(labelText), row, 0)
+            rescaleItems = ['Rescale each 2D image']
+            if SizeZ > 1:
+                rescaleItems.append('Rescale across z-stack')
+            if isTimelapseVideo:
+                rescaleItems.append('Rescale across time frames')
+            rescaleItems.append('Choose custom levels...')
+            rescaleItems.append('Do no rescale, display raw image')
+            rescaleIntensCombobox = QComboBox()
+            rescaleIntensCombobox.addItems(rescaleItems)
+            rescaleIntensHow = rescaleIntensChannelHowMapper.get(channel)
+            if rescaleIntensHow is not None:
+                rescaleIntensCombobox.setCurrentText(rescaleIntensHow)
+            gridLayout.addWidget(rescaleIntensCombobox, row, 1)
+            rescaleIntensCombobox.textActivated.connect(
+                partial(self.emitRescaleIntens, channel=channel)
+            )
         
         row += 1
         gridLayout.addWidget(QLabel('Save a PNG for each frame:'), row, 0)
@@ -13582,10 +13625,6 @@ class ExportToVideoParametersDialog(QBaseDialog):
         if isTimelapseVideo:
             self.addTimestampToggle.toggled.connect(self.addTimestampToggled)
         
-        self.rescaleIntensCombobox.currentTextChanged.connect(
-            self.emitRescaleIntens
-        )
-        
         buttonsLayout = widgets.CancelOkButtonsLayout()
         buttonsLayout.okButton.setText('Export')
         
@@ -13598,8 +13637,8 @@ class ExportToVideoParametersDialog(QBaseDialog):
         
         self.setLayout(mainLayout)
     
-    def emitRescaleIntens(self, how):
-        self.sigRescaleIntensLut.emit(how)
+    def emitRescaleIntens(self, how, channel=''):
+        self.sigRescaleIntensLut.emit(how, channel)
     
     def addScaleBarToggled(self, checked):
         self.sigAddScaleBar.emit(checked)

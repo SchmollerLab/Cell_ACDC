@@ -206,14 +206,28 @@ def retrack_based_on_untracked_first_frame(
     
     return tracked_video
 
-def remove_zeros_padding_2D(arr, return_crop_slice=False):
+def remove_padding_2D(arr, val=0, return_crop_slice=False):
     crop_slice = []
-    for ax in (1, 0):
+    for a, ax in enumerate((1, 0)):
         pad_ax = arr.sum(axis=ax)
-        pad_ax_mask = pad_ax == 0
-        pad_ax_mask = pad_ax_mask[:-1] != pad_ax_mask[1:]
-        pad_ax_left, pad_ax_right = np.nonzero(pad_ax_mask)[0][[0,-1]]
-        crop_slice.append(slice(pad_ax_left+1, pad_ax_right+1))
+        if np.isnan(val):
+            pad_ax_mask = np.isnan(pad_ax)
+        else:
+            pad_ax_mask = pad_ax == val
+            
+        pad_ax_left = 0
+        for i, val in enumerate(pad_ax_mask):
+            if not val:
+                pad_ax_left = i
+                break  
+        
+        pad_ax_right = arr.shape[a]
+        for j, val in enumerate(pad_ax_mask[::-1]):
+            if not val:
+                pad_ax_right -= j
+                break  
+        
+        crop_slice.append(slice(pad_ax_left, pad_ax_right))
     
     crop_slice = tuple(crop_slice)
     if return_crop_slice:
