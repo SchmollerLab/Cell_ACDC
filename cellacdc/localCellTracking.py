@@ -1,5 +1,7 @@
 import skimage
 import numpy as np
+from .core import segm_model_segment, post_process_segm
+from .features import custom_post_process_segm
 
 def find_overlap(lab_1, lab_2):
     """
@@ -64,7 +66,7 @@ def get_box_coords(rps, prev_lab_shape, ID, padding):
 
     return box_x_min, box_x_max, box_y_min, box_y_max
 
-def single_cell_seg(model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID, budding, max_daughters, min_daughters, overlap_threshold=0.5, padding=0.4, size_perc_threshold=0.5,*model_args, **model_kwargs):
+def single_cell_seg(model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID, budding, max_daughters, min_daughters, overlap_threshold=0.5, padding=0.4, size_perc_threshold=0.5, win=None, posData=None, frame_i=None):
     """
     Function to segment single cells in the current frame using the previous frame segmentation as a reference. 
     IDs is from the previous frame segmentation, and the current frame should have alredy been tracked so the IDs match!
@@ -81,8 +83,9 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID, bud
         overlap_threshold: minimum overlap percentage to consider a cell already segmented
         padding: padding around the cell to segment
         size_perc_threshold: minimum percentage of the largest cell size to consider a cell
-        model_args: arguments for the model
-        model_kwargs: keyword arguments for the model
+        win: from the gui window which sets model params
+        posData: position data for the
+        frame_i: frame index
     Returns:
         curr_lab: current frame segmentation with the segmented cells
     """
@@ -90,6 +93,12 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID, bud
         # if budding, we expect one more resulting cell than there are daughters, as the original cell is also present
         max_daughters += 1
         min_daughters += 1
+
+    model_kwargs = win.model_kwargs
+    preproc_recipe = win.preproc_recipe
+    applyPostProcessing = win.applyPostProcessing
+    standardPostProcessKwargs = win.standardPostProcessKwargs
+    customPostProcessFeatures = win.customPostProcessFeatures
 
     prev_rps = skimage.measure.regionprops(prev_lab)
     prev_lab_shape = prev_lab.shape
@@ -112,20 +121,38 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID, bud
         # Run model, give it the diameter of cell if possible
         obj = get_obj_from_rps(prev_rps, ID)
         diameter = obj.axis_major_length
-        try:
-            if 'diameter' in model_kwargs:
-                del model_kwargs['diameter']
+        # try:
+        model_kwargs['diameter'] = diameter
+        box_model_lab = segm_model_segment(
+            model, box_curr_img, model_kwargs,
+            preproc_recipe=preproc_recipe,
+            posData=posData
+        )
 
-            box_model_lab = model.segment(box_curr_img, diameter=diameter, *model_args, **model_kwargs)
-        except TypeError as e:
-            # Check if the TypeError is due to an unexpected keyword argument 'diameter'
-            if "got an unexpected keyword argument 'diameter'" in str(e):
-                # Retry without the 'diameter' keyword argument
-                box_model_lab = model.segment(box_curr_img, *model_args, **model_kwargs)
-            else:
-                # Re-raise if it's a different TypeError
-                raise
+            # box_model_lab = model.segment(box_curr_img, diameter=diameter, *model_args, **model_kwargs) # segm_model_segment
+        # except TypeError as e:
+        #     # Check if the TypeError is due to an unexpected keyword argument 'diameter'
+        #     if "got an unexpected keyword argument 'diameter'" in str(e):
+        #         # Retry without the 'diameter' keyword argument
+        #         box_model_lab = model.segment(box_curr_img, *model_args, **model_kwargs)
+        #     else:
+        #         # Re-raise if it's a different TypeError
+        #         raise
         
+        if applyPostProcessing:
+            box_model_lab = post_process_segm(
+                box_model_lab, **standardPostProcessKwargs
+            )
+            # if customPostProcessFeatures:
+            #     box_model_lab = custom_post_process_segm(
+            #         posData, 
+            #         customPostProcessGroupedFeatures, 
+            #         box_model_lab, box_curr_img, posData.frame_i, 
+            #         posData.filename, 
+            #         posData.user_ch_name, 
+            #         customPostProcessFeatures
+            #     )
+
         # Find the overlap between the model segmentation and the other IDs
         overlap = find_overlap(box_model_lab, box_curr_lab_other_IDs)
 
@@ -150,7 +177,7 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID, bud
             if area >= size_perc_threshold * largest_area:
                 labels_in_size_range.append(label)
 
-        if len(labels_in_size_range) == 1:
+        if len(labels_in_size_range) == 1: # I should run the tracker to get the IDs, if its daughters etc...
             # just one cell, probably the one we are looking for
             box_curr_lab_other_IDs[box_model_lab == labels_in_size_range[0]] = ID
             continue

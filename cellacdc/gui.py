@@ -89,7 +89,7 @@ from . import data_structure_docs_url
 from . import exporters
 from .trackers.CellACDC import CellACDC_tracker
 from .cca_functions import _calc_rot_vol
-from .myutils import exec_time, setupLogger
+from .myutils import exec_time, setupLogger, ArgSpec
 from .help import welcome, about
 from .trackers.CellACDC_normal_division.CellACDC_normal_division_tracker import normal_division_lineage_tree, reorg_sister_cells_for_export
 from .plot import imshow
@@ -2931,7 +2931,7 @@ class guiWin(QMainWindow):
 
         # Edit actions
         models = myutils.get_list_of_models()
-        models = models + ['cellpose_v3_local_seg'] # Add cellpose_v3_local_seg for SegForLostIDsAction
+        models = [*models, 'cellpose_v3_local_seg'] # Add cellpose_v3_local_seg for SegForLostIDsAction
         self.segmActions = []
         self.modelNames = []
         self.acdcSegment_li = []
@@ -8297,9 +8297,6 @@ class guiWin(QMainWindow):
                       'Padding of the box used for new segmentation around the segmentation from the previous frame', 
                       'Relative size threshold of the new segmentation compared to the segmentation from the previous frame']
 
-        from collections import namedtuple
-        ArgSpec = namedtuple('ArgSpec', ['name', 'default', 'type', 'desc', 'docstring'])
-
         extra_ArgSpec = []
         for i, param in enumerate(extra_params):
             param = ArgSpec(name=param, 
@@ -8348,7 +8345,11 @@ class guiWin(QMainWindow):
 
         new_unique_ID = self.setBrushID(useCurrentLab=True, return_val=True)
 
-        new_lab = single_cell_seg(model, prev_lab, curr_lab, curr_img, missing_IDs, new_unique_ID, budding=args_new['budding'], max_daughters=args_new['max_daughters'], min_daughters=args_new['min_daughters'], overlap_threshold=args_new['overlap_threshold'], padding=args_new['padding'], size_perc_threshold=args_new['size_perc_threshold'], **win.model_kwargs)
+        new_lab = single_cell_seg(model, prev_lab, curr_lab, curr_img, missing_IDs, new_unique_ID, 
+                                  budding=args_new['budding'], max_daughters=args_new['max_daughters'], 
+                                  min_daughters=args_new['min_daughters'], overlap_threshold=args_new['overlap_threshold'], 
+                                  padding=args_new['padding'], size_perc_threshold=args_new['size_perc_threshold'], 
+                                  win=win, frame_i=frame_i, posData=posData)
 
         posData.lab = new_lab
         self.update_rp()
