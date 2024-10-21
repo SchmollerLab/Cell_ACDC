@@ -8340,7 +8340,7 @@ class guiWin(QMainWindow):
             'args_new': args_new
         }
 
-    def SegForLostIDsAction(self):
+    def SegForLostIDs(self):
         posData = self.data[self.pos_i]
         frame_i = posData.frame_i
 
@@ -8395,6 +8395,63 @@ class guiWin(QMainWindow):
         self.store_data()
 
         self.logger.info('Segmentation for lost IDs done.')
+
+    def SegForLostIDsAction(self):
+        self.progressWin = apps.QDialogWorkerProgress(
+            title='Segmenting for lost IDs', parent=self,
+            pbarDesc=f'Segmenting for lost IDs...'
+        )
+        self.progressWin.show(self.app)
+        self.progressWin.mainPbar.setMaximum(0)
+        
+        self.startSegForLostIDsWorker()
+
+    def onSegForLostInit(self):
+        self.logger.info('Settings for segmentation for lost IDs not set.')
+        self.SegForLostIDsSetSettings()
+        self.SegForLostIDsWaitCond.wakeAll()
+
+    def startSegForLostIDsWorker(self):
+        self.SegForLostIDsMutex = QMutex()
+        self.SegForLostIDsWaitCond = QWaitCondition()
+        self._thread = QThread()
+
+        # Initialize the worker with mutex and wait condition
+        self.SegForLostIDsWorker = workers.SegForLostIDsWorker(
+            self, self.SegForLostIDsMutex, self.SegForLostIDsWaitCond
+        )
+
+        # Connect the worker's signal to the main thread's slot
+        self.SegForLostIDsWorker.sigAskInit.connect(self.onSegForLostInit)
+
+        # Move the worker to the thread
+        self.SegForLostIDsWorker.moveToThread(self._thread)
+
+        # Manage thread lifecycle
+        self.SegForLostIDsWorker.signals.finished.connect(self._thread.quit)
+        self.SegForLostIDsWorker.signals.finished.connect(self.SegForLostIDsWorker.deleteLater)
+        self._thread.finished.connect(self._thread.deleteLater)
+
+        # Connect other worker signals to the appropriate slots
+        self.SegForLostIDsWorker.signals.finished.connect(self.SegForLostIDsWorkerFinished)
+        self.SegForLostIDsWorker.signals.progress.connect(self.workerProgress)
+        self.SegForLostIDsWorker.signals.initProgressBar.connect(self.workerInitProgressbar)
+        self.SegForLostIDsWorker.signals.progressBar.connect(self.workerUpdateProgressbar)
+        self.SegForLostIDsWorker.signals.critical.connect(self.workerCritical)
+
+        # Start the thread and worker
+        self._thread.started.connect(self.SegForLostIDsWorker.run)
+        self._thread.start()
+    
+    def SegForLostIDsWorkerFinished(self):
+        
+        self.updateAllImages()
+        self.store_data()
+        
+        if self.progressWin is not None:
+            self.progressWin.workerFinished = True
+            self.progressWin.close()
+            self.progressWin = None
     
     def gui_raiseBottomLayoutContextMenu(self, event):
         try:
