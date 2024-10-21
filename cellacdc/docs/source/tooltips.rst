@@ -135,6 +135,12 @@
     :height: 16px
     :width: 16px
 
+.. |SegForLostIDsButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/addDelPolyLineRoi_cursor.svg
+    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/addDelPolyLineRoi_cursor.svg
+    :alt: SegForLostIDsButton icon
+    :height: 16px
+    :width: 16px
+
 .. |manualBackgroundButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/manual_background.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/manual_background.svg
     :alt: manualBackgroundButton icon
@@ -286,6 +292,36 @@
     :height: 16px
     :width: 16px
 
+.. |findNextMotherButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/magnGlass.svg
+    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/magnGlass.svg
+    :alt: magnGlass icon
+    :height: 16px
+    :width: 16px
+
+.. |unknownLineageButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/history.svg
+    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/history.svg
+    :alt: history icon
+    :height: 16px
+    :width: 16px
+
+.. |noToolLinTreeButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/arrow_cursor.svg
+    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/arrow_cursor.svg
+    :alt: arrow_cursor icon
+    :height: 16px
+    :width: 16px
+
+.. |propagateLinTreeButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/compute.svg
+    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/compute.svg
+    :alt: compute icon
+    :height: 16px
+    :width: 16px
+
+.. |viewLinTreeInfoButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/addCustomAnnotation.svg
+    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/addCustomAnnotation.svg
+    :alt: addCustomAnnotation icon
+    :height: 16px
+    :width: 16px
+
 GUI tools
 =========
 
@@ -348,6 +384,7 @@ Edit tools: Segmentation and tracking
 * **Copy lost contour (** |copyContourButton| **"V"):** Hover onto lost object contour --> right-click to copy the contour as a new object.
 * **Magic labeller (** |labelRoiButton| **"L"):** Draw a rectangular ROI around object(s) you want to segment. Draw with LEFT button to label with last used model. Draw with RIGHT button to choose a different segmentation model.
 * **Segment (** |segmentToolAction| **"R"):** Segment with last used model and last used parameters. If you never selected a segmentation model before, you will be asked to choose one and initialize its parameters.
+* **Segmenting lost IDs (** |SegForLostIDsButton| **):** Segment only a small cutout of the image around missing IDs based on the segmentation of the previous frame. Will always use cellpose model. Parameters can be adjusted in the top ribbon under Segment --> Edit settings for Segmenting lost IDs. In the settings menu, additional parameters can be set like padding, max objects and overlap threshold in addition to the model settings.
 * **Manual background (** |manualBackgroundButton| **"G"):**
     * How to use:
         1. Select object to copy its shape.
@@ -392,3 +429,11 @@ Edit tools: Cell cycle analysis
 * **Automatically assign bud to mother (** |assignBudMothAutoAction| **):** Automatically assign buds to mothers using YeastMate.
 * **Manually edit cell cycle annotations table (** |editCcaToolAction| **"Ctrl+Shift+P"):** Manually edit cell cycle annotations table.
 * **Re-initialize cell cycle annotations table (** |reInitCcaAction| **):** Re-initialize cell cycle annotations table from this frame onward. NOTE: This will erase all the already annotated future frames information (from the current session not the saved information).
+
+Edit tools: Normal division: Lineage tree
+-----------------------------------------
+* **Find mother for a new Cell ID (** |findNextMotherButton| **"F"):** Find mother for a new Cell ID. Right-click on the new cell to find its mother. Repeated right click to cycle through candidates. Shift right click to cycle back.
+* **Set unknown mother (** |unknownLineageButton| **"U"):** Set unknown mother for a cell. Right-click on the cell to set its mother as unknown.
+* **No tool selected (** |noToolLinTreeButton| **"N"):** No tool selected. Use this to deselect the current tool.
+* **Propagate changes (** |propagateLinTreeButton| **"P"):** Propagate changes in lineage tree. Use this to propagate changes in the lineage tree, especially after you moved to another frame without propagating first!
+* **View lineage tree info for current frame (** |viewLinTreeInfoButton| **"I"):** View lineage tree info for current frame.
