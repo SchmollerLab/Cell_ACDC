@@ -66,7 +66,10 @@ def get_box_coords(rps, prev_lab_shape, ID, padding):
 
     return box_x_min, box_x_max, box_y_min, box_y_max
 
-def single_cell_seg(model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID, budding, max_daughters, min_daughters, overlap_threshold=0.5, padding=0.4, size_perc_threshold=0.5, win=None, posData=None, frame_i=None):
+def single_cell_seg(model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID, 
+                    new_max_obj,
+                    overlap_threshold=0.5, padding=0.4, size_perc_threshold=0.5, 
+                    win=None, posData=None,):
     """
     Function to segment single cells in the current frame using the previous frame segmentation as a reference. 
     IDs is from the previous frame segmentation, and the current frame should have alredy been tracked so the IDs match!
@@ -76,29 +79,26 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID, bud
         curr_lab: current frame segmentation
         curr_img: current frame image
         IDs: list of IDs of the cells to segment
-        new_unique_ID: ID to start labeling new cells
-        budding: boolean, if the cells are budding
-        max_daughters: maximum number of daughters expected
-        min_daughters: minimum number of daughters expected
+        new_new_unique_ID: ID to start labeling new cells
+        max_obj: maximum number of objects expected
         overlap_threshold: minimum overlap percentage to consider a cell already segmented
         padding: padding around the cell to segment
         size_perc_threshold: minimum percentage of the largest cell size to consider a cell
         win: from the gui window which sets model params
         posData: position data for the
-        frame_i: frame index
     Returns:
         curr_lab: current frame segmentation with the segmented cells
+        assigned_IDs: list of IDs assigned to the segmented cells
+
     """
-    if budding:
-        # if budding, we expect one more resulting cell than there are daughters, as the original cell is also present
-        max_daughters += 1
-        min_daughters += 1
+    assigned_IDs = []
 
     model_kwargs = win.model_kwargs
     preproc_recipe = win.preproc_recipe
     applyPostProcessing = win.applyPostProcessing
     standardPostProcessKwargs = win.standardPostProcessKwargs
     customPostProcessFeatures = win.customPostProcessFeatures
+    customPostProcessGroupedFeatures = win.customPostProcessGroupedFeatures
 
     prev_rps = skimage.measure.regionprops(prev_lab)
     prev_lab_shape = prev_lab.shape
@@ -129,29 +129,20 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID, bud
             posData=posData
         )
 
-            # box_model_lab = model.segment(box_curr_img, diameter=diameter, *model_args, **model_kwargs) # segm_model_segment
-        # except TypeError as e:
-        #     # Check if the TypeError is due to an unexpected keyword argument 'diameter'
-        #     if "got an unexpected keyword argument 'diameter'" in str(e):
-        #         # Retry without the 'diameter' keyword argument
-        #         box_model_lab = model.segment(box_curr_img, *model_args, **model_kwargs)
-        #     else:
-        #         # Re-raise if it's a different TypeError
-        #         raise
-        
+        # Post-processing        
         if applyPostProcessing:
             box_model_lab = post_process_segm(
                 box_model_lab, **standardPostProcessKwargs
             )
-            # if customPostProcessFeatures:
-            #     box_model_lab = custom_post_process_segm(
-            #         posData, 
-            #         customPostProcessGroupedFeatures, 
-            #         box_model_lab, box_curr_img, posData.frame_i, 
-            #         posData.filename, 
-            #         posData.user_ch_name, 
-            #         customPostProcessFeatures
-            #     )
+            if customPostProcessFeatures:
+                box_model_lab = custom_post_process_segm(
+                    posData, 
+                    customPostProcessGroupedFeatures, 
+                    box_model_lab, box_curr_img, posData.frame_i, 
+                    posData.filename, 
+                    posData.user_ch_name, 
+                    customPostProcessFeatures
+                )
 
         # Find the overlap between the model segmentation and the other IDs
         overlap = find_overlap(box_model_lab, box_curr_lab_other_IDs)
@@ -163,43 +154,17 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID, bud
 
         areas = np.unique(box_model_lab.ravel(), return_counts=True)
 
-        # Filter out the background (label 0) and sort by area
-        areas = [(label, area) for label, area in zip(*areas) if label != 0]
-        areas.sort(key=lambda x: x[1], reverse=True)
-
-        # Get the label with the largest area
-        if len(areas) == 0:
-            continue
-
-        labels_in_size_range = []
-        _, largest_area = areas[0]
-        for label, area in areas:
-            if area >= size_perc_threshold * largest_area:
-                labels_in_size_range.append(label)
-
-        if len(labels_in_size_range) == 1: # I should run the tracker to get the IDs, if its daughters etc...
-            # just one cell, probably the one we are looking for
-            box_curr_lab_other_IDs[box_model_lab == labels_in_size_range[0]] = ID
-            continue
+        filtered_areas = [label for label, area in zip(*areas) if label != 0 and area >= size_perc_threshold * area]
         
-        elif len(labels_in_size_range) not in range(min_daughters, max_daughters + 1):
-            # too many or too few cells, could not successfully segment, for budding this is one mother and one duaghter, for normal cell division this is two daughters
+        if len(filtered_areas) not in range(1, new_max_obj + 1):
+            # too many cells, could not successfully segment, for budding this is one mother and one duaghter, for normal cell division this is two daughters
             continue
-        
-        # multiple cells in range for daugher amound, probably cell seperation
-        if not budding:
-            for label in labels_in_size_range:
-                box_curr_lab_other_IDs[box_model_lab == label] = new_unique_ID
-                new_unique_ID += 1
-        else:
-            # budding, one mother and daughters
-            box_curr_lab_other_IDs[box_model_lab == labels_in_size_range[0]] = ID
-            labels_in_size_range.pop(0)
 
-            for label in labels_in_size_range:
-                box_curr_lab_other_IDs[box_model_lab == label] = new_unique_ID
-                new_unique_ID += 1
+        for label in filtered_areas:
+            box_curr_lab_other_IDs[box_model_lab == label] = new_unique_ID
+            assigned_IDs.append(new_unique_ID)
+            new_unique_ID += 1
             
         curr_lab[box_x_min:box_x_max, box_y_min:box_y_max] = box_curr_lab_other_IDs
 
-    return curr_lab
+    return curr_lab, assigned_IDs
