@@ -8289,17 +8289,15 @@ class guiWin(QMainWindow):
             acdcSegment = myutils.import_segment_module(base_model_name)
             self.acdcSegment_li[idx] = acdcSegment
         
-        extra_params = ['new_max_obj',
-                        'overlap_threshold',
+        extra_params = ['overlap_threshold',
                         'padding',
                         'size_perc_threshold']
 
-        extra_types = [int, float, float, float]
+        extra_types = [float, float, float]
 
-        extra_defaults = [2, 0.5, 0.4, 0.5]
+        extra_defaults = [0.5, 0.4, 0.5]
 
-        extra_desc = [ 'Max objects, which were not there before, to consider. If more new objects were segmented, the mask is discarded', 
-                    'Overlap threshold with other already segemented cells over which newly segmented cells are discarded', 
+        extra_desc = ['Overlap threshold with other already segemented cells over which newly segmented cells are discarded', 
                     'Padding of the box used for new segmentation around the segmentation from the previous frame', 
                     'Relative size threshold of the new segmentation compared to the segmentation from the previous frame']
 
@@ -8340,61 +8338,61 @@ class guiWin(QMainWindow):
             'args_new': args_new
         }
 
-    def SegForLostIDs(self):
-        posData = self.data[self.pos_i]
-        frame_i = posData.frame_i
+    # def SegForLostIDs(self):
+    #     posData = self.data[self.pos_i]
+    #     frame_i = posData.frame_i
 
-        model_name = 'cellpose_v3_local_seg'
-        base_model_name = 'cellpose_v3'
-        idx = self.modelNames.index(model_name)
-        acdcSegment = self.acdcSegment_li[idx]
+    #     model_name = 'cellpose_v3_local_seg'
+    #     base_model_name = 'cellpose_v3'
+    #     idx = self.modelNames.index(model_name)
+    #     acdcSegment = self.acdcSegment_li[idx]
 
-        if acdcSegment is None:
-            self.logger.info(f'Importing {base_model_name}...')
-            acdcSegment = myutils.import_segment_module(base_model_name)
-            self.acdcSegment_li[idx] = acdcSegment
+    #     if acdcSegment is None:
+    #         self.logger.info(f'Importing {base_model_name}...')
+    #         acdcSegment = myutils.import_segment_module(base_model_name)
+    #         self.acdcSegment_li[idx] = acdcSegment
 
-        if not self.SegForLostIDsSettings:
-            self.logger.info('Settings for segmentation for lost IDs not set.')
-            self.SegForLostIDsSetSettings()
+    #     if not self.SegForLostIDsSettings:
+    #         self.logger.info('Settings for segmentation for lost IDs not set.')
+    #         self.SegForLostIDsSetSettings()
 
-        win = self.SegForLostIDsSettings['win']
-        init_kwargs_new = self.SegForLostIDsSettings['init_kwargs_new']
-        args_new = self.SegForLostIDsSettings['args_new']
+    #     win = self.SegForLostIDsSettings['win']
+    #     init_kwargs_new = self.SegForLostIDsSettings['init_kwargs_new']
+    #     args_new = self.SegForLostIDsSettings['args_new']
 
 
-        model = myutils.init_segm_model(acdcSegment, posData, init_kwargs_new) 
-        try:
-            model.setupLogger(self.logger)
-        except Exception as e:
-            pass
+    #     model = myutils.init_segm_model(acdcSegment, posData, init_kwargs_new) 
+    #     try:
+    #         model.setupLogger(self.logger)
+    #     except Exception as e:
+    #         pass
 
-        curr_lab = self.get_2Dlab(posData.lab)
-        prev_lab = self.get_2Dlab(posData.allData_li[frame_i-1]['labels'])
+    #     curr_lab = self.get_2Dlab(posData.lab)
+    #     prev_lab = self.get_2Dlab(posData.allData_li[frame_i-1]['labels'])
 
-        prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
-        prev_IDs = {rp.label for rp in prev_rp}
-        missing_IDs = prev_IDs - set(posData.IDs)
+    #     prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
+    #     prev_IDs = {rp.label for rp in prev_rp}
+    #     missing_IDs = prev_IDs - set(posData.IDs)
 
-        curr_img = self.getDisplayedImg1()
+    #     curr_img = self.getDisplayedImg1()
 
-        new_unique_ID = self.setBrushID(useCurrentLab=True, return_val=True)
+    #     new_unique_ID = self.setBrushID(useCurrentLab=True, return_val=True)
 
-        new_lab, assigned_IDs = single_cell_seg(model, prev_lab, curr_lab, curr_img, missing_IDs, new_unique_ID,
-                                  new_max_obj=args_new['new_max_obj'], 
-                                  padding=args_new['padding'], size_perc_threshold=args_new['size_perc_threshold'], 
-                                  win=win, posData=posData)
+    #     new_lab, assigned_IDs = single_cell_seg(model, prev_lab, curr_lab, curr_img, missing_IDs, new_unique_ID,
+    #                               new_max_obj=args_new['new_max_obj'], 
+    #                               padding=args_new['padding'], size_perc_threshold=args_new['size_perc_threshold'], 
+    #                               win=win, posData=posData)
 
-        posData.lab = new_lab
-        self.update_rp()
+    #     posData.lab = new_lab
+    #     self.update_rp()
 
-        for ID in assigned_IDs:
-            self.trackManuallyAddedObject(ID, True)
+    #     for ID in assigned_IDs:
+    #         self.trackManuallyAddedObject(ID, True)
 
-        self.updateAllImages()
-        self.store_data()
+    #     self.updateAllImages()
+    #     self.store_data()
 
-        self.logger.info('Segmentation for lost IDs done.')
+    #     self.logger.info('Segmentation for lost IDs done.')
 
     def SegForLostIDsAction(self):
         self.progressWin = apps.QDialogWorkerProgress(

@@ -228,7 +228,6 @@ class SegForLostIDsWorker(QObject):
         new_unique_ID = self.guiWin.setBrushID(useCurrentLab=True, return_val=True)
 
         new_lab, assigned_IDs = single_cell_seg(model, prev_lab, curr_lab, curr_img, missing_IDs, new_unique_ID,
-                                  new_max_obj=args_new['new_max_obj'], 
                                   padding=args_new['padding'], size_perc_threshold=args_new['size_perc_threshold'], 
                                   win=win, posData=posData)
 

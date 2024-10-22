@@ -384,7 +384,7 @@ Edit tools: Segmentation and tracking
 * **Copy lost contour (** |copyContourButton| **"V"):** Hover onto lost object contour --> right-click to copy the contour as a new object.
 * **Magic labeller (** |labelRoiButton| **"L"):** Draw a rectangular ROI around object(s) you want to segment. Draw with LEFT button to label with last used model. Draw with RIGHT button to choose a different segmentation model.
 * **Segment (** |segmentToolAction| **"R"):** Segment with last used model and last used parameters. If you never selected a segmentation model before, you will be asked to choose one and initialize its parameters.
-* **Segmenting for lost IDs (** |SegForLostIDsButton| **):** Segment only a small cutout of the image around missing IDs based on the segmentation of the previous frame. Will always use cellpose model. Parameters can be adjusted in the top ribbon under Segment --> Edit settings for Segmenting lost IDs. In the settings menu, additional parameters can be set like padding, max objects and overlap threshold in addition to the model settings.
+* **Segmenting for lost IDs (** |SegForLostIDsButton| **):** Segment only a small cutout of the image around missing IDs based on the segmentation of the previous frame. Will always use cellpose model. Parameters can be adjusted in the top ribbon under Segment --> Edit settings for Segmenting lost IDs. In the settings menu, additional parameters can be set like padding and overlap threshold in addition to the model settings.
 * **Manual background (** |manualBackgroundButton| **"G"):**
     * How to use:
         1. Select object to copy its shape.
