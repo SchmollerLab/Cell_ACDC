@@ -173,7 +173,6 @@ class FindNextNewIdWorker(QObject):
 class SegForLostIDsWorker(QObject):
     sigAskInit = Signal()
 
-
     def __init__(self, guiWin, mutex, waitCond):
         QObject.__init__(self)
         self.signals = signals()
@@ -193,8 +192,8 @@ class SegForLostIDsWorker(QObject):
         posData = self.guiWin.data[self.guiWin.pos_i]
         frame_i = posData.frame_i
 
-        model_name = 'cellpose_v3_local_seg'
-        base_model_name = 'cellpose_v3'
+        model_name = 'cellpose_local_seg'
+        base_model_name = 'cellpose_custom'
         idx = self.guiWin.modelNames.index(model_name)
         acdcSegment = self.guiWin.acdcSegment_li[idx]
 
@@ -205,6 +204,10 @@ class SegForLostIDsWorker(QObject):
 
         if not self.guiWin.SegForLostIDsSettings:
             self.emitSigAskInit()
+
+        if not self.guiWin.SegForLostIDsSettings:
+            self.signals.finished.emit(self)
+            return
 
         win = self.guiWin.SegForLostIDsSettings['win']
         init_kwargs_new = self.guiWin.SegForLostIDsSettings['init_kwargs_new']
@@ -219,17 +222,22 @@ class SegForLostIDsWorker(QObject):
         curr_lab = self.guiWin.get_2Dlab(posData.lab)
         prev_lab = self.guiWin.get_2Dlab(posData.allData_li[frame_i-1]['labels'])
 
+        tracked_lost_IDs = self.guiWin.getTrackedLostIDs()
         prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
         prev_IDs = {rp.label for rp in prev_rp}
-        missing_IDs = prev_IDs - set(posData.IDs)
+        missing_IDs = prev_IDs - set(posData.IDs) - set(tracked_lost_IDs)
 
         curr_img = self.guiWin.getDisplayedImg1()
 
         new_unique_ID = self.guiWin.setBrushID(useCurrentLab=True, return_val=True)
 
         new_lab, assigned_IDs = single_cell_seg(model, prev_lab, curr_lab, curr_img, missing_IDs, new_unique_ID,
-                                  padding=args_new['padding'], size_perc_threshold=args_new['size_perc_threshold'], 
-                                  win=win, posData=posData)
+                                                win, posData,
+                                                distance_filler_growth=args_new['distance_filler_growth'],
+                                                padding=args_new['padding'], 
+                                                size_perc_threshold=args_new['size_perc_threshold'],
+                                                overlap_threshold=args_new['overlap_threshold'],
+                                                )
 
         posData.lab = new_lab
         self.guiWin.update_rp()

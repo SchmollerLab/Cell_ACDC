@@ -93,7 +93,6 @@ from .myutils import exec_time, setupLogger, ArgSpec
 from .help import welcome, about
 from .trackers.CellACDC_normal_division.CellACDC_normal_division_tracker import normal_division_lineage_tree, reorg_sister_cells_for_export
 from .plot import imshow
-from .localCellTracking import single_cell_seg
 
 np.seterr(invalid='ignore')
 
@@ -2932,7 +2931,7 @@ class guiWin(QMainWindow):
 
         # Edit actions
         models = myutils.get_list_of_models()
-        models = [*models, 'cellpose_v3_local_seg'] # Add cellpose_v3_local_seg for SegForLostIDsAction
+        models = [*models, 'cellpose_local_seg'] # Add cellpose_local_seg for SegForLostIDsAction
         self.segmActions = []
         self.modelNames = []
         self.acdcSegment_li = []
@@ -8279,8 +8278,8 @@ class guiWin(QMainWindow):
         self.textAnnot[1].addToPlotItem(self.ax2)
 
     def SegForLostIDsSetSettings(self):
-        model_name = 'cellpose_v3_local_seg'
-        base_model_name = 'cellpose_v3'
+        model_name = 'cellpose_local_seg'
+        base_model_name = 'cellpose_custom'
         idx = self.modelNames.index(model_name)
         acdcSegment = self.acdcSegment_li[idx]
 
@@ -8291,15 +8290,17 @@ class guiWin(QMainWindow):
         
         extra_params = ['overlap_threshold',
                         'padding',
-                        'size_perc_threshold']
+                        'size_perc_threshold',
+                        'distance_filler_growth']
 
-        extra_types = [float, float, float]
+        extra_types = [float, float, float, float]
 
-        extra_defaults = [0.5, 0.4, 0.5]
+        extra_defaults = [0.5, 0.4, 0.5, 1.]
 
         extra_desc = ['Overlap threshold with other already segemented cells over which newly segmented cells are discarded', 
                     'Padding of the box used for new segmentation around the segmentation from the previous frame', 
-                    'Relative size threshold of the new segmentation compared to the segmentation from the previous frame']
+                    'Relative size threshold of the new segmentation compared to the segmentation from the previous frame',
+                    "Cells which are already segmented are filled with random noise sampled from background to ensure that they don't get segmented again. This parameter controls the additional padding around the already segmented cells."]
 
         extra_ArgSpec = []
         for i, param in enumerate(extra_params):
@@ -8338,63 +8339,8 @@ class guiWin(QMainWindow):
             'args_new': args_new
         }
 
-    # def SegForLostIDs(self):
-    #     posData = self.data[self.pos_i]
-    #     frame_i = posData.frame_i
-
-    #     model_name = 'cellpose_v3_local_seg'
-    #     base_model_name = 'cellpose_v3'
-    #     idx = self.modelNames.index(model_name)
-    #     acdcSegment = self.acdcSegment_li[idx]
-
-    #     if acdcSegment is None:
-    #         self.logger.info(f'Importing {base_model_name}...')
-    #         acdcSegment = myutils.import_segment_module(base_model_name)
-    #         self.acdcSegment_li[idx] = acdcSegment
-
-    #     if not self.SegForLostIDsSettings:
-    #         self.logger.info('Settings for segmentation for lost IDs not set.')
-    #         self.SegForLostIDsSetSettings()
-
-    #     win = self.SegForLostIDsSettings['win']
-    #     init_kwargs_new = self.SegForLostIDsSettings['init_kwargs_new']
-    #     args_new = self.SegForLostIDsSettings['args_new']
-
-
-    #     model = myutils.init_segm_model(acdcSegment, posData, init_kwargs_new) 
-    #     try:
-    #         model.setupLogger(self.logger)
-    #     except Exception as e:
-    #         pass
-
-    #     curr_lab = self.get_2Dlab(posData.lab)
-    #     prev_lab = self.get_2Dlab(posData.allData_li[frame_i-1]['labels'])
-
-    #     prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
-    #     prev_IDs = {rp.label for rp in prev_rp}
-    #     missing_IDs = prev_IDs - set(posData.IDs)
-
-    #     curr_img = self.getDisplayedImg1()
-
-    #     new_unique_ID = self.setBrushID(useCurrentLab=True, return_val=True)
-
-    #     new_lab, assigned_IDs = single_cell_seg(model, prev_lab, curr_lab, curr_img, missing_IDs, new_unique_ID,
-    #                               new_max_obj=args_new['new_max_obj'], 
-    #                               padding=args_new['padding'], size_perc_threshold=args_new['size_perc_threshold'], 
-    #                               win=win, posData=posData)
-
-    #     posData.lab = new_lab
-    #     self.update_rp()
-
-    #     for ID in assigned_IDs:
-    #         self.trackManuallyAddedObject(ID, True)
-
-    #     self.updateAllImages()
-    #     self.store_data()
-
-    #     self.logger.info('Segmentation for lost IDs done.')
-
     def SegForLostIDsAction(self):
+        self.storeUndoRedoStates(False)
         self.progressWin = apps.QDialogWorkerProgress(
             title='Segmenting for lost IDs', parent=self,
             pbarDesc=f'Segmenting for lost IDs...'
@@ -8406,7 +8352,7 @@ class guiWin(QMainWindow):
 
     def onSegForLostInit(self):
         self.logger.info('Settings for segmentation for lost IDs not set.')
-        self.SegForLostIDsSetSettings()
+        self.SegForLostIDsSetSettings()            
         self.SegForLostIDsWaitCond.wakeAll()
 
     def startSegForLostIDsWorker(self):
