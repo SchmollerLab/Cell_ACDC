@@ -7293,7 +7293,7 @@ class ImShow(QBaseWindow):
                 for s in range(image.ndim-idx_image):
                     maximum = image.shape[s]-1
                     scrollbarProxy = self._getGraphicsScrollbar(
-                        0, image, imageItem, maximum
+                        s, image, imageItem, maximum
                     )
                     self.graphicLayout.addItem(
                         scrollbarProxy, row=row+s+1, col=col

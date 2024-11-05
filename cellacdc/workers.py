@@ -2180,7 +2180,12 @@ class TrackSubCellObjectsWorker(BaseWorkerUtil):
                     np.savez_compressed(diffSegmPath, diffSegmData)
                     posData.saveIsSegm3Dmetadata(diffSegmPath)
                     del diffSegmData
-
+                
+                if self.relabelSubObjLab:
+                    # When we relabel the sub-cell objs acdc_df is not valid anymore
+                    # because IDs could be different
+                    posData.acdc_df = None
+                
                 self.logger.log('Generating acdc_output tables...')  
                 # Update or create acdc_df for sub-cellular objects                
                 acdc_dfs_tracked = core.track_sub_cell_objects_acdc_df(

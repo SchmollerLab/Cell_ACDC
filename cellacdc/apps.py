@@ -3888,10 +3888,10 @@ class QDialogWorkerProgress(QDialog):
         self.clickCount = 0
         super().__init__(parent)
 
-        abort_text = 'Option+Command+C to abort' if is_mac else 'Ctrl+Alt+C to abort'
+        abort_text = 'Option+Command+C' if is_mac else 'Ctrl+Alt+C'
         self.abort_text = abort_text
 
-        self.setWindowTitle(f'{title} ({abort_text})')
+        self.setWindowTitle(f'{title} ({abort_text} to abort)')
         self.setWindowFlags(Qt.Window)
 
         mainLayout = QVBoxLayout()
@@ -3938,7 +3938,8 @@ class QDialogWorkerProgress(QDialog):
     def askAbort(self):
         msg = widgets.myMessageBox()
         txt = html_utils.paragraph(f"""
-            Aborting with <code>{self.abort_text}</code> is <b>not safe</b>.<br><br>
+            Aborting with <code>{self.abort_text}</code> to abort is 
+            <b>not safe</b>.<br><br>
             The system status cannot be predicted and
             it will <b>require a restart</b>.<br><br>
             Are you sure you want to abort?
@@ -10050,10 +10051,10 @@ class QDialogPbar(QDialog):
         self.clickCount = 0
         super().__init__(parent)
 
-        abort_text = 'Option+Command+C to abort' if is_mac else 'Ctrl+Alt+C to abort'
+        abort_text = 'Option+Command+C' if is_mac else 'Ctrl+Alt+C'
         self.abort_text = abort_text
 
-        self.setWindowTitle(f'{title} ({abort_text})')
+        self.setWindowTitle(f'{title} ({abort_text} to abort)')
         self.setWindowFlags(Qt.Window)
 
         mainLayout = QVBoxLayout()
@@ -10094,7 +10095,8 @@ class QDialogPbar(QDialog):
     def askAbort(self):
         msg = widgets.myMessageBox()
         txt = html_utils.paragraph(f"""
-            Aborting with <code>{self.abort_text}</code> is <b>not safe</b>.<br><br>
+            Aborting with <code>{self.abort_text}</code> to abort 
+            is <b>not safe</b>.<br><br>
             The system status cannot be predicted and
             it will <b>require a restart</b>.<br><br>
             Are you sure you want to abort?
