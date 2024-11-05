@@ -358,7 +358,7 @@ def track_sub_cell_objects_acdc_df(
                 sub_acdc_df_frame_i['relative_ID'] = (
                     sub_acdc_df_frame_i['relative_ID'].replace(old_sub_ids)
                 )
-
+        
         cols = sub_acdc_df_frame_i.columns.intersection(all_non_metrics_cols)
         sub_acdc_df_list.append(sub_acdc_df_frame_i.loc[sub_ids, cols])
         keys_sub.append(frame_i)
@@ -373,8 +373,8 @@ def track_sub_cell_objects_acdc_df(
             if cells_acdc_df is None:
                 acdc_df_frame_i = myutils.getBaseAcdcDf(rp)
             else:
-                acdc_df_frame_i = cells_acdc_df.loc[frame_i].copy()
-
+                acdc_df_frame_i = cells_acdc_df.loc[[frame_i]].copy()
+           
             cols = acdc_df_frame_i.columns.intersection(all_non_metrics_cols)
             acdc_df_frame_i = acdc_df_frame_i[cols]
             

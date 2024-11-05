@@ -182,7 +182,7 @@ class mainWin(QMainWindow):
         modulesButtonsGroupBoxLayout.addWidget(guiButton)
 
         if SPOTMAX_INSTALLED:
-            spotmaxButton = QPushButton('  4. Launch spotMAX...')
+            spotmaxButton = QPushButton('  4. Launch SpotMAX...')
             spotmaxButton.setIcon(QIcon(spotmax_logo_path))
             spotmaxButton.setIconSize(QSize(iconSize,iconSize))
             spotmaxButton.setFont(font)
