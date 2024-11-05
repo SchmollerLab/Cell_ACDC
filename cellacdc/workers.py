@@ -37,6 +37,7 @@ from . import core
 from . import cca_df_colnames, lineage_tree_cols, default_annot_df
 from . import cca_df_colnames_with_tree
 from .utils import resize
+from .localCellTracking import single_cell_seg
 
 DEBUG = False
 
@@ -168,6 +169,85 @@ class FindNextNewIdWorker(QObject):
             prev_IDs = IDs
             
         self.signals.finished.emit(next_frame_i)
+
+class SegForLostIDsWorker(QObject):
+    sigAskInit = Signal()
+
+    def __init__(self, guiWin, mutex, waitCond):
+        QObject.__init__(self)
+        self.signals = signals()
+        self.logger = workerLogger(self.signals.progress)
+        self.guiWin = guiWin
+        self.mutex = mutex
+        self.waitCond = waitCond
+    
+    def emitSigAskInit(self):
+        self.mutex.lock()
+        self.sigAskInit.emit()
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+
+    @worker_exception_handler
+    def run(self):
+        posData = self.guiWin.data[self.guiWin.pos_i]
+        frame_i = posData.frame_i
+
+        model_name = 'cellpose_local_seg'
+        base_model_name = 'cellpose_custom'
+        idx = self.guiWin.modelNames.index(model_name)
+        acdcSegment = self.guiWin.acdcSegment_li[idx]
+
+        if acdcSegment is None:
+            self.guiWin.logger.info(f'Importing {base_model_name}...')
+            acdcSegment = myutils.import_segment_module(base_model_name)
+            self.guiWin.acdcSegment_li[idx] = acdcSegment
+
+        if not self.guiWin.SegForLostIDsSettings:
+            self.emitSigAskInit()
+
+        if not self.guiWin.SegForLostIDsSettings:
+            self.signals.finished.emit(self)
+            return
+
+        win = self.guiWin.SegForLostIDsSettings['win']
+        init_kwargs_new = self.guiWin.SegForLostIDsSettings['init_kwargs_new']
+        args_new = self.guiWin.SegForLostIDsSettings['args_new']
+
+        model = myutils.init_segm_model(acdcSegment, posData, init_kwargs_new) 
+        try:
+            model.setupLogger(self.guiWin.logger)
+        except Exception as e:
+            pass
+
+        curr_lab = self.guiWin.get_2Dlab(posData.lab)
+        prev_lab = self.guiWin.get_2Dlab(posData.allData_li[frame_i-1]['labels'])
+
+        tracked_lost_IDs = self.guiWin.getTrackedLostIDs()
+        prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
+        prev_IDs = {rp.label for rp in prev_rp}
+        missing_IDs = prev_IDs - set(posData.IDs) - set(tracked_lost_IDs)
+
+        curr_img = self.guiWin.getDisplayedImg1()
+
+        new_unique_ID = self.guiWin.setBrushID(useCurrentLab=True, return_val=True)
+
+        new_lab, assigned_IDs = single_cell_seg(model, prev_lab, curr_lab, curr_img, missing_IDs, new_unique_ID,
+                                                win, posData,
+                                                distance_filler_growth=args_new['distance_filler_growth'],
+                                                padding=args_new['padding'], 
+                                                size_perc_threshold=args_new['size_perc_threshold'],
+                                                overlap_threshold=args_new['overlap_threshold'],
+                                                )
+
+        posData.lab = new_lab
+        self.guiWin.update_rp()
+
+        for ID in assigned_IDs:
+            self.guiWin.trackManuallyAddedObject(ID, True)
+
+        self.guiWin.logger.info('Segmentation for lost IDs done.')
+            
+        self.signals.finished.emit(self)
 
 class AlignDataWorker(QObject):
     sigWarnTifAligned = Signal(object, object, object)
