@@ -1274,7 +1274,7 @@ def check_upgrade_javabridge():
     except Exception as e:
         return
     patch = int(version.split('.')[2])
-    if patch > 19:
+    if patch > 18:
         return
     install_javabridge()
 
