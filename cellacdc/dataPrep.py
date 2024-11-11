@@ -383,7 +383,7 @@ class dataPrepWin(QMainWindow):
     def gui_addPlotItems(self):
         # Image Item
         # blankImage = np.full((512,512,3), darkBkgrColor)
-        self.img = pg.ImageItem()
+        self.img = widgets.BaseImageItem()
         self.ax1.addItem(self.img)
         self.hist.setImageItem(self.img)
 
@@ -2470,6 +2470,7 @@ class dataPrepWin(QMainWindow):
         self.startAction.setEnabled(True)
         self.showInExplorerAction.setEnabled(True)
         self.setImageNameText()
+        self.img.preComputedMinMaxValues(self.data)
         self.update_img()
         self.setFontSizeROIlabels()
 
@@ -2727,6 +2728,9 @@ class dataPrepWin(QMainWindow):
         self.saveAlignedWorkerLoop.exec_()
     
     def handleAlignedDataOnClosing(self):
+        if not hasattr(self, 'tempFilesToMove'):
+            return
+        
         if not self.tempFilesToMove:
             return True
         
