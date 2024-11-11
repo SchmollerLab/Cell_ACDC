@@ -1506,6 +1506,34 @@ class guiWin(QMainWindow):
         ImageMenu = menuBar.addMenu("&Image")
         ImageMenu.addSeparator()
         ImageMenu.addAction(self.imgPropertiesAction)
+        self.defaultRescaleIntensLutMenu = ImageMenu.addMenu(
+            "Default method to rescale intensities (LUT)"
+        )
+
+        self.defaultRescaleIntensActionGroup = QActionGroup(
+            self.defaultRescaleIntensLutMenu
+        )
+        howTexts = (
+            'Rescale each 2D image', 
+            'Rescale across z-stack',
+            'Rescale across time frames',
+            'Do no rescale, display raw image'
+        )
+        try:
+            self.defaultRescaleIntensHow = (
+                self.df_settings.at['default_rescale_intens_how', 'value']
+            )
+        except Exception as err:
+            self.defaultRescaleIntensHow = howTexts[0]
+            
+        for howText in howTexts:
+            action = QAction(howText, self.defaultRescaleIntensLutMenu)
+            action.setCheckable(True)
+            if howText == self.defaultRescaleIntensHow:
+                action.setChecked(True)
+                
+            self.defaultRescaleIntensActionGroup.addAction(action)
+            self.defaultRescaleIntensLutMenu.addAction(action)
         
         filtersMenu = menuBar.addMenu("Filters")
         for filtersDict in self.filtersWins.values():
@@ -3585,6 +3613,10 @@ class guiWin(QMainWindow):
 
         self.cp3denoiseAction.triggered.connect(self.cp3denoiseActionTriggered)
         
+        self.defaultRescaleIntensActionGroup.triggered.connect(
+            self.defaultRescaleIntensLutActionToggled
+        )
+        
         # self.repeatAutoCcaAction.triggered.connect(self.repeatAutoCca)
         self.manuallyEditCcaAction.triggered.connect(self.manualEditCca)
         self.addScaleBarAction.toggled.connect(self.addScaleBar)
@@ -4262,6 +4294,8 @@ class guiWin(QMainWindow):
         self.imgGrad.restoreState(self.df_settings)
         self.lutItemsLayout.addItem(self.imgGrad, row=0, col=0)
         for action in self.imgGrad.rescaleActionGroup.actions():
+            if action.text() == self.defaultRescaleIntensHow:
+                action.setChecked(True)
             self.rescaleIntensMenu.addAction(action)
         
         # Colormap gradient widget
@@ -13200,6 +13234,25 @@ class guiWin(QMainWindow):
         self.df_settings.to_csv(self.settings_csv_path)
         QTimer.singleShot(150, self.resizeGui)
     
+    def defaultRescaleIntensLutActionToggled(self, action):
+        how = action.text()
+        for rescaleIntensAction in self.imgGrad.rescaleActionGroup.actions():
+            if how == rescaleIntensAction.text():
+                rescaleIntensAction.setChecked(True)
+                rescaleIntensAction.trigger()
+                break
+        
+        for channel, items in self.overlayLayersItems.items():
+            _, lutItem, _ = items
+            for rescaleIntensAction in lutItem.rescaleActionGroup.actions():
+                if how == rescaleIntensAction.text():
+                    rescaleIntensAction.setChecked(True)
+                    rescaleIntensAction.trigger()
+                    break
+        
+        self.df_settings.at['default_rescale_intens_how', 'value'] = how
+        self.df_settings.to_csv(self.settings_csv_path)
+    
     def retainSpaceSlidersToggled(self, checked):
         if checked:
             self.df_settings.at['retain_space_hidden_sliders', 'value'] = 'Yes'
@@ -16914,6 +16967,8 @@ class guiWin(QMainWindow):
 
         self.isDataLoaded = True
         self.isDataLoading = False
+        
+        self.rescaleIntensitiesLut(setImage=False)
         
         self.gui_createAutoSaveWorker()
     
@@ -26183,6 +26238,10 @@ class guiWin(QMainWindow):
             parent=self, name='image', axisLabel=channelName
         )
         imageItem.lutItem = lutItem
+        for action in lutItem.rescaleActionGroup.actions():
+            if action.text() == self.defaultRescaleIntensHow:
+                action.setChecked(True)
+            break
         
         lutItem.removeAddScaleBarAction()
         lutItem.removeAddTimestampAction()
