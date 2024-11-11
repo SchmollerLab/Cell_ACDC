@@ -578,7 +578,8 @@ class dataPrepWin(QMainWindow):
         self.updateNavigateItems()
         posData = self.data[self.pos_i]
         img = self.getImage(posData, posData.img_data, self.frame_i)
-        # img = img/img.max()
+        self.img.setCurrentPosIndex(self.pos_i)
+        self.img.setCurrentFrameIndex(self.frame_i)
         self.img.setImage(img)
         self.zSliceScrollBar.setMaximum(posData.SizeZ-1)
 
@@ -2729,7 +2730,7 @@ class dataPrepWin(QMainWindow):
     
     def handleAlignedDataOnClosing(self):
         if not hasattr(self, 'tempFilesToMove'):
-            return
+            return True
         
         if not self.tempFilesToMove:
             return True
