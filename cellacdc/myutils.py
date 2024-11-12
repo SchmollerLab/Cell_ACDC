@@ -3325,7 +3325,7 @@ def _download_cellpose_germlineNuclei_model():
 def _download_omnipose_models():
     urls, file_sizes = _model_url('omnipose')
     temp_model_path = tempfile.mkdtemp()
-    final_model_path = os.path.expanduser('~\.cellpose\models')
+    final_model_path = os.path.expanduser(r'~\.cellpose\models')
     for url, file_size in zip(urls, file_sizes):
         filename = url.split('/')[-1]
         final_dst = os.path.join(final_model_path, filename)

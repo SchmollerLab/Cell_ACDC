@@ -21,7 +21,7 @@ def filter_cols(df):
     Returns:
     - pandas.DataFrame: The filtered DataFrame containing only the specified columns.
     """
-    lin_tree_cols = {'generation_num_tree', 'root_ID_tree', 'sister_ID_tree', 'parent_ID_tree', 'parent_ID_tree', 'emerg_frame_i', 'division_frame_i'}
+    lin_tree_cols = {'generation_num_tree', 'root_ID_tree', 'sister_ID_tree', 'parent_ID_tree', 'parent_ID_tree', 'emerg_frame_i', 'division_frame_i', 'is_history_known'}
     sis_cols = {col for col in df.columns if col.startswith('sister_ID_tree')}
     lin_tree_cols = lin_tree_cols | sis_cols
     return df[list(lin_tree_cols)]
@@ -69,7 +69,7 @@ def reorg_sister_cells_inner_func(row):
     return values
 
 
-def reorg_sister_cells_for_inport(df):
+def reorg_sister_cells_for_import(df):
     """
     Reorganizes the sister cells for import.
 
@@ -174,6 +174,7 @@ def added_lineage_tree_to_cca_df(added_lineage_tree):
         - 'parent_ID_tree'
         - 'root_ID_tree'
         - 'sister_ID_tree'
+        - 'is_history_known'
     """
 
     cca_df = pd.DataFrame()
@@ -184,6 +185,9 @@ def added_lineage_tree_to_cca_df(added_lineage_tree):
     cca_df['parent_ID_tree'] = [row[2] for row in added_lineage_tree]
     cca_df['root_ID_tree'] = [row[4] for row in added_lineage_tree]
     cca_df['sister_ID_tree'] = [row[5] for row in added_lineage_tree]
+    cca_df['is_history_known'] = cca_df['parent_ID_tree'] != -1
+    cca_df['is_history_known'] = cca_df['is_history_known'].astype(int)
+
     cca_df = cca_df.set_index('Cell_ID')
     return cca_df
 
@@ -736,11 +740,10 @@ class normal_division_lineage_tree:
         for ID in new_unknown_IDs:
             # print(f'Frame {frame_i}: New cell ID {ID} suspected of being a cell from the outside.')
             self.families.append([(ID, 1)])
-            added_lineage_tree.append((-1, ID, -1, 1, ID, [-1] * (self.max_daughter-1)))
+            added_lineage_tree.append((frame_i, ID, -1, 1, ID, [-1] * (self.max_daughter-1)))
 
             
         for mother, _ in mother_daughters:
-
             mother_ID = IDs_prev[mother]
             daughter_IDs = daughter_dict[mother]
             found = False  # flag to track if a family was associated
@@ -894,9 +897,11 @@ class normal_division_lineage_tree:
                 Cell_info['generation_num_tree'] = 1
                 Cell_info['root_ID_tree'] = Cell_info['Cell_ID']
                 Cell_info['sister_ID_tree'] = [-1]
+                Cell_info['is_history_known'] = False
                 corrected_df = pd.concat([corrected_df, Cell_info.to_frame().T])
                 continue
 
+            Cell_info['is_history_known'] = True
             parent_cell = unique_Cell_ID_df.loc[Cell_info['parent_ID_tree']]
             Cell_info['generation_num_tree'] = parent_cell['generation_num_tree'] + 1
             Cell_info['root_ID_tree'] = parent_cell['root_ID_tree']
@@ -987,7 +992,7 @@ class normal_division_lineage_tree:
         elif quick and (propagate_back or propagate_fwd or update_fams or consider_children):
             raise ValueError('Quick is True, other options are not supported.')
 
-        lineage_df = reorg_sister_cells_for_inport(lineage_df)
+        lineage_df = reorg_sister_cells_for_import(lineage_df)
         lineage_df = filter_cols(lineage_df)
         if frame_i == len(self.lineage_list):
             if not quick:
@@ -1056,7 +1061,7 @@ class normal_division_lineage_tree:
     def propagate(self, frame_i, Cell_IDs_fixed=None):
         """
         Propagates the changes made to self.lineage_list at frame frame_i to the general DataFrame (self.general_df), families (self.families), and lineage list (self.gen_df_to_df_li()). The propagation can be done in both directions, and fixed cell IDs can be provided (in this case only those are propegated and the other Cell_IDs in the specified frame are ignored.)
-
+        Also updates is_history_known
         Parameters:
         - frame_i (int): The index of the frame to be propagated.
         - Cell_IDs_fixed (list, optional): List of fixed cell IDs. Defaults to None.
@@ -1104,7 +1109,7 @@ class normal_division_lineage_tree:
                             )
 
                 df = filter_cols(df)
-                df = reorg_sister_cells_for_inport(df)
+                df = reorg_sister_cells_for_import(df)
                 self.frames_for_dfs.add(i)
                 df_li_new.append(df)
 
