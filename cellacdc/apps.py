@@ -3629,7 +3629,7 @@ class BayesianTrackerParamsWin(QDialog):
     def ok_cb(self, checked=False):
         self.cancel = False
         try:
-            m = re.findall('\((\d+), *(\d+)\)', self.volumeLineEdit.text())
+            m = re.findall(r'\((\d+), *(\d+)\)', self.volumeLineEdit.text())
             if len(m) < 2:
                 raise
             self.volume = tuple([(int(start), int(end)) for start, end in m])
