@@ -12198,6 +12198,7 @@ class guiWin(QMainWindow):
         elif mode == 'Normal division: Lineage tree': # Mode activation for lineage tree
             # self.startLinTreeIntegrityCheckerWorker() # need to replace (postponed)
             proceed = self.initLinTree()
+            self.setEnabledCcaToolbar(enabled=False)
             self.setNavigateScrollBarMaximum()
             if proceed:
                 self.applyDelROIs()
