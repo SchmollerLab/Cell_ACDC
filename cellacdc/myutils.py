@@ -3325,7 +3325,7 @@ def _download_cellpose_germlineNuclei_model():
 def _download_omnipose_models():
     urls, file_sizes = _model_url('omnipose')
     temp_model_path = tempfile.mkdtemp()
-    final_model_path = os.path.expanduser('~\.cellpose\models')
+    final_model_path = os.path.expanduser(r'~\.cellpose\models')
     for url, file_size in zip(urls, file_sizes):
         filename = url.split('/')[-1]
         final_dst = os.path.join(final_model_path, filename)
@@ -3501,7 +3501,7 @@ def are_acdc_dfs_equal(df_left, df_right):
 def is_pos_folderpath(folderpath):
     foldername = os.path.basename(folderpath)
     is_valid_pos_folder = (
-        re.search('^Position_(\d+)$', foldername) is not None
+        re.search(r'^Position_(\d+)$', foldername) is not None
         and os.path.isdir(folderpath)
         and os.path.exists(os.path.join(folderpath, 'Images'))
     )
@@ -3585,7 +3585,7 @@ def validate_images_path(input_path: os.PathLike, create_dirs_tree=False):
     parent_dir = os.path.dirname(input_path)
     parent_foldername = os.path.basename(parent_dir)
     is_pos_folder = (
-        re.search('^Position_(\d+)$', parent_foldername) is not None
+        re.search(r'^Position_(\d+)$', parent_foldername) is not None
         and os.path.isdir(parent_dir)
     )
     if not is_pos_folder:

@@ -69,7 +69,7 @@ def reorg_sister_cells_inner_func(row):
     return values
 
 
-def reorg_sister_cells_for_inport(df):
+def reorg_sister_cells_for_import(df):
     """
     Reorganizes the sister cells for import.
 
@@ -987,7 +987,7 @@ class normal_division_lineage_tree:
         elif quick and (propagate_back or propagate_fwd or update_fams or consider_children):
             raise ValueError('Quick is True, other options are not supported.')
 
-        lineage_df = reorg_sister_cells_for_inport(lineage_df)
+        lineage_df = reorg_sister_cells_for_import(lineage_df)
         lineage_df = filter_cols(lineage_df)
         if frame_i == len(self.lineage_list):
             if not quick:
@@ -1104,7 +1104,7 @@ class normal_division_lineage_tree:
                             )
 
                 df = filter_cols(df)
-                df = reorg_sister_cells_for_inport(df)
+                df = reorg_sister_cells_for_import(df)
                 self.frames_for_dfs.add(i)
                 df_li_new.append(df)
 
