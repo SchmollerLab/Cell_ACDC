@@ -598,7 +598,7 @@ class saveDataWorker(QObject):
         df = measurements.add_concentration_metrics(
             df, concentration_metrics_params
         )
-
+        
         # Add region properties
         try:
             df, rp_errors = measurements.add_regionprops_metrics(

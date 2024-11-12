@@ -1249,7 +1249,7 @@ class calcMetricsWorker(QObject):
                     if self.abort:
                         self.signals.finished.emit(self)
                         return
-
+                    
                     lab = data_dict['labels']
                     if not np.any(lab):
                         # Empty segmentation mask --> skip
@@ -1258,7 +1258,7 @@ class calcMetricsWorker(QObject):
                     rp = data_dict['regionprops']
                     posData.lab = lab
                     posData.rp = rp
-
+                    
                     if posData.acdc_df is None:
                         acdc_df = myutils.getBaseAcdcDf(rp)
                     else:
@@ -1268,14 +1268,14 @@ class calcMetricsWorker(QObject):
                             acdc_df = myutils.getBaseAcdcDf(rp)
 
                     try:
-                        if posData.fluo_data_dict:
-                            acdc_df = addMetrics_acdc_df(
-                                acdc_df, rp, frame_i, lab, posData
-                            )
-                            if guiWin.saveDataWorker.abort:
-                                self.abort = True
-                                self.signals.finished.emit(self)
-                                return
+                        # if posData.fluo_data_dict:
+                        acdc_df = addMetrics_acdc_df(
+                            acdc_df, rp, frame_i, lab, posData
+                        )
+                        if guiWin.saveDataWorker.abort:
+                            self.abort = True
+                            self.signals.finished.emit(self)
+                            return
                         else:
                             acdc_df = addVolumeMetrics(
                                 acdc_df, rp, posData
