@@ -955,14 +955,14 @@ class KeepIDsLineEdit(ValidLineEdit):
     
     def onTextChanged(self, text):
         IDs = []
-        rangesMatch = re.findall('(\d+-\d+)', text)
+        rangesMatch = re.findall(r'(\d+-\d+)', text)
         if rangesMatch:
             for rangeText in rangesMatch:
                 start, stop = rangeText.split('-')
                 start, stop = int(start), int(stop)
                 IDs.extend(range(start, stop+1))
-            text = re.sub('(\d+)-(\d+)', '', text)
-        IDsMatch = re.findall('(\d+)', text)
+            text = re.sub(r'(\d+)-(\d+)', '', text)
+        IDsMatch = re.findall(r'(\d+)', text)
         if IDsMatch:
             for ID in IDsMatch:
                 IDs.append(int(ID))
@@ -2129,7 +2129,7 @@ class NumericCommaLineEdit(QLineEdit):
     def __init__(self, parent=None):
         super().__init__(parent)
 
-        self.validPattern = '^[0-9,\.]+$'
+        self.validPattern = r'^[0-9,\.]+$'
         regExp = QRegularExpression(self.validPattern)
         self.setValidator(QRegularExpressionValidator(regExp))
     
@@ -8366,7 +8366,7 @@ class LabelsWidget(QWidget):
                 continue
             
             if text.find('</p>') == -1:
-                text = f'{text}<\p>'
+                text = rf'{text}<\p>'
             
             if text.find(openTag) == -1:
                 text = f'{openTag}{text}'
