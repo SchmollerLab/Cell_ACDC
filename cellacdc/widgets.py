@@ -6275,12 +6275,13 @@ class BaseImageItem(pg.ImageItem):
     def __init__(
             self, image=None, **kargs
         ):
-        super().__init__(image, **kargs)
         self.minMaxValuesMapper = None
         self.pos_i = 0
         self.z = 0
         self.frame_i = 0
-    
+        
+        super().__init__(image, **kargs)
+        
     def preComputedMinMaxValues(self, data: dict):
         self.minMaxValuesMapper = {}
         for pos_i, posData in enumerate(data):

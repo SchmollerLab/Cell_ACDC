@@ -6451,6 +6451,8 @@ class PostProcessSegmDialog(QBaseDialog):
 
         self.mainWin.storeUndoRedoStates(False)
         self.posData = self.mainWin.data[self.mainWin.pos_i]
+        self.img.setCurrentPosIndex(self.pos_i)
+        self.img.minMaxValuesMapper = self.mainWin.img1.minMaxValuesMapper
         self.origLab = self.posData.lab.copy()
         self.origRp = skimage.measure.regionprops(self.origLab)
         self.origObjs = {obj.label:obj for obj in self.origRp}
@@ -6719,7 +6721,7 @@ class imageViewer(QMainWindow):
         self.graphLayout.addItem(self.Plot, row=1, col=1)
 
         # Image Item
-        self.img = pg.ImageItem(np.zeros((512,512)))
+        self.img = widgets.BaseImageItem()
         self.Plot.addItem(self.img)
 
         #Image histogram
@@ -7177,6 +7179,8 @@ class imageViewer(QMainWindow):
             img = self.getImage()
         else:
             img = self.parent.getImage(frame_i=self.frame_i)
+        
+        self.img.setCurrentFrameIndex(self.frame_i)
         self.img.setImage(img)
         self.framesScrollBar.setSliderPosition(self.frame_i+1)
         
