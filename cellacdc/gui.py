@@ -89,7 +89,7 @@ from . import data_structure_docs_url
 from . import exporters
 from .trackers.CellACDC import CellACDC_tracker
 from .cca_functions import _calc_rot_vol
-from .myutils import exec_time, setupLogger
+from .myutils import exec_time, setupLogger, ArgSpec
 from .help import welcome, about
 from .trackers.CellACDC_normal_division.CellACDC_normal_division_tracker import normal_division_lineage_tree, reorg_sister_cells_for_export
 from .plot import imshow
@@ -1578,6 +1578,7 @@ class guiWin(QMainWindow):
         # SegmMenu.addAction(self.SegmActionRW)
         self.SegmActionRW.setVisible(False)
         self.SegmActionRW.setDisabled(True)
+        SegmMenu.addAction(self.EditSegForLostIDsSetSettings)
         SegmMenu.addAction(self.postProcessSegmAction)
         SegmMenu.addAction(self.autoSegmAction)
         SegmMenu.addAction(self.relabelSequentialAction)
@@ -1842,6 +1843,14 @@ class guiWin(QMainWindow):
         self.segmentToolAction.setShortcut('R')
         self.widgetsWithShortcut['Repeat segmentation'] = self.segmentToolAction
         editToolBar.addAction(self.segmentToolAction)
+
+        self.SegForLostIDsButton = QToolButton(self)
+        self.SegForLostIDsButton.setIcon(QIcon(":addDelPolyLineRoi_cursor.svg"))
+        editToolBar.addWidget(self.SegForLostIDsButton)
+        self.SegForLostIDsButton.clicked.connect(self.SegForLostIDsAction)
+
+        # self.SegForLostIDsButton.setShortcut('U')
+        # self.widgetsWithShortcut['Unknown lineage (lineage tree)'] = self.SegForLostIDsButton
         
         self.manualBackgroundButton = QToolButton(self)
         self.manualBackgroundButton.setIcon(QIcon(":manual_background.svg"))
@@ -2121,8 +2130,6 @@ class guiWin(QMainWindow):
         self.nextAction.setDisabled(False)
         self.prevAction.setDisabled(False)
         self.navigateScrollBar.setDisabled(False)
-
-
 
     def gui_createAnnotateToolbar(self):
         # Edit toolbar
@@ -2952,6 +2959,7 @@ class guiWin(QMainWindow):
 
         # Edit actions
         models = myutils.get_list_of_models()
+        models = [*models, 'cellpose_local_seg'] # Add cellpose_local_seg for SegForLostIDsAction
         self.segmActions = []
         self.modelNames = []
         self.acdcSegment_li = []
@@ -2980,6 +2988,13 @@ class guiWin(QMainWindow):
         )
         self.postProcessSegmAction.setDisabled(True)
         self.postProcessSegmAction.setCheckable(True)
+
+        self.EditSegForLostIDsSetSettings = QAction(
+            "Edit settings for Segmenting lost IDs...", self
+        )
+        self.EditSegForLostIDsSetSettings.triggered.connect(
+            self.SegForLostIDsSetSettings
+        )
 
         self.repeatTrackingAction = QAction(
             QIcon(":repeat-tracking.svg"), "Repeat tracking", self
@@ -8295,6 +8310,126 @@ class guiWin(QMainWindow):
 
         self.textAnnot[0].addToPlotItem(self.ax1)
         self.textAnnot[1].addToPlotItem(self.ax2)
+
+    def SegForLostIDsSetSettings(self):
+        model_name = 'cellpose_local_seg'
+        base_model_name = 'cellpose_custom'
+        idx = self.modelNames.index(model_name)
+        acdcSegment = self.acdcSegment_li[idx]
+
+        if acdcSegment is None:
+            self.logger.info(f'Importing {base_model_name}...')
+            acdcSegment = myutils.import_segment_module(base_model_name)
+            self.acdcSegment_li[idx] = acdcSegment
+        
+        extra_params = ['overlap_threshold',
+                        'padding',
+                        'size_perc_threshold',
+                        'distance_filler_growth']
+
+        extra_types = [float, float, float, float]
+
+        extra_defaults = [0.5, 0.4, 0.5, 1.]
+
+        extra_desc = ['Overlap threshold with other already segemented cells over which newly segmented cells are discarded', 
+                    'Padding of the box used for new segmentation around the segmentation from the previous frame', 
+                    'Relative size threshold of the new segmentation compared to the segmentation from the previous frame',
+                    "Cells which are already segmented are filled with random noise sampled from background to ensure that they don't get segmented again. This parameter controls the additional padding around the already segmented cells."]
+
+        extra_ArgSpec = []
+        for i, param in enumerate(extra_params):
+            param = ArgSpec(name=param, 
+                            default=extra_defaults[i],
+                            type=extra_types[i],
+                            desc=extra_desc[i],
+                            docstring='')
+
+            extra_ArgSpec.append(param)
+
+        init_params, segment_params = myutils.getModelArgSpec(acdcSegment)
+        segment_params = [arg for arg in segment_params if arg[0] != 'diameter']
+        
+        init_params += extra_ArgSpec
+
+        win = self.initSegmModelParams(
+            model_name, acdcSegment, init_params, segment_params
+        )
+
+        if win is None:
+            self.logger.info('Segmentation for lost IDs cancelled.')
+            return
+
+        init_kwargs_new = {}
+        args_new = {}
+        for key, val in win.init_kwargs.items():
+            if key in extra_params:
+                args_new[key] = val
+            else:
+                init_kwargs_new[key] = val
+        
+        self.SegForLostIDsSettings = {
+            'win': win,
+            'init_kwargs_new': init_kwargs_new,
+            'args_new': args_new
+        }
+
+    def SegForLostIDsAction(self):
+        self.storeUndoRedoStates(False)
+        self.progressWin = apps.QDialogWorkerProgress(
+            title='Segmenting for lost IDs', parent=self,
+            pbarDesc=f'Segmenting for lost IDs...'
+        )
+        self.progressWin.show(self.app)
+        self.progressWin.mainPbar.setMaximum(0)
+        
+        self.startSegForLostIDsWorker()
+
+    def onSegForLostInit(self):
+        self.logger.info('Settings for segmentation for lost IDs not set.')
+        self.SegForLostIDsSetSettings()            
+        self.SegForLostIDsWaitCond.wakeAll()
+
+    def startSegForLostIDsWorker(self):
+        self.SegForLostIDsMutex = QMutex()
+        self.SegForLostIDsWaitCond = QWaitCondition()
+        self._thread = QThread()
+
+        # Initialize the worker with mutex and wait condition
+        self.SegForLostIDsWorker = workers.SegForLostIDsWorker(
+            self, self.SegForLostIDsMutex, self.SegForLostIDsWaitCond
+        )
+
+        # Connect the worker's signal to the main thread's slot
+        self.SegForLostIDsWorker.sigAskInit.connect(self.onSegForLostInit)
+
+        # Move the worker to the thread
+        self.SegForLostIDsWorker.moveToThread(self._thread)
+
+        # Manage thread lifecycle
+        self.SegForLostIDsWorker.signals.finished.connect(self._thread.quit)
+        self.SegForLostIDsWorker.signals.finished.connect(self.SegForLostIDsWorker.deleteLater)
+        self._thread.finished.connect(self._thread.deleteLater)
+
+        # Connect other worker signals to the appropriate slots
+        self.SegForLostIDsWorker.signals.finished.connect(self.SegForLostIDsWorkerFinished)
+        self.SegForLostIDsWorker.signals.progress.connect(self.workerProgress)
+        self.SegForLostIDsWorker.signals.initProgressBar.connect(self.workerInitProgressbar)
+        self.SegForLostIDsWorker.signals.progressBar.connect(self.workerUpdateProgressbar)
+        self.SegForLostIDsWorker.signals.critical.connect(self.workerCritical)
+
+        # Start the thread and worker
+        self._thread.started.connect(self.SegForLostIDsWorker.run)
+        self._thread.start()
+    
+    def SegForLostIDsWorkerFinished(self):
+        
+        self.updateAllImages()
+        self.store_data()
+        
+        if self.progressWin is not None:
+            self.progressWin.workerFinished = True
+            self.progressWin.close()
+            self.progressWin = None
     
     def gui_raiseBottomLayoutContextMenu(self, event):
         try:
@@ -12131,6 +12266,9 @@ class guiWin(QMainWindow):
         if prevMode == 'Normal division: Lineage tree':
             self.lineage_tree = None
             self.editLin_TreeBar.setVisible(False)
+
+        elif prevMode == 'Cell cycle analysis':
+            self.setEnabledCcaToolbar(enabled=False)
 
         if mode == 'Segmentation and Tracking':
             self.setSwitchViewedPlaneDisabled(True)
@@ -17877,6 +18015,8 @@ class guiWin(QMainWindow):
         self.lin_tree_col_checks = [
             'generation_num',
         ]
+
+        self.SegForLostIDsSettings =  {}
     
     def initMetricsToSave(self, posData):
         posData.setLoadedChannelNames()

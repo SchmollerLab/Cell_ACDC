@@ -1150,6 +1150,9 @@ class normal_division_lineage_tree:
         return df
     
     def export_lin_tree_info(self, frame_i):
+        if frame_i == 0:
+            return [], [], []
+        
         df_curr = self.lineage_list[frame_i].copy()
         df_curr = checked_reset_index(df_curr)
         df_curr = df_curr.set_index('Cell_ID')
