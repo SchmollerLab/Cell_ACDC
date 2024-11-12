@@ -87,4 +87,4 @@ def _debug_lineage_tree(guiWin):
     else:
         pgshow(acdc_df)
 
-    printl(posData.tracked_lost_centroids)
+    # printl(posData.tracked_lost_centroids)
