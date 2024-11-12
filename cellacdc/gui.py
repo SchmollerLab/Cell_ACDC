@@ -12233,6 +12233,9 @@ class guiWin(QMainWindow):
             self.lineage_tree = None
             self.editLin_TreeBar.setVisible(False)
 
+        elif prevMode == 'Cell cycle analysis':
+            self.setEnabledCcaToolbar(enabled=False)
+
         if mode == 'Segmentation and Tracking':
             self.setSwitchViewedPlaneDisabled(True)
             self.trackingMenu.setDisabled(False)
