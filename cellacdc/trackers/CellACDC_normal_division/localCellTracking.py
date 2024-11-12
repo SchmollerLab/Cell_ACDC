@@ -1,7 +1,7 @@
 import skimage
 import numpy as np
-from .core import segm_model_segment, post_process_segm
-from .features import custom_post_process_segm
+from ...core import segm_model_segment, post_process_segm
+from ...features import custom_post_process_segm
 
 import os # for dbug
 import json # for dbug

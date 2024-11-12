@@ -17627,7 +17627,6 @@ class guiWin(QMainWindow):
             self.overlayButtonPrevState = self.overlayButton.isChecked()
             self.overlayButton.setChecked(False)
             self.overlayButton.setDisabled(True)
-            # self.setZprojDisabled(True, storePrevState=True)
         else:
             self.zProjComboBox.setDisabled(False)
             self.restoreAnnotationsOptions()
@@ -17637,7 +17636,6 @@ class guiWin(QMainWindow):
             if self.overlayButtonPrevState:
                 self.overlayButton.setChecked(self.overlayButtonPrevState)
             self.updateZsliceScrollbar(posData.frame_i)
-            # self.restoreZprojWidgetsEnabled()
         
         SizeY, SizeX = posData.img_data[posData.frame_i].shape[-2:]
         
@@ -17705,42 +17703,28 @@ class guiWin(QMainWindow):
             
         posData = self.data[self.pos_i]
         if how == 'single z-slice':
+            self.zSliceScrollBar.setDisabled(False)
+            self.zSliceSpinbox.setDisabled(False)
+            self.zSliceCheckbox.setDisabled(False)
             self.setZprojDisabled(False)
             self.update_z_slice(self.zSliceScrollBar.sliderPosition())
         else:
+            self.zSliceScrollBar.setDisabled(True)
+            self.zSliceSpinbox.setDisabled(True)
+            self.zSliceCheckbox.setDisabled(True)
             self.setZprojDisabled(self.isSegm3D)
             self.updateAllImages()
     
     def setZprojDisabled(self, disabled, storePrevState=False):
-        if storePrevState:
-            self._ZprojWidgersEnabledState = {
-                self.zSliceScrollBar: disabled,
-                self.zSliceSpinbox: disabled,
-                self.zSliceCheckbox: disabled,
-            }
-        else:
-            self._ZprojWidgersEnabledState = None
-        self.zSliceScrollBar.setDisabled(disabled)
-        self.zSliceSpinbox.setDisabled(disabled)
-        self.zSliceCheckbox.setDisabled(disabled)
         for action in self.editToolBar.actions():
             button = self.editToolBar.widgetForAction(action)
             if button == self.eraserButton:
                 continue
             action.setDisabled(disabled)
-            if storePrevState:
-                self._ZprojWidgersEnabledState[action] = disabled
             try:
                 button.setChecked(False)
             except Exception as err:
                 pass
-    
-    def restoreZprojWidgetsEnabled(self):
-        if self._ZprojWidgersEnabledState is None:
-            return
-
-        for qobject, disabled in self._ZprojWidgersEnabledState.items():
-            qobject.setDisabled(disabled)
         
     def clearAx2Items(self, onlyHideText=False):
         self.ax2_binnedIDs_ScatterPlot.clear()
