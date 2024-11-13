@@ -127,7 +127,7 @@ Resources
 - `Installation guide <https://cell-acdc.readthedocs.io/en/latest/installation.html#installation-using-anaconda-recommended>`__
 - `User manual <https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf>`__
 - `Publication <https://bmcbiol.biomedcentral.com/articles/10.1186/s12915-022-01372-6>`__ of Cell-ACDC
-- `Forum <https://github.com/SchmollerLab/Cell_ACDC/discussions>`__ for discussions (feel free to **ask any question**)
+- `Image.sc Forum <https://forum.image.sc/tag/cell-acdc>` to ask **any question**. Make sure to tag the Topic with the tag ``cell-acdc``. 
 - **Report issues, request a feature or ask questions** by opening a new issue `here <https://github.com/SchmollerLab/Cell_ACDC/issues>`__
 - X `thread <https://twitter.com/frank_pado/status/1443957038841794561?s=20>`__
 
