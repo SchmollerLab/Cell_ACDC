@@ -11,7 +11,7 @@ Resources
    with **detailed instructions**.
 -  `Publication <https://bmcbiol.biomedcentral.com/articles/10.1186/s12915-022-01372-6>`__
    of Cell-ACDC.
-- `Image.sc Forum <https://forum.image.sc/tag/cell-acdc>` to ask **any question**. Make sure to tag the Topic with the tag ``cell-acdc``. 
+- `Image.sc Forum <https://forum.image.sc/tag/cell-acdc>`_ to ask **any question**. Make sure to tag the Topic with the tag ``cell-acdc``. 
 -  **Report issues, request a feature or ask questions** by opening a
    new issue
    `here <https://github.com/SchmollerLab/Cell_ACDC/issues>`__.
