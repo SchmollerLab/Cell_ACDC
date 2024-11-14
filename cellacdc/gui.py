@@ -5318,7 +5318,10 @@ class guiWin(QMainWindow):
             self.update_rp()
 
             # Repeat tracking
-            self.tracking(enforce=True, assign_unique_new_IDs=False)
+            for ID in posData.IDs:
+                if ID in prev_IDs:
+                    continue
+                self.trackManuallyAddedObject(ID, True)
 
             if self.isSnapshot:
                 self.fixCcaDfAfterEdit('Separate IDs')
