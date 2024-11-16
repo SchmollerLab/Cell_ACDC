@@ -5516,7 +5516,7 @@ class guiWin(QMainWindow):
 
             posData.disableAutoActivateViewerWindow = True
             currentIDs = posData.IDs.copy()
-            self.setAllIDsx(onlyVisited=True)
+            self.setAllIDs(onlyVisited=True)
             editID = apps.editID_QWidget(
                 ID, posData.IDs, doNotShowAgain=self.doNotAskAgainExistingID,
                 parent=self, entryID=self.getNearestLostObjID(y, x), 
@@ -8608,22 +8608,26 @@ class guiWin(QMainWindow):
     
     def findID(self):
         posData = self.data[self.pos_i]
+        self.setAllIDs()
         searchIDdialog = apps.QLineEditDialog(
             title='Search object by ID',
             msg='Enter object ID to find and highlight',
-            parent=self, allowedValues=posData.IDs
+            parent=self, allowedValues=posData.allIDs
         )
         searchIDdialog.exec_()
         if searchIDdialog.cancel:
             return
 
-        objIdx = posData.IDs_idxs[searchIDdialog.EntryID]
-        obj = posData.rp[objIdx]
-        self.goToZsliceSearchedID(obj)
-        
-        self.highlightSearchedID(searchIDdialog.EntryID)
-        propsQGBox = self.guiTabControl.propsQGBox
-        propsQGBox.idSB.setValue(searchIDdialog.EntryID)
+        if ID in posData.IDs:
+            objIdx = posData.IDs_idxs[searchIDdialog.EntryID]
+            obj = posData.rp[objIdx]
+            self.goToZsliceSearchedID(obj)
+            
+            self.highlightSearchedID(searchIDdialog.EntryID)
+            propsQGBox = self.guiTabControl.propsQGBox
+            propsQGBox.idSB.setValue(searchIDdialog.EntryID)
+        else:
+            ...
     
     def skipForwardToNewID(self):
         self.progressWin = apps.QDialogWorkerProgress(
