@@ -8618,7 +8618,8 @@ class guiWin(QMainWindow):
         if searchIDdialog.cancel:
             return
 
-        if ID in posData.IDs:
+        searchedID = searchIDdialog.EntryID
+        if searchedID in posData.IDs:
             objIdx = posData.IDs_idxs[searchIDdialog.EntryID]
             obj = posData.rp[objIdx]
             self.goToZsliceSearchedID(obj)
@@ -8627,6 +8628,24 @@ class guiWin(QMainWindow):
             propsQGBox = self.guiTabControl.propsQGBox
             propsQGBox.idSB.setValue(searchIDdialog.EntryID)
         else:
+            frame_i_found = None
+            for frame_i in range(len(posData.segm_data)):
+                if frame_i >= len(posData.allData_li):
+                    break
+                lab = posData.allData_li[frame_i]['labels']
+                if lab is None:
+                    rp = skimage.measure.regionprops(posData.segm_data[frame_i])
+                    IDs = set([obj.label for obj in rp])
+                else:
+                    IDs = posData.allData_li[frame_i]['IDs']
+                
+                if searchedID in IDs:
+                    frame_i_found = frame_i
+                    break
+            
+            if frame_i_found is None:
+                return
+            
             ...
     
     def skipForwardToNewID(self):
