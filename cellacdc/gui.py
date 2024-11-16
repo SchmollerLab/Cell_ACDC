@@ -8620,14 +8620,9 @@ class guiWin(QMainWindow):
 
         searchedID = searchIDdialog.EntryID
         if searchedID in posData.IDs:
-            objIdx = posData.IDs_idxs[searchIDdialog.EntryID]
-            obj = posData.rp[objIdx]
-            self.goToZsliceSearchedID(obj)
-            
-            self.highlightSearchedID(searchIDdialog.EntryID)
-            propsQGBox = self.guiTabControl.propsQGBox
-            propsQGBox.idSB.setValue(searchIDdialog.EntryID)
+            self.goToObjectID(searchedID)
         else:
+            self.logger.info(f'Searching ID {searchedID} in other frames...')
             frame_i_found = None
             for frame_i in range(len(posData.segm_data)):
                 if frame_i >= len(posData.allData_li):
@@ -8646,7 +8641,44 @@ class guiWin(QMainWindow):
             if frame_i_found is None:
                 return
             
-            ...
+            self.logger.info(
+                f'Object ID {searchedID} found at frame n. {frame_i_found+1}.'
+            )
+            proceed = self.askGoToFrameFoundID(searchedID, frame_i_found)
+            if not proceed:
+                return
+            
+            posData.frame_i = frame_i_found
+            self.get_data()
+            self.updateAllImages(updateFilters=True)
+            self.updateScrollbars()
+            
+            self.goToObjectID(searchedID)
+    
+    def goToObjectID(self, ID):
+        posData = self.data[self.pos_i]
+        objIdx = posData.IDs_idxs[ID]
+        obj = posData.rp[objIdx]
+        self.goToZsliceSearchedID(obj)
+        
+        self.highlightSearchedID(ID)
+        propsQGBox = self.guiTabControl.propsQGBox
+        propsQGBox.idSB.setValue(ID)
+    
+    def askGoToFrameFoundID(self, searchedID, frame_i_found):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(f"""
+            Object ID {searchedID} was found at frame n. {frame_i_found+1}.<br><br>
+            Do you want to go to frame n. {frame_i_found+1}.
+        """)
+        noButton, yesButton = msg.information(
+            self, f'ID {searchedID} found at frame n. {frame_i_found+1}', txt,
+            buttonsTexts=(
+                'No, stay on current frame', 
+                f'Yes, go to frame n. {frame_i_found+1}'
+            )
+        )
+        return msg.clickedButton == yesButton
     
     def skipForwardToNewID(self):
         self.progressWin = apps.QDialogWorkerProgress(
