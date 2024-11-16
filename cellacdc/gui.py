@@ -5516,9 +5516,12 @@ class guiWin(QMainWindow):
 
             posData.disableAutoActivateViewerWindow = True
             currentIDs = posData.IDs.copy()
+            self.setAllIDsx(onlyVisited=True)
             editID = apps.editID_QWidget(
                 ID, posData.IDs, doNotShowAgain=self.doNotAskAgainExistingID,
-                parent=self, entryID=self.getNearestLostObjID(y, x)
+                parent=self, entryID=self.getNearestLostObjID(y, x), 
+                nextUniqueID=self.setBrushID(return_val=True), 
+                allIDs=posData.allIDs
             )
             editID.show(block=True)
             if editID.cancel:
@@ -11816,7 +11819,6 @@ class guiWin(QMainWindow):
         
         self.setAllIDs()
         posData = self.data[self.pos_i]
-        allIDs = posData.allIDs
         for ax in range(2):
             self.textAnnot[ax].changeFontSize(self.fontSize)
         if self.highLowResAction.isChecked():
@@ -12877,13 +12879,16 @@ class guiWin(QMainWindow):
             self.highLightIDLayerRightImage.clear()
             self.setHighlightID(False)
     
-    def setAllIDs(self):
+    def setAllIDs(self, onlyVisited=False):
         for posData in self.data:
             posData.allIDs = set()
             for frame_i in range(len(posData.segm_data)):
                 if frame_i >= len(posData.allData_li):
                     break
                 lab = posData.allData_li[frame_i]['labels']
+                if lab is None and onlyVisited:
+                    break
+                
                 if lab is None:
                     rp = skimage.measure.regionprops(posData.segm_data[frame_i])
                 else:

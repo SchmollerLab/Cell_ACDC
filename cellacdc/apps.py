@@ -8642,7 +8642,7 @@ class NumericEntryDialog(QBaseDialog):
 class editID_QWidget(QDialog):
     def __init__(
             self, clickedID, IDs, entryID=None, doNotShowAgain=False, 
-            parent=None
+            parent=None, nextUniqueID=1, allIDs=None
         ):
         self.IDs = IDs
         self.clickedID = clickedID
@@ -8650,6 +8650,10 @@ class editID_QWidget(QDialog):
         self.how = None
         self.mergeWithExistingID = True
         self.doNotAskAgainExistingID = doNotShowAgain
+        self.allIDs = allIDs
+        if allIDs is None:
+            self.allIDs = set(self.IDs)
+        self.nextUniqueID = nextUniqueID
 
         super().__init__(parent)
         self.setWindowTitle("Edit ID")
@@ -8673,6 +8677,18 @@ class editID_QWidget(QDialog):
             entryWidget.setText(str(entryID))
             entryWidget.selectAll()
 
+        VBoxLayout.addWidget(
+            QLabel(f'Next unique ID = {nextUniqueID}'), alignment=Qt.AlignCenter
+        )
+        
+        VBoxLayout.addWidget(widgets.QHLine())
+        
+        self.warnExistingIDLabel = QLabel()
+        self.warnExistingIDLabel.setStyleSheet('color: red')
+        VBoxLayout.addWidget(
+            self.warnExistingIDLabel, alignment=Qt.AlignCenter
+        )
+        
         note = QLabel(
             'NOTE: To replace multiple IDs at once\n'
             'write "(old ID, new ID), (old ID, new ID)" etc.'
@@ -8705,6 +8721,16 @@ class editID_QWidget(QDialog):
         # self.setModal(True)
 
     def onTextChanged(self, text):
+        self.warnExistingIDLabel.setText('')
+        try:
+            ID = int(text)
+            if ID in self.allIDs:
+                self.warnExistingIDLabel.setText(
+                    f'WARNING: ID {ID} was already used'
+                )
+        except Exception as err:
+            pass
+        
         # Get inserted char
         idx = self.entryWidget.cursorPosition()
         if idx == 0:
