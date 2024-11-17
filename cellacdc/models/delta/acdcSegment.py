@@ -113,8 +113,7 @@ class Model:
             img = img / 255
         return img
 
-    def segment(self,
-                image):
+    def segment(self, image):
         """
         Uses initialized model with weights and image to
         label cells in segmentation mask.

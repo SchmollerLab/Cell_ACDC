@@ -846,7 +846,7 @@ class segmWorker(QObject):
         
         posData = self.mainWin.data[self.mainWin.pos_i]
         lab = np.zeros_like(posData.segm_data[0])
-
+        
         if self.secondChannelData is not None:
             img = self.mainWin.model.second_ch_img_to_stack(
                 img, self.secondChannelData

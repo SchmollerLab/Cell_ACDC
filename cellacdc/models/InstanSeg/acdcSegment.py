@@ -63,8 +63,6 @@ class Model:
         
         is_zstack = image_in.ndim == 4
         
-        printl(image_in.shape, is_zstack)
-        
         if is_zstack:
             lab = np.zeros((image_in.shape[:3]), dtype=np.uint32)
             for z, img in enumerate(image_in):
@@ -78,7 +76,7 @@ class Model:
         labeled_output, image_tensor = self.model.eval_small_image(
             image, PhysicalSizeX
         )
-        lab = labeled_output[0].cpu().detach().numpy()[0]
+        lab = labeled_output[0].cpu().detach().numpy()[0].astype(np.uint32)
         return lab
     
     def second_ch_img_to_stack(self, image, second_image):
