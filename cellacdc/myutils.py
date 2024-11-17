@@ -955,7 +955,7 @@ def getModelArgSpec(acdcSegment):
     except Exception as e:
         pass
     
-    segment_doc = acdcSegmtoent.Model.segment.__doc__
+    segment_doc = acdcSegment.Model.segment.__doc__
     segment_params = params_to_ArgSpec(
         segment_ArgSpec, segment_kwargs_type_hints, segment_doc,
     )

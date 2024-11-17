@@ -2,7 +2,7 @@ import numpy as np
 
 from instanseg import InstanSeg
 
-from ... import myutils
+from ... import myutils, printl
 from ...types import SecondChannelImage
 
 from . import INSTANSEG_MODELS
@@ -49,7 +49,11 @@ class Model:
             image, 
             second_channel_image: SecondChannelImage=None,
             PhysicalSizeX: float=1.0,
+            do_not_rescale: bool=False
         ):
+        if do_not_rescale:
+            PhysicalSizeX = None
+            
         image_in = image
         if second_channel_image is not None:
             image_in = self.second_ch_img_to_stack(image, second_channel_image)
@@ -58,6 +62,8 @@ class Model:
             image_in = image_in[..., np.newaxis]
         
         is_zstack = image_in.ndim == 4
+        
+        printl(image_in.shape, is_zstack)
         
         if is_zstack:
             lab = np.zeros((image_in.shape[:3]), dtype=np.uint32)
