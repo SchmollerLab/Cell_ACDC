@@ -2186,7 +2186,9 @@ class SegmKernel(_WorkflowKernel):
                     self.signals, self.innerPbar_available
                 )
                 if self.second_channel_name is not None:
-                    img_data = self.model.to_rgb_stack(img_data, second_ch_data)
+                    img_data = self.model.second_ch_img_to_stack(
+                        img_data, second_ch_data
+                    )
                 lab_stack = segm_model_segment(
                     self.model, img_data, self.model_kwargs, 
                     is_timelapse_model=True, 
@@ -2201,7 +2203,9 @@ class SegmKernel(_WorkflowKernel):
                 pbar = tqdm(total=len(img_data), ncols=100)
                 for t, img in enumerate(img_data):
                     if self.second_channel_name is not None:
-                        img = self.model.to_rgb_stack(img, second_ch_data[t])
+                        img = self.model.second_ch_img_to_stack(
+                            img, second_ch_data[t]
+                        )
                         
                     lab = segm_model_segment(
                         self.model, img, self.model_kwargs, frame_i=t, 
@@ -2221,7 +2225,9 @@ class SegmKernel(_WorkflowKernel):
                     self.signals.progressBar.emit(1)
         else:
             if self.second_channel_name is not None:
-                img_data = self.model.to_rgb_stack(img_data, second_ch_data)
+                img_data = self.model.second_ch_img_to_stack(
+                    img_data, second_ch_data
+                )
 
             lab_stack = segm_model_segment(
                 self.model, img_data, self.model_kwargs, frame_i=0, 

@@ -171,8 +171,10 @@ class Model:
     def closeLogger(self):
         self.acdcCellpose.closeLogger()
     
-    def to_rgb_stack(self, first_ch_data, second_ch_data):
-        return self.acdcCellpose.to_rgb_stack(first_ch_data, second_ch_data)
+    def second_ch_img_to_stack(self, first_ch_data, second_ch_data):
+        return self.acdcCellpose.second_ch_img_to_stack(
+            first_ch_data, second_ch_data
+        )
 
 def url_help():
     return 'https://cellpose.readthedocs.io/en/latest/api.html'

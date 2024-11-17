@@ -10476,13 +10476,22 @@ class QDialogModelParams(QDialog):
             if ArgSpecs_list[0].docstring.lower().find('single channel only') != -1:
                 addSecondChannelSelector = False
         
-        if self.model_name.find('cellpose') != -1 and addSecondChannelSelector:
+        isDualChannelModel = (
+            self.model_name.find('cellpose') != -1 
+            or any([
+                types.is_second_channel_type(ArgSpec.type) 
+                for ArgSpec in ArgSpecs_list
+            ])
+        )
+        askSecondChannel = isDualChannelModel and addSecondChannelSelector
+        
+        if askSecondChannel:
             label = QLabel('Second channel (optional):  ')
             groupBoxLayout.addWidget(label, start_row, 0, alignment=Qt.AlignRight)
             self.channelsCombobox = widgets.QCenteredComboBox()
             groupBoxLayout.addWidget(self.channelsCombobox, start_row, 1, 1, 2)
             infoText = (
-                'Some cellpose models can merge two channels (e.g., cyto + '
+                'Some models can merge two channels (e.g., cyto + '
                 'nucleus) to obtain better perfomance.\n\n'
                 'Select a channel as additional input to the model.'
             )
@@ -10491,6 +10500,9 @@ class QDialogModelParams(QDialog):
             start_row += 1
         
         for row, ArgSpec in enumerate(ArgSpecs_list):
+            if types.is_second_channel_type(ArgSpec.type):
+                continue
+            
             try:
                 not_a_param = ArgSpec.type().not_a_param
                 continue

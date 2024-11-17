@@ -486,7 +486,7 @@ class LabelRoiWorker(QObject):
     
     def _segment_image(self, img, secondChannelImg):
         if secondChannelImg is not None:
-            img = self.Gui.labelRoiModel.to_rgb_stack(
+            img = self.Gui.labelRoiModel.second_ch_img_to_stack(
                 img, secondChannelImg
             )
         
@@ -848,7 +848,9 @@ class segmWorker(QObject):
         lab = np.zeros_like(posData.segm_data[0])
 
         if self.secondChannelData is not None:
-            img = self.mainWin.model.to_rgb_stack(img, self.secondChannelData)
+            img = self.mainWin.model.second_ch_img_to_stack(
+                img, self.secondChannelData
+            )
 
         start_z_slice = 0
         if self.z_range is not None:
@@ -958,7 +960,9 @@ class segmVideoWorker(QObject):
         for i, img in enumerate(img_data):
             frame_i = i+self.startFrameNum-1
             if self.secondChannelData is not None:
-                img = self.model.to_rgb_stack(img, self.secondChannelData)
+                img = self.model.second_ch_img_to_stack(
+                    img, self.secondChannelData
+                )
             if zz is not None:
                 z_slice = zz.loc[frame_i]
                 img = img[z_slice]

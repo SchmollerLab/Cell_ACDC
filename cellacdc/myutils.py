@@ -955,7 +955,7 @@ def getModelArgSpec(acdcSegment):
     except Exception as e:
         pass
     
-    segment_doc = acdcSegment.Model.segment.__doc__
+    segment_doc = acdcSegmtoent.Model.segment.__doc__
     segment_params = params_to_ArgSpec(
         segment_ArgSpec, segment_kwargs_type_hints, segment_doc,
     )
@@ -3766,4 +3766,10 @@ def df_ctc_to_acdc_df(
         out[2] = asymm_tracked_segm
     
     return out
-        
+
+def check_install_instanseg():
+    check_install_package(
+        pkg_name='InstanSeg',
+        import_pkg_name='instanseg', 
+        pypi_name='instanseg-torch'
+    )

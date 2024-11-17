@@ -69,7 +69,7 @@ class Model:
     def _eval(self, image, **kwargs):
         return self.model.eval(image.astype(np.float32), **kwargs)[0]
     
-    def to_rgb_stack(self, first_ch_data, second_ch_data):
+    def second_ch_img_to_stack(self, first_ch_data, second_ch_data):
         # The 'cyto' model can work with a second channel (e.g., nucleus).
         # However, it needs to be encoded into one of the RGB channels
         # Here we put the first channel in the 'red' channel and the 
