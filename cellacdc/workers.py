@@ -5172,7 +5172,7 @@ class FucciPreprocessWorker(BaseWorkerUtil):
             func = partial(
                 core.fucci_pipeline_executor_map, **filter_kwargs
             )
-            result = executor.map(core., iterable)
+            result = executor.map(func, iterable)
             for frame_i, processed_img in result:
                 processed_data[frame_i] = processed_img
         
