@@ -3768,17 +3768,24 @@ class FloatLineEdit(QLineEdit):
         self.setFont(font)
 
         self.textChanged.connect(self.emitValueChanged)
-        if initial is None:
-            self.setText('0.0')
+        
+        if initial is not None:
+            self.setValue(initial)
+        else:
+            self.setValue(0)  
     
     def setDecimals(self, decimals):
         self._decimals = 6
 
-    def setValue(self, value: float):
+    def castMinMax(self, value: int):
         if value > self._maximum:
             value = self._maximum
         if value < self._minimum:
             value = self._minimum
+        return value
+    
+    def setValue(self, value: float):
+        value = self.castMinMax(value)
         self.setText(str(round(value, self._decimals)))
 
     def value(self):
@@ -3789,15 +3796,18 @@ class FloatLineEdit(QLineEdit):
                 val = float(text)
             except ValueError:
                 val = 0.0
-            return val
         else:
-            return 0.0
+            val = 0.0
+        
+        return self.castMinMax(val)
     
     def setMaximum(self, maximum):
         self._maximum = maximum
+        self.setValue(self.value())
     
     def setMinimum(self, minimum):
         self._minimum = minimum
+        self.setValue(self.value())
 
     def emitValueChanged(self, text):
         val = self.value()
