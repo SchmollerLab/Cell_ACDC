@@ -13569,14 +13569,16 @@ class ExportToVideoParametersDialog(QBaseDialog):
         
         row = 0
         gridLayout.addWidget(QLabel(f'Start {navVar}:'), row, 0)
-        self.startNavVarNumberEntry = widgets.IntLineEdit(allowNegative=False)
+        self.startNavVarNumberEntry = widgets.SpinBox()
         self.startNavVarNumberEntry.setMinimum(1)
+        self.startNavVarNumberEntry.setMaximum(maxNavVar-1)
         self.startNavVarNumberEntry.setValue(startFrameNum)
         gridLayout.addWidget(self.startNavVarNumberEntry, row, 1)
         
         row += 1
         gridLayout.addWidget(QLabel(f'Stop {navVar}:'), row, 0)
-        self.stopNavVarNumberEntry = widgets.IntLineEdit(allowNegative=False)
+        self.stopNavVarNumberEntry = widgets.SpinBox()
+        self.stopNavVarNumberEntry.setMinimum(2)
         self.stopNavVarNumberEntry.setMaximum(maxNavVar)
         self.stopNavVarNumberEntry.setValue(maxNavVar)
         gridLayout.addWidget(self.stopNavVarNumberEntry, row, 1)

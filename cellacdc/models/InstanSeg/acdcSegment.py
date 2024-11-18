@@ -20,6 +20,11 @@ class VerbosityValues:
         'Silent', 'Normal', 'Verbose'
     )
 
+class ChannelOrder:
+    values = (
+        'First channel', 'Second channel'
+    )
+
 class Model:
     def __init__(
             self, 
@@ -44,39 +49,62 @@ class Model:
             verbosity=verbosity
         )
 
+    def preprocess(self, image, rescale_intensities):
+        if rescale_intensities:
+            image_min = image - image.min()
+            image_float = image_min/image_min.max()
+        else:
+            image_float = myutils.img_to_float(image)
+        
+        return (image_float*255).astype(np.uint8)
+    
     def segment(
             self,
             image, 
             second_channel_image: SecondChannelImage=None,
+            return_masks_for_channel: ChannelOrder='First channel', 
             PhysicalSizeX: float=1.0,
-            do_not_rescale: bool=False
+            do_not_resize_to_pixel_size: bool=False,
+            rescale_intensities: bool=False
         ):
-        if do_not_rescale:
+        if do_not_resize_to_pixel_size:
             PhysicalSizeX = None
             
         image_in = image
         if second_channel_image is not None:
             image_in = self.second_ch_img_to_stack(image, second_channel_image)
         
+        image_in = self.preprocess(image_in, rescale_intensities)
+        
         if image_in.shape[-1] > 2:
             image_in = image_in[..., np.newaxis]
         
         is_zstack = image_in.ndim == 4
         
+        if isinstance(return_masks_for_channel, int):
+            masks_index = return_masks_for_channel
+        else:
+            masks_index = 0 if return_masks_for_channel == 'First channel' else 1
+        
         if is_zstack:
             lab = np.zeros((image_in.shape[:3]), dtype=np.uint32)
             for z, img in enumerate(image_in):
-                lab[z] = self._segment_2D_img(img, PhysicalSizeX)
+                lab[z] = self._segment_2D_img(
+                    img, PhysicalSizeX, masks_index=masks_index
+                )
         else:
-            lab = self._segment_2D_img(image_in, PhysicalSizeX)
+            lab = self._segment_2D_img(
+                image_in, PhysicalSizeX, masks_index=masks_index
+            )
         
         return lab
     
-    def _segment_2D_img(self, image, PhysicalSizeX):
+    def _segment_2D_img(self, image, PhysicalSizeX, masks_index=0):
         labeled_output, image_tensor = self.model.eval_small_image(
             image, PhysicalSizeX
         )
-        lab = labeled_output[0].cpu().detach().numpy()[0].astype(np.uint32)
+        labels = labeled_output[0].cpu().detach().numpy()
+        lab = labels[masks_index].astype(np.uint32)
         return lab
     
     def second_ch_img_to_stack(self, image, second_image):

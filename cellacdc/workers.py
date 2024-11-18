@@ -826,13 +826,29 @@ class segmWorker(QObject):
     debug = Signal(object)
     critical = Signal(object)
 
-    def __init__(self, mainWin, secondChannelData=None):
+    def __init__(
+            self, mainWin, 
+            secondChannelData=None, 
+            mutex: QWaitCondition=None, 
+            waitCond: QMutex=None
+        ):
         QObject.__init__(self)
         self.mainWin = mainWin
         self.logger = self.mainWin.logger
         self.z_range = None
         self.secondChannelData = secondChannelData
+        self.mutex = mutex
+        self.waitCond = waitCond
 
+    def emitDebug(self, to_debug):
+        if self.mutex is None:
+            return
+        
+        self.mutex.lock()
+        self.debug.emit(to_debug)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+    
     @worker_exception_handler
     def run(self):
         t0 = time.perf_counter()
@@ -846,6 +862,8 @@ class segmWorker(QObject):
         
         posData = self.mainWin.data[self.mainWin.pos_i]
         lab = np.zeros_like(posData.segm_data[0])
+        
+        # self.emitDebug((img, self.secondChannelData))
         
         if self.secondChannelData is not None:
             img = self.mainWin.model.second_ch_img_to_stack(

@@ -2122,13 +2122,14 @@ def get_list_of_models():
             name = 'Automatic thresholding'
         
         models.add(name)
+    
     if not os.path.exists(models_list_file_path):
-        return natsorted(list(models))
+        return natsorted(list(models), key=str.casefold)
     
     cp = config.ConfigParser()
     cp.read(models_list_file_path)
     models.update(cp.sections())
-    return natsorted(list(models))
+    return natsorted(list(models), key=str.casefold)
 
 def seconds_to_ETA(seconds):
     seconds = round(seconds)

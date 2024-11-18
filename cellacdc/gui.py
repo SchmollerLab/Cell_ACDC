@@ -1567,12 +1567,14 @@ class guiWin(QMainWindow):
         for action in self.segmActions:
             self.segmSingleFrameMenu.addAction(action)
 
+        self.segmSingleFrameMenu.addSeparator()
         self.segmSingleFrameMenu.addAction(self.addCustomModelFrameAction)
 
         self.segmVideoMenu = SegmMenu.addMenu('Segment multiple frames')
         for action in self.segmActionsVideo:
             self.segmVideoMenu.addAction(action)
 
+        self.segmVideoMenu.addSeparator()
         self.segmVideoMenu.addAction(self.addCustomModelVideoAction)
 
         # SegmMenu.addAction(self.SegmActionRW)
@@ -15546,15 +15548,20 @@ class guiWin(QMainWindow):
         
         if not askSegmParams:
             self.updateSegmModelKwargs(model_name)
-
+        
+        self.segmWorkerMutex = QMutex()
+        self.segmWorkerWaitCond = QWaitCondition()
         self.thread = QThread()
         self.worker = workers.segmWorker(
-            self, secondChannelData=secondChannelData
+            self, secondChannelData=secondChannelData,
+            mutex=self.segmWorkerMutex, waitCond=self.segmWorkerWaitCond
         )
         self.worker.z_range = self.z_range
         self.worker.moveToThread(self.thread)
         self.worker.finished.connect(self.thread.quit)
         self.worker.finished.connect(self.worker.deleteLater)
+        if self.debug:
+            self.worker.debug.connect(self.debugSegmWorker)
         self.thread.finished.connect(self.thread.deleteLater)
 
         # Custom signals
@@ -15563,6 +15570,12 @@ class guiWin(QMainWindow):
 
         self.thread.started.connect(self.worker.run)
         self.thread.start()
+    
+    def debugSegmWorker(self, to_debug):
+        img, secondChImg = to_debug
+        printl(img.shape, secondChImg.shape)
+        imshow(img, secondChImg)
+        self.segmWorkerWaitCond.wakeAll()
     
     def updateSegmModelKwargs(self, model_name):
         if model_name == 'segment_anything':
@@ -15767,9 +15780,6 @@ class guiWin(QMainWindow):
             self.sigClosed.emit(self)
         
         self.lazyLoader = None
-
-    def debugSegmWorker(self, lab):
-        apps.imshow_tk(lab)
 
     def segmWorkerFinished(self, lab, exec_time):
         posData = self.data[self.pos_i]
@@ -18626,8 +18636,12 @@ class guiWin(QMainWindow):
             if past_cca_df is None:
                 return
             
-            if past_cca_df.at[relID, 'generation_num'] != gen_num:
-                # ID is a mother and the cell cycle is finished here
+            try:
+                if past_cca_df.at[relID, 'generation_num'] != gen_num:
+                    # ID is a mother and the cell cycle is finished here
+                    return
+            except Exception as err:
+                # Bud stops existing --> stop process
                 return
             
             past_cca_df.at[IDgone, 'disappears_before_division'] = 1
@@ -20872,14 +20886,13 @@ class guiWin(QMainWindow):
                 )
                 if os.path.exists(bkgrData_path):
                     bkgrData = np.load(bkgrData_path)
-        else:
-            if isGuiThread:
-                txt = html_utils.paragraph(
-                    f'File format {ext} is not supported!\n'
-                    'Choose either .tif or .npz files.'
-                )
-                msg = widgets.myMessageBox()
-                msg.critical(self, 'File not supported', txt)
+        elif isGuiThread:
+            txt = html_utils.paragraph(
+                f'File format {ext} is not supported!\n'
+                'Choose either .tif or .npz files.'
+            )
+            msg = widgets.myMessageBox()
+            msg.critical(self, 'File not supported', txt)
             return None, None
 
         return fluo_data, bkgrData
@@ -26104,7 +26117,7 @@ class guiWin(QMainWindow):
             tRangeLen = stop_frame_n-start_frame_i
         else:
             tRangeLen = 1
-
+        
         if tRangeLen > 1:
             # fluo_img_data = fluo_data[start_frame_i:stop_frame_n]
             if self.isSegm3D or posData.SizeZ == 1:
@@ -26118,7 +26131,11 @@ class guiWin(QMainWindow):
                     )
                 return secondChannelData
         else:
-            fluo_img_data = fluo_data[posData.frame_i]
+            if posData.SizeT > 1:
+                fluo_img_data = fluo_data[posData.frame_i]
+            else:
+                fluo_img_data = fluo_data
+                
             if self.isSegm3D or posData.SizeZ == 1:
                 return fluo_img_data
             else:
