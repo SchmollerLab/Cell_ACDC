@@ -41,6 +41,7 @@ from .utils import toObjCoords as utilsToObjCoords
 from .utils import acdcToSymDiv as utilsSymDiv
 from .utils import trackSubCellObjects as utilsTrackSubCell
 from .utils import createConnected3Dsegm as utilsConnected3Dsegm
+from .utils import fucciPreprocess as utilsFucciPreprocess
 from .utils import filterObjFromCoordsTable as utilsFilterObjsFromTable
 from .utils import stack2Dinto3Dsegm as utilsStack2Dto3D
 from .utils import computeMultiChannel as utilsComputeMultiCh
@@ -401,6 +402,9 @@ class mainWin(QMainWindow):
         convertMenu.addAction(self.toImageJroiAction)
         convertMenu.addAction(self.fromImageJroiAction)
         convertMenu.addAction(self.toObjsCoordsAction)
+        
+        imageProcessingMenu = utilsMenu.addMenu('Image processing')
+        imageProcessingMenu.addAction(self.fucciPreprocessAction)
 
         segmMenu = utilsMenu.addMenu('Segmentation')
         segmMenu.addAction(self.createConnected3Dsegm)
@@ -721,6 +725,11 @@ class mainWin(QMainWindow):
         self.toObjsCoordsAction = QAction(
             'Convert .npz segmentation file(s) to object coordinates (CSV)...'
         )
+        
+        self.fucciPreprocessAction = QAction(
+            'Combine FUCCI channels and enhance nuclear signal...'
+        ) 
+        
         self.createConnected3Dsegm = QAction(
             'Create connected 3D segmentation mask from z-slices segmentation...'
         ) 
@@ -810,6 +819,11 @@ class mainWin(QMainWindow):
         self.toObjsCoordsAction.triggered.connect(
             self.launchToObjectsCoordsUtil
         )
+        
+        self.fucciPreprocessAction.triggered.connect(
+            self.launchFucciPreprocessUtil
+        )
+        
         self.createConnected3Dsegm.triggered.connect(
             self.launchConnected3DsegmActionUtil
         )
@@ -1339,6 +1353,23 @@ class mainWin(QMainWindow):
             parent=self
         )
         self.multiChannelWin.show()
+    
+    def launchFucciPreprocessUtil(self):
+        self.logger.info(f'Launching utility "{self.sender().text()}"')
+        selectedExpPaths = self.getSelectedExpPaths(
+            'Combine FUCCI channels'
+        )
+        if selectedExpPaths is None:
+            return
+        
+        title = 'Combine FUCCI channels'
+        infoText = 'Launching Combine FUCCI channels process...'
+        progressDialogueTitle = 'Combining FUCCI channels'
+        self.fucciPreprocessWin = utilsFucciPreprocess.FucciPreprocessUtil(
+            selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
+            parent=self
+        )
+        self.fucciPreprocessWin.show()
     
     def launchConnected3DsegmActionUtil(self):
         self.logger.info(f'Launching utility "{self.sender().text()}"')

@@ -939,6 +939,15 @@ def insertModelArgSpect(
             updated_params.append(param)
     return updated_params
 
+def get_function_argspec(function):
+    argspecs = inspect.getfullargspec(function)
+    kwargs_type_hints = typing.get_type_hints(function)
+    docstring = function.__doc__
+    params = params_to_ArgSpec(
+        argspecs, kwargs_type_hints, docstring
+    )
+    return params
+
 def getModelArgSpec(acdcSegment):
     init_ArgSpec = inspect.getfullargspec(acdcSegment.Model.__init__)
     init_kwargs_type_hints = typing.get_type_hints(acdcSegment.Model.__init__)

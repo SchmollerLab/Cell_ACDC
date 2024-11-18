@@ -532,56 +532,6 @@ class MainThreadSinglePosUtilBase(QDialog):
             handler.close()
             self.logger.removeHandler(handler)
     
-    def selectSegmFileLoadData(self, posPath):
-        # Get end name of every existing segmentation file
-        existingSegmEndNames = set()
-        pos_path = posPath
-        images_path = os.path.join(pos_path, 'Images')
-        basename, chNames = myutils.getBasenameAndChNames(images_path)
-        # Use first found channel, it doesn't matter for metrics
-        for chName in chNames:
-            filePath = myutils.getChannelFilePath(images_path, chName)
-            if filePath:
-                break
-        else:
-            raise FileNotFoundError(
-                f'None of the channels "{chNames}" were found in the path '
-                f'"{images_path}".'
-            )
-        _posData = load.loadData(filePath, chName)
-        _posData.getBasenameAndChNames()
-        segm_files = load.get_segm_files(_posData.images_path)
-        _existingEndnames = load.get_endnames(
-            _posData.basename, segm_files
-        )
-        existingSegmEndNames.update(_existingEndnames)
-
-        self.existingSegmEndNames = list(existingSegmEndNames)
-
-        if len(existingSegmEndNames) == 1:
-            self.endFilenameSegm = list(existingSegmEndNames)[0]
-            if self.worker is not None:
-                self.worker.waitCond.wakeAll()
-            return self.endFilenameSegm
-
-        if hasattr(self, 'infoText'):
-            infoText = self.infoText
-        else:
-            infoText = None
-
-        win = apps.SelectSegmFileDialog(
-            existingSegmEndNames, posPath, parent=self, infoText=infoText
-        )
-        win.exec_()
-        self.endFilenameSegm = win.selectedItemText
-        if self.worker is not None:
-            self.worker.abort = win.cancel
-            self.worker.waitCond.wakeAll()
-        elif win.cancel:
-            return ''
-        else:
-            return self.endFilenameSegm
-    
     def runWorker(self, worker):
         self.progressWin = apps.QDialogWorkerProgress(
             title=self.progressDialogueTitle, parent=self,

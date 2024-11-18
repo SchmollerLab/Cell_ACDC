@@ -2583,3 +2583,20 @@ def closest_n_divisible_by_m(n, m) :
      
     # else n2 is the required closest number 
     return n2
+
+def fucci_pipeline_executor_map(input, **filter_kwargs):
+    frame_i, (ch1_img, ch2_img) = input
+    
+    ch1_img = skimage.exposure.rescale_intensity(
+        ch1_img, out_range=(0, 0.5)
+    )
+    ch2_img = skimage.exposure.rescale_intensity(
+        ch1_img, out_range=(0, 0.5)
+    )
+    
+    sum_img = ((ch1_img + ch2_img)*255).astype(np.uint8)
+    
+    processed_img = preprocess.fucci_filter(sum_img, **filter_kwargs)
+    
+    return frame_i, processed_img
+    

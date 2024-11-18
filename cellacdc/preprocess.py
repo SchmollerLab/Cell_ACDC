@@ -14,6 +14,7 @@ except Exception as e:
 import skimage.morphology
 import skimage.filters
 import skimage.exposure
+from skimage.util import img_as_ubyte
 
 from . import error_up_str
 from . import types
@@ -147,3 +148,145 @@ def spot_detector_filter(
     )
     
     return sharp_rescaled
+
+def correct_illumination(
+        image, 
+        block_size=60, 
+        rescale_illumination=True,
+        approximate_object_diameter=10,
+        background_threshold=2.0,
+        apply_gaussian_filter=True
+    ):
+    """Correct illumination of an image. Based on CorrectIlluminationCalculate 
+    from Cell profiler
+
+    Parameters
+    ----------
+    image : np.ndarray
+        2D image to correct
+    block_size : int, optional
+        block size for which to calculate the background illumination. Default is 60
+    rescale_illumination : bool, optional
+        if illumination should be rescaled with cv2.normalize (alpha=0, beta=1). Default is True
+    approximate_object_diameter : int, optional
+        approximate object diameter for gaussian_filter. Default is 10
+    background_threshold : float, optional
+        threshold to be used to determine the background. Default is 2.0
+    apply_gaussian_filter : bool, optional
+        if gaussian_filter should be applied to the illumination_function. Default is True
+
+    Returns
+    -------
+    np.ndarray
+        corrected 2D image
+    """
+    
+    # Step 1: Compute the Illumination function for each image individually
+    illumination_function = np.zeros_like(image)
+
+    # Divide image into blocks and compute average intensity per block
+    footprint = np.ones((block_size, block_size))
+    illumination_function = skimage.filters.rank.mean(
+        image, footprint=footprint
+    )
+
+    # Step 2: Apply Gaussian smoothing based on the approximate object diameter
+    if apply_gaussian_filter == True:
+        illumination_function = skimage.filters.gaussian(
+            illumination_function, sigma=approximate_object_diameter / 2
+        )
+
+    # Step 3: Thresholding background using background_threshold
+    illum_mask = illumination_function < background_threshold
+    illumination_function[illum_mask] = background_threshold
+
+    # Step 4: Optionally rescale the illumination function
+    if rescale_illumination:
+        illumination_function = skimage.exposure.rescale_intensity(
+            illumination_function, out_range=(0.0, 1.0)
+        )
+
+    # Step 5: Downsample and smooth illumination function if necessary
+    # illumination_function_resampled = zoom(illumination_function, resampling_factor)
+
+    # Apply the illumination correction to the input image
+    # Avoid division by zero
+    corrected_image = image / (illumination_function + 1e-6)  
+    
+    # Clip values to ensure they are in [0, 1] range
+    corrected_image = np.clip(corrected_image, 0, 1)  
+
+    # Convert back to 8-bit for visualization or saving
+    corrected_image_8bit = img_as_ubyte(corrected_image)
+
+    return corrected_image_8bit
+
+def enhance_speckles(img, radius=15):
+    """Enhance speckles in an image using white_tophat. Based on 
+    EnhanceOrSuppressFeatures from Cell profiler with 'Feature type: Speckles'
+
+    Parameters
+    ----------
+    image : np.ndarray
+        2D image to enhance
+    radius : int, optional
+        Radius to use for the enhancer. Will suppress objects smaller than this 
+        radius. Default is 15
+
+    Returns
+    -------
+    np.ndarray
+        corrected 2D image
+    """
+    footprint = skimage.morphology.disk(radius)
+    output_image = skimage.morphology.white_tophat(img, footprint=footprint)
+    return output_image
+
+def fucci_filter(
+        image, 
+        block_size=60, 
+        rescale_illumination=True,
+        approximate_object_diameter=10,
+        background_threshold=2.0,
+        apply_gaussian_filter=True,
+        speckle_radius=15
+    ):
+    """Applies 
+
+    Parameters
+    ----------
+    image : (Y, X) numpy.ndarray
+        2D image to correct
+    block_size : int, optional
+        Block size for which to calculate the background illumination.
+        Default is 60
+    rescale_illumination : bool, optional
+        If illumination should be rescaled with cv2.normalize (alpha=0, beta=1). 
+        Default is True
+    approximate_object_diameter : int, optional
+        Approximate object diameter for gaussian_filter.Default is 10
+    background_threshold : float, optional
+        Threshold to be used to determine the background. Default is 2.0
+    apply_gaussian_filter : bool, optional
+        If gaussian_filter should be applied to the illumination_function. 
+        Default is True
+    speckle_radius : int, optional
+        Radius to use for the enhancer. Will suppress objects smaller than this 
+        radius. Default is 15
+
+    Returns
+    -------
+    (Y, X) numpy.ndarray
+        Filtered image
+    """    
+    corrected_img = correct_illumination(
+        image, 
+        block_size=block_size, 
+        rescale_illumination=rescale_illumination,
+        approximate_object_diameter=approximate_object_diameter,
+        background_threshold=background_threshold,
+        apply_gaussian_filter=apply_gaussian_filter,
+        speckle_radius=speckle_radius
+    )
+    corrected_img = enhance_speckles(corrected_img, radius=speckle_radius)
+    return corrected_img

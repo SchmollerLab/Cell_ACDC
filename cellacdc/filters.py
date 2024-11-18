@@ -1,6 +1,7 @@
 import numpy as np
 
 import skimage.filters
+import skimage.morphology
 
 from cellacdc import html_utils
 

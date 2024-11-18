@@ -30,3 +30,20 @@ def is_second_channel_type(field):
         field = typing.get_args(field)[0]
     
     return field.__name__ == 'SecondChannelImage'
+
+def is_widget_not_required(ArgSpec):
+    try:
+        not_a_param = ArgSpec.type().not_a_param
+        return True
+    except Exception as err:
+        pass
+    
+    try:
+        # If a parameter if None, python initializes it to 
+        # typing.Optional and we need to access the first type
+        ArgSpec.type.__args__[0]().not_a_param
+        return True
+    except Exception as err:
+        pass
+    
+    return False

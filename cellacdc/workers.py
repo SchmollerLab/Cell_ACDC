@@ -3,6 +3,8 @@ import os
 import shutil
 import time
 import json
+import concurrent.futures
+from functools import partial
 from collections import defaultdict, deque
 
 from typing import Union, List, Dict
@@ -5146,4 +5148,98 @@ class ResizeUtilWorker(BaseWorkerUtil):
                     images_path_out=images_path_out
                 )                
                 
+        self.signals.finished.emit(self)
+
+class FucciPreprocessWorker(BaseWorkerUtil):
+    sigAskAppendName = Signal(str, list)
+    sigAskParams = Signal(object, object)
+    sigAborted = Signal()
+
+    def __init__(self, mainWin):
+        super().__init__(mainWin)
+    
+    def emitAskParams(self, exp_path, pos_foldernames):
+        self.mutex.lock()
+        self.signals.sigAskParams.emit(exp_path, pos_foldernames)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        return self.abort
+    
+    def applyPipeline(self, first_ch_data, second_ch_data, filter_kwargs):
+        processed_data = np.zeros(first_ch_data.shape, dtype=np.uint8)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+            iterable = enumerate(zip(first_ch_data, second_ch_data))
+            func = partial(
+                core.fucci_pipeline_executor_map, **filter_kwargs
+            )
+            result = executor.map(core., iterable)
+            for frame_i, processed_img in result:
+                processed_data[frame_i] = processed_img
+        
+        return processed_data
+    
+    @worker_exception_handler
+    def run(self):
+        debugging = False
+        expPaths = self.mainWin.expPaths
+        tot_exp = len(expPaths)
+        self.signals.initProgressBar.emit(0)
+        for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
+            self.errors = {}
+            tot_pos = len(pos_foldernames)
+
+            self.mainWin.infoText = f'Setup parameters'
+            
+            if i == 0:
+                abort = self.emitAskParams(exp_path, pos_foldernames)
+                if abort:
+                    self.sigAborted.emit()
+                    return
+            
+            # Ask appendend name
+            self.mutex.lock()
+            self.sigAskAppendName.emit(self.basename)
+            self.waitCond.wait(self.mutex)
+            self.mutex.unlock()
+            if self.abort:
+                self.sigAborted.emit()
+                return
+
+            appendedName = self.appendedName
+            self.signals.initProgressBar.emit(len(pos_foldernames))
+            for p, pos in enumerate(pos_foldernames):
+                if self.abort:
+                    self.sigAborted.emit()
+                    return
+
+                self.logger.log(
+                    f'Processing experiment n. {i+1}/{tot_exp}, '
+                    f'{pos} ({p+1}/{tot_pos})'
+                )
+
+                images_path = os.path.join(exp_path, pos, 'Images')
+                
+                self.logger.log(
+                    f'Loading {self.firstChannelName} channel data...'
+                )
+                first_ch_data = load.load_image_data_from_channel(
+                    images_path, self.firstChannelName
+                )
+                
+                self.logger.log(
+                    f'Loading {self.secondChannelName} channel data...'
+                )
+                second_ch_data = load.load_image_data_from_channel(
+                    images_path, self.secondChannelName
+                )
+                
+                self.logger.log(
+                    f'Applying FUCCI pre-processing pipeline...'
+                )
+                processed_data = self.applyPipeline(
+                    first_ch_data, second_ch_data, self.fucciFilterKwargs
+                )
+                                
+                self.signals.progressBar.emit(1)
+
         self.signals.finished.emit(self)

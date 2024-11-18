@@ -101,6 +101,11 @@ italicFont = QFont()
 italicFont.setPixelSize(12)
 italicFont.setItalic(True)
 
+ArgWidget = namedtuple(
+    'ArgsWidgets',
+    ['name', 'type', 'widget', 'defaultVal', 'valueSetter', 'valueGetter']
+)
+
 class AcdcSPlashScreen(QSplashScreen):
     def __init__(self):
         super().__init__()
@@ -10149,6 +10154,215 @@ class QDialogPbar(QDialog):
         if not self.workerFinished:
             event.ignore()
 
+class FunctionParamsDialog(QBaseDialog):
+    def __init__(
+            self, params_argspecs, 
+            function_name='Function', 
+            df_metadata=None,
+            parent=None,
+        ):
+        self.cancel = True
+        self.df_metadata = df_metadata
+        
+        super().__init__(parent)
+        
+        self.setWindowTitle(f'{function_name} parameters')
+        
+        self.mainLayout = QVBoxLayout()
+        
+        widgetsLayout, self.argsWidgets = self.getWidgetsLayout(params_argspecs)
+        
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+        
+        self.mainLayout.addLayout(widgetsLayout)
+        self.mainLayout.addSpacing(20)
+        self.mainLayout.addLayout(buttonsLayout)
+
+        self.setLayout(self.mainLayout)
+        
+    def ok_cb(self):
+        self.cancel = False
+        
+        self.function_kwargs = {
+            argWidget.name:argWidget.valueGetter(argWidget.widget)
+            for argWidget in self.argsWidgets
+        }
+        
+        self.close()
+    
+    def getValueFromMetadata(self, name):
+        try:
+            value = self.df_metadata.at[name, 'values']
+        except Exception as e:
+            # traceback.print_exc()
+            value = None
+        return value
+    
+    def getWidgetsLayout(self, params_argspecs):
+        widgetsLayout = QGridLayout()
+        ArgsWidgets_list = []
+        
+        for row, ArgSpec in enumerate(params_argspecs):
+            if types.is_widget_not_required(ArgSpec):
+                continue
+            
+            arg_name = ArgSpec.name         
+            var_name = arg_name.replace('_', ' ')
+            var_name = f'{var_name[0].upper()}{var_name[1:]}'
+            label = QLabel(f'{var_name}:  ')
+            metadata_val = self.getValueFromMetadata(ArgSpec.name)
+            widgetsLayout.addWidget(label, row, 0, alignment=Qt.AlignLeft)
+            try:
+                values = ArgSpec.type().values
+                isCustomListType = True
+            except Exception as err:
+                isCustomListType = False
+            
+            isVectorEntry = False
+            try:
+                if isinstance(ArgSpec.type(), types.Vector):
+                    isVectorEntry = True
+            except Exception as err:
+                pass
+            
+            isFolderPath = False
+            try:
+                if isinstance(ArgSpec.type(), types.FolderPath):
+                    isFolderPath = True
+            except Exception as err:
+                pass
+            
+            isCustomWidget = hasattr(ArgSpec.type, 'isWidget')
+            
+            if isCustomWidget:
+                widget = ArgSpec.type()
+                defaultVal = ArgSpec.default
+                valueSetter = ArgSpec.type.setValue
+                valueGetter = ArgSpec.type.value
+                widgetsLayout.addWidget(widget, row, 1, 1, 2)
+            elif isVectorEntry:
+                vectorLineEdit = widgets.VectorLineEdit()
+                vectorLineEdit.setValue(ArgSpec.default)
+                defaultVal = ArgSpec.default
+                valueSetter = widgets.VectorLineEdit.setValue
+                valueGetter = widgets.VectorLineEdit.value
+                widget = vectorLineEdit
+                widgetsLayout.addWidget(vectorLineEdit, row, 1, 1, 2)
+            elif isFolderPath:
+                folderPathControl = widgets.FolderPathControl()
+                folderPathControl.setText(str(ArgSpec.default))
+                widget = folderPathControl
+                defaultVal = str(ArgSpec.default)
+                valueSetter = widgets.FolderPathControl.setText
+                valueGetter = widgets.FolderPathControl.path
+                widgetsLayout.addWidget(folderPathControl, row, 1, 1, 2)
+            elif ArgSpec.type == bool:
+                booleanGroup = QButtonGroup()
+                booleanGroup.setExclusive(True)
+                checkBox = widgets.Toggle()
+                checkBox.setChecked(ArgSpec.default)
+                defaultVal = ArgSpec.default
+                valueSetter = widgets.Toggle.setChecked
+                valueGetter = widgets.Toggle.isChecked
+                widget = checkBox
+                widgetsLayout.addWidget(
+                    checkBox, row, 1, 1, 2, alignment=Qt.AlignCenter
+                )
+            elif ArgSpec.type == int:
+                spinBox = widgets.SpinBox()
+                if metadata_val is None:
+                    spinBox.setValue(ArgSpec.default)
+                else:
+                    spinBox.setValue(int(metadata_val))
+                    spinBox.isMetadataValue = True
+                defaultVal = ArgSpec.default
+                valueSetter = QSpinBox.setValue
+                valueGetter = QSpinBox.value
+                widget = spinBox
+                widgetsLayout.addWidget(spinBox, row, 1, 1, 2)
+            elif ArgSpec.type == float:
+                doubleSpinBox = widgets.FloatLineEdit()
+                if metadata_val is None:
+                    doubleSpinBox.setValue(ArgSpec.default)
+                else:
+                    doubleSpinBox.setValue(float(metadata_val))
+                    doubleSpinBox.isMetadataValue = True
+                widget = doubleSpinBox
+                defaultVal = ArgSpec.default
+                valueSetter = widgets.FloatLineEdit.setValue
+                valueGetter = widgets.FloatLineEdit.value
+                widgetsLayout.addWidget(doubleSpinBox, row, 1, 1, 2)
+            elif ArgSpec.type == os.PathLike:
+                filePathControl = widgets.filePathControl()
+                filePathControl.setText(str(ArgSpec.default))
+                widget = filePathControl
+                defaultVal = str(ArgSpec.default)
+                valueSetter = widgets.filePathControl.setText
+                valueGetter = widgets.filePathControl.path
+                widgetsLayout.addWidget(filePathControl, row, 1, 1, 2)
+            elif isCustomListType:
+                items = ArgSpec.type().values
+                defaultVal = str(ArgSpec.default)
+                combobox = widgets.AlphaNumericComboBox()
+                combobox.addItems(items)
+                combobox.setCurrentValue(defaultVal)
+                valueSetter = widgets.AlphaNumericComboBox.setCurrentValue
+                valueGetter = widgets.AlphaNumericComboBox.currentValue
+                widget = combobox
+                widgetsLayout.addWidget(combobox, row, 1, 1, 2)
+            else:
+                lineEdit = QLineEdit()
+                lineEdit.setText(str(ArgSpec.default))
+                lineEdit.setAlignment(Qt.AlignCenter)
+                widget = lineEdit
+                defaultVal = str(ArgSpec.default)
+                valueSetter = QLineEdit.setText
+                valueGetter = QLineEdit.text
+                widgetsLayout.addWidget(lineEdit, row, 1, 1, 2)
+            
+            if ArgSpec.desc:
+                infoButton = self.getInfoButton(ArgSpec.name, ArgSpec.desc)
+                widgetsLayout.addWidget(infoButton, row, 3)
+            
+            argsInfo = ArgWidget(
+                name=ArgSpec.name,
+                type=ArgSpec.type,
+                widget=widget,
+                defaultVal=defaultVal,
+                valueSetter=valueSetter,
+                valueGetter=valueGetter
+            )
+            ArgsWidgets_list.append(argsInfo)
+        
+        widgetsLayout.setColumnStretch(0, 0)
+        widgetsLayout.setColumnStretch(1, 1)
+        widgetsLayout.setColumnStretch(3, 0)
+
+        return widgetsLayout, ArgsWidgets_list
+
+    def getInfoButton(self, param_name, infoText):
+        infoButton = widgets.infoPushButton()
+        infoButton.param_name = param_name
+        infoButton.setToolTip(
+            f'Click to get more info about `{param_name}` parameter...'
+        )
+        infoButton.infoText = infoText
+        infoButton.clicked.connect(self.showInfoParam)
+        return infoButton
+    
+    def showInfoParam(self):
+        text = self.sender().infoText
+        text = text.replace('\n', '<br>')
+        text = html_utils.rst_urls_to_html(text)
+        text = html_utils.rst_to_html(text)
+        text = html_utils.paragraph(text)
+        param_name = self.sender().param_name
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.information(self, f'Info about `{param_name}` parameter', text)
+        
 class QDialogModelParams(QDialog):
     def __init__(
             self, init_params, segment_params, model_name, is_tracker=False,
@@ -10442,10 +10656,6 @@ class QDialogModelParams(QDialog):
         
     
     def createGroupParams(self, ArgSpecs_list, groupName, addChannelSelector=False):
-        ArgWidget = namedtuple(
-            'ArgsWidgets',
-            ['name', 'type', 'widget', 'defaultVal', 'valueSetter', 'valueGetter']
-        )
         ArgsWidgets_list = []
         groupBox = QGroupBox(groupName)
         groupBoxLayout = QGridLayout()
@@ -10503,19 +10713,8 @@ class QDialogModelParams(QDialog):
             if types.is_second_channel_type(ArgSpec.type):
                 continue
             
-            try:
-                not_a_param = ArgSpec.type().not_a_param
+            if types.is_widget_not_required(ArgSpec):
                 continue
-            except Exception as err:
-                pass
-            
-            try:
-                # If a parameter if None, python initializes it to 
-                # typing.Optional and we need to access the first type
-                ArgSpec.type.__args__[0]().not_a_param
-                continue
-            except Exception as err:
-                pass
             
             row = row + start_row
             skip = self.checkAddSegmEndnameCombobox(
@@ -14937,4 +15136,49 @@ class SetCustomLevelsLut(QBaseDialog):
         self.cancel = False
         self.selectedLevels = self.levels()
         self.close()
+
+class FucciPreprocessDialog(FunctionParamsDialog):
+    def __init__(
+            self, channel_names,
+            df_metadata=None,
+            parent=None,
+        ):
+        
+        from cellacdc.filters import fucci_filter
+        params_argspecs = myutils.get_function_argspec(fucci_filter)
+        
+        super().__init__(
+            params_argspecs, 
+            function_name='FUCCI pre-processing', 
+            df_metadata=df_metadata,
+            parent=parent,
+        )
+        
+        channelNamesLayout = QGridLayout()
+        
+        row = 0
+        label = QLabel('First channel name:  ')
+        channelNamesLayout.addWidget(label, row, 0, alignment=Qt.AlignLeft)
+        self.firstChNameWidget = QComboBox()
+        self.firstChNameWidget.addItems(channel_names)
+        channelNamesLayout.addWidget(self.firstChNameWidget, row, 1)
+        
+        row += 1
+        label = QLabel('Second channel name:  ')
+        channelNamesLayout.addWidget(label, row, 0, alignment=Qt.AlignLeft)
+        self.secondChNameWidget = QComboBox()
+        self.secondChNameWidget.addItems(channel_names)
+        channelNamesLayout.addWidget(self.secondChNameWidget, row, 1)
+        
+        channelNamesLayout.setColumnStretch(0, 0)
+        channelNamesLayout.setColumnStretch(1, 1)
+        
+        self.mainLayout.insertLayout(0, channelNamesLayout)
+        self.mainLayout.insertWidget(1, widgets.QHLine())
+    
+    def ok_cb(self):
+        self.firstChannelName = self.firstChNameWidget.currentText()
+        self.secondChannelName = self.secondChNameWidget.currentText()
+        super().ok_cb()
+        
         
