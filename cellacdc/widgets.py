@@ -3843,20 +3843,29 @@ class IntLineEdit(QLineEdit):
         self.setFont(font)
 
         self.textChanged.connect(self.emitValueChanged)
-        if initial is None:
-            self.setText('0')
+        
+        if initial is not None:
+            self.setValue(initial)
+        else:
+            self.setValue(0)    
     
     def setMaximum(self, maximum):
         self._maximum = maximum
+        self.setValue(self.value())
     
     def setMinimum(self, minimum):
         self._minimum = minimum
+        self.setValue(self.value())
 
-    def setValue(self, value: int):
+    def castMinMax(self, value: int):
         if value > self._maximum:
             value = self._maximum
         if value < self._minimum:
             value = self._minimum
+        return value
+    
+    def setValue(self, value: int):
+        value = self.castMinMax(value)
         self.setText(str(value))
 
     def value(self):
@@ -3867,12 +3876,17 @@ class IntLineEdit(QLineEdit):
                 val = int(text)
             except ValueError:
                 val = 0
-            return val
         else:
-            return 0
+            val = 0
+        
+        return self.castMinMax(val)
 
     def emitValueChanged(self, text):
+        if not text:
+            return
+        
         val = self.value()
+        self.setValue(val)
         if self.notAllowed is not None and val in self.notAllowed:
             self.setStyleSheet(LINEEDIT_INVALID_ENTRY_STYLESHEET)
         else:
