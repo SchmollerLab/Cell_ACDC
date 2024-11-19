@@ -5151,7 +5151,7 @@ class ResizeUtilWorker(BaseWorkerUtil):
         self.signals.finished.emit(self)
 
 class FucciPreprocessWorker(BaseWorkerUtil):
-    sigAskAppendName = Signal(str, list)
+    sigAskAppendName = Signal(str)
     sigAskParams = Signal(object, object)
     sigAborted = Signal()
 
@@ -5160,13 +5160,14 @@ class FucciPreprocessWorker(BaseWorkerUtil):
     
     def emitAskParams(self, exp_path, pos_foldernames):
         self.mutex.lock()
-        self.signals.sigAskParams.emit(exp_path, pos_foldernames)
+        self.sigAskParams.emit(exp_path, pos_foldernames)
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
         return self.abort
     
     def applyPipeline(self, first_ch_data, second_ch_data, filter_kwargs):
         processed_data = np.zeros(first_ch_data.shape, dtype=np.uint8)
+        pbar = tqdm(total=len(processed_data), ncols=100)
         with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
             iterable = enumerate(zip(first_ch_data, second_ch_data))
             func = partial(
@@ -5175,6 +5176,8 @@ class FucciPreprocessWorker(BaseWorkerUtil):
             result = executor.map(func, iterable)
             for frame_i, processed_img in result:
                 processed_data[frame_i] = processed_img
+                pbar.update()
+        pbar.close()
         
         return processed_data
     

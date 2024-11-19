@@ -15144,7 +15144,7 @@ class FucciPreprocessDialog(FunctionParamsDialog):
             parent=None,
         ):
         
-        from cellacdc.filters import fucci_filter
+        from cellacdc.preprocess import fucci_filter
         params_argspecs = myutils.get_function_argspec(fucci_filter)
         
         super().__init__(
@@ -15168,6 +15168,7 @@ class FucciPreprocessDialog(FunctionParamsDialog):
         channelNamesLayout.addWidget(label, row, 0, alignment=Qt.AlignLeft)
         self.secondChNameWidget = QComboBox()
         self.secondChNameWidget.addItems(channel_names)
+        self.secondChNameWidget.setCurrentText(list(channel_names)[1])
         channelNamesLayout.addWidget(self.secondChNameWidget, row, 1)
         
         channelNamesLayout.setColumnStretch(0, 0)

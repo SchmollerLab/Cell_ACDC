@@ -286,7 +286,6 @@ def fucci_filter(
         approximate_object_diameter=approximate_object_diameter,
         background_threshold=background_threshold,
         apply_gaussian_filter=apply_gaussian_filter,
-        speckle_radius=speckle_radius
     )
     corrected_img = enhance_speckles(corrected_img, radius=speckle_radius)
     return corrected_img
