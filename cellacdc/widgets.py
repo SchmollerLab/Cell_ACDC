@@ -1247,7 +1247,10 @@ class QDialogListbox(QDialog):
         self.setWindowTitle(title)
         
         if preSelectedItems is None:
-            preSelectedItems = (items[0],)
+            if items:
+                preSelectedItems = (items[0],)
+            else:
+                preSelectedItems = set()
 
         self.allowSingleSelection = allowSingleSelection
         self.allowEmptySelection = allowEmptySelection
