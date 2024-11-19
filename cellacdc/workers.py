@@ -3193,30 +3193,33 @@ class ConcatAcdcDfsWorker(BaseWorkerUtil):
             to_format_func = getattr(acdc_df_allpos, self._to_format)
             to_format_func(acdc_dfs_allpos_filepath)
             self.acdc_dfs_allpos_filepath = acdc_dfs_allpos_filepath
-
-        if len(keys_exp) > 1:
-            allExp_filename = f'multiExp_{self.concat_df_filename}'
-            self.mutex.lock()
-            self.sigAskFolder.emit(allExp_filename)
-            self.waitCond.wait(self.mutex)
-            self.mutex.unlock()
-            if self.abort:
-                self.sigAborted.emit()
-                return
-            
-            acdc_df_allexp = pd.concat(
-                acdc_dfs_allexp, keys=keys_exp, 
-                names=['experiment_folderpath', 'experiment_foldername']
-            )
-            acdc_dfs_allexp_filepath = os.path.join(
-                self.allExpSaveFolder, allExp_filename
-            )
-            self.logger.log(
-                'Saving multiple experiments concatenated file to '
-                f'"{acdc_dfs_allexp_filepath}"'
-            )
-            to_format_func = getattr(acdc_df_allexp, self._to_format)
-            to_format_func(acdc_dfs_allexp_filepath)
+        
+        if len(keys_exp) <= 1:
+            self.signals.finished.emit(self)
+            return
+        
+        allExp_filename = f'multiExp_{self.concat_df_filename}'
+        self.mutex.lock()
+        self.sigAskFolder.emit(allExp_filename)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        if self.abort:
+            self.sigAborted.emit()
+            return
+        
+        acdc_df_allexp = pd.concat(
+            acdc_dfs_allexp, keys=keys_exp, 
+            names=['experiment_folderpath', 'experiment_foldername']
+        )
+        acdc_dfs_allexp_filepath = os.path.join(
+            self.allExpSaveFolder, allExp_filename
+        )
+        self.logger.log(
+            'Saving multiple experiments concatenated file to '
+            f'"{acdc_dfs_allexp_filepath}"'
+        )
+        to_format_func = getattr(acdc_df_allexp, self._to_format)
+        to_format_func(acdc_dfs_allexp_filepath)
 
         self.signals.finished.emit(self)
 
@@ -4408,13 +4411,16 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                 if ext_spots == '.csv':
                     ext_spots = self._final_ext
                 filename = f'multipos_{run}{analysis_step}{desc}{ext_spots}'
+                all_exp_key = filename
                 df_spots_concat = spotmax.io.save_concat_dfs(
                     dfs, pos_keys, allpos_folderpath, filename, ext_spots, 
                     names=['Position_n'], return_concat_df=True
                 )
                 df_spots_concat['exp_foldername'] = exp_name
-                spotmax_dfs_spots_allexp[filename]['dfs'].append(df_spots_concat)
-                spotmax_dfs_spots_allexp[filename]['keys'].append(
+                spotmax_dfs_spots_allexp[all_exp_key]['dfs'].append(
+                    df_spots_concat
+                )
+                spotmax_dfs_spots_allexp[all_exp_key]['keys'].append(
                     exp_path
                 )
                 ini_filepath = pos_ini_filepaths[(run, desc)]
@@ -4423,7 +4429,7 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                 if not os.path.exists(dst_ini_filepath):
                     shutil.copy2(ini_filepath, dst_ini_filepath)
                     
-                spotmax_dfs_spots_allexp[filename]['ini_filepath'].append(
+                spotmax_dfs_spots_allexp[all_exp_key]['ini_filepath'].append(
                     dst_ini_filepath
                 )
             
@@ -4434,12 +4440,15 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                     f'multipos_{run}{analysis_step}{desc}'
                     f'_aggregated{self._final_ext}'
                 )
+                all_exp_aggr_key = filename
                 df_aggr_concat = spotmax.io.save_concat_dfs(
                     dfs, pos_keys, allpos_folderpath, filename, self._final_ext, 
                     names=['Position_n'], return_concat_df=True
                 )
-                spotmax_dfs_aggr_allexp[filename]['dfs'].append(df_aggr_concat)
-                spotmax_dfs_aggr_allexp[filename]['keys'].append(
+                spotmax_dfs_aggr_allexp[all_exp_aggr_key]['dfs'].append(
+                    df_aggr_concat
+                )
+                spotmax_dfs_aggr_allexp[all_exp_aggr_key]['keys'].append(
                     (exp_path, exp_name)
                 )
             
@@ -4449,12 +4458,15 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                 filename = (
                     f'multipos_{run}{ref_ch_id_text}{desc}{self._final_ext}'
                 )
+                all_exp_ref_ch_key = filename
                 df_ref_ch_concat = spotmax.io.save_concat_dfs(
                     dfs, pos_keys, allpos_folderpath, filename, self._final_ext,
                     names=['Position_n'], return_concat_df=True
                 )
-                ref_ch_dfs_allexp[filename]['dfs'].append(df_ref_ch_concat)
-                ref_ch_dfs_allexp[filename]['keys'].append(
+                ref_ch_dfs_allexp[all_exp_ref_ch_key]['dfs'].append(
+                    df_ref_ch_concat
+                )
+                ref_ch_dfs_allexp[all_exp_ref_ch_key]['keys'].append(
                     (exp_path, exp_name)
                 )
         
@@ -4464,9 +4476,13 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
             return
         
         multiexp_dst_folderpath = self.emitAskFolderWhereToSaveMultiExp()
+        printl(multiexp_dst_folderpath)
         if multiexp_dst_folderpath is None:
             return
         
+        self.logger.log(
+            f'Saving multi-experiment files to "{multiexp_dst_folderpath}"...'
+        )
         names = ['experiment_folderpath', 'experiment_foldername']
         for filename, items in spotmax_dfs_spots_allexp.items():
             keys = items['keys']
@@ -4490,6 +4506,7 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
         for filename, items in spotmax_dfs_aggr_allexp.items():
             keys = items['keys']
             dfs = items['dfs']
+            printl(keys, pretty=True)
             multiexp_filename = f'multiexp_{filename}'
             extension = os.path.splitext(filename)[-1]
             spotmax.io.save_concat_dfs(
@@ -4499,7 +4516,7 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                 names=names
             )
         
-        for filename, items in spotmax_dfs_aggr_allexp.items():
+        for filename, items in ref_ch_dfs_allexp.items():
             keys = items['keys']
             dfs = items['dfs']
             multiexp_filename = f'multiexp_{filename}'
