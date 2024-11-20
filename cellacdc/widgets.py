@@ -6313,9 +6313,13 @@ class BaseImageItem(pg.ImageItem):
         self.minMaxValuesMapper = {}
         for pos_i, posData in enumerate(data):
             img_data = posData.img_data
-            if posData.img_data.ndim == 2:
+            requires_time_dim = (
+                posData.img_data.ndim == 2
+                or (posData.img_data.ndim == 3 and posData.SizeZ > 1)
+            )
+            if requires_time_dim:
                 img_data = (img_data,)
-                
+            
             for frame_i, image in enumerate(img_data):
                 if image.ndim == 2:
                     image = (image,)
