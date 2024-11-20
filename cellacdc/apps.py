@@ -6456,8 +6456,8 @@ class PostProcessSegmDialog(QBaseDialog):
 
         self.mainWin.storeUndoRedoStates(False)
         self.posData = self.mainWin.data[self.mainWin.pos_i]
-        self.img.setCurrentPosIndex(self.pos_i)
-        self.img.minMaxValuesMapper = self.mainWin.img1.minMaxValuesMapper
+        # self.img.setCurrentPosIndex(self.pos_i)
+        # self.img.minMaxValuesMapper = self.mainWin.img1.minMaxValuesMapper
         self.origLab = self.posData.lab.copy()
         self.origRp = skimage.measure.regionprops(self.origLab)
         self.origObjs = {obj.label:obj for obj in self.origRp}
