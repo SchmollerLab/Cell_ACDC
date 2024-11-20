@@ -23244,7 +23244,11 @@ class guiWin(QMainWindow):
             return
         
         posData = self.data[self.pos_i]
-        objIdx = posData.IDs_idxs[hoverID]
+        try:
+            objIdx = posData.IDs_idxs[hoverID]
+        except KeyError as err:
+            return 
+        
         obj = posData.rp[objIdx]
         self.goToZsliceSearchedID(obj)
         
