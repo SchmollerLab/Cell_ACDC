@@ -1687,6 +1687,7 @@ class dataPrepWin(QMainWindow):
             SizeT = posData.SizeT
             SizeZ = posData.SizeZ
             if f==0:
+                print('')
                 self.logger.info(f'Data shape = {img_shape}')
                 self.logger.info(f'Number of frames = {SizeT}')
                 self.logger.info(f'Number of z-slices per frame = {SizeZ}')
@@ -1709,7 +1710,7 @@ class dataPrepWin(QMainWindow):
                     'File --> Open or Open recent to start the process',
                     color='w')
                 return False
-
+        
         self.data = data
         self.init_segmInfo_df()
         self.init_attr()
@@ -2447,6 +2448,7 @@ class dataPrepWin(QMainWindow):
 
         # Connect events at the end of loading data process
         self.gui_connectGraphicsEvents()
+        
 
         exp_path = self.data[self.pos_i].exp_path
         pos_foldernames = myutils.get_pos_foldernames(exp_path)
@@ -2455,7 +2457,6 @@ class dataPrepWin(QMainWindow):
             self.loadPosAction.setDisabled(True)
         else:
             self.loadPosAction.setDisabled(False)
-
 
         if self.titleText is None:
             self.titleLabel.setText(
@@ -2471,7 +2472,9 @@ class dataPrepWin(QMainWindow):
         self.startAction.setEnabled(True)
         self.showInExplorerAction.setEnabled(True)
         self.setImageNameText()
+        
         self.img.preComputedMinMaxValues(self.data)
+        
         self.update_img()
         self.setFontSizeROIlabels()
 

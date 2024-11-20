@@ -6312,11 +6312,15 @@ class BaseImageItem(pg.ImageItem):
     def preComputedMinMaxValues(self, data: dict):
         self.minMaxValuesMapper = {}
         for pos_i, posData in enumerate(data):
-            for frame_i, img_data in enumerate(posData.img_data):
-                if img_data.ndim == 2:
-                    img_data = (img_data,)
+            img_data = posData.img_data
+            if posData.img_data.ndim == 2:
+                img_data = (img_data,)
                 
-                for z, img in enumerate(img_data):
+            for frame_i, image in enumerate(img_data):
+                if image.ndim == 2:
+                    image = (image,)
+                
+                for z, img in enumerate(image):
                     self.minMaxValuesMapper[(pos_i, frame_i, z)] = (
                         np.nanmin(img), np.nanmax(img)
                     )
