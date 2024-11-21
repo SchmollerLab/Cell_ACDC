@@ -2599,4 +2599,93 @@ def fucci_pipeline_executor_map(input, **filter_kwargs):
     processed_img = preprocess.fucci_filter(sum_img, **filter_kwargs)
     
     return frame_i, processed_img
+
+def split_segm_masks_mother_bud_line(
+        cells_segm_data, segm_data_to_split, acdc_df, 
+        debug=False
+    ):
+    acdc_df = acdc_df.set_index(['frame_i', 'Cell_ID'])
+    split_segm_away = np.zeros_like(segm_data_to_split)
+    split_segm_close = np.zeros_like(segm_data_to_split)
     
+    pbar = tqdm(total=len(cells_segm_data), ncols=100, position=1, leave=False)
+    for frame_i, lab in enumerate(cells_segm_data):
+        rp = skimage.measure.regionprops(lab)
+        rp_mapper = {obj.label:obj for obj in rp}
+        for obj in rp:
+            try:
+                ccs = acdc_df.at[(frame_i, obj.label), 'cell_cycle_stage']
+            except Exception as err:
+                pbar.update()
+                continue
+            
+            if ccs != 'S':
+                pbar.update()
+                continue
+            
+            try:
+                relationship = acdc_df.at[(frame_i, obj.label), 'relationship']
+            except Exception as err:
+                pbar.update()
+                continue
+            
+            if relationship == 'bud':
+                pbar.update()
+                continue
+            
+            bud_ID = int(acdc_df.at[(frame_i, obj.label), 'relative_ID'])
+            obj_bud = rp_mapper[bud_ID]
+            
+            moth_ID = obj.label
+            yc_m, xc_m = obj.centroid
+            yc_b, xc_b = obj_bud.centroid
+            
+            slope_mb = (yc_b - yc_m)/(xc_b - yc_b)
+            if slope_mb != 0:
+                slope_perp = -1/slope_mb
+                interc_perp = yc_m - xc_m*slope_perp
+            
+            if debug:
+                from cellacdc import _debug
+                _debug.split_segm_masks_mother_bud_line(
+                    lab, obj, obj_bud, interc_perp, slope_perp
+                )
+                
+                 
+            
+            
+            
+        pbar.update()
+    pbar.close()        
+
+def get_split_line_ref_points_img(img, slope_perp, interc_perp):
+    if slope_perp == np.inf:
+        ...
+    else:
+        Y, X = lab.shape
+        y0 = 0
+        x0 = y0 - interc_perp/slope_perp
+    
+        x1 = X
+        y1 = slope_perp*x1 + interc_perp
+        
+        x2 = 0
+        y2 = interc_perp
+        
+        y3 = Y
+        x3 = y3 - interc_perp/slope_perp
+        
+        if x0 < X:
+            x_ref_0 = x0
+            y_ref_0 = y0
+        else:
+            x_ref_0 = x1
+            y_ref_0 = y1
+        
+        if x1 > 0:
+            x_ref1 = x1
+            y_ref1 = y1
+        else:
+            x_ref1 = x2
+            y_ref1 = 0
+            

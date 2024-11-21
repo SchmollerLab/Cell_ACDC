@@ -5025,11 +5025,8 @@ class QDialogMetadata(QDialog):
         gridLayout.addWidget(
             self.TimeIncrementLabel, row, 0, alignment=Qt.AlignRight
         )
-        self.TimeIncrementSpinBox = QDoubleSpinBox()
-        self.TimeIncrementSpinBox.setDecimals(7)
-        self.TimeIncrementSpinBox.setMaximum(2147483647.0)
+        self.TimeIncrementSpinBox = widgets.FloatLineEdit()
         self.TimeIncrementSpinBox.setValue(TimeIncrement)
-        self.TimeIncrementSpinBox.setAlignment(Qt.AlignCenter)
         gridLayout.addWidget(self.TimeIncrementSpinBox, row, 1)
 
         if SizeT == 1 or not ask_TimeIncrement:
@@ -5041,11 +5038,8 @@ class QDialogMetadata(QDialog):
         gridLayout.addWidget(
             self.PhysicalSizeZLabel, row, 0, alignment=Qt.AlignRight
         )
-        self.PhysicalSizeZSpinBox = QDoubleSpinBox()
-        self.PhysicalSizeZSpinBox.setDecimals(7)
-        self.PhysicalSizeZSpinBox.setMaximum(2147483647.0)
+        self.PhysicalSizeZSpinBox = widgets.FloatLineEdit()
         self.PhysicalSizeZSpinBox.setValue(PhysicalSizeZ)
-        self.PhysicalSizeZSpinBox.setAlignment(Qt.AlignCenter)
         gridLayout.addWidget(self.PhysicalSizeZSpinBox, row, 1)
 
         if SizeZ==1 or not ask_PhysicalSizes:
@@ -5057,11 +5051,8 @@ class QDialogMetadata(QDialog):
         gridLayout.addWidget(
             self.PhysicalSizeYLabel, row, 0, alignment=Qt.AlignRight
         )
-        self.PhysicalSizeYSpinBox = QDoubleSpinBox()
-        self.PhysicalSizeYSpinBox.setDecimals(7)
-        self.PhysicalSizeYSpinBox.setMaximum(2147483647.0)
+        self.PhysicalSizeYSpinBox = widgets.FloatLineEdit()
         self.PhysicalSizeYSpinBox.setValue(PhysicalSizeY)
-        self.PhysicalSizeYSpinBox.setAlignment(Qt.AlignCenter)
         gridLayout.addWidget(self.PhysicalSizeYSpinBox, row, 1)
 
         if not ask_PhysicalSizes:
@@ -5073,11 +5064,8 @@ class QDialogMetadata(QDialog):
         gridLayout.addWidget(
             self.PhysicalSizeXLabel, row, 0, alignment=Qt.AlignRight
         )
-        self.PhysicalSizeXSpinBox = QDoubleSpinBox()
-        self.PhysicalSizeXSpinBox.setDecimals(7)
-        self.PhysicalSizeXSpinBox.setMaximum(2147483647.0)
+        self.PhysicalSizeXSpinBox = widgets.FloatLineEdit()
         self.PhysicalSizeXSpinBox.setValue(PhysicalSizeX)
-        self.PhysicalSizeXSpinBox.setAlignment(Qt.AlignCenter)
         gridLayout.addWidget(self.PhysicalSizeXSpinBox, row, 1)
 
         if not ask_PhysicalSizes:
@@ -9937,7 +9925,7 @@ class SelectSegmFileDialog(QDialog):
     def __init__(
             self, images_ls, parent_path, parent=None, 
             addNewFileButton=False, basename='', infoText=None, 
-            fileType='segmentation'
+            fileType='segmentation', allowMultipleSelection=False
         ):
         self.cancel = True
         self.selectedItemText = ''
@@ -9945,6 +9933,7 @@ class SelectSegmFileDialog(QDialog):
         self.removeOthers = False
         self.okAllPos = False
         self.newSegmEndName = None
+        self.allowMultipleSelection = allowMultipleSelection
         self.basename = basename
         images_ls = sorted(images_ls, key=len)
 
@@ -9994,6 +9983,10 @@ class SelectSegmFileDialog(QDialog):
         listWidget.addItems(images_ls)
         listWidget.setCurrentRow(0)
         listWidget.itemDoubleClicked.connect(self.listDoubleClicked)
+        if allowMultipleSelection:
+            listWidget.setSelectionMode(
+                QAbstractItemView.SelectionMode.ExtendedSelection
+            )
         self.items = list(images_ls)
         self.listWidget = listWidget
 
@@ -10063,6 +10056,10 @@ class SelectSegmFileDialog(QDialog):
         self.cancel = False
         self.selectedItemText = self.listWidget.selectedItems()[0].text()
         self.selectedItemIdx = self.items.index(self.selectedItemText)
+        self.selectedItemTexts = [
+            selectedItem.text() 
+            for selectedItem in self.listWidget.selectedItems()
+        ]
         self.close()
 
     def exec_(self):

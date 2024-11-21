@@ -695,6 +695,35 @@ def get_segm_files(images_path):
     ]
     return segm_files            
 
+def get_segm_endnames_from_exp_path(exp_path, pos_foldernames=None):
+    if pos_foldernames is None:
+        pos_foldernames = myutils.get_pos_foldernames(exp_path)
+        
+    existingEndNames = set()
+    for p, pos in enumerate(pos_foldernames):
+        pos_path = os.path.join(exp_path, pos)
+        images_path = os.path.join(pos_path, 'Images')
+        basename, chNames = myutils.getBasenameAndChNames(images_path)
+        # Use first found channel, it doesn't matter for metrics
+        for chName in chNames:
+            filePath = myutils.getChannelFilePath(images_path, chName)
+            if filePath:
+                break
+        else:
+            raise FileNotFoundError(
+                f'None of the channels "{chNames}" were found in the path '
+                f'"{images_path}".'
+            )
+        _posData = loadData(filePath, chName)
+        _posData.getBasenameAndChNames()
+        found_files = get_segm_files(_posData.images_path)
+        _existingEndnames = get_endnames(
+            _posData.basename, found_files
+        )
+        existingEndNames.update(_existingEndnames)
+    
+    return existingEndNames
+
 def get_files_with(images_path: os.PathLike, with_text: str, ext: str=None):
     ls = myutils.listdir(images_path)
     found_files = []
