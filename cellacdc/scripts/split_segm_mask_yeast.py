@@ -2,13 +2,15 @@ import os
 
 from tqdm import tqdm
 
+import numpy as np
+
 import qtpy.compat
 
 from cellacdc import printl, myutils, apps, load, core
 from cellacdc._run import _setup_app
 from cellacdc.utils.base import NewThreadMultipleExpBaseUtil
 
-DEBUG = True
+DEBUG = False
 
 def ask_select_folder():
     selected_path = qtpy.compat.getexistingdirectory(
@@ -91,13 +93,35 @@ def run():
             images_path, end_name_acdc_df_file=acdc_df_endname
         )
         for segm_endname in list_segm_endnames_to_split:
-            segm_data_to_split = load.load_segm_file(
-                images_path, end_name_segm_file=segm_endname
+            segm_data_to_split, segm_data_to_split_fp = load.load_segm_file(
+                images_path, end_name_segm_file=segm_endname,
+                return_path=True
             )
-            core.split_segm_masks_mother_bud_line(
+            out = core.split_segm_masks_mother_bud_line(
                 cells_segm_data, segm_data_to_split, acdc_df, 
                 debug=DEBUG
             )
+            split_segm_close, split_segm_away = out
+            
+            segm_data_to_split_fn = os.path.basename(segm_data_to_split_fp)
+            
+            split_close_filename = segm_data_to_split_fn.replace(
+                segm_endname, f'{segm_endname}_split_close.npz'
+            ).replace('.npz.npz', '.npz')
+            split_close_filepath = os.path.join(
+                images_path, split_close_filename
+            )
+            
+            np.savez_compressed(split_close_filepath, split_segm_close)
+            
+            
+            split_away_filename = segm_data_to_split_fn.replace(
+                segm_endname, f'{segm_endname}_split_away.npz'
+            ).replace('.npz.npz', '.npz')
+            split_away_filepath = os.path.join(
+                images_path, split_away_filename
+            )
+            np.savez_compressed(split_away_filepath, split_segm_away)
         pbar.update()
     
     pbar.close()

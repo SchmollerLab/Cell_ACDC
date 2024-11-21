@@ -3,29 +3,19 @@ import inspect
 import numpy as np
 import pandas as pd
 
-from . import printl
+from . import printl, core
 
-def split_segm_masks_mother_bud_line(lab, obj, obj_bud, interc_perp, slope_perp):
+def split_segm_masks_mother_bud_line(lab, obj, obj_bud, ref_p1, ref_p2):
     import matplotlib.pyplot as plt
     
     lab = np.zeros_like(lab)
     lab[obj.slice][obj.image] = obj.label
     lab[obj_bud.slice][obj_bud.image] = obj_bud.label
     
-    y0 = 0
-    x0 = (y0 - interc_perp)/slope_perp
-    
-    x1 = lab.shape[1]
-    y1 = slope_perp*x1 + interc_perp
-    
-    x2 = 0
-    y2 = interc_perp
-    
-    y3 = lab.shape[0]
-    x3 = (y3 - interc_perp)/slope_perp
+    (x_ref_0, y_ref_0), (x_ref1, y_ref1) = ref_p1, ref_p2
     
     plt.imshow(lab) 
-    plt.plot([x0, x1, x2, x3], [y0, y1, y2, y3], 'r')  
+    plt.plot([x_ref_0, x_ref1], [y_ref_0, y_ref1], 'r')  
     plt.show()
     
     import pdb; pdb.set_trace()
