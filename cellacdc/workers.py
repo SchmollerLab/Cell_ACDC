@@ -4416,7 +4416,8 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
                     dfs, pos_keys, allpos_folderpath, filename, ext_spots, 
                     names=['Position_n'], return_concat_df=True
                 )
-                df_spots_concat['exp_foldername'] = exp_name
+                df_spots_concat['experiment_foldername'] = exp_name
+                df_spots_concat['experiment_folderpath'] = exp_path
                 spotmax_dfs_spots_allexp[all_exp_key]['dfs'].append(
                     df_spots_concat
                 )
