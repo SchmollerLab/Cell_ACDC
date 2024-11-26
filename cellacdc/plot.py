@@ -17,10 +17,14 @@ import seaborn as sns
 
 from tqdm import tqdm
 
-from qtpy import QtGui
+from . import GUI_INSTALLED
+
+if GUI_INSTALLED:
+    from qtpy import QtGui
+    from . import widgets
 
 from . import printl
-from . import widgets, _core, error_below, error_close
+from . import _core, error_below, error_close
 from . import _run, core
 
 def matplotlib_cmap_to_lut(
@@ -579,9 +583,15 @@ def heatmap(
         return fig, ax, im
 
 def _binned_mean_stats(x, y, bins, bins_min_count):
-    bin_counts, _, _ = scipy.stats.binned_statistic(x, y, statistic='count', bins=bins)
-    bin_means, bin_edges, _ = scipy.stats.binned_statistic(x, y, bins=bins)
-    bin_std, _, _ = scipy.stats.binned_statistic(x, y, statistic='std', bins=bins)
+    bin_counts, _, _ = scipy.stats.binned_statistic(
+        x, y, statistic='count', bins=bins
+    )
+    bin_means, bin_edges, _ = scipy.stats.binned_statistic(
+        x, y, bins=bins, statistic=np.nanmean
+    )
+    bin_std, _, _ = scipy.stats.binned_statistic(
+        x, y, statistic=np.nanstd, bins=bins
+    )
     bin_width = (bin_edges[1] - bin_edges[0])
     bin_centers = bin_edges[1:] - bin_width/2
     if bins_min_count > 1:
@@ -621,8 +631,8 @@ def binned_means_plot(
             )
         ax.set_xlabel(x)
         ax.set_ylabel(y)
-        x = data[x]
-        y = data[y]
+        x = data[x].to_numpy()
+        y = data[y].to_numpy()
 
     if color is None:
         color = sns.color_palette(n_colors=1)[0]
