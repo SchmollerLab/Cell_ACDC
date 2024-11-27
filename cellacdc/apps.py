@@ -10478,14 +10478,17 @@ class QDialogModelParams(QDialog):
         cancelButton.clicked.connect(self.close)
             # restoreDefaultButton.clicked.connect(self.restoreDefault)
 
+        self.okButton = okButton
         scrollAreaLayout.addWidget(initGroupBox)
         scrollAreaLayout.addLayout(initButtonsLayout)
         if not self.skipSegmentation:
             scrollAreaLayout.addSpacing(15)
-            scrollAreaLayout.addStretch(1)
+            # scrollAreaLayout.addStretch(1)
             scrollAreaLayout.addWidget(segmentGroupBox)
             scrollAreaLayout.addLayout(segmentButtonsLayout)
 
+        scrollAreaLayout.addStretch(1)
+        
         self.postProcessGroupbox = None
         
         if not is_tracker:
@@ -11126,7 +11129,12 @@ class QDialogModelParams(QDialog):
             self.loop.exit()
     
     def showEvent(self, event) -> None:
-        height = self.scrollArea.minimumHeightNoScrollbar() + 70
+        height = self.scrollArea.minimumHeightNoScrollbar() + 120
+        if self.preProcessParamsGroupbox is not None:
+            height += self.preProcessParamsGroupbox.minimumSizeHint().height()
+        if self.postProcessGroupbox is not None:
+            height += self.postProcessGroupbox.minimumSizeHint().height()
+        height += self.okButton.minimumSizeHint().height()
         self.move(self.pos().x(), 20)
         screenHeight = self.screen().size().height()
         if height >= screenHeight - 150:

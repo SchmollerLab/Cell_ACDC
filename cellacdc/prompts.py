@@ -415,6 +415,7 @@ def init_segm_model_params(
         force_postprocess_2D=False
     )
     win.setChannelNames(posData.chNames)
+    out['win'] = win
     win.exec_()
     if win.cancel:
         return out
@@ -440,8 +441,6 @@ def init_segm_model_params(
         win.model_kwargs['save_embeddings'] = (
             sam_only_embeddings or sam_also_embeddings
         )
-    
-    out['win'] = win
     
     return out
     
