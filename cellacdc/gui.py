@@ -7725,13 +7725,17 @@ class guiWin(QMainWindow):
             x, y = event.pos().x(), event.pos().y()
             hoveredPoints = action.scatterItem.pointsAt(event.pos())
             if hoveredPoints:
-                self.removeClickedPoints(action, hoveredPoints)
+                removed_id = self.removeClickedPoints(action, hoveredPoints)
+                addPointsByClickingButton.pointIdSpinbox.setValue(removed_id)
+                addPointsByClickingButton.pointIdSpinbox.removedId = removed_id
             else:
                 if right_click:
                     id = addPointsByClickingButton.pointIdSpinbox.value()
                 elif left_click:
                     id = addPointsByClickingButton.pointIdSpinbox.value()
-                    id = self.getClickedPointNewId(action, id)
+                    id = self.getClickedPointNewId(
+                        action, id, addPointsByClickingButton.pointIdSpinbox
+                    )
                     addPointsByClickingButton.pointIdSpinbox.setValue(id)
                 elif middle_click:
                     id = 0
@@ -21009,7 +21013,34 @@ class guiWin(QMainWindow):
                 except Exception as e:
                     pass
     
+    def askSaveAddedPoints(self):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(
+            'Do you want to <b>save the anntoated points</b>?'
+        )
+        _, noButton, yesButton = msg.question(
+            self, 'Save?', txt,
+            buttonsTexts=('Cancel', 'No', 'Yes')
+        )
+        if msg.clickedButton != yesButton:
+            return
+        
+        for action in self.pointsLayersToolbar.actions():
+            try:
+                if 'Save annotated' in action.text():
+                    action.trigger()
+            except Exception as err:
+                pass
+    
     def pointsLayerToggled(self, checked):
+        if not checked:
+            for action in self.pointsLayersToolbar.actions():
+                try:
+                    if 'Save annotated' in action.text():
+                        self.askSaveAddedPoints()
+                        break
+                except Exception as err:
+                    pass
         self.pointsLayersToolbar.setVisible(checked)
         self.autoPilotZoomToObjToolbar.setVisible(checked)
         if self.pointsLayersNeverToggled:
@@ -21506,6 +21537,8 @@ class guiWin(QMainWindow):
             zSlice = self.zSliceScrollBar.sliderPosition()
         else:
             zSlice = None
+        
+        id = None
         for point in points:
             pos = point.pos()
             x, y = pos.x(), pos.y()
@@ -21517,8 +21550,15 @@ class guiWin(QMainWindow):
                 framePointsData['x'].remove(x)
                 framePointsData['y'].remove(y)
                 framePointsData['id'].remove(point.data())
+            id = point.data()
+        return id
     
-    def getClickedPointNewId(self, action, current_id):
+    def getClickedPointNewId(self, action, current_id, pointIdSpinbox):
+        removed_id = getattr(pointIdSpinbox, 'removedId', None)
+        if removed_id is not None:
+            pointIdSpinbox.removedId = None
+            return removed_id
+        
         posData = self.data[self.pos_i]
         framePointsData = action.pointsData.get(posData.frame_i)
         if framePointsData is None:
