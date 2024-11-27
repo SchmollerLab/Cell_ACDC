@@ -6286,7 +6286,7 @@ class PostProcessSegmParams(QGroupBox):
         layout.addLayout(addCustomFeatureLayout, row, 0, 1, 2)
         
         layout.setColumnStretch(1, 2)
-        layout.setRowStretch(row+1, 1)
+        # layout.setRowStretch(row+1, 1)
 
         self.setLayout(layout)
 
@@ -10400,21 +10400,24 @@ class QDialogModelParams(QDialog):
         buttonsLayout = QHBoxLayout()
 
         loadFunc = self.loadLastSelection
-
+        
         self.scrollArea = widgets.ScrollArea()
         scrollAreaLayout = QVBoxLayout()
         self.scrollArea.setVerticalLayout(scrollAreaLayout)
         
+        preProcessLayout = None
         self.preProcessParamsGroupbox = None
         if addPreProcessParams:
+            preProcessLayout = QVBoxLayout()
             self.preProcessParamsGroupbox = PreProcessParamsGroupbox(
                 parent=self
             )
             self.preProcessParamsGroupbox.setChecked(False)
-            scrollAreaLayout.addWidget(self.preProcessParamsGroupbox)
+            preProcessLayout.addWidget(self.preProcessParamsGroupbox)
             self.preProcessParamsGroupbox.sigLoadRecipe.connect(
                 self.loadPreprocRecipe
             )
+            preProcessLayout.addWidget(widgets.QHLine())
         
         initGroupBox, self.init_argsWidgets = self.createGroupParams(
             init_params, 'Parameters for model initialization'
@@ -10486,6 +10489,9 @@ class QDialogModelParams(QDialog):
         self.postProcessGroupbox = None
         
         if not is_tracker:
+            postProcessLayout = QVBoxLayout()
+            postProcessLayout.addWidget(widgets.QHLine())
+            
             # Add minimum size spinbox which is valid for all models
             postProcessGroupbox = PostProcessSegmParams(
                 'Post-processing segmentation parameters', posData,
@@ -10495,9 +10501,9 @@ class QDialogModelParams(QDialog):
             postProcessGroupbox.setChecked(False)
             self.postProcessGroupbox = postProcessGroupbox
 
-            scrollAreaLayout.addSpacing(15)
-            scrollAreaLayout.addStretch(1)
-            scrollAreaLayout.addWidget(postProcessGroupbox)
+            # scrollAreaLayout.addSpacing(15)
+            # scrollAreaLayout.addStretch(1)
+            postProcessLayout.addWidget(postProcessGroupbox)
 
             postProcDefaultButton = widgets.reloadPushButton('Restore default')
             postProcLoadLastSelButton = QPushButton('Load last parameters')
@@ -10509,14 +10515,23 @@ class QDialogModelParams(QDialog):
             postProcLoadLastSelButton.clicked.connect(
                 self.loadLastSelectionPostProcess
             )
-            scrollAreaLayout.addLayout(postProcButtonsLayout)
+            postProcessLayout.addLayout(postProcButtonsLayout)
 
             if url is not None:
-                scrollAreaLayout.addWidget(
+                postProcessLayout.addWidget(
                     self.createSeeHereLabel(url), alignment=Qt.AlignCenter
                 )
 
+        
+        if preProcessLayout is not None:
+            mainLayout.addLayout(preProcessLayout)
+            
         mainLayout.addWidget(self.scrollArea)
+        
+        if postProcessLayout is not None:
+            mainLayout.addSpacing(10)
+            mainLayout.addLayout(postProcessLayout)
+            
         mainLayout.addSpacing(20)
         mainLayout.addLayout(buttonsLayout)
 
@@ -11024,6 +11039,8 @@ class QDialogModelParams(QDialog):
         self.preproc_recipe = None
         if self.preProcessParamsGroupbox is not None:
             self.preproc_recipe = self.preProcessParamsGroupbox.recipe()
+            if self.preproc_recipe is None:
+                return
             
         self.init_kwargs = self.argsWidgets_to_kwargs(self.init_argsWidgets)
         if not self.skipSegmentation:
@@ -14499,37 +14516,41 @@ class PreProcessParamsGroupbox(QWidget):
         self.gridLayout.addWidget(selector, self.row, 1)
         stepWidgets['selector'] = selector
         
+        setParamsButton = widgets.setPushButton()
+        setParamsButton.setToolTip(
+            'Set step parameters'
+        )
+        self.gridLayout.addWidget(setParamsButton, self.row, 2)
+        setParamsButton.clicked.connect(
+            partial(self.setParamsStep, selector=selector)
+        )
+        stepWidgets['setParamsButton'] = setParamsButton
+        
         infoButton = widgets.infoPushButton()
-        self.gridLayout.addWidget(infoButton, self.row, 2)
+        self.gridLayout.addWidget(infoButton, self.row, 3)
         infoButton.clicked.connect(partial(self.showInfo, selector=selector))
         stepWidgets['infoButton'] = infoButton
         
         addButton = widgets.addPushButton()
-        self.gridLayout.addWidget(addButton, self.row, 3)
+        self.gridLayout.addWidget(addButton, self.row, 4)
         addButton.clicked.connect(self.addStep)
         stepWidgets['addButton'] = addButton
 
         delButton = widgets.delPushButton()
-        self.gridLayout.addWidget(delButton, self.row, 4)
+        self.gridLayout.addWidget(delButton, self.row, 5)
         delButton.clicked.connect(self.removeStep)
         delButton.idx = len(self.stepsWidgets)
         stepWidgets['delButton'] = delButton
         
         self.row += 1
-        stepWidgets['widgets'] = []
-        for labelText, widgetName in selector.widgets().items():
-            label = QLabel(labelText)
-            self.gridLayout.addWidget(label, self.row, 0) 
-            widget = getattr(widgets, widgetName)()
-            self.gridLayout.addWidget(widget, self.row, 1)
-            self.row += 1
-            stepWidgets['widgets'].append((label, widget))
+        selector.row = self.row
+        selector.idx = delButton.idx
 
         hline = widgets.QHLine()
-        self.gridLayout.addWidget(hline, self.row, 0, 1, 5)
+        self.gridLayout.addWidget(hline, self.row, 0, 1, 6)
         stepWidgets['hline'] = hline
         self.row += 1
-        
+              
         self.stepsWidgets.append(stepWidgets)
     
     def showInfo(self, checked=False, selector=None):
@@ -14543,6 +14564,14 @@ class PreProcessParamsGroupbox(QWidget):
         msg = widgets.myMessageBox(wrapText=False)
         msg.information(self, f'Info about `{method}`', htmlText)
     
+    def setParamsStep(self, checked=False, selector=None):
+        stepFunctionKwargs = selector.askSetParams()
+        if stepFunctionKwargs is None:
+            return
+        
+        idx = selector.idx
+        self.stepsWidgets[idx]['step_kwargs'] = stepFunctionKwargs
+        
     def removeStep(self, checked=False, idx=None):
         if len(self.stepsWidgets) == 1:
             self.setChecked(False)
@@ -14556,13 +14585,15 @@ class PreProcessParamsGroupbox(QWidget):
         self.gridLayout.removeWidget(stepWidgets['selector'])
         self.gridLayout.removeWidget(stepWidgets['infoButton'])
         self.gridLayout.removeWidget(stepWidgets['addButton'])
+        self.gridLayout.removeWidget(stepWidgets['setParamsButton'])
         self.gridLayout.removeWidget(stepWidgets['delButton'])
+        self.row -= 1
+        
         self.gridLayout.removeWidget(stepWidgets['hline'])
-        for label, widget in stepWidgets['widgets']:
-            self.gridLayout.removeWidget(label)    
-            self.gridLayout.removeWidget(widget)
+        self.row -= 1
         
         for s, stepWidgets in enumerate(self.stepsWidgets):
+            label = stepWidgets['stepLabel']
             label.setText(f'Step {s+1}: ')
         
         del self.stepsWidgets[idx]
@@ -14570,6 +14601,17 @@ class PreProcessParamsGroupbox(QWidget):
     def isChecked(self):
         return self.groupbox.isChecked()
     
+    def warnStepNotInit(self, method):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(
+            f'The parameters for the preprocessing step <b>{method}</b> '
+            'were not initialized.<br><br>'
+            'Please, click on the corresponding <code>Set step parameters</code> '
+            'button to initialize this step (cog icon).<br><br>'
+            'Thank you for your patience!'
+        )
+        msg.warning(self, 'Table exists!', txt)
+
     def recipe(self):
         recipe = []
         if not self.groupbox.isChecked():
@@ -14577,9 +14619,11 @@ class PreProcessParamsGroupbox(QWidget):
         
         for stepWidgets in self.stepsWidgets:
             method = stepWidgets['selector'].currentText()
-            step_kwargs = {}
-            for label, widget in stepWidgets['widgets']:
-                step_kwargs[label.text().lower()] = widget.value()
+            step_kwargs = stepWidgets.get('step_kwargs')
+            if step_kwargs is None:
+                self.warnStepNotInit(method)
+                return
+            
             recipe.append({
                 'method': method, 'kwargs': step_kwargs
             })

@@ -1,3 +1,21 @@
+"""
+This module contains the functions that can be used as pre-processing steps 
+before segmentation. 
+
+These functions are automatically added to `apps.QDialogModelParams` and they 
+can be selected in the pre-processing recipe. 
+
+Every function must have a single argument for the image, while all 
+other parameters must be keyword arguments. 
+
+Functions that should not be used as pre-processing steps must start with `_`. 
+The list of functions is generated in the module `cellacdc.config` 
+(see PREPROCESS_MAPPER variable).
+
+IMPORTANT: Do not import functions otherwise they will be added as possible 
+step (for example do not do `from skimage.util import img_as_ubyte`).
+"""
+
 from tqdm import tqdm
 
 import numpy as np
@@ -5,7 +23,7 @@ import pandas as pd
 import math
 
 try:
-    from cupyx.scipy.ndimage import gaussian_filter as gpu_gaussian_filter
+    import cupyx.scipy.ndimage
     import cupy as cp
     CUPY_INSTALLED = True
 except Exception as e:
@@ -14,7 +32,7 @@ except Exception as e:
 import skimage.morphology
 import skimage.filters
 import skimage.exposure
-from skimage.util import img_as_ubyte
+import skimage.util
 
 from . import error_up_str
 from . import types
@@ -38,8 +56,10 @@ def remove_hot_pixels(image, logger_func=print, progress=True):
     return filtered
 
 def gaussian_filter(
-        image, sigma: types.Vector, 
-        use_gpu=False, logger_func=print
+        image, 
+        sigma: types.Vector=0.75, 
+        use_gpu=False, 
+        logger_func=print
     ):
     """Multi-dimensional Gaussian filter
 
@@ -87,7 +107,7 @@ def gaussian_filter(
     if CUPY_INSTALLED and use_gpu:
         try:
             image = cp.array(image, dtype=float)
-            filtered = gpu_gaussian_filter(image, sigma)
+            filtered = cupyx.scipy.ndimage.gaussian_filter(image, sigma)
             filtered = cp.asnumpy(filtered)
         except Exception as err:
             logger_func('*'*100)
@@ -101,7 +121,10 @@ def gaussian_filter(
         filtered = skimage.filters.gaussian(image, sigma=sigma)
     return filtered
 
-def ridge_filter(image, sigmas: types.Vector):
+def ridge_filter(
+        image, 
+        sigmas: types.Vector=(1.0, 2.0)
+    ):
     input_shape = image.shape
     filtered = skimage.filters.sato(
         np.squeeze(image), sigmas=sigmas, black_ridges=False
@@ -109,7 +132,9 @@ def ridge_filter(image, sigmas: types.Vector):
     return filtered
 
 def spot_detector_filter(
-        image, spots_zyx_radii_pxl: types.Vector, use_gpu=False, 
+        image, 
+        spots_zyx_radii_pxl: types.Vector=(3, 5, 5), 
+        use_gpu=False, 
         logger_func=print, lab=None
     ):
     spots_zyx_radii_pxl = np.array(spots_zyx_radii_pxl)
@@ -217,7 +242,7 @@ def correct_illumination(
     corrected_image = np.clip(corrected_image, 0, 1)  
 
     # Convert back to 8-bit for visualization or saving
-    corrected_image_8bit = img_as_ubyte(corrected_image)
+    corrected_image_8bit = skimage.util.img_as_ubyte(corrected_image)
 
     return corrected_image_8bit
 

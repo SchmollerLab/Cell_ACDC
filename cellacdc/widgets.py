@@ -9221,6 +9221,19 @@ class PreProcessingSelector(QComboBox):
         
     def widgets(self):
         return PREPROCESS_MAPPER[self.currentText()]['widgets']
+    
+    def askSetParams(self):
+        method = self.currentText()
+        function = PREPROCESS_MAPPER[method]['function']
+        params_argspecs = myutils.get_function_argspec(function)
+        win = apps.FunctionParamsDialog(
+            params_argspecs, function_name=method
+        )
+        win.exec_()
+        if win.cancel:
+            return
+        
+        return win.function_kwargs
 
 class RescaleImageJroisGroupbox(QGroupBox):
     def __init__(self, TZYX_out_shape, parent=None):

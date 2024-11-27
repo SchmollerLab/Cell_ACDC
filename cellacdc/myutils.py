@@ -944,7 +944,8 @@ def get_function_argspec(function):
     kwargs_type_hints = typing.get_type_hints(function)
     docstring = function.__doc__
     params = params_to_ArgSpec(
-        argspecs, kwargs_type_hints, docstring
+        argspecs, kwargs_type_hints, docstring, 
+        args_to_skip={'logger_func',}
     )
     return params
 

@@ -1680,7 +1680,7 @@ def preprocess_image_from_recipe(image, recipe: dict):
         func = PREPROCESS_MAPPER[method]['function']
         kwargs = step['kwargs']
         image = func(image, **kwargs)
-    
+        
     return image
 
 def segm_model_segment(
