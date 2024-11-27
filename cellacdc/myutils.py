@@ -2439,7 +2439,9 @@ def check_napari_plugin(plugin_name, module_name, parent=None):
         raise e
 
 def _install_pip_package(pkg_name):
-    subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-U', pkg_name])
+    subprocess.check_call(
+        [sys.executable, '-m', 'pip', 'install', '-U', pkg_name]
+    )
 
 def uninstall_pip_package(pkg_name):
     subprocess.check_call(
@@ -2509,7 +2511,13 @@ def check_install_cellpose(version: str='2.0'):
     )
 
 def check_install_baby():
-    check_install_package('baby', pypi_name='baby-seg')
+    check_install_package(
+        'TensorFlow', 
+        pypi_name='tensorflow', 
+        import_pkg_name='tensorflow', 
+        max_version='2.14'
+    )
+    check_install_package('baby', pypi_name='baby-seg', import_pkg_name='baby')
 
 def check_install_yeaz():
     check_install_torch()
@@ -2538,6 +2546,23 @@ def check_pkg_version(import_pkg_name, min_version, raise_err=True):
     if raise_err and not is_version_correct:
         raise ModuleNotFoundError(
             f'{import_pkg_name}>{min_version} not installed.'
+        )
+    else:
+        return is_version_correct
+
+def check_pkg_max_version(import_pkg_name, max_version, raise_err=True):
+    is_version_correct = False
+    try:
+        from packaging import version
+        installed_version = get_package_version(import_pkg_name)  
+        if version.parse(installed_version) <= version.parse(max_version):
+            is_version_correct = True
+    except Exception as err:
+        is_version_correct = False
+    
+    if raise_err and not is_version_correct:
+        raise ModuleNotFoundError(
+            f'{import_pkg_name}<={max_version} not installed.'
         )
     else:
         return is_version_correct
@@ -2608,7 +2633,8 @@ def check_install_package(
         caller_name='Cell-ACDC', 
         force_upgrade=False,
         upgrade=False, 
-        min_version=''
+        min_version='', 
+        max_version=''
     ):
     """Try to import a package. If import fails, ask user to install it 
     automatically.
@@ -2646,7 +2672,11 @@ def check_install_package(
         If not empty it must be a valid version `major[.minor][.patch]` where 
         minor and patch are optional. If the installed package is older the 
         upgrade will be forced. 
-
+    max_version : str, optional
+        If not empty it must be a valid version `major[.minor][.patch]` where 
+        minor and patch are optional. If the installed package is newer the 
+        upgrade will be forced. 
+        
     Raises
     ------
     ModuleNotFoundError
@@ -2666,11 +2696,14 @@ def check_install_package(
                 f'User requested to forcefully upgrade the package "{pkg_name}"')
         if min_version:
             check_pkg_version(import_pkg_name, min_version)
+        if max_version:
+            check_pkg_max_version(import_pkg_name, max_version)
     except ModuleNotFoundError:
         proceed = _install_package_msg(
             pkg_name, note=note, parent=parent, upgrade=upgrade,
             is_cli=is_cli, caller_name=caller_name, logger_func=logger_func,
-            pkg_command=pypi_name
+            pkg_command=pypi_name, max_version=max_version, 
+            min_version=min_version
         )
         if pypi_name:
             pkg_name = pypi_name
@@ -2683,13 +2716,20 @@ def check_install_package(
                 return traceback.format_exc()
         try:
             if pkg_name == 'tensorflow':
-                _install_tensorflow()
+                _install_tensorflow(
+                    max_version=max_version, min_version=min_version
+                )
             elif pkg_name == 'deepsea':
                 _install_deepsea()
             elif pkg_name == 'segment_anything':
                 _install_segment_anything()
             else:
-                _install_pip_package(pkg_name)
+                pkg_command = _get_pkg_command_pip_install(
+                    pkg_name, 
+                    max_version=max_version, 
+                    min_version=min_version
+                )
+                _install_pip_package(pkg_command)
         except Exception as e:
             printl(traceback.format_exc())
             _inform_install_package_failed(
@@ -2769,17 +2809,20 @@ def download_fiji(logger_func=print):
 
 def _install_package_msg(
         pkg_name, note='', parent=None, upgrade=False, caller_name='Cell-ACDC',
-        is_cli=False, pkg_command='', logger_func=print
+        is_cli=False, pkg_command='', logger_func=print, max_version='', 
+        min_version=''
     ):
     if is_cli:
         proceed = _install_package_cli_msg(
             pkg_name, note=note, upgrade=upgrade, caller_name=caller_name,
-            pkg_command=pkg_command, logger_func=logger_func
+            pkg_command=pkg_command, max_version=max_version, 
+            min_version=min_version, logger_func=logger_func
         )
     else:
         proceed = _install_package_gui_msg(
             pkg_name, note=note, parent=parent, upgrade=upgrade, 
             caller_name=caller_name, pkg_command=pkg_command,
+            max_version=max_version, min_version=min_version, 
             logger_func=logger_func
         )
     return proceed
@@ -2866,12 +2909,27 @@ def _install_pytorch_cli(
         args = selected_command.split()[1:]
         subprocess.check_call([sys.executable, *args], shell=True)
 
+def _get_pkg_command_pip_install(pkg_command, max_version='', min_version=''):
+    if min_version:
+        pkg_command = f'{pkg_command}>{min_version}'
+        if max_version:
+            pkg_command = f'{pkg_command},'
+    
+    if max_version:
+        pkg_command = f'{pkg_command}<={max_version}'
+    return pkg_command
+
 def _install_package_cli_msg(
         pkg_name, note='', upgrade=False, caller_name='Cell-ACDC',
-        logger_func=print, pkg_command=''
+        logger_func=print, pkg_command='', max_version='', 
+        min_version=''
     ):
     if not pkg_command:
         pkg_command = pkg_name
+    
+    pkg_command = _get_pkg_command_pip_install(
+        pkg_command, max_version=max_version, min_version=min_version
+    )
     
     if upgrade:
         action = 'upgrade'
@@ -2883,7 +2941,7 @@ def _install_package_cli_msg(
         f'{separator}\n{caller_name} needs to {action} {pkg_name}\n\n'
         'You can choose to install it now or stop the process and install it '
         'later with the following command:\n\n'
-        f'pip install --upgrade {pkg_command}\n'
+        f'pip install --upgrade "{pkg_command}"\n'
     )
     logger_func(txt)
     install_command = f'pip install --upgrade {pkg_command}'
@@ -2902,7 +2960,7 @@ def _install_package_cli_msg(
         
 def _install_package_gui_msg(
         pkg_name, note='', parent=None, upgrade=False, caller_name='Cell-ACDC', 
-        pkg_command='', logger_func=None
+        pkg_command='', logger_func=None, max_version='', min_version=''
     ):
     msg = widgets.myMessageBox(parent=parent)
     if upgrade:
@@ -2914,6 +2972,10 @@ def _install_package_gui_msg(
     
     if not pkg_command:
         pkg_command = pkg_name
+    
+    pkg_command = _get_pkg_command_pip_install(
+        pkg_command, max_version=max_version, min_version=min_version
+    )
     
     command_html = pkg_command.lower().replace('<', '&lt;').replace('>', '&gt;')
     command = f'pip install --upgrade {command_html}'
@@ -2938,13 +3000,18 @@ def _install_package_gui_msg(
     )
     return msg.clickedButton == okButton
 
-def _install_tensorflow():
+def _install_tensorflow(max_version='', min_version=''):
     cpu = platform.processor()
+    pkg_command = _get_pkg_command_pip_install(
+        'tensorflow', 
+        max_version=max_version, 
+        min_version=min_version
+    )
     if is_mac and cpu == 'arm':
-        args = ['conda install -y -c conda-forge tensorflow']
+        args = [f'conda install -y -c conda-forge "{pkg_command}"']
         shell = True
     else:
-        args = [sys.executable, '-m', 'pip', 'install', '-U', 'tensorflow']
+        args = [sys.executable, '-m', 'pip', 'install', '-U', pkg_command]
         shell = False
     subprocess.check_call(args, shell=shell)
 

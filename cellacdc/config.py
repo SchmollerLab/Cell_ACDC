@@ -63,6 +63,20 @@ try:
     )
     
     ap.add_argument(
+        '-v', '--version', action='store_true',
+        help=(
+            'Get information about Cell-ACDC version and environment'
+        )
+    )
+    
+    ap.add_argument(
+        '-i', '--info', action='store_true',
+        help=(
+            'Get information about Cell-ACDC version and environment'
+        )
+    )
+    
+    ap.add_argument(
         '-d', '--debug', action='store_true',
         help=(
             'Used for debugging. Test code with'
@@ -78,7 +92,8 @@ try:
     parser_args = vars(parser_args)
     if os.path.exists(debug_true_filepath):
         parser_args['debug'] = True
-except:
+except Exception as err:
+    import pdb; pdb.set_trace()
     print('Importing from notebook, ignoring Cell-ACDC argument parser...')
     parser_args = {}
     parser_args['debug'] = False

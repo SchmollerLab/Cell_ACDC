@@ -42,6 +42,25 @@ def run():
     from cellacdc.config import parser_args
 
     PARAMS_PATH = parser_args['params']
+    
+    if parser_args['version'] or parser_args['info']:
+        import platform, sys
+        from cellacdc import cellacdc_path
+        from cellacdc.myutils import get_date_from_version, read_version
+        version = read_version()
+        release_date = get_date_from_version(
+            version, package='cellacdc'
+        )
+        py_ver = sys.version_info
+        python_version = f'{py_ver.major}.{py_ver.minor}.{py_ver.micro}'
+        print('='*100)
+        print(f'Cell-ACDC version {version}')
+        print(f'Released on: {release_date}')
+        print(f'Installed in "{cellacdc_path}"')
+        print(f'Python {python_version}')
+        print(f'Platform: {platform.platform()}')
+        print('='*100)
+        exit()
 
     if PARAMS_PATH:
         _run.run_cli(PARAMS_PATH)
