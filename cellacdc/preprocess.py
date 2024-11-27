@@ -40,6 +40,23 @@ from . import types
 SQRT_2 = math.sqrt(2)
 
 def remove_hot_pixels(image, logger_func=print, progress=True):
+    """Apply a morphological opening operation to remove isolated bright 
+    pixels.
+
+    Parameters
+    ----------
+    image : (Y, X) or (Z, Y, X) numpy.ndarray
+        Input image
+    logger_func : callable, optional
+        Function used to log information. Default is print
+    progress : bool, optional
+        If `True`, displays progress bar. Default is True
+
+    Returns
+    -------
+    (Y, X) or (Z, Y, X) numpy.ndarray
+        Filtered image
+    """    
     is_3D = image.ndim == 3
     if is_3D:
         if progress:
@@ -125,6 +142,21 @@ def ridge_filter(
         image, 
         sigmas: types.Vector=(1.0, 2.0)
     ):
+    """Filter used to enhance network-like structures (Sato filter). More info 
+    here https://scikit-image.org/docs/stable/auto_examples/edges/plot_ridge_filter.html
+
+    Parameters
+    ----------
+    image : (Y, X) or (Z, Y, X) numpy.ndarray
+        Input image
+    sigmas : sequence of floats, optional
+        Sigmas used for the ridge filter. Default is (1.0, 2.0)
+
+    Returns
+    -------
+    (Y, X) or (Z, Y, X) numpy.ndarray
+        Filtered image
+    """    
     input_shape = image.shape
     filtered = skimage.filters.sato(
         np.squeeze(image), sigmas=sigmas, black_ridges=False
@@ -135,8 +167,33 @@ def spot_detector_filter(
         image, 
         spots_zyx_radii_pxl: types.Vector=(3, 5, 5), 
         use_gpu=False, 
-        logger_func=print, lab=None
+        logger_func=print, 
     ):
+    """Spot detection using Difference of Gaussians filter.
+
+    Parameters
+    ----------
+    image : (Y, X) or (Z, Y, X) numpy.ndarray
+        Input image
+    spots_zyx_radii_pxl : sequence of floats, one for each dimension, optional
+        Expected size of the spots in pixels. One size for each dimension in 
+        `image`. Default is (3, 5, 5)
+    use_gpu : bool, optional
+        If `True` uses GPU if `cupy` is installed and a CUDA-compatible GPU 
+        is available . Default is False
+    logger_func : callable, optional
+        Function used to log additional information on progress. Default is print
+
+    Returns
+    -------
+    (Y, X) or (Z, Y, X) numpy.ndarray
+        Filtered image
+
+    Raises
+    ------
+    TypeError
+        Error raised when on of the input sigmas is zero.
+    """    
     spots_zyx_radii_pxl = np.array(spots_zyx_radii_pxl)
     if image.ndim == 2 and len(spots_zyx_radii_pxl) == 3:
         spots_zyx_radii_pxl = spots_zyx_radii_pxl[1:]
@@ -159,15 +216,8 @@ def spot_detector_filter(
     
     sharpened = blurred1 - blurred2
     
-    if lab is None:
-        out_range = (image.min(), image.max())
-        in_range = 'image'
-    else:
-        lab_mask = lab > 0
-        img_masked = image[lab_mask]
-        out_range = (img_masked.min(), img_masked.max())
-        sharp_img_masked = sharpened[lab_mask]
-        in_range = (sharp_img_masked.min(), sharp_img_masked.max())
+    out_range = (image.min(), image.max())
+    in_range = 'image'
     sharp_rescaled = skimage.exposure.rescale_intensity(
         sharpened, in_range=in_range, out_range=out_range
     )
