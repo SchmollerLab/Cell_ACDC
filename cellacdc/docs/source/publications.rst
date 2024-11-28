@@ -47,3 +47,6 @@ In the following publications authors used Cell-ACDC to analyse microscopy data:
 
 #.	Kukhtevich, I. V. et al. *Quantitative RNA imaging in single live cells reveals age-dependent asymmetric inheritance*. **Cell Rep.** 41, (2022) 
     DOI: `10.1016/j.celrep.2022.111656 <https://doi.org/10.1016/j.celrep.2022.111656>`__.
+
+#.  Padovani, F., Mairhörmann, B., Falter-Braun, P., Lengefeld, J. & Schmoller, K. M. *Segmentation, tracking and cell cycle analysis of live-cell imaging data with Cell-ACDC*. *BMC Biol.* 20, 174 (2022). 
+    DOI: `10.1186/s12915-022-01372-6 <https://doi.org/10.1186/s12915-022-01372-6>`__.
