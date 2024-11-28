@@ -121,6 +121,12 @@ shifted? Look
 `here <https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/scripts/README.md>`__
 for further information on how to correct your data.
 
+Scientific publications where Cell-ACDC was used
+================================================
+
+See here for a list of the **scientific publications** where Cell-ACDC was used: 
+`Link <>`_.
+
 Resources
 =========
 - Please find a complete user guide `here <https://cell-acdc.readthedocs.io/en/latest/>`__
@@ -130,6 +136,7 @@ Resources
 - `Image.sc Forum <https://forum.image.sc/tag/cell-acdc>`_ to ask **any question**. Make sure to tag the Topic with the tag ``cell-acdc``. 
 - **Report issues, request a feature or ask questions** by opening a new issue `here <https://github.com/SchmollerLab/Cell_ACDC/issues>`__
 - X `thread <https://twitter.com/frank_pado/status/1443957038841794561?s=20>`__
+- `Scientific publications where Cell-ACDC was used <>`__
 
 Citing Cell-ACDC and the available models
 =========================================

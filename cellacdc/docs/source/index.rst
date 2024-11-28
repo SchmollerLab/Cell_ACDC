@@ -96,10 +96,11 @@ Contents
    datastruc
    troubleshooting/index
    release-notes
+   publications
    resources
 
-Important links
----------------
+Resources
+---------
 
 * `GitHub <https://github.com/SchmollerLab/Cell_ACDC>`_
 * `Publication <https://bmcbiol.biomedcentral.com/articles/10.1186/s12915-022-01372-6>`_
