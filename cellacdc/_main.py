@@ -889,6 +889,8 @@ class mainWin(QMainWindow):
         # Step 2. Dynamically create the actions
         actions = []
         for path in recentPaths:
+            if not os.path.exists(path):
+                continue
             action = QAction(path, self)
             action.triggered.connect(partial(myutils.showInExplorer, path))
             actions.append(action)

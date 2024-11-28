@@ -10520,9 +10520,11 @@ class QDialogModelParams(QDialog):
             )
             postProcessLayout.addLayout(postProcButtonsLayout)
 
+            self.seeHereLabel = None
             if url is not None:
+                self.seeHereLabel = self.createSeeHereLabel(url)
                 postProcessLayout.addWidget(
-                    self.createSeeHereLabel(url), alignment=Qt.AlignCenter
+                    self.seeHereLabel, alignment=Qt.AlignCenter
                 )
 
         
@@ -11129,12 +11131,17 @@ class QDialogModelParams(QDialog):
             self.loop.exit()
     
     def showEvent(self, event) -> None:
-        height = self.scrollArea.minimumHeightNoScrollbar() + 120
+        buttonHeight = self.okButton.minimumSizeHint().height()
+        height = self.scrollArea.minimumHeightNoScrollbar() + 70
         if self.preProcessParamsGroupbox is not None:
             height += self.preProcessParamsGroupbox.minimumSizeHint().height()
+            height += buttonHeight
         if self.postProcessGroupbox is not None:
             height += self.postProcessGroupbox.minimumSizeHint().height()
-        height += self.okButton.minimumSizeHint().height()
+            height += buttonHeight
+        if self.seeHereLabel is not None:
+            height += self.seeHereLabel.minimumSizeHint().height()
+        height += buttonHeight
         self.move(self.pos().x(), 20)
         screenHeight = self.screen().size().height()
         if height >= screenHeight - 150:
