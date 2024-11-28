@@ -125,7 +125,7 @@ Scientific publications where Cell-ACDC was used
 ================================================
 
 See here for a list of the **scientific publications** where Cell-ACDC was used: 
-`Link <>`_.
+`Link <https://cell-acdc.readthedocs.io/en/latest/publications.html>`_.
 
 Resources
 =========
@@ -136,7 +136,7 @@ Resources
 - `Image.sc Forum <https://forum.image.sc/tag/cell-acdc>`_ to ask **any question**. Make sure to tag the Topic with the tag ``cell-acdc``. 
 - **Report issues, request a feature or ask questions** by opening a new issue `here <https://github.com/SchmollerLab/Cell_ACDC/issues>`__
 - X `thread <https://twitter.com/frank_pado/status/1443957038841794561?s=20>`__
-- `Scientific publications where Cell-ACDC was used <>`__
+- `Scientific publications where Cell-ACDC was used <https://cell-acdc.readthedocs.io/en/latest/publications.html>`__
 
 Citing Cell-ACDC and the available models
 =========================================
