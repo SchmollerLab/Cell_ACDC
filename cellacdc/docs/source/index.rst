@@ -71,11 +71,16 @@ A GUI-based Python framework for **segmentation**, **tracking**, **cell cycle an
 
 |
 
-.. image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/cellacdc/resources/figures/Fig1.jpg
+.. tip:: 
+
+    If you want a **video tutorial** as introduction to Cell-ACDC the workshop that we had at the 
+    I2K Conference 2024 is available `here <https://youtu.be/u1cQ2MH5uEQ?si=-_hpBoJIccMRjrazs>`__.
+
+.. figure:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/cellacdc/resources/figures/Fig1.jpg
    :alt: Overview of pipeline and GUI
    :width: 600
 
-Overview of pipeline and GUI
+   Overview of pipeline and GUI
 
 Contents
 --------
@@ -84,10 +89,9 @@ Contents
    :maxdepth: 2
    
    overview
-   citation
    installation
-   data-structure
    getting-started
+   data-structure
    data-structure-fiji
    contributing
    tooltips
@@ -98,6 +102,7 @@ Contents
    release-notes
    publications
    resources
+   citation
 
 Resources
 ---------

@@ -1,6 +1,11 @@
 From 0 to Cell-ACDC mastery: A complete guide
 =============================================
 
+.. important:: 
+
+    If you prefer a **video tutorial** as introduction to Cell-ACDC the workshop that we had at the 
+    I2K Conference 2024 is available `here <https://youtu.be/u1cQ2MH5uEQ?si=-_hpBoJIccMRjrazs>`__.
+
 This guide should provide you with everything that you need to know about Cell-ACDC to become a true master. In the future, a abridged version of this guide as well as video tutorials will be added.
 During several points during the usage of Cell-ACDC, the program may become unresponsive. **DO NOT CLOSE CELL-ACDC**. Instead, check the console for progress or error massages.
 
