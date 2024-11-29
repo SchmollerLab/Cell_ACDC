@@ -304,19 +304,26 @@ def save_to_h5(dst_filepath, data):
 def load_segm_file(images_path, end_name_segm_file='segm', return_path=False):
     if not end_name_segm_file.endswith('.npz'):
         end_name_segm_file = f'{end_name_segm_file}.npz'
-    for file in myutils.listdir(images_path):
-        if file.endswith(end_name_segm_file):
-            filepath = os.path.join(images_path, file)
-            segm_data = np.load(filepath)['arr_0'].astype(np.uint32)
-            if return_path:
-                return segm_data, filepath
-            else:
-                return segm_data
+    
+    found_files = [
+        file for file in myutils.listdir(images_path) 
+        if file.endswith(end_name_segm_file)
+    ]
+    if len(found_files) == 0:
+        segm_data = None
+        segm_filepath = ''
+    elif len(found_files) == 1:
+        segm_filepath = os.path.join(images_path, found_files[0])
+        segm_data = np.load(segm_filepath)['arr_0'].astype(np.uint32)
     else:
-        if return_path:
-            return None, ''
-        else:
-            return 
+        found_files.sort(key=len)
+        segm_filepath = os.path.join(images_path, found_files[0])
+        segm_data = np.load(segm_filepath)['arr_0'].astype(np.uint32)
+    
+    if return_path:
+        return segm_data, segm_filepath
+    else:
+        return segm_data
 
 def get_tzyx_shape(images_path):
     df_metadata = load_metadata_df(images_path)
