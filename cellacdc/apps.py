@@ -8093,7 +8093,7 @@ will be applied (see below).<br><br>
             msg.critical(self, title, txt)
             return None
         
-        corrected_assignment = self.inputCca_df['corrected_assignment']
+        corrected_on_frame_i = self.inputCca_df['corrected_on_frame_i']
         cca_df = pd.DataFrame({
             'cell_cycle_stage': ccsValues,
             'generation_num': genNumValues,
@@ -8102,7 +8102,7 @@ will be applied (see below).<br><br>
             'emerg_frame_i': emergFrameValues,
             'division_frame_i': divisFrameValues,
             'is_history_known': historyValues,
-            'corrected_assignment': corrected_assignment,
+            'corrected_on_frame_i': corrected_on_frame_i,
             'will_divide': self.inputCca_df['will_divide'],
             }, index=self.IDs
         )
@@ -9772,9 +9772,13 @@ class pdDataFrameWidget(QMainWindow):
         # layout.addWidget(QPushButton('Ok', self))
         mainContainer.setLayout(layout)
 
-    def updateTable(self, df):
+    def updateTable(self, df, IDs=None):
         if df is None:
             df = self.parent.getBaseCca_df()
+        
+        if IDs is not None:
+            df = df.loc[IDs]
+            
         df = df.reset_index()
         model = DataFrameModel(df)
         self.tableView.setModel(model)

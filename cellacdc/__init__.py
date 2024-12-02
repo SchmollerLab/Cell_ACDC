@@ -324,7 +324,7 @@ base_cca_dict = {
     'emerg_frame_i': -1,
     'division_frame_i': -1,
     'is_history_known': False,
-    'corrected_assignment': False,
+    'corrected_on_frame_i': -1,
     'will_divide': 0,
     'daughter_disappears_before_division': 0,
     'disappears_before_division': 0

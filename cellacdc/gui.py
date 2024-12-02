@@ -9743,7 +9743,8 @@ class guiWin(QMainWindow):
         self.store_cca_df()
 
         if self.ccaTableWin is not None:
-            self.ccaTableWin.updateTable(posData.cca_df)
+            zoomIDs = self.getZoomIDs()
+            self.ccaTableWin.updateTable(posData.cca_df, IDs=zoomIDs)
 
         # Correct future frames
         for i in range(posData.frame_i+1, posData.SizeT):
@@ -9858,7 +9859,7 @@ class guiWin(QMainWindow):
             frame_i=frame_i
         )
         cca_df_at_future_division.at[
-            mothIDofDisappearedBud, 'corrected_assignment'] = True
+            mothIDofDisappearedBud, 'corrected_on_frame_i'] = frame_i
         self.store_cca_df(
             frame_i=frame_i, cca_df=cca_df_at_future_division, autosave=False
         )
@@ -9877,7 +9878,7 @@ class guiWin(QMainWindow):
                 break
             
             cca_df_i.loc[mothIDofDisappearedBud] = ccaStatusToRestore
-            cca_df_i.at[mothIDofDisappearedBud, 'corrected_assignment'] = True
+            cca_df_i.at[mothIDofDisappearedBud, 'corrected_on_frame_i'] = frame_i
             
             self.store_cca_df(frame_i=future_i, cca_df=cca_df_i, autosave=False)            
     
@@ -9966,9 +9967,9 @@ class guiWin(QMainWindow):
         # Update cell cycle info LabelItems
         self.setAllTextAnnotations()
 
-
         if self.ccaTableWin is not None:
-            self.ccaTableWin.updateTable(posData.cca_df)
+            zoomIDs = self.getZoomIDs()
+            self.ccaTableWin.updateTable(posData.cca_df, IDs=zoomIDs)
 
     @exception_handler
     def manualCellCycleAnnotation(self, ID):
@@ -10031,7 +10032,8 @@ class guiWin(QMainWindow):
         self.setAllTextAnnotations()
 
         if self.ccaTableWin is not None:
-            self.ccaTableWin.updateTable(posData.cca_df)
+            zoomIDs = self.getZoomIDs()
+            self.ccaTableWin.updateTable(posData.cca_df, IDs=zoomIDs)
         
         # Correct future frames
         for future_i in range(posData.frame_i+1, posData.SizeT):
@@ -10506,7 +10508,7 @@ class guiWin(QMainWindow):
         posData.cca_df.at[budID, 'generation_num'] = 0
         posData.cca_df.at[budID, 'relative_ID'] = new_mothID
         posData.cca_df.at[budID, 'relationship'] = 'bud'
-        posData.cca_df.at[budID, 'corrected_assignment'] = True
+        posData.cca_df.at[budID, 'corrected_on_frame_i'] = posData.frame_i
         posData.cca_df.at[budID, 'cell_cycle_stage'] = 'S'
 
         posData.cca_df.at[new_mothID, 'relative_ID'] = budID
@@ -10526,7 +10528,8 @@ class guiWin(QMainWindow):
         self.checkMothersExcludedOrDead()
 
         if self.ccaTableWin is not None:
-            self.ccaTableWin.updateTable(posData.cca_df)
+            zoomIDs = self.getZoomIDs()
+            self.ccaTableWin.updateTable(posData.cca_df, IDs=zoomIDs)
 
         # Correct future frames
         for i in range(posData.frame_i+1, posData.SizeT):
@@ -10780,8 +10783,8 @@ class guiWin(QMainWindow):
         for correct_budID, correct_mothID in correct_pairings.items():
             posData.cca_df.at[correct_budID, 'relative_ID'] = correct_mothID
             posData.cca_df.at[correct_mothID, 'relative_ID'] = correct_budID
-            posData.cca_df.at[correct_budID, 'corrected_assignment'] = True
-            posData.cca_df.at[correct_mothID, 'corrected_assignment'] = True
+            posData.cca_df.at[correct_budID, 'corrected_on_frame_i'] = posData.frame_i
+            posData.cca_df.at[correct_mothID, 'corrected_on_frame_i'] = posData.frame_i
         self.store_cca_df()
         
         # Correct past frames
@@ -10809,8 +10812,8 @@ class guiWin(QMainWindow):
                 
                 cca_df_i.at[correct_budID, 'relative_ID'] = correct_mothID
                 cca_df_i.at[correct_mothID, 'relative_ID'] = correct_budID
-                cca_df_i.at[correct_budID, 'corrected_assignment'] = True
-                cca_df_i.at[correct_mothID, 'corrected_assignment'] = True
+                cca_df_i.at[correct_budID, 'corrected_on_frame_i'] = posData.frame_i
+                cca_df_i.at[correct_mothID, 'corrected_on_frame_i'] = posData.frame_i
                 
                 # Set mother cell cycle stage to S in case it is not
                 if cca_df_i.at[correct_mothID, 'cell_cycle_stage'] == 'G1':
@@ -10858,8 +10861,8 @@ class guiWin(QMainWindow):
                 
                 cca_df_i.at[correct_budID, 'relative_ID'] = correct_mothID
                 cca_df_i.at[correct_mothID, 'relative_ID'] = correct_budID
-                cca_df_i.at[correct_budID, 'corrected_assignment'] = True
-                cca_df_i.at[correct_mothID, 'corrected_assignment'] = True
+                cca_df_i.at[correct_budID, 'corrected_on_frame_i'] = posData.frame_i
+                cca_df_i.at[correct_mothID, 'corrected_on_frame_i'] = posData.frame_i
                 
                 # Set mother cell cycle stage to S in case it is not
                 if cca_df_i.at[correct_mothID, 'cell_cycle_stage'] == 'G1':
@@ -10941,7 +10944,7 @@ class guiWin(QMainWindow):
             cca_df_i = self.get_cca_df(frame_i=past_i, return_df=True)
             if wrongBudID in cca_df_i.index:
                 cca_df_i.loc[mothIDofDisappearedBud] = mothCcaBeforeWrongBudID
-                cca_df_i.at[mothIDofDisappearedBud, 'corrected_assignment'] = True
+                cca_df_i.at[mothIDofDisappearedBud, 'corrected_on_frame_i'] = frame_i
                 self.store_cca_df(
                     frame_i=past_i, cca_df=cca_df_i, autosave=False
                 )
@@ -11980,9 +11983,11 @@ class guiWin(QMainWindow):
                 return
 
         correctedAssignIDs = (
-                posData.cca_df[posData.cca_df['corrected_assignment']].index)
-        NeverCorrectedAssignIDs = [ID for ID in posData.new_IDs
-                                   if ID not in correctedAssignIDs]
+            posData.cca_df[posData.cca_df['corrected_on_frame_i']>=0].index
+        )
+        NeverCorrectedAssignIDs = [
+            ID for ID in posData.new_IDs if ID not in correctedAssignIDs
+        ]
 
         # Store cca_df temporarily if attempt_auto_cca fails
         posData.cca_df_beforeRepeat = posData.cca_df.copy()
@@ -13543,7 +13548,11 @@ class guiWin(QMainWindow):
             return
        
         if ev.key() == Qt.Key_Q and self.debug:
-            ...
+            posData = self.data[self.pos_i]
+            cca_df = posData.cca_df
+            printl(
+                cca_df.loc[[360, 587], ['cell_cycle_stage', 'relative_ID', 'corrected_on_frame_i']]
+            )
         
         if not self.isDataLoaded:
             self.logger.info(
@@ -16069,7 +16078,8 @@ class guiWin(QMainWindow):
         else:
             self.ccaTableWin.setFocus()
             self.ccaTableWin.activateWindow()
-            self.ccaTableWin.updateTable(posData.cca_df)
+            zoomIDs = self.getZoomIDs()
+            self.ccaTableWin.updateTable(posData.cca_df, IDs=zoomIDs)
 
     def updateScrollbars(self):
         self.updateItemsMousePos()
@@ -18066,11 +18076,11 @@ class guiWin(QMainWindow):
             'generation_num',
             'relative_ID',
             'emerg_frame_i',
-            'division_frame_i'
+            'division_frame_i',
+            'corrected_on_frame_i'
         ]
         self.lin_tree_df_bool_col = [
             'is_history_known',
-            'corrected_assignment'
         ]
 
         self.lin_tree_col_checks = [
@@ -18851,7 +18861,7 @@ class guiWin(QMainWindow):
             return notEnoughG1Cells, proceed
         
         # Determine if this is the last visited frame for repeating
-        # bud assignment on non manually corrected_assignment buds.
+        # bud assignment on non manually correct (corrected_on_frame_i>0) buds.
         # The idea is that the user could have assigned division on a cell
         # by going previous and we want to check if this cell could be a
         # "better" mother for those non manually corrected buds
@@ -18872,10 +18882,12 @@ class guiWin(QMainWindow):
         # Keep only correctedAssignIDs if requested
         # For the last visited frame we perform assignment again only on
         # IDs where we didn't manually correct assignment
+        correctedAssignIDs = set()
         if isLastVisitedAgain and not enforceAll:
             try:
                 correctedAssignIDs = curr_df[
-                    curr_df['corrected_assignment']].index
+                    curr_df['corrected_on_frame_i']>0
+                ].index
             except Exception as e:
                 correctedAssignIDs = []
             posData.new_IDs = [
@@ -18925,6 +18937,8 @@ class guiWin(QMainWindow):
         if isLastVisitedAgain or enforceAll:
             # If we are repeating auto cca for last visited frame
             # then we also add the cells in G1 that appears in current frame
+            # and we remove the ones that are already in S in current frame 
+            # if they were manually corrected (i.e., they cannot be mother).
             # Note that potential mother cells must be either appearing in 
             # current frame or in G1 also at previous frame. 
             # If we would consider cells that are in G1 at current frame 
@@ -18936,9 +18950,17 @@ class guiWin(QMainWindow):
                 ID for ID in current_G1_IDs if ID not in prev_cca_df.index
             ]
             IDsCellsG1.update(new_cell_G1)
+            cells_S_current = posData.cca_df[
+                (posData.cca_df['cell_cycle_stage']=='S')
+                & (posData.cca_df['corrected_on_frame_i']==posData.frame_i)
+            ].index
+            printl(cells_S_current)
+            IDsCellsG1 = IDsCellsG1 - set(cells_S_current)
 
         # Remove cells that disappeared
         IDsCellsG1 = [ID for ID in IDsCellsG1 if ID in posData.IDs]
+        
+        printl(IDsCellsG1)
         
         numCellsG1 = len(IDsCellsG1)
         numNewCells = len(posData.new_IDs)
@@ -18994,7 +19016,7 @@ class guiWin(QMainWindow):
                 relID = posData.cca_df.at[budID, 'relative_ID']
                 if relID in prev_cca_df.index and relID not in newMothIDs:
                     posData.cca_df.loc[relID] = prev_cca_df.loc[relID]
-
+            
             posData.cca_df.at[mothID, 'relative_ID'] = budID
             posData.cca_df.at[mothID, 'cell_cycle_stage'] = 'S'
 
@@ -19005,7 +19027,7 @@ class guiWin(QMainWindow):
             bud_cca_dict['relationship'] = 'bud'
             bud_cca_dict['emerg_frame_i'] = posData.frame_i
             bud_cca_dict['is_history_known'] = True
-            bud_cca_dict['corrected_assignment'] = False
+            bud_cca_dict['corrected_on_frame_i'] = False
             posData.cca_df.loc[budID] = pd.Series(bud_cca_dict)
         
         # Keep only existing IDs
@@ -19357,8 +19379,8 @@ class guiWin(QMainWindow):
                     if any(df['cell_cycle_stage'].isna()):
                         if 'is_history_known' not in df.columns:
                             df['is_history_known'] = True
-                        if 'corrected_assignment' not in df.columns:
-                            df['corrected_assignment'] = True
+                        if 'corrected_on_frame_i' not in df.columns:
+                            df['corrected_on_frame_i'] = -1
                         df = df.drop(columns=self.cca_df_colnames)
                     else:
                         # Convert to ints since there were NaN
@@ -20071,9 +20093,9 @@ class guiWin(QMainWindow):
             if 'generation_num_tree' in df.columns:  # may need to change this, not exactly sure how df is initialized
                 if 'is_history_known' not in df.columns:
                     df['is_history_known'] = True
-                if 'corrected_assignment' not in df.columns:
+                if 'corrected_on_frame_i' not in df.columns:
                     # Compatibility with those acdc_df analysed with prev vers.
-                    df['corrected_assignment'] = True
+                    df['corrected_on_frame_i'] = -1
                 lin_tree_df = df.copy()
         if lin_tree_df is None and self.isSnapshot:
             self.logger.info(
@@ -20114,7 +20136,8 @@ class guiWin(QMainWindow):
         if cca_df is None:
             cca_df = posData.cca_df
             if self.ccaTableWin is not None and mainThread:
-                self.ccaTableWin.updateTable(posData.cca_df)
+                zoomIDs = self.getZoomIDs()
+                self.ccaTableWin.updateTable(posData.cca_df, IDs=zoomIDs)
         
         acdc_df = posData.allData_li[i]['acdc_df']
         if acdc_df is None:
@@ -23774,7 +23797,7 @@ class guiWin(QMainWindow):
     
     def isLastVisitedAgainCca(self, curr_df, enforceAll=False):
         # Determine if this is the last visited frame for repeating
-        # bud assignment on non manually corrected_assignment buds.
+        # bud assignment on non manually corrected_on_frame_i buds.
         # The idea is that the user could have assigned division on a cell
         # by going previous and we want to check if this cell could be a
         # "better" mother for those non manually corrected buds
@@ -24073,7 +24096,8 @@ class guiWin(QMainWindow):
         self.highlightLostNew()      
 
         if self.ccaTableWin is not None: # need to add for lin tree, later
-            self.ccaTableWin.updateTable(posData.cca_df)
+            zoomIDs = self.getZoomIDs()
+            self.ccaTableWin.updateTable(posData.cca_df, IDs=zoomIDs)
 
         self.doCustomAnnotation(0)
 
@@ -27391,6 +27415,36 @@ class guiWin(QMainWindow):
         self.ax1.vb.sigRangeChanged.connect(
             win.updateViewRangeExportToImageDialog
         )
+    
+    def getZoomIDs(self, viewRange=None):
+        if viewRange is None:
+            viewRange = self.ax1.viewRange()
+        
+        ((xmin, xmax), (ymin, ymax)) = viewRange
+        if xmin <= 0 and ymin <= 0 and xmax >= X and ymax >= Y:
+            posData = self.data[self.pos_i]
+            return None
+        
+        lab = self.currentLab2D
+        Y, X = lab.shape
+        xmin = xmin if xmin >= 0 else 0
+        ymin = ymin if ymin >= 0 else 0
+        xmax = xmax if xmax < X else X
+        ymax = ymax if ymax < Y else Y
+        
+        zoomLab = skimage.segmentation.clear_border(lab[ymin:ymax, xmin:xmax])
+        zoomRp = skimage.measure.regionprops(zoomLab)
+        zoomIDs = [obj.label for obj in zoomRp]
+        return zoomIDs
+    
+    def onViewRangeChanged(self, viewBox, viewRange, changed):
+        if self.ccaTableWin is None:
+            return
+        
+        posData = self.data[self.pos_i]
+        zoomIDs = self.getZoomIDs(viewRange=viewRange)
+        
+        self.ccaTableWin.updateTable(posData.cca_df, IDs=zoomIDs)
     
     @disableWindow
     def exportToImage(self, preferences):        

@@ -12,7 +12,7 @@ def float_regex(allow_negative=True, left_chars='', include_nan=False):
     return pattern
 
 def to_alphanumeric(text, replacing_char='_'):
-    return re.sub('[^\w\-.]', '_', text)
+    return re.sub(r'[^\w\-.]', '_', text)
 
 if __name__ == '__main__':
     import re
