@@ -13548,11 +13548,7 @@ class guiWin(QMainWindow):
             return
        
         if ev.key() == Qt.Key_Q and self.debug:
-            posData = self.data[self.pos_i]
-            cca_df = posData.cca_df
-            printl(
-                cca_df.loc[[360, 587], ['cell_cycle_stage', 'relative_ID', 'corrected_on_frame_i']]
-            )
+            printl(self.getZoomIDs())
         
         if not self.isDataLoaded:
             self.logger.info(
@@ -16024,15 +16020,21 @@ class guiWin(QMainWindow):
 
     def viewCcaTable(self):
         posData = self.data[self.pos_i]
+        zoomIDs = self.getZoomIDs()
         
-        df = posData.allData_li[posData.frame_i]['acdc_df']
-        for column in posData.cca_df.columns:
+        df = posData.allData_li[posData.frame_i]['acdc_df']        
+        current_cca_df = posData.cca_df
+        if zoomIDs is not None:
+            df = df.loc[zoomIDs]
+            current_cca_df = current_cca_df.loc[zoomIDs]
+            
+        for column in current_cca_df.columns:
             header = (
                 '================================================\n'
                 f'CURRENT vs STORED `{column}` column'
                 f'for frame number {posData.frame_i+1}:\n'
             )
-            df_compare = posData.cca_df[[column]].copy()
+            df_compare = current_cca_df[[column]].copy()
             df_compare[f'STORED_{column}'] = df[column]
             text = f'{header}{df_compare}'
             self.logger.info(text)
@@ -16040,7 +16042,7 @@ class guiWin(QMainWindow):
         if 'cell_cycle_stage' in df.columns:
             cca_df = df[self.cca_df_colnames]
             cca_df = cca_df.merge(
-                posData.cca_df, how='outer', left_index=True, right_index=True,
+                current_cca_df, how='outer', left_index=True, right_index=True,
                 suffixes=('_STORED', '_CURRENT')
             )
             cca_df = cca_df.reindex(sorted(cca_df.columns), axis=1)
@@ -16058,9 +16060,9 @@ class guiWin(QMainWindow):
             cca_df = None
             self.logger.info(cca_df)
         self.logger.info('========================')
-        if posData.cca_df is None:
+        if current_cca_df is None:
             return
-        if posData.cca_df.empty:
+        if current_cca_df.empty:
             msg = widgets.myMessageBox()
             txt = html_utils.paragraph(
                 'Cell cycle annotations\' table is <b>empty</b>.<br>'
@@ -16069,17 +16071,19 @@ class guiWin(QMainWindow):
             return
         
         df = posData.add_tree_cols_to_cca_df(
-            posData.cca_df, frame_i=posData.frame_i
+            current_cca_df, frame_i=posData.frame_i
         )
         if self.ccaTableWin is None:
-            self.ccaTableWin = apps.pdDataFrameWidget(df, parent=self)
+            self.ccaTableWin = apps.ViewCcaTableWindow(df, parent=self)
             self.ccaTableWin.show()
             self.ccaTableWin.setGeometryWindow()
+            self.ccaTableWin.sigUpdateCcaTable.connect(
+                self.onSigUpdateCcaTableWindow
+            )
         else:
             self.ccaTableWin.setFocus()
             self.ccaTableWin.activateWindow()
-            zoomIDs = self.getZoomIDs()
-            self.ccaTableWin.updateTable(posData.cca_df, IDs=zoomIDs)
+            self.ccaTableWin.updateTable(current_cca_df)
 
     def updateScrollbars(self):
         self.updateItemsMousePos()
@@ -27420,27 +27424,36 @@ class guiWin(QMainWindow):
         if viewRange is None:
             viewRange = self.ax1.viewRange()
         
+        lab = self.currentLab2D
+        Y, X = lab.shape
         ((xmin, xmax), (ymin, ymax)) = viewRange
         if xmin <= 0 and ymin <= 0 and xmax >= X and ymax >= Y:
             posData = self.data[self.pos_i]
             return None
         
-        lab = self.currentLab2D
-        Y, X = lab.shape
         xmin = xmin if xmin >= 0 else 0
         ymin = ymin if ymin >= 0 else 0
         xmax = xmax if xmax < X else X
         ymax = ymax if ymax < Y else Y
         
-        zoomLab = skimage.segmentation.clear_border(lab[ymin:ymax, xmin:xmax])
+        zoomSlice = (
+            slice(round(ymin), round(ymax)), 
+            slice(round(xmin), round(xmax)), 
+        )
+        
+        zoomLab = skimage.segmentation.clear_border(lab[zoomSlice])
         zoomRp = skimage.measure.regionprops(zoomLab)
         zoomIDs = [obj.label for obj in zoomRp]
         return zoomIDs
     
-    def onViewRangeChanged(self, viewBox, viewRange, changed):
+    def onSigUpdateCcaTableWindow(self, *args):
+        if not self.isDataLoaded:
+            return
+        
         if self.ccaTableWin is None:
             return
         
+        viewRange = self.ax1.viewRange()
         posData = self.data[self.pos_i]
         zoomIDs = self.getZoomIDs(viewRange=viewRange)
         

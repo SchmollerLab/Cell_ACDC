@@ -9756,12 +9756,11 @@ class pdDataFrameWidget(QMainWindow):
 
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
 
-
-
         mainContainer = QWidget()
         self.setCentralWidget(mainContainer)
 
         layout = QVBoxLayout()
+        self._layout = layout
 
         self.tableView = QTableView(self)
         layout.addWidget(self.tableView)
@@ -15241,5 +15240,25 @@ class FucciPreprocessDialog(FunctionParamsDialog):
         self.firstChannelName = self.firstChNameWidget.currentText()
         self.secondChannelName = self.secondChNameWidget.currentText()
         super().ok_cb()
+        
+class ViewCcaTableWindow(pdDataFrameWidget):
+    sigUpdateCcaTable = Signal(object)
+    
+    def __init__(self, df, parent=None):
+        super().__init__(df, parent=parent)
+        
+        updateTableButton = widgets.reloadPushButton(
+            'Update table with visible IDs...'
+        )
+        buttonsLayout = QHBoxLayout()
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(updateTableButton)
+        
+        self._layout.insertLayout(0, buttonsLayout)
+        
+        updateTableButton.clicked.connect(self.emitUpdateCcaTable)
+    
+    def emitUpdateCcaTable(self):
+        self.sigUpdateCcaTable.emit(self)
         
         
