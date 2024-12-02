@@ -10490,7 +10490,8 @@ class QDialogModelParams(QDialog):
         scrollAreaLayout.addStretch(1)
         
         self.postProcessGroupbox = None
-        
+        postProcessLayout = None
+        self.seeHereLabel = None
         if not is_tracker:
             postProcessLayout = QVBoxLayout()
             postProcessLayout.addWidget(widgets.QHLine())
@@ -10520,7 +10521,6 @@ class QDialogModelParams(QDialog):
             )
             postProcessLayout.addLayout(postProcButtonsLayout)
 
-            self.seeHereLabel = None
             if url is not None:
                 self.seeHereLabel = self.createSeeHereLabel(url)
                 postProcessLayout.addWidget(
