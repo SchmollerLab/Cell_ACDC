@@ -346,7 +346,7 @@ def _get_heatmap_xticks(
         xticks = [0, *xticks]
         xticks_labels = np.zeros(len(xticks), dtype=int)
         xticks_labels[1:] = series_xticks
-
+    
     if convert_time_how is None:
         return xticks, xticks_labels
     
@@ -563,8 +563,12 @@ def heatmap(
     if xlabel is None:
         xlabel = x
 
-    # Make sure to label the side of the pixel
-    xticks = [x-0.5 for x in xticks]
+    # Make sure to label the side of the pixel    
+    xticks = np.array(xticks)
+    xticks = (xticks + (xticks-x_unit_width))/2
+    xticks -= 0.5
+    
+    import pdb; pdb.set_trace()
 
     im = ax.imshow(data, cmap=colormap, vmin=z_min, vmax=z_max, **imshow_kwargs)
     ax.set_xlabel(xlabel)

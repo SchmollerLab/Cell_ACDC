@@ -1,7 +1,10 @@
 import os
 import re
+import h5py
+import numpy as np
+import skimage.io
 
-from . import path
+from . import path, load, myutils
 
 def get_filepath_from_channel_name(images_path, channel_name):
     h5_aligned_path = ''
@@ -93,4 +96,14 @@ def get_filename_cli(
             continue
 
         return filename
-            
+
+def save_image_data(filepath, img_data):
+    if filepath.endswith('.h5'):
+        load.save_to_h5(filepath, img_data)
+    elif filepath.endswith('.npz'):
+        np.savez_compressed(filepath, img_data)
+    elif filepath.endswith('.npy'):
+        np.save()
+    else:
+        myutils.to_tiff(filepath, img_data)
+    return np.squeeze(img_data)

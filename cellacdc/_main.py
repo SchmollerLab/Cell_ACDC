@@ -402,9 +402,6 @@ class mainWin(QMainWindow):
         convertMenu.addAction(self.toImageJroiAction)
         convertMenu.addAction(self.fromImageJroiAction)
         convertMenu.addAction(self.toObjsCoordsAction)
-        
-        imageProcessingMenu = utilsMenu.addMenu('Image processing')
-        imageProcessingMenu.addAction(self.fucciPreprocessAction)
 
         segmMenu = utilsMenu.addMenu('Segmentation')
         segmMenu.addAction(self.createConnected3Dsegm)
@@ -428,12 +425,13 @@ class mainWin(QMainWindow):
         if SPOTMAX_INSTALLED:
             concatMenu.addAction(self.concatSpotmaxDfsAction) 
 
-        dataPrepMenu = utilsMenu.addMenu('Pre-processing')
+        dataPrepMenu = utilsMenu.addMenu('Image preprocessing')
                  
         dataPrepMenu.addAction(self.batchConverterAction)
         dataPrepMenu.addAction(self.repeatDataPrepAction)
         dataPrepMenu.addAction(self.alignAction)
         dataPrepMenu.addAction(self.resizeImagesAction)
+        dataPrepMenu.addAction(self.fucciPreprocessAction)
         
         utilsMenu.addAction(self.renameAction)
 

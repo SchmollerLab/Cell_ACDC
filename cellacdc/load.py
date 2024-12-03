@@ -811,12 +811,6 @@ def load_segmInfo_df(pos_path):
             df = df[~df.index.duplicated()]
             return df
 
-def segmInfo_df_use_middle_z_slice_where_missing(pos_path):
-    experiment_folderpath = os.path.dirname(pos_path)
-    pos_foldernames = myutils.get_pos_foldernames(experiment_folderpath)
-    for pos in pos_foldernames:
-        ...
-
 def get_filename_from_channel(
         images_path, channel_name, not_allowed_ends=None, logger=None,
         basename=None, skip_channels=None

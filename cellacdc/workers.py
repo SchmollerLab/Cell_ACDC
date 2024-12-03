@@ -30,7 +30,7 @@ from cellacdc import html_utils
 
 from . import (
     load, myutils, core, prompts, printl, config,
-    segm_re_pattern
+    segm_re_pattern, io
 )
 from . import transformation
 from .path import copy_or_move_tree
@@ -5243,23 +5243,36 @@ class FucciPreprocessWorker(BaseWorkerUtil):
                 self.logger.log(
                     f'Loading {self.firstChannelName} channel data...'
                 )
-                first_ch_data = load.load_image_data_from_channel(
+                first_ch_filepath = load.get_filename_from_channel(
                     images_path, self.firstChannelName
                 )
+                first_ch_data = load.load_image_file(first_ch_filepath)
                 
                 self.logger.log(
                     f'Loading {self.secondChannelName} channel data...'
                 )
-                second_ch_data = load.load_image_data_from_channel(
+                second_ch_filepath = load.get_filename_from_channel(
                     images_path, self.secondChannelName
                 )
+                second_ch_data = load.load_image_file(second_ch_filepath)
                 
                 self.logger.log(
-                    f'Applying FUCCI pre-processing pipeline...'
+                    'Applying FUCCI pre-processing pipeline...\n'
                 )
                 processed_data = self.applyPipeline(
                     first_ch_data, second_ch_data, self.fucciFilterKwargs
                 )
+                
+                basename, chNames = myutils.getBasenameAndChNames(images_path)
+                _, ext = os.path.splitext(first_ch_filepath)
+                processed_filename = f'{basename}{appendedName}{ext}'
+                processed_filepath = os.path.join(
+                    images_path, processed_filename
+                )
+                self.logger.log(
+                    f'Saving pre-processed images to "{processed_filepath}"...'
+                )
+                io.save_image_data(processed_filepath, processed_data)
                                 
                 self.signals.progressBar.emit(1)
 
