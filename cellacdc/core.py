@@ -2594,7 +2594,7 @@ def fucci_pipeline_executor_map(input, **filter_kwargs):
         ch2_img, out_range=(0, 0.5)
     )
     
-    sum_img = ((ch1_img + ch2_img)*255).astype(np.uint8)
+    sum_img = ch1_img + ch2_img
     
     processed_img = preprocess.fucci_filter(sum_img, **filter_kwargs)
     
