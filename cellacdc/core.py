@@ -1,8 +1,11 @@
 import traceback
 import os
 import time
+import concurrent.futures
+from functools import partial
 from importlib import import_module
 import numpy as np
+import math
 import cv2
 import skimage.measure
 import skimage.morphology
@@ -176,6 +179,53 @@ def compute_twoframes_velocity(prev_lab, lab, spacing=None):
             velocities_um[i] = v_um
     return velocities_pxl, velocities_um
 
+def nearest_points_objects(objs_arr: np.ndarray, other_obj: np.ndarray):
+    """Find the nearest points between all objects in objs_arr and other_obj
+
+    Parameters
+    ----------
+    objs_arr : (N, P, 2) np.ndarray of floats 
+        Array with N pages (one for each object), P rows (number of points) 
+        and 2 columns for y, x coordinates
+    other_obj : (P1, 2) np.ndarray
+        Array with P1 rows (number of points) and 2 columns for y, x coordinates
+
+    Returns
+    -------
+    (N,) np.ndarray
+        Array with N elements where the ith element is the minimum distance 
+        between object objs_arr[i] and other_obj
+    """    
+    # diff[l, k, i] = objs_arr[l][k] - other_obj[i]
+    diff = objs_arr[:, :, np.newaxis] - other_obj
+    
+    # dist[l, i, j] = math.dist(objs_arr[l][i], other_obj[j])
+    dist = np.linalg.norm(diff, axis=3)
+    
+    # min_dist[l] = min_dist(objs_arr[l], other_obj)
+    min_dist = np.nanmin(dist, axis=(1, 2))
+    
+    return min_dist
+
+def nearest_point_2Dyx(points, all_others):
+    """
+    Given 2D array of [y, x] coordinates points and all_others return the
+    [y, x] coordinates of the two points (one from points and one from all_others)
+    that have the absolute minimum distance
+    """
+    # Compute 3D array where each ith row of each kth page is the element-wise
+    # difference between kth row of points and ith row in all_others array.
+    # (i.e. diff[k,i] = points[k] - all_others[i])
+    diff = points[:, np.newaxis] - all_others
+    # Compute 2D array of distances where
+    # dist[i, j] = euclidean_dist(points[i],all_others[j])
+    dist = np.linalg.norm(diff, axis=2)
+    # Compute i, j indexes of the absolute minimum distance
+    i, j = np.unravel_index(dist.argmin(), dist.shape)
+    nearest_point = all_others[j]
+    point = points[i]
+    min_dist = np.min(dist)
+    return min_dist, nearest_point
 
 def lab_replace_values(lab, rp, oldIDs, newIDs, in_place=True):
     if not in_place:
@@ -2591,7 +2641,7 @@ def fucci_pipeline_executor_map(input, **filter_kwargs):
         ch1_img, out_range=(0, 0.5)
     )
     ch2_img = skimage.exposure.rescale_intensity(
-        ch1_img, out_range=(0, 0.5)
+        ch2_img, out_range=(0, 0.5)
     )
     
     sum_img = ((ch1_img + ch2_img)*255).astype(np.uint8)
@@ -2753,4 +2803,154 @@ def get_split_line_ref_points_img(img, slope, interc, xc, yc):
             y_ref1 = y2
     
     return (x_ref_0, y_ref_0), (x_ref1, y_ref1)
-            
+
+# def _compute_obj_to_all_objs_contour_dist_pairs(
+#         input, obj_contours=None, other_rp=None, 
+#         all_contours=None, max_distance=np.inf, calculated_pairs=None,
+#         pbar=None
+#     ):
+#     i, obj = input
+#     obj_contours = all_contours[(obj.label, None, False, False)]
+#     all_dist_to_other = {}
+#     for j, other_obj in enumerate(other_rp):
+#         if i == j:
+#             continue
+        
+#         already_paired_ID = calculated_pairs.get(other_obj.label, np.nan)
+#         if already_paired_ID == obj.label:
+#             continue
+        
+#         already_paired_ID = calculated_pairs.get(obj.label, np.nan)
+#         if already_paired_ID == other_obj.label:
+#             continue
+        
+#         calculated_pairs[obj.label] = other_obj.label
+#         calculated_pairs[other_obj.label] = obj.label
+        
+#         centroid_dist = math.dist(obj.centroid, other_obj.centroid)
+#         if centroid_dist > max_distance:
+#             continue
+        
+#         other_contours = all_contours[(other_obj.label, None, False, False)]
+#         min_dist, nearest_xy = nearest_point_2Dyx(
+#             obj_contours, other_contours
+#         )
+#         all_dist_to_other[(obj.label, other_obj.label)] = min_dist
+#         if pbar is not None:
+#             pbar.update()
+    
+#     return all_dist_to_other
+    
+
+# def _compute_all_obj_to_obj_contour_dist_pairs(
+#         all_contours: dict, rp, prev_rp=None, restrict_search=True
+#     ):
+#     if prev_rp is not None:
+#         prev_IDs = set([obj.label for obj in prev_rp])
+#         new_IDs = set([obj.label for obj in rp if obj.label not in prev_IDs])
+#         current_rp = [obj for obj in rp if obj.label not in new_IDs]
+#         other_rp = [obj for obj in rp if obj.label not in prev_IDs]
+#         num_cols = len(new_IDs)
+#     else:
+#         current_rp = rp
+#         other_rp = rp
+#         num_cols = len(current_rp)
+    
+#     max_distance = np.inf
+#     if restrict_search:
+#         max_distance = 3*np.max([obj.major_axis_length for obj in rp])
+    
+#     calculated_pairs = {}
+#     num_rows = len(current_rp)
+#     num_objs = len(rp)
+#     IDs = [obj.label for obj in rp]
+#     dist_matrix_df = pd.DataFrame(
+#         index=IDs, 
+#         columns=IDs, 
+#         data=np.full((num_objs, num_objs), np.inf)
+#     )
+#     pbar = tqdm(total=num_rows*num_cols, ncols=100, leave=False)
+#     with concurrent.futures.ThreadPoolExecutor() as executor:
+#         iterable = enumerate(current_rp)
+#         func = partial(
+#             _compute_obj_to_all_objs_contour_dist_pairs, 
+#             other_rp=other_rp,
+#             all_contours=all_contours,
+#             pbar=pbar,
+#             max_distance=max_distance,
+#             calculated_pairs=calculated_pairs
+#         )
+#         result = executor.map(func, iterable)
+#         for all_dist_to_other in result:
+#             printl(all_dist_to_other)
+#             for (i, j), min_dist in all_dist_to_other.items():
+#                 dist_matrix_df.loc[i, j] = min_dist
+    
+#     printl(dist_matrix_df)
+    
+#     return dist_matrix_df
+
+def _compute_obj_to_all_objs_contour_dist_pairs(
+        input, all_objs_contours_arr=None, all_contours=None, pbar=None
+    ):
+    j, other_obj = input
+    other_obj_contours = all_contours[(other_obj.label, None, False, False)]
+    min_distances_to_other = nearest_points_objects(
+        all_objs_contours_arr, other_obj_contours
+    )       
+    return other_obj.label, min_distances_to_other
+
+def _compute_all_obj_to_obj_contour_dist_pairs(
+        all_contours: dict, rp, prev_rp=None, restrict_search=True
+    ):
+    if prev_rp is not None:
+        prev_IDs = set([obj.label for obj in prev_rp])
+        new_IDs = set([obj.label for obj in rp if obj.label not in prev_IDs])
+        current_rp = [obj for obj in rp if obj.label not in new_IDs]
+        other_rp = [obj for obj in rp if obj.label not in prev_IDs]
+        num_cols = len(new_IDs)
+    else:
+        current_rp = rp
+        other_rp = rp
+        num_cols = len(current_rp)
+    
+    max_distance = np.inf
+    if restrict_search:
+        max_distance = 3*np.max([obj.major_axis_length for obj in rp])
+    
+    calculated_pairs = {}
+    num_rows = len(current_rp)
+    num_objs = len(rp)
+    IDs = [obj.label for obj in rp]
+    dist_matrix_df = pd.DataFrame(
+        index=IDs, 
+        columns=IDs, 
+        data=np.full((num_objs, num_objs), np.inf)
+    )
+    len_longest_contour = np.max(
+        [len(contours) for contours in all_contours.values()]
+    )
+    all_objs_contours_arr = np.full((num_rows, len_longest_contour, 2), np.nan)
+    current_rp_mapper = {}
+    for o, obj in enumerate(current_rp):
+        obj_contours = all_contours[(obj.label, None, False, False)]
+        all_objs_contours_arr[o, :len(obj_contours)] = obj_contours
+        current_rp_mapper[o] = obj
+    
+    pbar = tqdm(total=num_rows*num_cols, ncols=100, leave=False)
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        iterable = enumerate(other_rp)
+        
+        func = partial(
+            _compute_obj_to_all_objs_contour_dist_pairs, 
+            all_objs_contours_arr=all_objs_contours_arr,
+            all_contours=all_contours,
+            pbar=pbar,
+        )
+        result = executor.map(func, iterable)
+        for j, min_distances_to_other in result:
+            for o, min_dist in enumerate(min_distances_to_other):
+                i = current_rp_mapper[o].label
+                dist_matrix_df.loc[i, j] = min_dist
+
+    return dist_matrix_df

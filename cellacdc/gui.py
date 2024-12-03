@@ -12351,6 +12351,7 @@ class guiWin(QMainWindow):
             self.addExistingDelROIs()
             self.checkTrackingEnabled()
             self.setEnabledCcaToolbar(enabled=False)
+            self.clearComputedContours()
             self.realTimeTrackingToggle.setDisabled(False)
             self.realTimeTrackingToggle.label.setDisabled(False)
             if posData.cca_df is not None:
@@ -12365,6 +12366,9 @@ class guiWin(QMainWindow):
             self.modeToolBar.setVisible(True)
             self.realTimeTrackingToggle.setDisabled(True)
             self.realTimeTrackingToggle.label.setDisabled(True)
+            self.computeAllContours()
+            # RAWR!!!!!
+            # self.computeAllObjToObjCostPairs()
             if proceed:
                 self.setEnabledEditToolbarButton(enabled=False)
                 if self.isSnapshot:
@@ -12388,6 +12392,7 @@ class guiWin(QMainWindow):
             self.navigateScrollBar.setMaximum(posData.SizeT)
             self.navSpinBox.setMaximum(posData.SizeT)
             self.clearGhost()
+            self.computeAllContours()
         elif mode == 'Custom annotations':
             self.setSwitchViewedPlaneDisabled(True)
             self.modeToolBar.setVisible(True)
@@ -12399,11 +12404,13 @@ class guiWin(QMainWindow):
             self.annotateToolbar.setVisible(True)
             self.clearGhost()
             self.doCustomAnnotation(0)
+            self.computeAllContours()
         elif mode == 'Snapshot':
             self.setSwitchViewedPlaneDisabled(False)
             self.reconnectUndoRedo()
             self.setEnabledSnapshotMode()
             self.doCustomAnnotation(0)
+            self.computeAllContours()
         elif mode == 'Normal division: Lineage tree': # Mode activation for lineage tree
             # self.startLinTreeIntegrityCheckerWorker() # need to replace (postponed)
             proceed = self.initLinTree()
@@ -13548,7 +13555,11 @@ class guiWin(QMainWindow):
             return
        
         if ev.key() == Qt.Key_Q and self.debug:
-            printl(self.getZoomIDs())
+            posData = self.data[self.pos_i]
+            dataDict = posData.allData_li[posData.frame_i]
+            dist_matrix = dataDict['obj_to_obj_dist_cost_matrix_df']
+            printl(dist_matrix)
+            printl(dist_matrix.shape)
         
         if not self.isDataLoaded:
             self.logger.info(
@@ -18839,6 +18850,37 @@ class guiWin(QMainWindow):
         posData.frame_i = current_frame_i
         self.get_data(lin_tree=True)
 
+    def _getCcaCostMatrix(
+            self, numCellsG1, numNewCells, IDsCellsG1, newIDs_contours
+        ):
+        posData = self.data[self.pos_i]
+        dataDict = posData.allData_li[posData.frame_i]
+        dist_matrix_df = dataDict.get('obj_to_obj_dist_cost_matrix_df')
+        if dist_matrix_df is None:
+            cost = np.full((numCellsG1, numNewCells), np.inf)
+            for obj in posData.rp:
+                ID = obj.label
+                try:
+                    i = IDsCellsG1.index(ID)
+                except ValueError:
+                    continue
+
+                cont = self.getObjContours(obj)
+                i = IDsCellsG1.index(ID)
+                
+                # Get distance from cell in G1 and all other new cells
+                for j, newID_cont in enumerate(newIDs_contours):
+                    min_dist, nearest_xy = self.nearest_point_2Dyx(
+                        cont, newID_cont
+                    )
+                    cost[i, j] = min_dist
+            
+            return cost
+
+        cost = dist_matrix_df.loc[IDsCellsG1, posData.new_IDs].values
+        
+        return cost
+
     def autoCca_df(self, enforceAll=False):
         """
         Assign each bud to a mother with scipy linear sum assignment
@@ -18958,13 +19000,10 @@ class guiWin(QMainWindow):
                 (posData.cca_df['cell_cycle_stage']=='S')
                 & (posData.cca_df['corrected_on_frame_i']==posData.frame_i)
             ].index
-            printl(cells_S_current)
             IDsCellsG1 = IDsCellsG1 - set(cells_S_current)
 
         # Remove cells that disappeared
         IDsCellsG1 = [ID for ID in IDsCellsG1 if ID in posData.IDs]
-        
-        printl(IDsCellsG1)
         
         numCellsG1 = len(IDsCellsG1)
         numNewCells = len(posData.new_IDs)
@@ -18983,23 +19022,9 @@ class guiWin(QMainWindow):
                 newIDs_contours.append(cont)
 
         # Compute cost matrix
-        cost = np.full((numCellsG1, numNewCells), np.inf)
-        for obj in posData.rp:
-            ID = obj.label
-            try:
-                i = IDsCellsG1.index(ID)
-            except ValueError:
-                continue
-
-            cont = self.getObjContours(obj)
-            i = IDsCellsG1.index(ID)
-            
-            # Get distance from cell in G1 and all other new cells
-            for j, newID_cont in enumerate(newIDs_contours):
-                min_dist, nearest_xy = self.nearest_point_2Dyx(
-                    cont, newID_cont
-                )
-                cost[i, j] = min_dist
+        cost = self._getCcaCostMatrix(
+            numCellsG1, numNewCells, IDsCellsG1, newIDs_contours
+        )
 
         # Run hungarian (munkres) assignment algorithm
         row_idx, col_idx = scipy.optimize.linear_sum_assignment(cost)
@@ -22145,12 +22170,25 @@ class guiWin(QMainWindow):
         self.textAnnot[0].initItem((Y, X))
         self.textAnnot[1].initItem((Y, X))  
     
-    def getObjContours(self, obj, all_external=False, local=False):
+    def getObjContours(
+            self, obj, all_external=False, local=False, force_calc=False
+        ):
+        posData = self.data[self.pos_i]
+        dataDict = posData.allData_li[posData.frame_i]
+        allContours = dataDict.get('contours')    
+        if allContours is not None and not force_calc:
+            z = self.z_lab()
+            contours = allContours.get((z, obj.label, all_external, local))
+            if contours is not None:
+                return contours
+        
         obj_image = self.getObjImage(obj.image, obj.bbox).astype(np.uint8)
         obj_bbox = self.getObjBbox(obj.bbox)
         try:
             contours = core.get_obj_contours(
-                obj_image=obj_image, obj_bbox=obj_bbox, local=local,
+                obj_image=obj_image, 
+                obj_bbox=obj_bbox, 
+                local=local,
                 all_external=all_external
             )
         except Exception as e:
@@ -22163,6 +22201,155 @@ class guiWin(QMainWindow):
                 f'(bounding box = {obj.bbox})'
             )
         return contours
+    
+    def clearComputedContours(self):
+        posData = self.data[self.pos_i]
+        for frame_i, dataDict in enumerate(posData.allData_li):
+            dataDict['contours'] = {}
+    
+    def _computeAllContours2D(self, dataDict, obj, z, obj_bbox):
+        if z is None:
+            obj_image = obj.image.max(axis=0)
+        else:
+            obj_image = obj_image[z]
+            
+        all_external = False
+        local = False
+        contours = core.get_obj_contours(
+            obj_image=obj_image, 
+            obj_bbox=obj_bbox, 
+            local=local,
+            all_external=all_external
+        )
+        dataDict['contours'][(obj.label, z, all_external, local)] = (
+            contours
+        )
+        
+        all_external = True
+        local = False
+        contours = core.get_obj_contours(
+            obj_image=obj_image, 
+            obj_bbox=obj_bbox, 
+            local=local,
+            all_external=all_external
+        )
+        dataDict['contours'][(obj.label, z, all_external, local)] = (
+            contours
+        )
+    
+    def computeAllContours(self):
+        self.logger.info('Computing all contours...')
+        posData = self.data[self.pos_i]
+        zz = [None]
+        if self.isSegm3D:
+            zz.extend(range(posData.SizeZ))
+        for frame_i, dataDict in enumerate(posData.allData_li):
+            lab = dataDict['labels']
+            if lab is None:
+                break
+            
+            rp = dataDict['regionprops']
+            if rp is None:
+                rp = skimage.measure.regionprops(lab)
+                
+            dataDict['contours'] = {}
+            for obj in rp:
+                obj_bbox = self.getObjBbox(obj.bbox)
+                for z in zz:
+                    if not self.isObjVisible(obj_bbox, z_slice=z):
+                        continue
+                    
+                    self._computeAllContours2D(dataDict, obj, z, obj_bbox)
+    
+    def computeAllObjToObjCostPairs(self):
+        desc = (
+            'Computing all object-to-object cost matrices...'
+        )
+        self.logger.info(desc)
+        posData = self.data[self.pos_i]
+        
+        
+        self.progressWin = apps.QDialogWorkerProgress(
+            title=desc, parent=self, pbarDesc=desc
+        )
+        self.progressWin.mainPbar.setMaximum(0)
+        self.progressWin.show(self.app)
+        
+        self.computeAllObjCostPairsThread = QThread()
+        self.computeAllObjCostPairsWorker = workers.SimpleWorker(
+            posData, self._computeAllObjToObjCostPairs
+        )
+        
+        self.computeAllObjCostPairsWorker.moveToThread(
+            self.computeAllObjCostPairsThread
+        )
+        
+        self.computeAllObjCostPairsWorker.signals.finished.connect(
+            self.computeAllObjCostPairsThread.quit
+        )
+        self.computeAllObjCostPairsWorker.signals.finished.connect(
+            self.computeAllObjCostPairsWorker.deleteLater
+        )
+        self.computeAllObjCostPairsThread.finished.connect(
+            self.computeAllObjCostPairsThread.deleteLater
+        )
+        
+        self.computeAllObjCostPairsWorker.signals.critical.connect(
+            self.computeAllObjCostPairsWorkerCritical
+        )
+        self.computeAllObjCostPairsWorker.signals.initProgressBar.connect(
+            self.workerInitProgressbar
+        )
+        self.computeAllObjCostPairsWorker.signals.progressBar.connect(
+            self.workerUpdateProgressbar
+        )
+        self.computeAllObjCostPairsWorker.signals.progress.connect(
+            self.workerProgress
+        )
+        self.computeAllObjCostPairsWorker.signals.finished.connect(
+            self.computeAllObjCostPairsWorkerFinished
+        )
+        
+        self.computeAllObjCostPairsThread.started.connect(
+            self.computeAllObjCostPairsWorker.run
+        )
+        self.computeAllObjCostPairsThread.start()
+        
+        self.computeAllObjCostPairsWorkerLoop = QEventLoop()
+        self.computeAllObjCostPairsWorkerLoop.exec_()
+    
+    def _computeAllObjToObjCostPairs(self, posData):
+        self.computeAllObjCostPairsWorker.signals.initProgressBar.emit(
+            len(posData.allData_li)
+        )
+        for frame_i, dataDict in enumerate(posData.allData_li):
+            if frame_i == 0:
+                continue
+            
+            rp = dataDict['regionprops']
+            if rp is None:
+                break
+            
+            prev_rp = posData.allData_li[frame_i-1]['regionprops']
+            dist_matrix = core._compute_all_obj_to_obj_contour_dist_pairs(
+                dataDict['contours'], rp, 
+                prev_rp=prev_rp, 
+                restrict_search=True
+            )
+            dataDict['obj_to_obj_dist_cost_matrix_df'] = dist_matrix
+            self.computeAllObjCostPairsWorker.signals.progressBar.emit(1)
+        self.computeAllObjCostPairsWorker.signals.initProgressBar.emit(0)
+    
+    def computeAllObjCostPairsWorkerCritical(self, error):
+        self.computeAllObjCostPairsWorkerLoop.exit()
+        self.workerCritical(error)
+    
+    def computeAllObjCostPairsWorkerFinished(self, worker):
+        if self.progressWin is not None:
+            self.progressWin.workerFinished = True
+            self.progressWin.close()
+            self.progressWin = None
+        self.computeAllObjCostPairsWorkerLoop.exit()
     
     def setOverlaySegmMasks(self, force=False, forceIfNotActive=False):
         if not hasattr(self, 'currentLab2D'):
@@ -22216,7 +22403,10 @@ class guiWin(QMainWindow):
             return
         return obj.image[local_z]
 
-    def isObjVisible(self, obj_bbox, debug=False):
+    def isObjVisible(self, obj_bbox, debug=False, z_slice=None):
+        if z_slice is None:
+            z_slice = self.z_lab()
+            
         if self.isSegm3D:
             zProjHow = self.zProjComboBox.currentText()
             isZslice = zProjHow == 'single z-slice'
@@ -22229,13 +22419,13 @@ class guiWin(QMainWindow):
             min_z, min_y, min_x, max_z, max_y, max_x = obj_bbox
             if depthAxes == 'z':
                 min_val, max_val = min_z, max_z
-                val = self.z_lab()
+                val = z_slice
             elif depthAxes == 'y':
                 min_val, max_val = min_y, max_y
-                val = self.z_lab()[-1]
+                val = z_slice[-1]
             else:
                 min_val, max_val = min_x, max_x
-                val = self.z_lab()[-1]
+                val = z_slice[-1]
             
             if val >= min_val and val < max_val:
                 return True

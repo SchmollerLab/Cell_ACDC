@@ -5186,7 +5186,7 @@ class FucciPreprocessWorker(BaseWorkerUtil):
     def applyPipeline(self, first_ch_data, second_ch_data, filter_kwargs):
         processed_data = np.zeros(first_ch_data.shape, dtype=np.uint8)
         pbar = tqdm(total=len(processed_data), ncols=100)
-        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+        with concurrent.futures.ThreadPoolExecutor() as executor:
             iterable = enumerate(zip(first_ch_data, second_ch_data))
             func = partial(
                 core.fucci_pipeline_executor_map, **filter_kwargs
@@ -5277,3 +5277,28 @@ class FucciPreprocessWorker(BaseWorkerUtil):
                 self.signals.progressBar.emit(1)
 
         self.signals.finished.emit(self)
+
+class SimpleWorker(QObject):
+    def __init__(self, posData, func, func_args=None, func_kwargs=None):
+        QObject.__init__(self)
+        self.posData = posData
+        self.signals = signals()
+        
+        if func_args is None:
+            func_args = []
+        
+        if func_kwargs is None:
+            func_kwargs = {}
+        
+        self.func = func
+        self.func_args = func_args
+        self.func_kwargs = func_kwargs
+        self.posData = posData
+    
+    @worker_exception_handler
+    def run(self):
+        self.result = self.func(
+            self.posData, *self.func_args, **self.func_kwargs
+        )
+        self.signals.finished.emit(self)
+        
