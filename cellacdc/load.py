@@ -596,7 +596,11 @@ def _copy_acdc_dfs_to_temp_archive(
     
     with zipfile.ZipFile(zip_path, mode='r') as zip:
         for csv_name in csv_names:
-            acdc_df = pd.read_csv(zip.open(csv_name))
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore") 
+                acdc_df = pd.read_csv(
+                    zip.open(csv_name), dtype=acdc_df_str_cols
+                )
             acdc_df = _parse_loaded_acdc_df(acdc_df)
             acdc_df = pd_bool_to_int(acdc_df, inplace=False)
             compression_opts['archive_name'] = csv_name
