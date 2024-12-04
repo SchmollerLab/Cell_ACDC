@@ -8754,6 +8754,8 @@ class guiWin(QMainWindow):
         if posData.SizeT == 1:
             cleared_segm_data = cleared_segm_data[np.newaxis]
         
+        self.update_cca_df_deletedIDs(posData, delIDs)
+        
         current_frame_i = posData.frame_i
         for frame_i, cleared_lab in enumerate(cleared_segm_data):
             # Store change
@@ -8761,7 +8763,6 @@ class guiWin(QMainWindow):
             # Get the rest of the stored metadata based on the new lab
             posData.frame_i = frame_i
             self.get_data()
-            self.update_cca_df_deletedIDs(posData, delIDs)
             self.store_data(autosave=False)
         
         # Back to current frame
@@ -20706,6 +20707,13 @@ class guiWin(QMainWindow):
             if msg.clickedButton == applyToPastButton:
                 self.store_data()
                 self.logger.info('Applying keep objects to past frames...')
+                if not removeAnnot and posData.cca_df is not None:
+                    delIDs = [
+                        ID for ID in posData.cca_df.index 
+                        if ID not in posData.IDs
+                    ]
+                    self.update_cca_df_deletedIDs(posData, delIDs)
+                
                 for i in tqdm(range(posData.frame_i), ncols=100):
                     lab = posData.allData_li[i]['labels']
                     rp = posData.allData_li[i]['regionprops']
@@ -20715,12 +20723,6 @@ class guiWin(QMainWindow):
                     # Get the rest of the stored metadata based on the new lab
                     posData.frame_i = i
                     self.get_data()
-                    if not removeAnnot and posData.cca_df is not None:
-                        delIDs = [
-                            ID for ID in posData.cca_df.index 
-                            if ID not in posData.IDs
-                        ]
-                        self.update_cca_df_deletedIDs(posData, delIDs)
                     self.store_data(autosave=False)
                 
                 posData.frame_i = self.current_frame_i
@@ -20752,6 +20754,13 @@ class guiWin(QMainWindow):
             self.logger.info('Applying to future frames...')
             pbar = tqdm(total=posData.SizeT-posData.frame_i-1, ncols=100)
             segmSizeT = len(posData.segm_data)
+            if not removeAnnot and posData.cca_df is not None:
+                delIDs = [
+                    ID for ID in posData.cca_df.index 
+                    if ID not in posData.IDs
+                ]
+                self.update_cca_df_deletedIDs(posData, delIDs)
+                
             for i in range(posData.frame_i+1, segmSizeT):
                 lab = posData.allData_li[i]['labels']
                 if lab is None and not includeUnvisited:
@@ -20763,18 +20772,11 @@ class guiWin(QMainWindow):
 
                 if lab is not None:
                     keepLab = self._keepObjects(lab=lab, rp=rp)
-
                     # Store change
                     posData.allData_li[i]['labels'] = keepLab.copy()
                     # Get the rest of the stored metadata based on the new lab
                     posData.frame_i = i
                     self.get_data()
-                    if not removeAnnot and posData.cca_df is not None:
-                        delIDs = [
-                            ID for ID in posData.cca_df.index 
-                            if ID not in posData.IDs
-                        ]
-                        self.update_cca_df_deletedIDs(posData, delIDs)
                     self.store_data(autosave=False)
                 elif includeUnvisited:
                     # Unvisited frame (includeUnvisited = True)
@@ -23251,11 +23253,128 @@ class guiWin(QMainWindow):
         mapper = dict(zip(oldIDs, newIDs))
         posData.cca_df = posData.cca_df.rename(index=mapper)
 
-    def update_cca_df_deletedIDs(self, posData, deleted_IDs):
-        relIDs = posData.cca_df.reindex(deleted_IDs, fill_value=-1)['relative_ID']
-        posData.cca_df = posData.cca_df.drop(deleted_IDs, errors='ignore')
-        self.update_cca_df_newIDs(posData, relIDs)
+    def update_cca_df_deletedIDs(
+            self, posData, deletedIDs, dropInPast=True, dropInFuture=True
+        ):
+        if posData.cca_df is None:
+            return
+        
+        # Store cca_df for undo action
+        undoId = uuid.uuid4()
+        self.storeUndoRedoCca(posData.frame_i, posData.cca_df, undoId)
+        
+        relIDs = posData.cca_df.reindex(deletedIDs, fill_value=-1)['relative_ID']
+        posData.cca_df = posData.cca_df.drop(deletedIDs, errors='ignore')
+        if self.isSnapshot:
+            self.update_cca_df_newIDs(posData, relIDs)
+        else:
+            self.updateCcaDfDeletedIDsTimelapse(
+                posData, relIDs, deletedIDs, undoId, dropInPast, dropInFuture
+            )
 
+    @disableWindow
+    def updateCcaDfDeletedIDsTimelapse(
+            self, posData, relIDsOfDelIDs, deletedIDs, undoId, 
+            dropInPast, dropInFuture
+        ):
+        # Get status of the relIDs (of deleted IDs) to restore
+        relIDsCcaStatus = {}
+        for relID in relIDsOfDelIDs:
+            try:
+                ccs = posData.cca_df.at[relID, 'cell_cycle_stage']
+                relationship = posData.cca_df.at[relID, 'relationship']
+            except Exception as err:
+                continue
+            
+            ccaStatus = core.getBaseCca_df([relID]).loc[relID]
+            if relationship == 'mother' and ccs == 'S':
+                for past_frame_i in range(posData.frame_i-1, -1, -1):
+                    cca_df_i = self.get_cca_df(
+                        frame_i=past_frame_i, return_df=True
+                    )
+                    ccs_past = cca_df_i.at[relID, 'cell_cycle_stage']      
+                    if ccs_past == 'G1':
+                        ccaStatus = cca_df_i.loc[relID]
+                        break
+            
+            posData.cca_df.loc[relID] = ccaStatus
+            self.store_data(autosave=False)
+            relIDsCcaStatus[relID] = ccaStatus
+            
+        for fut_frame_i in range(posData.frame_i+1, posData.SizeT):
+            cca_df_i = self.get_cca_df(frame_i=fut_frame_i, return_df=True)
+            if cca_df_i is None:
+                # ith frame was not visited yet
+                break
+            
+            self.storeUndoRedoCca(fut_frame_i, cca_df_i, undoId)
+
+            if dropInFuture:
+                cca_df_i = cca_df_i.drop(deletedIDs, errors='ignore')
+            else:
+                for delID in deletedIDs:
+                    dataDict = posData.allData_li[fut_frame_i]
+                    delIDexists = dataDict['IDs_idxs'].get(delID, False)
+                    if not delIDexists:
+                        continue
+                    
+                    cca_df_i.loc[delID] = core.getBaseCca_df([delID]).loc[delID]
+            
+            areRelIDsPresent = False
+            for relID in relIDsOfDelIDs:
+                try:
+                    ccs = cca_df_i.at[relID, 'cell_cycle_stage']
+                    relationship = cca_df_i.at[relID, 'relationship']
+                    ccaStatus = relIDsCcaStatus[relID]
+                    cca_df_i.loc[relID] = ccaStatus
+                    areRelIDsPresent = True
+                except Exception as err:
+                    continue
+            
+            if not areRelIDsPresent:
+                break
+            
+            self.store_cca_df(
+                frame_i=fut_frame_i, cca_df=cca_df_i, autosave=False
+            )
+            
+        # Correct past frames
+        for past_frame_i in range(posData.frame_i-1, -1, -1):
+            cca_df_i = self.get_cca_df(frame_i=past_frame_i, return_df=True)
+            if cca_df_i is None:
+                # ith frame was not visited yet
+                break
+            
+            self.storeUndoRedoCca(past_frame_i, cca_df_i, undoId)
+            if dropInPast:
+                cca_df_i = cca_df_i.drop(deletedIDs, errors='ignore')
+            else:
+                for delID in deletedIDs:
+                    dataDict = posData.allData_li[past_frame_i]
+                    delIDexists = dataDict['IDs_idxs'].get(delID, False)
+                    if not delIDexists:
+                        continue
+                    
+                    cca_df_i.loc[delID] = core.getBaseCca_df([delID]).loc[delID]
+            
+            areRelIDsPresent = False
+            for relID in relIDsOfDelIDs:
+                try:
+                    ccs = cca_df_i.at[relID, 'cell_cycle_stage']
+                    relationship = cca_df_i.at[relID, 'relationship']
+                    ccaStatus = relIDsCcaStatus[relID]
+                    cca_df_i.loc[relID] = ccaStatus
+                    areRelIDsPresent = True
+                except Exception as err:
+                    continue
+            
+            if not areRelIDsPresent:
+                break
+            
+            self.store_cca_df(
+                frame_i=past_frame_i, cca_df=cca_df_i, autosave=False
+            )
+    
     def update_cca_df_newIDs(self, posData, new_IDs):
         for newID in new_IDs:
             self.addIDBaseCca_df(posData, newID)
@@ -23401,7 +23520,9 @@ class guiWin(QMainWindow):
                 delIDs = [
                     ID for ID in posData.cca_df.index if ID not in posData.IDs
                 ]
-                self.update_cca_df_deletedIDs(posData, delIDs)
+                self.update_cca_df_deletedIDs(
+                    posData, delIDs, dropInPast=False
+                )
             self.addMissingIDs_cca_df(posData)
             self.updateAllImages()
             self.store_data()
