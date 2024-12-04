@@ -1692,6 +1692,14 @@ class guiWin(QMainWindow):
         self.overlayButtonAction = navigateToolBar.addWidget(self.overlayButton)
         # self.checkableButtons.append(self.overlayButton)
         # self.checkableQButtonsGroup.addButton(self.overlayButton)
+        
+        self.countObjsButton = QToolButton(self)
+        self.countObjsButton.setIcon(QIcon(":count_objects.svg"))
+        self.countObjsButton.setCheckable(True)
+        self.countObjsButton.setShortcut('Ctrl+Shift+C')
+        self.countObjsButtonAction = navigateToolBar.addWidget(
+            self.countObjsButton
+        )
 
         self.togglePointsLayerAction = QAction('Activate points layer', self)
         self.togglePointsLayerAction.setCheckable(True)
@@ -3568,6 +3576,7 @@ class guiWin(QMainWindow):
         self.isEditActionsConnected = True
 
         self.overlayButton.toggled.connect(self.overlay_cb)
+        self.countObjsButton.toggled.connect(self.countObjectsCb)
         self.togglePointsLayerAction.toggled.connect(self.pointsLayerToggled)
         self.overlayLabelsButton.toggled.connect(self.overlayLabels_cb)
         self.overlayButton.sigRightClick.connect(self.showOverlayContextMenu)
@@ -12969,6 +12978,42 @@ class guiWin(QMainWindow):
                     rp = posData.allData_li[frame_i]['regionprops']
                 posData.allIDs.update([obj.label for obj in rp])
     
+    def countObjects(self):
+        self.logger.info('Counting objects...')
+        posData = self.data[self.pos_i]
+        numObjsCurrentFrame = len(posData.IDs)
+        
+        uniqueIDsVisited = set()
+        uniqueIDsAll = set()
+        numObjsVisitedFrames = 0
+        numObjsTotal = 0
+        for frame_i in range(len(posData.segm_data)):
+            lab = posData.allData_li[frame_i]['labels']
+            if lab is not None:
+                IDsFrame = posData.allData_li[frame_i]['IDs']
+                numObjsFrame = len(IDsFrame)
+                uniqueIDsVisited.update(IDsFrame)
+                uniqueIDsAll.update(IDsFrame)
+                numObjsVisitedFrames += numObjsFrame
+                numObjsTotal += numObjsFrame
+            else:
+                lab = posData.segm_data[frame_i]
+                rp = skimage.measure.regionprops(posData.segm_data[frame_i])
+                numObjsTotal += len(rp)
+                uniqueIDsAll.update([obj.label for obj in rp])
+        
+        numUniqueObjsVisitedFrames = len(uniqueIDsVisited)
+        numUniqueObjsTotal = len(uniqueIDsAll)
+        
+        categoryCountMapper = {
+            'In current frame': numObjsCurrentFrame, 
+            'In all visited frames': numObjsVisitedFrames, 
+            'In entire video': numObjsTotal, 
+            'Unique objects in all visited frames': numUniqueObjsVisitedFrames, 
+            'Unique objects in entire video': numUniqueObjsTotal
+        }
+        return categoryCountMapper
+    
     def keepIDs_cb(self, checked):
         if checked:
             if self.annotCcaInfoCheckbox.isChecked():
@@ -13895,6 +13940,8 @@ class guiWin(QMainWindow):
             pass
         for button in self.checkableButtons:
             button.setChecked(False)
+        
+        self.countObjsButton.setChecked(False)
         self.splineHoverON = False
         self.tempSegmentON = False
         self.isRightClickDragImg1 = False
@@ -21877,6 +21924,17 @@ class guiWin(QMainWindow):
         
         self.setOverlayItemsVisible()
     
+    def countObjectsCb(self, checked):
+        if checked:
+            categoryCountMapper = self.countObjects()
+            self.countObjsWindow = apps.ObjectCountDialog(
+                categoryCountMapper=categoryCountMapper, 
+                parent=self
+            )
+            self.countObjsWindow.show()
+        else:
+            self.countObjsWindow.close()
+    
     def showLabelRoiContextMenu(self, event):
         menu = QMenu(self.labelRoiButton)
         action = QAction('Re-initialize magic labeller model...')
@@ -22258,7 +22316,7 @@ class guiWin(QMainWindow):
             for obj in rp:
                 obj_bbox = self.getObjBbox(obj.bbox)
                 for z in zz:
-                    if not self.isObjVisible(obj_bbox, z_slice=z):
+                    if not self.isObjVisible(obj.bbox, z_slice=z):
                         continue
                     
                     self._computeAllContours2D(dataDict, obj, z, obj_bbox)

@@ -24,6 +24,7 @@
     <file alias="view.svg">resources/icons/view.svg</file>
     <file alias="magnGlass.svg">resources/icons/magnGlass.svg</file>
     <file alias="train.svg">resources/icons/train.svg</file>
+    <file alias="count_objects.svg">resources/icons/count_objects_dark.svg</file>
     <file alias="cross_cursor.svg">resources/icons/cross_cursor.svg</file>
     <file alias="assign_new_id.svg">resources/icons/make_new_object.svg</file>
     <file alias="file-new.svg">resources/icons/file-new.svg</file>

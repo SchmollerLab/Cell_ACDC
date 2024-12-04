@@ -118,6 +118,7 @@
     <file alias="cancel.svg">resources/icons/cancel_dark.svg</file>
     <file alias="cancelButton.svg">resources/icons/cancelButton_dark.svg</file>
     <file alias="okButton.svg">resources/icons/okButton_dark.svg</file>
+    <file alias="count_objects.svg">resources/icons/count_objects_dark.svg</file>
     <file alias="greenTick.svg">resources/icons/greenTick_dark.svg</file>
     <file alias="addPointsLayer.svg">resources/icons/addPointsLayer_dark.svg</file>
     <file alias="pointsLayer.svg">resources/icons/pointsLayer.svg</file>

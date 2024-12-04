@@ -15262,3 +15262,56 @@ class ViewCcaTableWindow(pdDataFrameWidget):
         self.sigUpdateCcaTable.emit(self)
         
         
+class ObjectCountDialog(QBaseDialog):
+    def __init__(
+            self, 
+            categoryCountMapper: dict,
+            parent=None
+        ):
+        super().__init__(parent=parent)
+        self.setWindowTitle('Object count')
+        
+        self.cancel = False
+        mainLayout = QVBoxLayout()
+
+        cancelOkLayout = widgets.CancelOkButtonsLayout()
+        cancelOkLayout.okButton.clicked.connect(self.ok_cb)
+        cancelOkLayout.cancelButton.clicked.connect(self.close)
+        
+        mainLayout.addWidget(
+            QLabel(html_utils.paragraph('Object count<br>', font_size='18px')), 
+            alignment=Qt.AlignLeft
+        )
+        for category, count in categoryCountMapper.items():
+            categoryLayout = QHBoxLayout()
+            categoryLayout.addSpacing(10)
+            catText = html_utils.paragraph(
+                f'<br>{category}<br>', font_size='13px'
+            )
+            categoryLayout.addWidget(QLabel(catText))
+            categoryLayout.addStretch(1)
+            
+            countText = html_utils.paragraph(
+                f'<br>{count}<br>', font_size='13px'
+            )
+            categoryLayout.addWidget(QLabel(countText))
+            
+            categoryLayout.setStretch(0, 0)
+            categoryLayout.setStretch(1, 0)
+            categoryLayout.setStretch(3, 0)
+            
+            mainLayout.addLayout(categoryLayout)
+            mainLayout.addWidget(widgets.QHLine())
+        
+        mainLayout.addSpacing(30)
+        mainLayout.addLayout(cancelOkLayout)
+        
+        self.setLayout(mainLayout)
+    
+    def showEvent(self, event):
+        widthHint = self.sizeHint().width()
+        self.resize(int(widthHint*1.5), self.height())
+    
+    def ok_cb(self):
+        self.cancel = False
+        self.close()

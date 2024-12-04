@@ -70,6 +70,12 @@
     :height: 16px
     :width: 16px
 
+.. |countObjsButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/cellacdc/resources/icons/count_objects.svg
+    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/count_objects.svg
+    :alt: countObjsButton icon
+    :height: 16px
+    :width: 16px
+
 .. |addPointsLayerAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/addPointsLayer.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/addPointsLayer.svg 
     :alt: addPointsLayerAction icon
@@ -346,10 +352,11 @@ View options
 ------------
 * **Find ID (** |findIdAction| **"Ctrl+F"):** Find and highlight ID. Press "Esc" to clear highlighted object.
 * **Open Slideshow (** |slideshowButton| **"Ctrl+W"):** Opens slideshow.
-* **Auto-pilot (** |autoPilotButton| **"Ctrl+W"):** Press arrow up/down or Page Up/Page Down to navigate and view segmented objects one by one.
+* **Auto-pilot (** |autoPilotButton| **"Ctrl+Shift+A"):** Press arrow up/down or Page Up/Page Down to navigate and view segmented objects one by one.
 * **Skip forward to new object (** |skipToNewIdAction| **"Page up"):** Skip forward to the frame where a new object appears.
 * | **Overlay channels (** |overlayButton| **):** Right-click on the button to overlay additional channels. To overlay a different channel right-click on the colorbar on the left of the image. Use the colorbar ticks to adjust the selected channel's intensity. You can also adjust the opacity of the selected channel with the "Alpha <channel_name>" scrollbar below the image. 
   | Note: This button has a green background if you successfully 'loaded fluorescence data'
+* **View object count (** |countObjsButton| **"Ctrl+Shift+C"):** View object count in current frame and in entire video.
 * **Activate points layer (** |togglePointsLayerAction| **):** Activate points layer tools. You can add as many points layers as you want and customise their appearance. This can be used to visualize points from a table or add points with clicking and then use these points for models like Segment Anything (input prompts).
 * **Add contours from different segmentation file (** |overlayLabelsButton| **):** Add contours layer from another segmentation file
 * **Ruler (** |rulerButton| **):** Draw a straight line and show its length. Length is displayed on the bottom-right corner.
