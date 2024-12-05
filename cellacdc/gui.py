@@ -16650,9 +16650,8 @@ class guiWin(QMainWindow):
             else:
                 self.navigateScrollBar.setMaximum(posData.frame_i+1)
                 self.navSpinBox.setMaximum(posData.frame_i+1)
-            self.lastTrackedFrameLabel.setText(
-                f'Last checked frame n. = {self.navSpinBox.maximum()}'
-            )
+            
+            self.updateLastCheckedFrameWidgets(self.navSpinBox.maximum()-1)
         elif mode == 'Cell cycle analysis':
             if posData.frame_i > self.last_cca_frame_i:
                 self.navigateScrollBar.setMaximum(posData.frame_i+1)
@@ -19685,14 +19684,17 @@ class guiWin(QMainWindow):
                 posData.frame_i = current_frame_i
                 self.get_data()
         
+        self.updateLastCheckedFrameWidgets(last_tracked_i)
+
+        self.checkTrackingEnabled()
+        self.initRealTimeTracker()
+    
+    def updateLastCheckedFrameWidgets(self, last_tracked_i):
         self.navigateScrollBar.setMaximum(last_tracked_i+1)
         self.navSpinBox.setMaximum(last_tracked_i+1)
         self.lastTrackedFrameLabel.setText(
             f'Last checked frame n. = {last_tracked_i+1}'
         )
-
-        self.checkTrackingEnabled()
-        self.initRealTimeTracker()
     
     @exception_handler
     def initCca(self):
@@ -25337,6 +25339,8 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         if from_frame_i is None:
             from_frame_i = posData.frame_i
+        
+        self.updateLastCheckedFrameWidgets(from_frame_i)
         posData.last_tracked_i = from_frame_i
         self.navigateScrollBar.setMaximum(from_frame_i+1)
         self.navSpinBox.setMaximum(from_frame_i+1)

@@ -2431,6 +2431,7 @@ class dataPrepWin(QMainWindow):
         # Step 3. Add the actions to the menu
         self.openRecentMenu.addActions(actions)
 
+    @exception_handler
     def loadFiles(self, exp_path, user_ch_file_paths, user_ch_name):
         self.titleLabel.setText(
             'Loading data (check progress in the terminal)...', 
