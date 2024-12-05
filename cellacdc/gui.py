@@ -15428,6 +15428,11 @@ class guiWin(QMainWindow):
             self.titleLabel.setText(text_if_cancelled)
             return
         
+        if win.cancel:
+            self.logger.info(text_if_cancelled)
+            self.titleLabel.setText(text_if_cancelled)
+            return
+        
         if model_name != 'thresholding':
             self.model_kwargs = win.model_kwargs
         
