@@ -2894,7 +2894,7 @@ def _compute_obj_to_all_objs_contour_dist_pairs(
         input, all_objs_contours_arr=None, all_contours=None, pbar=None
     ):
     j, other_obj = input
-    other_obj_contours = all_contours[(other_obj.label, None, False, False)]
+    other_obj_contours = all_contours[(other_obj.label, 'None', False, False)]
     min_distances_to_other = nearest_points_objects(
         all_objs_contours_arr, other_obj_contours
     )       
@@ -2933,7 +2933,7 @@ def _compute_all_obj_to_obj_contour_dist_pairs(
     all_objs_contours_arr = np.full((num_rows, len_longest_contour, 2), np.nan)
     current_rp_mapper = {}
     for o, obj in enumerate(current_rp):
-        obj_contours = all_contours[(obj.label, None, False, False)]
+        obj_contours = all_contours[(obj.label, 'None', False, False)]
         all_objs_contours_arr[o, :len(obj_contours)] = obj_contours
         current_rp_mapper[o] = obj
     

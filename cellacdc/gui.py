@@ -22245,7 +22245,8 @@ class guiWin(QMainWindow):
         allContours = dataDict.get('contours')    
         if allContours is not None and not force_calc:
             z = self.z_lab()
-            contours = allContours.get((z, obj.label, all_external, local))
+            key = (obj.label, str(z), all_external, local)
+            contours = allContours.get(key)
             if contours is not None:
                 return contours
         
@@ -22278,7 +22279,10 @@ class guiWin(QMainWindow):
         if z is None:
             obj_image = obj.image.max(axis=0)
         else:
-            obj_image = obj_image[z]
+            try:
+                obj_image = obj.image[z]
+            except IndexError as err:
+                return
             
         all_external = False
         local = False
@@ -22288,7 +22292,7 @@ class guiWin(QMainWindow):
             local=local,
             all_external=all_external
         )
-        dataDict['contours'][(obj.label, z, all_external, local)] = (
+        dataDict['contours'][(obj.label, str(z), all_external, local)] = (
             contours
         )
         
@@ -22300,7 +22304,7 @@ class guiWin(QMainWindow):
             local=local,
             all_external=all_external
         )
-        dataDict['contours'][(obj.label, z, all_external, local)] = (
+        dataDict['contours'][(obj.label, str(z), all_external, local)] = (
             contours
         )
     
