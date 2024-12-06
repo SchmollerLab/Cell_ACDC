@@ -567,8 +567,6 @@ def heatmap(
     xticks = np.array(xticks)
     xticks = (xticks + (xticks-x_unit_width))/2
     xticks -= 0.5
-    
-    import pdb; pdb.set_trace()
 
     im = ax.imshow(data, cmap=colormap, vmin=z_min, vmax=z_max, **imshow_kwargs)
     ax.set_xlabel(xlabel)
