@@ -15332,7 +15332,7 @@ class FilterImageDialog(QBaseDialog):
         layout = QHBoxLayout()
         
         params_argspecs = myutils.get_function_argspec(function)
-        self.functionParamsWin = (
+        self.functionParamsWin = FunctionParamsDialog(
             params_argspecs, 
             function_name=f'Function "{function}"', 
             df_metadata=df_metadata,
