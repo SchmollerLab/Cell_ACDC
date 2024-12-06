@@ -10708,9 +10708,13 @@ class QDialogModelParams(QDialog):
             start_row += 1
         
         addSecondChannelSelector = addChannelSelector
-        if addSecondChannelSelector and ArgSpecs_list[0].docstring is not None:
-            if ArgSpecs_list[0].docstring.lower().find('single channel only') != -1:
-                addSecondChannelSelector = False
+        if len(ArgSpecs_list) > 0:
+            if addSecondChannelSelector and ArgSpecs_list[0].docstring is not None:
+                isSingleChannel = ArgSpecs_list[0].docstring.lower().find(
+                    'single channel only'
+                ) != -1
+                if isSingleChannel:
+                    addSecondChannelSelector = False
         
         isDualChannelModel = (
             self.model_name.find('cellpose') != -1 
