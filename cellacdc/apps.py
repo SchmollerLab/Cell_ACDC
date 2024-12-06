@@ -10182,14 +10182,18 @@ class FunctionParamsDialog(QBaseDialog):
         self.mainLayout.addLayout(buttonsLayout)
 
         self.setLayout(self.mainLayout)
-        
-    def ok_cb(self):
-        self.cancel = False
-        
-        self.function_kwargs = {
+    
+    def functionKwargs(self):
+        function_kwargs = {
             argWidget.name:argWidget.valueGetter(argWidget.widget)
             for argWidget in self.argsWidgets
         }
+        return function_kwargs
+    
+    def ok_cb(self):
+        self.cancel = False
+        
+        self.function_kwargs = self.functionKwargs()
         
         self.close()
     
