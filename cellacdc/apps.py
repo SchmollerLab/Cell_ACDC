@@ -10385,11 +10385,13 @@ class QDialogModelParams(QDialog):
         self.df_metadata = df_metadata
         self.force_postprocess_2D = force_postprocess_2D
 
-        if segment_params[0].name.lower().find('skip_segmentation') != -1:
-            self.skipSegmentation = True
-            addPreProcessParams = False
-        else:
-            self.skipSegmentation = False
+        self.skipSegmentation = False
+        if len(segment_params) > 0:
+            if segment_params[0].name.lower().find('skip_segmentation') != -1:
+                self.skipSegmentation = True
+                addPreProcessParams = False
+            else:
+                self.skipSegmentation = False
         
         if is_tracker:
             self.ini_filename = 'last_params_trackers.ini'
