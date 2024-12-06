@@ -11168,8 +11168,10 @@ class downloadModel:
         self._parent = parent
 
     def download(self):
-        if myutils._model_url(self.model_name) is None:
+        model_url = myutils._model_url(self.model_name)
+        if model_url is None:
             return
+        
         _, model_path = myutils.get_model_path(
             self.model_name, create_temp_dir=False
         )

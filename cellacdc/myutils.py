@@ -1459,7 +1459,7 @@ def _model_url(model_name, return_alternative=False):
         ]
         file_size = [124142981, 124143031, 124144759]
         alternative_url = 'https://github.com/rahi-lab/YeaZ-GUI#installation'
-    elif model_name == 'deepsea':
+    elif model_name == 'DeepSea':
         url = [
             'https://github.com/abzargar/DeepSea/raw/master/deepsea/trained_models/segmentation.pth',
             'https://github.com/abzargar/DeepSea/raw/master/deepsea/trained_models/tracker.pth'
@@ -1526,7 +1526,7 @@ def _download_segment_anything_models():
         shutil.move(temp_dst, final_dst)
 
 def _download_deepsea_models():
-    urls, file_sizes = _model_url('deepsea')
+    urls, file_sizes = _model_url('DeepSea')
     temp_model_path = tempfile.mkdtemp()
     _, final_model_path = (
         get_model_path('deepsea', create_temp_dir=False)
