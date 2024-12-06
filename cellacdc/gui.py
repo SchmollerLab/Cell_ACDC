@@ -22276,13 +22276,9 @@ class guiWin(QMainWindow):
             dataDict['contours'] = {}
     
     def _computeAllContours2D(self, dataDict, obj, z, obj_bbox):
-        if z is None:
-            obj_image = obj.image.max(axis=0)
-        else:
-            try:
-                obj_image = obj.image[z]
-            except IndexError as err:
-                return
+        obj_image = self.getObjImage(obj.image, obj.bbox)
+        if obj_image is None:
+            return
             
         all_external = False
         local = False
@@ -22292,9 +22288,8 @@ class guiWin(QMainWindow):
             local=local,
             all_external=all_external
         )
-        dataDict['contours'][(obj.label, str(z), all_external, local)] = (
-            contours
-        )
+        key = (obj.label, str(z), all_external, local)
+        dataDict['contours'][key] = contours
         
         all_external = True
         local = False
@@ -22304,9 +22299,9 @@ class guiWin(QMainWindow):
             local=local,
             all_external=all_external
         )
-        dataDict['contours'][(obj.label, str(z), all_external, local)] = (
-            contours
-        )
+        key = (obj.label, str(z), all_external, local)
+        dataDict['contours'][key] = contours
+        return dataDict
     
     def computeAllContours(self):
         self.logger.info('Computing all contours...')
@@ -22330,7 +22325,9 @@ class guiWin(QMainWindow):
                     if not self.isObjVisible(obj.bbox, z_slice=z):
                         continue
                     
-                    self._computeAllContours2D(dataDict, obj, z, obj_bbox)
+                    self._computeAllContours2D(
+                        dataDict, obj, z, obj_bbox
+                    )
     
     def computeAllObjToObjCostPairs(self):
         desc = (
@@ -22505,7 +22502,7 @@ class guiWin(QMainWindow):
         else:
             return True
 
-    def getObjImage(self, obj_image, obj_bbox):
+    def getObjImage(self, obj_image, obj_bbox, z_slice=None):
         if self.isSegm3D and len(obj_bbox)==6:
             zProjHow = self.zProjComboBox.currentText()
             isZslice = zProjHow == 'single z-slice'
@@ -22514,9 +22511,17 @@ class guiWin(QMainWindow):
                 return obj_image.max(axis=0)
 
             min_z = obj_bbox[0]
-            z = self.z_lab()
-            local_z = z - min_z
-            return obj_image[local_z]
+            if z_slice is None:
+                z_slice = self.z_lab()
+            if isinstance(z_slice, tuple):
+                z_slice = z_slice[-1]
+                
+            local_z = z_slice - min_z
+            try:
+                obi_image_2d = obj_image[local_z]
+            except Exception as err:
+                obi_image_2d = None
+            return obi_image_2d
         else:
             return obj_image
 
