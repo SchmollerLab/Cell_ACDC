@@ -373,10 +373,18 @@ def delete_older_log_files(logs_path):
 def _log_system_info(logger, log_path, is_cli=False, also_spotmax=False):
     logger.info(f'Initialized log file "{log_path}"')
     
+    version = read_version()
+    release_date = get_date_from_version(version, package='cellacdc')
+    
     py_ver = sys.version_info
     python_version = f'{py_ver.major}.{py_ver.minor}.{py_ver.micro}'
     logger.info(f'Running Python v{python_version} from "{sys.exec_prefix}"')    
-    logger.info(f'Cell-ACDC installation directory: "{cellacdc_path}"')
+    logger.info(
+        f'Cell-ACDC info:\n'
+        f'  * Installation directory: "{cellacdc_path}"\n'
+        f'  * Version: "{version}"\n'
+        f'  * Released on: "{release_date}"'
+    )
     logger.info(f'System version: {sys.version}')
     logger.info(f'Platform: {platform.platform()}')
     

@@ -6578,6 +6578,7 @@ class imageViewer(QMainWindow):
         self.spinBox = spinBox
         self.linkWindow = linkWindow
         self.isSigleFrame = isSigleFrame
+        self.minMaxValuesMapper = None
         """Initializer."""
         super().__init__(parent)
 
@@ -6715,6 +6716,7 @@ class imageViewer(QMainWindow):
 
         # Image Item
         self.img = widgets.BaseImageItem()
+        self.img.setEnableAutoLevels(True)
         self.Plot.addItem(self.img)
 
         #Image histogram
@@ -7140,6 +7142,8 @@ class imageViewer(QMainWindow):
             posData = self.posData
             idx = (posData.filename, posData.frame_i)
             posData.segmInfo_df.at[idx, 'z_slice_used_gui'] = z
+        
+        self.img.setCurrentZsliceIndex(z)
         self.update_img()
 
     def getImage(self):

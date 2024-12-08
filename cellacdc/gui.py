@@ -12515,6 +12515,10 @@ class guiWin(QMainWindow):
                 linkWindow=posData.SizeT > 1,
                 enableOverlay=True
             )
+            self.slideshowWin.img.minMaxValuesMapper = (
+                self.img1.minMaxValuesMapper
+            )
+            self.slideshowWin.img.setCurrentPosIndex(self.pos_i)
             h = self.drawIDsContComboBox.size().height()
             self.slideshowWin.framesScrollBar.setFixedHeight(h)
             self.slideshowWin.overlayButton.setChecked(
@@ -14315,6 +14319,7 @@ class guiWin(QMainWindow):
             cca_df_i = CcaState_i['cca_df']
             self.store_cca_df(frame_i=frame_i, cca_df=cca_df_i, autosave=False)
         
+        self.resetWillDivideInfo()
         self.enqAutosave()
 
     def undo(self):
@@ -16384,6 +16389,7 @@ class guiWin(QMainWindow):
             self.resetExpandLabel()
             self.updateAllImages(updateFilters=True)
             self.updateViewerWindow()
+            self.updateLastVisitedFrame(last_visited_frame_i=posData.frame_i-1)
             self.setNavigateScrollBarMaximum()
             self.updateScrollbars()
             self.computeSegm()
@@ -20009,6 +20015,23 @@ class guiWin(QMainWindow):
         
         if self.ccaIntegrityCheckerWorker.isChecking:
             self.ccaIntegrityCheckerWorker.abortChecking = True
+    
+    def updateLastVisitedFrame(self, last_visited_frame_i=None):
+        if last_visited_frame_i is None:
+            posData = self.data[self.pos_i]
+            last_visited_frame_i = posData.frame_i
+        
+        mode = str(self.modeComboBox.currentText())
+        if mode == 'Viewer':
+            return
+        elif mode == 'Segmentation and Tracking':
+            if posData.last_tracked_i >= last_visited_frame_i:
+                return
+            posData.last_tracked_i = last_visited_frame_i
+        elif mode == 'Cell cycle analysis':
+            if self.last_cca_frame_i >= last_visited_frame_i:
+                return
+            self.last_cca_frame_i = last_visited_frame_i
     
     def resetCcaFuture(self, from_frame_i):
         posData = self.data[self.pos_i]
