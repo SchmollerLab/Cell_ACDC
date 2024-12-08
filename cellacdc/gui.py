@@ -19114,7 +19114,7 @@ class guiWin(QMainWindow):
             bud_cca_dict['relationship'] = 'bud'
             bud_cca_dict['emerg_frame_i'] = posData.frame_i
             bud_cca_dict['is_history_known'] = True
-            bud_cca_dict['corrected_on_frame_i'] = False
+            bud_cca_dict['corrected_on_frame_i'] = -1
             posData.cca_df.loc[budID] = pd.Series(bud_cca_dict)
         
         # Keep only existing IDs
