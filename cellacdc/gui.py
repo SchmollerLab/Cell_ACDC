@@ -20025,6 +20025,7 @@ class guiWin(QMainWindow):
         if mode == 'Viewer':
             return
         elif mode == 'Segmentation and Tracking':
+            posData = self.data[self.pos_i]
             if posData.last_tracked_i >= last_visited_frame_i:
                 return
             posData.last_tracked_i = last_visited_frame_i
