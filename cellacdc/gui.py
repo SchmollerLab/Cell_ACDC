@@ -18,7 +18,7 @@ from functools import partial
 from tqdm import tqdm
 from collections import Counter
 from natsort import natsorted
-from typing import Literal
+from typing import Literal, Iterable
 
 import time
 import cv2
@@ -5181,6 +5181,7 @@ class guiWin(QMainWindow):
 
         # Delete entire ID (set to 0)
         elif middle_click and canDelete:
+            t0 = time.perf_counter()
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
             delID = self.get_2Dlab(posData.lab)[ydata, xdata]
@@ -5200,17 +5201,17 @@ class guiWin(QMainWindow):
                 delID_prompt.exec_()
                 if delID_prompt.cancel:
                     return
-                delID = delID_prompt.EntryID
+                delIDs = [delID_prompt.EntryID]
             else:
-                delID = [delID]
+                delIDs = [delID]
 
             # Ask to propagate change to all future visited frames
             (UndoFutFrames, applyFutFrames, endFrame_i,
             doNotShowAgain) = self.propagateChange(
-                delID, 'Delete ID', posData.doNotShowAgain_DelID,
+                delIDs, 'Delete ID', posData.doNotShowAgain_DelID,
                 posData.UndoFutFrames_DelID, posData.applyFutFrames_DelID
             )
-
+            
             if UndoFutFrames is None:
                 return
 
@@ -5222,20 +5223,16 @@ class guiWin(QMainWindow):
             includeUnvisited = posData.includeUnvisitedInfo['Delete ID']
 
             delID_mask = self.deleteIDmiddleClick(
-                delID, applyFutFrames, includeUnvisited
+                delIDs, applyFutFrames, includeUnvisited
             )
-
-            # Update data (rp, etc)
-            self.update_rp()
-
-            self.setAllTextAnnotations()
 
             if self.isSnapshot:
                 self.fixCcaDfAfterEdit('Delete ID')
             else:
-                self.warnEditingWithCca_df('Delete ID')
-
+                self.warnEditingWithCca_df('Delete ID', update_images=False)
+            
             self.setImageImg2()
+            self.setAllTextAnnotations()
 
             how = self.drawIDsContComboBox.currentText()
             if how.find('overlay segm. masks') != -1:
@@ -5250,9 +5247,8 @@ class guiWin(QMainWindow):
                     delID_mask = delID_mask[self.z_lab()]
                 self.labelsLayerRightImg.image[delID_mask] = 0
                 self.labelsLayerRightImg.setImage(self.labelsLayerRightImg.image)
-
+            
             self.highlightLostNew()
-
         # Separate bud or objects with same ID
         elif right_click and separateON:
             x, y = event.pos().x(), event.pos().y()
@@ -14791,7 +14787,9 @@ class guiWin(QMainWindow):
             customPostProcessGroupedFeatures, 
             customPostProcessFeatures
         ):
-        proceed = self.warnEditingWithCca_df('post-processing segmentation')
+        proceed = self.warnEditingWithCca_df(
+            'post-processing segmentation', update_images=False
+        )
         if not proceed:
             self.logger.info('Post-processing segmentation cancelled.')
             return
@@ -20569,6 +20567,37 @@ class guiWin(QMainWindow):
         
         posData.allData_li[posData.frame_i]['z_slices_rp'] = posData.zSlicesRp
     
+    def removeObjectFromRp(self, delID):
+        posData = self.data[self.pos_i]
+        rp = []
+        IDs = []
+        IDs_idxs = {}
+        idx = 0
+        for obj in posData.rp:
+            if obj.label == delID:
+                continue
+            rp.append(obj)
+            IDs.append(obj.label)
+            IDs_idxs[obj.label] = idx
+            idx += 1
+        
+        posData.rp = rp
+        posData.IDs = IDs
+        posData.IDs_idxs = IDs_idxs
+        
+        if not self.isSegm3D:
+            return
+        
+        zSlicesRp = {}
+        for z, zSliceRp in posData.zSlicesRp.items():
+            if delID in zSliceRp:
+                continue
+            
+            zSlicesRp[z] = zSlicesRp
+        
+        posData.zSlicesRp = zSlicesRp
+        self.store_zslices_rp(force_update=True)
+    
     def get_zslices_rp(self):
         if not self.isSegm3D:
             return
@@ -22659,18 +22688,31 @@ class guiWin(QMainWindow):
         
         if self.delObjAction is not None:
             delObjKeySequence, delObjQtButton = self.delObjAction
-            delObjKeySequenceText = delObjKeySequence.toString()
-            delObjKeySequenceText = (
-                delObjKeySequenceText.encode('ascii', 'ignore').decode('utf-8')
-            )
-            delObjButtonText = (
-                'Left click' if delObjQtButton == Qt.MouseButton.LeftButton
-                else 'Middle click'
-            )
-            cp['delete_object.action'] = {
-                'Key sequence': delObjKeySequenceText, 
-                'Mouse button': delObjButtonText
-            }
+            try:
+                delObjKeySequenceText = delObjKeySequence.toString()
+                delObjKeySequenceText = (
+                    delObjKeySequenceText
+                    .encode('ascii', 'ignore')
+                    .decode('utf-8')
+                )
+                delObjButtonText = (
+                    'Left click' if delObjQtButton == Qt.MouseButton.LeftButton
+                    else 'Middle click'
+                )
+                cp['delete_object.action'] = {
+                    'Key sequence': delObjKeySequenceText, 
+                    'Mouse button': delObjButtonText
+                }
+            except Exception as err:
+                delObjKeySequenceText = ''
+                self.logger.info(
+                    f'{delObjKeySequence} is not a valid keys sequence for '
+                    'deleting objects. Restoring default action'
+                )
+                self.delObjAction = None
+                cp.remove_section('delete_object.action')
+                
+            
             # if delObjKeySequenceText:
             #     self.delObjToolAction.setShortcut(delObjKeySequence)
             
@@ -23544,10 +23586,9 @@ class guiWin(QMainWindow):
 
         return 'cell_cycle_stage' in acdc_df.columns
 
-
     def warnEditingWithCca_df(
             self, editTxt, return_answer=False, get_answer=False, 
-            get_cancelled=False
+            get_cancelled=False, update_images=True
         ):
         # Function used to warn that the user is editing in "Segmentation and
         # Tracking" mode a frame that contains cca annotations.
@@ -23558,16 +23599,19 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
         if acdc_df is None:
-            self.updateAllImages()
+            if update_images:
+                self.updateAllImages()
             return True
         else:
             if 'cell_cycle_stage' not in acdc_df.columns:
-                self.updateAllImages()
+                if update_images:
+                    self.updateAllImages()
                 return True
         action = self.warnEditingWithAnnotActions.get(editTxt, None)
         if action is not None:
             if not action.isChecked():
-                self.updateAllImages()
+                if update_images:
+                    self.updateAllImages()
                 return True
 
         msg = widgets.myMessageBox()
@@ -24325,7 +24369,8 @@ class guiWin(QMainWindow):
         delROIsIDs = self.setLostNewOldPrevIDs()
         posData = self.data[self.pos_i]
         self.textAnnot[0].setAnnotations(
-            posData=posData, labelsToSkip=labelsToSkip, 
+            posData=posData, 
+            labelsToSkip=labelsToSkip, 
             isVisibleCheckFunc=self.isObjVisible,
             highlightedID=self.highlightedID, 
             delROIsIDs=delROIsIDs,
@@ -24543,7 +24588,10 @@ class guiWin(QMainWindow):
         lab[delMask] = 0
         return lab, delMask
     
-    def deleteIDmiddleClick(self, delID, applyFutFrames, includeUnvisited):
+    @disableWindow
+    def deleteIDmiddleClick(
+            self, delIDs: Iterable, applyFutFrames, includeUnvisited
+        ):
         self.clearHighlightedID()
         
         posData = self.data[self.pos_i]
@@ -24562,7 +24610,7 @@ class guiWin(QMainWindow):
                 
                 if lab is not None:
                     # Visited frame
-                    lab, _ = self.deleteIDFromLab(lab, delID)
+                    lab, _ = self.deleteIDFromLab(lab, delIDs)
 
                     # Store change
                     posData.allData_li[i]['labels'] = lab.copy()
@@ -24573,18 +24621,20 @@ class guiWin(QMainWindow):
                 elif includeUnvisited:
                     # Unvisited frame (includeUnvisited = True)
                     lab = posData.segm_data[i]
-                    lab, _ = self.deleteIDFromLab(lab, delID)
+                    lab, _ = self.deleteIDFromLab(lab, delIDs)
 
         # Back to current frame
         if applyFutFrames:
             posData.frame_i = self.current_frame_i
             self.get_data()   
 
-        for _delID in delID:
+        for _delID in delIDs:
             self.clearObjContour(ID=_delID, ax=0)     
-            self.clearObjContour(ID=_delID, ax=1)       
+            self.clearObjContour(ID=_delID, ax=1)  
+            self.removeObjectFromRp(_delID)     
 
-        posData.lab, delID_mask = self.deleteIDFromLab(posData.lab, delID)
+        posData.lab, delID_mask = self.deleteIDFromLab(posData.lab, delIDs)
+        
         return delID_mask
     
     def setOverlayLabelsItems(self):

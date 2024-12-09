@@ -12570,7 +12570,23 @@ class ShortcutEditorDialog(QBaseDialog):
                 continue
             shortcutLineEdit.setText('')
     
+    def warnInvalidKeySequenceDelObjWithLeftClick(self):
+        txt = html_utils.paragraph(
+            'The selected key sequence to delete objects with "Left click" '
+            'is invalid.<br><br>'
+            'Only "Middle click" can be used without pressing keys.<br><br>'
+            'Thank you for your patience!'
+        )
+        msg = widgets.myMessageBox()
+        msg.warning(self, 'Invalid key sequence to delete objects', txt)
+    
     def ok_cb(self):
+        delObjButtonText = self.delObjButtonCombobox.currentText()
+        delObjKeySequence = self.delObjShortcutLineEdit.keySequence
+        if delObjButtonText == 'Left click' and delObjKeySequence is None:
+            self.warnInvalidKeySequenceDelObjWithLeftClick()
+            return
+        
         self.cancel = False
         for name, shortcutLineEdit in self.shortcutLineEdits.items():
             text = shortcutLineEdit.text()
@@ -12580,14 +12596,12 @@ class ShortcutEditorDialog(QBaseDialog):
                 self.customShortcuts[name] = (
                     text, shortcutLineEdit.keySequence
                 )
-        delObjButtonText = self.delObjButtonCombobox.currentText()
+        
         delObjQtButton = (
             Qt.MouseButton.LeftButton if delObjButtonText == 'Left click'
             else Qt.MouseButton.MiddleButton
         )
-        self.delObjAction = (
-            self.delObjShortcutLineEdit.keySequence, delObjQtButton
-        )
+        self.delObjAction = delObjKeySequence, delObjQtButton
         self.close()
     
     def showEvent(self, event) -> None:
