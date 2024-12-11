@@ -1003,7 +1003,10 @@ class saveDataWorker(QObject):
                     self.mutex.unlock()
 
                     # Save segmentation metadata
-                    all_frames_acdc_df.to_csv(acdc_output_csv_path)
+                    load.save_acdc_df_file(
+                        all_frames_acdc_df, acdc_output_csv_path, 
+                        custom_annot_columns=custom_annot_columns
+                    )
                     posData.acdc_df = all_frames_acdc_df
                 except Exception as err:
                     self.mutex.lock()
