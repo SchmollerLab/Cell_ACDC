@@ -1146,6 +1146,7 @@ class guiWin(QMainWindow):
         self.AutoPilot = None
         self.widgetsWithShortcut = {}
         self.invertBwAlreadyCalledOnce = False
+        self.zoomOutKeyValue = Qt.Key_H
 
         self.checkableButtons = []
         self.LeftClickButtons = []
@@ -2285,7 +2286,7 @@ class guiWin(QMainWindow):
         self.updateScrollbars()
     
     def warnCcaIntegrity(self, txt, category):
-        self.logger.info(f'[WARNING]: {html_utils.to_plain_text(txt)}')
+        self.logger.warning(f'{html_utils.to_plain_text(txt)}')
         
         if 'disable_all' in self.disabled_cca_warnings:
             return
@@ -10282,11 +10283,11 @@ class guiWin(QMainWindow):
             self.warnDeadOrExcludedMothers(budIDsOfExcludedMoth, excludedMothIDs)
         except Exception as e:
             self.logger.info(traceback.format_exc())
-            self.logger.info('-'*60)
-            self.logger.info(
-                '[WARNING]: checking if mother cell is excluded or dead failed.'
+            print('-'*100)
+            self.logger.warning(
+                'Checking if mother cell is excluded or dead failed.'
             )
-            self.logger.info('^'*60)
+            print('^'*100)
     
     def checkDivisionCanBeUndone(self, ID, relID):
         """Check that division annotation can be undone (see Notes section)
@@ -13602,18 +13603,13 @@ class guiWin(QMainWindow):
         if ctrl and ev.key() == Qt.Key_D:
             self.resizeLeaveSpaceTerminalBelow()
             return
-       
+        
         if ev.key() == Qt.Key_Q and self.debug:
-            posData = self.data[self.pos_i]
-            dataDict = posData.allData_li[posData.frame_i]
-            dist_matrix = dataDict['obj_to_obj_dist_cost_matrix_df']
-            printl(dist_matrix)
-            printl(dist_matrix.shape)
+            self.logger.warning('Test')
         
         if not self.isDataLoaded:
-            self.logger.info(
-                '[WARNING]: Data not loaded yet. '
-                'Key pressing events are not connected.'
+            self.logger.warning(
+                'Data not loaded yet. Key pressing events are not connected.'
             )
             return
         if ev.key() == Qt.Key_Control:
@@ -13770,7 +13766,7 @@ class guiWin(QMainWindow):
                 delta = 5/self.imgGrad.labelsAlphaSlider.maximum()
                 val = val-delta
                 self.imgGrad.labelsAlphaSlider.setValue(val, emitSignal=True)
-        elif ev.key() == Qt.Key_H:
+        elif ev.key() == self.zoomOutKeyValue:
             self.zoomToCells(enforce=True)
             if self.countKeyPress == 0:
                 self.isKeyDoublePress = False
@@ -15846,8 +15842,8 @@ class guiWin(QMainWindow):
         self.logger.info(text)
     
     def saveDataWorkerCritical(self, error):
-        self.logger.info(
-            f'[WARNING]: Saving process stopped because of critical error.'
+        self.logger.warning(
+            'Saving process stopped because of critical error.'
         )
         self.saveWin.aborted = True
         self.worker.finished.emit()
@@ -20207,8 +20203,8 @@ class guiWin(QMainWindow):
                     df['corrected_on_frame_i'] = -1
                 lin_tree_df = df.copy()
         if lin_tree_df is None and self.isSnapshot:
-            self.logger.info(
-                '[WARNING]: Lineage tree for snapshots is not supported :('
+            self.logger.warning(
+                'Lineage tree for snapshots is not supported :('
             )
 
         # may need to create one if none is given already :3
@@ -21514,8 +21510,8 @@ class guiWin(QMainWindow):
                 ID_idx = posData.IDs_idxs[ID]
                 obj = obj = posData.rp[ID_idx]
             except Exception as e:
-                self.logger.info(
-                    f'[WARNING]: ID {ID} does not exist (add points by clicking)'
+                self.logger.warning(
+                    f'ID {ID} does not exist (add points by clicking)'
                 )
         
         if obj is None:
@@ -22320,8 +22316,8 @@ class guiWin(QMainWindow):
                 contours = []
             else:
                 contours = None
-            self.logger.info(
-                f'[WARNING]: Object ID {obj.label} contours drawing failed. '
+            self.logger.warning(
+                f'Object ID {obj.label} contours drawing failed. '
                 f'(bounding box = {obj.bbox})'
             )
         return contours
@@ -22627,6 +22623,16 @@ class guiWin(QMainWindow):
         if 'keyboard.shortcuts' not in cp:
             cp['keyboard.shortcuts'] = {}
         
+        if cp.has_option('keyboard.shortcuts', 'Zoom out'):
+            zoomOutKeyValueStr = cp['keyboard.shortcuts']['Zoom out']
+            try:
+                self.zoomOutKeyValue = int(zoomOutKeyValueStr)
+            except Exception as err:
+                self.logger.warning(
+                    f'{zoomOutKeyValueStr} is not a valid key '
+                    'zooming out action. Restoring default key "H".'
+                )
+        
         if 'delete_object.action' not in cp:
             self.delObjAction = None
         else:
@@ -22689,6 +22695,8 @@ class guiWin(QMainWindow):
         for name, (text, shortcut) in shortcuts.items():
             cp['keyboard.shortcuts'][name] = text
         
+        cp['keyboard.shortcuts']['Zoom out'] = str(self.zoomOutKeyValue)
+        
         if self.delObjAction is not None:
             delObjKeySequence, delObjQtButton = self.delObjAction
             try:
@@ -22708,9 +22716,9 @@ class guiWin(QMainWindow):
                 }
             except Exception as err:
                 delObjKeySequenceText = ''
-                self.logger.info(
+                self.logger.warning(
                     f'{delObjKeySequence} is not a valid keys sequence for '
-                    'deleting objects. Restoring default action'
+                    'deleting objects. Setting default action'
                 )
                 self.delObjAction = None
                 cp.remove_section('delete_object.action')
@@ -22744,6 +22752,7 @@ class guiWin(QMainWindow):
             self.widgetsWithShortcut, 
             delObjectKey=delObjKeySequenceText,
             delObjectButton=delObjButtonText,
+            zoomOutKeyValue=self.zoomOutKeyValue,
             parent=self
         )
         win.exec_()
@@ -22751,6 +22760,7 @@ class guiWin(QMainWindow):
             return
 
         self.delObjAction = win.delObjAction
+        self.zoomOutKeyValue = win.zoomOutKeyValue
         self.setShortcuts(win.customShortcuts)
             
     def toggleOverlayColorButton(self, checked=True):

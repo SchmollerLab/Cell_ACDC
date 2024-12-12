@@ -12496,6 +12496,7 @@ class ShortcutEditorDialog(QBaseDialog):
             self, widgetsWithShortcut: dict, 
             delObjectKey='',
             delObjectButton: Literal['Middle click', 'Left click']='Middle click',
+            zoomOutKeyValue: int=None,
             parent=None
         ):
         self.cancel = True
@@ -12513,6 +12514,7 @@ class ShortcutEditorDialog(QBaseDialog):
         scrollAreaWidget = QWidget()
         entriesLayout = QGridLayout()
         
+        row = 0
         self.delObjShortcutLineEdit = widgets.ShortcutLineEdit(
             allowModifiers=True, notAllowedModifier=Qt.AltModifier
         )
@@ -12521,13 +12523,29 @@ class ShortcutEditorDialog(QBaseDialog):
         self.delObjButtonCombobox = QComboBox()
         self.delObjButtonCombobox.addItems(['Middle click', 'Left click'])
         self.delObjButtonCombobox.setCurrentText(delObjectButton)
-        entriesLayout.addWidget(QLabel('Delete object:'), 0, 0)
-        entriesLayout.addWidget(self.delObjShortcutLineEdit, 0, 1)
+        entriesLayout.addWidget(QLabel('Delete object:'), row, 0)
+        entriesLayout.addWidget(self.delObjShortcutLineEdit, row, 1)
         entriesLayout.addWidget(
-            self.delObjButtonCombobox, 0, 2, alignment=Qt.AlignLeft
+            self.delObjButtonCombobox, row, 2, alignment=Qt.AlignLeft
         )
         
-        for row, (name, widget) in enumerate(widgetsWithShortcut.items(), start=1):
+        row += 1
+        name = 'Zoom out'
+        label = QLabel('Zoom out:')
+        self.zoomShortcutLineEdit = widgets.ShortcutLineEdit()
+        if zoomOutKeyValue is not None:
+            zoomOutKeySequence = QKeySequence(zoomOutKeyValue)
+            self.zoomShortcutLineEdit.setText(zoomOutKeySequence.toString())
+            self.zoomShortcutLineEdit.key = zoomOutKeyValue
+        self.zoomShortcutLineEdit.textChanged.connect(
+            self.checkDuplicateShortcuts
+        )
+        entriesLayout.addWidget(label, row, 0)
+        entriesLayout.addWidget(self.zoomShortcutLineEdit, row, 1)
+        self.shortcutLineEdits[name] = self.zoomShortcutLineEdit
+        
+        row += 1
+        for row, (name, widget) in enumerate(widgetsWithShortcut.items(), start=row):
             label = QLabel(f'{name}:')
             shortcutLineEdit = widgets.ShortcutLineEdit()
             if hasattr(widget, 'keyPressShortcut'):
@@ -12587,6 +12605,7 @@ class ShortcutEditorDialog(QBaseDialog):
             self.warnInvalidKeySequenceDelObjWithLeftClick()
             return
         
+        self.shortcutLineEdits.pop('Zoom out')
         self.cancel = False
         for name, shortcutLineEdit in self.shortcutLineEdits.items():
             text = shortcutLineEdit.text()
@@ -12602,6 +12621,8 @@ class ShortcutEditorDialog(QBaseDialog):
             else Qt.MouseButton.MiddleButton
         )
         self.delObjAction = delObjKeySequence, delObjQtButton
+        self.zoomOutKeyValue = self.zoomShortcutLineEdit.key
+        
         self.close()
     
     def showEvent(self, event) -> None:
