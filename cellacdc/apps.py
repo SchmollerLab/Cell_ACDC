@@ -10506,7 +10506,7 @@ class QDialogModelParams(QDialog):
         self.postProcessGroupbox = None
         postProcessLayout = None
         self.seeHereLabel = None
-        if not is_tracker or addPostProcessParams:
+        if addPostProcessParams:
             postProcessLayout = QVBoxLayout()
             postProcessLayout.addWidget(widgets.QHLine())
             
