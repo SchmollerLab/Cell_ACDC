@@ -5294,7 +5294,7 @@ class guiWin(QMainWindow):
                 self.set_2Dlab(lab2D)
             else:
                 success = False
-
+            
             # If automatic bud separation was not successfull call manual one
             if not success:
                 posData.disableAutoActivateViewerWindow = True
@@ -5326,7 +5326,6 @@ class guiWin(QMainWindow):
                 self.storeManualSeparateDrawMode(manualSep.drawMode)
 
             # Update data (rp, etc)
-            prev_IDs = [obj.label for obj in posData.rp]
             self.update_rp()
 
             # Repeat tracking
@@ -12604,8 +12603,11 @@ class guiWin(QMainWindow):
         curr_ID_moth = IDs_sep[areas.index(max(areas))]
         orig_sblab = np.copy(sep_bud_label)
         # sep_bud_label = np.zeros_like(sep_bud_label)
-        sep_bud_label[orig_sblab==curr_ID_moth] = ID
-        sep_bud_label[orig_sblab==curr_ID_bud] = max_ID+max_i
+        ID1 = ID
+        ID2 = max_ID+max_i
+        sep_bud_label[orig_sblab==curr_ID_moth] = ID1
+        sep_bud_label[orig_sblab==curr_ID_bud] = ID2
+        splittedIDs = [ID1, ID2]
         # sep_bud_label *= (max_ID+max_i)
         temp_sep_bud_lab = sep_bud_label.copy()
         for r, c in zip(rr, cc):
@@ -12619,7 +12621,7 @@ class guiWin(QMainWindow):
         lab[sep_bud_label_mask] = sep_bud_label[sep_bud_label_mask]
         max_i += 1
         success = True
-        return lab, success, [ID, max_ID+max_i]
+        return lab, success, splittedIDs
 
     def disconnectLeftClickButtons(self):
         for button in self.LeftClickButtons:
