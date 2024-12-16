@@ -5281,15 +5281,15 @@ class guiWin(QMainWindow):
 
             if self.isSegm3D and not shift:
                 z = self.zSliceScrollBar.sliderPosition()
-                posData.lab = measure.separate_with_label(
+                posData.lab, splittedIDs = measure.separate_with_label(
                     posData.lab, posData.rp, [ID], max_ID, 
                     click_coords_list=[(z, ydata, xdata)]
                 )
                 success = True
                 # self.set_2Dlab(lab2D)
             elif not shift:
-                lab2D, success = self.auto_separate_bud_ID(
-                    ID, self.get_2Dlab(posData.lab), posData.rp, max_ID
+                lab2D, success, splittedIDs = self.auto_separate_bud_ID(
+                    ID, self.get_2Dlab(posData.lab), max_ID
                 )
                 self.set_2Dlab(lab2D)
             else:
@@ -5321,6 +5321,7 @@ class guiWin(QMainWindow):
                 lab2D = self.get_2Dlab(posData.lab)
                 lab2D[manualSep.lab!=0] = manualSep.lab[manualSep.lab!=0]
                 self.set_2Dlab(lab2D)
+                splittedIDs = [obj.label for obj in manualSep.rp]
                 posData.disableAutoActivateViewerWindow = False
                 self.storeManualSeparateDrawMode(manualSep.drawMode)
 
@@ -5329,7 +5330,7 @@ class guiWin(QMainWindow):
             self.update_rp()
 
             # Repeat tracking
-            for ID in posData.IDs:
+            for ID in splittedIDs:
                 if ID in prev_IDs:
                     continue
                 self.trackManuallyAddedObject(ID, True)
@@ -12563,7 +12564,7 @@ class guiWin(QMainWindow):
         return cnt, defects
 
     def auto_separate_bud_ID(
-            self, ID, lab, rp, max_ID, max_i=1, eps_percent=0.01
+            self, ID, lab, max_ID, max_i=1, eps_percent=0.01
         ):
         lab_ID_bool = lab == ID
         # First try separating by labelling
@@ -12573,15 +12574,17 @@ class guiWin(QMainWindow):
         if setRp:
             success = True
             lab[lab_ID_bool] = lab_ID[lab_ID_bool]
-            return lab, success
+            rp_ID = skimage.measure.regionprops(lab_ID)
+            separateIDs = [obj.label for obj in rp_ID]
+            return lab, success, separateIDs
 
         cnt, defects = self.convexity_defects(lab_ID_bool, eps_percent)
         success = False
         if defects is None:
-            return lab, success
+            return lab, success, []
 
         if len(defects) != 2:
-            return lab, success
+            return lab, success, []
 
         defects_points = [0]*len(defects)
         for i, defect in enumerate(defects):
@@ -12619,7 +12622,7 @@ class guiWin(QMainWindow):
         lab[sep_bud_label_mask] = sep_bud_label[sep_bud_label_mask]
         max_i += 1
         success = True
-        return lab, success
+        return lab, success, [ID, max_ID+max_i]
 
     def disconnectLeftClickButtons(self):
         for button in self.LeftClickButtons:
