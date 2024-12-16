@@ -10558,7 +10558,7 @@ class QDialogModelParams(QDialog):
         if self.configPars is None:
             initLoadLastSelButton.setDisabled(True)
             segmentLoadLastSelButton.setDisabled(True)
-            if not is_tracker:
+            if postProcessLayout is not None:
                 postProcLoadLastSelButton.setDisabled(True)
 
         if initLastParams:
@@ -10566,7 +10566,7 @@ class QDialogModelParams(QDialog):
             if not self.skipSegmentation:
                 segmentLoadLastSelButton.click()
         
-        if not is_tracker and not self.skipSegmentation:
+        if postProcessLayout is not None:
             postProcLoadLastSelButton.click()
 
         try:
