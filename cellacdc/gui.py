@@ -5330,10 +5330,7 @@ class guiWin(QMainWindow):
             self.update_rp()
 
             # Repeat tracking
-            for ID in splittedIDs:
-                if ID in prev_IDs:
-                    continue
-                self.trackManuallyAddedObject(ID, True)
+            self.trackSubsetIDs(splittedIDs)
 
             if self.isSnapshot:
                 self.fixCcaDfAfterEdit('Separate IDs')
@@ -25021,7 +25018,7 @@ class guiWin(QMainWindow):
             return False
 
     def trackManuallyAddedObject(self, added_ID, isNewID):
-        """Track objects added manually on frame that was already visited.
+        """Track object added manually on frame that was already visited.
 
         Parameters
         ----------
@@ -25139,6 +25136,35 @@ class guiWin(QMainWindow):
     def clearAssignedObjsSecondStep(self):
         posData = self.data[self.pos_i]
         posData.acdcTracker2stepsAnnotInfo[posData.frame_i] = None
+    
+    def trackSubsetIDs(self, subsetIDs: Iterable[int]):
+        posData = self.data[self.pos_i]
+        if posData.frame_i == 0:
+            return
+
+        subsetLab = np.zeros_like(posData.lab)
+        for subsetID in subsetIDs:
+            subsetLab[posData.lab == subsetID] = subsetID
+        
+        prev_lab = posData.allData_li[posData.frame_i-1]['labels']
+        prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
+        tracked_lab = self.trackFrame(
+            prev_lab, prev_rp, posData.lab, posData.rp, posData.IDs,
+            assign_unique_new_IDs=True
+        )
+        doUpdateRp = False
+        for subsetID in subsetIDs:
+            subsetIDmask = posData.lab == subsetID
+            trackedID = tracked_lab[subsetIDmask][0]
+            if trackedID == subsetID:
+                continue
+            posData.lab[subsetIDmask] = tracked_lab[subsetIDmask]
+            doUpdateRp = True
+        
+        if not doUpdateRp:
+            return
+        
+        self.update_rp()
     
     # @exec_time
     @exception_handler
