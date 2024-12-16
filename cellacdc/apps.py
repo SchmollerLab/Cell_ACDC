@@ -10377,7 +10377,7 @@ class QDialogModelParams(QDialog):
             url=None, parent=None, initLastParams=True, posData=None, 
             channels=None, currentChannelName=None, segmFileEndnames=None,
             df_metadata=None, force_postprocess_2D=False, model_module=None,
-            action_type='', addPreProcessParams=True
+            action_type='', addPreProcessParams=True, addPostProcessParams=True
         ):
         self.cancel = True
         super().__init__(parent)
@@ -10400,6 +10400,7 @@ class QDialogModelParams(QDialog):
         if is_tracker:
             self.ini_filename = 'last_params_trackers.ini'
             addPreProcessParams = False
+            addPostProcessParams = False
         else:
             self.ini_filename = 'last_params_segm_models.ini'
 
@@ -10505,7 +10506,7 @@ class QDialogModelParams(QDialog):
         self.postProcessGroupbox = None
         postProcessLayout = None
         self.seeHereLabel = None
-        if not is_tracker:
+        if not is_tracker or addPostProcessParams:
             postProcessLayout = QVBoxLayout()
             postProcessLayout.addWidget(widgets.QHLine())
             
