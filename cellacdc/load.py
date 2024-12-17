@@ -424,7 +424,7 @@ def _fix_corrected_assignment_i(acdc_df: pd.DataFrame):
             corr_on_index = df_block.index
             acdc_df.loc[corr_on_index, 'corrected_on_frame_i'] = corr_on_frame_i
     
-    acdc_df['corrected_on_frame_i'] = acdc_df['corrected_on_frame_i'].astype(int)
+    # acdc_df['corrected_on_frame_i'] = acdc_df['corrected_on_frame_i'].astype(int)
     acdc_df = acdc_df.drop(columns='corrected_assignment')
     
     return acdc_df
