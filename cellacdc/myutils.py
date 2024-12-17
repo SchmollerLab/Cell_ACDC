@@ -2758,21 +2758,23 @@ def check_matplotlib_version(qparent=None):
     is_less_than_3_5 = (
         mpl_major < 3 or (mpl_major >= 3 and mpl_minor < 5)
     )
-    if is_less_than_3_5:
-        proceed = _install_package_msg('matplotlib', parent=qparent, upgrade=True)
-        if not proceed:
-            raise ModuleNotFoundError(
-                f'User aborted "matplotlib" installation'
-            )
-        import subprocess
-        try:
-            subprocess.check_call(
-                [sys.executable, '-m', 'pip', 'install', '-U', 'matplotlib']
-            )
-        except Exception as e:
-            printl(traceback.format_exc())
-            _inform_install_package_failed(
-                'matplotlib', parent=qparent, do_exit=False
+    if not is_less_than_3_5:
+        return 
+    
+    proceed = _install_package_msg('matplotlib', parent=qparent, upgrade=True)
+    if not proceed:
+        raise ModuleNotFoundError(
+            f'User aborted "matplotlib" installation'
+        )
+    import subprocess
+    try:
+        subprocess.check_call(
+            [sys.executable, '-m', 'pip', 'install', '-U', 'matplotlib']
+        )
+    except Exception as e:
+        printl(traceback.format_exc())
+        _inform_install_package_failed(
+            'matplotlib', parent=qparent, do_exit=False
             )
             
 def _inform_install_package_failed(pkg_name, parent=None, do_exit=True):
