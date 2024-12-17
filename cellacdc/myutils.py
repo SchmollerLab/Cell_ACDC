@@ -2753,8 +2753,8 @@ def check_matplotlib_version(qparent=None):
     mpl_version = get_package_version('matplotlib')  
     mpl_version_digits = mpl_version.split('.')
 
-    mpl_major = mpl_version_digits[0]
-    mpl_minor = mpl_version_digits[1]
+    mpl_major = int(mpl_version_digits[0])
+    mpl_minor = int(mpl_version_digits[1])
     is_less_than_3_5 = (
         mpl_major < 3 or (mpl_major >= 3 and mpl_minor < 5)
     )
