@@ -1,4 +1,5 @@
 from collections import defaultdict
+from typing import Dict
 import os
 import sys
 import operator
@@ -1390,8 +1391,8 @@ class QDialogListbox(QDialog):
         msg = myMessageBox(wrapText=False, showCentered=False)
         txt = html_utils.paragraph(
             'You need to <b>select at least one item!</b>.<br><br>'
-            'Use <code>Ctrl+Click</code> to select multiple items<br>, or<br>'
-            '<code>Shift+Click</code> to select a range of items'
+            'Use <code>Ctrl+Click</code> to select multiple items<br>'
+            'or <code>Shift+Click</code> to select a range of items'
         )
         msg.warning(self, 'Selection cannot be empty!', txt)
     
@@ -1410,7 +1411,7 @@ class QDialogListbox(QDialog):
             msg.warning(self, 'Select two or more items', txt)
             return
         
-        if not self.allowEmptySelection:
+        if not self.allowEmptySelection and not self.selectedItemsText:
             self.warnSelectionEmpty()
             return
         
@@ -9214,7 +9215,8 @@ class PreProcessingSelector(QComboBox):
         super().__init__(parent)
         
         self.addItems(PREPROCESS_MAPPER.keys())
-    
+        self.methodToDefaultValuesMapper = {}
+
     def htmlInfo(self):
         href = html_utils.href_tag('GitHub page', urls.issues_url)
         docstring = PREPROCESS_MAPPER[self.currentText()]['docstring']
@@ -9232,21 +9234,35 @@ class PreProcessingSelector(QComboBox):
         )
         return text
         
-    def widgets(self):
-        return PREPROCESS_MAPPER[self.currentText()]['widgets']
+    def setParams(self, method: str, kwargToValueMapper: Dict[str, str]):
+        self.methodToDefaultValuesMapper[method] = kwargToValueMapper
     
     def askSetParams(self):
         method = self.currentText()
         function = PREPROCESS_MAPPER[method]['function']
         params_argspecs = myutils.get_function_argspec(function)
-        win = apps.FunctionParamsDialog(
-            params_argspecs, function_name=method
+        default_values = self.methodToDefaultValuesMapper.get(method, {})
+        for kwarg, value in default_values.items():
+            for p, param_argspec in enumerate(params_argspecs):
+                if param_argspec.name != kwarg:
+                    continue
+                
+                value = param_argspec.type(value)
+                if value == param_argspec.default:
+                    continue
+                param_argspec = param_argspec._replace(default=value)
+                params_argspecs[p] = param_argspec
+                
+        self.setParamsWindow = apps.FunctionParamsDialog(
+            params_argspecs, 
+            function_name=method
         )
-        win.exec_()
-        if win.cancel:
+        self.setParamsWindow.exec_()
+        if self.setParamsWindow.cancel:
             return
         
-        return win.function_kwargs
+        self.setParams(method, self.setParamsWindow.function_kwargs)
+        return self.setParamsWindow.function_kwargs
 
 class RescaleImageJroisGroupbox(QGroupBox):
     def __init__(self, TZYX_out_shape, parent=None):

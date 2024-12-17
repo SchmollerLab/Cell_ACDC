@@ -1,6 +1,6 @@
 import typing
 
-from typing import Union
+from typing import Union, Tuple, Any
 
 class Vector:
     """Class used to define model parameter as a vector that will use the 
@@ -8,13 +8,27 @@ class Vector:
     """
     def __init__(self):
         return 
-
+    
+    def __call__(self, value: Any) -> Tuple[float]:
+        if isinstance(value, str):
+            values = value.split(',')
+            values = tuple([float(val) for val in values])
+        elif isinstance(value, int):
+            return (value,)
+        elif isinstance(value, float):
+            return (value,)
+        
+        raise TypeError(f'Could not convert {value} to Vector')
+        
 class FolderPath:
     """Class used to define model parameter as a folder path control with a 
     browse button to select a folder in the automatic GUI.
     """
     def __init__(self):
         return
+    
+    def __call__(self, value: Any) -> Tuple[float]:
+        return str(value)
 
 class SecondChannelImage:
     pass

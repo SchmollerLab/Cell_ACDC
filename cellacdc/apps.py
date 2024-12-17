@@ -1,7 +1,7 @@
 import os
 import sys
 import re
-from typing import Literal, Callable
+from typing import Literal, Callable, Dict
 import datetime
 import pathlib
 from collections import defaultdict
@@ -66,6 +66,7 @@ import qtpy.compat
 from . import exception_handler
 from . import load, prompts, core, measurements, html_utils
 from . import is_mac, is_win, is_linux, settings_folderpath, config
+from . import preproc_recipes_path
 from . import is_conda_env, pytorch_commands
 from . import qrc_resources, printl
 from . import colors
@@ -10196,6 +10197,13 @@ class FunctionParamsDialog(QBaseDialog):
         }
         return function_kwargs
     
+    def kwargWidgetMapper(self) -> Dict[str, tuple]:
+        kwarg_widget_mapper = {
+            argWidget.name:(argWidget.widget, argWidget.valueSetter)
+            for argWidget in self.argsWidgets
+        }
+        return kwarg_widget_mapper
+    
     def ok_cb(self):
         self.cancel = False
         
@@ -14523,13 +14531,14 @@ class PreProcessParamsWidget(QWidget):
         self.gridLayout.setColumnStretch(4, 0)
         groupbox.setLayout(self.gridLayout)
         
-        buttonsLayout = QHBoxLayout()
+        buttonsLayout = QGridLayout()
         # saveRecipeButton = widgets.savePushButton()
         loadRecipeButton = widgets.reloadPushButton('Load last parameters')
+        self.loadRecipeButton = loadRecipeButton
         
-        buttonsLayout.addStretch(1)
+        buttonsLayout.setColumnStretch(0, 1)
         # buttonsLayout.addWidget(saveRecipeButton)
-        buttonsLayout.addWidget(loadRecipeButton)
+        buttonsLayout.addWidget(loadRecipeButton, 0, 1)
         self.buttonsLayout = buttonsLayout
         
         loadRecipeButton.clicked.connect(self.emitLoadRecipe)
@@ -14550,20 +14559,26 @@ class PreProcessParamsWidget(QWidget):
     
     def loadRecipe(self, configPars: dict):
         for stepWidgets in self.stepsWidgets.values():
-            stepWidgets['delButton'].click()
+            try:
+                stepWidgets['delButton'].click()
+            except Exception as err:
+                pass
         
         configPars = self.sortStepsConfigPars(configPars)
-        for s in range(1, len(configPars)+1):
-            self.stepsWidgets[s]['addButton'].click()
+        for s in range(1, len(configPars)):
+            self.stepsWidgets[1]['addButton'].click()
         
         for i, (section, section_items) in enumerate(configPars.items()):
-            method = section_items['method']
-            s = i+1
-            self.stepsWidgets[s]['selector'].setCurrentText(method)
-            for label, widget in self.stepsWidgets[s]['widgets']:
-                option = label.text().lower()
-                value = section_items[option]
-                widget.setText(value)
+            step_n = i+1
+            selector = self.stepsWidgets[step_n]['selector']
+            kwarg_to_value_mapper = {}
+            for option, value in section_items.items():
+                if option == 'method':
+                    selector.setCurrentText(value)
+                    method = value
+                else:
+                    kwarg_to_value_mapper[option] = value
+            selector.setParams(method, kwarg_to_value_mapper)
         
         self.setChecked(True)
     
@@ -14719,10 +14734,10 @@ class PreProcessParamsWidget(QWidget):
 
     def recipe(self):
         recipe = []
-        if not self.groupbox.isChecked():
+        if not self.groupbox.isChecked() and self.groupbox.isCheckable():
             return recipe
         
-        for stepWidgets in self.stepsWidgets:
+        for stepWidgets in self.stepsWidgets.values():
             method = stepWidgets['selector'].currentText()
             step_kwargs = stepWidgets.get('step_kwargs')
             if step_kwargs is None:
@@ -14737,7 +14752,7 @@ class PreProcessParamsWidget(QWidget):
     
     def recipeConfigPars(self, model_name):
         cp = config.ConfigParser()
-        if not self.groupbox.isChecked():
+        if not self.groupbox.isChecked() and self.groupbox.isCheckable():
             return cp
         
         for s, step in enumerate(self.recipe()):
@@ -15436,7 +15451,7 @@ class PreProcessRecipeDialog(QBaseDialog):
     sigApplyImage = Signal()
     sigApplyZstack = Signal()
     sigApplyAll = Signal()
-    sigPreview = Signal()
+    sigPreviewToggled = Signal()
     
     def __init__(self, isTimelapse=False, isZstack=False, parent=None):
         super().__init__(parent=parent)
@@ -15458,47 +15473,240 @@ class PreProcessRecipeDialog(QBaseDialog):
         buttonsLayout = self.preProcessParamsWidget.buttonsLayout
         
         self.previewCheckbox = QCheckBox('Preview')
-        buttonsLayout.insertWidget(0, self.previewCheckbox)
+        buttonsLayout.addWidget(self.previewCheckbox, 0, 0)
+        
+        self.preProcessParamsWidget.loadRecipeButton.setText(
+            'Load saved recipe...'
+        )
+        
+        self.saveRecipeButton = widgets.savePushButton(
+            'Save current recipe...'
+        )
+        buttonsLayout.addWidget(self.saveRecipeButton, 1, 1)
         
         # self.cancelButton = widgets.cancelPushButton('Cancel')
         # buttonsLayout.insertWidget(2, self.cancelButton)
         # buttonsLayout.insertSpacing(3, 20)
         
+        self.allButtons = [
+            self.previewCheckbox,
+            self.preProcessParamsWidget.loadRecipeButton, 
+            self.saveRecipeButton
+        ]
+        col = 3
+        row = 0
         self.applyCurrentFrameButton = widgets.okPushButton(
             'Apply to displayed image'
         )
-        buttonsLayout.addWidget(self.applyCurrentFrameButton)
+        buttonsLayout.addWidget(self.applyCurrentFrameButton, row, col)
+        self.applyCurrentFrameButton.clicked.connect(
+            partial(self.apply, signal=self.sigApplyImage)
+        )
+        self.allButtons.append(self.applyCurrentFrameButton)
+        
+        infoLayout = QHBoxLayout()
+        buttonsHeight = self.applyCurrentFrameButton.sizeHint().height()
+        self.loadingCircle = widgets.LoadingCircleAnimation(
+            size=buttonsHeight
+        )
+        sp = self.loadingCircle.sizePolicy()
+        sp.setRetainSizeWhenHidden(True)
+        self.loadingCircle.setSizePolicy(sp)
+        self.loadingCircle.setVisible(False)
+        infoLayout.addWidget(self.loadingCircle)
+        
+        self.infoLabel = QLabel(
+            "<i>(Feel free to use Cell-ACDC while waiting)</i>"
+        )
+        sp = self.infoLabel.sizePolicy()
+        sp.setRetainSizeWhenHidden(True)
+        self.infoLabel.setSizePolicy(sp)
+        self.infoLabel.hide()
+        infoLayout.addWidget(self.infoLabel)
+        
+        buttonsLayout.addLayout(
+            infoLayout, row+1, 0, 3, 2, 
+            alignment=Qt.AlignBottom | Qt.AlignLeft
+        )
+        
         if isZstack:
+            row += 1
             self.applyAllZslicesButton = widgets.threeDPushButton(
                 'Apply to all z-slices of current image'
             )
-            buttonsLayout.addWidget(self.applyAllZslicesButton)
+            buttonsLayout.addWidget(self.applyAllZslicesButton, row, col)
+            self.applyAllZslicesButton.clicked.connect(
+            partial(self.apply, signal=self.sigApplyZstack)
+        )
+            self.allButtons.append(self.applyAllZslicesButton)
         if isTimelapse:
+            row += 1
             self.applyAllFramesButton = widgets.futurePushButton(
                 'Apply to all frames'
             )
-            buttonsLayout.addWidget(self.applyAllFramesButton)
-            
+            buttonsLayout.addWidget(self.applyAllFramesButton, row, col)
+            self.applyAllFramesButton.clicked.connect(
+            partial(self.apply, signal=self.sigApplyAll)
+        )
+            self.allButtons.append(self.applyAllFramesButton)
+        
+        row += 1
+        self.savePreprocButton = widgets.savePushButton(
+            'Save pre-processed data...'
+        )
+        buttonsLayout.addWidget(self.savePreprocButton, row, col)
+        self.allButtons.append(self.savePreprocButton)
+        
         # self.cancelButton.clicked.connect(self.close)
+        
+        self.saveRecipeButton.clicked.connect(self.saveRecipe)
         
         mainLayout.addWidget(self.preProcessParamsWidget)
         
         self.setLayout(mainLayout)
     
+    def apply(self, checked=False, signal: Signal=None):
+        self.loadingCircle.setVisible(True)
+        self.infoLabel.setVisible(True)
+        self.infoLabel.setText(
+            f"{self.sender().text().replace('Apply', 'Applying')}...<br>"
+            "<i>(Feel free to use Cell-ACDC while waiting)</i>"
+        )
+        
+        for button in self.allButtons:
+            button.setDisabled(True)
+
+        if signal is not None:
+            signal.emit()
+    
+    def appliedFinished(self):
+        for button in self.allButtons:
+            button.setDisabled(False)
+
+        self.loadingCircle.setVisible(False)
+        self.infoLabel.setVisible(False)
+    
+    def recipe(self):
+        return self.preProcessParamsWidget.recipe()
+    
+    def recipeConfigPars(self):
+        return self.preProcessParamsWidget.recipeConfigPars('acdc')
+    
+    def saveRecipe(self):
+        recipe = self.recipe()
+        default_text = ''
+        for step in recipe[:2]:
+            method = step['method']
+            func_name = config.PREPROCESS_MAPPER[method]['function_name']
+            default_text = f'{default_text}-{func_name}'
+        default_text = default_text.lstrip('-')
+        
+        win = filenameDialog(
+            title='Filename for pre-processing recipe',
+            basename=f'preprocessing_recipe',
+            ext='.ini',
+            hintText='Insert a <b>filename</b> for the pre-processing recipe:',
+            allowEmpty=False,
+            defaultEntry=default_text,
+            parent=self,
+        )
+        win.exec_()
+        if win.cancel:
+            return
+        
+        self.cancel = False
+        ini_filename = win.filename
+        cp = self.recipeConfigPars()
+        os.makedirs(preproc_recipes_path, exist_ok=True)
+        ini_filepath = os.path.join(preproc_recipes_path, ini_filename)
+        
+        if os.path.exists(ini_filepath):
+            proceed = self.warnExistingRecipeFile(ini_filename)
+            if not proceed:
+                return
+        
+        with open(ini_filepath, 'w') as configfile:
+            cp.write(configfile)
+        
+        self.communicateSavingRecipeFinished(ini_filepath)
+    
+    def communicateSavingRecipeFinished(self, ini_filepath):
+        text = html_utils.paragraph(
+            'Done!<br><Br>'
+            'Pre-processing recipe saved at:'
+        )
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.information(
+            self, 'Pre-processing recipe saved!', text, 
+            commands=(ini_filepath,),
+            path_to_browse=os.path.dirname(ini_filepath)
+        )
+    
+    def warnExistingRecipeFile(self, ini_filename):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(
+            'A file with the following name<br><br>'
+            f'<code>{ini_filename}</code><br><br>'
+            '<b>already exists</b>.<br><br>'
+            'Do you want to <b>overwrite</b> the existing file?'
+        )
+        noButton, yesButton = msg.warning(
+            self, 'File name existing', txt, 
+            buttonsTexts=(
+                'No, stop saving process', 
+                'Yes, overwrite existing file'
+            )
+        )
+        return msg.clickedButton == yesButton
+    
     def ok_cb(self):
         self.cancel = False
         self.close()
     
+    def warnNoAvailableRecipesToLoad(self):
+        text = html_utils.paragraph(
+            'There are no recipes saved. Sorry about that :('
+        )
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(self, 'No recipes saved', text)
+    
     def loadPreprocRecipe(self):
-        if self.configPars is None:
+        availableRecipeFiles = os.listdir(preproc_recipes_path)
+        availableRecipes = []
+        for file in os.listdir(preproc_recipes_path):
+            if not file.startswith('preprocessing_recipe'):
+                continue
+            endname = file.split('preprocessing_recipe_')[1]
+            availableRecipes.append(endname)
+        
+        if not availableRecipes:
+            self.warnNoAvailableRecipesToLoad()
             return
         
+        selectRecipeWin = widgets.QDialogListbox(
+            'Select recipe',
+            'Select recipe to load:\n',
+            availableRecipes, 
+            multiSelection=False, 
+            allowEmptySelection=False,
+            parent=self
+        )
+        selectRecipeWin.exec_()
+        if selectRecipeWin.cancel:
+            return
+
+        selected_endname = selectRecipeWin.selectedItemsText[0]
+        ini_filename = f'preprocessing_recipe_{selected_endname}'
+        ini_filepath = os.path.join(preproc_recipes_path, ini_filename)
+        
+        cp = config.ConfigParser()
+        cp.read(ini_filepath)
         preprocConfigPars = {}
-        for section in self.configPars.sections():
-            if not section.startswith(f'{self.model_name}.preprocess'):
+        for section in cp.sections():
+            if not section.startswith('acdc.preprocess'):
                 continue      
             
-            preprocConfigPars[section] = self.configPars[section]
+            preprocConfigPars[section] = cp[section]
         
         if not preprocConfigPars:
             return
