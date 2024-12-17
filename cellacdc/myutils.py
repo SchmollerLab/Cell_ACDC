@@ -2758,7 +2758,7 @@ def check_matplotlib_version(qparent=None):
     is_less_than_3_5 = (
         mpl_major < 3 or (mpl_major >= 3 and mpl_minor < 5)
     )
-    if mpl_version < 3.5:
+    if is_less_than_3_5:
         proceed = _install_package_msg('matplotlib', parent=qparent, upgrade=True)
         if not proceed:
             raise ModuleNotFoundError(
