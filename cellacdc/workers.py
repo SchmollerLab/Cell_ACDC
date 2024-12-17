@@ -1012,7 +1012,7 @@ class segmVideoWorker(QObject):
         exec_time = t1-t0
         self.finished.emit(exec_time)
 
-class calcMetricsWorker(QObject):
+class ComputeMetricsWorker(QObject):
     progressBar = Signal(int, int, float)
 
     def __init__(self, mainWin):
@@ -1290,7 +1290,9 @@ class calcMetricsWorker(QObject):
                             acdc_df = posData.acdc_df.loc[frame_i].copy()
                         except:
                             acdc_df = myutils.getBaseAcdcDf(rp)
-
+                    
+                    acdc_df = load.pd_bool_to_int(acdc_df, inplace=False)
+                    
                     try:
                         # if posData.fluo_data_dict:
                         acdc_df = addMetrics_acdc_df(
@@ -1346,17 +1348,25 @@ class calcMetricsWorker(QObject):
                     acdc_df_li, keys=keys,
                     names=['frame_i', 'time_seconds', 'Cell_ID']
                 )
-                self.mainWin.gui.saveDataWorker.addCombineMetrics_acdc_df(
+                saveDataWorker = self.mainWin.gui.saveDataWorker
+                saveDataWorker.addCombineMetrics_acdc_df(
                     posData, all_frames_acdc_df
                 )
-                self.mainWin.gui.saveDataWorker.addAdditionalMetadata(
+                saveDataWorker.addAdditionalMetadata(
                     posData, all_frames_acdc_df
                 )
+                all_frames_acdc_df = saveDataWorker.addDerivedCellCycleColumns(
+                    all_frames_acdc_df
+                )
+                custom_annot_columns = posData.getCustomAnnotColumnNames()
                 self.logger.log(
                     f'Saving acdc_output to: "{posData.acdc_output_csv_path}"'
                 )
                 try:
-                    all_frames_acdc_df.to_csv(posData.acdc_output_csv_path)
+                    load.save_acdc_df_file(
+                        all_frames_acdc_df, posData.acdc_output_csv_path, 
+                        custom_annot_columns=custom_annot_columns
+                    )
                 except PermissionError:
                     traceback_str = traceback.format_exc()
                     self.mutex.lock()
@@ -1365,7 +1375,10 @@ class calcMetricsWorker(QObject):
                     )
                     self.waitCond.wait(self.mutex)
                     self.mutex.unlock()
-                    all_frames_acdc_df.to_csv(posData.acdc_output_csv_path)
+                    load.save_acdc_df_file(
+                        all_frames_acdc_df, posData.acdc_output_csv_path, 
+                        custom_annot_columns=custom_annot_columns
+                    )
 
                 if self.abort:
                     self.signals.finished.emit(self)

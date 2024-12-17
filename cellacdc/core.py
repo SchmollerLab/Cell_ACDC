@@ -2596,6 +2596,10 @@ class CcaIntegrityChecker:
             if row.relative_ID in self.lab_IDs:
                 continue
             
+            if ID not in self.lab_IDs:
+                # Mother-bud pair gone entirely
+                continue
+            
             # ID is in S but its relative_ID does not exist in lab
             lonely_cells_in_S.append(ID)
         

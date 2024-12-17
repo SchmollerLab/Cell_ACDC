@@ -48,9 +48,7 @@ def run():
         from cellacdc import cellacdc_path
         from cellacdc.myutils import get_date_from_version, read_version
         version = read_version()
-        release_date = get_date_from_version(
-            version, package='cellacdc'
-        )
+        release_date = get_date_from_version(version, package='cellacdc')
         py_ver = sys.version_info
         python_version = f'{py_ver.major}.{py_ver.minor}.{py_ver.micro}'
         print('='*100)

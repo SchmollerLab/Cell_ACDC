@@ -6578,6 +6578,7 @@ class imageViewer(QMainWindow):
         self.spinBox = spinBox
         self.linkWindow = linkWindow
         self.isSigleFrame = isSigleFrame
+        self.minMaxValuesMapper = None
         """Initializer."""
         super().__init__(parent)
 
@@ -6715,6 +6716,7 @@ class imageViewer(QMainWindow):
 
         # Image Item
         self.img = widgets.BaseImageItem()
+        self.img.setEnableAutoLevels(True)
         self.Plot.addItem(self.img)
 
         #Image histogram
@@ -7140,6 +7142,8 @@ class imageViewer(QMainWindow):
             posData = self.posData
             idx = (posData.filename, posData.frame_i)
             posData.segmInfo_df.at[idx, 'z_slice_used_gui'] = z
+        
+        self.img.setCurrentZsliceIndex(z)
         self.update_img()
 
     def getImage(self):
@@ -10374,7 +10378,7 @@ class QDialogModelParams(QDialog):
             url=None, parent=None, initLastParams=True, posData=None, 
             channels=None, currentChannelName=None, segmFileEndnames=None,
             df_metadata=None, force_postprocess_2D=False, model_module=None,
-            action_type='', addPreProcessParams=True
+            action_type='', addPreProcessParams=True, addPostProcessParams=True
         ):
         self.cancel = True
         super().__init__(parent)
@@ -10386,15 +10390,18 @@ class QDialogModelParams(QDialog):
         self.df_metadata = df_metadata
         self.force_postprocess_2D = force_postprocess_2D
 
-        if segment_params[0].name.lower().find('skip_segmentation') != -1:
-            self.skipSegmentation = True
-            addPreProcessParams = False
-        else:
-            self.skipSegmentation = False
+        self.skipSegmentation = False
+        if len(segment_params) > 0:
+            if segment_params[0].name.lower().find('skip_segmentation') != -1:
+                self.skipSegmentation = True
+                addPreProcessParams = False
+            else:
+                self.skipSegmentation = False
         
         if is_tracker:
             self.ini_filename = 'last_params_trackers.ini'
             addPreProcessParams = False
+            addPostProcessParams = False
         else:
             self.ini_filename = 'last_params_segm_models.ini'
 
@@ -10500,7 +10507,7 @@ class QDialogModelParams(QDialog):
         self.postProcessGroupbox = None
         postProcessLayout = None
         self.seeHereLabel = None
-        if not is_tracker:
+        if addPostProcessParams:
             postProcessLayout = QVBoxLayout()
             postProcessLayout.addWidget(widgets.QHLine())
             
@@ -10552,7 +10559,7 @@ class QDialogModelParams(QDialog):
         if self.configPars is None:
             initLoadLastSelButton.setDisabled(True)
             segmentLoadLastSelButton.setDisabled(True)
-            if not is_tracker:
+            if postProcessLayout is not None:
                 postProcLoadLastSelButton.setDisabled(True)
 
         if initLastParams:
@@ -10560,7 +10567,7 @@ class QDialogModelParams(QDialog):
             if not self.skipSegmentation:
                 segmentLoadLastSelButton.click()
         
-        if not is_tracker and not self.skipSegmentation:
+        if postProcessLayout is not None:
             postProcLoadLastSelButton.click()
 
         try:
@@ -10707,9 +10714,13 @@ class QDialogModelParams(QDialog):
             start_row += 1
         
         addSecondChannelSelector = addChannelSelector
-        if addSecondChannelSelector and ArgSpecs_list[0].docstring is not None:
-            if ArgSpecs_list[0].docstring.lower().find('single channel only') != -1:
-                addSecondChannelSelector = False
+        if len(ArgSpecs_list) > 0:
+            if addSecondChannelSelector and ArgSpecs_list[0].docstring is not None:
+                isSingleChannel = ArgSpecs_list[0].docstring.lower().find(
+                    'single channel only'
+                ) != -1
+                if isSingleChannel:
+                    addSecondChannelSelector = False
         
         isDualChannelModel = (
             self.model_name.find('cellpose') != -1 
@@ -11163,8 +11174,10 @@ class downloadModel:
         self._parent = parent
 
     def download(self):
-        if myutils._model_url(self.model_name) is None:
+        model_url = myutils._model_url(self.model_name)
+        if model_url is None:
             return
+        
         _, model_path = myutils.get_model_path(
             self.model_name, create_temp_dir=False
         )
@@ -12485,6 +12498,7 @@ class ShortcutEditorDialog(QBaseDialog):
             self, widgetsWithShortcut: dict, 
             delObjectKey='',
             delObjectButton: Literal['Middle click', 'Left click']='Middle click',
+            zoomOutKeyValue: int=None,
             parent=None
         ):
         self.cancel = True
@@ -12502,6 +12516,7 @@ class ShortcutEditorDialog(QBaseDialog):
         scrollAreaWidget = QWidget()
         entriesLayout = QGridLayout()
         
+        row = 0
         self.delObjShortcutLineEdit = widgets.ShortcutLineEdit(
             allowModifiers=True, notAllowedModifier=Qt.AltModifier
         )
@@ -12510,13 +12525,29 @@ class ShortcutEditorDialog(QBaseDialog):
         self.delObjButtonCombobox = QComboBox()
         self.delObjButtonCombobox.addItems(['Middle click', 'Left click'])
         self.delObjButtonCombobox.setCurrentText(delObjectButton)
-        entriesLayout.addWidget(QLabel('Delete object:'), 0, 0)
-        entriesLayout.addWidget(self.delObjShortcutLineEdit, 0, 1)
+        entriesLayout.addWidget(QLabel('Delete object:'), row, 0)
+        entriesLayout.addWidget(self.delObjShortcutLineEdit, row, 1)
         entriesLayout.addWidget(
-            self.delObjButtonCombobox, 0, 2, alignment=Qt.AlignLeft
+            self.delObjButtonCombobox, row, 2, alignment=Qt.AlignLeft
         )
         
-        for row, (name, widget) in enumerate(widgetsWithShortcut.items(), start=1):
+        row += 1
+        name = 'Zoom out'
+        label = QLabel('Zoom out:')
+        self.zoomShortcutLineEdit = widgets.ShortcutLineEdit()
+        if zoomOutKeyValue is not None:
+            zoomOutKeySequence = QKeySequence(zoomOutKeyValue)
+            self.zoomShortcutLineEdit.setText(zoomOutKeySequence.toString())
+            self.zoomShortcutLineEdit.key = zoomOutKeyValue
+        self.zoomShortcutLineEdit.textChanged.connect(
+            self.checkDuplicateShortcuts
+        )
+        entriesLayout.addWidget(label, row, 0)
+        entriesLayout.addWidget(self.zoomShortcutLineEdit, row, 1)
+        self.shortcutLineEdits[name] = self.zoomShortcutLineEdit
+        
+        row += 1
+        for row, (name, widget) in enumerate(widgetsWithShortcut.items(), start=row):
             label = QLabel(f'{name}:')
             shortcutLineEdit = widgets.ShortcutLineEdit()
             if hasattr(widget, 'keyPressShortcut'):
@@ -12559,7 +12590,24 @@ class ShortcutEditorDialog(QBaseDialog):
                 continue
             shortcutLineEdit.setText('')
     
+    def warnInvalidKeySequenceDelObjWithLeftClick(self):
+        txt = html_utils.paragraph(
+            'The selected key sequence to delete objects with "Left click" '
+            'is invalid.<br><br>'
+            'Only "Middle click" can be used without pressing keys.<br><br>'
+            'Thank you for your patience!'
+        )
+        msg = widgets.myMessageBox()
+        msg.warning(self, 'Invalid key sequence to delete objects', txt)
+    
     def ok_cb(self):
+        delObjButtonText = self.delObjButtonCombobox.currentText()
+        delObjKeySequence = self.delObjShortcutLineEdit.keySequence
+        if delObjButtonText == 'Left click' and delObjKeySequence is None:
+            self.warnInvalidKeySequenceDelObjWithLeftClick()
+            return
+        
+        self.shortcutLineEdits.pop('Zoom out')
         self.cancel = False
         for name, shortcutLineEdit in self.shortcutLineEdits.items():
             text = shortcutLineEdit.text()
@@ -12569,14 +12617,14 @@ class ShortcutEditorDialog(QBaseDialog):
                 self.customShortcuts[name] = (
                     text, shortcutLineEdit.keySequence
                 )
-        delObjButtonText = self.delObjButtonCombobox.currentText()
+        
         delObjQtButton = (
             Qt.MouseButton.LeftButton if delObjButtonText == 'Left click'
             else Qt.MouseButton.MiddleButton
         )
-        self.delObjAction = (
-            self.delObjShortcutLineEdit.keySequence, delObjQtButton
-        )
+        self.delObjAction = delObjKeySequence, delObjQtButton
+        self.zoomOutKeyValue = self.zoomShortcutLineEdit.key
+        
         self.close()
     
     def showEvent(self, event) -> None:

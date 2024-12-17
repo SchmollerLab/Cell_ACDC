@@ -30,7 +30,7 @@ class select_channel_name:
 
     def get_available_channels(
             self, filenames, images_path, useExt=None,
-            channelExt=('.h5', '.tif', '_aligned.npz'), 
+            channelExt=('.tif', '_aligned.npz'), 
             validEndnames=('aligned.npz', 'acdc_output.csv', 'segm.npz')
         ):
         # First check if metadata.csv already has the channel names

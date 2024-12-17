@@ -6308,6 +6308,18 @@ class BaseImageItem(pg.ImageItem):
         self.frame_i = 0
         
         super().__init__(image, **kargs)
+        self.autoLevelsEnabled = None
+    
+    def setEnableAutoLevels(self, enabled: bool):
+        self.autoLevelsEnabled = enabled
+    
+    def setImage(
+            self, image=None, autoLevels=None, **kargs
+        ):
+        if autoLevels is None:
+            autoLevels = self.autoLevelsEnabled
+        
+        super().setImage(image, autoLevels=autoLevels, **kargs)
         
     def preComputedMinMaxValues(self, data: dict):
         self.minMaxValuesMapper = {}
@@ -6344,7 +6356,8 @@ class BaseImageItem(pg.ImageItem):
         
         try:
             key = (self.pos_i, self.frame_i, self.z)
-            return self.minMaxValuesMapper[key]
+            levels = self.minMaxValuesMapper[key]
+            return levels
         except Exception as err:
             return super().quickMinMax(targetSize=targetSize)
         

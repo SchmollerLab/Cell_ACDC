@@ -88,7 +88,7 @@ class computeMeasurmentsUtilWin(QDialog):
         self.progressWin.show(self.app)
 
         self.thread = QThread()
-        self.worker = workers.calcMetricsWorker(self)
+        self.worker = workers.ComputeMetricsWorker(self)
         self.worker.moveToThread(self.thread)
 
         self.worker.signals.finished.connect(self.thread.quit)

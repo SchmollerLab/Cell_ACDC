@@ -373,10 +373,18 @@ def delete_older_log_files(logs_path):
 def _log_system_info(logger, log_path, is_cli=False, also_spotmax=False):
     logger.info(f'Initialized log file "{log_path}"')
     
+    version = read_version()
+    release_date = get_date_from_version(version, package='cellacdc')
+    
     py_ver = sys.version_info
     python_version = f'{py_ver.major}.{py_ver.minor}.{py_ver.micro}'
     logger.info(f'Running Python v{python_version} from "{sys.exec_prefix}"')    
-    logger.info(f'Cell-ACDC installation directory: "{cellacdc_path}"')
+    logger.info(
+        f'Cell-ACDC info:\n'
+        f'  * Installation directory: "{cellacdc_path}"\n'
+        f'  * Version: "{version}"\n'
+        f'  * Released on: "{release_date}"'
+    )
     logger.info(f'System version: {sys.version}')
     logger.info(f'Platform: {platform.platform()}')
     
@@ -1459,7 +1467,7 @@ def _model_url(model_name, return_alternative=False):
         ]
         file_size = [124142981, 124143031, 124144759]
         alternative_url = 'https://github.com/rahi-lab/YeaZ-GUI#installation'
-    elif model_name == 'deepsea':
+    elif model_name == 'DeepSea':
         url = [
             'https://github.com/abzargar/DeepSea/raw/master/deepsea/trained_models/segmentation.pth',
             'https://github.com/abzargar/DeepSea/raw/master/deepsea/trained_models/tracker.pth'
@@ -1526,7 +1534,7 @@ def _download_segment_anything_models():
         shutil.move(temp_dst, final_dst)
 
 def _download_deepsea_models():
-    urls, file_sizes = _model_url('deepsea')
+    urls, file_sizes = _model_url('DeepSea')
     temp_model_path = tempfile.mkdtemp()
     _, final_model_path = (
         get_model_path('deepsea', create_temp_dir=False)
@@ -2745,22 +2753,28 @@ def check_matplotlib_version(qparent=None):
     mpl_version = get_package_version('matplotlib')  
     mpl_version_digits = mpl_version.split('.')
 
-    mpl_version = float(f'{mpl_version_digits[0]}.{mpl_version_digits[1]}')
-    if mpl_version < 3.5:
-        proceed = _install_package_msg('matplotlib', parent=qparent, upgrade=True)
-        if not proceed:
-            raise ModuleNotFoundError(
-                f'User aborted "matplotlib" installation'
-            )
-        import subprocess
-        try:
-            subprocess.check_call(
-                [sys.executable, '-m', 'pip', 'install', '-U', 'matplotlib']
-            )
-        except Exception as e:
-            printl(traceback.format_exc())
-            _inform_install_package_failed(
-                'matplotlib', parent=qparent, do_exit=False
+    mpl_major = int(mpl_version_digits[0])
+    mpl_minor = int(mpl_version_digits[1])
+    is_less_than_3_5 = (
+        mpl_major < 3 or (mpl_major >= 3 and mpl_minor < 5)
+    )
+    if not is_less_than_3_5:
+        return 
+    
+    proceed = _install_package_msg('matplotlib', parent=qparent, upgrade=True)
+    if not proceed:
+        raise ModuleNotFoundError(
+            f'User aborted "matplotlib" installation'
+        )
+    import subprocess
+    try:
+        subprocess.check_call(
+            [sys.executable, '-m', 'pip', 'install', '-U', 'matplotlib']
+        )
+    except Exception as e:
+        printl(traceback.format_exc())
+        _inform_install_package_failed(
+            'matplotlib', parent=qparent, do_exit=False
             )
             
 def _inform_install_package_failed(pkg_name, parent=None, do_exit=True):
