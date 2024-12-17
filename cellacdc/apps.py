@@ -4456,7 +4456,9 @@ class QDialogAutomaticThresholding(QBaseDialog):
         self.close()
     
     def loadLastSelection(self):
-        self.ini_path = os.path.join(settings_folderpath, 'last_params_segm_models.ini')
+        self.ini_path = os.path.join(
+            settings_folderpath, 'last_params_segm_models.ini'
+        )
         if not os.path.exists(self.ini_path):
             return
 
@@ -10420,15 +10422,15 @@ class QDialogModelParams(QDialog):
         self.scrollArea.setVerticalLayout(scrollAreaLayout)
         
         preProcessLayout = None
-        self.preProcessParamsGroupbox = None
+        self.preProcessParamsWidget = None
         if addPreProcessParams:
             preProcessLayout = QVBoxLayout()
-            self.preProcessParamsGroupbox = PreProcessParamsGroupbox(
+            self.preProcessParamsWidget = PreProcessParamsWidget(
                 parent=self
             )
-            self.preProcessParamsGroupbox.setChecked(False)
-            preProcessLayout.addWidget(self.preProcessParamsGroupbox)
-            self.preProcessParamsGroupbox.sigLoadRecipe.connect(
+            self.preProcessParamsWidget.setChecked(False)
+            preProcessLayout.addWidget(self.preProcessParamsWidget)
+            self.preProcessParamsWidget.sigLoadRecipe.connect(
                 self.loadPreprocRecipe
             )
             preProcessLayout.addWidget(widgets.QHLine())
@@ -10593,7 +10595,7 @@ class QDialogModelParams(QDialog):
         if not preprocConfigPars:
             return
         
-        self.preProcessParamsGroupbox.loadRecipe(preprocConfigPars)
+        self.preProcessParamsWidget.loadRecipe(preprocConfigPars)
     
     def connectCustomSignals(self, model_module):
         if model_module is None:
@@ -11060,8 +11062,8 @@ class QDialogModelParams(QDialog):
     def ok_cb(self, checked):
         self.cancel = False
         self.preproc_recipe = None
-        if self.preProcessParamsGroupbox is not None:
-            self.preproc_recipe = self.preProcessParamsGroupbox.recipe()
+        if self.preProcessParamsWidget is not None:
+            self.preproc_recipe = self.preProcessParamsWidget.recipe()
             if self.preproc_recipe is None:
                 return
             
@@ -11097,8 +11099,8 @@ class QDialogModelParams(QDialog):
         if self.configPars is None:
             self.configPars = config.ConfigParser()
         
-        if self.preProcessParamsGroupbox is not None:
-            preprocCp = self.preProcessParamsGroupbox.recipeConfigPars(
+        if self.preProcessParamsWidget is not None:
+            preprocCp = self.preProcessParamsWidget.recipeConfigPars(
                 self.model_name
             )
             for section in preprocCp.sections():
@@ -11151,8 +11153,8 @@ class QDialogModelParams(QDialog):
     def showEvent(self, event) -> None:
         buttonHeight = self.okButton.minimumSizeHint().height()
         height = self.scrollArea.minimumHeightNoScrollbar() + 70
-        if self.preProcessParamsGroupbox is not None:
-            height += self.preProcessParamsGroupbox.minimumSizeHint().height()
+        if self.preProcessParamsWidget is not None:
+            height += self.preProcessParamsWidget.minimumSizeHint().height()
             height += buttonHeight
         if self.postProcessGroupbox is not None:
             height += self.postProcessGroupbox.minimumSizeHint().height()
@@ -14496,7 +14498,7 @@ class DataPrepSubCropsPathsDialog(QBaseDialog):
         self.cancel = False
         self.close()
 
-class PreProcessParamsGroupbox(QWidget):
+class PreProcessParamsWidget(QWidget):
     sigLoadRecipe = Signal()
     
     def __init__(self, parent=None):
@@ -14512,7 +14514,7 @@ class PreProcessParamsGroupbox(QWidget):
         
         self.gridLayout = QGridLayout()        
         self.row = -1
-        self.stepsWidgets = []
+        self.stepsWidgets = {}
         
         self.gridLayout.setColumnStretch(0, 0)
         self.gridLayout.setColumnStretch(1, 1)
@@ -14528,13 +14530,14 @@ class PreProcessParamsGroupbox(QWidget):
         buttonsLayout.addStretch(1)
         # buttonsLayout.addWidget(saveRecipeButton)
         buttonsLayout.addWidget(loadRecipeButton)
+        self.buttonsLayout = buttonsLayout
         
         loadRecipeButton.clicked.connect(self.emitLoadRecipe)
         
         mainLayout.addWidget(groupbox)
         mainLayout.addLayout(buttonsLayout)
         
-        self.addStep()
+        self.addStep(is_first=True)
         
         mainLayout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(mainLayout)
@@ -14546,15 +14549,16 @@ class PreProcessParamsGroupbox(QWidget):
         self.sigLoadRecipe.emit()
     
     def loadRecipe(self, configPars: dict):
-        for stepWidgets in self.stepsWidgets:
+        for stepWidgets in self.stepsWidgets.values():
             stepWidgets['delButton'].click()
         
         configPars = self.sortStepsConfigPars(configPars)
-        for i in range(1, len(configPars)):
-            self.stepsWidgets[i-1]['addButton'].click()
+        for s in range(1, len(configPars)+1):
+            self.stepsWidgets[s]['addButton'].click()
         
-        for s, (section, section_items) in enumerate(configPars.items()):
+        for i, (section, section_items) in enumerate(configPars.items()):
             method = section_items['method']
+            s = i+1
             self.stepsWidgets[s]['selector'].setCurrentText(method)
             for label, widget in self.stepsWidgets[s]['widgets']:
                 option = label.text().lower()
@@ -14573,12 +14577,13 @@ class PreProcessParamsGroupbox(QWidget):
             sortedConfigPars[key] = configPars[key]
         return sortedConfigPars
         
-    def addStep(self):
+    def addStep(self, is_first=False):
         stepWidgets = {}
         
         self.row += 1
         
-        label = QLabel(f'Step {len(self.stepsWidgets)+1}: ')
+        step_n = len(self.stepsWidgets)+1
+        label = QLabel(f'Step {step_n}: ')
         self.gridLayout.addWidget(label, self.row, 0)
         stepWidgets['stepLabel'] = label
         
@@ -14601,28 +14606,38 @@ class PreProcessParamsGroupbox(QWidget):
         infoButton.clicked.connect(partial(self.showInfo, selector=selector))
         stepWidgets['infoButton'] = infoButton
         
-        addButton = widgets.addPushButton()
-        self.gridLayout.addWidget(addButton, self.row, 4)
-        addButton.clicked.connect(self.addStep)
-        stepWidgets['addButton'] = addButton
-
-        delButton = widgets.delPushButton()
-        self.gridLayout.addWidget(delButton, self.row, 5)
-        delButton.clicked.connect(self.removeStep)
-        delButton.idx = len(self.stepsWidgets)
-        stepWidgets['delButton'] = delButton
+        if is_first:
+            addButton = widgets.addPushButton()
+            self.gridLayout.addWidget(addButton, self.row, 4)
+            addButton.clicked.connect(self.addStep)
+            stepWidgets['addButton'] = addButton
+        else:
+            delButton = widgets.delPushButton()
+            self.gridLayout.addWidget(delButton, self.row, 4)
+            delButton.clicked.connect(self.removeStep)
+            delButton.step_n = step_n
+            stepWidgets['delButton'] = delButton
         
         self.row += 1
         selector.row = self.row
-        selector.idx = delButton.idx
+        selector.step_n = step_n
 
         hline = widgets.QHLine()
         self.gridLayout.addWidget(hline, self.row, 0, 1, 6)
         stepWidgets['hline'] = hline
         self.row += 1
               
-        self.stepsWidgets.append(stepWidgets)
+        self.stepsWidgets[step_n] = stepWidgets
+        
+        self.resetStretch()
     
+    def resetStretch(self):
+        for row in range(self.gridLayout.rowCount()):
+            self.gridLayout.setRowStretch(row, 0)
+
+        self.gridLayout.setRowStretch(self.gridLayout.rowCount(), 1)
+        self.row = self.gridLayout.rowCount() - 1
+        
     def showInfo(self, checked=False, selector=None):
         if selector is None:
             return
@@ -14639,35 +14654,55 @@ class PreProcessParamsGroupbox(QWidget):
         if stepFunctionKwargs is None:
             return
         
-        idx = selector.idx
-        self.stepsWidgets[idx]['step_kwargs'] = stepFunctionKwargs
+        step_n = selector.step_n
+        self.stepsWidgets[step_n]['step_kwargs'] = stepFunctionKwargs
         
-    def removeStep(self, checked=False, idx=None):
-        if len(self.stepsWidgets) == 1:
-            self.setChecked(False)
-            return
+    def removeStep(self, checked=False, step_n=None):        
+        if step_n is None:
+            step_n = self.sender().step_n
         
-        if idx is None:
-            idx = self.sender().idx
+        stepWidgets = self.stepsWidgets[step_n]
         
-        stepWidgets = self.stepsWidgets[idx]
+        stepWidgets['stepLabel'].hide()
         self.gridLayout.removeWidget(stepWidgets['stepLabel'])
+        
+        stepWidgets['selector'].hide()
         self.gridLayout.removeWidget(stepWidgets['selector'])
+        
+        stepWidgets['infoButton'].hide()
         self.gridLayout.removeWidget(stepWidgets['infoButton'])
-        self.gridLayout.removeWidget(stepWidgets['addButton'])
+        
+        # stepWidgets['addButton'].hide()
+        # self.gridLayout.removeWidget(stepWidgets['addButton'])
+        
+        stepWidgets['setParamsButton'].hide()
         self.gridLayout.removeWidget(stepWidgets['setParamsButton'])
+        
+        stepWidgets['delButton'].hide()
         self.gridLayout.removeWidget(stepWidgets['delButton'])
         self.row -= 1
         
+        stepWidgets['hline'].hide()
         self.gridLayout.removeWidget(stepWidgets['hline'])
         self.row -= 1
+
+        self.stepsWidgets.pop(step_n)
         
-        for s, stepWidgets in enumerate(self.stepsWidgets):
+        stepsWidgetsMapper = {1: self.stepsWidgets[1]}
+        for i, stepWidgets in enumerate(self.stepsWidgets.values()):
+            if i == 0:
+                continue
+            step_n = i + 1
             label = stepWidgets['stepLabel']
-            label.setText(f'Step {s+1}: ')
+            label.setText(f'Step {step_n}: ')
+            stepWidgets['delButton'].step_n = step_n
+            stepWidgets['selector'].step_n = step_n
+            stepsWidgetsMapper[step_n] = stepWidgets
         
-        del self.stepsWidgets[idx]
-    
+        self.stepsWidgets = stepsWidgetsMapper
+        
+        self.resetStretch()
+
     def isChecked(self):
         return self.groupbox.isChecked()
     
@@ -15396,3 +15431,76 @@ class FilterImageDialog(QBaseDialog):
         layout.addWidget(self.imshowWin)
         
         self.setLayout(layout)
+
+class PreProcessRecipeDialog(QBaseDialog):
+    sigApplyImage = Signal()
+    sigApplyZstack = Signal()
+    sigApplyAll = Signal()
+    sigPreview = Signal()
+    
+    def __init__(self, isTimelapse=False, isZstack=False, parent=None):
+        super().__init__(parent=parent)
+        
+        self.setWindowTitle('Pre-processing recipe')
+        
+        self.cancel = False
+        mainLayout = QVBoxLayout()
+
+        self.preProcessParamsWidget = PreProcessParamsWidget(
+            parent=self
+        )
+        self.preProcessParamsWidget.groupbox.setCheckable(False)
+        
+        self.preProcessParamsWidget.sigLoadRecipe.connect(
+            self.loadPreprocRecipe
+        )
+        
+        buttonsLayout = self.preProcessParamsWidget.buttonsLayout
+        
+        self.previewCheckbox = QCheckBox('Preview')
+        buttonsLayout.insertWidget(0, self.previewCheckbox)
+        
+        # self.cancelButton = widgets.cancelPushButton('Cancel')
+        # buttonsLayout.insertWidget(2, self.cancelButton)
+        # buttonsLayout.insertSpacing(3, 20)
+        
+        self.applyCurrentFrameButton = widgets.okPushButton(
+            'Apply to displayed image'
+        )
+        buttonsLayout.addWidget(self.applyCurrentFrameButton)
+        if isZstack:
+            self.applyAllZslicesButton = widgets.threeDPushButton(
+                'Apply to all z-slices of current image'
+            )
+            buttonsLayout.addWidget(self.applyAllZslicesButton)
+        if isTimelapse:
+            self.applyAllFramesButton = widgets.futurePushButton(
+                'Apply to all frames'
+            )
+            buttonsLayout.addWidget(self.applyAllFramesButton)
+            
+        # self.cancelButton.clicked.connect(self.close)
+        
+        mainLayout.addWidget(self.preProcessParamsWidget)
+        
+        self.setLayout(mainLayout)
+    
+    def ok_cb(self):
+        self.cancel = False
+        self.close()
+    
+    def loadPreprocRecipe(self):
+        if self.configPars is None:
+            return
+        
+        preprocConfigPars = {}
+        for section in self.configPars.sections():
+            if not section.startswith(f'{self.model_name}.preprocess'):
+                continue      
+            
+            preprocConfigPars[section] = self.configPars[section]
+        
+        if not preprocConfigPars:
+            return
+        
+        self.preProcessParamsWidget.loadRecipe(preprocConfigPars)

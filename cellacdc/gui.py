@@ -1539,11 +1539,11 @@ class guiWin(QMainWindow):
             self.defaultRescaleIntensActionGroup.addAction(action)
             self.defaultRescaleIntensLutMenu.addAction(action)
         
-        filtersMenu = menuBar.addMenu("Filters")
-        for filtersDict in self.filtersWins.values():
-            filtersMenu.addAction(filtersDict['action'])
+        # filtersMenu = menuBar.addMenu("Filters")
+        # for filtersDict in self.filtersWins.values():
+        #     filtersMenu.addAction(filtersDict['action'])
         
-        filtersMenu.addAction(self.cp3denoiseAction)
+        # filtersMenu.addAction(self.cp3denoiseAction)
         
         ImageMenu.addAction(self.addScaleBarAction)
         ImageMenu.addAction(self.addTimestampAction)
@@ -1557,6 +1557,7 @@ class guiWin(QMainWindow):
         
         self.rescaleIntensMenu = ImageMenu.addMenu('Rescale intensities (LUT)')
         
+        ImageMenu.addMenu(self.preprocessAction)
         ImageMenu.addAction(self.saveLabColormapAction)
         ImageMenu.addAction(self.shuffleCmapAction)
         ImageMenu.addAction(self.greedyShuffleCmapAction)
@@ -3205,6 +3206,11 @@ class guiWin(QMainWindow):
         self.normalizeQActionGroup.addAction(self.normalizeRescale0to1Action)
         self.normalizeQActionGroup.addAction(self.normalizeByMaxAction)
 
+        self.preprocessAction = QAction(
+            'Pre-processing...', self
+        )
+        self.preprocessAction.setShortcut('Alt+Shift+P')
+        
         self.zoomToObjsAction = QAction(
             'Zoom to objects  (Shortcut: H key)', self
         )
@@ -3788,6 +3794,7 @@ class guiWin(QMainWindow):
 
         self.zoomToObjsAction.triggered.connect(self.zoomToObjsActionCallback)
         self.zoomOutAction.triggered.connect(self.zoomOut)
+        self.preprocessAction.triggered.connect(self.preprocessActionTriggered)
 
         self.viewCcaTableAction.triggered.connect(self.viewCcaTable)
 
@@ -16064,6 +16071,9 @@ class guiWin(QMainWindow):
     def zoomOut(self):
         self.ax1.autoRange()
 
+    def preprocessActionTriggered(self):
+        ...
+    
     def zoomToObjsActionCallback(self):
         self.zoomToCells(enforce=True)
 
