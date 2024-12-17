@@ -226,7 +226,7 @@ def spot_detector_filter(
 
 def correct_illumination(
         image, 
-        block_size=60, 
+        block_size=45, 
         # rescale_illumination=True,
         approximate_object_diameter=15,
         # background_threshold=0.3,
@@ -256,33 +256,29 @@ def correct_illumination(
         Corrected 2D image.
     """
     image = skimage.img_as_float(image)
+    imgcopy = image.copy()
 
-    footprint = skimage.morphology.rectangle(block_size, block_size)
-    illumination_function = skimage.filters.rank.mean(image, footprint=footprint)
-
-    # Gaussian smoothing
     if apply_gaussian_filter:
-        illumination_function = skimage.filters.gaussian(
-            illumination_function, sigma=approximate_object_diameter / 2
-        )
+        image = skimage.filters.gaussian(image, sigma=approximate_object_diameter / 2)
 
-    # Threshold illumination
-    # threshold_abs_val = (np.max(illumination_function) - np.min(illumination_function)) * background_threshold + np.min(illumination_function)
-    # illum_mask = illumination_function < threshold_abs_val
-    # illumination_function[illum_mask] = threshold_abs_val
+    background_illu = skimage.restoration.rolling_ball(image, radius=block_size)
+    corrected_image = imgcopy - background_illu
 
-    # # Step 4: Optionally rescale the illumination function
-    # if rescale_illumination:
-    #     illumination_function = skimage.exposure.rescale_intensity(
-    #         illumination_function, out_range=(0.01, 1.0)
+    # footprint = skimage.morphology.rectangle(block_size, block_size)
+    # illumination_function = skimage.filters.rank.mean(image, footprint=footprint)
+
+    # # Gaussian smoothing
+    # if apply_gaussian_filter:
+    #     illumination_function = skimage.filters.gaussian(
+    #         illumination_function, sigma=approximate_object_diameter / 2
     #     )
 
-    # Apply correction
-    illumination_function[illumination_function == 0] = 1
-    corrected_image = image / illumination_function
+    # # Apply correction
+    # illumination_function[illumination_function == 0] = 1
+    # corrected_image = image / illumination_function
 
-    corrected_image = skimage.exposure.rescale_intensity(corrected_image, out_range=(0, 1))
-    corrected_image = skimage.img_as_ubyte(corrected_image)
+    # corrected_image = skimage.exposure.rescale_intensity(corrected_image, out_range=(0, 1))
+    # corrected_image = skimage.img_as_ubyte(corrected_image)
 
     return corrected_image
 
@@ -332,7 +328,7 @@ def fucci_filter(
         Default is True
     block_size : int, optional
         Block size for which to calculate the background illumination.
-        Default is 120
+        Default is 45
     # rescale_illumination : bool, optional
     #     if illumination should be rescaled with skimage.exposure.rescale_intensity range=(0, 1).
     #     Default is True
