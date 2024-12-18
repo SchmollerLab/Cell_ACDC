@@ -2,6 +2,15 @@ import typing
 
 from typing import Union
 
+class BaSiCpyResizeModes:
+    values = ['jax', 'skimage', 'skimage_dask']
+
+class BaSiCpyFittingModes:
+    values = ['ladmap', 'approximate']
+
+class BaSiCpyTimelapse:
+    values = ["True", "False", "additive", "multiplicative"]
+
 class Vector:
     """Class used to define model parameter as a vector that will use the 
     cellacdc.widgets.VectorLineEdit widget in the automatic GUI.

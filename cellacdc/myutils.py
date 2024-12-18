@@ -2446,10 +2446,13 @@ def check_napari_plugin(plugin_name, module_name, parent=None):
         msg.critical(parent, f'Napari plugin required', txt)
         raise e
 
-def _install_pip_package(pkg_name):
+def _install_pip_package(pkg_name, install_dependencies=True):
+    command = [sys.executable, '-m', 'pip', 'install', pkg_name]
+    if not install_dependencies:
+        command.append('--no-deps')
     subprocess.check_call(
-        [sys.executable, '-m', 'pip', 'install', '-U', pkg_name]
-    )
+        command
+        )
 
 def uninstall_pip_package(pkg_name):
     subprocess.check_call(
@@ -2642,7 +2645,9 @@ def check_install_package(
         force_upgrade=False,
         upgrade=False, 
         min_version='', 
-        max_version=''
+        max_version='',
+        install_dependencies=True,
+        return_outcome=False
     ):
     """Try to import a package. If import fails, ask user to install it 
     automatically.
@@ -2684,6 +2689,10 @@ def check_install_package(
         If not empty it must be a valid version `major[.minor][.patch]` where 
         minor and patch are optional. If the installed package is newer the 
         upgrade will be forced. 
+    install_dependencies : bool, optional
+        If False, the `--no-deps` flag will be added to the pip command.
+    return_outcome : bool, optional
+        If True, returns 1 on successfull action
         
     Raises
     ------
@@ -2737,12 +2746,32 @@ def check_install_package(
                     max_version=max_version, 
                     min_version=min_version
                 )
-                _install_pip_package(pkg_command)
+                _install_pip_package(pkg_command, install_dependencies=install_dependencies)
         except Exception as e:
             printl(traceback.format_exc())
             _inform_install_package_failed(
                 pkg_name, parent=parent, do_exit=raise_on_cancel
             )
+        if return_outcome:
+            return True
+
+def check_install_custom_dependencies(custom_install_requires, *args, **kwargs):
+    """Used to install a package with custom dependencies, usefull if they have random pinned versions for their dependencies.
+    For *args and **kwargs see `myutils.check_install_package`.
+
+    Parameters
+    ----------
+    custom_install_requires : list
+        list of dependencies. Check either requirements.txt, setup.py, setup.cfg, pyproject.toml, or any other file that lists the dependencies.
+        For formatting of the dependencies with min max version, use _get_pkg_command_pip_install.
+    """
+    kwargs['install_dependencies'] = False
+    kwargs['return_outcome'] = True
+    success = check_install_package(*args, **kwargs)
+    if not success:
+        return
+    for pkg_name in custom_install_requires:
+        _install_pip_package(pkg_name)
 
 def get_chained_attr(_object, _name):
     for attr in _name.split('.'):
