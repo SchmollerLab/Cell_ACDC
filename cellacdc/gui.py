@@ -18,7 +18,7 @@ from functools import partial
 from tqdm import tqdm
 from collections import Counter
 from natsort import natsorted
-from typing import Literal, Iterable
+from typing import Literal, Iterable, Dict, Any, List
 
 import time
 import cv2
@@ -87,6 +87,7 @@ from . import measure
 from . import cca_functions
 from . import data_structure_docs_url
 from . import exporters
+from . import preprocess
 from .trackers.CellACDC import CellACDC_tracker
 from .cca_functions import _calc_rot_vol
 from .myutils import exec_time, setupLogger, ArgSpec
@@ -1557,7 +1558,7 @@ class guiWin(QMainWindow):
         
         self.rescaleIntensMenu = ImageMenu.addMenu('Rescale intensities (LUT)')
         
-        ImageMenu.addMenu(self.preprocessAction)
+        ImageMenu.addAction(self.preprocessAction)
         ImageMenu.addAction(self.saveLabColormapAction)
         ImageMenu.addAction(self.shuffleCmapAction)
         ImageMenu.addAction(self.greedyShuffleCmapAction)
@@ -2279,6 +2280,34 @@ class guiWin(QMainWindow):
     def ccaCheckerWorkerDone(self):
         self.setStatusBarLabel(log=False)
     
+    def preprocWorkerDone(self, processed_data: np.ndarray, how: str):
+        self.setStatusBarLabel(log=False)
+        self.preprocessDialog.appliedFinished()
+        posData = self.data[self.pos_i]
+        if not hasattr(posData, 'preproc_img_data'):
+            posData.preproc_img_data = preprocess.PreprocessedData()
+
+        if how == 'current_image':
+            if posData.SizeZ > 1:
+                z_slice = self.z_slice_index()
+                posData.preproc_img_data[posData.frame_i][z_slice] = (
+                    processed_data
+                )
+            else:
+                posData.preproc_img_data[posData.frame_i] = processed_data
+        elif how == 'z_stack':
+            ...
+        elif how == 'all_frames':
+            ...
+        elif how == 'all_pos':
+            ...
+        
+        if not self.viewPreprocDataToggle.isChecked():
+            self.viewPreprocDataToggle.setChecked(True)
+        else:
+            self.setImageImg1()
+        
+    
     def goToFrameNumber(self, frame_n):
         posData = self.data[self.pos_i]
         posData.frame_i = frame_n - 1
@@ -2339,6 +2368,9 @@ class guiWin(QMainWindow):
     def ccaCheckerWorkerClosed(self, worker):
         self.logger.info('Cell cycle annotations integrity checker stopped.') 
         self.ccaCheckerRunning = False           
+    
+    def preprocWorkerClosed(self, worker):
+        self.logger.info('Pre-processing worker stopped.')
     
     def gui_createMainLayout(self):
         mainLayout = QGridLayout()
@@ -3350,6 +3382,9 @@ class guiWin(QMainWindow):
         self.exportToVideoAction.triggered.connect(self.exportToVideoTriggered)
         self.exportToImageAction.triggered.connect(self.exportToImageTriggered)
         self.quickSaveAction.triggered.connect(self.quickSave)
+        self.viewPreprocDataToggle.toggled.connect(
+            self.viewPreprocDataToggled
+        )
         self.autoSaveToggle.toggled.connect(self.autoSaveToggled)
         self.ccaIntegrCheckerToggle.toggled.connect(
             self.ccaIntegrCheckerToggled
@@ -3844,6 +3879,17 @@ class guiWin(QMainWindow):
         layout = QFormLayout()
         layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.FieldsStayAtSizeHint)
         layout.setFormAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        
+        self.viewPreprocDataToggle = widgets.Toggle()
+        viewPreprocDataToggleTooltip = (
+            'View pre-processed data. See menu `Image --> Pre-processing...`\n'
+            'on the top menubar.'
+        )
+        self.viewPreprocDataToggle.setChecked(False)
+        self.viewPreprocDataToggle.setToolTip(viewPreprocDataToggleTooltip)
+        viewPreprocDataToggleLabel = QLabel('View pre-processed image')
+        viewPreprocDataToggleLabel.setToolTip(viewPreprocDataToggleTooltip)
+        layout.addRow(viewPreprocDataToggleLabel, self.viewPreprocDataToggle)
 
         self.autoSaveToggle = widgets.Toggle()
         autoSaveTooltip = (
@@ -13614,7 +13660,7 @@ class guiWin(QMainWindow):
             return
         
         if ev.key() == Qt.Key_Q and self.debug:
-            self.logger.warning('Test')
+            self.viewPreprocDataToggle.setChecked(True)
         
         if not self.isDataLoaded:
             self.logger.warning(
@@ -16072,7 +16118,9 @@ class guiWin(QMainWindow):
         self.ax1.autoRange()
 
     def preprocessActionTriggered(self):
-        ...
+        self.preprocessDialog.show()
+        self.preprocessDialog.raise_()
+        self.preprocessDialog.activateWindow()
     
     def zoomToObjsActionCallback(self):
         self.zoomToCells(enforce=True)
@@ -17113,6 +17161,118 @@ class guiWin(QMainWindow):
         else:
             self.manageVersionsAction.setDisabled(True)
 
+    def preprocessPreviewToggled(self, checked):
+        self.viewPreprocDataToggle.setChecked(checked)
+    
+    def preprocessCurrentImage(self, recipe: List[Dict[str, Any]]):
+        txt = 'Pre-processing current image...'
+        self.logger.info(txt)
+        self.statusBarLabel.setText(txt)
+        
+        func = core.preprocess_image_from_recipe
+        image_data = self.getImage(raw=True)
+        self.preprocWorker.setupJob(
+            func, 
+            image_data, 
+            recipe, 
+            'current_image'
+        )
+        
+        self.preprocWorker.wakeUp()
+    
+    def preprocessZStack(self, recipe: List[Dict[str, Any]]):
+        txt = 'Pre-processing z-stack...'
+        self.statusBarLabel.setText(txt)
+        self.logger.info(txt)
+        
+        self.preprocWorker.setupJob(
+            func, 
+            image_data, 
+            recipe, 
+            'z_stack'
+        )
+        
+        self.preprocWorker.wakeUp()
+    
+    def preprocessAllFrames(self, recipe: List[Dict[str, Any]]):
+        txt = 'Pre-processing all frames...'
+        self.logger.info(txt)
+        self.statusBarLabel.setText(txt)
+        
+        self.preprocWorker.setupJob(
+            func, 
+            image_data, 
+            recipe, 
+            'all_frames'
+        )
+        
+        self.preprocWorker.wakeUp()
+    
+    def preprocessAllPos(self, recipe: List[Dict[str, Any]]):
+        txt = 'Pre-processing all Positions...'
+        self.logger.info(txt)
+        self.statusBarLabel.setText(txt)
+        
+        self.preprocWorker.setupJob(
+            func, 
+            image_data, 
+            recipe, 
+            'all_pos'
+        )
+        
+        self.preprocWorker.wakeUp()
+    
+    def setupPreprocessing(self):
+        posData = self.data[self.pos_i]
+        
+        self.preprocessDialog = apps.PreProcessRecipeDialog(
+            isTimelapse=posData.SizeT>1, 
+            isZstack=posData.SizeZ>1,
+            isMultiPos=len(self.data)>1
+        )
+        self.doPreviewPreprocImage = False
+        self.preprocessDialog.sigApplyImage.connect(
+            self.preprocessCurrentImage
+        )
+        self.preprocessDialog.sigApplyZstack.connect(
+            self.preprocessZStack
+        )
+        self.preprocessDialog.sigApplyAllFrames.connect(
+            self.preprocessAllFrames
+        )
+        self.preprocessDialog.sigApplyAllPos.connect(
+            self.preprocessAllPos
+        )
+        self.preprocessDialog.sigPreviewToggled.connect(
+            self.preprocessPreviewToggled
+        )
+        
+        self.preprocThread = QThread()
+        self.preprocMutex = QMutex()
+        self.preprocWaitCond = QWaitCondition()
+        
+        self.preprocWorker = workers.PreprocessWorker(
+            self.preprocMutex, self.preprocWaitCond
+        )
+        
+        self.preprocWorker.moveToThread(self.preprocThread)
+        self.preprocWorker.signals.finished.connect(self.preprocThread.quit)
+        self.preprocWorker.signals.finished.connect(
+            self.preprocWorker.deleteLater
+        )
+        self.preprocThread.finished.connect(self.preprocThread.deleteLater)
+
+        self.preprocWorker.sigDone.connect(self.preprocWorkerDone)
+        self.preprocWorker.signals.progress.connect(self.workerProgress)
+        self.preprocWorker.signals.critical.connect(self.workerCritical)
+        self.preprocWorker.signals.finished.connect(self.preprocWorkerClosed)
+        
+        self.preprocThread.started.connect(self.preprocWorker.run)
+        self.preprocThread.start()
+        
+        self.logger.info('Pre-processing worker started.')
+        
+            
     @exception_handler
     def loadingDataCompleted(self):
         self.isDataLoading = True
@@ -17132,6 +17292,8 @@ class guiWin(QMainWindow):
         self.initPixelSizePropsDockWidget()
 
         self.setWindowTitle(f'Cell-ACDC - GUI - "{posData.exp_path}"')
+        
+        self.setupPreprocessing()
 
         if self.isSegm3D:
             self.segmNdimIndicator.setText('3D')
@@ -17698,7 +17860,7 @@ class guiWin(QMainWindow):
             if self.switchPlaneCombobox.depthAxes() == 'z': 
                 posData.segmInfo_df.at[idx, 'z_slice_used_gui'] = z
             self.zSliceSpinbox.setValueNoEmit(z+1)
-            img = self._getImageupdateAllImages(None, False)
+            img = self._getImageupdateAllImages(None)
             self.img1.setCurrentZsliceIndex(z)
             self.img1.setImage(
                 img, next_frame_image=self.nextFrameImage(),
@@ -18433,7 +18595,7 @@ class guiWin(QMainWindow):
         else:
             posData.lab = posData.allData_li[posData.frame_i]['labels']
 
-        self.setImageImg1(None, False)
+        self.setImageImg1()
         if self.overlayButton.isChecked():
             self.setOverlayImages()
 
@@ -22217,7 +22379,7 @@ class guiWin(QMainWindow):
         self.ax2_oldMothBudLinesItem.setSize(size)
         self.ax2_newMothBudLinesItem.setSize(size)
 
-    def getOlImg(self, key, normalizeIntens=True, frame_i=None):
+    def getOlImg(self, key, frame_i=None):
         posData = self.data[self.pos_i]
         if frame_i is None:
             frame_i = posData.frame_i
@@ -22252,8 +22414,6 @@ class guiWin(QMainWindow):
         else:
             ol_img = img.copy()
 
-        # if normalizeIntens:
-        #     ol_img = self.normalizeIntensities(ol_img)
         return ol_img
     
     def setTextAnnotZsliceScrolling(self):
@@ -23054,6 +23214,25 @@ class guiWin(QMainWindow):
         else:
             return posData.ol_data_dict.get(filename)
 
+    def z_slice_index(self):
+        zProjHow = self.zProjComboBox.currentText()
+        if zProjHow != 'single z-slice':
+            return zProjHow
+        
+        axis_slice = self.zSliceScrollBar.value() - 1
+        if self.switchPlaneCombobox.depthAxes() == 'x':
+            z_slice = (
+                slice(None, None, None), slice(None, None, None), axis_slice
+            )
+        elif self.switchPlaneCombobox.depthAxes() == 'y':
+            z_slice = (
+                slice(None, None, None), axis_slice
+            )
+        else:
+            z_slice = axis_slice
+            
+        return z_slice
+    
     def get_2Dimg_from_3D(self, imgData, isLayer0=True, frame_i=None):
         posData = self.data[self.pos_i]
         if frame_i is None:
@@ -23085,7 +23264,7 @@ class guiWin(QMainWindow):
                 zProjHow = zProjHow_L1
         
         if zProjHow == 'single z-slice':
-            img = imgData[z].copy()
+            img = imgData[z] #.copy()
         elif zProjHow == 'max z-projection':
             img = imgData.max(axis=0)
         elif zProjHow == 'mean z-projection':
@@ -23145,23 +23324,41 @@ class guiWin(QMainWindow):
         else:
             rawImg = rawImgData
         return rawImg
-        
-    def getImage(self, frame_i=None, normalizeIntens=False):
+    
+    def getRawImageLayer0(self, frame_i):
         posData = self.data[self.pos_i]
-        if frame_i is None:
-            frame_i = posData.frame_i
+
         if posData.SizeZ > 1:
             img = posData.img_data[frame_i]
             self.updateZsliceScrollbar(frame_i)
             img = self.get_2Dimg_from_3D(img)
         else:
             img = posData.img_data[frame_i].copy()
-        # if normalizeIntens:
-        #     img = self.normalizeIntensities(img)
-        if self.imgCmapName != 'grey':
-            # Do not invert bw for non grey cmaps
-            return img
         return img
+    
+    def getImage(self, frame_i=None, raw=False):
+        posData = self.data[self.pos_i]
+        if frame_i is None:
+            frame_i = posData.frame_i
+        
+        if not self.viewPreprocDataToggle.isChecked():
+            return self.getRawImageLayer0(frame_i)
+            
+        try:
+            img = posData.preproc_img_data[frame_i]
+            if posData.SizeZ == 1:
+                return img
+            
+            self.updateZsliceScrollbar(frame_i)
+            z_slice = self.z_slice_index()
+            img = img[z_slice]
+            return img
+        except Exception as err:
+            self.logger.warning(
+                '[WARNING]: Pre-processed image not existing '
+                '--> returning raw image'
+            )
+            return self.getRawImageLayer0(frame_i)
 
     def setImageImg2(self, updateLookuptable=True, set_image=True):
         posData = self.data[self.pos_i]
@@ -24032,28 +24229,15 @@ class guiWin(QMainWindow):
         self.labelsLayerRightImg.setOpacity(value)
 
     
-    def _getImageupdateAllImages(self, image, updateFilters):
+    def _getImageupdateAllImages(self, image=None):
         if image is not None:
             return image
         
-        if updateFilters:
-            img = self.applyFilter(self.user_ch_name, setImg=False)
-        else:
-            posData = self.data[self.pos_i]
-            filteredData = self.filteredData.get(self.user_ch_name)
-            if filteredData is None or not self.isFilterPreviewChecked:
-                # Filtered data not existing or preview not requested
-                img = self.getImage()
-            elif posData.SizeZ > 1:
-                # 3D filtered data (see self.applyFilter)
-                img = self.get_2Dimg_from_3D(filteredData)
-            else:
-                # 2D filtered data (see self.applyFilter)
-                img = filteredData
+        img = self.getImage()
         return img
     
-    def setImageImg1(self, image, updateFilters):
-        img = self._getImageupdateAllImages(image, updateFilters)
+    def setImageImg1(self, image=None):
+        img = self._getImageupdateAllImages(image=image)
         if self.equalizeHistPushButton.isChecked():
             img = skimage.exposure.equalize_adapthist(img)
         posData = self.data[self.pos_i]
@@ -24552,7 +24736,7 @@ class guiWin(QMainWindow):
         
         self.rescaleIntensitiesLut(setImage=False)
 
-        self.setImageImg1(image, updateFilters)       
+        self.setImageImg1(image=image)       
         self.setImageImg2()
         
         if self.overlayButton.isChecked():
@@ -28247,6 +28431,9 @@ class guiWin(QMainWindow):
         for worker, thread in self.autoSaveActiveWorkers:
             worker._stop()
     
+    def viewPreprocDataToggled(self, checked):
+        self.setImageImg1()
+    
     def autoSaveToggled(self, checked):
         if not self.autoSaveActiveWorkers:
             self.gui_createAutoSaveWorker()
@@ -28495,6 +28682,13 @@ class guiWin(QMainWindow):
         )
         return msg.cancel
     
+    def stopPreprocWorker(self):
+        self.logger.info('Closing pre-processing worker...')
+        try:
+            self.preprocWorker.stop()
+        except Exception as err:
+            pass
+    
     def closeEvent(self, event):
         self.setDisabled(False)
         self.onEscape()
@@ -28535,6 +28729,7 @@ class guiWin(QMainWindow):
             progressWin.workerFinished = True
             progressWin.close()
         
+        self.stopPreprocWorker()        
         self.stopCcaIntegrityCheckerWorker()
         
         # Close the inifinte loop of the thread

@@ -9240,7 +9240,14 @@ class PreProcessingSelector(QComboBox):
     def askSetParams(self):
         method = self.currentText()
         function = PREPROCESS_MAPPER[method]['function']
-        params_argspecs = myutils.get_function_argspec(function)
+        params_argspecs = myutils.get_function_argspec(
+            function, 
+            args_to_skip={
+                'logger_func', 
+                'apply_to_all_zslices',
+                'apply_to_all_frames'
+            }
+        )
         default_values = self.methodToDefaultValuesMapper.get(method, {})
         for kwarg, value in default_values.items():
             for p, param_argspec in enumerate(params_argspecs):

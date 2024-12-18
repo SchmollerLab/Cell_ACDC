@@ -7,7 +7,7 @@ import concurrent.futures
 from functools import partial
 from collections import defaultdict, deque
 
-from typing import Union, List, Dict
+from typing import Union, List, Dict, Callable, Any
 
 from functools import wraps
 import numpy as np
@@ -5313,5 +5313,69 @@ class SimpleWorker(QObject):
         self.result = self.func(
             self.posData, *self.func_args, **self.func_kwargs
         )
+        self.signals.finished.emit(self)
+
+class PreprocessWorker(QObject):
+    sigDone = Signal(object, str)
+    
+    def __init__(self, mutex, waitCond):
+        QObject.__init__(self)
+        self.signals = signals()
+        self.mutex = mutex
+        self.waitCond = waitCond
+        self.logger = workerLogger(self.signals.progress)
+        self.exit = False
+        self.wait = True
+        self._abort = False
+    
+    def wakeUp(self):
+        self.wait = False
+        self.waitCond.wakeAll()
+    
+    def pause(self):
+        self.wait = True
+        self.mutex.lock()
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+    
+    def abort(self):
+        self._abort = True
+    
+    def stop(self):
+        self.abort()
+        self.exit = True
+        self.waitCond.wakeAll()
+        self.signals.finished.emit(self)
+    
+    def setupJob(
+            self, 
+            func: Callable, 
+            image_data: np.ndarray, 
+            recipe: Dict[str, Any],
+            how: str
+        ):
+        self._func = func
+        self._image_data = image_data
+        self._recipe = recipe
+        self._how = how
+    
+    def runJob(self):
+        return self._func(self._image_data, self._recipe)
+    
+    @worker_exception_handler
+    def run(self):
+        while True:
+            if self.exit:
+                self.logger.log('Closing pre-processing worker...')
+                break
+            elif self.wait:
+                self.logger.log('Pre-processing worker paused.')
+                self.pause()
+            else:
+                self.logger.log('Pre-processing worker resumed.')
+                processed_data = self.runJob()
+                self.sigDone.emit(processed_data, self._how)
+                self.wait = True
+
         self.signals.finished.emit(self)
         

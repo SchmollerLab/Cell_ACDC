@@ -15,7 +15,7 @@ The list of functions is generated in the module `cellacdc.config`
 IMPORTANT: Do not import functions otherwise they will be added as possible 
 step (for example do not do `from skimage.util import img_as_ubyte`).
 """
-
+from typing import Hashable, Union, Optional, Tuple
 from tqdm import tqdm
 
 import numpy as np
@@ -366,3 +366,101 @@ def fucci_filter(
     if enhance_speckles_toggle:
         image = enhance_speckles(image, radius=speckle_radius)
     return image
+
+def dummy_filter(
+        image: np.ndarray, 
+        apply_to_all_zslices=False, 
+        apply_to_all_frames=False
+    ):
+    return image
+
+class VolumeImageData:
+    def __init__(self):
+        self._data = {}
+
+    def __setitem__(
+            self, 
+            z_slice: int, 
+            image: np.ndarray
+        ):
+        if not isinstance(z_slice, (int, str)):
+            raise TypeError(
+                f'{z_slice} is not not a valid index. '
+                f'It must be an integer or a string and not {type(z_slice)}'
+            )
+        
+        if image.ndim != 2:
+            raise TypeError(
+                'Only 2D images can be assigned to a specifc z-slice index.'
+            )
+        
+        self._data[z_slice] = image
+    
+    def __getitem__(
+            self, z_slice: Union[int, Tuple[Union[int, slice]], None]
+        ):
+        if isinstance(z_slice, int):
+            return self._data[z_slice]
+        
+        arr = self._build_arr()
+        return arr[z_slice]
+    
+    def __array__(self) -> np.ndarray:
+        return self._build_arr()
+    
+    def __repr__(self):
+        return str(self._data)
+    
+    def _build_arr(self):
+        if not self._data:
+            return
+        
+        img = self._data[0]
+        SizeZ = len(self._data)
+        arr = np.zeros((SizeZ, *img.shape), dtype=img.dtype)
+        for z_slice, img in self._data.items():
+            arr[z_slice] = img
+        return np.squeeze(arr)
+    
+    def max(self, axis=None):
+        arr = self._build_arr()
+        if arr is None:
+            return
+        
+        return arr.max(axis=axis)
+    
+    def mean(self, axis=None):
+        arr = self._build_arr()
+        if arr is None:
+            return
+        
+        return arr.mean(axis=axis)
+    
+class PreprocessedData:
+    def __init__(self):
+        self._data = {}
+    
+    def __getitem__(self, frame_i: int):
+        if frame_i not in self._data:
+            self._data[frame_i] = VolumeImageData()
+            
+        return self._data[frame_i]
+    
+    def __setitem__(self, frame_i: int, image: np.ndarray):
+        if not isinstance(frame_i, int):
+            raise TypeError(
+                f'{frame_i} is not not a valid index. '
+                f'It must be an integer and not {type(frame_i)}'
+            )
+            
+        if frame_i not in self._data:
+            self._data[frame_i] = VolumeImageData()
+        
+        if image.ndim == 2:
+            self._data[frame_i][0] = image
+        else:
+            for z_slice, img in enumerate(image):
+                self._data[frame_i][z_slice] = image
+    
+    def __repr__(self):
+        return str(self._data)

@@ -947,13 +947,13 @@ def insertModelArgSpect(
             updated_params.append(param)
     return updated_params
 
-def get_function_argspec(function):
+def get_function_argspec(function, args_to_skip={'logger_func',}):
     argspecs = inspect.getfullargspec(function)
     kwargs_type_hints = typing.get_type_hints(function)
     docstring = function.__doc__
     params = params_to_ArgSpec(
         argspecs, kwargs_type_hints, docstring, 
-        args_to_skip={'logger_func',}
+        args_to_skip=args_to_skip
     )
     return params
 

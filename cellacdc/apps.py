@@ -14508,6 +14508,7 @@ class DataPrepSubCropsPathsDialog(QBaseDialog):
 
 class PreProcessParamsWidget(QWidget):
     sigLoadRecipe = Signal()
+    sigLoadSavedRecipe = Signal()
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -14532,16 +14533,27 @@ class PreProcessParamsWidget(QWidget):
         groupbox.setLayout(self.gridLayout)
         
         buttonsLayout = QGridLayout()
-        # saveRecipeButton = widgets.savePushButton()
-        loadRecipeButton = widgets.reloadPushButton('Load last parameters')
-        self.loadRecipeButton = loadRecipeButton
+        row = 0
+        col = 0
+        buttonsLayout.setColumnStretch(col, 1)
         
-        buttonsLayout.setColumnStretch(0, 1)
-        # buttonsLayout.addWidget(saveRecipeButton)
-        buttonsLayout.addWidget(loadRecipeButton, 0, 1)
+        loadRecipeButton = widgets.OpenFilePushButton('Load saved recipe...')
+        self.loadRecipeButton = loadRecipeButton
+        buttonsLayout.addWidget(loadRecipeButton, row, col+1)
+        
+        saveRecipeButton = widgets.savePushButton('Save current recipe...')
+        self.saveRecipeButton = saveRecipeButton
+        buttonsLayout.addWidget(saveRecipeButton, row+1, col+1)
+        
+        loadLastRecipeButton = widgets.reloadPushButton('Load last parameters')
+        self.loadLastRecipeButton = loadLastRecipeButton
+        buttonsLayout.addWidget(loadLastRecipeButton, row, col)
+        
         self.buttonsLayout = buttonsLayout
         
-        loadRecipeButton.clicked.connect(self.emitLoadRecipe)
+        loadLastRecipeButton.clicked.connect(self.emitLoadRecipe)
+        saveRecipeButton.clicked.connect(self.saveRecipe)
+        loadRecipeButton.clicked.connect(self.selectAndLoadRecipe)
         
         mainLayout.addWidget(groupbox)
         mainLayout.addLayout(buttonsLayout)
@@ -14591,6 +14603,126 @@ class PreProcessParamsWidget(QWidget):
         for key in sortedKeys:
             sortedConfigPars[key] = configPars[key]
         return sortedConfigPars
+    
+    def saveRecipe(self):
+        recipe = self.recipe()
+        if recipe is None:
+            return
+        
+        default_text = ''
+        for step in recipe[:2]:
+            method = step['method']
+            func_name = config.PREPROCESS_MAPPER[method]['function_name']
+            default_text = f'{default_text}-{func_name}'
+        default_text = default_text.lstrip('-')
+        
+        win = filenameDialog(
+            title='Filename for pre-processing recipe',
+            basename=f'preprocessing_recipe',
+            ext='.ini',
+            hintText='Insert a <b>filename</b> for the pre-processing recipe:',
+            allowEmpty=False,
+            defaultEntry=default_text,
+            parent=self,
+        )
+        win.exec_()
+        if win.cancel:
+            return
+        
+        self.cancel = False
+        ini_filename = win.filename
+        cp = self.recipeConfigPars('acdc')
+        os.makedirs(preproc_recipes_path, exist_ok=True)
+        ini_filepath = os.path.join(preproc_recipes_path, ini_filename)
+        
+        if os.path.exists(ini_filepath):
+            proceed = self.warnExistingRecipeFile(ini_filename)
+            if not proceed:
+                return
+        
+        with open(ini_filepath, 'w') as configfile:
+            cp.write(configfile)
+        
+        self.communicateSavingRecipeFinished(ini_filepath)
+    
+    def warnExistingRecipeFile(self, ini_filename):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(
+            'A file with the following name<br><br>'
+            f'<code>{ini_filename}</code><br><br>'
+            '<b>already exists</b>.<br><br>'
+            'Do you want to <b>overwrite</b> the existing file?'
+        )
+        noButton, yesButton = msg.warning(
+            self, 'File name existing', txt, 
+            buttonsTexts=(
+                'No, stop saving process', 
+                'Yes, overwrite existing file'
+            )
+        )
+        return msg.clickedButton == yesButton
+
+    def warnNoAvailableRecipesToLoad(self):
+        text = html_utils.paragraph(
+            'There are no recipes saved. Sorry about that :('
+        )
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(self, 'No recipes saved', text)
+    
+    def selectAndLoadRecipe(self):
+        availableRecipeFiles = os.listdir(preproc_recipes_path)
+        availableRecipes = []
+        for file in os.listdir(preproc_recipes_path):
+            if not file.startswith('preprocessing_recipe'):
+                continue
+            endname = file.split('preprocessing_recipe_')[1]
+            availableRecipes.append(endname)
+        
+        if not availableRecipes:
+            self.warnNoAvailableRecipesToLoad()
+            return
+        
+        selectRecipeWin = widgets.QDialogListbox(
+            'Select recipe',
+            'Select recipe to load:\n',
+            availableRecipes, 
+            multiSelection=False, 
+            allowEmptySelection=False,
+            parent=self
+        )
+        selectRecipeWin.exec_()
+        if selectRecipeWin.cancel:
+            return
+
+        selected_endname = selectRecipeWin.selectedItemsText[0]
+        ini_filename = f'preprocessing_recipe_{selected_endname}'
+        ini_filepath = os.path.join(preproc_recipes_path, ini_filename)
+        
+        cp = config.ConfigParser()
+        cp.read(ini_filepath)
+        preprocConfigPars = {}
+        for section in cp.sections():
+            if not section.startswith('acdc.preprocess'):
+                continue      
+            
+            preprocConfigPars[section] = cp[section]
+        
+        if not preprocConfigPars:
+            return
+        
+        self.loadRecipe(preprocConfigPars)
+    
+    def communicateSavingRecipeFinished(self, ini_filepath):
+        text = html_utils.paragraph(
+            'Done!<br><Br>'
+            'Pre-processing recipe saved at:'
+        )
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.information(
+            self, 'Pre-processing recipe saved!', text, 
+            commands=(ini_filepath,),
+            path_to_browse=os.path.dirname(ini_filepath)
+        )
         
     def addStep(self, is_first=False):
         stepWidgets = {}
@@ -15448,12 +15580,19 @@ class FilterImageDialog(QBaseDialog):
         self.setLayout(layout)
 
 class PreProcessRecipeDialog(QBaseDialog):
-    sigApplyImage = Signal()
-    sigApplyZstack = Signal()
-    sigApplyAll = Signal()
-    sigPreviewToggled = Signal()
+    sigApplyImage = Signal(object)
+    sigApplyZstack = Signal(object)
+    sigApplyAllFrames = Signal(object)
+    sigApplyAllPos = Signal(object)
+    sigPreviewToggled = Signal(bool)
     
-    def __init__(self, isTimelapse=False, isZstack=False, parent=None):
+    def __init__(
+            self, 
+            isTimelapse=False, 
+            isZstack=False, 
+            isMultiPos=False, 
+            parent=None
+        ):
         super().__init__(parent=parent)
         
         self.setWindowTitle('Pre-processing recipe')
@@ -15466,32 +15605,20 @@ class PreProcessRecipeDialog(QBaseDialog):
         )
         self.preProcessParamsWidget.groupbox.setCheckable(False)
         
-        self.preProcessParamsWidget.sigLoadRecipe.connect(
-            self.loadPreprocRecipe
-        )
-        
         buttonsLayout = self.preProcessParamsWidget.buttonsLayout
         
         self.previewCheckbox = QCheckBox('Preview')
         buttonsLayout.addWidget(self.previewCheckbox, 0, 0)
         
-        self.preProcessParamsWidget.loadRecipeButton.setText(
-            'Load saved recipe...'
-        )
-        
-        self.saveRecipeButton = widgets.savePushButton(
-            'Save current recipe...'
-        )
-        buttonsLayout.addWidget(self.saveRecipeButton, 1, 1)
-        
+        self.preProcessParamsWidget.loadLastRecipeButton.hide()
         # self.cancelButton = widgets.cancelPushButton('Cancel')
         # buttonsLayout.insertWidget(2, self.cancelButton)
         # buttonsLayout.insertSpacing(3, 20)
         
         self.allButtons = [
             self.previewCheckbox,
-            self.preProcessParamsWidget.loadRecipeButton, 
-            self.saveRecipeButton
+            self.preProcessParamsWidget.loadRecipeButton,
+            self.preProcessParamsWidget.saveRecipeButton,
         ]
         col = 3
         row = 0
@@ -15536,8 +15663,8 @@ class PreProcessRecipeDialog(QBaseDialog):
             )
             buttonsLayout.addWidget(self.applyAllZslicesButton, row, col)
             self.applyAllZslicesButton.clicked.connect(
-            partial(self.apply, signal=self.sigApplyZstack)
-        )
+                partial(self.apply, signal=self.sigApplyZstack)
+            )
             self.allButtons.append(self.applyAllZslicesButton)
         if isTimelapse:
             row += 1
@@ -15546,9 +15673,19 @@ class PreProcessRecipeDialog(QBaseDialog):
             )
             buttonsLayout.addWidget(self.applyAllFramesButton, row, col)
             self.applyAllFramesButton.clicked.connect(
-            partial(self.apply, signal=self.sigApplyAll)
-        )
+                partial(self.apply, signal=self.sigApplyAllFrames)
+            )
             self.allButtons.append(self.applyAllFramesButton)
+        if isMultiPos:
+            row += 1
+            self.applyAllPosButton = widgets.futurePushButton(
+                'Apply to all Positions'
+            )
+            buttonsLayout.addWidget(self.applyAllFramesButton, row, col)
+            self.applyAllPosButton.clicked.connect(
+                partial(self.apply, signal=self.sigApplyAllPos)
+            )
+            self.allButtons.append(self.applyAllPosButton)
         
         row += 1
         self.savePreprocButton = widgets.savePushButton(
@@ -15559,13 +15696,15 @@ class PreProcessRecipeDialog(QBaseDialog):
         
         # self.cancelButton.clicked.connect(self.close)
         
-        self.saveRecipeButton.clicked.connect(self.saveRecipe)
-        
         mainLayout.addWidget(self.preProcessParamsWidget)
         
         self.setLayout(mainLayout)
     
     def apply(self, checked=False, signal: Signal=None):
+        recipe = self.recipe()
+        if recipe is None:
+            return
+             
         self.loadingCircle.setVisible(True)
         self.infoLabel.setVisible(True)
         self.infoLabel.setText(
@@ -15577,7 +15716,7 @@ class PreProcessRecipeDialog(QBaseDialog):
             button.setDisabled(True)
 
         if signal is not None:
-            signal.emit()
+            signal.emit(recipe)
     
     def appliedFinished(self):
         for button in self.allButtons:
@@ -15592,123 +15731,6 @@ class PreProcessRecipeDialog(QBaseDialog):
     def recipeConfigPars(self):
         return self.preProcessParamsWidget.recipeConfigPars('acdc')
     
-    def saveRecipe(self):
-        recipe = self.recipe()
-        default_text = ''
-        for step in recipe[:2]:
-            method = step['method']
-            func_name = config.PREPROCESS_MAPPER[method]['function_name']
-            default_text = f'{default_text}-{func_name}'
-        default_text = default_text.lstrip('-')
-        
-        win = filenameDialog(
-            title='Filename for pre-processing recipe',
-            basename=f'preprocessing_recipe',
-            ext='.ini',
-            hintText='Insert a <b>filename</b> for the pre-processing recipe:',
-            allowEmpty=False,
-            defaultEntry=default_text,
-            parent=self,
-        )
-        win.exec_()
-        if win.cancel:
-            return
-        
-        self.cancel = False
-        ini_filename = win.filename
-        cp = self.recipeConfigPars()
-        os.makedirs(preproc_recipes_path, exist_ok=True)
-        ini_filepath = os.path.join(preproc_recipes_path, ini_filename)
-        
-        if os.path.exists(ini_filepath):
-            proceed = self.warnExistingRecipeFile(ini_filename)
-            if not proceed:
-                return
-        
-        with open(ini_filepath, 'w') as configfile:
-            cp.write(configfile)
-        
-        self.communicateSavingRecipeFinished(ini_filepath)
-    
-    def communicateSavingRecipeFinished(self, ini_filepath):
-        text = html_utils.paragraph(
-            'Done!<br><Br>'
-            'Pre-processing recipe saved at:'
-        )
-        msg = widgets.myMessageBox(wrapText=False)
-        msg.information(
-            self, 'Pre-processing recipe saved!', text, 
-            commands=(ini_filepath,),
-            path_to_browse=os.path.dirname(ini_filepath)
-        )
-    
-    def warnExistingRecipeFile(self, ini_filename):
-        msg = widgets.myMessageBox(wrapText=False)
-        txt = html_utils.paragraph(
-            'A file with the following name<br><br>'
-            f'<code>{ini_filename}</code><br><br>'
-            '<b>already exists</b>.<br><br>'
-            'Do you want to <b>overwrite</b> the existing file?'
-        )
-        noButton, yesButton = msg.warning(
-            self, 'File name existing', txt, 
-            buttonsTexts=(
-                'No, stop saving process', 
-                'Yes, overwrite existing file'
-            )
-        )
-        return msg.clickedButton == yesButton
-    
     def ok_cb(self):
         self.cancel = False
         self.close()
-    
-    def warnNoAvailableRecipesToLoad(self):
-        text = html_utils.paragraph(
-            'There are no recipes saved. Sorry about that :('
-        )
-        msg = widgets.myMessageBox(wrapText=False)
-        msg.warning(self, 'No recipes saved', text)
-    
-    def loadPreprocRecipe(self):
-        availableRecipeFiles = os.listdir(preproc_recipes_path)
-        availableRecipes = []
-        for file in os.listdir(preproc_recipes_path):
-            if not file.startswith('preprocessing_recipe'):
-                continue
-            endname = file.split('preprocessing_recipe_')[1]
-            availableRecipes.append(endname)
-        
-        if not availableRecipes:
-            self.warnNoAvailableRecipesToLoad()
-            return
-        
-        selectRecipeWin = widgets.QDialogListbox(
-            'Select recipe',
-            'Select recipe to load:\n',
-            availableRecipes, 
-            multiSelection=False, 
-            allowEmptySelection=False,
-            parent=self
-        )
-        selectRecipeWin.exec_()
-        if selectRecipeWin.cancel:
-            return
-
-        selected_endname = selectRecipeWin.selectedItemsText[0]
-        ini_filename = f'preprocessing_recipe_{selected_endname}'
-        ini_filepath = os.path.join(preproc_recipes_path, ini_filename)
-        
-        cp = config.ConfigParser()
-        cp.read(ini_filepath)
-        preprocConfigPars = {}
-        for section in cp.sections():
-            if not section.startswith('acdc.preprocess'):
-                continue      
-            
-            preprocConfigPars[section] = cp[section]
-        
-        if not preprocConfigPars:
-            return
-        
-        self.preProcessParamsWidget.loadRecipe(preprocConfigPars)
