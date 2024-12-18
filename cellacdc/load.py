@@ -424,7 +424,7 @@ def _fix_corrected_assignment_i(acdc_df: pd.DataFrame):
             corr_on_index = df_block.index
             acdc_df.loc[corr_on_index, 'corrected_on_frame_i'] = corr_on_frame_i
     
-    acdc_df['corrected_on_frame_i'] = acdc_df['corrected_on_frame_i'].astype(int)
+    # acdc_df['corrected_on_frame_i'] = acdc_df['corrected_on_frame_i'].astype(int)
     acdc_df = acdc_df.drop(columns='corrected_assignment')
     
     return acdc_df
@@ -491,6 +491,14 @@ def _add_missing_columns(acdc_df):
     
     return acdc_df
 
+def _ensure_acdc_df_latest_compatibility(acdc_df):
+    acdc_df = _parse_loaded_acdc_df(acdc_df)
+    acdc_df = _add_missing_columns(acdc_df)
+    acdc_df = _add_will_divide_column(acdc_df)
+    acdc_df = _fix_will_divide(acdc_df)
+    acdc_df = _fix_corrected_assignment_i(acdc_df)
+    return acdc_df
+
 def _parse_loaded_acdc_df(acdc_df):
     acdc_df = acdc_df.set_index(['frame_i', 'Cell_ID']).sort_index()
     # remove duplicates saved by mistake or bugs
@@ -519,11 +527,7 @@ def _load_acdc_df_file(acdc_df_file_path):
     except KeyError:
         pass
     
-    acdc_df = _parse_loaded_acdc_df(acdc_df)
-    acdc_df = _add_missing_columns(acdc_df)
-    acdc_df = _add_will_divide_column(acdc_df)
-    acdc_df = _fix_will_divide(acdc_df)
-    acdc_df = _fix_corrected_assignment_i(acdc_df)
+    acdc_df = _ensure_acdc_df_latest_compatibility(acdc_df)
     return acdc_df
 
 def load_acdc_df_file(
@@ -601,7 +605,7 @@ def _copy_acdc_dfs_to_temp_archive(
                 acdc_df = pd.read_csv(
                     zip.open(csv_name), dtype=acdc_df_str_cols
                 )
-            acdc_df = _parse_loaded_acdc_df(acdc_df)
+            acdc_df = _ensure_acdc_df_latest_compatibility(acdc_df)
             acdc_df = pd_bool_to_int(acdc_df, inplace=False)
             compression_opts['archive_name'] = csv_name
             acdc_df.to_csv(
@@ -698,7 +702,7 @@ def get_last_stored_unsaved_acdc_df(recovery_folderpath):
     csv_files = natsorted(csv_files)
     csv_name = csv_files[-1]
     acdc_df = pd.read_csv(os.path.join(unsaved_recovery_folderpath, csv_name))
-    acdc_df = _parse_loaded_acdc_df(acdc_df)
+    acdc_df = _ensure_acdc_df_latest_compatibility(acdc_df)
     
     return acdc_df
 
@@ -715,7 +719,7 @@ def read_acdc_df_from_archive(archive_path, key):
         csv_path = os.path.join(archive_path, f'{key}.csv')
         acdc_df = pd.read_csv(csv_path)
         
-    acdc_df = _parse_loaded_acdc_df(acdc_df)
+    acdc_df = _ensure_acdc_df_latest_compatibility(acdc_df)
     return acdc_df
 
 def get_user_ch_paths(images_paths, user_ch_name):
