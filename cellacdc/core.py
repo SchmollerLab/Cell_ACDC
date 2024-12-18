@@ -1,4 +1,6 @@
 import traceback
+import inspect
+from typing import List, Dict, Any, Iterable
 import os
 import time
 import concurrent.futures
@@ -1724,14 +1726,116 @@ def brownian(x0, n, dt, delta, out=None):
 
     return out
 
-def preprocess_image_from_recipe(image, recipe: dict):
+def preprocess_multi_pos_from_recipe(
+        image_data: Iterable[np.ndarray], 
+        recipe: List[Dict[str, Any]]
+    ):
+    pbar = tqdm(total=len(image_data), unit='Position', ncols=100)
+    preprocessed_data = []
+    for pos_i, image in enumerate(image_data):
+        preprocessed_image = preprocess_zstack_from_recipe(
+            image, recipe, pbar_pos=1
+        )
+        preprocessed_data.append(preprocessed_image)
+        pbar.update()
+    pbar.close()
+    return preprocessed_data
+
+def preprocess_video_from_recipe(
+        image, recipe: List[Dict[str, Any]], pbar_pos=0
+    ):
+    if image.ndim < 3:
+        raise TypeError(
+            'Only 3D of 4D videos allowed. '
+            f'Input image has {image.ndim} dimensions!'
+        )
+
+    preprocessed_image = image
     for step in recipe:
         method = step['method']
         func = PREPROCESS_MAPPER[method]['function']
         kwargs = step['kwargs']
-        image = func(image, **kwargs)
+        argspecs = inspect.getfullargspec(func)
+        is_func_time_capable = False
+        is_func_zstack_capable = False
+        for arg in argspecs.args:
+            if arg == 'apply_to_all_frames':
+                is_func_time_capable = True
+            elif arg == 'apply_to_all_zslices':
+                is_func_zstack_capable = True
         
-    return image
+        if is_func_time_capable and is_func_zstack_capable:
+            preprocessed_image = func(
+                preprocessed_image, 
+                apply_to_all_zslices=True, 
+                apply_to_all_frames=True,
+                **kwargs
+            )
+        else:
+            pbar = tqdm(
+                total=len(preprocessed_image), unit='frame', ncols=100, 
+                position=pbar_pos
+            )
+            for frame_i, frame_img in enumerate(preprocessed_image):
+                if frame_img.ndim == 3:
+                    preprocessed_image[frame_i] = preprocess_zstack_from_recipe(
+                        frame_img, (step,), pbar_pos=pbar_pos+1
+                    )
+                else:
+                    preprocessed_image[frame_i] = preprocess_image_from_recipe(
+                        frame_img, (step,)
+                    )
+                pbar.update()
+            pbar.close()
+    
+    return preprocessed_image
+    
+def preprocess_zstack_from_recipe(
+        image, recipe: List[Dict[str, Any]], pbar_pos=0
+    ):
+    if image.ndim != 3:
+        raise TypeError(
+            'Only 3D z-stack images allowed. '
+            f'Input image has {image.ndim} dimensions!'
+        )
+        
+    preprocessed_image = image
+    for step in recipe:
+        method = step['method']
+        func = PREPROCESS_MAPPER[method]['function']
+        kwargs = step['kwargs']
+        argspecs = inspect.getfullargspec(func)
+        is_func_zstack_capable = False
+        for arg in argspecs.args:
+            if arg == 'apply_to_all_zslices':
+                is_func_zstack_capable = True
+                break
+        
+        if is_func_zstack_capable:
+            preprocessed_image = func(
+                preprocessed_image, apply_to_all_zslices=True, **kwargs
+            )
+        else:
+            pbar = tqdm(
+                total=len(preprocessed_image), unit='z-slice', ncols=100, 
+                position=pbar_pos
+            )
+            for z_slice, img in enumerate(preprocessed_image):
+                preprocessed_image[z_slice] = func(img, **kwargs)
+                pbar.update()
+            pbar.close()
+    
+    return preprocessed_image
+        
+def preprocess_image_from_recipe(image, recipe: List[Dict[str, Any]]):
+    preprocessed_image = image
+    for step in recipe:
+        method = step['method']
+        func = PREPROCESS_MAPPER[method]['function']
+        kwargs = step['kwargs']
+        preprocessed_image = func(preprocessed_image, **kwargs)
+        
+    return preprocessed_image
 
 def segm_model_segment(
         model, image, model_kwargs, frame_i=None, preproc_recipe=None, 

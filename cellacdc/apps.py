@@ -7178,7 +7178,7 @@ class imageViewer(QMainWindow):
         if self.parent is None:
             img = self.getImage()
         else:
-            img = self.parent.getImage(frame_i=self.frame_i)
+            img = self.parent.getImage(frame_i=self.frame_i, raw=True)
         
         self.img.setCurrentFrameIndex(self.frame_i)
         self.img.setImage(img)
@@ -15591,15 +15591,18 @@ class PreProcessRecipeDialog(QBaseDialog):
             isTimelapse=False, 
             isZstack=False, 
             isMultiPos=False, 
-            parent=None
+            parent=None,
+            hideOnClosing=False
         ):
         super().__init__(parent=parent)
         
         self.setWindowTitle('Pre-processing recipe')
         
         self.cancel = False
+        self.hideOnClosing = hideOnClosing
+        
         mainLayout = QVBoxLayout()
-
+    
         self.preProcessParamsWidget = PreProcessParamsWidget(
             parent=self
         )
@@ -15694,36 +15697,39 @@ class PreProcessRecipeDialog(QBaseDialog):
         buttonsLayout.addWidget(self.savePreprocButton, row, col)
         self.allButtons.append(self.savePreprocButton)
         
+        self.previewCheckbox.toggled.connect(
+            self.sigPreviewToggled.emit
+        )
+        
         # self.cancelButton.clicked.connect(self.close)
         
         mainLayout.addWidget(self.preProcessParamsWidget)
         
         self.setLayout(mainLayout)
     
+    def setDisabled(self, disabled: bool):
+        self.preProcessParamsWidget.setDisabled(disabled)
+        self.loadingCircle.setVisible(disabled)
+        self.infoLabel.setVisible(disabled)
+        for button in self.allButtons:
+            button.setDisabled(disabled)
+    
     def apply(self, checked=False, signal: Signal=None):
         recipe = self.recipe()
         if recipe is None:
             return
-             
-        self.loadingCircle.setVisible(True)
-        self.infoLabel.setVisible(True)
+            
+        self.setDisabled(True)
         self.infoLabel.setText(
             f"{self.sender().text().replace('Apply', 'Applying')}...<br>"
             "<i>(Feel free to use Cell-ACDC while waiting)</i>"
         )
-        
-        for button in self.allButtons:
-            button.setDisabled(True)
 
         if signal is not None:
             signal.emit(recipe)
     
     def appliedFinished(self):
-        for button in self.allButtons:
-            button.setDisabled(False)
-
-        self.loadingCircle.setVisible(False)
-        self.infoLabel.setVisible(False)
+        self.setDisabled(False)
     
     def recipe(self):
         return self.preProcessParamsWidget.recipe()
@@ -15731,6 +15737,10 @@ class PreProcessRecipeDialog(QBaseDialog):
     def recipeConfigPars(self):
         return self.preProcessParamsWidget.recipeConfigPars('acdc')
     
-    def ok_cb(self):
-        self.cancel = False
-        self.close()
+    def closeEvent(self, event):
+        if self.hideOnClosing:
+            event.ignore()
+            self.hide()
+            return
+        
+        super().closeEvent(event)

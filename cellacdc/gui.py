@@ -18,7 +18,7 @@ from functools import partial
 from tqdm import tqdm
 from collections import Counter
 from natsort import natsorted
-from typing import Literal, Iterable, Dict, Any, List
+from typing import Literal, Iterable, Dict, Any, List, Union, Tuple
 
 import time
 import cv2
@@ -1148,6 +1148,8 @@ class guiWin(QMainWindow):
         self.widgetsWithShortcut = {}
         self.invertBwAlreadyCalledOnce = False
         self.zoomOutKeyValue = Qt.Key_H
+        self.preprocWorker = None
+        self.preprocessDialog = None
 
         self.checkableButtons = []
         self.LeftClickButtons = []
@@ -2280,9 +2282,40 @@ class guiWin(QMainWindow):
     def ccaCheckerWorkerDone(self):
         self.setStatusBarLabel(log=False)
     
-    def preprocWorkerDone(self, processed_data: np.ndarray, how: str):
+    def preprocWorkerIsQueueEmpty(self, isEmpty: bool):
+        if isEmpty:
+            self.preprocessDialog.appliedFinished()
+        else:
+            self.preprocessDialog.setDisabled(True)
+            self.preprocessDialog.infoLabel.setText(
+                'Computing preview...<br>'
+                '<i>(Feel free to use Cell-ACDC while waiting)</i>'
+            )
+    
+    def preprocWorkerPreviewDone(
+            self, processed_data: np.ndarray, 
+            key: Tuple[int, int, Union[int, str]]
+        ):
+        pos_i, frame_i, z_slice = key
+        posData = self.data[pos_i]
+        if not hasattr(posData, 'preproc_img_data'):
+            posData.preproc_img_data = preprocess.PreprocessedData()
+        
+        posData.preproc_img_data[frame_i][z_slice] = processed_data
+        self.img1.updateMinMaxValuesPreprocessedData(
+            self.data, pos_i, frame_i, z_slice
+        )
+        
+        self.setImageImg1()
+    
+    def preprocWorkerDone(
+            self, 
+            processed_data: np.ndarray, 
+            how: str, 
+        ):
         self.setStatusBarLabel(log=False)
         self.preprocessDialog.appliedFinished()
+            
         posData = self.data[self.pos_i]
         if not hasattr(posData, 'preproc_img_data'):
             posData.preproc_img_data = preprocess.PreprocessedData()
@@ -2295,19 +2328,48 @@ class guiWin(QMainWindow):
                 )
             else:
                 posData.preproc_img_data[posData.frame_i] = processed_data
+                z_slice = 0
+            self.img1.updateMinMaxValuesPreprocessedData(
+                self.data, self.pos_i, posData.frame_i, z_slice
+            )
         elif how == 'z_stack':
-            ...
+            for z_slice, processed_img in enumerate(processed_data):
+                posData.preproc_img_data[posData.frame_i][z_slice] = (
+                    processed_img
+                )
+                self.img1.updateMinMaxValuesPreprocessedData(
+                    self.data, self.pos_i, posData.frame_i, z_slice
+                )
         elif how == 'all_frames':
-            ...
+            for frame_i, processed_frame in enumerate(processed_data):
+                if processed_frame.ndim == 2:
+                    processed_frame = (processed_frame,)
+                    
+                for z_slice, processed_img in enumerate(processed_frame):
+                    posData.preproc_img_data[frame_i][z_slice] = (
+                        processed_img
+                    )
+                    self.img1.updateMinMaxValuesPreprocessedData(
+                        self.data, self.pos_i, frame_i, z_slice
+                    )
         elif how == 'all_pos':
-            ...
-        
+            for pos_i, processed_pos_data in enumerate(processed_data):
+                if processed_pos_data.ndim == 2:
+                    processed_pos_data = (processed_pos_data,)
+
+                for z_slice, processed_img in enumerate(processed_pos_data):
+                    posData.preproc_img_data[posData.frame_i][z_slice] = (
+                        processed_img
+                    )
+                    self.img1.updateMinMaxValuesPreprocessedData(
+                        self.data, pos_i, posData.frame_i, z_slice
+                    )
+            
         if not self.viewPreprocDataToggle.isChecked():
             self.viewPreprocDataToggle.setChecked(True)
         else:
             self.setImageImg1()
         
-    
     def goToFrameNumber(self, frame_n):
         posData = self.data[self.pos_i]
         posData.frame_i = frame_n - 1
@@ -13660,7 +13722,7 @@ class guiWin(QMainWindow):
             return
         
         if ev.key() == Qt.Key_Q and self.debug:
-            self.viewPreprocDataToggle.setChecked(True)
+            pass
         
         if not self.isDataLoaded:
             self.logger.warning(
@@ -16233,17 +16295,47 @@ class guiWin(QMainWindow):
 
     @exception_handler
     def postProcessing(self):
-        if self.postProcessSegmWin is not None:
-            self.postProcessSegmWin.setPosData()
-            posData = self.data[self.pos_i]
-            lab, delIDs = self.postProcessSegmWin.apply()
-            if posData.allData_li[posData.frame_i]['labels'] is None:
-                posData.lab = lab.copy()
-                self.update_rp()
-            else:
-                posData.allData_li[posData.frame_i]['labels'] = lab
-                self.get_data()
+        if self.postProcessSegmWin is None:
+            return
+        
+        self.postProcessSegmWin.setPosData()
+        posData = self.data[self.pos_i]
+        lab, delIDs = self.postProcessSegmWin.apply()
+        if posData.allData_li[posData.frame_i]['labels'] is None:
+            posData.lab = lab.copy()
+            self.update_rp()
+        else:
+            posData.allData_li[posData.frame_i]['labels'] = lab
+            self.get_data()
 
+    def updatePreprocessPreview(self):
+        if not self.preprocessDialog.isVisible():
+            return
+        
+        if not self.preprocessDialog.previewCheckbox.isChecked():
+            return
+        
+        recipe = self.preprocessDialog.recipe()
+        txt = 'Pre-processing current image...'
+        self.logger.info(txt)
+        self.statusBarLabel.setText(txt)
+        
+        posData = self.data[self.pos_i]
+        func = core.preprocess_image_from_recipe
+        image_data = self.getImage(raw=True)
+        if posData.SizeZ > 1:
+            z_slice = self.z_slice_index()
+        else:
+            z_slice = 0
+            
+        key = (self.pos_i, posData.frame_i, z_slice)
+        self.preprocWorker.enqueue(
+            func, 
+            image_data, 
+            recipe, 
+            key
+        )
+    
     def next_pos(self):
         self.store_data(debug=True, autosave=False)
         prev_pos_i = self.pos_i
@@ -16270,6 +16362,7 @@ class guiWin(QMainWindow):
         self.pointsLayerLoadedDfsToData()
         self.initContoursImage()
         self.initTextAnnot()
+        self.updatePreprocessPreview()
         self.postProcessing()
         self.updateScrollbars()
         self.updateAllImages(updateFilters=True)
@@ -16433,6 +16526,7 @@ class guiWin(QMainWindow):
                 self.get_data()
                 return
             
+            self.updatePreprocessPreview()
             self.postProcessing()
             self.tracking(storeUndo=True)
             notEnoughG1Cells, proceed = self.attempt_auto_cca()
@@ -16748,6 +16842,7 @@ class guiWin(QMainWindow):
             posData.frame_i -= 1
             _, never_visited = self.get_data()
             self.resetExpandLabel()
+            self.updatePreprocessPreview()
             self.postProcessing()
             self.tracking()
             self.updateAllImages(updateFilters=True)
@@ -17163,6 +17258,7 @@ class guiWin(QMainWindow):
 
     def preprocessPreviewToggled(self, checked):
         self.viewPreprocDataToggle.setChecked(checked)
+        self.updatePreprocessPreview()
     
     def preprocessCurrentImage(self, recipe: List[Dict[str, Any]]):
         txt = 'Pre-processing current image...'
@@ -17185,6 +17281,9 @@ class guiWin(QMainWindow):
         self.statusBarLabel.setText(txt)
         self.logger.info(txt)
         
+        posData = self.data[self.pos_i]
+        func = core.preprocess_zstack_from_recipe
+        image_data = posData.img_data[posData.frame_i]
         self.preprocWorker.setupJob(
             func, 
             image_data, 
@@ -17199,13 +17298,15 @@ class guiWin(QMainWindow):
         self.logger.info(txt)
         self.statusBarLabel.setText(txt)
         
+        posData = self.data[self.pos_i]
+        func = core.preprocess_video_from_recipe
+        image_data = posData.img_data
         self.preprocWorker.setupJob(
             func, 
             image_data, 
             recipe, 
             'all_frames'
         )
-        
         self.preprocWorker.wakeUp()
     
     def preprocessAllPos(self, recipe: List[Dict[str, Any]]):
@@ -17213,6 +17314,8 @@ class guiWin(QMainWindow):
         self.logger.info(txt)
         self.statusBarLabel.setText(txt)
         
+        func = core.preprocess_multi_pos_from_recipe
+        image_data = [posData.img_data for posData in self.data]
         self.preprocWorker.setupJob(
             func, 
             image_data, 
@@ -17224,11 +17327,14 @@ class guiWin(QMainWindow):
     
     def setupPreprocessing(self):
         posData = self.data[self.pos_i]
+        if self.preprocessDialog is not None:
+            self.preprocessDialog.close()
         
         self.preprocessDialog = apps.PreProcessRecipeDialog(
             isTimelapse=posData.SizeT>1, 
             isZstack=posData.SizeZ>1,
-            isMultiPos=len(self.data)>1
+            isMultiPos=len(self.data)>1,
+            hideOnClosing=True
         )
         self.doPreviewPreprocImage = False
         self.preprocessDialog.sigApplyImage.connect(
@@ -17247,6 +17353,9 @@ class guiWin(QMainWindow):
             self.preprocessPreviewToggled
         )
         
+        if self.preprocWorker is not None:
+            return
+        
         self.preprocThread = QThread()
         self.preprocMutex = QMutex()
         self.preprocWaitCond = QWaitCondition()
@@ -17263,6 +17372,10 @@ class guiWin(QMainWindow):
         self.preprocThread.finished.connect(self.preprocThread.deleteLater)
 
         self.preprocWorker.sigDone.connect(self.preprocWorkerDone)
+        self.preprocWorker.sigIsQueueEmpty.connect(
+            self.preprocWorkerIsQueueEmpty
+        )
+        self.preprocWorker.sigPreviewDone.connect(self.preprocWorkerPreviewDone)
         self.preprocWorker.signals.progress.connect(self.workerProgress)
         self.preprocWorker.signals.critical.connect(self.workerCritical)
         self.preprocWorker.signals.finished.connect(self.preprocWorkerClosed)
@@ -18011,6 +18124,7 @@ class guiWin(QMainWindow):
                 printl(posData.segmInfo_df)
                 printl(idx)
         
+        self.updatePreprocessPreview()
         self.highlightedID = self.getHighlightedID()
         self.updateAllImages(computePointsLayers=False)
 
@@ -23341,13 +23455,13 @@ class guiWin(QMainWindow):
         if frame_i is None:
             frame_i = posData.frame_i
         
-        if not self.viewPreprocDataToggle.isChecked():
+        if not self.viewPreprocDataToggle.isChecked() or raw:
             return self.getRawImageLayer0(frame_i)
             
         try:
             img = posData.preproc_img_data[frame_i]
             if posData.SizeZ == 1:
-                return img
+                return np.array(img)
             
             self.updateZsliceScrollbar(frame_i)
             z_slice = self.z_slice_index()
@@ -23355,8 +23469,7 @@ class guiWin(QMainWindow):
             return img
         except Exception as err:
             self.logger.warning(
-                '[WARNING]: Pre-processed image not existing '
-                '--> returning raw image'
+                'Pre-processed image not existing --> returning raw image'
             )
             return self.getRawImageLayer0(frame_i)
 
@@ -28432,6 +28545,7 @@ class guiWin(QMainWindow):
             worker._stop()
     
     def viewPreprocDataToggled(self, checked):
+        self.img1.usePreprocessed = checked
         self.setImageImg1()
     
     def autoSaveToggled(self, checked):

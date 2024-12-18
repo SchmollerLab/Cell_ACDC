@@ -7,7 +7,7 @@ import concurrent.futures
 from functools import partial
 from collections import defaultdict, deque
 
-from typing import Union, List, Dict, Callable, Any
+from typing import Union, List, Dict, Callable, Any, Tuple
 
 from functools import wraps
 import numpy as np
@@ -638,7 +638,7 @@ class AutoSaveWorker(QObject):
             self.logger.log('Enqueing posData autosave...')
         self.dataQ.append(posData)
         if len(self.dataQ) == 1:
-            # Wake worker upon inserting first element
+            # Wake up worker upon inserting first element
             self.abortSaving = False
             self.waitCond.wakeAll()
     
@@ -5317,6 +5317,8 @@ class SimpleWorker(QObject):
 
 class PreprocessWorker(QObject):
     sigDone = Signal(object, str)
+    sigPreviewDone = Signal(object, tuple)
+    sigIsQueueEmpty = Signal(bool)
     
     def __init__(self, mutex, waitCond):
         QObject.__init__(self)
@@ -5324,9 +5326,23 @@ class PreprocessWorker(QObject):
         self.mutex = mutex
         self.waitCond = waitCond
         self.logger = workerLogger(self.signals.progress)
+        self.dataQ = deque()
         self.exit = False
         self.wait = True
         self._abort = False
+    
+    def enqueue(
+            self, 
+            func: Callable,
+            image: np.ndarray, 
+            recipe: Dict[str, Any],
+            key: Tuple[int, int, Union[int, str]]
+        ):
+        self.dataQ.append((func, image, recipe, key))
+        if len(self.dataQ) == 1:
+            self.sigIsQueueEmpty.emit(False)
+            # Wake up worker upon inserting first element
+            self.wakeUp()
     
     def wakeUp(self):
         self.wait = False
@@ -5359,8 +5375,13 @@ class PreprocessWorker(QObject):
         self._recipe = recipe
         self._how = how
     
-    def runJob(self):
-        return self._func(self._image_data, self._recipe)
+    def runJob(self, image=None, recipe=None):
+        if image is None:
+            image = self._image_data.copy()
+        if recipe is None:
+            recipe = self._recipe
+            
+        return self._func(image, recipe)
     
     @worker_exception_handler
     def run(self):
@@ -5371,6 +5392,13 @@ class PreprocessWorker(QObject):
             elif self.wait:
                 self.logger.log('Pre-processing worker paused.')
                 self.pause()
+            elif len(self.dataQ) > 0:
+                func, image, recipe, key = self.dataQ.pop()
+                processed_data = func(image, recipe)
+                self.sigPreviewDone.emit(processed_data, key)
+                if len(self.dataQ) == 0:
+                    self.wait = True
+                    self.sigIsQueueEmpty.emit(True)
             else:
                 self.logger.log('Pre-processing worker resumed.')
                 processed_data = self.runJob()

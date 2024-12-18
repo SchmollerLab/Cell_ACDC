@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Dict
+from typing import Dict, List, Union
 import os
 import sys
 import operator
@@ -6304,9 +6304,11 @@ class BaseImageItem(pg.ImageItem):
             self, image=None, **kargs
         ):
         self.minMaxValuesMapper = None
+        self.minMaxValuesMapperPreproc = None
         self.pos_i = 0
         self.z = 0
         self.frame_i = 0
+        self.usePreprocessed = False
         
         super().__init__(image, **kargs)
         self.autoLevelsEnabled = None
@@ -6322,7 +6324,7 @@ class BaseImageItem(pg.ImageItem):
         
         super().setImage(image, autoLevels=autoLevels, **kargs)
         
-    def preComputedMinMaxValues(self, data: dict):
+    def preComputedMinMaxValues(self, data: List['load.loadData']):
         self.minMaxValuesMapper = {}
         for pos_i, posData in enumerate(data):
             img_data = posData.img_data
@@ -6342,6 +6344,21 @@ class BaseImageItem(pg.ImageItem):
                         np.nanmin(img), np.nanmax(img)
                     )
     
+    def updateMinMaxValuesPreprocessedData(
+            self, 
+            data: List['load.loadData'], 
+            pos_i: int, 
+            frame_i: int, 
+            z_slice: Union[int, str],
+        ):
+        if self.minMaxValuesMapperPreproc is None:
+            self.minMaxValuesMapperPreproc = {}
+
+        posData = data[pos_i]
+        img = posData.preproc_img_data[frame_i][z_slice]
+        key = (pos_i, frame_i, z_slice)
+        self.minMaxValuesMapperPreproc[key] = (np.nanmin(img), np.nanmax(img))
+    
     def setCurrentPosIndex(self, pos_i: int):
         self.pos_i = pos_i
     
@@ -6352,12 +6369,17 @@ class BaseImageItem(pg.ImageItem):
         self.z = z
     
     def quickMinMax(self, targetSize=1e6):
-        if self.minMaxValuesMapper is None:
+        if self.usePreprocessed:
+            minMaxValuesMapper = self.minMaxValuesMapperPreproc
+        else:
+            minMaxValuesMapper = self.minMaxValuesMapper
+            
+        if minMaxValuesMapper is None:
             return super().quickMinMax(targetSize=targetSize)
         
         try:
             key = (self.pos_i, self.frame_i, self.z)
-            levels = self.minMaxValuesMapper[key]
+            levels = minMaxValuesMapper[key]
             return levels
         except Exception as err:
             return super().quickMinMax(targetSize=targetSize)

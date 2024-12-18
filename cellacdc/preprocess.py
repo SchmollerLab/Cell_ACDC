@@ -428,6 +428,13 @@ class VolumeImageData:
             return
         
         return arr.max(axis=axis)
+
+    def min(self, axis=None):
+        arr = self._build_arr()
+        if arr is None:
+            return
+        
+        return arr.min(axis=axis)
     
     def mean(self, axis=None):
         arr = self._build_arr()
