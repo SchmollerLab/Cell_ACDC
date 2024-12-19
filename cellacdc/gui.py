@@ -1087,10 +1087,20 @@ class guiWin(QMainWindow):
 
         for key, tooltip in tooltips.items():
             setShortcut = getattr(self, key).shortcut().toString()
-            if setShortcut != "":
-                tooltip = re.sub(r'Shortcut: \"(.*)\"', f"Shortcut: \"{setShortcut}\"", tooltip)
+            if 'Shortcut: ' in tooltip:
+                tooltip = tooltip.replace('Shortcut: ', '\nShortcut: ')
+            elif setShortcut != "":
+                tooltip = re.sub(
+                    r'Shortcut: \"(.*)\"', 
+                    f"Shortcut: \"{setShortcut}\"", 
+                    tooltip
+                )
             else:
-                tooltip = re.sub(r'Shortcut: \"(.*)\"', f"Shortcut: \"No shortcut\"", tooltip)
+                tooltip = re.sub(
+                    r'Shortcut: \"(.*)\"', 
+                    f"Shortcut: \"No shortcut\"", 
+                    tooltip
+                )
 
             getattr(self, key).setToolTip(tooltip)
 
@@ -1692,6 +1702,10 @@ class guiWin(QMainWindow):
         
         # navigateToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
         navigateToolBar.addAction(self.skipToNewIdAction)
+        
+        self.preprocessImageAction = QAction('Preprocess image', self)
+        self.preprocessImageAction.setIcon(QIcon(":filter_image.svg"))
+        navigateToolBar.addAction(self.preprocessImageAction)
 
         self.overlayButton = widgets.rightClickToolButton(parent=self)
         self.overlayButton.setIcon(QIcon(":overlay.svg"))
@@ -2357,12 +2371,15 @@ class guiWin(QMainWindow):
                 if processed_pos_data.ndim == 2:
                     processed_pos_data = (processed_pos_data,)
 
+                posData = self.data[pos_i]
+                if not hasattr(posData, 'preproc_img_data'):
+                    posData.preproc_img_data = preprocess.PreprocessedData()
                 for z_slice, processed_img in enumerate(processed_pos_data):
-                    posData.preproc_img_data[posData.frame_i][z_slice] = (
+                    posData.preproc_img_data[0][z_slice] = (
                         processed_img
                     )
                     self.img1.updateMinMaxValuesPreprocessedData(
-                        self.data, pos_i, posData.frame_i, z_slice
+                        self.data, pos_i, 0, z_slice
                     )
             
         if not self.viewPreprocDataToggle.isChecked():
@@ -3682,6 +3699,9 @@ class guiWin(QMainWindow):
         self.loadFluoAction.setEnabled(True)
         self.isEditActionsConnected = True
 
+        self.preprocessImageAction.triggered.connect(
+            self.preprocessAction.trigger
+        )
         self.overlayButton.toggled.connect(self.overlay_cb)
         self.countObjsButton.toggled.connect(self.countObjectsCb)
         self.togglePointsLayerAction.toggled.connect(self.pointsLayerToggled)
@@ -12163,7 +12183,7 @@ class guiWin(QMainWindow):
         
         if msg.clickedButton == use3Dbutton:
             posData = self.data[self.pos_i]
-            zslice = self.zSliceScrollBar.value() - 1
+            zslice = self.zSliceScrollBar.sliderPosition()
             return posData.img_data[posData.frame_i, zslice]
         else:
             return self.getDisplayedImg1()
@@ -13722,6 +13742,7 @@ class guiWin(QMainWindow):
             return
         
         if ev.key() == Qt.Key_Q and self.debug:
+            printl(self.zSliceScrollBar.value())
             pass
         
         if not self.isDataLoaded:
@@ -16308,7 +16329,7 @@ class guiWin(QMainWindow):
             posData.allData_li[posData.frame_i]['labels'] = lab
             self.get_data()
 
-    def updatePreprocessPreview(self):
+    def updatePreprocessPreview(self, *args, **kwargs):
         if not self.preprocessDialog.isVisible():
             return
         
@@ -16316,6 +16337,10 @@ class guiWin(QMainWindow):
             return
         
         recipe = self.preprocessDialog.recipe()
+        if recipe is None:
+            self.logger.warning('Pre-processing recipe not initialized yet.')
+            return
+        
         txt = 'Pre-processing current image...'
         self.logger.info(txt)
         self.statusBarLabel.setText(txt)
@@ -16327,7 +16352,7 @@ class guiWin(QMainWindow):
             z_slice = self.z_slice_index()
         else:
             z_slice = 0
-            
+        
         key = (self.pos_i, posData.frame_i, z_slice)
         self.preprocWorker.enqueue(
             func, 
@@ -16362,9 +16387,9 @@ class guiWin(QMainWindow):
         self.pointsLayerLoadedDfsToData()
         self.initContoursImage()
         self.initTextAnnot()
-        self.updatePreprocessPreview()
         self.postProcessing()
         self.updateScrollbars()
+        self.updatePreprocessPreview()
         self.updateAllImages(updateFilters=True)
         self.computeSegm()
         self.zoomOut()
@@ -17315,7 +17340,7 @@ class guiWin(QMainWindow):
         self.statusBarLabel.setText(txt)
         
         func = core.preprocess_multi_pos_from_recipe
-        image_data = [posData.img_data for posData in self.data]
+        image_data = [posData.img_data[0] for posData in self.data]
         self.preprocWorker.setupJob(
             func, 
             image_data, 
@@ -17352,6 +17377,9 @@ class guiWin(QMainWindow):
         self.preprocessDialog.sigPreviewToggled.connect(
             self.preprocessPreviewToggled
         )
+        self.preprocessDialog.sigValuesChanged.connect(
+            self.updatePreprocessPreview
+        )
         
         if self.preprocWorker is not None:
             return
@@ -17384,7 +17412,10 @@ class guiWin(QMainWindow):
         self.preprocThread.start()
         
         self.logger.info('Pre-processing worker started.')
-        
+    
+    def preprocWorkerCritical(self, error):
+        self.preprocessDialog.appliedFinished()
+        self.workerCritical(error)
             
     @exception_handler
     def loadingDataCompleted(self):
@@ -18123,7 +18154,7 @@ class guiWin(QMainWindow):
             except Exception as err:
                 printl(posData.segmInfo_df)
                 printl(idx)
-        
+                
         self.updatePreprocessPreview()
         self.highlightedID = self.getHighlightedID()
         self.updateAllImages(computePointsLayers=False)
@@ -23333,7 +23364,7 @@ class guiWin(QMainWindow):
         if zProjHow != 'single z-slice':
             return zProjHow
         
-        axis_slice = self.zSliceScrollBar.value() - 1
+        axis_slice = self.zSliceScrollBar.sliderPosition()
         if self.switchPlaneCombobox.depthAxes() == 'x':
             z_slice = (
                 slice(None, None, None), slice(None, None, None), axis_slice
@@ -23355,7 +23386,7 @@ class guiWin(QMainWindow):
             frame_i = 0
             frame_i = posData.frame_i = 0
         
-        axis_slice = self.zSliceScrollBar.value() - 1
+        axis_slice = self.zSliceScrollBar.sliderPosition()
         if self.switchPlaneCombobox.depthAxes() == 'x':
             return imgData[:, :, axis_slice].copy()
         elif self.switchPlaneCombobox.depthAxes() == 'y':
@@ -23468,9 +23499,9 @@ class guiWin(QMainWindow):
             img = img[z_slice]
             return img
         except Exception as err:
-            self.logger.warning(
-                'Pre-processed image not existing --> returning raw image'
-            )
+            # self.logger.warning(
+            #     'Pre-processed image not existing --> returning raw image'
+            # )
             return self.getRawImageLayer0(frame_i)
 
     def setImageImg2(self, updateLookuptable=True, set_image=True):

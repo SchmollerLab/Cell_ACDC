@@ -1778,13 +1778,23 @@ def preprocess_video_from_recipe(
             )
             for frame_i, frame_img in enumerate(preprocessed_image):
                 if frame_img.ndim == 3:
-                    preprocessed_image[frame_i] = preprocess_zstack_from_recipe(
+                    preprocessed_img = preprocess_zstack_from_recipe(
                         frame_img, (step,), pbar_pos=pbar_pos+1
                     )
+                    if preprocessed_img.dtype != preprocessed_image.dtype:
+                        preprocessed_image = (
+                            preprocessed_image.astype(preprocessed_img.dtype)
+                        )
+                    preprocessed_image[frame_i] = preprocessed_img
                 else:
-                    preprocessed_image[frame_i] = preprocess_image_from_recipe(
+                    preprocessed_img = preprocess_image_from_recipe(
                         frame_img, (step,)
                     )
+                    if preprocessed_img.dtype != preprocessed_image.dtype:
+                        preprocessed_image = (
+                            preprocessed_image.astype(preprocessed_img.dtype)
+                        )
+                    preprocessed_image[frame_i] = preprocessed_img
                 pbar.update()
             pbar.close()
     
@@ -1821,7 +1831,12 @@ def preprocess_zstack_from_recipe(
                 position=pbar_pos
             )
             for z_slice, img in enumerate(preprocessed_image):
-                preprocessed_image[z_slice] = func(img, **kwargs)
+                preprocessed_img = func(img, **kwargs)
+                if preprocessed_img.dtype != preprocessed_image.dtype:
+                    preprocessed_image = (
+                        preprocessed_image.astype(preprocessed_img.dtype)
+                    )
+                preprocessed_image[z_slice] = preprocessed_img
                 pbar.update()
             pbar.close()
     

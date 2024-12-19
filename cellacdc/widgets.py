@@ -1517,6 +1517,8 @@ class ExpandableListBox(QComboBox):
         self.listW.show()
 
 class filePathControl(QFrame):
+    sigValueChanged = Signal(str)
+    
     def __init__(
             self, parent=None, browseFolder=False, 
             fileManagerTitle='Select file', 
@@ -1552,6 +1554,7 @@ class filePathControl(QFrame):
 
     def setTextTooltip(self):
         self.le.setToolTip(self.le.text())
+        self.sigValueChanged.emit(self.le.text())
     
     def path(self):
         return self.le.text()
@@ -6369,7 +6372,7 @@ class BaseImageItem(pg.ImageItem):
         self.z = z
     
     def quickMinMax(self, targetSize=1e6):
-        if self.usePreprocessed:
+        if self.usePreprocessed and self.minMaxValuesMapperPreproc is not None:
             minMaxValuesMapper = self.minMaxValuesMapperPreproc
         else:
             minMaxValuesMapper = self.minMaxValuesMapper
@@ -6380,6 +6383,13 @@ class BaseImageItem(pg.ImageItem):
         try:
             key = (self.pos_i, self.frame_i, self.z)
             levels = minMaxValuesMapper[key]
+            return levels
+        except Exception as err:
+            pass
+        
+        try:
+            key = (self.pos_i, self.frame_i, self.z)
+            levels = self.minMaxValuesMapper[key]
             return levels
         except Exception as err:
             return super().quickMinMax(targetSize=targetSize)
@@ -8478,6 +8488,7 @@ class SwitchPlaneCombobox(QComboBox):
 
 class SamInputPointsWidget(QWidget):
     isWidget = True
+    sigValueChanged = Signal(str)
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -8486,6 +8497,7 @@ class SamInputPointsWidget(QWidget):
         
         self.lineEntry = ElidingLineEdit(parent=self)
         self.lineEntry.setAlignment(Qt.AlignCenter)
+        self.lineEntry.editingFinished.connect(self.emitValueChanged)
         
         self.editButton = editPushButton()
         self.browseButton = browseFileButton(
@@ -8506,6 +8518,9 @@ class SamInputPointsWidget(QWidget):
         
         _layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(_layout)
+    
+    def emitValueChanged(self, text):
+        self.sigValueChanged.emit(text)
     
     def showInfoEditPoints(self):
         note = html_utils.to_note(
@@ -8540,6 +8555,9 @@ class SamInputPointsWidget(QWidget):
     
     def value(self):
         return self.lineEntry.text()
+    
+    def cast_dtype(self, value) -> str:
+        return str(value)
     
     def browseCsvFiles(self, filepath):
         # Check if metadata.csv file exists with basename and set only the 
@@ -9233,11 +9251,15 @@ class LineEdit(QLineEdit):
         self.setText(str(value))
 
 class PreProcessingSelector(QComboBox):
+    sigValuesChanged = Signal(dict, int)
+    
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._parent = parent
         
         self.addItems(PREPROCESS_MAPPER.keys())
         self.methodToDefaultValuesMapper = {}
+        self.step_n = -1
 
     def htmlInfo(self):
         href = html_utils.href_tag('GitHub page', urls.issues_url)
@@ -9276,7 +9298,12 @@ class PreProcessingSelector(QComboBox):
                 if param_argspec.name != kwarg:
                     continue
                 
-                value = param_argspec.type(value)
+                if hasattr(param_argspec.type, 'cast_dtype'):
+                    cls = param_argspec.type
+                    value = cls.cast_dtype(value)
+                else:
+                    value = param_argspec.type(value)
+                
                 if value == param_argspec.default:
                     continue
                 param_argspec = param_argspec._replace(default=value)
@@ -9284,8 +9311,11 @@ class PreProcessingSelector(QComboBox):
                 
         self.setParamsWindow = apps.FunctionParamsDialog(
             params_argspecs, 
-            function_name=method
+            function_name=method,
+            addApplyButton=True,
+            parent=self._parent
         )
+        self.setParamsWindow.sigValuesChanged.connect(self.emitValuesChanged)
         self.setParamsWindow.exec_()
         if self.setParamsWindow.cancel:
             return
@@ -9293,6 +9323,9 @@ class PreProcessingSelector(QComboBox):
         self.setParams(method, self.setParamsWindow.function_kwargs)
         return self.setParamsWindow.function_kwargs
 
+    def emitValuesChanged(self, functionKwargs: dict):
+        self.sigValuesChanged.emit(functionKwargs, self.step_n)
+    
 class RescaleImageJroisGroupbox(QGroupBox):
     def __init__(self, TZYX_out_shape, parent=None):
         super().__init__(parent)

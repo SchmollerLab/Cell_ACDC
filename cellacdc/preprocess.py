@@ -36,10 +36,16 @@ import skimage.util
 
 from . import error_up_str
 from . import types
+from . import printl
 
 SQRT_2 = math.sqrt(2)
 
-def remove_hot_pixels(image, logger_func=print, progress=True):
+def remove_hot_pixels(
+        image, 
+        logger_func=print, 
+        progress=True, 
+        apply_to_all_zslices=True
+    ):
     """Apply a morphological opening operation to remove isolated bright 
     pixels.
 
@@ -76,7 +82,8 @@ def gaussian_filter(
         image, 
         sigma: types.Vector=0.75, 
         use_gpu=False, 
-        logger_func=print
+        logger_func=print, 
+        apply_to_all_zslices=True
     ):
     """Multi-dimensional Gaussian filter
 
@@ -140,7 +147,8 @@ def gaussian_filter(
 
 def ridge_filter(
         image, 
-        sigmas: types.Vector=(1.0, 2.0)
+        sigmas: types.Vector=(1.0, 2.0), 
+        apply_to_all_zslices=True
     ):
     """Filter used to enhance network-like structures (Sato filter). More info 
     here https://scikit-image.org/docs/stable/auto_examples/edges/plot_ridge_filter.html
@@ -168,6 +176,7 @@ def spot_detector_filter(
         spots_zyx_radii_pxl: types.Vector=(3, 5, 5), 
         use_gpu=False, 
         logger_func=print, 
+        apply_to_all_zslices=True
     ):
     """Spot detection using Difference of Gaussians filter.
 
@@ -471,3 +480,60 @@ class PreprocessedData:
     
     def __repr__(self):
         return str(self._data)
+
+def rescale_intensities(
+        image: np.array,
+        out_range_low: float=0.0,
+        out_range_high: float=1.0,
+        in_range_low: float=0.0,
+        in_range_high: float=1.0,
+        in_range_how: types.RescaleIntensitiesInRangeHow='percentage',
+        apply_to_all_zslices=True,
+    ):
+    """Rescale the intensities of an image to a given range.
+
+    Parameters
+    ----------
+    image : np.ndarray
+        Input image to rescale
+    out_range_low : float, optional
+        Min value of the output image. Default is 0.0
+    out_range_high : float, optional
+        Max value of the output image. Default is 1.0
+    in_range_low : float, optional
+        Min value of the output image. See `in_range_how` for more details. 
+        Default is 0.0
+    in_range_high : float, optional
+        Max value of the output image. See `in_range_how` for more details. 
+        Default is 1.0
+    in_range_how : {'percentage', 'image', 'absolute'}, optional
+        If `percentage`, the image is first rescaled to (0, 1) using the 
+        minimum and maximum value of the input image. This allows to specify 
+        the input range as a percentage of the image intensity range. 
+        If `image`, the input range is the minimum and maximum value of the 
+        input image. 
+        If `absolute`, the input range is specified by `in_range_low` and 
+        `in_range_high` in absolute values (same scale as the input image). 
+        Default is 'percentage'.
+    apply_to_all_zslices : bool, optional
+        Scale intensities across multi-dimensional images. Default is True
+
+    Returns
+    -------
+    np.ndarray
+        The rescaled image
+    """
+    out_range = (out_range_low, out_range_high)
+    if in_range_how == 'image':
+        in_range = 'image'
+    elif in_range_how == 'percentage':
+        image = skimage.exposure.rescale_intensity(
+            image, in_range='image', out_range=(0, 1)
+        )
+    elif in_range_how == 'absolute':
+        in_range = (in_range_low, in_range_high)
+        
+    rescaled = skimage.exposure.rescale_intensity(
+        image, in_range=in_range, out_range=out_range
+    )
+    return rescaled

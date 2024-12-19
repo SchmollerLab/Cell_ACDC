@@ -99,15 +99,22 @@ except Exception as err:
     parser_args['debug'] = False
 
 def preprocessing_mapper():
-    from cellacdc import preprocess
+    from cellacdc import preprocess, cellacdc_path, acdc_regex
     from inspect import getmembers, isfunction
     functions = getmembers(preprocess, isfunction)
+    preprocess_py_path = os.path.join(cellacdc_path, 'preprocess.py')
+    with open(preprocess_py_path, 'r') as py_file:
+        text = py_file.read()
+    valid_functions_names = acdc_regex.get_function_names(text)
     mapper = {}
     for func_name, func in functions:
         if func_name.startswith('_'):
             continue
         
         if func_name == 'dummy_filter' and not parser_args['debug']:
+            continue
+        
+        if func_name not in valid_functions_names:
             continue
         
         method = func_name.title().replace('_', ' ')

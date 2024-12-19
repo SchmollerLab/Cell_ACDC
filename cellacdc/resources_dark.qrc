@@ -73,6 +73,7 @@
     <file alias="undo.svg">resources/icons/undo_dark.svg</file>
     <file alias="redo.svg">resources/icons/redo_dark.svg</file>
     <file alias="eye.svg">resources/icons/eye_dark.svg</file>
+    <file alias="filter_image.svg">resources/icons/filter_image_dark.svg</file>
     <file alias="eye-checked.svg">resources/icons/eye-checked_dark.svg</file>
     <file alias="spinner.svg">resources/icons/spinner_dark.svg</file>
     <file alias="unchecked.svg">resources/icons/unchecked_dark.svg</file>

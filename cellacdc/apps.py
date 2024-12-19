@@ -10162,11 +10162,14 @@ class QDialogPbar(QDialog):
             event.ignore()
 
 class FunctionParamsDialog(QBaseDialog):
+    sigValuesChanged = Signal(dict)
+    
     def __init__(
             self, params_argspecs, 
             function_name='Function', 
             df_metadata=None,
             parent=None,
+            addApplyButton=False
         ):
         self.cancel = True
         self.df_metadata = df_metadata
@@ -10184,13 +10187,22 @@ class FunctionParamsDialog(QBaseDialog):
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
         
+        if addApplyButton:
+            applyButton = widgets.viewPushButton('Apply')
+            applyButton.clicked.connect(self.emitValuesChanged)
+            buttonsLayout.insertWidget(3, applyButton)
+            self.applyButton = applyButton
+        
         self.mainLayout.addLayout(widgetsLayout)
         self.mainLayout.addSpacing(20)
         self.mainLayout.addLayout(buttonsLayout)
 
         self.setLayout(self.mainLayout)
     
-    def functionKwargs(self):
+    def emitValuesChanged(self, *args, **kwargs):
+        self.sigValuesChanged.emit(self.functionKwargs())
+    
+    def functionKwargs(self):        
         function_kwargs = {
             argWidget.name:argWidget.valueGetter(argWidget.widget)
             for argWidget in self.argsWidgets
@@ -10257,12 +10269,14 @@ class FunctionParamsDialog(QBaseDialog):
             
             if isCustomWidget:
                 widget = ArgSpec.type()
+                self.checkIfTypeCLassHasCastDtype(widget)
                 defaultVal = ArgSpec.default
                 valueSetter = ArgSpec.type.setValue
                 valueGetter = ArgSpec.type.value
                 widgetsLayout.addWidget(widget, row, 1, 1, 2)
             elif isVectorEntry:
                 vectorLineEdit = widgets.VectorLineEdit()
+                self.checkIfTypeCLassHasCastDtype(ArgSpec.type)
                 vectorLineEdit.setValue(ArgSpec.default)
                 defaultVal = ArgSpec.default
                 valueSetter = widgets.VectorLineEdit.setValue
@@ -10271,6 +10285,7 @@ class FunctionParamsDialog(QBaseDialog):
                 widgetsLayout.addWidget(vectorLineEdit, row, 1, 1, 2)
             elif isFolderPath:
                 folderPathControl = widgets.FolderPathControl()
+                self.checkIfTypeCLassHasCastDtype(ArgSpec.type)
                 folderPathControl.setText(str(ArgSpec.default))
                 widget = folderPathControl
                 defaultVal = str(ArgSpec.default)
@@ -10323,6 +10338,7 @@ class FunctionParamsDialog(QBaseDialog):
                 widgetsLayout.addWidget(filePathControl, row, 1, 1, 2)
             elif isCustomListType:
                 items = ArgSpec.type().values
+                ArgSpec.type.cast_dtype = types.to_str
                 defaultVal = str(ArgSpec.default)
                 combobox = widgets.AlphaNumericComboBox()
                 combobox.addItems(items)
@@ -10361,6 +10377,17 @@ class FunctionParamsDialog(QBaseDialog):
 
         return widgetsLayout, ArgsWidgets_list
 
+    def checkIfTypeCLassHasCastDtype(self, cls):
+        cast_dtype = getattr(cls, 'cast_dtype', None)
+        if callable(cast_dtype):
+            return
+        
+        raise AttributeError(
+            'The custom type or widget does not have the `cast_dtype` method. '
+            'Please, implement it. The method should cast the value to the '
+            'correct type.'
+        )
+    
     def getInfoButton(self, param_name, infoText):
         infoButton = widgets.infoPushButton()
         infoButton.param_name = param_name
@@ -10902,7 +10929,7 @@ class QDialogModelParams(QDialog):
         
         groupBox.setLayout(groupBoxLayout)
         return groupBox, ArgsWidgets_list
-
+    
     def getInfoButton(self, param_name, infoText):
         infoButton = widgets.infoPushButton()
         infoButton.param_name = param_name
@@ -14509,6 +14536,7 @@ class DataPrepSubCropsPathsDialog(QBaseDialog):
 class PreProcessParamsWidget(QWidget):
     sigLoadRecipe = Signal()
     sigLoadSavedRecipe = Signal()
+    sigValuesChanged = Signal(list)
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -14776,7 +14804,18 @@ class PreProcessParamsWidget(QWidget):
               
         self.stepsWidgets[step_n] = stepWidgets
         
+        selector.sigValuesChanged.connect(self.emitValuesChanged)
+        
         self.resetStretch()
+    
+    def emitValuesChanged(self, functionKwargs, step_n):
+        self.stepsWidgets[step_n]['step_kwargs'] = functionKwargs
+        
+        recipe = self.recipe(warn=False)
+        if recipe is None:
+            return
+        
+        self.sigValuesChanged.emit(recipe)
     
     def resetStretch(self):
         for row in range(self.gridLayout.rowCount()):
@@ -14797,11 +14836,11 @@ class PreProcessParamsWidget(QWidget):
         msg.information(self, f'Info about `{method}`', htmlText)
     
     def setParamsStep(self, checked=False, selector=None):
+        step_n = selector.step_n
         stepFunctionKwargs = selector.askSetParams()
         if stepFunctionKwargs is None:
             return
         
-        step_n = selector.step_n
         self.stepsWidgets[step_n]['step_kwargs'] = stepFunctionKwargs
         
     def removeStep(self, checked=False, step_n=None):        
@@ -14864,7 +14903,7 @@ class PreProcessParamsWidget(QWidget):
         )
         msg.warning(self, 'Table exists!', txt)
 
-    def recipe(self):
+    def recipe(self, warn=True):
         recipe = []
         if not self.groupbox.isChecked() and self.groupbox.isCheckable():
             return recipe
@@ -14873,7 +14912,8 @@ class PreProcessParamsWidget(QWidget):
             method = stepWidgets['selector'].currentText()
             step_kwargs = stepWidgets.get('step_kwargs')
             if step_kwargs is None:
-                self.warnStepNotInit(method)
+                if warn:
+                    self.warnStepNotInit(method)
                 return
             
             recipe.append({
@@ -15585,6 +15625,7 @@ class PreProcessRecipeDialog(QBaseDialog):
     sigApplyAllFrames = Signal(object)
     sigApplyAllPos = Signal(object)
     sigPreviewToggled = Signal(bool)
+    sigValuesChanged = Signal(list)
     
     def __init__(
             self, 
@@ -15684,7 +15725,7 @@ class PreProcessRecipeDialog(QBaseDialog):
             self.applyAllPosButton = widgets.futurePushButton(
                 'Apply to all Positions'
             )
-            buttonsLayout.addWidget(self.applyAllFramesButton, row, col)
+            buttonsLayout.addWidget(self.applyAllPosButton, row, col)
             self.applyAllPosButton.clicked.connect(
                 partial(self.apply, signal=self.sigApplyAllPos)
             )
@@ -15697,8 +15738,9 @@ class PreProcessRecipeDialog(QBaseDialog):
         buttonsLayout.addWidget(self.savePreprocButton, row, col)
         self.allButtons.append(self.savePreprocButton)
         
-        self.previewCheckbox.toggled.connect(
-            self.sigPreviewToggled.emit
+        self.previewCheckbox.toggled.connect(self.sigPreviewToggled.emit)
+        self.preProcessParamsWidget.sigValuesChanged.connect(
+            self.emitValuesChanged
         )
         
         # self.cancelButton.clicked.connect(self.close)
@@ -15706,6 +15748,13 @@ class PreProcessRecipeDialog(QBaseDialog):
         mainLayout.addWidget(self.preProcessParamsWidget)
         
         self.setLayout(mainLayout)
+    
+    def emitValuesChanged(self):
+        recipe = self.recipe(warn=False)
+        if recipe is None:
+            return
+        
+        self.sigValuesChanged.emit(recipe)
     
     def setDisabled(self, disabled: bool):
         self.preProcessParamsWidget.setDisabled(disabled)
@@ -15731,8 +15780,8 @@ class PreProcessRecipeDialog(QBaseDialog):
     def appliedFinished(self):
         self.setDisabled(False)
     
-    def recipe(self):
-        return self.preProcessParamsWidget.recipe()
+    def recipe(self, warn=True):
+        return self.preProcessParamsWidget.recipe(warn=warn)
     
     def recipeConfigPars(self):
         return self.preProcessParamsWidget.recipeConfigPars('acdc')

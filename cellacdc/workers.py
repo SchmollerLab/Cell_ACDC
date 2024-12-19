@@ -5326,7 +5326,7 @@ class PreprocessWorker(QObject):
         self.mutex = mutex
         self.waitCond = waitCond
         self.logger = workerLogger(self.signals.progress)
-        self.dataQ = deque()
+        self.dataQ = deque(maxlen=2)
         self.exit = False
         self.wait = True
         self._abort = False
