@@ -77,7 +77,7 @@ from . import load, prompts, apps, workers, html_utils
 from . import core, myutils, dataPrep, widgets
 from . import _warnings, issues_url
 from . import measurements, printl
-from . import colors, filters, annotate
+from . import colors, annotate
 from . import user_manual_url
 from . import recentPaths_path, settings_folderpath, settings_csv_path
 from . import qutils, autopilot, QtScoped
