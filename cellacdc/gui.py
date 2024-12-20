@@ -16329,22 +16329,15 @@ class guiWin(QMainWindow):
             posData.allData_li[posData.frame_i]['labels'] = lab
             self.get_data()
 
-    def updatePreprocessPreview(self, *args, **kwargs):
-        if not self.preprocessDialog.isVisible():
-            return
-        
-        if not self.preprocessDialog.previewCheckbox.isChecked():
-            return
-        
+    def preprocessDialogRecipeChanged(self, recipe):
         recipe = self.preprocessDialog.recipe()
         if recipe is None:
             self.logger.warning('Pre-processing recipe not initialized yet.')
             return
         
-        txt = 'Pre-processing current image...'
-        self.logger.info(txt)
-        self.statusBarLabel.setText(txt)
-        
+        self.preprocessCurrentImage(recipe)
+    
+    def preprocessEnqueueCurrentImage(self, recipe):
         posData = self.data[self.pos_i]
         func = core.preprocess_image_from_recipe
         image_data = self.getImage(raw=True)
@@ -16360,6 +16353,26 @@ class guiWin(QMainWindow):
             recipe, 
             key
         )
+    
+    def updatePreprocessPreview(self, *args, **kwargs):
+        force = kwargs.get('force', False)
+        
+        if not self.preprocessDialog.isVisible() and not force:
+            return
+        
+        if not self.preprocessDialog.previewCheckbox.isChecked() and not force:
+            return
+        
+        recipe = self.preprocessDialog.recipe()
+        if recipe is None:
+            self.logger.warning('Pre-processing recipe not initialized yet.')
+            return
+        
+        txt = 'Pre-processing current image...'
+        self.logger.info(txt)
+        self.statusBarLabel.setText(txt)
+        
+        self.preprocessEnqueueCurrentImage(recipe)
     
     def next_pos(self):
         self.store_data(debug=True, autosave=False)
@@ -17379,7 +17392,7 @@ class guiWin(QMainWindow):
             self.preprocessPreviewToggled
         )
         self.preprocessDialog.sigValuesChanged.connect(
-            self.updatePreprocessPreview
+            self.preprocessDialogRecipeChanged
         )
         
         if self.preprocWorker is not None:
