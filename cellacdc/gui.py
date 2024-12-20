@@ -8889,6 +8889,16 @@ class guiWin(QMainWindow):
         self.updateAllImages()
         self.titleLabel.setText('Done', color='w')
     
+    def savePreprocWorkerFinished(self):
+        if self.progressWin is not None:
+            self.progressWin.workerFinished = True
+            self.progressWin.close()
+            self.progressWin = None
+        
+        self.setStatusBarLabel()
+        self.logger.info('Pre-processed data saved!')
+        self.titleLabel.setText('Pre-processed data saved!', color='w')
+    
     def delObjsOutSegmMaskWorkerFinished(self, result):
         posData = self.data[self.pos_i]
         worker, cleared_segm_data, delIDs = result
@@ -16337,6 +16347,81 @@ class guiWin(QMainWindow):
         
         self.preprocessCurrentImage(recipe)
     
+    def preprocessDialogSavePreprocessedData(self, dialog):
+        helpText = (
+            """
+            The preprocessed image file will be saved with a different 
+            file name.<br><br>
+            Insert a name to append to the end of the new file name. The rest of 
+            the name will be the same as the original file.
+            """
+        )
+        
+        posData = self.data[self.pos_i]
+        
+        win = apps.filenameDialog(
+            basename=f'{posData.basename}{self.user_ch_name}',
+            ext=posData.ext,
+            hintText='Insert a name for the <b>preprocessed image</b> file:',
+            defaultEntry='preprocessed',
+            helpText=helpText, 
+            allowEmpty=False,
+            parent=dialog
+        )
+        win.exec_()
+        if win.cancel:
+            return
+
+        appendedText = win.entryText
+        
+        self.progressWin = apps.QDialogWorkerProgress(
+            title='Saving pre-processed image(s)', 
+            parent=self,
+            pbarDesc='Saving pre-processed image(s)'
+        )
+        self.progressWin.show(self.app)
+        self.progressWin.mainPbar.setMaximum(0)
+        
+        self.statusBarLabel.setText('Saving pre-processed data...')
+        
+        self.savePreprocWorker = workers.SaveProcessedDataWorker(
+            self.data, appendedText
+        )
+        
+        self.savePreprocThread = QThread()
+        self.savePreprocWorker.moveToThread(self.savePreprocThread)
+        self.savePreprocWorker.signals.finished.connect(
+            self.savePreprocThread.quit
+        )
+        self.savePreprocWorker.signals.finished.connect(
+            self.savePreprocWorker.deleteLater
+        )
+        self.savePreprocThread.finished.connect(
+            self.savePreprocThread.deleteLater
+        )
+        
+        self.savePreprocWorker.signals.critical.connect(
+            self.workerCritical
+        )
+        self.savePreprocWorker.signals.initProgressBar.connect(
+            self.workerInitProgressbar
+        )
+        self.savePreprocWorker.signals.progressBar.connect(
+            self.workerUpdateProgressbar
+        )
+        self.savePreprocWorker.signals.progress.connect(
+            self.workerProgress
+        )
+        self.savePreprocWorker.signals.finished.connect(
+            self.savePreprocWorkerFinished
+        )
+        
+        self.savePreprocThread.started.connect(
+            self.savePreprocWorker.run
+        )
+        self.savePreprocThread.start()
+        
+    
     def preprocessEnqueueCurrentImage(self, recipe):
         posData = self.data[self.pos_i]
         func = core.preprocess_image_from_recipe
@@ -17372,8 +17457,10 @@ class guiWin(QMainWindow):
             isTimelapse=posData.SizeT>1, 
             isZstack=posData.SizeZ>1,
             isMultiPos=len(self.data)>1,
+            df_metadata=posData.metadata_df,
             hideOnClosing=True, 
-            addApplyButton=True
+            addApplyButton=True,
+            parent=self
         )
         self.doPreviewPreprocImage = False
         self.preprocessDialog.sigApplyImage.connect(
@@ -17393,6 +17480,9 @@ class guiWin(QMainWindow):
         )
         self.preprocessDialog.sigValuesChanged.connect(
             self.preprocessDialogRecipeChanged
+        )
+        self.preprocessDialog.sigSavePreprocData.connect(
+            self.preprocessDialogSavePreprocessedData
         )
         
         if self.preprocWorker is not None:

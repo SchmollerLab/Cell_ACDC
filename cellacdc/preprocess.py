@@ -480,6 +480,12 @@ class PreprocessedData:
     
     def __repr__(self):
         return str(self._data)
+    
+    def get(self, frame_i: int, default_value=None):
+        try:
+            return self._data[frame_i]
+        except KeyError:
+            return default_value
 
 def rescale_intensities(
         image: np.array,

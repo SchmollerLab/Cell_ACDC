@@ -14841,7 +14841,7 @@ class PreProcessParamsWidget(QWidget):
     
     def setParamsStep(
             self, checked=False, 
-            selector: widgets.PreProcessingSelector=None
+            selector: 'widgets.PreProcessingSelector'=None
         ):
         step_n = selector.step_n
         stepFunctionKwargs = selector.askSetParams(
@@ -15636,6 +15636,7 @@ class PreProcessRecipeDialog(QBaseDialog):
     sigApplyAllPos = Signal(object)
     sigPreviewToggled = Signal(bool)
     sigValuesChanged = Signal(list)
+    sigSavePreprocData = Signal(object)
     
     def __init__(
             self, 
@@ -15655,6 +15656,18 @@ class PreProcessRecipeDialog(QBaseDialog):
         self.hideOnClosing = hideOnClosing
         
         mainLayout = QVBoxLayout()
+        
+        keepInputDataTypeLayout = QHBoxLayout()
+        self.keepInputDataTypeToggle = widgets.Toggle()
+        self.keepInputDataTypeToggle.setChecked(True)
+        keepInputDataTypeLayout.addStretch(1)
+        keepInputDataTypeLayout.addWidget(QLabel('Keep input data type: '))
+        keepInputDataTypeLayout.addWidget(self.keepInputDataTypeToggle)
+        keepInputDataTypeInfoButton = widgets.infoPushButton()
+        keepInputDataTypeLayout.addWidget(keepInputDataTypeInfoButton)
+        keepInputDataTypeInfoButton.clicked.connect(
+            self.showInfoKeepInputDataType
+        )
     
         self.preProcessParamsWidget = PreProcessParamsWidget(
             df_metadata=df_metadata, addApplyButton=addApplyButton, parent=self
@@ -15749,6 +15762,7 @@ class PreProcessRecipeDialog(QBaseDialog):
         )
         buttonsLayout.addWidget(self.savePreprocButton, row, col)
         self.allButtons.append(self.savePreprocButton)
+        self.savePreprocButton.clicked.connect(self.emitSignalSavePreprocData)
         
         self.previewCheckbox.toggled.connect(self.sigPreviewToggled.emit)
         self.preProcessParamsWidget.sigValuesChanged.connect(
@@ -15757,11 +15771,27 @@ class PreProcessRecipeDialog(QBaseDialog):
         
         # self.cancelButton.clicked.connect(self.close)
         
+        mainLayout.addWidget(keepInputDataTypeLayout)
         mainLayout.addWidget(self.preProcessParamsWidget)
         self.mainLayout = mainLayout
         
         self.setLayout(mainLayout)
     
+    def showInfoKeepInputDataType(self):
+        txt = html_utils.paragraph("""
+            If checked, the data type of the pre-processed data will be 
+            the same as the input data type.<br><br>
+            This is useful to avoid saving the pre-processed data as 
+            floating-point numbers (e.g., 32-bit float) which might 
+            increase the file size.<br><br>
+            We <b>recommend keeping this option checked</b>.
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.information(self, 'Keep input data type', txt)
+    
+    def emitSignalSavePreprocData(self):
+        self.sigSavePreprocData.emit(self)
+           
     def emitValuesChanged(self):
         recipe = self.recipe(warn=False)
         if recipe is None:
@@ -15797,7 +15827,15 @@ class PreProcessRecipeDialog(QBaseDialog):
         self.setDisabled(False)
     
     def recipe(self, warn=True):
-        return self.preProcessParamsWidget.recipe(warn=warn)
+        recipe = self.preProcessParamsWidget.recipe(warn=warn)
+        if recipe is None:
+            return
+        
+        for step in recipe:
+            step['keep_input_data_type'] = (
+                self.keepInputDataTypeToggle.isChecked()
+            )
+        return recipe
     
     def recipeConfigPars(self):
         return self.preProcessParamsWidget.recipeConfigPars('acdc')

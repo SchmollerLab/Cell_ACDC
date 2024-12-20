@@ -2276,18 +2276,30 @@ def float_img_to_dtype(img, dtype):
     if dtype == np.uint16:
         return skimage.img_as_uint(img)
     
+    if dtype == np.float32:
+        return img.astype(np.float32)
+    
+    if dtype == np.float64:
+        return img.astype(np.float64)
+    
     raise TypeError(
         f'Invalid output data type `{dtype}`. '
         'Valid output data types are `np.uin8` and `np.uint16`'
     )
 
-def scale_float(data, force_dtype=None, force_missing_dtype=None):
+def convert_to_dtype(data: np.ndarray, dtype):
     val = data[tuple([0]*data.ndim)]
     if isinstance(val, (np.floating, float)):
-        data = img_to_float(
-            data, 
-            force_dtype=force_dtype, 
-            force_missing_dtype=force_missing_dtype
+        data = float_img_to_dtype(data, dtype)
+    elif dtype == np.uint8:
+        data = np.round(img_to_float(data)*255).astype(np.uint8)
+    elif dtype == np.uint16:
+        data = np.round(img_to_float(data)*65535).astype(np.uint16)
+    else:
+        raise TypeError(
+            f'Invalid output data type `{dtype}`. '
+            'Valid data types are floating-point format, `np.uint8` '
+            'and `np.uint16`'
         )
     return data
 

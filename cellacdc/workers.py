@@ -5315,6 +5315,42 @@ class SimpleWorker(QObject):
         )
         self.signals.finished.emit(self)
 
+class SaveProcessedDataWorker(QObject):
+    def __init__(
+            self, 
+            allPosData: Iterable['load.loadData'], 
+            appended_text_filename: str
+        ):
+        QObject.__init__(self)
+        self.allPosData = allPosData
+        self.signals = signals()
+        self.logger = workerLogger(self.signals.progress)
+        self.appended_text_filename = appended_text_filename
+    
+    @worker_exception_handler
+    def run(self):
+        self.signals.initProgressBar.emit(0)
+        for posData in self.allPosData:
+            processed_filename = (
+                f'{posData.basename}{posData.user_ch_name}_'
+                f'{self.appended_text_filename}{posData.ext}'
+            )
+            processed_filepath = os.path.join(
+                posData.images_path, processed_filename
+            )
+            self.logger.log(f'Saving {processed_filepath}...')
+            processed_data = posData.preprocessedDataArray()
+            if processed_data is None:
+                self.logger.log(
+                    f'[WARNING]: {posData.pos_foldername} does not have '
+                    'preprocessed data. Skipping it.'
+                )
+                continue
+                
+            io.save_image_data(processed_filepath, processed_data)
+        
+        self.signals.finished.emit(self)
+
 class PreprocessWorker(QObject):
     sigDone = Signal(object, str)
     sigPreviewDone = Signal(object, tuple)
@@ -5380,9 +5416,26 @@ class PreprocessWorker(QObject):
             image = self._image_data.copy()
         if recipe is None:
             recipe = self._recipe
-            
-        return self._func(image, recipe)
-    
+        
+        return self.applyRecipe(self._func, image, recipe)
+        
+    def applyRecipe(
+            self, 
+            func: Callable, 
+            image: np.ndarray, 
+            recipe: List[Dict[str, Any]]
+        ):
+        preprocessed_data = func(image, recipe)
+
+        keep_input_data_type = recipe[0].get('keep_input_data_type', True)
+        if not keep_input_data_type:
+            return preprocessed_data
+
+        preprocessed_data = myutils.convert_to_dtype(
+            preprocessed_data, image.dtype
+        )
+        return preprocessed_data
+        
     @worker_exception_handler
     def run(self):
         while True:
@@ -5394,7 +5447,7 @@ class PreprocessWorker(QObject):
                 self.pause()
             elif len(self.dataQ) > 0:
                 func, image, recipe, key = self.dataQ.pop()
-                processed_data = func(image, recipe)
+                processed_data = self.applyRecipe(func, image, recipe)
                 self.sigPreviewDone.emit(processed_data, key)
                 if len(self.dataQ) == 0:
                     self.wait = True
@@ -5466,6 +5519,12 @@ class CustomPreprocessWorker(BaseWorkerUtil):
                     preprocessed_ch_data[frame_i] = processed_img
                     pbar.update()
             pbar.close()
+            
+            keep_input_data_type = recipe[0].get('keep_input_data_type', True)
+            if keep_input_data_type:
+                preprocessed_ch_data = myutils.convert_to_dtype(
+                    preprocessed_ch_data, ch_image_data.dtype
+                )
             
             _, ext = os.path.splitext(ch_filepath)
             basename = posData.basename

@@ -63,7 +63,7 @@ class CustomPreprocessUtil(NewThreadMultipleExpBaseUtil):
             """
             The preprocessed image file will be saved with a different 
             file name.<br><br>
-            Insert a name to append to the end of the new name. The rest of 
+            Insert a name to append to the end of the new file name. The rest of 
             the name will be the same as the original file.
             """
         )

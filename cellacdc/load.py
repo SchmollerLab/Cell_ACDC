@@ -2162,6 +2162,27 @@ class loadData:
                 self.last_md_df.at['PhysicalSizeZ', 'values']
             )
 
+    def preprocessedDataArray(self, check_integrity=True):
+        if not hasattr(self, 'preproc_img_data'):
+            return
+        
+        preprocess_data = []
+        for frame_i, raw_img in enumerate(self.img_data):
+            preprocess_img = self.preproc_img_data.get(frame_i)
+            if preprocess_img is None:
+                if check_integrity:
+                    raise TypeError(
+                        'Not all frames have been preprocessed. '
+                    )
+                else:
+                    continue
+            
+            preprocess_img = np.squeeze(preprocess_img)
+            preprocess_data.append(preprocess_img)      
+        
+        preprocess_data_arr = np.array(preprocess_data)
+        return preprocess_data_arr
+    
     def addEquationCombineMetrics(self, equation, colName, isMixedChannels):
         section = 'mixed_channels_equations' if isMixedChannels else 'equations'
         self.combineMetricsConfig[section][colName] = equation
