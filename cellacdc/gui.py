@@ -18257,7 +18257,6 @@ class guiWin(QMainWindow):
 
         self.fluoDataChNameActions = []
 
-        self.isFilterPreviewChecked = True
         self.splineHoverON = False
         self.tempSegmentON = False
         self.isCtrlDown = False
