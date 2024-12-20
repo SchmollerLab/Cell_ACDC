@@ -86,12 +86,6 @@ from .acdc_regex import float_regex
 from . import _base_widgets
 
 POSITIVE_FLOAT_REGEX = float_regex(allow_negative=False)
-PRE_PROCESSING_STEPS = [
-    'Adjust Brightness/Contrast',
-    'Smooth (gaussian filter)', 
-    'Sharpen (difference of gaussians filter)'
-]
-
 TREEWIDGET_STYLESHEET = _palettes.TreeWidgetStyleSheet()
 LISTWIDGET_STYLESHEET = _palettes.ListWidgetStyleSheet()
 BACKGROUND_RGBA = _palettes.get_disabled_colors()['Button']
@@ -14925,6 +14919,12 @@ class PreProcessParamsWidget(QWidget):
                 if warn:
                     self.warnStepNotInit(method)
                 return
+
+            try:
+                init_func = config.PREPROCESS_INIT_MAPPER[method]['function']
+                init_func(**step_kwargs)
+            except Exception as err:
+                pass
             
             recipe.append({
                 'method': method, 'kwargs': step_kwargs
@@ -15771,7 +15771,7 @@ class PreProcessRecipeDialog(QBaseDialog):
         
         # self.cancelButton.clicked.connect(self.close)
         
-        mainLayout.addWidget(keepInputDataTypeLayout)
+        mainLayout.addLayout(keepInputDataTypeLayout)
         mainLayout.addWidget(self.preProcessParamsWidget)
         self.mainLayout = mainLayout
         

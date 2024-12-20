@@ -1151,7 +1151,6 @@ class guiWin(QMainWindow):
         self.closeGUI = False
         self.warnKeyPressedMsg = None
         self.img1ChannelGradients = {}
-        self.filtersWins = {}
         self.AutoPilotProfile = autopilot.AutoPilotProfile()
         self.storeStateWorker = None
         self.AutoPilot = None
@@ -1552,21 +1551,8 @@ class guiWin(QMainWindow):
             self.defaultRescaleIntensActionGroup.addAction(action)
             self.defaultRescaleIntensLutMenu.addAction(action)
         
-        # filtersMenu = menuBar.addMenu("Filters")
-        # for filtersDict in self.filtersWins.values():
-        #     filtersMenu.addAction(filtersDict['action'])
-        
-        # filtersMenu.addAction(self.cp3denoiseAction)
-        
         ImageMenu.addAction(self.addScaleBarAction)
         ImageMenu.addAction(self.addTimestampAction)
-        # normalizeIntensitiesMenu = ImageMenu.addMenu("Normalize intensities")
-        # normalizeIntensitiesMenu.addAction(self.normalizeRawAction)
-        # normalizeIntensitiesMenu.addAction(self.normalizeToFloatAction)
-        # # normalizeIntensitiesMenu.addAction(self.normalizeToUbyteAction)
-        # normalizeIntensitiesMenu.addAction(self.normalizeRescale0to1Action)
-        # normalizeIntensitiesMenu.addAction(self.normalizeByMaxAction)
-        # ImageMenu.addAction(self.invertBwAction)
         
         self.rescaleIntensMenu = ImageMenu.addMenu('Rescale intensities (LUT)')
         
@@ -2391,7 +2377,7 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         posData.frame_i = frame_n - 1
         self.get_data()
-        self.updateAllImages(updateFilters=True)
+        self.updateAllImages()
         self.updateScrollbars()
     
     def warnCcaIntegrity(self, txt, category):
@@ -3351,54 +3337,6 @@ class guiWin(QMainWindow):
             'Automatic zoom to all cells when pressing "Next/Previous"', self)
         self.enableAutoZoomToCellsAction.setCheckable(True)
 
-        gaussBlurAction = QAction('Gaussian blur...', self)
-        gaussBlurAction.setCheckable(True)
-        name = 'Gaussian blur'
-        gaussBlurAction.filterName = name
-        self.filtersWins[name] = {}
-        self.filtersWins[name]['action'] = gaussBlurAction
-        self.filtersWins[name]['dialogueApp'] = filters.gaussBlurDialog
-        self.filtersWins[name]['window'] = None
-
-        diffGaussFilterAction = QAction('Sharpen (Spot detector)...', self)
-        diffGaussFilterAction.setCheckable(True)
-        name = 'Sharpen (Spot detector)'
-        diffGaussFilterAction.filterName = name
-        self.filtersWins[name] = {}
-        self.filtersWins[name]['action'] = diffGaussFilterAction
-        self.filtersWins[name]['dialogueApp'] = filters.diffGaussFilterDialog
-        self.filtersWins[name]['initMethods'] = {'initSpotmaxValues': ['posData']}
-        self.filtersWins[name]['window'] = None
-
-        edgeDetectorAction = QAction('Edge detection...', self)
-        edgeDetectorAction.setCheckable(True)      
-        name = 'Edge detection filter'
-        edgeDetectorAction.filterName = name
-        self.filtersWins[name] = {}
-        self.filtersWins[name]['action'] = edgeDetectorAction
-        self.filtersWins[name]['dialogueApp'] = filters.edgeDetectionDialog
-        self.filtersWins[name]['window'] = None
-
-        entropyFilterAction = QAction(
-            'Object detection (entropy filter)...', self
-        )
-        entropyFilterAction.setCheckable(True)
-        name = 'Object detection filter'
-        entropyFilterAction.filterName = name
-        self.filtersWins[name] = {}
-        self.filtersWins[name]['action'] = entropyFilterAction
-        self.filtersWins[name]['dialogueApp'] = filters.entropyFilterDialog
-        self.filtersWins[name]['window'] = None
-        
-        ridgetFilterAction = QAction('Ridge filter...', self)
-        ridgetFilterAction.setCheckable(True)
-        name = 'Ridge filter'
-        ridgetFilterAction.filterName = name
-        self.filtersWins[name] = {}
-        self.filtersWins[name]['action'] = ridgetFilterAction
-        self.filtersWins[name]['dialogueApp'] = filters.RidgeFilterDialog
-        self.filtersWins[name]['window'] = None
-
         self.imgPropertiesAction = QAction('Properties...', self)
         self.imgPropertiesAction.setDisabled(True)
 
@@ -3880,9 +3818,6 @@ class guiWin(QMainWindow):
         self.annotNumZslicesCheckboxRight.clicked.connect(
             self.annotOptionClickedRight
         )
-
-        for filtersDict in self.filtersWins.values():
-            filtersDict['action'].toggled.connect(self.filterToggled)
         
         self.segmentToolAction.triggered.connect(self.segmentToolActionTriggered)
 
@@ -8797,7 +8732,7 @@ class guiWin(QMainWindow):
             
             posData.frame_i = frame_i_found
             self.get_data()
-            self.updateAllImages(updateFilters=True)
+            self.updateAllImages()
             self.updateScrollbars()
             
             self.goToObjectID(searchedID)
@@ -9243,17 +9178,12 @@ class guiWin(QMainWindow):
             tRange = None
         
         if self.isSegm3D:
-            filteredData = self.filteredData.get(self.user_ch_name)
-            if filteredData is None or tRangeLen>1:
-                if tRangeLen > 1:
-                    imgData = posData.img_data
-                else:
-                    # Filtered data not existing
-                    imgData = posData.img_data[posData.frame_i]
+            if tRangeLen > 1:
+                imgData = posData.img_data
             else:
-                # 3D filtered data (see self.applyFilter)
-                imgData = filteredData
-            
+                # Filtered data not existing
+                imgData = posData.img_data[posData.frame_i]
+
             roi_zdepth = self.labelRoiZdepthSpinbox.value()
             if roi_zdepth == posData.SizeZ:
                 z0 = 0
@@ -11495,148 +11425,6 @@ class guiWin(QMainWindow):
                 ROImask[y0:y0+h, x0:x0+w] = True
         return ROImask
 
-    def filterToggled(self, checked):
-        action = self.sender()
-        filterName = action.filterName
-        filterDialogApp = self.filtersWins[filterName]['dialogueApp']
-        filterWin = self.filtersWins[filterName]['window']
-        if checked:
-            posData = self.data[self.pos_i]
-            channels = [self.user_ch_name]
-            channels.extend(self.checkedOverlayChannels)
-            is3D = posData.SizeZ>1
-            currentChannel = self.user_ch_name
-            filterWin = filterDialogApp(
-                channels, parent=self, is3D=is3D, currentChannel=currentChannel
-            )
-            initMethods = self.filtersWins[filterName].get('initMethods')
-            if initMethods is not None:
-                localVariables = locals()
-                for method_name, args in initMethods.items(): 
-                    method = getattr(filterWin, method_name)
-                    args = [localVariables[arg] for arg in args]
-                    method(*args)
-            self.filtersWins[filterName]['window'] = filterWin
-            filterWin.action = self.sender()
-            filterWin.sigClose.connect(self.filterWinClosed)
-            filterWin.sigApplyFilter.connect(
-                partial(
-                    self.applyFilterFromDialog, filterWin=filterWin
-                )
-            )
-            filterWin.sigPreviewToggled.connect(self.previewFilterToggled)
-            filterWin.show()
-            QTimer.singleShot(100, filterWin.apply)
-        elif filterWin is not None:
-            filterWin.disconnect()
-            filterWin.close()
-            self.filteredData = {}
-            self.filtersWins[filterName]['window'] = None
-            self.isFilterPreviewChecked = True
-            self.updateAllImages()
-    
-    def applyFilterFromDialog(self, channelName, filterWin=None):
-        if not filterWin.PreviewCheckBox.isChecked():
-            return
-        
-        QTimer.singleShot(100, partial(self.applyFilter, channelName))
-    
-    # def startAndWaitApplyFilterWorker(self, filterFunc, inputImageData):
-    #     # self.progressWin = apps.QDialogWorkerProgress(
-    #     #     title='Filtering image', parent=self.mainWin,
-    #     #     pbarDesc='Filtering image...'
-    #     # )
-    #     # self.progressWin.show(self.app)
-    #     # self.progressWin.mainPbar.setMaximum(0)
-        
-    #     self.statusBarLabel.setText('Filtering image...')
-        
-    #     self.filterWorkerThread = QThread()
-    #     self.filterWorker = workers.ApplyImageFilterWorker(
-    #         filterFunc, inputImageData
-    #     )
-        
-    #     self.filterWorker.moveToThread(self.filterWorkerThread)
-    #     self.filterWorker.finished.connect(self.filterWorkerThread.quit)
-    #     self.filterWorker.finished.connect(self.filterWorker.deleteLater)
-    #     self.filterWorkerThread.finished.connect(
-    #         self.filterWorkerThread.deleteLater
-    #     )
-
-    #     self.filterWorker.progress.connect(self.workerProgress)
-    #     self.filterWorker.critical.connect(self.workerCritical)
-    #     # self.filterWorker.finished.connect(self.workerFinished)
-    #     self.filterWorker.finished.connect(self.applyFilterWorkerFinished)
-        
-    #     self.filterWorkerThread.started.connect(self.filterWorker.run)
-    #     self.filterWorkerThread.start()
-        
-    #     self.setDisabled(True)
-    #     self.filterLoop = QEventLoop()
-    #     self.filterLoop.exec_()
-        
-    #     return self.filterWorker.filtered_data
-    
-    # def applyFilterWorkerFinished(self, filteredData):
-    #     self.setDisabled(False)
-    #     self.filterWorker.filtered_data = filteredData
-    #     self.filterLoop.exit()
-    #     self.setStatusBarLabel()
-    
-    def filterWinClosed(self, filterWin):
-        self.setDisabled(False)
-        action = filterWin.action
-        filterWin = None
-        action.setChecked(False)
-    
-    def applyFilter(self, channelName, setImg=True):
-        posData = self.data[self.pos_i]
-        if channelName == self.user_ch_name:
-            imgData = posData.img_data[posData.frame_i]
-            isLayer0 = True
-        else:
-            _, filename = self.getPathFromChName(channelName, posData)
-            imgData = posData.ol_data_dict[filename][posData.frame_i]
-            isLayer0 = False
-        filteredData = imgData.copy()
-        storeFiltered = False
-        for filterDict in self.filtersWins.values():
-            filterWin = filterDict['window']
-            if filterWin is None:
-                continue
-            
-            filteredData = filterWin.filter(filteredData)
-            storeFiltered = True
-
-        if storeFiltered:
-            self.filteredData[channelName] = filteredData
-
-        if posData.SizeZ > 1:
-            img = self.get_2Dimg_from_3D(filteredData, isLayer0=isLayer0)
-        else:
-            img = filteredData
-        
-        # img = self.normalizeIntensities(img)
-
-        if not setImg:
-            return img
-        
-        if channelName == self.user_ch_name:
-            self.img1.setImage(
-                img, next_frame_image=self.nextFrameImage(),
-                scrollbar_value=posData.frame_i+2
-            )
-        else:
-            imageItem = self.overlayLayersItems[channelName][0]
-            imageItem.setImage(img)
-
-    def previewFilterToggled(self, checked, filterWin, channelName):
-        self.isFilterPreviewChecked = checked
-        if checked:
-            self.applyFilter(channelName)
-        else:
-            self.updateAllImages()
-
     def enableSmartTrack(self, checked):
         posData = self.data[self.pos_i]
         # Disable tracking for already visited frames
@@ -11995,7 +11783,7 @@ class guiWin(QMainWindow):
         how = action.text()
         self.df_settings.at['how_normIntensities', 'value'] = how
         self.df_settings.to_csv(self.settings_csv_path)
-        self.updateAllImages(updateFilters=True)
+        self.updateAllImages()
         self.updateImageValueFormatter()
 
     def setLastUserNormAction(self):
@@ -16050,12 +15838,8 @@ class guiWin(QMainWindow):
         return self.img1.image
     
     def getDisplayedZstack(self):
-        filteredData = self.filteredData.get(self.user_ch_name)
-        if filteredData is None:
-            posData = self.data[self.pos_i]
-            return posData.img_data[posData.frame_i]
-        else:
-            return filteredData
+        posData = self.data[self.pos_i]
+        return posData.img_data[posData.frame_i]
 
     def autoAssignBud_YeastMate(self):
         if not self.is_win:
@@ -16488,7 +16272,7 @@ class guiWin(QMainWindow):
         self.postProcessing()
         self.updateScrollbars()
         self.updatePreprocessPreview()
-        self.updateAllImages(updateFilters=True)
+        self.updateAllImages()
         self.computeSegm()
         self.zoomOut()
         self.restartZoomAutoPilot()
@@ -16661,7 +16445,7 @@ class guiWin(QMainWindow):
             
             self.store_zslices_rp()
             self.resetExpandLabel()
-            self.updateAllImages(updateFilters=True)
+            self.updateAllImages()
             self.updateViewerWindow()
             self.updateLastVisitedFrame(last_visited_frame_i=posData.frame_i-1)
             self.setNavigateScrollBarMaximum()
@@ -16968,7 +16752,7 @@ class guiWin(QMainWindow):
             self.updatePreprocessPreview()
             self.postProcessing()
             self.tracking()
-            self.updateAllImages(updateFilters=True)
+            self.updateAllImages()
             self.updateScrollbars()
             self.zoomToCells()
             self.initGhostObject()
@@ -18473,8 +18257,6 @@ class guiWin(QMainWindow):
 
         self.fluoDataChNameActions = []
 
-        self.filteredData = {}
-
         self.isFilterPreviewChecked = True
         self.splineHoverON = False
         self.tempSegmentON = False
@@ -18865,7 +18647,7 @@ class guiWin(QMainWindow):
         posData.frame_i = self.navigateScrollBar.sliderPosition()-1
         self.updateFramePosLabel()
         proceed_cca, never_visited = self.get_data()
-        self.updateAllImages(updateFilters=True)
+        self.updateAllImages()
 
     def unstore_data(self):
         posData = self.data[self.pos_i]
@@ -20091,7 +19873,7 @@ class guiWin(QMainWindow):
             if msg.clickedButton == goToButton:
                 posData.frame_i = last_tracked_i
                 self.get_data()
-                self.updateAllImages(updateFilters=True)
+                self.updateAllImages()
                 self.updateScrollbars()
             else:
                 last_tracked_i = posData.frame_i
@@ -20181,7 +19963,7 @@ class guiWin(QMainWindow):
                 posData.frame_i = last_cca_frame_i
                 self.titleLabel.setText(msg, color=self.titleColor)
                 self.get_data()
-                self.updateAllImages(updateFilters=True)
+                self.updateAllImages()
                 self.updateScrollbars()
             elif stayButton == msg.clickedButton:
                 self.initMissingFramesCca(last_cca_frame_i, posData.frame_i)
@@ -20221,7 +20003,7 @@ class guiWin(QMainWindow):
                 self.last_cca_frame_i = last_cca_frame_i
                 posData.frame_i = last_cca_frame_i
                 self.get_data()
-                self.updateAllImages(updateFilters=True)
+                self.updateAllImages()
                 self.updateScrollbars()
         else:
             self.get_data()
@@ -20321,7 +20103,7 @@ class guiWin(QMainWindow):
                 posData.frame_i = last_lin_tree_frame_i
                 self.titleLabel.setText(msg, color=self.titleColor)
                 self.get_data(lin_tree=True)
-                self.updateAllImages(updateFilters=True) # i dont think I need to change this
+                self.updateAllImages() # i dont think I need to change this
                 self.updateScrollbars() # i dont think I need to change this
             elif stayButton == msg.clickedButton:
                 self.initMissingFramesLinTree(posData.frame_i) #!!!
@@ -20354,7 +20136,7 @@ class guiWin(QMainWindow):
                 self.last_lin_tree_frame_i = last_lin_tree_frame_i
                 posData.frame_i = last_lin_tree_frame_i
                 self.get_data(lin_tree=True)
-                self.updateAllImages(updateFilters=True) # i dont think I need to change this
+                self.updateAllImages() # i dont think I need to change this
                 self.updateScrollbars() # i dont think I need to change this
             elif msg.cancel:
                 msg = 'Lineage tree analysis aborted.'
@@ -23004,7 +22786,7 @@ class guiWin(QMainWindow):
         else:
             return obj_slice
     
-    def setOverlayImages(self, frame_i=None, updateFilters=False):
+    def setOverlayImages(self, frame_i=None):
         posData = self.data[self.pos_i]
         if posData.ol_data is None:
             return
@@ -23016,21 +22798,7 @@ class guiWin(QMainWindow):
                 continue
             imageItem = self.overlayLayersItems[chName][0]
 
-            if not updateFilters:
-                filteredData = self.filteredData.get(chName)
-                if filteredData is None:
-                    # Filtered data not existing
-                    ol_img = self.getOlImg(filename, frame_i=frame_i)
-                elif posData.SizeZ > 1:
-                    # 3D filtered data (see self.applyFilter)
-                    ol_img = self.get_2Dimg_from_3D(
-                        filteredData, isLayer0=False
-                    )
-                else:
-                    # 2D filtered data (see self.applyFilter)
-                    ol_img = filteredData
-            else:
-                ol_img = self.applyFilter(chName, setImg=False)
+            ol_img = self.getOlImg(filename, frame_i=frame_i)
 
             self.rescaleIntensitiesLut(setImage=False, imageItem=imageItem)
             imageItem.setImage(ol_img)
@@ -24201,9 +23969,6 @@ class guiWin(QMainWindow):
         else:
             posData = self.data[0]
             self.navSpinBox.setValueNoEmit(posData.frame_i+1)
-
-    def updateFilters(self):
-        pass
     
     def highlightHoverID(self, x, y, hoverID=None):
         if hoverID is None:
@@ -24970,15 +24735,12 @@ class guiWin(QMainWindow):
     # @exec_time
     @exception_handler
     def updateAllImages(
-            self, image=None, updateFilters=False, computePointsLayers=True
+            self, image=None, computePointsLayers=True
         ):
         self.clearAllItems()
 
         posData = self.data[self.pos_i]
 
-        if self.last_pos_i != self.pos_i or posData.frame_i != self.last_frame_i:
-            updateFilters = True
-        
         self.last_pos_i = self.pos_i
         self.last_frame_i = posData.frame_i
         
@@ -24988,7 +24750,7 @@ class guiWin(QMainWindow):
         self.setImageImg2()
         
         if self.overlayButton.isChecked():
-            self.setOverlayImages(updateFilters=updateFilters)
+            self.setOverlayImages()
 
         self.setOverlayLabelsItems()
         self.setOverlaySegmMasks()

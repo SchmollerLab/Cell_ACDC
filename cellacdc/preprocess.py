@@ -543,3 +543,13 @@ def rescale_intensities(
         image, in_range=in_range, out_range=out_range
     )
     return rescaled
+
+def _init_dummy_filter(**kwargs):
+    """
+    This function runs automatically as part of the preprocessing recipe if 
+    the user selects the 'dummy_filter' step. The 'dummy_filter' is available 
+    only in debug mode. Initialization functions run in the main GUI thread 
+    and they can be used to set up the related function, for example to 
+    prompt the user that a package needs to be installed.
+    """
+    pass

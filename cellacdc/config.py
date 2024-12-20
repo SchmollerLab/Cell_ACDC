@@ -125,6 +125,27 @@ def preprocessing_mapper():
         } 
     return mapper
 
+def preprocessing_init_func_mapper():
+    from cellacdc import preprocess, cellacdc_path, acdc_regex
+    from inspect import getmembers, isfunction
+    functions = getmembers(preprocess, isfunction)
+    preprocess_py_path = os.path.join(cellacdc_path, 'preprocess.py')
+    with open(preprocess_py_path, 'r') as py_file:
+        text = py_file.read()
+    valid_functions_names = acdc_regex.get_function_names(text)
+    mapper = {}
+    for func_name, func in functions:
+        if not func_name.startswith('_init_'):
+            continue
+        
+        method = func_name.lstrip('_init_').title().replace('_', ' ')
+        mapper[method] = {
+            'function': func, 
+            'docstring': func.__doc__, 
+            'function_name': func_name
+        } 
+    return mapper
+
 def preprocess_recipe_to_ini_items(preproc_recipe):
     if preproc_recipe is None:
         return {}
@@ -173,3 +194,4 @@ def preprocess_ini_items_to_recipe(ini_items):
     return recipe
 
 PREPROCESS_MAPPER = preprocessing_mapper()
+PREPROCESS_INIT_MAPPER = preprocessing_init_func_mapper()
