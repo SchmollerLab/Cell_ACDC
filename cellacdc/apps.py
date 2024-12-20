@@ -1,7 +1,7 @@
 import os
 import sys
 import re
-from typing import Literal, Callable, Dict
+from typing import Literal, Callable, Dict, Iterable
 import datetime
 import pathlib
 from collections import defaultdict
@@ -10461,7 +10461,7 @@ class QDialogModelParams(QDialog):
         if addPreProcessParams:
             preProcessLayout = QVBoxLayout()
             self.preProcessParamsWidget = PreProcessParamsWidget(
-                parent=self
+                parent=self, addApplyButton=False
             )
             self.preProcessParamsWidget.setChecked(False)
             preProcessLayout.addWidget(self.preProcessParamsWidget)
@@ -14538,10 +14538,13 @@ class PreProcessParamsWidget(QWidget):
     sigLoadSavedRecipe = Signal()
     sigValuesChanged = Signal(list)
     
-    def __init__(self, parent=None):
+    def __init__(self, df_metadata=None, addApplyButton=False, parent=None):
         super().__init__(parent)
         
         mainLayout = QVBoxLayout()
+        
+        self.df_metadata = df_metadata
+        self.addApplyButton = addApplyButton
         
         groupbox = QGroupBox()
         self.groupbox = groupbox
@@ -14584,6 +14587,7 @@ class PreProcessParamsWidget(QWidget):
         loadRecipeButton.clicked.connect(self.selectAndLoadRecipe)
         
         mainLayout.addWidget(groupbox)
+        mainLayout.addSpacing(10)
         mainLayout.addLayout(buttonsLayout)
         
         self.addStep(is_first=True)
@@ -14835,9 +14839,15 @@ class PreProcessParamsWidget(QWidget):
         msg = widgets.myMessageBox(wrapText=False)
         msg.information(self, f'Info about `{method}`', htmlText)
     
-    def setParamsStep(self, checked=False, selector=None):
+    def setParamsStep(
+            self, checked=False, 
+            selector: widgets.PreProcessingSelector=None
+        ):
         step_n = selector.step_n
-        stepFunctionKwargs = selector.askSetParams()
+        stepFunctionKwargs = selector.askSetParams(
+            df_metadata=self.df_metadata, 
+            addApplyButton=self.addApplyButton
+        )
         if stepFunctionKwargs is None:
             return
         
@@ -15632,6 +15642,8 @@ class PreProcessRecipeDialog(QBaseDialog):
             isTimelapse=False, 
             isZstack=False, 
             isMultiPos=False, 
+            df_metadata=None,
+            addApplyButton=False,
             parent=None,
             hideOnClosing=False
         ):
@@ -15639,13 +15651,13 @@ class PreProcessRecipeDialog(QBaseDialog):
         
         self.setWindowTitle('Pre-processing recipe')
         
-        self.cancel = False
+        self.cancel = True
         self.hideOnClosing = hideOnClosing
         
         mainLayout = QVBoxLayout()
     
         self.preProcessParamsWidget = PreProcessParamsWidget(
-            parent=self
+            df_metadata=df_metadata, addApplyButton=addApplyButton, parent=self
         )
         self.preProcessParamsWidget.groupbox.setCheckable(False)
         
@@ -15746,6 +15758,7 @@ class PreProcessRecipeDialog(QBaseDialog):
         # self.cancelButton.clicked.connect(self.close)
         
         mainLayout.addWidget(self.preProcessParamsWidget)
+        self.mainLayout = mainLayout
         
         self.setLayout(mainLayout)
     
@@ -15767,15 +15780,18 @@ class PreProcessRecipeDialog(QBaseDialog):
         recipe = self.recipe()
         if recipe is None:
             return
-            
-        self.setDisabled(True)
-        self.infoLabel.setText(
-            f"{self.sender().text().replace('Apply', 'Applying')}...<br>"
-            "<i>(Feel free to use Cell-ACDC while waiting)</i>"
-        )
-
+        
         if signal is not None:
             signal.emit(recipe)
+            
+        if self.hideOnClosing:
+            self.setDisabled(True)
+            self.infoLabel.setText(
+                f"{self.sender().text().replace('Apply', 'Applying')}...<br>"
+                "<i>(Feel free to use Cell-ACDC while waiting)</i>"
+            )
+        else:
+            self.ok_cb()
     
     def appliedFinished(self):
         self.setDisabled(False)
@@ -15785,11 +15801,79 @@ class PreProcessRecipeDialog(QBaseDialog):
     
     def recipeConfigPars(self):
         return self.preProcessParamsWidget.recipeConfigPars('acdc')
-    
-    def closeEvent(self, event):
+
+    def ok_cb(self):
         if self.hideOnClosing:
-            event.ignore()
             self.hide()
             return
+
+        self.cancel = False
+        self.close()
+
+class PreProcessRecipeDialogUtil(PreProcessRecipeDialog):
+    def __init__(
+            self,
+            channel_names: Iterable[str],
+            df_metadata=None,
+            parent=None,
+        ):
+        self.cancel = True
         
-        super().closeEvent(event)
+        super().__init__(
+            isTimelapse=False, 
+            isZstack=False, 
+            isMultiPos=False, 
+            addApplyButton=False,
+            df_metadata=df_metadata,
+            parent=parent,
+            hideOnClosing=False
+        )
+        
+        self.listSelector = widgets.listWidget(
+            isMultipleSelection=True, minimizeHeight=True
+        )
+        self.listSelector.addItems(channel_names)
+        self.listSelector.setCurrentRow(0)
+        
+        self.mainLayout.insertWidget(0, self.listSelector)
+        self.mainLayout.insertWidget(
+            0, QLabel('Select channel(s) to pre-process:')
+        )
+        self.mainLayout.insertSpacing(2, 10)
+        self.mainLayout.insertWidget(2, widgets.QHLine())
+        
+        self.savePreprocButton.hide()
+        self.previewCheckbox.hide()
+        self.applyCurrentFrameButton.setText('Ok')
+        
+        buttonsLayout = self.preProcessParamsWidget.buttonsLayout
+        
+        saveRecipeButtonIndex = buttonsLayout.indexOf(
+            self.preProcessParamsWidget.saveRecipeButton
+        )        
+        saveRecipeButtonItem = buttonsLayout.takeAt(saveRecipeButtonIndex)
+        
+        buttonsLayout.addItem(saveRecipeButtonItem, 0, 2)
+    
+    def warnChannelSelectionEmpty(self):
+        txt = html_utils.paragraph("""
+            You did <b>not select any channel</b>.<br><br>
+            <b>Channel selection cannot be empty</b>.<br><br>
+            Thank you for your patience!
+        """)
+    
+    def ok_cb(self):
+        selectedChannelItems = self.listSelector.selectedItems()
+        if not selectedChannelItems:
+            self.warnChannelSelectionEmpty()
+        
+        recipe = self.recipe()
+        if recipe is None:
+            return
+        
+        self.selectedRecipe = recipe
+        self.selectedChannels = [item.text() for item in selectedChannelItems]
+        
+        self.cancel = False
+        self.close()
+        

@@ -485,9 +485,9 @@ def rescale_intensities(
         image: np.array,
         out_range_low: float=0.0,
         out_range_high: float=1.0,
+        in_range_how: types.RescaleIntensitiesInRangeHow='percentage',
         in_range_low: float=0.0,
         in_range_high: float=1.0,
-        in_range_how: types.RescaleIntensitiesInRangeHow='percentage',
         apply_to_all_zslices=True,
     ):
     """Rescale the intensities of an image to a given range.

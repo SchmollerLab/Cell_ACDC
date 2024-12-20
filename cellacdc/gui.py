@@ -17359,7 +17359,8 @@ class guiWin(QMainWindow):
             isTimelapse=posData.SizeT>1, 
             isZstack=posData.SizeZ>1,
             isMultiPos=len(self.data)>1,
-            hideOnClosing=True
+            hideOnClosing=True, 
+            addApplyButton=True
         )
         self.doPreviewPreprocImage = False
         self.preprocessDialog.sigApplyImage.connect(

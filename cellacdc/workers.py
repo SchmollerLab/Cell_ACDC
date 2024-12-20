@@ -7,7 +7,7 @@ import concurrent.futures
 from functools import partial
 from collections import defaultdict, deque
 
-from typing import Union, List, Dict, Callable, Any, Tuple
+from typing import Union, List, Dict, Callable, Any, Tuple, Iterable
 
 from functools import wraps
 import numpy as np
@@ -5406,4 +5406,135 @@ class PreprocessWorker(QObject):
                 self.wait = True
 
         self.signals.finished.emit(self)
-        
+
+class CustomPreprocessWorker(BaseWorkerUtil):
+    sigAskAppendName = Signal(str)
+    sigAskSetupRecipe = Signal(object, object)
+    sigAborted = Signal()
+
+    def __init__(self, mainWin):
+        super().__init__(mainWin)
+    
+    def emitAskSetupRecipe(self, exp_path, pos_foldernames):
+        self.mutex.lock()
+        self.sigAskSetupRecipe.emit(exp_path, pos_foldernames)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        return self.abort
+    
+    def applyPipeline(
+            self, 
+            images_path: os.PathLike,
+            channel_names: Iterable[str],
+            recipe: List[Dict[str, Any]],
+            appended_text_filename: str
+        ):
+        posData = None        
+        preprocessed_data = {}
+        for channel in channel_names:
+            self.logger.log(f'Loading {channel} channel data...')
+            ch_filepath = load.get_filename_from_channel(images_path, channel)
+            ch_image_data = load.load_image_file(ch_filepath)
+            if posData is None:
+                posData = load.loadData(ch_filepath, channel)
+                posData.getBasenameAndChNames()
+                posData.buildPaths()
+                posData.loadOtherFiles(
+                    load_segm_data=False,
+                    load_metadata=True,
+                )
+            if posData.SizeT == 1:
+                ch_image_data = (ch_image_data,)
+
+            num_frames = len(ch_image_data)
+            preprocessed_ch_data = None
+            pbar = tqdm(total=num_frames, ncols=100)
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                iterable = enumerate(ch_image_data)
+                func = partial(
+                    core.preprocess_exceutor_map,
+                    recipe=recipe
+                )
+                result = executor.map(func, iterable)
+                for frame_i, processed_img in result:
+                    if preprocessed_ch_data is None:
+                        shape = (num_frames, *processed_img.shape)
+                        preprocessed_ch_data = np.zeros(
+                            shape, dtype=processed_img.dtype
+                        )
+                        
+                    preprocessed_ch_data[frame_i] = processed_img
+                    pbar.update()
+            pbar.close()
+            
+            _, ext = os.path.splitext(ch_filepath)
+            basename = posData.basename
+            processed_filename = (
+                f'{basename}{channel}_{appended_text_filename}{ext}'
+            )
+            preprocessed_data[processed_filename] = preprocessed_ch_data
+            
+        return preprocessed_data
+    
+    @worker_exception_handler
+    def run(self):
+        debugging = False
+        expPaths = self.mainWin.expPaths
+        tot_exp = len(expPaths)
+        self.signals.initProgressBar.emit(0)
+        for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
+            self.errors = {}
+            tot_pos = len(pos_foldernames)
+
+            self.mainWin.infoText = 'Setup recipe'
+            
+            if i == 0:
+                abort = self.emitAskSetupRecipe(exp_path, pos_foldernames)
+                if abort:
+                    self.sigAborted.emit()
+                    return
+            
+                # Ask append name
+                self.mutex.lock()
+                basename = f'{self.basename}{self.selectedChannels[0]}_'
+                self.sigAskAppendName.emit(basename)
+                self.waitCond.wait(self.mutex)
+                self.mutex.unlock()
+                if self.abort:
+                    self.sigAborted.emit()
+                    return
+
+            appendedName = self.appendedName
+            self.signals.initProgressBar.emit(len(pos_foldernames))
+            for p, pos in enumerate(pos_foldernames):
+                if self.abort:
+                    self.sigAborted.emit()
+                    return
+
+                self.logger.log(
+                    f'Processing experiment n. {i+1}/{tot_exp}, '
+                    f'{pos} ({p+1}/{tot_pos})'
+                )
+
+                images_path = os.path.join(exp_path, pos, 'Images')                
+                self.logger.log(
+                    'Applying custom pre-processing recipe...\n'
+                )
+                processed_data = self.applyPipeline(
+                    images_path, self.selectedChannels, 
+                    self.recipe, appendedName
+                )
+                
+                for filename, preprocessed_ch_data in processed_data.items():
+                    preprocessed_filepath = os.path.join(images_path, filename)
+                    self.logger.log(
+                        f'Saving pre-processed images to '
+                        f'"{preprocessed_filepath}"...'
+                    )
+                    
+                    io.save_image_data(
+                        preprocessed_filepath, preprocessed_ch_data
+                    )                                
+                self.signals.progressBar.emit(1)
+
+        self.signals.finished.emit(self)

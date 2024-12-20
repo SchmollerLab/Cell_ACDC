@@ -1,6 +1,6 @@
 import traceback
 import inspect
-from typing import List, Dict, Any, Iterable
+from typing import List, Dict, Any, Iterable, Tuple
 import os
 import time
 import concurrent.futures
@@ -2773,6 +2773,21 @@ def fucci_pipeline_executor_map(input, **filter_kwargs):
     
     return frame_i, processed_img
 
+def preprocess_exceutor_map(
+        input: Tuple[int, np.ndarray],
+        recipe: List[Dict[str, Any]]=None,
+    ):
+    if recipe is None:
+        return input
+    
+    frame_i, image = input
+    if image.ndim == 3:
+        preprocessed_image = preprocess_zstack_from_recipe(image, recipe)
+    else:
+        preprocessed_image = preprocess_image_from_recipe(image, recipe)
+    
+    return frame_i, preprocessed_image
+
 def split_segm_masks_mother_bud_line(
         cells_segm_data, segm_data_to_split, acdc_df, 
         debug=False
@@ -3077,3 +3092,5 @@ def _compute_all_obj_to_obj_contour_dist_pairs(
                 dist_matrix_df.loc[i, j] = min_dist
 
     return dist_matrix_df
+        
+        

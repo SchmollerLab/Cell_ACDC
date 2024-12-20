@@ -1283,9 +1283,11 @@ class QDialogListbox(QDialog):
         listBox.setFont(_font)
         listBox.addItems(items)            
         if multiSelection:
-            listBox.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+            listBox.setSelectionMode(
+                QAbstractItemView.SelectionMode.ExtendedSelection)
         else:
-            listBox.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+            listBox.setSelectionMode(
+                QAbstractItemView.SelectionMode.SingleSelection)
         listBox.setCurrentRow(0)
         for i in range(listBox.count()):
             item = listBox.item(i)
@@ -1828,21 +1830,36 @@ class statusBarPermanentLabel(QWidget):
         self.setLayout(layout)
 
 class listWidget(QListWidget):
-    def __init__(self, *args, **kwargs):
+    def __init__(
+            self, 
+            *args, 
+            isMultipleSelection=False, 
+            minimizeHeight=False, 
+            **kwargs
+        ):
         super().__init__(*args, **kwargs)
         self.itemHeight = None
         self.setStyleSheet(LISTWIDGET_STYLESHEET)
         self.setFont(font)
+        if isMultipleSelection:
+            self.setSelectionMode(
+                QAbstractItemView.SelectionMode.ExtendedSelection
+            )
+        
+        self.minimizeHeight = minimizeHeight
     
     def setSelectedAll(self, selected):
         for i in range(self.count()):
             self.item(i).setSelected(selected)
     
     def addItems(self, labels) -> None:
-        super().addItems(labels)
-        if self.itemHeight is None:
-            return
-        self.setItemHeight()
+        super().addItems(labels)        
+        if self.itemHeight is not None:
+            self.setItemHeight()
+        
+        if self.minimizeHeight:
+            itemHeight = self.sizeHintForRow(0)
+            self.setMaximumHeight(itemHeight * self.count() + itemHeight*2)
     
     def addItem(self, text):
         super().addItem(text)
@@ -9281,7 +9298,7 @@ class PreProcessingSelector(QComboBox):
     def setParams(self, method: str, kwargToValueMapper: Dict[str, str]):
         self.methodToDefaultValuesMapper[method] = kwargToValueMapper
     
-    def askSetParams(self):
+    def askSetParams(self, df_metadata=None, addApplyButton=False):
         method = self.currentText()
         function = PREPROCESS_MAPPER[method]['function']
         params_argspecs = myutils.get_function_argspec(
@@ -9311,8 +9328,9 @@ class PreProcessingSelector(QComboBox):
                 
         self.setParamsWindow = apps.FunctionParamsDialog(
             params_argspecs, 
+            df_metadata=df_metadata,
             function_name=method,
-            addApplyButton=True,
+            addApplyButton=addApplyButton,
             parent=self._parent
         )
         self.setParamsWindow.sigValuesChanged.connect(self.emitValuesChanged)
