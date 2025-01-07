@@ -1746,7 +1746,7 @@ def preprocess_video_from_recipe(
     ):
     if image.ndim < 3:
         raise TypeError(
-            'Only 3D of 4D videos allowed. '
+            'Only 3D or 4D videos allowed. '
             f'Input image has {image.ndim} dimensions!'
         )
 
@@ -2787,6 +2787,44 @@ def preprocess_exceutor_map(
         preprocessed_image = preprocess_image_from_recipe(image, recipe)
     
     return frame_i, preprocessed_image
+
+def preprocess_image_from_recipe_multithread(
+        image: np.ndarray, 
+        recipe: List[Dict[str, Any]], 
+        n_threads: int=None
+    ):
+    preprocessed_image = image
+    for step in recipe:
+        method = step['method']
+        func = PREPROCESS_MAPPER[method]['function']
+        kwargs = step['kwargs']
+        argspecs = inspect.getfullargspec(func)
+        is_func_time_capable = False
+        for arg in argspecs.args:
+            if arg == 'apply_to_all_frames':
+                is_func_time_capable = True
+                break
+        
+        if is_func_time_capable:
+            preprocessed_image = preprocess_video_from_recipe(
+                preprocessed_image, (step,)
+            )
+        else:
+            num_frames = len(preprocessed_image)
+            pbar = tqdm(total=num_frames, ncols=100)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=n_threads) as executor:
+                iterable = enumerate(preprocessed_image)
+                func = partial(
+                    preprocess_exceutor_map,
+                    recipe=(step,)
+                )
+                result = executor.map(func, iterable)
+                for frame_i, processed_img in result:
+                    preprocessed_image[frame_i] = processed_img
+                    pbar.update()
+            pbar.close()
+    
+    return preprocessed_image
 
 def split_segm_masks_mother_bud_line(
         cells_segm_data, segm_data_to_split, acdc_df, 

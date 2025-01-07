@@ -5499,26 +5499,9 @@ class CustomPreprocessWorker(BaseWorkerUtil):
             if posData.SizeT == 1:
                 ch_image_data = (ch_image_data,)
 
-            num_frames = len(ch_image_data)
-            preprocessed_ch_data = None
-            pbar = tqdm(total=num_frames, ncols=100)
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                iterable = enumerate(ch_image_data)
-                func = partial(
-                    core.preprocess_exceutor_map,
-                    recipe=recipe
-                )
-                result = executor.map(func, iterable)
-                for frame_i, processed_img in result:
-                    if preprocessed_ch_data is None:
-                        shape = (num_frames, *processed_img.shape)
-                        preprocessed_ch_data = np.zeros(
-                            shape, dtype=processed_img.dtype
-                        )
-                        
-                    preprocessed_ch_data[frame_i] = processed_img
-                    pbar.update()
-            pbar.close()
+            preprocessed_ch_data = core.preprocess_image_from_recipe_multithread(
+                ch_image_data, recipe
+            )
             
             keep_input_data_type = recipe[0].get('keep_input_data_type', True)
             if keep_input_data_type:

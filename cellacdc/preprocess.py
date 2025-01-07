@@ -381,6 +381,7 @@ def dummy_filter(
         apply_to_all_zslices=False, 
         apply_to_all_frames=False
     ):
+    printl(image.shape)
     return image
 
 class VolumeImageData:
