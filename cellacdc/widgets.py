@@ -1,4 +1,5 @@
 from collections import defaultdict
+from typing import Dict, List, Union
 import os
 import sys
 import operator
@@ -1282,9 +1283,11 @@ class QDialogListbox(QDialog):
         listBox.setFont(_font)
         listBox.addItems(items)            
         if multiSelection:
-            listBox.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+            listBox.setSelectionMode(
+                QAbstractItemView.SelectionMode.ExtendedSelection)
         else:
-            listBox.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+            listBox.setSelectionMode(
+                QAbstractItemView.SelectionMode.SingleSelection)
         listBox.setCurrentRow(0)
         for i in range(listBox.count()):
             item = listBox.item(i)
@@ -1390,8 +1393,8 @@ class QDialogListbox(QDialog):
         msg = myMessageBox(wrapText=False, showCentered=False)
         txt = html_utils.paragraph(
             'You need to <b>select at least one item!</b>.<br><br>'
-            'Use <code>Ctrl+Click</code> to select multiple items<br>, or<br>'
-            '<code>Shift+Click</code> to select a range of items'
+            'Use <code>Ctrl+Click</code> to select multiple items<br>'
+            'or <code>Shift+Click</code> to select a range of items'
         )
         msg.warning(self, 'Selection cannot be empty!', txt)
     
@@ -1410,7 +1413,7 @@ class QDialogListbox(QDialog):
             msg.warning(self, 'Select two or more items', txt)
             return
         
-        if not self.allowEmptySelection:
+        if not self.allowEmptySelection and not self.selectedItemsText:
             self.warnSelectionEmpty()
             return
         
@@ -1516,6 +1519,8 @@ class ExpandableListBox(QComboBox):
         self.listW.show()
 
 class filePathControl(QFrame):
+    sigValueChanged = Signal(str)
+    
     def __init__(
             self, parent=None, browseFolder=False, 
             fileManagerTitle='Select file', 
@@ -1551,6 +1556,7 @@ class filePathControl(QFrame):
 
     def setTextTooltip(self):
         self.le.setToolTip(self.le.text())
+        self.sigValueChanged.emit(self.le.text())
     
     def path(self):
         return self.le.text()
@@ -1824,21 +1830,36 @@ class statusBarPermanentLabel(QWidget):
         self.setLayout(layout)
 
 class listWidget(QListWidget):
-    def __init__(self, *args, **kwargs):
+    def __init__(
+            self, 
+            *args, 
+            isMultipleSelection=False, 
+            minimizeHeight=False, 
+            **kwargs
+        ):
         super().__init__(*args, **kwargs)
         self.itemHeight = None
         self.setStyleSheet(LISTWIDGET_STYLESHEET)
         self.setFont(font)
+        if isMultipleSelection:
+            self.setSelectionMode(
+                QAbstractItemView.SelectionMode.ExtendedSelection
+            )
+        
+        self.minimizeHeight = minimizeHeight
     
     def setSelectedAll(self, selected):
         for i in range(self.count()):
             self.item(i).setSelected(selected)
     
     def addItems(self, labels) -> None:
-        super().addItems(labels)
-        if self.itemHeight is None:
-            return
-        self.setItemHeight()
+        super().addItems(labels)        
+        if self.itemHeight is not None:
+            self.setItemHeight()
+        
+        if self.minimizeHeight:
+            itemHeight = self.sizeHintForRow(0)
+            self.setMaximumHeight(itemHeight * self.count() + itemHeight*2)
     
     def addItem(self, text):
         super().addItem(text)
@@ -6303,9 +6324,11 @@ class BaseImageItem(pg.ImageItem):
             self, image=None, **kargs
         ):
         self.minMaxValuesMapper = None
+        self.minMaxValuesMapperPreproc = None
         self.pos_i = 0
         self.z = 0
         self.frame_i = 0
+        self.usePreprocessed = False
         
         super().__init__(image, **kargs)
         self.autoLevelsEnabled = None
@@ -6321,7 +6344,7 @@ class BaseImageItem(pg.ImageItem):
         
         super().setImage(image, autoLevels=autoLevels, **kargs)
         
-    def preComputedMinMaxValues(self, data: dict):
+    def preComputedMinMaxValues(self, data: List['load.loadData']):
         self.minMaxValuesMapper = {}
         for pos_i, posData in enumerate(data):
             img_data = posData.img_data
@@ -6341,6 +6364,21 @@ class BaseImageItem(pg.ImageItem):
                         np.nanmin(img), np.nanmax(img)
                     )
     
+    def updateMinMaxValuesPreprocessedData(
+            self, 
+            data: List['load.loadData'], 
+            pos_i: int, 
+            frame_i: int, 
+            z_slice: Union[int, str],
+        ):
+        if self.minMaxValuesMapperPreproc is None:
+            self.minMaxValuesMapperPreproc = {}
+
+        posData = data[pos_i]
+        img = posData.preproc_img_data[frame_i][z_slice]
+        key = (pos_i, frame_i, z_slice)
+        self.minMaxValuesMapperPreproc[key] = (np.nanmin(img), np.nanmax(img))
+    
     def setCurrentPosIndex(self, pos_i: int):
         self.pos_i = pos_i
     
@@ -6351,8 +6389,20 @@ class BaseImageItem(pg.ImageItem):
         self.z = z
     
     def quickMinMax(self, targetSize=1e6):
-        if self.minMaxValuesMapper is None:
+        if self.usePreprocessed and self.minMaxValuesMapperPreproc is not None:
+            minMaxValuesMapper = self.minMaxValuesMapperPreproc
+        else:
+            minMaxValuesMapper = self.minMaxValuesMapper
+            
+        if minMaxValuesMapper is None:
             return super().quickMinMax(targetSize=targetSize)
+        
+        try:
+            key = (self.pos_i, self.frame_i, self.z)
+            levels = minMaxValuesMapper[key]
+            return levels
+        except Exception as err:
+            pass
         
         try:
             key = (self.pos_i, self.frame_i, self.z)
@@ -8455,6 +8505,7 @@ class SwitchPlaneCombobox(QComboBox):
 
 class SamInputPointsWidget(QWidget):
     isWidget = True
+    sigValueChanged = Signal(str)
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -8463,6 +8514,7 @@ class SamInputPointsWidget(QWidget):
         
         self.lineEntry = ElidingLineEdit(parent=self)
         self.lineEntry.setAlignment(Qt.AlignCenter)
+        self.lineEntry.editingFinished.connect(self.emitValueChanged)
         
         self.editButton = editPushButton()
         self.browseButton = browseFileButton(
@@ -8483,6 +8535,9 @@ class SamInputPointsWidget(QWidget):
         
         _layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(_layout)
+    
+    def emitValueChanged(self, text):
+        self.sigValueChanged.emit(text)
     
     def showInfoEditPoints(self):
         note = html_utils.to_note(
@@ -8517,6 +8572,9 @@ class SamInputPointsWidget(QWidget):
     
     def value(self):
         return self.lineEntry.text()
+    
+    def cast_dtype(self, value) -> str:
+        return str(value)
     
     def browseCsvFiles(self, filepath):
         # Check if metadata.csv file exists with basename and set only the 
@@ -9210,11 +9268,16 @@ class LineEdit(QLineEdit):
         self.setText(str(value))
 
 class PreProcessingSelector(QComboBox):
+    sigValuesChanged = Signal(dict, int)
+    
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._parent = parent
         
         self.addItems(PREPROCESS_MAPPER.keys())
-    
+        self.methodToDefaultValuesMapper = {}
+        self.step_n = -1
+
     def htmlInfo(self):
         href = html_utils.href_tag('GitHub page', urls.issues_url)
         docstring = PREPROCESS_MAPPER[self.currentText()]['docstring']
@@ -9232,22 +9295,55 @@ class PreProcessingSelector(QComboBox):
         )
         return text
         
-    def widgets(self):
-        return PREPROCESS_MAPPER[self.currentText()]['widgets']
+    def setParams(self, method: str, kwargToValueMapper: Dict[str, str]):
+        self.methodToDefaultValuesMapper[method] = kwargToValueMapper
     
-    def askSetParams(self):
+    def askSetParams(self, df_metadata=None, addApplyButton=False):
         method = self.currentText()
         function = PREPROCESS_MAPPER[method]['function']
-        params_argspecs = myutils.get_function_argspec(function)
-        win = apps.FunctionParamsDialog(
-            params_argspecs, function_name=method
+        params_argspecs = myutils.get_function_argspec(
+            function, 
+            args_to_skip={
+                'logger_func', 
+                'apply_to_all_zslices',
+                'apply_to_all_frames'
+            }
         )
-        win.exec_()
-        if win.cancel:
+        default_values = self.methodToDefaultValuesMapper.get(method, {})
+        for kwarg, value in default_values.items():
+            for p, param_argspec in enumerate(params_argspecs):
+                if param_argspec.name != kwarg:
+                    continue
+                
+                if hasattr(param_argspec.type, 'cast_dtype'):
+                    cls = param_argspec.type
+                    value = cls.cast_dtype(value)
+                else:
+                    value = param_argspec.type(value)
+                
+                if value == param_argspec.default:
+                    continue
+                param_argspec = param_argspec._replace(default=value)
+                params_argspecs[p] = param_argspec
+                
+        self.setParamsWindow = apps.FunctionParamsDialog(
+            params_argspecs, 
+            df_metadata=df_metadata,
+            function_name=method,
+            addApplyButton=addApplyButton,
+            parent=self._parent
+        )
+        self.setParamsWindow.sigValuesChanged.connect(self.emitValuesChanged)
+        self.setParamsWindow.exec_()
+        if self.setParamsWindow.cancel:
             return
         
-        return win.function_kwargs
+        self.setParams(method, self.setParamsWindow.function_kwargs)
+        return self.setParamsWindow.function_kwargs
 
+    def emitValuesChanged(self, functionKwargs: dict):
+        self.sigValuesChanged.emit(functionKwargs, self.step_n)
+    
 class RescaleImageJroisGroupbox(QGroupBox):
     def __init__(self, TZYX_out_shape, parent=None):
         super().__init__(parent)

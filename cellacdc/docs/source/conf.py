@@ -23,6 +23,7 @@ extensions = [
     'sphinx.ext.intersphinx',
     'sphinxcontrib.email',
     'sphinx_tabs.tabs',
+    'sphinx_carousel.carousel',
     'sphinx_copybutton'
 ]
 

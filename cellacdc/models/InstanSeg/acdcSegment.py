@@ -37,11 +37,11 @@ class Model:
             model_type = custom_model_type
         
         if device == 'Auto':
-            device = None
+            device = myutils.get_torch_device(gpu=True)
         elif device == 'CPU':
             device = 'cpu'
         elif device == 'GPU':
-            myutils.get_torch_device(gpu=True)
+            device = myutils.get_torch_device(gpu=True)
         
         self.model = InstanSeg(
             model_type, 

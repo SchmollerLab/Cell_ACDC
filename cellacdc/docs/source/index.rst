@@ -76,12 +76,41 @@ A GUI-based Python framework for **segmentation**, **tracking**, **cell cycle an
     If you want a **video tutorial** as introduction to Cell-ACDC the workshop that we had at the 
     I2K Conference 2024 is available `here <https://youtu.be/u1cQ2MH5uEQ?si=-_hpBoJIccMRjrazs>`__.
 
-.. figure:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/cellacdc/resources/figures/Fig1.jpg
-   :alt: Overview of pipeline and GUI
-   :width: 600
+.. carousel::
+   :show_captions_below:
+   :show_controls:
+   :show_indicators:
 
-   Overview of pipeline and GUI
+   .. figure:: images/home_carousel/spheroid_Mario.png
 
+      Sphereoid segmentation
+
+      Segment and quantify the spheroid in 3D
+   
+   .. figure:: images/home_carousel/yeast_Lisa.png
+
+      Yeast segmentation
+
+      Segment, track, and annotate cell cycle
+   
+   .. figure:: images/home_carousel/C_elegans_Nada.png
+
+      Nuclei segmentation in *C. elegans*
+
+      Segment sub-set of nuclei in multi-cellular organisms
+   
+   .. figure:: images/home_carousel/measurments_gui.png
+
+      Compute measurements 
+
+      Easily compute several intesity and morphological measurements
+   
+   .. figure:: images/home_carousel/acdc_launcher_utilities.png
+
+      Cell-ACDC launcher
+
+      Run batch-processing and utilities from the launcher
+   
 Contents
 --------
 
