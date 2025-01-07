@@ -587,12 +587,12 @@ def basicpy_background_correction(
         optimization_tol=0.001,
         optimization_tol_diff=0.01,
         resize_mode: types.BaSiCpyResizeModes="jax",
-        resize_params={},
+        resize_params: types.NotGUIParam=None,
         reweighting_tol=0.01,
         sort_intensity=False,
         working_size=128,
         timelapse: types.BaSiCpyTimelapse="True",
-        parent=None,
+        parent: types.NotGUIParam=None
     ):
     """
     A function for fitting and applying BaSiC illumination correction profiles.
@@ -680,6 +680,8 @@ def basicpy_background_correction(
         This function does not return any value.
     """
 
+    if resize_params is None:
+        resize_params = {}
     if timelapse == "True":
         timelapse = True
     elif timelapse == "False":
@@ -701,7 +703,6 @@ def basicpy_background_correction(
     images = transformation.correct_img_dimension(images, 
                                                input_dims=input_dims, 
                                                output_dims=("T", "Z", "Y", "X"))
-
 
     from . import myutils
     custom_install_requires = [
@@ -744,9 +745,9 @@ def basicpy_background_correction(
         resize_params=resize_params,
         reweighting_tol=reweighting_tol,
         sort_intensity=sort_intensity,
-        working_size=working_size,
-        parent=None,
-    )
+        working_size=working_size
+        )
+
     basic.fit(images)
     images = basic.transform(
         images,

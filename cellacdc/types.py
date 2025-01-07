@@ -2,6 +2,9 @@ import typing
 
 from typing import Union, Tuple, Any
 
+class NotGUIParam:
+    not_a_param = True
+
 class RescaleIntensitiesInRangeHow:
     values = ['percentage', 'image', 'absolute']
 
