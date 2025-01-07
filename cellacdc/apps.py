@@ -10395,7 +10395,6 @@ class FunctionParamsDialog(QBaseDialog):
     
     def showInfoParam(self):
         text = self.sender().infoText
-        text = text.replace('\n', '<br>')
         text = html_utils.rst_urls_to_html(text)
         text = html_utils.rst_to_html(text)
         text = html_utils.paragraph(text)

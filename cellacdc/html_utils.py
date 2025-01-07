@@ -170,8 +170,8 @@ def rst_to_html(rst_text, parse_urls=False, keep_spacing=False):
     valid_chars = r'[,A-Za-z0-9μ\-\.=_ \<\>\(\)\\\&;]'
     html_text = re.sub(rf'\`\`([^\`]*)\`\`', r'<code>\1</code>', rst_text)
     html_text = re.sub(rf'\`([^\`]*)\`', r'<code>\1</code>', html_text)
-    html_text = html_text.replace('\n', '<br>')
     html_text = html_text.replace('<', '&lt;').replace('>', '&gt;')
+    html_text = html_text.replace('\n', '<br>')
     if keep_spacing:
         html_text = re.sub(
             r'(\s\s+)', lambda m: '&nbsp;'*len(m.group(0)), html_text

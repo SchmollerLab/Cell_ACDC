@@ -1719,6 +1719,13 @@ class ScrollArea(QScrollArea):
             + self.verticalScrollBar().width()
         )
     
+    def minimumWidthNoScrollbar(self) -> int:
+        width = ( 
+            self.containerWidget.minimumSizeHint().width()
+            + self.verticalScrollBar().width()
+        )
+        return width
+    
     def minimumHeightNoScrollbar(self) -> int:
         height = (
             self.containerWidget.minimumSizeHint().height()
@@ -2426,8 +2433,11 @@ class myMessageBox(_base_widgets.QBaseDialog):
         self.doNotShowAgainCheckbox = None
 
         self.currentRow = 0
+        self.textWidget = None
         self._w = None
 
+        self.textLayout = QVBoxLayout()
+        
         self._layout.setColumnStretch(1, 1)
         self.setLayout(self._layout)
         
@@ -2496,8 +2506,15 @@ class myMessageBox(_base_widgets.QBaseDialog):
         else:
             textWidget = labelsWidget
 
-        self._layout.addWidget(textWidget, self.currentRow, 1)
-        self.currentRow += 1
+        self.textLayout.addWidget(textWidget)
+        
+        if self.textWidget is None:
+            self.textWidget = QWidget()
+            self.textWidget.setLayout(self.textLayout)
+            self._layout.addWidget(self.textWidget, self.currentRow, 1)
+            self.textRow = self.currentRow
+            self.currentRow += 1
+            
         return labelsWidget
     
     def addCopiableCommand(self, command):
@@ -2602,7 +2619,27 @@ class myMessageBox(_base_widgets.QBaseDialog):
         spacer = QSpacerItem(10, 10)
         self._layout.addItem(spacer, self.currentRow, 1)
         self._layout.setRowStretch(self.currentRow, 0)
-
+        
+        screenHeight = self.screen().size().height()
+        dialogHeight = self.sizeHint().height()
+        dialogWidth = self.sizeHint().width()
+        screenWidth = self.screen().size().width()
+        
+        # Check if scrollbar is needed
+        if dialogHeight > screenHeight and self.textWidget is not None:
+            textScrollArea = ScrollArea()
+            textScrollArea.setWidget(self.textWidget)
+            scrollAreaWidthNoSB = textScrollArea.minimumWidthNoScrollbar()
+            scrollAreaWidth = textScrollArea.sizeHint().width()
+            desiredDeltaWidth = scrollAreaWidthNoSB - scrollAreaWidth
+            if desiredDeltaWidth > 0:
+                desiredWidth = dialogWidth + desiredDeltaWidth
+                if desiredWidth < screenWidth:
+                    self._w = desiredWidth
+                    
+            self._layout.removeWidget(self.textWidget)
+            self._layout.addWidget(textScrollArea, self.textRow, 1)
+            
         super().show()
         QTimer.singleShot(5, self._resize)
         
@@ -8429,6 +8466,7 @@ class LabelsWidget(QWidget):
                 self.textLengths.extend(
                     [len(line) for line in text.split('<br>')]
                 )
+            
             self.labels.append(label)
         
         self.nCharsLongestLine = max(self.textLengths)
@@ -9282,12 +9320,9 @@ class PreProcessingSelector(QComboBox):
         href = html_utils.href_tag('GitHub page', urls.issues_url)
         docstring = PREPROCESS_MAPPER[self.currentText()]['docstring']
         if docstring is None:
-            text = 'This function is not documented, yet.'
+            text = 'This function is not documented, yet. Sorry :('
         else:
-            text = html_utils.rst_docstring_to_html(
-                docstring, 
-                args_subset=PREPROCESS_MAPPER[self.currentText()]['args']
-            )
+            text = html_utils.rst_docstring_to_html(docstring)
         text = (
             f'{text}<br><br>'
             f'Feel free to submit an issue on our {href} if you '
