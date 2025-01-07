@@ -8466,6 +8466,7 @@ class LabelsWidget(QWidget):
                 self.textLengths.extend(
                     [len(line) for line in text.split('<br>')]
                 )
+            
             self.labels.append(label)
         
         self.nCharsLongestLine = max(self.textLengths)
