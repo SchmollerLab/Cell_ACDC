@@ -4789,7 +4789,8 @@ class guiWin(QMainWindow):
                 rgb = tuple([int(val) for val in rgb_text.split('_')])
                 self.overlayColors[ch] = rgb
             else:
-                if c >= len(self.overlayRGBs):
+                printl(len(fluoChannels), len(self.overlayRGBs), c)
+                if c >= len(self.overlayRGBs) -1:
                     i = c/len(fluoChannels)
                     rgb = tuple([round(c*255) for c in self.overlayCmap(i)][:3])
                     self.overlayRGBs.append(rgb)

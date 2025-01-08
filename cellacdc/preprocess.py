@@ -366,8 +366,8 @@ def fucci_filter(
         Filtered image
     """
     if basicpy_background_correction_toggle:
-        images = basicpy_background_correction(
-            images, 
+        image = basicpy_background_correction(
+            image, 
             apply_to_all_frames=False,
             apply_to_all_zslices=False,
         )
@@ -382,6 +382,7 @@ def fucci_filter(
         )
     if enhance_speckles_toggle:
         image = enhance_speckles(image, radius=speckle_radius)
+        
     return image
 
 def dummy_filter(
@@ -749,6 +750,7 @@ def basicpy_background_correction(
         working_size=working_size
         )
 
+    print("Fitting BaSiC model, may take a while...")
     basic.fit(images)
     images = basic.transform(
         images,
@@ -756,4 +758,5 @@ def basicpy_background_correction(
         )
     
     images = images.squeeze()
+    images = np.array(images)
     return images

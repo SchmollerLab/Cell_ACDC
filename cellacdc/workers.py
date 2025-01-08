@@ -17,6 +17,7 @@ import traceback
 
 import skimage.io
 import skimage.measure
+import skimage.exposure
 
 import queue
 
@@ -5206,6 +5207,8 @@ class FucciPreprocessWorker(BaseWorkerUtil):
             )
             result = executor.map(func, iterable)
             for frame_i, processed_img in result:
+                processed_img = skimage.exposure.rescale_intensity(processed_img, out_range=(0, 255))
+                processed_img = processed_img.astype(np.uint8)
                 processed_data[frame_i] = processed_img
                 pbar.update()
         pbar.close()
@@ -5285,6 +5288,7 @@ class FucciPreprocessWorker(BaseWorkerUtil):
                 self.logger.log(
                     f'Saving pre-processed images to "{processed_filepath}"...'
                 )
+                print(processed_data.shape, processed_data[0].max())
                 io.save_image_data(processed_filepath, processed_data)
                                 
                 self.signals.progressBar.emit(1)
