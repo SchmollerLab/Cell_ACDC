@@ -43,6 +43,7 @@ from .utils import trackSubCellObjects as utilsTrackSubCell
 from .utils import createConnected3Dsegm as utilsConnected3Dsegm
 from .utils import fucciPreprocess as utilsFucciPreprocess
 from .utils import customPreprocess as utilsCustomPreprocess
+from .utils import combineChannels as utilsCombineChannels
 from .utils import filterObjFromCoordsTable as utilsFilterObjsFromTable
 from .utils import stack2Dinto3Dsegm as utilsStack2Dto3D
 from .utils import computeMultiChannel as utilsComputeMultiCh
@@ -434,6 +435,7 @@ class mainWin(QMainWindow):
         dataPrepMenu.addAction(self.resizeImagesAction)
         dataPrepMenu.addAction(self.fucciPreprocessAction)
         dataPrepMenu.addAction(self.customPreprocessAction)
+        dataPrepMenu.addAction(self.combineChannelsAction)
         
         utilsMenu.addAction(self.renameAction)
 
@@ -733,6 +735,10 @@ class mainWin(QMainWindow):
         self.customPreprocessAction = QAction(
             'Setup and run custom image preprocessing...'
         )
+
+        self.combineChannelsAction = QAction(
+            'Combine channels...'
+        )
         
         self.createConnected3Dsegm = QAction(
             'Create connected 3D segmentation mask from z-slices segmentation...'
@@ -830,6 +836,10 @@ class mainWin(QMainWindow):
         
         self.customPreprocessAction.triggered.connect(
             self.launchCustomPreprocessUtil
+        )
+
+        self.combineChannelsAction.triggered.connect(
+            self.launchCombineChannelsUtil
         )
         
         self.createConnected3Dsegm.triggered.connect(
@@ -988,18 +998,21 @@ class mainWin(QMainWindow):
         
         return posPath
 
-    def getSelectedExpPaths(self, utilityName, exp_folderpath=None):
+    def getSelectedExpPaths(self, utilityName, exp_folderpath=None, custom_txt=None):
         # self._debug()
         
         if exp_folderpath is None:
             self.logger.info('Asking to select experiment folders...')
             msg = widgets.myMessageBox()
-            txt = html_utils.paragraph("""
-                After you click "Ok" on this dialog you will be asked
-                to <b>select the experiment folders</b>, one by one.<br><br>
-                Next, you will be able to <b>choose specific Positions</b>
-                from each selected experiment.
-            """)
+            if custom_txt:
+                txt = html_utils.paragraph(custom_txt)
+            else:
+                txt = html_utils.paragraph("""
+                    After you click "Ok" on this dialog you will be asked
+                    to <b>select the experiment folders</b>, one by one.<br><br>
+                    Next, you will be able to <b>choose specific Positions</b>
+                    from each selected experiment.
+                """)
             msg.information(
                 self, f'{utilityName}', txt,
                 buttonsTexts=('Cancel', 'Ok')
@@ -1397,6 +1410,31 @@ class mainWin(QMainWindow):
             parent=self
         )
         self.customPreprocessWin.show()
+
+    def launchCombineChannelsUtil(self):
+        self.logger.info(f'Launching utility "{self.sender().text()}"')
+        custom_txt = """
+                    After you click "Ok" on this dialog you will be asked
+                    to <b>select the experiment folders</b>, one by one.<br><br>
+                    If you select multiple, later you will only be able to choose
+                    channels which are <b>present in all</b> positions you slected, and the
+                    recepies will be applied to all of them.
+                """
+        selectedExpPaths = self.getSelectedExpPaths(
+            'Combine Channels',
+            custom_txt=custom_txt
+        )
+        if selectedExpPaths is None:
+            return
+        
+        title = 'Combine Channels' 
+        infoText = 'Launching combine channels utility...'
+        progressDialogueTitle = 'Combine Channels'
+        self.CombineChannelsWin = utilsCombineChannels.CombineChannelsUtil(
+            selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
+            parent=self
+        )
+        self.CombineChannelsWin.show()
     
     def launchConnected3DsegmActionUtil(self):
         self.logger.info(f'Launching utility "{self.sender().text()}"')

@@ -5583,3 +5583,112 @@ class CustomPreprocessWorker(BaseWorkerUtil):
                 self.signals.progressBar.emit(1)
 
         self.signals.finished.emit(self)
+
+class CombineChannelsWorker(BaseWorkerUtil):
+    sigAskAppendName = Signal(str)
+    sigAskSetup = Signal(object)
+    sigAborted = Signal()
+
+    def __init__(self, mainWin):
+        super().__init__(mainWin)
+    
+    def emitAskSetup(self, expPaths):
+        self.mutex.lock()
+        self.sigAskSetup.emit(expPaths)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        return self.abort
+    
+    def applyPipeline(
+            self, 
+            image_paths: os.PathLike,
+            channel_names: Iterable[str],
+            multipliers: List[int],
+            operators: List[str],
+            appended_text_filename: str,
+            keep_input_data_type: bool,
+        ):
+        save_filepaths = []
+        for image_path in image_paths:
+            ch_filepath = load.get_filename_from_channel(image_path, channel_names[0])
+
+            _, ext = os.path.splitext(ch_filepath)
+
+            posData = load.loadData(ch_filepath, channel_names[0]) 
+            posData.getBasenameAndChNames()
+            posData.buildPaths()
+            posData.loadOtherFiles(
+                load_segm_data=False,
+                load_metadata=True,
+            )
+
+            basename = posData.basename
+            savename = (
+                f'{basename}{appended_text_filename}{ext}'
+            )
+        
+            save_filepaths = save_filepaths + [os.path.join(image_path, savename)]
+
+        core.combine_channels_multithread(
+            image_paths=image_paths,
+            channel_names=channel_names,
+            operators=operators,
+            multipliers=multipliers,
+            keep_input_data_type=keep_input_data_type,
+            save_filepaths=save_filepaths,
+            signal=self.signals,
+            logger=self.logger
+            )
+    
+    @worker_exception_handler
+    def run(self):
+
+        self.signals.initProgressBar.emit(0)
+
+        expPaths = self.mainWin.expPaths
+        abort = self.emitAskSetup(expPaths)
+        if abort:
+            self.sigAborted.emit()
+            return
+    
+        # Ask append name
+        self.mutex.lock()
+        basename = f'{self.basename}'
+        self.sigAskAppendName.emit(basename)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        if self.abort:
+            self.sigAborted.emit()
+            return
+
+        appendedName = self.appendedName
+
+        selectedSteps = self.selectedSteps
+
+        self.logger.log('Applying pipeline...')
+        self.logger.log('Selected steps:')
+        self.logger.log(selectedSteps)
+
+        selected_channel = []
+        multiplier = []
+        operators = []
+        for step in selectedSteps.values():
+            selected_channel.append(step['channel'])
+            multiplier.append(step['multiplier'])
+            operators.append(step['operator'])
+            
+        image_paths = []
+        for exp_path, pos_foldernames in expPaths.items():
+            image_paths += [os.path.join(exp_path, pos, 'Images') for pos in pos_foldernames]
+
+        self.signals.initProgressBar.emit(len(pos_foldernames))
+        self.applyPipeline(
+            image_paths,
+            selected_channel,
+            multiplier,
+            operators,
+            appendedName,
+            self.keepInputDataType
+        )
+
+        self.signals.finished.emit(self)

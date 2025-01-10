@@ -14522,7 +14522,7 @@ class DataPrepSubCropsPathsDialog(QBaseDialog):
         proceed = self.validatePaths()
         if not proceed:
             return
-        
+
         self.folderPaths = self.paths()
         self.cancel = False
         self.close()
@@ -14944,6 +14944,133 @@ class PreProcessParamsWidget(QWidget):
             for option, value in step['kwargs'].items():
                 cp[section][option] = str(value)
         return cp
+
+class combineChannelsWidget(PreProcessParamsWidget):  
+    def __init__(self, channel_names:Iterable[str], parent=None):
+        self.channel_names = channel_names
+
+        super().__init__(parent)
+        
+        self.loadLastRecipeButton.hide()
+        self.saveRecipeButton.hide()
+        self.loadRecipeButton.hide()
+
+    def addStep(self, is_first=False):
+        stepWidgets = {}
+        
+        self.row += 1
+        
+        step_n = len(self.stepsWidgets)+1
+        label = QLabel(f'Channel {step_n}: ')
+        self.gridLayout.addWidget(label, self.row, 0)
+        stepWidgets['stepLabel'] = label
+
+        operator = QComboBox()
+        self.gridLayout.addWidget(operator, self.row, 1)
+        stepWidgets['operator'] = operator
+ 
+        selector = QComboBox()
+        selector.addItems(self.channel_names)
+        self.gridLayout.addWidget(selector, self.row, 2)
+        stepWidgets['selector'] = selector
+
+        multiplier = QDoubleSpinBox()
+        multiplier.setRange(0, 1)
+        multiplier.setSingleStep(0.01)
+        multiplier.setValue(1)
+        self.gridLayout.addWidget(multiplier, self.row, 3)
+        stepWidgets['multiplier'] = multiplier
+
+        if is_first:
+            addButton = widgets.addPushButton()
+            self.gridLayout.addWidget(addButton, self.row, 4)
+            addButton.clicked.connect(self.addStep)
+            stepWidgets['addButton'] = addButton
+            operators = ['+', '-']
+            stepWidgets['operator'].addItems(operators)
+
+        else:
+            delButton = widgets.delPushButton()
+            self.gridLayout.addWidget(delButton, self.row, 4)
+            delButton.clicked.connect(self.removeStep)
+            delButton.step_n = step_n
+            stepWidgets['delButton'] = delButton
+            operators = ['+', '-', '*', '/']
+            stepWidgets['operator'].addItems(operators)
+        
+        self.row += 1
+        selector.row = self.row
+        selector.step_n = step_n
+
+        hline = widgets.QHLine()
+        self.gridLayout.addWidget(hline, self.row, 0, 1, 6)
+        stepWidgets['hline'] = hline
+        self.row += 1
+              
+        self.stepsWidgets[step_n] = stepWidgets
+                
+        self.resetStretch()
+    
+    def removeStep(self, checked=False, step_n=None):        
+        if step_n is None:
+            step_n = self.sender().step_n
+        
+        stepWidgets = self.stepsWidgets[step_n]
+        
+        stepWidgets['stepLabel'].hide()
+        self.gridLayout.removeWidget(stepWidgets['stepLabel'])
+        
+        stepWidgets['selector'].hide()
+        self.gridLayout.removeWidget(stepWidgets['selector'])
+        
+        stepWidgets['delButton'].hide()
+        self.gridLayout.removeWidget(stepWidgets['delButton'])
+
+        stepWidgets['operator'].hide()
+        self.gridLayout.removeWidget(stepWidgets['operator'])
+
+        stepWidgets['multiplier'].hide()
+        self.gridLayout.removeWidget(stepWidgets['multiplier'])
+        self.row -= 1
+        
+        stepWidgets['hline'].hide()
+        self.gridLayout.removeWidget(stepWidgets['hline'])
+        self.row -= 1
+
+        self.stepsWidgets.pop(step_n)
+        
+        stepsWidgetsMapper = {1: self.stepsWidgets[1]}
+        for i, stepWidgets in enumerate(self.stepsWidgets.values()):
+            if i == 0:
+                continue
+            step_n = i + 1
+            label = stepWidgets['stepLabel']
+            label.setText(f'Channel {step_n}: ')
+            stepWidgets['delButton'].step_n = step_n
+            stepWidgets['selector'].step_n = step_n
+            stepsWidgetsMapper[step_n] = stepWidgets
+        
+        self.stepsWidgets = stepsWidgetsMapper
+        
+        self.resetStretch()
+
+    def steps(self):
+        steps = {}
+        if not self.groupbox.isChecked() and self.groupbox.isCheckable():
+            return steps
+        
+        for step_number, stepWidgets in self.stepsWidgets.items():
+            channel = stepWidgets['selector'].currentText()
+            operator = stepWidgets['operator'].currentText()
+            multiplier = stepWidgets['multiplier'].value()
+            steps[step_number] = {
+                'channel': channel,
+                'operator': operator,
+                'multiplier': multiplier
+            }
+
+        steps = dict(sorted(steps.items()))       
+        return steps
 
 class InitFijiMacroDialog(QBaseDialog):
     def __init__(self, parent=None):
@@ -15668,7 +15795,6 @@ class PreProcessRecipeDialog(QBaseDialog):
         keepInputDataTypeInfoButton.clicked.connect(
             self.showInfoKeepInputDataType
         )
-    
         self.preProcessParamsWidget = PreProcessParamsWidget(
             df_metadata=df_metadata, addApplyButton=addApplyButton, parent=self
         )
@@ -15914,7 +16040,140 @@ class PreProcessRecipeDialogUtil(PreProcessRecipeDialog):
         
         self.cancel = False
         self.close()
+
+class combineChannelsSetupDialog(PreProcessRecipeDialog):
+    def __init__(
+            self,
+            channel_names,
+            df_metadata=None,
+            parent=None,
+            hideOnClosing=False,
+            
+        ):
+        super().__init__(parent=parent,
+            hideOnClosing=hideOnClosing,
+            df_metadata=df_metadata
+        )
+        self.setWindowTitle('Combine channels')
+        self.preProcessParamsWidget.hide()
+        self.mainLayout.removeWidget(self.preProcessParamsWidget)
+
+        self.combineChannelsWidget = combineChannelsWidget(channel_names)
+        self.mainLayout.addWidget(self.combineChannelsWidget)
+        self.combineChannelsWidget.groupbox.setCheckable(False)
+        self.combineChannelsWidget.groupbox.setTitle('Combine channels (Channel name, Operator, Multiplier, Add another channel)')
+
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+
+        self.mainLayout.addLayout(buttonsLayout)
+
+    def warnMultipliers(self):
+        msg = widgets.myMessageBox(wrapText=False)
+
+        text = html_utils.paragraph(
+            'Multipliers do not sum to 1. Are you sure?'
+        )
+
+        msg.warning(
+            self, 'Multipliers do not sum to 1!', text
+        )
+
+        return msg.cancel
+    
+    def warnMultipliersNot1(self):
+        msg = widgets.myMessageBox(wrapText=False)
+
+        text = html_utils.paragraph(
+            'Multipliers are not all 1. Are you sure?'
+        )
+
+        msg.warning(
+            self, 'Multipliers are not all 1!', text
+        )
+
+        return msg.cancel
+
+    def warnDefaultMultipliers(self):
+        msg = widgets.myMessageBox(wrapText=False)
+        text = html_utils.paragraph(
+            '''
+            Default multiplier were used everywhere. <br>
+            You can either change them so they sum to 1, or leave them as is.<br>
+            Please choose or cancel to readjust manually.
+            '''
+        )
+        _, keep_button, change_button = msg.warning(
+            self, 'Default multiplier', text, buttonsTexts=['Cancel', 'Keep current', 'Change so that sum is 1']
+        )
+        if msg.clickedButton==keep_button:
+            return False
+        elif msg.clickedButton==change_button:
+            for step in self.selectedSteps.values():
+                step['multiplier'] = 1/len(self.selectedSteps)
+            return False
+        return msg.cancel
+
+
+    def ok_cb(self):
+        self.keepInputDataType = self.keepInputDataTypeToggle.isChecked()
+
+        self.selectedSteps = self.combineChannelsWidget.steps()
+
+        multipliers = [step['multiplier'] for step in self.selectedSteps.values()]
+        operators = [step['operator'] for step in self.selectedSteps.values()]
+        just_add_subt = all([op in ['+', '-'] for op in operators])
+
+        if len(operators) > 2 and not just_add_subt:
+            msg = widgets.myMessageBox(wrapText=False)
+            text = html_utils.paragraph(
+                '''
+                Multiplication and division operators are not recomended for more than 2 channels. <br>
+                Behaviour: <br>
+                Strictly goes through the steps and doesn't respect order of operators. <br>
+                Recommendation:<br>
+                Please reduce the used channels to 2 and run the utility several times.<br>
+                If this is something you need to do regularly, feel free to contact us via a github issue.
+                '''
+            )
+            msg.warning(
+                self, 'Invalid operator', text
+            )
+            return
         
+        if just_add_subt and all([w == 1 for w in multipliers]):
+            cancel = self.warnDefaultMultipliers()
+            if cancel:
+                return
+
+        elif just_add_subt and sum(multipliers) != 1:
+            cancel = self.warnMultipliers()
+            if cancel:
+                return
+            
+        elif not just_add_subt and not all([w == 1 for w in multipliers]):
+            cancel = self.warnMultipliersNot1()
+
+        self.cancel = False
+        self.close()
+
+class CombineChannelsSetupDialogUtil(combineChannelsSetupDialog):
+    def __init__(
+            self,
+            channel_names: Iterable[str],
+            df_metadata=None,
+            parent=None,
+        ):
+        self.cancel = True
+        
+        super().__init__(
+            channel_names,
+            parent=parent,
+            df_metadata=df_metadata,
+            hideOnClosing=False
+        )
 
 # class FunctionParamsWidget(FunctionParamsDialog):
 #     sigReset = Signal()

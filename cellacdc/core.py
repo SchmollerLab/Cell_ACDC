@@ -38,6 +38,7 @@ from . import cca_functions
 from . import config
 from . import preprocess
 from .config import PREPROCESS_MAPPER
+from . import io
 
 class HeadlessSignal:
     def __init__(self, *args):
@@ -2825,6 +2826,119 @@ def preprocess_image_from_recipe_multithread(
             pbar.close()
     
     return preprocessed_image
+
+def combine_channels_multithread(
+    image_paths: List[str],
+    channel_names: List[str],
+    operators: List[str],
+    multipliers: List[float],
+    keep_input_data_type: bool,
+    save_filepaths: List[str]=None,
+    n_threads: int=None,
+    signal=None,
+    logger=None,
+    ):
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=n_threads) as executor:
+        if signal:
+            signal.initProgressBar.emit(len(image_paths))
+        else:
+            pbar = tqdm(total=len(image_paths), ncols=100, desc='Combining channels')
+        func = partial(
+            combine_channels_func,
+            channel_names=channel_names,
+            operators=operators,
+            multipliers=multipliers,
+            keep_input_data_type=keep_input_data_type,
+            return_img=False,
+            logger=logger
+        )
+        futures = [executor.submit(func, 
+                                   image_path=image_path, 
+                                   save_filepath=save_filepath) 
+                                   for image_path, save_filepath 
+                                   in zip(image_paths, save_filepaths)]
+        for future in concurrent.futures.as_completed(futures):
+            if signal:
+                signal.progressBar.emit(1)
+            else:
+                pbar.update()
+
+def combine_channels_func(
+        image_path: str,
+        channel_names: List[str],
+        operators: List[str],
+        multipliers: List[float],
+        keep_input_data_type: bool,
+        save_filepath: str=None,
+        return_img: bool=False,
+        logger=None
+    ):
+    if not save_filepath and not return_img:
+        raise ValueError('Either save_filepath must be provided or return_img must be true')
+
+    ch_image_data_list = []
+    for channel in channel_names:
+        ch_filepath = load.get_filename_from_channel(image_path, channel)
+        ch_image_data = load.load_image_file(ch_filepath)
+
+        ch_image_data_list.append(ch_image_data)
+
+    # pbar = tqdm(total=len(ch_image_data_list), ncols=100, desc='Applying multipliers to images')
+    for i in range(len(ch_image_data_list)):
+        multiplier = multipliers[i]
+        if multiplier == 1:
+            continue
+        ch_image_data_list[i] = ch_image_data_list[i] * multipliers[i]
+    #     pbar.update()
+    # pbar.close()
+
+    if all(x == "+" for x in operators):
+        output_img = np.sum(ch_image_data_list, axis=0)
+
+    else:
+        # pbar = tqdm(total=len(ch_image_data_list), ncols=100, desc='Applying logical operators')
+
+        for i in range(len(ch_image_data_list)):
+            if i == 0:
+                if operators[i] == "+":
+                    output_img = ch_image_data_list[0]
+                elif operators[i] == "-":
+                    output_img = -ch_image_data_list[0]
+                else:
+                    raise ValueError(f'Invalid operator: {operators[i]}')
+            else:
+                if operators[i] == "+":
+                    output_img += ch_image_data_list[i]
+                elif operators[i] == "-":
+                    output_img -= ch_image_data_list[i]
+                elif operators[i] == "*":
+                    output_img *= ch_image_data_list[i]
+                elif operators[i] == "/":
+                    output_img /= ch_image_data_list[i]
+                else:
+                    raise ValueError(f'Invalid operator: {operators[i]}')
+            # pbar.update()
+        # pbar.close() 
+    
+    # printl(ch_image_data.dtype)
+    # if keep_input_data_type: # doesnt work :(
+    #     output_img = myutils.convert_to_dtype(
+    #         output_img, ch_image_data.dtype
+    #     )
+
+    if return_img:
+        return output_img
+    
+    txt = f'Saving combined image to {save_filepath}'
+    if logger:
+        logger.log(txt)
+    else:
+        printl(txt)
+    io.save_image_data(
+        save_filepath, output_img
+    )
+    return None
 
 def split_segm_masks_mother_bud_line(
         cells_segm_data, segm_data_to_split, acdc_df, 
