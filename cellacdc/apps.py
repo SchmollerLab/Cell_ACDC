@@ -15669,24 +15669,46 @@ class PreProcessRecipeDialog(QBaseDialog):
         )
     
         self.preProcessParamsWidget = PreProcessParamsWidget(
-            df_metadata=df_metadata, addApplyButton=addApplyButton, parent=self
+            df_metadata=df_metadata, 
+            addApplyButton=addApplyButton, 
+            parent=self
         )
         self.preProcessParamsWidget.groupbox.setCheckable(False)
         
-        buttonsLayout = self.preProcessParamsWidget.buttonsLayout
-        
+        buttonsLayout = QGridLayout() # self.preProcessParamsWidget.buttonsLayout
         self.previewCheckbox = QCheckBox('Preview')
         buttonsLayout.addWidget(self.previewCheckbox, 0, 0)
         
-        self.preProcessParamsWidget.loadLastRecipeButton.hide()
+        # Relocate buttons of PreProcessParamsWidget to this dialog
+        pPPWBL = self.preProcessParamsWidget.buttonsLayout
+        loadRecipeButtIdx = pPPWBL.indexOf(
+            self.preProcessParamsWidget.loadRecipeButton
+        )
+        self.loadRecipeButton = pPPWBL.takeAt(loadRecipeButtIdx).widget()
+        buttonsLayout.addWidget(self.loadRecipeButton, 0, 1)
+        
+        saveRecipeButtIdx = pPPWBL.indexOf(
+            self.preProcessParamsWidget.saveRecipeButton
+        )
+        self.saveRecipeButton = pPPWBL.takeAt(saveRecipeButtIdx).widget()
+        buttonsLayout.addWidget(self.saveRecipeButton, 1, 1)
+        
+        loadLastRecipeButtIdx = pPPWBL.indexOf(
+            self.preProcessParamsWidget.loadLastRecipeButton
+        )
+        self.loadLastRecipeButton = pPPWBL.takeAt(loadLastRecipeButtIdx).widget()
+        buttonsLayout.addWidget(self.loadLastRecipeButton, 1, 0)
+        
+        self.loadLastRecipeButton.hide()
+        
         # self.cancelButton = widgets.cancelPushButton('Cancel')
         # buttonsLayout.insertWidget(2, self.cancelButton)
         # buttonsLayout.insertSpacing(3, 20)
         
         self.allButtons = [
             self.previewCheckbox,
-            self.preProcessParamsWidget.loadRecipeButton,
-            self.preProcessParamsWidget.saveRecipeButton,
+            self.loadRecipeButton,
+            self.saveRecipeButton,
         ]
         col = 3
         row = 0
@@ -15772,6 +15794,7 @@ class PreProcessRecipeDialog(QBaseDialog):
         
         mainLayout.addLayout(keepInputDataTypeLayout)
         mainLayout.addWidget(self.preProcessParamsWidget)
+        mainLayout.addLayout(buttonsLayout)
         self.mainLayout = mainLayout
         
         self.setLayout(mainLayout)

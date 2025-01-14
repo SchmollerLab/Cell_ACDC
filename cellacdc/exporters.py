@@ -51,7 +51,7 @@ class VideoExporter:
         if self.writer is None:
             height, width = img_bgr.shape[:-1]
             self.writer = cv2.VideoWriter(
-                self._avi_filepath, 0, self._fps, (width, height)
+                self._avi_filepath, self._fourcc, self._fps, (width, height)
             )
         self.writer.write(img_bgr)
     
