@@ -6430,7 +6430,7 @@ class BaseImageItem(pg.ImageItem):
             minMaxValuesMapper = self.minMaxValuesMapperPreproc
         else:
             minMaxValuesMapper = self.minMaxValuesMapper
-            
+        
         if minMaxValuesMapper is None:
             return super().quickMinMax(targetSize=targetSize)
         

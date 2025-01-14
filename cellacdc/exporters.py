@@ -45,6 +45,7 @@ class VideoExporter:
         self.writer = None
         self._avi_filepath = avi_filepath
         self._fps = fps
+        self._fourcc = cv2.VideoWriter_fourcc(*'XVID')
     
     def add_frame(self, img_bgr):
         if self.writer is None:
