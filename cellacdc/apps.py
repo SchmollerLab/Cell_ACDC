@@ -7140,6 +7140,7 @@ class imageViewer(QMainWindow):
             idx = (posData.filename, posData.frame_i)
             posData.segmInfo_df.at[idx, 'z_slice_used_gui'] = z
         
+        self.z_label.setText(f'z-slice  {z+1:02}/{posData.SizeZ}')
         self.img.setCurrentZsliceIndex(z)
         self.update_img()
 

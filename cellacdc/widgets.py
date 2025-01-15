@@ -6533,6 +6533,10 @@ class ParentImageItem(BaseImageItem):
             return
         
         if next_frame_image is not None:
+            try:
+                self.linkedImageItem.setCurrentFrameIndex(self.frame_i+1)
+            except Exception as err:
+                pass
             self.linkedImageItem.setImage(
                 next_frame_image, 
                 scrollbar_value=scrollbar_value, 

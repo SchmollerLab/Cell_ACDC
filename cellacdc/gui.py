@@ -5253,7 +5253,7 @@ class guiWin(QMainWindow):
             self.setImageImg2(updateLookuptable=False)
             self.lastHoverID = -1
 
-        # Delete entire ID (set to 0)
+        # Delete ID (set to 0)
         elif middle_click and canDelete:
             t0 = time.perf_counter()
             x, y = event.pos().x(), event.pos().y()
@@ -5299,6 +5299,8 @@ class guiWin(QMainWindow):
             delID_mask = self.deleteIDmiddleClick(
                 delIDs, applyFutFrames, includeUnvisited
             )
+            if delID_mask.ndim == 3:
+                delID_mask = delID_mask[self.z_lab()]
 
             if self.isSnapshot:
                 self.fixCcaDfAfterEdit('Delete ID')
@@ -5306,19 +5308,16 @@ class guiWin(QMainWindow):
                 self.warnEditingWithCca_df('Delete ID', update_images=False)
             
             self.setImageImg2()
-            self.setAllTextAnnotations()
+            delROIsIDs = self.setAllTextAnnotations()
+            self.setAllContoursImages(delROIsIDs=delROIsIDs)
 
             how = self.drawIDsContComboBox.currentText()
             if how.find('overlay segm. masks') != -1:
-                if delID_mask.ndim == 3:
-                    delID_mask = delID_mask[self.z_lab()]
                 self.labelsLayerImg1.image[delID_mask] = 0
                 self.labelsLayerImg1.setImage(self.labelsLayerImg1.image)
             
             how_ax2 = self.getAnnotateHowRightImage()
             if how_ax2.find('overlay segm. masks') != -1:
-                if delID_mask.ndim == 3:
-                    delID_mask = delID_mask[self.z_lab()]
                 self.labelsLayerRightImg.image[delID_mask] = 0
                 self.labelsLayerRightImg.setImage(self.labelsLayerRightImg.image)
             
@@ -5358,9 +5357,10 @@ class guiWin(QMainWindow):
                 success = True
                 # self.set_2Dlab(lab2D)
             elif not shift:
-                lab2D, success, splittedIDs = self.auto_separate_bud_ID(
+                result = core.split_along_convexity_defects(
                     ID, self.get_2Dlab(posData.lab), max_ID
                 )
+                lab2D, success, splittedIDs = result
                 self.set_2Dlab(lab2D)
             else:
                 success = False
@@ -12454,6 +12454,13 @@ class guiWin(QMainWindow):
             self.slideshowWin.overlayButton.setChecked(
                 self.overlayButton.isChecked()
             )
+            if posData.SizeZ > 1:
+                z_slice = self.zSliceScrollBar.sliderPosition()
+                self.slideshowWin.img.setCurrentZsliceIndex(z_slice)
+                self.slideshowWin.zSliceScrollBar.setSliderPosition(z_slice)
+                self.slideshowWin.z_label.setText(
+                    f'z-slice  {z_slice+1:02}/{posData.SizeZ}'
+                )
             self.slideshowWin.update_img()
             self.slideshowWin.show(
                 left=self.slideshowWinLeft, top=self.slideshowWinTop
@@ -12482,79 +12489,6 @@ class guiWin(QMainWindow):
         dist = ((r - y)**2 + (c - x)**2)
         min_idx = dist.argmin()
         return a[r[min_idx], c[min_idx]]
-
-    def convexity_defects(self, img, eps_percent):
-        img = img.astype(np.uint8)
-        contours, _ = cv2.findContours(img,2,1)
-        cnt = contours[0]
-        cnt = cv2.approxPolyDP(cnt,eps_percent*cv2.arcLength(cnt,True),True) # see https://www.programcreek.com/python/example/89457/cv22.convexityDefects
-        hull = cv2.convexHull(cnt,returnPoints = False) # see https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_imgproc/py_contours/py_contours_more_functions/py_contours_more_functions.html
-        defects = cv2.convexityDefects(cnt,hull) # see https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_imgproc/py_contours/py_contours_more_functions/py_contours_more_functions.html
-        return cnt, defects
-
-    def auto_separate_bud_ID(
-            self, ID, lab, max_ID, max_i=1, eps_percent=0.01
-        ):
-        lab_ID_bool = lab == ID
-        # First try separating by labelling
-        lab_ID = lab_ID_bool.astype(int)
-        rp_ID = skimage.measure.regionprops(lab_ID)
-        setRp = self.separateByLabelling(lab_ID, rp_ID, maxID=max_ID)
-        if setRp:
-            success = True
-            lab[lab_ID_bool] = lab_ID[lab_ID_bool]
-            rp_ID = skimage.measure.regionprops(lab_ID)
-            separateIDs = [obj.label for obj in rp_ID]
-            return lab, success, separateIDs
-
-        cnt, defects = self.convexity_defects(lab_ID_bool, eps_percent)
-        success = False
-        if defects is None:
-            return lab, success, []
-
-        if len(defects) != 2:
-            return lab, success, []
-
-        defects_points = [0]*len(defects)
-        for i, defect in enumerate(defects):
-            s,e,f,d = defect[0]
-            x,y = tuple(cnt[f][0])
-            defects_points[i] = (y,x)
-        (r0, c0), (r1, c1) = defects_points
-        rr, cc, _ = skimage.draw.line_aa(r0, c0, r1, c1)
-        sep_bud_img = np.copy(lab_ID_bool)
-        sep_bud_img[rr, cc] = False
-        
-        sep_bud_label = skimage.measure.label(
-            sep_bud_img, connectivity=2
-        )
-        
-        rp_sep = skimage.measure.regionprops(sep_bud_label)
-        IDs_sep = [obj.label for obj in rp_sep]
-        areas = [obj.area for obj in rp_sep]
-        curr_ID_bud = IDs_sep[areas.index(min(areas))]
-        curr_ID_moth = IDs_sep[areas.index(max(areas))]
-        orig_sblab = np.copy(sep_bud_label)
-        # sep_bud_label = np.zeros_like(sep_bud_label)
-        ID1 = ID
-        ID2 = max_ID+max_i
-        sep_bud_label[orig_sblab==curr_ID_moth] = ID1
-        sep_bud_label[orig_sblab==curr_ID_bud] = ID2
-        splittedIDs = [ID1, ID2]
-        # sep_bud_label *= (max_ID+max_i)
-        temp_sep_bud_lab = sep_bud_label.copy()
-        for r, c in zip(rr, cc):
-            if lab_ID_bool[r, c]:
-                nearest_ID = self.nearest_nonzero(
-                                        sep_bud_label, r, c)
-                temp_sep_bud_lab[r,c] = nearest_ID
-        sep_bud_label = temp_sep_bud_lab
-        sep_bud_label_mask = sep_bud_label != 0
-        # plt.imshow_tk(sep_bud_label, dots_coords=np.asarray(defects_points))
-        lab[sep_bud_label_mask] = sep_bud_label[sep_bud_label_mask]
-        max_i += 1
-        success = True
-        return lab, success, splittedIDs
 
     def disconnectLeftClickButtons(self):
         for button in self.LeftClickButtons:
@@ -25363,6 +25297,13 @@ class guiWin(QMainWindow):
             trackedID = tracked_lab[subsetIDmask][0]
             if trackedID == subsetID:
                 continue
+            
+            is_manually_edited = False
+            for y, x, new_ID in posData.editID_info:
+                if new_ID == subsetID:
+                    # Do not track because it was manually edited
+                    break
+                
             posData.lab[subsetIDmask] = tracked_lab[subsetIDmask]
             doUpdateRp = True
         
@@ -25419,7 +25360,10 @@ class guiWin(QMainWindow):
 
         # First separate by labelling
         if separateByLabel:
-            setRp = self.separateByLabelling(posData.lab, posData.rp)
+            maxID = max(posData.IDs, default=1)
+            setRp = core.split_connected_components(
+                posData.lab, rp=posData.rp, max_ID=maxID
+            )
             if setRp:
                 self.update_rp()
 
