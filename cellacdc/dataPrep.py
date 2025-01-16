@@ -578,6 +578,12 @@ class dataPrepWin(QMainWindow):
         self.updateNavigateItems()
         posData = self.data[self.pos_i]
         img = self.getImage(posData, posData.img_data, self.frame_i)
+        if self.zProjComboBox.currentText() == 'single z-slice':
+            zslice = self.zSliceScrollBar.sliderPosition()
+        else:
+            zslice = None
+            
+        self.img.setCurrentZsliceIndex(zslice)
         self.img.setCurrentPosIndex(self.pos_i)
         self.img.setCurrentFrameIndex(self.frame_i)
         self.img.setImage(img)
