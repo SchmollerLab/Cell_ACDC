@@ -25503,7 +25503,7 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         if self.isExportingVideo:
             posData.trackedLostIDs = trackedLostIDs
-            return
+            return trackedLostIDs
         
         retrackedLostcent = set()
         if frame_i is None:
