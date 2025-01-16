@@ -781,7 +781,7 @@ class AutoSaveWorker(QObject):
         else:
             np.savez_compressed(recovery_path, np.squeeze(data))
     
-    def _save_acdc_df(self, recovery_acdc_df, posData):
+    def _save_acdc_df(self, recovery_acdc_df: pd.DataFrame, posData):
         recovery_folderpath = posData.recoveryFolderpath()
         if not os.path.exists(posData.acdc_output_csv_path):
             load.store_unsaved_acdc_df(recovery_folderpath, recovery_acdc_df)
@@ -794,8 +794,12 @@ class AutoSaveWorker(QObject):
         )
         
         recovery_acdc_df = (
-            recovery_acdc_df.reset_index().set_index(['frame_i', 'Cell_ID'])
+            recovery_acdc_df.reset_index(allow_duplicates=True)
+            .set_index(['frame_i', 'Cell_ID'])
         )
+        recovery_acdc_df = recovery_acdc_df.loc[
+            :, ~recovery_acdc_df.columns.duplicated()
+        ]
         try:
             # Try to insert into the recovery_acdc_df any column that was saved
             # but is not in the recovered df (e.g., metrics)
