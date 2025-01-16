@@ -25500,9 +25500,12 @@ class guiWin(QMainWindow):
 
     def getTrackedLostIDs(self, prev_lab=None, IDs_in_frames=None, frame_i=None):
         trackedLostIDs = set()
-        retrackedLostcent = set()
         posData = self.data[self.pos_i]
+        if self.isExportingVideo:
+            posData.trackedLostIDs = trackedLostIDs
+            return
         
+        retrackedLostcent = set()
         if frame_i is None:
             frame_i = posData.frame_i
             
