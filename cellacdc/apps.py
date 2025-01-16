@@ -13880,7 +13880,7 @@ class ExportToVideoParametersDialog(QBaseDialog):
         
         row += 1
         self.dpiWidget = widgets.IntLineEdit(allowNegative=False)
-        self.dpiWidget.setValue(100)
+        self.dpiWidget.setValue(300)
         self.dpiWidget.label = QLabel('DPI')
         gridLayout.addWidget(self.dpiWidget.label, row, 0)
         gridLayout.addWidget(self.dpiWidget, row, 1)
@@ -14211,7 +14211,7 @@ class ExportToImageParametersDialog(QBaseDialog):
         
         row += 1
         self.dpiWidget = widgets.IntLineEdit(allowNegative=False)
-        self.dpiWidget.setValue(100)
+        self.dpiWidget.setValue(300)
         self.dpiWidget.label = QLabel('DPI')
         gridLayout.addWidget(self.dpiWidget.label, row, 0)
         gridLayout.addWidget(self.dpiWidget, row, 1)
