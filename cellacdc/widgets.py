@@ -6520,6 +6520,45 @@ class ParentImageItem(BaseImageItem):
     def setEnableAutoLevels(self, enabled: bool):
         self.autoLevelsEnabled = enabled
     
+    def preComputedMinMaxValues(self, *args, **kwargs):
+        super().preComputedMinMaxValues(*args, **kwargs)
+        if self.linkedImageItem is None:
+            return
+        
+        self.linkedImageItem.minMaxValuesMapper = self.minMaxValuesMapper
+    
+    def updateMinMaxValuesPreprocessedData(self, *args, **kwargs):
+        super().updateMinMaxValuesPreprocessedData(*args, **kwargs)
+        
+        if self.linkedImageItem is None:
+            return
+        
+        self.linkedImageItem.minMaxValuesMapper = self.minMaxValuesMapper
+    
+    def setCurrentPosIndex(self, *args, **kwargs):
+        super().setCurrentPosIndex(*args, **kwargs)
+        
+        if self.linkedImageItem is None:
+            return
+        
+        self.linkedImageItem.pos_i = self.pos_i
+    
+    def setCurrentFrameIndex(self, *args, **kwargs):
+        super().setCurrentFrameIndex(*args, **kwargs)
+        
+        if self.linkedImageItem is None:
+            return
+        
+        self.linkedImageItem.frame_i = self.frame_i + 1
+    
+    def setCurrentZsliceIndex(self, *args, **kwargs):
+        super().setCurrentZsliceIndex(*args, **kwargs)
+        
+        if self.linkedImageItem is None:
+            return
+        
+        self.linkedImageItem.z = self.z
+    
     def setImage(
             self, image=None, autoLevels=None, next_frame_image=None, 
             scrollbar_value=None, **kargs
@@ -6533,10 +6572,6 @@ class ParentImageItem(BaseImageItem):
             return
         
         if next_frame_image is not None:
-            try:
-                self.linkedImageItem.setCurrentFrameIndex(self.frame_i+1)
-            except Exception as err:
-                pass
             self.linkedImageItem.setImage(
                 next_frame_image, 
                 scrollbar_value=scrollbar_value, 

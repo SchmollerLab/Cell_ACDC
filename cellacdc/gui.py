@@ -2122,14 +2122,6 @@ class guiWin(QMainWindow):
 
         self.gui_createAnnotateToolbar()
 
-        # toolbarSize = 58
-        # fileToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
-        # navigateToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
-        # ccaToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
-        # editToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
-        # brushEraserToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
-        # modeToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
-
     def propagateLinTreeAction(self):
         """
         Propagates the lineage tree based on the current frame_i. Used in self.propagateLinTreeButton.
@@ -6920,7 +6912,7 @@ class guiWin(QMainWindow):
                         self.warnEditingWithCca_df('Delete ID with eraser')
                     break
 
-        # Brush button mouse release --> update IDs and contours
+        # Brush mouse release --> update IDs and contours
         elif self.isMouseDragImg2 and self.brushButton.isChecked():
             # t0 = time.perf_counter()
             
@@ -6931,8 +6923,7 @@ class guiWin(QMainWindow):
             self.update_rp(update_IDs=self.isNewID)
 
             # t1 = time.perf_counter()
-            if self.autoIDcheckbox.isChecked():
-                self.tracking(enforce=True, assign_unique_new_IDs=False)
+            self.trackManuallyAddedObject(posData.brushID, self.isNewID)
 
             # t2 = time.perf_counter()
             # Update images
@@ -6945,18 +6936,6 @@ class guiWin(QMainWindow):
                     self.warnEditingWithCca_df(editTxt)
             else:
                 self.updateAllImages()
-            
-            # t3 = time.perf_counter()
-            # printl(
-            #     'Brush exec times =\n'
-            #     f'  * {(t1-t0)*1000 = :.4f} ms\n'
-            #     f'  * {(t2-t1)*1000 = :.4f} ms\n'
-            #     f'  * {(t3-t2)*1000 = :.4f} ms\n'
-            #     # f'  * {(t4-t3)*1000 = :.4f} ms\n'
-            #     # f'  * {(t5-t4)*1000 = :.4f} ms\n'
-            #     # f'  * {(t6-t5)*1000 = :.4f} ms\n'
-            #     f'  * {(t3-t0)*1000 = :.4f} ms'
-            # )
 
         # Move label mouse released, update move
         elif self.isMovingLabel and self.moveLabelToolButton.isChecked():
@@ -7133,6 +7112,8 @@ class guiWin(QMainWindow):
             
             posData = self.data[self.pos_i]
             self.fillHolesID(posData.brushID, sender='brush')
+            
+            printl(posData.brushID, self.isNewID)
             
             # Update data (rp, etc)
             self.update_rp(update_IDs=self.isNewID)
@@ -15875,6 +15856,7 @@ class guiWin(QMainWindow):
     
     def rightImageFramesScrollbarValueChanged(self, value):
         img = self.nextFrameImage(current_frame_i=value-2)
+        self.img1.linkedImageItem.frame_i = value
         self.img1.linkedImageItem.setImage(img)
     
     def nextActionTriggered(self):
