@@ -13910,6 +13910,13 @@ class ExportToVideoParametersDialog(QBaseDialog):
         gridLayout.addWidget(self.fpsWidget, row, 1)
         
         row += 1
+        self.dpiWidget = widgets.IntLineEdit(allowNegative=False)
+        self.dpiWidget.setValue(100)
+        self.dpiWidget.label = QLabel('DPI')
+        gridLayout.addWidget(self.dpiWidget.label, row, 0)
+        gridLayout.addWidget(self.dpiWidget, row, 1)
+        
+        row += 1
         gridLayout.addWidget(QLabel('Folder path:'), row, 0)
         self.folderPathLineEdit = widgets.ElidingLineEdit(minWidth=240)
         self.folderPathLineEdit.setText(startFolderpath)
@@ -14070,7 +14077,8 @@ class ExportToVideoParametersDialog(QBaseDialog):
             'num_digits': len(str(self.stopNavVarNumberEntry.value())),
             'fps': self.fpsWidget.value(),
             'save_pngs':  self.saveFramesToggle.isChecked(),
-            'is_timelapse': self.isTimelapseVideo
+            'is_timelapse': self.isTimelapseVideo,
+            'dpi': self.dpiWidget.value(),
         }
         return preferences
     
@@ -14233,6 +14241,15 @@ class ExportToImageParametersDialog(QBaseDialog):
         gridLayout.addWidget(self.fileFormatCombobox, row, 1)
         
         row += 1
+        self.dpiWidget = widgets.IntLineEdit(allowNegative=False)
+        self.dpiWidget.setValue(100)
+        self.dpiWidget.label = QLabel('DPI')
+        gridLayout.addWidget(self.dpiWidget.label, row, 0)
+        gridLayout.addWidget(self.dpiWidget, row, 1)
+        self.dpiWidget.hide()
+        self.dpiWidget.label.hide()
+        
+        row += 1
         gridLayout.addWidget(QLabel('Folder path:'), row, 0)
         self.folderPathLineEdit = widgets.ElidingLineEdit(minWidth=240)
         self.folderPathLineEdit.setText(startFolderpath)
@@ -14299,6 +14316,13 @@ class ExportToImageParametersDialog(QBaseDialog):
         self.browseButton.setStartPath(folderPath)
     
     def updateFileFormat(self, fileFormat):
+        if fileFormat == 'SVG':
+            self.dpiWidget.hide()
+            self.dpiWidget.label.hide()
+        else:
+            self.dpiWidget.show()
+            self.dpiWidget.label.show()
+            
         self.fileFormatLabel.setText(f'.{fileFormat.lower()}')
     
     def validateFolderPath(self):
@@ -14343,6 +14367,7 @@ class ExportToImageParametersDialog(QBaseDialog):
             'view_range_y': self.yRangeSelector.range(),
             'filepath': os.path.join(self.folderPathLineEdit.text(), filename), 
             'filename': self.filenameLineEdit.text(),
+            'dpi': self.dpiWidget.value(),
         }
         return preferences
     
