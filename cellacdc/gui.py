@@ -18074,6 +18074,7 @@ class guiWin(QMainWindow):
         self.isRealTimeTrackerInitialized = False
         self.isWarningCcaIntegrity = False
         self.isDoubleRightClick = False
+        self.isExportingVideo = False
         self.pointsLayersNeverToggled = True
         self.highlightedIDopts = None
         self.keptObjectsIDs = widgets.KeptObjectIDsList(
@@ -24203,6 +24204,9 @@ class guiWin(QMainWindow):
             self.ax2_lostObjScatterItem.addPoints(xx, yy)
 
     def setTrackedLostObjectContour(self, obj):
+        if self.isExportingVideo:
+            return
+        
         allContours = self.getObjContours(obj, all_external=True)  
         for objContours in allContours:
             xx = objContours[:,0] + 0.5
@@ -24967,13 +24971,15 @@ class guiWin(QMainWindow):
                     parent_cell_txt_raw.append(f'{parent} --> {cell}')
 
             htmlTxt_li, htmlTxtFull_li = self.setTitleFormatter(
-                htmlTxt_li, htmlTxtFull_li, 'New cells w/out mother', 'red', orphan_cells
+                htmlTxt_li, htmlTxtFull_li, 'New cells w/out mother', 'red', 
+                orphan_cells
             )
             htmlTxt_li, htmlTxtFull_li = self.setTitleFormatter(
                 htmlTxt_li, htmlTxtFull_li, 'Lost cells', 'red', lost_cells
             )
             htmlTxt_li, htmlTxtFull_li = self.setTitleFormatter(
-                htmlTxt_li, htmlTxtFull_li, 'Parent --> Cell', 'green', parent_cell_txt_raw
+                htmlTxt_li, htmlTxtFull_li, 'Parent --> Cell', 'green', 
+                parent_cell_txt_raw
             )
 
         if not htmlTxt_li:
@@ -27714,6 +27720,7 @@ class guiWin(QMainWindow):
         self.saveData()
 
     def startExportToVideoWorker(self, preferences):
+        self.isExportingVideo = True
         self.setDisabled(True)
         
         self.progressWin = apps.QDialogWorkerProgress(
@@ -27747,7 +27754,9 @@ class guiWin(QMainWindow):
         )
         
         self.exportToVideoImageExporter = exporters.ImageExporter(
-            self.ax1, save_pngs=preferences['save_pngs']
+            self.ax1, 
+            save_pngs=preferences['save_pngs'], 
+            dpi=preferences['dpi']
         )
         self.exportToVideoExporter = exporters.VideoExporter(
             preferences['avi_filepath'], preferences['fps']
@@ -27850,6 +27859,7 @@ class guiWin(QMainWindow):
             self.update_z_slice(self.exportToVideoNavVarIdxToRestore)
         
         self.setDisabled(False)
+        self.isExportingVideo = False
         
         prompts.exportToVideoFinished(
             self.exportToVideoPreferences, conversion_to_mp4_successful, 
@@ -27972,7 +27982,7 @@ class guiWin(QMainWindow):
         if filepath.endswith('.svg'):
             exporter = exporters.SVGExporter(self.ax1)
         else:
-            exporter = exporters.ImageExporter(self.ax1)
+            exporter = exporters.ImageExporter(self.ax1, dpi=preferences['dpi'])
         exporter.export(filepath)
         self.logger.info(f'Image saved.')
         

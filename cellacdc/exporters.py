@@ -11,13 +11,17 @@ from . import is_mac, is_win
 from . import acdc_ffmpeg_path
 
 class ImageExporter(pyqtgraph.exporters.ImageExporter):
-    def __init__(self, item, background=(0, 0, 0, 0), save_pngs=True):
+    def __init__(self, item, background=(0, 0, 0, 0), dpi=100, save_pngs=True):
         super().__init__(item)
         self._save_pngs = save_pngs
+        
+        # DPI using A4 width
+        desired_width = 8.268 * dpi
+        self.params['width'] = desired_width
     
         self.parameters()['background'] = (0, 0, 0, 0)
     
-    def export(self, filepath):
+    def export(self, filepath):        
         super().export(filepath)
         
         # Remove padding
@@ -39,6 +43,7 @@ class ImageExporter(pyqtgraph.exporters.ImageExporter):
 class SVGExporter(pyqtgraph.exporters.SVGExporter):
     def __init__(self, item):
         super().__init__(item)
+        self.parameters()['background'] = (0, 0, 0, 0)
 
 class VideoExporter:
     def __init__(self, avi_filepath, fps):
