@@ -6415,6 +6415,21 @@ class BaseImageItem(pg.ImageItem):
         img = posData.preproc_img_data[frame_i][z_slice]
         key = (pos_i, frame_i, z_slice)
         self.minMaxValuesMapperPreproc[key] = (np.nanmin(img), np.nanmax(img))
+
+    def updateMinMaxValuesCombinedData(
+            self,
+            data: List['load.loadData'],
+            pos_i: int,
+            frame_i: int,
+            z_slice: Union[int, str],
+        ):
+        if self.minMaxValuesMapperCombined is None:
+            self.minMaxValuesMapperCombined = {}
+        
+        posData = data[pos_i]
+        img = posData.combined_img_data[frame_i][z_slice]
+        key = (pos_i, frame_i, z_slice)
+        self.minMaxValuesMapperCombined[key] = (np.nanmin(img), np.nanmax(img))
     
     def setCurrentPosIndex(self, pos_i: int):
         self.pos_i = pos_i

@@ -2212,9 +2212,8 @@ def img_to_float(img, force_dtype=None, force_missing_dtype=None):
     uint8_max = np.iinfo(np.uint8).max
     uint16_max = np.iinfo(np.uint16).max
     uint32_max = np.iinfo(np.uint32).max
-    
+
     img = img.astype(float)
-    
     if force_dtype is not None:
         dtype_max = np.iinfo(force_dtype).max
         img = img/dtype_max
@@ -2284,10 +2283,12 @@ def float_img_to_dtype(img, dtype):
     
     raise TypeError(
         f'Invalid output data type `{dtype}`. '
-        'Valid output data types are `np.uin8` and `np.uint16`'
+        'Valid output data types are `np.uint8` and `np.uint16`'
     )
 
 def convert_to_dtype(data: np.ndarray, dtype):
+    if data.dtype == dtype:
+        return data
     val = data[tuple([0]*data.ndim)]
     if isinstance(val, (np.floating, float)):
         data = float_img_to_dtype(data, dtype)

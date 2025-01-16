@@ -14945,7 +14945,7 @@ class PreProcessParamsWidget(QWidget):
                 cp[section][option] = str(value)
         return cp
 
-class combineChannelsWidget(PreProcessParamsWidget):  
+class CombineChannelsWidget(PreProcessParamsWidget):  
     def __init__(self, channel_names:Iterable[str], parent=None):
         self.channel_names = channel_names
 
@@ -15773,7 +15773,7 @@ class PreProcessRecipeDialog(QBaseDialog):
             df_metadata=None,
             addApplyButton=False,
             parent=None,
-            hideOnClosing=False
+            hideOnClosing=False,
         ):
         super().__init__(parent=parent)
         
@@ -15850,7 +15850,7 @@ class PreProcessRecipeDialog(QBaseDialog):
             infoLayout, row+1, 0, 3, 2, 
             alignment=Qt.AlignBottom | Qt.AlignLeft
         )
-        
+
         if isZstack:
             row += 1
             self.applyAllZslicesButton = widgets.threeDPushButton(
@@ -15881,12 +15881,13 @@ class PreProcessRecipeDialog(QBaseDialog):
                 partial(self.apply, signal=self.sigApplyAllPos)
             )
             self.allButtons.append(self.applyAllPosButton)
-        
+
         row += 1
         self.savePreprocButton = widgets.savePushButton(
             'Save pre-processed data...'
         )
         buttonsLayout.addWidget(self.savePreprocButton, row, col)
+
         self.allButtons.append(self.savePreprocButton)
         self.savePreprocButton.clicked.connect(self.emitSignalSavePreprocData)
         
@@ -16041,34 +16042,39 @@ class PreProcessRecipeDialogUtil(PreProcessRecipeDialog):
         self.cancel = False
         self.close()
 
-class combineChannelsSetupDialog(PreProcessRecipeDialog):
+
+class CombineChannelsSetupDialog(PreProcessRecipeDialog):
     def __init__(
             self,
             channel_names,
             df_metadata=None,
             parent=None,
             hideOnClosing=False,
-            
-        ):
-        super().__init__(parent=parent,
-            hideOnClosing=hideOnClosing,
-            df_metadata=df_metadata
-        )
-        self.setWindowTitle('Combine channels')
-        self.preProcessParamsWidget.hide()
-        self.mainLayout.removeWidget(self.preProcessParamsWidget)
+            isTimelapse=False,
+            isZstack=False,
+            isMultiPos=False,
+            ):
+        
+        self.combineChannelsWidget = CombineChannelsWidget(channel_names)
 
-        self.combineChannelsWidget = combineChannelsWidget(channel_names)
+        super().__init__(
+            isTimelapse=isTimelapse,
+            isZstack=isZstack,
+            isMultiPos=isMultiPos,
+            df_metadata=df_metadata,
+            parent=parent,
+            hideOnClosing=hideOnClosing,
+        )
+
         self.mainLayout.addWidget(self.combineChannelsWidget)
         self.combineChannelsWidget.groupbox.setCheckable(False)
-        self.combineChannelsWidget.groupbox.setTitle('Combine channels (Channel name, Operator, Multiplier, Add another channel)')
+        self.combineChannelsWidget.groupbox.setTitle('Combine channels (Operator, Channel name, Multiplier, Add another channel)')
 
-        buttonsLayout = widgets.CancelOkButtonsLayout()
+        self.cancel = True
 
-        buttonsLayout.okButton.clicked.connect(self.ok_cb)
-        buttonsLayout.cancelButton.clicked.connect(self.close)
-
-        self.mainLayout.addLayout(buttonsLayout)
+        self.setWindowTitle('Combine channels')
+        self.preProcessParamsWidget.hide()
+        # self.mainLayout.removeWidget(self.preProcessParamsWidget)
 
     def warnMultipliers(self):
         msg = widgets.myMessageBox(wrapText=False)
@@ -16143,7 +16149,7 @@ class combineChannelsSetupDialog(PreProcessRecipeDialog):
             )
             return
         
-        if just_add_subt and all([w == 1 for w in multipliers]):
+        if just_add_subt and all([w == 1 for w in multipliers])  and sum(multipliers) != 1:
             cancel = self.warnDefaultMultipliers()
             if cancel:
                 return
@@ -16158,22 +16164,48 @@ class combineChannelsSetupDialog(PreProcessRecipeDialog):
 
         self.cancel = False
         self.close()
+class CombineChannelsSetupDialogUtil(CombineChannelsSetupDialog):
+    def __init__(
+            self,
+            channel_names,
+            parent=None,
+        ):
 
-class CombineChannelsSetupDialogUtil(combineChannelsSetupDialog):
+        super().__init__(
+            channel_names,
+            parent=parent,
+            )
+
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+
+        self.mainLayout.addLayout(buttonsLayout)  
+
+
+class CombineChannelsSetupDialogGUI(CombineChannelsSetupDialog):
     def __init__(
             self,
             channel_names: Iterable[str],
             df_metadata=None,
+            isTimelapse=False,
+            isZstack=False,
+            isMultiPos=False,
             parent=None,
-        ):
-        self.cancel = True
-        
+            hideOnClosing=False
+        ):        
         super().__init__(
             channel_names,
-            parent=parent,
             df_metadata=df_metadata,
-            hideOnClosing=False
+            isTimelapse=isTimelapse, 
+            isZstack=isZstack, 
+            isMultiPos=isMultiPos, 
+            parent=parent,
+            hideOnClosing=hideOnClosing,
         )
+
+        # self.preProcessParamsWidget.show()
+        self.applyCurrentFrameButton.show()
 
 # class FunctionParamsWidget(FunctionParamsDialog):
 #     sigReset = Signal()

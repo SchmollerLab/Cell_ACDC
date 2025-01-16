@@ -5463,6 +5463,10 @@ class PreprocessWorker(QObject):
 
         self.signals.finished.emit(self)
 
+class CombineWorker(PreprocessWorker):
+    def __init__(self, mutex, waitCond):
+        super().__init__(mutex, waitCond)
+
 class CustomPreprocessWorker(BaseWorkerUtil):
     sigAskAppendName = Signal(str)
     sigAskSetupRecipe = Signal(object, object)
@@ -5511,7 +5515,7 @@ class CustomPreprocessWorker(BaseWorkerUtil):
                 preprocessed_ch_data = myutils.convert_to_dtype(
                     preprocessed_ch_data, ch_image_data.dtype
                 )
-            
+
             _, ext = os.path.splitext(ch_filepath)
             basename = posData.basename
             processed_filename = (
@@ -5589,7 +5593,7 @@ class CombineChannelsWorker(BaseWorkerUtil):
     sigAskSetup = Signal(object)
     sigAborted = Signal()
 
-    def __init__(self, mainWin):
+    def __init__(self, mainWin, mutex=None, waitCond=None):
         super().__init__(mainWin)
     
     def emitAskSetup(self, expPaths):
@@ -5636,8 +5640,8 @@ class CombineChannelsWorker(BaseWorkerUtil):
             multipliers=multipliers,
             keep_input_data_type=keep_input_data_type,
             save_filepaths=save_filepaths,
-            signal=self.signals,
-            logger=self.logger
+            signals=self.signals,
+            logger_func=self.logger.log
             )
     
     @worker_exception_handler
@@ -5667,7 +5671,8 @@ class CombineChannelsWorker(BaseWorkerUtil):
 
         self.logger.log('Applying pipeline...')
         self.logger.log('Selected steps:')
-        self.logger.log(selectedSteps)
+        for step in selectedSteps.values():
+            self.logger.log(step)
 
         selected_channel = []
         multiplier = []

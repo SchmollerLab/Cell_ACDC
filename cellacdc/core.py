@@ -1,6 +1,6 @@
 import traceback
 import inspect
-from typing import List, Dict, Any, Iterable, Tuple
+from typing import List, Dict, Any, Iterable, Tuple, Callable
 import os
 import time
 import concurrent.futures
@@ -2835,34 +2835,36 @@ def combine_channels_multithread(
     keep_input_data_type: bool,
     save_filepaths: List[str]=None,
     n_threads: int=None,
-    signal=None,
-    logger=None,
+    signals=None,
+    logger_func: Callable=None
     ):
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=n_threads) as executor:
-        if signal:
-            signal.initProgressBar.emit(len(image_paths))
+        if signals:
+            signals.initProgressBar.emit(len(image_paths))
         else:
             pbar = tqdm(total=len(image_paths), ncols=100, desc='Combining channels')
         func = partial(
-            combine_channels_func,
+            combine_channels_executor_map,
             channel_names=channel_names,
             operators=operators,
             multipliers=multipliers,
             keep_input_data_type=keep_input_data_type,
             return_img=False,
-            logger=logger
+            logger_func=logger_func
         )
-        futures = [executor.submit(func, 
-                                   image_path=image_path, 
-                                   save_filepath=save_filepath) 
-                                   for image_path, save_filepath 
-                                   in zip(image_paths, save_filepaths)]
-        for future in concurrent.futures.as_completed(futures):
-            if signal:
-                signal.progressBar.emit(1)
+        iterable = zip(image_paths, save_filepaths)
+        result = executor.map(func, iterable)
+        for res in result:
+            if signals:
+                signals.progressBar.emit(1)
             else:
                 pbar.update()
+
+def combine_channels_executor_map(args, **kwargs):
+    image_path, save_filepath = args
+    kwargs['save_filepath'] = save_filepath
+    return combine_channels_func(image_path, **kwargs)
 
 def combine_channels_func(
         image_path: str,
@@ -2872,7 +2874,7 @@ def combine_channels_func(
         keep_input_data_type: bool,
         save_filepath: str=None,
         return_img: bool=False,
-        logger=None
+        logger_func: Callable=None
     ):
     if not save_filepath and not return_img:
         raise ValueError('Either save_filepath must be provided or return_img must be true')
@@ -2885,6 +2887,9 @@ def combine_channels_func(
         ch_image_data_list.append(ch_image_data)
 
     # pbar = tqdm(total=len(ch_image_data_list), ncols=100, desc='Applying multipliers to images')
+
+    original_dtype = ch_image_data_list[0].dtype
+
     for i in range(len(ch_image_data_list)):
         multiplier = multipliers[i]
         if multiplier == 1:
@@ -2895,7 +2900,6 @@ def combine_channels_func(
 
     if all(x == "+" for x in operators):
         output_img = np.sum(ch_image_data_list, axis=0)
-
     else:
         # pbar = tqdm(total=len(ch_image_data_list), ncols=100, desc='Applying logical operators')
 
@@ -2920,19 +2924,45 @@ def combine_channels_func(
                     raise ValueError(f'Invalid operator: {operators[i]}')
             # pbar.update()
         # pbar.close() 
-    
-    # printl(ch_image_data.dtype)
-    # if keep_input_data_type: # doesnt work :(
-    #     output_img = myutils.convert_to_dtype(
-    #         output_img, ch_image_data.dtype
-    #     )
+
+    if keep_input_data_type:
+        try:
+            output_img = myutils.convert_to_dtype(
+                output_img, ch_image_data.dtype
+            )
+            method = 'cellacdc.myutils.convert_to_dtype'
+            warning = 'safe'
+            prefix = ''
+        except Exception as err:
+            dtype_info = np.iinfo(ch_image_data.dtype)
+            dtype_max = dtype_info.max
+            dtype_min = dtype_info.min
+            if output_img.max() <= dtype_max and output_img.min() >= dtype_min:
+                output_img = output_img.astype(original_dtype)
+                method = 'output_img.astype(original_dtype)'
+                warning = 'safe if weights were set correctly'
+                prefix = '[WARNING]: '
+            else:
+                output_img = skimage.exposure.rescale_intensity(
+                    output_img, out_range=original_dtype
+                )
+                output_img = output_img.astype(original_dtype)
+                method = 'skimage.exposure.rescale_intensity -> output_img.astype(original_dtype)'
+                warning = '!RESCALING! the image data'
+                prefix = '[WARNING]: '
+
+        txt = f'{prefix}Converted output image to {original_dtype} using {method}, which is {warning}'
+        if logger_func:
+            logger_func(txt)
+        else:
+            printl(txt)
 
     if return_img:
         return output_img
     
     txt = f'Saving combined image to {save_filepath}'
-    if logger:
-        logger.log(txt)
+    if logger_func:
+        logger_func(txt)
     else:
         printl(txt)
     io.save_image_data(
