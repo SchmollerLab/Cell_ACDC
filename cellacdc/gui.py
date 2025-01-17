@@ -6334,7 +6334,31 @@ class guiWin(QMainWindow):
         if setMirroredCursor:
             x, y = event.pos()
             self.ax1_cursor.setData([x], [y])
+    
+    def onCtrlPressedFirstTime(self):
+        x, y = self.xHoverImg, self.yHoverImg
+        if x is None:
+            self.xyOnCtrlPressedFirstTime = None
+            return
+
+        xdata, ydata = int(x), int(y)
+        Y, X = self.currentLab2D.shape
+
+        if not (xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y):
+            self.xyOnCtrlPressedFirstTime = None
+            return
         
+        ID = self.currentLab2D[ydata, xdata]
+        if ID == 0:
+            self.xyOnCtrlPressedFirstTime = None
+            return 
+        
+        self.xyOnCtrlPressedFirstTime = (xdata, ydata)
+    
+    def onCtrlReleased(self):
+        self.xyOnCtrlPressedFirstTime = None
+        self.isCtrlDown = False
+    
     def gui_hoverEventImg1(self, event, isHoverImg1=True):
         try:
             posData = self.data[self.pos_i]
@@ -6414,6 +6438,13 @@ class guiWin(QMainWindow):
             x, y = event.pos()
             self.updateEraserCursor(x, y, isHoverImg1=isHoverImg1)
             self.hideItemsHoverBrush(xy=(x, y))
+        elif self.eraserButton.isChecked() and not event.isExit():
+            if self.xyOnCtrlPressedFirstTime is not None:
+                self.updateEraserCursor(
+                    x, y, xyLocked=self.xyOnCtrlPressedFirstTime, 
+                    isHoverImg1=isHoverImg1
+                )
+                self.hideItemsHoverBrush(xy=(x, y))
         else:
             eraserCursors = (
                 self.ax1_EraserCircle, self.ax2_EraserCircle,
@@ -7113,8 +7144,6 @@ class guiWin(QMainWindow):
             posData = self.data[self.pos_i]
             self.fillHolesID(posData.brushID, sender='brush')
             
-            printl(posData.brushID, self.isNewID)
-            
             # Update data (rp, etc)
             self.update_rp(update_IDs=self.isNewID)
             
@@ -7743,7 +7772,10 @@ class guiWin(QMainWindow):
             # Keep a list of erased IDs got erased
             self.erasedIDs = set()
             
-            self.erasedID = self.getHoverID(xdata, ydata)
+            if self.xyOnCtrlPressedFirstTime is not None:
+                self.erasedID = self.getHoverID(*self.xyOnCtrlPressedFirstTime)
+            else: 
+                self.erasedID = self.getHoverID(xdata, ydata)
 
             ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
 
@@ -13158,7 +13190,7 @@ class guiWin(QMainWindow):
         if not self.isMovingLabel:
             self.highlightSearchedID(ID)
 
-    def updateEraserCursor(self, x, y, isHoverImg1=True):
+    def updateEraserCursor(self, x, y, xyLocked=None, isHoverImg1=True):
         if x is None:
             return
 
@@ -13182,13 +13214,17 @@ class guiWin(QMainWindow):
         isMouseDrag = (
             self.isMouseDragImg1 or self.isMouseDragImg2
         )
+        if isMouseDrag:
+            return
+        
+        if xyLocked is not None:
+            xdata, ydata = xyLocked
 
-        if not isMouseDrag:
-            self.setHoverToolSymbolColor(
-                xdata, ydata, self.eraserCirclePen,
-                self.activeEraserCircleCursors(isHoverImg1),
-                self.eraserButton, hoverRGB=None
-            )
+        self.setHoverToolSymbolColor(
+            xdata, ydata, self.eraserCirclePen,
+            self.activeEraserCircleCursors(isHoverImg1),
+            self.eraserButton, hoverRGB=None
+        )
 
     def Eraser_cb(self, checked):
         if checked:
@@ -13464,6 +13500,9 @@ class guiWin(QMainWindow):
             )
             return
         if ev.key() == Qt.Key_Control:
+            if not self.isCtrlDown:
+                self.wasCtrlPressedFirstTime = True
+                self.onCtrlPressedFirstTime()
             self.isCtrlDown = True
         
         if ev.key() == Qt.Key_PageDown:
@@ -13732,7 +13771,7 @@ class guiWin(QMainWindow):
         if self.app.overrideCursor() == Qt.SizeAllCursor:
             self.app.restoreOverrideCursor()
         if ev.key() == Qt.Key_Control:
-            self.isCtrlDown = False
+            self.onCtrlReleased()
         elif ev.key() == Qt.Key_Shift:
             if self.isSegm3D and self.xHoverImg is not None:
                 # Restore normal brush cursor when releasing shift
@@ -18176,6 +18215,7 @@ class guiWin(QMainWindow):
         self.splineHoverON = False
         self.tempSegmentON = False
         self.isCtrlDown = False
+        self.xyOnCtrlPressedFirstTime = None
         self.typingEditID = False
         self.isShiftDown = False
         self.prevAnnotOptions = None
