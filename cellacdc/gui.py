@@ -5267,7 +5267,7 @@ class guiWin(QMainWindow):
                 delID_prompt.exec_()
                 if delID_prompt.cancel:
                     return
-                delIDs = [delID_prompt.EntryID]
+                delIDs = delID_prompt.EntryID
             else:
                 delIDs = [delID]
 
@@ -24805,7 +24805,7 @@ class guiWin(QMainWindow):
         if applyFutFrames:
             posData.frame_i = self.current_frame_i
             self.get_data()   
-
+        
         for _delID in delIDs:
             self.clearObjContour(ID=_delID, ax=0)     
             self.clearObjContour(ID=_delID, ax=1)  
