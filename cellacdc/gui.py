@@ -7740,7 +7740,7 @@ class guiWin(QMainWindow):
             # Draw new objects
             localLab = lab_2D[diskSlice]
             mask = diskMask.copy()
-            if not self.isPowerBrush():
+            if not self.isPowerBrush() and not ctrl:
                 mask[localLab!=0] = False
 
             self.applyBrushMask(mask, posData.brushID, toLocalSlice=diskSlice)

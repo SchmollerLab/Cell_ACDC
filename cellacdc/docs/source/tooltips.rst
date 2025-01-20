@@ -374,10 +374,11 @@ Edit tools: Segmentation and tracking
     * Edit segmentation labels with a circular brush.
     * Increase brush size with "UP/DOWN" arrows on the keyboard.  
     * Default behaviour:
-        * Painting on the background will create a new label.
-        * Edit an existing label by starting to paint on the label (brush cursor changes color when hovering an existing label).
+        * Painting on the background will create a new object.
+        * Edit an existing label by starting to paint on the object (brush cursor changes color when hovering an existing label).
         * Press "Shift" to force drawing a new object
-        * Painting in default mode always draws UNDER existing labels.
+        * Painting in default mode always draws UNDER existing objects.
+        * Press "Ctrl" to draw above ABOVE existing objects.
     * Power brush mode:
         * | Power brush: press "B" key twice quickly to force the brush to draw ABOVE existing labels.
           | NOTE: If double-press is successful, then brush button turns red. The brush cursor is always white.
@@ -385,14 +386,14 @@ Edit tools: Segmentation and tracking
     * Manual ID mode:
         * Toggle the manual ID mode with the "Auto-ID" checkbox on the top-right toolbar.
         * Enter the ID that you want to paint.
-        * NOTE: use the power brush to draw ABOVE the existing labels.
+        * NOTE: use the power brush to draw ABOVE the existing objects.
 * **Eraser (** |eraserButton| **"X"):**
-    * Erase segmentation labels with a circular eraser.
+    * Erase segmentation objects with a circular eraser.
     * Increase eraser size with "UP/DOWN" arrows on the keyboard.
     * Default behaviour:
         * Starting to erase from the background (cursor is a red circle) will erase any labels you hover above.
         * Starting to erase from a specific label will erase only that label (cursor is a circle with the color of the label).
-        * To enforce erasing all labels no matter where you start from double-press "X" key. If double-press is successfull, then eraser button is red and eraser cursor always red.
+        * To enforce erasing all objects no matter where you start from double-press "X" key. If double-press is successfull, then eraser button is red and eraser cursor always red.
 * **Curvature Tool (** |curvToolButton| **"C"):** Left-clicks for manual spline anchors, right button for drawing auto-contour.
 * **Magic Wand (** |wandToolButton| **"W"):** Left-click for single selection or left-click and then drag for continous selection.
 * **Copy lost contour (** |copyContourButton| **"V"):** Hover onto lost object contour --> right-click to copy the contour as a new object.
