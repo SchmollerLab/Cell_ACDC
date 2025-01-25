@@ -944,7 +944,7 @@ class mainWin(QMainWindow):
         
         myutils.addToRecentPaths(exp_path)
         baseFolder = os.path.basename(exp_path)
-        isPosFolder = re.search('Position_(\d+)$', baseFolder) is not None
+        isPosFolder = re.search(r'Position_(\d+)$', baseFolder) is not None
         isImagesFolder = baseFolder == 'Images'
         if isImagesFolder:
             posPath = os.path.dirname(exp_path)
