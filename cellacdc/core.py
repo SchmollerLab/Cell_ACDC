@@ -1,4 +1,6 @@
 import traceback
+import inspect
+from typing import List, Dict, Any, Iterable, Tuple
 import os
 import time
 import concurrent.futures
@@ -1724,14 +1726,131 @@ def brownian(x0, n, dt, delta, out=None):
 
     return out
 
-def preprocess_image_from_recipe(image, recipe: dict):
+def preprocess_multi_pos_from_recipe(
+        image_data: Iterable[np.ndarray], 
+        recipe: List[Dict[str, Any]]
+    ):
+    pbar = tqdm(total=len(image_data), unit='Position', ncols=100)
+    preprocessed_data = []
+    for pos_i, image in enumerate(image_data):
+        preprocessed_image = preprocess_zstack_from_recipe(
+            image, recipe, pbar_pos=1
+        )
+        preprocessed_data.append(preprocessed_image)
+        pbar.update()
+    pbar.close()
+    return preprocessed_data
+
+def preprocess_video_from_recipe(
+        image, recipe: List[Dict[str, Any]], pbar_pos=0
+    ):
+    if image.ndim < 3:
+        raise TypeError(
+            'Only 3D or 4D videos allowed. '
+            f'Input image has {image.ndim} dimensions!'
+        )
+
+    preprocessed_image = image
     for step in recipe:
         method = step['method']
         func = PREPROCESS_MAPPER[method]['function']
         kwargs = step['kwargs']
-        image = func(image, **kwargs)
+        argspecs = inspect.getfullargspec(func)
+        is_func_time_capable = False
+        is_func_zstack_capable = False
+        for arg in argspecs.args:
+            if arg == 'apply_to_all_frames':
+                is_func_time_capable = True
+            elif arg == 'apply_to_all_zslices':
+                is_func_zstack_capable = True
         
-    return image
+        if is_func_time_capable and is_func_zstack_capable:
+            preprocessed_image = func(
+                preprocessed_image, 
+                apply_to_all_zslices=True, 
+                apply_to_all_frames=True,
+                **kwargs
+            )
+        else:
+            pbar = tqdm(
+                total=len(preprocessed_image), unit='frame', ncols=100, 
+                position=pbar_pos
+            )
+            for frame_i, frame_img in enumerate(preprocessed_image):
+                if frame_img.ndim == 3:
+                    preprocessed_img = preprocess_zstack_from_recipe(
+                        frame_img, (step,), pbar_pos=pbar_pos+1
+                    )
+                    if preprocessed_img.dtype != preprocessed_image.dtype:
+                        preprocessed_image = (
+                            preprocessed_image.astype(preprocessed_img.dtype)
+                        )
+                    preprocessed_image[frame_i] = preprocessed_img
+                else:
+                    preprocessed_img = preprocess_image_from_recipe(
+                        frame_img, (step,)
+                    )
+                    if preprocessed_img.dtype != preprocessed_image.dtype:
+                        preprocessed_image = (
+                            preprocessed_image.astype(preprocessed_img.dtype)
+                        )
+                    preprocessed_image[frame_i] = preprocessed_img
+                pbar.update()
+            pbar.close()
+    
+    return preprocessed_image
+    
+def preprocess_zstack_from_recipe(
+        image, recipe: List[Dict[str, Any]], pbar_pos=0
+    ):
+    if image.ndim != 3:
+        raise TypeError(
+            'Only 3D z-stack images allowed. '
+            f'Input image has {image.ndim} dimensions!'
+        )
+        
+    preprocessed_image = image
+    for step in recipe:
+        method = step['method']
+        func = PREPROCESS_MAPPER[method]['function']
+        kwargs = step['kwargs']
+        argspecs = inspect.getfullargspec(func)
+        is_func_zstack_capable = False
+        for arg in argspecs.args:
+            if arg == 'apply_to_all_zslices':
+                is_func_zstack_capable = True
+                break
+        
+        if is_func_zstack_capable:
+            preprocessed_image = func(
+                preprocessed_image, apply_to_all_zslices=True, **kwargs
+            )
+        else:
+            pbar = tqdm(
+                total=len(preprocessed_image), unit='z-slice', ncols=100, 
+                position=pbar_pos
+            )
+            for z_slice, img in enumerate(preprocessed_image):
+                preprocessed_img = func(img, **kwargs)
+                if preprocessed_img.dtype != preprocessed_image.dtype:
+                    preprocessed_image = (
+                        preprocessed_image.astype(preprocessed_img.dtype)
+                    )
+                preprocessed_image[z_slice] = preprocessed_img
+                pbar.update()
+            pbar.close()
+    
+    return preprocessed_image
+        
+def preprocess_image_from_recipe(image, recipe: List[Dict[str, Any]]):
+    preprocessed_image = image
+    for step in recipe:
+        method = step['method']
+        func = PREPROCESS_MAPPER[method]['function']
+        kwargs = step['kwargs']
+        preprocessed_image = func(preprocessed_image, **kwargs)
+        
+    return preprocessed_image
 
 def segm_model_segment(
         model, image, model_kwargs, frame_i=None, preproc_recipe=None, 
@@ -2654,6 +2773,59 @@ def fucci_pipeline_executor_map(input, **filter_kwargs):
     
     return frame_i, processed_img
 
+def preprocess_exceutor_map(
+        input: Tuple[int, np.ndarray],
+        recipe: List[Dict[str, Any]]=None,
+    ):
+    if recipe is None:
+        return input
+    
+    frame_i, image = input
+    if image.ndim == 3:
+        preprocessed_image = preprocess_zstack_from_recipe(image, recipe)
+    else:
+        preprocessed_image = preprocess_image_from_recipe(image, recipe)
+    
+    return frame_i, preprocessed_image
+
+def preprocess_image_from_recipe_multithread(
+        image: np.ndarray, 
+        recipe: List[Dict[str, Any]], 
+        n_threads: int=None
+    ):
+    preprocessed_image = image
+    for step in recipe:
+        method = step['method']
+        func = PREPROCESS_MAPPER[method]['function']
+        kwargs = step['kwargs']
+        argspecs = inspect.getfullargspec(func)
+        is_func_time_capable = False
+        for arg in argspecs.args:
+            if arg == 'apply_to_all_frames':
+                is_func_time_capable = True
+                break
+        
+        if is_func_time_capable:
+            preprocessed_image = preprocess_video_from_recipe(
+                preprocessed_image, (step,)
+            )
+        else:
+            num_frames = len(preprocessed_image)
+            pbar = tqdm(total=num_frames, ncols=100)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=n_threads) as executor:
+                iterable = enumerate(preprocessed_image)
+                func = partial(
+                    preprocess_exceutor_map,
+                    recipe=(step,)
+                )
+                result = executor.map(func, iterable)
+                for frame_i, processed_img in result:
+                    preprocessed_image[frame_i] = processed_img
+                    pbar.update()
+            pbar.close()
+    
+    return preprocessed_image
+
 def split_segm_masks_mother_bud_line(
         cells_segm_data, segm_data_to_split, acdc_df, 
         debug=False
@@ -2958,3 +3130,96 @@ def _compute_all_obj_to_obj_contour_dist_pairs(
                 dist_matrix_df.loc[i, j] = min_dist
 
     return dist_matrix_df
+
+def convexity_defects(img, eps_percent):
+    img = img.astype(np.uint8)
+    contours, _ = cv2.findContours(img,2,1)
+    cnt = contours[0]
+    cnt = cv2.approxPolyDP(cnt,eps_percent*cv2.arcLength(cnt,True),True) # see https://www.programcreek.com/python/example/89457/cv22.convexityDefects
+    hull = cv2.convexHull(cnt,returnPoints = False) # see https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_imgproc/py_contours/py_contours_more_functions/py_contours_more_functions.html
+    defects = cv2.convexityDefects(cnt,hull) # see https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_imgproc/py_contours/py_contours_more_functions/py_contours_more_functions.html
+    return cnt, defects
+
+def split_connected_components(lab, rp=None, max_ID=None):  
+    if rp is None:
+        lab = skimage.measure.regionprops(lab)
+    
+    if max_ID is None:
+        max_ID = max([obj.label for obj in rp], default=1)
+        
+    split_occured = False
+    for obj in rp:
+        lab_obj = skimage.measure.label(obj.image)
+        rp_lab_obj = skimage.measure.regionprops(lab_obj)
+        if len(rp_lab_obj)<=1:
+            continue
+        lab_obj += max_ID
+        _slice = obj.slice # self.getObjSlice(obj.slice)
+        _objMask = obj.image # self.getObjImage(obj.image)
+        lab[_slice][_objMask] = lab_obj[_objMask]
+        setRp = True
+        max_ID += 1
+    return split_occured
+
+def split_along_convexity_defects(
+        ID, lab, max_ID, max_i=1, eps_percent=0.01
+    ):
+    lab_ID_bool = lab == ID
+    # First try separating by labelling
+    lab_ID = lab_ID_bool.astype(int)
+    rp_ID = skimage.measure.regionprops(lab_ID)
+    setRp = split_connected_components(lab_ID, rp=rp_ID, max_ID=max_ID)
+    if setRp:
+        success = True
+        lab[lab_ID_bool] = lab_ID[lab_ID_bool]
+        rp_ID = skimage.measure.regionprops(lab_ID)
+        separateIDs = [obj.label for obj in rp_ID]
+        return lab, success, separateIDs
+
+    cnt, defects = convexity_defects(lab_ID_bool, eps_percent)
+    success = False
+    if defects is None:
+        return lab, success, []
+
+    if len(defects) != 2:
+        return lab, success, []
+
+    defects_points = [0]*len(defects)
+    for i, defect in enumerate(defects):
+        s,e,f,d = defect[0]
+        x,y = tuple(cnt[f][0])
+        defects_points[i] = (y,x)
+    (r0, c0), (r1, c1) = defects_points
+    rr, cc, _ = skimage.draw.line_aa(r0, c0, r1, c1)
+    sep_bud_img = np.copy(lab_ID_bool)
+    sep_bud_img[rr, cc] = False
+    
+    sep_bud_label = skimage.measure.label(
+        sep_bud_img, connectivity=2
+    )
+    
+    rp_sep = skimage.measure.regionprops(sep_bud_label)
+    IDs_sep = [obj.label for obj in rp_sep]
+    areas = [obj.area for obj in rp_sep]
+    curr_ID_bud = IDs_sep[areas.index(min(areas))]
+    curr_ID_moth = IDs_sep[areas.index(max(areas))]
+    orig_sblab = np.copy(sep_bud_label)
+    # sep_bud_label = np.zeros_like(sep_bud_label)
+    ID1 = ID
+    ID2 = max_ID+max_i
+    sep_bud_label[orig_sblab==curr_ID_moth] = ID1
+    sep_bud_label[orig_sblab==curr_ID_bud] = ID2
+    splittedIDs = [ID1, ID2]
+    # sep_bud_label *= (max_ID+max_i)
+    temp_sep_bud_lab = sep_bud_label.copy()
+    for r, c in zip(rr, cc):
+        if lab_ID_bool[r, c]:
+            nearest_ID = nearest_nonzero_2D(sep_bud_label, r, c)
+            temp_sep_bud_lab[r,c] = nearest_ID
+    sep_bud_label = temp_sep_bud_lab
+    sep_bud_label_mask = sep_bud_label != 0
+    # plt.imshow_tk(sep_bud_label, dots_coords=np.asarray(defects_points))
+    lab[sep_bud_label_mask] = sep_bud_label[sep_bud_label_mask]
+    max_i += 1
+    success = True
+    return lab, success, splittedIDs

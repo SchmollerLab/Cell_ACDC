@@ -64,6 +64,12 @@
     :height: 16px
     :width: 16px
 
+.. |preprocessImageAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/cellacdc/resources/icons/filter_image.svg
+    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/filter_image.svg
+    :alt: preprocessImageAction icon
+    :height: 16px
+    :width: 16px
+
 .. |overlayButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/cellacdc/resources/icons/overlay1.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/overlay1.svg
     :alt: overlayButton icon
@@ -354,6 +360,7 @@ View options
 * **Open Slideshow (** |slideshowButton| **"Ctrl+W"):** Opens slideshow.
 * **Auto-pilot (** |autoPilotButton| **"Ctrl+Shift+A"):** Press arrow up/down or Page Up/Page Down to navigate and view segmented objects one by one.
 * **Skip forward to new object (** |skipToNewIdAction| **"Page up"):** Skip forward to the frame where a new object appears.
+* **Pre-processes image (** |preprocessImageAction| **"Alt+Shift+P"):** Apply a custom pre-processing recipe to the image data. Shortcut: "Alt+Shift+P".
 * | **Overlay channels (** |overlayButton| **):** Right-click on the button to overlay additional channels. To overlay a different channel right-click on the colorbar on the left of the image. Use the colorbar ticks to adjust the selected channel's intensity. You can also adjust the opacity of the selected channel with the "Alpha <channel_name>" scrollbar below the image. 
   | Note: This button has a green background if you successfully 'loaded fluorescence data'
 * **View object count (** |countObjsButton| **"Ctrl+Shift+C"):** View object count in current frame and in entire video.
@@ -367,10 +374,11 @@ Edit tools: Segmentation and tracking
     * Edit segmentation labels with a circular brush.
     * Increase brush size with "UP/DOWN" arrows on the keyboard.  
     * Default behaviour:
-        * Painting on the background will create a new label.
-        * Edit an existing label by starting to paint on the label (brush cursor changes color when hovering an existing label).
+        * Painting on the background will create a new object.
+        * Edit an existing label by starting to paint on the object (brush cursor changes color when hovering an existing label).
         * Press "Shift" to force drawing a new object
-        * Painting in default mode always draws UNDER existing labels.
+        * Painting in default mode always draws UNDER existing objects.
+        * Press "Ctrl" to draw above ABOVE existing objects.
     * Power brush mode:
         * | Power brush: press "B" key twice quickly to force the brush to draw ABOVE existing labels.
           | NOTE: If double-press is successful, then brush button turns red. The brush cursor is always white.
@@ -378,14 +386,14 @@ Edit tools: Segmentation and tracking
     * Manual ID mode:
         * Toggle the manual ID mode with the "Auto-ID" checkbox on the top-right toolbar.
         * Enter the ID that you want to paint.
-        * NOTE: use the power brush to draw ABOVE the existing labels.
+        * NOTE: use the power brush to draw ABOVE the existing objects.
 * **Eraser (** |eraserButton| **"X"):**
-    * Erase segmentation labels with a circular eraser.
+    * Erase segmentation objects with a circular eraser.
     * Increase eraser size with "UP/DOWN" arrows on the keyboard.
     * Default behaviour:
         * Starting to erase from the background (cursor is a red circle) will erase any labels you hover above.
         * Starting to erase from a specific label will erase only that label (cursor is a circle with the color of the label).
-        * To enforce erasing all labels no matter where you start from double-press "X" key. If double-press is successfull, then eraser button is red and eraser cursor always red.
+        * To enforce erasing all objects no matter where you start from double-press "X" key. If double-press is successfull, then eraser button is red and eraser cursor always red.
 * **Curvature Tool (** |curvToolButton| **"C"):** Left-clicks for manual spline anchors, right button for drawing auto-contour.
 * **Magic Wand (** |wandToolButton| **"W"):** Left-click for single selection or left-click and then drag for continous selection.
 * **Copy lost contour (** |copyContourButton| **"V"):** Hover onto lost object contour --> right-click to copy the contour as a new object.

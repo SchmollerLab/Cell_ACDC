@@ -42,6 +42,7 @@ from .utils import acdcToSymDiv as utilsSymDiv
 from .utils import trackSubCellObjects as utilsTrackSubCell
 from .utils import createConnected3Dsegm as utilsConnected3Dsegm
 from .utils import fucciPreprocess as utilsFucciPreprocess
+from .utils import customPreprocess as utilsCustomPreprocess
 from .utils import filterObjFromCoordsTable as utilsFilterObjsFromTable
 from .utils import stack2Dinto3Dsegm as utilsStack2Dto3D
 from .utils import computeMultiChannel as utilsComputeMultiCh
@@ -432,6 +433,7 @@ class mainWin(QMainWindow):
         dataPrepMenu.addAction(self.alignAction)
         dataPrepMenu.addAction(self.resizeImagesAction)
         dataPrepMenu.addAction(self.fucciPreprocessAction)
+        dataPrepMenu.addAction(self.customPreprocessAction)
         
         utilsMenu.addAction(self.renameAction)
 
@@ -728,6 +730,10 @@ class mainWin(QMainWindow):
             'Combine FUCCI channels and enhance nuclear signal...'
         ) 
         
+        self.customPreprocessAction = QAction(
+            'Setup and run custom image preprocessing...'
+        )
+        
         self.createConnected3Dsegm = QAction(
             'Create connected 3D segmentation mask from z-slices segmentation...'
         ) 
@@ -778,7 +784,7 @@ class mainWin(QMainWindow):
         )
 
         self.resizeImagesAction = QAction(
-            'Reisize images (downscale or upscale) in one or more experiments...'
+            'Resize images (downscale or upscale) in one or more experiments...'
         )
         self.welcomeGuideAction = QAction('Welcome Guide')
         self.userManualAction = QAction('User documentation...')
@@ -820,6 +826,10 @@ class mainWin(QMainWindow):
         
         self.fucciPreprocessAction.triggered.connect(
             self.launchFucciPreprocessUtil
+        )
+        
+        self.customPreprocessAction.triggered.connect(
+            self.launchCustomPreprocessUtil
         )
         
         self.createConnected3Dsegm.triggered.connect(
@@ -934,7 +944,7 @@ class mainWin(QMainWindow):
         
         myutils.addToRecentPaths(exp_path)
         baseFolder = os.path.basename(exp_path)
-        isPosFolder = re.search('Position_(\d+)$', baseFolder) is not None
+        isPosFolder = re.search(r'Position_(\d+)$', baseFolder) is not None
         isImagesFolder = baseFolder == 'Images'
         if isImagesFolder:
             posPath = os.path.dirname(exp_path)
@@ -1370,6 +1380,23 @@ class mainWin(QMainWindow):
             parent=self
         )
         self.fucciPreprocessWin.show()
+    
+    def launchCustomPreprocessUtil(self):
+        self.logger.info(f'Launching utility "{self.sender().text()}"')
+        selectedExpPaths = self.getSelectedExpPaths(
+            'Pre-process images with custom recipe'
+        )
+        if selectedExpPaths is None:
+            return
+        
+        title = 'Pre-process images with custom recipe' 
+        infoText = 'Launching Pre-process images with custom recipe process...'
+        progressDialogueTitle = 'Pre-process images'
+        self.customPreprocessWin = utilsCustomPreprocess.CustomPreprocessUtil(
+            selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
+            parent=self
+        )
+        self.customPreprocessWin.show()
     
     def launchConnected3DsegmActionUtil(self):
         self.logger.info(f'Launching utility "{self.sender().text()}"')

@@ -15,7 +15,7 @@ The list of functions is generated in the module `cellacdc.config`
 IMPORTANT: Do not import functions otherwise they will be added as possible 
 step (for example do not do `from skimage.util import img_as_ubyte`).
 """
-
+from typing import Hashable, Union, Optional, Tuple
 from tqdm import tqdm
 
 import numpy as np
@@ -36,10 +36,16 @@ import skimage.util
 
 from . import error_up_str
 from . import types
+from . import printl
 
 SQRT_2 = math.sqrt(2)
 
-def remove_hot_pixels(image, logger_func=print, progress=True):
+def remove_hot_pixels(
+        image, 
+        logger_func=print, 
+        progress=True, 
+        apply_to_all_zslices=True
+    ):
     """Apply a morphological opening operation to remove isolated bright 
     pixels.
 
@@ -76,7 +82,8 @@ def gaussian_filter(
         image, 
         sigma: types.Vector=0.75, 
         use_gpu=False, 
-        logger_func=print
+        logger_func=print, 
+        apply_to_all_zslices=True
     ):
     """Multi-dimensional Gaussian filter
 
@@ -140,7 +147,8 @@ def gaussian_filter(
 
 def ridge_filter(
         image, 
-        sigmas: types.Vector=(1.0, 2.0)
+        sigmas: types.Vector=(1.0, 2.0), 
+        apply_to_all_zslices=True
     ):
     """Filter used to enhance network-like structures (Sato filter). More info 
     here https://scikit-image.org/docs/stable/auto_examples/edges/plot_ridge_filter.html
@@ -168,6 +176,7 @@ def spot_detector_filter(
         spots_zyx_radii_pxl: types.Vector=(3, 5, 5), 
         use_gpu=False, 
         logger_func=print, 
+        apply_to_all_zslices=True
     ):
     """Spot detection using Difference of Gaussians filter.
 
@@ -366,3 +375,182 @@ def fucci_filter(
     if enhance_speckles_toggle:
         image = enhance_speckles(image, radius=speckle_radius)
     return image
+
+def dummy_filter(
+        image: np.ndarray, 
+        apply_to_all_zslices=False, 
+        apply_to_all_frames=False
+    ):
+    printl(image.shape)
+    return image
+
+class VolumeImageData:
+    def __init__(self):
+        self._data = {}
+
+    def __setitem__(
+            self, 
+            z_slice: int, 
+            image: np.ndarray
+        ):
+        if not isinstance(z_slice, (int, str)):
+            raise TypeError(
+                f'{z_slice} is not not a valid index. '
+                f'It must be an integer or a string and not {type(z_slice)}'
+            )
+        
+        if image.ndim != 2:
+            raise TypeError(
+                'Only 2D images can be assigned to a specifc z-slice index.'
+            )
+        
+        self._data[z_slice] = image
+    
+    def __getitem__(
+            self, z_slice: Union[int, Tuple[Union[int, slice]], None]
+        ):
+        if isinstance(z_slice, int):
+            return self._data[z_slice]
+        
+        arr = self._build_arr()
+        return arr[z_slice]
+    
+    def __array__(self) -> np.ndarray:
+        return self._build_arr()
+    
+    def __repr__(self):
+        return str(self._data)
+    
+    def _build_arr(self):
+        if not self._data:
+            return
+        
+        img = self._data[0]
+        SizeZ = len(self._data)
+        arr = np.zeros((SizeZ, *img.shape), dtype=img.dtype)
+        for z_slice, img in self._data.items():
+            arr[z_slice] = img
+        return np.squeeze(arr)
+    
+    def max(self, axis=None):
+        arr = self._build_arr()
+        if arr is None:
+            return
+        
+        return arr.max(axis=axis)
+
+    def min(self, axis=None):
+        arr = self._build_arr()
+        if arr is None:
+            return
+        
+        return arr.min(axis=axis)
+    
+    def mean(self, axis=None):
+        arr = self._build_arr()
+        if arr is None:
+            return
+        
+        return arr.mean(axis=axis)
+    
+class PreprocessedData:
+    def __init__(self):
+        self._data = {}
+    
+    def __getitem__(self, frame_i: int):
+        if frame_i not in self._data:
+            self._data[frame_i] = VolumeImageData()
+            
+        return self._data[frame_i]
+    
+    def __setitem__(self, frame_i: int, image: np.ndarray):
+        if not isinstance(frame_i, int):
+            raise TypeError(
+                f'{frame_i} is not not a valid index. '
+                f'It must be an integer and not {type(frame_i)}'
+            )
+            
+        if frame_i not in self._data:
+            self._data[frame_i] = VolumeImageData()
+        
+        if image.ndim == 2:
+            self._data[frame_i][0] = image
+        else:
+            for z_slice, img in enumerate(image):
+                self._data[frame_i][z_slice] = image
+    
+    def __repr__(self):
+        return str(self._data)
+    
+    def get(self, frame_i: int, default_value=None):
+        try:
+            return self._data[frame_i]
+        except KeyError:
+            return default_value
+
+def rescale_intensities(
+        image: np.array,
+        out_range_low: float=0.0,
+        out_range_high: float=1.0,
+        in_range_how: types.RescaleIntensitiesInRangeHow='percentage',
+        in_range_low: float=0.0,
+        in_range_high: float=1.0,
+        apply_to_all_zslices=True,
+    ):
+    """Rescale the intensities of an image to a given range.
+
+    Parameters
+    ----------
+    image : np.ndarray
+        Input image to rescale
+    out_range_low : float, optional
+        Min value of the output image. Default is 0.0
+    out_range_high : float, optional
+        Max value of the output image. Default is 1.0
+    in_range_low : float, optional
+        Min value of the output image. See `in_range_how` for more details. 
+        Default is 0.0
+    in_range_high : float, optional
+        Max value of the output image. See `in_range_how` for more details. 
+        Default is 1.0
+    in_range_how : {'percentage', 'image', 'absolute'}, optional
+        If `percentage`, the image is first rescaled to (0, 1) using the 
+        minimum and maximum value of the input image. This allows to specify 
+        the input range as a percentage of the image intensity range. 
+        If `image`, the input range is the minimum and maximum value of the 
+        input image. 
+        If `absolute`, the input range is specified by `in_range_low` and 
+        `in_range_high` in absolute values (same scale as the input image). 
+        Default is 'percentage'.
+    apply_to_all_zslices : bool, optional
+        Scale intensities across multi-dimensional images. Default is True
+
+    Returns
+    -------
+    np.ndarray
+        The rescaled image
+    """
+    out_range = (out_range_low, out_range_high)
+    if in_range_how == 'image':
+        in_range = 'image'
+    elif in_range_how == 'percentage':
+        image = skimage.exposure.rescale_intensity(
+            image, in_range='image', out_range=(0, 1)
+        )
+    elif in_range_how == 'absolute':
+        in_range = (in_range_low, in_range_high)
+        
+    rescaled = skimage.exposure.rescale_intensity(
+        image, in_range=in_range, out_range=out_range
+    )
+    return rescaled
+
+def _init_dummy_filter(**kwargs):
+    """
+    This function runs automatically as part of the preprocessing recipe if 
+    the user selects the 'dummy_filter' step. The 'dummy_filter' is available 
+    only in debug mode. Initialization functions run in the main GUI thread 
+    and they can be used to set up the related function, for example to 
+    prompt the user that a package needs to be installed.
+    """
+    pass

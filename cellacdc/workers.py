@@ -7,7 +7,7 @@ import concurrent.futures
 from functools import partial
 from collections import defaultdict, deque
 
-from typing import Union, List, Dict
+from typing import Union, List, Dict, Callable, Any, Tuple, Iterable
 
 from functools import wraps
 import numpy as np
@@ -638,7 +638,7 @@ class AutoSaveWorker(QObject):
             self.logger.log('Enqueing posData autosave...')
         self.dataQ.append(posData)
         if len(self.dataQ) == 1:
-            # Wake worker upon inserting first element
+            # Wake up worker upon inserting first element
             self.abortSaving = False
             self.waitCond.wakeAll()
     
@@ -5318,4 +5318,269 @@ class SimpleWorker(QObject):
             self.posData, *self.func_args, **self.func_kwargs
         )
         self.signals.finished.emit(self)
+
+class SaveProcessedDataWorker(QObject):
+    def __init__(
+            self, 
+            allPosData: Iterable['load.loadData'], 
+            appended_text_filename: str
+        ):
+        QObject.__init__(self)
+        self.allPosData = allPosData
+        self.signals = signals()
+        self.logger = workerLogger(self.signals.progress)
+        self.appended_text_filename = appended_text_filename
+    
+    @worker_exception_handler
+    def run(self):
+        self.signals.initProgressBar.emit(0)
+        for posData in self.allPosData:
+            processed_filename = (
+                f'{posData.basename}{posData.user_ch_name}_'
+                f'{self.appended_text_filename}{posData.ext}'
+            )
+            processed_filepath = os.path.join(
+                posData.images_path, processed_filename
+            )
+            self.logger.log(f'Saving {processed_filepath}...')
+            processed_data = posData.preprocessedDataArray()
+            if processed_data is None:
+                self.logger.log(
+                    f'[WARNING]: {posData.pos_foldername} does not have '
+                    'preprocessed data. Skipping it.'
+                )
+                continue
+                
+            io.save_image_data(processed_filepath, processed_data)
         
+        self.signals.finished.emit(self)
+
+class PreprocessWorker(QObject):
+    sigDone = Signal(object, str)
+    sigPreviewDone = Signal(object, tuple)
+    sigIsQueueEmpty = Signal(bool)
+    
+    def __init__(self, mutex, waitCond):
+        QObject.__init__(self)
+        self.signals = signals()
+        self.mutex = mutex
+        self.waitCond = waitCond
+        self.logger = workerLogger(self.signals.progress)
+        self.dataQ = deque(maxlen=2)
+        self.exit = False
+        self.wait = True
+        self._abort = False
+    
+    def enqueue(
+            self, 
+            func: Callable,
+            image: np.ndarray, 
+            recipe: Dict[str, Any],
+            key: Tuple[int, int, Union[int, str]]
+        ):
+        self.dataQ.append((func, image, recipe, key))
+        if len(self.dataQ) == 1:
+            self.sigIsQueueEmpty.emit(False)
+            # Wake up worker upon inserting first element
+            self.wakeUp()
+    
+    def wakeUp(self):
+        self.wait = False
+        self.waitCond.wakeAll()
+    
+    def pause(self):
+        self.wait = True
+        self.mutex.lock()
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+    
+    def abort(self):
+        self._abort = True
+    
+    def stop(self):
+        self.abort()
+        self.exit = True
+        self.waitCond.wakeAll()
+        self.signals.finished.emit(self)
+    
+    def setupJob(
+            self, 
+            func: Callable, 
+            image_data: np.ndarray, 
+            recipe: Dict[str, Any],
+            how: str
+        ):
+        self._func = func
+        self._image_data = image_data
+        self._recipe = recipe
+        self._how = how
+    
+    def runJob(self, image=None, recipe=None):
+        if image is None:
+            image = self._image_data.copy()
+        if recipe is None:
+            recipe = self._recipe
+        
+        return self.applyRecipe(self._func, image, recipe)
+        
+    def applyRecipe(
+            self, 
+            func: Callable, 
+            image: np.ndarray, 
+            recipe: List[Dict[str, Any]]
+        ):
+        preprocessed_data = func(image, recipe)
+
+        keep_input_data_type = recipe[0].get('keep_input_data_type', True)
+        if not keep_input_data_type:
+            return preprocessed_data
+
+        preprocessed_data = myutils.convert_to_dtype(
+            preprocessed_data, image.dtype
+        )
+        return preprocessed_data
+        
+    @worker_exception_handler
+    def run(self):
+        while True:
+            if self.exit:
+                self.logger.log('Closing pre-processing worker...')
+                break
+            elif self.wait:
+                self.logger.log('Pre-processing worker paused.')
+                self.pause()
+            elif len(self.dataQ) > 0:
+                func, image, recipe, key = self.dataQ.pop()
+                processed_data = self.applyRecipe(func, image, recipe)
+                self.sigPreviewDone.emit(processed_data, key)
+                if len(self.dataQ) == 0:
+                    self.wait = True
+                    self.sigIsQueueEmpty.emit(True)
+            else:
+                self.logger.log('Pre-processing worker resumed.')
+                processed_data = self.runJob()
+                self.sigDone.emit(processed_data, self._how)
+                self.wait = True
+
+        self.signals.finished.emit(self)
+
+class CustomPreprocessWorker(BaseWorkerUtil):
+    sigAskAppendName = Signal(str)
+    sigAskSetupRecipe = Signal(object, object)
+    sigAborted = Signal()
+
+    def __init__(self, mainWin):
+        super().__init__(mainWin)
+    
+    def emitAskSetupRecipe(self, exp_path, pos_foldernames):
+        self.mutex.lock()
+        self.sigAskSetupRecipe.emit(exp_path, pos_foldernames)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        return self.abort
+    
+    def applyPipeline(
+            self, 
+            images_path: os.PathLike,
+            channel_names: Iterable[str],
+            recipe: List[Dict[str, Any]],
+            appended_text_filename: str
+        ):
+        posData = None        
+        preprocessed_data = {}
+        for channel in channel_names:
+            self.logger.log(f'Loading {channel} channel data...')
+            ch_filepath = load.get_filename_from_channel(images_path, channel)
+            ch_image_data = load.load_image_file(ch_filepath)
+            if posData is None:
+                posData = load.loadData(ch_filepath, channel)
+                posData.getBasenameAndChNames()
+                posData.buildPaths()
+                posData.loadOtherFiles(
+                    load_segm_data=False,
+                    load_metadata=True,
+                )
+            if posData.SizeT == 1:
+                ch_image_data = (ch_image_data,)
+
+            preprocessed_ch_data = core.preprocess_image_from_recipe_multithread(
+                ch_image_data, recipe
+            )
+            
+            keep_input_data_type = recipe[0].get('keep_input_data_type', True)
+            if keep_input_data_type:
+                preprocessed_ch_data = myutils.convert_to_dtype(
+                    preprocessed_ch_data, ch_image_data.dtype
+                )
+            
+            _, ext = os.path.splitext(ch_filepath)
+            basename = posData.basename
+            processed_filename = (
+                f'{basename}{channel}_{appended_text_filename}{ext}'
+            )
+            preprocessed_data[processed_filename] = preprocessed_ch_data
+            
+        return preprocessed_data
+    
+    @worker_exception_handler
+    def run(self):
+        debugging = False
+        expPaths = self.mainWin.expPaths
+        tot_exp = len(expPaths)
+        self.signals.initProgressBar.emit(0)
+        for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
+            self.errors = {}
+            tot_pos = len(pos_foldernames)
+
+            self.mainWin.infoText = 'Setup recipe'
+            
+            if i == 0:
+                abort = self.emitAskSetupRecipe(exp_path, pos_foldernames)
+                if abort:
+                    self.sigAborted.emit()
+                    return
+            
+                # Ask append name
+                self.mutex.lock()
+                basename = f'{self.basename}{self.selectedChannels[0]}_'
+                self.sigAskAppendName.emit(basename)
+                self.waitCond.wait(self.mutex)
+                self.mutex.unlock()
+                if self.abort:
+                    self.sigAborted.emit()
+                    return
+
+            appendedName = self.appendedName
+            self.signals.initProgressBar.emit(len(pos_foldernames))
+            for p, pos in enumerate(pos_foldernames):
+                if self.abort:
+                    self.sigAborted.emit()
+                    return
+
+                self.logger.log(
+                    f'Processing experiment n. {i+1}/{tot_exp}, '
+                    f'{pos} ({p+1}/{tot_pos})'
+                )
+
+                images_path = os.path.join(exp_path, pos, 'Images')                
+                self.logger.log(
+                    'Applying custom pre-processing recipe...\n'
+                )
+                processed_data = self.applyPipeline(
+                    images_path, self.selectedChannels, 
+                    self.recipe, appendedName
+                )
+                
+                for filename, preprocessed_ch_data in processed_data.items():
+                    preprocessed_filepath = os.path.join(images_path, filename)
+                    self.logger.log(
+                        f'Saving pre-processed images to '
+                        f'"{preprocessed_filepath}"...'
+                    )
+                    
+                    io.save_image_data(
+                        preprocessed_filepath, preprocessed_ch_data
+                    )                                
+                self.signals.progressBar.emit(1)
+
+        self.signals.finished.emit(self)

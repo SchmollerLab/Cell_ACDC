@@ -30,7 +30,10 @@ def calc_IoA_matrix(lab, prev_lab, rp, prev_rp, IDs_curr_untracked=None):
         )
         for intersect_ID, I in zip(intersect_IDs, intersects):
             if intersect_ID != 0:
-                i = IDs_curr_untracked.index(intersect_ID)
+                try:
+                    i = IDs_curr_untracked.index(intersect_ID)
+                except Exception as err:
+                    continue
                 IoA = I/A_IDprev
                 IoA_matrix[i, j] = IoA
     return IoA_matrix, IDs_curr_untracked, IDs_prev
