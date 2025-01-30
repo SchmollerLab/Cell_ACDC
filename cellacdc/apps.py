@@ -2333,7 +2333,12 @@ class SetMeasurementsDialog(QBaseDialog):
             'table. '
         )
 
-    def ok_cb(self):
+    def ok_cb(self):       
+        for chNameGroupbox in self.chNameGroupboxes:
+            chNameGroupbox.calcForEachZsliceRequested = (
+                chNameGroupbox.isCalcForEachZsliceRequested()
+            )
+             
         if self.allPos_acdc_df_cols is None:
             self.cancel = False
             self.close()
@@ -10015,9 +10020,9 @@ class SelectSegmFileDialog(QDialog):
 
         selectionLayout.addWidget(label, 0, 1, alignment=Qt.AlignLeft)
         selectionLayout.addWidget(listWidget, 1, 1)
-        selectionLayout.setColumnStretch(0, 1)
-        selectionLayout.setColumnStretch(1, 3)
-        selectionLayout.setColumnStretch(2, 1)
+        selectionLayout.setColumnStretch(0, 0)
+        selectionLayout.setColumnStretch(1, 1)
+        selectionLayout.setColumnStretch(2, 0)
         selectionLayout.addLayout(buttonsLayout, 2, 1)
 
         mainLayout.addLayout(selectionLayout)

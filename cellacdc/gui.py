@@ -520,6 +520,7 @@ class saveDataWorker(QObject):
         foregr_metrics_params = self.mainWin.foregr_metrics_params
         concentration_metrics_params = self.mainWin.concentration_metrics_params
         custom_metrics_params = self.mainWin.custom_metrics_params
+        calc_for_each_zslice_mapper = self.mainWin.calc_for_each_zslice_mapper
 
         # Pre-populate columns with zeros
         all_columns = list(size_metrics_to_save)
@@ -595,6 +596,50 @@ class saveDataWorker(QObject):
                 customMetricsCritical=self.customMetricsCritical,
                 z_slice=z
             )
+
+            if not calc_for_each_zslice_mapper.get(channel, False):
+                continue
+            
+            # Repeat measureemnts for each z-slice
+            pbar_z = tqdm(
+                total=posData.SizeZ, desc='Computing for z-slices: ', 
+                ncols=100, leave=False, unit='z-slice'
+            )
+            for z in range(posData.SizeZ):
+                # Get the background data
+                bkgr_data = measurements.get_bkgr_data(
+                    foregr_img, posData, filename, frame_i, autoBkgr_mask, z,
+                    autoBkgr_mask_proj, dataPrepBkgrROI_mask, isSegm3D, lab
+                )
+                bkgr_data = {
+                    'autoBkgr': {'zSlice': bkgr_data['autoBkgr']['zSlice']},
+                    'dataPrepBkgr': {'zSlice': bkgr_data['dataPrepBkgr']['zSlice']}
+                }
+                
+                foregr_data = measurements.get_foregr_data(
+                    foregr_img, isSegm3D, z
+                )
+                foregr_data = {'zSlice': foregr_data['zSlice']}
+
+                # Compute background values
+                df = measurements.add_bkgr_values(
+                    df, bkgr_data, bkgr_metrics_params[channel], metrics_func,
+                    manualBackgrRp=manualBackgrRp, foregr_data=foregr_data,
+                    text_to_append_to_col=str(z)
+                )
+
+                # Iterate objects and compute foreground metrics
+                df = measurements.add_foregr_metrics(
+                    df, rp, channel, foregr_data, foregr_metrics_params[channel], 
+                    metrics_func, custom_metrics_params[channel], isSegm3D, 
+                    lab, foregr_img, 
+                    other_channels_foregr_imgs, 
+                    manualBackgrRp=manualBackgrRp,
+                    customMetricsCritical=self.customMetricsCritical,
+                    z_slice=z, text_to_append_to_col=str(z)
+                )
+                pbar_z.update()
+            pbar_z.close()
 
         df = measurements.add_concentration_metrics(
             df, concentration_metrics_params
@@ -11858,7 +11903,6 @@ class guiWin(QMainWindow):
         if enabled:
             myutils.setRetainSizePolicy(self.zSliceScrollBar)
             myutils.setRetainSizePolicy(self.zProjComboBox)
-            myutils.setRetainSizePolicy(self.zProjLockViewButton)
             myutils.setRetainSizePolicy(self.zSliceOverlay_SB)
             myutils.setRetainSizePolicy(self.zProjOverlay_CB)
             myutils.setRetainSizePolicy(self.overlay_z_label)
@@ -18387,6 +18431,7 @@ class guiWin(QMainWindow):
         self.logger.info('Initializing measurements...')
         self.chNamesToSkip = []
         self.metricsToSkip = {}
+        self.calc_for_each_zslice_mapper = {}
         # At the moment we don't know how many channels the user will load -->
         # we set the measurements to save either at setMeasurements dialog
         # or at initMetricsToSave
@@ -27544,6 +27589,7 @@ class guiWin(QMainWindow):
         self.chNamesToSkip = []
         self.metricsToSkip = {chName:[] for chName in self.ch_names}
         self.metricsToSave = {chName:[] for chName in self.ch_names}
+        self.calc_for_each_zslice_mapper = {}
         
         favourite_funcs = set()
         last_selected_groupboxes_measurements = load.read_last_selected_gb_meas(
@@ -27558,22 +27604,26 @@ class guiWin(QMainWindow):
             if not chNameGroupbox.isChecked():
                 # Skip entire channel
                 self.chNamesToSkip.append(chName)
-            else:
-                last_selected_groupboxes_measurements[refChannel].append(
-                    chNameGroupbox.title()
-                )
-                if chName in self.notLoadedChNames:
-                    success = self.loadFluo_cb(fluo_channels=[chName])
-                    if not success:
-                        continue
-                for checkBox in chNameGroupbox.checkBoxes:
-                    colname = checkBox.text()
-                    if not checkBox.isChecked():
-                        self.metricsToSkip[chName].append(colname)
-                    else:
-                        self.metricsToSave[chName].append(colname)
-                        func_name = colname[len(chName):]
-                        favourite_funcs.add(func_name)
+                continue
+            
+            self.calc_for_each_zslice_mapper[chName] = (
+                chNameGroupbox.calcForEachZsliceRequested
+            )
+            last_selected_groupboxes_measurements[refChannel].append(
+                chNameGroupbox.title()
+            )
+            if chName in self.notLoadedChNames:
+                success = self.loadFluo_cb(fluo_channels=[chName])
+                if not success:
+                    continue
+            for checkBox in chNameGroupbox.checkBoxes:
+                colname = checkBox.text()
+                if not checkBox.isChecked():
+                    self.metricsToSkip[chName].append(colname)
+                else:
+                    self.metricsToSave[chName].append(colname)
+                    func_name = colname[len(chName):]
+                    favourite_funcs.add(func_name)
 
         if not measurementsWin.sizeMetricsQGBox.isChecked():
             self.sizeMetricsToSave = []

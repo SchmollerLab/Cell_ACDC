@@ -4094,10 +4094,13 @@ class _metricsQGBox(QGroupBox):
         self.scrollArea.setWidget(self.scrollAreaWidget)
         layout.addWidget(self.scrollArea)
 
+        buttonsLayout = QHBoxLayout()        
+        buttonsLayout.addStretch(1)
+        
         self.selectAllButton = selectAllPushButton()
         self.selectAllButton.sigClicked.connect(self.checkAll)
-        buttonsLayout = QHBoxLayout()
-        buttonsLayout.addStretch(1)
+        
+        
         buttonsLayout.addWidget(self.selectAllButton)
 
         if favourite_funcs is not None:
@@ -4118,6 +4121,12 @@ class _metricsQGBox(QGroupBox):
         self.setFont(_font)
 
         self.toggled.connect(self.toggled_cb)
+    
+    def isCalcForEachZsliceRequested(self):
+        if self.calcForEachZsliceToggle is None:
+            return False
+        
+        return self.calcForEachZsliceToggle.isChecked()
     
     def highlightCheckboxesFromSearchText(self, text):
         for checkbox in self.checkBoxes:
@@ -4215,14 +4224,16 @@ class channelMetricsQGBox(QGroupBox):
         metricsQGBox = _metricsQGBox(
             metrics_desc, 'Standard measurements',
             favourite_funcs=favourite_funcs, 
-            parent=self
+            parent=self, isZstack=isZstack
         )
+        self.metricsQGBox = metricsQGBox
         
         bkgrValsQGBox = _metricsQGBox(
             bkgr_val_desc, 'Background values',
             favourite_funcs=favourite_funcs, 
-            parent=self
+            parent=self, isZstack=isZstack
         )
+        self.bkgrValsQGBox = bkgrValsQGBox
 
         self.checkBoxes = metricsQGBox.checkBoxes.copy()
         self.checkBoxes.extend(bkgrValsQGBox.checkBoxes)
@@ -4251,16 +4262,41 @@ class channelMetricsQGBox(QGroupBox):
             customMetricsQGBox = _metricsQGBox(
                 custom_metrics_desc, 'Custom measurements', 
                 delButtonMetricsDesc=combine_metrics_desc,
-                favourite_funcs=favourite_funcs
+                favourite_funcs=favourite_funcs,
+                isZstack=isZstack
             )
             layout.addWidget(customMetricsQGBox)
             self.checkBoxes.extend(customMetricsQGBox.checkBoxes)
             customMetricsQGBox.sigDelClicked.connect(self.onDelClicked)
             self.customMetricsQGBox = customMetricsQGBox
 
+        self.calcForEachZsliceToggle = None
+        if isZstack:
+            buttonsLayout = QHBoxLayout()
+            self.calcForEachZsliceToggle = Toggle()
+            tooltip = (
+                'Calculate the selected measurements for each z-slice.\n\n'
+                'The measurements will be saved in the column with name\n'
+                'ending with `_zsliceN` where N is the z-slice number\n'
+                '(starting from 0).'
+            )
+            calcForEachZsliceLabel = QLabel('Calculate for each z-slice')
+            calcForEachZsliceLabel.setToolTip(tooltip)
+            self.calcForEachZsliceToggle.setToolTip(tooltip)
+            buttonsLayout.addWidget(self.calcForEachZsliceToggle)
+            buttonsLayout.addWidget(calcForEachZsliceLabel)   
+            buttonsLayout.addStretch(1) 
+            layout.addLayout(buttonsLayout)
+        
         self.setTitle(f'{chName} metrics')
         self.setCheckable(True)
         self.setLayout(layout)
+    
+    def isCalcForEachZsliceRequested(self):
+        if self.calcForEachZsliceToggle is None:
+            return False
+        
+        return self.calcForEachZsliceToggle.isChecked()
     
     def uncheckAndDisableDataPrepIfPosNotPrepped(self, posData):
         # Uncheck and disable dataprep metrics if pos is not prepped
