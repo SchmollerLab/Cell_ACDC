@@ -325,6 +325,29 @@ class okPushButton(PushButton):
         # QShortcut(Qt.Key_Return, self, self.click)
         # QShortcut(Qt.Key_Enter, self, self.click)
 
+class LockPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setIcon(QIcon(':lock.svg'))
+        self.toggled.connect(self.onToggled)
+    
+    def onToggled(self, checked):
+        if not self.isCheckable():
+            return
+        
+        if checked:
+            self.setIcon(QIcon(':lock_closed.svg'))
+        else:
+            self.setIcon(QIcon(':lock_open.svg'))
+    
+    def setCheckable(self, checkable: bool):
+        super().setCheckable(checkable)
+        if checkable:
+            self.setIcon(QIcon(':lock_open.svg'))
+        else:
+            self.setIcon(QIcon(':lock.svg'))
+
+
 class SkipPushButton(PushButton):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

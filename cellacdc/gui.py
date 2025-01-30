@@ -3443,6 +3443,9 @@ class guiWin(QMainWindow):
         self.addCustomModelFrameAction.callback = self.segmFrameCallback
         self.addCustomModelVideoAction.callback = self.segmVideoCallback
     
+    def zProjLockViewToggled(self, checked):
+        self.updateZproj(self.zProjComboBox.currentText())
+    
     def rescaleIntensExportToVideoDialog(self, how, channel, setImage=True):
         if channel == self.user_ch_name:
             lutItem = self.imgGrad
@@ -4112,6 +4115,12 @@ class guiWin(QMainWindow):
             'mean z-projection',
             'median z-proj.'
         ])
+        self.zProjLockViewButton = widgets.LockPushButton()
+        self.zProjLockViewButton.setCheckable(True)
+        self.zProjLockViewButton.setToolTip(
+            'If active, the selected z-slice view is applied to all frames'
+        )
+        self.zProjLockViewButton.hide()
         
         self.switchPlaneCombobox = widgets.SwitchPlaneCombobox()
         self.switchPlaneCombobox.setToolTip(
@@ -4192,7 +4201,8 @@ class guiWin(QMainWindow):
         )
         bottomLeftLayout.addWidget(self.zSliceScrollBar, row, 1, 1, 2)
         bottomLeftLayout.addWidget(self.zProjComboBox, row, 3)
-        bottomLeftLayout.addWidget(self.switchPlaneCombobox, row, 4)
+        bottomLeftLayout.addWidget(self.zProjLockViewButton, row, 4)
+        bottomLeftLayout.addWidget(self.switchPlaneCombobox, row, 5)
         self.zSliceSpinbox.connectValueChanged(self.onZsliceSpinboxValueChange)
         self.zSliceSpinbox.editingFinished.connect(self.zSliceScrollBarReleased)
 
@@ -5067,6 +5077,7 @@ class guiWin(QMainWindow):
     def gui_initImg1BottomWidgets(self):
         self.zSliceScrollBar.hide()
         self.zProjComboBox.hide()
+        self.zProjLockViewButton.hide()
         self.zSliceOverlay_SB.hide()
         self.zProjOverlay_CB.hide()
         self.overlay_z_label.hide()
@@ -11847,11 +11858,14 @@ class guiWin(QMainWindow):
         if enabled:
             myutils.setRetainSizePolicy(self.zSliceScrollBar)
             myutils.setRetainSizePolicy(self.zProjComboBox)
+            myutils.setRetainSizePolicy(self.zProjLockViewButton)
             myutils.setRetainSizePolicy(self.zSliceOverlay_SB)
             myutils.setRetainSizePolicy(self.zProjOverlay_CB)
             myutils.setRetainSizePolicy(self.overlay_z_label)
             self.zSliceScrollBar.setDisabled(False)
             self.zProjComboBox.show()
+            if self.data[self.pos_i].SizeT > 1:
+                self.zProjLockViewButton.show()
             self.zSliceScrollBar.show()
             self.zSliceCheckbox.show()
             self.zSliceSpinbox.show()
@@ -11865,6 +11879,7 @@ class guiWin(QMainWindow):
             myutils.setRetainSizePolicy(self.zProjOverlay_CB, retain=False)
             myutils.setRetainSizePolicy(self.overlay_z_label, retain=False)
             self.zSliceScrollBar.setDisabled(True)
+            self.zProjComboBox.hide()
             self.zProjComboBox.hide()
             self.zSliceScrollBar.hide()
             self.zSliceCheckbox.hide()
@@ -17764,6 +17779,7 @@ class guiWin(QMainWindow):
                 self.zProjComboBox.currentTextChanged.disconnect()
                 self.zProjComboBox.activated.disconnect()
                 self.switchPlaneCombobox.sigPlaneChanged.disconnect()
+                self.zProjLockViewButton.toggled.disconnect()
             except Exception as e:
                 pass
             self.zSliceScrollBar.actionTriggered.connect(
@@ -17777,6 +17793,7 @@ class guiWin(QMainWindow):
             self.switchPlaneCombobox.sigPlaneChanged.connect(
                 self.switchViewedPlane
             )
+            self.zProjLockViewButton.toggled.connect(self.zProjLockViewToggled)
 
         posData = self.data[self.pos_i]
         if posData.SizeT == 1:
@@ -17988,15 +18005,18 @@ class guiWin(QMainWindow):
 
     def update_z_slice(self, z):
         posData = self.data[self.pos_i]
-        idx = (posData.filename, posData.frame_i)
-        fn = posData.filename
-        i = posData.frame_i
         if self.switchPlaneCombobox.depthAxes() == 'z': 
-            try:
-                posData.segmInfo_df.loc[fn].loc[i:, 'z_slice_used_gui'] = z
-            except Exception as err:
-                printl(posData.segmInfo_df)
-                printl(idx)
+            if self.zProjLockViewButton.isChecked():
+                idx = [
+                    (posData.filename, frame_i) 
+                    for frame_i in range(posData.SizeT)
+                ]
+            else:
+                idx = [
+                    (posData.filename, frame_i) 
+                    for frame_i in range(posData.frame_i, posData.SizeT)
+                ]
+            posData.segmInfo_df.loc[idx, 'z_slice_used_gui'] = z
                 
         self.updatePreprocessPreview()
         self.highlightedID = self.getHighlightedID()
@@ -18016,8 +18036,14 @@ class guiWin(QMainWindow):
 
     def updateZproj(self, how):
         for p, posData in enumerate(self.data[self.pos_i:]):
-            idx = (posData.filename, posData.frame_i)
-            posData.segmInfo_df.at[idx, 'which_z_proj_gui'] = how
+            if self.zProjLockViewButton.isChecked():
+                idx = [
+                    (posData.filename, frame_i) 
+                    for frame_i in range(posData.SizeT)
+                ]
+            else:
+                idx = [(posData.filename, posData.frame_i)]
+            posData.segmInfo_df.loc[idx, 'which_z_proj_gui'] = how
             posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
             
         posData = self.data[self.pos_i]

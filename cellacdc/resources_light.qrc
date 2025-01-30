@@ -68,6 +68,9 @@
     <file alias="3d.svg">resources/icons/3d.svg</file>
     <file alias="2d.svg">resources/icons/2d.svg</file>
     <file alias="close.svg">resources/icons/close.svg</file>
+    <file alias="lock.svg">resources/icons/lock.svg</file>
+    <file alias="lock_closed.svg">resources/icons/lock_closed.svg</file>
+    <file alias="lock_open.svg">resources/icons/lock_open.svg</file>
     <file alias="manage_versions.svg">resources/icons/manage_versions.svg</file>
     <file alias="prep.svg">resources/icons/prep.svg</file>
     <file alias="auto-pilot.svg">resources/icons/auto-pilot.svg</file>
