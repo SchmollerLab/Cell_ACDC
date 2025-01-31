@@ -1318,6 +1318,8 @@ class filenameDialog(QDialog):
                 e.g., ending with <code>_acdc_output_phase_contr.csv</code>.
             """)
 
+        self.isSegmFile = basename.endswith('_segm')
+        
         self.allowEmpty = allowEmpty
         self.basename = basename
         if ext.find('.') == -1:
@@ -1436,19 +1438,51 @@ class filenameDialog(QDialog):
             else:
                 self.filenameLabel.setText(f'{text}{self.ext}')
 
+    def checkEmptyText(self):
+        if self.allowEmpty:
+            return True
+        
+        if self._text():
+            return True
+       
+        msg = widgets.myMessageBox()
+        msg.critical(
+            self, 'Empty text', 
+            html_utils.paragraph('Text entry field <b>cannot be empty</b>')
+        )
+        return False
+    
+    def checkSegmFilename(self):
+        if not self.isSegmFile:
+            return True
+        
+        if 'segm' not in self._text():
+            return True
+       
+        msg = widgets.myMessageBox()
+        txt = html_utils.paragraph(
+            'The text appended to the filename cannot contain the text '
+            '"segm".<br><br>'
+            'Sorry, that would confuse me. Thank you for your patience!'
+        )
+        msg.critical(
+            self, 'Cannot use "segm" in filename', txt
+        )
+        return False
+    
     def ok_cb(self, checked=True):
         valid = self.checkExistingNames()
         if not valid:
             return
         
-        if not self.allowEmpty and not self._text():
-            msg = widgets.myMessageBox()
-            msg.critical(
-                self, 'Empty text', 
-                html_utils.paragraph('Text entry field <b>cannot be empty</b>')
-            )
+        valid = self.checkEmptyText()
+        if not valid:
             return
-            
+        
+        valid = self.checkSegmFilename()
+        if not valid:
+            return
+        
         self.filename = self.filenameLabel.text()
         self.entryText = self._text()
         self.cancel = False
