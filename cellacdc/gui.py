@@ -7637,7 +7637,8 @@ class guiWin(QMainWindow):
         isOnlyRightClick = (
             right_click and canAnnotateDivision and not isAnnotateDivision
             and not isMod and not is_right_click_action_ON
-            and not is_right_click_custom_ON and not copyContourON and not findNextMotherButtonON and not unknownLineageButtonON
+            and not is_right_click_custom_ON and not copyContourON 
+            and not findNextMotherButtonON and not unknownLineageButtonON
         )
         
         if isOnlyRightClick:
@@ -7983,7 +7984,9 @@ class guiWin(QMainWindow):
         elif right_click and copyContourON:
             hoverLostID = self.ax1_lostObjScatterItem.hoverLostID
             lab2D = self.get_2Dlab(posData.lab)
-            lab2D[self.lostObjImage == hoverLostID] = hoverLostID
+            mask = self.lostObjImage == hoverLostID
+            lab2D[mask] = hoverLostID
+            self.lostObjImage[mask] = 0
             self.set_2Dlab(lab2D)
             self.update_rp()
             self.updateAllImages()
@@ -11333,12 +11336,21 @@ class guiWin(QMainWindow):
         return roi
     
     def delROIstartedMoving(self, roi):
+        self.clearLostObjContoursItems()
+    
+    def clearLostObjContoursItems(self):
         self.ax1_lostObjScatterItem.setData([], [])
         self.ax2_lostObjScatterItem.setData([], [])
 
         self.ax1_lostTrackedScatterItem.setData([], [])
         self.ax2_lostTrackedScatterItem.setData([], [])
-
+        
+        self.ax2_lostObjImageItem.clear()
+        self.ax2_lostTrackedObjImageItem.clear()
+        
+        self.ax1_lostObjImageItem.clear()
+        self.ax1_lostTrackedObjImageItem.clear()
+    
     def delROImoving(self, roi):
         roi.setPen(color=(255,255,0))
         # First bring back IDs if the ROI moved away
@@ -12660,10 +12672,9 @@ class guiWin(QMainWindow):
         self.ax1_lostObjScatterItem.hoverLostID = 0
         if not checked:
             return
+        
         self.lostObjImage = np.zeros_like(self.currentLab2D)
-        self.lostTrackedObjImage = np.zeros_like(self.currentLab2D)
-        self.addLostObjsToImage()
-        self.addTrackedLostObjsToImage()
+        self.updateLostContoursImage(0)
     
     def lebelRoiTrangeCheckboxToggled(self, checked):
         disabled = not checked
@@ -18937,8 +18948,8 @@ class guiWin(QMainWindow):
 
         self.highlightNewIDs_ccaFailed(ScellsIDsGone, rp=prev_rp)
         proceed = self.warnScellsGone(ScellsIDsGone, posData.frame_i)
-        self.ax1_lostObjScatterItem.setData([], [])
-        self.ax1_lostTrackedScatterItem.setData([], [])
+        self.clearLostObjContoursItems()
+        
         if not proceed:
             return True, automaticallyDividedIDs
 
@@ -24529,6 +24540,10 @@ class guiWin(QMainWindow):
                 continue
         
             obj_contours = self.getObjContours(obj, all_external=True)
+            
+            if ax == 0:
+                self.addLostObjsToImage(obj, lostID)
+                
             contours.extend(obj_contours)
 
         self.drawLostObjContoursImage(imageItem, contours)
@@ -24600,16 +24615,6 @@ class guiWin(QMainWindow):
             return
         
         return nearest_ID
-    
-    def addLostObjsToImage(self):
-        xx, yy = self.ax1_lostObjScatterItem.getData()
-        xx, yy = np.round(xx-0.5).astype(int), np.round(yy-0.5).astype(int)
-        labels = self.ax1_lostObjScatterItem.data['data']
-        self.lostObjImage[yy, xx] = labels
-        lostObjRp = skimage.measure.regionprops(self.lostObjImage)
-        for obj in lostObjRp:
-            filleObjMask = scipy.ndimage.binary_fill_holes(obj.image)
-            self.lostObjImage[obj.slice][filleObjMask] = obj.label
     
     def setCcaIssueContour(self, obj):
         objContours = self.getObjContours(obj, all_external=True)  
@@ -25113,7 +25118,7 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         delROIsIDs = self.getDelRoisIDs()
         
-        self.setAllContoursImages(delROIsIDs=delROIsIDs)
+        # self.setAllContoursImages(delROIsIDs=delROIsIDs)
         if posData.frame_i == 0:
             return 
 
@@ -25128,9 +25133,14 @@ class guiWin(QMainWindow):
         self.setAllLostObjContoursImage(delROIsIDs=delROIsIDs)        
         self.setAllLostTrackedObjContoursImage(delROIsIDs=delROIsIDs)
 
-        if self.copyContourButton.isChecked():
-            self.addLostObjsToImage()
-    
+    def addLostObjsToImage(self, lostObj, lostID):
+        if not self.copyContourButton.isChecked():
+            return
+        
+        obj_slice = self.getObjSlice(lostObj.slice)
+        obj_image = self.getObjImage(lostObj.image, lostObj.bbox)
+        self.lostObjImage[obj_slice][obj_image] = lostID
+
     def highlightHoverLostObj(self, modifiers, event):
         noModifier = modifiers == Qt.NoModifier
         if not noModifier:
@@ -25142,13 +25152,23 @@ class guiWin(QMainWindow):
         if event.isExit():
             return
         
+        posData = self.data[self.pos_i]
         x, y = event.pos()
         xdata, ydata = int(x), int(y)
         hoverLostID = self.lostObjImage[ydata, xdata]
-        self.ax1_lostObjScatterItem.hoverLostID = hoverLostID
+        self.ax1_lostObjScatterItem.hoverLostID = hoverLostID        
         if hoverLostID == 0:
             self.ax1_lostObjScatterItem.setSize(self.contLineWeight+1)
+            self.ax1_lostObjScatterItem.setData([], [])
         else:
+            prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
+            prev_IDs_idxs = posData.allData_li[posData.frame_i-1]['IDs_idxs']
+            lostObj = prev_rp[prev_IDs_idxs[hoverLostID]]
+            obj_contours = self.getObjContours(lostObj, all_external=True)
+            for cont in obj_contours:
+                xx = cont[:,0]
+                yy = cont[:,1]
+                self.ax1_lostObjScatterItem.addPoints(xx, yy)
             self.ax1_lostObjScatterItem.setSize(self.contLineWeight+2)
     
     def annotLostObjsToggled(self, checked):
