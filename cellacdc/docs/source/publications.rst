@@ -6,6 +6,7 @@ In the following publications authors used Cell-ACDC to analyse microscopy data:
 .. raw:: html
 
     <ol>
+      <li>Seshadri, A. et al. <i>Exonuclease action of replicative polymerase gamma drives damage-induced mitochondrial DNA clearance</i>. <b>EMBO Reports</b> (2025) DOI: <a href="https://doi.org/10.1038/s44319-025-00380-1">10.1038/s44319-025-00380-1</a>.</li><br>
       <li>Al-Refaie, N. et al. <i>Fasting shapes chromatin architecture through an mTOR/RNA Pol I axis</i>. <b>Nat. Cell Biol.</b> 1–15 (2024) DOI: <a href="https://doi.org/10.1038/s41556-024-01512-w">10.1038/s41556-024-01512-w</a>.</li><br>
       <li>Lanz, M. C. et al. <i>Genome dilution by cell growth drives starvation-like proteome remodeling in mammalian and yeast cells</i>. <b>Nat. Struct. Mol. Biol.</b> (2024) DOI: <a href="https://doi.org/10.1038/s41594-024-01353-z">10.1038/s41594-024-01353-z</a>.</li><br>
       <li>Xiao, J., Turner, J. J., Kõivomägi, M. & Skotheim, J. M. <i>Whi5 hypo- and hyper-phosphorylation dynamics control cell-cycle entry and progression</i>. <b>Curr. Biol.</b> 34, 2434-2447.e5 (2024).DOI: <a href="https://doi.org/10.1016/j.cub.2024.04.052">10.1016/j.cub.2024.04.052</a>.</li><br>
