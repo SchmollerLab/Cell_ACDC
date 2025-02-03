@@ -4908,6 +4908,13 @@ class guiWin(QMainWindow):
         self.logger.info(f'Creating graphical items...')
 
         self.ax1_contoursImageItem = pg.ImageItem()
+        
+        self.ax1_lostObjImageItem = pg.ImageItem()
+        self.ax2_lostObjImageItem = pg.ImageItem()
+        
+        self.ax1_lostTrackedObjImageItem = pg.ImageItem()
+        self.ax2_lostTrackedObjImageItem = pg.ImageItem()
+        
         self.ax1_oldMothBudLinesItem = pg.ScatterPlotItem(
             symbol='s', pxMode=False, brush=self.oldMothBudLineBrush,
             size=self.mothBudLineWeight, pen=None
@@ -8037,7 +8044,6 @@ class guiWin(QMainWindow):
                     self.warnEditingWithCca_df('Add new ID with curvature tool')
                 self.clearCurvItems()
                 self.curvTool_cb(True)
-            t1 = time.perf_counter()
 
         elif left_click and canWand:
             x, y = event.pos().x(), event.pos().y()
@@ -8455,6 +8461,8 @@ class guiWin(QMainWindow):
 
     def gui_addCreatedAxesItems(self):
         self.ax1.addItem(self.ax1_contoursImageItem)
+        self.ax1.addItem(self.ax1_lostObjImageItem)
+        self.ax1.addItem(self.ax1_lostTrackedObjImageItem)
         self.ax1.addItem(self.ax1_oldMothBudLinesItem)
         self.ax1.addItem(self.ax1_newMothBudLinesItem)
         self.ax1.addItem(self.ax1_lostObjScatterItem)
@@ -8463,6 +8471,8 @@ class guiWin(QMainWindow):
         self.ax1.addItem(self.yellowContourScatterItem)
 
         self.ax2.addItem(self.ax2_contoursImageItem)
+        self.ax2.addItem(self.ax2_lostObjImageItem)
+        self.ax2.addItem(self.ax2_lostTrackedObjImageItem)
         self.ax2.addItem(self.ax2_oldMothBudLinesItem)
         self.ax2.addItem(self.ax2_newMothBudLinesItem)
         self.ax2.addItem(self.ax2_lostObjScatterItem)
@@ -9345,10 +9355,14 @@ class guiWin(QMainWindow):
             else:
                 ID = clickedBkgrID.EntryID
         return ID
-
+    
+    # @exec_time
     def applyEditID(
             self, clickedID, currentIDs, oldIDnewIDMapper, clicked_x, clicked_y
         ):
+        
+        t0 = time.perf_counter()
+        
         posData = self.data[self.pos_i]
         
         # Ask to propagate change to all future visited frames
@@ -9358,6 +9372,8 @@ class guiWin(QMainWindow):
             posData.UndoFutFrames_EditID, posData.applyFutFrames_EditID,
             applyTrackingB=True
         )
+        
+        t1 = time.perf_counter()
 
         if UndoFutFrames is None:
             return
@@ -9402,12 +9418,12 @@ class guiWin(QMainWindow):
                     posData.editID_info.append((y, x, new_ID))
             
             self.updateAssignedObjsAcdcTrackerSecondStep(new_ID)
-
+        
         # Update rps
         self.update_rp()
 
         # Since we manually changed an ID we don't want to repeat tracking
-        self.setAllTextAnnotations()
+        self.setAllTextAnnotations()        
         self.highlightLostNew()
         # self.checkIDsMultiContour()
 
@@ -9418,8 +9434,8 @@ class guiWin(QMainWindow):
             self.fixCcaDfAfterEdit('Edit ID')
             self.updateAllImages()
         else:
-            self.warnEditingWithCca_df('Edit ID')
-
+            self.warnEditingWithCca_df('Edit ID', update_images=False)
+        
         if not self.editIDbutton.findChild(QAction).isChecked():
             self.editIDbutton.setChecked(False)
 
@@ -11203,12 +11219,9 @@ class guiWin(QMainWindow):
             self.fixCcaDfAfterEdit('Delete IDs using ROI')
             self.updateAllImages()
         else:
-            cancelled_str = self.warnEditingWithCca_df(
+            self.warnEditingWithCca_df(
                 'Delete IDs using ROI', get_cancelled=True
             )
-            if cancelled_str == 'cancelled':
-                self.roi_to_del = roi
-                self.removeDelROI(None)
     
     def replacePolyLineRoiWithLineRoi(self, roi):
         roi = self.polyLineRoi
@@ -12979,6 +12992,10 @@ class guiWin(QMainWindow):
             self.labelsLayerRightImg.setOpacity(alpha)
             self.ax1_contoursImageItem.setOpacity(1.0)
             self.ax2_contoursImageItem.setOpacity(1.0)
+            self.ax1_lostObjImageItem.setOpacity(1.0)
+            self.ax2_lostObjImageItem.setOpacity(1.0)
+            self.ax1_lostTrackedObjImageItem.setOpacity(1.0)
+            self.ax2_lostTrackedObjImageItem.setOpacity(1.0)
         
         self.keepIDsToolbar.setVisible(checked)
         self.highlightedIDopts = None
@@ -13552,7 +13569,7 @@ class guiWin(QMainWindow):
             return
         
         if ev.key() == Qt.Key_Q and self.debug:
-            printl(self.zSliceScrollBar.value())
+            printl(np.nonzero(self.lostObjContoursImage))
             pass
         
         if not self.isDataLoaded:
@@ -18123,6 +18140,8 @@ class guiWin(QMainWindow):
         self.ax2_binnedIDs_ScatterPlot.clear()
         self.ax2_ripIDs_ScatterPlot.clear()
         self.ax2_contoursImageItem.clear()
+        self.ax2_lostObjImageItem.clear()
+        self.ax2_lostTrackedObjImageItem.clear()
         self.textAnnot[1].clear()
         self.ax2_newMothBudLinesItem.setData([], [])
         self.ax2_oldMothBudLinesItem.setData([], [])
@@ -18140,6 +18159,8 @@ class guiWin(QMainWindow):
         self.searchedIDitemLeft.clear()
         self.searchedIDitemRight.clear()
         self.ax1_contoursImageItem.clear()
+        self.ax1_lostObjImageItem.clear()
+        self.ax1_lostTrackedObjImageItem.clear()
         self.textAnnot[0].clear()
         self.ax1_newMothBudLinesItem.setData([], [])
         self.ax1_oldMothBudLinesItem.setData([], [])
@@ -22502,6 +22523,22 @@ class guiWin(QMainWindow):
             
         self.contoursImage = np.zeros((Y, X, 4), dtype=np.uint8)
     
+    def initLostObjContoursImage(self):
+        posData = self.data[self.pos_i]
+        z_slice = self.z_lab()
+        img = posData.img_data[posData.frame_i]
+        Y, X = img[z_slice].shape[-2:]
+            
+        self.lostObjContoursImage = np.zeros((Y, X, 4), dtype=np.uint8)
+    
+    def initLostTrackedObjContoursImage(self):
+        posData = self.data[self.pos_i]
+        z_slice = self.z_lab()
+        img = posData.img_data[posData.frame_i]
+        Y, X = img[z_slice].shape[-2:]
+            
+        self.lostTrackedObjContoursImage = np.zeros((Y, X, 4), dtype=np.uint8)
+    
     def initManualBackgroundImage(self):
         posData = self.data[self.pos_i]
         if hasattr(posData, 'lab'):
@@ -23876,7 +23913,9 @@ class guiWin(QMainWindow):
                 if update_images:
                     self.updateAllImages()
                 return True
+            
         action = self.warnEditingWithAnnotActions.get(editTxt, None)
+        printl(action, update_images)
         if action is not None:
             if not action.isChecked():
                 if update_images:
@@ -24305,6 +24344,18 @@ class guiWin(QMainWindow):
         else:
             return self.ax2_contoursImageItem
     
+    def getLostObjImageItem(self, ax):
+        if ax == 0:
+            return self.ax1_lostObjImageItem
+        else:
+            return self.ax1_lostTrackedObjImageItem
+    
+    def getLostTrackedObjImageItem(self, ax):
+        if ax == 0:
+            return self.ax1_lostTrackedObjImageItem
+        else:
+            return self.ax2_lostTrackedObjImageItem
+    
     def setManualBackgroundImage(self):
         if not self.manualBackgroundButton.isChecked():
             return
@@ -24406,7 +24457,7 @@ class guiWin(QMainWindow):
             self.initContoursImage()
         else:
             self.contoursImage[:] = 0
-
+            
         contours = []
         for obj in skimage.measure.regionprops(self.currentLab2D):    
             obj_contours = self.getObjContours(obj, all_external=True)  
@@ -24452,11 +24503,83 @@ class guiWin(QMainWindow):
             self.ax1_lostTrackedScatterItem.addPoints(xx, yy, data=data)
             self.ax2_lostTrackedScatterItem.addPoints(xx, yy)
     
-    def getNearestLostObjID(self, y, x):
-        xx, yy = self.ax2_lostObjScatterItem.getData()
-        if xx is None:
+    def updateLostContoursImage(self, ax, delROIsIDs=None):
+        imageItem = self.getLostObjImageItem(ax)
+        if imageItem is None:
             return
         
+        if not hasattr(self, 'lostObjContoursImage'):
+            self.initLostObjContoursImage()
+        else:
+            self.lostObjContoursImage[:] = 0
+
+        if delROIsIDs is None:
+            delROIsIDs = set()
+        
+        posData = self.data[self.pos_i]
+        prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
+        prev_IDs_idxs = posData.allData_li[posData.frame_i-1]['IDs_idxs']
+        contours = []
+        for lostID in posData.lost_IDs:
+            if lostID in delROIsIDs:
+                continue
+            
+            obj = prev_rp[prev_IDs_idxs[lostID]]
+            if not self.isObjVisible(obj.bbox):
+                continue
+        
+            obj_contours = self.getObjContours(obj, all_external=True)
+            contours.extend(obj_contours)
+
+        self.drawLostObjContoursImage(imageItem, contours)
+    
+    def drawLostObjContoursImage(self, imageItem, contours):
+        thickness = 1
+        color = (255, 165, 0, 255) # orange
+        img = self.lostObjContoursImage
+        cv2.drawContours(img, contours, -1, color, thickness)
+        imageItem.setImage(img)
+    
+    def updateLostTrackedContoursImage(self, ax, delROIsIDs=None):
+        imageItem = self.getLostTrackedObjImageItem(ax)
+        if imageItem is None:
+            return
+        
+        if not hasattr(self, 'lostTrackedObjContoursImage'):
+            self.initLostTrackedObjContoursImage()
+        else:
+            self.lostTrackedObjContoursImage[:] = 0
+        
+        if delROIsIDs is None:
+            delROIsIDs = set()
+        
+        posData = self.data[self.pos_i]
+        tracked_lost_IDs = self.getTrackedLostIDs()
+        prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
+        prev_IDs_idxs = posData.allData_li[posData.frame_i-1]['IDs_idxs']
+        contours = []
+        for tracked_lost_ID in tracked_lost_IDs:
+            if tracked_lost_ID in delROIsIDs:
+                continue
+            
+            obj = prev_rp[prev_IDs_idxs[tracked_lost_ID]]
+            if not self.isObjVisible(obj.bbox):
+                continue
+        
+            obj_contours = self.getObjContours(obj, all_external=True)
+            contours.extend(obj_contours)
+
+        self.drawLostTrackedObjContoursImage(imageItem, contours)
+    
+    def drawLostTrackedObjContoursImage(self, imageItem, contours):
+        thickness = 1
+        color = (0, 255, 0, 255) # green
+        img = self.lostTrackedObjContoursImage
+        cv2.drawContours(img, contours, -1, color, thickness)
+        imageItem.setImage(img)
+    
+    def getNearestLostObjID(self, y, x):
+        yy, xx, _ = np.nonzero(self.lostObjContoursImage)        
         if len(xx) == 0:
             return
         
@@ -24651,6 +24774,14 @@ class guiWin(QMainWindow):
         self.updateContoursImage(ax=0, delROIsIDs=delROIsIDs)
         self.updateContoursImage(ax=1, delROIsIDs=delROIsIDs)
 
+    def setAllLostObjContoursImage(self, delROIsIDs=None):
+        self.updateLostContoursImage(ax=0, delROIsIDs=None)
+        self.updateLostContoursImage(ax=1, delROIsIDs=None)
+    
+    def setAllLostTrackedObjContoursImage(self, delROIsIDs=None):
+        self.updateLostTrackedContoursImage(ax=0, delROIsIDs=None)
+        self.updateLostTrackedContoursImage(ax=1, delROIsIDs=None)
+    
     def nextFrameImage(self, current_frame_i=None):
         if not self.labelsGrad.showNextFrameAction.isEnabled():
             return
@@ -24984,59 +25115,29 @@ class guiWin(QMainWindow):
                 continue
             self.setCcaIssueContour(obj)
 
+    # @exec_time
     def highlightLostNew(self):
         if self.modeComboBox.currentText() == 'Viewer':
             return
         
         posData = self.data[self.pos_i]
         delROIsIDs = self.getDelRoisIDs()
-
-        for obj in posData.rp:
-            ID = obj.label
-            if ID not in posData.new_IDs:
-                continue
-            if ID in delROIsIDs:
-                continue
-            
-            if not self.isObjVisible(obj.bbox):
-                continue
-            
-            self.addObjContourToContoursImage(
-                obj=obj, ax=0, thickness=self.contLineWeight+1
-            )
-            self.addObjContourToContoursImage(
-                obj=obj, ax=1, thickness=self.contLineWeight+1
-            )
         
+        self.setAllContoursImages(delROIsIDs=delROIsIDs)
         if posData.frame_i == 0:
             return 
 
         if not self.annotLostObjsToggle.isChecked():
             return
         
-        tracked_lost_IDs = self.getTrackedLostIDs()
-
         prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
         
         if prev_rp is None:
             return
 
-        for obj in prev_rp:
+        self.setAllLostObjContoursImage(delROIsIDs=delROIsIDs)        
+        self.setAllLostTrackedObjContoursImage(delROIsIDs=delROIsIDs)
 
-            if obj.label in tracked_lost_IDs:
-                self.setTrackedLostObjectContour(obj)
-
-            if obj.label not in posData.lost_IDs:
-                continue
-            
-            if obj.label in delROIsIDs:
-                continue
-            
-            if not self.isObjVisible(obj.bbox):
-                continue
-            
-            self.setLostObjectContour(obj)
-        
         if self.copyContourButton.isChecked():
             self.addLostObjsToImage()
     
