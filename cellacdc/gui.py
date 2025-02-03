@@ -24610,16 +24610,6 @@ class guiWin(QMainWindow):
         for obj in lostObjRp:
             filleObjMask = scipy.ndimage.binary_fill_holes(obj.image)
             self.lostObjImage[obj.slice][filleObjMask] = obj.label
-
-    # def addTrackedLostObjsToImage(self):
-    #     xx, yy = self.ax1_lostTrackedScatterItem.getData()
-    #     xx, yy = np.round(xx-0.5).astype(int), np.round(yy-0.5).astype(int)
-    #     labels = self.ax1_lostTrackedScatterItem.data['data']
-    #     self.lostObjImage[yy, xx] = labels
-    #     lostObjRp = skimage.measure.regionprops(self.lostObjImage)
-    #     for obj in lostObjRp:
-    #         filleObjMask = scipy.ndimage.binary_fill_holes(obj.image)
-    #         self.lostObjImage[obj.slice][filleObjMask] = obj.label
     
     def setCcaIssueContour(self, obj):
         objContours = self.getObjContours(obj, all_external=True)  
