@@ -3740,7 +3740,9 @@ class guiWin(QMainWindow):
 
         self.expandLabelToolButton.toggled.connect(self.expandLabelCallback)
 
-        self.reinitLastSegmFrameAction.triggered.connect(self.reInitLastSegmFrame)
+        self.reinitLastSegmFrameAction.triggered.connect(
+            self.reInitLastSegmFrame
+        )
 
         self.cp3denoiseAction.triggered.connect(self.cp3denoiseActionTriggered)
         
@@ -14175,7 +14177,7 @@ class guiWin(QMainWindow):
         if UndoFutFrames:
             # Since we modified current frame all future frames that were already
             # visited are not valid anymore. Undo changes there
-            self.reInitLastSegmFrame()
+            self.reInitLastSegmFrame(updateImages=False)
         
         # Keep only 5 Undo/Redo states
         if len(posData.UndoRedoStates[posData.frame_i]) > 5:
@@ -15693,7 +15695,9 @@ class guiWin(QMainWindow):
             pass
         
         self.extendSegmDataIfNeeded(stopFrameNum)
-        self.reInitLastSegmFrame(from_frame_i=startFrameNum-1)
+        self.reInitLastSegmFrame(
+            from_frame_i=startFrameNum-1, updateImages=False
+        )
 
         self.titleLabel.setText(
             f'{model_name} is thinking... '
@@ -25706,7 +25710,9 @@ class guiWin(QMainWindow):
         extendedSegmData = np.concatenate((posData.segm_data, additionalSegmData))
         posData.segm_data = extendedSegmData
     
-    def reInitLastSegmFrame(self, checked=True, from_frame_i=None):
+    def reInitLastSegmFrame(
+            self, checked=True, from_frame_i=None, updateImages=True
+        ):
         cancel = self.warnReinitLastSegmFrame()
         if cancel:
             self.logger.info('Re-initialization of last validated frame cancelled.')
@@ -25721,6 +25727,8 @@ class guiWin(QMainWindow):
         self.navigateScrollBar.setMaximum(from_frame_i+1)
         self.navSpinBox.setMaximum(from_frame_i+1)
         # self.navigateScrollBar.setMinimum(1)
+        
+        # posData.tracked_lost_centroids[from_frame_i-1] = set()
         for i in range(from_frame_i, posData.SizeT):
             if posData.allData_li[i]['labels'] is None:
                 break
@@ -25729,7 +25737,7 @@ class guiWin(QMainWindow):
             posData.allData_li[i] = self.getEmptyStoredDataDict()
             
             posData.tracked_lost_centroids[i] = set()
-            posData.acdcTracker2stepsAnnotInfo.pop(i, None)
+            posData.acdcTracker2stepsAnnotInfo.pop(i, None)            
         
         if posData.acdc_df is not None:
             frames = posData.acdc_df.index.get_level_values(0)
@@ -25737,7 +25745,21 @@ class guiWin(QMainWindow):
                 posData.acdc_df = posData.acdc_df.loc[:from_frame_i]
         
         self.removeAlldelROIsCurrentFrame()
+        
+        if not updateImages:
+            return
+        
+        self.updateAllImages()
 
+    def resetAcceptedLostIDs(self, from_frame_i=None):
+        posData = self.data[self.pos_i]
+        if from_frame_i is None:
+            from_frame_i = posData.frame_i
+        
+        posData.tracked_lost_centroids[from_frame_i-1] = set()
+        for i in range(from_frame_i, posData.SizeT):
+            posData.tracked_lost_centroids[i] = set()
+    
     def removeAllItems(self):
         self.ax1.clear()
         self.ax2.clear()
