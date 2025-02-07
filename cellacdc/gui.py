@@ -12697,17 +12697,61 @@ class guiWin(QMainWindow):
         self.lostObjImage[mask] = 0
         self.set_2Dlab(lab2D)
     
+    def updateLostNewCurrentIDs(self):
+        posData = self.data[self.pos_i]
+        
+        prev_IDs = self.getPrevFrameIDs()  
+        tracked_lost_IDs = self.getTrackedLostIDs()
+        curr_IDs = posData.IDs
+        curr_delRoiIDs = self.getStoredDelRoiIDs()
+        prev_delRoiIDs = self.getStoredDelRoiIDs(frame_i=posData.frame_i-1)
+        lost_IDs = [
+            ID for ID in prev_IDs if ID not in curr_IDs
+            and ID not in prev_delRoiIDs and ID not in tracked_lost_IDs
+        ]
+        new_IDs = [
+            ID for ID in curr_IDs if ID not in prev_IDs 
+            and ID not in curr_delRoiIDs
+        ]
+        # IDs_with_holes = [
+        #     obj.label for obj in posData.rp if obj.area/obj.filled_area < 1
+        # ]
+        IDs_with_holes = []
+        posData.lost_IDs = lost_IDs
+        posData.new_IDs = new_IDs
+        posData.old_IDs = prev_IDs
+        posData.IDs = curr_IDs
+        
+        out = (
+            lost_IDs, new_IDs, IDs_with_holes, tracked_lost_IDs, curr_delRoiIDs
+        )
+        
+        return out
+    
     def copyAllLostObjectsWorkerCallback(self, posData, for_future_frame_n):
         current_frame_i = posData.frame_i
-        frames_range = (current_frame_i, current_frame_i+for_future_frame_n+1)
+        last_visited_frame_i = self.get_last_tracked_i()
+        last_copied_frame_i = current_frame_i+for_future_frame_n+1
+        frames_range = (current_frame_i, last_copied_frame_i)
         for frame_i in range(*frames_range):
+            if frame_i == posData.SizeT:
+                break
+            
             if frame_i > posData.frame_i:
+                self.store_data(mainThread=False, autosave=False)
+                
                 posData.frame_i = frame_i
                 self.get_data()
-                delROIsIDs = self.getDelRoisIDs()
-                self.updateLostContoursImage(
-                    0, draw=False, delROIsIDs=delROIsIDs
-                )
+                self.updateLostNewCurrentIDs()
+                self.store_data(mainThread=False, autosave=False)
+                # delROIsIDs = self.getDelRoisIDs()
+                
+                self.lostObjContoursImage[:] = 0
+                prev_rp = posData.allData_li[frame_i-1]['regionprops']
+                prev_IDs_idxs = posData.allData_li[frame_i-1]['IDs_idxs']
+                for lostID in posData.lost_IDs:
+                    obj = prev_rp[prev_IDs_idxs[lostID]]
+                    self.addLostObjsToImage(obj, lostID, force=True)
             
             for lostObj in skimage.measure.regionprops(self.lostObjImage):
                 self.copyLostObjectContour(lostObj.label)
@@ -12718,9 +12762,17 @@ class guiWin(QMainWindow):
             return
         
         # Back to current frame
-        self.store_data(autosave=False)
+        self.store_data(autosave=False, mainThread=False)
         posData.frame_i = current_frame_i
         self.get_data()
+        
+        if last_visited_frame_i >= last_copied_frame_i:
+            return
+        
+        self.copyAllLostObjectsWorker.doReinitLastSegmFrame = True
+        self.copyAllLostObjectsWorker.last_visited_frame_i = (
+            last_visited_frame_i
+        )
     
     @disableWindow
     def copyAllLostObjects(self, for_future_frame_n):
@@ -12733,7 +12785,7 @@ class guiWin(QMainWindow):
         self.progressWin = apps.QDialogWorkerProgress(
             title=desc, parent=self.mainWin, pbarDesc=desc
         )
-        self.progressWin.mainPbar.setMaximum(for_future_frame_n)
+        self.progressWin.mainPbar.setMaximum(for_future_frame_n+1)
         self.progressWin.show(self.app)
                               
         self.copyAllLostObjectsThread = QThread()
@@ -12790,7 +12842,14 @@ class guiWin(QMainWindow):
             self.progressWin.workerFinished = True
             self.progressWin.close()
             self.progressWin = None
-            
+        
+        if worker.doReinitLastSegmFrame:
+            self.reInitLastSegmFrame(
+                from_frame_i=worker.last_visited_frame_i, 
+                updateImages=False, 
+                force=True
+            )
+        
         self.copyAllLostObjectsWorkerLoop.exit()
         self.update_rp()
         self.updateAllImages()
@@ -25257,9 +25316,10 @@ class guiWin(QMainWindow):
         self.setAllLostObjContoursImage(delROIsIDs=delROIsIDs)        
         self.setAllLostTrackedObjContoursImage(delROIsIDs=delROIsIDs)
 
-    def addLostObjsToImage(self, lostObj, lostID):
-        if not self.copyLostObjButton.isChecked():
-            return
+    def addLostObjsToImage(self, lostObj, lostID, force=False):
+        if not force:
+            if not self.copyLostObjButton.isChecked():
+                return
         
         obj_slice = self.getObjSlice(lostObj.slice)
         obj_image = self.getObjImage(lostObj.image, lostObj.bbox)
@@ -25342,27 +25402,10 @@ class guiWin(QMainWindow):
         # elif self.modeComboBox.currentText() == 'Viewer':
         #     pass
         
-        prev_IDs = self.getPrevFrameIDs()  
-        tracked_lost_IDs = self.getTrackedLostIDs()
-        curr_IDs = posData.IDs
-        curr_delRoiIDs = self.getStoredDelRoiIDs()
-        prev_delRoiIDs = self.getStoredDelRoiIDs(frame_i=posData.frame_i-1)
-        lost_IDs = [
-            ID for ID in prev_IDs if ID not in curr_IDs
-            and ID not in prev_delRoiIDs and ID not in tracked_lost_IDs
-        ]
-        new_IDs = [
-            ID for ID in curr_IDs if ID not in prev_IDs 
-            and ID not in curr_delRoiIDs
-        ]
-        # IDs_with_holes = [
-        #     obj.label for obj in posData.rp if obj.area/obj.filled_area < 1
-        # ]
-        IDs_with_holes = []
-        posData.lost_IDs = lost_IDs
-        posData.new_IDs = new_IDs
-        posData.old_IDs = prev_IDs
-        posData.IDs = curr_IDs
+        out = self.updateLostNewCurrentIDs()
+        lost_IDs, new_IDs, IDs_with_holes, tracked_lost_IDs, curr_delRoiIDs = (
+            out
+        )
         self.setTitleText(
             lost_IDs, new_IDs, IDs_with_holes, tracked_lost_IDs
         )
@@ -25950,12 +25993,16 @@ class guiWin(QMainWindow):
         posData.segm_data = extendedSegmData
     
     def reInitLastSegmFrame(
-            self, checked=True, from_frame_i=None, updateImages=True
+            self, checked=True, from_frame_i=None, updateImages=True,
+            force=False
         ):
-        cancel = self.warnReinitLastSegmFrame()
-        if cancel:
-            self.logger.info('Re-initialization of last validated frame cancelled.')
-            return
+        if not force:
+            cancel = self.warnReinitLastSegmFrame()
+            if cancel:
+                self.logger.info(
+                    'Re-initialization of last validated frame cancelled.'
+                )
+                return
 
         posData = self.data[self.pos_i]
         if from_frame_i is None:
