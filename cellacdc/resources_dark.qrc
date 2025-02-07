@@ -88,6 +88,7 @@
     <file alias="edit-id.svg">resources/icons/edit-id_dark.svg</file>
     <file alias="eye-plus.svg">resources/icons/eye-plus_dark.svg</file>
     <file alias="copyContour.svg">resources/icons/copyContour_dark.svg</file>
+    <file alias="copyContour_all.svg">resources/icons/copyContour_all_dark.svg</file>
     <file alias="folder-open.svg">resources/icons/folder-open_dark.svg</file>
     <file alias="drawer.svg">resources/icons/drawer_dark.svg</file>
     <file alias="reload.svg">resources/icons/reload_dark.svg</file>

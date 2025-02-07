@@ -1876,19 +1876,19 @@ class guiWin(QMainWindow):
             self.setIsHistoryKnownButton
         )
         
-        self.copyContourButton = QToolButton(self)
-        self.copyContourButton.setIcon(QIcon(":copyContour.svg"))
-        self.copyContourButton.setCheckable(True)
-        self.copyContourButton.setShortcut('V')
-        self.copyContourButton.action = editToolBar.addWidget(
-            self.copyContourButton
+        self.copyLostObjButton = QToolButton(self)
+        self.copyLostObjButton.setIcon(QIcon(":copyContour.svg"))
+        self.copyLostObjButton.setCheckable(True)
+        self.copyLostObjButton.setShortcut('V')
+        self.copyLostObjButton.action = editToolBar.addWidget(
+            self.copyLostObjButton
         )
-        self.checkableButtons.append(self.copyContourButton)
-        self.checkableQButtonsGroup.addButton(self.copyContourButton)
+        self.checkableButtons.append(self.copyLostObjButton)
+        self.checkableQButtonsGroup.addButton(self.copyLostObjButton)
         self.widgetsWithShortcut['Copy lost object contour'] = (
-            self.copyContourButton
+            self.copyLostObjButton
         )
-        self.functionsNotTested3D.append(self.copyContourButton)
+        self.functionsNotTested3D.append(self.copyLostObjButton)
         
         self.labelRoiButton = widgets.rightClickToolButton(parent=self)
         self.labelRoiButton.setIcon(QIcon(":label_roi.svg"))
@@ -2742,7 +2742,7 @@ class guiWin(QMainWindow):
         self.loadLabelRoiLastParams()
 
         self.labelRoiTrangeCheckbox.toggled.connect(
-            self.lebelRoiTrangeCheckboxToggled
+            self.labelRoiTrangeCheckboxToggled
         )
         self.labelRoiReplaceExistingObjectsCheckbox.toggled.connect(
             self.storeLabelRoiParams
@@ -2880,6 +2880,21 @@ class guiWin(QMainWindow):
         self.addToolBar(Qt.TopToolBarArea, self.manualBackgroundToolbar)
         self.manualBackgroundToolbar.setVisible(False)
         self.controlToolBars.append(self.manualBackgroundToolbar)
+        
+        # Copy lost object contour toolbar
+        self.copyLostObjToolbar = widgets.CopyLostObjectToolbar(
+            "Copy lost object controls", self
+        )
+        for name, action in self.copyLostObjToolbar.widgetsWithShortcut.items():
+            self.widgetsWithShortcut[name] = action
+
+        self.copyLostObjToolbar.sigCopyAllObjects.connect(
+            self.copyAllLostObjects
+        )
+        
+        self.addToolBar(Qt.TopToolBarArea, self.copyLostObjToolbar)
+        self.copyLostObjToolbar.setVisible(False)
+        self.controlToolBars.append(self.copyLostObjToolbar)
         
         # Empty toolbar to avoid weird ranges on image when showing the 
         # other toolbars --> placeholder
@@ -3698,7 +3713,7 @@ class guiWin(QMainWindow):
         self.skipToNewIdAction.triggered.connect(self.skipForwardToNewID)        
         self.slideshowButton.toggled.connect(self.launchSlideshow)
         
-        self.copyContourButton.toggled.connect(self.copyLostObjContour_cb)
+        self.copyLostObjButton.toggled.connect(self.copyLostObjContour_cb)
 
         self.segmSingleFrameMenu.triggered.connect(self.segmFrameCallback)
         self.segmVideoMenu.triggered.connect(self.segmVideoCallback)
@@ -7567,7 +7582,7 @@ class guiWin(QMainWindow):
         addPointsByClickingButton = self.buttonAddPointsByClickingActive()
         manualBackgroundON = self.manualBackgroundButton.isChecked()
         copyContourON = (
-            self.copyContourButton.isChecked()
+            self.copyLostObjButton.isChecked()
             and self.ax1_lostObjScatterItem.hoverLostID>0
         )
         findNextMotherButtonON = self.findNextMotherButton.isChecked()
@@ -7983,11 +7998,7 @@ class guiWin(QMainWindow):
         
         elif right_click and copyContourON:
             hoverLostID = self.ax1_lostObjScatterItem.hoverLostID
-            lab2D = self.get_2Dlab(posData.lab)
-            mask = self.lostObjImage == hoverLostID
-            lab2D[mask] = hoverLostID
-            self.lostObjImage[mask] = 0
-            self.set_2Dlab(lab2D)
+            self.copyLostObjectContour(hoverLostID)
             self.update_rp()
             self.updateAllImages()
             self.store_data()
@@ -12370,7 +12381,7 @@ class guiWin(QMainWindow):
         self.annotateToolbar.setVisible(False)
         if prevMode != 'Viewer':
             self.store_data(autosave=False)
-        self.copyContourButton.setChecked(False)
+        self.copyLostObjButton.setChecked(False)
         self.stopCcaIntegrityCheckerWorker()
 
         if prevMode == 'Normal division: Lineage tree':
@@ -12669,6 +12680,8 @@ class guiWin(QMainWindow):
             self.wandControlsToolbar.setVisible(False)
     
     def copyLostObjContour_cb(self, checked):
+        self.copyLostObjToolbar.setVisible(checked)
+        
         self.ax1_lostObjScatterItem.hoverLostID = 0
         if not checked:
             return
@@ -12676,7 +12689,114 @@ class guiWin(QMainWindow):
         self.lostObjImage = np.zeros_like(self.currentLab2D)
         self.updateLostContoursImage(0)
     
-    def lebelRoiTrangeCheckboxToggled(self, checked):
+    def copyLostObjectContour(self, ID: int):
+        posData = self.data[self.pos_i]
+        mask = self.lostObjImage == ID
+        lab2D = self.get_2Dlab(posData.lab)
+        lab2D[mask] = ID
+        self.lostObjImage[mask] = 0
+        self.set_2Dlab(lab2D)
+    
+    def copyAllLostObjectsWorkerCallback(self, posData, for_future_frame_n):
+        current_frame_i = posData.frame_i
+        frames_range = (current_frame_i, current_frame_i+for_future_frame_n+1)
+        for frame_i in range(*frames_range):
+            if frame_i > posData.frame_i:
+                posData.frame_i = frame_i
+                self.get_data()
+                delROIsIDs = self.getDelRoisIDs()
+                self.updateLostContoursImage(
+                    0, draw=False, delROIsIDs=delROIsIDs
+                )
+            
+            for lostObj in skimage.measure.regionprops(self.lostObjImage):
+                self.copyLostObjectContour(lostObj.label)
+            
+            self.copyAllLostObjectsWorker.signals.progressBar.emit(1)           
+        
+        if for_future_frame_n == 0:
+            return
+        
+        # Back to current frame
+        self.store_data(autosave=False)
+        posData.frame_i = current_frame_i
+        self.get_data()
+    
+    @disableWindow
+    def copyAllLostObjects(self, for_future_frame_n):
+        posData = self.data[self.pos_i]
+        
+        desc = (
+            'Copying all lost objects...'
+        )
+        
+        self.progressWin = apps.QDialogWorkerProgress(
+            title=desc, parent=self.mainWin, pbarDesc=desc
+        )
+        self.progressWin.mainPbar.setMaximum(for_future_frame_n)
+        self.progressWin.show(self.app)
+                              
+        self.copyAllLostObjectsThread = QThread()
+        
+        self.copyAllLostObjectsWorker = workers.SimpleWorker(
+            posData, self.copyAllLostObjectsWorkerCallback, 
+            func_args=(for_future_frame_n,)
+        )
+        
+        self.copyAllLostObjectsWorker.moveToThread(
+            self.copyAllLostObjectsThread
+        )
+        
+        self.copyAllLostObjectsWorker.signals.finished.connect(
+            self.copyAllLostObjectsThread.quit
+        )
+        self.copyAllLostObjectsWorker.signals.finished.connect(
+            self.copyAllLostObjectsWorker.deleteLater
+        )
+        self.copyAllLostObjectsThread.finished.connect(
+            self.copyAllLostObjectsThread.deleteLater
+        )
+        
+        self.copyAllLostObjectsWorker.signals.critical.connect(
+            self.copyAllLostObjectsWorkerCritical
+        )
+        self.copyAllLostObjectsWorker.signals.initProgressBar.connect(
+            self.workerInitProgressbar
+        )
+        self.copyAllLostObjectsWorker.signals.progressBar.connect(
+            self.workerUpdateProgressbar
+        )
+        self.copyAllLostObjectsWorker.signals.progress.connect(
+            self.workerProgress
+        )
+        self.copyAllLostObjectsWorker.signals.finished.connect(
+            self.copyAllLostObjectsWorkerFinished
+        )
+        
+        self.copyAllLostObjectsThread.started.connect(
+            self.copyAllLostObjectsWorker.run
+        )
+        self.copyAllLostObjectsThread.start()
+        
+        self.copyAllLostObjectsWorkerLoop = QEventLoop()
+        self.copyAllLostObjectsWorkerLoop.exec_()
+    
+    def copyAllLostObjectsWorkerCritical(self, error):
+        self.copyAllLostObjectsWorkerLoop.exit()
+        self.workerCritical(error)
+    
+    def copyAllLostObjectsWorkerFinished(self, worker):
+        if self.progressWin is not None:
+            self.progressWin.workerFinished = True
+            self.progressWin.close()
+            self.progressWin = None
+            
+        self.copyAllLostObjectsWorkerLoop.exit()
+        self.update_rp()
+        self.updateAllImages()
+        self.store_data()
+    
+    def labelRoiTrangeCheckboxToggled(self, checked):
         disabled = not checked
         self.labelRoiStartFrameNoSpinbox.setDisabled(disabled)
         self.labelRoiStopFrameNoSpinbox.setDisabled(disabled)
@@ -22752,7 +22872,7 @@ class guiWin(QMainWindow):
             self.progressWin.close()
             self.progressWin = None
         self.computeAllObjCostPairsWorkerLoop.exit()
-    
+     
     def setOverlaySegmMasks(self, force=False, forceIfNotActive=False):
         if not hasattr(self, 'currentLab2D'):
             return
@@ -24514,10 +24634,11 @@ class guiWin(QMainWindow):
             self.ax1_lostTrackedScatterItem.addPoints(xx, yy, data=data)
             self.ax2_lostTrackedScatterItem.addPoints(xx, yy)
     
-    def updateLostContoursImage(self, ax, delROIsIDs=None):
-        imageItem = self.getLostObjImageItem(ax)
-        if imageItem is None:
-            return
+    def updateLostContoursImage(self, ax, draw=True, delROIsIDs=None):
+        if draw:
+            imageItem = self.getLostObjImageItem(ax)
+            if imageItem is None:
+                return
         
         if not hasattr(self, 'lostObjContoursImage'):
             self.initLostObjContoursImage()
@@ -24545,6 +24666,9 @@ class guiWin(QMainWindow):
                 self.addLostObjsToImage(obj, lostID)
                 
             contours.extend(obj_contours)
+
+        if not draw:
+            return
 
         self.drawLostObjContoursImage(imageItem, contours)
     
@@ -25134,7 +25258,7 @@ class guiWin(QMainWindow):
         self.setAllLostTrackedObjContoursImage(delROIsIDs=delROIsIDs)
 
     def addLostObjsToImage(self, lostObj, lostID):
-        if not self.copyContourButton.isChecked():
+        if not self.copyLostObjButton.isChecked():
             return
         
         obj_slice = self.getObjSlice(lostObj.slice)
@@ -25146,7 +25270,7 @@ class guiWin(QMainWindow):
         if not noModifier:
             return
         
-        if not self.copyContourButton.isChecked():
+        if not self.copyLostObjButton.isChecked():
             return
         
         if event.isExit():

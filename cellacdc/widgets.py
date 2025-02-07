@@ -2955,6 +2955,9 @@ def macShortcutToWindows(shortcut: str):
 class ToolBar(QToolBar):
     def __init__(self, *args) -> None:
         super().__init__(*args)
+        
+        self.widgetsWithShortcut = {}
+        
         for child in self.children(): 
             if child.objectName() == 'qt_toolbar_ext_button':
                 self.extendButton = child
@@ -2974,6 +2977,12 @@ class ToolBar(QToolBar):
         
         self.addWidget(spinbox)
         return spinbox
+    
+    def addButton(self, icon_str: str, text='', checkable=False):
+        action = QAction(QIcon(icon_str), text, self)
+        action.setCheckable(checkable)
+        self.addAction(action)
+        return action
 
 class ManualTrackingToolBar(ToolBar):
     sigIDchanged = Signal(int)
@@ -3051,6 +3060,35 @@ class ManualTrackingToolBar(ToolBar):
     
     def ghostOpacityValueChanged(self, value):
         self.sigGhostOpacityChanged.emit(value)
+
+class CopyLostObjectToolbar(ToolBar):
+    sigCopyAllObjects = Signal(int)
+    
+    def __init__(self, *args) -> None:
+        super().__init__(*args)
+        
+        action = self.addButton(':copyContour_all.svg')
+        action.setShortcut('Shift+V')
+        action.setToolTip(
+            'Copy all lost objects\n\n'
+            'Shortcut: Shift+V'
+        )
+        self.widgetsWithShortcut['Copy all lost objects'] = action
+        
+        action.triggered.connect(self.emitSigCopyAllObjects)
+        
+        self.addSeparator()
+        
+        self.untilFrameNumberControl = self.addSpinBox(
+            label='Copy lost object(s) for the next number of frames: '
+        )
+        self.untilFrameNumberControl.setMinimum(0)
+        self.untilFrameNumberControl.setValue(0)
+
+        self.addSeparator()
+    
+    def emitSigCopyAllObjects(self):
+        self.sigCopyAllObjects.emit(self.untilFrameNumberControl.value())
 
 class ManualBackgroundToolBar(ToolBar):
     sigIDchanged = Signal(int)
