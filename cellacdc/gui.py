@@ -25155,7 +25155,11 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         x, y = event.pos()
         xdata, ydata = int(x), int(y)
-        hoverLostID = self.lostObjImage[ydata, xdata]
+        try:
+            hoverLostID = self.lostObjImage[ydata, xdata]
+        except IndexError:
+            return
+        
         self.ax1_lostObjScatterItem.hoverLostID = hoverLostID        
         if hoverLostID == 0:
             self.ax1_lostObjScatterItem.setSize(self.contLineWeight+1)
