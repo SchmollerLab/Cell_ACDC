@@ -437,7 +437,7 @@ Edit tools: Segmentation and tracking
     * Add custom poly-line deletion ROI. Every ID touched by the ROI will be automatically deleted.
     * Moving and reshaping the ROI will restore deleted IDs if they are not touched by it anymore. 
     * To delete the ROI ``right-click on it --> remove``.
-* **Clear freehand region (** |drawClearRegionButton| **):** Draw a freehand region and clear all objects present in the region. Once activated, additional options will appear in a new toolbar.
+* **Clear freehand region (** |drawClearRegionButton| **"O"):** Draw a freehand region and clear all objects present in the region. Once activated, additional options will appear in a new toolbar.
 * **Delete bordering objects (** |delBorderObjAction| **):** Remove segmented objects touching the border of the image.
 * **Repeat tracking (** |repeatTrackingAction| **"Shift+T"):** Repeat tracking on current frame. Tracking method can be changed in ``Tracking --> Select real-time tracking algorithm``
 * **Manual tracking (** |manualTrackingButton| **"T"):** Select ID to track and right-click on an object to assign that ID.

@@ -1866,6 +1866,18 @@ class guiWin(QMainWindow):
         self.LeftClickButtons.append(self.wandToolButton)
         self.functionsNotTested3D.append(self.wandToolButton)
         self.widgetsWithShortcut['Magic wand'] = self.wandToolButton
+        
+        self.drawClearRegionButton = QToolButton(self)
+        self.drawClearRegionButton.setCheckable(True)
+        self.drawClearRegionButton.setIcon(QIcon(":clear_freehand_region.svg"))
+        self.widgetsWithShortcut['Clear freehand region'] = self.drawClearRegionButton
+        
+        self.checkableButtons.append(self.drawClearRegionButton)
+        self.LeftClickButtons.append(self.drawClearRegionButton)
+        
+        self.drawClearRegionAction = editToolBar.addWidget(
+            self.drawClearRegionButton
+        )
 
         self.widgetsWithShortcut['Annotate mother/daughter pairing'] = (
             self.assignBudMothButton
@@ -2064,10 +2076,6 @@ class guiWin(QMainWindow):
             self.addDelPolyLineRoiButton
         )
         self.addDelPolyLineRoiAction.roiType = 'polyline'
-        
-        self.drawClearRegionAction = editToolBar.addWidget(
-            self.drawClearRegionButton
-        )
         
         editToolBar.addAction(self.delBorderObjAction)
 
@@ -3413,13 +3421,6 @@ class guiWin(QMainWindow):
         
         self.checkableButtons.append(self.addDelPolyLineRoiButton)
         self.LeftClickButtons.append(self.addDelPolyLineRoiButton)
-        
-        self.drawClearRegionButton = QToolButton(self)
-        self.drawClearRegionButton.setCheckable(True)
-        self.drawClearRegionButton.setIcon(QIcon(":clear_freehand_region.svg"))
-        
-        self.checkableButtons.append(self.drawClearRegionButton)
-        self.LeftClickButtons.append(self.drawClearRegionButton)
        
         self.delBorderObjAction = QAction(self)
         self.delBorderObjAction.setIcon(QIcon(":delBorderObj.svg"))
