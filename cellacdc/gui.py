@@ -1147,6 +1147,8 @@ class guiWin(QMainWindow):
                     tooltip
                 )
 
+            
+            printl(key, tooltip)
             getattr(self, key).setToolTip(tooltip)
 
     def run(self, module='acdc_gui', logs_path=None):        
@@ -13014,7 +13016,7 @@ class guiWin(QMainWindow):
         regionSlice = self.freeRoiItem.slice(zRange=zRange)
         mask = self.freeRoiItem.mask()
         
-        regionLab = posData.lab[..., *regionSlice].copy()
+        regionLab = posData.lab[(...,) + regionSlice].copy()
         regionLab[..., ~mask] = 0
         
         clearBorders = (

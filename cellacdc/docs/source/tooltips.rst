@@ -237,15 +237,15 @@
     :height: 16px
     :width: 16px
 
-.. |drawClearRegionAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/clear_freehand_region.svg
+.. |drawClearRegionButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/clear_freehand_region.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/clear_freehand_region.svg
-    :alt: drawClearRegionAction icon
+    :alt: drawClearRegionButton icon
     :height: 16px
     :width: 16px
 
-.. |addDelPolyLineRoiAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/addDelPolyLineRoi.svg
+.. |addDelPolyLineRoiButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/addDelPolyLineRoi.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/addDelPolyLineRoi.svg
-    :alt: addDelPolyLineRoiAction icon
+    :alt: addDelPolyLineRoiButton icon
     :height: 16px
     :width: 16px
 
@@ -427,7 +427,7 @@ Edit tools: Segmentation and tracking
 * **Remove object from analysis (** |binCellButton| **):** Annotate that a cell is removed from downstream analysis. ``is_cell_excluded`` set to ``True`` in ``acdc_output.csv`` table. Done by right-clicking.
 * **Annotate cell as dead (** |ripCellButton| **"D"):** Annotate that a cell is dead. ``is_cell_dead`` set to ``True`` in ``acdc_output.csv`` table.
 * **Add deletion ROI (** |addDelRoiAction| **):** Add resizable rectangle. Every ID touched by the rectangle will be automatically deleted. Moving and resizing the rectangle will restore deleted IDs if they are not touched by it anymore. To delete rectangle ``right-click on it --> remove``.
-* **Add poly-line deletion ROI (** |addDelPolyLineRoiAction| **):** 
+* **Add poly-line deletion ROI (** |addDelPolyLineRoiButton| **):** 
     * How to use
         1. Activate the button.
         2. Left-click on the LEFT image to add a new anchor point.
@@ -437,7 +437,7 @@ Edit tools: Segmentation and tracking
     * Add custom poly-line deletion ROI. Every ID touched by the ROI will be automatically deleted.
     * Moving and reshaping the ROI will restore deleted IDs if they are not touched by it anymore. 
     * To delete the ROI ``right-click on it --> remove``.
-* **Clear freehand region (** |drawClearRegionAction| **):** Draw a freehand region and clear all objects present in the region. Once activated, additional options will appear in a new toolbar.
+* **Clear freehand region (** |drawClearRegionButton| **):** Draw a freehand region and clear all objects present in the region. Once activated, additional options will appear in a new toolbar.
 * **Delete bordering objects (** |delBorderObjAction| **):** Remove segmented objects touching the border of the image.
 * **Repeat tracking (** |repeatTrackingAction| **"Shift+T"):** Repeat tracking on current frame. Tracking method can be changed in ``Tracking --> Select real-time tracking algorithm``
 * **Manual tracking (** |manualTrackingButton| **"T"):** Select ID to track and right-click on an object to assign that ID.
