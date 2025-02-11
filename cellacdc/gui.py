@@ -1147,10 +1147,6 @@ class guiWin(QMainWindow):
                     tooltip
                 )
 
-            
-            printl(key, tooltip)
-            getattr(self, key).setToolTip(tooltip)
-
     def run(self, module='acdc_gui', logs_path=None):        
         self.setWindowIcon()
         self.setWindowTitle()
