@@ -7707,55 +7707,55 @@ class guiWin(QMainWindow):
             and not brushON and not dragImgLeft and not eraserON
             and not polyLineRoiON and not labelRoiON
             and addPointsByClickingButton is None
-            and not manualBackgroundON and not canDrawClearRegion
+            and not manualBackgroundON and not drawClearRegionON
         )
         canBrush = (
             brushON and not curvToolON and not rulerON
             and not dragImgLeft and not eraserON and not wandON
             and not labelRoiON and not manualBackgroundON
-            and addPointsByClickingButton is None and not canDrawClearRegion
+            and addPointsByClickingButton is None and not drawClearRegionON
         )
         canErase = (
             eraserON and not curvToolON and not rulerON
             and not dragImgLeft and not brushON and not wandON
             and not polyLineRoiON and not labelRoiON
             and addPointsByClickingButton is None
-            and not manualBackgroundON and not canDrawClearRegion
+            and not manualBackgroundON and not drawClearRegionON
         )
         canRuler = (
             rulerON and not curvToolON and not brushON
             and not dragImgLeft and not brushON and not wandON
             and not polyLineRoiON and not labelRoiON
             and addPointsByClickingButton is None
-            and not manualBackgroundON and not canDrawClearRegion
+            and not manualBackgroundON and not drawClearRegionON
         )
         canWand = (
             wandON and not curvToolON and not brushON
             and not dragImgLeft and not brushON and not rulerON
             and not polyLineRoiON and not labelRoiON
             and addPointsByClickingButton is None
-            and not manualBackgroundON and not canDrawClearRegion
+            and not manualBackgroundON and not drawClearRegionON
         )
         canPolyLine = (
             polyLineRoiON and not wandON and not curvToolON and not brushON
             and not dragImgLeft and not brushON and not rulerON
             and not labelRoiON and not manualBackgroundON
             and addPointsByClickingButton is None
-            and not canDrawClearRegion
+            and not drawClearRegionON
         )
         canLabelRoi = (
             labelRoiON and not wandON and not curvToolON and not brushON
             and not dragImgLeft and not brushON and not rulerON
             and not polyLineRoiON and not keepObjON
             and addPointsByClickingButton is None
-            and not manualBackgroundON and not canDrawClearRegion
+            and not manualBackgroundON and not drawClearRegionON
         )
         canKeep = (
             keepObjON and not wandON and not curvToolON and not brushON
             and not dragImgLeft and not brushON and not rulerON
             and not polyLineRoiON and not labelRoiON 
             and addPointsByClickingButton is None
-            and not manualBackgroundON and not canDrawClearRegion
+            and not manualBackgroundON and not drawClearRegionON
         )
         canAddPoint = (
             self.togglePointsLayerAction.isChecked()
@@ -7763,14 +7763,14 @@ class guiWin(QMainWindow):
             and not curvToolON and not brushON
             and not dragImgLeft and not brushON and not rulerON
             and not polyLineRoiON and not labelRoiON  and not keepObjON
-            and not manualBackgroundON and not canDrawClearRegion
+            and not manualBackgroundON and not drawClearRegionON
         )
         canAddManualBackgroundObj = (
             manualBackgroundON and not wandON and not curvToolON and not brushON
             and not dragImgLeft and not brushON and not rulerON
             and not polyLineRoiON and not labelRoiON 
             and addPointsByClickingButton is None
-            and not keepObjON and not canDrawClearRegion
+            and not keepObjON and not drawClearRegionON
         )
         canDrawClearRegion = (
             drawClearRegionON and not wandON and not curvToolON and not brushON
