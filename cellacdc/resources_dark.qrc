@@ -82,6 +82,7 @@
     <file alias="unchecked.svg">resources/icons/unchecked_dark.svg</file>
     <file alias="play.svg">resources/icons/play_dark.svg</file>
     <file alias="stop.svg">resources/icons/stop_dark.svg</file>
+    <file alias="clear_freehand_region.svg">resources/icons/clear_freehand_region_dark.svg</file>
     <file alias="moveLabel.svg">resources/icons/moveLabel_dark.svg</file>
     <file alias="expandLabel.svg">resources/icons/expandLabel_dark.svg</file>
     <file alias="separate-bud.svg">resources/icons/separate-bud_dark.svg</file>

@@ -50,7 +50,8 @@ from qtpy.QtWidgets import (
     QStyle, QDialog, QSpacerItem, QFrame, QMenu, QActionGroup,
     QListWidget, QPlainTextEdit, QFileDialog, QListView, QAbstractItemView,
     QTreeWidget, QTreeWidgetItem, QListWidgetItem, QLayout, QStylePainter,
-    QGraphicsBlurEffect, QGraphicsProxyWidget, QGraphicsObject
+    QGraphicsBlurEffect, QGraphicsProxyWidget, QGraphicsObject,
+    QButtonGroup
 )
 
 import pyqtgraph as pg
@@ -2973,9 +2974,9 @@ class ToolBar(QToolBar):
         spinbox = SpinBox(disableKeyPress=True)
         if label:
             spinbox.label = QLabel(label)
-            self.addWidget(spinbox.label)
+            spinbox.labelAction = self.addWidget(spinbox.label)
         
-        self.addWidget(spinbox)
+        spinbox.action = self.addWidget(spinbox)
         return spinbox
     
     def addButton(self, icon_str: str, text='', checkable=False):
@@ -3089,6 +3090,68 @@ class CopyLostObjectToolbar(ToolBar):
     
     def emitSigCopyAllObjects(self):
         self.sigCopyAllObjects.emit(self.untilFrameNumberControl.value())
+
+class DrawClearRegionToolbar(ToolBar):
+    def __init__(self, *args) -> None:
+        super().__init__(*args)
+        
+        group = QButtonGroup()
+        group.setExclusive(True)
+        self.clearTouchingObjsRadioButton = QRadioButton(
+            'Clear all touching objects'
+        )
+        self.clearOnlyEnclosedObjsRadioButton = QRadioButton(
+            'Clear only fully enclosed objects'
+        )
+        self.clearOnlyEnclosedObjsRadioButton.setChecked(True)
+        group.addButton(self.clearTouchingObjsRadioButton)
+        group.addButton(self.clearOnlyEnclosedObjsRadioButton)
+        
+        self.addWidget(self.clearTouchingObjsRadioButton)
+        self.addWidget(self.clearOnlyEnclosedObjsRadioButton)
+        
+        self.addSeparator()
+        
+        self.numZslicesUpSpinbox = self.addSpinBox(
+            label='Num. of z-slices to clear upwards: '
+        )
+        self.numZslicesUpSpinbox.setMinimum(0)
+        self.numZslicesUpSpinbox.setValue(0)
+        
+        self.numZslicesDownSpinbox = self.addSpinBox(
+            label='Num. of z-slices to clear downwards: '
+        )
+        self.numZslicesDownSpinbox.setMinimum(0)
+        self.numZslicesDownSpinbox.setValue(0)
+    
+    def setZslicesControlEnabled(self, enabled, SizeZ=None):
+        self.numZslicesUpSpinbox.labelAction.setVisible(enabled)
+        self.numZslicesUpSpinbox.action.setVisible(enabled)
+        
+        self.numZslicesDownSpinbox.labelAction.setVisible(enabled)
+        self.numZslicesDownSpinbox.action.setVisible(enabled)
+        
+        if SizeZ is None:
+            return
+        
+        self.numZslicesUpSpinbox.setMaximum(SizeZ)
+        self.numZslicesDownSpinbox.setMaximum(SizeZ)
+    
+    def zRange(self, z_slice, SizeZ):
+        if z_slice is None:
+            zRange = (0, SizeZ)
+            return zRange
+        
+        numZslicesUp = self.numZslicesUpSpinbox.value()
+        numZslicesDown = self.numZslicesDownSpinbox.value()
+        
+        zmin = z_slice - numZslicesDown
+        zmax = z_slice + numZslicesDown + 1
+        
+        zmin = zmin if zmin >= 0 else 0
+        zmax = zmax if zmax <= SizeZ else SizeZ
+        
+        return (zmin, zmax)
 
 class ManualBackgroundToolBar(ToolBar):
     sigIDchanged = Signal(int)

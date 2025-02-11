@@ -237,6 +237,12 @@
     :height: 16px
     :width: 16px
 
+.. |drawClearRegionAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/clear_freehand_region.svg
+    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/clear_freehand_region.svg
+    :alt: drawClearRegionAction icon
+    :height: 16px
+    :width: 16px
+
 .. |addDelPolyLineRoiAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/addDelPolyLineRoi.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/addDelPolyLineRoi.svg
     :alt: addDelPolyLineRoiAction icon
@@ -431,6 +437,7 @@ Edit tools: Segmentation and tracking
     * Add custom poly-line deletion ROI. Every ID touched by the ROI will be automatically deleted.
     * Moving and reshaping the ROI will restore deleted IDs if they are not touched by it anymore. 
     * To delete the ROI ``right-click on it --> remove``.
+* **Clear freehand region (** |drawClearRegionAction| **):** Draw a freehand region and clear all objects present in the region. Once activated, additional options will appear in a new toolbar.
 * **Delete bordering objects (** |delBorderObjAction| **):** Remove segmented objects touching the border of the image.
 * **Repeat tracking (** |repeatTrackingAction| **"Shift+T"):** Repeat tracking on current frame. Tracking method can be changed in ``Tracking --> Select real-time tracking algorithm``
 * **Manual tracking (** |manualTrackingButton| **"T"):** Select ID to track and right-click on an object to assign that ID.

@@ -2067,6 +2067,10 @@ class guiWin(QMainWindow):
         )
         self.addDelPolyLineRoiAction.roiType = 'polyline'
         
+        self.drawClearRegionAction = editToolBar.addWidget(
+            self.drawClearRegionButton
+        )
+        
         editToolBar.addAction(self.delBorderObjAction)
 
         self.addDelRoiAction.toolbar = editToolBar
@@ -2896,6 +2900,15 @@ class guiWin(QMainWindow):
         self.copyLostObjToolbar.setVisible(False)
         self.controlToolBars.append(self.copyLostObjToolbar)
         
+        # Copy lost object contour toolbar
+        self.drawClearRegionToolbar = widgets.DrawClearRegionToolbar(
+            "Draw freehand region and clear objects controls", self
+        )
+        
+        self.addToolBar(Qt.TopToolBarArea, self.drawClearRegionToolbar)
+        self.drawClearRegionToolbar.setVisible(False)
+        self.controlToolBars.append(self.drawClearRegionToolbar)
+        
         # Empty toolbar to avoid weird ranges on image when showing the 
         # other toolbars --> placeholder
         placeHolderToolbar = widgets.ToolBar("Place holder", self)
@@ -3396,15 +3409,20 @@ class guiWin(QMainWindow):
         self.addDelRoiAction.roiType = 'rect'
         self.addDelRoiAction.setIcon(QIcon(":addDelRoi.svg"))
         
-        
         self.addDelPolyLineRoiButton = QToolButton(self)
         self.addDelPolyLineRoiButton.setCheckable(True)
         self.addDelPolyLineRoiButton.setIcon(QIcon(":addDelPolyLineRoi.svg"))
         
         self.checkableButtons.append(self.addDelPolyLineRoiButton)
         self.LeftClickButtons.append(self.addDelPolyLineRoiButton)
+        
+        self.drawClearRegionButton = QToolButton(self)
+        self.drawClearRegionButton.setCheckable(True)
+        self.drawClearRegionButton.setIcon(QIcon(":clear_freehand_region.svg"))
+        
+        self.checkableButtons.append(self.drawClearRegionButton)
+        self.LeftClickButtons.append(self.drawClearRegionButton)
        
-
         self.delBorderObjAction = QAction(self)
         self.delBorderObjAction.setIcon(QIcon(":delBorderObj.svg"))
 
@@ -3743,6 +3761,7 @@ class guiWin(QMainWindow):
         self.curvToolButton.toggled.connect(self.curvTool_cb)
         self.wandToolButton.toggled.connect(self.wand_cb)
         self.labelRoiButton.toggled.connect(self.labelRoi_cb)
+        self.drawClearRegionButton.toggled.connect(self.drawClearRegion_cb)
         self.reInitCcaAction.triggered.connect(self.reInitCca)
         self.moveLabelToolButton.toggled.connect(self.moveLabelButtonToggled)
         self.editCcaToolAction.triggered.connect(
@@ -6040,7 +6059,7 @@ class guiWin(QMainWindow):
         mode = str(self.modeComboBox.currentText())
         if mode == 'Viewer':
             return
-
+        
         posData = self.data[self.pos_i]
         Y, X = self.get_2Dlab(posData.lab).shape
         xdata, ydata = int(x), int(y)
@@ -6189,6 +6208,10 @@ class guiWin(QMainWindow):
                 self.labelRoiItem.setSize((w, h))
             elif self.labelRoiIsFreeHandRadioButton.isChecked():
                 self.freeRoiItem.addPoint(xdata, ydata)
+        
+        # Draw freehand clear region --> draw region
+        elif self.isMouseDragImg1 and self.drawClearRegionButton.isChecked():
+            self.freeRoiItem.addPoint(xdata, ydata)
     
     # @exec_time
     def fillHolesID(self, ID, sender='brush'):
@@ -7454,6 +7477,10 @@ class guiWin(QMainWindow):
 
             self.clickedOnBud = False
             self.BudMothTempLine.setData([], [])
+        
+        elif self.isMouseDragImg1 and self.drawClearRegionButton.isChecked():
+            self.freeRoiItem.closeCurve()
+            self.clearObjsFreehandRegion()
 
     def gui_clickedDelRoi(self, event, left_click, right_click):
         posData = self.data[self.pos_i]
@@ -7587,7 +7614,7 @@ class guiWin(QMainWindow):
         )
         findNextMotherButtonON = self.findNextMotherButton.isChecked()
         unknownLineageButtonON = self.unknownLineageButton.isChecked()
-
+        drawClearRegionON = self.drawClearRegionButton.isChecked()
 
         # Check if right-click on segment of polyline roi to add segment
         segments = self.gui_getHoveredSegmentsPolyLineRoi()
@@ -7613,7 +7640,7 @@ class guiWin(QMainWindow):
             and not curvToolON and not eraserON and not rulerON
             and not wandON and not polyLineRoiON and not labelRoiON
             and not middle_click and not keepObjON and not separateON
-            and not manualBackgroundON
+            and not manualBackgroundON and not drawClearRegionON
             and addPointsByClickingButton is None
         )
         if isPanImageClick:
@@ -7680,54 +7707,55 @@ class guiWin(QMainWindow):
             and not brushON and not dragImgLeft and not eraserON
             and not polyLineRoiON and not labelRoiON
             and addPointsByClickingButton is None
-            and not manualBackgroundON
+            and not manualBackgroundON and not canDrawClearRegion
         )
         canBrush = (
             brushON and not curvToolON and not rulerON
             and not dragImgLeft and not eraserON and not wandON
             and not labelRoiON and not manualBackgroundON
-            and addPointsByClickingButton is None
+            and addPointsByClickingButton is None and not canDrawClearRegion
         )
         canErase = (
             eraserON and not curvToolON and not rulerON
             and not dragImgLeft and not brushON and not wandON
             and not polyLineRoiON and not labelRoiON
             and addPointsByClickingButton is None
-            and not manualBackgroundON
+            and not manualBackgroundON and not canDrawClearRegion
         )
         canRuler = (
             rulerON and not curvToolON and not brushON
             and not dragImgLeft and not brushON and not wandON
             and not polyLineRoiON and not labelRoiON
             and addPointsByClickingButton is None
-            and not manualBackgroundON
+            and not manualBackgroundON and not canDrawClearRegion
         )
         canWand = (
             wandON and not curvToolON and not brushON
             and not dragImgLeft and not brushON and not rulerON
             and not polyLineRoiON and not labelRoiON
             and addPointsByClickingButton is None
-            and not manualBackgroundON
+            and not manualBackgroundON and not canDrawClearRegion
         )
         canPolyLine = (
             polyLineRoiON and not wandON and not curvToolON and not brushON
             and not dragImgLeft and not brushON and not rulerON
             and not labelRoiON and not manualBackgroundON
             and addPointsByClickingButton is None
+            and not canDrawClearRegion
         )
         canLabelRoi = (
             labelRoiON and not wandON and not curvToolON and not brushON
             and not dragImgLeft and not brushON and not rulerON
             and not polyLineRoiON and not keepObjON
             and addPointsByClickingButton is None
-            and not manualBackgroundON
+            and not manualBackgroundON and not canDrawClearRegion
         )
         canKeep = (
             keepObjON and not wandON and not curvToolON and not brushON
             and not dragImgLeft and not brushON and not rulerON
             and not polyLineRoiON and not labelRoiON 
             and addPointsByClickingButton is None
-            and not manualBackgroundON
+            and not manualBackgroundON and not canDrawClearRegion
         )
         canAddPoint = (
             self.togglePointsLayerAction.isChecked()
@@ -7735,14 +7763,21 @@ class guiWin(QMainWindow):
             and not curvToolON and not brushON
             and not dragImgLeft and not brushON and not rulerON
             and not polyLineRoiON and not labelRoiON  and not keepObjON
-            and not manualBackgroundON
+            and not manualBackgroundON and not canDrawClearRegion
         )
         canAddManualBackgroundObj = (
             manualBackgroundON and not wandON and not curvToolON and not brushON
             and not dragImgLeft and not brushON and not rulerON
             and not polyLineRoiON and not labelRoiON 
             and addPointsByClickingButton is None
-            and not keepObjON
+            and not keepObjON and not canDrawClearRegion
+        )
+        canDrawClearRegion = (
+            drawClearRegionON and not wandON and not curvToolON and not brushON
+            and not dragImgLeft and not brushON and not rulerON
+            and not labelRoiON and not manualBackgroundON
+            and addPointsByClickingButton is None
+            and not polyLineRoiON 
         )
         
         # Enable dragging of the image window or the scalebar
@@ -7912,6 +7947,13 @@ class guiWin(QMainWindow):
                     addPointsByClickingButton.pointIdSpinbox.setValue(id)
                 self.addClickedPoint(action, x, y, id)
             self.drawPointsLayers(computePointsLayers=False)
+        
+        elif left_click and canDrawClearRegion:
+            x, y = event.pos().x(), event.pos().y()
+            xdata, ydata = int(x), int(y)
+            self.freeRoiItem.addPoint(xdata, ydata)
+            
+            self.isMouseDragImg1 = True
         
         elif left_click and canRuler or canPolyLine:
             x, y = event.pos().x(), event.pos().y()
@@ -12638,6 +12680,7 @@ class guiWin(QMainWindow):
         self.eraserButton.toggled.connect(self.Eraser_cb)
         self.wandToolButton.toggled.connect(self.wand_cb)
         self.labelRoiButton.toggled.connect(self.labelRoi_cb)
+        self.drawClearRegionButton.toggled.connect(self.drawClearRegion_cb)
         self.expandLabelToolButton.toggled.connect(self.expandLabelCallback)
         self.addDelPolyLineRoiButton.toggled.connect(self.addDelPolyLineRoi_cb)
         self.manualBackgroundButton.toggled.connect(self.manualBackground_cb)
@@ -12872,6 +12915,26 @@ class guiWin(QMainWindow):
         self.labelRoiStartFrameNoSpinbox.setValue(posData.frame_i+1)
         self.labelRoiStopFrameNoSpinbox.setValue(posData.SizeT)
 
+    def drawClearRegion_cb(self, checked):
+        posData = self.data[self.pos_i]
+        if checked:
+            self.disconnectLeftClickButtons()
+            self.uncheckLeftClickButtons(self.drawClearRegionButton)
+            self.connectLeftClickButtons()
+
+        self.drawClearRegionToolbar.setVisible(checked)
+        
+        if not self.isSegm3D:
+            self.drawClearRegionToolbar.setZslicesControlEnabled(False)
+            return
+        
+        if not checked:
+            return
+        
+        self.drawClearRegionToolbar.setZslicesControlEnabled(
+            True, SizeZ=posData.SizeZ
+        )
+    
     def labelRoi_cb(self, checked):
         posData = self.data[self.pos_i]
         if checked:
@@ -12935,6 +12998,54 @@ class guiWin(QMainWindow):
             self.freeRoiItem.clear()
             self.ax1.removeItem(self.labelRoiItem)
             self.updateLabelRoiCircularCursor(None, None, False)
+    
+    def clearObjsFreehandRegion(self):
+        self.logger.info('Clearing objects inside freehand region...')
+        
+        # Store undo state before modifying stuff
+        self.storeUndoRedoStates(False, storeImage=False, storeOnlyZoom=True)
+        
+        posData = self.data[self.pos_i]
+        zRange = None
+        if self.isSegm3D:
+            z_slice = self.z_lab()
+            zRange = self.drawClearRegionToolbar.zRange(z_slice, posData.SizeZ)
+            
+        regionSlice = self.freeRoiItem.slice(zRange=zRange)
+        mask = self.freeRoiItem.mask()
+        
+        regionLab = posData.lab[..., *regionSlice].copy()
+        regionLab[..., ~mask] = 0
+        
+        clearBorders = (
+            self.drawClearRegionToolbar
+            .clearOnlyEnclosedObjsRadioButton
+            .isChecked()
+        )
+        if clearBorders:
+            regionLab = skimage.segmentation.clear_border(regionLab)
+        
+        regionRp = skimage.measure.regionprops(regionLab)
+        clearIDs = [obj.label for obj in regionRp]
+        
+        if not clearIDs:
+            if clearBorders:
+                self.logger.warning(
+                    'None of the objects in the freehand region are '
+                    'fully enclosed'
+                )
+            else:
+                self.logger.warning(
+                    'None of the objects are touching the freehand region'
+                )
+            return
+        
+        self.deleteIDmiddleClick(clearIDs, False, False)
+        self.update_cca_df_deletedIDs(posData, clearIDs)
+        
+        self.freeRoiItem.clear()
+        
+        self.updateAllImages()
     
     def labelRoiWorkerFinished(self):
         self.logger.info('Magic labeller closed.')
