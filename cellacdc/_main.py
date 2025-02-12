@@ -1616,18 +1616,20 @@ class mainWin(QMainWindow):
         useBioFormats = msg.clickedButton == useBioFormatsButton
         if self.dataStructButton.isEnabled() and useBioFormats:
             if is_win:
-                self.dataStructButton.setPalette(self.defaultButtonPalette)
-                self.dataStructButton.setText(
-                    '0. Restart Cell-ACDC to enable module 0 again.')
-                self.dataStructButton.setToolTip(
-                    'Due to an interal limitation of the Java Virtual Machine\n'
-                    'moduel 0 can be launched only once.\n'
-                    'To use it again close and reopen Cell-ACDC'
-                )
-                self.dataStructButton.setDisabled(True)
                 self.dataStructWin = dataStruct.createDataStructWin(
                     parent=self, version=self._version
                 )
+                if self.dataStructWin.bioformats_backend == 'python-bioformats':
+                    self.dataStructButton.setPalette(self.defaultButtonPalette)
+                    self.dataStructButton.setText(
+                        '0. Restart Cell-ACDC to enable module 0 again.')
+                    self.dataStructButton.setToolTip(
+                        'Due to an interal limitation of the Java Virtual Machine\n'
+                        'moduel 0 can be launched only once.\n'
+                        'To use it again close and reopen Cell-ACDC'
+                    )
+                    self.dataStructButton.setDisabled(True)
+                
                 self.dataStructWin.show()
                 self.dataStructWin.main()
             elif is_mac:

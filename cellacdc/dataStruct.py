@@ -1,5 +1,8 @@
 import sys
 import os
+
+from typing import Literal
+
 import shutil
 import re
 import traceback
@@ -80,7 +83,8 @@ class bioFormatsWorker(QObject):
 
     def __init__(
             self, raw_src_path, rawFilenames, exp_dst_path,
-            mutex, waitCond, rawDataStruct
+            mutex, waitCond, rawDataStruct, 
+            bioformats_backend: Literal['bioio', 'python-bioformats']
         ):
         QObject.__init__(self)
         self.raw_src_path = raw_src_path
@@ -95,8 +99,15 @@ class bioFormatsWorker(QObject):
         self.overwritePos = False
         self.addFiles = False
         self.cancel = False
+        self.bioformats_backend = bioformats_backend
     
     def readSampleData(self, rawFilePath, SizeC, SizeT, SizeZ):
+        if self.bioformats_backend == 'bioio':
+            from cellacdc import acdc_bioio_bioformats as bioformats
+        else:
+            import javabridge
+            from cellacdc import bioformats
+             
         sampleImgData = {}
         self.progress.emit('Reading sample image data...')
         dimsIdx = {}
@@ -634,6 +645,12 @@ class bioFormatsWorker(QObject):
             shutil.rmtree(tempDir)
 
     def saveData(self, images_path, rawFilePath, filename, p, series, p_idx=0):
+        if self.bioformats_backend == 'bioio':
+            from cellacdc import acdc_bioio_bioformats as bioformats
+        else:
+            import javabridge
+            from cellacdc import bioformats
+            
         s0p = str(p+1).zfill(self.numPosDigits)
         self.progress.emit(
             f'Position {p+1}/{self.numPos}: saving data to {images_path}...'
@@ -801,9 +818,13 @@ class bioFormatsWorker(QObject):
     def run(self):
         raw_src_path = self.raw_src_path
         exp_dst_path = self.exp_dst_path
-        javabridge.start_vm(class_path=bioformats.JARS, run_headless=True)
-        # bioformats.init_logger()
-        self.progress.emit('Java VM running.')
+        
+        if self.bioformats_backend == 'python-bioformats':
+            import javabridge
+            from cellacdc import bioformats
+            javabridge.start_vm(class_path=bioformats.JARS, run_headless=True)
+            self.progress.emit('Java VM running.')
+            
         self.aborted = False
         self.isCriticalError = False
         for p, filename in enumerate(self.rawFilenames):
@@ -865,7 +886,8 @@ class bioFormatsWorker(QObject):
                 abort = self.readMetadata(raw_src_path, filename)
                 if abort:
                     self.aborted = True
-                    javabridge.kill_vm()
+                    if self.bioformats_backend == 'python-bioformats':
+                        javabridge.kill_vm()
                     self.finished.emit()
                     return
 
@@ -896,7 +918,8 @@ class bioFormatsWorker(QObject):
                     except PermissionError as e:
                         self.progress.emit(e)
 
-        javabridge.kill_vm()
+        if self.bioformats_backend == 'python-bioformats':
+            javabridge.kill_vm()
         self.finished.emit()
         
 
@@ -921,10 +944,6 @@ class createDataStructWin(QMainWindow):
             logger.info(f'Initializing Data structure module v{self._version}...')
         else:
             logger.info(f'Initializing Data structure module...')
-
-        is_linux = sys.platform.startswith('linux')
-        is_mac = sys.platform == 'darwin'
-        is_win = sys.platform.startswith("win")
 
         self.start_JVM = start_JVM
         self.allowExit = allowExit
@@ -1015,7 +1034,28 @@ class createDataStructWin(QMainWindow):
         mainContainer.setLayout(mainLayout)
 
         self.mainLayout = mainLayout
+        
+        self.bioformats_backend = 'bioio'
+        success = self.checkInstallBioIO(parent)
+        if success:
+            return
+        
+        self.bioformats_backend = 'python-bioformats'
+        self.checkInstallPythonBioformats(parent)
 
+    def checkInstallBioIO(self, parent):
+        myutils.check_install_package(
+            'BioIO', 
+            import_pkg_name='bioio', 
+            pypi_name='bioio', 
+            parent=parent
+        )
+        
+        return True
+    
+    def checkInstallPythonBioformats(self, parent):
+        from . import is_win, is_mac
+        
         if not is_win and not is_mac:
             if parent is None:
                 self.show()
@@ -1027,7 +1067,6 @@ class createDataStructWin(QMainWindow):
             qparent=self, logger_info=self.logger.info, 
             logger_exception=self.logger.exception
         )
-        global bioformats, javabridge
         self.logger.info('Checking if Java is installed...')
         myutils.check_upgrade_javabridge()
         try:
@@ -1312,6 +1351,8 @@ class createDataStructWin(QMainWindow):
         )
 
         self.addPbar()
+        
+        self.initBioIO(raw_src_path, rawFilenames)
 
         # Set up separate thread for bioFormatsWorker class
         self.mutex = QMutex()
@@ -1319,7 +1360,8 @@ class createDataStructWin(QMainWindow):
         self.thread = QThread()
         self.worker = bioFormatsWorker(
             raw_src_path, rawFilenames, exp_dst_path,
-            self.mutex, self.waitCond, rawDataStruct
+            self.mutex, self.waitCond, rawDataStruct, 
+            self.bioformats_backend
         )
         if self.rawDataStruct == 2:
             self.worker.basename = self.basename
@@ -1374,6 +1416,15 @@ class createDataStructWin(QMainWindow):
         msg.setTextFormat(Qt.RichText)
         msg.exec_()
 
+    def initBioIO(self, raw_src_path, raw_filenames):
+        if self.bioformats_backend == 'python-bioformats':
+            return
+        
+        from cellacdc import acdc_bioio_bioformats as bioformats
+        raw_filepath = os.path.join(raw_src_path, raw_filenames)
+        with bioformats.ImageReader(raw_filepath, qparent=self) as reader:
+            return
+    
     def addPbar(self):
         self.QPbar = widgets.ProgressBar(self)
         self.QPbar.setValue(0)
