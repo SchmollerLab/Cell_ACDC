@@ -17479,7 +17479,7 @@ class guiWin(QMainWindow):
 
         self.combineWorker.wakeUp()
     
-    def combineAllPos(self, steps: List[Dict[str, Any]]):
+    def combineAllPos(self, keep_input_data_type, steps: List[Dict[str, Any]]):
         if steps and not keep_input_data_type:
             raise ValueError('keep_input_data_type must be set if steps is set')
         
