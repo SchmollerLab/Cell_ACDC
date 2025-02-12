@@ -50,7 +50,8 @@ from qtpy.QtWidgets import (
     QStyle, QDialog, QSpacerItem, QFrame, QMenu, QActionGroup,
     QListWidget, QPlainTextEdit, QFileDialog, QListView, QAbstractItemView,
     QTreeWidget, QTreeWidgetItem, QListWidgetItem, QLayout, QStylePainter,
-    QGraphicsBlurEffect, QGraphicsProxyWidget, QGraphicsObject
+    QGraphicsBlurEffect, QGraphicsProxyWidget, QGraphicsObject,
+    QButtonGroup
 )
 
 import pyqtgraph as pg
@@ -324,6 +325,29 @@ class okPushButton(PushButton):
             self.setDefault(True)
         # QShortcut(Qt.Key_Return, self, self.click)
         # QShortcut(Qt.Key_Enter, self, self.click)
+
+class LockPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setIcon(QIcon(':lock.svg'))
+        self.toggled.connect(self.onToggled)
+    
+    def onToggled(self, checked):
+        if not self.isCheckable():
+            return
+        
+        if checked:
+            self.setIcon(QIcon(':lock_closed.svg'))
+        else:
+            self.setIcon(QIcon(':lock_open.svg'))
+    
+    def setCheckable(self, checkable: bool):
+        super().setCheckable(checkable)
+        if checkable:
+            self.setIcon(QIcon(':lock_open.svg'))
+        else:
+            self.setIcon(QIcon(':lock.svg'))
+
 
 class SkipPushButton(PushButton):
     def __init__(self, *args, **kwargs):
@@ -2932,6 +2956,9 @@ def macShortcutToWindows(shortcut: str):
 class ToolBar(QToolBar):
     def __init__(self, *args) -> None:
         super().__init__(*args)
+        
+        self.widgetsWithShortcut = {}
+        
         for child in self.children(): 
             if child.objectName() == 'qt_toolbar_ext_button':
                 self.extendButton = child
@@ -2947,10 +2974,16 @@ class ToolBar(QToolBar):
         spinbox = SpinBox(disableKeyPress=True)
         if label:
             spinbox.label = QLabel(label)
-            self.addWidget(spinbox.label)
+            spinbox.labelAction = self.addWidget(spinbox.label)
         
-        self.addWidget(spinbox)
+        spinbox.action = self.addWidget(spinbox)
         return spinbox
+    
+    def addButton(self, icon_str: str, text='', checkable=False):
+        action = QAction(QIcon(icon_str), text, self)
+        action.setCheckable(checkable)
+        self.addAction(action)
+        return action
 
 class ManualTrackingToolBar(ToolBar):
     sigIDchanged = Signal(int)
@@ -3028,6 +3061,97 @@ class ManualTrackingToolBar(ToolBar):
     
     def ghostOpacityValueChanged(self, value):
         self.sigGhostOpacityChanged.emit(value)
+
+class CopyLostObjectToolbar(ToolBar):
+    sigCopyAllObjects = Signal(int)
+    
+    def __init__(self, *args) -> None:
+        super().__init__(*args)
+        
+        action = self.addButton(':copyContour_all.svg')
+        action.setShortcut('Shift+V')
+        action.setToolTip(
+            'Copy all lost objects\n\n'
+            'Shortcut: Shift+V'
+        )
+        self.widgetsWithShortcut['Copy all lost objects'] = action
+        
+        action.triggered.connect(self.emitSigCopyAllObjects)
+        
+        self.addSeparator()
+        
+        self.untilFrameNumberControl = self.addSpinBox(
+            label='Copy lost object(s) for the next number of frames: '
+        )
+        self.untilFrameNumberControl.setMinimum(0)
+        self.untilFrameNumberControl.setValue(0)
+
+        self.addSeparator()
+    
+    def emitSigCopyAllObjects(self):
+        self.sigCopyAllObjects.emit(self.untilFrameNumberControl.value())
+
+class DrawClearRegionToolbar(ToolBar):
+    def __init__(self, *args) -> None:
+        super().__init__(*args)
+        
+        group = QButtonGroup()
+        group.setExclusive(True)
+        self.clearTouchingObjsRadioButton = QRadioButton(
+            'Clear all touching objects'
+        )
+        self.clearOnlyEnclosedObjsRadioButton = QRadioButton(
+            'Clear only fully enclosed objects'
+        )
+        self.clearOnlyEnclosedObjsRadioButton.setChecked(True)
+        group.addButton(self.clearTouchingObjsRadioButton)
+        group.addButton(self.clearOnlyEnclosedObjsRadioButton)
+        
+        self.addWidget(self.clearTouchingObjsRadioButton)
+        self.addWidget(self.clearOnlyEnclosedObjsRadioButton)
+        
+        self.addSeparator()
+        
+        self.numZslicesUpSpinbox = self.addSpinBox(
+            label='Num. of z-slices to clear upwards: '
+        )
+        self.numZslicesUpSpinbox.setMinimum(0)
+        self.numZslicesUpSpinbox.setValue(0)
+        
+        self.numZslicesDownSpinbox = self.addSpinBox(
+            label='Num. of z-slices to clear downwards: '
+        )
+        self.numZslicesDownSpinbox.setMinimum(0)
+        self.numZslicesDownSpinbox.setValue(0)
+    
+    def setZslicesControlEnabled(self, enabled, SizeZ=None):
+        self.numZslicesUpSpinbox.labelAction.setVisible(enabled)
+        self.numZslicesUpSpinbox.action.setVisible(enabled)
+        
+        self.numZslicesDownSpinbox.labelAction.setVisible(enabled)
+        self.numZslicesDownSpinbox.action.setVisible(enabled)
+        
+        if SizeZ is None:
+            return
+        
+        self.numZslicesUpSpinbox.setMaximum(SizeZ)
+        self.numZslicesDownSpinbox.setMaximum(SizeZ)
+    
+    def zRange(self, z_slice, SizeZ):
+        if z_slice is None:
+            zRange = (0, SizeZ)
+            return zRange
+        
+        numZslicesUp = self.numZslicesUpSpinbox.value()
+        numZslicesDown = self.numZslicesDownSpinbox.value()
+        
+        zmin = z_slice - numZslicesDown
+        zmax = z_slice + numZslicesDown + 1
+        
+        zmin = zmin if zmin >= 0 else 0
+        zmax = zmax if zmax <= SizeZ else SizeZ
+        
+        return (zmin, zmax)
 
 class ManualBackgroundToolBar(ToolBar):
     sigIDchanged = Signal(int)
@@ -4071,10 +4195,13 @@ class _metricsQGBox(QGroupBox):
         self.scrollArea.setWidget(self.scrollAreaWidget)
         layout.addWidget(self.scrollArea)
 
+        buttonsLayout = QHBoxLayout()        
+        buttonsLayout.addStretch(1)
+        
         self.selectAllButton = selectAllPushButton()
         self.selectAllButton.sigClicked.connect(self.checkAll)
-        buttonsLayout = QHBoxLayout()
-        buttonsLayout.addStretch(1)
+        
+        
         buttonsLayout.addWidget(self.selectAllButton)
 
         if favourite_funcs is not None:
@@ -4095,6 +4222,12 @@ class _metricsQGBox(QGroupBox):
         self.setFont(_font)
 
         self.toggled.connect(self.toggled_cb)
+    
+    def isCalcForEachZsliceRequested(self):
+        if self.calcForEachZsliceToggle is None:
+            return False
+        
+        return self.calcForEachZsliceToggle.isChecked()
     
     def highlightCheckboxesFromSearchText(self, text):
         for checkbox in self.checkBoxes:
@@ -4192,14 +4325,16 @@ class channelMetricsQGBox(QGroupBox):
         metricsQGBox = _metricsQGBox(
             metrics_desc, 'Standard measurements',
             favourite_funcs=favourite_funcs, 
-            parent=self
+            parent=self, isZstack=isZstack
         )
+        self.metricsQGBox = metricsQGBox
         
         bkgrValsQGBox = _metricsQGBox(
             bkgr_val_desc, 'Background values',
             favourite_funcs=favourite_funcs, 
-            parent=self
+            parent=self, isZstack=isZstack
         )
+        self.bkgrValsQGBox = bkgrValsQGBox
 
         self.checkBoxes = metricsQGBox.checkBoxes.copy()
         self.checkBoxes.extend(bkgrValsQGBox.checkBoxes)
@@ -4228,16 +4363,41 @@ class channelMetricsQGBox(QGroupBox):
             customMetricsQGBox = _metricsQGBox(
                 custom_metrics_desc, 'Custom measurements', 
                 delButtonMetricsDesc=combine_metrics_desc,
-                favourite_funcs=favourite_funcs
+                favourite_funcs=favourite_funcs,
+                isZstack=isZstack
             )
             layout.addWidget(customMetricsQGBox)
             self.checkBoxes.extend(customMetricsQGBox.checkBoxes)
             customMetricsQGBox.sigDelClicked.connect(self.onDelClicked)
             self.customMetricsQGBox = customMetricsQGBox
 
+        self.calcForEachZsliceToggle = None
+        if isZstack:
+            buttonsLayout = QHBoxLayout()
+            self.calcForEachZsliceToggle = Toggle()
+            tooltip = (
+                'Calculate the selected measurements for each z-slice.\n\n'
+                'The measurements will be saved in the column with name\n'
+                'ending with `_zsliceN` where N is the z-slice number\n'
+                '(starting from 0).'
+            )
+            calcForEachZsliceLabel = QLabel('Calculate for each z-slice')
+            calcForEachZsliceLabel.setToolTip(tooltip)
+            self.calcForEachZsliceToggle.setToolTip(tooltip)
+            buttonsLayout.addWidget(self.calcForEachZsliceToggle)
+            buttonsLayout.addWidget(calcForEachZsliceLabel)   
+            buttonsLayout.addStretch(1) 
+            layout.addLayout(buttonsLayout)
+        
         self.setTitle(f'{chName} metrics')
         self.setCheckable(True)
         self.setLayout(layout)
+    
+    def isCalcForEachZsliceRequested(self):
+        if self.calcForEachZsliceToggle is None:
+            return False
+        
+        return self.calcForEachZsliceToggle.isChecked()
     
     def uncheckAndDisableDataPrepIfPosNotPrepped(self, posData):
         # Uncheck and disable dataprep metrics if pos is not prepped
@@ -6539,6 +6699,45 @@ class ParentImageItem(BaseImageItem):
     def setEnableAutoLevels(self, enabled: bool):
         self.autoLevelsEnabled = enabled
     
+    def preComputedMinMaxValues(self, *args, **kwargs):
+        super().preComputedMinMaxValues(*args, **kwargs)
+        if self.linkedImageItem is None:
+            return
+        
+        self.linkedImageItem.minMaxValuesMapper = self.minMaxValuesMapper
+    
+    def updateMinMaxValuesPreprocessedData(self, *args, **kwargs):
+        super().updateMinMaxValuesPreprocessedData(*args, **kwargs)
+        
+        if self.linkedImageItem is None:
+            return
+        
+        self.linkedImageItem.minMaxValuesMapper = self.minMaxValuesMapper
+    
+    def setCurrentPosIndex(self, *args, **kwargs):
+        super().setCurrentPosIndex(*args, **kwargs)
+        
+        if self.linkedImageItem is None:
+            return
+        
+        self.linkedImageItem.pos_i = self.pos_i
+    
+    def setCurrentFrameIndex(self, *args, **kwargs):
+        super().setCurrentFrameIndex(*args, **kwargs)
+        
+        if self.linkedImageItem is None:
+            return
+        
+        self.linkedImageItem.frame_i = self.frame_i + 1
+    
+    def setCurrentZsliceIndex(self, *args, **kwargs):
+        super().setCurrentZsliceIndex(*args, **kwargs)
+        
+        if self.linkedImageItem is None:
+            return
+        
+        self.linkedImageItem.z = self.z
+    
     def setImage(
             self, image=None, autoLevels=None, next_frame_image=None, 
             scrollbar_value=None, **kargs
@@ -6552,10 +6751,6 @@ class ParentImageItem(BaseImageItem):
             return
         
         if next_frame_image is not None:
-            try:
-                self.linkedImageItem.setCurrentFrameIndex(self.frame_i+1)
-            except Exception as err:
-                pass
             self.linkedImageItem.setImage(
                 next_frame_image, 
                 scrollbar_value=scrollbar_value, 

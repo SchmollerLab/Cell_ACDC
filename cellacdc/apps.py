@@ -1318,6 +1318,8 @@ class filenameDialog(QDialog):
                 e.g., ending with <code>_acdc_output_phase_contr.csv</code>.
             """)
 
+        self.isSegmFile = basename.endswith('_segm')
+        
         self.allowEmpty = allowEmpty
         self.basename = basename
         if ext.find('.') == -1:
@@ -1436,19 +1438,51 @@ class filenameDialog(QDialog):
             else:
                 self.filenameLabel.setText(f'{text}{self.ext}')
 
+    def checkEmptyText(self):
+        if self.allowEmpty:
+            return True
+        
+        if self._text():
+            return True
+       
+        msg = widgets.myMessageBox()
+        msg.critical(
+            self, 'Empty text', 
+            html_utils.paragraph('Text entry field <b>cannot be empty</b>')
+        )
+        return False
+    
+    def checkSegmFilename(self):
+        if not self.isSegmFile:
+            return True
+        
+        if 'segm' not in self._text():
+            return True
+       
+        msg = widgets.myMessageBox()
+        txt = html_utils.paragraph(
+            'The text appended to the filename cannot contain the text '
+            '"segm".<br><br>'
+            'Sorry, that would confuse me. Thank you for your patience!'
+        )
+        msg.critical(
+            self, 'Cannot use "segm" in filename', txt
+        )
+        return False
+    
     def ok_cb(self, checked=True):
         valid = self.checkExistingNames()
         if not valid:
             return
         
-        if not self.allowEmpty and not self._text():
-            msg = widgets.myMessageBox()
-            msg.critical(
-                self, 'Empty text', 
-                html_utils.paragraph('Text entry field <b>cannot be empty</b>')
-            )
+        valid = self.checkEmptyText()
+        if not valid:
             return
-            
+        
+        valid = self.checkSegmFilename()
+        if not valid:
+            return
+        
         self.filename = self.filenameLabel.text()
         self.entryText = self._text()
         self.cancel = False
@@ -2333,7 +2367,12 @@ class SetMeasurementsDialog(QBaseDialog):
             'table. '
         )
 
-    def ok_cb(self):
+    def ok_cb(self):       
+        for chNameGroupbox in self.chNameGroupboxes:
+            chNameGroupbox.calcForEachZsliceRequested = (
+                chNameGroupbox.isCalcForEachZsliceRequested()
+            )
+             
         if self.allPos_acdc_df_cols is None:
             self.cancel = False
             self.close()
@@ -10015,9 +10054,9 @@ class SelectSegmFileDialog(QDialog):
 
         selectionLayout.addWidget(label, 0, 1, alignment=Qt.AlignLeft)
         selectionLayout.addWidget(listWidget, 1, 1)
-        selectionLayout.setColumnStretch(0, 1)
-        selectionLayout.setColumnStretch(1, 3)
-        selectionLayout.setColumnStretch(2, 1)
+        selectionLayout.setColumnStretch(0, 0)
+        selectionLayout.setColumnStretch(1, 1)
+        selectionLayout.setColumnStretch(2, 0)
         selectionLayout.addLayout(buttonsLayout, 2, 1)
 
         mainLayout.addLayout(selectionLayout)
@@ -13912,6 +13951,13 @@ class ExportToVideoParametersDialog(QBaseDialog):
         gridLayout.addWidget(self.fpsWidget, row, 1)
         
         row += 1
+        self.dpiWidget = widgets.IntLineEdit(allowNegative=False)
+        self.dpiWidget.setValue(300)
+        self.dpiWidget.label = QLabel('DPI')
+        gridLayout.addWidget(self.dpiWidget.label, row, 0)
+        gridLayout.addWidget(self.dpiWidget, row, 1)
+        
+        row += 1
         gridLayout.addWidget(QLabel('Folder path:'), row, 0)
         self.folderPathLineEdit = widgets.ElidingLineEdit(minWidth=240)
         self.folderPathLineEdit.setText(startFolderpath)
@@ -14072,7 +14118,8 @@ class ExportToVideoParametersDialog(QBaseDialog):
             'num_digits': len(str(self.stopNavVarNumberEntry.value())),
             'fps': self.fpsWidget.value(),
             'save_pngs':  self.saveFramesToggle.isChecked(),
-            'is_timelapse': self.isTimelapseVideo
+            'is_timelapse': self.isTimelapseVideo,
+            'dpi': self.dpiWidget.value(),
         }
         return preferences
     
@@ -14235,6 +14282,15 @@ class ExportToImageParametersDialog(QBaseDialog):
         gridLayout.addWidget(self.fileFormatCombobox, row, 1)
         
         row += 1
+        self.dpiWidget = widgets.IntLineEdit(allowNegative=False)
+        self.dpiWidget.setValue(300)
+        self.dpiWidget.label = QLabel('DPI')
+        gridLayout.addWidget(self.dpiWidget.label, row, 0)
+        gridLayout.addWidget(self.dpiWidget, row, 1)
+        self.dpiWidget.hide()
+        self.dpiWidget.label.hide()
+        
+        row += 1
         gridLayout.addWidget(QLabel('Folder path:'), row, 0)
         self.folderPathLineEdit = widgets.ElidingLineEdit(minWidth=240)
         self.folderPathLineEdit.setText(startFolderpath)
@@ -14301,6 +14357,13 @@ class ExportToImageParametersDialog(QBaseDialog):
         self.browseButton.setStartPath(folderPath)
     
     def updateFileFormat(self, fileFormat):
+        if fileFormat == 'SVG':
+            self.dpiWidget.hide()
+            self.dpiWidget.label.hide()
+        else:
+            self.dpiWidget.show()
+            self.dpiWidget.label.show()
+            
         self.fileFormatLabel.setText(f'.{fileFormat.lower()}')
     
     def validateFolderPath(self):
@@ -14345,6 +14408,7 @@ class ExportToImageParametersDialog(QBaseDialog):
             'view_range_y': self.yRangeSelector.range(),
             'filepath': os.path.join(self.folderPathLineEdit.text(), filename), 
             'filename': self.filenameLineEdit.text(),
+            'dpi': self.dpiWidget.value(),
         }
         return preferences
     

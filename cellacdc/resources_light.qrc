@@ -61,6 +61,7 @@
     <file alias="skip_arrow.svg">resources/icons/skip_arrow.svg</file>
     <file alias="hideUp.svg">resources/icons/hideUp.svg</file>
     <file alias="brush.svg">resources/icons/brush.svg</file>
+    <file alias="clear_freehand_region.svg">resources/icons/clear_freehand_region_dark.svg</file>
     <file alias="segment.svg">resources/icons/segment.svg</file>
     <file alias="open_file.svg">resources/icons/open_file.svg</file>
     <file alias="freehand.svg">resources/icons/freehand.svg</file>
@@ -68,6 +69,9 @@
     <file alias="3d.svg">resources/icons/3d.svg</file>
     <file alias="2d.svg">resources/icons/2d.svg</file>
     <file alias="close.svg">resources/icons/close.svg</file>
+    <file alias="lock.svg">resources/icons/lock.svg</file>
+    <file alias="lock_closed.svg">resources/icons/lock_closed.svg</file>
+    <file alias="lock_open.svg">resources/icons/lock_open.svg</file>
     <file alias="manage_versions.svg">resources/icons/manage_versions.svg</file>
     <file alias="prep.svg">resources/icons/prep.svg</file>
     <file alias="auto-pilot.svg">resources/icons/auto-pilot.svg</file>
@@ -77,6 +81,7 @@
     <file alias="undo.svg">resources/icons/undo.svg</file>
     <file alias="redo.svg">resources/icons/redo.svg</file>
     <file alias="copyContour.svg">resources/icons/copyContour.svg</file>
+    <file alias="copyContour_all.svg">resources/icons/copyContour_all.svg</file>
     <file alias="eye.svg">resources/icons/eye.svg</file>
     <file alias="eye-checked.svg">resources/icons/eye-checked.svg</file>
     <file alias="unchecked.svg">resources/icons/unchecked.svg</file>
