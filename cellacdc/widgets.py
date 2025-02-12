@@ -6362,10 +6362,12 @@ class BaseImageItem(pg.ImageItem):
         ):
         self.minMaxValuesMapper = None
         self.minMaxValuesMapperPreproc = None
+        self.minMaxValuesMapperCombined = None
         self.pos_i = 0
         self.z = 0
         self.frame_i = 0
         self.usePreprocessed = False
+        self.useCombined = False
         
         super().__init__(image, **kargs)
         self.autoLevelsEnabled = None
@@ -6427,7 +6429,7 @@ class BaseImageItem(pg.ImageItem):
             self.minMaxValuesMapperCombined = {}
         
         posData = data[pos_i]
-        img = posData.combined_img_data[frame_i][z_slice]
+        img = posData.combine_img_data[frame_i][z_slice]
         key = (pos_i, frame_i, z_slice)
         self.minMaxValuesMapperCombined[key] = (np.nanmin(img), np.nanmax(img))
     
@@ -6443,6 +6445,9 @@ class BaseImageItem(pg.ImageItem):
     def quickMinMax(self, targetSize=1e6):
         if self.usePreprocessed and self.minMaxValuesMapperPreproc is not None:
             minMaxValuesMapper = self.minMaxValuesMapperPreproc
+        elif self.useCombined and self.minMaxValuesMapperCombined is not None:
+            minMaxValuesMapper = self.minMaxValuesMapperCombined
+            printl(f'minMaxValuesMapperCombined: {minMaxValuesMapper}')
         else:
             minMaxValuesMapper = self.minMaxValuesMapper
         
@@ -9325,7 +9330,7 @@ class LineEdit(QLineEdit):
         self.setText(str(value))
 
 class PreProcessingSelector(QComboBox):
-    sigValuesChanged = Signal(dict, int)
+    sigValuesChanged = Signal()
     
     def __init__(self, parent=None):
         super().__init__(parent)

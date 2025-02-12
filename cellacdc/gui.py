@@ -2311,7 +2311,7 @@ class guiWin(QMainWindow):
         
         self.setImageImg1()
     
-    def preprocWorkerDone( # to do
+    def preprocWorkerDone(
             self, 
             processed_data: np.ndarray, 
             how: str, 
@@ -2387,85 +2387,93 @@ class guiWin(QMainWindow):
             )
 
     def combineWorkerPreviewDone(
-            self, combined_data: np.ndarray, 
-            key: Tuple[int, int, Union[int, str]]
+            self, 
+            processed_data: List[np.ndarray], 
+            keys: List[Tuple[int, int, int]]
         ):
-        pos_i, frame_i, z_slice = key
-        posData = self.data[pos_i]
-        if not hasattr(posData, 'combine_img_data'):
-            posData.combine_img_data = preprocess.PreprocessedData() # whats this?
         
-        posData.combine_img_data[frame_i][z_slice] = combined_data
+        unique_pos = {key[0] for key in keys}
+        per_pos_data = {pos_i: [] for pos_i in unique_pos}
+
+        for key, img in zip(keys, processed_data):
+            pos_i, frame_i, z_slice = key
+            per_pos_data[pos_i].append((key, img))
+
+        for pos_i in unique_pos:    
+            posData = self.data[pos_i]
+            if not hasattr(posData, 'combine_img_data'):
+                posData.combine_img_data = preprocess.PreprocessedData()
+
+            n_dim_img = posData.img_data.ndim
+
+            if n_dim_img == 4:
+                for key, processed_data in per_pos_data[pos_i]:
+                    pos_i, frame_i, z_slice = key
+                    posData.combine_img_data[frame_i][z_slice] = processed_data
+                    self.img1.updateMinMaxValuesCombinedData(
+                            self.data, pos_i, frame_i, z_slice
+                        )
+            else:
+                for key, processed_data in per_pos_data[pos_i]:
+                    pos_i, frame_i, z_slice = key
+                    posData.combine_img_data[frame_i] = processed_data
+                    self.img1.updateMinMaxValuesCombinedData(
+                        self.data, pos_i, frame_i, z_slice
+                    )
+        
+        curr_pos_i, curr_frame_i, curr_z_slice = self.pos_i,self.data[self.pos_i].frame_i, self.z_slice_index()
         self.img1.updateMinMaxValuesCombinedData(
-            self.data, pos_i, frame_i, z_slice
+            self.data, curr_pos_i, curr_frame_i, curr_z_slice
         )
         
         self.setImageImg1()
+
+    def combineWorkerAskLoadFluoChannels(self, requ_channels, pos_i):
+        self.getChData(requ_ch=requ_channels, pos_i=pos_i)
+        self.combineWorker.wake_waitCondLoadFluoChannels()
     
     def combineWorkerDone( # to do?
             self, 
-            processed_data: np.ndarray, 
-            how: str, 
+            processed_data: List[np.ndarray], 
+            keys: List[Tuple[int, int, int]]
         ):
         self.setStatusBarLabel(log=False)
         self.combineDialog.appliedFinished()
-            
-        posData = self.data[self.pos_i]
-        if not hasattr(posData, 'combine_img_data'):
-            posData.combine_img_data = preprocess.PreprocessedData()
 
-        if how == 'current_image':
-            if posData.SizeZ > 1:
-                z_slice = self.z_slice_index()
-                posData.combine_img_data[posData.frame_i][z_slice] = (
-                    processed_data
-                )
+        unique_pos = {key[0] for key in keys}
+        per_pos_data = {pos_i: [] for pos_i in unique_pos}
+
+        for key, img in zip(keys, processed_data):
+            pos_i, frame_i, z_slice = key
+            per_pos_data[pos_i].append((key, img))
+
+        for pos_i in unique_pos:    
+            posData = self.data[pos_i]
+            if not hasattr(posData, 'combine_img_data'):
+                posData.combine_img_data = preprocess.PreprocessedData()
+
+            n_dim_img = posData.img_data.ndim
+
+
+            if n_dim_img == 4:
+                for key, processed_data in per_pos_data[pos_i]:
+                    pos_i, frame_i, z_slice = key
+                    posData.combine_img_data[frame_i][z_slice] = processed_data
+                    self.img1.updateMinMaxValuesCombinedData(
+                            self.data, pos_i, frame_i, z_slice
+                        )
             else:
-                posData.combine_img_data[posData.frame_i] = processed_data
-                z_slice = 0
-            self.img1.updateMinMaxValuesCombinedData(
-                self.data, self.pos_i, posData.frame_i, z_slice
-            )
-        elif how == 'z_stack':
-            for z_slice, processed_img in enumerate(processed_data):
-                posData.combine_img_data[posData.frame_i][z_slice] = (
-                    processed_img
-                )
-                self.img1.updateMinMaxValuesCombinedData(
-                    self.data, self.pos_i, posData.frame_i, z_slice
-                )
-        elif how == 'all_frames':
-            for frame_i, processed_frame in enumerate(processed_data):
-                if processed_frame.ndim == 2:
-                    processed_frame = (processed_frame,)
-                    
-                for z_slice, processed_img in enumerate(processed_frame):
-                    posData.combine_img_data[frame_i][z_slice] = (
-                        processed_img
-                    )
+                for key, processed_data in per_pos_data[pos_i]:
+                    pos_i, frame_i, z_slice = key
+                    posData.combine_img_data[frame_i] = processed_data
                     self.img1.updateMinMaxValuesCombinedData(
-                        self.data, self.pos_i, frame_i, z_slice
+                        self.data, pos_i, frame_i, z_slice
                     )
-        elif how == 'all_pos':
-            for pos_i, processed_pos_data in enumerate(processed_data):
-                if processed_pos_data.ndim == 2:
-                    processed_pos_data = (processed_pos_data,)
-
-                posData = self.data[pos_i]
-                if not hasattr(posData, 'combine_img_data'):
-                    posData.combine_img_data = preprocess.PreprocessedData()
-                for z_slice, processed_img in enumerate(processed_pos_data):
-                    posData.combine_img_data[0][z_slice] = (
-                        processed_img
-                    )
-                    self.img1.updateMinMaxValuesCombinedData(
-                        self.data, pos_i, 0, z_slice
-                    )
-            
-        if not self.viewPreprocDataToggle.isChecked(): # to do
-            self.viewPreprocDataToggle.setChecked(True)
-        else:
-            self.setImageImg1()
+                
+            if not self.viewCombineChannelDataToggle.isChecked():
+                self.viewCombineChannelDataToggle.setChecked(True)
+            else:
+                self.setImageImg1()
        
     def goToFrameNumber(self, frame_n):
         posData = self.data[self.pos_i]
@@ -3504,6 +3512,9 @@ class guiWin(QMainWindow):
         self.viewPreprocDataToggle.toggled.connect(
             self.viewPreprocDataToggled
         )
+        self.viewCombineChannelDataToggle.toggled.connect(
+            self.viewCombineChannelDataToggled
+        )
         self.autoSaveToggle.toggled.connect(self.autoSaveToggled)
         self.ccaIntegrCheckerToggle.toggled.connect(
             self.ccaIntegrCheckerToggled
@@ -4014,6 +4025,17 @@ class guiWin(QMainWindow):
         viewPreprocDataToggleLabel = QLabel('View pre-processed image')
         viewPreprocDataToggleLabel.setToolTip(viewPreprocDataToggleTooltip)
         layout.addRow(viewPreprocDataToggleLabel, self.viewPreprocDataToggle)
+
+        self.viewCombineChannelDataToggle = widgets.Toggle()
+        viewCombineChannelDataToggleTooltip = (
+            'View combined channel. See menu `Image --> combing channels...`\n'
+            'on the top menubar.'
+        )
+        self.viewCombineChannelDataToggle.setChecked(False)
+        self.viewCombineChannelDataToggle.setToolTip(viewCombineChannelDataToggleTooltip)
+        viewCombineChannelDataToggleLabel = QLabel('View combined channels')
+        viewCombineChannelDataToggleLabel.setToolTip(viewCombineChannelDataToggleTooltip)
+        layout.addRow(viewCombineChannelDataToggleLabel, self.viewCombineChannelDataToggle)
 
         self.autoSaveToggle = widgets.Toggle()
         autoSaveTooltip = (
@@ -8941,6 +8963,16 @@ class guiWin(QMainWindow):
         self.setStatusBarLabel()
         self.logger.info('Pre-processed data saved!')
         self.titleLabel.setText('Pre-processed data saved!', color='w')
+
+    def saveCombinedChannelsWorkerFinished(self):
+        if self.progressWin is not None:
+            self.progressWin.workerFinished = True
+            self.progressWin.close()
+            self.progressWin = None
+        
+        self.setStatusBarLabel()
+        self.logger.info('Combined channels data saved!')
+        self.titleLabel.setText('Combined channels data saved!', color='w')
 
     def saveCombineWorkerFinished(self):
         if self.progressWin is not None:
@@ -16180,7 +16212,7 @@ class guiWin(QMainWindow):
             posData.allData_li[posData.frame_i]['labels'] = lab
             self.get_data()
 
-    def preprocessDialogRecipeChanged(self, recipe):
+    def preprocessDialogRecipeChanged(self, recipe):# why does this need the recepie as an arg
         recipe = self.preprocessDialog.recipe()
         if recipe is None:
             self.logger.warning('Pre-processing recipe not initialized yet.')
@@ -16188,13 +16220,13 @@ class guiWin(QMainWindow):
         
         self.preprocessCurrentImage(recipe)
         
-    def combineDialogStepsChanged(self, recipe):
-        steps = self.combineDialog.steps()
+    def combineDialogStepsChanged(self):
+        steps, keep_input_type = self.combineDialog.steps(return_keepInputDataType=True)
         if steps is None:
             self.logger.warning('Combine channels steps not initialized yet.')
             return
         
-        self.combineCurrent(recipe)
+        self.combineCurrentImage(steps, keep_input_type)
     
     def combineDialogSavecombinedData(self, dialog):
         helpText = (
@@ -16221,6 +16253,53 @@ class guiWin(QMainWindow):
             return
 
         appendedText = win.entryText
+
+        self.progressWin = apps.QDialogWorkerProgress(
+            title='Saving combined channels(s)', 
+            parent=self,
+            pbarDesc='Saving combined channels(s)'
+        )
+        self.progressWin.show(self.app)
+        self.progressWin.mainPbar.setMaximum(0)
+        
+        self.statusBarLabel.setText('Saving combined channels...')
+        
+        self.saveCombinedChannelsWorker = workers.SaveCombinedChannelsWorker(
+            self.data, appendedText
+        )
+        
+        self.saveCombinedChannelsThread = QThread()
+        self.saveCombinedChannelsWorker.moveToThread(self.saveCombinedChannelsThread)
+        self.saveCombinedChannelsWorker.signals.finished.connect(
+            self.saveCombinedChannelsThread.quit
+        )
+        self.saveCombinedChannelsWorker.signals.finished.connect(
+            self.saveCombinedChannelsWorker.deleteLater
+        )
+        self.saveCombinedChannelsThread.finished.connect(
+            self.saveCombinedChannelsThread.deleteLater
+        )
+        
+        self.saveCombinedChannelsWorker.signals.critical.connect(
+            self.workerCritical
+        )
+        self.saveCombinedChannelsWorker.signals.initProgressBar.connect(
+            self.workerInitProgressbar
+        )
+        self.saveCombinedChannelsWorker.signals.progressBar.connect(
+            self.workerUpdateProgressbar
+        )
+        self.saveCombinedChannelsWorker.signals.progress.connect(
+            self.workerProgress
+        )
+        self.saveCombinedChannelsWorker.signals.finished.connect(
+            self.saveCombinedChannelsWorkerFinished
+        )
+        
+        self.saveCombinedChannelsThread.started.connect(
+            self.saveCombinedChannelsWorker.run
+        )
+        self.saveCombinedChannelsThread.start()
 
     def preprocessDialogSavePreprocessedData(self, dialog): # to do
         helpText = (
@@ -16314,10 +16393,12 @@ class guiWin(QMainWindow):
             key
         )
 
-    def combineEnqueueCurrentImage(self, steps):
+    def combineEnqueueCurrentImage(self, steps, keep_input_type): # to do
         posData = self.data[self.pos_i]
-        func = core.combine_channels_func
-        image_data = self.getImage(raw=True)
+
+        selected_channel = core.get_selected_channels(steps)
+        self.getChData(requ_ch=selected_channel)
+
         if posData.SizeZ > 1:
             z_slice = self.z_slice_index()
         else:
@@ -16325,12 +16406,30 @@ class guiWin(QMainWindow):
         
         key = (self.pos_i, posData.frame_i, z_slice)
         self.combineWorker.enqueue(
-            func, 
-            image_data, 
+            self.data,
             steps, 
-            key
+            key,
+            keep_input_type
         )
     
+    def getChData(self, requ_ch=None, pos_i=None):
+        if not pos_i:
+            pos_i = self.pos_i
+
+        posData = self.data[pos_i]
+
+        if not requ_ch:
+            requ_ch = set(self.ch_names)
+        else:
+            requ_ch = set(requ_ch)
+
+        posData.setLoadedChannelNames()
+
+        loaded_channels = set(posData.loadedChNames)
+        missing_channels = requ_ch - loaded_channels
+
+        self.loadFluo_cb(fluo_channels=missing_channels)
+
     def updatePreprocessPreview(self, *args, **kwargs):
         force = kwargs.get('force', False)
         
@@ -16360,7 +16459,7 @@ class guiWin(QMainWindow):
         if not self.combineDialog.previewCheckbox.isChecked() and not force:
             return
         
-        steps = self.combineDialog.steps()
+        steps, keep_input_type = self.combineDialog.steps(return_keepInputDataType=True)
         if steps is None:
             self.logger.warning('Combine channels steps not initialized yet.')
             return
@@ -16369,7 +16468,7 @@ class guiWin(QMainWindow):
         self.logger.info(txt)
         self.statusBarLabel.setText(txt)
         
-        self.combineEnqueueCurrentImage(steps)
+        self.combineEnqueueCurrentImage(steps, keep_input_type)
     
     def next_pos(self):
         self.store_data(debug=True, autosave=False)
@@ -17295,69 +17394,116 @@ class guiWin(QMainWindow):
         self.viewPreprocDataToggle.setChecked(checked)
         self.updatePreprocessPreview()
     
-    def combineCurrentImage(self, steps: List[Dict[str, Any]]): # to do
+    def combinePreviewToggled(self, checked):
+        self.viewCombineChannelDataToggle.setChecked(checked)
+        self.updateCombineChannelsPreview()
+    
+    def combineCurrentImage(self, 
+                            steps: List[Dict[str, Any]]=None,
+                            keep_input_data_type:bool=None,
+                            ):
+
+        if steps and keep_input_data_type is None:
+            raise ValueError('keep_input_data_type must be set if steps is set')
+        
+        if steps is None:
+            steps, keep_input_data_type = self.combineDialog.steps(return_keepInputDataType=True)
+
         txt = 'Combining current image...'
         self.logger.info(txt)
         self.statusBarLabel.setText(txt)
         
-        func = core.combine_image_from_steps
-        image_data = self.getImage(raw=True)
+        selected_channel = core.get_selected_channels(steps)
+        self.getChData(requ_ch=selected_channel)
+
+        z_slice = self.zSliceScrollBar.sliderPosition()
+
+        key = (self.pos_i, self.data[self.pos_i].frame_i, z_slice)
+
         self.combineWorker.setupJob(
-            func, 
-            image_data, 
+            self.data, 
             steps, 
-            'current_image'
+            keep_input_data_type,
+            key
         )
         
         self.combineWorker.wakeUp()
     
     def combineZStack(self, steps: List[Dict[str, Any]]):
+
+        if steps and not keep_input_data_type:
+            raise ValueError('keep_input_data_type must be set if steps is set')
+        
+        if steps is None:
+            steps, keep_input_data_type = self.combineDialog.steps(return_keepInputDataType=True)
+
         txt = 'Combining z-stack...'
         self.statusBarLabel.setText(txt)
         self.logger.info(txt)
         
+        selected_channel = core.get_selected_channels(steps)
+        self.getChData(requ_ch=selected_channel)
+
         posData = self.data[self.pos_i]
-        func = core.combine_zstack_from_steps
-        image_data = posData.img_data[posData.frame_i]
+        key = (self.pos_i, posData.frame_i, None)
         self.combineWorker.setupJob(
-            func, 
-            image_data, 
+            self.data, 
             steps, 
-            'z_stack'
+            keep_input_data_type,
+            key
         )
-        
+
         self.combineWorker.wakeUp()
     
     def combineAllFrames(self, steps: List[Dict[str, Any]]):
+        if steps and not keep_input_data_type:
+            raise ValueError('keep_input_data_type must be set if steps is set')
+        
+        if steps is None:
+            steps, keep_input_data_type = self.combineDialog.steps(return_keepInputDataType=True)
+
         txt = 'Combining all frames...'
         self.logger.info(txt)
         self.statusBarLabel.setText(txt)
         
-        posData = self.data[self.pos_i]
-        func = core.combine_video_from_steps
-        image_data = posData.img_data
+        selected_channel = core.get_selected_channels(steps)
+        self.getChData(requ_ch=selected_channel)
+
+        key = (self.pos_i, None, None)
         self.combineWorker.setupJob(
-            func, 
-            image_data, 
+            self.data, 
             steps, 
-            'all_frames'
+            keep_input_data_type,
+            key
         )
+
         self.combineWorker.wakeUp()
     
     def combineAllPos(self, steps: List[Dict[str, Any]]):
+        if steps and not keep_input_data_type:
+            raise ValueError('keep_input_data_type must be set if steps is set')
+        
+        if steps is None:
+            steps, keep_input_data_type = self.combineDialog.steps(return_keepInputDataType=True)
+
         txt = 'Combining all Positions...'
         self.logger.info(txt)
         self.statusBarLabel.setText(txt)
         
-        func = core.combine_multi_pos_from_steps
-        image_data = [posData.img_data[0] for posData in self.data]
-        self.combineWorker.setupJob(
-            func, 
-            image_data, 
-            steps, 
-            'all_pos'
-        )
+        selected_channel = core.get_selected_channels(steps)
         
+        for pos_i in range(len(self.data)):
+            self.getChData(requ_ch=selected_channel, pos_i=pos_i)
+
+
+        key = (None, None, None)
+        self.combineWorker.setupJob(
+            self.data, 
+            steps, 
+            keep_input_data_type,
+            key
+        )
+
         self.combineWorker.wakeUp()
 
     def preprocessCurrentImage(self, recipe: List[Dict[str, Any]]): # to do
@@ -17469,7 +17615,7 @@ class guiWin(QMainWindow):
         self.preprocMutex = QMutex()
         self.preprocWaitCond = QWaitCondition()
         
-        self.preprocWorker = workers.PreprocessWorker(
+        self.preprocWorker = workers.CustomPreprocessWorkerGUI(
             self.preprocMutex, self.preprocWaitCond
         )
         
@@ -17503,7 +17649,7 @@ class guiWin(QMainWindow):
         if self.combineDialog is not None:
             self.preprocessDialog.close()
         
-        self.combineDialog = apps.CombineChannelsSetupDialog(
+        self.combineDialog = apps.CombineChannelsSetupDialogGUI(
             posData.chNames,
             isTimelapse=posData.SizeT>1, 
             isZstack=posData.SizeZ>1,
@@ -17516,7 +17662,7 @@ class guiWin(QMainWindow):
         self.doPreviewPreprocImage = False #to do
         self.combineDialog.sigApplyImage.connect(
             self.combineCurrentImage
-        )
+            )
         self.combineDialog.sigApplyZstack.connect(
             self.combineZStack
         )
@@ -17526,15 +17672,16 @@ class guiWin(QMainWindow):
         self.combineDialog.sigApplyAllPos.connect(
             self.combineAllPos
         )
-        # self.combineDialog.sigPreviewToggled.connect(
-        #     self.combinePreviewToggled
-        # )
+        self.combineDialog.sigPreviewToggled.connect(
+            self.combinePreviewToggled
+        )
         self.combineDialog.sigValuesChanged.connect(
             self.combineDialogStepsChanged
         )
         self.combineDialog.sigSavePreprocData.connect(
             self.combineDialogSavecombinedData
         )
+
         
         if self.combineWorker is not None:
             return
@@ -17543,8 +17690,10 @@ class guiWin(QMainWindow):
         self.combineMutex = QMutex()
         self.combineWaitCond = QWaitCondition()
         
-        self.combineWorker = workers.CombineWorker(
-            self.combineMutex, self.combineWaitCond
+        self.combineWorker = workers.CombineWorkerGUI(
+            self.combineMutex, self.combineWaitCond,
+            logger_func=self.logger.log,
+            # signals=self.signals # what are the singals for gui???
         )
         
         self.combineWorker.moveToThread(self.combineThread)
@@ -17562,6 +17711,8 @@ class guiWin(QMainWindow):
         self.combineWorker.signals.progress.connect(self.workerProgress)
         self.combineWorker.signals.critical.connect(self.workerCritical)
         self.combineWorker.signals.finished.connect(self.combineWorkerClosed)
+
+        self.combineWorker.sigAskLoadFluoChannels.connect(self.combineWorkerAskLoadFluoChannels)
         
         self.combineThread.started.connect(self.combineWorker.run)
         self.combineThread.start()
@@ -23625,22 +23776,39 @@ class guiWin(QMainWindow):
         if frame_i is None:
             frame_i = posData.frame_i
         
-        if not self.viewPreprocDataToggle.isChecked() or raw:
+        if raw:
             return self.getRawImageLayer0(frame_i)
-            
-        try:
-            img = posData.preproc_img_data[frame_i]
-            if posData.SizeZ == 1:
-                return np.array(img)
-            
-            self.updateZsliceScrollbar(frame_i)
-            z_slice = self.z_slice_index()
-            img = img[z_slice]
-            return img
-        except Exception as err:
-            # self.logger.warning(
-            #     'Pre-processed image not existing --> returning raw image'
-            # )
+        elif self.viewPreprocDataToggle.isChecked():
+            try:
+                img = posData.preproc_img_data[frame_i]
+                if posData.SizeZ == 1:
+                    return np.array(img)
+                
+                self.updateZsliceScrollbar(frame_i)
+                z_slice = self.z_slice_index()
+                img = img[z_slice]
+                return img
+            except Exception as err:
+                # self.logger.warning(
+                #     'Pre-processed image not existing --> returning raw image'
+                # )
+                return self.getRawImageLayer0(frame_i)
+        elif self.viewPreprocDataToggle.isChecked():
+            try:
+                img = posData.combine_img_data[frame_i]
+                if posData.SizeZ == 1:
+                    return np.array(img)
+                
+                self.updateZsliceScrollbar(frame_i)
+                z_slice = self.z_slice_index()
+                img = img[z_slice]
+                return img
+            except Exception as err:
+                # self.logger.warning(
+                #     'Pre-processed image not existing --> returning raw image'
+                # )
+                return self.getRawImageLayer0(frame_i)
+        else:
             return self.getRawImageLayer0(frame_i)
 
     def setImageImg2(self, updateLookuptable=True, set_image=True):
@@ -28721,6 +28889,24 @@ class guiWin(QMainWindow):
     def viewPreprocDataToggled(self, checked):
         self.img1.usePreprocessed = checked
         self.setImageImg1()
+
+        if self.viewCombineChannelDataToggle.isChecked():
+            self.viewCombineChannelDataToggle.toggled.disconnect()
+            self.viewCombineChannelDataToggle.setChecked(False)
+            self.viewCombineChannelDataToggle.toggled.connect(
+                self.viewCombineChannelDataToggled
+            )
+
+    def viewCombineChannelDataToggled(self, checked):
+        self.img1.useCombined = checked
+        self.setImageImg1()
+
+        if self.viewPreprocDataToggle.isChecked():
+            self.viewPreprocDataToggle.toggled.disconnect()  
+            self.viewPreprocDataToggle.setChecked(False)
+            self.viewPreprocDataToggle.toggled.connect(
+                self.viewPreprocDataToggled
+            )
     
     def autoSaveToggled(self, checked):
         if not self.autoSaveActiveWorkers:

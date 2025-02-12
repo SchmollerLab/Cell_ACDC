@@ -19,7 +19,7 @@ class CustomPreprocessUtil(NewThreadMultipleExpBaseUtil):
         self.expPaths = expPaths
     
     def runWorker(self):
-        self.worker = workers.CustomPreprocessWorker(self)
+        self.worker = workers.CustomPreprocessWorkerUtil(self)
         self.worker.sigAskAppendName.connect(self.askAppendName)
         self.worker.sigAskSetupRecipe.connect(self.askSetupRecipe)
         self.worker.sigAborted.connect(self.workerAborted)

@@ -14906,7 +14906,7 @@ class PreProcessParamsWidget(QWidget):
             'button to initialize this step (cog icon).<br><br>'
             'Thank you for your patience!'
         )
-        msg.warning(self, 'Table exists!', txt)
+        msg.warning(self, 'Params not initialized!', txt)
 
     def recipe(self, warn=True):
         recipe = []
@@ -14946,15 +14946,18 @@ class PreProcessParamsWidget(QWidget):
                 cp[section][option] = str(value)
         return cp
 
-class CombineChannelsWidget(PreProcessParamsWidget):  
+class CombineChannelsWidget(PreProcessParamsWidget):
+    sigValuesChangedCombineChannels = Signal()
     def __init__(self, channel_names:Iterable[str], parent=None):
         self.channel_names = channel_names
 
         super().__init__(parent)
         
-        self.loadLastRecipeButton.hide()
-        self.saveRecipeButton.hide()
-        self.loadRecipeButton.hide()
+        qutils.delete_widget(self.loadLastRecipeButton)
+        qutils.delete_widget(self.saveRecipeButton)
+        qutils.delete_widget(self.loadRecipeButton)
+
+        super().sigValuesChanged.connect(self.emitValuesChanged)
 
     def addStep(self, is_first=False):
         stepWidgets = {}
@@ -14969,11 +14972,13 @@ class CombineChannelsWidget(PreProcessParamsWidget):
         operator = QComboBox()
         self.gridLayout.addWidget(operator, self.row, 1)
         stepWidgets['operator'] = operator
+        operator.currentTextChanged.connect(self.emitValuesChanged)
  
         selector = QComboBox()
         selector.addItems(self.channel_names)
         self.gridLayout.addWidget(selector, self.row, 2)
         stepWidgets['selector'] = selector
+        selector.currentTextChanged.connect(self.emitValuesChanged)
 
         multiplier = QDoubleSpinBox()
         multiplier.setRange(0, 1)
@@ -14981,6 +14986,7 @@ class CombineChannelsWidget(PreProcessParamsWidget):
         multiplier.setValue(1)
         self.gridLayout.addWidget(multiplier, self.row, 3)
         stepWidgets['multiplier'] = multiplier
+        multiplier.valueChanged.connect(self.emitValuesChanged)
 
         if is_first:
             addButton = widgets.addPushButton()
@@ -15011,7 +15017,11 @@ class CombineChannelsWidget(PreProcessParamsWidget):
         self.stepsWidgets[step_n] = stepWidgets
                 
         self.resetStretch()
+        self.sigValuesChangedCombineChannels.emit()
     
+    def emitValuesChanged(self):
+        self.sigValuesChangedCombineChannels.emit()
+
     def removeStep(self, checked=False, step_n=None):        
         if step_n is None:
             step_n = self.sender().step_n
@@ -15054,6 +15064,7 @@ class CombineChannelsWidget(PreProcessParamsWidget):
         self.stepsWidgets = stepsWidgetsMapper
         
         self.resetStretch()
+        self.sigValuesChangedCombineChannels.emit()
 
     def steps(self):
         steps = {}
@@ -15070,7 +15081,8 @@ class CombineChannelsWidget(PreProcessParamsWidget):
                 'multiplier': multiplier
             }
 
-        steps = dict(sorted(steps.items()))       
+        steps = dict(sorted(steps.items()))
+       
         return steps
 
 class InitFijiMacroDialog(QBaseDialog):
@@ -15788,6 +15800,8 @@ class PreProcessRecipeDialog(QBaseDialog):
         keepInputDataTypeLayout = QHBoxLayout()
         self.keepInputDataTypeToggle = widgets.Toggle()
         self.keepInputDataTypeToggle.setChecked(True)
+        self.keepInputDataTypeToggle.toggled.connect(self.emitValuesChanged)
+
         keepInputDataTypeLayout.addStretch(1)
         keepInputDataTypeLayout.addWidget(QLabel('Keep input data type: '))
         keepInputDataTypeLayout.addWidget(self.keepInputDataTypeToggle)
@@ -15804,6 +15818,7 @@ class PreProcessRecipeDialog(QBaseDialog):
         self.preProcessParamsWidget.groupbox.setCheckable(False)
         
         buttonsLayout = QGridLayout() # self.preProcessParamsWidget.buttonsLayout
+        self.buttonsLayout = buttonsLayout
         self.previewCheckbox = QCheckBox('Preview')
         buttonsLayout.addWidget(self.previewCheckbox, 0, 0)
         
@@ -15927,7 +15942,7 @@ class PreProcessRecipeDialog(QBaseDialog):
         self.mainLayout = mainLayout
         
         self.setLayout(mainLayout)
-    
+
     def showInfoKeepInputDataType(self):
         txt = html_utils.paragraph("""
             If checked, the data type of the pre-processed data will be 
@@ -15939,7 +15954,7 @@ class PreProcessRecipeDialog(QBaseDialog):
         """)
         msg = widgets.myMessageBox(wrapText=False)
         msg.information(self, 'Keep input data type', txt)
-    
+
     def emitSignalSavePreprocData(self):
         self.sigSavePreprocData.emit(self)
            
@@ -15955,7 +15970,11 @@ class PreProcessRecipeDialog(QBaseDialog):
         self.loadingCircle.setVisible(disabled)
         self.infoLabel.setVisible(disabled)
         for button in self.allButtons:
-            button.setDisabled(disabled)
+            try:
+                button.setDisabled(disabled)
+            except RuntimeError as e:
+                printl(f'Error: {e}')
+                printl(f'Button: {button}')
     
     def apply(self, checked=False, signal: Signal=None):
         recipe = self.recipe()
@@ -16066,8 +16085,14 @@ class PreProcessRecipeDialogUtil(PreProcessRecipeDialog):
         self.cancel = False
         self.close()
 
-
 class CombineChannelsSetupDialog(PreProcessRecipeDialog):
+    sigValuesChanged = Signal()
+    sigApplyAllFrames = Signal(dict, bool)
+    sigApplyAllPos = Signal(dict, bool)
+    sigApplyAllZslices = Signal(dict, bool)
+    sigApplyAllFramesZslices = Signal(dict, bool)
+    sigApplyImage = Signal(dict, bool)
+
     def __init__(
             self,
             channel_names,
@@ -16090,7 +16115,9 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
             hideOnClosing=hideOnClosing,
         )
 
-        self.mainLayout.addWidget(self.combineChannelsWidget)
+        self.combineChannelsWidget.sigValuesChangedCombineChannels.connect(self.emitValuesChanged)
+
+        self.mainLayout.insertWidget(1, self.combineChannelsWidget)
         self.combineChannelsWidget.groupbox.setCheckable(False)
         self.combineChannelsWidget.groupbox.setTitle('Combine channels (Operator, Channel name, Multiplier, Add another channel)')
 
@@ -16098,7 +16125,7 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
 
         self.setWindowTitle('Combine channels')
         self.preProcessParamsWidget.hide()
-        # self.mainLayout.removeWidget(self.preProcessParamsWidget)
+        self.mainLayout.removeWidget(self.preProcessParamsWidget)
 
     def warnMultipliers(self):
         msg = widgets.myMessageBox(wrapText=False)
@@ -16145,7 +16172,27 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
                 step['multiplier'] = 1/len(self.selectedSteps)
             return False
         return msg.cancel
+    
+    def apply(self, checked=False, signal: Signal=None):
+        steps = self.combineChannelsWidget.steps()
+        keep_input_dtype = self.keepInputDataTypeToggle.isChecked()
+        if not steps:
+            return
+        
+        if signal is not None:
+            signal.emit(steps, keep_input_dtype)
 
+        if self.hideOnClosing:
+            self.setDisabled(True)
+            self.infoLabel.setText(
+                f"{self.sender().text().replace('Apply', 'Applying')}...<br>"
+                "<i>(Feel free to use Cell-ACDC while waiting)</i>"
+            )
+        else:
+            self.ok_cb()
+
+    def emitValuesChanged(self):
+        self.sigValuesChanged.emit()
 
     def ok_cb(self):
         self.keepInputDataType = self.keepInputDataTypeToggle.isChecked()
@@ -16188,24 +16235,28 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
 
         self.cancel = False
         self.close()
+
 class CombineChannelsSetupDialogUtil(CombineChannelsSetupDialog):
     def __init__(
             self,
             channel_names,
+            df_metadata=None,
             parent=None,
         ):
 
         super().__init__(
             channel_names,
             parent=parent,
+            df_metadata=df_metadata
             )
+
+        qutils.hide_and_delete_layout(self.buttonsLayout)
 
         buttonsLayout = widgets.CancelOkButtonsLayout()
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
 
         self.mainLayout.addLayout(buttonsLayout)  
-
 
 class CombineChannelsSetupDialogGUI(CombineChannelsSetupDialog):
     def __init__(
@@ -16228,9 +16279,24 @@ class CombineChannelsSetupDialogGUI(CombineChannelsSetupDialog):
             hideOnClosing=hideOnClosing,
         )
 
-        # self.preProcessParamsWidget.show()
-        self.applyCurrentFrameButton.show()
+        qutils.delete_widget(self.loadLastRecipeButton)
+        qutils.delete_widget(self.saveRecipeButton)
+        qutils.delete_widget(self.loadRecipeButton)
 
+        # self.allButtons.remove(self.loadLastRecipeButton)
+        self.allButtons.remove(self.saveRecipeButton)
+        self.allButtons.remove(self.loadRecipeButton)
+
+        self.previewCheckbox.setChecked(True)
+
+    def steps(self, return_keepInputDataType=False):
+        steps = self.combineChannelsWidget.steps()
+        if not return_keepInputDataType:
+            return steps
+        
+        keep_input_dtype = self.keepInputDataTypeToggle.isChecked()
+        return steps, keep_input_dtype # why does this not work???s 
+        
 # class FunctionParamsWidget(FunctionParamsDialog):
 #     sigReset = Signal()
 #     sigApply = Signal(object)

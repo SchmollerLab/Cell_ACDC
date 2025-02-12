@@ -2183,6 +2183,27 @@ class loadData:
         preprocess_data_arr = np.array(preprocess_data)
         return preprocess_data_arr
     
+    def combinedChannelsDataArray(self, check_integrity=True):
+        if not hasattr(self, 'combine_img_data'):
+            return
+        
+        combined_channels_data = []
+        for frame_i, raw_img in enumerate(self.img_data):
+            combined_channels_img = self.combine_img_data.get(frame_i)
+            if combined_channels_img is None:
+                if check_integrity:
+                    raise TypeError(
+                        'Not all frames have been preprocessed. '
+                    )
+                else:
+                    continue
+            
+            combined_channels_img = np.squeeze(combined_channels_img)
+            combined_channels_data.append(combined_channels_img)      
+        
+        combined_channels_data_arr = np.array(combined_channels_data)
+        return combined_channels_data_arr
+    
     def addEquationCombineMetrics(self, equation, colName, isMixedChannels):
         section = 'mixed_channels_equations' if isMixedChannels else 'equations'
         self.combineMetricsConfig[section][colName] = equation

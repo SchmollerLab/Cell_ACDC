@@ -1,9 +1,12 @@
 import typing
 
-from typing import Union, Tuple, Any
+from typing import Union, Tuple, Any, List
+import numpy as np
 
 class NotGUIParam:
     not_a_param = True
+
+ChannelsDict = dict[str, List[np.ndarray]]
 
 class RescaleIntensitiesInRangeHow:
     values = ['percentage', 'image', 'absolute']

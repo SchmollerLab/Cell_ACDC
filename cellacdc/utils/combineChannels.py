@@ -17,9 +17,9 @@ class CombineChannelsUtil(NewThreadMultipleExpBaseUtil):
             parent=parent
         )
         self.expPaths = expPaths
-    
+
     def runWorker(self):
-        self.worker = workers.CombineChannelsWorker(self)
+        self.worker = workers.CombineChannelsWorkerUtil(self)
         self.worker.sigAskAppendName.connect(self.askAppendName)
         self.worker.sigAskSetup.connect(self.askSetup)
         self.worker.sigAborted.connect(self.workerAborted)

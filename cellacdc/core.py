@@ -1,6 +1,6 @@
 import traceback
 import inspect
-from typing import List, Dict, Any, Iterable, Tuple, Callable
+from typing import List, Dict, Any, Iterable, Tuple, Callable, Union
 import os
 import time
 import concurrent.futures
@@ -39,6 +39,10 @@ from . import config
 from . import preprocess
 from .config import PREPROCESS_MAPPER
 from . import io
+
+from .types import (
+    ChannelsDict
+)
 
 class HeadlessSignal:
     def __init__(self, *args):
@@ -2828,16 +2832,26 @@ def preprocess_image_from_recipe_multithread(
     return preprocessed_image
 
 def combine_channels_multithread(
+    steps: Dict[str, Dict[str, Any]],
     image_paths: List[str],
-    channel_names: List[str],
-    operators: List[str],
-    multipliers: List[float],
+    # channel_names: List[str],
+    # operators: List[str],
+    # multipliers: List[float],
     keep_input_data_type: bool,
     save_filepaths: List[str]=None,
     n_threads: int=None,
     signals=None,
     logger_func: Callable=None
     ):
+
+    channel_names = []
+    multipliers = []
+    operators = []
+
+    for step in steps.values():
+        channel_names.append(step['channel'])
+        multipliers.append(step['multiplier'])
+        operators.append(step['operator'])
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=n_threads) as executor:
         if signals:
@@ -2861,32 +2875,114 @@ def combine_channels_multithread(
             else:
                 pbar.update()
 
+def combine_channels_multithread_return_imgs(
+    steps: Dict[str, Dict[str, Any]],
+    data, # this weird data struc from acdc, find in load.py
+    keep_input_data_type: bool,
+    keys: List[Tuple[Union[int, None], Union[int, None], Union[int, None]]],
+    n_threads: int=None,
+    signals=None,
+    logger_func: Callable=None,
+    ):
+
+    channel_names = []
+    multipliers = []
+    operators = []
+
+    for step in steps.values():
+        channel_names.append(step['channel'])
+        multipliers.append(step['multiplier'])
+        operators.append(step['operator'])
+
+    total = len(keys)
+    
+    output_imgs = [None] * total
+    keys_out = [0] * total
+    res_i = 0
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=n_threads) as executor:
+        if signals:
+            signals.initProgressBar.emit(total)
+        else:
+            pbar = tqdm(total=len(total), ncols=100, desc='Combining channels')
+        func = partial(
+            combine_channels_executor_map_return_img,
+            data=data,
+            channel_names=channel_names,
+            operators=operators,
+            multipliers=multipliers,
+            keep_input_data_type=keep_input_data_type,
+            return_img=True,
+            logger_func=logger_func,
+        )
+        iterable = keys
+        result = executor.map(func, iterable)
+        for res in result:
+            output_img, key = res
+            output_imgs[res_i] = output_img
+            keys_out[res_i] = key
+            res_i += 1
+
+            if signals:
+                signals.progressBar.emit(1)
+            else:
+                pbar.update()
+
+    return output_imgs, keys_out
+
 def combine_channels_executor_map(args, **kwargs):
     image_path, save_filepath = args
     kwargs['save_filepath'] = save_filepath
-    return combine_channels_func(image_path, **kwargs)
+    kwargs['image_path'] = image_path
+    return combine_channels_func(**kwargs)
+
+def combine_channels_executor_map_return_img(args, **kwargs):
+    key = args
+    kwargs['key'] = key
+    return combine_channels_func(**kwargs)
 
 def combine_channels_func(
-        image_path: str,
         channel_names: List[str],
         operators: List[str],
         multipliers: List[float],
         keep_input_data_type: bool,
         save_filepath: str=None,
         return_img: bool=False,
-        logger_func: Callable=None
+        logger_func: Callable=None,
+        image_path: str = None,
+        key: str = None,
+        data = None,
+
     ):
     if not save_filepath and not return_img:
         raise ValueError('Either save_filepath must be provided or return_img must be true')
-
+    
+    if return_img and not key:
+        raise ValueError('If return_img is true, key must be provided')
+    
     ch_image_data_list = []
-    for channel in channel_names:
-        ch_filepath = load.get_filename_from_channel(image_path, channel)
-        ch_image_data = load.load_image_file(ch_filepath)
+    if not data:
+        for channel in channel_names:
+            ch_filepath = load.get_filename_from_channel(image_path, channel)
+            ch_image_data = load.load_image_file(ch_filepath)
 
-        ch_image_data_list.append(ch_image_data)
+            ch_image_data_list.append(ch_image_data)
+    else:
+        posData = data[key[0]]
+        fluo_data_dict = posData.fluo_data_dict
+        random_ch_name = f'{posData.basename}{channel_names[0]}'
+        num_dim = fluo_data_dict[random_ch_name].ndim
 
-    # pbar = tqdm(total=len(ch_image_data_list), ncols=100, desc='Applying multipliers to images')
+        for channel in channel_names:
+            channel_full_name = f'{posData.basename}{channel}'
+            if num_dim == 3:
+                ch_image_data = fluo_data_dict[channel_full_name][key[1]]
+                ch_image_data_list.append(ch_image_data)
+            elif num_dim == 4:
+                ch_image_data = fluo_data_dict[channel_full_name][key[1]][key[2]]
+                ch_image_data_list.append(ch_image_data)
+            else:
+                raise ValueError(f'Invalid number of dimensions, is your data maybe corrupted?\n Ndims: {num_dim}\n Channel name: {channel_full_name}')
 
     original_dtype = ch_image_data_list[0].dtype
 
@@ -2953,12 +3049,15 @@ def combine_channels_func(
 
         txt = f'{prefix}Converted output image to {original_dtype} using {method}, which is {warning}'
         if logger_func:
-            logger_func(txt)
+            try:
+                logger_func(txt)
+            except Exception as err:
+                printl(txt)
         else:
             printl(txt)
 
     if return_img:
-        return output_img
+        return output_img, key
     
     txt = f'Saving combined image to {save_filepath}'
     if logger_func:
@@ -2969,6 +3068,12 @@ def combine_channels_func(
         save_filepath, output_img
     )
     return None
+
+def get_selected_channels(steps):
+    selected_channel = set()
+    for step in steps.values():
+        selected_channel.add(step['channel'])
+    return selected_channel
 
 def split_segm_masks_mother_bud_line(
         cells_segm_data, segm_data_to_split, acdc_df, 
