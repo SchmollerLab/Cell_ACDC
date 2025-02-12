@@ -17417,8 +17417,9 @@ class guiWin(QMainWindow):
         self.getChData(requ_ch=selected_channel)
 
         z_slice = self.zSliceScrollBar.sliderPosition()
+        pos_i = self.pos_i
 
-        key = (self.pos_i, self.data[self.pos_i].frame_i, z_slice)
+        key = (pos_i, self.data[pos_i].frame_i, z_slice)
 
         self.combineWorker.setupJob(
             self.data, 
@@ -17429,7 +17430,9 @@ class guiWin(QMainWindow):
         
         self.combineWorker.wakeUp()
     
-    def combineZStack(self, steps: List[Dict[str, Any]]):
+    def combineZStack(self, 
+                      steps: List[Dict[str, Any]]=None,
+                      keep_input_data_type:bool=None,):
 
         if steps and not keep_input_data_type:
             raise ValueError('keep_input_data_type must be set if steps is set')
@@ -17455,7 +17458,9 @@ class guiWin(QMainWindow):
 
         self.combineWorker.wakeUp()
     
-    def combineAllFrames(self, steps: List[Dict[str, Any]]):
+    def combineAllFrames(self, 
+                         steps: List[Dict[str, Any]]=None,
+                         keep_input_data_type:bool=None,):
         if steps and not keep_input_data_type:
             raise ValueError('keep_input_data_type must be set if steps is set')
         
@@ -17479,7 +17484,9 @@ class guiWin(QMainWindow):
 
         self.combineWorker.wakeUp()
     
-    def combineAllPos(self, keep_input_data_type, steps: List[Dict[str, Any]]):
+    def combineAllPos(self, 
+                      steps: List[Dict[str, Any]]=None,
+                      keep_input_data_type:bool=None,):
         if steps and not keep_input_data_type:
             raise ValueError('keep_input_data_type must be set if steps is set')
         
@@ -17506,7 +17513,7 @@ class guiWin(QMainWindow):
 
         self.combineWorker.wakeUp()
 
-    def preprocessCurrentImage(self, recipe: List[Dict[str, Any]]): # to do
+    def preprocessCurrentImage(self, recipe: List[Dict[str, Any]]):
         txt = 'Pre-processing current image...'
         self.logger.info(txt)
         self.statusBarLabel.setText(txt)
@@ -17682,7 +17689,6 @@ class guiWin(QMainWindow):
             self.combineDialogSavecombinedData
         )
 
-        
         if self.combineWorker is not None:
             return
         
