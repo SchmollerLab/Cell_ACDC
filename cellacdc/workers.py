@@ -5565,41 +5565,39 @@ class CombineWorkerGUI(CustomPreprocessWorkerGUI):
             key: Tuple[Union[int, None], Union[int, None], Union[int, None]]
         ):
 
+        new_keys = []
         key = list(key)
-        if key[0] is not None:
-            key[0] = [key[0]]
-        else:
+        if key[0] is None:
             pos_number = len(data)
             key[0] = list(range(pos_number))
-
-        if key[1] is not None:
-            key[1] = [key[1]]
         else:
-            loc_list = []
-            for pos_i in key[0]:
+            key[0] = [key[0]]
+
+        for pos_i in key[0]:
+            new_keys_per_pos = [[pos_i]]
+            if key[1] is None:
                 frames = data[pos_i].SizeT
-                loc_list.append(list(range(frames)))
-            key[1] = loc_list
-
-        if key[2] is not None:
-            key[2] = [key[2]]
-        else:
-            loc_list = []
-            for pos_i in key[0]:
+                new_keys_per_pos.append(list(range(frames)))
+            else:
+                new_keys_per_pos.append([key[1]])
+            
+            if key[2] is None:
                 z_slices = data[pos_i].SizeZ
                 if not z_slices:
                     z_slices = 1
+                new_keys_per_pos.append(list(range(z_slices)))
+            else:
+                new_keys_per_pos.append([key[2]])
 
-                loc_list.append(list(range(z_slices)))
-            key[2] = loc_list
+            new_keys_per_pos = list(itertools.product(*new_keys_per_pos))
+            new_keys.extend(new_keys_per_pos)
 
-        keys = list(itertools.product(*key))
-
+        printl(new_keys)
         output_imgs, out_keys = core.combine_channels_multithread_return_imgs(
             steps=steps,
             data=data,
             keep_input_data_type=keep_input_data_type,
-            keys=keys,
+            keys=new_keys,
             logger_func=self.logger_func,
             signals=self.signals,
 

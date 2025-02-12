@@ -6447,7 +6447,6 @@ class BaseImageItem(pg.ImageItem):
             minMaxValuesMapper = self.minMaxValuesMapperPreproc
         elif self.useCombined and self.minMaxValuesMapperCombined is not None:
             minMaxValuesMapper = self.minMaxValuesMapperCombined
-            printl(f'minMaxValuesMapperCombined: {minMaxValuesMapper}')
         else:
             minMaxValuesMapper = self.minMaxValuesMapper
         

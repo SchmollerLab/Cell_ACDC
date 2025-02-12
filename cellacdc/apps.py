@@ -15930,7 +15930,7 @@ class PreProcessRecipeDialog(QBaseDialog):
         self.allButtons.append(self.savePreprocButton)
         self.savePreprocButton.clicked.connect(self.emitSignalSavePreprocData)
         
-        self.previewCheckbox.toggled.connect(self.sigPreviewToggled.emit)
+        self.previewCheckbox.toggled.connect(self.emitSigPreviewToggled)
         self.preProcessParamsWidget.sigValuesChanged.connect(
             self.emitValuesChanged
         )
@@ -15943,6 +15943,9 @@ class PreProcessRecipeDialog(QBaseDialog):
         self.mainLayout = mainLayout
         
         self.setLayout(mainLayout)
+
+    def emitSigPreviewToggled(self):
+        self.sigPreviewToggled.emit(self.previewCheckbox.isChecked())
 
     def showInfoKeepInputDataType(self):
         txt = html_utils.paragraph("""
@@ -16127,6 +16130,8 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         self.setWindowTitle('Combine channels')
         self.preProcessParamsWidget.hide()
         self.mainLayout.removeWidget(self.preProcessParamsWidget)
+
+        self.savePreprocButton.setText('Save combined data...')
 
     def warnMultipliers(self):
         msg = widgets.myMessageBox(wrapText=False)

@@ -2172,7 +2172,7 @@ class loadData:
             if preprocess_img is None:
                 if check_integrity:
                     raise TypeError(
-                        'Not all frames have been preprocessed. '
+                        'Not all frames have been processed.'
                     )
                 else:
                     continue
@@ -2193,7 +2193,7 @@ class loadData:
             if combined_channels_img is None:
                 if check_integrity:
                     raise TypeError(
-                        'Not all frames have been preprocessed. '
+                        'Not all frames have been processed.'
                     )
                 else:
                     continue

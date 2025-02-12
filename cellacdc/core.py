@@ -9,6 +9,7 @@ from importlib import import_module
 import numpy as np
 import math
 import cv2
+import skimage.exposure
 import skimage.measure
 import skimage.morphology
 import skimage.exposure
@@ -2965,7 +2966,7 @@ def combine_channels_func(
         for channel in channel_names:
             ch_filepath = load.get_filename_from_channel(image_path, channel)
             ch_image_data = load.load_image_file(ch_filepath)
-
+            ch_image_data = myutils.img_to_float(ch_image_data)
             ch_image_data_list.append(ch_image_data)
     else:
         posData = data[key[0]]
@@ -2997,8 +2998,6 @@ def combine_channels_func(
     if all(x == "+" for x in operators):
         output_img = np.sum(ch_image_data_list, axis=0)
     else:
-        # pbar = tqdm(total=len(ch_image_data_list), ncols=100, desc='Applying logical operators')
-
         for i in range(len(ch_image_data_list)):
             if i == 0:
                 if operators[i] == "+":
@@ -3018,19 +3017,20 @@ def combine_channels_func(
                     output_img /= ch_image_data_list[i]
                 else:
                     raise ValueError(f'Invalid operator: {operators[i]}')
-            # pbar.update()
-        # pbar.close() 
 
+    output_img = skimage.exposure.rescale_intensity(
+        output_img, out_range=(0, 1)
+    )
     if keep_input_data_type:
         try:
             output_img = myutils.convert_to_dtype(
-                output_img, ch_image_data.dtype
+                output_img, original_dtype
             )
             method = 'cellacdc.myutils.convert_to_dtype'
             warning = 'safe'
             prefix = ''
         except Exception as err:
-            dtype_info = np.iinfo(ch_image_data.dtype)
+            dtype_info = np.iinfo(original_dtype)
             dtype_max = dtype_info.max
             dtype_min = dtype_info.min
             if output_img.max() <= dtype_max and output_img.min() >= dtype_min:
@@ -3040,7 +3040,7 @@ def combine_channels_func(
                 prefix = '[WARNING]: '
             else:
                 output_img = skimage.exposure.rescale_intensity(
-                    output_img, out_range=original_dtype
+                    output_img, out_range=(dtype_min, dtype_max)
                 )
                 output_img = output_img.astype(original_dtype)
                 method = 'skimage.exposure.rescale_intensity -> output_img.astype(original_dtype)'

@@ -2391,7 +2391,6 @@ class guiWin(QMainWindow):
             processed_data: List[np.ndarray], 
             keys: List[Tuple[int, int, int]]
         ):
-        
         unique_pos = {key[0] for key in keys}
         per_pos_data = {pos_i: [] for pos_i in unique_pos}
 
@@ -2413,15 +2412,19 @@ class guiWin(QMainWindow):
                     self.img1.updateMinMaxValuesCombinedData(
                             self.data, pos_i, frame_i, z_slice
                         )
-            else:
+            elif n_dim_img == 3:
                 for key, processed_data in per_pos_data[pos_i]:
                     pos_i, frame_i, z_slice = key
                     posData.combine_img_data[frame_i] = processed_data
                     self.img1.updateMinMaxValuesCombinedData(
                         self.data, pos_i, frame_i, z_slice
                     )
+            else:
+                raise ValueError('Invalid number of dimensions in img_data.')
         
+        posData = self.data[self.pos_i]
         curr_pos_i, curr_frame_i, curr_z_slice = self.pos_i,self.data[self.pos_i].frame_i, self.z_slice_index()
+        current_combine_img = posData.combine_img_data[curr_frame_i]
         self.img1.updateMinMaxValuesCombinedData(
             self.data, curr_pos_i, curr_frame_i, curr_z_slice
         )
@@ -2432,13 +2435,14 @@ class guiWin(QMainWindow):
         self.getChData(requ_ch=requ_channels, pos_i=pos_i)
         self.combineWorker.wake_waitCondLoadFluoChannels()
     
-    def combineWorkerDone( # to do?
+    def combineWorkerDone(
             self, 
             processed_data: List[np.ndarray], 
             keys: List[Tuple[int, int, int]]
         ):
         self.setStatusBarLabel(log=False)
         self.combineDialog.appliedFinished()
+        printl(keys)
 
         unique_pos = {key[0] for key in keys}
         per_pos_data = {pos_i: [] for pos_i in unique_pos}
@@ -16082,11 +16086,14 @@ class guiWin(QMainWindow):
         self.preprocessDialog.show()
         self.preprocessDialog.raise_()
         self.preprocessDialog.activateWindow()
+        self.preprocessDialog.emitSigPreviewToggled()
+
     
     def combineChannelsActionTriggered(self):
         self.combineDialog.show()
         self.combineDialog.raise_()
         self.combineDialog.activateWindow()
+        self.combineDialog.emitSigPreviewToggled()
     
     def zoomToObjsActionCallback(self):
         self.zoomToCells(enforce=True)
@@ -16218,7 +16225,7 @@ class guiWin(QMainWindow):
             self.logger.warning('Pre-processing recipe not initialized yet.')
             return
         
-        self.preprocessCurrentImage(recipe)
+        self.updatePreprocessPreview(recipe=recipe)
         
     def combineDialogStepsChanged(self):
         steps, keep_input_type = self.combineDialog.steps(return_keepInputDataType=True)
@@ -16226,9 +16233,24 @@ class guiWin(QMainWindow):
             self.logger.warning('Combine channels steps not initialized yet.')
             return
         
-        self.combineCurrentImage(steps, keep_input_type)
+        self.updateCombineChannelsPreview(steps=steps, keep_input_type=keep_input_type)
     
-    def combineDialogSavecombinedData(self, dialog):
+    def combineDialogSaveCombinedData(self, dialog):
+        # here check if all data has been processed?
+        posData = self.data[self.pos_i]
+        
+        try:
+            posData.combinedChannelsDataArray()
+        except TypeError as e:
+            if 'Not all frames have been processed.' in str(e):
+                msg = widgets.myMessageBox()
+                txt = html_utils.paragraph(
+                    'Not all frames have been processed.<br>'
+                    'Please process all frames before saving.'
+                )
+                msg.warning(self, 'Process all data before saving', txt)
+                return
+
         helpText = (
             """
             The combined channels file will be saved with a different 
@@ -16237,8 +16259,6 @@ class guiWin(QMainWindow):
             the name will be the same as the original file base.
             """
         )
-        posData = self.data[self.pos_i]
-
         win = apps.filenameDialog(
             basename=f'{posData.basename}',
             ext='.tif',
@@ -16301,7 +16321,22 @@ class guiWin(QMainWindow):
         )
         self.saveCombinedChannelsThread.start()
 
-    def preprocessDialogSavePreprocessedData(self, dialog): # to do
+    def preprocessDialogSavePreprocessedData(self, dialog):
+        posData = self.data[self.pos_i]
+        
+        try:
+            posData.preprocessedDataArray()
+        except TypeError as e:
+            if 'Not all frames have been processed.' in str(e):
+                msg = widgets.myMessageBox()
+                txt = html_utils.paragraph(
+                    'Not all frames have been processed.<br>'
+                    'Please process all frames before saving.'
+                )
+                msg.warning(self, 'Process all data before saving', txt)
+                return
+
+
         helpText = (
             """
             The preprocessed image file will be saved with a different 
@@ -16311,7 +16346,6 @@ class guiWin(QMainWindow):
             """
         )
         
-        posData = self.data[self.pos_i]
         
         win = apps.filenameDialog(
             basename=f'{posData.basename}{self.user_ch_name}',
@@ -16393,7 +16427,7 @@ class guiWin(QMainWindow):
             key
         )
 
-    def combineEnqueueCurrentImage(self, steps, keep_input_type): # to do
+    def combineEnqueueCurrentImage(self, steps, keep_input_type):
         posData = self.data[self.pos_i]
 
         selected_channel = core.get_selected_channels(steps)
@@ -16439,7 +16473,11 @@ class guiWin(QMainWindow):
         if not self.preprocessDialog.previewCheckbox.isChecked() and not force:
             return
         
-        recipe = self.preprocessDialog.recipe()
+        if kwargs.get('recipe') is None:
+            recipe = self.preprocessDialog.recipe()
+        else:
+            recipe = kwargs.get('recipe')
+
         if recipe is None:
             self.logger.warning('Pre-processing recipe not initialized yet.')
             return
@@ -16459,7 +16497,12 @@ class guiWin(QMainWindow):
         if not self.combineDialog.previewCheckbox.isChecked() and not force:
             return
         
-        steps, keep_input_type = self.combineDialog.steps(return_keepInputDataType=True)
+        if kwargs.get('steps') is None:
+            steps, keep_input_type = self.combineDialog.steps(return_keepInputDataType=True)
+        else:
+            steps = kwargs.get('steps')
+            keep_input_type = kwargs.get('keep_input_type')
+
         if steps is None:
             self.logger.warning('Combine channels steps not initialized yet.')
             return
@@ -16499,6 +16542,7 @@ class guiWin(QMainWindow):
         self.postProcessing()
         self.updateScrollbars()
         self.updatePreprocessPreview()
+        self.updateCombineChannelsPreview()
         self.updateAllImages()
         self.computeSegm()
         self.zoomOut()
@@ -16661,6 +16705,7 @@ class guiWin(QMainWindow):
                 return
             
             self.updatePreprocessPreview()
+            self.updateCombineChannelsPreview()
             self.postProcessing()
             self.tracking(storeUndo=True)
             notEnoughG1Cells, proceed = self.attempt_auto_cca()
@@ -16977,6 +17022,7 @@ class guiWin(QMainWindow):
             _, never_visited = self.get_data()
             self.resetExpandLabel()
             self.updatePreprocessPreview()
+            self.updateCombineChannelsPreview()
             self.postProcessing()
             self.tracking()
             self.updateAllImages()
@@ -17686,7 +17732,7 @@ class guiWin(QMainWindow):
             self.combineDialogStepsChanged
         )
         self.combineDialog.sigSavePreprocData.connect(
-            self.combineDialogSavecombinedData
+            self.combineDialogSaveCombinedData
         )
 
         if self.combineWorker is not None:
@@ -18469,6 +18515,7 @@ class guiWin(QMainWindow):
                 printl(idx)
                 
         self.updatePreprocessPreview()
+        self.updateCombineChannelsPreview()
         self.highlightedID = self.getHighlightedID()
         self.updateAllImages(computePointsLayers=False)
 
@@ -23799,7 +23846,7 @@ class guiWin(QMainWindow):
                 #     'Pre-processed image not existing --> returning raw image'
                 # )
                 return self.getRawImageLayer0(frame_i)
-        elif self.viewPreprocDataToggle.isChecked():
+        elif self.viewCombineChannelDataToggle.isChecked():
             try:
                 img = posData.combine_img_data[frame_i]
                 if posData.SizeZ == 1:
@@ -24700,7 +24747,7 @@ class guiWin(QMainWindow):
         if posData.SizeZ > 1:
             z = self.zSliceScrollBar.sliderPosition()
             self.img1.setCurrentZsliceIndex(z)
-            
+
         self.img1.setImage(
             img, next_frame_image=self.nextFrameImage(),
             scrollbar_value=posData.frame_i+2
