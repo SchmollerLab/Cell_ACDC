@@ -29,6 +29,7 @@ environment.yml
 # requirements.txt
 conda_env_list_commands.txt
 
+_deprecated
 notebooks/testing.ipynb
 notebooks/Untitled.ipynb
 notebooks/test.ipynb

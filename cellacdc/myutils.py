@@ -373,10 +373,18 @@ def delete_older_log_files(logs_path):
 def _log_system_info(logger, log_path, is_cli=False, also_spotmax=False):
     logger.info(f'Initialized log file "{log_path}"')
     
+    version = read_version()
+    release_date = get_date_from_version(version, package='cellacdc')
+    
     py_ver = sys.version_info
     python_version = f'{py_ver.major}.{py_ver.minor}.{py_ver.micro}'
     logger.info(f'Running Python v{python_version} from "{sys.exec_prefix}"')    
-    logger.info(f'Cell-ACDC installation directory: "{cellacdc_path}"')
+    logger.info(
+        f'Cell-ACDC info:\n'
+        f'  * Installation directory: "{cellacdc_path}"\n'
+        f'  * Version: "{version}"\n'
+        f'  * Released on: "{release_date}"'
+    )
     logger.info(f'System version: {sys.version}')
     logger.info(f'Platform: {platform.platform()}')
     
@@ -939,13 +947,13 @@ def insertModelArgSpect(
             updated_params.append(param)
     return updated_params
 
-def get_function_argspec(function):
+def get_function_argspec(function, args_to_skip={'logger_func',}):
     argspecs = inspect.getfullargspec(function)
     kwargs_type_hints = typing.get_type_hints(function)
     docstring = function.__doc__
     params = params_to_ArgSpec(
         argspecs, kwargs_type_hints, docstring, 
-        args_to_skip={'logger_func',}
+        args_to_skip=args_to_skip
     )
     return params
 
@@ -1459,7 +1467,7 @@ def _model_url(model_name, return_alternative=False):
         ]
         file_size = [124142981, 124143031, 124144759]
         alternative_url = 'https://github.com/rahi-lab/YeaZ-GUI#installation'
-    elif model_name == 'deepsea':
+    elif model_name == 'DeepSea':
         url = [
             'https://github.com/abzargar/DeepSea/raw/master/deepsea/trained_models/segmentation.pth',
             'https://github.com/abzargar/DeepSea/raw/master/deepsea/trained_models/tracker.pth'
@@ -1526,7 +1534,7 @@ def _download_segment_anything_models():
         shutil.move(temp_dst, final_dst)
 
 def _download_deepsea_models():
-    urls, file_sizes = _model_url('deepsea')
+    urls, file_sizes = _model_url('DeepSea')
     temp_model_path = tempfile.mkdtemp()
     _, final_model_path = (
         get_model_path('deepsea', create_temp_dir=False)
@@ -2204,9 +2212,8 @@ def img_to_float(img, force_dtype=None, force_missing_dtype=None):
     uint8_max = np.iinfo(np.uint8).max
     uint16_max = np.iinfo(np.uint16).max
     uint32_max = np.iinfo(np.uint32).max
-    
+
     img = img.astype(float)
-    
     if force_dtype is not None:
         dtype_max = np.iinfo(force_dtype).max
         img = img/dtype_max
@@ -2268,18 +2275,32 @@ def float_img_to_dtype(img, dtype):
     if dtype == np.uint16:
         return skimage.img_as_uint(img)
     
+    if dtype == np.float32:
+        return img.astype(np.float32)
+    
+    if dtype == np.float64:
+        return img.astype(np.float64)
+    
     raise TypeError(
         f'Invalid output data type `{dtype}`. '
-        'Valid output data types are `np.uin8` and `np.uint16`'
+        'Valid output data types are `np.uint8` and `np.uint16`'
     )
 
-def scale_float(data, force_dtype=None, force_missing_dtype=None):
+def convert_to_dtype(data: np.ndarray, dtype):
+    if data.dtype == dtype:
+        return data
     val = data[tuple([0]*data.ndim)]
     if isinstance(val, (np.floating, float)):
-        data = img_to_float(
-            data, 
-            force_dtype=force_dtype, 
-            force_missing_dtype=force_missing_dtype
+        data = float_img_to_dtype(data, dtype)
+    elif dtype == np.uint8:
+        data = np.round(img_to_float(data)*255).astype(np.uint8)
+    elif dtype == np.uint16:
+        data = np.round(img_to_float(data)*65535).astype(np.uint16)
+    else:
+        raise TypeError(
+            f'Invalid output data type `{dtype}`. '
+            'Valid data types are floating-point format, `np.uint8` '
+            'and `np.uint16`'
         )
     return data
 
@@ -2438,10 +2459,13 @@ def check_napari_plugin(plugin_name, module_name, parent=None):
         msg.critical(parent, f'Napari plugin required', txt)
         raise e
 
-def _install_pip_package(pkg_name):
+def _install_pip_package(pkg_name, install_dependencies=True):
+    command = [sys.executable, '-m', 'pip', 'install', pkg_name]
+    if not install_dependencies:
+        command.append('--no-deps')
     subprocess.check_call(
-        [sys.executable, '-m', 'pip', 'install', '-U', pkg_name]
-    )
+        command
+        )
 
 def uninstall_pip_package(pkg_name):
     subprocess.check_call(
@@ -2634,7 +2658,9 @@ def check_install_package(
         force_upgrade=False,
         upgrade=False, 
         min_version='', 
-        max_version=''
+        max_version='',
+        install_dependencies=True,
+        return_outcome=False
     ):
     """Try to import a package. If import fails, ask user to install it 
     automatically.
@@ -2676,6 +2702,10 @@ def check_install_package(
         If not empty it must be a valid version `major[.minor][.patch]` where 
         minor and patch are optional. If the installed package is newer the 
         upgrade will be forced. 
+    install_dependencies : bool, optional
+        If False, the `--no-deps` flag will be added to the pip command.
+    return_outcome : bool, optional
+        If True, returns 1 on successfull action
         
     Raises
     ------
@@ -2729,12 +2759,32 @@ def check_install_package(
                     max_version=max_version, 
                     min_version=min_version
                 )
-                _install_pip_package(pkg_command)
+                _install_pip_package(pkg_command, install_dependencies=install_dependencies)
         except Exception as e:
             printl(traceback.format_exc())
             _inform_install_package_failed(
                 pkg_name, parent=parent, do_exit=raise_on_cancel
             )
+        if return_outcome:
+            return True
+
+def check_install_custom_dependencies(custom_install_requires, *args, **kwargs):
+    """Used to install a package with custom dependencies, usefull if they have random pinned versions for their dependencies.
+    For *args and **kwargs see `myutils.check_install_package`.
+
+    Parameters
+    ----------
+    custom_install_requires : list
+        list of dependencies. Check either requirements.txt, setup.py, setup.cfg, pyproject.toml, or any other file that lists the dependencies.
+        For formatting of the dependencies with min max version, use _get_pkg_command_pip_install.
+    """
+    kwargs['install_dependencies'] = False
+    kwargs['return_outcome'] = True
+    success = check_install_package(*args, **kwargs)
+    if not success:
+        return
+    for pkg_name in custom_install_requires:
+        _install_pip_package(pkg_name)
 
 def get_chained_attr(_object, _name):
     for attr in _name.split('.'):
@@ -2745,22 +2795,28 @@ def check_matplotlib_version(qparent=None):
     mpl_version = get_package_version('matplotlib')  
     mpl_version_digits = mpl_version.split('.')
 
-    mpl_version = float(f'{mpl_version_digits[0]}.{mpl_version_digits[1]}')
-    if mpl_version < 3.5:
-        proceed = _install_package_msg('matplotlib', parent=qparent, upgrade=True)
-        if not proceed:
-            raise ModuleNotFoundError(
-                f'User aborted "matplotlib" installation'
-            )
-        import subprocess
-        try:
-            subprocess.check_call(
-                [sys.executable, '-m', 'pip', 'install', '-U', 'matplotlib']
-            )
-        except Exception as e:
-            printl(traceback.format_exc())
-            _inform_install_package_failed(
-                'matplotlib', parent=qparent, do_exit=False
+    mpl_major = int(mpl_version_digits[0])
+    mpl_minor = int(mpl_version_digits[1])
+    is_less_than_3_5 = (
+        mpl_major < 3 or (mpl_major >= 3 and mpl_minor < 5)
+    )
+    if not is_less_than_3_5:
+        return 
+    
+    proceed = _install_package_msg('matplotlib', parent=qparent, upgrade=True)
+    if not proceed:
+        raise ModuleNotFoundError(
+            f'User aborted "matplotlib" installation'
+        )
+    import subprocess
+    try:
+        subprocess.check_call(
+            [sys.executable, '-m', 'pip', 'install', '-U', 'matplotlib']
+        )
+    except Exception as e:
+        printl(traceback.format_exc())
+        _inform_install_package_failed(
+            'matplotlib', parent=qparent, do_exit=False
             )
             
 def _inform_install_package_failed(pkg_name, parent=None, do_exit=True):

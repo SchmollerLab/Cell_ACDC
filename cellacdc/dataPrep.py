@@ -578,6 +578,12 @@ class dataPrepWin(QMainWindow):
         self.updateNavigateItems()
         posData = self.data[self.pos_i]
         img = self.getImage(posData, posData.img_data, self.frame_i)
+        if self.zProjComboBox.currentText() == 'single z-slice':
+            zslice = self.zSliceScrollBar.sliderPosition()
+        else:
+            zslice = None
+            
+        self.img.setCurrentZsliceIndex(zslice)
         self.img.setCurrentPosIndex(self.pos_i)
         self.img.setCurrentFrameIndex(self.frame_i)
         self.img.setImage(img)
@@ -2431,6 +2437,7 @@ class dataPrepWin(QMainWindow):
         # Step 3. Add the actions to the menu
         self.openRecentMenu.addActions(actions)
 
+    @exception_handler
     def loadFiles(self, exp_path, user_ch_file_paths, user_ch_name):
         self.titleLabel.setText(
             'Loading data (check progress in the terminal)...', 

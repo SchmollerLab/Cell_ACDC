@@ -58,7 +58,6 @@ acdc_df_bool_cols = [
     'is_cell_dead',
     'is_cell_excluded',
     'is_history_known',
-    'corrected_assignment'
 ]
 
 acdc_df_str_cols = {'cell_cycle_stage': str, 'relationship': str}
@@ -386,6 +385,50 @@ def _add_will_divide_column(acdc_df):
 
     return acdc_df
 
+def _fix_corrected_assignment_i(acdc_df: pd.DataFrame):
+    """Replaces the column 'corrected_assignment' with the newer 
+    'corrected_on_frame_i'
+
+    Parameters
+    ----------
+    acdc_df : pd.DataFrame
+        Annotations and metrics dataframe (from the `acdc_output` CSV file) 
+        with ['frame_i', 'Cell_ID'] as index
+
+    Returns
+    -------
+    pd.DataFrame
+        acdc_df with correct `corrected_on_frame_i` and `corrected_assignment` 
+        removed.
+    """ 
+    
+    if 'corrected_assignment' not in acdc_df.columns:
+        return acdc_df
+    
+    if 'corrected_on_frame_i' in acdc_df.columns:
+        if (acdc_df['corrected_on_frame_i'] > -1).any():
+            acdc_df = acdc_df.drop(
+                columns='corrected_assignment', errors='ignore'
+            )
+            return acdc_df
+    
+    for ID, df in acdc_df.groupby(level=1):
+        # df = df[['corrected_assignment']].sort_index()
+        df['block'] = (
+            df['corrected_assignment'].shift(1) != df['corrected_assignment']
+        ).astype(int).cumsum()
+        df = df[df['corrected_assignment']>0]
+        for block, df_block in df.reset_index().groupby('block'):
+            corr_on_frame_i = df_block['frame_i'].min()
+            df_block = df_block.set_index(['frame_i', 'Cell_ID'])
+            corr_on_index = df_block.index
+            acdc_df.loc[corr_on_index, 'corrected_on_frame_i'] = corr_on_frame_i
+    
+    # acdc_df['corrected_on_frame_i'] = acdc_df['corrected_on_frame_i'].astype(int)
+    acdc_df = acdc_df.drop(columns='corrected_assignment')
+    
+    return acdc_df
+
 def _fix_will_divide(acdc_df):
     """Resetting annotaions in GUI sometimes does not fully reset `will_divide` 
     column. Here we set `will_divide` back to 0 for those cells whose 
@@ -448,6 +491,14 @@ def _add_missing_columns(acdc_df):
     
     return acdc_df
 
+def _ensure_acdc_df_latest_compatibility(acdc_df):
+    acdc_df = _parse_loaded_acdc_df(acdc_df)
+    acdc_df = _add_missing_columns(acdc_df)
+    acdc_df = _add_will_divide_column(acdc_df)
+    acdc_df = _fix_will_divide(acdc_df)
+    acdc_df = _fix_corrected_assignment_i(acdc_df)
+    return acdc_df
+
 def _parse_loaded_acdc_df(acdc_df):
     acdc_df = acdc_df.set_index(['frame_i', 'Cell_ID']).sort_index()
     # remove duplicates saved by mistake or bugs
@@ -475,10 +526,8 @@ def _load_acdc_df_file(acdc_df_file_path):
         acdc_df[acdc_df_drop_cca.columns] = acdc_df_drop_cca
     except KeyError:
         pass
-    acdc_df = _parse_loaded_acdc_df(acdc_df)
-    acdc_df = _add_missing_columns(acdc_df)
-    acdc_df = _add_will_divide_column(acdc_df)
-    acdc_df = _fix_will_divide(acdc_df)
+    
+    acdc_df = _ensure_acdc_df_latest_compatibility(acdc_df)
     return acdc_df
 
 def load_acdc_df_file(
@@ -488,19 +537,26 @@ def load_acdc_df_file(
     ):
     if not end_name_acdc_df_file.endswith('.csv'):
         end_name_acdc_df_file = f'{end_name_acdc_df_file}.csv'
-    for file in myutils.listdir(images_path):
-        if file.endswith(end_name_acdc_df_file):
-            acdc_df_file_path = os.path.join(images_path, file)
-            acdc_df = _load_acdc_df_file(acdc_df_file_path).reset_index()
-            if return_path:
-                return acdc_df, acdc_df_file_path
-            else:
-                return acdc_df
+    
+    found_files = [
+        file for file in myutils.listdir(images_path) 
+        if file.endswith(end_name_acdc_df_file)
+    ]
+    if len(found_files) == 0:
+        acdc_df = None
+        acdc_df_file_path = ''
+    elif len(found_files) == 1:
+        acdc_df_file_path = os.path.join(images_path, found_files[0])
+        acdc_df = _load_acdc_df_file(acdc_df_file_path).reset_index()
     else:
-        if return_path:
-            return None, ''
-        else:
-            return
+        found_files.sort(key=len)
+        acdc_df_file_path = os.path.join(images_path, found_files[0])
+        acdc_df = _load_acdc_df_file(acdc_df_file_path).reset_index()
+    
+    if return_path:
+        return acdc_df, acdc_df_file_path
+    else:
+        return acdc_df
 
 def save_acdc_df_file(acdc_df, csv_path, custom_annot_columns=None):
     if custom_annot_columns is not None:
@@ -544,8 +600,12 @@ def _copy_acdc_dfs_to_temp_archive(
     
     with zipfile.ZipFile(zip_path, mode='r') as zip:
         for csv_name in csv_names:
-            acdc_df = pd.read_csv(zip.open(csv_name))
-            acdc_df = _parse_loaded_acdc_df(acdc_df)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore") 
+                acdc_df = pd.read_csv(
+                    zip.open(csv_name), dtype=acdc_df_str_cols
+                )
+            acdc_df = _ensure_acdc_df_latest_compatibility(acdc_df)
             acdc_df = pd_bool_to_int(acdc_df, inplace=False)
             compression_opts['archive_name'] = csv_name
             acdc_df.to_csv(
@@ -642,7 +702,7 @@ def get_last_stored_unsaved_acdc_df(recovery_folderpath):
     csv_files = natsorted(csv_files)
     csv_name = csv_files[-1]
     acdc_df = pd.read_csv(os.path.join(unsaved_recovery_folderpath, csv_name))
-    acdc_df = _parse_loaded_acdc_df(acdc_df)
+    acdc_df = _ensure_acdc_df_latest_compatibility(acdc_df)
     
     return acdc_df
 
@@ -659,7 +719,7 @@ def read_acdc_df_from_archive(archive_path, key):
         csv_path = os.path.join(archive_path, f'{key}.csv')
         acdc_df = pd.read_csv(csv_path)
         
-    acdc_df = _parse_loaded_acdc_df(acdc_df)
+    acdc_df = _ensure_acdc_df_latest_compatibility(acdc_df)
     return acdc_df
 
 def get_user_ch_paths(images_paths, user_ch_name):
@@ -754,12 +814,6 @@ def load_segmInfo_df(pos_path):
             df = df.set_index(['filename', 'frame_i']).sort_index()
             df = df[~df.index.duplicated()]
             return df
-
-def segmInfo_df_use_middle_z_slice_where_missing(pos_path):
-    experiment_folderpath = os.path.dirname(pos_path)
-    pos_foldernames = myutils.get_pos_foldernames(experiment_folderpath)
-    for pos in pos_foldernames:
-        ...
 
 def get_filename_from_channel(
         images_path, channel_name, not_allowed_ends=None, logger=None,
@@ -1059,7 +1113,7 @@ class loadData:
         self.tracked_lost_centroids = None
     
     def attempFixBasenameBug(self):
-        '''Attempt removing _s(\d+)_ from filenames if not present in basename
+        r'''Attempt removing _s(\d+)_ from filenames if not present in basename
         
         This was a bug introduced when saving the basename with data structure,
         it was not saving the _s(\d+)_ part.
@@ -1129,7 +1183,7 @@ class loadData:
 
     def getPosNum(self):
         try:
-            pos_num = int(re.findall('Position_(\d+)', self.pos_foldername))[0]
+            pos_num = int(re.findall(r'Position_(\d+)', self.pos_foldername))[0]
         except Exception:
             pos_num = 0
         return pos_num
@@ -2108,6 +2162,48 @@ class loadData:
                 self.last_md_df.at['PhysicalSizeZ', 'values']
             )
 
+    def preprocessedDataArray(self, check_integrity=True):
+        if not hasattr(self, 'preproc_img_data'):
+            return
+        
+        preprocess_data = []
+        for frame_i, raw_img in enumerate(self.img_data):
+            preprocess_img = self.preproc_img_data.get(frame_i)
+            if preprocess_img is None:
+                if check_integrity:
+                    raise TypeError(
+                        'Not all frames have been preprocessed. '
+                    )
+                else:
+                    continue
+            
+            preprocess_img = np.squeeze(preprocess_img)
+            preprocess_data.append(preprocess_img)      
+        
+        preprocess_data_arr = np.array(preprocess_data)
+        return preprocess_data_arr
+    
+    def combinedChannelsDataArray(self, check_integrity=True):
+        if not hasattr(self, 'combine_img_data'):
+            return
+        
+        combined_channels_data = []
+        for frame_i, raw_img in enumerate(self.img_data):
+            combined_channels_img = self.combine_img_data.get(frame_i)
+            if combined_channels_img is None:
+                if check_integrity:
+                    raise TypeError(
+                        'Not all frames have been preprocessed. '
+                    )
+                else:
+                    continue
+            
+            combined_channels_img = np.squeeze(combined_channels_img)
+            combined_channels_data.append(combined_channels_img)      
+        
+        combined_channels_data_arr = np.array(combined_channels_data)
+        return combined_channels_data_arr
+    
     def addEquationCombineMetrics(self, equation, colName, isMixedChannels):
         section = 'mixed_channels_equations' if isMixedChannels else 'equations'
         self.combineMetricsConfig[section][colName] = equation

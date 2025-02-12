@@ -12,7 +12,14 @@ def float_regex(allow_negative=True, left_chars='', include_nan=False):
     return pattern
 
 def to_alphanumeric(text, replacing_char='_'):
-    return re.sub('[^\w\-.]', '_', text)
+    return re.sub(r'[^\w\-.]', '_', text)
+
+def get_function_names(text, include_class_methods=True):
+    if include_class_methods:
+        pattern = r'\bdef\s+([a-zA-Z_]\w*)\s*\('
+    else:
+        pattern = r'\ndef\s+([a-zA-Z_]\w*)\s*\('
+    return re.findall(pattern, text)
 
 if __name__ == '__main__':
     import re

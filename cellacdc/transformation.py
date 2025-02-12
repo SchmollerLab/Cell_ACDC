@@ -244,3 +244,43 @@ def snap_xy_to_closest_angle(x0, y0, x1, y1, angle_factor=15):
     dy = dist * math.sin(snap_angle)
     x1, y1 = x0 + dx, y0 + dy
     return x1, y1
+
+def correct_img_dimension(image, input_dims, output_dims):
+    """Resort and expand the image to the correct dimensions (output_dims).
+
+    Parameters
+    ----------
+    image : np.ndarray
+        Image to propagate. Must have same number of dimensions as input_dims.
+    input_dims : tuple
+        Tuple with the input dimensions. So for example (Z, Y, X) or (Y, X), (T, Y, X, Z) etc.
+        In the end one can use any letters, as long as they are consistent with output_dims and unique.
+    output_dims : tuple
+        Tuple with the output dimensions. So for example (Z, Y, X) or (Y, X), (T, Y, X, Z) etc.
+        In the end one can use any letters, as long as they are consistent with input_dims and unique.
+
+    Returns
+    -------
+    np.ndarray
+        Image with the correct output_dims
+
+    """
+
+    if input_dims == output_dims:
+        return image
+    
+    if image.ndim != len(input_dims):
+        raise ValueError(
+            f"Image has {image.ndim} dimensions but expected {len(input_dims)}"
+        )
+
+    missing_dims = set(output_dims) - set(input_dims)
+    input_dims = list(input_dims)
+    for missing_dim in missing_dims:
+        image = np.expand_dims(image, axis=input_dims.index(missing_dim))
+        input_dims.insert(input_dims.index(missing_dim), missing_dim)
+    
+    dim_map = [input_dims.index(dim) for dim in output_dims]
+    image = np.transpose(image, dim_map)
+    
+    return image

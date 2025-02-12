@@ -86,9 +86,9 @@ class FucciPreprocessUtil(NewThreadMultipleExpBaseUtil):
     
     def workerFinished(self, worker, aborted=False):
         if aborted:
-            txt = '3D segmentation mask creation process aborted.'
+            txt = 'FUCCI pre-processing aborted.'
         else:
-            txt = '3D segmentation mask creation process completed.'
+            txt = 'FUCCI pre-processing completed.'
         self.logger.info(txt)
         msg = widgets.myMessageBox(wrapText=False, showCentered=False)
         if aborted:

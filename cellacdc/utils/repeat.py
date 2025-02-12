@@ -77,7 +77,7 @@ class repeatDataPrepWindow(QDialog):
         self.stopButton = stopButton
 
         progressBarLayout = QHBoxLayout()
-        self.progressBar = widgets.QProgressBarWithETA(parent=self)
+        self.progressBar = widgets.ProgressBarWithETA(parent=self)
         progressBarLayout.addWidget(self.progressBar)
         progressBarLayout.addWidget(self.progressBar.ETA_label)
         self.logConsole = widgets.QLogConsole(parent=self)

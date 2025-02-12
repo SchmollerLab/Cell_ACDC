@@ -53,3 +53,20 @@ class QControlBlink:
     def stop(self):
         self.timer.stop()
         self._widget.setStyleSheet('background-color: none')
+
+def hide_and_delete_layout(layout):
+    # Hide all widgets in the layout
+    for i in reversed(range(layout.count())):
+        widget = layout.itemAt(i).widget()
+        if widget is not None:
+            widget.hide()
+            layout.removeWidget(widget)
+            widget.setParent(None)
+    
+    # Delete the layout
+    layout.deleteLater()
+
+def delete_widget(widget):
+    widget.hide()
+    widget.setParent(None)
+    widget.deleteLater()

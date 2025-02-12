@@ -73,6 +73,7 @@
     <file alias="undo.svg">resources/icons/undo_dark.svg</file>
     <file alias="redo.svg">resources/icons/redo_dark.svg</file>
     <file alias="eye.svg">resources/icons/eye_dark.svg</file>
+    <file alias="filter_image.svg">resources/icons/filter_image_dark.svg</file>
     <file alias="eye-checked.svg">resources/icons/eye-checked_dark.svg</file>
     <file alias="spinner.svg">resources/icons/spinner_dark.svg</file>
     <file alias="unchecked.svg">resources/icons/unchecked_dark.svg</file>
@@ -118,6 +119,7 @@
     <file alias="cancel.svg">resources/icons/cancel_dark.svg</file>
     <file alias="cancelButton.svg">resources/icons/cancelButton_dark.svg</file>
     <file alias="okButton.svg">resources/icons/okButton_dark.svg</file>
+    <file alias="count_objects.svg">resources/icons/count_objects_dark.svg</file>
     <file alias="greenTick.svg">resources/icons/greenTick_dark.svg</file>
     <file alias="addPointsLayer.svg">resources/icons/addPointsLayer_dark.svg</file>
     <file alias="pointsLayer.svg">resources/icons/pointsLayer.svg</file>

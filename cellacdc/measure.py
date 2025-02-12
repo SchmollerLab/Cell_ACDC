@@ -82,11 +82,13 @@ def separate_with_label(lab, rp, IDs_to_separate, maxID, click_coords_list=None)
                 id_to_keep = label_obj[click_y_local, click_x_local]
         
         separate_lab[obj.slice][obj.image] = 0
+        separateIDs = []
         for sub_obj_idx, sub_obj in enumerate(label_obj_rp):
             if sub_obj.label == id_to_keep:
                 new_ID = obj.label
             else:
                 new_ID = maxID + 1 + sub_obj_idx
             separate_lab[obj.slice][sub_obj.slice][sub_obj.image] = new_ID
-    return separate_lab
+            separateIDs.append(new_ID)
+    return separate_lab, separateIDs
             

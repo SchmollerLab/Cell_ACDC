@@ -1,8 +1,13 @@
 import traceback
+import inspect
+from typing import List, Dict, Any, Iterable, Tuple, Callable, Union
 import os
 import time
+import concurrent.futures
+from functools import partial
 from importlib import import_module
 import numpy as np
+import math
 import cv2
 import skimage.measure
 import skimage.morphology
@@ -33,6 +38,11 @@ from . import cca_functions
 from . import config
 from . import preprocess
 from .config import PREPROCESS_MAPPER
+from . import io
+
+from .types import (
+    ChannelsDict
+)
 
 class HeadlessSignal:
     def __init__(self, *args):
@@ -176,6 +186,53 @@ def compute_twoframes_velocity(prev_lab, lab, spacing=None):
             velocities_um[i] = v_um
     return velocities_pxl, velocities_um
 
+def nearest_points_objects(objs_arr: np.ndarray, other_obj: np.ndarray):
+    """Find the nearest points between all objects in objs_arr and other_obj
+
+    Parameters
+    ----------
+    objs_arr : (N, P, 2) np.ndarray of floats 
+        Array with N pages (one for each object), P rows (number of points) 
+        and 2 columns for y, x coordinates
+    other_obj : (P1, 2) np.ndarray
+        Array with P1 rows (number of points) and 2 columns for y, x coordinates
+
+    Returns
+    -------
+    (N,) np.ndarray
+        Array with N elements where the ith element is the minimum distance 
+        between object objs_arr[i] and other_obj
+    """    
+    # diff[l, k, i] = objs_arr[l][k] - other_obj[i]
+    diff = objs_arr[:, :, np.newaxis] - other_obj
+    
+    # dist[l, i, j] = math.dist(objs_arr[l][i], other_obj[j])
+    dist = np.linalg.norm(diff, axis=3)
+    
+    # min_dist[l] = min_dist(objs_arr[l], other_obj)
+    min_dist = np.nanmin(dist, axis=(1, 2))
+    
+    return min_dist
+
+def nearest_point_2Dyx(points, all_others):
+    """
+    Given 2D array of [y, x] coordinates points and all_others return the
+    [y, x] coordinates of the two points (one from points and one from all_others)
+    that have the absolute minimum distance
+    """
+    # Compute 3D array where each ith row of each kth page is the element-wise
+    # difference between kth row of points and ith row in all_others array.
+    # (i.e. diff[k,i] = points[k] - all_others[i])
+    diff = points[:, np.newaxis] - all_others
+    # Compute 2D array of distances where
+    # dist[i, j] = euclidean_dist(points[i],all_others[j])
+    dist = np.linalg.norm(diff, axis=2)
+    # Compute i, j indexes of the absolute minimum distance
+    i, j = np.unravel_index(dist.argmin(), dist.shape)
+    nearest_point = all_others[j]
+    point = points[i]
+    min_dist = np.min(dist)
+    return min_dist, nearest_point
 
 def lab_replace_values(lab, rp, oldIDs, newIDs, in_place=True):
     if not in_place:
@@ -1674,14 +1731,131 @@ def brownian(x0, n, dt, delta, out=None):
 
     return out
 
-def preprocess_image_from_recipe(image, recipe: dict):
+def preprocess_multi_pos_from_recipe(
+        image_data: Iterable[np.ndarray], 
+        recipe: List[Dict[str, Any]]
+    ):
+    pbar = tqdm(total=len(image_data), unit='Position', ncols=100)
+    preprocessed_data = []
+    for pos_i, image in enumerate(image_data):
+        preprocessed_image = preprocess_zstack_from_recipe(
+            image, recipe, pbar_pos=1
+        )
+        preprocessed_data.append(preprocessed_image)
+        pbar.update()
+    pbar.close()
+    return preprocessed_data
+
+def preprocess_video_from_recipe(
+        image, recipe: List[Dict[str, Any]], pbar_pos=0
+    ):
+    if image.ndim < 3:
+        raise TypeError(
+            'Only 3D or 4D videos allowed. '
+            f'Input image has {image.ndim} dimensions!'
+        )
+
+    preprocessed_image = image
     for step in recipe:
         method = step['method']
         func = PREPROCESS_MAPPER[method]['function']
         kwargs = step['kwargs']
-        image = func(image, **kwargs)
+        argspecs = inspect.getfullargspec(func)
+        is_func_time_capable = False
+        is_func_zstack_capable = False
+        for arg in argspecs.args:
+            if arg == 'apply_to_all_frames':
+                is_func_time_capable = True
+            elif arg == 'apply_to_all_zslices':
+                is_func_zstack_capable = True
         
-    return image
+        if is_func_time_capable and is_func_zstack_capable:
+            preprocessed_image = func(
+                preprocessed_image, 
+                apply_to_all_zslices=True, 
+                apply_to_all_frames=True,
+                **kwargs
+            )
+        else:
+            pbar = tqdm(
+                total=len(preprocessed_image), unit='frame', ncols=100, 
+                position=pbar_pos
+            )
+            for frame_i, frame_img in enumerate(preprocessed_image):
+                if frame_img.ndim == 3:
+                    preprocessed_img = preprocess_zstack_from_recipe(
+                        frame_img, (step,), pbar_pos=pbar_pos+1
+                    )
+                    if preprocessed_img.dtype != preprocessed_image.dtype:
+                        preprocessed_image = (
+                            preprocessed_image.astype(preprocessed_img.dtype)
+                        )
+                    preprocessed_image[frame_i] = preprocessed_img
+                else:
+                    preprocessed_img = preprocess_image_from_recipe(
+                        frame_img, (step,)
+                    )
+                    if preprocessed_img.dtype != preprocessed_image.dtype:
+                        preprocessed_image = (
+                            preprocessed_image.astype(preprocessed_img.dtype)
+                        )
+                    preprocessed_image[frame_i] = preprocessed_img
+                pbar.update()
+            pbar.close()
+    
+    return preprocessed_image
+    
+def preprocess_zstack_from_recipe(
+        image, recipe: List[Dict[str, Any]], pbar_pos=0
+    ):
+    if image.ndim != 3:
+        raise TypeError(
+            'Only 3D z-stack images allowed. '
+            f'Input image has {image.ndim} dimensions!'
+        )
+        
+    preprocessed_image = image
+    for step in recipe:
+        method = step['method']
+        func = PREPROCESS_MAPPER[method]['function']
+        kwargs = step['kwargs']
+        argspecs = inspect.getfullargspec(func)
+        is_func_zstack_capable = False
+        for arg in argspecs.args:
+            if arg == 'apply_to_all_zslices':
+                is_func_zstack_capable = True
+                break
+        
+        if is_func_zstack_capable:
+            preprocessed_image = func(
+                preprocessed_image, apply_to_all_zslices=True, **kwargs
+            )
+        else:
+            pbar = tqdm(
+                total=len(preprocessed_image), unit='z-slice', ncols=100, 
+                position=pbar_pos
+            )
+            for z_slice, img in enumerate(preprocessed_image):
+                preprocessed_img = func(img, **kwargs)
+                if preprocessed_img.dtype != preprocessed_image.dtype:
+                    preprocessed_image = (
+                        preprocessed_image.astype(preprocessed_img.dtype)
+                    )
+                preprocessed_image[z_slice] = preprocessed_img
+                pbar.update()
+            pbar.close()
+    
+    return preprocessed_image
+        
+def preprocess_image_from_recipe(image, recipe: List[Dict[str, Any]]):
+    preprocessed_image = image
+    for step in recipe:
+        method = step['method']
+        func = PREPROCESS_MAPPER[method]['function']
+        kwargs = step['kwargs']
+        preprocessed_image = func(preprocessed_image, **kwargs)
+        
+    return preprocessed_image
 
 def segm_model_segment(
         model, image, model_kwargs, frame_i=None, preproc_recipe=None, 
@@ -2546,6 +2720,10 @@ class CcaIntegrityChecker:
             if row.relative_ID in self.lab_IDs:
                 continue
             
+            if ID not in self.lab_IDs:
+                # Mother-bud pair gone entirely
+                continue
+            
             # ID is in S but its relative_ID does not exist in lab
             lonely_cells_in_S.append(ID)
         
@@ -2594,11 +2772,308 @@ def fucci_pipeline_executor_map(input, **filter_kwargs):
         ch2_img, out_range=(0, 0.5)
     )
     
-    sum_img = ((ch1_img + ch2_img)*255).astype(np.uint8)
+    sum_img = ch1_img + ch2_img
     
     processed_img = preprocess.fucci_filter(sum_img, **filter_kwargs)
     
     return frame_i, processed_img
+
+def preprocess_exceutor_map(
+        input: Tuple[int, np.ndarray],
+        recipe: List[Dict[str, Any]]=None,
+    ):
+    if recipe is None:
+        return input
+    
+    frame_i, image = input
+    if image.ndim == 3:
+        preprocessed_image = preprocess_zstack_from_recipe(image, recipe)
+    else:
+        preprocessed_image = preprocess_image_from_recipe(image, recipe)
+    
+    return frame_i, preprocessed_image
+
+def preprocess_image_from_recipe_multithread(
+        image: np.ndarray, 
+        recipe: List[Dict[str, Any]], 
+        n_threads: int=None
+    ):
+    preprocessed_image = image
+    for step in recipe:
+        method = step['method']
+        func = PREPROCESS_MAPPER[method]['function']
+        kwargs = step['kwargs']
+        argspecs = inspect.getfullargspec(func)
+        is_func_time_capable = False
+        for arg in argspecs.args:
+            if arg == 'apply_to_all_frames':
+                is_func_time_capable = True
+                break
+        
+        if is_func_time_capable:
+            preprocessed_image = preprocess_video_from_recipe(
+                preprocessed_image, (step,)
+            )
+        else:
+            num_frames = len(preprocessed_image)
+            pbar = tqdm(total=num_frames, ncols=100)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=n_threads) as executor:
+                iterable = enumerate(preprocessed_image)
+                func = partial(
+                    preprocess_exceutor_map,
+                    recipe=(step,)
+                )
+                result = executor.map(func, iterable)
+                for frame_i, processed_img in result:
+                    preprocessed_image[frame_i] = processed_img
+                    pbar.update()
+            pbar.close()
+    
+    return preprocessed_image
+
+def combine_channels_multithread(
+    steps: Dict[str, Dict[str, Any]],
+    image_paths: List[str],
+    # channel_names: List[str],
+    # operators: List[str],
+    # multipliers: List[float],
+    keep_input_data_type: bool,
+    save_filepaths: List[str]=None,
+    n_threads: int=None,
+    signals=None,
+    logger_func: Callable=None
+    ):
+
+    channel_names = []
+    multipliers = []
+    operators = []
+
+    for step in steps.values():
+        channel_names.append(step['channel'])
+        multipliers.append(step['multiplier'])
+        operators.append(step['operator'])
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=n_threads) as executor:
+        if signals:
+            signals.initProgressBar.emit(len(image_paths))
+        else:
+            pbar = tqdm(total=len(image_paths), ncols=100, desc='Combining channels')
+        func = partial(
+            combine_channels_executor_map,
+            channel_names=channel_names,
+            operators=operators,
+            multipliers=multipliers,
+            keep_input_data_type=keep_input_data_type,
+            return_img=False,
+            logger_func=logger_func
+        )
+        iterable = zip(image_paths, save_filepaths)
+        result = executor.map(func, iterable)
+        for res in result:
+            if signals:
+                signals.progressBar.emit(1)
+            else:
+                pbar.update()
+
+def combine_channels_multithread_return_imgs(
+    steps: Dict[str, Dict[str, Any]],
+    data, # this weird data struc from acdc, find in load.py
+    keep_input_data_type: bool,
+    keys: List[Tuple[Union[int, None], Union[int, None], Union[int, None]]],
+    n_threads: int=None,
+    signals=None,
+    logger_func: Callable=None,
+    ):
+
+    channel_names = []
+    multipliers = []
+    operators = []
+
+    for step in steps.values():
+        channel_names.append(step['channel'])
+        multipliers.append(step['multiplier'])
+        operators.append(step['operator'])
+
+    total = len(keys)
+    
+    output_imgs = [None] * total
+    keys_out = [0] * total
+    res_i = 0
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=n_threads) as executor:
+        if signals:
+            signals.initProgressBar.emit(total)
+        else:
+            pbar = tqdm(total=len(total), ncols=100, desc='Combining channels')
+        func = partial(
+            combine_channels_executor_map_return_img,
+            data=data,
+            channel_names=channel_names,
+            operators=operators,
+            multipliers=multipliers,
+            keep_input_data_type=keep_input_data_type,
+            return_img=True,
+            logger_func=logger_func,
+        )
+        iterable = keys
+        result = executor.map(func, iterable)
+        for res in result:
+            output_img, key = res
+            output_imgs[res_i] = output_img
+            keys_out[res_i] = key
+            res_i += 1
+
+            if signals:
+                signals.progressBar.emit(1)
+            else:
+                pbar.update()
+
+    return output_imgs, keys_out
+
+def combine_channels_executor_map(args, **kwargs):
+    image_path, save_filepath = args
+    kwargs['save_filepath'] = save_filepath
+    kwargs['image_path'] = image_path
+    return combine_channels_func(**kwargs)
+
+def combine_channels_executor_map_return_img(args, **kwargs):
+    key = args
+    kwargs['key'] = key
+    return combine_channels_func(**kwargs)
+
+def combine_channels_func(
+        channel_names: List[str],
+        operators: List[str],
+        multipliers: List[float],
+        keep_input_data_type: bool,
+        save_filepath: str=None,
+        return_img: bool=False,
+        logger_func: Callable=None,
+        image_path: str = None,
+        key: str = None,
+        data = None,
+
+    ):
+    if not save_filepath and not return_img:
+        raise ValueError('Either save_filepath must be provided or return_img must be true')
+    
+    if return_img and not key:
+        raise ValueError('If return_img is true, key must be provided')
+    
+    ch_image_data_list = []
+    if not data:
+        for channel in channel_names:
+            ch_filepath = load.get_filename_from_channel(image_path, channel)
+            ch_image_data = load.load_image_file(ch_filepath)
+
+            ch_image_data_list.append(ch_image_data)
+    else:
+        posData = data[key[0]]
+        fluo_data_dict = posData.fluo_data_dict
+        random_ch_name = f'{posData.basename}{channel_names[0]}'
+        num_dim = fluo_data_dict[random_ch_name].ndim
+
+        for channel in channel_names:
+            channel_full_name = f'{posData.basename}{channel}'
+            if num_dim == 3:
+                ch_image_data = fluo_data_dict[channel_full_name][key[1]]
+                ch_image_data_list.append(ch_image_data)
+            elif num_dim == 4:
+                ch_image_data = fluo_data_dict[channel_full_name][key[1]][key[2]]
+                ch_image_data_list.append(ch_image_data)
+            else:
+                raise ValueError(f'Invalid number of dimensions, is your data maybe corrupted?\n Ndims: {num_dim}\n Channel name: {channel_full_name}')
+
+    original_dtype = ch_image_data_list[0].dtype
+
+    for i in range(len(ch_image_data_list)):
+        multiplier = multipliers[i]
+        if multiplier == 1:
+            continue
+        ch_image_data_list[i] = ch_image_data_list[i] * multipliers[i]
+    #     pbar.update()
+    # pbar.close()
+
+    if all(x == "+" for x in operators):
+        output_img = np.sum(ch_image_data_list, axis=0)
+    else:
+        # pbar = tqdm(total=len(ch_image_data_list), ncols=100, desc='Applying logical operators')
+
+        for i in range(len(ch_image_data_list)):
+            if i == 0:
+                if operators[i] == "+":
+                    output_img = ch_image_data_list[0]
+                elif operators[i] == "-":
+                    output_img = -ch_image_data_list[0]
+                else:
+                    raise ValueError(f'Invalid operator: {operators[i]}')
+            else:
+                if operators[i] == "+":
+                    output_img += ch_image_data_list[i]
+                elif operators[i] == "-":
+                    output_img -= ch_image_data_list[i]
+                elif operators[i] == "*":
+                    output_img *= ch_image_data_list[i]
+                elif operators[i] == "/":
+                    output_img /= ch_image_data_list[i]
+                else:
+                    raise ValueError(f'Invalid operator: {operators[i]}')
+            # pbar.update()
+        # pbar.close() 
+
+    if keep_input_data_type:
+        try:
+            output_img = myutils.convert_to_dtype(
+                output_img, ch_image_data.dtype
+            )
+            method = 'cellacdc.myutils.convert_to_dtype'
+            warning = 'safe'
+            prefix = ''
+        except Exception as err:
+            dtype_info = np.iinfo(ch_image_data.dtype)
+            dtype_max = dtype_info.max
+            dtype_min = dtype_info.min
+            if output_img.max() <= dtype_max and output_img.min() >= dtype_min:
+                output_img = output_img.astype(original_dtype)
+                method = 'output_img.astype(original_dtype)'
+                warning = 'safe if weights were set correctly'
+                prefix = '[WARNING]: '
+            else:
+                output_img = skimage.exposure.rescale_intensity(
+                    output_img, out_range=original_dtype
+                )
+                output_img = output_img.astype(original_dtype)
+                method = 'skimage.exposure.rescale_intensity -> output_img.astype(original_dtype)'
+                warning = '!RESCALING! the image data'
+                prefix = '[WARNING]: '
+
+        txt = f'{prefix}Converted output image to {original_dtype} using {method}, which is {warning}'
+        if logger_func:
+            try:
+                logger_func(txt)
+            except Exception as err:
+                printl(txt)
+        else:
+            printl(txt)
+
+    if return_img:
+        return output_img, key
+    
+    txt = f'Saving combined image to {save_filepath}'
+    if logger_func:
+        logger_func(txt)
+    else:
+        printl(txt)
+    io.save_image_data(
+        save_filepath, output_img
+    )
+    return None
+
+def get_selected_channels(steps):
+    selected_channel = set()
+    for step in steps.values():
+        selected_channel.add(step['channel'])
+    return selected_channel
 
 def split_segm_masks_mother_bud_line(
         cells_segm_data, segm_data_to_split, acdc_df, 
@@ -2753,4 +3228,247 @@ def get_split_line_ref_points_img(img, slope, interc, xc, yc):
             y_ref1 = y2
     
     return (x_ref_0, y_ref_0), (x_ref1, y_ref1)
-            
+
+# def _compute_obj_to_all_objs_contour_dist_pairs(
+#         input, obj_contours=None, other_rp=None, 
+#         all_contours=None, max_distance=np.inf, calculated_pairs=None,
+#         pbar=None
+#     ):
+#     i, obj = input
+#     obj_contours = all_contours[(obj.label, None, False, False)]
+#     all_dist_to_other = {}
+#     for j, other_obj in enumerate(other_rp):
+#         if i == j:
+#             continue
+        
+#         already_paired_ID = calculated_pairs.get(other_obj.label, np.nan)
+#         if already_paired_ID == obj.label:
+#             continue
+        
+#         already_paired_ID = calculated_pairs.get(obj.label, np.nan)
+#         if already_paired_ID == other_obj.label:
+#             continue
+        
+#         calculated_pairs[obj.label] = other_obj.label
+#         calculated_pairs[other_obj.label] = obj.label
+        
+#         centroid_dist = math.dist(obj.centroid, other_obj.centroid)
+#         if centroid_dist > max_distance:
+#             continue
+        
+#         other_contours = all_contours[(other_obj.label, None, False, False)]
+#         min_dist, nearest_xy = nearest_point_2Dyx(
+#             obj_contours, other_contours
+#         )
+#         all_dist_to_other[(obj.label, other_obj.label)] = min_dist
+#         if pbar is not None:
+#             pbar.update()
+    
+#     return all_dist_to_other
+    
+
+# def _compute_all_obj_to_obj_contour_dist_pairs(
+#         all_contours: dict, rp, prev_rp=None, restrict_search=True
+#     ):
+#     if prev_rp is not None:
+#         prev_IDs = set([obj.label for obj in prev_rp])
+#         new_IDs = set([obj.label for obj in rp if obj.label not in prev_IDs])
+#         current_rp = [obj for obj in rp if obj.label not in new_IDs]
+#         other_rp = [obj for obj in rp if obj.label not in prev_IDs]
+#         num_cols = len(new_IDs)
+#     else:
+#         current_rp = rp
+#         other_rp = rp
+#         num_cols = len(current_rp)
+    
+#     max_distance = np.inf
+#     if restrict_search:
+#         max_distance = 3*np.max([obj.major_axis_length for obj in rp])
+    
+#     calculated_pairs = {}
+#     num_rows = len(current_rp)
+#     num_objs = len(rp)
+#     IDs = [obj.label for obj in rp]
+#     dist_matrix_df = pd.DataFrame(
+#         index=IDs, 
+#         columns=IDs, 
+#         data=np.full((num_objs, num_objs), np.inf)
+#     )
+#     pbar = tqdm(total=num_rows*num_cols, ncols=100, leave=False)
+#     with concurrent.futures.ThreadPoolExecutor() as executor:
+#         iterable = enumerate(current_rp)
+#         func = partial(
+#             _compute_obj_to_all_objs_contour_dist_pairs, 
+#             other_rp=other_rp,
+#             all_contours=all_contours,
+#             pbar=pbar,
+#             max_distance=max_distance,
+#             calculated_pairs=calculated_pairs
+#         )
+#         result = executor.map(func, iterable)
+#         for all_dist_to_other in result:
+#             printl(all_dist_to_other)
+#             for (i, j), min_dist in all_dist_to_other.items():
+#                 dist_matrix_df.loc[i, j] = min_dist
+    
+#     printl(dist_matrix_df)
+    
+#     return dist_matrix_df
+
+def _compute_obj_to_all_objs_contour_dist_pairs(
+        input, all_objs_contours_arr=None, all_contours=None, pbar=None
+    ):
+    j, other_obj = input
+    other_obj_contours = all_contours[(other_obj.label, 'None', False, False)]
+    min_distances_to_other = nearest_points_objects(
+        all_objs_contours_arr, other_obj_contours
+    )       
+    return other_obj.label, min_distances_to_other
+
+def _compute_all_obj_to_obj_contour_dist_pairs(
+        all_contours: dict, rp, prev_rp=None, restrict_search=True
+    ):
+    if prev_rp is not None:
+        prev_IDs = set([obj.label for obj in prev_rp])
+        new_IDs = set([obj.label for obj in rp if obj.label not in prev_IDs])
+        current_rp = [obj for obj in rp if obj.label not in new_IDs]
+        other_rp = [obj for obj in rp if obj.label not in prev_IDs]
+        num_cols = len(new_IDs)
+    else:
+        current_rp = rp
+        other_rp = rp
+        num_cols = len(current_rp)
+    
+    max_distance = np.inf
+    if restrict_search:
+        max_distance = 3*np.max([obj.major_axis_length for obj in rp])
+    
+    calculated_pairs = {}
+    num_rows = len(current_rp)
+    num_objs = len(rp)
+    IDs = [obj.label for obj in rp]
+    dist_matrix_df = pd.DataFrame(
+        index=IDs, 
+        columns=IDs, 
+        data=np.full((num_objs, num_objs), np.inf)
+    )
+    len_longest_contour = np.max(
+        [len(contours) for contours in all_contours.values()]
+    )
+    all_objs_contours_arr = np.full((num_rows, len_longest_contour, 2), np.nan)
+    current_rp_mapper = {}
+    for o, obj in enumerate(current_rp):
+        obj_contours = all_contours[(obj.label, 'None', False, False)]
+        all_objs_contours_arr[o, :len(obj_contours)] = obj_contours
+        current_rp_mapper[o] = obj
+    
+    pbar = tqdm(total=num_rows*num_cols, ncols=100, leave=False)
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        iterable = enumerate(other_rp)
+        
+        func = partial(
+            _compute_obj_to_all_objs_contour_dist_pairs, 
+            all_objs_contours_arr=all_objs_contours_arr,
+            all_contours=all_contours,
+            pbar=pbar,
+        )
+        result = executor.map(func, iterable)
+        for j, min_distances_to_other in result:
+            for o, min_dist in enumerate(min_distances_to_other):
+                i = current_rp_mapper[o].label
+                dist_matrix_df.loc[i, j] = min_dist
+
+    return dist_matrix_df
+
+def convexity_defects(img, eps_percent):
+    img = img.astype(np.uint8)
+    contours, _ = cv2.findContours(img,2,1)
+    cnt = contours[0]
+    cnt = cv2.approxPolyDP(cnt,eps_percent*cv2.arcLength(cnt,True),True) # see https://www.programcreek.com/python/example/89457/cv22.convexityDefects
+    hull = cv2.convexHull(cnt,returnPoints = False) # see https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_imgproc/py_contours/py_contours_more_functions/py_contours_more_functions.html
+    defects = cv2.convexityDefects(cnt,hull) # see https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_imgproc/py_contours/py_contours_more_functions/py_contours_more_functions.html
+    return cnt, defects
+
+def split_connected_components(lab, rp=None, max_ID=None):  
+    if rp is None:
+        lab = skimage.measure.regionprops(lab)
+    
+    if max_ID is None:
+        max_ID = max([obj.label for obj in rp], default=1)
+        
+    split_occured = False
+    for obj in rp:
+        lab_obj = skimage.measure.label(obj.image)
+        rp_lab_obj = skimage.measure.regionprops(lab_obj)
+        if len(rp_lab_obj)<=1:
+            continue
+        lab_obj += max_ID
+        _slice = obj.slice # self.getObjSlice(obj.slice)
+        _objMask = obj.image # self.getObjImage(obj.image)
+        lab[_slice][_objMask] = lab_obj[_objMask]
+        setRp = True
+        max_ID += 1
+    return split_occured
+
+def split_along_convexity_defects(
+        ID, lab, max_ID, max_i=1, eps_percent=0.01
+    ):
+    lab_ID_bool = lab == ID
+    # First try separating by labelling
+    lab_ID = lab_ID_bool.astype(int)
+    rp_ID = skimage.measure.regionprops(lab_ID)
+    setRp = split_connected_components(lab_ID, rp=rp_ID, max_ID=max_ID)
+    if setRp:
+        success = True
+        lab[lab_ID_bool] = lab_ID[lab_ID_bool]
+        rp_ID = skimage.measure.regionprops(lab_ID)
+        separateIDs = [obj.label for obj in rp_ID]
+        return lab, success, separateIDs
+
+    cnt, defects = convexity_defects(lab_ID_bool, eps_percent)
+    success = False
+    if defects is None:
+        return lab, success, []
+
+    if len(defects) != 2:
+        return lab, success, []
+
+    defects_points = [0]*len(defects)
+    for i, defect in enumerate(defects):
+        s,e,f,d = defect[0]
+        x,y = tuple(cnt[f][0])
+        defects_points[i] = (y,x)
+    (r0, c0), (r1, c1) = defects_points
+    rr, cc, _ = skimage.draw.line_aa(r0, c0, r1, c1)
+    sep_bud_img = np.copy(lab_ID_bool)
+    sep_bud_img[rr, cc] = False
+    
+    sep_bud_label = skimage.measure.label(
+        sep_bud_img, connectivity=2
+    )
+    
+    rp_sep = skimage.measure.regionprops(sep_bud_label)
+    IDs_sep = [obj.label for obj in rp_sep]
+    areas = [obj.area for obj in rp_sep]
+    curr_ID_bud = IDs_sep[areas.index(min(areas))]
+    curr_ID_moth = IDs_sep[areas.index(max(areas))]
+    orig_sblab = np.copy(sep_bud_label)
+    # sep_bud_label = np.zeros_like(sep_bud_label)
+    ID1 = ID
+    ID2 = max_ID+max_i
+    sep_bud_label[orig_sblab==curr_ID_moth] = ID1
+    sep_bud_label[orig_sblab==curr_ID_bud] = ID2
+    splittedIDs = [ID1, ID2]
+    # sep_bud_label *= (max_ID+max_i)
+    temp_sep_bud_lab = sep_bud_label.copy()
+    for r, c in zip(rr, cc):
+        if lab_ID_bool[r, c]:
+            nearest_ID = nearest_nonzero_2D(sep_bud_label, r, c)
+            temp_sep_bud_lab[r,c] = nearest_ID
+    sep_bud_label = temp_sep_bud_lab
+    sep_bud_label_mask = sep_bud_label != 0
+    # plt.imshow_tk(sep_bud_label, dots_coords=np.asarray(defects_points))
+    lab[sep_bud_label_mask] = sep_bud_label[sep_bud_label_mask]
+    max_i += 1
+    success = True
+    return lab, success, splittedIDs

@@ -7,7 +7,7 @@ Segmentation models
 - `StarDist <https://github.com/stardist/stardist#how-to-cite>`_
 - `Segment Anything Model (SAM) <https://arxiv.org/abs/2304.02643>`_
 - `Delta <https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1007673>`_
-- `DeppSea <https://doi.org/10.1016/j.crmeth.2023.100500>`_
+- `DeepSea <https://doi.org/10.1016/j.crmeth.2023.100500>`_
 - `Omnipose <https://www.nature.com/articles/s41592-022-01639-4>`_
 - `YeastMate <https://academic.oup.com/bioinformatics/article/38/9/2667/6531960>`_
 - `BABY <https://elifesciences.org/articles/79812>`_
