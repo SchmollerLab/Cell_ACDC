@@ -15805,35 +15805,6 @@ class ObjectCountDialog(QBaseDialog):
         self.cancel = False
         self.close()
 
-# class FilterImageDialog(QBaseDialog):
-#     def __init__(
-#             self, 
-#             function: Callable, 
-#             image: np.ndarray,
-#             df_metadata=None,
-#             parent=None
-#         ):
-        
-#         layout = QHBoxLayout()
-        
-#         params_argspecs = myutils.get_function_argspec(function)
-#         self.functionParamsWin = FunctionParamsDialog(
-#             params_argspecs, 
-#             function_name=f'Function "{function}"', 
-#             df_metadata=df_metadata,
-#             parent=parent,
-#         )
-        
-#         self.imshowWin = plot.imshow(
-#             image, 
-#             block=False
-#         )
-        
-#         layout.addWidget(self.functionParamsWin)
-#         layout.addWidget(self.imshowWin)
-        
-#         self.setLayout(layout)
-
 class PreProcessRecipeDialog(QBaseDialog):
     sigApplyImage = Signal(object)
     sigApplyZstack = Signal(object)
