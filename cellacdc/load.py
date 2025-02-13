@@ -843,8 +843,8 @@ def get_filename_from_channel(
         is_channel_to_skip = False
         for channel_to_skip in skip_channels:
             for ff in channel_file_formats:
-                if file.endswith(f'{channel_to_skip}{ff}'):
-                    is_channel_to_skip = True
+                if file.endswith(f'{basename}{channel_to_skip}{ff}'):
+                    is_channel_to_skip = channel_name not in file
                     break
             if is_channel_to_skip:
                 break

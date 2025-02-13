@@ -2479,7 +2479,14 @@ class guiWin(QMainWindow):
         self.setImageImg1()
 
     def combineWorkerAskLoadFluoChannels(self, requ_channels, pos_i):
-        self.getChData(requ_ch=requ_channels, pos_i=pos_i)
+        if pos_i is None:
+            pos_i = list(range(len(self.data)))
+        elif not isinstance(pos_i, list):
+            pos_i = [pos_i]
+
+        for i in pos_i:
+            print(i)
+            self.getChData(requ_ch=requ_channels, pos_i=i)
         self.combineWorker.wake_waitCondLoadFluoChannels()
     
     def combineWorkerDone(

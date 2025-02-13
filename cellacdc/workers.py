@@ -5517,7 +5517,7 @@ class CustomPreprocessWorkerGUI(QObject):
 class CombineWorkerGUI(CustomPreprocessWorkerGUI):
     sigDone = Signal(object, list)
     sigPreviewDone = Signal(object, list)
-    sigAskLoadFluoChannels = Signal(list, int)
+    sigAskLoadFluoChannels = Signal(list, object)
 
     def __init__(self, mutex, waitCond, logger_func: Callable,):
 #                 signals_parent=None):
@@ -5620,6 +5620,7 @@ class CombineWorkerGUI(CustomPreprocessWorkerGUI):
     def requiredChannels(self, steps=None, pos_i=None):
         if steps is None:
             steps = self._steps
+        
         requ_steps = core.get_selected_channels(steps)
 
         if pos_i is None:
@@ -5639,6 +5640,7 @@ class CombineWorkerGUI(CustomPreprocessWorkerGUI):
             elif len(self.dataQ) > 0:
                 data, steps, key, keep_input_data_type = self.dataQ.pop()
                 requ_steps, pos_i = self.requiredChannels(steps, key[0])
+                printl(requ_steps, pos_i)
                 self.emitsigAskLoadFluoChannels(requ_steps, pos_i)
                 output_imgs, out_keys = self.applySteps(data, steps, keep_input_data_type, key)
                 self.sigPreviewDone.emit(output_imgs, out_keys)
@@ -5648,6 +5650,7 @@ class CombineWorkerGUI(CustomPreprocessWorkerGUI):
             else:
                 self.logger.log('Combining channels worker resumed.')
                 requ_steps, pos_i = self.requiredChannels()
+                printl(requ_steps, pos_i)
                 self.emitsigAskLoadFluoChannels(requ_steps, pos_i)
                 output_imgs, out_keys = self.runJob()
                 self.sigDone.emit(output_imgs, out_keys)
