@@ -163,6 +163,12 @@ class bioFormatsWorker(QObject):
         return sampleImgData
 
     def getSizeZ(self, rawFilePath):
+        if self.bioformats_backend == 'bioio':
+            from cellacdc import acdc_bioio_bioformats as bioformats
+        else:
+            import javabridge
+            from cellacdc import bioformats
+            
         try:
             if rawFilePath.endswith('.ome.tif'):
                 metadata = load.OMEXML(rawFilePath)
@@ -176,6 +182,12 @@ class bioFormatsWorker(QObject):
             return self.SizeZ
 
     def readMetadata(self, raw_src_path, filename):
+        if self.bioformats_backend == 'bioio':
+            from cellacdc import acdc_bioio_bioformats as bioformats
+        else:
+            import javabridge
+            from cellacdc import bioformat
+            
         rawFilePath = os.path.join(raw_src_path, filename)
 
         self.progress.emit('Reading OME metadata...')
@@ -662,7 +674,7 @@ class bioFormatsWorker(QObject):
             self.getFilename(filenameNOext, s0p, 'metadataXML', series, '.txt')
         )
         with open(metadataXML_path, 'w', encoding="utf-8") as txt:
-            txt.write(self.metadataXML)
+            txt.write(str(self.metadataXML))
 
         metadata_filename, basename = self.getFilename(
             filenameNOext, s0p, 'metadata', series, '.csv', 
@@ -1421,7 +1433,9 @@ class createDataStructWin(QMainWindow):
             return
         
         from cellacdc import acdc_bioio_bioformats as bioformats
-        raw_filepath = os.path.join(raw_src_path, raw_filenames)
+        raw_filepath = os.path.join(raw_src_path, raw_filenames[0])
+        
+        # Triggers prompt installation of BioIO and required libraries
         with bioformats.ImageReader(raw_filepath, qparent=self) as reader:
             return
     

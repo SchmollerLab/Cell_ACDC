@@ -1632,6 +1632,7 @@ class mainWin(QMainWindow):
                 
                 self.dataStructWin.show()
                 self.dataStructWin.main()
+                self.restoreDefaultButtons()
             elif is_mac:
                 self.dataStructWin = (
                     dataStruct.InitFijiMacro(self)

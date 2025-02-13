@@ -14,4 +14,4 @@ EXTENSION_PACKAGE_MAPPER = {
     '.nd2': 'bioio-nd2',
 }
 
-from .reader import ImageReader
+from .reader import ImageReader, get_omexml_metadata, OMEXML
