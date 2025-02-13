@@ -3111,10 +3111,23 @@ def download_ffmpeg():
     return ffmep_exec_path.replace('\\', os.sep).replace('/', os.sep)
 
 def get_fiji_exec_folderpath():
-    if is_mac:
-        return os.path.join(
-            acdc_fiji_path, 'Fiji.app', 'Contents', 'MacOS', 'ImageJ-macosx'
-        )
+    if not is_mac:
+        return
+    
+    from cellacdc import fiji_location_filepath
+    if os.path.exists(fiji_location_filepath):
+        with open(fiji_location_filepath, 'r') as txt:
+            fiji_filepath = txt.read()
+        
+        if os.path.exists(fiji_filepath):
+            return fiji_filepath
+    
+    if os.path.exists('/Application/Fiji.app'):
+        return '/Application/Fiji.app/Contents/MacOS/ImageJ-macosx'
+    
+    return os.path.join(
+        acdc_fiji_path, 'Fiji.app', 'Contents', 'MacOS', 'ImageJ-macosx'
+    )
 
 def get_fiji_base_command():
     if not os.path.exists(acdc_fiji_path):
@@ -3133,7 +3146,7 @@ def _init_fiji_cli():
 
 def run_fiji_command(command=None, logger_func=print):
     if command is None:
-        command = get_fiji_base_command()
+        command = f'{get_fiji_base_command()} --headless'
     
     if command is None:
         logger_func('[WARNING]: Fiji is not present.')

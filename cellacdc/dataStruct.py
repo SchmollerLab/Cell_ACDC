@@ -1801,6 +1801,51 @@ class InitFijiMacro:
         self.acdcLauncher = acdcLauncher
         self.logger = self.acdcLauncher.logger
     
+    def askSelectInstalledFiji(self):
+        if os.path.exists(myutils.get_fiji_exec_folderpath()):
+            return
+        
+        txt = html_utils.paragraph(f"""    
+            Do you already have Fiji (ImageJ)?<br><br>
+            If yes, click on the <code>Select Fiji location</code> button below<br>
+            and select where you have the Fiji app.<br><br>
+            Alternatively, you can ignore this and let Cell-ACDC automatically 
+            download Fiji for you.
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        _, selectFijiButton, downloadFijiButton = msg.question(
+            self, 'Select Fiji location', txt, 
+            buttonsTexts=(
+                'Cancel', 'Select Fiji location', 'Download Fiji for me'
+            ), 
+            showDialog=False
+        )
+        selectFijiButton.clicked.disconnect()
+        selectFijiButton.clicked.connect(
+            partial(self.selectFijiLocation, messagebox=msg)
+        )
+        msg.exec_()
+        
+        return msg.cancel
+    
+    def selectFijiLocation(self, checked=True, messagebox=None):
+        import qtpy.compat
+        filepath = qtpy.compat.getopenfilename(
+            parent=self, 
+            caption='Select Fiji.app location', 
+            filters='Application (*.app);;All Files (*)'
+        )[0]
+        if filepath is None:
+            return
+        
+        from cellacdc import fiji_location_filepath
+        with open(fiji_location_filepath, 'w') as txt:
+            txt.write(
+                os.path.join(filepath, 'Contents', 'MacOS', 'ImageJ-macosx')
+            )
+        
+        messagebox.close()
+    
     def run(self):
         txt = (f"""    
             In order to run Bio-Formats on your system, Cell-ACDC will use 
@@ -1810,6 +1855,11 @@ class InitFijiMacro:
             If you prefer to run the macro yourself, you can go through 
             its creation process and cancel its execution later.
         """)
+        cancel = self.askSelectInstalledFiji()
+        if cancel:
+            self.cancel()
+            return
+        
         commands = None
         if not myutils.run_fiji_command():
             try:
@@ -1869,7 +1919,7 @@ class InitFijiMacro:
         success = fiji_macros.run_macro(macro_command)
         if success:
             txt = html_utils.paragraph("""
-                Macro execution completed successfully. 
+                Macro execution completed. 
                 Path to the macro file:
             """)
             msg_func = 'information'
@@ -1886,7 +1936,8 @@ class InitFijiMacro:
         
         msg = widgets.myMessageBox(wrapText=False)
         getattr(msg, msg_func)(
-            self.acdcLauncher, 'Macro execution completed', txt
+            self.acdcLauncher, 'Macro execution completed', txt, 
+            commands=(macro_filepath,)
         )
     
     def cancel(self):
