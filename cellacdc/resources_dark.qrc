@@ -130,6 +130,7 @@
     <file alias="pointsLayer.svg">resources/icons/pointsLayer.svg</file>
     <file alias="no.svg">resources/icons/no_dark.svg</file>
     <file alias="yesGray.svg">resources/icons/yesGray_dark.svg</file>
+    <file alias="fiji-logo.svg">resources/icons/fiji-logo-1.0.svg</file>
     <file alias="bkgrRoi.svg">resources/icons/bkgrRoi_dark.svg</file>
     <file alias="add_crop_ROI.svg">resources/icons/add_crop_ROI_dark.svg</file>
     <file alias="hull.svg">resources/icons/hull_dark.svg</file>
