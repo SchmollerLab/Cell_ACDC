@@ -5640,7 +5640,6 @@ class CombineWorkerGUI(CustomPreprocessWorkerGUI):
             elif len(self.dataQ) > 0:
                 data, steps, key, keep_input_data_type = self.dataQ.pop()
                 requ_steps, pos_i = self.requiredChannels(steps, key[0])
-                printl(requ_steps, pos_i)
                 self.emitsigAskLoadFluoChannels(requ_steps, pos_i)
                 output_imgs, out_keys = self.applySteps(data, steps, keep_input_data_type, key)
                 self.sigPreviewDone.emit(output_imgs, out_keys)
@@ -5650,7 +5649,6 @@ class CombineWorkerGUI(CustomPreprocessWorkerGUI):
             else:
                 self.logger.log('Combining channels worker resumed.')
                 requ_steps, pos_i = self.requiredChannels()
-                printl(requ_steps, pos_i)
                 self.emitsigAskLoadFluoChannels(requ_steps, pos_i)
                 output_imgs, out_keys = self.runJob()
                 self.sigDone.emit(output_imgs, out_keys)

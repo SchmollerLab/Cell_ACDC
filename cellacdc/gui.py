@@ -2485,7 +2485,6 @@ class guiWin(QMainWindow):
             pos_i = [pos_i]
 
         for i in pos_i:
-            print(i)
             self.getChData(requ_ch=requ_channels, pos_i=i)
         self.combineWorker.wake_waitCondLoadFluoChannels()
     
