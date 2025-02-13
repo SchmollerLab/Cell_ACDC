@@ -9524,7 +9524,7 @@ class LineEdit(QLineEdit):
         self.setText(str(value))
 
 class PreProcessingSelector(QComboBox):
-    sigValuesChanged = Signal()
+    sigValuesChanged = Signal(dict, int)
     
     def __init__(self, parent=None):
         super().__init__(parent)

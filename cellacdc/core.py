@@ -2900,6 +2900,7 @@ def combine_channels_multithread_return_imgs(
     output_imgs = [None] * total
     keys_out = [0] * total
     res_i = 0
+    txts = set()
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=n_threads) as executor:
         if signals:
@@ -2919,15 +2920,26 @@ def combine_channels_multithread_return_imgs(
         iterable = keys
         result = executor.map(func, iterable)
         for res in result:
-            output_img, key = res
+            output_img, key, txt = res
             output_imgs[res_i] = output_img
             keys_out[res_i] = key
             res_i += 1
+            txts.add(txt)
 
             if signals:
                 signals.progressBar.emit(1)
             else:
                 pbar.update()
+
+    if not logger_func:
+        for txt in txts:
+            printl(txt)
+    else:
+        for txt in txts:
+            try:
+                logger_func(txt)
+            except Exception as err:
+                printl(txt)
 
     return output_imgs, keys_out
 
@@ -2953,7 +2965,6 @@ def combine_channels_func(
         image_path: str = None,
         key: str = None,
         data = None,
-
     ):
     if not save_filepath and not return_img:
         raise ValueError('Either save_filepath must be provided or return_img must be true')
@@ -2962,10 +2973,13 @@ def combine_channels_func(
         raise ValueError('If return_img is true, key must be provided')
     
     ch_image_data_list = []
+    original_dtype = None
     if not data:
         for channel in channel_names:
             ch_filepath = load.get_filename_from_channel(image_path, channel)
             ch_image_data = load.load_image_file(ch_filepath)
+            if not original_dtype:
+                original_dtype = ch_image_data.dtype
             ch_image_data = myutils.img_to_float(ch_image_data)
             ch_image_data_list.append(ch_image_data)
     else:
@@ -2978,14 +2992,18 @@ def combine_channels_func(
             channel_full_name = f'{posData.basename}{channel}'
             if num_dim == 3:
                 ch_image_data = fluo_data_dict[channel_full_name][key[1]]
+                if not original_dtype:
+                    original_dtype = ch_image_data.dtype
+                ch_image_data = myutils.img_to_float(ch_image_data)
                 ch_image_data_list.append(ch_image_data)
             elif num_dim == 4:
                 ch_image_data = fluo_data_dict[channel_full_name][key[1]][key[2]]
+                if not original_dtype:
+                    original_dtype = ch_image_data.dtype
+                ch_image_data = myutils.img_to_float(ch_image_data)
                 ch_image_data_list.append(ch_image_data)
             else:
                 raise ValueError(f'Invalid number of dimensions, is your data maybe corrupted?\n Ndims: {num_dim}\n Channel name: {channel_full_name}')
-
-    original_dtype = ch_image_data_list[0].dtype
 
     for i in range(len(ch_image_data_list)):
         multiplier = multipliers[i]
@@ -3048,16 +3066,17 @@ def combine_channels_func(
                 prefix = '[WARNING]: '
 
         txt = f'{prefix}Converted output image to {original_dtype} using {method}, which is {warning}'
-        if logger_func:
-            try:
-                logger_func(txt)
-            except Exception as err:
-                printl(txt)
-        else:
-            printl(txt)
 
-    if return_img:
-        return output_img, key
+        if not return_img:
+            if logger_func:
+                try:
+                    logger_func(txt)
+                except Exception as err:
+                    printl(txt)
+            else:
+                printl(txt)
+        if return_img:
+            return output_img, key, txt
     
     txt = f'Saving combined image to {save_filepath}'
     if logger_func:

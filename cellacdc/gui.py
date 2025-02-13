@@ -2489,7 +2489,6 @@ class guiWin(QMainWindow):
         ):
         self.setStatusBarLabel(log=False)
         self.combineDialog.appliedFinished()
-        printl(keys)
 
         unique_pos = {key[0] for key in keys}
         per_pos_data = {pos_i: [] for pos_i in unique_pos}
@@ -16686,7 +16685,7 @@ class guiWin(QMainWindow):
         self.statusBarLabel.setText('Saving combined channels...')
         
         self.saveCombinedChannelsWorker = workers.SaveCombinedChannelsWorker(
-            self.data, appendedText
+            self.data, appendedText, 
         )
         
         self.saveCombinedChannelsThread = QThread()
@@ -16720,7 +16719,13 @@ class guiWin(QMainWindow):
         self.saveCombinedChannelsThread.started.connect(
             self.saveCombinedChannelsWorker.run
         )
+
+        self.saveCombinedChannelsWorker.sigDebugShowImg.connect(self.debugShowImg)
+
         self.saveCombinedChannelsThread.start()
+
+    def debugShowImg(self, img):
+        imshow(img)
 
     def preprocessDialogSavePreprocessedData(self, dialog):
         posData = self.data[self.pos_i]
@@ -18145,7 +18150,7 @@ class guiWin(QMainWindow):
         
         self.combineWorker = workers.CombineWorkerGUI(
             self.combineMutex, self.combineWaitCond,
-            logger_func=self.logger.log,
+            logger_func=self.logger.info,
             # signals=self.signals # what are the singals for gui???
         )
         

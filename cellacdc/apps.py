@@ -15022,8 +15022,6 @@ class CombineChannelsWidget(PreProcessParamsWidget):
         qutils.delete_widget(self.saveRecipeButton)
         qutils.delete_widget(self.loadRecipeButton)
 
-        super().sigValuesChanged.connect(self.emitValuesChanged)
-
     def addStep(self, is_first=False):
         stepWidgets = {}
         
@@ -15039,11 +15037,11 @@ class CombineChannelsWidget(PreProcessParamsWidget):
         stepWidgets['operator'] = operator
         operator.currentTextChanged.connect(self.emitValuesChanged)
  
-        selector = QComboBox()
-        selector.addItems(self.channel_names)
-        self.gridLayout.addWidget(selector, self.row, 2)
-        stepWidgets['selector'] = selector
-        selector.currentTextChanged.connect(self.emitValuesChanged)
+        ch_selector = QComboBox()
+        ch_selector.addItems(self.channel_names)
+        self.gridLayout.addWidget(ch_selector, self.row, 2)
+        stepWidgets['selector'] = ch_selector
+        ch_selector.currentTextChanged.connect(self.emitValuesChanged)
 
         multiplier = QDoubleSpinBox()
         multiplier.setRange(0, 1)
@@ -15071,8 +15069,8 @@ class CombineChannelsWidget(PreProcessParamsWidget):
             stepWidgets['operator'].addItems(operators)
         
         self.row += 1
-        selector.row = self.row
-        selector.step_n = step_n
+        ch_selector.row = self.row
+        ch_selector.step_n = step_n
 
         hline = widgets.QHLine()
         self.gridLayout.addWidget(hline, self.row, 0, 1, 6)
@@ -15084,7 +15082,7 @@ class CombineChannelsWidget(PreProcessParamsWidget):
         self.resetStretch()
         self.sigValuesChangedCombineChannels.emit()
     
-    def emitValuesChanged(self):
+    def emitValuesChanged(self, *args):
         self.sigValuesChangedCombineChannels.emit()
 
     def removeStep(self, checked=False, step_n=None):        

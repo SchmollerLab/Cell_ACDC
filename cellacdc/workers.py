@@ -36,7 +36,7 @@ from . import (
 )
 from . import transformation
 from .path import copy_or_move_tree
-from . import features
+from . import features, plot
 from . import core
 from . import cca_df_colnames, lineage_tree_cols, default_annot_df
 from . import cca_df_colnames_with_tree
@@ -5360,23 +5360,26 @@ class SaveProcessedDataWorker(QObject):
         self.signals.finished.emit(self)
 
 class SaveCombinedChannelsWorker(QObject):
+    sigDebugShowImg = Signal(object)
     def __init__(
             self, 
             allPosData: Iterable['load.loadData'], 
-            appended_text_filename: str
+            appended_text_filename: str,
+            debug: bool = False
         ):
         QObject.__init__(self)
         self.allPosData = allPosData
         self.signals = signals()
         self.logger = workerLogger(self.signals.progress)
         self.appended_text_filename = appended_text_filename
+        self.debug = debug
     
     @worker_exception_handler
     def run(self):
         self.signals.initProgressBar.emit(0)
         for posData in self.allPosData:
             processed_filename = (
-                f'{posData.basename}_'
+                f'{posData.basename}'
                 f'{self.appended_text_filename}{posData.ext}'
             )
             processed_filepath = os.path.join(
@@ -5390,7 +5393,14 @@ class SaveCombinedChannelsWorker(QObject):
                     'combined channels data. Skipping it.'
                 )
                 continue
-                
+            if self.debug:
+                printl(processed_data.shape)
+                printl(processed_data.dtype)
+                printl(processed_data.min())
+                printl(processed_data.max())
+                printl(processed_filepath)
+                self.sigDebugShowImg.emit(processed_data)
+            # cellacdc.plot.imshow(processed_data) 
             io.save_image_data(processed_filepath, processed_data)
         
         self.signals.finished.emit(self)
@@ -5596,13 +5606,12 @@ class CombineWorkerGUI(CustomPreprocessWorkerGUI):
             new_keys_per_pos = list(itertools.product(*new_keys_per_pos))
             new_keys.extend(new_keys_per_pos)
 
-        printl(new_keys)
         output_imgs, out_keys = core.combine_channels_multithread_return_imgs(
             steps=steps,
             data=data,
             keep_input_data_type=keep_input_data_type,
             keys=new_keys,
-            logger_func=self.logger_func,
+            logger_func=self.logger,
             signals=self.signals,
 
         )
@@ -5802,7 +5811,7 @@ class CombineChannelsWorkerUtil(BaseWorkerUtil):
             keep_input_data_type: bool,
         ):
 
-        channel_name_first = steps[0]['channel']
+        channel_name_first = steps[1]['channel']
         save_filepaths = []
         for image_path in image_paths:
             ch_filepath = load.get_filename_from_channel(image_path, channel_name_first)
