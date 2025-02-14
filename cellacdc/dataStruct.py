@@ -1459,20 +1459,24 @@ class createDataStructWin(QMainWindow):
 
     def taskEnded(self):
         if self.worker.aborted and not self.worker.isCriticalError:
-            msg = QMessageBox(self)
-            abort = msg.critical(
-               self, 'Conversion task aborted.',
-               'Conversion task aborted.',
-               msg.Close
+            msg = widgets.myMessageBox(wrapText=False)
+            txt = html_utils.paragraph(
+                'Conversion task cancelled.'
+            )
+            msg.critical(
+               self, 'Conversion task cancelled.', txt
             )
             self.close()
         elif not self.worker.aborted:
-            msg = QMessageBox(self)
+            msg = widgets.myMessageBox(wrapText=False)
+            txt = html_utils.paragraph(
+                'Conversion task ended.<br><br>'
+                'Files saved to'
+            )
             abort = msg.information(
-               self, 'Conversion task ended.',
-               'Conversion task ended.\n\n'
-               f'Files saved to "{self.worker.exp_dst_path}"',
-               msg.Close
+               self, 'Conversion task ended.', txt,
+               commands=(self.worker.exp_dst_path,),
+               path_to_browse=self.worker.exp_dst_path
             )
             self.close()
 

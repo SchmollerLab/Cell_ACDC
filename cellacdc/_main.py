@@ -1632,7 +1632,8 @@ class mainWin(QMainWindow):
                 
                 self.dataStructWin.show()
                 self.dataStructWin.main()
-                self.restoreDefaultButtons()
+                if self.dataStructWin.bioformats_backend != 'python-bioformats': 
+                    self.restoreDefaultButtons()
             elif is_mac:
                 self.dataStructWin = (
                     dataStruct.InitFijiMacro(self)
