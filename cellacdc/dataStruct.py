@@ -1047,6 +1047,13 @@ class createDataStructWin(QMainWindow):
 
         self.mainLayout = mainLayout
         
+        try:
+            import javabridge
+            from cellacdc import bioformats
+            self.bioformats_backend = 'python-bioformats'
+        except Exception as e:
+            pass
+        
         self.bioformats_backend = 'bioio'
         success = self.checkInstallBioIO(parent)
         if success:
