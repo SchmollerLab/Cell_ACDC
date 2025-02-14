@@ -1146,6 +1146,8 @@ class guiWin(QMainWindow):
                     f"Shortcut: \"No shortcut\"", 
                     tooltip
                 )
+            
+            getattr(self, key).setToolTip(tooltip)
 
     def run(self, module='acdc_gui', logs_path=None):        
         self.setWindowIcon()
