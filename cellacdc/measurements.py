@@ -1426,7 +1426,8 @@ def add_concentration_metrics(df, concentration_metrics_params):
     return df
 
 def add_size_metrics(
-        df, rp, size_metrics_to_save, isSegm3D, yx_pxl_to_um2, vox_to_fl_3D
+        df, rp, size_metrics_to_save, isSegm3D, yx_pxl_to_um2, vox_to_fl_3D, 
+        calc_size_for_each_zslice=False
     ):
     for o, obj in enumerate(tqdm(rp, ncols=100, leave=False)):
         for col in size_metrics_to_save:
@@ -1434,6 +1435,19 @@ def add_size_metrics(
                 col, obj, isSegm3D, yx_pxl_to_um2, vox_to_fl_3D
             )
             df.at[obj.label, col] = val
+            if not calc_size_for_each_zslice:
+                continue
+            
+            z0 = obj.bbox[0]
+            for local_z, obj_img_z in enumerate(obj.image):
+                z_slice = z0 + local_z
+                area_pxl_z = np.count_nonzero(obj_img_z)
+                col = f'cell_area_pxl_zslice{z_slice}'
+                df.at[obj.label, col] = area_pxl_z
+                
+                area_um2_z = area_pxl_z*yx_pxl_to_um2
+                col = f'cell_area_um2_zslice{z_slice}'
+                df.at[obj.label, col] = area_um2_z
     return df
 
 def add_foregr_metrics(

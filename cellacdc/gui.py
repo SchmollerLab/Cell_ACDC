@@ -11,7 +11,7 @@ import inspect
 import logging
 import uuid
 import json
-import pprint
+from collections import defaultdict
 import psutil
 import zipfile
 from functools import partial
@@ -521,6 +521,7 @@ class saveDataWorker(QObject):
         concentration_metrics_params = self.mainWin.concentration_metrics_params
         custom_metrics_params = self.mainWin.custom_metrics_params
         calc_for_each_zslice_mapper = self.mainWin.calc_for_each_zslice_mapper
+        calc_size_for_each_zslice = self.mainWin.calc_size_for_each_zslice
 
         # Pre-populate columns with zeros
         all_columns = list(size_metrics_to_save)
@@ -540,7 +541,7 @@ class saveDataWorker(QObject):
 
         df = measurements.add_size_metrics(
             df, rp, size_metrics_to_save, isSegm3D, yx_pxl_to_um2, 
-            vox_to_fl_3D
+            vox_to_fl_3D, calc_size_for_each_zslice=calc_size_for_each_zslice
         )
         
         # Get background masks
@@ -757,7 +758,7 @@ class saveDataWorker(QObject):
         PhysicalSizeX = posData.PhysicalSizeX
         yx_pxl_to_um2 = PhysicalSizeY*PhysicalSizeX
         vox_to_fl_3D = PhysicalSizeY*PhysicalSizeX*posData.PhysicalSizeZ
-
+        
         init_list = [-2]*len(rp)
         IDs = init_list.copy()
         IDs_vol_vox = init_list.copy()
@@ -777,15 +778,18 @@ class saveDataWorker(QObject):
             if self.mainWin.isSegm3D:
                 IDs_vol_vox_3D[i] = obj.area
                 IDs_vol_fl_3D[i] = obj.area*vox_to_fl_3D
-
+            
         df['cell_area_pxl'] = pd.Series(data=IDs_area_pxl, index=IDs, dtype=float)
         df['cell_vol_vox'] = pd.Series(data=IDs_vol_vox, index=IDs, dtype=float)
         df['cell_area_um2'] = pd.Series(data=IDs_area_um2, index=IDs, dtype=float)
         df['cell_vol_fl'] = pd.Series(data=IDs_vol_fl, index=IDs, dtype=float)
         if self.mainWin.isSegm3D:
-            df['cell_vol_vox_3D'] = pd.Series(data=IDs_vol_vox_3D, index=IDs, dtype=float)
-            df['cell_vol_fl_3D'] = pd.Series(data=IDs_vol_fl_3D, index=IDs, dtype=float)
-
+            df['cell_vol_vox_3D'] = pd.Series(
+                data=IDs_vol_vox_3D, index=IDs, dtype=float
+            )
+            df['cell_vol_fl_3D'] = pd.Series(
+                data=IDs_vol_fl_3D, index=IDs, dtype=float
+            )
         return df
 
     def addAdditionalMetadata(self, posData: load.loadData, df: pd.DataFrame):
@@ -19308,6 +19312,7 @@ class guiWin(QMainWindow):
         self.chNamesToSkip = []
         self.metricsToSkip = {}
         self.calc_for_each_zslice_mapper = {}
+        self.calc_size_for_each_zslice = False
         # At the moment we don't know how many channels the user will load -->
         # we set the measurements to save either at setMeasurements dialog
         # or at initMetricsToSave
@@ -28576,6 +28581,7 @@ class guiWin(QMainWindow):
         self.metricsToSkip = {chName:[] for chName in self.ch_names}
         self.metricsToSave = {chName:[] for chName in self.ch_names}
         self.calc_for_each_zslice_mapper = {}
+        self.calc_size_for_each_zslice = False
         
         favourite_funcs = set()
         last_selected_groupboxes_measurements = load.read_last_selected_gb_meas(
@@ -28611,6 +28617,9 @@ class guiWin(QMainWindow):
                     func_name = colname[len(chName):]
                     favourite_funcs.add(func_name)
 
+        self.calc_size_for_each_zslice = (
+            measurementsWin.sizeMetricsQGBox.calcForEachZsliceRequested
+        )
         if not measurementsWin.sizeMetricsQGBox.isChecked():
             self.sizeMetricsToSave = []
         else:

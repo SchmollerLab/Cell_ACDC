@@ -4133,7 +4133,7 @@ class _metricsQGBox(QGroupBox):
     def __init__(
             self, desc_dict, title, favourite_funcs=None, isZstack=False,
             equations=None, addDelButton=False, delButtonMetricsDesc=None,
-            parent=None
+            parent=None, addCalcForEachZsliceToggle=False
         ):
         QGroupBox.__init__(self, parent)
         
@@ -4195,12 +4195,12 @@ class _metricsQGBox(QGroupBox):
         self.scrollArea.setWidget(self.scrollAreaWidget)
         layout.addWidget(self.scrollArea)
 
-        buttonsLayout = QHBoxLayout()        
+        buttonsLayout = QHBoxLayout()    
+            
         buttonsLayout.addStretch(1)
         
         self.selectAllButton = selectAllPushButton()
         self.selectAllButton.sigClicked.connect(self.checkAll)
-        
         
         buttonsLayout.addWidget(self.selectAllButton)
 
@@ -4213,6 +4213,24 @@ class _metricsQGBox(QGroupBox):
             buttonsLayout.addWidget(self.loadFavouritesButton)
 
         layout.addLayout(buttonsLayout)
+        
+        self.calcForEachZsliceToggle = None
+        if addCalcForEachZsliceToggle:
+            buttonsLayout = QHBoxLayout()
+            self.calcForEachZsliceToggle = Toggle()
+            tooltip = (
+                'Calculate `cell_area` for each z-slice.\n\n'
+                'The measurements will be saved in the column with name\n'
+                'ending with `_zsliceN` where N is the z-slice number\n'
+                '(starting from 0).'
+            )
+            calcForEachZsliceLabel = QLabel('Calculate for each z-slice')
+            calcForEachZsliceLabel.setToolTip(tooltip)
+            self.calcForEachZsliceToggle.setToolTip(tooltip)
+            buttonsLayout.addWidget(self.calcForEachZsliceToggle)
+            buttonsLayout.addWidget(calcForEachZsliceLabel)
+            buttonsLayout.addStretch(1) 
+            layout.addLayout(buttonsLayout)
 
         self.setTitle(title)
         self.setCheckable(True)

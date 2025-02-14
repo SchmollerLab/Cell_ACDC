@@ -1740,7 +1740,8 @@ class SetMeasurementsDialog(QBaseDialog):
             }
         sizeMetricsQGBox = widgets._metricsQGBox(
             size_metrics_desc, 'Physical measurements',
-            favourite_funcs=favourite_funcs, isZstack=isZstack
+            favourite_funcs=favourite_funcs, isZstack=isZstack,
+            addCalcForEachZsliceToggle=isSegm3D
         )
         self.all_metrics.extend([c.text() for c in sizeMetricsQGBox.checkBoxes])
         self.sizeMetricsQGBox = sizeMetricsQGBox
@@ -2392,6 +2393,10 @@ class SetMeasurementsDialog(QBaseDialog):
                     continue
                 if not checkBox.isChecked() and is_existing:
                     unchecked_existing_colnames.append(colname)
+        
+        self.sizeMetricsQGBox.calcForEachZsliceRequested = (
+            self.sizeMetricsQGBox.isCalcForEachZsliceRequested()
+        )
         for checkBox in self.sizeMetricsQGBox.checkBoxes:
             colname = checkBox.text()
             is_existing = colname in existing_colnames
