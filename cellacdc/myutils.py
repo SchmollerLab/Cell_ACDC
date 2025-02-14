@@ -1,5 +1,8 @@
 import os
 import re
+
+from typing import Literal
+
 import pathlib
 import difflib
 import sys
@@ -2661,6 +2664,7 @@ def check_install_package(
         max_version='',
         install_dependencies=True,
         return_outcome=False
+        installer: Literal['pip', 'conda']='pip',
     ):
     """Try to import a package. If import fails, ask user to install it 
     automatically.
@@ -2706,6 +2710,9 @@ def check_install_package(
         If False, the `--no-deps` flag will be added to the pip command.
     return_outcome : bool, optional
         If True, returns 1 on successfull action
+    installer : str, optional
+        Package manager to use to install the package. Either 'pip' or 'conda'. 
+        Default is 'pip'
         
     Raises
     ------
@@ -2733,7 +2740,7 @@ def check_install_package(
             pkg_name, note=note, parent=parent, upgrade=upgrade,
             is_cli=is_cli, caller_name=caller_name, logger_func=logger_func,
             pkg_command=pypi_name, max_version=max_version, 
-            min_version=min_version
+            min_version=min_version, installer=installer
         )
         if pypi_name:
             pkg_name = pypi_name
@@ -2759,7 +2766,10 @@ def check_install_package(
                     max_version=max_version, 
                     min_version=min_version
                 )
-                _install_pip_package(pkg_command, install_dependencies=install_dependencies)
+                if installer == 'pip':
+                    _install_pip_package(pkg_command, install_dependencies=install_dependencies)
+                else:
+                    install_package_conda(pkg_command)
         except Exception as e:
             printl(traceback.format_exc())
             _inform_install_package_failed(
@@ -2866,20 +2876,21 @@ def download_fiji(logger_func=print):
 def _install_package_msg(
         pkg_name, note='', parent=None, upgrade=False, caller_name='Cell-ACDC',
         is_cli=False, pkg_command='', logger_func=print, max_version='', 
-        min_version=''
+        min_version='', installer: Literal['pip', 'conda']='pip'
     ):
     if is_cli:
         proceed = _install_package_cli_msg(
             pkg_name, note=note, upgrade=upgrade, caller_name=caller_name,
             pkg_command=pkg_command, max_version=max_version, 
-            min_version=min_version, logger_func=logger_func
+            min_version=min_version, logger_func=logger_func, 
+            installer=installer
         )
     else:
         proceed = _install_package_gui_msg(
             pkg_name, note=note, parent=parent, upgrade=upgrade, 
             caller_name=caller_name, pkg_command=pkg_command,
             max_version=max_version, min_version=min_version, 
-            logger_func=logger_func
+            logger_func=logger_func, installer=installer
         )
     return proceed
 
@@ -2978,7 +2989,7 @@ def _get_pkg_command_pip_install(pkg_command, max_version='', min_version=''):
 def _install_package_cli_msg(
         pkg_name, note='', upgrade=False, caller_name='Cell-ACDC',
         logger_func=print, pkg_command='', max_version='', 
-        min_version=''
+        min_version='', installer: Literal['pip', 'conda']='pip'
     ):
     if not pkg_command:
         pkg_command = pkg_name
@@ -2991,16 +3002,23 @@ def _install_package_cli_msg(
         action = 'upgrade'
     else:
         action = 'install'
-        
+    
+    if installer == 'pip':
+        install_command = f'pip install --upgrade {pkg_command}'
+    elif installer == 'conda':
+        install_command = f'conda install -c conda-forge {pkg_command}'
+    
     separator = '-'*60
     txt = (
         f'{separator}\n{caller_name} needs to {action} {pkg_name}\n\n'
         'You can choose to install it now or stop the process and install it '
         'later with the following command:\n\n'
-        f'pip install --upgrade "{pkg_command}"\n'
+        f'{install_command}\n'
     )
     logger_func(txt)
-    install_command = f'pip install --upgrade {pkg_command}'
+    
+    
+        
     while True:
         answer = try_input_install_package(pkg_name, install_command)
         if not answer or answer.lower() == 'y':
@@ -3016,7 +3034,8 @@ def _install_package_cli_msg(
         
 def _install_package_gui_msg(
         pkg_name, note='', parent=None, upgrade=False, caller_name='Cell-ACDC', 
-        pkg_command='', logger_func=None, max_version='', min_version=''
+        pkg_command='', logger_func=None, max_version='', min_version='', 
+        installer: Literal['pip', 'conda']='pip'
     ):
     msg = widgets.myMessageBox(parent=parent)
     if upgrade:
@@ -3034,7 +3053,11 @@ def _install_package_gui_msg(
     )
     
     command_html = pkg_command.lower().replace('<', '&lt;').replace('>', '&gt;')
-    command = f'pip install --upgrade {command_html}'
+    
+    if installer == 'pip':
+        command = f'pip install --upgrade {command_html}'
+    elif installer == 'conda':
+        command = f'conda install -c conda-forge {command_html}'
 
     txt = html_utils.paragraph(f"""
         {caller_name} is going to <b>download and {install_text}</b>
@@ -3118,10 +3141,23 @@ def download_ffmpeg():
     return ffmep_exec_path.replace('\\', os.sep).replace('/', os.sep)
 
 def get_fiji_exec_folderpath():
-    if is_mac:
-        return os.path.join(
-            acdc_fiji_path, 'Fiji.app', 'Contents', 'MacOS', 'ImageJ-macosx'
-        )
+    if not is_mac:
+        return
+    
+    from cellacdc import fiji_location_filepath
+    if os.path.exists(fiji_location_filepath):
+        with open(fiji_location_filepath, 'r') as txt:
+            fiji_filepath = txt.read()
+        
+        if os.path.exists(fiji_filepath):
+            return fiji_filepath
+    
+    if os.path.exists('/Application/Fiji.app'):
+        return '/Application/Fiji.app/Contents/MacOS/ImageJ-macosx'
+    
+    return os.path.join(
+        acdc_fiji_path, 'Fiji.app', 'Contents', 'MacOS', 'ImageJ-macosx'
+    )
 
 def get_fiji_base_command():
     if not os.path.exists(acdc_fiji_path):
@@ -3140,7 +3176,7 @@ def _init_fiji_cli():
 
 def run_fiji_command(command=None, logger_func=print):
     if command is None:
-        command = get_fiji_base_command()
+        command = f'{get_fiji_base_command()} --headless'
     
     if command is None:
         logger_func('[WARNING]: Fiji is not present.')

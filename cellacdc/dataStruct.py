@@ -1,5 +1,8 @@
 import sys
 import os
+
+from typing import Literal
+
 import shutil
 import re
 import traceback
@@ -80,7 +83,8 @@ class bioFormatsWorker(QObject):
 
     def __init__(
             self, raw_src_path, rawFilenames, exp_dst_path,
-            mutex, waitCond, rawDataStruct
+            mutex, waitCond, rawDataStruct, 
+            bioformats_backend: Literal['bioio', 'python-bioformats']
         ):
         QObject.__init__(self)
         self.raw_src_path = raw_src_path
@@ -95,8 +99,15 @@ class bioFormatsWorker(QObject):
         self.overwritePos = False
         self.addFiles = False
         self.cancel = False
+        self.bioformats_backend = bioformats_backend
     
     def readSampleData(self, rawFilePath, SizeC, SizeT, SizeZ):
+        if self.bioformats_backend == 'bioio':
+            from cellacdc import acdc_bioio_bioformats as bioformats
+        else:
+            import javabridge
+            from cellacdc import bioformats
+             
         sampleImgData = {}
         self.progress.emit('Reading sample image data...')
         dimsIdx = {}
@@ -152,6 +163,12 @@ class bioFormatsWorker(QObject):
         return sampleImgData
 
     def getSizeZ(self, rawFilePath):
+        if self.bioformats_backend == 'bioio':
+            from cellacdc import acdc_bioio_bioformats as bioformats
+        else:
+            import javabridge
+            from cellacdc import bioformats
+            
         try:
             if rawFilePath.endswith('.ome.tif'):
                 metadata = load.OMEXML(rawFilePath)
@@ -165,6 +182,12 @@ class bioFormatsWorker(QObject):
             return self.SizeZ
 
     def readMetadata(self, raw_src_path, filename):
+        if self.bioformats_backend == 'bioio':
+            from cellacdc import acdc_bioio_bioformats as bioformats
+        else:
+            import javabridge
+            from cellacdc import bioformat
+            
         rawFilePath = os.path.join(raw_src_path, filename)
 
         self.progress.emit('Reading OME metadata...')
@@ -634,6 +657,12 @@ class bioFormatsWorker(QObject):
             shutil.rmtree(tempDir)
 
     def saveData(self, images_path, rawFilePath, filename, p, series, p_idx=0):
+        if self.bioformats_backend == 'bioio':
+            from cellacdc import acdc_bioio_bioformats as bioformats
+        else:
+            import javabridge
+            from cellacdc import bioformats
+            
         s0p = str(p+1).zfill(self.numPosDigits)
         self.progress.emit(
             f'Position {p+1}/{self.numPos}: saving data to {images_path}...'
@@ -645,7 +674,7 @@ class bioFormatsWorker(QObject):
             self.getFilename(filenameNOext, s0p, 'metadataXML', series, '.txt')
         )
         with open(metadataXML_path, 'w', encoding="utf-8") as txt:
-            txt.write(self.metadataXML)
+            txt.write(str(self.metadataXML))
 
         metadata_filename, basename = self.getFilename(
             filenameNOext, s0p, 'metadata', series, '.csv', 
@@ -801,9 +830,13 @@ class bioFormatsWorker(QObject):
     def run(self):
         raw_src_path = self.raw_src_path
         exp_dst_path = self.exp_dst_path
-        javabridge.start_vm(class_path=bioformats.JARS, run_headless=True)
-        # bioformats.init_logger()
-        self.progress.emit('Java VM running.')
+        
+        if self.bioformats_backend == 'python-bioformats':
+            import javabridge
+            from cellacdc import bioformats
+            javabridge.start_vm(class_path=bioformats.JARS, run_headless=True)
+            self.progress.emit('Java VM running.')
+            
         self.aborted = False
         self.isCriticalError = False
         for p, filename in enumerate(self.rawFilenames):
@@ -865,7 +898,8 @@ class bioFormatsWorker(QObject):
                 abort = self.readMetadata(raw_src_path, filename)
                 if abort:
                     self.aborted = True
-                    javabridge.kill_vm()
+                    if self.bioformats_backend == 'python-bioformats':
+                        javabridge.kill_vm()
                     self.finished.emit()
                     return
 
@@ -896,7 +930,8 @@ class bioFormatsWorker(QObject):
                     except PermissionError as e:
                         self.progress.emit(e)
 
-        javabridge.kill_vm()
+        if self.bioformats_backend == 'python-bioformats':
+            javabridge.kill_vm()
         self.finished.emit()
         
 
@@ -921,10 +956,6 @@ class createDataStructWin(QMainWindow):
             logger.info(f'Initializing Data structure module v{self._version}...')
         else:
             logger.info(f'Initializing Data structure module...')
-
-        is_linux = sys.platform.startswith('linux')
-        is_mac = sys.platform == 'darwin'
-        is_win = sys.platform.startswith("win")
 
         self.start_JVM = start_JVM
         self.allowExit = allowExit
@@ -1015,7 +1046,35 @@ class createDataStructWin(QMainWindow):
         mainContainer.setLayout(mainLayout)
 
         self.mainLayout = mainLayout
+        
+        try:
+            import javabridge
+            from cellacdc import bioformats
+            self.bioformats_backend = 'python-bioformats'
+        except Exception as e:
+            pass
+        
+        self.bioformats_backend = 'bioio'
+        success = self.checkInstallBioIO(parent)
+        if success:
+            return
+        
+        self.bioformats_backend = 'python-bioformats'
+        self.checkInstallPythonBioformats(parent)
 
+    def checkInstallBioIO(self, parent):
+        myutils.check_install_package(
+            'BioIO', 
+            import_pkg_name='bioio', 
+            pypi_name='bioio', 
+            parent=parent
+        )
+        
+        return True
+    
+    def checkInstallPythonBioformats(self, parent):
+        from . import is_win, is_mac
+        
         if not is_win and not is_mac:
             if parent is None:
                 self.show()
@@ -1027,7 +1086,6 @@ class createDataStructWin(QMainWindow):
             qparent=self, logger_info=self.logger.info, 
             logger_exception=self.logger.exception
         )
-        global bioformats, javabridge
         self.logger.info('Checking if Java is installed...')
         myutils.check_upgrade_javabridge()
         try:
@@ -1312,6 +1370,8 @@ class createDataStructWin(QMainWindow):
         )
 
         self.addPbar()
+        
+        self.initBioIO(raw_src_path, rawFilenames)
 
         # Set up separate thread for bioFormatsWorker class
         self.mutex = QMutex()
@@ -1319,7 +1379,8 @@ class createDataStructWin(QMainWindow):
         self.thread = QThread()
         self.worker = bioFormatsWorker(
             raw_src_path, rawFilenames, exp_dst_path,
-            self.mutex, self.waitCond, rawDataStruct
+            self.mutex, self.waitCond, rawDataStruct, 
+            self.bioformats_backend
         )
         if self.rawDataStruct == 2:
             self.worker.basename = self.basename
@@ -1374,6 +1435,17 @@ class createDataStructWin(QMainWindow):
         msg.setTextFormat(Qt.RichText)
         msg.exec_()
 
+    def initBioIO(self, raw_src_path, raw_filenames):
+        if self.bioformats_backend == 'python-bioformats':
+            return
+        
+        from cellacdc import acdc_bioio_bioformats as bioformats
+        raw_filepath = os.path.join(raw_src_path, raw_filenames[0])
+        
+        # Triggers prompt installation of BioIO and required libraries
+        with bioformats.ImageReader(raw_filepath, qparent=self) as reader:
+            return
+    
     def addPbar(self):
         self.QPbar = widgets.ProgressBar(self)
         self.QPbar.setValue(0)
@@ -1387,20 +1459,24 @@ class createDataStructWin(QMainWindow):
 
     def taskEnded(self):
         if self.worker.aborted and not self.worker.isCriticalError:
-            msg = QMessageBox(self)
-            abort = msg.critical(
-               self, 'Conversion task aborted.',
-               'Conversion task aborted.',
-               msg.Close
+            msg = widgets.myMessageBox(wrapText=False)
+            txt = html_utils.paragraph(
+                'Conversion task cancelled.'
+            )
+            msg.critical(
+               self, 'Conversion task cancelled.', txt
             )
             self.close()
         elif not self.worker.aborted:
-            msg = QMessageBox(self)
+            msg = widgets.myMessageBox(wrapText=False)
+            txt = html_utils.paragraph(
+                'Conversion task ended.<br><br>'
+                'Files saved to'
+            )
             abort = msg.information(
-               self, 'Conversion task ended.',
-               'Conversion task ended.\n\n'
-               f'Files saved to "{self.worker.exp_dst_path}"',
-               msg.Close
+               self, 'Conversion task ended.', txt,
+               commands=(self.worker.exp_dst_path,),
+               path_to_browse=self.worker.exp_dst_path
             )
             self.close()
 
@@ -1736,6 +1812,51 @@ class InitFijiMacro:
         self.acdcLauncher = acdcLauncher
         self.logger = self.acdcLauncher.logger
     
+    def askSelectInstalledFiji(self):
+        if os.path.exists(myutils.get_fiji_exec_folderpath()):
+            return
+        
+        txt = html_utils.paragraph(f"""    
+            Do you already have Fiji (ImageJ)?<br><br>
+            If yes, click on the <code>Select Fiji location</code> button below<br>
+            and select where you have the Fiji app.<br><br>
+            Alternatively, you can ignore this and let Cell-ACDC automatically 
+            download Fiji for you.
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        _, selectFijiButton, downloadFijiButton = msg.question(
+            self, 'Select Fiji location', txt, 
+            buttonsTexts=(
+                'Cancel', 'Select Fiji location', 'Download Fiji for me'
+            ), 
+            showDialog=False
+        )
+        selectFijiButton.clicked.disconnect()
+        selectFijiButton.clicked.connect(
+            partial(self.selectFijiLocation, messagebox=msg)
+        )
+        msg.exec_()
+        
+        return msg.cancel
+    
+    def selectFijiLocation(self, checked=True, messagebox=None):
+        import qtpy.compat
+        filepath = qtpy.compat.getopenfilename(
+            parent=self, 
+            caption='Select Fiji.app location', 
+            filters='Application (*.app);;All Files (*)'
+        )[0]
+        if filepath is None:
+            return
+        
+        from cellacdc import fiji_location_filepath
+        with open(fiji_location_filepath, 'w') as txt:
+            txt.write(
+                os.path.join(filepath, 'Contents', 'MacOS', 'ImageJ-macosx')
+            )
+        
+        messagebox.close()
+    
     def run(self):
         txt = (f"""    
             In order to run Bio-Formats on your system, Cell-ACDC will use 
@@ -1745,6 +1866,11 @@ class InitFijiMacro:
             If you prefer to run the macro yourself, you can go through 
             its creation process and cancel its execution later.
         """)
+        cancel = self.askSelectInstalledFiji()
+        if cancel:
+            self.cancel()
+            return
+        
         commands = None
         if not myutils.run_fiji_command():
             try:
@@ -1804,7 +1930,7 @@ class InitFijiMacro:
         success = fiji_macros.run_macro(macro_command)
         if success:
             txt = html_utils.paragraph("""
-                Macro execution completed successfully. 
+                Macro execution completed. 
                 Path to the macro file:
             """)
             msg_func = 'information'
@@ -1821,7 +1947,8 @@ class InitFijiMacro:
         
         msg = widgets.myMessageBox(wrapText=False)
         getattr(msg, msg_func)(
-            self.acdcLauncher, 'Macro execution completed', txt
+            self.acdcLauncher, 'Macro execution completed', txt, 
+            commands=(macro_filepath,)
         )
     
     def cancel(self):

@@ -848,6 +848,7 @@ def get_filename_from_channel(
                     break
             if is_channel_to_skip:
                 break
+        
         if is_channel_to_skip:
             continue
 
