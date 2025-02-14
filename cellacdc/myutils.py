@@ -2663,7 +2663,7 @@ def check_install_package(
         min_version='', 
         max_version='',
         install_dependencies=True,
-        return_outcome=False
+        return_outcome=False,
         installer: Literal['pip', 'conda']='pip',
     ):
     """Try to import a package. If import fails, ask user to install it 
