@@ -57,6 +57,11 @@ def run():
         print(f'Installed in "{cellacdc_path}"')
         print(f'Python {python_version}')
         print(f'Platform: {platform.platform()}')
+        try:
+            from qtpy import QtCore
+            print(f'Qt {QtCore.__version__}')
+        except Exception as err:
+            print(f'Qt: Not installed')
         print('='*100)
         exit()
 
