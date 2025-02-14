@@ -6,6 +6,7 @@ import json
 import concurrent.futures
 from functools import partial
 from collections import defaultdict, deque
+import itertools
 
 from typing import Union, List, Dict, Callable, Any, Tuple, Iterable
 
@@ -17,6 +18,7 @@ import traceback
 
 import skimage.io
 import skimage.measure
+import skimage.exposure
 
 import queue
 
@@ -34,7 +36,7 @@ from . import (
 )
 from . import transformation
 from .path import copy_or_move_tree
-from . import features
+from . import features, plot
 from . import core
 from . import cca_df_colnames, lineage_tree_cols, default_annot_df
 from . import cca_df_colnames_with_tree
@@ -5210,6 +5212,8 @@ class FucciPreprocessWorker(BaseWorkerUtil):
             )
             result = executor.map(func, iterable)
             for frame_i, processed_img in result:
+                processed_img = skimage.exposure.rescale_intensity(processed_img, out_range=(0, 255))
+                processed_img = processed_img.astype(np.uint8)
                 processed_data[frame_i] = processed_img
                 pbar.update()
         pbar.close()
@@ -5355,7 +5359,53 @@ class SaveProcessedDataWorker(QObject):
         
         self.signals.finished.emit(self)
 
-class PreprocessWorker(QObject):
+class SaveCombinedChannelsWorker(QObject):
+    sigDebugShowImg = Signal(object)
+    def __init__(
+            self, 
+            allPosData: Iterable['load.loadData'], 
+            appended_text_filename: str,
+            debug: bool = False
+        ):
+        QObject.__init__(self)
+        self.allPosData = allPosData
+        self.signals = signals()
+        self.logger = workerLogger(self.signals.progress)
+        self.appended_text_filename = appended_text_filename
+        self.debug = debug
+    
+    @worker_exception_handler
+    def run(self):
+        self.signals.initProgressBar.emit(0)
+        for posData in self.allPosData:
+            processed_filename = (
+                f'{posData.basename}'
+                f'{self.appended_text_filename}{posData.ext}'
+            )
+            processed_filepath = os.path.join(
+                posData.images_path, processed_filename
+            )
+            self.logger.log(f'Saving {processed_filepath}...')
+            processed_data = posData.combinedChannelsDataArray()
+            if processed_data is None:
+                self.logger.log(
+                    f'[WARNING]: {posData.pos_foldername} does not have '
+                    'combined channels data. Skipping it.'
+                )
+                continue
+            if self.debug:
+                printl(processed_data.shape)
+                printl(processed_data.dtype)
+                printl(processed_data.min())
+                printl(processed_data.max())
+                printl(processed_filepath)
+                self.sigDebugShowImg.emit(processed_data)
+            # cellacdc.plot.imshow(processed_data) 
+            io.save_image_data(processed_filepath, processed_data)
+        
+        self.signals.finished.emit(self)
+
+class CustomPreprocessWorkerGUI(QObject):
     sigDone = Signal(object, str)
     sigPreviewDone = Signal(object, tuple)
     sigIsQueueEmpty = Signal(bool)
@@ -5464,7 +5514,161 @@ class PreprocessWorker(QObject):
 
         self.signals.finished.emit(self)
 
-class CustomPreprocessWorker(BaseWorkerUtil):
+class CombineWorkerGUI(CustomPreprocessWorkerGUI):
+    sigDone = Signal(object, list)
+    sigPreviewDone = Signal(object, list)
+    sigAskLoadFluoChannels = Signal(list, object)
+
+    def __init__(self, mutex, waitCond, logger_func: Callable,):
+#                 signals_parent=None):
+        super().__init__(mutex, waitCond)
+
+        self.waitCondLoadFluoChannels = QWaitCondition()
+        self.logger_func = logger_func
+
+        # if not signals_parent:
+        #     signals_parent = signals()
+
+        # self.signals = signals_parent
+
+    def enqueue(
+            self,
+            data,
+            steps: Dict[str, Any],
+            key: Tuple[int, int, Union[int, str]],
+            keep_input_data_type: bool
+        ):
+        self.dataQ.append((data, steps, key, keep_input_data_type))
+        if len(self.dataQ) == 1:
+            self.sigIsQueueEmpty.emit(False)
+            # Wake up worker upon inserting first element
+            self.wakeUp()
+
+    def setupJob(
+            self, 
+            data: Dict[str, np.ndarray], 
+            steps: Dict[str, Any],
+            keep_input_data_type: bool,
+            key: Tuple[Union[int, None], Union[int, None], Union[int, None]]
+        ):
+        self._key = key
+        self._steps = steps
+        self._data = data
+        self._keep_input_data_type = keep_input_data_type
+
+    def runJob(self, data=None, steps=None, keep_input_data_type=None, key=None):
+        if data is None:
+            data = self._data
+        if steps is None:
+            steps = self._steps
+        if keep_input_data_type is None:
+            keep_input_data_type = self._keep_input_data_type
+        if key is None:
+            key = self._key
+
+        if not steps:
+            return
+
+        return self.applySteps(data, steps, keep_input_data_type, key)
+    
+    def applySteps(
+            self, 
+            data: Dict[str, np.ndarray], 
+            steps: List[Dict[str, Any]],
+            keep_input_data_type: bool,
+            key: Tuple[Union[int, None], Union[int, None], Union[int, None]]
+        ):
+
+        new_keys = []
+        key = list(key)
+        if key[0] is None:
+            pos_number = len(data)
+            key[0] = list(range(pos_number))
+        else:
+            key[0] = [key[0]]
+
+        for pos_i in key[0]:
+            new_keys_per_pos = [[pos_i]]
+            if key[1] is None:
+                frames = data[pos_i].SizeT
+                new_keys_per_pos.append(list(range(frames)))
+            else:
+                new_keys_per_pos.append([key[1]])
+            
+            if key[2] is None:
+                z_slices = data[pos_i].SizeZ
+                if not z_slices:
+                    z_slices = 1
+                new_keys_per_pos.append(list(range(z_slices)))
+            else:
+                new_keys_per_pos.append([key[2]])
+
+            new_keys_per_pos = list(itertools.product(*new_keys_per_pos))
+            new_keys.extend(new_keys_per_pos)
+
+        output_imgs, out_keys = core.combine_channels_multithread_return_imgs(
+            steps=steps,
+            data=data,
+            keep_input_data_type=keep_input_data_type,
+            keys=new_keys,
+            logger_func=self.logger,
+            signals=self.signals,
+
+        )
+        return output_imgs, out_keys
+
+    def requiredChannels(self, steps=None, pos_i=None):
+        if steps is None:
+            steps = self._steps
+        
+        requ_steps = core.get_selected_channels(steps)
+
+        if pos_i is None:
+            pos_i = self._key[0]
+
+        return requ_steps, pos_i
+
+    @worker_exception_handler
+    def run(self):
+        while True:
+            if self.exit:
+                self.logger.log('Closing combining channels worker...')
+                break
+            elif self.wait:
+                self.logger.log('Combining channels worker paused.')
+                self.pause()
+            elif len(self.dataQ) > 0:
+                data, steps, key, keep_input_data_type = self.dataQ.pop()
+                requ_steps, pos_i = self.requiredChannels(steps, key[0])
+                self.emitsigAskLoadFluoChannels(requ_steps, pos_i)
+                output_imgs, out_keys = self.applySteps(data, steps, keep_input_data_type, key)
+                self.sigPreviewDone.emit(output_imgs, out_keys)
+                if len(self.dataQ) == 0:
+                    self.wait = True
+                    self.sigIsQueueEmpty.emit(True)
+            else:
+                self.logger.log('Combining channels worker resumed.')
+                requ_steps, pos_i = self.requiredChannels()
+                self.emitsigAskLoadFluoChannels(requ_steps, pos_i)
+                output_imgs, out_keys = self.runJob()
+                self.sigDone.emit(output_imgs, out_keys)
+                self.wait = True
+
+        self.signals.finished.emit(self)
+    
+    def emitsigAskLoadFluoChannels(self, requChannels, pos_i):
+        self.mutex.lock()
+        self.sigAskLoadFluoChannels.emit(requChannels, pos_i)
+        self.waitCondLoadFluoChannels.wait(self.mutex)
+        self.mutex.unlock()
+        return self.abort
+
+    def wake_waitCondLoadFluoChannels(self):
+        self.mutex.lock()
+        self.waitCondLoadFluoChannels.wakeAll()
+        self.mutex.unlock()
+        
+class CustomPreprocessWorkerUtil(BaseWorkerUtil):
     sigAskAppendName = Signal(str)
     sigAskSetupRecipe = Signal(object, object)
     sigAborted = Signal()
@@ -5512,7 +5716,7 @@ class CustomPreprocessWorker(BaseWorkerUtil):
                 preprocessed_ch_data = myutils.convert_to_dtype(
                     preprocessed_ch_data, ch_image_data.dtype
                 )
-            
+
             _, ext = os.path.splitext(ch_filepath)
             basename = posData.basename
             processed_filename = (
@@ -5582,5 +5786,103 @@ class CustomPreprocessWorker(BaseWorkerUtil):
                         preprocessed_filepath, preprocessed_ch_data
                     )                                
                 self.signals.progressBar.emit(1)
+
+        self.signals.finished.emit(self)
+
+class CombineChannelsWorkerUtil(BaseWorkerUtil):
+    sigAskAppendName = Signal(str)
+    sigAskSetup = Signal(object)
+    sigAborted = Signal()
+
+    def __init__(self, mainWin, mutex=None, waitCond=None):
+        super().__init__(mainWin)
+    
+    def emitAskSetup(self, expPaths):
+        self.mutex.lock()
+        self.sigAskSetup.emit(expPaths)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        return self.abort
+    
+    def applyPipeline(
+            self, 
+            image_paths: os.PathLike,
+            steps:  Dict[str, Dict[str, Any]],
+            appended_text_filename: str,
+            keep_input_data_type: bool,
+        ):
+
+        channel_name_first = steps[1]['channel']
+        save_filepaths = []
+        for image_path in image_paths:
+            ch_filepath = load.get_filename_from_channel(image_path, channel_name_first)
+
+            _, ext = os.path.splitext(ch_filepath)
+
+            posData = load.loadData(ch_filepath, channel_name_first) 
+            posData.getBasenameAndChNames()
+            posData.buildPaths()
+            posData.loadOtherFiles(
+                load_segm_data=False,
+                load_metadata=True,
+            )
+
+            basename = posData.basename
+            savename = (
+                f'{basename}{appended_text_filename}{ext}'
+            )
+        
+            save_filepaths = save_filepaths + [os.path.join(image_path, savename)]
+
+        core.combine_channels_multithread(
+            steps=steps,
+            image_paths=image_paths,
+            keep_input_data_type=keep_input_data_type,
+            save_filepaths=save_filepaths,
+            signals=self.signals,
+            logger_func=self.logger.log,
+            )
+    
+    @worker_exception_handler
+    def run(self):
+
+        self.signals.initProgressBar.emit(0)
+
+        expPaths = self.mainWin.expPaths
+        abort = self.emitAskSetup(expPaths)
+        if abort:
+            self.sigAborted.emit()
+            return
+    
+        # Ask append name
+        self.mutex.lock()
+        basename = f'{self.basename}'
+        self.sigAskAppendName.emit(basename)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        if self.abort:
+            self.sigAborted.emit()
+            return
+
+        appendedName = self.appendedName
+
+        selectedSteps = self.selectedSteps
+
+        self.logger.log('Applying pipeline...')
+        self.logger.log('Selected steps:')
+        for step in selectedSteps.values():
+            self.logger.log(step)
+            
+        image_paths = []
+        for exp_path, pos_foldernames in expPaths.items():
+            image_paths += [os.path.join(exp_path, pos, 'Images') for pos in pos_foldernames]
+
+        self.signals.initProgressBar.emit(len(pos_foldernames))
+        self.applyPipeline(
+            image_paths,
+            selectedSteps,
+            appendedName,
+            self.keepInputDataType
+        )
 
         self.signals.finished.emit(self)

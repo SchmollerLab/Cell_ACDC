@@ -235,7 +235,7 @@ def spot_detector_filter(
 
 def correct_illumination(
         image, 
-        block_size=60, 
+        block_size=45, 
         # rescale_illumination=True,
         approximate_object_diameter=15,
         # background_threshold=0.3,
@@ -265,33 +265,29 @@ def correct_illumination(
         Corrected 2D image.
     """
     image = skimage.img_as_float(image)
+    imgcopy = image.copy()
 
-    footprint = skimage.morphology.rectangle(block_size, block_size)
-    illumination_function = skimage.filters.rank.mean(image, footprint=footprint)
-
-    # Gaussian smoothing
     if apply_gaussian_filter:
-        illumination_function = skimage.filters.gaussian(
-            illumination_function, sigma=approximate_object_diameter / 2
-        )
+        image = skimage.filters.gaussian(image, sigma=approximate_object_diameter / 2)
 
-    # Threshold illumination
-    # threshold_abs_val = (np.max(illumination_function) - np.min(illumination_function)) * background_threshold + np.min(illumination_function)
-    # illum_mask = illumination_function < threshold_abs_val
-    # illumination_function[illum_mask] = threshold_abs_val
+    background_illu = skimage.restoration.rolling_ball(image, radius=block_size)
+    corrected_image = imgcopy - background_illu
 
-    # # Step 4: Optionally rescale the illumination function
-    # if rescale_illumination:
-    #     illumination_function = skimage.exposure.rescale_intensity(
-    #         illumination_function, out_range=(0.01, 1.0)
+    # footprint = skimage.morphology.rectangle(block_size, block_size)
+    # illumination_function = skimage.filters.rank.mean(image, footprint=footprint)
+
+    # # Gaussian smoothing
+    # if apply_gaussian_filter:
+    #     illumination_function = skimage.filters.gaussian(
+    #         illumination_function, sigma=approximate_object_diameter / 2
     #     )
 
-    # Apply correction
-    illumination_function[illumination_function == 0] = 1
-    corrected_image = image / illumination_function
+    # # Apply correction
+    # illumination_function[illumination_function == 0] = 1
+    # corrected_image = image / illumination_function
 
-    corrected_image = skimage.exposure.rescale_intensity(corrected_image, out_range=(0, 1))
-    corrected_image = skimage.img_as_ubyte(corrected_image)
+    # corrected_image = skimage.exposure.rescale_intensity(corrected_image, out_range=(0, 1))
+    # corrected_image = skimage.img_as_ubyte(corrected_image)
 
     return corrected_image
 
@@ -318,16 +314,19 @@ def enhance_speckles(img, radius=15):
 
 def fucci_filter(
         image,
-        correct_illumination_toggle=True,
+        correct_illumination_toggle=False,
+        basicpy_background_correction_toggle=True,
         enhance_speckles_toggle=True,
-        block_size=120, 
+        block_size=120,
         # rescale_illumination=False,
         approximate_object_diameter=25,
         # background_threshold=0.3,
         apply_gaussian_filter=True,
         speckle_radius=25
     ):
-    """Applies 
+    """Basic filter pipeline proposed for Fucci images.
+    If you want custom pipelines and more in depth control, create
+    your own recipe using the GUI or segmentation and tracking modules.
 
     Parameters
     ----------
@@ -336,12 +335,15 @@ def fucci_filter(
     correct_illumination_toggle : bool, optional
         If illumination should be corrected. 
         Default is True
+    basicpy_background_correction_toggle : bool, optional
+        If BaSiC background correction should be applied. 
+        Default is False
     enhance_speckles_toggle : bool, optional
         If speckles should be enhanced. 
         Default is True
     block_size : int, optional
         Block size for which to calculate the background illumination.
-        Default is 120
+        Default is 45
     # rescale_illumination : bool, optional
     #     if illumination should be rescaled with skimage.exposure.rescale_intensity range=(0, 1).
     #     Default is True
@@ -363,6 +365,12 @@ def fucci_filter(
     (Y, X) numpy.ndarray
         Filtered image
     """
+    if basicpy_background_correction_toggle:
+        image = basicpy_background_correction(
+            image, 
+            apply_to_all_frames=False,
+            apply_to_all_zslices=False,
+        )
     if correct_illumination_toggle:
         image = correct_illumination(
             image, 
@@ -374,6 +382,7 @@ def fucci_filter(
         )
     if enhance_speckles_toggle:
         image = enhance_speckles(image, radius=speckle_radius)
+        
     return image
 
 def dummy_filter(
@@ -554,3 +563,200 @@ def _init_dummy_filter(**kwargs):
     prompt the user that a package needs to be installed.
     """
     pass
+
+def basicpy_background_correction(
+        images,
+        apply_to_all_frames=True,
+        apply_to_all_zslices=True,
+        smoothness_flatfield=1.0,
+        get_darkfield=True,
+        smoothness_darkfield=1.0,
+        sparse_cost_darkfield=0.01,
+        # baseline=None,
+        # darkfield=None,
+        fitting_mode: types.BaSiCpyFittingModes="ladmap",
+        epsilon=0.1,
+        # flatfield=None,
+        autosegment=False,
+        autosegment_margin=10,
+        max_iterations=500,
+        max_reweight_iterations=10,
+        max_reweight_iterations_baseline=5,
+        # max_workers=2,
+        rho=1.5,
+        mu_coef=12.5,
+        max_mu_coef=10000000.0,
+        optimization_tol=0.001,
+        optimization_tol_diff=0.01,
+        resize_mode: types.BaSiCpyResizeModes="jax",
+        resize_params: types.NotGUIParam=None,
+        reweighting_tol=0.01,
+        sort_intensity=False,
+        working_size=128,
+        timelapse: types.BaSiCpyTimelapse="True",
+        parent: types.NotGUIParam=None
+    ):
+    """
+    A function for fitting and applying BaSiC illumination correction profiles.
+
+    Parameters
+    ----------
+    images : (T, Z, Y, X) numpy.ndarray
+        Image. Make sure to set have (T, Z, Y, X) dimensions, 
+        or missing dimensions
+        in accordance with the `apply_to_all_frames` and 
+        `apply_to_all_zslices` parameters.
+    apply_to_all_frames : bool, default=True
+        Whether to apply the correction to all frames. 
+        If set to falce, assumes that the image has 
+        no T dimension, so either (Z, Y, X) or (Y, X).
+    apply_to_all_zslices : bool, default=True
+        Whether to apply the correction to all Z slices. 
+        If set to falce, assumes that the image has 
+        no Z dimension, so either (T, Y, X) or (Y, X).
+    smoothness_flatfield : float, default=1.0
+        Weight of the flatfield term in the Lagrangian.
+    get_darkfield : bool, default=True
+        Whether to estimate the darkfield shading component.
+    smoothness_darkfield : float, default=1.0
+        Weight of the darkfield term in the Lagrangian.
+    sparse_cost_darkfield : float, default=0.01
+        Weight of the darkfield sparse term in the Lagrangian.
+    # baseline : object, optional
+    #     Baseline correction profile.
+    # darkfield : object, optional
+    #     Darkfield correction profile.
+    fitting_mode : str, default="ladmap"
+        Fit method. Must be one of ['ladmap', 'approximate'].
+    epsilon : float, default=0.1
+        Weight regularization term.
+    # flatfield : object, optional
+    #     Flatfield correction profile.
+    autosegment : bool or callable, default=False
+        When not False, automatically segment the image before fitting.
+        When True, `threshold_otsu` from `scikit-image` is used
+        and the brighter pixels are taken.
+    autosegment_margin : int, default=10
+        Margin of the segmentation mask to the thresholded region.
+    max_iterations : int, default=500
+        Maximum number of iterations for single optimization.
+    max_reweight_iterations : int, default=10
+        Maximum number of reweighting iterations.
+    max_reweight_iterations_baseline : int, default=5
+        Maximum number of reweighting iterations for baseline.
+    # max_workers : int, default=2
+    #     Maximum number of threads used for processing.
+    rho : float, default=1.5
+        Parameter rho for mu update.
+    mu_coef : float, default=12.5
+        Coefficient for initial mu value.
+    max_mu_coef : float, default=10000000.0
+        Maximum allowed value of mu, divided by the initial value.
+    optimization_tol : float, default=0.001
+        Optimization tolerance.
+    optimization_tol_diff : float, default=0.01
+        Optimization tolerance for update difference.
+    resize_mode : str, default="jax"
+        Resize mode for downsampling images. Must be one of 
+        ['jax', 'skimage', 'skimage_dask'].
+    resize_params : dict, default={}
+        Parameters for the resize function.
+    reweighting_tol : float, default=0.01
+        Reweighting tolerance in mean absolute difference of images.
+    sort_intensity : bool, default=False
+        Whether to sort the intensities of the image.
+    working_size : int or list of int, default=128
+        Size for running computations. None means no rescaling.
+    timelapse : str, default="False"
+        If `True`, corrects the timelapse/photobleaching offsets,
+        assuming that the residual is the product of flatfield and
+        the object fluorescence. Also accepts "multiplicative"
+        (the same as `True`) or "additive" (residual is the object
+        fluorescence).
+    parent : QWidget, optional
+        Parent widget for the GUI.
+
+    Returns
+    -------
+    None
+        This function does not return any value.
+    """
+
+    if resize_params is None:
+        resize_params = {}
+    if timelapse == "True":
+        timelapse = True
+    elif timelapse == "False":
+        timelapse = False
+
+    images = skimage.img_as_float(images)
+
+    from . import transformation
+
+    if not apply_to_all_frames and not apply_to_all_zslices:
+        input_dims = ("Y", "X")
+    elif apply_to_all_frames and not apply_to_all_zslices:
+        input_dims = ("T", "Y", "X")
+    elif not apply_to_all_frames and apply_to_all_zslices:
+        input_dims = ("Z", "Y", "X")
+    else:
+        input_dims = ("T", "Z", "Y", "X")
+    
+    images = transformation.correct_img_dimension(images, 
+                                               input_dims=input_dims, 
+                                               output_dims=("T", "Z", "Y", "X"))
+
+    from . import myutils
+    custom_install_requires = [
+        "hyperactive>=4.4.0",
+        "jax>=0.4.0,<0.5.0",
+        "jaxlib>=0.4.0,<0.5.0",
+        "numpy",
+        "pooch",
+        "pydantic>=2.7.0,<3.0.0",
+        "scikit-image",
+        "scipy", # this will theoretically have the wrong version of scipy in the end
+        ]
+    myutils.check_install_custom_dependencies(custom_install_requires, 
+                                              'basicpy', 
+                                              parent=parent)
+    from basicpy import BaSiC
+
+    basic = BaSiC(
+        # baseline=baseline,
+        # darkfield=darkfield,
+        fitting_mode=fitting_mode,
+        epsilon=epsilon,
+        # flatfield=flatfield,
+        get_darkfield=get_darkfield,
+        smoothness_flatfield=smoothness_flatfield,
+        smoothness_darkfield=smoothness_darkfield,
+        sparse_cost_darkfield=sparse_cost_darkfield,
+        autosegment=autosegment,
+        autosegment_margin=autosegment_margin,
+        max_iterations=max_iterations,
+        max_reweight_iterations=max_reweight_iterations,
+        max_reweight_iterations_baseline=max_reweight_iterations_baseline,
+        # max_workers=max_workers,
+        rho=rho,
+        mu_coef=mu_coef,
+        max_mu_coef=max_mu_coef,
+        optimization_tol=optimization_tol,
+        optimization_tol_diff=optimization_tol_diff,
+        resize_mode=resize_mode,
+        resize_params=resize_params,
+        reweighting_tol=reweighting_tol,
+        sort_intensity=sort_intensity,
+        working_size=working_size
+        )
+
+    print("Fitting BaSiC model, may take a while...")
+    basic.fit(images)
+    images = basic.transform(
+        images,
+        timelapse=timelapse
+        )
+    
+    images = images.squeeze()
+    images = np.array(images)
+    return images

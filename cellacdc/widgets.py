@@ -6522,10 +6522,12 @@ class BaseImageItem(pg.ImageItem):
         ):
         self.minMaxValuesMapper = None
         self.minMaxValuesMapperPreproc = None
+        self.minMaxValuesMapperCombined = None
         self.pos_i = 0
         self.z = 0
         self.frame_i = 0
         self.usePreprocessed = False
+        self.useCombined = False
         
         super().__init__(image, **kargs)
         self.autoLevelsEnabled = None
@@ -6575,6 +6577,21 @@ class BaseImageItem(pg.ImageItem):
         img = posData.preproc_img_data[frame_i][z_slice]
         key = (pos_i, frame_i, z_slice)
         self.minMaxValuesMapperPreproc[key] = (np.nanmin(img), np.nanmax(img))
+
+    def updateMinMaxValuesCombinedData(
+            self,
+            data: List['load.loadData'],
+            pos_i: int,
+            frame_i: int,
+            z_slice: Union[int, str],
+        ):
+        if self.minMaxValuesMapperCombined is None:
+            self.minMaxValuesMapperCombined = {}
+        
+        posData = data[pos_i]
+        img = posData.combine_img_data[frame_i][z_slice]
+        key = (pos_i, frame_i, z_slice)
+        self.minMaxValuesMapperCombined[key] = (np.nanmin(img), np.nanmax(img))
     
     def setCurrentPosIndex(self, pos_i: int):
         self.pos_i = pos_i
@@ -6588,6 +6605,8 @@ class BaseImageItem(pg.ImageItem):
     def quickMinMax(self, targetSize=1e6):
         if self.usePreprocessed and self.minMaxValuesMapperPreproc is not None:
             minMaxValuesMapper = self.minMaxValuesMapperPreproc
+        elif self.useCombined and self.minMaxValuesMapperCombined is not None:
+            minMaxValuesMapper = self.minMaxValuesMapperCombined
         else:
             minMaxValuesMapper = self.minMaxValuesMapper
         

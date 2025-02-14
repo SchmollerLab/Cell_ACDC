@@ -221,6 +221,19 @@ def rst_docstring_filter_args(rst_doc, args_to_keep):
 
 def rst_docstring_to_html(rst_doc: str, args_subset=None):
     html_text = rst_doc
+    # ignore lines which start with a #
+    html_new = ''
+    for line in html_text.split('\n'):
+        try:
+            first_char = line.lstrip()[0]
+        except IndexError:
+            first_char = ''
+            
+        if first_char == '#':
+            continue
+        html_new += line + '\n'
+
+    html_text = html_new
     
     if args_subset is not None:
         html_text = rst_docstring_filter_args(html_text, args_subset)

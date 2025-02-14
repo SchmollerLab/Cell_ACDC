@@ -1,9 +1,24 @@
 import typing
 
-from typing import Union, Tuple, Any
+from typing import Union, Tuple, Any, List
+import numpy as np
+
+class NotGUIParam:
+    not_a_param = True
+
+ChannelsDict = dict[str, List[np.ndarray]]
 
 class RescaleIntensitiesInRangeHow:
     values = ['percentage', 'image', 'absolute']
+
+class BaSiCpyResizeModes:
+    values = ['jax', 'skimage', 'skimage_dask']
+
+class BaSiCpyFittingModes:
+    values = ['ladmap', 'approximate']
+
+class BaSiCpyTimelapse:
+    values = ["True", "False", "additive", "multiplicative"]
 
 class Vector:
     """Class used to define model parameter as a vector that will use the 

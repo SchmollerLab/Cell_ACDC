@@ -226,7 +226,6 @@ class select_channel_name:
         df_metadata.at['channel_0_name', 'values'] = channel_name
         df_metadata.to_csv(metadata_csv_path)
         ch_names, _ = self.get_available_channels(filenames, images_path)
-        printl(ch_names)
         return ch_names
         
 

@@ -2215,9 +2215,8 @@ def img_to_float(img, force_dtype=None, force_missing_dtype=None):
     uint8_max = np.iinfo(np.uint8).max
     uint16_max = np.iinfo(np.uint16).max
     uint32_max = np.iinfo(np.uint32).max
-    
+
     img = img.astype(float)
-    
     if force_dtype is not None:
         dtype_max = np.iinfo(force_dtype).max
         img = img/dtype_max
@@ -2287,10 +2286,12 @@ def float_img_to_dtype(img, dtype):
     
     raise TypeError(
         f'Invalid output data type `{dtype}`. '
-        'Valid output data types are `np.uin8` and `np.uint16`'
+        'Valid output data types are `np.uint8` and `np.uint16`'
     )
 
 def convert_to_dtype(data: np.ndarray, dtype):
+    if data.dtype == dtype:
+        return data
     val = data[tuple([0]*data.ndim)]
     if isinstance(val, (np.floating, float)):
         data = float_img_to_dtype(data, dtype)
@@ -2461,10 +2462,13 @@ def check_napari_plugin(plugin_name, module_name, parent=None):
         msg.critical(parent, f'Napari plugin required', txt)
         raise e
 
-def _install_pip_package(pkg_name):
+def _install_pip_package(pkg_name, install_dependencies=True):
+    command = [sys.executable, '-m', 'pip', 'install', pkg_name]
+    if not install_dependencies:
+        command.append('--no-deps')
     subprocess.check_call(
-        [sys.executable, '-m', 'pip', 'install', '-U', pkg_name]
-    )
+        command
+        )
 
 def uninstall_pip_package(pkg_name):
     subprocess.check_call(
@@ -2657,7 +2661,9 @@ def check_install_package(
         force_upgrade=False,
         upgrade=False, 
         min_version='', 
-        max_version='', 
+        max_version='',
+        install_dependencies=True,
+        return_outcome=False,
         installer: Literal['pip', 'conda']='pip',
     ):
     """Try to import a package. If import fails, ask user to install it 
@@ -2700,6 +2706,10 @@ def check_install_package(
         If not empty it must be a valid version `major[.minor][.patch]` where 
         minor and patch are optional. If the installed package is newer the 
         upgrade will be forced. 
+    install_dependencies : bool, optional
+        If False, the `--no-deps` flag will be added to the pip command.
+    return_outcome : bool, optional
+        If True, returns 1 on successfull action
     installer : str, optional
         Package manager to use to install the package. Either 'pip' or 'conda'. 
         Default is 'pip'
@@ -2757,7 +2767,7 @@ def check_install_package(
                     min_version=min_version
                 )
                 if installer == 'pip':
-                    _install_pip_package(pkg_command)
+                    _install_pip_package(pkg_command, install_dependencies=install_dependencies)
                 else:
                     install_package_conda(pkg_command)
         except Exception as e:
@@ -2765,6 +2775,26 @@ def check_install_package(
             _inform_install_package_failed(
                 pkg_name, parent=parent, do_exit=raise_on_cancel
             )
+        if return_outcome:
+            return True
+
+def check_install_custom_dependencies(custom_install_requires, *args, **kwargs):
+    """Used to install a package with custom dependencies, usefull if they have random pinned versions for their dependencies.
+    For *args and **kwargs see `myutils.check_install_package`.
+
+    Parameters
+    ----------
+    custom_install_requires : list
+        list of dependencies. Check either requirements.txt, setup.py, setup.cfg, pyproject.toml, or any other file that lists the dependencies.
+        For formatting of the dependencies with min max version, use _get_pkg_command_pip_install.
+    """
+    kwargs['install_dependencies'] = False
+    kwargs['return_outcome'] = True
+    success = check_install_package(*args, **kwargs)
+    if not success:
+        return
+    for pkg_name in custom_install_requires:
+        _install_pip_package(pkg_name)
 
 def get_chained_attr(_object, _name):
     for attr in _name.split('.'):
