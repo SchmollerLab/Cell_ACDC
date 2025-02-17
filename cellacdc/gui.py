@@ -12949,6 +12949,8 @@ class guiWin(QMainWindow):
                 
                 posData.frame_i = frame_i
                 self.get_data()
+                self.tracking()
+                self.update_rp()
                 self.updateLostNewCurrentIDs()
                 self.store_data(mainThread=False, autosave=False)
                 # delROIsIDs = self.getDelRoisIDs()
