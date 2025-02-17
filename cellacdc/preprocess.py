@@ -705,9 +705,6 @@ def basicpy_background_correction(
     else:
         input_dims = ("T", "Z", "Y", "X")
         output_dims = ("T", "Z", "Y", "X")
-    
-    printl(images.shape)
-    printl(input_dims)
 
     images = transformation.correct_img_dimension(images, 
                                                input_dims=input_dims, 
@@ -758,7 +755,6 @@ def basicpy_background_correction(
         )
 
     print("Fitting BaSiC model, may take a while...")
-    printl(images.shape)
     basic.fit(images)
     images = basic.transform(
         images,
