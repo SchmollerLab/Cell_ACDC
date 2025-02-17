@@ -18004,6 +18004,9 @@ class guiWin(QMainWindow):
         
         posData = self.data[self.pos_i]
         func = core.preprocess_zstack_from_recipe
+        recipe = core.validate_multidimensional_recipe(
+            recipe, apply_to_all_frames=False
+        )
         image_data = posData.img_data[posData.frame_i]
         self.preprocWorker.setupJob(
             func, 
@@ -18036,6 +18039,9 @@ class guiWin(QMainWindow):
         self.statusBarLabel.setText(txt)
         
         func = core.preprocess_multi_pos_from_recipe
+        recipe = core.validate_multidimensional_recipe(
+            recipe, apply_to_all_frames=False
+        )
         image_data = [posData.img_data[0] for posData in self.data]
         self.preprocWorker.setupJob(
             func, 
