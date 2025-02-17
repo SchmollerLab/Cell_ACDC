@@ -5304,6 +5304,7 @@ class SimpleWorker(QObject):
         QObject.__init__(self)
         self.posData = posData
         self.signals = signals()
+        self.output = {}
         
         if func_args is None:
             func_args = []
@@ -5321,7 +5322,7 @@ class SimpleWorker(QObject):
         self.result = self.func(
             self.posData, *self.func_args, **self.func_kwargs
         )
-        self.signals.finished.emit(self)
+        self.signals.finished.emit(self.output)
 
 class SaveProcessedDataWorker(QObject):
     def __init__(

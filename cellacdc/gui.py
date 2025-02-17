@@ -12978,8 +12978,8 @@ class guiWin(QMainWindow):
         if last_visited_frame_i >= last_copied_frame_i:
             return
         
-        self.copyAllLostObjectsWorker.doReinitLastSegmFrame = True
-        self.copyAllLostObjectsWorker.last_visited_frame_i = (
+        self.copyAllLostObjectsWorker.output['doReinitLastSegmFrame'] = True
+        self.copyAllLostObjectsWorker.output['last_visited_frame_i'] = (
             last_visited_frame_i
         )
     
@@ -13046,15 +13046,15 @@ class guiWin(QMainWindow):
         self.copyAllLostObjectsWorkerLoop.exit()
         self.workerCritical(error)
     
-    def copyAllLostObjectsWorkerFinished(self, worker):
+    def copyAllLostObjectsWorkerFinished(self, output):
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
             self.progressWin.close()
             self.progressWin = None
         
-        if worker.doReinitLastSegmFrame:
+        if output.get('doReinitLastSegmFrame', False):
             self.reInitLastSegmFrame(
-                from_frame_i=worker.last_visited_frame_i, 
+                from_frame_i=output.get('last_visited_frame_i'), 
                 updateImages=False, 
                 force=True
             )
@@ -23603,7 +23603,7 @@ class guiWin(QMainWindow):
         self.computeAllObjCostPairsWorkerLoop.exit()
         self.workerCritical(error)
     
-    def computeAllObjCostPairsWorkerFinished(self, worker):
+    def computeAllObjCostPairsWorkerFinished(self, output):
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
             self.progressWin.close()
