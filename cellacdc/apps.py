@@ -14874,6 +14874,9 @@ class PreProcessParamsWidget(QWidget):
         self.stepsWidgets[step_n] = stepWidgets
         
         selector.sigValuesChanged.connect(self.emitValuesChanged)
+        selector.currentTextChanged.connect(
+            partial(self.clearInitKwargs, step_n=step_n)
+        )
         
         self.resetStretch()
     
@@ -14885,6 +14888,10 @@ class PreProcessParamsWidget(QWidget):
             return
         
         self.sigValuesChanged.emit(recipe)
+    
+    def clearInitKwargs(self, selected_method, step_n=0):
+        stepWidgets = self.stepsWidgets[step_n]
+        stepWidgets.pop('step_kwargs', None)
     
     def resetStretch(self):
         for row in range(self.gridLayout.rowCount()):

@@ -1864,8 +1864,9 @@ def preprocess_image_from_recipe(image, recipe: List[Dict[str, Any]]):
             try:
                 preprocessed_image = func(preprocessed_image, **test_kwargs)
                 break
-            except Exception as err:
-                pass
+            except TypeError as err:
+                if not 'unexpected keyword argument' in str(err):
+                    raise err
             
             for kwarg_to_pop in kwargs_to_pop:
                 test_kwargs.pop(kwarg_to_pop, None)
