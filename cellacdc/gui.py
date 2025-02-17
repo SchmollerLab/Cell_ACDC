@@ -327,6 +327,7 @@ def disableWindow(func):
             raise err
         finally:
             self.setDisabled(False)
+            self.activateWindow()
     return inner_function
 
 class relabelSequentialWorker(QObject):
