@@ -616,8 +616,8 @@ def basicpy_background_correction(
         no Z dimension, so either (T, Y, X) or (Y, X).
     smoothness_flatfield : float, default=1.0
         Weight of the flatfield term in the Lagrangian.
-    get_darkfield : bool, default=True
-        Whether to estimate the darkfield shading component.
+    get_darkfield : bool
+        Whether to estimate the darkfield shading component. Default is True
     smoothness_darkfield : float, default=1.0
         Weight of the darkfield term in the Lagrangian.
     sparse_cost_darkfield : float, default=0.01

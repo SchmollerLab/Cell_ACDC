@@ -1847,14 +1847,28 @@ def preprocess_zstack_from_recipe(
             pbar.close()
     
     return preprocessed_image
-        
+
+all_kwargs_to_pop = (
+    ('apply_to_all_zslices',), 
+    ('apply_to_all_frames',), 
+    ('apply_to_all_frames', 'apply_to_all_zslices'), 
+)
 def preprocess_image_from_recipe(image, recipe: List[Dict[str, Any]]):
     preprocessed_image = image
     for step in recipe:
         method = step['method']
         func = PREPROCESS_MAPPER[method]['function']
         kwargs = step['kwargs']
-        preprocessed_image = func(preprocessed_image, **kwargs)
+        for kwargs_to_pop in all_kwargs_to_pop:
+            test_kwargs = kwargs.copy()
+            try:
+                preprocessed_image = func(preprocessed_image, **test_kwargs)
+                break
+            except Exception as err:
+                pass
+            
+            for kwarg_to_pop in kwargs_to_pop:
+                test_kwargs.pop(kwarg_to_pop, None)
         
     return preprocessed_image
 
@@ -2816,6 +2830,7 @@ def preprocess_image_from_recipe_multithread(
                 preprocessed_image, (step,)
             )
         else:
+            kwargs['apply_to_all_frames'] = False
             num_frames = len(preprocessed_image)
             pbar = tqdm(total=num_frames, ncols=100)
             with concurrent.futures.ThreadPoolExecutor(max_workers=n_threads) as executor:
@@ -3491,3 +3506,24 @@ def split_along_convexity_defects(
     max_i += 1
     success = True
     return lab, success, splittedIDs
+
+def validate_multidimensional_recipe(
+        recipe: List[Dict[str, Any]], 
+        apply_to_all_zslices=False,
+        apply_to_all_frames=False
+    ):
+    for step in recipe:
+        method = step['method']
+        func = PREPROCESS_MAPPER[method]['function']
+        kwargs = step['kwargs']
+        
+        argspecs = inspect.getfullargspec(func)
+        for arg in argspecs.args:
+            if arg == 'apply_to_all_frames':
+                kwargs['apply_to_all_frames'] = apply_to_all_frames
+            if arg == 'apply_to_all_zslices':
+                kwargs['apply_to_all_zslices'] = apply_to_all_zslices
+    
+    return recipe
+        
+        

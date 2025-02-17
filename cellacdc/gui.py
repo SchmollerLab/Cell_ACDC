@@ -16837,11 +16837,13 @@ class guiWin(QMainWindow):
         else:
             z_slice = 0
         
+        recipe = core.validate_multidimensional_recipe(recipe)
+        
         key = (self.pos_i, posData.frame_i, z_slice)
         self.preprocWorker.enqueue(
             func, 
             image_data, 
-            recipe, 
+            recipe,
             key
         )
 
@@ -17983,6 +17985,8 @@ class guiWin(QMainWindow):
         self.statusBarLabel.setText(txt)
         
         func = core.preprocess_image_from_recipe
+        recipe = core.validate_multidimensional_recipe(recipe)
+        
         image_data = self.getImage(raw=True)
         self.preprocWorker.setupJob(
             func, 
