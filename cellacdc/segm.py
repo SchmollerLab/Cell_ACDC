@@ -478,6 +478,28 @@ class segmWin(QMainWindow):
             save=True,
             forceEnableAskSegm3D=True
         )
+        # Store metadata for all other positions loaded
+        for other_img_path in user_ch_file_paths[1:]:
+            _posData = load.loadData(other_img_path, user_ch_name, QParent=self)
+            _posData.getBasenameAndChNames()
+            _posData.buildPaths()
+            _posData.loadOtherFiles(
+                load_segm_data=False,
+                load_metadata=True,
+            )
+            _posData.isSegm3D = posData.isSegm3D
+            try:
+                _SizeT = int(_posData.metadata_df.at['SizeT', 'values'])
+                if _SizeT == posData.SizeT:
+                    continue
+                
+                _posData.metadata_df.at['SizeT', 'values'] = posData.SizeT
+                _posData.SizeT = posData.SizeT
+            except Exception as err:
+                _posData.SizeT = posData.SizeT
+            
+            _posData.saveMetadata()
+            
         self.isSegm3D = posData.isSegm3D
         self.SizeT = posData.SizeT
         self.SizeZ = posData.SizeZ
