@@ -147,6 +147,8 @@ else:
     IS_CLONED = False
     settings_folderpath = os.path.join(user_profile_path, '.acdc-settings')
 
+fiji_location_filepath = os.path.join(settings_folderpath, 'fiji_location.txt')
+
 def copytree(src, dst):
     os.makedirs(dst, exist_ok=True)
     for name in os.listdir(old_temp_path):

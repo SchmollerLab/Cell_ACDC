@@ -60,6 +60,9 @@
     <file alias="assign_new_id.svg">resources/icons/make_new_object_dark.svg</file>
     <file alias="open_file.svg">resources/icons/open_file_dark.svg</file>
     <file alias="freehand.svg">resources/icons/freehand_dark.svg</file>
+    <file alias="lock.svg">resources/icons/lock_dark.svg</file>
+    <file alias="lock_open.svg">resources/icons/lock_open_dark.svg</file>
+    <file alias="lock_closed.svg">resources/icons/lock_closed_dark.svg</file>
     <file alias="threepoints_arc.svg">resources/icons/threepoints_arc_dark.svg</file>
     <file alias="3d.svg">resources/icons/3d_dark.svg</file>
     <file alias="2d.svg">resources/icons/2d_dark.svg</file>
@@ -79,12 +82,14 @@
     <file alias="unchecked.svg">resources/icons/unchecked_dark.svg</file>
     <file alias="play.svg">resources/icons/play_dark.svg</file>
     <file alias="stop.svg">resources/icons/stop_dark.svg</file>
+    <file alias="clear_freehand_region.svg">resources/icons/clear_freehand_region_dark.svg</file>
     <file alias="moveLabel.svg">resources/icons/moveLabel_dark.svg</file>
     <file alias="expandLabel.svg">resources/icons/expandLabel_dark.svg</file>
     <file alias="separate-bud.svg">resources/icons/separate-bud_dark.svg</file>
     <file alias="edit-id.svg">resources/icons/edit-id_dark.svg</file>
     <file alias="eye-plus.svg">resources/icons/eye-plus_dark.svg</file>
     <file alias="copyContour.svg">resources/icons/copyContour_dark.svg</file>
+    <file alias="copyContour_all.svg">resources/icons/copyContour_all_dark.svg</file>
     <file alias="folder-open.svg">resources/icons/folder-open_dark.svg</file>
     <file alias="drawer.svg">resources/icons/drawer_dark.svg</file>
     <file alias="reload.svg">resources/icons/reload_dark.svg</file>
@@ -125,6 +130,7 @@
     <file alias="pointsLayer.svg">resources/icons/pointsLayer.svg</file>
     <file alias="no.svg">resources/icons/no_dark.svg</file>
     <file alias="yesGray.svg">resources/icons/yesGray_dark.svg</file>
+    <file alias="fiji-logo.svg">resources/icons/fiji-logo-1.0.svg</file>
     <file alias="bkgrRoi.svg">resources/icons/bkgrRoi_dark.svg</file>
     <file alias="add_crop_ROI.svg">resources/icons/add_crop_ROI_dark.svg</file>
     <file alias="hull.svg">resources/icons/hull_dark.svg</file>

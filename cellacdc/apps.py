@@ -1318,6 +1318,8 @@ class filenameDialog(QDialog):
                 e.g., ending with <code>_acdc_output_phase_contr.csv</code>.
             """)
 
+        self.isSegmFile = basename.endswith('_segm')
+        
         self.allowEmpty = allowEmpty
         self.basename = basename
         if ext.find('.') == -1:
@@ -1436,19 +1438,51 @@ class filenameDialog(QDialog):
             else:
                 self.filenameLabel.setText(f'{text}{self.ext}')
 
+    def checkEmptyText(self):
+        if self.allowEmpty:
+            return True
+        
+        if self._text():
+            return True
+       
+        msg = widgets.myMessageBox()
+        msg.critical(
+            self, 'Empty text', 
+            html_utils.paragraph('Text entry field <b>cannot be empty</b>')
+        )
+        return False
+    
+    def checkSegmFilename(self):
+        if not self.isSegmFile:
+            return True
+        
+        if 'segm' not in self._text():
+            return True
+       
+        msg = widgets.myMessageBox()
+        txt = html_utils.paragraph(
+            'The text appended to the filename cannot contain the text '
+            '"segm".<br><br>'
+            'Sorry, that would confuse me. Thank you for your patience!'
+        )
+        msg.critical(
+            self, 'Cannot use "segm" in filename', txt
+        )
+        return False
+    
     def ok_cb(self, checked=True):
         valid = self.checkExistingNames()
         if not valid:
             return
         
-        if not self.allowEmpty and not self._text():
-            msg = widgets.myMessageBox()
-            msg.critical(
-                self, 'Empty text', 
-                html_utils.paragraph('Text entry field <b>cannot be empty</b>')
-            )
+        valid = self.checkEmptyText()
+        if not valid:
             return
-            
+        
+        valid = self.checkSegmFilename()
+        if not valid:
+            return
+        
         self.filename = self.filenameLabel.text()
         self.entryText = self._text()
         self.cancel = False
@@ -1706,7 +1740,8 @@ class SetMeasurementsDialog(QBaseDialog):
             }
         sizeMetricsQGBox = widgets._metricsQGBox(
             size_metrics_desc, 'Physical measurements',
-            favourite_funcs=favourite_funcs, isZstack=isZstack
+            favourite_funcs=favourite_funcs, isZstack=isZstack,
+            addCalcForEachZsliceToggle=isSegm3D
         )
         self.all_metrics.extend([c.text() for c in sizeMetricsQGBox.checkBoxes])
         self.sizeMetricsQGBox = sizeMetricsQGBox
@@ -2333,7 +2368,12 @@ class SetMeasurementsDialog(QBaseDialog):
             'table. '
         )
 
-    def ok_cb(self):
+    def ok_cb(self):       
+        for chNameGroupbox in self.chNameGroupboxes:
+            chNameGroupbox.calcForEachZsliceRequested = (
+                chNameGroupbox.isCalcForEachZsliceRequested()
+            )
+             
         if self.allPos_acdc_df_cols is None:
             self.cancel = False
             self.close()
@@ -2353,6 +2393,10 @@ class SetMeasurementsDialog(QBaseDialog):
                     continue
                 if not checkBox.isChecked() and is_existing:
                     unchecked_existing_colnames.append(colname)
+        
+        self.sizeMetricsQGBox.calcForEachZsliceRequested = (
+            self.sizeMetricsQGBox.isCalcForEachZsliceRequested()
+        )
         for checkBox in self.sizeMetricsQGBox.checkBoxes:
             colname = checkBox.text()
             is_existing = colname in existing_colnames
@@ -10015,9 +10059,9 @@ class SelectSegmFileDialog(QDialog):
 
         selectionLayout.addWidget(label, 0, 1, alignment=Qt.AlignLeft)
         selectionLayout.addWidget(listWidget, 1, 1)
-        selectionLayout.setColumnStretch(0, 1)
-        selectionLayout.setColumnStretch(1, 3)
-        selectionLayout.setColumnStretch(2, 1)
+        selectionLayout.setColumnStretch(0, 0)
+        selectionLayout.setColumnStretch(1, 1)
+        selectionLayout.setColumnStretch(2, 0)
         selectionLayout.addLayout(buttonsLayout, 2, 1)
 
         mainLayout.addLayout(selectionLayout)
@@ -10579,6 +10623,7 @@ class QDialogModelParams(QDialog):
             
         mainLayout.addWidget(self.scrollArea)
         
+        postProcessLayout = None
         if postProcessLayout is not None:
             mainLayout.addSpacing(10)
             mainLayout.addLayout(postProcessLayout)
@@ -13911,6 +13956,13 @@ class ExportToVideoParametersDialog(QBaseDialog):
         gridLayout.addWidget(self.fpsWidget, row, 1)
         
         row += 1
+        self.dpiWidget = widgets.IntLineEdit(allowNegative=False)
+        self.dpiWidget.setValue(300)
+        self.dpiWidget.label = QLabel('DPI')
+        gridLayout.addWidget(self.dpiWidget.label, row, 0)
+        gridLayout.addWidget(self.dpiWidget, row, 1)
+        
+        row += 1
         gridLayout.addWidget(QLabel('Folder path:'), row, 0)
         self.folderPathLineEdit = widgets.ElidingLineEdit(minWidth=240)
         self.folderPathLineEdit.setText(startFolderpath)
@@ -14071,7 +14123,8 @@ class ExportToVideoParametersDialog(QBaseDialog):
             'num_digits': len(str(self.stopNavVarNumberEntry.value())),
             'fps': self.fpsWidget.value(),
             'save_pngs':  self.saveFramesToggle.isChecked(),
-            'is_timelapse': self.isTimelapseVideo
+            'is_timelapse': self.isTimelapseVideo,
+            'dpi': self.dpiWidget.value(),
         }
         return preferences
     
@@ -14234,6 +14287,15 @@ class ExportToImageParametersDialog(QBaseDialog):
         gridLayout.addWidget(self.fileFormatCombobox, row, 1)
         
         row += 1
+        self.dpiWidget = widgets.IntLineEdit(allowNegative=False)
+        self.dpiWidget.setValue(300)
+        self.dpiWidget.label = QLabel('DPI')
+        gridLayout.addWidget(self.dpiWidget.label, row, 0)
+        gridLayout.addWidget(self.dpiWidget, row, 1)
+        self.dpiWidget.hide()
+        self.dpiWidget.label.hide()
+        
+        row += 1
         gridLayout.addWidget(QLabel('Folder path:'), row, 0)
         self.folderPathLineEdit = widgets.ElidingLineEdit(minWidth=240)
         self.folderPathLineEdit.setText(startFolderpath)
@@ -14300,6 +14362,13 @@ class ExportToImageParametersDialog(QBaseDialog):
         self.browseButton.setStartPath(folderPath)
     
     def updateFileFormat(self, fileFormat):
+        if fileFormat == 'SVG':
+            self.dpiWidget.hide()
+            self.dpiWidget.label.hide()
+        else:
+            self.dpiWidget.show()
+            self.dpiWidget.label.show()
+            
         self.fileFormatLabel.setText(f'.{fileFormat.lower()}')
     
     def validateFolderPath(self):
@@ -14344,6 +14413,7 @@ class ExportToImageParametersDialog(QBaseDialog):
             'view_range_y': self.yRangeSelector.range(),
             'filepath': os.path.join(self.folderPathLineEdit.text(), filename), 
             'filename': self.filenameLineEdit.text(),
+            'dpi': self.dpiWidget.value(),
         }
         return preferences
     
@@ -14804,6 +14874,9 @@ class PreProcessParamsWidget(QWidget):
         self.stepsWidgets[step_n] = stepWidgets
         
         selector.sigValuesChanged.connect(self.emitValuesChanged)
+        selector.currentTextChanged.connect(
+            partial(self.clearInitKwargs, step_n=step_n)
+        )
         
         self.resetStretch()
     
@@ -14815,6 +14888,10 @@ class PreProcessParamsWidget(QWidget):
             return
         
         self.sigValuesChanged.emit(recipe)
+    
+    def clearInitKwargs(self, selected_method, step_n=0):
+        stepWidgets = self.stepsWidgets[step_n]
+        stepWidgets.pop('step_kwargs', None)
     
     def resetStretch(self):
         for row in range(self.gridLayout.rowCount()):
@@ -14957,8 +15034,6 @@ class CombineChannelsWidget(PreProcessParamsWidget):
         qutils.delete_widget(self.saveRecipeButton)
         qutils.delete_widget(self.loadRecipeButton)
 
-        super().sigValuesChanged.connect(self.emitValuesChanged)
-
     def addStep(self, is_first=False):
         stepWidgets = {}
         
@@ -14974,11 +15049,11 @@ class CombineChannelsWidget(PreProcessParamsWidget):
         stepWidgets['operator'] = operator
         operator.currentTextChanged.connect(self.emitValuesChanged)
  
-        selector = QComboBox()
-        selector.addItems(self.channel_names)
-        self.gridLayout.addWidget(selector, self.row, 2)
-        stepWidgets['selector'] = selector
-        selector.currentTextChanged.connect(self.emitValuesChanged)
+        ch_selector = QComboBox()
+        ch_selector.addItems(self.channel_names)
+        self.gridLayout.addWidget(ch_selector, self.row, 2)
+        stepWidgets['selector'] = ch_selector
+        ch_selector.currentTextChanged.connect(self.emitValuesChanged)
 
         multiplier = QDoubleSpinBox()
         multiplier.setRange(0, 1)
@@ -15006,8 +15081,8 @@ class CombineChannelsWidget(PreProcessParamsWidget):
             stepWidgets['operator'].addItems(operators)
         
         self.row += 1
-        selector.row = self.row
-        selector.step_n = step_n
+        ch_selector.row = self.row
+        ch_selector.step_n = step_n
 
         hline = widgets.QHLine()
         self.gridLayout.addWidget(hline, self.row, 0, 1, 6)
@@ -15019,7 +15094,7 @@ class CombineChannelsWidget(PreProcessParamsWidget):
         self.resetStretch()
         self.sigValuesChangedCombineChannels.emit()
     
-    def emitValuesChanged(self):
+    def emitValuesChanged(self, *args):
         self.sigValuesChangedCombineChannels.emit()
 
     def removeStep(self, checked=False, step_n=None):        
@@ -15740,35 +15815,6 @@ class ObjectCountDialog(QBaseDialog):
         self.cancel = False
         self.close()
 
-# class FilterImageDialog(QBaseDialog):
-#     def __init__(
-#             self, 
-#             function: Callable, 
-#             image: np.ndarray,
-#             df_metadata=None,
-#             parent=None
-#         ):
-        
-#         layout = QHBoxLayout()
-        
-#         params_argspecs = myutils.get_function_argspec(function)
-#         self.functionParamsWin = FunctionParamsDialog(
-#             params_argspecs, 
-#             function_name=f'Function "{function}"', 
-#             df_metadata=df_metadata,
-#             parent=parent,
-#         )
-        
-#         self.imshowWin = plot.imshow(
-#             image, 
-#             block=False
-#         )
-        
-#         layout.addWidget(self.functionParamsWin)
-#         layout.addWidget(self.imshowWin)
-        
-#         self.setLayout(layout)
-
 class PreProcessRecipeDialog(QBaseDialog):
     sigApplyImage = Signal(object)
     sigApplyZstack = Signal(object)
@@ -15929,7 +15975,7 @@ class PreProcessRecipeDialog(QBaseDialog):
         self.allButtons.append(self.savePreprocButton)
         self.savePreprocButton.clicked.connect(self.emitSignalSavePreprocData)
         
-        self.previewCheckbox.toggled.connect(self.sigPreviewToggled.emit)
+        self.previewCheckbox.toggled.connect(self.emitSigPreviewToggled)
         self.preProcessParamsWidget.sigValuesChanged.connect(
             self.emitValuesChanged
         )
@@ -15942,6 +15988,9 @@ class PreProcessRecipeDialog(QBaseDialog):
         self.mainLayout = mainLayout
         
         self.setLayout(mainLayout)
+
+    def emitSigPreviewToggled(self):
+        self.sigPreviewToggled.emit(self.previewCheckbox.isChecked())
 
     def showInfoKeepInputDataType(self):
         txt = html_utils.paragraph("""
@@ -16127,6 +16176,8 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         self.preProcessParamsWidget.hide()
         self.mainLayout.removeWidget(self.preProcessParamsWidget)
 
+        self.savePreprocButton.setText('Save combined data...')
+
     def warnMultipliers(self):
         msg = widgets.myMessageBox(wrapText=False)
 
@@ -16296,239 +16347,3 @@ class CombineChannelsSetupDialogGUI(CombineChannelsSetupDialog):
         
         keep_input_dtype = self.keepInputDataTypeToggle.isChecked()
         return steps, keep_input_dtype # why does this not work???s 
-        
-# class FunctionParamsWidget(FunctionParamsDialog):
-#     sigReset = Signal()
-#     sigApply = Signal(object)
-
-#     def __init__(
-#             self,
-#             *args,
-#             **kwargs
-#         ):
-#         super().__init__(*args, **kwargs)
-#         self.buttonsLayout.okButton.setText('Apply')
-
-#         self.resetButton = widgets.reloadPushButton('Reset')
-#         self.buttonsLayout.insertWidget(3, self.resetButton)
-#         self.resetButton.clicked.connect(self.resetParams)
-
-#         self.buttonsLayout.cancelButton.hide()
-
-#         self.buttonsLayout.addStretch(1)
-
-#     def resetParams(self):
-#         self.sigReset.emit()
-
-#     def ok_cb(self):
-#         self.sigApply.emit(self.functionKwargs())
-
-#     def getWidgetsLayoutNew(self):
-#         titles = [
-#             'Image pre-processing',
-#             'Segmentation',
-#             'Tracking',
-#         ]
-#         widgetsLayoutGroups = []
-#         self.argsWidgets
-#         for i, params_argspec in enumerate(self.params_argspecs_groups):
-#             if not params_argspec:
-#                 continue
-#             title = titles[i]
-            
-#             widgetsLayout, self.argsWidgets = self.getWidgetsLayout(params_argspec)
-
-
-# class FunctionParamsDialogImagePrev(QBaseDialog):
-#     def __init__(
-#             self, 
-#             images: np.ndarray,
-#             params_argspecs_img_manipulation=None,
-#             img_manipulation=None,
-#             params_argspecs_segmenter=None,
-#             segmenter=None,
-#             params_argspecs_tracker=None,
-#             tracker=None,
-#             tracker_request_i_range=[-1,0],
-#             df_metadata=None,
-#             parent=None,
-#         ):
-
-#         if not segmenter and not tracker and not img_manipulation:
-#             raise ValueError(
-#                 'At least one of the following must be provided: '
-#                 'segmenter, tracker, img_manipulation'
-#             )
-
-#         if params_argspecs_img_manipulation is None and img_manipulation or not params_argspecs_img_manipulation and img_manipulation:
-#             raise ValueError(
-#                 'img_manipulation and params_argspecs_img_manipulation must be provided together'
-#             )
-
-#         if params_argspecs_segmenter is None and segmenter or not params_argspecs_segmenter and segmenter:
-#             raise ValueError(
-#                 'segmenter and params_argspecs_segmenter must be provided together'
-#             )
-        
-#         if params_argspecs_tracker is None and tracker or not params_argspecs_tracker and tracker:
-#             raise ValueError(
-#                 'tracker and params_argspecs_tracker must be provided together'
-#             )
-
-#         super().__init__(
-#             parent=parent
-#         )
-
-#         layout = QHBoxLayout()
-
-#         self.len_cache = 5
-
-#         self.images = images
-#         self.segms = np.zeros_like(images)
-#         self.original_images = images.copy()
-#         self.img_manipulation = img_manipulation
-#         self.segmenter = segmenter
-#         self.tracker = tracker
-#         self.tracker_request_i_range = tracker_request_i_range
-
-#         self.display_image = images[0]
-#         self.display_image_idx = 0
-#         self.up_to_date_image_idx = {
-#             "img_manipulation": [],
-#             "segmenter": [],
-#             "tracker": [],
-#         }
-
-#         self.tracker_provided = tracker is not None
-#         self.segmenter_provided = segmenter is not None
-#         self.img_manipulation_provided = img_manipulation is not None
-
-#         self.image_undo_redo_chache = {
-#                 "images": [],
-#                 "indxs": [],
-#                 "settings": [],
-#             }
-#         self.segm_undo_redo_chache = {
-#                 "images": [],
-#                 "indxs": [],
-#                 "settings": [],
-#         }
-
-#         self.params_argspecs_groups = [params_argspecs_img_manipulation, params_argspecs_segmenter, params_argspecs_tracker]
-
-#         self.original_settings_groups = [{}, {}, {}]
-#         for i, argspec_group in enumerate(self.params_argspecs_groups):
-#             if argspec_group is None:
-#                 self.params_argspecs_groups[i] = []
-#                 continue
-#             for argspec in argspec_group:
-#                 self.original_settings_groups[i][argspec.name] = argspec.default
-
-#         self
-#         self.functionParamsWin = FunctionParamsWidget(
-#             params_argspecs, 
-#             # function_name=f'Function "{function}"', 
-#             df_metadata=df_metadata,
-#             parent=parent,
-#         )
-
-#         self.functionParamsWin.sigApply.connect(self.update_img_processing)
-#         self.functionParamsWin.sigReset.connect(self.update_img_processing)
-
-#         self.imshowWin = plot.imshow(
-#             self.display_image, 
-#             block=False
-#         )
-
-#         layout.addWidget(self.functionParamsWin)
-#         layout.addWidget(self.imshowWin)
-
-#         self.setLayout(layout)
-
-#     def update_img_processing(self, function_kwargs=None):
-#         if function_kwargs is None:
-#             function_kwargs = self.original_settings
-
-#         original_images = self.original_images[self.display_image_idx]
-#         display_img_idx = self.display_image_idx
-
-#         requested_idxs = []
-
-#         # get the requested images
-#         if self.tracker_provided:
-#             for i in self.tracker_request_i_range:
-#                 i = display_img_idx + i
-#                 if i < 0 or i >= len(original_images):
-#                     continue
-#                 requested_idxs.append(i)
-#         else:
-#             requested_idxs = [display_img_idx]
-
-#         updated_segms = []
-#         for indx in requested_idxs:
-#             image = original_images[indx]
-
-#             if self.img_manipulation_provided:
-#                 if not indx in self.up_to_date_image_idx["img_manipulation"]:
-#                     image = self.img_manipulation(image) # todo, function in different thread
-#                     self.up_to_date_image_idx["img_manipulation"].append(indx)
-#                     self.images[indx] = image
-
-#             if self.segmenter_provided:
-#                 if not indx in self.up_to_date_image_idx["segmenter"]:
-#                     segm = self.segmenter(image) # todo, function in different thread
-#                     self.up_to_date_image_idx["segmenter"].append(indx)
-#                     updated_segms = updated_segms + [segm]
-
-#         if self.tracker_provided:
-#             if not indx in self.up_to_date_image_idx["tracker"]:
-#                 segm = self.tracker(updated_segms) # todo, function in different thread
-#                 self.up_to_date_image_idx["tracker"].append(indx)
-#                 updated_segms = updated_segms + [segm]
-
-#         self.segms[display_img_idx] = updated_segms[-1]
-
-#     def update_cache(self,
-#                      images,
-#                      indxs,
-#                      img_change=True,
-#                      segm_change=True):
-        
-#         if self.img_manipulation_provided and img_change:
-#             self.image_undo_redo_chache["images"] = self.image_undo_redo_chache["images"] + [images]
-#             self.image_undo_redo_chache["indxs"] = self.image_undo_redo_chache["indxs"] + [indxs]
-#             self.image_undo_redo_chache["settings"] = self.image_undo_redo_chache["settings"] + [self.img_manipulation]
-
-#         if self.segmenter_provided and segm_change:
-#             self.segm_undo_redo_chache["images"] = self.segm_undo_redo_chache["images"] + [images]
-#             self.segm_undo_redo_chache["indxs"] = self.segm_undo_redo_chache["indxs"] + [indxs]
-#             self.segm_undo_redo_chache["settings"] = self.segm_undo_redo_chache["settings"] + [self.segmenter]
-
-#         if len(self.image_undo_redo_chache["images"]) > self.len_cache:
-#             self.image_undo_redo_chache["images"] = self.image_undo_redo_chache["images"][1:]
-#             self.image_undo_redo_chache["indxs"] = self.image_undo_redo_chache["indxs"][1:]
-#             self.image_undo_redo_chache["settings"] = self.image_undo_redo_chache["settings"][1:]
-
-#         if len(self.segm_undo_redo_chache["images"]) > self.len_cache:
-#             self.segm_undo_redo_chache["images"] = self.segm_undo_redo_chache["images"][1:]
-#             self.segm_undo_redo_chache["indxs"] = self.segm_undo_redo_chache["indxs"][1:]
-#             self.segm_undo_redo_chache["settings"] = self.segm_undo_redo_chache["settings"][1:]
-
-#     def request_cache(self, indx):
-#         ...
-
-#     def update_up_to_date_image_idx(self, 
-#                                     img_change=True, 
-#                                     segm_change=True
-#                                     ):
-#         if self.img_manipulation_provided and img_change:
-#             self.up_to_date_image_idx["img_manipulation"] = []
-#             self.up_to_date_image_idx["segmenter"] = []
-#             self.up_to_date_image_idx["tracker"] = []
-
-#         if self.segmenter_provided and segm_change:
-#             self.up_to_date_image_idx["segmenter"] = []
-#             self.up_to_date_image_idx["tracker"] = []
-
-#         if self.tracker_provided:
-#             self.up_to_date_image_idx["tracker"] = []

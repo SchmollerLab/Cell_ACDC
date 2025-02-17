@@ -9,6 +9,7 @@ from importlib import import_module
 import numpy as np
 import math
 import cv2
+import skimage.exposure
 import skimage.measure
 import skimage.morphology
 import skimage.exposure
@@ -1846,14 +1847,29 @@ def preprocess_zstack_from_recipe(
             pbar.close()
     
     return preprocessed_image
-        
+
+all_kwargs_to_pop = (
+    ('apply_to_all_zslices',), 
+    ('apply_to_all_frames',), 
+    ('apply_to_all_frames', 'apply_to_all_zslices'), 
+)
 def preprocess_image_from_recipe(image, recipe: List[Dict[str, Any]]):
     preprocessed_image = image
     for step in recipe:
         method = step['method']
         func = PREPROCESS_MAPPER[method]['function']
         kwargs = step['kwargs']
-        preprocessed_image = func(preprocessed_image, **kwargs)
+        for kwargs_to_pop in all_kwargs_to_pop:
+            test_kwargs = kwargs.copy()
+            try:
+                preprocessed_image = func(preprocessed_image, **test_kwargs)
+                break
+            except TypeError as err:
+                if not 'unexpected keyword argument' in str(err):
+                    raise err
+            
+            for kwarg_to_pop in kwargs_to_pop:
+                test_kwargs.pop(kwarg_to_pop, None)
         
     return preprocessed_image
 
@@ -2815,6 +2831,7 @@ def preprocess_image_from_recipe_multithread(
                 preprocessed_image, (step,)
             )
         else:
+            kwargs['apply_to_all_frames'] = False
             num_frames = len(preprocessed_image)
             pbar = tqdm(total=num_frames, ncols=100)
             with concurrent.futures.ThreadPoolExecutor(max_workers=n_threads) as executor:
@@ -2899,6 +2916,7 @@ def combine_channels_multithread_return_imgs(
     output_imgs = [None] * total
     keys_out = [0] * total
     res_i = 0
+    txts = set()
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=n_threads) as executor:
         if signals:
@@ -2918,15 +2936,26 @@ def combine_channels_multithread_return_imgs(
         iterable = keys
         result = executor.map(func, iterable)
         for res in result:
-            output_img, key = res
+            output_img, key, txt = res
             output_imgs[res_i] = output_img
             keys_out[res_i] = key
             res_i += 1
+            txts.add(txt)
 
             if signals:
                 signals.progressBar.emit(1)
             else:
                 pbar.update()
+
+    if not logger_func:
+        for txt in txts:
+            printl(txt)
+    else:
+        for txt in txts:
+            try:
+                logger_func(txt)
+            except Exception as err:
+                printl(txt)
 
     return output_imgs, keys_out
 
@@ -2952,7 +2981,6 @@ def combine_channels_func(
         image_path: str = None,
         key: str = None,
         data = None,
-
     ):
     if not save_filepath and not return_img:
         raise ValueError('Either save_filepath must be provided or return_img must be true')
@@ -2961,11 +2989,14 @@ def combine_channels_func(
         raise ValueError('If return_img is true, key must be provided')
     
     ch_image_data_list = []
+    original_dtype = None
     if not data:
         for channel in channel_names:
             ch_filepath = load.get_filename_from_channel(image_path, channel)
             ch_image_data = load.load_image_file(ch_filepath)
-
+            if not original_dtype:
+                original_dtype = ch_image_data.dtype
+            ch_image_data = myutils.img_to_float(ch_image_data)
             ch_image_data_list.append(ch_image_data)
     else:
         posData = data[key[0]]
@@ -2977,14 +3008,18 @@ def combine_channels_func(
             channel_full_name = f'{posData.basename}{channel}'
             if num_dim == 3:
                 ch_image_data = fluo_data_dict[channel_full_name][key[1]]
+                if not original_dtype:
+                    original_dtype = ch_image_data.dtype
+                ch_image_data = myutils.img_to_float(ch_image_data)
                 ch_image_data_list.append(ch_image_data)
             elif num_dim == 4:
                 ch_image_data = fluo_data_dict[channel_full_name][key[1]][key[2]]
+                if not original_dtype:
+                    original_dtype = ch_image_data.dtype
+                ch_image_data = myutils.img_to_float(ch_image_data)
                 ch_image_data_list.append(ch_image_data)
             else:
                 raise ValueError(f'Invalid number of dimensions, is your data maybe corrupted?\n Ndims: {num_dim}\n Channel name: {channel_full_name}')
-
-    original_dtype = ch_image_data_list[0].dtype
 
     for i in range(len(ch_image_data_list)):
         multiplier = multipliers[i]
@@ -2997,8 +3032,6 @@ def combine_channels_func(
     if all(x == "+" for x in operators):
         output_img = np.sum(ch_image_data_list, axis=0)
     else:
-        # pbar = tqdm(total=len(ch_image_data_list), ncols=100, desc='Applying logical operators')
-
         for i in range(len(ch_image_data_list)):
             if i == 0:
                 if operators[i] == "+":
@@ -3018,19 +3051,20 @@ def combine_channels_func(
                     output_img /= ch_image_data_list[i]
                 else:
                     raise ValueError(f'Invalid operator: {operators[i]}')
-            # pbar.update()
-        # pbar.close() 
 
+    output_img = skimage.exposure.rescale_intensity(
+        output_img, out_range=(0, 1)
+    )
     if keep_input_data_type:
         try:
             output_img = myutils.convert_to_dtype(
-                output_img, ch_image_data.dtype
+                output_img, original_dtype
             )
             method = 'cellacdc.myutils.convert_to_dtype'
             warning = 'safe'
             prefix = ''
         except Exception as err:
-            dtype_info = np.iinfo(ch_image_data.dtype)
+            dtype_info = np.iinfo(original_dtype)
             dtype_max = dtype_info.max
             dtype_min = dtype_info.min
             if output_img.max() <= dtype_max and output_img.min() >= dtype_min:
@@ -3040,7 +3074,7 @@ def combine_channels_func(
                 prefix = '[WARNING]: '
             else:
                 output_img = skimage.exposure.rescale_intensity(
-                    output_img, out_range=original_dtype
+                    output_img, out_range=(dtype_min, dtype_max)
                 )
                 output_img = output_img.astype(original_dtype)
                 method = 'skimage.exposure.rescale_intensity -> output_img.astype(original_dtype)'
@@ -3048,16 +3082,17 @@ def combine_channels_func(
                 prefix = '[WARNING]: '
 
         txt = f'{prefix}Converted output image to {original_dtype} using {method}, which is {warning}'
-        if logger_func:
-            try:
-                logger_func(txt)
-            except Exception as err:
-                printl(txt)
-        else:
-            printl(txt)
 
-    if return_img:
-        return output_img, key
+        if not return_img:
+            if logger_func:
+                try:
+                    logger_func(txt)
+                except Exception as err:
+                    printl(txt)
+            else:
+                printl(txt)
+        if return_img:
+            return output_img, key, txt
     
     txt = f'Saving combined image to {save_filepath}'
     if logger_func:
@@ -3472,3 +3507,24 @@ def split_along_convexity_defects(
     max_i += 1
     success = True
     return lab, success, splittedIDs
+
+def validate_multidimensional_recipe(
+        recipe: List[Dict[str, Any]], 
+        apply_to_all_zslices=False,
+        apply_to_all_frames=False
+    ):
+    for step in recipe:
+        method = step['method']
+        func = PREPROCESS_MAPPER[method]['function']
+        kwargs = step['kwargs']
+        
+        argspecs = inspect.getfullargspec(func)
+        for arg in argspecs.args:
+            if arg == 'apply_to_all_frames':
+                kwargs['apply_to_all_frames'] = apply_to_all_frames
+            if arg == 'apply_to_all_zslices':
+                kwargs['apply_to_all_zslices'] = apply_to_all_zslices
+    
+    return recipe
+        
+        

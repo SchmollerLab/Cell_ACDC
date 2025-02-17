@@ -1426,7 +1426,8 @@ def add_concentration_metrics(df, concentration_metrics_params):
     return df
 
 def add_size_metrics(
-        df, rp, size_metrics_to_save, isSegm3D, yx_pxl_to_um2, vox_to_fl_3D
+        df, rp, size_metrics_to_save, isSegm3D, yx_pxl_to_um2, vox_to_fl_3D, 
+        calc_size_for_each_zslice=False
     ):
     for o, obj in enumerate(tqdm(rp, ncols=100, leave=False)):
         for col in size_metrics_to_save:
@@ -1434,6 +1435,19 @@ def add_size_metrics(
                 col, obj, isSegm3D, yx_pxl_to_um2, vox_to_fl_3D
             )
             df.at[obj.label, col] = val
+            if not calc_size_for_each_zslice:
+                continue
+            
+            z0 = obj.bbox[0]
+            for local_z, obj_img_z in enumerate(obj.image):
+                z_slice = z0 + local_z
+                area_pxl_z = np.count_nonzero(obj_img_z)
+                col = f'cell_area_pxl_zslice{z_slice}'
+                df.at[obj.label, col] = area_pxl_z
+                
+                area_um2_z = area_pxl_z*yx_pxl_to_um2
+                col = f'cell_area_um2_zslice{z_slice}'
+                df.at[obj.label, col] = area_um2_z
     return df
 
 def add_foregr_metrics(
@@ -1441,7 +1455,8 @@ def add_foregr_metrics(
         custom_metrics_params, isSegm3D, lab, foregr_img, 
         other_channels_foregr_imgs: Dict[str, np.ndarray], 
         z_slice=None, manualBackgrRp=None, 
-        customMetricsCritical=None, 
+        customMetricsCritical=None,
+        text_to_append_to_col=''
     ):
     if manualBackgrRp is not None:
         manualBackgrRp = {obj.label for obj in manualBackgrRp}
@@ -1450,7 +1465,10 @@ def add_foregr_metrics(
     for o, obj in enumerate(tqdm(rp, ncols=100, leave=False)):
         for col, (func_name, how) in foregr_metrics_params.items():
             func_name, how = foregr_metrics_params[col]
-            foregr_arr = foregr_data[how]
+            foregr_arr = foregr_data.get(how)
+            if foregr_arr is None:
+                continue
+            
             foregr_obj_arr, obj_area = get_foregr_obj_array(
                 foregr_arr, obj, isSegm3D, z_slice=z_slice, how=how
             )
@@ -1473,10 +1491,13 @@ def add_foregr_metrics(
             else:
                 func = metrics_func[func_name]
                 val = func(foregr_obj_arr)
-            df.at[obj.label, col] = val
+            df.at[obj.label, f'{col}{text_to_append_to_col}'] = val
 
         for col, (custom_func, how) in custom_metrics_params.items():   
-            foregr_arr = foregr_data[how]
+            foregr_arr = foregr_data.get(how)
+            if foregr_arr is None:
+                continue
+            
             foregr_obj_arr, obj_area = get_foregr_obj_array(
                 foregr_arr, obj, isSegm3D, z_slice=z_slice, how=how
             )
@@ -1495,10 +1516,10 @@ def add_foregr_metrics(
                 cell_vols_fl_3D=cell_vols_fl_3D
             )
             if custom_col_name is None:
-                df.at[ID, col] = custom_val
+                df.at[ID, f'{col}{text_to_append_to_col}'] = custom_val
             else:
                 for custom_col, value in zip(custom_col_name, custom_val):
-                    df.at[ID, custom_col] = value
+                    df.at[ID, f'{custom_col}{text_to_append_to_col}'] = value
                     
             if customMetricsCritical is not None and custom_error:
                 customMetricsCritical.emit(custom_error, col)
@@ -1506,7 +1527,8 @@ def add_foregr_metrics(
 
 def add_bkgr_values(
         df, bkgr_data, bkgr_metrics_params, metrics_func, 
-        manualBackgrRp=None, foregr_data=None
+        manualBackgrRp=None, foregr_data=None, 
+        text_to_append_to_col=''
     ):
     # Compute background values
     for col, (bkgr_type, func_name, how) in bkgr_metrics_params.items():
@@ -1516,9 +1538,12 @@ def add_bkgr_values(
                 manualBackgrRp, foregr_data, df, col, how, bkgr_func
             )
             continue
-        bkgr_arr = bkgr_data[bkgr_type][how]
+        bkgr_arr = bkgr_data[bkgr_type].get(how)
+        if bkgr_arr is None:
+            continue
+        
         bkgr_val = bkgr_func(bkgr_arr)
-        df[col] = bkgr_val
+        df[f'{col}{text_to_append_to_col}'] = bkgr_val
     return df
 
 def add_manual_bkgr_values(manualBackgrRp, foregr_data, df, col, how, bkgr_func):
@@ -1526,7 +1551,11 @@ def add_manual_bkgr_values(manualBackgrRp, foregr_data, df, col, how, bkgr_func)
         return
     if foregr_data is None:
         return
-    foregr_img = foregr_data[how]
+    
+    foregr_img = foregr_data.get(how)
+    if foregr_img is None:
+        return
+    
     for obj in manualBackgrRp:
         bkgr_obj_arr = foregr_img[obj.slice][obj.image]
         bkgr_val = bkgr_func(bkgr_obj_arr)

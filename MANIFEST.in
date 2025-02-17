@@ -1,7 +1,6 @@
 include LICENSE
 include notebooks/*
 include UserManual/*
-include FijiMacros/*
 include cellacdc/resources/*
 include cellacdc/bioformats/jars/*
 include cellacdc/bioformats/tests/*
@@ -22,6 +21,10 @@ exclude cellacdc/utils/deprecated
 
 prune cellacdc/docs/source/images
 prune .github
+prune tables
+prune publications
+prine notebooks
+prune FijiMacros
 
 exclude cellacdc/models/YeastMate/detectron2
 exclude cellacdc/models/YeastMate/pycocotools

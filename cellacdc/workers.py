@@ -36,7 +36,7 @@ from . import (
 )
 from . import transformation
 from .path import copy_or_move_tree
-from . import features
+from . import features, plot
 from . import core
 from . import cca_df_colnames, lineage_tree_cols, default_annot_df
 from . import cca_df_colnames_with_tree
@@ -783,7 +783,7 @@ class AutoSaveWorker(QObject):
         else:
             np.savez_compressed(recovery_path, np.squeeze(data))
     
-    def _save_acdc_df(self, recovery_acdc_df, posData):
+    def _save_acdc_df(self, recovery_acdc_df: pd.DataFrame, posData):
         recovery_folderpath = posData.recoveryFolderpath()
         if not os.path.exists(posData.acdc_output_csv_path):
             load.store_unsaved_acdc_df(recovery_folderpath, recovery_acdc_df)
@@ -796,8 +796,12 @@ class AutoSaveWorker(QObject):
         )
         
         recovery_acdc_df = (
-            recovery_acdc_df.reset_index().set_index(['frame_i', 'Cell_ID'])
+            recovery_acdc_df.reset_index(allow_duplicates=True)
+            .set_index(['frame_i', 'Cell_ID'])
         )
+        recovery_acdc_df = recovery_acdc_df.loc[
+            :, ~recovery_acdc_df.columns.duplicated()
+        ]
         try:
             # Try to insert into the recovery_acdc_df any column that was saved
             # but is not in the recovered df (e.g., metrics)
@@ -5356,23 +5360,26 @@ class SaveProcessedDataWorker(QObject):
         self.signals.finished.emit(self)
 
 class SaveCombinedChannelsWorker(QObject):
+    sigDebugShowImg = Signal(object)
     def __init__(
             self, 
             allPosData: Iterable['load.loadData'], 
-            appended_text_filename: str
+            appended_text_filename: str,
+            debug: bool = False
         ):
         QObject.__init__(self)
         self.allPosData = allPosData
         self.signals = signals()
         self.logger = workerLogger(self.signals.progress)
         self.appended_text_filename = appended_text_filename
+        self.debug = debug
     
     @worker_exception_handler
     def run(self):
         self.signals.initProgressBar.emit(0)
         for posData in self.allPosData:
             processed_filename = (
-                f'{posData.basename}_'
+                f'{posData.basename}'
                 f'{self.appended_text_filename}{posData.ext}'
             )
             processed_filepath = os.path.join(
@@ -5386,7 +5393,14 @@ class SaveCombinedChannelsWorker(QObject):
                     'combined channels data. Skipping it.'
                 )
                 continue
-                
+            if self.debug:
+                printl(processed_data.shape)
+                printl(processed_data.dtype)
+                printl(processed_data.min())
+                printl(processed_data.max())
+                printl(processed_filepath)
+                self.sigDebugShowImg.emit(processed_data)
+            # cellacdc.plot.imshow(processed_data) 
             io.save_image_data(processed_filepath, processed_data)
         
         self.signals.finished.emit(self)
@@ -5503,7 +5517,7 @@ class CustomPreprocessWorkerGUI(QObject):
 class CombineWorkerGUI(CustomPreprocessWorkerGUI):
     sigDone = Signal(object, list)
     sigPreviewDone = Signal(object, list)
-    sigAskLoadFluoChannels = Signal(list, int)
+    sigAskLoadFluoChannels = Signal(list, object)
 
     def __init__(self, mutex, waitCond, logger_func: Callable,):
 #                 signals_parent=None):
@@ -5565,42 +5579,39 @@ class CombineWorkerGUI(CustomPreprocessWorkerGUI):
             key: Tuple[Union[int, None], Union[int, None], Union[int, None]]
         ):
 
+        new_keys = []
         key = list(key)
-        if key[0] is not None:
-            key[0] = [key[0]]
-        else:
+        if key[0] is None:
             pos_number = len(data)
             key[0] = list(range(pos_number))
-
-        if key[1] is not None:
-            key[1] = [key[1]]
         else:
-            loc_list = []
-            for pos_i in key[0]:
+            key[0] = [key[0]]
+
+        for pos_i in key[0]:
+            new_keys_per_pos = [[pos_i]]
+            if key[1] is None:
                 frames = data[pos_i].SizeT
-                loc_list.append(list(range(frames)))
-            key[1] = loc_list
-
-        if key[2] is not None:
-            key[2] = [key[2]]
-        else:
-            loc_list = []
-            for pos_i in key[0]:
+                new_keys_per_pos.append(list(range(frames)))
+            else:
+                new_keys_per_pos.append([key[1]])
+            
+            if key[2] is None:
                 z_slices = data[pos_i].SizeZ
                 if not z_slices:
                     z_slices = 1
+                new_keys_per_pos.append(list(range(z_slices)))
+            else:
+                new_keys_per_pos.append([key[2]])
 
-                loc_list.append(list(range(z_slices)))
-            key[2] = loc_list
-
-        keys = list(itertools.product(*key))
+            new_keys_per_pos = list(itertools.product(*new_keys_per_pos))
+            new_keys.extend(new_keys_per_pos)
 
         output_imgs, out_keys = core.combine_channels_multithread_return_imgs(
             steps=steps,
             data=data,
             keep_input_data_type=keep_input_data_type,
-            keys=keys,
-            logger_func=self.logger_func,
+            keys=new_keys,
+            logger_func=self.logger,
             signals=self.signals,
 
         )
@@ -5609,6 +5620,7 @@ class CombineWorkerGUI(CustomPreprocessWorkerGUI):
     def requiredChannels(self, steps=None, pos_i=None):
         if steps is None:
             steps = self._steps
+        
         requ_steps = core.get_selected_channels(steps)
 
         if pos_i is None:
@@ -5800,7 +5812,7 @@ class CombineChannelsWorkerUtil(BaseWorkerUtil):
             keep_input_data_type: bool,
         ):
 
-        channel_name_first = steps[0]['channel']
+        channel_name_first = steps[1]['channel']
         save_filepaths = []
         for image_path in image_paths:
             ch_filepath = load.get_filename_from_channel(image_path, channel_name_first)

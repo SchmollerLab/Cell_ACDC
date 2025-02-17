@@ -843,11 +843,12 @@ def get_filename_from_channel(
         is_channel_to_skip = False
         for channel_to_skip in skip_channels:
             for ff in channel_file_formats:
-                if file.endswith(f'{channel_to_skip}{ff}'):
-                    is_channel_to_skip = True
+                if file.endswith(f'{basename}{channel_to_skip}{ff}'):
+                    is_channel_to_skip = channel_name not in file
                     break
             if is_channel_to_skip:
                 break
+        
         if is_channel_to_skip:
             continue
 
@@ -2172,7 +2173,7 @@ class loadData:
             if preprocess_img is None:
                 if check_integrity:
                     raise TypeError(
-                        'Not all frames have been preprocessed. '
+                        'Not all frames have been processed.'
                     )
                 else:
                     continue
@@ -2193,7 +2194,7 @@ class loadData:
             if combined_channels_img is None:
                 if check_integrity:
                     raise TypeError(
-                        'Not all frames have been preprocessed. '
+                        'Not all frames have been processed.'
                     )
                 else:
                     continue

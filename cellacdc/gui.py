@@ -11,7 +11,7 @@ import inspect
 import logging
 import uuid
 import json
-import pprint
+from collections import defaultdict
 import psutil
 import zipfile
 from functools import partial
@@ -520,6 +520,8 @@ class saveDataWorker(QObject):
         foregr_metrics_params = self.mainWin.foregr_metrics_params
         concentration_metrics_params = self.mainWin.concentration_metrics_params
         custom_metrics_params = self.mainWin.custom_metrics_params
+        calc_for_each_zslice_mapper = self.mainWin.calc_for_each_zslice_mapper
+        calc_size_for_each_zslice = self.mainWin.calc_size_for_each_zslice
 
         # Pre-populate columns with zeros
         all_columns = list(size_metrics_to_save)
@@ -539,7 +541,7 @@ class saveDataWorker(QObject):
 
         df = measurements.add_size_metrics(
             df, rp, size_metrics_to_save, isSegm3D, yx_pxl_to_um2, 
-            vox_to_fl_3D
+            vox_to_fl_3D, calc_size_for_each_zslice=calc_size_for_each_zslice
         )
         
         # Get background masks
@@ -595,6 +597,50 @@ class saveDataWorker(QObject):
                 customMetricsCritical=self.customMetricsCritical,
                 z_slice=z
             )
+
+            if not calc_for_each_zslice_mapper.get(channel, False):
+                continue
+            
+            # Repeat measureemnts for each z-slice
+            pbar_z = tqdm(
+                total=posData.SizeZ, desc='Computing for z-slices: ', 
+                ncols=100, leave=False, unit='z-slice'
+            )
+            for z in range(posData.SizeZ):
+                # Get the background data
+                bkgr_data = measurements.get_bkgr_data(
+                    foregr_img, posData, filename, frame_i, autoBkgr_mask, z,
+                    autoBkgr_mask_proj, dataPrepBkgrROI_mask, isSegm3D, lab
+                )
+                bkgr_data = {
+                    'autoBkgr': {'zSlice': bkgr_data['autoBkgr']['zSlice']},
+                    'dataPrepBkgr': {'zSlice': bkgr_data['dataPrepBkgr']['zSlice']}
+                }
+                
+                foregr_data = measurements.get_foregr_data(
+                    foregr_img, isSegm3D, z
+                )
+                foregr_data = {'zSlice': foregr_data['zSlice']}
+
+                # Compute background values
+                df = measurements.add_bkgr_values(
+                    df, bkgr_data, bkgr_metrics_params[channel], metrics_func,
+                    manualBackgrRp=manualBackgrRp, foregr_data=foregr_data,
+                    text_to_append_to_col=str(z)
+                )
+
+                # Iterate objects and compute foreground metrics
+                df = measurements.add_foregr_metrics(
+                    df, rp, channel, foregr_data, foregr_metrics_params[channel], 
+                    metrics_func, custom_metrics_params[channel], isSegm3D, 
+                    lab, foregr_img, 
+                    other_channels_foregr_imgs, 
+                    manualBackgrRp=manualBackgrRp,
+                    customMetricsCritical=self.customMetricsCritical,
+                    z_slice=z, text_to_append_to_col=str(z)
+                )
+                pbar_z.update()
+            pbar_z.close()
 
         df = measurements.add_concentration_metrics(
             df, concentration_metrics_params
@@ -712,7 +758,7 @@ class saveDataWorker(QObject):
         PhysicalSizeX = posData.PhysicalSizeX
         yx_pxl_to_um2 = PhysicalSizeY*PhysicalSizeX
         vox_to_fl_3D = PhysicalSizeY*PhysicalSizeX*posData.PhysicalSizeZ
-
+        
         init_list = [-2]*len(rp)
         IDs = init_list.copy()
         IDs_vol_vox = init_list.copy()
@@ -732,15 +778,18 @@ class saveDataWorker(QObject):
             if self.mainWin.isSegm3D:
                 IDs_vol_vox_3D[i] = obj.area
                 IDs_vol_fl_3D[i] = obj.area*vox_to_fl_3D
-
+            
         df['cell_area_pxl'] = pd.Series(data=IDs_area_pxl, index=IDs, dtype=float)
         df['cell_vol_vox'] = pd.Series(data=IDs_vol_vox, index=IDs, dtype=float)
         df['cell_area_um2'] = pd.Series(data=IDs_area_um2, index=IDs, dtype=float)
         df['cell_vol_fl'] = pd.Series(data=IDs_vol_fl, index=IDs, dtype=float)
         if self.mainWin.isSegm3D:
-            df['cell_vol_vox_3D'] = pd.Series(data=IDs_vol_vox_3D, index=IDs, dtype=float)
-            df['cell_vol_fl_3D'] = pd.Series(data=IDs_vol_fl_3D, index=IDs, dtype=float)
-
+            df['cell_vol_vox_3D'] = pd.Series(
+                data=IDs_vol_vox_3D, index=IDs, dtype=float
+            )
+            df['cell_vol_fl_3D'] = pd.Series(
+                data=IDs_vol_fl_3D, index=IDs, dtype=float
+            )
         return df
 
     def addAdditionalMetadata(self, posData: load.loadData, df: pd.DataFrame):
@@ -1101,7 +1150,7 @@ class guiWin(QMainWindow):
                     f"Shortcut: \"No shortcut\"", 
                     tooltip
                 )
-
+            
             getattr(self, key).setToolTip(tooltip)
 
     def run(self, module='acdc_gui', logs_path=None):        
@@ -1826,6 +1875,18 @@ class guiWin(QMainWindow):
         self.LeftClickButtons.append(self.wandToolButton)
         self.functionsNotTested3D.append(self.wandToolButton)
         self.widgetsWithShortcut['Magic wand'] = self.wandToolButton
+        
+        self.drawClearRegionButton = QToolButton(self)
+        self.drawClearRegionButton.setCheckable(True)
+        self.drawClearRegionButton.setIcon(QIcon(":clear_freehand_region.svg"))
+        self.widgetsWithShortcut['Clear freehand region'] = self.drawClearRegionButton
+        
+        self.checkableButtons.append(self.drawClearRegionButton)
+        self.LeftClickButtons.append(self.drawClearRegionButton)
+        
+        self.drawClearRegionAction = editToolBar.addWidget(
+            self.drawClearRegionButton
+        )
 
         self.widgetsWithShortcut['Annotate mother/daughter pairing'] = (
             self.assignBudMothButton
@@ -1834,19 +1895,19 @@ class guiWin(QMainWindow):
             self.setIsHistoryKnownButton
         )
         
-        self.copyContourButton = QToolButton(self)
-        self.copyContourButton.setIcon(QIcon(":copyContour.svg"))
-        self.copyContourButton.setCheckable(True)
-        self.copyContourButton.setShortcut('V')
-        self.copyContourButton.action = editToolBar.addWidget(
-            self.copyContourButton
+        self.copyLostObjButton = QToolButton(self)
+        self.copyLostObjButton.setIcon(QIcon(":copyContour.svg"))
+        self.copyLostObjButton.setCheckable(True)
+        self.copyLostObjButton.setShortcut('V')
+        self.copyLostObjButton.action = editToolBar.addWidget(
+            self.copyLostObjButton
         )
-        self.checkableButtons.append(self.copyContourButton)
-        self.checkableQButtonsGroup.addButton(self.copyContourButton)
+        self.checkableButtons.append(self.copyLostObjButton)
+        self.checkableQButtonsGroup.addButton(self.copyLostObjButton)
         self.widgetsWithShortcut['Copy lost object contour'] = (
-            self.copyContourButton
+            self.copyLostObjButton
         )
-        self.functionsNotTested3D.append(self.copyContourButton)
+        self.functionsNotTested3D.append(self.copyLostObjButton)
         
         self.labelRoiButton = widgets.rightClickToolButton(parent=self)
         self.labelRoiButton.setIcon(QIcon(":label_roi.svg"))
@@ -2125,14 +2186,6 @@ class guiWin(QMainWindow):
 
         self.gui_createAnnotateToolbar()
 
-        # toolbarSize = 58
-        # fileToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
-        # navigateToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
-        # ccaToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
-        # editToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
-        # brushEraserToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
-        # modeToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
-
     def propagateLinTreeAction(self):
         """
         Propagates the lineage tree based on the current frame_i. Used in self.propagateLinTreeButton.
@@ -2391,7 +2444,6 @@ class guiWin(QMainWindow):
             processed_data: List[np.ndarray], 
             keys: List[Tuple[int, int, int]]
         ):
-        
         unique_pos = {key[0] for key in keys}
         per_pos_data = {pos_i: [] for pos_i in unique_pos}
 
@@ -2413,15 +2465,19 @@ class guiWin(QMainWindow):
                     self.img1.updateMinMaxValuesCombinedData(
                             self.data, pos_i, frame_i, z_slice
                         )
-            else:
+            elif n_dim_img == 3:
                 for key, processed_data in per_pos_data[pos_i]:
                     pos_i, frame_i, z_slice = key
                     posData.combine_img_data[frame_i] = processed_data
                     self.img1.updateMinMaxValuesCombinedData(
                         self.data, pos_i, frame_i, z_slice
                     )
+            else:
+                raise ValueError('Invalid number of dimensions in img_data.')
         
+        posData = self.data[self.pos_i]
         curr_pos_i, curr_frame_i, curr_z_slice = self.pos_i,self.data[self.pos_i].frame_i, self.z_slice_index()
+        current_combine_img = posData.combine_img_data[curr_frame_i]
         self.img1.updateMinMaxValuesCombinedData(
             self.data, curr_pos_i, curr_frame_i, curr_z_slice
         )
@@ -2429,10 +2485,16 @@ class guiWin(QMainWindow):
         self.setImageImg1()
 
     def combineWorkerAskLoadFluoChannels(self, requ_channels, pos_i):
-        self.getChData(requ_ch=requ_channels, pos_i=pos_i)
+        if pos_i is None:
+            pos_i = list(range(len(self.data)))
+        elif not isinstance(pos_i, list):
+            pos_i = [pos_i]
+
+        for i in pos_i:
+            self.getChData(requ_ch=requ_channels, pos_i=i)
         self.combineWorker.wake_waitCondLoadFluoChannels()
     
-    def combineWorkerDone( # to do?
+    def combineWorkerDone(
             self, 
             processed_data: List[np.ndarray], 
             keys: List[Tuple[int, int, int]]
@@ -2810,7 +2872,7 @@ class guiWin(QMainWindow):
         self.loadLabelRoiLastParams()
 
         self.labelRoiTrangeCheckbox.toggled.connect(
-            self.lebelRoiTrangeCheckboxToggled
+            self.labelRoiTrangeCheckboxToggled
         )
         self.labelRoiReplaceExistingObjectsCheckbox.toggled.connect(
             self.storeLabelRoiParams
@@ -2948,6 +3010,30 @@ class guiWin(QMainWindow):
         self.addToolBar(Qt.TopToolBarArea, self.manualBackgroundToolbar)
         self.manualBackgroundToolbar.setVisible(False)
         self.controlToolBars.append(self.manualBackgroundToolbar)
+        
+        # Copy lost object contour toolbar
+        self.copyLostObjToolbar = widgets.CopyLostObjectToolbar(
+            "Copy lost object controls", self
+        )
+        for name, action in self.copyLostObjToolbar.widgetsWithShortcut.items():
+            self.widgetsWithShortcut[name] = action
+
+        self.copyLostObjToolbar.sigCopyAllObjects.connect(
+            self.copyAllLostObjects
+        )
+        
+        self.addToolBar(Qt.TopToolBarArea, self.copyLostObjToolbar)
+        self.copyLostObjToolbar.setVisible(False)
+        self.controlToolBars.append(self.copyLostObjToolbar)
+        
+        # Copy lost object contour toolbar
+        self.drawClearRegionToolbar = widgets.DrawClearRegionToolbar(
+            "Draw freehand region and clear objects controls", self
+        )
+        
+        self.addToolBar(Qt.TopToolBarArea, self.drawClearRegionToolbar)
+        self.drawClearRegionToolbar.setVisible(False)
+        self.controlToolBars.append(self.drawClearRegionToolbar)
         
         # Empty toolbar to avoid weird ranges on image when showing the 
         # other toolbars --> placeholder
@@ -3454,7 +3540,6 @@ class guiWin(QMainWindow):
         self.addDelRoiAction.roiType = 'rect'
         self.addDelRoiAction.setIcon(QIcon(":addDelRoi.svg"))
         
-        
         self.addDelPolyLineRoiButton = QToolButton(self)
         self.addDelPolyLineRoiButton.setCheckable(True)
         self.addDelPolyLineRoiButton.setIcon(QIcon(":addDelPolyLineRoi.svg"))
@@ -3462,7 +3547,6 @@ class guiWin(QMainWindow):
         self.checkableButtons.append(self.addDelPolyLineRoiButton)
         self.LeftClickButtons.append(self.addDelPolyLineRoiButton)
        
-
         self.delBorderObjAction = QAction(self)
         self.delBorderObjAction.setIcon(QIcon(":delBorderObj.svg"))
 
@@ -3563,6 +3647,9 @@ class guiWin(QMainWindow):
         )
         self.addCustomModelFrameAction.callback = self.segmFrameCallback
         self.addCustomModelVideoAction.callback = self.segmVideoCallback
+    
+    def zProjLockViewToggled(self, checked):
+        self.updateZproj(self.zProjComboBox.currentText())
     
     def rescaleIntensExportToVideoDialog(self, how, channel, setImage=True):
         if channel == self.user_ch_name:
@@ -3775,7 +3862,7 @@ class guiWin(QMainWindow):
         self.skipToNewIdAction.triggered.connect(self.skipForwardToNewID)        
         self.slideshowButton.toggled.connect(self.launchSlideshow)
         
-        self.copyContourButton.toggled.connect(self.copyLostObjContour_cb)
+        self.copyLostObjButton.toggled.connect(self.copyLostObjContour_cb)
 
         self.segmSingleFrameMenu.triggered.connect(self.segmFrameCallback)
         self.segmVideoMenu.triggered.connect(self.segmVideoCallback)
@@ -3805,6 +3892,7 @@ class guiWin(QMainWindow):
         self.curvToolButton.toggled.connect(self.curvTool_cb)
         self.wandToolButton.toggled.connect(self.wand_cb)
         self.labelRoiButton.toggled.connect(self.labelRoi_cb)
+        self.drawClearRegionButton.toggled.connect(self.drawClearRegion_cb)
         self.reInitCcaAction.triggered.connect(self.reInitCca)
         self.moveLabelToolButton.toggled.connect(self.moveLabelButtonToggled)
         self.editCcaToolAction.triggered.connect(
@@ -3817,7 +3905,9 @@ class guiWin(QMainWindow):
 
         self.expandLabelToolButton.toggled.connect(self.expandLabelCallback)
 
-        self.reinitLastSegmFrameAction.triggered.connect(self.reInitLastSegmFrame)
+        self.reinitLastSegmFrameAction.triggered.connect(
+            self.reInitLastSegmFrame
+        )
 
         self.cp3denoiseAction.triggered.connect(self.cp3denoiseActionTriggered)
         
@@ -4249,6 +4339,12 @@ class guiWin(QMainWindow):
             'mean z-projection',
             'median z-proj.'
         ])
+        self.zProjLockViewButton = widgets.LockPushButton()
+        self.zProjLockViewButton.setCheckable(True)
+        self.zProjLockViewButton.setToolTip(
+            'If active, the selected z-slice view is applied to all frames'
+        )
+        self.zProjLockViewButton.hide()
         
         self.switchPlaneCombobox = widgets.SwitchPlaneCombobox()
         self.switchPlaneCombobox.setToolTip(
@@ -4329,7 +4425,8 @@ class guiWin(QMainWindow):
         )
         bottomLeftLayout.addWidget(self.zSliceScrollBar, row, 1, 1, 2)
         bottomLeftLayout.addWidget(self.zProjComboBox, row, 3)
-        bottomLeftLayout.addWidget(self.switchPlaneCombobox, row, 4)
+        bottomLeftLayout.addWidget(self.zProjLockViewButton, row, 4)
+        bottomLeftLayout.addWidget(self.switchPlaneCombobox, row, 5)
         self.zSliceSpinbox.connectValueChanged(self.onZsliceSpinboxValueChange)
         self.zSliceSpinbox.editingFinished.connect(self.zSliceScrollBarReleased)
 
@@ -4989,6 +5086,13 @@ class guiWin(QMainWindow):
         self.logger.info(f'Creating graphical items...')
 
         self.ax1_contoursImageItem = pg.ImageItem()
+        
+        self.ax1_lostObjImageItem = pg.ImageItem()
+        self.ax2_lostObjImageItem = pg.ImageItem()
+        
+        self.ax1_lostTrackedObjImageItem = pg.ImageItem()
+        self.ax2_lostTrackedObjImageItem = pg.ImageItem()
+        
         self.ax1_oldMothBudLinesItem = pg.ScatterPlotItem(
             symbol='s', pxMode=False, brush=self.oldMothBudLineBrush,
             size=self.mothBudLineWeight, pen=None
@@ -5205,6 +5309,7 @@ class guiWin(QMainWindow):
     def gui_initImg1BottomWidgets(self):
         self.zSliceScrollBar.hide()
         self.zProjComboBox.hide()
+        self.zProjLockViewButton.hide()
         self.zSliceOverlay_SB.hide()
         self.zProjOverlay_CB.hide()
         self.overlay_z_label.hide()
@@ -5405,7 +5510,7 @@ class guiWin(QMainWindow):
                 delID_prompt.exec_()
                 if delID_prompt.cancel:
                     return
-                delIDs = [delID_prompt.EntryID]
+                delIDs = delID_prompt.EntryID
             else:
                 delIDs = [delID]
 
@@ -6098,7 +6203,7 @@ class guiWin(QMainWindow):
         mode = str(self.modeComboBox.currentText())
         if mode == 'Viewer':
             return
-
+        
         posData = self.data[self.pos_i]
         Y, X = self.get_2Dlab(posData.lab).shape
         xdata, ydata = int(x), int(y)
@@ -6247,6 +6352,10 @@ class guiWin(QMainWindow):
                 self.labelRoiItem.setSize((w, h))
             elif self.labelRoiIsFreeHandRadioButton.isChecked():
                 self.freeRoiItem.addPoint(xdata, ydata)
+        
+        # Draw freehand clear region --> draw region
+        elif self.isMouseDragImg1 and self.drawClearRegionButton.isChecked():
+            self.freeRoiItem.addPoint(xdata, ydata)
     
     # @exec_time
     def fillHolesID(self, ID, sender='brush'):
@@ -6472,7 +6581,31 @@ class guiWin(QMainWindow):
         if setMirroredCursor:
             x, y = event.pos()
             self.ax1_cursor.setData([x], [y])
+    
+    def onCtrlPressedFirstTime(self):
+        x, y = self.xHoverImg, self.yHoverImg
+        if x is None:
+            self.xyOnCtrlPressedFirstTime = None
+            return
+
+        xdata, ydata = int(x), int(y)
+        Y, X = self.currentLab2D.shape
+
+        if not (xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y):
+            self.xyOnCtrlPressedFirstTime = None
+            return
         
+        ID = self.currentLab2D[ydata, xdata]
+        if ID == 0:
+            self.xyOnCtrlPressedFirstTime = None
+            return 
+        
+        self.xyOnCtrlPressedFirstTime = (xdata, ydata)
+    
+    def onCtrlReleased(self):
+        self.xyOnCtrlPressedFirstTime = None
+        self.isCtrlDown = False
+    
     def gui_hoverEventImg1(self, event, isHoverImg1=True):
         try:
             posData = self.data[self.pos_i]
@@ -6552,6 +6685,13 @@ class guiWin(QMainWindow):
             x, y = event.pos()
             self.updateEraserCursor(x, y, isHoverImg1=isHoverImg1)
             self.hideItemsHoverBrush(xy=(x, y))
+        elif self.eraserButton.isChecked() and not event.isExit():
+            if self.xyOnCtrlPressedFirstTime is not None:
+                self.updateEraserCursor(
+                    x, y, xyLocked=self.xyOnCtrlPressedFirstTime, 
+                    isHoverImg1=isHoverImg1
+                )
+                self.hideItemsHoverBrush(xy=(x, y))
         else:
             eraserCursors = (
                 self.ax1_EraserCircle, self.ax2_EraserCircle,
@@ -7050,7 +7190,7 @@ class guiWin(QMainWindow):
                         self.warnEditingWithCca_df('Delete ID with eraser')
                     break
 
-        # Brush button mouse release --> update IDs and contours
+        # Brush mouse release --> update IDs and contours
         elif self.isMouseDragImg2 and self.brushButton.isChecked():
             # t0 = time.perf_counter()
             
@@ -7061,8 +7201,7 @@ class guiWin(QMainWindow):
             self.update_rp(update_IDs=self.isNewID)
 
             # t1 = time.perf_counter()
-            if self.autoIDcheckbox.isChecked():
-                self.tracking(enforce=True, assign_unique_new_IDs=False)
+            self.trackManuallyAddedObject(posData.brushID, self.isNewID)
 
             # t2 = time.perf_counter()
             # Update images
@@ -7075,18 +7214,6 @@ class guiWin(QMainWindow):
                     self.warnEditingWithCca_df(editTxt)
             else:
                 self.updateAllImages()
-            
-            # t3 = time.perf_counter()
-            # printl(
-            #     'Brush exec times =\n'
-            #     f'  * {(t1-t0)*1000 = :.4f} ms\n'
-            #     f'  * {(t2-t1)*1000 = :.4f} ms\n'
-            #     f'  * {(t3-t2)*1000 = :.4f} ms\n'
-            #     # f'  * {(t4-t3)*1000 = :.4f} ms\n'
-            #     # f'  * {(t5-t4)*1000 = :.4f} ms\n'
-            #     # f'  * {(t6-t5)*1000 = :.4f} ms\n'
-            #     f'  * {(t3-t0)*1000 = :.4f} ms'
-            # )
 
         # Move label mouse released, update move
         elif self.isMovingLabel and self.moveLabelToolButton.isChecked():
@@ -7494,6 +7621,10 @@ class guiWin(QMainWindow):
 
             self.clickedOnBud = False
             self.BudMothTempLine.setData([], [])
+        
+        elif self.isMouseDragImg1 and self.drawClearRegionButton.isChecked():
+            self.freeRoiItem.closeCurve()
+            self.clearObjsFreehandRegion()
 
     def gui_clickedDelRoi(self, event, left_click, right_click):
         posData = self.data[self.pos_i]
@@ -7622,12 +7753,12 @@ class guiWin(QMainWindow):
         addPointsByClickingButton = self.buttonAddPointsByClickingActive()
         manualBackgroundON = self.manualBackgroundButton.isChecked()
         copyContourON = (
-            self.copyContourButton.isChecked()
+            self.copyLostObjButton.isChecked()
             and self.ax1_lostObjScatterItem.hoverLostID>0
         )
         findNextMotherButtonON = self.findNextMotherButton.isChecked()
         unknownLineageButtonON = self.unknownLineageButton.isChecked()
-
+        drawClearRegionON = self.drawClearRegionButton.isChecked()
 
         # Check if right-click on segment of polyline roi to add segment
         segments = self.gui_getHoveredSegmentsPolyLineRoi()
@@ -7653,7 +7784,7 @@ class guiWin(QMainWindow):
             and not curvToolON and not eraserON and not rulerON
             and not wandON and not polyLineRoiON and not labelRoiON
             and not middle_click and not keepObjON and not separateON
-            and not manualBackgroundON
+            and not manualBackgroundON and not drawClearRegionON
             and addPointsByClickingButton is None
         )
         if isPanImageClick:
@@ -7692,7 +7823,8 @@ class guiWin(QMainWindow):
         isOnlyRightClick = (
             right_click and canAnnotateDivision and not isAnnotateDivision
             and not isMod and not is_right_click_action_ON
-            and not is_right_click_custom_ON and not copyContourON and not findNextMotherButtonON and not unknownLineageButtonON
+            and not is_right_click_custom_ON and not copyContourON 
+            and not findNextMotherButtonON and not unknownLineageButtonON
         )
         
         if isOnlyRightClick:
@@ -7719,54 +7851,55 @@ class guiWin(QMainWindow):
             and not brushON and not dragImgLeft and not eraserON
             and not polyLineRoiON and not labelRoiON
             and addPointsByClickingButton is None
-            and not manualBackgroundON
+            and not manualBackgroundON and not drawClearRegionON
         )
         canBrush = (
             brushON and not curvToolON and not rulerON
             and not dragImgLeft and not eraserON and not wandON
             and not labelRoiON and not manualBackgroundON
-            and addPointsByClickingButton is None
+            and addPointsByClickingButton is None and not drawClearRegionON
         )
         canErase = (
             eraserON and not curvToolON and not rulerON
             and not dragImgLeft and not brushON and not wandON
             and not polyLineRoiON and not labelRoiON
             and addPointsByClickingButton is None
-            and not manualBackgroundON
+            and not manualBackgroundON and not drawClearRegionON
         )
         canRuler = (
             rulerON and not curvToolON and not brushON
             and not dragImgLeft and not brushON and not wandON
             and not polyLineRoiON and not labelRoiON
             and addPointsByClickingButton is None
-            and not manualBackgroundON
+            and not manualBackgroundON and not drawClearRegionON
         )
         canWand = (
             wandON and not curvToolON and not brushON
             and not dragImgLeft and not brushON and not rulerON
             and not polyLineRoiON and not labelRoiON
             and addPointsByClickingButton is None
-            and not manualBackgroundON
+            and not manualBackgroundON and not drawClearRegionON
         )
         canPolyLine = (
             polyLineRoiON and not wandON and not curvToolON and not brushON
             and not dragImgLeft and not brushON and not rulerON
             and not labelRoiON and not manualBackgroundON
             and addPointsByClickingButton is None
+            and not drawClearRegionON
         )
         canLabelRoi = (
             labelRoiON and not wandON and not curvToolON and not brushON
             and not dragImgLeft and not brushON and not rulerON
             and not polyLineRoiON and not keepObjON
             and addPointsByClickingButton is None
-            and not manualBackgroundON
+            and not manualBackgroundON and not drawClearRegionON
         )
         canKeep = (
             keepObjON and not wandON and not curvToolON and not brushON
             and not dragImgLeft and not brushON and not rulerON
             and not polyLineRoiON and not labelRoiON 
             and addPointsByClickingButton is None
-            and not manualBackgroundON
+            and not manualBackgroundON and not drawClearRegionON
         )
         canAddPoint = (
             self.togglePointsLayerAction.isChecked()
@@ -7774,14 +7907,21 @@ class guiWin(QMainWindow):
             and not curvToolON and not brushON
             and not dragImgLeft and not brushON and not rulerON
             and not polyLineRoiON and not labelRoiON  and not keepObjON
-            and not manualBackgroundON
+            and not manualBackgroundON and not drawClearRegionON
         )
         canAddManualBackgroundObj = (
             manualBackgroundON and not wandON and not curvToolON and not brushON
             and not dragImgLeft and not brushON and not rulerON
             and not polyLineRoiON and not labelRoiON 
             and addPointsByClickingButton is None
-            and not keepObjON
+            and not keepObjON and not drawClearRegionON
+        )
+        canDrawClearRegion = (
+            drawClearRegionON and not wandON and not curvToolON and not brushON
+            and not dragImgLeft and not brushON and not rulerON
+            and not labelRoiON and not manualBackgroundON
+            and addPointsByClickingButton is None
+            and not polyLineRoiON 
         )
         
         # Enable dragging of the image window or the scalebar
@@ -7860,7 +8000,7 @@ class guiWin(QMainWindow):
             # Draw new objects
             localLab = lab_2D[diskSlice]
             mask = diskMask.copy()
-            if not self.isPowerBrush():
+            if not self.isPowerBrush() and not ctrl:
                 mask[localLab!=0] = False
 
             self.applyBrushMask(mask, posData.brushID, toLocalSlice=diskSlice)
@@ -7892,7 +8032,10 @@ class guiWin(QMainWindow):
             # Keep a list of erased IDs got erased
             self.erasedIDs = set()
             
-            self.erasedID = self.getHoverID(xdata, ydata)
+            if self.xyOnCtrlPressedFirstTime is not None:
+                self.erasedID = self.getHoverID(*self.xyOnCtrlPressedFirstTime)
+            else: 
+                self.erasedID = self.getHoverID(xdata, ydata)
 
             ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
 
@@ -7948,6 +8091,13 @@ class guiWin(QMainWindow):
                     addPointsByClickingButton.pointIdSpinbox.setValue(id)
                 self.addClickedPoint(action, x, y, id)
             self.drawPointsLayers(computePointsLayers=False)
+        
+        elif left_click and canDrawClearRegion:
+            x, y = event.pos().x(), event.pos().y()
+            xdata, ydata = int(x), int(y)
+            self.freeRoiItem.addPoint(xdata, ydata)
+            
+            self.isMouseDragImg1 = True
         
         elif left_click and canRuler or canPolyLine:
             x, y = event.pos().x(), event.pos().y()
@@ -8034,9 +8184,7 @@ class guiWin(QMainWindow):
         
         elif right_click and copyContourON:
             hoverLostID = self.ax1_lostObjScatterItem.hoverLostID
-            lab2D = self.get_2Dlab(posData.lab)
-            lab2D[self.lostObjImage == hoverLostID] = hoverLostID
-            self.set_2Dlab(lab2D)
+            self.copyLostObjectContour(hoverLostID)
             self.update_rp()
             self.updateAllImages()
             self.store_data()
@@ -8096,7 +8244,6 @@ class guiWin(QMainWindow):
                     self.warnEditingWithCca_df('Add new ID with curvature tool')
                 self.clearCurvItems()
                 self.curvTool_cb(True)
-            t1 = time.perf_counter()
 
         elif left_click and canWand:
             x, y = event.pos().x(), event.pos().y()
@@ -8514,6 +8661,8 @@ class guiWin(QMainWindow):
 
     def gui_addCreatedAxesItems(self):
         self.ax1.addItem(self.ax1_contoursImageItem)
+        self.ax1.addItem(self.ax1_lostObjImageItem)
+        self.ax1.addItem(self.ax1_lostTrackedObjImageItem)
         self.ax1.addItem(self.ax1_oldMothBudLinesItem)
         self.ax1.addItem(self.ax1_newMothBudLinesItem)
         self.ax1.addItem(self.ax1_lostObjScatterItem)
@@ -8522,6 +8671,8 @@ class guiWin(QMainWindow):
         self.ax1.addItem(self.yellowContourScatterItem)
 
         self.ax2.addItem(self.ax2_contoursImageItem)
+        self.ax2.addItem(self.ax2_lostObjImageItem)
+        self.ax2.addItem(self.ax2_lostTrackedObjImageItem)
         self.ax2.addItem(self.ax2_oldMothBudLinesItem)
         self.ax2.addItem(self.ax2_newMothBudLinesItem)
         self.ax2.addItem(self.ax2_lostObjScatterItem)
@@ -9424,10 +9575,14 @@ class guiWin(QMainWindow):
             else:
                 ID = clickedBkgrID.EntryID
         return ID
-
+    
+    # @exec_time
     def applyEditID(
             self, clickedID, currentIDs, oldIDnewIDMapper, clicked_x, clicked_y
         ):
+        
+        t0 = time.perf_counter()
+        
         posData = self.data[self.pos_i]
         
         # Ask to propagate change to all future visited frames
@@ -9437,6 +9592,8 @@ class guiWin(QMainWindow):
             posData.UndoFutFrames_EditID, posData.applyFutFrames_EditID,
             applyTrackingB=True
         )
+        
+        t1 = time.perf_counter()
 
         if UndoFutFrames is None:
             return
@@ -9481,12 +9638,12 @@ class guiWin(QMainWindow):
                     posData.editID_info.append((y, x, new_ID))
             
             self.updateAssignedObjsAcdcTrackerSecondStep(new_ID)
-
+        
         # Update rps
         self.update_rp()
 
         # Since we manually changed an ID we don't want to repeat tracking
-        self.setAllTextAnnotations()
+        self.setAllTextAnnotations()        
         self.highlightLostNew()
         # self.checkIDsMultiContour()
 
@@ -9497,8 +9654,8 @@ class guiWin(QMainWindow):
             self.fixCcaDfAfterEdit('Edit ID')
             self.updateAllImages()
         else:
-            self.warnEditingWithCca_df('Edit ID')
-
+            self.warnEditingWithCca_df('Edit ID', update_images=False)
+        
         if not self.editIDbutton.findChild(QAction).isChecked():
             self.editIDbutton.setChecked(False)
 
@@ -11282,12 +11439,9 @@ class guiWin(QMainWindow):
             self.fixCcaDfAfterEdit('Delete IDs using ROI')
             self.updateAllImages()
         else:
-            cancelled_str = self.warnEditingWithCca_df(
+            self.warnEditingWithCca_df(
                 'Delete IDs using ROI', get_cancelled=True
             )
-            if cancelled_str == 'cancelled':
-                self.roi_to_del = roi
-                self.removeDelROI(None)
     
     def replacePolyLineRoiWithLineRoi(self, roi):
         roi = self.polyLineRoi
@@ -11399,12 +11553,21 @@ class guiWin(QMainWindow):
         return roi
     
     def delROIstartedMoving(self, roi):
+        self.clearLostObjContoursItems()
+    
+    def clearLostObjContoursItems(self):
         self.ax1_lostObjScatterItem.setData([], [])
         self.ax2_lostObjScatterItem.setData([], [])
 
         self.ax1_lostTrackedScatterItem.setData([], [])
         self.ax2_lostTrackedScatterItem.setData([], [])
-
+        
+        self.ax2_lostObjImageItem.clear()
+        self.ax2_lostTrackedObjImageItem.clear()
+        
+        self.ax1_lostObjImageItem.clear()
+        self.ax1_lostTrackedObjImageItem.clear()
+    
     def delROImoving(self, roi):
         roi.setPen(color=(255,255,0))
         # First bring back IDs if the ROI moved away
@@ -11989,6 +12152,8 @@ class guiWin(QMainWindow):
             myutils.setRetainSizePolicy(self.overlay_z_label)
             self.zSliceScrollBar.setDisabled(False)
             self.zProjComboBox.show()
+            if self.data[self.pos_i].SizeT > 1:
+                self.zProjLockViewButton.show()
             self.zSliceScrollBar.show()
             self.zSliceCheckbox.show()
             self.zSliceSpinbox.show()
@@ -12002,6 +12167,7 @@ class guiWin(QMainWindow):
             myutils.setRetainSizePolicy(self.zProjOverlay_CB, retain=False)
             myutils.setRetainSizePolicy(self.overlay_z_label, retain=False)
             self.zSliceScrollBar.setDisabled(True)
+            self.zProjComboBox.hide()
             self.zProjComboBox.hide()
             self.zSliceScrollBar.hide()
             self.zSliceCheckbox.hide()
@@ -12421,7 +12587,7 @@ class guiWin(QMainWindow):
         self.annotateToolbar.setVisible(False)
         if prevMode != 'Viewer':
             self.store_data(autosave=False)
-        self.copyContourButton.setChecked(False)
+        self.copyLostObjButton.setChecked(False)
         self.stopCcaIntegrityCheckerWorker()
 
         if prevMode == 'Normal division: Lineage tree':
@@ -12678,6 +12844,7 @@ class guiWin(QMainWindow):
         self.eraserButton.toggled.connect(self.Eraser_cb)
         self.wandToolButton.toggled.connect(self.wand_cb)
         self.labelRoiButton.toggled.connect(self.labelRoi_cb)
+        self.drawClearRegionButton.toggled.connect(self.drawClearRegion_cb)
         self.expandLabelToolButton.toggled.connect(self.expandLabelCallback)
         self.addDelPolyLineRoiButton.toggled.connect(self.addDelPolyLineRoi_cb)
         self.manualBackgroundButton.toggled.connect(self.manualBackground_cb)
@@ -12720,15 +12887,182 @@ class guiWin(QMainWindow):
             self.wandControlsToolbar.setVisible(False)
     
     def copyLostObjContour_cb(self, checked):
+        self.copyLostObjToolbar.setVisible(checked)
+        
         self.ax1_lostObjScatterItem.hoverLostID = 0
         if not checked:
             return
+        
         self.lostObjImage = np.zeros_like(self.currentLab2D)
-        self.lostTrackedObjImage = np.zeros_like(self.currentLab2D)
-        self.addLostObjsToImage()
-        self.addTrackedLostObjsToImage()
+        self.updateLostContoursImage(0)
     
-    def lebelRoiTrangeCheckboxToggled(self, checked):
+    def copyLostObjectContour(self, ID: int):
+        posData = self.data[self.pos_i]
+        mask = self.lostObjImage == ID
+        lab2D = self.get_2Dlab(posData.lab)
+        lab2D[mask] = ID
+        self.lostObjImage[mask] = 0
+        self.set_2Dlab(lab2D)
+    
+    def updateLostNewCurrentIDs(self):
+        posData = self.data[self.pos_i]
+        
+        prev_IDs = self.getPrevFrameIDs()  
+        tracked_lost_IDs = self.getTrackedLostIDs()
+        curr_IDs = posData.IDs
+        curr_delRoiIDs = self.getStoredDelRoiIDs()
+        prev_delRoiIDs = self.getStoredDelRoiIDs(frame_i=posData.frame_i-1)
+        lost_IDs = [
+            ID for ID in prev_IDs if ID not in curr_IDs
+            and ID not in prev_delRoiIDs and ID not in tracked_lost_IDs
+        ]
+        new_IDs = [
+            ID for ID in curr_IDs if ID not in prev_IDs 
+            and ID not in curr_delRoiIDs
+        ]
+        # IDs_with_holes = [
+        #     obj.label for obj in posData.rp if obj.area/obj.filled_area < 1
+        # ]
+        IDs_with_holes = []
+        posData.lost_IDs = lost_IDs
+        posData.new_IDs = new_IDs
+        posData.old_IDs = prev_IDs
+        posData.IDs = curr_IDs
+        
+        out = (
+            lost_IDs, new_IDs, IDs_with_holes, tracked_lost_IDs, curr_delRoiIDs
+        )
+        
+        return out
+    
+    def copyAllLostObjectsWorkerCallback(self, posData, for_future_frame_n):
+        current_frame_i = posData.frame_i
+        last_visited_frame_i = self.get_last_tracked_i()
+        last_copied_frame_i = current_frame_i+for_future_frame_n+1
+        frames_range = (current_frame_i, last_copied_frame_i)
+        for frame_i in range(*frames_range):
+            if frame_i == posData.SizeT:
+                break
+            
+            if frame_i > posData.frame_i:
+                self.store_data(mainThread=False, autosave=False)
+                
+                posData.frame_i = frame_i
+                self.get_data()
+                self.updateLostNewCurrentIDs()
+                self.store_data(mainThread=False, autosave=False)
+                # delROIsIDs = self.getDelRoisIDs()
+                
+                self.lostObjContoursImage[:] = 0
+                prev_rp = posData.allData_li[frame_i-1]['regionprops']
+                prev_IDs_idxs = posData.allData_li[frame_i-1]['IDs_idxs']
+                for lostID in posData.lost_IDs:
+                    obj = prev_rp[prev_IDs_idxs[lostID]]
+                    self.addLostObjsToImage(obj, lostID, force=True)
+            
+            for lostObj in skimage.measure.regionprops(self.lostObjImage):
+                self.copyLostObjectContour(lostObj.label)
+            
+            self.copyAllLostObjectsWorker.signals.progressBar.emit(1)           
+        
+        if for_future_frame_n == 0:
+            return
+        
+        # Back to current frame
+        self.store_data(autosave=False, mainThread=False)
+        posData.frame_i = current_frame_i
+        self.get_data()
+        
+        if last_visited_frame_i >= last_copied_frame_i:
+            return
+        
+        self.copyAllLostObjectsWorker.doReinitLastSegmFrame = True
+        self.copyAllLostObjectsWorker.last_visited_frame_i = (
+            last_visited_frame_i
+        )
+    
+    @disableWindow
+    def copyAllLostObjects(self, for_future_frame_n):
+        posData = self.data[self.pos_i]
+        
+        desc = (
+            'Copying all lost objects...'
+        )
+        
+        self.progressWin = apps.QDialogWorkerProgress(
+            title=desc, parent=self.mainWin, pbarDesc=desc
+        )
+        self.progressWin.mainPbar.setMaximum(for_future_frame_n+1)
+        self.progressWin.show(self.app)
+                              
+        self.copyAllLostObjectsThread = QThread()
+        
+        self.copyAllLostObjectsWorker = workers.SimpleWorker(
+            posData, self.copyAllLostObjectsWorkerCallback, 
+            func_args=(for_future_frame_n,)
+        )
+        
+        self.copyAllLostObjectsWorker.moveToThread(
+            self.copyAllLostObjectsThread
+        )
+        
+        self.copyAllLostObjectsWorker.signals.finished.connect(
+            self.copyAllLostObjectsThread.quit
+        )
+        self.copyAllLostObjectsWorker.signals.finished.connect(
+            self.copyAllLostObjectsWorker.deleteLater
+        )
+        self.copyAllLostObjectsThread.finished.connect(
+            self.copyAllLostObjectsThread.deleteLater
+        )
+        
+        self.copyAllLostObjectsWorker.signals.critical.connect(
+            self.copyAllLostObjectsWorkerCritical
+        )
+        self.copyAllLostObjectsWorker.signals.initProgressBar.connect(
+            self.workerInitProgressbar
+        )
+        self.copyAllLostObjectsWorker.signals.progressBar.connect(
+            self.workerUpdateProgressbar
+        )
+        self.copyAllLostObjectsWorker.signals.progress.connect(
+            self.workerProgress
+        )
+        self.copyAllLostObjectsWorker.signals.finished.connect(
+            self.copyAllLostObjectsWorkerFinished
+        )
+        
+        self.copyAllLostObjectsThread.started.connect(
+            self.copyAllLostObjectsWorker.run
+        )
+        self.copyAllLostObjectsThread.start()
+        
+        self.copyAllLostObjectsWorkerLoop = QEventLoop()
+        self.copyAllLostObjectsWorkerLoop.exec_()
+    
+    def copyAllLostObjectsWorkerCritical(self, error):
+        self.copyAllLostObjectsWorkerLoop.exit()
+        self.workerCritical(error)
+    
+    def copyAllLostObjectsWorkerFinished(self, worker):
+        if self.progressWin is not None:
+            self.progressWin.workerFinished = True
+            self.progressWin.close()
+            self.progressWin = None
+        
+        if worker.doReinitLastSegmFrame:
+            self.reInitLastSegmFrame(
+                from_frame_i=worker.last_visited_frame_i, 
+                updateImages=False, 
+                force=True
+            )
+        
+        self.copyAllLostObjectsWorkerLoop.exit()
+        self.update_rp()
+        self.updateAllImages()
+        self.store_data()
+    
+    def labelRoiTrangeCheckboxToggled(self, checked):
         disabled = not checked
         self.labelRoiStartFrameNoSpinbox.setDisabled(disabled)
         self.labelRoiStopFrameNoSpinbox.setDisabled(disabled)
@@ -12745,6 +13079,26 @@ class guiWin(QMainWindow):
         self.labelRoiStartFrameNoSpinbox.setValue(posData.frame_i+1)
         self.labelRoiStopFrameNoSpinbox.setValue(posData.SizeT)
 
+    def drawClearRegion_cb(self, checked):
+        posData = self.data[self.pos_i]
+        if checked:
+            self.disconnectLeftClickButtons()
+            self.uncheckLeftClickButtons(self.drawClearRegionButton)
+            self.connectLeftClickButtons()
+
+        self.drawClearRegionToolbar.setVisible(checked)
+        
+        if not self.isSegm3D:
+            self.drawClearRegionToolbar.setZslicesControlEnabled(False)
+            return
+        
+        if not checked:
+            return
+        
+        self.drawClearRegionToolbar.setZslicesControlEnabled(
+            True, SizeZ=posData.SizeZ
+        )
+    
     def labelRoi_cb(self, checked):
         posData = self.data[self.pos_i]
         if checked:
@@ -12808,6 +13162,54 @@ class guiWin(QMainWindow):
             self.freeRoiItem.clear()
             self.ax1.removeItem(self.labelRoiItem)
             self.updateLabelRoiCircularCursor(None, None, False)
+    
+    def clearObjsFreehandRegion(self):
+        self.logger.info('Clearing objects inside freehand region...')
+        
+        # Store undo state before modifying stuff
+        self.storeUndoRedoStates(False, storeImage=False, storeOnlyZoom=True)
+        
+        posData = self.data[self.pos_i]
+        zRange = None
+        if self.isSegm3D:
+            z_slice = self.z_lab()
+            zRange = self.drawClearRegionToolbar.zRange(z_slice, posData.SizeZ)
+            
+        regionSlice = self.freeRoiItem.slice(zRange=zRange)
+        mask = self.freeRoiItem.mask()
+        
+        regionLab = posData.lab[(...,) + regionSlice].copy()
+        regionLab[..., ~mask] = 0
+        
+        clearBorders = (
+            self.drawClearRegionToolbar
+            .clearOnlyEnclosedObjsRadioButton
+            .isChecked()
+        )
+        if clearBorders:
+            regionLab = skimage.segmentation.clear_border(regionLab)
+        
+        regionRp = skimage.measure.regionprops(regionLab)
+        clearIDs = [obj.label for obj in regionRp]
+        
+        if not clearIDs:
+            if clearBorders:
+                self.logger.warning(
+                    'None of the objects in the freehand region are '
+                    'fully enclosed'
+                )
+            else:
+                self.logger.warning(
+                    'None of the objects are touching the freehand region'
+                )
+            return
+        
+        self.deleteIDmiddleClick(clearIDs, False, False)
+        self.update_cca_df_deletedIDs(posData, clearIDs)
+        
+        self.freeRoiItem.clear()
+        
+        self.updateAllImages()
     
     def labelRoiWorkerFinished(self):
         self.logger.info('Magic labeller closed.')
@@ -13055,6 +13457,10 @@ class guiWin(QMainWindow):
             self.labelsLayerRightImg.setOpacity(alpha)
             self.ax1_contoursImageItem.setOpacity(1.0)
             self.ax2_contoursImageItem.setOpacity(1.0)
+            self.ax1_lostObjImageItem.setOpacity(1.0)
+            self.ax2_lostObjImageItem.setOpacity(1.0)
+            self.ax1_lostTrackedObjImageItem.setOpacity(1.0)
+            self.ax2_lostTrackedObjImageItem.setOpacity(1.0)
         
         self.keepIDsToolbar.setVisible(checked)
         self.highlightedIDopts = None
@@ -13327,7 +13733,7 @@ class guiWin(QMainWindow):
         if not self.isMovingLabel:
             self.highlightSearchedID(ID)
 
-    def updateEraserCursor(self, x, y, isHoverImg1=True):
+    def updateEraserCursor(self, x, y, xyLocked=None, isHoverImg1=True):
         if x is None:
             return
 
@@ -13351,13 +13757,17 @@ class guiWin(QMainWindow):
         isMouseDrag = (
             self.isMouseDragImg1 or self.isMouseDragImg2
         )
+        if isMouseDrag:
+            return
+        
+        if xyLocked is not None:
+            xdata, ydata = xyLocked
 
-        if not isMouseDrag:
-            self.setHoverToolSymbolColor(
-                xdata, ydata, self.eraserCirclePen,
-                self.activeEraserCircleCursors(isHoverImg1),
-                self.eraserButton, hoverRGB=None
-            )
+        self.setHoverToolSymbolColor(
+            xdata, ydata, self.eraserCirclePen,
+            self.activeEraserCircleCursors(isHoverImg1),
+            self.eraserButton, hoverRGB=None
+        )
 
     def Eraser_cb(self, checked):
         if checked:
@@ -13624,7 +14034,7 @@ class guiWin(QMainWindow):
             return
         
         if ev.key() == Qt.Key_Q and self.debug:
-            printl(self.zSliceScrollBar.value())
+            printl(np.nonzero(self.lostObjContoursImage))
             pass
         
         if not self.isDataLoaded:
@@ -13633,6 +14043,9 @@ class guiWin(QMainWindow):
             )
             return
         if ev.key() == Qt.Key_Control:
+            if not self.isCtrlDown:
+                self.wasCtrlPressedFirstTime = True
+                self.onCtrlPressedFirstTime()
             self.isCtrlDown = True
         
         if ev.key() == Qt.Key_PageDown:
@@ -13901,7 +14314,7 @@ class guiWin(QMainWindow):
         if self.app.overrideCursor() == Qt.SizeAllCursor:
             self.app.restoreOverrideCursor()
         if ev.key() == Qt.Key_Control:
-            self.isCtrlDown = False
+            self.onCtrlReleased()
         elif ev.key() == Qt.Key_Shift:
             if self.isSegm3D and self.xHoverImg is not None:
                 # Restore normal brush cursor when releasing shift
@@ -14246,7 +14659,7 @@ class guiWin(QMainWindow):
         if UndoFutFrames:
             # Since we modified current frame all future frames that were already
             # visited are not valid anymore. Undo changes there
-            self.reInitLastSegmFrame()
+            self.reInitLastSegmFrame(updateImages=False)
         
         # Keep only 5 Undo/Redo states
         if len(posData.UndoRedoStates[posData.frame_i]) > 5:
@@ -15764,7 +16177,9 @@ class guiWin(QMainWindow):
             pass
         
         self.extendSegmDataIfNeeded(stopFrameNum)
-        self.reInitLastSegmFrame(from_frame_i=startFrameNum-1)
+        self.reInitLastSegmFrame(
+            from_frame_i=startFrameNum-1, updateImages=False
+        )
 
         self.titleLabel.setText(
             f'{model_name} is thinking... '
@@ -16025,6 +16440,7 @@ class guiWin(QMainWindow):
     
     def rightImageFramesScrollbarValueChanged(self, value):
         img = self.nextFrameImage(current_frame_i=value-2)
+        self.img1.linkedImageItem.frame_i = value
         self.img1.linkedImageItem.setImage(img)
     
     def nextActionTriggered(self):
@@ -16082,11 +16498,14 @@ class guiWin(QMainWindow):
         self.preprocessDialog.show()
         self.preprocessDialog.raise_()
         self.preprocessDialog.activateWindow()
+        self.preprocessDialog.emitSigPreviewToggled()
+
     
     def combineChannelsActionTriggered(self):
         self.combineDialog.show()
         self.combineDialog.raise_()
         self.combineDialog.activateWindow()
+        self.combineDialog.emitSigPreviewToggled()
     
     def zoomToObjsActionCallback(self):
         self.zoomToCells(enforce=True)
@@ -16218,7 +16637,7 @@ class guiWin(QMainWindow):
             self.logger.warning('Pre-processing recipe not initialized yet.')
             return
         
-        self.preprocessCurrentImage(recipe)
+        self.updatePreprocessPreview(recipe=recipe)
         
     def combineDialogStepsChanged(self):
         steps, keep_input_type = self.combineDialog.steps(return_keepInputDataType=True)
@@ -16226,9 +16645,24 @@ class guiWin(QMainWindow):
             self.logger.warning('Combine channels steps not initialized yet.')
             return
         
-        self.combineCurrentImage(steps, keep_input_type)
+        self.updateCombineChannelsPreview(steps=steps, keep_input_type=keep_input_type)
     
-    def combineDialogSavecombinedData(self, dialog):
+    def combineDialogSaveCombinedData(self, dialog):
+        # here check if all data has been processed?
+        posData = self.data[self.pos_i]
+        
+        try:
+            posData.combinedChannelsDataArray()
+        except TypeError as e:
+            if 'Not all frames have been processed.' in str(e):
+                msg = widgets.myMessageBox()
+                txt = html_utils.paragraph(
+                    'Not all frames have been processed.<br>'
+                    'Please process all frames before saving.'
+                )
+                msg.warning(self, 'Process all data before saving', txt)
+                return
+
         helpText = (
             """
             The combined channels file will be saved with a different 
@@ -16237,8 +16671,6 @@ class guiWin(QMainWindow):
             the name will be the same as the original file base.
             """
         )
-        posData = self.data[self.pos_i]
-
         win = apps.filenameDialog(
             basename=f'{posData.basename}',
             ext='.tif',
@@ -16265,7 +16697,7 @@ class guiWin(QMainWindow):
         self.statusBarLabel.setText('Saving combined channels...')
         
         self.saveCombinedChannelsWorker = workers.SaveCombinedChannelsWorker(
-            self.data, appendedText
+            self.data, appendedText, 
         )
         
         self.saveCombinedChannelsThread = QThread()
@@ -16299,9 +16731,30 @@ class guiWin(QMainWindow):
         self.saveCombinedChannelsThread.started.connect(
             self.saveCombinedChannelsWorker.run
         )
+
+        self.saveCombinedChannelsWorker.sigDebugShowImg.connect(self.debugShowImg)
+
         self.saveCombinedChannelsThread.start()
 
-    def preprocessDialogSavePreprocessedData(self, dialog): # to do
+    def debugShowImg(self, img):
+        imshow(img)
+
+    def preprocessDialogSavePreprocessedData(self, dialog):
+        posData = self.data[self.pos_i]
+        
+        try:
+            posData.preprocessedDataArray()
+        except TypeError as e:
+            if 'Not all frames have been processed.' in str(e):
+                msg = widgets.myMessageBox()
+                txt = html_utils.paragraph(
+                    'Not all frames have been processed.<br>'
+                    'Please process all frames before saving.'
+                )
+                msg.warning(self, 'Process all data before saving', txt)
+                return
+
+
         helpText = (
             """
             The preprocessed image file will be saved with a different 
@@ -16311,7 +16764,6 @@ class guiWin(QMainWindow):
             """
         )
         
-        posData = self.data[self.pos_i]
         
         win = apps.filenameDialog(
             basename=f'{posData.basename}{self.user_ch_name}',
@@ -16385,15 +16837,17 @@ class guiWin(QMainWindow):
         else:
             z_slice = 0
         
+        recipe = core.validate_multidimensional_recipe(recipe)
+        
         key = (self.pos_i, posData.frame_i, z_slice)
         self.preprocWorker.enqueue(
             func, 
             image_data, 
-            recipe, 
+            recipe,
             key
         )
 
-    def combineEnqueueCurrentImage(self, steps, keep_input_type): # to do
+    def combineEnqueueCurrentImage(self, steps, keep_input_type):
         posData = self.data[self.pos_i]
 
         selected_channel = core.get_selected_channels(steps)
@@ -16439,7 +16893,11 @@ class guiWin(QMainWindow):
         if not self.preprocessDialog.previewCheckbox.isChecked() and not force:
             return
         
-        recipe = self.preprocessDialog.recipe()
+        if kwargs.get('recipe') is None:
+            recipe = self.preprocessDialog.recipe()
+        else:
+            recipe = kwargs.get('recipe')
+
         if recipe is None:
             self.logger.warning('Pre-processing recipe not initialized yet.')
             return
@@ -16459,7 +16917,12 @@ class guiWin(QMainWindow):
         if not self.combineDialog.previewCheckbox.isChecked() and not force:
             return
         
-        steps, keep_input_type = self.combineDialog.steps(return_keepInputDataType=True)
+        if kwargs.get('steps') is None:
+            steps, keep_input_type = self.combineDialog.steps(return_keepInputDataType=True)
+        else:
+            steps = kwargs.get('steps')
+            keep_input_type = kwargs.get('keep_input_type')
+
         if steps is None:
             self.logger.warning('Combine channels steps not initialized yet.')
             return
@@ -16499,6 +16962,7 @@ class guiWin(QMainWindow):
         self.postProcessing()
         self.updateScrollbars()
         self.updatePreprocessPreview()
+        self.updateCombineChannelsPreview()
         self.updateAllImages()
         self.computeSegm()
         self.zoomOut()
@@ -16661,6 +17125,7 @@ class guiWin(QMainWindow):
                 return
             
             self.updatePreprocessPreview()
+            self.updateCombineChannelsPreview()
             self.postProcessing()
             self.tracking(storeUndo=True)
             notEnoughG1Cells, proceed = self.attempt_auto_cca()
@@ -16977,6 +17442,7 @@ class guiWin(QMainWindow):
             _, never_visited = self.get_data()
             self.resetExpandLabel()
             self.updatePreprocessPreview()
+            self.updateCombineChannelsPreview()
             self.postProcessing()
             self.tracking()
             self.updateAllImages()
@@ -17519,6 +17985,8 @@ class guiWin(QMainWindow):
         self.statusBarLabel.setText(txt)
         
         func = core.preprocess_image_from_recipe
+        recipe = core.validate_multidimensional_recipe(recipe)
+        
         image_data = self.getImage(raw=True)
         self.preprocWorker.setupJob(
             func, 
@@ -17536,6 +18004,9 @@ class guiWin(QMainWindow):
         
         posData = self.data[self.pos_i]
         func = core.preprocess_zstack_from_recipe
+        recipe = core.validate_multidimensional_recipe(
+            recipe, apply_to_all_frames=False
+        )
         image_data = posData.img_data[posData.frame_i]
         self.preprocWorker.setupJob(
             func, 
@@ -17568,6 +18039,9 @@ class guiWin(QMainWindow):
         self.statusBarLabel.setText(txt)
         
         func = core.preprocess_multi_pos_from_recipe
+        recipe = core.validate_multidimensional_recipe(
+            recipe, apply_to_all_frames=False
+        )
         image_data = [posData.img_data[0] for posData in self.data]
         self.preprocWorker.setupJob(
             func, 
@@ -17686,7 +18160,7 @@ class guiWin(QMainWindow):
             self.combineDialogStepsChanged
         )
         self.combineDialog.sigSavePreprocData.connect(
-            self.combineDialogSavecombinedData
+            self.combineDialogSaveCombinedData
         )
 
         if self.combineWorker is not None:
@@ -17698,7 +18172,7 @@ class guiWin(QMainWindow):
         
         self.combineWorker = workers.CombineWorkerGUI(
             self.combineMutex, self.combineWaitCond,
-            logger_func=self.logger.log,
+            logger_func=self.logger.info,
             # signals=self.signals # what are the singals for gui???
         )
         
@@ -18234,6 +18708,7 @@ class guiWin(QMainWindow):
                 self.zProjComboBox.currentTextChanged.disconnect()
                 self.zProjComboBox.activated.disconnect()
                 self.switchPlaneCombobox.sigPlaneChanged.disconnect()
+                self.zProjLockViewButton.toggled.disconnect()
             except Exception as e:
                 pass
             self.zSliceScrollBar.actionTriggered.connect(
@@ -18247,6 +18722,7 @@ class guiWin(QMainWindow):
             self.switchPlaneCombobox.sigPlaneChanged.connect(
                 self.switchViewedPlane
             )
+            self.zProjLockViewButton.toggled.connect(self.zProjLockViewToggled)
 
         posData = self.data[self.pos_i]
         if posData.SizeT == 1:
@@ -18458,17 +18934,21 @@ class guiWin(QMainWindow):
 
     def update_z_slice(self, z):
         posData = self.data[self.pos_i]
-        idx = (posData.filename, posData.frame_i)
-        fn = posData.filename
-        i = posData.frame_i
         if self.switchPlaneCombobox.depthAxes() == 'z': 
-            try:
-                posData.segmInfo_df.loc[fn].loc[i:, 'z_slice_used_gui'] = z
-            except Exception as err:
-                printl(posData.segmInfo_df)
-                printl(idx)
+            if self.zProjLockViewButton.isChecked():
+                idx = [
+                    (posData.filename, frame_i) 
+                    for frame_i in range(posData.SizeT)
+                ]
+            else:
+                idx = [
+                    (posData.filename, frame_i) 
+                    for frame_i in range(posData.frame_i, posData.SizeT)
+                ]
+            posData.segmInfo_df.loc[idx, 'z_slice_used_gui'] = z
                 
         self.updatePreprocessPreview()
+        self.updateCombineChannelsPreview()
         self.highlightedID = self.getHighlightedID()
         self.updateAllImages(computePointsLayers=False)
 
@@ -18486,8 +18966,14 @@ class guiWin(QMainWindow):
 
     def updateZproj(self, how):
         for p, posData in enumerate(self.data[self.pos_i:]):
-            idx = (posData.filename, posData.frame_i)
-            posData.segmInfo_df.at[idx, 'which_z_proj_gui'] = how
+            if self.zProjLockViewButton.isChecked():
+                idx = [
+                    (posData.filename, frame_i) 
+                    for frame_i in range(posData.SizeT)
+                ]
+            else:
+                idx = [(posData.filename, posData.frame_i)]
+            posData.segmInfo_df.loc[idx, 'which_z_proj_gui'] = how
             posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
             
         posData = self.data[self.pos_i]
@@ -18519,6 +19005,8 @@ class guiWin(QMainWindow):
         self.ax2_binnedIDs_ScatterPlot.clear()
         self.ax2_ripIDs_ScatterPlot.clear()
         self.ax2_contoursImageItem.clear()
+        self.ax2_lostObjImageItem.clear()
+        self.ax2_lostTrackedObjImageItem.clear()
         self.textAnnot[1].clear()
         self.ax2_newMothBudLinesItem.setData([], [])
         self.ax2_oldMothBudLinesItem.setData([], [])
@@ -18536,6 +19024,8 @@ class guiWin(QMainWindow):
         self.searchedIDitemLeft.clear()
         self.searchedIDitemRight.clear()
         self.ax1_contoursImageItem.clear()
+        self.ax1_lostObjImageItem.clear()
+        self.ax1_lostTrackedObjImageItem.clear()
         self.textAnnot[0].clear()
         self.ax1_newMothBudLinesItem.setData([], [])
         self.ax1_oldMothBudLinesItem.setData([], [])
@@ -18685,6 +19175,7 @@ class guiWin(QMainWindow):
         self.splineHoverON = False
         self.tempSegmentON = False
         self.isCtrlDown = False
+        self.xyOnCtrlPressedFirstTime = None
         self.typingEditID = False
         self.isShiftDown = False
         self.prevAnnotOptions = None
@@ -18701,6 +19192,7 @@ class guiWin(QMainWindow):
         self.isRealTimeTrackerInitialized = False
         self.isWarningCcaIntegrity = False
         self.isDoubleRightClick = False
+        self.isExportingVideo = False
         self.pointsLayersNeverToggled = True
         self.highlightedIDopts = None
         self.keptObjectsIDs = widgets.KeptObjectIDsList(
@@ -18829,6 +19321,8 @@ class guiWin(QMainWindow):
         self.logger.info('Initializing measurements...')
         self.chNamesToSkip = []
         self.metricsToSkip = {}
+        self.calc_for_each_zslice_mapper = {}
+        self.calc_size_for_each_zslice = False
         # At the moment we don't know how many channels the user will load -->
         # we set the measurements to save either at setMeasurements dialog
         # or at initMetricsToSave
@@ -19309,8 +19803,8 @@ class guiWin(QMainWindow):
 
         self.highlightNewIDs_ccaFailed(ScellsIDsGone, rp=prev_rp)
         proceed = self.warnScellsGone(ScellsIDsGone, posData.frame_i)
-        self.ax1_lostObjScatterItem.setData([], [])
-        self.ax1_lostTrackedScatterItem.setData([], [])
+        self.clearLostObjContoursItems()
+        
         if not proceed:
             return True, automaticallyDividedIDs
 
@@ -22895,6 +23389,22 @@ class guiWin(QMainWindow):
             
         self.contoursImage = np.zeros((Y, X, 4), dtype=np.uint8)
     
+    def initLostObjContoursImage(self):
+        posData = self.data[self.pos_i]
+        z_slice = self.z_lab()
+        img = posData.img_data[posData.frame_i]
+        Y, X = img[z_slice].shape[-2:]
+            
+        self.lostObjContoursImage = np.zeros((Y, X, 4), dtype=np.uint8)
+    
+    def initLostTrackedObjContoursImage(self):
+        posData = self.data[self.pos_i]
+        z_slice = self.z_lab()
+        img = posData.img_data[posData.frame_i]
+        Y, X = img[z_slice].shape[-2:]
+            
+        self.lostTrackedObjContoursImage = np.zeros((Y, X, 4), dtype=np.uint8)
+    
     def initManualBackgroundImage(self):
         posData = self.data[self.pos_i]
         if hasattr(posData, 'lab'):
@@ -23097,7 +23607,7 @@ class guiWin(QMainWindow):
             self.progressWin.close()
             self.progressWin = None
         self.computeAllObjCostPairsWorkerLoop.exit()
-    
+     
     def setOverlaySegmMasks(self, force=False, forceIfNotActive=False):
         if not hasattr(self, 'currentLab2D'):
             return
@@ -23799,7 +24309,7 @@ class guiWin(QMainWindow):
                 #     'Pre-processed image not existing --> returning raw image'
                 # )
                 return self.getRawImageLayer0(frame_i)
-        elif self.viewPreprocDataToggle.isChecked():
+        elif self.viewCombineChannelDataToggle.isChecked():
             try:
                 img = posData.combine_img_data[frame_i]
                 if posData.SizeZ == 1:
@@ -24286,7 +24796,9 @@ class guiWin(QMainWindow):
                 if update_images:
                     self.updateAllImages()
                 return True
+            
         action = self.warnEditingWithAnnotActions.get(editTxt, None)
+        printl(action, update_images)
         if action is not None:
             if not action.isChecked():
                 if update_images:
@@ -24700,7 +25212,7 @@ class guiWin(QMainWindow):
         if posData.SizeZ > 1:
             z = self.zSliceScrollBar.sliderPosition()
             self.img1.setCurrentZsliceIndex(z)
-            
+
         self.img1.setImage(
             img, next_frame_image=self.nextFrameImage(),
             scrollbar_value=posData.frame_i+2
@@ -24714,6 +25226,18 @@ class guiWin(QMainWindow):
             return self.ax1_contoursImageItem
         else:
             return self.ax2_contoursImageItem
+    
+    def getLostObjImageItem(self, ax):
+        if ax == 0:
+            return self.ax1_lostObjImageItem
+        else:
+            return self.ax1_lostTrackedObjImageItem
+    
+    def getLostTrackedObjImageItem(self, ax):
+        if ax == 0:
+            return self.ax1_lostTrackedObjImageItem
+        else:
+            return self.ax2_lostTrackedObjImageItem
     
     def setManualBackgroundImage(self):
         if not self.manualBackgroundButton.isChecked():
@@ -24816,7 +25340,7 @@ class guiWin(QMainWindow):
             self.initContoursImage()
         else:
             self.contoursImage[:] = 0
-
+            
         contours = []
         for obj in skimage.measure.regionprops(self.currentLab2D):    
             obj_contours = self.getObjContours(obj, all_external=True)  
@@ -24851,6 +25375,9 @@ class guiWin(QMainWindow):
             self.ax2_lostObjScatterItem.addPoints(xx, yy)
 
     def setTrackedLostObjectContour(self, obj):
+        if self.isExportingVideo:
+            return
+        
         allContours = self.getObjContours(obj, all_external=True)  
         for objContours in allContours:
             xx = objContours[:,0] + 0.5
@@ -24859,11 +25386,91 @@ class guiWin(QMainWindow):
             self.ax1_lostTrackedScatterItem.addPoints(xx, yy, data=data)
             self.ax2_lostTrackedScatterItem.addPoints(xx, yy)
     
-    def getNearestLostObjID(self, y, x):
-        xx, yy = self.ax2_lostObjScatterItem.getData()
-        if xx is None:
+    def updateLostContoursImage(self, ax, draw=True, delROIsIDs=None):
+        if draw:
+            imageItem = self.getLostObjImageItem(ax)
+            if imageItem is None:
+                return
+        
+        if not hasattr(self, 'lostObjContoursImage'):
+            self.initLostObjContoursImage()
+        else:
+            self.lostObjContoursImage[:] = 0
+
+        if delROIsIDs is None:
+            delROIsIDs = set()
+        
+        posData = self.data[self.pos_i]
+        prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
+        prev_IDs_idxs = posData.allData_li[posData.frame_i-1]['IDs_idxs']
+        contours = []
+        for lostID in posData.lost_IDs:
+            if lostID in delROIsIDs:
+                continue
+            
+            obj = prev_rp[prev_IDs_idxs[lostID]]
+            if not self.isObjVisible(obj.bbox):
+                continue
+        
+            obj_contours = self.getObjContours(obj, all_external=True)
+            
+            if ax == 0:
+                self.addLostObjsToImage(obj, lostID)
+                
+            contours.extend(obj_contours)
+
+        if not draw:
+            return
+
+        self.drawLostObjContoursImage(imageItem, contours)
+    
+    def drawLostObjContoursImage(self, imageItem, contours):
+        thickness = 1
+        color = (255, 165, 0, 255) # orange
+        img = self.lostObjContoursImage
+        cv2.drawContours(img, contours, -1, color, thickness)
+        imageItem.setImage(img)
+    
+    def updateLostTrackedContoursImage(self, ax, delROIsIDs=None):
+        imageItem = self.getLostTrackedObjImageItem(ax)
+        if imageItem is None:
             return
         
+        if not hasattr(self, 'lostTrackedObjContoursImage'):
+            self.initLostTrackedObjContoursImage()
+        else:
+            self.lostTrackedObjContoursImage[:] = 0
+        
+        if delROIsIDs is None:
+            delROIsIDs = set()
+        
+        posData = self.data[self.pos_i]
+        tracked_lost_IDs = self.getTrackedLostIDs()
+        prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
+        prev_IDs_idxs = posData.allData_li[posData.frame_i-1]['IDs_idxs']
+        contours = []
+        for tracked_lost_ID in tracked_lost_IDs:
+            if tracked_lost_ID in delROIsIDs:
+                continue
+            
+            obj = prev_rp[prev_IDs_idxs[tracked_lost_ID]]
+            if not self.isObjVisible(obj.bbox):
+                continue
+        
+            obj_contours = self.getObjContours(obj, all_external=True)
+            contours.extend(obj_contours)
+
+        self.drawLostTrackedObjContoursImage(imageItem, contours)
+    
+    def drawLostTrackedObjContoursImage(self, imageItem, contours):
+        thickness = 1
+        color = (0, 255, 0, 255) # green
+        img = self.lostTrackedObjContoursImage
+        cv2.drawContours(img, contours, -1, color, thickness)
+        imageItem.setImage(img)
+    
+    def getNearestLostObjID(self, y, x):
+        yy, xx, _ = np.nonzero(self.lostObjContoursImage)        
         if len(xx) == 0:
             return
         
@@ -24884,26 +25491,6 @@ class guiWin(QMainWindow):
             return
         
         return nearest_ID
-    
-    def addLostObjsToImage(self):
-        xx, yy = self.ax1_lostObjScatterItem.getData()
-        xx, yy = np.round(xx-0.5).astype(int), np.round(yy-0.5).astype(int)
-        labels = self.ax1_lostObjScatterItem.data['data']
-        self.lostObjImage[yy, xx] = labels
-        lostObjRp = skimage.measure.regionprops(self.lostObjImage)
-        for obj in lostObjRp:
-            filleObjMask = scipy.ndimage.binary_fill_holes(obj.image)
-            self.lostObjImage[obj.slice][filleObjMask] = obj.label
-
-    # def addTrackedLostObjsToImage(self):
-    #     xx, yy = self.ax1_lostTrackedScatterItem.getData()
-    #     xx, yy = np.round(xx-0.5).astype(int), np.round(yy-0.5).astype(int)
-    #     labels = self.ax1_lostTrackedScatterItem.data['data']
-    #     self.lostObjImage[yy, xx] = labels
-    #     lostObjRp = skimage.measure.regionprops(self.lostObjImage)
-    #     for obj in lostObjRp:
-    #         filleObjMask = scipy.ndimage.binary_fill_holes(obj.image)
-    #         self.lostObjImage[obj.slice][filleObjMask] = obj.label
     
     def setCcaIssueContour(self, obj):
         objContours = self.getObjContours(obj, all_external=True)  
@@ -25058,6 +25645,14 @@ class guiWin(QMainWindow):
         self.updateContoursImage(ax=0, delROIsIDs=delROIsIDs)
         self.updateContoursImage(ax=1, delROIsIDs=delROIsIDs)
 
+    def setAllLostObjContoursImage(self, delROIsIDs=None):
+        self.updateLostContoursImage(ax=0, delROIsIDs=None)
+        self.updateLostContoursImage(ax=1, delROIsIDs=None)
+    
+    def setAllLostTrackedObjContoursImage(self, delROIsIDs=None):
+        self.updateLostTrackedContoursImage(ax=0, delROIsIDs=None)
+        self.updateLostTrackedContoursImage(ax=1, delROIsIDs=None)
+    
     def nextFrameImage(self, current_frame_i=None):
         if not self.labelsGrad.showNextFrameAction.isEnabled():
             return
@@ -25287,7 +25882,7 @@ class guiWin(QMainWindow):
         if applyFutFrames:
             posData.frame_i = self.current_frame_i
             self.get_data()   
-
+        
         for _delID in delIDs:
             self.clearObjContour(ID=_delID, ax=0)     
             self.clearObjContour(ID=_delID, ax=1)  
@@ -25391,80 +25986,70 @@ class guiWin(QMainWindow):
                 continue
             self.setCcaIssueContour(obj)
 
+    # @exec_time
     def highlightLostNew(self):
         if self.modeComboBox.currentText() == 'Viewer':
             return
         
         posData = self.data[self.pos_i]
         delROIsIDs = self.getDelRoisIDs()
-
-        for obj in posData.rp:
-            ID = obj.label
-            if ID not in posData.new_IDs:
-                continue
-            if ID in delROIsIDs:
-                continue
-            
-            if not self.isObjVisible(obj.bbox):
-                continue
-            
-            self.addObjContourToContoursImage(
-                obj=obj, ax=0, thickness=self.contLineWeight+1
-            )
-            self.addObjContourToContoursImage(
-                obj=obj, ax=1, thickness=self.contLineWeight+1
-            )
         
+        # self.setAllContoursImages(delROIsIDs=delROIsIDs)
         if posData.frame_i == 0:
             return 
 
         if not self.annotLostObjsToggle.isChecked():
             return
         
-        tracked_lost_IDs = self.getTrackedLostIDs()
-
         prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
         
         if prev_rp is None:
             return
 
-        for obj in prev_rp:
+        self.setAllLostObjContoursImage(delROIsIDs=delROIsIDs)        
+        self.setAllLostTrackedObjContoursImage(delROIsIDs=delROIsIDs)
 
-            if obj.label in tracked_lost_IDs:
-                self.setTrackedLostObjectContour(obj)
-
-            if obj.label not in posData.lost_IDs:
-                continue
-            
-            if obj.label in delROIsIDs:
-                continue
-            
-            if not self.isObjVisible(obj.bbox):
-                continue
-            
-            self.setLostObjectContour(obj)
+    def addLostObjsToImage(self, lostObj, lostID, force=False):
+        if not force:
+            if not self.copyLostObjButton.isChecked():
+                return
         
-        if self.copyContourButton.isChecked():
-            self.addLostObjsToImage()
-    
+        obj_slice = self.getObjSlice(lostObj.slice)
+        obj_image = self.getObjImage(lostObj.image, lostObj.bbox)
+        self.lostObjImage[obj_slice][obj_image] = lostID
+
     def highlightHoverLostObj(self, modifiers, event):
         noModifier = modifiers == Qt.NoModifier
         if not noModifier:
             return
         
-        if not self.copyContourButton.isChecked():
+        if not self.copyLostObjButton.isChecked():
             return
         
         if event.isExit():
             return
         
+        posData = self.data[self.pos_i]
         x, y = event.pos()
         xdata, ydata = int(x), int(y)
-        hoverLostID = self.lostObjImage[ydata, xdata]
-        self.ax1_lostObjScatterItem.hoverLostID = hoverLostID
+        try:
+            hoverLostID = self.lostObjImage[ydata, xdata]
+        except IndexError:
+            return
+        
+        self.ax1_lostObjScatterItem.hoverLostID = hoverLostID        
         if hoverLostID == 0:
             self.ax1_lostObjScatterItem.setSize(self.contLineWeight+1)
+            self.ax1_lostObjScatterItem.setData([], [])
         else:
+            prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
+            prev_IDs_idxs = posData.allData_li[posData.frame_i-1]['IDs_idxs']
+            lostObj = prev_rp[prev_IDs_idxs[hoverLostID]]
+            obj_contours = self.getObjContours(lostObj, all_external=True)
+            for cont in obj_contours:
+                xx = cont[:,0]
+                yy = cont[:,1]
+                self.ax1_lostObjScatterItem.addPoints(xx, yy)
             self.ax1_lostObjScatterItem.setSize(self.contLineWeight+2)
     
     def annotLostObjsToggled(self, checked):
@@ -25510,27 +26095,10 @@ class guiWin(QMainWindow):
         # elif self.modeComboBox.currentText() == 'Viewer':
         #     pass
         
-        prev_IDs = self.getPrevFrameIDs()  
-        tracked_lost_IDs = self.getTrackedLostIDs()
-        curr_IDs = posData.IDs
-        curr_delRoiIDs = self.getStoredDelRoiIDs()
-        prev_delRoiIDs = self.getStoredDelRoiIDs(frame_i=posData.frame_i-1)
-        lost_IDs = [
-            ID for ID in prev_IDs if ID not in curr_IDs
-            and ID not in prev_delRoiIDs and ID not in tracked_lost_IDs
-        ]
-        new_IDs = [
-            ID for ID in curr_IDs if ID not in prev_IDs 
-            and ID not in curr_delRoiIDs
-        ]
-        # IDs_with_holes = [
-        #     obj.label for obj in posData.rp if obj.area/obj.filled_area < 1
-        # ]
-        IDs_with_holes = []
-        posData.lost_IDs = lost_IDs
-        posData.new_IDs = new_IDs
-        posData.old_IDs = prev_IDs
-        posData.IDs = curr_IDs
+        out = self.updateLostNewCurrentIDs()
+        lost_IDs, new_IDs, IDs_with_holes, tracked_lost_IDs, curr_delRoiIDs = (
+            out
+        )
         self.setTitleText(
             lost_IDs, new_IDs, IDs_with_holes, tracked_lost_IDs
         )
@@ -25612,13 +26180,15 @@ class guiWin(QMainWindow):
                     parent_cell_txt_raw.append(f'{parent} --> {cell}')
 
             htmlTxt_li, htmlTxtFull_li = self.setTitleFormatter(
-                htmlTxt_li, htmlTxtFull_li, 'New cells w/out mother', 'red', orphan_cells
+                htmlTxt_li, htmlTxtFull_li, 'New cells w/out mother', 'red', 
+                orphan_cells
             )
             htmlTxt_li, htmlTxtFull_li = self.setTitleFormatter(
                 htmlTxt_li, htmlTxtFull_li, 'Lost cells', 'red', lost_cells
             )
             htmlTxt_li, htmlTxtFull_li = self.setTitleFormatter(
-                htmlTxt_li, htmlTxtFull_li, 'Parent --> Cell', 'green', parent_cell_txt_raw
+                htmlTxt_li, htmlTxtFull_li, 'Parent --> Cell', 'green', 
+                parent_cell_txt_raw
             )
 
         if not htmlTxt_li:
@@ -26020,9 +26590,12 @@ class guiWin(QMainWindow):
 
     def getTrackedLostIDs(self, prev_lab=None, IDs_in_frames=None, frame_i=None):
         trackedLostIDs = set()
-        retrackedLostcent = set()
         posData = self.data[self.pos_i]
+        if self.isExportingVideo:
+            posData.trackedLostIDs = trackedLostIDs
+            return trackedLostIDs
         
+        retrackedLostcent = set()
         if frame_i is None:
             frame_i = posData.frame_i
             
@@ -26112,11 +26685,17 @@ class guiWin(QMainWindow):
         extendedSegmData = np.concatenate((posData.segm_data, additionalSegmData))
         posData.segm_data = extendedSegmData
     
-    def reInitLastSegmFrame(self, checked=True, from_frame_i=None):
-        cancel = self.warnReinitLastSegmFrame()
-        if cancel:
-            self.logger.info('Re-initialization of last validated frame cancelled.')
-            return
+    def reInitLastSegmFrame(
+            self, checked=True, from_frame_i=None, updateImages=True,
+            force=False
+        ):
+        if not force:
+            cancel = self.warnReinitLastSegmFrame()
+            if cancel:
+                self.logger.info(
+                    'Re-initialization of last validated frame cancelled.'
+                )
+                return
 
         posData = self.data[self.pos_i]
         if from_frame_i is None:
@@ -26127,6 +26706,8 @@ class guiWin(QMainWindow):
         self.navigateScrollBar.setMaximum(from_frame_i+1)
         self.navSpinBox.setMaximum(from_frame_i+1)
         # self.navigateScrollBar.setMinimum(1)
+        
+        # posData.tracked_lost_centroids[from_frame_i-1] = set()
         for i in range(from_frame_i, posData.SizeT):
             if posData.allData_li[i]['labels'] is None:
                 break
@@ -26135,7 +26716,7 @@ class guiWin(QMainWindow):
             posData.allData_li[i] = self.getEmptyStoredDataDict()
             
             posData.tracked_lost_centroids[i] = set()
-            posData.acdcTracker2stepsAnnotInfo.pop(i, None)
+            posData.acdcTracker2stepsAnnotInfo.pop(i, None)            
         
         if posData.acdc_df is not None:
             frames = posData.acdc_df.index.get_level_values(0)
@@ -26143,7 +26724,21 @@ class guiWin(QMainWindow):
                 posData.acdc_df = posData.acdc_df.loc[:from_frame_i]
         
         self.removeAlldelROIsCurrentFrame()
+        
+        if not updateImages:
+            return
+        
+        self.updateAllImages()
 
+    def resetAcceptedLostIDs(self, from_frame_i=None):
+        posData = self.data[self.pos_i]
+        if from_frame_i is None:
+            from_frame_i = posData.frame_i
+        
+        posData.tracked_lost_centroids[from_frame_i-1] = set()
+        for i in range(from_frame_i, posData.SizeT):
+            posData.tracked_lost_centroids[i] = set()
+    
     def removeAllItems(self):
         self.ax1.clear()
         self.ax2.clear()
@@ -27995,6 +28590,8 @@ class guiWin(QMainWindow):
         self.chNamesToSkip = []
         self.metricsToSkip = {chName:[] for chName in self.ch_names}
         self.metricsToSave = {chName:[] for chName in self.ch_names}
+        self.calc_for_each_zslice_mapper = {}
+        self.calc_size_for_each_zslice = False
         
         favourite_funcs = set()
         last_selected_groupboxes_measurements = load.read_last_selected_gb_meas(
@@ -28009,23 +28606,30 @@ class guiWin(QMainWindow):
             if not chNameGroupbox.isChecked():
                 # Skip entire channel
                 self.chNamesToSkip.append(chName)
-            else:
-                last_selected_groupboxes_measurements[refChannel].append(
-                    chNameGroupbox.title()
-                )
-                if chName in self.notLoadedChNames:
-                    success = self.loadFluo_cb(fluo_channels=[chName])
-                    if not success:
-                        continue
-                for checkBox in chNameGroupbox.checkBoxes:
-                    colname = checkBox.text()
-                    if not checkBox.isChecked():
-                        self.metricsToSkip[chName].append(colname)
-                    else:
-                        self.metricsToSave[chName].append(colname)
-                        func_name = colname[len(chName):]
-                        favourite_funcs.add(func_name)
+                continue
+            
+            self.calc_for_each_zslice_mapper[chName] = (
+                chNameGroupbox.calcForEachZsliceRequested
+            )
+            last_selected_groupboxes_measurements[refChannel].append(
+                chNameGroupbox.title()
+            )
+            if chName in self.notLoadedChNames:
+                success = self.loadFluo_cb(fluo_channels=[chName])
+                if not success:
+                    continue
+            for checkBox in chNameGroupbox.checkBoxes:
+                colname = checkBox.text()
+                if not checkBox.isChecked():
+                    self.metricsToSkip[chName].append(colname)
+                else:
+                    self.metricsToSave[chName].append(colname)
+                    func_name = colname[len(chName):]
+                    favourite_funcs.add(func_name)
 
+        self.calc_size_for_each_zslice = (
+            measurementsWin.sizeMetricsQGBox.calcForEachZsliceRequested
+        )
         if not measurementsWin.sizeMetricsQGBox.isChecked():
             self.sizeMetricsToSave = []
         else:
@@ -28369,6 +28973,7 @@ class guiWin(QMainWindow):
         self.saveData()
 
     def startExportToVideoWorker(self, preferences):
+        self.isExportingVideo = True
         self.setDisabled(True)
         
         self.progressWin = apps.QDialogWorkerProgress(
@@ -28402,7 +29007,9 @@ class guiWin(QMainWindow):
         )
         
         self.exportToVideoImageExporter = exporters.ImageExporter(
-            self.ax1, save_pngs=preferences['save_pngs']
+            self.ax1, 
+            save_pngs=preferences['save_pngs'], 
+            dpi=preferences['dpi']
         )
         self.exportToVideoExporter = exporters.VideoExporter(
             preferences['avi_filepath'], preferences['fps']
@@ -28505,6 +29112,7 @@ class guiWin(QMainWindow):
             self.update_z_slice(self.exportToVideoNavVarIdxToRestore)
         
         self.setDisabled(False)
+        self.isExportingVideo = False
         
         prompts.exportToVideoFinished(
             self.exportToVideoPreferences, conversion_to_mp4_successful, 
@@ -28627,7 +29235,7 @@ class guiWin(QMainWindow):
         if filepath.endswith('.svg'):
             exporter = exporters.SVGExporter(self.ax1)
         else:
-            exporter = exporters.ImageExporter(self.ax1)
+            exporter = exporters.ImageExporter(self.ax1, dpi=preferences['dpi'])
         exporter.export(filepath)
         self.logger.info(f'Image saved.')
         

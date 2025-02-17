@@ -129,9 +129,9 @@
     :height: 16px
     :width: 16px
 
-.. |copyContourButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/copyContour.svg
+.. |copyLostObjButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/copyContour.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/copyContour.svg
-    :alt: copyContourButton icon
+    :alt: copyLostObjButton icon
     :height: 16px
     :width: 16px
 
@@ -237,9 +237,15 @@
     :height: 16px
     :width: 16px
 
-.. |addDelPolyLineRoiAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/addDelPolyLineRoi.svg
+.. |drawClearRegionButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/clear_freehand_region.svg
+    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/clear_freehand_region.svg
+    :alt: drawClearRegionButton icon
+    :height: 16px
+    :width: 16px
+
+.. |addDelPolyLineRoiButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/addDelPolyLineRoi.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/addDelPolyLineRoi.svg
-    :alt: addDelPolyLineRoiAction icon
+    :alt: addDelPolyLineRoiButton icon
     :height: 16px
     :width: 16px
 
@@ -374,10 +380,11 @@ Edit tools: Segmentation and tracking
     * Edit segmentation labels with a circular brush.
     * Increase brush size with "UP/DOWN" arrows on the keyboard.  
     * Default behaviour:
-        * Painting on the background will create a new label.
-        * Edit an existing label by starting to paint on the label (brush cursor changes color when hovering an existing label).
+        * Painting on the background will create a new object.
+        * Edit an existing label by starting to paint on the object (brush cursor changes color when hovering an existing label).
         * Press "Shift" to force drawing a new object
-        * Painting in default mode always draws UNDER existing labels.
+        * Painting in default mode always draws UNDER existing objects.
+        * Press "Ctrl" to draw above ABOVE existing objects.
     * Power brush mode:
         * | Power brush: press "B" key twice quickly to force the brush to draw ABOVE existing labels.
           | NOTE: If double-press is successful, then brush button turns red. The brush cursor is always white.
@@ -385,17 +392,17 @@ Edit tools: Segmentation and tracking
     * Manual ID mode:
         * Toggle the manual ID mode with the "Auto-ID" checkbox on the top-right toolbar.
         * Enter the ID that you want to paint.
-        * NOTE: use the power brush to draw ABOVE the existing labels.
+        * NOTE: use the power brush to draw ABOVE the existing objects.
 * **Eraser (** |eraserButton| **"X"):**
-    * Erase segmentation labels with a circular eraser.
+    * Erase segmentation objects with a circular eraser.
     * Increase eraser size with "UP/DOWN" arrows on the keyboard.
     * Default behaviour:
         * Starting to erase from the background (cursor is a red circle) will erase any labels you hover above.
         * Starting to erase from a specific label will erase only that label (cursor is a circle with the color of the label).
-        * To enforce erasing all labels no matter where you start from double-press "X" key. If double-press is successfull, then eraser button is red and eraser cursor always red.
+        * To enforce erasing all objects no matter where you start from double-press "X" key. If double-press is successfull, then eraser button is red and eraser cursor always red.
 * **Curvature Tool (** |curvToolButton| **"C"):** Left-clicks for manual spline anchors, right button for drawing auto-contour.
 * **Magic Wand (** |wandToolButton| **"W"):** Left-click for single selection or left-click and then drag for continous selection.
-* **Copy lost contour (** |copyContourButton| **"V"):** Hover onto lost object contour --> right-click to copy the contour as a new object.
+* **Copy lost contour (** |copyLostObjButton| **"V"):** Hover onto lost object contour --> right-click to copy the contour as a new object.
 * **Magic labeller (** |labelRoiButton| **"L"):** Draw a rectangular ROI around object(s) you want to segment. Draw with LEFT button to label with last used model. Draw with RIGHT button to choose a different segmentation model.
 * **Segment (** |segmentToolAction| **"R"):** Segment with last used model and last used parameters. If you never selected a segmentation model before, you will be asked to choose one and initialize its parameters.
 * **Segmenting for lost IDs (** |SegForLostIDsButton| **):** Segment only a small cutout of the image around missing IDs based on the segmentation of the previous frame. Will always use cellpose model. Parameters can be adjusted in the top ribbon under Segment --> Edit settings for Segmenting lost IDs. In the settings menu, additional parameters can be set like padding and overlap threshold in addition to the model settings.
@@ -420,7 +427,7 @@ Edit tools: Segmentation and tracking
 * **Remove object from analysis (** |binCellButton| **):** Annotate that a cell is removed from downstream analysis. ``is_cell_excluded`` set to ``True`` in ``acdc_output.csv`` table. Done by right-clicking.
 * **Annotate cell as dead (** |ripCellButton| **"D"):** Annotate that a cell is dead. ``is_cell_dead`` set to ``True`` in ``acdc_output.csv`` table.
 * **Add deletion ROI (** |addDelRoiAction| **):** Add resizable rectangle. Every ID touched by the rectangle will be automatically deleted. Moving and resizing the rectangle will restore deleted IDs if they are not touched by it anymore. To delete rectangle ``right-click on it --> remove``.
-* **Add poly-line deletion ROI (** |addDelPolyLineRoiAction| **):** 
+* **Add poly-line deletion ROI (** |addDelPolyLineRoiButton| **):** 
     * How to use
         1. Activate the button.
         2. Left-click on the LEFT image to add a new anchor point.
@@ -430,6 +437,7 @@ Edit tools: Segmentation and tracking
     * Add custom poly-line deletion ROI. Every ID touched by the ROI will be automatically deleted.
     * Moving and reshaping the ROI will restore deleted IDs if they are not touched by it anymore. 
     * To delete the ROI ``right-click on it --> remove``.
+* **Clear freehand region (** |drawClearRegionButton| **"O"):** Draw a freehand region and clear all objects present in the region. Once activated, additional options will appear in a new toolbar.
 * **Delete bordering objects (** |delBorderObjAction| **):** Remove segmented objects touching the border of the image.
 * **Repeat tracking (** |repeatTrackingAction| **"Shift+T"):** Repeat tracking on current frame. Tracking method can be changed in ``Tracking --> Select real-time tracking algorithm``
 * **Manual tracking (** |manualTrackingButton| **"T"):** Select ID to track and right-click on an object to assign that ID.
