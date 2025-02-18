@@ -12936,7 +12936,9 @@ class guiWin(QMainWindow):
         
         return out
     
-    def copyAllLostObjectsWorkerCallback(self, posData, for_future_frame_n):
+    def copyAllLostObjectsWorkerCallback(
+            self, posData, for_future_frame_n, max_overlap_perc
+        ):
         current_frame_i = posData.frame_i
         last_visited_frame_i = self.get_last_tracked_i()
         last_copied_frame_i = current_frame_i+for_future_frame_n+1
@@ -12964,6 +12966,13 @@ class guiWin(QMainWindow):
                     self.addLostObjsToImage(obj, lostID, force=True)
             
             for lostObj in skimage.measure.regionprops(self.lostObjImage):
+                overlap = np.count_nonzero(
+                    self.currentLab2D[lostObj.slice][lostObj.image]
+                )
+                overlap_perc = overlap/lostObj.area*100
+                if overlap_perc > max_overlap_perc:
+                    continue
+                
                 self.copyLostObjectContour(lostObj.label)
             
             self.copyAllLostObjectsWorker.signals.progressBar.emit(1)           
@@ -12985,7 +12994,7 @@ class guiWin(QMainWindow):
         )
     
     @disableWindow
-    def copyAllLostObjects(self, for_future_frame_n):
+    def copyAllLostObjects(self, for_future_frame_n, max_overlap_perc):
         posData = self.data[self.pos_i]
         
         desc = (
@@ -13002,7 +13011,7 @@ class guiWin(QMainWindow):
         
         self.copyAllLostObjectsWorker = workers.SimpleWorker(
             posData, self.copyAllLostObjectsWorkerCallback, 
-            func_args=(for_future_frame_n,)
+            func_args=(for_future_frame_n, max_overlap_perc)
         )
         
         self.copyAllLostObjectsWorker.moveToThread(

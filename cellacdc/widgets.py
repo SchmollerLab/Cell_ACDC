@@ -3058,7 +3058,7 @@ class ManualTrackingToolBar(ToolBar):
         self.sigGhostOpacityChanged.emit(value)
 
 class CopyLostObjectToolbar(ToolBar):
-    sigCopyAllObjects = Signal(int)
+    sigCopyAllObjects = Signal(int, int)
     
     def __init__(self, *args) -> None:
         super().__init__(*args)
@@ -3075,16 +3075,31 @@ class CopyLostObjectToolbar(ToolBar):
         
         self.addSeparator()
         
+        self.maxOverlapNumberControl = self.addSpinBox(
+            label='Maximum overlap to accept lost object [%]: '
+        )
+        self.maxOverlapNumberControl.setMinimum(0)
+        self.maxOverlapNumberControl.setValue(10)
+        self.maxOverlapNumberControl.setToolTip(
+            'Maximum overlap to accept lost object [%]\n\n'
+            'If the overlap between the lost object and an object already '
+            'existing is greater than this value,\n'
+            'the lost object will not be added.'
+        )
+        
+        self.addSeparator()
+        
         self.untilFrameNumberControl = self.addSpinBox(
             label='Copy lost object(s) for the next number of frames: '
         )
         self.untilFrameNumberControl.setMinimum(0)
         self.untilFrameNumberControl.setValue(0)
 
-        self.addSeparator()
-    
     def emitSigCopyAllObjects(self):
-        self.sigCopyAllObjects.emit(self.untilFrameNumberControl.value())
+        self.sigCopyAllObjects.emit(
+            self.untilFrameNumberControl.value(), 
+            self.maxOverlapNumberControl.value()
+        )
 
 class DrawClearRegionToolbar(ToolBar):
     def __init__(self, *args) -> None:
