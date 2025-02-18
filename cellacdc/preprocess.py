@@ -566,8 +566,8 @@ def _init_dummy_filter(**kwargs):
 
 def basicpy_background_correction(
         images,
-        apply_to_all_frames=True,
-        apply_to_all_zslices=True,
+        apply_to_all_frames=False,
+        apply_to_all_zslices=False,
         smoothness_flatfield=1.0,
         get_darkfield=True,
         smoothness_darkfield=1.0,
@@ -695,16 +695,20 @@ def basicpy_background_correction(
 
     if not apply_to_all_frames and not apply_to_all_zslices:
         input_dims = ("Y", "X")
+        output_dims = ("T", "Y", "X")
     elif apply_to_all_frames and not apply_to_all_zslices:
         input_dims = ("T", "Y", "X")
+        output_dims = ("T", "Y", "X")
     elif not apply_to_all_frames and apply_to_all_zslices:
         input_dims = ("Z", "Y", "X")
+        output_dims = ("T", "Z", "Y", "X")
     else:
         input_dims = ("T", "Z", "Y", "X")
-    
+        output_dims = ("T", "Z", "Y", "X")
+
     images = transformation.correct_img_dimension(images, 
                                                input_dims=input_dims, 
-                                               output_dims=("T", "Z", "Y", "X"))
+                                               output_dims=output_dims)
 
     from . import myutils
     custom_install_requires = [
