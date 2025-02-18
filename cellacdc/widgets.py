@@ -946,12 +946,7 @@ class ValidLineEdit(QLineEdit):
         super().__init__(parent)
     
     def setInvalidStyleSheet(self):
-        self.setStyleSheet(
-            'background: #FEF9C3;'
-            'border-radius: 4px;'
-            'border: 1.5px solid red;'
-            'padding: 1px 0px 1px 0px'
-        )
+        self.setStyleSheet(LINEEDIT_INVALID_ENTRY_STYLESHEET)
     
     def setValidStyleSheet(self):
         self.setStyleSheet('')
