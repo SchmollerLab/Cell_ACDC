@@ -11,6 +11,8 @@ from tqdm import tqdm
 
 from . import printl, core
 
+from typing import List
+
 def resize_lab(lab, output_shape, rp=None):
     if rp is None:
         rp = skimage.measure.regionprops(lab)
@@ -245,7 +247,7 @@ def snap_xy_to_closest_angle(x0, y0, x1, y1, angle_factor=15):
     x1, y1 = x0 + dx, y0 + dy
     return x1, y1
 
-def correct_img_dimension(image, input_dims, output_dims):
+def correct_img_dimension(image, input_dims: List[str], output_dims: List[str]):
     """Resort and expand the image to the correct dimensions (output_dims).
 
     Parameters
@@ -276,9 +278,11 @@ def correct_img_dimension(image, input_dims, output_dims):
 
     missing_dims = set(output_dims) - set(input_dims)
     input_dims = list(input_dims)
+    output_dims = list(output_dims)
+    
     for missing_dim in missing_dims:
-        image = np.expand_dims(image, axis=input_dims.index(missing_dim))
-        input_dims.insert(input_dims.index(missing_dim), missing_dim)
+        image = np.expand_dims(image, axis=output_dims.index(missing_dim))
+        input_dims.insert(output_dims.index(missing_dim), missing_dim)
     
     dim_map = [input_dims.index(dim) for dim in output_dims]
     image = np.transpose(image, dim_map)

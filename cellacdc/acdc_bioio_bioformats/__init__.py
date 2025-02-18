@@ -2,10 +2,12 @@ import os
 
 from .. import is_win64
 
-if is_win64:
-    os.environ["JAVA_HOME"] = rf'{os.environ["CONDA_PREFIX"]}\Library'
-else:
-    os.environ["JAVA_HOME"] = os.environ["CONDA_PREFIX"]
+conda_prefix = os.environ.get("CONDA_PREFIX")
+if conda_prefix is not None:
+    if is_win64:
+        os.environ["JAVA_HOME"] = rf'{conda_prefix}\Library'
+    else:
+        os.environ["JAVA_HOME"] = conda_prefix
 
 EXTENSION_PACKAGE_MAPPER = {
     '.czi': 'bioio-czi',
