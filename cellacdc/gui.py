@@ -21767,19 +21767,19 @@ class guiWin(QMainWindow):
         self.keepIDsTempLayerLeft.setLevels([0, len(lut)])
         self.keepIDsTempLayerLeft.setLookupTable(lut)
 
-        # Gray out objects
-        alpha = self.imgGrad.labelsAlphaSlider.value()
-        self.labelsLayerImg1.setOpacity(alpha/3)
-        self.labelsLayerRightImg.setOpacity(alpha/3)
+        # # Gray out objects
+        # alpha = self.imgGrad.labelsAlphaSlider.value()
+        # self.labelsLayerImg1.setOpacity(alpha/3)
+        # self.labelsLayerRightImg.setOpacity(alpha/3)
 
-        # Gray out contours
-        imageItem = self.getContoursImageItem(0)
-        if imageItem is not None:
-            imageItem.setOpacity(0.3)
+        # # Gray out contours
+        # imageItem = self.getContoursImageItem(0)
+        # if imageItem is not None:
+        #     imageItem.setOpacity(0.3)
         
-        imageItem = self.getContoursImageItem(1)
-        if imageItem is not None:
-            imageItem.setOpacity(0.3)
+        # imageItem = self.getContoursImageItem(1)
+        # if imageItem is not None:
+        #     imageItem.setOpacity(0.3)
         
     
     def updateTempLayerKeepIDs(self):
@@ -24950,14 +24950,13 @@ class guiWin(QMainWindow):
             except IndexError:
                 return
 
-        self.highlightSearchedID(hoverID)
+        self.highlightSearchedID(hoverID, greyOthers=False)
         
         if hoverID == 0 and self.highlightedID == 0:
             return
         
         if hoverID == 0 and self.highlightedID != 0:
-            self.textAnnot[0].grayOutAnnotations()
-            self.textAnnot[1].grayOutAnnotations()
+            self.setAllTextAnnotations()
             self.highlightedID = 0
             self.searchedIDitemRight.setData([], [])
             self.searchedIDitemLeft.setData([], [])
@@ -24993,7 +24992,7 @@ class guiWin(QMainWindow):
         
         return self.guiTabControl.propsQGBox.idSB.value()
     
-    def highlightSearchedID(self, ID, force=False):
+    def highlightSearchedID(self, ID, force=False, greyOthers=True):
         if ID == 0:
             return
 
@@ -25030,8 +25029,9 @@ class guiWin(QMainWindow):
         if not isObjVisible:
             return
         
-        self.textAnnot[0].grayOutAnnotations()
-        self.textAnnot[1].grayOutAnnotations()
+        if greyOthers:
+            self.textAnnot[0].grayOutAnnotations()
+            self.textAnnot[1].grayOutAnnotations()
 
         how_ax1 = self.drawIDsContComboBox.currentText()
         how_ax2 = self.getAnnotateHowRightImage()
