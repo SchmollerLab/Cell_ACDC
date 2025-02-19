@@ -2260,7 +2260,7 @@ def float_img_to_dtype(img, dtype):
     if img_max > 1.0:
         raise TypeError(
             'Images of float data type with values greater than 1.0 cannot '
-            f'be safely casted to {dtype}.'
+            f'be safely casted to {dtype}. '
             f'The max value of the input image is {img_max:.3f}'
         )
     

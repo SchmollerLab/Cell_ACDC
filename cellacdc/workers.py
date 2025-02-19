@@ -5486,9 +5486,12 @@ class CustomPreprocessWorkerGUI(QObject):
         if not keep_input_data_type:
             return preprocessed_data
 
-        preprocessed_data = myutils.convert_to_dtype(
-            preprocessed_data, image.dtype
-        )
+        try:
+            preprocessed_data = myutils.convert_to_dtype(
+                preprocessed_data, image.dtype
+            )
+        except Exception as err:
+            preprocessed_data = preprocessed_data.astype(image.dtype)
         return preprocessed_data
         
     @worker_exception_handler
