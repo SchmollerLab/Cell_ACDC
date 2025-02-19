@@ -5306,6 +5306,7 @@ class guiWin(QMainWindow):
         # self.imgGrad.gradient.showMenu = self.gui_gradientContextMenuEvent
         self.imgGradRight.gradient.showMenu = self.gui_rightImageShowContextMenu
         # self.imgGrad.vb.contextMenuEvent = self.gui_gradientContextMenuEvent
+        self.ax1.sigRangeChanged.connect(self.viewRangeChanged)
 
     def gui_initImg1BottomWidgets(self):
         self.zSliceScrollBar.hide()
@@ -6192,11 +6193,15 @@ class guiWin(QMainWindow):
         x, y = event.pos().x(), event.pos().y()
         
         if hasattr(self, 'scaleBar'):
+            if self.scaleBarDialog is not None:
+                self.scaleBarDialog.locCombobox.setCurrentText('Custom')
             if self.scaleBar.isHighlighted() and self.scaleBar.clicked:
                 self.scaleBar.move(x, y)
                 return
         
         if hasattr(self, 'timestamp'):
+            if self.timestampDialog is not None:
+                self.timestampDialog.locCombobox.setCurrentText('Custom')
             if self.timestamp.isHighlighted() and self.timestamp.clicked:
                 self.timestamp.move(x, y)
                 return
@@ -11741,43 +11746,47 @@ class guiWin(QMainWindow):
         if checked:
             posData = self.data[self.pos_i]
             Y, X = self.img1.image.shape
-            win = apps.TimestampPropertiesDialog(parent=self)
-            win.show()
+            viewRange = self.ax1.viewRange()
+            self.timestampDialog = apps.TimestampPropertiesDialog(parent=self)
+            self.timestampDialog.show()
             self.timestamp = widgets.TimestampItem(
-                Y, X, secondsPerFrame=posData.TimeIncrement
+                Y, X, viewRange, secondsPerFrame=posData.TimeIncrement
             )
             self.timestamp.sigEditProperties.connect(
                 self.editTimestampProperties
             )
             self.timestamp.addToAxis(self.ax1)
-            self.timestamp.draw(posData.frame_i, **win.kwargs())
-            win.sigValueChanged.connect(self.updateTimestamp)
-            win.exec_()
+            self.timestamp.draw(posData.frame_i, **self.timestampDialog.kwargs())
+            self.timestampDialog.sigValueChanged.connect(self.updateTimestamp)
+            self.timestampDialog.exec_()
         else:
             self.timestamp.removeFromAxis(self.ax1)
         
+        self.timestampDialog = None
         self.imgGrad.addTimestampAction.setChecked(checked)
     
     def addScaleBar(self, checked):
         if checked:
             posData = self.data[self.pos_i]
             Y, X = self.img1.image.shape
-            win = apps.ScaleBarPropertiesDialog(
+            viewRange = self.ax1.viewRange()
+            self.scaleBarDialog = apps.ScaleBarPropertiesDialog(
                 X, Y, posData.PhysicalSizeX, parent=self
             )
-            win.show()
-            self.scaleBar = widgets.ScaleBar((Y, X), parent=self.ax1)
+            self.scaleBarDialog.show()
+            self.scaleBar = widgets.ScaleBar((Y, X), viewRange, parent=self.ax1)
             self.scaleBar.sigEditProperties.connect(self.editScaleBarProperties)
             self.scaleBar.addToAxis(self.ax1)
-            self.scaleBar.draw(**win.kwargs())
-            win.sigValueChanged.connect(self.updateScaleBar)
-            win.exec_()
-            if win.cancel:
+            self.scaleBar.draw(**self.scaleBarDialog.kwargs())
+            self.scaleBarDialog.sigValueChanged.connect(self.updateScaleBar)
+            self.scaleBarDialog.exec_()
+            if self.scaleBarDialog.cancel:
                 self.addScaleBarAction.setChecked(False)
                 return
         else:
             self.scaleBar.removeFromAxis(self.ax1)
 
+        self.scaleBarDialog = None
         self.imgGrad.addScaleBarAction.setChecked(checked)
     
     def updateScaleBar(self, scaleBarKwargs):
@@ -19175,6 +19184,8 @@ class guiWin(QMainWindow):
         self.rescaleIntensChannelHowMapper = {
             self.user_ch_name: 'Rescale each 2D image'
         }
+        self.timestampDialog = None
+        self.scaleBarDialog = None
 
         # Second channel used by cellpose
         self.secondChannelName = None
@@ -30101,3 +30112,12 @@ class guiWin(QMainWindow):
             yy = np.r_[yy, y]
             xi, yi = self.getSpline(xx, yy, per=per)
         self.curvHoverPlotItem.setData(xi, yi)
+    
+    def viewRangeChanged(self, viewBox, viewRange):
+        if self.scaleBarDialog is not None:
+            self.scaleBar.updateViewRange(viewRange)
+            self.scaleBarDialog.onValueChanged(None)
+        
+        if self.timestampDialog is not None:
+            self.timestamp.updateViewRange(viewRange)
+            self.timestampDialog.onValueChanged(None)
