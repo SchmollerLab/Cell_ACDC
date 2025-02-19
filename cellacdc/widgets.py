@@ -9615,6 +9615,7 @@ class PreProcessingSelector(QComboBox):
             parent=self._parent
         )
         self.setParamsWindow.sigValuesChanged.connect(self.emitValuesChanged)
+        self.setParamsWindow.emitValuesChanged()
         self.setParamsWindow.exec_()
         if self.setParamsWindow.cancel:
             return
