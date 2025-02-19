@@ -5766,6 +5766,8 @@ class CustomPreprocessWorkerUtil(BaseWorkerUtil):
                     self.sigAborted.emit()
                     return
 
+            printl(self.appendedName)
+            
             appendedName = self.appendedName
             self.signals.initProgressBar.emit(len(pos_foldernames))
             for p, pos in enumerate(pos_foldernames):

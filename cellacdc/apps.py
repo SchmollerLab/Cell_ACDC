@@ -16105,6 +16105,8 @@ class PreProcessRecipeDialogUtil(PreProcessRecipeDialog):
             hideOnClosing=False
         )
         
+        printl('0')
+        
         self.listSelector = widgets.listWidget(
             isMultipleSelection=True, minimizeHeight=True
         )
@@ -16127,6 +16129,10 @@ class PreProcessRecipeDialogUtil(PreProcessRecipeDialog):
         saveRecipeButtonIndex = buttonsLayout.indexOf(
             self.preProcessParamsWidget.saveRecipeButton
         )        
+        
+        if saveRecipeButtonIndex == -1:
+            return
+        
         saveRecipeButtonItem = buttonsLayout.takeAt(saveRecipeButtonIndex)
         
         buttonsLayout.addItem(saveRecipeButtonItem, 0, 2)
