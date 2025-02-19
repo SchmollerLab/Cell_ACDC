@@ -15591,7 +15591,7 @@ class ResizeUtilProps(QBaseDialog):
             self.textToAppend = f'_{self.textToAppend}'
             
         if self.overwriteToggle.isChecked():
-            self.expFolderpathOut = None
+            self.expFolderpathOut = self._input_path
         
         factor = self.factorSpinbox.value()
         self.resizeFactor = (
