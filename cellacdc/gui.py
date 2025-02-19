@@ -6741,29 +6741,7 @@ class guiWin(QMainWindow):
             and not event.isExit()
         )
         if drawSpline:
-            x, y = event.pos()
-            xx, yy = self.curvAnchors.getData()
-            hoverAnchors = self.curvAnchors.pointsAt(event.pos())
-            per=False
-            # If we are hovering the starting point we generate
-            # a closed spline
-            if len(xx) >= 2:
-                if len(hoverAnchors)>0:
-                    xA_hover, yA_hover = hoverAnchors[0].pos()
-                    if xx[0]==xA_hover and yy[0]==yA_hover:
-                        per=True
-                if per:
-                    # Append start coords and close spline
-                    xx = np.r_[xx, xx[0]]
-                    yy = np.r_[yy, yy[0]]
-                    xi, yi = self.getSpline(xx, yy, per=per)
-                    # self.curvPlotItem.setData([], [])
-                else:
-                    # Append mouse coords
-                    xx = np.r_[xx, x]
-                    yy = np.r_[yy, y]
-                    xi, yi = self.getSpline(xx, yy, per=per)
-                self.curvHoverPlotItem.setData(xi, yi)
+            self.hoverEventDrawSpline(event)
         
         setMirroredCursor = (
             self.app.overrideCursor() is None and not event.isExit()
@@ -13453,6 +13431,7 @@ class guiWin(QMainWindow):
     
     def keepIDs_cb(self, checked):
         if checked:
+            self.highlightedLab = np.zeros_like(self.currentLab2D)
             if self.annotCcaInfoCheckbox.isChecked():
                 self.annotCcaInfoCheckbox.setChecked(False)
                 self.annotIDsCheckbox.setChecked(True)
@@ -14170,31 +14149,8 @@ class guiWin(QMainWindow):
                 self.typingEditID = False
             elif self.keepIDsButton.isChecked():
                 self.keepIDsConfirmAction.trigger()
-        elif ev.key() == Qt.Key_Escape:
-            if self.keepIDsButton.isChecked() and self.keptObjectsIDs:
-                self.keptObjectsIDs = widgets.KeptObjectIDsList(
-                    self.keptIDsLineEdit, self.keepIDsConfirmAction
-                )
-                self.highlightHoverIDsKeptObj(0, 0, hoverID=0)
-                return
-
-            if self.brushButton.isChecked() and self.typingEditID:
-                self.autoIDcheckbox.setChecked(True)
-                self.typingEditID = False
-                return
-            
-            if isTypingIDFunctionChecked and self.typingEditID:
-                self.typingEditID = False
-                return
-            
-            if self.labelRoiButton.isChecked() and self.isMouseDragImg1:
-                self.isMouseDragImg1 = False
-                self.labelRoiItem.setPos((0,0))
-                self.labelRoiItem.setSize((0,0))
-                self.freeRoiItem.clear()
-                return
-            
-            self.onEscape()
+        elif ev.key() == Qt.Key_Escape:            
+            self.onEscape(isTypingIDFunctionChecked=isTypingIDFunctionChecked)
         elif isAltModifier:
             isCursorSizeAll = self.app.overrideCursor() == Qt.SizeAllCursor
             # Alt is pressed while cursor is on images --> set SizeAllCursor
@@ -24951,6 +24907,42 @@ class guiWin(QMainWindow):
         self.goToZsliceSearchedID(obj)
         self.highlightSearchedID(hoverID)
     
+    def grayOutHighlightedLabels(self, nonGrayedIDs=None, alpha=None):
+        if nonGrayedIDs is None:
+            nonGrayedIDs = set()
+            
+        posData = self.data[self.pos_i]
+        if alpha is None:
+            alpha = self.imgGrad.labelsAlphaSlider.value()
+        self.highlightedLab[:] = 0
+        lut = np.zeros((2, 4), dtype=np.uint8)
+        for _obj in posData.rp:
+            if not self.isObjVisible(_obj.bbox):
+                continue
+            if _obj.label not in nonGrayedIDs:
+                continue
+            _slice = self.getObjSlice(_obj.slice)
+            _objMask = self.getObjImage(_obj.image, _obj.bbox)
+            self.highlightedLab[_slice][_objMask] = _obj.label
+            rgb = self.lut[_obj.label].copy()    
+            lut[1, :-1] = rgb
+            # Set alpha to 0.7
+            lut[1, -1] = 178  
+        
+        return lut
+    
+    def grayOutOverlaySegm(self, ax=0):
+        if ax == 0:
+            how = self.drawIDsContComboBox.currentText()
+        else:
+            how = self.getAnnotateHowRightImage()
+        
+        isOverlaySegmActive = how.find('segm. masks') != -1
+        if not isOverlaySegmActive:
+            return
+        
+        grayedLut = self.grayOutHighlightedLabels()
+    
     def highlightHoverIDsKeptObj(self, x, y, hoverID=None):
         if hoverID is None:
             try:
@@ -24960,7 +24952,17 @@ class guiWin(QMainWindow):
 
         self.highlightSearchedID(hoverID)
         
-        if hoverID == 0:
+        if hoverID == 0 and self.highlightedID == 0:
+            return
+        
+        if hoverID == 0 and self.highlightedID != 0:
+            self.textAnnot[0].grayOutAnnotations()
+            self.textAnnot[1].grayOutAnnotations()
+            self.highlightedID = 0
+            self.searchedIDitemRight.setData([], [])
+            self.searchedIDitemLeft.setData([], [])
+            self.highLightIDLayerImg1.clear()
+            self.highLightIDLayerRightImage.clear()
             return
         
         posData = self.data[self.pos_i]
@@ -25035,29 +25037,19 @@ class guiWin(QMainWindow):
         how_ax2 = self.getAnnotateHowRightImage()
         isOverlaySegm_ax1 = how_ax1.find('segm. masks') != -1 
         isOverlaySegm_ax2 = how_ax2.find('segm. masks') != -1
+        alpha = self.imgGrad.labelsAlphaSlider.value()
         
         if isOverlaySegm_ax1 or isOverlaySegm_ax2:
-            alpha = self.imgGrad.labelsAlphaSlider.value()
-            highlightedLab = np.zeros_like(self.currentLab2D)
-            lut = np.zeros((2, 4), dtype=np.uint8)
-            for _obj in posData.rp:
-                if not self.isObjVisible(_obj.bbox):
-                    continue
-                if _obj.label != obj.label:
-                    continue
-                _slice = self.getObjSlice(_obj.slice)
-                _objMask = self.getObjImage(_obj.image, _obj.bbox)
-                highlightedLab[_slice][_objMask] = _obj.label
-                rgb = self.lut[_obj.label].copy()    
-                lut[1, :-1] = rgb
-                # Set alpha to 0.7
-                lut[1, -1] = 178          
+            grayedLut = self.grayOutHighlightedLabels(
+                nonGrayedIDs={obj.label}, 
+                alpha=alpha
+            )
         
         cont = None
         contours = None
         if isOverlaySegm_ax1:
-            self.highLightIDLayerImg1.setLookupTable(lut)
-            self.highLightIDLayerImg1.setImage(highlightedLab)          
+            self.highLightIDLayerImg1.setLookupTable(grayedLut)
+            self.highLightIDLayerImg1.setImage(self.highlightedLab)          
             self.labelsLayerImg1.setOpacity(alpha/3)
         else:
             contours = self.getObjContours(obj, all_external=True)
@@ -25065,8 +25057,8 @@ class guiWin(QMainWindow):
                 self.searchedIDitemLeft.addPoints(cont[:,0]+0.5, cont[:,1]+0.5)
         
         if isOverlaySegm_ax2:
-            self.highLightIDLayerRightImage.setLookupTable(lut)
-            self.highLightIDLayerRightImage.setImage(highlightedLab)
+            self.highLightIDLayerRightImage.setLookupTable(grayedLut)
+            self.highLightIDLayerRightImage.setImage(self.highlightedLab)
             self.labelsLayerRightImg.setOpacity(alpha/3)
         else:
             if contours is None:
@@ -29755,7 +29747,30 @@ class guiWin(QMainWindow):
         self.guiTabControl.highlightSearchedCheckbox.setChecked(False)
         self.setHighlightID(False)
     
-    def onEscape(self):
+    def onEscape(self, isTypingIDFunctionChecked=False):
+        if self.keepIDsButton.isChecked() and self.keptObjectsIDs:
+            self.keptObjectsIDs = widgets.KeptObjectIDsList(
+                self.keptIDsLineEdit, self.keepIDsConfirmAction
+            )
+            self.highlightHoverIDsKeptObj(0, 0, hoverID=0)
+            return
+
+        if self.brushButton.isChecked() and self.typingEditID:
+            self.autoIDcheckbox.setChecked(True)
+            self.typingEditID = False
+            return
+        
+        if isTypingIDFunctionChecked and self.typingEditID:
+            self.typingEditID = False
+            return
+        
+        if self.labelRoiButton.isChecked() and self.isMouseDragImg1:
+            self.isMouseDragImg1 = False
+            self.labelRoiItem.setPos((0,0))
+            self.labelRoiItem.setSize((0,0))
+            self.freeRoiItem.clear()
+            return
+        
         self.setUncheckedAllButtons()
         self.setUncheckedAllCustomAnnotButtons()
         self.setUncheckedPointsLayers()
@@ -30059,3 +30074,30 @@ class guiWin(QMainWindow):
     def resizeEvent(self, event):
         if hasattr(self, 'ax1'):
             self.ax1.autoRange()
+    
+    def hoverEventDrawSpline(self, event):
+        x, y = event.pos()
+        xx, yy = self.curvAnchors.getData()
+        hoverAnchors = self.curvAnchors.pointsAt(event.pos())
+        per = False
+        # If we are hovering the starting point we generate
+        # a closed spline
+        if len(xx) < 2:
+            return 
+        
+        if len(hoverAnchors)>0:
+            xA_hover, yA_hover = hoverAnchors[0].pos()
+            if xx[0]==xA_hover and yy[0]==yA_hover:
+                per=True
+        if per:
+            # Append start coords and close spline
+            xx = np.r_[xx, xx[0]]
+            yy = np.r_[yy, yy[0]]
+            xi, yi = self.getSpline(xx, yy, per=per)
+            # self.curvPlotItem.setData([], [])
+        else:
+            # Append mouse coords
+            xx = np.r_[xx, x]
+            yy = np.r_[yy, y]
+            xi, yi = self.getSpline(xx, yy, per=per)
+        self.curvHoverPlotItem.setData(xi, yi)
