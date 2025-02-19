@@ -15509,19 +15509,20 @@ class ResizeUtilProps(QBaseDialog):
         paramsLayout.addWidget(
             QLabel('Folder path for resized images: '), row, 0
         )
-        self.filepathOutControl = widgets.filePathControl(
+        self.folderPathOutControl = widgets.filePathControl(
             browseFolder=True, 
             fileManagerTitle='Select folder where to save resized data', 
             elide=True, 
             startFolder=myutils.getMostRecentPath()
         )
-        self.filepathOutControl.setDisabled(True)
-        paramsLayout.addWidget(self.filepathOutControl, row, 1, 1, 2)
+        self.folderPathOutControl.setDisabled(True)
+        paramsLayout.addWidget(self.folderPathOutControl, row, 1, 1, 2)
         
         row += 1
         paramsLayout.addWidget(QLabel('Text to append to files: '), row, 0)
         self.textToAppendLineEdit = widgets.alphaNumericLineEdit()
         self.textToAppendLineEdit.setAlignment(Qt.AlignCenter)
+        self.textToAppendLineEdit.setDisabled(True)
         paramsLayout.addWidget(self.textToAppendLineEdit, row, 1, 1, 2)
         
         row += 1
@@ -15558,7 +15559,7 @@ class ResizeUtilProps(QBaseDialog):
         mainLayout.addLayout(buttonsLayout)
         mainLayout.addStretch(1)
         
-        self.textToAppendLineEdit.setText(self._getDefaultTextToAppend())
+        # self.textToAppendLineEdit.setText(self._getDefaultTextToAppend())
         
         self.setLayout(mainLayout)
     
@@ -15569,7 +15570,13 @@ class ResizeUtilProps(QBaseDialog):
         return text
     
     def overwriteToggled(self, checked):
-        self.filepathOutControl.setDisabled(checked)
+        self.folderPathOutControl.setDisabled(checked)
+        self.textToAppendLineEdit.setDisabled(checked)
+        if checked:
+            text = ''
+        else:
+            text = self._getDefaultTextToAppend()
+        self.textToAppendLineEdit.setText(text)
     
     def warnFolderPathEmpty(self):
         txt = html_utils.paragraph("""
@@ -15588,7 +15595,7 @@ class ResizeUtilProps(QBaseDialog):
         msg.warning(self, 'Empty text to append', txt)
     
     def ok_cb(self):
-        self.expFolderpathOut = self.filepathOutControl.path()
+        self.expFolderpathOut = self.folderPathOutControl.path()
         self.textToAppend = self.textToAppendLineEdit.text()
         isAccidentalOverwrite = (
             not self.overwriteToggle.isChecked()
@@ -15599,11 +15606,11 @@ class ResizeUtilProps(QBaseDialog):
             self.warnTextToAppendEmpty()
             return
         
-        if not self.textToAppend.startswith('_'):
+        if self.textToAppend and not self.textToAppend.startswith('_'):
             self.textToAppend = f'_{self.textToAppend}'
             
         if self.overwriteToggle.isChecked():
-            self.expFolderpathOut = self._input_path
+            self.expFolderpathOut = None
         
         factor = self.factorSpinbox.value()
         self.resizeFactor = (

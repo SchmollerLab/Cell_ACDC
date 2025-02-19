@@ -5151,6 +5151,9 @@ class ResizeUtilWorker(BaseWorkerUtil):
         super().__init__(mainWin)
     
     def validateOutputPath(self, path):
+        if path is None:
+            return
+        
         images_path = myutils.validate_images_path(path, create_dirs_tree=True)
         return images_path
     
@@ -5158,6 +5161,7 @@ class ResizeUtilWorker(BaseWorkerUtil):
     def run(self):
         expPaths = self.mainWin.expPaths
         tot_exp = len(expPaths)
+        
         self.signals.initProgressBar.emit(0)
         for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
             abort = self.emitSetResizeProps(exp_path)
@@ -5177,11 +5181,15 @@ class ResizeUtilWorker(BaseWorkerUtil):
                 )
                 images_path = os.path.join(exp_path, pos, 'Images')
                 
+                
                 rf = self.resizeFactor
                 text_to_append = self.textToAppend
                 images_path_out = self.validateOutputPath(self.expFolderpathOut)
+                if images_path_out is None:
+                    images_path_out = images_path
                 resize.run(
-                    images_path, rf, text_to_append=text_to_append, 
+                    images_path, rf, 
+                    text_to_append=text_to_append, 
                     images_path_out=images_path_out
                 )                
                 
