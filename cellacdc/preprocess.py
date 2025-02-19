@@ -564,6 +564,23 @@ def _init_dummy_filter(**kwargs):
     """
     pass
 
+def _init_basicpy_background_correction(**kwargs):
+    from . import myutils
+    custom_install_requires = [
+        "hyperactive>=4.4.0",
+        "jax>=0.4.0,<0.5.0",
+        "jaxlib>=0.4.0,<0.5.0",
+        "numpy",
+        "pooch",
+        "pydantic>=2.7.0,<3.0.0",
+        "scikit-image",
+        "scipy", # this will theoretically have the wrong version of scipy in the end
+        ]
+    
+    myutils.check_install_custom_dependencies(
+        custom_install_requires, 'basicpy', parent=kwargs.get('parent')
+    )
+
 def basicpy_background_correction(
         images,
         apply_to_all_frames=False,
@@ -706,24 +723,10 @@ def basicpy_background_correction(
         input_dims = ("T", "Z", "Y", "X")
         output_dims = ("T", "Z", "Y", "X")
 
-    images = transformation.correct_img_dimension(images, 
-                                               input_dims=input_dims, 
-                                               output_dims=output_dims)
-
-    from . import myutils
-    custom_install_requires = [
-        "hyperactive>=4.4.0",
-        "jax>=0.4.0,<0.5.0",
-        "jaxlib>=0.4.0,<0.5.0",
-        "numpy",
-        "pooch",
-        "pydantic>=2.7.0,<3.0.0",
-        "scikit-image",
-        "scipy", # this will theoretically have the wrong version of scipy in the end
-        ]
-    myutils.check_install_custom_dependencies(custom_install_requires, 
-                                              'basicpy', 
-                                              parent=parent)
+    images = transformation.correct_img_dimension(
+        images, input_dims=input_dims, output_dims=output_dims
+    )
+    
     from basicpy import BaSiC
 
     basic = BaSiC(

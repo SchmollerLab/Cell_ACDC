@@ -15012,6 +15012,7 @@ class PreProcessParamsWidget(QWidget):
 
             try:
                 init_func = config.PREPROCESS_INIT_MAPPER[method]['function']
+                printl(init_func, step_kwargs)
                 init_func(**step_kwargs)
             except Exception as err:
                 pass
