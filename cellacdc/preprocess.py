@@ -568,8 +568,8 @@ def _init_basicpy_background_correction(**kwargs):
     from . import myutils
     custom_install_requires = [
         "hyperactive>=4.4.0",
-        "jax>=0.4.0,<0.5.0",
-        "jaxlib>=0.4.0,<0.5.0",
+        "jax>=0.3.10,<0.4.23",
+        "jaxlib>=0.3.10,<0.4.23",
         "numpy",
         "pooch",
         "pydantic>=2.7.0,<3.0.0",
