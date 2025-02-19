@@ -48,7 +48,13 @@ class FucciPreprocessUtil(NewThreadMultipleExpBaseUtil):
         
         self.worker.firstChannelName = win.firstChannelName
         self.worker.secondChannelName = win.secondChannelName
-        self.worker.fucciFilterKwargs = win.function_kwargs
+        fucciFilterKwargs = win.function_kwargs
+        self.worker.fucciFilterKwargs = fucciFilterKwargs
+        
+        if fucciFilterKwargs['do_basicpy_background_correction']:
+            from cellacdc import preprocess
+            preprocess._init_basicpy_background_correction(parent=self)
+        
         self.worker.abort = win.cancel
         self.worker.waitCond.wakeAll()
     

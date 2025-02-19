@@ -315,7 +315,7 @@ def enhance_speckles(img, radius=15):
 def fucci_filter(
         image,
         correct_illumination_toggle=False,
-        basicpy_background_correction_toggle=True,
+        do_basicpy_background_correction=True,
         enhance_speckles_toggle=True,
         block_size=120,
         # rescale_illumination=False,
@@ -335,7 +335,7 @@ def fucci_filter(
     correct_illumination_toggle : bool, optional
         If illumination should be corrected. 
         Default is True
-    basicpy_background_correction_toggle : bool, optional
+    do_basicpy_background_correction : bool, optional
         If BaSiC background correction should be applied. 
         Default is False
     enhance_speckles_toggle : bool, optional
@@ -365,7 +365,7 @@ def fucci_filter(
     (Y, X) numpy.ndarray
         Filtered image
     """
-    if basicpy_background_correction_toggle:
+    if do_basicpy_background_correction:
         image = basicpy_background_correction(
             image, 
             apply_to_all_frames=False,
