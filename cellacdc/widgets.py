@@ -9607,6 +9607,7 @@ class PreProcessingSelector(QComboBox):
         self.addItems(PREPROCESS_MAPPER.keys())
         self.methodToDefaultValuesMapper = {}
         self.step_n = -1
+        self.setParamsWindow = None
 
     def htmlInfo(self):
         href = html_utils.href_tag('GitHub page', urls.issues_url)
@@ -9652,7 +9653,12 @@ class PreProcessingSelector(QComboBox):
                     continue
                 param_argspec = param_argspec._replace(default=value)
                 params_argspecs[p] = param_argspec
-                
+        
+        if self.setParamsWindow is not None:
+            self.setParamsWindow.raise_()
+            self.setParamsWindow.activateWindow()
+            return
+        
         self.setParamsWindow = apps.FunctionParamsDialog(
             params_argspecs, 
             df_metadata=df_metadata,
@@ -9667,7 +9673,11 @@ class PreProcessingSelector(QComboBox):
             return
         
         self.setParams(method, self.setParamsWindow.function_kwargs)
-        return self.setParamsWindow.function_kwargs
+        
+        function_kwargs = self.setParamsWindow.function_kwargs
+        self.setParamsWindow = None
+        
+        return function_kwargs
 
     def emitValuesChanged(self, functionKwargs: dict):
         self.sigValuesChanged.emit(functionKwargs, self.step_n)
