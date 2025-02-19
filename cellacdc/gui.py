@@ -3036,11 +3036,11 @@ class guiWin(QMainWindow):
         self.drawClearRegionToolbar.setVisible(False)
         self.controlToolBars.append(self.drawClearRegionToolbar)
         
-        # Empty toolbar to avoid weird ranges on image when showing the 
-        # other toolbars --> placeholder
-        placeHolderToolbar = widgets.ToolBar("Place holder", self)
-        self.addToolBar(Qt.TopToolBarArea, placeHolderToolbar)
+        # Second level toolbar
+        secondLevelToolbar = widgets.ToolBar("Second level toolbar", self)
+        self.addToolBar(Qt.TopToolBarArea, secondLevelToolbar)
         self.delObjToolAction = QAction(self)
+        self.delObjToolAction.setIcon(QIcon(":del_obj_click.svg"))
         self.delObjToolAction.setCheckable(True)
         self.delObjToolAction.setToolTip(
             'Customisable delete object action\n\n'
@@ -3049,10 +3049,10 @@ class guiWin(QMainWindow):
             'to customise the action required to delete '
             'an object with a click.'
         )
-        placeHolderToolbar.addAction(self.delObjToolAction)
-        placeHolderToolbar.setMovable(False)
-        self.placeHolderToolbar = placeHolderToolbar
-        self.placeHolderToolbar.setVisible(False)
+        secondLevelToolbar.addAction(self.delObjToolAction)
+        secondLevelToolbar.setMovable(False)
+        self.secondLevelToolbar = secondLevelToolbar
+        self.secondLevelToolbar.setVisible(False)
 
     def gui_populateToolSettingsMenu(self):
         brushHoverModeActionGroup = QActionGroup(self)
@@ -12810,12 +12810,12 @@ class guiWin(QMainWindow):
         if button != self.labelRoiButton:
             # self.labelRoiButton is disconnected so we manually call uncheck
             self.labelRoi_cb(False)
-        self.placeHolderToolbar.setVisible(True)
+        self.secondLevelToolbar.setVisible(True)
         for toolbar in self.controlToolBars:
             try:
                 toolbar.keepVisibleWhenActive
                 if toolbar.isVisible():
-                    self.placeHolderToolbar.setVisible(False)
+                    self.secondLevelToolbar.setVisible(False)
                     continue
             except:
                 pass
@@ -12868,10 +12868,10 @@ class guiWin(QMainWindow):
             self.uncheckLeftClickButtons(self.wandToolButton)
             self.connectLeftClickButtons()
             self.wandControlsToolbar.setVisible(True)
-            self.placeHolderToolbar.setVisible(False)
+            self.secondLevelToolbar.setVisible(False)
         else:
             self.resetCursors()
-            self.placeHolderToolbar.setVisible(True)
+            self.secondLevelToolbar.setVisible(True)
             self.wandControlsToolbar.setVisible(False)
     
     def copyLostObjContour_cb(self, checked):
@@ -13996,35 +13996,6 @@ class guiWin(QMainWindow):
         
         if keySequenceText == delObjKeySequence.toString():
             self.delObjToolAction.setChecked(True)
-        
-        # isAltKey = event.key()==Qt.Key_Alt
-        # isCtrlKey = event.key()==Qt.Key_Control
-        # isShiftKey = event.key()==Qt.Key_Shift
-        # isModifierKey = isAltKey or isCtrlKey or isShiftKey
-        
-        # modifiers = event.modifiers()
-        
-        # modifers_value = modifiers.value if PYQT6 else modifiers
-        # if isModifierKey:
-        #     keySequence = QKeySequence(modifers_value).toString()
-        # else:
-        #     keySequence = QKeySequence(modifers_value | event.key()).toString()
-        
-        # isModifier = isCtrlModifier or isShiftModifier
-        # if not isModifier:
-        #     return
-        
-        # delObjKeySequence, delObjQtButton = self.delObjAction
-
-        # isCtrlKeySequence = delObjKeySequence == QKeySequence(Qt.Key_Control)
-        # if isCtrlKeySequence and isCtrlModifier:
-        #     self.delObjToolAction.setChecked(True)
-        #     return
-        
-        # isShiftKeySequence = delObjKeySequence == QKeySequence(Qt.Key_Shift)
-        # if isShiftKeySequence and isShiftModifier:
-        #     self.delObjToolAction.setChecked(True)
-        #     return
     
     @exception_handler
     def keyPressEvent(self, ev):        
@@ -18192,7 +18163,7 @@ class guiWin(QMainWindow):
             f'{sep}\nFiles present in the first Position folder loaded:\n\n'
             f'{files_format}\n{sep}'
         )
-        self.placeHolderToolbar.setVisible(True)
+        self.secondLevelToolbar.setVisible(True)
         self.updateImageValueFormatter()
         self.checkManageVersions()
         self.initManualBackgroundImage()
@@ -23825,7 +23796,6 @@ class guiWin(QMainWindow):
                 self.delObjAction = None
                 cp.remove_section('delete_object.action')
                 
-            
             # if delObjKeySequenceText:
             #     self.delObjToolAction.setShortcut(delObjKeySequence)
             
@@ -27113,7 +27083,7 @@ class guiWin(QMainWindow):
         self.models = [None]*len(self.models)
     
     def reInitGui(self):
-        self.placeHolderToolbar.setVisible(False)
+        self.secondLevelToolbar.setVisible(False)
         
         self.gui_createLazyLoader()
 
@@ -29995,7 +29965,7 @@ class guiWin(QMainWindow):
         
         for toolbar in self.controlToolBars:
             toolbar.setMinimumHeight(
-                self.placeHolderToolbar.sizeHint().height()
+                self.secondLevelToolbar.sizeHint().height()
             )
 
         self.graphLayout.setFocus()
