@@ -1771,10 +1771,10 @@ def preprocess_video_from_recipe(
                 is_func_zstack_capable = True
         
         if is_func_time_capable and is_func_zstack_capable:
+            kwargs["apply_to_all_zslices"] = True
+            kwargs["apply_to_all_frames"] = True
             preprocessed_image = func(
                 preprocessed_image, 
-                apply_to_all_zslices=True, 
-                apply_to_all_frames=True,
                 **kwargs
             )
         else:
@@ -1828,8 +1828,9 @@ def preprocess_zstack_from_recipe(
                 break
         
         if is_func_zstack_capable:
+            kwargs['apply_to_all_zslices'] = True
             preprocessed_image = func(
-                preprocessed_image, apply_to_all_zslices=True, **kwargs
+                preprocessed_image, **kwargs
             )
         else:
             pbar = tqdm(
@@ -2831,7 +2832,6 @@ def preprocess_image_from_recipe_multithread(
                 preprocessed_image, (step,)
             )
         else:
-
             num_frames = len(preprocessed_image)
             pbar = tqdm(total=num_frames, ncols=100)
             with concurrent.futures.ThreadPoolExecutor(max_workers=n_threads) as executor:
