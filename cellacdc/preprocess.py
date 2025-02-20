@@ -291,7 +291,10 @@ def correct_illumination(
 
     return corrected_image
 
-def enhance_speckles(img, radius=15):
+def enhance_speckles(img, 
+                     radius=15,
+                     apply_to_all_zslices=False
+                     ):
     """Enhance speckles in an image using white_tophat. Based on 
     EnhanceOrSuppressFeatures from Cell profiler with 'Feature type: Speckles'
 
@@ -308,7 +311,10 @@ def enhance_speckles(img, radius=15):
     np.ndarray
         corrected 2D image
     """
-    footprint = skimage.morphology.disk(radius)
+    if not apply_to_all_zslices:
+        footprint = skimage.morphology.disk(radius)
+    else:
+        footprint = skimage.morphology.ball(radius)
     output_image = skimage.morphology.white_tophat(img, footprint=footprint)
     return output_image
 

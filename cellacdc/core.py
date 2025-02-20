@@ -2825,13 +2825,13 @@ def preprocess_image_from_recipe_multithread(
             if arg == 'apply_to_all_frames':
                 is_func_time_capable = True
                 break
-        
+
         if is_func_time_capable:
             preprocessed_image = preprocess_video_from_recipe(
                 preprocessed_image, (step,)
             )
         else:
-            kwargs['apply_to_all_frames'] = False
+
             num_frames = len(preprocessed_image)
             pbar = tqdm(total=num_frames, ncols=100)
             with concurrent.futures.ThreadPoolExecutor(max_workers=n_threads) as executor:
@@ -2840,10 +2840,15 @@ def preprocess_image_from_recipe_multithread(
                     preprocess_exceutor_map,
                     recipe=(step,)
                 )
-                result = executor.map(func, iterable)
-                for frame_i, processed_img in result:
-                    preprocessed_image[frame_i] = processed_img
-                    pbar.update()
+                futures = {executor.submit(func, arg) for arg in iterable}
+                for future in concurrent.futures.as_completed(futures):
+                    try:
+                        frame_i, processed_img = future.result()
+                        preprocessed_image[frame_i] = processed_img
+                        pbar.update()
+                    except Exception as e:
+                        printl(e)
+                        raise e
             pbar.close()
     
     return preprocessed_image
