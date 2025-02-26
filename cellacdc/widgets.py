@@ -5783,6 +5783,7 @@ class navigateQScrollBar(ScrollBar):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._disableCustomPressEvent = False
+        self.signal_slot_mapper = {}
 
     def disableCustomPressEvent(self):
         self._disableCustomPressEvent = True
@@ -5808,6 +5809,27 @@ class navigateQScrollBar(ScrollBar):
             # Clicked right arrow of scrollbar with the slider at maximum --> +1
             # self.setMaximum(self.maximum()+1)
             self.triggerAction(QAbstractSlider.SliderAction.SliderSingleStepAdd)
+    
+    def setValueNoSignal(self, value):
+        for signal_name, slot in self.signal_slot_mapper.items():
+            signal = getattr(self, signal_name)
+            try:
+                signal.disconnect()
+            except Exception as e:
+                pass
+        
+        self.setSliderPosition(value)
+        self.connectEvents(self.signal_slot_mapper)
+    
+    def connectEvents(self, signal_slot_mapper: dict):
+        self.signal_slot_mapper = signal_slot_mapper
+        for signal_name, slot in signal_slot_mapper.items():
+            signal = getattr(self, signal_name)
+            try:
+                signal.disconnect()
+            except Exception as e:
+                pass
+            signal.connect(slot)
 
 class linkedQScrollbar(ScrollBar):
     def __init__(self, *args, **kwargs):
