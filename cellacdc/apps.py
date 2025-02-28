@@ -1289,7 +1289,7 @@ class filenameDialog(QDialog):
             self, ext='.npz', basename='', title='Insert file name',
             hintText='', existingNames='', parent=None, allowEmpty=True,
             helpText='', defaultEntry='', resizeOnShow=True,
-            additionalButtons=None
+            additionalButtons=None, addDoNotSaveButton=False
         ):
         self.cancel = True
         super().__init__(parent)
@@ -1297,7 +1297,9 @@ class filenameDialog(QDialog):
         self.resizeOnShow = resizeOnShow
 
         if hintText.find('segmentation') != -1:
-            helpText = ("""
+            if helpText:
+                helpText = (f'{helpText}')
+            helpText_loc = ("""
                 With Cell-ACDC you can create as many segmentation files 
                 <b>as you want</b>.<br><br>
                 If you plan to create <b>only one file</b> then you can leave the 
@@ -1317,6 +1319,7 @@ class filenameDialog(QDialog):
                 in a CSV file ending with the same text as the segmentation file,<br> 
                 e.g., ending with <code>_acdc_output_phase_contr.csv</code>.
             """)
+            helpText = (f'{helpText}{html_utils.paragraph(helpText_loc)}')
 
         self.isSegmFile = basename.endswith('_segm')
         
@@ -1361,6 +1364,13 @@ class filenameDialog(QDialog):
 
         buttonsLayout.addStretch()
         buttonsLayout.addWidget(cancelButton)
+
+        if addDoNotSaveButton:
+            doNotSaveButton = QPushButton('Do not save')
+            doNotSaveButton.clicked.connect(self.doNotSave_cb)
+            buttonsLayout.addWidget(doNotSaveButton)
+            self.doNotSave = False
+
         buttonsLayout.addSpacing(20)
         if helpText:
             helpButton = widgets.helpPushButton('Help...')
@@ -1393,6 +1403,21 @@ class filenameDialog(QDialog):
         if defaultEntry:
             self.updateFilename(defaultEntry)
     
+    def doNotSave_cb(self):
+        msg = widgets.myMessageBox()
+        txt = html_utils.paragraph(
+            'Are you sure you do <b>not</b> want to save the file?'
+        )
+        noButton, yesButton = msg.warning(
+            self, 'Do not save?', txt, buttonsTexts=('No', 'Yes')
+        )
+        if msg.clickedButton == noButton:
+            return
+        
+        self.doNotSave = True
+        self.cancel = False
+        self.close()
+        
     def showHelp(self, text):
         text = html_utils.paragraph(text)
         msg = widgets.myMessageBox(wrapText=False)
@@ -9974,7 +9999,8 @@ class SelectSegmFileDialog(QDialog):
     def __init__(
             self, images_ls, parent_path, parent=None, 
             addNewFileButton=False, basename='', infoText=None, 
-            fileType='segmentation', allowMultipleSelection=False
+            fileType='segmentation', allowMultipleSelection=False,
+            custom_first=None
         ):
         self.cancel = True
         self.selectedItemText = ''
@@ -9985,6 +10011,9 @@ class SelectSegmFileDialog(QDialog):
         self.allowMultipleSelection = allowMultipleSelection
         self.basename = basename
         images_ls = sorted(images_ls, key=len)
+        if custom_first is not None:
+            images_ls.remove(custom_first)
+            images_ls.insert(0, custom_first)
 
         # Remove the 'segm_' part to allow filenameDialog to check if
         # a new file is existing (since we only ask for the part after

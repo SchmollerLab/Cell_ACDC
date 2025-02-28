@@ -29,6 +29,8 @@ import skimage
 import inspect
 import typing
 from typing import List
+import traceback
+
 
 from natsort import natsorted
 
@@ -3943,3 +3945,77 @@ def check_install_instanseg():
         import_pkg_name='instanseg', 
         pypi_name='instanseg-torch'
     )
+
+def format_IDs(IDs):
+    if isinstance(IDs, str):
+        raise ValueError('IDs must not be a string')
+
+    IDsRange = []
+    text = ''
+    sorted_vals = sorted(IDs)
+    for i, e in enumerate(sorted_vals):
+        # Get previous and next value (if possible)
+        if i > 0:
+            prevVal = sorted_vals[i-1]
+        else:
+            prevVal = -1
+        if i < len(sorted_vals)-1:
+            nextVal = sorted_vals[i+1]
+        else:
+            nextVal = -1
+
+        if e-prevVal == 1 or nextVal-e == 1:
+            if not IDsRange:
+                if nextVal-e == 1 and e-prevVal != 1:
+                    # Current value is the first value of a new range
+                    IDsRange = [e]
+                else:
+                    # Current value is the second element of a new range
+                    IDsRange = [prevVal, e]
+            else:
+                if e-prevVal == 1:
+                    # Current value is part of an ongoing range
+                    IDsRange.append(e)
+                else:
+                    # Current value is the first element of a new range 
+                    # --> create range text and this element will 
+                    # be added to the new range at the next iter
+                    start, stop = IDsRange[0], IDsRange[-1]
+                    if stop-start > 1:
+                        sep = '-'
+                    else:
+                        sep = ','
+                    text = f'{text},{start}{sep}{stop}'
+                    IDsRange = []
+        else:
+            # Current value doesn't belong to a range
+            if IDsRange:
+                # There was a range not added to text --> add it now
+                start, stop = IDsRange[0], IDsRange[-1]
+                if stop-start > 1:
+                    sep = '-'
+                else:
+                    sep = ','
+                text = f'{text},{start}{sep}{stop}'
+            
+            text = f'{text},{e}'    
+            IDsRange = []
+
+    if IDsRange:
+        # Last range was not added  --> add it now
+        start, stop = IDsRange[0], IDsRange[-1]
+        text = f'{text},{start}-{stop}'
+
+    text = text[1:]
+
+    return text
+
+
+def print_call_stack(debug=True):
+    if not debug:
+        return
+    stack = traceback.format_stack()
+    stack = stack[:-1]
+    print("Call stack:")
+    for line in stack:
+        print(line.strip())

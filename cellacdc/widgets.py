@@ -946,12 +946,7 @@ class ValidLineEdit(QLineEdit):
         super().__init__(parent)
     
     def setInvalidStyleSheet(self):
-        self.setStyleSheet(
-            'background: #FEF9C3;'
-            'border-radius: 4px;'
-            'border: 1.5px solid red;'
-            'padding: 1px 0px 1px 0px'
-        )
+        self.setStyleSheet(LINEEDIT_INVALID_ENTRY_STYLESHEET)
     
     def setValidStyleSheet(self):
         self.setStyleSheet('')
@@ -2217,63 +2212,7 @@ class KeptObjectIDsList(list):
         super().__init__(*args)
     
     def setText(self):
-        IDsRange = []
-        text = ''
-        sorted_vals = sorted(self)
-        for i, e in enumerate(sorted_vals):
-            # Get previous and next value (if possible)
-            if i > 0:
-                prevVal = sorted_vals[i-1]
-            else:
-                prevVal = -1
-            if i < len(sorted_vals)-1:
-                nextVal = sorted_vals[i+1]
-            else:
-                nextVal = -1
-
-            if e-prevVal == 1 or nextVal-e == 1:
-                if not IDsRange:
-                    if nextVal-e == 1 and e-prevVal != 1:
-                        # Current value is the first value of a new range
-                        IDsRange = [e]
-                    else:
-                        # Current value is the second element of a new range
-                        IDsRange = [prevVal, e]
-                else:
-                    if e-prevVal == 1:
-                        # Current value is part of an ongoing range
-                        IDsRange.append(e)
-                    else:
-                        # Current value is the first element of a new range 
-                        # --> create range text and this element will 
-                        # be added to the new range at the next iter
-                        start, stop = IDsRange[0], IDsRange[-1]
-                        if stop-start > 1:
-                            sep = '-'
-                        else:
-                            sep = ','
-                        text = f'{text},{start}{sep}{stop}'
-                        IDsRange = []
-            else:
-                # Current value doesn't belong to a range
-                if IDsRange:
-                    # There was a range not added to text --> add it now
-                    start, stop = IDsRange[0], IDsRange[-1]
-                    if stop-start > 1:
-                        sep = '-'
-                    else:
-                        sep = ','
-                    text = f'{text},{start}{sep}{stop}'
-                
-                text = f'{text},{e}'    
-                IDsRange = []
-
-        if IDsRange:
-            # Last range was not added  --> add it now
-            start, stop = IDsRange[0], IDsRange[-1]
-            text = f'{text},{start}-{stop}'
-
-        text = text[1:]
+        text  = myutils.format_IDs(self)
         
         self.lineEdit.setText(text)
     
@@ -9664,3 +9603,117 @@ class RescaleImageJroisGroupbox(QGroupBox):
             for dim, (spinbox, SizeD) in self.widgets.items()
         }
         return sizes
+
+class WhiteListLineEdit(KeepIDsLineEdit):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def setText(self, IDs):
+        if not isinstance(IDs, set) and not isinstance(IDs, list):
+            raise TypeError('IDs must be a set or list')
+        
+        formatted_text = myutils.format_IDs(IDs)
+        super().setText(formatted_text)
+
+class WhitelistIDsToolbar(ToolBar):
+    sigWhitelistChanged = Signal(list)
+    sigViewOGIDs = Signal(bool)
+    sigWhitelistAccepted = Signal(list)
+    sigAddNewIDs = Signal(bool)
+    sigLoadOGLabs = Signal()
+    
+    def __init__(self, *args) -> None:
+        super().__init__(*args)
+
+        # add the ID text field
+        instructionsText = (
+            'More info -->'
+        )
+        instructionsLabel = QLabel(instructionsText)
+        self.whiteListLineEdit = WhiteListLineEdit(
+            instructionsLabel, parent=self
+        )
+        self.whiteListLineEdit.sigIDsChanged.connect(self.emitWhitelistChanged)
+        self.addWidget(self.whiteListLineEdit)
+        self.addWidget(instructionsLabel)
+
+        # add an info button
+        self.infoButton = infoPushButton()
+        self.infoButton.clicked.connect(self.showInfo)
+        self.addWidget(self.infoButton)
+
+
+        # accept button
+        self.acceptButton = QPushButton('Accept')
+        self.acceptButton.clicked.connect(self.accept)
+        self.addWidget(self.acceptButton)
+
+        # add a view OG toggle
+        self.viewOGToggle = Toggle()
+        viewOGTooltip = (
+            'View the original lab to add new IDs to the whitelist'
+        )
+        self.viewOGToggle.setChecked(True)
+        self.viewOGToggle.setToolTip(viewOGTooltip)
+        viewOGLabel = QLabel('View og segm.')
+        viewOGLabel.setToolTip(viewOGTooltip)
+        self.addWidget(self.viewOGToggle)
+        self.addWidget(viewOGLabel)
+        self.viewOGToggle.toggled.connect(self.emitViewOGIDs)
+        self.emitViewOGIDs(True)
+        self.viewOGToggle.setCheckable(False)
+
+        # add a Toggle to add new IDs
+        self.addNewIDToggle = Toggle()
+        addNewIDTooltip = (
+            'If new IDs should be added to the whitelist automatically'
+        )
+        self.addNewIDToggle.setChecked(True)
+        self.addNewIDToggle.setToolTip(addNewIDTooltip)
+        addNewIDsLabel = QLabel('Add new IDs')
+        addNewIDsLabel.setToolTip(addNewIDTooltip)
+        self.addWidget(self.addNewIDToggle)
+        self.addWidget(addNewIDsLabel)
+        self.addNewIDToggle.toggled.connect(self.emitAddNewIDs)
+        self.emitAddNewIDs(True)
+
+        # add a button to load og df
+        self.loadOGButton = QPushButton('Load OG')
+        self.addWidget(self.loadOGButton)
+        self.loadOGButton.clicked.connect(self.sigLoadOGLabs.emit)
+        self.loadOGButton.setToolTip('Load the original lab, overwrites the current original')
+
+
+        # add a spacer to the toolbar
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.addWidget(spacer)
+
+    def emitWhitelistChanged(self, whitelist):
+        self.sigWhitelistChanged.emit(whitelist)
+
+    def emitViewOGIDs(self, checked):
+        self.sigViewOGIDs.emit(checked)
+    
+    def accept(self):
+        try:
+            whitelist = self.whiteListLineEdit.IDs
+        except AttributeError as e:
+            if "has no attribute 'IDs'" in str(e):
+                whitelist = list()
+        self.viewOGToggle.toggled.disconnect()            
+        self.viewOGToggle.setChecked(False)
+        self.viewOGToggle.toggled.connect(self.emitViewOGIDs)
+        self.sigWhitelistAccepted.emit(whitelist)
+    
+    def emitAddNewIDs(self, checked):
+        self.sigAddNewIDs.emit(checked)
+
+    def showInfo(self):
+        msg = myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(
+            """Left click on cells to select them. 
+            Separate IDs by comma. 
+            Use a dash to denote a range of IDs"""
+        )
+        msg.information(self, 'White list IDs', txt)
