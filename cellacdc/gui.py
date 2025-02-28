@@ -327,6 +327,7 @@ def disableWindow(func):
             raise err
         finally:
             self.setDisabled(False)
+            self.activateWindow()
     return inner_function
 
 class relabelSequentialWorker(QObject):
@@ -2366,12 +2367,11 @@ class guiWin(QMainWindow):
         self.drawClearRegionToolbar.setVisible(False)
         self.controlToolBars.append(self.drawClearRegionToolbar)
         
-        # Empty toolbar to avoid weird ranges on image when showing the 
-        # other toolbars --> placeholder
-        placeHolderToolbar = widgets.ToolBar("Place holder", self)
-        self.addToolBar(Qt.TopToolBarArea, placeHolderToolbar)
-
+        # Second level toolbar
+        secondLevelToolbar = widgets.ToolBar("Second level toolbar", self)
+        self.addToolBar(Qt.TopToolBarArea, secondLevelToolbar)
         self.delObjToolAction = QAction(self)
+        self.delObjToolAction.setIcon(QIcon(":del_obj_click.svg"))
         self.delObjToolAction.setCheckable(True)
         self.delObjToolAction.setToolTip(
             'Customisable delete object action\n\n'
@@ -2380,10 +2380,10 @@ class guiWin(QMainWindow):
             'to customise the action required to delete '
             'an object with a click.'
         )
-        placeHolderToolbar.addAction(self.delObjToolAction)
-        placeHolderToolbar.setMovable(False)
-        self.placeHolderToolbar = placeHolderToolbar
-        self.placeHolderToolbar.setVisible(False)
+        secondLevelToolbar.addAction(self.delObjToolAction)
+        secondLevelToolbar.setMovable(False)
+        self.secondLevelToolbar = secondLevelToolbar
+        self.secondLevelToolbar.setVisible(False)
 
         self.whitelistIDsToolbar = widgets.WhitelistIDsToolbar(
             self
@@ -4668,6 +4668,7 @@ class guiWin(QMainWindow):
         # self.imgGrad.gradient.showMenu = self.gui_gradientContextMenuEvent
         self.imgGradRight.gradient.showMenu = self.gui_rightImageShowContextMenu
         # self.imgGrad.vb.contextMenuEvent = self.gui_gradientContextMenuEvent
+        self.ax1.sigRangeChanged.connect(self.viewRangeChanged)
 
     def gui_initImg1BottomWidgets(self):
         self.zSliceScrollBar.hide()
@@ -5554,11 +5555,15 @@ class guiWin(QMainWindow):
         x, y = event.pos().x(), event.pos().y()
         
         if hasattr(self, 'scaleBar'):
+            if self.scaleBarDialog is not None:
+                self.scaleBarDialog.locCombobox.setCurrentText('Custom')
             if self.scaleBar.isHighlighted() and self.scaleBar.clicked:
                 self.scaleBar.move(x, y)
                 return
         
         if hasattr(self, 'timestamp'):
+            if self.timestampDialog is not None:
+                self.timestampDialog.locCombobox.setCurrentText('Custom')
             if self.timestamp.isHighlighted() and self.timestamp.clicked:
                 self.timestamp.move(x, y)
                 return
@@ -6103,29 +6108,7 @@ class guiWin(QMainWindow):
             and not event.isExit()
         )
         if drawSpline:
-            x, y = event.pos()
-            xx, yy = self.curvAnchors.getData()
-            hoverAnchors = self.curvAnchors.pointsAt(event.pos())
-            per=False
-            # If we are hovering the starting point we generate
-            # a closed spline
-            if len(xx) >= 2:
-                if len(hoverAnchors)>0:
-                    xA_hover, yA_hover = hoverAnchors[0].pos()
-                    if xx[0]==xA_hover and yy[0]==yA_hover:
-                        per=True
-                if per:
-                    # Append start coords and close spline
-                    xx = np.r_[xx, xx[0]]
-                    yy = np.r_[yy, yy[0]]
-                    xi, yi = self.getSpline(xx, yy, per=per)
-                    # self.curvPlotItem.setData([], [])
-                else:
-                    # Append mouse coords
-                    xx = np.r_[xx, x]
-                    yy = np.r_[yy, y]
-                    xi, yi = self.getSpline(xx, yy, per=per)
-                self.curvHoverPlotItem.setData(xi, yi)
+            self.hoverEventDrawSpline(event)
         
         setMirroredCursor = (
             self.app.overrideCursor() is None and not event.isExit()
@@ -11180,43 +11163,47 @@ class guiWin(QMainWindow):
         if checked:
             posData = self.data[self.pos_i]
             Y, X = self.img1.image.shape
-            win = apps.TimestampPropertiesDialog(parent=self)
-            win.show()
+            viewRange = self.ax1.viewRange()
+            self.timestampDialog = apps.TimestampPropertiesDialog(parent=self)
+            self.timestampDialog.show()
             self.timestamp = widgets.TimestampItem(
-                Y, X, secondsPerFrame=posData.TimeIncrement
+                Y, X, viewRange, secondsPerFrame=posData.TimeIncrement
             )
             self.timestamp.sigEditProperties.connect(
                 self.editTimestampProperties
             )
             self.timestamp.addToAxis(self.ax1)
-            self.timestamp.draw(posData.frame_i, **win.kwargs())
-            win.sigValueChanged.connect(self.updateTimestamp)
-            win.exec_()
+            self.timestamp.draw(posData.frame_i, **self.timestampDialog.kwargs())
+            self.timestampDialog.sigValueChanged.connect(self.updateTimestamp)
+            self.timestampDialog.exec_()
         else:
             self.timestamp.removeFromAxis(self.ax1)
         
+        self.timestampDialog = None
         self.imgGrad.addTimestampAction.setChecked(checked)
     
     def addScaleBar(self, checked):
         if checked:
             posData = self.data[self.pos_i]
             Y, X = self.img1.image.shape
-            win = apps.ScaleBarPropertiesDialog(
+            viewRange = self.ax1.viewRange()
+            self.scaleBarDialog = apps.ScaleBarPropertiesDialog(
                 X, Y, posData.PhysicalSizeX, parent=self
             )
-            win.show()
-            self.scaleBar = widgets.ScaleBar((Y, X), parent=self.ax1)
+            self.scaleBarDialog.show()
+            self.scaleBar = widgets.ScaleBar((Y, X), viewRange, parent=self.ax1)
             self.scaleBar.sigEditProperties.connect(self.editScaleBarProperties)
             self.scaleBar.addToAxis(self.ax1)
-            self.scaleBar.draw(**win.kwargs())
-            win.sigValueChanged.connect(self.updateScaleBar)
-            win.exec_()
-            if win.cancel:
+            self.scaleBar.draw(**self.scaleBarDialog.kwargs())
+            self.scaleBarDialog.sigValueChanged.connect(self.updateScaleBar)
+            self.scaleBarDialog.exec_()
+            if self.scaleBarDialog.cancel:
                 self.addScaleBarAction.setChecked(False)
                 return
         else:
             self.scaleBar.removeFromAxis(self.ax1)
 
+        self.scaleBarDialog = None
         self.imgGrad.addScaleBarAction.setChecked(checked)
     
     def updateScaleBar(self, scaleBarKwargs):
@@ -12240,12 +12227,12 @@ class guiWin(QMainWindow):
         if button != self.labelRoiButton:
             # self.labelRoiButton is disconnected so we manually call uncheck
             self.labelRoi_cb(False)
-        self.placeHolderToolbar.setVisible(True)
+        self.secondLevelToolbar.setVisible(True)
         for toolbar in self.controlToolBars:
             try:
                 toolbar.keepVisibleWhenActive
                 if toolbar.isVisible():
-                    self.placeHolderToolbar.setVisible(False)
+                    self.secondLevelToolbar.setVisible(False)
                     continue
             except:
                 pass
@@ -12298,10 +12285,10 @@ class guiWin(QMainWindow):
             self.uncheckLeftClickButtons(self.wandToolButton)
             self.connectLeftClickButtons()
             self.wandControlsToolbar.setVisible(True)
-            self.placeHolderToolbar.setVisible(False)
+            self.secondLevelToolbar.setVisible(False)
         else:
             self.resetCursors()
-            self.placeHolderToolbar.setVisible(True)
+            self.secondLevelToolbar.setVisible(True)
             self.wandControlsToolbar.setVisible(False)
     
     def copyLostObjContour_cb(self, checked):
@@ -12360,7 +12347,9 @@ class guiWin(QMainWindow):
         
         return out
     
-    def copyAllLostObjectsWorkerCallback(self, posData, for_future_frame_n):
+    def copyAllLostObjectsWorkerCallback(
+            self, posData, for_future_frame_n, max_overlap_perc
+        ):
         current_frame_i = posData.frame_i
         last_visited_frame_i = self.get_last_tracked_i()
         last_copied_frame_i = current_frame_i+for_future_frame_n+1
@@ -12374,6 +12363,8 @@ class guiWin(QMainWindow):
                 
                 posData.frame_i = frame_i
                 self.get_data()
+                self.tracking()
+                self.update_rp()
                 self.updateLostNewCurrentIDs()
                 self.store_data(mainThread=False, autosave=False)
                 # delROIsIDs = self.getDelRoisIDs()
@@ -12386,6 +12377,13 @@ class guiWin(QMainWindow):
                     self.addLostObjsToImage(obj, lostID, force=True)
             
             for lostObj in skimage.measure.regionprops(self.lostObjImage):
+                overlap = np.count_nonzero(
+                    self.currentLab2D[lostObj.slice][lostObj.image]
+                )
+                overlap_perc = overlap/lostObj.area*100
+                if overlap_perc > max_overlap_perc:
+                    continue
+                
                 self.copyLostObjectContour(lostObj.label)
             
             self.copyAllLostObjectsWorker.signals.progressBar.emit(1)           
@@ -12401,13 +12399,13 @@ class guiWin(QMainWindow):
         if last_visited_frame_i >= last_copied_frame_i:
             return
         
-        self.copyAllLostObjectsWorker.doReinitLastSegmFrame = True
-        self.copyAllLostObjectsWorker.last_visited_frame_i = (
+        self.copyAllLostObjectsWorker.output['doReinitLastSegmFrame'] = True
+        self.copyAllLostObjectsWorker.output['last_visited_frame_i'] = (
             last_visited_frame_i
         )
     
     @disableWindow
-    def copyAllLostObjects(self, for_future_frame_n):
+    def copyAllLostObjects(self, for_future_frame_n, max_overlap_perc):
         posData = self.data[self.pos_i]
         
         desc = (
@@ -12424,7 +12422,7 @@ class guiWin(QMainWindow):
         
         self.copyAllLostObjectsWorker = workers.SimpleWorker(
             posData, self.copyAllLostObjectsWorkerCallback, 
-            func_args=(for_future_frame_n,)
+            func_args=(for_future_frame_n, max_overlap_perc)
         )
         
         self.copyAllLostObjectsWorker.moveToThread(
@@ -12469,15 +12467,15 @@ class guiWin(QMainWindow):
         self.copyAllLostObjectsWorkerLoop.exit()
         self.workerCritical(error)
     
-    def copyAllLostObjectsWorkerFinished(self, worker):
+    def copyAllLostObjectsWorkerFinished(self, output):
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
             self.progressWin.close()
             self.progressWin = None
         
-        if worker.doReinitLastSegmFrame:
+        if output.get('doReinitLastSegmFrame', False):
             self.reInitLastSegmFrame(
-                from_frame_i=worker.last_visited_frame_i, 
+                from_frame_i=output.get('last_visited_frame_i'), 
                 updateImages=False, 
                 force=True
             )
@@ -12866,6 +12864,7 @@ class guiWin(QMainWindow):
     
     def keepIDs_cb(self, checked):
         if checked:
+            self.highlightedLab = np.zeros_like(self.currentLab2D)
             if self.annotCcaInfoCheckbox.isChecked():
                 self.annotCcaInfoCheckbox.setChecked(False)
                 self.annotIDsCheckbox.setChecked(True)
@@ -13800,35 +13799,6 @@ class guiWin(QMainWindow):
         
         if keySequenceText == delObjKeySequence.toString():
             self.delObjToolAction.setChecked(True)
-        
-        # isAltKey = event.key()==Qt.Key_Alt
-        # isCtrlKey = event.key()==Qt.Key_Control
-        # isShiftKey = event.key()==Qt.Key_Shift
-        # isModifierKey = isAltKey or isCtrlKey or isShiftKey
-        
-        # modifiers = event.modifiers()
-        
-        # modifers_value = modifiers.value if PYQT6 else modifiers
-        # if isModifierKey:
-        #     keySequence = QKeySequence(modifers_value).toString()
-        # else:
-        #     keySequence = QKeySequence(modifers_value | event.key()).toString()
-        
-        # isModifier = isCtrlModifier or isShiftModifier
-        # if not isModifier:
-        #     return
-        
-        # delObjKeySequence, delObjQtButton = self.delObjAction
-
-        # isCtrlKeySequence = delObjKeySequence == QKeySequence(Qt.Key_Control)
-        # if isCtrlKeySequence and isCtrlModifier:
-        #     self.delObjToolAction.setChecked(True)
-        #     return
-        
-        # isShiftKeySequence = delObjKeySequence == QKeySequence(Qt.Key_Shift)
-        # if isShiftKeySequence and isShiftModifier:
-        #     self.delObjToolAction.setChecked(True)
-        #     return
     
     @exception_handler
     def keyPressEvent(self, ev):        
@@ -13962,31 +13932,8 @@ class guiWin(QMainWindow):
                 self.typingEditID = False
             elif self.keepIDsButton.isChecked():
                 self.keepIDsConfirmAction.trigger()
-        elif ev.key() == Qt.Key_Escape:
-            if self.keepIDsButton.isChecked() and self.keptObjectsIDs:
-                self.keptObjectsIDs = widgets.KeptObjectIDsList(
-                    self.keptIDsLineEdit, self.keepIDsConfirmAction
-                )
-                self.highlightHoverIDsKeptObj(0, 0, hoverID=0)
-                return
-
-            if self.brushButton.isChecked() and self.typingEditID:
-                self.autoIDcheckbox.setChecked(True)
-                self.typingEditID = False
-                return
-            
-            if isTypingIDFunctionChecked and self.typingEditID:
-                self.typingEditID = False
-                return
-            
-            if self.labelRoiButton.isChecked() and self.isMouseDragImg1:
-                self.isMouseDragImg1 = False
-                self.labelRoiItem.setPos((0,0))
-                self.labelRoiItem.setSize((0,0))
-                self.freeRoiItem.clear()
-                return
-            
-            self.onEscape()
+        elif ev.key() == Qt.Key_Escape:            
+            self.onEscape(isTypingIDFunctionChecked=isTypingIDFunctionChecked)
         elif isAltModifier:
             isCursorSizeAll = self.app.overrideCursor() == Qt.SizeAllCursor
             # Alt is pressed while cursor is on images --> set SizeAllCursor
@@ -18055,7 +18002,7 @@ class guiWin(QMainWindow):
             f'{sep}\nFiles present in the first Position folder loaded:\n\n'
             f'{files_format}\n{sep}'
         )
-        self.placeHolderToolbar.setVisible(True)
+        self.secondLevelToolbar.setVisible(True)
         self.updateImageValueFormatter()
         self.checkManageVersions()
         self.initManualBackgroundImage()
@@ -19047,6 +18994,8 @@ class guiWin(QMainWindow):
         self.rescaleIntensChannelHowMapper = {
             self.user_ch_name: 'Rescale each 2D image'
         }
+        self.timestampDialog = None
+        self.scaleBarDialog = None
 
         # Second channel used by cellpose
         self.secondChannelName = None
@@ -21640,19 +21589,19 @@ class guiWin(QMainWindow):
         self.keepIDsTempLayerLeft.setLevels([0, len(lut)])
         self.keepIDsTempLayerLeft.setLookupTable(lut)
 
-        # Gray out objects
-        alpha = self.imgGrad.labelsAlphaSlider.value()
-        self.labelsLayerImg1.setOpacity(alpha/3)
-        self.labelsLayerRightImg.setOpacity(alpha/3)
+        # # Gray out objects
+        # alpha = self.imgGrad.labelsAlphaSlider.value()
+        # self.labelsLayerImg1.setOpacity(alpha/3)
+        # self.labelsLayerRightImg.setOpacity(alpha/3)
 
-        # Gray out contours
-        imageItem = self.getContoursImageItem(0)
-        if imageItem is not None:
-            imageItem.setOpacity(0.3)
+        # # Gray out contours
+        # imageItem = self.getContoursImageItem(0)
+        # if imageItem is not None:
+        #     imageItem.setOpacity(0.3)
         
-        imageItem = self.getContoursImageItem(1)
-        if imageItem is not None:
-            imageItem.setOpacity(0.3)
+        # imageItem = self.getContoursImageItem(1)
+        # if imageItem is not None:
+        #     imageItem.setOpacity(0.3)
         
     
     def updateTempLayerKeepIDs(self):
@@ -23442,7 +23391,7 @@ class guiWin(QMainWindow):
         self.computeAllObjCostPairsWorkerLoop.exit()
         self.workerCritical(error)
     
-    def computeAllObjCostPairsWorkerFinished(self, worker):
+    def computeAllObjCostPairsWorkerFinished(self, output):
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
             self.progressWin.close()
@@ -23688,7 +23637,6 @@ class guiWin(QMainWindow):
                 self.delObjAction = None
                 cp.remove_section('delete_object.action')
                 
-            
             # if delObjKeySequenceText:
             #     self.delObjToolAction.setShortcut(delObjKeySequence)
             
@@ -24784,6 +24732,42 @@ class guiWin(QMainWindow):
         self.goToZsliceSearchedID(obj)
         self.highlightSearchedID(hoverID)
     
+    def grayOutHighlightedLabels(self, nonGrayedIDs=None, alpha=None):
+        if nonGrayedIDs is None:
+            nonGrayedIDs = set()
+            
+        posData = self.data[self.pos_i]
+        if alpha is None:
+            alpha = self.imgGrad.labelsAlphaSlider.value()
+        self.highlightedLab[:] = 0
+        lut = np.zeros((2, 4), dtype=np.uint8)
+        for _obj in posData.rp:
+            if not self.isObjVisible(_obj.bbox):
+                continue
+            if _obj.label not in nonGrayedIDs:
+                continue
+            _slice = self.getObjSlice(_obj.slice)
+            _objMask = self.getObjImage(_obj.image, _obj.bbox)
+            self.highlightedLab[_slice][_objMask] = _obj.label
+            rgb = self.lut[_obj.label].copy()    
+            lut[1, :-1] = rgb
+            # Set alpha to 0.7
+            lut[1, -1] = 178  
+        
+        return lut
+    
+    def grayOutOverlaySegm(self, ax=0):
+        if ax == 0:
+            how = self.drawIDsContComboBox.currentText()
+        else:
+            how = self.getAnnotateHowRightImage()
+        
+        isOverlaySegmActive = how.find('segm. masks') != -1
+        if not isOverlaySegmActive:
+            return
+        
+        grayedLut = self.grayOutHighlightedLabels()
+    
     def highlightHoverIDsKeptObj(self, x, y, hoverID=None):
         if hoverID is None:
             try:
@@ -24791,9 +24775,18 @@ class guiWin(QMainWindow):
             except IndexError:
                 return
 
-        self.highlightSearchedID(hoverID)
+        self.highlightSearchedID(hoverID, greyOthers=False)
         
-        if hoverID == 0:
+        if hoverID == 0 and self.highlightedID == 0:
+            return
+        
+        if hoverID == 0 and self.highlightedID != 0:
+            self.setAllTextAnnotations()
+            self.highlightedID = 0
+            self.searchedIDitemRight.setData([], [])
+            self.searchedIDitemLeft.setData([], [])
+            self.highLightIDLayerImg1.clear()
+            self.highLightIDLayerRightImage.clear()
             return
         
         posData = self.data[self.pos_i]
@@ -24824,7 +24817,7 @@ class guiWin(QMainWindow):
         
         return self.guiTabControl.propsQGBox.idSB.value()
     
-    def highlightSearchedID(self, ID, force=False):
+    def highlightSearchedID(self, ID, force=False, greyOthers=True):
         if ID == 0:
             return
 
@@ -24861,36 +24854,27 @@ class guiWin(QMainWindow):
         if not isObjVisible:
             return
         
-        self.textAnnot[0].grayOutAnnotations()
-        self.textAnnot[1].grayOutAnnotations()
+        if greyOthers:
+            self.textAnnot[0].grayOutAnnotations()
+            self.textAnnot[1].grayOutAnnotations()
 
         how_ax1 = self.drawIDsContComboBox.currentText()
         how_ax2 = self.getAnnotateHowRightImage()
         isOverlaySegm_ax1 = how_ax1.find('segm. masks') != -1 
         isOverlaySegm_ax2 = how_ax2.find('segm. masks') != -1
+        alpha = self.imgGrad.labelsAlphaSlider.value()
         
         if isOverlaySegm_ax1 or isOverlaySegm_ax2:
-            alpha = self.imgGrad.labelsAlphaSlider.value()
-            highlightedLab = np.zeros_like(self.currentLab2D)
-            lut = np.zeros((2, 4), dtype=np.uint8)
-            for _obj in posData.rp:
-                if not self.isObjVisible(_obj.bbox):
-                    continue
-                if _obj.label != obj.label:
-                    continue
-                _slice = self.getObjSlice(_obj.slice)
-                _objMask = self.getObjImage(_obj.image, _obj.bbox)
-                highlightedLab[_slice][_objMask] = _obj.label
-                rgb = self.lut[_obj.label].copy()    
-                lut[1, :-1] = rgb
-                # Set alpha to 0.7
-                lut[1, -1] = 178          
+            grayedLut = self.grayOutHighlightedLabels(
+                nonGrayedIDs={obj.label}, 
+                alpha=alpha
+            )
         
         cont = None
         contours = None
         if isOverlaySegm_ax1:
-            self.highLightIDLayerImg1.setLookupTable(lut)
-            self.highLightIDLayerImg1.setImage(highlightedLab)          
+            self.highLightIDLayerImg1.setLookupTable(grayedLut)
+            self.highLightIDLayerImg1.setImage(self.highlightedLab)          
             self.labelsLayerImg1.setOpacity(alpha/3)
         else:
             contours = self.getObjContours(obj, all_external=True)
@@ -24898,8 +24882,8 @@ class guiWin(QMainWindow):
                 self.searchedIDitemLeft.addPoints(cont[:,0]+0.5, cont[:,1]+0.5)
         
         if isOverlaySegm_ax2:
-            self.highLightIDLayerRightImage.setLookupTable(lut)
-            self.highLightIDLayerRightImage.setImage(highlightedLab)
+            self.highLightIDLayerRightImage.setLookupTable(grayedLut)
+            self.highLightIDLayerRightImage.setImage(self.highlightedLab)
             self.labelsLayerRightImg.setOpacity(alpha/3)
         else:
             if contours is None:
@@ -26944,7 +26928,7 @@ class guiWin(QMainWindow):
         self.models = [None]*len(self.models)
     
     def reInitGui(self):
-        self.placeHolderToolbar.setVisible(False)
+        self.secondLevelToolbar.setVisible(False)
         
         self.gui_createLazyLoader()
 
@@ -29639,7 +29623,30 @@ class guiWin(QMainWindow):
         self.guiTabControl.highlightSearchedCheckbox.setChecked(False)
         self.setHighlightID(False)
     
-    def onEscape(self):
+    def onEscape(self, isTypingIDFunctionChecked=False):
+        if self.keepIDsButton.isChecked() and self.keptObjectsIDs:
+            self.keptObjectsIDs = widgets.KeptObjectIDsList(
+                self.keptIDsLineEdit, self.keepIDsConfirmAction
+            )
+            self.highlightHoverIDsKeptObj(0, 0, hoverID=0)
+            return
+
+        if self.brushButton.isChecked() and self.typingEditID:
+            self.autoIDcheckbox.setChecked(True)
+            self.typingEditID = False
+            return
+        
+        if isTypingIDFunctionChecked and self.typingEditID:
+            self.typingEditID = False
+            return
+        
+        if self.labelRoiButton.isChecked() and self.isMouseDragImg1:
+            self.isMouseDragImg1 = False
+            self.labelRoiItem.setPos((0,0))
+            self.labelRoiItem.setSize((0,0))
+            self.freeRoiItem.clear()
+            return
+        
         self.setUncheckedAllButtons()
         self.setUncheckedAllCustomAnnotButtons()
         self.setUncheckedPointsLayers()
@@ -29853,7 +29860,7 @@ class guiWin(QMainWindow):
         
         for toolbar in self.controlToolBars:
             toolbar.setMinimumHeight(
-                self.placeHolderToolbar.sizeHint().height()
+                self.secondLevelToolbar.sizeHint().height()
             )
 
         self.graphLayout.setFocus()
@@ -29943,3 +29950,39 @@ class guiWin(QMainWindow):
     def resizeEvent(self, event):
         if hasattr(self, 'ax1'):
             self.ax1.autoRange()
+    
+    def hoverEventDrawSpline(self, event):
+        x, y = event.pos()
+        xx, yy = self.curvAnchors.getData()
+        hoverAnchors = self.curvAnchors.pointsAt(event.pos())
+        per = False
+        # If we are hovering the starting point we generate
+        # a closed spline
+        if len(xx) < 2:
+            return 
+        
+        if len(hoverAnchors)>0:
+            xA_hover, yA_hover = hoverAnchors[0].pos()
+            if xx[0]==xA_hover and yy[0]==yA_hover:
+                per=True
+        if per:
+            # Append start coords and close spline
+            xx = np.r_[xx, xx[0]]
+            yy = np.r_[yy, yy[0]]
+            xi, yi = self.getSpline(xx, yy, per=per)
+            # self.curvPlotItem.setData([], [])
+        else:
+            # Append mouse coords
+            xx = np.r_[xx, x]
+            yy = np.r_[yy, y]
+            xi, yi = self.getSpline(xx, yy, per=per)
+        self.curvHoverPlotItem.setData(xi, yi)
+    
+    def viewRangeChanged(self, viewBox, viewRange):
+        if self.scaleBarDialog is not None:
+            self.scaleBar.updateViewRange(viewRange)
+            self.scaleBarDialog.onValueChanged(None)
+        
+        if self.timestampDialog is not None:
+            self.timestamp.updateViewRange(viewRange)
+            self.timestampDialog.onValueChanged(None)

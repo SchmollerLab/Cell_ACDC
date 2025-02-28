@@ -174,7 +174,7 @@ class TextAnnotationsImageItem(pg.ImageItem):
         self.highlighterItem.highlightObject(obj)
     
     def grayOutAnnotations(self, IDsToSkip=None):
-        self.setOpacity(0.1)
+        self.setOpacity(0.3)
     
     def addObjAnnot(self, pos, draw=True, **objOpts):
         if objOpts['bold']:

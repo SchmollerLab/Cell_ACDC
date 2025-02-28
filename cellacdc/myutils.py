@@ -2262,7 +2262,7 @@ def float_img_to_dtype(img, dtype):
     if img_max > 1.0:
         raise TypeError(
             'Images of float data type with values greater than 1.0 cannot '
-            f'be safely casted to {dtype}.'
+            f'be safely casted to {dtype}. '
             f'The max value of the input image is {img_max:.3f}'
         )
     
@@ -2781,14 +2781,18 @@ def check_install_package(
             return True
 
 def check_install_custom_dependencies(custom_install_requires, *args, **kwargs):
-    """Used to install a package with custom dependencies, usefull if they have random pinned versions for their dependencies.
+    """Used to install a package with custom dependencies, usefull if they have
+    random pinned versions for their dependencies.
+    
     For *args and **kwargs see `myutils.check_install_package`.
 
     Parameters
     ----------
     custom_install_requires : list
-        list of dependencies. Check either requirements.txt, setup.py, setup.cfg, pyproject.toml, or any other file that lists the dependencies.
-        For formatting of the dependencies with min max version, use _get_pkg_command_pip_install.
+        list of dependencies. Check either requirements.txt, setup.py, 
+        setup.cfg, pyproject.toml, or any other file that lists the dependencies.
+        For formatting of the dependencies with min max version, 
+        use _get_pkg_command_pip_install.
     """
     kwargs['install_dependencies'] = False
     kwargs['return_outcome'] = True

@@ -10343,6 +10343,10 @@ class FunctionParamsDialog(QBaseDialog):
                 valueSetter = ArgSpec.type.setValue
                 valueGetter = ArgSpec.type.value
                 widgetsLayout.addWidget(widget, row, 1, 1, 2)
+                try:
+                    widget.sigValueChanged.connect(self.emitValuesChanged)
+                except Exception as err:
+                    pass
             elif isVectorEntry:
                 vectorLineEdit = widgets.VectorLineEdit()
                 self.checkIfTypeCLassHasCastDtype(ArgSpec.type)
@@ -10352,6 +10356,7 @@ class FunctionParamsDialog(QBaseDialog):
                 valueGetter = widgets.VectorLineEdit.value
                 widget = vectorLineEdit
                 widgetsLayout.addWidget(vectorLineEdit, row, 1, 1, 2)
+                widget.valueChangeFinished.connect(self.emitValuesChanged)
             elif isFolderPath:
                 folderPathControl = widgets.FolderPathControl()
                 self.checkIfTypeCLassHasCastDtype(ArgSpec.type)
@@ -10361,6 +10366,7 @@ class FunctionParamsDialog(QBaseDialog):
                 valueSetter = widgets.FolderPathControl.setText
                 valueGetter = widgets.FolderPathControl.path
                 widgetsLayout.addWidget(folderPathControl, row, 1, 1, 2)
+                widget.sigValueChanged.connect(self.emitValuesChanged)
             elif ArgSpec.type == bool:
                 booleanGroup = QButtonGroup()
                 booleanGroup.setExclusive(True)
@@ -10373,6 +10379,7 @@ class FunctionParamsDialog(QBaseDialog):
                 widgetsLayout.addWidget(
                     checkBox, row, 1, 1, 2, alignment=Qt.AlignCenter
                 )
+                widget.toggled.connect(self.emitValuesChanged)
             elif ArgSpec.type == int:
                 spinBox = widgets.SpinBox()
                 if metadata_val is None:
@@ -10385,6 +10392,7 @@ class FunctionParamsDialog(QBaseDialog):
                 valueGetter = QSpinBox.value
                 widget = spinBox
                 widgetsLayout.addWidget(spinBox, row, 1, 1, 2)
+                widget.sigValueChanged.connect(self.emitValuesChanged)
             elif ArgSpec.type == float:
                 doubleSpinBox = widgets.FloatLineEdit()
                 if metadata_val is None:
@@ -10397,6 +10405,7 @@ class FunctionParamsDialog(QBaseDialog):
                 valueSetter = widgets.FloatLineEdit.setValue
                 valueGetter = widgets.FloatLineEdit.value
                 widgetsLayout.addWidget(doubleSpinBox, row, 1, 1, 2)
+                widget.valueChanged.connect(self.emitValuesChanged)
             elif ArgSpec.type == os.PathLike:
                 filePathControl = widgets.filePathControl()
                 filePathControl.setText(str(ArgSpec.default))
@@ -10405,6 +10414,7 @@ class FunctionParamsDialog(QBaseDialog):
                 valueSetter = widgets.filePathControl.setText
                 valueGetter = widgets.filePathControl.path
                 widgetsLayout.addWidget(filePathControl, row, 1, 1, 2)
+                widget.sigValueChanged.connect(self.emitValuesChanged)
             elif isCustomListType:
                 items = ArgSpec.type().values
                 ArgSpec.type.cast_dtype = types.to_str
@@ -10416,6 +10426,7 @@ class FunctionParamsDialog(QBaseDialog):
                 valueGetter = widgets.AlphaNumericComboBox.currentValue
                 widget = combobox
                 widgetsLayout.addWidget(combobox, row, 1, 1, 2)
+                widget.currentTextChanged.connect(self.emitValuesChanged)
             else:
                 lineEdit = QLineEdit()
                 lineEdit.setText(str(ArgSpec.default))
@@ -10425,6 +10436,7 @@ class FunctionParamsDialog(QBaseDialog):
                 valueSetter = QLineEdit.setText
                 valueGetter = QLineEdit.text
                 widgetsLayout.addWidget(lineEdit, row, 1, 1, 2)
+                widget.editingFinished.connect(self.emitValuesChanged)
             
             if ArgSpec.desc:
                 infoButton = self.getInfoButton(ArgSpec.name, ArgSpec.desc)
@@ -15526,19 +15538,20 @@ class ResizeUtilProps(QBaseDialog):
         paramsLayout.addWidget(
             QLabel('Folder path for resized images: '), row, 0
         )
-        self.filepathOutControl = widgets.filePathControl(
+        self.folderPathOutControl = widgets.filePathControl(
             browseFolder=True, 
             fileManagerTitle='Select folder where to save resized data', 
             elide=True, 
             startFolder=myutils.getMostRecentPath()
         )
-        self.filepathOutControl.setDisabled(True)
-        paramsLayout.addWidget(self.filepathOutControl, row, 1, 1, 2)
+        self.folderPathOutControl.setDisabled(True)
+        paramsLayout.addWidget(self.folderPathOutControl, row, 1, 1, 2)
         
         row += 1
         paramsLayout.addWidget(QLabel('Text to append to files: '), row, 0)
         self.textToAppendLineEdit = widgets.alphaNumericLineEdit()
         self.textToAppendLineEdit.setAlignment(Qt.AlignCenter)
+        self.textToAppendLineEdit.setDisabled(True)
         paramsLayout.addWidget(self.textToAppendLineEdit, row, 1, 1, 2)
         
         row += 1
@@ -15575,7 +15588,7 @@ class ResizeUtilProps(QBaseDialog):
         mainLayout.addLayout(buttonsLayout)
         mainLayout.addStretch(1)
         
-        self.textToAppendLineEdit.setText(self._getDefaultTextToAppend())
+        # self.textToAppendLineEdit.setText(self._getDefaultTextToAppend())
         
         self.setLayout(mainLayout)
     
@@ -15586,7 +15599,13 @@ class ResizeUtilProps(QBaseDialog):
         return text
     
     def overwriteToggled(self, checked):
-        self.filepathOutControl.setDisabled(checked)
+        self.folderPathOutControl.setDisabled(checked)
+        self.textToAppendLineEdit.setDisabled(checked)
+        if checked:
+            text = ''
+        else:
+            text = self._getDefaultTextToAppend()
+        self.textToAppendLineEdit.setText(text)
     
     def warnFolderPathEmpty(self):
         txt = html_utils.paragraph("""
@@ -15605,7 +15624,7 @@ class ResizeUtilProps(QBaseDialog):
         msg.warning(self, 'Empty text to append', txt)
     
     def ok_cb(self):
-        self.expFolderpathOut = self.filepathOutControl.path()
+        self.expFolderpathOut = self.folderPathOutControl.path()
         self.textToAppend = self.textToAppendLineEdit.text()
         isAccidentalOverwrite = (
             not self.overwriteToggle.isChecked()
@@ -15616,7 +15635,7 @@ class ResizeUtilProps(QBaseDialog):
             self.warnTextToAppendEmpty()
             return
         
-        if not self.textToAppend.startswith('_'):
+        if self.textToAppend and not self.textToAppend.startswith('_'):
             self.textToAppend = f'_{self.textToAppend}'
             
         if self.overwriteToggle.isChecked():
@@ -16115,6 +16134,8 @@ class PreProcessRecipeDialogUtil(PreProcessRecipeDialog):
             hideOnClosing=False
         )
         
+        printl('0')
+        
         self.listSelector = widgets.listWidget(
             isMultipleSelection=True, minimizeHeight=True
         )
@@ -16137,6 +16158,10 @@ class PreProcessRecipeDialogUtil(PreProcessRecipeDialog):
         saveRecipeButtonIndex = buttonsLayout.indexOf(
             self.preProcessParamsWidget.saveRecipeButton
         )        
+        
+        if saveRecipeButtonIndex == -1:
+            return
+        
         saveRecipeButtonItem = buttonsLayout.takeAt(saveRecipeButtonIndex)
         
         buttonsLayout.addItem(saveRecipeButtonItem, 0, 2)

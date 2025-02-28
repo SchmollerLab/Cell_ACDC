@@ -39,6 +39,18 @@ class FucciPreprocessUtil(NewThreadMultipleExpBaseUtil):
             self.worker.basename = basename
             df_metadata = load.load_metadata_df(images_path)
         
+        if len(channel_names) < 2:
+            txt = (
+                'At least two channels are needed to run the FUCCI '
+                'pre-processing.'
+            )
+            self.logger.error(txt)
+            msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+            msg.critical(self, 'Error', html_utils.paragraph(txt))
+            self.worker.abort = True
+            self.worker.waitCond.wakeAll()
+            return
+        
         win = apps.FucciPreprocessDialog(
             channel_names,
             df_metadata=df_metadata,
@@ -48,7 +60,13 @@ class FucciPreprocessUtil(NewThreadMultipleExpBaseUtil):
         
         self.worker.firstChannelName = win.firstChannelName
         self.worker.secondChannelName = win.secondChannelName
-        self.worker.fucciFilterKwargs = win.function_kwargs
+        fucciFilterKwargs = win.function_kwargs
+        self.worker.fucciFilterKwargs = fucciFilterKwargs
+        
+        if fucciFilterKwargs['do_basicpy_background_correction']:
+            from cellacdc import preprocess
+            preprocess._init_basicpy_background_correction(parent=self)
+        
         self.worker.abort = win.cancel
         self.worker.waitCond.wakeAll()
     

@@ -98,6 +98,7 @@
     <file alias="manual_background.svg">resources/icons/manual_background_dark.svg</file>
     <file alias="bin.svg">resources/icons/bin_dark.svg</file>
     <file alias="rip.svg">resources/icons/rip_dark.svg</file>
+    <file alias="del_obj_click.svg">resources/icons/del_obj_click_dark.svg</file>
     <file alias="select_all.svg">resources/icons/select_all_dark.svg</file>
     <file alias="deselect_all.svg">resources/icons/deselect_all_dark.svg</file>
     <file alias="zoom_in.svg">resources/icons/zoom_in_dark.svg</file>

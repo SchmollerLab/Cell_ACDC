@@ -110,7 +110,8 @@ def resize_imgs(images_path_in, factor, images_path_out=None, text_to_append='')
 
         save_images(
             images, filename, images_path_out=images_path_out,
-            text_to_append=text_to_append)
+            text_to_append=text_to_append
+        )
 
 def edit_subs_bkgrROIs(
         images_path_in, factor, images_path_out=None, text_to_append=''
@@ -340,11 +341,12 @@ def copy_aux_files(images_path_in, images_path_out=None):
         if any(file.endswith(ending) for ending in files_endings)
     ]
     for aux_file in aux_files:
+        src_file = os.path.join(images_path_in, aux_file)
+        dst_file = os.path.join(images_path_out, aux_file)
+        if os.path.samefile(src_file, dst_file):
+            continue
         print(f"Copying {aux_file}...")
-        shutil.copyfile(
-            os.path.join(images_path_in, aux_file), 
-            os.path.join(images_path_out, aux_file)
-        )
+        shutil.copyfile(src_file, dst_file)
         print(f"File {aux_file} copied to")
         print(f"{images_path_out}\n")
 

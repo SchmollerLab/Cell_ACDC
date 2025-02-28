@@ -3002,7 +3002,7 @@ class ManualTrackingToolBar(ToolBar):
         self.sigGhostOpacityChanged.emit(value)
 
 class CopyLostObjectToolbar(ToolBar):
-    sigCopyAllObjects = Signal(int)
+    sigCopyAllObjects = Signal(int, int)
     
     def __init__(self, *args) -> None:
         super().__init__(*args)
@@ -3019,16 +3019,31 @@ class CopyLostObjectToolbar(ToolBar):
         
         self.addSeparator()
         
+        self.maxOverlapNumberControl = self.addSpinBox(
+            label='Maximum overlap to accept lost object [%]: '
+        )
+        self.maxOverlapNumberControl.setMinimum(0)
+        self.maxOverlapNumberControl.setValue(10)
+        self.maxOverlapNumberControl.setToolTip(
+            'Maximum overlap to accept lost object [%]\n\n'
+            'If the overlap between the lost object and an object already '
+            'existing is greater than this value,\n'
+            'the lost object will not be added.'
+        )
+        
+        self.addSeparator()
+        
         self.untilFrameNumberControl = self.addSpinBox(
             label='Copy lost object(s) for the next number of frames: '
         )
         self.untilFrameNumberControl.setMinimum(0)
         self.untilFrameNumberControl.setValue(0)
 
-        self.addSeparator()
-    
     def emitSigCopyAllObjects(self):
-        self.sigCopyAllObjects.emit(self.untilFrameNumberControl.value())
+        self.sigCopyAllObjects.emit(
+            self.untilFrameNumberControl.value(), 
+            self.maxOverlapNumberControl.value()
+        )
 
 class DrawClearRegionToolbar(ToolBar):
     def __init__(self, *args) -> None:
@@ -7948,9 +7963,10 @@ class LabelItem(pg.LabelItem):
 class ScaleBar(QGraphicsObject): 
     sigEditProperties = Signal(object)
     
-    def __init__(self, imageShape, parent=None):
+    def __init__(self, imageShape, viewRange, parent=None):
         super().__init__(parent)
         self.SizeY, self.SizeX = imageShape
+        self.updateViewRange(viewRange)
         self.plotItem = PlotCurveItem()
         self.labelItem = LabelItem()
         self._x_pad = 5
@@ -7959,6 +7975,28 @@ class ScaleBar(QGraphicsObject):
         self._parent = parent
         self.clicked = False
         self.createContextMenu()
+    
+    def updateViewRange(self, viewRange):
+        xRange, yRange = viewRange
+        x0, x1 = xRange
+        y0, y1 = yRange
+        if x0 < 0:
+            x0 = 0
+        
+        if x1 > self.SizeX:
+            x1 = self.SizeX
+        
+        if y0 < 0:
+            y0 = 0
+        
+        if y1 > self.SizeY:
+            y1 = self.SizeY
+        
+        self.xmax = x1
+        self.xmin = x0
+        
+        self.ymax = y1
+        self.ymin = y0
     
     def createContextMenu(self):
         self.contextMenu = QMenu()
@@ -7974,8 +8012,6 @@ class ScaleBar(QGraphicsObject):
     def isHighlighted(self):
         return self._highlighted
     
-    
-        
     def setHighlighted(self, highlighted):
         if self._highlighted and highlighted:
             return
@@ -8090,14 +8126,14 @@ class ScaleBar(QGraphicsObject):
         self.setText()
         wl = self.labelItem.itemRect().width()
         if loc.find('left') != -1:
-            x0 = self._x_pad
+            x0 = self._x_pad + self.xmin
             xc = x0 + self._length/2
             xl = xc-wl/2
             if xl < x0:
                 # Text is larger than line --> move line to the right
                 x0 = self._x_pad + abs(xl-self._x_pad)
         else:
-            x0 = self.SizeX - self._length - self._x_pad
+            x0 = self.xmax - self._length - self._x_pad
             xc = x0 + self._length/2
             x1 = x0 + self._length      
             xr = xc+wl/2
@@ -8116,9 +8152,9 @@ class ScaleBar(QGraphicsObject):
         self.setText()
         textHeight = self.labelItem.itemRect().height()
         if loc.find('top') != -1:
-            return textHeight + self._y_pad
+            return textHeight + self._y_pad + self.ymin
         else:
-            return self.SizeY - self._y_pad - self._thickness
+            return self.ymax - self._y_pad - self._thickness
     
     def update(self):
         x0 = self.getStartXCoordFromLoc(self._loc) # + self._thickness/2
@@ -9268,17 +9304,40 @@ class OddSpinBox(SpinBox):
 class TimestampItem(LabelItem):
     sigEditProperties = Signal(object)
     
-    def __init__(self, SizeY, SizeX, secondsPerFrame=1, parent=None):
+    def __init__(self, SizeY, SizeX, viewRange, secondsPerFrame=1, parent=None):
         self._secondsPerFrame = secondsPerFrame
         self._x_pad = 3
         self._y_pad = 2
         self.SizeY = SizeY
         self.SizeX = SizeX
+        self.updateViewRange(viewRange)
         self._highlighted = False
         self._parent = parent
         self.clicked = False
         super().__init__(self)
         self.createContextMenu()
+    
+    def updateViewRange(self, viewRange):
+        xRange, yRange = viewRange
+        x0, x1 = xRange
+        y0, y1 = yRange
+        if x0 < 0:
+            x0 = 0
+        
+        if x1 > self.SizeX:
+            x1 = self.SizeX
+        
+        if y0 < 0:
+            y0 = 0
+        
+        if y1 > self.SizeY:
+            y1 = self.SizeY
+        
+        self.xmax = x1
+        self.xmin = x0
+        
+        self.ymax = y1
+        self.ymin = y0
     
     def createContextMenu(self):
         self.contextMenu = QMenu()
@@ -9315,7 +9374,7 @@ class TimestampItem(LabelItem):
         properties = {
             'color': self._color,
             'loc': self._loc,
-            'font_size': float(self._font_size[:-2]),
+            'font_size': int(self._font_size[:-2]),
         }
         return properties
 
@@ -9331,18 +9390,20 @@ class TimestampItem(LabelItem):
         textHeight = self.itemRect().height()
         textWidth = self.itemRect().width()
         if self._loc == 'custom':
-            pos = self.pos()
-            x0, y0 = pos.x(), pos.y()
-        elif self._loc.find('top') != -1:
-            y0 = self._y_pad
+            return
+            # pos = self.pos()
+            # x0, y0 = pos.x(), pos.y()
+        
+        if self._loc.find('top') != -1:
+            y0 = self._y_pad + self.ymin
         else:
-            y0 = self.SizeY - textHeight
+            y0 = self.ymax - textHeight
         
         if self._loc.find('left') != -1:
-            x0 = self._x_pad
+            x0 = self._x_pad + self.xmin
         else:
-            x0 = self.SizeX - textWidth
-        
+            x0 = self.xmax - textWidth
+
         self.setPos(x0, y0)
     
     def setProperties(
@@ -9490,6 +9551,7 @@ class PreProcessingSelector(QComboBox):
         self.addItems(PREPROCESS_MAPPER.keys())
         self.methodToDefaultValuesMapper = {}
         self.step_n = -1
+        self.setParamsWindow = None
 
     def htmlInfo(self):
         href = html_utils.href_tag('GitHub page', urls.issues_url)
@@ -9535,7 +9597,12 @@ class PreProcessingSelector(QComboBox):
                     continue
                 param_argspec = param_argspec._replace(default=value)
                 params_argspecs[p] = param_argspec
-                
+        
+        if self.setParamsWindow is not None:
+            self.setParamsWindow.raise_()
+            self.setParamsWindow.activateWindow()
+            return
+        
         self.setParamsWindow = apps.FunctionParamsDialog(
             params_argspecs, 
             df_metadata=df_metadata,
@@ -9544,12 +9611,17 @@ class PreProcessingSelector(QComboBox):
             parent=self._parent
         )
         self.setParamsWindow.sigValuesChanged.connect(self.emitValuesChanged)
+        self.setParamsWindow.emitValuesChanged()
         self.setParamsWindow.exec_()
         if self.setParamsWindow.cancel:
             return
         
         self.setParams(method, self.setParamsWindow.function_kwargs)
-        return self.setParamsWindow.function_kwargs
+        
+        function_kwargs = self.setParamsWindow.function_kwargs
+        self.setParamsWindow = None
+        
+        return function_kwargs
 
     def emitValuesChanged(self, functionKwargs: dict):
         self.sigValuesChanged.emit(functionKwargs, self.step_n)

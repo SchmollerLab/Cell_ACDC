@@ -2,7 +2,7 @@ import os
 
 import pandas as pd
 
-from .. import apps, myutils, workers, widgets, html_utils, load
+from .. import apps, myutils, workers, widgets, html_utils, load, printl
 
 from .base import NewThreadMultipleExpBaseUtil
 

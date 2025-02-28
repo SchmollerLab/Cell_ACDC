@@ -291,7 +291,10 @@ def correct_illumination(
 
     return corrected_image
 
-def enhance_speckles(img, radius=15):
+def enhance_speckles(img, 
+                     radius=15,
+                     apply_to_all_zslices=False
+                     ):
     """Enhance speckles in an image using white_tophat. Based on 
     EnhanceOrSuppressFeatures from Cell profiler with 'Feature type: Speckles'
 
@@ -308,14 +311,17 @@ def enhance_speckles(img, radius=15):
     np.ndarray
         corrected 2D image
     """
-    footprint = skimage.morphology.disk(radius)
+    if not apply_to_all_zslices:
+        footprint = skimage.morphology.disk(radius)
+    else:
+        footprint = skimage.morphology.ball(radius)
     output_image = skimage.morphology.white_tophat(img, footprint=footprint)
     return output_image
 
 def fucci_filter(
         image,
         correct_illumination_toggle=False,
-        basicpy_background_correction_toggle=True,
+        do_basicpy_background_correction=True,
         enhance_speckles_toggle=True,
         block_size=120,
         # rescale_illumination=False,
@@ -335,7 +341,7 @@ def fucci_filter(
     correct_illumination_toggle : bool, optional
         If illumination should be corrected. 
         Default is True
-    basicpy_background_correction_toggle : bool, optional
+    do_basicpy_background_correction : bool, optional
         If BaSiC background correction should be applied. 
         Default is False
     enhance_speckles_toggle : bool, optional
@@ -365,7 +371,7 @@ def fucci_filter(
     (Y, X) numpy.ndarray
         Filtered image
     """
-    if basicpy_background_correction_toggle:
+    if do_basicpy_background_correction:
         image = basicpy_background_correction(
             image, 
             apply_to_all_frames=False,
@@ -564,6 +570,23 @@ def _init_dummy_filter(**kwargs):
     """
     pass
 
+def _init_basicpy_background_correction(**kwargs):
+    from . import myutils
+    custom_install_requires = [
+        "hyperactive>=4.4.0",
+        "jax>=0.3.10,<0.4.23",
+        "jaxlib>=0.3.10,<0.4.23",
+        "numpy",
+        "pooch",
+        "pydantic>=2.7.0,<3.0.0",
+        "scikit-image",
+        "scipy", # this will theoretically have the wrong version of scipy in the end
+        ]
+    
+    myutils.check_install_custom_dependencies(
+        custom_install_requires, 'basicpy', parent=kwargs.get('parent')
+    )
+
 def basicpy_background_correction(
         images,
         apply_to_all_frames=False,
@@ -706,24 +729,10 @@ def basicpy_background_correction(
         input_dims = ("T", "Z", "Y", "X")
         output_dims = ("T", "Z", "Y", "X")
 
-    images = transformation.correct_img_dimension(images, 
-                                               input_dims=input_dims, 
-                                               output_dims=output_dims)
-
-    from . import myutils
-    custom_install_requires = [
-        "hyperactive>=4.4.0",
-        "jax>=0.4.0,<0.5.0",
-        "jaxlib>=0.4.0,<0.5.0",
-        "numpy",
-        "pooch",
-        "pydantic>=2.7.0,<3.0.0",
-        "scikit-image",
-        "scipy", # this will theoretically have the wrong version of scipy in the end
-        ]
-    myutils.check_install_custom_dependencies(custom_install_requires, 
-                                              'basicpy', 
-                                              parent=parent)
+    images = transformation.correct_img_dimension(
+        images, input_dims=input_dims, output_dims=output_dims
+    )
+    
     from basicpy import BaSiC
 
     basic = BaSiC(
