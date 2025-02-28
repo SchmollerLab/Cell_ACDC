@@ -1374,14 +1374,18 @@ class guiWin(QMainWindow):
         self.widgetsWithShortcut['Select objects to keep'] = self.keepIDsButton
 
         self.whitelistIDsButton = QToolButton(self)
-        self.whitelistIDsButton.setIcon(QIcon(":keep_objects.svg"))
+        self.whitelistIDsButton.setIcon(QIcon(":whitelist.svg"))
         self.whitelistIDsButton.setCheckable(True)
-        self.whitelistIDsButton.action = editToolBar.addWidget(self.whitelistIDsButton)
-        self.whitelistIDsButton.setShortcut('K')
+        self.whitelistIDsButton.action = editToolBar.addWidget(
+            self.whitelistIDsButton
+        )
+        self.whitelistIDsButton.setShortcut('Ctrl+K')
         self.checkableButtons.append(self.whitelistIDsButton)
         self.checkableQButtonsGroup.addButton(self.whitelistIDsButton)
         # self.functionsNotTested3D.append(self.whitelistIDsButton)
-        self.widgetsWithShortcut['White list IDs and delete the rest'] = self.whitelistIDsButton
+        self.widgetsWithShortcut['Select objects to add to a tracking whitelist'] = (
+            self.whitelistIDsButton
+        )
 
         self.binCellButton = QToolButton(self)
         self.binCellButton.setIcon(QIcon(":bin.svg"))
@@ -13199,7 +13203,6 @@ class guiWin(QMainWindow):
     def whitelistIDs_cb(self, checked):
         self.whitelistIDsToolbar.setVisible(checked)
         self.whitelistIDsUpdateText()
-
 
     def whitelistIDsChanged(self, whitelistIDs):
         posData = self.data[self.pos_i]
@@ -25432,7 +25435,9 @@ class guiWin(QMainWindow):
 
     # @exec_time
     def setAllTextAnnotations(self, labelsToSkip=None, update_whitelist=True):
-        delROIsIDs = self.setLostNewOldPrevIDs(update_whitelist=update_whitelist)
+        delROIsIDs = self.setLostNewOldPrevIDs(
+            update_whitelist=update_whitelist
+        )
         posData = self.data[self.pos_i]
         self.textAnnot[0].setAnnotations(
             posData=posData, 
