@@ -16865,7 +16865,7 @@ class guiWin(QMainWindow):
                     )
                     editCcaWidget.exec_()
                     if editCcaWidget.cancel:
-                        self.resetNavigateScrollbar()
+                        self.resetNavigateFramesScrollbar()
                         return
                     if posData.cca_df is not None:
                         is_cca_same_as_stored = (
@@ -17211,7 +17211,7 @@ class guiWin(QMainWindow):
                 self.navSpinBox.setMaximum(i+1)
 
     def prev_frame(self):
-        posData = self.data[self.pos_i]
+        posData = self.data[self.pos_i]    
         if posData.frame_i > 0:
             # ok = self.warnOGIDs()
             # if not ok:
@@ -18518,21 +18518,11 @@ class guiWin(QMainWindow):
             self.navigateScrollBar.setMaximum(len(self.data))
             self.navigateScrollBar.setAbsoluteMaximum(len(self.data))
             self.navSpinBox.setMaximum(len(self.data))
-            try:
-                self.navigateScrollBar.sliderMoved.disconnect()
-                self.navigateScrollBar.sliderReleased.disconnect()
-                self.navigateScrollBar.actionTriggered.disconnect()
-            except TypeError:
-                pass
-            self.navigateScrollBar.sliderMoved.connect(
-                self.PosScrollBarMoved
-            )
-            self.navigateScrollBar.sliderReleased.connect(
-                self.PosScrollBarReleased
-            )
-            self.navigateScrollBar.actionTriggered.connect(
-                self.PosScrollBarAction
-            )
+            self.navigateScrollBar.connectEvents({
+                'sliderMoved': self.PosScrollBarMoved,
+                'sliderReleased': self.PosScrollBarReleased,
+                'actionTriggered': self.PosScrollBarAction
+            })
         else:
             self.navigateScrollBar.setMinimum(1)
             self.navigateScrollBar.setAbsoluteMaximum(posData.SizeT)
@@ -18541,22 +18531,12 @@ class guiWin(QMainWindow):
             if posData.last_tracked_i is not None:
                 self.navigateScrollBar.setMaximum(posData.last_tracked_i+1)
                 self.navSpinBox.setMaximum(posData.last_tracked_i+1)
-            try:
-                self.navigateScrollBar.sliderMoved.disconnect()
-                self.navigateScrollBar.sliderReleased.disconnect()
-                self.navigateScrollBar.actionTriggered.disconnect()
-            except Exception as e:
-                pass
             self.t_label.setText('Frame n.')
-            self.navigateScrollBar.sliderMoved.connect(
-                self.framesScrollBarMoved
-            )
-            self.navigateScrollBar.sliderReleased.connect(
-                self.framesScrollBarReleased
-            )
-            self.navigateScrollBar.actionTriggered.connect(
-                self.framesScrollBarActionTriggered
-            )
+            self.navigateScrollBar.connectEvents({
+                'sliderMoved': self.framesScrollBarMoved,
+                'sliderReleased': self.framesScrollBarReleased,
+                'actionTriggered': self.framesScrollBarActionTriggered
+            })
             self.rightImageFramesScrollbar.connectValueChanged(
                 self.rightImageFramesScrollbarValueChanged
             )
@@ -19308,6 +19288,13 @@ class guiWin(QMainWindow):
         self.updateFramePosLabel()
         self.updatePos()
 
+    def resetNavigateFramesScrollbar(self, frame_i=None):
+        posData = self.data[self.pos_i]
+        if frame_i is None:
+            frame_i = posData.frame_i
+            
+        self.navigateScrollBar.setValueNoSignal(frame_i+1)
+    
     def framesScrollBarActionTriggered(self, action):
         if action == SliderSingleStepAdd:
             # Clicking on dialogs triggered by next_cb might trigger
