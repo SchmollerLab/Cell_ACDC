@@ -12256,6 +12256,7 @@ class guiWin(QMainWindow):
         self.expandLabelToolButton.toggled.connect(self.expandLabelCallback)
         self.addDelPolyLineRoiButton.toggled.connect(self.addDelPolyLineRoi_cb)
         self.manualBackgroundButton.toggled.connect(self.manualBackground_cb)
+        self.whitelistIDsButton.toggled.connect(self.whitelistIDs_cb)
         for action in self.pointsLayersToolbar.actions()[1:]:
             if not hasattr(action, 'layerTypeIdx'):
                 continue
@@ -13202,7 +13203,14 @@ class guiWin(QMainWindow):
     def whitelistIDs_cb(self, checked):
         self.whitelistIDsToolbar.setVisible(checked)
         self.whitelistIDsUpdateText()
+        
+        if not checked:
+            return
 
+        self.disconnectLeftClickButtons()
+        self.uncheckLeftClickButtons(self.whitelistIDsButton)
+        self.connectLeftClickButtons()
+        
     def whitelistIDsChanged(self, whitelistIDs):
         posData = self.data[self.pos_i]
         self.clearHighlightedText()
