@@ -1382,6 +1382,7 @@ class guiWin(QMainWindow):
         self.whitelistIDsButton.setShortcut('Ctrl+K')
         self.checkableButtons.append(self.whitelistIDsButton)
         self.checkableQButtonsGroup.addButton(self.whitelistIDsButton)
+        self.LeftClickButtons.append(self.whitelistIDsButton)
         # self.functionsNotTested3D.append(self.whitelistIDsButton)
         self.widgetsWithShortcut['Select objects to add to a tracking whitelist'] = (
             self.whitelistIDsButton
@@ -13201,15 +13202,13 @@ class guiWin(QMainWindow):
         self.store_data(autosave=False)
 
     def whitelistIDs_cb(self, checked):
+        if checked:
+            self.disconnectLeftClickButtons()
+            self.uncheckLeftClickButtons(self.whitelistIDsButton)
+            self.connectLeftClickButtons()
+            
         self.whitelistIDsToolbar.setVisible(checked)
-        self.whitelistIDsUpdateText()
-        
-        if not checked:
-            return
-
-        self.disconnectLeftClickButtons()
-        self.uncheckLeftClickButtons(self.whitelistIDsButton)
-        self.connectLeftClickButtons()
+        self.whitelistIDsUpdateText()        
         
     def whitelistIDsChanged(self, whitelistIDs):
         posData = self.data[self.pos_i]
