@@ -7513,7 +7513,6 @@ class guiWin(QMainWindow):
                     self.delROImovingFinished(self.polyLineRoi)
         
         elif left_click and canKeep:
-            # Right click is passed earlier to gui_mousePressImg2
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
@@ -24581,7 +24580,6 @@ class guiWin(QMainWindow):
                 return True
             
         action = self.warnEditingWithAnnotActions.get(editTxt, None)
-        printl(action, update_images)
         if action is not None:
             if not action.isChecked():
                 if update_images:
