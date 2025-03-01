@@ -9815,10 +9815,11 @@ class WhitelistIDsToolbar(ToolBar):
             Use the "Eye" button to view the non-whitelisted segmentation masks.<br>
             This will allow you to correct tracking errors, add new IDs to the 
             white list, etc.<br><br>
+            
             If you previously saved the whitelisted masks, you can load the 
             non-whitelisted file<br>
             by clicking on the "Load file" button to restart from where you 
-            left last time.<br><br>
+            left last time.
         """
         )
         msg.information(self, 'White list IDs', txt)
