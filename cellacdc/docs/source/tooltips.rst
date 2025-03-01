@@ -219,6 +219,12 @@
     :height: 16px
     :width: 16px
 
+.. |whitelistIDsButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/whitelist.svg
+    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/whitelist.svg
+    :alt: whitelistIDsButton icon
+    :height: 16px
+    :width: 16px
+
 .. |binCellButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/bin.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/bin.svg
     :alt: binCellButton icon
@@ -423,7 +429,8 @@ Edit tools: Segmentation and tracking
 * **Manual bud separation (** |separateBudButton| **"S"):** Separate mother-bud fused together or separate objects that have the same ID. Right-click to attempt automatic separation or Shift+right-click to skip automatic attemp and go straight to manual mode.
 * **Merge IDs (** |mergeIDsButton| **"M"):** Merge/fuse two objects together. 
     * Usage: right-click on one of the two objects, keep the button clicked and release on the second object to merge (drag-and-drop).
-* **Select object masks to keep (** |keepIDsButton| **"K"):** Select the objects to keep. Press "Enter" to confirm selection or "Esc" to clear the selection. After confirming, all the NON selected objects will be deleted. Right- or left-click on objects to keep.
+* **Select objects to keep (** |keepIDsButton| **"K"):** Select the objects to keep. Press "Enter" to confirm selection or "Esc" to clear the selection. After confirming, all the NON selected objects will be deleted. Left-click on objects to keep.
+* **Select objects to add to the tracking whitelist (** |whitelistIDsButton| **"Ctr+K"):** Select objects to add to a tracking whitelist. Only objects in this list will be kept and tracked over time. You can add additional objects to the list an any point in time. Left-click on objects to add them to the whitelist.
 * **Remove object from analysis (** |binCellButton| **):** Annotate that a cell is removed from downstream analysis. ``is_cell_excluded`` set to ``True`` in ``acdc_output.csv`` table. Done by right-clicking.
 * **Annotate cell as dead (** |ripCellButton| **"D"):** Annotate that a cell is dead. ``is_cell_dead`` set to ``True`` in ``acdc_output.csv`` table.
 * **Add deletion ROI (** |addDelRoiAction| **):** Add resizable rectangle. Every ID touched by the rectangle will be automatically deleted. Moving and resizing the rectangle will restore deleted IDs if they are not touched by it anymore. To delete rectangle ``right-click on it --> remove``.
