@@ -9719,65 +9719,60 @@ class WhitelistIDsToolbar(ToolBar):
     def __init__(self, *args) -> None:
         super().__init__(*args)
 
-        # add the ID text field
-        instructionsText = (
-            'More info -->'
-        )
-        instructionsLabel = QLabel(instructionsText)
+        whiteListLineEditLabel = QLabel('Whitelist IDs: ')
+        self.addWidget(whiteListLineEditLabel)
+        
         self.whiteListLineEdit = WhiteListLineEdit(
-            instructionsLabel, parent=self
+            whiteListLineEditLabel, parent=self
         )
         self.whiteListLineEdit.sigIDsChanged.connect(self.emitWhitelistChanged)
         self.addWidget(self.whiteListLineEdit)
-        self.addWidget(instructionsLabel)
-
-        # add an info button
-        self.infoButton = infoPushButton()
-        self.infoButton.clicked.connect(self.showInfo)
-        self.addWidget(self.infoButton)
-
 
         # accept button
-        self.acceptButton = QPushButton('Accept')
-        self.acceptButton.clicked.connect(self.accept)
-        self.addWidget(self.acceptButton)
+        self.acceptButton = self.addButton(':greenTick.svg')
+        self.acceptButton.triggered.connect(self.accept)
 
         # add a view OG toggle
-        self.viewOGToggle = Toggle()
+        self.viewOGToggle = self.addButton(':eye.svg', checkable=True)
         viewOGTooltip = (
-            'View the original lab to add new IDs to the whitelist'
+            'View the non-whitelisted segmentation mask.\n\n'
+            'You can activate this to add new IDs to the whitelist,\n'
+            'correct tracking errors, etc.'
         )
         self.viewOGToggle.setChecked(True)
         self.viewOGToggle.setToolTip(viewOGTooltip)
-        viewOGLabel = QLabel('View og segm.')
-        viewOGLabel.setToolTip(viewOGTooltip)
-        self.addWidget(self.viewOGToggle)
-        self.addWidget(viewOGLabel)
+        self.viewOGToggle.setShortcut('Shift+K')
+        key = 'View the non-whitelisted segmentation mask'
+        self.widgetsWithShortcut[key] = self.viewOGToggle
+        
         self.viewOGToggle.toggled.connect(self.emitViewOGIDs)
         self.emitViewOGIDs(True)
-        self.viewOGToggle.setCheckable(False)
 
         # add a Toggle to add new IDs
-        self.addNewIDToggle = Toggle()
-        addNewIDTooltip = (
-            'If new IDs should be added to the whitelist automatically'
+        self.addNewIDToggle = QCheckBox(
+            'Automatically add new IDs to whitelist'
         )
         self.addNewIDToggle.setChecked(True)
-        self.addNewIDToggle.setToolTip(addNewIDTooltip)
-        addNewIDsLabel = QLabel('Add new IDs')
-        addNewIDsLabel.setToolTip(addNewIDTooltip)
         self.addWidget(self.addNewIDToggle)
-        self.addWidget(addNewIDsLabel)
         self.addNewIDToggle.toggled.connect(self.emitAddNewIDs)
         self.emitAddNewIDs(True)
+        
+        self.addSeparator()
 
         # add a button to load og df
-        self.loadOGButton = QPushButton('Load OG')
-        self.addWidget(self.loadOGButton)
-        self.loadOGButton.clicked.connect(self.sigLoadOGLabs.emit)
-        self.loadOGButton.setToolTip('Load the original lab, overwrites the current original')
+        self.loadOGButton = self.addButton(':open_file.svg')
+        self.loadOGButton.triggered.connect(self.sigLoadOGLabs.emit)
+        self.loadOGButton.setToolTip(
+            'Select which segmentation mask file to load '
+            'as the non-whitelisted masks'
+        )
 
+        self.addSeparator()
 
+        # add an info button
+        self.infoButton = self.addButton(':info.svg')
+        self.infoButton.triggered.connect(self.showInfo)
+        
         # add a spacer to the toolbar
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
@@ -9805,9 +9800,25 @@ class WhitelistIDsToolbar(ToolBar):
 
     def showInfo(self):
         msg = myMessageBox(wrapText=False)
-        txt = html_utils.paragraph(
-            """Left click on cells to select them. 
-            Separate IDs by comma. 
-            Use a dash to denote a range of IDs"""
+        txt = html_utils.paragraph("""
+            This function is used to track a subset of segmented objects.<br><br>
+            
+            To add new IDs to the white list, click with left mouse button on the 
+            object to add.<br>
+            You can also write directly into the <code>Whitelist IDs</code> widget<br>
+            and separate the IDs by commas.<br><br>
+            
+            After adding the IDs, click on the "Accept" button to remove the 
+            non-whitelisted objects.<br>
+            Every time you visit a new frame, the non-whitelisted objects will 
+            be removed automatically.<br><br>
+            Use the "Eye" button to view the non-whitelisted segmentation masks.<br>
+            This will allow you to correct tracking errors, add new IDs to the 
+            white list, etc.<br><br>
+            If you previously saved the whitelisted masks, you can load the 
+            non-whitelisted file<br>
+            by clicking on the "Load file" button to restart from where you 
+            left last time.<br><br>
+        """
         )
         msg.information(self, 'White list IDs', txt)

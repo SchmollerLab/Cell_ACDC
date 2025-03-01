@@ -2390,16 +2390,9 @@ class guiWin(QMainWindow):
         self.secondLevelToolbar = secondLevelToolbar
         self.secondLevelToolbar.setVisible(False)
 
-        self.whitelistIDsToolbar = widgets.WhitelistIDsToolbar(
-            self
-        )
-
+        self.whitelistIDsToolbar = widgets.WhitelistIDsToolbar(self)
         for name, action in self.whitelistIDsToolbar.widgetsWithShortcut.items():
             self.widgetsWithShortcut[name] = action
-
-        # self.whitelistIDsToolbar.sigCopyAllObjects.connect(
-        #     self.copyAllLostObjects
-        # )
         
         self.addToolBar(Qt.TopToolBarArea, self.whitelistIDsToolbar)
         self.whitelistIDsToolbar.setVisible(False)
