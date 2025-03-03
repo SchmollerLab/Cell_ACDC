@@ -2841,7 +2841,7 @@ class loadData:
             if allData_list is None:
                 IDs = {obj.label for obj in skimage.measure.regionprops(self.segm_data[frame_i])} 
             else:
-                IDs = allData_list[frame_i]['IDs']
+                IDs = set(allData_list[frame_i]['IDs'])
                 
             self.originalLabsIDs[frame_i] = IDs
             self.originalLabs[frame_i] = self.segm_data[frame_i].copy()

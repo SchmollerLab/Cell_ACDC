@@ -12204,6 +12204,8 @@ class guiWin(QMainWindow):
 
     def nearest_nonzero(self, a, y, x):
         r, c = np.nonzero(a)
+        if r.size == 0:
+            return None
         dist = ((r - y)**2 + (c - x)**2)
         min_idx = dist.argmin()
         return a[r[min_idx], c[min_idx]]
@@ -13060,8 +13062,8 @@ class guiWin(QMainWindow):
         if self.navigateScrollBar.maximum() != frame_i and not ignore_not_first_time:
             return
 
-        IDs_curr_og_lab =  posData.originalLabsIDs[frame_i]
-        IDs_prev_og_lab =  posData.originalLabsIDs[frame_i-1]
+        IDs_curr_og_lab = posData.originalLabsIDs[frame_i]
+        IDs_prev_og_lab = posData.originalLabsIDs[frame_i-1]
 
         new_IDs = IDs_curr_og_lab - IDs_prev_og_lab
 
