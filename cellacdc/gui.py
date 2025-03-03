@@ -13221,7 +13221,7 @@ class guiWin(QMainWindow):
         else:
             possible_IDs = posData.originalLabsIDs[posData.frame_i]
             curr_lab = posData.lab
-            curr_IDs = {obj.label for obj in skimage.measure.regionprops(curr_lab)}
+            curr_IDs = [obj.label for obj in skimage.measure.regionprops(curr_lab)]
             possible_IDs.update(curr_IDs)
         
         
@@ -17335,7 +17335,6 @@ class guiWin(QMainWindow):
             create_new_segm=self.isNewFile,
             new_endname=self.newSegmEndName,
             end_filename_segm=selectedSegmEndName,
-            load_whitelistIDs=True
         )
         self.selectedSegmEndName = selectedSegmEndName
         self.labelBoolSegm = posData.labelBoolSegm
@@ -18145,6 +18144,8 @@ class guiWin(QMainWindow):
         self.viewAllCustomAnnotAction.setChecked(True)
 
         self.updateImageValueFormatter()
+
+        posData.loadWhitelist(allData_list=posData.allData_li)
 
         self.setFocusGraphics()
         self.setFocusMain()

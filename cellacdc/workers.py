@@ -2190,7 +2190,6 @@ class loadDataWorker(QObject):
                 create_new_segm=self.mainWin.isNewFile,
                 new_endname=self.mainWin.newSegmEndName,
                 labelBoolSegm=self.mainWin.labelBoolSegm,
-                load_whitelistIDs=True
             )
             posData.labelSegmData()
 

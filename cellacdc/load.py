@@ -2820,7 +2820,7 @@ class loadData:
                 return
             
             self.loadTrackedLostCentroids()
-    def loadWhitelist(self):
+    def loadWhitelist(self, allData_list=None):
         whitelist_path = self.segm_npz_path.replace('.npz', '_whitelistIDs.json')
         if not os.path.exists(whitelist_path):
             self.whitelistIDs = None
@@ -2836,9 +2836,16 @@ class loadData:
         self.whitelistIDs = wl_processed
 
         self.originalLabsIDs = {frame_i: set() for frame_i in range(self.SizeT)}
+        self.originalLabs = dict()
         for frame_i in range(self.SizeT): # maybe better way to get IDs?
-            IDs = {obj.label for obj in skimage.measure.regionprops(self.segm_data[frame_i])}
+            if allData_list is None:
+                IDs = {obj.label for obj in skimage.measure.regionprops(self.segm_data[frame_i])} 
+            else:
+                IDs = allData_list[frame_i]['IDs']
+                
             self.originalLabsIDs[frame_i] = IDs
+            self.originalLabs[frame_i] = self.segm_data[frame_i].copy()
+
 
 class select_exp_folder:
     def __init__(self):
