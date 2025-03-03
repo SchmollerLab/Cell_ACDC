@@ -533,6 +533,7 @@ class saveDataWorker(QObject):
         df_shape = (len(stored_df), len(all_columns))
         data = np.zeros(df_shape)
         df = pd.DataFrame(data=data, index=stored_df.index, columns=all_columns)
+        df = df.loc[:, ~df.columns.duplicated()].copy()
         df = df.combine_first(stored_df)
 
         # Check if z-slice is present for 3D z-stack data
