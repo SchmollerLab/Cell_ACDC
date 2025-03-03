@@ -533,7 +533,7 @@ class saveDataWorker(QObject):
         df_shape = (len(stored_df), len(all_columns))
         data = np.zeros(df_shape)
         df = pd.DataFrame(data=data, index=stored_df.index, columns=all_columns)
-        df = df.loc[:, ~df.columns.duplicated()].copy()
+        # df = df.loc[:, ~df.columns.duplicated()].copy()
         df = df.combine_first(stored_df)
 
         # Check if z-slice is present for 3D z-stack data
@@ -877,7 +877,7 @@ class saveDataWorker(QObject):
                 if skipUserChannel:
                     add_user_channel_data = False
 
-            if add_user_channel_data:
+            if add_user_channel_data and not self.saveOnlySegm:
                 posData.fluo_data_dict[posData.filename] = posData.img_data
 
             posData.fluo_bkgrData_dict[posData.filename] = posData.bkgrData
@@ -14006,7 +14006,7 @@ class guiWin(QMainWindow):
             return
         
         if ev.key() == Qt.Key_Q and self.debug:
-            printl(np.nonzero(self.lostObjContoursImage))
+            posData = self.data[self.pos_i]
             pass
         
         if not self.isDataLoaded:
