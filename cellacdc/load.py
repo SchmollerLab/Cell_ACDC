@@ -1172,8 +1172,8 @@ class loadData:
         loadedChNames = []
         for key in fluo_keys:
             chName = key[len(self.basename):]
-            aligned_idx = chName.find('_aligned')
-            if aligned_idx != -1:
+            if chName.endswith('_aligned'):
+                aligned_idx = chName.find('_aligned')
                 chName = chName[:aligned_idx]
             loadedChNames.append(chName)
 
