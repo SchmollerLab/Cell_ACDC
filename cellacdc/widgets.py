@@ -954,6 +954,7 @@ class ValidLineEdit(QLineEdit):
 class KeepIDsLineEdit(ValidLineEdit):
     sigIDsChanged = Signal(list)
     sigSort = Signal()
+    sigEnterPressed = Signal()
 
     def __init__(self, instructionsLabel, parent=None):
         super().__init__(parent)
@@ -972,6 +973,8 @@ class KeepIDsLineEdit(ValidLineEdit):
         super().keyPressEvent(event)
         if event.text() == ',':
             self.sigSort.emit()
+        elif event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter:
+            self.sigEnterPressed.emit()
     
     def onTextChanged(self, text):
         IDs = []
@@ -9725,6 +9728,7 @@ class WhitelistIDsToolbar(ToolBar):
         self.whiteListLineEdit = WhiteListLineEdit(
             whiteListLineEditLabel, parent=self
         )
+        self.whiteListLineEdit.sigEnterPressed.connect(self.accept)
         self.whiteListLineEdit.sigIDsChanged.connect(self.emitWhitelistChanged)
         self.addWidget(self.whiteListLineEdit)
 

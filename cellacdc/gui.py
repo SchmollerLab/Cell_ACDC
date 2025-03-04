@@ -2264,6 +2264,7 @@ class guiWin(QMainWindow):
         self.keepIDsToolbar.setVisible(False)
         self.controlToolBars.append(self.keepIDsToolbar)
 
+        self.keptIDsLineEdit.sigEnterPressed.connect(self.applyKeepObjects)
         self.keptIDsLineEdit.sigIDsChanged.connect(self.updateKeepIDs)
         self.keepIDsConfirmAction.triggered.connect(self.applyKeepObjects)
         
@@ -7561,23 +7562,32 @@ class guiWin(QMainWindow):
             posData = self.data[self.pos_i]
 
             if posData.whitelistIDs is None:
+                wl_init = False
                 if not hasattr(self, 'tempWhitelistIDs'):
                     self.tempWhitelistIDs = set() # not updated, only use in this context
-                    curr_whitelist = self.tempWhitelistIDs
+                    current_whitelist = self.tempWhitelistIDs
                 else:
-                    curr_whitelist = self.tempWhitelistIDs
+                    current_whitelist = self.tempWhitelistIDs
             else:
-                curr_whitelist = posData.whitelistIDs[posData.frame_i]
-            if ID in curr_whitelist:
-                curr_whitelist.remove(ID)
-                self.clearHighlightedText()
+                wl_init = True
+                current_whitelist = posData.whitelistIDs[posData.frame_i]
+
+            if ID in current_whitelist:
+                current_whitelist.remove(ID)
+                self.removeHighlightLabelID(IDs=[ID])
             else:
-                curr_whitelist.add(ID)
+                current_whitelist.add(ID)
                 self.highlightLabelID(ID)
             
             self.whitelistIDsToolbar.whiteListLineEdit.setText(
-                curr_whitelist
+                current_whitelist
             )
+            
+            if wl_init:
+                posData.whitelistIDs[posData.frame_i] = current_whitelist
+            else:
+                self.tempWhitelistIDs = current_whitelist
+
             self.updateTempLayerWhitelistIDs()
 
         elif right_click and copyContourON:
@@ -13073,6 +13083,9 @@ class guiWin(QMainWindow):
         self.whitelistIDsUpdateText()
 
     def whitelistIDsAccepted(self, whitelistIDs):
+        # Store undo state before modifying stuff
+        self.storeUndoRedoStates(False)
+
         self.whitelistIDsToolbar.viewOGToggle.setCheckable(True)
 
         self.setViewOGIDsToggle(False)
@@ -13108,6 +13121,7 @@ class guiWin(QMainWindow):
                 posData.whitelistIDs[frame_i] = posData.whitelistIDs[frame_i] - removed_IDs
 
         self.updateLabWhitelistIDs()
+        self.keepIDsTempLayerLeft.clear()
 
     def updateLabWhitelistIDs(self, frame_i=None): # this should also work for 3D i think...
         mode = self.modeComboBox.currentText()
@@ -13198,16 +13212,22 @@ class guiWin(QMainWindow):
 
     def whitelistIDs_cb(self, checked):
         if checked:
+            self.initKeepObjLabelsLayers()
             self.disconnectLeftClickButtons()
             self.uncheckLeftClickButtons(self.whitelistIDsButton)
             self.connectLeftClickButtons()
             
         self.whitelistIDsToolbar.setVisible(checked)
-        self.whitelistIDsUpdateText()        
+        self.highlightWhitelistIDs(checked)
+        self.whitelistIDsUpdateText()
+        self.updateTempLayerWhitelistIDs()
+
+    def highlightWhitelistIDs(self, remove=True):
+        if not remove:
+            self.removeHighlightLabelID()
+            return
         
-    def whitelistIDsChanged(self, whitelistIDs):
         posData = self.data[self.pos_i]
-        self.clearHighlightedText()
 
         if posData.whitelistIDs is None:
             if not hasattr(self, 'tempWhitelistIDs'):
@@ -13217,31 +13237,53 @@ class guiWin(QMainWindow):
                 current_whitelist = self.tempWhitelistIDs
         else:
             current_whitelist = posData.whitelistIDs[posData.frame_i]
+        
+        for ID in current_whitelist:
+            self.highlightLabelID(ID)
+        
+    def whitelistIDsChanged(self, whitelistIDs):
+        posData = self.data[self.pos_i]
+        if posData.whitelistIDs is None:
+            wl_init = False
+            if not hasattr(self, 'tempWhitelistIDs'):
+                self.tempWhitelistIDs = set() # not updated, only use in this context
+                current_whitelist = self.tempWhitelistIDs
+            else:
+                current_whitelist = self.tempWhitelistIDs
+        else:
+            wl_init = True
+            current_whitelist = posData.whitelistIDs[posData.frame_i]
 
-        if not hasattr(posData, 'originalLabsIDs'):
-            possible_IDs = posData.allIDs
+        current_whitelist_copy = current_whitelist.copy()
+        if not hasattr(posData, 'originalLabsIDs') or posData.originalLabsIDs is None:
+            possible_IDs = posData.allData_li[posData.frame_i]['IDs']
         else:
             possible_IDs = posData.originalLabsIDs[posData.frame_i]
             curr_lab = posData.lab
             curr_IDs = [obj.label for obj in skimage.measure.regionprops(curr_lab)]
             possible_IDs.update(curr_IDs)
-        
-        
+
         isAnyIDnotExisting = False
         for ID in whitelistIDs:
             if ID not in possible_IDs:
                 isAnyIDnotExisting = True
                 continue
-            if ID not in current_whitelist:
+            if ID not in current_whitelist_copy:
                 current_whitelist.add(ID)
                 self.highlightLabelID(ID)
 
-        for ID in whitelistIDs:
+        for ID in current_whitelist_copy:
             if ID not in possible_IDs:
                 isAnyIDnotExisting = True
                 continue
             if ID not in whitelistIDs:
                 current_whitelist.remove(ID)
+                self.removeHighlightLabelID(IDs=[ID])
+
+        if wl_init:
+            posData.whitelistIDs[posData.frame_i] = current_whitelist
+        else:
+            self.tempWhitelistIDs = current_whitelist
 
         self.updateTempLayerWhitelistIDs()
         if isAnyIDnotExisting:
@@ -13250,14 +13292,24 @@ class guiWin(QMainWindow):
             self.whitelistIDsToolbar.whiteListLineEdit.setInstructionsText()
 
     def updateTempLayerWhitelistIDs(self):
-        if not self.keepIDsButton.isChecked():
+        if not self.whitelistIDsButton.isChecked():
+            self.keepIDsTempLayerLeft.clear()
             return
 
         keptLab = np.zeros_like(self.currentLab2D)
 
         posData = self.data[self.pos_i]
+        if posData.whitelistIDs is None:
+            if not hasattr(self, 'tempWhitelistIDs'):
+                self.tempWhitelistIDs = set() # not updated, only use in this context
+                current_whitelist = self.tempWhitelistIDs
+            else:
+                current_whitelist = self.tempWhitelistIDs
+        else:
+            current_whitelist = posData.whitelistIDs[posData.frame_i]
+
         for obj in posData.rp:
-            if obj.label not in self.keptObjectsIDs:
+            if obj.label not in current_whitelist:
                 continue
 
             if not self.isObjVisible(obj.bbox):
@@ -14526,6 +14578,9 @@ class guiWin(QMainWindow):
         if not self.UndoCount < len(posData.UndoRedoStates[posData.frame_i])-1:
             # We have undone all available states
             self.undoAction.setEnabled(False)
+        
+        if self.whitelistIDsButton.isChecked():
+            self.highlightWhitelistIDs()
 
     def redo(self):
         posData = self.data[self.pos_i]
@@ -14544,6 +14599,9 @@ class guiWin(QMainWindow):
         if not self.UndoCount > 0:
             # We have redone all available states
             self.redoAction.setEnabled(False)
+
+        if self.whitelistIDsButton.isChecked():
+            self.highlightWhitelistIDs()
 
     def realTimeTrackingClicked(self, checked):
         # Event called ONLY if the user click on Disable tracking
@@ -21643,6 +21701,15 @@ class guiWin(QMainWindow):
     
     def clearHighlightedText(self):
         pass
+
+    def removeHighlightLabelID(self, IDs=None, ax=0):
+        posData = self.data[self.pos_i]
+        if IDs is None:
+            IDs = posData.IDs
+        
+        for ID in IDs:
+            obj = posData.rp[posData.IDs_idxs[ID]]
+            self.textAnnot[ax].removeHighlightObject(obj)
     
     def updateKeepIDs(self, IDs):
         posData = self.data[self.pos_i]
