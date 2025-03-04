@@ -6627,7 +6627,10 @@ class guiWin(QMainWindow):
 
         if event.isExit():
             self.resetCursor()
-
+            
+        if not event.isExit() and self.slideshowWin is not None:
+            self.slideshowWin.setMirroredCursorPos(*event.pos())
+        
         # Alt key was released --> restore cursor
         modifiers = QGuiApplication.keyboardModifiers()
         cursorsInfo = self.gui_setCursor(modifiers, event)
@@ -12748,7 +12751,8 @@ class guiWin(QMainWindow):
                 parent=self,
                 button_toUncheck=self.slideshowButton,
                 linkWindow=posData.SizeT > 1,
-                enableOverlay=True
+                enableOverlay=True, 
+                enableMirroredCursor=True
             )
             self.slideshowWin.img.minMaxValuesMapper = (
                 self.img1.minMaxValuesMapper
@@ -12758,6 +12762,9 @@ class guiWin(QMainWindow):
             self.slideshowWin.framesScrollBar.setFixedHeight(h)
             self.slideshowWin.overlayButton.setChecked(
                 self.overlayButton.isChecked()
+            )
+            self.slideshowWin.sigHoveringImage.connect(
+                self.setMirroredCursorFromSecondWindow
             )
             if posData.SizeZ > 1:
                 z_slice = self.zSliceScrollBar.sliderPosition()
@@ -12773,6 +12780,16 @@ class guiWin(QMainWindow):
         else:
             self.slideshowWin.close()
             self.slideshowWin = None
+    
+    def setMirroredCursorFromSecondWindow(self, x, y):
+        if x is None:
+            xx, yy = [], []
+        else:
+            xx, yy = [x], [y]
+        self.ax1_cursor.setData(xx, yy)
+        if not self.isTwoImageLayout:
+            return
+        self.ax2_cursor.setData(xx, yy)
     
     def goToZsliceSearchedID(self, obj):
         if not self.isSegm3D:
@@ -23888,6 +23905,7 @@ class guiWin(QMainWindow):
             pass
     
     def setTwoImagesLayout(self, isTwoImages):
+        self.isTwoImageLayout = isTwoImages
         if isTwoImages:
             self.graphLayout.removeItem(self.titleLabel)
             self.graphLayout.addItem(self.titleLabel, row=0, col=1, colspan=2)

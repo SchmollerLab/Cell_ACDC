@@ -6607,17 +6607,19 @@ class PostProcessSegmDialog(QBaseDialog):
 class imageViewer(QMainWindow):
     """Main Window."""
     sigClosed = Signal()
+    sigHoveringImage = Signal(object, object)
 
     def __init__(
             self, parent=None, posData=None, button_toUncheck=None,
             spinBox=None, linkWindow=None, enableOverlay=False,
-            isSigleFrame=False
+            isSigleFrame=False, enableMirroredCursor=False
         ):
         self.button_toUncheck = button_toUncheck
         self.parent = parent
         self.posData = posData
         self.spinBox = spinBox
         self.linkWindow = linkWindow
+        self.enableMirroredCursor = enableMirroredCursor
         self.isSigleFrame = isSigleFrame
         self.minMaxValuesMapper = None
         """Initializer."""
@@ -6642,6 +6644,8 @@ class imageViewer(QMainWindow):
         self.gui_connectActions()
 
         self.gui_setSingleFrameMode(self.isSigleFrame)
+        
+        self.setupMirroredCursor()
 
         mainContainer = QWidget()
         self.setCentralWidget(mainContainer)
@@ -6704,7 +6708,21 @@ class imageViewer(QMainWindow):
             self.linkWindowCheckbox = QCheckBox("Link to main GUI")
             self.linkWindowCheckbox.setChecked(True)
             editToolBar.addWidget(self.linkWindowCheckbox)
+        
+        if self.enableMirroredCursor:
+            self.showMirroredCursorCheckbox = QCheckBox(
+                'Show mirrored cursor from main window'
+            )
+            self.showMirroredCursorCheckbox.setChecked(True)
+            editToolBar.addWidget(self.showMirroredCursorCheckbox)
 
+    def setupMirroredCursor(self):
+        self.cursor = pg.ScatterPlotItem(
+            symbol='+', pxMode=True, pen=pg.mkPen('k', width=1),
+            brush=pg.mkBrush('w'), size=16, tip=None
+        )
+        self.Plot.addItem(self.cursor)
+    
     def gui_connectActions(self):
         self.exitAction.triggered.connect(self.close)
         self.prevAction.triggered.connect(self.prev_frame)
@@ -6933,6 +6951,15 @@ class imageViewer(QMainWindow):
         alphaScrollBar = self.addAlphaScrollbar(channelName, imageItem)
         return imageItem, lutItem, alphaScrollBar
     
+    def setMirroredCursorPos(self, x, y):
+        if not self.enableMirroredCursor:
+            return
+        
+        if not self.showMirroredCursorCheckbox.isChecked():
+            return
+
+        self.cursor.setData([x], [y])
+        
     def setOverlayColors(self):
         self.overlayRGBs = [
             (255, 255, 0),
@@ -7147,6 +7174,18 @@ class imageViewer(QMainWindow):
                 self.wcLabel.setText(f'')
         except Exception as e:
             self.wcLabel.setText(f'')
+        
+        emitHovering = (
+            self.enableMirroredCursor and 
+            self.showMirroredCursorCheckbox.isChecked()
+        )
+        if emitHovering:
+            if event.isExit():
+                x, y = None, None
+            else:
+                x, y = event.pos()
+            self.sigHoveringImage.emit(x, y)
+            self.cursor.setData([], [])
 
     def next_frame(self):
         if self.frame_i < self.num_frames-1:
