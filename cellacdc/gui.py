@@ -6143,7 +6143,7 @@ class guiWin(QMainWindow):
         yy, xx = movingObj.coords[:,-2], movingObj.coords[:,-1]
         self.currentLab2D[yy, xx] = 0
 
-    def dragLabel(self, xPos, yPos):
+    def moveLabel(self, xPos, yPos):
         posData = self.data[self.pos_i]
         lab_2D = self.get_2Dlab(posData.lab)
         Y, X = lab_2D.shape
@@ -6324,7 +6324,7 @@ class guiWin(QMainWindow):
         # Move label dragging mouse --> keep moving
         elif self.isMovingLabel and self.moveLabelToolButton.isChecked():
             x, y = event.pos().x(), event.pos().y()
-            self.dragLabel(x, y)
+            self.moveLabel(x, y)
 
         # Wand dragging mouse --> keep doing the magic
         elif self.isMouseDragImg1 and self.wandToolButton.isChecked():
@@ -7138,7 +7138,7 @@ class guiWin(QMainWindow):
         # Move label dragging mouse --> keep moving
         elif self.isMovingLabel and self.moveLabelToolButton.isChecked():
             x, y = event.pos().x(), event.pos().y()
-            self.dragLabel(x, y)
+            self.moveLabel(x, y)
 
     @exception_handler
     def gui_mouseReleaseEventImg2(self, event):
@@ -12655,7 +12655,7 @@ class guiWin(QMainWindow):
             self.reconnectUndoRedo()
             self.setEnabledSnapshotMode()
             self.doCustomAnnotation(0)
-            self.computeAllContours()
+            self.clearComputedContours()
         elif mode == 'Normal division: Lineage tree': # Mode activation for lineage tree
             # self.startLinTreeIntegrityCheckerWorker() # need to replace (postponed)
             proceed = self.initLinTree()
@@ -18880,7 +18880,7 @@ class guiWin(QMainWindow):
         self.updatePreprocessPreview()
         self.updateCombineChannelsPreview()
         self.highlightedID = self.getHighlightedID()
-        self.updateAllImages(computePointsLayers=False)
+        self.updateAllImages(computePointsLayers=False, computeContours=False)
 
     def updateOverlayZslice(self, z):
         self.setOverlayImages()
@@ -23366,7 +23366,7 @@ class guiWin(QMainWindow):
         self.textAnnot[1].initItem((Y, X))  
     
     def getObjContours(
-            self, obj, all_external=False, local=False, force_calc=False
+            self, obj, all_external=False, local=False, force_calc=True
         ):
         posData = self.data[self.pos_i]
         dataDict = posData.allData_li[posData.frame_i]
@@ -24884,7 +24884,12 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         if alpha is None:
             alpha = self.imgGrad.labelsAlphaSlider.value()
-        self.highlightedLab[:] = 0
+        
+        if not hasattr(self, 'highlightedLab'):
+            self.highlightedLab = np.zeros_like(self.currentLab2D)
+        else:
+            self.highlightedLab[:] = 0
+            
         lut = np.zeros((2, 4), dtype=np.uint8)
         for _obj in posData.rp:
             if not self.isObjVisible(_obj.bbox):
@@ -25305,7 +25310,7 @@ class guiWin(QMainWindow):
                 continue
             self.manualBackgroundTextItems[obj.label] = textItem
     
-    def updateContoursImage(self, ax, delROIsIDs=None):
+    def updateContoursImage(self, ax, delROIsIDs=None, compute=True):
         imageItem = self.getContoursImageItem(ax)
         if imageItem is None:
             return
@@ -25317,7 +25322,9 @@ class guiWin(QMainWindow):
             
         contours = []
         for obj in skimage.measure.regionprops(self.currentLab2D):    
-            obj_contours = self.getObjContours(obj, all_external=True)  
+            obj_contours = self.getObjContours(
+                obj, all_external=True, force_calc=compute
+            )  
             contours.extend(obj_contours)
 
         thickness = self.contLineWeight
@@ -25615,9 +25622,11 @@ class guiWin(QMainWindow):
         self.textAnnot[1].update()
         return delROIsIDs
     
-    def setAllContoursImages(self, delROIsIDs=None):
-        self.updateContoursImage(ax=0, delROIsIDs=delROIsIDs)
-        self.updateContoursImage(ax=1, delROIsIDs=delROIsIDs)
+    def setAllContoursImages(self, delROIsIDs=None, compute=True):
+        if compute:
+            self.computeAllContours()
+        self.updateContoursImage(ax=0, delROIsIDs=delROIsIDs, compute=compute)
+        self.updateContoursImage(ax=1, delROIsIDs=delROIsIDs, compute=compute)
 
     def setAllLostObjContoursImage(self, delROIsIDs=None):
         self.updateLostContoursImage(ax=0, delROIsIDs=None)
@@ -25745,7 +25754,7 @@ class guiWin(QMainWindow):
     # @exec_time
     @exception_handler
     def updateAllImages(
-            self, image=None, computePointsLayers=True
+            self, image=None, computePointsLayers=True, computeContours=True
         ):
         self.clearAllItems()
 
@@ -25773,7 +25782,9 @@ class guiWin(QMainWindow):
 
         # Annotate ID and draw contours
         delROIsIDs = self.setAllTextAnnotations()    
-        self.setAllContoursImages(delROIsIDs=delROIsIDs)
+        self.setAllContoursImages(
+            delROIsIDs=delROIsIDs, compute=False
+        )
 
         mode = self.modeComboBox.currentText()
         self.drawAllMothBudLines()
