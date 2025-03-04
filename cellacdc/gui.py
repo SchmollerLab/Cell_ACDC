@@ -13102,13 +13102,13 @@ class guiWin(QMainWindow):
             posData.originalLabsIDs = dict()
             for frame_i in total_frames:
                 try:
-                    posData.originalLabs[frame_i] = posData.allData_li[frame_i]['labels'].copy()
-                    posData.originalLabsIDs[frame_i] = set(posData.allData_li[frame_i]['IDs'])
+                    lab = posData.allData_li[frame_i]['labels'].copy()
+                    posData.originalLabs[frame_i] = lab
+                    posData.originalLabsIDs[frame_i] = {obj.label for obj in skimage.measure.regionprops(lab)}
                 except AttributeError:
                     lab = posData.segm_data[frame_i].copy()
-                    IDs = [obj.label for obj in skimage.measure.regionprops(lab)]
                     posData.originalLabs[frame_i] = lab
-                    posData.originalLabsIDs[frame_i] = set(IDs)
+                    posData.originalLabsIDs[frame_i] = {obj.label for obj in skimage.measure.regionprops(lab)}
 
         whitelistIDs = set(whitelistIDs)
         old_whitelistIDs = posData.whitelistIDs[posData.frame_i]
@@ -13116,7 +13116,7 @@ class guiWin(QMainWindow):
         for frame_i in total_frames:
             IDs_og = posData.originalLabsIDs[frame_i]
             overlapping_ID = whitelistIDs.intersection(IDs_og)
-            posData.whitelistIDs[frame_i] = posData.whitelistIDs[frame_i].union(overlapping_ID)
+            posData.whitelistIDs[frame_i] = posData.whitelistIDs[frame_i] | overlapping_ID
             if removed_IDs:
                 posData.whitelistIDs[frame_i] = posData.whitelistIDs[frame_i] - removed_IDs
 

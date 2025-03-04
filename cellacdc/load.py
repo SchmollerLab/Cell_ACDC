@@ -2838,11 +2838,7 @@ class loadData:
         self.originalLabsIDs = {frame_i: set() for frame_i in range(self.SizeT)}
         self.originalLabs = dict()
         for frame_i in range(self.SizeT): # maybe better way to get IDs?
-            if allData_list is None:
-                IDs = {obj.label for obj in skimage.measure.regionprops(self.segm_data[frame_i])} 
-            else:
-                IDs = set(allData_list[frame_i]['IDs'])
-                
+            IDs = {obj.label for obj in skimage.measure.regionprops(self.segm_data[frame_i])} 
             self.originalLabsIDs[frame_i] = IDs
             self.originalLabs[frame_i] = self.segm_data[frame_i].copy()
 
