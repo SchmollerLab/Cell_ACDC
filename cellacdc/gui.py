@@ -12335,16 +12335,6 @@ class guiWin(QMainWindow):
             ID for ID in curr_IDs if ID not in prev_IDs 
             and ID not in curr_delRoiIDs
         ]
-        # IDs_with_holes = [
-        #     obj.label for obj in posData.rp if obj.area/obj.filled_area < 1
-        # ]
-        mode = self.modeComboBox.currentText()
-        # if mode == 'Segmentation and Tracking' and posData.whitelistIDs and update_whitelist:
-        #     printl('here')
-        #     posData.whitelistIDs[posData.frame_i].update(new_IDs)
-        #     self.whitelistIDsUpdate()
-        #     self.whitelistPropageteIDs(new_IDs)
-
         IDs_with_holes = []
         posData.lost_IDs = lost_IDs
         posData.new_IDs = new_IDs
@@ -12354,7 +12344,6 @@ class guiWin(QMainWindow):
         out = (
             lost_IDs, new_IDs, IDs_with_holes, tracked_lost_IDs, curr_delRoiIDs
         )
-        
         return out
     
     def copyAllLostObjectsWorkerCallback(
@@ -13076,11 +13065,7 @@ class guiWin(QMainWindow):
         IDs_prev_og_lab = posData.originalLabsIDs[frame_i-1]
 
         new_IDs = IDs_curr_og_lab - IDs_prev_og_lab
-
-        whitelist = posData.whitelistIDs[frame_i]
-        whitelist.update(new_IDs)
-        self.whitelistIDsAccepted(whitelist)
-        self.whitelistIDsUpdateText()
+        self.whitelistIDsPropagate(IDs_to_add=new_IDs)
 
     def whitelistIDsAccepted(self, whitelistIDs):
         # Store undo state before modifying stuff
@@ -13110,15 +13095,7 @@ class guiWin(QMainWindow):
                     posData.originalLabs[frame_i] = lab
                     posData.originalLabsIDs[frame_i] = {obj.label for obj in skimage.measure.regionprops(lab)}
 
-        whitelistIDs = set(whitelistIDs)
-        old_whitelistIDs = posData.whitelistIDs[posData.frame_i]
-        removed_IDs = old_whitelistIDs - whitelistIDs
-        for frame_i in total_frames:
-            IDs_og = posData.originalLabsIDs[frame_i]
-            overlapping_ID = whitelistIDs.intersection(IDs_og)
-            posData.whitelistIDs[frame_i] = posData.whitelistIDs[frame_i] | overlapping_ID
-            if removed_IDs:
-                posData.whitelistIDs[frame_i] = posData.whitelistIDs[frame_i] - removed_IDs
+        self.whitelistIDsPropagate(new_whitelist=whitelistIDs, try_create_new_whitelists=True)
 
         self.updateLabWhitelistIDs()
         self.keepIDsTempLayerLeft.clear()
@@ -13135,7 +13112,6 @@ class guiWin(QMainWindow):
         else:
             og_frame_i = posData.frame_i
             posData.frame_i = frame_i
-            self.get_data()
 
         if posData.whitelistIDs is None:
             return
@@ -13190,25 +13166,82 @@ class guiWin(QMainWindow):
         whitelist.update(IDs)
 
         self.whitelistIDsToolbar.whiteListLineEdit.setText(whitelist)
-
-    def whitelistPropageteIDs(self, IDs):
-        self.get_data()
+    
+    def whitelistIDsPropagate(self, new_whitelist=None, IDs_to_add=None, IDs_to_remove=None, frame_i=None, try_create_new_whitelists=False):
+        #doesnt update the frame displayed, only wl
         posData = self.data[self.pos_i]
-        if posData.whitelistIDs is None:
+        if posData.originalLabs is None:
             return
+    
+        if frame_i is None:
+            frame_i = posData.frame_i
         
-        IDs = set(IDs)
-        frame_i = posData.frame_i
-        whitelist = posData.whitelistIDs[frame_i]
-        whitelist.update(IDs)
+        if new_whitelist and (IDs_to_add is not None or IDs_to_remove is not None):
+            raise ValueError('Cannot provide both new_whitelist and IDs_to_add or IDs_to_remove')
+        elif IDs_to_add is not None or IDs_to_remove is not None:
+            if not IDs_to_add and not IDs_to_remove:
+                return
+            if not IDs_to_add:
+                IDs_to_add = set()
+            if not IDs_to_remove:
+                IDs_to_remove = set()
+            
+ 
+        elif new_whitelist is not None:
+            new_whitelist = set(new_whitelist)
+            try:
+                old_whitelistIDs = posData.whitelistIDs[frame_i]
+            except Exception as e:
+                if not try_create_new_whitelists:
+                    raise e
+                elif e == KeyError:
+                    old_whitelistIDs = set()
+                elif e == TypeError:
+                    old_whitelistIDs = set()
+                else:
+                    raise e
+            IDs_to_remove = old_whitelistIDs - new_whitelist
+            IDs_to_add = new_whitelist - old_whitelistIDs
 
-        all_frames = range(len(posData.segm_data))
-        for i in all_frames:
-            acc_IDs = IDs.intersection(posData.originalLabsIDs[i])
-            posData.whitelistIDs[i].update(acc_IDs)
-            acc_IDs =  IDs.intersection(posData.allData_li[i]['IDs'])
-            posData.whitelistIDs[i].update(acc_IDs)
-        self.store_data(autosave=False)
+            if not IDs_to_add and not IDs_to_remove:
+                return
+        else:
+            raise ValueError('Either new_whitelist or IDs_to_add or IDs_to_remove must be provided')
+        
+        
+
+        total_frames = range(len(posData.segm_data))
+        for i in total_frames:
+            IDs_og = posData.originalLabsIDs[i]
+            try:
+                IDs_curr = set(posData.allData_li[i]['IDs'])
+            except KeyError:
+                IDs_curr = set()
+            if not IDs_curr:
+                IDs_curr = {obj.label for obj in skimage.measure.regionprops(posData.segm_data[i])}
+        
+            possible_IDs = IDs_curr.union(IDs_og)
+            overlapping__new_IDs = IDs_to_add.intersection(possible_IDs)
+
+            try:
+                old_whitelistIDs = posData.whitelistIDs[i]
+            except Exception as e:
+                if not try_create_new_whitelists:
+                    raise e
+                elif e == KeyError:
+                    old_whitelistIDs = set()
+                elif e == TypeError:
+                    old_whitelistIDs = set()
+                else:
+                    raise e
+            if old_whitelistIDs is None:
+                old_whitelistIDs = set()
+
+            posData.whitelistIDs[i] = overlapping__new_IDs | old_whitelistIDs
+            posData.whitelistIDs[i] = posData.whitelistIDs[i] - IDs_to_remove
+
+        self.whitelistIDsUpdateText()
+
 
     def whitelistIDs_cb(self, checked):
         if checked:
@@ -19471,7 +19504,6 @@ class guiWin(QMainWindow):
             return
 
         self.lin_tree_ask_changes()
-
         posData.allData_li[posData.frame_i]['regionprops'] = posData.rp.copy()
         posData.allData_li[posData.frame_i]['labels'] = posData.lab.copy()
         posData.allData_li[posData.frame_i]['IDs'] = posData.IDs.copy()
@@ -19534,7 +19566,8 @@ class guiWin(QMainWindow):
                 acdc_df['z_centroid'] = zz_centroid
             acdc_df['was_manually_edited'] = areManuallyEdited
             posData.allData_li[posData.frame_i]['acdc_df'] = acdc_df
-    
+
+        
         self.pointsLayerDataToDf(posData)
         self.store_cca_df(
             pos_i=pos_i, mainThread=mainThread, autosave=autosave, 
@@ -21583,6 +21616,9 @@ class guiWin(QMainWindow):
     def update_rp(self, draw=True, debug=False, update_IDs=True):
         posData = self.data[self.pos_i]
         # Update rp for current posData.lab (e.g. after any change)
+
+        old_IDs =  posData.allData_li[posData.frame_i]['IDs'].copy() # for whitelist stuff
+
         posData.rp = skimage.measure.regionprops(posData.lab)
         if update_IDs:
             IDs = []
@@ -21594,6 +21630,12 @@ class guiWin(QMainWindow):
             posData.IDs_idxs = IDs_idxs
         self.update_rp_metadata(draw=draw)        
         self.store_zslices_rp(force_update=True)
+
+        new_IDs = posData.IDs
+
+        added_IDs = set(new_IDs) - set(old_IDs)
+        removed_IDs = set(old_IDs) - set(new_IDs)
+        self.whitelistIDsPropagate(IDs_to_add=added_IDs, IDs_to_remove=removed_IDs)
 
     def extendLabelsLUT(self, lenNewLut):
         posData = self.data[self.pos_i]
