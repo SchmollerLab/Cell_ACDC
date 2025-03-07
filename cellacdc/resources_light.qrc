@@ -151,6 +151,7 @@
     <file alias="warning.svg">resources/icons/warning.svg</file>
     <file alias="crop.svg">resources/icons/crop.svg</file>
     <file alias="cropZ.svg">resources/icons/cropZ.svg</file>
+    <file alias="cropT.svg">resources/icons/cropT.svg</file>
     <file alias="exit.png">resources/icons/exit.png</file>
     <file alias="tune.svg">resources/icons/tune.svg</file>
     <file alias="addPlotSpots.svg">resources/icons/addPlotSpots.svg</file>

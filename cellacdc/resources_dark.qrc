@@ -148,6 +148,7 @@
     <file alias="warning.svg">resources/icons/warning_dark.svg</file>
     <file alias="crop.svg">resources/icons/crop_dark.svg</file>
     <file alias="cropZ.svg">resources/icons/cropZ_dark.svg</file>
+    <file alias="cropT.svg">resources/icons/cropT_dark.svg</file>
     <file alias="tune.svg">resources/icons/tune_dark.svg</file>
     <file alias="addPlotSpots.svg">resources/icons/addPlotSpots_dark.svg</file>
     <file alias="compute.svg">resources/icons/compute_dark.svg</file>

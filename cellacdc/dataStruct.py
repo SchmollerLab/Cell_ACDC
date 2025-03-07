@@ -630,10 +630,20 @@ class bioFormatsWorker(QObject):
         )
         filePath = os.path.join(images_path, filename)
         dimsIdx = {'c': ch_idx} 
+        numFrames = len(framesRange)
+        num_imgs = numFrames*SizeZ
+        pbar = tqdm(
+            total=num_imgs, 
+            ncols=100, 
+            desc=f'Reading image (z 0/{SizeZ}, t 0/{numFrames})'
+        )
         for t in framesRange:
             imgData_z = []
             dimsIdx['t'] = t
             for z in range(SizeZ):
+                pbar.set_description(
+                    f'Reading image (z {z+1}/{SizeZ}, t {t+1}/{numFrames})'
+                )
                 dimsIdx['z'] = z
                 if self.rawDataStruct != 2:
                     idx = self.getIndex(idxs, dimsIdx, self.DimensionOrder)
@@ -647,13 +657,15 @@ class bioFormatsWorker(QObject):
                     imgData_ch[t, z] = imgData
                 else:
                     imgData_z.append(imgData)
+                
+                pbar.update()
 
             if not self.to_h5:
                 imgData_z = np.squeeze(np.array(imgData_z, dtype=imgData.dtype))
                 imgData_ch.append(imgData_z)
-
+        pbar.close()
+        
         if not self.to_h5:
-            
             imgData_ch = np.squeeze(np.array(imgData_ch, dtype=imgData.dtype))
             myutils.to_tiff(
                 filePath, imgData_ch, 

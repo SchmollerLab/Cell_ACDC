@@ -1,5 +1,6 @@
 import os
 
+from .. import printl
 from . import install, EXTENSION_PACKAGE_MAPPER
 
 def set_reader(image_filepath, **kwargs):

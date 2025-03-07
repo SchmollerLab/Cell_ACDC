@@ -5629,8 +5629,8 @@ class QCropZtool(QBaseDialog):
         self.lowerZscrollbar.label = QLabel(f'{s}/{SizeZ}')
 
         self.upperZscrollbar = QScrollBar(Qt.Horizontal)
-        self.upperZscrollbar.setValue(SizeZ-1)
         self.upperZscrollbar.setMaximum(SizeZ-1)
+        self.upperZscrollbar.setValue(SizeZ-1)
         self.upperZscrollbar.label = QLabel(f'{SizeZ}/{SizeZ}')
 
         cancelButton = widgets.cancelPushButton('Cancel')
@@ -16429,3 +16429,114 @@ class CombineChannelsSetupDialogGUI(CombineChannelsSetupDialog):
         
         keep_input_dtype = self.keepInputDataTypeToggle.isChecked()
         return steps, keep_input_dtype # why does this not work???s 
+
+class QCropTrangeTool(QBaseDialog):
+    sigClose = Signal()
+    sigTvalueChanged = Signal(int)
+    sigReset = Signal()
+    sigCrop = Signal(int, int)
+
+    def __init__(
+            self, SizeT, 
+            cropButtonText='Apply crop', 
+            parent=None, 
+            addDoNotShowAgain=False, 
+            title='Select frames range'
+        ):
+        super().__init__(parent)
+
+        self.cancel = True
+
+        self.setWindowFlags(Qt.Tool | Qt.WindowStaysOnTopHint)
+
+        self.SizeT = SizeT
+        self.numDigits = len(str(self.SizeT))
+
+        self.setWindowTitle(title)
+
+        layout = QGridLayout()
+        buttonsLayout = QHBoxLayout()
+
+        self.startFrameScrollbar = QScrollBar(Qt.Horizontal)
+        self.startFrameScrollbar.setMaximum(SizeT-1)
+        t = str(1).zfill(self.numDigits)
+        self.startFrameScrollbar.label = QLabel(f'{t}/{SizeT}')
+
+        self.endFrameScrollbar = QScrollBar(Qt.Horizontal)
+        self.endFrameScrollbar.setMaximum(SizeT-1)
+        self.endFrameScrollbar.setValue(SizeT-1)
+        self.endFrameScrollbar.label = QLabel(f'{SizeT}/{SizeT}')
+
+        cancelButton = widgets.cancelPushButton('Cancel')
+        cropButton = widgets.okPushButton(cropButtonText)
+        buttonsLayout.addWidget(cropButton)
+        buttonsLayout.addWidget(cancelButton)
+
+        row = 0
+        layout.addWidget(
+            QLabel('Start frame n.  '), row, 0, alignment=Qt.AlignRight
+        )
+        layout.addWidget(
+            self.startFrameScrollbar.label, row, 1, alignment=Qt.AlignRight
+        )
+        layout.addWidget(self.startFrameScrollbar, row, 2)
+
+        row += 1
+        layout.setRowStretch(row, 5)
+
+        row += 1
+        layout.addWidget(
+            QLabel('Stop frame n. '), row, 0, alignment=Qt.AlignRight
+        )
+        layout.addWidget(
+            self.endFrameScrollbar.label, row, 1, alignment=Qt.AlignRight
+        )
+        layout.addWidget(self.endFrameScrollbar, row, 2)
+
+        row += 1
+        if addDoNotShowAgain:
+            self.doNotShowAgainCheckbox = QCheckBox('Do not ask again')
+            layout.addWidget(
+                self.doNotShowAgainCheckbox, row, 2, alignment=Qt.AlignLeft
+            )
+            row += 1
+
+        layout.addLayout(buttonsLayout, row, 2, alignment=Qt.AlignRight)
+
+        layout.setColumnStretch(0, 0)
+        layout.setColumnStretch(1, 0)
+        layout.setColumnStretch(2, 10)
+
+        self.setLayout(layout)
+
+        # resetButton.clicked.connect(self.emitReset)
+        cropButton.clicked.connect(self.emitCrop)
+        cancelButton.clicked.connect(self.close)
+        self.startFrameScrollbar.valueChanged.connect(self.TvalueChanged)
+        self.endFrameScrollbar.valueChanged.connect(self.TvalueChanged)
+
+    def emitReset(self):
+        self.sigReset.emit()
+
+    def emitCrop(self):
+        self.cancel = False
+        low_z = self.startFrameScrollbar.value()
+        high_z = self.endFrameScrollbar.value()
+        self.sigCrop.emit(low_z, high_z)
+        self.close()
+
+    def updateScrollbars(self, start_frame_i, lower_frame_i):
+        self.startFrameScrollbar.setValue(start_frame_i)
+        self.endFrameScrollbar.setValue(lower_frame_i)
+
+    def TvalueChanged(self, value):
+        t = str(value+1).zfill(self.numDigits)
+        self.sender().label.setText(f'{t}/{self.SizeT}')
+        self.sigTvalueChanged.emit(value)
+
+    def showEvent(self, event):
+        self.resize(int(self.width()*1.5), self.height())
+
+    def closeEvent(self, event):
+        super().closeEvent(event)
+        self.sigClose.emit()

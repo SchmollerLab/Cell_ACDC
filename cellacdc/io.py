@@ -109,11 +109,11 @@ def save_image_data(filepath, img_data):
         myutils.to_tiff(filepath, img_data)
     return np.squeeze(img_data)
 
-def savez_compressed(filepath, data, safe=True):
+def savez_compressed(filepath, *args, safe=True, **kwargs):
     if not os.path.exists(filepath):
-        np.savez_compressed(filepath, data)
+        np.savez_compressed(filepath, *args, **kwargs)
         return
     
     temp_filepath = filepath.replace('.npz', '.new.npz')
-    np.savez_compressed(temp_filepath, data)
+    np.savez_compressed(temp_filepath, *args, **kwargs)
     os.replace(temp_filepath, filepath)

@@ -251,6 +251,20 @@ class dataPrepWin(QMainWindow):
         self.cropZaction.setEnabled(False)
         self.cropZaction.setCheckable(True)
         
+        self.cropTaction = QAction(
+            QIcon(":cropT.svg"), "Crop frames (time points)", self
+        )
+        self.cropTaction.setToolTip(
+            'Crop a specified time range.\n\n'
+            'If the button is disabled you need to click on the Start button '
+            'first.\n\n'
+            'USAGE: Click this button, adjust the start and end frame numbers '
+            'and click on "Apply crop" to activate the save button.\n\n'
+            'To save the cropped data click the Save button.'
+        )
+        self.cropTaction.setEnabled(False)
+        self.cropTaction.setCheckable(True)
+        
         self.saveAction = QAction(
             QIcon(":file-save.svg"), "Crop and save", self)
         self.saveAction.setEnabled(False)
@@ -297,6 +311,7 @@ class dataPrepWin(QMainWindow):
         fileToolBar.addAction(self.startAction)
         fileToolBar.addAction(self.cropAction)
         fileToolBar.addAction(self.cropZaction)
+        fileToolBar.addAction(self.cropTaction)
         fileToolBar.addAction(self.saveAction)
 
         navigateToolbar = QToolBar("Navigate", self)
@@ -339,6 +354,7 @@ class dataPrepWin(QMainWindow):
         self.cropAction.triggered.connect(self.applyCropYX)
         self.saveAction.triggered.connect(self.saveActionTriggered)
         self.cropZaction.toggled.connect(self.openCropZtool)
+        self.cropTaction.toggled.connect(self.openCropTtool)
         self.startAction.triggered.connect(self.prepData)
         self.interpAction.triggered.connect(self.interp_z)
         self.ZbackAction.triggered.connect(self.useSameZ_fromHereBack)
@@ -674,6 +690,8 @@ class dataPrepWin(QMainWindow):
         self.navigateScrollbar.valueChanged.connect(
             self.navigateScrollbarValueChanged
         )
+        self.startFrameIdxCrop = 0
+        self.endFrameIdxCrop = None
 
     def navigateScrollbarValueChanged(self, value):
         if self.num_pos > 1:
@@ -715,6 +733,12 @@ class dataPrepWin(QMainWindow):
             elif croppedData.ndim == 3:
                 croppedData = croppedData[lower_z:upper_z+1]
             SizeZ = (upper_z-lower_z)+1
+        
+        if posData.SizeT > 1:
+            croppedData = croppedData[
+                self.startFrameIdxCrop:self.endFrameIdxCrop
+            ]
+        
         return croppedData, SizeZ
 
     def saveBkgrROIs(self, posData):
@@ -1232,14 +1256,12 @@ class dataPrepWin(QMainWindow):
     def openCropZtool(self, checked):
         posData = self.data[self.pos_i]
         if checked:
-            self.zSliceToRestore = self.zSliceScrollBar.value()
             self.cropZtool = apps.QCropZtool(posData.SizeZ, parent=self)
             self.cropZtool.sigClose.connect(self.cropZtoolClosed)
             self.cropZtool.sigZvalueChanged.connect(self.cropZtoolvalueChanged)
             self.cropZtool.sigCrop.connect(self.applyCropZslices)
             self.cropZtool.show()
         else:
-            self.zSliceToRestore = None
             self.cropZtool.close()
             self.cropZtool = None
             # Restore original z-slice
@@ -1248,6 +1270,18 @@ class dataPrepWin(QMainWindow):
             z = posData.segmInfo_df.at[idx, 'z_slice_used_dataPrep']
             self.zSliceScrollBar.setValue(z)
 
+    def openCropTtool(self, checked):
+        posData = self.data[self.pos_i]
+        if checked:
+            self.cropTtool = apps.QCropTrangeTool(posData.SizeT, parent=self)
+            self.cropTtool.sigClose.connect(self.cropTtoolClosed)
+            self.cropTtool.sigTvalueChanged.connect(self.cropTtoolvalueChanged)
+            self.cropTtool.sigCrop.connect(self.applyCropTrange)
+            self.cropTtool.show()
+        else:
+            self.cropZtool.close()
+            self.cropZtool = None
+    
     def cropZtoolvalueChanged(self, whichZ, z):
         self.zSliceScrollBar.valueChanged.disconnect()
         self.zSliceScrollBar.setValue(z)
@@ -1292,6 +1326,43 @@ class dataPrepWin(QMainWindow):
         self.cropZaction.toggled.disconnect()
         self.cropZaction.setChecked(False)
         self.cropZaction.toggled.connect(self.openCropZtool)
+    
+    def cropTtoolClosed(self):
+        self.cropTtool = None
+        self.cropTaction.toggled.disconnect()
+        self.cropTaction.setChecked(False)
+        self.cropTaction.toggled.connect(self.openCropTtool)
+    
+    def cropTtoolvalueChanged(self, frame_i):
+        self.navigateScrollbar.setValue(frame_i+1)
+    
+    def applyCropTrange(self, start_frame_i, end_frame_i):
+        self.startFrameIdxCrop = start_frame_i
+        self.endFrameIdxCrop = end_frame_i + 1
+        self.logger.info(
+            f'Previewing cropped frames ({start_frame_i+1},{end_frame_i+1})...'
+        )
+        for posData in self.data:
+            posData.img_data[:start_frame_i] = 0
+            posData.img_data[end_frame_i+1:] = 0
+        
+        self.update_img()
+        note_text = (
+            f'Done. Frames outside of the range ({start_frame_i+1},{end_frame_i+1}) '
+            'will appear black now. To save cropped data, click on the "Save" '
+            'button on the top toolbar.'
+        )
+        self.logger.info(note_text)
+        
+        txt = html_utils.paragraph(f"""
+            Cropping frames applied.<br><br>
+            Note that this is just a preview where the frames outside of the 
+            range ({start_frame_i+1},{end_frame_i+1}) will look black.<br><br>
+            <b>To save cropped data</b>, click on the <code>Save cropped data</code> 
+            button on the top toolbar.
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.information(self, 'Preview cropped frames', txt)
 
     def getCroppedData(self, askCropping=True):
         for p, posData in enumerate(self.data):
@@ -1484,12 +1555,17 @@ class dataPrepWin(QMainWindow):
         self.cropAction.setEnabled(enabled)
         self.cropZaction.setEnabled(enabled)
         self.saveAction.setEnabled(enabled)
+        self.cropTaction.setEnabled(enabled)
+        
         if not hasattr(self, 'data'):
             return
         
         posData = self.data[self.pos_i]
         if posData.SizeZ == 1:
             self.cropZaction.setEnabled(False)
+        
+        if posData.SizeT == 1:
+            self.cropTaction.setEnabled(False)
     
     def removeAllHandles(self, roi):
         for handle in roi.handles:
