@@ -2476,7 +2476,7 @@ class SegmKernel(_WorkflowKernel):
                 # Since tracker could raise errors we save the not-tracked 
                 # version which will eventually be overwritten
                 self.logger_func(f'Saving NON-tracked masks of {posData.relPath}...')
-                np.savez_compressed(posData.segm_npz_path, lab_stack)
+                io.savez_compressed(posData.segm_npz_path, lab_stack)
 
             self.signals.innerPbar_available = self.innerPbar_available
             self.track_params['signals'] = self.signals
@@ -2527,7 +2527,7 @@ class SegmKernel(_WorkflowKernel):
 
         if self.do_save:
             self.logger_func(f'Saving {posData.relPath}...')
-            np.savez_compressed(posData.segm_npz_path, tracked_stack)
+            io.savez_compressed(posData.segm_npz_path, tracked_stack)
 
         t_end = time.perf_counter()
 

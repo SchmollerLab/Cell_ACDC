@@ -2,6 +2,7 @@ import skimage
 import numpy as np
 from ...core import segm_model_segment, post_process_segm
 from ...features import custom_post_process_segm
+from ... import io
 
 import os # for dbug
 import json # for dbug
@@ -298,7 +299,7 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID,
         for i in range(start_i, end_i):
             IDs, bbox, box_model_lab, box_prev_lab, box_final_lab = bboxs_for_debug[i - start_i]
             npz_path = os.path.join(npz_filepath, f"{frame_i}_{i}.npz")
-            np.savez_compressed(npz_path, box_model_lab=box_model_lab, box_prev_lab=box_prev_lab, box_final_lab=box_final_lab)
+            io.savez_compressed(npz_path, box_model_lab=box_model_lab, box_prev_lab=box_prev_lab, box_final_lab=box_final_lab)
             bboxs_info.append([IDs, bbox, npz_path])
             
         loaded_dict[frame_i] = bboxs_info

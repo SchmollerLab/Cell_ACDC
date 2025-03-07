@@ -119,9 +119,16 @@ class bioFormatsWorker(QObject):
             sampleSizeZ = 20
         else:
             sampleSizeZ = SizeZ
+        
+        allChannelsData = None
         with bioformats.ImageReader(rawFilePath) as reader:
             permut_pbar = tqdm(total=6, ncols=100)
             for dimsOrd in permutations('zct', 3):
+                if allChannelsData is not None and self.bioformats_backend == 'bioio':
+                    sampleImgData[''.join(dimsOrd)] = allChannelsData
+                    permut_pbar.update(1)
+                    continue
+                
                 allChannelsData = []
                 idxs = self.buildIndexes(SizeC, SizeT, SizeZ, dimsOrd)
                 numIter = SizeC*sampleSizeT*sampleSizeZ
@@ -138,7 +145,7 @@ class bioFormatsWorker(QObject):
                             try:
                                 idx = self.getIndex(idxs, dimsIdx, dimsOrd)
                                 imgData = reader.read(
-                                    c=c, z=z, t=0, rescale=False, index=idx
+                                    c=c, z=z, t=t, rescale=False, index=idx
                                 )
                             except Exception as e:
                                 skipPermutation = True
@@ -411,64 +418,66 @@ class bioFormatsWorker(QObject):
             self.PhysicalSizeZ = PhysicalSizeZ
             # self.chNames = chNames
             self.emWavelens = emWavelens
-        else:
-            sampleImgData = None
-            while True:
-                self.mutex.lock()
-                if self.rawDataStruct != 2:
-                    sampleImgData = self.readSampleData(
-                        rawFilePath, SizeC, SizeT, SizeZ
-                    )
-                self.confirmMetadata.emit(
-                    filename, LensNA, DimensionOrder, SizeT, SizeZ, SizeC, SizeS,
-                    TimeIncrement, TimeIncrementUnit, PhysicalSizeX, PhysicalSizeY,
-                    PhysicalSizeZ, PhysicalSizeUnit, chNames, emWavelens, ImageName,
-                    rawFilePath, sampleImgData
+            return
+
+        sampleImgData = None
+        while True:
+            self.mutex.lock()
+            if self.rawDataStruct != 2:
+                sampleImgData = self.readSampleData(
+                    rawFilePath, SizeC, SizeT, SizeZ
                 )
-                self.waitCond.wait(self.mutex)
-                self.mutex.unlock()
-
-                if self.metadataWin.cancel:
-                    return True
-
-                if not self.metadataWin.requestedReadingSampleImageDataAgain:
-                    break
-                LensNA = self.metadataWin.LensNA
-                DimensionOrder = self.metadataWin.DimensionOrder
-                SizeT = self.metadataWin.SizeT
-                SizeZ = self.metadataWin.SizeZ
-                SizeC = self.metadataWin.SizeC
-                SizeS = self.metadataWin.SizeS
-                TimeIncrement = self.metadataWin.TimeIncrement
-                PhysicalSizeX = self.metadataWin.PhysicalSizeX
-                PhysicalSizeY = self.metadataWin.PhysicalSizeY
-                PhysicalSizeZ = self.metadataWin.PhysicalSizeZ
-                chNames = self.metadataWin.chNames
-                emWavelens = self.metadataWin.emWavelens
+            self.confirmMetadata.emit(
+                filename, LensNA, DimensionOrder, SizeT, SizeZ, SizeC, SizeS,
+                TimeIncrement, TimeIncrementUnit, PhysicalSizeX, PhysicalSizeY,
+                PhysicalSizeZ, PhysicalSizeUnit, chNames, emWavelens, ImageName,
+                rawFilePath, sampleImgData
+            )
+            self.waitCond.wait(self.mutex)
+            self.mutex.unlock()
 
             if self.metadataWin.cancel:
                 return True
-            elif self.metadataWin.overWrite:
-                self.overWriteMetadata = True
-            elif self.metadataWin.trust:
-                self.trustMetadataReader = True
 
-            self.to_h5 = self.metadataWin.to_h5
-            self.LensNA = self.metadataWin.LensNA
-            self.DimensionOrder = self.metadataWin.DimensionOrder
-            self.SizeT = self.metadataWin.SizeT
-            self.SizeZ = self.metadataWin.SizeZ
-            self.SizeC = self.metadataWin.SizeC
-            self.SizeS = self.metadataWin.SizeS
-            self.TimeIncrement = self.metadataWin.TimeIncrement
-            self.PhysicalSizeX = self.metadataWin.PhysicalSizeX
-            self.PhysicalSizeY = self.metadataWin.PhysicalSizeY
-            self.PhysicalSizeZ = self.metadataWin.PhysicalSizeZ
-            self.selectedPos = self.metadataWin.selectedPos
-            self.chNames = self.metadataWin.chNames
-            self.saveChannels = self.metadataWin.saveChannels
-            self.emWavelens = self.metadataWin.emWavelens
-            self.addImageName = self.metadataWin.addImageName
+            if not self.metadataWin.requestedReadingSampleImageDataAgain:
+                break
+            LensNA = self.metadataWin.LensNA
+            DimensionOrder = self.metadataWin.DimensionOrder
+            SizeT = self.metadataWin.SizeT
+            SizeZ = self.metadataWin.SizeZ
+            SizeC = self.metadataWin.SizeC
+            SizeS = self.metadataWin.SizeS
+            TimeIncrement = self.metadataWin.TimeIncrement
+            PhysicalSizeX = self.metadataWin.PhysicalSizeX
+            PhysicalSizeY = self.metadataWin.PhysicalSizeY
+            PhysicalSizeZ = self.metadataWin.PhysicalSizeZ
+            chNames = self.metadataWin.chNames
+            emWavelens = self.metadataWin.emWavelens
+
+        if self.metadataWin.cancel:
+            return True
+        elif self.metadataWin.overWrite:
+            self.overWriteMetadata = True
+        elif self.metadataWin.trust:
+            self.trustMetadataReader = True
+
+        self.to_h5 = self.metadataWin.to_h5
+        self.LensNA = self.metadataWin.LensNA
+        self.DimensionOrder = self.metadataWin.DimensionOrder
+        self.SizeT = self.metadataWin.SizeT
+        self.SizeZ = self.metadataWin.SizeZ
+        self.SizeC = self.metadataWin.SizeC
+        self.SizeS = self.metadataWin.SizeS
+        self.TimeIncrement = self.metadataWin.TimeIncrement
+        self.PhysicalSizeX = self.metadataWin.PhysicalSizeX
+        self.PhysicalSizeY = self.metadataWin.PhysicalSizeY
+        self.PhysicalSizeZ = self.metadataWin.PhysicalSizeZ
+        self.selectedPos = self.metadataWin.selectedPos
+        self.chNames = self.metadataWin.chNames
+        self.timeRangeToSave = self.metadataWin.timeRangeToSave
+        self.saveChannels = self.metadataWin.saveChannels
+        self.emWavelens = self.metadataWin.emWavelens
+        self.addImageName = self.metadataWin.addImageName
 
     def saveToPosFolder(
             self, p, raw_src_path, exp_dst_path, filename, series, p_idx=0
@@ -615,9 +624,13 @@ class bioFormatsWorker(QObject):
             )
             imgData_ch = []
 
+        framesRange = range(
+            self.timeRangeToSave[0]-1, 
+            self.timeRangeToSave[1]
+        )
         filePath = os.path.join(images_path, filename)
         dimsIdx = {'c': ch_idx} 
-        for t in range(self.SizeT):
+        for t in framesRange:
             imgData_z = []
             dimsIdx['t'] = t
             for z in range(SizeZ):

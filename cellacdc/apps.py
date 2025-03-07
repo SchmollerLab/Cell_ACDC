@@ -2618,6 +2618,15 @@ class QDialogMetadataXML(QDialog):
         entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
         entriesLayout.addWidget(self.SizeT_SB, row, 1)
         self.SizeT_SB.valueChanged.connect(self.hideShowTimeIncrement)
+        
+        row += 1
+        self.timeRangeToSaveWidget = widgets.RangeSelector(integers=True)
+        self.timeRangeToSaveWidget.setRange(1, SizeT)
+        txt = 'Time range to save:  '
+        label = QLabel(txt)
+        self.timeRangeToSaveWidget.label = label
+        entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
+        entriesLayout.addWidget(self.timeRangeToSaveWidget, row, 1)
 
         row += 1
         self.SizeZ_SB = QSpinBox()
@@ -2655,11 +2664,6 @@ class QDialogMetadataXML(QDialog):
         entriesLayout.addWidget(
             self.TimeIncrementUnit_CB, row, 2, alignment=Qt.AlignLeft
         )
-
-        if SizeT == 1:
-            self.TimeIncrement_DSB.hide()
-            self.TimeIncrementUnit_CB.hide()
-            self.TimeIncrement_Label.hide()
 
         row += 1
         self.PhysicalSizeX_DSB = QDoubleSpinBox()
@@ -2900,6 +2904,9 @@ class QDialogMetadataXML(QDialog):
             self.dimensionOrderChanged
         )
         DimensionOrderHelpButton.clicked.connect(self.dimensionOrderHelp)
+        
+        self.hideShowTimeIncrement(SizeT)
+        self.readSampleImgDataAgain = False
 
         self.setLayout(mainLayout)
         # self.setModal(True)
@@ -3082,15 +3089,25 @@ class QDialogMetadataXML(QDialog):
         return areChNamesValid
 
     def hideShowTimeIncrement(self, value):
+        if self.TimeIncrement_DSB.isVisible() and value == 1:
+            self.readSampleImgDataAgain = True
+        
+        if not self.TimeIncrement_DSB.isVisible() and value > 1:
+            self.readSampleImgDataAgain = True
+            
         if value > 1:
             self.TimeIncrement_DSB.show()
             self.TimeIncrementUnit_CB.show()
             self.TimeIncrement_Label.show()
+            self.timeRangeToSaveWidget.show()
+            self.timeRangeToSaveWidget.label.show()
+            self.timeRangeToSaveWidget.setRange(1, value)
         else:
             self.TimeIncrement_DSB.hide()
             self.TimeIncrementUnit_CB.hide()
             self.TimeIncrement_Label.hide()
-        self.readSampleImgDataAgain = True
+            self.timeRangeToSaveWidget.hide()
+            self.timeRangeToSaveWidget.label.hide()
 
     def hideShowPhysicalSizeZ(self, value):
         if value > 1:
@@ -3325,6 +3342,7 @@ class QDialogMetadataXML(QDialog):
         self.SizeZ = self.SizeZ_SB.value()
         self.SizeC = self.SizeC_SB.value()
         self.SizeS = self.SizeS_SB.value()
+        self.timeRangeToSave = self.timeRangeToSaveWidget.range()
         self.TimeIncrement = self.TimeIncrement_DSB.value()
         self.PhysicalSizeX = self.PhysicalSizeX_DSB.value()
         self.PhysicalSizeY = self.PhysicalSizeY_DSB.value()

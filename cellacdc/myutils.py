@@ -930,6 +930,7 @@ def listdir(path) -> List[str]:
         if not f.startswith('.')
         and not f == 'desktop.ini'
         and not f == 'recovery'
+        and not f.endswith('.new.npz')
     ])
 
 def insertModelArgSpect(

@@ -45,6 +45,7 @@ from . import html_utils, myutils, darkBkgrColor, printl
 from . import autopilot, workers
 from . import recentPaths_path
 from . import urls
+from . import io
 from .help import about
 
 if os.name == 'nt':
@@ -780,7 +781,7 @@ class dataPrepWin(QMainWindow):
                 self.logger.info(bkgr_data_path)
                 print('*********************************')
                 print('')
-                np.savez_compressed(bkgr_data_path, **bkgrROI_data)
+                io.savez_compressed(bkgr_data_path, **bkgrROI_data)
 
     def removeAllROIs(self, event):
         for posData in self.data:
@@ -896,7 +897,7 @@ class dataPrepWin(QMainWindow):
         if self.align:
             self.logger.info(f'Saving: {npz_path}')
             temp_npz = self.getTempfilePath(npz_path)
-            np.savez_compressed(temp_npz, cropped_data)
+            io.savez_compressed(temp_npz, cropped_data)
             self.moveTempFile(temp_npz, npz_path)
 
         self.logger.info(f'Saving: {tif_path}')
@@ -918,7 +919,7 @@ class dataPrepWin(QMainWindow):
         self.logger.info(f'Saving: {segm_npz_path}')
         croppedSegm, _ = self.crop(posData.segm_data, posData, cropROI)
         temp_npz = self.getTempfilePath(segm_npz_path)
-        np.savez_compressed(temp_npz, croppedSegm)
+        io.savez_compressed(temp_npz, croppedSegm)
         self.moveTempFile(temp_npz, segm_npz_path)
     
     def correctAcdcDfCrop(self, posData, acdc_output_csv_path, cropROI):

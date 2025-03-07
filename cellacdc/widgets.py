@@ -9564,15 +9564,19 @@ class FontSizeWidget(QWidget):
         return self.spinbox.value()
 
 class RangeSelector(QWidget):
-    sigRangeChanged = Signal(int, int)
+    sigRangeChanged = Signal(object, object)
     
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, integers=False):
         super().__init__(parent)
         
         layout = QHBoxLayout()
         
-        self.lowSpinbox = DoubleSpinBox()
-        self.highSpinbox = DoubleSpinBox()
+        if integers:
+            self.lowSpinbox = SpinBox()
+            self.highSpinbox = SpinBox()
+        else:
+            self.lowSpinbox = DoubleSpinBox()
+            self.highSpinbox = DoubleSpinBox()
         
         layout.addWidget(self.lowSpinbox)
         layout.addWidget(self.highSpinbox)

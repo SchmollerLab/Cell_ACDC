@@ -33,6 +33,7 @@ from .. import exception_handler, printl
 from .. import prompts, load, myutils, apps, load, widgets, html_utils
 from .. import workers
 from .. import cellacdc_path, recentPaths_path, settings_folderpath
+from .. import io
 
 from .. import qrc_resources
 
@@ -271,7 +272,7 @@ class convertFileFormatWin(QMainWindow):
         elif self.to == 'tif':
             myutils.to_tiff(newPath, data)
         elif self.to == 'npz':
-            np.savez_compressed(newPath, data)
+            io.savez_compressed(newPath, data)
         print('')
         print('-'*30)
         print(f'File "{filePath}" saved to "{newPath}"')

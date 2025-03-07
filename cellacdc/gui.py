@@ -71,7 +71,8 @@ from . import qrc_resources
 
 # Custom modules
 from . import exception_handler
-from . import base_cca_dict, lineage_tree_cols, lineage_tree_cols_std_val, graphLayoutBkgrColor, darkBkgrColor
+from . import base_cca_dict, lineage_tree_cols, lineage_tree_cols_std_val
+from . import graphLayoutBkgrColor, darkBkgrColor
 from . import cca_df_colnames
 from . import load, prompts, apps, workers, html_utils
 from . import core, myutils, dataPrep, widgets
@@ -88,6 +89,7 @@ from . import cca_functions
 from . import data_structure_docs_url
 from . import exporters
 from . import preprocess
+from . import io
 from .trackers.CellACDC import CellACDC_tracker
 from .cca_functions import _calc_rot_vol
 from .myutils import exec_time, setupLogger, ArgSpec
@@ -969,7 +971,7 @@ class saveDataWorker(QObject):
                 self.time_last_pbar_update = t
 
             # Save segmentation file
-            np.savez_compressed(segm_npz_path, np.squeeze(saved_segm_data))
+            io.savez_compressed(segm_npz_path, np.squeeze(saved_segm_data))
             posData.segm_data = saved_segm_data
             try:
                 os.remove(posData.segm_npz_temp_path)
@@ -17711,10 +17713,21 @@ class guiWin(QMainWindow):
         loadUnsavedButton = widgets.reloadPushButton('Recover unsaved data')
         loadSavedButton = widgets.savePushButton('Load saved data')
         infoButton = widgets.infoPushButton('More info...')
-        buttons = ('Cancel', loadSavedButton, loadUnsavedButton, infoButton)
+        loadSafeNpzButton = ''
+        if posData.isSafeNpzOverwritePresent():
+            loadSafeNpzButton = widgets.reloadPushButton(
+                'Load .safe.npz file from crash'
+            )
+            buttons = (
+                loadSavedButton, loadUnsavedButton, loadSafeNpzButton, 
+                infoButton
+            )
+        else:
+            buttons = (loadSavedButton, loadUnsavedButton, infoButton)
         msg.question(
             self.progressWin, 'Recover unsaved data?', txt, 
-            buttonsTexts=buttons, showDialog=False
+            buttonsTexts=('Cancel', *buttons), 
+            showDialog=False
         )
         infoButton.disconnect()
         infoButton.clicked.connect(partial(self.showInfoAutosave, posData))
@@ -17723,22 +17736,38 @@ class guiWin(QMainWindow):
             self.loadDataWorker.abort = True
         elif msg.clickedButton == loadUnsavedButton:
             self.loadDataWorker.loadUnsaved = True
+        elif msg.clickedButton == loadSafeNpzButton:
+            self.loadDataWorker.loadSafeOverwriteNpz = True
+            
         self.loadDataWorker.waitCond.wakeAll()
         # self.AutoPilotProfile.storeLoadSavedData()
     
     def showInfoAutosave(self, posData):
         msg = widgets.myMessageBox(showCentered=False, wrapText=False)
-        txt = html_utils.paragraph(f"""
-            Cell-ACDC detected unsaved data in a previous session and it stored 
-            it because the <b>Autosave</b><br>
-            function was active.<br><br>
+        txt = (f"""
+            Cell-ACDC either detected unsaved data in a previous session and it 
+            stored it because the <b>Autosave</b><br>
+            function was active, or it crashed during saving.<br><br>
             You can toggle Autosave ON and OFF from the menu on the top menubar 
-            <code>File --> Autosave</code>.<br><br>
-            You can find the recovered data in the following folder:<br><br>
-            <code>{posData.recoveryFolderPath}</code><br><br>
-            This folder <b>will be deleted when you save data the next time</b>.
+            <code>File --> Autosave</code>.
         """)
-        msg.information(self, 'Autosave info', txt)
+        txt = (f"""
+            {txt}<br><br>
+            If Cell-ACDC crashed during saving, the segmentation file ending 
+            with <code>.new.npz</code><br>
+            is present and you might be able to recover the data from there. 
+        """) 
+        
+        txt = (f"""
+            {txt}<br><br>
+            You can find additional recovered data in the following folder:
+        """)  
+        txt = html_utils.paragraph(txt)
+        msg.information(
+            self, 'Autosave info', txt, 
+            path_to_browse=posData.recoveryFolderPath, 
+            commands=(posData.recoveryFolderPath,)
+        )
     
     def askMismatchSegmDataShape(self, posData):
         msg = widgets.myMessageBox(wrapText=False)

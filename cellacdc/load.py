@@ -53,6 +53,7 @@ from . import models_path
 from . import tooltips_rst_filepath
 from . import cca_functions
 from . import sorted_cols
+from . import io
 
 acdc_df_bool_cols = [
     'is_cell_dead',
@@ -1521,7 +1522,7 @@ class loadData:
                 squeezed_arr = np.squeeze(self.segm_data)
                 if squeezed_arr.shape != self.segm_data.shape:
                     self.segm_data = squeezed_arr
-                    np.savez_compressed(filePath, squeezed_arr)
+                    io.savez_compressed(filePath, squeezed_arr)
             elif getTifPath and file.find(f'{self.user_ch_name}.tif')!=-1:
                 self.tif_path = filePath
                 self.TifPathFound = True
@@ -2045,7 +2046,7 @@ class loadData:
         if data is None:
             return 
         filepath = self.getManualBackgroudDataFilepath()
-        np.savez_compressed(filepath, data)
+        io.savez_compressed(filepath, data)
 
     def loadManualBackgroundData(self):
         filepath = self.getManualBackgroudDataFilepath()
@@ -2412,6 +2413,20 @@ class loadData:
             iso_key, ISO_TIMESTAMP_FORMAT
         )
         return most_recent_unsaved_acdc_df_datetime > acdc_df_mdatetime
+    
+    def isSafeNpzOverwritePresent(self):
+        if not hasattr(self, 'segm_npz_path'):
+            return False
+        
+        safe_npz_path = self.segm_npz_path.replace('.npz', '.new.npz')
+        return os.path.exists(safe_npz_path)
+    
+    def getSafeNpzOverwritePath(self):
+        if not hasattr(self, 'segm_npz_path'):
+            return
+        
+        safe_npz_path = self.segm_npz_path.replace('.npz', '.new.npz')
+        return safe_npz_path
     
     def recoveryFolderpath(self, create_if_missing=True):
         recovery_folder = os.path.join(self.images_path, 'recovery')

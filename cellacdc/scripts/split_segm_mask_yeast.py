@@ -9,6 +9,7 @@ import qtpy.compat
 from cellacdc import printl, myutils, apps, load, core, widgets
 from cellacdc._run import _setup_app
 from cellacdc.utils.base import NewThreadMultipleExpBaseUtil
+from cellacdc import io
 
 DEBUG = False
 
@@ -162,7 +163,7 @@ def run():
                 images_path, split_close_filename
             )
             
-            np.savez_compressed(split_close_filepath, split_segm_close)
+            io.savez_compressed(split_close_filepath, split_segm_close)
             
             
             split_away_filename = segm_data_to_split_fn.replace(
@@ -171,7 +172,7 @@ def run():
             split_away_filepath = os.path.join(
                 images_path, split_away_filename
             )
-            np.savez_compressed(split_away_filepath, split_segm_away)
+            io.savez_compressed(split_away_filepath, split_segm_away)
         pbar.update()
     
     pbar.close()
