@@ -9210,7 +9210,7 @@ class manualSeparateGui(QMainWindow):
         self.undoIdx = 0
         self.fontSize = fontSize
         self.AllCutsCoords = []
-        self.setWindowTitle("Cell-ACDC - Segm&Track")
+        self.setWindowTitle("Split object")
         # self.setGeometry(Left, Top, 850, 800)
 
         self.gui_createActions()

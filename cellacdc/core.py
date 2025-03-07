@@ -3446,7 +3446,7 @@ def split_connected_components(lab, rp=None, max_ID=None):
         _slice = obj.slice # self.getObjSlice(obj.slice)
         _objMask = obj.image # self.getObjImage(obj.image)
         lab[_slice][_objMask] = lab_obj[_objMask]
-        setRp = True
+        split_occured = True
         max_ID += 1
     return split_occured
 
@@ -3457,8 +3457,8 @@ def split_along_convexity_defects(
     # First try separating by labelling
     lab_ID = lab_ID_bool.astype(int)
     rp_ID = skimage.measure.regionprops(lab_ID)
-    setRp = split_connected_components(lab_ID, rp=rp_ID, max_ID=max_ID)
-    if setRp:
+    split_occured = split_connected_components(lab_ID, rp=rp_ID, max_ID=max_ID)
+    if split_occured:
         success = True
         lab[lab_ID_bool] = lab_ID[lab_ID_bool]
         rp_ID = skimage.measure.regionprops(lab_ID)

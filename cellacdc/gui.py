@@ -24754,7 +24754,6 @@ class guiWin(QMainWindow):
                 return True
             
         action = self.warnEditingWithAnnotActions.get(editTxt, None)
-        printl(action, update_images)
         if action is not None:
             if not action.isChecked():
                 if update_images:
