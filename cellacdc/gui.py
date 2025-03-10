@@ -20854,21 +20854,27 @@ class guiWin(QMainWindow):
                 Do you want to restart cell cycle analysis from frame 
                 {last_cca_frame_i+1}?<br>
             """)
-            _, yesButton, stayButton = msg.warning(
+            _, goToFrameButton, stayButton = msg.warning(
                 self, 'Go to last annotated frame?', txt, 
                 buttonsTexts=(
                     'Cancel', f'Yes, go to frame {last_cca_frame_i+1}', 
                     'No, stay on current frame')
             )
-            if yesButton == msg.clickedButton:
+            if goToFrameButton == msg.clickedButton:
+                self.addMissingIDs_cca_df(posData)
+                self.store_cca_df()
                 msg = 'Looking good!'
                 self.last_cca_frame_i = last_cca_frame_i
                 posData.frame_i = last_cca_frame_i
                 self.titleLabel.setText(msg, color=self.titleColor)
                 self.get_data()
+                self.addMissingIDs_cca_df(posData)
+                self.store_cca_df()
                 self.updateAllImages()
                 self.updateScrollbars()
             elif stayButton == msg.clickedButton:
+                self.addMissingIDs_cca_df(posData)
+                self.store_cca_df()
                 self.initMissingFramesCca(last_cca_frame_i, posData.frame_i)
                 last_cca_frame_i = posData.frame_i
                 msg = 'Cell cycle analysis initialised!'
@@ -20900,16 +20906,22 @@ class guiWin(QMainWindow):
                 proceed = False
                 return
             
+            self.addMissingIDs_cca_df(posData)
             if msg.clickedButton == yesButton:
+                self.addMissingIDs_cca_df(posData)
                 msg = 'Looking good!'
                 self.titleLabel.setText(msg, color=self.titleColor)
                 self.last_cca_frame_i = last_cca_frame_i
                 posData.frame_i = last_cca_frame_i
                 self.get_data()
+                self.addMissingIDs_cca_df(posData)
+                self.store_cca_df()
                 self.updateAllImages()
                 self.updateScrollbars()
         else:
             self.get_data()
+            self.addMissingIDs_cca_df(posData)
+            self.store_cca_df()
 
         self.last_cca_frame_i = last_cca_frame_i
 
@@ -21143,7 +21155,7 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         self.last_cca_frame_i = from_frame_i-1
         self.ccaCheckerStopChecking()
-            
+        
         self.setNavigateScrollBarMaximum() 
         for i in range(from_frame_i, posData.SizeT):
             posData.allData_li[i].pop('cca_df', None)
@@ -24559,6 +24571,10 @@ class guiWin(QMainWindow):
 
     def addMissingIDs_cca_df(self, posData):
         base_cca_df = self.getBaseCca_df()
+        if posData.cca_df is None:
+            posData.cca_df = base_cca_df
+            return
+        
         posData.cca_df = posData.cca_df.combine_first(base_cca_df)
 
     def update_cca_df_relabelling(self, posData, oldIDs, newIDs):
