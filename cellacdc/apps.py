@@ -7884,7 +7884,7 @@ class editCcaTableWidget(QDialog):
             genNumSpinBox.setMaximum(2147483647)
             genNumSpinBox.setAlignment(Qt.AlignCenter)
             genNumSpinBox.setFixedWidth(int(genNumColWidth*2/3))
-            genNumSpinBox.setValue(cca_df.at[ID, 'generation_num'])
+            genNumSpinBox.setValue(int(cca_df.at[ID, 'generation_num']))
             tableLayout.addWidget(genNumSpinBox, row+1, col, alignment=AC)
             self.genNumSpinBoxes.append(genNumSpinBox)
 
@@ -7893,7 +7893,9 @@ class editCcaTableWidget(QDialog):
             relationshipComboBox.setFocusPolicy(Qt.StrongFocus)
             relationshipComboBox.installEventFilter(self)
             relationshipComboBox.addItems(['mother', 'bud'])
-            relationshipComboBox.setCurrentText(cca_df.at[ID, 'relationship'])
+            relationshipComboBox.setCurrentText(
+                str(cca_df.at[ID, 'relationship'])
+            )
             tableLayout.addWidget(relationshipComboBox, row+1, col)
             self.relationshipComboBoxes.append(relationshipComboBox)
             relationshipComboBox.currentIndexChanged.connect(
@@ -7927,7 +7929,7 @@ class editCcaTableWidget(QDialog):
             divisFrameSpinBox.setValue(-1)
             divisFrameSpinBox.setAlignment(Qt.AlignCenter)
             divisFrameSpinBox.setFixedWidth(int(genNumColWidth*2/3))
-            divisFrame_i = cca_df.at[ID, 'division_frame_i']
+            divisFrame_i = int(cca_df.at[ID, 'division_frame_i'])
             val = divisFrame_i+1 if divisFrame_i>=0 else -1
             divisFrameSpinBox.setValue(val)
             tableLayout.addWidget(divisFrameSpinBox, row+1, col, alignment=AC)
