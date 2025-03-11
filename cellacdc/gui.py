@@ -24993,12 +24993,9 @@ class guiWin(QMainWindow):
             return
         
         if hoverID == 0 and self.highlightedID != 0:
-            self.setAllTextAnnotations()
-            self.highlightedID = 0
-            self.searchedIDitemRight.setData([], [])
-            self.searchedIDitemLeft.setData([], [])
-            self.highLightIDLayerImg1.clear()
-            self.highLightIDLayerRightImage.clear()
+            self.clearHighlightedKeepIDs()
+            for ID in self.keptObjectsIDs:
+                self.highlightLabelID(ID)
             return
         
         posData = self.data[self.pos_i]
@@ -25028,6 +25025,14 @@ class guiWin(QMainWindow):
             return 0
         
         return self.guiTabControl.propsQGBox.idSB.value()
+    
+    def clearHighlightedKeepIDs(self):
+        self.setAllTextAnnotations()
+        self.highlightedID = 0
+        self.searchedIDitemRight.setData([], [])
+        self.searchedIDitemLeft.setData([], [])
+        self.highLightIDLayerImg1.clear()
+        self.highLightIDLayerRightImage.clear()
     
     def highlightSearchedID(self, ID, force=False, greyOthers=True):
         if ID == 0:
