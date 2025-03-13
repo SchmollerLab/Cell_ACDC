@@ -27,9 +27,7 @@ Install stable version
 
 1. Install `Miniconda <https://www.anaconda.com/download/success>`_ or `Miniforge <https://github.com/conda-forge/miniforge?tab=readme-ov-file#install>`_ 
     Conda is the standard **package manager** for Python in the scientific 
-    community. It comes with a GUI for user-friendly package installation 
-    and management. However, here we describe its use through the terminal. 
-    Miniconda is a lightweight implementation of Anaconda without the GUI.
+    community.
 
 2. Open a **terminal**
     Roughly speaking, a terminal is a **text-based way to run instructions**. 
@@ -144,9 +142,7 @@ Install latest version
 
 1. Install `Miniconda <https://www.anaconda.com/download/success>`_ or `Miniforge <https://github.com/conda-forge/miniforge?tab=readme-ov-file#install>`_ 
     Conda is the standard **package manager** for Python in the scientific 
-    community. It comes with a GUI for user-friendly package installation 
-    and management. However, here we describe its use through the terminal. 
-    Miniconda is a lightweight implementation of Anaconda without the GUI.
+    community.
 
 2. Open a **terminal**
     Roughly speaking, a terminal is a **text-based way to run instructions**. 
@@ -280,9 +276,7 @@ If you want to try out experimental features (and, if you have time, maybe repor
 
 1. Install `Miniconda <https://www.anaconda.com/download/success>`_ or `Miniforge <https://github.com/conda-forge/miniforge?tab=readme-ov-file#install>`_ 
     Conda is the standard **package manager** for Python in the scientific 
-    community. It comes with a GUI for user-friendly package installation 
-    and management. However, here we describe its use through the terminal. 
-    Miniconda is a lightweight implementation of Anaconda without the GUI.
+    community.
 
 2. Open a **terminal**
     Roughly speaking, a terminal is a **text-based way to run instructions**. 
