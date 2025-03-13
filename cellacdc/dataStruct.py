@@ -199,10 +199,6 @@ class bioFormatsWorker(QObject):
             for dimsOrd in permutations('zct', 3):
                 sampleImgData[''.join(dimsOrd)] = allChannelsData
         else:
-            sampleImgData = self._readSampleDataPythonBioformats(
-                bioformats, rawFilePath, sampleImgData, SizeC, SizeT, SizeZ,
-                sampleSizeT, sampleSizeZ
-            )
             if SizeT >= 4:
                 sampleSizeT = 4
             else:
@@ -211,7 +207,11 @@ class bioFormatsWorker(QObject):
                 sampleSizeZ = 20
             else:
                 sampleSizeZ = SizeZ
-        
+            sampleImgData = self._readSampleDataPythonBioformats(
+                bioformats, rawFilePath, sampleImgData, SizeC, SizeT, SizeZ,
+                sampleSizeT, sampleSizeZ
+            )
+            
         self.sigFinishedReadingSampleImageData.emit(sampleImgData)
         return sampleImgData
 
