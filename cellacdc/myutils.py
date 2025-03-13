@@ -3332,7 +3332,7 @@ def _warn_install_torch_cuda(model_name, qparent=None):
         In order to use <code>{model_name}</code> with the GPU you need 
         to install the <b>CUDA version of PyTorch</b>.<br><br>
         Check out these instructions {cellpose_href}, and {torch_href}.<br><br>
-        We <b>highly recommend using Anaconda</b> to install PyTorch GPU.<br><br>
+        We <b>highly recommend using Conda</b> to install PyTorch GPU.<br><br>
         First, uninstall the CPU version of PyTorch with the following command:<br><br>
         <code>pip uninstall torch</code>.<br><br>
         Then, install the CUDA version required by your GPU with the follwing 
