@@ -25,7 +25,7 @@ development. In that case see this section :ref:`contributing-guide`.
 Install stable version
 ----------------------
 
-1. Install `Miniconda <https://docs.conda.io/projects/miniconda/en/latest/index.html#latest-miniconda-installer-links>`_ or `Miniforge <https://github.com/conda-forge/miniforge?tab=readme-ov-file#install>`_ 
+1. Install `Miniconda <https://www.anaconda.com/download/success>`_ or `Miniforge <https://github.com/conda-forge/miniforge?tab=readme-ov-file#install>`_ 
     Conda is the standard **package manager** for Python in the scientific 
     community. It comes with a GUI for user-friendly package installation 
     and management. However, here we describe its use through the terminal. 
@@ -142,7 +142,7 @@ follwing command::
 Install latest version
 ----------------------
 
-1. Install `Miniconda <https://docs.conda.io/projects/miniconda/en/latest/index.html#latest-miniconda-installer-links>`_ or `Miniforge <https://github.com/conda-forge/miniforge?tab=readme-ov-file#install>`_ 
+1. Install `Miniconda <https://www.anaconda.com/download/success>`_ or `Miniforge <https://github.com/conda-forge/miniforge?tab=readme-ov-file#install>`_ 
     Conda is the standard **package manager** for Python in the scientific 
     community. It comes with a GUI for user-friendly package installation 
     and management. However, here we describe its use through the terminal. 
@@ -278,7 +278,7 @@ Install from source (developer version)
 
 If you want to try out experimental features (and, if you have time, maybe report a bug or two :D), you can install the developer version from source as follows:
 
-1. Install `Miniconda <https://docs.conda.io/projects/miniconda/en/latest/index.html#latest-miniconda-installer-links>`_ or `Miniforge <https://github.com/conda-forge/miniforge?tab=readme-ov-file#install>`_ 
+1. Install `Miniconda <https://www.anaconda.com/download/success>`_ or `Miniforge <https://github.com/conda-forge/miniforge?tab=readme-ov-file#install>`_ 
     Conda is the standard **package manager** for Python in the scientific 
     community. It comes with a GUI for user-friendly package installation 
     and management. However, here we describe its use through the terminal. 
