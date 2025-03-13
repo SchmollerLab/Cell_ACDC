@@ -2596,6 +2596,11 @@ def check_pkg_max_version(import_pkg_name, max_version, raise_err=True):
         return is_version_correct
 
 def install_package_conda(conda_pkg_name, channel='conda-forge'):
+    if not is_conda_env():
+        raise EnvironmentError(
+            'Cell-ACDC is not running in a `conda` environment.'
+        )
+        
     try:
         commad = f'conda install -c {channel} -y {conda_pkg_name}'
         subprocess.check_call([commad], shell=True)

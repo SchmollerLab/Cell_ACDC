@@ -148,6 +148,9 @@ else:
     settings_folderpath = os.path.join(user_profile_path, '.acdc-settings')
 
 fiji_location_filepath = os.path.join(settings_folderpath, 'fiji_location.txt')
+bioio_sample_data_folderpath = os.path.join(
+    user_profile_path, 'acdc_dataStruct_temp'
+)
 
 def copytree(src, dst):
     os.makedirs(dst, exist_ok=True)

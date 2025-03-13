@@ -8,6 +8,8 @@ if conda_prefix is not None:
         os.environ["JAVA_HOME"] = rf'{conda_prefix}\Library'
     else:
         os.environ["JAVA_HOME"] = conda_prefix
+    
+    print('Setting JAVA_HOME:', os.environ["JAVA_HOME"])
 
 EXTENSION_PACKAGE_MAPPER = {
     '.czi': 'bioio-czi',
@@ -16,4 +18,5 @@ EXTENSION_PACKAGE_MAPPER = {
     '.nd2': 'bioio-nd2',
 }
 
-from .reader import ImageReader, get_omexml_metadata, OMEXML
+from .reader import ImageReader, get_omexml_metadata, OMEXML, Metadata
+from . import _utils

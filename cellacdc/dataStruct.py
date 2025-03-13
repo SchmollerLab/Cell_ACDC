@@ -101,25 +101,11 @@ class bioFormatsWorker(QObject):
         self.cancel = False
         self.bioformats_backend = bioformats_backend
     
-    def readSampleData(self, rawFilePath, SizeC, SizeT, SizeZ):
-        if self.bioformats_backend == 'bioio':
-            from cellacdc import acdc_bioio_bioformats as bioformats
-        else:
-            import javabridge
-            from cellacdc import bioformats
-             
-        sampleImgData = {}
-        self.progress.emit('Reading sample image data...')
+    def _readSampleDataPythonBioformats(
+            self, bioformats, rawFilePath, sampleImgData, SizeC, SizeT, SizeZ,
+            sampleSizeT, sampleSizeZ
+        ):
         dimsIdx = {}
-        if SizeT >= 4:
-            sampleSizeT = 4
-        else:
-            sampleSizeT = SizeT 
-        if SizeZ > 20:
-            sampleSizeZ = 20
-        else:
-            sampleSizeZ = SizeZ
-        
         allChannelsData = None
         with bioformats.ImageReader(rawFilePath) as reader:
             permut_pbar = tqdm(total=6, ncols=100)
@@ -166,6 +152,66 @@ class bioFormatsWorker(QObject):
                 if not skipPermutation:
                     sampleImgData[''.join(dimsOrd)] = allChannelsData
             permut_pbar.close()
+
+        return sampleImgData
+    
+    def readSampleData(self, rawFilePath, SizeC, SizeT, SizeZ):
+        if self.bioformats_backend == 'bioio':
+            from cellacdc import acdc_bioio_bioformats as bioformats
+        else:
+            import javabridge
+            from cellacdc import bioformats
+             
+        sampleImgData = {}
+        self.progress.emit('Reading sample image data...')
+        
+        if self.bioformats_backend == 'bioio':
+            # To avoid running Java in the main process, we spawn a new 
+            # process that runs a python script to read sample data, save
+            # it to disk, and then load it back here.
+            import subprocess
+            from . import _process, bioio_sample_data_folderpath
+            
+            read_sample_data_py_filepath = os.path.join(
+                os.path.dirname(bioformats.__file__), '_read_sample_data.py'
+            )
+            command = (
+                f'{sys.executable}, '
+                f'{read_sample_data_py_filepath}, '
+                f'-f, {rawFilePath}, '
+                f'-c, {SizeC}, '
+                f'-t, {SizeT}, '
+                f'-z, {SizeZ}'
+            )
+            
+            args = [sys.executable, _process.__file__, '-c', command]
+            subprocess.run(args)
+            
+            allChannelsData = []
+            for c in range(SizeC):
+                filepath = os.path.join(
+                    bioio_sample_data_folderpath, f"sample_channel_{c}.npy"
+                )
+                channel_data = np.load(filepath)
+                allChannelsData.append(channel_data)
+                os.remove(filepath)
+            
+            for dimsOrd in permutations('zct', 3):
+                sampleImgData[''.join(dimsOrd)] = allChannelsData
+        else:
+            sampleImgData = self._readSampleDataPythonBioformats(
+                bioformats, rawFilePath, sampleImgData, SizeC, SizeT, SizeZ,
+                sampleSizeT, sampleSizeZ
+            )
+            if SizeT >= 4:
+                sampleSizeT = 4
+            else:
+                sampleSizeT = SizeT 
+            if SizeZ > 20:
+                sampleSizeZ = 20
+            else:
+                sampleSizeZ = SizeZ
+        
         self.sigFinishedReadingSampleImageData.emit(sampleImgData)
         return sampleImgData
 
@@ -181,13 +227,40 @@ class bioFormatsWorker(QObject):
                 metadata = load.OMEXML(rawFilePath)
                 metadataXML = metadata.omexml_string
             else:
-                metadataXML = bioformats.get_omexml_metadata(rawFilePath)
-                metadata = bioformats.OMEXML(metadataXML)
+                metadata, metadataXML = self._readMetadataBioIO(rawFilePath)
             SizeZ = int(metadata.image().Pixels.SizeZ)
             return SizeZ
         except Exception as e:
             return self.SizeZ
 
+    def _readMetadataBioIO(self, rawFilePath):
+        from . import bioio_sample_data_folderpath, _process
+        from . import acdc_bioio_bioformats as bioformats
+        
+        import subprocess
+        
+        read_metadata_py_filepath = os.path.join(
+            os.path.dirname(bioformats.__file__), '_read_metadata.py'
+        )
+        command = (
+            f'{sys.executable}, {read_metadata_py_filepath}, -f, {rawFilePath}'
+        )
+        
+        args = [sys.executable, _process.__file__, '-c', command]
+        subprocess.run(args)
+
+        metadataXML_filepath = os.path.join(
+            bioio_sample_data_folderpath, 'metadataXML.txt'
+        )
+        metadataXML = bioformats.Metadata().init_from_file(metadataXML_filepath)
+
+        metadata_filepath = os.path.join(
+            bioio_sample_data_folderpath, 'metadata.txt'
+        )
+        metadata = bioformats.OMEXML().init_from_file(metadata_filepath)
+        return metadata, metadataXML
+        
+    
     def readMetadata(self, raw_src_path, filename):
         if self.bioformats_backend == 'bioio':
             from cellacdc import acdc_bioio_bioformats as bioformats
@@ -204,11 +277,11 @@ class bioFormatsWorker(QObject):
                 metadata = load.OMEXML(rawFilePath)
                 metadataXML = metadata.omexml_string
             else:
-                metadataXML = bioformats.get_omexml_metadata(rawFilePath)
-                metadata = bioformats.OMEXML(metadataXML)
+                metadata, metadataXML = self._readMetadataBioIO(rawFilePath)
             self.metadata = metadata
             self.metadataXML = metadataXML
         except Exception as e:
+            traceback.print_exc()
             self.isCriticalError = True
             self.criticalError.emit(
                 'reading image data or metadata',
@@ -518,6 +591,41 @@ class bioFormatsWorker(QObject):
 
         return False
 
+    def _saveDataPythonBioformats(
+            self, bioformats, rawFilePath, series, images_path, filenameNOext, 
+            s0p, idxs
+        ):
+        SizeZ = self.getSizeZ(rawFilePath)
+        with bioformats.ImageReader(rawFilePath) as reader:
+            iter = enumerate(zip(self.chNames, self.saveChannels))
+            for c, (chName, saveCh) in iter:
+                self.progressPbar.emit(1)
+                if not saveCh:
+                    continue
+
+                self.progress.emit(
+                    f'  Saving channel {c+1}/{len(self.chNames)} ({chName})'
+                )
+                self.saveImgDataChannel(
+                    reader, series, images_path, filenameNOext, s0p,
+                    chName, c, idxs, SizeZ
+                )
+    
+    def _saveDataPythonBioformatsSingleChannel(
+            self, bioformats, rawFilePath, series, images_path, filenameNOext, 
+            s0p, idxs, chName, c_idx
+        ):
+        SizeZ = self.getSizeZ(rawFilePath)
+        with bioformats.ImageReader(rawFilePath) as reader:
+            self.progress.emit(
+                f'  Saving channel {c_idx+1}/{len(self.chNames)} ({chName})'
+            )
+            imgData_ch = []
+            self.saveImgDataChannel(
+                reader, series, images_path, filenameNOext, s0p,
+                chName, 0, idxs, SizeZ
+            )
+    
     def removeInvalidCharacters(self, chName_in):
         # Remove invalid charachters
         chName = "".join(
@@ -770,22 +878,45 @@ class bioFormatsWorker(QObject):
         idxs = self.buildIndexes(
             self.SizeC, self.SizeT, self.SizeZ, self.DimensionOrder
         )
-        if self.rawDataStruct != 2:       
-            SizeZ = self.getSizeZ(rawFilePath)
-            with bioformats.ImageReader(rawFilePath) as reader:
-                iter = enumerate(zip(self.chNames, self.saveChannels))
-                for c, (chName, saveCh) in iter:
-                    self.progressPbar.emit(1)
-                    if not saveCh:
-                        continue
+        if self.rawDataStruct != 2:     
+            if self.bioformats_backend == 'bioio':
+                import subprocess
+                from . import _process
+                
+                save_data_py_filepath = os.path.join(
+                    os.path.dirname(bioformats.__file__), '_save_data.py'
+                )
+                zyx_physical_sizes = (
+                    self.PhysicalSizeZ, self.PhysicalSizeY, self.PhysicalSizeX
+                )
+                zyx_physical_sizes = " ".join(
+                    [str(val) for val in zyx_physical_sizes]
+                )
+                command = (
+                    f'{sys.executable}, {save_data_py_filepath}, '
+                    f'-f, {rawFilePath}, '
+                    f'-d, {" ".join([str(val) for val in self.saveChannels])}, '
+                    f'-c, {" ".join(self.chNames)}, '
+                    f'-s, {series}, '
+                    f'-i, {images_path}, '
+                    f'-p, {filenameNOext}, '
+                    f'-pos, {s0p}, '
+                    f'-t, {self.SizeT}, '
+                    f'-z, {self.getSizeZ(rawFilePath)}, '
+                    f'-time_increment, {self.TimeIncrement}, '
+                    f'-zyx, {zyx_physical_sizes}, '
+                    f'-r, {" ".join([str(val) for val in self.timeRangeToSave])}'
+                )
+                if self.to_h5:
+                    command = f'{command}, -to_h5'
 
-                    self.progress.emit(
-                        f'  Saving channel {c+1}/{len(self.chNames)} ({chName})'
-                    )
-                    self.saveImgDataChannel(
-                        reader, series, images_path, filenameNOext, s0p,
-                        chName, c, idxs, SizeZ
-                    )
+                args = [sys.executable, _process.__file__, '-c', command]
+                subprocess.run(args)
+            else:  
+                self._saveDataPythonBioformats(
+                    bioformats, rawFilePath, series, images_path, 
+                    filenameNOext, s0p, idxs
+                )
 
         elif self.rawDataStruct == 2:
             iter = enumerate(zip(self.chNames, self.saveChannels))
@@ -805,15 +936,47 @@ class bioFormatsWorker(QObject):
                     if f.find(rawFilename)!=-1
                 ][0]
 
-                SizeZ = self.getSizeZ(rawFilePath)
-                with bioformats.ImageReader(rawFilePath) as reader:
-                    self.progress.emit(
-                        f'  Saving channel {c+1}/{len(self.chNames)} ({chName})'
+                if self.bioformats_backend == 'bioio':
+                    import subprocess
+                    from . import _process
+                    
+                    save_data_py_filepath = os.path.join(
+                        os.path.dirname(bioformats.__file__), 
+                        '_save_data_single_channel.py'
                     )
-                    imgData_ch = []
-                    self.saveImgDataChannel(
-                        reader, series, images_path, filenameNOext, s0p,
-                        chName, 0, idxs, SizeZ
+                    zyx_physical_sizes = (
+                        self.PhysicalSizeZ, 
+                        self.PhysicalSizeY, 
+                        self.PhysicalSizeX
+                    )
+                    zyx_physical_sizes = " ".join(
+                        [str(val) for val in zyx_physical_sizes]
+                    )
+                    command = (
+                        f'{sys.executable}, {save_data_py_filepath}, '
+                        f'-f, {rawFilePath}, '
+                        f'-d, {" ".join([str(val) for val in self.saveChannels])}, '
+                        f'-c, {chName}, '
+                        f'-ch_idx, {c}, '
+                        f'-s, {series}, '
+                        f'-i, {images_path}, '
+                        f'-p, {filenameNOext}, '
+                        f'-pos, {s0p}, '
+                        f'-t, {self.SizeT}, '
+                        f'-z, {self.getSizeZ(rawFilePath)}, '
+                        f'-time_increment, {self.TimeIncrement}, '
+                        f'-zyx, {zyx_physical_sizes}, '
+                        f'-r, {" ".join([str(val) for val in self.timeRangeToSave])}'
+                    )
+                    if self.to_h5:
+                        command = f'{command}, -to_h5'
+                    
+                    args = [sys.executable, _process.__file__, '-c', command]
+                    subprocess.run(args)
+                else:  
+                    self._saveDataPythonBioformatsSingleChannel(
+                        bioformats, rawFilePath, series, images_path, 
+                        filenameNOext, s0p, idxs, chName, c
                     )
 
             if self.moveOtherFiles or self.copyOtherFiles:
@@ -1467,9 +1630,18 @@ class createDataStructWin(QMainWindow):
         from cellacdc import acdc_bioio_bioformats as bioformats
         raw_filepath = os.path.join(raw_src_path, raw_filenames[0])
         
-        # Triggers prompt installation of BioIO and required libraries
-        with bioformats.ImageReader(raw_filepath, qparent=self) as reader:
-            return
+        import subprocess
+        from . import _process
+        
+        init_reader_py_filepath = os.path.join(
+            os.path.dirname(bioformats.__file__), '_init_reader.py'
+        )
+        command = (
+            f'{sys.executable}, {init_reader_py_filepath}, -f, {raw_filepath}'
+        )
+        
+        args = [sys.executable, _process.__file__, '-c', command]
+        subprocess.run(args)
     
     def addPbar(self):
         self.QPbar = widgets.ProgressBar(self)
@@ -1729,18 +1901,14 @@ class createDataStructWin(QMainWindow):
         msg.exec_()
 
     def criticalBioFormats(self, actionTxt, tracebackFormat, filename):
-        msg = QMessageBox(self)
-        msg.setIcon(msg.Critical)
-        msg.setWindowTitle('Critical error Bio-Formats')
-        msg.setDefaultButton(msg.Ok)
+        msg = widgets.myMessageBox(self, wrapText=True)
 
         url = 'https://docs.openmicroscopy.org/bio-formats/6.7.0/supported-formats.html'
         seeHere = f'<a href=\"{url}">here</a>'
 
         _, ext = os.path.splitext(filename)
-        txt = (
+        txt = html_utils.paragraph(
             f"""
-            <p "font-size:11px">
             Error while {actionTxt} with Bio-Formats.<br><br>
 
             This is most likely because the <b>file format {ext} is not fully supported</b>
@@ -1752,14 +1920,13 @@ class createDataStructWin(QMainWindow):
             Alternatively, if you are trying to load a video file, you can try
             to open the main GUI and then go to "File --> Open image/video file..."<br><br>
             You were trying to read file: {filename}
-            </p>
             """
         )
-        msg.setTextFormat(Qt.RichText)
-        msg.setTextInteractionFlags(Qt.TextBrowserInteraction)
-        msg.setText(txt)
-        msg.setDetailedText(tracebackFormat)
-        msg.exec_()
+        
+        msg.critical(
+            self, 'Error with Bio-Formats', txt, detailsText=tracebackFormat
+        )
+
         self.close()
 
     def askConfirmMetadata(
