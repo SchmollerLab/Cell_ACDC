@@ -9,13 +9,22 @@ from cellacdc import acdc_bioio_bioformats as bioformats
 
 import argparse
 
-try:
-    ap = argparse.ArgumentParser(
-        prog='Cell-ACDC process', 
-        description='Used to spawn a separate process', 
-        formatter_class=argparse.RawTextHelpFormatter
-    )
+ap = argparse.ArgumentParser(
+    prog='Cell-ACDC process', 
+    description='Used to spawn a separate process', 
+    formatter_class=argparse.RawTextHelpFormatter
+)
 
+ap.add_argument(
+    '-uuid', 
+    '--uuid4', 
+    required=True, 
+    type=str, 
+    metavar='UUID4',
+    help='String ID to use to store error for current session.'
+)
+
+try:
     ap.add_argument(
         '-f', 
         '--filepath', 
@@ -96,4 +105,7 @@ try:
         np.save(filepath, channel_data)
 
 except Exception as err:
-    bioformats._utils.dump_exception(err)
+    args = vars(ap.parse_args())
+    uuid4 = args['uuid']
+    
+    bioformats._utils.dump_exception(err, uuid4)

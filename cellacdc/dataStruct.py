@@ -10,6 +10,7 @@ import time
 import datetime
 import tempfile
 import h5py
+import uuid
 import difflib
 import pathlib
 import numpy as np
@@ -175,6 +176,7 @@ class bioFormatsWorker(QObject):
             read_sample_data_py_filepath = os.path.join(
                 os.path.dirname(bioformats.__file__), '_read_sample_data.py'
             )
+            uuid4 = uuid.uuid4()
             command = (
                 f'{sys.executable}, '
                 f'{read_sample_data_py_filepath}, '
@@ -182,12 +184,13 @@ class bioFormatsWorker(QObject):
                 f'-c, {SizeC}, '
                 f'-t, {SizeT}, '
                 f'-z, {SizeZ}'
+                f'-uuid, {uuid4}'
             )
             
             args = [sys.executable, _process.__file__, '-c', command]
             subprocess.run(args)
             
-            bioformats._utils.check_raise_exception()
+            bioformats._utils.check_raise_exception(uuid4)
             
             allChannelsData = []
             for c in range(SizeC):
@@ -244,14 +247,17 @@ class bioFormatsWorker(QObject):
         read_metadata_py_filepath = os.path.join(
             os.path.dirname(bioformats.__file__), '_read_metadata.py'
         )
+        uuid4 = uuid.uuid4()
         command = (
-            f'{sys.executable}, {read_metadata_py_filepath}, -f, {rawFilePath}'
+            f'{sys.executable}, {read_metadata_py_filepath}, '
+            f'-f, {rawFilePath}'
+            f'-uuid, {uuid4}'
         )
         
         args = [sys.executable, _process.__file__, '-c', command]
         subprocess.run(args)
         
-        bioformats._utils.check_raise_exception()
+        bioformats._utils.check_raise_exception(uuid4)
 
         metadataXML_filepath = os.path.join(
             bioio_sample_data_folderpath, 'metadataXML.txt'
@@ -896,6 +902,7 @@ class bioFormatsWorker(QObject):
                 zyx_physical_sizes = " ".join(
                     [str(val) for val in zyx_physical_sizes]
                 )
+                uuid4 = uuid.uuid4()
                 command = (
                     f'{sys.executable}, {save_data_py_filepath}, '
                     f'-f, {rawFilePath}, '
@@ -909,7 +916,8 @@ class bioFormatsWorker(QObject):
                     f'-z, {self.getSizeZ(rawFilePath)}, '
                     f'-time_increment, {self.TimeIncrement}, '
                     f'-zyx, {zyx_physical_sizes}, '
-                    f'-r, {" ".join([str(val) for val in self.timeRangeToSave])}'
+                    f'-r, {" ".join([str(val) for val in self.timeRangeToSave])}',
+                    f'-uuid, {uuid4}'
                 )
                 if self.to_h5:
                     command = f'{command}, -to_h5'
@@ -917,7 +925,7 @@ class bioFormatsWorker(QObject):
                 args = [sys.executable, _process.__file__, '-c', command]
                 subprocess.run(args)
                 
-                bioformats._utils.check_raise_exception()
+                bioformats._utils.check_raise_exception(uuid4)
             else:  
                 self._saveDataPythonBioformats(
                     bioformats, rawFilePath, series, images_path, 
@@ -958,6 +966,7 @@ class bioFormatsWorker(QObject):
                     zyx_physical_sizes = " ".join(
                         [str(val) for val in zyx_physical_sizes]
                     )
+                    uuid4 = uuid.uuid4()
                     command = (
                         f'{sys.executable}, {save_data_py_filepath}, '
                         f'-f, {rawFilePath}, '
@@ -973,6 +982,7 @@ class bioFormatsWorker(QObject):
                         f'-time_increment, {self.TimeIncrement}, '
                         f'-zyx, {zyx_physical_sizes}, '
                         f'-r, {" ".join([str(val) for val in self.timeRangeToSave])}'
+                        f'-uuid, {uuid4}'
                     )
                     if self.to_h5:
                         command = f'{command}, -to_h5'
@@ -980,7 +990,7 @@ class bioFormatsWorker(QObject):
                     args = [sys.executable, _process.__file__, '-c', command]
                     subprocess.run(args)
                     
-                    bioformats._utils.check_raise_exception()
+                    bioformats._utils.check_raise_exception(uuid4)
                 else:  
                     self._saveDataPythonBioformatsSingleChannel(
                         bioformats, rawFilePath, series, images_path, 
@@ -1644,14 +1654,17 @@ class createDataStructWin(QMainWindow):
         init_reader_py_filepath = os.path.join(
             os.path.dirname(bioformats.__file__), '_init_reader.py'
         )
+        uuid4 = uuid.uuid4()
         command = (
-            f'{sys.executable}, {init_reader_py_filepath}, -f, {raw_filepath}'
+            f'{sys.executable}, {init_reader_py_filepath}, '
+            f'-f, {raw_filepath}'
+            f'-uuid, {uuid4}'
         )
         
         args = [sys.executable, _process.__file__, '-c', command]
         subprocess.run(args)
         
-        bioformats._utils.check_raise_exception()
+        bioformats._utils.check_raise_exception(uuid4)
     
     def addPbar(self):
         self.QPbar = widgets.ProgressBar(self)

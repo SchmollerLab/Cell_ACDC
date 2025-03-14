@@ -23,18 +23,8 @@ ap.add_argument(
     help=('Path of an additional log file')
 )
 
-def worker(*commands):
-    # command = list(commands)
-    # pkwargs = {
-    #     'stdout': PIPE, 'stderr': STDOUT, 'bufsize': 0
-    # }
-    # with Popen(command, **pkwargs) as proc, open('test.log', 'w') as log:
-    #     for line in proc.stdout:
-    #         sys.stdout.buffer.write(line)
-    #         log.write(line)
-            
+def worker(*commands):            
     subprocess.run(list(commands)) # [sys.executable, r'spotmax\test.py'])
-    # sys.stdout.flush()
 
 if __name__ == '__main__':
     args = vars(ap.parse_args())

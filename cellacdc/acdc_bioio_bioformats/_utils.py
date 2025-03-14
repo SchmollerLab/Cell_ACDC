@@ -129,15 +129,19 @@ def saveImgDataChannel(
         shutil.move(tempFilepath, filePath)
         shutil.rmtree(tempDir)
 
-def dump_exception(err):
+def dump_exception(err, error_id):
     import pickle
-    error_path = os.path.join(bioio_sample_data_folderpath, 'error.pkl')
+    error_path = os.path.join(
+        bioio_sample_data_folderpath, f'error_{error_id}.pkl'
+    )
     with open(error_path, 'wb') as file:
         pickle.dump(err, file)
 
-def check_raise_exception():
+def check_raise_exception(error_id):
     import pickle
-    error_path = os.path.join(bioio_sample_data_folderpath, 'error.pkl')
+    error_path = os.path.join(
+        bioio_sample_data_folderpath, f'error_{error_id}.pkl'
+    )
     if not os.path.exists(error_path):
         return
     
