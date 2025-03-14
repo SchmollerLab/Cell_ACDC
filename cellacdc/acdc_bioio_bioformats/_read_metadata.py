@@ -10,20 +10,7 @@ from cellacdc import acdc_bioio_bioformats as bioformats
 
 import argparse
 
-ap = argparse.ArgumentParser(
-    prog='Cell-ACDC process', 
-    description='Used to spawn a separate process', 
-    formatter_class=argparse.RawTextHelpFormatter
-)
-
-ap.add_argument(
-    '-uuid', 
-    '--uuid4', 
-    required=True, 
-    type=str, 
-    metavar='UUID4',
-    help='String ID to use to store error for current session.'
-)
+ap = bioformats._utils.setup_argparser()
 
 try:
     ap.add_argument(

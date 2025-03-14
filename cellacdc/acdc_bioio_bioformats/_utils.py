@@ -2,6 +2,8 @@ import os
 import shutil
 import tempfile
 
+import argparse
+
 from typing import Tuple
 
 from tqdm import tqdm
@@ -10,6 +12,23 @@ import numpy as np
 import h5py
 
 from cellacdc import myutils, bioio_sample_data_folderpath
+
+def setup_argparser():
+    ap = argparse.ArgumentParser(
+        prog='Cell-ACDC process', 
+        description='Used to spawn a separate process', 
+        formatter_class=argparse.RawTextHelpFormatter
+    )
+    ap.add_argument(
+        '-uuid', 
+        '--uuid4', 
+        required=False, 
+        type=str, 
+        metavar='UUID4',
+        help='String ID to use to store error for current session.',
+        default='42'
+    )
+    return ap
 
 def removeInvalidCharacters(chName_in):
     # Remove invalid charachters
