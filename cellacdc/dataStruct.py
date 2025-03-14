@@ -183,7 +183,7 @@ class bioFormatsWorker(QObject):
                 f'-f, {rawFilePath}, '
                 f'-c, {SizeC}, '
                 f'-t, {SizeT}, '
-                f'-z, {SizeZ}'
+                f'-z, {SizeZ},'
                 f'-uuid, {uuid4}'
             )
             
@@ -250,7 +250,7 @@ class bioFormatsWorker(QObject):
         uuid4 = uuid.uuid4()
         command = (
             f'{sys.executable}, {read_metadata_py_filepath}, '
-            f'-f, {rawFilePath}'
+            f'-f, {rawFilePath}, '
             f'-uuid, {uuid4}'
         )
         
@@ -916,7 +916,7 @@ class bioFormatsWorker(QObject):
                     f'-z, {self.getSizeZ(rawFilePath)}, '
                     f'-time_increment, {self.TimeIncrement}, '
                     f'-zyx, {zyx_physical_sizes}, '
-                    f'-r, {" ".join([str(val) for val in self.timeRangeToSave])}',
+                    f'-r, {" ".join([str(val) for val in self.timeRangeToSave])}, '
                     f'-uuid, {uuid4}'
                 )
                 if self.to_h5:
@@ -981,7 +981,7 @@ class bioFormatsWorker(QObject):
                         f'-z, {self.getSizeZ(rawFilePath)}, '
                         f'-time_increment, {self.TimeIncrement}, '
                         f'-zyx, {zyx_physical_sizes}, '
-                        f'-r, {" ".join([str(val) for val in self.timeRangeToSave])}'
+                        f'-r, {" ".join([str(val) for val in self.timeRangeToSave])}, '
                         f'-uuid, {uuid4}'
                     )
                     if self.to_h5:
@@ -1657,7 +1657,7 @@ class createDataStructWin(QMainWindow):
         uuid4 = uuid.uuid4()
         command = (
             f'{sys.executable}, {init_reader_py_filepath}, '
-            f'-f, {raw_filepath}'
+            f'-f, {raw_filepath}, '
             f'-uuid, {uuid4}'
         )
         
