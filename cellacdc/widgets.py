@@ -67,6 +67,7 @@ from . import apps
 from . import plot
 from . import annotate
 from . import urls
+from . import _core
 from .acdc_regex import float_regex
 from .config import PREPROCESS_MAPPER
 from . import _base_widgets
@@ -8168,6 +8169,14 @@ class ScaleBar(QGraphicsObject):
         self.highlightPen.setCapStyle(Qt.PenCapStyle.FlatCap)
         self.plotItem.setPen(self.pen)
     
+    def updatePhysicalLength(self, PhysicalSizeX):
+        length_unit = self._length_unit
+        unit = self._unit
+        length_um = _core.convert_length(length_unit, unit, 'μm')
+        length_pixel = length_um/PhysicalSizeX
+        self._length = length_pixel
+        self.update()
+    
     def addToAxis(self, ax):
         ax.addItem(self.plotItem)
         ax.addItem(self.labelItem)
@@ -9394,6 +9403,9 @@ class TimestampItem(LabelItem):
         self.clicked = False
         super().__init__(self)
         self.createContextMenu()
+    
+    def setSecondsPerFrame(self, secondsPerFrame):
+        self._secondsPerFrame = secondsPerFrame
     
     def updateViewRange(self, viewRange):
         xRange, yRange = viewRange

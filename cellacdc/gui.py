@@ -9414,6 +9414,12 @@ class guiWin(QMainWindow):
             save=True, singlePos=True,
             askSegm3D=False
         )
+        if hasattr(self, 'timestamp'):
+            self.timestamp.setSecondsPerFrame(posData.TimeIncrement)
+            self.updateTimestampFrame()
+        
+        if hasattr(self, 'scaleBar'):
+            self.scaleBar.updatePhysicalLength(posData.PhysicalSizeX)
 
     def setHoverToolSymbolData(self, xx, yy, ScatterItems, size=None):
         if not xx:
