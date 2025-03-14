@@ -187,6 +187,8 @@ class bioFormatsWorker(QObject):
             args = [sys.executable, _process.__file__, '-c', command]
             subprocess.run(args)
             
+            bioformats._utils.check_raise_exception()
+            
             allChannelsData = []
             for c in range(SizeC):
                 filepath = os.path.join(
@@ -248,6 +250,8 @@ class bioFormatsWorker(QObject):
         
         args = [sys.executable, _process.__file__, '-c', command]
         subprocess.run(args)
+        
+        bioformats._utils.check_raise_exception()
 
         metadataXML_filepath = os.path.join(
             bioio_sample_data_folderpath, 'metadataXML.txt'
@@ -912,6 +916,8 @@ class bioFormatsWorker(QObject):
 
                 args = [sys.executable, _process.__file__, '-c', command]
                 subprocess.run(args)
+                
+                bioformats._utils.check_raise_exception()
             else:  
                 self._saveDataPythonBioformats(
                     bioformats, rawFilePath, series, images_path, 
@@ -973,6 +979,8 @@ class bioFormatsWorker(QObject):
                     
                     args = [sys.executable, _process.__file__, '-c', command]
                     subprocess.run(args)
+                    
+                    bioformats._utils.check_raise_exception()
                 else:  
                     self._saveDataPythonBioformatsSingleChannel(
                         bioformats, rawFilePath, series, images_path, 
@@ -1642,6 +1650,8 @@ class createDataStructWin(QMainWindow):
         
         args = [sys.executable, _process.__file__, '-c', command]
         subprocess.run(args)
+        
+        bioformats._utils.check_raise_exception()
     
     def addPbar(self):
         self.QPbar = widgets.ProgressBar(self)

@@ -9,7 +9,7 @@ from tqdm import tqdm
 import numpy as np
 import h5py
 
-from cellacdc import myutils
+from cellacdc import myutils, bioio_sample_data_folderpath
 
 def removeInvalidCharacters(chName_in):
     # Remove invalid charachters
@@ -128,3 +128,22 @@ def saveImgDataChannel(
         h5f.close()
         shutil.move(tempFilepath, filePath)
         shutil.rmtree(tempDir)
+
+def dump_exception(err):
+    import pickle
+    error_path = os.path.join(bioio_sample_data_folderpath, 'error.pkl')
+    with open(error_path, 'wb') as file:
+        pickle.dump(err, file)
+
+def check_raise_exception():
+    import pickle
+    error_path = os.path.join(bioio_sample_data_folderpath, 'error.pkl')
+    if not os.path.exists(error_path):
+        return
+    
+    with open(error_path, "rb") as file:
+        err = pickle.load(file)
+    
+    os.remove(error_path)
+    
+    raise err
