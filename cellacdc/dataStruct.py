@@ -1544,6 +1544,8 @@ class createDataStructWin(QMainWindow):
             self.close()
             return
 
+        self.log(f'Selected folder: "{raw_src_path}"')
+        
         self.log(
             'Checking file format of loaded files...'
         )
@@ -1702,6 +1704,7 @@ class createDataStructWin(QMainWindow):
 
     def log(self, text):
         self.logWin.appendPlainText(text)
+        self.logger.info(text)
 
     def askRawDataStruct(self):
         infoText =  html_utils.paragraph(
@@ -1718,6 +1721,8 @@ class createDataStructWin(QMainWindow):
             infoText, CbLabel='', parent=self
         )
         win.exec_()
+        if not win.cancel:
+            self.log(f'Selected files arrangement: "{win.selectedItemText}"')
         return win.selectedItemIdx, win.cancel
 
     def instructMoveRawFiles(self):
