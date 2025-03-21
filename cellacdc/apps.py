@@ -418,7 +418,7 @@ class customAnnotationDialog(QDialog):
         self.colorButton.setColor(selectedAnnot['symbolColor'])
         keySequence = widgets.macShortcutToWindows(selectedAnnot['shortcut'])
         if keySequence:
-            self.shortcutWidget.widget.keySequence = QKeySequence(keySequence)
+            self.shortcutWidget.widget.keySequence = widgets.KeySequenceFromText(keySequence)
 
     def warnNoItemsSelected(self):
         msg = widgets.myMessageBox(parent=self)
@@ -12683,7 +12683,7 @@ class ShortcutEditorDialog(QBaseDialog):
         label = QLabel('Zoom out:')
         self.zoomShortcutLineEdit = widgets.ShortcutLineEdit()
         if zoomOutKeyValue is not None:
-            zoomOutKeySequence = QKeySequence(zoomOutKeyValue)
+            zoomOutKeySequence = widgets.KeySequenceFromText(zoomOutKeyValue)
             self.zoomShortcutLineEdit.setText(zoomOutKeySequence.toString())
             self.zoomShortcutLineEdit.key = zoomOutKeyValue
         self.zoomShortcutLineEdit.textChanged.connect(
@@ -12699,7 +12699,7 @@ class ShortcutEditorDialog(QBaseDialog):
             shortcutLineEdit = widgets.ShortcutLineEdit()
             if hasattr(widget, 'keyPressShortcut'):
                 shortcutLineEdit.key = widget.keyPressShortcut
-                shortcut = QKeySequence(widget.keyPressShortcut)
+                shortcut = widgets.KeySequenceFromText(widget.keyPressShortcut)
                 isShortcutKeyPress = True
             else:
                 shortcut = widget.shortcut()

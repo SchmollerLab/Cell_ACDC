@@ -1504,9 +1504,15 @@ class guiWin(QMainWindow):
             return self.isDefaultMiddleClick(mouseEvent, modifiers)
                
         delObjKeySequence, delObjQtButton = self.delObjAction
+        if delObjKeySequence is None:
+            # Setting only middle click on mac is allowed, however the 
+            # delObjKeySequence is None and the tool button is never checked
+            isDelObjectActive = True
+        else:
+            isDelObjectActive = self.delObjToolAction.isChecked()
+            
         middle_click = (
-            mouseEvent.button() == delObjQtButton 
-            and self.delObjToolAction.isChecked()
+            mouseEvent.button() == delObjQtButton and isDelObjectActive
         )
         
         return middle_click
@@ -3260,7 +3266,9 @@ class guiWin(QMainWindow):
         
         self.skipToNewIdAction = QAction(self)
         self.skipToNewIdAction.setIcon(QIcon(":skip_forward_new_ID.svg"))
-        self.skipToNewIdAction.setShortcut(QKeySequence(Qt.Key_PageUp))
+        self.skipToNewIdAction.setShortcut(
+            widgets.KeySequenceFromText(Qt.Key_PageUp)
+        )
 
         self.skipToNewIdAction.setDisabled(True)
 
@@ -14014,11 +14022,20 @@ class guiWin(QMainWindow):
         self.setGeometry(left, top+10, width, height-200)
     
     def checkSetDelObjActionActive(self, event):
+        if self.delObjAction is None and self.is_win:
+            return
+        
         if self.delObjAction is None:
+            if event.key() == Qt.Key_Control:
+                self.delObjToolAction.setChecked(True)
             return
         
         delObjKeySequence, delObjQtButton = self.delObjAction
         keySequenceText = widgets.QKeyEventToString(event).rstrip('+')
+        
+        if delObjKeySequence is None:
+            self.delObjToolAction.setChecked(True)
+            return
         
         if keySequenceText == delObjKeySequence.toString():
             self.delObjToolAction.setChecked(True)
@@ -15305,7 +15322,7 @@ class guiWin(QMainWindow):
             shortcut = annotState['shortcut']
             if shortcut is not None:
                 keySequence = widgets.macShortcutToWindows(shortcut)
-                keySequence = QKeySequence(keySequence)
+                keySequence = widgets.KeySequenceFromText(keySequence)
             else:
                 keySequence = None
             toolTip = myutils.getCustomAnnotTooltip(annotState)
@@ -15454,7 +15471,7 @@ class guiWin(QMainWindow):
             symbol = re.findall(r"\'(.+)\'", symbol)[0]
             symbolColor = selectedAnnot['symbolColor']
             symbolColor = pg.mkColor(symbolColor)
-            keySequence = QKeySequence(selectedAnnot['shortcut'])
+            keySequence = widgets.KeySequenceFromText(selectedAnnot['shortcut'])
             Type = selectedAnnot['type']
             toolTip = (
                 f'Name: {selectedAnnotName}\n\n'
@@ -23768,26 +23785,28 @@ class guiWin(QMainWindow):
                 Qt.MouseButton.LeftButton if delObjButtonText == 'Left click'
                 else Qt.MouseButton.MiddleButton
             )
-            delObjKeySequence = QKeySequence(delObjKeySequenceText)
-            self.delObjAction = (
-                QKeySequence(delObjKeySequenceText), delObjQtButton
-            )
-            # if delObjKeySequenceText:
-            #     self.delObjToolAction.setShortcut(delObjKeySequence)
-                        
+            if not delObjKeySequenceText:
+                delObjKeySequence = None
+            else:
+                delObjKeySequence = widgets.KeySequenceFromText(
+                    delObjKeySequenceText
+                )
+            self.delObjToolAction.setChecked(True)
+            self.delObjAction = delObjKeySequence, delObjQtButton
+              
         shortcuts = {}
         for name, widget in self.widgetsWithShortcut.items():
             if name not in cp.options('keyboard.shortcuts'):
                 if hasattr(widget, 'keyPressShortcut'):
                     key = widget.keyPressShortcut
-                    shortcut = QKeySequence(key)
+                    shortcut = widgets.KeySequenceFromText(key)
                 else:
                     shortcut = widget.shortcut()
                 shortcut_text = shortcut.toString()
                 cp['keyboard.shortcuts'][name] = shortcut_text
             else:
                 shortcut_text = cp['keyboard.shortcuts'][name]
-                shortcut = QKeySequence(shortcut_text)
+                shortcut = widgets.KeySequenceFromText(shortcut_text)
             
             shortcuts[name] = (shortcut_text, shortcut)
         self.setShortcuts(shortcuts, save=False)
@@ -23823,34 +23842,38 @@ class guiWin(QMainWindow):
         
         cp['keyboard.shortcuts']['Zoom out'] = str(self.zoomOutKeyValue)
         
-        if self.delObjAction is not None:
-            delObjKeySequence, delObjQtButton = self.delObjAction
-            try:
-                delObjKeySequenceText = delObjKeySequence.toString()
-                delObjKeySequenceText = (
-                    delObjKeySequenceText
-                    .encode('ascii', 'ignore')
-                    .decode('utf-8')
-                )
-                delObjButtonText = (
-                    'Left click' if delObjQtButton == Qt.MouseButton.LeftButton
-                    else 'Middle click'
-                )
-                cp['delete_object.action'] = {
-                    'Key sequence': delObjKeySequenceText, 
-                    'Mouse button': delObjButtonText
-                }
-            except Exception as err:
+        if self.delObjAction is None:
+            with open(shortcut_filepath, 'w') as ini:
+                cp.write(ini)
+            return
+    
+        delObjKeySequence, delObjQtButton = self.delObjAction
+        try:
+            if delObjKeySequence is None:
                 delObjKeySequenceText = ''
-                self.logger.warning(
-                    f'{delObjKeySequence} is not a valid keys sequence for '
-                    'deleting objects. Setting default action'
-                )
-                self.delObjAction = None
-                cp.remove_section('delete_object.action')
+            else:
+                delObjKeySequenceText = delObjKeySequence.toString()
                 
-            # if delObjKeySequenceText:
-            #     self.delObjToolAction.setShortcut(delObjKeySequence)
+            delObjKeySequenceText = (
+                delObjKeySequenceText
+                .encode('ascii', 'ignore')
+                .decode('utf-8')
+            )
+            delObjButtonText = (
+                'Left click' if delObjQtButton == Qt.MouseButton.LeftButton
+                else 'Middle click'
+            )
+            cp['delete_object.action'] = {
+                'Key sequence': delObjKeySequenceText, 
+                'Mouse button': delObjButtonText
+            }
+        except Exception as err:
+            self.logger.warning(
+                f'{delObjKeySequence} is not a valid keys sequence for '
+                'deleting objects. Setting default action'
+            )
+            self.delObjAction = None
+            cp.remove_section('delete_object.action')
             
         with open(shortcut_filepath, 'w') as ini:
             cp.write(ini)
@@ -23865,7 +23888,10 @@ class guiWin(QMainWindow):
             
         if self.delObjAction is not None:
             delObjKeySequence, delObjQtButton = self.delObjAction
-            delObjKeySequenceText = delObjKeySequence.toString()
+            if delObjKeySequence is None:
+                delObjKeySequenceText = ''
+            else:
+                delObjKeySequenceText = delObjKeySequence.toString()
             delObjKeySequenceText = (
                 delObjKeySequenceText.encode('ascii', 'ignore').decode('utf-8')
             )
@@ -23873,6 +23899,7 @@ class guiWin(QMainWindow):
                 'Left click' if delObjQtButton == Qt.MouseButton.LeftButton
                 else 'Middle click'
             )
+            
         win = apps.ShortcutEditorDialog(
             self.widgetsWithShortcut, 
             delObjectKey=delObjKeySequenceText,

@@ -3548,7 +3548,7 @@ def QKeyEventToString(event: QKeyEvent, notAllowedModifier=None):
     
     modifers_value = modifiers.value if PYQT6 else modifiers
     if isModifierKey:
-        keySequenceText = QKeySequence(modifers_value).toString()
+        keySequenceText = KeySequenceFromText(modifers_value).toString()
     else:
         keySequenceText = QKeySequence(modifers_value | event.key()).toString()
     
@@ -3566,13 +3566,29 @@ class ShortcutLineEdit(QLineEdit):
         self._notAllowedModifier = notAllowedModifier
         self.setAlignment(Qt.AlignCenter)
     
+    def text(self):
+        text = super().text()
+        if text == 'Command':
+            return 'Ctrl'
+        
+        if text == 'Option':
+            return 'Alt'
+        
+        return text
+    
     def setText(self, text):
+        if is_mac and text == 'Ctrl':
+            text = 'Command'
+        
+        if is_mac and text == 'Alt':
+            text = 'Option'
+        
         super().setText(text)
         if not text:
             self.keySequence = None
             return
         try:
-            self.keySequence = QKeySequence(self.text())
+            self.keySequence = KeySequenceFromText(self.text())
         except Exception as e:
             pass
 
@@ -9769,3 +9785,15 @@ class RescaleImageJroisGroupbox(QGroupBox):
             for dim, (spinbox, SizeD) in self.widgets.items()
         }
         return sizes
+
+class KeySequenceFromText(QKeySequence):
+    def __init__(self, text: str):
+        super().__init__(text)
+        self._text = text
+    
+    def toString(self):
+        if isinstance(self._text, str):
+            return self._text
+        else:
+            return super().toString()
+        
