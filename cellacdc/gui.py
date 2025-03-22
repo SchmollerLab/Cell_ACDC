@@ -3120,12 +3120,34 @@ class guiWin(QMainWindow):
                 action.setChecked(True)
             action.toggled.connect(self.keepToolActiveActionToggled)
             menu.addAction(action)
-
+        
+        self.settingsMenu.addSeparator()
+        
+        askHowFutureFramesMenu = self.settingsMenu.addMenu(
+            'Ask how to propagate changes to future frames'
+        )
+        self.askHowFutureFramesActions = {}
+        askHowFutureFramesActionsKeys = (
+            'Delete ID', 
+            'Exclude cell from analysis', 
+            'Annotate cell as dead', 
+            'Edit ID',
+            'Keep ID'
+        )
+        for key in askHowFutureFramesActionsKeys:
+            askHowFutureFramesAction = QAction()
+            askHowFutureFramesAction.setText(f'Ask for "{key}" action')
+            askHowFutureFramesAction.setCheckable(True)
+            askHowFutureFramesAction.setChecked(True)
+            askHowFutureFramesMenu.addAction(askHowFutureFramesAction)
+            self.askHowFutureFramesActions[key] = askHowFutureFramesAction
+        
+        warningsMenu = self.settingsMenu.addMenu('Warnings and pop-ups')
         self.warnLostCellsAction = QAction()
         self.warnLostCellsAction.setText('Show pop-up warning for lost cells')
         self.warnLostCellsAction.setCheckable(True)
         self.warnLostCellsAction.setChecked(True)
-        self.settingsMenu.addAction(self.warnLostCellsAction)
+        warningsMenu.addAction(self.warnLostCellsAction)
 
         warnEditingWithAnnotTexts = {
             'Delete ID': 'Show warning when deleting ID that has annotations',
@@ -3154,7 +3176,7 @@ class guiWin(QMainWindow):
             action.setChecked(True)
             action.removeAnnot = False
             self.warnEditingWithAnnotActions[key] = action
-            self.settingsMenu.addAction(action)
+            warningsMenu.addAction(action)
 
 
     def gui_createStatusBar(self):
@@ -5528,9 +5550,12 @@ class guiWin(QMainWindow):
                 delIDs = [delID]
 
             # Ask to propagate change to all future visited frames
+            key = 'Delete ID'
+            askAction = self.askHowFutureFramesActions[key]
+            doNotShow = not askAction.isChecked()
             (UndoFutFrames, applyFutFrames, endFrame_i,
             doNotShowAgain) = self.propagateChange(
-                delIDs, 'Delete ID', posData.doNotShowAgain_DelID,
+                delIDs, key, doNotShow,
                 posData.UndoFutFrames_DelID, posData.applyFutFrames_DelID
             )
             
@@ -5915,10 +5940,12 @@ class guiWin(QMainWindow):
                     ID = binID_prompt.EntryID
 
             # Ask to propagate change to all future visited frames
+            key = 'Exclude cell from analysis'
+            askAction = self.askHowFutureFramesActions[key]
+            doNotShow = not askAction.isChecked()
             (UndoFutFrames, applyFutFrames, endFrame_i,
             doNotShowAgain) = self.propagateChange(
-                ID, 'Exclude cell from analysis',
-                posData.doNotShowAgain_BinID,
+                ID, key, doNotShow,
                 posData.UndoFutFrames_BinID,
                 posData.applyFutFrames_BinID
             )
@@ -5993,10 +6020,12 @@ class guiWin(QMainWindow):
                     ID = ripID_prompt.EntryID
 
             # Ask to propagate change to all future visited frames
+            key = 'Annotate cell as dead'
+            askAction = self.askHowFutureFramesActions[key]
+            doNotShow = not askAction.isChecked()
             (UndoFutFrames, applyFutFrames, endFrame_i,
             doNotShowAgain) = self.propagateChange(
-                ID, 'Annotate cell as dead',
-                posData.doNotShowAgain_RipID,
+                ID, key, doNotShow,
                 posData.UndoFutFrames_RipID,
                 posData.applyFutFrames_RipID
             )
@@ -9583,21 +9612,19 @@ class guiWin(QMainWindow):
     # @exec_time
     def applyEditID(
             self, clickedID, currentIDs, oldIDnewIDMapper, clicked_x, clicked_y
-        ):
-        
-        t0 = time.perf_counter()
-        
+        ):  
         posData = self.data[self.pos_i]
         
         # Ask to propagate change to all future visited frames
+        key = 'Edit ID'
+        askAction = self.askHowFutureFramesActions[key]
+        doNotShow = not askAction.isChecked()
         (UndoFutFrames, applyFutFrames, endFrame_i,
         doNotShowAgain) = self.propagateChange(
-            clickedID, 'Edit ID', posData.doNotShowAgain_EditID,
+            clickedID, key, doNotShow,
             posData.UndoFutFrames_EditID, posData.applyFutFrames_EditID,
             applyTrackingB=True
         )
-        
-        t1 = time.perf_counter()
 
         if UndoFutFrames is None:
             return
@@ -14485,6 +14512,9 @@ class guiWin(QMainWindow):
 
             endFrame_i = ffa.endFrame_i
             doNotShowAgain = ffa.doNotShowCheckbox.isChecked()
+            self.askHowFutureFramesActions[modTxt].setChecked(
+                not doNotShowAgain
+            )
 
             self.onlyTracking = False
             if decision == 'apply_and_reinit':
@@ -21978,9 +22008,12 @@ class guiWin(QMainWindow):
                 self.get_data()
 
         # Ask to propagate change to all future visited frames
+        key = 'Keep ID'
+        askAction = self.askHowFutureFramesActions[key]
+        doNotShow = not askAction.isChecked()
         (UndoFutFrames, applyFutFrames, endFrame_i,
         doNotShowAgain) = self.propagateChange(
-            self.keptObjectsIDs, 'Keep ID', posData.doNotShowAgain_keepID,
+            self.keptObjectsIDs, key, doNotShow,
             posData.UndoFutFrames_keepID, posData.applyFutFrames_keepID,
             force=True, applyTrackingB=True
         )
@@ -25551,15 +25584,15 @@ class guiWin(QMainWindow):
         imageItem.setImage(img)
     
     def getNearestLostObjID(self, y, x):
-        yy, xx, _ = np.nonzero(self.lostObjContoursImage)        
-        if len(xx) == 0:
+        posData = self.data[self.pos_i]
+        if not posData.lost_IDs:
             return
         
-        posData = self.data[self.pos_i]
         prev_lab = posData.allData_li[posData.frame_i-1]['labels']
         if prev_lab is None:
             return
         
+        yy, xx, _ = np.nonzero(self.lostObjContoursImage)
         lostObjsContourMask = np.zeros(self.currentLab2D.shape, dtype=bool)
         lostObjsContourMask[yy.astype(int), xx.astype(int)] = True
             
