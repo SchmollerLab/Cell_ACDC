@@ -2006,7 +2006,7 @@ def lab2d_to_rois(ImagejRoi, lab2D, ndigits, t=None, z=None):
         name = f'id={obj.label}-{t_str}-{name}'
         
         roi = ImagejRoi.frompoints(
-            cont, name=name, t=t, z=z, group=obj.label
+            cont, name=name, t=t, z=z, index=obj.label
         )
         rois.append(roi)
     return rois
@@ -2032,7 +2032,8 @@ def from_lab_to_imagej_rois(lab, ImagejRoi, t=0, SizeT=1, max_ID=None):
             z_rois = lab2d_to_rois(ImagejRoi, lab2D, ndigits, t=t, z=z)
         rois.extend(z_rois)
     else:
-        rois = lab2d_to_rois(ImagejRoi, lab2D, ndigits, t=t)
+        ndigits = max(ndigitsT, ndigitsY, ndigitsX)
+        rois = lab2d_to_rois(ImagejRoi, lab, ndigits, t=t)
     return rois
 
 def from_imagej_rois_to_segm_data(
