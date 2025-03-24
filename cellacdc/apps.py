@@ -418,7 +418,7 @@ class customAnnotationDialog(QDialog):
         self.colorButton.setColor(selectedAnnot['symbolColor'])
         keySequence = widgets.macShortcutToWindows(selectedAnnot['shortcut'])
         if keySequence:
-            self.shortcutWidget.widget.keySequence = QKeySequence(keySequence)
+            self.shortcutWidget.widget.keySequence = widgets.KeySequenceFromText(keySequence)
 
     def warnNoItemsSelected(self):
         msg = widgets.myMessageBox(parent=self)
@@ -2643,6 +2643,15 @@ class QDialogMetadataXML(QDialog):
         entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
         entriesLayout.addWidget(self.SizeT_SB, row, 1)
         self.SizeT_SB.valueChanged.connect(self.hideShowTimeIncrement)
+        
+        row += 1
+        self.timeRangeToSaveWidget = widgets.RangeSelector(integers=True)
+        self.timeRangeToSaveWidget.setRange(1, SizeT)
+        txt = 'Time range to save:  '
+        label = QLabel(txt)
+        self.timeRangeToSaveWidget.label = label
+        entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
+        entriesLayout.addWidget(self.timeRangeToSaveWidget, row, 1)
 
         row += 1
         self.SizeZ_SB = QSpinBox()
@@ -2680,11 +2689,6 @@ class QDialogMetadataXML(QDialog):
         entriesLayout.addWidget(
             self.TimeIncrementUnit_CB, row, 2, alignment=Qt.AlignLeft
         )
-
-        if SizeT == 1:
-            self.TimeIncrement_DSB.hide()
-            self.TimeIncrementUnit_CB.hide()
-            self.TimeIncrement_Label.hide()
 
         row += 1
         self.PhysicalSizeX_DSB = QDoubleSpinBox()
@@ -2925,6 +2929,9 @@ class QDialogMetadataXML(QDialog):
             self.dimensionOrderChanged
         )
         DimensionOrderHelpButton.clicked.connect(self.dimensionOrderHelp)
+        
+        self.hideShowTimeIncrement(SizeT)
+        self.readSampleImgDataAgain = False
 
         self.setLayout(mainLayout)
         # self.setModal(True)
@@ -3107,15 +3114,25 @@ class QDialogMetadataXML(QDialog):
         return areChNamesValid
 
     def hideShowTimeIncrement(self, value):
+        if self.TimeIncrement_DSB.isVisible() and value == 1:
+            self.readSampleImgDataAgain = True
+        
+        if not self.TimeIncrement_DSB.isVisible() and value > 1:
+            self.readSampleImgDataAgain = True
+            
         if value > 1:
             self.TimeIncrement_DSB.show()
             self.TimeIncrementUnit_CB.show()
             self.TimeIncrement_Label.show()
+            self.timeRangeToSaveWidget.show()
+            self.timeRangeToSaveWidget.label.show()
+            self.timeRangeToSaveWidget.setRange(1, value)
         else:
             self.TimeIncrement_DSB.hide()
             self.TimeIncrementUnit_CB.hide()
             self.TimeIncrement_Label.hide()
-        self.readSampleImgDataAgain = True
+            self.timeRangeToSaveWidget.hide()
+            self.timeRangeToSaveWidget.label.hide()
 
     def hideShowPhysicalSizeZ(self, value):
         if value > 1:
@@ -3350,6 +3367,7 @@ class QDialogMetadataXML(QDialog):
         self.SizeZ = self.SizeZ_SB.value()
         self.SizeC = self.SizeC_SB.value()
         self.SizeS = self.SizeS_SB.value()
+        self.timeRangeToSave = self.timeRangeToSaveWidget.range()
         self.TimeIncrement = self.TimeIncrement_DSB.value()
         self.PhysicalSizeX = self.PhysicalSizeX_DSB.value()
         self.PhysicalSizeY = self.PhysicalSizeY_DSB.value()
@@ -5636,8 +5654,8 @@ class QCropZtool(QBaseDialog):
         self.lowerZscrollbar.label = QLabel(f'{s}/{SizeZ}')
 
         self.upperZscrollbar = QScrollBar(Qt.Horizontal)
-        self.upperZscrollbar.setValue(SizeZ-1)
         self.upperZscrollbar.setMaximum(SizeZ-1)
+        self.upperZscrollbar.setValue(SizeZ-1)
         self.upperZscrollbar.label = QLabel(f'{SizeZ}/{SizeZ}')
 
         cancelButton = widgets.cancelPushButton('Cancel')
@@ -7891,7 +7909,7 @@ class editCcaTableWidget(QDialog):
             genNumSpinBox.setMaximum(2147483647)
             genNumSpinBox.setAlignment(Qt.AlignCenter)
             genNumSpinBox.setFixedWidth(int(genNumColWidth*2/3))
-            genNumSpinBox.setValue(cca_df.at[ID, 'generation_num'])
+            genNumSpinBox.setValue(int(cca_df.at[ID, 'generation_num']))
             tableLayout.addWidget(genNumSpinBox, row+1, col, alignment=AC)
             self.genNumSpinBoxes.append(genNumSpinBox)
 
@@ -7900,7 +7918,9 @@ class editCcaTableWidget(QDialog):
             relationshipComboBox.setFocusPolicy(Qt.StrongFocus)
             relationshipComboBox.installEventFilter(self)
             relationshipComboBox.addItems(['mother', 'bud'])
-            relationshipComboBox.setCurrentText(cca_df.at[ID, 'relationship'])
+            relationshipComboBox.setCurrentText(
+                str(cca_df.at[ID, 'relationship'])
+            )
             tableLayout.addWidget(relationshipComboBox, row+1, col)
             self.relationshipComboBoxes.append(relationshipComboBox)
             relationshipComboBox.currentIndexChanged.connect(
@@ -7934,7 +7954,7 @@ class editCcaTableWidget(QDialog):
             divisFrameSpinBox.setValue(-1)
             divisFrameSpinBox.setAlignment(Qt.AlignCenter)
             divisFrameSpinBox.setFixedWidth(int(genNumColWidth*2/3))
-            divisFrame_i = cca_df.at[ID, 'division_frame_i']
+            divisFrame_i = int(cca_df.at[ID, 'division_frame_i'])
             val = divisFrame_i+1 if divisFrame_i>=0 else -1
             divisFrameSpinBox.setValue(val)
             tableLayout.addWidget(divisFrameSpinBox, row+1, col, alignment=AC)
@@ -9235,7 +9255,7 @@ class manualSeparateGui(QMainWindow):
         self.undoIdx = 0
         self.fontSize = fontSize
         self.AllCutsCoords = []
-        self.setWindowTitle("Cell-ACDC - Segm&Track")
+        self.setWindowTitle("Split object")
         # self.setGeometry(Left, Top, 850, 800)
 
         self.gui_createActions()
@@ -10697,13 +10717,11 @@ class QDialogModelParams(QDialog):
                     self.seeHereLabel, alignment=Qt.AlignCenter
                 )
 
-        
         if preProcessLayout is not None:
             mainLayout.addLayout(preProcessLayout)
             
         mainLayout.addWidget(self.scrollArea)
         
-        postProcessLayout = None
         if postProcessLayout is not None:
             mainLayout.addSpacing(10)
             mainLayout.addLayout(postProcessLayout)
@@ -12692,7 +12710,7 @@ class ShortcutEditorDialog(QBaseDialog):
         label = QLabel('Zoom out:')
         self.zoomShortcutLineEdit = widgets.ShortcutLineEdit()
         if zoomOutKeyValue is not None:
-            zoomOutKeySequence = QKeySequence(zoomOutKeyValue)
+            zoomOutKeySequence = widgets.KeySequenceFromText(zoomOutKeyValue)
             self.zoomShortcutLineEdit.setText(zoomOutKeySequence.toString())
             self.zoomShortcutLineEdit.key = zoomOutKeyValue
         self.zoomShortcutLineEdit.textChanged.connect(
@@ -12708,7 +12726,7 @@ class ShortcutEditorDialog(QBaseDialog):
             shortcutLineEdit = widgets.ShortcutLineEdit()
             if hasattr(widget, 'keyPressShortcut'):
                 shortcutLineEdit.key = widget.keyPressShortcut
-                shortcut = QKeySequence(widget.keyPressShortcut)
+                shortcut = widgets.KeySequenceFromText(widget.keyPressShortcut)
                 isShortcutKeyPress = True
             else:
                 shortcut = widget.shortcut()
@@ -16440,3 +16458,114 @@ class CombineChannelsSetupDialogGUI(CombineChannelsSetupDialog):
         
         keep_input_dtype = self.keepInputDataTypeToggle.isChecked()
         return steps, keep_input_dtype # why does this not work???s 
+
+class QCropTrangeTool(QBaseDialog):
+    sigClose = Signal()
+    sigTvalueChanged = Signal(int)
+    sigReset = Signal()
+    sigCrop = Signal(int, int)
+
+    def __init__(
+            self, SizeT, 
+            cropButtonText='Apply crop', 
+            parent=None, 
+            addDoNotShowAgain=False, 
+            title='Select frames range'
+        ):
+        super().__init__(parent)
+
+        self.cancel = True
+
+        self.setWindowFlags(Qt.Tool | Qt.WindowStaysOnTopHint)
+
+        self.SizeT = SizeT
+        self.numDigits = len(str(self.SizeT))
+
+        self.setWindowTitle(title)
+
+        layout = QGridLayout()
+        buttonsLayout = QHBoxLayout()
+
+        self.startFrameScrollbar = QScrollBar(Qt.Horizontal)
+        self.startFrameScrollbar.setMaximum(SizeT-1)
+        t = str(1).zfill(self.numDigits)
+        self.startFrameScrollbar.label = QLabel(f'{t}/{SizeT}')
+
+        self.endFrameScrollbar = QScrollBar(Qt.Horizontal)
+        self.endFrameScrollbar.setMaximum(SizeT-1)
+        self.endFrameScrollbar.setValue(SizeT-1)
+        self.endFrameScrollbar.label = QLabel(f'{SizeT}/{SizeT}')
+
+        cancelButton = widgets.cancelPushButton('Cancel')
+        cropButton = widgets.okPushButton(cropButtonText)
+        buttonsLayout.addWidget(cropButton)
+        buttonsLayout.addWidget(cancelButton)
+
+        row = 0
+        layout.addWidget(
+            QLabel('Start frame n.  '), row, 0, alignment=Qt.AlignRight
+        )
+        layout.addWidget(
+            self.startFrameScrollbar.label, row, 1, alignment=Qt.AlignRight
+        )
+        layout.addWidget(self.startFrameScrollbar, row, 2)
+
+        row += 1
+        layout.setRowStretch(row, 5)
+
+        row += 1
+        layout.addWidget(
+            QLabel('Stop frame n. '), row, 0, alignment=Qt.AlignRight
+        )
+        layout.addWidget(
+            self.endFrameScrollbar.label, row, 1, alignment=Qt.AlignRight
+        )
+        layout.addWidget(self.endFrameScrollbar, row, 2)
+
+        row += 1
+        if addDoNotShowAgain:
+            self.doNotShowAgainCheckbox = QCheckBox('Do not ask again')
+            layout.addWidget(
+                self.doNotShowAgainCheckbox, row, 2, alignment=Qt.AlignLeft
+            )
+            row += 1
+
+        layout.addLayout(buttonsLayout, row, 2, alignment=Qt.AlignRight)
+
+        layout.setColumnStretch(0, 0)
+        layout.setColumnStretch(1, 0)
+        layout.setColumnStretch(2, 10)
+
+        self.setLayout(layout)
+
+        # resetButton.clicked.connect(self.emitReset)
+        cropButton.clicked.connect(self.emitCrop)
+        cancelButton.clicked.connect(self.close)
+        self.startFrameScrollbar.valueChanged.connect(self.TvalueChanged)
+        self.endFrameScrollbar.valueChanged.connect(self.TvalueChanged)
+
+    def emitReset(self):
+        self.sigReset.emit()
+
+    def emitCrop(self):
+        self.cancel = False
+        low_z = self.startFrameScrollbar.value()
+        high_z = self.endFrameScrollbar.value()
+        self.sigCrop.emit(low_z, high_z)
+        self.close()
+
+    def updateScrollbars(self, start_frame_i, lower_frame_i):
+        self.startFrameScrollbar.setValue(start_frame_i)
+        self.endFrameScrollbar.setValue(lower_frame_i)
+
+    def TvalueChanged(self, value):
+        t = str(value+1).zfill(self.numDigits)
+        self.sender().label.setText(f'{t}/{self.SizeT}')
+        self.sigTvalueChanged.emit(value)
+
+    def showEvent(self, event):
+        self.resize(int(self.width()*1.5), self.height())
+
+    def closeEvent(self, event):
+        super().closeEvent(event)
+        self.sigClose.emit()

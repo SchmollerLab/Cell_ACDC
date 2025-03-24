@@ -42,6 +42,9 @@ length_unit_converters = {
     'nm -> μm': lambda x: x/1000,
     'mm -> μm': lambda x: x*1e3,
     'cm -> μm': lambda x: x*1e4,
+    'μm -> nm': lambda x: x*1000,
+    'μm -> mm': lambda x: x/1e3,
+    'μm -> cm': lambda x: x/1e4,
     'μm -> μm': lambda x: x,
 }
 

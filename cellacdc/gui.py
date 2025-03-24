@@ -71,7 +71,8 @@ from . import qrc_resources
 
 # Custom modules
 from . import exception_handler
-from . import base_cca_dict, lineage_tree_cols, lineage_tree_cols_std_val, graphLayoutBkgrColor, darkBkgrColor
+from . import base_cca_dict, lineage_tree_cols, lineage_tree_cols_std_val
+from . import graphLayoutBkgrColor, darkBkgrColor
 from . import cca_df_colnames
 from . import load, prompts, apps, workers, html_utils
 from . import core, myutils, dataPrep, widgets
@@ -88,6 +89,7 @@ from . import cca_functions
 from . import data_structure_docs_url
 from . import exporters
 from . import preprocess
+from . import io
 from .trackers.CellACDC import CellACDC_tracker
 from .cca_functions import _calc_rot_vol
 from .myutils import exec_time, setupLogger, ArgSpec
@@ -822,9 +824,15 @@ class guiWin(QMainWindow):
             return self.isDefaultMiddleClick(mouseEvent, modifiers)
                
         delObjKeySequence, delObjQtButton = self.delObjAction
+        if delObjKeySequence is None:
+            # Setting only middle click on mac is allowed, however the 
+            # delObjKeySequence is None and the tool button is never checked
+            isDelObjectActive = True
+        else:
+            isDelObjectActive = self.delObjToolAction.isChecked()
+            
         middle_click = (
-            mouseEvent.button() == delObjQtButton 
-            and self.delObjToolAction.isChecked()
+            mouseEvent.button() == delObjQtButton and isDelObjectActive
         )
         
         return middle_click
@@ -2456,12 +2464,34 @@ class guiWin(QMainWindow):
                 action.setChecked(True)
             action.toggled.connect(self.keepToolActiveActionToggled)
             menu.addAction(action)
-
+        
+        self.settingsMenu.addSeparator()
+        
+        askHowFutureFramesMenu = self.settingsMenu.addMenu(
+            'Ask how to propagate changes to future frames'
+        )
+        self.askHowFutureFramesActions = {}
+        askHowFutureFramesActionsKeys = (
+            'Delete ID', 
+            'Exclude cell from analysis', 
+            'Annotate cell as dead', 
+            'Edit ID',
+            'Keep ID'
+        )
+        for key in askHowFutureFramesActionsKeys:
+            askHowFutureFramesAction = QAction()
+            askHowFutureFramesAction.setText(f'Ask for "{key}" action')
+            askHowFutureFramesAction.setCheckable(True)
+            askHowFutureFramesAction.setChecked(True)
+            askHowFutureFramesMenu.addAction(askHowFutureFramesAction)
+            self.askHowFutureFramesActions[key] = askHowFutureFramesAction
+        
+        warningsMenu = self.settingsMenu.addMenu('Warnings and pop-ups')
         self.warnLostCellsAction = QAction()
         self.warnLostCellsAction.setText('Show pop-up warning for lost cells')
         self.warnLostCellsAction.setCheckable(True)
         self.warnLostCellsAction.setChecked(True)
-        self.settingsMenu.addAction(self.warnLostCellsAction)
+        warningsMenu.addAction(self.warnLostCellsAction)
 
         warnEditingWithAnnotTexts = {
             'Delete ID': 'Show warning when deleting ID that has annotations',
@@ -2490,7 +2520,7 @@ class guiWin(QMainWindow):
             action.setChecked(True)
             action.removeAnnot = False
             self.warnEditingWithAnnotActions[key] = action
-            self.settingsMenu.addAction(action)
+            warningsMenu.addAction(action)
 
 
     def gui_createStatusBar(self):
@@ -2602,7 +2632,9 @@ class guiWin(QMainWindow):
         
         self.skipToNewIdAction = QAction(self)
         self.skipToNewIdAction.setIcon(QIcon(":skip_forward_new_ID.svg"))
-        self.skipToNewIdAction.setShortcut(QKeySequence(Qt.Key_PageUp))
+        self.skipToNewIdAction.setShortcut(
+            widgets.KeySequenceFromText(Qt.Key_PageUp)
+        )
 
         self.skipToNewIdAction.setDisabled(True)
 
@@ -4878,9 +4910,12 @@ class guiWin(QMainWindow):
                 delIDs = [delID]
 
             # Ask to propagate change to all future visited frames
+            key = 'Delete ID'
+            askAction = self.askHowFutureFramesActions[key]
+            doNotShow = not askAction.isChecked()
             (UndoFutFrames, applyFutFrames, endFrame_i,
             doNotShowAgain) = self.propagateChange(
-                delIDs, 'Delete ID', posData.doNotShowAgain_DelID,
+                delIDs, key, doNotShow,
                 posData.UndoFutFrames_DelID, posData.applyFutFrames_DelID
             )
             
@@ -5265,10 +5300,12 @@ class guiWin(QMainWindow):
                     ID = binID_prompt.EntryID
 
             # Ask to propagate change to all future visited frames
+            key = 'Exclude cell from analysis'
+            askAction = self.askHowFutureFramesActions[key]
+            doNotShow = not askAction.isChecked()
             (UndoFutFrames, applyFutFrames, endFrame_i,
             doNotShowAgain) = self.propagateChange(
-                ID, 'Exclude cell from analysis',
-                posData.doNotShowAgain_BinID,
+                ID, key, doNotShow,
                 posData.UndoFutFrames_BinID,
                 posData.applyFutFrames_BinID
             )
@@ -5343,10 +5380,12 @@ class guiWin(QMainWindow):
                     ID = ripID_prompt.EntryID
 
             # Ask to propagate change to all future visited frames
+            key = 'Annotate cell as dead'
+            askAction = self.askHowFutureFramesActions[key]
+            doNotShow = not askAction.isChecked()
             (UndoFutFrames, applyFutFrames, endFrame_i,
             doNotShowAgain) = self.propagateChange(
-                ID, 'Annotate cell as dead',
-                posData.doNotShowAgain_RipID,
+                ID, key, doNotShow,
                 posData.UndoFutFrames_RipID,
                 posData.applyFutFrames_RipID
             )
@@ -8835,6 +8874,12 @@ class guiWin(QMainWindow):
             save=True, singlePos=True,
             askSegm3D=False
         )
+        if hasattr(self, 'timestamp'):
+            self.timestamp.setSecondsPerFrame(posData.TimeIncrement)
+            self.updateTimestampFrame()
+        
+        if hasattr(self, 'scaleBar'):
+            self.scaleBar.updatePhysicalLength(posData.PhysicalSizeX)
 
     def setHoverToolSymbolData(self, xx, yy, ScatterItems, size=None):
         if not xx:
@@ -8990,21 +9035,19 @@ class guiWin(QMainWindow):
     # @exec_time
     def applyEditID(
             self, clickedID, currentIDs, oldIDnewIDMapper, clicked_x, clicked_y
-        ):
-        
-        t0 = time.perf_counter()
-        
+        ):  
         posData = self.data[self.pos_i]
         
         # Ask to propagate change to all future visited frames
+        key = 'Edit ID'
+        askAction = self.askHowFutureFramesActions[key]
+        doNotShow = not askAction.isChecked()
         (UndoFutFrames, applyFutFrames, endFrame_i,
         doNotShowAgain) = self.propagateChange(
-            clickedID, 'Edit ID', posData.doNotShowAgain_EditID,
+            clickedID, key, doNotShow,
             posData.UndoFutFrames_EditID, posData.applyFutFrames_EditID,
             applyTrackingB=True
         )
-        
-        t1 = time.perf_counter()
 
         if UndoFutFrames is None:
             return
@@ -13897,11 +13940,20 @@ class guiWin(QMainWindow):
         self.setGeometry(left, top+10, width, height-200)
     
     def checkSetDelObjActionActive(self, event):
+        if self.delObjAction is None and self.is_win:
+            return
+        
         if self.delObjAction is None:
+            if event.key() == Qt.Key_Control:
+                self.delObjToolAction.setChecked(True)
             return
         
         delObjKeySequence, delObjQtButton = self.delObjAction
         keySequenceText = widgets.QKeyEventToString(event).rstrip('+')
+        
+        if delObjKeySequence is None:
+            self.delObjToolAction.setChecked(True)
+            return
         
         if keySequenceText == delObjKeySequence.toString():
             self.delObjToolAction.setChecked(True)
@@ -14351,6 +14403,9 @@ class guiWin(QMainWindow):
 
             endFrame_i = ffa.endFrame_i
             doNotShowAgain = ffa.doNotShowCheckbox.isChecked()
+            self.askHowFutureFramesActions[modTxt].setChecked(
+                not doNotShowAgain
+            )
 
             self.onlyTracking = False
             if decision == 'apply_and_reinit':
@@ -15194,7 +15249,7 @@ class guiWin(QMainWindow):
             shortcut = annotState['shortcut']
             if shortcut is not None:
                 keySequence = widgets.macShortcutToWindows(shortcut)
-                keySequence = QKeySequence(keySequence)
+                keySequence = widgets.KeySequenceFromText(keySequence)
             else:
                 keySequence = None
             toolTip = myutils.getCustomAnnotTooltip(annotState)
@@ -15343,7 +15398,7 @@ class guiWin(QMainWindow):
             symbol = re.findall(r"\'(.+)\'", symbol)[0]
             symbolColor = selectedAnnot['symbolColor']
             symbolColor = pg.mkColor(symbolColor)
-            keySequence = QKeySequence(selectedAnnot['shortcut'])
+            keySequence = widgets.KeySequenceFromText(selectedAnnot['shortcut'])
             Type = selectedAnnot['type']
             toolTip = (
                 f'Name: {selectedAnnotName}\n\n'
@@ -17642,10 +17697,21 @@ class guiWin(QMainWindow):
         loadUnsavedButton = widgets.reloadPushButton('Recover unsaved data')
         loadSavedButton = widgets.savePushButton('Load saved data')
         infoButton = widgets.infoPushButton('More info...')
-        buttons = ('Cancel', loadSavedButton, loadUnsavedButton, infoButton)
+        loadSafeNpzButton = ''
+        if posData.isSafeNpzOverwritePresent():
+            loadSafeNpzButton = widgets.reloadPushButton(
+                'Load .safe.npz file from crash'
+            )
+            buttons = (
+                loadSavedButton, loadUnsavedButton, loadSafeNpzButton, 
+                infoButton
+            )
+        else:
+            buttons = (loadSavedButton, loadUnsavedButton, infoButton)
         msg.question(
             self.progressWin, 'Recover unsaved data?', txt, 
-            buttonsTexts=buttons, showDialog=False
+            buttonsTexts=('Cancel', *buttons), 
+            showDialog=False
         )
         infoButton.disconnect()
         infoButton.clicked.connect(partial(self.showInfoAutosave, posData))
@@ -17654,22 +17720,38 @@ class guiWin(QMainWindow):
             self.loadDataWorker.abort = True
         elif msg.clickedButton == loadUnsavedButton:
             self.loadDataWorker.loadUnsaved = True
+        elif msg.clickedButton == loadSafeNpzButton:
+            self.loadDataWorker.loadSafeOverwriteNpz = True
+            
         self.loadDataWorker.waitCond.wakeAll()
         # self.AutoPilotProfile.storeLoadSavedData()
     
     def showInfoAutosave(self, posData):
         msg = widgets.myMessageBox(showCentered=False, wrapText=False)
-        txt = html_utils.paragraph(f"""
-            Cell-ACDC detected unsaved data in a previous session and it stored 
-            it because the <b>Autosave</b><br>
-            function was active.<br><br>
+        txt = (f"""
+            Cell-ACDC either detected unsaved data in a previous session and it 
+            stored it because the <b>Autosave</b><br>
+            function was active, or it crashed during saving.<br><br>
             You can toggle Autosave ON and OFF from the menu on the top menubar 
-            <code>File --> Autosave</code>.<br><br>
-            You can find the recovered data in the following folder:<br><br>
-            <code>{posData.recoveryFolderPath}</code><br><br>
-            This folder <b>will be deleted when you save data the next time</b>.
+            <code>File --> Autosave</code>.
         """)
-        msg.information(self, 'Autosave info', txt)
+        txt = (f"""
+            {txt}<br><br>
+            If Cell-ACDC crashed during saving, the segmentation file ending 
+            with <code>.new.npz</code><br>
+            is present and you might be able to recover the data from there. 
+        """) 
+        
+        txt = (f"""
+            {txt}<br><br>
+            You can find additional recovered data in the following folder:
+        """)  
+        txt = html_utils.paragraph(txt)
+        msg.information(
+            self, 'Autosave info', txt, 
+            path_to_browse=posData.recoveryFolderPath, 
+            commands=(posData.recoveryFolderPath,)
+        )
     
     def askMismatchSegmDataShape(self, posData):
         msg = widgets.myMessageBox(wrapText=False)
@@ -20759,21 +20841,27 @@ class guiWin(QMainWindow):
                 Do you want to restart cell cycle analysis from frame 
                 {last_cca_frame_i+1}?<br>
             """)
-            _, yesButton, stayButton = msg.warning(
+            _, goToFrameButton, stayButton = msg.warning(
                 self, 'Go to last annotated frame?', txt, 
                 buttonsTexts=(
                     'Cancel', f'Yes, go to frame {last_cca_frame_i+1}', 
                     'No, stay on current frame')
             )
-            if yesButton == msg.clickedButton:
+            if goToFrameButton == msg.clickedButton:
+                self.addMissingIDs_cca_df(posData)
+                self.store_cca_df()
                 msg = 'Looking good!'
                 self.last_cca_frame_i = last_cca_frame_i
                 posData.frame_i = last_cca_frame_i
                 self.titleLabel.setText(msg, color=self.titleColor)
                 self.get_data()
+                self.addMissingIDs_cca_df(posData)
+                self.store_cca_df()
                 self.updateAllImages()
                 self.updateScrollbars()
             elif stayButton == msg.clickedButton:
+                self.addMissingIDs_cca_df(posData)
+                self.store_cca_df()
                 self.initMissingFramesCca(last_cca_frame_i, posData.frame_i)
                 last_cca_frame_i = posData.frame_i
                 msg = 'Cell cycle analysis initialised!'
@@ -20805,16 +20893,22 @@ class guiWin(QMainWindow):
                 proceed = False
                 return
             
+            self.addMissingIDs_cca_df(posData)
             if msg.clickedButton == yesButton:
+                self.addMissingIDs_cca_df(posData)
                 msg = 'Looking good!'
                 self.titleLabel.setText(msg, color=self.titleColor)
                 self.last_cca_frame_i = last_cca_frame_i
                 posData.frame_i = last_cca_frame_i
                 self.get_data()
+                self.addMissingIDs_cca_df(posData)
+                self.store_cca_df()
                 self.updateAllImages()
                 self.updateScrollbars()
         else:
             self.get_data()
+            self.addMissingIDs_cca_df(posData)
+            self.store_cca_df()
 
         self.last_cca_frame_i = last_cca_frame_i
 
@@ -21048,7 +21142,7 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         self.last_cca_frame_i = from_frame_i-1
         self.ccaCheckerStopChecking()
-            
+        
         self.setNavigateScrollBarMaximum() 
         for i in range(from_frame_i, posData.SizeT):
             posData.allData_li[i].pop('cca_df', None)
@@ -21866,9 +21960,12 @@ class guiWin(QMainWindow):
                 self.get_data()
 
         # Ask to propagate change to all future visited frames
+        key = 'Keep ID'
+        askAction = self.askHowFutureFramesActions[key]
+        doNotShow = not askAction.isChecked()
         (UndoFutFrames, applyFutFrames, endFrame_i,
         doNotShowAgain) = self.propagateChange(
-            self.keptObjectsIDs, 'Keep ID', posData.doNotShowAgain_keepID,
+            self.keptObjectsIDs, key, doNotShow,
             posData.UndoFutFrames_keepID, posData.applyFutFrames_keepID,
             force=True, applyTrackingB=True
         )
@@ -23674,26 +23771,28 @@ class guiWin(QMainWindow):
                 Qt.MouseButton.LeftButton if delObjButtonText == 'Left click'
                 else Qt.MouseButton.MiddleButton
             )
-            delObjKeySequence = QKeySequence(delObjKeySequenceText)
-            self.delObjAction = (
-                QKeySequence(delObjKeySequenceText), delObjQtButton
-            )
-            # if delObjKeySequenceText:
-            #     self.delObjToolAction.setShortcut(delObjKeySequence)
-                        
+            if not delObjKeySequenceText:
+                delObjKeySequence = None
+            else:
+                delObjKeySequence = widgets.KeySequenceFromText(
+                    delObjKeySequenceText
+                )
+            self.delObjToolAction.setChecked(True)
+            self.delObjAction = delObjKeySequence, delObjQtButton
+              
         shortcuts = {}
         for name, widget in self.widgetsWithShortcut.items():
             if name not in cp.options('keyboard.shortcuts'):
                 if hasattr(widget, 'keyPressShortcut'):
                     key = widget.keyPressShortcut
-                    shortcut = QKeySequence(key)
+                    shortcut = widgets.KeySequenceFromText(key)
                 else:
                     shortcut = widget.shortcut()
                 shortcut_text = shortcut.toString()
                 cp['keyboard.shortcuts'][name] = shortcut_text
             else:
                 shortcut_text = cp['keyboard.shortcuts'][name]
-                shortcut = QKeySequence(shortcut_text)
+                shortcut = widgets.KeySequenceFromText(shortcut_text)
             
             shortcuts[name] = (shortcut_text, shortcut)
         self.setShortcuts(shortcuts, save=False)
@@ -23729,34 +23828,38 @@ class guiWin(QMainWindow):
         
         cp['keyboard.shortcuts']['Zoom out'] = str(self.zoomOutKeyValue)
         
-        if self.delObjAction is not None:
-            delObjKeySequence, delObjQtButton = self.delObjAction
-            try:
-                delObjKeySequenceText = delObjKeySequence.toString()
-                delObjKeySequenceText = (
-                    delObjKeySequenceText
-                    .encode('ascii', 'ignore')
-                    .decode('utf-8')
-                )
-                delObjButtonText = (
-                    'Left click' if delObjQtButton == Qt.MouseButton.LeftButton
-                    else 'Middle click'
-                )
-                cp['delete_object.action'] = {
-                    'Key sequence': delObjKeySequenceText, 
-                    'Mouse button': delObjButtonText
-                }
-            except Exception as err:
+        if self.delObjAction is None:
+            with open(shortcut_filepath, 'w') as ini:
+                cp.write(ini)
+            return
+    
+        delObjKeySequence, delObjQtButton = self.delObjAction
+        try:
+            if delObjKeySequence is None:
                 delObjKeySequenceText = ''
-                self.logger.warning(
-                    f'{delObjKeySequence} is not a valid keys sequence for '
-                    'deleting objects. Setting default action'
-                )
-                self.delObjAction = None
-                cp.remove_section('delete_object.action')
+            else:
+                delObjKeySequenceText = delObjKeySequence.toString()
                 
-            # if delObjKeySequenceText:
-            #     self.delObjToolAction.setShortcut(delObjKeySequence)
+            delObjKeySequenceText = (
+                delObjKeySequenceText
+                .encode('ascii', 'ignore')
+                .decode('utf-8')
+            )
+            delObjButtonText = (
+                'Left click' if delObjQtButton == Qt.MouseButton.LeftButton
+                else 'Middle click'
+            )
+            cp['delete_object.action'] = {
+                'Key sequence': delObjKeySequenceText, 
+                'Mouse button': delObjButtonText
+            }
+        except Exception as err:
+            self.logger.warning(
+                f'{delObjKeySequence} is not a valid keys sequence for '
+                'deleting objects. Setting default action'
+            )
+            self.delObjAction = None
+            cp.remove_section('delete_object.action')
             
         with open(shortcut_filepath, 'w') as ini:
             cp.write(ini)
@@ -23771,7 +23874,10 @@ class guiWin(QMainWindow):
             
         if self.delObjAction is not None:
             delObjKeySequence, delObjQtButton = self.delObjAction
-            delObjKeySequenceText = delObjKeySequence.toString()
+            if delObjKeySequence is None:
+                delObjKeySequenceText = ''
+            else:
+                delObjKeySequenceText = delObjKeySequence.toString()
             delObjKeySequenceText = (
                 delObjKeySequenceText.encode('ascii', 'ignore').decode('utf-8')
             )
@@ -23779,6 +23885,7 @@ class guiWin(QMainWindow):
                 'Left click' if delObjQtButton == Qt.MouseButton.LeftButton
                 else 'Middle click'
             )
+            
         win = apps.ShortcutEditorDialog(
             self.widgetsWithShortcut, 
             delObjectKey=delObjKeySequenceText,
@@ -24486,6 +24593,10 @@ class guiWin(QMainWindow):
 
     def addMissingIDs_cca_df(self, posData):
         base_cca_df = self.getBaseCca_df()
+        if posData.cca_df is None:
+            posData.cca_df = base_cca_df
+            return
+        
         posData.cca_df = posData.cca_df.combine_first(base_cca_df)
 
     def update_cca_df_relabelling(self, posData, oldIDs, newIDs):
@@ -24904,12 +25015,9 @@ class guiWin(QMainWindow):
             return
         
         if hoverID == 0 and self.highlightedID != 0:
-            self.setAllTextAnnotations()
-            self.highlightedID = 0
-            self.searchedIDitemRight.setData([], [])
-            self.searchedIDitemLeft.setData([], [])
-            self.highLightIDLayerImg1.clear()
-            self.highLightIDLayerRightImage.clear()
+            self.clearHighlightedKeepIDs()
+            for ID in self.keptObjectsIDs:
+                self.highlightLabelID(ID)
             return
         
         posData = self.data[self.pos_i]
@@ -24939,6 +25047,14 @@ class guiWin(QMainWindow):
             return 0
         
         return self.guiTabControl.propsQGBox.idSB.value()
+    
+    def clearHighlightedKeepIDs(self):
+        self.setAllTextAnnotations()
+        self.highlightedID = 0
+        self.searchedIDitemRight.setData([], [])
+        self.searchedIDitemLeft.setData([], [])
+        self.highLightIDLayerImg1.clear()
+        self.highLightIDLayerRightImage.clear()
     
     def highlightSearchedID(self, ID, force=False, greyOthers=True):
         if ID == 0:
@@ -25424,15 +25540,15 @@ class guiWin(QMainWindow):
         imageItem.setImage(img)
     
     def getNearestLostObjID(self, y, x):
-        yy, xx, _ = np.nonzero(self.lostObjContoursImage)        
-        if len(xx) == 0:
+        posData = self.data[self.pos_i]
+        if not posData.lost_IDs:
             return
         
-        posData = self.data[self.pos_i]
         prev_lab = posData.allData_li[posData.frame_i-1]['labels']
         if prev_lab is None:
             return
         
+        yy, xx, _ = np.nonzero(self.lostObjContoursImage)
         lostObjsContourMask = np.zeros(self.currentLab2D.shape, dtype=bool)
         lostObjsContourMask[yy.astype(int), xx.astype(int)] = True
             

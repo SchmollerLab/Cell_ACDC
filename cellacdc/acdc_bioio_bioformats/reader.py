@@ -1,5 +1,7 @@
 import os
+import re
 
+from .. import printl
 from . import install, EXTENSION_PACKAGE_MAPPER
 
 def set_reader(image_filepath, **kwargs):
@@ -10,8 +12,14 @@ def set_reader(image_filepath, **kwargs):
     if ext in EXTENSION_PACKAGE_MAPPER:
         return kwargs
     
-    import bioio_bioformats
-    kwargs['reader'] = bioio_bioformats.Reader
+    try:
+        import bioio_bioformats
+        kwargs['reader'] = bioio_bioformats.Reader
+    except ImportError:
+        from bioio_base.exceptions import UnsupportedFileFormatError
+        raise UnsupportedFileFormatError(
+            'Bioformats', 'Bioformats reader is not installed'
+        )
     
     return kwargs
 
@@ -20,18 +28,18 @@ class ImageReader:
         from bioio import BioImage
         from bioio_base.exceptions import UnsupportedFileFormatError
         
-        kwargs = set_reader(image_filepath, **kwargs)
-        
         self._image_filepath = image_filepath
         
         # Capture BioImage error and install required dependencies
         try:
+            kwargs = set_reader(image_filepath, **kwargs)
             self._bioioimage = BioImage(image_filepath, **kwargs)
         except UnsupportedFileFormatError as err:
             install.install_reader_dependencies(
                 image_filepath, err, 
                 qparent=qparent
             )
+            kwargs = set_reader(image_filepath, **kwargs)
             self._bioioimage = BioImage(image_filepath, **kwargs)
         
     def read(self, c=0, z=0, t=0, rescale=False, index=None, series=0):
@@ -45,13 +53,26 @@ class ImageReader:
         return
 
 class Metadata:
-    def __init__(self, image_filepath, qparent=None):
+    def __init__(self):
+        pass
+    
+    def to_file(self, filepath):
+        with open(filepath, 'w') as file:
+            file.write(str(self))
+    
+    def init_from_image_filepath(self, image_filepath, qparent=None):
         self.image_filepath = image_filepath
         self.qparent = qparent
         
         with ImageReader(image_filepath, qparent=qparent) as bioio_image:
             self.metadata = bioio_image._bioioimage.metadata
+        
+        return self
 
+    def init_from_file(self, filepath):
+        with open(filepath, 'r') as file:
+            self.metadata = file.read()
+    
     def __str__(self):
         return str(self.metadata)
 
@@ -65,10 +86,32 @@ class Pixels:
         return channel
 
 def get_omexml_metadata(image_filepath, qparent=None):
-    return Metadata(image_filepath, qparent=None)
+    return Metadata().init_from_image_filepath(image_filepath, qparent=None)
+
+class PhysicalPixelSizes:
+    def __init__(self, PhysicalSizeX, PhysicalSizeY, PhysicalSizeZ):
+        self.X = PhysicalSizeX
+        self.Y = PhysicalSizeY
+        self.Z = PhysicalSizeZ
+
+class BioImageMetadata:
+    def __init__(
+            self, SizeT, SizeC, SizeZ, SizeY, SizeX, 
+            PhysicalSizeX, PhysicalSizeY, PhysicalSizeZ, 
+            channel_names, image_count
+        ):
+        self.shape = (SizeT, SizeC, SizeZ, SizeY, SizeX)
+        self.physical_pixel_sizes = PhysicalPixelSizes(
+            PhysicalSizeX, PhysicalSizeY, PhysicalSizeZ
+        )
+        self.channel_names = channel_names
+        self.scenes = list(range(image_count))
 
 class OMEXML:
-    def __init__(self, metadata: Metadata):
+    def __init__(self):
+        self.qparent = None
+    
+    def init_from_metadata(self, metadata: Metadata):
         self.image_filepath = metadata.image_filepath
         self.qparent = metadata.qparent
         
@@ -79,11 +122,69 @@ class OMEXML:
             self.bioimage = bioio_image._bioioimage
         
         self.Pixels = Pixels()
-        self.Pixels.channel_names = self.bioimage.channel_names  
+        self.Pixels.channel_names = self.bioimage.channel_names 
+        
+        return self
+    
+    def __str__(self):
+        self.image()
+        txt = (
+            f'Image: {self.image_filepath}\n'
+            f'Channels: {self.Pixels.channel_names}\n'
+            f'SizeC: {self.Pixels.SizeC}\n'
+            f'SizeT: {self.Pixels.SizeT}\n'
+            f'SizeZ: {self.Pixels.SizeZ}\n'
+            f'SizeY: {self.Pixels.SizeY}\n'
+            f'SizeX: {self.Pixels.SizeX}\n'
+            f'PhysicalSizeX: {self.bioimage.physical_pixel_sizes.X}\n'
+            f'PhysicalSizeY: {self.bioimage.physical_pixel_sizes.Y}\n'
+            f'PhysicalSizeZ: {self.bioimage.physical_pixel_sizes.Z}\n'
+            f'Image count: {self.get_image_count()}'
+        )
+        return txt
+    
+    def to_file(self, filepath):
+        with open(filepath, 'w') as file:
+            file.write(str(self))
+    
+    def init_from_file(self, filepath):
+        with open(filepath, 'r') as file:
+            txt = file.read()
+        
+        keys_dtype_kwarg_mapper = {
+            'Image': (str, 'image_filepath'),
+            'Channels': (eval, 'channel_names'),
+            'SizeC': (int, 'SizeC'),
+            'SizeT': (int, 'SizeT'),
+            'SizeZ': (int, 'SizeZ'),
+            'SizeY': (int, 'SizeY'),
+            'SizeX': (int, 'SizeX'),
+            'PhysicalSizeX': (float, 'PhysicalSizeX'),
+            'PhysicalSizeY': (float, 'PhysicalSizeY'),
+            'PhysicalSizeZ': (float, 'PhysicalSizeZ'),
+            'Image count': (int, 'image_count'),
+        }
+        for key, (dtype, kwarg) in keys_dtype_kwarg_mapper.items():
+            value = re.search(f'{key}: (.+)', txt).group(1)
+            setattr(self, kwarg, dtype(value))
+            print(key, value, type(value))
+        
+        self.bioimage = BioImageMetadata(
+            self.SizeT, self.SizeC, self.SizeZ, self.SizeY, self.SizeX, 
+            self.PhysicalSizeX, self.PhysicalSizeY, self.PhysicalSizeZ, 
+            self.channel_names, self.image_count
+        )
+        
+        self.Pixels = Pixels()
+        self.Pixels.channel_names = self.bioimage.channel_names
+        
+        return self
     
     def image(self):        
         SizeT, SizeC, SizeZ, SizeY, SizeX = self.bioimage.shape
-            
+        
+        self.Pixels.SizeY = SizeY
+        self.Pixels.SizeX = SizeX
         self.Pixels.SizeZ = SizeZ
         self.Pixels.SizeT = SizeT
         self.Pixels.SizeC = SizeC

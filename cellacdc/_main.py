@@ -1610,29 +1610,58 @@ class mainWin(QMainWindow):
     def _showDataStructWin(self):
         msg = widgets.myMessageBox(wrapText=False, showCentered=False)
         bioformats_url = 'https://www.openmicroscopy.org/bio-formats/'
-        bioformats_href = html_utils.href_tag('<b>Bio-Formats</b>', bioformats_url)
+        bioformats_href = html_utils.href_tag(
+            '<b>Bio-Formats</b>', bioformats_url
+        )
+        
+        bioio_url = 'https://bioio-devs.github.io/bioio/'
+        bioio_href = html_utils.href_tag('<b>BioIO</b>', bioio_url)
+        
         aicsimageio_url = 'https://allencellmodeling.github.io/aicsimageio/#'
         aicsimageio_href = html_utils.href_tag('<b>AICSImageIO</b>', aicsimageio_url)
+        
+        acdc_fiji_macros_url = 'https://cell-acdc.readthedocs.io/en/latest/data-structure-fiji.html'
+        acdc_fiji_macros_href = html_utils.href_tag(
+            'Cell-ACDC Fiji macros guide', acdc_fiji_macros_url
+        )
+        
+        conda_important_admon = html_utils.to_admonition(
+            f"""
+            Java can be installed only using <code>conda</code>! 
+            If you are not using condaand the file format of your files requires Bio-Formats,<br>
+            you will need to use the provided ImageJ/Fiji macros.<br>
+            See this guide for more information: {acdc_fiji_macros_href}
+            """, 'important'
+        )
+        
         issues_href = f'<a href="{issues_url}">GitHub page</a>'
         txt = html_utils.paragraph(f"""
-            To process microsocpy files, Cell-ACDC uses the {bioformats_href}.<br><br>
-            <b>Bio-Formats requires Java</b> and a python package called <code>javabridge</code>,<br>
-            that will be automatically installed if missing.<br><br>
-            We recommend using Bio-Formats, since it can read the metadata of the file,<br> 
-            such as pixel size, numerical aperture etc.<br><br>
-            Alternatively, if you <b>already pre-processed your microsocpy files into .tif 
-            files</b>,<br>
-            you can choose to simply re-structure them into the Cell-ACDC compatible 
-            format.<br><br>
-            If nothing works, open an issue on our {issues_href} and we 
-            will be happy to help you out.<br><br>
-            How do you want to proceed?          
+    To process microscopy files, Cell-ACDC uses the {bioio_href} library.<br><br>
+    
+    Depending on the file format, BioIO requires additional dependencies 
+    that will be automatically installed.<br><br>
+    
+    If there is no Python library available for your file format, 
+    Cell-ACDC will install the {bioformats_href} library.<br>
+    <b>Bio-Formats requires Java</b> and a python package called 
+    <code>bioio-bioformats</code>,<br> that will be automatically installed.<br>
+    
+    {conda_important_admon}<br>
+    
+    Alternatively, if you <b>already pre-processed your microscopy files into .tif 
+    files</b>,<br>
+    you can choose to simply re-structure them into the Cell-ACDC compatible 
+    format.<br><br>
+    
+    If nothing works, open an issue on our {issues_href} and we 
+    will be happy to help you out.<br><br>
+    How do you want to proceed?          
         """)
         # useAICSImageIO = QPushButton(
         #     QIcon(':AICS_logo.svg'), ' Use AICSImageIO ', msg
         # )
         useBioFormatsButton = QPushButton(
-            QIcon(':ome.svg'), ' Use Bio-Formats ', msg
+            QIcon(':ome.svg'), ' Use BioIO ', msg
         )
         restructButton = QPushButton(
             QIcon(':folders.svg'), ' Re-structure image files ', msg

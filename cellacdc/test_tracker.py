@@ -6,6 +6,7 @@ from cellacdc import core, myutils, widgets, load, html_utils
 from cellacdc import data, data_path
 from cellacdc import transformation
 from cellacdc.plot import imshow
+from cellacdc import io
 
 try:
     import pytest
@@ -137,7 +138,7 @@ retracked_video = transformation.retrack_based_on_untracked_first_frame(
 
 if SAVE:
     try:
-        np.savez_compressed(
+        io.savez_compressed(
             posData.segm_npz_path.replace('segm', 'segm_tracked'), 
             tracked_stack
         )
