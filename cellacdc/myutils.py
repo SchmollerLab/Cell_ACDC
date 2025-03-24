@@ -932,6 +932,7 @@ def listdir(path) -> List[str]:
         if not f.startswith('.')
         and not f == 'desktop.ini'
         and not f == 'recovery'
+        and not f.endswith('.new.npz')
     ])
 
 def insertModelArgSpect(
@@ -2007,7 +2008,7 @@ def lab2d_to_rois(ImagejRoi, lab2D, ndigits, t=None, z=None):
         name = f'id={obj.label}-{t_str}-{name}'
         
         roi = ImagejRoi.frompoints(
-            cont, name=name, t=t, z=z, group=obj.label
+            cont, name=name, t=t, z=z, index=obj.label
         )
         rois.append(roi)
     return rois
@@ -2033,7 +2034,8 @@ def from_lab_to_imagej_rois(lab, ImagejRoi, t=0, SizeT=1, max_ID=None):
             z_rois = lab2d_to_rois(ImagejRoi, lab2D, ndigits, t=t, z=z)
         rois.extend(z_rois)
     else:
-        rois = lab2d_to_rois(ImagejRoi, lab2D, ndigits, t=t)
+        ndigits = max(ndigitsT, ndigitsY, ndigitsX)
+        rois = lab2d_to_rois(ImagejRoi, lab, ndigits, t=t)
     return rois
 
 def from_imagej_rois_to_segm_data(
@@ -2597,6 +2599,11 @@ def check_pkg_max_version(import_pkg_name, max_version, raise_err=True):
         return is_version_correct
 
 def install_package_conda(conda_pkg_name, channel='conda-forge'):
+    if not is_conda_env():
+        raise EnvironmentError(
+            'Cell-ACDC is not running in a `conda` environment.'
+        )
+        
     try:
         commad = f'conda install -c {channel} -y {conda_pkg_name}'
         subprocess.check_call([commad], shell=True)
@@ -3328,7 +3335,7 @@ def _warn_install_torch_cuda(model_name, qparent=None):
         In order to use <code>{model_name}</code> with the GPU you need 
         to install the <b>CUDA version of PyTorch</b>.<br><br>
         Check out these instructions {cellpose_href}, and {torch_href}.<br><br>
-        We <b>highly recommend using Anaconda</b> to install PyTorch GPU.<br><br>
+        We <b>highly recommend using Conda</b> to install PyTorch GPU.<br><br>
         First, uninstall the CPU version of PyTorch with the following command:<br><br>
         <code>pip uninstall torch</code>.<br><br>
         Then, install the CUDA version required by your GPU with the follwing 

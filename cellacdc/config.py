@@ -50,7 +50,7 @@ help_text = (
 )
 try:
     ap = argparse.ArgumentParser(
-        prog='Cell-ACDC', description=help_text, 
+        prog='acdc', description=help_text, 
         formatter_class=argparse.RawTextHelpFormatter
     )
     
@@ -70,7 +70,7 @@ try:
     )
     
     ap.add_argument(
-        '-i', '--info', action='store_true',
+        '-info', '--info', action='store_true',
         help=(
             'Get information about Cell-ACDC version and environment'
         )

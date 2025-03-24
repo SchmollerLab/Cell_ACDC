@@ -102,9 +102,18 @@ def save_image_data(filepath, img_data):
     if filepath.endswith('.h5'):
         load.save_to_h5(filepath, img_data)
     elif filepath.endswith('.npz'):
-        np.savez_compressed(filepath, img_data)
+        savez_compressed(filepath, img_data)
     elif filepath.endswith('.npy'):
         np.save()
     else:
         myutils.to_tiff(filepath, img_data)
     return np.squeeze(img_data)
+
+def savez_compressed(filepath, *args, safe=True, **kwargs):
+    if not os.path.exists(filepath):
+        np.savez_compressed(filepath, *args, **kwargs)
+        return
+    
+    temp_filepath = filepath.replace('.npz', '.new.npz')
+    np.savez_compressed(temp_filepath, *args, **kwargs)
+    os.replace(temp_filepath, filepath)

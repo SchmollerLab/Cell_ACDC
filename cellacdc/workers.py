@@ -1051,7 +1051,7 @@ class AlignDataWorker(QObject):
                 _npz = f'{os.path.splitext(tif)[0]}_aligned.npz'
                 self.logger.log(f'Saving: {_npz}')
                 temp_npz = self.dataPrepWin.getTempfilePath(_npz)
-                np.savez_compressed(temp_npz, aligned_frames)
+                io.savez_compressed(temp_npz, aligned_frames)
                 self.dataPrepWin.storeTempFileMove(temp_npz, _npz)
                 np.save(self.posData.align_shifts_path, self.posData.loaded_shifts)
                 self.posData.all_npz_paths[i] = _npz
@@ -1102,7 +1102,7 @@ class AlignDataWorker(QObject):
                 self.signals.initProgressBar.emit(0)
                 self.logger.log(f'Saving: {_npz}')
                 temp_npz = self.dataPrepWin.getTempfilePath(_npz)
-                np.savez_compressed(temp_npz, aligned_frames)
+                io.savez_compressed(temp_npz, aligned_frames)
                 self.dataPrepWin.storeTempFileMove(temp_npz, _npz)
                 self.posData.all_npz_paths[i] = _npz
 
@@ -1134,7 +1134,7 @@ class AlignDataWorker(QObject):
         )
         self.logger.log(f'Saving: {self.posData.segm_npz_path}')
         temp_npz = self.dataPrepWin.getTempfilePath(self.posData.segm_npz_path)
-        np.savez_compressed(temp_npz, self.posData.segm_data)
+        io.savez_compressed(temp_npz, self.posData.segm_data)
         self.dataPrepWin.storeTempFileMove(temp_npz, self.posData.segm_npz_path)
 
     @worker_exception_handler
@@ -1475,7 +1475,7 @@ class AutoSaveWorker(QObject):
         if equalToSavedSegm:
             return
         else:
-            np.savez_compressed(recovery_path, np.squeeze(data))
+            io.savez_compressed(recovery_path, np.squeeze(data))
     
     def _save_acdc_df(self, recovery_acdc_df: pd.DataFrame, posData):
         recovery_folderpath = posData.recoveryFolderpath()
@@ -2110,6 +2110,7 @@ class loadDataWorker(QObject):
         self.abort = False
         self.loadUnsaved = False
         self.recoveryAsked = False
+        self.loadSafeOverwriteNpz = False
 
     def pause(self):
         self.mutex.lock()
@@ -2259,11 +2260,12 @@ class loadDataWorker(QObject):
             elif abort:
                 data = 'abort'
                 break
-
+            
             posData.setTempPaths(createFolder=False)
             isRecoveredDataPresent = (
                 os.path.exists(posData.segm_npz_temp_path)
                 or posData.isRecoveredAcdcDfPresent()
+                or posData.isSafeNpzOverwritePresent()
             )
             if isRecoveredDataPresent and not self.mainWin.newSegmEndName:
                 if not self.recoveryAsked:
@@ -2286,6 +2288,10 @@ class loadDataWorker(QObject):
                         )
                     
                     posData.loadMostRecentUnsavedAcdcDf()
+                elif self.loadSafeOverwriteNpz:
+                    self.logger.log('Loading safe npz overwrite...')
+                    segm_safe_npz_path = posData.getSafeNpzOverwritePath()
+                    posData.segm_data = np.load(segm_safe_npz_path)['arr_0']
 
             # Allow single 2D/3D image
             if posData.SizeT == 1:
@@ -2496,7 +2502,7 @@ class reapplyDataPrepWorker(QObject):
         bkgr_data_path = os.path.join(posData.images_path, bkgr_data_fn)
         self.progress.emit('Saving background data to:')
         self.progress.emit(bkgr_data_path)
-        np.savez_compressed(bkgr_data_path, **bkgrROI_data)
+        io.savez_compressed(bkgr_data_path, **bkgrROI_data)
 
     def run(self):
         ch_name_selector = prompts.select_channel_name(
@@ -2596,7 +2602,7 @@ class reapplyDataPrepWorker(QObject):
                     
                 if prepped:              
                     self.progress.emit('Saving prepped data...')
-                    np.savez_compressed(posData.align_npz_path, imageData)
+                    io.savez_compressed(posData.align_npz_path, imageData)
                     if hasattr(posData, 'tif_path'):
                         myutils.to_tiff(
                             posData.tif_path, imageData
@@ -2968,13 +2974,13 @@ class TrackSubCellObjectsWorker(BaseWorkerUtil):
                 self.logger.log('Saving tracked segmentation files...')
                 subSegmFilename, ext = os.path.splitext(posData.segm_npz_path)
                 trackedSubPath = f'{subSegmFilename}_{appendedName}.npz'
-                np.savez_compressed(trackedSubPath, trackedSubSegmData)
+                io.savez_compressed(trackedSubPath, trackedSubSegmData)
                 posData.saveIsSegm3Dmetadata(trackedSubPath)
 
                 if trackedCellsSegmData is not None:
                     cellsSegmFilename, ext = os.path.splitext(segmCellsPath)
                     trackedCellsPath = f'{cellsSegmFilename}_{appendedName}.npz'
-                    np.savez_compressed(trackedCellsPath, trackedCellsSegmData)
+                    io.savez_compressed(trackedCellsPath, trackedCellsSegmData)
                 
                 if self.createThirdSegm:
                     self.logger.log(
@@ -2994,7 +3000,7 @@ class TrackSubCellObjectsWorker(BaseWorkerUtil):
                         f'{subSegmFilename}_{appendedName}'
                         f'_{self.thirdSegmAppendedText}.npz'
                     )
-                    np.savez_compressed(diffSegmPath, diffSegmData)
+                    io.savez_compressed(diffSegmPath, diffSegmData)
                     posData.saveIsSegm3Dmetadata(diffSegmPath)
                     del diffSegmData
                 
@@ -3232,7 +3238,7 @@ class CreateConnected3Dsegm(BaseWorkerUtil):
                 segmFilename, ext = os.path.splitext(posData.segm_npz_path)
                 newSegmFilepath = f'{segmFilename}_{appendedName}.npz'
                 connectedSegmData = np.squeeze(connectedSegmData)
-                np.savez_compressed(newSegmFilepath, connectedSegmData)
+                io.savez_compressed(newSegmFilepath, connectedSegmData)
                 
                 self.signals.progressBar.emit(1)
 
@@ -3287,7 +3293,7 @@ class ApplyTrackInfoWorker(BaseWorkerUtil):
         
         self.signals.initProgressBar.emit(0)
         self.logger.log('Saving tracked segmentation file...') 
-        np.savez_compressed(trackedSegmFilepath, trackedData)
+        io.savez_compressed(trackedSegmFilepath, trackedData)
 
         
         mapperPath = os.path.splitext(trackedSegmFilepath)[0]
@@ -3604,7 +3610,7 @@ class RestructMultiTimepointsWorker(BaseWorkerUtil):
                         f'exist, saving empty masks: "{srcSegmFilePath}"'
                     ) 
 
-            np.savez_compressed(imgDataInfo['dst_segm_path'], segmData)
+            io.savez_compressed(imgDataInfo['dst_segm_path'], segmData)
             del segmData 
 
         self.signals.finished.emit(self)
@@ -4031,7 +4037,7 @@ class FromImajeJroiToSegmNpzWorker(BaseWorkerUtil):
                     .replace('.zip', '.npz')
                 )
                 self.logger.log(f'Saving segm mask to "{segm_filepath}"...')
-                np.savez_compressed(segm_filepath, segm_data)
+                io.savez_compressed(segm_filepath, segm_data)
         
         self.signals.finished.emit(self)
                 
@@ -4500,7 +4506,7 @@ class AlignWorker(BaseWorkerUtil):
                 SizeZ = data.shape[1]
             myutils.to_tiff(filePath, data)
         elif ext == '.npz':
-            np.savez_compressed(filePath, data)
+            io.savez_compressed(filePath, data)
         elif ext == '.h5':
             load.save_to_h5(filePath, data)
 
@@ -4663,7 +4669,7 @@ class Stack2DsegmTo3Dsegm(BaseWorkerUtil):
                 segmFilename, ext = os.path.splitext(posData.segm_npz_path)
                 newSegmFilepath = f'{segmFilename}_{appendedName}.npz'
                 segmData2D = np.squeeze(segmData2D)
-                np.savez_compressed(newSegmFilepath, segmData2D)
+                io.savez_compressed(newSegmFilepath, segmData2D)
                 
                 self.signals.progressBar.emit(1)
 
@@ -5446,7 +5452,7 @@ class FilterObjsFromCoordsTable(BaseWorkerUtil):
                 segmFilename, ext = os.path.splitext(posData.segm_npz_path)
                 newSegmFilepath = f'{segmFilename}_{appendedName}.npz'
                 filteredSegmData = np.squeeze(filteredSegmData)
-                np.savez_compressed(newSegmFilepath, filteredSegmData)
+                io.savez_compressed(newSegmFilepath, filteredSegmData)
                 
                 self.signals.progressBar.emit(1)
 
