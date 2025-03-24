@@ -4,7 +4,7 @@ import os
 from trackastra.model import Trackastra
 from trackastra.tracking import graph_to_ctc
 
-from ... import myutils, types
+from ... import _types, myutils
 
 from . import get_pretrained_model_names
 
@@ -21,7 +21,7 @@ class tracker:
     def __init__(
             self, 
             pretrained_model_name: AvailableModels='general_2d', 
-            model_folder_path: types.FolderPath='', 
+            model_folder_path: _types.FolderPath='', 
             gpu=False
         ) -> None:
         """Initialize tracker

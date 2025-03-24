@@ -41,7 +41,7 @@ from . import preprocess
 from .config import PREPROCESS_MAPPER
 from . import io
 
-from .types import (
+from ._types import (
     ChannelsDict
 )
 
