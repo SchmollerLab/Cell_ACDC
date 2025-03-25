@@ -226,14 +226,16 @@ class utilClass:
     pass
 
 def get_trimmed_list(li: list, max_num_digits=10):
-    li_str = li.copy()
     tom_num_digits = sum([len(str(val)) for val in li])
     avg_num_digits = tom_num_digits/len(li)
     max_num_vals = int(round(max_num_digits/avg_num_digits))
     if tom_num_digits>max_num_digits:
+        li_str = li.copy()
         del li_str[max_num_vals:-max_num_vals]
         li_str.insert(max_num_vals, "...")
         li_str = f"[{', '.join(map(str, li_str))}]"
+    else:
+        li_str = f"{[str(val) for val in li]}".replace('\'', '')
     return li_str
 
 def get_trimmed_dict(di: dict, max_num_digits=10):

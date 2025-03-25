@@ -29,17 +29,18 @@ class QWhileLoop:
         self.loop.exit()
 
 class QControlBlink:
-    def __init__(self, QWidgetToBlink: QWidget, duration_ms=2000) -> None:
+    def __init__(self, QWidgetToBlink: QWidget, duration_ms=2000, qparent=None) -> None:
         self.duration_ms = duration_ms
         self._widget = QWidgetToBlink
+        self.qparent = qparent
         self.blinkON = False
     
     def start(self):
-        self.timer = QTimer(self)
+        self.timer = QTimer(self.qparent)
         self.timer.timeout.connect(self.timerCallback)
         self.timer.start(100)
 
-        self.stopTimer = QTimer(self)
+        self.stopTimer = QTimer(self.qparent)
         self.stopTimer.timeout.connect(self.stop)
         self.stopTimer.start(self.duration_ms)
     

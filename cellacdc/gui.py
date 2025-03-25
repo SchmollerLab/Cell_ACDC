@@ -48,7 +48,7 @@ from qtpy.QtCore import (
 )
 from qtpy.QtGui import (
     QIcon, QKeySequence, QCursor, QGuiApplication, QPixmap, QColor,
-    QFont
+    QFont, QKeyEvent
 )
 from qtpy.QtWidgets import (
     QAction, QLabel, QPushButton, QHBoxLayout, QSizePolicy,
@@ -3034,7 +3034,7 @@ class guiWin(QMainWindow):
         
         self.addToolBar(Qt.TopToolBarArea, self.copyLostObjToolbar)
         self.copyLostObjToolbar.setVisible(False)
-        self.controlToolBars.append(self.copyLostObjToolbar)
+        # self.controlToolBars.append(self.copyLostObjToolbar)
         
         # Copy lost object contour toolbar
         self.drawClearRegionToolbar = widgets.DrawClearRegionToolbar(
@@ -13019,6 +13019,7 @@ class guiWin(QMainWindow):
                 )
                 overlap_perc = overlap/lostObj.area*100
                 if overlap_perc > max_overlap_perc:
+                    self.copyAllLostObjectsWorker.overlapWarning = True
                     continue
                 
                 self.copyLostObjectContour(lostObj.label)
@@ -13043,6 +13044,9 @@ class guiWin(QMainWindow):
     
     @disableWindow
     def copyAllLostObjects(self, for_future_frame_n, max_overlap_perc):
+        if not self.copyLostObjButton.isChecked():
+            return
+        
         posData = self.data[self.pos_i]
         
         desc = (
@@ -13061,6 +13065,7 @@ class guiWin(QMainWindow):
             posData, self.copyAllLostObjectsWorkerCallback, 
             func_args=(for_future_frame_n, max_overlap_perc)
         )
+        self.copyAllLostObjectsWorker.overlapWarning = False
         
         self.copyAllLostObjectsWorker.moveToThread(
             self.copyAllLostObjectsThread
@@ -13116,6 +13121,13 @@ class guiWin(QMainWindow):
                 updateImages=False, 
                 force=True
             )
+        
+        if self.copyAllLostObjectsWorker.overlapWarning:
+            self.blinker = qutils.QControlBlink(
+                self.copyLostObjToolbar.maxOverlapNumberControl, 
+                qparent=self.mainWin
+            )
+            self.blinker.start()
         
         self.copyAllLostObjectsWorkerLoop.exit()
         self.update_rp()
@@ -14067,6 +14079,35 @@ class guiWin(QMainWindow):
         if keySequenceText == delObjKeySequence.toString():
             self.delObjToolAction.setChecked(True)
     
+    def checkTriggerKeyPressShortcuts(self, event: QKeyEvent):
+        isBrushKey = event.key() == self.brushButton.keyPressShortcut
+        isEraserKey = event.key() == self.eraserButton.keyPressShortcut
+        if isBrushKey or isEraserKey:
+            return isBrushKey, isEraserKey
+        
+        modifierText = widgets.modifierKeyToText(event.modifiers())
+        for widget in self.widgetsWithShortcut.values():
+            if not hasattr(widget, 'keyPressShortcut'):
+                continue
+            
+            if event.key() == widget.keyPressShortcut:
+                if widget.isCheckable():
+                    widget.setChecked(True)
+                else:
+                    widget.trigger()       
+                continue
+            
+            shortcutText = widget.keyPressShortcut.toString()
+            try:
+                mod, key = shortcutText.split('+')
+                if modifierText == mod and event.key() == QKeySequence(key):
+                    widget.trigger()
+                    
+            except Exception as e:
+                pass
+        
+        return isBrushKey, isEraserKey
+    
     @exception_handler
     def keyPressEvent(self, ev):        
         ctrl = ev.modifiers() == Qt.ControlModifier
@@ -14129,11 +14170,9 @@ class guiWin(QMainWindow):
         )
         isManualTrackingActive = self.manualTrackingButton.isChecked()
         isManualBackgroundActive = self.manualBackgroundButton.isChecked()
-        if self.brushButton.isChecked():
+        if self.brushButton.isChecked() and not self.autoIDcheckbox.isChecked():
             try:
                 n = int(ev.text())
-                if self.autoIDcheckbox.isChecked():
-                    self.autoIDcheckbox.setChecked(False)
                 if self.typingEditID:
                     ID = int(f'{self.editIDspinbox.value()}{n}')
                 else:
@@ -14174,8 +14213,8 @@ class guiWin(QMainWindow):
             or isManualBackgroundActive
             or isManualTrackingActive
         )
-        isBrushKey = ev.key() == self.brushButton.keyPressShortcut
-        isEraserKey = ev.key() == self.eraserButton.keyPressShortcut
+        
+        isBrushKey, isEraserKey = self.checkTriggerKeyPressShortcuts(ev)
         isExpandLabelActive = self.expandLabelToolButton.isChecked()
         isWandActive = self.wandToolButton.isChecked()
         isLabelRoiCircActive = (
@@ -28023,7 +28062,10 @@ class guiWin(QMainWindow):
         if start_n <= stop_n:
             return True
         
-        self.blinker = qutils.QControlBlink(self.labelRoiStopFrameNoSpinbox)
+        self.blinker = qutils.QControlBlink(
+            self.labelRoiStopFrameNoSpinbox, 
+            qparent=self
+        )
         self.blinker.start()
         msg = widgets.myMessageBox()
         txt = html_utils.paragraph("""
