@@ -3139,6 +3139,7 @@ class guiWin(QMainWindow):
             askHowFutureFramesAction.setText(f'Ask for "{key}" action')
             askHowFutureFramesAction.setCheckable(True)
             askHowFutureFramesAction.setChecked(True)
+            askHowFutureFramesAction.setDisabled(True)
             askHowFutureFramesMenu.addAction(askHowFutureFramesAction)
             self.askHowFutureFramesActions[key] = askHowFutureFramesAction
         
@@ -14551,9 +14552,9 @@ class guiWin(QMainWindow):
 
             endFrame_i = ffa.endFrame_i
             doNotShowAgain = ffa.doNotShowCheckbox.isChecked()
-            self.askHowFutureFramesActions[modTxt].setChecked(
-                not doNotShowAgain
-            )
+            askAction = self.askHowFutureFramesActions[modTxt]
+            askAction.setChecked( not doNotShowAgain)
+            askAction.setDisabled(False)
 
             self.onlyTracking = False
             if decision == 'apply_and_reinit':
@@ -27307,6 +27308,10 @@ class guiWin(QMainWindow):
         self.labelsLayerImg1.setOpacity(alpha)
         self.labelsLayerRightImg.setOpacity(alpha)
         self.lastTrackedFrameLabel.setText('')
+        
+        for action in self.askHowFutureFramesActions.values():
+            action.setChecked(True)
+            action.setDisabled(True)
     
     def reinitPointsLayers(self):
         for action in self.pointsLayersToolbar.actions()[1:]:
