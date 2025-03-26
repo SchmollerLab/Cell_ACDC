@@ -2005,7 +2005,7 @@ def lab2d_to_rois(ImagejRoi, lab2D, ndigits, t=None, z=None):
             t_str = str(t).zfill(ndigits)
             name = f'{t_str}-{name}'
         
-        name = f'id={obj.label}-{t_str}-{name}'
+        name = f'id={obj.label}-{name}'
         
         roi = ImagejRoi.frompoints(
             cont, name=name, t=t, z=z, index=obj.label
