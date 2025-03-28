@@ -48,7 +48,7 @@ from qtpy.QtCore import (
 )
 from qtpy.QtGui import (
     QIcon, QKeySequence, QCursor, QGuiApplication, QPixmap, QColor,
-    QFont, QKeyEvent
+    QFont, QKeyEvent, QMouseEvent
 )
 from qtpy.QtWidgets import (
     QAction, QLabel, QPushButton, QHBoxLayout, QSizePolicy,
@@ -57,7 +57,7 @@ from qtpy.QtWidgets import (
     QComboBox, QButtonGroup, QActionGroup, QFileDialog,
     QAbstractSlider, QMessageBox, QWidget, QGridLayout, QDockWidget,
     QGraphicsProxyWidget, QVBoxLayout, QRadioButton, 
-    QSpacerItem, QScrollArea, QFormLayout
+    QSpacerItem, QScrollArea, QFormLayout, QGraphicsSceneMouseEvent 
 )
 
 import pyqtgraph as pg
@@ -1989,18 +1989,6 @@ class guiWin(QMainWindow):
         self.checkableQButtonsGroup.addButton(self.fillHolesToolButton)
         self.functionsNotTested3D.append(self.fillHolesToolButton)
         self.widgetsWithShortcut['Fill holes'] = self.fillHolesToolButton
-        
-        self.assignNewIDToolButton = QToolButton(self)
-        self.assignNewIDToolButton.setIcon(QIcon(":assign_new_id.svg"))
-        self.assignNewIDToolButton.setCheckable(True)
-        self.assignNewIDToolButton.setShortcut('J')
-        self.assignNewIDToolButton.action = editToolBar.addWidget(
-            self.assignNewIDToolButton
-        )
-        self.checkableButtons.append(self.assignNewIDToolButton)
-        self.checkableQButtonsGroup.addButton(self.assignNewIDToolButton)
-        self.functionsNotTested3D.append(self.assignNewIDToolButton)
-        self.widgetsWithShortcut['Assign new ID'] = self.assignNewIDToolButton
 
         self.moveLabelToolButton = QToolButton(self)
         self.moveLabelToolButton.setIcon(QIcon(":moveLabel.svg"))
@@ -5354,7 +5342,7 @@ class guiWin(QMainWindow):
         self.SizeZlabel.hide()
 
     @exception_handler
-    def gui_mousePressEventImg2(self, event):
+    def gui_mousePressEventImg2(self, event: QGraphicsSceneMouseEvent):
         modifiers = QGuiApplication.keyboardModifiers()
         alt = modifiers == Qt.AltModifier
         shift = modifiers == Qt.ShiftModifier
@@ -5723,20 +5711,6 @@ class guiWin(QMainWindow):
 
                 if not self.fillHolesToolButton.findChild(QAction).isChecked():
                     self.fillHolesToolButton.setChecked(False)
-
-        # Assign new ID
-        elif right_click and self.assignNewIDToolButton.isChecked():
-            x, y = event.pos().x(), event.pos().y()
-            xdata, ydata = int(x), int(y)
-            newID = self.setBrushID(return_val=True)
-            clickedID = self.getClickedID(
-                xdata, ydata, text=f'that you want to assign to new ID {newID}'
-            )
-            if clickedID is None:
-                return
-            
-            mapper = [(clickedID, newID)]
-            self.applyEditID(clickedID, posData.IDs.copy(), mapper, x, y)
         
         # Hull contour
         elif right_click and self.hullContToolButton.isChecked():
@@ -5861,7 +5835,7 @@ class guiWin(QMainWindow):
                     return
                 else:
                     ID = editID_prompt.EntryID
-
+            
             obj_idx = posData.IDs.index(ID)
             y, x = posData.rp[obj_idx].centroid[-2:]
             xdata, ydata = int(x), int(y)
@@ -5881,7 +5855,11 @@ class guiWin(QMainWindow):
                 if not self.editIDbutton.findChild(QAction).isChecked():
                     self.editIDbutton.setChecked(False)
                 return
-
+            
+            if editID.assignNewID:
+                self.assignNewIDfromClickedID(ID, event)
+                return
+            
             if not self.doNotAskAgainExistingID:    
                 self.editIDmergeIDs = editID.mergeWithExistingID
             self.doNotAskAgainExistingID = editID.doNotAskAgainExistingID
@@ -7754,7 +7732,7 @@ class guiWin(QMainWindow):
         self.ax1_rulerPlotItem.setData([x0, x1], [y0, y1])
     
     @exception_handler
-    def gui_mousePressEventImg1(self, event):
+    def gui_mousePressEventImg1(self, event: QMouseEvent):
         self.typingEditID = False
         modifiers = QGuiApplication.keyboardModifiers()
         ctrl = modifiers == Qt.ControlModifier
@@ -20499,6 +20477,15 @@ class guiWin(QMainWindow):
             else:
                 posData.lab[mask] = ID
 
+    def assignNewIDfromClickedID(
+            self, clickedID: int, event: QGraphicsSceneMouseEvent
+        ):
+        posData = self.data[self.pos_i]
+        x, y = event.pos().x(), event.pos().y()
+        newID = self.setBrushID(return_val=True)
+        mapper = [(clickedID, newID)]
+        self.applyEditID(clickedID, posData.IDs.copy(), mapper, x, y)
+            
     def get_2Drp(self, lab=None):  
         if self.isSegm3D:
             if lab is None:

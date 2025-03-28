@@ -8456,6 +8456,7 @@ class QLineEditDialog(QDialog):
 
         self.loop = None
         self.cancel = True
+        self.assignNewID = False
         self.allowedValues = allowedValues
         self.warnLastFrame = warnLastFrame
         self.isFloat = isFloat
@@ -8632,7 +8633,7 @@ class QLineEditDialog(QDialog):
            buttonsTexts=('Cancel', 'Yes, I am sure.')
         )
         return msg.cancel
-
+    
     def ok_cb(self, event):
         if not self.allowEmpty and not self.entryWidget.text():
             msg = widgets.myMessageBox(showCentered=False, wrapText=False)
@@ -8798,16 +8799,19 @@ class editID_QWidget(QDialog):
         VBoxLayout.addWidget(note, alignment=Qt.AlignCenter)
         mainLayout.addLayout(VBoxLayout)
 
-        HBoxLayout = QHBoxLayout()
+        buttonsLayout = QHBoxLayout()
         okButton = widgets.okPushButton('Ok')
         cancelButton = widgets.cancelPushButton('Cancel')
+        applyNewIDButton = widgets.AssignNewIDButton('Assign new, unique ID')
 
-        HBoxLayout.addWidget(cancelButton)
-        HBoxLayout.addSpacing(20)
-        HBoxLayout.addWidget(okButton)
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(cancelButton)
+        buttonsLayout.addSpacing(20)
+        buttonsLayout.addWidget(applyNewIDButton)
+        buttonsLayout.addWidget(okButton)
 
         mainLayout.addSpacing(10)
-        mainLayout.addLayout(HBoxLayout)
+        mainLayout.addLayout(buttonsLayout)
 
         self.setLayout(mainLayout)
 
@@ -8816,6 +8820,8 @@ class editID_QWidget(QDialog):
         entryWidget.textChanged[str].connect(self.onTextChanged)
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.cancel_cb)
+        applyNewIDButton.clicked.connect(self.assignNewIDclicked)
+        
         # self.setModal(True)
 
     def onTextChanged(self, text):
@@ -8885,8 +8891,13 @@ class editID_QWidget(QDialog):
         self.mergeWithExistingID = msg.clickedButton ==  mergeButton
         return True
 
-    def ok_cb(self, event):
+    def assignNewIDclicked(self):
         self.cancel = False
+        self.how = None
+        self.assignNewID = True
+        self.close()
+    
+    def ok_cb(self, event):
         txt = self.entryWidget.text()
         valid = False
 
@@ -8911,6 +8922,7 @@ class editID_QWidget(QDialog):
                 valid = False
 
         if valid:
+            self.cancel = False
             self.how = how
             self.close()
         else:
