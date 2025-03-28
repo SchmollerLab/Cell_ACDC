@@ -1234,7 +1234,8 @@ class tracker:
         - list: Tracked video frames.
         """
         if not record_lineage and return_tracked_lost_centroids:
-            raise ValueError('return_tracked_lost_centroids can only be True if record_lineage is True.')
+            print('return_tracked_lost_centroids is set to True if record_lineage is True.')
+            record_lineage = True
         
         pbar = tqdm(total=len(segm_video), desc='Tracking', ncols=100)
 
