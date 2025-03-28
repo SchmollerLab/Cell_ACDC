@@ -8557,6 +8557,9 @@ class QLineEditDialog(QDialog):
         buttonsLayout.addWidget(cancelButton)
         buttonsLayout.addSpacing(20)
         buttonsLayout.addWidget(okButton)
+        
+        self.okButton = okButton
+        self.buttonsLayout = buttonsLayout
 
         # Add layouts
         mainLayout.addLayout(LineEditLayout)
@@ -8692,6 +8695,13 @@ class QLineEditDialog(QDialog):
     def closeEvent(self, event):
         if hasattr(self, 'loop'):
             self.loop.exit()
+
+class FindIDDialog(QLineEditDialog):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        
+        self.okButton.setIcon(QIcon(':magnGlass.svg'))
+        self.okButton.setText(' Find ')
 
 class NumericEntryDialog(QBaseDialog):
     def __init__(

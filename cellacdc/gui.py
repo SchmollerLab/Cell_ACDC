@@ -8977,11 +8977,10 @@ class guiWin(QMainWindow):
     
     def findID(self):
         posData = self.data[self.pos_i]
-        self.setAllIDs()
-        searchIDdialog = apps.QLineEditDialog(
+        searchIDdialog = apps.FindIDDialog(
             title='Search object by ID',
             msg='Enter object ID to find and highlight',
-            parent=self, allowedValues=posData.allIDs
+            parent=self,
         )
         searchIDdialog.exec_()
         if searchIDdialog.cancel:
@@ -8990,39 +8989,126 @@ class guiWin(QMainWindow):
         searchedID = searchIDdialog.EntryID
         if searchedID in posData.IDs:
             self.goToObjectID(searchedID)
-        else:
-            self.logger.info(f'Searching ID {searchedID} in other frames...')
-            frame_i_found = None
-            for frame_i in range(len(posData.segm_data)):
-                if frame_i >= len(posData.allData_li):
-                    break
-                lab = posData.allData_li[frame_i]['labels']
-                if lab is None:
-                    rp = skimage.measure.regionprops(posData.segm_data[frame_i])
-                    IDs = set([obj.label for obj in rp])
-                else:
-                    IDs = posData.allData_li[frame_i]['IDs']
-                
-                if searchedID in IDs:
-                    frame_i_found = frame_i
-                    break
+            return
+
+        if posData.SizeT == 1:
+            self.warnIDnotFound(searchedID)
+            return
+        
+        self.logger.info(f'Searching ID {searchedID} in other frames...')
+        
+        frame_i_found = self.startSearchIDworker(searchedID)
+        if frame_i_found is None:
+            self.warnIDnotFound(searchedID)
+            return
+        
+        self.logger.info(
+            f'Object ID {searchedID} found at frame n. {frame_i_found+1}.'
+        )
+        proceed = self.askGoToFrameFoundID(searchedID, frame_i_found)
+        if not proceed:
+            return
+        
+        posData.frame_i = frame_i_found
+        self.get_data()
+        self.updateAllImages()
+        self.updateScrollbars()
+        
+        self.goToObjectID(searchedID)
+    
+    @disableWindow
+    def startSearchIDworker(self, searchedID):
+        posData = self.data[self.pos_i]
+        
+        desc = 'Searching ID in all frames...'
+        
+        self.progressWin = apps.QDialogWorkerProgress(
+            title=desc, parent=self.mainWin, pbarDesc=desc
+        )
+        self.progressWin.mainPbar.setMaximum(posData.SizeT)
+        self.progressWin.show(self.app)
+        
+        self.searchIDthread = QThread()
+        self.searchIDworker = workers.SimpleWorker(
+            posData, self.searchIDworkerCallback, 
+            func_args=(searchedID, )
+        )
+        self.searchIDworker.frame_i_found = None
+        self.searchIDworker.moveToThread(self.searchIDthread)
+        
+        self.searchIDworker.signals.finished.connect(
+            self.searchIDthread.quit
+        )
+        self.searchIDworker.signals.finished.connect(
+            self.searchIDworker.deleteLater
+        )
+        self.searchIDthread.finished.connect(self.searchIDthread.deleteLater)
+        
+        self.searchIDworker.signals.critical.connect(
+            self.searchIDworkerCritical
+        )
+        self.searchIDworker.signals.initProgressBar.connect(
+            self.workerInitProgressbar
+        )
+        self.searchIDworker.signals.progressBar.connect(
+            self.workerUpdateProgressbar
+        )
+        self.searchIDworker.signals.progress.connect(
+            self.workerProgress
+        )
+        self.searchIDworker.signals.finished.connect(
+            self.searchIDworkerFinished
+        )
+        
+        self.searchIDthread.started.connect(self.searchIDworker.run)
+        self.searchIDthread.start()
+        
+        self.searchIDworkerLoop = QEventLoop()
+        self.searchIDworkerLoop.exec_()
+        
+        return self.searchIDworker.frame_i_found
+    
+    def searchIDworkerCritical(self, error):
+        self.searchIDworkerLoop.exit()
+        self.workerCritical(error)
+    
+    def searchIDworkerFinished(self):
+        if self.progressWin is not None:
+            self.progressWin.workerFinished = True
+            self.progressWin.close()
+            self.progressWin = None
+        
+        self.searchIDworkerLoop.exit()
+    
+    def searchIDworkerCallback(self, posData, searchedID):
+        self.searchIDworker.signals.initProgressBar.emit(0)
+        self.setAllIDs()
+        self.searchIDworker.signals.initProgressBar.emit(posData.SizeT)
+        frame_i_found = None
+        for frame_i in range(len(posData.segm_data)):
+            if frame_i >= len(posData.allData_li):
+                break
+            lab = posData.allData_li[frame_i]['labels']
+            if lab is None:
+                rp = skimage.measure.regionprops(posData.segm_data[frame_i])
+                IDs = set([obj.label for obj in rp])
+            else:
+                IDs = posData.allData_li[frame_i]['IDs']
             
-            if frame_i_found is None:
-                return
+            if searchedID in IDs:
+                frame_i_found = frame_i
+                break
             
-            self.logger.info(
-                f'Object ID {searchedID} found at frame n. {frame_i_found+1}.'
-            )
-            proceed = self.askGoToFrameFoundID(searchedID, frame_i_found)
-            if not proceed:
-                return
+            self.searchIDworker.signals.progressBar.emit(1)
             
-            posData.frame_i = frame_i_found
-            self.get_data()
-            self.updateAllImages()
-            self.updateScrollbars()
-            
-            self.goToObjectID(searchedID)
+        self.searchIDworker.frame_i_found = frame_i_found
+    
+    def warnIDnotFound(self, searchedID):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(f"""
+            Object ID {searchedID} was not found.<br><br>
+        """)
+        msg.warning(self, f'ID {searchedID} not found', txt)
     
     def goToObjectID(self, ID):
         posData = self.data[self.pos_i]
