@@ -13140,19 +13140,31 @@ class guiWin(QMainWindow):
             return
         
         if not self.addNewIDsWhitelistToggle:
+            self.whitelistPropagateIDs()
+            self.whitelistUpdateLabs()
+            self.whitelistIDsUpdateText()
             return
         
         posData = self.data[self.pos_i]
         
         if posData.whitelistIDs is None:
+            self.whitelistPropagateIDs()
+            self.whitelistUpdateLabs()
+            self.whitelistIDsUpdateText()
             return
 
         frame_i = posData.frame_i
 
         if frame_i == 0:
+            self.whitelistPropagateIDs()
+            self.whitelistUpdateLabs()
+            self.whitelistIDsUpdateText()
             return
 
         if self.navigateScrollBar.maximum() != frame_i and not ignore_not_first_time:
+            self.whitelistPropagateIDs()
+            self.whitelistUpdateLabs()
+            self.whitelistIDsUpdateText()
             return
 
         IDs_curr_og_lab = posData.originalLabsIDs[frame_i]
@@ -13171,6 +13183,7 @@ class guiWin(QMainWindow):
         self.whitelistIDsToolbar.viewOGToggle.setCheckable(True)
 
         self.whitelistSetViewOGIDsToggle(False)
+        self.frameSetDisabled(False)
 
         posData = self.data[self.pos_i]
         total_frames = range(len(posData.segm_data))
@@ -13193,6 +13206,8 @@ class guiWin(QMainWindow):
                     posData.originalLabsIDs[frame_i] = {obj.label for obj in skimage.measure.regionprops(lab)}
 
         whitelistIDs = set(whitelistIDs)
+        self.whitelistOriginalFrame_i = posData.frame_i
+        self.whitelistOriginalIDs = set()
         self.whitelistPropagateIDs(new_whitelistIDs=whitelistIDs, try_create_new_whitelists=True)
 
         self.whitelistUpdateLabs()
@@ -13213,6 +13228,7 @@ class guiWin(QMainWindow):
             posData.frame_i = frame_i
 
         if posData.whitelistIDs is None:
+            printl('No whitelist IDs')
             return
 
         self.whitelistSetViewOGIDsToggle(False)
@@ -13221,13 +13237,20 @@ class guiWin(QMainWindow):
         og_lab = posData.originalLabs[frame_i]
         curr_lab = posData.allData_li[frame_i]['labels']
 
-        whitelist = posData.whitelistIDs[frame_i]
+        whitelist = set(posData.whitelistIDs[frame_i])
         current_IDs = set(posData.allData_li[frame_i]['IDs'])
         missing_IDs = whitelist - current_IDs
         to_be_removed_IDs = current_IDs - whitelist
 
+        printl(current_IDs, missing_IDs, to_be_removed_IDs)
+
         if curr_lab is None:
-            curr_lab = np.zeros_like(og_lab)
+            curr_lab = posData.segm_data[frame_i].copy()
+            if curr_lab is None:
+                printl('No current lab')
+                curr_lab = np.zeros_like(og_lab)
+
+        printl(whitelist, {obj.label for obj in skimage.measure.regionprops(curr_lab)})
 
         for ID in missing_IDs:
             curr_lab[og_lab == ID] = ID
@@ -13236,6 +13259,7 @@ class guiWin(QMainWindow):
             curr_lab[curr_lab == ID] = 0
 
         posData.lab = curr_lab
+        posData.allData_li[frame_i]['labels'] = curr_lab.copy()
         self.update_rp(update_wl=False)
         self.store_data()
 
@@ -13291,11 +13315,11 @@ class guiWin(QMainWindow):
                               debug=False):
         #doesnt update the frame displayed, only wl
         posData = self.data[self.pos_i]
-
         if debug:
             printl('Propagating IDs...')
             myutils.print_call_stack()
             printl(new_whitelistIDs, IDs_to_add, IDs_to_remove)
+
         if posData.originalLabs is None:
             return
 
@@ -13308,7 +13332,7 @@ class guiWin(QMainWindow):
                 self.whitelistOriginalFrame_i = frame_i
                 self.whitelistOriginalIDs = posData.whitelistIDs[frame_i].copy()
             elif self.whitelistOriginalFrame_i != frame_i:
-                raise ValueError('please propagate IDs for all frames first before trying for different current frame only')
+                self.whitelistPropagateIDs()
         else:
             if self.whitelistOriginalFrame_i is not None:
                 was_curr_frame_only_edited = True
@@ -13347,7 +13371,8 @@ class guiWin(QMainWindow):
 
         else:
             if was_curr_frame_only_edited:
-                raise ValueError('Either new_whitelist or IDs_to_add or IDs_to_remove must be provided')
+                return
+                # raise ValueError('Either new_whitelist or IDs_to_add or IDs_to_remove must be provided')
             else:
                 if self.whitelistOriginalFrame_i:
                     old_whitelistIDs = self.whitelistOriginalIDs
@@ -13363,6 +13388,8 @@ class guiWin(QMainWindow):
             frames_range = [frame_i]
         else:
             frames_range = range(len(posData.segm_data))
+
+        IDs_to_remove = set(IDs_to_remove)
 
         for i in frames_range:
             if IDs_to_add:
@@ -17144,12 +17171,13 @@ class guiWin(QMainWindow):
             # Go to next frame
             posData.frame_i += 1
 
-            self.whitelistAddNewIDs()
-            self.whitelistUpdateLabs()
-            self.whitelistIDsUpdateText()
 
             self.removeAlldelROIsCurrentFrame()
             proceed_cca, never_visited = self.get_data()
+
+            self.whitelistAddNewIDs() # also does propagation
+            # self.whitelistUpdateLabs()
+            
             if not proceed_cca:
                 posData.frame_i -= 1
                 self.get_data()

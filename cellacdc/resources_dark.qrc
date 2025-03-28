@@ -75,7 +75,6 @@
     <file alias="brush-cursor.png">resources/icons/brush-cursor.png</file>
     <file alias="undo.svg">resources/icons/undo_dark.svg</file>
     <file alias="redo.svg">resources/icons/redo_dark.svg</file>
-    <file alias="whitelist.svg">resources/icons/whitelist_dark.svg</file>
     <file alias="eye.svg">resources/icons/eye_dark.svg</file>
     <file alias="filter_image.svg">resources/icons/filter_image_dark.svg</file>
     <file alias="eye-checked.svg">resources/icons/eye-checked_dark.svg</file>

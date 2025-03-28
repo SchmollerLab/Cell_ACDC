@@ -59,7 +59,6 @@
     <file alias="no_bed.svg">resources/icons/no_bed.svg</file>
     <file alias="bed_plus_label.svg">resources/icons/bed_plus_label.svg</file>
     <file alias="skip_arrow.svg">resources/icons/skip_arrow.svg</file>
-    <file alias="whitelist.svg">resources/icons/whitelist.svg</file>
     <file alias="hideUp.svg">resources/icons/hideUp.svg</file>
     <file alias="brush.svg">resources/icons/brush.svg</file>
     <file alias="clear_freehand_region.svg">resources/icons/clear_freehand_region_dark.svg</file>
