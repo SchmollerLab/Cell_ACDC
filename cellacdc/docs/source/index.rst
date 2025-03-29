@@ -73,8 +73,9 @@ A GUI-based Python framework for **segmentation**, **tracking**, **cell cycle an
 
 .. tip:: 
 
-    If you want a **video tutorial** as introduction to Cell-ACDC the workshop that we had at the 
-    I2K Conference 2024 is available `here <https://youtu.be/u1cQ2MH5uEQ?si=-_hpBoJIccMRjrazs>`__.
+    Check out `here <https://youtu.be/u1cQ2MH5uEQ?si=-_hpBoJIccMRjrazs>`__ for a 
+    **video tutorial** introdcuing Cell-ACDC. It is a workshop we held at the 
+    I2K Conference 2024.
 
 .. carousel::
    :show_captions_below:
