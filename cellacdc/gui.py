@@ -4424,7 +4424,9 @@ class guiWin(QMainWindow):
         sp.setRetainSizeWhenHidden(True)
         self.navigateScrollBar.setSizePolicy(sp)
         self.navSpinBox.connectValueChanged(self.navigateSpinboxValueChanged)
-        self.navSpinBox.editingFinished.connect(self.navigateSpinboxEditingFinished)
+        self.navSpinBox.editingFinished.connect(
+            self.navigateSpinboxEditingFinished
+        )
 
         self.lastTrackedFrameLabel = QLabel()
         self.lastTrackedFrameLabel.setFont(_font)
@@ -16725,8 +16727,8 @@ class guiWin(QMainWindow):
         self.updateItemsMousePos()
         self.updateFramePosLabel()
         posData = self.data[self.pos_i]
-        pos = self.pos_i+1 if self.isSnapshot else posData.frame_i+1
-        self.navigateScrollBar.setSliderPosition(pos)
+        navPos = self.pos_i+1 if self.isSnapshot else posData.frame_i+1
+        self.navigateScrollBar.setSliderPosition(navPos)
         if posData.SizeZ > 1:
             self.updateZsliceScrollbar(posData.frame_i)
             idx = (posData.filename, posData.frame_i)
@@ -29346,6 +29348,7 @@ class guiWin(QMainWindow):
             self.store_data()
             self.updateAllImages()
             self.navigateScrollBar.setSliderPosition(posData.frame_i+1)
+            self.navSpinBox.setValue(posData.frame_i+1)
         else:
             self.update_z_slice(self.exportToVideoNavVarIdxToRestore)
         
