@@ -447,12 +447,6 @@ def get_omero_credentials():
                 omero_session_id = __omero_session_id)
 
 def omero_login():
-    global __omero_config_file
-    global __omero_session_id
-    global __omero_server
-    global __omero_username
-    global __omero_port
-    global __omero_password
     if __omero_config_file is not None and os.path.isfile(__omero_config_file):
         env = jutil.get_env()
         config = env.make_object_array(1, env.find_class("java/lang/String"))

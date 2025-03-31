@@ -3,7 +3,7 @@ import numpy as np
 from instanseg import InstanSeg
 
 from ... import myutils, printl
-from ...types import SecondChannelImage
+from ..._types import SecondChannelImage
 
 from . import INSTANSEG_MODELS
 

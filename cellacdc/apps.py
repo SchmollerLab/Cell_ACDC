@@ -79,7 +79,7 @@ from . import widgets
 from . import user_profile_path
 from . import features
 from . import _core
-from . import types
+from . import _types
 from . import plot
 from . import urls
 from .acdc_regex import float_regex
@@ -8481,6 +8481,7 @@ class QLineEditDialog(QDialog):
 
         self.loop = None
         self.cancel = True
+        self.assignNewID = False
         self.allowedValues = allowedValues
         self.warnLastFrame = warnLastFrame
         self.isFloat = isFloat
@@ -8581,6 +8582,9 @@ class QLineEditDialog(QDialog):
         buttonsLayout.addWidget(cancelButton)
         buttonsLayout.addSpacing(20)
         buttonsLayout.addWidget(okButton)
+        
+        self.okButton = okButton
+        self.buttonsLayout = buttonsLayout
 
         # Add layouts
         mainLayout.addLayout(LineEditLayout)
@@ -8657,7 +8661,7 @@ class QLineEditDialog(QDialog):
            buttonsTexts=('Cancel', 'Yes, I am sure.')
         )
         return msg.cancel
-
+    
     def ok_cb(self, event):
         if not self.allowEmpty and not self.entryWidget.text():
             msg = widgets.myMessageBox(showCentered=False, wrapText=False)
@@ -8716,6 +8720,13 @@ class QLineEditDialog(QDialog):
     def closeEvent(self, event):
         if hasattr(self, 'loop'):
             self.loop.exit()
+
+class FindIDDialog(QLineEditDialog):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        
+        self.okButton.setIcon(QIcon(':magnGlass.svg'))
+        self.okButton.setText(' Find ')
 
 class NumericEntryDialog(QBaseDialog):
     def __init__(
@@ -8823,16 +8834,19 @@ class editID_QWidget(QDialog):
         VBoxLayout.addWidget(note, alignment=Qt.AlignCenter)
         mainLayout.addLayout(VBoxLayout)
 
-        HBoxLayout = QHBoxLayout()
+        buttonsLayout = QHBoxLayout()
         okButton = widgets.okPushButton('Ok')
         cancelButton = widgets.cancelPushButton('Cancel')
+        applyNewIDButton = widgets.AssignNewIDButton('Assign new, unique ID')
 
-        HBoxLayout.addWidget(cancelButton)
-        HBoxLayout.addSpacing(20)
-        HBoxLayout.addWidget(okButton)
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(cancelButton)
+        buttonsLayout.addSpacing(20)
+        buttonsLayout.addWidget(applyNewIDButton)
+        buttonsLayout.addWidget(okButton)
 
         mainLayout.addSpacing(10)
-        mainLayout.addLayout(HBoxLayout)
+        mainLayout.addLayout(buttonsLayout)
 
         self.setLayout(mainLayout)
 
@@ -8841,6 +8855,8 @@ class editID_QWidget(QDialog):
         entryWidget.textChanged[str].connect(self.onTextChanged)
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.cancel_cb)
+        applyNewIDButton.clicked.connect(self.assignNewIDclicked)
+        
         # self.setModal(True)
 
     def onTextChanged(self, text):
@@ -8910,8 +8926,13 @@ class editID_QWidget(QDialog):
         self.mergeWithExistingID = msg.clickedButton ==  mergeButton
         return True
 
-    def ok_cb(self, event):
+    def assignNewIDclicked(self):
         self.cancel = False
+        self.how = None
+        self.assignNewID = True
+        self.close()
+    
+    def ok_cb(self, event):
         txt = self.entryWidget.text()
         valid = False
 
@@ -8936,6 +8957,7 @@ class editID_QWidget(QDialog):
                 valid = False
 
         if valid:
+            self.cancel = False
             self.how = how
             self.close()
         else:
@@ -10364,7 +10386,7 @@ class FunctionParamsDialog(QBaseDialog):
         ArgsWidgets_list = []
         
         for row, ArgSpec in enumerate(params_argspecs):
-            if types.is_widget_not_required(ArgSpec):
+            if _types.is_widget_not_required(ArgSpec):
                 continue
             
             arg_name = ArgSpec.name         
@@ -10381,14 +10403,14 @@ class FunctionParamsDialog(QBaseDialog):
             
             isVectorEntry = False
             try:
-                if isinstance(ArgSpec.type(), types.Vector):
+                if isinstance(ArgSpec.type(), _types.Vector):
                     isVectorEntry = True
             except Exception as err:
                 pass
             
             isFolderPath = False
             try:
-                if isinstance(ArgSpec.type(), types.FolderPath):
+                if isinstance(ArgSpec.type(), _types.FolderPath):
                     isFolderPath = True
             except Exception as err:
                 pass
@@ -10476,7 +10498,7 @@ class FunctionParamsDialog(QBaseDialog):
                 widget.sigValueChanged.connect(self.emitValuesChanged)
             elif isCustomListType:
                 items = ArgSpec.type().values
-                ArgSpec.type.cast_dtype = types.to_str
+                ArgSpec.type.cast_dtype = _types.to_str
                 defaultVal = str(ArgSpec.default)
                 combobox = widgets.AlphaNumericComboBox()
                 combobox.addItems(items)
@@ -10899,7 +10921,7 @@ class QDialogModelParams(QDialog):
         isDualChannelModel = (
             self.model_name.find('cellpose') != -1 
             or any([
-                types.is_second_channel_type(ArgSpec.type) 
+                _types.is_second_channel_type(ArgSpec.type) 
                 for ArgSpec in ArgSpecs_list
             ])
         )
@@ -10920,10 +10942,10 @@ class QDialogModelParams(QDialog):
             start_row += 1
         
         for row, ArgSpec in enumerate(ArgSpecs_list):
-            if types.is_second_channel_type(ArgSpec.type):
+            if _types.is_second_channel_type(ArgSpec.type):
                 continue
             
-            if types.is_widget_not_required(ArgSpec):
+            if _types.is_widget_not_required(ArgSpec):
                 continue
             
             row = row + start_row
@@ -10947,14 +10969,14 @@ class QDialogModelParams(QDialog):
             
             isVectorEntry = False
             try:
-                if isinstance(ArgSpec.type(), types.Vector):
+                if isinstance(ArgSpec.type(), _types.Vector):
                     isVectorEntry = True
             except Exception as err:
                 pass
             
             isFolderPath = False
             try:
-                if isinstance(ArgSpec.type(), types.FolderPath):
+                if isinstance(ArgSpec.type(), _types.FolderPath):
                     isFolderPath = True
             except Exception as err:
                 pass

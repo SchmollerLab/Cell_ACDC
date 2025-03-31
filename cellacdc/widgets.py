@@ -327,6 +327,21 @@ class okPushButton(PushButton):
         # QShortcut(Qt.Key_Return, self, self.click)
         # QShortcut(Qt.Key_Enter, self, self.click)
 
+class MagnifyingGlassPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setIcon(QIcon(':magnGlass.svg'))
+    
+class MagnifyingGlassAllPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setIcon(QIcon(':magnGlass_all.svg'))
+
+class AssignNewIDButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setIcon(QIcon(':assign_new_id.svg'))
+
 class LockPushButton(PushButton):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -3012,10 +3027,11 @@ class CopyLostObjectToolbar(ToolBar):
         super().__init__(*args)
         
         action = self.addButton(':copyContour_all.svg')
-        action.setShortcut('Shift+V')
+        # action.setShortcut('Alt+C')
+        action.keyPressShortcut = KeySequenceFromText('Alt+C')
         action.setToolTip(
             'Copy all lost objects\n\n'
-            'Shortcut: Shift+V'
+            'Shortcut: Alt+C'
         )
         self.widgetsWithShortcut['Copy all lost objects'] = action
         
@@ -3028,12 +3044,14 @@ class CopyLostObjectToolbar(ToolBar):
         )
         self.maxOverlapNumberControl.setMinimum(0)
         self.maxOverlapNumberControl.setValue(10)
-        self.maxOverlapNumberControl.setToolTip(
+        tooltip = (
             'Maximum overlap to accept lost object [%]\n\n'
             'If the overlap between the lost object and an object already '
             'existing is greater than this value,\n'
             'the lost object will not be added.'
         )
+        self.maxOverlapNumberControl.setToolTip(tooltip)
+        self.maxOverlapNumberControl.label.setToolTip(tooltip)
         
         self.addSeparator()
         
@@ -9871,4 +9889,15 @@ class KeySequenceFromText(QKeySequence):
             return self._text
         else:
             return super().toString()
-        
+    
+def modifierKeyToText(modifierKey: int):
+    if modifierKey == Qt.ControlModifier:
+        return 'Ctrl'
+    elif modifierKey == Qt.AltModifier:
+        return 'Alt'
+    elif modifierKey == Qt.ShiftModifier:
+        return 'Shift'
+    elif modifierKey == Qt.MetaModifier:
+        return 'Meta'
+    else:
+        return ''

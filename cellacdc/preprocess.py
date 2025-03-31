@@ -35,7 +35,7 @@ import skimage.exposure
 import skimage.util
 
 from . import error_up_str
-from . import types
+from . import _types
 from . import printl
 
 SQRT_2 = math.sqrt(2)
@@ -80,7 +80,7 @@ def remove_hot_pixels(
 
 def gaussian_filter(
         image, 
-        sigma: types.Vector=0.75, 
+        sigma: _types.Vector=0.75, 
         use_gpu=False, 
         logger_func=print, 
         apply_to_all_zslices=True
@@ -147,7 +147,7 @@ def gaussian_filter(
 
 def ridge_filter(
         image, 
-        sigmas: types.Vector=(1.0, 2.0), 
+        sigmas: _types.Vector=(1.0, 2.0), 
         apply_to_all_zslices=True
     ):
     """Filter used to enhance network-like structures (Sato filter). More info 
@@ -173,7 +173,7 @@ def ridge_filter(
 
 def spot_detector_filter(
         image, 
-        spots_zyx_radii_pxl: types.Vector=(3, 5, 5), 
+        spots_zyx_radii_pxl: _types.Vector=(3, 5, 5), 
         use_gpu=False, 
         logger_func=print, 
         apply_to_all_zslices=True
@@ -507,7 +507,7 @@ def rescale_intensities(
         image: np.array,
         out_range_low: float=0.0,
         out_range_high: float=1.0,
-        in_range_how: types.RescaleIntensitiesInRangeHow='percentage',
+        in_range_how: _types.RescaleIntensitiesInRangeHow='percentage',
         in_range_low: float=0.0,
         in_range_high: float=1.0,
         apply_to_all_zslices=True,
@@ -597,7 +597,7 @@ def basicpy_background_correction(
         sparse_cost_darkfield=0.01,
         # baseline=None,
         # darkfield=None,
-        fitting_mode: types.BaSiCpyFittingModes="ladmap",
+        fitting_mode: _types.BaSiCpyFittingModes="ladmap",
         epsilon=0.1,
         # flatfield=None,
         autosegment=False,
@@ -611,13 +611,13 @@ def basicpy_background_correction(
         max_mu_coef=10000000.0,
         optimization_tol=0.001,
         optimization_tol_diff=0.01,
-        resize_mode: types.BaSiCpyResizeModes="jax",
-        resize_params: types.NotGUIParam=None,
+        resize_mode: _types.BaSiCpyResizeModes="jax",
+        resize_params: _types.NotGUIParam=None,
         reweighting_tol=0.01,
         sort_intensity=False,
         working_size=128,
-        timelapse: types.BaSiCpyTimelapse="True",
-        parent: types.NotGUIParam=None
+        timelapse: _types.BaSiCpyTimelapse="True",
+        parent: _types.NotGUIParam=None
     ):
     """
     A function for fitting and applying BaSiC illumination correction profiles.

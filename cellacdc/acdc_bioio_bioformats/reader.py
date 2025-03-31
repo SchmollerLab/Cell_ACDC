@@ -1,6 +1,8 @@
 import os
 import re
 
+import numpy as np
+
 from .. import printl
 from . import install, EXTENSION_PACKAGE_MAPPER
 
@@ -152,22 +154,25 @@ class OMEXML:
             txt = file.read()
         
         keys_dtype_kwarg_mapper = {
-            'Image': (str, 'image_filepath'),
-            'Channels': (eval, 'channel_names'),
-            'SizeC': (int, 'SizeC'),
-            'SizeT': (int, 'SizeT'),
-            'SizeZ': (int, 'SizeZ'),
-            'SizeY': (int, 'SizeY'),
-            'SizeX': (int, 'SizeX'),
-            'PhysicalSizeX': (float, 'PhysicalSizeX'),
-            'PhysicalSizeY': (float, 'PhysicalSizeY'),
-            'PhysicalSizeZ': (float, 'PhysicalSizeZ'),
-            'Image count': (int, 'image_count'),
+            'Image': (str, 'image_filepath', ''),
+            'Channels': (eval, 'channel_names', ['ch0']),
+            'SizeC': (int, 'SizeC', 1),
+            'SizeT': (int, 'SizeT', 1),
+            'SizeZ': (int, 'SizeZ', 1),
+            'SizeY': (int, 'SizeY', 1),
+            'SizeX': (int, 'SizeX', 1),
+            'PhysicalSizeX': (float, 'PhysicalSizeX', 1.0),
+            'PhysicalSizeY': (float, 'PhysicalSizeY', 1.0),
+            'PhysicalSizeZ': (float, 'PhysicalSizeZ', 1.0),
+            'Image count': (int, 'image_count', 1.0),
         }
-        for key, (dtype, kwarg) in keys_dtype_kwarg_mapper.items():
+        for key, (dtype, kwarg, default) in keys_dtype_kwarg_mapper.items():
             value = re.search(f'{key}: (.+)', txt).group(1)
-            setattr(self, kwarg, dtype(value))
             print(key, value, type(value))
+            try:
+                setattr(self, kwarg, dtype(value))
+            except Exception as err:
+                setattr(self, kwarg, default)
         
         self.bioimage = BioImageMetadata(
             self.SizeT, self.SizeC, self.SizeZ, self.SizeY, self.SizeX, 

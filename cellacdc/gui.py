@@ -48,7 +48,7 @@ from qtpy.QtCore import (
 )
 from qtpy.QtGui import (
     QIcon, QKeySequence, QCursor, QGuiApplication, QPixmap, QColor,
-    QFont
+    QFont, QKeyEvent, QMouseEvent
 )
 from qtpy.QtWidgets import (
     QAction, QLabel, QPushButton, QHBoxLayout, QSizePolicy,
@@ -57,7 +57,7 @@ from qtpy.QtWidgets import (
     QComboBox, QButtonGroup, QActionGroup, QFileDialog,
     QAbstractSlider, QMessageBox, QWidget, QGridLayout, QDockWidget,
     QGraphicsProxyWidget, QVBoxLayout, QRadioButton, 
-    QSpacerItem, QScrollArea, QFormLayout
+    QSpacerItem, QScrollArea, QFormLayout, QGraphicsSceneMouseEvent 
 )
 
 import pyqtgraph as pg
@@ -1334,18 +1334,6 @@ class guiWin(QMainWindow):
         self.checkableQButtonsGroup.addButton(self.fillHolesToolButton)
         self.functionsNotTested3D.append(self.fillHolesToolButton)
         self.widgetsWithShortcut['Fill holes'] = self.fillHolesToolButton
-        
-        self.assignNewIDToolButton = QToolButton(self)
-        self.assignNewIDToolButton.setIcon(QIcon(":assign_new_id.svg"))
-        self.assignNewIDToolButton.setCheckable(True)
-        self.assignNewIDToolButton.setShortcut('J')
-        self.assignNewIDToolButton.action = editToolBar.addWidget(
-            self.assignNewIDToolButton
-        )
-        self.checkableButtons.append(self.assignNewIDToolButton)
-        self.checkableQButtonsGroup.addButton(self.assignNewIDToolButton)
-        self.functionsNotTested3D.append(self.assignNewIDToolButton)
-        self.widgetsWithShortcut['Assign new ID'] = self.assignNewIDToolButton
 
         self.moveLabelToolButton = QToolButton(self)
         self.moveLabelToolButton.setIcon(QIcon(":moveLabel.svg"))
@@ -2395,7 +2383,7 @@ class guiWin(QMainWindow):
         
         self.addToolBar(Qt.TopToolBarArea, self.copyLostObjToolbar)
         self.copyLostObjToolbar.setVisible(False)
-        self.controlToolBars.append(self.copyLostObjToolbar)
+        # self.controlToolBars.append(self.copyLostObjToolbar)
         
         # Copy lost object contour toolbar
         self.drawClearRegionToolbar = widgets.DrawClearRegionToolbar(
@@ -2508,6 +2496,7 @@ class guiWin(QMainWindow):
             askHowFutureFramesAction.setText(f'Ask for "{key}" action')
             askHowFutureFramesAction.setCheckable(True)
             askHowFutureFramesAction.setChecked(True)
+            askHowFutureFramesAction.setDisabled(True)
             askHowFutureFramesMenu.addAction(askHowFutureFramesAction)
             self.askHowFutureFramesActions[key] = askHowFutureFramesAction
         
@@ -3820,7 +3809,9 @@ class guiWin(QMainWindow):
         sp.setRetainSizeWhenHidden(True)
         self.navigateScrollBar.setSizePolicy(sp)
         self.navSpinBox.connectValueChanged(self.navigateSpinboxValueChanged)
-        self.navSpinBox.editingFinished.connect(self.navigateSpinboxEditingFinished)
+        self.navSpinBox.editingFinished.connect(
+            self.navigateSpinboxEditingFinished
+        )
 
         self.lastTrackedFrameLabel = QLabel()
         self.lastTrackedFrameLabel.setFont(_font)
@@ -4746,7 +4737,7 @@ class guiWin(QMainWindow):
         self.SizeZlabel.hide()
 
     @exception_handler
-    def gui_mousePressEventImg2(self, event):
+    def gui_mousePressEventImg2(self, event: QGraphicsSceneMouseEvent):
         modifiers = QGuiApplication.keyboardModifiers()
         alt = modifiers == Qt.AltModifier
         shift = modifiers == Qt.ShiftModifier
@@ -5115,20 +5106,6 @@ class guiWin(QMainWindow):
 
                 if not self.fillHolesToolButton.findChild(QAction).isChecked():
                     self.fillHolesToolButton.setChecked(False)
-
-        # Assign new ID
-        elif right_click and self.assignNewIDToolButton.isChecked():
-            x, y = event.pos().x(), event.pos().y()
-            xdata, ydata = int(x), int(y)
-            newID = self.setBrushID(return_val=True)
-            clickedID = self.getClickedID(
-                xdata, ydata, text=f'that you want to assign to new ID {newID}'
-            )
-            if clickedID is None:
-                return
-            
-            mapper = [(clickedID, newID)]
-            self.applyEditID(clickedID, posData.IDs.copy(), mapper, x, y)
         
         # Hull contour
         elif right_click and self.hullContToolButton.isChecked():
@@ -5253,7 +5230,7 @@ class guiWin(QMainWindow):
                     return
                 else:
                     ID = editID_prompt.EntryID
-
+            
             obj_idx = posData.IDs.index(ID)
             y, x = posData.rp[obj_idx].centroid[-2:]
             xdata, ydata = int(x), int(y)
@@ -5273,7 +5250,11 @@ class guiWin(QMainWindow):
                 if not self.editIDbutton.findChild(QAction).isChecked():
                     self.editIDbutton.setChecked(False)
                 return
-
+            
+            if editID.assignNewID:
+                self.assignNewIDfromClickedID(ID, event)
+                return
+            
             if not self.doNotAskAgainExistingID:    
                 self.editIDmergeIDs = editID.mergeWithExistingID
             self.doNotAskAgainExistingID = editID.doNotAskAgainExistingID
@@ -7146,7 +7127,7 @@ class guiWin(QMainWindow):
         self.ax1_rulerPlotItem.setData([x0, x1], [y0, y1])
     
     @exception_handler
-    def gui_mousePressEventImg1(self, event):
+    def gui_mousePressEventImg1(self, event: QMouseEvent):
         self.typingEditID = False
         modifiers = QGuiApplication.keyboardModifiers()
         ctrl = modifiers == Qt.ControlModifier
@@ -8465,11 +8446,10 @@ class guiWin(QMainWindow):
     
     def findID(self):
         posData = self.data[self.pos_i]
-        self.setAllIDs()
-        searchIDdialog = apps.QLineEditDialog(
+        searchIDdialog = apps.FindIDDialog(
             title='Search object by ID',
             msg='Enter object ID to find and highlight',
-            parent=self, allowedValues=posData.allIDs
+            parent=self,
         )
         searchIDdialog.exec_()
         if searchIDdialog.cancel:
@@ -8478,39 +8458,126 @@ class guiWin(QMainWindow):
         searchedID = searchIDdialog.EntryID
         if searchedID in posData.IDs:
             self.goToObjectID(searchedID)
-        else:
-            self.logger.info(f'Searching ID {searchedID} in other frames...')
-            frame_i_found = None
-            for frame_i in range(len(posData.segm_data)):
-                if frame_i >= len(posData.allData_li):
-                    break
-                lab = posData.allData_li[frame_i]['labels']
-                if lab is None:
-                    rp = skimage.measure.regionprops(posData.segm_data[frame_i])
-                    IDs = set([obj.label for obj in rp])
-                else:
-                    IDs = posData.allData_li[frame_i]['IDs']
-                
-                if searchedID in IDs:
-                    frame_i_found = frame_i
-                    break
+            return
+
+        if posData.SizeT == 1:
+            self.warnIDnotFound(searchedID)
+            return
+        
+        self.logger.info(f'Searching ID {searchedID} in other frames...')
+        
+        frame_i_found = self.startSearchIDworker(searchedID)
+        if frame_i_found is None:
+            self.warnIDnotFound(searchedID)
+            return
+        
+        self.logger.info(
+            f'Object ID {searchedID} found at frame n. {frame_i_found+1}.'
+        )
+        proceed = self.askGoToFrameFoundID(searchedID, frame_i_found)
+        if not proceed:
+            return
+        
+        posData.frame_i = frame_i_found
+        self.get_data()
+        self.updateAllImages()
+        self.updateScrollbars()
+        
+        self.goToObjectID(searchedID)
+    
+    @disableWindow
+    def startSearchIDworker(self, searchedID):
+        posData = self.data[self.pos_i]
+        
+        desc = 'Searching ID in all frames...'
+        
+        self.progressWin = apps.QDialogWorkerProgress(
+            title=desc, parent=self.mainWin, pbarDesc=desc
+        )
+        self.progressWin.mainPbar.setMaximum(posData.SizeT)
+        self.progressWin.show(self.app)
+        
+        self.searchIDthread = QThread()
+        self.searchIDworker = workers.SimpleWorker(
+            posData, self.searchIDworkerCallback, 
+            func_args=(searchedID, )
+        )
+        self.searchIDworker.frame_i_found = None
+        self.searchIDworker.moveToThread(self.searchIDthread)
+        
+        self.searchIDworker.signals.finished.connect(
+            self.searchIDthread.quit
+        )
+        self.searchIDworker.signals.finished.connect(
+            self.searchIDworker.deleteLater
+        )
+        self.searchIDthread.finished.connect(self.searchIDthread.deleteLater)
+        
+        self.searchIDworker.signals.critical.connect(
+            self.searchIDworkerCritical
+        )
+        self.searchIDworker.signals.initProgressBar.connect(
+            self.workerInitProgressbar
+        )
+        self.searchIDworker.signals.progressBar.connect(
+            self.workerUpdateProgressbar
+        )
+        self.searchIDworker.signals.progress.connect(
+            self.workerProgress
+        )
+        self.searchIDworker.signals.finished.connect(
+            self.searchIDworkerFinished
+        )
+        
+        self.searchIDthread.started.connect(self.searchIDworker.run)
+        self.searchIDthread.start()
+        
+        self.searchIDworkerLoop = QEventLoop()
+        self.searchIDworkerLoop.exec_()
+        
+        return self.searchIDworker.frame_i_found
+    
+    def searchIDworkerCritical(self, error):
+        self.searchIDworkerLoop.exit()
+        self.workerCritical(error)
+    
+    def searchIDworkerFinished(self):
+        if self.progressWin is not None:
+            self.progressWin.workerFinished = True
+            self.progressWin.close()
+            self.progressWin = None
+        
+        self.searchIDworkerLoop.exit()
+    
+    def searchIDworkerCallback(self, posData, searchedID):
+        self.searchIDworker.signals.initProgressBar.emit(0)
+        self.setAllIDs()
+        self.searchIDworker.signals.initProgressBar.emit(posData.SizeT)
+        frame_i_found = None
+        for frame_i in range(len(posData.segm_data)):
+            if frame_i >= len(posData.allData_li):
+                break
+            lab = posData.allData_li[frame_i]['labels']
+            if lab is None:
+                rp = skimage.measure.regionprops(posData.segm_data[frame_i])
+                IDs = set([obj.label for obj in rp])
+            else:
+                IDs = posData.allData_li[frame_i]['IDs']
             
-            if frame_i_found is None:
-                return
+            if searchedID in IDs:
+                frame_i_found = frame_i
+                break
             
-            self.logger.info(
-                f'Object ID {searchedID} found at frame n. {frame_i_found+1}.'
-            )
-            proceed = self.askGoToFrameFoundID(searchedID, frame_i_found)
-            if not proceed:
-                return
+            self.searchIDworker.signals.progressBar.emit(1)
             
-            posData.frame_i = frame_i_found
-            self.get_data()
-            self.updateAllImages()
-            self.updateScrollbars()
-            
-            self.goToObjectID(searchedID)
+        self.searchIDworker.frame_i_found = frame_i_found
+    
+    def warnIDnotFound(self, searchedID):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(f"""
+            Object ID {searchedID} was not found.<br><br>
+        """)
+        msg.warning(self, f'ID {searchedID} not found', txt)
     
     def goToObjectID(self, ID):
         posData = self.data[self.pos_i]
@@ -12485,6 +12552,7 @@ class guiWin(QMainWindow):
                 )
                 overlap_perc = overlap/lostObj.area*100
                 if overlap_perc > max_overlap_perc:
+                    self.copyAllLostObjectsWorker.overlapWarning = True
                     continue
                 
                 self.copyLostObjectContour(lostObj.label)
@@ -12509,6 +12577,9 @@ class guiWin(QMainWindow):
     
     @disableWindow
     def copyAllLostObjects(self, for_future_frame_n, max_overlap_perc):
+        if not self.copyLostObjButton.isChecked():
+            return
+        
         posData = self.data[self.pos_i]
         
         desc = (
@@ -12527,6 +12598,7 @@ class guiWin(QMainWindow):
             posData, self.copyAllLostObjectsWorkerCallback, 
             func_args=(for_future_frame_n, max_overlap_perc)
         )
+        self.copyAllLostObjectsWorker.overlapWarning = False
         
         self.copyAllLostObjectsWorker.moveToThread(
             self.copyAllLostObjectsThread
@@ -12582,6 +12654,13 @@ class guiWin(QMainWindow):
                 updateImages=False, 
                 force=True
             )
+        
+        if self.copyAllLostObjectsWorker.overlapWarning:
+            self.blinker = qutils.QControlBlink(
+                self.copyLostObjToolbar.maxOverlapNumberControl, 
+                qparent=self.mainWin
+            )
+            self.blinker.start()
         
         self.copyAllLostObjectsWorkerLoop.exit()
         self.update_rp()
@@ -14188,6 +14267,35 @@ class guiWin(QMainWindow):
         if keySequenceText == delObjKeySequence.toString():
             self.delObjToolAction.setChecked(True)
     
+    def checkTriggerKeyPressShortcuts(self, event: QKeyEvent):
+        isBrushKey = event.key() == self.brushButton.keyPressShortcut
+        isEraserKey = event.key() == self.eraserButton.keyPressShortcut
+        if isBrushKey or isEraserKey:
+            return isBrushKey, isEraserKey
+        
+        modifierText = widgets.modifierKeyToText(event.modifiers())
+        for widget in self.widgetsWithShortcut.values():
+            if not hasattr(widget, 'keyPressShortcut'):
+                continue
+            
+            if event.key() == widget.keyPressShortcut:
+                if widget.isCheckable():
+                    widget.setChecked(True)
+                else:
+                    widget.trigger()       
+                continue
+            
+            shortcutText = widget.keyPressShortcut.toString()
+            try:
+                mod, key = shortcutText.split('+')
+                if modifierText == mod and event.key() == QKeySequence(key):
+                    widget.trigger()
+                    
+            except Exception as e:
+                pass
+        
+        return isBrushKey, isEraserKey
+    
     @exception_handler
     def keyPressEvent(self, ev):        
         ctrl = ev.modifiers() == Qt.ControlModifier
@@ -14250,11 +14358,9 @@ class guiWin(QMainWindow):
         )
         isManualTrackingActive = self.manualTrackingButton.isChecked()
         isManualBackgroundActive = self.manualBackgroundButton.isChecked()
-        if self.brushButton.isChecked():
+        if self.brushButton.isChecked() and not self.autoIDcheckbox.isChecked():
             try:
                 n = int(ev.text())
-                if self.autoIDcheckbox.isChecked():
-                    self.autoIDcheckbox.setChecked(False)
                 if self.typingEditID:
                     ID = int(f'{self.editIDspinbox.value()}{n}')
                 else:
@@ -14295,8 +14401,8 @@ class guiWin(QMainWindow):
             or isManualBackgroundActive
             or isManualTrackingActive
         )
-        isBrushKey = ev.key() == self.brushButton.keyPressShortcut
-        isEraserKey = ev.key() == self.eraserButton.keyPressShortcut
+        
+        isBrushKey, isEraserKey = self.checkTriggerKeyPressShortcuts(ev)
         isExpandLabelActive = self.expandLabelToolButton.isChecked()
         isWandActive = self.wandToolButton.isChecked()
         isLabelRoiCircActive = (
@@ -14633,9 +14739,9 @@ class guiWin(QMainWindow):
 
             endFrame_i = ffa.endFrame_i
             doNotShowAgain = ffa.doNotShowCheckbox.isChecked()
-            self.askHowFutureFramesActions[modTxt].setChecked(
-                not doNotShowAgain
-            )
+            askAction = self.askHowFutureFramesActions[modTxt]
+            askAction.setChecked( not doNotShowAgain)
+            askAction.setDisabled(False)
 
             self.onlyTracking = False
             if decision == 'apply_and_reinit':
@@ -16765,8 +16871,8 @@ class guiWin(QMainWindow):
         self.updateItemsMousePos()
         self.updateFramePosLabel()
         posData = self.data[self.pos_i]
-        pos = self.pos_i+1 if self.isSnapshot else posData.frame_i+1
-        self.navigateScrollBar.setSliderPosition(pos)
+        navPos = self.pos_i+1 if self.isSnapshot else posData.frame_i+1
+        self.navigateScrollBar.setSliderPosition(navPos)
         if posData.SizeZ > 1:
             self.updateZsliceScrollbar(posData.frame_i)
             idx = (posData.filename, posData.frame_i)
@@ -20639,6 +20745,15 @@ class guiWin(QMainWindow):
             else:
                 posData.lab[mask] = ID
 
+    def assignNewIDfromClickedID(
+            self, clickedID: int, event: QGraphicsSceneMouseEvent
+        ):
+        posData = self.data[self.pos_i]
+        x, y = event.pos().x(), event.pos().y()
+        newID = self.setBrushID(return_val=True)
+        mapper = [(clickedID, newID)]
+        self.applyEditID(clickedID, posData.IDs.copy(), mapper, x, y)
+            
     def get_2Drp(self, lab=None):  
         if self.isSegm3D:
             if lab is None:
@@ -27481,6 +27596,10 @@ class guiWin(QMainWindow):
         self.labelsLayerImg1.setOpacity(alpha)
         self.labelsLayerRightImg.setOpacity(alpha)
         self.lastTrackedFrameLabel.setText('')
+        
+        for action in self.askHowFutureFramesActions.values():
+            action.setChecked(True)
+            action.setDisabled(True)
     
     def reinitPointsLayers(self):
         for action in self.pointsLayersToolbar.actions()[1:]:
@@ -28236,7 +28355,10 @@ class guiWin(QMainWindow):
         if start_n <= stop_n:
             return True
         
-        self.blinker = qutils.QControlBlink(self.labelRoiStopFrameNoSpinbox)
+        self.blinker = qutils.QControlBlink(
+            self.labelRoiStopFrameNoSpinbox, 
+            qparent=self
+        )
         self.blinker.start()
         msg = widgets.myMessageBox()
         txt = html_utils.paragraph("""
@@ -29483,6 +29605,7 @@ class guiWin(QMainWindow):
             self.store_data()
             self.updateAllImages()
             self.navigateScrollBar.setSliderPosition(posData.frame_i+1)
+            self.navSpinBox.setValue(posData.frame_i+1)
         else:
             self.update_z_slice(self.exportToVideoNavVarIdxToRestore)
         

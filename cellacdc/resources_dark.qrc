@@ -57,7 +57,7 @@
     <file alias="train.svg">resources/icons/train_dark.svg</file>
     <file alias="bed_plus_label.svg">resources/icons/bed_plus_label_dark.svg</file>
     <file alias="segment.svg">resources/icons/segment_dark.svg</file>
-    <file alias="assign_new_id.svg">resources/icons/make_new_object_dark.svg</file>
+    <file alias="assign_new_id.svg">resources/icons/assign_new_id_dark.svg</file>
     <file alias="open_file.svg">resources/icons/open_file_dark.svg</file>
     <file alias="freehand.svg">resources/icons/freehand_dark.svg</file>
     <file alias="lock.svg">resources/icons/lock_dark.svg</file>
@@ -155,6 +155,7 @@
     <file alias="exit.png">resources/icons/exit.png</file>
     <file alias="ome.svg">resources/icons/ome-logomark_dark.svg</file>
     <file alias="magnGlass.svg">resources/icons/magnGlass_dark.svg</file>
+    <file alias="magnGlass_all.svg">resources/icons/magnGlass_all_dark.svg</file>
     <file alias="delBorderObj.svg">resources/icons/delBorderObj_dark.svg</file>
     <file alias="autoAssign.svg">resources/icons/autoAssign_dark.svg</file>
     <file alias="magic_wand.svg">resources/icons/magic_wand_dark.svg</file>

@@ -177,12 +177,6 @@
     :height: 16px
     :width: 16px
 
-.. |assignNewIDToolButton| image:: ../../resources/icons/make_new_object.svg
-    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/make_new_object.svg
-    :alt: assignNewIDToolButton icon
-    :height: 16px
-    :width: 16px
-
 .. |moveLabelToolButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/moveLabel.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/moveLabel.svg
     :alt: moveLabelToolButton icon
@@ -422,7 +416,6 @@ Edit tools: Segmentation and tracking
 * **Delete everything outside segmented areas (** |delObjsOutSegmMaskAction| **):** Select a segmentation file and delete everything outside segmented area.
 * **Hull contour (** |hullContToolButton| **"K"):** Right-click on a cell to replace it with its hull contour. Use it to fill cracks and holes.
 * **Fill holes (** |fillHolesToolButton| **"F"):** Right-click on a cell to fill holes.
-* **Assign new ID (** |assignNewIDToolButton| **"F"):** Right-click on a cell to assign a new ID to it.
 * **Move object mask (** |moveLabelToolButton| **"P"):** Right-click drag and drop a labels to move it around.
 * **Expand/Shrink object mask (** |expandLabelToolButton| **"E"):** Leave mouse cursor on the label you want to expand/shrink and press arrow up/down on the keyboard to expand/shrink the mask.
 * **Edit ID (** |editIDbutton| **"N"):** Manually change ID of a cell by right-clicking on cell.
