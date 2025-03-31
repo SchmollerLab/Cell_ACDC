@@ -13217,15 +13217,17 @@ class guiWin(QMainWindow):
                     posData.originalLabsIDs[frame_i] = {obj.label for obj in skimage.measure.regionprops(lab)}
 
         whitelistIDs = set(whitelistIDs)
-        self.whitelistOriginalFrame_i = posData.frame_i
-        self.whitelistOriginalIDs = set()
-        self.whitelistPropagateIDs(new_whitelistIDs=whitelistIDs, try_create_new_whitelists=True)
+        self.whitelistPropagateIDs(new_whitelist=whitelistIDs, 
+                                   try_create_new_whitelists=True, 
+                                   only_future_frames=True, 
+                                   force_not_dynamic_update=True
+                                   )
 
         self.whitelistUpdateLabs()
         self.keepIDsTempLayerLeft.clear()
 
     #@exec_time
-    def whitelistUpdateLabs(self, frame_i=None): # this should also work for 3D i think...
+    def whitelistUpdateLabs(self, frame_i=None, debug=False): # this should also work for 3D i think...
         mode = self.modeComboBox.currentText()
         if mode != 'Segmentation and Tracking':
             return
@@ -13246,14 +13248,15 @@ class guiWin(QMainWindow):
 
         self.get_data()
         og_lab = posData.originalLabs[frame_i]
-        curr_lab = posData.allData_li[frame_i]['labels']
+        curr_lab = posData.allData_li[frame_i]['labels'] # or curr_lab = posData.lab???
 
         whitelist = set(posData.whitelistIDs[frame_i])
         current_IDs = set(posData.allData_li[frame_i]['IDs'])
         missing_IDs = whitelist - current_IDs
         to_be_removed_IDs = current_IDs - whitelist
 
-        printl(current_IDs, missing_IDs, to_be_removed_IDs)
+        if debug:
+            printl(current_IDs, missing_IDs, to_be_removed_IDs)
 
         if curr_lab is None:
             curr_lab = posData.segm_data[frame_i].copy()
@@ -13261,7 +13264,8 @@ class guiWin(QMainWindow):
                 printl('No current lab')
                 curr_lab = np.zeros_like(og_lab)
 
-        printl(whitelist, {obj.label for obj in skimage.measure.regionprops(curr_lab)})
+        if debug:
+            printl(whitelist, {obj.label for obj in skimage.measure.regionprops(curr_lab)})
 
         for ID in missing_IDs:
             curr_lab[og_lab == ID] = ID
@@ -13315,21 +13319,120 @@ class guiWin(QMainWindow):
         
         return old_whitelistIDs
 
+    def whitelistTrackCurrOG(self, frame_i=None):
+        posData = self.data[self.pos_i]
+        if posData.whitelistIDs is None:
+            return
+
+        if frame_i is None:
+            frame_i = posData.frame_i
+
+        og_frame_i = posData.frame_i
+        if frame_i != posData.frame_i:
+            posData.frame_i = frame_i
+        
+        self.get_data()
+        
+        rp = posData.rp
+        lab = posData.lab
+
+        og_lab = posData.originalLabs[frame_i]
+        og_rp = skimage.measure.regionprops(og_lab)
+
+        og_lab = CellACDC_tracker.track_frame(
+                lab, rp, og_lab, og_rp,
+                denom_overlap_matrix='union',
+                posData = posData,
+                setBrushID_func=self.setBrushID
+        )
+
+        posData.originalLabs[frame_i] = og_lab
+        posData.originalLabsIDs[frame_i] = {obj.label for obj in skimage.measure.regionprops(og_lab)}
+
+        if frame_i != og_frame_i:
+            posData.frame_i = og_frame_i
+    
+    def whitelistSyncIDsOG(self, 
+                           frame_is: List[int]=None):
+        posData = self.data[self.pos_i]
+        if frame_is is None:
+            frame_is = range(len(posData.segm_data))
+        for frame_i in frame_is:
+            self.whitelistTrackCurrOG(frame_i=frame_i)
+
     #@exec_time
     def whitelistPropagateIDs(self, 
-                              new_whitelistIDs=None, 
-                              IDs_to_add=None, 
-                              IDs_to_remove=None,
-                              frame_i=None, 
-                              try_create_new_whitelists=False,
-                              curr_frame_only=False,
-                              debug=False):
+                            new_whitelist: set[int] = None, 
+                            IDs_to_add: set[int] = None,
+                            IDs_to_remove: set[int] = None,
+                            frame_i: int = None,
+                            try_create_new_whitelists: bool = False,
+                            curr_frame_only: bool = False,
+                            force_not_dynamic_update: bool = False,
+                            only_future_frames: bool = False,
+                            debug: bool = False):
+        """
+        Propagates whitelist IDs across frames in the dataset.
+
+        This function updates whitelist. If curr_frame_only is True, it only updates the
+        whitelist of the current frame. If the frame changes, this function should be called 
+        again to update the whitelist for the new frame (without this argument).
+        Then, all the additions and removals are propagated to the other frames.
+        If force_not_dynamic_update is True, the function will propagate the entire whitelist to 
+        frames, and not only the IDs which were added or removed.
+
+        Parameters
+        ----------
+        new_whitelistIDs : set[int], optional
+            A new set of whitelist IDs to replace the current whitelist. Cannot be 
+            used together with `IDs_to_add` or `IDs_to_remove`.
+        IDs_to_add : set[int], optional
+            A set of IDs to add to the current whitelist.
+        IDs_to_remove : set[int], optional
+            A set of IDs to remove from the current whitelist.
+        frame_i : int, optional
+            The frame index for the propagation. If None, uses the current frame index.
+        try_create_new_whitelists : bool, optional
+            If True, creates new whitelist entries for frames that do not already 
+            have them. Should only be necessary when its innitialised...
+        curr_frame_only : bool, optional
+            If True, only updates the whitelist for the current frame. (See description of function)
+        force_not_dynamic_update : bool, optional
+            If True, disables dynamic updates to the whitelist. (See description of function)
+        only_future_frames : bool, optional
+            If True, propagates changes only to future frames.
+        debug : bool, optional
+            If True, prints debug information during execution.
+
+        Raises
+        ------
+        ValueError
+            If both `new_whitelistIDs` and `IDs_to_add`/`IDs_to_remove` are provided.
+
+        Example
+        -------
+        To add IDs 5 and 6 to the whitelist for the current frame:
+        ```python
+        self.whitelistPropagateIDs(IDs_to_add={5, 6}, curr_frame_only=True)
+        ```
+        Then when the frame changes:
+        ```python
+        self.whitelistPropagateIDs()
+        ```
+
+        To replace the whitelist for frame 10 with a new set of IDs:
+        ```python
+        self.whitelistPropagateIDs(new_whitelistIDs={1, 2, 3}, frame_i=10)
+        ```
+        This would also propagate the changes to all other frames.
+
+        """
         #doesnt update the frame displayed, only wl
         posData = self.data[self.pos_i]
         if debug:
             printl('Propagating IDs...')
             myutils.print_call_stack()
-            printl(new_whitelistIDs, IDs_to_add, IDs_to_remove)
+            printl(new_whitelist, IDs_to_add, IDs_to_remove)
 
         if posData.originalLabs is None:
             return
@@ -13337,70 +13440,75 @@ class guiWin(QMainWindow):
         if frame_i is None:
             frame_i = posData.frame_i
 
-        was_curr_frame_only_edited = False
+        # see what the sitation is whith propagation
+        propagate_after_curr_frame_only_flag = False
         if curr_frame_only:
             if self.whitelistOriginalFrame_i is None:
                 self.whitelistOriginalFrame_i = frame_i
                 self.whitelistOriginalIDs = posData.whitelistIDs[frame_i].copy()
             elif self.whitelistOriginalFrame_i != frame_i:
-                self.whitelistPropagateIDs()
+                printl('Frame changed, whitelist was not propagated, propagating...')
+                self.whitelistPropagateIDs(frame_i=self.whitelistOriginalFrame_i)
         else:
             if self.whitelistOriginalFrame_i is not None:
-                was_curr_frame_only_edited = True
-
-            self.whitelistOriginalFrame_i = None
+                if self.whitelistOriginalFrame_i != frame_i:
+                    printl('Frame changed, whitelist was not propagated, propagating...')
+                    self.whitelistPropagateIDs(frame_i=self.whitelistOriginalFrame_i)
+                else:
+                    propagate_after_curr_frame_only_flag = True
+                self.whitelistOriginalFrame_i = None
         
-        if new_whitelistIDs and (IDs_to_add is not None or IDs_to_remove is not None):
+        # see what the situation is with adding/removing IDs
+        if new_whitelist and (IDs_to_add is not None or IDs_to_remove is not None):
             raise ValueError('Cannot provide both new_whitelist and IDs_to_add or IDs_to_remove')
 
-        elif new_whitelistIDs is not None:
-            new_whitelistIDs = set(new_whitelistIDs)
-            if was_curr_frame_only_edited:
-                old_whitelistIDs = self.whitelistOriginalIDs
-            else:
-                old_whitelistIDs = self.whitelistGet(posData,frame_i,try_create_new_whitelists)
-            IDs_to_remove = old_whitelistIDs - new_whitelistIDs
-            IDs_to_add = new_whitelistIDs - old_whitelistIDs
-            if not IDs_to_add and not IDs_to_remove:
-                return
-            
-        elif IDs_to_add is not None or IDs_to_remove is not None:
-            if not IDs_to_add and not IDs_to_remove:
-                return
-            if not IDs_to_add:
-                IDs_to_add = set()
-            if not IDs_to_remove:
-                IDs_to_remove = set()
-            if was_curr_frame_only_edited:
-                old_whitelistIDs = self.whitelistOriginalIDs
-                curr_whitelistIDs = posData.whitelistIDs[frame_i]
-                curr_whitelistIDs.update(IDs_to_add)
-                curr_whitelistIDs -= IDs_to_remove
-
-                IDs_to_add = curr_whitelistIDs - old_whitelistIDs
-                IDs_to_remove = old_whitelistIDs - curr_whitelistIDs
-
+        # figure out what old wl supposed to be...
+        if force_not_dynamic_update:
+            old_whitelist = set()
+        elif propagate_after_curr_frame_only_flag:
+            old_whitelist = self.whitelistOriginalIDs
         else:
-            if was_curr_frame_only_edited:
-                return
-                # raise ValueError('Either new_whitelist or IDs_to_add or IDs_to_remove must be provided')
+            old_whitelist = self.whitelistGet(posData,frame_i,try_create_new_whitelists)
+
+        # construct new_whitelist
+        if new_whitelist is not None:
+            new_whitelist = set(new_whitelist)
+        else: # updated later if IDs_to_add or IDs_to_remove are provided
+            new_whitelist = self.whitelistGet(posData,frame_i,try_create_new_whitelists)
+            
+        if IDs_to_add is not None or IDs_to_remove is not None:
+            if IDs_to_add is None:
+                IDs_to_add = set()
             else:
-                if self.whitelistOriginalFrame_i:
-                    old_whitelistIDs = self.whitelistOriginalIDs
-                    curr_whitelistIDs = posData.whitelistIDs[frame_i]
-                    IDs_to_add = curr_whitelistIDs - old_whitelistIDs
-                    IDs_to_remove = old_whitelistIDs - curr_whitelistIDs
-                else:
-                    return
+                IDs_to_add = set(IDs_to_add)
+            if IDs_to_remove is None:
+                IDs_to_remove = set()
+            else:
+                IDs_to_remove = set(IDs_to_remove)
+
+            new_whitelist.update(IDs_to_add)
+            new_whitelist -= IDs_to_remove
+        
+        if new_whitelist == old_whitelist:
+            return
+
+        # get IDs to add/remove
+        IDs_to_add = new_whitelist - old_whitelist
+        IDs_to_remove = old_whitelist - new_whitelist
+
+        if  IDs_to_add == IDs_to_remove == set():
+            return
 
         if debug:
             printl(IDs_to_add, IDs_to_remove)
+            
+        # get the range of frames to update
         if curr_frame_only:
             frames_range = [frame_i]
+        elif only_future_frames:
+            frames_range = range(frame_i, len(posData.segm_data))
         else:
             frames_range = range(len(posData.segm_data))
-
-        IDs_to_remove = set(IDs_to_remove)
 
         for i in frames_range:
             if IDs_to_add:
@@ -13410,11 +13518,12 @@ class guiWin(QMainWindow):
                 else:
                     IDs_curr = set(posData.allData_li[i]['IDs'])
 
-            old_whitelistIDs = self.whitelistGet(posData,i,try_create_new_whitelists)
+            old_whitelist = self.whitelistGet(posData,i,try_create_new_whitelists)
 
             if IDs_to_add:
-                posData.whitelistIDs[i] = IDs_to_add.intersection(IDs_curr.union(IDs_og)) | old_whitelistIDs
-                # IDs_curr.union(IDs_og) are all possible IDs, Ds_to_add.intersection(IDs_curr.union(IDs_og)) is for finding all possible IDs whihch want ot be propagated
+                #                         inteersection with...      all possible IDs   ...plus all old_whitelistIDs
+                posData.whitelistIDs[i] = IDs_to_add.intersection(IDs_curr.union(IDs_og)) | old_whitelist
+                # IDs_curr.union(IDs_og) are all possible IDs, IDs_to_add.intersection(IDs_curr.union(IDs_og)) is for finding all possible IDs whihch want ot be propagated
             if IDs_to_remove:
                 posData.whitelistIDs[i] = posData.whitelistIDs[i] - IDs_to_remove
 
@@ -17186,6 +17295,7 @@ class guiWin(QMainWindow):
             self.removeAlldelROIsCurrentFrame()
             proceed_cca, never_visited = self.get_data()
 
+            self.whitelistTrackCurrOG()
             self.whitelistAddNewIDs() # also does propagation
             # self.whitelistUpdateLabs()
             
