@@ -2727,7 +2727,7 @@ def check_install_package(
     ------
     ModuleNotFoundError
         Error raised if process is cancelled and `raise_on_cancel=True`.
-    """    
+    """
     if not import_pkg_name:
         import_pkg_name = pkg_name
     
@@ -3318,7 +3318,7 @@ def import_segment_module(model_name):
         spec = importlib.util.spec_from_file_location('acdcSegment', model_path)
         acdcSegment = importlib.util.module_from_spec(spec)
         sys.modules['acdcSegment'] = acdcSegment
-        spec.loader.exec_module(acdcSegment) 
+        spec.loader.exec_module(acdcSegment)
     return acdcSegment
 
 def _warn_install_torch_cuda(model_name, qparent=None):

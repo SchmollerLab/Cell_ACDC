@@ -870,6 +870,7 @@ class FindNextNewIdWorker(QObject):
 
 class SegForLostIDsWorker(QObject):
     sigAskInit = Signal()
+    sigAskInstallModel = Signal(str)
 
     def __init__(self, guiWin, mutex, waitCond):
         QObject.__init__(self)
@@ -897,6 +898,7 @@ class SegForLostIDsWorker(QObject):
 
         if acdcSegment is None:
             self.guiWin.logger.info(f'Importing {base_model_name}...')
+            self.emitSigAskInstallModel(base_model_name)
             acdcSegment = myutils.import_segment_module(base_model_name)
             self.guiWin.acdcSegment_li[idx] = acdcSegment
 
@@ -946,6 +948,12 @@ class SegForLostIDsWorker(QObject):
         self.guiWin.logger.info('Segmentation for lost IDs done.')
             
         self.signals.finished.emit(self)
+    
+    def emitSigAskInstallModel(self, model_name):
+        self.mutex.lock()
+        self.sigAskInstallModel.emit(model_name)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
 
 class AlignDataWorker(QObject):
     sigWarnTifAligned = Signal(object, object, object)

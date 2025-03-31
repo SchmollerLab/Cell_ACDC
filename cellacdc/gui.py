@@ -8240,6 +8240,14 @@ class guiWin(QMainWindow):
         self.logger.info('Settings for segmentation for lost IDs not set.')
         self.SegForLostIDsSetSettings()            
         self.SegForLostIDsWaitCond.wakeAll()
+    
+    def SegForLostIDsWorkerAskInstallModel(self, model_name):
+        if model_name == 'cellpose_custom':
+            myutils.check_install_cellpose()
+        else:
+            myutils.check_install_package(model_name)
+        
+        self.SegForLostIDsWaitCond.wakeAll()
 
     def startSegForLostIDsWorker(self):
         self.SegForLostIDsMutex = QMutex()
@@ -8253,6 +8261,9 @@ class guiWin(QMainWindow):
 
         # Connect the worker's signal to the main thread's slot
         self.SegForLostIDsWorker.sigAskInit.connect(self.onSegForLostInit)
+        self.SegForLostIDsWorker.sigAskInstallModel.connect(
+            self.SegForLostIDsWorkerAskInstallModel
+        )
 
         # Move the worker to the thread
         self.SegForLostIDsWorker.moveToThread(self._thread)
