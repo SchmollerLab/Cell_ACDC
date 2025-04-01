@@ -2169,6 +2169,14 @@ class SegmKernel(_WorkflowKernel):
         self.track_params = track_params
         self.tracker = tracker
     
+    def _tracker_track(self, lab, tracker_input_img=None):
+        tracked_lab = tracker_track(
+            lab, self.tracker, self.track_params, 
+            intensity_img=tracker_input_img, 
+            logger_func=self.logger_func
+        )
+        return tracked_lab
+        
     @exception_handler_cli
     def run(
             self,
@@ -2490,23 +2498,11 @@ class SegmKernel(_WorkflowKernel):
                         f'"{self.image_channel_tracker}"')
                     trackerInputImage = posData.loadChannelData(
                         self.image_channel_tracker)
-                try:
-                    tracked_stack = self.tracker.track(
-                        lab_stack, trackerInputImage, **self.track_params
-                    )
-                except Exception as e:
-                    # Check if user accidentally passed the image even if 
-                    # the tracker doesn't need it
-                    self.logger_func(
-                        'Image data is not required by this tracker, ignoring it...'
-                    )
-                    tracked_stack = self.tracker.track(
-                        lab_stack, **self.track_params
-                    )
-            else:
-                tracked_stack = self.tracker.track(
-                    lab_stack, **self.track_params
+                tracked_stack = self._tracker_track(
+                    lab_stack, tracker_input_img=trackerInputImage
                 )
+            else:
+                tracked_stack = self._tracker_track(lab_stack)
             posData.fromTrackerToAcdcDf(self.tracker, tracked_stack, save=True)
         else:
             tracked_stack = lab_stack
