@@ -668,6 +668,8 @@ class segmWin(QMainWindow):
             **self.standardPostProcessKwargs,
             **self.customPostProcessFeatures
         }
+        
+        
         posData.saveSegmHyperparams(
             model_name, self.init_model_kwargs, self.model_kwargs, 
             post_process_params=post_process_params, 
