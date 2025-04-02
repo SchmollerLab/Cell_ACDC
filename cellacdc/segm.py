@@ -669,12 +669,15 @@ class segmWin(QMainWindow):
             **self.customPostProcessFeatures
         }
         
-        
-        posData.saveSegmHyperparams(
-            model_name, self.init_model_kwargs, self.model_kwargs, 
-            post_process_params=post_process_params, 
-            preproc_recipe=self.preproc_recipe
-        )
+        for other_img_path in user_ch_file_paths[1:]:
+            _posData = load.loadData(other_img_path, user_ch_name, QParent=self)
+            _posData.getBasenameAndChNames()
+            _posData.buildPaths()
+            _posData.saveSegmHyperparams(
+                model_name, self.init_model_kwargs, self.model_kwargs, 
+                post_process_params=post_process_params, 
+                preproc_recipe=self.preproc_recipe
+            )
 
         # Ask ROI
         selectROI = False
