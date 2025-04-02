@@ -8778,6 +8778,7 @@ class editID_QWidget(QDialog):
             self, clickedID, IDs, entryID=None, doNotShowAgain=False, 
             parent=None, nextUniqueID=1, allIDs=None
         ):
+        self.assignNewID = False
         self.IDs = IDs
         self.clickedID = clickedID
         self.cancel = True

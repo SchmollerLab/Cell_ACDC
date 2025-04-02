@@ -2845,7 +2845,7 @@ class loadData:
             wl_processed = dict()
             for key, val in whitelist.items():
                 if val is None:
-                    wl_processed[int(key)] = set()
+                    wl_processed[int(key)] = None
                 else:
                     wl_processed[int(key)] = set(val)
         self.whitelistIDs = wl_processed

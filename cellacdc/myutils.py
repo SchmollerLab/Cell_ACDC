@@ -3967,6 +3967,7 @@ def format_IDs(IDs):
     text = ''
     sorted_vals = sorted(IDs)
     for i, e in enumerate(sorted_vals):
+        e = int(e)
         # Get previous and next value (if possible)
         if i > 0:
             prevVal = sorted_vals[i-1]
