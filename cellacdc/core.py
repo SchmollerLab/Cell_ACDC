@@ -1433,15 +1433,18 @@ class LineageTree:
             else:
                 # Cell appeared in S in previous frame
                 idx = (start_frame_i-1, ID)
-                # import pdb; pdb.set_trace()
                 was_bud = self.acdc_df.loc[idx, 'relationship'] == 'bud'
                 if was_bud:
                     # This is a bud of the first frame where the algorithm 
                     # thinks is a new tree --> correct
                     parent_ID = self.acdc_df.loc[idx, 'relative_ID']
-                    self.branch_start_gen_num[ID] = (
-                        self.branch_start_gen_num[parent_ID] + 2
-                    )
+                    try:
+                        self.branch_start_gen_num[ID] = (
+                            self.branch_start_gen_num[parent_ID] + 2
+                        )
+                    except KeyError as e:
+                        gen_num_parentID_tree = 2
+                        self.branch_start_gen_num[ID] = gen_num_parentID_tree
                 else:
                     parent_ID = ID
                 
@@ -1504,6 +1507,7 @@ class LineageTree:
         self.gen_dfs_by_ID_tree[Cell_ID_tree] = gen_df
         
         self.is_new_tree = False
+        
         return gen_df
              
     def add_lineage_tree_table_to_acdc_df(self):
@@ -1540,7 +1544,7 @@ class LineageTree:
                 break
             
             df_i = self.df_G1.loc[frame_i]
-            IDs = df_i.index.array
+            IDs = np.sort(df_i.index.array)
             for ID in IDs:
                 if ID not in not_annotated_IDs:
                     # Tree already built in previous frame iteration --> skip
