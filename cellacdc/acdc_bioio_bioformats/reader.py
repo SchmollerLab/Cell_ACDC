@@ -45,6 +45,8 @@ class ImageReader:
             self._bioioimage = BioImage(image_filepath, **kwargs)
         
     def read(self, c=0, z=0, t=0, rescale=False, index=None, series=0):
+        if self._bioioimage.current_scene_index != series:
+            self._bioioimage.set_scene(series)
         lazy_img = self._bioioimage.get_image_dask_data("YX", T=t, C=c, Z=z)
         return lazy_img.compute()
     
