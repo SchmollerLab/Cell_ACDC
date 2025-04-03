@@ -486,6 +486,11 @@ class futurePushButton(PushButton):
         super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':arrow_future.svg'))
 
+class FutureAllPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setIcon(QIcon(':arrow_future_all.svg'))
+
 class currentPushButton(PushButton):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
