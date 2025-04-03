@@ -8225,7 +8225,7 @@ class guiWin(QMainWindow):
     
     def SegForLostIDsWorkerAskInstallModel(self, model_name):
         if model_name == 'cellpose_custom':
-            myutils.check_install_cellpose()
+            myutils.check_install_cellpose(version=">=2.0.0")
         else:
             myutils.check_install_package(model_name)
         
@@ -13313,7 +13313,7 @@ class guiWin(QMainWindow):
 
         self.get_data()
         og_lab = posData.originalLabs[frame_i]
-        curr_lab = posData.allData_li[frame_i]['labels'] # or curr_lab = posData.lab???
+        curr_lab = posData.lab # or curr_lab = posData.lab???
 
         whitelist = set(posData.whitelistIDs[frame_i])
         current_IDs = set(posData.allData_li[frame_i]['IDs'])
@@ -13339,7 +13339,6 @@ class guiWin(QMainWindow):
             curr_lab[curr_lab == ID] = 0
 
         posData.lab = curr_lab
-        posData.allData_li[frame_i]['labels'] = curr_lab.copy()
         self.update_rp(update_wl=False)
         self.store_data()
 
@@ -13662,9 +13661,11 @@ class guiWin(QMainWindow):
             new_whitelist -= IDs_to_remove
 
         if allow_only_current_IDs:
-            IDs_curr = set(posData.allData_li[frame_i]['IDs'])
+            IDs_curr = set(posData.IDs)
             IDs_curr.update(posData.originalLabsIDs[frame_i])
             new_whitelist = new_whitelist.intersection(IDs_curr)
+            if debug:
+                printl(new_whitelist, IDs_curr)
 
         # get IDs to add/remove
         IDs_to_add = new_whitelist - old_whitelist
@@ -13688,6 +13689,9 @@ class guiWin(QMainWindow):
             frames_range = range(frame_i, prop_to_frame_i)
         else:
             frames_range = range(prop_to_frame_i)
+
+        if debug:
+            printl(IDs_to_add, IDs_to_remove, frames_range)
 
         for i in frames_range:
             if IDs_to_add:
@@ -17508,15 +17512,18 @@ class guiWin(QMainWindow):
             self.removeAlldelROIsCurrentFrame()
             proceed_cca, never_visited = self.get_data()
 
-            self.whitelistPropagateIDs()
-            self.whitelistUpdateLab()
-
-
             if not proceed_cca:
                 posData.frame_i -= 1
                 self.get_data()
+                self.logger.info(
+                    'No data for current frame. '
+                )
                 return
             
+            printl('here')
+            self.whitelistPropagateIDs()
+            # self.whitelistUpdateLab()
+
             self.updatePreprocessPreview()
             self.updateCombineChannelsPreview()
             self.postProcessing()
@@ -17526,6 +17533,9 @@ class guiWin(QMainWindow):
                 posData.frame_i -= 1
                 self.get_data()
                 self.setAllTextAnnotations(update_whitelist=False)
+                self.logger.info(
+                    'Not enough G1 cells to compute cell cycle annotations.'
+                )
                 return
             
             self.store_zslices_rp()
@@ -22216,6 +22226,8 @@ class guiWin(QMainWindow):
             new_IDs = posData.IDs
             added_IDs = set(new_IDs) - set(old_IDs)
             removed_IDs = set(old_IDs) - set(new_IDs) - set(accepted_lost_centroids)
+            if debug:
+                printl(added_IDs, removed_IDs)
             self.whitelistPropagateIDs(IDs_to_add=added_IDs, IDs_to_remove=removed_IDs,
                                        curr_frame_only=True)
 
