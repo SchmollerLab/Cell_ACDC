@@ -2526,7 +2526,17 @@ def check_cellpose_version(version: str):
         raise ModuleNotFoundError('Cellpose installation cancelled by the user.')
     return is_version_correct
 
-def check_install_cellpose(version: str='2.0'):
+def check_install_cellpose(
+        version: Literal['2.0', '3.0', 'any'] = '2.0', 
+        version_to_install_if_missing = Literal['2.0', '3.0']
+    ):
+    if version == 'any':
+        try:
+            from cellpose import models
+            return
+        except Exception as err:
+            version = version_to_install_if_missing
+            
     is_version_correct = check_cellpose_version(version)
     if is_version_correct:
         return
