@@ -186,6 +186,8 @@ class bioFormatsWorker(QObject):
                 f'-z, {SizeZ},'
                 f'-uuid, {uuid4}'
             )
+            if self.loadEntirePosIntoRam:
+                command = f'{command}, -a'
             
             args = [sys.executable, _process.__file__, '-c', command]
             subprocess.run(args)
@@ -921,7 +923,10 @@ class bioFormatsWorker(QObject):
                 )
                 if self.to_h5:
                     command = f'{command}, -to_h5'
-
+                
+                if self.loadEntirePosIntoRam:
+                    command = f'{command}, -a'
+                    
                 args = [sys.executable, _process.__file__, '-c', command]
                 subprocess.run(args)
                 
@@ -1541,13 +1546,23 @@ class createDataStructWin(QMainWindow):
         )
         self.getMostRecentPath()
         raw_src_path = QFileDialog.getExistingDirectory(
-            self, 'Select folder containing the microscopy files', self.MostRecentPath)
+            self, 'Select folder containing the microscopy files', 
+            self.MostRecentPath
+        )
         self.addToRecentPaths(raw_src_path)
 
         if raw_src_path == '':
             self.close()
             return
 
+        self.log('Instructing to move raw data...')
+        loadEntirePosIntoRam = self.askHowToLoadData()
+        if loadEntirePosIntoRam is None:
+            self.close()
+            return
+        
+        self.loadEntirePosIntoRam = loadEntirePosIntoRam
+        
         self.log(f'Selected folder: "{raw_src_path}"')
         
         self.log(
@@ -1747,6 +1762,32 @@ class createDataStructWin(QMainWindow):
         else:
             return True
 
+    def askHowToLoadData(self):
+        msg = widgets.myMessageBox(showCentered=False)
+        txt = html_utils.paragraph(
+            """
+            Do you want to load the entire position into RAM at once?
+            <br><br>
+            <b>NOTE:</b> Loading the entire position into RAM is much faster,
+            but it requires more memory.<br>
+            Keep an eye on the ram usage and, if Cell-ACDC crashes or RAM is 
+            full, you can re-start<br>
+            the process and select "Load one frame at a time".
+            """
+        )
+        _, loadFrameButton, loadPosButton = msg.warning(
+            self, 'Loading data', txt, 
+            buttonsTexts=(
+                'Cancel', 
+                widgets.twoDPushButton('No, load one frame (2D) at a time'), 
+                widgets.FutureAllPushButton('Yes, load entire position at once')
+            )
+        )
+        if msg.cancel:
+            return None
+
+        return msg.clickedButton == loadPosButton
+    
     def checkFileFormat(self, raw_src_path):
         self.moveOtherFiles = False
         self.copyOtherFiles = False

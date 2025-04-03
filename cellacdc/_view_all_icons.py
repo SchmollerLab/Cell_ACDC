@@ -23,8 +23,11 @@ from qtpy.QtWidgets import (
     QCheckBox
 )
 
+from cellacdc import _run
 from cellacdc.load import get_all_svg_icons_aliases
 from cellacdc._palettes import getPaletteColorScheme, setToolTipStyleSheet
+
+app, splashScreen = _run._setup_app(splashscreen=True, scheme=SCHEME)
 
 svg_aliases = get_all_svg_icons_aliases(sort=True)
 
@@ -35,13 +38,6 @@ nrows = nicons // ncols
 left_nicons =  nicons % ncols
 if left_nicons > 0:
     nrows += 1
-
-app = QApplication(sys.argv)
-app.setStyle(QStyleFactory.create('Fusion'))
-app.setPalette(app.style().standardPalette())
-palette = getPaletteColorScheme(app.palette(), scheme=SCHEME)
-app.setPalette(palette)     
-setToolTipStyleSheet(app, scheme=SCHEME)
 
 if hasattr(Qt, 'AA_UseHighDpiPixmaps'):
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)

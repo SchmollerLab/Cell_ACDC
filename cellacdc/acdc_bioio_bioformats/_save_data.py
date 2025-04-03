@@ -128,6 +128,13 @@ try:
         metavar='TIME_RANGE_TO_SAVE',
         help='Start and end frame to save.'
     )
+    
+    ap.add_argument(
+        '-a', 
+        '--all', 
+        action='store_true', 
+        help='Whether to read entire position into RAM or not.'
+    )
 
     args = vars(ap.parse_args())
     raw_filepath = args['filepath']
@@ -141,6 +148,8 @@ try:
     SizeZ = args['SizeZ']
     TimeIncrement = args['time_increment']
     s0p = args['pos_idx_str']
+    
+    lazy_load = not args['all']
 
     zyx_physical_sizes_li = args['zyx_physical_sizes'].split()
     zyx_physical_sizes = [float(val) for val in zyx_physical_sizes_li]
@@ -151,7 +160,7 @@ try:
     time_range_to_save_li = args['time_range_to_save'].split()
     timeRangeToSave = [int(val) for val in time_range_to_save_li]
 
-    with bioformats.ImageReader(raw_filepath) as reader:
+    with bioformats.ImageReader(raw_filepath, lazy_load=lazy_load) as reader:
         iter = enumerate(zip(channel_names, do_save_channels))
         pbar = tqdm(
             total=len(channel_names), 

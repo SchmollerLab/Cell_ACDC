@@ -47,6 +47,13 @@ try:
         metavar='SIZEZ',
         help='Number of z-slices in a single z-stack.'
     )
+    
+    ap.add_argument(
+        '-a', 
+        '--all', 
+        action='store_true', 
+        help='Whether to read entire position into RAM or not.'
+    )
 
     args = vars(ap.parse_args())
     raw_filepath = args['filepath']
@@ -54,6 +61,8 @@ try:
     SizeC = args['SizeC']
     SizeT = args['SizeT']
     SizeZ = args['SizeZ']
+    
+    lazy_load = not args['all']
 
     if SizeT >= 4:
         sampleSizeT = 4
@@ -65,7 +74,7 @@ try:
         sampleSizeZ = SizeZ
 
     allChannelsData = []
-    with bioformats.ImageReader(raw_filepath) as reader:
+    with bioformats.ImageReader(raw_filepath, lazy_load=lazy_load) as reader:
         numIter = SizeC*sampleSizeT*sampleSizeZ
         pbar = tqdm(total=numIter, ncols=100, leave=False)
         
