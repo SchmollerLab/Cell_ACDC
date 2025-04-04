@@ -5573,7 +5573,7 @@ class guiWin(QMainWindow):
             
             self.setImageImg2()
             delROIsIDs = self.setAllTextAnnotations()
-            self.setAllContoursImages(delROIsIDs=delROIsIDs)
+            self.setAllContoursImages(delROIsIDs=delROIsIDs, compute=False)
 
             how = self.drawIDsContComboBox.currentText()
             if how.find('overlay segm. masks') != -1:
@@ -26081,6 +26081,23 @@ class guiWin(QMainWindow):
         lab[delMask] = 0
         return lab, delMask
     
+    def removeStoredContours(self, delID, frame_i=None):
+        posData = self.data[self.pos_i]
+        
+        if frame_i is None:
+            frame_i = posData.frame_i
+            
+        dataDict = posData.allData_li[posData.frame_i]
+        newContours = {}
+        for key, contours in dataDict['contours'].items():
+            ID = key[0]
+            if ID == delID:
+                continue
+            
+            newContours[key] = contours
+        
+        dataDict['contours'] = newContours
+    
     @disableWindow
     def deleteIDmiddleClick(
             self, delIDs: Iterable, applyFutFrames, includeUnvisited
@@ -26124,7 +26141,8 @@ class guiWin(QMainWindow):
         for _delID in delIDs:
             self.clearObjContour(ID=_delID, ax=0)     
             self.clearObjContour(ID=_delID, ax=1)  
-            self.removeObjectFromRp(_delID)     
+            self.removeObjectFromRp(_delID)    
+            self.removeStoredContours(_delID) 
 
         posData.lab, delID_mask = self.deleteIDFromLab(posData.lab, delIDs)
         
