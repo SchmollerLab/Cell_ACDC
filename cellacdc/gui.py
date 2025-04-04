@@ -23633,7 +23633,7 @@ class guiWin(QMainWindow):
             dataDict['contours'] = {}
     
     def _computeAllContours2D(self, dataDict, obj, z, obj_bbox):
-        obj_image = self.getObjImage(obj.image, obj.bbox)
+        obj_image = self.getObjImage(obj.image, obj.bbox, z_slice=z)
         if obj_image is None:
             return
             
@@ -23658,6 +23658,7 @@ class guiWin(QMainWindow):
         )
         key = (obj.label, str(z), all_external, local)
         dataDict['contours'][key] = contours
+
         return dataDict
     
     def computeAllContours(self):
@@ -25571,7 +25572,7 @@ class guiWin(QMainWindow):
             self.initContoursImage()
         else:
             self.contoursImage[:] = 0
-            
+        
         contours = []
         for obj in skimage.measure.regionprops(self.currentLab2D):    
             obj_contours = self.getObjContours(

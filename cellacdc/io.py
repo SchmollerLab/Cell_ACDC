@@ -1,4 +1,5 @@
 import os
+import pathlib
 import sys
 import re
 import h5py
@@ -114,6 +115,10 @@ def savez_compressed(filepath, *args, safe=True, **kwargs):
         np.savez_compressed(filepath, *args, **kwargs)
         return
     
-    temp_filepath = filepath.replace('.npz', '.new.npz')
-    np.savez_compressed(temp_filepath, *args, **kwargs)
-    os.replace(temp_filepath, filepath)
+    try:
+        pathlib.Path(filepath).unlink()
+        temp_filepath = filepath.replace('.npz', '.new.npz')
+        np.savez_compressed(temp_filepath, *args, **kwargs)
+        os.replace(temp_filepath, filepath)
+    except PermissionError as err:
+        np.savez_compressed(filepath, *args, **kwargs)
