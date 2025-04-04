@@ -23682,9 +23682,13 @@ class guiWin(QMainWindow):
                     if not self.isObjVisible(obj.bbox, z_slice=z):
                         continue
                     
-                    self._computeAllContours2D(
-                        dataDict, obj, z, obj_bbox
-                    )
+                    try:
+                        self._computeAllContours2D(
+                            dataDict, obj, z, obj_bbox
+                        )
+                    except Exception as err:
+                        # Contours computation fails on weird objects
+                        pass
     
     def computeAllObjToObjCostPairs(self):
         desc = (
