@@ -3334,13 +3334,13 @@ class guiWin(QMainWindow):
         )
         
         self.repeatTrackingMenuAction = QAction(
-            'Repeat tracking on current frame...', self
+            'Track current frame with real-time tracker...', self
         )
         self.repeatTrackingMenuAction.setDisabled(True)
         self.repeatTrackingMenuAction.setShortcut('Shift+T')
 
         self.repeatTrackingVideoAction = QAction(
-            'Repeat tracking on multiple frames...', self
+            'Select a tracker and track multiple frames...', self
         )
         self.repeatTrackingVideoAction.setDisabled(True)
         self.repeatTrackingVideoAction.setShortcut('Alt+Shift+T')
