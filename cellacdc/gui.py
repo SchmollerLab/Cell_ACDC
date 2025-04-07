@@ -17521,7 +17521,7 @@ class guiWin(QMainWindow):
                 )
                 return
             
-b            # printl('here')
+            # printl('here')
             self.whitelistPropagateIDs()
             self.whitelistUpdateLab()
 
