@@ -16,13 +16,13 @@ keywords = [
     "cell cycle annotations",
     "image analysis",
 ]
+license = "BSD-3-Clause"
 classifiers = [
     "Development Status :: 4 - Beta",
     "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
-    "License :: OSI Approved :: BSD License",
     "Intended Audience :: Education",
     "Intended Audience :: Science/Research",
     "Operating System :: Microsoft :: Windows",

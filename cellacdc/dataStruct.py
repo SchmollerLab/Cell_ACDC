@@ -85,7 +85,8 @@ class bioFormatsWorker(QObject):
     def __init__(
             self, raw_src_path, rawFilenames, exp_dst_path,
             mutex, waitCond, rawDataStruct, 
-            bioformats_backend: Literal['bioio', 'python-bioformats']
+            bioformats_backend: Literal['bioio', 'python-bioformats'],
+            lazy_load=True
         ):
         QObject.__init__(self)
         self.raw_src_path = raw_src_path
@@ -101,6 +102,7 @@ class bioFormatsWorker(QObject):
         self.addFiles = False
         self.cancel = False
         self.bioformats_backend = bioformats_backend
+        self.lazy_load = lazy_load
     
     def _readSampleDataPythonBioformats(
             self, bioformats, rawFilePath, sampleImgData, SizeC, SizeT, SizeZ,
@@ -186,7 +188,7 @@ class bioFormatsWorker(QObject):
                 f'-z, {SizeZ},'
                 f'-uuid, {uuid4}'
             )
-            if self.loadEntirePosIntoRam:
+            if not self.lazy_load:
                 command = f'{command}, -a'
             
             args = [sys.executable, _process.__file__, '-c', command]
@@ -924,7 +926,7 @@ class bioFormatsWorker(QObject):
                 if self.to_h5:
                     command = f'{command}, -to_h5'
                 
-                if self.loadEntirePosIntoRam:
+                if not self.lazy_load:
                     command = f'{command}, -a'
                     
                 args = [sys.executable, _process.__file__, '-c', command]
@@ -1554,14 +1556,6 @@ class createDataStructWin(QMainWindow):
         if raw_src_path == '':
             self.close()
             return
-
-        self.log('Instructing to move raw data...')
-        loadEntirePosIntoRam = self.askHowToLoadData()
-        if loadEntirePosIntoRam is None:
-            self.close()
-            return
-        
-        self.loadEntirePosIntoRam = loadEntirePosIntoRam
         
         self.log(f'Selected folder: "{raw_src_path}"')
         
@@ -1590,6 +1584,14 @@ class createDataStructWin(QMainWindow):
             self.close()
             return
 
+        self.log('Instructing to move raw data...')
+        loadEntirePosIntoRam = self.askHowToLoadData()
+        if loadEntirePosIntoRam is None:
+            self.close()
+            return
+        
+        self.loadEntirePosIntoRam = loadEntirePosIntoRam
+
         self.addToRecentPaths(exp_dst_path)
 
         self.log(
@@ -1607,7 +1609,8 @@ class createDataStructWin(QMainWindow):
         self.worker = bioFormatsWorker(
             raw_src_path, rawFilenames, exp_dst_path,
             self.mutex, self.waitCond, rawDataStruct, 
-            self.bioformats_backend
+            self.bioformats_backend, 
+            lazy_load=not self.loadEntirePosIntoRam
         )
         if self.rawDataStruct == 2:
             self.worker.basename = self.basename
@@ -1763,7 +1766,7 @@ class createDataStructWin(QMainWindow):
             return True
 
     def askHowToLoadData(self):
-        msg = widgets.myMessageBox(showCentered=False)
+        msg = widgets.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(
             """
             Do you want to load the entire position into RAM at once?

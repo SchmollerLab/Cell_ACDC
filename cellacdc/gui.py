@@ -2704,13 +2704,13 @@ class guiWin(QMainWindow):
         )
         
         self.repeatTrackingMenuAction = QAction(
-            'Repeat tracking on current frame...', self
+            'Track current frame with real-time tracker...', self
         )
         self.repeatTrackingMenuAction.setDisabled(True)
         self.repeatTrackingMenuAction.setShortcut('Shift+T')
 
         self.repeatTrackingVideoAction = QAction(
-            'Repeat tracking on multiple frames...', self
+            'Select a tracker and track multiple frames...', self
         )
         self.repeatTrackingVideoAction.setDisabled(True)
         self.repeatTrackingVideoAction.setShortcut('Alt+Shift+T')
@@ -4967,7 +4967,7 @@ class guiWin(QMainWindow):
             
             self.setImageImg2()
             delROIsIDs = self.setAllTextAnnotations()
-            self.setAllContoursImages(delROIsIDs=delROIsIDs)
+            self.setAllContoursImages(delROIsIDs=delROIsIDs, compute=False)
 
             how = self.drawIDsContComboBox.currentText()
             if how.find('overlay segm. masks') != -1:
@@ -23958,7 +23958,7 @@ b            # printl('here')
             dataDict['contours'] = {}
     
     def _computeAllContours2D(self, dataDict, obj, z, obj_bbox):
-        obj_image = self.getObjImage(obj.image, obj.bbox)
+        obj_image = self.getObjImage(obj.image, obj.bbox, z_slice=z)
         if obj_image is None:
             return
             
@@ -23983,6 +23983,7 @@ b            # printl('here')
         )
         key = (obj.label, str(z), all_external, local)
         dataDict['contours'][key] = contours
+
         return dataDict
     
     def computeAllContours(self):
@@ -24007,9 +24008,13 @@ b            # printl('here')
                     if not self.isObjVisible(obj.bbox, z_slice=z):
                         continue
                     
-                    self._computeAllContours2D(
-                        dataDict, obj, z, obj_bbox
-                    )
+                    try:
+                        self._computeAllContours2D(
+                            dataDict, obj, z, obj_bbox
+                        )
+                    except Exception as err:
+                        # Contours computation fails on weird objects
+                        pass
     
     def computeAllObjToObjCostPairs(self):
         desc = (
@@ -25896,7 +25901,7 @@ b            # printl('here')
             self.initContoursImage()
         else:
             self.contoursImage[:] = 0
-            
+        
         contours = []
         for obj in skimage.measure.regionprops(self.currentLab2D):    
             obj_contours = self.getObjContours(
@@ -26408,6 +26413,23 @@ b            # printl('here')
         lab[delMask] = 0
         return lab, delMask
     
+    def removeStoredContours(self, delID, frame_i=None):
+        posData = self.data[self.pos_i]
+        
+        if frame_i is None:
+            frame_i = posData.frame_i
+            
+        dataDict = posData.allData_li[posData.frame_i]
+        newContours = {}
+        for key, contours in dataDict['contours'].items():
+            ID = key[0]
+            if ID == delID:
+                continue
+            
+            newContours[key] = contours
+        
+        dataDict['contours'] = newContours
+    
     @disableWindow
     def deleteIDmiddleClick(
             self, delIDs: Iterable, applyFutFrames, includeUnvisited
@@ -26451,7 +26473,8 @@ b            # printl('here')
         for _delID in delIDs:
             self.clearObjContour(ID=_delID, ax=0)     
             self.clearObjContour(ID=_delID, ax=1)  
-            self.removeObjectFromRp(_delID)     
+            self.removeObjectFromRp(_delID)    
+            self.removeStoredContours(_delID) 
 
         posData.lab, delID_mask = self.deleteIDFromLab(posData.lab, delIDs)
  
