@@ -171,6 +171,8 @@ class dataPrepWin(QMainWindow):
             self.zSliceScrollBar.triggerAction(
                 QAbstractSlider.SliderAction.SliderSingleStepSub
             )
+        elif event.key() == Qt.Key_H:
+            self.ax1.autoRange()
 
     def gui_createActions(self):
         # File actions
@@ -922,6 +924,7 @@ class dataPrepWin(QMainWindow):
             self.logger.info(f'Saving: {npz_path}')
             temp_npz = self.getTempfilePath(npz_path)
             io.savez_compressed(temp_npz, cropped_data)
+            printl(temp_npz, npz_path)
             self.moveTempFile(temp_npz, npz_path)
 
         self.logger.info(f'Saving: {tif_path}')

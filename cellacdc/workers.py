@@ -355,18 +355,20 @@ class AlignDataWorker(QObject):
             if self.align:
                 self.signals.initProgressBar.emit(0)
                 _npz = f'{os.path.splitext(tif)[0]}_aligned.npz'
-                self.logger.log(f'Saving: {_npz}')
+                self.logger.log(f'Storing temporary file: {_npz}')
                 temp_npz = self.dataPrepWin.getTempfilePath(_npz)
                 io.savez_compressed(temp_npz, aligned_frames)
                 self.dataPrepWin.storeTempFileMove(temp_npz, _npz)
-                np.save(self.posData.align_shifts_path, self.posData.loaded_shifts)
+                np.save(
+                    self.posData.align_shifts_path, self.posData.loaded_shifts
+                )
                 self.posData.all_npz_paths[i] = _npz
 
-                self.logger.log(f'Saving: {tif}')
+                self.logger.log(f'Storing temporary file: {tif}')
                 temp_tif = self.dataPrepWin.getTempfilePath(tif)
                 myutils.to_tiff(temp_tif, aligned_frames)
                 self.dataPrepWin.storeTempFileMove(temp_tif, tif)
-                self.posData.img_data = load.imread(tif)
+                self.posData.img_data = load.imread(temp_tif)
 
         _zip = zip(self.posData.tif_paths, self.posData.npz_paths)
         for i, (tif, npz) in enumerate(_zip):
