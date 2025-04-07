@@ -2840,6 +2840,8 @@ class loadData:
         if not os.path.exists(whitelist_path):
             self.whitelistIDs = None
             return
+    
+        any_whitelist_added = False
         with open(whitelist_path, 'r') as json_file:
             whitelist = json.load(json_file)
             wl_processed = dict()
@@ -2848,8 +2850,12 @@ class loadData:
                     wl_processed[int(key)] = None
                 else:
                     wl_processed[int(key)] = set(val)
-        self.whitelistIDs = wl_processed
-
+                    any_whitelist_added = True
+        if any_whitelist_added:
+            self.whitelistIDs = wl_processed
+        else:
+            self.whitelistIDs = None
+            
         self.originalLabsIDs = {frame_i: set() for frame_i in range(self.SizeT)}
         self.originalLabs = dict()
         for frame_i in range(self.SizeT): # maybe better way to get IDs?

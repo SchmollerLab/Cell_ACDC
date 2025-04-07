@@ -3903,7 +3903,11 @@ class SpinBox(QSpinBox):
         if self._valueChangedFunction is None:
             self.setValue(value)
             return
-        self.valueChanged.disconnect()
+        try:
+            self.valueChanged.disconnect()
+        except TypeError as e: # this fails if its not cennected yet
+            pass
+        
         self.setValue(value)
         self.valueChanged.connect(self._valueChangedFunction)
     

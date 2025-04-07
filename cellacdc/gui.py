@@ -13686,9 +13686,9 @@ class guiWin(QMainWindow):
         if curr_frame_only:
             frames_range = [frame_i]
         elif only_future_frames:
-            frames_range = range(frame_i, prop_to_frame_i)
+            frames_range = range(frame_i, prop_to_frame_i + 1)
         else:
-            frames_range = range(prop_to_frame_i)
+            frames_range = range(prop_to_frame_i + 1)
 
         if debug:
             printl(IDs_to_add, IDs_to_remove, frames_range)
@@ -13710,6 +13710,7 @@ class guiWin(QMainWindow):
             if IDs_to_remove:
                 posData.whitelistIDs[i] = posData.whitelistIDs[i] - IDs_to_remove
 
+        # printl(posData.whitelistIDs[frame_i])
         self.whitelistIDsUpdateText()
 
     #@exec_time
@@ -13748,7 +13749,7 @@ class guiWin(QMainWindow):
     #@exec_time    
     def whitelistIDsChanged(self, whitelistIDs):
         posData = self.data[self.pos_i]
-        if posData.whitelistIDs is None:
+        if posData.whitelistIDs is None or posData.whitelistIDs[posData.frame_i] is None:
             wl_init = False
             if not hasattr(self, 'tempWhitelistIDs'):
                 self.tempWhitelistIDs = set() # not updated, only use in this context
@@ -17520,9 +17521,9 @@ class guiWin(QMainWindow):
                 )
                 return
             
-            printl('here')
+b            # printl('here')
             self.whitelistPropagateIDs()
-            # self.whitelistUpdateLab()
+            self.whitelistUpdateLab()
 
             self.updatePreprocessPreview()
             self.updateCombineChannelsPreview()
