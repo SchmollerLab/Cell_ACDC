@@ -11,7 +11,8 @@ from cellacdc import core, printl
 
 DEBUG = False
 
-def calc_IoA_matrix(lab, prev_lab, rp, prev_rp, IDs_curr_untracked=None):
+def calc_Io_matrix(lab, prev_lab, rp, prev_rp, IDs_curr_untracked=None,
+                   denom:str='area_prev'):
     IDs_prev = []
     if IDs_curr_untracked is None:
         IDs_curr_untracked = [obj.label for obj in rp]
@@ -20,9 +21,24 @@ def calc_IoA_matrix(lab, prev_lab, rp, prev_rp, IDs_curr_untracked=None):
 
     # For each ID in previous frame get IoA with all current IDs
     # Rows: IDs in current frame, columns: IDs in previous frame
+
+    ### just an idea for having area_curr as a denom possiblility: just swtich all around...
+    # if denom == 'area_curr':
+    #     # swith prev with curr
+    #     prev_lab_temp, prev_rp_temp = prev_lab.copy(), prev_rp.copy()
+    #     prev_lab, prev_rp = lab.copy, rp.copy()
+    #     lab, rp = prev_lab_temp, prev_rp_temp
+
+    if not denom in ['area_prev', 'union']:
+        raise ValueError(
+            "Invalid denom value. Use 'area_prev' or 'union'."
+        )
+
     for j, obj_prev in enumerate(prev_rp):
         ID_prev = obj_prev.label
-        A_IDprev = obj_prev.area
+        if denom == 'area_prev': # or denom == 'area_curr':
+            denom_val = obj_prev.area
+            
         IDs_prev.append(ID_prev)
         mask_ID_prev = prev_lab==ID_prev
         intersect_IDs, intersects = np.unique(
@@ -34,7 +50,11 @@ def calc_IoA_matrix(lab, prev_lab, rp, prev_rp, IDs_curr_untracked=None):
                     i = IDs_curr_untracked.index(intersect_ID)
                 except Exception as err:
                     continue
-                IoA = I/A_IDprev
+
+                if denom == 'union':
+                    denom_val = np.sum(np.logical_or(mask_ID_prev, lab==intersect_ID))
+
+                IoA = I/denom_val
                 IoA_matrix[i, j] = IoA
     return IoA_matrix, IDs_curr_untracked, IDs_prev
 
@@ -261,15 +281,16 @@ def track_frame(
         assign_unique_new_IDs=True, IoA_thresh=0.4, debug=False,
         return_all=False, aggr_track=None, IoA_matrix=None, 
         IoA_thresh_aggr=None, IDs_prev=None, return_prev_IDs=False,
-        mother_daughters=None
+        mother_daughters=None, denom_overlap_matrix = 'area_prev'
     ):
     if not np.any(lab):
         # Skip empty frames
         return lab
 
     if IoA_matrix is None:
-        IoA_matrix, IDs_curr_untracked, IDs_prev = calc_IoA_matrix(
-            lab, prev_lab, rp, prev_rp, IDs_curr_untracked=IDs_curr_untracked
+        IoA_matrix, IDs_curr_untracked, IDs_prev = calc_Io_matrix(
+            lab, prev_lab, rp, prev_rp, IDs_curr_untracked=IDs_curr_untracked,
+            denom=denom_overlap_matrix
         )
 
     daughters_list = []
