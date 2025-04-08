@@ -8225,7 +8225,7 @@ class guiWin(QMainWindow):
     
     def SegForLostIDsWorkerAskInstallModel(self, model_name):
         if model_name == 'cellpose_custom':
-            myutils.check_install_cellpose(version=">=2.0.0")
+            myutils.check_install_cellpose(version="any")
         else:
             myutils.check_install_package(model_name)
         
@@ -13495,7 +13495,6 @@ class guiWin(QMainWindow):
         if posData.whitelistIDs is None:
             return
 
-        posData.frame_i = frame_i
         if frame_i is None:
             frame_i = posData.frame_i
 
@@ -14360,17 +14359,18 @@ class guiWin(QMainWindow):
             return
         
         if self.delObjAction is None:
+            # On mac we check for Key_Control
             if event.key() == Qt.Key_Control:
                 self.delObjToolAction.setChecked(True)
             return
-        
+
         delObjKeySequence, delObjQtButton = self.delObjAction
         keySequenceText = widgets.QKeyEventToString(event).rstrip('+')
-        
+
         if delObjKeySequence is None:
-            self.delObjToolAction.setChecked(True)
+            # self.delObjToolAction.setChecked(True)
             return
-        
+
         if keySequenceText == delObjKeySequence.toString():
             self.delObjToolAction.setChecked(True)
     
@@ -14419,6 +14419,7 @@ class guiWin(QMainWindow):
                 'Data not loaded yet. Key pressing events are not connected.'
             )
             return
+
         if ev.key() == Qt.Key_Control:
             if not self.isCtrlDown:
                 self.wasCtrlPressedFirstTime = True
@@ -20329,7 +20330,7 @@ class guiWin(QMainWindow):
             proceed = True
             return notEnoughG1Cells, proceed
             
-        else: # ???
+        else:
             notEnoughG1Cells = False
             proceed = True
             return notEnoughG1Cells, proceed

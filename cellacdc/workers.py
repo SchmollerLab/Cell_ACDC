@@ -649,7 +649,7 @@ class saveDataWorker(QObject):
                 whitelist = posData.whitelistIDs
                 for key, val in whitelist.items():
                     if val is None:
-                        whitelist[key] = set()
+                        whitelist[key] = []
                     else:
                         whitelist[key] = list(val)
                 whitelistIDs_path = posData.segm_npz_path.replace('.npz', '_whitelistIDs.json')
