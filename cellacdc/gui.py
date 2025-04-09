@@ -6688,6 +6688,7 @@ class guiWin(QMainWindow):
                 proceed = self.askPropagateChangePast(f'Merge IDs {IDs_to_merge}')
                 if proceed:
                     self.propagateMergeObjsPast(IDs_to_merge)
+                    self.whitelistPropagateIDs(only_future_frames=False) # in the update_rp() call, this should also be done
 
             # Repeat tracking
             self.tracking(
@@ -13529,7 +13530,7 @@ class guiWin(QMainWindow):
                             try_create_new_whitelists: bool = False,
                             curr_frame_only: bool = False,
                             force_not_dynamic_update: bool = False,
-                            only_future_frames: bool = False,
+                            only_future_frames: bool = True,
                             allow_only_current_IDs: bool = True,
                             debug: bool = False,
                             ):
