@@ -22,9 +22,9 @@ def calc_Io_matrix(lab, prev_lab, rp, prev_rp, IDs_curr_untracked=None,
     # For each ID in previous frame get IoA with all current IDs
     # Rows: IDs in current frame, columns: IDs in previous frame
 
-    ### just an idea for having area_curr as a denom possiblility: just swtich all around...
+    ### just an idea for having area_curr as a denom possibility: just switch all around...
     # if denom == 'area_curr':
-    #     # swith prev with curr
+    #     # switch prev with curr
     #     prev_lab_temp, prev_rp_temp = prev_lab.copy(), prev_rp.copy()
     #     prev_lab, prev_rp = lab.copy, rp.copy()
     #     lab, rp = prev_lab_temp, prev_rp_temp
@@ -33,6 +33,9 @@ def calc_Io_matrix(lab, prev_lab, rp, prev_rp, IDs_curr_untracked=None,
         raise ValueError(
             "Invalid denom value. Use 'area_prev' or 'union'."
         )
+    
+    curr_masks = {obj.label: (lab == obj.label) for obj in rp}
+    # prev_label_positions = {ID_prev: np.where(prev_lab == ID_prev)[0] for ID_prev in set(prev_lab) if ID_prev != 0}
 
     for j, obj_prev in enumerate(prev_rp):
         ID_prev = obj_prev.label
@@ -52,7 +55,7 @@ def calc_Io_matrix(lab, prev_lab, rp, prev_rp, IDs_curr_untracked=None,
                     continue
 
                 if denom == 'union':
-                    denom_val = np.sum(np.logical_or(mask_ID_prev, lab==intersect_ID))
+                    denom_val = np.count_nonzero(np.logical_or(mask_ID_prev, curr_masks[intersect_ID]))
 
                 IoA = I/denom_val
                 IoA_matrix[i, j] = IoA

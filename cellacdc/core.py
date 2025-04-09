@@ -3533,3 +3533,36 @@ def validate_multidimensional_recipe(
     return recipe
     
     
+def process_lab(i, lab):
+  # Assuming this function processes each lab independently
+    data_dict = {}
+    rp = skimage.measure.regionprops(lab)
+    IDs = [obj.label for obj in rp]
+    data_dict['IDs'] = IDs
+    data_dict['regionprops'] = rp
+    data_dict['IDs_idxs'] = {ID: idx for idx, ID in enumerate(IDs)}
+    
+    return i, data_dict, IDs  # Return index, data_dict, and IDs
+
+def parallel_count_objects(self):
+    self.logger.info('Counting total number of segmented objects...')
+    
+    allIDs = set()
+    posData = self.data[self.pos_i]
+
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        # Submit tasks for each lab in the segmented data
+        future_to_idx = {
+            executor.submit(process_lab, i, lab): i
+            for i, lab in enumerate(self.data[self.pos_i].segm_data)
+        }
+        
+        for future in tqdm(concurrent.futures.as_completed(future_to_idx), total=len(future_to_idx), ncols=100):
+            i, data_dict, IDs = future.result()
+            posData.allData_li[i] = myutils.get_empty_stored_data_dict()
+            posData.allData_li[i]['IDs'] = data_dict['IDs']
+            posData.allData_li[i]['regionprops'] = data_dict['regionprops']
+            posData.allData_li[i]['IDs_idxs'] = data_dict['IDs_idxs']
+            allIDs.update(IDs)
+
+    return allIDs

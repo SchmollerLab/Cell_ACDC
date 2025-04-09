@@ -4043,3 +4043,12 @@ def print_call_stack(debug=True):
     print("Call stack:")
     for line in stack:
         print(line.strip())
+
+def get_empty_stored_data_dict():
+    return {
+            'regionprops': None,
+            'labels': None,
+            'acdc_df': None,
+            'delROIs_info': {'rois': [], 'delMasks': [], 'delIDsROI': []},
+            'IDs': []
+        }

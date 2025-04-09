@@ -4471,18 +4471,8 @@ class guiWin(QMainWindow):
         allIDs = set()
         if np.any(self.data[self.pos_i].segm_data):
             self.logger.info('Counting total number of segmented objects...')
-            for i, lab in tqdm(enumerate(self.data[self.pos_i].segm_data), ncols=100):
-                posData.allData_li[i]= self.getEmptyStoredDataDict()
-                rp = skimage.measure.regionprops(lab)
-                IDs = [obj.label for obj in rp]
-                posData.allData_li[i]['IDs'] = IDs
-                posData.allData_li[i]['regionprops'] = rp
-                posData.allData_li[i]['IDs_idxs'] = { # IDs_idxs[obj.label] = idx
-                    ID: idx for idx, ID in enumerate(IDs)
-                    }
-                allIDs.update(IDs)
-        if not allIDs:
-            allIDs = list(range(100))
+            
+            allIDs = core.parallel_count_objects(self)
         
         self.highLowResAction.setChecked(True)
         numItems = len(allIDs)
@@ -4544,12 +4534,12 @@ class guiWin(QMainWindow):
         )
         self.ax2_lostObjScatterItem = self.gui_getLostObjScatterItem()
         self.ax2_lostTrackedScatterItem = self.gui_getTrackedLostObjScatterItem()
-
-        self.gui_createTextAnnotItems(allIDs)
-        self.gui_setTextAnnotColors()
+        
+        self.gui_createTextAnnotItems(allIDs) # here
+        self.gui_setTextAnnotColors()# here
 
         self.setDisabledAnnotOptions(False)
-        
+
         self.progressWin.mainPbar.setMaximum(0)
         self.gui_addOverlayLayerItems()
         self.gui_addTopLayerItems()
@@ -19778,15 +19768,6 @@ class guiWin(QMainWindow):
                 posData.combineMetricsConfig = load.add_configPars_metrics(
                     configPars, posData.combineMetricsConfig
                 )
-
-    def getEmptyStoredDataDict(self):
-        return {
-            'regionprops': None,
-            'labels': None,
-            'acdc_df': None,
-            'delROIs_info': {'rois': [], 'delMasks': [], 'delIDsROI': []},
-            'IDs': []
-        }
     
     def initPosAttr(self):
         exp_path = self.data[self.pos_i].exp_path
@@ -19850,7 +19831,7 @@ class guiWin(QMainWindow):
             posData.ol_labels_data = None
             if posData.allData_li is None:
                 posData.allData_li = [
-                    self.getEmptyStoredDataDict() for _ in range(posData.SizeT) 
+                    myutils.get_empty_stored_data_dict() for _ in range(posData.SizeT) 
                 ]
             
             else:
@@ -19859,7 +19840,7 @@ class guiWin(QMainWindow):
                     posData.allData_li.extend([None] * missing_frames)
                 for i in range(posData.SizeT):
                     if posData.allData_li[i] is None:
-                        posData.allData_li[i] = self.getEmptyStoredDataDict()
+                        posData.allData_li[i] = myutils.get_empty_stored_data_dict()
             
             posData.lutLevels = {channel: {} for channel in self.ch_names}
 
@@ -20010,7 +19991,7 @@ class guiWin(QMainWindow):
 
     def unstore_data(self):
         posData = self.data[self.pos_i]
-        posData.allData_li[posData.frame_i] = self.getEmptyStoredDataDict()
+        posData.allData_li[posData.frame_i] = myutils.get_empty_stored_data_dict()
     
     def getStoredSegmData(self):
         posData = self.data[self.pos_i]
@@ -27269,7 +27250,7 @@ class guiWin(QMainWindow):
             return
         numFramesToAdd = stopFrameNum - segmSizeT
         posData.allData_li.extend(
-            [self.getEmptyStoredDataDict() for i in range(numFramesToAdd)]
+            [myutils.get_empty_stored_data_dict() for i in range(numFramesToAdd)]
         )
         lab_shape = posData.segm_data[0].shape
         shapeToAdd = (numFramesToAdd, *lab_shape)
@@ -27305,7 +27286,7 @@ class guiWin(QMainWindow):
                 break
             
             posData.segm_data[i] = posData.allData_li[i]['labels']
-            posData.allData_li[i] = self.getEmptyStoredDataDict()
+            posData.allData_li[i] = myutils.get_empty_stored_data_dict()
             
             posData.tracked_lost_centroids[i] = set()
             posData.acdcTracker2stepsAnnotInfo.pop(i, None)            
