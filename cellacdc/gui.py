@@ -2469,6 +2469,8 @@ class guiWin(QMainWindow):
             keepToolActiveNames[toolName] = button
         
         keepToolActiveNames = dict(natsorted(keepToolActiveNames.items()))
+        self.keepToolActiveActions = dict()
+        all_checked = True
         for toolName, button in keepToolActiveNames.items():
             menu = self.settingsMenu.addMenu(f'{toolName} tool')
             action = QAction(button)
@@ -2476,9 +2478,24 @@ class guiWin(QMainWindow):
             action.setCheckable(True)
             if toolName in self.df_settings.index:
                 action.setChecked(True)
+            else:
+                all_checked = False
             action.toggled.connect(self.keepToolActiveActionToggled)
             menu.addAction(action)
+            self.keepToolActiveActions[toolName] = action
         
+        self.settingsMenu.addSeparator()
+
+        self.keepAllToolsActiveToggle = QAction()
+        self.keepAllToolsActiveToggle.setText(
+            'Keep all tools active after using them'
+        )
+        self.keepAllToolsActiveToggle.setCheckable(True)
+        self.keepAllToolsActiveToggle.setChecked(all_checked)
+        self.keepAllToolsActiveToggle.toggled.connect(
+            self.keepAllToolsActiveActionToggled
+        )
+        self.settingsMenu.addAction(self.keepAllToolsActiveToggle)
         self.settingsMenu.addSeparator()
         
         askHowFutureFramesMenu = self.settingsMenu.addMenu(
@@ -8901,9 +8918,11 @@ class guiWin(QMainWindow):
         apps.imshow_tk(item.lab, additional_imgs=[stored_lab])
         self.worker.waitCond.wakeAll()
 
-    def keepToolActiveActionToggled(self, checked):
-        parentToolButton = self.sender().parent()
-        toolName = re.findall(r'Name: (.*)', parentToolButton.toolTip())[0]
+    def keepToolActiveActionToggled(self, checked, toolName=None):
+        if toolName is None:
+            parentToolButton = self.sender().parent()
+            toolName = re.findall(r'Name: (.*)', parentToolButton.toolTip())[0]
+
         if checked:
             self.df_settings.at[toolName, 'value'] = 'keepActive'
         else:
@@ -8911,6 +8930,23 @@ class guiWin(QMainWindow):
                 index=toolName, errors='ignore'
             )
         self.df_settings.to_csv(self.settings_csv_path)
+
+    def keepAllToolsActiveActionToggled(self, checked):
+        for action in self.keepToolActiveActions.values():
+            action.setChecked(checked)
+
+        if not hasattr(self, 'data'):
+            data_loaded = False
+            try:
+                self.labelRoiTrangeCheckbox.disconnect()
+            except TypeError:
+                pass
+        self.labelRoiTrangeCheckbox.setChecked(checked) # why this is not wrapped in a QAction?
+
+        if data_loaded:
+            self.labelRoiTrangeCheckbox.toggled.connect(
+                self.labelRoiTrangeCheckboxToggled
+            )
 
     def determineSlideshowWinPos(self):
         screens = self.app.screens()
@@ -13608,12 +13644,14 @@ class guiWin(QMainWindow):
                 self.whitelistOriginalFrame_i = frame_i
                 self.whitelistOriginalIDs = posData.whitelistIDs[frame_i].copy()
             elif self.whitelistOriginalFrame_i != frame_i:
-                printl('Frame changed, whitelist was not propagated, propagating...')
+                if debug:
+                    printl('Frame changed, whitelist was not propagated, propagating...')
                 self.whitelistPropagateIDs(frame_i=self.whitelistOriginalFrame_i)
         else:
             if self.whitelistOriginalFrame_i is not None:
                 if self.whitelistOriginalFrame_i != frame_i:
-                    printl('Frame changed, whitelist was not propagated, propagating...')
+                    if debug:
+                        printl('Frame changed, whitelist was not propagated, propagating...')
                     self.whitelistPropagateIDs(frame_i=self.whitelistOriginalFrame_i)
                 else:
                     propagate_after_curr_frame_only_flag = True
@@ -26920,6 +26958,9 @@ class guiWin(QMainWindow):
             self.handleAdditionalInfoRealTimeTracker(prev_rp, tracked_lost_IDs)
         else:
             tracked_lab = tracked_result
+
+        # retrack og frame against the current frame 
+        self.whitelistTrackOGCurr() # may need some optimisation or less frequent use...
         
         return tracked_lab
     
