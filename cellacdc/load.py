@@ -1113,7 +1113,11 @@ class loadData:
                     self.non_aligned_ext = '.h5'
                     break
         self.tracked_lost_centroids = None
-    
+        if not hasattr(self, 'whitelistIDs'):
+            self.whitelistIDs = None
+        self.originalLabs = None
+        self.originalLabsIDs = None
+
     def attempFixBasenameBug(self):
         r'''Attempt removing _s(\d+)_ from filenames if not present in basename
         
@@ -1441,7 +1445,8 @@ class loadData:
             getTifPath=False,
             end_filename_segm='',
             new_endname='',
-            labelBoolSegm=None
+            labelBoolSegm=None,
+            load_whitelistIDs=False,
         ):
 
         self.segmFound = False if load_segm_data else None
@@ -1620,6 +1625,9 @@ class loadData:
         self.getCustomAnnotatedIDs()
         self.setNotFoundData()
         self.checkAndFixZsliceSegmInfo()
+
+        if load_whitelistIDs:
+            self.loadWhitelist()
     
     def checkAndFixZsliceSegmInfo(self):
         if not hasattr(self, 'segmInfo_df'):
@@ -2827,6 +2835,34 @@ class loadData:
                 return
             
             self.loadTrackedLostCentroids()
+    def loadWhitelist(self, allData_list=None):
+        whitelist_path = self.segm_npz_path.replace('.npz', '_whitelistIDs.json')
+        if not os.path.exists(whitelist_path):
+            self.whitelistIDs = None
+            return
+    
+        any_whitelist_added = False
+        with open(whitelist_path, 'r') as json_file:
+            whitelist = json.load(json_file)
+            wl_processed = dict()
+            for key, val in whitelist.items():
+                if val is None:
+                    wl_processed[int(key)] = None
+                else:
+                    wl_processed[int(key)] = set(val)
+                    any_whitelist_added = True
+        if any_whitelist_added:
+            self.whitelistIDs = wl_processed
+        else:
+            self.whitelistIDs = None
+            
+        self.originalLabsIDs = {frame_i: set() for frame_i in range(self.SizeT)}
+        self.originalLabs = dict()
+        for frame_i in range(self.SizeT): # maybe better way to get IDs?
+            IDs = {obj.label for obj in skimage.measure.regionprops(self.segm_data[frame_i])} 
+            self.originalLabsIDs[frame_i] = IDs
+            self.originalLabs[frame_i] = self.segm_data[frame_i].copy()
+
 
 class select_exp_folder:
     def __init__(self):

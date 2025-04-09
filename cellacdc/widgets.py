@@ -975,6 +975,7 @@ class ValidLineEdit(QLineEdit):
 class KeepIDsLineEdit(ValidLineEdit):
     sigIDsChanged = Signal(list)
     sigSort = Signal()
+    sigEnterPressed = Signal()
 
     def __init__(self, instructionsLabel, parent=None):
         super().__init__(parent)
@@ -993,6 +994,8 @@ class KeepIDsLineEdit(ValidLineEdit):
         super().keyPressEvent(event)
         if event.text() == ',':
             self.sigSort.emit()
+        elif event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter:
+            self.sigEnterPressed.emit()
     
     def onTextChanged(self, text):
         IDs = []
@@ -2233,63 +2236,7 @@ class KeptObjectIDsList(list):
         super().__init__(*args)
     
     def setText(self):
-        IDsRange = []
-        text = ''
-        sorted_vals = sorted(self)
-        for i, e in enumerate(sorted_vals):
-            # Get previous and next value (if possible)
-            if i > 0:
-                prevVal = sorted_vals[i-1]
-            else:
-                prevVal = -1
-            if i < len(sorted_vals)-1:
-                nextVal = sorted_vals[i+1]
-            else:
-                nextVal = -1
-
-            if e-prevVal == 1 or nextVal-e == 1:
-                if not IDsRange:
-                    if nextVal-e == 1 and e-prevVal != 1:
-                        # Current value is the first value of a new range
-                        IDsRange = [e]
-                    else:
-                        # Current value is the second element of a new range
-                        IDsRange = [prevVal, e]
-                else:
-                    if e-prevVal == 1:
-                        # Current value is part of an ongoing range
-                        IDsRange.append(e)
-                    else:
-                        # Current value is the first element of a new range 
-                        # --> create range text and this element will 
-                        # be added to the new range at the next iter
-                        start, stop = IDsRange[0], IDsRange[-1]
-                        if stop-start > 1:
-                            sep = '-'
-                        else:
-                            sep = ','
-                        text = f'{text},{start}{sep}{stop}'
-                        IDsRange = []
-            else:
-                # Current value doesn't belong to a range
-                if IDsRange:
-                    # There was a range not added to text --> add it now
-                    start, stop = IDsRange[0], IDsRange[-1]
-                    if stop-start > 1:
-                        sep = '-'
-                    else:
-                        sep = ','
-                    text = f'{text},{start}{sep}{stop}'
-                
-                text = f'{text},{e}'    
-                IDsRange = []
-
-        if IDsRange:
-            # Last range was not added  --> add it now
-            start, stop = IDsRange[0], IDsRange[-1]
-            text = f'{text},{start}-{stop}'
-
-        text = text[1:]
+        text  = myutils.format_IDs(self)
         
         self.lineEdit.setText(text)
     
@@ -3956,7 +3903,11 @@ class SpinBox(QSpinBox):
         if self._valueChangedFunction is None:
             self.setValue(value)
             return
-        self.valueChanged.disconnect()
+        try:
+            self.valueChanged.disconnect()
+        except TypeError as e: # this fails if its not cennected yet
+            pass
+        
         self.setValue(value)
         self.valueChanged.connect(self._valueChangedFunction)
     
@@ -9808,6 +9759,134 @@ class RescaleImageJroisGroupbox(QGroupBox):
             for dim, (spinbox, SizeD) in self.widgets.items()
         }
         return sizes
+
+class WhiteListLineEdit(KeepIDsLineEdit):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def setText(self, IDs):
+        if not isinstance(IDs, set) and not isinstance(IDs, list):
+            raise TypeError('IDs must be a set or list')
+        
+        formatted_text = myutils.format_IDs(IDs)
+        super().setText(formatted_text)
+
+class WhitelistIDsToolbar(ToolBar):
+    sigWhitelistChanged = Signal(list)
+    sigViewOGIDs = Signal(bool)
+    sigWhitelistAccepted = Signal(list)
+    sigAddNewIDs = Signal(bool)
+    sigLoadOGLabs = Signal()
+    
+    def __init__(self, *args) -> None:
+        super().__init__(*args)
+
+        whiteListLineEditLabel = QLabel('Whitelist IDs: ')
+        self.addWidget(whiteListLineEditLabel)
+        
+        self.whiteListLineEdit = WhiteListLineEdit(
+            whiteListLineEditLabel, parent=self
+        )
+        self.whiteListLineEdit.sigEnterPressed.connect(self.accept)
+        self.whiteListLineEdit.sigIDsChanged.connect(self.emitWhitelistChanged)
+        self.addWidget(self.whiteListLineEdit)
+
+        # accept button
+        self.acceptButton = self.addButton(':greenTick.svg')
+        self.acceptButton.triggered.connect(self.accept)
+
+        # add a view OG toggle
+        self.viewOGToggle = self.addButton(':eye.svg', checkable=True)
+        viewOGTooltip = (
+            'View the non-whitelisted segmentation mask.\n\n'
+            'You can activate this to add new IDs to the whitelist,\n'
+            'correct tracking errors, etc.'
+        )
+        self.viewOGToggle.setChecked(True)
+        self.viewOGToggle.setToolTip(viewOGTooltip)
+        self.viewOGToggle.setShortcut('Shift+K')
+        key = 'View the non-whitelisted segmentation mask'
+        self.widgetsWithShortcut[key] = self.viewOGToggle
+        
+        self.viewOGToggle.toggled.connect(self.emitViewOGIDs)
+        self.emitViewOGIDs(True)
+
+        # add a Toggle to add new IDs
+        self.addNewIDToggle = QCheckBox(
+            'Automatically add new IDs to whitelist'
+        )
+        self.addNewIDToggle.setChecked(True)
+        self.addWidget(self.addNewIDToggle)
+        self.addNewIDToggle.toggled.connect(self.emitAddNewIDs)
+        self.emitAddNewIDs(True)
+        
+        self.addSeparator()
+
+        # add a button to load og df
+        self.loadOGButton = self.addButton(':open_file.svg')
+        self.loadOGButton.triggered.connect(self.sigLoadOGLabs.emit)
+        self.loadOGButton.setToolTip(
+            'Select which segmentation mask file to load '
+            'as the non-whitelisted masks'
+        )
+
+        self.addSeparator()
+
+        # add an info button
+        self.infoButton = self.addButton(':info.svg')
+        self.infoButton.triggered.connect(self.showInfo)
+        
+        # add a spacer to the toolbar
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.addWidget(spacer)
+
+    def emitWhitelistChanged(self, whitelist):
+        self.sigWhitelistChanged.emit(whitelist)
+
+    def emitViewOGIDs(self, checked):
+        self.sigViewOGIDs.emit(checked)
+    
+    def accept(self):
+        try:
+            whitelist = self.whiteListLineEdit.IDs
+        except AttributeError as e:
+            if "has no attribute 'IDs'" in str(e):
+                whitelist = list()
+        self.viewOGToggle.toggled.disconnect()            
+        self.viewOGToggle.setChecked(False)
+        self.viewOGToggle.toggled.connect(self.emitViewOGIDs)
+        self.sigWhitelistAccepted.emit(whitelist)
+    
+    def emitAddNewIDs(self, checked):
+        self.sigAddNewIDs.emit(checked)
+
+    def showInfo(self):
+        msg = myMessageBox(wrapText=False)
+        txt = html_utils.paragraph("""
+            This function is used to track a subset of segmented objects.<br><br>
+            
+            To add new IDs to the white list, click with left mouse button on the 
+            object to add.<br>
+            You can also write directly into the <code>Whitelist IDs</code> widget<br>
+            and separate the IDs by commas.<br><br>
+            
+            After adding the IDs, click on the "Accept" button to remove the 
+            non-whitelisted objects.<br>
+            Every time you visit a new frame, the non-whitelisted objects will 
+            be removed automatically.<br><br>
+            Use the "Eye" button to view the non-whitelisted segmentation masks.<br>
+            This will allow you to correct tracking errors, add new IDs to the 
+            white list, etc.<br><br>
+            
+            If you previously saved the whitelisted masks, you can load the 
+            non-whitelisted file<br>
+            by clicking on the "Load file" button to restart from where you 
+            left last time.
+        """
+        )
+        msg.information(self, 'White list IDs', txt)
+
 
 class KeySequenceFromText(QKeySequence):
     def __init__(self, text: str):
