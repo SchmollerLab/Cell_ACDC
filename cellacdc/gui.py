@@ -14184,6 +14184,7 @@ class guiWin(QMainWindow):
         
         if ev.key() == Qt.Key_Q and self.debug:
             posData = self.data[self.pos_i]
+            printl(posData.allData_li[posData.frame_i]['contours'])
             pass
         
         if not self.isDataLoaded:
@@ -23628,10 +23629,10 @@ class guiWin(QMainWindow):
         return contours
     
     def clearComputedContours(self):
-        posData = self.data[self.pos_i]
-        for frame_i, dataDict in enumerate(posData.allData_li):
-            dataDict['contours'] = {}
-    
+        for posData in self.data:
+            for frame_i, dataDict in enumerate(posData.allData_li):
+                dataDict['contours'] = {}
+
     def _computeAllContours2D(self, dataDict, obj, z, obj_bbox):
         obj_image = self.getObjImage(obj.image, obj.bbox, z_slice=z)
         if obj_image is None:
@@ -26088,15 +26089,18 @@ class guiWin(QMainWindow):
             frame_i = posData.frame_i
             
         dataDict = posData.allData_li[posData.frame_i]
-        newContours = {}
-        for key, contours in dataDict['contours'].items():
-            ID = key[0]
-            if ID == delID:
-                continue
+        try:
+            newContours = {}
+            for key, contours in dataDict['contours'].items():
+                ID = key[0]
+                if ID == delID:
+                    continue
+                
+                newContours[key] = contours
             
-            newContours[key] = contours
-        
-        dataDict['contours'] = newContours
+            dataDict['contours'] = newContours
+        except KeyError as err:
+            pass
     
     @disableWindow
     def deleteIDmiddleClick(
