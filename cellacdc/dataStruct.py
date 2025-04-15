@@ -2110,7 +2110,7 @@ class InitFijiMacro:
     def selectFijiLocation(self, checked=True, messagebox=None):
         import qtpy.compat
         filepath = qtpy.compat.getopenfilename(
-            parent=self.acdcLauncher, 
+            parent=messagebox, 
             caption='Select Fiji.app location', 
             filters='Application (*.app);;All Files (*)'
         )[0]
