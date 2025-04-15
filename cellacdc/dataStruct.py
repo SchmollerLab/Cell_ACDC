@@ -2093,7 +2093,7 @@ class InitFijiMacro:
         """)
         msg = widgets.myMessageBox(wrapText=False)
         _, selectFijiButton, downloadFijiButton = msg.question(
-            self, 'Select Fiji location', txt, 
+            self.acdcLauncher, 'Select Fiji location', txt, 
             buttonsTexts=(
                 'Cancel', 'Select Fiji location', 'Download Fiji for me'
             ), 
