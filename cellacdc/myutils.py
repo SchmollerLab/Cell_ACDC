@@ -2469,7 +2469,7 @@ def check_napari_plugin(plugin_name, module_name, parent=None):
         raise e
 
 def _install_pip_package(pkg_name, install_dependencies=True):
-    command = [sys.executable, '-m', 'pip', 'install', pkg_name]
+    command = [sys.executable, '-m', 'pip', 'install', pkg_name, '--only-binary=:all:']
     if not install_dependencies:
         command.append('--no-deps')
     subprocess.check_call(

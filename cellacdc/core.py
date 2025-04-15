@@ -3532,9 +3532,9 @@ def validate_multidimensional_recipe(
     
     return recipe
     
-    
-def process_lab(i, lab):
-  # Assuming this function processes each lab independently
+def process_lab(task):
+    i, lab = task
+    # Assuming this function processes each lab independently
     data_dict = {}
     rp = skimage.measure.regionprops(lab)
     IDs = [obj.label for obj in rp]
@@ -3544,25 +3544,58 @@ def process_lab(i, lab):
     
     return i, data_dict, IDs  # Return index, data_dict, and IDs
 
-def parallel_count_objects(self):
-    self.logger.info('Counting total number of segmented objects...')
+def parallel_count_objects(posData, logger_func):
+    #futile attempt to use multiprocessing to speed things up
+    logger_func('Counting total number of segmented objects...')
     
     allIDs = set()
-    posData = self.data[self.pos_i]
+    seg_data = posData.segm_data
+    
+    # Initialize empty data dictionary to avoid recalculating each time
+    empty_data_dict = myutils.get_empty_stored_data_dict()
 
-    with concurrent.futures.ProcessPoolExecutor() as executor:
-        # Submit tasks for each lab in the segmented data
-        future_to_idx = {
-            executor.submit(process_lab, i, lab): i
-            for i, lab in enumerate(self.data[self.pos_i].segm_data)
-        }
+    batch_size = 1000 # Adjust based on your system's memory
+    tasks = [(i, lab) for i, lab in enumerate(seg_data)]
+
+    # Process in batches to optimize memory usage and control parallelism
+    for i in range(0, len(tasks), batch_size):
+        batch = tasks[i:i + batch_size]
+        with concurrent.futures.ProcessPoolExecutor() as executor:
+            futures = [executor.submit(process_lab, task) for task in batch]
+            
+            # Process results as they are completed
+            for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), ncols=100):
+                i, data_dict, IDs = future.result()
+                posData.allData_li[i] = empty_data_dict.copy()  # or directly assign if it's mutable
+                posData.allData_li[i]['IDs'] = data_dict['IDs']
+                posData.allData_li[i]['regionprops'] = data_dict['regionprops']
+                posData.allData_li[i]['IDs_idxs'] = data_dict['IDs_idxs']
+                allIDs.update(IDs)
+    if not allIDs:
+        allIDs = list(range(100))
         
-        for future in tqdm(concurrent.futures.as_completed(future_to_idx), total=len(future_to_idx), ncols=100):
-            i, data_dict, IDs = future.result()
-            posData.allData_li[i] = myutils.get_empty_stored_data_dict()
-            posData.allData_li[i]['IDs'] = data_dict['IDs']
-            posData.allData_li[i]['regionprops'] = data_dict['regionprops']
-            posData.allData_li[i]['IDs_idxs'] = data_dict['IDs_idxs']
-            allIDs.update(IDs)
+    return allIDs, posData
 
-    return allIDs
+def count_objects(posData, logger_func):
+    allIDs = set()
+
+    empty_data_dict = myutils.get_empty_stored_data_dict()
+    segm_data = posData.segm_data
+    if not np.any(segm_data):
+        allIDs = list(range(100))
+        return allIDs, posData
+    
+    logger_func('Counting total number of segmented objects...')
+    for i, lab in tqdm(enumerate(segm_data), ncols=100):
+        posData.allData_li[i]= empty_data_dict.copy()
+        rp = skimage.measure.regionprops(lab)
+        IDs = [obj.label for obj in rp]
+        posData.allData_li[i]['IDs'] = IDs
+        posData.allData_li[i]['regionprops'] = rp
+        posData.allData_li[i]['IDs_idxs'] = { # IDs_idxs[obj.label] = idx
+            ID: idx for idx, ID in enumerate(IDs)
+            }
+        allIDs.update(IDs)
+    if not allIDs:
+        allIDs = list(range(100))
+    return allIDs, posData
