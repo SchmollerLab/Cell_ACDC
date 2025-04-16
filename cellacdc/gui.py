@@ -13381,11 +13381,12 @@ class guiWin(QMainWindow):
         mode = self.modeComboBox.currentText()
         if mode != 'Segmentation and Tracking':
             return
+        
+        posData = self.data[self.pos_i]
         if posData.whitelist is None:
             return
             
         self.store_data(autosave=False)        
-        posData = self.data[self.pos_i]
 
         if frame_i is None:
             frame_i = posData.frame_i
@@ -13494,7 +13495,7 @@ class guiWin(QMainWindow):
         if posData.whitelist is None:
             return
 
-        debug = posData.whitelist._debug or debug
+        debug = posData.whitelist._debug
         if debug:
             myutils.print_call_stack()
             printl('whitelistTrackOGCurr')

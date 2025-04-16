@@ -91,8 +91,10 @@ class Whitelist:
         save_path : str
             desired save path for the original labels
         """
-        original_frames = np.array(list(posData.whitelist.originalLabs.values()))
-        np.savez_compressed(save_path, original_frames)
+        # original_frames = np.array(list(self.originalLabs.values())) 
+        # the above is not necessary anymore, 
+        #since I changed the originalLabs to be a np.ndarray
+        np.savez_compressed(save_path, self.originalLabs)
     
     def load(self, whitelist_path:str , segm_data:np.ndarray):
         """Loads the whitelist from a json file.
@@ -543,6 +545,8 @@ class Whitelist:
             IDs_curr = allData_li[frame_i]['IDs']
             if self._debug:
                 printl('Using allData_li')
+            
+            IDs_curr = set(IDs_curr)
                     
         # else:
         #     lab = labs[frame_i]
