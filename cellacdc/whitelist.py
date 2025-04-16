@@ -3,14 +3,25 @@ import numpy as np
 import skimage.measure
 from . import printl, myutils
 import json
+from typing import Set, List, Tuple
 
 
 class Whitelist:
+    """A class to manage the whitelist of IDs for a video.
     """
-    A class to manage a whitelist.
-    """
-    def __init__(self, images_path, total_frames, segm_data, debug=True):
-        self.images_path = images_path
+    def __init__(self, total_frames: int | list | set, debug=False):
+        """Initializes the whitelist with the total number of frames.
+        The whitelist is a dictionary with the frame index 
+        as the key and a set of IDs as the value.
+        Also the original not whitelisted labs are stored in the originalLabs variable.
+
+        Parameters
+        ----------
+        total_frames : int | list | set
+            total frames. range(total_frames) if int, else total_frames
+        debug : bool, optional
+            debug with a lot of prints, also in gui.py, by default False
+        """
         try:
             self.total_frames = range(total_frames)
         except TypeError:
@@ -19,7 +30,6 @@ class Whitelist:
         self.total_frames_set = set(self.total_frames)
         self.last_frame = max(self.total_frames_set)
 
-        self.segm_data = segm_data
         self._debug = debug
 
         self.originalLabs = None
@@ -28,20 +38,81 @@ class Whitelist:
         self.whitelistOriginalFrame_i = None
         self.initialized_i = set()
 
-    def __getitem__(self, index):
+    def __getitem__(self, index:int):
+        """Gets a whitelist for a given index.
+
+        Parameters
+        ----------
+        index : int
+            index of the requested whitelist
+
+        Returns
+        -------
+        set
+            set of whitelist IDs for the given index
+        """
         return self.get(index)
 
-    def __setitem__(self, index, value):
-        self.whitelistIDs[index] = value
+    def __setitem__(self, index:int, value:set):
+        """Sets a whitelist for a given index.
 
-    def loadOGLabs(self, selected_path):
-        segm_data = np.load(selected_path)
-        segm_data = segm_data[segm_data.files[0]] # is this right?
+        Parameters
+        ----------
+        index : int
+            index of the whitelist to set
+        value : set
+            set of whitelist IDs to set for the given index
+        """
+        self.whitelistIDs[index] = set(value)
 
-        self.originalLabs = segm_data
-        self.originalLabsIDs = [{obj.label for obj in skimage.measure.regionprops(frame)} for frame in segm_data]
+    def loadOGLabs(self, selected_path:str=None, og_data:np.ndarray=None):
+        """Loads the original labels from a .npz file, 
+        or from the provided og_data.
+
+        Parameters
+        ----------
+        selected_path : str, optional
+            path to be loaded, by default None
+        og_data : np.ndarray, optional
+            alternative original data, by default None
+        """
+        if og_data is None:
+            og_data = np.load(selected_path)
+            og_data = og_data[og_data.files[0]] # is this right?
+
+        self.originalLabs = og_data
+        self.originalLabsIDs = [{obj.label for obj in skimage.measure.regionprops(frame)} for frame in og_data]
     
-    def load(self, whitelist_path):
+    def saveOGLabs(self, save_path:str):
+        """Saves the original labels to a .npz file.
+
+        Parameters
+        ----------
+        save_path : str
+            desired save path for the original labels
+        """
+        original_frames = np.array(list(posData.whitelist.originalLabs.values()))
+        np.savez_compressed(save_path, original_frames)
+    
+    def load(self, whitelist_path:str , segm_data:np.ndarray):
+        """Loads the whitelist from a json file.
+        If the file does not exist, it initializes the whitelist to None.
+        If the file exists, it loads the whitelist and initializes 
+        the originalLabs variable.
+
+        Parameters
+        ----------
+        whitelist_path : str
+            path to the whitelist json file (should be in accordance to the 
+            one provided in save)
+        segm_data : np.ndarray
+            segmentation data for the video
+
+        Returns
+        -------
+        bool
+            True if the whitelist was loaded successfully, False if not
+        """
         if not os.path.exists(whitelist_path):
             self.whitelistIDs = None
             return False
@@ -65,7 +136,7 @@ class Whitelist:
             self.whitelistIDs = None
             return False
             
-        self.originalLabs = self.segm_data.copy()
+        self.originalLabs = segm_data.copy()
         self.originalLabsIDs = [{obj.label for obj in 
                                  skimage.measure.regionprops(
                                      self.originalLabs[frame_i])
@@ -73,7 +144,17 @@ class Whitelist:
                                  for frame_i in self.total_frames]
         return True
 
-    def save(self, whitelist_path):
+    def save(self, whitelist_path:str):
+        """Saves the whitelist to a json file.
+        If the whitelist is None, it will not be saved.
+        Make sure that the path is in accordance to the one provided in load.
+
+        Parameters
+        ----------
+        whitelist_path : str
+            path to the whitelist json file (should be in accordance to the 
+            one provided in load)
+        """
         if not self.whitelistIDs:
             return
         wl_copy = self.whitelistIDs.copy()
@@ -84,11 +165,35 @@ class Whitelist:
                 wl_copy[key] = list(val)
         json.dump(wl_copy, open(whitelist_path, 'w+'), indent=4)
         
-    def addNewIDs(self, frame_i,
-                  allData_li,
-                  ):
+    def addNewIDs(self, frame_i:int,
+                  allData_li: list,
+                  IDs_curr: List[int] | Set[int]=None,
+                  index_lab_combo: Tuple[int, np.ndarray]=None,
+                  curr_rp: list=None,
+                  curr_lab: np.ndarray=None,
                 #   per_frame_IDs=None,
-                #   labs=None):
+                #   labs=None
+                  ):
+        """Adds new IDs to the whitelist for a given frame based on the
+        original labels. The IDs are added to the whitelist for the current frame.
+        Also propagates.
+
+        Parameters
+        ----------
+        frame_i : int
+            for which frame to add the IDs
+        allData_li : list
+            passed to self.propagateIDs(), see rest of ACDC: posData.allData_li
+        IDs_curr : list | set, optional
+            Currently present IDs,  passed to self.propagateIDs(). by default None
+        index_lab_combo: Tuple[int, np.ndarray]=None,
+            Combination of frame_i and current frame, 
+            passed to self.propagateIDs(), by default None
+        curr_rp : list, optional
+            Region properties for the current frame, passed to self.propagateIDs(). by default None
+        curr_lab : np.ndarray, optional
+            Labels for the current frame, passed to self.propagateIDs(). by default None
+        """
         
         IDs_curr_og_lab = self.originalLabsIDs[frame_i]
         IDs_prev_og_lab = self.originalLabsIDs[frame_i-1]
@@ -98,18 +203,51 @@ class Whitelist:
                           curr_frame_only=True,
                           frame_i=frame_i,
                           allData_li=allData_li,
+                          IDs_curr=IDs_curr,
+                          index_lab_combo=index_lab_combo,
+                          allow_only_current_IDs=False,
+                          curr_rp=curr_rp,
+                          curr_lab=curr_lab,
                         #   per_frame_IDs=per_frame_IDs,
                         #   labs=labs
                             )
 
-    def IDsAccepted(self, whitelistIDs, frame_i, 
-                    allData_li,
-                    index_lab_combo=None,
-                    rp=None,
-                    IDs_curr=None,
-                    curr_lab=None,
+    def IDsAccepted(self, 
+                    whitelistIDs: Set[int] | List[int], 
+                    frame_i: int, 
+                    allData_li: list,
+                    segm_data: np.ndarray,
+                    curr_lab: np.ndarray=None,
+                    index_lab_combo: Tuple[int, np.ndarray]=None,
+                    IDs_curr: Set[int] | List[int]=None,
+                    curr_rp: list=None,
                     # labs=None
                     ):
+        """Called if the user accepted IDs. 
+        This can also be called if one wants forced propagation of IDs.
+
+        Parameters
+        ----------
+        whitelistIDs : Set[int] | List[int]
+            The IDs in the whitelist.
+        frame_i : int
+            The frame index for the whitelist.
+        allData_li : list
+            See rest of ACDC. posData.allData_li
+        segm_data : np.ndarray
+            The segmentation data for the video. Fallback to when allData_li is not provided.
+        curr_lab : np.ndarray, optional
+            Labels for the current frame. Use instead of allData_li/segm_data 
+            for current frame_i
+            Also passed to self.propagateIDs(), by default None
+        index_lab_combo : Tuple[int, np.ndarray], optional
+            Combination of frame_i and current frame, 
+            passed to self.propagateIDs(), by default None
+        IDs_curr : list | set, optional
+            Currently present IDs,  passed to self.propagateIDs(), by default None
+        curr_rp : list, optional
+            Region properties for the current frame, passed to self.propagateIDs(), by default None
+        """
         
         # if allData_li is None and labs is None:
         #     raise ValueError('Either allData_li or curr_labs must be provided')
@@ -122,9 +260,13 @@ class Whitelist:
             }
 
         if self.originalLabs is None:
-            self.originalLabs = np.zeros_like(self.segm_data)
+            self.originalLabs = np.zeros_like(segm_data)
             self.originalLabsIDs = []
             for i in self.total_frames:
+                if i == frame_i and curr_lab is not None:
+                    self.originalLabs[i] = curr_lab.copy()
+                    self.originalLabsIDs.append({obj.label for obj in skimage.measure.regionprops(curr_lab)})
+                    continue
                 try:
                     # if allData_li:
                     lab = allData_li[i]['labels'].copy()
@@ -134,25 +276,42 @@ class Whitelist:
                     self.originalLabs[i] = lab
                     self.originalLabsIDs.append({obj.label for obj in skimage.measure.regionprops(lab)})
                 except AttributeError:
-                    lab = self.segm_data[i].copy()
+                    lab = segm_data[i].copy()
                     self.originalLabs[i] = lab
                     self.originalLabsIDs.append({obj.label for obj in skimage.measure.regionprops(lab)})
 
         whitelistIDs = set(whitelistIDs)
-        self.propagateIDs(frame_i=frame_i,
+        self.propagateIDs(frame_i,
+                          allData_li,
                           new_whitelist=whitelistIDs,
                           try_create_new_whitelists=True, 
-                          only_future_frames=True, 
                           force_not_dynamic_update=True,
-                          allData_li=allData_li,
                           index_lab_combo=index_lab_combo,
                           IDs_curr=IDs_curr,
-                            rp=rp,
-                            curr_lab=curr_lab,
+                          curr_rp=curr_rp,
+                          curr_lab=curr_lab,
                         #   labs=labs,
                           )
         
-    def get(self,frame_i,try_create_new_whitelists=False):
+    def get(self,frame_i:int,try_create_new_whitelists:bool=False):
+        """Gets the whitelist for a given frame index.
+        If the whitelist is not initialized, and try_create_new_whitelists is True,
+        it will create a new whitelist empty for that frame.
+
+        Parameters
+        ----------
+        frame_i : int
+            The frame index for the whitelist.
+        try_create_new_whitelists : bool, optional
+            If new empty whitelist should be tried and created, by default False
+
+        Returns
+        -------
+        set
+            The whitelist for the given frame index.
+
+        """
+
         try:
             old_whitelistIDs =self.whitelistIDs[frame_i]
         except Exception as e:
@@ -173,11 +332,26 @@ class Whitelist:
         return old_whitelistIDs
     
     def innitNewFrames(self, 
-                       frame_i, 
-                       force=False, 
+                       frame_i:int, 
+                       force:bool=False, 
                        ):
-        """
-        Initialize the whitelist for a new frame.
+        """Initialize the whitelists for all new frame.
+        All frames up to and including frame_i will be initialized.
+        Unless forced, it will only initialize the whitelist if the frame is not 
+        already initialized, (tracked with self.initialized_i).
+
+        Parameters
+        ----------
+        frame_i : int
+            The frame index for where the initialization should be done.
+        force : bool, optional
+            If the frame_i (only this frame_i in that case) 
+            should be reinnit, by default False
+
+        Returns
+        -------
+        bool
+            True if a new frame was initialized, False if not.
         """
         
         missing_frames = set(range(frame_i+1)) - self.initialized_i
@@ -190,7 +364,7 @@ class Whitelist:
         else:
             new_frame = False
 
-        if not force and not new_frame:
+        if not force and not missing_frames:
             return new_frame
 
         for i in missing_frames:
@@ -217,21 +391,18 @@ class Whitelist:
     
     def propagateIDs(self,
                      frame_i: int,
-                    #  labs: np.ndarray = None,
-                    #  per_frame_IDs: list = None,
                      allData_li: list,
-                     new_whitelist: set[int] = None, 
-                     IDs_to_add: set[int] = None,
-                     IDs_to_remove: set[int] = None,
+                     new_whitelist: Set[int] | List[int] = None, 
+                     IDs_to_add: Set[int] = None,
+                     IDs_to_remove: Set[int] = None,
                      try_create_new_whitelists: bool = False,
                      curr_frame_only: bool = False,
                      force_not_dynamic_update: bool = False,
                      only_future_frames: bool = True,
                      allow_only_current_IDs: bool = True,
-                     IDs_curr: set[int] = None,
-                     rp: list = None,
-                     new_frame: bool = False,
-                     index_lab_combo: tuple = None,
+                     IDs_curr: Set[int] | List[int] = None,
+                     index_lab_combo: Tuple[int, np.ndarray] = None,
+                     curr_rp: list = None,
                      curr_lab: np.ndarray = None,
                      ):
         """
@@ -246,44 +417,60 @@ class Whitelist:
         If force_not_dynamic_update is True, the function will propagate the entire whitelist to 
         frames, and not only the IDs which were added or removed.
 
+        Hierarchy of arguments for current_IDs:
+        1. IDs_curr (if provided)
+        (2. index_lab_combo (if provided) (is also passed to not current frame only 
+        propagation if that propagation is necessary, and used when the frame_i matches))
+        3. curr_rp (if provided)
+        4. curr_lab (if provided)
+        5. allData_li
+
         Parameters
         ----------
-        frame_i : int, optional
-            The frame index for the propagation. If None, uses the current frame index.
-        # labs : np.ndarray, optional
-        #     All labels for the video. Mutually exclusive with `allData_li`.
-        # per_frame_IDs : list, optional
-        #     A list of IDs for each frame. Mutually exclusive with `allData_li`. If not provided, calculated from `labs`.
-        all_data_li : list, optional
-            See rest of ACDC. posData.allData_li
-        new_whitelistIDs : set[int], optional
+        frame_i : int
+            The frame index for the propagation.
+        allData_li : list
+            See rest of ACDC. posData.allData_li. 
+            Used to get the IDs for the current frame.
+            Especially for when propagating after curr_frame_only was changed.
+            Strictly speaking could be substituted with the correct index_lab_combo
+            if necessary in the future.
+        new_whitelist : Set[int] | List[int], optional
             A new set of whitelist IDs to replace the current whitelist. Cannot be 
-            used together with `IDs_to_add` or `IDs_to_remove`.
-        IDs_to_add : set[int], optional
-            A set of IDs to add to the current whitelist.
-        IDs_to_remove : set[int], optional
-            A set of IDs to remove from the current whitelist.
+            used together with `IDs_to_add` or `IDs_to_remove`, by default None.
+        IDs_to_add : Set[int], optional
+            A set of IDs to add to the current whitelist, by default None.
+        IDs_to_remove : Set[int], optional
+            A set of IDs to remove from the current whitelist, by default None.
         try_create_new_whitelists : bool, optional
             If True, creates new whitelist entries for frames that do not already 
-            have them. Should only be necessary when its initialized...
+            have them. Should only be necessary when its initialized, by default False.
         curr_frame_only : bool, optional
-            If True, only updates the whitelist for the current frame. (See description of function)
+            If True, only updates the whitelist for the current frame. 
+            (See description of function), by default False.
         force_not_dynamic_update : bool, optional
-            If True, disables dynamic updates to the whitelist. (See description of function)
+            If True, disables dynamic updates to the whitelist. 
+            (See description of function), by default False.
         only_future_frames : bool, optional
-            If True, propagates changes only to future frames.
+            If True, propagates changes only to future frames, by default True.
         allow_only_current_IDs : bool, optional
-            If True, only allows IDs that are present in the current frame to be added to the whitelist.
-        IDs_curr : set[int], optional
-            A set of IDs for the current frame. If None, will be calculated from the current labels.
-        rp: list, optional
-            Region properties for the current frame. If None, will be calculated from the current labels.
-        lab: np.ndarray, optional
-            Labels for the current frame. If None, will be calculated from the current labels.
-        new_frame: bool, optional
-            If True, indicates that a new frame is being processed. This is used to determine if the whitelist should be updated on that given frame.
-        index_lab_combo: tuple, optional
-            A tuple containing the frame index and the labels for that frame. If provided, this will be used instead of the `labs` parameter in lab.
+            If True, only allows IDs that are present in the current frame 
+            to be added to the whitelist, by default True.
+        IDs_curr : Set[int] | List[int], optional
+            A set of IDs for the current frame, if None, 
+            will be calculated from other stuff (see description), by default None.
+        index_lab_combo : Tuple[int, np.ndarray], optional
+            Combination of frame_i and current frame, 
+            Used to get IDs_curr (see description), when the frame_i matches
+            (is also passed to not current frame only 
+            propagation if that propagation is necessary, 
+            and used when the frame_i matches), by default None.
+        curr_rp : list, optional
+            Region properties for the current frame. For IDs_curr. (see description), 
+            by default None.
+        curr_lab : np.ndarray, optional
+            Labels for the current frame for IDs_curr. (see description),
+            by default None.
 
         Raises
         ------
@@ -330,14 +517,19 @@ class Whitelist:
         if IDs_curr:
             if self._debug:
                 printl('Using IDs_curr')
-            pass
+            try:
+                IDs_curr = IDs_curr.copy()
+            except AttributeError:
+                pass
+            IDs_curr = set(IDs_curr)
+            
         elif index_lab_combo and index_lab_combo[0] == frame_i:
             lab = index_lab_combo[1]
             if self._debug:
                 printl('Using index_lab_combo')
             IDs_curr = {obj.label for obj in skimage.measure.regionprops(lab)}
-        elif rp is not None:
-            IDs_curr = {obj.label for obj in rp}
+        elif curr_rp is not None:
+            IDs_curr = {obj.label for obj in curr_rp}
             if self._debug:
                 printl('Using rp')
         elif curr_lab is not None:
@@ -351,9 +543,7 @@ class Whitelist:
             IDs_curr = allData_li[frame_i]['IDs']
             if self._debug:
                 printl('Using allData_li')
-        
-        IDs_curr = set(IDs_curr)
-            
+                    
         # else:
         #     lab = labs[frame_i]
         #     if self._debug:
@@ -371,17 +561,17 @@ class Whitelist:
             elif self.whitelistOriginalFrame_i != frame_i:
                 if self._debug:
                     printl('Frame changed, whitelist was not propagated, propagating...')
-                self.propagateIDs(allData_li=allData_li,
-                                   frame_i=self.whitelistOriginalFrame_i,
-                                   index_lab_combo=index_lab_combo)
+                self.propagateIDs(frame_i,
+                                  allData_li,
+                                  index_lab_combo=index_lab_combo)
         else:
             if self.whitelistOriginalFrame_i is not None:
                 if self.whitelistOriginalFrame_i != frame_i:
                     if self._debug:
                         printl('Frame changed, whitelist was not propagated, propagating...')
-                    self.propagateIDs(allData_li=allData_li,
-                                    frame_i=self.whitelistOriginalFrame_i,
-                                    index_lab_combo=index_lab_combo)
+                    self.propagateIDs(frame_i,
+                                      allData_li,
+                                      index_lab_combo=index_lab_combo)
                 else:
                     propagate_after_curr_frame_only_flag = True
                 self.whitelistOriginalFrame_i = None
@@ -469,4 +659,3 @@ class Whitelist:
 
         if self._debug:
             printl(self.whitelistIDs[frame_i])
-    

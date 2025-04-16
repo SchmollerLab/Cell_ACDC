@@ -1114,8 +1114,8 @@ class loadData:
                     self.non_aligned_ext = '.h5'
                     break
         self.tracked_lost_centroids = None
-        if not hasattr(self, 'whiteList'):
-            self.whiteList = None
+        if not hasattr(self, 'whitelist'):
+            self.whitelist = None
 
     def attempFixBasenameBug(self):
         r'''Attempt removing _s(\d+)_ from filenames if not present in basename
@@ -2836,14 +2836,13 @@ class loadData:
             self.loadTrackedLostCentroids()
             
     def loadWhitelist(self):
-        self.whiteList = whitelist.Whitelist(
-            self.images_path, total_frames=self.SizeT,
-            segm_data=self.segm_data
+        self.whitelist = whitelist.Whitelist(
+            total_frames=self.SizeT,
         )
         whitelist_path = self.segm_npz_path.replace('.npz', '_whitelistIDs.json')
-        success = self.whiteList.load(whitelist_path)
+        success = self.whitelist.load(whitelist_path, self.segm_data)
         if not success:
-            self.whiteList = None
+            self.whitelist = None
             
 
 class select_exp_folder:

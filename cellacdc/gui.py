@@ -18,7 +18,7 @@ from functools import partial
 from tqdm import tqdm
 from collections import Counter
 from natsort import natsorted
-from typing import Literal, Iterable, Dict, Any, List, Union, Tuple
+from typing import Literal, Iterable, Dict, Any, List, Union, Tuple, Set
 
 import time
 import cv2
@@ -6798,7 +6798,7 @@ class guiWin(QMainWindow):
             
             # Update data (rp, etc)
             self.update_rp(update_IDs=self.isNewID,
-                           wl_track_og_curr=self.autoIDcheckbox.isChecked())
+                           wl_track_og_curr=(not self.autoIDcheckbox.isChecked()))
             
             # Repeat tracking
             if self.autoIDcheckbox.isChecked():
@@ -7601,9 +7601,8 @@ class guiWin(QMainWindow):
         elif left_click and canWhitelistIDs:
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
-
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
-            printl(f'Clicked on ID {ID}')
+
             if ID == 0:
                 nearest_ID = self.nearest_nonzero(
                     self.get_2Dlab(posData.lab), y, x
@@ -7623,7 +7622,7 @@ class guiWin(QMainWindow):
             
             posData = self.data[self.pos_i]
 
-            if not posData.whiteList:
+            if not posData.whitelist:
                 wl_init = False
                 if not hasattr(self, 'tempWhitelistIDs'):
                     self.tempWhitelistIDs = set() # not updated, only use in this context
@@ -7632,7 +7631,7 @@ class guiWin(QMainWindow):
                     current_whitelist = self.tempWhitelistIDs
             else:
                 wl_init = True
-                current_whitelist = posData.whiteList.get(posData.frame_i)
+                current_whitelist = posData.whitelist.get(posData.frame_i)
 
             if ID in current_whitelist:
                 current_whitelist.remove(ID)
@@ -7641,12 +7640,12 @@ class guiWin(QMainWindow):
                 current_whitelist.add(ID)
                 self.highlightLabelID(ID)
             
-            self.whitelistIDsToolbar.whiteListLineEdit.setText(
+            self.whitelistIDsToolbar.whitelistLineEdit.setText(
                 current_whitelist
             )
             
             if wl_init:
-                posData.whiteList[posData.frame_i] = current_whitelist
+                posData.whitelist[posData.frame_i] = current_whitelist
             else:
                 self.tempWhitelistIDs = current_whitelist
 
@@ -12904,7 +12903,7 @@ class guiWin(QMainWindow):
                 roiLab, self.labelRoiSlice, posData.lab, posData.brushID
             )
 
-        self.update_rp(wl_track_og_curr=self.autoIDcheckbox.isChecked())
+        self.update_rp(wl_track_og_curr=(not self.autoIDcheckbox.isChecked()))
         
         # Repeat tracking
         if self.autoIDcheckbox.isChecked():
@@ -13128,6 +13127,8 @@ class guiWin(QMainWindow):
 
     #@exec_time
     def whitelistLoadOGLabs_cb(self):
+        """Generates a dialog to load the original (not whitelisted) labels
+        """
         posData = self.data[self.pos_i]
         curr_seg_path = posData.segm_npz_path
 
@@ -13161,17 +13162,32 @@ class guiWin(QMainWindow):
         self.whitelistLoadOGLabs(selected)
 
     @disableWindow
-    def whitelistLoadOGLabs(self, selected): # done
+    def whitelistLoadOGLabs(self, selected:str): # done
+        """Loads the original labels from the selected files"
+
+        Parameters
+        ----------
+        selected : str
+            Selected file name from the dialog.
+        """
         posData = self.data[self.pos_i]
         images_path = posData.images_path
 
         selected_path = os.path.join(images_path, selected)
-        posData.whiteList.loadOGLabs(selected_path)
+        posData.whitelist.loadOGLabs(selected_path)
         
         self.whitelistIDsToolbar.viewOGToggle.setCheckable(True)
 
     @disableWindow
-    def whitelistViewOGIDs(self, checked):
+    def whitelistViewOGIDs(self, checked:bool):
+        """Switch between selected and original labels.
+        Uses self.viewOriginalLabels to see what has to be done.
+
+        Parameters
+        ----------
+        checked : bool
+            True if the original labels have to be shown, False otherwise.
+        """
         switch_to_og = checked and not self.viewOriginalLabels
         switch_to_seg = not checked and self.viewOriginalLabels
 
@@ -13179,10 +13195,10 @@ class guiWin(QMainWindow):
             return
 
         posData = self.data[self.pos_i]
-        if posData.whiteList is None:
+        if posData.whitelist is None:
             return
         
-        if posData.whiteList._debug:
+        if posData.whitelist._debug:
             printl('whitelistViewOGIDs', checked)
      
         frame_i = posData.frame_i
@@ -13191,21 +13207,21 @@ class guiWin(QMainWindow):
         else:
             frames_range = [frame_i]
 
+        self.store_data(autosave=False)
         if switch_to_og:
             self.frameSetDisabled(True, why='Viewing original labels')
             self.viewOriginalLabels = True
 
             for i in frames_range:
                 posData.frame_i = i
-
                 self.get_data()
                 self.whitelistTrackOGCurr(frame_i=i)
 
-                og_frame = posData.whiteList.originalLabs[i]
+                og_frame = posData.whitelist.originalLabs[i]
                 segm_frame = posData.lab
 
-                for ID in posData.whiteList.whitelistIDs[i]: # update whitelisted contours
-                    if ID in posData.whiteList.originalLabsIDs[i]:
+                for ID in posData.whitelist.whitelistIDs[i]: # update whitelisted contours
+                    if ID in posData.whitelist.originalLabsIDs[i]:
                         og_frame[og_frame == ID] = 0
                     og_frame[segm_frame == ID] = ID
 
@@ -13224,38 +13240,67 @@ class guiWin(QMainWindow):
                 posData.frame_i = i
                 self.get_data()
                 try:
-                    posData.whiteList.originalLabs[i] = posData.lab.copy()
-                    posData.whiteList.originalLabsIDs[i] = set(posData.allData_li[i]['IDs'])
+                    posData.whitelist.originalLabs[i] = posData.lab.copy()
+                    posData.whitelist.originalLabsIDs[i] = set(posData.IDs)
                 except AttributeError:
                     lab = posData.segm_data[i].copy()
                     IDs = [obj.label for obj in skimage.measure.regionprops(lab)]
-                    posData.whiteList.originalLabs[i] = lab
-                    posData.whiteList.originalLabsIDs[i] = set(IDs)
+                    posData.whitelist.originalLabs[i] = lab
+                    posData.whitelist.originalLabsIDs[i] = set(IDs)
 
                 self.whitelistTrackCurrOG()
-                self.whitelistUpdateLab(frame_i=i)
+                self.whitelistUpdateLab(frame_i=i) #has update_rp and store data
     
-    def whitelistSetViewOGIDsToggle(self, checked):
+    def whitelistSetViewOGIDsToggle(self, checked: bool):
+        """Set the view original labels toggle button to checked or unchecked.
+        This also updates the self.viewOriginalLabels variable.
+        !!! Doesn't change the actually displayed labels, use self.whitelistViewOGIDs
+        to do that.!!!
+        
+        Parameters
+        ----------
+        checked : bool
+            True if the original labels are shown, False otherwise.
+        """
         self.viewOriginalLabels = checked
         self.whitelistIDsToolbar.viewOGToggle.setChecked(checked)
 
-    def whitelistAddNewIDsToggled(self, checked):
+    def whitelistAddNewIDsToggled(self, checked: bool):
+        """Will set self.addNewIDsWhitelistToggle to checked and call
+        whitelistAddNewIDs if checked is True.
+
+        Parameters
+        ----------
+        checked : bool
+            True if the add new IDs toggle is checked, False otherwise.
+        """
         self.addNewIDsWhitelistToggle = checked
         if checked:
             self.whitelistAddNewIDs(ignore_not_first_time=True)
             self.updateAllImages()
             self.whitelistIDsUpdateText()
 
-    def whitelistAddNewIDs(self, ignore_not_first_time=False):
+    def whitelistAddNewIDs(self, ignore_not_first_time:bool=False):
+        """Functionw white adds new IDs to the whitelist, based on the original labels.
+        It will check if the frame is visited the first time, unless 
+        ignore_not_first_time is True.
+        It does nothing if self.addNewIDsWhitelistToggle is False.
+
+        Parameters
+        ----------
+        ignore_not_first_time : bool, optional
+            Weather it should be checked if the frame is visited 
+            the first time, by default False
+        """
         mode = self.modeComboBox.currentText()
         if mode != 'Segmentation and Tracking':
             return
         
         posData = self.data[self.pos_i]
-        if posData.whiteList is None:
+        if posData.whitelist is None:
             return
 
-        if posData.whiteList._debug:
+        if posData.whitelist._debug:
             printl('whitelistAddNewIDs')
 
         posData = self.data[self.pos_i]
@@ -13266,12 +13311,25 @@ class guiWin(QMainWindow):
     
         if frame_i == 0:
             return
+        
 
-        posData.whiteList.addNewIDs(frame_i=frame_i,
-                                    allData_li=posData.allData_li,)
+        self.store_data(autosave=False)
+        self.get_data()
+        posData.whitelist.addNewIDs(frame_i=frame_i,
+                                    allData_li=posData.allData_li,
+                                    IDs_curr=posData.IDs,)
 
     #@exec_time
-    def whitelistIDsAccepted(self, whitelistIDs):
+    def whitelistIDsAccepted(self, 
+                             whitelistIDs: Set[int] | List[int]):
+        """Function which is called when the user accepts a whitelist.
+        Also innitializes the whitelist if it is not already initialized. (Aka not loaded)
+
+        Parameters
+        ----------
+        whitelistIDs : set | list
+            The accepted IDs from the whitelist dialog.
+        """
         # Store undo state before modifying stuff
         self.storeUndoRedoStates(False)
 
@@ -13279,24 +13337,25 @@ class guiWin(QMainWindow):
         self.whitelistSetViewOGIDsToggle(False)
         self.frameSetDisabled(False)
 
+        self.store_data(autosave=False)
         self.get_data()
         posData = self.data[self.pos_i]
 
-        if not posData.whiteList:
-            posData.whiteList = whitelist.Whitelist(
-                images_path=posData.images_path,
-                segm_data=posData.segm_data,
+        if not posData.whitelist:
+            posData.whitelist = whitelist.Whitelist(
                 total_frames=posData.SizeT,
             )
         
-        if posData.whiteList._debug:
+        if posData.whitelist._debug:
             printl('whitelistIDsAccepted', whitelistIDs)
 
         whitelistIDs = set(whitelistIDs)
 
         IDs_curr = set(posData.IDs)
-        posData.whiteList.IDsAccepted(
-            whitelistIDs, frame_i=posData.frame_i,
+        posData.whitelist.IDsAccepted(
+            whitelistIDs,
+            segm_data=posData.segm_data,
+            frame_i=posData.frame_i,
             allData_li=posData.allData_li,
             IDs_curr=IDs_curr,
         )
@@ -13310,11 +13369,22 @@ class guiWin(QMainWindow):
         self.keepIDsTempLayerLeft.clear()
 
     #@exec_time
-    def whitelistUpdateLab(self, frame_i=None): # this should also work for 3D i think...
+    def whitelistUpdateLab(self, frame_i: int=None): # this should also work for 3D i think...
+        """Updates the displayed lab based on the whitelist.
+
+        Parameters
+        ----------
+        frame_i : int, optional
+            frame which should be updated. If not provided, 
+            uses posData.frame_i, by default None
+        """
         mode = self.modeComboBox.currentText()
         if mode != 'Segmentation and Tracking':
             return
-        
+        if posData.whitelist is None:
+            return
+            
+        self.store_data(autosave=False)        
         posData = self.data[self.pos_i]
 
         if frame_i is None:
@@ -13324,10 +13394,9 @@ class guiWin(QMainWindow):
             og_frame_i = posData.frame_i
             posData.frame_i = frame_i
 
-        if posData.whiteList is None:
-            return
 
-        debug = posData.whiteList._debug
+
+        debug = posData.whitelist._debug
         if debug:
             printl('whitelistUpdateLab', frame_i, og_frame_i)
             myutils.print_call_stack()
@@ -13335,10 +13404,10 @@ class guiWin(QMainWindow):
         self.whitelistSetViewOGIDsToggle(False)
 
         self.get_data()
-        og_lab = posData.whiteList.originalLabs[frame_i]
+        og_lab = posData.whitelist.originalLabs[frame_i]
         curr_lab = posData.lab # or curr_lab = posData.lab???
 
-        whitelist = posData.whiteList.get(frame_i=frame_i)
+        whitelist = posData.whitelist.get(frame_i=frame_i)
         current_IDs = set(posData.IDs)
         missing_IDs = whitelist - current_IDs
         to_be_removed_IDs = current_IDs - whitelist
@@ -13347,9 +13416,12 @@ class guiWin(QMainWindow):
             printl(current_IDs, missing_IDs, to_be_removed_IDs)
 
         if curr_lab is None:
-            curr_lab = posData.segm_data[frame_i].copy()
+            try:
+                curr_lab = posData.segm_data[frame_i].copy()
+            except:
+                pass
             if curr_lab is None:
-                printl('No current lab')
+                printl('No current lab?')
                 curr_lab = np.zeros_like(og_lab)
 
         if debug:
@@ -13375,42 +13447,58 @@ class guiWin(QMainWindow):
         self.updateAllImages()
 
     def whitelistIDsUpdateText(self):
+        """Updates the text. Carefull, triggers whitelistLineEdit.textChanged!
+        """
         mode = self.modeComboBox.currentText()
         if mode != 'Segmentation and Tracking':
             return
 
         posData = self.data[self.pos_i]
-        if posData.whiteList is None:
+        if posData.whitelist is None:
             return
         
-        if posData.whiteList._debug:
+        if posData.whitelist._debug:
             printl('whitelistIDsUpdateText')
         
         frame_i = posData.frame_i
-        whitelist = posData.whiteList.get(frame_i=frame_i)
+        whitelist = posData.whitelist.get(frame_i=frame_i)
 
-        self.whitelistIDsToolbar.whiteListLineEdit.setText(whitelist)
+        self.whitelistIDsToolbar.whitelistLineEdit.setText(whitelist)
 
-    def whitelistTrackOGCurr(self, frame_i=None, 
-                             against_prev=False, 
-                             rp=None, lab=None):
+    def whitelistTrackOGCurr(self, frame_i:int=None, 
+                             against_prev:bool=False,
+                             lab:np.ndarray=None,
+                             rp:list=None,):
+        """Track the original labels in relation to the current (whitelisted) labels.
+        Parameters
+
+        Parameters
+        ----------
+        frame_i : int, optional
+            frame_i to be tracked, posData.frame_i if not provided, by default None
+        against_prev : bool, optional
+            if the original frame should be tracked against frame_i-1. 
+            Cannot be used with rp or lab, by default False
+        lab : np.ndarray, optional
+            lab to be tracked against, by default None
+        rp : list, optional
+            regionprops for this lab, by default None
+
+        Raises
+        ------
+        ValueError
+            Cannot provide both rp and lab when tracking against previous frame.
+            Instead only provide rp and lab, and dont set against_prev.
         """
-        Track the original labels in relation to the current (whitelisted) labels.
-        """
-        
         posData = self.data[self.pos_i]
-        if posData.whiteList is None:
+        if posData.whitelist is None:
             return
 
-        debug = posData.whiteList._debug or debug
+        debug = posData.whitelist._debug or debug
         if debug:
             myutils.print_call_stack()
             printl('whitelistTrackOGCurr')
 
-        if against_prev and (rp is not None or lab is not None):
-            raise ValueError('Cannot provide both rp and lab when tracking against previous frame.')
-        if rp and lab is None:
-            raise ValueError('Cannot provide rp without lab when tracking against previous frame.')
         if against_prev and (rp is not None or lab is not None):
             raise ValueError('Cannot provide both rp and lab when tracking against previous frame.'
             'Instead only provide rp and lab, and dont set against_prev.')
@@ -13427,23 +13515,24 @@ class guiWin(QMainWindow):
         if lab is not None and not rp:
             rp = skimage.measure.regionprops(lab)
         
-        if lab is None and not rp:
+        if lab is None:
             if debug:
                 printl('No lab and no rp provided.')
             if against_prev:
                 rp = posData.allData_li[frame_i-1]['regionprops']
                 lab = posData.allData_li[frame_i-1]['labels']
             else:
+                self.store_data(autosave=False)
                 if frame_i != og_frame_i:
                     posData.frame_i = frame_i
-
+                
                 self.get_data()
                 rp = posData.rp
                 lab = posData.lab
 
-        og_lab = posData.whiteList.originalLabs[frame_i]
+        og_lab = posData.whitelist.originalLabs[frame_i]
         og_rp = skimage.measure.regionprops(og_lab)
-        lab = lab.copy()
+        # lab = lab.copy()
 
         og_lab = CellACDC_tracker.track_frame(
                 lab, rp, og_lab, og_rp,
@@ -13452,42 +13541,49 @@ class guiWin(QMainWindow):
                 setBrushID_func=self.setBrushID
         )
 
-        posData.whiteList.originalLabs[frame_i] = og_lab
-        posData.whiteList.originalLabsIDs[frame_i] = {obj.label for obj in skimage.measure.regionprops(og_lab)}
+        posData.whitelist.originalLabs[frame_i] = og_lab
+        posData.whitelist.originalLabsIDs[frame_i] = {obj.label for obj in skimage.measure.regionprops(og_lab)}
 
         if frame_i != og_frame_i:
             posData.frame_i = og_frame_i
+            self.get_data()
 
-    def whitelistTrackCurrOG(self, frame_i=None, against_prev=False):
+    def whitelistTrackCurrOG(self, frame_i:int=None, against_prev:bool=False):
+        """Track the current (whitelisted) labels in relation to the original labels.
+
+        Parameters
+        ----------
+        frame_i : int, optional
+            frame_i to be tracked, posData.frame_i if not provided, by default None
+        against_prev : bool, optional
+            if the original frame should be tracked against frame_i-1. 
         """
-        Track the current (whitelisted) labels in relation to the original labels.
-        """
-        
         posData = self.data[self.pos_i]
-        if posData.whiteList is None:
+        if posData.whitelist is None:
             return
 
-        if posData.whiteList._debug:
+        if posData.whitelist._debug:
             printl('whitelistTrackCurrOG', frame_i, against_prev)
 
-        og_frame = posData.frame_i
         if frame_i is None:
             frame_i = posData.frame_i
-        
-        if frame_i != og_frame:
-            posData.frame_i = frame_i
 
         if against_prev and frame_i == 0:
             return
+
+        og_frame = posData.frame_i
+        self.store_data(autosave=False)
+        if frame_i != og_frame:
+            posData.frame_i = frame_i
         
         self.get_data()
         lab = posData.lab
         rp = posData.rp
 
         if against_prev:
-            og_lab = posData.whiteList.originalLabs[frame_i-1]
+            og_lab = posData.whitelist.originalLabs[frame_i-1]
         else:
-            og_lab = posData.whiteList.originalLabs[frame_i]
+            og_lab = posData.whitelist.originalLabs[frame_i]
 
         og_rp = skimage.measure.regionprops(og_lab)
 
@@ -13510,6 +13606,15 @@ class guiWin(QMainWindow):
     def whitelistSyncIDsOG(self, 
                            frame_is: List[int]=None,
                            against_prev: bool=False,):
+        """Interates over the frames and calls whitelistTrackOGCurr for each frame.
+
+        Parameters
+        ----------
+        frame_is : List[int], optional
+            list of frame_i, if None goes through all, by default None
+        against_prev : bool, optional
+            if the original frame should be tracked against frame_i-1. 
+        """
         posData = self.data[self.pos_i]
         if frame_is is None:
             frame_is = range(posData.SizeT)
@@ -13518,35 +13623,52 @@ class guiWin(QMainWindow):
             self.whitelistTrackOGCurr(frame_i=frame_i, against_prev=against_prev)
 
     @exec_time
-    def whitelistInnitNewFrames(self, frame_i=None, force=False, track_og_curr=True):
-        """
-        Initialize the whitelist for a new frame.
+    def whitelistInnitNewFrames(self, frame_i:int=None, force:bool=False, 
+                                track_og_curr:bool=True):
+        """Initialize the whitelist for a new frame. The class whitelist keeps track
+        of the innit frames and doesnt try to innit them again, unless forced.
+        Does not innit the class!
+
+        Parameters
+        ----------
+        frame_i : int, optional
+            frame_i to be innit, posData.frame_i if not provided, by default None
+        force : bool, optional
+            if the innit should be forced, by default False
+        track_og_curr : bool, optional
+            If the not whitelisted frame should be tracked 
+            against the previous current frame, by default True
+
+        Returns
+        -------
+        bool
+            if the frame was new or not
         """
 
         posData = self.data[self.pos_i]
-        if posData.whiteList is None:
+        if posData.whitelist is None:
             return
 
         if frame_i is None:
             frame_i = posData.frame_i
         
-        if posData.whiteList._debug:
+        if posData.whitelist._debug:
             printl('whitelistInnitNewFrames', frame_i, force)
 
 
         if track_og_curr:
             self.whitelistTrackOGCurr(frame_i=frame_i, against_prev=True)
 
-        new_frame = posData.whiteList.innitNewFrames(
+        new_frame = posData.whitelist.innitNewFrames(
             frame_i=frame_i, force=force)
 
         self.whitelistAddNewIDs()
         return new_frame
 
     def whitelistPropagateIDs(self, 
-                              new_whitelist: set[int] = None, 
-                              IDs_to_add: set[int] = None,
-                              IDs_to_remove: set[int] = None,
+                              new_whitelist: Set[int] | List[int] = None, 
+                              IDs_to_add: Set[int] = None,
+                              IDs_to_remove: Set[int] = None,
                               frame_i: int = None,
                               try_create_new_whitelists: bool = False,
                               curr_frame_only: bool = False,
@@ -13554,9 +13676,10 @@ class guiWin(QMainWindow):
                               only_future_frames: bool = True,
                               allow_only_current_IDs: bool = True,
                               track_og_curr: bool = True,
-                              IDs_curr: set[int] = None,
-                              rp: list = None,
-                              lab: np.ndarray = None,
+                              IDs_curr: Set[int] | List[int] = None,
+                              index_lab_combo: Tuple[int, np.ndarray] = None,
+                              curr_rp: list = None,
+                              curr_lab: np.ndarray = None,
                               ):
         """
         Propagates whitelist IDs across frames in the dataset. (Doesnt update labs)
@@ -13570,34 +13693,61 @@ class guiWin(QMainWindow):
         If force_not_dynamic_update is True, the function will propagate the entire whitelist to 
         frames, and not only the IDs which were added or removed.
 
+        Hierarchy of arguments for current_IDs:
+        1. IDs_curr (if provided)
+        (2. index_lab_combo (if provided) (is also passed to not current frame only 
+        propagation if that propagation is necessary, and used when the frame_i matches))
+        3. curr_rp (if provided)
+        4. curr_lab (if provided)
+        5. allData_li
+
         Parameters
         ----------
-        new_whitelistIDs : set[int], optional
+        new_whitelist : Set[int] | List[int], optional
             A new set of whitelist IDs to replace the current whitelist. Cannot be 
-            used together with `IDs_to_add` or `IDs_to_remove`.
-        IDs_to_add : set[int], optional
-            A set of IDs to add to the current whitelist.
-        IDs_to_remove : set[int], optional
-            A set of IDs to remove from the current whitelist.
+            used together with `IDs_to_add` or `IDs_to_remove`, by default None.
+        IDs_to_add : Set[int], optional
+            A set of IDs to add to the current whitelist, by default None.
+        IDs_to_remove : Set[int], optional
+            A set of IDs to remove from the current whitelist, by default None.
         frame_i : int, optional
-            The frame index for the propagation. If None, uses the current frame index.
+            The frame index for the propagation. 
+            If None, uses posData.frame_i, by default None.
         try_create_new_whitelists : bool, optional
             If True, creates new whitelist entries for frames that do not already 
-            have them. Should only be necessary when its initialized...
+            have them. Should only be necessary when its initialized, by default False.
         curr_frame_only : bool, optional
-            If True, only updates the whitelist for the current frame. (See description of function)
+            If True, only updates the whitelist for the current frame. 
+            (See description of function), by default False.
         force_not_dynamic_update : bool, optional
-            If True, disables dynamic updates to the whitelist. (See description of function)
+            If True, disables dynamic updates to the whitelist. 
+            (See description of function), by default False.
         only_future_frames : bool, optional
-            If True, propagates changes only to future frames.
+            If True, propagates changes only to future frames, by default True.
         allow_only_current_IDs : bool, optional
-            If True, only allows IDs that are present in the current frame to be added to the whitelist.
-        IDs_curr : set[int], optional
-            A set of IDs for the current frame.
-        # rp: list, optional
-        #     Region properties for the current frame. If None, will be calculated from the current labels.
-        # lab: np.ndarray, optional
-        #     Labels for the current frame. If None, will be calculated from the current labels.
+            If True, only allows IDs that are present in the current frame 
+            to be added to the whitelist, by default True.
+        track_og_curr : bool, optional
+            If True, tracks the original labels in relation to the current
+            (whitelisted) labels. This is done by calling whitelistTrackOGCurr.
+            If its a new frame, this is done in whitelistInnitNewFrames against the 
+            previous frame,
+            by default True.
+        IDs_curr : Set[int] | List[int], optional
+            A set of IDs for the current frame, if None, 
+            will be calculated from other stuff (see description), by default None.
+        index_lab_combo : Tuple[int, np.ndarray], optional
+            Combination of frame_i and current frame, 
+            Used to get IDs_curr (see description), when the frame_i matches
+            (is also passed to not current frame only 
+            propagation if that propagation is necessary, 
+            and used when the frame_i matches), by default None.
+        curr_rp : list, optional
+            Region properties for the current frame. For IDs_curr. (see description), 
+            by default None.
+        curr_lab : np.ndarray, optional
+            Labels for the current frame for IDs_curr. (see description),
+            by default None.
 
         Raises
         ------
@@ -13623,39 +13773,38 @@ class guiWin(QMainWindow):
 
         """
         #doesnt update the frame displayed, only wl
+        try: # safety XD
+            IDs_curr = IDs_curr.copy()
+        except AttributeError:
+            pass
+            
+        IDs_curr = set(IDs_curr) if IDs_curr is not None else None
 
         posData = self.data[self.pos_i]
 
-        debug = posData.whiteList._debug if posData.whiteList is not None else False
+        debug = posData.whitelist._debug if posData.whitelist is not None else False
 
         if debug:
             printl('Propagating IDs...')
             myutils.print_call_stack()
             printl(new_whitelist, IDs_to_add, IDs_to_remove)
 
-        if posData.whiteList is None:
+        if posData.whitelist is None:
             return
 
         # og_frame_i = posData.frame_i
         if frame_i is None:
             frame_i = posData.frame_i
-        # elif og_frame_i == frame_i:
-        #     pass
-        # else:
-        #     posData.frame_i = frame_i
 
-        # if IDs_curr is None:
-        #     self.get_data()
-        #     IDs_curr = set(posData.IDs)
-
-        new_frame = self.whitelistInnitNewFrames(frame_i=frame_i, track_og_curr=track_og_curr)
+        new_frame = self.whitelistInnitNewFrames(frame_i=frame_i, 
+                                                 track_og_curr=track_og_curr)
 
         if track_og_curr and not new_frame:
-            self.whitelistTrackOGCurr(frame_i=frame_i, rp=rp, lab=lab)
+            self.whitelistTrackOGCurr(frame_i=frame_i, rp=curr_rp, lab=curr_lab)
 
-        posData.whiteList.propagateIDs(
-            frame_i=frame_i,
-            allData_li=posData.allData_li,
+        posData.whitelist.propagateIDs(
+            frame_i,
+            posData.allData_li,
             new_whitelist=new_whitelist,
             IDs_to_add=IDs_to_add,
             IDs_to_remove=IDs_to_remove,
@@ -13665,15 +13814,27 @@ class guiWin(QMainWindow):
             only_future_frames=only_future_frames,
             allow_only_current_IDs=allow_only_current_IDs,
             IDs_curr=IDs_curr,
+            index_lab_combo=index_lab_combo,
+            curr_rp=curr_rp,
+            curr_lab=curr_lab,
         )
             
-
         # printl(posData.whitelistIDs[frame_i])
         # posData.frame_i = og_frame_i
         self.whitelistIDsUpdateText()
 
     #@exec_time
-    def whitelistIDs_cb(self, checked):
+    def whitelistIDs_cb(self, checked:bool):
+        """Callback for when the whitelist IDs button is checked or unchecked.
+        Initialises the pointlayer and the whitelist IDs toolbar if checked.
+
+        Parameters
+        ----------
+        checked : bool
+            True if the whitelist IDs button is checked, False otherwise.
+        """
+        self.store_data(autosave=False)
+
         if checked:
             self.initKeepObjLabelsLayers()
             self.disconnectLeftClickButtons()
@@ -13686,31 +13847,65 @@ class guiWin(QMainWindow):
         self.whitelistUpdateTempLayer()
 
     #@exec_time
-    def whitelistHighlightIDs(self, remove=True):
-        if not remove:
+    def whitelistHighlightIDs(self, checked:bool=True):
+        """Highlights the IDs in the current frame based on the whitelist.
+
+        Parameters
+        ----------
+        checked : bool, optional
+            If False, will delete all highlights, by default True
+        """
+        if not checked:
             self.removeHighlightLabelID()
             return
         
         posData = self.data[self.pos_i]
 
-        if posData.whiteList is None:
+        if posData.whitelist is None:
             if not hasattr(self, 'tempWhitelistIDs'):
                 self.tempWhitelistIDs = set() # not updated, only use in this context
                 current_whitelist = self.tempWhitelistIDs
             else:
                 current_whitelist = self.tempWhitelistIDs
         else:
-            current_whitelist = posData.whiteList.get(
+            current_whitelist = posData.whitelist.get(
                 frame_i=posData.frame_i)
         
         for ID in current_whitelist:
             self.highlightLabelID(ID)
         
     #@exec_time    
-    def whitelistIDsChanged(self, whitelistIDs):
-        posData = self.data[self.pos_i]
+    def whitelistIDsChanged(self, 
+                            whitelistIDs: Set[int] | List[int], 
+                            debug: bool=False):
+        """Callback for when the whitelist IDs are changed. 
+        This is called when the user changed the IDs in the whitelist IDs toolbar
+        (or when its programmatically changed, but if its not 
+        visible it should return instantly)
+        Will update the temp layer and also complain when IDs 
+        are not valid/present in the current lab
+
+        Parameters
+        ----------
+        whitelistIDs : set | list
+            The IDs that are currently in the whitelist.
+        debug : bool, optional
+            debug, by default False
+        """
+        if not self.whitelistIDsButton.isChecked():
+            return
+
+        self.store_data(autosave=False)
         self.get_data()
-        if posData.whiteList is None:
+        
+        posData = self.data[self.pos_i]
+
+        if posData.whitelist:
+            debug = posData.whitelist._debug
+        if debug:
+            printl('whitelistIDsChanged', whitelistIDs)
+
+        if posData.whitelist is None:
             wl_init = False
             if not hasattr(self, 'tempWhitelistIDs'):
                 self.tempWhitelistIDs = set() # not updated, only use in this context
@@ -13719,16 +13914,15 @@ class guiWin(QMainWindow):
                 current_whitelist = self.tempWhitelistIDs
         else:
             wl_init = True
-            current_whitelist = posData.whiteList.get(
+            current_whitelist = posData.whitelist.get(
                 frame_i=posData.frame_i)
 
         current_whitelist_copy = current_whitelist.copy()
-        if not hasattr(posData, 'originalLabsIDs') or posData.whiteList.originalLabsIDs is None:
-            possible_IDs = posData.IDs
+        if not hasattr(posData, 'originalLabsIDs') or posData.whitelist.originalLabsIDs is None:
+            possible_IDs = posData.IDs.copy()
         else:
-            possible_IDs = posData.whiteList.originalLabsIDs[posData.frame_i]
-            curr_IDs = posData.IDs
-            possible_IDs.update(curr_IDs)
+            possible_IDs = posData.whitelist.originalLabsIDs[posData.frame_i]
+            possible_IDs.update(posData.IDs)
 
         isAnyIDnotExisting = False
         for ID in whitelistIDs:
@@ -13748,33 +13942,38 @@ class guiWin(QMainWindow):
                 self.removeHighlightLabelID(IDs=[ID])
 
         if wl_init:
-            posData.whiteList.whitelistIDs[posData.frame_i] = current_whitelist
+            posData.whitelist.whitelistIDs[posData.frame_i] = current_whitelist
         else:
             self.tempWhitelistIDs = current_whitelist
 
         self.whitelistUpdateTempLayer()
         if isAnyIDnotExisting:
-            self.whitelistIDsToolbar.whiteListLineEdit.warnNotExistingID()
+            self.whitelistIDsToolbar.whitelistLineEdit.warnNotExistingID()
         else:
-            self.whitelistIDsToolbar.whiteListLineEdit.setInstructionsText()
+            self.whitelistIDsToolbar.whitelistLineEdit.setInstructionsText()
 
     #@exec_time
     def whitelistUpdateTempLayer(self):
+        """Updates the temp layer with the current whitelist IDs.
+        """
         if not self.whitelistIDsButton.isChecked():
             self.keepIDsTempLayerLeft.clear()
             return
 
         keptLab = np.zeros_like(self.currentLab2D)
+
+        self.store_data(autosave=False)
         self.get_data()
+
         posData = self.data[self.pos_i]
-        if posData.whiteList is None:
+        if posData.whitelist is None:
             if not hasattr(self, 'tempWhitelistIDs'):
                 self.tempWhitelistIDs = set() # not updated, only use in this context
                 current_whitelist = self.tempWhitelistIDs
             else:
                 current_whitelist = self.tempWhitelistIDs
         else:
-            current_whitelist = posData.whiteList.get(posData.frame_i)
+            current_whitelist = posData.whitelist.get(posData.frame_i)
 
         for obj in posData.rp:
             if obj.label not in current_whitelist:
@@ -13969,13 +14168,13 @@ class guiWin(QMainWindow):
         # Make sure that the brushed ID is always a new one based on
         # already visited frames
         posData = self.data[self.pos_i]
-        wl_innit = posData.whiteList and posData.whiteList.whitelistIDs
+        wl_innit = posData.whitelist and posData.whitelist.whitelistIDs
         if useCurrentLab:
             IDs_tot = set(posData.IDs)
             if wl_innit:
-                IDs_tot.update(posData.whiteList.originalLabsIDs[posData.frame_i])
-                if posData.whiteList.whitelistIDs[posData.frame_i]:
-                    IDs_tot.update(posData.whiteList.whitelistIDs[posData.frame_i])
+                IDs_tot.update(posData.whitelist.originalLabsIDs[posData.frame_i])
+                if posData.whitelist.whitelistIDs[posData.frame_i]:
+                    IDs_tot.update(posData.whitelist.whitelistIDs[posData.frame_i])
             newID = max(IDs_tot, default=0)
         else:
             newID = 0
@@ -13987,9 +14186,9 @@ class guiWin(QMainWindow):
                 rp = storedData['regionprops']
                 IDs_tot = {obj.label for obj in rp}
                 if wl_innit:
-                    IDs_tot.update(posData.whiteList.originalLabsIDs[frame_i])
-                    if posData.whiteList.whitelistIDs[frame_i]:
-                        IDs_tot.update(posData.whiteList.whitelistIDs[frame_i])
+                    IDs_tot.update(posData.whitelist.originalLabsIDs[frame_i])
+                    if posData.whitelist.whitelistIDs[frame_i]:
+                        IDs_tot.update(posData.whitelist.whitelistIDs[frame_i])
                 _max = max(IDs_tot, default=0)
                 if _max > newID:
                     newID = _max
@@ -22183,13 +22382,13 @@ class guiWin(QMainWindow):
             accepted_lost_centroids = self.getTrackedLostIDs()
             new_IDs = posData.IDs
             added_IDs = set(new_IDs) - set(old_IDs)
-            removed_IDs = set(old_IDs) - set(new_IDs) - set(accepted_lost_centroids)
+            removed_IDs = set(old_IDs) - set(new_IDs) - set(accepted_lost_centroids) # maybe yes, maybe no?
             if debug:
                 printl(added_IDs, removed_IDs)
             self.whitelistPropagateIDs(IDs_to_add=added_IDs, IDs_to_remove=removed_IDs,
                                        curr_frame_only=True, IDs_curr=new_IDs,
-                                       rp =posData.rp, lab=posData.lab,
-                                       track_og_curr=wl_track_og_curr,)
+                                       track_og_curr=wl_track_og_curr,
+                                       curr_lab=posData.lab, curr_rp=posData.rp)
 
     def extendLabelsLUT(self, lenNewLut):
         posData = self.data[self.pos_i]
@@ -29362,7 +29561,7 @@ class guiWin(QMainWindow):
             return "", True, True
 
         posData = self.data[self.pos_i]
-        if not posData.whiteList:
+        if not posData.whitelist:
             return "", True, True
         
         help_txt = html_utils.paragraph(f"""

@@ -9760,7 +9760,7 @@ class RescaleImageJroisGroupbox(QGroupBox):
         }
         return sizes
 
-class WhiteListLineEdit(KeepIDsLineEdit):
+class WhitelistLineEdit(KeepIDsLineEdit):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -9781,15 +9781,15 @@ class WhitelistIDsToolbar(ToolBar):
     def __init__(self, *args) -> None:
         super().__init__(*args)
 
-        whiteListLineEditLabel = QLabel('Whitelist IDs: ')
-        self.addWidget(whiteListLineEditLabel)
+        whitelistLineEditLabel = QLabel('Whitelist IDs: ')
+        self.addWidget(whitelistLineEditLabel)
         
-        self.whiteListLineEdit = WhiteListLineEdit(
-            whiteListLineEditLabel, parent=self
+        self.whitelistLineEdit = WhitelistLineEdit(
+            whitelistLineEditLabel, parent=self
         )
-        self.whiteListLineEdit.sigEnterPressed.connect(self.accept)
-        self.whiteListLineEdit.sigIDsChanged.connect(self.emitWhitelistChanged)
-        self.addWidget(self.whiteListLineEdit)
+        self.whitelistLineEdit.sigEnterPressed.connect(self.accept)
+        self.whitelistLineEdit.sigIDsChanged.connect(self.emitWhitelistChanged)
+        self.addWidget(self.whitelistLineEdit)
 
         # accept button
         self.acceptButton = self.addButton(':greenTick.svg')
@@ -9849,7 +9849,7 @@ class WhitelistIDsToolbar(ToolBar):
     
     def accept(self):
         try:
-            whitelist = self.whiteListLineEdit.IDs
+            whitelist = self.whitelistLineEdit.IDs
         except AttributeError as e:
             if "has no attribute 'IDs'" in str(e):
                 whitelist = list()

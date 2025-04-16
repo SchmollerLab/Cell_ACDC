@@ -638,16 +638,14 @@ class saveDataWorker(QObject):
                 pass
 
             if not self.do_not_save_og_whitelist:
-                original_frames = np.array(list(posData.whiteList.originalLabs.values()))
                 og_save_path = os.path.join(
                     posData.images_path,  self.append_name_og_whitelist
                 )
-                np.savez_compressed(
-                    og_save_path, np.squeeze(original_frames))
+                posData.whitelist.saveOGLabs(og_save_path)
             
-            if posData.whiteList:
+            if posData.whitelist:
                 whitelistIDs_path = posData.segm_npz_path.replace('.npz', '_whitelistIDs.json')
-                posData.whiteList.save(whitelistIDs_path)
+                posData.whitelist.save(whitelistIDs_path)
                 
             if posData.segmInfo_df is not None:
                 try:
