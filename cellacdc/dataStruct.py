@@ -2093,7 +2093,7 @@ class InitFijiMacro:
         """)
         msg = widgets.myMessageBox(wrapText=False)
         _, selectFijiButton, downloadFijiButton = msg.question(
-            self, 'Select Fiji location', txt, 
+            self.acdcLauncher, 'Select Fiji location', txt, 
             buttonsTexts=(
                 'Cancel', 'Select Fiji location', 'Download Fiji for me'
             ), 
@@ -2110,7 +2110,7 @@ class InitFijiMacro:
     def selectFijiLocation(self, checked=True, messagebox=None):
         import qtpy.compat
         filepath = qtpy.compat.getopenfilename(
-            parent=self, 
+            parent=messagebox, 
             caption='Select Fiji.app location', 
             filters='Application (*.app);;All Files (*)'
         )[0]
