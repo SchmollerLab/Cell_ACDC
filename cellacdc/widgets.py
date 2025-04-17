@@ -601,6 +601,11 @@ class movePushButton(PushButton):
         super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':folder-move.svg'))
 
+class DownloadPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setIcon(QIcon(':download.svg'))
+
 class showInFileManagerButton(PushButton):
     def __init__(self, *args, setDefaultText=False, **kwargs):
         super().__init__(*args, **kwargs)

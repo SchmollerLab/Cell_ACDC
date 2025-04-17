@@ -15337,7 +15337,10 @@ class InitFijiMacroDialog(QBaseDialog):
         txt = html_utils.paragraph("""
             Enter the channels name. Separate multiple channels with a comma.<br><br>
             The channel names will be used to name the individual TIFF files 
-            (one for each channel).
+            (one for each channel).<br><br>
+            Make sure that you write the <b>channels in the right order</b>. 
+            If you are unsure, open the file in Fiji first<br> 
+            and check the order of channels.
         """)
         msg = widgets.myMessageBox(wrapText=False)
         msg.information(self, 'Files structure info', txt)
