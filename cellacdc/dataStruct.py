@@ -1672,6 +1672,15 @@ class createDataStructWin(QMainWindow):
         from cellacdc import acdc_bioio_bioformats as bioformats
         raw_filepath = os.path.join(raw_src_path, raw_filenames[0])
         
+        bioformats.install.install_reader_dependencies(
+            raw_filepath, 
+            exception=Exception(
+                'Failed installing reader dependencies from the GUI, '
+                'trying from terminal...'
+            ),
+            qparent=self
+        )
+        
         import subprocess
         from . import _process
         
