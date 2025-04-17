@@ -4035,11 +4035,14 @@ def format_IDs(IDs):
     return text
 
 
-def print_call_stack(debug=True):
+def print_call_stack(debug=True, depth=None):
     if not debug:
         return
     stack = traceback.format_stack()
     stack = stack[:-1]
+    if depth:
+        depth = depth + 1
+        stack = stack[-depth:] 
     print("Call stack:")
     for line in stack:
         print(line.strip())

@@ -4,6 +4,7 @@ import skimage.measure
 from . import printl, myutils
 import json
 from typing import Set, List, Tuple
+import time
 
 
 class Whitelist:
@@ -96,7 +97,10 @@ class Whitelist:
         #since I changed the originalLabs to be a np.ndarray
         np.savez_compressed(save_path, self.originalLabs)
     
-    def load(self, whitelist_path:str , segm_data:np.ndarray):
+    def load(self, whitelist_path:str, 
+             segm_data:np.ndarray,
+             allData_li:list=None,
+             ):
         """Loads the whitelist from a json file.
         If the file does not exist, it initializes the whitelist to None.
         If the file exists, it loads the whitelist and initializes 
@@ -109,6 +113,9 @@ class Whitelist:
             one provided in save)
         segm_data : np.ndarray
             segmentation data for the video
+        allData_li : list, optional
+            See rest of ACDC. posData.allData_li, by default None
+            Used to get og IDs
 
         Returns
         -------
@@ -139,11 +146,17 @@ class Whitelist:
             return False
             
         self.originalLabs = segm_data.copy()
-        self.originalLabsIDs = [{obj.label for obj in 
-                                 skimage.measure.regionprops(
-                                     self.originalLabs[frame_i])
-                                     }
-                                 for frame_i in self.total_frames]
+
+        self.originalLabsIDs = [None] * len(self.total_frames)
+        for frame_i in self.total_frames:
+            try:
+                originalLabsIDs_frame_i = set(allData_li[frame_i]['IDs'])
+            except AttributeError:
+                originalLabsIDs_frame_i = None
+            if originalLabsIDs_frame_i is None:
+                originalLabsIDs_frame_i = {obj.label for obj in skimage.measure.regionprops(
+                                        self.originalLabs[frame_i])}
+            self.originalLabsIDs[frame_i] = originalLabsIDs_frame_i
         return True
 
     def save(self, whitelist_path:str):
@@ -160,7 +173,7 @@ class Whitelist:
         if not self.whitelistIDs:
             return
         wl_copy = self.whitelistIDs.copy()
-        for key, val in wl_copy:
+        for key, val in wl_copy.items():
             if val is None:
                 wl_copy[key] = "None"
             else:
@@ -261,13 +274,42 @@ class Whitelist:
                 i: None for i in self.total_frames
             }
 
+        if IDs_curr:
+            if self._debug:
+                printl('Using IDs_curr')
+            try:
+                IDs_curr = IDs_curr.copy()
+            except AttributeError:
+                pass
+            IDs_curr = set(IDs_curr)
+        elif index_lab_combo and index_lab_combo[0] == frame_i:
+            lab = index_lab_combo[1]
+            if self._debug:
+                printl('Using index_lab_combo')
+            IDs_curr = {obj.label for obj in skimage.measure.regionprops(lab)}
+        elif curr_rp is not None:
+            IDs_curr = {obj.label for obj in curr_rp}
+            if self._debug:
+                printl('Using rp')
+        elif curr_lab is not None:
+            lab = curr_lab
+            if self._debug:
+                printl('Using curr_lab')
+            IDs_curr = {obj.label for obj in skimage.measure.regionprops(lab)}
+        else:
+            IDs_curr = allData_li[frame_i]['IDs']
+            if self._debug:
+                printl('Using allData_li')
+            
+            IDs_curr = set(IDs_curr)
+
         if self.originalLabs is None:
             self.originalLabs = np.zeros_like(segm_data)
             self.originalLabsIDs = []
             for i in self.total_frames:
                 if i == frame_i and curr_lab is not None:
                     self.originalLabs[i] = curr_lab.copy()
-                    self.originalLabsIDs.append({obj.label for obj in skimage.measure.regionprops(curr_lab)})
+                    self.originalLabsIDs.append(IDs_curr)
                     continue
                 try:
                     # if allData_li:
@@ -276,7 +318,7 @@ class Whitelist:
                     #     lab = labs[i].copy()
 
                     self.originalLabs[i] = lab
-                    self.originalLabsIDs.append({obj.label for obj in skimage.measure.regionprops(lab)})
+                    self.originalLabsIDs.append(allData_li[i]['IDs'])
                 except AttributeError:
                     lab = segm_data[i].copy()
                     self.originalLabs[i] = lab
@@ -565,7 +607,7 @@ class Whitelist:
             elif self.whitelistOriginalFrame_i != frame_i:
                 if self._debug:
                     printl('Frame changed, whitelist was not propagated, propagating...')
-                self.propagateIDs(frame_i,
+                self.propagateIDs(self.whitelistOriginalFrame_i,
                                   allData_li,
                                   index_lab_combo=index_lab_combo)
         else:
@@ -573,7 +615,7 @@ class Whitelist:
                 if self.whitelistOriginalFrame_i != frame_i:
                     if self._debug:
                         printl('Frame changed, whitelist was not propagated, propagating...')
-                    self.propagateIDs(frame_i,
+                    self.propagateIDs(self.whitelistOriginalFrame_i,
                                       allData_li,
                                       index_lab_combo=index_lab_combo)
                 else:

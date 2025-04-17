@@ -8167,7 +8167,7 @@ class guiWin(QMainWindow):
 
         extra_types = [float, float, float, float]
 
-        extra_defaults = [0.5, 0.4, 0.5, 1.]
+        extra_defaults = [0.5, 0.8, 0.5, 1.]
 
         extra_desc = ['Overlap threshold with other already segemented cells over which newly segmented cells are discarded', 
                     'Padding of the box used for new segmentation around the segmentation from the previous frame', 
@@ -8931,6 +8931,7 @@ class guiWin(QMainWindow):
         for action in self.keepToolActiveActions.values():
             action.setChecked(checked)
 
+        data_loaded = True
         if not hasattr(self, 'data'):
             data_loaded = False
             try:
@@ -12514,7 +12515,7 @@ class guiWin(QMainWindow):
         self.lostObjImage[mask] = 0
         self.set_2Dlab(lab2D)
     
-    def updateLostNewCurrentIDs(self, update_whitelist=True):
+    def updateLostNewCurrentIDs(self):
         posData = self.data[self.pos_i]
         
         prev_IDs = self.getPrevFrameIDs()  
@@ -13101,7 +13102,18 @@ class guiWin(QMainWindow):
 
         # QTimer.singleShot(300, self.autoRange)
 
-    def frameSetDisabled(self, disable=False, why=""):
+    def frameSetDisabled(self, disable:bool=False, why:str=""):
+        """Disables the frame navigation buttons and scrollbar.
+        This is used when the user is not allowed to navigate through frames
+        Call again to unlock it again. Also sets tooltips to inform the user
+        
+        Parameters
+        ----------
+        disable : bool, optional
+            if the navigation should be disabled, by default False
+        why : str, optional
+            set tooltip of scrollbar to tell user why its disabled, by default ""
+        """
         self.prevAction.setDisabled(disable)
         self.nextAction.setDisabled(disable)
         self.navigateScrollBar.setDisabled(disable)
@@ -13229,7 +13241,7 @@ class guiWin(QMainWindow):
                 self.update_rp(wl_update=False)
                 self.store_data(autosave=False)
 
-            self.setLostNewOldPrevIDs()
+            self.setAllTextAnnotations()
             self.updateAllImages()
 
         elif switch_to_seg:
@@ -13248,7 +13260,7 @@ class guiWin(QMainWindow):
                     posData.whitelist.originalLabs[i] = lab
                     posData.whitelist.originalLabsIDs[i] = set(IDs)
 
-                self.whitelistTrackCurrOG()
+                # self.whitelistTrackCurrOG()
                 self.whitelistUpdateLab(frame_i=i) #has update_rp and store data
     
     def whitelistSetViewOGIDsToggle(self, checked: bool):
@@ -13300,7 +13312,9 @@ class guiWin(QMainWindow):
         if posData.whitelist is None:
             return
 
-        if posData.whitelist._debug:
+        debug = posData.whitelist._debug
+
+        if debug:
             printl('whitelistAddNewIDs')
 
         posData = self.data[self.pos_i]
@@ -13496,9 +13510,10 @@ class guiWin(QMainWindow):
             return
 
         debug = posData.whitelist._debug
+
         if debug:
-            myutils.print_call_stack()
-            printl('whitelistTrackOGCurr')
+            myutils.print_call_stack(depth=2)
+            printl('whitelistTrackOGCurr', against_prev)
 
         if against_prev and (rp is not None or lab is not None):
             raise ValueError('Cannot provide both rp and lab when tracking against previous frame.'
@@ -13535,9 +13550,11 @@ class guiWin(QMainWindow):
         og_rp = skimage.measure.regionprops(og_lab)
         # lab = lab.copy()
 
+        denom_overlap_matrix = 'union' if not against_prev else 'area_prev'
+
         og_lab = CellACDC_tracker.track_frame(
                 lab, rp, og_lab, og_rp,
-                denom_overlap_matrix='union',
+                denom_overlap_matrix=denom_overlap_matrix,
                 posData = posData,
                 setBrushID_func=self.setBrushID
         )
@@ -13588,9 +13605,11 @@ class guiWin(QMainWindow):
 
         og_rp = skimage.measure.regionprops(og_lab)
 
+        denom_overlap_matrix = 'union' if not against_prev else 'area_prev'
+
         lab = CellACDC_tracker.track_frame(
                 og_lab, og_rp, lab, rp,
-                denom_overlap_matrix='union',
+                denom_overlap_matrix=denom_overlap_matrix,
                 posData = posData,
                 setBrushID_func=self.setBrushID
         )
@@ -13623,7 +13642,7 @@ class guiWin(QMainWindow):
         for frame_i in frame_is:
             self.whitelistTrackOGCurr(frame_i=frame_i, against_prev=against_prev)
 
-    @exec_time
+    # @exec_time
     def whitelistInnitNewFrames(self, frame_i:int=None, force:bool=False, 
                                 track_og_curr:bool=True):
         """Initialize the whitelist for a new frame. The class whitelist keeps track
@@ -13846,6 +13865,10 @@ class guiWin(QMainWindow):
         self.whitelistHighlightIDs(checked)
         self.whitelistIDsUpdateText()
         self.whitelistUpdateTempLayer()
+
+        if not checked:
+            self.setLostNewOldPrevIDs()
+            self.updateAllImages()
 
     #@exec_time
     def whitelistHighlightIDs(self, checked:bool=True):
@@ -17687,7 +17710,6 @@ class guiWin(QMainWindow):
                 return
             
             # printl('here')
-            self.whitelistInnitNewFrames()
             self.whitelistPropagateIDs()
             self.whitelistUpdateLab()
 
@@ -18039,7 +18061,7 @@ class guiWin(QMainWindow):
         
         self.logger.info(f'Reading {user_ch_name} channel metadata...')
         # Get information from first loaded position
-        posData = load.loadData(user_ch_file_paths[0], user_ch_name)
+        posData = load.loadData(user_ch_file_paths[0], user_ch_name, log_func=self.logger.info)
         posData.getBasenameAndChNames()
         posData.buildPaths()
 
@@ -18052,7 +18074,7 @@ class guiWin(QMainWindow):
         # Get end name of every existing segmentation file
         existingSegmEndNames = set()
         for filePath in user_ch_file_paths:
-            _posData = load.loadData(filePath, user_ch_name)
+            _posData = load.loadData(filePath, user_ch_name, log_func=self.logger.info)
             _posData.getBasenameAndChNames()
             segm_files = load.get_segm_files(_posData.images_path)
             _existingEndnames = load.get_endnames(
@@ -26201,6 +26223,18 @@ class guiWin(QMainWindow):
         if prev_lab is None:
             return
         
+        if not hasattr(self, 'lostObjContoursImage'):
+            self.store_data()
+            posData.frame_i -= 1
+            self.get_data()
+            self.store_data()
+            posData.frame_i += 1
+            self.get_data()
+            self.updateLostNewCurrentIDs()
+            self.updateLostContoursImage(ax=0)
+            self.updateLostContoursImage(ax=1)
+            self.updateLostNewCurrentIDs()
+            
         yy, xx, _ = np.nonzero(self.lostObjContoursImage)
         lostObjsContourMask = np.zeros(self.currentLab2D.shape, dtype=bool)
         lostObjsContourMask[yy.astype(int), xx.astype(int)] = True
@@ -26339,9 +26373,7 @@ class guiWin(QMainWindow):
 
     # @exec_time
     def setAllTextAnnotations(self, labelsToSkip=None, update_whitelist=True):
-        delROIsIDs = self.setLostNewOldPrevIDs(
-            update_whitelist=update_whitelist
-        )
+        delROIsIDs = self.setLostNewOldPrevIDs()
         posData = self.data[self.pos_i]
         self.textAnnot[0].setAnnotations(
             posData=posData, 
@@ -26835,7 +26867,7 @@ class guiWin(QMainWindow):
         return prevIDs
             
     # @exec_time
-    def setLostNewOldPrevIDs(self, update_whitelist=True):
+    def setLostNewOldPrevIDs(self):
         posData = self.data[self.pos_i]
         if posData.frame_i == 0:
             posData.lost_IDs = []
@@ -26848,7 +26880,7 @@ class guiWin(QMainWindow):
         # elif self.modeComboBox.currentText() == 'Viewer':
         #     pass
         
-        out = self.updateLostNewCurrentIDs(update_whitelist=update_whitelist)
+        out = self.updateLostNewCurrentIDs()
         lost_IDs, new_IDs, IDs_with_holes, tracked_lost_IDs, curr_delRoiIDs = (
             out
         )
@@ -27799,7 +27831,7 @@ class guiWin(QMainWindow):
             self._openFolder(exp_path=exp_path, imageFilePath=new_filepath)
         else:
             self.logger.info('Copying file to .tif format...')
-            data = load.loadData(file_path, '')
+            data = load.loadData(file_path, '', log_func=self.logger.info)
             data.loadImgData()
             img = data.img_data
             if img.ndim == 3 and (img.shape[-1] == 3 or img.shape[-1] == 4):

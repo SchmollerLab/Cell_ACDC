@@ -20,6 +20,7 @@ from tifffile import TiffFile
 import tifffile
 import zipfile
 from natsort import natsorted
+import time
 
 import skimage
 import skimage.io
@@ -1077,7 +1078,7 @@ def is_bkgrROIs_present(images_path):
     return False
 
 class loadData:
-    def __init__(self, imgPath, user_ch_name, relPathDepth=3, QParent=None):
+    def __init__(self, imgPath, user_ch_name, relPathDepth=3, QParent=None, log_func=None):
         self.fluo_data_dict = {}
         self.fluo_bkgrData_dict = {}
         self.bkgrROIs = []
@@ -1116,6 +1117,7 @@ class loadData:
         self.tracked_lost_centroids = None
         if not hasattr(self, 'whitelist'):
             self.whitelist = None
+        self.log_func = log_func
 
     def attempFixBasenameBug(self):
         r'''Attempt removing _s(\d+)_ from filenames if not present in basename
@@ -2840,7 +2842,13 @@ class loadData:
             total_frames=self.SizeT,
         )
         whitelist_path = self.segm_npz_path.replace('.npz', '_whitelistIDs.json')
-        success = self.whitelist.load(whitelist_path, self.segm_data)
+        success = self.whitelist.load(whitelist_path, 
+                                      self.segm_data,
+                                      self.allData_li
+                                      )
+        if self.log_func and success:
+            filename = os.path.basename(whitelist_path)
+            self.log_func(f'Loaded whitelist from file: {filename}')
         if not success:
             self.whitelist = None
             
