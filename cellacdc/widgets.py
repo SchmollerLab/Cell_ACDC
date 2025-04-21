@@ -86,6 +86,15 @@ font.setPixelSize(12)
 
 custom_cmaps_filepath = os.path.join(settings_folderpath, 'custom_colormaps.ini')
 
+str_to_operator_mapper = {
+    "+": operator.add, 
+    "-": operator.sub 
+}
+
+sign_int_mapper = {
+    '+': 1, '-': -1
+}
+
 def removeHSVcmaps():
     hsv_cmaps = []
     for g, grad in pg.graphicsItems.GradientEditorItem.Gradients.items():
@@ -9435,7 +9444,12 @@ class OddSpinBox(SpinBox):
 class TimestampItem(LabelItem):
     sigEditProperties = Signal(object)
     
-    def __init__(self, SizeY, SizeX, viewRange, secondsPerFrame=1, parent=None):
+    def __init__(
+            self, SizeY, SizeX, viewRange, 
+            secondsPerFrame=1, 
+            parent=None,
+            start_timedelta=None
+        ):
         self._secondsPerFrame = secondsPerFrame
         self._x_pad = 3
         self._y_pad = 2
@@ -9444,6 +9458,9 @@ class TimestampItem(LabelItem):
         self.updateViewRange(viewRange)
         self._highlighted = False
         self._parent = parent
+        if start_timedelta is None:
+            start_timedelta = datetime.timedelta()
+        self._start_timedelta = start_timedelta
         self.clicked = False
         super().__init__(self)
         self.createContextMenu()
@@ -9509,6 +9526,7 @@ class TimestampItem(LabelItem):
             'color': self._color,
             'loc': self._loc,
             'font_size': int(self._font_size[:-2]),
+            'start_timedelta': self._start_timedelta
         }
         return properties
 
@@ -9545,7 +9563,11 @@ class TimestampItem(LabelItem):
             color=(255, 255, 255), 
             font_size='13px', 
             loc='top-left',
+            start_timedelta=None
         ):
+        if start_timedelta is None:
+            start_timedelta = datetime.timedelta()
+        self._start_timedelta = start_timedelta
         self._color = color
         self._loc = loc
         self._font_size = font_size
@@ -9568,6 +9590,7 @@ class TimestampItem(LabelItem):
             return
         seconds = frame_i*self._secondsPerFrame
         timedelta = datetime.timedelta(seconds=round(seconds))
+        timedelta += self._start_timedelta
         super().setText(
             str(timedelta), color=self._color, size=self._font_size
         )
@@ -9836,3 +9859,71 @@ def modifierKeyToText(modifierKey: int):
         return 'Meta'
     else:
         return ''
+
+class TimeWidget(QWidget):
+    sigValueChanged = Signal(object)
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        
+        layout = QHBoxLayout()
+        
+        self.signCombobox = QComboBox()
+        self.signCombobox.addItems(('+', '-'))
+        
+        self.spinboxesMapper = {}
+        units_seps = (
+            ('days', ','), 
+            ('hours', ''), 
+            ('minutes', ''), 
+            ('seconds', '')
+        )
+        for unit, sep in units_seps:
+            spinbox = SpinBox()
+            spinbox.setMinimum(0)
+            label = QLabel(f'{unit}{sep} ')
+            layout.addWidget(spinbox)
+            layout.addWidget(label)
+            spinbox.valueChanged.connect(self.emitValueChanged)
+            self.spinboxesMapper[unit] = spinbox
+        
+        self.setLayout(layout)
+        layout.setContentsMargins(5, 0, 5, 0)
+    
+    def values(self):
+        values = {}
+        for unit, spinbox in self.spinboxesMapper.items():
+            values[unit] = spinbox.value()
+        
+        signText = self.signCombobox.currentText()
+        return values, sign_int_mapper[signText]
+    
+    def setValuesFromTimedelta(self, timedelta):
+        total_seconds = timedelta.total_seconds()
+        sign = 1 if total_seconds > 0 else -1
+        days = timedelta.days
+        hours, remainder = divmod(timedelta.seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        
+        values = {
+            'days': days, 
+            'hours': hours, 
+            'minutes': minutes, 
+            'seconds': seconds
+        }
+        
+        self.setValues(values, sign=sign)
+    
+    def timedelta(self):
+        signText = self.signCombobox.currentText()
+        sign = sign_int_mapper[signText]
+        return datetime.timedelta(**self.values())*sign
+    
+    def setValues(self, values, sign=1):
+        signText = '+' if sign > 0 else '-'
+        self.signCombobox.setCurrentText(signText)
+        for unit, value in values.items():
+            values[unit].setValue(value)
+    
+    def emitValueChanged(self, value):
+        self.sigValueChanged.emit(self.values())

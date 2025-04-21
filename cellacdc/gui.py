@@ -6,7 +6,7 @@ import inspect
 import re
 import traceback
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 import inspect
 import logging
 import uuid
@@ -11864,13 +11864,17 @@ class guiWin(QMainWindow):
             self.timestampDialog = apps.TimestampPropertiesDialog(parent=self)
             self.timestampDialog.show()
             self.timestamp = widgets.TimestampItem(
-                Y, X, viewRange, secondsPerFrame=posData.TimeIncrement
+                Y, X, viewRange, 
+                secondsPerFrame=posData.TimeIncrement,
+                start_timedelta=self.startTimedelta
             )
             self.timestamp.sigEditProperties.connect(
                 self.editTimestampProperties
             )
             self.timestamp.addToAxis(self.ax1)
-            self.timestamp.draw(posData.frame_i, **self.timestampDialog.kwargs())
+            self.timestamp.draw(
+                posData.frame_i, **self.timestampDialog.kwargs()
+            )
             self.timestampDialog.sigValueChanged.connect(self.updateTimestamp)
             self.timestampDialog.exec_()
         else:
@@ -19331,6 +19335,7 @@ class guiWin(QMainWindow):
         self.isExportingVideo = False
         self.pointsLayersNeverToggled = True
         self.highlightedIDopts = None
+        self.startTimedelta = timedelta()
         self.keptObjectsIDs = widgets.KeptObjectIDsList(
             self.keptIDsLineEdit, self.keepIDsConfirmAction
         )
@@ -29425,9 +29430,12 @@ class guiWin(QMainWindow):
         filename = f'{timestamp}_acdc_exported_{mode}_video'
         win = apps.ExportToVideoParametersDialog(
             channels,
-            parent=self, startFolderpath=posData.pos_path, 
-            startFilename=filename, startFrameNum=posData.frame_i+1, 
-            SizeT=posData.SizeT, SizeZ=posData.SizeZ,
+            parent=self, 
+            startFolderpath=posData.pos_path, 
+            startFilename=filename, 
+            startFrameNum=posData.frame_i+1, 
+            SizeT=posData.SizeT, 
+            SizeZ=posData.SizeZ,
             isTimelapseVideo=doTimelapseVideo,
             isScaleBarPresent=self.addScaleBarAction.isChecked(), 
             isTimestampPresent=self.addTimestampAction.isChecked(),
