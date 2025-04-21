@@ -14322,6 +14322,8 @@ class TimestampPropertiesDialog(QBaseDialog):
         self.colorButton.clicked.disconnect()
         self.colorButton.clicked.connect(self.selectColor)
         
+        self.startTimeWidget.sigValueChanged.connect(self.onValueChanged)
+        
         self.locCombobox.currentTextChanged.connect(self.onValueChanged)
         self.fontSizeWidget.sigTextChanged.connect(self.onValueChanged)
     

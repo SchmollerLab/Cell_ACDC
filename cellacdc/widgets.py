@@ -9871,6 +9871,8 @@ class TimeWidget(QWidget):
         self.signCombobox = QComboBox()
         self.signCombobox.addItems(('+', '-'))
         
+        layout.addWidget(self.signCombobox)
+        
         self.spinboxesMapper = {}
         units_seps = (
             ('days', ','), 
@@ -9915,9 +9917,8 @@ class TimeWidget(QWidget):
         self.setValues(values, sign=sign)
     
     def timedelta(self):
-        signText = self.signCombobox.currentText()
-        sign = sign_int_mapper[signText]
-        return datetime.timedelta(**self.values())*sign
+        values, sign = self.values()
+        return datetime.timedelta(**values)*sign
     
     def setValues(self, values, sign=1):
         signText = '+' if sign > 0 else '-'
