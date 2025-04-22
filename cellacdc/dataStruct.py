@@ -1672,6 +1672,15 @@ class createDataStructWin(QMainWindow):
         from cellacdc import acdc_bioio_bioformats as bioformats
         raw_filepath = os.path.join(raw_src_path, raw_filenames[0])
         
+        bioformats.install.install_reader_dependencies(
+            raw_filepath, 
+            exception=Exception(
+                'Failed installing reader dependencies from the GUI, '
+                'trying from terminal...'
+            ),
+            qparent=self
+        )
+        
         import subprocess
         from . import _process
         
@@ -2091,11 +2100,17 @@ class InitFijiMacro:
             Alternatively, you can ignore this and let Cell-ACDC automatically 
             download Fiji for you.
         """)
+        selectFijiButton = (
+            widgets.OpenFilePushButton('Select Fiji.app location')
+        )
+        downloadFijiButton = (
+            widgets.DownloadPushButton('Download Fiji.app')
+        )
         msg = widgets.myMessageBox(wrapText=False)
-        _, selectFijiButton, downloadFijiButton = msg.question(
+        msg.question(
             self.acdcLauncher, 'Select Fiji location', txt, 
             buttonsTexts=(
-                'Cancel', 'Select Fiji location', 'Download Fiji for me'
+                'Cancel', selectFijiButton, downloadFijiButton
             ), 
             showDialog=False
         )
@@ -2123,9 +2138,15 @@ class InitFijiMacro:
                 os.path.join(filepath, 'Contents', 'MacOS', 'ImageJ-macosx')
             )
         
+        messagebox.cancel = False
         messagebox.close()
     
     def run(self):
+        cancel = self.askSelectInstalledFiji()
+        if cancel:
+            self.cancel()
+            return
+        
         txt = (f"""    
             In order to run Bio-Formats on your system, Cell-ACDC will use 
             <b>Fiji (ImageJ) from the command line</b>.<br><br>
@@ -2134,13 +2155,10 @@ class InitFijiMacro:
             If you prefer to run the macro yourself, you can go through 
             its creation process and cancel its execution later.
         """)
-        cancel = self.askSelectInstalledFiji()
-        if cancel:
-            self.cancel()
-            return
-        
+        self.logger.info('Testing Fiji command...')
+        fiji_success = myutils.test_fiji_base_command(self.logger.info)
         commands = None
-        if not myutils.run_fiji_command():
+        if not fiji_success:
             try:
                 shutil.rmtree(acdc_fiji_path)
             except Exception as err:

@@ -72,5 +72,6 @@ checkbox = QCheckBox('Disable buttons')
 checkbox.toggled.connect(setDisabled)
 layout.addWidget(checkbox, i, j+1)
 
+splashScreen.close()
 win.showMaximized()
 app.exec_()

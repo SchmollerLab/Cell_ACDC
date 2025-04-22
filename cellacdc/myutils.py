@@ -3165,9 +3165,9 @@ def download_ffmpeg():
     
     return ffmep_exec_path.replace('\\', os.sep).replace('/', os.sep)
 
-def get_fiji_exec_folderpath():
+def get_fiji_exec_folderpath() -> str:
     if not is_mac:
-        return
+        return ''
     
     from cellacdc import fiji_location_filepath
     if os.path.exists(fiji_location_filepath):
@@ -3177,21 +3177,23 @@ def get_fiji_exec_folderpath():
         if os.path.exists(fiji_filepath):
             return fiji_filepath
     
-    if os.path.exists('/Application/Fiji.app'):
-        return '/Application/Fiji.app/Contents/MacOS/ImageJ-macosx'
+    if os.path.exists('/Applications/Fiji.app'):
+        return '/Applications/Fiji.app/Contents/MacOS/ImageJ-macosx'
     
-    return os.path.join(
+    acdc_fiji_exec_path = os.path.join(
         acdc_fiji_path, 'Fiji.app', 'Contents', 'MacOS', 'ImageJ-macosx'
     )
+    
+    if not os.path.exists(acdc_fiji_exec_path):
+        return ''
+    
+    return acdc_fiji_exec_path
 
 def get_fiji_base_command():
-    if not os.path.exists(acdc_fiji_path):
-        return
-    
     command = None
     if is_mac:
-        command = f'{get_fiji_exec_folderpath()}'
-
+        command = get_fiji_exec_folderpath()
+    
     return command
     
 def _init_fiji_cli():
@@ -3199,13 +3201,19 @@ def _init_fiji_cli():
         args_add_to_path = [f'chmod 755 {get_fiji_exec_folderpath()}']
         subprocess.check_call(args_add_to_path, shell=True)
 
+def test_fiji_base_command(logger_func=print):
+    base_command = get_fiji_base_command()
+
+    if base_command is None:
+        logger_func('[WARNING]: Fiji is not present.')
+        return False
+    
+    command = f'{base_command} --headless'
+    return run_fiji_command(command=command, logger_func=logger_func) 
+
 def run_fiji_command(command=None, logger_func=print):
     if command is None:
         command = f'{get_fiji_base_command()} --headless'
-    
-    if command is None:
-        logger_func('[WARNING]: Fiji is not present.')
-        return False
     
     _init_fiji_cli()
     
