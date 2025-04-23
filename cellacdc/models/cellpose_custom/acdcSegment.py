@@ -6,8 +6,10 @@ from cellacdc.myutils import get_cellpose_major_version
 cp_version = get_cellpose_major_version(errors='ignore')
 if cp_version is None or cp_version == 2:
     from cellacdc.models.cellpose_v2 import acdcSegment as cp
+    CP_VERSION = 2
 else:
     from cellacdc.models.cellpose_v3 import acdcSegment as cp
+    CP_VERSION = 3
     
 from cellpose import models
 
@@ -22,7 +24,8 @@ class Model:
             self.acdcCellpose.model = models.CellposeModel(
                 gpu=gpu, pretrained_model=model_path
             )
-
+            self.acdcCellpose.acdcCellpose.model = self.acdcCellpose.model
+        
     def segment(
             self, image,
             diameter=0.0,
