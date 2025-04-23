@@ -14616,7 +14616,7 @@ class guiWin(QMainWindow):
         
         if ev.key() == Qt.Key_Q and self.debug:
             posData = self.data[self.pos_i]
-            printl(posData.allData_li[posData.frame_i]['contours'])
+            printl(self.getNearestLostObjID(0, 0))
             pass
         
         if not self.isDataLoaded:
@@ -21460,6 +21460,7 @@ class guiWin(QMainWindow):
                 posData.frame_i = current_frame_i
                 self.get_data()
         
+        self.highlightLostNew()
         self.updateLastCheckedFrameWidgets(last_tracked_i)
 
         self.checkTrackingEnabled()
@@ -26235,6 +26236,9 @@ class guiWin(QMainWindow):
         imageItem.setImage(img)
     
     def getNearestLostObjID(self, y, x):
+        if not self.annotLostObjsToggle.isChecked():
+            return
+        
         posData = self.data[self.pos_i]
         if not posData.lost_IDs:
             return
