@@ -9459,7 +9459,7 @@ class TimestampItem(LabelItem):
         self._highlighted = False
         self._parent = parent
         if start_timedelta is None:
-            start_timedelta = datetime.timedelta()
+            start_timedelta = datetime.timedelta(seconds=0)
         self._start_timedelta = start_timedelta
         self.clicked = False
         super().__init__(self)
@@ -9565,9 +9565,8 @@ class TimestampItem(LabelItem):
             loc='top-left',
             start_timedelta=None
         ):
-        if start_timedelta is None:
-            start_timedelta = datetime.timedelta()
-        self._start_timedelta = start_timedelta
+        if start_timedelta is not None:
+            self._start_timedelta = start_timedelta
         self._color = color
         self._loc = loc
         self._font_size = font_size
@@ -9588,11 +9587,28 @@ class TimestampItem(LabelItem):
     def setText(self, frame_i):
         if not isinstance(frame_i, int):
             return
+        
         seconds = frame_i*self._secondsPerFrame
         timedelta = datetime.timedelta(seconds=round(seconds))
-        timedelta += self._start_timedelta
+            
+        diff_seconds = (
+            timedelta.total_seconds() 
+            + self._start_timedelta.total_seconds()
+        )
+        if diff_seconds >= 0:
+            timedelta = datetime.timedelta(seconds=round(diff_seconds))
+            text = str(timedelta)
+        else:
+            abs_diff = abs(
+                timedelta.total_seconds() 
+                + self._start_timedelta.total_seconds()
+            )
+            abs_timedelta = datetime.timedelta(seconds=round(abs_diff))
+            text = f'-{abs_timedelta}'
+        
+        # printl(timedelta)
         super().setText(
-            str(timedelta), color=self._color, size=self._font_size
+            text, color=self._color, size=self._font_size
         )
     
     def addToAxis(self, ax):
@@ -9860,37 +9876,44 @@ def modifierKeyToText(modifierKey: int):
     else:
         return ''
 
-class TimeWidget(QWidget):
+class TimeWidget(QGroupBox):
     sigValueChanged = Signal(object)
     
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, orientation='vertical'):
         super().__init__(parent)
         
-        layout = QHBoxLayout()
+        mainLayout = QHBoxLayout()
         
+        if orientation == 'vertical':
+            spinboxesLayout = QVBoxLayout()
+        elif orientation == 'horizontal':
+            spinboxesLayout = QHBoxLayout()
+        else:
+            raise ValueError('orientation must be "vertical" or "horizontal"')
+                
         self.signCombobox = QComboBox()
         self.signCombobox.addItems(('+', '-'))
+        self.signCombobox.currentTextChanged.connect(self.emitValueChanged)
         
-        layout.addWidget(self.signCombobox)
+        mainLayout.addWidget(self.signCombobox)
         
         self.spinboxesMapper = {}
-        units_seps = (
-            ('days', ','), 
-            ('hours', ''), 
-            ('minutes', ''), 
-            ('seconds', '')
-        )
-        for unit, sep in units_seps:
+        units = ('days', 'hours', 'minutes', 'seconds')
+        for unit in units:
+            layout = QHBoxLayout()
             spinbox = SpinBox()
             spinbox.setMinimum(0)
-            label = QLabel(f'{unit}{sep} ')
+            label = QLabel(unit)
             layout.addWidget(spinbox)
             layout.addWidget(label)
             spinbox.valueChanged.connect(self.emitValueChanged)
             self.spinboxesMapper[unit] = spinbox
+            spinboxesLayout.addLayout(layout)
         
-        self.setLayout(layout)
-        layout.setContentsMargins(5, 0, 5, 0)
+        mainLayout.addLayout(spinboxesLayout)
+        
+        self.setLayout(mainLayout)
+        mainLayout.setContentsMargins(5, 5, 5, 5)
     
     def values(self):
         values = {}

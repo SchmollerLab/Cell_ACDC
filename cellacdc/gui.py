@@ -11866,7 +11866,7 @@ class guiWin(QMainWindow):
             self.timestamp = widgets.TimestampItem(
                 Y, X, viewRange, 
                 secondsPerFrame=posData.TimeIncrement,
-                start_timedelta=self.startTimedelta
+                start_timedelta=self.timestampStartTimedelta
             )
             self.timestamp.sigEditProperties.connect(
                 self.editTimestampProperties
@@ -19335,7 +19335,7 @@ class guiWin(QMainWindow):
         self.isExportingVideo = False
         self.pointsLayersNeverToggled = True
         self.highlightedIDopts = None
-        self.startTimedelta = timedelta()
+        self.timestampStartTimedelta = timedelta(seconds=0)
         self.keptObjectsIDs = widgets.KeptObjectIDsList(
             self.keptIDsLineEdit, self.keepIDsConfirmAction
         )
