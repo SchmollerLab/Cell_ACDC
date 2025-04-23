@@ -727,10 +727,8 @@ def get_date_from_version(version: str, package='cellacdc', debug=False):
             traceback.print_exc()
         pass
     
-    import pdb; pdb.set_trace()
-    
     try:
-        commit_hash = re.findall(r'\+g([A-Za-z0-9]+)\.d', version)[0]
+        commit_hash = re.findall(r'\+g([A-Za-z0-9]+)(\.d)?', version)[0][0]
         git_path = os.path.dirname(cellacdc_path)
         command = f'git -C {git_path} show {commit_hash}'
         commit_log = _subprocess_run_command(
