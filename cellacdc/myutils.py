@@ -713,7 +713,7 @@ def read_version(logger=None, return_success=False):
     else:
         return version
 
-def get_date_from_version(version: str, package='cellacdc'):
+def get_date_from_version(version: str, package='cellacdc', debug=False):
     try:
         res_json = requests.get(f'https://pypi.org/pypi/{package}/json').json()
         pypi_releases_json = res_json['releases']
@@ -723,17 +723,25 @@ def get_date_from_version(version: str, package='cellacdc'):
         date_str = date.strftime(r'%A %d %B %Y at %H:%M')
         return date_str
     except Exception as err:
+        if debug:
+            traceback.print_exc()
         pass
     
     try:
         commit_hash = re.findall(r'\+g([A-Za-z0-9]+)\.d', version)[0]
-        commands = ['git', 'show', commit_hash]
-        commit_log = subprocess.check_output(commands).decode() 
+        git_path = os.path.dirname(cellacdc_path)
+        command = f'git -C {git_path} show {commit_hash}'
+        commit_log = _subprocess_run_command(
+            command, shell=False, callback='check_output'
+        )
+        commit_log = subprocess.check_output(command).decode() 
         date_log = re.findall(r'Date:(.*) \+', commit_log)[0].strip()
         date = datetime.datetime.strptime(date_log, r'%a %b %d %H:%M:%S %Y')
         date_str = date.strftime(r'%A %d %B %Y at %H:%M')
         return date_str
     except Exception as err:
+        if debug:
+            traceback.print_exc()
         pass
     
     return 'ND'  
@@ -2613,17 +2621,22 @@ def install_package_conda(conda_pkg_name, channel='conda-forge'):
         raise EnvironmentError(
             'Cell-ACDC is not running in a `conda` environment.'
         )
-        
+    
+    command = f'conda install -c {channel} -y {conda_pkg_name}'
+    _subprocess_run_command(command)
+
+def _subprocess_run_command(command, shell=True, callback='check_call'):
+    func = getattr(subprocess, callback)
     try:
-        commad = f'conda install -c {channel} -y {conda_pkg_name}'
-        subprocess.check_call([commad], shell=True)
+        out = func(command, shell=shell)
     except Exception as err:
         print(
-            f'[WARNING]: Installation with command `{[commad]}` failed. '
-            f'Trying with `{commad.split()}`...'
+            f'[WARNING]: Command `{command}` failed. '
+            f'Trying with `{command.split()}`...'
         )
+        out = func(command.split(), shell=shell)
     
-    subprocess.check_call(commad.split(), shell=True)
+    return
 
 def check_install_omnipose():
     try:
