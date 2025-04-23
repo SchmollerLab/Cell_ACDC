@@ -1,6 +1,6 @@
 import os
 
-from cellacdc import myutils
+from cellacdc import myutils, printl
 
 from cellacdc.models.cellpose_v2 import acdcSegment as acdc_cp2
 from . import _denoise
@@ -138,7 +138,7 @@ class Model:
             plane-by-plane in stitching mode. Default is False
         """ 
         
-        input_image = image
+        input_image = image        
         if self.denoiseModel is not None:
             input_image = self.denoiseModel.run(
                 image,
