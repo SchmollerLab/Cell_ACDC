@@ -10711,14 +10711,21 @@ class QDialogModelParams(QDialog):
                     self.seeHereLabel, alignment=Qt.AlignCenter
                 )
 
+        row = 0
         if preProcessLayout is not None:
             mainLayout.addLayout(preProcessLayout)
+            mainLayout.setStretch(row, 1)
+            row += 1
             
         mainLayout.addWidget(self.scrollArea)
+        mainLayout.setStretch(row, 3)
+        row += 1
         
         if postProcessLayout is not None:
             mainLayout.addSpacing(10)
             mainLayout.addLayout(postProcessLayout)
+            mainLayout.setStretch(row, 1)
+            row += 1
             
         mainLayout.addSpacing(20)
         mainLayout.addLayout(buttonsLayout)
