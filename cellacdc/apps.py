@@ -14023,12 +14023,14 @@ class ExportToVideoParametersDialog(QBaseDialog):
     sigAddScaleBar = Signal(bool)
     sigAddTimestamp = Signal(bool)
     sigRescaleIntensLut = Signal(str, str)
+    sigChangeStartTime = Signal(str)
     
     def __init__(
             self, channels, parent=None, startFolderpath='', startFilename='', 
             startFrameNum=1, SizeT=1, SizeZ=1, isTimelapseVideo=True, 
             isScaleBarPresent=False, isTimestampPresent=False, 
-            rescaleIntensChannelHowMapper=None
+            rescaleIntensChannelHowMapper=None, 
+            startTime=None
         ):
         self.cancel = True
         
@@ -14234,6 +14236,7 @@ class ExportToVideoParametersDialog(QBaseDialog):
         )
         if makedirs:
             os.makedirs(pngs_folderpath, exist_ok=True)
+        
         preferences = {
             'start_nav_var_num': self.startNavVarNumberEntry.value(),
             'stop_nav_var_num': self.stopNavVarNumberEntry.value(),
@@ -14274,6 +14277,20 @@ class TimestampPropertiesDialog(QBaseDialog):
         formLayout.setHorizontalSpacing(50)
         
         row = 0
+        self.startTimeWidget = widgets.TimeWidget()
+        if properties.get('start_timedelta') is not None:
+            self.startTimeWidget.setValuesFromTimedelta(
+                properties.get('start_timedelta')
+            )
+        startTimeFormWidget = widgets.formWidget(
+            self.startTimeWidget, labelTextLeft='Start time',
+        )
+        formLayout.addFormWidget(
+            startTimeFormWidget, row=row, 
+            leftLabelAlignment=Qt.AlignLeft
+        )
+        
+        row += 1
         self.colorButton = widgets.myColorButton(color=(255, 255, 255))
         if properties.get('color') is not None:
             self.colorButton.setColor(properties.get('color'))
@@ -14334,6 +14351,8 @@ class TimestampPropertiesDialog(QBaseDialog):
         self.colorButton.clicked.disconnect()
         self.colorButton.clicked.connect(self.selectColor)
         
+        self.startTimeWidget.sigValueChanged.connect(self.onValueChanged)
+        
         self.locCombobox.currentTextChanged.connect(self.onValueChanged)
         self.fontSizeWidget.sigTextChanged.connect(self.onValueChanged)
     
@@ -14357,6 +14376,7 @@ class TimestampPropertiesDialog(QBaseDialog):
     def kwargs(self):
         kwargs = {
             'color': self.colorButton.color(),
+            'start_timedelta': self.startTimeWidget.timedelta(),
             'loc': self.locCombobox.currentText().lower(),
             'font_size': self.fontSizeWidget.text(),
         }

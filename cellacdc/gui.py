@@ -6,7 +6,7 @@ import inspect
 import re
 import traceback
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 import inspect
 import logging
 import uuid
@@ -7542,8 +7542,9 @@ class guiWin(QMainWindow):
                     [x0, x1], [y0, y1], lengthText=lengthText
                 )
                 self.ax1_rulerAnchorsItem.setData([x0, x1], [y0, y1])
-             
-            if canPolyLine and not self.startPointPolyLineItem.getData()[0]:
+            
+            xxPolyLine = self.startPointPolyLineItem.getData()[0]
+            if canPolyLine and len(xxPolyLine) == 0:
                 # Create and add roi item
                 self.createDelPolyLineRoi()
                 # Add start point of polyline roi
@@ -11299,12 +11300,14 @@ class guiWin(QMainWindow):
                 return ROImask
             
             if len(r) == 2:
-                Y, X = self.currentLab2D.shape
                 rr, cc, val = skimage.draw.line_aa(r[0], c[0], r[1], c[1])
-                rr = rr[(rr>=0) & (rr<Y)]
-                cc = cc[(cc>=0) & (cc<X)]
             else:
                 rr, cc = skimage.draw.polygon(r, c, shape=self.currentLab2D.shape)
+            
+            Y, X = self.currentLab2D.shape
+            rr = rr[(rr>=0) & (rr<Y)]
+            cc = cc[(cc>=0) & (cc<X)]
+            
             if self.isSegm3D:
                 ROImask[z_slice, rr, cc] = True
             else:
@@ -11357,13 +11360,17 @@ class guiWin(QMainWindow):
             self.timestampDialog = apps.TimestampPropertiesDialog(parent=self)
             self.timestampDialog.show()
             self.timestamp = widgets.TimestampItem(
-                Y, X, viewRange, secondsPerFrame=posData.TimeIncrement
+                Y, X, viewRange, 
+                secondsPerFrame=posData.TimeIncrement,
+                start_timedelta=self.timestampStartTimedelta
             )
             self.timestamp.sigEditProperties.connect(
                 self.editTimestampProperties
             )
             self.timestamp.addToAxis(self.ax1)
-            self.timestamp.draw(posData.frame_i, **self.timestampDialog.kwargs())
+            self.timestamp.draw(
+                posData.frame_i, **self.timestampDialog.kwargs()
+            )
             self.timestampDialog.sigValueChanged.connect(self.updateTimestamp)
             self.timestampDialog.exec_()
         else:
@@ -19817,6 +19824,7 @@ class guiWin(QMainWindow):
         self.isExportingVideo = False
         self.pointsLayersNeverToggled = True
         self.highlightedIDopts = None
+        self.timestampStartTimedelta = timedelta(seconds=0)
         self.keptObjectsIDs = widgets.KeptObjectIDsList(
             self.keptIDsLineEdit, self.keepIDsConfirmAction
         )
@@ -25076,7 +25084,7 @@ class guiWin(QMainWindow):
         
         if how.find('overlay segm. masks') != -1:
             lab = self.currentLab2D.copy()
-            lab[delMask] = 0
+            lab[delMask > 0] = 0
             if ax == 0:
                 self.labelsLayerImg1.setImage(lab, autoLevels=False)
             else:
@@ -30006,9 +30014,12 @@ class guiWin(QMainWindow):
         filename = f'{timestamp}_acdc_exported_{mode}_video'
         win = apps.ExportToVideoParametersDialog(
             channels,
-            parent=self, startFolderpath=posData.pos_path, 
-            startFilename=filename, startFrameNum=posData.frame_i+1, 
-            SizeT=posData.SizeT, SizeZ=posData.SizeZ,
+            parent=self, 
+            startFolderpath=posData.pos_path, 
+            startFilename=filename, 
+            startFrameNum=posData.frame_i+1, 
+            SizeT=posData.SizeT, 
+            SizeZ=posData.SizeZ,
             isTimelapseVideo=doTimelapseVideo,
             isScaleBarPresent=self.addScaleBarAction.isChecked(), 
             isTimestampPresent=self.addTimestampAction.isChecked(),
