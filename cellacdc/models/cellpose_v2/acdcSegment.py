@@ -67,7 +67,8 @@ class Model:
             models.models_logger.removeHandler(handler)
     
     def _eval(self, image, **kwargs):
-        return self.model.eval(image.astype(np.float32), **kwargs)[0]
+        input_img = image.astype(np.float32)
+        return self.model.eval(input_img, **kwargs)[0]
     
     def second_ch_img_to_stack(self, first_ch_data, second_ch_data):
         # The 'cyto' model can work with a second channel (e.g., nucleus).
@@ -164,7 +165,7 @@ class Model:
         isZstack = (image.ndim==3 and not isRGB) or (image.ndim==4)
 
         if anisotropy == 0 or not isZstack:
-            anisotropy = None
+            anisotropy = 1.0
         
         do_3D = segment_3D_volume
         if not isZstack:
