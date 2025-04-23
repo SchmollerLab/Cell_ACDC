@@ -8132,8 +8132,9 @@ class guiWin(QMainWindow):
                     [x0, x1], [y0, y1], lengthText=lengthText
                 )
                 self.ax1_rulerAnchorsItem.setData([x0, x1], [y0, y1])
-             
-            if canPolyLine and not self.startPointPolyLineItem.getData()[0]:
+            
+            xxPolyLine = self.startPointPolyLineItem.getData()[0]
+            if canPolyLine and len(xxPolyLine) == 0:
                 # Create and add roi item
                 self.createDelPolyLineRoi()
                 # Add start point of polyline roi
