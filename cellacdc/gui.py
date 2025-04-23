@@ -536,6 +536,7 @@ class guiWin(QMainWindow):
         self.viewOriginalLabels = True
         self.addNewIDsWhitelistToggle = True
         self.keepDisabled = False
+        self.whitelistAddNewIDsFrame = None
 
         self.checkableButtons = []
         self.LeftClickButtons = []
@@ -13307,6 +13308,9 @@ class guiWin(QMainWindow):
         mode = self.modeComboBox.currentText()
         if mode != 'Segmentation and Tracking':
             return
+    
+        if not self.addNewIDsWhitelistToggle:
+            return
         
         posData = self.data[self.pos_i]
         if posData.whitelist is None:
@@ -13326,9 +13330,16 @@ class guiWin(QMainWindow):
         if frame_i == 0:
             return
         
+        if frame_i == self.whitelistAddNewIDsFrame:
+            return
+        
+        self.whitelistAddNewIDsFrame = frame_i
+        
 
         self.store_data(autosave=False)
         self.get_data()
+
+        printl('Added new IDs')
         posData.whitelist.addNewIDs(frame_i=frame_i,
                                     allData_li=posData.allData_li,
                                     IDs_curr=posData.IDs,)
@@ -17032,7 +17043,8 @@ class guiWin(QMainWindow):
             self.navigateScrollBar.valueChanged.disconnect()
             self.navigateScrollBar.setSliderPosition(self.navSpinBox.value())
         except Exception as e:
-            printl(e)
+            if "disconnect()" not in str(e):
+                printl(e)
             pass
 
         self.navigateScrollBar.blockSignals(False)
