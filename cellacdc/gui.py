@@ -26243,17 +26243,17 @@ class guiWin(QMainWindow):
         if prev_lab is None:
             return
         
-        if not hasattr(self, 'lostObjContoursImage'):
-            self.store_data()
-            posData.frame_i -= 1
-            self.get_data()
-            self.store_data()
-            posData.frame_i += 1
-            self.get_data()
-            self.updateLostNewCurrentIDs()
-            self.updateLostContoursImage(ax=0)
-            self.updateLostContoursImage(ax=1)
-            self.updateLostNewCurrentIDs()
+        # if not hasattr(self, 'lostObjContoursImage'):
+        #     self.store_data()
+        #     posData.frame_i -= 1
+        #     self.get_data()
+        #     self.store_data()
+        #     posData.frame_i += 1
+        #     self.get_data()
+        #     self.updateLostNewCurrentIDs()
+        #     self.updateLostContoursImage(ax=0)
+        #     self.updateLostContoursImage(ax=1)
+        #     self.updateLostNewCurrentIDs()
             
         yy, xx, _ = np.nonzero(self.lostObjContoursImage)
         lostObjsContourMask = np.zeros(self.currentLab2D.shape, dtype=bool)
