@@ -24560,6 +24560,8 @@ class guiWin(QMainWindow):
         
         if how.find('overlay segm. masks') != -1:
             lab = self.currentLab2D.copy()
+            Y, X = lab.shape
+            delMask = delMask[:Y, :X]
             lab[delMask] = 0
             if ax == 0:
                 self.labelsLayerImg1.setImage(lab, autoLevels=False)
