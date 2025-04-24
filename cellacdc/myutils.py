@@ -725,7 +725,6 @@ def get_date_from_version(version: str, package='cellacdc', debug=False):
     except Exception as err:
         if debug:
             traceback.print_exc()
-        pass
     
     try:
         commit_hash = re.findall(r'\+g([A-Za-z0-9]+)(\.d)?', version)[0][0]
@@ -734,7 +733,7 @@ def get_date_from_version(version: str, package='cellacdc', debug=False):
         commit_log = _subprocess_run_command(
             command, shell=False, callback='check_output'
         )
-        commit_log = subprocess.check_output(command).decode() 
+        commit_log = commit_log.decode() 
         date_log = re.findall(r'Date:(.*) \+', commit_log)[0].strip()
         date = datetime.datetime.strptime(date_log, r'%a %b %d %H:%M:%S %Y')
         date_str = date.strftime(r'%A %d %B %Y at %H:%M')
@@ -742,7 +741,6 @@ def get_date_from_version(version: str, package='cellacdc', debug=False):
     except Exception as err:
         if debug:
             traceback.print_exc()
-        pass
     
     return 'ND'  
 
@@ -2636,7 +2634,7 @@ def _subprocess_run_command(command, shell=True, callback='check_call'):
         )
         out = func(command.split(), shell=shell)
     
-    return
+    return out
 
 def check_install_omnipose():
     try:
