@@ -373,7 +373,8 @@ def askSamLoadEmbeddings(
 def init_segm_model_params(
         posData, model_name, init_params, segment_params, 
         qparent=None, help_url=None, init_last_params=False, 
-        check_sam_embeddings=True, is_gui_caller=False
+        check_sam_embeddings=True, is_gui_caller=False,
+        extraParams=None, extraParamsTitle=None
     ):
     out = {}
     
@@ -411,7 +412,9 @@ def init_segm_model_params(
         posData=posData,
         segmFileEndnames=existingSegmEndnames,
         df_metadata=posData.metadata_df,
-        force_postprocess_2D=False
+        force_postprocess_2D=False,
+        extraParams=extraParams,
+        extraParamsTitle=extraParamsTitle
     )
     win.setChannelNames(posData.chNames)
     out['win'] = win

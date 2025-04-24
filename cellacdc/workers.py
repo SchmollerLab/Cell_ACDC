@@ -886,8 +886,15 @@ class SegForLostIDsWorker(QObject):
         posData = self.guiWin.data[self.guiWin.pos_i]
         frame_i = posData.frame_i
 
-        model_name = 'cellpose_local_seg'
-        base_model_name = 'cellpose_custom'
+        if not self.guiWin.SegForLostIDsSettings:
+            self.emitSigAskInit()
+        
+        if not self.guiWin.SegForLostIDsSettings:
+            self.signals.finished.emit(self)
+            return
+
+        model_name = 'local_seg'
+        base_model_name = self.guiWin.SegForLostIDsSettings['base_model_name']
         idx = self.guiWin.modelNames.index(model_name)
         acdcSegment = self.guiWin.acdcSegment_li[idx]
 
@@ -896,13 +903,6 @@ class SegForLostIDsWorker(QObject):
             self.emitSigAskInstallModel(base_model_name)
             acdcSegment = myutils.import_segment_module(base_model_name)
             self.guiWin.acdcSegment_li[idx] = acdcSegment
-
-        if not self.guiWin.SegForLostIDsSettings:
-            self.emitSigAskInit()
-
-        if not self.guiWin.SegForLostIDsSettings:
-            self.signals.finished.emit(self)
-            return
 
         win = self.guiWin.SegForLostIDsSettings['win']
         init_kwargs_new = self.guiWin.SegForLostIDsSettings['init_kwargs_new']
@@ -914,31 +914,62 @@ class SegForLostIDsWorker(QObject):
         except Exception as e:
             pass
 
-        curr_lab = self.guiWin.get_2Dlab(posData.lab)
-        prev_lab = self.guiWin.get_2Dlab(posData.allData_li[frame_i-1]['labels'])
+        assigned_IDs = []
+        missing_IDs_global = set()
+        old_IDs = posData.IDs.copy()
+        original_lab = posData.lab.copy()
+        
+        for i in range(args_new['max_interations']):
+            self.guiWin.get_data()
+            
+            curr_lab = self.guiWin.get_2Dlab(posData.lab)
+            prev_lab = self.guiWin.get_2Dlab(posData.allData_li[frame_i-1]['labels'])
 
-        tracked_lost_IDs = self.guiWin.getTrackedLostIDs()
-        prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
-        prev_IDs = {rp.label for rp in prev_rp}
-        missing_IDs = prev_IDs - set(posData.IDs) - set(tracked_lost_IDs)
+            tracked_lost_IDs = self.guiWin.getTrackedLostIDs()
 
-        curr_img = self.guiWin.getDisplayedImg1()
+            prev_IDs = posData.allData_li[frame_i-1]['IDs']
+            missing_IDs = set(prev_IDs) - set(posData.IDs) - set(tracked_lost_IDs)
+            missing_IDs_global.update(missing_IDs)
 
-        new_unique_ID = self.guiWin.setBrushID(useCurrentLab=True, return_val=True)
+            curr_img = self.guiWin.getDisplayedImg1()
 
-        new_lab, assigned_IDs = single_cell_seg(model, prev_lab, curr_lab, curr_img, missing_IDs, new_unique_ID,
-                                                win, posData,
-                                                distance_filler_growth=args_new['distance_filler_growth'],
-                                                padding=args_new['padding'], 
-                                                size_perc_threshold=args_new['size_perc_threshold'],
-                                                overlap_threshold=args_new['overlap_threshold'],
-                                                )
+            new_unique_ID = self.guiWin.setBrushID(useCurrentLab=True, return_val=True)
 
-        posData.lab = new_lab
-        self.guiWin.update_rp()
+            last_round = i == args_new['max_interations'] - 1
 
-        for ID in assigned_IDs:
-            self.guiWin.trackManuallyAddedObject(ID, True)
+            assigned_IDs_prev = assigned_IDs.copy()
+            new_lab, assigned_IDs = single_cell_seg(model, prev_lab, curr_lab, curr_img, missing_IDs, new_unique_ID,
+                                                    win, posData,
+                                                    distance_filler_growth=args_new['distance_filler_growth'],
+                                                    padding=args_new['padding'], 
+                                                    size_perc_threshold=args_new['size_perc_threshold'],
+                                                    overlap_threshold=args_new['overlap_threshold'],
+                                                    assigned_IDs_prev=assigned_IDs_prev,
+                                                    skip_cell_filter=not last_round,
+                                                    original_lab=original_lab,
+                                                    )
+
+            posData.lab = new_lab
+            self.guiWin.update_rp()
+
+            newly_assigned_IDs = set(assigned_IDs) - set(assigned_IDs_prev)
+            for ID in newly_assigned_IDs:
+                self.guiWin.trackManuallyAddedObject(ID, True)
+
+            self.guiWin.store_data()
+
+        if args_new['allow_only_tracked_cells']:
+            self.guiWin.get_data()
+            to_be_removed_IDs = set(posData.IDs) - set(old_IDs) - missing_IDs_global
+            printl(to_be_removed_IDs)
+            lab = posData.lab
+            for obj in posData.rp:
+                if obj.label in to_be_removed_IDs:
+                    lab[obj.slice][obj.image] = 0
+            posData.lab = lab
+        
+            self.guiWin.update_rp()
+            self.guiWin.store_data()
 
         self.guiWin.logger.info('Segmentation for lost IDs done.')
             

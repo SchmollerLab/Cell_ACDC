@@ -2671,7 +2671,7 @@ class guiWin(QMainWindow):
 
         # Edit actions
         models = myutils.get_list_of_models()
-        models = [*models, 'cellpose_local_seg'] # Add cellpose_local_seg for SegForLostIDsAction
+        models = [*models, 'local_seg'] # Add local_seg for SegForLostIDsAction
         self.segmActions = []
         self.modelNames = []
         self.acdcSegment_li = []
@@ -8152,8 +8152,16 @@ class guiWin(QMainWindow):
         self.textAnnot[1].addToPlotItem(self.ax2)
 
     def SegForLostIDsSetSettings(self):
-        model_name = 'cellpose_local_seg'
-        base_model_name = 'cellpose_custom'
+
+        win = apps.QDialogSelectModel(parent=self)
+        win.exec_()
+        if win.cancel:
+            self.logger.info('Repeat segmentation cancelled.')
+            return
+        base_model_name = win.selectedModel
+
+        model_name = 'local_seg'
+
         idx = self.modelNames.index(model_name)
         acdcSegment = self.acdcSegment_li[idx]
 
@@ -8165,16 +8173,25 @@ class guiWin(QMainWindow):
         extra_params = ['overlap_threshold',
                         'padding',
                         'size_perc_threshold',
-                        'distance_filler_growth']
+                        'distance_filler_growth',
+                        'max_interations',
+                        'allow_only_tracked_cells']
 
-        extra_types = [float, float, float, float]
+        extra_types = [float, float, float, float, int, bool]
 
-        extra_defaults = [0.5, 0.8, 0.5, 1.]
+        extra_defaults = [0.5, 0.8, 0.5, 1., 2, False]
 
         extra_desc = ['Overlap threshold with other already segemented cells over which newly segmented cells are discarded', 
                     'Padding of the box used for new segmentation around the segmentation from the previous frame', 
                     'Relative size threshold of the new segmentation compared to the segmentation from the previous frame',
-                    "Cells which are already segmented are filled with random noise sampled from background to ensure that they don't get segmented again. This parameter controls the additional padding around the already segmented cells."]
+                    """Cells which are already segmented are filled with random noise sampled from background 
+                    to ensure that they don't get segmented again. 
+                    This parameter controls the additional padding around the already segmented cells.""",
+                    """The algorithm will try and segment the maximum amount 
+                    of cells in the image by running the model several 
+                    times and filling new found cells with background noise. 
+                    How many of these iterations should be run?""",
+                    "If no new cell IDs should be permitted (based on real time tracking)"]
 
         extra_ArgSpec = []
         for i, param in enumerate(extra_params):
@@ -8188,11 +8205,11 @@ class guiWin(QMainWindow):
 
         init_params, segment_params = myutils.getModelArgSpec(acdcSegment)
         segment_params = [arg for arg in segment_params if arg[0] != 'diameter']
-        
-        init_params += extra_ArgSpec
-
+                
+        extraParamsTitle = 'Settings for local segmentation'
         win = self.initSegmModelParams(
-            model_name, acdcSegment, init_params, segment_params
+            model_name, acdcSegment, init_params, segment_params,
+            extraParams=extra_ArgSpec, extraParamsTitle=extraParamsTitle
         )
 
         if win is None:
@@ -8206,11 +8223,16 @@ class guiWin(QMainWindow):
                 args_new[key] = val
             else:
                 init_kwargs_new[key] = val
-        
+
+        for key, val in win.extra_kwargs.items():
+            if key in extra_params:
+                args_new[key] = val
+
         self.SegForLostIDsSettings = {
             'win': win,
             'init_kwargs_new': init_kwargs_new,
-            'args_new': args_new
+            'args_new': args_new,
+            'base_model_name': base_model_name,
         }
 
     def SegForLostIDsAction(self):
@@ -8226,7 +8248,7 @@ class guiWin(QMainWindow):
 
     def onSegForLostInit(self):
         self.logger.info('Settings for segmentation for lost IDs not set.')
-        self.SegForLostIDsSetSettings()            
+        self.SegForLostIDsSetSettings()
         self.SegForLostIDsWaitCond.wakeAll()
     
     def SegForLostIDsWorkerAskInstallModel(self, model_name):
@@ -8273,7 +8295,7 @@ class guiWin(QMainWindow):
         self._thread.start()
     
     def SegForLostIDsWorkerFinished(self):
-        
+
         self.updateAllImages()
         self.store_data()
         
@@ -16409,7 +16431,9 @@ class guiWin(QMainWindow):
     
     def initSegmModelParams(
             self, model_name, acdcSegment, init_params, segment_params, 
-            is_label_roi=False, initLastParams=False
+            is_label_roi=False, initLastParams=False,
+            extraParams=None, extraParamsTitle=None
+
         ):
         posData = self.data[self.pos_i]        
         try:
@@ -16421,7 +16445,8 @@ class guiWin(QMainWindow):
         out = prompts.init_segm_model_params(
             posData, model_name, init_params, segment_params, 
             help_url=url, qparent=self, init_last_params=initLastParams, 
-            check_sam_embeddings=not is_label_roi, is_gui_caller=True
+            check_sam_embeddings=not is_label_roi, is_gui_caller=True,
+            extraParams=extraParams,extraParamsTitle=extraParamsTitle
         )
         if out.get('load_sam_embeddings', False):
             self.logger.info('Loading Segment Anything image embeddings...')

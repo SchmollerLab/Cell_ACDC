@@ -10576,7 +10576,8 @@ class QDialogModelParams(QDialog):
             url=None, parent=None, initLastParams=True, posData=None, 
             channels=None, currentChannelName=None, segmFileEndnames=None,
             df_metadata=None, force_postprocess_2D=False, model_module=None,
-            action_type='', addPreProcessParams=True, addPostProcessParams=True
+            action_type='', addPreProcessParams=True, addPostProcessParams=True,
+            extraParams=None, extraParamsTitle=None,
         ):
         self.cancel = True
         super().__init__(parent)
@@ -10692,6 +10693,31 @@ class QDialogModelParams(QDialog):
             # restoreDefaultButton.clicked.connect(self.restoreDefault)
 
         self.okButton = okButton
+
+        if extraParamsTitle is None:
+            extraParamsTitle = 'Additional parameters'
+
+        self.extraArgsWidgets = None
+        if extraParams is not None:
+            self.extraGroupBox, self.extraArgsWidgets = self.createGroupParams(
+                extraParams, extraParamsTitle
+            )
+
+            extraDefaultButton = widgets.reloadPushButton('Restore default')
+            extraLoadLastSelButton = QPushButton('Load last parameters')
+            extraButtonsLayout = QHBoxLayout()
+            extraButtonsLayout.addStretch(1)
+            extraButtonsLayout.addWidget(extraDefaultButton)
+            extraButtonsLayout.addWidget(extraLoadLastSelButton)
+            extraDefaultButton.clicked.connect(self.restoreDefaultExtra)
+            section = f'{self.model_name}.extra'
+            extraLoadLastSelButton.clicked.connect(
+                partial(loadFunc, section, self.extraArgsWidgets)
+            )
+
+            scrollAreaLayout.addWidget(self.extraGroupBox)
+            scrollAreaLayout.addLayout(extraButtonsLayout)
+
         scrollAreaLayout.addWidget(initGroupBox)
         scrollAreaLayout.addLayout(initButtonsLayout)
         if not self.skipSegmentation:
@@ -11129,6 +11155,12 @@ class QDialogModelParams(QDialog):
             defaultVal = argWidget.defaultVal
             widget = argWidget.widget
             argWidget.valueSetter(widget, defaultVal)
+    
+    def restoreDefaultExtra(self):
+        for argWidget in self.extraArgsWidgets:
+            defaultVal = argWidget.defaultVal
+            widget = argWidget.widget
+            argWidget.valueSetter(widget, defaultVal)
 
     def restoreDefaultPostprocess(self):
         self.postProcessGroupbox.restoreDefault()
@@ -11142,10 +11174,12 @@ class QDialogModelParams(QDialog):
         configPars.read(self.ini_path)
         return configPars
 
-    def setValuesFromParams(self, init_params, segment_params):
+    def setValuesFromParams(self, init_params, segment_params, extra_params):
         sections = {
             f'{self.model_name}.init': (init_params, self.init_argsWidgets),
-            f'{self.model_name}.segment': (segment_params, self.argsWidgets)
+            f'{self.model_name}.segment': (segment_params, self.argsWidgets),
+            f'{self.model_name}.extra': (extra_params, self.extraArgsWidgets)
+            
         }
         for section, values in sections.items():
             params, argWidgetList = values
@@ -11271,6 +11305,11 @@ class QDialogModelParams(QDialog):
                 return
             
         self.init_kwargs = self.argsWidgets_to_kwargs(self.init_argsWidgets)
+
+        if self.extraArgsWidgets:
+            self.extra_kwargs = self.argsWidgets_to_kwargs(
+                self.extraArgsWidgets
+            )
         if not self.skipSegmentation:
             self.model_kwargs = self.argsWidgets_to_kwargs(
                 self.argsWidgets
@@ -11311,10 +11350,15 @@ class QDialogModelParams(QDialog):
         
         self.configPars[f'{self.model_name}.init'] = {}
         self.configPars[f'{self.model_name}.segment'] = {}
+        self.configPars[f'{self.model_name}.extra'] = {}
+
         for key, val in self.init_kwargs.items():
             self.configPars[f'{self.model_name}.init'][key] = str(val)
         for key, val in self.model_kwargs.items():
             self.configPars[f'{self.model_name}.segment'][key] = str(val)
+        if self.extraArgsWidgets:
+            for key, val in self.extra_kwargs.items():
+                self.configPars[f'{self.model_name}.extra'][key] = str(val)
 
         self.configPars[f'{self.model_name}.postprocess'] = {}
         if self.postProcessGroupbox is not None:
