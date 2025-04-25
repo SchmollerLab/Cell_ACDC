@@ -1891,7 +1891,7 @@ def segm_model_segment(
             image = filtered_image # .astype(image.dtype)
         else:
             image = preprocess_image_from_recipe(image, preproc_recipe)
-    
+
     if is_timelapse_model:
         segm_data = model.segment3DT(image, **model_kwargs)
         return segm_data             

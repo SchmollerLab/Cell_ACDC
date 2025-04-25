@@ -8998,6 +8998,16 @@ class guiWin(QMainWindow):
             self.warnIDnotFound(searchedID)
             return
         
+        if searchedID in posData.lost_IDs:
+            self.goToLostObjectID(searchedID)
+            return
+        
+        tracked_lost_IDs = self.getTrackedLostIDs()
+        if searchedID in tracked_lost_IDs:
+            self.goToAcceptedLostObjectID(searchedID)
+            return
+        
+        
         self.logger.info(f'Searching ID {searchedID} in other frames...')
         
         frame_i_found = self.startSearchIDworker(searchedID)
@@ -9122,6 +9132,40 @@ class guiWin(QMainWindow):
         self.highlightSearchedID(ID)
         propsQGBox = self.guiTabControl.propsQGBox
         propsQGBox.idSB.setValue(ID)
+    
+    def goToLostObjectID(self, lostID, color=(255, 165, 0, 255)):
+        posData = self.data[self.pos_i]
+        frame_i = posData.frame_i
+        prev_rp = posData.allData_li[frame_i-1]['regionprops']
+        prev_IDs_idxs = posData.allData_li[frame_i-1]['IDs_idxs']
+        obj = prev_rp[prev_IDs_idxs[lostID]]
+        self.goToZsliceSearchedID(obj)
+        
+        imageItem = self.getLostObjImageItem(0)
+        thickness = 1
+        if not hasattr(self, 'lostObjContoursImage'):
+            self.initLostObjContoursImage()
+        else:
+            self.lostObjContoursImage[:] = 0  
+
+        contours = []
+        obj_contours = self.getObjContours(obj, all_external=True)
+        contours.extend(obj_contours)
+        
+        self.addLostObjsToImage(obj, lostID)
+        self.drawLostObjContoursImage(
+            imageItem, contours, thickness=2, color=color
+        )
+        
+    def goToAcceptedLostObjectID(self, acceptedLostID):
+        posData = self.data[self.pos_i]
+        frame_i = posData.frame_i
+        prev_rp = posData.allData_li[frame_i-1]['regionprops']
+        prev_IDs_idxs = posData.allData_li[frame_i-1]['IDs_idxs']
+        obj = prev_rp[prev_IDs_idxs[acceptedLostID]]
+        self.goToZsliceSearchedID(obj)
+        
+        self.updateLostTrackedContoursImage(tracked_lost_IDs=[acceptedLostID])
     
     def askGoToFrameFoundID(self, searchedID, frame_i_found):
         msg = widgets.myMessageBox(wrapText=False)
@@ -25668,14 +25712,18 @@ class guiWin(QMainWindow):
 
         self.drawLostObjContoursImage(imageItem, contours)
     
-    def drawLostObjContoursImage(self, imageItem, contours):
-        thickness = 1
-        color = (255, 165, 0, 255) # orange
+    def drawLostObjContoursImage(
+            self, imageItem, contours, 
+            thickness=1, 
+            color=(255, 165, 0, 255) # orange
+        ):
         img = self.lostObjContoursImage
         cv2.drawContours(img, contours, -1, color, thickness)
         imageItem.setImage(img)
     
-    def updateLostTrackedContoursImage(self, ax, delROIsIDs=None):
+    def updateLostTrackedContoursImage(
+            self, ax, delROIsIDs=None, tracked_lost_IDs=None
+        ):
         imageItem = self.getLostTrackedObjImageItem(ax)
         if imageItem is None:
             return
@@ -25689,7 +25737,9 @@ class guiWin(QMainWindow):
             delROIsIDs = set()
         
         posData = self.data[self.pos_i]
-        tracked_lost_IDs = self.getTrackedLostIDs()
+        if tracked_lost_IDs is None:
+            tracked_lost_IDs = self.getTrackedLostIDs()
+            
         prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
         prev_IDs_idxs = posData.allData_li[posData.frame_i-1]['IDs_idxs']
         contours = []
@@ -30018,6 +30068,11 @@ class guiWin(QMainWindow):
         self.togglePointsLayerAction.setChecked(False)
     
     def clearHighlightedID(self):
+        try:
+            self.updateLostContoursImage(ax=0, delROIsIDs=None)
+        except Exception as err:
+            pass
+        
         if self.highlightedID == 0:
             return
         

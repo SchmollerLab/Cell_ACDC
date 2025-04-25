@@ -122,7 +122,9 @@ class Model:
             )
         return labels
 
-    def segment3DT(self, timelapse3D, thresh_val=0.0, min_distance=10, signals=None):
+    def segment3DT(
+            self, timelapse3D, thresh_val=0.0, min_distance=10, signals=None
+        ):
         sig_progress_tqdm = None
         if signals is not None:
             signals[0].progress.emit(f'Preprocessing images...')
