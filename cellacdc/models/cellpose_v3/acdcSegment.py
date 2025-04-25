@@ -165,6 +165,29 @@ class Model:
         )
         return labels
     
+    def segmemt3DT(self, video_data, signals=None, **kwargs):
+        images = video_data
+        if self.denoiseModel is not None:
+            resc_int_low_val_perc = kwargs['rescale_intensity_low_val_perc']
+            resc_int_high_val_perc = kwargs['rescale_intensity_high_val_perc']
+            images = [
+                self.denoiseModel.run(
+                    image,
+                    normalize=kwargs['denoise_normalize'], 
+                    rescale_intensity_low_val_perc=resc_int_low_val_perc, 
+                    rescale_intensity_high_val_perc=resc_int_high_val_perc, 
+                    sharpen=kwargs['sharpen'],
+                    low_percentile=kwargs['low_percentile'], 
+                    high_percentile=kwargs['high_percentile'],
+                    title_norm=kwargs['title_norm'],
+                    norm3D=kwargs['norm3D']
+                )
+                for image in video_data
+            ]
+        
+        labels = self.acdcCellpose.segment3DT(images, signals=signals, **kwargs)
+        return labels
+    
     def setupLogger(self, logger):
         self.acdcCellpose.setupLogger(logger)
     

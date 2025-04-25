@@ -21,14 +21,17 @@ except Exception as e:
 
 gdrive_path = myutils.get_gdrive_path()
 
-FRAME_I = None # 0 # 300
-# test_data = data.Cdc42TimeLapseData()
+FRAME_I = None # None # 0 # 300
+UNTIL_FRAME_I = 10 # None
+IS_TIMELAPSE = True
+
+test_data = data.Cdc42TimeLapseData()
 # # image_data = test_data.image_data()
 # image_data = test_data.cdc42_data()
 
 # test_data = data.pomBseenDualChannelData()
 # test_data = data.BABYtestData()
-test_data = data.YeastMitoSnapshotData()
+# test_data = data.YeastMitoSnapshotData()
 
 image_data = test_data.image_data()
 # segm_data = test_data.segm_data()
@@ -41,6 +44,9 @@ if FRAME_I is None:
     img = image_data
 else:
     img = image_data[FRAME_I]
+
+if UNTIL_FRAME_I is not None:
+    img = img[:UNTIL_FRAME_I]
 
 app, splashScreen = _setup_app(splashscreen=True)  
 splashScreen.close()
@@ -109,7 +115,8 @@ print('Input image shape: ', img.shape)
 
 lab = core.segm_model_segment(
     model, img, win.model_kwargs, frame_i=FRAME_I, 
-    preproc_recipe=win.preproc_recipe, posData=posData
+    preproc_recipe=win.preproc_recipe, posData=posData, 
+    is_timelapse_model_and_data=is_segment3DT_available and IS_TIMELAPSE,
 )
 
 from cellacdc.plot import imshow

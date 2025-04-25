@@ -1880,10 +1880,10 @@ def preprocess_image_from_recipe(image, recipe: List[Dict[str, Any]]):
 
 def segm_model_segment(
         model, image, model_kwargs, frame_i=None, preproc_recipe=None, 
-        is_timelapse_model=False, posData=None, start_z_slice=0
+        is_timelapse_model_and_data=False, posData=None, start_z_slice=0
     ):
     if preproc_recipe is not None:
-        if is_timelapse_model:
+        if is_timelapse_model_and_data:
             filtered_image = np.zeros(image.shape)
             for i, img in enumerate(image):
                 img = preprocess_image_from_recipe(img, preproc_recipe)
@@ -1892,7 +1892,7 @@ def segm_model_segment(
         else:
             image = preprocess_image_from_recipe(image, preproc_recipe)
 
-    if is_timelapse_model:
+    if is_timelapse_model_and_data:
         segm_data = model.segment3DT(image, **model_kwargs)
         return segm_data             
     
@@ -2391,7 +2391,6 @@ class SegmKernel(_WorkflowKernel):
         """Segmentation routine"""
         self.logger_func(f'\nSegmenting with {self.model_name}...')
         t0 = time.perf_counter()
-        # self.logger_func(f'Segmenting with {model} (Ctrl+C to abort)...')
         if posData.SizeT > 1:
             if self.innerPbar_available and self.signals is not None:
                 self.signals.resetInnerPbar.emit(len(img_data))
@@ -2406,7 +2405,7 @@ class SegmKernel(_WorkflowKernel):
                     )
                 lab_stack = segm_model_segment(
                     self.model, img_data, self.model_kwargs, 
-                    is_timelapse_model=True, 
+                    is_timelapse_model_and_data=True, 
                     preproc_recipe=self.preproc_recipe, 
                     posData=posData
                 )
