@@ -51,7 +51,7 @@ from qtpy.QtWidgets import (
     QListWidget, QPlainTextEdit, QFileDialog, QListView, QAbstractItemView,
     QTreeWidget, QTreeWidgetItem, QListWidgetItem, QLayout, QStylePainter,
     QGraphicsBlurEffect, QGraphicsProxyWidget, QGraphicsObject,
-    QButtonGroup
+    QButtonGroup, QStyleOptionSlider
 )
 
 import pyqtgraph as pg
@@ -68,6 +68,7 @@ from . import plot
 from . import annotate
 from . import urls
 from . import _core
+from . import QtScoped
 from .acdc_regex import float_regex
 from .config import PREPROCESS_MAPPER
 from . import _base_widgets
@@ -5858,11 +5859,6 @@ class navigateQScrollBar(ScrollBar):
 
         if self._disableCustomPressEvent:
             return
-
-        if self.sliderPosition() == self.maximum():
-            # Clicked right arrow of scrollbar with the slider at maximum --> +1
-            # self.setMaximum(self.maximum()+1)
-            self.triggerAction(QAbstractSlider.SliderAction.SliderSingleStepAdd)
     
     def setValueNoSignal(self, value):
         for signal_name, slot in self.signal_slot_mapper.items():
