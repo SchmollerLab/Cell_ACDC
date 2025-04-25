@@ -9008,7 +9008,6 @@ class guiWin(QMainWindow):
             self.goToAcceptedLostObjectID(searchedID)
             return
         
-        
         self.logger.info(f'Searching ID {searchedID} in other frames...')
         
         frame_i_found = self.startSearchIDworker(searchedID)
