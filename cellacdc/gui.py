@@ -825,6 +825,8 @@ class saveDataWorker(QObject):
         else:
             numPosToSave = len(posToSave)
         save_metrics = self.mainWin.save_metrics
+        if self.isQuickSave:
+            save_metrics = False
         self.time_last_pbar_update = time.perf_counter()
         mode = self.mode
         for p, posData in enumerate(self.mainWin.data):
@@ -879,10 +881,11 @@ class saveDataWorker(QObject):
                 if skipUserChannel:
                     add_user_channel_data = False
 
-            if add_user_channel_data and not self.saveOnlySegm:
+            if add_user_channel_data and not self.isQuickSave:
                 posData.fluo_data_dict[posData.filename] = posData.img_data
 
-            posData.fluo_bkgrData_dict[posData.filename] = posData.bkgrData
+            if not self.isQuickSave:
+                posData.fluo_bkgrData_dict[posData.filename] = posData.bkgrData
 
             posData.setLoadedChannelNames()
             self.mainWin.initMetricsToSave(posData)
@@ -909,9 +912,6 @@ class saveDataWorker(QObject):
                         posData.saveManualBackgroundData(manualBackgrData)
 
                 acdc_df = data_dict['acdc_df']
-
-                if self.saveOnlySegm:
-                    continue
 
                 if acdc_df is None:
                     continue
@@ -994,16 +994,11 @@ class saveDataWorker(QObject):
                     self.mutex.unlock()
                     posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
 
-            if self.saveOnlySegm:
-                # Go back to current frame
-                posData.frame_i = current_frame_i
-                self.mainWin.get_data()
-                continue
-
-            if add_user_channel_data:
+            if add_user_channel_data and not self.isQuickSave:
                 posData.fluo_data_dict.pop(posData.filename)
 
-            posData.fluo_bkgrData_dict.pop(posData.filename)
+            if not self.isQuickSave:
+                posData.fluo_bkgrData_dict.pop(posData.filename)
 
             if posData.SizeT > 1:
                 self.progress.emit('Almost done...')
@@ -1068,6 +1063,12 @@ class saveDataWorker(QObject):
                     self.waitCond.wait(self.mutex)
                     self.mutex.unlock()
 
+            if self.isQuickSave:
+                # Go back to current frame
+                posData.frame_i = current_frame_i
+                self.mainWin.get_data()
+                continue
+            
             with open(last_tracked_i_path, 'w+') as txt:
                 txt.write(str(frame_i))
 
@@ -29766,7 +29767,7 @@ class guiWin(QMainWindow):
         self.thread = QThread()
         self.worker = saveDataWorker(self)
         self.worker.mode = mode
-        self.worker.saveOnlySegm = isQuickSave
+        self.worker.isQuickSave = isQuickSave
 
         self.worker.moveToThread(self.thread)
 
@@ -29935,7 +29936,7 @@ class guiWin(QMainWindow):
         if self.saveWin.aborted or self.worker.abort:
             self.titleLabel.setText('Saving process cancelled.', color='r')
         elif self._isQuickSave:
-            self.titleLabel.setText('Segmentation file saved (not the table)')
+            self.titleLabel.setText('Saved segmentation file and annotations')
         else:
             self.titleLabel.setText('Saved!')
         self.saveWin.workerFinished = True
