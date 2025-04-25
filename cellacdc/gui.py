@@ -29130,6 +29130,52 @@ class guiWin(QMainWindow):
                     obj.vol_fl = vol_fl
                 posData.allData_li[frame_i]['regionprops'] = rp
 
+    def askSaveLastVisitedCcaMode(self, isQuickSave=False):
+        posData = self.data[self.pos_i]
+        current_frame_i = posData.frame_i
+        frame_i = 0
+        last_tracked_i = 0
+        self.save_until_frame_i = 0
+        if self.isSnapshot:
+            return True
+        
+        for frame_i, data_dict in enumerate(posData.allData_li):
+            lab = data_dict['labels']
+            if lab is None:
+                frame_i -= 1
+                break
+        
+        self.save_until_frame_i = frame_i
+        self.last_tracked_i = frame_i
+        
+        if isQuickSave:
+            return True
+        
+        last_cca_frame_i = self.navigateScrollBar.maximum()-1
+        # Ask to save last visited frame or not
+        txt = html_utils.paragraph(f"""
+            You annotated the cell cycle stages up 
+            until frame number {last_cca_frame_i+1}.<br><br>
+            Enter <b>up to which frame number</b> you want to save the 
+            cell cycle annotations:
+        """)
+        lastFrameDialog = apps.QLineEditDialog(
+            title='Last annoated frame number to save', 
+            defaultTxt=str(last_cca_frame_i+1),
+            msg=txt, parent=self, allowedValues=(1, last_cca_frame_i+1),
+            warnLastFrame=True, isInteger=True, stretchEntry=False,
+            lastVisitedFrame=last_cca_frame_i+1
+        )
+        lastFrameDialog.exec_()
+        if lastFrameDialog.cancel:
+            return False
+
+        last_save_cca_frame_i = lastFrameDialog.EntryID - 1
+        if last_save_cca_frame_i < last_cca_frame_i:
+            self.resetCcaFuture(last_cca_frame_i)
+        
+        return True
+    
     def askSaveLastVisitedSegmMode(self, isQuickSave=False):
         posData = self.data[self.pos_i]
         current_frame_i = posData.frame_i
@@ -29152,8 +29198,8 @@ class guiWin(QMainWindow):
 
         # Ask to save last visited frame or not
         txt = html_utils.paragraph(f"""
-            You visited and stored data up until frame
-            number {frame_i+1}.<br><br>
+            You visualised and corrected segmentation and tracking data up 
+            until frame number {frame_i+1}.<br><br>
             Enter <b>up to which frame number</b> you want to save data:
         """)
         lastFrameDialog = apps.QLineEditDialog(
@@ -29739,11 +29785,16 @@ class guiWin(QMainWindow):
         if self.isSnapshot:
             self.store_data(mainThread=False)
 
-        proceed = self.askSaveLastVisitedSegmMode(isQuickSave=isQuickSave)
-        if not proceed:
-            return
-
         mode = self.modeComboBox.currentText()
+        if mode == 'Cell cycle analysis':
+            proceed = self.askSaveLastVisitedCcaMode(isQuickSave=isQuickSave)
+            if not proceed:
+                return
+        else:
+            proceed = self.askSaveLastVisitedSegmMode(isQuickSave=isQuickSave)
+            if not proceed:
+                return
+
         if self.save_metrics or mode == 'Cell cycle analysis':
             self.computeVolumeRegionprop()
 
