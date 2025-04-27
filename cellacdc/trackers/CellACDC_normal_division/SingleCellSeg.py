@@ -1,8 +1,10 @@
 import skimage
 import numpy as np
+import time
 from ...core import segm_model_segment, post_process_segm
 from ...features import custom_post_process_segm
-from ... import io
+from ... import io, plot
+
 
 import os # for dbug
 import json # for dbug
@@ -146,13 +148,25 @@ def find_overlapping_bboxs(IDs, bboxs, order=1):
         bboxs = new_bboxs
         IDs = new_IDs
 
-    return IDs, bboxs   
+    return IDs, bboxs
+
+def fast_border_touching_labels(label_img):
+    # Get unique labels from the four borders
+    border_labels = np.r_[
+        label_img[0, :],        # Top row
+        label_img[-1, :],       # Bottom row
+        label_img[:, 0],        # Left column
+        label_img[:, -1]        # Right column
+    ]
+    # Use np.unique once on the combined array
+    return np.unique(border_labels[border_labels != 0])
 
 def single_cell_seg(model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID,
                     win, posData, distance_filler_growth=1,
                     overlap_threshold=0.5, padding=0.4, size_perc_threshold=0.5,
                     export_bbox_for_training=False, skip_cell_filter=False,
-                    assigned_IDs_prev=None, original_lab=None
+                    assigned_IDs_prev=None, original_lab=None, return_debug_imgs=False,
+                    to_be_deleted_IDs=None
                     ):
     """
     Function to segment single cells in the current frame using the previous frame segmentation as a reference. 
@@ -174,6 +188,7 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID,
         skip_cell_filter: if True, skip the cell filter steps (overlap_threshold etc)
         assigned_IDs_prev: list of IDs assigned to the segmented cells in the previous iteration
         original_lab: original labeled image for the current frame (used for assigned_IDs_prev)
+        return_debug_imgs: return some additional images for debugging purposes
 
     Returns:
         curr_lab: current frame segmentation with the segmented cells
@@ -182,6 +197,7 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID,
 
     """
     assigned_IDs = [] if assigned_IDs_prev is None else assigned_IDs_prev.copy()
+    to_be_deleted_IDs = set() if to_be_deleted_IDs is None else to_be_deleted_IDs.copy()
 
     if export_bbox_for_training:
         bboxs_for_debug = []
@@ -199,6 +215,7 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID,
     bboxs = [get_box_coords(prev_rp, prev_lab_shape, ID, padding) for ID in IDs]
     IDs_bboxs, bboxs = find_overlapping_bboxs(IDs, bboxs)
     
+    new_lab_boxs = []
     for IDs, bbox in zip(IDs_bboxs, bboxs):
         box_x_min, box_x_max, box_y_min, box_y_max = bbox
 
@@ -250,15 +267,19 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID,
 
             ### maybe add roi extension if cells are deleted...
 
+        t0 = time.time()
         # Find the overlap between the model segmentation and the other IDs
         overlap = find_overlap(box_model_lab, box_curr_lab_other_IDs)
+        t1 = time.time()
+        print(f"Overlap time: {t1 - t0:.2f} seconds")
 
         # Set overlapping regions to 0, so already segmented cells are not overwritten
         for ID, overlap_perc in overlap:
             if overlap_perc > overlap_threshold:
                 box_model_lab[box_model_lab == ID] = 0
 
-        
+        t2 = time.time()
+        print(f"Overlap apply time: {t2 - t1:.2f} seconds")
         if not skip_cell_filter:
             if assigned_IDs_prev:
                 assigned_IDs_prev_locations = np.isin(box_curr_lab, assigned_IDs_prev)
@@ -282,6 +303,9 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID,
         else:
             # If skip_cell_filter is True, we can assign the IDs directly from the model segmentation
             rp_model_lab = skimage.measure.regionprops(box_model_lab)
+            border_touching = fast_border_touching_labels(box_model_lab)
+            to_be_deleted_IDs.update(border_touching)
+
             for obj in rp_model_lab:
                 box_curr_lab_other_IDs[box_model_lab == obj.label] = new_unique_ID
                 assigned_IDs.append(new_unique_ID)
@@ -290,7 +314,11 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID,
             new_lab_box = box_curr_lab_other_IDs
             
         curr_lab[box_x_min:box_x_max, box_y_min:box_y_max] = new_lab_box
+        if return_debug_imgs:
+            new_lab_boxs.append(new_lab_box.copy())
 
+        t3 = time.time()
+        print(f"Overlap apply time: {t3 - t2:.2f} seconds")
     #     if export_bbox_for_training:
     #         bboxs_for_debug[-1].append(box_curr_lab_other_IDs.copy())
 
@@ -326,5 +354,6 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID,
 
     #     with open(json_filepath, 'w') as f:
     #         json.dump(loaded_dict, f, indent=4)
-
-    return curr_lab, assigned_IDs
+    if return_debug_imgs:
+        return curr_lab, assigned_IDs, to_be_deleted_IDs, new_lab_boxs
+    return curr_lab, assigned_IDs, to_be_deleted_IDs

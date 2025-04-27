@@ -8274,6 +8274,9 @@ class guiWin(QMainWindow):
         self.SegForLostIDsWorker.sigAskInstallModel.connect(
             self.SegForLostIDsWorkerAskInstallModel
         )
+        self.SegForLostIDsWorker.sigshowImageDebug.connect(
+            self.showImageDebug
+        )
 
         # Move the worker to the thread
         self.SegForLostIDsWorker.moveToThread(self._thread)
@@ -8303,6 +8306,9 @@ class guiWin(QMainWindow):
             self.progressWin.workerFinished = True
             self.progressWin.close()
             self.progressWin = None
+        
+    def showImageDebug(self, img):
+        imshow(img)
     
     def gui_raiseBottomLayoutContextMenu(self, event):
         try:

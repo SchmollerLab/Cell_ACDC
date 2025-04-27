@@ -41,7 +41,7 @@ from . import core
 from . import cca_df_colnames, lineage_tree_cols, default_annot_df
 from . import cca_df_colnames_with_tree
 from .utils import resize
-from .trackers.CellACDC_normal_division.localCellTracking import single_cell_seg
+from .trackers.CellACDC_normal_division.SingleCellSeg import single_cell_seg
 
 DEBUG = False
 
@@ -866,6 +866,7 @@ class FindNextNewIdWorker(QObject):
 class SegForLostIDsWorker(QObject):
     sigAskInit = Signal()
     sigAskInstallModel = Signal(str)
+    sigshowImageDebug = Signal(object)
 
     def __init__(self, guiWin, mutex, waitCond):
         QObject.__init__(self)
@@ -880,6 +881,12 @@ class SegForLostIDsWorker(QObject):
         self.sigAskInit.emit()
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
+    
+    def emitSigShowImageDebug(self, img):
+        # self.mutex.lock()
+        self.sigshowImageDebug.emit(img)
+        # self.waitCond.wait(self.mutex)
+        # self.mutex.unlock()
 
     @worker_exception_handler
     def run(self):
@@ -903,7 +910,7 @@ class SegForLostIDsWorker(QObject):
             self.emitSigAskInstallModel(base_model_name)
             acdcSegment = myutils.import_segment_module(base_model_name)
             self.guiWin.acdcSegment_li[idx] = acdcSegment
-
+ 
         win = self.guiWin.SegForLostIDsSettings['win']
         init_kwargs_new = self.guiWin.SegForLostIDsSettings['init_kwargs_new']
         args_new = self.guiWin.SegForLostIDsSettings['args_new']
@@ -918,7 +925,8 @@ class SegForLostIDsWorker(QObject):
         missing_IDs_global = set()
         old_IDs = posData.IDs.copy()
         original_lab = posData.lab.copy()
-        
+        to_be_deleted_IDs = set()
+
         for i in range(args_new['max_interations']):
             self.guiWin.get_data()
             
@@ -938,7 +946,7 @@ class SegForLostIDsWorker(QObject):
             last_round = i == args_new['max_interations'] - 1
 
             assigned_IDs_prev = assigned_IDs.copy()
-            new_lab, assigned_IDs = single_cell_seg(model, prev_lab, curr_lab, curr_img, missing_IDs, new_unique_ID,
+            new_lab, assigned_IDs, to_be_deleted_IDs = single_cell_seg(model, prev_lab, curr_lab, curr_img, missing_IDs, new_unique_ID,
                                                     win, posData,
                                                     distance_filler_growth=args_new['distance_filler_growth'],
                                                     padding=args_new['padding'], 
@@ -947,7 +955,10 @@ class SegForLostIDsWorker(QObject):
                                                     assigned_IDs_prev=assigned_IDs_prev,
                                                     skip_cell_filter=not last_round,
                                                     original_lab=original_lab,
+                                                    to_be_deleted_IDs=to_be_deleted_IDs,
                                                     )
+            
+            self.emitSigShowImageDebug(new_lab)
 
             posData.lab = new_lab
             self.guiWin.update_rp()
@@ -957,6 +968,16 @@ class SegForLostIDsWorker(QObject):
                 self.guiWin.trackManuallyAddedObject(ID, True)
 
             self.guiWin.store_data()
+
+        for ID in to_be_deleted_IDs:
+            self.guiWin.get_data()
+            lab = posData.lab
+            for obj in posData.rp:
+                if obj.label == ID:
+                    lab[obj.slice][obj.image] = 0
+            posData.lab = lab
+            self.guiWin.update_rp()
+            self.guiWin.store_data()       
 
         if args_new['allow_only_tracked_cells']:
             self.guiWin.get_data()
