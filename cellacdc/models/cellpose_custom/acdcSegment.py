@@ -52,6 +52,12 @@ class Model:
         )
         return labels
     
+    def segment3DT(self, video_data, signals=None, **kwargs):
+        labels = self.acdcCellpose.segment3DT(
+            video_data, signals=signals, **kwargs
+        )
+        return labels
+    
     def setupLogger(self, logger):
         self.acdcCellpose.setupLogger(logger)
     

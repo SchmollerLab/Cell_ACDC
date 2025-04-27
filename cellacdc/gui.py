@@ -8499,6 +8499,15 @@ class guiWin(QMainWindow):
             self.warnIDnotFound(searchedID)
             return
         
+        if searchedID in posData.lost_IDs:
+            self.goToLostObjectID(searchedID)
+            return
+        
+        tracked_lost_IDs = self.getTrackedLostIDs()
+        if searchedID in tracked_lost_IDs:
+            self.goToAcceptedLostObjectID(searchedID)
+            return
+        
         self.logger.info(f'Searching ID {searchedID} in other frames...')
         
         frame_i_found = self.startSearchIDworker(searchedID)
@@ -8623,6 +8632,40 @@ class guiWin(QMainWindow):
         self.highlightSearchedID(ID)
         propsQGBox = self.guiTabControl.propsQGBox
         propsQGBox.idSB.setValue(ID)
+    
+    def goToLostObjectID(self, lostID, color=(255, 165, 0, 255)):
+        posData = self.data[self.pos_i]
+        frame_i = posData.frame_i
+        prev_rp = posData.allData_li[frame_i-1]['regionprops']
+        prev_IDs_idxs = posData.allData_li[frame_i-1]['IDs_idxs']
+        obj = prev_rp[prev_IDs_idxs[lostID]]
+        self.goToZsliceSearchedID(obj)
+        
+        imageItem = self.getLostObjImageItem(0)
+        thickness = 1
+        if not hasattr(self, 'lostObjContoursImage'):
+            self.initLostObjContoursImage()
+        else:
+            self.lostObjContoursImage[:] = 0  
+
+        contours = []
+        obj_contours = self.getObjContours(obj, all_external=True)
+        contours.extend(obj_contours)
+        
+        self.addLostObjsToImage(obj, lostID)
+        self.drawLostObjContoursImage(
+            imageItem, contours, thickness=2, color=color
+        )
+        
+    def goToAcceptedLostObjectID(self, acceptedLostID):
+        posData = self.data[self.pos_i]
+        frame_i = posData.frame_i
+        prev_rp = posData.allData_li[frame_i-1]['regionprops']
+        prev_IDs_idxs = posData.allData_li[frame_i-1]['IDs_idxs']
+        obj = prev_rp[prev_IDs_idxs[acceptedLostID]]
+        self.goToZsliceSearchedID(obj)
+        
+        self.updateLostTrackedContoursImage(tracked_lost_IDs=[acceptedLostID])
     
     def askGoToFrameFoundID(self, searchedID, frame_i_found):
         msg = widgets.myMessageBox(wrapText=False)
@@ -26221,14 +26264,18 @@ class guiWin(QMainWindow):
 
         self.drawLostObjContoursImage(imageItem, contours)
     
-    def drawLostObjContoursImage(self, imageItem, contours):
-        thickness = 1
-        color = (255, 165, 0, 255) # orange
+    def drawLostObjContoursImage(
+            self, imageItem, contours, 
+            thickness=1, 
+            color=(255, 165, 0, 255) # orange
+        ):
         img = self.lostObjContoursImage
         cv2.drawContours(img, contours, -1, color, thickness)
         imageItem.setImage(img)
     
-    def updateLostTrackedContoursImage(self, ax, delROIsIDs=None):
+    def updateLostTrackedContoursImage(
+            self, ax, delROIsIDs=None, tracked_lost_IDs=None
+        ):
         imageItem = self.getLostTrackedObjImageItem(ax)
         if imageItem is None:
             return
@@ -26242,7 +26289,9 @@ class guiWin(QMainWindow):
             delROIsIDs = set()
         
         posData = self.data[self.pos_i]
-        tracked_lost_IDs = self.getTrackedLostIDs()
+        if tracked_lost_IDs is None:
+            tracked_lost_IDs = self.getTrackedLostIDs()
+            
         prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
         prev_IDs_idxs = posData.allData_li[posData.frame_i-1]['IDs_idxs']
         contours = []
@@ -29648,50 +29697,52 @@ class guiWin(QMainWindow):
                     obj.vol_fl = vol_fl
                 posData.allData_li[frame_i]['regionprops'] = rp
 
-    def askSaveOriginalSegm(self, isQuickSave=False):
-        if isQuickSave:
-            return "", True, True
-
+    def askSaveLastVisitedCcaMode(self, isQuickSave=False):
         posData = self.data[self.pos_i]
-        if not posData.whitelist:
-            return "", True, True
+        current_frame_i = posData.frame_i
+        frame_i = 0
+        last_tracked_i = 0
+        self.save_until_frame_i = 0
+        if self.isSnapshot:
+            return True
         
-        help_txt = html_utils.paragraph(f"""
-            You have <b>whitelisted IDs</b> in the current position.<br>
-            Do you want to save the <b>not whitelisted</b> segmentation data<br>
-            This will allow you to <b>revisit the original segmentation</b>.<br>
-            """)
-
+        for frame_i, data_dict in enumerate(posData.allData_li):
+            lab = data_dict['labels']
+            if lab is None:
+                frame_i -= 1
+                break
+        
+        self.save_until_frame_i = frame_i
+        self.last_tracked_i = frame_i
+        
+        if isQuickSave:
+            return True
+        
+        last_cca_frame_i = self.navigateScrollBar.maximum()-1
+        # Ask to save last visited frame or not
         txt = html_utils.paragraph(f"""
-            You have <b>whitelisted IDs</b> in the current position.<br>
-            Do you want to save the <b>not whitelisted</b> segmentation data?<br>
-            """)
-
-        found_files = load.get_segm_files(posData.images_path)
-        existingEndnames = load.get_endnames(
-            posData.basename, found_files
+            You annotated the cell cycle stages up 
+            until frame number {last_cca_frame_i+1}.<br><br>
+            Enter <b>up to which frame number</b> you want to save the 
+            cell cycle annotations:
+        """)
+        lastFrameDialog = apps.QLineEditDialog(
+            title='Last annoated frame number to save', 
+            defaultTxt=str(last_cca_frame_i+1),
+            msg=txt, parent=self, allowedValues=(1, last_cca_frame_i+1),
+            warnLastFrame=True, isInteger=True, stretchEntry=False,
+            lastVisitedFrame=last_cca_frame_i+1
         )
+        lastFrameDialog.exec_()
+        if lastFrameDialog.cancel:
+            return False
 
-        segmFilename = os.path.basename(posData.segm_npz_path)
-        segmFilename = f"{segmFilename[:-4]}_not_whitelisted"
-        win = apps.filenameDialog(
-            basename=posData.basename,
-            hintText=txt,
-            defaultEntry=segmFilename,
-            existingNames=existingEndnames,
-            helpText=help_txt, 
-            allowEmpty=False,
-            parent=self,
-            title='Save not whitelisted segmentation data',
-            addDoNotSaveButton=True
-        )
-        win.exec_()
-        if win.cancel:
-            return "", False, True
-        if win.doNotSave:
-            return "", True, True
-        return win.entryText, True, False
-
+        last_save_cca_frame_i = lastFrameDialog.EntryID - 1
+        if last_save_cca_frame_i < last_cca_frame_i:
+            self.resetCcaFuture(last_cca_frame_i)
+        
+        return True
+    
     def askSaveLastVisitedSegmMode(self, isQuickSave=False):
         posData = self.data[self.pos_i]
         current_frame_i = posData.frame_i
@@ -29714,8 +29765,8 @@ class guiWin(QMainWindow):
 
         # Ask to save last visited frame or not
         txt = html_utils.paragraph(f"""
-            You visited and stored data up until frame
-            number {frame_i+1}.<br><br>
+            You visualised and corrected segmentation and tracking data up 
+            until frame number {frame_i+1}.<br><br>
             Enter <b>up to which frame number</b> you want to save data:
         """)
         lastFrameDialog = apps.QLineEditDialog(
@@ -30319,19 +30370,16 @@ class guiWin(QMainWindow):
         if self.isSnapshot:
             self.store_data(mainThread=False)
 
-        proceed = self.askSaveLastVisitedSegmMode(isQuickSave=isQuickSave)
-        if not proceed:
-            self.setDisabled(False, keepDisabled=False)
-            self.activateWindow()
-            return
-
-        append_name_og_whitelist, proceed, do_not_save_og_whitelist = self.askSaveOriginalSegm(isQuickSave=isQuickSave)
-        if not proceed:
-            self.setDisabled(False, keepDisabled=False)
-            self.activateWindow()
-            return
-
         mode = self.modeComboBox.currentText()
+        if mode == 'Cell cycle analysis':
+            proceed = self.askSaveLastVisitedCcaMode(isQuickSave=isQuickSave)
+            if not proceed:
+                return
+        else:
+            proceed = self.askSaveLastVisitedSegmMode(isQuickSave=isQuickSave)
+            if not proceed:
+                return
+
         if self.save_metrics or mode == 'Cell cycle analysis':
             self.computeVolumeRegionprop()
 
@@ -30354,9 +30402,7 @@ class guiWin(QMainWindow):
         self.thread = QThread()
         self.worker = workers.saveDataWorker(self)
         self.worker.mode = mode
-        self.worker.saveOnlySegm = isQuickSave
-        self.worker.append_name_og_whitelist = append_name_og_whitelist
-        self.worker.do_not_save_og_whitelist = do_not_save_og_whitelist
+        self.worker.isQuickSave = isQuickSave
 
         self.worker.moveToThread(self.thread)
 
@@ -30527,7 +30573,7 @@ class guiWin(QMainWindow):
         if self.saveWin.aborted or self.worker.abort:
             self.titleLabel.setText('Saving process cancelled.', color='r')
         elif self._isQuickSave:
-            self.titleLabel.setText('Segmentation file saved (not the table)')
+            self.titleLabel.setText('Saved segmentation file and annotations')
         else:
             self.titleLabel.setText('Saved!')
         self.saveWin.workerFinished = True
@@ -30661,6 +30707,11 @@ class guiWin(QMainWindow):
         self.togglePointsLayerAction.setChecked(False)
     
     def clearHighlightedID(self):
+        try:
+            self.updateLostContoursImage(ax=0, delROIsIDs=None)
+        except Exception as err:
+            pass
+        
         if self.highlightedID == 0:
             return
         

@@ -66,9 +66,8 @@ class Model:
             handler.close()
             models.models_logger.removeHandler(handler)
     
-    def _eval(self, image, **kwargs):
-        input_img = image.astype(np.float32)
-        return self.model.eval(input_img, **kwargs)[0]
+    def _eval(self, image, **kwargs):        
+        return self.model.eval(image, **kwargs)[0]
     
     def second_ch_img_to_stack(self, first_ch_data, second_ch_data):
         # The 'cyto' model can work with a second channel (e.g., nucleus).
@@ -92,7 +91,54 @@ class Model:
         self.is_rgb = True
 
         return rgb_stack
+    
+    def _get_eval_kwargs(
+            self, image,
+            diameter=0.0,
+            flow_threshold=0.4,
+            cellprob_threshold=0.0,
+            stitch_threshold=0.0,
+            min_size=15,
+            anisotropy=0.0,
+            normalize=True,
+            resample=True,
+            segment_3D_volume=False            
+        ):
+        isRGB = image.shape[-1] == 3 or image.shape[-1] == 4
+        isZstack = (image.ndim==3 and not isRGB) or (image.ndim==4)
+
+        if anisotropy == 0 or not isZstack:
+            anisotropy = 1.0
         
+        do_3D = segment_3D_volume
+        if not isZstack:
+            stitch_threshold = 0.0
+            segment_3D_volume = False
+            do_3D = False
+        
+        if stitch_threshold > 0:
+            do_3D = False
+
+        if flow_threshold==0.0 or isZstack:
+            flow_threshold = None
+
+        channels = [0,0] if not isRGB else [1,2]
+
+        eval_kwargs = {
+            'channels': channels,
+            'diameter': diameter,
+            'flow_threshold': flow_threshold,
+            'cellprob_threshold': cellprob_threshold,
+            'stitch_threshold': stitch_threshold,
+            'min_size': min_size,
+            'normalize': normalize,
+            'do_3D': do_3D,
+            'anisotropy': anisotropy,
+            'resample': resample
+        }
+        
+        return eval_kwargs, isZstack
+
     def segment(
             self, image,
             diameter=0.0,
@@ -160,39 +206,18 @@ class Model:
         # image = image/image.max()
         # image = skimage.filters.gaussian(image, sigma=1)
         # image = skimage.exposure.equalize_adapthist(image)
-
-        isRGB = image.shape[-1] == 3 or image.shape[-1] == 4
-        isZstack = (image.ndim==3 and not isRGB) or (image.ndim==4)
-
-        if anisotropy == 0 or not isZstack:
-            anisotropy = 1.0
-        
-        do_3D = segment_3D_volume
-        if not isZstack:
-            stitch_threshold = 0.0
-            segment_3D_volume = False
-            do_3D = False
-        
-        if stitch_threshold > 0:
-            do_3D = False
-
-        if flow_threshold==0.0 or isZstack:
-            flow_threshold = None
-
-        channels = [0,0] if not isRGB else [1,2]
-
-        eval_kwargs = {
-            'channels': channels,
-            'diameter': diameter,
-            'flow_threshold': flow_threshold,
-            'cellprob_threshold': cellprob_threshold,
-            'stitch_threshold': stitch_threshold,
-            'min_size': min_size,
-            'normalize': normalize,
-            'do_3D': do_3D,
-            'anisotropy': anisotropy,
-            'resample': resample
-        }
+        eval_kwargs, isZstack = self._get_eval_kwargs(
+            image,
+            diameter=diameter,
+            flow_threshold=flow_threshold,
+            cellprob_threshold=cellprob_threshold,
+            stitch_threshold=stitch_threshold,
+            min_size=min_size,
+            anisotropy=anisotropy,
+            normalize=normalize,
+            resample=resample,
+            segment_3D_volume=segment_3D_volume            
+        )
 
         if not segment_3D_volume and isZstack and stitch_threshold>0:
             raise TypeError(
@@ -205,14 +230,34 @@ class Model:
             labels = np.zeros(image.shape, dtype=np.uint32)
             for i, _img in enumerate(image):
                 _img = _initialize_image(_img, self.is_rgb)
-                lab = self._eval(_img, **eval_kwargs)
+                input_img = _img.astype(np.float32)
+                lab = self._eval(input_img, **eval_kwargs)
                 labels[i] = lab
             labels = skimage.measure.label(labels>0)
         else:
             image = _initialize_image(image, self.is_rgb)  
-            labels = self._eval(image, **eval_kwargs)
+            input_img = image.astype(np.float32)
+            labels = self._eval(input_img, **eval_kwargs)
         return labels
 
+    def segment3DT(self, video_data, signals=None, **kwargs):
+        eval_kwargs, isZstack = self._get_eval_kwargs(video_data[0], **kwargs)
+        if not kwargs['segment_3D_volume'] and isZstack:
+            # Passing entire 4D video and segmenting slice-by-slice is 
+            # not possible --> iterate each frame and run normal segment
+            labels = np.zeros(video_data.shape, dtype=np.uint32)
+            for i, image in enumerate(video_data):
+                lab = self.segment(image, **kwargs)
+                labels[i] = lab
+        else:
+            eval_kwargs['channels'] = [eval_kwargs['channels']]*len(video_data)
+            images = [
+                _initialize_image(image, self.is_rgb)[0].astype(np.float32) 
+                for image in video_data
+            ]
+            labels = np.array(self._eval(images, **eval_kwargs))
+        return labels        
+    
 def _initialize_image(image, is_rgb=False):        
     # See cellpose.gui.io._initialize_images
     if image.ndim > 3 and not is_rgb:

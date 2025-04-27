@@ -186,12 +186,17 @@ class Cdc42TimeLapseData(_Data):
             images_path, intensity_image_path, acdc_df_path, segm_path,
             basename
         )
+        self.intensity_image_path = intensity_image_path
     
     def cdc42_data(self):
         return load.imread(os.path.join(
             self.images_path, 
             'SCGE_DLY16570_1-15_DLY16571_16-30_corr_s01_tdTomato_Ph3__YEAST.tif'
         ))
+    
+    def posData(self):
+        from . import load
+        return load.loadData(self.intensity_image_path, 'Ph3__YEAST')
 
 class YeastMitoTimelapse(_Data):
     def __init__(self):
