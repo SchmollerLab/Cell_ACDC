@@ -3326,11 +3326,13 @@ def init_tracker(
                 trackerName, ext
             )
 
-    if paramsWin is not None:
-        if paramsWin.cancel:
-            return None, None
-    
-    tracker = trackerModule.tracker(**init_params)
+    if paramsWin is not None and paramsWin.cancel:
+        tracker = None, 
+        track_params = None
+        init_params = None
+    else:
+        tracker = trackerModule.tracker(**init_params)
+        
     if return_init_params:
         return tracker, track_params, init_params
     else:

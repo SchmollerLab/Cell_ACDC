@@ -15019,8 +15019,8 @@ class guiWin(QMainWindow):
 
         trackerName = win.selectedItemsText[0]
         self.logger.info(f'Importing {trackerName} tracker...')
-        self.tracker, self.track_params = myutils.init_tracker(
-            posData, trackerName, qparent=self
+        self.tracker, self.track_params, init_params = myutils.init_tracker(
+            posData, trackerName, qparent=self, return_init_params=True
         )
         if self.track_params is None:
             self.logger.info('Tracking aborted.')
@@ -15028,6 +15028,16 @@ class guiWin(QMainWindow):
         if 'image_channel_name' in self.track_params:
             # Remove the channel name since it was already loaded in init_tracker
             del self.track_params['image_channel_name']
+        
+        track_params_log = {
+            key: value for key, value in self.track_params.items()
+            if key != 'image'
+        }
+        self.logger.info(
+            'Tracking parameters:\n\n'
+            f'Initialization parameters: {init_params}\n'
+            f'Track parameters: {track_params_log}'
+        )
         
         start_n = win.startFrame
         stop_n = win.stopFrame
@@ -15056,10 +15066,12 @@ class guiWin(QMainWindow):
 
         self.start_n = start_n
         self.stop_n = stop_n
+        
+        info_txt = f'Tracking from frame n. {start_n} to {stop_n}...'
+        self.logger.info(info_txt)
 
         self.progressWin = apps.QDialogWorkerProgress(
-            title='Tracking', parent=self,
-            pbarDesc=f'Tracking from frame n. {start_n} to {stop_n}...'
+            title='Tracking', parent=self, pbarDesc=info_txt
         )
         self.progressWin.show(self.app)
         self.progressWin.mainPbar.setMaximum(stop_n-start_n)
