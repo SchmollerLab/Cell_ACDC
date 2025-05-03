@@ -25,12 +25,12 @@ path = (
     os.path.join(data_path, r'test_symm_div_acdc_tracker\Images\bknapp_Movie_S1.tif')
 )
 
-channel_name = 'bknapp_Movie_S1'
-end_filename_segm = 'segm'# 'segm_test'
-START_FRAME = 0 
-STOP_FRAME = 499
+channel_name = 'Autofluorescence'
+end_filename_segm = 'segm_try2' # 'segm_test'
+START_FRAME = 595 
+STOP_FRAME = 605
 # PLOT_FRAME = 499
-SAVE = True
+SAVE = False
 REAL_TIME_TRACKER = False
 SCRUMBLE_IDs = False
 
@@ -62,7 +62,7 @@ posData.loadImgData()
 posData.loadOtherFiles(
     load_segm_data=True, 
     load_metadata=True,
-    # end_filename_segm=end_filename_segm
+    end_filename_segm=end_filename_segm
 )
 
 lab_stack = posData.segm_data[START_FRAME:STOP_FRAME+1]

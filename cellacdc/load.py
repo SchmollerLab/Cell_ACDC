@@ -1761,10 +1761,12 @@ class loadData:
             return
         
         if cca_dfs_attr:
-            keys = list(range(start_frame_i, len(tracker.cca_dfs)))
+            end_frame_i = start_frame_i+len(tracker.cca_dfs)
+            keys = list(range(start_frame_i, end_frame_i))
             acdc_df = pd.concat(tracker.cca_dfs, keys=keys, names=['frame_i'])
         else:
-            keys = list(range(start_frame_i, len(tracker.cca_dfs_auto)))
+            end_frame_i = start_frame_i+len(tracker.cca_dfs_auto)
+            keys = list(range(start_frame_i, end_frame_i))
             acdc_df = pd.concat(tracker.cca_dfs_auto, keys=keys, names=['frame_i'])
 
         acdc_df['is_cell_dead'] = 0
