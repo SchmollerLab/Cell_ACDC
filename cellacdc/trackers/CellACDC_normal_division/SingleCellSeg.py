@@ -21,16 +21,16 @@ def find_overlap(lab_1, lab_2):
     overlap_mask = np.logical_and(lab_1 > 0, lab_2 > 0)
 
     rp_1 = skimage.measure.regionprops(lab_1)
-    unique_labels_lab_1 = [rp.label for rp in rp_1]
     ID_overlap = []
 
-    for label in unique_labels_lab_1:
+    for obj in rp_1:
+        label = obj.label
         region_lab_1 = lab_1 == label
         overlap_area = np.sum(np.logical_and(region_lab_1, overlap_mask))
         if overlap_area == 0:
             continue
 
-        total_area = np.sum(region_lab_1)
+        total_area = obj.area
         overlap_perc = overlap_area / total_area
         ID_overlap.append((label, overlap_perc))
 
@@ -150,23 +150,21 @@ def find_overlapping_bboxs(IDs, bboxs, order=1):
 
     return IDs, bboxs
 
-def fast_border_touching_labels(label_img):
-    # Get unique labels from the four borders
-    border_labels = np.r_[
-        label_img[0, :],        # Top row
-        label_img[-1, :],       # Bottom row
-        label_img[:, 0],        # Left column
-        label_img[:, -1]        # Right column
-    ]
-    # Use np.unique once on the combined array
-    return np.unique(border_labels[border_labels != 0])
+# def fast_border_touching_labels(label_img):
+#     # Get unique labels from the four borders
+#     border_labels = np.r_[
+#         label_img[0, :],        # Top row
+#         label_img[-1, :],       # Bottom row
+#         label_img[:, 0],        # Left column
+#         label_img[:, -1]        # Right column
+#     ]
+#     # Use np.unique once on the combined array
+#     return np.unique(border_labels[border_labels != 0])
 
 def single_cell_seg(model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID,
                     win, posData, distance_filler_growth=1,
-                    overlap_threshold=0.5, padding=0.4, size_perc_threshold=0.5,
-                    export_bbox_for_training=False, skip_cell_filter=False,
-                    assigned_IDs_prev=None, original_lab=None, return_debug_imgs=False,
-                    to_be_deleted_IDs=None
+                    overlap_threshold=0.5, padding=0.4,
+                    export_bbox_for_training=False,
                     ):
     """
     Function to segment single cells in the current frame using the previous frame segmentation as a reference. 
@@ -177,18 +175,13 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID,
         curr_lab: current frame segmentation
         curr_img: current frame image
         IDs: list of IDs of the cells to segment
-        new_new_unique_ID: ID to start labeling new cells
-        max_obj: maximum number of objects expected
+        new_unique_ID: ID to start labeling new cells
+        win: from the gui window which sets model params
+        posData: position data (see rest of acdc)
+        distance_filler_growth: distance to grow the other IDs to fill the background
         overlap_threshold: minimum overlap percentage to consider a cell already segmented
         padding: padding around the cell to segment
-        size_perc_threshold: minimum percentage of the largest cell size to consider a cell
-        win: from the gui window which sets model params
-        posData: position data for the
         export_bbox_for_training: if True, export bounding boxes for training model
-        skip_cell_filter: if True, skip the cell filter steps (overlap_threshold etc)
-        assigned_IDs_prev: list of IDs assigned to the segmented cells in the previous iteration
-        original_lab: original labeled image for the current frame (used for assigned_IDs_prev)
-        return_debug_imgs: return some additional images for debugging purposes
 
     Returns:
         curr_lab: current frame segmentation with the segmented cells
@@ -196,9 +189,6 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID,
 
 
     """
-    assigned_IDs = [] if assigned_IDs_prev is None else assigned_IDs_prev.copy()
-    to_be_deleted_IDs = set() if to_be_deleted_IDs is None else to_be_deleted_IDs.copy()
-
     if export_bbox_for_training:
         bboxs_for_debug = []
 
@@ -215,7 +205,7 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID,
     bboxs = [get_box_coords(prev_rp, prev_lab_shape, ID, padding) for ID in IDs]
     IDs_bboxs, bboxs = find_overlapping_bboxs(IDs, bboxs)
     
-    new_lab_boxs = []
+    assigned_IDs = []
     for IDs, bbox in zip(IDs_bboxs, bboxs):
         box_x_min, box_x_max, box_y_min, box_y_max = bbox
 
@@ -244,11 +234,11 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID,
         box_model_lab = segm_model_segment(
             model, box_curr_img, model_kwargs,
             preproc_recipe=preproc_recipe,
-            posData=posData
+            posData=posData,
         )
 
-        # if export_bbox_for_training:
-        #     bboxs_for_debug.append([IDs, bbox, box_model_lab.copy(), box_curr_lab.copy()])
+        if export_bbox_for_training:
+            bboxs_for_debug.append([IDs, bbox, box_model_lab.copy(), box_curr_lab.copy()])
 
         # Post-processing        
         if applyPostProcessing:
@@ -267,93 +257,57 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID,
 
             ### maybe add roi extension if cells are deleted...
 
-        t0 = time.time()
         # Find the overlap between the model segmentation and the other IDs
         overlap = find_overlap(box_model_lab, box_curr_lab_other_IDs)
-        t1 = time.time()
-        print(f"Overlap time: {t1 - t0:.2f} seconds")
 
         # Set overlapping regions to 0, so already segmented cells are not overwritten
         for ID, overlap_perc in overlap:
             if overlap_perc > overlap_threshold:
                 box_model_lab[box_model_lab == ID] = 0
-
-        t2 = time.time()
-        print(f"Overlap apply time: {t2 - t1:.2f} seconds")
-        if not skip_cell_filter:
-            if assigned_IDs_prev:
-                assigned_IDs_prev_locations = np.isin(box_curr_lab, assigned_IDs_prev)
-                box_model_lab[assigned_IDs_prev_locations] = box_curr_lab[assigned_IDs_prev_locations]
                 
-            box_model_lab = skimage.segmentation.clear_border(box_model_lab, buffer_size=1)          
+        rp_model_lab = skimage.measure.regionprops(box_model_lab)
+        for obj in rp_model_lab:
+            box_curr_lab_other_IDs[box_model_lab == obj.label] = new_unique_ID
+            assigned_IDs.append(new_unique_ID)
+            new_unique_ID += 1
 
-            rp_model_lab = skimage.measure.regionprops(box_model_lab)
-            area_mean = np.mean([obj.area for obj in prev_rp if obj.label in IDs])
-            filtered_IDs = [obj.label for obj in rp_model_lab if obj.area > size_perc_threshold * area_mean]
-        
-        # if len(filtered_areas) not in range(1, new_max_obj + 1):
-        #     # too many cells, could not successfully segment, for budding this is one mother and one daughter, for normal cell division this is two daughters
-        #     continue
-            new_lab_box = original_lab[box_x_min:box_x_max, box_y_min:box_y_max]
-            for label in filtered_IDs:
-                new_lab_box[box_model_lab == label] = new_unique_ID
-                assigned_IDs.append(new_unique_ID)
-                new_unique_ID += 1
-                
-        else:
-            # If skip_cell_filter is True, we can assign the IDs directly from the model segmentation
-            rp_model_lab = skimage.measure.regionprops(box_model_lab)
-            border_touching = fast_border_touching_labels(box_model_lab)
-            to_be_deleted_IDs.update(border_touching)
+        positive_mask = box_curr_lab_other_IDs > 0
+        curr_lab[box_x_min:box_x_max, box_y_min:box_y_max][positive_mask] = box_curr_lab_other_IDs[positive_mask]
 
-            for obj in rp_model_lab:
-                box_curr_lab_other_IDs[box_model_lab == obj.label] = new_unique_ID
-                assigned_IDs.append(new_unique_ID)
-                new_unique_ID += 1
+        if export_bbox_for_training:
+            bboxs_for_debug[-1].append(box_curr_lab_other_IDs.copy())
 
-            new_lab_box = box_curr_lab_other_IDs
+    if export_bbox_for_training:
+        frame_i = posData.frame_i
+
+        os.makedirs(os.path.join(posData.images_path, ".train_box_data", posData.filename), exist_ok=True)
+
+        npz_filepath = os.path.join(posData.images_path, ".train_box_data", posData.filename)
+        json_filepath = os.path.join(posData.images_path, ".train_box_data", posData.filename, 'info.json')
+
+        try:
+            with open(json_filepath, 'r') as f:
+                loaded_dict = json.load(f)
+        except FileNotFoundError:
+            loaded_dict = {}
+
+        try:
+            bboxs_info = loaded_dict[frame_i]
+        except KeyError:
+            bboxs_info = []
+
+        start_i = len(bboxs_info)
+        end_i = start_i + len(bboxs_for_debug)
+
+        for i in range(start_i, end_i):
+            IDs, bbox, box_model_lab, box_prev_lab, box_final_lab = bboxs_for_debug[i - start_i]
+            npz_path = os.path.join(npz_filepath, f"{frame_i}_{i}.npz")
+            io.savez_compressed(npz_path, box_model_lab=box_model_lab, box_prev_lab=box_prev_lab, box_final_lab=box_final_lab)
+            bboxs_info.append([IDs, bbox, npz_path])
             
-        curr_lab[box_x_min:box_x_max, box_y_min:box_y_max] = new_lab_box
-        if return_debug_imgs:
-            new_lab_boxs.append(new_lab_box.copy())
+        loaded_dict[frame_i] = bboxs_info
 
-        t3 = time.time()
-        print(f"Overlap apply time: {t3 - t2:.2f} seconds")
-    #     if export_bbox_for_training:
-    #         bboxs_for_debug[-1].append(box_curr_lab_other_IDs.copy())
+        with open(json_filepath, 'w') as f:
+            json.dump(loaded_dict, f, indent=4)
 
-    # if export_bbox_for_training:
-    #     frame_i = posData.frame_i
-
-    #     os.makedirs(os.path.join(posData.images_path, ".train_box_data", posData.filename), exist_ok=True)
-
-    #     npz_filepath = os.path.join(posData.images_path, ".train_box_data", posData.filename)
-    #     json_filepath = os.path.join(posData.images_path, ".train_box_data", posData.filename, 'info.json')
-
-    #     try:
-    #         with open(json_filepath, 'r') as f:
-    #             loaded_dict = json.load(f)
-    #     except FileNotFoundError:
-    #         loaded_dict = {}
-
-    #     try:
-    #         bboxs_info = loaded_dict[frame_i]
-    #     except KeyError:
-    #         bboxs_info = []
-
-    #     start_i = len(bboxs_info)
-    #     end_i = start_i + len(bboxs_for_debug)
-
-    #     for i in range(start_i, end_i):
-    #         IDs, bbox, box_model_lab, box_prev_lab, box_final_lab = bboxs_for_debug[i - start_i]
-    #         npz_path = os.path.join(npz_filepath, f"{frame_i}_{i}.npz")
-    #         io.savez_compressed(npz_path, box_model_lab=box_model_lab, box_prev_lab=box_prev_lab, box_final_lab=box_final_lab)
-    #         bboxs_info.append([IDs, bbox, npz_path])
-            
-    #     loaded_dict[frame_i] = bboxs_info
-
-    #     with open(json_filepath, 'w') as f:
-    #         json.dump(loaded_dict, f, indent=4)
-    if return_debug_imgs:
-        return curr_lab, assigned_IDs, to_be_deleted_IDs, new_lab_boxs
-    return curr_lab, assigned_IDs, to_be_deleted_IDs
+    return curr_lab, assigned_IDs, IDs_bboxs, bboxs

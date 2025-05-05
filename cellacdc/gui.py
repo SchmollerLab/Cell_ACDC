@@ -8278,6 +8278,10 @@ class guiWin(QMainWindow):
             self.showImageDebug
         )
 
+        self.SegForLostIDsWorker.sigStoreData.connect(self.onSigStoreDataLostIDsWorker)
+        self.SegForLostIDsWorker.sigUpdateRP.connect(self.onSigUpdateRPLostIDsWorker)
+        self.SegForLostIDsWorker.sigGetData.connect(self.onSigGetDataLostIDsWorker)
+
         # Move the worker to the thread
         self.SegForLostIDsWorker.moveToThread(self._thread)
 
@@ -8297,10 +8301,38 @@ class guiWin(QMainWindow):
         self._thread.started.connect(self.SegForLostIDsWorker.run)
         self._thread.start()
     
+    def onSigStoreDataLostIDsWorker(self, autosave):
+        self.onSigStoreData(
+            self.SegForLostIDsWaitCond, autosave=autosave)
+        
+    def onSigUpdateRPLostIDsWorker(self, wl_update, wl_track_og_curr):
+        self.onSigUpdateRP(
+            self.SegForLostIDsWaitCond, wl_update=wl_update, wl_track_og_curr=wl_track_og_curr)
+        
+    def onSigGetDataLostIDsWorker(self):
+        self. onSigGetData(
+            self.SegForLostIDsWaitCond)
+        
+
+    def onSigStoreData(self, waitcond, pos_i=None, enforce=True, debug=False, mainThread=True,
+            autosave=True, store_cca_df_copy=False):
+        self.store_data(pos_i=pos_i, enforce=enforce, debug=debug, mainThread=mainThread,
+            autosave=autosave, store_cca_df_copy=store_cca_df_copy)
+        waitcond.wakeAll()
+
+    def onSigUpdateRP(self, waitcond, draw=True, debug=False, update_IDs=True, 
+                  wl_update=True, wl_track_og_curr=False):
+        self.update_rp(draw=draw, debug=debug, update_IDs=update_IDs,
+                        wl_update=wl_update, wl_track_og_curr=wl_track_og_curr)
+        waitcond.wakeAll()
+
+    def onSigGetData(self, waitcond, debug=False, lin_tree=False):
+        self.get_data(debug=debug, lin_tree=lin_tree)
+        waitcond.wakeAll()
+
     def SegForLostIDsWorkerFinished(self):
 
         self.updateAllImages()
-        self.store_data()
         
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
@@ -20343,7 +20375,8 @@ class guiWin(QMainWindow):
         if mode == 'Viewer' and not enforce:
             return
 
-        self.lin_tree_ask_changes()
+        if not mainThread:
+            self.lin_tree_ask_changes()
         
         allData_li = posData.allData_li[posData.frame_i]
         allData_li['regionprops'] = posData.rp.copy()
@@ -20410,8 +20443,8 @@ class guiWin(QMainWindow):
             acdc_df['was_manually_edited'] = areManuallyEdited
             allData_li['acdc_df'] = acdc_df
 
-        
-        self.pointsLayerDataToDf(posData)
+        if not mainThread:
+            self.pointsLayerDataToDf(posData)
         self.store_cca_df(
             pos_i=pos_i, mainThread=mainThread, autosave=autosave, 
             store_cca_df_copy=store_cca_df_copy
@@ -27123,13 +27156,13 @@ class guiWin(QMainWindow):
         else:
             return False
 
-    def trackManuallyAddedObject(self, added_ID, isNewID):
+    def trackManuallyAddedObject(self, added_IDs: List[int] | int | set, isNewID: bool):
         """Track object added manually on frame that was already visited.
 
         Parameters
         ----------
-        added_ID : int
-            ID of the object added manually
+        added_IDs : int | list of int | set
+            ID or IDs of the object added manually
         isNewID : bool
             If True, the added object is new
         
@@ -27153,6 +27186,9 @@ class guiWin(QMainWindow):
         
         if not isNewID:
             return
+
+        if isinstance(added_IDs, int):
+            added_IDs = [added_IDs]
         
         posData = self.data[self.pos_i]
         tracked_lab = self.tracking(
@@ -27164,33 +27200,39 @@ class guiWin(QMainWindow):
         
         # Track only new object
         prevIDs = posData.allData_li[posData.frame_i-1]['IDs']
-        mask = posData.lab == added_ID
-        try:
-            trackedID = tracked_lab[mask][0]
-        except IndexError as err:
-            # added_ID is not present
-            return 
+
+        update_rp = False
+        for added_ID in added_IDs:
+            mask = posData.lab == added_ID
+            try:
+                trackedID = tracked_lab[mask][0]
+            except IndexError as err:
+                # added_ID is not present
+                continue 
+            
+            isTrackedIDalreadyPresentAndNotNew = (
+                posData.IDs_idxs.get(trackedID) is not None
+                and added_ID != trackedID
+            )
+            if isTrackedIDalreadyPresentAndNotNew:
+                continue
+            
+            isTrackedIDinPrevIDs = trackedID in prevIDs
+            if isTrackedIDinPrevIDs:
+                posData.lab[mask] = trackedID
+            else:
+                # New object where we can try to track against next frame
+                trackedID = self.trackNewIDtoNewIDsFutureFrame(added_ID, mask)
+                if trackedID is None:
+                    self.clearAssignedObjsSecondStep()
+                    continue
+                posData.lab[mask] = trackedID
         
-        isTrackedIDalreadyPresentAndNotNew = (
-            posData.IDs_idxs.get(trackedID) is not None
-            and added_ID != trackedID
-        )
-        if isTrackedIDalreadyPresentAndNotNew:
-            return
-        
-        isTrackedIDinPrevIDs = trackedID in prevIDs
-        if isTrackedIDinPrevIDs:
-            posData.lab[mask] = trackedID
-        else:
-            # New object where we can try to track against next frame
-            trackedID = self.trackNewIDtoNewIDsFutureFrame(added_ID, mask)
-            if trackedID is None:
-                self.clearAssignedObjsSecondStep()
-                return
-            posData.lab[mask] = trackedID
-        
-        self.keepOnlyNewIDAssignedObjsSecondStep(trackedID)
-        self.update_rp()
+            self.keepOnlyNewIDAssignedObjsSecondStep(trackedID)
+            update_rp = True
+
+        if update_rp:
+            self.update_rp()
     
     def trackFrameCustomTracker(self, prev_lab, currentLab):
         try:

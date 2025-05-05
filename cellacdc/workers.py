@@ -867,15 +867,19 @@ class SegForLostIDsWorker(QObject):
     sigAskInit = Signal()
     sigAskInstallModel = Signal(str)
     sigshowImageDebug = Signal(object)
+    sigStoreData = Signal(bool)
+    sigUpdateRP = Signal(bool, bool)
+    sigGetData = Signal()
 
-    def __init__(self, guiWin, mutex, waitCond):
+    def __init__(self, guiWin, mutex, waitCond, debug=False):
         QObject.__init__(self)
         self.signals = signals()
         self.logger = workerLogger(self.signals.progress)
         self.guiWin = guiWin
         self.mutex = mutex
         self.waitCond = waitCond
-    
+        self._debug = debug
+
     def emitSigAskInit(self):
         self.mutex.lock()
         self.sigAskInit.emit()
@@ -887,6 +891,30 @@ class SegForLostIDsWorker(QObject):
         self.sigshowImageDebug.emit(img)
         # self.waitCond.wait(self.mutex)
         # self.mutex.unlock()
+    
+    def emitSigStoreData(self, autosave):
+        self.mutex.lock()
+        self.sigStoreData.emit(autosave)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+    
+    def emitSigUpdateRP(self, wl_track_og_curr, wl_update):
+        self.mutex.lock()
+        self.sigUpdateRP.emit(wl_track_og_curr, wl_update)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+
+    def emitSigGetData(self):
+        self.mutex.lock()
+        self.sigGetData.emit()
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+
+    def emitSigAskInstallModel(self, model_name):
+        self.mutex.lock()
+        self.sigAskInstallModel.emit(model_name)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
 
     @worker_exception_handler
     def run(self):
@@ -900,13 +928,14 @@ class SegForLostIDsWorker(QObject):
             self.signals.finished.emit(self)
             return
 
+        self.logger.info('Segmentation for lost IDs started.')
         model_name = 'local_seg'
         base_model_name = self.guiWin.SegForLostIDsSettings['base_model_name']
         idx = self.guiWin.modelNames.index(model_name)
         acdcSegment = self.guiWin.acdcSegment_li[idx]
 
         if acdcSegment is None:
-            self.guiWin.logger.info(f'Importing {base_model_name}...')
+            self.logger.info(f'Importing {base_model_name}...')
             self.emitSigAskInstallModel(base_model_name)
             acdcSegment = myutils.import_segment_module(base_model_name)
             self.guiWin.acdcSegment_li[idx] = acdcSegment
@@ -915,92 +944,121 @@ class SegForLostIDsWorker(QObject):
         init_kwargs_new = self.guiWin.SegForLostIDsSettings['init_kwargs_new']
         args_new = self.guiWin.SegForLostIDsSettings['args_new']
 
-        model = myutils.init_segm_model(acdcSegment, posData, init_kwargs_new) 
-        try:
-            model.setupLogger(self.guiWin.logger)
-        except Exception as e:
-            pass
+        model = myutils.init_segm_model(acdcSegment, posData, init_kwargs_new)
+        if self._debug:
+            try:
+                model.setupLogger(self.guiwin.logger)
+            except Exception as e:
+                pass
+
+        self.emitSigGetData()
 
         assigned_IDs = []
         missing_IDs_global = set()
-        old_IDs = posData.IDs.copy()
         original_lab = posData.lab.copy()
-        to_be_deleted_IDs = set()
+        IDs_bboxs_list = []
+        bboxs_list = []
 
+        curr_img = self.guiWin.getDisplayedImg1()
+        prev_lab = self.guiWin.get_2Dlab(posData.allData_li[frame_i-1]['labels'])
+        prev_IDs = posData.allData_li[frame_i-1]['IDs']
+
+        # should probably not paly so much with posData.lab, instead handle stuff myself
+        self.signals.initProgressBar.emit(2 * args_new['max_interations'])
+        new_labs = np.zeros([args_new['max_interations'], *posData.lab.shape], dtype=int)
         for i in range(args_new['max_interations']):
-            self.guiWin.get_data()
+            self.emitSigGetData()
             
             curr_lab = self.guiWin.get_2Dlab(posData.lab)
-            prev_lab = self.guiWin.get_2Dlab(posData.allData_li[frame_i-1]['labels'])
-
             tracked_lost_IDs = self.guiWin.getTrackedLostIDs()
 
-            prev_IDs = posData.allData_li[frame_i-1]['IDs']
             missing_IDs = set(prev_IDs) - set(posData.IDs) - set(tracked_lost_IDs)
             missing_IDs_global.update(missing_IDs)
 
-            curr_img = self.guiWin.getDisplayedImg1()
-
             new_unique_ID = self.guiWin.setBrushID(useCurrentLab=True, return_val=True)
 
-            last_round = i == args_new['max_interations'] - 1
-
             assigned_IDs_prev = assigned_IDs.copy()
-            new_lab, assigned_IDs, to_be_deleted_IDs = single_cell_seg(model, prev_lab, curr_lab, curr_img, missing_IDs, new_unique_ID,
+            new_lab, assigned_IDs, IDs_bboxs, bboxs = single_cell_seg(model, prev_lab, curr_lab, curr_img, 
+                                                    missing_IDs, new_unique_ID,
                                                     win, posData,
                                                     distance_filler_growth=args_new['distance_filler_growth'],
-                                                    padding=args_new['padding'], 
-                                                    size_perc_threshold=args_new['size_perc_threshold'],
                                                     overlap_threshold=args_new['overlap_threshold'],
-                                                    assigned_IDs_prev=assigned_IDs_prev,
-                                                    skip_cell_filter=not last_round,
-                                                    original_lab=original_lab,
-                                                    to_be_deleted_IDs=to_be_deleted_IDs,
+                                                    padding=args_new['padding'],
                                                     )
+        
             
-            self.emitSigShowImageDebug(new_lab)
-
+            IDs_bboxs_list.append(IDs_bboxs)
+            bboxs_list.append(bboxs)
+            
             posData.lab = new_lab
-            self.guiWin.update_rp()
+            self.emitSigUpdateRP(wl_update=False, wl_track_og_curr=False)
 
             newly_assigned_IDs = set(assigned_IDs) - set(assigned_IDs_prev)
-            for ID in newly_assigned_IDs:
-                self.guiWin.trackManuallyAddedObject(ID, True)
+            self.guiWin.trackManuallyAddedObject(newly_assigned_IDs, True)
+            new_labs[i] = posData.lab.copy()
 
-            self.guiWin.store_data()
-
-        for ID in to_be_deleted_IDs:
-            self.guiWin.get_data()
-            lab = posData.lab
-            for obj in posData.rp:
-                if obj.label == ID:
-                    lab[obj.slice][obj.image] = 0
-            posData.lab = lab
-            self.guiWin.update_rp()
-            self.guiWin.store_data()       
-
-        if args_new['allow_only_tracked_cells']:
-            self.guiWin.get_data()
-            to_be_removed_IDs = set(posData.IDs) - set(old_IDs) - missing_IDs_global
-            printl(to_be_removed_IDs)
-            lab = posData.lab
-            for obj in posData.rp:
-                if obj.label in to_be_removed_IDs:
-                    lab[obj.slice][obj.image] = 0
-            posData.lab = lab
-        
-            self.guiWin.update_rp()
-            self.guiWin.store_data()
-
-        self.guiWin.logger.info('Segmentation for lost IDs done.')
+            self.emitSigStoreData(autosave=False)
+            self.signals.progressBar.emit(1)
             
-        self.signals.finished.emit(self)
+        if self._debug:
+            originals = []
+            models = []
+
+        posData.lab = original_lab.copy()
+
+        area_mean = np.mean([obj.area for obj in posData.rp])
+        for IDs_bboxs, bboxs in zip(IDs_bboxs_list, bboxs_list):
+            model_lab = new_labs[i]
+            if self._debug:
+                originals.append(original_lab.copy())
+                models.append(posData.lab.copy())
+
+            for IDs, bbox in zip(IDs_bboxs, bboxs):
+
+                box_x_min, box_x_max, box_y_min, box_y_max = bbox          
+                original_bbox_lab = original_lab[box_x_min:box_x_max, box_y_min:box_y_max]
+                box_model_lab = model_lab[box_x_min:box_x_max, box_y_min:box_y_max]
+
+                # original_bbox_lab[np.isin(original_bbox_lab, IDs)] = 0 should be a given. If not seg for lost IDs this recommended
+
+                box_model_lab = skimage.segmentation.clear_border(box_model_lab, buffer_size=1)
+
+                rp_model_lab = skimage.measure.regionprops(box_model_lab)
+                rp_original_lab = skimage.measure.regionprops(original_bbox_lab)
+
+                original_IDs = [obj.label for obj in rp_original_lab]
+
+                if args_new['allow_only_tracked_cells']:
+                    filtered_IDs = [obj.label for obj in rp_model_lab 
+                                if obj.area > args_new['size_perc_threshold'] * area_mean 
+                                and obj.label not in original_IDs
+                                and obj.label in missing_IDs_global]
+                else:
+                    filtered_IDs = [obj.label for obj in rp_model_lab 
+                                    if obj.area > args_new['size_perc_threshold'] * area_mean 
+                                    and obj.label not in original_IDs]
+        
+                for label in filtered_IDs:
+                    original_bbox_lab[box_model_lab == label] = label # here the stuff should be tracked, so we keep the ID!
+                
+                # original_lab[box_x_min:box_x_max, box_y_min:box_y_max] = original_bbox_lab
+            
+            self.signals.progressBar.emit(1)
     
-    def emitSigAskInstallModel(self, model_name):
-        self.mutex.lock()
-        self.sigAskInstallModel.emit(model_name)
-        self.waitCond.wait(self.mutex)
-        self.mutex.unlock()
+        posData.lab = original_lab
+
+        if self._debug:
+            originals = np.concatenate(originals, axis=0)
+            models = np.concatenate(models, axis=0)
+            self.emitSigShowImageDebug(originals)
+            self.emitSigShowImageDebug(models)
+
+        self.emitSigUpdateRP(wl_track_og_curr=True, wl_update=True)
+        self.emitSigStoreData(autosave=True)
+
+        self.logger.info('Segmentation for lost IDs done.')
+                
+        self.signals.finished.emit(self)
 
 class AlignDataWorker(QObject):
     sigWarnTifAligned = Signal(object, object, object)
