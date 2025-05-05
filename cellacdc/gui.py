@@ -29768,51 +29768,95 @@ class guiWin(QMainWindow):
                     obj.vol_fl = vol_fl
                 posData.allData_li[frame_i]['regionprops'] = rp
 
-    def askSaveLastVisitedCcaMode(self, isQuickSave=False):
-        posData = self.data[self.pos_i]
-        current_frame_i = posData.frame_i
-        frame_i = 0
-        last_tracked_i = 0
-        self.save_until_frame_i = 0
-        if self.isSnapshot:
-            return True
-        
-        for frame_i, data_dict in enumerate(posData.allData_li):
-            lab = data_dict['labels']
-            if lab is None:
-                frame_i -= 1
-                break
-        
-        self.save_until_frame_i = frame_i
-        self.last_tracked_i = frame_i
-        
+    def askSaveOriginalSegm(self, isQuickSave=False):
         if isQuickSave:
-            return True
-        
-        last_cca_frame_i = self.navigateScrollBar.maximum()-1
-        # Ask to save last visited frame or not
-        txt = html_utils.paragraph(f"""
-            You annotated the cell cycle stages up 
-            until frame number {last_cca_frame_i+1}.<br><br>
-            Enter <b>up to which frame number</b> you want to save the 
-            cell cycle annotations:
-        """)
-        lastFrameDialog = apps.QLineEditDialog(
-            title='Last annoated frame number to save', 
-            defaultTxt=str(last_cca_frame_i+1),
-            msg=txt, parent=self, allowedValues=(1, last_cca_frame_i+1),
-            warnLastFrame=True, isInteger=True, stretchEntry=False,
-            lastVisitedFrame=last_cca_frame_i+1
-        )
-        lastFrameDialog.exec_()
-        if lastFrameDialog.cancel:
-            return False
+            return "", True, True
 
-        last_save_cca_frame_i = lastFrameDialog.EntryID - 1
-        if last_save_cca_frame_i < last_cca_frame_i:
-            self.resetCcaFuture(last_cca_frame_i)
+        posData = self.data[self.pos_i]
+        if not posData.whitelist:
+            return "", True, True
         
-        return True
+        help_txt = html_utils.paragraph(f"""
+            You have <b>whitelisted IDs</b> in the current position.<br>
+            Do you want to save the <b>not whitelisted</b> segmentation data<br>
+            This will allow you to <b>revisit the original segmentation</b>.<br>
+            """)
+
+        txt = html_utils.paragraph(f"""
+            You have <b>whitelisted IDs</b> in the current position.<br>
+            Do you want to save the <b>not whitelisted</b> segmentation data?<br>
+            """)
+
+        found_files = load.get_segm_files(posData.images_path)
+        existingEndnames = load.get_endnames(
+            posData.basename, found_files
+        )
+
+        segmFilename = os.path.basename(posData.segm_npz_path)
+        segmFilename = f"{segmFilename[:-4]}_not_whitelisted"
+        win = apps.filenameDialog(
+            basename=posData.basename,
+            hintText=txt,
+            defaultEntry=segmFilename,
+            existingNames=existingEndnames,
+            helpText=help_txt, 
+            allowEmpty=False,
+            parent=self,
+            title='Save not whitelisted segmentation data',
+            addDoNotSaveButton=True
+        )
+        win.exec_()
+        if win.cancel:
+            return "", False, True
+        if win.doNotSave:
+            return "", True, True
+        return win.entryText, True, False
+
+    def askSaveLastVisitedCcaMode(self, isQuickSave=False):
+         posData = self.data[self.pos_i]
+         current_frame_i = posData.frame_i
+         frame_i = 0
+         last_tracked_i = 0
+         self.save_until_frame_i = 0
+         if self.isSnapshot:
+             return True
+         
+         for frame_i, data_dict in enumerate(posData.allData_li):
+             lab = data_dict['labels']
+             if lab is None:
+                 frame_i -= 1
+                 break
+         
+         self.save_until_frame_i = frame_i
+         self.last_tracked_i = frame_i
+         
+         if isQuickSave:
+             return True
+         
+         last_cca_frame_i = self.navigateScrollBar.maximum()-1
+         # Ask to save last visited frame or not
+         txt = html_utils.paragraph(f"""
+             You annotated the cell cycle stages up 
+             until frame number {last_cca_frame_i+1}.<br><br>
+             Enter <b>up to which frame number</b> you want to save the 
+             cell cycle annotations:
+         """)
+         lastFrameDialog = apps.QLineEditDialog(
+             title='Last annoated frame number to save', 
+             defaultTxt=str(last_cca_frame_i+1),
+             msg=txt, parent=self, allowedValues=(1, last_cca_frame_i+1),
+             warnLastFrame=True, isInteger=True, stretchEntry=False,
+             lastVisitedFrame=last_cca_frame_i+1
+         )
+         lastFrameDialog.exec_()
+         if lastFrameDialog.cancel:
+             return False
+ 
+         last_save_cca_frame_i = lastFrameDialog.EntryID - 1
+         if last_save_cca_frame_i < last_cca_frame_i:
+             self.resetCcaFuture(last_cca_frame_i)
+         
+         return True
     
     def askSaveLastVisitedSegmMode(self, isQuickSave=False):
         posData = self.data[self.pos_i]
@@ -30450,6 +30494,11 @@ class guiWin(QMainWindow):
             proceed = self.askSaveLastVisitedSegmMode(isQuickSave=isQuickSave)
             if not proceed:
                 return
+        append_name_og_whitelist, proceed, do_not_save_og_whitelist = self.askSaveOriginalSegm(isQuickSave=isQuickSave)
+        if not proceed:
+            self.setDisabled(False, keepDisabled=False)
+            self.activateWindow()
+            return
 
         if self.save_metrics or mode == 'Cell cycle analysis':
             self.computeVolumeRegionprop()
@@ -30474,6 +30523,8 @@ class guiWin(QMainWindow):
         self.worker = workers.saveDataWorker(self)
         self.worker.mode = mode
         self.worker.isQuickSave = isQuickSave
+        self.worker.append_name_og_whitelist = append_name_og_whitelist
+        self.worker.do_not_save_og_whitelist = do_not_save_og_whitelist
 
         self.worker.moveToThread(self.thread)
 
