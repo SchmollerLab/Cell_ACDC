@@ -1,7 +1,7 @@
 import os
 import sys
 import re
-from typing import Literal, Callable, Dict, Iterable
+from typing import Literal, Callable, Dict, Iterable, List
 import datetime
 import pathlib
 from collections import defaultdict
@@ -15893,6 +15893,9 @@ class ViewCcaTableWindow(pdDataFrameWidget):
         
         
 class ObjectCountDialog(QBaseDialog):
+    sigShowEvent = Signal()
+    sigUpdateCounts = Signal()
+    
     def __init__(
             self, 
             categoryCountMapper: dict,
@@ -15908,23 +15911,45 @@ class ObjectCountDialog(QBaseDialog):
         cancelOkLayout.okButton.clicked.connect(self.ok_cb)
         cancelOkLayout.cancelButton.clicked.connect(self.close)
         
+        updateCountsButton = widgets.reloadPushButton('Update counts')
+        cancelOkLayout.insertWidget(3, updateCountsButton)
+        updateCountsButton.clicked.connect(self.emitUpdateCounts)
+        
         mainLayout.addWidget(
             QLabel(html_utils.paragraph('Object count<br>', font_size='18px')), 
             alignment=Qt.AlignLeft
         )
+        self.showHideButtons = []
+        self.categoryLabelMapper = {}
         for category, count in categoryCountMapper.items():
             categoryLayout = QHBoxLayout()
             categoryLayout.addSpacing(10)
             catText = html_utils.paragraph(
                 f'<br>{category}<br>', font_size='13px'
             )
-            categoryLayout.addWidget(QLabel(catText))
+            catLabel = QLabel(catText)
+            categoryLayout.addWidget(catLabel)
             categoryLayout.addStretch(1)
             
             countText = html_utils.paragraph(
                 f'<br>{count}<br>', font_size='13px'
             )
-            categoryLayout.addWidget(QLabel(countText))
+            countLabel = QLabel(countText)
+            categoryLayout.addWidget(countLabel)
+            
+            self.categoryLabelMapper[category] = countLabel
+            
+            showHideButton = widgets.showDetailsButton(txt='')
+            showHideButton.setChecked(True)
+            showHideButton.sigToggled.connect(
+                partial(self.showHideCount, labels=(catLabel, countLabel))
+            )
+            showHideButton.setToolTip(f'Show/hide "{category}" count')
+            categoryLayout.addSpacing(10)
+            categoryLayout.addWidget(showHideButton)
+            showHideButton.category = category
+            
+            self.showHideButtons.append(showHideButton)
             
             categoryLayout.setStretch(0, 0)
             categoryLayout.setStretch(1, 0)
@@ -15933,14 +15958,70 @@ class ObjectCountDialog(QBaseDialog):
             mainLayout.addLayout(categoryLayout)
             mainLayout.addWidget(widgets.QHLine())
         
+        mainLayout.addSpacing(10)
+        
+        infoLayout = QHBoxLayout()
+        self.livePreviewCheckbox = QCheckBox('Live preview')
+        self.livePreviewCheckbox.setChecked(True)
+        infoLayout.addWidget(self.livePreviewCheckbox)
+        infoLayout.addStretch(1)
+        self.warnLabel = QLabel('')
+        infoLayout.addWidget(self.warnLabel)
+        self.livePreviewCheckbox.toggled.connect(self.updateWarnLabel)
+        mainLayout.addLayout(infoLayout)
+        
         mainLayout.addSpacing(30)
+        mainLayout.addStretch(1)
         mainLayout.addLayout(cancelOkLayout)
         
         self.setLayout(mainLayout)
     
+    def updateWarnLabel(self, checked):
+        if not checked:
+            self.warnLabel.setText(
+                html_utils.paragraph(
+                    'WARNING: without live preview, counts are not updated', 
+                    font_color='red'
+                )
+            )
+        else:
+            self.warnLabel.setText('')
+    
+    def emitUpdateCounts(self):
+        self.sigUpdateCounts.emit()
+    
+    def activeCategories(self) -> List[str]:
+        activeCategories = []
+        for showHideButton in self.showHideButtons:
+            if not showHideButton.isChecked():
+                continue
+            activeCategories.append(showHideButton.category)
+        
+        return activeCategories
+    
+    def showHideCount(self, checked, labels):
+        for label in labels:
+            label.setVisible(checked)
+        
+        QTimer.singleShot(100, self.resizeToHeightHint)
+
+    def updateCounts(self, categoryCountMapper):
+        for category, count in categoryCountMapper.items():
+            countLabel = self.categoryLabelMapper[category]
+            countText = html_utils.paragraph(
+                f'<br>{count}<br>', font_size='13px'
+            )
+            countLabel.setText(countText)
+                
+    
+    def resizeToHeightHint(self):
+        heightHint = self.sizeHint().height()
+        self.resize(self.width(), heightHint)
+        
     def showEvent(self, event):
         widthHint = self.sizeHint().width()
         self.resize(int(widthHint*1.5), self.height())
+        self.sigShowEvent.emit()
     
     def ok_cb(self):
         self.cancel = False

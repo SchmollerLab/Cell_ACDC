@@ -343,6 +343,7 @@ def load_metadata_df(images_path):
         if not file.endswith('metadata.csv'):
             continue
         filepath = os.path.join(images_path, file)
+        parse_metadata_csv_file(filepath)
         return pd.read_csv(filepath).set_index('Description')
 
 def _add_will_divide_column(acdc_df):
@@ -1033,11 +1034,34 @@ def pd_bool_to_int(acdc_df, colsToCast=None, csv_path=None, inplace=True):
         acdc_df.to_csv(csv_path)
     return acdc_df
 
+def parse_metadata_csv_file(csv_filepath):
+    with open(csv_filepath, 'r') as file:
+        txt = file.read()
+    
+    lines = txt.split('\n')
+    for l, line in enumerate(lines.copy()):
+        is_channel_name_line = re.search(r'channel_\d+_name', line)
+        if line.startswith('basename') or is_channel_name_line:
+            parts = line.split(',')
+            if len(parts) == 2:
+                continue
+            
+            if parts[1].startswith('"') and parts[-1].endswith('"'):
+                continue
+            
+            quoted_value = f'"{"".join(parts[1:])}"'
+            parsed_line = f'{parts[0]},{quoted_value}'
+            lines[l] = parsed_line
+    
+    with open(csv_filepath, 'w') as file:
+        file.write('\n'.join(lines))
+
 def get_posData_metadata(images_path, basename):
     # First check if metadata.csv already has the channel names
     for file in myutils.listdir(images_path):
         if file.endswith('metadata.csv'):
             metadata_csv_path = os.path.join(images_path, file)
+            parse_metadata_csv_file(metadata_csv_path)
             df_metadata = pd.read_csv(metadata_csv_path).set_index('Description')
             break
     else:
@@ -1130,6 +1154,7 @@ class loadData:
             else:
                 return
             
+            parse_metadata_csv_file(metadata_csv_path)
             df_metadata = pd.read_csv(metadata_csv_path).set_index('Description')
             try:
                 basename = df_metadata.at['basename', 'values']
@@ -1198,6 +1223,7 @@ class loadData:
         if not os.path.exists(csv_path):
             self.last_md_df = None
         else:
+            parse_metadata_csv_file(csv_path)
             self.last_md_df = pd.read_csv(csv_path).set_index('Description')
 
     def saveLastEntriesMetadata(self):
@@ -1584,6 +1610,7 @@ class loadData:
             elif loadMetadata:
                 self.metadataFound = True
                 remove_duplicates_file(filePath)
+                parse_metadata_csv_file(filePath)
                 self.metadata_df = pd.read_csv(filePath).set_index('Description')
             elif load_customAnnot and file.endswith('custom_annot_params.json'):
                 self.customAnnotFound = True
