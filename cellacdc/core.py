@@ -3530,6 +3530,86 @@ def validate_multidimensional_recipe(
                 kwargs['apply_to_all_zslices'] = apply_to_all_zslices
     
     return recipe
+
+def insert_missing_object(lab_dst, obj, all_dst_IDs, assignments_mapper):
+    added_ID = assignments_mapper.get(obj.label)
+    if obj.label not in all_dst_IDs:
+        # First time we insert the missing ID and not existing in dst
+        # --> safe to assign the same ID
+        lab_dst[obj.slice][obj.image] = obj.label
+        all_dst_IDs.add(obj.label)
+    elif added_ID is None:
+        # First time we insert the missing ID but already existing in dst
+        # --> need to assign a new unique ID
+        new_unique_ID = max(all_dst_IDs) + 1
+        lab_dst[obj.slice][obj.image] = new_unique_ID
+        assignments_mapper[obj.label] = new_unique_ID
+        all_dst_IDs.add(new_unique_ID)
+    else:
+        # Already inserted the missing ID and already existing in dst
+        # --> need to assign the same ID as before
+        lab_dst[obj.slice][obj.image] = added_ID
+        all_dst_IDs.add(added_ID)
+    
+    return lab_dst, assignments_mapper, all_dst_IDs
+
+def insert_missing_objects(
+        segm_dst, segm_src, is_timelapse=True, display_pbar=True
+    ):
+    if not is_timelapse:
+        segm_dst = segm_dst[np.newaxis]
+        segm_src = segm_src[np.newaxis]
+    
+    all_dst_IDs = set()
+    for lab_dst in segm_dst:
+        rp = skimage.measure.regionprops(lab_dst)
+        all_dst_IDs.update([obj.label for obj in rp])
+    
+    if display_pbar:
+        pbar = tqdm(total=len(segm_src), ncols=100, leave=False)
+    
+    assignments_mapper = {}
+    for frame_i, (lab_src, lab_dst) in enumerate(zip(segm_src, segm_dst)):
+        rp = skimage.measure.regionprops(lab_src)
+        for obj in rp:
+            obj_dst_values = lab_dst[obj.slice][obj.image]
+            obj_dst_ID = obj_dst_values[0]
+            is_missing = obj_dst_ID == 0
+            if is_missing:
+                out = insert_missing_object(
+                    lab_dst, obj, all_dst_IDs, assignments_mapper
+                )
+                lab_dst, assignments_mapper, all_dst_IDs = out
+                segm_dst[frame_i] = lab_dst
+                continue
+            
+            # Check if merged --> dst ID still existing after erasing object
+            is_merged = False
+            lab_dst[obj.slice][obj.image] = 0
+            rp_minus_obj = skimage.measure.regionprops(lab_dst)
+            for obj_dst in rp_minus_obj:
+                if obj_dst.label == obj_dst_ID:
+                    is_merged = True
+                    break
+            
+            # Insert back the temporarly deleted object
+            lab_dst[obj.slice][obj.image] = obj_dst_ID
+            
+            if not is_merged:
+                continue
+            
+            lab_dst, assignments_mapper, all_dst_IDs = insert_missing_object(
+                lab_dst, obj, all_dst_IDs, assignments_mapper
+            )
+            segm_dst[frame_i] = lab_dst
+
+        if display_pbar:
+            pbar.update()
+    
+    if display_pbar:
+        pbar.close()
+        
+    return segm_dst
     
 def process_lab(task):
     i, lab = task

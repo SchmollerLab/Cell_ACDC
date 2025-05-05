@@ -11393,7 +11393,9 @@ class QDialogModelParams(QDialog):
         with open(self.ini_path, 'w') as configfile:
             self.configPars.write(configfile)
 
-        print(f'Segmentation parameters saved at "{self.ini_path}"')
+        mode = 'Segmentation' if not self.is_tracker else 'Tracking'
+        
+        print(f'{mode} parameters saved at "{self.ini_path}"')
         
     def exec_(self):
         self.show(block=True)
