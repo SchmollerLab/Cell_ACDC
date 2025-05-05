@@ -195,6 +195,7 @@ class saveDataWorker(QObject):
         df_shape = (len(stored_df), len(all_columns))
         data = np.zeros(df_shape)
         df = pd.DataFrame(data=data, index=stored_df.index, columns=all_columns)
+        # df = df.loc[:, ~df.columns.duplicated()].copy()
         df = df.combine_first(stored_df)
 
         # Check if z-slice is present for 3D z-stack data
@@ -768,9 +769,26 @@ class saveDataWorker(QObject):
 class workerLogger:
     def __init__(self, sigProcess):
         self.sigProcess = sigProcess
-
+    
     def log(self, message, level='INFO'):
-        self.sigProcess.emit(str(message), level)
+        try:
+            self.sigProcess.emit(str(message), level)
+        except Exception as err:
+            print(message, level)
+            try:
+                traceback_format = traceback.format_exc()
+                print(traceback_format)
+            except Exception as err:
+                pass
+            printl(err)
+        finally:
+            pass
+    
+    def info(self, message):
+        self.log(message, level='INFO')
+
+    def warning(self, message):
+        self.log(message, level='WARNING')
 
 class signals(QObject):
     progress = Signal(str, object)
