@@ -4669,7 +4669,8 @@ class ApplyTrackTableSelectColumnsDialog(QBaseDialog):
 
 
 class QDialogSelectModel(QDialog):
-    def __init__(self, parent=None, addSkipSegmButton=False):
+    def __init__(self, parent=None, addSkipSegmButton=False,
+                 customFirst=None):
         self.cancel = True
         super().__init__(parent)
         self.setWindowTitle('Select model')
@@ -4689,6 +4690,15 @@ class QDialogSelectModel(QDialog):
 
         listBox = widgets.listWidget()
         models = myutils.get_list_of_models()
+
+        if customFirst:
+            try:
+                idx = models.index(customFirst)
+                models.insert(0, models.pop(idx))
+            except ValueError:
+                print(f'Warning: {customFirst} not found in models list.')
+                pass
+
         listBox.setFont(font)
         listBox.addItems(models)
         addCustomModelItem = QListWidgetItem('Add custom model...')
@@ -10577,7 +10587,7 @@ class QDialogModelParams(QDialog):
             channels=None, currentChannelName=None, segmFileEndnames=None,
             df_metadata=None, force_postprocess_2D=False, model_module=None,
             action_type='', addPreProcessParams=True, addPostProcessParams=True,
-            extraParams=None, extraParamsTitle=None,
+            extraParams=None, extraParamsTitle=None, ini_filename=None,
         ):
         self.cancel = True
         super().__init__(parent)
@@ -10596,8 +10606,9 @@ class QDialogModelParams(QDialog):
                 addPreProcessParams = False
             else:
                 self.skipSegmentation = False
-        
-        if is_tracker:
+        if ini_filename is not None:
+            self.ini_filename = ini_filename
+        elif is_tracker:
             self.ini_filename = 'last_params_trackers.ini'
             addPreProcessParams = False
             addPostProcessParams = False
@@ -10694,11 +10705,11 @@ class QDialogModelParams(QDialog):
 
         self.okButton = okButton
 
-        if extraParamsTitle is None:
-            extraParamsTitle = 'Additional parameters'
-
         self.extraArgsWidgets = None
         if extraParams is not None:
+            if extraParamsTitle is None:
+                extraParamsTitle = 'Additional parameters'
+
             self.extraGroupBox, self.extraArgsWidgets = self.createGroupParams(
                 extraParams, extraParamsTitle
             )
@@ -10796,9 +10807,12 @@ class QDialogModelParams(QDialog):
             initLoadLastSelButton.click()
             if not self.skipSegmentation:
                 segmentLoadLastSelButton.click()
+            
+            if self.extraArgsWidgets is not None:
+                extraLoadLastSelButton.click()
         
-        if postProcessLayout is not None:
-            postProcLoadLastSelButton.click()
+            if postProcessLayout is not None:
+                postProcLoadLastSelButton.click()
 
         try:
             self.connectCustomSignals(model_module)

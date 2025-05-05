@@ -534,7 +534,6 @@ class guiWin(QMainWindow):
         self.preprocessDialog = None
         self.combineDialog = None
         self.viewOriginalLabels = True
-        self.addNewIDsWhitelistToggle = True
         self.keepDisabled = False
         self.whitelistAddNewIDsFrame = None
 
@@ -2412,7 +2411,12 @@ class guiWin(QMainWindow):
         self.secondLevelToolbar = secondLevelToolbar
         self.secondLevelToolbar.setVisible(False)
 
-        self.whitelistIDsToolbar = widgets.WhitelistIDsToolbar(self)
+        try:
+            addNewIDToggleState = self.df_settings.at['addNewIDsWhitelistToggle', 'value'] == 'Yes'
+        except KeyError:
+            addNewIDToggleState = True
+        
+        self.whitelistIDsToolbar = widgets.WhitelistIDsToolbar(addNewIDToggleState, self)
         for name, action in self.whitelistIDsToolbar.widgetsWithShortcut.items():
             self.widgetsWithShortcut[name] = action
         
@@ -8153,12 +8157,20 @@ class guiWin(QMainWindow):
 
     def SegForLostIDsSetSettings(self):
 
-        win = apps.QDialogSelectModel(parent=self)
+        try:
+            prev_model = str(self.df_settings.at['SegForLostIDsModel', 'value'])
+        except KeyError:
+            prev_model = None
+        win = apps.QDialogSelectModel(parent=self, customFirst=prev_model)
         win.exec_()
         if win.cancel:
-            self.logger.info('Repeat segmentation cancelled.')
+            self.logger.info('Seg for lost IDs cancelled.')
             return
         base_model_name = win.selectedModel
+
+        if base_model_name:
+            self.df_settings.at['SegForLostIDsModel', 'value'] = base_model_name
+            self.df_settings.to_csv(self.settings_csv_path)
 
         model_name = 'local_seg'
 
@@ -8209,7 +8221,8 @@ class guiWin(QMainWindow):
         extraParamsTitle = 'Settings for local segmentation'
         win = self.initSegmModelParams(
             model_name, acdcSegment, init_params, segment_params,
-            extraParams=extra_ArgSpec, extraParamsTitle=extraParamsTitle
+            extraParams=extra_ArgSpec, extraParamsTitle=extraParamsTitle,
+            initLastParams=True, ini_filename='segmentation_for_lostIDs.ini',
         )
 
         if win is None:
@@ -13399,6 +13412,11 @@ class guiWin(QMainWindow):
         """
         self.addNewIDsWhitelistToggle = checked
         if checked:
+            self.df_settings.at['addNewIDsWhitelistToggle', 'value'] = 'Yes'
+        else:
+            self.df_settings.at['addNewIDsWhitelistToggle', 'value'] = 'No'
+        self.df_settings.to_csv(self.settings_csv_path)
+        if checked:
             self.whitelistAddNewIDs(ignore_not_first_time=True)
             self.updateAllImages()
             self.whitelistIDsUpdateText()
@@ -13440,6 +13458,9 @@ class guiWin(QMainWindow):
         if frame_i == 0:
             return
         
+        if self.whitelistAddNewIDsFrame is None:
+            self.whitelistAddNewIDsFrame = frame_i
+
         if frame_i == self.whitelistAddNewIDsFrame:
             return
         
@@ -16513,7 +16534,7 @@ class guiWin(QMainWindow):
     def initSegmModelParams(
             self, model_name, acdcSegment, init_params, segment_params, 
             is_label_roi=False, initLastParams=False,
-            extraParams=None, extraParamsTitle=None
+            extraParams=None, extraParamsTitle=None,ini_filename=None
 
         ):
         posData = self.data[self.pos_i]        
@@ -16527,7 +16548,8 @@ class guiWin(QMainWindow):
             posData, model_name, init_params, segment_params, 
             help_url=url, qparent=self, init_last_params=initLastParams, 
             check_sam_embeddings=not is_label_roi, is_gui_caller=True,
-            extraParams=extraParams,extraParamsTitle=extraParamsTitle
+            extraParams=extraParams,extraParamsTitle=extraParamsTitle,
+            ini_filename=ini_filename,
         )
         if out.get('load_sam_embeddings', False):
             self.logger.info('Loading Segment Anything image embeddings...')
@@ -19187,6 +19209,13 @@ class guiWin(QMainWindow):
             self.annotateRightHowCombobox.setCurrentText(
                 'Draw IDs and overlay segm. masks'
             )
+        
+        if 'addNewIDsWhitelistToggle' in self.df_settings.index:
+            self.addNewIDsWhitelistToggle = (
+                self.df_settings.at['addNewIDsWhitelistToggle', 'value']
+                ) == 'Yes'
+        else:
+            self.addNewIDsWhitelistToggle = True
         
         self.drawAnnotCombobox_to_options()
         self.drawIDsContComboBox_cb(0)

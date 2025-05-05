@@ -342,7 +342,7 @@ def askSamSaveEmbeddings(qparent=None):
     return sam_only_embeddings, sam_also_embeddings, msg.cancel
 
 def askSamLoadEmbeddings(
-        sam_embeddings_path, qparent=None, is_gui_caller=False
+        sam_embeddings_path, qparent=None, is_gui_caller=False,
     ):
     txt = html_utils.paragraph("""
     Cell-ACDC detected <b>previously saved Segment Anything image embeddings</b> 
@@ -374,7 +374,8 @@ def init_segm_model_params(
         posData, model_name, init_params, segment_params, 
         qparent=None, help_url=None, init_last_params=False, 
         check_sam_embeddings=True, is_gui_caller=False,
-        extraParams=None, extraParamsTitle=None
+        extraParams=None, extraParamsTitle=None,
+        ini_filename=None
     ):
     out = {}
     
@@ -414,7 +415,8 @@ def init_segm_model_params(
         df_metadata=posData.metadata_df,
         force_postprocess_2D=False,
         extraParams=extraParams,
-        extraParamsTitle=extraParamsTitle
+        extraParamsTitle=extraParamsTitle,
+        ini_filename=ini_filename
     )
     win.setChannelNames(posData.chNames)
     out['win'] = win

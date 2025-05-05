@@ -9818,7 +9818,7 @@ class WhitelistIDsToolbar(ToolBar):
     sigAddNewIDs = Signal(bool)
     sigLoadOGLabs = Signal()
     
-    def __init__(self, *args) -> None:
+    def __init__(self, addNewIDToggleState,*args) -> None:
         super().__init__(*args)
 
         whitelistLineEditLabel = QLabel('Whitelist IDs: ')
@@ -9855,10 +9855,10 @@ class WhitelistIDsToolbar(ToolBar):
         self.addNewIDToggle = QCheckBox(
             'Automatically add new IDs to whitelist'
         )
-        self.addNewIDToggle.setChecked(True)
+        self.addNewIDToggle.setChecked(addNewIDToggleState)
         self.addWidget(self.addNewIDToggle)
         self.addNewIDToggle.toggled.connect(self.emitAddNewIDs)
-        self.emitAddNewIDs(True)
+        self.emitAddNewIDs(addNewIDToggleState)
         
         self.addSeparator()
 
