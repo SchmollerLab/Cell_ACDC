@@ -45,6 +45,7 @@ from . import recentPaths_path, cellacdc_path, settings_folderpath
 from . import urls
 from . import acdc_fiji_path
 from . import fiji_macros
+from . import acdc_regex
 
 if os.name == 'nt':
     try:
@@ -1566,6 +1567,14 @@ class createDataStructWin(QMainWindow):
         if not rawFilenames:
             self.close()
             return
+        
+        self.log(
+            'Checking file names of loaded files...'
+        )
+        proceed = self.checkFileNames(rawFilenames, raw_src_path)
+        if not proceed:
+            self.close()
+            return
 
         if rawDataStruct == 2:
             proceed = self.attemptSeparateMultiChannel(rawFilenames)
@@ -1861,6 +1870,27 @@ class createDataStructWin(QMainWindow):
 
         return files
 
+    def checkFileNames(self, raw_filenames, raw_src_path):
+        for file in raw_filenames:
+            if not acdc_regex.is_alphanumeric_filename(file):
+                msg = widgets.myMessageBox(wrapText=False)
+                txt = html_utils.paragraph(
+                    f"""
+                    The filename <b>{file}</b> contains <b>invalid 
+                    characters</b>.<br><br>
+                    Valid characters are letters, numbers, spaces, underscores 
+                    and dashes.<br><br>
+                    Please rename the file and try again.<br><br>
+                    Thank you for your patience!
+                    """
+                )
+                msg.critical(
+                    self, 'Invalid filename', txt, path_to_browse=raw_src_path
+                )
+                return False
+
+        return True
+        
     def askActionWithOtherFiles(self, files, otherExt):
         self.moveOtherFiles = False
         msg = QMessageBox(self)

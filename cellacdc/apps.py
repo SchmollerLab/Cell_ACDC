@@ -82,7 +82,7 @@ from . import _core
 from . import _types
 from . import plot
 from . import urls
-from .acdc_regex import float_regex
+from .acdc_regex import float_regex, is_alphanumeric_filename
 from . import _base_widgets
 
 POSITIVE_FLOAT_REGEX = float_regex(allow_negative=False)
@@ -15375,6 +15375,25 @@ class InitFijiMacroDialog(QBaseDialog):
         msg.information(self, 'Files structure info', txt)
     
     def updateFolderPath(self, path, lineEdit=''):
+        for file in os.listdir(path):
+            if not is_alphanumeric_filename(file):
+                msg = widgets.myMessageBox(wrapText=False)
+                txt = html_utils.paragraph(
+                    f"""
+                    The filename <b>{file}</b> contains <b>invalid 
+                    characters</b>.<br><br>
+                    Valid characters are letters, numbers, spaces, underscores 
+                    and dashes.<br><br>
+                    Please rename the file and try again.<br><br>
+                    Thank you for your patience!
+                    """
+                )
+                msg.critical(
+                    self, 'Invalid filename', txt, path_to_browse=path
+                )
+                lineEdit.setText('')
+                return
+            
         lineEdit.setText(path)
     
     def warnPathEmpty(self):
