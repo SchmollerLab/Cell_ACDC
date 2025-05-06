@@ -9481,11 +9481,10 @@ class guiWin(QMainWindow):
         self.updateAllImages()
 
     def workerDebug(self, item):
-        print(f'Updating frame {item.frame_i}')
-        print(item.cca_df)
-        stored_lab = item.allData_li[item.frame_i]['labels']
-        apps.imshow_tk(item.lab, additional_imgs=[stored_lab])
-        self.worker.waitCond.wakeAll()
+        tracked_video, worker = item
+        from cellacdc.plot import imshow
+        imshow(tracked_video)
+        worker.waitCond.wakeAll()
 
     def keepToolActiveActionToggled(self, checked):
         parentToolButton = self.sender().parent()
