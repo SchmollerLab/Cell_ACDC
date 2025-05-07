@@ -61,14 +61,14 @@ def worker_exception_handler(func):
             # errors but only one of them is connected --> emit both just 
             # in case
             try:
-                self.critical.emit(error)
+                self.critical.emit((self, error))
             except Exception as err:
-                self.signals.critical.emit(error)
+                self.signals.critical.emit((self, error))
                 
             try:
-                self.signals.critical.emit(error)
+                self.signals.critical.emit((self, error))
             except Exception as err:
-                self.critical.emit(error)
+                self.critical.emit((self, error))
             
             try:
                 self.mutex.unlock()

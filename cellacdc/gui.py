@@ -2,7 +2,6 @@ import gc
 import sys
 import os
 import shutil
-import inspect
 import re
 import traceback
 import time
@@ -16518,12 +16517,16 @@ class guiWin(QMainWindow):
         self.disableCcaIntegrityChecker()
         
     @exception_handler
-    def workerCritical(self, error):
+    def workerCritical(self, out: Tuple[QObject, Exception]):
+        worker, error = out
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
             self.progressWin.close()
             self.progressWin = None
         self.logger.info(error)
+        worker.thread().quit()
+        worker.deleteLater()
+        worker.thread().deleteLater()
         raise error
     
     def workerLog(self, text):
