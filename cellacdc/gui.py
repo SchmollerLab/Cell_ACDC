@@ -26873,6 +26873,9 @@ class guiWin(QMainWindow):
             self.manuallyEditTracking(tracked_lab, IDs)
 
         if return_lab:
+            QTimer.singleShot(50, partial(
+                self.statusBarLabel.setText, staturBarLabelText
+            ))
             return tracked_lab
         
         # Update labels, regionprops and determine new and lost IDs
