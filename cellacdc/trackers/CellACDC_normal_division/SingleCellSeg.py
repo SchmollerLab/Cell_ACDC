@@ -1,8 +1,10 @@
 import skimage
 import numpy as np
+import time
 from ...core import segm_model_segment, post_process_segm
 from ...features import custom_post_process_segm
-from ... import io
+from ... import io, plot
+
 
 import os # for dbug
 import json # for dbug
@@ -18,18 +20,17 @@ def find_overlap(lab_1, lab_2):
     """
     overlap_mask = np.logical_and(lab_1 > 0, lab_2 > 0)
 
-    unique_labels_lab_1 = np.unique(lab_1)
-    unique_labels_lab_1 = unique_labels_lab_1[unique_labels_lab_1 > 0]
-
+    rp_1 = skimage.measure.regionprops(lab_1)
     ID_overlap = []
 
-    for label in unique_labels_lab_1:
+    for obj in rp_1:
+        label = obj.label
         region_lab_1 = lab_1 == label
         overlap_area = np.sum(np.logical_and(region_lab_1, overlap_mask))
         if overlap_area == 0:
             continue
 
-        total_area = np.sum(region_lab_1)
+        total_area = obj.area
         overlap_perc = overlap_area / total_area
         ID_overlap.append((label, overlap_perc))
 
@@ -147,38 +148,47 @@ def find_overlapping_bboxs(IDs, bboxs, order=1):
         bboxs = new_bboxs
         IDs = new_IDs
 
-    return IDs, bboxs   
+    return IDs, bboxs
+
+# def fast_border_touching_labels(label_img):
+#     # Get unique labels from the four borders
+#     border_labels = np.r_[
+#         label_img[0, :],        # Top row
+#         label_img[-1, :],       # Bottom row
+#         label_img[:, 0],        # Left column
+#         label_img[:, -1]        # Right column
+#     ]
+#     # Use np.unique once on the combined array
+#     return np.unique(border_labels[border_labels != 0])
 
 def single_cell_seg(model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID,
                     win, posData, distance_filler_growth=1,
-                    overlap_threshold=0.5, padding=0.4, size_perc_threshold=0.5,
-                    export_bbox_for_training=False
+                    overlap_threshold=0.5, padding=0.4,
+                    export_bbox_for_training=False,
                     ):
     """
     Function to segment single cells in the current frame using the previous frame segmentation as a reference. 
-    IDs is from the previous frame segmentation, and the current frame should have alredy been tracked so the IDs match!
+    IDs is from the previous frame segmentation, and the current frame should have already been tracked so the IDs match!
     Args:
-        model: eval funciton used to segment the cells
+        model: eval function used to segment the cells
         prev_lab: previous frame segmentation
         curr_lab: current frame segmentation
         curr_img: current frame image
         IDs: list of IDs of the cells to segment
-        new_new_unique_ID: ID to start labeling new cells
-        max_obj: maximum number of objects expected
+        new_unique_ID: ID to start labeling new cells
+        win: from the gui window which sets model params
+        posData: position data (see rest of acdc)
+        distance_filler_growth: distance to grow the other IDs to fill the background
         overlap_threshold: minimum overlap percentage to consider a cell already segmented
         padding: padding around the cell to segment
-        size_perc_threshold: minimum percentage of the largest cell size to consider a cell
-        win: from the gui window which sets model params
-        posData: position data for the
         export_bbox_for_training: if True, export bounding boxes for training model
 
     Returns:
         curr_lab: current frame segmentation with the segmented cells
-        assigned_IDs: list of IDs assigned to the segmented cells
+        assigned_IDs: list of IDs assigned to the newly segmented cells
+
 
     """
-    assigned_IDs = []
-
     if export_bbox_for_training:
         bboxs_for_debug = []
 
@@ -189,17 +199,18 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID,
     customPostProcessFeatures = win.customPostProcessFeatures
     customPostProcessGroupedFeatures = win.customPostProcessGroupedFeatures
 
-    prev_rps = skimage.measure.regionprops(prev_lab)
+    prev_rp = skimage.measure.regionprops(prev_lab)
     prev_lab_shape = prev_lab.shape
 
-    bboxs = [get_box_coords(prev_rps, prev_lab_shape, ID, padding) for ID in IDs]
+    bboxs = [get_box_coords(prev_rp, prev_lab_shape, ID, padding) for ID in IDs]
     IDs_bboxs, bboxs = find_overlapping_bboxs(IDs, bboxs)
     
+    assigned_IDs = []
     for IDs, bbox in zip(IDs_bboxs, bboxs):
         box_x_min, box_x_max, box_y_min, box_y_max = bbox
 
         box_curr_img = curr_img[box_x_min:box_x_max, box_y_min:box_y_max].copy()
-        box_curr_lab = curr_lab[box_x_min:box_x_max, box_y_min:box_y_max].copy()
+        box_curr_lab = curr_lab[box_x_min:box_x_max, box_y_min:box_y_max]
 
         box_curr_lab_other_IDs = box_curr_lab.copy()
         box_curr_lab_other_IDs[np.isin(box_curr_lab_other_IDs, IDs)] = 0
@@ -208,14 +219,14 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID,
 
         # Fill other IDs with random samples from the background
         indices_to_fill = np.where(box_curr_lab_other_IDs_grown != 0)
-        box_background = box_curr_img[box_curr_lab==0]
+        box_background = box_curr_img[box_curr_lab_other_IDs_grown==0]
         random_samples = np.random.choice(box_background, size=indices_to_fill[0].shape, replace=True)
         box_curr_img[indices_to_fill] = random_samples
 
         # Run model, give it the diameter of cell if possible
         diameters = []
         for ID in IDs:
-            obj = get_obj_from_rps(prev_rps, ID)
+            obj = get_obj_from_rps(prev_rp, ID)
             diameters.append(obj.axis_major_length)
         diameter = np.mean(diameters)
 
@@ -223,7 +234,7 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID,
         box_model_lab = segm_model_segment(
             model, box_curr_img, model_kwargs,
             preproc_recipe=preproc_recipe,
-            posData=posData
+            posData=posData,
         )
 
         if export_bbox_for_training:
@@ -244,9 +255,7 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID,
                     customPostProcessFeatures
                 )
 
-        box_model_lab = skimage.segmentation.clear_border(box_model_lab, buffer_size=1)
-
-        ### maybe add roi extension if cells are deleted...
+            ### maybe add roi extension if cells are deleted...
 
         # Find the overlap between the model segmentation and the other IDs
         overlap = find_overlap(box_model_lab, box_curr_lab_other_IDs)
@@ -255,21 +264,15 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID,
         for ID, overlap_perc in overlap:
             if overlap_perc > overlap_threshold:
                 box_model_lab[box_model_lab == ID] = 0
-
-        areas = np.unique(box_model_lab.ravel(), return_counts=True)
-
-        filtered_areas = [label for label, area in zip(*areas) if label != 0 and area >= size_perc_threshold * area]
-        
-        # if len(filtered_areas) not in range(1, new_max_obj + 1):
-        #     # too many cells, could not successfully segment, for budding this is one mother and one duaghter, for normal cell division this is two daughters
-        #     continue
-
-        for label in filtered_areas:
-            box_curr_lab_other_IDs[box_model_lab == label] = new_unique_ID
+                
+        rp_model_lab = skimage.measure.regionprops(box_model_lab)
+        for obj in rp_model_lab:
+            box_curr_lab_other_IDs[box_model_lab == obj.label] = new_unique_ID
             assigned_IDs.append(new_unique_ID)
             new_unique_ID += 1
-            
-        curr_lab[box_x_min:box_x_max, box_y_min:box_y_max] = box_curr_lab_other_IDs
+
+        positive_mask = box_curr_lab_other_IDs > 0
+        curr_lab[box_x_min:box_x_max, box_y_min:box_y_max][positive_mask] = box_curr_lab_other_IDs[positive_mask]
 
         if export_bbox_for_training:
             bboxs_for_debug[-1].append(box_curr_lab_other_IDs.copy())
@@ -307,4 +310,4 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID,
         with open(json_filepath, 'w') as f:
             json.dump(loaded_dict, f, indent=4)
 
-    return curr_lab, assigned_IDs
+    return curr_lab, assigned_IDs, IDs_bboxs, bboxs

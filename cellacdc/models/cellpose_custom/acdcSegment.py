@@ -61,6 +61,12 @@ class Model:
     def setupLogger(self, logger):
         self.acdcCellpose.setupLogger(logger)
     
+    def setLoggerPropagation(self, propagate:bool):
+        self.acdcCellpose.setLoggerPropagation(propagate)
+    
+    def setLoggerLevel(self, level:str):
+         self.acdcCellpose.setLoggerLevel(level)
+    
     def closeLogger(self):
         self.acdcCellpose.closeLogger()
     
