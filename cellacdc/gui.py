@@ -15079,6 +15079,18 @@ class guiWin(QMainWindow):
             return
 
         trackerName = win.selectedItemsText[0]
+        start_n = win.startFrame
+        stop_n = win.stopFrame
+        video_to_track = posData.segm_data
+        for frame_i in range(start_n-1, stop_n):
+            data_dict = posData.allData_li[frame_i]
+            lab = data_dict['labels']
+            if lab is None:
+                break
+
+            video_to_track[frame_i] = lab
+        video_to_track = video_to_track[start_n-1:stop_n]        
+        
         self.logger.info(f'Importing {trackerName} tracker...')
         self.tracker, self.track_params, init_params = myutils.init_tracker(
             posData, trackerName, qparent=self, return_init_params=True
@@ -15086,6 +15098,15 @@ class guiWin(QMainWindow):
         if self.track_params is None:
             self.logger.info('Tracking aborted.')
             return
+        
+        warningText = myutils.validate_tracker_input(
+            self.tracker, video_to_track
+        )
+        if warningText is not None:
+            self.logger.info(warningText)
+            self.warnTrackerInputNotValid(trackerName, warningText)
+            return        
+        
         if 'image_channel_name' in self.track_params:
             # Remove the channel name since it was already loaded in init_tracker
             del self.track_params['image_channel_name']
@@ -15099,9 +15120,6 @@ class guiWin(QMainWindow):
             f'Initialization parameters: {init_params}\n'
             f'Track parameters: {track_params_log}'
         )
-        
-        start_n = win.startFrame
-        stop_n = win.stopFrame
 
         last_tracked_i = self.get_last_tracked_i()
         if start_n-1 <= last_tracked_i and start_n>1:
@@ -15114,16 +15132,6 @@ class guiWin(QMainWindow):
             
             self.logger.info(f'Removing annotations from frame n. {start_n}.')
             self.resetCcaFuture(start_n-1)
-
-        video_to_track = posData.segm_data
-        for frame_i in range(start_n-1, stop_n):
-            data_dict = posData.allData_li[frame_i]
-            lab = data_dict['labels']
-            if lab is None:
-                break
-
-            video_to_track[frame_i] = lab
-        video_to_track = video_to_track[start_n-1:stop_n]
 
         self.start_n = start_n
         self.stop_n = stop_n
@@ -15138,6 +15146,15 @@ class guiWin(QMainWindow):
         self.progressWin.mainPbar.setMaximum(stop_n-start_n)
         self.startTrackingWorker(posData, video_to_track)
 
+    def warnTrackerInputNotValid(self, trackerName, warningText):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = warningText.replace('\n', '<br>')
+        txt = html_utils.paragraph(
+            f'{txt}<br><br>'
+            'Tracking process will be cancelled. Thank you for your patience!'
+        )
+        msg.warning(self, 'Invalid input for tracker', txt)
+    
     def repeatTracking(self):
         posData = self.data[self.pos_i]
         prev_lab = self.get_2Dlab(posData.lab).copy()

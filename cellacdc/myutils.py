@@ -3993,3 +3993,12 @@ def check_install_instanseg():
         import_pkg_name='instanseg', 
         pypi_name='instanseg-torch'
     )
+
+def validate_tracker_input(tracker, segm_video_to_track):
+    try:
+        warning_text = tracker.validate_input(segm_video_to_track)
+        return warning_text
+    except Exception as err:
+        printl(traceback.format_exc())
+        pass
+    return
