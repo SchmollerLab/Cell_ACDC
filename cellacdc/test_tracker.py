@@ -21,14 +21,10 @@ from cellacdc._run import _setup_app
 app, splashScreen = _setup_app(splashscreen=True)  
 splashScreen.close()
 
-path = (
-    os.path.join(data_path, r'test_symm_div_acdc_tracker\Images\bknapp_Movie_S1.tif')
-)
-
 channel_name = 'Autofluorescence'
 end_filename_segm = 'segm_try2' # 'segm_test'
-START_FRAME = 595 
-STOP_FRAME = 605
+START_FRAME = 0 
+STOP_FRAME = 400
 # PLOT_FRAME = 499
 SAVE = False
 REAL_TIME_TRACKER = False

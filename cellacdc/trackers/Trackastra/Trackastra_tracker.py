@@ -117,5 +117,35 @@ class tracker:
         
         return tracked_video
 
+    def validate_input(self, segm_video, progress=True):
+        import skimage.measure
+        warning_text = None
+        if progress:
+            from tqdm import tqdm
+            pbar = tqdm(
+                total=len(segm_video), desc='Validating input', unit='frame',
+                ncols=100
+            )
+        
+        empty_frames = []
+        for frame_i, lab in enumerate(segm_video):
+            rp = skimage.measure.regionprops(lab)
+            if len(rp) == 0:
+                empty_frames.append(frame_i+1)
+            
+            if progress:
+                pbar.update(1)
+        
+        if empty_frames:
+            warning_text = (
+                'Trackastra requires that each frame has at least one object.\n\n'
+                f'The following frame numbers have no objects:\n\n{empty_frames}'
+            )
+        
+        if progress:
+            pbar.close()
+        
+        return warning_text
+
 def url_help():
     return 'https://github.com/weigertlab/trackastra'

@@ -2,7 +2,6 @@ import gc
 import sys
 import os
 import shutil
-import inspect
 import re
 import traceback
 import time
@@ -9050,11 +9049,10 @@ class guiWin(QMainWindow):
         self.updateAllImages()
 
     def workerDebug(self, item):
-        print(f'Updating frame {item.frame_i}')
-        print(item.cca_df)
-        stored_lab = item.allData_li[item.frame_i]['labels']
-        apps.imshow_tk(item.lab, additional_imgs=[stored_lab])
-        self.worker.waitCond.wakeAll()
+        tracked_video, worker = item
+        from cellacdc.plot import imshow
+        imshow(tracked_video)
+        worker.waitCond.wakeAll()
 
     def keepToolActiveActionToggled(self, checked, toolName=None):
         if toolName is None:
@@ -13183,39 +13181,102 @@ class guiWin(QMainWindow):
     
     def countObjects(self):
         self.logger.info('Counting objects...')
+        if self.countObjsWindow is None:
+            activeCategories = {
+                'In current frame', 
+                'In all visited frames', 
+                'In entire video', 
+                'Unique objects in all visited frames', 
+                'Unique objects in entire video'
+            }
+        else:
+            activeCategories = self.countObjsWindow.activeCategories()
+            
         posData = self.data[self.pos_i]
         numObjsCurrentFrame = len(posData.IDs)
         
-        uniqueIDsVisited = set()
-        uniqueIDsAll = set()
-        numObjsVisitedFrames = 0
-        numObjsTotal = 0
+        uniqueIDsVisited = None
+        uniqueIDsAll = None
+        numObjsVisitedFrames = None
+        numObjsTotal = None
+        if 'Unique objects in all visited frames' in activeCategories:
+            uniqueIDsVisited = set()
+        
+        if 'Unique objects in entire video' in activeCategories:
+            uniqueIDsAll = set()
+        
+        if 'In all visited frames' in activeCategories:
+            numObjsVisitedFrames = 0
+        
+        if 'In entire video' in activeCategories:
+            numObjsTotal = 0
+            
         for frame_i in range(len(posData.segm_data)):
             lab = posData.allData_li[frame_i]['labels']
             if lab is not None:
                 IDsFrame = posData.allData_li[frame_i]['IDs']
+                
+                if uniqueIDsVisited is not None:
+                    uniqueIDsVisited.update(IDsFrame)
+                
+                if uniqueIDsAll is not None:
+                    uniqueIDsAll.update(IDsFrame)
+                
                 numObjsFrame = len(IDsFrame)
-                uniqueIDsVisited.update(IDsFrame)
-                uniqueIDsAll.update(IDsFrame)
-                numObjsVisitedFrames += numObjsFrame
-                numObjsTotal += numObjsFrame
+                
+                if numObjsVisitedFrames is not None:
+                    numObjsVisitedFrames += numObjsFrame
+                    
+                if numObjsTotal is not None:
+                    numObjsTotal += numObjsFrame
             else:
                 lab = posData.segm_data[frame_i]
-                rp = skimage.measure.regionprops(posData.segm_data[frame_i])
-                numObjsTotal += len(rp)
-                uniqueIDsAll.update([obj.label for obj in rp])
+                
+                if numObjsTotal is not None or numObjsTotal is not None:
+                    rp = skimage.measure.regionprops(posData.segm_data[frame_i])
+                
+                if numObjsTotal is not None:
+                    numObjsTotal += len(rp)
+                    
+                if uniqueIDsAll is not None:
+                    uniqueIDsAll.update([obj.label for obj in rp])
         
-        numUniqueObjsVisitedFrames = len(uniqueIDsVisited)
-        numUniqueObjsTotal = len(uniqueIDsAll)
+        numUniqueObjsVisitedFrames = None
+        if uniqueIDsVisited is not None:
+            numUniqueObjsVisitedFrames = len(uniqueIDsVisited)
         
-        categoryCountMapper = {
+        numUniqueObjsTotal = None
+        if uniqueIDsAll is not None:
+            numUniqueObjsTotal = len(uniqueIDsAll)
+        
+        allCategoryCountMapper = {
             'In current frame': numObjsCurrentFrame, 
             'In all visited frames': numObjsVisitedFrames, 
             'In entire video': numObjsTotal, 
             'Unique objects in all visited frames': numUniqueObjsVisitedFrames, 
             'Unique objects in entire video': numUniqueObjsTotal
         }
+        if self.countObjsWindow is None:
+            return allCategoryCountMapper 
+        
+        categoryCountMapper = {}
+        for category in activeCategories:
+            categoryCountMapper[category] = allCategoryCountMapper[category]
+            
         return categoryCountMapper
+    
+    def updateObjectCounts(self):
+        if self.countObjsWindow is None:
+            return
+        
+        if not self.countObjsWindow.isVisible():
+            return
+        
+        if not self.countObjsWindow.livePreviewCheckbox.isChecked():
+            return
+        
+        categoryCountMapper = self.countObjects()
+        self.countObjsWindow.updateCounts(categoryCountMapper)
     
     def keepIDs_cb(self, checked):
         if checked:
@@ -15668,6 +15729,18 @@ class guiWin(QMainWindow):
             return
 
         trackerName = win.selectedItemsText[0]
+        start_n = win.startFrame
+        stop_n = win.stopFrame
+        video_to_track = posData.segm_data
+        for frame_i in range(start_n-1, stop_n):
+            data_dict = posData.allData_li[frame_i]
+            lab = data_dict['labels']
+            if lab is None:
+                break
+
+            video_to_track[frame_i] = lab
+        video_to_track = video_to_track[start_n-1:stop_n]        
+        
         self.logger.info(f'Importing {trackerName} tracker...')
         self.tracker, self.track_params, init_params = myutils.init_tracker(
             posData, trackerName, qparent=self, return_init_params=True
@@ -15675,6 +15748,15 @@ class guiWin(QMainWindow):
         if self.track_params is None:
             self.logger.info('Tracking aborted.')
             return
+        
+        warningText = myutils.validate_tracker_input(
+            self.tracker, video_to_track
+        )
+        if warningText is not None:
+            self.logger.info(warningText)
+            self.warnTrackerInputNotValid(trackerName, warningText)
+            return        
+        
         if 'image_channel_name' in self.track_params:
             # Remove the channel name since it was already loaded in init_tracker
             del self.track_params['image_channel_name']
@@ -15688,9 +15770,6 @@ class guiWin(QMainWindow):
             f'Initialization parameters: {init_params}\n'
             f'Track parameters: {track_params_log}'
         )
-        
-        start_n = win.startFrame
-        stop_n = win.stopFrame
 
         last_tracked_i = self.get_last_tracked_i()
         if start_n-1 <= last_tracked_i and start_n>1:
@@ -15703,16 +15782,6 @@ class guiWin(QMainWindow):
             
             self.logger.info(f'Removing annotations from frame n. {start_n}.')
             self.resetCcaFuture(start_n-1)
-
-        video_to_track = posData.segm_data
-        for frame_i in range(start_n-1, stop_n):
-            data_dict = posData.allData_li[frame_i]
-            lab = data_dict['labels']
-            if lab is None:
-                break
-
-            video_to_track[frame_i] = lab
-        video_to_track = video_to_track[start_n-1:stop_n]
 
         self.start_n = start_n
         self.stop_n = stop_n
@@ -15727,6 +15796,15 @@ class guiWin(QMainWindow):
         self.progressWin.mainPbar.setMaximum(stop_n-start_n)
         self.startTrackingWorker(posData, video_to_track)
 
+    def warnTrackerInputNotValid(self, trackerName, warningText):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = warningText.replace('\n', '<br>')
+        txt = html_utils.paragraph(
+            f'{txt}<br><br>'
+            'Tracking process will be cancelled. Thank you for your patience!'
+        )
+        msg.warning(self, 'Invalid input for tracker', txt)
+    
     def repeatTracking(self):
         posData = self.data[self.pos_i]
         prev_lab = self.get_2Dlab(posData.lab).copy()
@@ -17110,12 +17188,16 @@ class guiWin(QMainWindow):
         self.disableCcaIntegrityChecker()
         
     @exception_handler
-    def workerCritical(self, error):
+    def workerCritical(self, out: Tuple[QObject, Exception]):
+        worker, error = out
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
             self.progressWin.close()
             self.progressWin = None
         self.logger.info(error)
+        worker.thread().quit()
+        worker.deleteLater()
+        worker.thread().deleteLater()
         raise error
     
     def workerLog(self, text):
@@ -17831,6 +17913,7 @@ class guiWin(QMainWindow):
         self.zoomOut()
         self.restartZoomAutoPilot()
         self.initManualBackgroundObject()
+        self.updateObjectCounts()
 
     def prev_pos(self):
         self.store_data(debug=False, autosave=False)
@@ -18075,6 +18158,7 @@ class guiWin(QMainWindow):
                 ts.append(time.perf_counter())
                 titles.append('initGhostObject')
             self.zoomToCells()
+            self.updateObjectCounts()
             if benchmark:
                 ts.append(time.perf_counter())
                 titles.append('zoomToCells')
@@ -18427,6 +18511,7 @@ class guiWin(QMainWindow):
             self.zoomToCells()
             self.initGhostObject()
             self.updateViewerWindow()
+            self.updateObjectCounts()
             if benchmark:
                 ts.append(time.perf_counter())
                 titles.append('zoomToCells, initGhostObject, updateViewerWindow')
@@ -20216,6 +20301,7 @@ class guiWin(QMainWindow):
         }
         self.timestampDialog = None
         self.scaleBarDialog = None
+        self.countObjsWindow = None
 
         # Second channel used by cellpose
         self.secondChannelName = None
@@ -24184,15 +24270,19 @@ class guiWin(QMainWindow):
         self.setOverlayItemsVisible()
     
     def countObjectsCb(self, checked):
-        if checked:
+        if self.countObjsWindow is None:
             categoryCountMapper = self.countObjects()
             self.countObjsWindow = apps.ObjectCountDialog(
                 categoryCountMapper=categoryCountMapper, 
                 parent=self
             )
+            self.countObjsWindow.sigShowEvent.connect(self.updateObjectCounts)
+            self.countObjsWindow.sigUpdateCounts.connect(self.updateObjectCounts)
+        
+        if checked:
             self.countObjsWindow.show()
         else:
-            self.countObjsWindow.close()
+            self.countObjsWindow.hide()
     
     def showLabelRoiContextMenu(self, event):
         menu = QMenu(self.labelRoiButton)
@@ -26649,6 +26739,13 @@ class guiWin(QMainWindow):
         yy, xx, _ = np.nonzero(self.lostObjContoursImage)
         lostObjsContourMask = np.zeros(self.currentLab2D.shape, dtype=bool)
         lostObjsContourMask[yy.astype(int), xx.astype(int)] = True
+        
+        # Add accepted lost IDs
+        try:
+            yy, xx, _ = np.nonzero(self.lostTrackedObjContoursImage)
+            lostObjsContourMask[yy.astype(int), xx.astype(int)] = True
+        except Exception as err:
+            pass
             
         _, y_nearest, x_nearest = core.nearest_nonzero_2D(
             lostObjsContourMask, y, x, return_coords=True
@@ -27701,6 +27798,9 @@ class guiWin(QMainWindow):
             self.manuallyEditTracking(tracked_lab, IDs)
 
         if return_lab:
+            QTimer.singleShot(50, partial(
+                self.statusBarLabel.setText, staturBarLabelText
+            ))
             return tracked_lab
         
         # Update labels, regionprops and determine new and lost IDs

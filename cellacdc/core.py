@@ -3571,6 +3571,8 @@ def insert_missing_objects(
     assignments_mapper = {}
     for frame_i, (lab_src, lab_dst) in enumerate(zip(segm_src, segm_dst)):
         rp = skimage.measure.regionprops(lab_src)
+        rp_dst = skimage.measure.regionprops(lab_dst)
+        rp_dst_mapper = {obj.label: obj for obj in rp_dst}
         for obj in rp:
             obj_dst_values = lab_dst[obj.slice][obj.image]
             obj_dst_ID = obj_dst_values[0]
@@ -3583,17 +3585,12 @@ def insert_missing_objects(
                 segm_dst[frame_i] = lab_dst
                 continue
             
-            # Check if merged --> dst ID still existing after erasing object
-            is_merged = False
-            lab_dst[obj.slice][obj.image] = 0
-            rp_minus_obj = skimage.measure.regionprops(lab_dst)
-            for obj_dst in rp_minus_obj:
-                if obj_dst.label == obj_dst_ID:
-                    is_merged = True
-                    break
-            
-            # Insert back the temporarly deleted object
-            lab_dst[obj.slice][obj.image] = obj_dst_ID
+            # Check if merged --> the masks do not coincide
+            obj_dst = rp_dst_mapper[obj_dst_ID]
+            is_merged = not (
+                len(obj_dst.coords) == len(obj.coords)
+                and np.all(obj_dst.coords == obj.coords)
+            )
             
             if not is_merged:
                 continue
@@ -3602,7 +3599,7 @@ def insert_missing_objects(
                 lab_dst, obj, all_dst_IDs, assignments_mapper
             )
             segm_dst[frame_i] = lab_dst
-
+            
         if display_pbar:
             pbar.update()
     

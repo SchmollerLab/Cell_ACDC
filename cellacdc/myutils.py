@@ -3836,20 +3836,25 @@ def _relabel_cca_dfs_and_segm_data(
             desc='Applying asymmetric division', 
             total=len(IDs_mapper), ncols=100
         )
-    for key, root_ID in IDs_mapper.items():
+    for key, (root_ID, parent_ID) in IDs_mapper.items():
         div_frame_i, daughter_ID = key
         for frame_i in range(div_frame_i, len(asymm_tracked_segm)):
-            cca_dfs[frame_i].rename(
-                index={daughter_ID: root_ID}, inplace=True
-            )
+            
+            
             lab = asymm_tracked_segm[frame_i]
             rp = skimage.measure.regionprops(lab)
-            obj_daught = [obj for obj in rp if obj.label == daughter_ID]
-            if not obj_daught:
-                continue
+            rp_mapper = {obj.label: obj for obj in rp}
+            obj_daught = rp_mapper.get(daughter_ID)
+            mother_ID = root_ID if rp_mapper.get(root_ID) is None else parent_ID
             
-            obj_daught = obj_daught[0]
-            lab[obj_daught.slice][obj_daught.image] = root_ID
+            cca_dfs[frame_i].rename(
+                index={daughter_ID: mother_ID}, inplace=True
+            )
+            
+            if obj_daught is None:
+                continue
+    
+            lab[obj_daught.slice][obj_daught.image] = mother_ID
         
         if progressbar:
             pbar.update()
@@ -3954,7 +3959,7 @@ def df_ctc_to_acdc_df(
                 # Recycle the root_ID and assign it to one of the daughters
                 replaced_daught_ID = daughter_IDs[1]
                 key = (frame_i, replaced_daught_ID)
-                asymmetric_IDs_rename_mapper[key] = root_ID    
+                asymmetric_IDs_rename_mapper[key] = (root_ID, parent_ID)    
         
         cca_dfs.append(cca_df)
         
@@ -3963,6 +3968,7 @@ def df_ctc_to_acdc_df(
     
     if progressbar:
         pbar.close()
+    
     if asymmetric_IDs_rename_mapper:
         _relabel_cca_dfs_and_segm_data(
             cca_dfs,
@@ -3990,6 +3996,14 @@ def check_install_instanseg():
         pypi_name='instanseg-torch'
     )
 
+def validate_tracker_input(tracker, segm_video_to_track):
+    try:
+        warning_text = tracker.validate_input(segm_video_to_track)
+        return warning_text
+    except Exception as err:
+        printl(traceback.format_exc())
+        pass
+    return
 def format_IDs(IDs):
     if isinstance(IDs, str):
         raise ValueError('IDs must not be a string')

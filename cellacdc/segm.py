@@ -669,7 +669,7 @@ class segmWin(QMainWindow):
             **self.customPostProcessFeatures
         }
         
-        for other_img_path in user_ch_file_paths[1:]:
+        for other_img_path in user_ch_file_paths:
             _posData = load.loadData(other_img_path, user_ch_name, QParent=self)
             _posData.getBasenameAndChNames()
             _posData.buildPaths()
