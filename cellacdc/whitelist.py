@@ -375,7 +375,7 @@ class Whitelist:
         
         return old_whitelistIDs
     
-    def innitNewFrames(self, 
+    def initNewFrames(self, 
                        frame_i:int, 
                        force:bool=False, 
                        ):
@@ -390,7 +390,7 @@ class Whitelist:
             The frame index for where the initialization should be done.
         force : bool, optional
             If the frame_i (only this frame_i in that case) 
-            should be reinnit, by default False
+            should be reinit, by default False
 
         Returns
         -------
@@ -399,6 +399,7 @@ class Whitelist:
         """
         
         missing_frames = set(range(frame_i+1)) - self.initialized_i
+        update_frames = []
 
         if self._debug:
             printl(missing_frames, self.initialized_i, frame_i)
@@ -409,7 +410,7 @@ class Whitelist:
             new_frame = False
 
         if not force and not missing_frames:
-            return new_frame
+            return new_frame, update_frames
 
         for i in missing_frames:
             self.whitelistIDs[i] = set()
@@ -426,12 +427,13 @@ class Whitelist:
                 self.whitelistIDs[i] = new_wl
             else:
                 self.whitelistIDs[i] = set()
-            
+                        
             self.initialized_i.add(i)
+            update_frames.append((i, None, None, True))
 
         if self._debug:
             printl('Whitelist IDs new frame (without adding new IDs):', self.whitelistIDs[frame_i])
-        return new_frame
+        return new_frame, update_frames
     
     def propagateIDs(self,
                      frame_i: int,
@@ -448,6 +450,7 @@ class Whitelist:
                      index_lab_combo: Tuple[int, np.ndarray] = None,
                      curr_rp: list = None,
                      curr_lab: np.ndarray = None,
+                     update_frames: list = None,
                      ):
         """
         Propagates whitelist IDs across frames in the dataset. (Doesn't update labs)
@@ -515,6 +518,9 @@ class Whitelist:
         curr_lab : np.ndarray, optional
             Labels for the current frame for IDs_curr. (see description),
             by default None.
+        update_frames : list, optional
+            List of frames that were changed, by default None.
+            Returned for updating the labs later
 
         Raises
         ------
@@ -547,7 +553,10 @@ class Whitelist:
         #     raise ValueError('Either allData_li or per_frame_IDs or labs must be provided')
         # elif not allData_li and not per_frame_IDs:
         #     per_frame_IDs = [set() for _ in labs]
-            
+        
+        if not update_frames:
+            update_frames = []
+
         if self._debug:
             printl('Propagating IDs...')
             myutils.print_call_stack()
@@ -595,7 +604,9 @@ class Whitelist:
         #     if self._debug:
         #         printl('Using labs')
 
-        new_frame = self.innitNewFrames(frame_i)
+        new_frame, update_frames_new = self.initNewFrames(frame_i)
+        update_frames.extend(update_frames_new)
+
         last_frame_i = max(self.initialized_i) if self.initialized_i else 0
 
         # see what the siltation is with propagation
@@ -607,17 +618,22 @@ class Whitelist:
             elif self.whitelistOriginalFrame_i != frame_i:
                 if self._debug:
                     printl('Frame changed, whitelist was not propagated, propagating...')
-                self.propagateIDs(self.whitelistOriginalFrame_i,
+                new_update_frames = self.propagateIDs(self.whitelistOriginalFrame_i,
                                   allData_li,
-                                  index_lab_combo=index_lab_combo)
+                                  index_lab_combo=index_lab_combo,
+                                  update_frames=update_frames)
+                update_frames.extend(new_update_frames)
         else:
             if self.whitelistOriginalFrame_i is not None:
                 if self.whitelistOriginalFrame_i != frame_i:
                     if self._debug:
                         printl('Frame changed, whitelist was not propagated, propagating...')
-                    self.propagateIDs(self.whitelistOriginalFrame_i,
+                    new_update_frames = self.propagateIDs(self.whitelistOriginalFrame_i,
                                       allData_li,
-                                      index_lab_combo=index_lab_combo)
+                                      index_lab_combo=index_lab_combo,
+                                      update_frames=update_frames
+                                      )
+                    update_frames.extend(new_update_frames)
                 else:
                     propagate_after_curr_frame_only_flag = True
                 self.whitelistOriginalFrame_i = None
@@ -665,7 +681,7 @@ class Whitelist:
         IDs_to_remove = old_whitelist - new_whitelist
 
         if  IDs_to_add == IDs_to_remove == set():
-            return
+            return update_frames
 
         if self._debug:
             printl(IDs_to_add, IDs_to_remove)
@@ -694,14 +710,24 @@ class Whitelist:
                 else:
                     IDs_curr_loc = set(allData_li[i]['IDs'])
 
-            old_whitelist = self.get(i,try_create_new_whitelists)
-
+            new_whitelist = self.get(i, try_create_new_whitelists).copy()
+            old_whitelist = new_whitelist.copy()
+            added_IDs = []
+            removed_IDs = []
             if IDs_to_add:
                 #                         intersection with...   all possible IDs           ...plus all old_whitelistIDs
-                self.whitelistIDs[i] = IDs_to_add.intersection(IDs_curr_loc.union(IDs_og)) | old_whitelist
+                new_whitelist = IDs_to_add.intersection(IDs_curr_loc.union(IDs_og)) | old_whitelist
                 # IDs_curr.union(IDs_og) are all possible IDs, IDs_to_add.intersection(IDs_curr.union(IDs_og)) is for finding all possible IDs which want ot be propagated
+                added_IDs = new_whitelist - old_whitelist
             if IDs_to_remove:
-                self.whitelistIDs[i] = self.whitelistIDs[i] - IDs_to_remove
+                new_whitelist = new_whitelist - IDs_to_remove
+                removed_IDs = old_whitelist - new_whitelist
+                        
+            self.whitelistIDs[i] = new_whitelist
+            if added_IDs or removed_IDs:
+                update_frames.append((i,added_IDs, removed_IDs, False))
 
         if self._debug:
             printl(self.whitelistIDs[frame_i])
+        
+        return update_frames

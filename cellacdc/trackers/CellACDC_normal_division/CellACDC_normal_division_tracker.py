@@ -8,6 +8,7 @@ from skimage.measure import regionprops
 from tqdm import tqdm
 import pandas as pd
 from cellacdc.myutils import exec_time
+from cellacdc._types import NotGUIParam
 
 def filter_cols(df):
     """
@@ -556,7 +557,8 @@ class normal_division_tracker:
         self.tracked_video = np.zeros_like(segm_video)
         self.tracked_video[0] = segm_video[0]
 
-    def track_frame(self, frame_i, lab=None, prev_lab=None, rp=None, prev_rp=None):
+    def track_frame(self, frame_i, lab=None, prev_lab=None, rp=None, prev_rp=None,
+                    IDs=None):
         """
         Tracks a single frame in the video sequence.
 
@@ -585,7 +587,8 @@ class normal_division_tracker:
         IoA_matrix, self.IDs_curr_untracked, self.IDs_prev = calc_Io_matrix(lab,
                                                                              prev_lab,
                                                                              self.rp,
-                                                                             prev_rp
+                                                                             prev_rp,
+                                                                             IDs=IDs,
                                                                              )
         self.aggr_track, self.mother_daughters = mother_daughter_assign(IoA_matrix,
                                                                         IoA_thresh_daughter=self.IoA_thresh_daughter,
@@ -1198,7 +1201,7 @@ class tracker:
     - track(): Tracks cell division in the video sequence. (Used for module 2)
     - track_frame(): Tracks cell division in a single frame. (Used for GUI tracking)
     - updateGuiProgressBar(): Updates the GUI progress bar. (Used for GUI communication)
-    - save_output(): Signals to the rest of the programme that the lineage tree should be saved. (Used for fodule 2)
+    - save_output(): Signals to the rest of the programme that the lineage tree should be saved. (Used for module 2)
     """
     def __init__(self):
         """
@@ -1208,13 +1211,13 @@ class tracker:
 
     def track(self,
               segm_video,
-              IoA_thresh = 0.8,
-              IoA_thresh_daughter = 0.25,
-              IoA_thresh_aggressive = 0.5,
-              min_daughter = 2,
-              max_daughter = 2,
-              record_lineage = True,
-              return_tracked_lost_centroids = True,
+              IoA_thresh:float = 0.8,
+              IoA_thresh_daughter:float = 0.25,
+              IoA_thresh_aggressive:float = 0.5,
+              min_daughter:int = 2,
+              max_daughter:int = 2,
+              record_lineage:bool = True,
+              return_tracked_lost_centroids:bool = True,
               signals = None,
         ):
         """
@@ -1323,11 +1326,12 @@ class tracker:
     def track_frame(self,
                     previous_frame_labels,
                     current_frame_labels,
-                    IoA_thresh = 0.8,
-                    IoA_thresh_daughter = 0.25,
-                    IoA_thresh_aggressive = 0.5,
-                    min_daughter = 2,
-                    max_daughter = 2,
+                    IDs : NotGUIParam =None,
+                    IoA_thresh: float = 0.8,
+                    IoA_thresh_daughter:float = 0.25,
+                    IoA_thresh_aggressive:float  = 0.5,
+                    min_daughter:int = 2,
+                    max_daughter:int = 2,
                     ):
         """
         Tracks cell division in a single frame. (This is used for real time tracking in the GUI)
@@ -1352,7 +1356,7 @@ class tracker:
 
         segm_video = [previous_frame_labels, current_frame_labels]
         tracker = normal_division_tracker(segm_video, IoA_thresh_daughter, min_daughter, max_daughter, IoA_thresh, IoA_thresh_aggressive)
-        tracker.track_frame(1)
+        tracker.track_frame(1, IDs=IDs)
         tracked_video = tracker.tracked_video
 
         mother_daughters_pairs = tracker.mother_daughters

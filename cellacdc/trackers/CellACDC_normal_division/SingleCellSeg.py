@@ -213,6 +213,7 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID,
         box_curr_lab = curr_lab[box_x_min:box_x_max, box_y_min:box_y_max]
 
         box_curr_lab_other_IDs = box_curr_lab.copy()
+        IDs = np.array(IDs)
         box_curr_lab_other_IDs[np.isin(box_curr_lab_other_IDs, IDs)] = 0
 
         box_curr_lab_other_IDs_grown = skimage.segmentation.expand_labels(box_curr_lab_other_IDs, distance=distance_filler_growth)
@@ -228,7 +229,11 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID,
         for ID in IDs:
             obj = get_obj_from_rps(prev_rp, ID)
             diameters.append(obj.axis_major_length)
-        diameter = np.mean(diameters)
+        
+        if len(diameters) == 0:
+            diameter = None
+        else:
+            diameter = np.mean(diameters)
 
         model_kwargs['diameter'] = diameter
         box_model_lab = segm_model_segment(

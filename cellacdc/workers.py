@@ -889,8 +889,12 @@ class SegForLostIDsWorker(QObject):
     sigStoreData = Signal(bool)
     sigUpdateRP = Signal(bool, bool)
     sigGetData = Signal()
+    # sigGet2Dlab = Signal()
+    # sigGetTrackedLostIDs = Signal()
+    # sigGetBrushID = Signal()
+    sigTrackManuallyAddedObject = Signal(object, object, bool, bool)
 
-    def __init__(self, guiWin, mutex, waitCond, debug=False):
+    def __init__(self, guiWin, mutex, waitCond, debug=True):
         QObject.__init__(self)
         self.signals = signals()
         self.logger = workerLogger(self.signals.progress)
@@ -934,6 +938,30 @@ class SegForLostIDsWorker(QObject):
         self.sigAskInstallModel.emit(model_name)
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
+    
+    # def emitGet2Dlab(self):
+    #     self.mutex.lock()
+    #     self.sigGet2Dlab.emit()
+    #     self.waitCond.wait(self.mutex)
+    #     self.mutex.unlock()
+    
+    # def emitGetTrackedLostIDs(self):
+    #     self.mutex.lock()
+    #     self.sigGetTrackedLostIDs.emit()
+    #     self.waitCond.wait(self.mutex)
+    #     self.mutex.unlock()
+    
+    # def emitGetBrushID(self):
+    #     self.mutex.lock()
+    #     self.sigGetBrushID.emit()
+    #     self.waitCond.wait(self.mutex)
+    #     self.mutex.unlock()
+    
+    def emitTrackManuallyAddedObject(self, IDs, isLost, wl_update, wl_track_og_curr):
+        self.mutex.lock()
+        self.sigTrackManuallyAddedObject.emit(IDs, isLost, wl_update, wl_track_og_curr)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
 
     @worker_exception_handler
     def run(self):
@@ -953,12 +981,13 @@ class SegForLostIDsWorker(QObject):
         idx = self.guiWin.modelNames.index(model_name)
         acdcSegment = self.guiWin.acdcSegment_li[idx]
 
-        if acdcSegment is None:
+        if acdcSegment is None or base_model_name != self.guiWin.local_seg_base_model_name:
             self.logger.info(f'Importing {base_model_name}...')
             self.emitSigAskInstallModel(base_model_name)
             acdcSegment = myutils.import_segment_module(base_model_name)
             self.guiWin.acdcSegment_li[idx] = acdcSegment
- 
+            self.guiWin.local_seg_base_model_name = base_model_name  
+
         win = self.guiWin.SegForLostIDsSettings['win']
         init_kwargs_new = self.guiWin.SegForLostIDsSettings['init_kwargs_new']
         args_new = self.guiWin.SegForLostIDsSettings['args_new']
@@ -990,32 +1019,28 @@ class SegForLostIDsWorker(QObject):
             
             curr_lab = self.guiWin.get_2Dlab(posData.lab)
             tracked_lost_IDs = self.guiWin.getTrackedLostIDs()
+            new_unique_ID = self.guiWin.setBrushID(useCurrentLab=True, return_val=True)
 
             missing_IDs = set(prev_IDs) - set(posData.IDs) - set(tracked_lost_IDs)
             missing_IDs_global.update(missing_IDs)
 
-            new_unique_ID = self.guiWin.setBrushID(useCurrentLab=True, return_val=True)
-
             assigned_IDs_prev = assigned_IDs.copy()
             new_lab, assigned_IDs, IDs_bboxs, bboxs = single_cell_seg(model, prev_lab, curr_lab, curr_img, 
-                                                    missing_IDs, new_unique_ID,
-                                                    win, posData,
-                                                    distance_filler_growth=args_new['distance_filler_growth'],
-                                                    overlap_threshold=args_new['overlap_threshold'],
-                                                    padding=args_new['padding'],
-                                                    )
-        
-            
+                                            missing_IDs, new_unique_ID,
+                                            win, posData,
+                                            distance_filler_growth=args_new['distance_filler_growth'],
+                                            overlap_threshold=args_new['overlap_threshold'],
+                                            padding=args_new['padding'],
+                                            )
+                    
             IDs_bboxs_list.append(IDs_bboxs)
             bboxs_list.append(bboxs)
-            
             posData.lab = new_lab
             self.emitSigUpdateRP(wl_update=False, wl_track_og_curr=False)
-
+            self.emitSigStoreData(autosave=False)
             newly_assigned_IDs = set(assigned_IDs) - set(assigned_IDs_prev)
-            self.guiWin.trackManuallyAddedObject(newly_assigned_IDs, True)
+            self.emitTrackManuallyAddedObject(newly_assigned_IDs, True, False, False)
             new_labs[i] = posData.lab.copy()
-
             self.emitSigStoreData(autosave=False)
             self.signals.progressBar.emit(1)
             
@@ -1066,11 +1091,11 @@ class SegForLostIDsWorker(QObject):
     
         posData.lab = original_lab
 
-        if self._debug:
-            originals = np.concatenate(originals, axis=0)
-            models = np.concatenate(models, axis=0)
-            self.emitSigShowImageDebug(originals)
-            self.emitSigShowImageDebug(models)
+        # if self._debug:
+        #     originals = np.concatenate(originals, axis=0)
+        #     models = np.concatenate(models, axis=0)
+        #     self.emitSigShowImageDebug(originals)
+        #     self.emitSigShowImageDebug(models)
 
         self.emitSigUpdateRP(wl_track_og_curr=True, wl_update=True)
         self.emitSigStoreData(autosave=True)
