@@ -267,6 +267,17 @@ class dataPrepWin(QMainWindow):
         self.cropTaction.setEnabled(False)
         self.cropTaction.setCheckable(True)
         
+        self.freeRoiAction = QAction(
+            ':drawFreeRoi.svg', "Draw a freehand ROI", self
+        )
+        self.freeRoiAction.setToolTip(
+            'Draw a freehand ROI.\n\n'
+            'Objects outside of this ROI will be automatically removed '
+            'from the segmentation masks.'
+        )
+        self.freeRoiAction.setEnabled(False)
+        self.freeRoiAction.setCheckable(True)
+        
         self.saveAction = QAction(
             QIcon(":file-save.svg"), "Crop and save", self)
         self.saveAction.setEnabled(False)
@@ -310,12 +321,18 @@ class dataPrepWin(QMainWindow):
         fileToolBar.addAction(self.infoAction)
         fileToolBar.addAction(self.openFolderAction)
         fileToolBar.addAction(self.showInExplorerAction)
-        fileToolBar.addAction(self.startAction)
-        fileToolBar.addAction(self.cropAction)
-        fileToolBar.addAction(self.cropZaction)
-        fileToolBar.addAction(self.cropTaction)
         fileToolBar.addAction(self.saveAction)
-
+        
+        editToolbar = self.addToolBar("Edit")
+        # fileToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
+        editToolbar.setMovable(False)
+        
+        editToolbar.addAction(self.startAction)
+        editToolbar.addAction(self.cropAction)
+        editToolbar.addAction(self.cropZaction)
+        editToolbar.addAction(self.cropTaction)
+        editToolbar.addAction(self.freeRoiAction)
+        
         navigateToolbar = QToolBar("Navigate", self)
         # navigateToolbar.setIconSize(QSize(toolbarSize, toolbarSize))
         self.addToolBar(navigateToolbar)

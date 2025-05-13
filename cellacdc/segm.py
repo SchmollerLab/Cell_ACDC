@@ -115,6 +115,7 @@ class segmWorker(QRunnable):
             innerPbar_available=mainWin.innerPbar_available,
             is_segment3DT_available=mainWin.is_segment3DT_available, 
             preproc_recipe=mainWin.preproc_recipe, 
+            reduce_memory_usage=mainWin.reduce_memory_usage,
         )
     
     def run_kernel(self, mainWin):
@@ -583,6 +584,7 @@ class segmWin(QMainWindow):
         init_kwargs = win.init_kwargs
         self.init_model_kwargs = init_kwargs
         self.preproc_recipe = win.preproc_recipe
+        self.reduce_memory_usage = win.reduceMemoryUsage
         
         # Initialize model
         use_gpu = init_kwargs.get('gpu', False)

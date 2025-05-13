@@ -6971,24 +6971,25 @@ class PostProcessSegmSlider(sliderWithSpinBox):
             return super().value()
 
 class GhostContourItem(pg.PlotDataItem):
-    def __init__(self, penColor=(245, 184, 0, 100), textColor=(245, 184, 0)):
+    def __init__(
+            self, ParentPlotItem, penColor=(245, 184, 0, 100), 
+            textColor=(245, 184, 0)
+        ):
         super().__init__()
         # Yellow pen
         self.setPen(pg.mkPen(width=2, color=penColor))
         self.label = myLabelItem()
         self.label.setAttr('bold', True)
         self.label.setAttr('color', textColor)
+        self._ParentPlotItem = ParentPlotItem
     
-    def addToPlotItem(self, PlotItem: MainPlotItem):
-        self._plotItem = PlotItem
-        PlotItem.addItem(self)
-        PlotItem.addItem(self.label)
+    def addToPlotItem(self):
+        self._ParentPlotItem.addItem(self)
+        self._ParentPlotItem.addItem(self.label)
     
     def removeFromPlotItem(self):
-        if not hasattr(self, '_plotItem'):
-            return
-        self._plotItem.removeItem(self.label)
-        self._plotItem.removeItem(self)
+        self._ParentPlotItem.removeItem(self.label)
+        self._ParentPlotItem.removeItem(self)
     
     def setData(
             self, xx=None, yy=None, fontSize=11, ID=0, 
@@ -7013,11 +7014,12 @@ class GhostContourItem(pg.PlotDataItem):
         self.setData([], [])
 
 class GhostMaskItem(pg.ImageItem):
-    def __init__(self):
+    def __init__(self, ParentPlotItem):
         super().__init__()
         self.label = myLabelItem()
         self.label.setAttr('bold', True)
         self.label.setAttr('color', (245, 184, 0))
+        self._ParentPlotItem = ParentPlotItem
     
     def initImage(self, imgShape):
         image = np.zeros(imgShape, dtype=np.uint32)
@@ -7029,14 +7031,13 @@ class GhostMaskItem(pg.ImageItem):
         lut[1,:-1] = rgbaColor
         self.setLookupTable(lut)
     
-    def addToPlotItem(self, PlotItem: MainPlotItem):
-        self._plotItem = PlotItem
-        PlotItem.addItem(self)
-        PlotItem.addItem(self.label)
+    def addToPlotItem(self):
+        self._ParentPlotItem.addItem(self)
+        self._ParentPlotItem.addItem(self.label)
     
     def removeFromPlotItem(self):
-        self._plotItem.removeItem(self.label)
-        self._plotItem.removeItem(self)
+        self._ParentPlotItem.removeItem(self.label)
+        self._ParentPlotItem.removeItem(self)
     
     def updateGhostImage(self, ID=0, y_cursor=None, x_cursor=None, fontSize=None):
         self.setImage(self.image)

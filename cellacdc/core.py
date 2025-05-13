@@ -1880,7 +1880,8 @@ def preprocess_image_from_recipe(image, recipe: List[Dict[str, Any]]):
 
 def segm_model_segment(
         model, image, model_kwargs, frame_i=None, preproc_recipe=None, 
-        is_timelapse_model_and_data=False, posData=None, start_z_slice=0
+        is_timelapse_model_and_data=False, posData=None, start_z_slice=0,
+        reduce_memory_usage=False
     ):
     if preproc_recipe is not None:
         if is_timelapse_model_and_data:
@@ -1892,7 +1893,7 @@ def segm_model_segment(
         else:
             image = preprocess_image_from_recipe(image, preproc_recipe)
 
-    if is_timelapse_model_and_data:
+    if is_timelapse_model_and_data and not reduce_memory_usage:
         segm_data = model.segment3DT(image, **model_kwargs)
         return segm_data             
     
@@ -2090,6 +2091,7 @@ class SegmKernel(_WorkflowKernel):
             logger_func=print,
             innerPbar_available=False,
             is_segment3DT_available=False, 
+            reduce_memory_usage=False
         ):
         self.user_ch_name = user_ch_name
         self.segm_endname = segm_endname
@@ -2112,6 +2114,7 @@ class SegmKernel(_WorkflowKernel):
         self.init_model_kwargs = init_model_kwargs
         self.init_tracker_kwargs = init_tracker_kwargs
         self.is_segment3DT_available = is_segment3DT_available
+        self.reduce_memory_usage = reduce_memory_usage
         self.preproc_recipe = preproc_recipe
         if signals is None:
             self.signals = KernelCliSignals(logger_func)
@@ -2407,6 +2410,7 @@ class SegmKernel(_WorkflowKernel):
                     self.model, img_data, self.model_kwargs, 
                     is_timelapse_model_and_data=True, 
                     preproc_recipe=self.preproc_recipe, 
+                    reduce_memory_usage=self.reduce_memory_usage,
                     posData=posData
                 )
                 if self.innerPbar_available:

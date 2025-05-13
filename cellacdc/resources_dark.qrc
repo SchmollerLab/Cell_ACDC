@@ -60,6 +60,7 @@
     <file alias="assign_new_id.svg">resources/icons/assign_new_id_dark.svg</file>
     <file alias="open_file.svg">resources/icons/open_file_dark.svg</file>
     <file alias="freehand.svg">resources/icons/freehand_dark.svg</file>
+    <file alias="drawFreeRoi.svg">resources/icons/drawFreeRoi_dark.svg</file>
     <file alias="lock.svg">resources/icons/lock_dark.svg</file>
     <file alias="lock_open.svg">resources/icons/lock_open_dark.svg</file>
     <file alias="lock_closed.svg">resources/icons/lock_closed_dark.svg</file>
