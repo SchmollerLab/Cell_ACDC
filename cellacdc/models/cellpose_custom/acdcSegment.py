@@ -14,17 +14,47 @@ else:
 from cellpose import models
 
 class Model:
-    def __init__(self, model_path: os.PathLike = '', net_avg=False, gpu=False):
+    def __init__(self, model_path: os.PathLike = '', net_avg=False, gpu=False,
+                 directml_gpu=False):
         self.acdcCellpose = cp.Model()
+        if directml_gpu:
+            from cellacdc.models.cellpose_v2._directML import init_directML
+            directml_gpu = init_directML()
+
+        if directml_gpu and gpu:
+            printl(
+                """
+                gpu is preferable to directml_gpu, but doesn't work with non NVIDIA GPUs.
+                Since directml_gpu and set to True, the gpu argument will be ignored.
+                """
+            )
+            gpu = False
+
         try:
             self.acdcCellpose.model = models.CellposeModel(
                 gpu=gpu, net_avg=net_avg, pretrained_model=model_path
             )
         except Exception as err:
             self.acdcCellpose.model = models.CellposeModel(
-                gpu=gpu, pretrained_model=model_path
+                gpu=gpu, pretrained_model=model_path,
             )
             self.acdcCellpose.acdcCellpose.model = self.acdcCellpose.model
+
+        if directml_gpu:
+            from cellacdc.models.cellpose_v2._directML import setup_directML
+            try:
+                setup_directML(self.acdcCellpose.acdcCellpose)
+            except Exception as err:
+                setup_directML(self.acdcCellpose)
+            
+        if gpu:# there is a problem in cellpose with gpu...
+            from cellpose import core as cellposecore
+            device, _ = cellposecore.assign_device()
+            from cellacdc.models.cellpose_v2._directML import setup_custom_device
+            try:
+                setup_custom_device(self.acdcCellpose.acdcCellpose, device)
+            except Exception as err:
+                setup_custom_device(self.acdcCellpose, device)
         
     def segment(
             self, image,

@@ -2758,6 +2758,7 @@ def check_install_package(
         is_cli=True
     
     try:
+        import_pkg_name = import_pkg_name.replace('-', '_')
         import_module(import_pkg_name)
         if force_upgrade:
             upgrade = True

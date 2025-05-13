@@ -11156,6 +11156,7 @@ class QDialogModelParams(QDialog):
         text = html_utils.paragraph(text)
         param_name = self.sender().param_name
         msg = widgets.myMessageBox(wrapText=False)
+        printl(text)
         msg.information(self, f'Info about `{param_name}` parameter', text)
     
     def restoreDefaultInit(self):
@@ -16403,9 +16404,7 @@ class PreProcessRecipeDialogUtil(PreProcessRecipeDialog):
             parent=parent,
             hideOnClosing=False
         )
-        
-        printl('0')
-        
+                
         self.listSelector = widgets.listWidget(
             isMultipleSelection=True, minimizeHeight=True
         )

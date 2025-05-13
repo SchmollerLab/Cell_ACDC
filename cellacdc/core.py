@@ -3675,3 +3675,70 @@ def count_objects(posData, logger_func):
     if not allIDs:
         allIDs = list(range(100))
     return allIDs, posData
+
+def fix_sparse_directML():
+    """DirectML does not support sparse tensors, so we need to fallback to CPU
+    """
+    import torch
+    import functools
+    import warnings
+
+    def fallback_to_cpu_on_sparse_error(func, verbose=True):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            device_arg = kwargs.get('device', None)
+
+            # Ensure indices are int64 if args[0] looks like indices
+            if len(args) >= 1 and isinstance(args[0], torch.Tensor):
+                if args[0].dtype != torch.int64:
+                    args = (args[0].to(dtype=torch.int64),) + args[1:]
+
+            try:
+                result = func(*args, **kwargs)
+                if device_arg is not None and str(device_arg).lower() == "dml":
+                    try:
+                        result.to("dml")
+                    except RuntimeError as e:
+                        if verbose:
+                            warnings.warn(f"Sparse op failed on DirectML, falling back to CPU: {e}")
+                        kwargs['device'] = torch.device("cpu")
+                        return func(*args, **kwargs)
+                return result
+
+            except RuntimeError as e:
+                if "sparse" in str(e).lower() or "not implemented" in str(e).lower():
+                    if verbose:
+                        warnings.warn(f"Sparse op failed on DirectML, falling back to CPU: {e}")
+                    kwargs['device'] = torch.device("cpu")
+
+                    # Re-apply indices dtype correction before retrying on CPU
+                    if len(args) >= 1 and isinstance(args[0], torch.Tensor):
+                        if args[0].dtype != torch.int64:
+                            args = (args[0].to(dtype=torch.int64),) + args[1:]
+
+                    return func(*args, **kwargs)
+                else:
+                    raise e
+
+        return wrapper
+
+    # --- Patch Sparse Tensor Constructors ---
+
+    # High-level API
+    torch.sparse_coo_tensor = fallback_to_cpu_on_sparse_error(torch.sparse_coo_tensor)
+
+    # Low-level API
+    if hasattr(torch._C, "_sparse_coo_tensor_unsafe"):
+        torch._C._sparse_coo_tensor_unsafe = fallback_to_cpu_on_sparse_error(torch._C._sparse_coo_tensor_unsafe)
+
+    if hasattr(torch._C, "_sparse_coo_tensor_with_dims_and_tensors"):
+        torch._C._sparse_coo_tensor_with_dims_and_tensors = fallback_to_cpu_on_sparse_error(
+            torch._C._sparse_coo_tensor_with_dims_and_tensors
+        )
+
+    if hasattr(torch.sparse, 'SparseTensor'):
+        torch.sparse.SparseTensor = fallback_to_cpu_on_sparse_error(torch.sparse.SparseTensor)
+    
+    # suppress warnings 
+    import warnings
+    warnings.filterwarnings("once", message="Sparse op failed on DirectML*")
