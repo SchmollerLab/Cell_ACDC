@@ -268,7 +268,7 @@ class dataPrepWin(QMainWindow):
         self.cropTaction.setCheckable(True)
         
         self.freeRoiAction = QAction(
-            ':drawFreeRoi.svg', "Draw a freehand ROI", self
+            QIcon(':drawFreeRoi.svg'), "Draw a freehand ROI", self
         )
         self.freeRoiAction.setToolTip(
             'Draw a freehand ROI.\n\n'

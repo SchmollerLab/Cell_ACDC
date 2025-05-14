@@ -1951,6 +1951,7 @@ def segm_model_segment(
         return lab
     except TypeError as err:
         pass
+    
     lab = model.segment(image, **model_kwargs)
     return lab
 
