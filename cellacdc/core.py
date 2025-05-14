@@ -1878,6 +1878,14 @@ def preprocess_image_from_recipe(image, recipe: List[Dict[str, Any]]):
         
     return preprocessed_image
 
+def pop_signals_kwarg_if_not_needed(func, kwargs):
+    args = inspect.getfullargspec(func).args
+    if 'signals' in args:
+        return kwargs
+    
+    kwargs.pop('signals', None)
+    return kwargs
+
 def segm_model_segment(
         model, image, model_kwargs, frame_i=None, preproc_recipe=None, 
         is_timelapse_model_and_data=False, posData=None, start_z_slice=0,
@@ -1892,11 +1900,18 @@ def segm_model_segment(
             image = filtered_image # .astype(image.dtype)
         else:
             image = preprocess_image_from_recipe(image, preproc_recipe)
-
+    
     if is_timelapse_model_and_data and not reduce_memory_usage:
+        model_kwargs = pop_signals_kwarg_if_not_needed(
+            model.segment3DT, model_kwargs
+        )
         segm_data = model.segment3DT(image, **model_kwargs)
         return segm_data             
     
+    model_kwargs = pop_signals_kwarg_if_not_needed(
+        model.segment, model_kwargs
+    )
+
     # Some models have `start_z_slice` kwarg
     try:
         lab = model.segment(
@@ -1936,7 +1951,6 @@ def segm_model_segment(
         return lab
     except TypeError as err:
         pass
-
     lab = model.segment(image, **model_kwargs)
     return lab
 

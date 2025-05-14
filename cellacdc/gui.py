@@ -1027,6 +1027,7 @@ class saveDataWorker(QObject):
                 )
                 all_frames_acdc_df = load._fix_will_divide(all_frames_acdc_df)
                 custom_annot_columns = posData.getCustomAnnotColumnNames()
+                all_frames_acdc_df['basename'] = posData.basename
                 try:
                     # Save segmentation metadata
                     load.store_copy_acdc_df(

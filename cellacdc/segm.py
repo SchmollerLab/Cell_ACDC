@@ -88,6 +88,7 @@ class segmWorker(QRunnable):
         self.kernel = core.SegmKernel(
             mainWin.logger, mainWin.log_path, is_cli=False
         )
+        printl(mainWin.reduce_memory_usage)
         self.kernel.init_args(
             mainWin.user_ch_name, 
             mainWin.endFilenameSegm,
@@ -555,7 +556,7 @@ class segmWin(QMainWindow):
             help_url=url, qparent=self, init_last_params=False
         )
         win = out.get('win')
-        if win is None:
+        if win.cancel:
             abort = self.doAbort()
             if abort:
                 self.close()

@@ -10721,12 +10721,14 @@ class QDialogModelParams(QDialog):
         mainLayout.setStretch(row, 3)
         row += 1
         
+        self.additionalSegmGroupbox = None
         if not is_tracker:
             mainLayout.addWidget(widgets.QHLine())
             row += 1
             additionalSegmGroupbox = self.getAdditionalSegmParams()
             mainLayout.addWidget(additionalSegmGroupbox)
             mainLayout.setStretch(row, 1)
+            self.additionalSegmGroupbox = additionalSegmGroupbox
             row += 1
         
         if postProcessLayout is not None:
@@ -10771,7 +10773,6 @@ class QDialogModelParams(QDialog):
             alignment=Qt.AlignRight
         )
         self.reduceMemUsageToggle = widgets.Toggle()
-        self.reduceMemUsageToggle.setChecked(True)
         additionalSegmLayout.addWidget(
             self.reduceMemUsageToggle, local_row, 1, 1, 2, 
             alignment=Qt.AlignCenter
@@ -11309,7 +11310,9 @@ class QDialogModelParams(QDialog):
         if self.channelCombobox is not None:
             self.inputChannelName = self.channelCombobox.currentText()
         
-        self.reduceMemoryUsage = self.reduceMemUsageToggle.isChecked()
+        self.reduceMemoryUsage = False
+        if hasattr(self, 'reduceMemUsageToggle'):
+            self.reduceMemoryUsage = self.reduceMemUsageToggle.isChecked()
         self.customPostProcessFeatures = self.selectedFeaturesRange()
         self.customPostProcessGroupedFeatures = self.groupedFeatures()
         self._saveParams()
@@ -11375,6 +11378,9 @@ class QDialogModelParams(QDialog):
     def showEvent(self, event) -> None:
         buttonHeight = self.okButton.minimumSizeHint().height()
         height = self.scrollArea.minimumHeightNoScrollbar() + 70
+        if self.additionalSegmGroupbox is not None:
+            height += self.additionalSegmGroupbox.minimumSizeHint().height()
+            height += buttonHeight
         if self.preProcessParamsWidget is not None:
             height += self.preProcessParamsWidget.minimumSizeHint().height()
             height += buttonHeight
