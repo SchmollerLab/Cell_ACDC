@@ -102,7 +102,8 @@ class Model:
             anisotropy=0.0,
             normalize=True,
             resample=True,
-            segment_3D_volume=False            
+            segment_3D_volume=False,
+            **kwargs            
         ):
         isRGB = image.shape[-1] == 3 or image.shape[-1] == 4
         isZstack = (image.ndim==3 and not isRGB) or (image.ndim==4)
