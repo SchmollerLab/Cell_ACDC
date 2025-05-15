@@ -54,6 +54,7 @@ from . import tooltips_rst_filepath
 from . import cca_functions
 from . import sorted_cols
 from . import io
+from . import core
 
 acdc_df_bool_cols = [
     'is_cell_dead',
@@ -1464,6 +1465,7 @@ class loadData:
             load_customAnnot=False,
             load_customCombineMetrics=False,
             load_manual_bkgr_lab=False,
+            load_dataprep_free_roi=False,
             getTifPath=False,
             end_filename_segm='',
             new_endname='',
@@ -1483,6 +1485,7 @@ class loadData:
         self.TifPathFound = False if getTifPath else None
         self.customAnnotFound = False if load_customAnnot else None
         self.combineMetricsFound = False if load_customCombineMetrics else None
+        self.dataPrepFreeRoiPoints = []
         self.labelBoolSegm = labelBoolSegm
         self.bkgrDataExists = False
         ls = myutils.listdir(self.images_path)
@@ -1501,6 +1504,9 @@ class loadData:
         if not hasattr(self, 'basename'):
             self.getBasenameAndChNames()
 
+        dataPrepFreeRoiPath = self.dataPrepFreeRoiPath()
+        dataPrepFreeRoiFilename = os.path.basename(dataPrepFreeRoiPath)
+        
         for file in ls:
             filePath = os.path.join(self.images_path, file)
             filename, segmExt = os.path.splitext(file)
@@ -1534,6 +1540,9 @@ class loadData:
                 is_acdc_df_file = file.endswith('acdc_output.csv')
 
                 is_acdc_df_file = file == linked_acdc_filename
+            
+            if load_dataprep_free_roi and file == dataPrepFreeRoiFilename:
+                self.loadDataPrepFreeRoi()
             
             if load_segm_data and is_segm_file and not create_new_segm:
                 self.segmFound = True
@@ -1693,6 +1702,83 @@ class loadData:
             self.last_tracked_i = max(self.acdc_df.index.get_level_values(0))
         if return_df:
             return acdc_df
+    
+    def dataPrepFreeRoiPath(self):
+        dataPrepFreeRoiPath = os.path.join(
+            self.images_path, f'{self.basename}dataPrepFreeRoi.npz'
+        )
+        return dataPrepFreeRoiPath
+    
+    def saveDataPrepFreeRoi(
+            self, roiItem: widgets.PlotCurveItem, logger_func=print
+        ):
+        dataPrepFreeRoiPath = self.dataPrepFreeRoiPath()
+        
+        logger_func(f'\nSaving free ROI to file "{dataPrepFreeRoiPath}"...')
+        
+        mask = roiItem.mask()
+        y0, x0, y1, x1 = roiItem.bbox()
+        key = f'{x0}_{y0}_{x1}_{y1}'
+        data = {key: mask}
+        np.savez_compressed(dataPrepFreeRoiPath, **data)
+    
+    def removeDataPrepFreeRoi(self, logger_func=print):
+        self.dataPrepFreeRoiPoints = []
+        dataPrepFreeRoiPath = self.dataPrepFreeRoiPath()
+        if not os.path.exists(dataPrepFreeRoiPath):
+            return
+        
+        logger_func(f'\nRemoving free ROI file "{dataPrepFreeRoiPath}"...')
+        os.remove(dataPrepFreeRoiPath)
+    
+    def loadDataPrepFreeRoi(self, logger_func=print):
+        self.dataPrepFreeRoiPoints = []
+        dataPrepFreeRoiPath = self.dataPrepFreeRoiPath()
+        if not os.path.exists(dataPrepFreeRoiPath):
+            return
+        
+        logger_func(f'\nLoading free ROI from file "{dataPrepFreeRoiPath}"...')
+        archive = np.load(dataPrepFreeRoiPath)
+        key = archive.files[0]
+        x0, y0, x1, y1 = key.split('_')
+        mask = archive[key]
+        obj = skimage.measure.regionprops(mask.astype(np.uint8))[0]
+        contours = core.get_obj_contours(obj=obj, only_longest_contour=False)
+        self.dataPrepFreeRoiPoints = contours + (int(x0), int(y0))
+        self.dataPrepFreeRoiLocalMask = mask
+        self.dataPrepFreeRoiSlice = (
+            slice(int(y0), int(y1)+1), slice(int(x0), int(x1)+1)
+        )
+    
+    def clearSegmObjsDataPrepFreeRoi(self, segm_data, is_timelapse=True):
+        mask = self.dataPrepFreeRoiLocalMask
+        local_slice = self.dataPrepFreeRoiSlice
+        delMask = np.ones(segm_data.shape[-2:], dtype=bool)
+        delMask[local_slice][mask] = False
+        if is_timelapse:
+            for i, lab in enumerate(segm_data):
+                if lab.ndim == 3:
+                    lab = lab.max(axis=0)
+                rp = skimage.measure.regionprops(lab)
+                for obj in rp:
+                    if not np.any(delMask[obj.slice][obj.image]):
+                        continue
+                    
+                    lab[obj.slice][obj.image] = 0
+                segm_data[i] = lab
+        else:
+            lab = segm_data
+            if lab.ndim == 3:
+                lab = lab.max(axis=0)
+            rp = skimage.measure.regionprops(lab)
+            for obj in rp:
+                if not np.any(delMask[obj.slice][obj.image]):
+                    continue
+                
+                lab[obj.slice][obj.image] = 0
+            segm_data = lab
+        
+        return segm_data
     
     def getSpotmaxSingleSpotsfiles(self):
         from spotmax import DFs_FILENAMES

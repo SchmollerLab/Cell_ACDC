@@ -145,7 +145,8 @@ class dataPrepWin(QMainWindow):
     @exception_handler
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Q:
-            posData = self.data[self.pos_i]
+            from cellacdc.plot import imshow
+            imshow(self.freeRoiMask)
             # printl(posData.all_npz_paths)
             # printl(posData.tif_paths)
             # for r, roi in enumerate(posData.bkgrROIs):
@@ -272,8 +273,11 @@ class dataPrepWin(QMainWindow):
         )
         self.freeRoiAction.setToolTip(
             'Draw a freehand ROI.\n\n'
-            'Objects outside of this ROI will be automatically removed '
-            'from the segmentation masks.'
+            'To remove a previously drawn ROI, activate the tool, '
+            'right-click on the ROI, and select "Remove free-hand ROI".\n\n'
+            'When running segmentation later in the segmentation module, '
+            'the objects outside of this ROI will be automatically removed '
+            'from the segmentation masks.\n\n'
         )
         self.freeRoiAction.setEnabled(False)
         self.freeRoiAction.setCheckable(True)
@@ -374,6 +378,7 @@ class dataPrepWin(QMainWindow):
         self.saveAction.triggered.connect(self.saveActionTriggered)
         self.cropZaction.toggled.connect(self.openCropZtool)
         self.cropTaction.toggled.connect(self.openCropTtool)
+        self.freeRoiAction.toggled.connect(self.freeRoiActionToggled)
         self.startAction.triggered.connect(self.prepData)
         self.interpAction.triggered.connect(self.interp_z)
         self.ZbackAction.triggered.connect(self.useSameZ_fromHereBack)
@@ -427,9 +432,24 @@ class dataPrepWin(QMainWindow):
         self.ax1.clear()
         # self.frameLabel.setText(' ')
 
+    def removeFreeRoi(self):
+        self.freeRoiItem.clear()
+        self.freeRoiMask = None
+        posData = self.data[self.pos_i]
+        posData.removeDataPrepFreeRoi(logger_func=self.logger.info)
+    
+    def showRemoveFreeRoiContextMenu(self, event):
+        self.removeFreeRoiMenu = QMenu(self)
+        action = QAction('Remove free-hand ROI')
+        action.triggered.connect(self.removeFreeRoi)
+        self.removeFreeRoiMenu.addAction(action)
+        self.removeFreeRoiMenu.exec_(event.screenPos())
+    
     def gui_connectGraphicsEvents(self):
         self.img.hoverEvent = self.gui_hoverEventImg
         self.img.mousePressEvent = self.gui_mousePressEventImg
+        self.img.mouseMoveEvent = self.gui_mouseDragEventImg
+        self.img.mouseReleaseEvent = self.gui_mouseReleaseEventImg
 
     def gui_createImgWidgets(self):
         self.img_Widglayout = QGridLayout()
@@ -522,6 +542,7 @@ class dataPrepWin(QMainWindow):
         self.setImageNameText()
         self.update_img()
         self.addAndConnectCropROIs()
+        self.updateFreeRoiItem()
         self.updateBkgrROIs()
         self.saveBkgrROIs(self.data[self.pos_i])
     
@@ -711,6 +732,7 @@ class dataPrepWin(QMainWindow):
         )
         self.startFrameIdxCrop = 0
         self.endFrameIdxCrop = None
+        self.isFreeRoiDrag = False
 
     def navigateScrollbarValueChanged(self, value):
         if self.num_pos > 1:
@@ -880,11 +902,22 @@ class dataPrepWin(QMainWindow):
         right_click = event.button() == Qt.MouseButton.RightButton
         left_click = event.button() == Qt.MouseButton.LeftButton
 
-        if left_click:
+        freeRoiActive = self.freeRoiAction.isChecked()
+        dragImg = left_click and not freeRoiActive
+        
+        if dragImg:
             pg.ImageItem.mousePressEvent(self.img, event)
+            event.ignore()
+            return
 
         x, y = event.pos().x(), event.pos().y()
-
+        xdata, ydata = int(x), int(y)
+        
+        if freeRoiActive and self.freeRoiMask is not None and right_click:
+            if self.isClickOnFreeRoi(xdata, ydata):
+                self.showRemoveFreeRoiContextMenu(event)
+                return
+        
         handleSize = 7
         # Check if right click on ROI
         for r, roi in enumerate(posData.bkgrROIs):
@@ -900,9 +933,14 @@ class dataPrepWin(QMainWindow):
             if raiseContextMenuRoi:
                 self.gui_raiseContextMenuRoi(roi, event)
                 return
-            elif dragRoi:
+            elif dragRoi and not freeRoiActive:
                 event.ignore()
                 return
+        
+        if left_click and freeRoiActive:
+            self.isFreeRoiDrag = True
+            self.freeRoiItem.clear()
+            return
         
         if not hasattr(posData, 'cropROIs'):
             return
@@ -925,6 +963,52 @@ class dataPrepWin(QMainWindow):
             raiseContextMenuRoi = right_click and clickedOnROI and c>0
             if raiseContextMenuRoi:
                 self.gui_raiseContextMenuRoi(cropROI, event, is_bkgr_ROI=False)
+    
+    def gui_mouseDragEventImg(self, event):
+        posData = self.data[self.pos_i]
+        x, y = event.pos().x(), event.pos().y()
+        Y, X = posData.img_data.shape[-2:]
+        xdata, ydata = int(x), int(y)
+        if not myutils.is_in_bounds(xdata, ydata, X, Y):
+            return
+        
+        if self.isFreeRoiDrag:
+            self.freeRoiItem.addPoint(xdata, ydata)
+    
+    def gui_mouseReleaseEventImg(self, event):
+        posData = self.data[self.pos_i]
+        if self.isFreeRoiDrag:
+            self.freeRoiItem.closeCurve()
+            xx, yy = self.freeRoiItem.getData()
+            self.freeRoiYXorigin = (yy.min(), xx.min())
+            self.isFreeRoiDrag = False
+            self.freeRoiMask = posData.saveDataPrepFreeRoi(
+                self.freeRoiItem, logger_func=self.logger.info
+            )
+            self.dataPrepFreeRoiSaved()
+    
+    def dataPrepFreeRoiSaved(self):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(
+            'Free-hand ROI saved.<br><br>'
+            'When you segment the data, the objects outside of this ROI will be '
+            'automatically removed from the segmentation masks.<br><br>'
+            'To remove the free-hand ROI, right-click on it and select '
+            '"Remove free-hand ROI".<br><br>'
+            'See you at the next one!'
+        )
+        msg.information(self, 'Free-hand ROI saved', txt)
+    
+    def isClickOnFreeRoi(self, xdata, ydata):
+        y0, x0 = self.freeRoiYXorigin
+        local_x = xdata - x0
+        local_y = ydata - y0
+        if local_x < 0 or local_x >= self.freeRoiMask.shape[1]:
+            return False
+        if local_y < 0 or local_y >= self.freeRoiMask.shape[0]:
+            return False
+        
+        return self.freeRoiMask[local_y, local_x]
     
     def getAllChannelsPaths(self, posData):
         _zip = zip(posData.tif_paths, posData.all_npz_paths)
@@ -1384,6 +1468,36 @@ class dataPrepWin(QMainWindow):
         msg = widgets.myMessageBox(wrapText=False)
         msg.information(self, 'Preview cropped frames', txt)
 
+    def addFreeRoiItem(self):
+        if self.freeRoiItem is not None:
+            return
+        
+        self.freeRoiItem = widgets.PlotCurveItem(
+            pen=pg.mkPen(color='r', width=2)
+        )
+        self.ax1.addItem(self.freeRoiItem)
+        self.updateFreeRoiItem()
+    
+    def updateFreeRoiItem(self):
+        posData = self.data[self.pos_i]
+        for point in posData.dataPrepFreeRoiPoints:
+            self.freeRoiItem.addPoint(*point)
+
+        if len(posData.dataPrepFreeRoiPoints) == 0:
+            self.freeRoiMask = None
+            return
+        
+        xx, yy = self.freeRoiItem.getData()
+        self.freeRoiYXorigin = (yy.min(), xx.min())
+        self.freeRoiMask = self.freeRoiItem.mask()
+        
+    def freeRoiActionToggled(self, checked):
+        if checked:
+            self.hideROIs()
+            self.addFreeRoiItem()
+        else:
+            self.reAddROIs()
+            
     def getCroppedData(self, askCropping=True):
         for p, posData in enumerate(self.data):
             self.saveBkgrROIs(posData)
@@ -1576,6 +1690,7 @@ class dataPrepWin(QMainWindow):
         self.cropZaction.setEnabled(enabled)
         self.saveAction.setEnabled(enabled)
         self.cropTaction.setEnabled(enabled)
+        self.freeRoiAction.setEnabled(enabled)
         
         if not hasattr(self, 'data'):
             return
@@ -1724,6 +1839,7 @@ class dataPrepWin(QMainWindow):
                     loadBkgrROIs=True,
                     load_last_tracked_i=False,
                     load_metadata=True,
+                    load_dataprep_free_roi=True,
                     getTifPath=True
                 )
 
@@ -2119,6 +2235,30 @@ class dataPrepWin(QMainWindow):
         posData.cropROIs[0].setPos([0, 0])
         posData.cropROIs[0].setSize([w, h])
 
+    def hideROIs(self):
+        posData = self.data[self.pos_i]
+        if not hasattr(posData, 'cropROIs'):
+            return
+        
+        if posData.cropROIs is None:
+            return
+        
+        for cropROI in posData.cropROIs:
+            self.ax1.removeItem(cropROI.label)
+            self.ax1.removeItem(cropROI)
+    
+    def reAddROIs(self):
+        posData = self.data[self.pos_i]
+        if not hasattr(posData, 'cropROIs'):
+            return
+        
+        if posData.cropROIs is None:
+            return
+        
+        for cropROI in posData.cropROIs:
+            self.ax1.addItem(cropROI.label)
+            self.ax1.addItem(cropROI)
+    
     def addROIs(self):
         Y, X = self.img.image.shape
 
@@ -2180,6 +2320,7 @@ class dataPrepWin(QMainWindow):
                 for bkgrROI in posData.bkgrROIs:
                     self.setBkgrROIprops(bkgrROI)
 
+        self.addFreeRoiItem()
         self.updateBkgrROIs()
 
     def getDefaultBkgrROI(self):
@@ -2595,6 +2736,7 @@ class dataPrepWin(QMainWindow):
         self.statusbar.showMessage(txt)
 
     def initLoading(self):
+        self.freeRoiAction.setChecked(False)
         self.progressWin = None
         self.isDataLoaded = False
         # Remove all items from a previous session if open is pressed again
@@ -2604,6 +2746,9 @@ class dataPrepWin(QMainWindow):
         self.setCenterAlignmentTitle()
         self.openFolderAction.setEnabled(False)
         self.setEnabledCropActions(False)
+        
+        self.freeRoiItem = None
+        self.freeRoiMask = None
 
     def showAbout(self):
         self.aboutWin = about.QDialogAbout(parent=self)

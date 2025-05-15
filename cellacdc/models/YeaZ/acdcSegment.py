@@ -58,11 +58,11 @@ class Model:
 
         self.model.load_weights(weights_path)
 
-    def yeaz_preprocess(self, image, tqdm_pbar=None):
+    def yeaz_preprocess(self, image, tqdm_pbar=None, warn=True):
         # image = skimage.filters.gaussian(image, sigma=1)
         # image = skimage.exposure.equalize_adapthist(image)
         # image = image/image.max()
-        image = myutils.img_to_float(image)
+        image = myutils.img_to_float(image, warn=warn)
         image = skimage.exposure.equalize_adapthist(image)
         if tqdm_pbar is not None:
             tqdm_pbar.emit(1)
@@ -132,8 +132,8 @@ class Model:
             sig_progress_tqdm = signals[0].progress_tqdm
 
         timelapse3D = np.array([
-            self.yeaz_preprocess(image, tqdm_pbar=sig_progress_tqdm)
-            for image in timelapse3D
+            self.yeaz_preprocess(image, tqdm_pbar=sig_progress_tqdm, warn=i==0)
+            for i, image in enumerate(timelapse3D)
         ])
 
         if signals is not None:

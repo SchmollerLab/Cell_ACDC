@@ -2222,6 +2222,7 @@ class SegmKernel(_WorkflowKernel):
             load_bkgr_data=True,
             load_last_tracked_i=False,
             load_metadata=True,
+            load_dataprep_free_roi=True,
             end_filename_segm=self.segm_endname
         )
         # Get only name from the string 'segm_<name>.npz'
@@ -2471,6 +2472,14 @@ class SegmKernel(_WorkflowKernel):
             # lab_stack = smooth_contours(lab_stack, radius=2)
 
         posData.saveSamEmbeddings(logger_func=self.logger_func)
+        
+        if len(posData.dataPrepFreeRoiPoints) > 0:
+            self.logger_func(
+                'Removing objects outside the dataprep free-hand ROI...'
+            )
+            lab_stack = posData.clearSegmObjsDataPrepFreeRoi(
+                lab_stack, is_timelapse=posData.SizeT > 1
+            )
         
         if self.do_postprocess:
             if posData.SizeT > 1:

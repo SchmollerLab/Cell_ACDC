@@ -88,7 +88,6 @@ class segmWorker(QRunnable):
         self.kernel = core.SegmKernel(
             mainWin.logger, mainWin.log_path, is_cli=False
         )
-        printl(mainWin.reduce_memory_usage)
         self.kernel.init_args(
             mainWin.user_ch_name, 
             mainWin.endFilenameSegm,
@@ -283,6 +282,9 @@ class segmWin(QMainWindow):
             self.resize(int(screenWidth*0.5), int(screenHeight*0.6))
 
     def askHowToHandleROI(self, posData):
+        if len(posData.dataPrepFreeRoiPoints) > 0:
+            return False, True
+        
         if posData.dataPrep_ROIcoords is None:
             href = html_utils.href_tag('here', urls.dataprep_docs)
             txt = html_utils.paragraph(f"""
@@ -470,6 +472,7 @@ class segmWin(QMainWindow):
             load_bkgr_data=False,
             load_last_tracked_i=False,
             load_metadata=True,
+            load_dataprep_free_roi=True,
             load_customCombineMetrics=True
         )
         proceed = posData.askInputMetadata(
