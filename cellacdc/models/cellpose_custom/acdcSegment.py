@@ -42,14 +42,17 @@ class Model:
 
         if directml_gpu:
             from cellacdc.models.cellpose_v2._directML import setup_directML
+            from cellacdc.core import fix_sparse_directML
             try:
                 setup_directML(self.acdcCellpose.acdcCellpose)
             except Exception as err:
                 setup_directML(self.acdcCellpose)
+
+            fix_sparse_directML()
             
-        if gpu:# there is a problem in cellpose with gpu...
-            from cellpose import core as cellposecore
-            device, _ = cellposecore.assign_device()
+        if gpu:# there is a problem in cellpose with gpu, doesnt work properly yet...
+            import torch
+            device = torch.device('cuda:0')
             from cellacdc.models.cellpose_v2._directML import setup_custom_device
             try:
                 setup_custom_device(self.acdcCellpose.acdcCellpose, device)

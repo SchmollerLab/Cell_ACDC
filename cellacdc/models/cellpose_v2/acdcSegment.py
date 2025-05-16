@@ -47,7 +47,6 @@ class Model:
             )
             gpu = False
 
-        
         if major_version == 3:
             if model_type=='cyto3':
                 self.model = models.Cellpose(
