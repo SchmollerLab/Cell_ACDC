@@ -8220,7 +8220,7 @@ class guiWin(QMainWindow):
                 
         extraParamsTitle = 'Settings for local segmentation'
         win = self.initSegmModelParams(
-            model_name, acdcSegment, init_params, segment_params,
+            base_model_name, acdcSegment, init_params, segment_params,
             extraParams=extra_ArgSpec, extraParamsTitle=extraParamsTitle,
             initLastParams=True, ini_filename='segmentation_for_lostIDs.ini',
         )
@@ -8249,6 +8249,10 @@ class guiWin(QMainWindow):
         }
 
     def SegForLostIDsAction(self):
+        posData = self.data[self.pos_i]
+        if posData.frame_i == 0:
+            self.logger.info('Segmentation for lost IDs not available on first frame.')
+            return
         self.storeUndoRedoStates(False)
         self.progressWin = apps.QDialogWorkerProgress(
             title='Segmenting for lost IDs', parent=self,

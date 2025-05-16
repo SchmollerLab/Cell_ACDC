@@ -4,6 +4,8 @@ import time
 from ...core import segm_model_segment, post_process_segm
 from ...features import custom_post_process_segm
 from ... import io, plot
+import inspect
+
 
 
 import os # for dbug
@@ -206,6 +208,8 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID,
     IDs_bboxs, bboxs = find_overlapping_bboxs(IDs, bboxs)
     
     assigned_IDs = []
+
+    uses_diameter = inspect.signature(model.segment).parameters.get('diameter', None) is not None
     for IDs, bbox in zip(IDs_bboxs, bboxs):
         box_x_min, box_x_max, box_y_min, box_y_max = bbox
 
@@ -225,17 +229,19 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img, IDs, new_unique_ID,
         box_curr_img[indices_to_fill] = random_samples
 
         # Run model, give it the diameter of cell if possible
-        diameters = []
-        for ID in IDs:
-            obj = get_obj_from_rps(prev_rp, ID)
-            diameters.append(obj.axis_major_length)
-        
-        if len(diameters) == 0:
-            diameter = None
-        else:
-            diameter = np.mean(diameters)
+        if uses_diameter:
+            diameters = []
+            for ID in IDs:
+                obj = get_obj_from_rps(prev_rp, ID)
+                diameters.append(obj.axis_major_length)
+            
+            if len(diameters) == 0:
+                diameter = None
+            else:
+                diameter = np.mean(diameters)
 
-        model_kwargs['diameter'] = diameter
+            model_kwargs['diameter'] = diameter
+            
         box_model_lab = segm_model_segment(
             model, box_curr_img, model_kwargs,
             preproc_recipe=preproc_recipe,
