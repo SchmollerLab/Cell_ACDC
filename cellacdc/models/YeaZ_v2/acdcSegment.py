@@ -53,7 +53,8 @@ class Model:
     def _segment_img_3D(self, image, thresh_val=0.0, min_distance=10):
         # Preprocess image
         image = np.array([
-            self._preprocess_image(img).astype(np.float32) for img in image
+            self._preprocess_image(img, warn=i==0).astype(np.float32) 
+            for i, img in enumerate(image)
         ])
         
         # pad with zeros such that is divisible by 16
@@ -142,8 +143,8 @@ class Model:
         )
         return lab.astype(np.uint32)
     
-    def _preprocess_image(self, image, tqdm_pbar=None):
-        image = myutils.img_to_float(image)
+    def _preprocess_image(self, image, tqdm_pbar=None, warn=True):
+        image = myutils.img_to_float(image, warn=warn)
         image = skimage.exposure.equalize_adapthist(image)
         if tqdm_pbar is not None:
             tqdm_pbar.emit(1)

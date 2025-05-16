@@ -115,6 +115,7 @@ class segmWorker(QRunnable):
             innerPbar_available=mainWin.innerPbar_available,
             is_segment3DT_available=mainWin.is_segment3DT_available, 
             preproc_recipe=mainWin.preproc_recipe, 
+            reduce_memory_usage=mainWin.reduce_memory_usage,
         )
     
     def run_kernel(self, mainWin):
@@ -281,6 +282,9 @@ class segmWin(QMainWindow):
             self.resize(int(screenWidth*0.5), int(screenHeight*0.6))
 
     def askHowToHandleROI(self, posData):
+        if len(posData.dataPrepFreeRoiPoints) > 0:
+            return False, True
+        
         if posData.dataPrep_ROIcoords is None:
             href = html_utils.href_tag('here', urls.dataprep_docs)
             txt = html_utils.paragraph(f"""
@@ -468,6 +472,7 @@ class segmWin(QMainWindow):
             load_bkgr_data=False,
             load_last_tracked_i=False,
             load_metadata=True,
+            load_dataprep_free_roi=True,
             load_customCombineMetrics=True
         )
         proceed = posData.askInputMetadata(
@@ -554,7 +559,7 @@ class segmWin(QMainWindow):
             help_url=url, qparent=self, init_last_params=False
         )
         win = out.get('win')
-        if win is None:
+        if win.cancel:
             abort = self.doAbort()
             if abort:
                 self.close()
@@ -583,6 +588,7 @@ class segmWin(QMainWindow):
         init_kwargs = win.init_kwargs
         self.init_model_kwargs = init_kwargs
         self.preproc_recipe = win.preproc_recipe
+        self.reduce_memory_usage = win.reduceMemoryUsage
         
         # Initialize model
         use_gpu = init_kwargs.get('gpu', False)

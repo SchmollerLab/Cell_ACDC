@@ -66,6 +66,7 @@
     <file alias="segment.svg">resources/icons/segment.svg</file>
     <file alias="open_file.svg">resources/icons/open_file.svg</file>
     <file alias="freehand.svg">resources/icons/freehand.svg</file>
+    <file alias="drawFreeRoi.svg">resources/icons/drawFreeRoi.svg</file>
     <file alias="threepoints_arc.svg">resources/icons/threepoints_arc.svg</file>
     <file alias="3d.svg">resources/icons/3d.svg</file>
     <file alias="2d.svg">resources/icons/2d.svg</file>

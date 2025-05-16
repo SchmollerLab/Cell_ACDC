@@ -49,12 +49,12 @@ class Model:
             verbosity=verbosity
         )
 
-    def preprocess(self, image, rescale_intensities):
+    def preprocess(self, image, rescale_intensities, warn=True):
         if rescale_intensities:
             image_min = image - image.min()
             image_float = image_min/image_min.max()
         else:
-            image_float = myutils.img_to_float(image)
+            image_float = myutils.img_to_float(image, warn=warn)
         
         return (image_float*255).astype(np.uint8)
     

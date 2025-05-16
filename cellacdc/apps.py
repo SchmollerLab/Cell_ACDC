@@ -10787,6 +10787,16 @@ class QDialogModelParams(QDialog):
         mainLayout.setStretch(row, 3)
         row += 1
         
+        self.additionalSegmGroupbox = None
+        if not is_tracker:
+            mainLayout.addWidget(widgets.QHLine())
+            row += 1
+            additionalSegmGroupbox = self.getAdditionalSegmParams()
+            mainLayout.addWidget(additionalSegmGroupbox)
+            mainLayout.setStretch(row, 1)
+            self.additionalSegmGroupbox = additionalSegmGroupbox
+            row += 1
+        
         if postProcessLayout is not None:
             mainLayout.addSpacing(10)
             mainLayout.addLayout(postProcessLayout)
@@ -10822,7 +10832,43 @@ class QDialogModelParams(QDialog):
         self.setLayout(mainLayout)
         self.setFont(font)
         # self.setModal(True)
-
+    
+    def getAdditionalSegmParams(self):
+        additionalSegmGroupbox = QGroupBox('Additional segmentation parameters')
+        local_row = 0
+        additionalSegmLayout = QGridLayout()
+        additionalSegmLayout.addWidget(
+            QLabel('Reduce memory usage:  '), local_row, 0, 
+            alignment=Qt.AlignRight
+        )
+        self.reduceMemUsageToggle = widgets.Toggle()
+        additionalSegmLayout.addWidget(
+            self.reduceMemUsageToggle, local_row, 1, 1, 2, 
+            alignment=Qt.AlignCenter
+        )
+        reduceMemUsageInfoButton = widgets.infoPushButton()
+        additionalSegmLayout.addWidget(reduceMemUsageInfoButton, local_row, 3)
+        reduceMemUsageInfoButton.clicked.connect(
+            self.showInfoReduceMemUsage
+        )
+        additionalSegmLayout.setColumnStretch(0, 0)
+        additionalSegmLayout.setColumnStretch(1, 1)
+        additionalSegmLayout.setColumnStretch(3, 0)
+        additionalSegmGroupbox.setLayout(additionalSegmLayout)
+        return additionalSegmGroupbox
+    
+    def showInfoReduceMemUsage(self):
+        infoText = html_utils.paragraph(f"""
+            If you are experiencing memory issues, you can try reducing the 
+            memory usage by toggling this option.<br><br>
+            This will reduce the memory usage by segmenting timelapse data 
+            frame-by-frame instead of all frames at once.
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.information(
+            self, 'Reduce memory usage', infoText
+        )
+        
     
     def loadPreprocRecipe(self):
         if self.configPars is None:
@@ -11347,6 +11393,9 @@ class QDialogModelParams(QDialog):
         if self.channelCombobox is not None:
             self.inputChannelName = self.channelCombobox.currentText()
         
+        self.reduceMemoryUsage = False
+        if hasattr(self, 'reduceMemUsageToggle'):
+            self.reduceMemoryUsage = self.reduceMemUsageToggle.isChecked()
         self.customPostProcessFeatures = self.selectedFeaturesRange()
         self.customPostProcessGroupedFeatures = self.groupedFeatures()
         self._saveParams()
@@ -11417,6 +11466,9 @@ class QDialogModelParams(QDialog):
     def showEvent(self, event) -> None:
         buttonHeight = self.okButton.minimumSizeHint().height()
         height = self.scrollArea.minimumHeightNoScrollbar() + 70
+        if self.additionalSegmGroupbox is not None:
+            height += self.additionalSegmGroupbox.minimumSizeHint().height()
+            height += buttonHeight
         if self.preProcessParamsWidget is not None:
             height += self.preProcessParamsWidget.minimumSizeHint().height()
             height += buttonHeight

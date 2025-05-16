@@ -589,6 +589,8 @@ def heatmap(
         return fig, ax, im
 
 def _binned_mean_stats(x, y, bins, bins_min_count):
+    x = np.array(x).astype(float)
+    y = np.array(y).astype(float)
     bin_counts, _, _ = scipy.stats.binned_statistic(
         x, y, statistic='count', bins=bins
     )
@@ -654,7 +656,7 @@ def binned_means_plot(
     
     if scatter_colors is None:
         scatter_colors = color
-    
+
     xe, ye, std, std_err = _binned_mean_stats(x, y, bins, bins_min_count)
     if scatter:
         ax.scatter(x, y, color=scatter_colors, **scatter_kws)

@@ -2216,7 +2216,7 @@ def to_relative_path(path, levels=3, prefix='...'):
         rel_path = f'{prefix}{os.sep}{rel_path}'
     return rel_path
 
-def img_to_float(img, force_dtype=None, force_missing_dtype=None):
+def img_to_float(img, force_dtype=None, force_missing_dtype=None, warn=True):
     input_img_dtype = img.dtype
     value = img[(0,) * img.ndim]
     img_max = np.max(img)
@@ -2245,15 +2245,18 @@ def img_to_float(img, force_dtype=None, force_missing_dtype=None):
         img = img.astype(force_dtype)
     elif img_max <= uint8_max:
         # Input image is probably 8-bit
-        _warnings.warn_image_overflow_dtype(input_img_dtype, img_max, '8-bit')
+        if warn:
+            _warnings.warn_image_overflow_dtype(input_img_dtype, img_max, '8-bit')
         img = img/uint8_max
     elif img_max <= uint16_max:
         # Input image is probably 16-bit
-        _warnings.warn_image_overflow_dtype(input_img_dtype, img_max, '16-bit')
+        if warn:
+            _warnings.warn_image_overflow_dtype(input_img_dtype, img_max, '16-bit')
         img = img/uint16_max
     elif img_max <= uint32_max:
         # Input image is probably 32-bit
-        _warnings.warn_image_overflow_dtype(input_img_dtype, img_max, '32-bit')
+        if warn:
+            _warnings.warn_image_overflow_dtype(input_img_dtype, img_max, '32-bit')
         img = img/uint32_max
     else:
         # Input image is a non-supported data type

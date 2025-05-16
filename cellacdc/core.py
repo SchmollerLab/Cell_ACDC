@@ -1878,9 +1878,18 @@ def preprocess_image_from_recipe(image, recipe: List[Dict[str, Any]]):
         
     return preprocessed_image
 
+def pop_signals_kwarg_if_not_needed(func, kwargs):
+    args = inspect.getfullargspec(func).args
+    if 'signals' in args:
+        return kwargs
+    
+    kwargs.pop('signals', None)
+    return kwargs
+
 def segm_model_segment(
         model, image, model_kwargs, frame_i=None, preproc_recipe=None, 
-        is_timelapse_model_and_data=False, posData=None, start_z_slice=0
+        is_timelapse_model_and_data=False, posData=None, start_z_slice=0,
+        reduce_memory_usage=False
     ):
     if preproc_recipe is not None:
         if is_timelapse_model_and_data:
@@ -1891,11 +1900,18 @@ def segm_model_segment(
             image = filtered_image # .astype(image.dtype)
         else:
             image = preprocess_image_from_recipe(image, preproc_recipe)
-
-    if is_timelapse_model_and_data:
+    
+    if is_timelapse_model_and_data and not reduce_memory_usage:
+        model_kwargs = pop_signals_kwarg_if_not_needed(
+            model.segment3DT, model_kwargs
+        )
         segm_data = model.segment3DT(image, **model_kwargs)
         return segm_data             
     
+    model_kwargs = pop_signals_kwarg_if_not_needed(
+        model.segment, model_kwargs
+    )
+
     # Some models have `start_z_slice` kwarg
     try:
         lab = model.segment(
@@ -1935,7 +1951,7 @@ def segm_model_segment(
         return lab
     except TypeError as err:
         pass
-
+    
     lab = model.segment(image, **model_kwargs)
     return lab
 
@@ -2090,6 +2106,7 @@ class SegmKernel(_WorkflowKernel):
             logger_func=print,
             innerPbar_available=False,
             is_segment3DT_available=False, 
+            reduce_memory_usage=False
         ):
         self.user_ch_name = user_ch_name
         self.segm_endname = segm_endname
@@ -2112,6 +2129,7 @@ class SegmKernel(_WorkflowKernel):
         self.init_model_kwargs = init_model_kwargs
         self.init_tracker_kwargs = init_tracker_kwargs
         self.is_segment3DT_available = is_segment3DT_available
+        self.reduce_memory_usage = reduce_memory_usage
         self.preproc_recipe = preproc_recipe
         if signals is None:
             self.signals = KernelCliSignals(logger_func)
@@ -2204,6 +2222,7 @@ class SegmKernel(_WorkflowKernel):
             load_bkgr_data=True,
             load_last_tracked_i=False,
             load_metadata=True,
+            load_dataprep_free_roi=True,
             end_filename_segm=self.segm_endname
         )
         # Get only name from the string 'segm_<name>.npz'
@@ -2407,6 +2426,7 @@ class SegmKernel(_WorkflowKernel):
                     self.model, img_data, self.model_kwargs, 
                     is_timelapse_model_and_data=True, 
                     preproc_recipe=self.preproc_recipe, 
+                    reduce_memory_usage=self.reduce_memory_usage,
                     posData=posData
                 )
                 if self.innerPbar_available:
@@ -2452,6 +2472,14 @@ class SegmKernel(_WorkflowKernel):
             # lab_stack = smooth_contours(lab_stack, radius=2)
 
         posData.saveSamEmbeddings(logger_func=self.logger_func)
+        
+        if len(posData.dataPrepFreeRoiPoints) > 0:
+            self.logger_func(
+                'Removing objects outside the dataprep free-hand ROI...'
+            )
+            lab_stack = posData.clearSegmObjsDataPrepFreeRoi(
+                lab_stack, is_timelapse=posData.SizeT > 1
+            )
         
         if self.do_postprocess:
             if posData.SizeT > 1:

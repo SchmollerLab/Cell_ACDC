@@ -4405,14 +4405,14 @@ class guiWin(QMainWindow):
         )
         self.topLayerItems.append(self.warnPairingItem)
 
-        self.ghostContourItemLeft = widgets.GhostContourItem()
-        self.ghostContourItemRight = widgets.GhostContourItem()
+        self.ghostContourItemLeft = widgets.GhostContourItem(self.ax1)
+        self.ghostContourItemRight = widgets.GhostContourItem(self.ax2)
 
-        self.ghostMaskItemLeft = widgets.GhostMaskItem()
-        self.ghostMaskItemRight = widgets.GhostMaskItem()
+        self.ghostMaskItemLeft = widgets.GhostMaskItem(self.ax1)
+        self.ghostMaskItemRight = widgets.GhostMaskItem(self.ax2)
         
         self.manualBackgroundObjItem = widgets.GhostContourItem(
-            penColor='r', textColor='r'
+            self.ax1, penColor='r', textColor='r'
         )
         self.manualBackgroundImageItem = pg.ImageItem()
     
@@ -14937,8 +14937,7 @@ class guiWin(QMainWindow):
             return
         
         if ev.key() == Qt.Key_Q and self.debug:
-            posData = self.data[self.pos_i]
-            printl(self.getNearestLostObjID(0, 0))
+            printl(self.ax1.items, pretty=True)
             pass
         
         if not self.isDataLoaded:
@@ -15873,11 +15872,11 @@ class guiWin(QMainWindow):
         self.ghostMaskItemRight.setOpacity(alpha)
 
     def addManualTrackingItems(self):
-        self.ghostContourItemLeft.addToPlotItem(self.ax1)
-        self.ghostContourItemRight.addToPlotItem(self.ax2)
+        self.ghostContourItemLeft.addToPlotItem()
+        self.ghostContourItemRight.addToPlotItem()
 
-        self.ghostMaskItemLeft.addToPlotItem(self.ax1)
-        self.ghostMaskItemRight.addToPlotItem(self.ax2)
+        self.ghostMaskItemLeft.addToPlotItem()
+        self.ghostMaskItemRight.addToPlotItem()
 
         Y, X = self.img1.image.shape[:2]
         self.ghostMaskItemLeft.initImage((Y, X))
@@ -15885,7 +15884,7 @@ class guiWin(QMainWindow):
 
         self.updateGhostMaskOpacity()
     
-    def removeManualTrackingItems(self):
+    def removeManualTrackingItems(self):        
         self.ghostContourItemLeft.removeFromPlotItem()
         self.ghostContourItemRight.removeFromPlotItem()
 
@@ -15893,10 +15892,10 @@ class guiWin(QMainWindow):
         self.ghostMaskItemRight.removeFromPlotItem()
     
     def addManualBackgroundItems(self):
-        self.manualBackgroundObjItem.addToPlotItem(self.ax1)
+        self.manualBackgroundObjItem.addToPlotItem()
         self.ax1.addItem(self.manualBackgroundImageItem)
     
-    def removeManualTrackingItems(self):
+    def removeManualBackgroundItems(self):
         self.manualBackgroundObjItem.removeFromPlotItem()
         self.ax1.removeItem(self.manualBackgroundImageItem)
     

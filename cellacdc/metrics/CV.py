@@ -1,14 +1,18 @@
 import numpy as np
 
 def CV(
-        signal, autoBkgr, dataPrepBkgr, objectRp, 
-        correct_with_bkgr=False, which_bkgr='auto'
+        signal: np.ndarray, 
+        autoBkgr: float, 
+        dataPrepBkgr: float, 
+        objectRp, 
+        correct_with_bkgr=False, 
+        which_bkgr='auto'
     ):
     """Function used to calculate coefficient of variation.
 
-    NOTE: Make sure to call the function with the same name as the Python file
-    containing this function (e.g., this file is called CV.py and the function
-    is called CV)
+    NOTE: Make sure to name the function with the same name as the Python file
+    containing this function (e.g., this file is named CV.py and the function
+    is named CV)
 
     Parameters
     ----------
@@ -24,6 +28,7 @@ def CV(
         data prep step (Cell-ACDC module 1).
         Pass None if background correction with this vaue is not needed.
     objectRp: skimage.measure.RegionProperties class
+        Region properties for the single object. 
         Refer to `skimage.measure.regionprops` for more information
         on the available region properties.
     correct_with_bkgr : boolean
