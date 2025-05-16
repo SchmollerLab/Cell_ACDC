@@ -7,7 +7,7 @@ import skimage.measure
 from collections.abc import Callable, Sequence
 import numpy as np
 
-from . import GUI_INSTALLED
+from . import GUI_INSTALLED, printl
 
 if GUI_INSTALLED:
     from pyqtgraph.colormap import ColorMap
@@ -187,6 +187,7 @@ def get_greedy_lut(lab, lut, ids=None):
     }
 
     greedy_lut = np.copy(lut)
+    printl('Greedy LUT:', greedy_lut.shape, color_idxs)
     greedy_lut[list(color_idxs.keys())] = lut[list(color_idxs.values())]
 
     return greedy_lut

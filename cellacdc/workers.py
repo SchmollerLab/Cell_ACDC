@@ -34,14 +34,14 @@ from . import (
     load, myutils, core, prompts, printl, config,
     segm_re_pattern, io
 )
-from . import transformation
+from . import transformation, measurements, cca_functions
 from .path import copy_or_move_tree
 from . import features, plot
 from . import core
 from . import cca_df_colnames, lineage_tree_cols, default_annot_df
 from . import cca_df_colnames_with_tree
 from .utils import resize
-from .trackers.CellACDC_normal_division.localCellTracking import single_cell_seg
+from .trackers.CellACDC_normal_division.SingleCellSeg import single_cell_seg
 
 DEBUG = False
 
@@ -76,12 +76,720 @@ def worker_exception_handler(func):
                 pass
     return run
 
+class saveDataWorker(QObject):
+    finished = Signal()
+    progress = Signal(str)
+    sigLog = Signal(str)
+    progressBar = Signal(int, int, float)
+    critical = Signal(object)
+    addMetricsCritical = Signal(str, str)
+    regionPropsCritical = Signal(str, str)
+    criticalPermissionError = Signal(str)
+    metricsPbarProgress = Signal(int, int)
+    askZsliceAbsent = Signal(str, object)
+    customMetricsCritical = Signal(str, str)
+    sigCombinedMetricsMissingColumn = Signal(str, str)
+    sigDebug = Signal(object)
+
+    def __init__(self, mainWin):
+        QObject.__init__(self)
+        self.mainWin = mainWin
+        self.saveWin = mainWin.saveWin
+        self.mutex = mainWin.mutex
+        self.waitCond = mainWin.waitCond
+        self.customMetricsErrors = {}
+        self.addMetricsErrors = {}
+        self.regionPropsErrors = {}
+        self.abort = False
+    
+    def _check_zSlice(self, posData, frame_i):
+        if posData.SizeZ == 1:
+            return True
+        
+        # Iteare fluo channels and get 2D data from 3D if needed
+        filenames = posData.fluo_data_dict.keys()
+        for chName, filename in zip(posData.loadedChNames, filenames):
+            idx = (filename, frame_i)
+            try:
+                if posData.segmInfo_df.at[idx, 'resegmented_in_gui']:
+                    col = 'z_slice_used_gui'
+                else:
+                    col = 'z_slice_used_dataPrep'
+                z_slice = posData.segmInfo_df.at[idx, col]
+            except KeyError:
+                try:
+                    # Try to see if the user already selected z-slice in prev pos
+                    segmInfo_df = pd.read_csv(posData.segmInfo_df_csv_path)
+                    index_col = ['filename', 'frame_i']
+                    posData.segmInfo_df = segmInfo_df.set_index(index_col)
+                    col = 'z_slice_used_dataPrep'
+                    z_slice = posData.segmInfo_df.at[idx, col]
+                except KeyError as e:
+                    self.progress.emit(
+                        f'z-slice for channel "{chName}" absent. '
+                        'Follow instructions on pop-up dialogs.'
+                    )
+                    self.mutex.lock()
+                    self.askZsliceAbsent.emit(filename, posData)
+                    self.waitCond.wait(self.mutex)
+                    self.mutex.unlock()
+                    if self.abort:
+                        return False
+                    self.progress.emit(
+                        f'Saving (check terminal for additional progress info)...'
+                    )
+                    segmInfo_df = pd.read_csv(posData.segmInfo_df_csv_path)
+                    index_col = ['filename', 'frame_i']
+                    posData.segmInfo_df = segmInfo_df.set_index(index_col)
+                    col = 'z_slice_used_dataPrep'
+                    z_slice = posData.segmInfo_df.at[idx, col]
+        return True
+    
+    def addDerivedCellCycleColumns(self, all_frames_acdc_df):
+        try:
+            all_frames_acdc_df = cca_functions.add_derived_cell_cycle_columns(
+                all_frames_acdc_df.copy()
+            )
+        except Exception as err:
+            self.sigLog.emit(traceback.format_exc())
+        
+        return all_frames_acdc_df
+        
+    def _emitSigDebug(self, stuff_to_debug):
+        self.mutex.lock()
+        self.sigDebug.emit(stuff_to_debug)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+
+    def addMetrics_acdc_df(self, stored_df, rp, frame_i, lab, posData):
+        yx_pxl_to_um2 = posData.PhysicalSizeY*posData.PhysicalSizeX
+        vox_to_fl_3D = (
+            posData.PhysicalSizeY*posData.PhysicalSizeX*posData.PhysicalSizeZ
+        )
+
+        manualBackgrLab = posData.manualBackgroundLab
+        manualBackgrRp = None
+        if manualBackgrLab is not None:
+            manualBackgrRp = skimage.measure.regionprops(manualBackgrLab)
+        isZstack = posData.SizeZ > 1
+        isSegm3D = self.mainWin.isSegm3D
+        all_channels_metrics = self.mainWin.metricsToSave
+        size_metrics_to_save = self.mainWin.sizeMetricsToSave
+        regionprops_to_save = self.mainWin.regionPropsToSave
+        metrics_func = self.mainWin.metrics_func
+        custom_func_dict = self.mainWin.custom_func_dict
+        bkgr_metrics_params = self.mainWin.bkgr_metrics_params
+        
+        foregr_metrics_params = self.mainWin.foregr_metrics_params
+        concentration_metrics_params = self.mainWin.concentration_metrics_params
+        custom_metrics_params = self.mainWin.custom_metrics_params
+        calc_for_each_zslice_mapper = self.mainWin.calc_for_each_zslice_mapper
+        calc_size_for_each_zslice = self.mainWin.calc_size_for_each_zslice
+
+        # Pre-populate columns with zeros
+        all_columns = list(size_metrics_to_save)
+        for channel, metrics in all_channels_metrics.items():
+            all_columns.extend(metrics)
+        all_columns.extend(regionprops_to_save)
+
+        df_shape = (len(stored_df), len(all_columns))
+        data = np.zeros(df_shape)
+        df = pd.DataFrame(data=data, index=stored_df.index, columns=all_columns)
+        # df = df.loc[:, ~df.columns.duplicated()].copy()
+        df = df.combine_first(stored_df)
+
+        # Check if z-slice is present for 3D z-stack data
+        proceed = self._check_zSlice(posData, frame_i)
+        if not proceed:
+            return
+
+        df = measurements.add_size_metrics(
+            df, rp, size_metrics_to_save, isSegm3D, yx_pxl_to_um2, 
+            vox_to_fl_3D, calc_size_for_each_zslice=calc_size_for_each_zslice
+        )
+        
+        # Get background masks
+        autoBkgr_masks = measurements.get_autoBkgr_mask(
+            lab, isSegm3D, posData, frame_i
+        )
+        # self._emitSigDebug((lab, frame_i, autoBkgr_masks))
+        
+        autoBkgr_mask, autoBkgr_mask_proj = autoBkgr_masks
+        dataPrepBkgrROI_mask = measurements.get_bkgrROI_mask(posData, isSegm3D)
+        
+        # Iterate channels
+        iter_channels = zip(
+            posData.loadedChNames, 
+            posData.fluo_data_dict.items()
+        )
+        for channel, (filename, channel_data) in iter_channels:
+            foregr_img = channel_data[frame_i]
+            
+            iter_other_channels = zip(
+                posData.loadedChNames, 
+                posData.fluo_data_dict.items()
+            )
+            other_channels_foregr_imgs = {
+                ch:ch_data[frame_i] for ch, (_, ch_data) in iter_other_channels
+                if ch != channel
+            }
+
+            # Get the z-slice if we have z-stacks
+            z = posData.zSliceSegmentation(filename, frame_i)
+            
+            # Get the background data
+            bkgr_data = measurements.get_bkgr_data(
+                foregr_img, posData, filename, frame_i, autoBkgr_mask, z,
+                autoBkgr_mask_proj, dataPrepBkgrROI_mask, isSegm3D, lab
+            )
+            
+            foregr_data = measurements.get_foregr_data(foregr_img, isSegm3D, z)
+
+            # Compute background values
+            df = measurements.add_bkgr_values(
+                df, bkgr_data, bkgr_metrics_params[channel], metrics_func,
+                manualBackgrRp=manualBackgrRp, foregr_data=foregr_data
+            )
+
+            # Iterate objects and compute foreground metrics
+            df = measurements.add_foregr_metrics(
+                df, rp, channel, foregr_data, foregr_metrics_params[channel], 
+                metrics_func, custom_metrics_params[channel], isSegm3D, 
+                lab, foregr_img, 
+                other_channels_foregr_imgs, 
+                manualBackgrRp=manualBackgrRp,
+                customMetricsCritical=self.customMetricsCritical,
+                z_slice=z
+            )
+
+            if not calc_for_each_zslice_mapper.get(channel, False):
+                continue
+            
+            # Repeat measureemnts for each z-slice
+            pbar_z = tqdm(
+                total=posData.SizeZ, desc='Computing for z-slices: ', 
+                ncols=100, leave=False, unit='z-slice'
+            )
+            for z in range(posData.SizeZ):
+                # Get the background data
+                bkgr_data = measurements.get_bkgr_data(
+                    foregr_img, posData, filename, frame_i, autoBkgr_mask, z,
+                    autoBkgr_mask_proj, dataPrepBkgrROI_mask, isSegm3D, lab
+                )
+                bkgr_data = {
+                    'autoBkgr': {'zSlice': bkgr_data['autoBkgr']['zSlice']},
+                    'dataPrepBkgr': {'zSlice': bkgr_data['dataPrepBkgr']['zSlice']}
+                }
+                
+                foregr_data = measurements.get_foregr_data(
+                    foregr_img, isSegm3D, z
+                )
+                foregr_data = {'zSlice': foregr_data['zSlice']}
+
+                # Compute background values
+                df = measurements.add_bkgr_values(
+                    df, bkgr_data, bkgr_metrics_params[channel], metrics_func,
+                    manualBackgrRp=manualBackgrRp, foregr_data=foregr_data,
+                    text_to_append_to_col=str(z)
+                )
+
+                # Iterate objects and compute foreground metrics
+                df = measurements.add_foregr_metrics(
+                    df, rp, channel, foregr_data, foregr_metrics_params[channel], 
+                    metrics_func, custom_metrics_params[channel], isSegm3D, 
+                    lab, foregr_img, 
+                    other_channels_foregr_imgs, 
+                    manualBackgrRp=manualBackgrRp,
+                    customMetricsCritical=self.customMetricsCritical,
+                    z_slice=z, text_to_append_to_col=str(z)
+                )
+                pbar_z.update()
+            pbar_z.close()
+
+        df = measurements.add_concentration_metrics(
+            df, concentration_metrics_params
+        )
+        
+        # Add region properties
+        try:
+            df, rp_errors = measurements.add_regionprops_metrics(
+                df, lab, regionprops_to_save, logger_func=self.progress.emit
+            )
+            if rp_errors:
+                print('')
+                self.progress.emit(
+                    'WARNING: Some objects had the following errors:\n'
+                    f'{rp_errors}\n'
+                    'Region properties with errors were saved as `Not A Number`.'
+                )
+        except Exception as error:
+            traceback_format = traceback.format_exc()
+            self.regionPropsCritical.emit(traceback_format, str(error))
+
+        # Remove 0s columns
+        df = df.loc[:, (df != -2).any(axis=0)]
+
+        return df
+
+    def _dfEvalEquation(self, df, newColName, expr):
+        try:
+            df[newColName] = df.eval(expr)
+        except pd.errors.UndefinedVariableError as error:
+            self.sigCombinedMetricsMissingColumn.emit(str(error), newColName)
+        
+        try:
+             df[newColName] = df.eval(expr)
+        except Exception as error:
+            self.customMetricsCritical.emit(
+                traceback.format_exc(), newColName
+            )
+
+    def _removeDeprecatedRows(self, df):
+        v1_2_4_rc25_deprecated_cols = [
+            'editIDclicked_x', 'editIDclicked_y',
+            'editIDnewID', 'editIDnewIDs'
+        ]
+        df = df.drop(columns=v1_2_4_rc25_deprecated_cols, errors='ignore')
+
+        # Remove old gui_ columns from version < v1.2.4.rc-7
+        gui_columns = df.filter(regex='gui_*').columns
+        df = df.drop(columns=gui_columns, errors='ignore')
+        cell_id_cols = df.filter(regex='Cell_ID.*').columns
+        df = df.drop(columns=cell_id_cols, errors='ignore')
+        time_seconds_cols = df.filter(regex='time_seconds.*').columns
+        df = df.drop(columns=time_seconds_cols, errors='ignore')
+        df = df.drop(columns='relative_ID_tree', errors='ignore')
+        df = df.drop(columns=['level_0', 'index'], errors='ignore')
+
+        return df
+
+    def addCombineMetrics_acdc_df(self, posData, df):
+        # Add channel specifc combined metrics (from equations and 
+        # from user_path_equations sections)
+        config = posData.combineMetricsConfig
+        for chName in posData.loadedChNames:
+            metricsToSkipChannel = self.mainWin.metricsToSkip.get(chName, [])
+            posDataEquations = config['equations']
+            userPathChEquations = config['user_path_equations']
+            for newColName, equation in posDataEquations.items():
+                if not newColName.startswith(chName):
+                    continue
+                if newColName in metricsToSkipChannel:
+                    continue
+                self._dfEvalEquation(df, newColName, equation)
+            for newColName, equation in userPathChEquations.items():
+                if not newColName.startswith(chName):
+                    continue
+                if newColName in metricsToSkipChannel:
+                    continue
+                self._dfEvalEquation(df, newColName, equation)
+
+        # Add mixed channels combined metrics
+        mixedChannelsEquations = config['mixed_channels_equations']
+        for newColName, equation in mixedChannelsEquations.items():
+            if newColName in self.mainWin.mixedChCombineMetricsToSkip:
+                continue
+            cols = re.findall(r'[A-Za-z0-9]+_[A-Za-z0-9_]+', equation)
+            if all([col in df.columns for col in cols]):
+                self._dfEvalEquation(df, newColName, equation)
+    
+    def addVelocityMeasurement(self, acdc_df, prev_lab, lab, posData):
+        if 'velocity_pixel' not in self.mainWin.sizeMetricsToSave:
+            return acdc_df
+        
+        if 'velocity_um' not in self.mainWin.sizeMetricsToSave:
+            spacing = None 
+        elif self.mainWin.isSegm3D:
+            spacing = np.array([
+                posData.PhysicalSizeZ, 
+                posData.PhysicalSizeY, 
+                posData.PhysicalSizeX
+            ])
+        else:
+            spacing = np.array([
+                posData.PhysicalSizeY, 
+                posData.PhysicalSizeX
+            ])
+        velocities_pxl, velocities_um = core.compute_twoframes_velocity(
+            prev_lab, lab, spacing=spacing
+        )
+        acdc_df['velocity_pixel'] = velocities_pxl
+        acdc_df['velocity_um'] = velocities_um
+        return acdc_df
+
+    def addVolumeMetrics(self, df, rp, posData):
+        PhysicalSizeY = posData.PhysicalSizeY
+        PhysicalSizeX = posData.PhysicalSizeX
+        yx_pxl_to_um2 = PhysicalSizeY*PhysicalSizeX
+        vox_to_fl_3D = PhysicalSizeY*PhysicalSizeX*posData.PhysicalSizeZ
+        
+        init_list = [-2]*len(rp)
+        IDs = init_list.copy()
+        IDs_vol_vox = init_list.copy()
+        IDs_area_pxl = init_list.copy()
+        IDs_vol_fl = init_list.copy()
+        IDs_area_um2 = init_list.copy()
+        if self.mainWin.isSegm3D:
+            IDs_vol_vox_3D = init_list.copy()
+            IDs_vol_fl_3D = init_list.copy()
+
+        for i, obj in enumerate(rp):
+            IDs[i] = obj.label
+            IDs_vol_vox[i] = obj.vol_vox
+            IDs_vol_fl[i] = obj.vol_fl
+            IDs_area_pxl[i] = obj.area
+            IDs_area_um2[i] = obj.area*yx_pxl_to_um2
+            if self.mainWin.isSegm3D:
+                IDs_vol_vox_3D[i] = obj.area
+                IDs_vol_fl_3D[i] = obj.area*vox_to_fl_3D
+            
+        df['cell_area_pxl'] = pd.Series(data=IDs_area_pxl, index=IDs, dtype=float)
+        df['cell_vol_vox'] = pd.Series(data=IDs_vol_vox, index=IDs, dtype=float)
+        df['cell_area_um2'] = pd.Series(data=IDs_area_um2, index=IDs, dtype=float)
+        df['cell_vol_fl'] = pd.Series(data=IDs_vol_fl, index=IDs, dtype=float)
+        if self.mainWin.isSegm3D:
+            df['cell_vol_vox_3D'] = pd.Series(
+                data=IDs_vol_vox_3D, index=IDs, dtype=float
+            )
+            df['cell_vol_fl_3D'] = pd.Series(
+                data=IDs_vol_fl_3D, index=IDs, dtype=float
+            )
+        return df
+
+    def addAdditionalMetadata(self, posData: load.loadData, df: pd.DataFrame):
+        for col, val in posData.additionalMetadataValues().items():
+            if col in df.columns:
+                df.pop(col)
+            df.insert(0, col, val)
+        
+        try:
+            df.pop('time_minutes')
+        except Exception as e:
+            pass
+        try:
+            df.pop('time_hours')
+        except Exception as e:
+            pass
+        try:
+            time_seconds = df.index.get_level_values('time_seconds')
+            df.insert(0, 'time_minutes', time_seconds/60)
+            df.insert(1, 'time_hours', time_seconds/3600)
+        except Exception as e:
+            pass
+
+    @worker_exception_handler
+    def run(self):
+        posToSave = self.mainWin.posToSave
+        if posToSave is None:
+            numPosToSave = 1
+        else:
+            numPosToSave = len(posToSave)
+        save_metrics = self.mainWin.save_metrics
+        if self.isQuickSave:
+            save_metrics = False
+        self.time_last_pbar_update = time.perf_counter()
+        mode = self.mode
+        for p, posData in enumerate(self.mainWin.data):
+            if self.saveWin.aborted:
+                self.finished.emit()
+                return
+            
+            if posToSave is not None:
+                if posData.pos_foldername not in posToSave:
+                    self.progress.emit(f'Skipping {posData.relPath}')
+                    continue
+
+            posData.saveCustomAnnotationParams()
+            current_frame_i = posData.frame_i
+
+            posData.saveTrackedLostCentroids()
+
+            if not self.mainWin.isSnapshot:
+                last_tracked_i = self.mainWin.last_tracked_i
+                if last_tracked_i is None:
+                    self.mainWin.saveWin.aborted = True
+                    self.finished.emit()
+                    return
+            elif self.mainWin.isSnapshot:
+                last_tracked_i = 0
+
+            if p == 0:
+                self.progressBar.emit(0, numPosToSave*(last_tracked_i+1), 0)
+
+            segm_npz_path = posData.segm_npz_path
+            acdc_output_csv_path = posData.acdc_output_csv_path
+            last_tracked_i_path = posData.last_tracked_i_path
+            end_i = self.mainWin.save_until_frame_i
+            if end_i < len(posData.segm_data):
+                saved_segm_data = posData.segm_data
+            else:
+                frame_shape = posData.segm_data.shape[1:]
+                segm_shape = (end_i+1, *frame_shape)
+                saved_segm_data = np.zeros(segm_shape, dtype=np.uint32)
+            npz_delROIs_info = {}
+            delROIs_info_path = posData.delROIs_info_path
+            acdc_df_li = []
+            keys = []
+
+            # Add segmented channel data for calc metrics if requested
+            add_user_channel_data = True
+            for chName in self.mainWin.chNamesToSkip:
+                skipUserChannel = (
+                    posData.filename.endswith(chName)
+                    or posData.filename.endswith(f'{chName}_aligned')
+                )
+                if skipUserChannel:
+                    add_user_channel_data = False
+
+            if add_user_channel_data and not self.isQuickSave:
+                posData.fluo_data_dict[posData.filename] = posData.img_data
+
+            if not self.isQuickSave:
+                posData.fluo_bkgrData_dict[posData.filename] = posData.bkgrData
+
+            posData.setLoadedChannelNames()
+            self.mainWin.initMetricsToSave(posData)
+
+            self.progress.emit(f'Saving {posData.relPath}')
+            for frame_i, data_dict in enumerate(posData.allData_li[:end_i+1]):
+                if self.saveWin.aborted:
+                    self.finished.emit()
+                    return
+
+                # Build saved_segm_data
+                lab = data_dict['labels']
+                if lab is None:
+                    break
+                
+                posData.lab = lab
+
+                if posData.SizeT > 1:
+                    saved_segm_data[frame_i] = lab
+                else:
+                    saved_segm_data = lab
+                    if 'manualBackgroundLab' in data_dict:
+                        manualBackgrData = data_dict['manualBackgroundLab']
+                        posData.saveManualBackgroundData(manualBackgrData)
+
+                acdc_df = data_dict['acdc_df']
+
+                if acdc_df is None:
+                    continue
+
+                if not np.any(lab):
+                    continue
+
+                # Build acdc_df and index it in each frame_i of acdc_df_li
+                try:
+                    # if frame_i == 9:
+                    #     cols = list(base_cca_dict.keys())[:9]
+                    #     printl(acdc_df[cols])
+                    acdc_df = load.pd_bool_to_int(acdc_df, inplace=False)
+                    rp = data_dict['regionprops']
+                    acdc_df['num_objects'] = len(acdc_df)
+                    if save_metrics:
+                        if frame_i > 0:
+                            prev_data_dict = posData.allData_li[frame_i-1]
+                            prev_lab = prev_data_dict['labels']
+                            acdc_df = self.addVelocityMeasurement(
+                                acdc_df, prev_lab, lab, posData
+                            )
+                        acdc_df = self.addMetrics_acdc_df(
+                            acdc_df, rp, frame_i, lab, posData
+                        )
+                        if self.abort:
+                            self.progress.emit(f'Saving process aborted.')
+                            self.finished.emit()
+                            return
+                    elif mode == 'Cell cycle analysis':
+                        acdc_df = self.addVolumeMetrics(
+                            acdc_df, rp, posData
+                        )
+                    acdc_df_li.append(acdc_df)
+                    key = (frame_i, posData.TimeIncrement*frame_i)
+                    keys.append(key)
+                except Exception as error:
+                    self.addMetricsCritical.emit(
+                        traceback.format_exc(), str(error)
+                    )
+                
+                try:
+                    if save_metrics and frame_i > 0:
+                        prev_data_dict = posData.allData_li[frame_i-1]
+                        prev_lab = prev_data_dict['labels']
+                        acdc_df = self.addVelocityMeasurement(
+                            acdc_df, prev_lab, lab, posData
+                        )
+                except Exception as error:
+                    self.addMetricsCritical.emit(
+                        traceback.format_exc(), str(error)
+                    )
+
+                t = time.perf_counter()
+                exec_time = t - self.time_last_pbar_update
+                self.progressBar.emit(1, -1, exec_time)
+                self.time_last_pbar_update = t
+
+            # Save segmentation file
+            io.savez_compressed(segm_npz_path, np.squeeze(saved_segm_data))
+            posData.segm_data = saved_segm_data
+            try:
+                os.remove(posData.segm_npz_temp_path)
+            except Exception as e:
+                pass
+
+            if not self.do_not_save_og_whitelist:
+                og_save_path = os.path.join(
+                    posData.images_path,  self.append_name_og_whitelist
+                )
+                posData.whitelist.saveOGLabs(og_save_path)
+            
+            if posData.whitelist:
+                whitelistIDs_path = posData.segm_npz_path.replace('.npz', '_whitelistIDs.json')
+                posData.whitelist.save(whitelistIDs_path)
+                
+            if posData.segmInfo_df is not None:
+                try:
+                    posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
+                except PermissionError:
+                    err_msg = (
+                        'The below file is open in another app '
+                        '(Excel maybe?).\n\n'
+                        f'{posData.segmInfo_df_csv_path}\n\n'
+                        'Close file and then press "Ok".'
+                    )
+                    self.mutex.lock()
+                    self.criticalPermissionError.emit(err_msg)
+                    self.waitCond.wait(self.mutex)
+                    self.mutex.unlock()
+                    posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
+
+            if add_user_channel_data and not self.isQuickSave:
+                posData.fluo_data_dict.pop(posData.filename)
+
+            if not self.isQuickSave:
+                posData.fluo_bkgrData_dict.pop(posData.filename)
+
+            if posData.SizeT > 1:
+                self.progress.emit('Almost done...')
+                self.progressBar.emit(0, 0, 0)
+
+            if acdc_df_li:
+                columns = set()	
+                for df in acdc_df_li:
+                    columns.update(df.reset_index().columns)
+                test_df = pd.concat(acdc_df_li).reset_index()
+                all_frames_acdc_df = pd.concat(
+                    acdc_df_li, keys=keys,
+                    names=['frame_i', 'time_seconds', 'Cell_ID']
+                )
+                if save_metrics:
+                    self.addCombineMetrics_acdc_df(
+                        posData, all_frames_acdc_df
+                    )
+
+                self.addAdditionalMetadata(posData, all_frames_acdc_df)
+
+                all_frames_acdc_df = self._removeDeprecatedRows(
+                    all_frames_acdc_df
+                )
+                all_frames_acdc_df = self.addDerivedCellCycleColumns(
+                    all_frames_acdc_df
+                )
+                all_frames_acdc_df = load._fix_will_divide(all_frames_acdc_df)
+                custom_annot_columns = posData.getCustomAnnotColumnNames()
+                try:
+                    # Save segmentation metadata
+                    load.store_copy_acdc_df(
+                        posData, acdc_output_csv_path, 
+                        log_func=self.progress.emit
+                    )
+                    load.save_acdc_df_file(
+                        all_frames_acdc_df, acdc_output_csv_path, 
+                        custom_annot_columns=custom_annot_columns
+                    )
+                    posData.acdc_df = all_frames_acdc_df
+                except PermissionError:
+                    err_msg = (
+                        'The below file is open in another app '
+                        '(Excel maybe?).\n\n'
+                        f'{acdc_output_csv_path}\n\n'
+                        'Close file and then press "Ok".'
+                    )
+                    self.mutex.lock()
+                    self.criticalPermissionError.emit(err_msg)
+                    self.waitCond.wait(self.mutex)
+                    self.mutex.unlock()
+
+                    # Save segmentation metadata
+                    load.save_acdc_df_file(
+                        all_frames_acdc_df, acdc_output_csv_path, 
+                        custom_annot_columns=custom_annot_columns
+                    )
+                    posData.acdc_df = all_frames_acdc_df
+                except Exception as err:
+                    self.mutex.lock()
+                    self.critical.emit(err)
+                    self.waitCond.wait(self.mutex)
+                    self.mutex.unlock()
+
+            if self.isQuickSave:
+                # Go back to current frame
+                posData.frame_i = current_frame_i
+                self.mainWin.get_data()
+                continue
+            
+            with open(last_tracked_i_path, 'w+') as txt:
+                txt.write(str(frame_i))
+
+            # Save combined metrics equations
+            posData.saveCombineMetrics()
+            self.mainWin.pointsLayerDataToDf(posData)
+            posData.saveClickEntryPointsDfs()
+
+            posData.last_tracked_i = last_tracked_i
+
+            # Go back to current frame
+            posData.frame_i = current_frame_i
+            self.mainWin.get_data()
+
+            if mode == 'Segmentation and Tracking' or mode == 'Viewer':
+                self.progress.emit(
+                    f'Saved data until frame number {frame_i+1}'
+                )
+            elif mode == 'Cell cycle analysis':
+                self.progress.emit(
+                    'Saved cell cycle annotations until frame '
+                    f'number {last_tracked_i+1}'
+                )
+            # self.progressBar.emit(1)
+        if self.mainWin.isSnapshot:
+            self.progress.emit(f'Saved all {p+1} Positions!')
+        
+        self.finished.emit()
 class workerLogger:
     def __init__(self, sigProcess):
         self.sigProcess = sigProcess
-
+    
     def log(self, message, level='INFO'):
-        self.sigProcess.emit(str(message), level)
+        try:
+            self.sigProcess.emit(str(message), level)
+        except Exception as err:
+            print(message, level)
+            try:
+                traceback_format = traceback.format_exc()
+                print(traceback_format)
+            except Exception as err:
+                pass
+            printl(err)
+        finally:
+            pass
+    
+    def info(self, message):
+        self.log(message, level='INFO')
+
+    def warning(self, message):
+        self.log(message, level='WARNING')
 
 class signals(QObject):
     progress = Signal(str, object)
@@ -176,18 +884,82 @@ class FindNextNewIdWorker(QObject):
 
 class SegForLostIDsWorker(QObject):
     sigAskInit = Signal()
+    sigAskInstallModel = Signal(str)
+    sigshowImageDebug = Signal(object)
+    sigStoreData = Signal(bool)
+    sigUpdateRP = Signal(bool, bool)
+    sigGetData = Signal()
+    # sigGet2Dlab = Signal()
+    # sigGetTrackedLostIDs = Signal()
+    # sigGetBrushID = Signal()
+    sigTrackManuallyAddedObject = Signal(object, object, bool, bool)
 
-    def __init__(self, guiWin, mutex, waitCond):
+    def __init__(self, guiWin, mutex, waitCond, debug=True):
         QObject.__init__(self)
         self.signals = signals()
         self.logger = workerLogger(self.signals.progress)
         self.guiWin = guiWin
         self.mutex = mutex
         self.waitCond = waitCond
-    
+        self._debug = debug
+
     def emitSigAskInit(self):
         self.mutex.lock()
         self.sigAskInit.emit()
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+    
+    def emitSigShowImageDebug(self, img):
+        # self.mutex.lock()
+        self.sigshowImageDebug.emit(img)
+        # self.waitCond.wait(self.mutex)
+        # self.mutex.unlock()
+    
+    def emitSigStoreData(self, autosave):
+        self.mutex.lock()
+        self.sigStoreData.emit(autosave)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+    
+    def emitSigUpdateRP(self, wl_track_og_curr, wl_update):
+        self.mutex.lock()
+        self.sigUpdateRP.emit(wl_track_og_curr, wl_update)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+
+    def emitSigGetData(self):
+        self.mutex.lock()
+        self.sigGetData.emit()
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+
+    def emitSigAskInstallModel(self, model_name):
+        self.mutex.lock()
+        self.sigAskInstallModel.emit(model_name)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+    
+    # def emitGet2Dlab(self):
+    #     self.mutex.lock()
+    #     self.sigGet2Dlab.emit()
+    #     self.waitCond.wait(self.mutex)
+    #     self.mutex.unlock()
+    
+    # def emitGetTrackedLostIDs(self):
+    #     self.mutex.lock()
+    #     self.sigGetTrackedLostIDs.emit()
+    #     self.waitCond.wait(self.mutex)
+    #     self.mutex.unlock()
+    
+    # def emitGetBrushID(self):
+    #     self.mutex.lock()
+    #     self.sigGetBrushID.emit()
+    #     self.waitCond.wait(self.mutex)
+    #     self.mutex.unlock()
+    
+    def emitTrackManuallyAddedObject(self, IDs, isLost, wl_update, wl_track_og_curr):
+        self.mutex.lock()
+        self.sigTrackManuallyAddedObject.emit(IDs, isLost, wl_update, wl_track_og_curr)
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
 
@@ -196,61 +968,140 @@ class SegForLostIDsWorker(QObject):
         posData = self.guiWin.data[self.guiWin.pos_i]
         frame_i = posData.frame_i
 
-        model_name = 'cellpose_local_seg'
-        base_model_name = 'cellpose_custom'
-        idx = self.guiWin.modelNames.index(model_name)
-        acdcSegment = self.guiWin.acdcSegment_li[idx]
-
-        if acdcSegment is None:
-            self.guiWin.logger.info(f'Importing {base_model_name}...')
-            acdcSegment = myutils.import_segment_module(base_model_name)
-            self.guiWin.acdcSegment_li[idx] = acdcSegment
-
         if not self.guiWin.SegForLostIDsSettings:
             self.emitSigAskInit()
-
+        
         if not self.guiWin.SegForLostIDsSettings:
             self.signals.finished.emit(self)
             return
+
+        self.logger.info('Segmentation for lost IDs started.')
+        model_name = 'local_seg'
+        base_model_name = self.guiWin.SegForLostIDsSettings['base_model_name']
+        idx = self.guiWin.modelNames.index(model_name)
+        acdcSegment = self.guiWin.acdcSegment_li[idx]
+
+        if acdcSegment is None or base_model_name != self.guiWin.local_seg_base_model_name:
+            self.logger.info(f'Importing {base_model_name}...')
+            self.emitSigAskInstallModel(base_model_name)
+            acdcSegment = myutils.import_segment_module(base_model_name)
+            self.guiWin.acdcSegment_li[idx] = acdcSegment
+            self.guiWin.local_seg_base_model_name = base_model_name  
 
         win = self.guiWin.SegForLostIDsSettings['win']
         init_kwargs_new = self.guiWin.SegForLostIDsSettings['init_kwargs_new']
         args_new = self.guiWin.SegForLostIDsSettings['args_new']
 
-        model = myutils.init_segm_model(acdcSegment, posData, init_kwargs_new) 
-        try:
-            model.setupLogger(self.guiWin.logger)
-        except Exception as e:
-            pass
+        model = myutils.init_segm_model(acdcSegment, posData, init_kwargs_new)
+        if self._debug:
+            try:
+                model.setupLogger(self.guiwin.logger)
+            except Exception as e:
+                pass
 
-        curr_lab = self.guiWin.get_2Dlab(posData.lab)
-        prev_lab = self.guiWin.get_2Dlab(posData.allData_li[frame_i-1]['labels'])
+        self.emitSigGetData()
 
-        tracked_lost_IDs = self.guiWin.getTrackedLostIDs()
-        prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
-        prev_IDs = {rp.label for rp in prev_rp}
-        missing_IDs = prev_IDs - set(posData.IDs) - set(tracked_lost_IDs)
+        assigned_IDs = []
+        missing_IDs_global = set()
+        original_lab = posData.lab.copy()
+        IDs_bboxs_list = []
+        bboxs_list = []
 
         curr_img = self.guiWin.getDisplayedImg1()
+        prev_lab = self.guiWin.get_2Dlab(posData.allData_li[frame_i-1]['labels'])
+        prev_IDs = posData.allData_li[frame_i-1]['IDs']
 
-        new_unique_ID = self.guiWin.setBrushID(useCurrentLab=True, return_val=True)
-
-        new_lab, assigned_IDs = single_cell_seg(model, prev_lab, curr_lab, curr_img, missing_IDs, new_unique_ID,
-                                                win, posData,
-                                                distance_filler_growth=args_new['distance_filler_growth'],
-                                                padding=args_new['padding'], 
-                                                size_perc_threshold=args_new['size_perc_threshold'],
-                                                overlap_threshold=args_new['overlap_threshold'],
-                                                )
-
-        posData.lab = new_lab
-        self.guiWin.update_rp()
-
-        for ID in assigned_IDs:
-            self.guiWin.trackManuallyAddedObject(ID, True)
-
-        self.guiWin.logger.info('Segmentation for lost IDs done.')
+        # should probably not paly so much with posData.lab, instead handle stuff myself
+        self.signals.initProgressBar.emit(2 * args_new['max_interations'])
+        new_labs = np.zeros([args_new['max_interations'], *posData.lab.shape], dtype=int)
+        for i in range(args_new['max_interations']):
+            self.emitSigGetData()
             
+            curr_lab = self.guiWin.get_2Dlab(posData.lab)
+            tracked_lost_IDs = self.guiWin.getTrackedLostIDs()
+            new_unique_ID = self.guiWin.setBrushID(useCurrentLab=True, return_val=True)
+
+            missing_IDs = set(prev_IDs) - set(posData.IDs) - set(tracked_lost_IDs)
+            missing_IDs_global.update(missing_IDs)
+
+            assigned_IDs_prev = assigned_IDs.copy()
+            new_lab, assigned_IDs, IDs_bboxs, bboxs = single_cell_seg(model, prev_lab, curr_lab, curr_img, 
+                                            missing_IDs, new_unique_ID,
+                                            win, posData,
+                                            distance_filler_growth=args_new['distance_filler_growth'],
+                                            overlap_threshold=args_new['overlap_threshold'],
+                                            padding=args_new['padding'],
+                                            )
+                    
+            IDs_bboxs_list.append(IDs_bboxs)
+            bboxs_list.append(bboxs)
+            posData.lab = new_lab
+            self.emitSigUpdateRP(wl_update=False, wl_track_og_curr=False)
+            self.emitSigStoreData(autosave=False)
+            newly_assigned_IDs = set(assigned_IDs) - set(assigned_IDs_prev)
+            self.emitTrackManuallyAddedObject(newly_assigned_IDs, True, False, False)
+            new_labs[i] = posData.lab.copy()
+            self.emitSigStoreData(autosave=False)
+            self.signals.progressBar.emit(1)
+            
+        if self._debug:
+            originals = []
+            models = []
+
+        posData.lab = original_lab.copy()
+
+        area_mean = np.mean([obj.area for obj in posData.rp])
+        for IDs_bboxs, bboxs in zip(IDs_bboxs_list, bboxs_list):
+            model_lab = new_labs[i]
+            if self._debug:
+                originals.append(original_lab.copy())
+                models.append(posData.lab.copy())
+
+            for IDs, bbox in zip(IDs_bboxs, bboxs):
+
+                box_x_min, box_x_max, box_y_min, box_y_max = bbox          
+                original_bbox_lab = original_lab[box_x_min:box_x_max, box_y_min:box_y_max]
+                box_model_lab = model_lab[box_x_min:box_x_max, box_y_min:box_y_max]
+
+                # original_bbox_lab[np.isin(original_bbox_lab, IDs)] = 0 should be a given. If not seg for lost IDs this recommended
+
+                box_model_lab = skimage.segmentation.clear_border(box_model_lab, buffer_size=1)
+
+                rp_model_lab = skimage.measure.regionprops(box_model_lab)
+                rp_original_lab = skimage.measure.regionprops(original_bbox_lab)
+
+                original_IDs = [obj.label for obj in rp_original_lab]
+
+                if args_new['allow_only_tracked_cells']:
+                    filtered_IDs = [obj.label for obj in rp_model_lab 
+                                if obj.area > args_new['size_perc_threshold'] * area_mean 
+                                and obj.label not in original_IDs
+                                and obj.label in missing_IDs_global]
+                else:
+                    filtered_IDs = [obj.label for obj in rp_model_lab 
+                                    if obj.area > args_new['size_perc_threshold'] * area_mean 
+                                    and obj.label not in original_IDs]
+        
+                for label in filtered_IDs:
+                    original_bbox_lab[box_model_lab == label] = label # here the stuff should be tracked, so we keep the ID!
+                
+                # original_lab[box_x_min:box_x_max, box_y_min:box_y_max] = original_bbox_lab
+            
+            self.signals.progressBar.emit(1)
+    
+        posData.lab = original_lab
+
+        # if self._debug:
+        #     originals = np.concatenate(originals, axis=0)
+        #     models = np.concatenate(models, axis=0)
+        #     self.emitSigShowImageDebug(originals)
+        #     self.emitSigShowImageDebug(models)
+
+        self.emitSigUpdateRP(wl_track_og_curr=True, wl_update=True)
+        self.emitSigStoreData(autosave=True)
+
+        self.logger.info('Segmentation for lost IDs done.')
+                
         self.signals.finished.emit(self)
 
 class AlignDataWorker(QObject):
@@ -1498,7 +2349,7 @@ class loadDataWorker(QObject):
                 end_filename_segm=self.mainWin.selectedSegmEndName,
                 create_new_segm=self.mainWin.isNewFile,
                 new_endname=self.mainWin.newSegmEndName,
-                labelBoolSegm=self.mainWin.labelBoolSegm
+                labelBoolSegm=self.mainWin.labelBoolSegm,
             )
             posData.labelSegmData()
 

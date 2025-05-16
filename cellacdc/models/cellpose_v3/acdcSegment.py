@@ -19,6 +19,7 @@ class Model:
             self, 
             model_type: AvailableModels='cyto3', 
             gpu=False,
+            directml_gpu=False,
             device='None',
             denoise_before_segmentation=False,
             denoise_model_type: _denoise.DenoiseModelTypes='one-click', 
@@ -32,6 +33,9 @@ class Model:
             If True and PyTorch for your GPU is correctly installed, 
             denoising and segmentation processes will run on the GPU. 
             Default is False
+        directml_gpu : bool, optional
+            If True, will attempt to use DirectML for GPU acceleration.
+            Will be ignored if `gpu` is True. Default is False
         device : torch.device or int or None
             If not None, this is the device used for running the model
             (torch.device('cuda') or torch.device('cpu')). 
@@ -45,14 +49,15 @@ class Model:
             Either 'denoise' or 'deblur'. Default is 'denoise'
         """ 
         self.acdcCellpose = acdc_cp2.Model(
-            model_type, gpu=gpu, device=device
+            model_type, gpu=gpu, device=device,
+            directml_gpu=directml_gpu
         )
         self.denoiseModel = None
         if denoise_before_segmentation:
             self.denoiseModel = _denoise.CellposeDenoiseModel(
                 gpu=gpu, 
                 denoise_model_type=denoise_model_type, 
-                denoise_mode=denoise_mode
+                denoise_mode=denoise_mode,
             )
         
     def segment(
@@ -165,7 +170,7 @@ class Model:
         )
         return labels
     
-    def segmemt3DT(self, video_data, signals=None, **kwargs):
+    def segment3DT(self, video_data, signals=None, **kwargs):
         images = video_data
         if self.denoiseModel is not None:
             resc_int_low_val_perc = kwargs['rescale_intensity_low_val_perc']
@@ -190,6 +195,12 @@ class Model:
     
     def setupLogger(self, logger):
         self.acdcCellpose.setupLogger(logger)
+    
+    def setLoggerPropagation(self, propagate:bool):
+        self.acdcCellpose.setLoggerPropagation(propagate)
+
+    def setLoggerLevel(self, level:str):
+        self.acdcCellpose.setLoggerLevel(level)
     
     def closeLogger(self):
         self.acdcCellpose.closeLogger()

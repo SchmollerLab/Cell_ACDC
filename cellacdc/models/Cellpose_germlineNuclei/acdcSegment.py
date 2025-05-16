@@ -32,6 +32,15 @@ class Model:
     def setupLogger(self, logger):
         models.models_logger = logger
     
+    def setLoggerPropagation(self, propagate:bool):
+        models.models_logger.propagate = propagate
+    
+    def setLoggerLevel(self, level:str):
+        import logging
+        if level == 'error':
+            models.models_logger.setLevel(logging.ERROR)
+        
+    
     def closeLogger(self):
         handlers = models.models_logger.handlers[:]
         for handler in handlers:
