@@ -4,7 +4,7 @@ def CV(
         signal: np.ndarray, 
         autoBkgr: float, 
         dataPrepBkgr: float, 
-        objectRp: 'skimage.measure.RegionProperties', 
+        objectRp, 
         correct_with_bkgr=False, 
         which_bkgr='auto'
     ):
