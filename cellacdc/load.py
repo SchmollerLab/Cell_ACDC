@@ -1710,7 +1710,7 @@ class loadData:
         return dataPrepFreeRoiPath
     
     def saveDataPrepFreeRoi(
-            self, roiItem: widgets.PlotCurveItem, logger_func=print
+            self, roiItem: 'widgets.PlotCurveItem', logger_func=print
         ):
         dataPrepFreeRoiPath = self.dataPrepFreeRoiPath()
         
