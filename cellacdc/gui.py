@@ -524,6 +524,9 @@ class saveDataWorker(QObject):
         custom_metrics_params = self.mainWin.custom_metrics_params
         calc_for_each_zslice_mapper = self.mainWin.calc_for_each_zslice_mapper
         calc_size_for_each_zslice = self.mainWin.calc_size_for_each_zslice
+        ch_indipend_custom_func_params = (
+            self.mainWin.ch_indipend_custom_func_params
+        )
 
         # Pre-populate columns with zeros
         all_columns = list(size_metrics_to_save)
@@ -556,6 +559,10 @@ class saveDataWorker(QObject):
         autoBkgr_mask, autoBkgr_mask_proj = autoBkgr_masks
         dataPrepBkgrROI_mask = measurements.get_bkgrROI_mask(posData, isSegm3D)
         
+        all_channels_foregr_data = {}
+        all_channels_foregr_imgs = {}
+        all_channels_z_slices = {}
+        
         # Iterate channels
         iter_channels = zip(
             posData.loadedChNames, 
@@ -563,15 +570,6 @@ class saveDataWorker(QObject):
         )
         for channel, (filename, channel_data) in iter_channels:
             foregr_img = channel_data[frame_i]
-            
-            iter_other_channels = zip(
-                posData.loadedChNames, 
-                posData.fluo_data_dict.items()
-            )
-            other_channels_foregr_imgs = {
-                ch:ch_data[frame_i] for ch, (_, ch_data) in iter_other_channels
-                if ch != channel
-            }
 
             # Get the z-slice if we have z-stacks
             z = posData.zSliceSegmentation(filename, frame_i)
@@ -583,6 +581,10 @@ class saveDataWorker(QObject):
             )
             
             foregr_data = measurements.get_foregr_data(foregr_img, isSegm3D, z)
+            
+            all_channels_foregr_data[channel] = foregr_data
+            all_channels_foregr_imgs[channel] = foregr_img
+            all_channels_z_slices[channel] = z
 
             # Compute background values
             df = measurements.add_bkgr_values(
@@ -591,14 +593,13 @@ class saveDataWorker(QObject):
             )
 
             # Iterate objects and compute foreground metrics
-            df = measurements.add_foregr_metrics(
-                df, rp, channel, foregr_data, foregr_metrics_params[channel], 
-                metrics_func, custom_metrics_params[channel], isSegm3D, 
+            df = measurements.add_foregr_standard_metrics(
+                df, rp, channel, foregr_data, 
+                foregr_metrics_params[channel], 
+                metrics_func, isSegm3D, 
                 lab, foregr_img, 
-                other_channels_foregr_imgs, 
                 manualBackgrRp=manualBackgrRp,
-                customMetricsCritical=self.customMetricsCritical,
-                z_slice=z
+                z_slice=z, text_to_append_to_col=str(z)
             )
 
             if not calc_for_each_zslice_mapper.get(channel, False):
@@ -633,13 +634,12 @@ class saveDataWorker(QObject):
                 )
 
                 # Iterate objects and compute foreground metrics
-                df = measurements.add_foregr_metrics(
-                    df, rp, channel, foregr_data, foregr_metrics_params[channel], 
-                    metrics_func, custom_metrics_params[channel], isSegm3D, 
+                df = measurements.add_foregr_standard_metrics(
+                    df, rp, channel, foregr_data, 
+                    foregr_metrics_params[channel], 
+                    metrics_func, isSegm3D, 
                     lab, foregr_img, 
-                    other_channels_foregr_imgs, 
                     manualBackgrRp=manualBackgrRp,
-                    customMetricsCritical=self.customMetricsCritical,
                     z_slice=z, text_to_append_to_col=str(z)
                 )
                 pbar_z.update()
@@ -648,6 +648,57 @@ class saveDataWorker(QObject):
         df = measurements.add_concentration_metrics(
             df, concentration_metrics_params
         )
+        
+        # Add custom measurements
+        for channel, (filename, channel_data) in iter_channels:
+            foregr_img = channel_data[frame_i]
+            
+            iter_other_channels = zip(
+                posData.loadedChNames, 
+                posData.fluo_data_dict.items()
+            )
+            other_channels_foregr_imgs = {
+                ch:ch_data[frame_i] for ch, (_, ch_data) in iter_other_channels
+                if ch != channel
+            }
+            
+            # Get the z-slice if we have z-stacks
+            z = posData.zSliceSegmentation(filename, frame_i)
+            
+            foregr_data = measurements.get_foregr_data(foregr_img, isSegm3D, z)
+            
+            df = measurements.add_custom_metrics(
+                df, rp, channel, foregr_data, 
+                custom_metrics_params[channel], 
+                isSegm3D, lab, foregr_img, 
+                other_channels_foregr_imgs,
+                z_slice=z,
+                customMetricsCritical=self.customMetricsCritical,
+            )
+            
+            if not calc_for_each_zslice_mapper.get(channel, False):
+                continue
+            
+            # Repeat measureemnts for each z-slice
+            pbar_z = tqdm(
+                total=posData.SizeZ, desc='Computing for z-slices: ', 
+                ncols=100, leave=False, unit='z-slice'
+            )
+            for z in range(posData.SizeZ):
+                foregr_data = measurements.get_foregr_data(
+                    foregr_img, isSegm3D, z
+                )
+                foregr_data = {'zSlice': foregr_data['zSlice']}
+                
+                df = measurements.add_custom_metrics(
+                    df, rp, channel, foregr_data, 
+                    custom_metrics_params[channel], 
+                    isSegm3D, lab, foregr_img, 
+                    other_channels_foregr_imgs,
+                    z_slice=z,
+                    text_to_append_to_col=str(z),
+                    customMetricsCritical=self.customMetricsCritical, 
+                )
         
         # Add region properties
         try:
@@ -665,6 +716,15 @@ class saveDataWorker(QObject):
             traceback_format = traceback.format_exc()
             self.regionPropsCritical.emit(traceback_format, str(error))
 
+        df = measurements.add_ch_indipend_custom_metrics(
+            df, rp, all_channels_foregr_data, 
+            ch_indipend_custom_func_params, 
+            isSegm3D, lab, all_channels_foregr_imgs, 
+            all_channels_z_slices=all_channels_z_slices,
+            text_to_append_to_col=None,
+            customMetricsCritical=self.customMetricsCritical, 
+        )
+        
         # Remove 0s columns
         df = df.loc[:, (df != -2).any(axis=0)]
 
@@ -19604,6 +19664,16 @@ class guiWin(QMainWindow):
         self.foregr_metrics_params = foregr_metrics_params
         self.concentration_metrics_params = concentration_metrics_params
         self.custom_metrics_params = custom_metrics_params
+        
+        self.ch_indipend_custom_func_dict = (
+            measurements.get_channel_indipendent_custom_metrics_func()
+        )
+        self.ch_indipend_custom_func_params = (
+            measurements.get_channel_indipend_custom_metrics_params(
+                self.ch_indipend_custom_func_dict,
+                self.chIndipendCustomMetricsToSave
+            )
+        )
 
     def initMetrics(self):
         self.logger.info('Initializing measurements...')
@@ -19620,6 +19690,8 @@ class guiWin(QMainWindow):
             self.regionPropsToSave = measurements.get_props_names_3D()
         else:
             self.regionPropsToSave = measurements.get_props_names()  
+        
+        self.mixedChCombineMetricsToSkip = []
         self.mixedChCombineMetricsToSkip = []
         posData = self.data[self.pos_i]
         self.sizeMetricsToSave = list(
@@ -29094,6 +29166,27 @@ class guiWin(QMainWindow):
                     favourite_funcs.add(checkBox.text())
             self.regionPropsToSave = tuple(self.regionPropsToSave)
 
+        if measurementsWin.chIndipendCustomeMetricsQGBox is not None:
+            skipAll = (
+                not measurementsWin.chIndipendCustomeMetricsQGBox.isChecked()
+            )
+            if not skipAll:
+                title = measurementsWin.chIndipendCustomeMetricsQGBox.title()
+                last_selected_groupboxes_measurements[refChannel].append(title)
+            chIndipendCustomMetricsToSave = []
+            win = measurementsWin
+            checkBoxes = win.chIndipendCustomeMetricsQGBox.checkBoxes
+            for checkBox in checkBoxes:
+                if skipAll:
+                    continue
+    
+                if checkBox.isChecked():
+                    chIndipendCustomMetricsToSave.append(checkBox.text())           
+                    favourite_funcs.add(checkBox.text())
+            self.chIndipendCustomMetricsToSave = tuple(
+                chIndipendCustomMetricsToSave
+            )
+        
         if measurementsWin.mixedChannelsCombineMetricsQGBox is not None:
             skipAll = (
                 not measurementsWin.mixedChannelsCombineMetricsQGBox.isChecked()
@@ -29189,12 +29282,13 @@ class guiWin(QMainWindow):
 
     def setMetricsFunc(self):
         posData = self.data[self.pos_i]
-        (metrics_func, all_metrics_names,
-        custom_func_dict, total_metrics) = measurements.getMetricsFunc(posData)
+        (metrics_func, all_metrics_names, custom_func_dict, total_metrics,
+        ch_indipend_custom_func_dict) = measurements.getMetricsFunc(posData)
         self.metrics_func = metrics_func
         self.all_metrics_names = all_metrics_names
         self.total_metrics = total_metrics
         self.custom_func_dict = custom_func_dict
+        self.ch_indipend_custom_func_dict = ch_indipend_custom_func_dict
 
     def getLastTrackedFrame(self, posData):
         last_tracked_i = 0

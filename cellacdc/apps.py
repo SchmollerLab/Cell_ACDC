@@ -1738,6 +1738,8 @@ class SetMeasurementsDialog(QBaseDialog):
                 key:val for key,val in size_metrics_desc.items()
                 if not key.endswith('_3D')
             }
+        
+        row = 0
         sizeMetricsQGBox = widgets._metricsQGBox(
             size_metrics_desc, 'Physical measurements',
             favourite_funcs=favourite_funcs, isZstack=isZstack,
@@ -1747,9 +1749,10 @@ class SetMeasurementsDialog(QBaseDialog):
         self.sizeMetricsQGBox = sizeMetricsQGBox
         for sizeCheckbox in sizeMetricsQGBox.checkBoxes:
             sizeCheckbox.toggled.connect(self.sizeMetricToggled)
-        groupsLayout.addWidget(sizeMetricsQGBox, 0, current_col)
+        groupsLayout.addWidget(sizeMetricsQGBox, row, current_col)
         groupsLayout.setRowStretch(0, 1)
         groupsLayout.setColumnStretch(current_col, 3)
+        row += 1
 
         props_info_txt = measurements.get_props_info_txt()
         props_names = measurements.get_props_names()
@@ -1761,9 +1764,29 @@ class SetMeasurementsDialog(QBaseDialog):
         self.regionPropsQGBox = regionPropsQGBox
         for rpCheckbox in regionPropsQGBox.checkBoxes:
             rpCheckbox.toggled.connect(self.rpMetricToggled)
-        groupsLayout.addWidget(regionPropsQGBox, 1, current_col)
+        groupsLayout.addWidget(regionPropsQGBox, row, current_col)
         groupsLayout.setRowStretch(1, 2)
         self.all_metrics.extend([c.text() for c in regionPropsQGBox.checkBoxes])
+        row += 1
+        
+        # Custom metrics that are channel indipendent
+        self.chIndipendCustomeMetricsQGBox = None
+        out = measurements.ch_indipend_custom_metrics_desc(
+            isZstack, isSegm3D=isSegm3D,
+        )
+        ch_indipend_custom_metrics_desc = out
+        if ch_indipend_custom_metrics_desc:
+            self.chIndipendCustomeMetricsQGBox = widgets._metricsQGBox(
+                ch_indipend_custom_metrics_desc, 
+                'Channel indipendent custom measurements',
+                favourite_funcs=favourite_funcs, isZstack=isZstack,
+                parent=self
+            )
+            groupsLayout.addWidget(
+                self.chIndipendCustomeMetricsQGBox, row, current_col
+            )
+            groupsLayout.setRowStretch(1, 1)
+            row += 1
 
         desc, equations = measurements.combine_mixed_channels_desc(
             isSegm3D=isSegm3D, posData=posData, available_cols=self.all_metrics
@@ -1779,7 +1802,7 @@ class SetMeasurementsDialog(QBaseDialog):
                 self.delMixedChannelCombineMetric
             )
             groupsLayout.addWidget(
-                self.mixedChannelsCombineMetricsQGBox, 2, current_col
+                self.mixedChannelsCombineMetricsQGBox, row, current_col
             )
             groupsLayout.setRowStretch(1, 1)
             if not self.is_concat:
@@ -1865,6 +1888,11 @@ class SetMeasurementsDialog(QBaseDialog):
         for checkBox in self.sizeMetricsQGBox.checkBoxes:
             all_metrics['size'].append(checkBox.text())
         
+        if self.chIndipendCustomeMetricsQGBox is not None:
+            checkBoxes = self.chIndipendCustomeMetricsQGBox.checkBoxes
+            for checkBox in checkBoxes:
+                all_metrics['ch_indipend_custom_metric'].append(checkBox.text())
+        
         if self.mixedChannelsCombineMetricsQGBox is None:
             return
         
@@ -1881,6 +1909,11 @@ class SetMeasurementsDialog(QBaseDialog):
         
         self.regionPropsQGBox.highlightCheckboxesFromSearchText(text)
         self.sizeMetricsQGBox.highlightCheckboxesFromSearchText(text)
+        
+        if self.chIndipendCustomeMetricsQGBox is not None:
+            self.chIndipendCustomeMetricsQGBox.highlightCheckboxesFromSearchText(
+                text
+            )
         
         if self.mixedChannelsCombineMetricsQGBox is None:
             return
@@ -1902,6 +1935,12 @@ class SetMeasurementsDialog(QBaseDialog):
         for checkBox in self.sizeMetricsQGBox.checkBoxes:
             if checkBox.isChecked():
                 return checkBox.text(), 'size'
+        
+        if self.chIndipendCustomeMetricsQGBox is not None:
+            checkBoxes = self.chIndipendCustomeMetricsQGBox.checkBoxes
+            for checkBox in checkBoxes:
+                if checkBox.isChecked():
+                    return checkBox.text(), 'ch_indipend_custom_metric'
         
         if self.mixedChannelsCombineMetricsQGBox is None:
             return
@@ -1925,6 +1964,12 @@ class SetMeasurementsDialog(QBaseDialog):
             if checkBox.isChecked():
                 return checkBox.text()
         
+        if self.chIndipendCustomeMetricsQGBox is not None:
+            checkBoxes = self.chIndipendCustomeMetricsQGBox.checkBoxes
+            for checkBox in checkBoxes:
+                if checkBox.isChecked():
+                    return checkBox.text()
+        
         if self.mixedChannelsCombineMetricsQGBox is None:
             return
         
@@ -1943,6 +1988,11 @@ class SetMeasurementsDialog(QBaseDialog):
         
         for checkBox in self.sizeMetricsQGBox.checkBoxes:
             self.checkBoxedGroup.addButton(checkBox)
+        
+        if self.chIndipendCustomeMetricsQGBox is not None:
+            checkBoxes = self.chIndipendCustomeMetricsQGBox.checkBoxes
+            for checkBox in checkBoxes:
+                self.checkBoxedGroup.addButton(checkBox)
         
         if self.mixedChannelsCombineMetricsQGBox is None:
             return
@@ -2057,6 +2107,9 @@ class SetMeasurementsDialog(QBaseDialog):
         
         self.sizeMetricsQGBox.checkAll(False)
         self.regionPropsQGBox.checkAll(False)
+        if self.chIndipendCustomeMetricsQGBox is not None:
+            self.chIndipendCustomeMetricsQGBox.checkAll(False)
+            
         if self.mixedChannelsCombineMetricsQGBox is not None:
             self.mixedChannelsCombineMetricsQGBox.checkAll(False)
         self.doNotWarn = False
@@ -2111,8 +2164,24 @@ class SetMeasurementsDialog(QBaseDialog):
                 colname = checkBox.text()
                 checkBox.setChecked(measurementsInfo[colname])
 
+        if self.chIndipendCustomeMetricsQGBox is not None:
+            measurementsInfo = state.get(
+                self.chIndipendCustomeMetricsQGBox.title()
+            )
+            if not measurementsInfo:
+                self.chIndipendCustomeMetricsQGBox.setChecked(False)
+            else:
+                checkBoxes = self.chIndipendCustomeMetricsQGBox.checkBoxes
+                for checkBox in checkBoxes:
+                    checked = checkBox.isChecked()
+                    colname = checkBox.text()
+                    key = self.chIndipendCustomeMetricsQGBox.title()
+                    checkBox.setChecked(measurementsInfo[colname])
+        
         if self.mixedChannelsCombineMetricsQGBox is not None:
-            measurementsInfo = state.get(self.mixedChannelsCombineMetricsQGBox.title())
+            measurementsInfo = state.get(
+                self.mixedChannelsCombineMetricsQGBox.title()
+            )
             if not measurementsInfo:
                 self.mixedChannelsCombineMetricsQGBox.setChecked(False)
             else:
@@ -2157,6 +2226,16 @@ class SetMeasurementsDialog(QBaseDialog):
                 colname = checkBox.text()
                 state[self.regionPropsQGBox.title()][colname] = checked
 
+        if self.chIndipendCustomeMetricsQGBox is not None:
+            state[self.chIndipendCustomeMetricsQGBox.title()] = {}
+            if self.chIndipendCustomeMetricsQGBox.isChecked():
+                checkBoxes = self.chIndipendCustomeMetricsQGBox.checkBoxes
+                for checkBox in checkBoxes:
+                    checked = checkBox.isChecked()
+                    key = self.chIndipendCustomeMetricsQGBox.title()
+                    colname = checkBox.text()
+                    state[key][colname] = checked
+        
         if self.mixedChannelsCombineMetricsQGBox is not None:
             state[self.mixedChannelsCombineMetricsQGBox.title()] = {}
             if self.mixedChannelsCombineMetricsQGBox.isChecked():
@@ -2200,18 +2279,27 @@ class SetMeasurementsDialog(QBaseDialog):
                     continue
                 checkBox.setChecked(isChecked)
         
-        if self.mixedChannelsCombineMetricsQGBox is None:
-            return
+        if self.chIndipendCustomeMetricsQGBox is not None:
+            _state = state.get(self.chIndipendCustomeMetricsQGBox.title())
+            if _state is None or not _state:
+                pass
+            else:
+                for checkBox in self.chIndipendCustomeMetricsQGBox.checkBoxes:
+                    isChecked = _state.get(checkBox.text())
+                    if isChecked is None:
+                        continue
+                    checkBox.setChecked(isChecked)
         
-        _state = state.get(self.mixedChannelsCombineMetricsQGBox.title())
-        if _state is None or not _state:
-            pass
-        else:
-            for checkBox in self.mixedChannelsCombineMetricsQGBox.checkBoxes:
-                isChecked = _state.get(checkBox.text())
-                if isChecked is None:
-                    continue
-                checkBox.setChecked(isChecked)
+        if self.mixedChannelsCombineMetricsQGBox is not None:
+            _state = state.get(self.mixedChannelsCombineMetricsQGBox.title())
+            if _state is None or not _state:
+                pass
+            else:
+                for checkBox in self.mixedChannelsCombineMetricsQGBox.checkBoxes:
+                    isChecked = _state.get(checkBox.text())
+                    if isChecked is None:
+                        continue
+                    checkBox.setChecked(isChecked)
     
     def loadLastSelection(self):
         self.doNotWarn = True
