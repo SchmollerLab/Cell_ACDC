@@ -865,8 +865,6 @@ class saveDataWorker(QObject):
                 frame_shape = posData.segm_data.shape[1:]
                 segm_shape = (end_i+1, *frame_shape)
                 saved_segm_data = np.zeros(segm_shape, dtype=np.uint32)
-            npz_delROIs_info = {}
-            delROIs_info_path = posData.delROIs_info_path
             acdc_df_li = []
             keys = []
 
@@ -1007,7 +1005,6 @@ class saveDataWorker(QObject):
                 columns = set()	
                 for df in acdc_df_li:
                     columns.update(df.reset_index().columns)
-                test_df = pd.concat(acdc_df_li).reset_index()
                 all_frames_acdc_df = pd.concat(
                     acdc_df_li, keys=keys,
                     names=['frame_i', 'time_seconds', 'Cell_ID']
