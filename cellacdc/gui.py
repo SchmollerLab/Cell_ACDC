@@ -599,7 +599,7 @@ class saveDataWorker(QObject):
                 metrics_func, isSegm3D, 
                 lab, foregr_img, 
                 manualBackgrRp=manualBackgrRp,
-                z_slice=z, text_to_append_to_col=str(z)
+                z_slice=z
             )
 
             if not calc_for_each_zslice_mapper.get(channel, False):
@@ -721,7 +721,6 @@ class saveDataWorker(QObject):
             ch_indipend_custom_func_params, 
             isSegm3D, lab, all_channels_foregr_imgs, 
             all_channels_z_slices=all_channels_z_slices,
-            text_to_append_to_col=None,
             customMetricsCritical=self.customMetricsCritical, 
         )
         
@@ -19691,9 +19690,14 @@ class guiWin(QMainWindow):
         else:
             self.regionPropsToSave = measurements.get_props_names()  
         
-        self.mixedChCombineMetricsToSkip = []
-        self.mixedChCombineMetricsToSkip = []
         posData = self.data[self.pos_i]
+        self.mixedChCombineMetricsToSkip = []
+        self.chIndipendCustomMetricsToSave = list(
+            measurements.ch_indipend_custom_metrics_desc(
+                posData.SizeZ>1, isSegm3D=self.isSegm3D,
+            ).keys()
+        )
+        
         self.sizeMetricsToSave = list(
             measurements.get_size_metrics_desc(
                 self.isSegm3D, posData.SizeT>1

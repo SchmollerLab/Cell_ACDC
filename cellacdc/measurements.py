@@ -1635,11 +1635,12 @@ def add_custom_metrics(
     return df
 
 def add_foregr_standard_metrics(
-        df, rp, channel, 
-        foregr_data, foregr_metrics_params, metrics_func,
-        isSegm3D, lab, foregr_img, 
-        other_channels_foregr_imgs: Dict[str, np.ndarray], 
-        z_slice=None, manualBackgrRp=None, 
+        df, rp, channel, foregr_data, 
+        foregr_metrics_params, 
+        metrics_func, isSegm3D, 
+        lab, foregr_img, 
+        z_slice=None, 
+        manualBackgrRp=None, 
         customMetricsCritical=None,
         text_to_append_to_col=''
     ):
@@ -1764,8 +1765,11 @@ def get_custom_metric_value(
         try:
             custom_val = custom_func(*base_args, *args, **kwargs)
             return '', custom_val, None
+        except TypeError as err:
+            if 'required positional arguments' in str(err):
+                continue
         except Exception as error:
-            continue
+            return traceback.format_exc(), np.nan, None
     
     # Test if custom metric function requires the other channels images
     custom_vals_vs_other_ch = []
@@ -1820,13 +1824,18 @@ def get_ch_indipend_custom_metric_value(
         ((obj, metrics_obj), {}),
         ((obj, metrics_obj, all_channels_foregr_imgs, lab), {'isSegm3D': isSegm3D}),
     )    
-    error = None
+    traceback_text = None
     for args, kwargs in additional_args_kwargs:
         try:
             custom_val = custom_func(*base_args, *args, **kwargs)
             return '', custom_val, None
+        except TypeError as err:
+            if 'required positional arguments' in str(err):
+                continue
         except Exception as error:
-            return error, np.nan, None
+            traceback_text = traceback.format_exc()
+    
+    return traceback_text, np.nan, None
 
 def get_channel_indipend_custom_metrics_params(
         ch_indipend_custom_func_dict, ch_indipend_custom_metric_cols

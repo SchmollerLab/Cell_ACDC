@@ -7,7 +7,7 @@ from natsort import natsorted
 # have been computed, set this to False.
 CALCULATE_FOR_EACH_CHANNEL = False
 
-def _test_channel_indipendent_metric(
+def channel_indipendent_metric_example(
         signals, autoBkgr, dataPrepBkgr, objectRp, metrics_values, images, lab,
         other_channel_foregr_img, correct_with_bkgr=False, which_bkgr='auto', 
         isSegm3D=False
@@ -59,6 +59,9 @@ def _test_channel_indipendent_metric(
     
     Notes
     -----
+    The function name must be the same of the Python file name. In this example, 
+    the Python file is called channel_indipendent_metric_example.py and the function
+    is called channel_indipendent_metric_example.
     
     1. The function must have the same name as the Python file containing it 
        (e.g., if this file is called CV.py the function must be called CV)
