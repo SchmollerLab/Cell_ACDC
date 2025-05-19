@@ -25,14 +25,28 @@ class Model:
             model_type: AvailableModels='cyto', 
             net_avg=False, 
             gpu=False,
-            device='None'
+            device='None',
+            directml_gpu=False,
         ):
         if device == 'None':
             device = None
         
         major_version = myutils.get_cellpose_major_version()
         print(f'Initializing Cellpose v{major_version}...')
-        
+
+        if directml_gpu:
+            from cellacdc.models.cellpose_v2._directML import init_directML
+            directml_gpu = init_directML()
+
+        if directml_gpu and gpu:
+            printl(
+                """
+                gpu is preferable to directml_gpu, but doesn't work with non NVIDIA GPUs.
+                Since directml_gpu and set to True, the gpu argument will be ignored.
+                """
+            )
+            gpu = False
+
         if major_version == 3:
             if model_type=='cyto3':
                 self.model = models.Cellpose(
@@ -55,10 +69,25 @@ class Model:
                     gpu=gpu, net_avg=net_avg, model_type=model_type
                 )
         
+        if directml_gpu:
+            from cellacdc.models.cellpose_v2._directML import setup_directML
+            setup_directML(self)
+
+            from cellacdc.core import fix_sparse_directML
+            fix_sparse_directML()
+
         self.is_rgb = False
         
     def setupLogger(self, logger):
         models.models_logger = logger
+    
+    def setLoggerPropagation(self, propagate:bool):
+        models.models_logger.propagate = propagate
+
+    def setLoggerLevel(self, level:str):
+        import logging
+        if level == 'error':
+            models.models_logger.setLevel(logging.ERROR)
     
     def closeLogger(self):
         handlers = models.models_logger.handlers[:]
@@ -103,7 +132,7 @@ class Model:
             normalize=True,
             resample=True,
             segment_3D_volume=False,
-            **kwargs            
+            **kwargs
         ):
         isRGB = image.shape[-1] == 3 or image.shape[-1] == 4
         isZstack = (image.ndim==3 and not isRGB) or (image.ndim==4)

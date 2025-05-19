@@ -276,7 +276,7 @@ class computeMeasurmentsUtilWin(QDialog):
         self.gui.waitCond = self.worker.waitCond
         self.gui.saveWin = self.progressWin
 
-        self.gui.saveDataWorker = gui.saveDataWorker(self.gui)
+        self.gui.saveDataWorker = workers.saveDataWorker(self.gui)
 
         self.gui.saveDataWorker.criticalPermissionError.connect(self.skipEvent)
         self.gui.saveDataWorker.askZsliceAbsent.connect(self.gui.zSliceAbsent)

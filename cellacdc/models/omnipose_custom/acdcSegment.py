@@ -10,7 +10,7 @@ import skimage.measure
 from cellpose_omni import models
 
 from cellacdc.models.omnipose import acdcSegment as cp_omni
-from cellacdc.models import OMNI_MODELS
+from omnipose.core import OMNI_MODELS
 from cellacdc import printl
 
 class Model:

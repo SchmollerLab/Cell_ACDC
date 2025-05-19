@@ -1289,7 +1289,7 @@ class filenameDialog(QDialog):
             self, ext='.npz', basename='', title='Insert file name',
             hintText='', existingNames='', parent=None, allowEmpty=True,
             helpText='', defaultEntry='', resizeOnShow=True,
-            additionalButtons=None
+            additionalButtons=None, addDoNotSaveButton=False
         ):
         self.cancel = True
         super().__init__(parent)
@@ -1297,7 +1297,9 @@ class filenameDialog(QDialog):
         self.resizeOnShow = resizeOnShow
 
         if hintText.find('segmentation') != -1:
-            helpText = ("""
+            if helpText:
+                helpText = (f'{helpText}')
+            helpText_loc = ("""
                 With Cell-ACDC you can create as many segmentation files 
                 <b>as you want</b>.<br><br>
                 If you plan to create <b>only one file</b> then you can leave the 
@@ -1317,6 +1319,7 @@ class filenameDialog(QDialog):
                 in a CSV file ending with the same text as the segmentation file,<br> 
                 e.g., ending with <code>_acdc_output_phase_contr.csv</code>.
             """)
+            helpText = (f'{helpText}{html_utils.paragraph(helpText_loc)}')
 
         self.isSegmFile = basename.endswith('_segm')
         
@@ -1361,6 +1364,13 @@ class filenameDialog(QDialog):
 
         buttonsLayout.addStretch()
         buttonsLayout.addWidget(cancelButton)
+
+        if addDoNotSaveButton:
+            doNotSaveButton = widgets.noPushButton('Do not save')
+            doNotSaveButton.clicked.connect(self.doNotSave_cb)
+            buttonsLayout.addWidget(doNotSaveButton)
+            self.doNotSave = False
+
         buttonsLayout.addSpacing(20)
         if helpText:
             helpButton = widgets.helpPushButton('Help...')
@@ -1393,6 +1403,21 @@ class filenameDialog(QDialog):
         if defaultEntry:
             self.updateFilename(defaultEntry)
     
+    def doNotSave_cb(self):
+        msg = widgets.myMessageBox()
+        txt = html_utils.paragraph(
+            'Are you sure you do <b>not</b> want to save the file?'
+        )
+        noButton, yesButton = msg.warning(
+            self, 'Do not save?', txt, buttonsTexts=('No', 'Yes')
+        )
+        if msg.clickedButton == noButton:
+            return
+        
+        self.doNotSave = True
+        self.cancel = False
+        self.close()
+        
     def showHelp(self, text):
         text = html_utils.paragraph(text)
         msg = widgets.myMessageBox(wrapText=False)
@@ -4644,7 +4669,9 @@ class ApplyTrackTableSelectColumnsDialog(QBaseDialog):
 
 
 class QDialogSelectModel(QDialog):
-    def __init__(self, parent=None, addSkipSegmButton=False):
+    def __init__(
+            self, parent=None, addSkipSegmButton=False, customFirst=''
+        ):
         self.cancel = True
         super().__init__(parent)
         self.setWindowTitle('Select model')
@@ -4664,6 +4691,15 @@ class QDialogSelectModel(QDialog):
 
         listBox = widgets.listWidget()
         models = myutils.get_list_of_models()
+
+        if customFirst:
+            try:
+                idx = models.index(customFirst)
+                models.insert(0, models.pop(idx))
+            except ValueError:
+                print(f'Warning: {customFirst} not found in models list.')
+                pass
+
         listBox.setFont(font)
         listBox.addItems(models)
         addCustomModelItem = QListWidgetItem('Add custom model...')
@@ -10056,7 +10092,8 @@ class SelectSegmFileDialog(QDialog):
     def __init__(
             self, images_ls, parent_path, parent=None, 
             addNewFileButton=False, basename='', infoText=None, 
-            fileType='segmentation', allowMultipleSelection=False
+            fileType='segmentation', allowMultipleSelection=False,
+            custom_first=None
         ):
         self.cancel = True
         self.selectedItemText = ''
@@ -10067,6 +10104,9 @@ class SelectSegmFileDialog(QDialog):
         self.allowMultipleSelection = allowMultipleSelection
         self.basename = basename
         images_ls = sorted(images_ls, key=len)
+        if custom_first is not None:
+            images_ls.remove(custom_first)
+            images_ls.insert(0, custom_first)
 
         # Remove the 'segm_' part to allow filenameDialog to check if
         # a new file is existing (since we only ask for the part after
@@ -10547,7 +10587,8 @@ class QDialogModelParams(QDialog):
             url=None, parent=None, initLastParams=True, posData=None, 
             channels=None, currentChannelName=None, segmFileEndnames=None,
             df_metadata=None, force_postprocess_2D=False, model_module=None,
-            action_type='', addPreProcessParams=True, addPostProcessParams=True
+            action_type='', addPreProcessParams=True, addPostProcessParams=True,
+            extraParams=None, extraParamsTitle=None, ini_filename=None,
         ):
         self.cancel = True
         super().__init__(parent)
@@ -10566,8 +10607,9 @@ class QDialogModelParams(QDialog):
                 addPreProcessParams = False
             else:
                 self.skipSegmentation = False
-        
-        if is_tracker:
+        if ini_filename is not None:
+            self.ini_filename = ini_filename
+        elif is_tracker:
             self.ini_filename = 'last_params_trackers.ini'
             addPreProcessParams = False
             addPostProcessParams = False
@@ -10663,6 +10705,31 @@ class QDialogModelParams(QDialog):
             # restoreDefaultButton.clicked.connect(self.restoreDefault)
 
         self.okButton = okButton
+
+        self.extraArgsWidgets = None
+        if extraParams is not None:
+            if extraParamsTitle is None:
+                extraParamsTitle = 'Additional parameters'
+
+            self.extraGroupBox, self.extraArgsWidgets = self.createGroupParams(
+                extraParams, extraParamsTitle
+            )
+
+            extraDefaultButton = widgets.reloadPushButton('Restore default')
+            extraLoadLastSelButton = QPushButton('Load last parameters')
+            extraButtonsLayout = QHBoxLayout()
+            extraButtonsLayout.addStretch(1)
+            extraButtonsLayout.addWidget(extraDefaultButton)
+            extraButtonsLayout.addWidget(extraLoadLastSelButton)
+            extraDefaultButton.clicked.connect(self.restoreDefaultExtra)
+            section = f'{self.model_name}.extra'
+            extraLoadLastSelButton.clicked.connect(
+                partial(loadFunc, section, self.extraArgsWidgets)
+            )
+
+            scrollAreaLayout.addWidget(self.extraGroupBox)
+            scrollAreaLayout.addLayout(extraButtonsLayout)
+
         scrollAreaLayout.addWidget(initGroupBox)
         scrollAreaLayout.addLayout(initButtonsLayout)
         if not self.skipSegmentation:
@@ -10751,9 +10818,12 @@ class QDialogModelParams(QDialog):
             initLoadLastSelButton.click()
             if not self.skipSegmentation:
                 segmentLoadLastSelButton.click()
+            
+            if self.extraArgsWidgets is not None:
+                extraLoadLastSelButton.click()
         
-        if postProcessLayout is not None:
-            postProcLoadLastSelButton.click()
+            if postProcessLayout is not None:
+                postProcLoadLastSelButton.click()
 
         try:
             self.connectCustomSignals(model_module)
@@ -11133,6 +11203,7 @@ class QDialogModelParams(QDialog):
         text = html_utils.paragraph(text)
         param_name = self.sender().param_name
         msg = widgets.myMessageBox(wrapText=False)
+        printl(text)
         msg.information(self, f'Info about `{param_name}` parameter', text)
     
     def restoreDefaultInit(self):
@@ -11143,6 +11214,12 @@ class QDialogModelParams(QDialog):
 
     def restoreDefaultSegment(self):
         for argWidget in self.argsWidgets:
+            defaultVal = argWidget.defaultVal
+            widget = argWidget.widget
+            argWidget.valueSetter(widget, defaultVal)
+    
+    def restoreDefaultExtra(self):
+        for argWidget in self.extraArgsWidgets:
             defaultVal = argWidget.defaultVal
             widget = argWidget.widget
             argWidget.valueSetter(widget, defaultVal)
@@ -11159,10 +11236,12 @@ class QDialogModelParams(QDialog):
         configPars.read(self.ini_path)
         return configPars
 
-    def setValuesFromParams(self, init_params, segment_params):
+    def setValuesFromParams(self, init_params, segment_params, extra_params):
         sections = {
             f'{self.model_name}.init': (init_params, self.init_argsWidgets),
-            f'{self.model_name}.segment': (segment_params, self.argsWidgets)
+            f'{self.model_name}.segment': (segment_params, self.argsWidgets),
+            f'{self.model_name}.extra': (extra_params, self.extraArgsWidgets)
+            
         }
         for section, values in sections.items():
             params, argWidgetList = values
@@ -11288,6 +11367,11 @@ class QDialogModelParams(QDialog):
                 return
             
         self.init_kwargs = self.argsWidgets_to_kwargs(self.init_argsWidgets)
+
+        if self.extraArgsWidgets:
+            self.extra_kwargs = self.argsWidgets_to_kwargs(
+                self.extraArgsWidgets
+            )
         if not self.skipSegmentation:
             self.model_kwargs = self.argsWidgets_to_kwargs(
                 self.argsWidgets
@@ -11331,10 +11415,15 @@ class QDialogModelParams(QDialog):
         
         self.configPars[f'{self.model_name}.init'] = {}
         self.configPars[f'{self.model_name}.segment'] = {}
+        self.configPars[f'{self.model_name}.extra'] = {}
+
         for key, val in self.init_kwargs.items():
             self.configPars[f'{self.model_name}.init'][key] = str(val)
         for key, val in self.model_kwargs.items():
             self.configPars[f'{self.model_name}.segment'][key] = str(val)
+        if self.extraArgsWidgets:
+            for key, val in self.extra_kwargs.items():
+                self.configPars[f'{self.model_name}.extra'][key] = str(val)
 
         self.configPars[f'{self.model_name}.postprocess'] = {}
         if self.postProcessGroupbox is not None:
@@ -16368,9 +16457,7 @@ class PreProcessRecipeDialogUtil(PreProcessRecipeDialog):
             parent=parent,
             hideOnClosing=False
         )
-        
-        printl('0')
-        
+                
         self.listSelector = widgets.listWidget(
             isMultipleSelection=True, minimizeHeight=True
         )
