@@ -17405,7 +17405,7 @@ class guiWin(QMainWindow):
             self.navigateScrollBar.actionTriggered.disconnect()
             self.navigateScrollBar.sliderReleased.disconnect()
             self.navigateScrollBar.sliderMoved.disconnect()
-            self.navigateScrollBar.valueChanged.disconnect()
+            # self.navigateScrollBar.valueChanged.disconnect()
             self.navigateScrollBar.setSliderPosition(self.navSpinBox.value())
         except Exception as e:
             if "disconnect()" not in str(e):
