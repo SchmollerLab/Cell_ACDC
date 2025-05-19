@@ -2,14 +2,21 @@ import numpy as np
 
 from natsort import natsorted
 
+from cellacdc import printl
+
 # If you want to calculate the metric for each channel, set this to True. 
 # If you want to calculate the metric only once after metrics for all channels 
 # have been computed, set this to False.
 CALCULATE_FOR_EACH_CHANNEL = False
 
-def channel_indipendent_metric_example(
-        signals, autoBkgr, dataPrepBkgr, objectRp, metrics_values, images, lab,
-        other_channel_foregr_img, correct_with_bkgr=False, which_bkgr='auto', 
+def channel_indipendent_metric(
+        all_channels_signals, 
+        all_channels_autoBkgr, 
+        all_channels_dataPrepBkgr, 
+        objectRp, 
+        metrics_values, 
+        images, 
+        lab, 
         isSegm3D=False
     ):
     """Shows how to combine multiple metrics in a channel-indipendent manner 
@@ -17,15 +24,15 @@ def channel_indipendent_metric_example(
 
     Parameters
     ----------
-    signals : dictionary of numpy 1D arrays
+    all_channels_signals : dictionary of numpy 1D arrays
         Dictionary with channel names as keys and the numpy array as value 
         with all the intensities of the signal from each single segmented object.
-    autoBkgr : dictionary of single numeric value
+    all_channels_autoBkgr : dictionary of single numeric value
         Dictionary with channel names as keys and as value the median of all 
         the background pixels (i.e. pixels with value 0 in the
         segmentation mask). Pass None if background correction with
         this value is not needed.
-    dataPrepBkgr : dictionary of single numeric value
+    all_channels_dataPrepBkgr : dictionary of single numeric value
         Dictionary with channel names as keys and as value the median of all 
         the pixels inside the background ROIs added during the
         data prep step (Cell-ACDC module 1).
@@ -46,11 +53,6 @@ def channel_indipendent_metric_example(
         signal as value
     lab : numpy array
         Segmentation mask of `image`
-    correct_with_bkgr : boolean
-        Pass True if you need background correction.
-    which_bkgr : string
-        which_bkgr='auto' for correction with autoBkgr or
-        which_bkgr='dataPrep' for correction with dataPrepBkgr
 
     Returns
     -------
@@ -59,9 +61,6 @@ def channel_indipendent_metric_example(
     
     Notes
     -----
-    The function name must be the same of the Python file name. In this example, 
-    the Python file is called channel_indipendent_metric_example.py and the function
-    is called channel_indipendent_metric_example.
     
     1. The function must have the same name as the Python file containing it 
        (e.g., if this file is called CV.py the function must be called CV)
@@ -72,14 +71,21 @@ def channel_indipendent_metric_example(
     This implementation shows how to compute the ratio of the amount between 
     the first two channels (alphabetically) divided by the cell_vol_fl. 
     """
-    channels = list(signals.keys())
+    
+    channels = list(all_channels_signals.keys())
     channels = natsorted(channels)
     channel_1 = channels[0]
-    channel_2 = channels[1]
+    
+    try:
+        channel_2 = channels[1]
+    except IndexError:
+        # Only one channel loaded. Returning 0.
+        return 0.0
     
     ch1_amount_key = [
         key for key in metrics_values 
         if key.startswith(f'{channel_1}_amount_autoBkgr')][0]
+    
     ch1_amount = metrics_values[ch1_amount_key]
     
     ch2_amount_key = [

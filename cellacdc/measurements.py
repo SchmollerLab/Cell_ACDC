@@ -1093,32 +1093,32 @@ def get_foregr_data(foregr_img, isSegm3D, z):
 
 def get_cell_volumes_areas(df):
     try:
-        cell_vol_vox = df.loc['cell_vol_vox']
+        cell_vol_vox = df['cell_vol_vox'].to_list()
     except Exception as e:
         cell_vol_vox = [np.nan]*len(df)
     
     try:
-        cell_vol_fl = df.loc['cell_vol_fl']
+        cell_vol_fl = df['cell_vol_fl'].to_list()
     except Exception as e:
         cell_vol_fl = [np.nan]*len(df)
     
     try:
-        cell_vol_vox_3D = df.loc['cell_vol_vox_3D']
+        cell_vol_vox_3D = df['cell_vol_vox_3D'].to_list()
     except Exception as e:
         cell_vol_vox_3D = [np.nan]*len(df)
     
     try:
-        cell_vol_fl_3D = df.loc['cell_vol_fl_3D']
+        cell_vol_fl_3D = df['cell_vol_fl_3D'].to_list()
     except Exception as e:
         cell_vol_fl_3D = [np.nan]*len(df)
     
     try:
-        cell_area_pxl = df.loc['cell_area_pxl']
+        cell_area_pxl = df['cell_area_pxl'].to_list()
     except Exception as e:
         cell_area_pxl = [np.nan]*len(df)
     
     try:
-        cell_area_um2 = df.loc['cell_vol_fl_3D']
+        cell_area_um2 = df['cell_vol_fl_3D'].to_list()
     except Exception as e:
         cell_area_um2 = [np.nan]*len(df)
     
@@ -1526,7 +1526,8 @@ def add_size_metrics(
     return df
 
 def add_ch_indipend_custom_metrics(
-        df, rp, all_channels_foregr_data, 
+        df: pd.DataFrame, 
+        rp, all_channels_foregr_data, 
         ch_indipend_custom_func_params,
         isSegm3D, lab, all_channels_foregr_imgs, 
         all_channels_z_slices=None, 
@@ -1595,7 +1596,8 @@ def add_ch_indipend_custom_metrics(
 
 
 def add_custom_metrics(
-        df, rp, channel, foregr_data, custom_metrics_params,
+        df: pd.DataFrame, 
+        rp, channel, foregr_data, custom_metrics_params,
         isSegm3D, lab, foregr_img, other_channels_foregr_imgs, 
         z_slice=None, text_to_append_to_col='',
         customMetricsCritical=None
@@ -1817,7 +1819,7 @@ def get_ch_indipend_custom_metric_value(
     if isSegm3D and cell_vols_vox_3D is not None and cell_vols_fl_3D is not None:
         metrics_obj['cell_vol_vox_3D'] = cell_vols_vox_3D[i]
         metrics_obj['cell_vol_fl_3D'] = cell_vols_fl_3D[i]
-    
+
     additional_args_kwargs = (
         ((), {}),
         ((obj,), {}), 

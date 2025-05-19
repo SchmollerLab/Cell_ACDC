@@ -43,6 +43,7 @@ def CV(
         Coefficient of Variation
 
     """
+    
     if correct_with_bkgr:
         if which_bkgr=='auto':
             signal = signal - autoBkgr
