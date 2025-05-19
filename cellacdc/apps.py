@@ -4669,8 +4669,9 @@ class ApplyTrackTableSelectColumnsDialog(QBaseDialog):
 
 
 class QDialogSelectModel(QDialog):
-    def __init__(self, parent=None, addSkipSegmButton=False,
-                 customFirst=None):
+    def __init__(
+            self, parent=None, addSkipSegmButton=False, customFirst=''
+        ):
         self.cancel = True
         super().__init__(parent)
         self.setWindowTitle('Select model')
