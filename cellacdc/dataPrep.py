@@ -1098,6 +1098,7 @@ class dataPrepWin(QMainWindow):
                 file.endswith('bkgrRoiData.npz')
                 or file.endswith('dataPrep_bkgrROIs.json')
                 or file.endswith('segmInfo.csv')
+                or file.endswith('dataPrepFreeRoi.npz')
             )
             is_metadata_file = file.endswith('metadata.csv')
             if not copy_file and not is_metadata_file:
@@ -1501,7 +1502,7 @@ class dataPrepWin(QMainWindow):
         else:
             self.reAddROIs()
             
-    def getCroppedData(self, askCropping=True):
+    def getCroppedData(self, askCropping=True, doValidateFreeRoi=False):
         for p, posData in enumerate(self.data):
             self.saveBkgrROIs(posData)
 
@@ -1543,8 +1544,9 @@ class dataPrepWin(QMainWindow):
                 self.titleLabel.setText(txt, color='r')
                 self.logger.info(txt)
                 yield 'continue'
+            elif not doValidateFreeRoi:
+                yield croppedShapes, posData, SizeZ, doCrop
             else:
-                posData.loadDataPrepFreeRoi(logger_func=self.logger.info)
                 proceed = self.validateFreeRoi(posData, warn=p==0)
                 if not proceed:
                     self.setEnabledCropActions(True)
@@ -1581,43 +1583,50 @@ class dataPrepWin(QMainWindow):
         
         is_free_roi_in_crop_bounds = (
             x0f >= x0 and x1f <= x1 and y0f >= y0 and y1f <= y1
-        )
-        if is_free_roi_in_crop_bounds:
-            return True
-        
-        if warn:
+        )        
+        if not is_free_roi_in_crop_bounds and warn:
             proceed = self.warnFreeRoiOverlapsWithCropRoi()
         else:
             proceed = True
-    
-        if proceed:
-            local_mask = posData.dataPrepFreeRoiLocalMask
-            x0f -= x0; y0f -= y0
-            crop_x0, crop_y0, crop_x1, crop_y1 = None, None, None, None
-            if x0f < 0:
-                crop_x0 = abs(x0f)
-                x0f = 0
-            
-            if y0f < 0:
-                crop_y0 = abs(y0f)
-                y0f = 0
-                
-            if x1f > x1:
-                crop_x1 = x1 - x1f
-                x1f = w
-            
-            if y1f > y1:
-                crop_y1 = y1 - y1f
-                y1f = h
 
-            local_mask = posData.dataPrepFreeRoiLocalMask[
-                crop_y0:crop_y1, crop_x0:crop_x1
-            ]
-            bbox = (y0f, x0f, y1f, x1f)
-            posData.saveDataPrepFreeRoi(
-                self.freeRoiItem, logger_func=self.logger.info,
-                bbox=bbox, local_mask=local_mask
-            )
+        if not proceed:
+            return False
+        
+        # Adjust free-hand ROI according to crop ROI
+        local_mask = posData.dataPrepFreeRoiLocalMask
+        crop_x0, crop_y0, crop_x1, crop_y1 = None, None, None, None
+        if x0f < x0:
+            crop_x0 = x0 - x0f
+            x0f = 0
+        else:
+            x0f = x0f - x0
+        
+        if y0f < y0:
+            crop_y0 = y0 - y0f
+            y0f = 0
+        else:
+            y0f = y0f - y0
+            
+        if x1f > x1:
+            crop_x1 = x1 - x1f
+            x1f = w
+        else:
+            x1f = x1f - y0
+        
+        if y1f > y1:
+            crop_y1 = y1 - y1f
+            y1f = h
+        else:
+            y1f = y1f - y0
+
+        local_mask = posData.dataPrepFreeRoiLocalMask[
+            crop_y0:crop_y1, crop_x0:crop_x1
+        ]
+        bbox = (y0f, x0f, y1f, x1f)
+        posData.saveDataPrepFreeRoi(
+            self.freeRoiItem, logger_func=self.logger.info,
+            bbox=bbox, local_mask=local_mask
+        )
     
         return proceed
     
@@ -1709,7 +1718,9 @@ class dataPrepWin(QMainWindow):
     @exception_handler
     def cropAndSave(self):
         cropPaths = {}
-        for cropInfo in self.getCroppedData(askCropping=True):
+        for cropInfo in self.getCroppedData(
+                askCropping=True, doValidateFreeRoi=True
+            ):
             if cropInfo is None:
                 # Process cancelled by the user
                 return

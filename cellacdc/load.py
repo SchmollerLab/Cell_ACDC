@@ -1719,7 +1719,9 @@ class loadData:
         return dataPrepFreeRoiPath
     
     def saveDataPrepFreeRoi(
-            self, roiItem: 'widgets.PlotCurveItem', logger_func=print,
+            self, 
+            roiItem: 'widgets.PlotCurveItem', 
+            logger_func=print,
             local_mask=None, bbox=None
         ):
         dataPrepFreeRoiPath = self.dataPrepFreeRoiPath()
@@ -1730,8 +1732,9 @@ class loadData:
             local_mask = roiItem.mask()
         
         if bbox is None:
-            y0, x0, y1, x1 = roiItem.bbox()
-            
+            bbox = roiItem.bbox()
+        
+        y0, x0, y1, x1 = bbox
         key = f'{x0}_{y0}_{x1}_{y1}'
         data = {key: local_mask}
         np.savez_compressed(dataPrepFreeRoiPath, **data)
