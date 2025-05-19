@@ -1366,7 +1366,7 @@ class filenameDialog(QDialog):
         buttonsLayout.addWidget(cancelButton)
 
         if addDoNotSaveButton:
-            doNotSaveButton = QPushButton('Do not save')
+            doNotSaveButton = widgets.noPushButton('Do not save')
             doNotSaveButton.clicked.connect(self.doNotSave_cb)
             buttonsLayout.addWidget(doNotSaveButton)
             self.doNotSave = False
