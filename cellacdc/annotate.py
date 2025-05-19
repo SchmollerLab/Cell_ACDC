@@ -366,6 +366,24 @@ class TextAnnotationsScatterItem(pg.ScatterPlotItem):
         pointItem.setBrush(self._brushes['new_object'])
         pointItem.setPen(self._pens['new_object'])
 
+    def removeHighlightObject(self, obj):
+        ID = obj.label
+        objIdx = None
+        for idx, objData in enumerate(self.data):
+            if ID == objData['data']:
+                objIdx = idx
+                break
+        if objIdx is None:
+            return
+
+        pointItem = self.points()[objIdx]
+
+        default_symbol = self.getObjTextAnnotSymbol(str(ID), bold=False)
+        pointItem.setSymbol(default_symbol)
+
+        pointItem.setBrush(self._brushes['label'])
+        pointItem.setPen(self._pens['label'])
+    
     def modifyPosAnchor(self, pointOpts, anchor, symbol):
         if anchor is None:
             return pointOpts
@@ -612,6 +630,9 @@ class TextAnnotations:
     
     def highlightObject(self, obj):
         self.item.highlightObject(obj)
+    
+    def removeHighlightObject(self, obj):
+        self.item.removeHighlightObject(obj)
     
     def grayOutAnnotations(self, IDsToSkip=None):
         self.item.grayOutAnnotations(IDsToSkip=IDsToSkip)

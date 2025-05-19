@@ -1,5 +1,5 @@
 import os
-from cellacdc.trackers.CellACDC.CellACDC_tracker import calc_IoA_matrix
+from cellacdc.trackers.CellACDC.CellACDC_tracker import calc_Io_matrix
 from cellacdc.trackers.CellACDC.CellACDC_tracker import track_frame as track_frame_base
 from cellacdc.core import getBaseCca_df, printl
 from cellacdc.myutils import checked_reset_index
@@ -8,6 +8,7 @@ from skimage.measure import regionprops
 from tqdm import tqdm
 import pandas as pd
 from cellacdc.myutils import exec_time
+from cellacdc._types import NotGUIParam
 
 def filter_cols(df):
     """
@@ -210,7 +211,7 @@ def create_lineage_tree_video(segm_video, IoA_thresh_daughter, min_daughter, max
     for i, frame in enumerate(segm_video[1:], start=1):
         rp = regionprops(frame)
         prev_rp = regionprops(segm_video[i-1])
-        IoA_matrix, IDs_curr_untracked, IDs_prev = calc_IoA_matrix(frame, segm_video[i-1], rp, prev_rp)
+        IoA_matrix, IDs_curr_untracked, IDs_prev = calc_Io_matrix(frame, segm_video[i-1], rp, prev_rp)
         _, mother_daughters = mother_daughter_assign(IoA_matrix, IoA_thresh_daughter, min_daughter, max_daughter)
         assignments = IDs_curr_untracked #bc we dont track the frame
         tree.create_tracked_frame_tree(i, mother_daughters, IDs_prev, IDs_curr_untracked, assignments)
@@ -556,7 +557,8 @@ class normal_division_tracker:
         self.tracked_video = np.zeros_like(segm_video)
         self.tracked_video[0] = segm_video[0]
 
-    def track_frame(self, frame_i, lab=None, prev_lab=None, rp=None, prev_rp=None):
+    def track_frame(self, frame_i, lab=None, prev_lab=None, rp=None, prev_rp=None,
+                    IDs=None):
         """
         Tracks a single frame in the video sequence.
 
@@ -582,10 +584,11 @@ class normal_division_tracker:
         if prev_rp is None:
             prev_rp = regionprops(prev_lab.copy())
 
-        IoA_matrix, self.IDs_curr_untracked, self.IDs_prev = calc_IoA_matrix(lab,
+        IoA_matrix, self.IDs_curr_untracked, self.IDs_prev = calc_Io_matrix(lab,
                                                                              prev_lab,
                                                                              self.rp,
-                                                                             prev_rp
+                                                                             prev_rp,
+                                                                             IDs=IDs,
                                                                              )
         self.aggr_track, self.mother_daughters = mother_daughter_assign(IoA_matrix,
                                                                         IoA_thresh_daughter=self.IoA_thresh_daughter,
@@ -798,7 +801,7 @@ class normal_division_lineage_tree:
         if not np.any(prev_rp):
             prev_rp = regionprops(prev_lab)
 
-        IoA_matrix, self.IDs_curr_untracked, self.IDs_prev = calc_IoA_matrix(lab, prev_lab, rp, prev_rp)
+        IoA_matrix, self.IDs_curr_untracked, self.IDs_prev = calc_Io_matrix(lab, prev_lab, rp, prev_rp)
         aggr_track, self.mother_daughters = mother_daughter_assign(IoA_matrix, 
                                                                    IoA_thresh_daughter=self.IoA_thresh_daughter, 
                                                                    min_daughter=self.min_daughter, 
@@ -1198,7 +1201,7 @@ class tracker:
     - track(): Tracks cell division in the video sequence. (Used for module 2)
     - track_frame(): Tracks cell division in a single frame. (Used for GUI tracking)
     - updateGuiProgressBar(): Updates the GUI progress bar. (Used for GUI communication)
-    - save_output(): Signals to the rest of the programme that the lineage tree should be saved. (Used for fodule 2)
+    - save_output(): Signals to the rest of the programme that the lineage tree should be saved. (Used for module 2)
     """
     def __init__(self):
         """
@@ -1208,13 +1211,13 @@ class tracker:
 
     def track(self,
               segm_video,
-              IoA_thresh = 0.8,
-              IoA_thresh_daughter = 0.25,
-              IoA_thresh_aggressive = 0.5,
-              min_daughter = 2,
-              max_daughter = 2,
-              record_lineage = True,
-              return_tracked_lost_centroids = True,
+              IoA_thresh:float = 0.8,
+              IoA_thresh_daughter:float = 0.25,
+              IoA_thresh_aggressive:float = 0.5,
+              min_daughter:int = 2,
+              max_daughter:int = 2,
+              record_lineage:bool = True,
+              return_tracked_lost_centroids:bool = True,
               signals = None,
         ):
         """
@@ -1234,7 +1237,8 @@ class tracker:
         - list: Tracked video frames.
         """
         if not record_lineage and return_tracked_lost_centroids:
-            raise ValueError('return_tracked_lost_centroids can only be True if record_lineage is True.')
+            print('return_tracked_lost_centroids is set to True if record_lineage is True.')
+            record_lineage = True
         
         pbar = tqdm(total=len(segm_video), desc='Tracking', ncols=100)
 
@@ -1322,11 +1326,12 @@ class tracker:
     def track_frame(self,
                     previous_frame_labels,
                     current_frame_labels,
-                    IoA_thresh = 0.8,
-                    IoA_thresh_daughter = 0.25,
-                    IoA_thresh_aggressive = 0.5,
-                    min_daughter = 2,
-                    max_daughter = 2,
+                    IDs : NotGUIParam =None,
+                    IoA_thresh: float = 0.8,
+                    IoA_thresh_daughter:float = 0.25,
+                    IoA_thresh_aggressive:float  = 0.5,
+                    min_daughter:int = 2,
+                    max_daughter:int = 2,
                     ):
         """
         Tracks cell division in a single frame. (This is used for real time tracking in the GUI)
@@ -1351,7 +1356,7 @@ class tracker:
 
         segm_video = [previous_frame_labels, current_frame_labels]
         tracker = normal_division_tracker(segm_video, IoA_thresh_daughter, min_daughter, max_daughter, IoA_thresh, IoA_thresh_aggressive)
-        tracker.track_frame(1)
+        tracker.track_frame(1, IDs=IDs)
         tracked_video = tracker.tracked_video
 
         mother_daughters_pairs = tracker.mother_daughters

@@ -29,6 +29,8 @@ import skimage
 import inspect
 import typing
 from typing import List
+import traceback
+
 
 from natsort import natsorted
 
@@ -2476,7 +2478,7 @@ def check_napari_plugin(plugin_name, module_name, parent=None):
         raise e
 
 def _install_pip_package(pkg_name, install_dependencies=True):
-    command = [sys.executable, '-m', 'pip', 'install', pkg_name]
+    command = [sys.executable, '-m', 'pip', 'install', pkg_name, '--only-binary=:all:']
     if not install_dependencies:
         command.append('--no-deps')
     subprocess.check_call(
@@ -2537,7 +2539,7 @@ def check_cellpose_version(version: str):
 
 def check_install_cellpose(
         version: Literal['2.0', '3.0', 'any'] = '2.0', 
-        version_to_install_if_missing = Literal['2.0', '3.0']
+        version_to_install_if_missing: Literal['2.0', '3.0'] = '3.0'
     ):
     if version == 'any':
         try:
@@ -2751,7 +2753,7 @@ def check_install_package(
     ------
     ModuleNotFoundError
         Error raised if process is cancelled and `raise_on_cancel=True`.
-    """    
+    """
     if not import_pkg_name:
         import_pkg_name = pkg_name
     
@@ -3353,7 +3355,7 @@ def import_segment_module(model_name):
         spec = importlib.util.spec_from_file_location('acdcSegment', model_path)
         acdcSegment = importlib.util.module_from_spec(spec)
         sys.modules['acdcSegment'] = acdcSegment
-        spec.loader.exec_module(acdcSegment) 
+        spec.loader.exec_module(acdcSegment)
     return acdcSegment
 
 def _warn_install_torch_cuda(model_name, qparent=None):
@@ -4006,3 +4008,89 @@ def validate_tracker_input(tracker, segm_video_to_track):
         printl(traceback.format_exc())
         pass
     return
+def format_IDs(IDs):
+    if isinstance(IDs, str):
+        raise ValueError('IDs must not be a string')
+
+    IDsRange = []
+    text = ''
+    sorted_vals = sorted(IDs)
+    for i, e in enumerate(sorted_vals):
+        e = int(e)
+        # Get previous and next value (if possible)
+        if i > 0:
+            prevVal = sorted_vals[i-1]
+        else:
+            prevVal = -1
+        if i < len(sorted_vals)-1:
+            nextVal = sorted_vals[i+1]
+        else:
+            nextVal = -1
+
+        if e-prevVal == 1 or nextVal-e == 1:
+            if not IDsRange:
+                if nextVal-e == 1 and e-prevVal != 1:
+                    # Current value is the first value of a new range
+                    IDsRange = [e]
+                else:
+                    # Current value is the second element of a new range
+                    IDsRange = [prevVal, e]
+            else:
+                if e-prevVal == 1:
+                    # Current value is part of an ongoing range
+                    IDsRange.append(e)
+                else:
+                    # Current value is the first element of a new range 
+                    # --> create range text and this element will 
+                    # be added to the new range at the next iter
+                    start, stop = IDsRange[0], IDsRange[-1]
+                    if stop-start > 1:
+                        sep = '-'
+                    else:
+                        sep = ','
+                    text = f'{text},{start}{sep}{stop}'
+                    IDsRange = []
+        else:
+            # Current value doesn't belong to a range
+            if IDsRange:
+                # There was a range not added to text --> add it now
+                start, stop = IDsRange[0], IDsRange[-1]
+                if stop-start > 1:
+                    sep = '-'
+                else:
+                    sep = ','
+                text = f'{text},{start}{sep}{stop}'
+            
+            text = f'{text},{e}'    
+            IDsRange = []
+
+    if IDsRange:
+        # Last range was not added  --> add it now
+        start, stop = IDsRange[0], IDsRange[-1]
+        text = f'{text},{start}-{stop}'
+
+    text = text[1:]
+
+    return text
+
+
+def print_call_stack(debug=True, depth=None):
+    if not debug:
+        return
+    stack = traceback.format_stack()
+    stack = stack[:-1]
+    if depth:
+        depth = depth + 1
+        stack = stack[-depth:] 
+    print("Call stack:")
+    for line in stack:
+        print(line.strip())
+
+def get_empty_stored_data_dict():
+    return {
+            'regionprops': None,
+            'labels': None,
+            'acdc_df': None,
+            'delROIs_info': {'rois': [], 'delMasks': [], 'delIDsROI': []},
+            'IDs': []
+        }
