@@ -116,6 +116,7 @@ class segmWorker(QRunnable):
             is_segment3DT_available=mainWin.is_segment3DT_available, 
             preproc_recipe=mainWin.preproc_recipe, 
             reduce_memory_usage=mainWin.reduce_memory_usage,
+            use_freehand_ROI=mainWin.useFreeHandROI,
         )
     
     def run_kernel(self, mainWin):
@@ -283,7 +284,22 @@ class segmWin(QMainWindow):
 
     def askHowToHandleROI(self, posData):
         if len(posData.dataPrepFreeRoiPoints) > 0:
-            return False, True
+            txt = html_utils.paragraph(f"""
+                Cell-ACDC detected a free-hand ROI from Data-prep module.<br><br>
+                Do you want to use it?<br><br>
+                If yes, the segmentation will be performed only in the 
+                selected region.
+            """)
+            msg = widgets.myMessageBox(wrapText=False)
+            _, noButton, yesButton = msg.question(
+                self, 'Use the free-hand ROI?', txt,
+                buttonsTexts = (
+                    'Cancel', 
+                    'No, segment the entire image', 
+                    'Yes, use the free-hand ROI'
+                )
+            )
+            return False, False, msg.clickedButton == yesButton
         
         if posData.dataPrep_ROIcoords is None:
             href = html_utils.href_tag('here', urls.dataprep_docs)
@@ -295,7 +311,7 @@ class segmWin(QMainWindow):
             """)
         elif int(posData.dataPrep_ROIcoords.at[(0, 'cropped'), 'value']) > 0:
             # Data is cropped, do not ask to segment a roi
-            return False, False
+            return False, False, False
         else:
             SizeY, SizeX = posData.img_data.shape[-2:]
             x0 = int(posData.dataPrep_ROIcoords.at[(0, 'x_left'), 'value'])
@@ -304,7 +320,7 @@ class segmWin(QMainWindow):
             y1 = int(posData.dataPrep_ROIcoords.at[(0, 'y_bottom'), 'value'])
             if x0 == 0 and y0 == 0 and y1==SizeY and y1 == SizeX:
                 # ROI is present but with same shape as image --> ignore
-                return False, False
+                return False, False, False
             
             note = html_utils.to_admonition("""
                 If you need to modify the existing ROI, cancel the process 
@@ -320,7 +336,7 @@ class segmWin(QMainWindow):
         _, yesButton, noButton = msg.question(self, 'ROI?', txt,
             buttonsTexts = ('Cancel','Yes','No')
         )
-        return msg.cancel, msg.clickedButton == yesButton
+        return msg.cancel, msg.clickedButton == yesButton, False
     
     def main(self):
         self.getMostRecentPath()
@@ -687,13 +703,14 @@ class segmWin(QMainWindow):
 
         # Ask ROI
         selectROI = False
-        cancel, useROI = self.askHowToHandleROI(posData)
+        cancel, useROI, useFreeHandROI = self.askHowToHandleROI(posData)
         if cancel:
             abort = self.doAbort()
             if abort:
                 self.close()
                 return
 
+        self.useFreeHandROI = useFreeHandROI
         self.ROIdeactivatedByUser = False
         if useROI:
             # User requested ROI but it was not present --> ask later

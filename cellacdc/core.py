@@ -2106,7 +2106,8 @@ class SegmKernel(_WorkflowKernel):
             logger_func=print,
             innerPbar_available=False,
             is_segment3DT_available=False, 
-            reduce_memory_usage=False
+            reduce_memory_usage=False,
+            use_freehand_ROI=True
         ):
         self.user_ch_name = user_ch_name
         self.segm_endname = segm_endname
@@ -2131,6 +2132,7 @@ class SegmKernel(_WorkflowKernel):
         self.is_segment3DT_available = is_segment3DT_available
         self.reduce_memory_usage = reduce_memory_usage
         self.preproc_recipe = preproc_recipe
+        self.use_freehand_ROI = use_freehand_ROI
         if signals is None:
             self.signals = KernelCliSignals(logger_func)
         else:
@@ -2473,7 +2475,7 @@ class SegmKernel(_WorkflowKernel):
 
         posData.saveSamEmbeddings(logger_func=self.logger_func)
         
-        if len(posData.dataPrepFreeRoiPoints) > 0:
+        if len(posData.dataPrepFreeRoiPoints) > 0 and self.use_freehand_ROI:
             self.logger_func(
                 'Removing objects outside the dataprep free-hand ROI...'
             )
