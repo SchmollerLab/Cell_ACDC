@@ -28,7 +28,7 @@ import pandas as pd
 import skimage
 import inspect
 import typing
-from typing import List
+from typing import List, Callable
 import traceback
 
 
@@ -2477,13 +2477,49 @@ def check_napari_plugin(plugin_name, module_name, parent=None):
         msg.critical(parent, f'Napari plugin required', txt)
         raise e
 
-def _install_pip_package(pkg_name, install_dependencies=True):
-    command = [sys.executable, '-m', 'pip', 'install', pkg_name, '--only-binary=:all:']
+def _install_pip_package(
+        pkg_name: str,
+        logger: Callable = print,
+        install_dependencies: bool = True,
+        force_binary: bool = True,
+        pref_binary: bool = True,
+        ) -> None:
+    command = [sys.executable, '-m', 'pip', 'install', pkg_name,]
+    if force_binary:
+        command.append('--only-binary=:all:')
+    elif pref_binary:
+        command.append('--prefer-binary')
     if not install_dependencies:
         command.append('--no-deps')
-    subprocess.check_call(
-        command
-        )
+    try:
+        subprocess.check_call(
+            command
+            )
+    except subprocess.CalledProcessError as e:
+        if "--only-binary=:all:" in str(e):
+            logger(f"Error: {pkg_name} does not have a binary distribution available, trying preferred binary.")
+            _install_pip_package(
+                pkg_name=pkg_name,
+                logger=logger,
+                install_dependencies=install_dependencies,
+                force_binary=False,
+                pref_binary=True,
+            )
+        elif "--prefer-binary" in str(e):
+            logger(f"Error: {pkg_name} does not have a preferred binary distribution available, trying source.")
+            command.remove('--prefer-binary')
+            command.append('--no-binary=:all:')
+            _install_pip_package(
+                pkg_name=pkg_name,
+                logger=logger,
+                install_dependencies=install_dependencies,
+                force_binary=False,
+                pref_binary=False,
+            )
+        else:
+            logger(f"""Error: {pkg_name} installation failed. Please check the error message. This is probably due to the package 
+                   not being available for your platform or python version.""")
+            raise e
 
 def uninstall_pip_package(pkg_name):
     subprocess.check_call(
