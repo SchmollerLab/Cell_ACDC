@@ -2538,8 +2538,8 @@ def check_cellpose_version(version: str):
     return is_version_correct
 
 def check_install_cellpose(
-        version: Literal['2.0', '3.0', 'any'] = '2.0', 
-        version_to_install_if_missing: Literal['2.0', '3.0'] = '3.0'
+        version: Literal['2.0', '3.0', '4.0', 'any'] = '2.0', 
+        version_to_install_if_missing: Literal['2.0', '3.0'] = '4.0'
     ):
     if version == 'any':
         try:

@@ -4,7 +4,7 @@ from cellacdc import myutils, printl
 
 from cellacdc.models.cellpose_v2 import acdcSegment as acdc_cp2
 from . import _denoise
-
+import torch
 class AvailableModels:
     major_version = myutils.get_cellpose_major_version()
     if major_version == 3:
@@ -14,21 +14,40 @@ class AvailableModels:
         from . import CELLPOSE_V2_MODELS
         values = CELLPOSE_V2_MODELS
 
-class Model:
+    is_exclusive_with = ['model_path']
+    default_exclusive = 'Using custom model'
+    
+class backboneOptions:
+    """Options for cellpose backbone"""
+    values = ['default', "transformer"]
+
+CellposeV2Model = acdc_cp2.Model
+
+class Model(CellposeV2Model):
     def __init__(
             self, 
-            model_type: AvailableModels='cyto3', 
-            gpu=False,
-            directml_gpu=False,
-            device='None',
-            denoise_before_segmentation=False,
+            model_type: AvailableModels='cyto3',
+            model_path: os.PathLike='',
+            gpu: bool=False,
+            directml_gpu: bool=False,
+            device:torch.device|int='None',
+            denoise_before_segmentation:bool=False,
             denoise_model_type: _denoise.DenoiseModelTypes='one-click', 
             denoise_mode: _denoise.DenoiseModes='denoise',
+            backbone: backboneOptions='default',
         ):
-        """Initialize cellpose 3.0 denoising model
+        """Initialize cellpose 3 model
 
         Parameters
         ----------
+        model_type : AvailableModels, optional
+            Cellpose model type to use. Default is 'cyto3'. Mutually exclusive
+            with `model_path`. If you want to use a custom model, set
+            `model_path` to the path of the model file.
+        model_path : os.PathLike, optional
+            Path to a custom cellpose model file. If set, it will override
+            `model_type`. If you want to use a custom model, set this to the
+            path of the model file. Default is None.
         gpu : bool, optional
             If True and PyTorch for your GPU is correctly installed, 
             denoising and segmentation processes will run on the GPU. 
@@ -47,10 +66,12 @@ class Model:
             Either 'one-click' or 'nuclei'. Default is 'one-click'
         denoise_mode : str, optional
             Either 'denoise' or 'deblur'. Default is 'denoise'
+        backbone : str, optional
+            "default" is the standard res-unet, "transformer" for the segformer. 
         """ 
-        self.acdcCellpose = acdc_cp2.Model(
-            model_type, gpu=gpu, device=device,
-            directml_gpu=directml_gpu
+        super().__init__(
+            model_type=model_type, model_path=model_path, gpu=gpu, device=device,
+            directml_gpu=directml_gpu, backbone=backbone,
         )
         self.denoiseModel = None
         if denoise_before_segmentation:
@@ -61,24 +82,25 @@ class Model:
             )
         
     def segment(
-            self, image,
-            diameter=0.0,
-            flow_threshold=0.4,
-            cellprob_threshold=0.0,
-            stitch_threshold=0.0,
-            min_size=15,
-            anisotropy=0.0,
-            normalize=True,
-            resample=True,
-            segment_3D_volume=False,
-            denoise_normalize=False,
-            rescale_intensity_low_val_perc=0.0, 
-            rescale_intensity_high_val_perc=100.0, 
-            sharpen=0,
-            low_percentile=1.0, 
-            high_percentile=99.0,
-            title_norm=0,
-            norm3D=False            
+            self, 
+            image,
+            diameter:float=0.0,
+            flow_threshold:float=0.4,
+            cellprob_threshold:float=0.0,
+            stitch_threshold:float=0.0,
+            min_size:int=15,
+            anisotropy:float=0.0,
+            normalize:bool=True,
+            resample:bool=True,
+            segment_3D_volume:bool=False,
+            denoise_normalize:bool=False,
+            rescale_intensity_low_val_perc:float=0.0, 
+            rescale_intensity_high_val_perc:float=100.0, 
+            sharpen:int=0,
+            low_percentile:float=1.0, 
+            high_percentile:float=99.0,
+            title_norm:int=0,
+            norm3D:bool=False            
         ):
         """Run cellpose 3.0 denoising + segmentation model
 
@@ -156,7 +178,7 @@ class Model:
                 title_norm=title_norm,
                 norm3D=norm3D
             )
-        labels = self.acdcCellpose.segment(
+        labels =  super().segment(
             input_image,
             diameter=diameter,
             flow_threshold=flow_threshold,
@@ -190,25 +212,8 @@ class Model:
                 for image in video_data
             ]
         
-        labels = self.acdcCellpose.segment3DT(images, signals=signals, **kwargs)
+        labels =  super().segment3DT(images, signals=signals, **kwargs)
         return labels
-    
-    def setupLogger(self, logger):
-        self.acdcCellpose.setupLogger(logger)
-    
-    def setLoggerPropagation(self, propagate:bool):
-        self.acdcCellpose.setLoggerPropagation(propagate)
-
-    def setLoggerLevel(self, level:str):
-        self.acdcCellpose.setLoggerLevel(level)
-    
-    def closeLogger(self):
-        self.acdcCellpose.closeLogger()
-    
-    def second_ch_img_to_stack(self, first_ch_data, second_ch_data):
-        return self.acdcCellpose.second_ch_img_to_stack(
-            first_ch_data, second_ch_data
-        )
 
 def url_help():
     return 'https://cellpose.readthedocs.io/en/latest/api.html'

@@ -63,7 +63,7 @@ def is_second_channel_type(field):
     if is_optional(field):
         field = typing.get_args(field)[0]
     
-    return field.__name__ == 'SecondChannelImage'
+    return getattr(field, '__name__', None) == 'SecondChannelImage' # avoid union
 
 def is_widget_not_required(ArgSpec):
     try:

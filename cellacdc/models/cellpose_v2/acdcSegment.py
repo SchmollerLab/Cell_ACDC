@@ -10,6 +10,9 @@ import skimage.measure
 from cellpose import models
 from cellacdc import printl, myutils
 
+from _types import NotGUIParam
+
+import torch
 class AvailableModels:
     major_version = myutils.get_cellpose_major_version()
     if major_version == 3:
@@ -18,18 +21,83 @@ class AvailableModels:
     else:
         from . import CELLPOSE_V2_MODELS
         values = CELLPOSE_V2_MODELS
+    
+    is_exclusive_with = ['model_path']
+    default_exclusive = 'Using custom model'
 
 class Model:
     def __init__(
             self, 
             model_type: AvailableModels='cyto', 
-            net_avg=False, 
-            gpu=False,
-            device='None',
-            directml_gpu=False,
+            model_path: os.PathLike='',
+            net_avg:bool=False, 
+            gpu:bool=False,
+            directml_gpu:NotGUIParam=False,
+            device:torch.device|int='None',
+            custom_concatenation:bool=False,
+            custom_style_on:bool=True,
+            custom_residual_on:bool=True,
+            custom_diam_mean:float=30.0,
+            backbone:NotGUIParam=None,
+
         ):
+        """Initialize cellpose 2  model
+
+        Parameters
+        ----------
+        model_type : AvailableModels, optional
+            Cellpose model type to use. Default is 'cyto3'. Mutually exclusive
+            with `model_path`. If you want to use a custom model, set
+            `model_path` to the path of the model file.
+        model_path : os.PathLike, optional
+            Path to a custom cellpose model file. If set, it will override
+            `model_type`. If you want to use a custom model, set this to the
+            path of the model file. Default is None.
+        gpu : bool, optional
+            If True and PyTorch for your GPU is correctly installed, 
+            denoising and segmentation processes will run on the GPU. 
+            Default is False
+        directml_gpu : bool, optional
+            If True, will attempt to use DirectML for GPU acceleration.
+            Only for v3 and v4. v2 loads the model later, which causes problems. Dont want to edit cellpose code too much...
+        device : torch.device or int or None
+            If not None, this is the device used for running the model
+            (torch.device('cuda') or torch.device('cpu')). 
+            It overrides `gpu`, recommended if you want to use a specific GPU 
+            (e.g. torch.device('cuda:1'). Default is None
+        custom_concatenation : bool, optional
+            Only effects custom trained models. See cellpose v2 for more info.
+        custom_style_on : bool, optional
+            Only effects custom trained models. See cellpose v2 for more info.
+        custom_residual_on : bool, optional
+            Only effects custom trained models. See cellpose v2 for more info.
+        custom_diam_mean : float, optional
+            Only effects custom trained models. See cellpose v2 for more info.
+            Default is 30.0
+        backbone : NotGUIParam, optional
+            Only for v3
+
+        """ 
         if device == 'None':
             device = None
+        
+        if model_path == 'None':
+            model_path = None
+        
+        if model_type == 'None':
+            model_type = None
+        
+        if model_path is not None and model_type is not None:
+            raise TypeError(
+                "You cannot set both `model_type` and `model_path`. "
+                "Please set only one of them."
+            )
+        
+        if model_path is None and model_type is None:
+            raise TypeError(
+                "You must set either `model_type` or `model_path`. "
+                "Please set one of them."
+            )
         
         major_version = myutils.get_cellpose_major_version()
         print(f'Initializing Cellpose v{major_version}...')
@@ -47,26 +115,56 @@ class Model:
             )
             gpu = False
 
+        self._sizemodelnotfound = False
         if major_version == 3:
-            if model_type=='cyto3':
-                self.model = models.Cellpose(
-                    gpu=gpu, model_type=model_type, device=device
-                )
-            else:
-                diam_mean = 17.0 if model_type=="nuclei" else 30.0
+            if model_type:
+                try:
+                    self.model = models.Cellpose(
+                        gpu=gpu,
+                        device=device,
+                        model_type=model_type,
+                        backbone=backbone,
+                    )
+                except FileNotFoundError:
+                    self._sizemodelnotfound = True
+                    printl(f'Size model for {model_type} not found.')
+                    self.model = models.CellposeModel(
+                        gpu=gpu,
+                        device=device,
+                        model_type=model_type,
+                        backbone=backbone,
+                        )
+            elif model_path is not None:
+                self._sizemodelnotfound = True
                 self.model = models.CellposeModel(
-                    gpu=gpu, 
-                    diam_mean=diam_mean,
-                    model_type=model_type
+                    gpu=gpu,
+                    device=device,
+                    pretrained_model=model_path,
+                    backbone=backbone,
                 )
         else:
-            if model_type=='cyto':
-                self.model = models.Cellpose(
-                    gpu=gpu, net_avg=net_avg, model_type=model_type
-                )
-            else:
+            if model_type:
+                try:
+                    self.model = models.Cellpose(
+                        gpu=gpu, net_avg=net_avg, 
+                        model_type=model_type,
+                        device=device,
+                    )
+                except FileNotFoundError:
+                    self._sizemodelnotfound = True
+                    self.model = models.CellposeModel(
+                        gpu=gpu, net_avg=net_avg, model_type=model_type,
+                        device=device,
+                    )
+            elif model_path is not None:
+                self._sizemodelnotfound = True
                 self.model = models.CellposeModel(
-                    gpu=gpu, net_avg=net_avg, model_type=model_type
+                    gpu=gpu, net_avg=net_avg, device=device,
+                    pretrained_model=model_path,
+                    concatenation=custom_concatenation,
+                    style_on=custom_style_on,
+                    residual_on=custom_residual_on,
+                    diam_mean=custom_diam_mean,
                 )
         
         if directml_gpu:
@@ -75,19 +173,27 @@ class Model:
 
             from cellacdc.core import fix_sparse_directML
             fix_sparse_directML()
+        
+        if gpu: # sometimes gpu is not properly set up ^^
+            from cellacdc.models.cellpose_v2._directML import setup_custom_device
+            if device is None:
+                device = 0
+            try:
+                device = int(device)
+            except ValueError:
+                pass
+
+            if isinstance(device, int):
+                device = torch.device(f'cuda:{device}')
+            elif isinstance(device, str):
+                device = torch.device(device)
+            
+            setup_custom_device(self.model, device)
 
         self.is_rgb = False
         
     def setupLogger(self, logger):
         models.models_logger = logger
-    
-    def setLoggerPropagation(self, propagate:bool):
-        models.models_logger.propagate = propagate
-
-    def setLoggerLevel(self, level:str):
-        import logging
-        if level == 'error':
-            models.models_logger.setLevel(logging.ERROR)
     
     def closeLogger(self):
         handlers = models.models_logger.handlers[:]
@@ -171,15 +277,15 @@ class Model:
 
     def segment(
             self, image,
-            diameter=0.0,
-            flow_threshold=0.4,
-            cellprob_threshold=0.0,
-            stitch_threshold=0.0,
-            min_size=15,
-            anisotropy=0.0,
-            normalize=True,
-            resample=True,
-            segment_3D_volume=False            
+            diameter:float=0.0,
+            flow_threshold:float=0.4,
+            cellprob_threshold:float=0.0,
+            stitch_threshold:float=0.0,
+            min_size:int=15,
+            anisotropy:float=0.0,
+            normalize:bool=True,
+            resample:bool=True,
+            segment_3D_volume:bool=False            
         ):
         """_summary_
 
@@ -236,6 +342,19 @@ class Model:
         # image = image/image.max()
         # image = skimage.filters.gaussian(image, sigma=1)
         # image = skimage.exposure.equalize_adapthist(image)
+
+        if anisotropy == 0.0 and segment_3D_volume:
+            raise TypeError(
+                'Anisotropy is 0.0 but segment_3D_volume is True. '
+                'Please set anisotropy to a non-zero value.'
+            )
+
+        if diameter == 0.0 and self._sizemodelnotfound:
+            raise TypeError(
+                'Diameter is 0.0 but size model not found. '
+                'Please set diameter to a non-zero value.'
+            )
+
         eval_kwargs, isZstack = self._get_eval_kwargs(
             image,
             diameter=diameter,

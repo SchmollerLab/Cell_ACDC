@@ -9,6 +9,7 @@ from importlib import import_module
 import numpy as np
 import math
 import cv2
+from collections import defaultdict
 import skimage.exposure
 import skimage.measure
 import skimage.morphology
@@ -3779,3 +3780,29 @@ def fix_sparse_directML(verbose=True):
     if not verbose:
         import warnings
         warnings.filterwarnings("once", message="Sparse op failed on DirectML*")
+
+def connected_components_in_undirected_graph(undirected_graph:dict):
+    # Build undirected graph
+    graph = defaultdict(set)
+    for key, val in undirected_graph.items():
+        for other in val:
+            graph[key].add(other)
+            graph[other].add(key)  # Make it bidirectional
+    
+    visited = set()
+    groups = []
+
+    def dfs(node, group):
+        visited.add(node)
+        group.append(node)
+        for neighbor in graph[node]:
+            if neighbor not in visited:
+                dfs(neighbor, group) # recursive call to visit neighbors
+
+    for key in graph:
+        if key not in visited:
+            group = []
+            dfs(key, group)
+            groups.append(group)
+    
+    return groups
