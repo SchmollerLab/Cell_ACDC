@@ -82,22 +82,23 @@ def getMetricsFunc(posData):
     )
     return out
 
-def get_all_metrics_names():
+def get_all_metrics_names(include_custom=True):
     all_metrics_names = []
-    custom_metrics_names = list(_get_custom_metrics_names().keys())
     size_metrics_names = list(get_size_metrics_desc(True, True).keys())
     standard_metrics_names = list(_get_metrics_names().keys())
     bkgr_val_names = list(_get_bkgr_val_names().keys())
     props_names = get_props_names()
-    all_metrics_names.extend(custom_metrics_names)
+    if include_custom:
+        custom_metrics_names = list(_get_custom_metrics_names().keys())
+        all_metrics_names.extend(custom_metrics_names)
     all_metrics_names.extend(size_metrics_names)
     all_metrics_names.extend(standard_metrics_names)
     all_metrics_names.extend(bkgr_val_names)
     all_metrics_names.extend(props_names)
     return all_metrics_names
 
-def get_all_acdc_df_colnames():
-    all_acdc_df_colnames = get_all_metrics_names()
+def get_all_acdc_df_colnames(include_custom=True):
+    all_acdc_df_colnames = get_all_metrics_names(include_custom=include_custom)
     all_acdc_df_colnames.append('frame_i')
     all_acdc_df_colnames.append('time_seconds')
     all_acdc_df_colnames.append('Cell_ID')

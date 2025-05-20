@@ -14853,7 +14853,9 @@ class guiWin(QMainWindow):
             return
         
         if ev.key() == Qt.Key_Q and self.debug:
-            printl(self.ax1.items, pretty=True)
+            posData = self.data[self.pos_i]
+            printl(posData.acdc_df[['test_channel_indipendent_metric_zSlice']])
+            printl(self.customAnnotDict, pretty=True)
             pass
         
         if not self.isDataLoaded:
@@ -16181,7 +16183,8 @@ class guiWin(QMainWindow):
                 keepActive, isHideChecked
             )
             allPosAnnotIDs = [
-                pos.customAnnotIDs.get(name, {}) for pos in self.data
+                pos.customAnnotIDs.get(name, defaultdict(list)) 
+                for pos in self.data
             ]
             self.customAnnotDict[toolButton] = {
                 'action': action,
@@ -16244,7 +16247,7 @@ class guiWin(QMainWindow):
         self.customAnnotDict[toolButton] = {
             'action': action,
             'state': state,
-            'annotatedIDs': [{} for _ in range(len(self.data))]
+            'annotatedIDs': [defaultdict(list) for _ in range(len(self.data))]
         }
 
         # Save custom annotation to cellacdc/temp/custom_annotations.json
@@ -16257,17 +16260,34 @@ class guiWin(QMainWindow):
         # Add scatter plot item
         self.addCustomAnnnotScatterPlot(symbolColor, symbol, toolButton)
 
+        customAnnotButton = self.customAnnotDict[toolButton]
+        allPosAnnotatedIDs = customAnnotButton['annotatedIDs']
         # Add 0s column to acdc_df
-        posData = self.data[self.pos_i]
-        for frame_i, data_dict in enumerate(posData.allData_li):
-            acdc_df = data_dict['acdc_df']
-            if acdc_df is None:
-                continue
-            acdc_df[name] = 0
-        if posData.acdc_df is not None:
-            posData.acdc_df[name] = 0
+        for pos_i, posData in enumerate(self.data):
+            for frame_i, data_dict in enumerate(posData.allData_li):
+                acdc_df = data_dict['acdc_df']
+                if acdc_df is None:
+                    continue
+                if name not in acdc_df.columns:
+                    acdc_df[name] = 0
+                else:
+                    acdc_df[name] = acdc_df[name].astype(int)
+                    acdc_df_annot = acdc_df[acdc_df[name] == 1].reset_index()
+                    annot_IDs = acdc_df_annot['Cell_ID'].to_list()
+                    allPosAnnotatedIDs[pos_i][frame_i].extend(annot_IDs)
+                    
+            if posData.acdc_df is not None:
+                if name not in posData.acdc_df.columns:
+                    posData.acdc_df[name] = 0
+                else:
+                    posData.acdc_df[name] = posData.acdc_df[name].astype(int)
+                    acdc_df_annot = (
+                        posData.acdc_df[posData.acdc_df[name] == 1]
+                        .reset_index()
+                    )
+                    annot_IDs = acdc_df_annot['Cell_ID'].to_list()
+                    allPosAnnotatedIDs[pos_i][frame_i].extend(annot_IDs)
         
-
     def customAnnotHovered(self, scatterPlotItem, points, event):
         # Show tool tip when hovering an annotation with annotation name and ID
         vb = scatterPlotItem.getViewBox()
@@ -16366,6 +16386,7 @@ class guiWin(QMainWindow):
         self.addAnnotWin.sigDeleteSelecAnnot.connect(self.deleteSelectedAnnot)
         self.addAnnotWin.exec_()
         if self.addAnnotWin.cancel:
+            self.logger.info('Custom annotation process cancelled.')
             return
 
         symbol = self.addAnnotWin.symbol
@@ -16375,13 +16396,51 @@ class guiWin(QMainWindow):
         name = self.addAnnotWin.state['name']
         keepActive = self.addAnnotWin.state.get('keepActive', True)
         isHideChecked = self.addAnnotWin.state.get('isHideChecked', True)
+        
+        proceed = self.checkNameExists(name)
+        if not proceed:
+            self.logger.info('Custom annotation process cancelled.')
+            return
 
         self.addCustomAnnotationItems(
             symbol, symbolColor, keySequence, toolTip, name,
             keepActive, isHideChecked, self.addAnnotWin.state
         )
         self.saveCustomAnnot()
+        self.doCustomAnnotation(0)
 
+    def askCustomAnnotationNameExists(self, name):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(f"""
+            The annotationa called <code>{name}</code> already exists in the 
+            acdc_output CSV file.<br><br>
+            If you continue, this column will be used to initialize 
+            pre-annotated objects.<br><br>
+            Do you want to continue?
+        """
+        )
+        noButton, yesButton = msg.question(
+            self, 'Custom annotation name already exists', txt,
+            buttonsTexts=('No, stop process', 'Yes, use existing column')
+        )
+        return msg.clickedButton == yesButton
+        
+    
+    def checkNameExists(self, name):
+        posData = self.data[self.pos_i]
+        for frame_i, data_dict in enumerate(posData.allData_li):
+            acdc_df = data_dict['acdc_df']
+            if acdc_df is None:
+                continue
+            if name in acdc_df.columns:
+                return self.askCustomAnnotationNameExists(name)
+        
+        if posData.acdc_df is not None and name in posData.acdc_df.columns:
+            return self.askCustomAnnotationNameExists(name)
+         
+        return True
+            
+    
     def viewAllCustomAnnot(self, checked):
         if not checked:
             # Clear all annotations before showing only checked
@@ -16504,7 +16563,9 @@ class guiWin(QMainWindow):
                 return
 
         for button in buttons:
-            annotatedIDs = self.customAnnotDict[button]['annotatedIDs'][self.pos_i]
+            annotatedIDs = (
+                self.customAnnotDict[button]['annotatedIDs'][self.pos_i]
+            )
             annotIDs_frame_i = annotatedIDs.get(posData.frame_i, [])
             state = self.customAnnotDict[button]['state']
             acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
@@ -16528,7 +16589,7 @@ class guiWin(QMainWindow):
 
             xx, yy = [], []
             for annotID in annotIDs_frame_i:
-                obj_idx = posData.IDs.index(annotID)
+                obj_idx = posData.IDs_idxs[annotID]
                 obj = posData.rp[obj_idx]
                 acdc_df.at[annotID, state['name']] = 1
                 if not self.isObjVisible(obj.bbox):
@@ -16574,6 +16635,7 @@ class guiWin(QMainWindow):
         for posData in self.data:
             try:
                 posData.customAnnot.pop(name)
+                posData.saveCustomAnnotationParams()
             except KeyError as e:
                 # Current pos doesn't have any annotation button. Continue
                 continue

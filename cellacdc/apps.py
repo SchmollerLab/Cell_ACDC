@@ -162,7 +162,9 @@ class customAnnotationDialog(QDialog):
         self.clickedButton = None
         self.savedCustomAnnot = savedCustomAnnot
 
-        self.internalNames = measurements.get_all_acdc_df_colnames()
+        self.internalNames = measurements.get_all_acdc_df_colnames(
+            include_custom=False
+        )
 
         super().__init__(parent)
 
