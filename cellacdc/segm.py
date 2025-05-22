@@ -301,7 +301,9 @@ class segmWin(QMainWindow):
             )
             return False, False, msg.clickedButton == yesButton
         
-        if posData.dataPrep_ROIcoords is None:
+        idx_slice = pd.IndexSlice[:, 'cropped']
+        df_ROI = posData.dataPrep_ROIcoords
+        if df_ROI is None:
             href = html_utils.href_tag('here', urls.dataprep_docs)
             txt = html_utils.paragraph(f"""
                 Do you want to segment only a rectangluar sub-region (ROI) of 
@@ -309,15 +311,19 @@ class segmWin(QMainWindow):
                 If yes, Cell-ACDC will launch the Data-prep module later.<br><br>
                 See {href} for more details on how to use the Data-prep module.       
             """)
-        elif int(posData.dataPrep_ROIcoords.at[(0, 'cropped'), 'value']) > 0:
+        elif int(df_ROI.loc[idx_slice, 'value'].iloc[0]) > 0:
             # Data is cropped, do not ask to segment a roi
             return False, False, False
         else:
+            xl_slice = pd.IndexSlice[:, 'x_left']
+            xr_slice = pd.IndexSlice[:, 'x_right']
+            yt_slice = pd.IndexSlice[:, 'y_top']
+            yb_slice = pd.IndexSlice[:, 'y_bottom']
             SizeY, SizeX = posData.img_data.shape[-2:]
-            x0 = int(posData.dataPrep_ROIcoords.at[(0, 'x_left'), 'value'])
-            x1 = int(posData.dataPrep_ROIcoords.at[(0, 'x_left'), 'value'])
-            y0 = int(posData.dataPrep_ROIcoords.at[(0, 'y_top'), 'value'])
-            y1 = int(posData.dataPrep_ROIcoords.at[(0, 'y_bottom'), 'value'])
+            x0 = int(df_ROI.loc[xl_slice, 'value'].iloc[0])
+            x1 = int(df_ROI.loc[xr_slice, 'value'].iloc[0])
+            y0 = int(df_ROI.loc[yt_slice, 'value'].iloc[0])
+            y1 = int(df_ROI.loc[yb_slice, 'value'].iloc[0])
             if x0 == 0 and y0 == 0 and y1==SizeY and y1 == SizeX:
                 # ROI is present but with same shape as image --> ignore
                 return False, False, False
