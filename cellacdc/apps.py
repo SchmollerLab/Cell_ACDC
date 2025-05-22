@@ -4622,6 +4622,7 @@ class QDialogAutomaticThresholding(QBaseDialog):
             'threshold_method': self.threshMethod,
             'segment_3D_volume': False
         }
+        self.reduceMemoryUsage = False
         if self.segment3Dcheckbox is not None:
             doSegm3D = self.segment3Dcheckbox.isChecked()
             self.segment_kwargs['segment_3D_volume'] = doSegm3D

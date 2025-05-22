@@ -100,9 +100,9 @@ class Model:
 
         return labels
     
-    def _segment_img_2D(self, image, thresh_val=0.0, min_distance=10):
+    def _segment_img_2D(self, image, thresh_val=0.0, min_distance=10, warn=True):
         # Preprocess image
-        image = self._preprocess_image(image).astype(np.float32)
+        image = self._preprocess_image(image, warn=warn).astype(np.float32)
         
         # pad with zeros such that is divisible by 16
         (nrow, ncol) = image.shape
@@ -141,6 +141,7 @@ class Model:
         lab = yeaz_segment.segment(
             thresholded, prediction, min_distance=min_distance
         )
+        
         return lab.astype(np.uint32)
     
     def _preprocess_image(self, image, tqdm_pbar=None, warn=True):
@@ -163,10 +164,10 @@ class Model:
             labels = np.zeros(image.shape, dtype=np.uint32)
             for z, img in enumerate(image):
                 lab = self._segment_img_2D(
-                    img, thresh_val=thresh_val, min_distance=min_distance
+                    img, thresh_val=thresh_val, min_distance=min_distance, 
+                    warn=z==0
                 )
                 labels[z] = lab
-            labels = skimage.measure.label(labels>0)
         else:
             labels = self._segment_img_2D(
                 image, thresh_val=thresh_val, min_distance=min_distance
