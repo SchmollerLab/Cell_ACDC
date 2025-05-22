@@ -10309,7 +10309,10 @@ class guiWin(QMainWindow):
                 self.stopBlinkingPairItem()
                 return True
             budIDsOfExcludedMoth = excluded_df.relative_ID.to_list()
-            self.warnDeadOrExcludedMothers(budIDsOfExcludedMoth, excludedMothIDs)
+            proceed = self.warnDeadOrExcludedMothers(
+                budIDsOfExcludedMoth, excludedMothIDs
+            )
+            return proceed
         except Exception as e:
             self.logger.info(traceback.format_exc())
             print('-'*100)
@@ -10317,6 +10320,7 @@ class guiWin(QMainWindow):
                 'Checking if mother cell is excluded or dead failed.'
             )
             print('^'*100)
+            return False
     
     def checkDivisionCanBeUndone(self, ID, relID):
         """Check that division annotation can be undone (see Notes section)
@@ -10564,7 +10568,11 @@ class guiWin(QMainWindow):
 
         # self.checkMultiBudMoth(draw=True)
         self.store_cca_df()
-        self.checkMothersExcludedOrDead()
+        proceed = self.checkMothersExcludedOrDead()
+        if not proceed:
+            # User clicked on cancel in the message box
+            self.UndoCca()
+            return
 
         if self.ccaTableWin is not None:
             zoomIDs = self.getZoomIDs()
@@ -21016,7 +21024,7 @@ class guiWin(QMainWindow):
             if posData.cca_df.isna().any(axis=None):
                 raise ValueError('Cell cycle analysis table contains NaNs')
             # self.checkMultiBudMoth()
-            self.checkMothersExcludedOrDead()
+            proceed = self.checkMothersExcludedOrDead()
             return notEnoughG1Cells, proceed
 
         elif mode == 'Normal division: Lineage tree':
