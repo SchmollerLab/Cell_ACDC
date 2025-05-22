@@ -15,9 +15,10 @@ def init_directML():
                 pkg_name = 'torch-directml',
                 import_pkg_name = 'torch_directml',
                 pypi_name = 'torch-directml',
+                return_outcome=True,
             )
         else:
-            printl(
+            print(
                 """DirectML GPU support is not available.
                 Please install torch-directml.
                 Note that this is only available for Windows OS

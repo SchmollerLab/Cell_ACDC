@@ -592,7 +592,7 @@ class segmWin(QMainWindow):
         
         # Initialize model
         use_gpu = init_kwargs.get('gpu', False)
-        proceed = myutils.check_cuda(model_name, use_gpu, qparent=self)
+        proceed = myutils.check_gpu_availible(model_name, use_gpu, qparent=self)
         if not proceed:
             abort = self.doAbort()
             if abort:

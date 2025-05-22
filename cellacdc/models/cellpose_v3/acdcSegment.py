@@ -5,23 +5,13 @@ from cellacdc import myutils, printl
 from cellacdc.models.cellpose_v2 import acdcSegment as acdc_cp2
 from . import _denoise
 import torch
-class AvailableModels:
-    major_version = myutils.get_cellpose_major_version()
-    if major_version == 3:
-        from ..cellpose_v3 import CELLPOSE_V3_MODELS
-        values = CELLPOSE_V3_MODELS
-    else:
-        from . import CELLPOSE_V2_MODELS
-        values = CELLPOSE_V2_MODELS
-
-    is_exclusive_with = ['model_path']
-    default_exclusive = 'Using custom model'
     
 class backboneOptions:
     """Options for cellpose backbone"""
     values = ['default', "transformer"]
 
 CellposeV2Model = acdc_cp2.Model
+AvailableModels = acdc_cp2.AvailableModels
 
 class Model(CellposeV2Model):
     def __init__(

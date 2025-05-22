@@ -3806,3 +3806,90 @@ def connected_components_in_undirected_graph(undirected_graph:dict):
             groups.append(group)
     
     return groups
+
+def apply_func_to_imgs(image:np.ndarray, 
+                       func: Callable, 
+                       *args, 
+                       iter_axis:List[int]|int= None, 
+                       target_shape:List[int] = None,
+                       target_type: type = None,
+                       target_axis_iter: List[int]|int = None,
+                       **kwargs):        
+    """Apply a function to each image.
+
+    Parameters
+    ----------
+    image : np.ndarray
+        Image to be processed
+        
+    func : Callable
+        Function to be applied to each image. First argument
+        should be the image itself, one kwarg should be `frame_index_out`,
+        should `return processed_image, frame_index_out`. `frame_index_out` just needs to 
+        be passed along, no need to slice the image in `func`.
+    *args : tuple
+        Additional arguments to be passed to the function
+    iter_axis : List[int]|int, optional
+        Axis along which to iterate, by default None
+        If None, the function is applied to the entire image.
+    target_shape : List[int], optional
+        Shape of the output image, by default None
+        If None, the shape of the input image is used.
+    target_type : type, optional
+        Type of the output image, by default None
+        If None, the type of the input image is used.
+    target_axis_iter : List[int]|int, optional
+        Axis along to which to put the processed image
+        Must be same length as `iter_axis`, by default None
+        If None, the processed image is put in the same axis as the input image.
+    **kwargs : dict
+        Additional keyword arguments to be passed to the function
+
+    Returns
+    -------
+    np.ndarray
+        Processed image
+    """
+
+    image_shape = image.shape
+    if iter_axis is None:
+        return func(image, *args, **kwargs, frame_index_out=None)[1]
+    
+    if isinstance(iter_axis, int):
+        iter_axis = [iter_axis]
+    
+    if isinstance(target_axis_iter, int):
+        iter_axis = [target_axis_iter]
+    
+    if target_axis_iter is None:
+        target_axis_iter = iter_axis
+    
+    if target_shape is None:
+        target_shape = image_shape
+    
+    if target_type is None:
+        target_type = type(image.flat[0])
+    
+
+    image_out = np.empty(
+        target_shape, dtype=target_type
+    )
+
+    input_output_mapper = myutils.get_input_output_mapper(
+        image_shape, iter_axis, target_shape, target_axis_iter
+    )
+
+    printl(input_output_mapper)
+
+
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        futures = {
+            executor.submit(func, image[i_in], *args, frame_index_out=i_out, **kwargs)
+            for i_in, i_out in input_output_mapper
+        }
+
+        for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Processing frames"):
+            i, processed = future.result()
+            image_out[i] = processed
+
+    return image_out

@@ -3,161 +3,230 @@ import os
 from cellacdc import myutils, printl
 
 from cellacdc.models.cellpose_v2 import acdcSegment as acdc_cp2
-from . import _denoise
+from cellacdc.models.cellpose_v2.acdcSegment import _initialize_image
+import torch
+import numpy as np
+    
+class backboneOptions:
+    """Options for cellpose backbone"""
+    values = ['default', "transformer"]
 
-class AvailableModels:
-    major_version = myutils.get_cellpose_major_version()
-    if major_version == 3:
-        from ..cellpose_v3 import CELLPOSE_V3_MODELS
-        values = CELLPOSE_V3_MODELS
-    else:
-        from . import CELLPOSE_V2_MODELS
-        values = CELLPOSE_V2_MODELS
+CellposeV2Model = acdc_cp2.Model
+AvailableModels = acdc_cp2.AvailableModels
+from cellpose import models
 
-class Model:
+class Model(CellposeV2Model):
     def __init__(
             self, 
-            model_type: AvailableModels='cyto3', 
-            gpu=False,
-            directml_gpu=False,
-            device='None',
-            denoise_before_segmentation=False,
-            denoise_model_type: _denoise.DenoiseModelTypes='one-click', 
-            denoise_mode: _denoise.DenoiseModes='denoise',
+            model_type: AvailableModels='cpsam', 
+            model_path: os.PathLike='',
+            gpu:bool=False,
+            device:torch.device|int='None',
         ):
-        """Initialize cellpose 3.0 denoising model
+        """Initialize cellpose 2  model
 
         Parameters
         ----------
+        model_type : AvailableModels, optional
+            Cellpose model type to use. Default is 'cyto3'. Mutually exclusive
+            with `model_path`. If you want to use a custom model, set
+            `model_path` to the path of the model file.
+        model_path : os.PathLike, optional
+            Path to a custom cellpose model file. If set, it will override
+            `model_type`. If you want to use a custom model, set this to the
+            path of the model file. Default is None.
         gpu : bool, optional
-            If True and PyTorch for your GPU is correctly installed, 
-            denoising and segmentation processes will run on the GPU. 
+            If True and PyTorch for your GPU (if CUDA is not available, DirectML will be used) is 
+            correctly installed, denoising and segmentation processes will run on the GPU.
             Default is False
-        directml_gpu : bool, optional
-            If True, will attempt to use DirectML for GPU acceleration.
-            Will be ignored if `gpu` is True. Default is False
         device : torch.device or int or None
             If not None, this is the device used for running the model
             (torch.device('cuda') or torch.device('cpu')). 
             It overrides `gpu`, recommended if you want to use a specific GPU 
             (e.g. torch.device('cuda:1'). Default is None
-        denoise_before_segmentation : bool, optional
-            If True, run denoising before segmentation. Default is False
-        denoise_model_type : str, optional
-            Either 'one-click' or 'nuclei'. Default is 'one-click'
-        denoise_mode : str, optional
-            Either 'denoise' or 'deblur'. Default is 'denoise'
+
         """ 
-        self.acdcCellpose = acdc_cp2.Model(
-            model_type, gpu=gpu, device=device,
-            directml_gpu=directml_gpu
-        )
-        self.denoiseModel = None
-        if denoise_before_segmentation:
-            self.denoiseModel = _denoise.CellposeDenoiseModel(
-                gpu=gpu, 
-                denoise_model_type=denoise_model_type, 
-                denoise_mode=denoise_mode,
+        if device == 'None':
+            device = None
+        
+        if model_path == 'None':
+            model_path = None
+        
+        if model_type == 'None':
+            model_type = None
+        
+        if model_path is not None and model_type is not None:
+            raise TypeError(
+                "You cannot set both `model_type` and `model_path`. "
+                "Please set only one of them."
             )
+        
+        if model_path is None and model_type is None:
+            raise TypeError(
+                "You must set either `model_type` or `model_path`. "
+                "Please set one of them."
+            )
+        
+        model_path = model_path or model_type
+        
+        major_version = myutils.get_cellpose_major_version()
+        print(f'Initializing Cellpose v{major_version}...')
+
+        self._sizemodelnotfound = True
+
+        self.model = models.CellposeModel(
+            gpu=gpu,
+            device=device,
+            model_type=model_path,
+            )
+        self.is_rgb = False
+    
+    def _get_eval_kwargs_v4(
+            self,
+            batch_size:int=64,
+            max_size_fraction:float=0.4,
+            invert:bool=False,
+            flow3D_smooth:int=0,
+            niter:int=0,
+            augment:bool=False,
+            tile_overlap:float=0.1,
+            bsize:int=224,
+            interp:bool=True,
+            v2_kwargs:dict=None,
+            **kwargs
+        ):
+        if niter == 0:
+            niter = None
+
+        v2_kwargs = self._filter_v2_kwargs(**v2_kwargs)
+
+        additional_kwargs = {
+            'batch_size': batch_size,
+            'max_size_fraction': max_size_fraction,
+            'invert': invert,
+            'flow3D_smooth': flow3D_smooth,
+            'niter': niter,
+            'augment': augment,
+            'tile_overlap': tile_overlap,
+            'bsize': bsize,
+            'interp': interp
+        }
+
+        eval_kwargs = {**kwargs, **additional_kwargs, **v2_kwargs}
+                
+        return eval_kwargs
+
+    def _filter_v2_kwargs(
+            self,
+            **kwargs
+        ):
+
+        kwarg_key_list = [
+            'channels',
+            'diameter',
+            'flow_threshold',
+            'cellprob_threshold',
+            'stitch_threshold',
+            'min_size',
+            'normalize',
+            'do_3D',
+            'anisotropy',
+        ]
+
+        for key in kwargs.keys():
+            if key not in kwarg_key_list:
+                del kwargs[key]
+        
+        for key in kwarg_key_list:
+            if key not in kwargs:
+                raise KeyError(
+                    f"Key '{key}' not found in kwargs. "
+                    "Please provide all required keys."
+                )
+        
+        return kwargs
         
     def segment(
             self, image,
-            diameter=0.0,
-            flow_threshold=0.4,
-            cellprob_threshold=0.0,
-            stitch_threshold=0.0,
-            min_size=15,
-            anisotropy=0.0,
-            normalize=True,
-            resample=True,
-            segment_3D_volume=False,
-            denoise_normalize=False,
-            rescale_intensity_low_val_perc=0.0, 
-            rescale_intensity_high_val_perc=100.0, 
-            sharpen=0,
-            low_percentile=1.0, 
-            high_percentile=99.0,
-            title_norm=0,
-            norm3D=False            
+            diameter:float=30.0,
+            batch_size:int=64,
+            flow_threshold:float=0.4,
+            cellprob_threshold:float=0.0,
+            min_size:int=15,
+            max_size_fraction:float=0.4,
+            invert:bool=False,
+            normalize:bool=True,
+            segment_3D_volume:bool=False,       
+            stitch_threshold:float=0.0,
+            flow3D_smooth:int=0,
+            anisotropy:float=0.0,
+            niter:int=0,
+            augment:bool=False,
+            tile_overlap:float=0.1,
+            bsize:int=224,
+            interp:bool=True,
+
         ):
-        """Run cellpose 3.0 denoising + segmentation model
+        """Segment an image using Cellpose (see details in v2)
 
         Parameters
         ----------
         image : (Y, X) or (Z, Y, X) numpy.ndarray
-            2D or 3D image (z-stack). 
+            Input image. Either 2D or 3D z-stack.
         diameter : float, optional
-            Diameter of expected objects. If 0.0, it uses 30.0 for "one-click" 
-            and 17.0 for "nuclei". Default is 0.0
+            Average diameter (in pixels) of the obejcts of interest. 
+            Default is 0.0
+        batch_size : int, optional
+            Number of 256x256 patches to run simultaneously on the GPU (can be adjusted depending on GPU memory usage). Default is 64.
+        normalize : bool or dict, optional # discuss with francesco
+            If True, normalize data so 0.0=1st percentile and 1.0=99th percentile of image intensities in each channel. Can also pass a dictionary of parameters (all keys optional, default values shown):
+                - "lowhigh"=None : normalization values for 0.0 and 1.0 as [low, high] (if not None, all following parameters ignored)
+                - "sharpen"=0 : sharpen image with high pass filter
+                - "normalize"=True : run normalization (if False, all following parameters ignored)
+                - "percentile"=None : percentiles to use as [perc_low, perc_high]
+                - "tile_norm_blocksize"=0 : compute normalization in tiles (set to window size in pixels to enable)
+                - "norm3D"=True : compute normalization across entire z-stack in stitching mode
+            Default is True.
+        invert : bool, optional
+            Invert image pixel intensity before running network. Default is False.
         flow_threshold : float, optional
-            Flow error threshold (all cells with errors below threshold are 
-            kept) (not used for 3D). Default is 0.4
+            Flow error threshold (all cells with errors below threshold are kept; not used for 3D). Default is 0.4.
         cellprob_threshold : float, optional
-            All pixels with value above threshold will be part of an object. 
-            Decrease this value to find more and larger masks. Default is 0.0
-        stitch_threshold : float, optional
-            If `stitch_threshold` is greater than 0.0 and `segment_3D_volume` 
-            is True, masks are stitched in 3D to return volume segmentation. 
-            Default is 0.0
-        min_size : int, optional
-            Minimum number of pixels per mask, you can turn off this filter 
-            with `min_size = -1`. Default is 15
+            All pixels with value above threshold kept for masks; decrease to find more and larger masks. Default is 0.0.
+        flow3D_smooth : int, optional
+            If do_3D and flow3D_smooth > 0, smooth flows with gaussian filter of this stddev. Default is 0.
         anisotropy : float, optional
-            For 3D segmentation, optional rescaling factor (e.g. set to 2.0 if 
-            Z is sampled half as dense as X or Y). Default is 0.0
-        normalize : bool, optional
-            If True, normalize image using the other parameters. 
-            Default is True
-        resample : bool, optional
-            Run dynamics at original image size (will be slower but create 
-            more accurate boundaries). Default is True
-        segment_3D_volume : bool, optional
-            If True and input `image` is a 3D z-stack the entire z-stack 
-            is passed to cellpose model. If False, Cell-ACDC will force one 
-            z-slice at the time. Best results with cellpose and 3D data are 
-            obtained by passing the entire z-stack, but with a 
-            `stitch_threshold` greater than 0 (e.g., 0.4). This way cellpose 
-            will internally segment slice-by-slice and it will merge the 
-            resulting z-slice masks belonging to the same object. 
-            Default is False
-        denoise_normalize : bool, optional
-            If True, normalize image using the other parameters.  Default is False
-        rescale_intensity_low_val_perc : float, optional
-            Rescale intensities so that this is the minimum value in the image. 
-            Default is 0.0
-        rescale_intensity_high_val_perc : float, optional
-            Rescale intensities so that this is the maximum value in the image. 
-            Default is 100.0
-        sharpen : int, optional
-            Sharpen image with high pass filter, recommended to be 1/4-1/8 
-            diameter of cells in pixels. Default is 0.
-        low_percentile : float, optional
-            Lower percentile for normalizing image. Default is 1.0
-        high_percentile : float, optional
-            Higher percentile for normalizing image. Default is 99.0
-        title_norm : int, optional
-            Compute normalization in tiles across image to brighten dark areas. 
-            To turn it on set to window size in pixels (e.g. 100). Default is 0
-        norm3D : bool, optional
-            Compute normalization across entire z-stack rather than 
-            plane-by-plane in stitching mode. Default is False
-        """ 
+            For 3D segmentation, optional rescaling factor (e.g., set to 2.0 if Z is sampled half as dense as X or Y). Default is None.
+        stitch_threshold : float, optional
+            If stitch_threshold > 0.0 and not do_3D, masks are stitched in 3D to return volume segmentation. Default is 0.0.
+        min_size : int, optional
+            All ROIs below this size (in pixels) will be discarded. Default is 15.
+        max_size_fraction : float, optional
+            Masks larger than this fraction of total image size are removed. Default is 0.4.
+        niter : int, optional
+            Number of iterations for dynamics computation. If 0, set proportional to the diameter. Default is 0.
+        augment : bool, optional
+            Tiles image with overlapping tiles and flips overlapped regions to augment. Default is False.
+        tile_overlap : float, optional
+            Fraction of overlap of tiles when computing flows. Default is 0.1.
+        bsize : int, optional
+            Block size for tiles, recommended to keep at 224 (as in training). Default is 224.
+        interp : bool, optional
+            Interpolate during 2D dynamics (not available in 3D). Default is True.
+
+        """        
+        # Preprocess image
+        # image = image/image.max()
+        # image = skimage.filters.gaussian(image, sigma=1)
+        # image = skimage.exposure.equalize_adapthist(image)
         
-        input_image = image        
-        if self.denoiseModel is not None:
-            input_image = self.denoiseModel.run(
-                image,
-                normalize=denoise_normalize, 
-                rescale_intensity_low_val_perc=rescale_intensity_low_val_perc, 
-                rescale_intensity_high_val_perc=rescale_intensity_high_val_perc, 
-                sharpen=sharpen,
-                low_percentile=low_percentile, 
-                high_percentile=high_percentile,
-                title_norm=title_norm,
-                norm3D=norm3D
-            )
-        labels = self.acdcCellpose.segment(
-            input_image,
+                # Run cellpose eval
+        
+        self.img_shape = image.shape
+        self.img_ndim = len(self.img_shape)
+
+        eval_kwargs, isZstack = self._get_eval_kwargs(
+            image,
             diameter=diameter,
             flow_threshold=flow_threshold,
             cellprob_threshold=cellprob_threshold,
@@ -165,44 +234,55 @@ class Model:
             min_size=min_size,
             anisotropy=anisotropy,
             normalize=normalize,
-            resample=resample,
-            segment_3D_volume=segment_3D_volume  
+            segment_3D_volume=segment_3D_volume            
         )
-        return labels
-    
+
+        eval_kwargs = self._get_eval_kwargs_v4(
+            batch_size=batch_size,
+            max_size_fraction=max_size_fraction,
+            invert=invert,
+            flow3D_smooth=flow3D_smooth,
+            niter=niter,
+            augment=augment,
+            tile_overlap=tile_overlap,
+            bsize=bsize,
+            interp=interp,
+            v2_kwargs=eval_kwargs
+        )
+
+        labs = self._eval_loop(
+            image, segment_3D_volume, isZstack, **eval_kwargs
+        )
+
+        self.img_shape = None
+        self.img_ndim = None
+
+        return labs
+
     def segment3DT(self, video_data, signals=None, **kwargs):
-        images = video_data
-        if self.denoiseModel is not None:
-            resc_int_low_val_perc = kwargs['rescale_intensity_low_val_perc']
-            resc_int_high_val_perc = kwargs['rescale_intensity_high_val_perc']
-            images = [
-                self.denoiseModel.run(
-                    image,
-                    normalize=kwargs['denoise_normalize'], 
-                    rescale_intensity_low_val_perc=resc_int_low_val_perc, 
-                    rescale_intensity_high_val_perc=resc_int_high_val_perc, 
-                    sharpen=kwargs['sharpen'],
-                    low_percentile=kwargs['low_percentile'], 
-                    high_percentile=kwargs['high_percentile'],
-                    title_norm=kwargs['title_norm'],
-                    norm3D=kwargs['norm3D']
-                )
-                for image in video_data
-            ]
+
+        self.img_shape = video_data[0].shape
+        self.img_ndim = len(self.img_shape)
         
-        labels = self.acdcCellpose.segment3DT(images, signals=signals, **kwargs)
-        return labels
-    
-    def setupLogger(self, logger):
-        self.acdcCellpose.setupLogger(logger)
-    
-    def closeLogger(self):
-        self.acdcCellpose.closeLogger()
-    
-    def second_ch_img_to_stack(self, first_ch_data, second_ch_data):
-        return self.acdcCellpose.second_ch_img_to_stack(
-            first_ch_data, second_ch_data
+        image = video_data[0]
+        eval_kwargs, isZstack = self._get_eval_kwargs(
+            image,
+            **kwargs        
         )
+
+        eval_kwargs = self._get_eval_kwargs_v4(
+            **kwargs,
+            v2_kwargs=eval_kwargs
+        )
+
+        labels = self._segment3DT_eval(
+            video_data, signals, isZstack, eval_kwargs, **kwargs
+        )
+
+        self.img_shape = None
+        self.img_ndim = None
+
+        return labels 
 
 def url_help():
     return 'https://cellpose.readthedocs.io/en/latest/api.html'
