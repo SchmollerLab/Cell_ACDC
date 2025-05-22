@@ -2964,10 +2964,9 @@ class loadData:
             total_frames=self.SizeT,
         )
         whitelist_path = self.segm_npz_path.replace('.npz', '_whitelistIDs.json')
-        success = self.whitelist.load(whitelist_path, 
-                                      self.segm_data,
-                                      self.allData_li
-                                      )
+        success = self.whitelist.load(
+            whitelist_path, self.segm_data, self.allData_li
+        )
         if self.log_func and success:
             filename = os.path.basename(whitelist_path)
             self.log_func(f'Loaded whitelist from file: {filename}')

@@ -3685,25 +3685,25 @@ def parallel_count_objects(posData, logger_func):
 def count_objects(posData, logger_func):
     allIDs = set()
 
-    empty_data_dict = myutils.get_empty_stored_data_dict()
     segm_data = posData.segm_data
     if not np.any(segm_data):
-        allIDs = list(range(100))
+        allIDs = []
         return allIDs, posData
     
     logger_func('Counting total number of segmented objects...')
-    for i, lab in tqdm(enumerate(segm_data), ncols=100):
-        posData.allData_li[i]= empty_data_dict.copy()
+    pbar = tqdm(total=len(segm_data), ncols=100)
+    for i, lab in enumerate(segm_data):
+        posData.allData_li[i]= myutils.get_empty_stored_data_dict()
         rp = skimage.measure.regionprops(lab)
         IDs = [obj.label for obj in rp]
         posData.allData_li[i]['IDs'] = IDs
         posData.allData_li[i]['regionprops'] = rp
         posData.allData_li[i]['IDs_idxs'] = { # IDs_idxs[obj.label] = idx
             ID: idx for idx, ID in enumerate(IDs)
-            }
+        }
         allIDs.update(IDs)
-    if not allIDs:
-        allIDs = list(range(100))
+        pbar.update()
+    pbar.close()
     return allIDs, posData
 
 def fix_sparse_directML(verbose=True):

@@ -6407,6 +6407,8 @@ class MainPlotItem(pg.PlotItem):
                 htmlText = html_file.read()
             self.infoTextItem.setHtml(htmlText)
             self.infoTextItem.setPos(0,0)
+        
+        self.delRoiItems = {}
     
     def clear(self):
         super().clear()
@@ -6418,7 +6420,36 @@ class MainPlotItem(pg.PlotItem):
     def autoBtnClicked(self):
         self.vb.autoRange()
         self.autoBtn.hide()
-
+    
+    def addDelRoiItem(self, roiItem, key):
+        if self.isDelRoiItemPresent(roiItem):
+            return
+        
+        self.delRoiItems[key] = roiItem
+        roiItem.key = key
+        self.addItem(roiItem)
+    
+    def removeDelRoiItem(self, roiItem):
+        key = roiItem.key
+        self.delRoiItems.pop(key, None)
+        try:
+            self.removeItem(key)
+        except Exception as err:
+            return
+    
+    def isDelRoiItemPresent(self, roiItem):
+        try:
+            key = roiItem.key
+        except AttributeError as e:
+            return False
+        
+        try:
+            roi = self.delRoiItems[key]
+        except Exception as err:
+            return False
+        
+        return True
+            
 class sliderWithSpinBox(QWidget):
     sigValueChange = Signal(object)
     valueChanged = Signal(object)
