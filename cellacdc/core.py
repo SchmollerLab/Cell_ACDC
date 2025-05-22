@@ -2561,7 +2561,6 @@ class SegmKernel(_WorkflowKernel):
         t_end = time.perf_counter()
 
         self.logger_func(f'\n{posData.relPath} done.')
-        self.signals.finished.emit(t_end-t0)
 
 def filter_segm_objs_from_table_coords(lab, df):
     cols = []
