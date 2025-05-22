@@ -5,6 +5,8 @@ import re
 import traceback
 import time
 import datetime
+from typing import Tuple
+
 import numpy as np
 import pandas as pd
 
@@ -1236,7 +1238,8 @@ class segmWin(QMainWindow):
         return worker, thread
     
     @exception_handler
-    def workerCritical(self, worker, error):
+    def workerCritical(self, out: Tuple[QObject, Exception]):
+        worker, error = out
         worker.is_error = True
         worker.loop.exit()
         raise error

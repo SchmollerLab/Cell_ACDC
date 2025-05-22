@@ -1959,7 +1959,7 @@ class _WorkflowKernel:
     def __init__(self, logger, log_path, is_cli=False):
         self.logger = logger
         self.log_path = log_path
-        self.is_cli = True
+        self.is_cli = is_cli
     
     def quit(self, error=None):
         if not self.is_cli and error is not None:
