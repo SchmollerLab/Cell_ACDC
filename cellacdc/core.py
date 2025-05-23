@@ -1889,7 +1889,6 @@ def pop_signals_kwarg_if_not_needed(func, kwargs):
 def segm_model_segment(
         model, image, model_kwargs, frame_i=None, preproc_recipe=None, 
         is_timelapse_model_and_data=False, posData=None, start_z_slice=0,
-        reduce_memory_usage=False
     ):
     if preproc_recipe is not None:
         if is_timelapse_model_and_data:
@@ -1901,7 +1900,7 @@ def segm_model_segment(
         else:
             image = preprocess_image_from_recipe(image, preproc_recipe)
     
-    if is_timelapse_model_and_data and not reduce_memory_usage:
+    if is_timelapse_model_and_data:
         model_kwargs = pop_signals_kwarg_if_not_needed(
             model.segment3DT, model_kwargs
         )
@@ -2129,8 +2128,9 @@ class SegmKernel(_WorkflowKernel):
         self.SizeZ = SizeZ
         self.init_model_kwargs = init_model_kwargs
         self.init_tracker_kwargs = init_tracker_kwargs
-        self.is_segment3DT_available = is_segment3DT_available
-        self.reduce_memory_usage = reduce_memory_usage
+        self.is_segment3DT_available = (
+            is_segment3DT_available and not reduce_memory_usage
+        )
         self.preproc_recipe = preproc_recipe
         self.use_freehand_ROI = use_freehand_ROI
         if signals is None:
@@ -2428,7 +2428,6 @@ class SegmKernel(_WorkflowKernel):
                     self.model, img_data, self.model_kwargs, 
                     is_timelapse_model_and_data=True, 
                     preproc_recipe=self.preproc_recipe, 
-                    reduce_memory_usage=self.reduce_memory_usage,
                     posData=posData
                 )
                 if self.innerPbar_available:
