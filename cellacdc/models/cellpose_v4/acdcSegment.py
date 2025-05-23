@@ -104,7 +104,6 @@ class Model(CellposeV2Model):
             # 'interp': interp
         }
 
-        printl(kwargs)
         eval_kwargs = {**additional_kwargs, **v2_kwargs}
                 
         return eval_kwargs
@@ -275,7 +274,6 @@ class Model(CellposeV2Model):
             v2_kwargs=eval_kwargs
         )
 
-        printl(eval_kwargs)
         labs = self._eval_loop(
             image, segment_3D_volume, isZstack, **eval_kwargs
         )
