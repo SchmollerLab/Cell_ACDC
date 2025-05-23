@@ -3547,7 +3547,7 @@ def _availible_frameworks(model_name):
         or model_name.lower().find('yeaz_v2') != -1
     ),
     "directML":(
-        model_name.lower().find('cellpose_v4') != -1
+        # model_name.lower().find('cellpose_v4') != -1 # not yet
         #or model_name.lower().find('cellpose_v3') != -1 has its own way to check
 
     )
