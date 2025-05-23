@@ -10165,7 +10165,7 @@ class guiWin(QMainWindow):
                buttonsTexts=('Cancel', applyButton)
             )
             cancel = msg.cancel
-            apply = msg.clickedButton = applyButton
+            apply = msg.clickedButton == applyButton
         elif why == 'not_G1_in_the_past':
             err_msg = html_utils.paragraph(f"""
                 The requested cell in G1
