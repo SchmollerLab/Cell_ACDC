@@ -51,19 +51,35 @@ def run():
         release_date = get_date_from_version(version, package='cellacdc')
         py_ver = sys.version_info
         python_version = f'{py_ver.major}.{py_ver.minor}.{py_ver.micro}'
-        print('='*100)
-        print(f'Cell-ACDC version {version}')
-        print(f'Released on: {release_date}')
-        print(f'Installed in "{cellacdc_path}"')
-        print(f'Python {python_version}')
-        print(f'Platform: {platform.platform()}')
-        print(f'System: {platform.system()}')
+        info_txts = [
+            f'Cell-ACDC version {version}',
+            f'Released on: {release_date}',
+            f'Installed in "{cellacdc_path}"',
+            f'Python {python_version}',
+            f'Platform: {platform.platform()}',
+            f'System: {platform.system()}',
+        ]
         try:
             from qtpy import QtCore
-            print(f'Qt {QtCore.__version__}')
+            info_txts.append(f'Qt {QtCore.__version__}')
         except Exception as err:
-            print(f'Qt: Not installed')
-        print('='*100)
+            info_txts.append('Qt: Not installed')
+        
+        info_txts.append(f'Working directory: {os.getcwd()}')
+        max_len = max([len(txt) for txt in info_txts]) + 2
+        
+        formatted_info_txts = []
+        for txt in info_txts:
+            horiz_spacing = ' '*(max_len - len(txt))
+            txt = f'{txt}{horiz_spacing}|'
+            formatted_info_txts.append(txt)
+        
+        formatted_info_txts.insert(0, '='*max_len)
+        formatted_info_txts.append('='*max_len)
+        info_txt = '\n'.join(formatted_info_txts)
+        
+        print(info_txt)
+        
         exit()
 
     if PARAMS_PATH:
