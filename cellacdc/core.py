@@ -3817,8 +3817,8 @@ def apply_func_to_imgs(image:np.ndarray,
                        target_type: type = None,
                        target_axis_iter: List[int]|int = None,
                        parallel: bool = True,
-                       benchmark: bool = True,
-                       prcesspool: bool = False,
+                       benchmark: bool = False,
+                       processpool: bool = False,
                        **kwargs):        
     """Apply a function to each image. This is done along the iter_axis (can also be a single int).
     Then the processed image is put in the target_axis_iter (can also be a single int).
@@ -3863,7 +3863,7 @@ def apply_func_to_imgs(image:np.ndarray,
     benchmark : bool, optional
         Whether to benchmark the function, by default False
         If True, prints the execution time of the function.
-    prcesspool : bool, optional
+    processpool : bool, optional
         Whether to use process pool, by default False
         If True, uses process pool instead of thread pool.
     **kwargs : dict
@@ -3909,7 +3909,7 @@ def apply_func_to_imgs(image:np.ndarray,
     )
 
     if parallel:
-        if prcesspool:
+        if processpool:
             executor_func = concurrent.futures.ProcessPoolExecutor
         else:
             executor_func = concurrent.futures.ThreadPoolExecutor
