@@ -1719,16 +1719,24 @@ class loadData:
         return dataPrepFreeRoiPath
     
     def saveDataPrepFreeRoi(
-            self, roiItem: 'widgets.PlotCurveItem', logger_func=print
+            self, 
+            roiItem: 'widgets.PlotCurveItem', 
+            logger_func=print,
+            local_mask=None, bbox=None
         ):
         dataPrepFreeRoiPath = self.dataPrepFreeRoiPath()
         
         logger_func(f'\nSaving free ROI to file "{dataPrepFreeRoiPath}"...')
         
-        mask = roiItem.mask()
-        y0, x0, y1, x1 = roiItem.bbox()
+        if local_mask is None:
+            local_mask = roiItem.mask()
+        
+        if bbox is None:
+            bbox = roiItem.bbox()
+        
+        y0, x0, y1, x1 = bbox
         key = f'{x0}_{y0}_{x1}_{y1}'
-        data = {key: mask}
+        data = {key: local_mask}
         np.savez_compressed(dataPrepFreeRoiPath, **data)
     
     def removeDataPrepFreeRoi(self, logger_func=print):
@@ -1749,21 +1757,20 @@ class loadData:
         logger_func(f'\nLoading free ROI from file "{dataPrepFreeRoiPath}"...')
         archive = np.load(dataPrepFreeRoiPath)
         key = archive.files[0]
-        x0, y0, x1, y1 = key.split('_')
+        x0, y0, x1, y1 = [int(coord) for coord in key.split('_')]
         mask = archive[key]
         obj = skimage.measure.regionprops(mask.astype(np.uint8))[0]
         contours = core.get_obj_contours(obj=obj, only_longest_contour=False)
         self.dataPrepFreeRoiPoints = contours + (int(x0), int(y0))
         self.dataPrepFreeRoiLocalMask = mask
-        self.dataPrepFreeRoiSlice = (
-            slice(int(y0), int(y1)+1), slice(int(x0), int(x1)+1)
-        )
+        self.dataPrepFreeRoiSlice = (slice(y0, y1+1), slice(x0, x1+1))
+        self.dataPrepFreeRoiBbox = (y0, x0, y1, x1)
     
     def clearSegmObjsDataPrepFreeRoi(self, segm_data, is_timelapse=True):
-        mask = self.dataPrepFreeRoiLocalMask
+        local_mask = self.dataPrepFreeRoiLocalMask
         local_slice = self.dataPrepFreeRoiSlice
         delMask = np.ones(segm_data.shape[-2:], dtype=bool)
-        delMask[local_slice][mask] = False
+        delMask[local_slice][local_mask] = False
         if is_timelapse:
             for i, lab in enumerate(segm_data):
                 if lab.ndim == 3:
@@ -2957,10 +2964,9 @@ class loadData:
             total_frames=self.SizeT,
         )
         whitelist_path = self.segm_npz_path.replace('.npz', '_whitelistIDs.json')
-        success = self.whitelist.load(whitelist_path, 
-                                      self.segm_data,
-                                      self.allData_li
-                                      )
+        success = self.whitelist.load(
+            whitelist_path, self.segm_data, self.allData_li
+        )
         if self.log_func and success:
             filename = os.path.basename(whitelist_path)
             self.log_func(f'Loaded whitelist from file: {filename}')

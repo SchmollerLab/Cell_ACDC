@@ -31,6 +31,8 @@ combine_metrics_ini_path = os.path.join(acdc_metrics_path, 'combine_metrics.ini'
 cellacdc_path = os.path.dirname(os.path.abspath(__file__))
 metrics_path = os.path.join(cellacdc_path, 'metrics')
 
+how_3D_to_2D_pattern = r'zSlice|3D|maxProj|meanProj|(?=\s*$)'
+
 # Copy metrics to acdc-metrics user path
 for file in os.listdir(metrics_path):
     if not file.endswith('.py'):
@@ -66,29 +68,37 @@ def getMetricsFunc(posData):
     total_metrics = len(metrics_func)
     custom_func_dict = get_custom_metrics_func()
     total_metrics += len(custom_func_dict)
+    ch_indipend_custom_func_dict = get_channel_indipendent_custom_metrics_func()
+    total_metrics += len(ch_indipend_custom_func_dict)
 
     # Here we simply update the total. The combineMetricsConfig is
     # defined in loadData.setCombineMetricsConfig method
     for key, section in posData.combineMetricsConfig.items():
         total_metrics += len(section)
-    return metrics_func, all_metrics_names, custom_func_dict, total_metrics
+        
+    out = (
+        metrics_func, all_metrics_names, custom_func_dict, total_metrics,
+        ch_indipend_custom_func_dict
+    )
+    return out
 
-def get_all_metrics_names():
+def get_all_metrics_names(include_custom=True):
     all_metrics_names = []
-    custom_metrics_names = list(_get_custom_metrics_names().keys())
     size_metrics_names = list(get_size_metrics_desc(True, True).keys())
     standard_metrics_names = list(_get_metrics_names().keys())
     bkgr_val_names = list(_get_bkgr_val_names().keys())
     props_names = get_props_names()
-    all_metrics_names.extend(custom_metrics_names)
+    if include_custom:
+        custom_metrics_names = list(_get_custom_metrics_names().keys())
+        all_metrics_names.extend(custom_metrics_names)
     all_metrics_names.extend(size_metrics_names)
     all_metrics_names.extend(standard_metrics_names)
     all_metrics_names.extend(bkgr_val_names)
     all_metrics_names.extend(props_names)
     return all_metrics_names
 
-def get_all_acdc_df_colnames():
-    all_acdc_df_colnames = get_all_metrics_names()
+def get_all_acdc_df_colnames(include_custom=True):
+    all_acdc_df_colnames = get_all_metrics_names(include_custom=include_custom)
     all_acdc_df_colnames.append('frame_i')
     all_acdc_df_colnames.append('time_seconds')
     all_acdc_df_colnames.append('Cell_ID')
@@ -120,8 +130,41 @@ def get_custom_metrics_func():
         if module_name == 'combine_metrics_example':
             # Ignore the example
             continue
+        if module_name == 'channel_indipendent_metric_example':
+            # Ignore the example
+            continue
         try:
             module = import_module(module_name)
+            if not getattr(module, 'CALCULATE_FOR_EACH_CHANNEL', True):
+                continue
+            
+            func = getattr(module, module_name)
+            custom_func_dict[module_name] = func
+        except Exception:
+            traceback.print_exc()
+    return custom_func_dict
+
+def get_channel_indipendent_custom_metrics_func():
+    scripts = os.listdir(acdc_metrics_path)
+    custom_func_dict = {}
+    for file in scripts:
+        if file == '__init__.py':
+            continue
+        module_name, ext = os.path.splitext(file)
+        if ext != '.py':
+            # print(f'The file {file} is not a python file. Ignoring it.')
+            continue
+        if module_name == 'combine_metrics_example':
+            # Ignore the example
+            continue
+        if module_name == 'channel_indipendent_metric_example':
+            # Ignore the example
+            continue
+        try:
+            module = import_module(module_name)
+            if getattr(module, 'CALCULATE_FOR_EACH_CHANNEL', True):
+                continue
+            
             func = getattr(module, module_name)
             custom_func_dict[module_name] = func
         except Exception:
@@ -182,6 +225,39 @@ def _get_custom_metrics_names():
     keys = custom_func_dict.keys()
     custom_metrics_names = {func_name:func_name for func_name in keys}
     return custom_metrics_names
+
+def _get_ch_indipend_ent_custom_metrics_names():
+    custom_func_dict = get_channel_indipendent_custom_metrics_func()
+    keys = custom_func_dict.keys()
+    custom_metrics_names = {func_name:func_name for func_name in keys}
+    return custom_metrics_names
+
+def ch_indipend_custom_metrics_desc(isZstack, isSegm3D=False):
+    how_3Dto2D, how_3Dto2D_desc = get_how_3Dto2D(isZstack, isSegm3D)
+    custom_metrics_names = _get_ch_indipend_ent_custom_metrics_names()
+    custom_metrics_desc = {}
+    for how, how_desc in zip(how_3Dto2D, how_3Dto2D_desc):
+        for func_name, func_desc in custom_metrics_names.items():
+            metric_name = f'{func_name}{how}'
+            if isZstack:
+                note_txt = html_utils.paragraph(f"""
+                    {_get_zStack_note(how_desc)}
+                    Example: <code>{metric_name}</code> is the
+                    <b>{func_desc.lower()}</b> of each channel signal after
+                    converting 3D to 2D {how_desc}
+                """)
+            else:
+                note_txt = ''
+
+            desc = html_utils.paragraph(f"""
+                <b>{func_desc}</b> is a custom defined measurement.<br><br>
+                The code for this function is located at the following path:<br><br>
+                <code>{os.path.join(acdc_metrics_path, func_desc)}.py</code><br><br>
+                {note_txt}
+            """)
+            custom_metrics_desc[metric_name] = desc
+    
+    return custom_metrics_desc
 
 def custom_metrics_desc(
         isZstack, chName, posData=None, isSegm3D=False, 
@@ -1018,32 +1094,32 @@ def get_foregr_data(foregr_img, isSegm3D, z):
 
 def get_cell_volumes_areas(df):
     try:
-        cell_vol_vox = df.loc['cell_vol_vox']
+        cell_vol_vox = df['cell_vol_vox'].to_list()
     except Exception as e:
         cell_vol_vox = [np.nan]*len(df)
     
     try:
-        cell_vol_fl = df.loc['cell_vol_fl']
+        cell_vol_fl = df['cell_vol_fl'].to_list()
     except Exception as e:
         cell_vol_fl = [np.nan]*len(df)
     
     try:
-        cell_vol_vox_3D = df.loc['cell_vol_vox_3D']
+        cell_vol_vox_3D = df['cell_vol_vox_3D'].to_list()
     except Exception as e:
         cell_vol_vox_3D = [np.nan]*len(df)
     
     try:
-        cell_vol_fl_3D = df.loc['cell_vol_fl_3D']
+        cell_vol_fl_3D = df['cell_vol_fl_3D'].to_list()
     except Exception as e:
         cell_vol_fl_3D = [np.nan]*len(df)
     
     try:
-        cell_area_pxl = df.loc['cell_area_pxl']
+        cell_area_pxl = df['cell_area_pxl'].to_list()
     except Exception as e:
         cell_area_pxl = [np.nan]*len(df)
     
     try:
-        cell_area_um2 = df.loc['cell_vol_fl_3D']
+        cell_area_um2 = df['cell_vol_fl_3D'].to_list()
     except Exception as e:
         cell_area_um2 = [np.nan]*len(df)
     
@@ -1450,11 +1526,124 @@ def add_size_metrics(
                 df.at[obj.label, col] = area_um2_z
     return df
 
-def add_foregr_metrics(
-        df, rp, channel, foregr_data, foregr_metrics_params, metrics_func,
-        custom_metrics_params, isSegm3D, lab, foregr_img, 
-        other_channels_foregr_imgs: Dict[str, np.ndarray], 
-        z_slice=None, manualBackgrRp=None, 
+def add_ch_indipend_custom_metrics(
+        df: pd.DataFrame, 
+        rp, all_channels_foregr_data, 
+        ch_indipend_custom_func_params,
+        isSegm3D, lab, all_channels_foregr_imgs, 
+        all_channels_z_slices=None, 
+        text_to_append_to_col='',
+        customMetricsCritical=None
+    ):
+    for o, obj in enumerate(tqdm(rp, ncols=100, leave=False)):
+        ID = obj.label
+        for col, (custom_func, how) in ch_indipend_custom_func_params.items():
+            all_channels_obj_intens = {}
+            all_channels_autoBkgr = {}
+            all_channels_dataPrepBkgr = {}
+            for channel, foregr_data in all_channels_foregr_data.items():
+                if all_channels_z_slices is not None:
+                    z_slice = all_channels_z_slices[channel]
+                else:
+                    z_slice = None   
+                foregr_arr = foregr_data.get(how)
+                if foregr_arr is None:
+                    continue
+                
+                foregr_obj_arr, obj_area = get_foregr_obj_array(
+                    foregr_arr, obj, isSegm3D, z_slice=z_slice, how=how
+                )
+            
+                autoBkgrVal, dataPrepBkgrVal = get_bkgrVals(
+                    df, channel, how, ID
+                )
+                
+                all_channels_obj_intens[channel] = foregr_obj_arr
+                all_channels_autoBkgr[channel] = autoBkgrVal
+                all_channels_dataPrepBkgr[channel] = dataPrepBkgrVal
+            
+            metrics_values = df.to_dict('list')
+            items = get_cell_volumes_areas(df)
+            (cell_vols_vox, cell_vols_fl, cell_vols_vox_3D, cell_vols_fl_3D,
+            cell_areas_pxl, cell_areas_um2) = items
+            custom_error, custom_val, custom_col_name = (
+                get_ch_indipend_custom_metric_value(
+                    custom_func, 
+                    all_channels_obj_intens, 
+                    all_channels_autoBkgr, 
+                    all_channels_dataPrepBkgr, 
+                    obj, o, 
+                    metrics_values, 
+                    cell_vols_vox, cell_vols_fl, cell_areas_pxl, 
+                    cell_areas_um2, 
+                    all_channels_foregr_imgs, 
+                    lab, 
+                    isSegm3D, 
+                    col,
+                    cell_vols_vox_3D=cell_vols_vox_3D, 
+                    cell_vols_fl_3D=cell_vols_fl_3D
+                )
+            )
+            if custom_col_name is None:
+                df.at[ID, f'{col}{text_to_append_to_col}'] = custom_val
+            else:
+                for custom_col, value in zip(custom_col_name, custom_val):
+                    df.at[ID, f'{custom_col}{text_to_append_to_col}'] = value
+                    
+            if customMetricsCritical is not None and custom_error:
+                customMetricsCritical.emit(custom_error, col)
+    
+    return df
+
+
+def add_custom_metrics(
+        df: pd.DataFrame, 
+        rp, channel, foregr_data, custom_metrics_params,
+        isSegm3D, lab, foregr_img, other_channels_foregr_imgs, 
+        z_slice=None, text_to_append_to_col='',
+        customMetricsCritical=None
+    ):
+    for o, obj in enumerate(tqdm(rp, ncols=100, leave=False)):
+        for col, (custom_func, how) in custom_metrics_params.items():   
+            foregr_arr = foregr_data.get(how)
+            if foregr_arr is None:
+                continue
+            
+            foregr_obj_arr, obj_area = get_foregr_obj_array(
+                foregr_arr, obj, isSegm3D, z_slice=z_slice, how=how
+            )
+            ID = obj.label
+            autoBkgrVal, dataPrepBkgrVal = get_bkgrVals(df, channel, how, ID)
+            metrics_values = df.to_dict('list')
+            items = get_cell_volumes_areas(df)
+            (cell_vols_vox, cell_vols_fl, cell_vols_vox_3D, cell_vols_fl_3D,
+            cell_areas_pxl, cell_areas_um2) = items
+            custom_error, custom_val, custom_col_name = get_custom_metric_value(
+                custom_func, foregr_obj_arr, autoBkgrVal, dataPrepBkgrVal, obj,
+                o, metrics_values, cell_vols_vox, cell_vols_fl, cell_areas_pxl, 
+                cell_areas_um2, foregr_img, lab, isSegm3D, 
+                other_channels_foregr_imgs, col,
+                cell_vols_vox_3D=cell_vols_vox_3D, 
+                cell_vols_fl_3D=cell_vols_fl_3D
+            )
+            if custom_col_name is None:
+                df.at[ID, f'{col}{text_to_append_to_col}'] = custom_val
+            else:
+                for custom_col, value in zip(custom_col_name, custom_val):
+                    df.at[ID, f'{custom_col}{text_to_append_to_col}'] = value
+                    
+            if customMetricsCritical is not None and custom_error:
+                customMetricsCritical.emit(custom_error, col)
+    
+    return df
+
+def add_foregr_standard_metrics(
+        df, rp, channel, foregr_data, 
+        foregr_metrics_params, 
+        metrics_func, isSegm3D, 
+        lab, foregr_img, 
+        z_slice=None, 
+        manualBackgrRp=None, 
         customMetricsCritical=None,
         text_to_append_to_col=''
     ):
@@ -1492,37 +1681,6 @@ def add_foregr_metrics(
                 func = metrics_func[func_name]
                 val = func(foregr_obj_arr)
             df.at[obj.label, f'{col}{text_to_append_to_col}'] = val
-
-        for col, (custom_func, how) in custom_metrics_params.items():   
-            foregr_arr = foregr_data.get(how)
-            if foregr_arr is None:
-                continue
-            
-            foregr_obj_arr, obj_area = get_foregr_obj_array(
-                foregr_arr, obj, isSegm3D, z_slice=z_slice, how=how
-            )
-            ID = obj.label
-            autoBkgrVal, dataPrepBkgrVal = get_bkgrVals(df, channel, how, ID)
-            metrics_values = df.to_dict('list')
-            items = get_cell_volumes_areas(df)
-            (cell_vols_vox, cell_vols_fl, cell_vols_vox_3D, cell_vols_fl_3D,
-            cell_areas_pxl, cell_areas_um2) = items
-            custom_error, custom_val, custom_col_name = get_custom_metric_value(
-                custom_func, foregr_obj_arr, autoBkgrVal, dataPrepBkgrVal, obj,
-                o, metrics_values, cell_vols_vox, cell_vols_fl, cell_areas_pxl, 
-                cell_areas_um2, foregr_img, lab, isSegm3D, 
-                other_channels_foregr_imgs, col,
-                cell_vols_vox_3D=cell_vols_vox_3D, 
-                cell_vols_fl_3D=cell_vols_fl_3D
-            )
-            if custom_col_name is None:
-                df.at[ID, f'{col}{text_to_append_to_col}'] = custom_val
-            else:
-                for custom_col, value in zip(custom_col_name, custom_val):
-                    df.at[ID, f'{custom_col}{text_to_append_to_col}'] = value
-                    
-            if customMetricsCritical is not None and custom_error:
-                customMetricsCritical.emit(custom_error, col)
     return df
 
 def add_bkgr_values(
@@ -1610,8 +1768,11 @@ def get_custom_metric_value(
         try:
             custom_val = custom_func(*base_args, *args, **kwargs)
             return '', custom_val, None
+        except TypeError as err:
+            if 'required positional arguments' in str(err):
+                continue
         except Exception as error:
-            continue
+            return traceback.format_exc(), np.nan, None
     
     # Test if custom metric function requires the other channels images
     custom_vals_vs_other_ch = []
@@ -1630,6 +1791,74 @@ def get_custom_metric_value(
     
     return '', custom_vals_vs_other_ch, col_names
 
+def get_ch_indipend_custom_metric_value(
+        custom_func, 
+        all_channels_obj_intens, 
+        all_channels_autoBkgr, 
+        all_channels_dataPrepBkgr, 
+        obj, i, 
+        metrics_values, cell_vols_vox, cell_vols_fl, cell_areas_pxl, 
+        cell_areas_um2, 
+        all_channels_foregr_imgs, 
+        lab, 
+        isSegm3D, 
+        col_name,
+        cell_vols_vox_3D=None, 
+        cell_vols_fl_3D=None
+    ):
+    base_args = (
+        all_channels_obj_intens, 
+        all_channels_autoBkgr, 
+        all_channels_dataPrepBkgr
+    )
+    
+    metrics_obj = {key:mm[i] for key, mm in metrics_values.items()}
+    metrics_obj['cell_vol_vox'] = cell_vols_vox[i]
+    metrics_obj['cell_vol_fl'] = cell_vols_fl[i]
+    metrics_obj['cell_area_pxl'] = cell_areas_pxl[i]
+    metrics_obj['cell_area_um2'] = cell_areas_um2[i]
+    if isSegm3D and cell_vols_vox_3D is not None and cell_vols_fl_3D is not None:
+        metrics_obj['cell_vol_vox_3D'] = cell_vols_vox_3D[i]
+        metrics_obj['cell_vol_fl_3D'] = cell_vols_fl_3D[i]
+
+    additional_args_kwargs = (
+        ((), {}),
+        ((obj,), {}), 
+        ((obj, metrics_obj), {}),
+        ((obj, metrics_obj, all_channels_foregr_imgs, lab), {'isSegm3D': isSegm3D}),
+    )    
+    traceback_text = None
+    for args, kwargs in additional_args_kwargs:
+        try:
+            custom_val = custom_func(*base_args, *args, **kwargs)
+            return '', custom_val, None
+        except TypeError as err:
+            if 'required positional arguments' in str(err):
+                continue
+        except Exception as error:
+            traceback_text = traceback.format_exc()
+    
+    return traceback_text, np.nan, None
+
+def get_channel_indipend_custom_metrics_params(
+        ch_indipend_custom_func_dict, ch_indipend_custom_metric_cols
+    ):
+    custom_metrics_params = {}
+    
+    for col in ch_indipend_custom_metric_cols:
+        for metric, custom_func in ch_indipend_custom_func_dict.items():
+            custom_pattern = (
+                rf'({metric})_?({how_3D_to_2D_pattern}*)'
+            )
+            m = re.findall(custom_pattern, col)
+            if m:
+                # Metric is a standard metric 
+                func_name, how = m[0]
+                custom_metrics_params[col] = (custom_func, how)
+                break
+    
+    return custom_metrics_params
+
 def get_metrics_params(all_channels_metrics, metrics_func, custom_func_dict):
     channel_names = list(all_channels_metrics.keys())
     bkgr_metrics_params = {ch:{} for ch in channel_names}
@@ -1637,7 +1866,6 @@ def get_metrics_params(all_channels_metrics, metrics_func, custom_func_dict):
     concentration_metrics_params = {}
     custom_metrics_params = {ch:{} for ch in channel_names}
     az = r'[A-Za-z0-9]'
-    how_3D_to_2D_pattern = r'zSlice|3D|maxProj|meanProj|(?=\s*$)'
     bkgrVal_pattern = fr'_({az}+)_bkgrVal_({az}+)_?({az}*)$'
 
     for channel_name, columns in all_channels_metrics.items():
@@ -1679,7 +1907,9 @@ def get_metrics_params(all_channels_metrics, metrics_func, custom_func_dict):
                 continue
 
             for metric, custom_func in custom_func_dict.items():
-                custom_pattern = rf'{channel_name}_({metric})_?({how_3D_to_2D_pattern}*)'
+                custom_pattern = (
+                    rf'{channel_name}_({metric})_?({how_3D_to_2D_pattern}*)'
+                )
                 m = re.findall(custom_pattern, col)
                 if m:
                     # Metric is a standard metric 

@@ -331,91 +331,7 @@ def disableWindow(func):
             self.setDisabled(False)
             self.activateWindow()
     return inner_function
-
-class relabelSequentialWorker(QObject):
-    finished = Signal()
-    critical = Signal(object)
-    progress = Signal(str)
-    sigRemoveItemsGUI = Signal(int)
-    debug = Signal(object)
-
-    def __init__(self, mainWin, posFoldernames):
-        QObject.__init__(self)
-        self.mainWin = mainWin
-        self.data = mainWin.data
-        self.posFoldernames = posFoldernames
-        self.mutex = QMutex()
-        self.waitCond = QWaitCondition()
-
-    def progressNewIDs(self, oldIDs, newIDs):
-        li = list(zip(oldIDs, newIDs))
-        s = '\n'.join([str(pair).replace(',', ' -->') for pair in li])
-        s = f'IDs relabelled as follows:\n{s}'
-        self.progress.emit(s)
-
-    @workers.worker_exception_handler
-    def run(self):
-        self.mutex.lock()
-
-        self.progress.emit('Relabelling process started...')
-        mainWin = self.mainWin
-
-        current_pos_i = mainWin.pos_i
-        
-        for p, posData in enumerate(self.data):
-            if posData.pos_foldername not in self.posFoldernames:
-                continue
-            
-            mainWin.pos_i = p
-            current_lab = mainWin.get_2Dlab(posData.lab).copy()
-            current_frame_i = posData.frame_i
-            segm_data = []
-            for frame_i, data_dict in enumerate(posData.allData_li):
-                lab = data_dict['labels']
-                if lab is None:
-                    break
-                segm_data.append(lab)
-                # if frame_i == current_frame_i:
-                #     break
-
-            if not segm_data:
-                segm_data = np.array([current_lab])
-
-            segm_data = np.array(segm_data)
-            segm_data, oldIDs, newIDs = core.relabel_sequential(
-                segm_data, is_timelapse=posData.SizeT>1
-            )
-            self.progressNewIDs(oldIDs, newIDs)
-            self.sigRemoveItemsGUI.emit(np.max(segm_data))
-
-            self.progress.emit(
-                'Updating stored data and cell cycle annotations '
-                '(if present)...'
-            )
-
-            mainWin.updateAnnotatedIDs(oldIDs, newIDs, logger=self.progress.emit)
-            mainWin.store_data(mainThread=False)
-
-            for frame_i, lab in enumerate(segm_data):
-                posData.frame_i = frame_i
-                posData.lab = lab
-                mainWin.get_cca_df()
-                if posData.cca_df is not None:
-                    mainWin.update_cca_df_relabelling(
-                        posData, oldIDs, newIDs
-                    )
-                mainWin.update_rp(draw=False)
-                mainWin.store_data(mainThread=False)
-
-        # Go back to current frame
-        mainWin.pos_i = current_pos_i
-        posData = self.data[mainWin.pos_i]
-        posData.frame_i = current_frame_i
-        mainWin.get_data()
-
-        self.mutex.unlock()
-        self.finished.emit()
-        
+      
 class guiWin(QMainWindow):
     """Main Window."""
 
@@ -8999,7 +8915,7 @@ class guiWin(QMainWindow):
 
     def startRelabellingWorker(self, posFoldernames):
         self.thread = QThread()
-        self.worker = relabelSequentialWorker(self, posFoldernames)
+        self.worker = workers.relabelSequentialWorker(self, posFoldernames)
         self.worker.moveToThread(self.thread)
         self.worker.finished.connect(self.thread.quit)
         self.worker.finished.connect(self.worker.deleteLater)
@@ -9578,7 +9494,7 @@ class guiWin(QMainWindow):
         delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
         rois = delROIs_info['rois'].copy()
         for roi in rois:
-            self.ax2.removeItem(roi)
+            self.ax2.removeDelRoiItem(roi)
 
         for item in self.ax2.items:
             if isinstance(item, pg.ROI):
@@ -10249,7 +10165,7 @@ class guiWin(QMainWindow):
                buttonsTexts=('Cancel', applyButton)
             )
             cancel = msg.cancel
-            apply = msg.clickedButton = applyButton
+            apply = msg.clickedButton == applyButton
         elif why == 'not_G1_in_the_past':
             err_msg = html_utils.paragraph(f"""
                 The requested cell in G1
@@ -10393,7 +10309,10 @@ class guiWin(QMainWindow):
                 self.stopBlinkingPairItem()
                 return True
             budIDsOfExcludedMoth = excluded_df.relative_ID.to_list()
-            self.warnDeadOrExcludedMothers(budIDsOfExcludedMoth, excludedMothIDs)
+            proceed = self.warnDeadOrExcludedMothers(
+                budIDsOfExcludedMoth, excludedMothIDs
+            )
+            return proceed
         except Exception as e:
             self.logger.info(traceback.format_exc())
             print('-'*100)
@@ -10401,6 +10320,7 @@ class guiWin(QMainWindow):
                 'Checking if mother cell is excluded or dead failed.'
             )
             print('^'*100)
+            return False
     
     def checkDivisionCanBeUndone(self, ID, relID):
         """Check that division annotation can be undone (see Notes section)
@@ -10648,7 +10568,11 @@ class guiWin(QMainWindow):
 
         # self.checkMultiBudMoth(draw=True)
         self.store_cca_df()
-        self.checkMothersExcludedOrDead()
+        proceed = self.checkMothersExcludedOrDead()
+        if not proceed:
+            # User clicked on cancel in the message box
+            self.UndoCca()
+            return
 
         if self.ccaTableWin is not None:
             zoomIDs = self.getZoomIDs()
@@ -11160,12 +11084,12 @@ class guiWin(QMainWindow):
         self.df_settings.to_csv(self.settings_csv_path)
 
     def addDelROI(self, event):       
-        roi = self.createDelROI()
+        roi, key = self.createDelROI()
         self.addRoiToDelRoiInfo(roi)
         if not self.labelsGrad.showLabelsImgAction.isChecked():
-            self.ax1.addItem(roi)
+            self.ax1.addDelRoiItem(roi, key)
         else:
-            self.ax2.addItem(roi)
+            self.ax2.addDelRoiItem(roi, key)
         self.applyDelROIimg1(roi, init=True)
         self.applyDelROIimg1(roi, init=True, ax=1)
 
@@ -11200,7 +11124,7 @@ class guiWin(QMainWindow):
         for i in range(posData.frame_i, posData.SizeT):
             delROIs_info = posData.allData_li[i]['delROIs_info']
             delROIs_info['rois'].append(roi)
-            delROIs_info['delMasks'].append(np.zeros_like(posData.lab))
+            delROIs_info['delMasks'].append(np.zeros_like(self.currentLab2D))
             delROIs_info['delIDsROI'].append(set())
     
     def addDelPolyLineRoi_cb(self, checked):
@@ -11284,7 +11208,10 @@ class guiWin(QMainWindow):
         roi.sigRegionChanged.connect(self.delROImoving)
         roi.sigRegionChanged.connect(self.delROIstartedMoving)
         roi.sigRegionChangeFinished.connect(self.delROImovingFinished)
-        return roi
+        
+        key = uuid.uuid4()
+        
+        return roi, key
     
     def delROIstartedMoving(self, roi):
         self.clearLostObjContoursItems()
@@ -11372,7 +11299,10 @@ class guiWin(QMainWindow):
             prev_lab = posData.allData_li[posData.frame_i-1]['labels']
         allDelIDs = set()
         for roi in posData.allData_li[posData.frame_i]['delROIs_info']['rois']:
-            if roi not in self.ax2.items and roi not in self.ax1.items:
+            if (
+                    not self.ax1.isDelRoiItemPresent(roi) 
+                    and not self.ax2.isDelRoiItemPresent(roi)
+                ):
                 continue
             
             ROImask = self.getDelRoiMask(roi)
@@ -11394,35 +11324,50 @@ class guiWin(QMainWindow):
             allDelIDs.update(delIDs)
         return allDelIDs
     
+    # @exec_time
     def getDelROIlab(self):
         posData = self.data[self.pos_i]
-        DelROIlab = self.get_2Dlab(posData.lab, force_z=False).copy()
+        DelROIlab = self.get_2Dlab(posData.lab, force_z=False)
         allDelIDs = set()
         # Iterate rois and delete IDs
         for roi in posData.allData_li[posData.frame_i]['delROIs_info']['rois']:
-            if roi not in self.ax2.items and roi not in self.ax1.items:
+            if (
+                    not self.ax1.isDelRoiItemPresent(roi) 
+                    and not self.ax2.isDelRoiItemPresent(roi)
+                ):
                 continue     
             ROImask = self.getDelRoiMask(roi)
             delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
             idx = delROIs_info['rois'].index(roi)
             delObjROImask = delROIs_info['delMasks'][idx]
             delIDsROI = delROIs_info['delIDsROI'][idx]   
-            delIDs = np.unique(posData.lab[ROImask])
-            if len(delIDs) > 0:
-                if delIDs[0] == 0:
-                    delIDs = delIDs[1:]
-            delIDsROI.update(delIDs)
-            allDelIDs.update(delIDs)
-            _DelROIlab = self.get_2Dlab(posData.lab).copy()
-            for obj in posData.rp:
-                ID = obj.label
-                if ID in delIDs:
-                    delObjROImask[posData.lab==ID] = ID
-                    _DelROIlab[posData.lab==ID] = 0
-            DelROIlab[_DelROIlab == 0] = 0
+            delROIlabRp = skimage.measure.regionprops(DelROIlab)
+            delIDs = set()
+            for delObj in delROIlabRp:
+                isDelObj = np.any(ROImask[delObj.slice][delObj.image])
+                if not isDelObj:
+                    continue
+                
+                delObjROImask[delObj.slice][delObj.image] = delObj.label
+                DelROIlab[delObj.slice][delObj.image] = 0
+            
+                delIDsROI.add(delObj.label)
+                allDelIDs.add(delObj.label)
+
             # Keep a mask of deleted IDs to bring them back when roi moves
             delROIs_info['delMasks'][idx] = delObjROImask
             delROIs_info['delIDsROI'][idx] = delIDsROI
+        
+        # printl(
+        #     f't1-t0: {(t1-t0)*1000:.3f} ms,',
+        #     f't2-t1: {(t2-t1)*1000:.3f} ms,',
+        #     f't3-t2: {(t3-t2)*1000:.3f} ms,',
+        #     # f't4-t3: {(t4-t3)*1000:.3f} ms,',
+        #     # f't5-t4: {(t5-t4)*1000:.3f} ms,',
+        #     # f't6-t5: {(t6-t5)*1000:.3f} ms',
+        #     sep='\n'
+        # )
+        
         return allDelIDs, DelROIlab
     
     def getDelRoiMask(self, roi, posData=None, z_slice=None):
@@ -14937,7 +14882,24 @@ class guiWin(QMainWindow):
             return
         
         if ev.key() == Qt.Key_Q and self.debug:
-            printl(self.ax1.items, pretty=True)
+            posData = self.data[self.pos_i]
+            delROIs = posData.allData_li[posData.frame_i]['delROIs_info']['rois']
+            printl(len(delROIs))
+            
+            posData.allData_li[posData.frame_i]['delROIs_info']['rois'].append(1)
+            
+            delROIs = posData.allData_li[posData.frame_i]['delROIs_info']['rois']
+            printl(len(delROIs))
+            
+            current_frame_delROIs = delROIs
+            
+            delROIs = posData.allData_li[posData.frame_i+1]['delROIs_info']['rois']
+            printl(len(delROIs))
+            
+            next_frame_delROIs = delROIs
+            
+            printl(current_frame_delROIs is next_frame_delROIs)
+            
             pass
         
         if not self.isDataLoaded:
@@ -16265,7 +16227,8 @@ class guiWin(QMainWindow):
                 keepActive, isHideChecked
             )
             allPosAnnotIDs = [
-                pos.customAnnotIDs.get(name, {}) for pos in self.data
+                pos.customAnnotIDs.get(name, defaultdict(list)) 
+                for pos in self.data
             ]
             self.customAnnotDict[toolButton] = {
                 'action': action,
@@ -16328,7 +16291,7 @@ class guiWin(QMainWindow):
         self.customAnnotDict[toolButton] = {
             'action': action,
             'state': state,
-            'annotatedIDs': [{} for _ in range(len(self.data))]
+            'annotatedIDs': [defaultdict(list) for _ in range(len(self.data))]
         }
 
         # Save custom annotation to cellacdc/temp/custom_annotations.json
@@ -16341,17 +16304,34 @@ class guiWin(QMainWindow):
         # Add scatter plot item
         self.addCustomAnnnotScatterPlot(symbolColor, symbol, toolButton)
 
+        customAnnotButton = self.customAnnotDict[toolButton]
+        allPosAnnotatedIDs = customAnnotButton['annotatedIDs']
         # Add 0s column to acdc_df
-        posData = self.data[self.pos_i]
-        for frame_i, data_dict in enumerate(posData.allData_li):
-            acdc_df = data_dict['acdc_df']
-            if acdc_df is None:
-                continue
-            acdc_df[name] = 0
-        if posData.acdc_df is not None:
-            posData.acdc_df[name] = 0
+        for pos_i, posData in enumerate(self.data):
+            for frame_i, data_dict in enumerate(posData.allData_li):
+                acdc_df = data_dict['acdc_df']
+                if acdc_df is None:
+                    continue
+                if name not in acdc_df.columns:
+                    acdc_df[name] = 0
+                else:
+                    acdc_df[name] = acdc_df[name].astype(int)
+                    acdc_df_annot = acdc_df[acdc_df[name] == 1].reset_index()
+                    annot_IDs = acdc_df_annot['Cell_ID'].to_list()
+                    allPosAnnotatedIDs[pos_i][frame_i].extend(annot_IDs)
+                    
+            if posData.acdc_df is not None:
+                if name not in posData.acdc_df.columns:
+                    posData.acdc_df[name] = 0
+                else:
+                    posData.acdc_df[name] = posData.acdc_df[name].astype(int)
+                    acdc_df_annot = (
+                        posData.acdc_df[posData.acdc_df[name] == 1]
+                        .reset_index()
+                    )
+                    annot_IDs = acdc_df_annot['Cell_ID'].to_list()
+                    allPosAnnotatedIDs[pos_i][frame_i].extend(annot_IDs)
         
-
     def customAnnotHovered(self, scatterPlotItem, points, event):
         # Show tool tip when hovering an annotation with annotation name and ID
         vb = scatterPlotItem.getViewBox()
@@ -16450,6 +16430,7 @@ class guiWin(QMainWindow):
         self.addAnnotWin.sigDeleteSelecAnnot.connect(self.deleteSelectedAnnot)
         self.addAnnotWin.exec_()
         if self.addAnnotWin.cancel:
+            self.logger.info('Custom annotation process cancelled.')
             return
 
         symbol = self.addAnnotWin.symbol
@@ -16459,13 +16440,51 @@ class guiWin(QMainWindow):
         name = self.addAnnotWin.state['name']
         keepActive = self.addAnnotWin.state.get('keepActive', True)
         isHideChecked = self.addAnnotWin.state.get('isHideChecked', True)
+        
+        proceed = self.checkNameExists(name)
+        if not proceed:
+            self.logger.info('Custom annotation process cancelled.')
+            return
 
         self.addCustomAnnotationItems(
             symbol, symbolColor, keySequence, toolTip, name,
             keepActive, isHideChecked, self.addAnnotWin.state
         )
         self.saveCustomAnnot()
+        self.doCustomAnnotation(0)
 
+    def askCustomAnnotationNameExists(self, name):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(f"""
+            The annotationa called <code>{name}</code> already exists in the 
+            acdc_output CSV file.<br><br>
+            If you continue, this column will be used to initialize 
+            pre-annotated objects.<br><br>
+            Do you want to continue?
+        """
+        )
+        noButton, yesButton = msg.question(
+            self, 'Custom annotation name already exists', txt,
+            buttonsTexts=('No, stop process', 'Yes, use existing column')
+        )
+        return msg.clickedButton == yesButton
+        
+    
+    def checkNameExists(self, name):
+        posData = self.data[self.pos_i]
+        for frame_i, data_dict in enumerate(posData.allData_li):
+            acdc_df = data_dict['acdc_df']
+            if acdc_df is None:
+                continue
+            if name in acdc_df.columns:
+                return self.askCustomAnnotationNameExists(name)
+        
+        if posData.acdc_df is not None and name in posData.acdc_df.columns:
+            return self.askCustomAnnotationNameExists(name)
+         
+        return True
+            
+    
     def viewAllCustomAnnot(self, checked):
         if not checked:
             # Clear all annotations before showing only checked
@@ -16588,7 +16607,9 @@ class guiWin(QMainWindow):
                 return
 
         for button in buttons:
-            annotatedIDs = self.customAnnotDict[button]['annotatedIDs'][self.pos_i]
+            annotatedIDs = (
+                self.customAnnotDict[button]['annotatedIDs'][self.pos_i]
+            )
             annotIDs_frame_i = annotatedIDs.get(posData.frame_i, [])
             state = self.customAnnotDict[button]['state']
             acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
@@ -16612,7 +16633,7 @@ class guiWin(QMainWindow):
 
             xx, yy = [], []
             for annotID in annotIDs_frame_i:
-                obj_idx = posData.IDs.index(annotID)
+                obj_idx = posData.IDs_idxs[annotID]
                 obj = posData.rp[obj_idx]
                 acdc_df.at[annotID, state['name']] = 1
                 if not self.isObjVisible(obj.bbox):
@@ -16658,6 +16679,7 @@ class guiWin(QMainWindow):
         for posData in self.data:
             try:
                 posData.customAnnot.pop(name)
+                posData.saveCustomAnnotationParams()
             except KeyError as e:
                 # Current pos doesn't have any annotation button. Continue
                 continue
@@ -17405,7 +17427,7 @@ class guiWin(QMainWindow):
             self.navigateScrollBar.actionTriggered.disconnect()
             self.navigateScrollBar.sliderReleased.disconnect()
             self.navigateScrollBar.sliderMoved.disconnect()
-            self.navigateScrollBar.valueChanged.disconnect()
+            # self.navigateScrollBar.valueChanged.disconnect()
             self.navigateScrollBar.setSliderPosition(self.navSpinBox.value())
         except Exception as e:
             if "disconnect()" not in str(e):
@@ -19312,6 +19334,9 @@ class guiWin(QMainWindow):
     def loadingDataCompleted(self):
         self.isDataLoading = True
         posData = self.data[self.pos_i]
+        
+        printl(posData.allData_li is None)
+        
         files_format = '\n'.join([
             f'  - {file}' for file in posData.images_folder_files
         ])
@@ -20414,6 +20439,16 @@ class guiWin(QMainWindow):
         self.foregr_metrics_params = foregr_metrics_params
         self.concentration_metrics_params = concentration_metrics_params
         self.custom_metrics_params = custom_metrics_params
+        
+        self.ch_indipend_custom_func_dict = (
+            measurements.get_channel_indipendent_custom_metrics_func()
+        )
+        self.ch_indipend_custom_func_params = (
+            measurements.get_channel_indipend_custom_metrics_params(
+                self.ch_indipend_custom_func_dict,
+                self.chIndipendCustomMetricsToSave
+            )
+        )
 
     def initMetrics(self):
         self.logger.info('Initializing measurements...')
@@ -20430,8 +20465,15 @@ class guiWin(QMainWindow):
             self.regionPropsToSave = measurements.get_props_names_3D()
         else:
             self.regionPropsToSave = measurements.get_props_names()  
-        self.mixedChCombineMetricsToSkip = []
+        
         posData = self.data[self.pos_i]
+        self.mixedChCombineMetricsToSkip = []
+        self.chIndipendCustomMetricsToSave = list(
+            measurements.ch_indipend_custom_metrics_desc(
+                posData.SizeZ>1, isSegm3D=self.isSegm3D,
+            ).keys()
+        )
+        
         self.sizeMetricsToSave = list(
             measurements.get_size_metrics_desc(
                 self.isSegm3D, posData.SizeT>1
@@ -20510,19 +20552,16 @@ class guiWin(QMainWindow):
             posData.ol_data_dict = {}
             posData.ol_data = None
 
-            posData.ol_labels_data = None
-            if posData.allData_li is None:
-                posData.allData_li = [
-                    myutils.get_empty_stored_data_dict() for _ in range(posData.SizeT) 
-                ]
+            posData.ol_labels_data = None       
             
-            else:
-                missing_frames = posData.SizeT - len(posData.allData_li)
-                if missing_frames > 0:
-                    posData.allData_li.extend([None] * missing_frames)
-                for i in range(posData.SizeT):
-                    if posData.allData_li[i] is None:
-                        posData.allData_li[i] = myutils.get_empty_stored_data_dict()
+            missing_frames = posData.SizeT - len(posData.allData_li)
+            if missing_frames > 0:
+                posData.allData_li.extend([None] * missing_frames)
+            for i in range(posData.SizeT):
+                if posData.allData_li[i] is None:
+                    posData.allData_li[i] = (
+                        myutils.get_empty_stored_data_dict()
+                    )
             
             posData.lutLevels = {channel: {} for channel in self.ch_names}
 
@@ -20545,7 +20584,6 @@ class guiWin(QMainWindow):
                     self.store_data(
                         enforce=True, autosave=False, store_cca_df_copy=True
                     )
-                    # self.load_delROIs_info(delROIshapes, last_tracked_num)
 
                 # Ask whether to resume from last frame
                 if last_tracked_num>1:
@@ -20986,7 +21024,7 @@ class guiWin(QMainWindow):
             if posData.cca_df.isna().any(axis=None):
                 raise ValueError('Cell cycle analysis table contains NaNs')
             # self.checkMultiBudMoth()
-            self.checkMothersExcludedOrDead()
+            proceed = self.checkMothersExcludedOrDead()
             return notEnoughG1Cells, proceed
 
         elif mode == 'Normal division: Lineage tree':
@@ -21813,36 +21851,6 @@ class guiWin(QMainWindow):
         self.get_zslices_rp()
         self.pointsLayerDfsToData(posData)
         return proceed_cca, never_visited
-
-    def load_delROIs_info(self, delROIshapes, last_tracked_num):
-        posData = self.data[self.pos_i]
-        delROIsInfo_npz = posData.delROIsInfo_npz
-        if delROIsInfo_npz is None:
-            return
-        for file in posData.delROIsInfo_npz.files:
-            if not file.startswith(f'{posData.frame_i}_'):
-                continue
-
-            delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
-            if file.startswith(f'{posData.frame_i}_delMask'):
-                delMask = delROIsInfo_npz[file]
-                delROIs_info['delMasks'].append(delMask)
-            elif file.startswith(f'{posData.frame_i}_delIDs'):
-                delIDsROI = set(delROIsInfo_npz[file])
-                delROIs_info['delIDsROI'].append(delIDsROI)
-            elif file.startswith(f'{posData.frame_i}_roi'):
-                Y, X = self.get_2Dlab(posData.lab).shape
-                x0, y0, w, h = delROIsInfo_npz[file]
-                addROI = (
-                    posData.frame_i==0 or
-                    [x0, y0, w, h] not in delROIshapes[posData.frame_i]
-                )
-                if addROI:
-                    roi = self.createDelROI(xl=x0, yb=y0, w=w, h=h)
-                    for i in range(posData.frame_i, last_tracked_num):
-                        delROIs_info_i = posData.allData_li[i]['delROIs_info']
-                        delROIs_info_i['rois'].append(roi)
-                        delROIshapes[i].append([x0, y0, w, h])
 
     def addIDBaseCca_df(self, posData, ID):
         if ID <= 0:
@@ -25256,11 +25264,11 @@ class guiWin(QMainWindow):
         for posData in self.data:
             delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
             for roi in delROIs_info['rois']:
-                if roi not in self.ax2.items:
+                if not self.ax2.isDelRoiItemPresent(roi):
                     continue
 
-                self.ax1.addItem(roi)
-                # self.ax2.removeItem(roi)
+                self.ax1.addDelRoiItem(roi, roi.key)
+                self.ax2.removeDelRoiItem(roi)
     
     def setBottomLayoutStretch(self):
         if (
@@ -26095,17 +26103,20 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
         for roi in delROIs_info['rois']:
-            if roi in self.ax2.items or roi in self.ax1.items:
+            if (
+                    not self.ax1.isDelRoiItemPresent(roi) 
+                    and not self.ax2.isDelRoiItemPresent(roi)
+                ):
                 continue
             if isinstance(roi, pg.PolyLineROI):
                 # PolyLine ROIs are only on ax1
-                self.ax1.addItem(roi)
+                self.ax1.addDelRoiItem(roi, roi.key)
             elif not self.labelsGrad.showLabelsImgAction.isChecked():
                 # Rect ROI is on ax1 because ax2 is hidden
-                self.ax1.addItem(roi)
+                self.ax1.addDelRoiItem(roi, roi.key)
             else:
                 # Rect ROI is on ax2 because ax2 is visible
-                self.ax2.addItem(roi)    
+                self.ax2.addDelRoiItem(roi, roi.key)    
 
     def updateFramePosLabel(self):
         if self.isSnapshot:
@@ -26491,8 +26502,7 @@ class guiWin(QMainWindow):
             contours.extend(obj_contours)
             textItem = self.manualBackgroundTextItems[obj.label]
             textItem.setText(f'{obj.label}')
-            if textItem not in self.ax1.items:
-                self.ax1.addItem(textItem)
+            self.ax1.addItem(textItem)
             yc, xc = obj.centroid
             textItem.setPos(xc, yc)
         
@@ -30002,6 +30012,27 @@ class guiWin(QMainWindow):
                     favourite_funcs.add(checkBox.text())
             self.regionPropsToSave = tuple(self.regionPropsToSave)
 
+        if measurementsWin.chIndipendCustomeMetricsQGBox is not None:
+            skipAll = (
+                not measurementsWin.chIndipendCustomeMetricsQGBox.isChecked()
+            )
+            if not skipAll:
+                title = measurementsWin.chIndipendCustomeMetricsQGBox.title()
+                last_selected_groupboxes_measurements[refChannel].append(title)
+            chIndipendCustomMetricsToSave = []
+            win = measurementsWin
+            checkBoxes = win.chIndipendCustomeMetricsQGBox.checkBoxes
+            for checkBox in checkBoxes:
+                if skipAll:
+                    continue
+    
+                if checkBox.isChecked():
+                    chIndipendCustomMetricsToSave.append(checkBox.text())           
+                    favourite_funcs.add(checkBox.text())
+            self.chIndipendCustomMetricsToSave = tuple(
+                chIndipendCustomMetricsToSave
+            )
+        
         if measurementsWin.mixedChannelsCombineMetricsQGBox is not None:
             skipAll = (
                 not measurementsWin.mixedChannelsCombineMetricsQGBox.isChecked()
@@ -30097,12 +30128,13 @@ class guiWin(QMainWindow):
 
     def setMetricsFunc(self):
         posData = self.data[self.pos_i]
-        (metrics_func, all_metrics_names,
-        custom_func_dict, total_metrics) = measurements.getMetricsFunc(posData)
+        (metrics_func, all_metrics_names, custom_func_dict, total_metrics,
+        ch_indipend_custom_func_dict) = measurements.getMetricsFunc(posData)
         self.metrics_func = metrics_func
         self.all_metrics_names = all_metrics_names
         self.total_metrics = total_metrics
         self.custom_func_dict = custom_func_dict
+        self.ch_indipend_custom_func_dict = ch_indipend_custom_func_dict
 
     def getLastTrackedFrame(self, posData):
         last_tracked_i = 0

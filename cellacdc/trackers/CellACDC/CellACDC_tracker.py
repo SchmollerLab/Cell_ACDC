@@ -72,8 +72,10 @@ def calc_Io_matrix(lab, prev_lab, rp, prev_rp, IDs_curr_untracked=None,
             IoA_matrix[idx, j] = IoA
     return IoA_matrix, IDs_curr_untracked, IDs_prev
 
-def assign(IoA_matrix, IDs_curr_untracked, IDs_prev, IoA_thresh=0.4, aggr_track=None, IoA_thresh_aggr=0.4, daughters_list=None,
-           IDs=None):
+def assign(
+        IoA_matrix, IDs_curr_untracked, IDs_prev, IoA_thresh=0.4, 
+        aggr_track=None, IoA_thresh_aggr=0.4, daughters_list=None,
+        IDs=None):
     # Determine max IoA between IDs and assign tracked ID if IoA >= IoA_thresh
     if IoA_matrix.size == 0:
         return [], []

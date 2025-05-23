@@ -122,17 +122,26 @@ def get_acdc_df_features(
             foregr_data = measurements.get_foregr_data(foregr_img, isSegm3D, z)
             
             # Iterate objects and compute foreground metrics
-            df = measurements.add_foregr_metrics(
-                df, rp, channel, foregr_data, foregr_metrics_params[channel], 
-                metrics_func, custom_metrics_params[channel], isSegm3D, 
-                lab, foregr_img, other_channels_foregr_imgs, 
-                customMetricsCritical=None,
+            df = measurements.add_foregr_standard_metrics(
+                df, rp, channel, foregr_data, 
+                foregr_metrics_params[channel], 
+                metrics_func, isSegm3D, 
+                lab, foregr_img, 
                 z_slice=z
             )
 
             df = measurements.add_concentration_metrics(
                 df, concentration_metrics_params
             )
+            
+            df = measurements.add_custom_metrics(
+                df, rp, channel, foregr_data, 
+                custom_metrics_params[channel], 
+                isSegm3D, lab, foregr_img, 
+                other_channels_foregr_imgs,
+                z_slice=z,
+            )
+            
         elif category == 'regionprop':
             try:
                 df, rp_errors = measurements.add_regionprops_metrics(

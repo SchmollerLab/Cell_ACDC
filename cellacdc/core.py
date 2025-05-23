@@ -1960,7 +1960,7 @@ class _WorkflowKernel:
     def __init__(self, logger, log_path, is_cli=False):
         self.logger = logger
         self.log_path = log_path
-        self.is_cli = True
+        self.is_cli = is_cli
     
     def quit(self, error=None):
         if not self.is_cli and error is not None:
@@ -2107,7 +2107,8 @@ class SegmKernel(_WorkflowKernel):
             logger_func=print,
             innerPbar_available=False,
             is_segment3DT_available=False, 
-            reduce_memory_usage=False
+            reduce_memory_usage=False,
+            use_freehand_ROI=True
         ):
         self.user_ch_name = user_ch_name
         self.segm_endname = segm_endname
@@ -2132,6 +2133,7 @@ class SegmKernel(_WorkflowKernel):
         self.is_segment3DT_available = is_segment3DT_available
         self.reduce_memory_usage = reduce_memory_usage
         self.preproc_recipe = preproc_recipe
+        self.use_freehand_ROI = use_freehand_ROI
         if signals is None:
             self.signals = KernelCliSignals(logger_func)
         else:
@@ -2474,7 +2476,7 @@ class SegmKernel(_WorkflowKernel):
 
         posData.saveSamEmbeddings(logger_func=self.logger_func)
         
-        if len(posData.dataPrepFreeRoiPoints) > 0:
+        if len(posData.dataPrepFreeRoiPoints) > 0 and self.use_freehand_ROI:
             self.logger_func(
                 'Removing objects outside the dataprep free-hand ROI...'
             )
@@ -2560,7 +2562,6 @@ class SegmKernel(_WorkflowKernel):
         t_end = time.perf_counter()
 
         self.logger_func(f'\n{posData.relPath} done.')
-        self.signals.finished.emit(t_end-t0)
 
 def filter_segm_objs_from_table_coords(lab, df):
     cols = []
@@ -3684,25 +3685,25 @@ def parallel_count_objects(posData, logger_func):
 def count_objects(posData, logger_func):
     allIDs = set()
 
-    empty_data_dict = myutils.get_empty_stored_data_dict()
     segm_data = posData.segm_data
     if not np.any(segm_data):
-        allIDs = list(range(100))
+        allIDs = []
         return allIDs, posData
     
     logger_func('Counting total number of segmented objects...')
-    for i, lab in tqdm(enumerate(segm_data), ncols=100):
-        posData.allData_li[i]= empty_data_dict.copy()
+    pbar = tqdm(total=len(segm_data), ncols=100)
+    for i, lab in enumerate(segm_data):
+        posData.allData_li[i]= myutils.get_empty_stored_data_dict()
         rp = skimage.measure.regionprops(lab)
         IDs = [obj.label for obj in rp]
         posData.allData_li[i]['IDs'] = IDs
         posData.allData_li[i]['regionprops'] = rp
         posData.allData_li[i]['IDs_idxs'] = { # IDs_idxs[obj.label] = idx
             ID: idx for idx, ID in enumerate(IDs)
-            }
+        }
         allIDs.update(IDs)
-    if not allIDs:
-        allIDs = list(range(100))
+        pbar.update()
+    pbar.close()
     return allIDs, posData
 
 def fix_sparse_directML(verbose=True):

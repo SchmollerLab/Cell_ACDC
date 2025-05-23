@@ -145,8 +145,8 @@ class dataPrepWin(QMainWindow):
     @exception_handler
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Q:
-            from cellacdc.plot import imshow
-            imshow(self.freeRoiMask)
+            posData = self.data[self.pos_i]
+            printl(posData.img_data.shape)
             # printl(posData.all_npz_paths)
             # printl(posData.tif_paths)
             # for r, roi in enumerate(posData.bkgrROIs):
@@ -755,7 +755,7 @@ class dataPrepWin(QMainWindow):
             croppedData = croppedData[:, y0:y0+h, x0:x0+w]
         elif data.ndim == 2:
             croppedData = croppedData[y0:y0+h, x0:x0+w]
-
+        
         SizeZ = posData.SizeZ
 
         if posData.SizeZ > 1:
@@ -975,17 +975,21 @@ class dataPrepWin(QMainWindow):
         if self.isFreeRoiDrag:
             self.freeRoiItem.addPoint(xdata, ydata)
     
+    def saveFreeRoi(self):
+        posData = self.data[self.pos_i]
+        xx, yy = self.freeRoiItem.getData()
+        self.freeRoiYXorigin = (yy.min(), xx.min())
+        self.isFreeRoiDrag = False
+        self.freeRoiMask = posData.saveDataPrepFreeRoi(
+            self.freeRoiItem, logger_func=self.logger.info
+        )
+        self.dataPrepFreeRoiSaved()
+    
     def gui_mouseReleaseEventImg(self, event):
         posData = self.data[self.pos_i]
         if self.isFreeRoiDrag:
             self.freeRoiItem.closeCurve()
-            xx, yy = self.freeRoiItem.getData()
-            self.freeRoiYXorigin = (yy.min(), xx.min())
-            self.isFreeRoiDrag = False
-            self.freeRoiMask = posData.saveDataPrepFreeRoi(
-                self.freeRoiItem, logger_func=self.logger.info
-            )
-            self.dataPrepFreeRoiSaved()
+            self.saveFreeRoi()
     
     def dataPrepFreeRoiSaved(self):
         msg = widgets.myMessageBox(wrapText=False)
@@ -1025,7 +1029,6 @@ class dataPrepWin(QMainWindow):
             self.logger.info(f'Saving: {npz_path}')
             temp_npz = self.getTempfilePath(npz_path)
             io.savez_compressed(temp_npz, cropped_data)
-            printl(temp_npz, npz_path)
             self.moveTempFile(temp_npz, npz_path)
 
         self.logger.info(f'Saving: {tif_path}')
@@ -1095,6 +1098,7 @@ class dataPrepWin(QMainWindow):
                 file.endswith('bkgrRoiData.npz')
                 or file.endswith('dataPrep_bkgrROIs.json')
                 or file.endswith('segmInfo.csv')
+                or file.endswith('dataPrepFreeRoi.npz')
             )
             is_metadata_file = file.endswith('metadata.csv')
             if not copy_file and not is_metadata_file:
@@ -1498,7 +1502,7 @@ class dataPrepWin(QMainWindow):
         else:
             self.reAddROIs()
             
-    def getCroppedData(self, askCropping=True):
+    def getCroppedData(self, askCropping=True, doValidateFreeRoi=False):
         for p, posData in enumerate(self.data):
             self.saveBkgrROIs(posData)
 
@@ -1529,6 +1533,7 @@ class dataPrepWin(QMainWindow):
                 self.setEnabledCropActions(True)
                 txt = ('Cropping cancelled.')
                 self.titleLabel.setText(txt, color='r')
+                self.logger.info(txt)
                 yield None
             elif not isCropped:
                 self.setEnabledCropActions(True)
@@ -1537,10 +1542,127 @@ class dataPrepWin(QMainWindow):
                     'Process stopped.'
                 )
                 self.titleLabel.setText(txt, color='r')
-                printl(txt)
+                self.logger.info(txt)
                 yield 'continue'
-            else:
+            elif not doValidateFreeRoi:
                 yield croppedShapes, posData, SizeZ, doCrop
+            else:
+                proceed = self.validateFreeRoi(posData, warn=p==0)
+                if not proceed:
+                    self.setEnabledCropActions(True)
+                    txt = ('Cropping cancelled because overlaps with free roi.')
+                    self.titleLabel.setText(txt, color='r')
+                    self.logger.info(txt)
+                    yield None
+                else:
+                    yield croppedShapes, posData, SizeZ, doCrop
+    
+    def validateFreeRoi(self, posData, warn=True):
+        posData.loadDataPrepFreeRoi(logger_func=self.logger.info)
+        if len(posData.dataPrepFreeRoiPoints) == 0:
+            return True
+        
+        if len(posData.cropROIs) > 1:
+            if warn:
+                proceed = self.warnMultiCropsWithFreeRoi()
+            else:
+                proceed = True
+                
+            if proceed:
+                posData.removeDataPrepFreeRoi()
+                self.freeRoiItem.clear()
+                self.freeRoiMask = None
+            return proceed 
+        
+        cropROI = posData.cropROIs[0]
+        x0, y0 = [int(round(c)) for c in cropROI.pos()]
+        w, h = [int(round(c)) for c in cropROI.size()]
+        x1, y1 = x0+w, y0+h
+        
+        x0f, y0f, x1f, y1f = posData.dataPrepFreeRoiBbox
+        
+        is_free_roi_in_crop_bounds = (
+            x0f >= x0 and x1f <= x1 and y0f >= y0 and y1f <= y1
+        )        
+        if not is_free_roi_in_crop_bounds and warn:
+            proceed = self.warnFreeRoiOverlapsWithCropRoi()
+        else:
+            proceed = True
+
+        if not proceed:
+            return False
+        
+        # Adjust free-hand ROI according to crop ROI
+        local_mask = posData.dataPrepFreeRoiLocalMask
+        crop_x0, crop_y0, crop_x1, crop_y1 = None, None, None, None
+        if x0f < x0:
+            crop_x0 = x0 - x0f
+            x0f = 0
+        else:
+            x0f = x0f - x0
+        
+        if y0f < y0:
+            crop_y0 = y0 - y0f
+            y0f = 0
+        else:
+            y0f = y0f - y0
+            
+        if x1f > x1:
+            crop_x1 = x1 - x1f
+            x1f = w
+        else:
+            x1f = x1f - y0
+        
+        if y1f > y1:
+            crop_y1 = y1 - y1f
+            y1f = h
+        else:
+            y1f = y1f - y0
+
+        local_mask = posData.dataPrepFreeRoiLocalMask[
+            crop_y0:crop_y1, crop_x0:crop_x1
+        ]
+        bbox = (y0f, x0f, y1f, x1f)
+        posData.saveDataPrepFreeRoi(
+            self.freeRoiItem, logger_func=self.logger.info,
+            bbox=bbox, local_mask=local_mask
+        )
+    
+        return proceed
+    
+    def warnFreeRoiOverlapsWithCropRoi(self):
+        txt = html_utils.paragraph(f"""
+            The crop ROI is smaller than the free-hand ROI.<br><br>
+            Are you sure you want to proceed with cropping?
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        noButton, yesButton = msg.warning(
+            self, 'Crop ROI is smaller than free-hand ROI', txt,
+            buttonsTexts=(
+                'No, stop cropping process', 
+                'Yes, continue with cropping'
+            ),
+        )
+        return msg.clickedButton == yesButton
+    
+    def warnMultiCropsWithFreeRoi(self):
+        txt = html_utils.paragraph(f"""
+            You are about to create multiple crops and you also have a 
+            free-hand ROI.<br><br>
+            If you continue, the free-hand ROI will be removed. You can then 
+            create a new free-hand ROI for each cropped position 
+            individually.<br><br>
+            Do you want to continue?
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        noButton, yesButton = msg.warning(
+            self, 'Multiple crops with free-hand ROI', txt,
+            buttonsTexts=(
+                'No, stop cropping process', 
+                'Yes, continue with cropping'
+            ),
+        )
+        return msg.clickedButton == yesButton
     
     def applyCropZslices(self, low_z, high_z):
         self.logger.info(
@@ -1596,7 +1718,9 @@ class dataPrepWin(QMainWindow):
     @exception_handler
     def cropAndSave(self):
         cropPaths = {}
-        for cropInfo in self.getCroppedData(askCropping=True):
+        for cropInfo in self.getCroppedData(
+                askCropping=True, doValidateFreeRoi=True
+            ):
             if cropInfo is None:
                 # Process cancelled by the user
                 return
@@ -1611,7 +1735,10 @@ class dataPrepWin(QMainWindow):
                 masterPath = posData.pos_path
             
             cropPaths[masterPath] = len(croppedShapes)
-            
+        
+        if not cropPaths:
+            return
+        
         win = apps.DataPrepSubCropsPathsDialog(cropPaths=cropPaths)
         win.exec_()
         if win.cancel:
@@ -1731,6 +1858,11 @@ class dataPrepWin(QMainWindow):
             roi.removable = False
 
             self.removeAllHandles(roi)
+        
+        self.addCropRoiActon.setDisabled(True)
+        self.addBkrgRoiActon.setDisabled(True)
+        self.cropTaction.setDisabled(True)
+        self.freeRoiAction.setDisabled(True)
         
         self.logger.info('ROIs disconnected.')
 

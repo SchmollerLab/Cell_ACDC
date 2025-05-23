@@ -7,6 +7,7 @@
     <file alias="splashImage.png">resources/splashImage.png</file>
     <file alias="whitelist.svg">resources/icons/whitelist.svg</file>
     <file alias="AICS_logo.svg">resources/icons/AICS_logo.svg</file>
+    <file alias="whitelist.svg">resources/icons/whitelist.svg</file>
     <file alias="backspace.svg">resources/icons/math/backspace.svg</file>
     <file alias="square_root.svg">resources/icons/math/square_root.svg</file>
     <file alias="add.svg">resources/icons/math/add.svg</file>
