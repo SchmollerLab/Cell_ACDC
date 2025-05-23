@@ -3809,13 +3809,25 @@ def connected_components_in_undirected_graph(undirected_graph:dict):
 
 def apply_func_to_imgs(image:np.ndarray, 
                        func: Callable, 
-                       *args, 
+                       *args,
+                       workers: int = 10,
                        iter_axis:List[int]|int= None, 
                        target_shape:List[int] = None,
                        target_type: type = None,
                        target_axis_iter: List[int]|int = None,
+                       parallel: bool = True,
+                       benchmark: bool = True,
+                       prcesspool: bool = False,
                        **kwargs):        
-    """Apply a function to each image.
+    """Apply a function to each image. This is done along the iter_axis (can also be a single int).
+    Then the processed image is put in the target_axis_iter (can also be a single int).
+    (If target_axis_iter, target_shape or target_type are None, 
+    they are taken from the input image).
+    Example of iter_axis: [0, 1] and target_axis_iter: [1, 0] means that the function is applied to each
+    [0, 1, ...] slice of the input and the processed image is put in the [1, 0, ...] slice of the output image.
+
+    THe function should follow the signature:
+    frame_index_out, image_out = func(image, *args, frame_index_out=None, **kwargs)
 
     Parameters
     ----------
@@ -3829,6 +3841,8 @@ def apply_func_to_imgs(image:np.ndarray,
         be passed along, no need to slice the image in `func`.
     *args : tuple
         Additional arguments to be passed to the function
+    workers : int, optional
+        Number of workers to use, by default 10
     iter_axis : List[int]|int, optional
         Axis along which to iterate, by default None
         If None, the function is applied to the entire image.
@@ -3842,6 +3856,15 @@ def apply_func_to_imgs(image:np.ndarray,
         Axis along to which to put the processed image
         Must be same length as `iter_axis`, by default None
         If None, the processed image is put in the same axis as the input image.
+    parallel : bool, optional
+        Whether to use parallel processing, by default True
+        If False, the function is applied to each image sequentially.
+    benchmark : bool, optional
+        Whether to benchmark the function, by default False
+        If True, prints the execution time of the function.
+    prcesspool : bool, optional
+        Whether to use process pool, by default False
+        If True, uses process pool instead of thread pool.
     **kwargs : dict
         Additional keyword arguments to be passed to the function
 
@@ -3850,10 +3873,15 @@ def apply_func_to_imgs(image:np.ndarray,
     np.ndarray
         Processed image
     """
-
+    if benchmark:
+        t0 = time.perf_counter()
     image_shape = image.shape
     if iter_axis is None:
-        return func(image, *args, **kwargs, frame_index_out=None)[1]
+        out = func(image, *args, **kwargs, frame_index_out=None)[1]
+        if benchmark:
+            t1 = time.perf_counter()
+            printl(f"Processing time: {(t1 - t0)*1000:.2f} ms, no parallel since iter_axis is None")
+        return out 
     
     if isinstance(iter_axis, int):
         iter_axis = [iter_axis]
@@ -3879,17 +3907,27 @@ def apply_func_to_imgs(image:np.ndarray,
         image_shape, iter_axis, target_shape, target_axis_iter
     )
 
-    printl(input_output_mapper)
+    if parallel:
+        if prcesspool:
+            executor_func = concurrent.futures.ProcessPoolExecutor
+        else:
+            executor_func = concurrent.futures.ThreadPoolExecutor
+        with executor_func() as executor:
+            futures = {
+                executor.submit(func, image[i_in], *args, frame_index_out=i_out, **kwargs)
+                for i_in, i_out in input_output_mapper
+            }
 
-
-    with concurrent.futures.ProcessPoolExecutor() as executor:
-        futures = {
-            executor.submit(func, image[i_in], *args, frame_index_out=i_out, **kwargs)
-            for i_in, i_out in input_output_mapper
-        }
-
-        for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Processing frames"):
-            i, processed = future.result()
-            image_out[i] = processed
+            for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Processing frames"):
+                i, processed = future.result()
+                image_out[i] = processed
+    else:
+        for i_in, i_out in tqdm(input_output_mapper, desc="Processing frames"):
+            processed = func(image[i_in], *args, frame_index_out=i_out, **kwargs)[1]
+            image_out[i_out] = processed
+    
+    if benchmark:
+        t1 = time.perf_counter()
+        printl(f"Processing time: {(t1 - t0)*1000:.2f} ms")
 
     return image_out

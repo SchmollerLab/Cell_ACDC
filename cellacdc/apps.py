@@ -97,14 +97,15 @@ italicFont.setPixelSize(12)
 italicFont.setItalic(True)
 
 class ArgWidget:
-    def __init__(self, name, type, widget, defaultVal, valueSetter, valueGetter, changeSig):
+    def __init__(self, name, type, widget, defaultVal, valueSetter, valueGetter, changeSig=None):
         self.name = name
         self.type = type
         self.widget = widget
         self.defaultVal = defaultVal
         self.valueSetter = valueSetter
         self.valueGetter = valueGetter
-        self.changeSig = changeSig
+        if changeSig is not None:
+            self.changeSig = changeSig
 
 class AcdcSPlashScreen(QSplashScreen):
     def __init__(self):

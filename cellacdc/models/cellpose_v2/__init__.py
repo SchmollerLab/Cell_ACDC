@@ -14,7 +14,6 @@ for stack_item in inspect.stack():
         caller_relpath = os.path.relpath(caller_filepath, cellacdc_path)
     except Exception as err:
         continue
-    print(f'caller_filepath: {caller_filepath}')
     if 'core' in caller_relpath:
         continue
     try:

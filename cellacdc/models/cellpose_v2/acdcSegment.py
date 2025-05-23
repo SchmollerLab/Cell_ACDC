@@ -72,16 +72,8 @@ class Model:
 
         """
 
-        self.img_ndim = None
-        self.img_shape = None
-        if device == 'None':
-            device = None
-        
-        if model_path == 'None':
-            model_path = None
-        
-        if model_type == 'None':
-            model_type = None
+        self.initConstants()
+        model_type, model_path, device = myutils.translateStrNone(model_type, model_path, device)
         
         if model_path is not None and model_type is not None:
             raise TypeError(
@@ -95,7 +87,8 @@ class Model:
                 "Please set one of them."
             )
         
-        major_version = myutils.get_cellpose_major_version()
+        major_version = self.cp_version
+
         print(f'Initializing Cellpose v{major_version}...')
 
         if directml_gpu:
@@ -111,7 +104,6 @@ class Model:
             )
             gpu = False
 
-        self._sizemodelnotfound = True
         if major_version == 3:
             if model_type:
                 try:
@@ -189,7 +181,15 @@ class Model:
             
             setup_custom_device(self, device)
 
+    
+    def initConstants(self):
         self.is_rgb = False
+        self.img_shape = None
+        self.img_ndim = None
+        self.z_axis = None
+        self.channel_axis = None
+        self.cp_version  = myutils.get_cellpose_major_version()
+        self._sizemodelnotfound = True
         
     def setupLogger(self, logger):
         models.models_logger = logger
@@ -200,8 +200,14 @@ class Model:
             handler.close()
             models.models_logger.removeHandler(handler)
     
-    def _eval(self, image, **kwargs):        
-        return self.model.eval(image, **kwargs)[0]
+    def _eval(self, image, **kwargs):
+        if self.cp_version == 4:
+            del kwargs['channels']
+            kwargs['channel_axis'] = self.channel_axis
+            kwargs['z_axis'] = self.z_axis
+            return self.model.eval(image, **kwargs)[0]
+        else:
+            return self.model.eval(image, **kwargs)[0]
     
     def second_ch_img_to_stack(self, first_ch_data, second_ch_data):
         # The 'cyto' model can work with a second channel (e.g., nucleus).
@@ -410,45 +416,68 @@ class Model:
     def _eval_loop(
             self, images, segment_3D_volume, isZstack, innit_imgs=True, **eval_kwargs
         ):
+        """No support for time lapse. This is handles in self._segment3DT_eval
+
+        Parameters
+        ----------
+        images : np.ndarray
+            Input image to be segmented. It can be 2D, 3D or 4D.
+        segment_3D_volume : bool
+            If True, the image is assumed to be a 3D z-stack.
+        isZstack : bool
+            If True, the image is assumed to be a z-stack.
+        innit_imgs : bool, optional
+            If True, the image is initialized. Default is True.
+
+
+        Returns
+        -------
+        np.ndarray
+            Segmentation masks array. If `segment_3D_volume` is True, 
+            the shape is (Z, Y, X) or (T, Z, Y, X). If `segment_3D_volume` 
+            is False, the shape is (Y, X) or (T, Y, X).
+        """
         if self.img_shape is None:
             self.img_shape = images.shape
 
         if not segment_3D_volume and isZstack:
             labels = np.zeros(self.img_shape, dtype=np.uint32)
-            image = _initialize_image(_img, self.is_rgb, 
-                                      img_shape=self.img_shape, 
-                                      img_dim=self.img_ndim,
-                                      iter_axis_zstack=0,
-                                      isZstack=isZstack,
-                                      )
-            for i, _img in enumerate(image):
-                lab = self._eval(input_img, **eval_kwargs)
+            if innit_imgs:
+                images, z_axis, channel_axis = _initialize_image(images, self.is_rgb, 
+                                        iter_axis_zstack=0,
+                                        isZstack=True,    
+                                        )
+                self.channel_axis = channel_axis -1
+            for i, _img in enumerate(images):
+                
+                lab = self._eval(_img, **eval_kwargs)
                 labels[i] = lab
             labels = skimage.measure.label(labels>0)
         else:
-            image = _initialize_image(image, self.is_rgb,
-                                        img_shape=self.img_shape,
-                                        img_ndim=self.img_ndim,
-                                        isZstack=isZstack,
-
-                                        )
-            input_img = image.astype(np.float32)
-            labels = self._eval(input_img, **eval_kwargs)
+            if innit_imgs:
+                images, z_axis, channel_axis = _initialize_image(images, self.is_rgb,
+                                            isZstack=isZstack,
+                                            )
+                self.z_axis = z_axis
+                self.channel_axis = channel_axis
+            labels = self._eval(images, **eval_kwargs)
         
         return labels
     
     def _segment3DT_eval(
-            self, video_data, isZstack, eval_kwargs, **kwargs
+            self, video_data, isZstack, eval_kwargs, innit_imgs=True, **kwargs
         ):
         if not kwargs['segment_3D_volume'] and isZstack:
-            images = _initialize_image(video_data, self.is_rgb,
-                            img_shape=self.img_shape,
-                            img_ndim=self.img_ndim,
-                            iter_axis_time=0,
-                            iter_axis_zstack=1,
-                            timelapse=True,
-                            isZstack=isZstack,
-                            )
+            if innit_imgs:
+                images, z_axis, channel_axis = _initialize_image(video_data, self.is_rgb,
+                                iter_axis_time=0,
+                                iter_axis_zstack=1,
+                                timelapse=True,
+                                isZstack=isZstack,
+                                )
+                
+                self.z_axis = z_axis - 2 if z_axis is not None else None # video doesnt count as dim
+                self.channel_axis = channel_axis - 2
             # Passing entire 4D video and segmenting slice-by-slice is 
             # not possible --> iterate each frame and run normal segment
             labels = np.zeros(video_data.shape, dtype=np.uint32)
@@ -462,13 +491,14 @@ class Model:
                 labels[i] = lab
         else:
             eval_kwargs['channels'] = [eval_kwargs['channels']]*len(video_data)
-            images = _initialize_image(video_data, self.is_rgb,
-                                        img_shape=self.img_shape,
-                                        img_ndim=self.img_ndim,
-                                        iter_axis_time=0,
-                                        timelapse=True,
-                                        isZstack=isZstack,
-                                        )
+            if innit_imgs:
+                images, z_axis, channel_axis = _initialize_image(video_data, self.is_rgb,
+                                            iter_axis_time=0,
+                                            timelapse=True,
+                                            isZstack=isZstack,
+                                            )
+                self.z_axis = z_axis - 1 if z_axis is not None else None # video doesnt count as dim
+                self.channel_axis = channel_axis - 1
             images = [image.astype(np.float32) for image in images]
             labels = np.array(self._eval(images, **eval_kwargs))
 
@@ -491,8 +521,8 @@ class Model:
     
 def _initialize_image(image:np.ndarray,
                       is_rgb:bool,
-                      img_shape:Tuple[int],
-                      img_ndim:int,
+                    #   single_img_shape:Tuple[int],
+                    #   single_img_ndim:int,
                       iter_axis_time:int=None,
                       iter_axis_zstack:int=None,
                       target_shape:Tuple[int]=None,
@@ -544,16 +574,19 @@ def _initialize_image(image:np.ndarray,
                 f"Image is {len(true_img_shape)}D with shape {true_img_shape}. "
                 "It was expected to have 4D shape (T x Z x Y x X x nchan)"
             )
+        
+        z_axis = 1
+        channel_axis = 2
 
         target_shape = (true_img_shape[0], true_img_shape[1], 3, true_img_shape[2], true_img_shape[3])
 
-        if iter_axis_time and iter_axis_zstack:
+        if iter_axis_time is not None and iter_axis_zstack is not None:
             iter_axis = [iter_axis_time, iter_axis_zstack]
             target_axis_iter = [0, 1]
-        elif iter_axis_time and not iter_axis_zstack:
+        elif iter_axis_time  is not None and iter_axis_zstack is None:
             iter_axis = [iter_axis_time]
             target_axis_iter = [0]
-        elif not iter_axis_time and iter_axis_zstack:
+        elif iter_axis_time is None and iter_axis_zstack is not None:
             iter_axis = [iter_axis_zstack]
             target_axis_iter = [1]
         else:
@@ -561,14 +594,16 @@ def _initialize_image(image:np.ndarray,
             target_axis_iter = None
     
     elif timelapse and not isZstack:
+        z_axis = None
+        channel_axis = 1
         if len(true_img_shape) < 3 or (is_rgb and len(true_img_shape) < 4):
             raise TypeError(
                 f"Image is {len(true_img_shape)}D with shape {true_img_shape}. "
                 "It was expected to have 3D shape (T x Y x X x nchan)"
             )
-        target_shape = (true_img_shape[0], 1, 3, true_img_shape[1], true_img_shape[2])
+        target_shape = (true_img_shape[0], 3, true_img_shape[1], true_img_shape[2])
 
-        if iter_axis_time:
+        if iter_axis_time is not None:
             iter_axis = [iter_axis_time]
             target_axis_iter = [0]
         else:
@@ -576,13 +611,15 @@ def _initialize_image(image:np.ndarray,
             target_axis_iter = None
     
     elif not timelapse and isZstack:
+        z_axis = 0
+        channel_axis = 1
         if len(true_img_shape) < 3 or (is_rgb and len(true_img_shape) < 4):
             raise TypeError(
                 f"Image is {len(true_img_shape)}D with shape {true_img_shape}. "
                 "It was expected to have 3D shape (Z x Y x X x nchan)"
             )
         target_shape = (true_img_shape[0], 3, true_img_shape[1], true_img_shape[2])
-        if iter_axis_zstack:
+        if iter_axis_zstack is not None:
             iter_axis = [iter_axis_zstack]
             target_axis_iter = [0]
         else:
@@ -590,78 +627,45 @@ def _initialize_image(image:np.ndarray,
             target_axis_iter = None
     
     elif not timelapse and not isZstack:
+        z_axis = None
+        channel_axis = 0
+
         if len(true_img_shape) < 2 or (is_rgb and len(true_img_shape) < 3):
             raise TypeError(
                 f"Image is {len(true_img_shape)}D with shape {true_img_shape}. "
                 "It was expected to have 2D shape (Y x X x nchan)"
             )
-        target_shape = (1, 3, true_img_shape[0], true_img_shape[1])
+        target_shape = (3, true_img_shape[0], true_img_shape[1])
 
-    printl(iter_axis, target_axis_iter, target_shape, true_img_shape)
-
+    if iter_axis is not None:
+        # Build an index tuple: set first iter_axis to 0, others to slice(None)
+        idx = [0 if i in iter_axis else slice(None) for i in range(len(true_img_shape))]
+        single_img_from_iter_axis = image[tuple(idx)]
+    else:
+        single_img_from_iter_axis = image
+    if single_img_from_iter_axis is not None:
+        single_img_shape = single_img_from_iter_axis.shape
+        single_img_ndim = len(single_img_shape)
+    else:
+        single_img_shape = true_img_shape
+        single_img_ndim = len(single_img_shape)
+    
+    single_img_isZstack = isZstack if iter_axis_zstack is None else False
+    
+    from cellacdc._core import _initialize_single_image
     image = core.apply_func_to_imgs(
         image,
         _initialize_single_image,
         iter_axis=iter_axis,
         target_type=np.float32,
         target_shape=target_shape,
-        is_rgb=is_rgb,
-        img_shape=true_img_shape,
-        img_ndim=len(true_img_shape),
         target_axis_iter=target_axis_iter,
+        is_rgb=is_rgb,
+        isZstack=single_img_isZstack,
+        img_shape=single_img_shape,
+        img_ndim=single_img_ndim,
     )
-    return image
-
-def _initialize_single_image(image, is_rgb=False, img_shape=None, img_ndim=None, frame_index_out=None):
-    # See cellpose.gui.io._initialize_images
-
-    if img_ndim > 3 and not is_rgb:
-        raise TypeError(
-            f'Image is 4D with shape {img_shape}.'
-            'Only 2D or 3D images are supported by cellpose in Cell-ACDC'
-        )
-        # # make tiff Z x channels x W x H
-        # if img_shape[0]<4:
-        #     # tiff is channels x Z x W x H
-        #     image = np.transpose(image, (1,0,2,3))
-        # elif img_shape[-1]<4:
-        #     # tiff is Z x W x H x channels
-        #     image = np.transpose(image, (0,3,1,2))
-        # # fill in with blank channels to make 3 channels
-        # if img_shape[1] < 3:
-        #     shape = img_shape
-        #     shape_to_concat = (shape[0], 3-shape[1], shape[2], shape[3])
-        #     to_concat = np.zeros(shape_to_concat, dtype=np.uint8)
-        #     image = np.concatenate((image, to_concat), axis=1)
-        # image = np.transpose(image, (0,2,3,1))
-    elif img_ndim==3:
-        # if img_shape[0] < 5:
-        #     # Move first axis to last since we interpret this as RGB channels
-        #     image = np.transpose(image, (1,2,0))
-        if img_shape[-1] < 3:
-            shape = img_shape
-            shape_to_concat = (shape[0], shape[1], 3-shape[2])
-            to_concat = np.zeros(shape_to_concat,dtype=type(image[0,0,0]))
-            image = np.concatenate((image, to_concat), axis=-1)
-            image = image[np.newaxis,...]
-        elif img_shape[-1]<5 and img_shape[-1]>2:
-            image = image[:,:,:3]
-            image = image[np.newaxis,...]
-    else:
-        image = image[np.newaxis,...]    
-    
-    img_min = image.min() 
-    img_max = image.max()
-    image = image.astype(np.float32)
-    image -= img_min
-    if img_max > img_min + 1e-3:
-        image /= (img_max - img_min)
-    image *= 255
-    if img_ndim < 4:
-        image = image[:,:,:,np.newaxis]
-    
-    image = image.astype(np.float32)
-    return frame_index_out, image
+    return image, z_axis, channel_axis
 
 def url_help():
     return 'https://cellpose.readthedocs.io/en/latest/api.html'

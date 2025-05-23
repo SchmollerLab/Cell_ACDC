@@ -46,14 +46,9 @@ class Model(CellposeV2Model):
             (e.g. torch.device('cuda:1'). Default is None
 
         """ 
-        if device == 'None':
-            device = None
-        
-        if model_path == 'None':
-            model_path = None
-        
-        if model_type == 'None':
-            model_type = None
+        self.initConstants()
+        model_type, model_path, device = myutils.translateStrNone(model_type, model_path, device)
+
         
         if model_path is not None and model_type is not None:
             raise TypeError(
@@ -72,14 +67,11 @@ class Model(CellposeV2Model):
         major_version = myutils.get_cellpose_major_version()
         print(f'Initializing Cellpose v{major_version}...')
 
-        self._sizemodelnotfound = True
-
         self.model = models.CellposeModel(
             gpu=gpu,
             device=device,
-            model_type=model_path,
+            pretrained_model=model_path,
             )
-        self.is_rgb = False
     
     def _get_eval_kwargs_v4(
             self,
@@ -91,7 +83,7 @@ class Model(CellposeV2Model):
             augment:bool=False,
             tile_overlap:float=0.1,
             bsize:int=224,
-            interp:bool=True,
+            # interp:bool=True,
             v2_kwargs:dict=None,
             **kwargs
         ):
@@ -99,7 +91,7 @@ class Model(CellposeV2Model):
             niter = None
 
         v2_kwargs = self._filter_v2_kwargs(**v2_kwargs)
-
+        
         additional_kwargs = {
             'batch_size': batch_size,
             'max_size_fraction': max_size_fraction,
@@ -109,10 +101,11 @@ class Model(CellposeV2Model):
             'augment': augment,
             'tile_overlap': tile_overlap,
             'bsize': bsize,
-            'interp': interp
+            # 'interp': interp
         }
 
-        eval_kwargs = {**kwargs, **additional_kwargs, **v2_kwargs}
+        printl(kwargs)
+        eval_kwargs = {**additional_kwargs, **v2_kwargs}
                 
         return eval_kwargs
 
@@ -133,7 +126,7 @@ class Model(CellposeV2Model):
             'anisotropy',
         ]
 
-        for key in kwargs.keys():
+        for key in list(kwargs.keys()):
             if key not in kwarg_key_list:
                 del kwargs[key]
         
@@ -145,11 +138,38 @@ class Model(CellposeV2Model):
                 )
         
         return kwargs
+
+    def _filter_kwargs(
+            self,
+            **kwargs
+        ):
+        kwarg_key_list = [
+            'diameter',
+            'flow_threshold',
+            'cellprob_threshold',
+            'min_size',
+            'normalize',
+            'stitch_threshold',
+            'anisotropy',
+        ]
+
+        for key in list(kwargs.keys()):
+            if key not in kwarg_key_list:
+                del kwargs[key]
+        
+        for key in kwarg_key_list:
+            if key not in kwargs:
+                raise KeyError(
+                    f"Key '{key}' not found in kwargs. "
+                    "Please provide all required keys."
+                )
+            
+        return kwargs
         
     def segment(
             self, image,
             diameter:float=30.0,
-            batch_size:int=64,
+            batch_size:int=8,
             flow_threshold:float=0.4,
             cellprob_threshold:float=0.0,
             min_size:int=15,
@@ -158,13 +178,13 @@ class Model(CellposeV2Model):
             normalize:bool=True,
             segment_3D_volume:bool=False,       
             stitch_threshold:float=0.0,
-            flow3D_smooth:int=0,
+            flow3D_smooth:float=0,
             anisotropy:float=0.0,
             niter:int=0,
             augment:bool=False,
             tile_overlap:float=0.1,
-            bsize:int=224,
-            interp:bool=True,
+            bsize:int=256,
+            # interp:bool=True,
 
         ):
         """Segment an image using Cellpose (see details in v2)
@@ -187,13 +207,18 @@ class Model(CellposeV2Model):
                 - "tile_norm_blocksize"=0 : compute normalization in tiles (set to window size in pixels to enable)
                 - "norm3D"=True : compute normalization across entire z-stack in stitching mode
             Default is True.
+        segment_3D_volume : bool, optional
+            If True, segment 3D volume. There are two kinds of 3D segmentation:
+                - 3D volume segmentation: segments the entire 3D volume at once.
+                - 3D z-stack segmentation: segments each slice of the z-stack separately and stiches them together.
+            If stitch_threshold > 0.0, the latter is used.
         invert : bool, optional
             Invert image pixel intensity before running network. Default is False.
         flow_threshold : float, optional
             Flow error threshold (all cells with errors below threshold are kept; not used for 3D). Default is 0.4.
         cellprob_threshold : float, optional
             All pixels with value above threshold kept for masks; decrease to find more and larger masks. Default is 0.0.
-        flow3D_smooth : int, optional
+        flow3D_smooth : float, optional
             If do_3D and flow3D_smooth > 0, smooth flows with gaussian filter of this stddev. Default is 0.
         anisotropy : float, optional
             For 3D segmentation, optional rescaling factor (e.g., set to 2.0 if Z is sampled half as dense as X or Y). Default is None.
@@ -211,8 +236,8 @@ class Model(CellposeV2Model):
             Fraction of overlap of tiles when computing flows. Default is 0.1.
         bsize : int, optional
             Block size for tiles, recommended to keep at 224 (as in training). Default is 224.
-        interp : bool, optional
-            Interpolate during 2D dynamics (not available in 3D). Default is True.
+        # interp : bool, optional
+        #     Interpolate during 2D dynamics (not available in 3D). Default is True.
 
         """        
         # Preprocess image
@@ -246,10 +271,11 @@ class Model(CellposeV2Model):
             augment=augment,
             tile_overlap=tile_overlap,
             bsize=bsize,
-            interp=interp,
+            # interp=interp,
             v2_kwargs=eval_kwargs
         )
 
+        printl(eval_kwargs)
         labs = self._eval_loop(
             image, segment_3D_volume, isZstack, **eval_kwargs
         )
@@ -275,8 +301,9 @@ class Model(CellposeV2Model):
             v2_kwargs=eval_kwargs
         )
 
+        printl(eval_kwargs)
         labels = self._segment3DT_eval(
-            video_data, signals, isZstack, eval_kwargs, **kwargs
+            video_data, isZstack, eval_kwargs, **kwargs
         )
 
         self.img_shape = None

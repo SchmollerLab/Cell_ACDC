@@ -4279,28 +4279,33 @@ def get_input_output_mapper(
 
     for idx_vals in itertools.product(*[range(s) for s in iterate_shape]):
         # Build full input index
-        input_index = [0] * len(input_shape)
-        for axis in range(len(input_shape)):
-            if axis in iterate_axes:
-                i = iterate_axes.index(axis)
-                input_index[axis] = idx_vals[i]
-            else:
-                input_index[axis] = slice(None)  # or a fixed index if needed
+        input_index = [slice(None)] * len(input_shape)
+        for axis in iterate_axes:
+            i = iterate_axes.index(axis)
+            input_index[axis] = idx_vals[i]
 
         # Build full output index
-        output_index = [0] * len(output_shape)
-        for axis in range(len(output_shape)):
-            if axis in output_axes:
-                i = output_axes.index(axis)
-                output_index[axis] = idx_vals[i]
-            else:
-                output_index[axis] = 0  # arbitrary placeholder or reduce as needed
+        output_index = [slice(None)] * len(output_shape)
+        for axis in output_axes:
+            i = output_axes.index(axis)
+            output_index[axis] = idx_vals[i]
 
-        # Remove slices to return only index tuples that are usable directly
-        # For most use cases, you want to iterate over *specific positions* (not slicing)
-        input_index = tuple(input_index[i] if not isinstance(input_index[i], slice) else 0 for i in range(len(input_shape)))
+        input_index = tuple(input_index)
         output_index = tuple(output_index)
 
         mapper.append((input_index, output_index))
 
     return mapper
+
+def translateStrNone(*args):
+    args = list(args)
+    for i, arg in enumerate(args):
+        if isinstance(arg, str):
+            if arg.lower() == 'none':
+                args[i] = None
+            elif arg.lower() == 'true':
+                args[i] = True
+            elif arg.lower() == 'false':
+                args[i] = False
+    
+    return args
