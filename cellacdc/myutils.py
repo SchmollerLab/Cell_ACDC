@@ -4311,6 +4311,14 @@ def translateStrNone(*args):
     return args
 
 def showRefGraph(object_str:str):
+    """Save a reference graph of the given object type.
+
+
+    Parameters
+    ----------
+    object_str : str
+        For example `loadData` (So the class name, not the instance name).
+    """
     import gc
     import objgraph
 
