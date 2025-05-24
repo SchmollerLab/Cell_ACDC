@@ -3650,6 +3650,7 @@ def process_lab(task):
     return i, data_dict, IDs  # Return index, data_dict, and IDs
 
 def parallel_count_objects(posData, logger_func):
+    benchmark = True
     #futile attempt to use multiprocessing to speed things up
     logger_func('Counting total number of segmented objects...')
     
@@ -3657,31 +3658,32 @@ def parallel_count_objects(posData, logger_func):
     seg_data = posData.segm_data
     
     # Initialize empty data dictionary to avoid recalculating each time
-    empty_data_dict = myutils.get_empty_stored_data_dict()
-
-    batch_size = 1000 # Adjust based on your system's memory
     tasks = [(i, lab) for i, lab in enumerate(seg_data)]
 
+    if benchmark:
+        t0 = time.perf_counter()
     # Process in batches to optimize memory usage and control parallelism
-    for i in range(0, len(tasks), batch_size):
-        batch = tasks[i:i + batch_size]
-        with concurrent.futures.ProcessPoolExecutor() as executor:
-            futures = [executor.submit(process_lab, task) for task in batch]
-            
-            # Process results as they are completed
-            for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), ncols=100):
-                i, data_dict, IDs = future.result()
-                posData.allData_li[i] = empty_data_dict.copy()  # or directly assign if it's mutable
-                posData.allData_li[i]['IDs'] = data_dict['IDs']
-                posData.allData_li[i]['regionprops'] = data_dict['regionprops']
-                posData.allData_li[i]['IDs_idxs'] = data_dict['IDs_idxs']
-                allIDs.update(IDs)
-    if not allIDs:
-        allIDs = list(range(100))
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        futures = [executor.submit(process_lab, task) for task in tasks]
         
+        # Process results as they are completed
+        for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), ncols=100):
+            i, data_dict, IDs = future.result()
+            posData.allData_li[i] = myutils.get_empty_stored_data_dict() # or directly assign if it's mutable
+            posData.allData_li[i]['IDs'] = data_dict['IDs']
+            posData.allData_li[i]['regionprops'] = data_dict['regionprops']
+            posData.allData_li[i]['IDs_idxs'] = data_dict['IDs_idxs']
+            allIDs.update(IDs)
+    
+    if benchmark:
+        t1 = time.perf_counter()
+        logger_func(f'Counting objects took {(t1 - t0)*1000:.2f} ms')
+
     return allIDs, posData
 
 def count_objects(posData, logger_func):
+    benchmark = False
+
     allIDs = set()
 
     segm_data = posData.segm_data
@@ -3691,6 +3693,8 @@ def count_objects(posData, logger_func):
     
     logger_func('Counting total number of segmented objects...')
     pbar = tqdm(total=len(segm_data), ncols=100)
+    if benchmark:
+        t0 = time.perf_counter()
     for i, lab in enumerate(segm_data):
         posData.allData_li[i]= myutils.get_empty_stored_data_dict()
         rp = skimage.measure.regionprops(lab)
@@ -3703,6 +3707,9 @@ def count_objects(posData, logger_func):
         allIDs.update(IDs)
         pbar.update()
     pbar.close()
+    if benchmark:
+        t1 = time.perf_counter()
+        logger_func(f'Counting objects took {(t1 - t0)*1000:.2f} ms')
     return allIDs, posData
 
 def fix_sparse_directML(verbose=True):

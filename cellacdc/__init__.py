@@ -8,6 +8,9 @@ import numpy as np
 
 from typing import Iterable
 
+import gc
+gc.set_debug(0)
+
 KNOWN_EXTENSIONS = (
     '.tif', '.npz', '.npy', '.h5', '.json', '.csv', '.txt'
 )

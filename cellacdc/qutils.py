@@ -98,3 +98,19 @@ def set_exclusive_valueSetter(widget, valueSetter, value):
     was_blocked = widget.blockSignals(True)
     valueSetter(widget, value)
     widget.blockSignals(was_blocked)
+
+def hardDelete(item, setPosData=True):
+    try:
+        item.setParent(None)
+    except AttributeError:
+        pass
+    if setPosData:
+        try:
+            item.posData = None
+        except:
+            pass
+    try:
+        item.deleteLater()
+    except AttributeError:
+        pass
+    item = None

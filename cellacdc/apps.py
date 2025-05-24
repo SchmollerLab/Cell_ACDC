@@ -11567,7 +11567,16 @@ class QDialogModelParams(QDialog):
         self.customPostProcessFeatures = self.selectedFeaturesRange()
         self.customPostProcessGroupedFeatures = self.groupedFeatures()
         self._saveParams()
+        self.freePosData()
         self.close()
+    
+    def freePosData(self):
+        if hasattr(self, 'postProcessGroupbox'):
+            for selector in self.postProcessGroupbox.selectedFeaturesDialog.groupbox.selectors:
+                qutils.hardDelete(selector)
+            qutils.hardDelete(self.postProcessGroupbox.selectedFeaturesDialog.groupbox)
+            qutils.hardDelete(self.postProcessGroupbox.selectedFeaturesDialog)
+            qutils.hardDelete(self.postProcessGroupbox)
 
     def _saveParams(self):
         if self.configPars is None:
@@ -11628,8 +11637,13 @@ class QDialogModelParams(QDialog):
             self.loop.exec_()
 
     def closeEvent(self, event):
+        self.freePosData()
         if hasattr(self, 'loop'):
             self.loop.exit()
+
+    def cancel_cb(self, checked):
+        self.cancel = True
+        self.freePosData()
     
     def showEvent(self, event) -> None:
         buttonHeight = self.okButton.minimumSizeHint().height()

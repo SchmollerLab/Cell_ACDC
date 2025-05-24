@@ -9,6 +9,7 @@ external_pkgs
 !cellacdc/resources/figures
 .vs
 test.py
+.ref_graphs/
 
 env_dependencies_issues.txt
 not_installed_requirements.txt

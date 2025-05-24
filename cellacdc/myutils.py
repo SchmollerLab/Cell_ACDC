@@ -4309,3 +4309,37 @@ def translateStrNone(*args):
                 args[i] = False
     
     return args
+
+def showRefGraph(object_str:str):
+    import gc
+    import objgraph
+
+    caller_func = inspect.currentframe().f_back.f_code.co_name
+    caller_line = inspect.currentframe().f_back.f_lineno
+    timestap = datetime.now().strftime('%H:%M:%S')
+
+    ref_graph_path = os.path.join(
+        cellacdc_path, '.ref_graphs'
+    )
+
+    os.makedirs(ref_graph_path, exist_ok=True)
+    
+    filename = os.path.join(ref_graph_path, f'ref_graph_{timestap}_{caller_func}_{caller_line}.svg')
+
+    currentframe = inspect.currentframe()
+    outerframes = inspect.getouterframes(currentframe)
+    callingframe = outerframes[1].frame
+    callingframe_info = inspect.getframeinfo(callingframe)
+    filepath = callingframe_info.filename
+    fileinfo_str = (
+        f'File "{filepath}", line {callingframe_info.lineno} - {timestap}:'
+    )
+
+
+    gc.collect()
+    instances = objgraph.by_type(object_str)
+    if instances:
+        objgraph.show_backrefs(instances, max_depth=500, filename=filename)
+        print(fileinfo_str, f'Graph saved as "{filename}" \n for {len(instances)} instances of "{object_str}"')
+    else:
+        print(fileinfo_str, f'No {object_str} instances found.')
