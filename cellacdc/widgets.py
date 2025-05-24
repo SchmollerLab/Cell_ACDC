@@ -1611,6 +1611,7 @@ class filePathControl(QFrame):
     def setText(self, text):
         self.le.setText(text)
         self.le.setToolTip(text)
+        self.sigValueChanged.emit(self.le.text())
 
     def setTextTooltip(self):
         self.le.setToolTip(self.le.text())

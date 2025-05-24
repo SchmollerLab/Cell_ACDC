@@ -123,11 +123,21 @@ class CellposeDenoiseModel(DenoiseModel):
         isZstack = False
         if not isRGB and image.ndim == 3:
             isZstack = True
-        
+
+        image_shape = image.shape
+        image_dim = len(image_shape)
+
+        if image_dim == 2:
+            timelapse = False
+        elif image_dim == 3 and (isZstack or isRGB):
+            timelapse = False
+        elif image_dim == 4 and isZstack and isRGB:
+            timelapse = False
+        else:
+            timelapse = True
         if diameter == 0:
             diameter = 30.0 if self.nstr == 'cyto3' else 17.0
-
-        input_image = _initialize_image(image)
+        input_image = _initialize_image(image, isRGB = isRGB,image_dim=image_dim, image_shape=image_shape, isZstack = isZstack, timelapse=timelapse, iter_axis_time=0 if timelapse else None)
         normalize_params = self._get_normalize_params(
             input_image,
             normalize=False, 
