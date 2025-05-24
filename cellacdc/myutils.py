@@ -4310,7 +4310,7 @@ def translateStrNone(*args):
     
     return args
 
-def showRefGraph(object_str:str):
+def showRefGraph(object_str:str, debug:bool=True):
     """Save a reference graph of the given object type.
 
 
@@ -4318,22 +4318,31 @@ def showRefGraph(object_str:str):
     ----------
     object_str : str
         For example `loadData` (So the class name, not the instance name).
+    debug : bool, optional
+        If `False`, the function does nothing. Default is `True`.
     """
+    if not debug:
+        return
+
     import gc
     import objgraph
 
     caller_func = inspect.currentframe().f_back.f_code.co_name
+    caller_file = inspect.currentframe().f_back.f_code.co_filename
+    caller_file = os.path.basename(caller_file).rstrip('.py')
     caller_line = inspect.currentframe().f_back.f_lineno
-    timestap = datetime.now().strftime('%H:%M:%S')
+    timestap = datetime.datetime.now().strftime('%H_%M_%S')
 
     ref_graph_path = os.path.join(
-        cellacdc_path, '.ref_graphs'
+        os.path.dirname(cellacdc_path),
+        '.ref_graphs'
     )
 
     os.makedirs(ref_graph_path, exist_ok=True)
     
-    filename = os.path.join(ref_graph_path, f'ref_graph_{timestap}_{caller_func}_{caller_line}.svg')
+    filename = os.path.join(ref_graph_path, f'ref_graph_{timestap}_{object_str}_from_{caller_file}_{caller_func}_{caller_line}.svg')
 
+    timestap = datetime.datetime.now().strftime('%H:%M:%S')
     currentframe = inspect.currentframe()
     outerframes = inspect.getouterframes(currentframe)
     callingframe = outerframes[1].frame

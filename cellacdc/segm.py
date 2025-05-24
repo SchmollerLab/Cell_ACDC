@@ -1319,7 +1319,7 @@ class segmWin(QMainWindow):
         try:
             del self.posData
             self.posData = None
-            myutils.showRefGraph('loadData')
+            # myutils.showRefGraph('segmWin')
         except AttributeError:
             pass
         try:
@@ -1331,6 +1331,8 @@ class segmWin(QMainWindow):
         self.close()
 
     def processStopped(self):
+        # myutils.showRefGraph('segmWin')
+
         msg = widgets.myMessageBox(showCentered=False)
         closeAnswer = msg.warning(
             self, 'Execution cancelled', 'Segmentation task cancelled.'
@@ -1338,7 +1340,7 @@ class segmWin(QMainWindow):
         try:
             del self.posData
             self.posData = None
-            myutils.showRefGraph('loadData')
+            # myutils.showRefGraph('segmWin')
         except AttributeError:
             pass
         try:
