@@ -144,9 +144,24 @@ class dataPrepWin(QMainWindow):
 
     @exception_handler
     def keyPressEvent(self, event):
-        if event.key() == Qt.Key_Q:
+        if event.key() == Qt.Key_Q and self.debug:
             posData = self.data[self.pos_i]
-            printl(posData.img_data.shape)
+            posData.loadDataPrepFreeRoi()
+            printl(posData.dataPrepFreeRoiLocalMask.shape)
+            printl(self.freeRoiItem.bbox())
+            printl(self.freeRoiItem.mask().shape)
+            from cellacdc.plot import imshow
+            
+            imshow(
+                posData.dataPrepFreeRoiLocalMask, self.freeRoiItem.mask()
+            )
+            cropROI = posData.cropROIs[0]
+            x0, y0 = [int(round(c)) for c in cropROI.pos()]
+            w, h = [int(round(c)) for c in cropROI.size()]
+            x1, y1 = x0+w, y0+h
+            
+            printl(x0, y0)
+            
             # printl(posData.all_npz_paths)
             # printl(posData.tif_paths)
             # for r, roi in enumerate(posData.bkgrROIs):
@@ -1579,7 +1594,7 @@ class dataPrepWin(QMainWindow):
         w, h = [int(round(c)) for c in cropROI.size()]
         x1, y1 = x0+w, y0+h
         
-        x0f, y0f, x1f, y1f = posData.dataPrepFreeRoiBbox
+        y0f, x0f, y1f, x1f = posData.dataPrepFreeRoiBbox
         
         is_free_roi_in_crop_bounds = (
             x0f >= x0 and x1f <= x1 and y0f >= y0 and y1f <= y1
@@ -1611,7 +1626,7 @@ class dataPrepWin(QMainWindow):
             crop_x1 = x1 - x1f
             x1f = w
         else:
-            x1f = x1f - y0
+            x1f = x1f - x0
         
         if y1f > y1:
             crop_y1 = y1 - y1f
