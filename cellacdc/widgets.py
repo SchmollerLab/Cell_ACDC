@@ -6433,7 +6433,7 @@ class MainPlotItem(pg.PlotItem):
         key = roiItem.key
         self.delRoiItems.pop(key, None)
         try:
-            self.removeItem(key)
+            self.removeItem(roiItem)
         except Exception as err:
             return
     
