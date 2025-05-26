@@ -377,33 +377,57 @@ def delete_older_log_files(logs_path):
         except Exception as err:
             continue
 
+def get_info_version_text(is_cli=False):
+    version = read_version()
+    release_date = get_date_from_version(version, package='cellacdc')
+    py_ver = sys.version_info
+    python_version = f'{py_ver.major}.{py_ver.minor}.{py_ver.micro}'
+    info_txts = [
+        f'Version {version}',
+        f'Released on: {release_date}',
+        f'Installed in "{cellacdc_path}"',
+        f'Python {python_version}',
+        f'Platform: {platform.platform()}',
+        f'System: {platform.system()}',
+    ]
+    if GUI_INSTALLED and not is_cli:
+        try:
+            from qtpy import QtCore
+            info_txts.append(f'Qt {QtCore.__version__}')
+        except Exception as err:
+            info_txts.append('Qt: Not installed')
+    
+    info_txts.append(f'Working directory: {os.getcwd()}')
+    info_txts = [f'  - {txt}' for txt in info_txts]
+    
+    max_len = max([len(txt) for txt in info_txts]) + 2
+    
+    formatted_info_txts = []
+    for txt in info_txts:
+        horiz_spacing = ' '*(max_len - len(txt))
+        txt = f'{txt}{horiz_spacing}|'
+        formatted_info_txts.append(txt)
+    
+    formatted_info_txts.insert(0, 'Cell-ACDC info:\n')
+    formatted_info_txts.insert(0, '='*max_len)
+    formatted_info_txts.append('='*max_len)
+    info_txt = '\n'.join(formatted_info_txts)
+    
+    return info_txt
+
 def _log_system_info(logger, log_path, is_cli=False, also_spotmax=False):
     logger.info(f'Initialized log file "{log_path}"')
     
-    version = read_version()
-    release_date = get_date_from_version(version, package='cellacdc')
+    info_txt = get_info_version_text(is_cli=is_cli)
     
-    py_ver = sys.version_info
-    python_version = f'{py_ver.major}.{py_ver.minor}.{py_ver.micro}'
-    logger.info(f'Running Python v{python_version} from "{sys.exec_prefix}"')    
-    logger.info(
-        f'Cell-ACDC info:\n'
-        f'  * Installation directory: "{cellacdc_path}"\n'
-        f'  * Version: "{version}"\n'
-        f'  * Released on: "{release_date}"'
-    )
-    logger.info(f'System version: {sys.version}')
-    logger.info(f'Platform: {platform.platform()}')
-    
-    if GUI_INSTALLED and not is_cli:
-        from qtpy import QtCore
-        logger.info(f'Using Qt version {QtCore.__version__}')
+    logger.info(info_txt)
     
     if not also_spotmax:
         return
     
-    from spotmax import spotmax_path
-    logger.info(f'SpotMAX installation directory: "{spotmax_path}"')
+    from spotmax.utils import get_info_version_text as smax_info
+    smax_info_txt = smax_info(include_platform=False)
+    logger.info(smax_info_txt)
 
 def setupLogger(module='base', logs_path=None):
     if logs_path is None:
@@ -729,8 +753,13 @@ def get_date_from_version(version: str, package='cellacdc', debug=False):
             traceback.print_exc()
     
     try:
+        if package == 'cellacdc':
+            pkg_path = cellacdc_path
+        elif package == 'spotmax':
+            from spotmax import spotmax_path
+            pkg_path = spotmax_path
         commit_hash = re.findall(r'\+g([A-Za-z0-9]+)(\.d)?', version)[0][0]
-        git_path = os.path.dirname(cellacdc_path)
+        git_path = os.path.dirname(pkg_path)
         command = f'git -C {git_path} show {commit_hash}'
         commit_log = _subprocess_run_command(
             command, shell=False, callback='check_output'

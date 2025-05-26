@@ -44,42 +44,9 @@ def run():
     PARAMS_PATH = parser_args['params']
     
     if parser_args['version'] or parser_args['info']:
-        import platform, sys
-        from cellacdc import cellacdc_path
-        from cellacdc.myutils import get_date_from_version, read_version
-        version = read_version()
-        release_date = get_date_from_version(version, package='cellacdc')
-        py_ver = sys.version_info
-        python_version = f'{py_ver.major}.{py_ver.minor}.{py_ver.micro}'
-        info_txts = [
-            f'Cell-ACDC version {version}',
-            f'Released on: {release_date}',
-            f'Installed in "{cellacdc_path}"',
-            f'Python {python_version}',
-            f'Platform: {platform.platform()}',
-            f'System: {platform.system()}',
-        ]
-        try:
-            from qtpy import QtCore
-            info_txts.append(f'Qt {QtCore.__version__}')
-        except Exception as err:
-            info_txts.append('Qt: Not installed')
-        
-        info_txts.append(f'Working directory: {os.getcwd()}')
-        max_len = max([len(txt) for txt in info_txts]) + 2
-        
-        formatted_info_txts = []
-        for txt in info_txts:
-            horiz_spacing = ' '*(max_len - len(txt))
-            txt = f'{txt}{horiz_spacing}|'
-            formatted_info_txts.append(txt)
-        
-        formatted_info_txts.insert(0, '='*max_len)
-        formatted_info_txts.append('='*max_len)
-        info_txt = '\n'.join(formatted_info_txts)
-        
+        from cellacdc.myutils import get_info_version_text
+        info_txt = get_info_version_text()
         print(info_txt)
-        
         exit()
 
     if PARAMS_PATH:
