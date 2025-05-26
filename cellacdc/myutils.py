@@ -429,7 +429,7 @@ def _log_system_info(logger, log_path, is_cli=False, also_spotmax=False):
     smax_info_txt = smax_info(include_platform=False)
     logger.info(smax_info_txt)
 
-def setupLogger(module='base', logs_path=None):
+def setupLogger(module='base', logs_path=None, caller='Cell-ACDC'):
     if logs_path is None:
         logs_path = get_logs_path()
     
@@ -459,7 +459,7 @@ def setupLogger(module='base', logs_path=None):
 
     logger.addHandler(output_file_handler)
     
-    _log_system_info(logger, log_path)
+    _log_system_info(logger, log_path, also_spotmax=caller!='Cell-ACDC')
     
     # if module == 'gui' and GUI_INSTALLED:
     #     qt_handler = widgets.QtHandler()

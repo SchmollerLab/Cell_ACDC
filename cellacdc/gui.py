@@ -403,7 +403,7 @@ class guiWin(QMainWindow):
 
         self.is_error_state = False
         logger, logs_path, log_path, log_filename = setupLogger(
-            module=module, logs_path=logs_path
+            module=module, logs_path=logs_path, caller=self._appName
         )
         if self._version is not None:
             logger.info(f'Initializing GUI v{self._version}')
