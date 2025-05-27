@@ -9506,12 +9506,6 @@ class guiWin(QMainWindow):
 
     def removeDelROI(self, event):
         posData = self.data[self.pos_i]
-
-        # if isinstance(self.roi_to_del, pg.PolyLineROI):
-        #     self.roi_to_del.clearPoints()
-        # # else:
-        # #     self.roi_to_del.setPos((0,0))
-        # #     self.roi_to_del.setSize((0,0))
         
         delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
         idx = delROIs_info['rois'].index(self.roi_to_del)
@@ -9519,24 +9513,35 @@ class guiWin(QMainWindow):
         delROIs_info['delMasks'].pop(idx)
         delROIs_info['delIDsROI'].pop(idx)
         
+        self.removeDelROIFromFutureFrames(self.roi_to_del)
+        self.updateAllImages()
+    
+    def removeDelROIFromFutureFrames(self, roi_to_del):
+        posData = self.data[self.pos_i]
+        
         # Restore deleted IDs from already visited future frames
         current_frame_i = posData.frame_i    
         for i in range(posData.frame_i+1, posData.SizeT):
+            if posData.allData_li[i]['labels'] is None:
+                break
+            
             delROIs_info = posData.allData_li[i]['delROIs_info']
-            if self.roi_to_del in delROIs_info['rois']:
-                posData.frame_i = i
-                idx = delROIs_info['rois'].index(self.roi_to_del)         
-                if posData.allData_li[i]['labels'] is not None:
-                    if delROIs_info['delIDsROI'][idx]:
-                        posData.lab = posData.allData_li[i]['labels']
-                        self.restoreAnnotDelROI(self.roi_to_del, enforce=True)
-                        posData.allData_li[i]['labels'] = posData.lab
-                        self.get_data()
-                        self.store_data(autosave=False)
-                delROIs_info['rois'].pop(idx)
-                delROIs_info['delMasks'].pop(idx)
-                delROIs_info['delIDsROI'].pop(idx)
-        self.enqAutosave()
+            try:
+                idx = delROIs_info['rois'].index(roi_to_del) 
+            except IndexError:
+                continue
+            
+            posData.frame_i = i
+            idx = delROIs_info['rois'].index(roi_to_del)         
+            if delROIs_info['delIDsROI'][idx]:
+                posData.lab = posData.allData_li[i]['labels']
+                self.restoreAnnotDelROI(roi_to_del, enforce=True, draw=False)
+                posData.allData_li[i]['labels'] = posData.lab
+                self.get_data()
+                self.store_data(autosave=False)
+            delROIs_info['rois'].pop(idx)
+            delROIs_info['delMasks'].pop(idx)
+            delROIs_info['delIDsROI'].pop(idx)
         
         if isinstance(self.roi_to_del, pg.PolyLineROI):
             # PolyLine ROIs are only on ax1
@@ -9553,9 +9558,44 @@ class guiWin(QMainWindow):
         posData.lab = posData.allData_li[posData.frame_i]['labels']                   
         self.get_data()
         self.store_data()
-        
-        self.updateAllImages()
 
+    def applyDelROItoFutureFrames(self, roi):
+        posData = self.data[self.pos_i]
+        update_images = False
+        
+        # Restore deleted IDs from already visited future frames
+        current_frame_i = posData.frame_i    
+        for i in range(posData.frame_i+1, posData.SizeT):
+            if posData.allData_li[i]['labels'] is None:
+                break
+            
+            delROIs_info = posData.allData_li[i]['delROIs_info']
+            try:
+                idx = delROIs_info['rois'].index(roi) 
+            except IndexError:
+                continue
+            
+            posData.frame_i = i
+            idx = delROIs_info['rois'].index(roi)         
+            if delROIs_info['delIDsROI'][idx]:
+                posData.lab = posData.allData_li[i]['labels']
+                self.restoreAnnotDelROI(roi, enforce=True, draw=False)
+                posData.allData_li[i]['labels'] = posData.lab
+                self.get_data()
+                self.store_data(autosave=False)
+                update_images = True
+        
+        # Back to current frame
+        posData.frame_i = current_frame_i
+        posData.lab = posData.allData_li[posData.frame_i]['labels']                   
+        self.get_data()
+        self.store_data()
+        
+        if not update_images:
+            return
+        
+        # self.updateAllImages()
+    
     # @exec_time
     def getPolygonBrush(self, yxc2, Y, X):
         # see https://en.wikipedia.org/wiki/Tangent_lines_to_circles
@@ -11241,8 +11281,11 @@ class guiWin(QMainWindow):
         roi.setPen(color='r')
         self.update_rp()
         self.updateAllImages()
+        QTimer.singleShot(
+            300, partial(self.applyDelROItoFutureFrames, roi)
+        )
 
-    def restoreAnnotDelROI(self, roi, enforce=True):
+    def restoreAnnotDelROI(self, roi, enforce=True, draw=True):
         posData = self.data[self.pos_i]
         ROImask = self.getDelRoiMask(roi)
         delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
@@ -11259,19 +11302,24 @@ class guiWin(QMainWindow):
         for ID in delIDs:
             if ID in overlapROIdelIDs and not enforce:
                 continue
+            
+            restoredIDs.add(ID)
+            
             delMaskID = delMask==ID
             self.currentLab2D[delMaskID] = ID
             lab2D[delMaskID] = ID
-            self.restoreDelROIimg1(delMaskID, ID, ax=0)
-            self.restoreDelROIimg1(delMaskID, ID, ax=1)
+            
+            if draw:
+                self.restoreDelROIimg1(delMaskID, ID, ax=0)
+                self.restoreDelROIimg1(delMaskID, ID, ax=1)
+                
             delMask[delMaskID] = 0
-            restoredIDs.add(ID)
+            
         delROIs_info['delIDsROI'][idx] = delIDs - restoredIDs
         self.set_2Dlab(lab2D)
         self.update_rp()
 
     def restoreDelROIimg1(self, delMaskID, delID, ax=0):
-        posData = self.data[self.pos_i]
         if ax == 0:
             how = self.drawIDsContComboBox.currentText()
         else:
