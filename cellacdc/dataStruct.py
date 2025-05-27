@@ -1283,9 +1283,10 @@ class createDataStructWin(QMainWindow):
     def checkInstallBioIO(self, parent):
         myutils.check_install_package(
             'BioIO', 
-            import_pkg_name='cellacdc.acdc_bioio_bioformats', 
+            import_pkg_name='bioio', 
             pypi_name='bioio', 
-            parent=parent
+            min_version='0.1.0',
+            parent=parent,
         )
         
         return True
