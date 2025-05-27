@@ -9579,7 +9579,7 @@ class guiWin(QMainWindow):
             idx = delROIs_info['rois'].index(roi)         
             if delROIs_info['delIDsROI'][idx]:
                 posData.lab = posData.allData_li[i]['labels']
-                self.restoreAnnotDelROI(roi, enforce=True, draw=False)
+                self.restoreAnnotDelROI(roi, enforce=False, draw=False)
                 posData.allData_li[i]['labels'] = posData.lab
                 self.get_data()
                 self.store_data(autosave=False)
@@ -14922,32 +14922,38 @@ class guiWin(QMainWindow):
         
         return isBrushKey, isEraserKey
     
+    def _temp_debug(self, id=None):
+        posData = self.data[self.pos_i]
+        allData_li = posData.allData_li[117]
+        rp = allData_li['regionprops']
+        IDs_idxs = allData_li['IDs_idxs']
+        obj = rp[IDs_idxs[9]]
+        
+        txt = (
+            f'{id = }; frame_i 117; centroid = {obj.centroid}; ID = {obj.label}'
+        )
+        try:
+            curr_rp = posData.rp
+            curr_idx = posData.IDs_idxs[9]
+            curr_obj = curr_rp[curr_idx]
+            txt = (
+                f'{txt}\n'
+                f'{id = }; frame_i {posData.frame_i}; centroid = {curr_obj.centroid}; ID = {curr_obj.label}'
+            )
+        except Exception as err:
+            pass
+        
+        printl(txt)
+    
     @exception_handler
     def keyPressEvent(self, ev):        
         ctrl = ev.modifiers() == Qt.ControlModifier
         if ctrl and ev.key() == Qt.Key_D:
             self.resizeLeaveSpaceTerminalBelow()
             return
-        
+
         if ev.key() == Qt.Key_Q and self.debug:
-            posData = self.data[self.pos_i]
-            delROIs = posData.allData_li[posData.frame_i]['delROIs_info']['rois']
-            printl(len(delROIs))
-            
-            posData.allData_li[posData.frame_i]['delROIs_info']['rois'].append(1)
-            
-            delROIs = posData.allData_li[posData.frame_i]['delROIs_info']['rois']
-            printl(len(delROIs))
-            
-            current_frame_delROIs = delROIs
-            
-            delROIs = posData.allData_li[posData.frame_i+1]['delROIs_info']['rois']
-            printl(len(delROIs))
-            
-            next_frame_delROIs = delROIs
-            
-            printl(current_frame_delROIs is next_frame_delROIs)
-            
+            self._temp_debug()
             pass
         
         if not self.isDataLoaded:
@@ -18528,8 +18534,7 @@ class guiWin(QMainWindow):
                 self.navSpinBox.setMaximum(i+1)
 
     def prev_frame(self,):
-
-        benchmark=False
+        benchmark = False
         if benchmark:
             ts = [time.perf_counter()]
             titles = ['']
@@ -20846,8 +20851,11 @@ class guiWin(QMainWindow):
             is_cell_dead_li[i] = obj.dead
             is_cell_excluded_li[i] = obj.excluded
             IDs[i] = obj.label
-            xx_centroid[i] = int(self.getObjCentroid(obj.centroid)[1])
-            yy_centroid[i] = int(self.getObjCentroid(obj.centroid)[0])
+            try:
+                xx_centroid[i] = int(self.getObjCentroid(obj.centroid)[1])
+                yy_centroid[i] = int(self.getObjCentroid(obj.centroid)[0])
+            except Exception as err:
+                printl(obj, obj.centroid, obj.label, posData.frame_i)
             if self.isSegm3D:
                 zz_centroid[i] = int(obj.centroid[0])
             if obj.label in editedNewIDs:
@@ -22922,8 +22930,10 @@ class guiWin(QMainWindow):
             posData.zSlicesRp[z] = {obj.label:obj for obj in lab2d_rp}
     
     @exception_handler
-    def update_rp(self, draw=True, debug=False, update_IDs=True, 
-                  wl_update=True, wl_track_og_curr=False,wl_update_lab=False):
+    def update_rp(
+            self, draw=True, debug=False, update_IDs=True, 
+            wl_update=True, wl_track_og_curr=False,wl_update_lab=False
+        ):
         
         posData = self.data[self.pos_i]
         # Update rp for current posData.lab (e.g. after any change)
@@ -22940,22 +22950,33 @@ class guiWin(QMainWindow):
                 IDs_idxs[obj.label] = idx
             posData.IDs = IDs
             posData.IDs_idxs = IDs_idxs
+            if obj.label == 9:
+                printl(obj.centroid)
         self.update_rp_metadata(draw=draw)        
         self.store_zslices_rp(force_update=True)
 
-        if wl_update:
-            accepted_lost_centroids = self.getTrackedLostIDs()
-            new_IDs = posData.IDs
-            added_IDs = set(new_IDs) - set(old_IDs)
-            removed_IDs = set(old_IDs) - set(new_IDs) - set(accepted_lost_centroids) # maybe yes, maybe no?
-            if debug:
-                printl(added_IDs, removed_IDs)
-            
-            self.whitelistPropagateIDs(IDs_to_add=added_IDs, IDs_to_remove=removed_IDs,
-                                       curr_frame_only=True, IDs_curr=new_IDs,
-                                       track_og_curr=wl_track_og_curr,
-                                       curr_lab=posData.lab, curr_rp=posData.rp,
-                                       update_lab=wl_update_lab)
+        if not wl_update:
+            return
+        
+        # Update tracking whitelist
+        accepted_lost_centroids = self.getTrackedLostIDs()
+        new_IDs = posData.IDs
+        added_IDs = set(new_IDs) - set(old_IDs)
+        removed_IDs = (
+            set(old_IDs) 
+            - set(new_IDs) 
+            - set(accepted_lost_centroids)
+        )
+        if debug:
+            printl(added_IDs, removed_IDs)
+        
+        self.whitelistPropagateIDs(
+            IDs_to_add=added_IDs, IDs_to_remove=removed_IDs,
+            curr_frame_only=True, IDs_curr=new_IDs,
+            track_og_curr=wl_track_og_curr,
+            curr_lab=posData.lab, curr_rp=posData.rp,
+            update_lab=wl_update_lab
+        )
 
     def extendLabelsLUT(self, lenNewLut):
         posData = self.data[self.pos_i]
@@ -26147,12 +26168,6 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
         for roi in delROIs_info['rois']:
-            # if (
-            #         not self.ax1.isDelRoiItemPresent(roi) 
-            #         and not self.ax2.isDelRoiItemPresent(roi)
-            #     ):
-            #     continue
-            
             if isinstance(roi, pg.PolyLineROI):
                 # PolyLine ROIs are only on ax1
                 self.ax1.addDelRoiItem(roi, roi.key)
