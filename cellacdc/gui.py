@@ -9498,11 +9498,11 @@ class guiWin(QMainWindow):
 
         for item in self.ax2.items:
             if isinstance(item, pg.ROI):
-                self.ax2.removeItem(item)
+                self.ax2.removeDelRoiItem(item)
         
         for item in self.ax1.items:
             if isinstance(item, pg.ROI) and item != self.labelRoiItem:
-                self.ax1.removeItem(item)
+                self.ax1.removeDelRoiItem(item)
 
     def removeDelROI(self, event):
         posData = self.data[self.pos_i]
@@ -18104,10 +18104,8 @@ class guiWin(QMainWindow):
             # Go to next frame
             posData.frame_i += 1
 
-
             self.removeAlldelROIsCurrentFrame()
             proceed_cca, never_visited = self.get_data()
-
             if not proceed_cca:
                 posData.frame_i -= 1
                 self.get_data()
@@ -26101,11 +26099,12 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
         for roi in delROIs_info['rois']:
-            if (
-                    not self.ax1.isDelRoiItemPresent(roi) 
-                    and not self.ax2.isDelRoiItemPresent(roi)
-                ):
-                continue
+            # if (
+            #         not self.ax1.isDelRoiItemPresent(roi) 
+            #         and not self.ax2.isDelRoiItemPresent(roi)
+            #     ):
+            #     continue
+            
             if isinstance(roi, pg.PolyLineROI):
                 # PolyLine ROIs are only on ax1
                 self.ax1.addDelRoiItem(roi, roi.key)
