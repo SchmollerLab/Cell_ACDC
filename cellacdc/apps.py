@@ -11572,11 +11572,23 @@ class QDialogModelParams(QDialog):
     
     def freePosData(self):
         if hasattr(self, 'postProcessGroupbox'):
-            for selector in self.postProcessGroupbox.selectedFeaturesDialog.groupbox.selectors:
-                qutils.hardDelete(selector)
-            qutils.hardDelete(self.postProcessGroupbox.selectedFeaturesDialog.groupbox)
-            qutils.hardDelete(self.postProcessGroupbox.selectedFeaturesDialog)
-            qutils.hardDelete(self.postProcessGroupbox)
+            try:
+                for selector in self.postProcessGroupbox.selectedFeaturesDialog.groupbox.selectors:
+                    qutils.hardDelete(selector)
+            except AttributeError:
+                pass
+            try:
+                qutils.hardDelete(self.postProcessGroupbox.selectedFeaturesDialog.groupbox)
+            except AttributeError:
+                pass
+            try:
+                qutils.hardDelete(self.postProcessGroupbox.selectedFeaturesDialog)
+            except AttributeError:
+                pass
+            try:
+                qutils.hardDelete(self.postProcessGroupbox)
+            except AttributeError:
+                pass
 
     def _saveParams(self):
         if self.configPars is None:

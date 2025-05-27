@@ -3696,7 +3696,7 @@ def count_objects(posData, logger_func):
     if benchmark:
         t0 = time.perf_counter()
     for i, lab in enumerate(segm_data):
-        posData.allData_li[i]= myutils.get_empty_stored_data_dict()
+        posData.allData_li[i] = myutils.get_empty_stored_data_dict()
         rp = skimage.measure.regionprops(lab)
         IDs = [obj.label for obj in rp]
         posData.allData_li[i]['IDs'] = IDs
