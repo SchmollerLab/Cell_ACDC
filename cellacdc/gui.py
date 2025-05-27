@@ -19335,8 +19335,6 @@ class guiWin(QMainWindow):
         self.isDataLoading = True
         posData = self.data[self.pos_i]
         
-        printl(posData.allData_li is None)
-        
         files_format = '\n'.join([
             f'  - {file}' for file in posData.images_folder_files
         ])
