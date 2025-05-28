@@ -1319,7 +1319,8 @@ class segmWin(QMainWindow):
         try:
             del self.posData
             self.posData = None
-            # myutils.showRefGraph('segmWin')
+            # from . import debugutils
+            # debugutils.showRefGraph('segmWin')
         except AttributeError:
             pass
         try:
@@ -1331,7 +1332,8 @@ class segmWin(QMainWindow):
         self.close()
 
     def processStopped(self):
-        # myutils.showRefGraph('segmWin')
+        # from . import debugutils
+        # debugutils.showRefGraph('segmWin')
 
         msg = widgets.myMessageBox(showCentered=False)
         closeAnswer = msg.warning(
@@ -1340,7 +1342,8 @@ class segmWin(QMainWindow):
         try:
             del self.posData
             self.posData = None
-            # myutils.showRefGraph('segmWin')
+            # from . import debugutils
+            # debugutils.showRefGraph('segmWin')
         except AttributeError:
             pass
         try:
