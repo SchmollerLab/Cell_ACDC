@@ -567,6 +567,7 @@ def _initialize_image(image:np.ndarray,
     """
 
     true_img_shape = image.shape
+    iter_axis = None
 
     if timelapse and isZstack:
         if len(true_img_shape) < 4 or (is_rgb and len(true_img_shape) < 5):
@@ -579,6 +580,7 @@ def _initialize_image(image:np.ndarray,
         channel_axis = 2
 
         target_shape = (true_img_shape[0], true_img_shape[1], 3, true_img_shape[2], true_img_shape[3])
+
 
         if iter_axis_time is not None and iter_axis_zstack is not None:
             iter_axis = [iter_axis_time, iter_axis_zstack]
