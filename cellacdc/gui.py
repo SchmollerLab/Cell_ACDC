@@ -8301,9 +8301,9 @@ class guiWin(QMainWindow):
     def gui_raiseBottomLayoutContextMenu(self, event):
         try:
             # Convert QPointF to QPoint
-            self.bottomLayoutContextMenu.popup(event.screenPos().toPoint())
+            self.bottomLayoutContextMenu.popup(event.globalPos().toPoint())
         except AttributeError:
-            self.bottomLayoutContextMenu.popup(event.screenPos())
+            self.bottomLayoutContextMenu.popup(event.globalPos())
     
     def areContoursRequested(self, ax):
         if ax == 0 and self.annotContourCheckbox.isChecked():
