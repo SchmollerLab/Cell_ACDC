@@ -22939,8 +22939,6 @@ class guiWin(QMainWindow):
                 IDs_idxs[obj.label] = idx
             posData.IDs = IDs
             posData.IDs_idxs = IDs_idxs
-            if obj.label == 9:
-                printl(obj.centroid)
         self.update_rp_metadata(draw=draw)        
         self.store_zslices_rp(force_update=True)
 
