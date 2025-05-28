@@ -4120,6 +4120,8 @@ def get_empty_stored_data_dict():
             'regionprops': None,
             'labels': None,
             'acdc_df': None,
-            'delROIs_info': {'rois': [], 'delMasks': [], 'delIDsROI': []},
+            'delROIs_info': {
+                    'rois': [], 'delMasks': [], 'delIDsROI': [], 'state': []
+                },
             'IDs': []
         }
