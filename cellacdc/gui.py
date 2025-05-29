@@ -791,6 +791,7 @@ class guiWin(QMainWindow):
 
     def gui_createMenuBar(self):
         menuBar = self.menuBar()
+        menuBar.setNativeMenuBar(False)
 
         # File menu
         fileMenu = QMenu("&File", self)

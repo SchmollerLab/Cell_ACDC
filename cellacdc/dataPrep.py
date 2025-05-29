@@ -312,6 +312,8 @@ class dataPrepWin(QMainWindow):
 
     def gui_createMenuBar(self):
         menuBar = self.menuBar()
+        menuBar.setNativeMenuBar(False)
+        
         # File menu
         fileMenu = QMenu("&File", self)
         menuBar.addMenu(fileMenu)
