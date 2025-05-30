@@ -1708,7 +1708,7 @@ class mainWin(QMainWindow):
                     self.restoreDefaultButtons()
             elif useFijiMacro:
                 self.runFijiMacroWorkflow()
-        elif msg.clickedButton == restructButton:
+        if msg.clickedButton == restructButton:
             self.progressWin = apps.QDialogWorkerProgress(
                 title='Re-structure image files log', parent=self,
                 pbarDesc='Re-structuring image files running...'
