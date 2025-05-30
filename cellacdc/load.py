@@ -12,7 +12,6 @@ from math import isnan
 import xml.etree.ElementTree as ET
 from tqdm import tqdm
 import numpy as np
-import h5py
 import pandas as pd
 import skimage.filters
 from datetime import datetime
@@ -295,12 +294,12 @@ def save_to_h5(dst_filepath, data):
     tempFilepath = os.path.join(tempDir, filename)
     chunks = [1]*data.ndim
     chunks[-2:] = data.shape[-2:]
-    h5f = h5py.File(tempFilepath, 'w')
-    dataset = h5f.create_dataset(
-        'data', data.shape, dtype=data.dtype,
-        chunks=chunks, shuffle=False
-    )
-    dataset[:] = data
+    with h5py.File(tempFilepath, 'w') as h5f:
+        dataset = h5f.create_dataset(
+            'data', data.shape, dtype=data.dtype,
+            chunks=chunks, shuffle=False
+        )
+        dataset[:] = data
     shutil.move(tempFilepath, dst_filepath)
     shutil.rmtree(tempDir)
 
@@ -900,12 +899,12 @@ def imread(path):
 
 def load_image_file(filepath):
     if filepath.endswith('.h5'):
-        h5f = h5py.File(filepath, 'r')
-        img_data = h5f['data']
+        with h5py.File(filepath, 'r') as h5f:
+            img_data = h5f['data'][()]
     elif filepath.endswith('.npz'):
-        archive = np.load(filepath)
-        files = archive.files
-        img_data = archive[files[0]]
+        with np.load(filepath) as archive:
+            files = archive.files
+            img_data = archive[files[0]]
     elif filepath.endswith('.npy'):
         img_data = np.load(filepath)
     else:
@@ -2768,6 +2767,8 @@ class loadData:
         self._additionalMetadataValues = metadataWin._additionalValues
         if save:
             self.saveMetadata(additionalMetadata=metadataWin._additionalValues)
+        
+        metadataWin.deleteLater()
         return True
     
     def zSliceSegmentation(self, filename, frame_i):

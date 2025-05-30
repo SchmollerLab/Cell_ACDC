@@ -4410,6 +4410,9 @@ class guiWin(QMainWindow):
         posData.allData_li = [None]*posData.SizeT
 
         allIDs, posData = core.count_objects(posData, self.logger.info)
+
+        if not allIDs:
+            allIDs = list(range(100))
         
         self.highLowResAction.setChecked(True)
         numItems = len(allIDs)
@@ -13679,7 +13682,8 @@ class guiWin(QMainWindow):
         debug = posData.whitelist._debug
         if debug:
             printl('whitelistUpdateLab', frame_i, og_frame_i)
-            myutils.print_call_stack()
+            from . import debugutils
+            debugutils.print_call_stack()
 
         if benchmark:
             ts.append(time.perf_counter())
@@ -13845,7 +13849,8 @@ class guiWin(QMainWindow):
         debug = posData.whitelist._debug
 
         if debug:
-            myutils.print_call_stack(depth=2)
+            from . import debugutils
+            debugutils.print_call_stack(depth=2)
             printl('whitelistTrackOGCurr', against_prev)
 
         if against_prev and (rp is not None or lab is not None):
@@ -14146,7 +14151,8 @@ class guiWin(QMainWindow):
 
         if debug:
             printl('Propagating IDs...')
-            myutils.print_call_stack()
+            from . import debugutils
+            debugutils.print_call_stack()
             printl(new_whitelist, IDs_to_add, IDs_to_remove)
 
         if posData.whitelist is None:
@@ -14946,7 +14952,15 @@ class guiWin(QMainWindow):
             return
 
         if ev.key() == Qt.Key_Q and self.debug:
-            self._temp_debug()
+            from . import debugutils
+            debugutils.print_largest_attributes(self)
+            debugutils.print_largest_classes()
+            frame_i = self.data[self.pos_i].frame_i
+            try:
+                print(self.lineage_tree.export_df(frame_i))
+            except Exception as e:
+                pass
+            
             pass
         
         if not self.isDataLoaded:
@@ -16965,7 +16979,7 @@ class guiWin(QMainWindow):
             )
 
             use_gpu = win.init_kwargs.get('gpu', False)
-            proceed = myutils.check_cuda(model_name, use_gpu, qparent=self)
+            proceed = myutils.check_gpu_availible(model_name, use_gpu, qparent=self)
             if not proceed:
                 self.logger.info('Segmentation process cancelled.')
                 self.titleLabel.setText('Segmentation process cancelled.')
@@ -17159,7 +17173,7 @@ class guiWin(QMainWindow):
             secondChannelData = self.getSecondChannelData()
 
         use_gpu = win.init_kwargs.get('gpu', False)
-        proceed = myutils.check_cuda(model_name, use_gpu, qparent=self)
+        proceed = myutils.check_gpu_availible(model_name, use_gpu, qparent=self)
         if not proceed:
             self.logger.info('Segmentation process cancelled.')
             self.titleLabel.setText('Segmentation process cancelled.')
@@ -17396,7 +17410,7 @@ class guiWin(QMainWindow):
             return
 
         use_gpu = win.init_kwargs.get('gpu', False)
-        proceed = myutils.check_cuda(model_name, use_gpu, qparent=self)
+        proceed = myutils.check_gpu_availible(model_name, use_gpu, qparent=self)
         if not proceed:
             self.logger.info('Segmentation process cancelled.')
             self.titleLabel.setText('Segmentation process cancelled.')
@@ -22761,9 +22775,11 @@ class guiWin(QMainWindow):
         connecting cells and their respective mothers when the mother has split.
         """
         if self.lineage_tree is None:
+            printl('Lineage tree is not initialized.')
             return
         
-        if len(self.lineage_tree.lineage_list) <= 2:
+        if len(self.lineage_tree.lineage_list) < 2:
+            printl('Lineage tree is empty or has only one frame.')
             return
 
         self.clearAllCellToCellLines()
@@ -22779,6 +22795,7 @@ class guiWin(QMainWindow):
         if lin_tree_df.shape[0] > lin_tree_df_prev.shape[0]: # check if new cells have arrived
             new_cells = lin_tree_df.index.difference(lin_tree_df_prev.index) # I could use this for the if already but this is probably faster for frames where nothing changes
             if new_cells.shape[0] == 0:
+                printl('No new cells in the lineage tree for this frame.')
                 return
             
             for ax in (0, 1):

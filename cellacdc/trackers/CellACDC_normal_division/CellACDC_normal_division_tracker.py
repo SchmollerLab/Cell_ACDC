@@ -1186,6 +1186,11 @@ class normal_division_lineage_tree:
 
         lost_cells = lost_cells - mother_cells
 
+        lost_cells = [int(cell) for cell in lost_cells]
+        cells_with_parent.sort(key=lambda x: x[1])  # Sort by mother ID
+        cells_with_parent = [(int(cell), int(mother)) for cell, mother in cells_with_parent]
+        orphan_cells = [int(cell) for cell in orphan_cells]
+
         return cells_with_parent, orphan_cells, lost_cells
         
 
