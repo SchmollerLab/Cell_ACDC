@@ -2131,6 +2131,7 @@ def aliases_real_time_trackers(reverse=False):
 
     aliases = {
             'CellACDC_normal_division': 'Cell-ACDC symmetric division',
+            'CellACDC_2steps' : 'Cell-ACDC 2 steps',
         }
     
     if reverse:
