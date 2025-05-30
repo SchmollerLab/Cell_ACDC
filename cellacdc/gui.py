@@ -2666,8 +2666,12 @@ class guiWin(QMainWindow):
             self.trackingAlgosGroup.addAction(rtTrackerAction)
 
         self.trackWithAcdcAction.setChecked(True)
+        aliases = myutils.aliases_real_time_trackers()
+
         if 'tracking_algorithm' in self.df_settings.index:
             trackingAlgo = self.df_settings.at['tracking_algorithm', 'value']
+            if trackingAlgo in aliases:
+                trackingAlgo = aliases[trackingAlgo]
             if trackingAlgo == 'Cell-ACDC':
                 self.trackWithAcdcAction.setChecked(True)
             elif trackingAlgo == 'YeaZ':
@@ -8443,7 +8447,11 @@ class guiWin(QMainWindow):
         if not checked:
             return
 
-        trackingAlgo = self.sender().text()
+        aliases = myutils.aliases_real_time_trackers(reverse=True)
+        if self.sender().text() in aliases:
+            trackingAlgo = aliases[self.sender().text()]
+        else:
+            trackingAlgo = self.sender().text()
         self.df_settings.at['tracking_algorithm', 'value'] = trackingAlgo
         self.df_settings.to_csv(self.settings_csv_path)
 
@@ -29043,7 +29051,14 @@ class guiWin(QMainWindow):
             if rtTrackerAction.isChecked():
                 break
         
+        aliases = myutils.aliases_real_time_trackers(reverse=True)
+        
         rtTracker = rtTrackerAction.text()
+        rtTracker_txt = rtTracker
+
+        if rtTracker in aliases:
+            rtTracker = aliases[rtTracker]
+        
         if rtTracker == 'Cell-ACDC':
             return
         if rtTracker == 'YeaZ':
@@ -29052,7 +29067,7 @@ class guiWin(QMainWindow):
         if self.isRealTimeTrackerInitialized and not force:
             return
         
-        self.logger.info(f'Initializing {rtTracker} tracker...')
+        self.logger.info(f'Initializing {rtTracker_txt} tracker...')
         self._rtTrackerName = rtTracker
         posData = self.data[self.pos_i]
         realTimeTracker, track_frame_params = myutils.init_tracker(
