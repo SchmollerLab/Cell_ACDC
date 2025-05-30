@@ -2125,10 +2125,25 @@ def from_imagej_rois_to_segm_data(
     
     return np.squeeze(segm_data)
             
+def aliases_real_time_trackers(reverse=False):
+    """
+    Returns a dictionary with aliases for real-time trackers.
+    """
 
+    aliases = {
+            'CellACDC_normal_division': 'Cell-ACDC symmetric division',
+            'CellACDC_2steps' : 'Cell-ACDC 2 steps',
+        }
+    
+    if reverse:
+        aliases = {v: k for k, v in aliases.items()}
+    
+    return aliases
+    
 def get_list_of_real_time_trackers():
     trackers = get_list_of_trackers()
     rt_trackers = []
+    aliases = aliases_real_time_trackers()
     for tracker in trackers:
         if tracker == 'CellACDC':
             continue
@@ -2145,6 +2160,11 @@ def get_list_of_real_time_trackers():
                 rt_trackers.append(tracker)
         except Exception as e:
             continue
+    
+    for i, tracker in enumerate(rt_trackers):
+        if tracker in aliases:
+            rt_trackers[i] = aliases[tracker]
+
     return rt_trackers
 
 def get_list_of_trackers():
