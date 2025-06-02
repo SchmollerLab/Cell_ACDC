@@ -30047,7 +30047,7 @@ class guiWin(QMainWindow):
                 continue
             
             self.calc_for_each_zslice_mapper[chName] = (
-                chNameGroupbox.calcForEachZsliceRequested
+                chNameGroupbox.isCalcForEachZsliceRequested()
             )
             last_selected_groupboxes_measurements[refChannel].append(
                 chNameGroupbox.title()
@@ -30066,7 +30066,7 @@ class guiWin(QMainWindow):
                     favourite_funcs.add(func_name)
 
         self.calc_size_for_each_zslice = (
-            measurementsWin.sizeMetricsQGBox.calcForEachZsliceRequested
+            measurementsWin.sizeMetricsQGBox.isCalcForEachZsliceRequested()
         )
         if not measurementsWin.sizeMetricsQGBox.isChecked():
             self.sizeMetricsToSave = []
