@@ -1291,7 +1291,7 @@ class segmWin(QMainWindow):
     
     def processFinished(self, total_exec_time):
         short_txt = 'Segmentation process finished!'
-        exec_time = round(self.total_exec_time)
+        exec_time = round(total_exec_time)
         delta = datetime.timedelta(seconds=exec_time)
         exec_time_delta = str(delta).split(',')[-1].strip()
         h, m, s = str(exec_time_delta).split(':')

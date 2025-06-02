@@ -8,8 +8,8 @@ note = ''
 if sys.platform == 'darwin':
     note = ("""
     <p style="font-size:13px">
-        <b>NOTE for M1 mac users</b>: if you are using one of the latest Mac with
-        M1 Apple Silicon processor <b>cancel this operation</b> and follow the
+        <b>NOTE for M1 mac users</b>: if you are on MacOS with an
+        Apple Silicon processor <b>cancel this operation</b> and follow the
         instructions you can find
         <a href="https://github.com/SchmollerLab/Cell_ACDC/issues/8">
             here.
@@ -17,6 +17,7 @@ if sys.platform == 'darwin':
     </p>
     """)
 myutils.check_install_package('tensorflow', note=note)
+myutils.check_install_package('numpy', max_version='2.0.0')
 myutils.check_install_package('stardist')
 
 import sys
