@@ -259,6 +259,12 @@ def checked_reset_index(df):
     else:
         return df.reset_index()
 
+def checked_reset_index_Cell_ID(df):
+    if df.index.names == ['Cell_ID']:
+        return df
+    df = checked_reset_index(df)
+    return df.set_index('Cell_ID')
+
 
 def _bytes_to_MB(size_bytes):
     factor = pow(2, -20)
