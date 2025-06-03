@@ -2694,12 +2694,14 @@ def check_pkg_version(import_pkg_name, min_version, raise_err=True):
     else:
         return is_version_correct
 
-def check_pkg_max_version(import_pkg_name, max_version, raise_err=True):
+def check_pkg_max_version(
+        import_pkg_name, max_version, raise_err=True
+    ):
     is_version_correct = False
     try:
         from packaging import version
         installed_version = get_package_version(import_pkg_name)  
-        if version.parse(installed_version) <= version.parse(max_version):
+        if version.parse(installed_version) < version.parse(max_version):
             is_version_correct = True
     except Exception as err:
         is_version_correct = False
@@ -3115,7 +3117,7 @@ def _get_pkg_command_pip_install(pkg_command, max_version='', min_version=''):
             pkg_command = f'{pkg_command},'
     
     if max_version:
-        pkg_command = f'{pkg_command}<={max_version}'
+        pkg_command = f'{pkg_command}<{max_version}'
     return pkg_command
 
 def _install_package_cli_msg(
