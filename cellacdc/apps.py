@@ -10680,6 +10680,7 @@ class QDialogModelParams(QDialog):
             df_metadata=None, force_postprocess_2D=False, model_module=None,
             action_type='', addPreProcessParams=True, addPostProcessParams=True,
             extraParams=None, extraParamsTitle=None, ini_filename=None,
+            add_additional_segm_params=False
         ):
         self.cancel = True
         super().__init__(parent)
@@ -10880,7 +10881,7 @@ class QDialogModelParams(QDialog):
         row += 1
         
         self.additionalSegmGroupbox = None
-        if not is_tracker:
+        if not is_tracker and add_additional_segm_params:
             mainLayout.addWidget(widgets.QHLine())
             row += 1
             additionalSegmGroupbox = self.getAdditionalSegmParams()
@@ -11327,13 +11328,16 @@ class QDialogModelParams(QDialog):
         configPars.read(self.ini_path)
         return configPars
 
-    def setValuesFromParams(self, init_params, segment_params, extra_params):
+    def setValuesFromParams(self, init_params, segment_params, extra_params=None):
         sections = {
             f'{self.model_name}.init': (init_params, self.init_argsWidgets),
             f'{self.model_name}.segment': (segment_params, self.argsWidgets),
-            f'{self.model_name}.extra': (extra_params, self.extraArgsWidgets)
-            
         }
+        if extra_params is not None:
+            sections[f'{self.model_name}.extra'] = (
+                extra_params, self.extraArgsWidgets
+            )
+            
         for section, values in sections.items():
             params, argWidgetList = values
             for argWidget in argWidgetList:
