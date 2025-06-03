@@ -1,9 +1,9 @@
 import skimage
 import numpy as np
 import time
-from ...core import segm_model_segment, post_process_segm
-from ...features import custom_post_process_segm
-from ... import io, plot
+from .core import segm_model_segment, post_process_segm
+from .features import custom_post_process_segm
+from . import io, plot
 import inspect
 
 
