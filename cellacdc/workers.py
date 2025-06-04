@@ -1520,8 +1520,8 @@ class ComputeMetricsWorker(QObject):
                 saveDataWorker.addCombineMetrics_acdc_df(
                     posData, all_frames_acdc_df
                 )
-                saveDataWorker.addAdditionalMetadata(
-                    posData, all_frames_acdc_df
+                all_frames_acdc_df = saveDataWorker.addAdditionalMetadata(
+                    posData, all_frames_acdc_df, posData.segm_data
                 )
                 all_frames_acdc_df = saveDataWorker.addDerivedCellCycleColumns(
                     all_frames_acdc_df
@@ -6525,7 +6525,45 @@ class saveDataWorker(QObject):
             )
         return df
 
-    def addAdditionalMetadata(self, posData: load.loadData, df: pd.DataFrame):
+    def addDisappearsBeforeEnd(self, acdc_df: pd.DataFrame, saved_segm_data):
+        acdc_df = acdc_df.drop('time_seconds', axis=1, errors='ignore')
+        acdc_df = (
+            acdc_df.reset_index()
+            .set_index(['frame_i', 'Cell_ID'])
+            .sort_index()
+        )
+        acdc_df['disappears_before_end'] = 0
+        for frame_i, lab in enumerate(saved_segm_data):
+            if frame_i == 0:
+                continue
+            
+            try:
+                df_frame = acdc_df.loc[frame_i]
+            except KeyError:
+                break
+                
+            prev_lab = saved_segm_data[frame_i-1]
+            prev_rp = skimage.measure.regionprops(prev_lab)
+            prev_rp_mapper = {obj.label: obj for obj in prev_rp}
+            
+            curr_rp = skimage.measure.regionprops(lab)
+            lost_IDs = []
+            for obj in curr_rp:
+                if prev_rp_mapper.get(obj.label) is None:
+                    lost_IDs.append(obj.label)
+            
+            if 'parent_ID_tree' in df_frame.columns:
+                parent_IDs = set(df_frame['parent_ID_tree'].values)
+                lost_IDs = [ID for ID in lost_IDs if ID not in parent_IDs]
+            
+            idx = pd.IndexSlice[:, lost_IDs]
+            acdc_df.loc[idx, 'disappears_before_end'] = 1
+                
+        return acdc_df
+    
+    def addAdditionalMetadata(
+            self, posData: load.loadData, df: pd.DataFrame, saved_segm_data
+        ):
         for col, val in posData.additionalMetadataValues().items():
             if col in df.columns:
                 df.pop(col)
@@ -6545,6 +6583,9 @@ class saveDataWorker(QObject):
             df.insert(1, 'time_hours', time_seconds/3600)
         except Exception as e:
             pass
+        
+        df = self.addDisappearsBeforeEnd(df, saved_segm_data)
+        return df
 
     @worker_exception_handler
     def run(self):
@@ -6747,7 +6788,9 @@ class saveDataWorker(QObject):
                         posData, all_frames_acdc_df
                     )
 
-                self.addAdditionalMetadata(posData, all_frames_acdc_df)
+                all_frames_acdc_df = self.addAdditionalMetadata(
+                    posData, all_frames_acdc_df, saved_segm_data
+                )
 
                 all_frames_acdc_df = self._removeDeprecatedRows(
                     all_frames_acdc_df
