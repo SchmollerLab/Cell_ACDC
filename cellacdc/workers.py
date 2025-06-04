@@ -6544,13 +6544,13 @@ class saveDataWorker(QObject):
                 
             prev_lab = saved_segm_data[frame_i-1]
             prev_rp = skimage.measure.regionprops(prev_lab)
-            prev_rp_mapper = {obj.label: obj for obj in prev_rp}
             
             curr_rp = skimage.measure.regionprops(lab)
+            curr_rp_mapper = {obj.label: obj for obj in curr_rp}
             lost_IDs = []
-            for obj in curr_rp:
-                if prev_rp_mapper.get(obj.label) is None:
-                    lost_IDs.append(obj.label)
+            for prev_obj in prev_rp:
+                if curr_rp_mapper.get(prev_obj.label) is None:
+                    lost_IDs.append(prev_obj.label)
             
             if 'parent_ID_tree' in df_frame.columns:
                 parent_IDs = set(df_frame['parent_ID_tree'].values)
