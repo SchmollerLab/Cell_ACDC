@@ -6556,7 +6556,7 @@ class saveDataWorker(QObject):
                 parent_IDs = set(df_frame['parent_ID_tree'].values)
                 lost_IDs = [ID for ID in lost_IDs if ID not in parent_IDs]
             
-            idx = pd.IndexSlice[frame_i, lost_IDs]
+            idx = pd.IndexSlice[frame_i-1, lost_IDs]
             acdc_df.loc[idx, 'disappears_before_end'] = 1
                 
         return acdc_df
