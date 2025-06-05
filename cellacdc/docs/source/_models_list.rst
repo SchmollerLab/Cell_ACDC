@@ -11,6 +11,9 @@ Segmentation models
 - `Omnipose <https://www.nature.com/articles/s41592-022-01639-4>`_
 - `YeastMate <https://academic.oup.com/bioinformatics/article/38/9/2667/6531960>`_
 - `BABY <https://elifesciences.org/articles/79812>`_
+- `InstanSeg <https://arxiv.org/abs/2408.15954>`_
+- `pomBseen <https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0291391>`_
+- `Cellpose_germlineNuclei <https://www.micropublication.org/journals/biology/micropub-biology-001062>`_
 
 Trackers
 --------
