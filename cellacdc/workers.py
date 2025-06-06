@@ -41,7 +41,7 @@ from . import core
 from . import cca_df_colnames, lineage_tree_cols, default_annot_df
 from . import cca_df_colnames_with_tree
 from .utils import resize
-from .trackers.CellACDC_normal_division.SingleCellSeg import single_cell_seg
+from .SingleCellSeg import single_cell_seg
 
 DEBUG = False
 
@@ -5935,8 +5935,6 @@ class CustomPreprocessWorkerUtil(BaseWorkerUtil):
                 if self.abort:
                     self.sigAborted.emit()
                     return
-
-            printl(self.appendedName)
             
             appendedName = self.appendedName
             self.signals.initProgressBar.emit(len(pos_foldernames))
