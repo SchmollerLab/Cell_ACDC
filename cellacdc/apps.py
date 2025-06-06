@@ -10800,6 +10800,8 @@ class QDialogModelParams(QDialog):
             )
             buttonsLayout.addWidget(loadEntireRecipeButton)
             buttonsLayout.addWidget(saveEntireRecipeButton)
+            loadEntireRecipeButton.clicked.connect(self.loadEntireRecipe)
+            saveEntireRecipeButton.clicked.connect(self.saveEntireRecipe)
             
         buttonsLayout.addWidget(okButton)
 
@@ -10807,8 +10809,6 @@ class QDialogModelParams(QDialog):
 
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.close)
-        loadEntireRecipeButton.clicked.connect(self.loadEntireRecipe)
-        saveEntireRecipeButton.clicked.connect(self.saveEntireRecipe)
 
         self.okButton = okButton
 
@@ -10957,11 +10957,16 @@ class QDialogModelParams(QDialog):
         msg.warning(self, 'No segmentation recipes found!', txt)
     
     def loadEntireRecipe(self):
-        if not os.path.exists(segm_recipes_path):
+        segm_recipes_path_model = os.path.join(
+            segm_recipes_path, self.model_name
+        )
+
+        if not os.path.exists(segm_recipes_path_model):
             self.warningNoSegmRecipes()
             return
-        
-        recipe_files = os.listdir(segm_recipes_path)
+    
+        recipe_files = os.listdir(segm_recipes_path_model)
+
         if not recipe_files:
             self.warningNoSegmRecipes()
             return
@@ -10970,7 +10975,7 @@ class QDialogModelParams(QDialog):
         items = []
         for recipe_file in recipe_files:
             cp = config.ConfigParser()
-            cp.read(os.path.join(segm_recipes_path, recipe_file))
+            cp.read(os.path.join(segm_recipes_path_model, recipe_file))
             date_created = cp['info']['created_on']
             items.append((recipe_file, date_created))
             
@@ -10979,12 +10984,16 @@ class QDialogModelParams(QDialog):
             headerLabels=headerLabels,
             title='Select a segmentation recipe to load',
             infoText='Select a segmentation recipe to load:<br>',
-            path_to_browse=segm_recipes_path,
+            path_to_browse=segm_recipes_path_model,
         )
         win.exec_()
+
+        if win.cancel or not hasattr(win, 'selectedText'):
+            print('Loading segmentation recipe cancelled.')
+            return
         
         recipe_filename = win.selectedText
-        recipe_filepath = os.path.join(segm_recipes_path, recipe_filename)
+        recipe_filepath = os.path.join(segm_recipes_path_model, recipe_filename)
         
         self.loadRecipeFromFilepath(recipe_filepath)
         
@@ -11010,14 +11019,23 @@ class QDialogModelParams(QDialog):
             f'{self.model_name}.init', self.init_argsWidgets, configPars=cp
         )
         self.loadLastSelection(
-            f'{self.model_name}.segment', self.init_argsWidgets, configPars=cp
+            f'{self.model_name}.segment', self.argsWidgets, configPars=cp
         )
-        self.loadLastSelection(
-            f'{self.model_name}.extra', self.init_argsWidgets, configPars=cp
-        )
+        if self.extraArgsWidgets:
+            self.loadLastSelection(
+                f'{self.model_name}.extra', self.extraArgsWidgets, configPars=cp
+            )
         self.loadLastSelectionPostProcess(configPars=cp)
     
     def saveEntireRecipe(self):
+        segm_recipes_path_model = os.path.join(
+            segm_recipes_path, self.model_name
+        )
+        try:
+            existingNames=os.listdir(segm_recipes_path_model)
+        except FileNotFoundError:
+            existingNames = []
+
         win = filenameDialog(
             title='Filename for segmentation recipe',
             basename='segmentation_recipe',
@@ -11025,7 +11043,7 @@ class QDialogModelParams(QDialog):
             hintText='Insert a <b>filename</b> for the segmentation recipe:',
             allowEmpty=False,
             parent=self,
-            existingNames=os.listdir(segm_recipes_path)
+            existingNames=existingNames
         )
         win.exec_()
         if win.cancel:
@@ -11033,7 +11051,8 @@ class QDialogModelParams(QDialog):
         
         ini_filename = win.filename
         os.makedirs(segm_recipes_path, exist_ok=True)
-        ini_filepath = os.path.join(segm_recipes_path, ini_filename)
+        os.makedirs(segm_recipes_path_model, exist_ok=True)
+        ini_filepath = os.path.join(segm_recipes_path_model, ini_filename)
         
         configPars = self.getConfigPars(create_new=True)
 
@@ -11439,7 +11458,6 @@ class QDialogModelParams(QDialog):
         text = html_utils.paragraph(text)
         param_name = self.sender().param_name
         msg = widgets.myMessageBox(wrapText=False)
-        printl(text)
         msg.information(self, f'Info about `{param_name}` parameter', text)
     
     def restoreDefaultInit(self):
@@ -11534,7 +11552,10 @@ class QDialogModelParams(QDialog):
 
     def loadLastSelectionPostProcess(self, configPars=None):
         postProcessSection = f'{self.model_name}.postprocess'
-        
+
+        if isinstance(configPars, bool):
+            configPars = None
+
         if configPars is None:
             configPars = self.configPars
 
