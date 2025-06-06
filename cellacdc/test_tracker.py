@@ -22,7 +22,7 @@ app, splashScreen = _setup_app(splashscreen=True)
 splashScreen.close()
 
 channel_name = 'Autofluorescence'
-end_filename_segm = 'segm_try2' # 'segm_test'
+end_filename_segm = 'segm' # 'segm_test'
 START_FRAME = 0 
 STOP_FRAME = 400
 # PLOT_FRAME = 499

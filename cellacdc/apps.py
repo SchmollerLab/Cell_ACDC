@@ -1,7 +1,7 @@
 import os
 import sys
 import re
-from typing import Literal, Callable, Dict, Iterable, List
+from typing import Literal, Callable, Dict, Iterable, List, Tuple
 import datetime
 import pathlib
 from collections import defaultdict
@@ -66,7 +66,7 @@ import qtpy.compat
 from . import exception_handler
 from . import load, prompts, core, measurements, html_utils
 from . import is_mac, is_win, is_linux, settings_folderpath, config
-from . import preproc_recipes_path
+from . import preproc_recipes_path, segm_recipes_path
 from . import is_conda_env, pytorch_commands
 from . import qrc_resources, printl
 from . import colors
@@ -7768,7 +7768,9 @@ class selectPositionsMultiExp(QBaseDialog):
         infoLabel = QLabel(infoTxt)
 
         self.treeWidget = QTreeWidget()
-        self.treeWidget.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.treeWidget.setSelectionMode(
+            QAbstractItemView.SelectionMode.ExtendedSelection
+        )
         self.treeWidget.setHeaderHidden(True)
         self.treeWidget.setFont(font)
         for exp_path, positions in expPaths.items():
@@ -10686,6 +10688,7 @@ class QDialogModelParams(QDialog):
             df_metadata=None, force_postprocess_2D=False, model_module=None,
             action_type='', addPreProcessParams=True, addPostProcessParams=True,
             extraParams=None, extraParamsTitle=None, ini_filename=None,
+            add_additional_segm_params=False
         ):
         self.cancel = True
         super().__init__(parent)
@@ -10746,7 +10749,9 @@ class QDialogModelParams(QDialog):
             init_params, 'Parameters for model initialization'
         )
         initDefaultButton = widgets.reloadPushButton('Restore default')
-        initLoadLastSelButton = QPushButton('Load last parameters')
+        initLoadLastSelButton = widgets.OpenFilePushButton(
+            'Load last parameters'
+        )
         initLoadLastSelButton.setIcon(QIcon(':folder-open.svg'))
         initButtonsLayout = QHBoxLayout()
         initButtonsLayout.addStretch(1)
@@ -10771,7 +10776,9 @@ class QDialogModelParams(QDialog):
             ) 
             self.segmentGroupBox = segmentGroupBox
             segmentDefaultButton = widgets.reloadPushButton('Restore default')
-            segmentLoadLastSelButton = QPushButton('Load last parameters')
+            segmentLoadLastSelButton = widgets.OpenFilePushButton(
+                'Load last parameters'
+            )
             segmentButtonsLayout = QHBoxLayout()
             segmentButtonsLayout.addStretch(1)
             segmentButtonsLayout.addWidget(segmentDefaultButton)
@@ -10786,20 +10793,28 @@ class QDialogModelParams(QDialog):
         okButton = widgets.okPushButton(' Ok ')
             # infoButton = widgets.infoPushButton(' Help... ')
             # restoreDefaultButton = widgets.reloadPushButton('Restore default')
-
+        
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
         buttonsLayout.addSpacing(20)
-            # buttonsLayout.addWidget(infoButton)
-            # buttonsLayout.addWidget(restoreDefaultButton)
+        if not is_tracker:
+            loadEntireRecipeButton = widgets.OpenFilePushButton(
+                'Load saved recipe...'
+            )
+            saveEntireRecipeButton = widgets.savePushButton(
+                'Save all parameters to recipe file...'
+            )
+            buttonsLayout.addWidget(loadEntireRecipeButton)
+            buttonsLayout.addWidget(saveEntireRecipeButton)
+            
         buttonsLayout.addWidget(okButton)
 
         buttonsLayout.setContentsMargins(0, 10, 0, 10)
 
         okButton.clicked.connect(self.ok_cb)
-            # infoButton.clicked.connect(self.info_params)
         cancelButton.clicked.connect(self.close)
-            # restoreDefaultButton.clicked.connect(self.restoreDefault)
+        loadEntireRecipeButton.clicked.connect(self.loadEntireRecipe)
+        saveEntireRecipeButton.clicked.connect(self.saveEntireRecipe)
 
         self.okButton = okButton
 
@@ -10813,7 +10828,9 @@ class QDialogModelParams(QDialog):
             )
 
             extraDefaultButton = widgets.reloadPushButton('Restore default')
-            extraLoadLastSelButton = QPushButton('Load last parameters')
+            extraLoadLastSelButton = widgets.OpenFilePushButton(
+                'Load last parameters'
+            )
             extraButtonsLayout = QHBoxLayout()
             extraButtonsLayout.addStretch(1)
             extraButtonsLayout.addWidget(extraDefaultButton)
@@ -10858,7 +10875,9 @@ class QDialogModelParams(QDialog):
             postProcessLayout.addWidget(postProcessGroupbox)
 
             postProcDefaultButton = widgets.reloadPushButton('Restore default')
-            postProcLoadLastSelButton = QPushButton('Load last parameters')
+            postProcLoadLastSelButton = widgets.OpenFilePushButton(
+                'Load last parameters'
+            )
             postProcButtonsLayout = QHBoxLayout()
             postProcButtonsLayout.addStretch(1)
             postProcButtonsLayout.addWidget(postProcDefaultButton)
@@ -10874,6 +10893,8 @@ class QDialogModelParams(QDialog):
                 postProcessLayout.addWidget(
                     self.seeHereLabel, alignment=Qt.AlignCenter
                 )
+            
+            postProcessLayout.addWidget(widgets.QHLine())
 
         row = 0
         if preProcessLayout is not None:
@@ -10886,12 +10907,12 @@ class QDialogModelParams(QDialog):
         row += 1
         
         self.additionalSegmGroupbox = None
-        if not is_tracker:
+        if not is_tracker and add_additional_segm_params:
             mainLayout.addWidget(widgets.QHLine())
             row += 1
             additionalSegmGroupbox = self.getAdditionalSegmParams()
             mainLayout.addWidget(additionalSegmGroupbox)
-            mainLayout.setStretch(row, 1)
+            mainLayout.setStretch(row, 0)
             self.additionalSegmGroupbox = additionalSegmGroupbox
             row += 1
         
@@ -10931,12 +10952,133 @@ class QDialogModelParams(QDialog):
         self.setFont(font)
         # self.setModal(True)
     
+    def warningNoSegmRecipes(self):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(
+            'No segmentation recipes found!<br><br>'
+            'To create a segmentation recipe you need click on '
+            '<code>Save all parameters to recipe file...</code> '
+            'button.'
+        )
+        msg.warning(self, 'No segmentation recipes found!', txt)
+    
+    def loadEntireRecipe(self):
+        if not os.path.exists(segm_recipes_path):
+            self.warningNoSegmRecipes()
+            return
+        
+        recipe_files = os.listdir(segm_recipes_path)
+        if not recipe_files:
+            self.warningNoSegmRecipes()
+            return
+        
+        headerLabels = ['Name', 'Date Created']
+        items = []
+        for recipe_file in recipe_files:
+            cp = config.ConfigParser()
+            cp.read(os.path.join(segm_recipes_path, recipe_file))
+            date_created = cp['info']['created_on']
+            items.append((recipe_file, date_created))
+            
+        win = QTreeDialog(
+            items,
+            headerLabels=headerLabels,
+            title='Select a segmentation recipe to load',
+            infoText='Select a segmentation recipe to load:<br>',
+            path_to_browse=segm_recipes_path,
+        )
+        win.exec_()
+        
+        recipe_filename = win.selectedText
+        recipe_filepath = os.path.join(segm_recipes_path, recipe_filename)
+        
+        self.loadRecipeFromFilepath(recipe_filepath)
+        
+        txt = html_utils.paragraph(
+            'Done!<br><br>'
+            'Segmentation recipe loaded from:'
+        )
+        msg = widgets.myMessageBox()
+        msg.information(
+            self, 'Segmnentation recipe laoded!', txt, 
+            commands=(recipe_filepath,),
+            path_to_browse=os.path.dirname(recipe_filepath)
+        )
+        
+        print('Done. Segmentation recipe loaded from:', recipe_filepath)
+    
+    def loadRecipeFromFilepath(self, recipe_filepath):
+        cp = config.ConfigParser()
+        cp.read(recipe_filepath)
+        
+        self.loadPreprocRecipe(configPars=cp)
+        self.loadLastSelection(
+            f'{self.model_name}.init', self.init_argsWidgets, configPars=cp
+        )
+        self.loadLastSelection(
+            f'{self.model_name}.segment', self.init_argsWidgets, configPars=cp
+        )
+        self.loadLastSelection(
+            f'{self.model_name}.extra', self.init_argsWidgets, configPars=cp
+        )
+        self.loadLastSelectionPostProcess(configPars=cp)
+    
+    def saveEntireRecipe(self):
+        win = filenameDialog(
+            title='Filename for segmentation recipe',
+            basename='segmentation_recipe',
+            ext='.ini',
+            hintText='Insert a <b>filename</b> for the segmentation recipe:',
+            allowEmpty=False,
+            parent=self,
+            existingNames=os.listdir(segm_recipes_path)
+        )
+        win.exec_()
+        if win.cancel:
+            return
+        
+        ini_filename = win.filename
+        os.makedirs(segm_recipes_path, exist_ok=True)
+        ini_filepath = os.path.join(segm_recipes_path, ini_filename)
+        
+        configPars = self.getConfigPars(create_new=True)
+
+        if hasattr(self, 'reduceMemUsageToggle'):
+            configPars[f'{self.model_name}.additional_segm_params'] = {}
+            reduceMemoryUsage = self.reduceMemUsageToggle.isChecked()
+            option = self.reduceMemUsageToggle.label
+            configPars[f'{self.model_name}.additional_segm_params'][option] = (
+                str(reduceMemoryUsage)
+            )
+        
+        configPars['info'] = {}
+        configPars['info']['created_on'] = datetime.datetime.now().strftime(
+            r'%Y/%m/%d %H:%M'
+        )
+        
+        with open(ini_filepath, 'w') as configfile:
+            configPars.write(configfile)
+        
+        txt = html_utils.paragraph(
+            'Done!<br><br>'
+            'Segmentation recipe saved to:'
+        )
+        msg = widgets.myMessageBox()
+        msg.information(
+            self, 'Segmnentation recipe saved!', txt, 
+            commands=(ini_filepath,),
+            path_to_browse=os.path.dirname(ini_filepath)
+        )
+        
+        print('Done. Segmentation recipe saved to:', ini_filepath)
+    
     def getAdditionalSegmParams(self):
         additionalSegmGroupbox = QGroupBox('Additional segmentation parameters')
         local_row = 0
         additionalSegmLayout = QGridLayout()
+        option = 'Reduce memory usage'
         additionalSegmLayout.addWidget(
-            QLabel('Reduce memory usage:  '), local_row, 0, 
+            QLabel(f'{option}:  '), local_row, 0, 
             alignment=Qt.AlignRight
         )
         self.reduceMemUsageToggle = widgets.Toggle()
@@ -10944,6 +11086,7 @@ class QDialogModelParams(QDialog):
             self.reduceMemUsageToggle, local_row, 1, 1, 2, 
             alignment=Qt.AlignCenter
         )
+        self.reduceMemUsageToggle.label = option
         reduceMemUsageInfoButton = widgets.infoPushButton()
         additionalSegmLayout.addWidget(reduceMemUsageInfoButton, local_row, 3)
         reduceMemUsageInfoButton.clicked.connect(
@@ -10967,17 +11110,19 @@ class QDialogModelParams(QDialog):
             self, 'Reduce memory usage', infoText
         )
         
-    
-    def loadPreprocRecipe(self):
-        if self.configPars is None:
+    def loadPreprocRecipe(self, configPars=None):
+        if self.configPars is None and configPars is None:
             return
         
+        if configPars is None:
+            configPars = self.configPars
+        
         preprocConfigPars = {}
-        for section in self.configPars.sections():
+        for section in configPars.sections():
             if not section.startswith(f'{self.model_name}.preprocess'):
                 continue      
             
-            preprocConfigPars[section] = self.configPars[section]
+            preprocConfigPars[section] = configPars[section]
         
         if not preprocConfigPars:
             return
@@ -11399,13 +11544,16 @@ class QDialogModelParams(QDialog):
         configPars.read(self.ini_path)
         return configPars
 
-    def setValuesFromParams(self, init_params, segment_params, extra_params):
+    def setValuesFromParams(self, init_params, segment_params, extra_params=None):
         sections = {
             f'{self.model_name}.init': (init_params, self.init_argsWidgets),
             f'{self.model_name}.segment': (segment_params, self.argsWidgets),
-            f'{self.model_name}.extra': (extra_params, self.extraArgsWidgets)
-            
         }
+        if extra_params is not None:
+            sections[f'{self.model_name}.extra'] = (
+                extra_params, self.extraArgsWidgets
+            )
+            
         for section, values in sections.items():
             params, argWidgetList = values
             for argWidget in argWidgetList:
@@ -11421,13 +11569,16 @@ class QDialogModelParams(QDialog):
                     except Exception as e:
                         continue
     
-    def loadLastSelection(self, section, argWidgetList):
-        if self.configPars is None:
+    def loadLastSelection(self, section, argWidgetList, configPars=None):
+        if self.configPars is None and configPars is None:
             return
 
+        if configPars is None:
+            configPars = self.configPars
+        
         getters = ['getboolean', 'getint', 'getfloat', 'get']
         try:
-            options = self.configPars.options(section)
+            options = configPars.options(section)
         except Exception:
             return
 
@@ -11436,7 +11587,7 @@ class QDialogModelParams(QDialog):
             val = None
             for getter in getters:
                 try:
-                    val = getattr(self.configPars, getter)(section, option)
+                    val = getattr(configPars, getter)(section, option)
                     break
                 except Exception as err:
                     pass
@@ -11457,35 +11608,38 @@ class QDialogModelParams(QDialog):
                 except Exception as e:
                     continue
 
-    def loadLastSelectionPostProcess(self):
+    def loadLastSelectionPostProcess(self, configPars=None):
         postProcessSection = f'{self.model_name}.postprocess'
+        
+        if configPars is None:
+            configPars = self.configPars
 
-        if postProcessSection not in self.configPars.sections():
+        if postProcessSection not in configPars.sections():
             return
 
         try:
-            minSize = self.configPars.getint(
+            minSize = configPars.getint(
                 postProcessSection, 'minSize', fallback=10
             )
         except ValueError:
             minSize = 10
 
         try:
-            minSolidity = self.configPars.getfloat(
+            minSolidity = configPars.getfloat(
                 postProcessSection, 'minSolidity', fallback=0.5
             )
         except ValueError:
             minSolidity = 0.5
 
         try: 
-            maxElongation = self.configPars.getfloat(
+            maxElongation = configPars.getfloat(
                 postProcessSection, 'maxElongation', fallback=3
             )
         except ValueError:
             maxElongation = 3
         
         try:
-            minObjSizeZ = self.configPars.getint(
+            minObjSizeZ = configPars.getint(
                 postProcessSection, 'min_obj_no_zslices', fallback=3
             )
         except ValueError:
@@ -11499,7 +11653,7 @@ class QDialogModelParams(QDialog):
         }
         self.postProcessGroupbox.restoreFromKwargs(kwargs)
 
-        applyPostProcessing = self.configPars.getboolean(
+        applyPostProcessing = configPars.getboolean(
             postProcessSection, 'applyPostProcessing'
         )
         self.postProcessGroupbox.setChecked(applyPostProcessing)
@@ -11525,6 +11679,27 @@ class QDialogModelParams(QDialog):
         }
         return kwargs_dict
 
+    def getInitKwargs(self):
+        init_kwargs = self.argsWidgets_to_kwargs(self.init_argsWidgets)
+        if hasattr(self, 'segmEndnameCombobox'):
+            init_kwargs['segm_endname'] = (
+                self.segmEndnameCombobox.currentText()
+            )
+        
+        return init_kwargs
+    
+    def getModelKwargs(self):
+        if self.skipSegmentation:
+            return {}
+        
+        return self.argsWidgets_to_kwargs(self.argsWidgets)
+    
+    def getExtraKwargs(self):
+        if self.extraArgsWidgets is None:
+            return {}
+        
+        return self.argsWidgets_to_kwargs(self.extraArgsWidgets)
+    
     def ok_cb(self, checked):
         self.cancel = False
         self.preproc_recipe = None
@@ -11533,22 +11708,13 @@ class QDialogModelParams(QDialog):
             if self.preproc_recipe is None:
                 return
             
-        self.init_kwargs = self.argsWidgets_to_kwargs(self.init_argsWidgets)
+        self.init_kwargs = self.getInitKwargs()
 
         if self.extraArgsWidgets:
-            self.extra_kwargs = self.argsWidgets_to_kwargs(
-                self.extraArgsWidgets
-            )
-        if not self.skipSegmentation:
-            self.model_kwargs = self.argsWidgets_to_kwargs(
-                self.argsWidgets
-            )
-        else:
-            self.model_kwargs = {}
-        if hasattr(self, 'segmEndnameCombobox'):
-            self.init_kwargs['segm_endname'] = (
-                self.segmEndnameCombobox.currentText()
-            )
+            self.extra_kwargs = self.getExtraKwargs()
+
+        self.model_kwargs = self.getModelKwargs()
+
         if self.postProcessGroupbox is not None:
             self.applyPostProcessing = self.postProcessGroupbox.isChecked()
             self.standardPostProcessKwargs = self.postProcessGroupbox.kwargs()
@@ -11566,10 +11732,10 @@ class QDialogModelParams(QDialog):
             self.reduceMemoryUsage = self.reduceMemUsageToggle.isChecked()
         self.customPostProcessFeatures = self.selectedFeaturesRange()
         self.customPostProcessGroupedFeatures = self.groupedFeatures()
-        self._saveParams()
+        self.saveLastSelection()
         self.freePosData()
         self.close()
-    
+
     def freePosData(self):
         if hasattr(self, 'postProcessGroupbox'):
             try:
@@ -11590,33 +11756,39 @@ class QDialogModelParams(QDialog):
             except AttributeError:
                 pass
 
-    def _saveParams(self):
-        if self.configPars is None:
-            self.configPars = config.ConfigParser()
+    def getConfigPars(self, create_new=False):
+        if self.configPars is None or create_new:
+            configPars = config.ConfigParser()
+        else:
+            configPars = self.configPars
         
         if self.preProcessParamsWidget is not None:
             preprocCp = self.preProcessParamsWidget.recipeConfigPars(
                 self.model_name
             )
             for section in preprocCp.sections():
-                self.configPars[section] = preprocCp[section]
+                configPars[section] = preprocCp[section]
         
-        self.configPars[f'{self.model_name}.init'] = {}
-        self.configPars[f'{self.model_name}.segment'] = {}
-        self.configPars[f'{self.model_name}.extra'] = {}
+        configPars[f'{self.model_name}.init'] = {}
+        configPars[f'{self.model_name}.segment'] = {}
+        configPars[f'{self.model_name}.extra'] = {}
 
-        for key, val in self.init_kwargs.items():
-            self.configPars[f'{self.model_name}.init'][key] = str(val)
-        for key, val in self.model_kwargs.items():
-            self.configPars[f'{self.model_name}.segment'][key] = str(val)
+        init_kwargs = self.getInitKwargs()
+        model_kwargs = self.getModelKwargs()
+        
+        for key, val in init_kwargs.items():
+            configPars[f'{self.model_name}.init'][key] = str(val)
+        for key, val in model_kwargs.items():
+            configPars[f'{self.model_name}.segment'][key] = str(val)
         if self.extraArgsWidgets:
-            for key, val in self.extra_kwargs.items():
-                self.configPars[f'{self.model_name}.extra'][key] = str(val)
+            extra_kwargs = self.getExtraKwargs()
+            for key, val in extra_kwargs.items():
+                configPars[f'{self.model_name}.extra'][key] = str(val)
 
-        self.configPars[f'{self.model_name}.postprocess'] = {}
+        configPars[f'{self.model_name}.postprocess'] = {}
         if self.postProcessGroupbox is not None:
             postProcKwargs = self.postProcessGroupbox.kwargs()
-            postProcessConfig = self.configPars[f'{self.model_name}.postprocess']
+            postProcessConfig = configPars[f'{self.model_name}.postprocess']
             postProcessConfig['minSize'] = str(postProcKwargs['min_area'])
             postProcessConfig['minSolidity'] = str(postProcKwargs['min_solidity'])
             postProcessConfig['maxElongation'] = str(
@@ -11628,7 +11800,11 @@ class QDialogModelParams(QDialog):
             postProcessConfig['applyPostProcessing'] = str(
                 self.postProcessGroupbox.isChecked()
             )
-
+        
+        return configPars
+    
+    def saveLastSelection(self):
+        self.configPars = self.getConfigPars()
         with open(self.ini_path, 'w') as configfile:
             self.configPars.write(configfile)
 
@@ -15090,15 +15266,15 @@ class PreProcessParamsWidget(QWidget):
         
         loadRecipeButton = widgets.OpenFilePushButton('Load saved recipe...')
         self.loadRecipeButton = loadRecipeButton
-        buttonsLayout.addWidget(loadRecipeButton, row, col+1)
+        buttonsLayout.addWidget(loadRecipeButton, row, col+2)
         
         saveRecipeButton = widgets.savePushButton('Save current recipe...')
         self.saveRecipeButton = saveRecipeButton
-        buttonsLayout.addWidget(saveRecipeButton, row+1, col+1)
+        buttonsLayout.addWidget(saveRecipeButton, row+1, col+2)
         
         loadLastRecipeButton = widgets.reloadPushButton('Load last parameters')
         self.loadLastRecipeButton = loadLastRecipeButton
-        buttonsLayout.addWidget(loadLastRecipeButton, row, col)
+        buttonsLayout.addWidget(loadLastRecipeButton, row, col+1)
         
         self.buttonsLayout = buttonsLayout
         
@@ -15170,7 +15346,7 @@ class PreProcessParamsWidget(QWidget):
         
         win = filenameDialog(
             title='Filename for pre-processing recipe',
-            basename=f'preprocessing_recipe',
+            basename='preprocessing_recipe',
             ext='.ini',
             hintText='Insert a <b>filename</b> for the pre-processing recipe:',
             allowEmpty=False,
@@ -15266,8 +15442,8 @@ class PreProcessParamsWidget(QWidget):
     
     def communicateSavingRecipeFinished(self, ini_filepath):
         text = html_utils.paragraph(
-            'Done!<br><Br>'
-            'Pre-processing recipe saved at:'
+            'Done!<br><br>'
+            'Pre-processing recipe saved to:'
         )
         msg = widgets.myMessageBox(wrapText=False)
         msg.information(
@@ -17027,3 +17203,70 @@ class QCropTrangeTool(QBaseDialog):
     def closeEvent(self, event):
         super().closeEvent(event)
         self.sigClose.emit()
+
+class QTreeDialog(QBaseDialog):
+    def __init__(
+            self, 
+            items: List[Tuple[str]], 
+            headerLabels: List[str]=None,
+            parent=None, 
+            infoText='Select item',
+            title='Select item',
+            path_to_browse=None
+        ):
+        self.cancel = True
+        super().__init__(parent)
+        
+        self.setWindowTitle(title)
+        
+        mainLayout = QVBoxLayout()
+        
+        infoLabel = QLabel(html_utils.paragraph(infoText))
+        
+        self.treeWidget = widgets.TreeWidget()
+        if headerLabels is not None:
+            self.treeWidget.setHeaderLabels(headerLabels)
+        else:
+            self.treeWidget.setHeaderHidden(True)
+        
+        for row, texts in enumerate(items):
+            item = widgets.TreeWidgetItem(self.treeWidget)
+            for i, text in enumerate(texts):
+                item.setText(i, text)
+            self.treeWidget.addTopLevelItem(item)
+        
+        self.treeWidget.resizeColumnToContents(0)
+        self.treeWidget.resizeColumnToContents(1)
+        
+        # self.treeWidget.header().setStretchLastSection(False)
+        
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+        
+        if path_to_browse is not None:
+            browseButton = widgets.showInFileManagerButton(
+                setDefaultText=True
+            )
+            browseButton.setPathToBrowse(path_to_browse)
+            buttonsLayout.insertWidget(3, browseButton)
+
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+        
+        mainLayout.addWidget(infoLabel)
+        mainLayout.addWidget(self.treeWidget)
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(buttonsLayout)
+        
+        self.setLayout(mainLayout)
+    
+    def show(self, block=False):
+        w = self.sizeHint().width()
+        h = self.sizeHint().height()
+        self.resize(int(w*1.3), h)
+        super().show(block=block)
+    
+    def ok_cb(self):
+        self.cancel = False
+        self.selectedItem = self.treeWidget.currentItem()
+        self.selectedText = self.selectedItem.text(0)
+        self.close()

@@ -375,7 +375,7 @@ def init_segm_model_params(
         qparent=None, help_url=None, init_last_params=False, 
         check_sam_embeddings=True, is_gui_caller=False,
         extraParams=None, extraParamsTitle=None,
-        ini_filename=None
+        ini_filename=None, add_additional_segm_params=False
     ):
     out = {}
     
@@ -416,7 +416,8 @@ def init_segm_model_params(
         force_postprocess_2D=False,
         extraParams=extraParams,
         extraParamsTitle=extraParamsTitle,
-        ini_filename=ini_filename
+        ini_filename=ini_filename,
+        add_additional_segm_params=add_additional_segm_params
     )
     win.setChannelNames(posData.chNames)
     out['win'] = win

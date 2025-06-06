@@ -300,6 +300,7 @@ resources_path = os.path.join(cellacdc_path, 'resources_light.qrc')
 models_list_file_path = os.path.join(settings_folderpath, 'custom_models_paths.ini')
 recentPaths_path = os.path.join(settings_folderpath, 'recentPaths.csv')
 preproc_recipes_path = os.path.join(settings_folderpath, 'preprocessing_recipes')
+segm_recipes_path = os.path.join(settings_folderpath, 'segmentation_recipes')
 user_manual_url = 'https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf'
 github_home_url = 'https://github.com/SchmollerLab/Cell_ACDC'
 data_structure_docs_url = 'https://cell-acdc.readthedocs.io/en/latest/data-structure.html'

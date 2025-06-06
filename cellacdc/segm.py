@@ -562,7 +562,8 @@ class segmWin(QMainWindow):
         
         out = prompts.init_segm_model_params(
             self.posData, model_name, init_params, segment_params, 
-            help_url=url, qparent=self, init_last_params=False
+            help_url=url, qparent=self, init_last_params=False,
+            add_additional_segm_params=True
         )
         win = out.get('win')
         if win.cancel:
