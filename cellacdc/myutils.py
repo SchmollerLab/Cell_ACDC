@@ -28,8 +28,9 @@ import pandas as pd
 import skimage
 import inspect
 import typing
-from typing import List
+from typing import List, Callable, Tuple
 import traceback
+import itertools
 
 
 from natsort import natsorted
@@ -257,6 +258,12 @@ def checked_reset_index(df):
         return df.reset_index(drop=True)
     else:
         return df.reset_index()
+
+def checked_reset_index_Cell_ID(df):
+    if df.index.names == ['Cell_ID']:
+        return df
+    df = checked_reset_index(df)
+    return df.set_index('Cell_ID')
 
 
 def _bytes_to_MB(size_bytes):
@@ -2526,13 +2533,49 @@ def check_napari_plugin(plugin_name, module_name, parent=None):
         msg.critical(parent, f'Napari plugin required', txt)
         raise e
 
-def _install_pip_package(pkg_name, install_dependencies=True):
-    command = [sys.executable, '-m', 'pip', 'install', pkg_name, '--only-binary=:all:']
+def _install_pip_package(
+        pkg_name: str,
+        logger: Callable = print,
+        install_dependencies: bool = True,
+        force_binary: bool = True,
+        pref_binary: bool = True,
+        ) -> None:
+    command = [sys.executable, '-m', 'pip', 'install', pkg_name,]
+    if force_binary:
+        command.append('--only-binary=:all:')
+    elif pref_binary:
+        command.append('--prefer-binary')
     if not install_dependencies:
         command.append('--no-deps')
-    subprocess.check_call(
-        command
-        )
+    try:
+        subprocess.check_call(
+            command
+            )
+    except subprocess.CalledProcessError as e:
+        if "--only-binary=:all:" in str(e):
+            logger(f"Error: {pkg_name} does not have a binary distribution available, trying preferred binary.")
+            _install_pip_package(
+                pkg_name=pkg_name,
+                logger=logger,
+                install_dependencies=install_dependencies,
+                force_binary=False,
+                pref_binary=True,
+            )
+        elif "--prefer-binary" in str(e):
+            logger(f"Error: {pkg_name} does not have a preferred binary distribution available, trying source.")
+            command.remove('--prefer-binary')
+            command.append('--no-binary=:all:')
+            _install_pip_package(
+                pkg_name=pkg_name,
+                logger=logger,
+                install_dependencies=install_dependencies,
+                force_binary=False,
+                pref_binary=False,
+            )
+        else:
+            logger(f"""Error: {pkg_name} installation failed. Please check the error message. This is probably due to the package 
+                   not being available for your platform or python version.""")
+            raise e
 
 def uninstall_pip_package(pkg_name):
     subprocess.check_call(
@@ -2587,8 +2630,8 @@ def check_cellpose_version(version: str):
     return is_version_correct
 
 def check_install_cellpose(
-        version: Literal['2.0', '3.0', 'any'] = '2.0', 
-        version_to_install_if_missing: Literal['2.0', '3.0'] = '3.0'
+        version: Literal['2.0', '3.0', '4.0', 'any'] = '2.0', 
+        version_to_install_if_missing: Literal['2.0', '3.0', '4.0'] = '4.0'
     ):
     if version == 'any':
         try:
@@ -3409,57 +3452,164 @@ def import_segment_module(model_name):
         spec.loader.exec_module(acdcSegment)
     return acdcSegment
 
-def _warn_install_torch_cuda(model_name, qparent=None):
+def _warn_install_gpu(model_name, ask_installs, qparent=None):
+    
     cellpose_cuda_url = (
         r'https://github.com/mouseland/cellpose#gpu-version-cuda-on-windows-or-linux'
     )
     torch_cuda_url = (
-        'https://pytorch.org/get-started/locally/'
+        r'https://pytorch.org/get-started/locally/'
     )
+    direct_ml_url = (
+         r'https://microsoft.github.io/DirectML/'
+    )
+    torch_directml_url = (
+        r'https://learn.microsoft.com/en-us/windows/ai/directml/pytorch-windows'
+        )
+
+
     cellpose_href = f'{html_utils.href_tag("here", cellpose_cuda_url)}'
     torch_href = f'{html_utils.href_tag("here", torch_cuda_url)}'
+    direct_ml_href = f'{html_utils.href_tag("direct_ml_DirectMLref", direct_ml_url)}'
+    torch_directml_href = f'{html_utils.href_tag("directml pytorch", torch_directml_url)}'
     msg = widgets.myMessageBox(showCentered=False, wrapText=False)
     txt = html_utils.paragraph(f"""
         In order to use <code>{model_name}</code> with the GPU you need 
-        to install the <b>CUDA version of PyTorch</b>.<br><br>
-        Check out these instructions {cellpose_href}, and {torch_href}.<br><br>
-        We <b>highly recommend using Conda</b> to install PyTorch GPU.<br><br>
-        First, uninstall the CPU version of PyTorch with the following command:<br><br>
-        <code>pip uninstall torch</code>.<br><br>
+        to install a <b>PyTorch version which can use it</b>.<br>
+        We recomment using CUDA over DirectML, but if you are using a Windows
+        machine with an AMD GPU, you can use DirectML.<br>
+        """)
+    txt_cuda_title = html_utils.paragraph(f"<b>CUDA</b>", font_size='18px')
+
+    txt_cuda = html_utils.paragraph(f"""
+        
+        Check out these instructions {cellpose_href}, and {torch_href}.<br>
+        We <b>highly recommend using Conda</b> to install PyTorch GPU.<br>
+        First, uninstall the CPU version of PyTorch with the following command:<br>
+        <code>pip uninstall torch</code>.<br>
         Then, install the CUDA version required by your GPU with the follwing 
-        command (which installs version 11.6):<br><br>
+        command (which installs version 11.6):<br>
         <code>conda install pytorch pytorch-cuda=11.6 -c pytorch -c nvidia</code>
         <br><br>
+        """)
+    
+    txt_directML_title = html_utils.paragraph(f"<b>DirectML</b>", font_size='18px')
+    txt_directML = html_utils.paragraph(f"""
+        Check out {direct_ml_href}, and {torch_directml_href} for more info.<br>
+        Only supported on Windows 10/11 with Python 3.8-3.12.<br>
+        Click the <b>Proceed without DirectML</b> button to install DirectML.
+        <br><br>
+        """)
+    
+    txt_end = html_utils.paragraph(f"""
         How do you want to proceed?
     """)
-    proceedButton = widgets.okPushButton('Proceed without GPU')
-    stopButton = widgets.cancelPushButton('Stop the process')
-    stopButton, proceedButton = msg.warning(
-        qparent, 'PyTorch GPU version not installed', txt, 
-        buttonsTexts=(stopButton, proceedButton)
-    )
-    return msg.clickedButton == proceedButton
 
-def check_cuda(model_name, use_gpu, qparent=None):
+    stopButton = widgets.cancelPushButton('Stop the process')
+    directMLButton = widgets.okPushButton('Install DirectML')
+    proceedButton = widgets.okPushButton('Proceed without GPU')
+
+    buttons = [stopButton]
+
+    if 'cuda' in ask_installs:
+        txt = f'{txt}{txt_cuda_title}{txt_cuda}'
+    if 'directML' in ask_installs:
+        txt = f'{txt}{txt_directML_title}{txt_directML}'
+        buttons.append(directMLButton)
+    txt = f'{txt}{txt_end}' 
+    buttons.append(proceedButton)
+
+    msg.warning(
+        qparent, 'PyTorch GPU version not installed', txt, 
+        buttonsTexts=buttons,
+    )
+
+    if msg.cancel:
+        return False
+    
+    if msg.clickedButton == directMLButton:
+        py_ver = sys.version_info
+        if is_win and py_ver.major == 3 and py_ver.minor < 13:
+            success = check_install_package(
+                pkg_name = 'torch-directml',
+                import_pkg_name = 'torch_directml',
+                pypi_name = 'torch-directml',
+                return_outcome=True,
+            )
+            return success
+        else:
+            msg = widgets.myMessageBox()
+            msg.warning(
+                qparent, 'DirectML not supported', 
+                'DirectML is only supported on Python 3.8-3.12 and Windows 10/11',
+            )
+            return False
+
+    if msg.clickedButton == stopButton:
+        return False
+
+    if msg.clickedButton == proceedButton:
+        return True
+
+def check_gpu_availible(model_name, use_gpu, qparent=None):
     if not use_gpu:
         return True
-    is_torch_model = (
+
+    frameworks = _availible_frameworks(model_name)
+    ask_installs = set()
+    framework_available = False
+    for framework, model_compatible in frameworks.items():
+        if not model_compatible:
+            continue
+        if framework == 'cuda':
+            import torch
+            if not torch.cuda.is_available():
+                ask_installs.add('cuda')
+            elif not torch.cuda.device_count() > 0:
+                ask_installs.add('cuda')
+            else:
+                framework_available = True
+                break
+        elif framework == 'directML':
+            if is_win:
+                try:
+                    import torch_directml
+                    if not torch_directml.is_available():
+                        ask_installs.add('directML')
+                    else:
+                        framework_available = True
+                        break
+                except ModuleNotFoundError:
+                    ask_installs.add('directML')
+        elif is_mac_arm64:
+            framework_available = True
+            break
+    
+    if framework_available:
+        return True
+    
+    proceed = _warn_install_gpu(model_name, ask_installs, qparent=qparent)
+    return proceed
+
+
+def _availible_frameworks(model_name):
+    frameworks = {
+
+    "cuda":(
         model_name.lower().find('cellpose') != -1
         or model_name.lower().find('omnipose') != -1
         or model_name.lower().find('deepsea') != -1
         or model_name.lower().find('segment_anything') != -1
+        or model_name.lower().find('yeaz') != -1
+        or model_name.lower().find('yeaz_v2') != -1
+    ),
+    "directML":(
+        # model_name.lower().find('cellpose_v4') != -1 # not yet
+        #or model_name.lower().find('cellpose_v3') != -1 has its own way to check
+
     )
-    if is_torch_model and not is_mac_arm64:
-        import torch
-        if not torch.cuda.is_available():
-            proceed = _warn_install_torch_cuda(model_name, qparent=qparent)
-            return proceed
-        
-        if not torch.cuda.device_count() > 0:
-            proceed = _warn_install_torch_cuda(model_name, qparent=qparent)
-            return proceed
-    
-    return True
+    }
+    return frameworks
 
 def find_missing_integers(lst, max_range=None):
     if max_range is not None:
@@ -4124,19 +4274,6 @@ def format_IDs(IDs):
 
     return text
 
-
-def print_call_stack(debug=True, depth=None):
-    if not debug:
-        return
-    stack = traceback.format_stack()
-    stack = stack[:-1]
-    if depth:
-        depth = depth + 1
-        stack = stack[-depth:] 
-    print("Call stack:")
-    for line in stack:
-        print(line.strip())
-
 def get_empty_stored_data_dict():
     return {
             'regionprops': None,
@@ -4147,3 +4284,74 @@ def get_empty_stored_data_dict():
                 },
             'IDs': []
         }
+
+def iterate_along_axes(arr, axes, arr_ndim=None):
+    if arr_ndim is None:
+        arr_ndim = arr.ndim
+    axes = list(axes)
+    front_axes = axes + [i for i in range(arr_ndim) if i not in axes]
+    arr_moved = np.moveaxis(arr, front_axes, range(arr_ndim))
+    iter_shape = arr_moved.shape[:len(axes)]
+    for idx in np.ndindex(iter_shape):
+        # Build the index for the original array
+        full_idx = [slice(None)] * arr_ndim
+        for axis, i in zip(axes, idx):
+            full_idx[axis] = i
+        yield tuple(full_idx)
+    
+def get_input_output_mapper(
+        input_shape: Tuple[int],
+        iterate_axes: Tuple[int],
+        output_shape: Tuple[int],
+        output_axes: Tuple[int],
+) -> List[Tuple[Tuple[int, ...], Tuple[int, ...]]]:
+    """Creates list of tuples with the input and output indices
+
+    Parameters
+    ----------
+    input_shape : Tuple[int]
+        Shape of the input array
+    iterate_axes : Tuple[int]
+        Axes to iterate over
+    output_shape : Tuple[int]
+        Shape of the output array
+    output_axes : Tuple[int]
+        Axes of the output array
+    """
+    assert len(iterate_axes) == len(output_axes)
+
+    iterate_shape = tuple(input_shape[axis] for axis in iterate_axes)
+    mapper = []
+
+    for idx_vals in itertools.product(*[range(s) for s in iterate_shape]):
+        # Build full input index
+        input_index = [slice(None)] * len(input_shape)
+        for axis in iterate_axes:
+            i = iterate_axes.index(axis)
+            input_index[axis] = idx_vals[i]
+
+        # Build full output index
+        output_index = [slice(None)] * len(output_shape)
+        for axis in output_axes:
+            i = output_axes.index(axis)
+            output_index[axis] = idx_vals[i]
+
+        input_index = tuple(input_index)
+        output_index = tuple(output_index)
+
+        mapper.append((input_index, output_index))
+
+    return mapper
+
+def translateStrNone(*args):
+    args = list(args)
+    for i, arg in enumerate(args):
+        if isinstance(arg, str):
+            if arg.lower() == 'none':
+                args[i] = None
+            elif arg.lower() == 'true':
+                args[i] = True
+            elif arg.lower() == 'false':
+                args[i] = False
+    
+    return args

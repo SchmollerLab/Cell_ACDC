@@ -96,10 +96,16 @@ italicFont = QFont()
 italicFont.setPixelSize(12)
 italicFont.setItalic(True)
 
-ArgWidget = namedtuple(
-    'ArgsWidgets',
-    ['name', 'type', 'widget', 'defaultVal', 'valueSetter', 'valueGetter']
-)
+class ArgWidget:
+    def __init__(self, name, type, widget, defaultVal, valueSetter, valueGetter, changeSig=None):
+        self.name = name
+        self.type = type
+        self.widget = widget
+        self.defaultVal = defaultVal
+        self.valueSetter = valueSetter
+        self.valueGetter = valueGetter
+        if changeSig is not None:
+            self.changeSig = changeSig
 
 class AcdcSPlashScreen(QSplashScreen):
     def __init__(self):
@@ -11291,6 +11297,9 @@ class QDialogModelParams(QDialog):
             groupBoxLayout.addWidget(infoButton, start_row, 3)
             start_row += 1
         
+        exclusive_withs = dict()
+        default_exclusives = dict()
+        row_mapper = dict()
         for row, ArgSpec in enumerate(ArgSpecs_list):
             if _types.is_second_channel_type(ArgSpec.type):
                 continue
@@ -11330,6 +11339,20 @@ class QDialogModelParams(QDialog):
                     isFolderPath = True
             except Exception as err:
                 pass
+
+            try:
+                exclusive_with = ArgSpec.type().is_exclusive_with
+            except Exception as err:
+                exclusive_with = []
+            
+            try:
+                default_exclusive = ArgSpec.type().default_exclusive
+            except Exception as err:
+                default_exclusive = ''
+
+            exclusive_withs[arg_name] = exclusive_with
+            default_exclusives[arg_name] = default_exclusive
+            row_mapper[arg_name] = row
             
             isCustomWidget = hasattr(ArgSpec.type, 'isWidget')
             
@@ -11338,6 +11361,7 @@ class QDialogModelParams(QDialog):
                 defaultVal = ArgSpec.default
                 valueSetter = ArgSpec.type.setValue
                 valueGetter = ArgSpec.type.value
+                changeSig = widget.sigValueChanged
                 groupBoxLayout.addWidget(widget, row, 1, 1, 2)
             elif isVectorEntry:
                 vectorLineEdit = widgets.VectorLineEdit()
@@ -11345,6 +11369,7 @@ class QDialogModelParams(QDialog):
                 defaultVal = ArgSpec.default
                 valueSetter = widgets.VectorLineEdit.setValue
                 valueGetter = widgets.VectorLineEdit.value
+                changeSig = vectorLineEdit.valueChanged
                 widget = vectorLineEdit
                 groupBoxLayout.addWidget(vectorLineEdit, row, 1, 1, 2)
             elif isFolderPath:
@@ -11354,6 +11379,7 @@ class QDialogModelParams(QDialog):
                 defaultVal = str(ArgSpec.default)
                 valueSetter = widgets.FolderPathControl.setText
                 valueGetter = widgets.FolderPathControl.path
+                changeSig = widget.sigValueChanged
                 groupBoxLayout.addWidget(folderPathControl, row, 1, 1, 2)
             elif ArgSpec.type == bool:
                 booleanGroup = QButtonGroup()
@@ -11363,6 +11389,7 @@ class QDialogModelParams(QDialog):
                 defaultVal = ArgSpec.default
                 valueSetter = widgets.Toggle.setChecked
                 valueGetter = widgets.Toggle.isChecked
+                changeSig = checkBox.toggled
                 widget = checkBox
                 groupBoxLayout.addWidget(
                     checkBox, row, 1, 1, 2, alignment=Qt.AlignCenter
@@ -11377,6 +11404,7 @@ class QDialogModelParams(QDialog):
                 defaultVal = ArgSpec.default
                 valueSetter = QSpinBox.setValue
                 valueGetter = QSpinBox.value
+                changeSig = spinBox.sigValueChanged
                 widget = spinBox
                 groupBoxLayout.addWidget(spinBox, row, 1, 1, 2)
             elif ArgSpec.type == float:
@@ -11390,6 +11418,7 @@ class QDialogModelParams(QDialog):
                 defaultVal = ArgSpec.default
                 valueSetter = widgets.FloatLineEdit.setValue
                 valueGetter = widgets.FloatLineEdit.value
+                changeSig = doubleSpinBox.valueChanged
                 groupBoxLayout.addWidget(doubleSpinBox, row, 1, 1, 2)
             elif ArgSpec.type == os.PathLike:
                 filePathControl = widgets.filePathControl()
@@ -11398,6 +11427,7 @@ class QDialogModelParams(QDialog):
                 defaultVal = str(ArgSpec.default)
                 valueSetter = widgets.filePathControl.setText
                 valueGetter = widgets.filePathControl.path
+                changeSig = filePathControl.sigValueChanged
                 groupBoxLayout.addWidget(filePathControl, row, 1, 1, 2)
             elif isCustomListType:
                 items = ArgSpec.type().values
@@ -11407,6 +11437,7 @@ class QDialogModelParams(QDialog):
                 combobox.setCurrentValue(defaultVal)
                 valueSetter = widgets.AlphaNumericComboBox.setCurrentValue
                 valueGetter = widgets.AlphaNumericComboBox.currentValue
+                changeSig = combobox.currentTextChanged
                 widget = combobox
                 groupBoxLayout.addWidget(combobox, row, 1, 1, 2)
             else:
@@ -11417,6 +11448,7 @@ class QDialogModelParams(QDialog):
                 defaultVal = str(ArgSpec.default)
                 valueSetter = QLineEdit.setText
                 valueGetter = QLineEdit.text
+                changeSig = lineEdit.editingFinished
                 groupBoxLayout.addWidget(lineEdit, row, 1, 1, 2)
             
             if ArgSpec.desc:
@@ -11429,9 +11461,41 @@ class QDialogModelParams(QDialog):
                 widget=widget,
                 defaultVal=defaultVal,
                 valueSetter=valueSetter,
-                valueGetter=valueGetter
+                valueGetter=valueGetter,
+                changeSig=changeSig
             )
             ArgsWidgets_list.append(argsInfo)
+        
+        exclusive_group = core.connected_components_in_undirected_graph(
+            exclusive_withs
+            )
+
+        for group in exclusive_group:
+            if len(group) == 1:
+                continue
+            for arg_name in group:
+                default_exclusive = default_exclusives[arg_name]
+                row = row_mapper[arg_name]
+
+                argsInfo = ArgsWidgets_list[row]
+                valueSetter = argsInfo.valueSetter
+                widget = argsInfo.widget
+                valueGetter = argsInfo.valueGetter
+
+                argsInfo.valueGetter = qutils.replace_certain_vals(
+                    argsInfo.valueGetter, default_exclusive, None
+                )
+
+                for arg_name_other in group:
+                    if arg_name == arg_name_other:
+                        continue
+                    row_other = row_mapper[arg_name_other]
+                    argsInfo_other = ArgsWidgets_list[row_other]
+                    changeSig_other = argsInfo_other.changeSig
+                    changeSig_other.connect(
+                        partial(qutils.set_exclusive_valueSetter, widget, 
+                                valueSetter, default_exclusive)
+                    )
 
         groupBoxLayout.setColumnStretch(0, 0)
         groupBoxLayout.setColumnStretch(1, 1)
@@ -11439,7 +11503,7 @@ class QDialogModelParams(QDialog):
         
         groupBox.setLayout(groupBoxLayout)
         return groupBox, ArgsWidgets_list
-    
+
     def getInfoButton(self, param_name, infoText):
         infoButton = widgets.infoPushButton()
         infoButton.param_name = param_name
@@ -11464,19 +11528,28 @@ class QDialogModelParams(QDialog):
         for argWidget in self.init_argsWidgets:
             defaultVal = argWidget.defaultVal
             widget = argWidget.widget
-            argWidget.valueSetter(widget, defaultVal)
+            valueSetter = argWidget.valueSetter
+            qutils.set_exclusive_valueSetter(
+                widget, valueSetter, defaultVal
+            )
 
     def restoreDefaultSegment(self):
         for argWidget in self.argsWidgets:
             defaultVal = argWidget.defaultVal
             widget = argWidget.widget
-            argWidget.valueSetter(widget, defaultVal)
-    
+            valueSetter = argWidget.valueSetter
+            qutils.set_exclusive_valueSetter(
+                widget, valueSetter, defaultVal
+            )
+
     def restoreDefaultExtra(self):
         for argWidget in self.extraArgsWidgets:
             defaultVal = argWidget.defaultVal
             widget = argWidget.widget
-            argWidget.valueSetter(widget, defaultVal)
+            valueSetter = argWidget.valueSetter
+            qutils.set_exclusive_valueSetter(
+                widget, valueSetter, defaultVal
+            )
 
     def restoreDefaultPostprocess(self):
         self.postProcessGroupbox.restoreDefault()
@@ -11545,7 +11618,11 @@ class QDialogModelParams(QDialog):
             casters = [lambda x: x, int, float, str, bool]
             for caster in casters:
                 try:
-                    argWidget.valueSetter(widget, caster(val))
+                    val = caster(val)
+                    valueSetter = argWidget.valueSetter
+                    qutils.set_exclusive_valueSetter(
+                        widget, valueSetter, val
+                    )
                     break
                 except Exception as e:
                     continue
@@ -11678,7 +11755,28 @@ class QDialogModelParams(QDialog):
         self.customPostProcessFeatures = self.selectedFeaturesRange()
         self.customPostProcessGroupedFeatures = self.groupedFeatures()
         self.saveLastSelection()
+        self.freePosData()
         self.close()
+
+    def freePosData(self):
+        if hasattr(self, 'postProcessGroupbox'):
+            try:
+                for selector in self.postProcessGroupbox.selectedFeaturesDialog.groupbox.selectors:
+                    qutils.hardDelete(selector)
+            except AttributeError:
+                pass
+            try:
+                qutils.hardDelete(self.postProcessGroupbox.selectedFeaturesDialog.groupbox)
+            except AttributeError:
+                pass
+            try:
+                qutils.hardDelete(self.postProcessGroupbox.selectedFeaturesDialog)
+            except AttributeError:
+                pass
+            try:
+                qutils.hardDelete(self.postProcessGroupbox)
+            except AttributeError:
+                pass
 
     def getConfigPars(self, create_new=False):
         if self.configPars is None or create_new:
@@ -11749,8 +11847,13 @@ class QDialogModelParams(QDialog):
             self.loop.exec_()
 
     def closeEvent(self, event):
+        self.freePosData()
         if hasattr(self, 'loop'):
             self.loop.exit()
+
+    def cancel_cb(self, checked):
+        self.cancel = True
+        self.freePosData()
     
     def showEvent(self, event) -> None:
         buttonHeight = self.okButton.minimumSizeHint().height()

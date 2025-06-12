@@ -9,6 +9,7 @@ from importlib import import_module
 import numpy as np
 import math
 import cv2
+from collections import defaultdict
 import skimage.exposure
 import skimage.measure
 import skimage.morphology
@@ -3649,6 +3650,7 @@ def process_lab(task):
     return i, data_dict, IDs  # Return index, data_dict, and IDs
 
 def parallel_count_objects(posData, logger_func):
+    benchmark = True
     #futile attempt to use multiprocessing to speed things up
     logger_func('Counting total number of segmented objects...')
     
@@ -3656,31 +3658,32 @@ def parallel_count_objects(posData, logger_func):
     seg_data = posData.segm_data
     
     # Initialize empty data dictionary to avoid recalculating each time
-    empty_data_dict = myutils.get_empty_stored_data_dict()
-
-    batch_size = 1000 # Adjust based on your system's memory
     tasks = [(i, lab) for i, lab in enumerate(seg_data)]
 
+    if benchmark:
+        t0 = time.perf_counter()
     # Process in batches to optimize memory usage and control parallelism
-    for i in range(0, len(tasks), batch_size):
-        batch = tasks[i:i + batch_size]
-        with concurrent.futures.ProcessPoolExecutor() as executor:
-            futures = [executor.submit(process_lab, task) for task in batch]
-            
-            # Process results as they are completed
-            for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), ncols=100):
-                i, data_dict, IDs = future.result()
-                posData.allData_li[i] = empty_data_dict.copy()  # or directly assign if it's mutable
-                posData.allData_li[i]['IDs'] = data_dict['IDs']
-                posData.allData_li[i]['regionprops'] = data_dict['regionprops']
-                posData.allData_li[i]['IDs_idxs'] = data_dict['IDs_idxs']
-                allIDs.update(IDs)
-    if not allIDs:
-        allIDs = list(range(100))
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        futures = [executor.submit(process_lab, task) for task in tasks]
         
+        # Process results as they are completed
+        for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), ncols=100):
+            i, data_dict, IDs = future.result()
+            posData.allData_li[i] = myutils.get_empty_stored_data_dict() # or directly assign if it's mutable
+            posData.allData_li[i]['IDs'] = data_dict['IDs']
+            posData.allData_li[i]['regionprops'] = data_dict['regionprops']
+            posData.allData_li[i]['IDs_idxs'] = data_dict['IDs_idxs']
+            allIDs.update(IDs)
+    
+    if benchmark:
+        t1 = time.perf_counter()
+        logger_func(f'Counting objects took {(t1 - t0)*1000:.2f} ms')
+
     return allIDs, posData
 
 def count_objects(posData, logger_func):
+    benchmark = False
+
     allIDs = set()
 
     segm_data = posData.segm_data
@@ -3690,8 +3693,10 @@ def count_objects(posData, logger_func):
     
     logger_func('Counting total number of segmented objects...')
     pbar = tqdm(total=len(segm_data), ncols=100)
+    if benchmark:
+        t0 = time.perf_counter()
     for i, lab in enumerate(segm_data):
-        posData.allData_li[i]= myutils.get_empty_stored_data_dict()
+        posData.allData_li[i] = myutils.get_empty_stored_data_dict()
         rp = skimage.measure.regionprops(lab)
         IDs = [obj.label for obj in rp]
         posData.allData_li[i]['IDs'] = IDs
@@ -3702,6 +3707,9 @@ def count_objects(posData, logger_func):
         allIDs.update(IDs)
         pbar.update()
     pbar.close()
+    if benchmark:
+        t1 = time.perf_counter()
+        logger_func(f'Counting objects took {(t1 - t0)*1000:.2f} ms')
     return allIDs, posData
 
 def fix_sparse_directML(verbose=True):
@@ -3779,3 +3787,154 @@ def fix_sparse_directML(verbose=True):
     if not verbose:
         import warnings
         warnings.filterwarnings("once", message="Sparse op failed on DirectML*")
+
+def connected_components_in_undirected_graph(undirected_graph:dict):
+    # Build undirected graph
+    graph = defaultdict(set)
+    for key, val in undirected_graph.items():
+        for other in val:
+            graph[key].add(other)
+            graph[other].add(key)  # Make it bidirectional
+    
+    visited = set()
+    groups = []
+
+    def dfs(node, group):
+        visited.add(node)
+        group.append(node)
+        for neighbor in graph[node]:
+            if neighbor not in visited:
+                dfs(neighbor, group) # recursive call to visit neighbors
+
+    for key in graph:
+        if key not in visited:
+            group = []
+            dfs(key, group)
+            groups.append(group)
+    
+    return groups
+
+def apply_func_to_imgs(image:np.ndarray, 
+                       func: Callable, 
+                       *args,
+                       workers: int = 10,
+                       iter_axis:List[int]|int= None, 
+                       target_shape:List[int] = None,
+                       target_type: type = None,
+                       target_axis_iter: List[int]|int = None,
+                       parallel: bool = True,
+                       benchmark: bool = False,
+                       processpool: bool = False,
+                       **kwargs):        
+    """Apply a function to each image. This is done along the iter_axis (can also be a single int).
+    Then the processed image is put in the target_axis_iter (can also be a single int).
+    (If target_axis_iter, target_shape or target_type are None, 
+    they are taken from the input image).
+    Example of iter_axis: [0, 1] and target_axis_iter: [1, 0] means that the function is applied to each
+    [0, 1, ...] slice of the input and the processed image is put in the [1, 0, ...] slice of the output image.
+
+    THe function should follow the signature:
+    frame_index_out, image_out = func(image, *args, frame_index_out=None, **kwargs)
+
+    Parameters
+    ----------
+    image : np.ndarray
+        Image to be processed
+        
+    func : Callable
+        Function to be applied to each image. First argument
+        should be the image itself, one kwarg should be `frame_index_out`,
+        should `return processed_image, frame_index_out`. `frame_index_out` just needs to 
+        be passed along, no need to slice the image in `func`.
+    *args : tuple
+        Additional arguments to be passed to the function
+    workers : int, optional
+        Number of workers to use, by default 10
+    iter_axis : List[int]|int, optional
+        Axis along which to iterate, by default None
+        If None, the function is applied to the entire image.
+    target_shape : List[int], optional
+        Shape of the output image, by default None
+        If None, the shape of the input image is used.
+    target_type : type, optional
+        Type of the output image, by default None
+        If None, the type of the input image is used.
+    target_axis_iter : List[int]|int, optional
+        Axis along to which to put the processed image
+        Must be same length as `iter_axis`, by default None
+        If None, the processed image is put in the same axis as the input image.
+    parallel : bool, optional
+        Whether to use parallel processing, by default True
+        If False, the function is applied to each image sequentially.
+    benchmark : bool, optional
+        Whether to benchmark the function, by default False
+        If True, prints the execution time of the function.
+    processpool : bool, optional
+        Whether to use process pool, by default False
+        If True, uses process pool instead of thread pool.
+    **kwargs : dict
+        Additional keyword arguments to be passed to the function
+
+    Returns
+    -------
+    np.ndarray
+        Processed image
+    """
+    if benchmark:
+        t0 = time.perf_counter()
+    image_shape = image.shape
+    if iter_axis is None:
+        out = func(image, *args, **kwargs, frame_index_out=None)[1]
+        if benchmark:
+            t1 = time.perf_counter()
+            printl(f"Processing time: {(t1 - t0)*1000:.2f} ms, no parallel since iter_axis is None")
+        return out 
+    
+    if isinstance(iter_axis, int):
+        iter_axis = [iter_axis]
+    
+    if isinstance(target_axis_iter, int):
+        iter_axis = [target_axis_iter]
+    
+    if target_axis_iter is None:
+        target_axis_iter = iter_axis
+    
+    if target_shape is None:
+        target_shape = image_shape
+    
+    if target_type is None:
+        target_type = type(image.flat[0])
+    
+
+    image_out = np.empty(
+        target_shape, dtype=target_type
+    )
+
+    input_output_mapper = myutils.get_input_output_mapper(
+        image_shape, iter_axis, target_shape, target_axis_iter
+    )
+
+    if parallel:
+        if processpool:
+            executor_func = concurrent.futures.ProcessPoolExecutor
+        else:
+            executor_func = concurrent.futures.ThreadPoolExecutor
+        with executor_func() as executor:
+            futures = {
+                executor.submit(func, image[i_in], *args, frame_index_out=i_out, **kwargs)
+                for i_in, i_out in input_output_mapper
+            }
+
+            for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Processing frames"):
+                i, processed = future.result()
+                image_out[i] = processed
+    else:
+        for i_in, i_out in tqdm(input_output_mapper, desc="Processing frames"):
+            processed = func(image[i_in], *args, frame_index_out=i_out, **kwargs)[1]
+            image_out[i_out] = processed
+    
+    if benchmark:
+        t1 = time.perf_counter()
+        printl(f"Processing time: {(t1 - t0)*1000:.2f} ms")
+
+    return image_out
