@@ -23,7 +23,7 @@ class Model(CellposeV2Model):
             gpu:bool=False,
             device:torch.device|int='None',
         ):
-        """Initialize cellpose 2  model
+        """Initialize Cellpose 4 (Cellpose-SAM) model
 
         Parameters
         ----------

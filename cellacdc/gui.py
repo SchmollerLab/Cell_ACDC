@@ -273,9 +273,12 @@ def sort_IDs_dist(rps, point=None, ID=None):
     rps : list
         A list of regionprops objects representing cells.
     point : tuple, optional
-        The coordinates of the point to calculate distances from. If not provided, it will be calculated based on the given ID.
+        The coordinates of the point to calculate distances from. 
+        If not provided, it will be calculated based on the given ID.
     ID : int, optional
-        The ID of the regionprops object to calculate distances from. If this and point are both provided, or neither, an error will be raised.
+        The ID of the regionprops object to calculate distances from. 
+        If this and point are both provided, or neither, an error will be 
+        raised.
 
     Returns
     -------
@@ -4410,9 +4413,6 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
 
         allIDs, posData = core.count_objects(posData, self.logger.info)
-
-        if not allIDs:
-            allIDs = list(range(100))
         
         self.highLowResAction.setChecked(True)
         numItems = len(allIDs)
@@ -7953,7 +7953,7 @@ class guiWin(QMainWindow):
             self.original_df_lin_tree = self.lineage_tree.lineage_list[posData.frame_i].copy()
             self.original_df_lin_tree_i = posData.frame_i
         elif self.original_df_lin_tree_i != posData.frame_i:
-            printl('!!! Original lineage tree df changed, resetting original_df_lin_tree !!!')
+            printl('[WARNING]: !!! Original lineage tree df changed, resetting original_df_lin_tree !!!')
             self.original_df_lin_tree = self.lineage_tree.lineage_list[posData.frame_i].copy()
             self.original_df_lin_tree_i = posData.frame_i
 
@@ -22505,51 +22505,6 @@ class guiWin(QMainWindow):
         posData.frame_i = self.current_frame_i
         self.get_data()
         self.app.restoreOverrideCursor()
-    
-    # def get_lin_tree_df(self, frame_i=None, return_df=False):
-    #     """
-    #     Retrieves the lineage tree DataFrame from posData.allData_li
-    #     lin_tree_df is None unless the metadata contains generation_num_tree annotations
-
-    #     Parameters
-    #     ----------
-    #     frame_i : int, optional)
-    #         The index of the frame. If not provided, the current frame index is used.
-    #     return_df  :  bool, optional)
-    #         If True, the method returns the linear tree DataFrame. 
-    #         If False, the linear tree DataFrame is stored in the `lin_tree_df` attribute of `posData`.
-
-    #     Returns
-    #     -------
-    #     lin_tree_df : pandas.DataFrame or None
-    #         The linear tree DataFrame for the specified frame index, or None if it is not available.
-
-    #     """
-
-    #     posData = self.data[self.pos_i]
-    #     lin_tree_df = None
-    #     df = None
-    #     if self.lineage_tree and self.lineage_tree.frames_for_dfs:
-    #         i = posData.frame_i if frame_i is None else frame_i
-    #         df = self.lineage_tree.export_df(i)
-
-    #     if df is not None:
-    #         if 'generation_num_tree' in df.columns:  # may need to change this, not exactly sure how df is initialized
-    #             if 'corrected_on_frame_i' not in df.columns:
-    #                 # Compatibility with those acdc_df analysed with prev vers.
-    #                 df['corrected_on_frame_i'] = -1
-    #             lin_tree_df = df.copy()
-    #     if lin_tree_df is None and self.isSnapshot:
-    #         self.logger.warning(
-    #             'Lineage tree for snapshots is not supported :('
-    #         )
-
-    #     # may need to create one if none is given already :3
-
-    #     if return_df:
-    #         return lin_tree_df
-    #     else:
-    #         posData.lin_tree_df = lin_tree_df
 
     def unstore_cca_df(self):
         posData = self.data[self.pos_i]
@@ -22663,11 +22618,6 @@ class guiWin(QMainWindow):
             if lin_tree_colnames is None:
                 lin_tree_colnames = lin_tree_df.columns
 
-
-            # sister_col_names = [col for col in lin_tree_df.columns if col.startswith('sister_ID_tree')]
-            # copy_lin_tree_df_colnames = self.lin_tree_df_colnames.copy()
-            # copy_lin_tree_df_colnames.update(sister_col_names)
-            # lin_tree_colnames = list(copy_lin_tree_df_colnames)
             acdc_df.loc[lin_tree_df.index, lin_tree_colnames] = lin_tree_df[lin_tree_colnames]
             
             try:
@@ -22783,7 +22733,7 @@ class guiWin(QMainWindow):
         if lin_tree_df.shape[0] > lin_tree_df_prev.shape[0]: # check if new cells have arrived
             new_cells = lin_tree_df.index.difference(lin_tree_df_prev.index) # I could use this for the if already but this is probably faster for frames where nothing changes
             if new_cells.shape[0] == 0:
-                printl('No new cells in the lineage tree for this frame.')
+                self.logger.info('No new cells in the lineage tree for this frame.')
                 return
             
             for ax in (0, 1):

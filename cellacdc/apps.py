@@ -11404,7 +11404,7 @@ class QDialogModelParams(QDialog):
                 defaultVal = ArgSpec.default
                 valueSetter = QSpinBox.setValue
                 valueGetter = QSpinBox.value
-                changeSig = spinBox.valueChanged
+                changeSig = spinBox.sigValueChanged
                 widget = spinBox
                 groupBoxLayout.addWidget(spinBox, row, 1, 1, 2)
             elif ArgSpec.type == float:

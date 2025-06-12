@@ -3,6 +3,8 @@ from qtpy.QtCore import (
 )
 from qtpy.QtWidgets import QWidget
 import functools
+
+
 class QWhileLoop:
     def __init__(
             self, loop_callback, period=100, max_duration=None

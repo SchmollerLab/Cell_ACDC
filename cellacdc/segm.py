@@ -24,8 +24,7 @@ from qtpy.QtWidgets import (
     QStyleFactory, QWidget, QMessageBox, QTextEdit
 )
 from qtpy.QtCore import (
-    Qt, QEventLoop, QThreadPool, QRunnable, Signal, QObject,
-    QMutex, QWaitCondition, QThread
+    Qt, QEventLoop, Signal, QObject, QMutex, QWaitCondition, QThread
 )
 from qtpy import QtGui
 import qtpy.compat

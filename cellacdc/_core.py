@@ -136,20 +136,6 @@ def _initialize_single_image(image, is_rgb=False, isZstack=False, img_shape=None
             f'Image is 4D with shape {img_shape}.'
             'Only 2D or 3D images are supported by cellpose in Cell-ACDC'
         )
-        # # make tiff Z x channels x W x H
-        # if img_shape[0]<4:
-        #     # tiff is channels x Z x W x H
-        #     image = np.transpose(image, (1,0,2,3))
-        # elif img_shape[-1]<4:
-        #     # tiff is Z x W x H x channels
-        #     image = np.transpose(image, (0,3,1,2))
-        # # fill in with blank channels to make 3 channels
-        # if img_shape[1] < 3:
-        #     shape = img_shape
-        #     shape_to_concat = (shape[0], 3-shape[1], shape[2], shape[3])
-        #     to_concat = np.zeros(shape_to_concat, dtype=np.uint8)
-        #     image = np.concatenate((image, to_concat), axis=1)
-        # image = np.transpose(image, (0,2,3,1))
     elif img_ndim==3: # z stack or rgb, last axis is channels
         # if img_shape[0] < 5:
         #     # Move first axis to last since we interpret this as RGB channels
