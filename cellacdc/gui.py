@@ -4404,8 +4404,10 @@ class guiWin(QMainWindow):
         return lostObjScatterItem
 
     def _gui_createGraphicsItems(self):
+        for _posData in self.data:
+            _posData.allData_li = [None]*_posData.SizeT
+            
         posData = self.data[self.pos_i]
-        posData.allData_li = [None]*posData.SizeT
 
         allIDs, posData = core.count_objects(posData, self.logger.info)
 
