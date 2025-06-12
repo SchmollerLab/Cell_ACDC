@@ -267,9 +267,10 @@ class Model:
         isZstack = (self.img_ndim==3 and not isRGB) or (self.img_ndim==4)
 
         if anisotropy == 0 or not isZstack:
-            printl('''Anisotropy is set to 1.0 (assuming isotropic data) 
-                   or irrelevant, since not a z-stack.'''
-                   )
+            printl(
+                'Anisotropy is set to 1.0 (assuming isotropic data) '
+                'or irrelevant, since not a z-stack.'
+            )
 
             anisotropy = 1.0
         
