@@ -85,9 +85,6 @@ class Model(CellposeBaseModel):
         
         print(f'Initializing Cellpose v3...')
 
-        from importlib.metadata import version
-        print(f"Version: {version("cellpose")}")
-
         import cellpose
         if model_type:
             try:
