@@ -1,30 +1,36 @@
 import os
 
 from cellacdc import myutils, printl
-
-from cellacdc.models.cellpose_v2 import acdcSegment as acdc_cp2
-from . import _denoise
+from cellacdc.models._cellpose_base.acdcSegment import Model as CellposeBaseModel, BackboneOptions
 import torch
-    
-class backboneOptions:
-    """Options for cellpose backbone"""
-    values = ['default', "transformer"]
+from . import AvailableModelsv3
+from cellacdc.models._cellpose_base.acdcSegment import _initialize_image
 
-CellposeV2Model = acdc_cp2.Model
-AvailableModels = acdc_cp2.AvailableModels
+from cellacdc._types import NotGUIParam
 
-class Model(CellposeV2Model):
+class DenoiseModelTypes:
+    values = ['one-click', 'nuclei']
+
+class DenoiseModes:
+    values = ['denoise', 'deblur']
+
+class Model(CellposeBaseModel):
+    def __new__(cls, *args, **kwargs):
+        myutils.check_install_cellpose(3)
+        return super().__new__(cls)
+
     def __init__(
             self, 
-            model_type: AvailableModels='cyto3',
+            model_type:AvailableModelsv3='cyto3',
             model_path: os.PathLike='',
             gpu: bool=False,
             directml_gpu: bool=False,
             device:torch.device|int='None',
             denoise_before_segmentation:bool=False,
-            denoise_model_type: _denoise.DenoiseModelTypes='one-click', 
-            denoise_mode: _denoise.DenoiseModes='denoise',
-            backbone: backboneOptions='default',
+            denoise_model_type: DenoiseModelTypes='one-click', 
+            denoise_mode: DenoiseModes='denoise',
+            diameter_denoise:float=0.0,
+            backbone: BackboneOptions='default',
         ):
         """Initialize cellpose 3 model
 
@@ -56,21 +62,76 @@ class Model(CellposeV2Model):
             Either 'one-click' or 'nuclei'. Default is 'one-click'
         denoise_mode : str, optional
             Either 'denoise' or 'deblur'. Default is 'denoise'
+        diameter_denoise : float, optional
+            Mean diameter of objects in the image for denoising.
+            If 0.0, it uses 30.0 for "one-click" and 17.0 for "nuclei".
+            Default is 0.0, which will use the default values for the
+            denoise model type.
         backbone : str, optional
             "default" is the standard res-unet, "transformer" for the segformer. 
-        """ 
-        super().__init__(
-            model_type=model_type, model_path=model_path, gpu=gpu, device=device,
-            directml_gpu=directml_gpu, backbone=backbone,
+        """
+
+        self.initConstants()
+        model_type, model_path, device = myutils.translateStrNone(model_type, model_path, device)
+        
+        self.check_model_path_model_type(
+            model_type=model_type, 
+            model_path=model_path, 
         )
+
+        directml_gpu, gpu = self.check_directml_gpu_gpu(
+            directml_gpu=directml_gpu, gpu=gpu,
+        )
+        
+        print(f'Initializing Cellpose v3...')
+
+        from importlib.metadata import version
+        print(f"Version: {version("cellpose")}")
+
+        import cellpose
+        if model_type:
+            try:
+                self.model = cellpose.models.Cellpose(
+                    gpu=gpu,
+                    device=device,
+                    model_type=model_type,
+                    backbone=backbone,
+                )
+                self._sizemodelnotfound = False                    
+
+            except FileNotFoundError:
+                printl(f'Size model for {model_type} not found.')
+                self._sizemodelnotfound = True
+                self.model = cellpose.models.CellposeModel(
+                    gpu=gpu,
+                    device=device,
+                    model_type=model_type,
+                    backbone=backbone,
+                    )
+        elif model_path is not None:
+            self._sizemodelnotfound = True
+            self.model = cellpose.models.CellposeModel(
+                gpu=gpu,
+                device=device,
+                pretrained_model=model_path,
+                backbone=backbone,
+            )
+
         self.denoiseModel = None
         if denoise_before_segmentation:
+            from cellacdc.models.cellpose_v3 import _denoise
             self.denoiseModel = _denoise.CellposeDenoiseModel(
                 gpu=gpu, 
                 denoise_model_type=denoise_model_type, 
                 denoise_mode=denoise_mode,
+                diam_mean=self.model.diam_mean,
             )
+
         
+        self.setup_gpu_direct_ml(
+            directml_gpu,
+            gpu, device)
+
     def segment(
             self, 
             image,
@@ -90,7 +151,8 @@ class Model(CellposeV2Model):
             low_percentile:float=1.0, 
             high_percentile:float=99.0,
             title_norm:int=0,
-            norm3D:bool=False            
+            norm3D:bool=False,
+            init_imgs:NotGUIParam=True,
         ):
         """Run cellpose 3.0 denoising + segmentation model
 
@@ -157,6 +219,22 @@ class Model(CellposeV2Model):
         
         input_image = image        
         if self.denoiseModel is not None:
+            _, isZstack = self.get_eval_kwargs_v2(image) # care everything else is gibberish except isZstack
+            if init_imgs:
+                if not segment_3D_volume and isZstack:
+                    image, z_axis, channel_axis = _initialize_image(image, self.is_rgb, 
+                                                iter_axis_zstack=0,
+                                                isZstack=True,    
+                                                )
+                    self.channel_axis = channel_axis -1
+                else:
+                    image, z_axis, channel_axis = _initialize_image(image, self.is_rgb,
+                                                isZstack=isZstack,
+                                                )
+                    self.z_axis = z_axis
+                    self.channel_axis = channel_axis    
+            
+
             input_image = self.denoiseModel.run(
                 image,
                 normalize=denoise_normalize, 
@@ -166,9 +244,14 @@ class Model(CellposeV2Model):
                 low_percentile=low_percentile, 
                 high_percentile=high_percentile,
                 title_norm=title_norm,
-                norm3D=norm3D
+                norm3D=norm3D,
+                isZstack=isZstack,
             )
-        labels =  super().segment(
+            
+        self.img_shape = input_image.shape
+        self.img_ndim = len(self.img_shape)
+
+        eval_kwargs, isZstack = self.get_eval_kwargs_v2(
             input_image,
             diameter=diameter,
             flow_threshold=flow_threshold,
@@ -178,16 +261,52 @@ class Model(CellposeV2Model):
             anisotropy=anisotropy,
             normalize=normalize,
             resample=resample,
-            segment_3D_volume=segment_3D_volume  
+            segment_3D_volume=segment_3D_volume         
         )
+
+        init_imgs = init_imgs if self.denoiseModel is None else False
+        labels = self.eval_loop(
+            input_image,
+            segment_3D_volume=segment_3D_volume,
+            isZstack=isZstack,
+            init_imgs=not self.denoiseModel,
+            **eval_kwargs
+        )
+
+        self.img_shape = None
+        self.img_ndim = None
+
         return labels
     
-    def segment3DT(self, video_data, signals=None, **kwargs):
-        images = video_data
+    def segment3DT(self, video_data, signals=None, init_imgs=True, **kwargs):
+        eval_kwargs, isZstack = self.get_eval_kwargs_v2(video_data[0], **kwargs)
+
+        input_video_data = video_data
         if self.denoiseModel is not None:
+            if init_imgs:
+
+                if not kwargs['segment_3D_volume'] and isZstack:
+                    input_video_data, z_axis, channel_axis = _initialize_image(video_data, self.is_rgb,
+                                    iter_axis_time=0,
+                                    iter_axis_zstack=1,
+                                    timelapse=True,
+                                    isZstack=isZstack,
+                                    )
+                    self.z_axis = z_axis - 2 if z_axis is not None else None # video doesnt count as dim
+                    self.channel_axis = channel_axis - 2
+
+                else:
+                    input_video_data, z_axis, channel_axis = _initialize_image(video_data, self.is_rgb,
+                                                iter_axis_time=0,
+                                                timelapse=True,
+                                                isZstack=isZstack,
+                                                )
+                    self.z_axis = z_axis - 1 if z_axis is not None else None # video doesnt count as dim
+                    self.channel_axis = channel_axis - 1
+                    
             resc_int_low_val_perc = kwargs['rescale_intensity_low_val_perc']
             resc_int_high_val_perc = kwargs['rescale_intensity_high_val_perc']
-            images = [
+            input_video_data = [
                 self.denoiseModel.run(
                     image,
                     normalize=kwargs['denoise_normalize'], 
@@ -197,12 +316,24 @@ class Model(CellposeV2Model):
                     low_percentile=kwargs['low_percentile'], 
                     high_percentile=kwargs['high_percentile'],
                     title_norm=kwargs['title_norm'],
-                    norm3D=kwargs['norm3D']
+                    norm3D=kwargs['norm3D'],
+                    isZstack=isZstack,
                 )
-                for image in video_data
+                for image in input_video_data
             ]
         
-        labels =  super().segment3DT(images, signals=signals, **kwargs)
+        self.img_shape = input_video_data[0].shape
+        self.img_ndim = len(self.img_shape)
+
+        eval_kwargs, isZstack = self.get_eval_kwargs_v2(input_video_data[0], **kwargs)
+
+        init_imgs = init_imgs if self.denoiseModel is None else False
+        labels = self.segment3DT_eval(
+            input_video_data, isZstack, eval_kwargs, init_imgs=init_imgs is None, **kwargs
+        )
+
+        self.img_shape = None
+        self.img_ndim = None
         return labels
 
 def url_help():

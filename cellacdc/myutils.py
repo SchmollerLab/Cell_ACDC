@@ -2183,6 +2183,10 @@ def get_list_of_trackers():
             os.path.isdir(_path) and os.path.exists(tracker_script_path)
             and not name.endswith('__')
         )
+
+        if name.startswith('_'):
+            continue
+        
         if is_valid_tracker:
             trackers.append(name)
     return natsorted(trackers)
@@ -2199,6 +2203,9 @@ def get_list_of_models():
             continue
         
         if name.endswith('__'):
+            continue
+            
+        if name.startswith('_'):
             continue
         
         if name == 'skip_segmentation':
@@ -2612,6 +2619,9 @@ def get_cellpose_major_version(errors='raise'):
     return major_installed
 
 def check_cellpose_version(version: str):
+    if isinstance(version, int):
+        version = f'{version}.0'
+
     major_requested = int(version.split('.')[0])
     cancel = False
     try:
@@ -2629,10 +2639,19 @@ def check_cellpose_version(version: str):
         raise ModuleNotFoundError('Cellpose installation cancelled by the user.')
     return is_version_correct
 
+def purge_module(module_name):
+    import sys
+    to_delete = [mod for mod in sys.modules if mod == module_name or mod.startswith(module_name + '.')]
+    for mod in to_delete:
+        del sys.modules[mod]
+
 def check_install_cellpose(
         version: Literal['2.0', '3.0', '4.0', 'any'] = '2.0', 
         version_to_install_if_missing: Literal['2.0', '3.0', '4.0'] = '4.0'
     ):
+    if isinstance(version, int):
+        version = f'{version}.0'
+
     if version == 'any':
         try:
             from cellpose import models
@@ -2653,6 +2672,12 @@ def check_install_cellpose(
         import_pkg_name='cellpose',
         force_upgrade=True
     )
+
+    purge_module('cellpose')
+
+    importlib.invalidate_caches()
+    import cellpose
+    importlib.reload(cellpose)
 
 def check_install_baby():
     check_install_package(

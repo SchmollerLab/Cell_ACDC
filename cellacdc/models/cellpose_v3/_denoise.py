@@ -2,16 +2,10 @@ import numpy as np
 from tqdm import tqdm
 
 from cellacdc import printl
-
 from cellpose.denoise import DenoiseModel
+from .acdcSegment import DenoiseModelTypes, DenoiseModes
 
-from ..cellpose_v2.acdcSegment import _initialize_image
-
-class DenoiseModelTypes:
-    values = ['one-click', 'nuclei']
-
-class DenoiseModes:
-    values = ['denoise', 'deblur']
+from cellacdc.models._cellpose_base.acdcSegment import _initialize_image
 
 class CellposeDenoiseModel(DenoiseModel):
     def __init__(
@@ -19,6 +13,7 @@ class CellposeDenoiseModel(DenoiseModel):
             gpu=False, 
             denoise_model_type: DenoiseModelTypes='one-click', 
             denoise_mode: DenoiseModes='denoise',
+            diam_mean: float = 0.0
         ):
         """Initialize cellpose 3.0 denoising model
 
@@ -31,10 +26,16 @@ class CellposeDenoiseModel(DenoiseModel):
             Either 'one-click' or 'nuclei'. Default is 'one-click'
         denoise_mode : str, optional
             Either 'denoise' or 'deblur'. Default is 'denoise'
+        diam_mean : float, optional
+            Mean diameter of objects in the image. Default is 0.0, which
+            will use the default values for the denoise model type:
+            - 'one-click': 30.0
+            - 'nuclei': 17.0
         """        
         self.nstr = "cyto3" if denoise_model_type=="one-click" else "nuclei"
+        diam_mean = 30.0 if denoise_model_type == "one-click" else 17.0
         model_name = f'{denoise_mode}_{self.nstr}'
-        super().__init__(gpu=gpu, model_type=model_name)
+        super().__init__(gpu=gpu, model_type=model_name, diam_mean=diam_mean)
         
         self._denoise_mode = denoise_mode
         self._denoise_model_type = denoise_model_type
@@ -84,7 +85,8 @@ class CellposeDenoiseModel(DenoiseModel):
             low_percentile=1.0, 
             high_percentile=99.0,
             title_norm=0,
-            norm3D=False
+            norm3D=False,
+            isZstack=False
         ):
         """Run cellpose 3.0 denoise model
 
@@ -117,55 +119,39 @@ class CellposeDenoiseModel(DenoiseModel):
             Compute normalization across entire z-stack rather than 
             plane-by-plane in stitching mode. Default is False
         """ 
-        isRGB = image.shape[-1] == 3 or image.shape[-1] == 4
+        isRGB = True
         channels = [0,0] if not isRGB else [1,2]
-        
-        isZstack = False
-        if not isRGB and image.ndim == 3:
-            isZstack = True
 
-        image_shape = image.shape
-        image_dim = len(image_shape)
-
-        if image_dim == 2:
-            timelapse = False
-        elif image_dim == 3 and (isZstack or isRGB):
-            timelapse = False
-        elif image_dim == 4 and isZstack and isRGB:
-            timelapse = False
-        else:
-            timelapse = True
         if diameter == 0:
             diameter = 30.0 if self.nstr == 'cyto3' else 17.0
-        input_image = _initialize_image(image, isRGB = isRGB,image_dim=image_dim, image_shape=image_shape, isZstack = isZstack, timelapse=timelapse, iter_axis_time=0 if timelapse else None)
         normalize_params = self._get_normalize_params(
-            input_image,
-            normalize=False, 
-            rescale_intensity_low_val_perc=0.0, 
-            rescale_intensity_high_val_perc=100.0, 
-            sharpen=0,
-            low_percentile=1.0, 
-            high_percentile=99.0,
-            title_norm=0,
-            norm3D=False
+            image,
+            normalize=normalize, 
+            rescale_intensity_low_val_perc=rescale_intensity_low_val_perc, 
+            rescale_intensity_high_val_perc=rescale_intensity_high_val_perc, 
+            sharpen=sharpen,
+            low_percentile=low_percentile, 
+            high_percentile=high_percentile,
+            title_norm=title_norm,
+            norm3D=norm3D
         )
         eval_kwargs = {
             'channels': channels, 
             'diameter': diameter, 
-            'normalize': normalize
+            'normalize': normalize_params
         }
         if isZstack:
             denoised_img = np.zeros(image.shape, dtype=np.float32)
             pbar = tqdm(
                 total=len(denoised_img), ncols=100, desc='Denoising z-slice: '
             )
-            for z, img in enumerate(input_image):
+            for z, img in enumerate(image):
                 denoised_z_data = self.eval(img, **eval_kwargs)
                 denoised_img[z] = denoised_z_data[...,0]
                 pbar.update()
             pbar.close()
         else:
-            denoised_data = self.eval(input_image, **eval_kwargs)
+            denoised_data = self.eval(image, **eval_kwargs)
             denoised_img = denoised_data[...,0]
         return denoised_img
         
