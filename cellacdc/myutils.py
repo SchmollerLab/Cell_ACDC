@@ -748,7 +748,11 @@ def read_version(logger=None, return_success=False):
 
 def get_date_from_version(version: str, package='cellacdc', debug=False):
     try:
-        res_json = requests.get(f'https://pypi.org/pypi/{package}/json').json()
+        response = requests.get(
+            f'https://pypi.org/pypi/{package}/json', 
+            timeout=2
+        )
+        res_json = response.json()
         pypi_releases_json = res_json['releases']
         version_json = pypi_releases_json[version][0]
         upload_time = version_json['upload_time_iso_8601']
