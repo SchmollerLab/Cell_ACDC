@@ -1,24 +1,17 @@
 import os
-
 from cellacdc import myutils, printl
-
-from cellacdc.models.cellpose_v2 import acdcSegment as acdc_cp2
-from cellacdc.models.cellpose_v2.acdcSegment import _initialize_image
 import torch
-import numpy as np
+from cellacdc.models._cellpose_base.acdcSegment import Model as CellposeBaseModel
+from . import AvailableModelsv4
+
+class Model(CellposeBaseModel):
+    def __new__(cls, *args, **kwargs):
+        myutils.check_install_cellpose(4)
+        return super().__new__(cls)
     
-class backboneOptions:
-    """Options for cellpose backbone"""
-    values = ['default', "transformer"]
-
-CellposeV2Model = acdc_cp2.Model
-AvailableModels = acdc_cp2.AvailableModels
-from cellpose import models
-
-class Model(CellposeV2Model):
     def __init__(
             self, 
-            model_type: AvailableModels='cpsam', 
+            model_type: AvailableModelsv4='cpsam', 
             model_path: os.PathLike='',
             gpu:bool=False,
             device:torch.device|int='None',
@@ -67,6 +60,7 @@ class Model(CellposeV2Model):
         major_version = myutils.get_cellpose_major_version()
         print(f'Initializing Cellpose v{major_version}...')
 
+        from cellpose import models
         self.model = models.CellposeModel(
             gpu=gpu,
             device=device,
@@ -249,7 +243,7 @@ class Model(CellposeV2Model):
         self.img_shape = image.shape
         self.img_ndim = len(self.img_shape)
 
-        eval_kwargs, isZstack = self._get_eval_kwargs(
+        eval_kwargs, isZstack = self.get_eval_kwargs_v2(
             image,
             diameter=diameter,
             flow_threshold=flow_threshold,
@@ -274,7 +268,7 @@ class Model(CellposeV2Model):
             v2_kwargs=eval_kwargs
         )
 
-        labs = self._eval_loop(
+        labs = self.eval_loop(
             image, segment_3D_volume, isZstack, **eval_kwargs
         )
 
@@ -289,7 +283,7 @@ class Model(CellposeV2Model):
         self.img_ndim = len(self.img_shape)
         
         image = video_data[0]
-        eval_kwargs, isZstack = self._get_eval_kwargs(
+        eval_kwargs, isZstack = self.get_eval_kwargs_v2(
             image,
             **kwargs        
         )
@@ -299,8 +293,7 @@ class Model(CellposeV2Model):
             v2_kwargs=eval_kwargs
         )
 
-        printl(eval_kwargs)
-        labels = self._segment3DT_eval(
+        labels = self.segment3DT_eval(
             video_data, isZstack, eval_kwargs, **kwargs
         )
 
