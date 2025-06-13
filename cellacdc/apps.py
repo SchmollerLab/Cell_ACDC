@@ -10727,10 +10727,6 @@ class QDialogModelParams(QDialog):
 
         loadFunc = self.loadLastSelection
         
-        self.scrollArea = widgets.ScrollArea()
-        scrollAreaLayout = QVBoxLayout()
-        self.scrollArea.setVerticalLayout(scrollAreaLayout)
-        
         preProcessLayout = None
         self.preProcessParamsWidget = None
         if addPreProcessParams:
@@ -10744,6 +10740,10 @@ class QDialogModelParams(QDialog):
                 self.loadPreprocRecipe
             )
             preProcessLayout.addWidget(widgets.QHLine())
+        
+        self.initParamsScrollArea = widgets.ScrollArea()
+        initParamsScrollAreaLayout = QVBoxLayout()
+        self.initParamsScrollArea.setVerticalLayout(initParamsScrollAreaLayout)
         
         initGroupBox, self.init_argsWidgets = self.createGroupParams(
             init_params, 'Parameters for model initialization'
@@ -10761,8 +10761,16 @@ class QDialogModelParams(QDialog):
         initLoadLastSelButton.clicked.connect(
             partial(loadFunc, f'{self.model_name}.init', self.init_argsWidgets)
         )
+        
+        initParamsScrollAreaLayout.addWidget(initGroupBox)
 
+        self.segmentParamsScrollArea = None
         if not self.skipSegmentation:
+            self.segmentParamsScrollArea = widgets.ScrollArea()
+            segmentParamsScrollAreaLayout = QVBoxLayout()
+            self.segmentParamsScrollArea.setVerticalLayout(
+                segmentParamsScrollAreaLayout
+            )
             if action_type:
                 runGroupboxTitle = f'Parameters for {action_type}'
             elif is_tracker:
@@ -10788,6 +10796,7 @@ class QDialogModelParams(QDialog):
             segmentLoadLastSelButton.clicked.connect(
                 partial(loadFunc, section, self.argsWidgets)
             )
+            segmentParamsScrollAreaLayout.addWidget(segmentGroupBox)
 
         cancelButton = widgets.cancelPushButton(' Cancel ')
         okButton = widgets.okPushButton(' Ok ')
@@ -10816,10 +10825,16 @@ class QDialogModelParams(QDialog):
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.close)
 
-        self.okButton = okButton
-
+        self.okButton = okButton            
+        
         self.extraArgsWidgets = None
+        self.extraParamsScrollArea = None
         if extraParams is not None:
+            self.extraParamsScrollArea = widgets.ScrollArea()
+            extraParamsScrollAreaLayout = QVBoxLayout()
+            self.extraParamsScrollArea.setVerticalLayout(
+                extraParamsScrollAreaLayout
+            )
             if extraParamsTitle is None:
                 extraParamsTitle = 'Additional parameters'
 
@@ -10841,19 +10856,8 @@ class QDialogModelParams(QDialog):
                 partial(loadFunc, section, self.extraArgsWidgets)
             )
 
-            scrollAreaLayout.addWidget(self.extraGroupBox)
-            scrollAreaLayout.addLayout(extraButtonsLayout)
+            extraParamsScrollAreaLayout.addWidget(self.extraGroupBox)
 
-        scrollAreaLayout.addWidget(initGroupBox)
-        scrollAreaLayout.addLayout(initButtonsLayout)
-        if not self.skipSegmentation:
-            scrollAreaLayout.addSpacing(15)
-            # scrollAreaLayout.addStretch(1)
-            scrollAreaLayout.addWidget(segmentGroupBox)
-            scrollAreaLayout.addLayout(segmentButtonsLayout)
-
-        scrollAreaLayout.addStretch(1)
-        
         self.postProcessGroupbox = None
         postProcessLayout = None
         self.seeHereLabel = None
@@ -10901,10 +10905,44 @@ class QDialogModelParams(QDialog):
             mainLayout.addLayout(preProcessLayout)
             mainLayout.setStretch(row, 1)
             row += 1
-            
-        mainLayout.addWidget(self.scrollArea)
-        mainLayout.setStretch(row, 3)
+        
+        mainLayout.addWidget(QLabel(f'<b>{initGroupBox.title()}</b>'))
+        initGroupBox.setTitle('')
         row += 1
+        mainLayout.addWidget(self.initParamsScrollArea)
+        stretch = initGroupBox.layout().rowCount()
+        mainLayout.setStretch(row, stretch)
+        row += 1
+        
+        mainLayout.addLayout(initButtonsLayout)
+        mainLayout.setStretch(row, 0)
+        row += 1
+        
+        if not self.skipSegmentation:
+            mainLayout.addWidget(QLabel(f'<b>{segmentGroupBox.title()}</b>'))
+            segmentGroupBox.setTitle('')
+            row += 1
+            mainLayout.addWidget(self.segmentParamsScrollArea)
+            stretch = segmentGroupBox.layout().rowCount()
+            mainLayout.setStretch(row, stretch)
+            row += 1
+        
+            mainLayout.addLayout(segmentButtonsLayout)
+            mainLayout.setStretch(row, 0)
+            row += 1
+        
+        if extraParams is not None:
+            mainLayout.addWidget(QLabel(f'<b>{self.extraGroupBox.title()}</b>'))
+            self.extraGroupBox.setTitle('')
+            row += 1
+            mainLayout.addWidget(self.extraParamsScrollArea)
+            stretch = self.extraGroupBox.layout().rowCount()
+            mainLayout.setStretch(row, stretch)
+            row += 1
+            
+            mainLayout.addLayout(extraButtonsLayout)
+            mainLayout.setStretch(row, 0)
+            row += 1
         
         self.additionalSegmGroupbox = None
         if not is_tracker and add_additional_segm_params:
@@ -11468,7 +11506,7 @@ class QDialogModelParams(QDialog):
         
         exclusive_group = core.connected_components_in_undirected_graph(
             exclusive_withs
-            )
+        )
 
         for group in exclusive_group:
             if len(group) == 1:
@@ -11556,9 +11594,11 @@ class QDialogModelParams(QDialog):
 
     def readLastSelection(self):
         self.ini_path = os.path.join(settings_folderpath, self.ini_filename)
+        
         if not os.path.exists(self.ini_path):
             return None
 
+        print(f'Reading last selected parameters from: {self.ini_path}')
         configPars = config.ConfigParser()
         configPars.read(self.ini_path)
         return configPars
@@ -11588,7 +11628,9 @@ class QDialogModelParams(QDialog):
                     except Exception as e:
                         continue
     
-    def loadLastSelection(self, section, argWidgetList, configPars=None):
+    def loadLastSelection(
+            self, section, argWidgetList, checked=False, configPars=None
+        ):        
         if self.configPars is None and configPars is None:
             return
 
@@ -11600,7 +11642,7 @@ class QDialogModelParams(QDialog):
             options = configPars.options(section)
         except Exception:
             return
-
+        
         for argWidget in argWidgetList:
             option = argWidget.name
             val = None
@@ -11611,10 +11653,12 @@ class QDialogModelParams(QDialog):
                 except Exception as err:
                     pass
             widget = argWidget.widget
+            
             if hasattr(widget, 'isMetadataValue'):
                 continue
             if val is None:
                 continue
+            
             casters = [lambda x: x, int, float, str, bool]
             for caster in casters:
                 try:
@@ -11625,6 +11669,7 @@ class QDialogModelParams(QDialog):
                     )
                     break
                 except Exception as e:
+                    printl(traceback.format_exc())
                     continue
 
     def loadLastSelectionPostProcess(self, configPars=None):
@@ -11857,7 +11902,21 @@ class QDialogModelParams(QDialog):
     
     def showEvent(self, event) -> None:
         buttonHeight = self.okButton.minimumSizeHint().height()
-        height = self.scrollArea.minimumHeightNoScrollbar() + 70
+        height = (
+            self.initParamsScrollArea.minimumHeightNoScrollbar()
+            + 70 + buttonHeight
+        )
+        if self.segmentParamsScrollArea is not None:
+            height += (
+                self.segmentParamsScrollArea.minimumHeightNoScrollbar()
+                + 70 + buttonHeight
+            )
+        if self.extraParamsScrollArea is not None:
+            height += (
+                self.extraParamsScrollArea.minimumHeightNoScrollbar()
+                + 70 + buttonHeight
+            )
+            
         if self.additionalSegmGroupbox is not None:
             height += self.additionalSegmGroupbox.minimumSizeHint().height()
             height += buttonHeight
@@ -16785,6 +16844,7 @@ class PreProcessRecipeDialog(QBaseDialog):
             try:
                 button.setDisabled(disabled)
             except RuntimeError as e:
+                printl(traceback.format_exc())
                 printl(f'Error: {e}')
                 printl(f'Button: {button}')
     
