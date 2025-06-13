@@ -11672,7 +11672,7 @@ class QDialogModelParams(QDialog):
                     printl(traceback.format_exc())
                     continue
 
-    def loadLastSelectionPostProcess(self, configPars=None):
+    def loadLastSelectionPostProcess(self, checked=False, configPars=None):
         postProcessSection = f'{self.model_name}.postprocess'
 
         if isinstance(configPars, bool):
