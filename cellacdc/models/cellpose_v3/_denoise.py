@@ -33,7 +33,8 @@ class CellposeDenoiseModel(DenoiseModel):
             - 'nuclei': 17.0
         """        
         self.nstr = "cyto3" if denoise_model_type=="one-click" else "nuclei"
-        diam_mean = 30.0 if denoise_model_type == "one-click" else 17.0
+        if diam_mean == 0.0:
+            diam_mean = 30.0 if denoise_model_type == "one-click" else 17.0
         model_name = f'{denoise_mode}_{self.nstr}'
         super().__init__(gpu=gpu, model_type=model_name, diam_mean=diam_mean)
         
