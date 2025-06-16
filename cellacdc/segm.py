@@ -411,6 +411,10 @@ class segmWin(QMainWindow):
             print('')
             self.log(f'Processing {images_path}')
             filenames = myutils.listdir(images_path)
+            if not filenames:
+                self.criticalImagesFolderEmpty(images_path)
+                self.close()
+                return
             if ch_name_selector.is_first_call:
                 ch_names, warn = (
                     ch_name_selector.get_available_channels(
@@ -418,6 +422,8 @@ class segmWin(QMainWindow):
                 ))
                 if not ch_names:
                     self.criticalNoTifFound(images_path)
+                    self.close()
+                    return
                 elif len(ch_names) > 1:
                     ch_name_selector.QtPrompt(self, ch_names)
                 else:
@@ -956,6 +962,31 @@ class segmWin(QMainWindow):
         t1 = time.perf_counter()
         
         self.processFinished(t1-t0)
+
+    def criticalImagesFolderEmpty(self, images_path):
+        err_title = 'The images folder is empty'
+        err_msg = html_utils.paragraph(
+            'The following folder<br><br>'
+            f'<code>{images_path}</code><br><br>'
+            '<b>is empty</b>.<br><br>'
+        )
+        msg = widgets.myMessageBox()
+        msg.addShowInFileManagerButton(images_path)
+        msg.critical(self, err_title, err_msg)
+    
+    def criticalNoTifFound(self, images_path):
+        err_title = 'No .tif files found in folder.'
+        err_msg = html_utils.paragraph(
+            'The following folder<br><br>'
+            f'<code>{images_path}</code><br><br>'
+            '<b>does not contain .tif or .h5 files</b>.<br><br>'
+            'Only .tif or .h5 files can be loaded with "Open Folder" button.<br><br>'
+            'Try with <code>File --> Open image/video file...</code> '
+            'and directly select the file you want to load.'
+        )
+        msg = widgets.myMessageBox()
+        msg.addShowInFileManagerButton(images_path)
+        msg.critical(self, err_title, err_msg)
     
     def waitSegmWorker(self, worker):
         worker.loop = QEventLoop(self)

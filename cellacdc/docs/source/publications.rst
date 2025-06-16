@@ -6,7 +6,7 @@ In the following publications authors used Cell-ACDC to analyse microscopy data:
 .. raw:: html
 
     <ol>
-      <li>Dengler, L. et al. <i>When mitochondria fall apart: Unbalanced mitochondrial segregation triggers loss of mtDNA in the absence of mitochondrial fusion</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.1101/2025.05.13.653688">10.1101/2025.05.13.653688</a>.</li>
+      <li>Dengler, L. et al. <i>When mitochondria fall apart: Unbalanced mitochondrial segregation triggers loss of mtDNA in the absence of mitochondrial fusion</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.1101/2025.05.13.653688">10.1101/2025.05.13.653688</a>.</li><br>
       <li>Seshadri, A. et al. <i>Exonuclease action of replicative polymerase gamma drives damage-induced mitochondrial DNA clearance</i>. <b>EMBO Reports</b> (2025) DOI: <a href="https://doi.org/10.1038/s44319-025-00380-1">10.1038/s44319-025-00380-1</a>.</li><br>
       <li>Al-Refaie, N. et al. <i>Fasting shapes chromatin architecture through an mTOR/RNA Pol I axis</i>. <b>Nat. Cell Biol.</b> 1–15 (2024) DOI: <a href="https://doi.org/10.1038/s41556-024-01512-w">10.1038/s41556-024-01512-w</a>.</li><br>
       <li>Lanz, M. C. et al. <i>Genome dilution by cell growth drives starvation-like proteome remodeling in mammalian and yeast cells</i>. <b>Nat. Struct. Mol. Biol.</b> (2024) DOI: <a href="https://doi.org/10.1038/s41594-024-01353-z">10.1038/s41594-024-01353-z</a>.</li><br>

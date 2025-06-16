@@ -30145,7 +30145,9 @@ class guiWin(QMainWindow):
     
     def labelRoiViewCurrentModel(self):
         from . import config
-        ini_path = os.path.join(settings_folderpath, 'last_params_segm_models.ini')
+        ini_path = os.path.join(
+            settings_folderpath, 'last_params_segm_models.ini'
+        )
         configPars = config.ConfigParser()
         configPars.read(ini_path)
         model_name = self.labelRoiModel.model_name
