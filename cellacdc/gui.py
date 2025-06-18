@@ -11413,6 +11413,9 @@ class guiWin(QMainWindow):
     # @exec_time
     def getDelROIlab(self):
         posData = self.data[self.pos_i]
+        if not hasattr(self, 'delRoiLab'):
+            self.initDelRoiLab()
+            
         self.delRoiLab[:] = self.get_2Dlab(posData.lab, force_z=False)
         allDelIDs = set()
         # Iterate rois and delete IDs
