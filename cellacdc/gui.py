@@ -2781,7 +2781,6 @@ class guiWin(QMainWindow):
         self.viewCcaTableAction.setDisabled(True)
         self.viewCcaTableAction.setShortcut('Ctrl+P')
         
-        self.cp3denoiseAction = QAction('Cellpose 3.0 denoising...', self)
         
         self.addScaleBarAction = QAction('Add scale bar', self)
         self.addScaleBarAction.setCheckable(True)
@@ -3259,7 +3258,6 @@ class guiWin(QMainWindow):
             self.reInitLastSegmFrame
         )
 
-        self.cp3denoiseAction.triggered.connect(self.cp3denoiseActionTriggered)
         
         self.defaultRescaleIntensActionGroup.triggered.connect(
             self.defaultRescaleIntensLutActionToggled
@@ -12075,33 +12073,6 @@ class guiWin(QMainWindow):
             return posData.img_data[posData.frame_i, zslice]
         else:
             return self.getDisplayedImg1()
-    
-    def cp3denoiseActionTriggered(self):
-        self.logger.info('Initializing Cellpose denoising model...')
-        output = myutils.init_cellpose_denoise_model()
-        if output is None:
-            self.logger.info('Cellpose 3.0 denoising process cancelled')
-            return
-
-        if not self.isSegm3D:
-            img = self.getDisplayedImg1()
-        else:
-            img = self.askGet2Dor3Dimage()
-            if img is None:
-                self.logger.info('Cellpose 3.0 denoising process cancelled')
-                return
-        denoise_model, init_params, run_params = output
-        denoised_image = core.cellpose_v3_run_denoise(
-            img,
-            run_params,
-            denoise_model=denoise_model, 
-            init_params=None,
-        )
-        imshow(
-            img, denoised_image, 
-            axis_titles=['Input image', 'Denoised image']
-        )
-        
         
     def manualEditCca(self, checked=True):
         posData = self.data[self.pos_i]

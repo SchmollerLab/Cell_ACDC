@@ -1,8 +1,6 @@
 import torch
 import numpy as np
 import skimage.measure
-import sys
-import importlib
 
 from typing import Tuple
 
@@ -12,6 +10,63 @@ class BackboneOptions:
     """Options for cellpose backbone"""
     values = ['default', "transformer"]
 
+class GPUDirectMLGPUCPU:
+    """Options for DirectML GPU acceleration"""
+    values = ['cpu', 'gpu','directml_gpu']
+
+
+def cpu_gpu_directml_gpu(
+        input_string: str,
+        ):
+    """Translate input string to cpu, gpu or directml_gpu.
+    """
+    directml_gpu = False
+    gpu = False
+    input_string = input_string.lower()
+    if input_string == 'cpu':
+        pass
+    elif input_string == 'gpu':
+        gpu = True
+    elif input_string == 'directml_gpu':
+        directml_gpu = True
+    else:
+        raise ValueError(
+            f"Invalid input string '{input_string}'. "
+            "Expected 'cpu', 'gpu' or 'directml_gpu'."
+        )
+    return directml_gpu, gpu
+
+class DealWithSecondChannelOptions:
+    """Options available for dealing with second channel"""
+    values = ['together','separately', 'ignore']
+
+def check_deal_with_second_channel(
+        input_string: DealWithSecondChannelOptions, is_rgb: bool
+):
+    if input_string not in DealWithSecondChannelOptions.values:
+        raise ValueError(
+            f"Invalid deal_with_second_channel option '{input_string}'. "
+            f"Expected one of {DealWithSecondChannelOptions.values}."
+        )
+    input_string = input_string.lower()
+    seperatly= False
+    together = False
+    ignore = False
+    if not is_rgb:
+        pass
+    elif input_string == 'separately':
+        seperatly = True
+    elif input_string == 'together':
+        together = True
+    elif input_string == 'ignore':
+        ignore = True
+    else:
+        raise ValueError(
+            f"Invalid deal_with_second_channel option '{input_string}'. "
+            f"Expected one of {DealWithSecondChannelOptions.values}."
+        )
+    return seperatly, together, ignore
+
 class Model:
     def __init__(
             self,
@@ -20,7 +75,8 @@ class Model:
         """
 
         self.initConstants()
-
+    
+        
     def check_model_path_model_type(self, model_path, model_type):
 
         if model_path is not None and model_type is not None:
@@ -34,56 +90,17 @@ class Model:
                 "You must set either `model_type` or `model_path`. "
                 "Please set one of them."
             )
-        
-    def check_directml_gpu_gpu(self, directml_gpu, gpu):
-        if directml_gpu:
-            from cellacdc.models._cellpose_base._directML import init_directML
-            directml_gpu = init_directML()
 
-        if directml_gpu and gpu:
-            printl(
-                """
-                gpu is preferable to directml_gpu, but doesn't work with non NVIDIA GPUs.
-                Since directml_gpu and set to True, the gpu argument will be ignored.
-                """
-            )
-            gpu = False
-        
-        return directml_gpu, gpu
-
-    def setup_gpu_direct_ml(self, directml_gpu, gpu, device):
-
-        if directml_gpu:
-            from cellacdc.models._cellpose_base._directML import setup_directML
-            setup_directML(self)
-
-            from cellacdc.core import fix_sparse_directML
-            fix_sparse_directML()
-        
-        if gpu: # sometimes gpu is not properly set up ^^
-            from cellacdc.models._cellpose_base._directML import setup_custom_device
-            if device is None:
-                device = 0
-            try:
-                device = int(device)
-            except ValueError:
-                pass
-
-            if isinstance(device, int):
-                device = torch.device(f'cuda:{device}')
-            elif isinstance(device, str):
-                device = torch.device(device)
-            
-            setup_custom_device(self, device)
-
-    def initConstants(self):
-        self.is_rgb = False
+    def initConstants(self, is_rgb=False):
+        self.is_rgb = is_rgb
         self.img_shape = None
         self.img_ndim = None
         self.z_axis = None
         self.channel_axis = None
         self.cp_version  = myutils.get_cellpose_major_version()
         self._sizemodelnotfound = True
+        self.batch_size = None
+        self.printed_model_params = False
         
     def setupLogger(self, logger):
         from cellpose import models
@@ -97,13 +114,34 @@ class Model:
             models.models_logger.removeHandler(handler)
     
     def _eval(self, image, **kwargs):
+        if self.batch_size is not None:
+            kwargs['batch_size'] = self.batch_size
         if self.cp_version == 4:
             del kwargs['channels']
             kwargs['channel_axis'] = self.channel_axis
             kwargs['z_axis'] = self.z_axis
-            return self.model.eval(image, **kwargs)[0]
-        else:
-            return self.model.eval(image, **kwargs)[0]
+        if self.cp_version == 3:
+            kwargs["channel_axis"] = self.channel_axis
+            kwargs["z_axis"] = self.z_axis
+        if not self.printed_model_params:
+            if isinstance(image, list):
+                sample_img = image[0]
+                shape = sample_img.shape
+                shape = f"{len(image)} images of shape {shape}"
+            else:
+                sample_img = image
+                shape = image.shape
+            print("This is what is being passed to cellpose:")
+            print(f"Running model on image shape: {shape}, kwargs: {kwargs}")
+            if self.is_rgb:
+                for i, subarr in enumerate(np.moveaxis(sample_img, -3, 0)):
+                    print(f"Channel {i+1} min: {subarr.min()}, max: {subarr.max()}")
+            else:
+                print(f"Image min: {sample_img.min()}, max: {sample_img.max()}")
+            
+            self.printed_model_params = True
+
+        return self.model.eval(image, **kwargs)[0]
     
     def second_ch_img_to_stack(self, first_ch_data, second_ch_data):
         # The 'cyto' model can work with a second channel (e.g., nucleus).
@@ -128,27 +166,43 @@ class Model:
 
         return rgb_stack
     
-    def get_eval_kwargs_v2(
+    def get_zStack_rgb(self, image):
+        if self.img_shape is None:
+            self.img_shape = image.shape
+        if self.img_ndim is None:
+            self.img_ndim = len(self.img_shape)
+
+        self.is_rgb = (self.img_shape[-1] == 3 or self.img_shape[-1] == 4) if not self.is_rgb else self.is_rgb
+        remaining_dims = self.img_ndim
+        if self.is_rgb:
+            remaining_dims -= 1
+        if self.timelapse:
+            remaining_dims -= 1
+
+        self.isZstack = (
+            remaining_dims == 3
+        )
+
+        return self.isZstack, self.is_rgb
+    
+    def get_eval_kwargs(
             self, image,
             diameter=0.0,
             flow_threshold=0.4,
-            cellprob_threshold=0.0,
+            # cellprob_threshold=0.0,
             stitch_threshold=0.0,
-            min_size=15,
+            # min_size=15,
             anisotropy=0.0,
-            normalize=True,
-            resample=True,
+            # normalize=True,
+            # resample=True,
             segment_3D_volume=False,
+            # max_size_fraction=0.4,
+            # flow3D_smooth=0,
+            # tile_overlap=0.1,
             **kwargs
         ):
         """Get evaluation kwargs for the model.eval method, accurate for v2.
         """
-
-        if anisotropy == 0.0 and segment_3D_volume:
-            raise TypeError(
-                'Anisotropy is 0.0 but segment_3D_volume is True. '
-                'Please set anisotropy to a non-zero value.'
-            )
 
         if diameter == 0.0 and self._sizemodelnotfound:
             raise TypeError(
@@ -161,15 +215,21 @@ class Model:
             self.img_shape = image.shape
         if self.img_ndim is None:
             self.img_ndim = len(self.img_shape)
-        isRGB = self.img_shape[-1] == 3 or self.img_shape[-1] == 4
-        isZstack = (self.img_ndim==3 and not isRGB) or (self.img_ndim==4)
 
-        if anisotropy == 0 or not isZstack:
+        isZstack, is_rgb = self.get_zStack_rgb(image)
+
+        if anisotropy == 0.0 and segment_3D_volume:
             printl(
-                'Anisotropy is set to 1.0 (assuming isotropic data) '
-                'or irrelevant, since not a z-stack.'
+                'Anisotropy is 0.0 but segment_3D_volume is True. '
+                'Please set anisotropy to a non-zero value.' \
+                'For now set to 1.0, assuming isotropic data.'
             )
+            anisotropy = 1.0
 
+        elif not isZstack:
+            printl(
+                """Anisotropy is set to 1.0 (assuming isotropic data),
+                since data is not a z-stack""")
             anisotropy = 1.0
         
         do_3D = segment_3D_volume
@@ -179,13 +239,13 @@ class Model:
             do_3D = False
         
         if stitch_threshold > 0:
-            printl(
+            print(
                 'Using stiching mode instead of trying to segment 3D volume.'
                 )
             do_3D = False
         
         if isZstack and flow_threshold > 0:
-            printl(
+            print(
                 'Flow threshold is not used for 3D segmentation. '
                 'Setting it to 0.0.'
             )
@@ -194,19 +254,22 @@ class Model:
         if flow_threshold==0.0:
             flow_threshold = None
 
-        channels = [0,0] if not isRGB else [1,2]
+        channels = [0,0] if not is_rgb else [1,2]
 
         eval_kwargs = {
             'channels': channels,
             'diameter': diameter,
             'flow_threshold': flow_threshold,
-            'cellprob_threshold': cellprob_threshold,
+            #'cellprob_threshold': cellprob_threshold,
             'stitch_threshold': stitch_threshold,
-            'min_size': min_size,
-            'normalize': normalize,
+            # 'min_size': min_size,
+            # 'normalize': normalize,
             'do_3D': do_3D,
             'anisotropy': anisotropy,
-            'resample': resample
+            # 'resample': resample,
+            # 'max_size_fraction': max_size_fraction,
+            # 'flow3D_smooth': flow3D_smooth,
+            # 'tile_overlap': tile_overlap
         }
 
         if not segment_3D_volume and isZstack and stitch_threshold>0:
@@ -218,7 +281,7 @@ class Model:
         return eval_kwargs, isZstack
 
     def eval_loop(
-            self, images, segment_3D_volume, isZstack, init_imgs=True, **eval_kwargs
+            self, images, segment_3D_volume, init_imgs=True, **eval_kwargs
         ):
         """No support for time lapse. This is handles in self._segment3DT_eval
 
@@ -233,7 +296,6 @@ class Model:
         innit_imgs : bool, optional
             If True, the image is initialized. Default is True.
 
-
         Returns
         -------
         np.ndarray
@@ -244,73 +306,92 @@ class Model:
         if self.img_shape is None:
             self.img_shape = images.shape
 
-        if not segment_3D_volume and isZstack:
-            labels = np.zeros(self.img_shape, dtype=np.uint32)
+        if not segment_3D_volume and self.isZstack: # segment on a per slice basis
             if init_imgs:
-                images, z_axis, channel_axis = _initialize_image(images, self.is_rgb, 
-                                        iter_axis_zstack=0,
-                                        isZstack=True,    
-                                        )
-                self.channel_axis = channel_axis -1
-            for i, _img in enumerate(images):
-                
-                lab = self._eval(_img, **eval_kwargs)
+                images, z_axis, channel_axis = _initialize_image(images, 
+                                    self.is_rgb,
+                                    iter_axis_zstack=0,
+                                    isZstack=self.isZstack,
+                                    )
+            else:
+                z_axis = self.z_axis
+                channel_axis = self.channel_axis
+            self.z_axis = None # since we are segmenting slice-by-slice
+            self.channel_axis = channel_axis - 1 if channel_axis is not None else None # since we iterate over z-axis
+            if self.channel_axis is None:
+                labels = np.zeros(images.shape, dtype=np.uint32)
+            else:
+                shape = images.shape[:channel_axis] + images.shape[channel_axis+1:]
+                labels = np.zeros(shape, dtype=np.uint32)
+            for i, z_img in enumerate(images):
+                lab = self._eval(z_img, **eval_kwargs)
                 labels[i] = lab
             labels = skimage.measure.label(labels>0)
         else:
             if init_imgs:
                 images, z_axis, channel_axis = _initialize_image(images, self.is_rgb,
-                                            isZstack=isZstack,
+                                            isZstack=self.isZstack,
                                             )
                 self.z_axis = z_axis
                 self.channel_axis = channel_axis
+            else:
+                z_axis = self.z_axis
+                channel_axis = self.channel_axis
+                
             labels = self._eval(images, **eval_kwargs)
         
         return labels
     
     def segment3DT_eval(
-            self, video_data, isZstack, eval_kwargs, init_imgs=True, **kwargs
+            self, images, eval_kwargs, init_imgs=True, **kwargs
         ):
-        if not kwargs['segment_3D_volume'] and isZstack:
+        if not kwargs['segment_3D_volume'] and self.isZstack:
             if init_imgs:
-                images, z_axis, channel_axis = _initialize_image(video_data, self.is_rgb,
+                images, z_axis, channel_axis = _initialize_image(images, self.is_rgb,
                                 iter_axis_time=0,
                                 iter_axis_zstack=1,
                                 timelapse=True,
-                                isZstack=isZstack,
+                                isZstack=self.isZstack,
                                 )
-                
-                self.z_axis = z_axis - 2 if z_axis is not None else None # video doesnt count as dim
-                self.channel_axis = channel_axis - 2
             else:
-                images = video_data
+                z_axis = self.z_axis
+                channel_axis = self.channel_axis
+                    
+            self.z_axis = z_axis - 2 if z_axis is not None else None # video doesnt count as dim. iterate over time
+            self.channel_axis = channel_axis - 2 if channel_axis is not None else None
+
             # Passing entire 4D video and segmenting slice-by-slice is 
             # not possible --> iterate each frame and run normal segment
-            labels = np.zeros(video_data.shape, dtype=np.uint32)
-            for i, image in enumerate(video_data):
+            if self.channel_axis is None:
+                labels = np.zeros(images.shape, dtype=np.uint32)
+            else:
+                shape = images.shape[:channel_axis] + images.shape[channel_axis+1:]
+                labels = np.zeros(shape, dtype=np.uint32)
+            for i, img_t in enumerate(images):
                 lab = self.eval_loop(
-                    image, segment_3D_volume=False,
-                    isZstack=True,
+                    img_t, segment_3D_volume=False,
                     init_imgs=False,
                     **eval_kwargs
                 )
                 labels[i] = lab
         else:
-            eval_kwargs['channels'] = [eval_kwargs['channels']]*len(video_data)
+            eval_kwargs['channels'] = [eval_kwargs['channels']]*len(images)
             if init_imgs:
-                images, z_axis, channel_axis = _initialize_image(video_data, self.is_rgb,
+                images, z_axis, channel_axis = _initialize_image(images, self.is_rgb,
                                             iter_axis_time=0,
                                             timelapse=True,
-                                            isZstack=isZstack,
+                                            isZstack=self.isZstack,
                                             )
-                self.z_axis = z_axis - 1 if z_axis is not None else None # video doesnt count as dim
-                self.channel_axis = channel_axis - 1
             else:
-                images = video_data
-            images = [image.astype(np.float32) for image in images]
+                z_axis = self.z_axis
+                channel_axis = self.channel_axis
+
+            self.z_axis = z_axis - 1 if z_axis is not None else None # video doesnt count as dim
+            self.channel_axis = channel_axis - 1 if channel_axis is not None else None
+            images = [image.astype(np.float32) for image in images] # convert to list
             labels = np.array(self._eval(images, **eval_kwargs))
 
-        return labels      
+        return labels
     
 def _initialize_image(image:np.ndarray,
                       is_rgb:bool,
@@ -322,6 +403,7 @@ def _initialize_image(image:np.ndarray,
                       timelapse:bool=False,
                       isZstack:bool=False,
                       target_axis_iter:Tuple[int]=None,
+                      add_rgb:bool=False,
                       ):
     """Tries to initialize image for cellpose.
     You will have to specify the target shape and the axis to iterate over.
@@ -347,9 +429,10 @@ def _initialize_image(image:np.ndarray,
         If True, the image is assumed to be a time lapse. Default is False.
     isZstack : bool, optional
         If True, the image is assumed to be a z-stack. Default is False.
-
     target_axis_iter : Tuple[int], optional
         Output axes along the output should be stacked, by default None
+    add_rgb : bool, optional
+        If False, will not try to add RGB channels to the image if it is not RGB.
 
     Returns
     -------
@@ -370,9 +453,15 @@ def _initialize_image(image:np.ndarray,
             )
         
         z_axis = 1
-        channel_axis = 2
-
-        target_shape = (true_img_shape[0], true_img_shape[1], 3, true_img_shape[2], true_img_shape[3])
+        if add_rgb:
+            target_shape = (true_img_shape[0], true_img_shape[1], 3, true_img_shape[-2], true_img_shape[-1])
+            channel_axis = 2
+        elif is_rgb:
+            target_shape = (true_img_shape[0], true_img_shape[1], 3, true_img_shape[-3], true_img_shape[-2])
+            channel_axis = 2
+        else:
+            target_shape = (true_img_shape[0], true_img_shape[1], true_img_shape[-2], true_img_shape[-1])
+            channel_axis = None
 
 
         if iter_axis_time is not None and iter_axis_zstack is not None:
@@ -390,13 +479,20 @@ def _initialize_image(image:np.ndarray,
     
     elif timelapse and not isZstack:
         z_axis = None
-        channel_axis = 1
         if len(true_img_shape) < 3 or (is_rgb and len(true_img_shape) < 4):
             raise TypeError(
                 f"Image is {len(true_img_shape)}D with shape {true_img_shape}. "
                 "It was expected to have 3D shape (T x Y x X x nchan)"
             )
-        target_shape = (true_img_shape[0], 3, true_img_shape[1], true_img_shape[2])
+        if add_rgb:
+            target_shape = (true_img_shape[0], 3, true_img_shape[-2], true_img_shape[-1])
+            channel_axis = 1
+        elif is_rgb:
+            target_shape = (true_img_shape[0], 3, true_img_shape[-3], true_img_shape[-2])
+            channel_axis = 1
+        else:
+            target_shape = (true_img_shape[0], true_img_shape[-2], true_img_shape[-1])
+            channel_axis = None
 
         if iter_axis_time is not None:
             iter_axis = [iter_axis_time]
@@ -407,13 +503,21 @@ def _initialize_image(image:np.ndarray,
     
     elif not timelapse and isZstack:
         z_axis = 0
-        channel_axis = 1
         if len(true_img_shape) < 3 or (is_rgb and len(true_img_shape) < 4):
             raise TypeError(
                 f"Image is {len(true_img_shape)}D with shape {true_img_shape}. "
                 "It was expected to have 3D shape (Z x Y x X x nchan)"
             )
-        target_shape = (true_img_shape[0], 3, true_img_shape[1], true_img_shape[2])
+        if add_rgb:
+            target_shape = (true_img_shape[0], 3, true_img_shape[-2], true_img_shape[-1])
+            channel_axis = 1
+        elif is_rgb:
+            target_shape = (true_img_shape[0], 3, true_img_shape[-3], true_img_shape[-2])
+            channel_axis = 1
+        else:
+            target_shape = (true_img_shape[0], true_img_shape[-2], true_img_shape[-1])
+            channel_axis = None
+
         if iter_axis_zstack is not None:
             iter_axis = [iter_axis_zstack]
             target_axis_iter = [0]
@@ -423,14 +527,21 @@ def _initialize_image(image:np.ndarray,
     
     elif not timelapse and not isZstack:
         z_axis = None
-        channel_axis = 0
 
         if len(true_img_shape) < 2 or (is_rgb and len(true_img_shape) < 3):
             raise TypeError(
                 f"Image is {len(true_img_shape)}D with shape {true_img_shape}. "
                 "It was expected to have 2D shape (Y x X x nchan)"
             )
-        target_shape = (3, true_img_shape[0], true_img_shape[1])
+        if add_rgb:
+            target_shape = (3, true_img_shape[-2], true_img_shape[-1])
+            channel_axis = 0
+        elif is_rgb:
+            target_shape = (3, true_img_shape[-3], true_img_shape[-2])
+            channel_axis = 0    
+        else:
+            target_shape = (true_img_shape[-2], true_img_shape[-1])
+            channel_axis = None
 
     if iter_axis is not None:
         # Build an index tuple: set first iter_axis to 0, others to slice(None)
@@ -438,6 +549,7 @@ def _initialize_image(image:np.ndarray,
         single_img_from_iter_axis = image[tuple(idx)]
     else:
         single_img_from_iter_axis = image
+        
     if single_img_from_iter_axis is not None:
         single_img_shape = single_img_from_iter_axis.shape
         single_img_ndim = len(single_img_shape)
@@ -446,6 +558,7 @@ def _initialize_image(image:np.ndarray,
         single_img_ndim = len(single_img_shape)
     
     single_img_isZstack = isZstack if iter_axis_zstack is None else False
+    single_img_timelapse = timelapse if iter_axis_time is None else False
     
     from cellacdc._core import _initialize_single_image
     image = core.apply_func_to_imgs(
@@ -459,8 +572,95 @@ def _initialize_image(image:np.ndarray,
         isZstack=single_img_isZstack,
         img_shape=single_img_shape,
         img_ndim=single_img_ndim,
+        timelapse=single_img_timelapse,
+
+        add_rgb=add_rgb,
     )
     return image, z_axis, channel_axis
+
+def check_directml_gpu_gpu(directml_gpu, gpu):
+    if directml_gpu:
+        from cellacdc.models._cellpose_base._directML import init_directML
+        directml_gpu = init_directML()
+
+    if directml_gpu and gpu:
+        printl(
+            """
+            gpu is preferable to directml_gpu, but doesn't work with non NVIDIA GPUs.
+            Since directml_gpu and set to True, the gpu argument will be ignored.
+            """
+        )
+        gpu = False
+    
+    return directml_gpu, gpu
+
+def setup_gpu_direct_ml(self, directml_gpu, gpu, device):
+
+    if directml_gpu:
+        from cellacdc.models._cellpose_base._directML import setup_directML
+        setup_directML(self)
+
+        from cellacdc.core import fix_sparse_directML
+        fix_sparse_directML()
+    
+    if gpu: # sometimes gpu is not properly set up ^^
+        from cellacdc.models._cellpose_base._directML import setup_custom_device
+        if device is None:
+            device = 0
+        try:
+            device = int(device)
+        except ValueError:
+            pass
+
+        if isinstance(device, int):
+            device = torch.device(f'cuda:{device}')
+        elif isinstance(device, str):
+            device = torch.device(device)
+        
+        setup_custom_device(self, device)
+
+def _get_normalize_params(
+        image,
+        normalize=False, 
+        rescale_intensity_low_val_perc=0.0, 
+        rescale_intensity_high_val_perc=100.0, 
+        # sharpen=0,
+        low_percentile=1.0, 
+        high_percentile=99.0,
+        norm3D=False,
+        cp_version=4,
+        tile_norm_blocksize=0,
+    ):
+    if not normalize:
+        return False
+        
+    rescale_intensity_low_val_perc = float(rescale_intensity_low_val_perc)
+    rescale_intensity_high_val_perc = float(rescale_intensity_high_val_perc)
+    low_percentile = float(low_percentile)
+    high_percentile = float(high_percentile)
+
+    normalize_kwargs = {}
+    do_rescale = (
+        rescale_intensity_low_val_perc != 0
+        or rescale_intensity_high_val_perc != 100.0
+    )
+    if not do_rescale:
+        normalize_kwargs['lowhigh'] = None
+    else:
+        low = image*rescale_intensity_low_val_perc/100
+        high = image*rescale_intensity_high_val_perc/100
+        normalize_kwargs['lowhigh'] = (low, high)
+    
+    # normalize_kwargs['sharpen'] = sharpen
+    normalize_kwargs['percentile'] = (low_percentile, high_percentile)
+    normalize_kwargs['norm3D'] = norm3D
+
+    if cp_version == 4:
+        normalize_kwargs['tile_norm_blocksize'] = tile_norm_blocksize
+    elif cp_version == 3:
+        normalize_kwargs['tile_norm'] = tile_norm_blocksize
+    
+    return normalize_kwargs
 
 def url_help():
     return 'https://cellpose.readthedocs.io/en/latest/api.html'

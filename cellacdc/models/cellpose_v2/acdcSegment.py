@@ -95,6 +95,26 @@ class Model(CellposeBaseModel):
                 residual_on=custom_residual_on,
                 diam_mean=custom_diam_mean,
             )
+    
+    def _get_eval_kwargs_v2(
+           self,
+           cellprob_threshold:float=0.0,
+           min_size:int=15,
+           normalize:bool=True,
+            resample:bool=True,
+            invert:bool=False,
+            original_kwargs:dict=None,
+    ):
+        additional_kwargs = {
+            'cellprob_threshold': cellprob_threshold,
+            'min_size': min_size,
+            'normalize': normalize,
+            'resample': resample,
+            'invert': invert,
+        }
+        original_kwargs.update(additional_kwargs)
+        return original_kwargs
+        
 
     def segment(
             self, image,
@@ -103,10 +123,11 @@ class Model(CellposeBaseModel):
             cellprob_threshold:float=0.0,
             stitch_threshold:float=0.0,
             min_size:int=15,
-            anisotropy:float=0.0,
             normalize:bool=True,
             resample:bool=True,
-            segment_3D_volume:bool=False            
+            segment_3D_volume:bool=False,
+            anisotropy:float=0.0,
+            invert:bool=False,
         ):
         """Segment image using cellpose eval
 
@@ -148,6 +169,9 @@ class Model(CellposeBaseModel):
             slice-by-slice and it will merge the resulting z-slice masks 
             belonging to the same object. 
             Default is False
+        invert : bool, optional
+            If True, invert image pixel intensity before running network.
+            Default is False.
 
         Returns
         -------
@@ -159,30 +183,35 @@ class Model(CellposeBaseModel):
         TypeError
             `stitch_threshold` must be 0 when segmenting slice-by-slice.
         """        
-        # Preprocess image
-        # image = image/image.max()
-        # image = skimage.filters.gaussian(image, sigma=1)
-        # image = skimage.exposure.equalize_adapthist(image)
+        self.timelapse = False
         self.img_shape = image.shape
         self.img_ndim = len(self.img_shape)
 
-        eval_kwargs, isZstack = self.get_eval_kwargs_v2(
+        eval_kwargs, self.isZstack = self.get_eval_kwargs(
             image,
             diameter=diameter,
             flow_threshold=flow_threshold,
-            cellprob_threshold=cellprob_threshold,
+            # cellprob_threshold=cellprob_threshold,
             stitch_threshold=stitch_threshold,
-            min_size=min_size,
+            # min_size=min_size,
             anisotropy=anisotropy,
+            # normalize=normalize,
+            # resample=resample,
+            segment_3D_volume=segment_3D_volume         
+        )
+
+        eval_kwargs = self._get_eval_kwargs_v2(
+            cellprob_threshold=cellprob_threshold,
+            min_size=min_size,
             normalize=normalize,
             resample=resample,
-            segment_3D_volume=segment_3D_volume         
+            invert=invert,
+            original_kwargs=eval_kwargs
         )
 
         labels = self.eval_loop(
             image,
             segment_3D_volume=segment_3D_volume,
-            isZstack=isZstack,
             **eval_kwargs
         )
 
@@ -192,13 +221,23 @@ class Model(CellposeBaseModel):
         return labels
     
     def segment3DT(self, video_data, signals=None, **kwargs):
+        self.timelapse = True
         self.img_shape = video_data[0].shape
         self.img_ndim = len(self.img_shape)
 
-        eval_kwargs, isZstack = self.get_eval_kwargs_v2(video_data[0], **kwargs)
+        eval_kwargs, self.isZstack = self.get_eval_kwargs(video_data[0], **kwargs)
+        eval_kwargs = self._get_eval_kwargs_v2(
+            cellprob_threshold=kwargs['cellprob_threshold'],
+            min_size=kwargs['min_size'],
+            normalize=kwargs['normalize'],
+            resample=kwargs['resample'],
+            invert=kwargs['invert'],
+            original_kwargs=eval_kwargs
+        )
+
 
         labels = self.segment3DT_eval(
-            video_data, isZstack, eval_kwargs, **kwargs
+            video_data, eval_kwargs, **kwargs
         )
 
 

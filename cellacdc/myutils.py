@@ -3828,7 +3828,12 @@ def init_segm_model(acdcSegment, posData, init_kwargs):
     
     try:
         # Models introduced before 1.3.2 do not have the segm_data as input
+        kwargs = inspect.getfullargspec(acdcSegment.Model.__init__).args
+        if 'is_rgb' not in kwargs and 'is_rgb' in init_kwargs:
+            del init_kwargs['is_rgb']
         model = acdcSegment.Model(**init_kwargs)
+
+
     except Exception as e:
         model = acdcSegment.Model(segm_data, **init_kwargs)
     return model
@@ -3874,28 +3879,28 @@ def parse_model_params(model_argspecs, model_params):
         parsed_model_params[argspec.name] = value
     return parsed_model_params
 
-def init_cellpose_denoise_model():
-    from . import apps
+# def init_cellpose_denoise_model():
+#     from . import apps
     
-    from cellacdc.models.cellpose_v3._denoise import (
-        CellposeDenoiseModel, url_help
-    )
+#     from cellacdc.models.cellpose_v3._denoise import (
+#         CellposeDenoiseModel, url_help
+#     )
 
-    init_argspecs, run_argspecs = getClassArgSpecs(CellposeDenoiseModel)
-    url = url_help()
+#     init_argspecs, run_argspecs = getClassArgSpecs(CellposeDenoiseModel)
+#     url = url_help()
     
-    paramsWin = apps.QDialogModelParams(
-        init_argspecs, run_argspecs, 'Cellpose 3.0', 
-        url=url, is_tracker=True, action_type='denoising'
-    )
-    paramsWin.exec_()
-    if paramsWin.cancel:
-        return
+#     paramsWin = apps.QDialogModelParams(
+#         init_argspecs, run_argspecs, 'Cellpose 3.0', 
+#         url=url, is_tracker=True, action_type='denoising'
+#     )
+#     paramsWin.exec_()
+#     if paramsWin.cancel:
+#         return
     
-    init_params = paramsWin.init_kwargs
-    run_params = paramsWin.model_kwargs
-    denoise_model = CellposeDenoiseModel(**init_params)
-    return denoise_model, init_params, run_params
+#     init_params = paramsWin.init_kwargs
+#     run_params = paramsWin.model_kwargs
+#     denoise_model = CellposeDenoiseModel(**init_params)
+#     return denoise_model, init_params, run_params
 
 def init_sam_input_points_df(posData, input_points_filepath):
     input_points_df = None
