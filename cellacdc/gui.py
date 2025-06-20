@@ -13616,6 +13616,7 @@ class guiWin(QMainWindow):
                                    )
 
         self.whitelistIDsUpdateText()
+        self.whitelistUpdateLab()
         self.updateAllImages()
         self.keepIDsTempLayerLeft.clear()
 
