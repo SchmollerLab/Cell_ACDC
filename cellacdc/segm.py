@@ -607,6 +607,9 @@ class segmWin(QMainWindow):
             self.processStopped()
             return
         
+        if self.secondChannelName is not None:
+            init_kwargs['is_rgb'] = True
+        
         self.model = myutils.init_segm_model(acdcSegment, self.posData, init_kwargs) 
         try:
             self.model.setupLogger(self.logger)
