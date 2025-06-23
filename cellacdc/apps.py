@@ -10957,7 +10957,7 @@ class QDialogModelParams(QDialog):
         if postProcessLayout is not None:
             mainLayout.addSpacing(10)
             mainLayout.addLayout(postProcessLayout)
-            mainLayout.setStretch(row, 1)
+            mainLayout.setStretch(row, 0)
             row += 1
             
         mainLayout.addSpacing(20)
@@ -11538,6 +11538,8 @@ class QDialogModelParams(QDialog):
         groupBoxLayout.setColumnStretch(0, 0)
         groupBoxLayout.setColumnStretch(1, 1)
         groupBoxLayout.setColumnStretch(3, 0)
+        nrows = groupBoxLayout.rowCount()
+        groupBoxLayout.setRowStretch(nrows, 1)
         
         groupBox.setLayout(groupBoxLayout)
         return groupBox, ArgsWidgets_list
