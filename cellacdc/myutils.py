@@ -388,11 +388,13 @@ def get_info_version_text(is_cli=False):
     version = read_version()
     release_date = get_date_from_version(version, package='cellacdc')
     py_ver = sys.version_info
+    env_folderpath = os.path.dirname(os.__file__)
     python_version = f'{py_ver.major}.{py_ver.minor}.{py_ver.micro}'
     info_txts = [
         f'Version {version}',
         f'Released on: {release_date}',
         f'Installed in "{cellacdc_path}"',
+        f'Environment folder: "{env_folderpath}"',
         f'Python {python_version}',
         f'Platform: {platform.platform()}',
         f'System: {platform.system()}',
