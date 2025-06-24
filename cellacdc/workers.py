@@ -345,7 +345,7 @@ class SegForLostIDsWorker(QObject):
             IDs_bboxs_list.append(IDs_bboxs)
             bboxs_list.append(bboxs)
             posData.lab = new_lab
-            self.emitSigUpdateRP(wl_update=False, wl_track_og_curr=False)
+            self.emitSigUpdateRP(wl_update=True, wl_track_og_curr=False)
             self.emitSigStoreData(autosave=False)
             newly_assigned_IDs = set(assigned_IDs) - set(assigned_IDs_prev)
             self.emitTrackManuallyAddedObject(newly_assigned_IDs, True, False, False)

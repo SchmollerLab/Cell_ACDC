@@ -490,15 +490,12 @@ def exception_handler_cli(func):
     return inner_function
 
 def exception_handler(func):
+    """Decorator to handle class methods exceptions and show a critical error message.
+    """
     @wraps(func)
     def inner_function(self, *args, **kwargs):
         try:
-            if func.__code__.co_argcount==1 and func.__defaults__ is None:
-                result = func(self)
-            elif func.__code__.co_argcount>1 and func.__defaults__ is None:
-                result = func(self, *args)
-            else:
-                result = func(self, *args, **kwargs)
+            result = func(self, *args, **kwargs)
         except Exception as e:
             try:
                 if self.progressWin is not None:

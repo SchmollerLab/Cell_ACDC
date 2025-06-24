@@ -325,12 +325,7 @@ def disableWindow(func):
     def inner_function(self, *args, **kwargs):
         self.setDisabled(True)
         try:
-            if func.__code__.co_argcount==1 and func.__defaults__ is None:
-                result = func(self)
-            elif func.__code__.co_argcount>1 and func.__defaults__ is None:
-                result = func(self, *args)
-            else:
-                result = func(self, *args, **kwargs)
+            result = func(self, *args, **kwargs)
             return result
         except Exception as err:
             raise err
@@ -458,6 +453,7 @@ class guiWin(QMainWindow):
         self.viewOriginalLabels = True
         self.keepDisabled = False
         self.whitelistAddNewIDsFrame = None
+        self.whitelistOriginalIDs = None
 
         self.checkableButtons = []
         self.LeftClickButtons = []
@@ -5164,7 +5160,7 @@ class guiWin(QMainWindow):
                 else:
                     ID = editID_prompt.EntryID
             
-            obj_idx = posData.IDs.index(ID)
+            obj_idx = posData.IDs_idxs[ID]
             y, x = posData.rp[obj_idx].centroid[-2:]
             xdata, ydata = int(x), int(y)
 
@@ -8197,6 +8193,8 @@ class guiWin(QMainWindow):
         }
 
     def SegForLostIDsAction(self):
+
+        self.setFrameNavigationDisabled(disable=True, why='Segmentation for lost IDs')
         posData = self.data[self.pos_i]
         if posData.frame_i == 0:
             self.logger.info('Segmentation for lost IDs not available on first frame.')
@@ -8321,7 +8319,10 @@ class guiWin(QMainWindow):
     def SegForLostIDsWorkerFinished(self):
 
         self.updateAllImages()
-        
+        self.update_rp()
+        self.store_data(autosave=True)
+        self.setFrameNavigationDisabled(disable=False, why='Segmentation for lost IDs')
+
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
             self.progressWin.close()
@@ -13321,7 +13322,7 @@ class guiWin(QMainWindow):
 
         # QTimer.singleShot(300, self.autoRange)
 
-    def frameSetDisabled(self, disable:bool=False, why:str=""):
+    def setFrameNavigationDisabled(self, disable:bool=False, why:str=""):
         """Disables the frame navigation buttons and scrollbar.
         This is used when the user is not allowed to navigate through frames
         Call again to unlock it again. Also sets tooltips to inform the user
@@ -13427,6 +13428,8 @@ class guiWin(QMainWindow):
         
         self.whitelistIDsToolbar.viewOGToggle.setCheckable(True)
 
+
+    @exception_handler
     @disableWindow
     def whitelistViewOGIDs(self, checked:bool):
         """Switch between selected and original labels.
@@ -13458,7 +13461,7 @@ class guiWin(QMainWindow):
 
         self.store_data(autosave=False)
         if switch_to_og:
-            self.frameSetDisabled(True, why='Viewing original labels')
+            self.setFrameNavigationDisabled(True, why='Viewing original labels')
             self.viewOriginalLabels = True
 
             for i in frames_range:
@@ -13466,23 +13469,35 @@ class guiWin(QMainWindow):
                 self.get_data()
                 self.whitelistTrackOGCurr(frame_i=i)
 
-                og_frame = posData.whitelist.originalLabs[i]
-                segm_frame = posData.lab
+                IDs = posData.IDs
 
-                for ID in posData.whitelist.whitelistIDs[i]: # update whitelisted contours
-                    if ID in posData.whitelist.originalLabsIDs[i]:
-                        og_frame[og_frame == ID] = 0
-                    og_frame[segm_frame == ID] = ID
+                og_frame = posData.whitelist.originalLabs[i].copy()
+                IDs_to_uppdate = posData.whitelist.whitelistIDs[i] & posData.whitelist.originalLabsIDs[i]
+                if IDs_to_uppdate:
+                    mask = np.isin(og_frame, list(IDs_to_uppdate))
+                    og_frame[mask] = 0
+
+                    mask = np.isin(posData.lab, list(IDs_to_uppdate))
+                    og_frame[mask] = posData.lab[mask]
+                
+                IDs_to_add = posData.whitelist.whitelistIDs[i] - posData.whitelist.originalLabsIDs[i]
+                if IDs_to_add:
+                    mask = np.isin(posData.lab, list(IDs_to_add))
+                    og_frame[mask] = posData.lab[mask]
 
                 posData.lab = og_frame
                 self.update_rp(wl_update=False)
                 self.store_data(autosave=False)
 
+            if frame_i > 0:
+                missing_IDs = set(posData.IDs) - set(posData.allData_li[frame_i-1]['IDs'])
+                self.trackManuallyAddedObject(missing_IDs,isNewID=True, wl_update=False)
+
             self.setAllTextAnnotations()
             self.updateAllImages()
 
         elif switch_to_seg:
-            self.frameSetDisabled(False)
+            self.setFrameNavigationDisabled(False)
 
             self.viewOriginalLabels = False
             for i in frames_range:
@@ -13605,7 +13620,7 @@ class guiWin(QMainWindow):
 
         self.whitelistIDsToolbar.viewOGToggle.setCheckable(True)
         self.whitelistSetViewOGIDsToggle(False)
-        self.frameSetDisabled(False)
+        self.setFrameNavigationDisabled(False)
 
         self.store_data(autosave=False)
         self.get_data()
@@ -14971,16 +14986,19 @@ class guiWin(QMainWindow):
             return
 
         if ev.key() == Qt.Key_Q and self.debug:
-            posData = self.data[self.pos_i]
-            frame_i = posData.frame_i
-            import pandasgui
-            df_li = [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))] 
-            pandasgui.show(
-                self.lineage_tree.lineage_list, df_li, self.lineage_tree.lineage_list[frame_i-1], df_li[frame_i-1]
-            )
+            # posData = self.data[self.pos_i]
+            # frame_i = posData.frame_i
+            # import pandasgui
+            # df_li = [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))] 
+            # pandasgui.show(
+            #     self.lineage_tree.lineage_list, df_li, self.lineage_tree.lineage_list[frame_i-1], df_li[frame_i-1]
+            # )
             
-            pass
+            # pass
         
+            QTimer.singleShot(100, self._do_nothing)
+
+
         if not self.isDataLoaded:
             self.logger.warning(
                 'Data not loaded yet. Key pressing events are not connected.'
@@ -22884,12 +22902,18 @@ class guiWin(QMainWindow):
             self, draw=True, debug=False, update_IDs=True, 
             wl_update=True, wl_track_og_curr=False,wl_update_lab=False
         ):
-        
+
         posData = self.data[self.pos_i]
         # Update rp for current posData.lab (e.g. after any change)
 
         if wl_update:
-            old_IDs = posData.allData_li[posData.frame_i]['IDs'].copy() # for whitelist stuff
+            if self.whitelistOriginalIDs is None:
+                old_IDs = posData.allData_li[posData.frame_i]['IDs'].copy() # for whitelist stuff
+            else:
+                old_IDs = self.whitelistOriginalIDs.copy()
+                self.whitelistOriginalIDs = None
+        elif self.whitelistOriginalIDs is None:
+            self.whitelist_old_IDs = posData.allData_li[posData.frame_i]['IDs'].copy()
 
         posData.rp = skimage.measure.regionprops(posData.lab)
         if update_IDs:
@@ -22905,7 +22929,7 @@ class guiWin(QMainWindow):
 
         if not wl_update:
             return
-        
+
         # Update tracking whitelist
         accepted_lost_centroids = self.getTrackedLostIDs()
         new_IDs = posData.IDs
@@ -22917,7 +22941,7 @@ class guiWin(QMainWindow):
         )
         if debug:
             printl(added_IDs, removed_IDs)
-        
+
         self.whitelistPropagateIDs(
             IDs_to_add=added_IDs, IDs_to_remove=removed_IDs,
             curr_frame_only=True, IDs_curr=new_IDs,
@@ -27598,7 +27622,7 @@ class guiWin(QMainWindow):
         else:
             return False
 
-    def trackManuallyAddedObject(self, added_IDs: List[int] | int | set, isNewID: bool,
+    def trackManuallyAddedObject(self, added_IDs: List[int] | int | Set[int], isNewID: bool,
                                   wl_update:bool=True, wl_track_og_curr:bool=False):
         """Track object added manually on frame that was already visited.
 
@@ -27683,7 +27707,7 @@ class guiWin(QMainWindow):
             update_rp = True
         
         if update_rp:
-            self.update_rp()
+            self.update_rp(wl_update=wl_update)
     
     def trackFrameCustomTracker(self, prev_lab, currentLab, IDs=None):
         try:

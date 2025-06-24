@@ -219,17 +219,19 @@ class Model:
         isZstack, is_rgb = self.get_zStack_rgb(image)
 
         if anisotropy == 0.0 and segment_3D_volume:
-            printl(
-                'Anisotropy is 0.0 but segment_3D_volume is True. '
-                'Please set anisotropy to a non-zero value.' \
-                'For now set to 1.0, assuming isotropic data.'
-            )
+            if not self.printed_model_params:
+                printl(
+                    'Anisotropy is 0.0 but segment_3D_volume is True. '
+                    'Please set anisotropy to a non-zero value.' \
+                    'For now set to 1.0, assuming isotropic data.'
+                )
             anisotropy = 1.0
 
         elif not isZstack:
-            printl(
-                """Anisotropy is set to 1.0 (assuming isotropic data),
-                since data is not a z-stack""")
+            if not self.printed_model_params:
+                printl(
+                    """Anisotropy is set to 1.0 (assuming isotropic data),
+                    since data is not a z-stack""")
             anisotropy = 1.0
         
         do_3D = segment_3D_volume
@@ -239,16 +241,18 @@ class Model:
             do_3D = False
         
         if stitch_threshold > 0:
-            print(
-                'Using stiching mode instead of trying to segment 3D volume.'
-                )
+            if not self.printed_model_params:
+                print(
+                    'Using stiching mode instead of trying to segment 3D volume.'
+                    )
             do_3D = False
         
         if isZstack and flow_threshold > 0:
-            print(
-                'Flow threshold is not used for 3D segmentation. '
-                'Setting it to 0.0.'
-            )
+            if not self.printed_model_params:
+                print(
+                    'Flow threshold is not used for 3D segmentation. '
+                    'Setting it to 0.0.'
+                )
             flow_threshold = 0.0
             
         if flow_threshold==0.0:
