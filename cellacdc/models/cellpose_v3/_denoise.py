@@ -27,7 +27,8 @@ class CellposeDenoiseModel(DenoiseModel):
             denoise_model_path: os.PathLike='',
             diam_mean: float = 30.0,
             denoise_nchan: int = 1,
-            is_rgb: NotGUIParam = False
+            is_rgb: NotGUIParam = False,
+            ask_install_gpu: NotGUIParam = True,
         ):
         """Initialize cellpose 3.0 denoising model
 
@@ -77,6 +78,10 @@ class CellposeDenoiseModel(DenoiseModel):
         denoise_nchan : int, optional
             Number of channels in the denoised image. Default is 1.
             All cellpose denoise models are single channel, so almost always 1.
+        is_rgb : NotGUIParam, optional
+            If True, the model will expect RGB images. Default is False.
+        ask_install_gpu : NotGUIParam, optional
+            If True, the model will ask to install GPU support if it is not available.
         """
         self.first_second_channel = [0, 1]
         self.cellpose_greyscale_channel = [0, 0]
@@ -97,9 +102,12 @@ class CellposeDenoiseModel(DenoiseModel):
 
         self.nstr = denoise_model.split('_')[-1] if denoise_model else None
 
-        directml_gpu, gpu = check_directml_gpu_gpu(
-            directml_gpu, gpu
+        directml_gpu, gpu, proceed= check_directml_gpu_gpu(
+            directml_gpu, gpu, ask_install=ask_install_gpu
             )
+        
+        if not proceed:
+            return
 
         if denoise_model_path and denoise_model: 
             raise ValueError(

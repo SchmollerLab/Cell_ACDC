@@ -6746,6 +6746,16 @@ class saveDataWorker(QObject):
             except Exception as e:
                 pass
 
+            if not self.do_not_save_og_whitelist:
+                og_save_path = os.path.join(
+                    posData.images_path,  self.append_name_og_whitelist
+                )
+                posData.whitelist.saveOGLabs(og_save_path)
+            
+            if posData.whitelist:
+                whitelistIDs_path = posData.segm_npz_path.replace('.npz', '_whitelistIDs.json')
+                posData.whitelist.save(whitelistIDs_path)
+
             if posData.segmInfo_df is not None:
                 try:
                     posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)

@@ -61,9 +61,13 @@ class Model(CellposeBaseModel):
         directml_gpu, gpu =  cpu_gpu_directml_gpu(
             input_string=device_type,
         )
-        directml_gpu, gpu = check_directml_gpu_gpu(
+        directml_gpu, gpu, proceed = check_directml_gpu_gpu(
             directml_gpu=directml_gpu, gpu=gpu,
         )
+
+        if not proceed:
+            return
+
         model_path = model_path or model_type
         
         major_version = myutils.get_cellpose_major_version()

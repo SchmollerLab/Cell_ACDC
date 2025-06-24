@@ -578,7 +578,14 @@ def _initialize_image(image:np.ndarray,
     )
     return image, z_axis, channel_axis
 
-def check_directml_gpu_gpu(directml_gpu, gpu):
+def check_directml_gpu_gpu(directml_gpu, gpu, ask_install=True):
+    if ask_install:
+        proceed = myutils.check_gpu_availible('cellpose_v3', use_gpu=(gpu or directml_gpu))
+    else:
+        proceed = True
+
+    if not proceed:
+        return directml_gpu, gpu, proceed
     if directml_gpu:
         from cellacdc.models._cellpose_base._directML import init_directML
         directml_gpu = init_directML()
@@ -591,8 +598,8 @@ def check_directml_gpu_gpu(directml_gpu, gpu):
             """
         )
         gpu = False
-    
-    return directml_gpu, gpu
+        
+    return directml_gpu, gpu, proceed
 
 def setup_gpu_direct_ml(self, directml_gpu, gpu, device):
 

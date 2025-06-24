@@ -110,9 +110,12 @@ class Model(CellposeBaseModel):
             input_string=device_type,
         )
 
-        directml_gpu, gpu = check_directml_gpu_gpu(
+        directml_gpu, gpu, proceed = check_directml_gpu_gpu(
             directml_gpu=directml_gpu, gpu=gpu,
         )
+
+        if not proceed:
+            return
 
         if denoise_before_segmentation and denoise_model:
             denoise_model_type = denoise_model.split('_')[-1] if denoise_model else None
@@ -162,6 +165,7 @@ class Model(CellposeBaseModel):
                 denoise_nchan=denoise_nchan,
                 batch_size=batch_size, 
                 is_rgb=self.is_rgb,
+                ask_install_gpu=False,  # don't ask to install cellpose if not installed
             )
         
         setup_gpu_direct_ml(
