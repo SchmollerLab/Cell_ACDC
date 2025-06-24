@@ -91,10 +91,10 @@ torch = [
   "torchvision"
 ]
 tf = [
-  "tensorflow"
+  "tensorflow<2.16"
 ]
 tensorflow = [
-  "tensorflow"
+  "tensorflow<2.16"
 ]
 pytorch = [
     "torchvision",
@@ -102,7 +102,7 @@ pytorch = [
 all = [
     "PyQt6",
     "torchvision",
-    "tensorflow",
+    "tensorflow<2.16",
     "tables",
 ]
 

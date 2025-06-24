@@ -562,9 +562,9 @@ error_down_str = f'\n{error_down_str}'
 pytorch_commands = {
     'Windows': {
         'Conda': {
-            'CPU': 'conda install pytorch torchvision cpuonly -c pytorch',
-            'CUDA 11.8 (NVIDIA GPU)': 'conda install pytorch torchvision pytorch-cuda=11.8 -c pytorch -c nvidia',
-            'CUDA 12.1 (NVIDIA GPU)': 'conda install pytorch torchvision pytorch-cuda=12.1 -c pytorch -c nvidia'
+            'CPU': 'conda install pytorch torchvision cpuonly -c conda-forge',
+            'CUDA 11.8 (NVIDIA GPU)': 'conda install pytorch torchvision pytorch-cuda=11.8 -c conda-forge -c nvidia',
+            'CUDA 12.1 (NVIDIA GPU)': 'conda install pytorch torchvision pytorch-cuda=12.1 -c conda-forge -c nvidia'
         },
         'Pip': {
             'CPU': 'python -m pip install torch torchvision',
@@ -574,7 +574,7 @@ pytorch_commands = {
     },
     'Mac': {
         'Conda': {
-            'CPU': 'conda install pytorch torchvision cpuonly -c pytorch',
+            'CPU': 'conda install pytorch torchvision cpuonly -c conda-forge',
             'CUDA 11.8 (NVIDIA GPU)': '[WARNING]: CUDA is not available on MacOS',
             'CUDA 12.1 (NVIDIA GPU)': '[WARNING]: CUDA is not available on MacOS'
         },
@@ -586,9 +586,9 @@ pytorch_commands = {
     },
     'Linux': {
         'Conda': {
-            'CPU': 'conda install pytorch torchvision cpuonly -c pytorch',
-            'CUDA 11.8 (NVIDIA GPU)': 'conda install pytorch torchvision pytorch-cuda=11.8 -c pytorch -c nvidia',
-            'CUDA 12.1 (NVIDIA GPU)': 'conda install pytorch torchvision pytorch-cuda=12.1 -c pytorch -c nvidia'
+            'CPU': 'conda install pytorch torchvision cpuonly -c conda-forge',
+            'CUDA 11.8 (NVIDIA GPU)': 'conda install pytorch torchvision pytorch-cuda=11.8 -c conda-forge -c nvidia',
+            'CUDA 12.1 (NVIDIA GPU)': 'conda install pytorch torchvision pytorch-cuda=12.1 -c conda-forge -c nvidia'
         },
         'Pip': {
             'CPU': 'pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cpu',
