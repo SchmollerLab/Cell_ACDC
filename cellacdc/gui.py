@@ -27151,7 +27151,6 @@ class guiWin(QMainWindow):
         else:
             rp = posData.allData_li[frame_i]['regionprops']
             IDs_idxs = posData.allData_li[frame_i]['IDs_idxs']
-        printl(delID, IDs_idxs)
 
         if isinstance(delID, int):
             delID = [delID]
@@ -27240,16 +27239,15 @@ class guiWin(QMainWindow):
             posData.frame_i = current_frame_i
             self.get_data()   
 
+        posData.lab, delID_mask = self.deleteIDFromLab(posData.lab, delIDs, )
         for _delID in delIDs:
             self.clearObjContour(ID=_delID, ax=0)     
             self.clearObjContour(ID=_delID, ax=1)  
             self.removeObjectFromRp(_delID)    
             self.removeStoredContours(_delID) 
-        delMask = np.zeros(posData.lab.shape, dtype=bool)
-        posData.lab, delID_mask = self.deleteIDFromLab(posData.lab, delIDs, delMask=delMask)
 
         self.store_data(autosave=False)
-        # self.whitelistPropagateIDs(IDs_to_remove=delIDs, curr_frame_only=(not applyFutFrames))
+        self.whitelistPropagateIDs(IDs_to_remove=delIDs, curr_frame_only=(not applyFutFrames))
         return delID_mask
     
     def setOverlayLabelsItems(self):
