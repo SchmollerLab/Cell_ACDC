@@ -77,6 +77,14 @@ try:
     )
     
     ap.add_argument(
+        '-y', '--yes', action='store_true',
+        help=(
+            'Sets confirmation values to "yes" automatically. Users will '
+            'not be prompted for confirmation when installing Cell-ACDC for the first time.'
+        )
+    )
+    
+    ap.add_argument(
         '-d', '--debug', action='store_true',
         help=(
             'Used for debugging. Test code with'
