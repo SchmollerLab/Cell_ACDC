@@ -17,7 +17,6 @@ def _install_tables(parent_software='Cell-ACDC'):
                 'If the installation fails, you can still use Cell-ACDC, but we '
                 'highly recommend you report the issue (see link below) and we '
                 'will be very happy to help. Thank you for your patience!'
-                
             )
         else:
             issues_url = 'https://github.com/SchmollerLab/Cell_ACDC/issues'
@@ -170,7 +169,12 @@ def _setup_gui_libraries(caller_name='Cell-ACDC'):
         print(txt)
         command_txt = 'pip install --upgrade qtpy'   
         while True:
-            answer = try_input_install_package('qtpy', command_txt)
+            from .config import parser_args
+            if parser_args['yes']:
+                answer = 'y'
+            else:
+                answer = try_input_install_package('qtpy', command_txt)
+            
             if answer.lower() == 'y' or not answer:
                 import subprocess
                 subprocess.check_call(
@@ -219,7 +223,11 @@ def _setup_gui_libraries(caller_name='Cell-ACDC'):
             commnad_txt = pip_command
             pkg_name = 'PyQt6'
         while True:
-            answer = try_input_install_package(pkg_name, commnad_txt)
+            from .config import parser_args
+            if parser_args['yes']:
+                answer = 'y'
+            else:
+                answer = try_input_install_package(pkg_name, commnad_txt)
             if answer.lower() == 'y' or not answer:
                 import subprocess
                 if is_mac_arm64 and is_conda_env():
@@ -267,11 +275,16 @@ def _setup_gui_libraries(caller_name='Cell-ACDC'):
     
     if warn_restart:
         print('*'*60)
-        input(
+        note_text = (
             f'[NOTE]: {caller_name} had to install the required GUI libraries. '
             'Please, re-start the software. Thank you for your patience! '
             '(Press any key to exit). '
         )
+        from .config import parser_args
+        if parser_args['yes']:
+            print(note_text)
+        else:
+            input(note_text)
         exit()
 
 def _setup_app(splashscreen=False, icon_path=None, logo_path=None, scheme=None):

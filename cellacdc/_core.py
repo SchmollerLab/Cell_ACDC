@@ -124,29 +124,30 @@ def _calc_rotational_vol(obj, PhysicalSizeY=1, PhysicalSizeX=1, logger=None):
             printl(traceback.format_exc())
         return np.nan, np.nan
 
-def _initialize_single_image(image, is_rgb=False, isZstack=False, img_shape=None, img_ndim=None, frame_index_out=None):
+def _initialize_single_image(image, is_rgb=False, isZstack=False, img_shape=None, # in use, pylint cant detect it
+                             timelapse=False, img_ndim=None, frame_index_out=None, # assumes that the order of dimesions is t, z, c, h, w
+                             add_rgb=True, ): # for some reason doesnt move axis....
     # See cellpose.gui.io._initialize_images
     if img_shape is None:
         img_shape = image.shape
     if img_ndim is None:
         img_ndim = len(img_shape)
 
-    if img_ndim > 3 and not is_rgb:
-        raise TypeError(
-            f'Image is 4D with shape {img_shape}.'
-            'Only 2D or 3D images are supported by cellpose in Cell-ACDC'
-        )
-    elif img_ndim==3: # z stack or rgb, last axis is channels
-        # if img_shape[0] < 5:
-        #     # Move first axis to last since we interpret this as RGB channels
-        #     image = np.transpose(image, (1,2,0))
-        if is_rgb: # enforce 3 channels if RGB
-            if img_shape[2] < 3:
-                shape_to_concat = (img_shape[0], img_shape[1], 3-img_shape[2])
-                to_concat = np.zeros(shape_to_concat,dtype=type(image[0,0,0]))
-                image = np.concatenate((image, to_concat), axis=-1)
-            elif img_shape[2]<5 and img_shape[2]>2:
-                image = image[:,:,:3]
+
+    if is_rgb: # enforce 3 channels if RGB, assuming rgb is last axis
+        # move channel axis to the end if it is not already
+        # image = np.moveaxis(image, input_channel_axis, -1)
+        # img_shape = list(image)
+        # del img_shape[input_channel_axis]  # remove channel axis from shape
+        # img_shape.append(3)  # add 3 channels at the end
+        if img_shape[-1] == 3:
+            pass
+        elif img_shape[-1] < 3:
+            shape_to_concat = (img_shape[0], img_shape[1], 3-img_shape[-1])
+            to_concat = np.zeros(shape_to_concat,dtype=type(image[0,0,0]))
+            image = np.concatenate((image, to_concat), axis=-1)
+        elif img_shape[-1]<5 and img_shape[-1]>2:
+            image = image[:,:,:3]
     
     image = image.astype(np.float32)
 
@@ -165,23 +166,20 @@ def _initialize_single_image(image, is_rgb=False, isZstack=False, img_shape=None
     image /= np.where(scale > 1e-3, scale, 1)
     image *= 255
 
-    if isZstack:
-        shape_to_concat = (img_shape[0], img_shape[1], img_shape[2], 2)
-        to_concat = np.zeros(shape_to_concat,dtype=type(image[0,0,0]))
-        image = image[..., np.newaxis]  # add a new axis for z
-        image = np.concatenate([image, to_concat], axis=-1)
-
-    
-    elif img_ndim == 2:
-        shape_to_concat = (img_shape[0], img_shape[1], 2)
-        to_concat = np.zeros(shape_to_concat,dtype=type(image[0,0]))
-        image = image[..., np.newaxis]
+    # format output, rearranging dimensions if necessary, only adding RGB channels if needed
+    if not is_rgb and add_rgb:
+        shape_to_concat = img_shape + (2,)  # add 2 channels
+        to_concat = np.zeros(shape_to_concat, dtype=type(image[0, 0, 0]))
+        image = image[..., np.newaxis]  # add a new axis for channels
         image = np.concatenate([image, to_concat], axis=-1)
     
-    if isZstack:
-        image = np.transpose(image, (0, 3, 1, 2))  # z x channels x W x H
-    else:
-        image = np.transpose(image, (2, 0, 1))  # channels x W x H
+    if is_rgb or add_rgb:
+        axis_for_channels = -3
+        image = np.moveaxis(image, -1, axis_for_channels)
 
+        # t x z x W x H x c -> t x z x c x W x H
+        # t x W x H x c -> t x c x W x H
+        # z x W x H x c -> z x c x W x H
+        # W x H x c -> c x W x H
     image = image.astype(np.float32)
     return frame_index_out, image

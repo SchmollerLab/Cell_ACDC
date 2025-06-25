@@ -2276,6 +2276,10 @@ def get_list_of_trackers():
             os.path.isdir(_path) and os.path.exists(tracker_script_path)
             and not name.endswith('__')
         )
+
+        if name.startswith('_'):
+            continue
+        
         if is_valid_tracker:
             trackers.append(name)
     return natsorted(trackers)
@@ -2291,6 +2295,9 @@ def get_list_of_models():
             continue
         
         if name.endswith('__'):
+            continue
+            
+        if name.startswith('_'):
             continue
         
         if name == 'skip_segmentation':
@@ -2730,6 +2737,9 @@ def get_cellpose_major_version(errors='raise'):
     return major_installed
 
 def check_cellpose_version(version: str):
+    if isinstance(version, int):
+        version = f'{version}.0'
+
     major_requested = int(version.split('.')[0])
     cancel = False
     try:
@@ -2747,10 +2757,19 @@ def check_cellpose_version(version: str):
         raise ModuleNotFoundError('Cellpose installation cancelled by the user.')
     return is_version_correct
 
+def purge_module(module_name):
+    import sys
+    to_delete = [mod for mod in sys.modules if mod == module_name or mod.startswith(module_name + '.')]
+    for mod in to_delete:
+        del sys.modules[mod]
+
 def check_install_cellpose(
         version: Literal['2.0', '3.0', '4.0', 'any'] = '2.0', 
         version_to_install_if_missing: Literal['2.0', '3.0', '4.0'] = '4.0'
     ):
+    if isinstance(version, int):
+        version = f'{version}.0'
+
     if version == 'any':
         try:
             from cellpose import models
@@ -2771,6 +2790,12 @@ def check_install_cellpose(
         import_pkg_name='cellpose',
         force_upgrade=True
     )
+
+    purge_module('cellpose')
+
+    importlib.invalidate_caches()
+    import cellpose
+    importlib.reload(cellpose)
 
 def check_install_baby():
     check_install_package(
@@ -3744,8 +3769,8 @@ def _availible_frameworks(model_name):
         or model_name.lower().find('yeaz_v2') != -1
     ),
     "directML":(
-        # model_name.lower().find('cellpose_v4') != -1 # not yet
-        #or model_name.lower().find('cellpose_v3') != -1 has its own way to check
+        model_name.lower().find('cellpose_v4') != -1
+        or model_name.lower().find('cellpose_v3') != -1# has its own way to check
 
     )
     }
@@ -3939,7 +3964,12 @@ def init_segm_model(acdcSegment, posData, init_kwargs):
     
     try:
         # Models introduced before 1.3.2 do not have the segm_data as input
+        kwargs = inspect.getfullargspec(acdcSegment.Model.__init__).args
+        if 'is_rgb' not in kwargs and 'is_rgb' in init_kwargs:
+            del init_kwargs['is_rgb']
         model = acdcSegment.Model(**init_kwargs)
+
+
     except Exception as e:
         model = acdcSegment.Model(segm_data, **init_kwargs)
     return model
@@ -3985,28 +4015,28 @@ def parse_model_params(model_argspecs, model_params):
         parsed_model_params[argspec.name] = value
     return parsed_model_params
 
-def init_cellpose_denoise_model():
-    from . import apps
+# def init_cellpose_denoise_model():
+#     from . import apps
     
-    from cellacdc.models.cellpose_v3._denoise import (
-        CellposeDenoiseModel, url_help
-    )
+#     from cellacdc.models.cellpose_v3._denoise import (
+#         CellposeDenoiseModel, url_help
+#     )
 
-    init_argspecs, run_argspecs = getClassArgSpecs(CellposeDenoiseModel)
-    url = url_help()
+#     init_argspecs, run_argspecs = getClassArgSpecs(CellposeDenoiseModel)
+#     url = url_help()
     
-    paramsWin = apps.QDialogModelParams(
-        init_argspecs, run_argspecs, 'Cellpose 3.0', 
-        url=url, is_tracker=True, action_type='denoising'
-    )
-    paramsWin.exec_()
-    if paramsWin.cancel:
-        return
+#     paramsWin = apps.QDialogModelParams(
+#         init_argspecs, run_argspecs, 'Cellpose 3.0', 
+#         url=url, is_tracker=True, action_type='denoising'
+#     )
+#     paramsWin.exec_()
+#     if paramsWin.cancel:
+#         return
     
-    init_params = paramsWin.init_kwargs
-    run_params = paramsWin.model_kwargs
-    denoise_model = CellposeDenoiseModel(**init_params)
-    return denoise_model, init_params, run_params
+#     init_params = paramsWin.init_kwargs
+#     run_params = paramsWin.model_kwargs
+#     denoise_model = CellposeDenoiseModel(**init_params)
+#     return denoise_model, init_params, run_params
 
 def init_input_points_df(posData, input_points_filepath):
     input_points_df = None

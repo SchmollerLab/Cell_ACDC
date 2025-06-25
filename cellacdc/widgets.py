@@ -9863,6 +9863,7 @@ class WhitelistIDsToolbar(ToolBar):
     sigWhitelistAccepted = Signal(list)
     sigAddNewIDs = Signal(bool)
     sigLoadOGLabs = Signal()
+    sigTrackOGagainstPreviousFrame = Signal(bool)
     
     def __init__(self, addNewIDToggleState, *args) -> None:
         super().__init__(*args)
@@ -9914,6 +9915,14 @@ class WhitelistIDsToolbar(ToolBar):
         self.loadOGButton.setToolTip(
             'Select which segmentation mask file to load '
             'as the non-whitelisted masks'
+        )
+
+        self.TrackOGagainstPreviousFrameButton = self.addButton(':segment.svg')
+        self.TrackOGagainstPreviousFrameButton.triggered.connect(
+            self.sigTrackOGagainstPreviousFrame.emit
+        )
+        self.TrackOGagainstPreviousFrameButton.setToolTip(
+            'Track the non-whitelisted segmentation masks against the previous frame and copy over successfull tacks'
         )
 
         self.addSeparator()

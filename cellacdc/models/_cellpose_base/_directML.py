@@ -28,7 +28,7 @@ def init_directML():
             success = False
     return success
 
-def setup_custom_device(acdc_cp_model, device):
+def setup_custom_device(model, device):
     """
     Forces the model to use a custom device (e.g., DirectML) for inference.
     This is a workaround, and could be handled better in the future. 
@@ -41,23 +41,27 @@ def setup_custom_device(acdc_cp_model, device):
     Returns:
         model (cellpose.CellposeModel): Cellpose model with custom device set.
     """
-    acdc_cp_model.model.gpu = True
-    acdc_cp_model.model.device = device
-    acdc_cp_model.model.mkldnn = False
-    if hasattr(acdc_cp_model.model, 'net'):
-        acdc_cp_model.model.net.to(device)
-        acdc_cp_model.model.net.mkldnn = False
-    if hasattr(acdc_cp_model.model, 'cp'):
-        acdc_cp_model.model.cp.gpu = True
-        acdc_cp_model.model.cp.device = device
-        acdc_cp_model.model.cp.mkldnn = False
-        if hasattr(acdc_cp_model.model.cp, 'net'):
-            acdc_cp_model.model.cp.net.to(device)
-            acdc_cp_model.model.cp.net.mkldnn = False
-    if hasattr(acdc_cp_model.model, 'sz'):
-        acdc_cp_model.model.sz.device = device
+    if hasattr(model, 'model'):
+        model = model.model
+        
+    model.gpu = True
+    model.device = device
+    model.mkldnn = False
+    if hasattr(model, 'net'):
+        model.net.to(device)
+        model.net.mkldnn = False
+    if hasattr(model, 'cp'):
+        model.cp.gpu = True
+        model.cp.device = device
+        model.cp.mkldnn = False
+        if hasattr(model.cp, 'net'):
+            model.cp.net.to(device)
+            model.cp.net.mkldnn = False
+    if hasattr(model, 'sz'):
+        model.sz.device = device
     
-    return acdc_cp_model
+    return model
+
 
 def setup_directML(acdc_cp_model):
     """
@@ -69,7 +73,7 @@ def setup_directML(acdc_cp_model):
     Returns:
         model (cellpose.CellposeModel|cellpse.Cellpos): Cellpose model with DirectML set as the device.
     """
-    printl(
+    print(
         'Using DirectML GPU for Cellpose model inference'
     )
     import torch_directml

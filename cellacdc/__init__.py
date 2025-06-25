@@ -494,6 +494,8 @@ def exception_handler_cli(func):
     return inner_function
 
 def exception_handler(func):
+    """Decorator to handle class methods exceptions and show a critical error message.
+    """
     @wraps(func)
     def inner_function(self, *args, **kwargs):
         try:
