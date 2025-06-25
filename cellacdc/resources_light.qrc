@@ -112,6 +112,7 @@
     <file alias="reinitLastSegm.svg">resources/icons/reinitLastSegm.svg</file>
     <file alias="merge-IDs.svg">resources/icons/merge-IDs.svg</file>
     <file alias="overlay.svg">resources/icons/overlay1.svg</file>
+    <file alias="magic-prompts.svg">resources/icons/magic-prompts.svg</file>
     <file alias="overlay_labels.svg">resources/icons/overlay_labels.svg</file>
     <file alias="assign-motherbud.svg">resources/icons/assign-motherbud.svg</file>
     <file alias="history.svg">resources/icons/history.svg</file>

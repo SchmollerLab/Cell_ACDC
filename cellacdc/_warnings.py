@@ -174,6 +174,18 @@ def warn_download_bioformats_jar_failed(jar_dst_filepath, qparent=None):
     )
     return msg.cancel
 
+def warn_segment_for_lost_IDs_first_frame(qparent=None):
+    from cellacdc import widgets
+    txt = html_utils.paragraph(f"""
+        The segmentation for lost IDs is not available on the first frame.<br><br>
+        Thank you for your patience!
+    """)
+    msg = widgets.myMessageBox(wrapText=False)
+    msg.warning(
+        qparent, 'Not available on first frame', txt, 
+    )
+    return msg.cancel
+
 def warnNotEnoughG1Cells(numCellsG1, frame_i, numNewCells, qparent=None):
     from cellacdc import widgets
     if numCellsG1 == 0:

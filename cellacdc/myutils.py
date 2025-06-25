@@ -165,11 +165,30 @@ def trim_path(path, depth=3, start_with_dots=True):
     else:
         return rel_path
 
+def get_add_custom_prompt_model_instructions():
+    init_sh = html_utils.init_sh
+    segment_sh = html_utils.segment_sh
+    add_prompt_sh = html_utils.add_prompt_sh
+    href = f'<a href="{issues_url}">here</a>'
+    text = html_utils.paragraph(f"""
+    To use a custom prompt model, you need to create a Python file with the name 
+    <code>acdcPromptModel.py</code>.<br><br>
+    In this file, you will implement a class called <code>Model</code> with 
+    at least the <code>{init_sh}</code> to initialise the model, 
+    the <code>{add_prompt_sh}</code> method to add prompts (points, boxes, etc.) 
+    to the model, and the <code>{segment_sh}</code> method to run the 
+    segmentation.<br><br>
+    Have a look at the existing models in the <code>promptable_models</code> 
+    folder for examples.<br><br>
+    If it doesn't work, please report the issue {href} with the
+    code you wrote. Thanks!
+    """)
+    return text
+
 def get_add_custom_model_instructions():
-    url = 'https://github.com/SchmollerLab/Cell_ACDC/issues'
     user_manual_url = 'https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf'
     href_user_manual = f'<a href="{user_manual_url}">user manual</a>'
-    href = f'<a href="{url}">here</a>'
+    href = f'<a href="{issues_url}">here</a>'
     models_path = os.path.join(cellacdc_path, 'models')
     func_color = (111/255,66/255,205/255) # purplish
     kwargs_color = (208/255,88/255,9/255) # reddish/orange
@@ -295,8 +314,18 @@ class Logger(logging.Logger):
         ):
         super().__init__(f'{name}-{module}', level=level)
         self._stdout = sys.stdout
-    
-    def write(self, text, log_to_file=True):
+        self._stderr = StdErr(logger=self)
+        sys.stderr = self._stderr
+        self._levelToName = {
+            50: "CRITICAL",
+            40: "ERROR",
+            30: "WARNING",
+            20: "INFO",
+            10: "DEBUG",
+            0: "NOTSET"
+        }
+        
+    def write(self, text, log_to_file=True, write_to_stdout=True):
         """Capture print statements, print to terminal and log text to 
         the open log file
 
@@ -306,8 +335,10 @@ class Logger(logging.Logger):
             Text to log
         log_to_file : bool, optional
             If True, call `info` method with `text`. Default is True
-        """        
-        self._stdout.write(text)
+        """     
+        if write_to_stdout:   
+            self._stdout.write(text)
+            
         if not log_to_file:
             return
         
@@ -324,9 +355,11 @@ class Logger(logging.Logger):
             handler.close()
             self.removeHandler(handler)
         sys.stdout = self._stdout
+        self._stderr.close()
     
     def __del__(self):
         sys.stdout = self._stdout
+        self._stderr.close()
     
     def info(self, text, *args, **kwargs):
         super().info(text, *args, **kwargs)
@@ -336,28 +369,70 @@ class Logger(logging.Logger):
         super().warning(text, *args, **kwargs)
         self.write(f'[WARNING]: {text}\n', log_to_file=False)
     
-    def error(self, text, *args, **kwargs):
+    def error(self, text, *args, write_traceback=True, **kwargs):
         super().error(text, *args, **kwargs)
-        self.write(traceback.format_exc())
+        if write_traceback:
+            self.write(traceback.format_exc())
         self.write(f'[ERROR]: {text}\n', log_to_file=False)
+    
+    def plain(self, text, write_to_stdout=False):
+        orig_formatters = [handler.formatter for handler in self.handlers]
+        for handler in self.handlers:
+            handler.setFormatter(logging.Formatter('%(message)s'))
+        self.write(text, write_to_stdout=write_to_stdout)
+        for handler in self.handlers:
+            handler.setFormatter(orig_formatters.pop(0))
     
     def critical(self, text, *args, **kwargs):
         super().critical(text, *args, **kwargs)
         self.write(f'[CRITICAL]: {text}\n', log_to_file=False)
     
-    def exception(self, text, *args, **kwargs):
+    def exception(self, text, *args, write_traceback=True, **kwargs):
         super().exception(text, *args, **kwargs)
-        self.write(traceback.format_exc())
+        if write_traceback:
+            self.write(traceback.format_exc())
         self.write(f'[ERROR]: {text}\n', log_to_file=False)
     
     def log(self, level, text):
         super().log(level, text)
-        levelName = logging.getLevelName(level)
+        levelName = self._levelToName.get(level, 'INFO')
         getattr(self, levelName.lower())(text)
         # self.write(f'[{levelName}]: {text}\n', log_to_file=False)
     
     def flush(self):
         self._stdout.flush()
+
+class StdErr:
+    def __init__(self, logger: Logger=None):
+        self._sys_stderr = sys.stderr
+        self._err_msg_line_buffer = []
+        self._logger = logger
+    
+    def write(self, text: str):     
+        self._sys_stderr.write(text)
+        
+        if not text:
+            return
+        
+        self._err_msg_line_buffer.append(text)
+        if not text.endswith('\n'):
+            return
+        
+        # If the line ends with a newline, flush the buffer
+        err_line = ''.join(self._err_msg_line_buffer)
+        if self._logger is not None:
+            self._logger.plain(err_line, write_to_stdout=False)
+        else:
+            print(err_line)
+        
+        self._err_msg_line_buffer = []
+            
+    def flush(self):
+        self._sys_stderr.flush()
+    
+    def close(self):
+        """Close the StdErr stream"""
+        sys.stderr = self._sys_stderr
 
 def delete_older_log_files(logs_path):
     if not os.path.exists(logs_path):

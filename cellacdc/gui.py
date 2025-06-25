@@ -902,6 +902,7 @@ class guiWin(QMainWindow):
 
         self.segmSingleFrameMenu.addSeparator()
         self.segmSingleFrameMenu.addAction(self.addCustomModelFrameAction)
+        self.segmSingleFrameMenu.addAction(self.addCustomPromptModelAction)
 
         self.segmVideoMenu = SegmMenu.addMenu('Segment multiple frames')
         for action in self.segmActionsVideo:
@@ -1147,11 +1148,21 @@ class guiWin(QMainWindow):
         self.wandToolButton = QToolButton(self)
         self.wandToolButton.setIcon(QIcon(":magic_wand.svg"))
         self.wandToolButton.setCheckable(True)
-        self.wandToolButton.setShortcut('W')
+        self.wandToolButton.setShortcut('Ctrl+D')
         self.wandToolButton.action = editToolBar.addWidget(self.wandToolButton)
         self.LeftClickButtons.append(self.wandToolButton)
         self.functionsNotTested3D.append(self.wandToolButton)
         self.widgetsWithShortcut['Magic wand'] = self.wandToolButton
+        
+        self.magicPromptsToolButton = QToolButton(self)
+        self.magicPromptsToolButton.setIcon(QIcon(":magic-prompts.svg"))
+        self.magicPromptsToolButton.setCheckable(True)
+        self.magicPromptsToolButton.setShortcut('W')
+        self.magicPromptsToolButton.action = editToolBar.addWidget(
+            self.magicPromptsToolButton
+        )
+        self.LeftClickButtons.append(self.magicPromptsToolButton)
+        self.widgetsWithShortcut['Magic prompts'] = self.magicPromptsToolButton
         
         self.drawClearRegionButton = QToolButton(self)
         self.drawClearRegionButton.setCheckable(True)
@@ -1205,7 +1216,9 @@ class guiWin(QMainWindow):
 
         self.SegForLostIDsButton = QToolButton(self)
         self.SegForLostIDsButton.setIcon(QIcon(":addDelPolyLineRoi_cursor.svg"))
-        editToolBar.addWidget(self.SegForLostIDsButton)
+        self.segForLostIDsAction = editToolBar.addWidget(
+            self.SegForLostIDsButton
+        )
         self.SegForLostIDsButton.clicked.connect(self.SegForLostIDsAction)
 
         # self.SegForLostIDsButton.setShortcut('U')
@@ -2607,6 +2620,10 @@ class guiWin(QMainWindow):
 
         self.addCustomModelFrameAction = QAction('Add custom model...', self)
         self.addCustomModelVideoAction = QAction('Add custom model...', self)
+        
+        self.addCustomPromptModelAction = QAction(
+            'Add custom promptable model...', self
+        )
 
         self.segmActionsVideo = []
         for model_name in models:
@@ -2981,6 +2998,10 @@ class guiWin(QMainWindow):
         )
         self.addCustomModelFrameAction.callback = self.segmFrameCallback
         self.addCustomModelVideoAction.callback = self.segmVideoCallback
+        
+        self.addCustomPromptModelAction.triggered.connect(
+            self.showInstructionsCustomPromptModel
+        )
     
     def zProjLockViewToggled(self, checked):
         self.updateZproj(self.zProjComboBox.currentText())
@@ -7087,6 +7108,7 @@ class guiWin(QMainWindow):
         separateON = self.separateBudButton.isChecked()
         addPointsByClickingButton = self.buttonAddPointsByClickingActive()
         manualBackgroundON = self.manualBackgroundButton.isChecked()
+        magicPromptsON = self.magicPromptsToolButton.isChecked()
         copyContourON = (
             self.copyLostObjButton.isChecked()
             and self.ax1_lostObjScatterItem.hoverLostID>0
@@ -7187,12 +7209,14 @@ class guiWin(QMainWindow):
             and not polyLineRoiON and not labelRoiON
             and addPointsByClickingButton is None
             and not manualBackgroundON and not drawClearRegionON
+            and not magicPromptsON
         )
         canBrush = (
             brushON and not curvToolON and not rulerON
             and not dragImgLeft and not eraserON and not wandON
             and not labelRoiON and not manualBackgroundON
             and addPointsByClickingButton is None and not drawClearRegionON
+            and not magicPromptsON
         )
         canErase = (
             eraserON and not curvToolON and not rulerON
@@ -7200,6 +7224,7 @@ class guiWin(QMainWindow):
             and not polyLineRoiON and not labelRoiON
             and addPointsByClickingButton is None
             and not manualBackgroundON and not drawClearRegionON
+            and not magicPromptsON
         )
         canRuler = (
             rulerON and not curvToolON and not brushON
@@ -7207,6 +7232,7 @@ class guiWin(QMainWindow):
             and not polyLineRoiON and not labelRoiON
             and addPointsByClickingButton is None
             and not manualBackgroundON and not drawClearRegionON
+            and not magicPromptsON
         )
         canWand = (
             wandON and not curvToolON and not brushON
@@ -7214,13 +7240,14 @@ class guiWin(QMainWindow):
             and not polyLineRoiON and not labelRoiON
             and addPointsByClickingButton is None
             and not manualBackgroundON and not drawClearRegionON
+            and not magicPromptsON
         )
         canPolyLine = (
             polyLineRoiON and not wandON and not curvToolON and not brushON
             and not dragImgLeft and not brushON and not rulerON
             and not labelRoiON and not manualBackgroundON
             and addPointsByClickingButton is None
-            and not drawClearRegionON
+            and not drawClearRegionON and not magicPromptsON
         )
         canLabelRoi = (
             labelRoiON and not wandON and not curvToolON and not brushON
@@ -7228,7 +7255,7 @@ class guiWin(QMainWindow):
             and not polyLineRoiON and not keepObjON
             and addPointsByClickingButton is None
             and not manualBackgroundON and not drawClearRegionON
-            and not whitelistIDsON
+            and not whitelistIDsON and not magicPromptsON
         )
         canKeep = (
             keepObjON and not wandON and not curvToolON and not brushON
@@ -7236,7 +7263,7 @@ class guiWin(QMainWindow):
             and not polyLineRoiON and not labelRoiON 
             and addPointsByClickingButton is None
             and not manualBackgroundON and not drawClearRegionON
-            and not whitelistIDsON
+            and not whitelistIDsON and not magicPromptsON
         )
         canWhitelistIDs = (
             whitelistIDsON and not wandON and not curvToolON and not brushON
@@ -7244,7 +7271,7 @@ class guiWin(QMainWindow):
             and not polyLineRoiON and not labelRoiON 
             and addPointsByClickingButton is None
             and not manualBackgroundON and not drawClearRegionON
-            and not keepObjON
+            and not keepObjON and not magicPromptsON
         )
         canAddPoint = (
             self.togglePointsLayerAction.isChecked()
@@ -7253,6 +7280,7 @@ class guiWin(QMainWindow):
             and not dragImgLeft and not brushON and not rulerON
             and not polyLineRoiON and not labelRoiON  and not keepObjON
             and not manualBackgroundON and not drawClearRegionON
+             and not magicPromptsON
         )
         canAddManualBackgroundObj = (
             manualBackgroundON and not wandON and not curvToolON and not brushON
@@ -7260,13 +7288,23 @@ class guiWin(QMainWindow):
             and not polyLineRoiON and not labelRoiON 
             and addPointsByClickingButton is None
             and not keepObjON and not drawClearRegionON
+            and not magicPromptsON and not whitelistIDsON
         )
         canDrawClearRegion = (
             drawClearRegionON and not wandON and not curvToolON and not brushON
             and not dragImgLeft and not brushON and not rulerON
             and not labelRoiON and not manualBackgroundON
             and addPointsByClickingButton is None
-            and not polyLineRoiON 
+            and not polyLineRoiON and not magicPromptsON
+            and not whitelistIDsON
+        )
+        canWand = (
+            magicPromptsON and not curvToolON and not brushON
+            and not dragImgLeft and not brushON and not rulerON
+            and not polyLineRoiON and not labelRoiON
+            and addPointsByClickingButton is None
+            and not manualBackgroundON and not drawClearRegionON
+            and not wandON and not whitelistIDsON
         )
         
         # Enable dragging of the image window or the scalebar
@@ -8197,7 +8235,10 @@ class guiWin(QMainWindow):
     def SegForLostIDsAction(self):
         posData = self.data[self.pos_i]
         if posData.frame_i == 0:
-            self.logger.info('Segmentation for lost IDs not available on first frame.')
+            self.logger.info(
+                'Segmentation for lost IDs not available on first frame.'
+            )
+            _warnings.warn_segment_for_lost_IDs_first_frame(qparent=self)
             return
         self.storeUndoRedoStates(False)
         self.progressWin = apps.QDialogWorkerProgress(
@@ -14978,15 +15019,7 @@ class guiWin(QMainWindow):
             return
 
         if ev.key() == Qt.Key_Q and self.debug:
-            posData = self.data[self.pos_i]
-            frame_i = posData.frame_i
-            import pandasgui
-            df_li = [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))] 
-            pandasgui.show(
-                self.lineage_tree.lineage_list, df_li, self.lineage_tree.lineage_list[frame_i-1], df_li[frame_i-1]
-            )
-            
-            pass
+            raise FileNotFoundError('Test error')
         
         if not self.isDataLoaded:
             self.logger.warning(
@@ -19810,6 +19843,8 @@ class guiWin(QMainWindow):
             else:
                 self.manualBackgroundAction.setVisible(False)
                 self.manualBackgroundAction.setDisabled(True)
+            self.segForLostIDsAction.setVisible(False)
+            self.segForLostIDsAction.setDisabled(True)
         else:
             self.imgGrad.rescaleAcrossTimeAction.setDisabled(False)
             self.annotateToolbar.setVisible(False)
@@ -19840,6 +19875,8 @@ class guiWin(QMainWindow):
             self.manualBackgroundAction.setVisible(False)
             self.manualBackgroundAction.setDisabled(True)
             self.labelsGrad.showNextFrameAction.setDisabled(False)  
+            self.segForLostIDsAction.setVisible(True)
+            self.segForLostIDsAction.setDisabled(False)
         
         for ch, overlayItems in self.overlayLayersItems.items():
             imageItem, lutItem, alphaScrollBar = overlayItems
@@ -24367,7 +24404,13 @@ class guiWin(QMainWindow):
         self.modelNames.append(modelName)
         self.models.append(None)
         self.sender().callback(customModelAction)
-        
+    
+    def showInstructionsCustomPromptModel(self):
+        modelFilePath = apps.addCustomPromptModelMessages(QParent=self)
+        if modelFilePath is None:
+            self.logger.info('Adding custom promptable model process stopped.')
+            return
+    
     def setCheckedOverlayContextMenusActions(self, channelNames):
         for action in self.overlayContextMenu.actions():
             if action.text() in channelNames:

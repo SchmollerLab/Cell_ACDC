@@ -76,7 +76,7 @@ from . import qutils
 from . import _palettes
 from . import base_cca_dict
 from . import widgets
-from . import user_profile_path
+from . import user_profile_path, promptable_models_path
 from . import features
 from . import _core
 from . import _types
@@ -141,13 +141,53 @@ def addCustomModelMessages(QParent=None):
         msg = widgets.myMessageBox(showCentered=False, wrapText=False)
         msg.addShowInFileManagerButton(models_path, txt='Open models folder...')
         msg.information(
-            QParent, 'Custom model instructions', txt, buttonsTexts=('Ok',)
+            QParent, 'Custom model instructions', txt, buttonsTexts=('Ok',),
+            path_to_browse=promptable_models_path,
+            browse_button_text='Open promptable models folder...'
         )
     else:
         homePath = pathlib.Path.home()
         modelFilePath = QFileDialog.getOpenFileName(
             QParent, 'Select the acdcSegment.py file of your model',
             str(homePath), 'acdcSegment.py file (*.py);;All files (*)'
+        )[0]
+        if not modelFilePath:
+            return
+    
+    return modelFilePath
+
+def addCustomPromptModelMessages(QParent=None):
+    modelFilePath = None
+    msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+    txt = html_utils.paragraph("""
+    Do you <b>already have</b> the <code>acdcPromptSegment.py</code> file for your code 
+    or do you <b>need instructions</b> on how to set-up your custom model?<br>
+    """)
+    infoButton = widgets.infoPushButton(' I need instructions')
+    browseButton = widgets.browseFileButton(' I have the model, let me select it')
+    msg.information(
+        QParent, 'Add custom promptable model', txt, 
+        buttonsTexts=('Cancel', infoButton, browseButton),
+        showDialog=False
+    )
+    browseButton.clicked.disconnect()
+    browseButton.clicked.connect(msg.buttonCallBack)
+    msg.exec_()
+    if msg.cancel:
+        return
+    if msg.clickedButton == infoButton:           
+        txt, models_path = myutils.get_add_custom_prompt_model_instructions()
+        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        msg.addShowInFileManagerButton(models_path, txt='Open models folder...')
+        msg.information(
+            QParent, 'Custom promptable model instructions', 
+            txt, buttonsTexts=('Ok',)
+        )
+    else:
+        homePath = pathlib.Path.home()
+        modelFilePath = QFileDialog.getOpenFileName(
+            QParent, 'Select the acdcPromptSegment.py file of your model',
+            str(homePath), 'acdcPromptSegment.py file (*.py);;All files (*)'
         )[0]
         if not modelFilePath:
             return
