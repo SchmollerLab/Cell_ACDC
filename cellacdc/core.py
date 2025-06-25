@@ -2159,6 +2159,9 @@ class SegmKernel(_WorkflowKernel):
         self.model_kwargs = myutils.parse_model_params(
             segment_argspecs, self.model_kwargs
         )
+        if self.second_channel_name is not None:
+            self.init_model_kwargs['is_rgb'] = True
+
         self.model = myutils.init_segm_model(
             acdcSegment, posData, self.init_model_kwargs
         )
@@ -2779,12 +2782,14 @@ def cellpose_v3_run_denoise(
         run_params,
         denoise_model=None, 
         init_params=None,
+        timelapse=False,
+        isZstack=False
     ):
     if denoise_model is None:
         from cellacdc.models.cellpose_v3 import _denoise
         denoise_model = _denoise.CellposeDenoiseModel(**init_params)
     
-    denoised_img = denoise_model.run(image, **run_params)
+    denoised_img = denoise_model.run(image, timelapse=timelapse,isZstack=isZstack, **run_params)# may have to give rgb stuff too!
     return denoised_img
 
 def closest_n_divisible_by_m(n, m) :

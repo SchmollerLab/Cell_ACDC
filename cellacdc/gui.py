@@ -325,12 +325,7 @@ def disableWindow(func):
     def inner_function(self, *args, **kwargs):
         self.setDisabled(True)
         try:
-            if func.__code__.co_argcount==1 and func.__defaults__ is None:
-                result = func(self)
-            elif func.__code__.co_argcount>1 and func.__defaults__ is None:
-                result = func(self, *args)
-            else:
-                result = func(self, *args, **kwargs)
+            result = func(self, *args, **kwargs)
             return result
         except Exception as err:
             raise err
@@ -458,6 +453,7 @@ class guiWin(QMainWindow):
         self.viewOriginalLabels = True
         self.keepDisabled = False
         self.whitelistAddNewIDsFrame = None
+        self.whitelistOriginalIDs = None
 
         self.checkableButtons = []
         self.LeftClickButtons = []
@@ -2781,7 +2777,6 @@ class guiWin(QMainWindow):
         self.viewCcaTableAction.setDisabled(True)
         self.viewCcaTableAction.setShortcut('Ctrl+P')
         
-        self.cp3denoiseAction = QAction('Cellpose 3.0 denoising...', self)
         
         self.addScaleBarAction = QAction('Add scale bar', self)
         self.addScaleBarAction.setCheckable(True)
@@ -3253,13 +3248,16 @@ class guiWin(QMainWindow):
 
         self.whitelistIDsToolbar.sigLoadOGLabs.connect(self.whitelistLoadOGLabs_cb)
 
+        self.whitelistIDsToolbar.sigTrackOGagainstPreviousFrame.connect(
+            self.whitelistTrackOGagainstPreviousFrame_cb
+        )
+
         self.expandLabelToolButton.toggled.connect(self.expandLabelCallback)
 
         self.reinitLastSegmFrameAction.triggered.connect(
             self.reInitLastSegmFrame
         )
 
-        self.cp3denoiseAction.triggered.connect(self.cp3denoiseActionTriggered)
         
         self.defaultRescaleIntensActionGroup.triggered.connect(
             self.defaultRescaleIntensLutActionToggled
@@ -5162,7 +5160,7 @@ class guiWin(QMainWindow):
                 else:
                     ID = editID_prompt.EntryID
             
-            obj_idx = posData.IDs.index(ID)
+            obj_idx = posData.IDs_idxs[ID]
             y, x = posData.rp[obj_idx].centroid[-2:]
             xdata, ydata = int(x), int(y)
 
@@ -8195,6 +8193,8 @@ class guiWin(QMainWindow):
         }
 
     def SegForLostIDsAction(self):
+
+        self.setFrameNavigationDisabled(disable=True, why='Segmentation for lost IDs')
         posData = self.data[self.pos_i]
         if posData.frame_i == 0:
             self.logger.info('Segmentation for lost IDs not available on first frame.')
@@ -8312,14 +8312,17 @@ class guiWin(QMainWindow):
                         wl_update=wl_update, wl_track_og_curr=wl_track_og_curr)
         waitcond.wakeAll()
 
-    def onSigGetData(self, waitcond, debug=False, lin_tree=False):
-        self.get_data(debug=debug, lin_tree=lin_tree)
+    def onSigGetData(self, waitcond, debug=False):
+        self.get_data(debug=debug)
         waitcond.wakeAll()
 
     def SegForLostIDsWorkerFinished(self):
 
         self.updateAllImages()
-        
+        self.update_rp()
+        self.store_data(autosave=True)
+        self.setFrameNavigationDisabled(disable=False, why='Segmentation for lost IDs')
+
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
             self.progressWin.close()
@@ -12078,33 +12081,6 @@ class guiWin(QMainWindow):
             return posData.img_data[posData.frame_i, zslice]
         else:
             return self.getDisplayedImg1()
-    
-    def cp3denoiseActionTriggered(self):
-        self.logger.info('Initializing Cellpose denoising model...')
-        output = myutils.init_cellpose_denoise_model()
-        if output is None:
-            self.logger.info('Cellpose 3.0 denoising process cancelled')
-            return
-
-        if not self.isSegm3D:
-            img = self.getDisplayedImg1()
-        else:
-            img = self.askGet2Dor3Dimage()
-            if img is None:
-                self.logger.info('Cellpose 3.0 denoising process cancelled')
-                return
-        denoise_model, init_params, run_params = output
-        denoised_image = core.cellpose_v3_run_denoise(
-            img,
-            run_params,
-            denoise_model=denoise_model, 
-            init_params=None,
-        )
-        imshow(
-            img, denoised_image, 
-            axis_titles=['Input image', 'Denoised image']
-        )
-        
         
     def manualEditCca(self, checked=True):
         posData = self.data[self.pos_i]
@@ -13349,7 +13325,7 @@ class guiWin(QMainWindow):
 
         # QTimer.singleShot(300, self.autoRange)
 
-    def frameSetDisabled(self, disable:bool=False, why:str=""):
+    def setFrameNavigationDisabled(self, disable:bool=False, why:str=""):
         """Disables the frame navigation buttons and scrollbar.
         This is used when the user is not allowed to navigate through frames
         Call again to unlock it again. Also sets tooltips to inform the user
@@ -13383,6 +13359,25 @@ class guiWin(QMainWindow):
         txt = f'Frame navigation disabled: {why}'
         self.logger.info(txt)
         self.navigateScrollBar.setToolTip(txt)
+
+    @disableWindow
+    def whitelistTrackOGagainstPreviousFrame_cb(self):
+        """Tracks the original labels against the previous frame.
+        This is used as a callback for sigTrackOGagainstPreviousFrame signal
+        """
+        posData = self.data[self.pos_i]
+        frame_i = posData.frame_i
+        old_cell_IDs = posData.whitelist.originalLabsIDs[frame_i].copy()
+        prev_cell_IDs = posData.allData_li[frame_i-1]['IDs']
+        self.whitelistTrackOGCurr(against_prev=True)
+        new_cell_IDs = posData.whitelist.originalLabsIDs[frame_i]
+
+        new_IDs = new_cell_IDs - old_cell_IDs
+        new_IDs = new_IDs & set(prev_cell_IDs)
+
+        self.whitelistUpdateLab(
+            track_og_curr=False, IDs_to_add=new_IDs,
+        )
 
     def whitelistLoadOGLabs_cb(self):
         """Generates a dialog to load the original (not whitelisted) labels
@@ -13436,6 +13431,8 @@ class guiWin(QMainWindow):
         
         self.whitelistIDsToolbar.viewOGToggle.setCheckable(True)
 
+
+    @exception_handler
     @disableWindow
     def whitelistViewOGIDs(self, checked:bool):
         """Switch between selected and original labels.
@@ -13467,7 +13464,7 @@ class guiWin(QMainWindow):
 
         self.store_data(autosave=False)
         if switch_to_og:
-            self.frameSetDisabled(True, why='Viewing original labels')
+            self.setFrameNavigationDisabled(True, why='Viewing original labels')
             self.viewOriginalLabels = True
 
             for i in frames_range:
@@ -13475,23 +13472,35 @@ class guiWin(QMainWindow):
                 self.get_data()
                 self.whitelistTrackOGCurr(frame_i=i)
 
-                og_frame = posData.whitelist.originalLabs[i]
-                segm_frame = posData.lab
+                IDs = posData.IDs
 
-                for ID in posData.whitelist.whitelistIDs[i]: # update whitelisted contours
-                    if ID in posData.whitelist.originalLabsIDs[i]:
-                        og_frame[og_frame == ID] = 0
-                    og_frame[segm_frame == ID] = ID
+                og_frame = posData.whitelist.originalLabs[i].copy()
+                IDs_to_uppdate = posData.whitelist.whitelistIDs[i] & posData.whitelist.originalLabsIDs[i]
+                if IDs_to_uppdate:
+                    mask = np.isin(og_frame, list(IDs_to_uppdate))
+                    og_frame[mask] = 0
+
+                    mask = np.isin(posData.lab, list(IDs_to_uppdate))
+                    og_frame[mask] = posData.lab[mask]
+                
+                IDs_to_add = posData.whitelist.whitelistIDs[i] - posData.whitelist.originalLabsIDs[i]
+                if IDs_to_add:
+                    mask = np.isin(posData.lab, list(IDs_to_add))
+                    og_frame[mask] = posData.lab[mask]
 
                 posData.lab = og_frame
                 self.update_rp(wl_update=False)
                 self.store_data(autosave=False)
 
+            if frame_i > 0:
+                missing_IDs = set(posData.IDs) - set(posData.allData_li[frame_i-1]['IDs'])
+                self.trackManuallyAddedObject(missing_IDs,isNewID=True, wl_update=False)
+
             self.setAllTextAnnotations()
             self.updateAllImages()
 
         elif switch_to_seg:
-            self.frameSetDisabled(False)
+            self.setFrameNavigationDisabled(False)
 
             self.viewOriginalLabels = False
             for i in frames_range:
@@ -13591,11 +13600,9 @@ class guiWin(QMainWindow):
         
         self.whitelistAddNewIDsFrame = frame_i
         
-
         self.store_data(autosave=False)
         self.get_data()
 
-        printl('Added new IDs')
         posData.whitelist.addNewIDs(frame_i=frame_i,
                                     allData_li=posData.allData_li,
                                     IDs_curr=posData.IDs,)
@@ -13616,7 +13623,7 @@ class guiWin(QMainWindow):
 
         self.whitelistIDsToolbar.viewOGToggle.setCheckable(True)
         self.whitelistSetViewOGIDsToggle(False)
-        self.frameSetDisabled(False)
+        self.setFrameNavigationDisabled(False)
 
         self.store_data(autosave=False)
         self.get_data()
@@ -13648,6 +13655,7 @@ class guiWin(QMainWindow):
                                    )
 
         self.whitelistIDsUpdateText()
+        self.whitelistUpdateLab()
         self.updateAllImages()
         self.keepIDsTempLayerLeft.clear()
 
@@ -13732,8 +13740,8 @@ class guiWin(QMainWindow):
             missing_IDs = list(whitelist - current_IDs)
             to_be_removed_IDs = list(current_IDs - whitelist)
         else:
-            missing_IDs = list(IDs_to_add)
-            to_be_removed_IDs = list(IDs_to_remove)
+            missing_IDs = list(IDs_to_add) if IDs_to_add is not None else []
+            to_be_removed_IDs = list(IDs_to_remove) if IDs_to_remove is not None else []
 
         if benchmark:
             ts.append(time.perf_counter())
@@ -13891,7 +13899,7 @@ class guiWin(QMainWindow):
 
         og_frame_i = posData.frame_i
         ### against what should I track?
-    
+
         if lab is not None and not rp:
             rp = skimage.measure.regionprops(lab)
         
@@ -13902,6 +13910,7 @@ class guiWin(QMainWindow):
                 rp = posData.allData_li[frame_i-1]['regionprops']
                 lab = posData.allData_li[frame_i-1]['labels']
             else:
+                self.update_rp()
                 self.store_data(autosave=False)
                 if frame_i != og_frame_i:
                     posData.frame_i = frame_i
@@ -14018,7 +14027,6 @@ class guiWin(QMainWindow):
             frame_i to be init, posData.frame_i if not provided, by default None
         force : bool, optional
             if the init should be forced, by default False
-
 
         Returns
         -------
@@ -14978,16 +14986,19 @@ class guiWin(QMainWindow):
             return
 
         if ev.key() == Qt.Key_Q and self.debug:
-            posData = self.data[self.pos_i]
-            frame_i = posData.frame_i
-            import pandasgui
-            df_li = [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))] 
-            pandasgui.show(
-                self.lineage_tree.lineage_list, df_li, self.lineage_tree.lineage_list[frame_i-1], df_li[frame_i-1]
-            )
+            # posData = self.data[self.pos_i]
+            # frame_i = posData.frame_i
+            # import pandasgui
+            # df_li = [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))] 
+            # pandasgui.show(
+            #     self.lineage_tree.lineage_list, df_li, self.lineage_tree.lineage_list[frame_i-1], df_li[frame_i-1]
+            # )
             
-            pass
+            # pass
         
+            QTimer.singleShot(100, self._do_nothing)
+
+
         if not self.isDataLoaded:
             self.logger.warning(
                 'Data not loaded yet. Key pressing events are not connected.'
@@ -18211,6 +18222,7 @@ class guiWin(QMainWindow):
                 ts.append(time.perf_counter())
                 titles.append('get_data')
             self.whitelistPropagateIDs(update_lab=True)
+            self.whitelistAddNewIDs()
             if benchmark:
                 ts.append(time.perf_counter())
                 titles.append('whitelist stuff')
@@ -22890,12 +22902,18 @@ class guiWin(QMainWindow):
             self, draw=True, debug=False, update_IDs=True, 
             wl_update=True, wl_track_og_curr=False,wl_update_lab=False
         ):
-        
+
         posData = self.data[self.pos_i]
         # Update rp for current posData.lab (e.g. after any change)
 
         if wl_update:
-            old_IDs = posData.allData_li[posData.frame_i]['IDs'].copy() # for whitelist stuff
+            if self.whitelistOriginalIDs is None:
+                old_IDs = posData.allData_li[posData.frame_i]['IDs'].copy() # for whitelist stuff
+            else:
+                old_IDs = self.whitelistOriginalIDs.copy()
+                self.whitelistOriginalIDs = None
+        elif self.whitelistOriginalIDs is None:
+            self.whitelist_old_IDs = posData.allData_li[posData.frame_i]['IDs'].copy()
 
         posData.rp = skimage.measure.regionprops(posData.lab)
         if update_IDs:
@@ -22911,7 +22929,7 @@ class guiWin(QMainWindow):
 
         if not wl_update:
             return
-        
+
         # Update tracking whitelist
         accepted_lost_centroids = self.getTrackedLostIDs()
         new_IDs = posData.IDs
@@ -22923,7 +22941,7 @@ class guiWin(QMainWindow):
         )
         if debug:
             printl(added_IDs, removed_IDs)
-        
+
         self.whitelistPropagateIDs(
             IDs_to_add=added_IDs, IDs_to_remove=removed_IDs,
             curr_frame_only=True, IDs_curr=new_IDs,
@@ -27146,13 +27164,41 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         self.timestamp.setText(posData.frame_i)
     
-    def deleteIDFromLab(self, lab, delID):
-        delMask = np.zeros(lab.shape, dtype=bool)
-        if isinstance(delID, int):
-            delMask[lab==delID] = True
+    def deleteIDFromLab(self, lab, delID, frame_i=None, delMask=None):
+        posData = self.data[self.pos_i]
+        frame_i = posData.frame_i if frame_i is None else frame_i
+
+
+        if frame_i==posData.frame_i:
+            rp = posData.rp
+            IDs_idxs = posData.IDs_idxs
         else:
-            for _delID in delID:
-                delMask[lab==_delID] = True
+            rp = posData.allData_li[frame_i]['regionprops']
+            IDs_idxs = posData.allData_li[frame_i]['IDs_idxs']
+
+        if isinstance(delID, int):
+            delID = [delID]
+            
+        is_any_id_present = False
+        for _delID in delID:
+            if _delID in IDs_idxs:
+                is_any_id_present = True
+                break
+        
+        if not is_any_id_present:
+            return lab, delMask
+
+        if delMask is None: 
+            delMask = np.zeros(lab.shape, dtype=bool)
+        else:
+            delMask[:] = False
+
+        for _delID in delID:
+            idx = IDs_idxs.get(_delID, None)
+            if idx is None:
+                continue
+            obj = rp[idx]
+            delMask[obj.slice][obj.image] = True
         lab[delMask] = 0
         return lab, delMask
     
@@ -27181,12 +27227,13 @@ class guiWin(QMainWindow):
             self, delIDs: Iterable, applyFutFrames, includeUnvisited
         ):
         self.clearHighlightedID()
-        
+
         posData = self.data[self.pos_i]
-        self.current_frame_i = posData.frame_i
+        current_frame_i = posData.frame_i
 
         # Apply Delete ID to future frames if requested
         if applyFutFrames:
+            delMask = np.zeros(posData.lab.shape, dtype=bool)
             # Store current data before going to future frames
             self.store_data()
             segmSizeT = len(posData.segm_data)
@@ -27195,13 +27242,13 @@ class guiWin(QMainWindow):
                 if lab is None and not includeUnvisited:
                     self.enqAutosave()
                     break
-                
+
                 if lab is not None:
                     # Visited frame
-                    lab, _ = self.deleteIDFromLab(lab, delIDs)
+                    lab, _ = self.deleteIDFromLab(lab, delIDs, frame_i=i, delMask=delMask)
 
                     # Store change
-                    posData.allData_li[i]['labels'] = lab.copy()
+                    posData.allData_li[i]['labels'] = lab
                     # Get the rest of the stored metadata based on the new lab
                     posData.frame_i = i
                     self.get_data()
@@ -27209,23 +27256,22 @@ class guiWin(QMainWindow):
                 elif includeUnvisited:
                     # Unvisited frame (includeUnvisited = True)
                     lab = posData.segm_data[i]
-                    lab, _ = self.deleteIDFromLab(lab, delIDs)
+                    lab, _ = self.deleteIDFromLab(lab, delIDs, frame_i=i, delMask=delMask)
 
         # Back to current frame
         if applyFutFrames:
-            posData.frame_i = self.current_frame_i
+            posData.frame_i = current_frame_i
             self.get_data()   
-        
+
+        posData.lab, delID_mask = self.deleteIDFromLab(posData.lab, delIDs, )
         for _delID in delIDs:
             self.clearObjContour(ID=_delID, ax=0)     
             self.clearObjContour(ID=_delID, ax=1)  
             self.removeObjectFromRp(_delID)    
             self.removeStoredContours(_delID) 
 
-        posData.lab, delID_mask = self.deleteIDFromLab(posData.lab, delIDs)
- 
-        self.whitelistPropagateIDs(IDs_to_remove=delIDs, curr_frame_only=True)
-
+        self.store_data(autosave=False)
+        self.whitelistPropagateIDs(IDs_to_remove=delIDs, curr_frame_only=(not applyFutFrames))
         return delID_mask
     
     def setOverlayLabelsItems(self):
@@ -27576,8 +27622,10 @@ class guiWin(QMainWindow):
         else:
             return False
 
-    def trackManuallyAddedObject(self, added_IDs: List[int] | int | set, isNewID: bool,
-                                  wl_update:bool=True, wl_track_og_curr:bool=False):
+    def trackManuallyAddedObject(
+            self, added_IDs: List[int] | int | Set[int], isNewID: bool,
+            wl_update:bool=True, wl_track_og_curr:bool=False
+        ):
         """Track object added manually on frame that was already visited.
 
         Parameters
@@ -27661,7 +27709,7 @@ class guiWin(QMainWindow):
             update_rp = True
         
         if update_rp:
-            self.update_rp()
+            self.update_rp(wl_update=wl_update)
     
     def trackFrameCustomTracker(self, prev_lab, currentLab, IDs=None):
         try:

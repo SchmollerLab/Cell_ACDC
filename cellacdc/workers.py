@@ -345,7 +345,7 @@ class SegForLostIDsWorker(QObject):
             IDs_bboxs_list.append(IDs_bboxs)
             bboxs_list.append(bboxs)
             posData.lab = new_lab
-            self.emitSigUpdateRP(wl_update=False, wl_track_og_curr=False)
+            self.emitSigUpdateRP(wl_update=True, wl_track_og_curr=False)
             self.emitSigStoreData(autosave=False)
             newly_assigned_IDs = set(assigned_IDs) - set(assigned_IDs_prev)
             self.emitTrackManuallyAddedObject(newly_assigned_IDs, True, False, False)
@@ -6745,6 +6745,16 @@ class saveDataWorker(QObject):
                 os.remove(posData.segm_npz_temp_path)
             except Exception as e:
                 pass
+
+            if not self.do_not_save_og_whitelist:
+                og_save_path = os.path.join(
+                    posData.images_path,  self.append_name_og_whitelist
+                )
+                posData.whitelist.saveOGLabs(og_save_path)
+            
+            if posData.whitelist:
+                whitelistIDs_path = posData.segm_npz_path.replace('.npz', '_whitelistIDs.json')
+                posData.whitelist.save(whitelistIDs_path)
 
             if posData.segmInfo_df is not None:
                 try:
