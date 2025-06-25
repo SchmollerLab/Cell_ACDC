@@ -2161,7 +2161,6 @@ class SegmKernel(_WorkflowKernel):
         )
         if self.second_channel_name is not None:
             self.init_model_kwargs['is_rgb'] = True
-        printl('setting second channel name')
 
         self.model = myutils.init_segm_model(
             acdcSegment, posData, self.init_model_kwargs
@@ -2778,7 +2777,7 @@ class CcaIntegrityChecker:
         
         return lonely_cells_in_S
 
-def cellpose_v3_run_denoise(# not tested yet
+def cellpose_v3_run_denoise(
         image,
         run_params,
         denoise_model=None, 

@@ -220,7 +220,7 @@ class Model:
 
         if anisotropy == 0.0 and segment_3D_volume:
             if not self.printed_model_params:
-                printl(
+                print(
                     'Anisotropy is 0.0 but segment_3D_volume is True. '
                     'Please set anisotropy to a non-zero value.' \
                     'For now set to 1.0, assuming isotropic data.'
@@ -229,7 +229,7 @@ class Model:
 
         elif not isZstack:
             if not self.printed_model_params:
-                printl(
+                print(
                     """Anisotropy is set to 1.0 (assuming isotropic data),
                     since data is not a z-stack""")
             anisotropy = 1.0
@@ -595,7 +595,7 @@ def check_directml_gpu_gpu(directml_gpu, gpu, ask_install=True):
         directml_gpu = init_directML()
 
     if directml_gpu and gpu:
-        printl(
+        print(
             """
             gpu is preferable to directml_gpu, but doesn't work with non NVIDIA GPUs.
             Since directml_gpu and set to True, the gpu argument will be ignored.

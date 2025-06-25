@@ -13950,9 +13950,6 @@ class guiWin(QMainWindow):
         against_prev : bool, optional
             if the original frame should be tracked against frame_i-1. 
         """
-
-        printl('tracking current labels against original labels', against_prev)
-
         posData = self.data[self.pos_i]
         if posData.whitelist is None:
             return
@@ -27625,8 +27622,10 @@ class guiWin(QMainWindow):
         else:
             return False
 
-    def trackManuallyAddedObject(self, added_IDs: List[int] | int | Set[int], isNewID: bool,
-                                  wl_update:bool=True, wl_track_og_curr:bool=False):
+    def trackManuallyAddedObject(
+            self, added_IDs: List[int] | int | Set[int], isNewID: bool,
+            wl_update:bool=True, wl_track_og_curr:bool=False
+        ):
         """Track object added manually on frame that was already visited.
 
         Parameters
