@@ -296,6 +296,9 @@ acdc_fiji_path = os.path.join(user_profile_path, 'acdc-fiji')
 acdc_ffmpeg_path = os.path.join(user_profile_path, 'acdc-ffmpeg')
 resources_path = os.path.join(cellacdc_path, 'resources_light.qrc')
 models_list_file_path = os.path.join(settings_folderpath, 'custom_models_paths.ini')
+promptable_models_list_file_path = os.path.join(
+    settings_folderpath, 'custom_promptable_models_paths.ini'
+)
 recentPaths_path = os.path.join(settings_folderpath, 'recentPaths.csv')
 preproc_recipes_path = os.path.join(settings_folderpath, 'preprocessing_recipes')
 segm_recipes_path = os.path.join(settings_folderpath, 'segmentation_recipes')

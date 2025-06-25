@@ -52,7 +52,8 @@ from . import core, load
 from . import html_utils, is_linux, is_win, is_mac, issues_url, is_mac_arm64
 from . import cellacdc_path, printl, acdc_fiji_path, logs_path, acdc_ffmpeg_path
 from . import user_profile_path, recentPaths_path
-from . import models_list_file_path
+from . import models_list_file_path, models_path
+from . import promptable_models_list_file_path, promptable_models_path
 from . import github_home_url
 from . import try_input_install_package
 from . import _warnings
@@ -172,9 +173,11 @@ def get_add_custom_prompt_model_instructions():
     href = f'<a href="{issues_url}">here</a>'
     text = html_utils.paragraph(f"""
     To use a custom prompt model, you need to create a Python file with the name 
-    <code>acdcPromptModel.py</code>.<br><br>
+    <code>acdcPromptModel.py</code>.<br>
+    Note that the folder name where you place this file will be used as the 
+    model name.<br><br>
     In this file, you will implement a class called <code>Model</code> with 
-    at least the <code>{init_sh}</code> to initialise the model, 
+    at least the <code>{init_sh}</code> to initialise the model,<br>
     the <code>{add_prompt_sh}</code> method to add prompts (points, boxes, etc.) 
     to the model, and the <code>{segment_sh}</code> method to run the 
     segmentation.<br><br>
@@ -189,11 +192,6 @@ def get_add_custom_model_instructions():
     user_manual_url = 'https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf'
     href_user_manual = f'<a href="{user_manual_url}">user manual</a>'
     href = f'<a href="{issues_url}">here</a>'
-    models_path = os.path.join(cellacdc_path, 'models')
-    func_color = (111/255,66/255,205/255) # purplish
-    kwargs_color = (208/255,88/255,9/255) # reddish/orange
-    class_color = (215/255,58/255,73/255) # reddish
-    blue_color = (0/255,92/255,197/255) # blueish
     class_sh = html_utils.class_sh
     def_sh = html_utils.def_sh
     kwargs_sh = html_utils.kwargs_sh
@@ -210,7 +208,7 @@ def get_add_custom_model_instructions():
     from_sh = html_utils.from_sh
     import_sh = html_utils.import_sh
     s = html_utils.paragraph(f"""
-    To use a custom model first <b>create a folder</b> with the same name of your model.<br><br>
+    To use a custom model first <b>create a folder</b> with the name of your model.<br><br>
     Inside this new folder create a file named <code>acdcSegment.py</code>.<br><br>
     In the <code>acdcSegment.py</code> file you will <b>implement the model class</b>.<br><br>
     Have a look at the other existing models, but essentially you have to create
@@ -235,7 +233,7 @@ def get_add_custom_model_instructions():
     If it doesn't work, please report the issue {href} with the
     code you wrote. Thanks.
     """)
-    return s, models_path
+    return s
 
 def is_iterable(item):
      try:
@@ -397,7 +395,6 @@ class Logger(logging.Logger):
         super().log(level, text)
         levelName = self._levelToName.get(level, 'INFO')
         getattr(self, levelName.lower())(text)
-        # self.write(f'[{levelName}]: {text}\n', log_to_file=False)
     
     def flush(self):
         self._stdout.flush()
@@ -409,6 +406,9 @@ class StdErr:
         self._logger = logger
     
     def write(self, text: str):     
+        if text.startswith('Traceback'):
+            print('-'*100)
+            
         self._sys_stderr.write(text)
         
         if not text:
@@ -710,6 +710,18 @@ def store_custom_model_path(model_file_path):
         cp[model_name] = {}
     cp[model_name]['path'] = model_file_path
     with open(models_list_file_path, 'w') as configFile:
+        cp.write(configFile)
+
+def store_custom_promptable_model_path(promptable_model_file_path):
+    model_file_path = promptable_model_file_path.replace('\\', '/')
+    model_name = os.path.basename(os.path.dirname(model_file_path))
+    cp = config.ConfigParser()
+    if os.path.exists(promptable_models_list_file_path):
+        cp.read(promptable_models_list_file_path)
+    if model_name not in cp:
+        cp[model_name] = {}
+    cp[model_name]['path'] = model_file_path
+    with open(promptable_models_list_file_path, 'w') as configFile:
         cp.write(configFile)
 
 def check_git_installed(parent=None):
@@ -2269,7 +2281,6 @@ def get_list_of_trackers():
     return natsorted(trackers)
 
 def get_list_of_models():
-    models_path = os.path.join(cellacdc_path, 'models')
     models = set()
     for name in listdir(models_path):
         _path = os.path.join(models_path, name)
@@ -2298,6 +2309,32 @@ def get_list_of_models():
     
     cp = config.ConfigParser()
     cp.read(models_list_file_path)
+    models.update(cp.sections())
+    return natsorted(list(models), key=str.casefold)
+
+def get_list_of_promptable_models():
+    models = set()
+    for name in listdir(promptable_models_path):
+        _path = os.path.join(promptable_models_path, name)
+        if not os.path.exists(_path):
+            continue
+        
+        if not os.path.isdir(_path):
+            continue
+        
+        if name.endswith('__'):
+            continue
+        
+        if not os.path.exists(os.path.join(_path, 'acdcPromptSegment.py')):
+            continue
+        
+        models.add(name)
+    
+    if not os.path.exists(promptable_models_list_file_path):
+        return natsorted(list(models), key=str.casefold)
+    
+    cp = config.ConfigParser()
+    cp.read(promptable_models_list_file_path)
     models.update(cp.sections())
     return natsorted(list(models), key=str.casefold)
 
@@ -2744,6 +2781,10 @@ def check_install_baby():
     )
     check_install_package('baby', pypi_name='baby-seg', import_pkg_name='baby')
 
+def check_install_nnInteractive():
+    check_install_torch()
+    check_install_package('nnInteractive')
+
 def check_install_yeaz():
     check_install_torch()
     check_install_package('yeaz')
@@ -2891,11 +2932,11 @@ def check_install_package(
         If empty string, `pkg_name` will be installed instead. Default is ''
     note : str, optional
         Additional text to display to the user. Default is ''
-    parent : _type_, optional
+    parent : QObject, optional
         Calling QtWidget. Default is None
     raise_on_cancel : bool, optional
         Raise exception if processed cancelled. Default is True
-    logger_func : _type_, optional
+    logger_func : callable, optional
         Function used to log text. Default is print
     is_cli : bool, optional
         If True, message will be displayed in the terminal. 
@@ -3533,6 +3574,24 @@ def import_segment_module(model_name):
         spec.loader.exec_module(acdcSegment)
     return acdcSegment
 
+def import_promptable_segment_module(model_name):
+    try:
+        acdcPromptSegment = import_module(
+            f'cellacdc.promptable_models.{model_name}.acdcPromptSegment'
+        )
+    except ModuleNotFoundError as e:
+        # Check if custom model
+        cp = config.ConfigParser()
+        cp.read(promptable_models_list_file_path)
+        model_path = cp[model_name]['path']
+        spec = importlib.util.spec_from_file_location(
+            'acdcPromptSegment', model_path
+        )
+        acdcPromptSegment = importlib.util.module_from_spec(spec)
+        sys.modules['acdcPromptSegment'] = acdcPromptSegment
+        spec.loader.exec_module(acdcPromptSegment)
+    return acdcPromptSegment
+
 def _warn_install_gpu(model_name, ask_installs, qparent=None):
     
     cellpose_cuda_url = (
@@ -3870,10 +3929,10 @@ def init_segm_model(acdcSegment, posData, init_kwargs):
     else:
         segm_data = None
 
-    # Initialize input_points_df for SAM model
+    # Initialize input_points_df for models promptable with points
     input_points_filepath = init_kwargs.pop('input_points_path', '')
     if input_points_filepath:
-        input_points_df = init_sam_input_points_df(
+        input_points_df = init_input_points_df(
             posData, input_points_filepath
         )
         init_kwargs['input_points_df'] = input_points_df
@@ -3949,7 +4008,7 @@ def init_cellpose_denoise_model():
     denoise_model = CellposeDenoiseModel(**init_params)
     return denoise_model, init_params, run_params
 
-def init_sam_input_points_df(posData, input_points_filepath):
+def init_input_points_df(posData, input_points_filepath):
     input_points_df = None
     if os.path.exists(input_points_filepath):
         input_points_df = pd.read_csv(input_points_filepath)

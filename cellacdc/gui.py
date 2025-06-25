@@ -902,7 +902,6 @@ class guiWin(QMainWindow):
 
         self.segmSingleFrameMenu.addSeparator()
         self.segmSingleFrameMenu.addAction(self.addCustomModelFrameAction)
-        self.segmSingleFrameMenu.addAction(self.addCustomPromptModelAction)
 
         self.segmVideoMenu = SegmMenu.addMenu('Segment multiple frames')
         for action in self.segmActionsVideo:
@@ -910,6 +909,19 @@ class guiWin(QMainWindow):
 
         self.segmVideoMenu.addSeparator()
         self.segmVideoMenu.addAction(self.addCustomModelVideoAction)
+        
+        self.segmWithPromptableModelMenu = SegmMenu.addMenu(
+            'Segment with promptable model'
+        )
+        
+        self.segmWithPromptableModelMenu.addAction(
+            self.segmWithPromptableModelAction
+        )
+        
+        self.segmWithPromptableModelMenu.addSeparator()
+        self.segmWithPromptableModelMenu.addAction(
+            self.addCustomPromptModelAction
+        )
 
         # SegmMenu.addAction(self.SegmActionRW)
         self.SegmActionRW.setVisible(False)
@@ -2322,6 +2334,29 @@ class guiWin(QMainWindow):
         self.addToolBar(Qt.TopToolBarArea, self.drawClearRegionToolbar)
         self.drawClearRegionToolbar.setVisible(False)
         self.controlToolBars.append(self.drawClearRegionToolbar)
+
+        try:
+            addNewIDToggleState = self.df_settings.at['addNewIDsWhitelistToggle', 'value'] == 'Yes'
+        except KeyError:
+            addNewIDToggleState = True
+        
+        self.whitelistIDsToolbar = widgets.WhitelistIDsToolbar(
+            addNewIDToggleState, self
+        )
+        for name, action in self.whitelistIDsToolbar.widgetsWithShortcut.items():
+            self.widgetsWithShortcut[name] = action
+        
+        self.addToolBar(Qt.TopToolBarArea, self.whitelistIDsToolbar)
+        self.whitelistIDsToolbar.setVisible(False)
+        self.controlToolBars.append(self.whitelistIDsToolbar)
+        
+        self.magicPromptsToolbar = widgets.MagicPromptsToolbar(self)
+        for name, action in self.magicPromptsToolbar.widgetsWithShortcut.items():
+            self.widgetsWithShortcut[name] = action
+        
+        self.addToolBar(Qt.TopToolBarArea, self.magicPromptsToolbar)
+        self.magicPromptsToolbar.setVisible(False)
+        self.controlToolBars.append(self.magicPromptsToolbar)
         
         # Second level toolbar
         secondLevelToolbar = widgets.ToolBar("Second level toolbar", self)
@@ -2340,19 +2375,6 @@ class guiWin(QMainWindow):
         secondLevelToolbar.setMovable(False)
         self.secondLevelToolbar = secondLevelToolbar
         self.secondLevelToolbar.setVisible(False)
-
-        try:
-            addNewIDToggleState = self.df_settings.at['addNewIDsWhitelistToggle', 'value'] == 'Yes'
-        except KeyError:
-            addNewIDToggleState = True
-        
-        self.whitelistIDsToolbar = widgets.WhitelistIDsToolbar(addNewIDToggleState, self)
-        for name, action in self.whitelistIDsToolbar.widgetsWithShortcut.items():
-            self.widgetsWithShortcut[name] = action
-        
-        self.addToolBar(Qt.TopToolBarArea, self.whitelistIDsToolbar)
-        self.whitelistIDsToolbar.setVisible(False)
-        self.controlToolBars.append(self.whitelistIDsToolbar)
         
     def gui_populateToolSettingsMenu(self):
         brushHoverModeActionGroup = QActionGroup(self)
@@ -2621,6 +2643,9 @@ class guiWin(QMainWindow):
         self.addCustomModelFrameAction = QAction('Add custom model...', self)
         self.addCustomModelVideoAction = QAction('Add custom model...', self)
         
+        self.segmWithPromptableModelAction = QAction(
+            'Select promptable model...', self
+        )
         self.addCustomPromptModelAction = QAction(
             'Add custom promptable model...', self
         )
@@ -3002,6 +3027,9 @@ class guiWin(QMainWindow):
         self.addCustomPromptModelAction.triggered.connect(
             self.showInstructionsCustomPromptModel
         )
+        self.segmWithPromptableModelAction.triggered.connect(
+            self.segmWithPromptableModelActionTriggered
+        )
     
     def zProjLockViewToggled(self, checked):
         self.updateZproj(self.zProjComboBox.currentText())
@@ -3247,6 +3275,7 @@ class guiWin(QMainWindow):
         self.curvToolButton.toggled.connect(self.curvTool_cb)
         self.wandToolButton.toggled.connect(self.wand_cb)
         self.labelRoiButton.toggled.connect(self.labelRoi_cb)
+        self.magicPromptsToolButton.toggled.connect(self.magicPrompts_cb)
         self.drawClearRegionButton.toggled.connect(self.drawClearRegion_cb)
         self.reInitCcaAction.triggered.connect(self.reInitCca)
         self.moveLabelToolButton.toggled.connect(self.moveLabelButtonToggled)
@@ -8523,7 +8552,7 @@ class guiWin(QMainWindow):
         self.df_settings.to_csv(self.settings_csv_path)
 
         if self.sender().text() == 'YeaZ':
-            msg = QMessageBox()
+            msg = widgets.myMessageBox(wrapText=False)
             info_txt = html_utils.paragraph(f"""
                 Note that YeaZ tracking algorithm tends to be sliglhtly more accurate
                 overall, but it is <b>less capable of detecting segmentation
@@ -8531,7 +8560,7 @@ class guiWin(QMainWindow):
                 If you need to correct as many segmentation errors as possible
                 we recommend using Cell-ACDC tracking algorithm.
             """)
-            msg.information(self, 'Info about YeaZ', info_txt, msg.Ok)
+            msg.information(self, 'Info about YeaZ', info_txt)
         
         self.isRealTimeTrackerInitialized = False
         self.initRealTimeTracker()
@@ -12679,6 +12708,7 @@ class guiWin(QMainWindow):
         self.eraserButton.toggled.connect(self.Eraser_cb)
         self.wandToolButton.toggled.connect(self.wand_cb)
         self.labelRoiButton.toggled.connect(self.labelRoi_cb)
+        self.magicPromptsToolButton.toggled.connect(self.magicPrompts_cb)
         self.drawClearRegionButton.toggled.connect(self.drawClearRegion_cb)
         self.expandLabelToolButton.toggled.connect(self.expandLabelCallback)
         self.addDelPolyLineRoiButton.toggled.connect(self.addDelPolyLineRoi_cb)
@@ -12716,11 +12746,23 @@ class guiWin(QMainWindow):
             self.uncheckLeftClickButtons(self.wandToolButton)
             self.connectLeftClickButtons()
             self.wandControlsToolbar.setVisible(True)
-            self.secondLevelToolbar.setVisible(False)
+            # self.secondLevelToolbar.setVisible(False)
         else:
             self.resetCursors()
-            self.secondLevelToolbar.setVisible(True)
+            # self.secondLevelToolbar.setVisible(True)
             self.wandControlsToolbar.setVisible(False)
+    
+    def magicPrompts_cb(self, checked):
+        if checked:
+            self.disconnectLeftClickButtons()
+            self.uncheckLeftClickButtons(self.magicPromptsToolButton)
+            self.connectLeftClickButtons()
+            self.magicPromptsToolbar.setVisible(True)
+            # self.secondLevelToolbar.setVisible(False)
+        else:
+            self.resetCursors()
+            # self.secondLevelToolbar.setVisible(True)
+            self.magicPromptsToolbar.setVisible(False)
     
     def copyLostObjContour_cb(self, checked):
         self.copyLostObjToolbar.setVisible(checked)
@@ -24410,6 +24452,23 @@ class guiWin(QMainWindow):
         if modelFilePath is None:
             self.logger.info('Adding custom promptable model process stopped.')
             return
+        
+        myutils.store_custom_promptable_model_path(modelFilePath)
+        
+        msg = widgets.myMessageBox(wrapText=False)
+        info_txt = html_utils.paragraph(f"""
+            Done!<br><br>
+            The custom promptable model has been added to the list of models.<br><br>
+            Use the <b>Magic prompts</b> button (top toolbar) to use it.<br><br>
+            Have fun!
+        """)
+        msg.information(self, 'Custom promptable model added', info_txt)
+    
+    def segmWithPromptableModelActionTriggered(self):
+        self.blinker = qutils.QControlBlink(
+            self.magicPromptsToolButton, qparent=self
+        )
+        self.blinker.start()
     
     def setCheckedOverlayContextMenusActions(self, channelNames):
         for action in self.overlayContextMenu.actions():

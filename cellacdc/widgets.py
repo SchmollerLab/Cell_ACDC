@@ -2964,6 +2964,19 @@ class ToolBar(QToolBar):
         self.addAction(action)
         return action
 
+    def addComboBox(self, items=None, label=''):
+        combobox = ComboBox()
+        
+        if items is not None:
+            combobox.addItems(items)
+            
+        if label:
+            combobox.label = QLabel(label)
+            combobox.labelAction = self.addWidget(combobox.label)
+        
+        combobox.action = self.addWidget(combobox)
+        return combobox
+    
 class ManualTrackingToolBar(ToolBar):
     sigIDchanged = Signal(int)
     sigDisableGhost = Signal()
@@ -9851,7 +9864,7 @@ class WhitelistIDsToolbar(ToolBar):
     sigAddNewIDs = Signal(bool)
     sigLoadOGLabs = Signal()
     
-    def __init__(self, addNewIDToggleState,*args) -> None:
+    def __init__(self, addNewIDToggleState, *args) -> None:
         super().__init__(*args)
 
         whitelistLineEditLabel = QLabel('Whitelist IDs: ')
@@ -9960,6 +9973,67 @@ class WhitelistIDsToolbar(ToolBar):
         )
         msg.information(self, 'White list IDs', txt)
 
+
+class MagicPromptsToolbar(ToolBar):
+    sigPromptTypeChanged = Signal(object, str)
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        
+        self._parent = parent
+        
+        prompt_types = (
+            'Points',
+        )
+        
+        self.selectModelAction = self.addButton(':select-list.svg')
+        self.selectModelAction.setToolTip(
+            'Select the promptable model to use'
+        )
+        
+        self.viewModelParamsAction = self.addButton(':view.svg')
+        self.viewModelParamsAction.setToolTip(
+            'View the currently selected model parameters'
+        )
+        self.viewModelParamsAction.setDisabled(True)
+        
+        self.addSeparator()
+        
+        self.promptTypeCombobox = self.addComboBox(
+            prompt_types, label='Prompt type: ',
+        )
+        
+        self.spinboxID = self.addSpinBox(label='Editing ID: ')
+        self.spinboxID.setMinimum(1)
+        
+        self.selectModelAction.triggered.connect(self.selectModel)
+        self.viewModelParamsAction.triggered.connect(self.viewModelParams)
+        self.promptTypeCombobox.sigTextChanged.connect(
+            self.emitPromptTypeChanged
+        )
+        
+    def selectModel(self):
+        win = apps.SelectPromptableModelDialog(parent=self._parent)
+        win.exec_()
+        if win.cancel:
+            print('Promptable model selection cancelled')
+            return
+        
+        model_name = win.model_name
+        print(f'Importing promptable model {model_name}...')
+        
+        acdcPromptSegment = myutils.import_promptable_segment_module(model_name)
+        init_argspecs, segment_argspecs = myutils.getModelArgSpec(
+            acdcPromptSegment
+        )
+        
+        self.viewModelParamsAction.setDisabled(True)
+    
+    def viewModelParams(self):
+        ...
+    
+    def emitPromptTypeChanged(self, text):
+        self.sigPromptTypeChanged.emit(self, text)
 
 class KeySequenceFromText(QKeySequence):
     def __init__(self, text: str):

@@ -76,7 +76,7 @@ from . import qutils
 from . import _palettes
 from . import base_cca_dict
 from . import widgets
-from . import user_profile_path, promptable_models_path
+from . import user_profile_path, promptable_models_path, models_path
 from . import features
 from . import _core
 from . import _types
@@ -137,13 +137,12 @@ def addCustomModelMessages(QParent=None):
     if msg.cancel:
         return
     if msg.clickedButton == infoButton:           
-        txt, models_path = myutils.get_add_custom_model_instructions()
+        txt = myutils.get_add_custom_model_instructions()
         msg = widgets.myMessageBox(showCentered=False, wrapText=False)
-        msg.addShowInFileManagerButton(models_path, txt='Open models folder...')
         msg.information(
             QParent, 'Custom model instructions', txt, buttonsTexts=('Ok',),
-            path_to_browse=promptable_models_path,
-            browse_button_text='Open promptable models folder...'
+            path_to_browse=models_path,
+            browse_button_text='Open models folder...'
         )
     else:
         homePath = pathlib.Path.home()
@@ -176,12 +175,13 @@ def addCustomPromptModelMessages(QParent=None):
     if msg.cancel:
         return
     if msg.clickedButton == infoButton:           
-        txt, models_path = myutils.get_add_custom_prompt_model_instructions()
+        txt = myutils.get_add_custom_prompt_model_instructions()
         msg = widgets.myMessageBox(showCentered=False, wrapText=False)
-        msg.addShowInFileManagerButton(models_path, txt='Open models folder...')
         msg.information(
             QParent, 'Custom promptable model instructions', 
-            txt, buttonsTexts=('Ok',)
+            txt, buttonsTexts=('Ok',),
+            path_to_browse=promptable_models_path,
+            browse_button_text='Open promptable models folder...'
         )
     else:
         homePath = pathlib.Path.home()
@@ -4803,6 +4803,45 @@ class ApplyTrackTableSelectColumnsDialog(QBaseDialog):
                 f'<b>Invalid selection</b><br> {self.instructionsText}'
             )
         )
+
+
+class SelectPromptableModelDialog(QBaseDialog):
+    def __init__(self, parent=None):
+        self.cancel = True
+        super().__init__(parent)
+        
+        mainLayout = QVBoxLayout()
+        
+        label = QLabel(html_utils.paragraph(
+            'Select model to use for segmentation: '
+        ))
+        mainLayout.addWidget(label, alignment=Qt.AlignCenter)
+        
+        listBox = widgets.listWidget()
+        models = myutils.get_list_of_promptable_models()
+        listBox.addItems(models)
+        listBox.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        listBox.setCurrentRow(0)
+        listBox.itemDoubleClicked.connect(self.ok_cb)
+        
+        self.listBox = listBox
+        
+        mainLayout.addWidget(listBox)
+        
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+        
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(buttonsLayout)
+
+        self.setLayout(mainLayout)
+    
+    def ok_cb(self):
+        self.cancel = False
+        self.model_name = self.listBox.currentItem().text()
+        self.close()
 
 
 class QDialogSelectModel(QDialog):

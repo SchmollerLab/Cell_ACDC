@@ -3,6 +3,7 @@ Segmentation models
 
 - `Cellpose v2 <https://doi.org/10.1038/s41592-022-01663-4>`_
 - `Cellpose v3 <https://doi.org/10.1038/s41592-025-02595-5>`_
+- `Cellpose-SAM (v4) <https://doi.org/10.1101/2025.04.28.651001>`_
 - `YeaZ <https://doi.org/10.1038/s41467-020-19557-4>`_
 - `StarDist <https://github.com/stardist/stardist#how-to-cite>`_
 - `Segment Anything Model (SAM) <https://doi.org/10.48550/arXiv.2304.02643>`_
