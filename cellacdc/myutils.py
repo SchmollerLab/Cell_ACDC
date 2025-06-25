@@ -2807,6 +2807,11 @@ def check_install_torch(is_cli=False, caller_name='Cell-ACDC', qparent=None):
     command = win.command
     print(f'Running command: "{command}"')
     _run_command(command)    
+    
+    purge_module('torch')
+    importlib.invalidate_caches()
+    import torch
+    importlib.reload(torch)
 
 def check_install_package(
         pkg_name: str, 
