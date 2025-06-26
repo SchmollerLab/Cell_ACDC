@@ -13,7 +13,11 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle, Circle, PathPatch, Path
 import numpy as np
 import scipy.interpolate
-import tkinter as tk
+try:
+    import tkinter as tk
+except Exception as err:
+    pass
+
 import cv2
 import traceback
 from itertools import combinations, permutations
