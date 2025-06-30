@@ -398,6 +398,8 @@ def get_info_version_text(is_cli=False):
         f'Python {python_version}',
         f'Platform: {platform.platform()}',
         f'System: {platform.system()}',
+        f'Python executable: "{sys.executable}"',
+        f'Conda environment: "{os.environ.get("CONDA_PREFIX")}"'
     ]
     if GUI_INSTALLED and not is_cli:
         try:
@@ -406,7 +408,7 @@ def get_info_version_text(is_cli=False):
         except Exception as err:
             info_txts.append('Qt: Not installed')
     
-    info_txts.append(f'Working directory: {os.getcwd()}')
+    info_txts.append(f'Working directory: "{os.getcwd()}"')
     info_txts = [f'  - {txt}' for txt in info_txts]
     
     max_len = max([len(txt) for txt in info_txts]) + 2
