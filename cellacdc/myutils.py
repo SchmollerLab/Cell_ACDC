@@ -3563,7 +3563,10 @@ def get_pip_conda_prefix(list_return=False):
         pip_prefix = 'pip install'
     
     pip_list = [sys.executable, '-m', 'pip', 'install']
-    conda_list = [conda_path.strip('"').strip("'"), 'install', '-y', '-p', venv_path.strip('"').strip("'"), 'package']
+    if no_cli_install:
+        conda_list = [conda_path.strip('"').strip("'"), 'install', '-y', '-p', venv_path.strip('"').strip("'")]
+    else:
+        conda_list = ['conda', 'install', '-y']
     if list_return:
         return conda_list, pip_list
     else:

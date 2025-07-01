@@ -183,6 +183,7 @@ def _setup_gui_libraries(caller_name='Cell-ACDC'):
         command_txt = f'{pip_prefix} --upgrade qtpy'
 
         while True:
+            from .config import parser_args
             if parser_args['yes']:
                 answer = 'y'
             else:
