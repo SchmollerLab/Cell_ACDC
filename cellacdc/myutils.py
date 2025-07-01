@@ -3537,8 +3537,9 @@ def import_segment_module(model_name):
     return acdcSegment
 
 def get_pip_conda_prefix(list_return=False):
+    from .config import parser_args
     try:
-        cp = config.ConfigParser()
+        cp = parser_args
         if cp["install_details"] is not None:
             no_cli_install = True
             install_details = cp["install_details"]
