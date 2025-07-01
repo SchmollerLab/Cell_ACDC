@@ -3537,17 +3537,21 @@ def import_segment_module(model_name):
     return acdcSegment
 
 def get_pip_conda_prefix(list_return=False):
-    cp = config.ConfigParser()
-    if cp["install_details"] is not None:
-        no_cli_install = True
-        install_details = cp["install_details"]
-        venv_path = install_details["venv_path"]
-        conda_path = install_details["conda_path"]
-        if ' ' not in conda_path:
-            conda_path = conda_path.strip('"').strip("'")
-    else:
+    try:
+        cp = config.ConfigParser()
+        if cp["install_details"] is not None:
+            no_cli_install = True
+            install_details = cp["install_details"]
+            venv_path = install_details["venv_path"]
+            conda_path = install_details["conda_path"]
+            if ' ' not in conda_path:
+                conda_path = conda_path.strip('"').strip("'")
+        else:
+            no_cli_install = False
+    except:
         no_cli_install = False
-    
+        pass
+
     if no_cli_install:
         conda_prefix = f'{conda_path} install -y -p {venv_path}'
         exec_path = sys.executable
