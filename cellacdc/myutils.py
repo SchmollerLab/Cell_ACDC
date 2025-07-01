@@ -330,25 +330,55 @@ class Logger(logging.Logger):
     
     def info(self, text, *args, **kwargs):
         super().info(text, *args, **kwargs)
-        self.write(f'{text}\n', log_to_file=False)
+        try:
+            self.write(f'{text}\n', log_to_file=False)
+        except TypeError:
+            # Sometimes the logger is patched (e.g., by spotiflow), which
+            # triggers the TypeError because the patching function does not have 
+            # log_to_file argument
+            self.write(f'{text}\n')
     
     def warning(self, text, *args, **kwargs):
         super().warning(text, *args, **kwargs)
-        self.write(f'[WARNING]: {text}\n', log_to_file=False)
+        try:
+            self.write(f'[WARNING]: {text}\n', log_to_file=False)
+        except TypeError:
+            # Sometimes the logger is patched (e.g., by spotiflow), which
+            # triggers the TypeError because the patching function does not have 
+            # log_to_file argument
+            self.write(f'[WARNING]: {text}\n')
     
     def error(self, text, *args, **kwargs):
         super().error(text, *args, **kwargs)
         self.write(traceback.format_exc())
-        self.write(f'[ERROR]: {text}\n', log_to_file=False)
+        try:
+            self.write(f'[ERROR]: {text}\n', log_to_file=False)
+        except TypeError:
+            # Sometimes the logger is patched (e.g., by spotiflow), which
+            # triggers the TypeError because the patching function does not have 
+            # log_to_file argument
+            self.write(f'[ERROR]: {text}\n')
     
     def critical(self, text, *args, **kwargs):
         super().critical(text, *args, **kwargs)
-        self.write(f'[CRITICAL]: {text}\n', log_to_file=False)
+        try:
+            self.write(f'[CRITICAL]: {text}\n', log_to_file=False)
+        except TypeError:
+            # Sometimes the logger is patched (e.g., by spotiflow), which
+            # triggers the TypeError because the patching function does not have 
+            # log_to_file argument
+            self.write(f'[CRITICAL]: {text}\n')
     
     def exception(self, text, *args, **kwargs):
         super().exception(text, *args, **kwargs)
         self.write(traceback.format_exc())
-        self.write(f'[ERROR]: {text}\n', log_to_file=False)
+        try:
+            self.write(f'[ERROR]: {text}\n', log_to_file=False)
+        except TypeError:
+            # Sometimes the logger is patched (e.g., by spotiflow), which
+            # triggers the TypeError because the patching function does not have 
+            # log_to_file argument
+            self.write(f'[ERROR]: {text}\n')
     
     def log(self, level, text):
         super().log(level, text)
