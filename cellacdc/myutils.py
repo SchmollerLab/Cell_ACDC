@@ -2751,8 +2751,9 @@ def install_package_conda(conda_pkg_name, channel='conda-forge'):
         raise EnvironmentError(
             'Cell-ACDC is not running in a `conda` environment.'
         )
-    
-    command = f'conda install -c {channel} -y {conda_pkg_name}'
+    conda_prefix, pip_prefix = get_pip_conda_prefix()
+
+    command = f'{conda_prefix} -c {channel} -y {conda_pkg_name}'
     _subprocess_run_command(command)
 
 def _subprocess_run_command(command, shell=True, callback='check_call'):
@@ -3002,7 +3003,9 @@ def check_matplotlib_version(qparent=None):
             )
             
 def _inform_install_package_failed(pkg_name, parent=None, do_exit=True):
-    install_command = f'<code>pip install --upgrade {pkg_name}</code>'
+    conda_prefix, pip_prefix = get_pip_conda_prefix()
+
+    install_command = f'<code>{pip_prefix} --upgrade {pkg_name}</code>'
     txt = html_utils.paragraph(f"""
         Unfortunately, <b>installation of</b> <code>{pkg_name}</code> <b>returned an error</b>.<br><br>
         Try restarting Cell-ACDC. If it doesn't work, 
@@ -3017,7 +3020,7 @@ def _inform_install_package_failed(pkg_name, parent=None, do_exit=True):
     print(
         f'[ERROR]: Installation of "{pkg_name}" failed. '
         f'Please, close Cell-ACDC and run the command '
-        f'`pip install --upgrade {pkg_name}`'
+        f'{pip_prefix} --upgrade {pkg_name}`'
     )
     print('^'*50)
 
@@ -3076,7 +3079,6 @@ def get_cli_multi_choice_question(question, choices):
 def _install_pytorch_cli(
         caller_name='Cell-ACDC', action='install', logger_func=print
     ):
-    from cellacdc import pytorch_commands
     separator = '-'*60
     txt = (
         f'{separator}\n{caller_name} needs to {action} PyTorch\n\n'
@@ -3091,7 +3093,7 @@ def _install_pytorch_cli(
             'CPU', 'CUDA 11.8 (NVIDIA GPU)', 'CUDA 12.1 (NVIDIA GPU)'
         )
     }
-    selected_command = pytorch_commands.copy()
+    selected_command = get_pytorch_command()
     selected_preferences = []
     for question, choices in questions.items():
         input_txt = get_cli_multi_choice_question(question, choices)
@@ -3143,10 +3145,17 @@ def _install_pytorch_cli(
         try:
             subprocess.check_call([selected_command], shell=True)
         except Exception as err:
-            subprocess.check_call(selected_command.split(), shell=True)
+            cmd_list = selected_command.split()
+            cmd_list = [cmd.strip('"') for cmd in cmd_list]
+            cmd_list = [cmd.strip("'") for cmd in cmd_list]
+            cmd_list = [cmd.lstrip(".") for cmd in cmd_list]
+            subprocess.check_call(cmd_list, shell=True)
     else:
-        args = selected_command.split()[1:]
-        subprocess.check_call([sys.executable, *args], shell=True)
+        cmd_list = selected_command.split()[1:]
+        cmd_list = [cmd.strip('"') for cmd in cmd_list]
+        cmd_list = [cmd.strip("'") for cmd in cmd_list]
+        cmd_list = [cmd.lstrip(".") for cmd in cmd_list]
+        subprocess.check_call([sys.executable, *cmd_list], shell=True)
 
 def _get_pkg_command_pip_install(pkg_command, max_version='', min_version=''):
     if min_version:
@@ -3175,11 +3184,13 @@ def _install_package_cli_msg(
     else:
         action = 'install'
     
+    conda_prefix, pip_prefix = get_pip_conda_prefix()
+
     if installer == 'pip':
-        install_command = f'pip install --upgrade {pkg_command}'
+        install_command = f'{pip_prefix} --upgrade {pkg_command}'
     elif installer == 'conda':
-        install_command = f'conda install -c conda-forge {pkg_command}'
-    
+        install_command = f'{conda_prefix} -c conda-forge {pkg_command}'
+        
     separator = '-'*60
     txt = (
         f'{separator}\n{caller_name} needs to {action} {pkg_name}\n\n'
@@ -3226,10 +3237,13 @@ def _install_package_gui_msg(
     
     command_html = pkg_command.lower().replace('<', '&lt;').replace('>', '&gt;')
     
+    conda_prefix, pip_prefix = get_pip_conda_prefix()
+
     if installer == 'pip':
-        command = f'pip install --upgrade {command_html}'
+        command = f'{pip_prefix} --upgrade {pkg_command}'
     elif installer == 'conda':
-        command = f'conda install -c conda-forge {command_html}'
+        command = f'{conda_prefix} -c conda-forge {pkg_command}'
+        
 
     txt = html_utils.paragraph(f"""
         {caller_name} is going to <b>download and {install_text}</b>
@@ -3258,8 +3272,10 @@ def _install_tensorflow(max_version='', min_version=''):
         max_version=max_version, 
         min_version=min_version
     )
+    conda_prefix, pip_prefix = get_pip_conda_prefix()
+
     if is_mac and cpu == 'arm':
-        args = [f'conda install -y -c conda-forge "{pkg_command}"']
+        args = [f'{conda_prefix} -c conda-forge "{pkg_command}"']
         shell = True
     else:
         args = [sys.executable, '-m', 'pip', 'install', '-U', pkg_command]
@@ -3490,6 +3506,36 @@ def import_segment_module(model_name):
         spec.loader.exec_module(acdcSegment)
     return acdcSegment
 
+def get_pip_conda_prefix(list_return=False):
+    cp = config.ConfigParser()
+    if cp["install_details"] is not None:
+        no_cli_install = True
+        install_details = cp["install_details"]
+        venv_path = install_details["venv_path"]
+        conda_path = install_details["conda_path"]
+        if ' ' not in conda_path:
+            conda_path = conda_path.strip('"').strip("'")
+    else:
+        no_cli_install = False
+    
+    if no_cli_install:
+        conda_prefix = f'{conda_path} install -y -p {venv_path}'
+        exec_path = sys.executable
+        if ' ' in exec_path:
+            exec_path = f'"{exec_path}"'
+        pip_prefix = f"{exec_path} -m pip install"
+    else:
+        conda_prefix = 'conda install -y'
+        pip_prefix = 'pip install'
+    
+    pip_list = [sys.executable, '-m', 'pip', 'install']
+    conda_list = [conda_path.strip('"').strip("'"), 'install', '-y', '-p', venv_path.strip('"').strip("'"), 'package']
+    if list_return:
+        return conda_list, pip_list
+    else:
+        return conda_prefix, pip_prefix
+
+
 def _warn_install_gpu(model_name, ask_installs, qparent=None):
     
     cellpose_cuda_url = (
@@ -3510,6 +3556,9 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None):
     torch_href = f'{html_utils.href_tag("here", torch_cuda_url)}'
     direct_ml_href = f'{html_utils.href_tag("direct_ml_DirectMLref", direct_ml_url)}'
     torch_directml_href = f'{html_utils.href_tag("directml pytorch", torch_directml_url)}'
+
+    conda_prefix, pip_prefix = get_pip_conda_prefix()
+
     msg = widgets.myMessageBox(showCentered=False, wrapText=False)
     txt = html_utils.paragraph(f"""
         In order to use <code>{model_name}</code> with the GPU you need 
@@ -3519,15 +3568,15 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None):
         """)
     txt_cuda_title = html_utils.paragraph(f"<b>CUDA</b>", font_size='18px')
 
+    pip_prefix = pip_prefix.replace('install -y', 'uninstall')
     txt_cuda = html_utils.paragraph(f"""
-        
         Check out these instructions {cellpose_href}, and {torch_href}.<br>
         We <b>highly recommend using Conda</b> to install PyTorch GPU.<br>
         First, uninstall the CPU version of PyTorch with the following command:<br>
-        <code>pip uninstall torch</code>.<br>
+        <code>{pip_prefix} uninstall torch</code>.<br>
         Then, install the CUDA version required by your GPU with the follwing 
         command (which installs version 11.6):<br>
-        <code>conda install pytorch pytorch-cuda=11.6 -c conda-forge -c nvidia</code>
+        <code>{conda_prefix} pytorch pytorch-cuda=11.6 -c conda-forge -c nvidia</code>
         <br><br>
         """)
     
@@ -3688,17 +3737,19 @@ def get_slices_local_into_global_arr(bbox_coords, global_shape):
     return tuple(slice_global_to_local), tuple(slice_crop_local)
 
 def get_pip_install_cellacdc_version_command(version=None):
+    conda_prefix, pip_prefix = get_pip_conda_prefix()
+
     if version is None:
         version = read_version()
     commit_hash_idx = version.find('+g')
     is_dev_version = commit_hash_idx > 0    
     if is_dev_version:
         commit_hash = version[commit_hash_idx+2:].split('.')[0]
-        command = f'pip install --upgrade "git+{github_home_url}.git@{commit_hash}"'
+        command = f'{pip_prefix} --upgrade "git+{github_home_url}.git@{commit_hash}"'
         command_github = None
     else:
-        command = f'pip install --upgrade cellacdc=={version}'
-        command_github = f'pip install --upgrade "git+{urls.github_url}@{version}"'
+        command = f'{pip_prefix} --upgrade cellacdc=={version}'
+        command_github = f'{pip_prefix} --upgrade "git+{urls.github_url}@{version}"'
     return command, command_github  
 
 def get_git_pull_checkout_cellacdc_version_commands(version=None):
@@ -4398,3 +4449,47 @@ def translateStrNone(*args):
                 args[i] = False
     
     return args
+
+def get_pytorch_command():
+    conda_prefix, pip_prefix = get_pip_conda_prefix()
+
+    pytorch_commands = {
+        'Windows': {
+            'Conda': {
+                'CPU': f'{conda_prefix} pytorch torchvision cpuonly -c conda-forge',
+                'CUDA 11.8 (NVIDIA GPU)': f'{conda_prefix} pytorch torchvision pytorch-cuda=11.8 -c conda-forge -c nvidia',
+                'CUDA 12.1 (NVIDIA GPU)': f'{conda_prefix} pytorch torchvision pytorch-cuda=12.1 -c conda-forge -c nvidia'
+            },
+            'Pip': {
+                'CPU': f'{pip_prefix} torch torchvision',
+                'CUDA 11.8 (NVIDIA GPU)': f'{pip_prefix} torch torchvision --index-url https://download.pytorch.org/whl/cu118',
+                'CUDA 12.1 (NVIDIA GPU)': f'{pip_prefix} torch torchvision --index-url https://download.pytorch.org/whl/cu121'
+            }
+        },
+        'Mac': {
+            'Conda': {
+                'CPU': f'{conda_prefix} pytorch torchvision cpuonly -c conda-forge',
+                'CUDA 11.8 (NVIDIA GPU)': '[WARNING]: CUDA is not available on MacOS',
+                'CUDA 12.1 (NVIDIA GPU)': '[WARNING]: CUDA is not available on MacOS'
+            },
+            'Pip': {
+                'CPU': f'{pip_prefix} torch torchvision',
+                'CUDA 11.8 (NVIDIA GPU)': '[WARNING]: CUDA is not available on MacOS',
+                'CUDA 12.1 (NVIDIA GPU)': '[WARNING]: CUDA is not available on MacOS'
+            }
+        },
+        'Linux': {
+            'Conda': {
+                'CPU': f'{conda_prefix} pytorch torchvision cpuonly -c conda-forge',
+                'CUDA 11.8 (NVIDIA GPU)': f'{conda_prefix} pytorch torchvision pytorch-cuda=11.8 -c conda-forge -c nvidia',
+                'CUDA 12.1 (NVIDIA GPU)': f'{conda_prefix} pytorch torchvision pytorch-cuda=12.1 -c conda-forge -c nvidia'
+            },
+            'Pip': {
+                'CPU': f'{pip_prefix} torch torchvision --index-url https://download.pytorch.org/whl/cpu',
+                'CUDA 11.8 (NVIDIA GPU)': f'{pip_prefix} torch torchvision --index-url https://download.pytorch.org/whl/cu118',
+                'CUDA 12.1 (NVIDIA GPU)': f'{pip_prefix} torch torchvision'
+            }
+        }
+    }
+
+    return pytorch_commands

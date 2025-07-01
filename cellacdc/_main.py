@@ -1629,7 +1629,7 @@ class mainWin(QMainWindow):
         conda_important_admon = html_utils.to_admonition(
             f"""
             Java can be installed only using <code>conda</code>! 
-            If you are not using condaand the file format of your files requires Bio-Formats,<br>
+            If you are not using conda and the file format of your files requires Bio-Formats,<br>
             you will need to use the provided ImageJ/Fiji macros.<br>
             See this guide for more information: {acdc_fiji_macros_href}
             """, 'important'

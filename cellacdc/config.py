@@ -2,6 +2,7 @@ import argparse
 import configparser
 import pprint
 import os
+import json
 
 from typing import get_type_hints 
 
@@ -93,6 +94,14 @@ try:
         )
     )
 
+    ap.add_argument(
+        '--install_details',
+        default='',
+        type=str,
+        metavar='PATH_TO_INSTALL_DETAILS',
+        help=('Path of the "install_details.json" file')
+    )
+
     # Add dummy argument for stupid Jupyter
     # ap.add_argument('-f')
 
@@ -100,6 +109,23 @@ try:
     parser_args = vars(parser_args)
     if os.path.exists(debug_true_filepath):
         parser_args['debug'] = True
+    
+    if parser_args.get('install_details', ''):
+        try:
+            with open(parser_args['install_details'], 'r') as f:
+                install_details = json.load(f)
+                for pathlike in ['conda_path', 'clone_path', 'venv_path', 'target_dir',]:
+                    if pathlike in install_details:
+                        install_details[pathlike] = f'"{os.path.abspath(
+                            install_details[pathlike])}"'
+                parser_args['install_details'] = install_details
+        except Exception as e:
+            printl(
+                'Error reading install details from file: '
+                f'{parser_args["install_details"]}. Error: {e}'
+            )
+            parser_args['install_details'] = {}
+                    
 except Exception as err:
     import pdb; pdb.set_trace()
     print('Importing from notebook, ignoring Cell-ACDC argument parser...')
