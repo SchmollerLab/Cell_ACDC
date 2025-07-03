@@ -1,6 +1,6 @@
 import inspect, os, datetime, sys, traceback
 
-from . import cellacdc_path
+from . import cellacdc_path, myutils
 
 import gc
 import psutil
@@ -22,7 +22,9 @@ def showRefGraph(object_str:str, debug:bool=True):
     try:
         import objgraph
     except ImportError:
-        print("objgraph is not installed. Install it with 'pip install objgraph' to use reference graph features, as well as https://www.graphviz.org/")
+        conda_prefix, pip_prefix = myutils.get_pip_conda_prefix()
+
+        print(f"objgraph is not installed. Install it with '{pip_prefix} objgraph' to use reference graph features, as well as https://www.graphviz.org/")
         return
 
     caller_func = inspect.currentframe().f_back.f_code.co_name
@@ -132,7 +134,9 @@ def print_largest_classes(package_prefix="cellacdc", top_n=10, max_instances=100
     try:
         from pympler import asizeof
     except ImportError:
-        print("pympler is not installed. Install it with 'pip install pympler' to use this function.")
+        conda_prefix, pip_prefix = myutils.get_pip_conda_prefix()
+
+        print(f"pympler is not installed. Install it with '{pip_prefix}l pympler' to use this function.")
         return
     process = psutil.Process()
     process_mem = process.memory_info().rss

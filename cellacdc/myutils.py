@@ -31,7 +31,8 @@ import typing
 from typing import List, Callable, Tuple
 import traceback
 import itertools
-
+from dulwich import porcelain
+from dulwich.repo import Repo
 
 from natsort import natsorted
 
@@ -2781,8 +2782,9 @@ def install_package_conda(conda_pkg_name, channel='conda-forge'):
         raise EnvironmentError(
             'Cell-ACDC is not running in a `conda` environment.'
         )
-    
-    command = f'conda install -c {channel} -y {conda_pkg_name}'
+    conda_prefix, pip_prefix = get_pip_conda_prefix()
+
+    command = f'{conda_prefix} -c {channel} -y {conda_pkg_name}'
     _subprocess_run_command(command)
 
 def _subprocess_run_command(command, shell=True, callback='check_call'):
@@ -3032,7 +3034,9 @@ def check_matplotlib_version(qparent=None):
             )
             
 def _inform_install_package_failed(pkg_name, parent=None, do_exit=True):
-    install_command = f'<code>pip install --upgrade {pkg_name}</code>'
+    conda_prefix, pip_prefix = get_pip_conda_prefix()
+
+    install_command = f'<code>{pip_prefix} --upgrade {pkg_name}</code>'
     txt = html_utils.paragraph(f"""
         Unfortunately, <b>installation of</b> <code>{pkg_name}</code> <b>returned an error</b>.<br><br>
         Try restarting Cell-ACDC. If it doesn't work, 
@@ -3047,7 +3051,7 @@ def _inform_install_package_failed(pkg_name, parent=None, do_exit=True):
     print(
         f'[ERROR]: Installation of "{pkg_name}" failed. '
         f'Please, close Cell-ACDC and run the command '
-        f'`pip install --upgrade {pkg_name}`'
+        f'{pip_prefix} --upgrade {pkg_name}`'
     )
     print('^'*50)
 
@@ -3106,7 +3110,6 @@ def get_cli_multi_choice_question(question, choices):
 def _install_pytorch_cli(
         caller_name='Cell-ACDC', action='install', logger_func=print
     ):
-    from cellacdc import pytorch_commands
     separator = '-'*60
     txt = (
         f'{separator}\n{caller_name} needs to {action} PyTorch\n\n'
@@ -3121,7 +3124,7 @@ def _install_pytorch_cli(
             'CPU', 'CUDA 11.8 (NVIDIA GPU)', 'CUDA 12.1 (NVIDIA GPU)'
         )
     }
-    selected_command = pytorch_commands.copy()
+    selected_command = get_pytorch_command()
     selected_preferences = []
     for question, choices in questions.items():
         input_txt = get_cli_multi_choice_question(question, choices)
@@ -3173,10 +3176,17 @@ def _install_pytorch_cli(
         try:
             subprocess.check_call([selected_command], shell=True)
         except Exception as err:
-            subprocess.check_call(selected_command.split(), shell=True)
+            cmd_list = selected_command.split()
+            cmd_list = [cmd.strip('"') for cmd in cmd_list]
+            cmd_list = [cmd.strip("'") for cmd in cmd_list]
+            cmd_list = [cmd.lstrip(".") for cmd in cmd_list]
+            subprocess.check_call(cmd_list, shell=True)
     else:
-        args = selected_command.split()[1:]
-        subprocess.check_call([sys.executable, *args], shell=True)
+        cmd_list = selected_command.split()[1:]
+        cmd_list = [cmd.strip('"') for cmd in cmd_list]
+        cmd_list = [cmd.strip("'") for cmd in cmd_list]
+        cmd_list = [cmd.lstrip(".") for cmd in cmd_list]
+        subprocess.check_call([sys.executable, *cmd_list], shell=True)
 
 def _get_pkg_command_pip_install(pkg_command, max_version='', min_version=''):
     if min_version:
@@ -3205,11 +3215,13 @@ def _install_package_cli_msg(
     else:
         action = 'install'
     
+    conda_prefix, pip_prefix = get_pip_conda_prefix()
+
     if installer == 'pip':
-        install_command = f'pip install --upgrade {pkg_command}'
+        install_command = f'{pip_prefix} --upgrade {pkg_command}'
     elif installer == 'conda':
-        install_command = f'conda install -c conda-forge {pkg_command}'
-    
+        install_command = f'{conda_prefix} -c conda-forge {pkg_command}'
+        
     separator = '-'*60
     txt = (
         f'{separator}\n{caller_name} needs to {action} {pkg_name}\n\n'
@@ -3256,10 +3268,13 @@ def _install_package_gui_msg(
     
     command_html = pkg_command.lower().replace('<', '&lt;').replace('>', '&gt;')
     
+    conda_prefix, pip_prefix = get_pip_conda_prefix()
+
     if installer == 'pip':
-        command = f'pip install --upgrade {command_html}'
+        command = f'{pip_prefix} --upgrade {pkg_command}'
     elif installer == 'conda':
-        command = f'conda install -c conda-forge {command_html}'
+        command = f'{conda_prefix} -c conda-forge {pkg_command}'
+        
 
     txt = html_utils.paragraph(f"""
         {caller_name} is going to <b>download and {install_text}</b>
@@ -3288,8 +3303,10 @@ def _install_tensorflow(max_version='', min_version=''):
         max_version=max_version, 
         min_version=min_version
     )
+    conda_prefix, pip_prefix = get_pip_conda_prefix()
+
     if is_mac and cpu == 'arm':
-        args = [f'conda install -y -c conda-forge "{pkg_command}"']
+        args = [f'{conda_prefix} -c conda-forge "{pkg_command}"']
         shell = True
     else:
         args = [sys.executable, '-m', 'pip', 'install', '-U', pkg_command]
@@ -3520,6 +3537,44 @@ def import_segment_module(model_name):
         spec.loader.exec_module(acdcSegment)
     return acdcSegment
 
+def get_pip_conda_prefix(list_return=False):
+    from .config import parser_args
+    try:
+        cp = parser_args
+        if cp["install_details"] is not None:
+            no_cli_install = True
+            install_details = cp["install_details"]
+            venv_path = install_details["venv_path"]
+            conda_path = install_details["conda_path"]
+            if ' ' not in conda_path:
+                conda_path = conda_path.strip('"').strip("'")
+        else:
+            no_cli_install = False
+    except:
+        no_cli_install = False
+        pass
+
+    if no_cli_install:
+        conda_prefix = f'{conda_path} install -y -p {venv_path}'
+        exec_path = sys.executable
+        if ' ' in exec_path:
+            exec_path = f'"{exec_path}"'
+        pip_prefix = f"{exec_path} -m pip install"
+    else:
+        conda_prefix = 'conda install -y'
+        pip_prefix = 'pip install'
+    
+    pip_list = [sys.executable, '-m', 'pip', 'install']
+    if no_cli_install:
+        conda_list = [conda_path.strip('"').strip("'"), 'install', '-y', '-p', venv_path.strip('"').strip("'")]
+    else:
+        conda_list = ['conda', 'install', '-y']
+    if list_return:
+        return conda_list, pip_list
+    else:
+        return conda_prefix, pip_prefix
+
+
 def _warn_install_gpu(model_name, ask_installs, qparent=None):
     
     cellpose_cuda_url = (
@@ -3540,6 +3595,9 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None):
     torch_href = f'{html_utils.href_tag("here", torch_cuda_url)}'
     direct_ml_href = f'{html_utils.href_tag("direct_ml_DirectMLref", direct_ml_url)}'
     torch_directml_href = f'{html_utils.href_tag("directml pytorch", torch_directml_url)}'
+
+    conda_prefix, pip_prefix = get_pip_conda_prefix()
+
     msg = widgets.myMessageBox(showCentered=False, wrapText=False)
     txt = html_utils.paragraph(f"""
         In order to use <code>{model_name}</code> with the GPU you need 
@@ -3549,15 +3607,15 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None):
         """)
     txt_cuda_title = html_utils.paragraph(f"<b>CUDA</b>", font_size='18px')
 
+    pip_prefix = pip_prefix.replace('install -y', 'uninstall')
     txt_cuda = html_utils.paragraph(f"""
-        
         Check out these instructions {cellpose_href}, and {torch_href}.<br>
         We <b>highly recommend using Conda</b> to install PyTorch GPU.<br>
         First, uninstall the CPU version of PyTorch with the following command:<br>
-        <code>pip uninstall torch</code>.<br>
+        <code>{pip_prefix} uninstall torch</code>.<br>
         Then, install the CUDA version required by your GPU with the follwing 
         command (which installs version 11.6):<br>
-        <code>conda install pytorch pytorch-cuda=11.6 -c conda-forge -c nvidia</code>
+        <code>{conda_prefix} pytorch pytorch-cuda=11.6 -c conda-forge -c nvidia</code>
         <br><br>
         """)
     
@@ -3718,17 +3776,19 @@ def get_slices_local_into_global_arr(bbox_coords, global_shape):
     return tuple(slice_global_to_local), tuple(slice_crop_local)
 
 def get_pip_install_cellacdc_version_command(version=None):
+    conda_prefix, pip_prefix = get_pip_conda_prefix()
+
     if version is None:
         version = read_version()
     commit_hash_idx = version.find('+g')
     is_dev_version = commit_hash_idx > 0    
     if is_dev_version:
         commit_hash = version[commit_hash_idx+2:].split('.')[0]
-        command = f'pip install --upgrade "git+{github_home_url}.git@{commit_hash}"'
+        command = f'{pip_prefix} --upgrade "git+{github_home_url}.git@{commit_hash}"'
         command_github = None
     else:
-        command = f'pip install --upgrade cellacdc=={version}'
-        command_github = f'pip install --upgrade "git+{urls.github_url}@{version}"'
+        command = f'{pip_prefix} --upgrade cellacdc=={version}'
+        command_github = f'{pip_prefix} --upgrade "git+{urls.github_url}@{version}"'
     return command, command_github  
 
 def get_git_pull_checkout_cellacdc_version_commands(version=None):
@@ -4428,3 +4488,226 @@ def translateStrNone(*args):
                 args[i] = False
     
     return args
+
+def get_pytorch_command():
+    conda_prefix, pip_prefix = get_pip_conda_prefix()
+
+    pytorch_commands = {
+        'Windows': {
+            'Conda': {
+                'CPU': f'{conda_prefix} pytorch torchvision cpuonly -c conda-forge',
+                'CUDA 11.8 (NVIDIA GPU)': f'{conda_prefix} pytorch torchvision pytorch-cuda=11.8 -c conda-forge -c nvidia',
+                'CUDA 12.1 (NVIDIA GPU)': f'{conda_prefix} pytorch torchvision pytorch-cuda=12.1 -c conda-forge -c nvidia'
+            },
+            'Pip': {
+                'CPU': f'{pip_prefix} torch torchvision',
+                'CUDA 11.8 (NVIDIA GPU)': f'{pip_prefix} torch torchvision --index-url https://download.pytorch.org/whl/cu118',
+                'CUDA 12.1 (NVIDIA GPU)': f'{pip_prefix} torch torchvision --index-url https://download.pytorch.org/whl/cu121'
+            }
+        },
+        'Mac': {
+            'Conda': {
+                'CPU': f'{conda_prefix} pytorch torchvision cpuonly -c conda-forge',
+                'CUDA 11.8 (NVIDIA GPU)': '[WARNING]: CUDA is not available on MacOS',
+                'CUDA 12.1 (NVIDIA GPU)': '[WARNING]: CUDA is not available on MacOS'
+            },
+            'Pip': {
+                'CPU': f'{pip_prefix} torch torchvision',
+                'CUDA 11.8 (NVIDIA GPU)': '[WARNING]: CUDA is not available on MacOS',
+                'CUDA 12.1 (NVIDIA GPU)': '[WARNING]: CUDA is not available on MacOS'
+            }
+        },
+        'Linux': {
+            'Conda': {
+                'CPU': f'{conda_prefix} pytorch torchvision cpuonly -c conda-forge',
+                'CUDA 11.8 (NVIDIA GPU)': f'{conda_prefix} pytorch torchvision pytorch-cuda=11.8 -c conda-forge -c nvidia',
+                'CUDA 12.1 (NVIDIA GPU)': f'{conda_prefix} pytorch torchvision pytorch-cuda=12.1 -c conda-forge -c nvidia'
+            },
+            'Pip': {
+                'CPU': f'{pip_prefix} torch torchvision --index-url https://download.pytorch.org/whl/cpu',
+                'CUDA 11.8 (NVIDIA GPU)': f'{pip_prefix} torch torchvision --index-url https://download.pytorch.org/whl/cu118',
+                'CUDA 12.1 (NVIDIA GPU)': f'{pip_prefix} torch torchvision'
+            }
+        }
+    }
+
+    return pytorch_commands
+
+def get_package_info(package_name):
+    try:
+        result = subprocess.run([
+            sys.executable, '-m', 'pip', 'show', package_name
+        ], capture_output=True, text=True, check=True)
+        
+        info = {}
+        for line in result.stdout.split('\n'):
+            if ':' in line:
+                key, value = line.split(':', 1)
+                info[key.strip()] = value.strip()
+        
+        # Check if it's editable by looking at the location
+        location = info.get('Location', '')
+        editable_location = info.get('Editable project location', '')
+        
+        return {
+            'installed': True,
+            'editable': bool(editable_location),
+            'location': location,
+            'editable_location': editable_location
+        }
+        
+    except subprocess.CalledProcessError:
+        return {'installed': False, 'editable': False}
+
+# Usage
+def update_package(package_name):
+    package_info = get_package_info(package_name)
+    if not package_info['installed']:
+        printl(f"Package {package_name} is not installed.")
+        return False
+    editable = package_info.get('editable', False)
+    if editable:
+        update_editable_package(package_name, package_info)
+    else:
+        update_not_editable_package(package_name, package_info)
+
+def update_editable_package(package_name, package_info):
+    repo_location = package_info.get('editable_location', '')
+    
+    if not repo_location or not os.path.exists(repo_location):
+        print(f"Repository location not found for {package_name}")
+        return False
+    try:
+        return _update_repo_with_dulwich(package_name, repo_location)
+    except Exception as e:
+        print(f"Dulwich failed for {package_name}: {e}")
+        print("Falling back to git command")
+        try:
+            return _update_repo_with_git_command(package_name, repo_location)
+        except Exception as e:
+            print(f"Git command failed for {package_name}: {e}")
+            return False
+
+def _update_repo_with_dulwich(package_name, repo_location):
+    """Update repository using dulwich"""
+    try:
+        print(f"Updating {package_name} repository at {repo_location}...")
+        
+        # Check if repository has uncommitted changes
+        try:
+            status = porcelain.status(repo_location)
+            if status.staged or status.unstaged:
+                print(f"Repository {package_name} has uncommitted changes")
+                print("Stashing changes before update...")
+                porcelain.stash_push(repo_location)  # Removed unsupported message argument
+        except Exception as status_error:
+            print(f"Warning: Could not check repository status: {status_error}")
+        
+        # Pull changes from origin
+        try:
+            porcelain.pull(repo_location, remote_location='origin')
+            print(f"Successfully updated {package_name}")
+            return True
+        except Exception as pull_error:
+            print(f"Failed to pull changes for {package_name}: {pull_error}")
+            # Try alternative approach with fetch
+            try:
+                print("Trying alternative update method...")
+                porcelain.fetch(repo_location, remote_location='origin')
+                
+                # Open repo and get current branch
+                repo = Repo(repo_location)
+                
+                # Determine current branch
+                current_branch = None
+                try:
+                    head_ref = repo.refs[b'HEAD']
+                    for ref_name, ref_value in repo.refs.items():
+                        if ref_name.startswith(b'refs/heads/') and ref_value == head_ref:
+                            current_branch = ref_name[11:]  # Remove 'refs/heads/' prefix
+                            break
+                except:
+                    pass
+                
+                # If no current branch detected, try common default branches
+                if current_branch is None:
+                    for branch in [b'main', b'master']:
+                        if b'refs/heads/' + branch in repo.refs:
+                            current_branch = branch
+                            break
+                
+                if current_branch:
+                    remote_ref = b'refs/remotes/origin/' + current_branch
+                    local_ref = b'refs/heads/' + current_branch
+                    
+                    if remote_ref in repo.refs:
+                        repo.refs[local_ref] = repo.refs[remote_ref]
+                        print(f"Successfully updated {package_name} using fetch method (branch: {current_branch.decode()})")
+                        return True
+                    else:
+                        print(f"Could not find remote branch {current_branch.decode()} for {package_name}")
+                        return False
+                else:
+                    print(f"Could not determine current branch for {package_name}")
+                    return False
+                    
+            except Exception as fetch_error:
+                print(f"Fetch method also failed for {package_name}: {fetch_error}")
+                return False
+            
+    except Exception as e:
+        print(f"Dulwich error updating {package_name}: {e}")
+        return False
+
+def _update_repo_with_git_command(package_name, repo_location):
+    """Update repository using git command"""
+    try:
+        print(f"Updating {package_name} repository at {repo_location} using git command...")
+        
+        # Change to repository directory
+        original_cwd = os.getcwd()
+        os.chdir(repo_location)
+        
+        try:
+            # Check for uncommitted changes
+            result = subprocess.run(['git', 'status', '--porcelain'], 
+                                  capture_output=True, text=True, check=True)
+            if result.stdout.strip():
+                print(f"Repository {package_name} has uncommitted changes")
+                print("Stashing changes before update...")
+                subprocess.run(['git', 'stash'], check=True)
+            
+            # Pull changes
+            subprocess.run(['git', 'pull'], check=True)
+            print(f"Successfully updated {package_name}")
+            return True
+            
+        except subprocess.CalledProcessError as e:
+            print(f"Git command failed for {package_name}: {e}")
+            return False
+        finally:
+            os.chdir(original_cwd)
+            
+    except Exception as e:
+        print(f"Error updating {package_name} with git command: {e}")
+        return False
+
+def update_not_editable_package(package_name, package_info):
+    """Update a non-editable package using pip"""
+    try:
+        _, pip_list = get_pip_conda_prefix(list_return=True)
+        command = pip_list + ["--upgrade ", package_name]
+        
+        print(f"Updating {package_name} using pip...")
+        result = subprocess.run(command, shell=True, capture_output=True, text=True)
+        
+        if result.returncode == 0:
+            print(f"Successfully updated {package_name}")
+            return True
+        else:
+            print(f"Failed to update {package_name}: {result.stderr}")
+            return False
+            
+    except Exception as e:
+        print(f"Error updating {package_name}: {e}")
+        return False
