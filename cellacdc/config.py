@@ -110,14 +110,14 @@ try:
     if os.path.exists(debug_true_filepath):
         parser_args['debug'] = True
     
-    if parser_args.get('install_details', ''):
+    install_details = parser_args.get('install_details')
+    if install_details and install_details != '':
         try:
             with open(parser_args['install_details'], 'r') as f:
                 install_details = json.load(f)
                 for pathlike in ['conda_path', 'clone_path', 'venv_path', 'target_dir',]:
                     if pathlike in install_details:
-                        install_details[pathlike] = f'"{os.path.abspath(
-                            install_details[pathlike])}"'
+                        install_details[pathlike] = f'"{os.path.abspath(install_details[pathlike])}"'
                 parser_args['install_details'] = install_details
         except Exception as e:
             printl(

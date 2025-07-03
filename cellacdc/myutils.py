@@ -31,7 +31,8 @@ import typing
 from typing import List, Callable, Tuple
 import traceback
 import itertools
-
+from dulwich import porcelain
+from dulwich.repo import Repo
 
 from natsort import natsorted
 
@@ -4531,3 +4532,182 @@ def get_pytorch_command():
     }
 
     return pytorch_commands
+
+def get_package_info(package_name):
+    try:
+        result = subprocess.run([
+            sys.executable, '-m', 'pip', 'show', package_name
+        ], capture_output=True, text=True, check=True)
+        
+        info = {}
+        for line in result.stdout.split('\n'):
+            if ':' in line:
+                key, value = line.split(':', 1)
+                info[key.strip()] = value.strip()
+        
+        # Check if it's editable by looking at the location
+        location = info.get('Location', '')
+        editable_location = info.get('Editable project location', '')
+        
+        return {
+            'installed': True,
+            'editable': bool(editable_location),
+            'location': location,
+            'editable_location': editable_location
+        }
+        
+    except subprocess.CalledProcessError:
+        return {'installed': False, 'editable': False}
+
+# Usage
+def update_package(package_name):
+    package_info = get_package_info(package_name)
+    if not package_info['installed']:
+        printl(f"Package {package_name} is not installed.")
+        return False
+    editable = package_info.get('editable', False)
+    if editable:
+        update_editable_package(package_name, package_info)
+    else:
+        update_not_editable_package(package_name, package_info)
+
+def update_editable_package(package_name, package_info):
+    repo_location = package_info.get('editable_location', '')
+    
+    if not repo_location or not os.path.exists(repo_location):
+        print(f"Repository location not found for {package_name}")
+        return False
+    try:
+        return _update_repo_with_dulwich(package_name, repo_location)
+    except Exception as e:
+        print(f"Dulwich failed for {package_name}: {e}")
+        print("Falling back to git command")
+        try:
+            return _update_repo_with_git_command(package_name, repo_location)
+        except Exception as e:
+            print(f"Git command failed for {package_name}: {e}")
+            return False
+
+def _update_repo_with_dulwich(package_name, repo_location):
+    """Update repository using dulwich"""
+    try:
+        print(f"Updating {package_name} repository at {repo_location}...")
+        
+        # Check if repository has uncommitted changes
+        try:
+            status = porcelain.status(repo_location)
+            if status.staged or status.unstaged:
+                print(f"Repository {package_name} has uncommitted changes")
+                print("Stashing changes before update...")
+                porcelain.stash_push(repo_location)  # Removed unsupported message argument
+        except Exception as status_error:
+            print(f"Warning: Could not check repository status: {status_error}")
+        
+        # Pull changes from origin
+        try:
+            porcelain.pull(repo_location, remote_location='origin')
+            print(f"Successfully updated {package_name}")
+            return True
+        except Exception as pull_error:
+            print(f"Failed to pull changes for {package_name}: {pull_error}")
+            # Try alternative approach with fetch
+            try:
+                print("Trying alternative update method...")
+                porcelain.fetch(repo_location, remote_location='origin')
+                
+                # Open repo and get current branch
+                repo = Repo(repo_location)
+                
+                # Determine current branch
+                current_branch = None
+                try:
+                    head_ref = repo.refs[b'HEAD']
+                    for ref_name, ref_value in repo.refs.items():
+                        if ref_name.startswith(b'refs/heads/') and ref_value == head_ref:
+                            current_branch = ref_name[11:]  # Remove 'refs/heads/' prefix
+                            break
+                except:
+                    pass
+                
+                # If no current branch detected, try common default branches
+                if current_branch is None:
+                    for branch in [b'main', b'master']:
+                        if b'refs/heads/' + branch in repo.refs:
+                            current_branch = branch
+                            break
+                
+                if current_branch:
+                    remote_ref = b'refs/remotes/origin/' + current_branch
+                    local_ref = b'refs/heads/' + current_branch
+                    
+                    if remote_ref in repo.refs:
+                        repo.refs[local_ref] = repo.refs[remote_ref]
+                        print(f"Successfully updated {package_name} using fetch method (branch: {current_branch.decode()})")
+                        return True
+                    else:
+                        print(f"Could not find remote branch {current_branch.decode()} for {package_name}")
+                        return False
+                else:
+                    print(f"Could not determine current branch for {package_name}")
+                    return False
+                    
+            except Exception as fetch_error:
+                print(f"Fetch method also failed for {package_name}: {fetch_error}")
+                return False
+            
+    except Exception as e:
+        print(f"Dulwich error updating {package_name}: {e}")
+        return False
+
+def _update_repo_with_git_command(package_name, repo_location):
+    """Update repository using git command"""
+    try:
+        print(f"Updating {package_name} repository at {repo_location} using git command...")
+        
+        # Change to repository directory
+        original_cwd = os.getcwd()
+        os.chdir(repo_location)
+        
+        try:
+            # Check for uncommitted changes
+            result = subprocess.run(['git', 'status', '--porcelain'], 
+                                  capture_output=True, text=True, check=True)
+            if result.stdout.strip():
+                print(f"Repository {package_name} has uncommitted changes")
+                print("Stashing changes before update...")
+                subprocess.run(['git', 'stash'], check=True)
+            
+            # Pull changes
+            subprocess.run(['git', 'pull'], check=True)
+            print(f"Successfully updated {package_name}")
+            return True
+            
+        except subprocess.CalledProcessError as e:
+            print(f"Git command failed for {package_name}: {e}")
+            return False
+        finally:
+            os.chdir(original_cwd)
+            
+    except Exception as e:
+        print(f"Error updating {package_name} with git command: {e}")
+        return False
+
+def update_not_editable_package(package_name, package_info):
+    """Update a non-editable package using pip"""
+    try:
+        _, pip_list = get_pip_conda_prefix(list_return=True)
+        command = pip_list + ["--upgrade ", package_name]
+        
+        print(f"Updating {package_name} using pip...")
+        result = subprocess.run(command, shell=True, capture_output=True, text=True)
+        
+        if result.returncode == 0:
+            print(f"Successfully updated {package_name}")
+            return True
+        else:
+            print(f"Failed to update {package_name}: {result.stderr}")
+            return False
+            
+    except Exception as e:
+        print(f"Error updating {package_name}: {e}")
+        return False
