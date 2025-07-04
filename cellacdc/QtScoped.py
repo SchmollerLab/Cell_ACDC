@@ -1,6 +1,6 @@
 from qtpy.QtCore import PYQT6, Qt
 
-from qtpy.QtWidgets import QAbstractSlider
+from qtpy.QtWidgets import QAbstractSlider, QStyle
 
 def SliderNoAction():
     if PYQT6:
@@ -49,3 +49,15 @@ def SliderMove():
         return QAbstractSlider.SliderAction.SliderMove.value
     else:
         return QAbstractSlider.SliderAction.SliderMove
+
+def QStyleCC_ScrollBar():
+    if PYQT6:
+        return QStyle.ComplexControl.CC_ScrollBar
+    else:
+        return QStyle.CC_ScrollBar
+
+def QStyleSC_ScrollBarSubLine():
+    if PYQT6:
+        return QStyle.SubControl.SC_ScrollBarSubLine
+    else:
+        return QStyle.SC_ScrollBarSubLine

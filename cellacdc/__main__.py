@@ -44,26 +44,9 @@ def run():
     PARAMS_PATH = parser_args['params']
     
     if parser_args['version'] or parser_args['info']:
-        import platform, sys
-        from cellacdc import cellacdc_path
-        from cellacdc.myutils import get_date_from_version, read_version
-        version = read_version()
-        release_date = get_date_from_version(version, package='cellacdc')
-        py_ver = sys.version_info
-        python_version = f'{py_ver.major}.{py_ver.minor}.{py_ver.micro}'
-        print('='*100)
-        print(f'Cell-ACDC version {version}')
-        print(f'Released on: {release_date}')
-        print(f'Installed in "{cellacdc_path}"')
-        print(f'Python {python_version}')
-        print(f'Platform: {platform.platform()}')
-        print(f'System: {platform.system()}')
-        try:
-            from qtpy import QtCore
-            print(f'Qt {QtCore.__version__}')
-        except Exception as err:
-            print(f'Qt: Not installed')
-        print('='*100)
+        from cellacdc.myutils import get_info_version_text
+        info_txt = get_info_version_text()
+        print(info_txt)
         exit()
 
     if PARAMS_PATH:

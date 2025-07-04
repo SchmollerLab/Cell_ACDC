@@ -25,7 +25,7 @@ if GUI_INSTALLED:
 
 from . import printl
 from . import _core, error_below, error_close
-from . import _run, core
+from . import _run, core, myutils
 
 def matplotlib_cmap_to_lut(
         cmap: Union[Iterable, matplotlib.colors.Colormap, str], 
@@ -58,8 +58,12 @@ def imshow(
         link_scrollbars=True,
         annotate_labels_idxs: List[int]=None,
         show_duplicated_cursor=True, 
-        infer_rgb=True
+        infer_rgb=True,
+        print_call_stack: bool=False
     ):
+    if print_call_stack:
+        myutils.print_call_stack()
+
     if isinstance(images[0], dict):
         images_dict = images[0]
         images = []
@@ -585,6 +589,8 @@ def heatmap(
         return fig, ax, im
 
 def _binned_mean_stats(x, y, bins, bins_min_count):
+    x = np.array(x).astype(float)
+    y = np.array(y).astype(float)
     bin_counts, _, _ = scipy.stats.binned_statistic(
         x, y, statistic='count', bins=bins
     )
@@ -650,7 +656,7 @@ def binned_means_plot(
     
     if scatter_colors is None:
         scatter_colors = color
-    
+
     xe, ye, std, std_err = _binned_mean_stats(x, y, bins, bins_min_count)
     if scatter:
         ax.scatter(x, y, color=scatter_colors, **scatter_kws)

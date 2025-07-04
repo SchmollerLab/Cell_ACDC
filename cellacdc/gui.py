@@ -2,11 +2,10 @@ import gc
 import sys
 import os
 import shutil
-import inspect
 import re
 import traceback
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 import inspect
 import logging
 import uuid
@@ -18,7 +17,7 @@ from functools import partial
 from tqdm import tqdm
 from collections import Counter
 from natsort import natsorted
-from typing import Literal, Iterable, Dict, Any, List, Union, Tuple
+from typing import Literal, Iterable, Dict, Any, List, Union, Tuple, Set
 
 import time
 import cv2
@@ -90,6 +89,7 @@ from . import data_structure_docs_url
 from . import exporters
 from . import preprocess
 from . import io
+from . import whitelist
 from .trackers.CellACDC import CellACDC_tracker
 from .cca_functions import _calc_rot_vol
 from .myutils import exec_time, setupLogger, ArgSpec
@@ -273,9 +273,12 @@ def sort_IDs_dist(rps, point=None, ID=None):
     rps : list
         A list of regionprops objects representing cells.
     point : tuple, optional
-        The coordinates of the point to calculate distances from. If not provided, it will be calculated based on the given ID.
+        The coordinates of the point to calculate distances from. 
+        If not provided, it will be calculated based on the given ID.
     ID : int, optional
-        The ID of the regionprops object to calculate distances from. If not provided, it will raise an error.
+        The ID of the regionprops object to calculate distances from. 
+        If this and point are both provided, or neither, an error will be 
+        raised.
 
     Returns
     -------
@@ -305,8 +308,12 @@ def sort_IDs_dist(rps, point=None, ID=None):
         raise(ValueError('Only one of ID or point must be provided.'))
     
 
-    IDs = [rp.label for rp in rps]    
-    dist_matrix = find_distances_ID(rps, point=point)
+    IDs = [rp.label for rp in rps]
+    if len(IDs) == 0:
+        return []
+    elif len(IDs) == 1:
+        return IDs
+    dist_matrix = find_distances_ID(rps, point=point)        
     dist_matrix = np.squeeze(dist_matrix)
 
     sorted_ids = sorted(zip(dist_matrix, IDs))
@@ -318,12 +325,7 @@ def disableWindow(func):
     def inner_function(self, *args, **kwargs):
         self.setDisabled(True)
         try:
-            if func.__code__.co_argcount==1 and func.__defaults__ is None:
-                result = func(self)
-            elif func.__code__.co_argcount>1 and func.__defaults__ is None:
-                result = func(self, *args)
-            else:
-                result = func(self, *args, **kwargs)
+            result = func(self, *args, **kwargs)
             return result
         except Exception as err:
             raise err
@@ -331,773 +333,7 @@ def disableWindow(func):
             self.setDisabled(False)
             self.activateWindow()
     return inner_function
-
-class relabelSequentialWorker(QObject):
-    finished = Signal()
-    critical = Signal(object)
-    progress = Signal(str)
-    sigRemoveItemsGUI = Signal(int)
-    debug = Signal(object)
-
-    def __init__(self, mainWin, posFoldernames):
-        QObject.__init__(self)
-        self.mainWin = mainWin
-        self.data = mainWin.data
-        self.posFoldernames = posFoldernames
-        self.mutex = QMutex()
-        self.waitCond = QWaitCondition()
-
-    def progressNewIDs(self, oldIDs, newIDs):
-        li = list(zip(oldIDs, newIDs))
-        s = '\n'.join([str(pair).replace(',', ' -->') for pair in li])
-        s = f'IDs relabelled as follows:\n{s}'
-        self.progress.emit(s)
-
-    @workers.worker_exception_handler
-    def run(self):
-        self.mutex.lock()
-
-        self.progress.emit('Relabelling process started...')
-        mainWin = self.mainWin
-
-        current_pos_i = mainWin.pos_i
-        
-        for p, posData in enumerate(self.data):
-            if posData.pos_foldername not in self.posFoldernames:
-                continue
-            
-            mainWin.pos_i = p
-            current_lab = mainWin.get_2Dlab(posData.lab).copy()
-            current_frame_i = posData.frame_i
-            segm_data = []
-            for frame_i, data_dict in enumerate(posData.allData_li):
-                lab = data_dict['labels']
-                if lab is None:
-                    break
-                segm_data.append(lab)
-                # if frame_i == current_frame_i:
-                #     break
-
-            if not segm_data:
-                segm_data = np.array([current_lab])
-
-            segm_data = np.array(segm_data)
-            segm_data, oldIDs, newIDs = core.relabel_sequential(
-                segm_data, is_timelapse=posData.SizeT>1
-            )
-            self.progressNewIDs(oldIDs, newIDs)
-            self.sigRemoveItemsGUI.emit(np.max(segm_data))
-
-            self.progress.emit(
-                'Updating stored data and cell cycle annotations '
-                '(if present)...'
-            )
-
-            mainWin.updateAnnotatedIDs(oldIDs, newIDs, logger=self.progress.emit)
-            mainWin.store_data(mainThread=False)
-
-            for frame_i, lab in enumerate(segm_data):
-                posData.frame_i = frame_i
-                posData.lab = lab
-                mainWin.get_cca_df()
-                if posData.cca_df is not None:
-                    mainWin.update_cca_df_relabelling(
-                        posData, oldIDs, newIDs
-                    )
-                mainWin.update_rp(draw=False)
-                mainWin.store_data(mainThread=False)
-
-        # Go back to current frame
-        mainWin.pos_i = current_pos_i
-        posData = self.data[mainWin.pos_i]
-        posData.frame_i = current_frame_i
-        mainWin.get_data()
-
-        self.mutex.unlock()
-        self.finished.emit()
-
-class saveDataWorker(QObject):
-    finished = Signal()
-    progress = Signal(str)
-    sigLog = Signal(str)
-    progressBar = Signal(int, int, float)
-    critical = Signal(object)
-    addMetricsCritical = Signal(str, str)
-    regionPropsCritical = Signal(str, str)
-    criticalPermissionError = Signal(str)
-    metricsPbarProgress = Signal(int, int)
-    askZsliceAbsent = Signal(str, object)
-    customMetricsCritical = Signal(str, str)
-    sigCombinedMetricsMissingColumn = Signal(str, str)
-    sigDebug = Signal(object)
-
-    def __init__(self, mainWin):
-        QObject.__init__(self)
-        self.mainWin = mainWin
-        self.saveWin = mainWin.saveWin
-        self.mutex = mainWin.mutex
-        self.waitCond = mainWin.waitCond
-        self.customMetricsErrors = {}
-        self.addMetricsErrors = {}
-        self.regionPropsErrors = {}
-        self.abort = False
-    
-    def _check_zSlice(self, posData, frame_i):
-        if posData.SizeZ == 1:
-            return True
-        
-        # Iteare fluo channels and get 2D data from 3D if needed
-        filenames = posData.fluo_data_dict.keys()
-        for chName, filename in zip(posData.loadedChNames, filenames):
-            idx = (filename, frame_i)
-            try:
-                if posData.segmInfo_df.at[idx, 'resegmented_in_gui']:
-                    col = 'z_slice_used_gui'
-                else:
-                    col = 'z_slice_used_dataPrep'
-                z_slice = posData.segmInfo_df.at[idx, col]
-            except KeyError:
-                try:
-                    # Try to see if the user already selected z-slice in prev pos
-                    segmInfo_df = pd.read_csv(posData.segmInfo_df_csv_path)
-                    index_col = ['filename', 'frame_i']
-                    posData.segmInfo_df = segmInfo_df.set_index(index_col)
-                    col = 'z_slice_used_dataPrep'
-                    z_slice = posData.segmInfo_df.at[idx, col]
-                except KeyError as e:
-                    self.progress.emit(
-                        f'z-slice for channel "{chName}" absent. '
-                        'Follow instructions on pop-up dialogs.'
-                    )
-                    self.mutex.lock()
-                    self.askZsliceAbsent.emit(filename, posData)
-                    self.waitCond.wait(self.mutex)
-                    self.mutex.unlock()
-                    if self.abort:
-                        return False
-                    self.progress.emit(
-                        f'Saving (check terminal for additional progress info)...'
-                    )
-                    segmInfo_df = pd.read_csv(posData.segmInfo_df_csv_path)
-                    index_col = ['filename', 'frame_i']
-                    posData.segmInfo_df = segmInfo_df.set_index(index_col)
-                    col = 'z_slice_used_dataPrep'
-                    z_slice = posData.segmInfo_df.at[idx, col]
-        return True
-    
-    def addDerivedCellCycleColumns(self, all_frames_acdc_df):
-        try:
-            all_frames_acdc_df = cca_functions.add_derived_cell_cycle_columns(
-                all_frames_acdc_df.copy()
-            )
-        except Exception as err:
-            self.sigLog.emit(traceback.format_exc())
-        
-        return all_frames_acdc_df
-        
-    def _emitSigDebug(self, stuff_to_debug):
-        self.mutex.lock()
-        self.sigDebug.emit(stuff_to_debug)
-        self.waitCond.wait(self.mutex)
-        self.mutex.unlock()
-
-    def addMetrics_acdc_df(self, stored_df, rp, frame_i, lab, posData):
-        yx_pxl_to_um2 = posData.PhysicalSizeY*posData.PhysicalSizeX
-        vox_to_fl_3D = (
-            posData.PhysicalSizeY*posData.PhysicalSizeX*posData.PhysicalSizeZ
-        )
-
-        manualBackgrLab = posData.manualBackgroundLab
-        manualBackgrRp = None
-        if manualBackgrLab is not None:
-            manualBackgrRp = skimage.measure.regionprops(manualBackgrLab)
-        isZstack = posData.SizeZ > 1
-        isSegm3D = self.mainWin.isSegm3D
-        all_channels_metrics = self.mainWin.metricsToSave
-        size_metrics_to_save = self.mainWin.sizeMetricsToSave
-        regionprops_to_save = self.mainWin.regionPropsToSave
-        metrics_func = self.mainWin.metrics_func
-        custom_func_dict = self.mainWin.custom_func_dict
-        bkgr_metrics_params = self.mainWin.bkgr_metrics_params
-        
-        foregr_metrics_params = self.mainWin.foregr_metrics_params
-        concentration_metrics_params = self.mainWin.concentration_metrics_params
-        custom_metrics_params = self.mainWin.custom_metrics_params
-        calc_for_each_zslice_mapper = self.mainWin.calc_for_each_zslice_mapper
-        calc_size_for_each_zslice = self.mainWin.calc_size_for_each_zslice
-
-        # Pre-populate columns with zeros
-        all_columns = list(size_metrics_to_save)
-        for channel, metrics in all_channels_metrics.items():
-            all_columns.extend(metrics)
-        all_columns.extend(regionprops_to_save)
-
-        df_shape = (len(stored_df), len(all_columns))
-        data = np.zeros(df_shape)
-        df = pd.DataFrame(data=data, index=stored_df.index, columns=all_columns)
-        # df = df.loc[:, ~df.columns.duplicated()].copy()
-        df = df.combine_first(stored_df)
-
-        # Check if z-slice is present for 3D z-stack data
-        proceed = self._check_zSlice(posData, frame_i)
-        if not proceed:
-            return
-
-        df = measurements.add_size_metrics(
-            df, rp, size_metrics_to_save, isSegm3D, yx_pxl_to_um2, 
-            vox_to_fl_3D, calc_size_for_each_zslice=calc_size_for_each_zslice
-        )
-        
-        # Get background masks
-        autoBkgr_masks = measurements.get_autoBkgr_mask(
-            lab, isSegm3D, posData, frame_i
-        )
-        # self._emitSigDebug((lab, frame_i, autoBkgr_masks))
-        
-        autoBkgr_mask, autoBkgr_mask_proj = autoBkgr_masks
-        dataPrepBkgrROI_mask = measurements.get_bkgrROI_mask(posData, isSegm3D)
-        
-        # Iterate channels
-        iter_channels = zip(
-            posData.loadedChNames, 
-            posData.fluo_data_dict.items()
-        )
-        for channel, (filename, channel_data) in iter_channels:
-            foregr_img = channel_data[frame_i]
-            
-            iter_other_channels = zip(
-                posData.loadedChNames, 
-                posData.fluo_data_dict.items()
-            )
-            other_channels_foregr_imgs = {
-                ch:ch_data[frame_i] for ch, (_, ch_data) in iter_other_channels
-                if ch != channel
-            }
-
-            # Get the z-slice if we have z-stacks
-            z = posData.zSliceSegmentation(filename, frame_i)
-            
-            # Get the background data
-            bkgr_data = measurements.get_bkgr_data(
-                foregr_img, posData, filename, frame_i, autoBkgr_mask, z,
-                autoBkgr_mask_proj, dataPrepBkgrROI_mask, isSegm3D, lab
-            )
-            
-            foregr_data = measurements.get_foregr_data(foregr_img, isSegm3D, z)
-
-            # Compute background values
-            df = measurements.add_bkgr_values(
-                df, bkgr_data, bkgr_metrics_params[channel], metrics_func,
-                manualBackgrRp=manualBackgrRp, foregr_data=foregr_data
-            )
-
-            # Iterate objects and compute foreground metrics
-            df = measurements.add_foregr_metrics(
-                df, rp, channel, foregr_data, foregr_metrics_params[channel], 
-                metrics_func, custom_metrics_params[channel], isSegm3D, 
-                lab, foregr_img, 
-                other_channels_foregr_imgs, 
-                manualBackgrRp=manualBackgrRp,
-                customMetricsCritical=self.customMetricsCritical,
-                z_slice=z
-            )
-
-            if not calc_for_each_zslice_mapper.get(channel, False):
-                continue
-            
-            # Repeat measureemnts for each z-slice
-            pbar_z = tqdm(
-                total=posData.SizeZ, desc='Computing for z-slices: ', 
-                ncols=100, leave=False, unit='z-slice'
-            )
-            for z in range(posData.SizeZ):
-                # Get the background data
-                bkgr_data = measurements.get_bkgr_data(
-                    foregr_img, posData, filename, frame_i, autoBkgr_mask, z,
-                    autoBkgr_mask_proj, dataPrepBkgrROI_mask, isSegm3D, lab
-                )
-                bkgr_data = {
-                    'autoBkgr': {'zSlice': bkgr_data['autoBkgr']['zSlice']},
-                    'dataPrepBkgr': {'zSlice': bkgr_data['dataPrepBkgr']['zSlice']}
-                }
-                
-                foregr_data = measurements.get_foregr_data(
-                    foregr_img, isSegm3D, z
-                )
-                foregr_data = {'zSlice': foregr_data['zSlice']}
-
-                # Compute background values
-                df = measurements.add_bkgr_values(
-                    df, bkgr_data, bkgr_metrics_params[channel], metrics_func,
-                    manualBackgrRp=manualBackgrRp, foregr_data=foregr_data,
-                    text_to_append_to_col=str(z)
-                )
-
-                # Iterate objects and compute foreground metrics
-                df = measurements.add_foregr_metrics(
-                    df, rp, channel, foregr_data, foregr_metrics_params[channel], 
-                    metrics_func, custom_metrics_params[channel], isSegm3D, 
-                    lab, foregr_img, 
-                    other_channels_foregr_imgs, 
-                    manualBackgrRp=manualBackgrRp,
-                    customMetricsCritical=self.customMetricsCritical,
-                    z_slice=z, text_to_append_to_col=str(z)
-                )
-                pbar_z.update()
-            pbar_z.close()
-
-        df = measurements.add_concentration_metrics(
-            df, concentration_metrics_params
-        )
-        
-        # Add region properties
-        try:
-            df, rp_errors = measurements.add_regionprops_metrics(
-                df, lab, regionprops_to_save, logger_func=self.progress.emit
-            )
-            if rp_errors:
-                print('')
-                self.progress.emit(
-                    'WARNING: Some objects had the following errors:\n'
-                    f'{rp_errors}\n'
-                    'Region properties with errors were saved as `Not A Number`.'
-                )
-        except Exception as error:
-            traceback_format = traceback.format_exc()
-            self.regionPropsCritical.emit(traceback_format, str(error))
-
-        # Remove 0s columns
-        df = df.loc[:, (df != -2).any(axis=0)]
-
-        return df
-
-    def _dfEvalEquation(self, df, newColName, expr):
-        try:
-            df[newColName] = df.eval(expr)
-        except pd.errors.UndefinedVariableError as error:
-            self.sigCombinedMetricsMissingColumn.emit(str(error), newColName)
-        
-        try:
-             df[newColName] = df.eval(expr)
-        except Exception as error:
-            self.customMetricsCritical.emit(
-                traceback.format_exc(), newColName
-            )
-
-    def _removeDeprecatedRows(self, df):
-        v1_2_4_rc25_deprecated_cols = [
-            'editIDclicked_x', 'editIDclicked_y',
-            'editIDnewID', 'editIDnewIDs'
-        ]
-        df = df.drop(columns=v1_2_4_rc25_deprecated_cols, errors='ignore')
-
-        # Remove old gui_ columns from version < v1.2.4.rc-7
-        gui_columns = df.filter(regex='gui_*').columns
-        df = df.drop(columns=gui_columns, errors='ignore')
-        cell_id_cols = df.filter(regex='Cell_ID.*').columns
-        df = df.drop(columns=cell_id_cols, errors='ignore')
-        time_seconds_cols = df.filter(regex='time_seconds.*').columns
-        df = df.drop(columns=time_seconds_cols, errors='ignore')
-        df = df.drop(columns='relative_ID_tree', errors='ignore')
-        df = df.drop(columns=['level_0', 'index'], errors='ignore')
-
-        return df
-
-    def addCombineMetrics_acdc_df(self, posData, df):
-        # Add channel specifc combined metrics (from equations and 
-        # from user_path_equations sections)
-        config = posData.combineMetricsConfig
-        for chName in posData.loadedChNames:
-            metricsToSkipChannel = self.mainWin.metricsToSkip.get(chName, [])
-            posDataEquations = config['equations']
-            userPathChEquations = config['user_path_equations']
-            for newColName, equation in posDataEquations.items():
-                if not newColName.startswith(chName):
-                    continue
-                if newColName in metricsToSkipChannel:
-                    continue
-                self._dfEvalEquation(df, newColName, equation)
-            for newColName, equation in userPathChEquations.items():
-                if not newColName.startswith(chName):
-                    continue
-                if newColName in metricsToSkipChannel:
-                    continue
-                self._dfEvalEquation(df, newColName, equation)
-
-        # Add mixed channels combined metrics
-        mixedChannelsEquations = config['mixed_channels_equations']
-        for newColName, equation in mixedChannelsEquations.items():
-            if newColName in self.mainWin.mixedChCombineMetricsToSkip:
-                continue
-            cols = re.findall(r'[A-Za-z0-9]+_[A-Za-z0-9_]+', equation)
-            if all([col in df.columns for col in cols]):
-                self._dfEvalEquation(df, newColName, equation)
-    
-    def addVelocityMeasurement(self, acdc_df, prev_lab, lab, posData):
-        if 'velocity_pixel' not in self.mainWin.sizeMetricsToSave:
-            return acdc_df
-        
-        if 'velocity_um' not in self.mainWin.sizeMetricsToSave:
-            spacing = None 
-        elif self.mainWin.isSegm3D:
-            spacing = np.array([
-                posData.PhysicalSizeZ, 
-                posData.PhysicalSizeY, 
-                posData.PhysicalSizeX
-            ])
-        else:
-            spacing = np.array([
-                posData.PhysicalSizeY, 
-                posData.PhysicalSizeX
-            ])
-        velocities_pxl, velocities_um = core.compute_twoframes_velocity(
-            prev_lab, lab, spacing=spacing
-        )
-        acdc_df['velocity_pixel'] = velocities_pxl
-        acdc_df['velocity_um'] = velocities_um
-        return acdc_df
-
-    def addVolumeMetrics(self, df, rp, posData):
-        PhysicalSizeY = posData.PhysicalSizeY
-        PhysicalSizeX = posData.PhysicalSizeX
-        yx_pxl_to_um2 = PhysicalSizeY*PhysicalSizeX
-        vox_to_fl_3D = PhysicalSizeY*PhysicalSizeX*posData.PhysicalSizeZ
-        
-        init_list = [-2]*len(rp)
-        IDs = init_list.copy()
-        IDs_vol_vox = init_list.copy()
-        IDs_area_pxl = init_list.copy()
-        IDs_vol_fl = init_list.copy()
-        IDs_area_um2 = init_list.copy()
-        if self.mainWin.isSegm3D:
-            IDs_vol_vox_3D = init_list.copy()
-            IDs_vol_fl_3D = init_list.copy()
-
-        for i, obj in enumerate(rp):
-            IDs[i] = obj.label
-            IDs_vol_vox[i] = obj.vol_vox
-            IDs_vol_fl[i] = obj.vol_fl
-            IDs_area_pxl[i] = obj.area
-            IDs_area_um2[i] = obj.area*yx_pxl_to_um2
-            if self.mainWin.isSegm3D:
-                IDs_vol_vox_3D[i] = obj.area
-                IDs_vol_fl_3D[i] = obj.area*vox_to_fl_3D
-            
-        df['cell_area_pxl'] = pd.Series(data=IDs_area_pxl, index=IDs, dtype=float)
-        df['cell_vol_vox'] = pd.Series(data=IDs_vol_vox, index=IDs, dtype=float)
-        df['cell_area_um2'] = pd.Series(data=IDs_area_um2, index=IDs, dtype=float)
-        df['cell_vol_fl'] = pd.Series(data=IDs_vol_fl, index=IDs, dtype=float)
-        if self.mainWin.isSegm3D:
-            df['cell_vol_vox_3D'] = pd.Series(
-                data=IDs_vol_vox_3D, index=IDs, dtype=float
-            )
-            df['cell_vol_fl_3D'] = pd.Series(
-                data=IDs_vol_fl_3D, index=IDs, dtype=float
-            )
-        return df
-
-    def addAdditionalMetadata(self, posData: load.loadData, df: pd.DataFrame):
-        for col, val in posData.additionalMetadataValues().items():
-            if col in df.columns:
-                df.pop(col)
-            df.insert(0, col, val)
-        
-        try:
-            df.pop('time_minutes')
-        except Exception as e:
-            pass
-        try:
-            df.pop('time_hours')
-        except Exception as e:
-            pass
-        try:
-            time_seconds = df.index.get_level_values('time_seconds')
-            df.insert(0, 'time_minutes', time_seconds/60)
-            df.insert(1, 'time_hours', time_seconds/3600)
-        except Exception as e:
-            pass
-
-    @workers.worker_exception_handler
-    def run(self):
-        posToSave = self.mainWin.posToSave
-        if posToSave is None:
-            numPosToSave = 1
-        else:
-            numPosToSave = len(posToSave)
-        save_metrics = self.mainWin.save_metrics
-        self.time_last_pbar_update = time.perf_counter()
-        mode = self.mode
-        for p, posData in enumerate(self.mainWin.data):
-            if self.saveWin.aborted:
-                self.finished.emit()
-                return
-            
-            if posToSave is not None:
-                if posData.pos_foldername not in posToSave:
-                    self.progress.emit(f'Skipping {posData.relPath}')
-                    continue
-
-            posData.saveCustomAnnotationParams()
-            current_frame_i = posData.frame_i
-
-            posData.saveTrackedLostCentroids()
-
-            if not self.mainWin.isSnapshot:
-                last_tracked_i = self.mainWin.last_tracked_i
-                if last_tracked_i is None:
-                    self.mainWin.saveWin.aborted = True
-                    self.finished.emit()
-                    return
-            elif self.mainWin.isSnapshot:
-                last_tracked_i = 0
-
-            if p == 0:
-                self.progressBar.emit(0, numPosToSave*(last_tracked_i+1), 0)
-
-            segm_npz_path = posData.segm_npz_path
-            acdc_output_csv_path = posData.acdc_output_csv_path
-            last_tracked_i_path = posData.last_tracked_i_path
-            end_i = self.mainWin.save_until_frame_i
-            if end_i < len(posData.segm_data):
-                saved_segm_data = posData.segm_data
-            else:
-                frame_shape = posData.segm_data.shape[1:]
-                segm_shape = (end_i+1, *frame_shape)
-                saved_segm_data = np.zeros(segm_shape, dtype=np.uint32)
-            npz_delROIs_info = {}
-            delROIs_info_path = posData.delROIs_info_path
-            acdc_df_li = []
-            keys = []
-
-            # Add segmented channel data for calc metrics if requested
-            add_user_channel_data = True
-            for chName in self.mainWin.chNamesToSkip:
-                skipUserChannel = (
-                    posData.filename.endswith(chName)
-                    or posData.filename.endswith(f'{chName}_aligned')
-                )
-                if skipUserChannel:
-                    add_user_channel_data = False
-
-            if add_user_channel_data and not self.saveOnlySegm:
-                posData.fluo_data_dict[posData.filename] = posData.img_data
-
-            posData.fluo_bkgrData_dict[posData.filename] = posData.bkgrData
-
-            posData.setLoadedChannelNames()
-            self.mainWin.initMetricsToSave(posData)
-
-            self.progress.emit(f'Saving {posData.relPath}')
-            for frame_i, data_dict in enumerate(posData.allData_li[:end_i+1]):
-                if self.saveWin.aborted:
-                    self.finished.emit()
-                    return
-
-                # Build saved_segm_data
-                lab = data_dict['labels']
-                if lab is None:
-                    break
-                
-                posData.lab = lab
-
-                if posData.SizeT > 1:
-                    saved_segm_data[frame_i] = lab
-                else:
-                    saved_segm_data = lab
-                    if 'manualBackgroundLab' in data_dict:
-                        manualBackgrData = data_dict['manualBackgroundLab']
-                        posData.saveManualBackgroundData(manualBackgrData)
-
-                acdc_df = data_dict['acdc_df']
-
-                if self.saveOnlySegm:
-                    continue
-
-                if acdc_df is None:
-                    continue
-
-                if not np.any(lab):
-                    continue
-
-                # Build acdc_df and index it in each frame_i of acdc_df_li
-                try:
-                    # if frame_i == 9:
-                    #     cols = list(base_cca_dict.keys())[:9]
-                    #     printl(acdc_df[cols])
-                    acdc_df = load.pd_bool_to_int(acdc_df, inplace=False)
-                    rp = data_dict['regionprops']
-                    acdc_df['num_objects'] = len(acdc_df)
-                    if save_metrics:
-                        if frame_i > 0:
-                            prev_data_dict = posData.allData_li[frame_i-1]
-                            prev_lab = prev_data_dict['labels']
-                            acdc_df = self.addVelocityMeasurement(
-                                acdc_df, prev_lab, lab, posData
-                            )
-                        acdc_df = self.addMetrics_acdc_df(
-                            acdc_df, rp, frame_i, lab, posData
-                        )
-                        if self.abort:
-                            self.progress.emit(f'Saving process aborted.')
-                            self.finished.emit()
-                            return
-                    elif mode == 'Cell cycle analysis':
-                        acdc_df = self.addVolumeMetrics(
-                            acdc_df, rp, posData
-                        )
-                    acdc_df_li.append(acdc_df)
-                    key = (frame_i, posData.TimeIncrement*frame_i)
-                    keys.append(key)
-                except Exception as error:
-                    self.addMetricsCritical.emit(
-                        traceback.format_exc(), str(error)
-                    )
-                
-                try:
-                    if save_metrics and frame_i > 0:
-                        prev_data_dict = posData.allData_li[frame_i-1]
-                        prev_lab = prev_data_dict['labels']
-                        acdc_df = self.addVelocityMeasurement(
-                            acdc_df, prev_lab, lab, posData
-                        )
-                except Exception as error:
-                    self.addMetricsCritical.emit(
-                        traceback.format_exc(), str(error)
-                    )
-
-                t = time.perf_counter()
-                exec_time = t - self.time_last_pbar_update
-                self.progressBar.emit(1, -1, exec_time)
-                self.time_last_pbar_update = t
-
-            # Save segmentation file
-            io.savez_compressed(segm_npz_path, np.squeeze(saved_segm_data))
-            posData.segm_data = saved_segm_data
-            try:
-                os.remove(posData.segm_npz_temp_path)
-            except Exception as e:
-                pass
-
-            if posData.segmInfo_df is not None:
-                try:
-                    posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
-                except PermissionError:
-                    err_msg = (
-                        'The below file is open in another app '
-                        '(Excel maybe?).\n\n'
-                        f'{posData.segmInfo_df_csv_path}\n\n'
-                        'Close file and then press "Ok".'
-                    )
-                    self.mutex.lock()
-                    self.criticalPermissionError.emit(err_msg)
-                    self.waitCond.wait(self.mutex)
-                    self.mutex.unlock()
-                    posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
-
-            if self.saveOnlySegm:
-                # Go back to current frame
-                posData.frame_i = current_frame_i
-                self.mainWin.get_data()
-                continue
-
-            if add_user_channel_data:
-                posData.fluo_data_dict.pop(posData.filename)
-
-            posData.fluo_bkgrData_dict.pop(posData.filename)
-
-            if posData.SizeT > 1:
-                self.progress.emit('Almost done...')
-                self.progressBar.emit(0, 0, 0)
-
-            if acdc_df_li:
-                columns = set()	
-                for df in acdc_df_li:
-                    columns.update(df.reset_index().columns)
-                test_df = pd.concat(acdc_df_li).reset_index()
-                all_frames_acdc_df = pd.concat(
-                    acdc_df_li, keys=keys,
-                    names=['frame_i', 'time_seconds', 'Cell_ID']
-                )
-                if save_metrics:
-                    self.addCombineMetrics_acdc_df(
-                        posData, all_frames_acdc_df
-                    )
-
-                self.addAdditionalMetadata(posData, all_frames_acdc_df)
-
-                all_frames_acdc_df = self._removeDeprecatedRows(
-                    all_frames_acdc_df
-                )
-                all_frames_acdc_df = self.addDerivedCellCycleColumns(
-                    all_frames_acdc_df
-                )
-                all_frames_acdc_df = load._fix_will_divide(all_frames_acdc_df)
-                custom_annot_columns = posData.getCustomAnnotColumnNames()
-                try:
-                    # Save segmentation metadata
-                    load.store_copy_acdc_df(
-                        posData, acdc_output_csv_path, 
-                        log_func=self.progress.emit
-                    )
-                    load.save_acdc_df_file(
-                        all_frames_acdc_df, acdc_output_csv_path, 
-                        custom_annot_columns=custom_annot_columns
-                    )
-                    posData.acdc_df = all_frames_acdc_df
-                except PermissionError:
-                    err_msg = (
-                        'The below file is open in another app '
-                        '(Excel maybe?).\n\n'
-                        f'{acdc_output_csv_path}\n\n'
-                        'Close file and then press "Ok".'
-                    )
-                    self.mutex.lock()
-                    self.criticalPermissionError.emit(err_msg)
-                    self.waitCond.wait(self.mutex)
-                    self.mutex.unlock()
-
-                    # Save segmentation metadata
-                    load.save_acdc_df_file(
-                        all_frames_acdc_df, acdc_output_csv_path, 
-                        custom_annot_columns=custom_annot_columns
-                    )
-                    posData.acdc_df = all_frames_acdc_df
-                except Exception as err:
-                    self.mutex.lock()
-                    self.critical.emit(err)
-                    self.waitCond.wait(self.mutex)
-                    self.mutex.unlock()
-
-            with open(last_tracked_i_path, 'w+') as txt:
-                txt.write(str(frame_i))
-
-            # Save combined metrics equations
-            posData.saveCombineMetrics()
-            self.mainWin.pointsLayerDataToDf(posData)
-            posData.saveClickEntryPointsDfs()
-
-            posData.last_tracked_i = last_tracked_i
-
-            # Go back to current frame
-            posData.frame_i = current_frame_i
-            self.mainWin.get_data()
-
-            if mode == 'Segmentation and Tracking' or mode == 'Viewer':
-                self.progress.emit(
-                    f'Saved data until frame number {frame_i+1}'
-                )
-            elif mode == 'Cell cycle analysis':
-                self.progress.emit(
-                    'Saved cell cycle annotations until frame '
-                    f'number {last_tracked_i+1}'
-                )
-            # self.progressBar.emit(1)
-        if self.mainWin.isSnapshot:
-            self.progress.emit(f'Saved all {p+1} Positions!')
-        
-        self.finished.emit()
-        
-        
+      
 class guiWin(QMainWindow):
     """Main Window."""
 
@@ -1132,8 +368,8 @@ class guiWin(QMainWindow):
         self.lineage_tree = None
         self.already_synced_lin_tree = set()
         self.right_click_ID = None
-        self.original_df = None
-        self.curr_original_df_i = None
+        self.original_df_lin_tree = None
+        self.original_df_lin_tree_i = None
 
     def setTooltips(self): #laoding tooltips for GUI from .\Cell_ACDC\docs\source\tooltips.rst
         tooltips = load.get_tooltips_from_docs()
@@ -1169,7 +405,7 @@ class guiWin(QMainWindow):
 
         self.is_error_state = False
         logger, logs_path, log_path, log_filename = setupLogger(
-            module=module, logs_path=logs_path
+            module=module, logs_path=logs_path, caller=self._appName
         )
         if self._version is not None:
             logger.info(f'Initializing GUI v{self._version}')
@@ -1214,6 +450,10 @@ class guiWin(QMainWindow):
         self.combineWorker = None
         self.preprocessDialog = None
         self.combineDialog = None
+        self.viewOriginalLabels = True
+        self.keepDisabled = False
+        self.whitelistAddNewIDsFrame = None
+        self.whitelistOriginalIDs = None
 
         self.checkableButtons = []
         self.LeftClickButtons = []
@@ -1297,6 +537,28 @@ class guiWin(QMainWindow):
         self.splineToObjModel = model.Model()
 
         self.splineToObjModel.fit()
+    
+    def setDisabled(self, disabled:bool, keepDisabled:bool=None, force:bool=False):
+        if force:
+            if disabled:
+                super().setDisabled(disabled)
+                return
+            else:
+                self.keepDisabled = False
+                super().setDisabled(disabled)
+                return
+
+        if keepDisabled is not None:
+            self.keepDisabled = keepDisabled
+
+        if self.keepDisabled:
+            if disabled:
+                super().setDisabled(disabled)
+                return
+            else:
+                return
+        else:
+            super().setDisabled(disabled)
     
     def readRecentPaths(self, recent_paths_path=None):
         # Step 0. Remove the old options from the menu
@@ -1532,6 +794,7 @@ class guiWin(QMainWindow):
 
     def gui_createMenuBar(self):
         menuBar = self.menuBar()
+        menuBar.setNativeMenuBar(False)
 
         # File menu
         fileMenu = QMenu("&File", self)
@@ -2049,6 +1312,21 @@ class guiWin(QMainWindow):
         # self.functionsNotTested3D.append(self.keepIDsButton)
         self.widgetsWithShortcut['Select objects to keep'] = self.keepIDsButton
 
+        self.whitelistIDsButton = QToolButton(self)
+        self.whitelistIDsButton.setIcon(QIcon(":whitelist.svg"))
+        self.whitelistIDsButton.setCheckable(True)
+        self.whitelistIDsButton.action = editToolBar.addWidget(
+            self.whitelistIDsButton
+        )
+        self.whitelistIDsButton.setShortcut('Ctrl+K')
+        self.checkableButtons.append(self.whitelistIDsButton)
+        self.checkableQButtonsGroup.addButton(self.whitelistIDsButton)
+        self.LeftClickButtons.append(self.whitelistIDsButton)
+        # self.functionsNotTested3D.append(self.whitelistIDsButton)
+        self.widgetsWithShortcut['Select objects to add to a tracking whitelist'] = (
+            self.whitelistIDsButton
+        )
+
         self.binCellButton = QToolButton(self)
         self.binCellButton.setIcon(QIcon(":bin.svg"))
         self.binCellButton.setCheckable(True)
@@ -2184,24 +1462,18 @@ class guiWin(QMainWindow):
 
         self.gui_createAnnotateToolbar()
 
+    @disableWindow
     def propagateLinTreeAction(self):
         """
         Propagates the lineage tree based on the current frame_i. Used in self.propagateLinTreeButton.
         """
-        self.nextAction.setDisabled(True)
-        self.prevAction.setDisabled(True)
-        self.navigateScrollBar.setDisabled(True)
         posData = self.data[self.pos_i]
         self.lineage_tree.propagate(posData.frame_i)
         self.lin_tree_to_acdc_df(force_all=True)
-        if posData.frame_i == self.curr_original_df_i:
-            self.original_df = self.lineage_tree.lineage_list[posData.frame_i]
+        if posData.frame_i == self.original_df_lin_tree_i:
+            self.original_df_lin_tree = self.lineage_tree.lineage_list[posData.frame_i]
 
         self.logger.info('Lineage tree propagated.')
-
-        self.nextAction.setDisabled(False)
-        self.prevAction.setDisabled(False)
-        self.navigateScrollBar.setDisabled(False)
 
     def gui_createAnnotateToolbar(self):
         # Edit toolbar
@@ -2925,6 +2197,7 @@ class guiWin(QMainWindow):
         self.keepIDsToolbar.setVisible(False)
         self.controlToolBars.append(self.keepIDsToolbar)
 
+        self.keptIDsLineEdit.sigEnterPressed.connect(self.applyKeepObjects)
         self.keptIDsLineEdit.sigIDsChanged.connect(self.updateKeepIDs)
         self.keepIDsConfirmAction.triggered.connect(self.applyKeepObjects)
         
@@ -3051,6 +2324,19 @@ class guiWin(QMainWindow):
         self.secondLevelToolbar = secondLevelToolbar
         self.secondLevelToolbar.setVisible(False)
 
+        try:
+            addNewIDToggleState = self.df_settings.at['addNewIDsWhitelistToggle', 'value'] == 'Yes'
+        except KeyError:
+            addNewIDToggleState = True
+        
+        self.whitelistIDsToolbar = widgets.WhitelistIDsToolbar(addNewIDToggleState, self)
+        for name, action in self.whitelistIDsToolbar.widgetsWithShortcut.items():
+            self.widgetsWithShortcut[name] = action
+        
+        self.addToolBar(Qt.TopToolBarArea, self.whitelistIDsToolbar)
+        self.whitelistIDsToolbar.setVisible(False)
+        self.controlToolBars.append(self.whitelistIDsToolbar)
+        
     def gui_populateToolSettingsMenu(self):
         brushHoverModeActionGroup = QActionGroup(self)
         brushHoverModeActionGroup.setExclusive(True)
@@ -3099,6 +2385,8 @@ class guiWin(QMainWindow):
             keepToolActiveNames[toolName] = button
         
         keepToolActiveNames = dict(natsorted(keepToolActiveNames.items()))
+        self.keepToolActiveActions = dict()
+        all_checked = True
         for toolName, button in keepToolActiveNames.items():
             menu = self.settingsMenu.addMenu(f'{toolName} tool')
             action = QAction(button)
@@ -3106,9 +2394,24 @@ class guiWin(QMainWindow):
             action.setCheckable(True)
             if toolName in self.df_settings.index:
                 action.setChecked(True)
+            else:
+                all_checked = False
             action.toggled.connect(self.keepToolActiveActionToggled)
             menu.addAction(action)
+            self.keepToolActiveActions[toolName] = action
         
+        self.settingsMenu.addSeparator()
+
+        self.keepAllToolsActiveToggle = QAction()
+        self.keepAllToolsActiveToggle.setText(
+            'Keep all tools active after using them'
+        )
+        self.keepAllToolsActiveToggle.setCheckable(True)
+        self.keepAllToolsActiveToggle.setChecked(all_checked)
+        self.keepAllToolsActiveToggle.toggled.connect(
+            self.keepAllToolsActiveActionToggled
+        )
+        self.settingsMenu.addAction(self.keepAllToolsActiveToggle)
         self.settingsMenu.addSeparator()
         
         askHowFutureFramesMenu = self.settingsMenu.addMenu(
@@ -3285,7 +2588,7 @@ class guiWin(QMainWindow):
 
         # Edit actions
         models = myutils.get_list_of_models()
-        models = [*models, 'cellpose_local_seg'] # Add cellpose_local_seg for SegForLostIDsAction
+        models = [*models, 'local_seg'] # Add local_seg for SegForLostIDsAction
         self.segmActions = []
         self.modelNames = []
         self.acdcSegment_li = []
@@ -3334,13 +2637,13 @@ class guiWin(QMainWindow):
         )
         
         self.repeatTrackingMenuAction = QAction(
-            'Repeat tracking on current frame...', self
+            'Track current frame with real-time tracker...', self
         )
         self.repeatTrackingMenuAction.setDisabled(True)
         self.repeatTrackingMenuAction.setShortcut('Shift+T')
 
         self.repeatTrackingVideoAction = QAction(
-            'Repeat tracking on multiple frames...', self
+            'Select a tracker and track multiple frames...', self
         )
         self.repeatTrackingVideoAction.setDisabled(True)
         self.repeatTrackingVideoAction.setShortcut('Alt+Shift+T')
@@ -3361,8 +2664,12 @@ class guiWin(QMainWindow):
             self.trackingAlgosGroup.addAction(rtTrackerAction)
 
         self.trackWithAcdcAction.setChecked(True)
+        aliases = myutils.aliases_real_time_trackers()
+
         if 'tracking_algorithm' in self.df_settings.index:
             trackingAlgo = self.df_settings.at['tracking_algorithm', 'value']
+            if trackingAlgo in aliases:
+                trackingAlgo = aliases[trackingAlgo]
             if trackingAlgo == 'Cell-ACDC':
                 self.trackWithAcdcAction.setChecked(True)
             elif trackingAlgo == 'YeaZ':
@@ -3470,7 +2777,6 @@ class guiWin(QMainWindow):
         self.viewCcaTableAction.setDisabled(True)
         self.viewCcaTableAction.setShortcut('Ctrl+P')
         
-        self.cp3denoiseAction = QAction('Cellpose 3.0 denoising...', self)
         
         self.addScaleBarAction = QAction('Add scale bar', self)
         self.addScaleBarAction.setCheckable(True)
@@ -3926,13 +3232,32 @@ class guiWin(QMainWindow):
         )
         self.keepIDsButton.toggled.connect(self.keepIDs_cb)
 
+        self.whitelistIDsButton.toggled.connect(self.whitelistIDs_cb)
+
+        self.whitelistIDsToolbar.sigWhitelistChanged.connect(
+            self.whitelistIDsChanged
+        )
+
+        self.whitelistIDsToolbar.sigWhitelistAccepted.connect(
+            self.whitelistIDsAccepted
+        )
+
+        self.whitelistIDsToolbar.sigViewOGIDs.connect(self.whitelistViewOGIDs)
+
+        self.whitelistIDsToolbar.sigAddNewIDs.connect(self.whitelistAddNewIDsToggled)
+
+        self.whitelistIDsToolbar.sigLoadOGLabs.connect(self.whitelistLoadOGLabs_cb)
+
+        self.whitelistIDsToolbar.sigTrackOGagainstPreviousFrame.connect(
+            self.whitelistTrackOGagainstPreviousFrame_cb
+        )
+
         self.expandLabelToolButton.toggled.connect(self.expandLabelCallback)
 
         self.reinitLastSegmFrameAction.triggered.connect(
             self.reInitLastSegmFrame
         )
 
-        self.cp3denoiseAction.triggered.connect(self.cp3denoiseActionTriggered)
         
         self.defaultRescaleIntensActionGroup.triggered.connect(
             self.defaultRescaleIntensLutActionToggled
@@ -5000,14 +4325,14 @@ class guiWin(QMainWindow):
         )
         self.topLayerItems.append(self.warnPairingItem)
 
-        self.ghostContourItemLeft = widgets.GhostContourItem()
-        self.ghostContourItemRight = widgets.GhostContourItem()
+        self.ghostContourItemLeft = widgets.GhostContourItem(self.ax1)
+        self.ghostContourItemRight = widgets.GhostContourItem(self.ax2)
 
-        self.ghostMaskItemLeft = widgets.GhostMaskItem()
-        self.ghostMaskItemRight = widgets.GhostMaskItem()
+        self.ghostMaskItemLeft = widgets.GhostMaskItem(self.ax1)
+        self.ghostMaskItemRight = widgets.GhostMaskItem(self.ax2)
         
         self.manualBackgroundObjItem = widgets.GhostContourItem(
-            penColor='r', textColor='r'
+            self.ax1, penColor='r', textColor='r'
         )
         self.manualBackgroundImageItem = pg.ImageItem()
     
@@ -5080,15 +4405,12 @@ class guiWin(QMainWindow):
         return lostObjScatterItem
 
     def _gui_createGraphicsItems(self):
+        for _posData in self.data:
+            _posData.allData_li = [None]*_posData.SizeT
+            
         posData = self.data[self.pos_i]
-        allIDs = set()
-        if np.any(self.data[self.pos_i].segm_data):
-            self.logger.info('Counting total number of segmented objects...')
-            for lab in tqdm(self.data[self.pos_i].segm_data, ncols=100):
-                IDs = [obj.label for obj in skimage.measure.regionprops(lab)]
-                allIDs.update(IDs)
-        if not allIDs:
-            allIDs = list(range(100))
+
+        allIDs, posData = core.count_objects(posData, self.logger.info)
         
         self.highLowResAction.setChecked(True)
         numItems = len(allIDs)
@@ -5150,12 +4472,12 @@ class guiWin(QMainWindow):
         )
         self.ax2_lostObjScatterItem = self.gui_getLostObjScatterItem()
         self.ax2_lostTrackedScatterItem = self.gui_getTrackedLostObjScatterItem()
-
-        self.gui_createTextAnnotItems(allIDs)
-        self.gui_setTextAnnotColors()
+        
+        self.gui_createTextAnnotItems(allIDs) # here
+        self.gui_setTextAnnotColors()# here
 
         self.setDisabledAnnotOptions(False)
-        
+
         self.progressWin.mainPbar.setMaximum(0)
         self.gui_addOverlayLayerItems()
         self.gui_addTopLayerItems()
@@ -5573,7 +4895,7 @@ class guiWin(QMainWindow):
             
             self.setImageImg2()
             delROIsIDs = self.setAllTextAnnotations()
-            self.setAllContoursImages(delROIsIDs=delROIsIDs)
+            self.setAllContoursImages(delROIsIDs=delROIsIDs, compute=False)
 
             how = self.drawIDsContComboBox.currentText()
             if how.find('overlay segm. masks') != -1:
@@ -5838,7 +5160,7 @@ class guiWin(QMainWindow):
                 else:
                     ID = editID_prompt.EntryID
             
-            obj_idx = posData.IDs.index(ID)
+            obj_idx = posData.IDs_idxs[ID]
             y, x = posData.rp[obj_idx].centroid[-2:]
             xdata, ydata = int(x), int(y)
 
@@ -5857,7 +5179,7 @@ class guiWin(QMainWindow):
                 if not self.editIDbutton.findChild(QAction).isChecked():
                     self.editIDbutton.setChecked(False)
                 return
-            
+
             if editID.assignNewID:
                 self.assignNewIDfromClickedID(ID, event)
                 return
@@ -7206,7 +6528,7 @@ class guiWin(QMainWindow):
             
             self.fillHolesID(self.ax2BrushID, sender='brush')
             
-            self.update_rp(update_IDs=self.isNewID)
+            self.update_rp(update_IDs=self.isNewID, )
 
             # t1 = time.perf_counter()
             self.trackManuallyAddedObject(posData.brushID, self.isNewID)
@@ -7294,6 +6616,7 @@ class guiWin(QMainWindow):
                 proceed = self.askPropagateChangePast(f'Merge IDs {IDs_to_merge}')
                 if proceed:
                     self.propagateMergeObjsPast(IDs_to_merge)
+                    self.whitelistPropagateIDs(only_future_frames=False, update_lab=True) # in the update_rp() call, this should also be done
 
             # Repeat tracking
             self.tracking(
@@ -7400,7 +6723,8 @@ class guiWin(QMainWindow):
             self.fillHolesID(posData.brushID, sender='brush')
             
             # Update data (rp, etc)
-            self.update_rp(update_IDs=self.isNewID)
+            self.update_rp(update_IDs=self.isNewID,
+                           )
             
             # Repeat tracking
             if self.autoIDcheckbox.isChecked():
@@ -7757,6 +7081,7 @@ class guiWin(QMainWindow):
         polyLineRoiON = self.addDelPolyLineRoiButton.isChecked()
         labelRoiON = self.labelRoiButton.isChecked()
         keepObjON = self.keepIDsButton.isChecked()
+        whitelistIDsON = self.whitelistIDsButton.isChecked()
         separateON = self.separateBudButton.isChecked()
         addPointsByClickingButton = self.buttonAddPointsByClickingActive()
         manualBackgroundON = self.manualBackgroundButton.isChecked()
@@ -7793,7 +7118,7 @@ class guiWin(QMainWindow):
             and not wandON and not polyLineRoiON and not labelRoiON
             and not middle_click and not keepObjON and not separateON
             and not manualBackgroundON and not drawClearRegionON
-            and addPointsByClickingButton is None
+            and addPointsByClickingButton is None and not whitelistIDsON
         )
         if isPanImageClick:
             dragImgLeft = True
@@ -7901,6 +7226,7 @@ class guiWin(QMainWindow):
             and not polyLineRoiON and not keepObjON
             and addPointsByClickingButton is None
             and not manualBackgroundON and not drawClearRegionON
+            and not whitelistIDsON
         )
         canKeep = (
             keepObjON and not wandON and not curvToolON and not brushON
@@ -7908,6 +7234,15 @@ class guiWin(QMainWindow):
             and not polyLineRoiON and not labelRoiON 
             and addPointsByClickingButton is None
             and not manualBackgroundON and not drawClearRegionON
+            and not whitelistIDsON
+        )
+        canWhitelistIDs = (
+            whitelistIDsON and not wandON and not curvToolON and not brushON
+            and not dragImgLeft and not brushON and not rulerON
+            and not polyLineRoiON and not labelRoiON 
+            and addPointsByClickingButton is None
+            and not manualBackgroundON and not drawClearRegionON
+            and not keepObjON
         )
         canAddPoint = (
             self.togglePointsLayerAction.isChecked()
@@ -8132,8 +7467,9 @@ class guiWin(QMainWindow):
                     [x0, x1], [y0, y1], lengthText=lengthText
                 )
                 self.ax1_rulerAnchorsItem.setData([x0, x1], [y0, y1])
-             
-            if canPolyLine and not self.startPointPolyLineItem.getData()[0]:
+            
+            xxPolyLine = self.startPointPolyLineItem.getData()[0]
+            if canPolyLine and len(xxPolyLine) == 0:
                 # Create and add roi item
                 self.createDelPolyLineRoi()
                 # Add start point of polyline roi
@@ -8160,7 +7496,6 @@ class guiWin(QMainWindow):
                     self.delROImovingFinished(self.polyLineRoi)
         
         elif left_click and canKeep:
-            # Right click is passed earlier to gui_mousePressImg2
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
@@ -8190,6 +7525,59 @@ class guiWin(QMainWindow):
             
             self.updateTempLayerKeepIDs()
         
+        elif left_click and canWhitelistIDs:
+            x, y = event.pos().x(), event.pos().y()
+            xdata, ydata = int(x), int(y)
+            ID = self.get_2Dlab(posData.lab)[ydata, xdata]
+
+            if ID == 0:
+                nearest_ID = self.nearest_nonzero(
+                    self.get_2Dlab(posData.lab), y, x
+                )
+                keepID_win = apps.QLineEditDialog(
+                    title='Clicked on background',
+                    msg='You clicked on the background.\n'
+                        'Enter ID that you want to select',
+                    parent=self, allowedValues=posData.IDs,
+                    defaultTxt=str(nearest_ID)
+                )
+                keepID_win.exec_()
+                if keepID_win.cancel:
+                    return
+                else:
+                    ID = keepID_win.EntryID
+            
+            posData = self.data[self.pos_i]
+
+            if not posData.whitelist:
+                wl_init = False
+                if not hasattr(self, 'tempWhitelistIDs'):
+                    self.tempWhitelistIDs = set() # not updated, only use in this context
+                    current_whitelist = self.tempWhitelistIDs
+                else:
+                    current_whitelist = self.tempWhitelistIDs
+            else:
+                wl_init = True
+                current_whitelist = posData.whitelist.get(posData.frame_i)
+
+            if ID in current_whitelist:
+                current_whitelist.remove(ID)
+                self.removeHighlightLabelID(IDs=[ID])
+            else:
+                current_whitelist.add(ID)
+                self.highlightLabelID(ID)
+            
+            self.whitelistIDsToolbar.whitelistLineEdit.setText(
+                current_whitelist
+            )
+            
+            if wl_init:
+                posData.whitelist[posData.frame_i] = current_whitelist
+            else:
+                self.tempWhitelistIDs = current_whitelist
+
+            self.whitelistUpdateTempLayer()
+
         elif right_click and copyContourON:
             hoverLostID = self.ax1_lostObjScatterItem.hoverLostID
             self.copyLostObjectContour(hoverLostID)
@@ -8540,7 +7928,8 @@ class guiWin(QMainWindow):
     def repeat_click_and_backup(self, posData, event, ydata, xdata):
         """
         This function is part of the lin_tree edit functionality. 
-        It handles the back up of the original self.lineage_tree.lineage_list df and the repeated clicking on the same ID to cycle through pssible mothers.
+        It handles the back up of the original self.lineage_tree.lineage_list 
+        df and the repeated clicking on the same ID to cycle through pssible mothers.
 
         Parameters
         ----------
@@ -8558,12 +7947,13 @@ class guiWin(QMainWindow):
         tuple
             A tuple containing the point(tuple: (x, y) coords) and ID of clicked cell.
         """
-        if self.original_df is None:
-            self.original_df = self.lineage_tree.lineage_list[posData.frame_i]
-            self.curr_original_df_i = posData.frame_i
-        elif self.curr_original_df_i != posData.frame_i:
-            self.original_df = self.lineage_tree.lineage_list[posData.frame_i]
-            self.curr_original_df_i = posData.frame_i
+        if self.original_df_lin_tree is None:
+            self.original_df_lin_tree = self.lineage_tree.lineage_list[posData.frame_i].copy()
+            self.original_df_lin_tree_i = posData.frame_i
+        elif self.original_df_lin_tree_i != posData.frame_i:
+            printl('[WARNING]: !!! Original lineage tree df changed, resetting original_df_lin_tree !!!')
+            self.original_df_lin_tree = self.lineage_tree.lineage_list[posData.frame_i].copy()
+            self.original_df_lin_tree_i = posData.frame_i
 
         if not self.right_click_ID:
             self.right_click_i = 0
@@ -8586,6 +7976,34 @@ class guiWin(QMainWindow):
             self.right_click_i += 1
 
         return point, ID
+
+    def getDistanceListMissingIDs(self, point, ID):
+        posData = self.data[self.pos_i]
+        frame_i = posData.frame_i
+        if self.getDistanceListMissingIDsCachedFrame != frame_i:
+            self.distanceListMissingIDs = dict()
+            self.getDistanceListMissingIDsCachedFrame = frame_i
+            self.store_data(autosave=False)
+            self.get_data()
+
+        if ID not in self.distanceListMissingIDs.keys():
+            prev_rp = posData.allData_li[frame_i-1]['regionprops']
+            relevant_rp = [
+                obj for obj in prev_rp if obj.label not in posData.IDs
+            ]
+            len_relevant_rp = len(relevant_rp)
+            if len_relevant_rp == 0:
+                self.logger.info('No missing IDs found in previous frame.')
+                return []
+            elif len_relevant_rp == 1:
+                self.distanceListMissingIDs[ID] = [relevant_rp[0].label]
+                return [relevant_rp[0].label]
+            else:
+                sorted_missing_IDs = sort_IDs_dist(relevant_rp, point=point)
+                self.distanceListMissingIDs[ID] = sorted_missing_IDs
+                return sorted_missing_IDs
+        else:
+            return self.distanceListMissingIDs[ID]
     
     def find_mother_action(self, posData, event, ydata, xdata):
         """
@@ -8609,22 +8027,15 @@ class guiWin(QMainWindow):
 
         if point is None:
             return
-
-        lin_tree_df = self.lineage_tree.export_df(posData.frame_i)
-
-        prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
-        sorted_IDs = sort_IDs_dist(prev_rp, point=point)
         
-        prev_IDs = {rp.label for rp in prev_rp}
-        missing_IDs = prev_IDs - set(posData.IDs) 
-        filtered_IDs = [ID for ID in sorted_IDs if ID in missing_IDs]
+        lin_tree_df = self.lineage_tree.lineage_list[posData.frame_i]
+        filtered_IDs = self.getDistanceListMissingIDs(point, ID)
         if len(filtered_IDs) == 0:
             self.logger.info('No mother candidates found.')
             return
 
         i = self.right_click_i % len(filtered_IDs)
-        if self.right_click_i < 0:
-            i = -i
+        i = abs(i)  # Ensure i is non-negative
         new_mother = filtered_IDs[i]
 
         if lin_tree_df.loc[ID]['parent_ID_tree'] == new_mother and self.original_mother_skipped == False: # if a mother is already present, skip it 
@@ -8632,12 +8043,11 @@ class guiWin(QMainWindow):
             self.original_mother_skipped = True
 
             i = self.right_click_i % len(filtered_IDs)
-            if self.right_click_i < 0:
-                i = -i
+            i = abs(i)  # Ensure i is non-negative
             new_mother = filtered_IDs[i]
 
         lin_tree_df.at[ID, 'parent_ID_tree'] = new_mother
-        self.lineage_tree.insert_lineage_df(lin_tree_df, posData.frame_i, quick=True, consider_children=False, update_fams=False)
+        self.lineage_tree.insert_lineage_df(lin_tree_df, posData.frame_i, consider_children=False, update_fams=False, raw_input=True, propagate=False)
         self.drawAllLineageTreeLines()
 
     def annotate_unknown_lineage_action(self, posData, event, ydata, xdata):
@@ -8662,9 +8072,9 @@ class guiWin(QMainWindow):
         if point is None:
             return
 
-        lin_tree_df = self.lineage_tree.export_df(posData.frame_i)
+        lin_tree_df = self.lineage_tree.lineage_list[posData.frame_i]
         lin_tree_df.at[ID, 'parent_ID_tree'] = -1
-        self.lineage_tree.insert_lineage_df(lin_tree_df, posData.frame_i, quick=True, consider_children=False, update_fams=False)
+        self.lineage_tree.insert_lineage_df(lin_tree_df, posData.frame_i, consider_children=False, update_fams=False, raw_input=True, propagate=False)
         self.drawAllLineageTreeLines()
 
     def gui_addCreatedAxesItems(self):
@@ -8689,29 +8099,55 @@ class guiWin(QMainWindow):
         self.textAnnot[1].addToPlotItem(self.ax2)
 
     def SegForLostIDsSetSettings(self):
-        model_name = 'cellpose_local_seg'
-        base_model_name = 'cellpose_custom'
+
+        try:
+            prev_model = str(self.df_settings.at['SegForLostIDsModel', 'value'])
+        except KeyError:
+            prev_model = None
+        win = apps.QDialogSelectModel(parent=self, customFirst=prev_model)
+        win.exec_()
+        if win.cancel:
+            self.logger.info('Seg for lost IDs cancelled.')
+            return
+        base_model_name = win.selectedModel
+
+        if base_model_name:
+            self.df_settings.at['SegForLostIDsModel', 'value'] = base_model_name
+            self.df_settings.to_csv(self.settings_csv_path)
+
+        model_name = 'local_seg'
+
         idx = self.modelNames.index(model_name)
         acdcSegment = self.acdcSegment_li[idx]
 
-        if acdcSegment is None:
+        if acdcSegment is None or base_model_name != self.local_seg_base_model_name:
             self.logger.info(f'Importing {base_model_name}...')
             acdcSegment = myutils.import_segment_module(base_model_name)
             self.acdcSegment_li[idx] = acdcSegment
+            self.local_seg_base_model_name = base_model_name  
         
         extra_params = ['overlap_threshold',
                         'padding',
                         'size_perc_threshold',
-                        'distance_filler_growth']
+                        'distance_filler_growth',
+                        'max_interations',
+                        'allow_only_tracked_cells']
 
-        extra_types = [float, float, float, float]
+        extra_types = [float, float, float, float, int, bool]
 
-        extra_defaults = [0.5, 0.4, 0.5, 1.]
+        extra_defaults = [0.5, 0.8, 0.5, 1., 2, False]
 
         extra_desc = ['Overlap threshold with other already segemented cells over which newly segmented cells are discarded', 
                     'Padding of the box used for new segmentation around the segmentation from the previous frame', 
                     'Relative size threshold of the new segmentation compared to the segmentation from the previous frame',
-                    "Cells which are already segmented are filled with random noise sampled from background to ensure that they don't get segmented again. This parameter controls the additional padding around the already segmented cells."]
+                    """Cells which are already segmented are filled with random noise sampled from background 
+                    to ensure that they don't get segmented again. 
+                    This parameter controls the additional padding around the already segmented cells.""",
+                    """The algorithm will try and segment the maximum amount 
+                    of cells in the image by running the model several 
+                    times and filling new found cells with background noise. 
+                    How many of these iterations should be run?""",
+                    "If no new cell IDs should be permitted (based on real time tracking)"]
 
         extra_ArgSpec = []
         for i, param in enumerate(extra_params):
@@ -8725,11 +8161,12 @@ class guiWin(QMainWindow):
 
         init_params, segment_params = myutils.getModelArgSpec(acdcSegment)
         segment_params = [arg for arg in segment_params if arg[0] != 'diameter']
-        
-        init_params += extra_ArgSpec
-
+                
+        extraParamsTitle = 'Settings for local segmentation'
         win = self.initSegmModelParams(
-            model_name, acdcSegment, init_params, segment_params
+            base_model_name, acdcSegment, init_params, segment_params,
+            extraParams=extra_ArgSpec, extraParamsTitle=extraParamsTitle,
+            initLastParams=True, ini_filename='segmentation_for_lostIDs.ini',
         )
 
         if win is None:
@@ -8743,14 +8180,25 @@ class guiWin(QMainWindow):
                 args_new[key] = val
             else:
                 init_kwargs_new[key] = val
-        
+
+        for key, val in win.extra_kwargs.items():
+            if key in extra_params:
+                args_new[key] = val
+
         self.SegForLostIDsSettings = {
             'win': win,
             'init_kwargs_new': init_kwargs_new,
-            'args_new': args_new
+            'args_new': args_new,
+            'base_model_name': base_model_name,
         }
 
     def SegForLostIDsAction(self):
+
+        self.setFrameNavigationDisabled(disable=True, why='Segmentation for lost IDs')
+        posData = self.data[self.pos_i]
+        if posData.frame_i == 0:
+            self.logger.info('Segmentation for lost IDs not available on first frame.')
+            return
         self.storeUndoRedoStates(False)
         self.progressWin = apps.QDialogWorkerProgress(
             title='Segmenting for lost IDs', parent=self,
@@ -8763,7 +8211,15 @@ class guiWin(QMainWindow):
 
     def onSegForLostInit(self):
         self.logger.info('Settings for segmentation for lost IDs not set.')
-        self.SegForLostIDsSetSettings()            
+        self.SegForLostIDsSetSettings()
+        self.SegForLostIDsWaitCond.wakeAll()
+    
+    def SegForLostIDsWorkerAskInstallModel(self, model_name):
+        if model_name == 'cellpose_custom':
+            myutils.check_install_cellpose(version="any")
+        else:
+            myutils.check_install_package(model_name)
+        
         self.SegForLostIDsWaitCond.wakeAll()
 
     def startSegForLostIDsWorker(self):
@@ -8778,6 +8234,20 @@ class guiWin(QMainWindow):
 
         # Connect the worker's signal to the main thread's slot
         self.SegForLostIDsWorker.sigAskInit.connect(self.onSegForLostInit)
+        self.SegForLostIDsWorker.sigAskInstallModel.connect(
+            self.SegForLostIDsWorkerAskInstallModel
+        )
+        self.SegForLostIDsWorker.sigshowImageDebug.connect(
+            self.showImageDebug
+        )
+
+        self.SegForLostIDsWorker.sigStoreData.connect(self.onSigStoreDataSegForLostIDsWorker)
+        self.SegForLostIDsWorker.sigUpdateRP.connect(self.onSigUpdateRPSegForLostIDsWorker)
+        self.SegForLostIDsWorker.sigGetData.connect(self.onSigGetDataSegForLostIDsWorker)
+        # self.SegForLostIDsWorker.sigGet2Dlab.connect(self.onSigGet2DlabSegForLostIDsWorker)
+        # self.SegForLostIDsWorker.sigGetTrackedLostIDs.connect(self.onSigGetTrackedSegForLostIDsWorker)
+        # self.SegForLostIDsWorker.sigGetBrushID.connect(self.onSigGetBrushIDSegForLostIDsWorker)
+        self.SegForLostIDsWorker.sigTrackManuallyAddedObject.connect(self.onSigTrackManuallyAddedObjectSegForLostIDsWorker)
 
         # Move the worker to the thread
         self.SegForLostIDsWorker.moveToThread(self._thread)
@@ -8798,22 +8268,75 @@ class guiWin(QMainWindow):
         self._thread.started.connect(self.SegForLostIDsWorker.run)
         self._thread.start()
     
+    def onSigStoreDataSegForLostIDsWorker(self, autosave):
+        self.onSigStoreData(
+            self.SegForLostIDsWaitCond, autosave=autosave)
+        
+    def onSigUpdateRPSegForLostIDsWorker(self, wl_update, wl_track_og_curr):
+        self.onSigUpdateRP(self.SegForLostIDsWaitCond,
+                           wl_update=wl_update, 
+                           wl_track_og_curr=wl_track_og_curr)
+        
+    def onSigGetDataSegForLostIDsWorker(self):
+        self.onSigGetData(
+            self.SegForLostIDsWaitCond)
+
+    # def onSigGet2DlabSegForLostIDsWorker(self):
+    #     posData = self.data[self.pos_i]
+    #     lab = self.get_2Dlab(posData.lab)
+    #     self.SegForLostIDsWorker.lab = lab
+    #     self.SegForLostIDsWaitCond.wakeAll()
+    
+    # def onSigGetTrackedSegForLostIDsWorker(self):
+    #     self.SegForLostIDsWorker.trackedLostIDs = self.getTrackedLostIDs()
+    #     self.SegForLostIDsWaitCond.wakeAll()
+    
+    # def onSigGetBrushIDSegForLostIDsWorker(self):
+    #     self.SegForLostIDsWorker.brushID = self.setBrushID(useCurrentLab=True, return_val=True)
+    #     self.SegForLostIDsWaitCond.wakeAll()
+
+    def onSigTrackManuallyAddedObjectSegForLostIDsWorker(self, added_IDs, isNewID, wl_update, wl_track_og_curr):
+        self.trackManuallyAddedObject(added_IDs, isNewID, wl_update=wl_update, wl_track_og_curr=wl_track_og_curr)
+        self.SegForLostIDsWaitCond.wakeAll()
+
+        
+    def onSigStoreData(self, waitcond, pos_i=None, enforce=True, debug=False, mainThread=True,
+            autosave=True, store_cca_df_copy=False):
+        self.store_data(pos_i=pos_i, enforce=enforce, debug=debug, mainThread=mainThread,
+            autosave=autosave, store_cca_df_copy=store_cca_df_copy)
+        waitcond.wakeAll()
+
+    def onSigUpdateRP(self, waitcond, draw=True, debug=False, update_IDs=True, 
+                  wl_update=True, wl_track_og_curr=False):
+        self.update_rp(draw=draw, debug=debug, update_IDs=update_IDs,
+                        wl_update=wl_update, wl_track_og_curr=wl_track_og_curr)
+        waitcond.wakeAll()
+
+    def onSigGetData(self, waitcond, debug=False):
+        self.get_data(debug=debug)
+        waitcond.wakeAll()
+
     def SegForLostIDsWorkerFinished(self):
-        
+
         self.updateAllImages()
-        self.store_data()
-        
+        self.update_rp()
+        self.store_data(autosave=True)
+        self.setFrameNavigationDisabled(disable=False, why='Segmentation for lost IDs')
+
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
             self.progressWin.close()
             self.progressWin = None
+        
+    def showImageDebug(self, img):
+        imshow(img)
     
     def gui_raiseBottomLayoutContextMenu(self, event):
         try:
             # Convert QPointF to QPoint
-            self.bottomLayoutContextMenu.popup(event.screenPos().toPoint())
+            self.bottomLayoutContextMenu.popup(event.globalPos().toPoint())
         except AttributeError:
-            self.bottomLayoutContextMenu.popup(event.screenPos())
+            self.bottomLayoutContextMenu.popup(event.globalPos())
     
     def areContoursRequested(self, ax):
         if ax == 0 and self.annotContourCheckbox.isChecked():
@@ -8953,7 +8476,11 @@ class guiWin(QMainWindow):
         if not checked:
             return
 
-        trackingAlgo = self.sender().text()
+        aliases = myutils.aliases_real_time_trackers(reverse=True)
+        if self.sender().text() in aliases:
+            trackingAlgo = aliases[self.sender().text()]
+        else:
+            trackingAlgo = self.sender().text()
         self.df_settings.at['tracking_algorithm', 'value'] = trackingAlgo
         self.df_settings.to_csv(self.settings_csv_path)
 
@@ -8995,6 +8522,15 @@ class guiWin(QMainWindow):
 
         if posData.SizeT == 1:
             self.warnIDnotFound(searchedID)
+            return
+        
+        if searchedID in posData.lost_IDs:
+            self.goToLostObjectID(searchedID)
+            return
+        
+        tracked_lost_IDs = self.getTrackedLostIDs()
+        if searchedID in tracked_lost_IDs:
+            self.goToAcceptedLostObjectID(searchedID)
             return
         
         self.logger.info(f'Searching ID {searchedID} in other frames...')
@@ -9121,6 +8657,40 @@ class guiWin(QMainWindow):
         self.highlightSearchedID(ID)
         propsQGBox = self.guiTabControl.propsQGBox
         propsQGBox.idSB.setValue(ID)
+    
+    def goToLostObjectID(self, lostID, color=(255, 165, 0, 255)):
+        posData = self.data[self.pos_i]
+        frame_i = posData.frame_i
+        prev_rp = posData.allData_li[frame_i-1]['regionprops']
+        prev_IDs_idxs = posData.allData_li[frame_i-1]['IDs_idxs']
+        obj = prev_rp[prev_IDs_idxs[lostID]]
+        self.goToZsliceSearchedID(obj)
+        
+        imageItem = self.getLostObjImageItem(0)
+        thickness = 1
+        if not hasattr(self, 'lostObjContoursImage'):
+            self.initLostObjContoursImage()
+        else:
+            self.lostObjContoursImage[:] = 0  
+
+        contours = []
+        obj_contours = self.getObjContours(obj, all_external=True)
+        contours.extend(obj_contours)
+        
+        self.addLostObjsToImage(obj, lostID)
+        self.drawLostObjContoursImage(
+            imageItem, contours, thickness=2, color=color
+        )
+        
+    def goToAcceptedLostObjectID(self, acceptedLostID):
+        posData = self.data[self.pos_i]
+        frame_i = posData.frame_i
+        prev_rp = posData.allData_li[frame_i-1]['regionprops']
+        prev_IDs_idxs = posData.allData_li[frame_i-1]['IDs_idxs']
+        obj = prev_rp[prev_IDs_idxs[acceptedLostID]]
+        self.goToZsliceSearchedID(obj)
+        
+        self.updateLostTrackedContoursImage(tracked_lost_IDs=[acceptedLostID])
     
     def askGoToFrameFoundID(self, searchedID, frame_i_found):
         msg = widgets.myMessageBox(wrapText=False)
@@ -9382,7 +8952,7 @@ class guiWin(QMainWindow):
 
     def startRelabellingWorker(self, posFoldernames):
         self.thread = QThread()
-        self.worker = relabelSequentialWorker(self, posFoldernames)
+        self.worker = workers.relabelSequentialWorker(self, posFoldernames)
         self.worker.moveToThread(self.thread)
         self.worker.finished.connect(self.thread.quit)
         self.worker.finished.connect(self.worker.deleteLater)
@@ -9436,15 +9006,16 @@ class guiWin(QMainWindow):
         self.updateAllImages()
 
     def workerDebug(self, item):
-        print(f'Updating frame {item.frame_i}')
-        print(item.cca_df)
-        stored_lab = item.allData_li[item.frame_i]['labels']
-        apps.imshow_tk(item.lab, additional_imgs=[stored_lab])
-        self.worker.waitCond.wakeAll()
+        tracked_video, worker = item
+        from cellacdc.plot import imshow
+        imshow(tracked_video)
+        worker.waitCond.wakeAll()
 
-    def keepToolActiveActionToggled(self, checked):
-        parentToolButton = self.sender().parent()
-        toolName = re.findall(r'Name: (.*)', parentToolButton.toolTip())[0]
+    def keepToolActiveActionToggled(self, checked, toolName=None):
+        if toolName is None:
+            parentToolButton = self.sender().parent()
+            toolName = re.findall(r'Name: (.*)', parentToolButton.toolTip())[0]
+
         if checked:
             self.df_settings.at[toolName, 'value'] = 'keepActive'
         else:
@@ -9452,6 +9023,24 @@ class guiWin(QMainWindow):
                 index=toolName, errors='ignore'
             )
         self.df_settings.to_csv(self.settings_csv_path)
+
+    def keepAllToolsActiveActionToggled(self, checked):
+        for action in self.keepToolActiveActions.values():
+            action.setChecked(checked)
+
+        data_loaded = True
+        if not hasattr(self, 'data'):
+            data_loaded = False
+            try:
+                self.labelRoiTrangeCheckbox.disconnect()
+            except TypeError:
+                pass
+        self.labelRoiTrangeCheckbox.setChecked(checked) # why this is not wrapped in a QAction?
+
+        if data_loaded:
+            self.labelRoiTrangeCheckbox.toggled.connect(
+                self.labelRoiTrangeCheckboxToggled
+            )
 
     def determineSlideshowWinPos(self):
         screens = self.app.screens()
@@ -9942,49 +9531,56 @@ class guiWin(QMainWindow):
         delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
         rois = delROIs_info['rois'].copy()
         for roi in rois:
-            self.ax2.removeItem(roi)
+            self.ax2.removeDelRoiItem(roi)
 
         for item in self.ax2.items:
             if isinstance(item, pg.ROI):
-                self.ax2.removeItem(item)
+                self.ax2.removeDelRoiItem(item)
         
         for item in self.ax1.items:
             if isinstance(item, pg.ROI) and item != self.labelRoiItem:
-                self.ax1.removeItem(item)
+                self.ax1.removeDelRoiItem(item)
 
     def removeDelROI(self, event):
         posData = self.data[self.pos_i]
-
-        # if isinstance(self.roi_to_del, pg.PolyLineROI):
-        #     self.roi_to_del.clearPoints()
-        # # else:
-        # #     self.roi_to_del.setPos((0,0))
-        # #     self.roi_to_del.setSize((0,0))
         
         delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
         idx = delROIs_info['rois'].index(self.roi_to_del)
         delROIs_info['rois'].pop(idx)
         delROIs_info['delMasks'].pop(idx)
         delROIs_info['delIDsROI'].pop(idx)
+        delROIs_info['state'].pop(idx)
+        
+        self.removeDelROIFromFutureFrames(self.roi_to_del)
+        self.updateAllImages()
+    
+    def removeDelROIFromFutureFrames(self, roi_to_del):
+        posData = self.data[self.pos_i]
         
         # Restore deleted IDs from already visited future frames
         current_frame_i = posData.frame_i    
         for i in range(posData.frame_i+1, posData.SizeT):
+            if posData.allData_li[i]['labels'] is None:
+                break
+            
             delROIs_info = posData.allData_li[i]['delROIs_info']
-            if self.roi_to_del in delROIs_info['rois']:
-                posData.frame_i = i
-                idx = delROIs_info['rois'].index(self.roi_to_del)         
-                if posData.allData_li[i]['labels'] is not None:
-                    if delROIs_info['delIDsROI'][idx]:
-                        posData.lab = posData.allData_li[i]['labels']
-                        self.restoreAnnotDelROI(self.roi_to_del, enforce=True)
-                        posData.allData_li[i]['labels'] = posData.lab
-                        self.get_data()
-                        self.store_data(autosave=False)
-                delROIs_info['rois'].pop(idx)
-                delROIs_info['delMasks'].pop(idx)
-                delROIs_info['delIDsROI'].pop(idx)
-        self.enqAutosave()
+            try:
+                idx = delROIs_info['rois'].index(roi_to_del) 
+            except IndexError:
+                continue
+            
+            posData.frame_i = i
+            idx = delROIs_info['rois'].index(roi_to_del)         
+            if delROIs_info['delIDsROI'][idx]:
+                posData.lab = posData.allData_li[i]['labels']
+                self.restoreAnnotDelROI(roi_to_del, enforce=True, draw=False)
+                posData.allData_li[i]['labels'] = posData.lab
+                self.get_data()
+                self.store_data(autosave=False)
+            delROIs_info['rois'].pop(idx)
+            delROIs_info['delMasks'].pop(idx)
+            delROIs_info['delIDsROI'].pop(idx)
+            delROIs_info['state'].pop(idx)
         
         if isinstance(self.roi_to_del, pg.PolyLineROI):
             # PolyLine ROIs are only on ax1
@@ -10001,9 +9597,44 @@ class guiWin(QMainWindow):
         posData.lab = posData.allData_li[posData.frame_i]['labels']                   
         self.get_data()
         self.store_data()
-        
-        self.updateAllImages()
 
+    def updateDelROIinFutureFrames(self, roi: pg.ROI):
+        posData = self.data[self.pos_i]
+        update_images = False
+        
+        roiState = roi.getState()
+        # Restore deleted IDs from already visited future frames
+        current_frame_i = posData.frame_i    
+        delROIs_info = posData.allData_li[current_frame_i]['delROIs_info']
+        idx = delROIs_info['rois'].index(roi)       
+        delROIs_info['state'][idx] = roiState
+        
+        for i in range(posData.frame_i+1, posData.SizeT):
+            delROIs_info = posData.allData_li[i]['delROIs_info']
+            idx = delROIs_info['rois'].index(roi)       
+            delROIs_info['state'][idx] = roiState
+            if posData.allData_li[i]['labels'] is None:
+                continue
+            
+            posData.frame_i = i
+            posData.lab = posData.allData_li[i]['labels']
+            self.restoreAnnotDelROI(roi, enforce=False, draw=False)
+            posData.allData_li[i]['labels'] = posData.lab
+            self.get_data()
+            self.store_data(autosave=False)
+            update_images = True
+        
+        # Back to current frame
+        posData.frame_i = current_frame_i
+        posData.lab = posData.allData_li[posData.frame_i]['labels']                   
+        self.get_data()
+        self.store_data()
+        
+        if not update_images:
+            return
+        
+        # self.updateAllImages()
+    
     # @exec_time
     def getPolygonBrush(self, yxc2, Y, X):
         # see https://en.wikipedia.org/wiki/Tangent_lines_to_circles
@@ -10613,7 +10244,7 @@ class guiWin(QMainWindow):
                buttonsTexts=('Cancel', applyButton)
             )
             cancel = msg.cancel
-            apply = msg.clickedButton = applyButton
+            apply = msg.clickedButton == applyButton
         elif why == 'not_G1_in_the_past':
             err_msg = html_utils.paragraph(f"""
                 The requested cell in G1
@@ -10757,7 +10388,10 @@ class guiWin(QMainWindow):
                 self.stopBlinkingPairItem()
                 return True
             budIDsOfExcludedMoth = excluded_df.relative_ID.to_list()
-            self.warnDeadOrExcludedMothers(budIDsOfExcludedMoth, excludedMothIDs)
+            proceed = self.warnDeadOrExcludedMothers(
+                budIDsOfExcludedMoth, excludedMothIDs
+            )
+            return proceed
         except Exception as e:
             self.logger.info(traceback.format_exc())
             print('-'*100)
@@ -10765,6 +10399,7 @@ class guiWin(QMainWindow):
                 'Checking if mother cell is excluded or dead failed.'
             )
             print('^'*100)
+            return False
     
     def checkDivisionCanBeUndone(self, ID, relID):
         """Check that division annotation can be undone (see Notes section)
@@ -11012,7 +10647,11 @@ class guiWin(QMainWindow):
 
         # self.checkMultiBudMoth(draw=True)
         self.store_cca_df()
-        self.checkMothersExcludedOrDead()
+        proceed = self.checkMothersExcludedOrDead()
+        if not proceed:
+            # User clicked on cancel in the message box
+            self.UndoCca()
+            return
 
         if self.ccaTableWin is not None:
             zoomIDs = self.getZoomIDs()
@@ -11524,12 +11163,12 @@ class guiWin(QMainWindow):
         self.df_settings.to_csv(self.settings_csv_path)
 
     def addDelROI(self, event):       
-        roi = self.createDelROI()
+        roi, key = self.createDelROI()
         self.addRoiToDelRoiInfo(roi)
         if not self.labelsGrad.showLabelsImgAction.isChecked():
-            self.ax1.addItem(roi)
+            self.ax1.addDelRoiItem(roi, key)
         else:
-            self.ax2.addItem(roi)
+            self.ax2.addDelRoiItem(roi, key)
         self.applyDelROIimg1(roi, init=True)
         self.applyDelROIimg1(roi, init=True, ax=1)
 
@@ -11542,7 +11181,6 @@ class guiWin(QMainWindow):
             )
     
     def replacePolyLineRoiWithLineRoi(self, roi):
-        roi = self.polyLineRoi
         x0, y0 = roi.pos().x(), roi.pos().y()
         (_, point1), (_, point2) = roi.getLocalHandlePositions()
         xr1, yr1 = point1.x(), point1.y()
@@ -11559,12 +11197,13 @@ class guiWin(QMainWindow):
         lineRoi.sigRegionChangeFinished.connect(self.delROImovingFinished)
         return lineRoi
     
-    def addRoiToDelRoiInfo(self, roi):
+    def addRoiToDelRoiInfo(self, roi: pg.ROI):
         posData = self.data[self.pos_i]
         for i in range(posData.frame_i, posData.SizeT):
             delROIs_info = posData.allData_li[i]['delROIs_info']
             delROIs_info['rois'].append(roi)
-            delROIs_info['delMasks'].append(np.zeros_like(posData.lab))
+            delROIs_info['state'].append(roi.getState())
+            delROIs_info['delMasks'].append(np.zeros_like(self.currentLab2D))
             delROIs_info['delIDsROI'].append(set())
     
     def addDelPolyLineRoi_cb(self, checked):
@@ -11648,7 +11287,10 @@ class guiWin(QMainWindow):
         roi.sigRegionChanged.connect(self.delROImoving)
         roi.sigRegionChanged.connect(self.delROIstartedMoving)
         roi.sigRegionChangeFinished.connect(self.delROImovingFinished)
-        return roi
+        
+        key = uuid.uuid4()
+        
+        return roi, key
     
     def delROIstartedMoving(self, roi):
         self.clearLostObjContoursItems()
@@ -11674,12 +11316,15 @@ class guiWin(QMainWindow):
         self.applyDelROIimg1(roi)
         self.applyDelROIimg1(roi, ax=1)
 
-    def delROImovingFinished(self, roi):
+    def delROImovingFinished(self, roi: pg.ROI):
         roi.setPen(color='r')
         self.update_rp()
         self.updateAllImages()
+        QTimer.singleShot(
+            300, partial(self.updateDelROIinFutureFrames, roi)
+        )
 
-    def restoreAnnotDelROI(self, roi, enforce=True):
+    def restoreAnnotDelROI(self, roi, enforce=True, draw=True):
         posData = self.data[self.pos_i]
         ROImask = self.getDelRoiMask(roi)
         delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
@@ -11696,19 +11341,24 @@ class guiWin(QMainWindow):
         for ID in delIDs:
             if ID in overlapROIdelIDs and not enforce:
                 continue
+            
+            restoredIDs.add(ID)
+            
             delMaskID = delMask==ID
             self.currentLab2D[delMaskID] = ID
             lab2D[delMaskID] = ID
-            self.restoreDelROIimg1(delMaskID, ID, ax=0)
-            self.restoreDelROIimg1(delMaskID, ID, ax=1)
+            
+            if draw:
+                self.restoreDelROIimg1(delMaskID, ID, ax=0)
+                self.restoreDelROIimg1(delMaskID, ID, ax=1)
+                
             delMask[delMaskID] = 0
-            restoredIDs.add(ID)
+            
         delROIs_info['delIDsROI'][idx] = delIDs - restoredIDs
         self.set_2Dlab(lab2D)
         self.update_rp()
 
     def restoreDelROIimg1(self, delMaskID, delID, ax=0):
-        posData = self.data[self.pos_i]
         if ax == 0:
             how = self.drawIDsContComboBox.currentText()
         else:
@@ -11717,9 +11367,11 @@ class guiWin(QMainWindow):
         if how.find('nothing') != -1:
             return
         
-        obj = skimage.measure.regionprops(delMaskID.astype(np.uint8))[0]
-        if how.find('contours') != -1:        
-            self.addObjContourToContoursImage(obj=obj, ax=ax)  
+        if how.find('contours') != -1:
+            rp_delmask = skimage.measure.regionprops(delMaskID.astype(np.uint8))
+            if len(rp_delmask) > 0:
+                obj = rp_delmask[0]
+                self.addObjContourToContoursImage(obj=obj, ax=ax)  
         elif how.find('overlay segm. masks') != -1:
             if ax == 0:
                 self.labelsLayerImg1.setImage(
@@ -11736,7 +11388,10 @@ class guiWin(QMainWindow):
             prev_lab = posData.allData_li[posData.frame_i-1]['labels']
         allDelIDs = set()
         for roi in posData.allData_li[posData.frame_i]['delROIs_info']['rois']:
-            if roi not in self.ax2.items and roi not in self.ax1.items:
+            if (
+                    not self.ax1.isDelRoiItemPresent(roi) 
+                    and not self.ax2.isDelRoiItemPresent(roi)
+                ):
                 continue
             
             ROImask = self.getDelRoiMask(roi)
@@ -11758,36 +11413,53 @@ class guiWin(QMainWindow):
             allDelIDs.update(delIDs)
         return allDelIDs
     
+    # @exec_time
     def getDelROIlab(self):
         posData = self.data[self.pos_i]
-        DelROIlab = self.get_2Dlab(posData.lab, force_z=False).copy()
+        if not hasattr(self, 'delRoiLab'):
+            self.initDelRoiLab()
+            
+        self.delRoiLab[:] = self.get_2Dlab(posData.lab, force_z=False)
         allDelIDs = set()
         # Iterate rois and delete IDs
         for roi in posData.allData_li[posData.frame_i]['delROIs_info']['rois']:
-            if roi not in self.ax2.items and roi not in self.ax1.items:
+            if (
+                    not self.ax1.isDelRoiItemPresent(roi) 
+                    and not self.ax2.isDelRoiItemPresent(roi)
+                ):
                 continue     
             ROImask = self.getDelRoiMask(roi)
             delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
             idx = delROIs_info['rois'].index(roi)
             delObjROImask = delROIs_info['delMasks'][idx]
             delIDsROI = delROIs_info['delIDsROI'][idx]   
-            delIDs = np.unique(posData.lab[ROImask])
-            if len(delIDs) > 0:
-                if delIDs[0] == 0:
-                    delIDs = delIDs[1:]
-            delIDsROI.update(delIDs)
-            allDelIDs.update(delIDs)
-            _DelROIlab = self.get_2Dlab(posData.lab).copy()
-            for obj in posData.rp:
-                ID = obj.label
-                if ID in delIDs:
-                    delObjROImask[posData.lab==ID] = ID
-                    _DelROIlab[posData.lab==ID] = 0
-            DelROIlab[_DelROIlab == 0] = 0
+            delROIlabRp = skimage.measure.regionprops(self.delRoiLab)
+            for delObj in delROIlabRp:
+                isDelObj = np.any(ROImask[delObj.slice][delObj.image])
+                if not isDelObj:
+                    continue
+                
+                delObjROImask[delObj.slice][delObj.image] = delObj.label
+                self.delRoiLab[delObj.slice][delObj.image] = 0
+            
+                delIDsROI.add(delObj.label)
+                allDelIDs.add(delObj.label)
+
             # Keep a mask of deleted IDs to bring them back when roi moves
             delROIs_info['delMasks'][idx] = delObjROImask
             delROIs_info['delIDsROI'][idx] = delIDsROI
-        return allDelIDs, DelROIlab
+        
+        # printl(
+        #     f't1-t0: {(t1-t0)*1000:.3f} ms,',
+        #     f't2-t1: {(t2-t1)*1000:.3f} ms,',
+        #     f't3-t2: {(t3-t2)*1000:.3f} ms,',
+        #     # f't4-t3: {(t4-t3)*1000:.3f} ms,',
+        #     # f't5-t4: {(t5-t4)*1000:.3f} ms,',
+        #     # f't6-t5: {(t6-t5)*1000:.3f} ms',
+        #     sep='\n'
+        # )
+        
+        return allDelIDs, self.delRoiLab
     
     def getDelRoiMask(self, roi, posData=None, z_slice=None):
         if posData is None:
@@ -11806,12 +11478,14 @@ class guiWin(QMainWindow):
                 return ROImask
             
             if len(r) == 2:
-                Y, X = self.currentLab2D.shape
                 rr, cc, val = skimage.draw.line_aa(r[0], c[0], r[1], c[1])
-                rr = rr[(rr>=0) & (rr<Y)]
-                cc = cc[(cc>=0) & (cc<X)]
             else:
                 rr, cc = skimage.draw.polygon(r, c, shape=self.currentLab2D.shape)
+            
+            Y, X = self.currentLab2D.shape
+            rr = rr[(rr>=0) & (rr<Y)]
+            cc = cc[(cc>=0) & (cc<X)]
+            
             if self.isSegm3D:
                 ROImask[z_slice, rr, cc] = True
             else:
@@ -11864,13 +11538,17 @@ class guiWin(QMainWindow):
             self.timestampDialog = apps.TimestampPropertiesDialog(parent=self)
             self.timestampDialog.show()
             self.timestamp = widgets.TimestampItem(
-                Y, X, viewRange, secondsPerFrame=posData.TimeIncrement
+                Y, X, viewRange, 
+                secondsPerFrame=posData.TimeIncrement,
+                start_timedelta=self.timestampStartTimedelta
             )
             self.timestamp.sigEditProperties.connect(
                 self.editTimestampProperties
             )
             self.timestamp.addToAxis(self.ax1)
-            self.timestamp.draw(posData.frame_i, **self.timestampDialog.kwargs())
+            self.timestamp.draw(
+                posData.frame_i, **self.timestampDialog.kwargs()
+            )
             self.timestampDialog.sigValueChanged.connect(self.updateTimestamp)
             self.timestampDialog.exec_()
         else:
@@ -12403,33 +12081,6 @@ class guiWin(QMainWindow):
             return posData.img_data[posData.frame_i, zslice]
         else:
             return self.getDisplayedImg1()
-    
-    def cp3denoiseActionTriggered(self):
-        self.logger.info('Initializing Cellpose denoising model...')
-        output = myutils.init_cellpose_denoise_model()
-        if output is None:
-            self.logger.info('Cellpose 3.0 denoising process cancelled')
-            return
-
-        if not self.isSegm3D:
-            img = self.getDisplayedImg1()
-        else:
-            img = self.askGet2Dor3Dimage()
-            if img is None:
-                self.logger.info('Cellpose 3.0 denoising process cancelled')
-                return
-        denoise_model, init_params, run_params = output
-        denoised_image = core.cellpose_v3_run_denoise(
-            img,
-            run_params,
-            denoise_model=denoise_model, 
-            init_params=None,
-        )
-        imshow(
-            img, denoised_image, 
-            axis_titles=['Input image', 'Denoised image']
-        )
-        
         
     def manualEditCca(self, checked=True):
         posData = self.data[self.pos_i]
@@ -12693,6 +12344,7 @@ class guiWin(QMainWindow):
         self.stopCcaIntegrityCheckerWorker()
 
         if prevMode == 'Normal division: Lineage tree':
+            self.lin_tree_ask_changes()
             self.lineage_tree = None
             self.editLin_TreeBar.setVisible(False)
 
@@ -12918,6 +12570,8 @@ class guiWin(QMainWindow):
 
     def nearest_nonzero(self, a, y, x):
         r, c = np.nonzero(a)
+        if r.size == 0:
+            return None
         dist = ((r - y)**2 + (c - x)**2)
         min_idx = dist.argmin()
         return a[r[min_idx], c[min_idx]]
@@ -12964,6 +12618,7 @@ class guiWin(QMainWindow):
         self.expandLabelToolButton.toggled.connect(self.expandLabelCallback)
         self.addDelPolyLineRoiButton.toggled.connect(self.addDelPolyLineRoi_cb)
         self.manualBackgroundButton.toggled.connect(self.manualBackground_cb)
+        self.whitelistIDsButton.toggled.connect(self.whitelistIDs_cb)
         for action in self.pointsLayersToolbar.actions()[1:]:
             if not hasattr(action, 'layerTypeIdx'):
                 continue
@@ -13036,9 +12691,6 @@ class guiWin(QMainWindow):
             ID for ID in curr_IDs if ID not in prev_IDs 
             and ID not in curr_delRoiIDs
         ]
-        # IDs_with_holes = [
-        #     obj.label for obj in posData.rp if obj.area/obj.filled_area < 1
-        # ]
         IDs_with_holes = []
         posData.lost_IDs = lost_IDs
         posData.new_IDs = new_IDs
@@ -13048,7 +12700,6 @@ class guiWin(QMainWindow):
         out = (
             lost_IDs, new_IDs, IDs_with_holes, tracked_lost_IDs, curr_delRoiIDs
         )
-        
         return out
     
     def copyAllLostObjectsWorkerCallback(
@@ -13067,7 +12718,7 @@ class guiWin(QMainWindow):
                 
                 posData.frame_i = frame_i
                 self.get_data()
-                self.tracking()
+                self.tracking(wl_update=False)
                 self.update_rp()
                 self.updateLostNewCurrentIDs()
                 self.store_data(mainThread=False, autosave=False)
@@ -13544,39 +13195,102 @@ class guiWin(QMainWindow):
     
     def countObjects(self):
         self.logger.info('Counting objects...')
+        if self.countObjsWindow is None:
+            activeCategories = {
+                'In current frame', 
+                'In all visited frames', 
+                'In entire video', 
+                'Unique objects in all visited frames', 
+                'Unique objects in entire video'
+            }
+        else:
+            activeCategories = self.countObjsWindow.activeCategories()
+            
         posData = self.data[self.pos_i]
         numObjsCurrentFrame = len(posData.IDs)
         
-        uniqueIDsVisited = set()
-        uniqueIDsAll = set()
-        numObjsVisitedFrames = 0
-        numObjsTotal = 0
+        uniqueIDsVisited = None
+        uniqueIDsAll = None
+        numObjsVisitedFrames = None
+        numObjsTotal = None
+        if 'Unique objects in all visited frames' in activeCategories:
+            uniqueIDsVisited = set()
+        
+        if 'Unique objects in entire video' in activeCategories:
+            uniqueIDsAll = set()
+        
+        if 'In all visited frames' in activeCategories:
+            numObjsVisitedFrames = 0
+        
+        if 'In entire video' in activeCategories:
+            numObjsTotal = 0
+            
         for frame_i in range(len(posData.segm_data)):
             lab = posData.allData_li[frame_i]['labels']
             if lab is not None:
                 IDsFrame = posData.allData_li[frame_i]['IDs']
+                
+                if uniqueIDsVisited is not None:
+                    uniqueIDsVisited.update(IDsFrame)
+                
+                if uniqueIDsAll is not None:
+                    uniqueIDsAll.update(IDsFrame)
+                
                 numObjsFrame = len(IDsFrame)
-                uniqueIDsVisited.update(IDsFrame)
-                uniqueIDsAll.update(IDsFrame)
-                numObjsVisitedFrames += numObjsFrame
-                numObjsTotal += numObjsFrame
+                
+                if numObjsVisitedFrames is not None:
+                    numObjsVisitedFrames += numObjsFrame
+                    
+                if numObjsTotal is not None:
+                    numObjsTotal += numObjsFrame
             else:
                 lab = posData.segm_data[frame_i]
-                rp = skimage.measure.regionprops(posData.segm_data[frame_i])
-                numObjsTotal += len(rp)
-                uniqueIDsAll.update([obj.label for obj in rp])
+                
+                if numObjsTotal is not None or numObjsTotal is not None:
+                    rp = skimage.measure.regionprops(posData.segm_data[frame_i])
+                
+                if numObjsTotal is not None:
+                    numObjsTotal += len(rp)
+                    
+                if uniqueIDsAll is not None:
+                    uniqueIDsAll.update([obj.label for obj in rp])
         
-        numUniqueObjsVisitedFrames = len(uniqueIDsVisited)
-        numUniqueObjsTotal = len(uniqueIDsAll)
+        numUniqueObjsVisitedFrames = None
+        if uniqueIDsVisited is not None:
+            numUniqueObjsVisitedFrames = len(uniqueIDsVisited)
         
-        categoryCountMapper = {
+        numUniqueObjsTotal = None
+        if uniqueIDsAll is not None:
+            numUniqueObjsTotal = len(uniqueIDsAll)
+        
+        allCategoryCountMapper = {
             'In current frame': numObjsCurrentFrame, 
             'In all visited frames': numObjsVisitedFrames, 
             'In entire video': numObjsTotal, 
             'Unique objects in all visited frames': numUniqueObjsVisitedFrames, 
             'Unique objects in entire video': numUniqueObjsTotal
         }
+        if self.countObjsWindow is None:
+            return allCategoryCountMapper 
+        
+        categoryCountMapper = {}
+        for category in activeCategories:
+            categoryCountMapper[category] = allCategoryCountMapper[category]
+            
         return categoryCountMapper
+    
+    def updateObjectCounts(self):
+        if self.countObjsWindow is None:
+            return
+        
+        if not self.countObjsWindow.isVisible():
+            return
+        
+        if not self.countObjsWindow.livePreviewCheckbox.isChecked():
+            return
+        
+        categoryCountMapper = self.countObjects()
+        self.countObjsWindow.updateCounts(categoryCountMapper)
     
     def keepIDs_cb(self, checked):
         if checked:
@@ -13611,6 +13325,1079 @@ class guiWin(QMainWindow):
 
         # QTimer.singleShot(300, self.autoRange)
 
+    def setFrameNavigationDisabled(self, disable:bool=False, why:str=""):
+        """Disables the frame navigation buttons and scrollbar.
+        This is used when the user is not allowed to navigate through frames
+        Call again to unlock it again. Also sets tooltips to inform the user
+        
+        Parameters
+        ----------
+        disable : bool, optional
+            if the navigation should be disabled, by default False
+        why : str, optional
+            set tooltip of scrollbar to tell user why its disabled, by default ""
+        """
+        self.prevAction.setDisabled(disable)
+        self.nextAction.setDisabled(disable)
+        self.navigateScrollBar.setDisabled(disable)
+        if not disable:
+            self.navigateScrollBar.setToolTip(
+                'NOTE: The maximum frame number that can be visualized with this '
+                'scrollbar\n'
+                'is the last visited frame with the selected mode\n'
+                '(see "Mode" selector on the top-right).\n\n'
+                'If the scrollbar does not move it means that you never visited\n'
+                'any frame with current mode.\n\n'
+                'Note that the "Viewer" mode allows you to scroll ALL frames.'
+            )
+            return
+        
+        if not why:
+            stack = traceback.format_stack()
+            calling_func = stack[-2].split('in ')[1].split('\n')[0]
+            why = f'called from {calling_func}'
+        txt = f'Frame navigation disabled: {why}'
+        self.logger.info(txt)
+        self.navigateScrollBar.setToolTip(txt)
+
+    @disableWindow
+    def whitelistTrackOGagainstPreviousFrame_cb(self):
+        """Tracks the original labels against the previous frame.
+        This is used as a callback for sigTrackOGagainstPreviousFrame signal
+        """
+        posData = self.data[self.pos_i]
+        frame_i = posData.frame_i
+        old_cell_IDs = posData.whitelist.originalLabsIDs[frame_i].copy()
+        prev_cell_IDs = posData.allData_li[frame_i-1]['IDs']
+        self.whitelistTrackOGCurr(against_prev=True)
+        new_cell_IDs = posData.whitelist.originalLabsIDs[frame_i]
+
+        new_IDs = new_cell_IDs - old_cell_IDs
+        new_IDs = new_IDs & set(prev_cell_IDs)
+
+        self.whitelistUpdateLab(
+            track_og_curr=False, IDs_to_add=new_IDs,
+        )
+
+    def whitelistLoadOGLabs_cb(self):
+        """Generates a dialog to load the original (not whitelisted) labels
+        """
+        posData = self.data[self.pos_i]
+        curr_seg_path = posData.segm_npz_path
+
+        segmFilename = os.path.basename(curr_seg_path)
+        custom_first = f"{segmFilename[:-4]}_not_whitelisted.npz"
+        images_path = posData.images_path
+        existingEndnames = [
+            files for files in os.listdir(images_path) if files.endswith('.npz')
+        ]
+        if custom_first not in existingEndnames:
+            custom_first = None
+
+        infoText = html_utils.paragraph(
+            'Select the segmentation file containing the original labels '
+            'of the objects. Pleae note that the current saved "original" '
+            'labels will be replaced with the new ones, but the filtered '
+            'labels will be kept.'
+        )
+
+        win = apps.SelectSegmFileDialog(
+            existingEndnames, images_path, parent=self, 
+            basename=posData.basename, infoText=infoText,
+            custom_first=custom_first
+        )
+        win.exec_()
+        if win.cancel:
+            self.logger.info('Loading original labels canceled.')
+            return
+        selected = win.selectedItemText
+        self.logger.info(f'Loading original labels from {selected}...')
+        self.whitelistLoadOGLabs(selected)
+
+    @disableWindow
+    def whitelistLoadOGLabs(self, selected:str): # done
+        """Loads the original labels from the selected files"
+
+        Parameters
+        ----------
+        selected : str
+            Selected file name from the dialog.
+        """
+        posData = self.data[self.pos_i]
+        images_path = posData.images_path
+
+        selected_path = os.path.join(images_path, selected)
+        posData.whitelist.loadOGLabs(selected_path)
+        
+        self.whitelistIDsToolbar.viewOGToggle.setCheckable(True)
+
+
+    @exception_handler
+    @disableWindow
+    def whitelistViewOGIDs(self, checked:bool):
+        """Switch between selected and original labels.
+        Uses self.viewOriginalLabels to see what has to be done.
+
+        Parameters
+        ----------
+        checked : bool
+            True if the original labels have to be shown, False otherwise.
+        """
+        switch_to_og = checked and not self.viewOriginalLabels
+        switch_to_seg = not checked and self.viewOriginalLabels
+
+        if not switch_to_og and not switch_to_seg:
+            return
+
+        posData = self.data[self.pos_i]
+        if posData.whitelist is None:
+            return
+        
+        if posData.whitelist._debug:
+            printl('whitelistViewOGIDs', checked)
+     
+        frame_i = posData.frame_i
+        if frame_i > 0:
+            frames_range = [frame_i-1, frame_i]
+        else:
+            frames_range = [frame_i]
+
+        self.store_data(autosave=False)
+        if switch_to_og:
+            self.setFrameNavigationDisabled(True, why='Viewing original labels')
+            self.viewOriginalLabels = True
+
+            for i in frames_range:
+                posData.frame_i = i
+                self.get_data()
+                self.whitelistTrackOGCurr(frame_i=i)
+
+                IDs = posData.IDs
+
+                og_frame = posData.whitelist.originalLabs[i].copy()
+                IDs_to_uppdate = posData.whitelist.whitelistIDs[i] & posData.whitelist.originalLabsIDs[i]
+                if IDs_to_uppdate:
+                    mask = np.isin(og_frame, list(IDs_to_uppdate))
+                    og_frame[mask] = 0
+
+                    mask = np.isin(posData.lab, list(IDs_to_uppdate))
+                    og_frame[mask] = posData.lab[mask]
+                
+                IDs_to_add = posData.whitelist.whitelistIDs[i] - posData.whitelist.originalLabsIDs[i]
+                if IDs_to_add:
+                    mask = np.isin(posData.lab, list(IDs_to_add))
+                    og_frame[mask] = posData.lab[mask]
+
+                posData.lab = og_frame
+                self.update_rp(wl_update=False)
+                self.store_data(autosave=False)
+
+            if frame_i > 0:
+                missing_IDs = set(posData.IDs) - set(posData.allData_li[frame_i-1]['IDs'])
+                self.trackManuallyAddedObject(missing_IDs,isNewID=True, wl_update=False)
+
+            self.setAllTextAnnotations()
+            self.updateAllImages()
+
+        elif switch_to_seg:
+            self.setFrameNavigationDisabled(False)
+
+            self.viewOriginalLabels = False
+            for i in frames_range:
+                posData.frame_i = i
+                self.get_data()
+                try:
+                    posData.whitelist.originalLabs[i] = posData.lab.copy()
+                    posData.whitelist.originalLabsIDs[i] = set(posData.IDs)
+                except AttributeError:
+                    lab = posData.segm_data[i].copy()
+                    IDs = [obj.label for obj in skimage.measure.regionprops(lab)]
+                    posData.whitelist.originalLabs[i] = lab
+                    posData.whitelist.originalLabsIDs[i] = set(IDs)
+
+                # self.whitelistTrackCurrOG()
+                self.store_data(autosave=False)
+                self.whitelistUpdateLab(frame_i=i) #has update_rp and store data
+                self.setAllTextAnnotations()
+                self.updateAllImages()
+
+    def whitelistSetViewOGIDsToggle(self, checked: bool):
+        """Set the view original labels toggle button to checked or unchecked.
+        This also updates the self.viewOriginalLabels variable.
+        !!! Doesn't change the actually displayed labels, use self.whitelistViewOGIDs
+        to do that.!!!
+        
+        Parameters
+        ----------
+        checked : bool
+            True if the original labels are shown, False otherwise.
+        """
+        self.viewOriginalLabels = checked
+        self.whitelistIDsToolbar.viewOGToggle.setChecked(checked)
+
+    def whitelistAddNewIDsToggled(self, checked: bool):
+        """Will set self.addNewIDsWhitelistToggle to checked and call
+        whitelistAddNewIDs if checked is True.
+
+        Parameters
+        ----------
+        checked : bool
+            True if the add new IDs toggle is checked, False otherwise.
+        """
+        self.addNewIDsWhitelistToggle = checked
+        if checked:
+            self.df_settings.at['addNewIDsWhitelistToggle', 'value'] = 'Yes'
+        else:
+            self.df_settings.at['addNewIDsWhitelistToggle', 'value'] = 'No'
+        self.df_settings.to_csv(self.settings_csv_path)
+        if checked:
+            self.whitelistAddNewIDs(ignore_not_first_time=True)
+            self.updateAllImages()
+            self.whitelistIDsUpdateText()
+
+    def whitelistAddNewIDs(self, ignore_not_first_time:bool=False):
+        """Functionw white adds new IDs to the whitelist, based on the original labels.
+        It will check if the frame is visited the first time, unless 
+        ignore_not_first_time is True.
+        It does nothing if self.addNewIDsWhitelistToggle is False.
+
+        Parameters
+        ----------
+        ignore_not_first_time : bool, optional
+            Weather it should be checked if the frame is visited 
+            the first time, by default False
+        """
+        mode = self.modeComboBox.currentText()
+        if mode != 'Segmentation and Tracking':
+            return
+    
+        if not self.addNewIDsWhitelistToggle:
+            return
+        
+        posData = self.data[self.pos_i]
+        if posData.whitelist is None:
+            return
+
+        debug = posData.whitelist._debug
+
+        if debug:
+            printl('whitelistAddNewIDs')
+
+        posData = self.data[self.pos_i]
+        frame_i = posData.frame_i
+        
+        if self.get_last_tracked_i() != frame_i and not ignore_not_first_time:
+            return
+    
+        if frame_i == 0:
+            return
+        
+        if self.whitelistAddNewIDsFrame is None:
+            self.whitelistAddNewIDsFrame = frame_i
+
+        if frame_i == self.whitelistAddNewIDsFrame:
+            return
+        
+        self.whitelistAddNewIDsFrame = frame_i
+        
+        self.store_data(autosave=False)
+        self.get_data()
+
+        posData.whitelist.addNewIDs(frame_i=frame_i,
+                                    allData_li=posData.allData_li,
+                                    IDs_curr=posData.IDs,)
+
+
+    def whitelistIDsAccepted(self, 
+                             whitelistIDs: Set[int] | List[int]):
+        """Function which is called when the user accepts a whitelist.
+        Also initializes the whitelist if it is not already initialized. (Aka not loaded)
+
+        Parameters
+        ----------
+        whitelistIDs : set | list
+            The accepted IDs from the whitelist dialog.
+        """
+        # Store undo state before modifying stuff
+        self.storeUndoRedoStates(False)
+
+        self.whitelistIDsToolbar.viewOGToggle.setCheckable(True)
+        self.whitelistSetViewOGIDsToggle(False)
+        self.setFrameNavigationDisabled(False)
+
+        self.store_data(autosave=False)
+        self.get_data()
+        posData = self.data[self.pos_i]
+
+        if not posData.whitelist:
+            posData.whitelist = whitelist.Whitelist(
+                total_frames=posData.SizeT,
+            )
+        
+        if posData.whitelist._debug:
+            printl('whitelistIDsAccepted', whitelistIDs)
+
+        whitelistIDs = set(whitelistIDs)
+
+        IDs_curr = set(posData.IDs)
+        posData.whitelist.IDsAccepted(
+            whitelistIDs,
+            segm_data=posData.segm_data,
+            frame_i=posData.frame_i,
+            allData_li=posData.allData_li,
+            IDs_curr=IDs_curr,
+        )
+        self.whitelistPropagateIDs(new_whitelist=whitelistIDs, 
+                                   try_create_new_whitelists=True, 
+                                   only_future_frames=True, 
+                                   force_not_dynamic_update=True,
+                                   update_lab=True
+                                   )
+
+        self.whitelistIDsUpdateText()
+        self.whitelistUpdateLab()
+        self.updateAllImages()
+        self.keepIDsTempLayerLeft.clear()
+
+    def whitelistUpdateLab(self, frame_i: int=None,
+        track_og_curr=True, new_frame:bool=False,
+        IDs_to_add:List[int] | Set[int]=None,
+        IDs_to_remove:List[int]|Set[int]=None,
+        ): 
+        # this should also work for 3D i think...
+        """Updates the displayed lab based on the whitelist.
+
+        Parameters
+        ----------
+        frame_i : int, optional
+            frame which should be updated. If not provided, 
+            uses posData.frame_i, by default None
+        track_og_curr : bool, optional
+            if True, will track the original current IDs, by default True
+        new_frame : bool, optional
+            if True, will set the frame to the new frame, by default False
+        IDs_to_add : list, optional
+            IDs to add to the whitelist, by default None
+        IDs_to_remove : list, optional
+            IDs to remove from the whitelist, by default None
+        """
+        benchmark = False
+        if benchmark:
+            ts = [time.perf_counter()]
+            titles = [
+                '',
+                'store_data',
+                'whitelistSetViewOGIDsToggle',
+                'get_data',
+                'get what to add/remove',
+                'track_og_curr',
+                'get current lab',
+                'add/remove IDs',
+                'store data',
+                'update images',
+                ]
+            
+        mode = self.modeComboBox.currentText()
+        if mode != 'Segmentation and Tracking':
+            return
+        
+        posData = self.data[self.pos_i]
+        if posData.whitelist is None:
+            return
+            
+        if frame_i is None:
+            frame_i = posData.frame_i
+            og_frame_i = frame_i
+        else:
+            og_frame_i = posData.frame_i
+            posData.frame_i = frame_i
+
+
+        debug = posData.whitelist._debug
+        if debug:
+            printl('whitelistUpdateLab', frame_i, og_frame_i)
+            from . import debugutils
+            debugutils.print_call_stack()
+
+        if benchmark:
+            ts.append(time.perf_counter())
+
+        self.whitelistSetViewOGIDsToggle(False)
+
+        if benchmark:
+            ts.append(time.perf_counter())
+
+
+        og_lab = posData.whitelist.originalLabs[frame_i]
+        if benchmark:
+            ts.append(time.perf_counter())
+
+        whitelist = posData.whitelist.get(frame_i=frame_i)
+        IDs_to_add_remove_provided = IDs_to_add is not None or IDs_to_remove is not None
+        if not IDs_to_add_remove_provided:
+            self.get_data()
+            current_IDs = set(posData.IDs)
+            missing_IDs = list(whitelist - current_IDs)
+            to_be_removed_IDs = list(current_IDs - whitelist)
+        else:
+            missing_IDs = list(IDs_to_add) if IDs_to_add is not None else []
+            to_be_removed_IDs = list(IDs_to_remove) if IDs_to_remove is not None else []
+
+        if benchmark:
+            ts.append(time.perf_counter())
+
+        if missing_IDs and track_og_curr and not new_frame:
+            self.whitelistTrackOGCurr(frame_i=frame_i)
+
+        if benchmark:
+            ts.append(time.perf_counter())
+
+        if not missing_IDs and not to_be_removed_IDs:
+            if og_frame_i != frame_i:
+                posData.frame_i = og_frame_i
+                if not IDs_to_add_remove_provided:
+                    self.get_data()
+                    self.update_rp(wl_update=False)
+                    self.store_data(autosave=False)
+            if benchmark:
+                print('No IDs to add/remove')
+                ts.append(time.perf_counter())
+                indx = titles.index('track_og_curr')
+                titles[indx + 1] = 'store_data'
+                time_taken = time.perf_counter() - ts[0]
+                print(f'\nTotal time for whitelistUpdateLab: {time_taken:.2f}s')
+                for i in range(1, len(ts)):
+                    time_taken = ts[i] - ts[i-1]
+                    print(f'Time taken for {titles[i]}: {time_taken:.2f}s')
+                print('')
+
+            return
+        
+        missing_IDs = np.array(missing_IDs, dtype=np.int32)
+        to_be_removed_IDs = np.array(to_be_removed_IDs, dtype=np.int32)
+
+        if debug:
+            printl(current_IDs, missing_IDs, to_be_removed_IDs)
+
+        curr_lab = posData.lab # or curr_lab = posData.lab??? 
+        # convert values to int if they are not already
+        if curr_lab is None:
+            try:
+                curr_lab = posData.segm_data[frame_i].copy()
+            except:
+                pass
+            if curr_lab is None:
+                printl('No current lab?')
+                curr_lab = np.zeros_like(og_lab)
+        curr_lab = curr_lab.astype(np.int32)
+        if benchmark:
+            ts.append(time.perf_counter())
+
+        if missing_IDs.size > 0:
+            mask = np.isin(og_lab, missing_IDs) # add missing_IDs
+            curr_lab[mask] = og_lab[mask]
+
+        if to_be_removed_IDs.size > 0:
+            curr_lab[np.isin(curr_lab, to_be_removed_IDs)] = 0 # remove to_be_removed_IDs
+
+        if benchmark:
+            ts.append(time.perf_counter())
+        
+        posData.lab = curr_lab
+        self.update_rp(wl_update=False)
+        self.store_data()
+
+        if benchmark:
+            ts.append(time.perf_counter())
+        if og_frame_i != frame_i:
+            posData.frame_i = og_frame_i
+            if not IDs_to_add_remove_provided:
+                self.get_data()
+                self.update_rp(wl_update=False)
+                self.store_data(autosave=False)
+        
+        self.updateAllImages()
+        self.setAllTextAnnotations()
+
+        if benchmark:
+            ts.append(time.perf_counter())
+            time_taken = time.perf_counter() - ts[0]
+            print(f'\nTotal time for whitelistUpdateLab: {time_taken:.2f}s')
+            for i in range(1, len(ts)):
+                time_taken = ts[i] - ts[i-1]
+                print(f'Time taken for {titles[i]}: {time_taken:.2f}s')
+            print('')
+
+
+    def whitelistIDsUpdateText(self):
+        """Updates the text. Carefull, triggers whitelistLineEdit.textChanged!
+        """
+        mode = self.modeComboBox.currentText()
+        if mode != 'Segmentation and Tracking':
+            return
+
+        posData = self.data[self.pos_i]
+        if posData.whitelist is None:
+            return
+        
+        if posData.whitelist._debug:
+            printl('whitelistIDsUpdateText')
+        
+        frame_i = posData.frame_i
+        whitelist = posData.whitelist.get(frame_i=frame_i)
+
+        self.whitelistIDsToolbar.whitelistLineEdit.setText(whitelist)
+
+    def whitelistTrackOGCurr(self, frame_i:int=None, 
+                             against_prev:bool=False,
+                             lab:np.ndarray=None,
+                             rp:list=None,
+                             IDs: Set[int] | List[int] =None):
+        """Track the original labels in relation to the current (whitelisted) labels.
+        Parameters
+
+        Parameters
+        ----------
+        frame_i : int, optional
+            frame_i to be tracked, posData.frame_i if not provided, by default None
+        against_prev : bool, optional
+            if the original frame should be tracked against frame_i-1. 
+            Cannot be used with rp or lab, by default False
+        lab : np.ndarray, optional
+            lab to be tracked against, by default None
+        rp : list, optional
+            regionprops for this lab, by default None
+        IDs : Set[int] | List[int], optional
+            IDs that should be tracked based on og
+
+        Raises
+        ------
+        ValueError
+            Cannot provide both rp and lab when tracking against previous frame.
+            Instead only provide rp and lab, and dont set against_prev.
+        """
+        posData = self.data[self.pos_i]
+        if posData.whitelist is None:
+            return
+
+        debug = posData.whitelist._debug
+
+        if debug:
+            from . import debugutils
+            debugutils.print_call_stack(depth=2)
+            printl('whitelistTrackOGCurr', against_prev)
+
+        if against_prev and (rp is not None or lab is not None):
+            raise ValueError('Cannot provide both rp and lab when tracking against previous frame.'
+            'Instead only provide rp and lab, and dont set against_prev.')
+
+        if frame_i is None:
+            frame_i = posData.frame_i
+
+        if against_prev and frame_i == 0:
+            return
+
+        og_frame_i = posData.frame_i
+        ### against what should I track?
+
+        if lab is not None and not rp:
+            rp = skimage.measure.regionprops(lab)
+        
+        if lab is None:
+            if debug:
+                printl('No lab and no rp provided.')
+            if against_prev:
+                rp = posData.allData_li[frame_i-1]['regionprops']
+                lab = posData.allData_li[frame_i-1]['labels']
+            else:
+                self.update_rp()
+                self.store_data(autosave=False)
+                if frame_i != og_frame_i:
+                    posData.frame_i = frame_i
+                
+                self.get_data()
+                rp = posData.rp
+                lab = posData.lab
+
+        og_lab = posData.whitelist.originalLabs[frame_i]
+        og_rp = skimage.measure.regionprops(og_lab)
+        # lab = lab.copy()
+
+        denom_overlap_matrix = 'union' if not against_prev else 'area_prev'
+
+        og_lab = CellACDC_tracker.track_frame(
+                lab, rp, og_lab, og_rp,
+                denom_overlap_matrix=denom_overlap_matrix,
+                posData = posData,
+                setBrushID_func=self.setBrushID,
+                IDs=IDs,
+        )
+
+        posData.whitelist.originalLabs[frame_i] = og_lab
+        posData.whitelist.originalLabsIDs[frame_i] = {obj.label for obj in skimage.measure.regionprops(og_lab)}
+
+        if frame_i != og_frame_i:
+            posData.frame_i = og_frame_i
+            self.get_data()
+
+    def whitelistTrackCurrOG(self, frame_i:int=None, against_prev:bool=False):
+        """Track the current (whitelisted) labels in relation to the original labels.
+
+        Parameters
+        ----------
+        frame_i : int, optional
+            frame_i to be tracked, posData.frame_i if not provided, by default None
+        against_prev : bool, optional
+            if the original frame should be tracked against frame_i-1. 
+        """
+        posData = self.data[self.pos_i]
+        if posData.whitelist is None:
+            return
+
+        if posData.whitelist._debug:
+            printl('whitelistTrackCurrOG', frame_i, against_prev)
+
+        if frame_i is None:
+            frame_i = posData.frame_i
+
+        if against_prev and frame_i == 0:
+            return
+
+        og_frame = posData.frame_i
+        self.store_data(autosave=False)
+        if frame_i != og_frame:
+            posData.frame_i = frame_i
+        
+        self.get_data()
+        lab = posData.lab
+        rp = posData.rp
+
+        if against_prev:
+            og_lab = posData.whitelist.originalLabs[frame_i-1]
+        else:
+            og_lab = posData.whitelist.originalLabs[frame_i]
+
+        og_rp = skimage.measure.regionprops(og_lab)
+
+        denom_overlap_matrix = 'union' if not against_prev else 'area_prev'
+
+        lab = CellACDC_tracker.track_frame(
+                og_lab, og_rp, lab, rp,
+                denom_overlap_matrix=denom_overlap_matrix,
+                posData = posData,
+                setBrushID_func=self.setBrushID
+        )
+
+        posData.lab = lab
+
+        self.update_rp(wl_update=False)
+        self.store_data(autosave=False)
+
+        if frame_i != og_frame:
+            posData.frame_i = og_frame
+            self.get_data()
+
+    def whitelistSyncIDsOG(self, 
+                           frame_is: List[int]=None,
+                           against_prev: bool=False,):
+        """Interates over the frames and calls whitelistTrackOGCurr for each frame.
+
+        Parameters
+        ----------
+        frame_is : List[int], optional
+            list of frame_i, if None goes through all, by default None
+        against_prev : bool, optional
+            if the original frame should be tracked against frame_i-1. 
+        """
+        posData = self.data[self.pos_i]
+        if frame_is is None:
+            frame_is = range(posData.SizeT)
+
+        for frame_i in frame_is:
+            self.whitelistTrackOGCurr(frame_i=frame_i, against_prev=against_prev)
+
+    def whitelistInitNewFrames(self, frame_i:int=None, force:bool=False):
+        """Initialize the whitelist for a new frame. The class whitelist keeps track
+        of the init frames and doesnt try to init them again, unless forced.
+        Does not init the class!
+
+        Parameters
+        ----------
+        frame_i : int, optional
+            frame_i to be init, posData.frame_i if not provided, by default None
+        force : bool, optional
+            if the init should be forced, by default False
+
+        Returns
+        -------
+        bool
+            if the frame was new or not
+        list
+            list of frames that were updated, and info about added/removed IDs
+        """
+
+        posData = self.data[self.pos_i]
+        if posData.whitelist is None:
+            return False, []
+
+        if frame_i is None:
+            frame_i = posData.frame_i
+        
+        if posData.whitelist._debug:
+            printl('whitelistInitNewFrames', frame_i, force)
+
+        
+
+        if frame_i not in posData.whitelist.initialized_i:
+            self.whitelistTrackOGCurr(frame_i=frame_i, against_prev=True)
+
+        new_frame, update_frames = posData.whitelist.initNewFrames(
+            frame_i=frame_i, force=force)
+
+        self.whitelistAddNewIDs()
+        return new_frame, update_frames
+
+    def whitelistPropagateIDs(self, 
+                              new_whitelist: Set[int] | List[int] = None, 
+                              IDs_to_add: Set[int] = None,
+                              IDs_to_remove: Set[int] = None,
+                              frame_i: int = None,
+                              try_create_new_whitelists: bool = False,
+                              curr_frame_only: bool = False,
+                              force_not_dynamic_update: bool = False,
+                              only_future_frames: bool = True,
+                              allow_only_current_IDs: bool = False,
+                              track_og_curr: bool = True,
+                              IDs_curr: Set[int] | List[int] = None,
+                              index_lab_combo: Tuple[int, np.ndarray] = None,
+                              curr_rp: list = None,
+                              curr_lab: np.ndarray = None,
+                              store_data: bool = True,
+                              update_lab: bool = False,
+                              ):
+        """
+        Propagates whitelist IDs across frames in the dataset. (Doesnt update labs)
+        Should also be called when viewing a new frame!
+
+        This function updates whitelist. If curr_frame_only is True, it only updates the
+        whitelist of the current frame. If the frame changes, this function should be called 
+        again to update the whitelist for the new frame (without this argument).
+        It should also handle cases were this is not done, but this is less safe.
+        Then, all the additions and removals are propagated to the other frames.
+        If force_not_dynamic_update is True, the function will propagate the entire whitelist to 
+        frames, and not only the IDs which were added or removed.
+
+        Hierarchy of arguments for current_IDs:
+        1. IDs_curr (if provided)
+        (2. index_lab_combo (if provided) (is also passed to not current frame only 
+        propagation if that propagation is necessary, and used when the frame_i matches))
+        3. curr_rp (if provided)
+        4. curr_lab (if provided)
+        5. allData_li
+
+        Parameters
+        ----------
+        new_whitelist : Set[int] | List[int], optional
+            A new set of whitelist IDs to replace the current whitelist. Cannot be 
+            used together with `IDs_to_add` or `IDs_to_remove`, by default None.
+        IDs_to_add : Set[int], optional
+            A set of IDs to add to the current whitelist, by default None.
+        IDs_to_remove : Set[int], optional
+            A set of IDs to remove from the current whitelist, by default None.
+        frame_i : int, optional
+            The frame index for the propagation. 
+            If None, uses posData.frame_i, by default None.
+        try_create_new_whitelists : bool, optional
+            If True, creates new whitelist entries for frames that do not already 
+            have them. Should only be necessary when its initialized, by default False.
+        curr_frame_only : bool, optional
+            If True, only updates the whitelist for the current frame. 
+            (See description of function), by default False.
+        force_not_dynamic_update : bool, optional
+            If True, disables dynamic updates to the whitelist. 
+            (See description of function), by default False.
+        only_future_frames : bool, optional
+            If True, propagates changes only to future frames, by default True.
+        allow_only_current_IDs : bool, optional
+            If True, only allows IDs that are present in the current frame 
+            to be added to the whitelist, by default True.
+        track_og_curr : bool, optional
+            If True, tracks the original labels in relation to the current
+            (whitelisted) labels. This is done by calling whitelistTrackOGCurr.
+            If its a new frame, this is done in whitelistInitNewFrames against the 
+            previous frame,
+            by default True.
+        IDs_curr : Set[int] | List[int], optional
+            A set of IDs for the current frame, if None, 
+            will be calculated from other stuff (see description), by default None.
+        index_lab_combo : Tuple[int, np.ndarray], optional
+            Combination of frame_i and current frame, 
+            Used to get IDs_curr (see description), when the frame_i matches
+            (is also passed to not current frame only 
+            propagation if that propagation is necessary, 
+            and used when the frame_i matches), by default None.
+        curr_rp : list, optional
+            Region properties for the current frame. For IDs_curr. (see description), 
+            by default None.
+        curr_lab : np.ndarray, optional
+            Labels for the current frame for IDs_curr. (see description),
+            by default None.
+        store_data : bool, optional
+            If True, stores the data before propagating the IDs.
+        update_lab : bool, optional
+            If True, updates the labels after propagating the IDs.
+            Will always update labels for newly init frames, by default False.
+
+        Raises
+        ------
+        ValueError
+            If both `new_whitelistIDs` and `IDs_to_add`/`IDs_to_remove` are provided.
+
+        Example
+        -------
+        To add IDs 5 and 6 to the whitelist for the current frame:
+        ```python
+        self.whitelistPropagateIDs(IDs_to_add={5, 6}, curr_frame_only=True)
+        ```
+        Then when the frame changes:
+        ```python
+        self.whitelistPropagateIDs()
+        ```
+
+        To replace the whitelist for frame 10 with a new set of IDs:
+        ```python
+        self.whitelistPropagateIDs(new_whitelistIDs={1, 2, 3}, frame_i=10)
+        ```
+        This would also propagate the changes to all other frames.
+
+        """
+        #doesnt update the frame displayed, only wl
+        try: # safety XD
+            IDs_curr = IDs_curr.copy()
+        except AttributeError:
+            pass
+            
+        IDs_curr = set(IDs_curr) if IDs_curr is not None else None
+
+        posData = self.data[self.pos_i]
+
+        debug = posData.whitelist._debug if posData.whitelist is not None else False
+
+        if debug:
+            printl('Propagating IDs...')
+            from . import debugutils
+            debugutils.print_call_stack()
+            printl(new_whitelist, IDs_to_add, IDs_to_remove)
+
+        if posData.whitelist is None:
+            return
+
+        # og_frame_i = posData.frame_i
+        if frame_i is None:
+            frame_i = posData.frame_i
+
+        new_frame, update_frames_init = self.whitelistInitNewFrames(frame_i=frame_i)
+
+        # if track_og_curr and not new_frame:
+        #     self.whitelistTrackOGCurr(frame_i=frame_i, rp=curr_rp, lab=curr_lab)
+
+        update_frames = posData.whitelist.propagateIDs(
+            frame_i,
+            posData.allData_li,
+            new_whitelist=new_whitelist,
+            IDs_to_add=IDs_to_add,
+            IDs_to_remove=IDs_to_remove,
+            try_create_new_whitelists=try_create_new_whitelists,
+            curr_frame_only=curr_frame_only,
+            force_not_dynamic_update=force_not_dynamic_update,
+            only_future_frames=only_future_frames,
+            allow_only_current_IDs=allow_only_current_IDs,
+            IDs_curr=IDs_curr,
+            index_lab_combo=index_lab_combo,
+            curr_rp=curr_rp,
+            curr_lab=curr_lab,
+        )
+        if update_lab:
+            update_frames = update_frames_init + update_frames
+        else:
+            update_frames = update_frames_init
+        # printl(posData.whitelistIDs[frame_i])
+        # posData.frame_i = og_frame_i
+        self.whitelistIDsUpdateText()
+        if store_data:
+            self.store_data(autosave=False)
+
+        for frame_i, IDs_to_add, IDs_to_remove, new_frame in update_frames:
+            self.whitelistUpdateLab(frame_i=frame_i, track_og_curr=track_og_curr, 
+                                    new_frame=new_frame, IDs_to_add=IDs_to_add, 
+                                    IDs_to_remove=IDs_to_remove, )
+
+    def whitelistIDs_cb(self, checked:bool):
+        """Callback for when the whitelist IDs button is checked or unchecked.
+        Initialises the pointlayer and the whitelist IDs toolbar if checked.
+
+        Parameters
+        ----------
+        checked : bool
+            True if the whitelist IDs button is checked, False otherwise.
+        """
+        self.store_data(autosave=False)
+
+        if checked:
+            self.initKeepObjLabelsLayers()
+            self.disconnectLeftClickButtons()
+            self.uncheckLeftClickButtons(self.whitelistIDsButton)
+            self.connectLeftClickButtons()
+            
+        self.whitelistIDsToolbar.setVisible(checked)
+        self.whitelistHighlightIDs(checked)
+        self.whitelistIDsUpdateText()
+        self.whitelistUpdateTempLayer()
+
+        if not checked:
+            self.setLostNewOldPrevIDs()
+            self.updateAllImages()
+
+    def whitelistHighlightIDs(self, checked:bool=True):
+        """Highlights the IDs in the current frame based on the whitelist.
+
+        Parameters
+        ----------
+        checked : bool, optional
+            If False, will delete all highlights, by default True
+        """
+        if not checked:
+            self.removeHighlightLabelID()
+            return
+        
+        posData = self.data[self.pos_i]
+
+        if posData.whitelist is None:
+            if not hasattr(self, 'tempWhitelistIDs'):
+                self.tempWhitelistIDs = set() # not updated, only use in this context
+                current_whitelist = self.tempWhitelistIDs
+            else:
+                current_whitelist = self.tempWhitelistIDs
+        else:
+            current_whitelist = posData.whitelist.get(
+                frame_i=posData.frame_i)
+        
+        for ID in current_whitelist:
+            self.highlightLabelID(ID)
+        
+    def whitelistIDsChanged(self, 
+                            whitelistIDs: Set[int] | List[int], 
+                            debug: bool=False):
+        """Callback for when the whitelist IDs are changed. 
+        This is called when the user changed the IDs in the whitelist IDs toolbar
+        (or when its programmatically changed, but if its not 
+        visible it should return instantly)
+        Will update the temp layer and also complain when IDs 
+        are not valid/present in the current lab
+
+        Parameters
+        ----------
+        whitelistIDs : set | list
+            The IDs that are currently in the whitelist.
+        debug : bool, optional
+            debug, by default False
+        """
+        if not self.whitelistIDsButton.isChecked():
+            return
+
+        self.store_data(autosave=False)
+        self.get_data()
+        
+        posData = self.data[self.pos_i]
+
+        if posData.whitelist:
+            debug = posData.whitelist._debug
+        if debug:
+            printl('whitelistIDsChanged', whitelistIDs)
+
+        if posData.whitelist is None:
+            wl_init = False
+            if not hasattr(self, 'tempWhitelistIDs'):
+                self.tempWhitelistIDs = set() # not updated, only use in this context
+                current_whitelist = self.tempWhitelistIDs
+            else:
+                current_whitelist = self.tempWhitelistIDs
+        else:
+            wl_init = True
+            current_whitelist = posData.whitelist.get(
+                frame_i=posData.frame_i)
+
+        current_whitelist_copy = current_whitelist.copy()
+        if not hasattr(posData, 'originalLabsIDs') or posData.whitelist.originalLabsIDs is None:
+            possible_IDs = posData.IDs.copy()
+        else:
+            possible_IDs = posData.whitelist.originalLabsIDs[posData.frame_i]
+            possible_IDs.update(posData.IDs)
+
+        isAnyIDnotExisting = False
+        for ID in whitelistIDs:
+            if ID not in possible_IDs:
+                isAnyIDnotExisting = True
+                continue
+            if ID not in current_whitelist_copy:
+                current_whitelist.add(ID)
+                self.highlightLabelID(ID)
+
+        for ID in current_whitelist_copy:
+            if ID not in possible_IDs:
+                isAnyIDnotExisting = True
+                continue
+            if ID not in whitelistIDs:
+                current_whitelist.remove(ID)
+                self.removeHighlightLabelID(IDs=[ID])
+
+        if wl_init:
+            posData.whitelist.whitelistIDs[posData.frame_i] = current_whitelist
+        else:
+            self.tempWhitelistIDs = current_whitelist
+
+        self.whitelistUpdateTempLayer()
+        if isAnyIDnotExisting:
+            self.whitelistIDsToolbar.whitelistLineEdit.warnNotExistingID()
+        else:
+            self.whitelistIDsToolbar.whitelistLineEdit.setInstructionsText()
+
+    def whitelistUpdateTempLayer(self):
+        """Updates the temp layer with the current whitelist IDs.
+        """
+        if not self.whitelistIDsButton.isChecked():
+            self.keepIDsTempLayerLeft.clear()
+            return
+
+        keptLab = np.zeros_like(self.currentLab2D)
+
+        self.store_data(autosave=False)
+        self.get_data()
+
+        posData = self.data[self.pos_i]
+        if posData.whitelist is None:
+            if not hasattr(self, 'tempWhitelistIDs'):
+                self.tempWhitelistIDs = set() # not updated, only use in this context
+                current_whitelist = self.tempWhitelistIDs
+            else:
+                current_whitelist = self.tempWhitelistIDs
+        else:
+            current_whitelist = posData.whitelist.get(posData.frame_i)
+
+        for obj in posData.rp:
+            if obj.label not in current_whitelist:
+                continue
+
+            if not self.isObjVisible(obj.bbox):
+                continue
+
+            _slice = self.getObjSlice(obj.slice)
+            _objMask = self.getObjImage(obj.image, obj.bbox)
+
+            keptLab[_slice][_objMask] = obj.label
+
+        self.keepIDsTempLayerLeft.setImage(keptLab, autoLevels=False)
+            
     def delObjsOutSegmMaskActionTriggered(self):
         posData = self.data[self.pos_i]
         segm_files = load.get_segm_files(posData.images_path)
@@ -13790,8 +14577,14 @@ class guiWin(QMainWindow):
         # Make sure that the brushed ID is always a new one based on
         # already visited frames
         posData = self.data[self.pos_i]
+        wl_init = posData.whitelist and posData.whitelist.whitelistIDs
         if useCurrentLab:
-            newID = max(posData.IDs, default=0)
+            IDs_tot = set(posData.IDs)
+            if wl_init:
+                IDs_tot.update(posData.whitelist.originalLabsIDs[posData.frame_i])
+                if posData.whitelist.whitelistIDs[posData.frame_i]:
+                    IDs_tot.update(posData.whitelist.whitelistIDs[posData.frame_i])
+            newID = max(IDs_tot, default=0)
         else:
             newID = 0
         for frame_i, storedData in enumerate(posData.allData_li):
@@ -13800,7 +14593,12 @@ class guiWin(QMainWindow):
             lab = storedData['labels']
             if lab is not None:
                 rp = storedData['regionprops']
-                _max = max([obj.label for obj in rp], default=0)
+                IDs_tot = {obj.label for obj in rp}
+                if wl_init:
+                    IDs_tot.update(posData.whitelist.originalLabsIDs[frame_i])
+                    if posData.whitelist.whitelistIDs[frame_i]:
+                        IDs_tot.update(posData.whitelist.whitelistIDs[frame_i])
+                _max = max(IDs_tot, default=0)
                 if _max > newID:
                     newID = _max
             else:
@@ -14132,17 +14930,18 @@ class guiWin(QMainWindow):
             return
         
         if self.delObjAction is None:
+            # On mac we check for Key_Control
             if event.key() == Qt.Key_Control:
                 self.delObjToolAction.setChecked(True)
             return
-        
+
         delObjKeySequence, delObjQtButton = self.delObjAction
         keySequenceText = widgets.QKeyEventToString(event).rstrip('+')
-        
+
         if delObjKeySequence is None:
-            self.delObjToolAction.setChecked(True)
+            # self.delObjToolAction.setChecked(True)
             return
-        
+
         if keySequenceText == delObjKeySequence.toString():
             self.delObjToolAction.setChecked(True)
     
@@ -14175,22 +14974,37 @@ class guiWin(QMainWindow):
         
         return isBrushKey, isEraserKey
     
+    def _temp_debug(self, id=None):
+        posData = self.data[self.pos_i]
+        imshow(posData.lab, annotate_labels_idxs=[0])
+    
     @exception_handler
     def keyPressEvent(self, ev):        
         ctrl = ev.modifiers() == Qt.ControlModifier
         if ctrl and ev.key() == Qt.Key_D:
             self.resizeLeaveSpaceTerminalBelow()
             return
-        
+
         if ev.key() == Qt.Key_Q and self.debug:
-            posData = self.data[self.pos_i]
-            pass
+            # posData = self.data[self.pos_i]
+            # frame_i = posData.frame_i
+            # import pandasgui
+            # df_li = [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))] 
+            # pandasgui.show(
+            #     self.lineage_tree.lineage_list, df_li, self.lineage_tree.lineage_list[frame_i-1], df_li[frame_i-1]
+            # )
+            
+            # pass
         
+            QTimer.singleShot(100, self._do_nothing)
+
+
         if not self.isDataLoaded:
             self.logger.warning(
                 'Data not loaded yet. Key pressing events are not connected.'
             )
             return
+
         if ev.key() == Qt.Key_Control:
             if not self.isCtrlDown:
                 self.wasCtrlPressedFirstTime = True
@@ -14599,6 +15413,8 @@ class guiWin(QMainWindow):
         # Ask what to do unless the user has previously checked doNotShowAgain
         if doNotShow:
             endFrame_i = last_tracked_i
+            if applyFutFrames and not UndoFutFrames and modTxt == 'Edit ID':
+                self.whitelistSyncIDsOG(frame_is=range(posData.frame_i, endFrame_i+1))
             return UndoFutFrames, applyFutFrames, endFrame_i, doNotShow
         else:
             addApplyAllButton = (
@@ -14640,6 +15456,9 @@ class guiWin(QMainWindow):
                 UndoFutFrames = False
                 applyFutFrames = True
                 posData.includeUnvisitedInfo[modTxt] = True
+
+            if applyFutFrames and not UndoFutFrames and modTxt == 'Edit ID':
+                self.whitelistSyncIDsOG(frame_is=range(posData.frame_i, endFrame_i+1))
         return UndoFutFrames, applyFutFrames, endFrame_i, doNotShowAgain
 
     def addCcaState(self, frame_i, cca_df, undoId):
@@ -14898,6 +15717,9 @@ class guiWin(QMainWindow):
         if not self.UndoCount < len(posData.UndoRedoStates[posData.frame_i])-1:
             # We have undone all available states
             self.undoAction.setEnabled(False)
+        
+        if self.whitelistIDsButton.isChecked():
+            self.whitelistHighlightIDs()
 
     def redo(self):
         posData = self.data[self.pos_i]
@@ -14916,6 +15738,9 @@ class guiWin(QMainWindow):
         if not self.UndoCount > 0:
             # We have redone all available states
             self.redoAction.setEnabled(False)
+
+        if self.whitelistIDsButton.isChecked():
+            self.whitelistHighlightIDs()
 
     def realTimeTrackingClicked(self, checked):
         # Event called ONLY if the user click on Disable tracking
@@ -14966,19 +15791,47 @@ class guiWin(QMainWindow):
             return
 
         trackerName = win.selectedItemsText[0]
+        start_n = win.startFrame
+        stop_n = win.stopFrame
+        video_to_track = posData.segm_data
+        for frame_i in range(start_n-1, stop_n):
+            data_dict = posData.allData_li[frame_i]
+            lab = data_dict['labels']
+            if lab is None:
+                break
+
+            video_to_track[frame_i] = lab
+        video_to_track = video_to_track[start_n-1:stop_n]        
+        
         self.logger.info(f'Importing {trackerName} tracker...')
-        self.tracker, self.track_params = myutils.init_tracker(
-            posData, trackerName, qparent=self
+        self.tracker, self.track_params, init_params = myutils.init_tracker(
+            posData, trackerName, qparent=self, return_init_params=True
         )
         if self.track_params is None:
             self.logger.info('Tracking aborted.')
             return
+        
+        warningText = myutils.validate_tracker_input(
+            self.tracker, video_to_track
+        )
+        if warningText is not None:
+            self.logger.info(warningText)
+            self.warnTrackerInputNotValid(trackerName, warningText)
+            return        
+        
         if 'image_channel_name' in self.track_params:
             # Remove the channel name since it was already loaded in init_tracker
             del self.track_params['image_channel_name']
         
-        start_n = win.startFrame
-        stop_n = win.stopFrame
+        track_params_log = {
+            key: value for key, value in self.track_params.items()
+            if key != 'image'
+        }
+        self.logger.info(
+            'Tracking parameters:\n\n'
+            f'Initialization parameters: {init_params}\n'
+            f'Track parameters: {track_params_log}'
+        )
 
         last_tracked_i = self.get_last_tracked_i()
         if start_n-1 <= last_tracked_i and start_n>1:
@@ -14992,27 +15845,28 @@ class guiWin(QMainWindow):
             self.logger.info(f'Removing annotations from frame n. {start_n}.')
             self.resetCcaFuture(start_n-1)
 
-        video_to_track = posData.segm_data
-        for frame_i in range(start_n-1, stop_n):
-            data_dict = posData.allData_li[frame_i]
-            lab = data_dict['labels']
-            if lab is None:
-                break
-
-            video_to_track[frame_i] = lab
-        video_to_track = video_to_track[start_n-1:stop_n]
-
         self.start_n = start_n
         self.stop_n = stop_n
+        
+        info_txt = f'Tracking from frame n. {start_n} to {stop_n}...'
+        self.logger.info(info_txt)
 
         self.progressWin = apps.QDialogWorkerProgress(
-            title='Tracking', parent=self,
-            pbarDesc=f'Tracking from frame n. {start_n} to {stop_n}...'
+            title='Tracking', parent=self, pbarDesc=info_txt
         )
         self.progressWin.show(self.app)
         self.progressWin.mainPbar.setMaximum(stop_n-start_n)
         self.startTrackingWorker(posData, video_to_track)
 
+    def warnTrackerInputNotValid(self, trackerName, warningText):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = warningText.replace('\n', '<br>')
+        txt = html_utils.paragraph(
+            f'{txt}<br><br>'
+            'Tracking process will be cancelled. Thank you for your patience!'
+        )
+        msg.warning(self, 'Invalid input for tracker', txt)
+    
     def repeatTracking(self):
         posData = self.data[self.pos_i]
         prev_lab = self.get_2Dlab(posData.lab).copy()
@@ -15077,11 +15931,11 @@ class guiWin(QMainWindow):
         self.ghostMaskItemRight.setOpacity(alpha)
 
     def addManualTrackingItems(self):
-        self.ghostContourItemLeft.addToPlotItem(self.ax1)
-        self.ghostContourItemRight.addToPlotItem(self.ax2)
+        self.ghostContourItemLeft.addToPlotItem()
+        self.ghostContourItemRight.addToPlotItem()
 
-        self.ghostMaskItemLeft.addToPlotItem(self.ax1)
-        self.ghostMaskItemRight.addToPlotItem(self.ax2)
+        self.ghostMaskItemLeft.addToPlotItem()
+        self.ghostMaskItemRight.addToPlotItem()
 
         Y, X = self.img1.image.shape[:2]
         self.ghostMaskItemLeft.initImage((Y, X))
@@ -15089,7 +15943,7 @@ class guiWin(QMainWindow):
 
         self.updateGhostMaskOpacity()
     
-    def removeManualTrackingItems(self):
+    def removeManualTrackingItems(self):        
         self.ghostContourItemLeft.removeFromPlotItem()
         self.ghostContourItemRight.removeFromPlotItem()
 
@@ -15097,10 +15951,10 @@ class guiWin(QMainWindow):
         self.ghostMaskItemRight.removeFromPlotItem()
     
     def addManualBackgroundItems(self):
-        self.manualBackgroundObjItem.addToPlotItem(self.ax1)
+        self.manualBackgroundObjItem.addToPlotItem()
         self.ax1.addItem(self.manualBackgroundImageItem)
     
-    def removeManualTrackingItems(self):
+    def removeManualBackgroundItems(self):
         self.manualBackgroundObjItem.removeFromPlotItem()
         self.ax1.removeItem(self.manualBackgroundImageItem)
     
@@ -15470,7 +16324,8 @@ class guiWin(QMainWindow):
                 keepActive, isHideChecked
             )
             allPosAnnotIDs = [
-                pos.customAnnotIDs.get(name, {}) for pos in self.data
+                pos.customAnnotIDs.get(name, defaultdict(list)) 
+                for pos in self.data
             ]
             self.customAnnotDict[toolButton] = {
                 'action': action,
@@ -15533,7 +16388,7 @@ class guiWin(QMainWindow):
         self.customAnnotDict[toolButton] = {
             'action': action,
             'state': state,
-            'annotatedIDs': [{} for _ in range(len(self.data))]
+            'annotatedIDs': [defaultdict(list) for _ in range(len(self.data))]
         }
 
         # Save custom annotation to cellacdc/temp/custom_annotations.json
@@ -15546,17 +16401,34 @@ class guiWin(QMainWindow):
         # Add scatter plot item
         self.addCustomAnnnotScatterPlot(symbolColor, symbol, toolButton)
 
+        customAnnotButton = self.customAnnotDict[toolButton]
+        allPosAnnotatedIDs = customAnnotButton['annotatedIDs']
         # Add 0s column to acdc_df
-        posData = self.data[self.pos_i]
-        for frame_i, data_dict in enumerate(posData.allData_li):
-            acdc_df = data_dict['acdc_df']
-            if acdc_df is None:
-                continue
-            acdc_df[name] = 0
-        if posData.acdc_df is not None:
-            posData.acdc_df[name] = 0
+        for pos_i, posData in enumerate(self.data):
+            for frame_i, data_dict in enumerate(posData.allData_li):
+                acdc_df = data_dict['acdc_df']
+                if acdc_df is None:
+                    continue
+                if name not in acdc_df.columns:
+                    acdc_df[name] = 0
+                else:
+                    acdc_df[name] = acdc_df[name].astype(int)
+                    acdc_df_annot = acdc_df[acdc_df[name] == 1].reset_index()
+                    annot_IDs = acdc_df_annot['Cell_ID'].to_list()
+                    allPosAnnotatedIDs[pos_i][frame_i].extend(annot_IDs)
+                    
+            if posData.acdc_df is not None:
+                if name not in posData.acdc_df.columns:
+                    posData.acdc_df[name] = 0
+                else:
+                    posData.acdc_df[name] = posData.acdc_df[name].astype(int)
+                    acdc_df_annot = (
+                        posData.acdc_df[posData.acdc_df[name] == 1]
+                        .reset_index()
+                    )
+                    annot_IDs = acdc_df_annot['Cell_ID'].to_list()
+                    allPosAnnotatedIDs[pos_i][frame_i].extend(annot_IDs)
         
-
     def customAnnotHovered(self, scatterPlotItem, points, event):
         # Show tool tip when hovering an annotation with annotation name and ID
         vb = scatterPlotItem.getViewBox()
@@ -15655,6 +16527,7 @@ class guiWin(QMainWindow):
         self.addAnnotWin.sigDeleteSelecAnnot.connect(self.deleteSelectedAnnot)
         self.addAnnotWin.exec_()
         if self.addAnnotWin.cancel:
+            self.logger.info('Custom annotation process cancelled.')
             return
 
         symbol = self.addAnnotWin.symbol
@@ -15664,13 +16537,51 @@ class guiWin(QMainWindow):
         name = self.addAnnotWin.state['name']
         keepActive = self.addAnnotWin.state.get('keepActive', True)
         isHideChecked = self.addAnnotWin.state.get('isHideChecked', True)
+        
+        proceed = self.checkNameExists(name)
+        if not proceed:
+            self.logger.info('Custom annotation process cancelled.')
+            return
 
         self.addCustomAnnotationItems(
             symbol, symbolColor, keySequence, toolTip, name,
             keepActive, isHideChecked, self.addAnnotWin.state
         )
         self.saveCustomAnnot()
+        self.doCustomAnnotation(0)
 
+    def askCustomAnnotationNameExists(self, name):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(f"""
+            The annotationa called <code>{name}</code> already exists in the 
+            acdc_output CSV file.<br><br>
+            If you continue, this column will be used to initialize 
+            pre-annotated objects.<br><br>
+            Do you want to continue?
+        """
+        )
+        noButton, yesButton = msg.question(
+            self, 'Custom annotation name already exists', txt,
+            buttonsTexts=('No, stop process', 'Yes, use existing column')
+        )
+        return msg.clickedButton == yesButton
+        
+    
+    def checkNameExists(self, name):
+        posData = self.data[self.pos_i]
+        for frame_i, data_dict in enumerate(posData.allData_li):
+            acdc_df = data_dict['acdc_df']
+            if acdc_df is None:
+                continue
+            if name in acdc_df.columns:
+                return self.askCustomAnnotationNameExists(name)
+        
+        if posData.acdc_df is not None and name in posData.acdc_df.columns:
+            return self.askCustomAnnotationNameExists(name)
+         
+        return True
+            
+    
     def viewAllCustomAnnot(self, checked):
         if not checked:
             # Clear all annotations before showing only checked
@@ -15793,7 +16704,9 @@ class guiWin(QMainWindow):
                 return
 
         for button in buttons:
-            annotatedIDs = self.customAnnotDict[button]['annotatedIDs'][self.pos_i]
+            annotatedIDs = (
+                self.customAnnotDict[button]['annotatedIDs'][self.pos_i]
+            )
             annotIDs_frame_i = annotatedIDs.get(posData.frame_i, [])
             state = self.customAnnotDict[button]['state']
             acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
@@ -15817,7 +16730,7 @@ class guiWin(QMainWindow):
 
             xx, yy = [], []
             for annotID in annotIDs_frame_i:
-                obj_idx = posData.IDs.index(annotID)
+                obj_idx = posData.IDs_idxs[annotID]
                 obj = posData.rp[obj_idx]
                 acdc_df.at[annotID, state['name']] = 1
                 if not self.isObjVisible(obj.bbox):
@@ -15863,6 +16776,7 @@ class guiWin(QMainWindow):
         for posData in self.data:
             try:
                 posData.customAnnot.pop(name)
+                posData.saveCustomAnnotationParams()
             except KeyError as e:
                 # Current pos doesn't have any annotation button. Continue
                 continue
@@ -15964,7 +16878,9 @@ class guiWin(QMainWindow):
     
     def initSegmModelParams(
             self, model_name, acdcSegment, init_params, segment_params, 
-            is_label_roi=False, initLastParams=False
+            is_label_roi=False, initLastParams=False,
+            extraParams=None, extraParamsTitle=None,ini_filename=None
+
         ):
         posData = self.data[self.pos_i]        
         try:
@@ -15976,7 +16892,9 @@ class guiWin(QMainWindow):
         out = prompts.init_segm_model_params(
             posData, model_name, init_params, segment_params, 
             help_url=url, qparent=self, init_last_params=initLastParams, 
-            check_sam_embeddings=not is_label_roi, is_gui_caller=True
+            check_sam_embeddings=not is_label_roi, is_gui_caller=True,
+            extraParams=extraParams,extraParamsTitle=extraParamsTitle,
+            ini_filename=ini_filename,
         )
         if out.get('load_sam_embeddings', False):
             self.logger.info('Loading Segment Anything image embeddings...')
@@ -16097,7 +17015,7 @@ class guiWin(QMainWindow):
             )
 
             use_gpu = win.init_kwargs.get('gpu', False)
-            proceed = myutils.check_cuda(model_name, use_gpu, qparent=self)
+            proceed = myutils.check_gpu_availible(model_name, use_gpu, qparent=self)
             if not proceed:
                 self.logger.info('Segmentation process cancelled.')
                 self.titleLabel.setText('Segmentation process cancelled.')
@@ -16291,7 +17209,7 @@ class guiWin(QMainWindow):
             secondChannelData = self.getSecondChannelData()
 
         use_gpu = win.init_kwargs.get('gpu', False)
-        proceed = myutils.check_cuda(model_name, use_gpu, qparent=self)
+        proceed = myutils.check_gpu_availible(model_name, use_gpu, qparent=self)
         if not proceed:
             self.logger.info('Segmentation process cancelled.')
             self.titleLabel.setText('Segmentation process cancelled.')
@@ -16392,12 +17310,16 @@ class guiWin(QMainWindow):
         self.disableCcaIntegrityChecker()
         
     @exception_handler
-    def workerCritical(self, error):
+    def workerCritical(self, out: Tuple[QObject, Exception]):
+        worker, error = out
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
             self.progressWin.close()
             self.progressWin = None
         self.logger.info(error)
+        worker.thread().quit()
+        worker.deleteLater()
+        worker.thread().deleteLater()
         raise error
     
     def workerLog(self, text):
@@ -16432,7 +17354,7 @@ class guiWin(QMainWindow):
 
         self.activateAnnotations()
         
-        self.update_rp()
+        self.update_rp(wl_update=False)
         self.tracking(enforce=True)
         
         if self.isSnapshot:
@@ -16524,7 +17446,7 @@ class guiWin(QMainWindow):
             return
 
         use_gpu = win.init_kwargs.get('gpu', False)
-        proceed = myutils.check_cuda(model_name, use_gpu, qparent=self)
+        proceed = myutils.check_gpu_availible(model_name, use_gpu, qparent=self)
         if not proceed:
             self.logger.info('Segmentation process cancelled.')
             self.titleLabel.setText('Segmentation process cancelled.')
@@ -16595,6 +17517,24 @@ class guiWin(QMainWindow):
             self.zSliceScrollBar.triggerAction(stepSubAction)
         else:
             self.navigateScrollBar.triggerAction(stepSubAction)
+
+    def resetNavigateScrollbar(self):
+        try:
+            self.navigateScrollBar.blockSignals(True)
+            self.navigateScrollBar.actionTriggered.disconnect()
+            self.navigateScrollBar.sliderReleased.disconnect()
+            self.navigateScrollBar.sliderMoved.disconnect()
+            # self.navigateScrollBar.valueChanged.disconnect()
+            self.navigateScrollBar.setSliderPosition(self.navSpinBox.value())
+        except Exception as e:
+            if "disconnect()" not in str(e):
+                printl(e)
+            pass
+
+        self.navigateScrollBar.blockSignals(False)
+        self.navigateScrollBar.actionTriggered.connect(self.framesScrollBarActionTriggered)
+        self.navigateScrollBar.sliderReleased.connect(self.framesScrollBarReleased)
+        self.navigateScrollBar.sliderMoved.connect(self.framesScrollBarMoved)
 
     @exception_handler
     def next_cb(self):
@@ -17085,6 +18025,7 @@ class guiWin(QMainWindow):
         proceed_cca, never_visited = self.get_data(debug=True)
         self.pointsLayerLoadedDfsToData()
         self.initContoursImage()
+        self.initDelRoiLab()
         self.initTextAnnot()
         self.postProcessing()
         self.updateScrollbars()
@@ -17095,6 +18036,7 @@ class guiWin(QMainWindow):
         self.zoomOut()
         self.restartZoomAutoPilot()
         self.initManualBackgroundObject()
+        self.updateObjectCounts()
 
     def prev_pos(self):
         self.store_data(debug=False, autosave=False)
@@ -17197,13 +18139,22 @@ class guiWin(QMainWindow):
             posData.tracked_lost_centroids[frame_i] = accepted_lost_centroids
             printl('KeyError, need to initialize posData.tracked_lost_centroids[frame_i] properly')
         return True
-        
+    
     def next_frame(self, warn=True):
+        # ok = self.warnOGIDs()
+        # if not ok:
+        #     self.resetNavigateScrollbar()
+        #     return
+        benchmark=False
+        if benchmark:
+            ts = [time.perf_counter()]
+            titles = ['']
         mode = str(self.modeComboBox.currentText())
         posData = self.data[self.pos_i]
         if posData.frame_i < posData.SizeT-1:
             proceed = self.warnLostObjects()
             if not proceed:
+                self.resetNavigateScrollbar()
                 return
 
             if posData.frame_i <= 0:
@@ -17234,45 +18185,110 @@ class guiWin(QMainWindow):
                     posData.cca_df = editCcaWidget.cca_df
                     self.store_cca_df()
                 elif mode == 'Normal division: Lineage tree':
-                    if not self.lineage_tree:
-                        df_li = [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))]
-                        self.lineage_tree = normal_division_lineage_tree(lab = posData.allData_li[0]['labels'])           
-                        self.lineage_tree.load_lineage_df_list(df_li)
+                    if self.lineage_tree is None:
+                        self.initLinTree()         
 
             # Store data for current frame
+            if benchmark:
+                ts.append(time.perf_counter())
+                titles.append('Innit stuff')
             if mode != 'Viewer':
                 self.store_data(debug=False)
-            
+            if benchmark:
+                ts.append(time.perf_counter())
+                titles.append('store_data')
             # Go to next frame
+
+            self.lin_tree_ask_changes()
+            if benchmark:
+                ts.append(time.perf_counter())
+                titles.append('lin_tree_ask_changes')
             posData.frame_i += 1
             self.removeAlldelROIsCurrentFrame()
             proceed_cca, never_visited = self.get_data()
             if not proceed_cca:
                 posData.frame_i -= 1
                 self.get_data()
+                self.logger.info(
+                    'No data for current frame. '
+                )
                 return
             
+            if mode == 'Segmentation and Tracking' or self.isSnapshot:
+                self.addExistingDelROIs()
+            
+            # printl('here')
+            if benchmark:
+                ts.append(time.perf_counter())
+                titles.append('get_data')
+            self.whitelistPropagateIDs(update_lab=True)
+            self.whitelistAddNewIDs()
+            if benchmark:
+                ts.append(time.perf_counter())
+                titles.append('whitelist stuff')
             self.updatePreprocessPreview()
             self.updateCombineChannelsPreview()
+            if benchmark:
+                ts.append(time.perf_counter())
+                titles.append('update preview')
+
             self.postProcessing()
-            self.tracking(storeUndo=True)
+            self.tracking(storeUndo=True, wl_update=False)
+
+            if benchmark:
+                ts.append(time.perf_counter())
+                titles.append('postprocessing tracking')
+
             notEnoughG1Cells, proceed = self.attempt_auto_cca()
             if notEnoughG1Cells or not proceed:
                 posData.frame_i -= 1
                 self.get_data()
                 self.setAllTextAnnotations()
+                self.logger.info(
+                    'Not enough G1 cells to compute cell cycle annotations.'
+                )
                 return
+
+            if benchmark:
+                ts.append(time.perf_counter())
+                titles.append('cca stuff')
             
             self.store_zslices_rp()
+
+            if benchmark:
+                ts.append(time.perf_counter())
+                titles.append('store_zslices_rp')
             self.resetExpandLabel()
+            if benchmark:
+                ts.append(time.perf_counter())
+                titles.append('resetExpandLabel')
             self.updateAllImages()
+            if benchmark:
+                ts.append(time.perf_counter())
+                titles.append('updateAllImages')
             self.updateViewerWindow()
+            if benchmark:
+                ts.append(time.perf_counter())
+                titles.append('updateViewerWindow')
             self.updateLastVisitedFrame(last_visited_frame_i=posData.frame_i-1)
             self.setNavigateScrollBarMaximum()
             self.updateScrollbars()
+            if benchmark:
+                ts.append(time.perf_counter())
+                titles.append('scrollbar and last visited frame update')
             self.computeSegm()
+            if benchmark:
+                ts.append(time.perf_counter())
+                titles.append('computeSegm')
             self.initGhostObject()
+            if benchmark:
+                ts.append(time.perf_counter())
+                titles.append('initGhostObject')
             self.zoomToCells()
+            self.updateObjectCounts()
+            if benchmark:
+                ts.append(time.perf_counter())
+                titles.append('zoomToCells')
         else:
             # Store data for current frame
             if mode != 'Viewer':
@@ -17280,47 +18296,47 @@ class guiWin(QMainWindow):
             msg = 'You reached the last segmented frame!'
             self.logger.info(msg)
             self.titleLabel.setText(msg, color=self.titleColor)
+    
+        if benchmark:
+            time_taken = time.perf_counter() - ts[0]
+            print(f'\nTotal time for next_frame: {time_taken:.2f}s')
+            for i in range(1, len(ts)):
+                time_taken = ts[i] - ts[i-1]
+                print(f'Time taken for {titles[i]}: {time_taken:.2f}s')
+            print('')
 
+    @disableWindow
     def get_difference_table(self, return_css_separated=False, return_differece=False):
-        # only use when needed, this does not check if it has all the things it needs (like mode and dfs)
+
+        if self.original_df_lin_tree is None:
+            return
+
         posData = self.data[self.pos_i]
         
-        new_df = self.lineage_tree.export_df(posData.frame_i)
-        original_df = self.original_df.copy()
+        new_df = self.lineage_tree.lineage_list[posData.frame_i].copy()
+        original_df = self.original_df_lin_tree.copy()
 
         if original_df.equals(new_df):
             return
         
-        columns = new_df.columns
-        for col in columns:
-            if col.startswith('sister_ID_tree'):
-                new_df = new_df.drop(col, axis=1)
-
-        columns = original_df.columns
-        for col in columns:
-            if col.startswith('sister_ID_tree'):
-                original_df = original_df.drop(col, axis=1)
+        compare_columns = ['parent_ID_tree']
 
         new_df = new_df[original_df.columns]
+        new_df = myutils.checked_reset_index_Cell_ID(new_df)
+        new_df = new_df[compare_columns]
         new_df = new_df.sort_index()
+        original_df = myutils.checked_reset_index_Cell_ID(original_df)
+        original_df = original_df[compare_columns]
         original_df = original_df.sort_index()
+
         differences = original_df.compare(new_df)
         if differences.empty:
             return
         
-        if not differences.index.name == 'Cell_ID':
-            if differences.index is not pd.RangeIndex:
-                differences = (differences.reset_index())
-
-            differences = differences.set_index('Cell_ID')
-
+        differences = myutils.checked_reset_index_Cell_ID(differences)
+ 
         differences = differences['parent_ID_tree']
-
         differences = differences.reset_index()
-
-        self.nextAction.setDisabled(True)
-        self.prevAction.setDisabled(True)
-        self.navigateScrollBar.setDisabled(True)
 
         txt = """<table>
                     <tr>
@@ -17374,7 +18390,7 @@ class guiWin(QMainWindow):
         
         posData = self.data[self.pos_i]
 
-        if self.curr_original_df_i != posData.frame_i:
+        if self.original_df_lin_tree_i != posData.frame_i:
             # could be that this is not entirley true and self.curr_original_df_i just didnt get set right though!
             txt_changes = '<br>No changes were made in this frame.<br><br>'
         
@@ -17441,7 +18457,7 @@ class guiWin(QMainWindow):
                 txt
                 )
 
-
+    @disableWindow
     def lin_tree_ask_changes(self):
         """
         Asks the user for changes in the lineage tree.
@@ -17459,18 +18475,34 @@ class guiWin(QMainWindow):
         
         posData = self.data[self.pos_i]
         
-        if self.curr_original_df_i != posData.frame_i:
+        if self.original_df_lin_tree_i is not None and self.original_df_lin_tree_i != posData.frame_i:
+            printl("!This should not happen!")
+            self.store_data(autosave=False)
+            og_frame = posData.frame_i
+            posData.frame_i = self.original_df_lin_tree_i
+            self.get_data()
+            self.logger.info('Lineage tree changes were not propagated, going back to original frame.')
+            self.lin_tree_ask_changes()
+            self.store_data(autosave=False)
+            posData.frame_i = og_frame
+            self.get_data()
             return
-        
+
         result = self.get_difference_table(return_css_separated=True, return_differece=True)
         if result is None:
+            self.original_df_lin_tree = None
+            self.original_df_lin_tree_i = None
             return
 
         css, txt, differences = result
+        changed_IDs = differences['Cell_ID'].unique()
 
-        self.nextAction.setDisabled(True)
-        self.prevAction.setDisabled(True)
-        self.navigateScrollBar.setDisabled(True)
+        if posData.frame_i == max(self.lineage_tree.frames_for_dfs):
+            # here we can just propagate the cahnged. This is super fast, since there is no recursion, no children and fast finding of parents
+            self.lineage_tree.propagate(posData.frame_i, relevant_cells=changed_IDs)
+            self.original_df_lin_tree = None
+            self.original_df_lin_tree_i = None
+            return
 
         txt = txt + 'Do you want to keep, propgagte or discard the changes?'
         txt = css + html_utils.paragraph('<b>Changes made in this frame</b><br>' + txt)
@@ -17483,17 +18515,17 @@ class guiWin(QMainWindow):
                       buttonsTexts=('Propagate', 'Discard', 'Cancel'),)
 
         if msg.clickedButton == propagate_btn:
-            self.lineage_tree.propagate(posData.frame_i, Cell_IDs_fixed=differences.Cell_ID.unique())
-            self.original_df = None
-            self.curr_original_df_i = -1
+            self.lineage_tree.propagate(posData.frame_i, relevant_cells=changed_IDs)
+            self.original_df_lin_tree = None
+            self.original_df_lin_tree_i = None
             self.lin_tree_to_acdc_df(force_all=True)
             self.logger.info('Lineage tree propagated.')
 
         elif msg.clickedButton == discard_btn:
-            self.lineage_tree.lineage_list[self.curr_original_df_i] = self.original_df
+            self.lineage_tree.lineage_list[self.original_df_lin_tree_i] = self.original_df_lin_tree.copy()
             self.lin_tree_to_acdc_df(specific={posData.frame_i}) # probably not necessary but just in case
-            self.original_df = None
-            self.curr_original_df_i = -1#
+            self.original_df_lin_tree = None
+            self.original_df_lin_tree_i = None
             self.logger.info('Lineage tree changes discarded.')
             
 
@@ -17510,15 +18542,9 @@ class guiWin(QMainWindow):
             ''')
             msg.warning(self, 'Changes kept but not propagated!', txt)
             self.lin_tree_to_acdc_df(specific={posData.frame_i})
-            self.original_df = None
-            self.curr_original_df_i = -1
-
+            self.original_df_lin_tree = None
+            self.original_df_lin_tree_i = None
             self.logger.info('Lineage tree changes discarded.')
-
-                        
-        self.nextAction.setDisabled(False)
-        self.prevAction.setDisabled(False)
-        self.navigateScrollBar.setDisabled(False)
 
     def setNavigateScrollBarMaximum(self):
         posData = self.data[self.pos_i]
@@ -17558,30 +18584,81 @@ class guiWin(QMainWindow):
                 self.navigateScrollBar.setMaximum(i+1)
                 self.navSpinBox.setMaximum(i+1)
 
-    def prev_frame(self):
+    def prev_frame(self,):
+        benchmark = False
+        if benchmark:
+            ts = [time.perf_counter()]
+            titles = ['']
         posData = self.data[self.pos_i]    
         if posData.frame_i > 0:
             # Store data for current frame
             mode = str(self.modeComboBox.currentText())
             if mode != 'Viewer':
                 self.store_data(debug=False)
+            if benchmark:
+                ts.append(time.perf_counter())
+                titles.append('store_data')
             self.removeAlldelROIsCurrentFrame()
+            if benchmark:
+                ts.append(time.perf_counter())
+                titles.append('removeAlldelROIsCurrentFrame')
+            
+
+            self.lin_tree_ask_changes()
+            if benchmark:
+                ts.append(time.perf_counter())
+                titles.append('lin_tree_ask_changes')
             posData.frame_i -= 1
             _, never_visited = self.get_data()
+            if benchmark:
+                ts.append(time.perf_counter())
+                titles.append('get_data')
+            
+            if mode == 'Segmentation and Tracking' or self.isSnapshot:
+                self.addExistingDelROIs()
+            
             self.resetExpandLabel()
             self.updatePreprocessPreview()
             self.updateCombineChannelsPreview()
             self.postProcessing()
+            if benchmark:
+                ts.append(time.perf_counter())
+                titles.append('preview updated, reset expand labels, prost processing')
             self.tracking()
+            if benchmark:
+                ts.append(time.perf_counter())
+                titles.append('tracking')
+            self.whitelistPropagateIDs(update_lab=True)
+            if benchmark:
+                ts.append(time.perf_counter())
+                titles.append('whitelist stuff')
             self.updateAllImages()
+            if benchmark:
+                ts.append(time.perf_counter())
+                titles.append('updateAllImages')
             self.updateScrollbars()
+            if benchmark:
+                ts.append(time.perf_counter())
+                titles.append('updateScrollbars')
             self.zoomToCells()
             self.initGhostObject()
             self.updateViewerWindow()
+            self.updateObjectCounts()
+            if benchmark:
+                ts.append(time.perf_counter())
+                titles.append('zoomToCells, initGhostObject, updateViewerWindow')
         else:
             msg = 'You reached the first frame!'
             self.logger.info(msg)
             self.titleLabel.setText(msg, color=self.titleColor)
+        
+        if benchmark:
+            time_taken = time.perf_counter() - ts[0]
+            print(f'\nTotal time for prev_frame: {time_taken:.2f}s')
+            for i in range(1, len(ts)):
+                time_taken = ts[i] - ts[i-1]
+                print(f'Time taken for {titles[i]}: {time_taken:.2f}s')
+            print('')
 
     def loadSelectedData(self, user_ch_file_paths, user_ch_name):
         data = []
@@ -17590,7 +18667,7 @@ class guiWin(QMainWindow):
         
         self.logger.info(f'Reading {user_ch_name} channel metadata...')
         # Get information from first loaded position
-        posData = load.loadData(user_ch_file_paths[0], user_ch_name)
+        posData = load.loadData(user_ch_file_paths[0], user_ch_name, log_func=self.logger.info)
         posData.getBasenameAndChNames()
         posData.buildPaths()
 
@@ -17603,7 +18680,7 @@ class guiWin(QMainWindow):
         # Get end name of every existing segmentation file
         existingSegmEndNames = set()
         for filePath in user_ch_file_paths:
-            _posData = load.loadData(filePath, user_ch_name)
+            _posData = load.loadData(filePath, user_ch_name, log_func=self.logger.info)
             _posData.getBasenameAndChNames()
             segm_files = load.get_segm_files(_posData.images_path)
             _existingEndnames = load.get_endnames(
@@ -17674,7 +18751,7 @@ class guiWin(QMainWindow):
             load_metadata=True,
             create_new_segm=self.isNewFile,
             new_endname=self.newSegmEndName,
-            end_filename_segm=selectedSegmEndName
+            end_filename_segm=selectedSegmEndName,
         )
         self.selectedSegmEndName = selectedSegmEndName
         self.labelBoolSegm = posData.labelBoolSegm
@@ -17751,6 +18828,8 @@ class guiWin(QMainWindow):
             self.startLoadDataWorker, user_ch_file_paths, user_ch_name,
             posData
         )
+
+
         QTimer.singleShot(150, func)
     
     def disableNonFunctionalButtons(self):
@@ -18362,6 +19441,7 @@ class guiWin(QMainWindow):
     def loadingDataCompleted(self):
         self.isDataLoading = True
         posData = self.data[self.pos_i]
+        
         files_format = '\n'.join([
             f'  - {file}' for file in posData.images_folder_files
         ])
@@ -18480,6 +19560,7 @@ class guiWin(QMainWindow):
 
         self.initContoursImage()
         self.initTextAnnot()
+        self.initDelRoiLab()
 
         self.update_rp()
         self.updateAllImages()
@@ -18511,6 +19592,8 @@ class guiWin(QMainWindow):
         self.viewAllCustomAnnotAction.setChecked(True)
 
         self.updateImageValueFormatter()
+
+        posData.loadWhitelist()
 
         self.setFocusGraphics()
         self.setFocusMain()
@@ -18587,6 +19670,13 @@ class guiWin(QMainWindow):
             self.annotateRightHowCombobox.setCurrentText(
                 'Draw IDs and overlay segm. masks'
             )
+        
+        if 'addNewIDsWhitelistToggle' in self.df_settings.index:
+            self.addNewIDsWhitelistToggle = (
+                self.df_settings.at['addNewIDsWhitelistToggle', 'value']
+                ) == 'Yes'
+        else:
+            self.addNewIDsWhitelistToggle = True
         
         self.drawAnnotCombobox_to_options()
         self.drawIDsContComboBox_cb(0)
@@ -19330,6 +20420,7 @@ class guiWin(QMainWindow):
         self.isExportingVideo = False
         self.pointsLayersNeverToggled = True
         self.highlightedIDopts = None
+        self.timestampStartTimedelta = timedelta(seconds=0)
         self.keptObjectsIDs = widgets.KeptObjectIDsList(
             self.keptIDsLineEdit, self.keepIDsConfirmAction
         )
@@ -19344,6 +20435,7 @@ class guiWin(QMainWindow):
         }
         self.timestampDialog = None
         self.scaleBarDialog = None
+        self.countObjsWindow = None
 
         # Second channel used by cellpose
         self.secondChannelName = None
@@ -19415,6 +20507,7 @@ class guiWin(QMainWindow):
             'generation_num',
         ]
 
+        self.lin_tree_df_colnames = self.lin_tree_df_int_cols + self.lin_tree_df_bool_col + self.lin_tree_col_checks
         self.SegForLostIDsSettings =  {}
     
     def initMetricsToSave(self, posData):
@@ -19453,6 +20546,16 @@ class guiWin(QMainWindow):
         self.foregr_metrics_params = foregr_metrics_params
         self.concentration_metrics_params = concentration_metrics_params
         self.custom_metrics_params = custom_metrics_params
+        
+        self.ch_indipend_custom_func_dict = (
+            measurements.get_channel_indipendent_custom_metrics_func()
+        )
+        self.ch_indipend_custom_func_params = (
+            measurements.get_channel_indipend_custom_metrics_params(
+                self.ch_indipend_custom_func_dict,
+                self.chIndipendCustomMetricsToSave
+            )
+        )
 
     def initMetrics(self):
         self.logger.info('Initializing measurements...')
@@ -19469,8 +20572,15 @@ class guiWin(QMainWindow):
             self.regionPropsToSave = measurements.get_props_names_3D()
         else:
             self.regionPropsToSave = measurements.get_props_names()  
-        self.mixedChCombineMetricsToSkip = []
+        
         posData = self.data[self.pos_i]
+        self.mixedChCombineMetricsToSkip = []
+        self.chIndipendCustomMetricsToSave = list(
+            measurements.ch_indipend_custom_metrics_desc(
+                posData.SizeZ>1, isSegm3D=self.isSegm3D,
+            ).keys()
+        )
+        
         self.sizeMetricsToSave = list(
             measurements.get_size_metrics_desc(
                 self.isSegm3D, posData.SizeT>1
@@ -19489,15 +20599,6 @@ class guiWin(QMainWindow):
                 posData.combineMetricsConfig = load.add_configPars_metrics(
                     configPars, posData.combineMetricsConfig
                 )
-
-    def getEmptyStoredDataDict(self):
-        return {
-            'regionprops': None,
-            'labels': None,
-            'acdc_df': None,
-            'delROIs_info': {'rois': [], 'delMasks': [], 'delIDsROI': []},
-            'IDs': []
-        }
     
     def initPosAttr(self):
         exp_path = self.data[self.pos_i].exp_path
@@ -19558,11 +20659,16 @@ class guiWin(QMainWindow):
             posData.ol_data_dict = {}
             posData.ol_data = None
 
-            posData.ol_labels_data = None
-
-            posData.allData_li = [
-                self.getEmptyStoredDataDict() for i in range(posData.SizeT)
-            ]
+            posData.ol_labels_data = None       
+            
+            missing_frames = posData.SizeT - len(posData.allData_li)
+            if missing_frames > 0:
+                posData.allData_li.extend([None] * missing_frames)
+            for i in range(posData.SizeT):
+                if posData.allData_li[i] is None:
+                    posData.allData_li[i] = (
+                        myutils.get_empty_stored_data_dict()
+                    )
             
             posData.lutLevels = {channel: {} for channel in self.ch_names}
 
@@ -19585,7 +20691,6 @@ class guiWin(QMainWindow):
                     self.store_data(
                         enforce=True, autosave=False, store_cca_df_copy=True
                     )
-                    # self.load_delROIs_info(delROIshapes, last_tracked_num)
 
                 # Ask whether to resume from last frame
                 if last_tracked_num>1:
@@ -19713,7 +20818,7 @@ class guiWin(QMainWindow):
 
     def unstore_data(self):
         posData = self.data[self.pos_i]
-        posData.allData_li[posData.frame_i] = self.getEmptyStoredDataDict()
+        posData.allData_li[posData.frame_i] = myutils.get_empty_stored_data_dict()
     
     def getStoredSegmData(self):
         posData = self.data[self.pos_i]
@@ -19756,7 +20861,7 @@ class guiWin(QMainWindow):
             return
                 
         return trackedID
-    
+
     @exception_handler
     def store_data(
             self, pos_i=None, enforce=True, debug=False, mainThread=True,
@@ -19775,15 +20880,17 @@ class guiWin(QMainWindow):
         if mode == 'Viewer' and not enforce:
             return
 
-        self.lin_tree_ask_changes()
-
-        posData.allData_li[posData.frame_i]['regionprops'] = posData.rp.copy()
-        posData.allData_li[posData.frame_i]['labels'] = posData.lab.copy()
-        posData.allData_li[posData.frame_i]['IDs'] = posData.IDs.copy()
-        posData.allData_li[posData.frame_i]['manualBackgroundLab'] = (
+        # if not mainThread:
+        #     self.lin_tree_ask_changes()
+        
+        allData_li = posData.allData_li[posData.frame_i]
+        allData_li['regionprops'] = posData.rp.copy()
+        allData_li['labels'] = posData.lab.copy()
+        allData_li['IDs'] = posData.IDs.copy()
+        allData_li['manualBackgroundLab'] = (
             posData.manualBackgroundLab
         )
-        posData.allData_li[posData.frame_i]['IDs_idxs'] = (
+        allData_li['IDs_idxs'] = (
             posData.IDs_idxs.copy()
         )
         self.store_zslices_rp()
@@ -19802,8 +20909,11 @@ class guiWin(QMainWindow):
             is_cell_dead_li[i] = obj.dead
             is_cell_excluded_li[i] = obj.excluded
             IDs[i] = obj.label
-            xx_centroid[i] = int(self.getObjCentroid(obj.centroid)[1])
-            yy_centroid[i] = int(self.getObjCentroid(obj.centroid)[0])
+            try:
+                xx_centroid[i] = int(self.getObjCentroid(obj.centroid)[1])
+                yy_centroid[i] = int(self.getObjCentroid(obj.centroid)[0])
+            except Exception as err:
+                printl(obj, obj.centroid, obj.label, posData.frame_i)
             if self.isSegm3D:
                 zz_centroid[i] = int(obj.centroid[0])
             if obj.label in editedNewIDs:
@@ -19811,9 +20921,9 @@ class guiWin(QMainWindow):
 
         posData.STOREDmaxID = max(IDs, default=0)
 
-        acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
+        acdc_df = allData_li['acdc_df']
         if acdc_df is None:
-            posData.allData_li[posData.frame_i]['acdc_df'] = pd.DataFrame(
+            allData_li['acdc_df'] = pd.DataFrame(
                 {
                     'Cell_ID': IDs,
                     'is_cell_dead': is_cell_dead_li,
@@ -19823,8 +20933,9 @@ class guiWin(QMainWindow):
                     'was_manually_edited': areManuallyEdited
                 }
             ).set_index('Cell_ID')
+           
             if self.isSegm3D:
-                posData.allData_li[posData.frame_i]['acdc_df']['z_centroid'] = (
+               allData_li['acdc_df']['z_centroid'] = (
                     zz_centroid
                 )
         else:
@@ -19838,9 +20949,10 @@ class guiWin(QMainWindow):
             if self.isSegm3D:
                 acdc_df['z_centroid'] = zz_centroid
             acdc_df['was_manually_edited'] = areManuallyEdited
-            posData.allData_li[posData.frame_i]['acdc_df'] = acdc_df
-    
-        self.pointsLayerDataToDf(posData)
+            allData_li['acdc_df'] = acdc_df
+
+        if not mainThread:
+            self.pointsLayerDataToDf(posData)
         self.store_cca_df(
             pos_i=pos_i, mainThread=mainThread, autosave=autosave, 
             store_cca_df_copy=store_cca_df_copy
@@ -20022,7 +21134,7 @@ class guiWin(QMainWindow):
             if posData.cca_df.isna().any(axis=None):
                 raise ValueError('Cell cycle analysis table contains NaNs')
             # self.checkMultiBudMoth()
-            self.checkMothersExcludedOrDead()
+            proceed = self.checkMothersExcludedOrDead()
             return notEnoughG1Cells, proceed
 
         elif mode == 'Normal division: Lineage tree':
@@ -20031,7 +21143,7 @@ class guiWin(QMainWindow):
             proceed = True
             return notEnoughG1Cells, proceed
             
-        else: # ???
+        else:
             notEnoughG1Cells = False
             proceed = True
             return notEnoughG1Cells, proceed
@@ -20145,11 +21257,15 @@ class guiWin(QMainWindow):
         self.logger.info(
             'Initialising lineage tree annotations of missing past frames...'
         )
+
+        self.store_data(autosave=False)
+        self.get_data()
+
         posData = self.data[self.pos_i]
         current_frame_i = posData.frame_i
 
         if not self.lineage_tree: # init lin tree if not done already
-            self.lineage_tree = normal_division_lineage_tree(lab = posData.allData_li[0]['labels'])
+            self.lineage_tree = normal_division_lineage_tree(lab = posData.allData_li[0]['labels']) # here frame_i!=0
             df_li = [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))]
             self.lineage_tree.load_lineage_df_list(df_li)
 
@@ -20165,12 +21281,11 @@ class guiWin(QMainWindow):
             rp = posData.allData_li[frame_i]['regionprops']
             prev_rp = posData.allData_li[frame_i-1]['regionprops']
             # i might need to change this if I need support for only partially missing frames... Although I probably never have to care about that though
-            self.lineage_tree.frames_for_dfs.add(frame_i) 
             self.lineage_tree.real_time(frame_i, lab, prev_lab, rp=rp, prev_rp=prev_rp)
 
-        self.lin_tree_to_acdc_df()
+        self.lin_tree_to_acdc_df(force_all=True) # store lineage tree in acdc_df
         posData.frame_i = current_frame_i
-        self.get_data(lin_tree=True)
+        self.store_data()
 
     def _getCcaCostMatrix(
             self, numCellsG1, numNewCells, IDsCellsG1, newIDs_contours
@@ -20431,14 +21546,16 @@ class guiWin(QMainWindow):
             proceed = self.warnFrameNeverVisitedSegmMode()
             return notEnoughG1Cells, proceed
         
-        lab = posData.allData_li[frame_i]['labels']
+        self.store_data(autosave=False)
+        self.get_data()
+        lab = posData.lab
         prev_lab = posData.allData_li[frame_i-1]['labels']
-        rp = posData.allData_li[frame_i]['regionprops']
+        rp = posData.rp
         prev_rp = posData.allData_li[frame_i-1]['regionprops']
 
         self.lineage_tree.real_time(frame_i, lab, prev_lab, rp=rp, prev_rp=prev_rp)
         self.lin_tree_to_acdc_df()
-        self.lineage_tree.frames_for_dfs.add(frame_i)
+        self.store_data()
 
     def getObjBbox(self, obj_bbox):
         if self.isSegm3D and len(obj_bbox)==6:
@@ -20679,7 +21796,7 @@ class guiWin(QMainWindow):
         ]
         return editID_info
 
-    def _get_data_unvisited(self, posData, lin_tree=False, debug=False):
+    def _get_data_unvisited(self, posData, debug=False,lin_tree_init=True,):
         posData.editID_info = []
         proceed_cca = True
         never_visited = True
@@ -20721,7 +21838,7 @@ class guiWin(QMainWindow):
         posData.lab = self.get_labels()
         posData.rp = skimage.measure.regionprops(posData.lab)
         self.setManualBackgroundLab()
-        if posData.acdc_df is not None and not lin_tree:
+        if posData.acdc_df is not None:
             frames = posData.acdc_df.index.get_level_values(0)
             if posData.frame_i in frames:
                 # Since there was already segmentation metadata from
@@ -20750,71 +21867,38 @@ class guiWin(QMainWindow):
                 i = posData.frame_i
                 posData.allData_li[i]['acdc_df'] = df.copy()
         
-        if self.lineage_tree and self.lineage_tree.frames_for_dfs and lin_tree:
-            if posData.frame_i in self.lineage_tree.frames_for_dfs:
-                df = self.lineage_tree.export_df(posData.frame_i)
-                # df = posData.acdc_df.loc[posData.frame_i].copy()
-                binnedIDs_df = df[df['is_cell_excluded']>0]
-                binnedIDs = set(binnedIDs_df.index).union(posData.binnedIDs)
-                posData.binnedIDs = binnedIDs
-                ripIDs_df = df[df['is_cell_dead']>0]
-                ripIDs = set(ripIDs_df.index).union(posData.ripIDs)
-                posData.ripIDs = ripIDs
-                posData.editID_info.extend(self._get_editID_info(df))
-                if 'generation_num_tree' in df.columns: # may need to change this, not exactly sure how df is initialized 
-                    if any(df['generation_num_tree'].isna()):
-                        copy_lin_tree_df_colnames = self.lin_tree_df_colnames.copy()
-                        sister_col_names = [col for col in df.columns if col.startswith('sister_ID_tree')]
-                        copy_lin_tree_df_colnames.update(sister_col_names)
-                        lin_tree_colnames = list(copy_lin_tree_df_colnames)
-                        df = df.drop(labels=lin_tree_colnames, axis=1)
-                    else:
-                        # Convert to ints since there were NaN
-                        cols = self.lin_tree_df_int_cols
-                        df[cols] = df[cols].astype(int)
-
-                i = posData.frame_i
-                raise NotImplementedError('Need to implement this')
-                self.lineage_tree.lineage_list[i] = df.copy() #!!!
-
-        if not lin_tree:
-            self.get_cca_df()
-        else:
-            self.get_lin_tree_df()
+        if self.lineage_tree is None and lin_tree_init:
+            self.initLinTree()
+    
+        self.get_cca_df()
         
         return proceed_cca, never_visited
     
-    def _get_data_visited(self, posData, lin_tree=False, debug=False):        
+    def _get_data_visited(self, posData, debug=False,lin_tree_init=True,):        
         # Requested frame was already visited. Load from RAM.
         never_visited = False
         posData.lab = self.get_labels(from_store=True)
         posData.rp = skimage.measure.regionprops(posData.lab)
-        if not lin_tree:
-            df = posData.allData_li[posData.frame_i]['acdc_df']
-            try:
-                binnedIDs_df = df[df['is_cell_excluded']>0]
-            except Exception as err:
-                df = myutils.fix_acdc_df_dtypes(df)
-                binnedIDs_df = df[df['is_cell_excluded']>0]
-            posData.binnedIDs = set(binnedIDs_df.index)
-            ripIDs_df = df[df['is_cell_dead']>0]
-            posData.ripIDs = set(ripIDs_df.index)
-            posData.editID_info = self._get_editID_info(df)
-            self.setManualBackgroundLab(load_from_store=True, debug=debug)
-        elif not self.lineage_tree:
-            self.lineage_tree = normal_division_lineage_tree(lab = posData.allData_li[0]['labels'])
-            df_li = [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))]
-            self.lineage_tree.load_lineage_df_list(df_li)
+        df = posData.allData_li[posData.frame_i]['acdc_df']
+        try:
+            binnedIDs_df = df[df['is_cell_excluded']>0]
+        except Exception as err:
+            df = myutils.fix_acdc_df_dtypes(df)
+            binnedIDs_df = df[df['is_cell_excluded']>0]
+        posData.binnedIDs = set(binnedIDs_df.index)
+        ripIDs_df = df[df['is_cell_dead']>0]
+        posData.ripIDs = set(ripIDs_df.index)
+        posData.editID_info = self._get_editID_info(df)
+        self.setManualBackgroundLab(load_from_store=True, debug=debug)
+        if self.lineage_tree is None and lin_tree_init:
+            self.initLinTree()
         
-        if not lin_tree:
-            self.get_cca_df()
-        else:
-            self.get_lin_tree_df()
-        
+        self.get_cca_df()
+
         return True, never_visited
     
     @get_data_exception_handler
-    def get_data(self, debug=False, lin_tree=False): 
+    def get_data(self, debug=False, lin_tree_init=True):
         posData = self.data[self.pos_i]
         proceed_cca = True
         never_visited = False
@@ -20832,13 +21916,13 @@ class guiWin(QMainWindow):
         # If stored labels is None then it is the first time we visit this frame
         if posData.allData_li[posData.frame_i]['labels'] is None:
             proceed_cca, never_visited =  self._get_data_unvisited(
-                posData, lin_tree=lin_tree
+                posData,lin_tree_init=lin_tree_init,
             )
             if not proceed_cca:
                 return proceed_cca, never_visited
         else:
             proceed_cca, never_visited = self._get_data_visited(
-                posData, lin_tree=lin_tree
+                posData,lin_tree_init=lin_tree_init,
             )
         
         self.update_rp_metadata(draw=False)
@@ -20849,36 +21933,6 @@ class guiWin(QMainWindow):
         self.get_zslices_rp()
         self.pointsLayerDfsToData(posData)
         return proceed_cca, never_visited
-
-    def load_delROIs_info(self, delROIshapes, last_tracked_num):
-        posData = self.data[self.pos_i]
-        delROIsInfo_npz = posData.delROIsInfo_npz
-        if delROIsInfo_npz is None:
-            return
-        for file in posData.delROIsInfo_npz.files:
-            if not file.startswith(f'{posData.frame_i}_'):
-                continue
-
-            delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
-            if file.startswith(f'{posData.frame_i}_delMask'):
-                delMask = delROIsInfo_npz[file]
-                delROIs_info['delMasks'].append(delMask)
-            elif file.startswith(f'{posData.frame_i}_delIDs'):
-                delIDsROI = set(delROIsInfo_npz[file])
-                delROIs_info['delIDsROI'].append(delIDsROI)
-            elif file.startswith(f'{posData.frame_i}_roi'):
-                Y, X = self.get_2Dlab(posData.lab).shape
-                x0, y0, w, h = delROIsInfo_npz[file]
-                addROI = (
-                    posData.frame_i==0 or
-                    [x0, y0, w, h] not in delROIshapes[posData.frame_i]
-                )
-                if addROI:
-                    roi = self.createDelROI(xl=x0, yb=y0, w=w, h=h)
-                    for i in range(posData.frame_i, last_tracked_num):
-                        delROIs_info_i = posData.allData_li[i]['delROIs_info']
-                        delROIs_info_i['rois'].append(roi)
-                        delROIshapes[i].append([x0, y0, w, h])
 
     def addIDBaseCca_df(self, posData, ID):
         if ID <= 0:
@@ -20963,6 +22017,7 @@ class guiWin(QMainWindow):
                 posData.frame_i = current_frame_i
                 self.get_data()
         
+        self.highlightLostNew()
         self.updateLastCheckedFrameWidgets(last_tracked_i)
 
         self.checkTrackingEnabled()
@@ -21112,7 +22167,7 @@ class guiWin(QMainWindow):
         
         return proceed
     @exception_handler
-    def initLinTree(self): # done need testing
+    def initLinTree(self, force=False):
         """
         Initializes the lineage tree analysis.
 
@@ -21125,6 +22180,14 @@ class guiWin(QMainWindow):
         proceed : bool
             True if the initialization is successful, nothing otherwise.
         """
+
+        if not force and self.lineage_tree is not None:
+            return
+        
+        mode = str(self.modeComboBox.currentText())
+        if mode != 'Normal division: Lineage tree' and not force:
+            return
+
         posData = self.data[self.pos_i]
         last_tracked_i = self.get_last_tracked_i()
         defaultMode = 'Viewer'
@@ -21150,11 +22213,9 @@ class guiWin(QMainWindow):
         # Determine last annotated frame index
         for i, dict_frame_i in enumerate(posData.allData_li):
             df = dict_frame_i['acdc_df']
-            if df is None:
-                break
-            elif ('generation_num_tree' not in df.columns 
-                  or np.all(df['generation_num_tree'] == 0)
-                  or np.all(df['generation_num_tree'].isna())
+            if (df is None or
+                'generation_num_tree' not in df.columns 
+                  or df['generation_num_tree'].isin([np.nan, 0]).all()
                   ):
                 break
             else:
@@ -21185,7 +22246,7 @@ class guiWin(QMainWindow):
                 self.last_lin_tree_frame_i = last_lin_tree_frame_i
                 posData.frame_i = last_lin_tree_frame_i
                 self.titleLabel.setText(msg, color=self.titleColor)
-                self.get_data(lin_tree=True)
+                self.get_data(lin_tree_init=False)
                 self.updateAllImages() # i dont think I need to change this
                 self.updateScrollbars() # i dont think I need to change this
             elif stayButton == msg.clickedButton:
@@ -21218,7 +22279,7 @@ class guiWin(QMainWindow):
                 self.titleLabel.setText(msg, color=self.titleColor)
                 self.last_lin_tree_frame_i = last_lin_tree_frame_i
                 posData.frame_i = last_lin_tree_frame_i
-                self.get_data(lin_tree=True)
+                self.get_data(lin_tree_init=False)
                 self.updateAllImages() # i dont think I need to change this
                 self.updateScrollbars() # i dont think I need to change this
             elif msg.cancel:
@@ -21229,23 +22290,28 @@ class guiWin(QMainWindow):
                 proceed = False
                 return
         else:
-            self.get_data(lin_tree=True)
+            self.get_data(lin_tree_init=False)
 
         self.last_lin_tree_frame_i = last_lin_tree_frame_i
 
         self.navigateScrollBar.setMaximum(last_lin_tree_frame_i+1)
         self.navSpinBox.setMaximum(last_lin_tree_frame_i+1)
 
-        if self.lineage_tree is None:
-            self.lineage_tree = normal_division_lineage_tree(lab = posData.allData_li[0]['labels'])
-            df_li = [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))]
+        if self.lineage_tree is None or force:
+            self.store_data(autosave=False)
+            self.get_data(lin_tree_init=False)
+            if posData.frame_i == 0:
+                lab = posData.lab
+            else:
+                lab = posData.allData_li[0]['labels']
+            self.lineage_tree = normal_division_lineage_tree(lab = lab)
+            df_li = [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))] 
             self.lineage_tree.load_lineage_df_list(df_li)
 
             msg = 'Lineage tree analysis initialized!'
             self.logger.info(msg)
             self.titleLabel.setText(msg, color=self.titleColor)
-        else:
-            self.get_lin_tree_df()
+
         return proceed
      
     def isCcaCheckerChecking(self):
@@ -21454,53 +22520,6 @@ class guiWin(QMainWindow):
         posData.frame_i = self.current_frame_i
         self.get_data()
         self.app.restoreOverrideCursor()
-    
-    def get_lin_tree_df(self, frame_i=None, return_df=False):
-        """
-        Retrieves the lineage tree DataFrame from posData.allData_li
-        lin_tree_df is None unless the metadata contains generation_num_tree annotations
-
-        Parameters
-        ----------
-        frame_i : int, optional)
-            The index of the frame. If not provided, the current frame index is used.
-        return_df  :  bool, optional)
-            If True, the method returns the linear tree DataFrame. 
-            If False, the linear tree DataFrame is stored in the `lin_tree_df` attribute of `posData`.
-
-        Returns
-        -------
-        lin_tree_df : pandas.DataFrame or None
-            The linear tree DataFrame for the specified frame index, or None if it is not available.
-
-        """
-
-        posData = self.data[self.pos_i]
-        lin_tree_df = None
-        df = None
-        if self.lineage_tree and self.lineage_tree.frames_for_dfs:
-            i = posData.frame_i if frame_i is None else frame_i
-            df = self.lineage_tree.export_df(i)
-
-        if df is not None:
-            if 'generation_num_tree' in df.columns:  # may need to change this, not exactly sure how df is initialized
-                if 'is_history_known' not in df.columns:
-                    df['is_history_known'] = True
-                if 'corrected_on_frame_i' not in df.columns:
-                    # Compatibility with those acdc_df analysed with prev vers.
-                    df['corrected_on_frame_i'] = -1
-                lin_tree_df = df.copy()
-        if lin_tree_df is None and self.isSnapshot:
-            self.logger.warning(
-                'Lineage tree for snapshots is not supported :('
-            )
-
-        # may need to create one if none is given already :3
-
-        if return_df:
-            return lin_tree_df
-        else:
-            posData.lin_tree_df = lin_tree_df
 
     def unstore_cca_df(self):
         posData = self.data[self.pos_i]
@@ -21585,8 +22604,8 @@ class guiWin(QMainWindow):
         if self.lineage_tree is None:
             return
         
-        df_for_sync = []
-        lineage_copy = self.lineage_tree.lineage_list.copy()
+        # df_for_sync = []
+        # lineage_copy = self.lineage_tree.lineage_list.copy()
         lin_tree_set = self.lineage_tree.frames_for_dfs.copy()
 
         if not force_all and not specific:
@@ -21602,45 +22621,18 @@ class guiWin(QMainWindow):
 
         if lin_tree_set == []:
             return
-        
-        for i, df in enumerate(lineage_copy):
-            if i not in lin_tree_set:
-                continue
-
-
-            df = reorg_sister_cells_for_export(df)
-            df = (df
-                  .reset_index()
-                  .set_index('Cell_ID')
-                  )
-
-            if 'frame_i' in df.columns:
-                df = df.drop('frame_i', axis=1)
-
-            if 'level_0' in df.columns:
-                df = df.drop('level_0', axis=1)
-            
-            df_for_sync.append((i, df))
 
         posData = self.data[self.pos_i]
 
-        for frame_i, lin_tree_df in df_for_sync:
+
+        lin_tree_colnames = None
+        for frame_i in lin_tree_set:
             acdc_df = posData.allData_li[frame_i]['acdc_df']
 
-            if lin_tree_df.index.name != 'Cell_ID':
-                if lin_tree_df.index is not pd.RangeIndex:
-                    lin_tree_df = (lin_tree_df
-                                .reset_index()
-                                .set_index('Cell_ID')
-                                )
-                else:
-                    lin_tree_df = lin_tree_df.set_index('Cell_ID')
+            lin_tree_df = self.lineage_tree.export_df(frame_i)
+            if lin_tree_colnames is None:
+                lin_tree_colnames = lin_tree_df.columns
 
-            # sister_col_names = [col for col in lin_tree_df.columns if col.startswith('sister_ID_tree')]
-            # copy_lin_tree_df_colnames = self.lin_tree_df_colnames.copy()
-            # copy_lin_tree_df_colnames.update(sister_col_names)
-            # lin_tree_colnames = list(copy_lin_tree_df_colnames)
-            lin_tree_colnames = lin_tree_df.columns
             acdc_df.loc[lin_tree_df.index, lin_tree_colnames] = lin_tree_df[lin_tree_colnames]
             
             try:
@@ -21740,7 +22732,7 @@ class guiWin(QMainWindow):
         if self.lineage_tree is None:
             return
         
-        if len(self.lineage_tree.lineage_list) <= 2:
+        if len(self.lineage_tree.lineage_list) < 2:
             return
 
         self.clearAllCellToCellLines()
@@ -21748,7 +22740,7 @@ class guiWin(QMainWindow):
         frame_i = posData.frame_i
         lin_tree_df = self.lineage_tree.export_df(frame_i)
         lin_tree_df_prev = self.lineage_tree.export_df(frame_i-1)
-        rp = posData.allData_li[frame_i]['regionprops']
+        rp = posData.rp
         prev_rp = posData.allData_li[frame_i-1]['regionprops']
 
         self.setTitleText()
@@ -21756,6 +22748,7 @@ class guiWin(QMainWindow):
         if lin_tree_df.shape[0] > lin_tree_df_prev.shape[0]: # check if new cells have arrived
             new_cells = lin_tree_df.index.difference(lin_tree_df_prev.index) # I could use this for the if already but this is probably faster for frames where nothing changes
             if new_cells.shape[0] == 0:
+                self.logger.info('No new cells in the lineage tree for this frame.')
                 return
             
             for ax in (0, 1):
@@ -21905,9 +22898,23 @@ class guiWin(QMainWindow):
             posData.zSlicesRp[z] = {obj.label:obj for obj in lab2d_rp}
     
     @exception_handler
-    def update_rp(self, draw=True, debug=False, update_IDs=True):
+    def update_rp(
+            self, draw=True, debug=False, update_IDs=True, 
+            wl_update=True, wl_track_og_curr=False,wl_update_lab=False
+        ):
+
         posData = self.data[self.pos_i]
         # Update rp for current posData.lab (e.g. after any change)
+
+        if wl_update:
+            if self.whitelistOriginalIDs is None:
+                old_IDs = posData.allData_li[posData.frame_i]['IDs'].copy() # for whitelist stuff
+            else:
+                old_IDs = self.whitelistOriginalIDs.copy()
+                self.whitelistOriginalIDs = None
+        elif self.whitelistOriginalIDs is None:
+            self.whitelist_old_IDs = posData.allData_li[posData.frame_i]['IDs'].copy()
+
         posData.rp = skimage.measure.regionprops(posData.lab)
         if update_IDs:
             IDs = []
@@ -21919,6 +22926,29 @@ class guiWin(QMainWindow):
             posData.IDs_idxs = IDs_idxs
         self.update_rp_metadata(draw=draw)        
         self.store_zslices_rp(force_update=True)
+
+        if not wl_update:
+            return
+
+        # Update tracking whitelist
+        accepted_lost_centroids = self.getTrackedLostIDs()
+        new_IDs = posData.IDs
+        added_IDs = set(new_IDs) - set(old_IDs)
+        removed_IDs = (
+            set(old_IDs) 
+            - set(new_IDs) 
+            - set(accepted_lost_centroids)
+        )
+        if debug:
+            printl(added_IDs, removed_IDs)
+
+        self.whitelistPropagateIDs(
+            IDs_to_add=added_IDs, IDs_to_remove=removed_IDs,
+            curr_frame_only=True, IDs_curr=new_IDs,
+            track_og_curr=wl_track_og_curr,
+            curr_lab=posData.lab, curr_rp=posData.rp,
+            update_lab=wl_update_lab
+        )
 
     def extendLabelsLUT(self, lenNewLut):
         posData = self.data[self.pos_i]
@@ -22002,7 +23032,11 @@ class guiWin(QMainWindow):
 
     def highlightLabelID(self, ID, ax=0):        
         posData = self.data[self.pos_i]
-        obj = posData.rp[posData.IDs_idxs[ID]]
+        try:
+            obj = posData.rp[posData.IDs_idxs[ID]]
+        except KeyError:
+            return
+        
         self.textAnnot[ax].highlightObject(obj)
     
     def _keepObjects(self, keepIDs=None, lab=None, rp=None):
@@ -22026,6 +23060,15 @@ class guiWin(QMainWindow):
     
     def clearHighlightedText(self):
         pass
+
+    def removeHighlightLabelID(self, IDs=None, ax=0):
+        posData = self.data[self.pos_i]
+        if IDs is None:
+            IDs = posData.IDs
+        
+        for ID in IDs:
+            obj = posData.rp[posData.IDs_idxs[ID]]
+            self.textAnnot[ax].removeHighlightObject(obj)
     
     def updateKeepIDs(self, IDs):
         posData = self.data[self.pos_i]
@@ -23275,15 +24318,19 @@ class guiWin(QMainWindow):
         self.setOverlayItemsVisible()
     
     def countObjectsCb(self, checked):
-        if checked:
+        if self.countObjsWindow is None:
             categoryCountMapper = self.countObjects()
             self.countObjsWindow = apps.ObjectCountDialog(
                 categoryCountMapper=categoryCountMapper, 
                 parent=self
             )
+            self.countObjsWindow.sigShowEvent.connect(self.updateObjectCounts)
+            self.countObjsWindow.sigUpdateCounts.connect(self.updateObjectCounts)
+        
+        if checked:
             self.countObjsWindow.show()
         else:
-            self.countObjsWindow.close()
+            self.countObjsWindow.hide()
     
     def showLabelRoiContextMenu(self, event):
         menu = QMenu(self.labelRoiButton)
@@ -23557,6 +24604,14 @@ class guiWin(QMainWindow):
             
         self.contoursImage = np.zeros((Y, X, 4), dtype=np.uint8)
     
+    def initDelRoiLab(self):
+        posData = self.data[self.pos_i]
+        z_slice = self.z_lab()
+        img = posData.img_data[posData.frame_i]
+        Y, X = img[z_slice].shape[-2:]
+        
+        self.delRoiLab = np.zeros((Y, X), dtype=np.uint32)
+    
     def initLostObjContoursImage(self):
         posData = self.data[self.pos_i]
         z_slice = self.z_lab()
@@ -23628,12 +24683,12 @@ class guiWin(QMainWindow):
         return contours
     
     def clearComputedContours(self):
-        posData = self.data[self.pos_i]
-        for frame_i, dataDict in enumerate(posData.allData_li):
-            dataDict['contours'] = {}
-    
+        for posData in self.data:
+            for frame_i, dataDict in enumerate(posData.allData_li):
+                dataDict['contours'] = {}
+
     def _computeAllContours2D(self, dataDict, obj, z, obj_bbox):
-        obj_image = self.getObjImage(obj.image, obj.bbox)
+        obj_image = self.getObjImage(obj.image, obj.bbox, z_slice=z)
         if obj_image is None:
             return
             
@@ -23658,6 +24713,7 @@ class guiWin(QMainWindow):
         )
         key = (obj.label, str(z), all_external, local)
         dataDict['contours'][key] = contours
+
         return dataDict
     
     def computeAllContours(self):
@@ -23682,9 +24738,13 @@ class guiWin(QMainWindow):
                     if not self.isObjVisible(obj.bbox, z_slice=z):
                         continue
                     
-                    self._computeAllContours2D(
-                        dataDict, obj, z, obj_bbox
-                    )
+                    try:
+                        self._computeAllContours2D(
+                            dataDict, obj, z, obj_bbox
+                        )
+                    except Exception as err:
+                        # Contours computation fails on weird objects
+                        pass
     
     def computeAllObjToObjCostPairs(self):
         desc = (
@@ -23806,11 +24866,12 @@ class guiWin(QMainWindow):
         if maxID >= len(self.lut):
             self.extendLabelsLUT(maxID+10)
 
+        currentLab2D = self.currentLab2D
         if isOverlaySegmLeftActive:
-            self.labelsLayerImg1.setImage(self.currentLab2D, autoLevels=False)
+            self.labelsLayerImg1.setImage(currentLab2D, autoLevels=False)
 
         if isOverlaySegmRightActive: 
-            self.labelsLayerRightImg.setImage(self.currentLab2D, autoLevels=False)
+            self.labelsLayerRightImg.setImage(currentLab2D, autoLevels=False)
     
     def getObject2DimageFromZ(self, z, obj):
         posData = self.data[self.pos_i]
@@ -24248,11 +25309,11 @@ class guiWin(QMainWindow):
         for posData in self.data:
             delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
             for roi in delROIs_info['rois']:
-                if roi not in self.ax2.items:
+                if not self.ax2.isDelRoiItemPresent(roi):
                     continue
 
-                self.ax1.addItem(roi)
-                # self.ax2.removeItem(roi)
+                self.ax1.addDelRoiItem(roi, roi.key)
+                self.ax2.removeDelRoiItem(roi)
     
     def setBottomLayoutStretch(self):
         if (
@@ -24344,6 +25405,9 @@ class guiWin(QMainWindow):
             return posData.ol_data_dict.get(filename)
 
     def z_slice_index(self):
+        posData = self.data[self.pos_i]
+        if posData.SizeZ == 1:
+            return None
         zProjHow = self.zProjComboBox.currentText()
         if zProjHow != 'single z-slice':
             return zProjHow
@@ -24509,14 +25573,14 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
         if mode == 'Segmentation and Tracking' or self.isSnapshot:
-            self.addExistingDelROIs()
-            allDelIDs, DelROIlab = self.getDelROIlab()
+            # self.addExistingDelROIs()
+            allDelIDs, lab2D = self.getDelROIlab()
         else:
-            DelROIlab = self.get_2Dlab(posData.lab, force_z=False)
+            lab2D = self.get_2Dlab(posData.lab, force_z=False)
             allDelIDs = set()
         if self.labelsGrad.showLabelsImgAction.isChecked() and set_image:
-            self.img2.setImage(DelROIlab, z=self.z_lab(), autoLevels=False)
-        self.currentLab2D = DelROIlab
+            self.img2.setImage(lab2D, z=self.z_lab(), autoLevels=False)
+        self.currentLab2D = lab2D
         if updateLookuptable:
             self.updateLookuptable(delIDs=allDelIDs)
 
@@ -24548,7 +25612,7 @@ class guiWin(QMainWindow):
         
         if how.find('overlay segm. masks') != -1:
             lab = self.currentLab2D.copy()
-            lab[delMask] = 0
+            lab[delMask > 0] = 0
             if ax == 0:
                 self.labelsLayerImg1.setImage(lab, autoLevels=False)
             else:
@@ -25080,22 +26144,28 @@ class guiWin(QMainWindow):
         else:
             return True
 
+    def setDelRoiState(self, roi: pg.ROI, state):
+        roi.sigRegionChanged.disconnect()
+        roi.sigRegionChangeFinished.disconnect()
+        roi.setState(state)
+        roi.sigRegionChanged.connect(self.delROImoving)
+        roi.sigRegionChangeFinished.connect(self.delROImovingFinished)
+    
     def addExistingDelROIs(self):
         posData = self.data[self.pos_i]
         delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
-        for roi in delROIs_info['rois']:
-            if roi in self.ax2.items or roi in self.ax1.items:
-                continue
-            if isinstance(roi, pg.PolyLineROI):
+        isAx2hidden = not self.labelsGrad.showLabelsImgAction.isChecked()
+
+        for r, roi in enumerate(delROIs_info['rois']):
+            if isinstance(roi, pg.PolyLineROI) or isAx2hidden:
                 # PolyLine ROIs are only on ax1
-                self.ax1.addItem(roi)
-            elif not self.labelsGrad.showLabelsImgAction.isChecked():
-                # Rect ROI is on ax1 because ax2 is hidden
-                self.ax1.addItem(roi)
+                self.ax1.addDelRoiItem(roi, roi.key)
             else:
                 # Rect ROI is on ax2 because ax2 is visible
-                self.ax2.addItem(roi)    
+                self.ax2.addDelRoiItem(roi, roi.key)    
 
+            self.setDelRoiState(roi, delROIs_info['state'][r])
+            
     def updateFramePosLabel(self):
         if self.isSnapshot:
             posData = self.data[self.pos_i]
@@ -25480,8 +26550,7 @@ class guiWin(QMainWindow):
             contours.extend(obj_contours)
             textItem = self.manualBackgroundTextItems[obj.label]
             textItem.setText(f'{obj.label}')
-            if textItem not in self.ax1.items:
-                self.ax1.addItem(textItem)
+            self.ax1.addItem(textItem)
             yc, xc = obj.centroid
             textItem.setPos(xc, yc)
         
@@ -25567,7 +26636,7 @@ class guiWin(QMainWindow):
             self.initContoursImage()
         else:
             self.contoursImage[:] = 0
-            
+        
         contours = []
         for obj in skimage.measure.regionprops(self.currentLab2D):    
             obj_contours = self.getObjContours(
@@ -25653,14 +26722,18 @@ class guiWin(QMainWindow):
 
         self.drawLostObjContoursImage(imageItem, contours)
     
-    def drawLostObjContoursImage(self, imageItem, contours):
-        thickness = 1
-        color = (255, 165, 0, 255) # orange
+    def drawLostObjContoursImage(
+            self, imageItem, contours, 
+            thickness=1, 
+            color=(255, 165, 0, 255) # orange
+        ):
         img = self.lostObjContoursImage
         cv2.drawContours(img, contours, -1, color, thickness)
         imageItem.setImage(img)
     
-    def updateLostTrackedContoursImage(self, ax, delROIsIDs=None):
+    def updateLostTrackedContoursImage(
+            self, ax, delROIsIDs=None, tracked_lost_IDs=None
+        ):
         imageItem = self.getLostTrackedObjImageItem(ax)
         if imageItem is None:
             return
@@ -25674,7 +26747,9 @@ class guiWin(QMainWindow):
             delROIsIDs = set()
         
         posData = self.data[self.pos_i]
-        tracked_lost_IDs = self.getTrackedLostIDs()
+        if tracked_lost_IDs is None:
+            tracked_lost_IDs = self.getTrackedLostIDs()
+            
         prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
         prev_IDs_idxs = posData.allData_li[posData.frame_i-1]['IDs_idxs']
         contours = []
@@ -25699,6 +26774,9 @@ class guiWin(QMainWindow):
         imageItem.setImage(img)
     
     def getNearestLostObjID(self, y, x):
+        if not self.annotLostObjsToggle.isChecked():
+            return
+        
         posData = self.data[self.pos_i]
         if not posData.lost_IDs:
             return
@@ -25707,9 +26785,28 @@ class guiWin(QMainWindow):
         if prev_lab is None:
             return
         
+        # if not hasattr(self, 'lostObjContoursImage'):
+        #     self.store_data()
+        #     posData.frame_i -= 1
+        #     self.get_data()
+        #     self.store_data()
+        #     posData.frame_i += 1
+        #     self.get_data()
+        #     self.updateLostNewCurrentIDs()
+        #     self.updateLostContoursImage(ax=0)
+        #     self.updateLostContoursImage(ax=1)
+        #     self.updateLostNewCurrentIDs()
+            
         yy, xx, _ = np.nonzero(self.lostObjContoursImage)
         lostObjsContourMask = np.zeros(self.currentLab2D.shape, dtype=bool)
         lostObjsContourMask[yy.astype(int), xx.astype(int)] = True
+        
+        # Add accepted lost IDs
+        try:
+            yy, xx, _ = np.nonzero(self.lostTrackedObjContoursImage)
+            lostObjsContourMask[yy.astype(int), xx.astype(int)] = True
+        except Exception as err:
+            pass
             
         _, y_nearest, x_nearest = core.nearest_nonzero_2D(
             lostObjsContourMask, y, x, return_coords=True
@@ -26049,13 +27146,14 @@ class guiWin(QMainWindow):
 
         self.annotate_rip_and_bin_IDs()
         self.updateTempLayerKeepIDs()
+        self.whitelistUpdateTempLayer()
         self.drawPointsLayers(computePointsLayers=computePointsLayers)
         self.setManualBackgroundImage()
         self.annotateAssignedObjsAcdcTrackerSecondStep()
         
         self.highlightSearchedID(self.highlightedID, force=True) 
-        self.updateTimestampFrame() 
-    
+        self.updateTimestampFrame()   
+
     def updateTimestampFrame(self):
         if not hasattr(self, 'timestamp'):
             return
@@ -26066,27 +27164,76 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         self.timestamp.setText(posData.frame_i)
     
-    def deleteIDFromLab(self, lab, delID):
-        delMask = np.zeros(lab.shape, dtype=bool)
-        if isinstance(delID, int):
-            delMask[lab==delID] = True
+    def deleteIDFromLab(self, lab, delID, frame_i=None, delMask=None):
+        posData = self.data[self.pos_i]
+        frame_i = posData.frame_i if frame_i is None else frame_i
+
+
+        if frame_i==posData.frame_i:
+            rp = posData.rp
+            IDs_idxs = posData.IDs_idxs
         else:
-            for _delID in delID:
-                delMask[lab==_delID] = True
+            rp = posData.allData_li[frame_i]['regionprops']
+            IDs_idxs = posData.allData_li[frame_i]['IDs_idxs']
+
+        if isinstance(delID, int):
+            delID = [delID]
+            
+        is_any_id_present = False
+        for _delID in delID:
+            if _delID in IDs_idxs:
+                is_any_id_present = True
+                break
+        
+        if not is_any_id_present:
+            return lab, delMask
+
+        if delMask is None: 
+            delMask = np.zeros(lab.shape, dtype=bool)
+        else:
+            delMask[:] = False
+
+        for _delID in delID:
+            idx = IDs_idxs.get(_delID, None)
+            if idx is None:
+                continue
+            obj = rp[idx]
+            delMask[obj.slice][obj.image] = True
         lab[delMask] = 0
         return lab, delMask
+    
+    def removeStoredContours(self, delID, frame_i=None):
+        posData = self.data[self.pos_i]
+        
+        if frame_i is None:
+            frame_i = posData.frame_i
+            
+        dataDict = posData.allData_li[posData.frame_i]
+        try:
+            newContours = {}
+            for key, contours in dataDict['contours'].items():
+                ID = key[0]
+                if ID == delID:
+                    continue
+                
+                newContours[key] = contours
+            
+            dataDict['contours'] = newContours
+        except KeyError as err:
+            pass
     
     @disableWindow
     def deleteIDmiddleClick(
             self, delIDs: Iterable, applyFutFrames, includeUnvisited
         ):
         self.clearHighlightedID()
-        
+
         posData = self.data[self.pos_i]
-        self.current_frame_i = posData.frame_i
+        current_frame_i = posData.frame_i
 
         # Apply Delete ID to future frames if requested
         if applyFutFrames:
+            delMask = np.zeros(posData.lab.shape, dtype=bool)
             # Store current data before going to future frames
             self.store_data()
             segmSizeT = len(posData.segm_data)
@@ -26095,13 +27242,13 @@ class guiWin(QMainWindow):
                 if lab is None and not includeUnvisited:
                     self.enqAutosave()
                     break
-                
+
                 if lab is not None:
                     # Visited frame
-                    lab, _ = self.deleteIDFromLab(lab, delIDs)
+                    lab, _ = self.deleteIDFromLab(lab, delIDs, frame_i=i, delMask=delMask)
 
                     # Store change
-                    posData.allData_li[i]['labels'] = lab.copy()
+                    posData.allData_li[i]['labels'] = lab
                     # Get the rest of the stored metadata based on the new lab
                     posData.frame_i = i
                     self.get_data()
@@ -26109,20 +27256,22 @@ class guiWin(QMainWindow):
                 elif includeUnvisited:
                     # Unvisited frame (includeUnvisited = True)
                     lab = posData.segm_data[i]
-                    lab, _ = self.deleteIDFromLab(lab, delIDs)
+                    lab, _ = self.deleteIDFromLab(lab, delIDs, frame_i=i, delMask=delMask)
 
         # Back to current frame
         if applyFutFrames:
-            posData.frame_i = self.current_frame_i
+            posData.frame_i = current_frame_i
             self.get_data()   
-        
+
+        posData.lab, delID_mask = self.deleteIDFromLab(posData.lab, delIDs, )
         for _delID in delIDs:
             self.clearObjContour(ID=_delID, ax=0)     
             self.clearObjContour(ID=_delID, ax=1)  
-            self.removeObjectFromRp(_delID)     
+            self.removeObjectFromRp(_delID)    
+            self.removeStoredContours(_delID) 
 
-        posData.lab, delID_mask = self.deleteIDFromLab(posData.lab, delIDs)
-        
+        self.store_data(autosave=False)
+        self.whitelistPropagateIDs(IDs_to_remove=delIDs, curr_frame_only=(not applyFutFrames))
         return delID_mask
     
     def setOverlayLabelsItems(self):
@@ -26406,7 +27555,13 @@ class guiWin(QMainWindow):
                 self.titleLabel.setText(htmlTxt)
                 self.titleLabel.setToolTip(htmlTxt)
                 return
-
+            except AttributeError:
+                title = 'Lineage tree still initializing...'
+                htmlTxt = f'<font color="{self.titleColor}">{title}</font>'
+                self.titleLabel.setText(htmlTxt)
+                self.titleLabel.setToolTip(htmlTxt)
+                return
+            
             parent_cell_txt_raw = []
             if cells_with_parent:
                 for cell, parent in cells_with_parent:
@@ -26467,13 +27622,16 @@ class guiWin(QMainWindow):
         else:
             return False
 
-    def trackManuallyAddedObject(self, added_ID, isNewID):
+    def trackManuallyAddedObject(
+            self, added_IDs: List[int] | int | Set[int], isNewID: bool,
+            wl_update:bool=True, wl_track_og_curr:bool=False
+        ):
         """Track object added manually on frame that was already visited.
 
         Parameters
         ----------
-        added_ID : int
-            ID of the object added manually
+        added_IDs : int | list of int | set
+            ID or IDs of the object added manually
         isNewID : bool
             If True, the added object is new
         
@@ -26497,10 +27655,14 @@ class guiWin(QMainWindow):
         
         if not isNewID:
             return
+
+        if isinstance(added_IDs, int):
+            added_IDs = [added_IDs]
         
         posData = self.data[self.pos_i]
         tracked_lab = self.tracking(
-            enforce=True, assign_unique_new_IDs=False, return_lab=True
+            enforce=True, assign_unique_new_IDs=False, return_lab=True,
+            IDs=added_IDs
         )
         self.clearAssignedObjsSecondStep()
         if tracked_lab is None:
@@ -26508,54 +27670,91 @@ class guiWin(QMainWindow):
         
         # Track only new object
         prevIDs = posData.allData_li[posData.frame_i-1]['IDs']
-        mask = posData.lab == added_ID
-        try:
-            trackedID = tracked_lab[mask][0]
-        except IndexError as err:
-            # added_ID is not present
-            return 
+
+        # mask = np.zeros(posData.lab.shape, dtype=bool)
+        update_rp = False
+
+        for added_ID in added_IDs:
+            # try:
+            #     obj = posData.rp[added_ID] # ID not present
+            #     mask[obj.slice][obj.image] = True
+
+            # except IndexError as err:
+            mask = posData.lab == added_ID
+            try:
+                trackedID = tracked_lab[mask][0]
+            except IndexError as err:
+                # added_ID is not present
+                continue 
+            
+            isTrackedIDalreadyPresentAndNotNew = (
+                posData.IDs_idxs.get(trackedID) is not None
+                and added_ID != trackedID
+            )
+            if isTrackedIDalreadyPresentAndNotNew:
+                continue
+            
+            isTrackedIDinPrevIDs = trackedID in prevIDs
+            if isTrackedIDinPrevIDs:
+                posData.lab[mask] = trackedID
+            else:
+                # New object where we can try to track against next frame
+                trackedID = self.trackNewIDtoNewIDsFutureFrame(added_ID, mask)
+                if trackedID is None:
+                    self.clearAssignedObjsSecondStep()
+                    continue
+                posData.lab[mask] = trackedID
         
-        isTrackedIDalreadyPresentAndNotNew = (
-            posData.IDs_idxs.get(trackedID) is not None
-            and added_ID != trackedID
-        )
-        if isTrackedIDalreadyPresentAndNotNew:
-            return
+            self.keepOnlyNewIDAssignedObjsSecondStep(trackedID)
+            update_rp = True
         
-        isTrackedIDinPrevIDs = trackedID in prevIDs
-        if isTrackedIDinPrevIDs:
-            posData.lab[mask] = trackedID
-        else:
-            # New object where we can try to track against next frame
-            trackedID = self.trackNewIDtoNewIDsFutureFrame(added_ID, mask)
-            if trackedID is None:
-                self.clearAssignedObjsSecondStep()
-                return
-            posData.lab[mask] = trackedID
-        
-        self.keepOnlyNewIDAssignedObjsSecondStep(trackedID)
-        self.update_rp()
+        if update_rp:
+            self.update_rp(wl_update=wl_update)
     
-    def trackFrameCustomTracker(self, prev_lab, currentLab):
+    def trackFrameCustomTracker(self, prev_lab, currentLab, IDs=None):
         try:
             tracked_result = self.realTimeTracker.track_frame(
                 prev_lab, currentLab,
                 unique_ID=self.setBrushID(),
-                **self.track_frame_params
+                **self.track_frame_params,
+                IDs=IDs
             )
         except TypeError as err:
             if str(err).find('an unexpected keyword argument \'unique_ID\'') != -1:
-                tracked_result = self.realTimeTracker.track_frame(
-                    prev_lab, currentLab,
-                    **self.track_frame_params
-                )
+                try:
+                    tracked_result = self.realTimeTracker.track_frame(
+                        prev_lab, currentLab, IDs=IDs,
+                        **self.track_frame_params
+                    )
+                except TypeError as err:
+                    if str(err).find('an unexpected keyword argument \'IDs\'') != -1:
+                        tracked_result = self.realTimeTracker.track_frame(
+                            prev_lab, currentLab,
+                            **self.track_frame_params)
+                    else:
+                        raise err
+            elif str(err).find('an unexpected keyword argument \'IDs\'') != -1:
+                try:
+                    tracked_result = self.realTimeTracker.track_frame(
+                        prev_lab, currentLab,
+                        unique_ID=self.setBrushID(),
+                        **self.track_frame_params
+                    )
+                except TypeError as err:
+                    if str(err).find('an unexpected keyword argument \'unique_ID\'') != -1:
+                        tracked_result = self.realTimeTracker.track_frame(
+                            prev_lab, currentLab,
+                            **self.track_frame_params
+                        )
+                    else:
+                        raise err
             else:
                 raise err
         return tracked_result
     
     def trackFrame(
             self, prev_lab, prev_rp, currentLab, currentRp, currentIDs,
-            assign_unique_new_IDs=True
+            assign_unique_new_IDs=True, IDs=None,
         ):
         # printl(f'Tracking frame {self.data[self.pos_i].frame_i}...')
         if self.trackWithAcdcAction.isChecked():
@@ -26564,7 +27763,7 @@ class guiWin(QMainWindow):
                 IDs_curr_untracked=currentIDs,
                 setBrushID_func=self.setBrushID,
                 posData=self.data[self.pos_i],
-                assign_unique_new_IDs=assign_unique_new_IDs
+                assign_unique_new_IDs=assign_unique_new_IDs, IDs=IDs
             )
         elif self.trackWithYeazAction.isChecked():
             tracked_result = self.tracking_yeaz.correspondence(
@@ -26572,7 +27771,7 @@ class guiWin(QMainWindow):
                 use_scipy=True
             )
         else:
-            tracked_result = self.trackFrameCustomTracker(prev_lab, currentLab)
+            tracked_result = self.trackFrameCustomTracker(prev_lab, currentLab, IDs=IDs)
 
         # Check if tracker also returns additional info
         if isinstance(tracked_result, tuple):
@@ -26629,7 +27828,8 @@ class guiWin(QMainWindow):
             self, enforce=False, DoManualEdit=True,
             storeUndo=False, prev_lab=None, prev_rp=None,
             return_lab=False, assign_unique_new_IDs=True,
-            separateByLabel=True
+            separateByLabel=True,wl_update=True,
+            IDs=None
         ):
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
@@ -26676,7 +27876,7 @@ class guiWin(QMainWindow):
                 posData.lab, rp=posData.rp, max_ID=maxID
             )
             if setRp:
-                self.update_rp()
+                self.update_rp(wl_update=wl_update, )
 
         if prev_lab is None:
             prev_lab = posData.allData_li[posData.frame_i-1]['labels']
@@ -26685,7 +27885,7 @@ class guiWin(QMainWindow):
         
         tracked_lab = self.trackFrame(
             prev_lab, prev_rp, posData.lab, posData.rp, posData.IDs,
-            assign_unique_new_IDs=assign_unique_new_IDs
+            assign_unique_new_IDs=assign_unique_new_IDs, IDs=IDs
         )
         
         if DoManualEdit:
@@ -26695,11 +27895,14 @@ class guiWin(QMainWindow):
             self.manuallyEditTracking(tracked_lab, IDs)
 
         if return_lab:
+            QTimer.singleShot(50, partial(
+                self.statusBarLabel.setText, staturBarLabelText
+            ))
             return tracked_lab
         
         # Update labels, regionprops and determine new and lost IDs
         posData.lab = tracked_lab
-        self.update_rp()
+        self.update_rp(wl_update=wl_update, )
         self.setAllTextAnnotations()
         QTimer.singleShot(50, partial(
             self.statusBarLabel.setText, staturBarLabelText
@@ -26910,7 +28113,7 @@ class guiWin(QMainWindow):
             return
         numFramesToAdd = stopFrameNum - segmSizeT
         posData.allData_li.extend(
-            [self.getEmptyStoredDataDict() for i in range(numFramesToAdd)]
+            [myutils.get_empty_stored_data_dict() for i in range(numFramesToAdd)]
         )
         lab_shape = posData.segm_data[0].shape
         shapeToAdd = (numFramesToAdd, *lab_shape)
@@ -26946,7 +28149,7 @@ class guiWin(QMainWindow):
                 break
             
             posData.segm_data[i] = posData.allData_li[i]['labels']
-            posData.allData_li[i] = self.getEmptyStoredDataDict()
+            posData.allData_li[i] = myutils.get_empty_stored_data_dict()
             
             posData.tracked_lost_centroids[i] = set()
             posData.acdcTracker2stepsAnnotInfo.pop(i, None)            
@@ -27279,7 +28482,7 @@ class guiWin(QMainWindow):
             self._openFolder(exp_path=exp_path, imageFilePath=new_filepath)
         else:
             self.logger.info('Copying file to .tif format...')
-            data = load.loadData(file_path, '')
+            data = load.loadData(file_path, '', log_func=self.logger.info)
             data.loadImgData()
             img = data.img_data
             if img.ndim == 3 and (img.shape[-1] == 3 or img.shape[-1] == 4):
@@ -27346,6 +28549,7 @@ class guiWin(QMainWindow):
             pass
 
         self.lineage_tree = None
+        self.getDistanceListMissingIDsCachedFrame = None
         self.isZmodifier = False
         self.zKeptDown = False
         self.askRepeatSegment3D = True
@@ -27861,7 +29065,14 @@ class guiWin(QMainWindow):
             if rtTrackerAction.isChecked():
                 break
         
+        aliases = myutils.aliases_real_time_trackers(reverse=True)
+        
         rtTracker = rtTrackerAction.text()
+        rtTracker_txt = rtTracker
+
+        if rtTracker in aliases:
+            rtTracker = aliases[rtTracker]
+        
         if rtTracker == 'Cell-ACDC':
             return
         if rtTracker == 'YeaZ':
@@ -27870,7 +29081,7 @@ class guiWin(QMainWindow):
         if self.isRealTimeTrackerInitialized and not force:
             return
         
-        self.logger.info(f'Initializing {rtTracker} tracker...')
+        self.logger.info(f'Initializing {rtTracker_txt} tracker...')
         self._rtTrackerName = rtTracker
         posData = self.data[self.pos_i]
         realTimeTracker, track_frame_params = myutils.init_tracker(
@@ -28001,42 +29212,42 @@ class guiWin(QMainWindow):
         
         self.logger.info('Cell cycle annotations integrity checker started.')
 
-    def startLinTreeIntegrityCheckerWorker(self): # not done
-        if not hasattr(self, 'data'):
-            return
+    # def startLinTreeIntegrityCheckerWorker(self): # not done
+    #     if not hasattr(self, 'data'):
+    #         return
         
-        if not self.dataIsLoaded:
-            return
+    #     if not self.dataIsLoaded:
+    #         return
         
-        if self._isLinTreeIntegrityCheckedDisabled:
-            return
+    #     if self._isLinTreeIntegrityCheckedDisabled:
+    #         return
         
-        LinTreeCheckerThread = QThread()
-        self.LinTreeCheckerMutex = QMutex()
-        self.LinTreeCheckerWaitCond = QWaitCondition()
+    #     LinTreeCheckerThread = QThread()
+    #     self.LinTreeCheckerMutex = QMutex()
+    #     self.LinTreeCheckerWaitCond = QWaitCondition()
         
-        worker = workers.LinTreeIntegrityCheckerWorker( # need to add workers.LinTreeIntegrityCheckerWorker
-            self.LinTreeCheckerMutex, self.LinTreeCheckerWaitCond
-        )
-        self.LinTreeIntegrityCheckerWorker = worker
-        self.LinTreeCheckerThread = LinTreeCheckerThread
+    #     worker = workers.LinTreeIntegrityCheckerWorker( # need to add workers.LinTreeIntegrityCheckerWorker
+    #         self.LinTreeCheckerMutex, self.LinTreeCheckerWaitCond
+    #     )
+    #     self.LinTreeIntegrityCheckerWorker = worker
+    #     self.LinTreeCheckerThread = LinTreeCheckerThread
         
-        worker.moveToThread(LinTreeCheckerThread)
-        worker.finished.connect(LinTreeCheckerThread.quit)
-        worker.finished.connect(worker.deleteLater) # double check if this works after adding workers.LinTreeIntegrityCheckerWorker
-        LinTreeCheckerThread.finished.connect(LinTreeCheckerThread.deleteLater)
+    #     worker.moveToThread(LinTreeCheckerThread)
+    #     worker.finished.connect(LinTreeCheckerThread.quit)
+    #     worker.finished.connect(worker.deleteLater) # double check if this works after adding workers.LinTreeIntegrityCheckerWorker
+    #     LinTreeCheckerThread.finished.connect(LinTreeCheckerThread.deleteLater)
 
-        worker.destroyed.connect(self.LinTreeIntegrityCheckerWorkerDestroyed) # need to add
-        worker.sigDone.connect(self.LinTreeCheckerWorkerDone) # need to add
-        worker.progress.connect(self.workerProgress)
-        worker.critical.connect(self.LinTreeIntegrityWorkerCritical) # need to add
-        worker.finished.connect(self.LinTreeCheckerWorkerClosed) # need to add
-        worker.sigWarning.connect(self.warnLinTreeIntegrity) # need to add
+    #     worker.destroyed.connect(self.LinTreeIntegrityCheckerWorkerDestroyed) # need to add
+    #     worker.sigDone.connect(self.LinTreeCheckerWorkerDone) # need to add
+    #     worker.progress.connect(self.workerProgress)
+    #     worker.critical.connect(self.LinTreeIntegrityWorkerCritical) # need to add
+    #     worker.finished.connect(self.LinTreeCheckerWorkerClosed) # need to add
+    #     worker.sigWarning.connect(self.warnLinTreeIntegrity) # need to add
         
-        LinTreeCheckerThread.started.connect(worker.run)
-        LinTreeCheckerThread.start()
+    #     LinTreeCheckerThread.started.connect(worker.run)
+    #     LinTreeCheckerThread.start()
         
-        self.logger.info('Lin Tree annotations integrity checker started.')
+    #     self.logger.info('Lin Tree annotations integrity checker started.')
     
     def initCcaIntegrityChecker(self):
         posData = self.data[self.pos_i]
@@ -28849,7 +30060,7 @@ class guiWin(QMainWindow):
                 continue
             
             self.calc_for_each_zslice_mapper[chName] = (
-                chNameGroupbox.calcForEachZsliceRequested
+                chNameGroupbox.isCalcForEachZsliceRequested()
             )
             last_selected_groupboxes_measurements[refChannel].append(
                 chNameGroupbox.title()
@@ -28868,7 +30079,7 @@ class guiWin(QMainWindow):
                     favourite_funcs.add(func_name)
 
         self.calc_size_for_each_zslice = (
-            measurementsWin.sizeMetricsQGBox.calcForEachZsliceRequested
+            measurementsWin.sizeMetricsQGBox.isCalcForEachZsliceRequested()
         )
         if not measurementsWin.sizeMetricsQGBox.isChecked():
             self.sizeMetricsToSave = []
@@ -28893,6 +30104,27 @@ class guiWin(QMainWindow):
                     favourite_funcs.add(checkBox.text())
             self.regionPropsToSave = tuple(self.regionPropsToSave)
 
+        if measurementsWin.chIndipendCustomeMetricsQGBox is not None:
+            skipAll = (
+                not measurementsWin.chIndipendCustomeMetricsQGBox.isChecked()
+            )
+            if not skipAll:
+                title = measurementsWin.chIndipendCustomeMetricsQGBox.title()
+                last_selected_groupboxes_measurements[refChannel].append(title)
+            chIndipendCustomMetricsToSave = []
+            win = measurementsWin
+            checkBoxes = win.chIndipendCustomeMetricsQGBox.checkBoxes
+            for checkBox in checkBoxes:
+                if skipAll:
+                    continue
+    
+                if checkBox.isChecked():
+                    chIndipendCustomMetricsToSave.append(checkBox.text())           
+                    favourite_funcs.add(checkBox.text())
+            self.chIndipendCustomMetricsToSave = tuple(
+                chIndipendCustomMetricsToSave
+            )
+        
         if measurementsWin.mixedChannelsCombineMetricsQGBox is not None:
             skipAll = (
                 not measurementsWin.mixedChannelsCombineMetricsQGBox.isChecked()
@@ -28964,7 +30196,9 @@ class guiWin(QMainWindow):
     
     def labelRoiViewCurrentModel(self):
         from . import config
-        ini_path = os.path.join(settings_folderpath, 'last_params_segm_models.ini')
+        ini_path = os.path.join(
+            settings_folderpath, 'last_params_segm_models.ini'
+        )
         configPars = config.ConfigParser()
         configPars.read(ini_path)
         model_name = self.labelRoiModel.model_name
@@ -28988,12 +30222,13 @@ class guiWin(QMainWindow):
 
     def setMetricsFunc(self):
         posData = self.data[self.pos_i]
-        (metrics_func, all_metrics_names,
-        custom_func_dict, total_metrics) = measurements.getMetricsFunc(posData)
+        (metrics_func, all_metrics_names, custom_func_dict, total_metrics,
+        ch_indipend_custom_func_dict) = measurements.getMetricsFunc(posData)
         self.metrics_func = metrics_func
         self.all_metrics_names = all_metrics_names
         self.total_metrics = total_metrics
         self.custom_func_dict = custom_func_dict
+        self.ch_indipend_custom_func_dict = ch_indipend_custom_func_dict
 
     def getLastTrackedFrame(self, posData):
         last_tracked_i = 0
@@ -29041,6 +30276,96 @@ class guiWin(QMainWindow):
                     obj.vol_fl = vol_fl
                 posData.allData_li[frame_i]['regionprops'] = rp
 
+    def askSaveOriginalSegm(self, isQuickSave=False):
+        if isQuickSave:
+            return "", True, True
+
+        posData = self.data[self.pos_i]
+        if not posData.whitelist:
+            return "", True, True
+        
+        help_txt = html_utils.paragraph(f"""
+            You have <b>whitelisted IDs</b> in the current position.<br>
+            Do you want to save the <b>not whitelisted</b> segmentation data<br>
+            This will allow you to <b>revisit the original segmentation</b>.<br>
+            """)
+
+        txt = html_utils.paragraph(f"""
+            You have <b>whitelisted IDs</b> in the current position.<br>
+            Do you want to save the <b>not whitelisted</b> segmentation data?<br>
+            """)
+
+        found_files = load.get_segm_files(posData.images_path)
+        existingEndnames = load.get_endnames(
+            posData.basename, found_files
+        )
+
+        segmFilename = os.path.basename(posData.segm_npz_path)
+        segmFilename = f"{segmFilename[:-4]}_not_whitelisted"
+        win = apps.filenameDialog(
+            basename=posData.basename,
+            hintText=txt,
+            defaultEntry=segmFilename,
+            existingNames=existingEndnames,
+            helpText=help_txt, 
+            allowEmpty=False,
+            parent=self,
+            title='Save not whitelisted segmentation data',
+            addDoNotSaveButton=True
+        )
+        win.exec_()
+        if win.cancel:
+            return "", False, True
+        if win.doNotSave:
+            return "", True, True
+        return win.entryText, True, False
+
+    def askSaveLastVisitedCcaMode(self, isQuickSave=False):
+         posData = self.data[self.pos_i]
+         current_frame_i = posData.frame_i
+         frame_i = 0
+         last_tracked_i = 0
+         self.save_until_frame_i = 0
+         if self.isSnapshot:
+             return True
+         
+         for frame_i, data_dict in enumerate(posData.allData_li):
+             lab = data_dict['labels']
+             if lab is None:
+                 frame_i -= 1
+                 break
+         
+         self.save_until_frame_i = frame_i
+         self.last_tracked_i = frame_i
+         
+         if isQuickSave:
+             return True
+         
+         last_cca_frame_i = self.navigateScrollBar.maximum()-1
+         # Ask to save last visited frame or not
+         txt = html_utils.paragraph(f"""
+             You annotated the cell cycle stages up 
+             until frame number {last_cca_frame_i+1}.<br><br>
+             Enter <b>up to which frame number</b> you want to save the 
+             cell cycle annotations:
+         """)
+         lastFrameDialog = apps.QLineEditDialog(
+             title='Last annoated frame number to save', 
+             defaultTxt=str(last_cca_frame_i+1),
+             msg=txt, parent=self, allowedValues=(1, last_cca_frame_i+1),
+             warnLastFrame=True, isInteger=True, stretchEntry=False,
+             lastVisitedFrame=last_cca_frame_i+1
+         )
+         lastFrameDialog.exec_()
+         if lastFrameDialog.cancel:
+             return False
+ 
+         last_save_cca_frame_i = lastFrameDialog.EntryID - 1
+         if last_save_cca_frame_i < last_cca_frame_i:
+             self.resetCcaFuture(last_cca_frame_i)
+         
+         return True
+    
     def askSaveLastVisitedSegmMode(self, isQuickSave=False):
         posData = self.data[self.pos_i]
         current_frame_i = posData.frame_i
@@ -29063,8 +30388,8 @@ class guiWin(QMainWindow):
 
         # Ask to save last visited frame or not
         txt = html_utils.paragraph(f"""
-            You visited and stored data up until frame
-            number {frame_i+1}.<br><br>
+            You visualised and corrected segmentation and tracking data up 
+            until frame number {frame_i+1}.<br><br>
             Enter <b>up to which frame number</b> you want to save data:
         """)
         lastFrameDialog = apps.QLineEditDialog(
@@ -29398,9 +30723,12 @@ class guiWin(QMainWindow):
         filename = f'{timestamp}_acdc_exported_{mode}_video'
         win = apps.ExportToVideoParametersDialog(
             channels,
-            parent=self, startFolderpath=posData.pos_path, 
-            startFilename=filename, startFrameNum=posData.frame_i+1, 
-            SizeT=posData.SizeT, SizeZ=posData.SizeZ,
+            parent=self, 
+            startFolderpath=posData.pos_path, 
+            startFilename=filename, 
+            startFrameNum=posData.frame_i+1, 
+            SizeT=posData.SizeT, 
+            SizeZ=posData.SizeZ,
             isTimelapseVideo=doTimelapseVideo,
             isScaleBarPresent=self.addScaleBarAction.isChecked(), 
             isTimestampPresent=self.addTimestampAction.isChecked(),
@@ -29509,6 +30837,8 @@ class guiWin(QMainWindow):
         self.exportToImage(win.selected_preferences)
     
     def saveDataPermissionError(self, err_msg):
+        self.setDisabled(False, keepDisabled=False)
+        self.activateWindow()
         msg = QMessageBox()
         msg.critical(self, 'Permission denied', err_msg, msg.Ok)
         self.waitCond.wakeAll()
@@ -29518,12 +30848,16 @@ class guiWin(QMainWindow):
         self.saveWin.progressLabel.setText(text)
 
     def saveDataCustomMetricsCritical(self, traceback_format, func_name):
+        self.setDisabled(False, keepDisabled=False)
+        self.activateWindow()
         self.logger.info('')
         _hl = '===================================='
         self.logger.info(f'{_hl}\n{traceback_format}\n{_hl}')
         self.worker.customMetricsErrors[func_name] = traceback_format
     
     def saveDataCombinedMetricsMissingColumn(self, error_msg, func_name):
+        self.setDisabled(False, keepDisabled=False)
+        self.activateWindow()
         self.logger.info('')
         warning = f'[WARNING]: {error_msg}. Metric {func_name} was skipped.'
         _hl = '===================================='
@@ -29531,12 +30865,16 @@ class guiWin(QMainWindow):
         self.worker.customMetricsErrors[func_name] = warning
     
     def saveDataAddMetricsCritical(self, traceback_format, error_message):
+        self.setDisabled(False, keepDisabled=False)
+        self.activateWindow()
         self.logger.info('')
         _hl = '===================================='
         self.logger.info(f'{_hl}\n{traceback_format}\n{_hl}')
         self.worker.addMetricsErrors[error_message] = traceback_format
     
     def saveDataRegionPropsCritical(self, traceback_format, error_message):
+        self.setDisabled(False, keepDisabled=False)
+        self.activateWindow()
         self.logger.info('')
         _hl = '===================================='
         self.logger.info(f'{_hl}\n{traceback_format}\n{_hl}')
@@ -29591,6 +30929,10 @@ class guiWin(QMainWindow):
         
     @exception_handler
     def saveData(self, checked=False, finishedCallback=None, isQuickSave=False):
+        self.setDisabled(True, keepDisabled=True)
+
+        self.lin_tree_ask_changes()
+
         self.store_data(autosave=False)
         self.applyDelROIs()
         self.store_data()
@@ -29623,6 +30965,8 @@ class guiWin(QMainWindow):
             )
             if cancel:
                 self.abortSavingInitialisation()
+                self.setDisabled(False, keepDisabled=False)
+                self.activateWindow()
                 return True
             posData.updateSegmentedChannelHyperparams(self.user_ch_name)
 
@@ -29631,6 +30975,8 @@ class guiWin(QMainWindow):
             self.save_metrics, cancel = self.askSaveMetrics()
             if cancel:
                 self.abortSavingInitialisation()
+                self.setDisabled(False, keepDisabled=False)
+                self.activateWindow()
                 return True
 
         self.posToSave = None
@@ -29638,6 +30984,8 @@ class guiWin(QMainWindow):
             self.posToSave = self.askPosToSave()
             if self.posToSave is None:
                 self.abortSavingInitialisation()
+                self.setDisabled(False, keepDisabled=False)
+                self.activateWindow()
                 return True
 
         if isQuickSave:
@@ -29647,11 +30995,21 @@ class guiWin(QMainWindow):
         if self.isSnapshot:
             self.store_data(mainThread=False)
 
-        proceed = self.askSaveLastVisitedSegmMode(isQuickSave=isQuickSave)
+        mode = self.modeComboBox.currentText()
+        if mode == 'Cell cycle analysis':
+            proceed = self.askSaveLastVisitedCcaMode(isQuickSave=isQuickSave)
+            if not proceed:
+                return
+        else:
+            proceed = self.askSaveLastVisitedSegmMode(isQuickSave=isQuickSave)
+            if not proceed:
+                return
+        append_name_og_whitelist, proceed, do_not_save_og_whitelist = self.askSaveOriginalSegm(isQuickSave=isQuickSave)
         if not proceed:
+            self.setDisabled(False, keepDisabled=False)
+            self.activateWindow()
             return
 
-        mode = self.modeComboBox.currentText()
         if self.save_metrics or mode == 'Cell cycle analysis':
             self.computeVolumeRegionprop()
 
@@ -29672,9 +31030,11 @@ class guiWin(QMainWindow):
         self.mutex = QMutex()
         self.waitCond = QWaitCondition()
         self.thread = QThread()
-        self.worker = saveDataWorker(self)
+        self.worker = workers.saveDataWorker(self)
         self.worker.mode = mode
-        self.worker.saveOnlySegm = isQuickSave
+        self.worker.isQuickSave = isQuickSave
+        self.worker.append_name_og_whitelist = append_name_og_whitelist
+        self.worker.do_not_save_og_whitelist = do_not_save_og_whitelist
 
         self.worker.moveToThread(self.thread)
 
@@ -29840,10 +31200,12 @@ class guiWin(QMainWindow):
             worker.savedSegmData = posData.segm_data.copy()
 
     def saveDataFinished(self):
+        self.setDisabled(False, keepDisabled=False)
+        self.activateWindow()
         if self.saveWin.aborted or self.worker.abort:
             self.titleLabel.setText('Saving process cancelled.', color='r')
         elif self._isQuickSave:
-            self.titleLabel.setText('Segmentation file saved (not the table)')
+            self.titleLabel.setText('Saved segmentation file and annotations')
         else:
             self.titleLabel.setText('Saved!')
         self.saveWin.workerFinished = True
@@ -29920,6 +31282,7 @@ class guiWin(QMainWindow):
         )
         self.closeGUI = False
     
+    @disableWindow
     def askSaveOnClosing(self, event):
         if not self.saveAction.isEnabled():
             return True
@@ -29976,6 +31339,11 @@ class guiWin(QMainWindow):
         self.togglePointsLayerAction.setChecked(False)
     
     def clearHighlightedID(self):
+        try:
+            self.updateLostContoursImage(ax=0, delROIsIDs=None)
+        except Exception as err:
+            pass
+        
         if self.highlightedID == 0:
             return
         

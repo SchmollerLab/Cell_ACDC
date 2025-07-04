@@ -2,6 +2,8 @@ from qtpy.QtCore import (
     Qt, QTimer, QEventLoop
 )
 from qtpy.QtWidgets import QWidget
+import functools
+
 
 class QWhileLoop:
     def __init__(
@@ -71,3 +73,46 @@ def delete_widget(widget):
     widget.hide()
     widget.setParent(None)
     widget.deleteLater()
+
+def replace_certain_vals(getVal, replace_val, by_val):
+    """
+    Decorator: If the return value of getVal equals replace_val (type-cast to value's type),
+    return by_val instead. Otherwise, return the original value.
+    """
+    @functools.wraps(getVal)
+    def wrapper(*args, **kwargs):
+        value = getVal(*args, **kwargs)
+        try:
+            target_val = type(value)(replace_val)
+        except Exception:
+            return value
+        if value == target_val:
+            return by_val
+        return value
+    return wrapper
+
+def set_value_no_signals(widget, value):
+    was_blocked = widget.blockSignals(True)
+    widget.setValue(value)
+    widget.blockSignals(was_blocked)
+
+def set_exclusive_valueSetter(widget, valueSetter, value):
+    was_blocked = widget.blockSignals(True)
+    valueSetter(widget, value)
+    widget.blockSignals(was_blocked)
+
+def hardDelete(item, setPosData=True):
+    try:
+        item.setParent(None)
+    except AttributeError:
+        pass
+    if setPosData:
+        try:
+            item.posData = None
+        except:
+            pass
+    try:
+        item.deleteLater()
+    except AttributeError:
+        pass
+    item = None

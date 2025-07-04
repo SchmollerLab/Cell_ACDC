@@ -16,13 +16,13 @@ keywords = [
     "cell cycle annotations",
     "image analysis",
 ]
+license = "BSD-3-Clause"
 classifiers = [
     "Development Status :: 4 - Beta",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
-    "License :: OSI Approved :: BSD License",
+    "Programming Language :: Python :: 3.12",
     "Intended Audience :: Education",
     "Intended Audience :: Science/Research",
     "Operating System :: Microsoft :: Windows",
@@ -36,7 +36,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Visualization",
     "Topic :: Utilities",
 ]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
     "numpy",
     "pandas",
@@ -91,10 +91,10 @@ torch = [
   "torchvision"
 ]
 tf = [
-  "tensorflow"
+  "tensorflow<2.16"
 ]
 tensorflow = [
-  "tensorflow"
+  "tensorflow<2.16"
 ]
 pytorch = [
     "torchvision",
@@ -102,13 +102,14 @@ pytorch = [
 all = [
     "PyQt6",
     "torchvision",
-    "tensorflow",
+    "tensorflow<2.16",
     "tables",
 ]
 
 [project.scripts]
 cellacdc = "cellacdc.__main__:run"
 acdc = "cellacdc.__main__:run"
+Cell-ACDC = "cellacdc.__main__:run"
 
 [tool.setuptools]
 include-package-data = true

@@ -45,6 +45,7 @@ from . import recentPaths_path, cellacdc_path, settings_folderpath
 from . import urls
 from . import acdc_fiji_path
 from . import fiji_macros
+from . import acdc_regex
 
 if os.name == 'nt':
     try:
@@ -85,7 +86,8 @@ class bioFormatsWorker(QObject):
     def __init__(
             self, raw_src_path, rawFilenames, exp_dst_path,
             mutex, waitCond, rawDataStruct, 
-            bioformats_backend: Literal['bioio', 'python-bioformats']
+            bioformats_backend: Literal['bioio', 'python-bioformats'],
+            lazy_load=True
         ):
         QObject.__init__(self)
         self.raw_src_path = raw_src_path
@@ -101,6 +103,7 @@ class bioFormatsWorker(QObject):
         self.addFiles = False
         self.cancel = False
         self.bioformats_backend = bioformats_backend
+        self.lazy_load = lazy_load
     
     def _readSampleDataPythonBioformats(
             self, bioformats, rawFilePath, sampleImgData, SizeC, SizeT, SizeZ,
@@ -186,6 +189,8 @@ class bioFormatsWorker(QObject):
                 f'-z, {SizeZ},'
                 f'-uuid, {uuid4}'
             )
+            if not self.lazy_load:
+                command = f'{command}, -a'
             
             args = [sys.executable, _process.__file__, '-c', command]
             subprocess.run(args)
@@ -921,7 +926,10 @@ class bioFormatsWorker(QObject):
                 )
                 if self.to_h5:
                     command = f'{command}, -to_h5'
-
+                
+                if not self.lazy_load:
+                    command = f'{command}, -a'
+                    
                 args = [sys.executable, _process.__file__, '-c', command]
                 subprocess.run(args)
                 
@@ -1277,7 +1285,8 @@ class createDataStructWin(QMainWindow):
             'BioIO', 
             import_pkg_name='bioio', 
             pypi_name='bioio', 
-            parent=parent
+            min_version='0.1.0',
+            parent=parent,
         )
         
         return True
@@ -1541,13 +1550,15 @@ class createDataStructWin(QMainWindow):
         )
         self.getMostRecentPath()
         raw_src_path = QFileDialog.getExistingDirectory(
-            self, 'Select folder containing the microscopy files', self.MostRecentPath)
+            self, 'Select folder containing the microscopy files', 
+            self.MostRecentPath
+        )
         self.addToRecentPaths(raw_src_path)
 
         if raw_src_path == '':
             self.close()
             return
-
+        
         self.log(f'Selected folder: "{raw_src_path}"')
         
         self.log(
@@ -1555,6 +1566,14 @@ class createDataStructWin(QMainWindow):
         )
         rawFilenames = self.checkFileFormat(raw_src_path)
         if not rawFilenames:
+            self.close()
+            return
+        
+        self.log(
+            'Checking file names of loaded files...'
+        )
+        proceed = self.checkFileNames(rawFilenames, raw_src_path)
+        if not proceed:
             self.close()
             return
 
@@ -1575,6 +1594,14 @@ class createDataStructWin(QMainWindow):
             self.close()
             return
 
+        self.log('Instructing to move raw data...')
+        loadEntirePosIntoRam = self.askHowToLoadData()
+        if loadEntirePosIntoRam is None:
+            self.close()
+            return
+        
+        self.loadEntirePosIntoRam = loadEntirePosIntoRam
+
         self.addToRecentPaths(exp_dst_path)
 
         self.log(
@@ -1592,7 +1619,8 @@ class createDataStructWin(QMainWindow):
         self.worker = bioFormatsWorker(
             raw_src_path, rawFilenames, exp_dst_path,
             self.mutex, self.waitCond, rawDataStruct, 
-            self.bioformats_backend
+            self.bioformats_backend, 
+            lazy_load=not self.loadEntirePosIntoRam
         )
         if self.rawDataStruct == 2:
             self.worker.basename = self.basename
@@ -1653,6 +1681,15 @@ class createDataStructWin(QMainWindow):
         
         from cellacdc import acdc_bioio_bioformats as bioformats
         raw_filepath = os.path.join(raw_src_path, raw_filenames[0])
+        
+        bioformats.install.install_reader_dependencies(
+            raw_filepath, 
+            exception=Exception(
+                'Failed installing reader dependencies from the GUI, '
+                'trying from terminal...'
+            ),
+            qparent=self
+        )
         
         import subprocess
         from . import _process
@@ -1747,6 +1784,32 @@ class createDataStructWin(QMainWindow):
         else:
             return True
 
+    def askHowToLoadData(self):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(
+            """
+            Do you want to load the entire position into RAM at once?
+            <br><br>
+            <b>NOTE:</b> Loading the entire position into RAM is much faster,
+            but it requires more memory.<br>
+            Keep an eye on the ram usage and, if Cell-ACDC crashes or RAM is 
+            full, you can re-start<br>
+            the process and select "Load one frame at a time".
+            """
+        )
+        _, loadFrameButton, loadPosButton = msg.warning(
+            self, 'Loading data', txt, 
+            buttonsTexts=(
+                'Cancel', 
+                widgets.twoDPushButton('No, load one frame (2D) at a time'), 
+                widgets.FutureAllPushButton('Yes, load entire position at once')
+            )
+        )
+        if msg.cancel:
+            return None
+
+        return msg.clickedButton == loadPosButton
+    
     def checkFileFormat(self, raw_src_path):
         self.moveOtherFiles = False
         self.copyOtherFiles = False
@@ -1808,6 +1871,27 @@ class createDataStructWin(QMainWindow):
 
         return files
 
+    def checkFileNames(self, raw_filenames, raw_src_path):
+        for file in raw_filenames:
+            if not acdc_regex.is_alphanumeric_filename(file):
+                msg = widgets.myMessageBox(wrapText=False)
+                txt = html_utils.paragraph(
+                    f"""
+                    The filename <b>{file}</b> contains <b>invalid 
+                    characters</b>.<br><br>
+                    Valid characters are letters, numbers, spaces, underscores 
+                    and dashes.<br><br>
+                    Please rename the file and try again.<br><br>
+                    Thank you for your patience!
+                    """
+                )
+                msg.critical(
+                    self, 'Invalid filename', txt, path_to_browse=raw_src_path
+                )
+                return False
+
+        return True
+        
     def askActionWithOtherFiles(self, files, otherExt):
         self.moveOtherFiles = False
         msg = QMessageBox(self)
@@ -2047,11 +2131,17 @@ class InitFijiMacro:
             Alternatively, you can ignore this and let Cell-ACDC automatically 
             download Fiji for you.
         """)
+        selectFijiButton = (
+            widgets.OpenFilePushButton('Select Fiji.app location')
+        )
+        downloadFijiButton = (
+            widgets.DownloadPushButton('Download Fiji.app')
+        )
         msg = widgets.myMessageBox(wrapText=False)
-        _, selectFijiButton, downloadFijiButton = msg.question(
-            self, 'Select Fiji location', txt, 
+        msg.question(
+            self.acdcLauncher, 'Select Fiji location', txt, 
             buttonsTexts=(
-                'Cancel', 'Select Fiji location', 'Download Fiji for me'
+                'Cancel', selectFijiButton, downloadFijiButton
             ), 
             showDialog=False
         )
@@ -2066,7 +2156,7 @@ class InitFijiMacro:
     def selectFijiLocation(self, checked=True, messagebox=None):
         import qtpy.compat
         filepath = qtpy.compat.getopenfilename(
-            parent=self, 
+            parent=messagebox, 
             caption='Select Fiji.app location', 
             filters='Application (*.app);;All Files (*)'
         )[0]
@@ -2079,9 +2169,15 @@ class InitFijiMacro:
                 os.path.join(filepath, 'Contents', 'MacOS', 'ImageJ-macosx')
             )
         
+        messagebox.cancel = False
         messagebox.close()
     
     def run(self):
+        cancel = self.askSelectInstalledFiji()
+        if cancel:
+            self.cancel()
+            return
+        
         txt = (f"""    
             In order to run Bio-Formats on your system, Cell-ACDC will use 
             <b>Fiji (ImageJ) from the command line</b>.<br><br>
@@ -2090,13 +2186,10 @@ class InitFijiMacro:
             If you prefer to run the macro yourself, you can go through 
             its creation process and cancel its execution later.
         """)
-        cancel = self.askSelectInstalledFiji()
-        if cancel:
-            self.cancel()
-            return
-        
+        self.logger.info('Testing Fiji command...')
+        fiji_success = myutils.test_fiji_base_command(self.logger.info)
         commands = None
-        if not myutils.run_fiji_command():
+        if not fiji_success:
             try:
                 shutil.rmtree(acdc_fiji_path)
             except Exception as err:

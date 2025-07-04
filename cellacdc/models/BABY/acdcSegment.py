@@ -44,12 +44,15 @@ class Model:
         for result in result_generator:
             masks = result['masks']
             areas_mapper = {
-                m: np.count_nonzero(mask) for m, mask in enumerate(masks)
+                m: (np.count_nonzero(mask), mask)
+                for m, mask in enumerate(masks)
             }
             areas_mapper = dict(
-                sorted(areas_mapper.items(), key=lambda item: item[1])
+                sorted(areas_mapper.items(),
+                       key=lambda item: item[1][0],
+                       reverse=True)
             )
-            for i, mask in areas_mapper.items():
+            for i, (_, mask) in areas_mapper.items():
                 if swap_YX_axes_to_XY:
                     mask = np.swapaxes(mask, 0, 1)
                 lab[mask] = i+1

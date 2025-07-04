@@ -21,9 +21,21 @@ def get_function_names(text, include_class_methods=True):
         pattern = r'\ndef\s+([a-zA-Z_]\w*)\s*\('
     return re.findall(pattern, text)
 
+def is_alphanumeric_filename(text, allow_space=True):
+    if allow_space:
+        pattern = r'^[\w\-_. ]+$'
+    else:
+        pattern = r'^[\w\-_.]+$'
+    is_single_or_no_dot = len(re.findall(r'\.', text)) <= 1
+    return bool(re.match(pattern, text)) and is_single_or_no_dot
+
 if __name__ == '__main__':
     import re
     s = '0.5, 2.5, nan, NaN'
     expr = fr'{float_regex(include_nan=True)}'
     m = re.findall(expr, s.replace(' ', ''))
     print(m)
+    
+    s = 'ciao_ciao_-yessa'
+    
+    print(is_alphanumeric_filename(s))

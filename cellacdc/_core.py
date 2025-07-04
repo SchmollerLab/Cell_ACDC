@@ -123,3 +123,63 @@ def _calc_rotational_vol(obj, PhysicalSizeY=1, PhysicalSizeX=1, logger=None):
         else:
             printl(traceback.format_exc())
         return np.nan, np.nan
+
+def _initialize_single_image(image, is_rgb=False, isZstack=False, img_shape=None, # in use, pylint cant detect it
+                             timelapse=False, img_ndim=None, frame_index_out=None, # assumes that the order of dimesions is t, z, c, h, w
+                             add_rgb=True, ): # for some reason doesnt move axis....
+    # See cellpose.gui.io._initialize_images
+    if img_shape is None:
+        img_shape = image.shape
+    if img_ndim is None:
+        img_ndim = len(img_shape)
+
+
+    if is_rgb: # enforce 3 channels if RGB, assuming rgb is last axis
+        # move channel axis to the end if it is not already
+        # image = np.moveaxis(image, input_channel_axis, -1)
+        # img_shape = list(image)
+        # del img_shape[input_channel_axis]  # remove channel axis from shape
+        # img_shape.append(3)  # add 3 channels at the end
+        if img_shape[-1] == 3:
+            pass
+        elif img_shape[-1] < 3:
+            shape_to_concat = (img_shape[0], img_shape[1], 3-img_shape[-1])
+            to_concat = np.zeros(shape_to_concat,dtype=type(image[0,0,0]))
+            image = np.concatenate((image, to_concat), axis=-1)
+        elif img_shape[-1]<5 and img_shape[-1]>2:
+            image = image[:,:,:3]
+    
+    image = image.astype(np.float32)
+
+    if is_rgb:
+        # Compute min and max per channel (last axis)
+        img_min = image.min(axis=tuple(range(image.ndim-1)), keepdims=True)
+        img_max = image.max(axis=tuple(range(image.ndim-1)), keepdims=True)
+    else:
+        # Compute min and max over all channels
+        img_min = image.min()
+        img_max = image.max()
+
+    image -= img_min
+    scale = img_max - img_min
+    # Avoid division by zero
+    image /= np.where(scale > 1e-3, scale, 1)
+    image *= 255
+
+    # format output, rearranging dimensions if necessary, only adding RGB channels if needed
+    if not is_rgb and add_rgb:
+        shape_to_concat = img_shape + (2,)  # add 2 channels
+        to_concat = np.zeros(shape_to_concat, dtype=type(image[0, 0, 0]))
+        image = image[..., np.newaxis]  # add a new axis for channels
+        image = np.concatenate([image, to_concat], axis=-1)
+    
+    if is_rgb or add_rgb:
+        axis_for_channels = -3
+        image = np.moveaxis(image, -1, axis_for_channels)
+
+        # t x z x W x H x c -> t x z x c x W x H
+        # t x W x H x c -> t x c x W x H
+        # z x W x H x c -> z x c x W x H
+        # W x H x c -> c x W x H
+    image = image.astype(np.float32)
+    return frame_index_out, image

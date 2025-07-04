@@ -9,6 +9,7 @@ from importlib import import_module
 import numpy as np
 import math
 import cv2
+from collections import defaultdict
 import skimage.exposure
 import skimage.measure
 import skimage.morphology
@@ -1433,15 +1434,18 @@ class LineageTree:
             else:
                 # Cell appeared in S in previous frame
                 idx = (start_frame_i-1, ID)
-                # import pdb; pdb.set_trace()
                 was_bud = self.acdc_df.loc[idx, 'relationship'] == 'bud'
                 if was_bud:
                     # This is a bud of the first frame where the algorithm 
                     # thinks is a new tree --> correct
                     parent_ID = self.acdc_df.loc[idx, 'relative_ID']
-                    self.branch_start_gen_num[ID] = (
-                        self.branch_start_gen_num[parent_ID] + 2
-                    )
+                    try:
+                        self.branch_start_gen_num[ID] = (
+                            self.branch_start_gen_num[parent_ID] + 2
+                        )
+                    except KeyError as e:
+                        gen_num_parentID_tree = 2
+                        self.branch_start_gen_num[ID] = gen_num_parentID_tree
                 else:
                     parent_ID = ID
                 
@@ -1504,6 +1508,7 @@ class LineageTree:
         self.gen_dfs_by_ID_tree[Cell_ID_tree] = gen_df
         
         self.is_new_tree = False
+        
         return gen_df
              
     def add_lineage_tree_table_to_acdc_df(self):
@@ -1540,7 +1545,7 @@ class LineageTree:
                 break
             
             df_i = self.df_G1.loc[frame_i]
-            IDs = df_i.index.array
+            IDs = np.sort(df_i.index.array)
             for ID in IDs:
                 if ID not in not_annotated_IDs:
                     # Tree already built in previous frame iteration --> skip
@@ -1874,12 +1879,20 @@ def preprocess_image_from_recipe(image, recipe: List[Dict[str, Any]]):
         
     return preprocessed_image
 
+def pop_signals_kwarg_if_not_needed(func, kwargs):
+    args = inspect.getfullargspec(func).args
+    if 'signals' in args:
+        return kwargs
+    
+    kwargs.pop('signals', None)
+    return kwargs
+
 def segm_model_segment(
         model, image, model_kwargs, frame_i=None, preproc_recipe=None, 
-        is_timelapse_model=False, posData=None, start_z_slice=0
+        is_timelapse_model_and_data=False, posData=None, start_z_slice=0,
     ):
     if preproc_recipe is not None:
-        if is_timelapse_model:
+        if is_timelapse_model_and_data:
             filtered_image = np.zeros(image.shape)
             for i, img in enumerate(image):
                 img = preprocess_image_from_recipe(img, preproc_recipe)
@@ -1888,10 +1901,17 @@ def segm_model_segment(
         else:
             image = preprocess_image_from_recipe(image, preproc_recipe)
     
-    if is_timelapse_model:
+    if is_timelapse_model_and_data:
+        model_kwargs = pop_signals_kwarg_if_not_needed(
+            model.segment3DT, model_kwargs
+        )
         segm_data = model.segment3DT(image, **model_kwargs)
         return segm_data             
     
+    model_kwargs = pop_signals_kwarg_if_not_needed(
+        model.segment, model_kwargs
+    )
+
     # Some models have `start_z_slice` kwarg
     try:
         lab = model.segment(
@@ -1931,7 +1951,7 @@ def segm_model_segment(
         return lab
     except TypeError as err:
         pass
-
+    
     lab = model.segment(image, **model_kwargs)
     return lab
 
@@ -1939,7 +1959,7 @@ class _WorkflowKernel:
     def __init__(self, logger, log_path, is_cli=False):
         self.logger = logger
         self.log_path = log_path
-        self.is_cli = True
+        self.is_cli = is_cli
     
     def quit(self, error=None):
         if not self.is_cli and error is not None:
@@ -2086,6 +2106,8 @@ class SegmKernel(_WorkflowKernel):
             logger_func=print,
             innerPbar_available=False,
             is_segment3DT_available=False, 
+            reduce_memory_usage=False,
+            use_freehand_ROI=True
         ):
         self.user_ch_name = user_ch_name
         self.segm_endname = segm_endname
@@ -2107,8 +2129,11 @@ class SegmKernel(_WorkflowKernel):
         self.SizeZ = SizeZ
         self.init_model_kwargs = init_model_kwargs
         self.init_tracker_kwargs = init_tracker_kwargs
-        self.is_segment3DT_available = is_segment3DT_available
+        self.is_segment3DT_available = (
+            is_segment3DT_available and not reduce_memory_usage
+        )
         self.preproc_recipe = preproc_recipe
+        self.use_freehand_ROI = use_freehand_ROI
         if signals is None:
             self.signals = KernelCliSignals(logger_func)
         else:
@@ -2134,6 +2159,9 @@ class SegmKernel(_WorkflowKernel):
         self.model_kwargs = myutils.parse_model_params(
             segment_argspecs, self.model_kwargs
         )
+        if self.second_channel_name is not None:
+            self.init_model_kwargs['is_rgb'] = True
+
         self.model = myutils.init_segm_model(
             acdcSegment, posData, self.init_model_kwargs
         )
@@ -2200,6 +2228,7 @@ class SegmKernel(_WorkflowKernel):
             load_bkgr_data=True,
             load_last_tracked_i=False,
             load_metadata=True,
+            load_dataprep_free_roi=True,
             end_filename_segm=self.segm_endname
         )
         # Get only name from the string 'segm_<name>.npz'
@@ -2387,7 +2416,6 @@ class SegmKernel(_WorkflowKernel):
         """Segmentation routine"""
         self.logger_func(f'\nSegmenting with {self.model_name}...')
         t0 = time.perf_counter()
-        # self.logger_func(f'Segmenting with {model} (Ctrl+C to abort)...')
         if posData.SizeT > 1:
             if self.innerPbar_available and self.signals is not None:
                 self.signals.resetInnerPbar.emit(len(img_data))
@@ -2402,7 +2430,7 @@ class SegmKernel(_WorkflowKernel):
                     )
                 lab_stack = segm_model_segment(
                     self.model, img_data, self.model_kwargs, 
-                    is_timelapse_model=True, 
+                    is_timelapse_model_and_data=True, 
                     preproc_recipe=self.preproc_recipe, 
                     posData=posData
                 )
@@ -2449,6 +2477,14 @@ class SegmKernel(_WorkflowKernel):
             # lab_stack = smooth_contours(lab_stack, radius=2)
 
         posData.saveSamEmbeddings(logger_func=self.logger_func)
+        
+        if len(posData.dataPrepFreeRoiPoints) > 0 and self.use_freehand_ROI:
+            self.logger_func(
+                'Removing objects outside the dataprep free-hand ROI...'
+            )
+            lab_stack = posData.clearSegmObjsDataPrepFreeRoi(
+                lab_stack, is_timelapse=posData.SizeT > 1
+            )
         
         if self.do_postprocess:
             if posData.SizeT > 1:
@@ -2528,7 +2564,6 @@ class SegmKernel(_WorkflowKernel):
         t_end = time.perf_counter()
 
         self.logger_func(f'\n{posData.relPath} done.')
-        self.signals.finished.emit(t_end-t0)
 
 def filter_segm_objs_from_table_coords(lab, df):
     cols = []
@@ -2747,12 +2782,14 @@ def cellpose_v3_run_denoise(
         run_params,
         denoise_model=None, 
         init_params=None,
+        timelapse=False,
+        isZstack=False
     ):
     if denoise_model is None:
         from cellacdc.models.cellpose_v3 import _denoise
         denoise_model = _denoise.CellposeDenoiseModel(**init_params)
     
-    denoised_img = denoise_model.run(image, **run_params)
+    denoised_img = denoise_model.run(image, timelapse=timelapse,isZstack=isZstack, **run_params)# may have to give rgb stuff too!
     return denoised_img
 
 def closest_n_divisible_by_m(n, m) :
@@ -3527,5 +3564,382 @@ def validate_multidimensional_recipe(
                 kwargs['apply_to_all_zslices'] = apply_to_all_zslices
     
     return recipe
+
+def insert_missing_object(lab_dst, obj, all_dst_IDs, assignments_mapper):
+    added_ID = assignments_mapper.get(obj.label)
+    if obj.label not in all_dst_IDs:
+        # First time we insert the missing ID and not existing in dst
+        # --> safe to assign the same ID
+        lab_dst[obj.slice][obj.image] = obj.label
+        all_dst_IDs.add(obj.label)
+    elif added_ID is None:
+        # First time we insert the missing ID but already existing in dst
+        # --> need to assign a new unique ID
+        new_unique_ID = max(all_dst_IDs) + 1
+        lab_dst[obj.slice][obj.image] = new_unique_ID
+        assignments_mapper[obj.label] = new_unique_ID
+        all_dst_IDs.add(new_unique_ID)
+    else:
+        # Already inserted the missing ID and already existing in dst
+        # --> need to assign the same ID as before
+        lab_dst[obj.slice][obj.image] = added_ID
+        all_dst_IDs.add(added_ID)
+    
+    return lab_dst, assignments_mapper, all_dst_IDs
+
+def insert_missing_objects(
+        segm_dst, segm_src, is_timelapse=True, display_pbar=True
+    ):
+    if not is_timelapse:
+        segm_dst = segm_dst[np.newaxis]
+        segm_src = segm_src[np.newaxis]
+    
+    all_dst_IDs = set()
+    for lab_dst in segm_dst:
+        rp = skimage.measure.regionprops(lab_dst)
+        all_dst_IDs.update([obj.label for obj in rp])
+    
+    if display_pbar:
+        pbar = tqdm(total=len(segm_src), ncols=100, leave=False)
+    
+    assignments_mapper = {}
+    for frame_i, (lab_src, lab_dst) in enumerate(zip(segm_src, segm_dst)):
+        rp = skimage.measure.regionprops(lab_src)
+        rp_dst = skimage.measure.regionprops(lab_dst)
+        rp_dst_mapper = {obj.label: obj for obj in rp_dst}
+        for obj in rp:
+            obj_dst_values = lab_dst[obj.slice][obj.image]
+            obj_dst_ID = obj_dst_values[0]
+            is_missing = obj_dst_ID == 0
+            if is_missing:
+                out = insert_missing_object(
+                    lab_dst, obj, all_dst_IDs, assignments_mapper
+                )
+                lab_dst, assignments_mapper, all_dst_IDs = out
+                segm_dst[frame_i] = lab_dst
+                continue
+            
+            # Check if merged --> the masks do not coincide
+            obj_dst = rp_dst_mapper[obj_dst_ID]
+            is_merged = not (
+                len(obj_dst.coords) == len(obj.coords)
+                and np.all(obj_dst.coords == obj.coords)
+            )
+            
+            if not is_merged:
+                continue
+            
+            lab_dst, assignments_mapper, all_dst_IDs = insert_missing_object(
+                lab_dst, obj, all_dst_IDs, assignments_mapper
+            )
+            segm_dst[frame_i] = lab_dst
+            
+        if display_pbar:
+            pbar.update()
+    
+    if display_pbar:
+        pbar.close()
         
+    return segm_dst
+    
+def process_lab(task):
+    i, lab = task
+    # Assuming this function processes each lab independently
+    data_dict = {}
+    rp = skimage.measure.regionprops(lab)
+    IDs = [obj.label for obj in rp]
+    data_dict['IDs'] = IDs
+    data_dict['regionprops'] = rp
+    data_dict['IDs_idxs'] = {ID: idx for idx, ID in enumerate(IDs)}
+    
+    return i, data_dict, IDs  # Return index, data_dict, and IDs
+
+def parallel_count_objects(posData, logger_func):
+    benchmark = True
+    #futile attempt to use multiprocessing to speed things up
+    logger_func('Counting total number of segmented objects...')
+    
+    allIDs = set()
+    seg_data = posData.segm_data
+    
+    # Initialize empty data dictionary to avoid recalculating each time
+    tasks = [(i, lab) for i, lab in enumerate(seg_data)]
+
+    if benchmark:
+        t0 = time.perf_counter()
+    # Process in batches to optimize memory usage and control parallelism
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        futures = [executor.submit(process_lab, task) for task in tasks]
         
+        # Process results as they are completed
+        for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), ncols=100):
+            i, data_dict, IDs = future.result()
+            posData.allData_li[i] = myutils.get_empty_stored_data_dict() # or directly assign if it's mutable
+            posData.allData_li[i]['IDs'] = data_dict['IDs']
+            posData.allData_li[i]['regionprops'] = data_dict['regionprops']
+            posData.allData_li[i]['IDs_idxs'] = data_dict['IDs_idxs']
+            allIDs.update(IDs)
+    
+    if benchmark:
+        t1 = time.perf_counter()
+        logger_func(f'Counting objects took {(t1 - t0)*1000:.2f} ms')
+
+    return allIDs, posData
+
+def count_objects(posData, logger_func):
+    benchmark = False
+
+    allIDs = set()
+
+    segm_data = posData.segm_data
+    if not np.any(segm_data):
+        allIDs = []
+        return allIDs, posData
+    
+    logger_func('Counting total number of segmented objects...')
+    pbar = tqdm(total=len(segm_data), ncols=100)
+    if benchmark:
+        t0 = time.perf_counter()
+    for i, lab in enumerate(segm_data):
+        posData.allData_li[i] = myutils.get_empty_stored_data_dict()
+        rp = skimage.measure.regionprops(lab)
+        IDs = [obj.label for obj in rp]
+        posData.allData_li[i]['IDs'] = IDs
+        posData.allData_li[i]['regionprops'] = rp
+        posData.allData_li[i]['IDs_idxs'] = { # IDs_idxs[obj.label] = idx
+            ID: idx for idx, ID in enumerate(IDs)
+        }
+        allIDs.update(IDs)
+        pbar.update()
+    pbar.close()
+    if benchmark:
+        t1 = time.perf_counter()
+        logger_func(f'Counting objects took {(t1 - t0)*1000:.2f} ms')
+    return allIDs, posData
+
+def fix_sparse_directML(verbose=True):
+    """DirectML does not support sparse tensors, so we need to fallback to CPU.
+    This function replaces `torch.sparse_coo_tensor`, `torch._C._sparse_coo_tensor_unsafe`,
+    `torch._C._sparse_coo_tensor_with_dims_and_tensors`, `torch.sparse.SparseTensor`
+     with a wrapper that falls back to CPU.
+
+    In the end, this could be handled better in the future. It would probably run faster if we
+    just manually set the device to CPU, but my goal was to not modify the code too much,
+    and this runs suprisingly fast.
+    """
+    import torch
+    import functools
+    import warnings
+
+    def fallback_to_cpu_on_sparse_error(func, verbose=True):
+        @functools.wraps(func) # wrapper shinanigans (thanks chatgpt)
+        def wrapper(*args, **kwargs):
+            device_arg = kwargs.get('device', None) # get desired device from kwargs
+
+            # Ensure indices are int64 if args[0] looks like indices,
+            # I got random errors from it not being int64
+            if len(args) >= 1 and isinstance(args[0], torch.Tensor):
+                if args[0].dtype != torch.int64:
+                    args = (args[0].to(dtype=torch.int64),) + args[1:]
+
+            try: # try to perform the operation and move to dml if possible
+                result = func(*args, **kwargs) # run function with current args and kwargs
+                if device_arg is not None and str(device_arg).lower() == "dml":
+                    try: # try to move result to dml
+                        result.to("dml")
+                    except RuntimeError as e: # moving failed, falling back to cpu 
+                        if verbose:
+                            warnings.warn(f"Sparse op failed on DirectML, falling back to CPU: {e}")
+                        kwargs['device'] = torch.device("cpu")
+                        return func(*args, **kwargs) # try again, after setting device to cpu
+                return result # just return result if all worked well
+
+            except RuntimeError as e: # try and run on dlm, if it fails, fallback to cpu
+                if "sparse" in str(e).lower() or "not implemented" in str(e).lower():
+                    if verbose:
+                        warnings.warn(f"Sparse op failed on DirectML, falling back to CPU: {e}")
+                    kwargs['device'] = torch.device("cpu") # if rutime warning caused by sparse tensor, set device to cpu
+
+                    # Re-apply indices dtype correction before retrying on CPU. Just in case (maybe first one not needed?)
+                    if len(args) >= 1 and isinstance(args[0], torch.Tensor):
+                        if args[0].dtype != torch.int64:
+                            args = (args[0].to(dtype=torch.int64),) + args[1:]
+
+                    return func(*args, **kwargs) # run function again with cpu device
+                else:
+                    raise e # catch and other runtime errors
+
+        return wrapper
+
+    # --- Patch Sparse Tensor Constructors ---
+
+    # High-level API
+    torch.sparse_coo_tensor = fallback_to_cpu_on_sparse_error(torch.sparse_coo_tensor, verbose=verbose)
+
+    # Low-level API
+    if hasattr(torch._C, "_sparse_coo_tensor_unsafe"):
+        torch._C._sparse_coo_tensor_unsafe = fallback_to_cpu_on_sparse_error(torch._C._sparse_coo_tensor_unsafe, verbose=verbose)
+
+    if hasattr(torch._C, "_sparse_coo_tensor_with_dims_and_tensors"):
+        torch._C._sparse_coo_tensor_with_dims_and_tensors = fallback_to_cpu_on_sparse_error(
+            torch._C._sparse_coo_tensor_with_dims_and_tensors, verbose=verbose
+        )
+
+    if hasattr(torch.sparse, 'SparseTensor'):
+        torch.sparse.SparseTensor = fallback_to_cpu_on_sparse_error(torch.sparse.SparseTensor, verbose=verbose)
+    
+    # suppress warnings
+    if not verbose:
+        import warnings
+        warnings.filterwarnings("once", message="Sparse op failed on DirectML*")
+
+def connected_components_in_undirected_graph(undirected_graph:dict):
+    # Build undirected graph
+    graph = defaultdict(set)
+    for key, val in undirected_graph.items():
+        for other in val:
+            graph[key].add(other)
+            graph[other].add(key)  # Make it bidirectional
+    
+    visited = set()
+    groups = []
+
+    def dfs(node, group):
+        visited.add(node)
+        group.append(node)
+        for neighbor in graph[node]:
+            if neighbor not in visited:
+                dfs(neighbor, group) # recursive call to visit neighbors
+
+    for key in graph:
+        if key not in visited:
+            group = []
+            dfs(key, group)
+            groups.append(group)
+    
+    return groups
+
+def apply_func_to_imgs(image:np.ndarray, 
+                       func: Callable, 
+                       *args,
+                       workers: int = 10,
+                       iter_axis:List[int]|int= None, 
+                       target_shape:List[int] = None,
+                       target_type: type = None,
+                       target_axis_iter: List[int]|int = None,
+                       parallel: bool = True,
+                       benchmark: bool = False,
+                       processpool: bool = False,
+                       **kwargs):        
+    """Apply a function to each image. This is done along the iter_axis (can also be a single int).
+    Then the processed image is put in the target_axis_iter (can also be a single int).
+    (If target_axis_iter, target_shape or target_type are None, 
+    they are taken from the input image).
+    Example of iter_axis: [0, 1] and target_axis_iter: [1, 0] means that the function is applied to each
+    [0, 1, ...] slice of the input and the processed image is put in the [1, 0, ...] slice of the output image.
+
+    THe function should follow the signature:
+    frame_index_out, image_out = func(image, *args, frame_index_out=None, **kwargs)
+
+    Parameters
+    ----------
+    image : np.ndarray
+        Image to be processed
+        
+    func : Callable
+        Function to be applied to each image. First argument
+        should be the image itself, one kwarg should be `frame_index_out`,
+        should `return processed_image, frame_index_out`. `frame_index_out` just needs to 
+        be passed along, no need to slice the image in `func`.
+    *args : tuple
+        Additional arguments to be passed to the function
+    workers : int, optional
+        Number of workers to use, by default 10
+    iter_axis : List[int]|int, optional
+        Axis along which to iterate, by default None
+        If None, the function is applied to the entire image.
+    target_shape : List[int], optional
+        Shape of the output image, by default None
+        If None, the shape of the input image is used.
+    target_type : type, optional
+        Type of the output image, by default None
+        If None, the type of the input image is used.
+    target_axis_iter : List[int]|int, optional
+        Axis along to which to put the processed image
+        Must be same length as `iter_axis`, by default None
+        If None, the processed image is put in the same axis as the input image.
+    parallel : bool, optional
+        Whether to use parallel processing, by default True
+        If False, the function is applied to each image sequentially.
+    benchmark : bool, optional
+        Whether to benchmark the function, by default False
+        If True, prints the execution time of the function.
+    processpool : bool, optional
+        Whether to use process pool, by default False
+        If True, uses process pool instead of thread pool.
+    **kwargs : dict
+        Additional keyword arguments to be passed to the function
+
+    Returns
+    -------
+    np.ndarray
+        Processed image
+    """
+    if benchmark:
+        t0 = time.perf_counter()
+    image_shape = image.shape
+    if iter_axis is None:
+        out = func(image, *args, **kwargs, frame_index_out=None)[1]
+        if benchmark:
+            t1 = time.perf_counter()
+            printl(f"Processing time: {(t1 - t0)*1000:.2f} ms, no parallel since iter_axis is None")
+        return out 
+    
+    if isinstance(iter_axis, int):
+        iter_axis = [iter_axis]
+    
+    if isinstance(target_axis_iter, int):
+        iter_axis = [target_axis_iter]
+    
+    if target_axis_iter is None:
+        target_axis_iter = iter_axis
+    
+    if target_shape is None:
+        target_shape = image_shape
+    
+    if target_type is None:
+        target_type = type(image.flat[0])
+    
+
+    image_out = np.empty(
+        target_shape, dtype=target_type
+    )
+
+    input_output_mapper = myutils.get_input_output_mapper(
+        image_shape, iter_axis, target_shape, target_axis_iter
+    )
+
+    if parallel:
+        if processpool:
+            executor_func = concurrent.futures.ProcessPoolExecutor
+        else:
+            executor_func = concurrent.futures.ThreadPoolExecutor
+        with executor_func() as executor:
+            futures = {
+                executor.submit(func, image[i_in], *args, frame_index_out=i_out, **kwargs)
+                for i_in, i_out in input_output_mapper
+            }
+
+            for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Processing frames"):
+                i, processed = future.result()
+                image_out[i] = processed
+    else:
+        for i_in, i_out in tqdm(input_output_mapper, desc="Processing frames"):
+            processed = func(image[i_in], *args, frame_index_out=i_out, **kwargs)[1]
+            image_out[i_out] = processed
+    
+    if benchmark:
+        t1 = time.perf_counter()
+        printl(f"Processing time: {(t1 - t0)*1000:.2f} ms")
+
+    return image_out

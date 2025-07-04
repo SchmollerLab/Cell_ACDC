@@ -32,6 +32,7 @@ def _check_install_extra_format_dependency(
     
     _, ext = os.path.splitext(image_filepath)
     package_name = EXTENSION_PACKAGE_MAPPER.get(ext)
+    
     if package_name is None:
         _check_install_bioio_bioformats(qparent=qparent)
         return

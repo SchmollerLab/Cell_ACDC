@@ -4,7 +4,7 @@ import os
 from trackastra.model import Trackastra
 from trackastra.tracking import graph_to_ctc
 
-from ... import _types, myutils
+from ... import _types, myutils, core
 
 from . import get_pretrained_model_names
 
@@ -50,6 +50,7 @@ class tracker:
     def track(
             self, segm_video, video_grayscale, 
             linking_mode: AvailableLinkingModes='greedy', 
+            prevent_deleting_objects: bool=True,
             cell_division_mode: AvailableCellDivisionModes='Normal', 
             record_lineage=True
         ):
@@ -64,6 +65,10 @@ class tracker:
         linking_mode : {'greedy', 'greedy_nodiv', 'ilp'}, optional
             Strategy used to link the predicted associations. Note that 
             'ilp' requires the package `motile`. Default is 'greedy'
+        prevent_deleting_objects : bool, optional
+            If `True`, prevent Trackastra from removing untracked objects or 
+            merging them with other objects. Note that these added objects 
+            will not be tracked. Default is `True`.
         cell_division_mode : {'Normal', 'Asymmetric'}, optional
             Type of cell division. `Normal` is the standard cell division, 
             where the mother cell divides into two daughter cells. For the 
@@ -91,6 +96,11 @@ class tracker:
         
         df_ctc, tracked_video = graph_to_ctc(graph, segm_video)
         
+        if prevent_deleting_objects:
+            tracked_video = core.insert_missing_objects(
+                tracked_video, segm_video
+            )
+        
         if linking_mode == 'greedy_nodiv':
             return tracked_video
         
@@ -106,6 +116,36 @@ class tracker:
             self.cca_dfs = cca_dfs
         
         return tracked_video
+
+    def validate_input(self, segm_video, progress=True):
+        import skimage.measure
+        warning_text = None
+        if progress:
+            from tqdm import tqdm
+            pbar = tqdm(
+                total=len(segm_video), desc='Validating input', unit='frame',
+                ncols=100
+            )
+        
+        empty_frames = []
+        for frame_i, lab in enumerate(segm_video):
+            rp = skimage.measure.regionprops(lab)
+            if len(rp) == 0:
+                empty_frames.append(frame_i+1)
+            
+            if progress:
+                pbar.update(1)
+        
+        if empty_frames:
+            warning_text = (
+                'Trackastra requires that each frame has at least one object.\n\n'
+                f'The following frame numbers have no objects:\n\n{empty_frames}'
+            )
+        
+        if progress:
+            pbar.close()
+        
+        return warning_text
 
 def url_help():
     return 'https://github.com/weigertlab/trackastra'

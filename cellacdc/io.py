@@ -1,11 +1,12 @@
 import os
+import pathlib
 import sys
 import re
 import h5py
 import numpy as np
 import skimage.io
 
-from . import path, load, myutils
+from . import path, load, myutils, printl
 
 def get_filepath_from_channel_name(images_path, channel_name):
     h5_aligned_path = ''
@@ -110,10 +111,18 @@ def save_image_data(filepath, img_data):
     return np.squeeze(img_data)
 
 def savez_compressed(filepath, *args, safe=True, **kwargs):
+    if not safe:
+        np.savez_compressed(filepath, *args, **kwargs)
+        return 
+    
     if not os.path.exists(filepath):
         np.savez_compressed(filepath, *args, **kwargs)
         return
     
-    temp_filepath = filepath.replace('.npz', '.new.npz')
-    np.savez_compressed(temp_filepath, *args, **kwargs)
-    os.replace(temp_filepath, filepath)
+    try:
+        pathlib.Path(filepath).unlink()
+        temp_filepath = filepath.replace('.npz', '.new.npz')
+        np.savez_compressed(temp_filepath, *args, **kwargs)
+        os.replace(temp_filepath, filepath)
+    except PermissionError as err:
+        np.savez_compressed(filepath, *args, **kwargs)

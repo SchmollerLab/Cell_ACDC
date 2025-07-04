@@ -41,6 +41,10 @@ ADMONITION_TYPES = (
     'deprecated'
 )
 
+HTML_TAGS = (
+    'code', 'i', 'b', 'br'
+)
+
 def _tag(tag_info='p style="font-size:10px"'):
     def wrapper(func):
         @wraps(func)
@@ -171,6 +175,12 @@ def rst_to_html(rst_text, parse_urls=False, keep_spacing=False):
     html_text = re.sub(rf'\`\`([^\`]*)\`\`', r'<code>\1</code>', rst_text)
     html_text = re.sub(rf'\`([^\`]*)\`', r'<code>\1</code>', html_text)
     html_text = html_text.replace('<', '&lt;').replace('>', '&gt;')
+    
+    # Insert back the allowed html tags as actual tags
+    for html_tag in HTML_TAGS:
+        html_text = html_text.replace(f'&lt;{html_tag}&gt;', f'<{html_tag}>')
+        html_text = html_text.replace(f'&lt;/{html_tag}&gt;', f'</{html_tag}>')
+        
     html_text = html_text.replace('\n', '<br>')
     if keep_spacing:
         html_text = re.sub(

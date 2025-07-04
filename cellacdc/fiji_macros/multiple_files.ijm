@@ -9,7 +9,7 @@ run("Bio-Formats Macro Extensions");
 
 //Dialog folder and get file list
 id = ...;
-files_folder = id
+files_folder = id;
 files_folder_name = File.getName(files_folder);
 ids = getFileList(files_folder);
 natural_order = extract_digits(ids);

@@ -28,7 +28,10 @@ import pandas as pd
 import skimage
 import inspect
 import typing
-from typing import List
+from typing import List, Callable, Tuple
+import traceback
+import itertools
+
 
 from natsort import natsorted
 
@@ -256,6 +259,12 @@ def checked_reset_index(df):
     else:
         return df.reset_index()
 
+def checked_reset_index_Cell_ID(df):
+    if df.index.names == ['Cell_ID']:
+        return df
+    df = checked_reset_index(df)
+    return df.set_index('Cell_ID')
+
 
 def _bytes_to_MB(size_bytes):
     factor = pow(2, -20)
@@ -321,25 +330,55 @@ class Logger(logging.Logger):
     
     def info(self, text, *args, **kwargs):
         super().info(text, *args, **kwargs)
-        self.write(f'{text}\n', log_to_file=False)
+        try:
+            self.write(f'{text}\n', log_to_file=False)
+        except TypeError:
+            # Sometimes the logger is patched (e.g., by spotiflow), which
+            # triggers the TypeError because the patching function does not have 
+            # log_to_file argument
+            self.write(f'{text}\n')
     
     def warning(self, text, *args, **kwargs):
         super().warning(text, *args, **kwargs)
-        self.write(f'[WARNING]: {text}\n', log_to_file=False)
+        try:
+            self.write(f'[WARNING]: {text}\n', log_to_file=False)
+        except TypeError:
+            # Sometimes the logger is patched (e.g., by spotiflow), which
+            # triggers the TypeError because the patching function does not have 
+            # log_to_file argument
+            self.write(f'[WARNING]: {text}\n')
     
     def error(self, text, *args, **kwargs):
         super().error(text, *args, **kwargs)
         self.write(traceback.format_exc())
-        self.write(f'[ERROR]: {text}\n', log_to_file=False)
+        try:
+            self.write(f'[ERROR]: {text}\n', log_to_file=False)
+        except TypeError:
+            # Sometimes the logger is patched (e.g., by spotiflow), which
+            # triggers the TypeError because the patching function does not have 
+            # log_to_file argument
+            self.write(f'[ERROR]: {text}\n')
     
     def critical(self, text, *args, **kwargs):
         super().critical(text, *args, **kwargs)
-        self.write(f'[CRITICAL]: {text}\n', log_to_file=False)
+        try:
+            self.write(f'[CRITICAL]: {text}\n', log_to_file=False)
+        except TypeError:
+            # Sometimes the logger is patched (e.g., by spotiflow), which
+            # triggers the TypeError because the patching function does not have 
+            # log_to_file argument
+            self.write(f'[CRITICAL]: {text}\n')
     
     def exception(self, text, *args, **kwargs):
         super().exception(text, *args, **kwargs)
         self.write(traceback.format_exc())
-        self.write(f'[ERROR]: {text}\n', log_to_file=False)
+        try:
+            self.write(f'[ERROR]: {text}\n', log_to_file=False)
+        except TypeError:
+            # Sometimes the logger is patched (e.g., by spotiflow), which
+            # triggers the TypeError because the patching function does not have 
+            # log_to_file argument
+            self.write(f'[ERROR]: {text}\n')
     
     def log(self, level, text):
         super().log(level, text)
@@ -375,35 +414,63 @@ def delete_older_log_files(logs_path):
         except Exception as err:
             continue
 
+def get_info_version_text(is_cli=False):
+    version = read_version()
+    release_date = get_date_from_version(version, package='cellacdc')
+    py_ver = sys.version_info
+    env_folderpath = os.path.dirname(os.__file__)
+    python_version = f'{py_ver.major}.{py_ver.minor}.{py_ver.micro}'
+    info_txts = [
+        f'Version {version}',
+        f'Released on: {release_date}',
+        f'Installed in "{cellacdc_path}"',
+        f'Environment folder: "{env_folderpath}"',
+        f'Python {python_version}',
+        f'Platform: {platform.platform()}',
+        f'System: {platform.system()}',
+        f'Python executable: "{sys.executable}"',
+        f'Conda environment: "{os.environ.get("CONDA_PREFIX")}"'
+    ]
+    if GUI_INSTALLED and not is_cli:
+        try:
+            from qtpy import QtCore
+            info_txts.append(f'Qt {QtCore.__version__}')
+        except Exception as err:
+            info_txts.append('Qt: Not installed')
+    
+    info_txts.append(f'Working directory: "{os.getcwd()}"')
+    info_txts = [f'  - {txt}' for txt in info_txts]
+    
+    max_len = max([len(txt) for txt in info_txts]) + 2
+    
+    formatted_info_txts = []
+    for txt in info_txts:
+        horiz_spacing = ' '*(max_len - len(txt))
+        txt = f'{txt}{horiz_spacing}|'
+        formatted_info_txts.append(txt)
+    
+    formatted_info_txts.insert(0, 'Cell-ACDC info:\n')
+    formatted_info_txts.insert(0, '='*max_len)
+    formatted_info_txts.append('='*max_len)
+    info_txt = '\n'.join(formatted_info_txts)
+    
+    return info_txt
+
 def _log_system_info(logger, log_path, is_cli=False, also_spotmax=False):
     logger.info(f'Initialized log file "{log_path}"')
     
-    version = read_version()
-    release_date = get_date_from_version(version, package='cellacdc')
+    info_txt = get_info_version_text(is_cli=is_cli)
     
-    py_ver = sys.version_info
-    python_version = f'{py_ver.major}.{py_ver.minor}.{py_ver.micro}'
-    logger.info(f'Running Python v{python_version} from "{sys.exec_prefix}"')    
-    logger.info(
-        f'Cell-ACDC info:\n'
-        f'  * Installation directory: "{cellacdc_path}"\n'
-        f'  * Version: "{version}"\n'
-        f'  * Released on: "{release_date}"'
-    )
-    logger.info(f'System version: {sys.version}')
-    logger.info(f'Platform: {platform.platform()}')
-    
-    if GUI_INSTALLED and not is_cli:
-        from qtpy import QtCore
-        logger.info(f'Using Qt version {QtCore.__version__}')
+    logger.info(info_txt)
     
     if not also_spotmax:
         return
     
-    from spotmax import spotmax_path
-    logger.info(f'SpotMAX installation directory: "{spotmax_path}"')
+    from spotmax.utils import get_info_version_text as smax_info
+    smax_info_txt = smax_info(include_platform=False)
+    logger.info(smax_info_txt)
 
-def setupLogger(module='base', logs_path=None):
+def setupLogger(module='base', logs_path=None, caller='Cell-ACDC'):
     if logs_path is None:
         logs_path = get_logs_path()
     
@@ -433,7 +500,7 @@ def setupLogger(module='base', logs_path=None):
 
     logger.addHandler(output_file_handler)
     
-    _log_system_info(logger, log_path)
+    _log_system_info(logger, log_path, also_spotmax=caller!='Cell-ACDC')
     
     # if module == 'gui' and GUI_INSTALLED:
     #     qt_handler = widgets.QtHandler()
@@ -713,9 +780,13 @@ def read_version(logger=None, return_success=False):
     else:
         return version
 
-def get_date_from_version(version: str, package='cellacdc'):
+def get_date_from_version(version: str, package='cellacdc', debug=False):
     try:
-        res_json = requests.get(f'https://pypi.org/pypi/{package}/json').json()
+        response = requests.get(
+            f'https://pypi.org/pypi/{package}/json', 
+            timeout=2
+        )
+        res_json = response.json()
         pypi_releases_json = res_json['releases']
         version_json = pypi_releases_json[version][0]
         upload_time = version_json['upload_time_iso_8601']
@@ -723,18 +794,29 @@ def get_date_from_version(version: str, package='cellacdc'):
         date_str = date.strftime(r'%A %d %B %Y at %H:%M')
         return date_str
     except Exception as err:
-        pass
+        if debug:
+            traceback.print_exc()
     
     try:
-        commit_hash = re.findall(r'\+g([A-Za-z0-9]+)\.d', version)[0]
-        commands = ['git', 'show', commit_hash]
-        commit_log = subprocess.check_output(commands).decode() 
+        if package == 'cellacdc':
+            pkg_path = cellacdc_path
+        elif package == 'spotmax':
+            from spotmax import spotmax_path
+            pkg_path = spotmax_path
+        commit_hash = re.findall(r'\+g([A-Za-z0-9]+)(\.d)?', version)[0][0]
+        git_path = os.path.dirname(pkg_path)
+        command = f'git -C {git_path} show {commit_hash}'
+        commit_log = _subprocess_run_command(
+            command, shell=False, callback='check_output'
+        )
+        commit_log = commit_log.decode() 
         date_log = re.findall(r'Date:(.*) \+', commit_log)[0].strip()
         date = datetime.datetime.strptime(date_log, r'%a %b %d %H:%M:%S %Y')
         date_str = date.strftime(r'%A %d %B %Y at %H:%M')
         return date_str
     except Exception as err:
-        pass
+        if debug:
+            traceback.print_exc()
     
     return 'ND'  
 
@@ -2087,10 +2169,25 @@ def from_imagej_rois_to_segm_data(
     
     return np.squeeze(segm_data)
             
+def aliases_real_time_trackers(reverse=False):
+    """
+    Returns a dictionary with aliases for real-time trackers.
+    """
 
+    aliases = {
+            'CellACDC_normal_division': 'Cell-ACDC symmetric division',
+            'CellACDC_2steps' : 'Cell-ACDC 2 steps',
+        }
+    
+    if reverse:
+        aliases = {v: k for k, v in aliases.items()}
+    
+    return aliases
+    
 def get_list_of_real_time_trackers():
     trackers = get_list_of_trackers()
     rt_trackers = []
+    aliases = aliases_real_time_trackers()
     for tracker in trackers:
         if tracker == 'CellACDC':
             continue
@@ -2107,6 +2204,11 @@ def get_list_of_real_time_trackers():
                 rt_trackers.append(tracker)
         except Exception as e:
             continue
+    
+    for i, tracker in enumerate(rt_trackers):
+        if tracker in aliases:
+            rt_trackers[i] = aliases[tracker]
+
     return rt_trackers
 
 def get_list_of_trackers():
@@ -2119,6 +2221,10 @@ def get_list_of_trackers():
             os.path.isdir(_path) and os.path.exists(tracker_script_path)
             and not name.endswith('__')
         )
+
+        if name.startswith('_'):
+            continue
+        
         if is_valid_tracker:
             trackers.append(name)
     return natsorted(trackers)
@@ -2135,6 +2241,9 @@ def get_list_of_models():
             continue
         
         if name.endswith('__'):
+            continue
+            
+        if name.startswith('_'):
             continue
         
         if name == 'skip_segmentation':
@@ -2208,7 +2317,7 @@ def to_relative_path(path, levels=3, prefix='...'):
         rel_path = f'{prefix}{os.sep}{rel_path}'
     return rel_path
 
-def img_to_float(img, force_dtype=None, force_missing_dtype=None):
+def img_to_float(img, force_dtype=None, force_missing_dtype=None, warn=True):
     input_img_dtype = img.dtype
     value = img[(0,) * img.ndim]
     img_max = np.max(img)
@@ -2237,15 +2346,18 @@ def img_to_float(img, force_dtype=None, force_missing_dtype=None):
         img = img.astype(force_dtype)
     elif img_max <= uint8_max:
         # Input image is probably 8-bit
-        _warnings.warn_image_overflow_dtype(input_img_dtype, img_max, '8-bit')
+        if warn:
+            _warnings.warn_image_overflow_dtype(input_img_dtype, img_max, '8-bit')
         img = img/uint8_max
     elif img_max <= uint16_max:
         # Input image is probably 16-bit
-        _warnings.warn_image_overflow_dtype(input_img_dtype, img_max, '16-bit')
+        if warn:
+            _warnings.warn_image_overflow_dtype(input_img_dtype, img_max, '16-bit')
         img = img/uint16_max
     elif img_max <= uint32_max:
         # Input image is probably 32-bit
-        _warnings.warn_image_overflow_dtype(input_img_dtype, img_max, '32-bit')
+        if warn:
+            _warnings.warn_image_overflow_dtype(input_img_dtype, img_max, '32-bit')
         img = img/uint32_max
     else:
         # Input image is a non-supported data type
@@ -2466,13 +2578,49 @@ def check_napari_plugin(plugin_name, module_name, parent=None):
         msg.critical(parent, f'Napari plugin required', txt)
         raise e
 
-def _install_pip_package(pkg_name, install_dependencies=True):
-    command = [sys.executable, '-m', 'pip', 'install', pkg_name]
+def _install_pip_package(
+        pkg_name: str,
+        logger: Callable = print,
+        install_dependencies: bool = True,
+        force_binary: bool = True,
+        pref_binary: bool = True,
+        ) -> None:
+    command = [sys.executable, '-m', 'pip', 'install', pkg_name,]
+    if force_binary:
+        command.append('--only-binary=:all:')
+    elif pref_binary:
+        command.append('--prefer-binary')
     if not install_dependencies:
         command.append('--no-deps')
-    subprocess.check_call(
-        command
-        )
+    try:
+        subprocess.check_call(
+            command
+            )
+    except subprocess.CalledProcessError as e:
+        if "--only-binary=:all:" in str(e):
+            logger(f"Error: {pkg_name} does not have a binary distribution available, trying preferred binary.")
+            _install_pip_package(
+                pkg_name=pkg_name,
+                logger=logger,
+                install_dependencies=install_dependencies,
+                force_binary=False,
+                pref_binary=True,
+            )
+        elif "--prefer-binary" in str(e):
+            logger(f"Error: {pkg_name} does not have a preferred binary distribution available, trying source.")
+            command.remove('--prefer-binary')
+            command.append('--no-binary=:all:')
+            _install_pip_package(
+                pkg_name=pkg_name,
+                logger=logger,
+                install_dependencies=install_dependencies,
+                force_binary=False,
+                pref_binary=False,
+            )
+        else:
+            logger(f"""Error: {pkg_name} installation failed. Please check the error message. This is probably due to the package 
+                   not being available for your platform or python version.""")
+            raise e
 
 def uninstall_pip_package(pkg_name):
     subprocess.check_call(
@@ -2509,6 +2657,9 @@ def get_cellpose_major_version(errors='raise'):
     return major_installed
 
 def check_cellpose_version(version: str):
+    if isinstance(version, int):
+        version = f'{version}.0'
+
     major_requested = int(version.split('.')[0])
     cancel = False
     try:
@@ -2526,7 +2677,26 @@ def check_cellpose_version(version: str):
         raise ModuleNotFoundError('Cellpose installation cancelled by the user.')
     return is_version_correct
 
-def check_install_cellpose(version: str='2.0'):
+def purge_module(module_name):
+    import sys
+    to_delete = [mod for mod in sys.modules if mod == module_name or mod.startswith(module_name + '.')]
+    for mod in to_delete:
+        del sys.modules[mod]
+
+def check_install_cellpose(
+        version: Literal['2.0', '3.0', '4.0', 'any'] = '2.0', 
+        version_to_install_if_missing: Literal['2.0', '3.0', '4.0'] = '4.0'
+    ):
+    if isinstance(version, int):
+        version = f'{version}.0'
+
+    if version == 'any':
+        try:
+            from cellpose import models
+            return
+        except Exception as err:
+            version = version_to_install_if_missing
+            
     is_version_correct = check_cellpose_version(version)
     if is_version_correct:
         return
@@ -2540,6 +2710,12 @@ def check_install_cellpose(version: str='2.0'):
         import_pkg_name='cellpose',
         force_upgrade=True
     )
+
+    purge_module('cellpose')
+
+    importlib.invalidate_caches()
+    import cellpose
+    importlib.reload(cellpose)
 
 def check_install_baby():
     check_install_package(
@@ -2581,12 +2757,14 @@ def check_pkg_version(import_pkg_name, min_version, raise_err=True):
     else:
         return is_version_correct
 
-def check_pkg_max_version(import_pkg_name, max_version, raise_err=True):
+def check_pkg_max_version(
+        import_pkg_name, max_version, raise_err=True
+    ):
     is_version_correct = False
     try:
         from packaging import version
         installed_version = get_package_version(import_pkg_name)  
-        if version.parse(installed_version) <= version.parse(max_version):
+        if version.parse(installed_version) < version.parse(max_version):
             is_version_correct = True
     except Exception as err:
         is_version_correct = False
@@ -2603,17 +2781,22 @@ def install_package_conda(conda_pkg_name, channel='conda-forge'):
         raise EnvironmentError(
             'Cell-ACDC is not running in a `conda` environment.'
         )
-        
+    
+    command = f'conda install -c {channel} -y {conda_pkg_name}'
+    _subprocess_run_command(command)
+
+def _subprocess_run_command(command, shell=True, callback='check_call'):
+    func = getattr(subprocess, callback)
     try:
-        commad = f'conda install -c {channel} -y {conda_pkg_name}'
-        subprocess.check_call([commad], shell=True)
+        out = func(command, shell=shell)
     except Exception as err:
         print(
-            f'[WARNING]: Installation with command `{[commad]}` failed. '
-            f'Trying with `{commad.split()}`...'
+            f'[WARNING]: Command `{command}` failed. '
+            f'Trying with `{command.split()}`...'
         )
+        out = func(command.split(), shell=shell)
     
-    subprocess.check_call(commad.split(), shell=True)
+    return out
 
 def check_install_omnipose():
     try:
@@ -2656,6 +2839,11 @@ def check_install_torch(is_cli=False, caller_name='Cell-ACDC', qparent=None):
     command = win.command
     print(f'Running command: "{command}"')
     _run_command(command)    
+    
+    purge_module('torch')
+    importlib.invalidate_caches()
+    import torch
+    importlib.reload(torch)
 
 def check_install_package(
         pkg_name: str, 
@@ -2727,7 +2915,7 @@ def check_install_package(
     ------
     ModuleNotFoundError
         Error raised if process is cancelled and `raise_on_cancel=True`.
-    """    
+    """
     if not import_pkg_name:
         import_pkg_name = pkg_name
     
@@ -2735,6 +2923,7 @@ def check_install_package(
         is_cli=True
     
     try:
+        import_pkg_name = import_pkg_name.replace('-', '_')
         import_module(import_pkg_name)
         if force_upgrade:
             upgrade = True
@@ -2996,7 +3185,7 @@ def _get_pkg_command_pip_install(pkg_command, max_version='', min_version=''):
             pkg_command = f'{pkg_command},'
     
     if max_version:
-        pkg_command = f'{pkg_command}<={max_version}'
+        pkg_command = f'{pkg_command}<{max_version}'
     return pkg_command
 
 def _install_package_cli_msg(
@@ -3153,9 +3342,9 @@ def download_ffmpeg():
     
     return ffmep_exec_path.replace('\\', os.sep).replace('/', os.sep)
 
-def get_fiji_exec_folderpath():
+def get_fiji_exec_folderpath() -> str:
     if not is_mac:
-        return
+        return ''
     
     from cellacdc import fiji_location_filepath
     if os.path.exists(fiji_location_filepath):
@@ -3165,21 +3354,23 @@ def get_fiji_exec_folderpath():
         if os.path.exists(fiji_filepath):
             return fiji_filepath
     
-    if os.path.exists('/Application/Fiji.app'):
-        return '/Application/Fiji.app/Contents/MacOS/ImageJ-macosx'
+    if os.path.exists('/Applications/Fiji.app'):
+        return '/Applications/Fiji.app/Contents/MacOS/ImageJ-macosx'
     
-    return os.path.join(
+    acdc_fiji_exec_path = os.path.join(
         acdc_fiji_path, 'Fiji.app', 'Contents', 'MacOS', 'ImageJ-macosx'
     )
+    
+    if not os.path.exists(acdc_fiji_exec_path):
+        return ''
+    
+    return acdc_fiji_exec_path
 
 def get_fiji_base_command():
-    if not os.path.exists(acdc_fiji_path):
-        return
-    
     command = None
     if is_mac:
-        command = f'{get_fiji_exec_folderpath()}'
-
+        command = get_fiji_exec_folderpath()
+    
     return command
     
 def _init_fiji_cli():
@@ -3187,13 +3378,19 @@ def _init_fiji_cli():
         args_add_to_path = [f'chmod 755 {get_fiji_exec_folderpath()}']
         subprocess.check_call(args_add_to_path, shell=True)
 
+def test_fiji_base_command(logger_func=print):
+    base_command = get_fiji_base_command()
+
+    if base_command is None:
+        logger_func('[WARNING]: Fiji is not present.')
+        return False
+    
+    command = f'{base_command} --headless'
+    return run_fiji_command(command=command, logger_func=logger_func) 
+
 def run_fiji_command(command=None, logger_func=print):
     if command is None:
         command = f'{get_fiji_base_command()} --headless'
-    
-    if command is None:
-        logger_func('[WARNING]: Fiji is not present.')
-        return False
     
     _init_fiji_cli()
     
@@ -3297,11 +3494,13 @@ def init_tracker(
                 trackerName, ext
             )
 
-    if paramsWin is not None:
-        if paramsWin.cancel:
-            return None, None
-    
-    tracker = trackerModule.tracker(**init_params)
+    if paramsWin is not None and paramsWin.cancel:
+        tracker = None, 
+        track_params = None
+        init_params = None
+    else:
+        tracker = trackerModule.tracker(**init_params)
+        
     if return_init_params:
         return tracker, track_params, init_params
     else:
@@ -3318,60 +3517,167 @@ def import_segment_module(model_name):
         spec = importlib.util.spec_from_file_location('acdcSegment', model_path)
         acdcSegment = importlib.util.module_from_spec(spec)
         sys.modules['acdcSegment'] = acdcSegment
-        spec.loader.exec_module(acdcSegment) 
+        spec.loader.exec_module(acdcSegment)
     return acdcSegment
 
-def _warn_install_torch_cuda(model_name, qparent=None):
+def _warn_install_gpu(model_name, ask_installs, qparent=None):
+    
     cellpose_cuda_url = (
         r'https://github.com/mouseland/cellpose#gpu-version-cuda-on-windows-or-linux'
     )
     torch_cuda_url = (
-        'https://pytorch.org/get-started/locally/'
+        r'https://pytorch.org/get-started/locally/'
     )
+    direct_ml_url = (
+         r'https://microsoft.github.io/DirectML/'
+    )
+    torch_directml_url = (
+        r'https://learn.microsoft.com/en-us/windows/ai/directml/pytorch-windows'
+        )
+
+
     cellpose_href = f'{html_utils.href_tag("here", cellpose_cuda_url)}'
     torch_href = f'{html_utils.href_tag("here", torch_cuda_url)}'
+    direct_ml_href = f'{html_utils.href_tag("direct_ml_DirectMLref", direct_ml_url)}'
+    torch_directml_href = f'{html_utils.href_tag("directml pytorch", torch_directml_url)}'
     msg = widgets.myMessageBox(showCentered=False, wrapText=False)
     txt = html_utils.paragraph(f"""
         In order to use <code>{model_name}</code> with the GPU you need 
-        to install the <b>CUDA version of PyTorch</b>.<br><br>
-        Check out these instructions {cellpose_href}, and {torch_href}.<br><br>
-        We <b>highly recommend using Conda</b> to install PyTorch GPU.<br><br>
-        First, uninstall the CPU version of PyTorch with the following command:<br><br>
-        <code>pip uninstall torch</code>.<br><br>
+        to install a <b>PyTorch version which can use it</b>.<br>
+        We recomment using CUDA over DirectML, but if you are using a Windows
+        machine with an AMD GPU, you can use DirectML.<br>
+        """)
+    txt_cuda_title = html_utils.paragraph(f"<b>CUDA</b>", font_size='18px')
+
+    txt_cuda = html_utils.paragraph(f"""
+        
+        Check out these instructions {cellpose_href}, and {torch_href}.<br>
+        We <b>highly recommend using Conda</b> to install PyTorch GPU.<br>
+        First, uninstall the CPU version of PyTorch with the following command:<br>
+        <code>pip uninstall torch</code>.<br>
         Then, install the CUDA version required by your GPU with the follwing 
-        command (which installs version 11.6):<br><br>
-        <code>conda install pytorch pytorch-cuda=11.6 -c pytorch -c nvidia</code>
+        command (which installs version 11.6):<br>
+        <code>conda install pytorch pytorch-cuda=11.6 -c conda-forge -c nvidia</code>
         <br><br>
+        """)
+    
+    txt_directML_title = html_utils.paragraph(f"<b>DirectML</b>", font_size='18px')
+    txt_directML = html_utils.paragraph(f"""
+        Check out {direct_ml_href}, and {torch_directml_href} for more info.<br>
+        Only supported on Windows 10/11 with Python 3.8-3.12.<br>
+        Click the <b>Proceed without DirectML</b> button to install DirectML.
+        <br><br>
+        """)
+    
+    txt_end = html_utils.paragraph(f"""
         How do you want to proceed?
     """)
-    proceedButton = widgets.okPushButton('Proceed without GPU')
-    stopButton = widgets.cancelPushButton('Stop the process')
-    stopButton, proceedButton = msg.warning(
-        qparent, 'PyTorch GPU version not installed', txt, 
-        buttonsTexts=(stopButton, proceedButton)
-    )
-    return msg.clickedButton == proceedButton
 
-def check_cuda(model_name, use_gpu, qparent=None):
+    stopButton = widgets.cancelPushButton('Stop the process')
+    directMLButton = widgets.okPushButton('Install DirectML')
+    proceedButton = widgets.okPushButton('Proceed without GPU')
+
+    buttons = [stopButton]
+
+    if 'cuda' in ask_installs:
+        txt = f'{txt}{txt_cuda_title}{txt_cuda}'
+    if 'directML' in ask_installs:
+        txt = f'{txt}{txt_directML_title}{txt_directML}'
+        buttons.append(directMLButton)
+    txt = f'{txt}{txt_end}' 
+    buttons.append(proceedButton)
+
+    msg.warning(
+        qparent, 'PyTorch GPU version not installed', txt, 
+        buttonsTexts=buttons,
+    )
+
+    if msg.cancel:
+        return False
+    
+    if msg.clickedButton == directMLButton:
+        py_ver = sys.version_info
+        if is_win and py_ver.major == 3 and py_ver.minor < 13:
+            success = check_install_package(
+                pkg_name = 'torch-directml',
+                import_pkg_name = 'torch_directml',
+                pypi_name = 'torch-directml',
+                return_outcome=True,
+            )
+            return success
+        else:
+            msg = widgets.myMessageBox()
+            msg.warning(
+                qparent, 'DirectML not supported', 
+                'DirectML is only supported on Python 3.8-3.12 and Windows 10/11',
+            )
+            return False
+
+    if msg.clickedButton == stopButton:
+        return False
+
+    if msg.clickedButton == proceedButton:
+        return True
+
+def check_gpu_availible(model_name, use_gpu, qparent=None):
     if not use_gpu:
         return True
-    is_torch_model = (
+
+    frameworks = _availible_frameworks(model_name)
+    ask_installs = set()
+    framework_available = False
+    for framework, model_compatible in frameworks.items():
+        if not model_compatible:
+            continue
+        if framework == 'cuda':
+            import torch
+            if not torch.cuda.is_available():
+                ask_installs.add('cuda')
+            elif not torch.cuda.device_count() > 0:
+                ask_installs.add('cuda')
+            else:
+                framework_available = True
+                break
+        elif framework == 'directML':
+            if is_win:
+                try:
+                    import torch_directml
+                    if not torch_directml.is_available():
+                        ask_installs.add('directML')
+                    else:
+                        framework_available = True
+                        break
+                except ModuleNotFoundError:
+                    ask_installs.add('directML')
+        elif is_mac_arm64:
+            framework_available = True
+            break
+    
+    if framework_available:
+        return True
+    
+    proceed = _warn_install_gpu(model_name, ask_installs, qparent=qparent)
+    return proceed
+
+
+def _availible_frameworks(model_name):
+    frameworks = {
+
+    "cuda":(
         model_name.lower().find('cellpose') != -1
         or model_name.lower().find('omnipose') != -1
         or model_name.lower().find('deepsea') != -1
         or model_name.lower().find('segment_anything') != -1
+        or model_name.lower().find('yeaz') != -1
+        or model_name.lower().find('yeaz_v2') != -1
+    ),
+    "directML":(
+        model_name.lower().find('cellpose_v4') != -1
+        or model_name.lower().find('cellpose_v3') != -1# has its own way to check
+
     )
-    if is_torch_model and not is_mac_arm64:
-        import torch
-        if not torch.cuda.is_available():
-            proceed = _warn_install_torch_cuda(model_name, qparent=qparent)
-            return proceed
-        
-        if not torch.cuda.device_count() > 0:
-            proceed = _warn_install_torch_cuda(model_name, qparent=qparent)
-            return proceed
-    
-    return True
+    }
+    return frameworks
 
 def find_missing_integers(lst, max_range=None):
     if max_range is not None:
@@ -3561,7 +3867,12 @@ def init_segm_model(acdcSegment, posData, init_kwargs):
     
     try:
         # Models introduced before 1.3.2 do not have the segm_data as input
+        kwargs = inspect.getfullargspec(acdcSegment.Model.__init__).args
+        if 'is_rgb' not in kwargs and 'is_rgb' in init_kwargs:
+            del init_kwargs['is_rgb']
         model = acdcSegment.Model(**init_kwargs)
+
+
     except Exception as e:
         model = acdcSegment.Model(segm_data, **init_kwargs)
     return model
@@ -3607,28 +3918,28 @@ def parse_model_params(model_argspecs, model_params):
         parsed_model_params[argspec.name] = value
     return parsed_model_params
 
-def init_cellpose_denoise_model():
-    from . import apps
+# def init_cellpose_denoise_model():
+#     from . import apps
     
-    from cellacdc.models.cellpose_v3._denoise import (
-        CellposeDenoiseModel, url_help
-    )
+#     from cellacdc.models.cellpose_v3._denoise import (
+#         CellposeDenoiseModel, url_help
+#     )
 
-    init_argspecs, run_argspecs = getClassArgSpecs(CellposeDenoiseModel)
-    url = url_help()
+#     init_argspecs, run_argspecs = getClassArgSpecs(CellposeDenoiseModel)
+#     url = url_help()
     
-    paramsWin = apps.QDialogModelParams(
-        init_argspecs, run_argspecs, 'Cellpose 3.0', 
-        url=url, is_tracker=True, action_type='denoising'
-    )
-    paramsWin.exec_()
-    if paramsWin.cancel:
-        return
+#     paramsWin = apps.QDialogModelParams(
+#         init_argspecs, run_argspecs, 'Cellpose 3.0', 
+#         url=url, is_tracker=True, action_type='denoising'
+#     )
+#     paramsWin.exec_()
+#     if paramsWin.cancel:
+#         return
     
-    init_params = paramsWin.init_kwargs
-    run_params = paramsWin.model_kwargs
-    denoise_model = CellposeDenoiseModel(**init_params)
-    return denoise_model, init_params, run_params
+#     init_params = paramsWin.init_kwargs
+#     run_params = paramsWin.model_kwargs
+#     denoise_model = CellposeDenoiseModel(**init_params)
+#     return denoise_model, init_params, run_params
 
 def init_sam_input_points_df(posData, input_points_filepath):
     input_points_df = None
@@ -3803,20 +4114,25 @@ def _relabel_cca_dfs_and_segm_data(
             desc='Applying asymmetric division', 
             total=len(IDs_mapper), ncols=100
         )
-    for key, root_ID in IDs_mapper.items():
+    for key, (root_ID, parent_ID) in IDs_mapper.items():
         div_frame_i, daughter_ID = key
         for frame_i in range(div_frame_i, len(asymm_tracked_segm)):
-            cca_dfs[frame_i].rename(
-                index={daughter_ID: root_ID}, inplace=True
-            )
+            
+            
             lab = asymm_tracked_segm[frame_i]
             rp = skimage.measure.regionprops(lab)
-            obj_daught = [obj for obj in rp if obj.label == daughter_ID]
-            if not obj_daught:
-                continue
+            rp_mapper = {obj.label: obj for obj in rp}
+            obj_daught = rp_mapper.get(daughter_ID)
+            mother_ID = root_ID if rp_mapper.get(root_ID) is None else parent_ID
             
-            obj_daught = obj_daught[0]
-            lab[obj_daught.slice][obj_daught.image] = root_ID
+            cca_dfs[frame_i].rename(
+                index={daughter_ID: mother_ID}, inplace=True
+            )
+            
+            if obj_daught is None:
+                continue
+    
+            lab[obj_daught.slice][obj_daught.image] = mother_ID
         
         if progressbar:
             pbar.update()
@@ -3921,7 +4237,7 @@ def df_ctc_to_acdc_df(
                 # Recycle the root_ID and assign it to one of the daughters
                 replaced_daught_ID = daughter_IDs[1]
                 key = (frame_i, replaced_daught_ID)
-                asymmetric_IDs_rename_mapper[key] = root_ID    
+                asymmetric_IDs_rename_mapper[key] = (root_ID, parent_ID)    
         
         cca_dfs.append(cca_df)
         
@@ -3930,6 +4246,7 @@ def df_ctc_to_acdc_df(
     
     if progressbar:
         pbar.close()
+    
     if asymmetric_IDs_rename_mapper:
         _relabel_cca_dfs_and_segm_data(
             cca_dfs,
@@ -3956,3 +4273,158 @@ def check_install_instanseg():
         import_pkg_name='instanseg', 
         pypi_name='instanseg-torch'
     )
+
+def validate_tracker_input(tracker, segm_video_to_track):
+    try:
+        warning_text = tracker.validate_input(segm_video_to_track)
+        return warning_text
+    except Exception as err:
+        printl(traceback.format_exc())
+        pass
+    return
+def format_IDs(IDs):
+    if isinstance(IDs, str):
+        raise ValueError('IDs must not be a string')
+
+    IDsRange = []
+    text = ''
+    sorted_vals = sorted(IDs)
+    for i, e in enumerate(sorted_vals):
+        e = int(e)
+        # Get previous and next value (if possible)
+        if i > 0:
+            prevVal = sorted_vals[i-1]
+        else:
+            prevVal = -1
+        if i < len(sorted_vals)-1:
+            nextVal = sorted_vals[i+1]
+        else:
+            nextVal = -1
+
+        if e-prevVal == 1 or nextVal-e == 1:
+            if not IDsRange:
+                if nextVal-e == 1 and e-prevVal != 1:
+                    # Current value is the first value of a new range
+                    IDsRange = [e]
+                else:
+                    # Current value is the second element of a new range
+                    IDsRange = [prevVal, e]
+            else:
+                if e-prevVal == 1:
+                    # Current value is part of an ongoing range
+                    IDsRange.append(e)
+                else:
+                    # Current value is the first element of a new range 
+                    # --> create range text and this element will 
+                    # be added to the new range at the next iter
+                    start, stop = IDsRange[0], IDsRange[-1]
+                    if stop-start > 1:
+                        sep = '-'
+                    else:
+                        sep = ','
+                    text = f'{text},{start}{sep}{stop}'
+                    IDsRange = []
+        else:
+            # Current value doesn't belong to a range
+            if IDsRange:
+                # There was a range not added to text --> add it now
+                start, stop = IDsRange[0], IDsRange[-1]
+                if stop-start > 1:
+                    sep = '-'
+                else:
+                    sep = ','
+                text = f'{text},{start}{sep}{stop}'
+            
+            text = f'{text},{e}'    
+            IDsRange = []
+
+    if IDsRange:
+        # Last range was not added  --> add it now
+        start, stop = IDsRange[0], IDsRange[-1]
+        text = f'{text},{start}-{stop}'
+
+    text = text[1:]
+
+    return text
+
+def get_empty_stored_data_dict():
+    return {
+            'regionprops': None,
+            'labels': None,
+            'acdc_df': None,
+            'delROIs_info': {
+                    'rois': [], 'delMasks': [], 'delIDsROI': [], 'state': []
+                },
+            'IDs': []
+        }
+
+def iterate_along_axes(arr, axes, arr_ndim=None):
+    if arr_ndim is None:
+        arr_ndim = arr.ndim
+    axes = list(axes)
+    front_axes = axes + [i for i in range(arr_ndim) if i not in axes]
+    arr_moved = np.moveaxis(arr, front_axes, range(arr_ndim))
+    iter_shape = arr_moved.shape[:len(axes)]
+    for idx in np.ndindex(iter_shape):
+        # Build the index for the original array
+        full_idx = [slice(None)] * arr_ndim
+        for axis, i in zip(axes, idx):
+            full_idx[axis] = i
+        yield tuple(full_idx)
+    
+def get_input_output_mapper(
+        input_shape: Tuple[int],
+        iterate_axes: Tuple[int],
+        output_shape: Tuple[int],
+        output_axes: Tuple[int],
+) -> List[Tuple[Tuple[int, ...], Tuple[int, ...]]]:
+    """Creates list of tuples with the input and output indices
+
+    Parameters
+    ----------
+    input_shape : Tuple[int]
+        Shape of the input array
+    iterate_axes : Tuple[int]
+        Axes to iterate over
+    output_shape : Tuple[int]
+        Shape of the output array
+    output_axes : Tuple[int]
+        Axes of the output array
+    """
+    assert len(iterate_axes) == len(output_axes)
+
+    iterate_shape = tuple(input_shape[axis] for axis in iterate_axes)
+    mapper = []
+
+    for idx_vals in itertools.product(*[range(s) for s in iterate_shape]):
+        # Build full input index
+        input_index = [slice(None)] * len(input_shape)
+        for axis in iterate_axes:
+            i = iterate_axes.index(axis)
+            input_index[axis] = idx_vals[i]
+
+        # Build full output index
+        output_index = [slice(None)] * len(output_shape)
+        for axis in output_axes:
+            i = output_axes.index(axis)
+            output_index[axis] = idx_vals[i]
+
+        input_index = tuple(input_index)
+        output_index = tuple(output_index)
+
+        mapper.append((input_index, output_index))
+
+    return mapper
+
+def translateStrNone(*args):
+    args = list(args)
+    for i, arg in enumerate(args):
+        if isinstance(arg, str):
+            if arg.lower() == 'none':
+                args[i] = None
+            elif arg.lower() == 'true':
+                args[i] = True
+            elif arg.lower() == 'false':
+                args[i] = False
+    
+    return args

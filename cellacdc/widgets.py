@@ -51,7 +51,7 @@ from qtpy.QtWidgets import (
     QListWidget, QPlainTextEdit, QFileDialog, QListView, QAbstractItemView,
     QTreeWidget, QTreeWidgetItem, QListWidgetItem, QLayout, QStylePainter,
     QGraphicsBlurEffect, QGraphicsProxyWidget, QGraphicsObject,
-    QButtonGroup
+    QButtonGroup, QStyleOptionSlider
 )
 
 import pyqtgraph as pg
@@ -68,6 +68,7 @@ from . import plot
 from . import annotate
 from . import urls
 from . import _core
+from . import QtScoped
 from .acdc_regex import float_regex
 from .config import PREPROCESS_MAPPER
 from . import _base_widgets
@@ -85,6 +86,15 @@ font = QFont()
 font.setPixelSize(12)
 
 custom_cmaps_filepath = os.path.join(settings_folderpath, 'custom_colormaps.ini')
+
+str_to_operator_mapper = {
+    "+": operator.add, 
+    "-": operator.sub 
+}
+
+sign_int_mapper = {
+    '+': 1, '-': -1
+}
 
 def removeHSVcmaps():
     hsv_cmaps = []
@@ -486,6 +496,11 @@ class futurePushButton(PushButton):
         super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':arrow_future.svg'))
 
+class FutureAllPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setIcon(QIcon(':arrow_future_all.svg'))
+
 class currentPushButton(PushButton):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -595,6 +610,11 @@ class movePushButton(PushButton):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':folder-move.svg'))
+
+class DownloadPushButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setIcon(QIcon(':download.svg'))
 
 class showInFileManagerButton(PushButton):
     def __init__(self, *args, setDefaultText=False, **kwargs):
@@ -970,6 +990,7 @@ class ValidLineEdit(QLineEdit):
 class KeepIDsLineEdit(ValidLineEdit):
     sigIDsChanged = Signal(list)
     sigSort = Signal()
+    sigEnterPressed = Signal()
 
     def __init__(self, instructionsLabel, parent=None):
         super().__init__(parent)
@@ -988,6 +1009,8 @@ class KeepIDsLineEdit(ValidLineEdit):
         super().keyPressEvent(event)
         if event.text() == ',':
             self.sigSort.emit()
+        elif event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter:
+            self.sigEnterPressed.emit()
     
     def onTextChanged(self, text):
         IDs = []
@@ -1588,6 +1611,7 @@ class filePathControl(QFrame):
     def setText(self, text):
         self.le.setText(text)
         self.le.setToolTip(text)
+        self.sigValueChanged.emit(self.le.text())
 
     def setTextTooltip(self):
         self.le.setToolTip(self.le.text())
@@ -2228,63 +2252,7 @@ class KeptObjectIDsList(list):
         super().__init__(*args)
     
     def setText(self):
-        IDsRange = []
-        text = ''
-        sorted_vals = sorted(self)
-        for i, e in enumerate(sorted_vals):
-            # Get previous and next value (if possible)
-            if i > 0:
-                prevVal = sorted_vals[i-1]
-            else:
-                prevVal = -1
-            if i < len(sorted_vals)-1:
-                nextVal = sorted_vals[i+1]
-            else:
-                nextVal = -1
-
-            if e-prevVal == 1 or nextVal-e == 1:
-                if not IDsRange:
-                    if nextVal-e == 1 and e-prevVal != 1:
-                        # Current value is the first value of a new range
-                        IDsRange = [e]
-                    else:
-                        # Current value is the second element of a new range
-                        IDsRange = [prevVal, e]
-                else:
-                    if e-prevVal == 1:
-                        # Current value is part of an ongoing range
-                        IDsRange.append(e)
-                    else:
-                        # Current value is the first element of a new range 
-                        # --> create range text and this element will 
-                        # be added to the new range at the next iter
-                        start, stop = IDsRange[0], IDsRange[-1]
-                        if stop-start > 1:
-                            sep = '-'
-                        else:
-                            sep = ','
-                        text = f'{text},{start}{sep}{stop}'
-                        IDsRange = []
-            else:
-                # Current value doesn't belong to a range
-                if IDsRange:
-                    # There was a range not added to text --> add it now
-                    start, stop = IDsRange[0], IDsRange[-1]
-                    if stop-start > 1:
-                        sep = '-'
-                    else:
-                        sep = ','
-                    text = f'{text},{start}{sep}{stop}'
-                
-                text = f'{text},{e}'    
-                IDsRange = []
-
-        if IDsRange:
-            # Last range was not added  --> add it now
-            start, stop = IDsRange[0], IDsRange[-1]
-            text = f'{text},{start}-{stop}'
-
-        text = text[1:]
+        text  = myutils.format_IDs(self)
         
         self.lineEdit.setText(text)
     
@@ -3951,7 +3919,11 @@ class SpinBox(QSpinBox):
         if self._valueChangedFunction is None:
             self.setValue(value)
             return
-        self.valueChanged.disconnect()
+        try:
+            self.valueChanged.disconnect()
+        except TypeError as e: # this fails if its not cennected yet
+            pass
+        
         self.setValue(value)
         self.valueChanged.connect(self._valueChangedFunction)
     
@@ -5839,11 +5811,6 @@ class navigateQScrollBar(ScrollBar):
 
         if self._disableCustomPressEvent:
             return
-
-        if self.sliderPosition() == self.maximum():
-            # Clicked right arrow of scrollbar with the slider at maximum --> +1
-            # self.setMaximum(self.maximum()+1)
-            self.triggerAction(QAbstractSlider.SliderAction.SliderSingleStepAdd)
     
     def setValueNoSignal(self, value):
         for signal_name, slot in self.signal_slot_mapper.items():
@@ -6441,6 +6408,8 @@ class MainPlotItem(pg.PlotItem):
                 htmlText = html_file.read()
             self.infoTextItem.setHtml(htmlText)
             self.infoTextItem.setPos(0,0)
+        
+        self.delRoiItems = {}
     
     def clear(self):
         super().clear()
@@ -6452,7 +6421,36 @@ class MainPlotItem(pg.PlotItem):
     def autoBtnClicked(self):
         self.vb.autoRange()
         self.autoBtn.hide()
-
+    
+    def addDelRoiItem(self, roiItem, key):
+        if self.isDelRoiItemPresent(roiItem):
+            return
+        
+        self.delRoiItems[key] = roiItem
+        roiItem.key = key
+        self.addItem(roiItem)
+    
+    def removeDelRoiItem(self, roiItem):
+        key = roiItem.key
+        self.delRoiItems.pop(key, None)
+        try:
+            self.removeItem(roiItem)
+        except Exception as err:
+            return
+    
+    def isDelRoiItemPresent(self, roiItem):
+        try:
+            key = roiItem.key
+        except AttributeError as e:
+            return False
+        
+        try:
+            roi = self.delRoiItems[key]
+        except Exception as err:
+            return False
+        
+        return True
+            
 class sliderWithSpinBox(QWidget):
     sigValueChange = Signal(object)
     valueChanged = Signal(object)
@@ -6956,24 +6954,25 @@ class PostProcessSegmSlider(sliderWithSpinBox):
             return super().value()
 
 class GhostContourItem(pg.PlotDataItem):
-    def __init__(self, penColor=(245, 184, 0, 100), textColor=(245, 184, 0)):
+    def __init__(
+            self, ParentPlotItem, penColor=(245, 184, 0, 100), 
+            textColor=(245, 184, 0)
+        ):
         super().__init__()
         # Yellow pen
         self.setPen(pg.mkPen(width=2, color=penColor))
         self.label = myLabelItem()
         self.label.setAttr('bold', True)
         self.label.setAttr('color', textColor)
+        self._ParentPlotItem = ParentPlotItem
     
-    def addToPlotItem(self, PlotItem: MainPlotItem):
-        self._plotItem = PlotItem
-        PlotItem.addItem(self)
-        PlotItem.addItem(self.label)
+    def addToPlotItem(self):
+        self._ParentPlotItem.addItem(self)
+        self._ParentPlotItem.addItem(self.label)
     
     def removeFromPlotItem(self):
-        if not hasattr(self, '_plotItem'):
-            return
-        self._plotItem.removeItem(self.label)
-        self._plotItem.removeItem(self)
+        self._ParentPlotItem.removeItem(self.label)
+        self._ParentPlotItem.removeItem(self)
     
     def setData(
             self, xx=None, yy=None, fontSize=11, ID=0, 
@@ -6998,11 +6997,12 @@ class GhostContourItem(pg.PlotDataItem):
         self.setData([], [])
 
 class GhostMaskItem(pg.ImageItem):
-    def __init__(self):
+    def __init__(self, ParentPlotItem):
         super().__init__()
         self.label = myLabelItem()
         self.label.setAttr('bold', True)
         self.label.setAttr('color', (245, 184, 0))
+        self._ParentPlotItem = ParentPlotItem
     
     def initImage(self, imgShape):
         image = np.zeros(imgShape, dtype=np.uint32)
@@ -7014,14 +7014,13 @@ class GhostMaskItem(pg.ImageItem):
         lut[1,:-1] = rgbaColor
         self.setLookupTable(lut)
     
-    def addToPlotItem(self, PlotItem: MainPlotItem):
-        self._plotItem = PlotItem
-        PlotItem.addItem(self)
-        PlotItem.addItem(self.label)
+    def addToPlotItem(self):
+        self._ParentPlotItem.addItem(self)
+        self._ParentPlotItem.addItem(self.label)
     
     def removeFromPlotItem(self):
-        self._plotItem.removeItem(self.label)
-        self._plotItem.removeItem(self)
+        self._ParentPlotItem.removeItem(self.label)
+        self._ParentPlotItem.removeItem(self)
     
     def updateGhostImage(self, ID=0, y_cursor=None, x_cursor=None, fontSize=None):
         self.setImage(self.image)
@@ -9425,7 +9424,12 @@ class OddSpinBox(SpinBox):
 class TimestampItem(LabelItem):
     sigEditProperties = Signal(object)
     
-    def __init__(self, SizeY, SizeX, viewRange, secondsPerFrame=1, parent=None):
+    def __init__(
+            self, SizeY, SizeX, viewRange, 
+            secondsPerFrame=1, 
+            parent=None,
+            start_timedelta=None
+        ):
         self._secondsPerFrame = secondsPerFrame
         self._x_pad = 3
         self._y_pad = 2
@@ -9434,6 +9438,9 @@ class TimestampItem(LabelItem):
         self.updateViewRange(viewRange)
         self._highlighted = False
         self._parent = parent
+        if start_timedelta is None:
+            start_timedelta = datetime.timedelta(seconds=0)
+        self._start_timedelta = start_timedelta
         self.clicked = False
         super().__init__(self)
         self.createContextMenu()
@@ -9499,6 +9506,7 @@ class TimestampItem(LabelItem):
             'color': self._color,
             'loc': self._loc,
             'font_size': int(self._font_size[:-2]),
+            'start_timedelta': self._start_timedelta
         }
         return properties
 
@@ -9535,7 +9543,10 @@ class TimestampItem(LabelItem):
             color=(255, 255, 255), 
             font_size='13px', 
             loc='top-left',
+            start_timedelta=None
         ):
+        if start_timedelta is not None:
+            self._start_timedelta = start_timedelta
         self._color = color
         self._loc = loc
         self._font_size = font_size
@@ -9556,10 +9567,28 @@ class TimestampItem(LabelItem):
     def setText(self, frame_i):
         if not isinstance(frame_i, int):
             return
+        
         seconds = frame_i*self._secondsPerFrame
         timedelta = datetime.timedelta(seconds=round(seconds))
+            
+        diff_seconds = (
+            timedelta.total_seconds() 
+            + self._start_timedelta.total_seconds()
+        )
+        if diff_seconds >= 0:
+            timedelta = datetime.timedelta(seconds=round(diff_seconds))
+            text = str(timedelta)
+        else:
+            abs_diff = abs(
+                timedelta.total_seconds() 
+                + self._start_timedelta.total_seconds()
+            )
+            abs_timedelta = datetime.timedelta(seconds=round(abs_diff))
+            text = f'-{abs_timedelta}'
+        
+        # printl(timedelta)
         super().setText(
-            str(timedelta), color=self._color, size=self._font_size
+            text, color=self._color, size=self._font_size
         )
     
     def addToAxis(self, ax):
@@ -9804,6 +9833,143 @@ class RescaleImageJroisGroupbox(QGroupBox):
         }
         return sizes
 
+class WhitelistLineEdit(KeepIDsLineEdit):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def setText(self, IDs):
+        if not isinstance(IDs, set) and not isinstance(IDs, list):
+            raise TypeError('IDs must be a set or list')
+        
+        formatted_text = myutils.format_IDs(IDs)
+        super().setText(formatted_text)
+
+class WhitelistIDsToolbar(ToolBar):
+    sigWhitelistChanged = Signal(list)
+    sigViewOGIDs = Signal(bool)
+    sigWhitelistAccepted = Signal(list)
+    sigAddNewIDs = Signal(bool)
+    sigLoadOGLabs = Signal()
+    sigTrackOGagainstPreviousFrame = Signal(bool)
+    
+    def __init__(self, addNewIDToggleState,*args) -> None:
+        super().__init__(*args)
+
+        whitelistLineEditLabel = QLabel('Whitelist IDs: ')
+        self.addWidget(whitelistLineEditLabel)
+        
+        self.whitelistLineEdit = WhitelistLineEdit(
+            whitelistLineEditLabel, parent=self
+        )
+        self.whitelistLineEdit.sigEnterPressed.connect(self.accept)
+        self.whitelistLineEdit.sigIDsChanged.connect(self.emitWhitelistChanged)
+        self.addWidget(self.whitelistLineEdit)
+
+        # accept button
+        self.acceptButton = self.addButton(':greenTick.svg')
+        self.acceptButton.triggered.connect(self.accept)
+
+        # add a view OG toggle
+        self.viewOGToggle = self.addButton(':eye.svg', checkable=True)
+        viewOGTooltip = (
+            'View the non-whitelisted segmentation mask.\n\n'
+            'You can activate this to add new IDs to the whitelist,\n'
+            'correct tracking errors, etc.'
+        )
+        self.viewOGToggle.setChecked(True)
+        self.viewOGToggle.setToolTip(viewOGTooltip)
+        self.viewOGToggle.setShortcut('Shift+K')
+        key = 'View the non-whitelisted segmentation mask'
+        self.widgetsWithShortcut[key] = self.viewOGToggle
+        
+        self.viewOGToggle.toggled.connect(self.emitViewOGIDs)
+        self.emitViewOGIDs(True)
+
+        # add a Toggle to add new IDs
+        self.addNewIDToggle = QCheckBox(
+            'Automatically add new IDs to whitelist'
+        )
+        self.addNewIDToggle.setChecked(addNewIDToggleState)
+        self.addWidget(self.addNewIDToggle)
+        self.addNewIDToggle.toggled.connect(self.emitAddNewIDs)
+        self.emitAddNewIDs(addNewIDToggleState)
+        
+        self.addSeparator()
+
+        # add a button to load og df
+        self.loadOGButton = self.addButton(':open_file.svg')
+        self.loadOGButton.triggered.connect(self.sigLoadOGLabs.emit)
+        self.loadOGButton.setToolTip(
+            'Select which segmentation mask file to load '
+            'as the non-whitelisted masks'
+        )
+
+        self.TrackOGagainstPreviousFrameButton = self.addButton(':segment.svg')
+        self.TrackOGagainstPreviousFrameButton.triggered.connect(
+            self.sigTrackOGagainstPreviousFrame.emit
+        )
+        self.TrackOGagainstPreviousFrameButton.setToolTip(
+            'Track the non-whitelisted segmentation masks against the previous frame and copy over successfull tacks'
+        )
+
+        self.addSeparator()
+
+        # add an info button
+        self.infoButton = self.addButton(':info.svg')
+        self.infoButton.triggered.connect(self.showInfo)
+        
+        # add a spacer to the toolbar
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.addWidget(spacer)
+
+    def emitWhitelistChanged(self, whitelist):
+        self.sigWhitelistChanged.emit(whitelist)
+
+    def emitViewOGIDs(self, checked):
+        self.sigViewOGIDs.emit(checked)
+    
+    def accept(self):
+        try:
+            whitelist = self.whitelistLineEdit.IDs
+        except AttributeError as e:
+            if "has no attribute 'IDs'" in str(e):
+                whitelist = list()
+        self.viewOGToggle.toggled.disconnect()            
+        self.viewOGToggle.setChecked(False)
+        self.viewOGToggle.toggled.connect(self.emitViewOGIDs)
+        self.sigWhitelistAccepted.emit(whitelist)
+    
+    def emitAddNewIDs(self, checked):
+        self.sigAddNewIDs.emit(checked)
+
+    def showInfo(self):
+        msg = myMessageBox(wrapText=False)
+        txt = html_utils.paragraph("""
+            This function is used to track a subset of segmented objects.<br><br>
+            
+            To add new IDs to the white list, click with left mouse button on the 
+            object to add.<br>
+            You can also write directly into the <code>Whitelist IDs</code> widget<br>
+            and separate the IDs by commas.<br><br>
+            
+            After adding the IDs, click on the "Accept" button to remove the 
+            non-whitelisted objects.<br>
+            Every time you visit a new frame, the non-whitelisted objects will 
+            be removed automatically.<br><br>
+            Use the "Eye" button to view the non-whitelisted segmentation masks.<br>
+            This will allow you to correct tracking errors, add new IDs to the 
+            white list, etc.<br><br>
+            
+            If you previously saved the whitelisted masks, you can load the 
+            non-whitelisted file<br>
+            by clicking on the "Load file" button to restart from where you 
+            left last time.
+        """
+        )
+        msg.information(self, 'White list IDs', txt)
+
+
 class KeySequenceFromText(QKeySequence):
     def __init__(self, text: str):
         super().__init__(text)
@@ -9826,3 +9992,79 @@ def modifierKeyToText(modifierKey: int):
         return 'Meta'
     else:
         return ''
+
+class TimeWidget(QGroupBox):
+    sigValueChanged = Signal(object)
+    
+    def __init__(self, parent=None, orientation='vertical'):
+        super().__init__(parent)
+        
+        mainLayout = QHBoxLayout()
+        
+        if orientation == 'vertical':
+            spinboxesLayout = QVBoxLayout()
+        elif orientation == 'horizontal':
+            spinboxesLayout = QHBoxLayout()
+        else:
+            raise ValueError('orientation must be "vertical" or "horizontal"')
+                
+        self.signCombobox = QComboBox()
+        self.signCombobox.addItems(('+', '-'))
+        self.signCombobox.currentTextChanged.connect(self.emitValueChanged)
+        
+        mainLayout.addWidget(self.signCombobox)
+        
+        self.spinboxesMapper = {}
+        units = ('days', 'hours', 'minutes', 'seconds')
+        for unit in units:
+            layout = QHBoxLayout()
+            spinbox = SpinBox()
+            spinbox.setMinimum(0)
+            label = QLabel(unit)
+            layout.addWidget(spinbox)
+            layout.addWidget(label)
+            spinbox.valueChanged.connect(self.emitValueChanged)
+            self.spinboxesMapper[unit] = spinbox
+            spinboxesLayout.addLayout(layout)
+        
+        mainLayout.addLayout(spinboxesLayout)
+        
+        self.setLayout(mainLayout)
+        mainLayout.setContentsMargins(5, 5, 5, 5)
+    
+    def values(self):
+        values = {}
+        for unit, spinbox in self.spinboxesMapper.items():
+            values[unit] = spinbox.value()
+        
+        signText = self.signCombobox.currentText()
+        return values, sign_int_mapper[signText]
+    
+    def setValuesFromTimedelta(self, timedelta):
+        total_seconds = timedelta.total_seconds()
+        sign = 1 if total_seconds > 0 else -1
+        days = timedelta.days
+        hours, remainder = divmod(timedelta.seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        
+        values = {
+            'days': days, 
+            'hours': hours, 
+            'minutes': minutes, 
+            'seconds': seconds
+        }
+        
+        self.setValues(values, sign=sign)
+    
+    def timedelta(self):
+        values, sign = self.values()
+        return datetime.timedelta(**values)*sign
+    
+    def setValues(self, values, sign=1):
+        signText = '+' if sign > 0 else '-'
+        self.signCombobox.setCurrentText(signText)
+        for unit, value in values.items():
+            values[unit].setValue(value)
+    
+    def emitValueChanged(self, value):
+        self.sigValueChanged.emit(self.values())

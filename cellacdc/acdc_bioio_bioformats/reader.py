@@ -26,7 +26,10 @@ def set_reader(image_filepath, **kwargs):
     return kwargs
 
 class ImageReader:
-    def __init__(self, image_filepath: os.PathLike, qparent=None, **kwargs):
+    def __init__(
+            self, image_filepath: os.PathLike, qparent=None, lazy_load=True, 
+            **kwargs
+        ):
         from bioio import BioImage
         from bioio_base.exceptions import UnsupportedFileFormatError
         
@@ -44,9 +47,24 @@ class ImageReader:
             kwargs = set_reader(image_filepath, **kwargs)
             self._bioioimage = BioImage(image_filepath, **kwargs)
         
+        self._is_lazy_load = lazy_load
+        
+        if lazy_load:
+            return
+        
+        self.img_data = self._bioioimage.data
+        
     def read(self, c=0, z=0, t=0, rescale=False, index=None, series=0):
-        lazy_img = self._bioioimage.get_image_dask_data("YX", T=t, C=c, Z=z)
-        return lazy_img.compute()
+        if self._bioioimage.current_scene_index != series:
+            self._bioioimage.set_scene(series)
+            if not self._is_lazy_load:
+                self.img_data = self._bioioimage.data
+        
+        if self._is_lazy_load:
+            lazy_img = self._bioioimage.get_image_dask_data("YX", T=t, C=c, Z=z)
+            return lazy_img.compute()
+        
+        return self.img_data[t, c, z]
     
     def __enter__(self):
         return self

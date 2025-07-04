@@ -51,7 +51,10 @@ class Model:
         return labels
         
     def _segment_2D_image(self, img: np.ndarray, grayscale_img_shape):
-        img = (255 * ((img - img.min()) / img.ptp())).astype(np.uint8)
+        try:
+            img = (255 * ((img - img.min()) / img.ptp())).astype(np.uint8)
+        except AttributeError as e:
+            img = (255 * ((img - img.min()) / np.ptp(img))).astype(np.uint8)
         tensor_img = (
             self._transforms(img)
             .to(device=self.torch_device, dtype=torch.float32)

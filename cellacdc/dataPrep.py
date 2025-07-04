@@ -144,8 +144,24 @@ class dataPrepWin(QMainWindow):
 
     @exception_handler
     def keyPressEvent(self, event):
-        if event.key() == Qt.Key_Q:
+        if event.key() == Qt.Key_Q and self.debug:
             posData = self.data[self.pos_i]
+            posData.loadDataPrepFreeRoi()
+            printl(posData.dataPrepFreeRoiLocalMask.shape)
+            printl(self.freeRoiItem.bbox())
+            printl(self.freeRoiItem.mask().shape)
+            from cellacdc.plot import imshow
+            
+            imshow(
+                posData.dataPrepFreeRoiLocalMask, self.freeRoiItem.mask()
+            )
+            cropROI = posData.cropROIs[0]
+            x0, y0 = [int(round(c)) for c in cropROI.pos()]
+            w, h = [int(round(c)) for c in cropROI.size()]
+            x1, y1 = x0+w, y0+h
+            
+            printl(x0, y0)
+            
             # printl(posData.all_npz_paths)
             # printl(posData.tif_paths)
             # for r, roi in enumerate(posData.bkgrROIs):
@@ -171,6 +187,8 @@ class dataPrepWin(QMainWindow):
             self.zSliceScrollBar.triggerAction(
                 QAbstractSlider.SliderAction.SliderSingleStepSub
             )
+        elif event.key() == Qt.Key_H:
+            self.ax1.autoRange()
 
     def gui_createActions(self):
         # File actions
@@ -265,6 +283,20 @@ class dataPrepWin(QMainWindow):
         self.cropTaction.setEnabled(False)
         self.cropTaction.setCheckable(True)
         
+        self.freeRoiAction = QAction(
+            QIcon(':drawFreeRoi.svg'), "Draw a freehand ROI", self
+        )
+        self.freeRoiAction.setToolTip(
+            'Draw a freehand ROI.\n\n'
+            'To remove a previously drawn ROI, activate the tool, '
+            'right-click on the ROI, and select "Remove free-hand ROI".\n\n'
+            'When running segmentation later in the segmentation module, '
+            'the objects outside of this ROI will be automatically removed '
+            'from the segmentation masks.\n\n'
+        )
+        self.freeRoiAction.setEnabled(False)
+        self.freeRoiAction.setCheckable(True)
+        
         self.saveAction = QAction(
             QIcon(":file-save.svg"), "Crop and save", self)
         self.saveAction.setEnabled(False)
@@ -280,6 +312,8 @@ class dataPrepWin(QMainWindow):
 
     def gui_createMenuBar(self):
         menuBar = self.menuBar()
+        menuBar.setNativeMenuBar(False)
+        
         # File menu
         fileMenu = QMenu("&File", self)
         menuBar.addMenu(fileMenu)
@@ -308,12 +342,18 @@ class dataPrepWin(QMainWindow):
         fileToolBar.addAction(self.infoAction)
         fileToolBar.addAction(self.openFolderAction)
         fileToolBar.addAction(self.showInExplorerAction)
-        fileToolBar.addAction(self.startAction)
-        fileToolBar.addAction(self.cropAction)
-        fileToolBar.addAction(self.cropZaction)
-        fileToolBar.addAction(self.cropTaction)
         fileToolBar.addAction(self.saveAction)
-
+        
+        editToolbar = self.addToolBar("Edit")
+        # fileToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
+        editToolbar.setMovable(False)
+        
+        editToolbar.addAction(self.startAction)
+        editToolbar.addAction(self.cropAction)
+        editToolbar.addAction(self.cropZaction)
+        editToolbar.addAction(self.cropTaction)
+        editToolbar.addAction(self.freeRoiAction)
+        
         navigateToolbar = QToolBar("Navigate", self)
         # navigateToolbar.setIconSize(QSize(toolbarSize, toolbarSize))
         self.addToolBar(navigateToolbar)
@@ -355,6 +395,7 @@ class dataPrepWin(QMainWindow):
         self.saveAction.triggered.connect(self.saveActionTriggered)
         self.cropZaction.toggled.connect(self.openCropZtool)
         self.cropTaction.toggled.connect(self.openCropTtool)
+        self.freeRoiAction.toggled.connect(self.freeRoiActionToggled)
         self.startAction.triggered.connect(self.prepData)
         self.interpAction.triggered.connect(self.interp_z)
         self.ZbackAction.triggered.connect(self.useSameZ_fromHereBack)
@@ -408,9 +449,24 @@ class dataPrepWin(QMainWindow):
         self.ax1.clear()
         # self.frameLabel.setText(' ')
 
+    def removeFreeRoi(self):
+        self.freeRoiItem.clear()
+        self.freeRoiMask = None
+        posData = self.data[self.pos_i]
+        posData.removeDataPrepFreeRoi(logger_func=self.logger.info)
+    
+    def showRemoveFreeRoiContextMenu(self, event):
+        self.removeFreeRoiMenu = QMenu(self)
+        action = QAction('Remove free-hand ROI')
+        action.triggered.connect(self.removeFreeRoi)
+        self.removeFreeRoiMenu.addAction(action)
+        self.removeFreeRoiMenu.exec_(event.screenPos())
+    
     def gui_connectGraphicsEvents(self):
         self.img.hoverEvent = self.gui_hoverEventImg
         self.img.mousePressEvent = self.gui_mousePressEventImg
+        self.img.mouseMoveEvent = self.gui_mouseDragEventImg
+        self.img.mouseReleaseEvent = self.gui_mouseReleaseEventImg
 
     def gui_createImgWidgets(self):
         self.img_Widglayout = QGridLayout()
@@ -503,6 +559,7 @@ class dataPrepWin(QMainWindow):
         self.setImageNameText()
         self.update_img()
         self.addAndConnectCropROIs()
+        self.updateFreeRoiItem()
         self.updateBkgrROIs()
         self.saveBkgrROIs(self.data[self.pos_i])
     
@@ -692,6 +749,7 @@ class dataPrepWin(QMainWindow):
         )
         self.startFrameIdxCrop = 0
         self.endFrameIdxCrop = None
+        self.isFreeRoiDrag = False
 
     def navigateScrollbarValueChanged(self, value):
         if self.num_pos > 1:
@@ -714,7 +772,7 @@ class dataPrepWin(QMainWindow):
             croppedData = croppedData[:, y0:y0+h, x0:x0+w]
         elif data.ndim == 2:
             croppedData = croppedData[y0:y0+h, x0:x0+w]
-
+        
         SizeZ = posData.SizeZ
 
         if posData.SizeZ > 1:
@@ -861,11 +919,22 @@ class dataPrepWin(QMainWindow):
         right_click = event.button() == Qt.MouseButton.RightButton
         left_click = event.button() == Qt.MouseButton.LeftButton
 
-        if left_click:
+        freeRoiActive = self.freeRoiAction.isChecked()
+        dragImg = left_click and not freeRoiActive
+        
+        if dragImg:
             pg.ImageItem.mousePressEvent(self.img, event)
+            event.ignore()
+            return
 
         x, y = event.pos().x(), event.pos().y()
-
+        xdata, ydata = int(x), int(y)
+        
+        if freeRoiActive and self.freeRoiMask is not None and right_click:
+            if self.isClickOnFreeRoi(xdata, ydata):
+                self.showRemoveFreeRoiContextMenu(event)
+                return
+        
         handleSize = 7
         # Check if right click on ROI
         for r, roi in enumerate(posData.bkgrROIs):
@@ -881,9 +950,14 @@ class dataPrepWin(QMainWindow):
             if raiseContextMenuRoi:
                 self.gui_raiseContextMenuRoi(roi, event)
                 return
-            elif dragRoi:
+            elif dragRoi and not freeRoiActive:
                 event.ignore()
                 return
+        
+        if left_click and freeRoiActive:
+            self.isFreeRoiDrag = True
+            self.freeRoiItem.clear()
+            return
         
         if not hasattr(posData, 'cropROIs'):
             return
@@ -906,6 +980,56 @@ class dataPrepWin(QMainWindow):
             raiseContextMenuRoi = right_click and clickedOnROI and c>0
             if raiseContextMenuRoi:
                 self.gui_raiseContextMenuRoi(cropROI, event, is_bkgr_ROI=False)
+    
+    def gui_mouseDragEventImg(self, event):
+        posData = self.data[self.pos_i]
+        x, y = event.pos().x(), event.pos().y()
+        Y, X = posData.img_data.shape[-2:]
+        xdata, ydata = int(x), int(y)
+        if not myutils.is_in_bounds(xdata, ydata, X, Y):
+            return
+        
+        if self.isFreeRoiDrag:
+            self.freeRoiItem.addPoint(xdata, ydata)
+    
+    def saveFreeRoi(self):
+        posData = self.data[self.pos_i]
+        xx, yy = self.freeRoiItem.getData()
+        self.freeRoiYXorigin = (yy.min(), xx.min())
+        self.isFreeRoiDrag = False
+        self.freeRoiMask = posData.saveDataPrepFreeRoi(
+            self.freeRoiItem, logger_func=self.logger.info
+        )
+        self.dataPrepFreeRoiSaved()
+    
+    def gui_mouseReleaseEventImg(self, event):
+        posData = self.data[self.pos_i]
+        if self.isFreeRoiDrag:
+            self.freeRoiItem.closeCurve()
+            self.saveFreeRoi()
+    
+    def dataPrepFreeRoiSaved(self):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(
+            'Free-hand ROI saved.<br><br>'
+            'When you segment the data, the objects outside of this ROI will be '
+            'automatically removed from the segmentation masks.<br><br>'
+            'To remove the free-hand ROI, right-click on it and select '
+            '"Remove free-hand ROI".<br><br>'
+            'See you at the next one!'
+        )
+        msg.information(self, 'Free-hand ROI saved', txt)
+    
+    def isClickOnFreeRoi(self, xdata, ydata):
+        y0, x0 = self.freeRoiYXorigin
+        local_x = xdata - x0
+        local_y = ydata - y0
+        if local_x < 0 or local_x >= self.freeRoiMask.shape[1]:
+            return False
+        if local_y < 0 or local_y >= self.freeRoiMask.shape[0]:
+            return False
+        
+        return self.freeRoiMask[local_y, local_x]
     
     def getAllChannelsPaths(self, posData):
         _zip = zip(posData.tif_paths, posData.all_npz_paths)
@@ -991,6 +1115,7 @@ class dataPrepWin(QMainWindow):
                 file.endswith('bkgrRoiData.npz')
                 or file.endswith('dataPrep_bkgrROIs.json')
                 or file.endswith('segmInfo.csv')
+                or file.endswith('dataPrepFreeRoi.npz')
             )
             is_metadata_file = file.endswith('metadata.csv')
             if not copy_file and not is_metadata_file:
@@ -1364,7 +1489,37 @@ class dataPrepWin(QMainWindow):
         msg = widgets.myMessageBox(wrapText=False)
         msg.information(self, 'Preview cropped frames', txt)
 
-    def getCroppedData(self, askCropping=True):
+    def addFreeRoiItem(self):
+        if self.freeRoiItem is not None:
+            return
+        
+        self.freeRoiItem = widgets.PlotCurveItem(
+            pen=pg.mkPen(color='r', width=2)
+        )
+        self.ax1.addItem(self.freeRoiItem)
+        self.updateFreeRoiItem()
+    
+    def updateFreeRoiItem(self):
+        posData = self.data[self.pos_i]
+        for point in posData.dataPrepFreeRoiPoints:
+            self.freeRoiItem.addPoint(*point)
+
+        if len(posData.dataPrepFreeRoiPoints) == 0:
+            self.freeRoiMask = None
+            return
+        
+        xx, yy = self.freeRoiItem.getData()
+        self.freeRoiYXorigin = (yy.min(), xx.min())
+        self.freeRoiMask = self.freeRoiItem.mask()
+        
+    def freeRoiActionToggled(self, checked):
+        if checked:
+            self.hideROIs()
+            self.addFreeRoiItem()
+        else:
+            self.reAddROIs()
+            
+    def getCroppedData(self, askCropping=True, doValidateFreeRoi=False):
         for p, posData in enumerate(self.data):
             self.saveBkgrROIs(posData)
 
@@ -1395,6 +1550,7 @@ class dataPrepWin(QMainWindow):
                 self.setEnabledCropActions(True)
                 txt = ('Cropping cancelled.')
                 self.titleLabel.setText(txt, color='r')
+                self.logger.info(txt)
                 yield None
             elif not isCropped:
                 self.setEnabledCropActions(True)
@@ -1403,10 +1559,127 @@ class dataPrepWin(QMainWindow):
                     'Process stopped.'
                 )
                 self.titleLabel.setText(txt, color='r')
-                printl(txt)
+                self.logger.info(txt)
                 yield 'continue'
-            else:
+            elif not doValidateFreeRoi:
                 yield croppedShapes, posData, SizeZ, doCrop
+            else:
+                proceed = self.validateFreeRoi(posData, warn=p==0)
+                if not proceed:
+                    self.setEnabledCropActions(True)
+                    txt = ('Cropping cancelled because overlaps with free roi.')
+                    self.titleLabel.setText(txt, color='r')
+                    self.logger.info(txt)
+                    yield None
+                else:
+                    yield croppedShapes, posData, SizeZ, doCrop
+    
+    def validateFreeRoi(self, posData, warn=True):
+        posData.loadDataPrepFreeRoi(logger_func=self.logger.info)
+        if len(posData.dataPrepFreeRoiPoints) == 0:
+            return True
+        
+        if len(posData.cropROIs) > 1:
+            if warn:
+                proceed = self.warnMultiCropsWithFreeRoi()
+            else:
+                proceed = True
+                
+            if proceed:
+                posData.removeDataPrepFreeRoi()
+                self.freeRoiItem.clear()
+                self.freeRoiMask = None
+            return proceed 
+        
+        cropROI = posData.cropROIs[0]
+        x0, y0 = [int(round(c)) for c in cropROI.pos()]
+        w, h = [int(round(c)) for c in cropROI.size()]
+        x1, y1 = x0+w, y0+h
+        
+        y0f, x0f, y1f, x1f = posData.dataPrepFreeRoiBbox
+        
+        is_free_roi_in_crop_bounds = (
+            x0f >= x0 and x1f <= x1 and y0f >= y0 and y1f <= y1
+        )        
+        if not is_free_roi_in_crop_bounds and warn:
+            proceed = self.warnFreeRoiOverlapsWithCropRoi()
+        else:
+            proceed = True
+
+        if not proceed:
+            return False
+        
+        # Adjust free-hand ROI according to crop ROI
+        local_mask = posData.dataPrepFreeRoiLocalMask
+        crop_x0, crop_y0, crop_x1, crop_y1 = None, None, None, None
+        if x0f < x0:
+            crop_x0 = x0 - x0f
+            x0f = 0
+        else:
+            x0f = x0f - x0
+        
+        if y0f < y0:
+            crop_y0 = y0 - y0f
+            y0f = 0
+        else:
+            y0f = y0f - y0
+            
+        if x1f > x1:
+            crop_x1 = x1 - x1f
+            x1f = w
+        else:
+            x1f = x1f - x0
+        
+        if y1f > y1:
+            crop_y1 = y1 - y1f
+            y1f = h
+        else:
+            y1f = y1f - y0
+
+        local_mask = posData.dataPrepFreeRoiLocalMask[
+            crop_y0:crop_y1, crop_x0:crop_x1
+        ]
+        bbox = (y0f, x0f, y1f, x1f)
+        posData.saveDataPrepFreeRoi(
+            self.freeRoiItem, logger_func=self.logger.info,
+            bbox=bbox, local_mask=local_mask
+        )
+    
+        return proceed
+    
+    def warnFreeRoiOverlapsWithCropRoi(self):
+        txt = html_utils.paragraph(f"""
+            The crop ROI is smaller than the free-hand ROI.<br><br>
+            Are you sure you want to proceed with cropping?
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        noButton, yesButton = msg.warning(
+            self, 'Crop ROI is smaller than free-hand ROI', txt,
+            buttonsTexts=(
+                'No, stop cropping process', 
+                'Yes, continue with cropping'
+            ),
+        )
+        return msg.clickedButton == yesButton
+    
+    def warnMultiCropsWithFreeRoi(self):
+        txt = html_utils.paragraph(f"""
+            You are about to create multiple crops and you also have a 
+            free-hand ROI.<br><br>
+            If you continue, the free-hand ROI will be removed. You can then 
+            create a new free-hand ROI for each cropped position 
+            individually.<br><br>
+            Do you want to continue?
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        noButton, yesButton = msg.warning(
+            self, 'Multiple crops with free-hand ROI', txt,
+            buttonsTexts=(
+                'No, stop cropping process', 
+                'Yes, continue with cropping'
+            ),
+        )
+        return msg.clickedButton == yesButton
     
     def applyCropZslices(self, low_z, high_z):
         self.logger.info(
@@ -1462,7 +1735,9 @@ class dataPrepWin(QMainWindow):
     @exception_handler
     def cropAndSave(self):
         cropPaths = {}
-        for cropInfo in self.getCroppedData(askCropping=True):
+        for cropInfo in self.getCroppedData(
+                askCropping=True, doValidateFreeRoi=True
+            ):
             if cropInfo is None:
                 # Process cancelled by the user
                 return
@@ -1477,7 +1752,10 @@ class dataPrepWin(QMainWindow):
                 masterPath = posData.pos_path
             
             cropPaths[masterPath] = len(croppedShapes)
-            
+        
+        if not cropPaths:
+            return
+        
         win = apps.DataPrepSubCropsPathsDialog(cropPaths=cropPaths)
         win.exec_()
         if win.cancel:
@@ -1556,6 +1834,7 @@ class dataPrepWin(QMainWindow):
         self.cropZaction.setEnabled(enabled)
         self.saveAction.setEnabled(enabled)
         self.cropTaction.setEnabled(enabled)
+        self.freeRoiAction.setEnabled(enabled)
         
         if not hasattr(self, 'data'):
             return
@@ -1596,6 +1875,11 @@ class dataPrepWin(QMainWindow):
             roi.removable = False
 
             self.removeAllHandles(roi)
+        
+        self.addCropRoiActon.setDisabled(True)
+        self.addBkrgRoiActon.setDisabled(True)
+        self.cropTaction.setDisabled(True)
+        self.freeRoiAction.setDisabled(True)
         
         self.logger.info('ROIs disconnected.')
 
@@ -1704,6 +1988,7 @@ class dataPrepWin(QMainWindow):
                     loadBkgrROIs=True,
                     load_last_tracked_i=False,
                     load_metadata=True,
+                    load_dataprep_free_roi=True,
                     getTifPath=True
                 )
 
@@ -2099,6 +2384,30 @@ class dataPrepWin(QMainWindow):
         posData.cropROIs[0].setPos([0, 0])
         posData.cropROIs[0].setSize([w, h])
 
+    def hideROIs(self):
+        posData = self.data[self.pos_i]
+        if not hasattr(posData, 'cropROIs'):
+            return
+        
+        if posData.cropROIs is None:
+            return
+        
+        for cropROI in posData.cropROIs:
+            self.ax1.removeItem(cropROI.label)
+            self.ax1.removeItem(cropROI)
+    
+    def reAddROIs(self):
+        posData = self.data[self.pos_i]
+        if not hasattr(posData, 'cropROIs'):
+            return
+        
+        if posData.cropROIs is None:
+            return
+        
+        for cropROI in posData.cropROIs:
+            self.ax1.addItem(cropROI.label)
+            self.ax1.addItem(cropROI)
+    
     def addROIs(self):
         Y, X = self.img.image.shape
 
@@ -2160,6 +2469,7 @@ class dataPrepWin(QMainWindow):
                 for bkgrROI in posData.bkgrROIs:
                     self.setBkgrROIprops(bkgrROI)
 
+        self.addFreeRoiItem()
         self.updateBkgrROIs()
 
     def getDefaultBkgrROI(self):
@@ -2575,6 +2885,7 @@ class dataPrepWin(QMainWindow):
         self.statusbar.showMessage(txt)
 
     def initLoading(self):
+        self.freeRoiAction.setChecked(False)
         self.progressWin = None
         self.isDataLoaded = False
         # Remove all items from a previous session if open is pressed again
@@ -2584,6 +2895,9 @@ class dataPrepWin(QMainWindow):
         self.setCenterAlignmentTitle()
         self.openFolderAction.setEnabled(False)
         self.setEnabledCropActions(False)
+        
+        self.freeRoiItem = None
+        self.freeRoiMask = None
 
     def showAbout(self):
         self.aboutWin = about.QDialogAbout(parent=self)

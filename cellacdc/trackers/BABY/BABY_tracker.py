@@ -25,19 +25,18 @@ class tracker:
     def _preprocess(self, image, swap_YX_axes_to_XY):
         if image.ndim == 2:
             image = image[np.newaxis]
+
         
         image = myutils.to_uint16(image)
         
         # BABY requires z-slices as last dimension while Cell-ACDC takes 
         # Z, Y, X input
         if swap_YX_axes_to_XY:
-            source_axes = (0, 1, 2)
             dst_axes = (2, 1, 0)
         else:
-            source_axes = (0, 1, 2)
             dst_axes = (1, 2, 0)        
         
-        image = np.moveaxis(image, source_axes, dst_axes)
+        image = image.transpose(dst_axes)
         
         return image
     

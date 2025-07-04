@@ -388,6 +388,7 @@ class mainWin(QMainWindow):
 
     def createMenuBar(self):
         menuBar = self.menuBar()
+        menuBar.setNativeMenuBar(False)
 
         self.recentPathsMenu = QMenu("&Recent paths", self)
         # On macOS an empty menu would not appear --> add dummy action
@@ -1666,14 +1667,15 @@ class mainWin(QMainWindow):
         restructButton = QPushButton(
             QIcon(':folders.svg'), ' Re-structure image files ', msg
         )
+        buttons = [useBioFormatsButton, restructButton]
+        if is_mac:
+            useFijiMacroButton = QPushButton(
+                QIcon(':fiji-logo.svg'), ' Use Fiji Macro ', msg
+            )
+            buttons.insert(1, useFijiMacroButton)
         msg.question(
             self, 'How to structure files', txt, 
-            buttonsTexts=(
-                'Cancel', 
-                useBioFormatsButton, 
-                # useAICSImageIO, 
-                restructButton
-            )
+            buttonsTexts=('Cancel', *buttons)
         )
         if msg.cancel:
             self.logger.info('Creating data structure process aborted by the user.')
@@ -1681,8 +1683,11 @@ class mainWin(QMainWindow):
             return
         
         useBioFormats = msg.clickedButton == useBioFormatsButton
-        if self.dataStructButton.isEnabled() and useBioFormats:
-            if is_win:
+        useFijiMacro = False
+        if is_mac:
+            useFijiMacro = msg.clickedButton == useFijiMacroButton
+        if self.dataStructButton.isEnabled():
+            if useBioFormats:
                 self.dataStructWin = dataStruct.createDataStructWin(
                     parent=self, version=self._version
                 )
@@ -1701,13 +1706,9 @@ class mainWin(QMainWindow):
                 self.dataStructWin.main()
                 if self.dataStructWin.bioformats_backend != 'python-bioformats': 
                     self.restoreDefaultButtons()
-            elif is_mac:
-                self.dataStructWin = (
-                    dataStruct.InitFijiMacro(self)
-                )
-                self.dataStructWin.run()
-                self.restoreDefaultButtons()
-        elif msg.clickedButton == restructButton:
+            elif useFijiMacro:
+                self.runFijiMacroWorkflow()
+        if msg.clickedButton == restructButton:
             self.progressWin = apps.QDialogWorkerProgress(
                 title='Re-structure image files log', parent=self,
                 pbarDesc='Re-structuring image files running...'
@@ -1721,6 +1722,27 @@ class mainWin(QMainWindow):
                 self.progressWin.close()
                 self.restoreDefaultButtons()
                 self.logger.info('Re-structuring files NOT completed.')
+    
+    def runFijiMacroWorkflow(self):
+        self.progressWin = apps.QDialogWorkerProgress(
+            title='Initialising Fiji', 
+            parent=self,
+            pbarDesc='Initialising Fiji...'
+        )
+        self.progressWin.show(self.app)
+        self.progressWin.mainPbar.setMaximum(0)
+        
+        QTimer.singleShot(100, self._runFijiMacroWindow)
+    
+    def _runFijiMacroWindow(self):
+        self.dataStructWin = (
+            dataStruct.InitFijiMacro(self)
+        )
+        self.dataStructWin.run()
+        self.progressWin.workerFinished = True
+        self.progressWin.close()
+        self.restoreDefaultButtons()
+        self.progressWin = None
     
     def progressWinClosed(self):
         self.progressWin = None

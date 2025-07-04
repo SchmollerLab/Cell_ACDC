@@ -9,6 +9,7 @@ external_pkgs
 !cellacdc/resources/figures
 .vs
 test.py
+.ref_graphs/
 
 env_dependencies_issues.txt
 not_installed_requirements.txt
@@ -49,6 +50,7 @@ cellacdc/.qt_for_python
 cellacdc/metrics/*
 !cellacdc/metrics/CV.py
 !cellacdc/metrics/combine_metrics_example.py
+!cellacdc/metrics/channel_indipendent_metric_example.py
 cellacdc/models/beno
 cellacdc/models/Simone_cellpose
 cellacdc/timon_tests

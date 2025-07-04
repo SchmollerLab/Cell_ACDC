@@ -297,6 +297,7 @@ resources_path = os.path.join(cellacdc_path, 'resources_light.qrc')
 models_list_file_path = os.path.join(settings_folderpath, 'custom_models_paths.ini')
 recentPaths_path = os.path.join(settings_folderpath, 'recentPaths.csv')
 preproc_recipes_path = os.path.join(settings_folderpath, 'preprocessing_recipes')
+segm_recipes_path = os.path.join(settings_folderpath, 'segmentation_recipes')
 user_manual_url = 'https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf'
 github_home_url = 'https://github.com/SchmollerLab/Cell_ACDC'
 data_structure_docs_url = 'https://cell-acdc.readthedocs.io/en/latest/data-structure.html'
@@ -489,15 +490,12 @@ def exception_handler_cli(func):
     return inner_function
 
 def exception_handler(func):
+    """Decorator to handle class methods exceptions and show a critical error message.
+    """
     @wraps(func)
     def inner_function(self, *args, **kwargs):
         try:
-            if func.__code__.co_argcount==1 and func.__defaults__ is None:
-                result = func(self)
-            elif func.__code__.co_argcount>1 and func.__defaults__ is None:
-                result = func(self, *args)
-            else:
-                result = func(self, *args, **kwargs)
+            result = func(self, *args, **kwargs)
         except Exception as e:
             try:
                 if self.progressWin is not None:
@@ -564,9 +562,9 @@ error_down_str = f'\n{error_down_str}'
 pytorch_commands = {
     'Windows': {
         'Conda': {
-            'CPU': 'conda install pytorch torchvision cpuonly -c pytorch',
-            'CUDA 11.8 (NVIDIA GPU)': 'conda install pytorch torchvision pytorch-cuda=11.8 -c pytorch -c nvidia',
-            'CUDA 12.1 (NVIDIA GPU)': 'conda install pytorch torchvision pytorch-cuda=12.1 -c pytorch -c nvidia'
+            'CPU': 'conda install pytorch torchvision cpuonly -c conda-forge',
+            'CUDA 11.8 (NVIDIA GPU)': 'conda install pytorch torchvision pytorch-cuda=11.8 -c conda-forge -c nvidia',
+            'CUDA 12.1 (NVIDIA GPU)': 'conda install pytorch torchvision pytorch-cuda=12.1 -c conda-forge -c nvidia'
         },
         'Pip': {
             'CPU': 'python -m pip install torch torchvision',
@@ -576,7 +574,7 @@ pytorch_commands = {
     },
     'Mac': {
         'Conda': {
-            'CPU': 'conda install pytorch torchvision cpuonly -c pytorch',
+            'CPU': 'conda install pytorch torchvision cpuonly -c conda-forge',
             'CUDA 11.8 (NVIDIA GPU)': '[WARNING]: CUDA is not available on MacOS',
             'CUDA 12.1 (NVIDIA GPU)': '[WARNING]: CUDA is not available on MacOS'
         },
@@ -588,9 +586,9 @@ pytorch_commands = {
     },
     'Linux': {
         'Conda': {
-            'CPU': 'conda install pytorch torchvision cpuonly -c pytorch',
-            'CUDA 11.8 (NVIDIA GPU)': 'conda install pytorch torchvision pytorch-cuda=11.8 -c pytorch -c nvidia',
-            'CUDA 12.1 (NVIDIA GPU)': 'conda install pytorch torchvision pytorch-cuda=12.1 -c pytorch -c nvidia'
+            'CPU': 'conda install pytorch torchvision cpuonly -c conda-forge',
+            'CUDA 11.8 (NVIDIA GPU)': 'conda install pytorch torchvision pytorch-cuda=11.8 -c conda-forge -c nvidia',
+            'CUDA 12.1 (NVIDIA GPU)': 'conda install pytorch torchvision pytorch-cuda=12.1 -c conda-forge -c nvidia'
         },
         'Pip': {
             'CPU': 'pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cpu',

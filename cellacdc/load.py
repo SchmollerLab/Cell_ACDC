@@ -12,7 +12,6 @@ from math import isnan
 import xml.etree.ElementTree as ET
 from tqdm import tqdm
 import numpy as np
-import h5py
 import pandas as pd
 import skimage.filters
 from datetime import datetime
@@ -20,6 +19,7 @@ from tifffile import TiffFile
 import tifffile
 import zipfile
 from natsort import natsorted
+import time
 
 import skimage
 import skimage.io
@@ -54,6 +54,8 @@ from . import tooltips_rst_filepath
 from . import cca_functions
 from . import sorted_cols
 from . import io
+from . import core
+from . import whitelist
 
 acdc_df_bool_cols = [
     'is_cell_dead',
@@ -292,12 +294,12 @@ def save_to_h5(dst_filepath, data):
     tempFilepath = os.path.join(tempDir, filename)
     chunks = [1]*data.ndim
     chunks[-2:] = data.shape[-2:]
-    h5f = h5py.File(tempFilepath, 'w')
-    dataset = h5f.create_dataset(
-        'data', data.shape, dtype=data.dtype,
-        chunks=chunks, shuffle=False
-    )
-    dataset[:] = data
+    with h5py.File(tempFilepath, 'w') as h5f:
+        dataset = h5f.create_dataset(
+            'data', data.shape, dtype=data.dtype,
+            chunks=chunks, shuffle=False
+        )
+        dataset[:] = data
     shutil.move(tempFilepath, dst_filepath)
     shutil.rmtree(tempDir)
 
@@ -343,6 +345,7 @@ def load_metadata_df(images_path):
         if not file.endswith('metadata.csv'):
             continue
         filepath = os.path.join(images_path, file)
+        parse_metadata_csv_file(filepath)
         return pd.read_csv(filepath).set_index('Description')
 
 def _add_will_divide_column(acdc_df):
@@ -896,12 +899,12 @@ def imread(path):
 
 def load_image_file(filepath):
     if filepath.endswith('.h5'):
-        h5f = h5py.File(filepath, 'r')
-        img_data = h5f['data']
+        with h5py.File(filepath, 'r') as h5f:
+            img_data = h5f['data'][()]
     elif filepath.endswith('.npz'):
-        archive = np.load(filepath)
-        files = archive.files
-        img_data = archive[files[0]]
+        with np.load(filepath) as archive:
+            files = archive.files
+            img_data = archive[files[0]]
     elif filepath.endswith('.npy'):
         img_data = np.load(filepath)
     else:
@@ -1033,11 +1036,34 @@ def pd_bool_to_int(acdc_df, colsToCast=None, csv_path=None, inplace=True):
         acdc_df.to_csv(csv_path)
     return acdc_df
 
+def parse_metadata_csv_file(csv_filepath):
+    with open(csv_filepath, 'r') as file:
+        txt = file.read()
+    
+    lines = txt.split('\n')
+    for l, line in enumerate(lines.copy()):
+        is_channel_name_line = re.search(r'channel_\d+_name', line)
+        if line.startswith('basename') or is_channel_name_line:
+            parts = line.split(',')
+            if len(parts) == 2:
+                continue
+            
+            if parts[1].startswith('"') and parts[-1].endswith('"'):
+                continue
+            
+            quoted_value = f'"{"".join(parts[1:])}"'
+            parsed_line = f'{parts[0]},{quoted_value}'
+            lines[l] = parsed_line
+    
+    with open(csv_filepath, 'w') as file:
+        file.write('\n'.join(lines))
+
 def get_posData_metadata(images_path, basename):
     # First check if metadata.csv already has the channel names
     for file in myutils.listdir(images_path):
         if file.endswith('metadata.csv'):
             metadata_csv_path = os.path.join(images_path, file)
+            parse_metadata_csv_file(metadata_csv_path)
             df_metadata = pd.read_csv(metadata_csv_path).set_index('Description')
             break
     else:
@@ -1076,7 +1102,7 @@ def is_bkgrROIs_present(images_path):
     return False
 
 class loadData:
-    def __init__(self, imgPath, user_ch_name, relPathDepth=3, QParent=None):
+    def __init__(self, imgPath, user_ch_name, relPathDepth=3, QParent=None, log_func=None):
         self.fluo_data_dict = {}
         self.fluo_bkgrData_dict = {}
         self.bkgrROIs = []
@@ -1113,7 +1139,10 @@ class loadData:
                     self.non_aligned_ext = '.h5'
                     break
         self.tracked_lost_centroids = None
-    
+        if not hasattr(self, 'whitelist'):
+            self.whitelist = None
+        self.log_func = log_func
+
     def attempFixBasenameBug(self):
         r'''Attempt removing _s(\d+)_ from filenames if not present in basename
         
@@ -1130,6 +1159,7 @@ class loadData:
             else:
                 return
             
+            parse_metadata_csv_file(metadata_csv_path)
             df_metadata = pd.read_csv(metadata_csv_path).set_index('Description')
             try:
                 basename = df_metadata.at['basename', 'values']
@@ -1198,6 +1228,7 @@ class loadData:
         if not os.path.exists(csv_path):
             self.last_md_df = None
         else:
+            parse_metadata_csv_file(csv_path)
             self.last_md_df = pd.read_csv(csv_path).set_index('Description')
 
     def saveLastEntriesMetadata(self):
@@ -1438,10 +1469,12 @@ class loadData:
             load_customAnnot=False,
             load_customCombineMetrics=False,
             load_manual_bkgr_lab=False,
+            load_dataprep_free_roi=False,
             getTifPath=False,
             end_filename_segm='',
             new_endname='',
-            labelBoolSegm=None
+            labelBoolSegm=None,
+            load_whitelistIDs=False,
         ):
 
         self.segmFound = False if load_segm_data else None
@@ -1457,6 +1490,7 @@ class loadData:
         self.TifPathFound = False if getTifPath else None
         self.customAnnotFound = False if load_customAnnot else None
         self.combineMetricsFound = False if load_customCombineMetrics else None
+        self.dataPrepFreeRoiPoints = []
         self.labelBoolSegm = labelBoolSegm
         self.bkgrDataExists = False
         ls = myutils.listdir(self.images_path)
@@ -1475,6 +1509,9 @@ class loadData:
         if not hasattr(self, 'basename'):
             self.getBasenameAndChNames()
 
+        dataPrepFreeRoiPath = self.dataPrepFreeRoiPath()
+        dataPrepFreeRoiFilename = os.path.basename(dataPrepFreeRoiPath)
+        
         for file in ls:
             filePath = os.path.join(self.images_path, file)
             filename, segmExt = os.path.splitext(file)
@@ -1508,6 +1545,9 @@ class loadData:
                 is_acdc_df_file = file.endswith('acdc_output.csv')
 
                 is_acdc_df_file = file == linked_acdc_filename
+            
+            if load_dataprep_free_roi and file == dataPrepFreeRoiFilename:
+                self.loadDataPrepFreeRoi()
             
             if load_segm_data and is_segm_file and not create_new_segm:
                 self.segmFound = True
@@ -1584,6 +1624,7 @@ class loadData:
             elif loadMetadata:
                 self.metadataFound = True
                 remove_duplicates_file(filePath)
+                parse_metadata_csv_file(filePath)
                 self.metadata_df = pd.read_csv(filePath).set_index('Description')
             elif load_customAnnot and file.endswith('custom_annot_params.json'):
                 self.customAnnotFound = True
@@ -1620,6 +1661,9 @@ class loadData:
         self.getCustomAnnotatedIDs()
         self.setNotFoundData()
         self.checkAndFixZsliceSegmInfo()
+
+        if load_whitelistIDs:
+            self.loadWhitelist()
     
     def checkAndFixZsliceSegmInfo(self):
         if not hasattr(self, 'segmInfo_df'):
@@ -1666,6 +1710,90 @@ class loadData:
             self.last_tracked_i = max(self.acdc_df.index.get_level_values(0))
         if return_df:
             return acdc_df
+    
+    def dataPrepFreeRoiPath(self):
+        dataPrepFreeRoiPath = os.path.join(
+            self.images_path, f'{self.basename}dataPrepFreeRoi.npz'
+        )
+        return dataPrepFreeRoiPath
+    
+    def saveDataPrepFreeRoi(
+            self, 
+            roiItem: 'widgets.PlotCurveItem', 
+            logger_func=print,
+            local_mask=None, bbox=None
+        ):
+        dataPrepFreeRoiPath = self.dataPrepFreeRoiPath()
+        
+        logger_func(f'\nSaving free ROI to file "{dataPrepFreeRoiPath}"...')
+        
+        if local_mask is None:
+            local_mask = roiItem.mask()
+        
+        if bbox is None:
+            bbox = roiItem.bbox()
+        
+        y0, x0, y1, x1 = bbox
+        key = f'{x0}_{y0}_{x1}_{y1}'
+        data = {key: local_mask}
+        np.savez_compressed(dataPrepFreeRoiPath, **data)
+    
+    def removeDataPrepFreeRoi(self, logger_func=print):
+        self.dataPrepFreeRoiPoints = []
+        dataPrepFreeRoiPath = self.dataPrepFreeRoiPath()
+        if not os.path.exists(dataPrepFreeRoiPath):
+            return
+        
+        logger_func(f'\nRemoving free ROI file "{dataPrepFreeRoiPath}"...')
+        os.remove(dataPrepFreeRoiPath)
+    
+    def loadDataPrepFreeRoi(self, logger_func=print):
+        self.dataPrepFreeRoiPoints = []
+        dataPrepFreeRoiPath = self.dataPrepFreeRoiPath()
+        if not os.path.exists(dataPrepFreeRoiPath):
+            return
+        
+        logger_func(f'\nLoading free ROI from file "{dataPrepFreeRoiPath}"...')
+        archive = np.load(dataPrepFreeRoiPath)
+        key = archive.files[0]
+        x0, y0, x1, y1 = [int(coord) for coord in key.split('_')]
+        mask = archive[key]
+        obj = skimage.measure.regionprops(mask.astype(np.uint8))[0]
+        contours = core.get_obj_contours(obj=obj, only_longest_contour=False)
+        self.dataPrepFreeRoiPoints = contours + (int(x0), int(y0))
+        self.dataPrepFreeRoiLocalMask = mask
+        self.dataPrepFreeRoiSlice = (slice(y0, y1+1), slice(x0, x1+1))
+        self.dataPrepFreeRoiBbox = (y0, x0, y1, x1)
+    
+    def clearSegmObjsDataPrepFreeRoi(self, segm_data, is_timelapse=True):
+        local_mask = self.dataPrepFreeRoiLocalMask
+        local_slice = self.dataPrepFreeRoiSlice
+        delMask = np.ones(segm_data.shape[-2:], dtype=bool)
+        delMask[local_slice][local_mask] = False
+        if is_timelapse:
+            for i, lab in enumerate(segm_data):
+                if lab.ndim == 3:
+                    lab = lab.max(axis=0)
+                rp = skimage.measure.regionprops(lab)
+                for obj in rp:
+                    if not np.any(delMask[obj.slice][obj.image]):
+                        continue
+                    
+                    lab[obj.slice][obj.image] = 0
+                segm_data[i] = lab
+        else:
+            lab = segm_data
+            if lab.ndim == 3:
+                lab = lab.max(axis=0)
+            rp = skimage.measure.regionprops(lab)
+            for obj in rp:
+                if not np.any(delMask[obj.slice][obj.image]):
+                    continue
+                
+                lab[obj.slice][obj.image] = 0
+            segm_data = lab
+        
+        return segm_data
     
     def getSpotmaxSingleSpotsfiles(self):
         from spotmax import DFs_FILENAMES
@@ -1761,10 +1889,12 @@ class loadData:
             return
         
         if cca_dfs_attr:
-            keys = list(range(start_frame_i, len(tracker.cca_dfs)))
+            end_frame_i = start_frame_i+len(tracker.cca_dfs)
+            keys = list(range(start_frame_i, end_frame_i))
             acdc_df = pd.concat(tracker.cca_dfs, keys=keys, names=['frame_i'])
         else:
-            keys = list(range(start_frame_i, len(tracker.cca_dfs_auto)))
+            end_frame_i = start_frame_i+len(tracker.cca_dfs_auto)
+            keys = list(range(start_frame_i, end_frame_i))
             acdc_df = pd.concat(tracker.cca_dfs_auto, keys=keys, names=['frame_i'])
 
         acdc_df['is_cell_dead'] = 0
@@ -2637,6 +2767,8 @@ class loadData:
         self._additionalMetadataValues = metadataWin._additionalValues
         if save:
             self.saveMetadata(additionalMetadata=metadataWin._additionalValues)
+        
+        metadataWin.deleteLater()
         return True
     
     def zSliceSegmentation(self, filename, frame_i):
@@ -2827,6 +2959,21 @@ class loadData:
                 return
             
             self.loadTrackedLostCentroids()
+            
+    def loadWhitelist(self):
+        self.whitelist = whitelist.Whitelist(
+            total_frames=self.SizeT,
+        )
+        whitelist_path = self.segm_npz_path.replace('.npz', '_whitelistIDs.json')
+        success = self.whitelist.load(
+            whitelist_path, self.segm_data, self.allData_li
+        )
+        if self.log_func and success:
+            filename = os.path.basename(whitelist_path)
+            self.log_func(f'Loaded whitelist from file: {filename}')
+        if not success:
+            self.whitelist = None
+            
 
 class select_exp_folder:
     def __init__(self):
