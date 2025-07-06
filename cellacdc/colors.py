@@ -94,6 +94,7 @@ def lighten_color(color, amount=0.3, hex=True):
         c = matplotlib.colors.cnames[color]
     except:
         c = color
+    
     c = colorsys.rgb_to_hls(*matplotlib.colors.to_rgb(c))
     lightened_c = colorsys.hls_to_rgb(c[0], 1 - amount * (1 - c[1]), c[2])
     if hex:
@@ -138,6 +139,13 @@ def get_lut_from_colors(colors, name='mycmap', N=256, to_uint8=False):
         lut = (lut*255).astype(np.uint8)
     return lut
 
+def plt_colormap_to_pg_lut(name: str, ncolors=256):
+    cmap = plt.get_cmap(name)
+    colors = [cmap(i) for i in np.linspace(0, 1, ncolors)]
+    lut_float = np.array(colors)
+    lut = np.round(lut_float * 255).astype(np.uint8)
+    return lut
+
 def invertRGB(rgb_img, max_val=1.0):
     # see https://forum.image.sc/t/invert-rgb-image-without-changing-colors/33571
     R = rgb_img[:, :, 0]
@@ -164,6 +172,12 @@ def get_greedy_lut(lab, lut, ids=None):
     if ids is None:
         ids = [obj.label for obj in skimage.measure.regionprops(lab)]
     
+    if len(ids) == 1:
+        greedy_lut = np.copy(lut)
+        greedy_lut[:] = greedy_lut[-1]
+        greedy_lut[0] = (0, 0, 0, 0)
+        return greedy_lut
+    
     # Taken from https://stackoverflow.com/questions/26486898/matrix-of-labels-to-adjacency-matrix
     adj_M[expanded[:, :-1], expanded[:, 1:]] = 1
     adj_M[expanded[:, 1:], expanded[:, :-1]] = 1
@@ -187,7 +201,6 @@ def get_greedy_lut(lab, lut, ids=None):
     }
 
     greedy_lut = np.copy(lut)
-    printl('Greedy LUT:', greedy_lut.shape, color_idxs)
     greedy_lut[list(color_idxs.keys())] = lut[list(color_idxs.values())]
 
     return greedy_lut
@@ -196,6 +209,12 @@ def rgb_uint_to_html_hex(rgb):
     r, g, b = rgb
     hex_color = f'#{r:02x}{g:02x}{b:02x}'
     return hex_color
+
+def hex_to_rgb(hex):
+    if hex.startswith('#'):
+        hex = hex[1:]
+        
+    return tuple(int(hex[i:i+2], 16) for i in (0, 2, 4))
 
 def merge_two_grayscale_imgs(
         img1, img2, rgb1, rgb2, alpha=0.5,

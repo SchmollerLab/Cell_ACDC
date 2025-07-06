@@ -743,9 +743,20 @@ class AddPointsLayerDialog(QBaseDialog):
     sigClosed = Signal()
     sigCriticalReadTable = Signal(str)
     sigLoadedTable = Signal(object)
-    sigCheckClickEntryTableEndnameExists = Signal(str)
+    sigCheckClickEntryTableEndnameExists = Signal(str, bool)
 
-    def __init__(self, channelNames=None, imagesPath='', SizeT=1, parent=None):
+    def __init__(
+            self, 
+            channelNames=None, 
+            imagesPath='', 
+            SizeT=1, 
+            hideCentroidsSection=False,
+            hideWeightedCentroidsSection=False,
+            hideFromTableSection=False,
+            hideManualEntrySection=False,
+            hideWithMouseClicksSection=False,
+            parent=None,
+        ):
         self.cancel = True
         super().__init__(parent)
 
@@ -758,6 +769,7 @@ class AddPointsLayerDialog(QBaseDialog):
 
         mainLayout = QVBoxLayout()
 
+        scrollArea = widgets.ScrollArea()
         typeGroupbox = QGroupBox('Points to draw')
         typeLayout = QGridLayout()
         typeGroupbox.setLayout(typeLayout)
@@ -765,220 +777,39 @@ class AddPointsLayerDialog(QBaseDialog):
         typeLayout.setColumnStretch(0, 0)
         typeLayout.setColumnStretch(2, 1)
         vSpacing = 15
-
-        '----------------------------------------------------------------------'
+        
         row = 0
-        self.centroidsRadiobutton = QRadioButton('Centroids')
-        typeLayout.addWidget(self.centroidsRadiobutton, row, 0, 1, 2)
-        self.centroidsRadiobutton.setChecked(True)
-
-        row += 1
-        typeLayout.addItem(QSpacerItem(1,vSpacing), row, 0)
-        '----------------------------------------------------------------------'
-
-        '----------------------------------------------------------------------'   
-        row += 1
-        self.weightedCentroidsRadiobutton = QRadioButton('Weighted centroids')
-        typeLayout.addWidget(self.weightedCentroidsRadiobutton, row, 0, 1, 2)
-
-        row += 1
-        label = QLabel('Weighing channel: ')
-        label.setEnabled(False)
-        typeLayout.addWidget(label, row, 1)
-        self.channelNameForWeightedCentr = widgets.QCenteredComboBox()
-        if channelNames:
-            self.channelNameForWeightedCentr.addItems(channelNames)
-        self.channelNameForWeightedCentr.setDisabled(True)
-        typeLayout.addWidget(self.channelNameForWeightedCentr, row, 2)
-
-        self.weightedCentroidsRadiobutton.toggled.connect(label.setEnabled)
-        self.weightedCentroidsRadiobutton.toggled.connect(
-            self.channelNameForWeightedCentr.setEnabled
+        
+        sections = (
+            ('addCentroidsSection', hideCentroidsSection),
+            ('addWeightedCentroidsSection', hideWeightedCentroidsSection),
+            ('addFromTableSection', hideFromTableSection),
+            ('addManualEntrySection', hideManualEntrySection),
+            ('addWithMouseClicksSection', hideWithMouseClicksSection)
         )
+        radioButtonChecked = False
+        for section, hideSection in sections:
+            addFunc = getattr(self, section)
+            row, sectionWidgets = addFunc(
+                row, typeLayout, 
+                imagesPath=imagesPath, 
+                SizeT=SizeT,
+                channelNames=channelNames
+            )
+            if not hideSection:
+                spacer = QSpacerItem(1, vSpacing)
+                typeLayout.addItem(spacer, row, 0)
+                row += 1
+                if not radioButtonChecked:
+                    sectionWidgets[0].setChecked(True)
+                    radioButtonChecked = True
+                continue
+            
+            for widget in sectionWidgets:
+                widget.setVisible(False)
 
-        row += 1
-        typeLayout.addItem(QSpacerItem(1,vSpacing), row, 0)
-        '----------------------------------------------------------------------'
-
-        '----------------------------------------------------------------------'
-        row += 1
-        self.fromTableRadiobutton = QRadioButton('From table')
-        typeLayout.addWidget(self.fromTableRadiobutton, row, 0, 1, 2)
-        self.fromTableRadiobutton.widgets = []
-        
-        row += 1
-        self.tablePath = widgets.ElidingLineEdit()
-        self.tablePath.label = QLabel('Table file path: ')
-        typeLayout.addWidget(self.tablePath.label, row, 1)
-        typeLayout.addWidget(self.tablePath, row, 2)
-        self.fromTableRadiobutton.widgets.append(self.tablePath)
-
-        browseButton = widgets.browseFileButton(
-            start_dir=imagesPath, ext={'Table': ['.csv', '.h5']}
-        )
-        typeLayout.addWidget(browseButton, row, 3)
-        browseButton.sigPathSelected.connect(self.tablePathSelected)
-        self.browseTableButton = browseButton
-        self.fromTableRadiobutton.widgets.append(browseButton)
-
-        row += 1
-        self.xColName = widgets.QCenteredComboBox()
-        self.xColName.addItem('None')
-        self.xColName.label = QLabel('X coord. column: ')
-        typeLayout.addWidget(self.xColName.label, row, 1)
-        typeLayout.addWidget(self.xColName, row, 2)
-        self.xColName.currentTextChanged.connect(self.checkColNameX)
-        self.fromTableRadiobutton.widgets.append(self.xColName)
-
-        row += 1
-        self.yColName = widgets.QCenteredComboBox()
-        self.yColName.addItem('None')
-        self.yColName.label = QLabel('Y coord. column: ')
-        typeLayout.addWidget(self.yColName.label, row, 1)
-        typeLayout.addWidget(self.yColName, row, 2)
-        self.yColName.currentTextChanged.connect(self.checkColNameY)
-        self.fromTableRadiobutton.widgets.append(self.yColName)
-
-        row += 1
-        self.zColName = widgets.QCenteredComboBox()
-        self.zColName.addItem('None')
-        self.zColName.label = QLabel('Z coord. column: ')
-        typeLayout.addWidget(self.zColName.label, row, 1)
-        typeLayout.addWidget(self.zColName, row, 2)
-        self.zColName.currentTextChanged.connect(self.checkColNameZ)
-        self.fromTableRadiobutton.widgets.append(self.zColName)
-
-        row += 1
-        self.tColName = widgets.QCenteredComboBox()
-        self.tColName.addItem('None')
-        self.tColName.label = QLabel('Frame index column: ')
-        typeLayout.addWidget(self.tColName.label, row, 1)
-        typeLayout.addWidget(self.tColName, row, 2)
-        self.fromTableRadiobutton.widgets.append(self.tColName)
-
-        if SizeT == 1:
-            self.tColName.clear()
-            self.tColName.addItem('None')
-            self.tColName.label.setVisible(False)
-            self.tColName.setVisible(False)
-        
-        self.fromTableRadiobutton.toggled.connect(self.enableRadioButtonWidgets)
-        self.enableRadioButtonWidgets(False, sender=self.fromTableRadiobutton)
-        '----------------------------------------------------------------------'
-
-        '----------------------------------------------------------------------'
-        row += 1
-        self.manualEntryRadiobutton = QRadioButton('Manual entry')
-        typeLayout.addWidget(self.manualEntryRadiobutton, row, 0, 1, 2)
-        self.manualEntryRadiobutton.widgets = []
-        
-        row += 1
-        self.manualXspinbox = widgets.NumericCommaLineEdit()
-        self.manualXspinbox.label = QLabel('X coords: ')
-        typeLayout.addWidget(self.manualXspinbox.label, row, 1)
-        typeLayout.addWidget(self.manualXspinbox, row, 2)
-        self.manualEntryRadiobutton.widgets.append(self.manualXspinbox)
-
-        row += 1
-        self.manualYspinbox = widgets.NumericCommaLineEdit()
-        self.manualYspinbox.label = QLabel('Y coords: ')
-        typeLayout.addWidget(self.manualYspinbox.label, row, 1)
-        typeLayout.addWidget(self.manualYspinbox, row, 2)
-        self.manualEntryRadiobutton.widgets.append(self.manualYspinbox)
-
-        row += 1
-        self.manualZspinbox = widgets.NumericCommaLineEdit()
-        self.manualZspinbox.label = QLabel('Z coords: ')
-        typeLayout.addWidget(self.manualZspinbox.label, row, 1)
-        typeLayout.addWidget(self.manualZspinbox, row, 2)
-        self.manualEntryRadiobutton.widgets.append(self.manualZspinbox)
-
-        row += 1
-        self.manualTspinbox = widgets.NumericCommaLineEdit()
-        self.manualTspinbox.label = QLabel('Frame numbers: ')
-        typeLayout.addWidget(self.manualTspinbox.label, row, 1)
-        typeLayout.addWidget(self.manualTspinbox, row, 2)
-        self.manualEntryRadiobutton.widgets.append(self.manualTspinbox)
-
-        if SizeT == 1:
-            self.manualTspinbox.setVisible(False)
-            self.manualTspinbox.label.setVisible(False)
-        
-        self.manualEntryRadiobutton.toggled.connect(self.enableRadioButtonWidgets)
-        self.enableRadioButtonWidgets(False, sender=self.manualEntryRadiobutton)
-        
-        '----------------------------------------------------------------------'
-        self.clickEntryIsLoadedDf = None
-        row += 1
-        self.clickEntryRadiobutton = QRadioButton('Add points with mouse clicks')
-        typeLayout.addWidget(self.clickEntryRadiobutton, row, 0, 1, 2) 
-        self.clickEntryRadiobutton.widgets = [] 
-        
-        row += 1
-        self.snapToMaxToggle = widgets.Toggle()
-        self.snapToMaxToggle.label = QLabel('Snap to closest maximum: ')
-        typeLayout.addWidget(self.snapToMaxToggle.label, row, 1)
-        typeLayout.addWidget(
-            self.snapToMaxToggle, row, 2, alignment=Qt.AlignCenter
-        )
-        self.snapToMaxInfoButton = widgets.infoPushButton()
-        typeLayout.addWidget(self.snapToMaxInfoButton, row, 3)
-        
-        self.snapToMaxInfoButton.clicked.connect(self.showSnapToMaxButton)
-        self.clickEntryRadiobutton.widgets.append(self.snapToMaxToggle)
-        self.clickEntryRadiobutton.widgets.append(self.snapToMaxInfoButton)
-        
-        row += 1
-        self.autoPilotToggle = widgets.Toggle()
-        self.autoPilotToggle.label = QLabel('Use auto-pilot: ')
-        typeLayout.addWidget(self.autoPilotToggle.label, row, 1)
-        typeLayout.addWidget(
-            self.autoPilotToggle, row, 2, alignment=Qt.AlignCenter
-        )
-        self.autoPilotInfoButton = widgets.infoPushButton()
-        typeLayout.addWidget(self.autoPilotInfoButton, row, 3)
-        
-        self.autoPilotInfoButton.clicked.connect(self.showAutoPilotInfo)
-        self.clickEntryRadiobutton.widgets.append(self.autoPilotToggle)
-        self.clickEntryRadiobutton.widgets.append(self.autoPilotInfoButton)
-        
-        row += 1
-        self.clickEntryTableEndname = widgets.alphaNumericLineEdit()
-        self.clickEntryTableEndname.setText('points_added_by_clicking')
-        self.clickEntryTableEndname.setAlignment(Qt.AlignCenter)
-        self.clickEntryTableEndname.label = QLabel('Table endname: ')
-        loadButton = widgets.browseFileButton(
-            start_dir=imagesPath, ext={'CSV': '.csv'})
-        typeLayout.addWidget(loadButton, row, 3)
-        loadButton.sigPathSelected.connect(self.loadClickEntryTable)
-        self.loadButton = loadButton
-        self.clickEntryLoadTableButton = loadButton
-        typeLayout.addWidget(self.clickEntryTableEndname.label, row, 1)
-        typeLayout.addWidget(self.clickEntryTableEndname, row, 2)
-        self.clickEntryRadiobutton.widgets.append(self.clickEntryTableEndname)
-        self.clickEntryTableEndname.editingFinished.connect(
-            self.emitCheckClickEntryTableEndnameExists
-        )
-        
-        row += 1
-        instructionsText = html_utils.paragraph(
-            '<br><i>Left-click</i> to annotate a new point with a new id.<br>'
-            '<i>Righ-click</i> to annotate a point with the same id<br>'
-            '<i>Click</i> on point to delete it', font_size='11px'
-        )
-        self.instructionsLabel = QLabel(instructionsText)
-        self.instructionsLabel.label = QLabel('Instructions')
-        typeLayout.addWidget(self.instructionsLabel.label, row, 1)
-        typeLayout.addWidget(self.instructionsLabel, row, 2)
-        self.clickEntryRadiobutton.widgets.append(self.instructionsLabel)
-        
-        self.clickEntryRadiobutton.toggled.connect(self.enableRadioButtonWidgets)
-        self.clickEntryRadiobutton.toggled.connect(
-            self.emitCheckClickEntryTableEndnameExists
-        )
-        self.enableRadioButtonWidgets(False, sender=self.clickEntryRadiobutton)
-        
-        '======================================================================'
+        self.scrollArea = scrollArea
+        scrollArea.setWidget(typeGroupbox)
 
         self.appearanceGroupbox = _PointsLayerAppearanceGroupbox()
         self.appearanceGroupbox.sizeSpinBox.setValue(3)
@@ -987,8 +818,9 @@ class AddPointsLayerDialog(QBaseDialog):
 
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
+        self.buttonsLayout = buttonsLayout
 
-        mainLayout.addWidget(typeGroupbox)
+        mainLayout.addWidget(scrollArea)
         mainLayout.addSpacing(20)
         _layout = QHBoxLayout()
         _layout.addWidget(self.appearanceGroupbox)
@@ -1001,19 +833,299 @@ class AddPointsLayerDialog(QBaseDialog):
 
         self.setFont(font)
     
+    def addCentroidsSection(self, row, layout, **kwargs):
+        sectionWidgets = []
+        self.centroidsRadiobutton = QRadioButton('Centroids')
+        layout.addWidget(self.centroidsRadiobutton, row, 0, 1, 2)
+        sectionWidgets.append(self.centroidsRadiobutton)
+        
+        self.centroidsRadiobutton.setChecked(True)
+        return row + 1, sectionWidgets
+    
+    def addWeightedCentroidsSection(
+            self, row, layout, channelNames=None, **kwargs
+        ):
+        if channelNames is None:
+            channelNames = []
+            
+        sectionWidgets = []
+        
+        self.weightedCentroidsRadiobutton = QRadioButton('Weighted centroids')
+        layout.addWidget(self.weightedCentroidsRadiobutton, row, 0, 1, 2)
+        sectionWidgets.append(self.weightedCentroidsRadiobutton)
+
+        row += 1
+        label = QLabel('Weighing channel: ')
+        label.setEnabled(False)
+        layout.addWidget(label, row, 1)
+        sectionWidgets.append(label)
+        
+        self.channelNameForWeightedCentr = widgets.QCenteredComboBox()
+        if channelNames:
+            self.channelNameForWeightedCentr.addItems(channelNames)
+        self.channelNameForWeightedCentr.setDisabled(True)
+        layout.addWidget(self.channelNameForWeightedCentr, row, 2)
+        sectionWidgets.append(self.channelNameForWeightedCentr)
+
+        self.weightedCentroidsRadiobutton.toggled.connect(label.setEnabled)
+        self.weightedCentroidsRadiobutton.toggled.connect(
+            self.channelNameForWeightedCentr.setEnabled
+        )
+        
+        return row + 1, sectionWidgets
+    
+    def addFromTableSection(
+            self, row, layout, imagesPath='', SizeT=1, **kwargs
+        ):
+        sectionWidgets = []
+        
+        self.fromTableRadiobutton = QRadioButton('From table')
+        layout.addWidget(self.fromTableRadiobutton, row, 0, 1, 2)
+        sectionWidgets.append(self.fromTableRadiobutton)
+        self.fromTableRadiobutton.widgets = []
+        
+        row += 1
+        self.tablePath = widgets.ElidingLineEdit()
+        self.tablePath.label = QLabel('Table file path: ')
+        layout.addWidget(self.tablePath.label, row, 1)
+        layout.addWidget(self.tablePath, row, 2)
+        self.fromTableRadiobutton.widgets.append(self.tablePath)
+        sectionWidgets.append(self.tablePath.label)
+        sectionWidgets.append(self.tablePath)
+
+        browseButton = widgets.browseFileButton(
+            start_dir=imagesPath, ext={'Table': ['.csv', '.h5']}
+        )
+        layout.addWidget(browseButton, row, 3)
+        browseButton.sigPathSelected.connect(self.tablePathSelected)
+        self.browseTableButton = browseButton
+        self.fromTableRadiobutton.widgets.append(browseButton)
+        sectionWidgets.append(browseButton)
+
+        row += 1
+        self.xColName = widgets.QCenteredComboBox()
+        self.xColName.addItem('None')
+        self.xColName.label = QLabel('X coord. column: ')
+        layout.addWidget(self.xColName.label, row, 1)
+        layout.addWidget(self.xColName, row, 2)
+        self.xColName.currentTextChanged.connect(self.checkColNameX)
+        self.fromTableRadiobutton.widgets.append(self.xColName)
+        sectionWidgets.append(self.xColName.label)
+        sectionWidgets.append(self.xColName)
+
+        row += 1
+        self.yColName = widgets.QCenteredComboBox()
+        self.yColName.addItem('None')
+        self.yColName.label = QLabel('Y coord. column: ')
+        layout.addWidget(self.yColName.label, row, 1)
+        layout.addWidget(self.yColName, row, 2)
+        self.yColName.currentTextChanged.connect(self.checkColNameY)
+        self.fromTableRadiobutton.widgets.append(self.yColName)
+        sectionWidgets.append(self.yColName.label)
+        sectionWidgets.append(self.yColName)
+
+        row += 1
+        self.zColName = widgets.QCenteredComboBox()
+        self.zColName.addItem('None')
+        self.zColName.label = QLabel('Z coord. column: ')
+        layout.addWidget(self.zColName.label, row, 1)
+        layout.addWidget(self.zColName, row, 2)
+        self.zColName.currentTextChanged.connect(self.checkColNameZ)
+        self.fromTableRadiobutton.widgets.append(self.zColName)
+        sectionWidgets.append(self.zColName.label)
+        sectionWidgets.append(self.zColName)
+
+        row += 1
+        self.tColName = widgets.QCenteredComboBox()
+        self.tColName.addItem('None')
+        self.tColName.label = QLabel('Frame index column: ')
+        layout.addWidget(self.tColName.label, row, 1)
+        layout.addWidget(self.tColName, row, 2)
+        self.fromTableRadiobutton.widgets.append(self.tColName)
+        sectionWidgets.append(self.tColName.label)
+        sectionWidgets.append(self.tColName)
+
+        if SizeT == 1:
+            self.tColName.clear()
+            self.tColName.addItem('None')
+            self.tColName.label.setVisible(False)
+            self.tColName.setVisible(False)
+        
+        self.fromTableRadiobutton.toggled.connect(self.enableRadioButtonWidgets)
+        self.enableRadioButtonWidgets(False, sender=self.fromTableRadiobutton)
+        
+        return row + 1, sectionWidgets
+    
+    def addManualEntrySection(self, row, layout, SizeT=1, **kwargs):
+        sectionWidgets = []
+        
+        self.manualEntryRadiobutton = QRadioButton('Manual entry')
+        layout.addWidget(self.manualEntryRadiobutton, row, 0, 1, 2)
+        self.manualEntryRadiobutton.widgets = []
+        sectionWidgets.append(self.manualEntryRadiobutton)
+        
+        row += 1
+        self.manualXspinbox = widgets.NumericCommaLineEdit()
+        self.manualXspinbox.label = QLabel('X coords: ')
+        layout.addWidget(self.manualXspinbox.label, row, 1)
+        layout.addWidget(self.manualXspinbox, row, 2)
+        self.manualEntryRadiobutton.widgets.append(self.manualXspinbox)
+        sectionWidgets.append(self.manualXspinbox.label)
+        sectionWidgets.append(self.manualXspinbox)
+
+        row += 1
+        self.manualYspinbox = widgets.NumericCommaLineEdit()
+        self.manualYspinbox.label = QLabel('Y coords: ')
+        layout.addWidget(self.manualYspinbox.label, row, 1)
+        layout.addWidget(self.manualYspinbox, row, 2)
+        self.manualEntryRadiobutton.widgets.append(self.manualYspinbox)
+        sectionWidgets.append(self.manualYspinbox.label)
+        sectionWidgets.append(self.manualYspinbox)
+
+        row += 1
+        self.manualZspinbox = widgets.NumericCommaLineEdit()
+        self.manualZspinbox.label = QLabel('Z coords: ')
+        layout.addWidget(self.manualZspinbox.label, row, 1)
+        layout.addWidget(self.manualZspinbox, row, 2)
+        self.manualEntryRadiobutton.widgets.append(self.manualZspinbox)
+        sectionWidgets.append(self.manualZspinbox.label)
+        sectionWidgets.append(self.manualZspinbox)
+
+        row += 1
+        self.manualTspinbox = widgets.NumericCommaLineEdit()
+        self.manualTspinbox.label = QLabel('Frame numbers: ')
+        layout.addWidget(self.manualTspinbox.label, row, 1)
+        layout.addWidget(self.manualTspinbox, row, 2)
+        self.manualEntryRadiobutton.widgets.append(self.manualTspinbox)
+        sectionWidgets.append(self.manualTspinbox.label)
+        sectionWidgets.append(self.manualTspinbox)
+
+        if SizeT == 1:
+            self.manualTspinbox.setVisible(False)
+            self.manualTspinbox.label.setVisible(False)
+        
+        self.manualEntryRadiobutton.toggled.connect(self.enableRadioButtonWidgets)
+        self.enableRadioButtonWidgets(False, sender=self.manualEntryRadiobutton)
+        
+        return row + 1, sectionWidgets
+    
+    def addWithMouseClicksSection(self, row, layout, imagesPath='', **kwargs):
+        sectionWidgets = []
+        
+        self.clickEntryIsLoadedDf = None
+        
+        self.clickEntryRadiobutton = QRadioButton('Add points with mouse clicks')
+        layout.addWidget(self.clickEntryRadiobutton, row, 0, 1, 2) 
+        self.clickEntryRadiobutton.widgets = [] 
+        sectionWidgets.append(self.clickEntryRadiobutton)
+        
+        row += 1
+        self.snapToMaxToggle = widgets.Toggle()
+        self.snapToMaxToggle.label = QLabel('Snap to closest maximum: ')
+        layout.addWidget(self.snapToMaxToggle.label, row, 1)
+        layout.addWidget(
+            self.snapToMaxToggle, row, 2, alignment=Qt.AlignCenter
+        )
+        sectionWidgets.append(self.snapToMaxToggle.label)
+        sectionWidgets.append(self.snapToMaxToggle)
+        
+        self.snapToMaxInfoButton = widgets.infoPushButton()
+        layout.addWidget(self.snapToMaxInfoButton, row, 3)
+        sectionWidgets.append(self.snapToMaxInfoButton)
+        
+        self.snapToMaxInfoButton.clicked.connect(self.showSnapToMaxButton)
+        self.clickEntryRadiobutton.widgets.append(self.snapToMaxToggle)
+        self.clickEntryRadiobutton.widgets.append(self.snapToMaxInfoButton)
+        
+        row += 1
+        self.autoPilotToggle = widgets.Toggle()
+        self.autoPilotToggle.label = QLabel('Use auto-pilot: ')
+        layout.addWidget(self.autoPilotToggle.label, row, 1)
+        layout.addWidget(
+            self.autoPilotToggle, row, 2, alignment=Qt.AlignCenter
+        )
+        sectionWidgets.append(self.autoPilotToggle.label)
+        sectionWidgets.append(self.autoPilotToggle)
+        self.autoPilotInfoButton = widgets.infoPushButton()
+        layout.addWidget(self.autoPilotInfoButton, row, 3)
+        sectionWidgets.append(self.autoPilotInfoButton)
+        
+        self.autoPilotInfoButton.clicked.connect(self.showAutoPilotInfo)
+        self.clickEntryRadiobutton.widgets.append(self.autoPilotToggle)
+        self.clickEntryRadiobutton.widgets.append(self.autoPilotInfoButton)
+        
+        row += 1
+        self.clickEntryTableEndname = widgets.alphaNumericLineEdit()
+        self.clickEntryTableEndname.setText('points_added_by_clicking')
+        self.clickEntryTableEndname.setAlignment(Qt.AlignCenter)
+        self.clickEntryTableEndname.label = QLabel('Table endname: ')
+        loadButton = widgets.browseFileButton(
+            start_dir=imagesPath, ext={'CSV': '.csv'}
+        )
+        layout.addWidget(loadButton, row, 3)
+        sectionWidgets.append(loadButton)
+        
+        loadButton.sigPathSelected.connect(self.loadClickEntryTable)
+        self.loadButton = loadButton
+        self.clickEntryLoadTableButton = loadButton
+        layout.addWidget(self.clickEntryTableEndname.label, row, 1)
+        layout.addWidget(self.clickEntryTableEndname, row, 2)
+        self.clickEntryRadiobutton.widgets.append(self.clickEntryTableEndname)
+        self.clickEntryTableEndname.editingFinished.connect(
+            self.emitCheckClickEntryTableEndnameExists
+        )
+        sectionWidgets.append(self.clickEntryTableEndname)
+        sectionWidgets.append(self.clickEntryTableEndname.label)
+        
+        row += 1
+        instructionsText = html_utils.paragraph(
+            '<br><i>Left-click</i> to annotate a new point with a new id.<br><br>'
+            '<i>Right-click</i> to annotate a point with the same id<br><br>'
+            '<i>Same click used to delete objects</i> to annotate<br>'
+            'a point with id = 0 (negative prompt)<br><br>'
+            '<i>Click</i> on point to delete it',
+            font_size='11px'
+        )
+        self.instructionsLabel = QLabel(instructionsText)
+        self.instructionsLabel.label = QLabel('Instructions')
+        layout.addWidget(self.instructionsLabel.label, row, 1)
+        layout.addWidget(self.instructionsLabel, row, 2)
+        self.clickEntryRadiobutton.widgets.append(self.instructionsLabel)
+        sectionWidgets.append(self.instructionsLabel)
+        sectionWidgets.append(self.instructionsLabel.label)
+        
+        self.clickEntryRadiobutton.toggled.connect(self.enableRadioButtonWidgets)
+        self.clickEntryRadiobutton.toggled.connect(
+            self.emitCheckClickEntryTableEndnameExists
+        )
+        self.enableRadioButtonWidgets(False, sender=self.clickEntryRadiobutton)
+        
+        return row + 1, sectionWidgets
+    
     def emitCheckClickEntryTableEndnameExists(self, *args, **kwargs):
         if not self.clickEntryRadiobutton.isChecked():
             return
         self.clickEntryIsLoadedDf = None
         tableEndName = self.clickEntryTableEndname.text()
-        self.sigCheckClickEntryTableEndnameExists.emit(tableEndName)
+        self.sigCheckClickEntryTableEndnameExists.emit(
+            tableEndName, False
+        )
     
     def loadClickEntryTable(self, csv_path):
-        self.clickEntryIsLoadedDf = True
+        self.clickEntryIsLoadedDf = None
+        posData = load.loadData(csv_path, 'points')
+        posData.getBasenameAndChNames()
+        basename = posData.basename
         filename = os.path.basename(csv_path)
         filename, ext = os.path.splitext(filename)
-        self.clickEntryTableEndname.setText(filename)
-        self.loadButton.confirmAction()
+        if not basename.endswith('_'):
+            basename = f'{basename}_'
+            
+        endname = filename[len(basename):]
+        self.clickEntryTableEndname.setText(endname)
+        self.sigCheckClickEntryTableEndnameExists.emit(
+            endname, True
+        )
         
     def showAutoPilotInfo(self):
         msg = widgets.myMessageBox(wrapText=False)
@@ -1265,20 +1377,34 @@ class AddPointsLayerDialog(QBaseDialog):
         )
     
     def showEvent(self, event) -> None:
-        self.resize(int(self.width()*1.25), self.height())
         if self._parent is None:
             screen = self.screen()
         else:
             screen = self._parent.screen()
         screenWidth = screen.size().width()
         screenHeight = screen.size().height()
+        
+        maxHeight = screenHeight - 100
+        
+        buttonHeight = self.buttonsLayout.okButton.minimumSizeHint().height()
+        height = (
+            self.scrollArea.minimumHeightNoScrollbar()
+            + self.appearanceGroupbox.sizeHint().height()
+            + buttonHeight + 70
+        )
+        width = self.scrollArea.minimumWidthNoScrollbar() + 50
+        
+        height = min(height, maxHeight)
+        
+        self.resize(width, height)
+        
         screenLeft = screen.geometry().x()
         screenTop = screen.geometry().y()
         w, h = self.width(), self.height()
         left = int(screenLeft + screenWidth/2 - w/2)
-        top = int(screenTop + screenHeight/2 - h/2)
-        self.move(left, top)
+        top = int(screenTop + screenHeight/2 - h/2 - 20)
 
+        self.move(left, top)
 
 class EditPointsLayerAppearanceDialog(QBaseDialog):
     sigClosed = Signal()
@@ -4809,6 +4935,8 @@ class SelectPromptableModelDialog(QBaseDialog):
     def __init__(self, parent=None):
         self.cancel = True
         super().__init__(parent)
+        
+        self.setWindowTitle('Select model for segmentation')
         
         mainLayout = QVBoxLayout()
         
@@ -10761,12 +10889,27 @@ class FunctionParamsDialog(QBaseDialog):
         
 class QDialogModelParams(QDialog):
     def __init__(
-            self, init_params, segment_params, model_name, is_tracker=False,
-            url=None, parent=None, initLastParams=True, posData=None, 
-            channels=None, currentChannelName=None, segmFileEndnames=None,
-            df_metadata=None, force_postprocess_2D=False, model_module=None,
-            action_type='', addPreProcessParams=True, addPostProcessParams=True,
-            extraParams=None, extraParamsTitle=None, ini_filename=None,
+            self, 
+            init_params, 
+            segment_params, 
+            model_name, 
+            is_tracker=False,
+            url=None, 
+            parent=None, 
+            initLastParams=True, 
+            posData=None, 
+            channels=None, 
+            currentChannelName=None, 
+            segmFileEndnames=None,
+            df_metadata=None, 
+            force_postprocess_2D=False, 
+            model_module=None,
+            action_type='', 
+            addPreProcessParams=True, 
+            addPostProcessParams=True,
+            extraParams=None, 
+            extraParamsTitle=None, 
+            ini_filename=None,
             add_additional_segm_params=False
         ):
         self.cancel = True
@@ -10882,10 +11025,14 @@ class QDialogModelParams(QDialog):
             # infoButton = widgets.infoPushButton(' Help... ')
             # restoreDefaultButton = widgets.reloadPushButton('Restore default')
         
+        enableLoadingSavingRecipe = (
+            not is_tracker and (addPreProcessParams or addPostProcessParams)
+        )
+        
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
         buttonsLayout.addSpacing(20)
-        if not is_tracker:
+        if enableLoadingSavingRecipe:
             loadEntireRecipeButton = widgets.OpenFilePushButton(
                 'Load saved recipe...'
             )

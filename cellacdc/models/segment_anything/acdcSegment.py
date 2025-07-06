@@ -34,7 +34,7 @@ class Model:
     def __init__(
             self, 
             model_type: AvailableModels='Large', 
-            input_points_path: widgets.SamInputPointsWidget='',
+            input_points_path: widgets.CsvFilePathControl='',
             input_points_df: DataFrame='None',
             points_per_side=32,
             pred_iou_thresh=0.88,

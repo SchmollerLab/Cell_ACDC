@@ -86,7 +86,10 @@ def avi_to_mp4(in_filepath_avi, out_filepath_mp4=None):
 def _run_ffmpeg(ffmep_exec_path, command_args):
     import subprocess, os
     
-    full_command = ' '.join(command_args)
+    command_args_no_quotes = [
+        arg.replace('"', '').replace("'", '') for arg in command_args
+    ]
+    full_command = ' '.join(command_args_no_quotes)
     full_command = f'{ffmep_exec_path} {full_command}'
     
     separator = '-'*100
@@ -104,10 +107,11 @@ def _run_ffmpeg(ffmep_exec_path, command_args):
     if is_mac:
         args_ffmpeg_executable = [f'chmod 755 {ffmpeg_exec_path}']
         subprocess.check_call(args_ffmpeg_executable, shell=True)
-    
-    ffmpeg_args = ['ffmpeg', *command_args]
+
     try:
+        ffmpeg_args = ['ffmpeg', *command_args]
         subprocess.check_call(ffmpeg_args, shell=True)
     except Exception as err:
+        ffmpeg_args = ['ffmpeg', *command_args_no_quotes]
         args = ' '.join(ffmpeg_args)
         subprocess.check_call(args, shell=True)

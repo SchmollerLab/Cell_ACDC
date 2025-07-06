@@ -148,6 +148,8 @@
     <file alias="ruler.svg">resources/icons/ruler_dark.svg</file>
     <file alias="contribute.svg">resources/icons/contribute_dark.svg</file>
     <file alias="wizard.svg">resources/icons/wizard_dark.svg</file>
+    <file alias="compute-zoom.svg">resources/icons/compute-zoom_dark.svg</file>
+    <file alias="clear-points.svg">resources/icons/clear_points_dark.svg</file>
     <file alias="download.svg">resources/icons/download_dark.svg</file>
     <file alias="warning.svg">resources/icons/warning_dark.svg</file>
     <file alias="crop.svg">resources/icons/crop_dark.svg</file>

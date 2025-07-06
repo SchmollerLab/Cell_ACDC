@@ -2807,8 +2807,15 @@ def check_install_baby():
     check_install_package('baby', pypi_name='baby-seg', import_pkg_name='baby')
 
 def check_install_nnInteractive():
+    check_install_package('huggingface-hub')
     check_install_torch()
     check_install_package('nnInteractive')
+    
+    purge_module('nnInteractive')
+
+    importlib.invalidate_caches()
+    import nnInteractive
+    importlib.reload(nnInteractive)
 
 def check_install_yeaz():
     check_install_torch()
@@ -3935,6 +3942,10 @@ def format_cca_manual_changes(changes: dict):
         txt = f'{txt}--------------------------------\n\n'
     return txt
 
+def init_prompt_segm_model(acdcPromptSegment, posData, init_kwargs):
+    model = acdcPromptSegment.Model(**init_kwargs)
+    return model
+    
 def init_segm_model(acdcSegment, posData, init_kwargs):
     segm_endname = init_kwargs.pop('segm_endname', 'None')
     if segm_endname != 'None':

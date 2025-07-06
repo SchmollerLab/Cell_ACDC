@@ -98,8 +98,9 @@ class Model(CellposeBaseModel):
         self.initConstants(is_rgb=is_rgb)
         self.batch_size = batch_size
 
-        out = myutils.translateStrNone(model_type, model_path, device,
-                                                                  denoise_model, denoise_model_path, )
+        out = myutils.translateStrNone(
+            model_type, model_path, device, denoise_model, denoise_model_path
+        )
         model_type, model_path, device, denoise_model, denoise_model_path = out
         self.check_model_path_model_type(
             model_type=model_type, 
