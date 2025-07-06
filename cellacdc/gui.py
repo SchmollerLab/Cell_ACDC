@@ -16423,6 +16423,8 @@ class guiWin(QMainWindow):
             figure_title='Ctrl+Click to select the result to use',
             annotate_labels_idxs=[0, 1, 2, 3],
             selectable_images=True, 
+            max_ncols=2,
+            lut='gray',
             infer_rgb=False
         )
         if promptSegmResultsWindow.selected_idx is None:
@@ -23987,7 +23989,7 @@ class guiWin(QMainWindow):
         rightClickIDSpinbox = widgets.SpinBox()
         pointIdSpinbox.setLinkedValueWidget(rightClickIDSpinbox)
         rightClickIDSpinbox.setMaximumWidth(pointIdSpinbox.sizeHint().width())
-        rightClickIDSpinbox.setValue(1)
+        rightClickIDSpinbox.setValue(pointIdSpinbox.value())
         rightClickIDSpinbox.setMinimum(0)
         rightClickIDSpinbox.label = QLabel(' | Right-click ID: ')
         rightClickIDSpinbox.labelAction = toolbar.addWidget(

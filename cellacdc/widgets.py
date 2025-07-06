@@ -7533,6 +7533,7 @@ class ImShowPlotItem(pg.PlotItem):
         # clicking it.
         # If autorange is enabled, it is called everytime the brush or eraser 
         # scatter plot items touches the border causing flickering
+        self.disableAutoRange()
         self.autoBtn.mode = 'manual'
         self.invertY(True)
         self.setAspectLocked(True)
@@ -7650,6 +7651,7 @@ class _ImShowImageItem(pg.ImageItem):
     
     def mousePressEvent(self, event):
         self.sigMousePressEvent.emit(self, event)
+        super().mousePressEvent(event)
     
     def setOtherImagesCursors(self, cursors):
         self._cursors = cursors
@@ -8116,11 +8118,13 @@ class ImShow(QBaseWindow):
                 plot.vb.setXLink(plots[0].vb)
     
     def _getDefaultLabelsOverlayLut(self, lab_overlay):
-        lut = colors.plt_colormap_to_pg_lut('tab20', ncolors=20)
-        lut[0] = [0,0,0,0]
-        greedy_lut = colors.get_greedy_lut(lab_overlay, lut)
-        
-        return greedy_lut
+        IDs = [obj.label for obj in skimage.measure.regionprops(lab_overlay)]
+        n_objs = len(IDs)
+        lut = np.zeros((n_objs+1, 4), dtype=np.uint8)
+        rgbas = colors.plt_colormap_to_pg_lut('tab20', ncolors=n_objs)
+        np.random.shuffle(rgbas)
+        lut[1:] = rgbas
+        return lut
     
     def _createPointsScatterItem(self, group, data=None):
         cmap = matplotlib.colormaps['jet_r']
@@ -8265,7 +8269,6 @@ class ImShow(QBaseWindow):
             except Exception as err:
                 lab = imageItem.image
             
-            plotItem.disableAutoRange()
             rp = skimage.measure.regionprops(lab)
             for obj in rp:
                 textItem = plotTextItems.get(obj.label)
@@ -8285,7 +8288,7 @@ class ImShow(QBaseWindow):
                 textItem.setText(text)
                 textItem.setPos(xc, yc)
             
-            plotItem.enableAutoRange()
+            # plotItem.enableAutoRange()
 
     def clearLabels(self):
         for textItems in self.textItems:
