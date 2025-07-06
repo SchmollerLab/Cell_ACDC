@@ -7795,6 +7795,21 @@ class ImShow(QBaseWindow):
         
         return lab
     
+    def isObjVisible(self, obj, imageItem):
+        if len(obj.centroid) == 2:
+            return True
+        
+        z_scrollbar = imageItem.ScrollBars[-1]
+        if z_scrollbar.maxProjCheckbox.isChecked():
+            return True
+        
+        z_slice = z_scrollbar.value()
+        min_z, min_y, min_x, max_z, max_y, max_x = obj.bbox
+        if z_slice >= min_z and z_slice < max_z:
+            return True
+
+        return False
+    
     def onMaxProjToggled(self, checked, scrollbar):
         imageItem = scrollbar.imageItem
         img = self._get2Dimg(imageItem, scrollbar.image)
@@ -8242,20 +8257,35 @@ class ImShow(QBaseWindow):
             plotTextItems = self.textItems[i]
             imageItem = self.ImageItems[i]
             try:
-                lab = imageItem.lab
+                if init:
+                    # 3D labels (if 3D)
+                    lab = imageItem.lab
+                else:
+                    lab = imageItem.labImageItem.image
             except Exception as err:
                 lab = imageItem.image
-                
+            
+            plotItem.disableAutoRange()
             rp = skimage.measure.regionprops(lab)
             for obj in rp:
                 textItem = plotTextItems.get(obj.label)
                 yc, xc = obj.centroid[-2:]
                 if textItem is None:
-                    textItem = pg.TextItem(text='', anchor=(0.5,0.5), color='r')
+                    textItem = pg.TextItem(
+                        text='', anchor=(0.5,0.5), color='r'
+                    )
                     plotItem.addItem(textItem)
                     plotTextItems[obj.label] = textItem
-                textItem.setText(str(obj.label))
+
+                if self.isObjVisible(obj, imageItem):
+                    text = str(obj.label)
+                else:
+                    text = ''
+                
+                textItem.setText(text)
                 textItem.setPos(xc, yc)
+            
+            plotItem.enableAutoRange()
 
     def clearLabels(self):
         for textItems in self.textItems:

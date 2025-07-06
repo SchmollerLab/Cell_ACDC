@@ -16270,6 +16270,8 @@ class guiWin(QMainWindow):
             f'Zoom range: xmin={xmin}, xmax={xmax}, ymin={ymin}, ymax={ymax}'
         )
         
+        zoom_slice = (slice(ymin, ymax), slice(xmin, xmax))
+        
         image = image[..., ymin:ymax, xmin:xmax]
         image_origin = (0, ymin, xmin)
         
@@ -16285,7 +16287,7 @@ class guiWin(QMainWindow):
         
         self.startMagicPromptsWorkerAndWait(
             image, df_points, toolbar.model, toolbar.model_segment_kwargs, 
-            image_origin=image_origin
+            image_origin=image_origin, zoom_slice=zoom_slice
         )
     
     def magicPromptsClearPoints(self):
@@ -16309,7 +16311,7 @@ class guiWin(QMainWindow):
     
     def startMagicPromptsWorkerAndWait(
             self, image, df_points, model, model_segment_kwargs, 
-            image_origin=(0, 0, 0)
+            image_origin=(0, 0, 0), zoom_slice=None
         ):
         desc = (
             'Running promptable segmentation model...'
@@ -16357,7 +16359,7 @@ class guiWin(QMainWindow):
             self.workerProgress
         )
         self.magicPromptsWorker.signals.finished.connect(
-            self.magicPromptsWorkerFinished
+            partial(self.magicPromptsWorkerFinished, zoom_slice=zoom_slice)
         )
         
         self.magicPromptsThread.started.connect(
@@ -16372,7 +16374,7 @@ class guiWin(QMainWindow):
         self.magicPromptsWorkerLoop.exit()
         self.workerCritical(error)
     
-    def magicPromptsWorkerFinished(self, output):
+    def magicPromptsWorkerFinished(self, output, zoom_slice=None):
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
             self.progressWin.close()
@@ -16383,17 +16385,20 @@ class guiWin(QMainWindow):
         
         posData = self.data[self.pos_i]
         
+        if zoom_slice is None:
+            zoom_slice = slice(None)
+        
         images = (
-            posData.img_data[posData.frame_i], 
-            posData.img_data[posData.frame_i], 
-            posData.img_data[posData.frame_i], 
-            posData.img_data[posData.frame_i], 
+            posData.img_data[posData.frame_i][zoom_slice], 
+            posData.img_data[posData.frame_i][zoom_slice], 
+            posData.img_data[posData.frame_i][zoom_slice], 
+            posData.img_data[posData.frame_i][zoom_slice], 
         )
         labels_overlays = (
-            posData.lab, 
-            lab_new, 
-            lab_union, 
-            lab_interesection,
+            posData.lab[zoom_slice], 
+            lab_new[zoom_slice], 
+            lab_union[zoom_slice], 
+            lab_interesection[zoom_slice],
         )
         labels_overlays_lut = self.getLabelsImageLut()
         labels_overlays_luts = (
