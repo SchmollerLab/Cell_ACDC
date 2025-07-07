@@ -6338,6 +6338,31 @@ class guiWin(QMainWindow):
             'setAddPointCursor': setAddPointCursor,
         }
     
+    def warnAddingPointWithExistingId(self, point_id, table_endname=''):
+        posData = self.data[self.pos_i]
+        if not point_id in posData.IDs_idxs:
+            return True
+        
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = (f"""
+            Cell ID {point_id} <b>already exists</b>!<br><br>
+            Are you sure you want to add this point?
+        """)
+        if table_endname:
+            txt = (f"""
+                The loaded table <code>{table_endname}</code> has point id 
+                {point_id}.
+                <br><br>However, {txt}
+            """)
+        txt = html_utils.paragraph(txt)
+        _, _, yesButton = msg.warning(
+            self, f'Cell ID {point_id} already exist', txt,
+            buttonsTexts=(
+                'Cancel', 'No, do not add', f'Yes, add point id {point_id}'
+            )
+        )
+        return msg.clickedButton == yesButton
+    
     def gui_hoverEventImg2(self, event):
         try:
             posData = self.data[self.pos_i]
@@ -7508,6 +7533,11 @@ class guiWin(QMainWindow):
                     id = self.getClickedPointNewId(
                         action, id, addPointsByClickingButton.pointIdSpinbox
                     )
+                    if magicPromptsON:
+                        proceed = self.warnAddingPointWithExistingId(id)
+                        if not proceed:
+                            return
+                        
                     addPointsByClickingButton.pointIdSpinbox.setValue(id)
                 elif middle_click:
                     id = 0
@@ -16388,17 +16418,18 @@ class guiWin(QMainWindow):
         if zoom_slice is None:
             zoom_slice = slice(None)
         
+
         images = (
-            posData.img_data[posData.frame_i][zoom_slice], 
-            posData.img_data[posData.frame_i][zoom_slice], 
-            posData.img_data[posData.frame_i][zoom_slice], 
-            posData.img_data[posData.frame_i][zoom_slice], 
+            posData.img_data[posData.frame_i][..., *zoom_slice], 
+            posData.img_data[posData.frame_i][..., *zoom_slice], 
+            posData.img_data[posData.frame_i][..., *zoom_slice], 
+            posData.img_data[posData.frame_i][..., *zoom_slice], 
         )
         labels_overlays = (
-            posData.lab[zoom_slice], 
-            lab_new[zoom_slice], 
-            lab_union[zoom_slice], 
-            lab_interesection[zoom_slice],
+            posData.lab[..., *zoom_slice], 
+            lab_new[..., *zoom_slice], 
+            lab_union[..., *zoom_slice], 
+            lab_interesection[..., *zoom_slice],
         )
         labels_overlays_lut = self.getLabelsImageLut()
         labels_overlays_luts = (
@@ -16407,6 +16438,7 @@ class guiWin(QMainWindow):
             labels_overlays_lut,
             labels_overlays_lut,
         )
+        
         axis_titles = (
             'Original masks', 
             'New masks', 
@@ -24328,9 +24360,24 @@ class guiWin(QMainWindow):
 
         self.loadClickEntryDfs(tableEndName)
 
+    def checkLoadedTableIds(self, toolbar):
+        if toolbar != self.promptSegmentPointsLayerToolbar:
+            return True
+        
+        for posData in self.data:
+            for tableEndName, df in posData.clickEntryPointsDfs.items():
+                for point_id in df['id'].values:
+                    if point_id in posData.IDs_idxs:
+                        proceed = self.warnAddingPointWithExistingId(
+                            point_id, table_endname=tableEndName
+                        )
+                        return proceed
+    
     @exception_handler
     def addPointsLayer(self, toolbar=None):
-        if self.addPointsWin.cancel:
+        proceed = self.checkLoadedTableIds(toolbar)
+        
+        if self.addPointsWin.cancel or not proceed:
             self.logger.info('Adding points layer cancelled.')
             return
         

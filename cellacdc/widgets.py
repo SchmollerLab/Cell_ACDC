@@ -7556,7 +7556,7 @@ class ImShowPlotItem(pg.PlotItem):
         if selected:
             ((xmin, xmax), (ymin, ymax)) = self.viewRange()
             ylim_min, ylim_max = ylim
-            xlim_min, xlim_max = ylim
+            xlim_min, xlim_max = xlim
             
             xmin = max(xlim_min, xmin)
             xmax = min(xlim_max, xmax)
@@ -8052,7 +8052,7 @@ class ImShow(QBaseWindow):
                 image.ndim == 2
                 or (image.ndim == 3 and (is_rgb or is_rgba))
             )
-
+            
             if does_not_require_scrollbars:
                 imageItem.setImage(image, autoLevels=self._autoLevels)
             else:
