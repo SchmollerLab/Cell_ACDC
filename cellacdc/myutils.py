@@ -4578,7 +4578,6 @@ def update_editable_package(parent, package_name, package_info):
         print(f"Repository location not found for {package_name}")
         return False
     try:
-        raise Exception("Forcing git command update")
         return _update_repo_with_git_command(package_name, repo_location)
     except Exception as e:
         print(f"Git CLI propbaly not installed...")
