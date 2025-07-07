@@ -903,12 +903,25 @@ class mainWin(QMainWindow):
         myutils.showInExplorer(logs_path)
     
     def launchUpdateSpotmax(self):
-        myutils.update_package('spotmax',)
-        self.showUpdateInfo('SpotMAX')
+        res = myutils.update_package(self, 'spotmax',)
+        if res:
+            self.showUpdateInfo('spotMAX')
+        else:
+            self.showNoUpdateInfo('spotMAX')
 
     def launchUpdateACDC(self):
-        myutils.update_package('cellacdc')
-        self.showUpdateInfo('Cell-ACDC')
+        res = myutils.update_package(self, 'cellacdc')
+        if res:
+            self.showUpdateInfo('Cell-ACDC')
+        else:
+            self.showNoUpdateInfo('Cell-ACDC')
+    
+    def showNoUpdateInfo(self, package_name):
+        msg = widgets.myMessageBox()
+        txt = html_utils.paragraph(f"""
+            {package_name} is already up to date, or operation has failed.<br>
+        """)
+        msg.information(self, f'No update for {package_name} performed', txt)
 
     def showUpdateInfo(self, package_name):
         msg = widgets.myMessageBox()

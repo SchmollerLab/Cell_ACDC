@@ -558,3 +558,7 @@ error_up_str = '^'*100
 error_up_str = f'\n{error_up_str}'
 error_down_str = '^'*100
 error_down_str = f'\n{error_down_str}'
+
+binary_file_extensions = (
+    ".png", ".pdf"
+)
