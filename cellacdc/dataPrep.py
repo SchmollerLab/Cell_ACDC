@@ -1041,7 +1041,11 @@ class dataPrepWin(QMainWindow):
             
             yield uncropped_data, npz_path, tif_path
     
-    def saveCroppedChannel(self, cropped_data, npz_path, tif_path, posData):        
+    def saveCroppedChannel(self, cropped_data, npz_path, tif_path, posData):
+        self.logger.info(
+            f'Saving cropped data with shape {cropped_data.shape}'
+        )
+
         if self.align or os.path.exists(npz_path):
             self.logger.info(f'Saving: {npz_path}')
             temp_npz = self.getTempfilePath(npz_path)
