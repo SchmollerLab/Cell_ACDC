@@ -920,6 +920,8 @@ class mainWin(QMainWindow):
         msg = widgets.myMessageBox()
         txt = html_utils.paragraph(f"""
             {package_name} is already up to date, or operation has failed.<br>
+            It is recommended to install git for a better update experience.<br>
+            <a href="https://git-scm.com/downloads">Download Git</a>
         """)
         msg.information(self, f'No update for {package_name} performed', txt)
 
