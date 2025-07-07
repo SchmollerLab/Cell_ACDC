@@ -4568,12 +4568,9 @@ def update_package(parent, package_name):
     editable = package_info.get('editable', False)
     if editable:
         return update_editable_package(parent, package_name, package_info)
-        return update_editable_package(parent, package_name, package_info)
     else:
         return update_not_editable_package(package_name, package_info)
-        return update_not_editable_package(package_name, package_info)
 
-def update_editable_package(parent, package_name, package_info):
 def update_editable_package(parent, package_name, package_info):
     repo_location = package_info.get('editable_location', '')
     
@@ -4583,24 +4580,16 @@ def update_editable_package(parent, package_name, package_info):
     try:
         raise Exception("Forcing git command update")
         return _update_repo_with_git_command(package_name, repo_location)
-        raise Exception("Forcing git command update")
-        return _update_repo_with_git_command(package_name, repo_location)
     except Exception as e:
-        print(f"Git CLI propbaly not installed...")
-        print(f"Git CLI failed for {package_name}: {e}")
-        print("Falling back to Dulwich command")
         print(f"Git CLI propbaly not installed...")
         print(f"Git CLI failed for {package_name}: {e}")
         print("Falling back to Dulwich command")
         try:
             return _update_repo_with_dulwich(parent, package_name, repo_location)
-            return _update_repo_with_dulwich(parent, package_name, repo_location)
         except Exception as e:
-            print(f"Dulwich failed for {package_name}: {e}")
             print(f"Dulwich failed for {package_name}: {e}")
             return False
 
-def _update_repo_with_dulwich(parent, package_name, repo_location):
 def _update_repo_with_dulwich(parent, package_name, repo_location):
     """Update repository using dulwich"""
     try:
@@ -4638,51 +4627,7 @@ def _update_repo_with_dulwich(parent, package_name, repo_location):
                         uncommited_stuff.append(changed_stuff)
             
             if uncommited_stuff:
-            uncommited_stuff = []
-            
-            # Handle staged files
-            if hasattr(status, 'staged') and status.staged:
-                for key, value in status.staged.items():
-                    if isinstance(value, (list, tuple)):
-                        for item in value:
-                            # Convert bytes to string if necessary
-                            if isinstance(item, bytes):
-                                item = item.decode('utf-8')
-                            uncommited_stuff.append(item)
-                    else:
-                        # Convert bytes to string if necessary
-                        if isinstance(value, bytes):
-                            value = value.decode('utf-8')
-                        uncommited_stuff.append(value)
-            
-            # Handle unstaged files
-            if hasattr(status, 'unstaged') and status.unstaged:
-                from cellacdc import binary_file_extensions
-                for changed_stuff in status.unstaged:
-                    # Convert bytes to string if necessary
-                    if isinstance(changed_stuff, bytes):
-                        changed_stuff = changed_stuff.decode('utf-8')
-                    
-                    if not changed_stuff.endswith(binary_file_extensions):
-                        uncommited_stuff.append(changed_stuff)
-            
-            if uncommited_stuff:
                 print(f"Repository {package_name} has uncommitted changes")
-                if GUI_INSTALLED:
-                    txt = html_utils.paragraph(
-                       f"""Repository {package_name} has uncommitted changes.<br>
-                       Please commit or stash the changes before updating.<br>
-                       Changes:
-                       <ul>
-                       {''.join(f'<li>{item}</li>' for item in uncommited_stuff)}</ul>
-                       """
-                    )
-                    msg = widgets.myMessageBox()
-                    msg.warning(parent, 'Commit or Stash Changes', txt)
-                else:
-                    print(f"Changes: {', '.join(uncommited_stuff)}")
-                return False
-                        
                 if GUI_INSTALLED:
                     txt = html_utils.paragraph(
                        f"""Repository {package_name} has uncommitted changes.<br>
@@ -4713,11 +4658,6 @@ def _update_repo_with_dulwich(parent, package_name, repo_location):
             print(f"Error type: {type(pull_error).__name__}")
             return False
             
-        except Exception as pull_error:
-            print(f"Pull operation failed for {package_name}: {pull_error}")
-            print(f"Error type: {type(pull_error).__name__}")
-            return False
-            
     except Exception as e:
         print(f"Dulwich error updating {package_name}: {e}")
         return False
@@ -4732,8 +4672,6 @@ def _update_repo_with_git_command(package_name, repo_location):
         
         stashed_changes = False
         
-        stashed_changes = False
-        
         try:
             # Check for uncommitted changes
             result = subprocess.run(['git', 'status', '--porcelain'], 
@@ -4743,20 +4681,10 @@ def _update_repo_with_git_command(package_name, repo_location):
                 print("Stashing changes before update...")
                 subprocess.run(['git', 'stash'], check=True)
                 stashed_changes = True
-                stashed_changes = True
             
             # Pull changes
             subprocess.run(['git', 'pull'], check=True)
             print(f"Successfully updated {package_name}")
-            
-            # Pop stashed changes if any were stashed
-            if stashed_changes:
-                try:
-                    subprocess.run(['git', 'stash', 'pop'], check=True)
-                    print("Restored stashed changes")
-                except subprocess.CalledProcessError as pop_error:
-                    print(f"Warning: Could not restore stashed changes: {pop_error}")
-            
             
             # Pop stashed changes if any were stashed
             if stashed_changes:
