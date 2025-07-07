@@ -559,41 +559,6 @@ error_up_str = f'\n{error_up_str}'
 error_down_str = '^'*100
 error_down_str = f'\n{error_down_str}'
 
-pytorch_commands = {
-    'Windows': {
-        'Conda': {
-            'CPU': 'conda install pytorch torchvision cpuonly -c conda-forge',
-            'CUDA 11.8 (NVIDIA GPU)': 'conda install pytorch torchvision pytorch-cuda=11.8 -c conda-forge -c nvidia',
-            'CUDA 12.1 (NVIDIA GPU)': 'conda install pytorch torchvision pytorch-cuda=12.1 -c conda-forge -c nvidia'
-        },
-        'Pip': {
-            'CPU': 'python -m pip install torch torchvision',
-            'CUDA 11.8 (NVIDIA GPU)': 'python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118',
-            'CUDA 12.1 (NVIDIA GPU)': 'python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121'
-        }
-    },
-    'Mac': {
-        'Conda': {
-            'CPU': 'conda install pytorch torchvision cpuonly -c conda-forge',
-            'CUDA 11.8 (NVIDIA GPU)': '[WARNING]: CUDA is not available on MacOS',
-            'CUDA 12.1 (NVIDIA GPU)': '[WARNING]: CUDA is not available on MacOS'
-        },
-        'Pip': {
-            'CPU': 'pip3 install torch torchvision',
-            'CUDA 11.8 (NVIDIA GPU)': '[WARNING]: CUDA is not available on MacOS',
-            'CUDA 12.1 (NVIDIA GPU)': '[WARNING]: CUDA is not available on MacOS'
-        }
-    },
-    'Linux': {
-        'Conda': {
-            'CPU': 'conda install pytorch torchvision cpuonly -c conda-forge',
-            'CUDA 11.8 (NVIDIA GPU)': 'conda install pytorch torchvision pytorch-cuda=11.8 -c conda-forge -c nvidia',
-            'CUDA 12.1 (NVIDIA GPU)': 'conda install pytorch torchvision pytorch-cuda=12.1 -c conda-forge -c nvidia'
-        },
-        'Pip': {
-            'CPU': 'pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cpu',
-            'CUDA 11.8 (NVIDIA GPU)': 'pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu118',
-            'CUDA 12.1 (NVIDIA GPU)': 'pip3 install torch torchvision'
-        }
-    }
-}
+binary_file_extensions = (
+    ".png", ".pdf"
+)

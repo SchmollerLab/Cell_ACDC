@@ -468,6 +468,10 @@ class mainWin(QMainWindow):
         helpMenu.addAction(self.aboutAction)
         if SPOTMAX_INSTALLED:
             helpMenu.addAction(self.aboutSmaxAction)
+        helpMenu.addAction(self.updateACDCAction)
+        if SPOTMAX_INSTALLED:
+            helpMenu.addAction(self.updateSPOTMAXAction)
+
         
         utilsMenu.addAction(self.debugAction)
         self.debugAction.setVisible(False)
@@ -799,6 +803,8 @@ class mainWin(QMainWindow):
         self.citeAction = QAction('Cite us...')
         self.contributeAction = QAction('Contribute...')
         self.showLogsAction = QAction('Show log files...')
+        self.updateACDCAction = QAction('Update Cell-ACDC...')
+        self.updateSPOTMAXAction = QAction('Update SpotMAX...')
         
         if SPOTMAX_INSTALLED:
             self.aboutSmaxAction = QAction('About SpotMAX')
@@ -880,6 +886,9 @@ class mainWin(QMainWindow):
         )
         self.recentPathsMenu.aboutToShow.connect(self.populateOpenRecent)
         self.showLogsAction.triggered.connect(self.showLogFiles)
+        self.updateACDCAction.triggered.connect(self.launchUpdateACDC)
+        if SPOTMAX_INSTALLED:
+            self.updateSPOTMAXAction.triggered.connect(self.launchUpdateSpotmax)
         self.applyTrackingFromTableAction.triggered.connect(
             self.launchApplyTrackingFromTableUtil
         )
@@ -892,6 +901,37 @@ class mainWin(QMainWindow):
     def showLogFiles(self):
         logs_path = myutils.get_logs_path()
         myutils.showInExplorer(logs_path)
+    
+    def launchUpdateSpotmax(self):
+        res = myutils.update_package(self, 'spotmax',)
+        if res:
+            self.showUpdateInfo('spotMAX')
+        else:
+            self.showNoUpdateInfo('spotMAX')
+
+    def launchUpdateACDC(self):
+        res = myutils.update_package(self, 'cellacdc')
+        if res:
+            self.showUpdateInfo('Cell-ACDC')
+        else:
+            self.showNoUpdateInfo('Cell-ACDC')
+    
+    def showNoUpdateInfo(self, package_name):
+        msg = widgets.myMessageBox()
+        txt = html_utils.paragraph(f"""
+            {package_name} is already up to date, or operation has failed.<br>
+            It is recommended to install git for a better update experience.<br>
+            <a href="https://git-scm.com/downloads">Download Git</a>
+        """)
+        msg.information(self, f'No update for {package_name} performed', txt)
+
+    def showUpdateInfo(self, package_name):
+        msg = widgets.myMessageBox()
+        txt = html_utils.paragraph(f"""
+            {package_name} has been updated.<br>
+            Please <b>restart</b> the application for the changes to take effect.
+        """)
+        msg.information(self, f'Update {package_name}', txt)
 
     def populateOpenRecent(self):
         # Step 0. Remove the old options from the menu
@@ -1629,7 +1669,7 @@ class mainWin(QMainWindow):
         conda_important_admon = html_utils.to_admonition(
             f"""
             Java can be installed only using <code>conda</code>! 
-            If you are not using condaand the file format of your files requires Bio-Formats,<br>
+            If you are not using conda and the file format of your files requires Bio-Formats,<br>
             you will need to use the provided ImageJ/Fiji macros.<br>
             See this guide for more information: {acdc_fiji_macros_href}
             """, 'important'
