@@ -15237,7 +15237,10 @@ class guiWin(QMainWindow):
             )
         
         addPointsByClickingButton = self.buttonAddPointsByClickingActive()
-        if addPointsByClickingButton.toolbar.isVisible():
+        if (
+                addPointsByClickingButton is not None 
+                and addPointsByClickingButton.toolbar.isVisible()
+            ):
             isTypingIDFunctionChecked = self.keyPressCheckSetSpinboxValue(
                 ev, addPointsByClickingButton.rightClickIDSpinbox
             )
@@ -31918,15 +31921,18 @@ class guiWin(QMainWindow):
                 self.keptIDsLineEdit, self.keepIDsConfirmAction
             )
             self.highlightHoverIDsKeptObj(0, 0, hoverID=0)
+            QTimer.singleShot(300, self.autoRange)
             return
 
         if self.brushButton.isChecked() and self.typingEditID:
             self.autoIDcheckbox.setChecked(True)
             self.typingEditID = False
+            QTimer.singleShot(300, self.autoRange)
             return
         
         if isTypingIDFunctionChecked and self.typingEditID:
             self.typingEditID = False
+            QTimer.singleShot(300, self.autoRange)
             return
         
         if self.labelRoiButton.isChecked() and self.isMouseDragImg1:
@@ -31934,6 +31940,7 @@ class guiWin(QMainWindow):
             self.labelRoiItem.setPos((0,0))
             self.labelRoiItem.setSize((0,0))
             self.freeRoiItem.clear()
+            QTimer.singleShot(300, self.autoRange)
             return
         
         self.setUncheckedAllButtons()
@@ -31948,6 +31955,7 @@ class guiWin(QMainWindow):
             self.polyLineRoi.clearPoints()
         except Exception as e:
             pass
+        QTimer.singleShot(300, self.autoRange)
     
     def askCloseAllWindows(self):
         txt = html_utils.paragraph("""
