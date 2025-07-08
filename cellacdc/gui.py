@@ -16423,16 +16423,16 @@ class guiWin(QMainWindow):
         
 
         images = (
-            posData.img_data[posData.frame_i][..., *zoom_slice], 
-            posData.img_data[posData.frame_i][..., *zoom_slice], 
-            posData.img_data[posData.frame_i][..., *zoom_slice], 
-            posData.img_data[posData.frame_i][..., *zoom_slice], 
+            posData.img_data[posData.frame_i][..., zoom_slice[0], zoom_slice[1]], 
+            posData.img_data[posData.frame_i][..., zoom_slice[0], zoom_slice[1]], 
+            posData.img_data[posData.frame_i][..., zoom_slice[0], zoom_slice[1]], 
+            posData.img_data[posData.frame_i][..., zoom_slice[0], zoom_slice[1]], 
         )
         labels_overlays = (
-            posData.lab[..., *zoom_slice], 
-            lab_new[..., *zoom_slice], 
-            lab_union[..., *zoom_slice], 
-            lab_interesection[..., *zoom_slice],
+            posData.lab[..., zoom_slice[0], zoom_slice[1]], 
+            lab_new[..., zoom_slice[0], zoom_slice[1]], 
+            lab_union[..., zoom_slice[0], zoom_slice[1]], 
+            lab_interesection[..., zoom_slice[0], zoom_slice[1]],
         )
         labels_overlays_lut = self.getLabelsImageLut()
         labels_overlays_luts = (
