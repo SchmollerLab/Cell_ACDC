@@ -2701,8 +2701,12 @@ def check_install_cellpose(
     if is_version_correct:
         return
     
-    next_version = int(version.split('.')[0])+1
-    next_version = f'{next_version}.0'
+    major_version = int(version.split('.')[0])
+    if major_version == 3:
+        pypi_name = 'cellpose==3.1.1.2'
+    else:
+        next_version = major_version+1
+        f'cellpose>={version},<{next_version}.0'
     
     check_install_package(
         'cellpose', 
