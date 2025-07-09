@@ -6,6 +6,8 @@ from typing import Tuple
 
 from cellacdc import printl, myutils, core
 
+import inspect
+
 class BackboneOptions:
     """Options for cellpose backbone"""
     values = ['default', "transformer"]
@@ -123,6 +125,15 @@ class Model:
         if self.cp_version == 3:
             kwargs["channel_axis"] = self.channel_axis
             kwargs["z_axis"] = self.z_axis
+
+        model_eval_params = inspect.signature(self.model.eval).parameters
+        param_names = list(model_eval_params.keys())
+        warn_deleted_flow3D_smooth = False
+        if 'flow3D_smooth' not in param_names and 'flow3D_smooth' in kwargs:
+            if kwargs['flow3D_smooth'] != 0:
+                warn_deleted_flow3D_smooth = True
+            del kwargs['flow3D_smooth']
+
         if not self.printed_model_params:
             if isinstance(image, list):
                 sample_img = image[0]
@@ -139,6 +150,12 @@ class Model:
             else:
                 print(f"Image min: {sample_img.min()}, max: {sample_img.max()}")
             
+            if warn_deleted_flow3D_smooth:
+                print(
+                    "Warning: `flow3D_smooth` parameter is not used in the current "
+                    "version of Cellpose. It has been removed from the kwargs."
+                )
+                        
             self.printed_model_params = True
 
         return self.model.eval(image, **kwargs)[0]

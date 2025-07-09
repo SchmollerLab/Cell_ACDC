@@ -99,7 +99,7 @@ class Model(CellposeBaseModel):
         self.batch_size = batch_size
 
         out = myutils.translateStrNone(model_type, model_path, device,
-                                                                  denoise_model, denoise_model_path, )
+                                       denoise_model, denoise_model_path, )
         model_type, model_path, device, denoise_model, denoise_model_path = out
         self.check_model_path_model_type(
             model_type=model_type, 
@@ -178,7 +178,7 @@ class Model(CellposeBaseModel):
             eval_kwargs: dict,
             **kwargs: dict,
     ):
-        eval_kwargs_2 = {
+        eval_kwargs_3 = {
             'cellprob_threshold': kwargs['cellprob_threshold'],
             'min_size': kwargs['min_size'],
             'resample': kwargs['resample'],
@@ -189,7 +189,7 @@ class Model(CellposeBaseModel):
 
         }
 
-        eval_kwargs.update(eval_kwargs_2)
+        eval_kwargs.update(eval_kwargs_3)
 
         return eval_kwargs
 
