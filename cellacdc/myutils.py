@@ -2701,8 +2701,8 @@ def compare_model_versions(
         current_version: str,
 ):
     """
-    Compares two model versions and returns True if the target version is
-    greater than or equal to the current version.
+    Compares two model versions and returns True if the current version is
+    greater than or equal to the target version.
     """
     target_version = version.parse(target_version)
     current_version = version.parse(current_version)
@@ -2721,7 +2721,7 @@ def check_install_cellpose(
             from cellpose import models
             return
         except Exception as err:
-            version = version_to_install_if_missing
+            version = version_to_install_if_missing # after this the version will for sure be a valid format and not 'any'
             
     is_version_correct = check_cellpose_version(version)
     if is_version_correct:
