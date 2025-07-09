@@ -24381,6 +24381,7 @@ class guiWin(QMainWindow):
         proceed = self.checkLoadedTableIds(toolbar)
         
         if self.addPointsWin.cancel or not proceed:
+            self.addPointsWin = None
             self.logger.info('Adding points layer cancelled.')
             return
         
