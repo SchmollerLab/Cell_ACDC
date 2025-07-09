@@ -2707,11 +2707,11 @@ def check_install_cellpose(
         pypi_name = 'cellpose==3.1.1.2'
     else:
         next_version = major_version+1
-        f'cellpose>={version},<{next_version}.0'
+        pypi_name = f'cellpose>={version},<{next_version}.0'
     
     check_install_package(
         'cellpose', 
-        pypi_name=f'cellpose>={version},<{next_version}',
+        pypi_name=pypi_name,
         import_pkg_name='cellpose',
         force_upgrade=True
     )
