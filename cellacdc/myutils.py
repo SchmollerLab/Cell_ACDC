@@ -33,6 +33,7 @@ import traceback
 import itertools
 from dulwich import porcelain
 from dulwich.repo import Repo
+from packaging import version as packaging_version
 
 from natsort import natsorted
 
@@ -58,6 +59,7 @@ from . import github_home_url
 from . import try_input_install_package
 from . import _warnings
 from . import urls
+from .models._cellpose_base import min_target_versions_cp
 
 ArgSpec = namedtuple('ArgSpec', ['name', 'default', 'type', 'desc', 'docstring'])
 
@@ -2671,6 +2673,11 @@ def check_cellpose_version(version: str):
             cancel = _warnings.warn_installing_different_cellpose_version(
                 version, installed_version
             )
+        if not compare_model_versions(
+            min_target_versions_cp[str(major_requested)],
+            installed_version
+        ):
+            is_version_correct = False
     except Exception as err:
         is_version_correct = False
     
@@ -2684,6 +2691,19 @@ def purge_module(module_name):
     for mod in to_delete:
         del sys.modules[mod]
 
+def compare_model_versions(
+        target_version: str,
+        current_version: str,
+):
+    """
+    Compares two model versions and returns True if the current version is
+    greater than or equal to the target version.
+    """
+    target_version = packaging_version.parse(target_version)
+    current_version = packaging_version.parse(current_version)
+    
+    return current_version >= target_version
+
 def check_install_cellpose(
         version: Literal['2.0', '3.0', '4.0', 'any'] = '2.0', 
         version_to_install_if_missing: Literal['2.0', '3.0', '4.0'] = '4.0'
@@ -2696,20 +2716,23 @@ def check_install_cellpose(
             from cellpose import models
             return
         except Exception as err:
-            version = version_to_install_if_missing
+            version = version_to_install_if_missing # after this the version will for sure be a valid format and not 'any'
             
     is_version_correct = check_cellpose_version(version)
     if is_version_correct:
         return
     
-    next_version = int(version.split('.')[0])+1
-    next_version = f'{next_version}.0'
+    major_version = int(version.split('.')[0])
+
+    next_version = major_version+1
+
+    min_version = min_target_versions_cp[str(major_version)]
     
     check_install_package(
         'cellpose', 
-        pypi_name=f'cellpose>={version},<{next_version}',
-        import_pkg_name='cellpose',
-        force_upgrade=True
+        max_version=f'{next_version}.0',
+        min_version=min_version,
+        include_lower_version=True,
     )
 
     purge_module('cellpose')
@@ -2741,13 +2764,20 @@ def is_gui_running():
     
     return QCoreApplication.instance() is not None
 
-def check_pkg_version(import_pkg_name, min_version, raise_err=True):
+def check_pkg_version(import_pkg_name, min_version, include_lower_version, raise_err=True):
     is_version_correct = False
     try:
-        from packaging import version
-        installed_version = get_package_version(import_pkg_name)  
-        if version.parse(installed_version) > version.parse(min_version):
-            is_version_correct = True
+        installed_version = get_package_version(import_pkg_name)
+        if include_lower_version:
+            is_version_correct = (
+                packaging_version.parse(installed_version) 
+                >= packaging_version.parse(min_version)
+            )
+        else:   
+            is_version_correct = (
+                packaging_version.parse(installed_version) 
+                > packaging_version.parse(min_version)
+            )
     except Exception as err:
         is_version_correct = False
     
@@ -2759,14 +2789,22 @@ def check_pkg_version(import_pkg_name, min_version, raise_err=True):
         return is_version_correct
 
 def check_pkg_max_version(
-        import_pkg_name, max_version, raise_err=True
+        import_pkg_name, max_version, include_higher_version, raise_err=True
     ):
     is_version_correct = False
     try:
         from packaging import version
         installed_version = get_package_version(import_pkg_name)  
-        if version.parse(installed_version) < version.parse(max_version):
-            is_version_correct = True
+        if include_higher_version:
+            is_version_correct = (
+                packaging_version.parse(installed_version) 
+                <= packaging_version.parse(max_version)
+            )
+        else:
+            is_version_correct = (
+                packaging_version.parse(installed_version) 
+                < packaging_version.parse(max_version)
+            )
     except Exception as err:
         is_version_correct = False
     
@@ -2864,6 +2902,8 @@ def check_install_package(
         install_dependencies=True,
         return_outcome=False,
         installer: Literal['pip', 'conda']='pip',
+        include_higher_version: bool = False,
+        include_lower_version: bool = False
     ):
     """Try to import a package. If import fails, ask user to install it 
     automatically.
@@ -2896,7 +2936,8 @@ def check_install_package(
         If True, we force the upgrade even if package is installed.
     upgrade : bool, optional
         If True, pip will upgrade the package. This value is True if 
-        `force_upgrade` is True. Default is False
+        `force_upgrade` is True. Without min_version and max_version
+        it will never upgrade or downgrade the package.
     min_version : str, optional
         If not empty it must be a valid version `major[.minor][.patch]` where 
         minor and patch are optional. If the installed package is older the 
@@ -2912,6 +2953,12 @@ def check_install_package(
     installer : str, optional
         Package manager to use to install the package. Either 'pip' or 'conda'. 
         Default is 'pip'
+    include_higher_version : bool, optional
+        If True, if the higher version is installed, it will not be downgraded.
+        Default is False
+    include_lower_version : bool, optional
+        If True, if the lower version is installed, it will not be upgraded.
+        Default is False
         
     Raises
     ------
@@ -2924,7 +2971,7 @@ def check_install_package(
     if not is_gui_running():
         is_cli=True
     
-    try:
+    try: # check_pkg_version and check_pkg_max_version
         import_pkg_name = import_pkg_name.replace('-', '_')
         import_module(import_pkg_name)
         if force_upgrade:
@@ -2932,15 +2979,17 @@ def check_install_package(
             raise ModuleNotFoundError(
                 f'User requested to forcefully upgrade the package "{pkg_name}"')
         if min_version:
-            check_pkg_version(import_pkg_name, min_version)
+            check_pkg_version(import_pkg_name, min_version, include_lower_version)
         if max_version:
-            check_pkg_max_version(import_pkg_name, max_version)
+            check_pkg_max_version(import_pkg_name, max_version, include_higher_version)
     except ModuleNotFoundError:
         proceed = _install_package_msg(
             pkg_name, note=note, parent=parent, upgrade=upgrade,
             is_cli=is_cli, caller_name=caller_name, logger_func=logger_func,
             pkg_command=pypi_name, max_version=max_version, 
-            min_version=min_version, installer=installer
+            min_version=min_version, installer=installer,
+            include_higher_version=include_higher_version,
+            include_lower_version=include_lower_version
         )
         if pypi_name:
             pkg_name = pypi_name
@@ -2964,7 +3013,9 @@ def check_install_package(
                 pkg_command = _get_pkg_command_pip_install(
                     pkg_name, 
                     max_version=max_version, 
-                    min_version=min_version
+                    min_version=min_version,
+                    including_higher_version=include_higher_version,
+                    including_lower_version=include_lower_version,
                 )
                 if installer == 'pip':
                     _install_pip_package(pkg_command, install_dependencies=install_dependencies)
@@ -3082,21 +3133,27 @@ def download_fiji(logger_func=print):
 def _install_package_msg(
         pkg_name, note='', parent=None, upgrade=False, caller_name='Cell-ACDC',
         is_cli=False, pkg_command='', logger_func=print, max_version='', 
-        min_version='', installer: Literal['pip', 'conda']='pip'
+        min_version='', installer: Literal['pip', 'conda']='pip',
+        include_higher_version: bool = False,
+        include_lower_version: bool = False
     ):
     if is_cli:
         proceed = _install_package_cli_msg(
             pkg_name, note=note, upgrade=upgrade, caller_name=caller_name,
             pkg_command=pkg_command, max_version=max_version, 
             min_version=min_version, logger_func=logger_func, 
-            installer=installer
+            installer=installer,
+            include_higher_version=include_higher_version,
+            include_lower_version=include_lower_version
         )
     else:
         proceed = _install_package_gui_msg(
             pkg_name, note=note, parent=parent, upgrade=upgrade, 
             caller_name=caller_name, pkg_command=pkg_command,
             max_version=max_version, min_version=min_version, 
-            logger_func=logger_func, installer=installer
+            logger_func=logger_func, installer=installer,
+            including_higher_version=include_higher_version,
+            including_lower_version=include_lower_version
         )
     return proceed
 
@@ -3188,26 +3245,40 @@ def _install_pytorch_cli(
         cmd_list = [cmd.lstrip(".") for cmd in cmd_list]
         subprocess.check_call([sys.executable, *cmd_list], shell=True)
 
-def _get_pkg_command_pip_install(pkg_command, max_version='', min_version=''):
+def _get_pkg_command_pip_install(pkg_command, max_version='', min_version='',
+                                 including_lower_version=False, including_higher_version=False):
+    
+    if including_higher_version:
+        sign_max = "<="
+    else:
+        sign_max = "<"
+    if including_lower_version:
+        sign_min = ">="
+    else:
+        sign_min = ">"
     if min_version:
-        pkg_command = f'{pkg_command}>{min_version}'
+        pkg_command = f'{pkg_command}{sign_min}{min_version}'
         if max_version:
             pkg_command = f'{pkg_command},'
     
     if max_version:
-        pkg_command = f'{pkg_command}<{max_version}'
+        pkg_command = f'{pkg_command}{sign_max}{max_version}'
     return pkg_command
 
 def _install_package_cli_msg(
         pkg_name, note='', upgrade=False, caller_name='Cell-ACDC',
         logger_func=print, pkg_command='', max_version='', 
-        min_version='', installer: Literal['pip', 'conda']='pip'
+        min_version='', installer: Literal['pip', 'conda']='pip',
+        include_lower_version=False,
+        include_higher_version=False
     ):
     if not pkg_command:
         pkg_command = pkg_name
     
     pkg_command = _get_pkg_command_pip_install(
-        pkg_command, max_version=max_version, min_version=min_version
+        pkg_command, max_version=max_version, min_version=min_version,
+        including_lower_version=include_lower_version,
+        including_higher_version=include_higher_version
     )
     
     if upgrade:
@@ -3248,7 +3319,8 @@ def _install_package_cli_msg(
         
 def _install_package_gui_msg(
         pkg_name, note='', parent=None, upgrade=False, caller_name='Cell-ACDC', 
-        pkg_command='', logger_func=None, max_version='', min_version='', 
+        pkg_command='', logger_func=None, max_version='', min_version='',
+        including_lower_version=False, including_higher_version=False,
         installer: Literal['pip', 'conda']='pip'
     ):
     msg = widgets.myMessageBox(parent=parent)
@@ -3263,7 +3335,9 @@ def _install_package_gui_msg(
         pkg_command = pkg_name
     
     pkg_command = _get_pkg_command_pip_install(
-        pkg_command, max_version=max_version, min_version=min_version
+        pkg_command, max_version=max_version, min_version=min_version,
+        including_lower_version=including_lower_version,
+        including_higher_version=including_higher_version
     )
     
     command_html = pkg_command.lower().replace('<', '&lt;').replace('>', '&gt;')
