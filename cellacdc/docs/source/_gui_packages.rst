@@ -1,5 +1,5 @@
 .. seealso:: 
-
+    This section is not valid for installation using the installer, where these libraries are installed automatically.
     If you prefer to **install the GUI libraries manually**, these are the 
     pacakges required:
 
