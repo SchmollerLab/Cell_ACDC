@@ -237,14 +237,18 @@ try:
 except Exception as err:
     raise err
 
-# Import qrc_resources explicitly so that "from . import qrc_resouces" imports 
-# the variable defined here. Use importlib in case qrc_resouces.py is in 
-# user folder
-qrc_resouces_spec = importlib.util.spec_from_file_location(
-    'qrc_resources', qrc_resources_path
-)
-qrc_resources = importlib.util.module_from_spec(qrc_resouces_spec)
-qrc_resouces_spec.loader.exec_module(qrc_resources)
+try:
+    # Import qrc_resources explicitly so that "from . import qrc_resouces" imports 
+    # the variable defined here. Use importlib in case qrc_resouces.py is in 
+    # user folder
+    qrc_resouces_spec = importlib.util.spec_from_file_location(
+        'qrc_resources', qrc_resources_path
+    )
+    qrc_resources = importlib.util.module_from_spec(qrc_resouces_spec)
+    qrc_resouces_spec.loader.exec_module(qrc_resources)
+except ModuleNotFoundError as err:
+    # Cellacdc in the cli might not have qtpy --> ignore error
+    pass
 
 def try_input_install_package(pkg_name, install_command, question=None):
     if question is None:
