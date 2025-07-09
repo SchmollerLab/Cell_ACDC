@@ -50,7 +50,6 @@ dependencies = [
     "boto3",
     "requests",
     "setuptools-scm",
-    "dulwich"
 ]
 dynamic = [
     "version",
