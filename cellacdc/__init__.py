@@ -2,6 +2,14 @@ import os
 import sys
 import shutil
 import subprocess
+import importlib
+import inspect
+import platform
+import traceback
+from datetime import datetime
+from pprint import pprint
+
+from functools import wraps
 
 import pathlib
 import numpy as np
@@ -122,6 +130,8 @@ if os.path.exists(user_profile_path_txt):
     except Exception as e:
         pass
 
+qrc_resources_user_path = os.path.join(user_profile_path, 'qrc_resources.py')
+
 try:
     os.makedirs(user_profile_path, exist_ok=True)
 except Exception as e:
@@ -191,14 +201,27 @@ if 'colorScheme' not in df_settings.index:
 else:
     scheme = df_settings.at['colorScheme', 'value']
 
+does_qrc_resources_exists = (
+    os.path.exists(qrc_resources_path)
+    or os.path.exists(qrc_resources_user_path)
+)
+
 # Set default qrc resources
-if not os.path.exists(qrc_resources_path):
+if not does_qrc_resources_exists:
     if scheme == 'light':
         qrc_resources_scheme_path = qrc_resources_light_path
     else:
         qrc_resources_scheme_path = qrc_resources_dark_path
     # Load default light mode
-    shutil.copyfile(qrc_resources_scheme_path, qrc_resources_path)
+    try:
+        shutil.copyfile(qrc_resources_scheme_path, qrc_resources_path)
+    except Exception as err:
+        # Copy to user folder because copying to cell-acdc location failed 
+        # possibly PermissionError
+        shutil.copyfile(qrc_resources_scheme_path, qrc_resources_user_path)
+        qrc_resources_path = qrc_resources_user_path
+elif os.path.exists(qrc_resources_user_path):
+    qrc_resources_path = qrc_resources_user_path
 
 # Replace 'from PyQt5' with 'from qtpy' in qrc_resources.py file
 try:
@@ -214,6 +237,15 @@ try:
 except Exception as err:
     raise err
 
+# Import qrc_resources explicitly so that "from . import qrc_resouces" imports 
+# the variable defined here. Use importlib in case qrc_resouces.py is in 
+# user folder
+qrc_resouces_spec = importlib.util.spec_from_file_location(
+    'qrc_resources', qrc_resources_path
+)
+qrc_resources = importlib.util.module_from_spec(qrc_resouces_spec)
+qrc_resouces_spec.loader.exec_module(qrc_resources)
+
 def try_input_install_package(pkg_name, install_command, question=None):
     if question is None:
         question = 'Do you want to install it now ([y]/n)? '
@@ -225,15 +257,6 @@ def try_input_install_package(pkg_name, install_command, question=None):
             f'The module "{pkg_name}" is not installed. '
             f'Install it with the command `{install_command}`.'
         )
-
-import os
-import inspect
-import platform
-import traceback
-from datetime import datetime
-from pprint import pprint
-
-from functools import wraps
 
 try:
     # Force PyQt6 if available
