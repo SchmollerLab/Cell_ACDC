@@ -7529,15 +7529,17 @@ class guiWin(QMainWindow):
                 if right_click:
                     id = addPointsByClickingButton.rightClickIDSpinbox.value()
                 elif left_click:
-                    id = addPointsByClickingButton.pointIdSpinbox.value()
+                    id = addPointsByClickingButton.pointIdSpinbox.value()                        
                     id = self.getClickedPointNewId(
-                        action, id, addPointsByClickingButton.pointIdSpinbox
+                        action, id, addPointsByClickingButton.pointIdSpinbox,
+                        isMagicPrompts=magicPromptsON
                     )
+                    printl(id)
                     if magicPromptsON:
                         proceed = self.warnAddingPointWithExistingId(id)
                         if not proceed:
                             return
-                        
+                    
                     addPointsByClickingButton.pointIdSpinbox.setValue(id)
                 elif middle_click:
                     id = 0
@@ -16216,6 +16218,24 @@ class guiWin(QMainWindow):
         self.ghostMaskItemLeft.clear()
         self.ghostMaskItemRight.clear()
 
+    @disableWindow
+    def _importInitMagicPromptModel(
+            self, model_name, posData, win, acdcPromptSegment, toolbar
+        ):
+        self.logger.info(f'Initializing promptable model {model_name}...')
+        init_kwargs = win.init_kwargs
+        model = myutils.init_prompt_segm_model(
+            acdcPromptSegment, posData, win.init_kwargs
+        )
+        toolbar.model = model
+        toolbar.model_segment_kwargs = win.model_kwargs
+        toolbar.model_name = model_name
+        toolbar.viewModelParamsAction.setDisabled(False)
+        
+        self.logger.info(
+            f'Promptable model {model_name} successfully initialised!'
+        )
+    
     @exception_handler
     def magicPromptsInitModel(
             self, 
@@ -16239,18 +16259,8 @@ class guiWin(QMainWindow):
             )
             return
         
-        self.logger.info(f'Initializing promptable model {model_name}...')
-        init_kwargs = win.init_kwargs
-        model = myutils.init_prompt_segm_model(
-            acdcPromptSegment, posData, win.init_kwargs
-        )
-        toolbar.model = model
-        toolbar.model_segment_kwargs = win.model_kwargs
-        toolbar.model_name = model_name
-        toolbar.viewModelParamsAction.setDisabled(False)
-        
-        self.logger.info(
-            f'Promptable model {model_name} successfully initialised!'
+        self._importInitMagicPromptModel(
+            model_name, posData, win, acdcPromptSegment, toolbar
         )
     
     def getMagicPromptsInputs(self, toolbar):
@@ -24520,27 +24530,36 @@ class guiWin(QMainWindow):
             id = point.data()
         return id
     
-    def getClickedPointNewId(self, action, current_id, pointIdSpinbox):
+    def getClickedPointNewId(
+            self, action, current_id, pointIdSpinbox, isMagicPrompts=False
+        ):
         removed_id = getattr(pointIdSpinbox, 'removedId', None)
         if removed_id is not None:
             pointIdSpinbox.removedId = None
             return removed_id
         
         posData = self.data[self.pos_i]
-        framePointsData = action.pointsData.get(posData.frame_i)
-        if framePointsData is None:
-            return 1
-        if posData.SizeZ > 1:
-            new_id = 1
-            for z_data in action.pointsData[posData.frame_i].values():
-                max_id = max(z_data.get('id', 0), default=0) + 1
-                if max_id > new_id:
-                    new_id = max_id
+        if isMagicPrompts:
+            if current_id not in posData.IDs_idxs:
+                return current_id
+            
+            new_id = self.setBrushID(return_val=True)
+            return new_id
         else:
-            new_id = max(framePointsData.get('id', 0), default=0) + 1
-        if current_id >= new_id:
-            return current_id
-        return new_id
+            framePointsData = action.pointsData.get(posData.frame_i)
+            if framePointsData is None:
+                return 1
+            if posData.SizeZ > 1:
+                new_id = 1
+                for z_data in action.pointsData[posData.frame_i].values():
+                    max_id = max(z_data.get('id', 0), default=0) + 1
+                    if max_id > new_id:
+                        new_id = max_id
+            else:
+                new_id = max(framePointsData.get('id', 0), default=0) + 1
+            if current_id >= new_id:
+                return current_id
+            return new_id
     
     def setHoverCircleAddPoint(self, x, y):
         addPointsByClickingButton = self.buttonAddPointsByClickingActive()
