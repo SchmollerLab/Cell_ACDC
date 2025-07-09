@@ -24375,6 +24375,8 @@ class guiWin(QMainWindow):
                             point_id, table_endname=tableEndName
                         )
                         return proceed
+        
+        return True
     
     @exception_handler
     def addPointsLayer(self, toolbar=None):
