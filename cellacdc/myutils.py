@@ -33,7 +33,7 @@ import traceback
 import itertools
 from dulwich import porcelain
 from dulwich.repo import Repo
-from packaging import version
+from packaging import version as packaging_version
 
 from natsort import natsorted
 
@@ -59,14 +59,9 @@ from . import github_home_url
 from . import try_input_install_package
 from . import _warnings
 from . import urls
+from .models._cellpose_base import min_target_versions_cp
 
 ArgSpec = namedtuple('ArgSpec', ['name', 'default', 'type', 'desc', 'docstring'])
-
-min_target_versions_cp = {
-    '2': '2.3.2',
-    '3': '3.1.1.2',
-    '4': '4.0.6',
-}
 
 def get_module_name(script_file_path):
     parts = pathlib.Path(script_file_path).parts
@@ -2704,8 +2699,8 @@ def compare_model_versions(
     Compares two model versions and returns True if the current version is
     greater than or equal to the target version.
     """
-    target_version = version.parse(target_version)
-    current_version = version.parse(current_version)
+    target_version = packaging_version.parse(target_version)
+    current_version = packaging_version.parse(current_version)
     
     return current_version >= target_version
 
@@ -2772,12 +2767,17 @@ def is_gui_running():
 def check_pkg_version(import_pkg_name, min_version, include_lower_version, raise_err=True):
     is_version_correct = False
     try:
-        from packaging import version
         installed_version = get_package_version(import_pkg_name)
         if include_lower_version:
-            is_version_correct = version.parse(installed_version) >= version.parse(min_version)
+            is_version_correct = (
+                packaging_version.parse(installed_version) 
+                >= packaging_version.parse(min_version)
+            )
         else:   
-            is_version_correct = version.parse(installed_version) > version.parse(min_version)
+            is_version_correct = (
+                packaging_version.parse(installed_version) 
+                > packaging_version.parse(min_version)
+            )
     except Exception as err:
         is_version_correct = False
     
@@ -2796,9 +2796,15 @@ def check_pkg_max_version(
         from packaging import version
         installed_version = get_package_version(import_pkg_name)  
         if include_higher_version:
-            is_version_correct = version.parse(installed_version) <= version.parse(max_version)
+            is_version_correct = (
+                packaging_version.parse(installed_version) 
+                <= packaging_version.parse(max_version)
+            )
         else:
-            is_version_correct = version.parse(installed_version) < version.parse(max_version)
+            is_version_correct = (
+                packaging_version.parse(installed_version) 
+                < packaging_version.parse(max_version)
+            )
     except Exception as err:
         is_version_correct = False
     
