@@ -31,8 +31,6 @@ import typing
 from typing import List, Callable, Tuple
 import traceback
 import itertools
-from dulwich import porcelain
-from dulwich.repo import Repo
 from packaging import version as packaging_version
 
 from natsort import natsorted
@@ -4651,89 +4649,9 @@ def update_editable_package(parent, package_name, package_info):
     if not repo_location or not os.path.exists(repo_location):
         print(f"Repository location not found for {package_name}")
         return False
-    try:
-        return _update_repo_with_git_command(package_name, repo_location)
-    except Exception as e:
-        print(f"Git CLI propbaly not installed...")
-        print(f"Git CLI failed for {package_name}: {e}")
-        print("Falling back to Dulwich command")
-        try:
-            return _update_repo_with_dulwich(parent, package_name, repo_location)
-        except Exception as e:
-            print(f"Dulwich failed for {package_name}: {e}")
-            return False
 
-def _update_repo_with_dulwich(parent, package_name, repo_location):
-    """Update repository using dulwich"""
-    try:
-        print(f"Updating {package_name} repository at {repo_location}...")
-        
-        # Check if repository has uncommitted changes
-        try:
-            status = porcelain.status(repo_location)
-            uncommited_stuff = []
-            
-            # Handle staged files
-            if hasattr(status, 'staged') and status.staged:
-                for key, value in status.staged.items():
-                    if isinstance(value, (list, tuple)):
-                        for item in value:
-                            # Convert bytes to string if necessary
-                            if isinstance(item, bytes):
-                                item = item.decode('utf-8')
-                            uncommited_stuff.append(item)
-                    else:
-                        # Convert bytes to string if necessary
-                        if isinstance(value, bytes):
-                            value = value.decode('utf-8')
-                        uncommited_stuff.append(value)
-            
-            # Handle unstaged files
-            if hasattr(status, 'unstaged') and status.unstaged:
-                from cellacdc import binary_file_extensions
-                for changed_stuff in status.unstaged:
-                    # Convert bytes to string if necessary
-                    if isinstance(changed_stuff, bytes):
-                        changed_stuff = changed_stuff.decode('utf-8')
-                    
-                    if not changed_stuff.endswith(binary_file_extensions):
-                        uncommited_stuff.append(changed_stuff)
-            
-            if uncommited_stuff:
-                print(f"Repository {package_name} has uncommitted changes")
-                if GUI_INSTALLED:
-                    txt = html_utils.paragraph(
-                       f"""Repository {package_name} has uncommitted changes.<br>
-                       Please commit or stash the changes before updating.<br>
-                       Changes:
-                       <ul>
-                       {''.join(f'<li>{item}</li>' for item in uncommited_stuff)}</ul>
-                       """
-                    )
-                    msg = widgets.myMessageBox()
-                    msg.warning(parent, 'Commit or Stash Changes', txt)
-                else:
-                    print(f"Changes: {', '.join(uncommited_stuff)}")
-                return False
-                        
-        except Exception as status_error:
-            print(f"Warning: Could not check repository status: {status_error}")
-        
-        # Pull changes from origin
-        try:
-            # reset the repository to the latest commit
-            result = porcelain.pull(repo_location, remote_location='origin')
-            print(f"Successfully updated {package_name}")
-            return True
-            
-        except Exception as pull_error:
-            print(f"Pull operation failed for {package_name}: {pull_error}")
-            print(f"Error type: {type(pull_error).__name__}")
-            return False
-            
-    except Exception as e:
-        print(f"Dulwich error updating {package_name}: {e}")
-        return False
+    return _update_repo_with_git_command(package_name, repo_location)
+
 def _update_repo_with_git_command(package_name, repo_location):
     """Update repository using git command"""
     try:
@@ -4744,25 +4662,63 @@ def _update_repo_with_git_command(package_name, repo_location):
         os.chdir(repo_location)
         
         stashed_changes = False
+
+        # check if there is a portable git
+        from .config import parser_args
+        try:
+            cp = parser_args
+            if cp["install_details"] is not None:
+                no_cli_install = True
+                install_details = cp["install_details"]
+                target_dir = install_details.get('target_dir', '') 
+                target_dir = target_dir.strip().strip('"').strip("'")
+                target_dir = os.path.abspath(target_dir)
+            else:
+                no_cli_install = False
+        except:
+            no_cli_install = False
+            pass
+
+        if is_win and no_cli_install:
+            git_loc = os.path.join(target_dir,
+                                   "portable_git",
+                                   "cmd",
+                                   "git.exe")
+            if not os.path.exists(git_loc):
+                print(f"Portable git not found at {git_loc}. Using system git.")
+                git_loc = 'git'
+        else:
+            git_loc = 'git'
+        
+        # Check if git is available
+        if not shutil.which(git_loc):
+            print(f"Git command not found. Please install git to update {package_name}.")
+            return False
         
         try:
             # Check for uncommitted changes
-            result = subprocess.run(['git', 'status', '--porcelain'], 
+
+            branch_result = subprocess.run([git_loc, 'branch', '--show-current'], 
+                                         capture_output=True, text=True, check=True)
+            current_branch = branch_result.stdout.strip()
+            print(f"Current branch: {current_branch}")
+
+            result = subprocess.run([git_loc, 'status', '--porcelain'], 
                                   capture_output=True, text=True, check=True)
             if result.stdout.strip():
                 print(f"Repository {package_name} has uncommitted changes")
                 print("Stashing changes before update...")
-                subprocess.run(['git', 'stash'], check=True)
+                subprocess.run([git_loc, 'stash'], check=True)
                 stashed_changes = True
             
             # Pull changes
-            subprocess.run(['git', 'pull'], check=True)
+            subprocess.run([git_loc, 'pull'], check=True)
             print(f"Successfully updated {package_name}")
             
             # Pop stashed changes if any were stashed
             if stashed_changes:
                 try:
-                    subprocess.run(['git', 'stash', 'pop'], check=True)
+                    subprocess.run([git_loc, 'stash', 'pop'], check=True)
                     print("Restored stashed changes")
                 except subprocess.CalledProcessError as pop_error:
                     print(f"Warning: Could not restore stashed changes: {pop_error}")
