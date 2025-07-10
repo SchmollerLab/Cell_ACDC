@@ -415,7 +415,7 @@ def delete_older_log_files(logs_path):
         except Exception as err:
             continue
 
-def get_info_version_text(is_cli=False):
+def get_info_version_text(is_cli=False, cli_formatted_text=True):
     version = read_version()
     release_date = get_date_from_version(version, package='cellacdc')
     py_ver = sys.version_info
@@ -429,8 +429,6 @@ def get_info_version_text(is_cli=False):
         f'Python {python_version}',
         f'Platform: {platform.platform()}',
         f'System: {platform.system()}',
-        f'Python executable: "{sys.executable}"',
-        f'Conda environment: "{os.environ.get("CONDA_PREFIX")}"'
     ]
     if GUI_INSTALLED and not is_cli:
         try:
@@ -439,7 +437,11 @@ def get_info_version_text(is_cli=False):
         except Exception as err:
             info_txts.append('Qt: Not installed')
     
-    info_txts.append(f'Working directory: "{os.getcwd()}"')
+    info_txts.append(f'Working directory: {os.getcwd()}')
+    
+    if not cli_formatted_text:
+        return info_txts
+    
     info_txts = [f'  - {txt}' for txt in info_txts]
     
     max_len = max([len(txt) for txt in info_txts]) + 2
