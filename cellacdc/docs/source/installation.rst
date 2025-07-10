@@ -21,6 +21,7 @@ section :ref:`contributing-guide`.
 * :ref:`Install from source <install-from-source-developer-version>`
 
 .. _install-windows:
+
 Install Cell-ACDC on Windows using the installer
 ------------------------------------------------
 
@@ -42,16 +43,14 @@ and `Portable Git <https://git-scm.com/download/win>`__ for version control.
 Please find more information on the `GitHub page <https://github.com/SchmollerLab/Cell_ACDC_installer>`__.
 
 **The installation steps are as follows:**
+
 1. Download the installer from the `link above <https://hmgubox2.helmholtz-muenchen.de/index.php/s/xXmaAzakBz3nWoL?openfile=true>`__.
 
-2. Run the installer by double-clicking on it. Accept the prompt to 
-   allow the installer to make changes to your computer.
+2. Run the installer by double-clicking on it. Accept the prompt to allow the installer to make changes to your computer.
 
-3. The installer will now open. Navigate the pages using the "Next" and "Back"
-    buttons.
+3. The installer will now open. Navigate the pages using the "Next" and "Back" buttons.
 
-4. Choose the installation directory. We recommend leaving it as default, and
-    not installing it in a directory which might need administrator rights to write to.
+4. Choose the installation directory. We recommend leaving it as default, and not installing it in a directory which might need administrator rights to write to.
 
 5. Choose the Cell-ACDC source. The installer offers four options:
 
@@ -72,27 +71,19 @@ Please find more information on the `GitHub page <https://github.com/SchmollerLa
 
    We recommend using **"Install Cell-ACDC from GitHub"** for most users to ensure you get the latest version.
 
-6. Click "Next" to continue with the installation. Check the box if you want to
-    use your own conda or python instead of the one provided by the installer.
+6. Click "Next" to continue with the installation. Check the box if you want to use your own conda or python instead of the one provided by the installer.
 
-7. Continue with the installation by clicking "Next", and choose the name of the start menu
-   folder where Cell-ACDC will be installed. 
-   You can leave the default name or choose a custom one.
+7. Continue with the installation by clicking "Next", and choose the name of the start menu folder where Cell-ACDC will be installed. You can leave the default name or choose a custom one.
 
-8. Finally, use the checkbox to decide if a desktop shortcut should be created. 
-   If you want to create a desktop shortcut, check the box and click "Next".
+8. Finally, use the checkbox to decide if a desktop shortcut should be created. If you want to create a desktop shortcut, check the box and click "Next".
 
 9. Review the installation details and start the installation process by clicking "Install".
 
 10. The required packaged files will be unpacked.
 
-11. After unpacking, a terminal window will open which will install and set up 
-    Cell-ACDC. Please monitor it for updates on progress and for potential errors.
+11. After unpacking, a terminal window will open which will install and set up Cell-ACDC. Please monitor it for updates on progress and for potential errors.
 
-12. Once the installation is complete, you will see a message indicating that 
-    Cell-ACDC has been successfully installed. You can now launch Cell-ACDC
-    from the start menu or desktop shortcut.
-
+12. Once the installation is complete, you will see a message indicating that Cell-ACDC has been successfully installed. You can now launch Cell-ACDC from the start menu or desktop shortcut.
 
 .. note:: 
 
@@ -108,19 +99,18 @@ Python environment guide
 
 All other installation methods require you to have at least basic knowledge of
 Python and the command line.
-
-.. tip:: 
     
-    If you are **new to Python** or you need a **refresher** on how to manage 
-    scientific Python environments, I highly recommend reading 
-    `this guide <python-guide>`__ by Dr. Robert Haase.
+If you are **new to Python** or you need a **refresher** on how to manage 
+scientific Python environments, I highly recommend reading 
+`this guide <python-guide>`__ by Dr. Robert Haase.
+
 
 .. _install-stable-version:
 
 Install stable version
 ----------------------
 
-1. Install `Miniconda <https://www.anaconda.com/download/success>`_ or `Miniforge <https://github.com/conda-forge/miniforge?tab=readme-ov-file#install>`_ 
+1. Install `Miniforge <https://github.com/conda-forge/miniforge?tab=readme-ov-file#install>`_ 
     Conda is the standard **package manager** for Python in the scientific 
     community.
 
