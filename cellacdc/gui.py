@@ -22485,7 +22485,7 @@ class guiWin(QMainWindow):
             if lab is not None:
                 # Visited frame
                 posData.frame_i = i
-                self.get_data()
+                self.get_data(lin_tree_init=False)
                 if self.onlyTracking:
                     self.tracking(enforce=True)
                 elif not posData.IDs:

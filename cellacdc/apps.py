@@ -14588,7 +14588,7 @@ class InstallPyTorchDialog(QBaseDialog):
         osText = self.osCombobox.currentText()
         pkgManager = self.pkgManagerCombobox.currentText()
         cmptPlatform = self.cmptPlatformCombobox.currentText()
-        command = myutils.get_pytorch_command[osText][pkgManager][cmptPlatform]
+        command = myutils.get_pytorch_command()[osText][pkgManager][cmptPlatform]
         self.commandWidget.setCommand(command)
     
     def ok_cb(self):
