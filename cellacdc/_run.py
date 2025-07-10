@@ -321,7 +321,7 @@ def _setup_app(splashscreen=False, icon_path=None, logo_path=None, scheme=None):
     from qtpy.QtGui import QPalette, QIcon
     from . import settings_csv_path, resources_folderpath
     
-    app = QApplication([])
+    app = QApplication(['Cell-ACDC'])
     app.setStyle(QStyleFactory.create('Fusion'))
     is_OS_dark_mode = app.palette().color(QPalette.Window).getHsl()[2] < 100
     app.toggle_dark_mode = False
