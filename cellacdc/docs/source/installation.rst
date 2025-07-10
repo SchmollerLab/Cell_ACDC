@@ -3,29 +3,114 @@
 Installation
 ============
 
-Here you will find a detailed guide on how to install Cell-ACDC. In general, 
-you should be fine with installing the stable version, however, Cell-ACDC 
-development is still quite rapid and if you want to try out the latest 
-features we recommend installing the latest version. On the other hand, 
-installing from source is required only if you plan to contribute to Cell-ACDC 
-development. In that case see this section :ref:`contributing-guide`.
+Here you will find a detailed guide on how to install Cell-ACDC. We now provide
+an installer exe for windows, which takes care of downloading Cell-ACDC and 
+setting it up. For this, please see section :ref:`install-windows`.
+In all other cases, please see :ref:`python-environment-guide` for information
+on Python and how to use it.
+In general, you should be fine with installing the stable version, 
+however, Cell-ACDC development is still quite rapid and if you want to 
+try out the latest features we recommend installing the latest version. On the 
+other hand, installing from source is required only if you plan to contribute 
+to Cell-ACDC development. In that case see this 
+section :ref:`contributing-guide`.
 
-.. tip:: 
-    
-    If you are **new to Python** or you need a **refresher** on how to manage 
-    scientific Python environments, I highly recommend reading 
-    `this guide <python-guide>`__ by Dr. Robert Haase.
-
+* :ref:`Install Cell-ACDC on Windows <install-windows>`
 * :ref:`Install stable version <install-stable-version>`
 * :ref:`Install latest version <install-latest-version>`
 * :ref:`Install from source <install-from-source-developer-version>`
+
+.. _install-windows:
+
+Install Cell-ACDC on Windows using the installer
+------------------------------------------------
+
+.. raw:: html
+
+   <a href="https://hmgubox2.helmholtz-muenchen.de/index.php/s/xXmaAzakBz3nWoL?openfile=true" 
+      target="_blank" 
+      style="display: inline-block; padding: 12px 24px; background-color: #007acc; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; margin: 10px 0;">
+      📥 Download Cell-ACDC Installer
+   </a>
+
+The installer eliminates the need to use the terminal and provides a streamlined
+installation process for Windows users. It automatically sets up a Conda environment
+and installs all necessary dependencies, including the GUI libraries.
+
+It ships with `Miniforge <https://github.com/conda-forge/miniforge>`__ as a package manager 
+and `Portable Git <https://git-scm.com/download/win>`__ for version control.
+
+Please find more information on the `GitHub page <https://github.com/SchmollerLab/Cell_ACDC_installer>`__.
+
+**The installation steps are as follows:**
+
+1. Download the installer from the `link above <https://hmgubox2.helmholtz-muenchen.de/index.php/s/xXmaAzakBz3nWoL?openfile=true>`__.
+
+2. Run the installer by double-clicking on it. Accept the prompt to allow the installer to make changes to your computer.
+
+3. The installer will now open. Navigate the pages using the "Next" and "Back" buttons.
+
+4. Choose the installation directory. We recommend leaving it as default, and not installing it in a directory which might need administrator rights to write to.
+
+5. Choose the Cell-ACDC source. The installer offers four options:
+
+   .. list-table::
+      :widths: 30 70
+      :header-rows: 1
+
+      * - Option
+        - Description
+      * - **Install Cell-ACDC from GitHub**
+        - Downloads the latest version directly from the official GitHub repository. This ensures you get the most up-to-date version with all the latest features and bug fixes. Uses either git from path or the portable git included with the installer.
+      * - **Install embedded Cell-ACDC**
+        - Uses a pre-packaged version of Cell-ACDC that is included with the installer. This option works without an internet connection and guarantees a tested, stable version.
+      * - **Use custom Cell-ACDC repository path**
+        - Allows you to specify a local path to a Cell-ACDC repository on your computer. This is useful if you have a custom or modified version of Cell-ACDC, or if you want to use a specific version that you have already downloaded.
+      * - **Specific PyPI version**
+        - Deselect all other options to use the drop-down menu to select one of the available versions on PyPI. This will install a non-editable version of Cell-ACDC.
+
+   We recommend using **"Install Cell-ACDC from GitHub"** for most users to ensure you get the latest version.
+
+6. Click "Next" to continue with the installation. Check the box if you want to use your own conda or python instead of the one provided by the installer.
+
+7. Continue with the installation by clicking "Next", and choose the name of the start menu folder where Cell-ACDC will be installed. You can leave the default name or choose a custom one.
+
+8. Finally, use the checkbox to decide if a desktop shortcut should be created. If you want to create a desktop shortcut, check the box and click "Next".
+
+9. Review the installation details and start the installation process by clicking "Install".
+
+10. The required packaged files will be unpacked.
+
+11. After unpacking, a terminal window will open which will install and set up Cell-ACDC. Please monitor it for updates on progress and for potential errors.
+
+12. Once the installation is complete, you will see a message indicating that Cell-ACDC has been successfully installed. You can now launch Cell-ACDC from the start menu or desktop shortcut.
+
+.. note:: 
+
+    * If you encounter any issues during the installation, please refer to the `GitHub issues page <https://github.com/SchmollerLab/Cell_ACDC_installer/issues>`__.
+    * The installer was created using `Inno Setup <https://jrsoftware.org/isinfo.php>`__.
+    * If there was an error during installation, the Cell-ACDC-installer exe can be found in the installation directory and can be run again.
+
+
+.. _python-environment-guide:
+
+Python environment guide
+------------------------
+
+All other installation methods require you to have at least basic knowledge of
+Python and the command line.
+    
+If you are **new to Python** or you need a **refresher** on how to manage 
+scientific Python environments, I highly recommend reading 
+`this guide <python-guide>`__ by Dr. Robert Haase.
+
 
 .. _install-stable-version:
 
 Install stable version
 ----------------------
 
-1. Install `Miniconda <https://www.anaconda.com/download/success>`_ or `Miniforge <https://github.com/conda-forge/miniforge?tab=readme-ov-file#install>`_ 
+1. Install `Miniforge <https://github.com/conda-forge/miniforge?tab=readme-ov-file#install>`_ 
     Conda is the standard **package manager** for Python in the scientific 
     community.
 
