@@ -12009,6 +12009,7 @@ class QDialogModelParams(QDialog):
             self.extra_kwargs = self.getExtraKwargs()
 
         self.model_kwargs = self.getModelKwargs()
+        self.segment_kwargs = self.model_kwargs
 
         if self.postProcessGroupbox is not None:
             self.applyPostProcessing = self.postProcessGroupbox.isChecked()

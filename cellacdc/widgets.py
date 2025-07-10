@@ -10324,6 +10324,9 @@ class MagicPromptsToolbar(ToolBar):
     sigInitSelectedModel = Signal(
         str, object, list, list, str, object
     )
+    sigViewModelParams = Signal(
+        str, object, list, list, str, object, object, object
+    )
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -10474,6 +10477,12 @@ class MagicPromptsToolbar(ToolBar):
         except AttributeError:
             help_url = None
         
+        self._model_name = model_name
+        self._acdcPromptSegment = acdcPromptSegment
+        self._init_argspecs = init_argspecs
+        self._segment_argspecs = segment_argspecs
+        self._help_url = help_url
+        
         self.sigInitSelectedModel.emit(
             model_name, 
             acdcPromptSegment,
@@ -10483,8 +10492,21 @@ class MagicPromptsToolbar(ToolBar):
             self
         )
     
+    def setInitializedModel(self, init_kwargs, segment_kwargs):
+        self._init_kwargs = init_kwargs
+        self._segment_kwargs = segment_kwargs
+    
     def viewModelParams(self):
-        ...
+        self.sigViewModelParams.emit(
+            self._model_name,
+            self._acdcPromptSegment,
+            self._init_argspecs,
+            self._segment_argspecs,
+            self._help_url,
+            self._init_kwargs,
+            self._segment_kwargs,
+            self
+        )
     
     def emitPromptTypeChanged(self, text):
         self.sigPromptTypeChanged.emit(self, text)

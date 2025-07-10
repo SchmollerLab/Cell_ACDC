@@ -1,7 +1,8 @@
 import os
 import re
 
-from typing import Literal
+import typing
+from typing import Literal, List, Callable, Tuple, Dict
 
 import pathlib
 import difflib
@@ -27,8 +28,7 @@ import numpy as np
 import pandas as pd
 import skimage
 import inspect
-import typing
-from typing import List, Callable, Tuple
+
 import traceback
 import itertools
 
@@ -1072,7 +1072,28 @@ def listdir(path) -> List[str]:
         and not f.endswith('.new.npz')
     ])
 
-def insertModelArgSpect(
+def setDefaultValueArgSpecsFromKwargs(
+        params: List[ArgSpec], 
+        kwargs: Dict[str, object]
+    ):
+    new_params = []
+    for param in params:
+        new_value = kwargs.get(param.name)
+        if new_value is None:
+            new_params.append(param)
+            continue
+        
+        new_param = ArgSpec(
+            name=param.name, 
+            default=new_value, 
+            type=param.type, 
+            desc=param.desc,
+            docstring=param.docstring
+        )
+        new_params.append(new_param)
+    return new_params
+
+def insertModelArgSpec(
         params, param_name, param_value, param_type=None, desc='',
         docstring=''
     ):

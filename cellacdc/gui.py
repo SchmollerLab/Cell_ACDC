@@ -5,17 +5,17 @@ import shutil
 import re
 import traceback
 import time
+from copy import deepcopy
 from datetime import datetime, timedelta
 import inspect
 import logging
 import uuid
 import json
-from collections import defaultdict
+from collections import defaultdict, Counter
 import psutil
 import zipfile
 from functools import partial
 from tqdm import tqdm
-from collections import Counter
 from natsort import natsorted
 from typing import Literal, Iterable, Dict, Any, List, Union, Tuple, Set
 
@@ -2354,6 +2354,9 @@ class guiWin(QMainWindow):
         )
         self.magicPromptsToolbar.sigInitSelectedModel.connect(
             self.magicPromptsInitModel
+        )
+        self.magicPromptsToolbar.sigViewModelParams.connect(
+            self.viewSetMagicPromptModelParams
         )
         self.magicPromptsToolbar.sigClearPoints.connect(
             self.magicPromptsClearPoints
@@ -7417,11 +7420,12 @@ class guiWin(QMainWindow):
 
         # Paint new IDs with brush and left click on the left image
         if left_click and canBrush:
-            # Store undo state before modifying stuff
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
             lab_2D = self.get_2Dlab(posData.lab)
             Y, X = lab_2D.shape
+            
+            # Store undo state before modifying stuff
             self.storeUndoRedoStates(False, storeOnlyZoom=True)
 
             ID = self.getHoverID(xdata, ydata)
@@ -7519,34 +7523,30 @@ class guiWin(QMainWindow):
 
         elif canAddPoint:
             action = addPointsByClickingButton.action
+            self.storeUndoAddPoint(action)
             x, y = event.pos().x(), event.pos().y()
             hoveredPoints = action.scatterItem.pointsAt(event.pos())
             if hoveredPoints:
                 removed_id = self.removeClickedPoints(action, hoveredPoints)
-                addPointsByClickingButton.pointIdSpinbox.setValue(removed_id)
-                addPointsByClickingButton.pointIdSpinbox.removedId = removed_id
-            else:
-                if right_click:
-                    id = addPointsByClickingButton.rightClickIDSpinbox.value()
-                elif left_click:
-                    id = addPointsByClickingButton.pointIdSpinbox.value()                        
-                    id = self.getClickedPointNewId(
-                        action, id, addPointsByClickingButton.pointIdSpinbox,
-                        isMagicPrompts=magicPromptsON
+                if not magicPromptsON:
+                    addPointsByClickingButton.pointIdSpinbox.setValue(removed_id)
+                    addPointsByClickingButton.pointIdSpinbox.removedId = (
+                        removed_id
                     )
-                    printl(id)
-                    if magicPromptsON:
-                        proceed = self.warnAddingPointWithExistingId(id)
-                        if not proceed:
-                            return
-                    
-                    addPointsByClickingButton.pointIdSpinbox.setValue(id)
-                elif middle_click:
-                    id = 0
+                else:
+                    self.restorePrevPointIdRightClick(addPointsByClickingButton)
+            else:
+                point_id = self.getAddedPointId(
+                    magicPromptsON, addPointsByClickingButton, 
+                    right_click, left_click, middle_click
+                )
+                if point_id is None:
+                    return
                 
                 self.addClickedPoint(action, x, y, id)
                 id = self.getClickedPointNewId(
-                    action, id, addPointsByClickingButton.pointIdSpinbox
+                    action, id, addPointsByClickingButton.pointIdSpinbox,
+                    isMagicPrompts=magicPromptsON
                 )
                 addPointsByClickingButton.pointIdSpinbox.setValue(
                     id, setLinkedWidget=False
@@ -15849,6 +15849,12 @@ class guiWin(QMainWindow):
         self.enqAutosave()
 
     def undo(self):
+        addPointsByClickingButton = self.buttonAddPointsByClickingActive()
+        if addPointsByClickingButton is not None:
+            done = self.undoAddPoint(addPointsByClickingButton.action)
+            if done:
+                return
+        
         if self.UndoCount == 0:
             # Store current state to enable redoing it
             self.addCurrentState()
@@ -16232,6 +16238,10 @@ class guiWin(QMainWindow):
         toolbar.model_name = model_name
         toolbar.viewModelParamsAction.setDisabled(False)
         
+        self.magicPromptsToolbar.setInitializedModel(
+            init_kwargs, toolbar.model_segment_kwargs
+        )
+        
         self.logger.info(
             f'Promptable model {model_name} successfully initialised!'
         )
@@ -16262,6 +16272,39 @@ class guiWin(QMainWindow):
         self._importInitMagicPromptModel(
             model_name, posData, win, acdcPromptSegment, toolbar
         )
+    
+    def viewSetMagicPromptModelParams(
+            self, 
+            model_name, 
+            acdcPromptSegment,
+            init_argspecs, 
+            segment_argspecs,
+            help_url,
+            init_kwargs,
+            segment_kwargs,
+            toolbar
+        ):
+        posData = self.data[self.pos_i]
+        
+        init_argspecs = myutils.setDefaultValueArgSpecsFromKwargs(
+            init_argspecs, init_kwargs
+        )
+        segment_argspecs = myutils.setDefaultValueArgSpecsFromKwargs(
+            segment_argspecs, segment_kwargs
+        )
+        
+        out = prompts.init_prompt_model_params(
+            posData, model_name, init_argspecs, segment_argspecs, 
+            help_url=help_url, qparent=self, init_last_params=False
+        )
+        win = out.get('win')
+        if win.cancel:
+            return
+        
+        if win.model_kwargs != segment_kwargs or win.init_kwargs != init_kwargs:
+            self._importInitMagicPromptModel(
+                model_name, posData, win, acdcPromptSegment, toolbar
+            )
     
     def getMagicPromptsInputs(self, toolbar):
         if not self.promptSegmentPointsLayerToolbar.isPointsLayerInit:
@@ -17386,10 +17429,10 @@ class guiWin(QMainWindow):
                 self.model_kwargs = win.segment_kwargs
                 thresh_method = self.model_kwargs['threshold_method']
                 gauss_sigma = self.model_kwargs['gauss_sigma']
-                segment_params = myutils.insertModelArgSpect(
+                segment_params = myutils.insertModelArgSpec(
                     segment_params, 'threshold_method', thresh_method
                 )
-                segment_params = myutils.insertModelArgSpect(
+                segment_params = myutils.insertModelArgSpec(
                     segment_params, 'gauss_sigma', gauss_sigma
                 )
                 initLastParams = False
@@ -24077,11 +24120,64 @@ class guiWin(QMainWindow):
         
         self.pointsLayerClicksDfsToData(posData, toolbar=toolbar)
     
+    def storeUndoAddPoint(self, action):
+        if not hasattr(self, 'undoAddPointQueueMapper'):
+            self.undoAddPointQueueMapper = defaultdict(list)
+
+        state = deepcopy(action.pointsData)
+        self.undoAddPointQueueMapper[action].append(state)
+        self.undoAction.setEnabled(True)
+        
+    def undoAddPoint(self, action):
+        undoAddPointQueue = self.undoAddPointQueueMapper.get(action)
+        if undoAddPointQueue is None:
+            return False
+        
+        if len(undoAddPointQueue) == 0:
+            return False
+        
+        state = undoAddPointQueue.pop(-1)
+        action.pointsData = state
+        
+        self.drawPointsLayers(computePointsLayers=False)
+        
+        if len(self.undoAddPointQueueMapper[action]) == 0:
+           self.undoAction.setEnabled(True)
+        
+        return True
+    
+    def getAddedPointId(
+            self, isMagicPrompts, addPointsByClickingButton, 
+            right_click, left_click, middle_click
+        ):
+        action = addPointsByClickingButton.action
+        if right_click:
+            id = addPointsByClickingButton.rightClickIDSpinbox.value()
+        elif left_click:
+            id = addPointsByClickingButton.pointIdSpinbox.value()                        
+            id = self.getClickedPointNewId(
+                action, id, addPointsByClickingButton.pointIdSpinbox,
+                isMagicPrompts=isMagicPrompts
+            )
+            if isMagicPrompts:
+                proceed = self.warnAddingPointWithExistingId(id)
+                if not proceed:
+                    return
+            
+            addPointsByClickingButton.pointIdSpinbox.setValue(id)
+        elif middle_click:
+            id = 0
+        
+        return id
+    
     def addPointsByClickingScatterItemHoverEntered(self, item, points, event):
         point = points[0]
-        id = point.data()
+        point_id = point.data()
         toolButton = item.action.button
-        toolButton.rightClickIDSpinbox.setValue(id)
+        toolButton.rightClickIDSpinbox.prevId = (
+            toolButton.rightClickIDSpinbox.value()
+        )
+        toolButton.rightClickIDSpinbox.setValue(point_id)
     
     def autoPilotZoomToObjToggled(self, checked):
         if not checked:
@@ -24528,7 +24624,18 @@ class guiWin(QMainWindow):
                 framePointsData['y'].remove(y)
                 framePointsData['id'].remove(point.data())
             id = point.data()
+        
         return id
+    
+    def restorePrevPointIdRightClick(self, addPointsByClickingButton):
+        # Try to restore the id that was there before hovering 
+        # because the hovering was required only to delete the 
+        # point
+        try:
+            prevId = addPointsByClickingButton.rightClickIDSpinbox.prevId
+            addPointsByClickingButton.rightClickIDSpinbox.setValue(prevId)
+        except Exception as err:
+            addPointsByClickingButton.rightClickIDSpinbox.prevId = None
     
     def getClickedPointNewId(
             self, action, current_id, pointIdSpinbox, isMagicPrompts=False
