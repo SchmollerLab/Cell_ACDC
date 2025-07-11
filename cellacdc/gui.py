@@ -457,6 +457,7 @@ class guiWin(QMainWindow):
 
         self.checkableButtons = []
         self.LeftClickButtons = []
+        self.toolsActiveInProj3Dsegm = set()
         self.customAnnotDict = {}
 
         # Keep a list of functions that are not functional in 3D, yet
@@ -1152,7 +1153,10 @@ class guiWin(QMainWindow):
         self.drawClearRegionButton = QToolButton(self)
         self.drawClearRegionButton.setCheckable(True)
         self.drawClearRegionButton.setIcon(QIcon(":clear_freehand_region.svg"))
-        self.widgetsWithShortcut['Clear freehand region'] = self.drawClearRegionButton
+        self.widgetsWithShortcut['Clear freehand region'] = (
+            self.drawClearRegionButton
+        )
+        self.toolsActiveInProj3Dsegm.add(self.drawClearRegionButton)
         
         self.checkableButtons.append(self.drawClearRegionButton)
         self.LeftClickButtons.append(self.drawClearRegionButton)
@@ -12961,8 +12965,15 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         zRange = None
         if self.isSegm3D:
-            z_slice = self.z_lab()
-            zRange = self.drawClearRegionToolbar.zRange(z_slice, posData.SizeZ)
+            zProjHow = self.zProjComboBox.currentText()
+            isZslice = zProjHow == 'single z-slice'
+            if isZslice:
+                z_slice = self.z_lab()
+                zRange = self.drawClearRegionToolbar.zRange(
+                    z_slice, posData.SizeZ
+                )
+            else:
+                zRange = (0, posData.SizeZ)
             
         regionSlice = self.freeRoiItem.slice(zRange=zRange)
         mask = self.freeRoiItem.mask()
@@ -20219,6 +20230,10 @@ class guiWin(QMainWindow):
             button = self.editToolBar.widgetForAction(action)
             if button == self.eraserButton:
                 continue
+            
+            if button in self.toolsActiveInProj3Dsegm:
+                continue
+            
             action.setDisabled(disabled)
             try:
                 button.setChecked(False)
@@ -25481,8 +25496,6 @@ class guiWin(QMainWindow):
             zProjHow = posData.segmInfo_df.loc[idx, 'which_z_proj_gui'].iloc[0] 
         
         self.zProjComboBox.setCurrentText(zProjHow)
-        # if zProjHow != 'single z-slice':
-        #     return
         
         reconnect = False
         try:
