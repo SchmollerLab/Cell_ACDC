@@ -104,6 +104,8 @@ our* \ `publication <https://bmcbiol.biomedcentral.com/articles/10.1186/s12915-0
 Is it only about segmentation?
 ------------------------------
 
+Small test change
+
 Of course not! Cell-ACDC automatically computes **several single-cell
 numerical features** such as cell area and cell volume, plus the mean,
 max, median, sum and quantiles of any additional fluorescent channel's
