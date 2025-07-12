@@ -33,14 +33,14 @@ jobs:
             return totalChanges;
 
       - name: Approve if PR is small
-        if: steps.diff.outputs.result < 10 && github.actor != 'github-actions[bot]'
+        if: steps.diff.outputs.result < 15 && github.actor != 'github-actions[bot]'
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.PR_MANAGEMENT }}
           script: |
             try {
               console.log(`Attempting to approve PR #${context.payload.pull_request.number}`);
-              console.log(`Changed lines: ${steps.diff.outputs.result}`);
+              console.log(`Changed lines: ${{ steps.diff.outputs.result }}`);
               
               const response = await github.rest.pulls.createReview({
                 owner: context.repo.owner,
