@@ -40,7 +40,7 @@ jobs:
           script: |
             try {
               console.log(`Attempting to approve PR #${context.payload.pull_request.number}`);
-              console.log(`Changed lines: ${steps.diff.outputs.result}`);
+              console.log(`Changed lines: ${{ steps.diff.outputs.result }}`);
               
               const response = await github.rest.pulls.createReview({
                 owner: context.repo.owner,
