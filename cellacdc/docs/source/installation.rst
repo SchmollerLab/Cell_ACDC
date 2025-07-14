@@ -27,7 +27,7 @@ Install Cell-ACDC on Windows using the installer
 
 .. raw:: html
 
-   <a href="https://hmgubox2.helmholtz-muenchen.de/index.php/s/xXmaAzakBz3nWoL?openfile=true" 
+   <a href="https://hmgubox2.helmholtz-muenchen.de/index.php/s/XdoLnbAAK8pwmyX?openfile=true" 
       target="_blank" 
       style="display: inline-block; padding: 12px 24px; background-color: #007acc; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; margin: 10px 0;">
       📥 Download Cell-ACDC Installer
@@ -44,7 +44,7 @@ Please find more information on the `GitHub page <https://github.com/SchmollerLa
 
 **The installation steps are as follows:**
 
-1. Download the installer from the `link above <https://hmgubox2.helmholtz-muenchen.de/index.php/s/xXmaAzakBz3nWoL?openfile=true>`__.
+1. Download the installer from the `link above <https://hmgubox2.helmholtz-muenchen.de/index.php/s/XdoLnbAAK8pwmyX?openfile=true>`__.
 
 2. Run the installer by double-clicking on it. Accept the prompt to allow the installer to make changes to your computer.
 
@@ -215,7 +215,7 @@ Updating to the latest stable version of Cell-ACDC
 
 To update to the latest version of Cell-ACDC , open the terminal, activate the 
 ``acdc`` environment with the command ``conda activate acdc`` and the run the 
-follwing command::
+following command::
         
     pip install --upgrade cellacdc
 
@@ -347,7 +347,7 @@ Updating to the latest version of Cell-ACDC
 
 To update to the latest version of Cell-ACDC , open the terminal, activate the 
 ``acdc`` environment with the command ``conda activate acdc`` and the run the 
-follwing command::
+following command::
         
     pip install --upgrade "git+https://github.com/SchmollerLab/Cell_ACDC.git"
 
