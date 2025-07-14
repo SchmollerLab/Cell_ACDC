@@ -137,7 +137,7 @@ Install stable version
     where the required libraries will be installed. 
     The virtual environment is called ``acdc`` in this case.
 
-5. **Activate the virtual environment** with the following command:
+5. **Activate the virtual environment** with then following command:
    
     .. code-block:: 
    
@@ -215,7 +215,7 @@ Updating to the latest stable version of Cell-ACDC
 
 To update to the latest version of Cell-ACDC , open the terminal, activate the 
 ``acdc`` environment with the command ``conda activate acdc`` and the run the 
-follwing command::
+following command::
         
     pip install --upgrade cellacdc
 
@@ -347,7 +347,7 @@ Updating to the latest version of Cell-ACDC
 
 To update to the latest version of Cell-ACDC , open the terminal, activate the 
 ``acdc`` environment with the command ``conda activate acdc`` and the run the 
-follwing command::
+following command::
         
     pip install --upgrade "git+https://github.com/SchmollerLab/Cell_ACDC.git"
 
