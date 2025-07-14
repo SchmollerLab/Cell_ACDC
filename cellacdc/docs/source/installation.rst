@@ -137,7 +137,7 @@ Install stable version
     where the required libraries will be installed. 
     The virtual environment is called ``acdc`` in this case.
 
-5. **Activate the virtual environment** with then following command:
+5. **Activate the virtual environment** with the following command:
    
     .. code-block:: 
    
