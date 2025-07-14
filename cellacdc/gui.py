@@ -457,6 +457,7 @@ class guiWin(QMainWindow):
 
         self.checkableButtons = []
         self.LeftClickButtons = []
+        self.toolsActiveInProj3Dsegm = set()
         self.customAnnotDict = {}
 
         # Keep a list of functions that are not functional in 3D, yet
@@ -1171,7 +1172,10 @@ class guiWin(QMainWindow):
         self.drawClearRegionButton = QToolButton(self)
         self.drawClearRegionButton.setCheckable(True)
         self.drawClearRegionButton.setIcon(QIcon(":clear_freehand_region.svg"))
-        self.widgetsWithShortcut['Clear freehand region'] = self.drawClearRegionButton
+        self.widgetsWithShortcut['Clear freehand region'] = (
+            self.drawClearRegionButton
+        )
+        self.toolsActiveInProj3Dsegm.add(self.drawClearRegionButton)
         
         self.checkableButtons.append(self.drawClearRegionButton)
         self.LeftClickButtons.append(self.drawClearRegionButton)
@@ -5626,7 +5630,7 @@ class guiWin(QMainWindow):
         if self.isRightClickDragImg1 and self.curvToolButton.isChecked():
             self.drawAutoContour(y, x)
 
-        # Brush dragging mouse --> keep painting
+        # Brush dragging mouse --> keep brushing
         elif self.isMouseDragImg1 and self.brushButton.isChecked():
             lab_2D = self.get_2Dlab(posData.lab)
 
@@ -5643,13 +5647,12 @@ class guiWin(QMainWindow):
             mask = np.zeros(lab_2D.shape, bool)
             mask[diskSlice][diskMask] = True
             mask[rrPoly, ccPoly] = True
-
-            # If user double-pressed 'b' then draw over the labels
-            color = self.brushButton.palette().button().color().name()
-            drawUnder = color != self.doublePressKeyButtonColor
+            
+            modifiers = QGuiApplication.keyboardModifiers()
+            ctrl = modifiers == Qt.ControlModifier
 
             # t3 = time.perf_counter()
-            if drawUnder:
+            if not self.isPowerBrush() and not ctrl:
                 mask[lab_2D!=0] = False
                 self.setHoverToolSymbolColor(
                     xdata, ydata, self.ax2_BrushCirclePen,
@@ -13102,8 +13105,15 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         zRange = None
         if self.isSegm3D:
-            z_slice = self.z_lab()
-            zRange = self.drawClearRegionToolbar.zRange(z_slice, posData.SizeZ)
+            zProjHow = self.zProjComboBox.currentText()
+            isZslice = zProjHow == 'single z-slice'
+            if isZslice:
+                z_slice = self.z_lab()
+                zRange = self.drawClearRegionToolbar.zRange(
+                    z_slice, posData.SizeZ
+                )
+            else:
+                zRange = (0, posData.SizeZ)
             
         regionSlice = self.freeRoiItem.slice(zRange=zRange)
         mask = self.freeRoiItem.mask()
@@ -20665,6 +20675,10 @@ class guiWin(QMainWindow):
             button = self.editToolBar.widgetForAction(action)
             if button == self.eraserButton:
                 continue
+            
+            if button in self.toolsActiveInProj3Dsegm:
+                continue
+            
             action.setDisabled(disabled)
             try:
                 button.setChecked(False)
@@ -22918,7 +22932,7 @@ class guiWin(QMainWindow):
             if lab is not None:
                 # Visited frame
                 posData.frame_i = i
-                self.get_data()
+                self.get_data(lin_tree_init=False)
                 if self.onlyTracking:
                     self.tracking(enforce=True)
                 elif not posData.IDs:
@@ -26122,8 +26136,6 @@ class guiWin(QMainWindow):
             zProjHow = posData.segmInfo_df.loc[idx, 'which_z_proj_gui'].iloc[0] 
         
         self.zProjComboBox.setCurrentText(zProjHow)
-        # if zProjHow != 'single z-slice':
-        #     return
         
         reconnect = False
         try:

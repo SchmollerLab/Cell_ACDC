@@ -31,7 +31,7 @@ import inspect
 
 import traceback
 import itertools
-
+from packaging import version as packaging_version
 
 from natsort import natsorted
 
@@ -58,6 +58,7 @@ from . import github_home_url
 from . import try_input_install_package
 from . import _warnings
 from . import urls
+from .models._cellpose_base import min_target_versions_cp
 
 ArgSpec = namedtuple('ArgSpec', ['name', 'default', 'type', 'desc', 'docstring'])
 
@@ -361,17 +362,34 @@ class Logger(logging.Logger):
     
     def info(self, text, *args, **kwargs):
         super().info(text, *args, **kwargs)
-        self.write(f'{text}\n', log_to_file=False)
+        try:
+            self.write(f'{text}\n', log_to_file=False)
+        except TypeError:
+            # Sometimes the logger is patched (e.g., by spotiflow), which
+            # triggers the TypeError because the patching function does not have 
+            # log_to_file argument
+            self.write(f'{text}\n')
     
     def warning(self, text, *args, **kwargs):
         super().warning(text, *args, **kwargs)
-        self.write(f'[WARNING]: {text}\n', log_to_file=False)
+        try:
+            self.write(f'[WARNING]: {text}\n', log_to_file=False)
+        except TypeError:
+            # Sometimes the logger is patched (e.g., by spotiflow), which
+            # triggers the TypeError because the patching function does not have 
+            # log_to_file argument
+            self.write(f'[WARNING]: {text}\n')
     
     def error(self, text, *args, write_traceback=True, **kwargs):
         super().error(text, *args, **kwargs)
-        if write_traceback:
-            self.write(traceback.format_exc())
-        self.write(f'[ERROR]: {text}\n', log_to_file=False)
+        self.write(traceback.format_exc())
+        try:
+            self.write(f'[ERROR]: {text}\n', log_to_file=False)
+        except TypeError:
+            # Sometimes the logger is patched (e.g., by spotiflow), which
+            # triggers the TypeError because the patching function does not have 
+            # log_to_file argument
+            self.write(f'[ERROR]: {text}\n')
     
     def plain(self, text, write_to_stdout=False):
         orig_formatters = [handler.formatter for handler in self.handlers]
@@ -383,13 +401,24 @@ class Logger(logging.Logger):
     
     def critical(self, text, *args, **kwargs):
         super().critical(text, *args, **kwargs)
-        self.write(f'[CRITICAL]: {text}\n', log_to_file=False)
+        try:
+            self.write(f'[CRITICAL]: {text}\n', log_to_file=False)
+        except TypeError:
+            # Sometimes the logger is patched (e.g., by spotiflow), which
+            # triggers the TypeError because the patching function does not have 
+            # log_to_file argument
+            self.write(f'[CRITICAL]: {text}\n')
     
     def exception(self, text, *args, write_traceback=True, **kwargs):
         super().exception(text, *args, **kwargs)
-        if write_traceback:
-            self.write(traceback.format_exc())
-        self.write(f'[ERROR]: {text}\n', log_to_file=False)
+        self.write(traceback.format_exc())
+        try:
+            self.write(f'[ERROR]: {text}\n', log_to_file=False)
+        except TypeError:
+            # Sometimes the logger is patched (e.g., by spotiflow), which
+            # triggers the TypeError because the patching function does not have 
+            # log_to_file argument
+            self.write(f'[ERROR]: {text}\n')
     
     def log(self, level, text):
         super().log(level, text)
@@ -459,7 +488,7 @@ def delete_older_log_files(logs_path):
         except Exception as err:
             continue
 
-def get_info_version_text(is_cli=False):
+def get_info_version_text(is_cli=False, cli_formatted_text=True):
     version = read_version()
     release_date = get_date_from_version(version, package='cellacdc')
     py_ver = sys.version_info
@@ -482,6 +511,10 @@ def get_info_version_text(is_cli=False):
             info_txts.append('Qt: Not installed')
     
     info_txts.append(f'Working directory: {os.getcwd()}')
+    
+    if not cli_formatted_text:
+        return info_txts
+    
     info_txts = [f'  - {txt}' for txt in info_txts]
     
     max_len = max([len(txt) for txt in info_txts]) + 2
@@ -2771,6 +2804,11 @@ def check_cellpose_version(version: str):
             cancel = _warnings.warn_installing_different_cellpose_version(
                 version, installed_version
             )
+        if not compare_model_versions(
+            min_target_versions_cp[str(major_requested)],
+            installed_version
+        ):
+            is_version_correct = False
     except Exception as err:
         is_version_correct = False
     
@@ -2784,6 +2822,19 @@ def purge_module(module_name):
     for mod in to_delete:
         del sys.modules[mod]
 
+def compare_model_versions(
+        target_version: str,
+        current_version: str,
+):
+    """
+    Compares two model versions and returns True if the current version is
+    greater than or equal to the target version.
+    """
+    target_version = packaging_version.parse(target_version)
+    current_version = packaging_version.parse(current_version)
+    
+    return current_version >= target_version
+
 def check_install_cellpose(
         version: Literal['2.0', '3.0', '4.0', 'any'] = '2.0', 
         version_to_install_if_missing: Literal['2.0', '3.0', '4.0'] = '4.0'
@@ -2796,20 +2847,23 @@ def check_install_cellpose(
             from cellpose import models
             return
         except Exception as err:
-            version = version_to_install_if_missing
+            version = version_to_install_if_missing # after this the version will for sure be a valid format and not 'any'
             
     is_version_correct = check_cellpose_version(version)
     if is_version_correct:
         return
     
-    next_version = int(version.split('.')[0])+1
-    next_version = f'{next_version}.0'
+    major_version = int(version.split('.')[0])
+
+    next_version = major_version+1
+
+    min_version = min_target_versions_cp[str(major_version)]
     
     check_install_package(
         'cellpose', 
-        pypi_name=f'cellpose>={version},<{next_version}',
-        import_pkg_name='cellpose',
-        force_upgrade=True
+        max_version=f'{next_version}.0',
+        min_version=min_version,
+        include_lower_version=True,
     )
 
     purge_module('cellpose')
@@ -2852,13 +2906,20 @@ def is_gui_running():
     
     return QCoreApplication.instance() is not None
 
-def check_pkg_version(import_pkg_name, min_version, raise_err=True):
+def check_pkg_version(import_pkg_name, min_version, include_lower_version, raise_err=True):
     is_version_correct = False
     try:
-        from packaging import version
-        installed_version = get_package_version(import_pkg_name)  
-        if version.parse(installed_version) > version.parse(min_version):
-            is_version_correct = True
+        installed_version = get_package_version(import_pkg_name)
+        if include_lower_version:
+            is_version_correct = (
+                packaging_version.parse(installed_version) 
+                >= packaging_version.parse(min_version)
+            )
+        else:   
+            is_version_correct = (
+                packaging_version.parse(installed_version) 
+                > packaging_version.parse(min_version)
+            )
     except Exception as err:
         is_version_correct = False
     
@@ -2870,14 +2931,22 @@ def check_pkg_version(import_pkg_name, min_version, raise_err=True):
         return is_version_correct
 
 def check_pkg_max_version(
-        import_pkg_name, max_version, raise_err=True
+        import_pkg_name, max_version, include_higher_version, raise_err=True
     ):
     is_version_correct = False
     try:
         from packaging import version
         installed_version = get_package_version(import_pkg_name)  
-        if version.parse(installed_version) < version.parse(max_version):
-            is_version_correct = True
+        if include_higher_version:
+            is_version_correct = (
+                packaging_version.parse(installed_version) 
+                <= packaging_version.parse(max_version)
+            )
+        else:
+            is_version_correct = (
+                packaging_version.parse(installed_version) 
+                < packaging_version.parse(max_version)
+            )
     except Exception as err:
         is_version_correct = False
     
@@ -2893,8 +2962,9 @@ def install_package_conda(conda_pkg_name, channel='conda-forge'):
         raise EnvironmentError(
             'Cell-ACDC is not running in a `conda` environment.'
         )
-    
-    command = f'conda install -c {channel} -y {conda_pkg_name}'
+    conda_prefix, pip_prefix = get_pip_conda_prefix()
+
+    command = f'{conda_prefix} -c {channel} -y {conda_pkg_name}'
     _subprocess_run_command(command)
 
 def _subprocess_run_command(command, shell=True, callback='check_call'):
@@ -2951,6 +3021,11 @@ def check_install_torch(is_cli=False, caller_name='Cell-ACDC', qparent=None):
     command = win.command
     print(f'Running command: "{command}"')
     _run_command(command)    
+    
+    purge_module('torch')
+    importlib.invalidate_caches()
+    import torch
+    importlib.reload(torch)
 
 def check_install_package(
         pkg_name: str, 
@@ -2969,6 +3044,8 @@ def check_install_package(
         install_dependencies=True,
         return_outcome=False,
         installer: Literal['pip', 'conda']='pip',
+        include_higher_version: bool = False,
+        include_lower_version: bool = False
     ):
     """Try to import a package. If import fails, ask user to install it 
     automatically.
@@ -3001,7 +3078,8 @@ def check_install_package(
         If True, we force the upgrade even if package is installed.
     upgrade : bool, optional
         If True, pip will upgrade the package. This value is True if 
-        `force_upgrade` is True. Default is False
+        `force_upgrade` is True. Without min_version and max_version
+        it will never upgrade or downgrade the package.
     min_version : str, optional
         If not empty it must be a valid version `major[.minor][.patch]` where 
         minor and patch are optional. If the installed package is older the 
@@ -3017,6 +3095,12 @@ def check_install_package(
     installer : str, optional
         Package manager to use to install the package. Either 'pip' or 'conda'. 
         Default is 'pip'
+    include_higher_version : bool, optional
+        If True, if the higher version is installed, it will not be downgraded.
+        Default is False
+    include_lower_version : bool, optional
+        If True, if the lower version is installed, it will not be upgraded.
+        Default is False
         
     Raises
     ------
@@ -3029,7 +3113,7 @@ def check_install_package(
     if not is_gui_running():
         is_cli=True
     
-    try:
+    try: # check_pkg_version and check_pkg_max_version
         import_pkg_name = import_pkg_name.replace('-', '_')
         import_module(import_pkg_name)
         if force_upgrade:
@@ -3037,15 +3121,17 @@ def check_install_package(
             raise ModuleNotFoundError(
                 f'User requested to forcefully upgrade the package "{pkg_name}"')
         if min_version:
-            check_pkg_version(import_pkg_name, min_version)
+            check_pkg_version(import_pkg_name, min_version, include_lower_version)
         if max_version:
-            check_pkg_max_version(import_pkg_name, max_version)
+            check_pkg_max_version(import_pkg_name, max_version, include_higher_version)
     except ModuleNotFoundError:
         proceed = _install_package_msg(
             pkg_name, note=note, parent=parent, upgrade=upgrade,
             is_cli=is_cli, caller_name=caller_name, logger_func=logger_func,
             pkg_command=pypi_name, max_version=max_version, 
-            min_version=min_version, installer=installer
+            min_version=min_version, installer=installer,
+            include_higher_version=include_higher_version,
+            include_lower_version=include_lower_version
         )
         if pypi_name:
             pkg_name = pypi_name
@@ -3069,7 +3155,9 @@ def check_install_package(
                 pkg_command = _get_pkg_command_pip_install(
                     pkg_name, 
                     max_version=max_version, 
-                    min_version=min_version
+                    min_version=min_version,
+                    including_higher_version=include_higher_version,
+                    including_lower_version=include_lower_version,
                 )
                 if installer == 'pip':
                     _install_pip_package(pkg_command, install_dependencies=install_dependencies)
@@ -3139,7 +3227,9 @@ def check_matplotlib_version(qparent=None):
             )
             
 def _inform_install_package_failed(pkg_name, parent=None, do_exit=True):
-    install_command = f'<code>pip install --upgrade {pkg_name}</code>'
+    conda_prefix, pip_prefix = get_pip_conda_prefix()
+
+    install_command = f'<code>{pip_prefix} --upgrade {pkg_name}</code>'
     txt = html_utils.paragraph(f"""
         Unfortunately, <b>installation of</b> <code>{pkg_name}</code> <b>returned an error</b>.<br><br>
         Try restarting Cell-ACDC. If it doesn't work, 
@@ -3154,7 +3244,7 @@ def _inform_install_package_failed(pkg_name, parent=None, do_exit=True):
     print(
         f'[ERROR]: Installation of "{pkg_name}" failed. '
         f'Please, close Cell-ACDC and run the command '
-        f'`pip install --upgrade {pkg_name}`'
+        f'{pip_prefix} --upgrade {pkg_name}`'
     )
     print('^'*50)
 
@@ -3185,21 +3275,27 @@ def download_fiji(logger_func=print):
 def _install_package_msg(
         pkg_name, note='', parent=None, upgrade=False, caller_name='Cell-ACDC',
         is_cli=False, pkg_command='', logger_func=print, max_version='', 
-        min_version='', installer: Literal['pip', 'conda']='pip'
+        min_version='', installer: Literal['pip', 'conda']='pip',
+        include_higher_version: bool = False,
+        include_lower_version: bool = False
     ):
     if is_cli:
         proceed = _install_package_cli_msg(
             pkg_name, note=note, upgrade=upgrade, caller_name=caller_name,
             pkg_command=pkg_command, max_version=max_version, 
             min_version=min_version, logger_func=logger_func, 
-            installer=installer
+            installer=installer,
+            include_higher_version=include_higher_version,
+            include_lower_version=include_lower_version
         )
     else:
         proceed = _install_package_gui_msg(
             pkg_name, note=note, parent=parent, upgrade=upgrade, 
             caller_name=caller_name, pkg_command=pkg_command,
             max_version=max_version, min_version=min_version, 
-            logger_func=logger_func, installer=installer
+            logger_func=logger_func, installer=installer,
+            including_higher_version=include_higher_version,
+            including_lower_version=include_lower_version
         )
     return proceed
 
@@ -3213,7 +3309,6 @@ def get_cli_multi_choice_question(question, choices):
 def _install_pytorch_cli(
         caller_name='Cell-ACDC', action='install', logger_func=print
     ):
-    from cellacdc import pytorch_commands
     separator = '-'*60
     txt = (
         f'{separator}\n{caller_name} needs to {action} PyTorch\n\n'
@@ -3228,7 +3323,7 @@ def _install_pytorch_cli(
             'CPU', 'CUDA 11.8 (NVIDIA GPU)', 'CUDA 12.1 (NVIDIA GPU)'
         )
     }
-    selected_command = pytorch_commands.copy()
+    selected_command = get_pytorch_command()
     selected_preferences = []
     for question, choices in questions.items():
         input_txt = get_cli_multi_choice_question(question, choices)
@@ -3280,31 +3375,52 @@ def _install_pytorch_cli(
         try:
             subprocess.check_call([selected_command], shell=True)
         except Exception as err:
-            subprocess.check_call(selected_command.split(), shell=True)
+            cmd_list = selected_command.split()
+            cmd_list = [cmd.strip('"') for cmd in cmd_list]
+            cmd_list = [cmd.strip("'") for cmd in cmd_list]
+            cmd_list = [cmd.lstrip(".") for cmd in cmd_list]
+            subprocess.check_call(cmd_list, shell=True)
     else:
-        args = selected_command.split()[1:]
-        subprocess.check_call([sys.executable, *args], shell=True)
+        cmd_list = selected_command.split()[1:]
+        cmd_list = [cmd.strip('"') for cmd in cmd_list]
+        cmd_list = [cmd.strip("'") for cmd in cmd_list]
+        cmd_list = [cmd.lstrip(".") for cmd in cmd_list]
+        subprocess.check_call([sys.executable, *cmd_list], shell=True)
 
-def _get_pkg_command_pip_install(pkg_command, max_version='', min_version=''):
+def _get_pkg_command_pip_install(pkg_command, max_version='', min_version='',
+                                 including_lower_version=False, including_higher_version=False):
+    
+    if including_higher_version:
+        sign_max = "<="
+    else:
+        sign_max = "<"
+    if including_lower_version:
+        sign_min = ">="
+    else:
+        sign_min = ">"
     if min_version:
-        pkg_command = f'{pkg_command}>{min_version}'
+        pkg_command = f'{pkg_command}{sign_min}{min_version}'
         if max_version:
             pkg_command = f'{pkg_command},'
     
     if max_version:
-        pkg_command = f'{pkg_command}<{max_version}'
+        pkg_command = f'{pkg_command}{sign_max}{max_version}'
     return pkg_command
 
 def _install_package_cli_msg(
         pkg_name, note='', upgrade=False, caller_name='Cell-ACDC',
         logger_func=print, pkg_command='', max_version='', 
-        min_version='', installer: Literal['pip', 'conda']='pip'
+        min_version='', installer: Literal['pip', 'conda']='pip',
+        include_lower_version=False,
+        include_higher_version=False
     ):
     if not pkg_command:
         pkg_command = pkg_name
     
     pkg_command = _get_pkg_command_pip_install(
-        pkg_command, max_version=max_version, min_version=min_version
+        pkg_command, max_version=max_version, min_version=min_version,
+        including_lower_version=include_lower_version,
+        including_higher_version=include_higher_version
     )
     
     if upgrade:
@@ -3312,11 +3428,13 @@ def _install_package_cli_msg(
     else:
         action = 'install'
     
+    conda_prefix, pip_prefix = get_pip_conda_prefix()
+
     if installer == 'pip':
-        install_command = f'pip install --upgrade {pkg_command}'
+        install_command = f'{pip_prefix} --upgrade {pkg_command}'
     elif installer == 'conda':
-        install_command = f'conda install -c conda-forge {pkg_command}'
-    
+        install_command = f'{conda_prefix} -c conda-forge {pkg_command}'
+        
     separator = '-'*60
     txt = (
         f'{separator}\n{caller_name} needs to {action} {pkg_name}\n\n'
@@ -3343,7 +3461,8 @@ def _install_package_cli_msg(
         
 def _install_package_gui_msg(
         pkg_name, note='', parent=None, upgrade=False, caller_name='Cell-ACDC', 
-        pkg_command='', logger_func=None, max_version='', min_version='', 
+        pkg_command='', logger_func=None, max_version='', min_version='',
+        including_lower_version=False, including_higher_version=False,
         installer: Literal['pip', 'conda']='pip'
     ):
     msg = widgets.myMessageBox(parent=parent)
@@ -3358,15 +3477,20 @@ def _install_package_gui_msg(
         pkg_command = pkg_name
     
     pkg_command = _get_pkg_command_pip_install(
-        pkg_command, max_version=max_version, min_version=min_version
+        pkg_command, max_version=max_version, min_version=min_version,
+        including_lower_version=including_lower_version,
+        including_higher_version=including_higher_version
     )
     
     command_html = pkg_command.lower().replace('<', '&lt;').replace('>', '&gt;')
     
+    conda_prefix, pip_prefix = get_pip_conda_prefix()
+
     if installer == 'pip':
-        command = f'pip install --upgrade {command_html}'
+        command = f'{pip_prefix} --upgrade {pkg_command}'
     elif installer == 'conda':
-        command = f'conda install -c conda-forge {command_html}'
+        command = f'{conda_prefix} -c conda-forge {pkg_command}'
+        
 
     txt = html_utils.paragraph(f"""
         {caller_name} is going to <b>download and {install_text}</b>
@@ -3395,8 +3519,10 @@ def _install_tensorflow(max_version='', min_version=''):
         max_version=max_version, 
         min_version=min_version
     )
+    conda_prefix, pip_prefix = get_pip_conda_prefix()
+
     if is_mac and cpu == 'arm':
-        args = [f'conda install -y -c conda-forge "{pkg_command}"']
+        args = [f'{conda_prefix} -c conda-forge "{pkg_command}"']
         shell = True
     else:
         args = [sys.executable, '-m', 'pip', 'install', '-U', pkg_command]
@@ -3627,23 +3753,43 @@ def import_segment_module(model_name):
         spec.loader.exec_module(acdcSegment)
     return acdcSegment
 
-def import_promptable_segment_module(model_name):
+def get_pip_conda_prefix(list_return=False):
+    from .config import parser_args
     try:
-        acdcPromptSegment = import_module(
-            f'cellacdc.promptable_models.{model_name}.acdcPromptSegment'
-        )
-    except ModuleNotFoundError as e:
-        # Check if custom model
-        cp = config.ConfigParser()
-        cp.read(promptable_models_list_file_path)
-        model_path = cp[model_name]['path']
-        spec = importlib.util.spec_from_file_location(
-            'acdcPromptSegment', model_path
-        )
-        acdcPromptSegment = importlib.util.module_from_spec(spec)
-        sys.modules['acdcPromptSegment'] = acdcPromptSegment
-        spec.loader.exec_module(acdcPromptSegment)
-    return acdcPromptSegment
+        cp = parser_args
+        if cp["install_details"] is not None:
+            no_cli_install = True
+            install_details = cp["install_details"]
+            venv_path = install_details["venv_path"]
+            conda_path = install_details["conda_path"]
+            if ' ' not in conda_path:
+                conda_path = conda_path.strip('"').strip("'")
+        else:
+            no_cli_install = False
+    except:
+        no_cli_install = False
+        pass
+
+    if no_cli_install:
+        conda_prefix = f'{conda_path} install -y -p {venv_path}'
+        exec_path = sys.executable
+        if ' ' in exec_path:
+            exec_path = f'"{exec_path}"'
+        pip_prefix = f"{exec_path} -m pip install"
+    else:
+        conda_prefix = 'conda install -y'
+        pip_prefix = 'pip install'
+    
+    pip_list = [sys.executable, '-m', 'pip', 'install']
+    if no_cli_install:
+        conda_list = [conda_path.strip('"').strip("'"), 'install', '-y', '-p', venv_path.strip('"').strip("'")]
+    else:
+        conda_list = ['conda', 'install', '-y']
+    if list_return:
+        return conda_list, pip_list
+    else:
+        return conda_prefix, pip_prefix
+
 
 def _warn_install_gpu(model_name, ask_installs, qparent=None):
     
@@ -3665,6 +3811,9 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None):
     torch_href = f'{html_utils.href_tag("here", torch_cuda_url)}'
     direct_ml_href = f'{html_utils.href_tag("direct_ml_DirectMLref", direct_ml_url)}'
     torch_directml_href = f'{html_utils.href_tag("directml pytorch", torch_directml_url)}'
+
+    conda_prefix, pip_prefix = get_pip_conda_prefix()
+
     msg = widgets.myMessageBox(showCentered=False, wrapText=False)
     txt = html_utils.paragraph(f"""
         In order to use <code>{model_name}</code> with the GPU you need 
@@ -3674,15 +3823,15 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None):
         """)
     txt_cuda_title = html_utils.paragraph(f"<b>CUDA</b>", font_size='18px')
 
+    pip_prefix = pip_prefix.replace('install -y', 'uninstall')
     txt_cuda = html_utils.paragraph(f"""
-        
         Check out these instructions {cellpose_href}, and {torch_href}.<br>
         We <b>highly recommend using Conda</b> to install PyTorch GPU.<br>
         First, uninstall the CPU version of PyTorch with the following command:<br>
-        <code>pip uninstall torch</code>.<br>
+        <code>{pip_prefix} uninstall torch</code>.<br>
         Then, install the CUDA version required by your GPU with the follwing 
         command (which installs version 11.6):<br>
-        <code>conda install pytorch pytorch-cuda=11.6 -c conda-forge -c nvidia</code>
+        <code>{conda_prefix} pytorch pytorch-cuda=11.6 -c conda-forge -c nvidia</code>
         <br><br>
         """)
     
@@ -3843,17 +3992,19 @@ def get_slices_local_into_global_arr(bbox_coords, global_shape):
     return tuple(slice_global_to_local), tuple(slice_crop_local)
 
 def get_pip_install_cellacdc_version_command(version=None):
+    conda_prefix, pip_prefix = get_pip_conda_prefix()
+
     if version is None:
         version = read_version()
     commit_hash_idx = version.find('+g')
     is_dev_version = commit_hash_idx > 0    
     if is_dev_version:
         commit_hash = version[commit_hash_idx+2:].split('.')[0]
-        command = f'pip install --upgrade "git+{github_home_url}.git@{commit_hash}"'
+        command = f'{pip_prefix} --upgrade "git+{github_home_url}.git@{commit_hash}"'
         command_github = None
     else:
-        command = f'pip install --upgrade cellacdc=={version}'
-        command_github = f'pip install --upgrade "git+{urls.github_url}@{version}"'
+        command = f'{pip_prefix} --upgrade cellacdc=={version}'
+        command_github = f'{pip_prefix} --upgrade "git+{urls.github_url}@{version}"'
     return command, command_github  
 
 def get_git_pull_checkout_cellacdc_version_commands(version=None):
@@ -4557,3 +4708,197 @@ def translateStrNone(*args):
                 args[i] = False
     
     return args
+
+def get_pytorch_command():
+    conda_prefix, pip_prefix = get_pip_conda_prefix()
+
+    pytorch_commands = {
+        'Windows': {
+            'Conda': {
+                'CPU': f'{conda_prefix} pytorch torchvision cpuonly -c conda-forge',
+                'CUDA 11.8 (NVIDIA GPU)': f'{conda_prefix} pytorch torchvision pytorch-cuda=11.8 -c conda-forge -c nvidia',
+                'CUDA 12.1 (NVIDIA GPU)': f'{conda_prefix} pytorch torchvision pytorch-cuda=12.1 -c conda-forge -c nvidia'
+            },
+            'Pip': {
+                'CPU': f'{pip_prefix} torch torchvision',
+                'CUDA 11.8 (NVIDIA GPU)': f'{pip_prefix} torch torchvision --index-url https://download.pytorch.org/whl/cu118',
+                'CUDA 12.1 (NVIDIA GPU)': f'{pip_prefix} torch torchvision --index-url https://download.pytorch.org/whl/cu121'
+            }
+        },
+        'Mac': {
+            'Conda': {
+                'CPU': f'{conda_prefix} pytorch torchvision cpuonly -c conda-forge',
+                'CUDA 11.8 (NVIDIA GPU)': '[WARNING]: CUDA is not available on MacOS',
+                'CUDA 12.1 (NVIDIA GPU)': '[WARNING]: CUDA is not available on MacOS'
+            },
+            'Pip': {
+                'CPU': f'{pip_prefix} torch torchvision',
+                'CUDA 11.8 (NVIDIA GPU)': '[WARNING]: CUDA is not available on MacOS',
+                'CUDA 12.1 (NVIDIA GPU)': '[WARNING]: CUDA is not available on MacOS'
+            }
+        },
+        'Linux': {
+            'Conda': {
+                'CPU': f'{conda_prefix} pytorch torchvision cpuonly -c conda-forge',
+                'CUDA 11.8 (NVIDIA GPU)': f'{conda_prefix} pytorch torchvision pytorch-cuda=11.8 -c conda-forge -c nvidia',
+                'CUDA 12.1 (NVIDIA GPU)': f'{conda_prefix} pytorch torchvision pytorch-cuda=12.1 -c conda-forge -c nvidia'
+            },
+            'Pip': {
+                'CPU': f'{pip_prefix} torch torchvision --index-url https://download.pytorch.org/whl/cpu',
+                'CUDA 11.8 (NVIDIA GPU)': f'{pip_prefix} torch torchvision --index-url https://download.pytorch.org/whl/cu118',
+                'CUDA 12.1 (NVIDIA GPU)': f'{pip_prefix} torch torchvision'
+            }
+        }
+    }
+
+    return pytorch_commands
+
+def get_package_info(package_name):
+    try:
+        result = subprocess.run([
+            sys.executable, '-m', 'pip', 'show', package_name
+        ], capture_output=True, text=True, check=True)
+        
+        info = {}
+        for line in result.stdout.split('\n'):
+            if ':' in line:
+                key, value = line.split(':', 1)
+                info[key.strip()] = value.strip()
+        
+        # Check if it's editable by looking at the location
+        location = info.get('Location', '')
+        editable_location = info.get('Editable project location', '')
+        
+        return {
+            'installed': True,
+            'editable': bool(editable_location),
+            'location': location,
+            'editable_location': editable_location
+        }
+        
+    except subprocess.CalledProcessError:
+        return {'installed': False, 'editable': False}
+
+# Usage
+def update_package(parent, package_name):
+    package_info = get_package_info(package_name)
+    if not package_info['installed']:
+        printl(f"Package {package_name} is not installed.")
+        return False
+    editable = package_info.get('editable', False)
+    if editable:
+        return update_editable_package(parent, package_name, package_info)
+    else:
+        return update_not_editable_package(package_name, package_info)
+
+def update_editable_package(parent, package_name, package_info):
+    repo_location = package_info.get('editable_location', '')
+    
+    if not repo_location or not os.path.exists(repo_location):
+        print(f"Repository location not found for {package_name}")
+        return False
+
+    return _update_repo_with_git_command(package_name, repo_location)
+
+def _update_repo_with_git_command(package_name, repo_location):
+    """Update repository using git command"""
+    try:
+        print(f"Updating {package_name} repository at {repo_location} using git command...")
+        
+        # Change to repository directory
+        original_cwd = os.getcwd()
+        os.chdir(repo_location)
+        
+        stashed_changes = False
+
+        # check if there is a portable git
+        from .config import parser_args
+        try:
+            cp = parser_args
+            if cp["install_details"] is not None:
+                no_cli_install = True
+                install_details = cp["install_details"]
+                target_dir = install_details.get('target_dir', '') 
+                target_dir = target_dir.strip().strip('"').strip("'")
+                target_dir = os.path.abspath(target_dir)
+            else:
+                no_cli_install = False
+        except:
+            no_cli_install = False
+            pass
+
+        if is_win and no_cli_install:
+            git_loc = os.path.join(target_dir,
+                                   "portable_git",
+                                   "cmd",
+                                   "git.exe")
+            if not os.path.exists(git_loc):
+                print(f"Portable git not found at {git_loc}. Using system git.")
+                git_loc = 'git'
+        else:
+            git_loc = 'git'
+        
+        # Check if git is available
+        if not shutil.which(git_loc):
+            print(f"Git command not found. Please install git to update {package_name}.")
+            return False
+        
+        try:
+            # Check for uncommitted changes
+
+            branch_result = subprocess.run([git_loc, 'branch', '--show-current'], 
+                                         capture_output=True, text=True, check=True)
+            current_branch = branch_result.stdout.strip()
+            print(f"Current branch: {current_branch}")
+
+            result = subprocess.run([git_loc, 'status', '--porcelain'], 
+                                  capture_output=True, text=True, check=True)
+            if result.stdout.strip():
+                print(f"Repository {package_name} has uncommitted changes")
+                print("Stashing changes before update...")
+                subprocess.run([git_loc, 'stash'], check=True)
+                stashed_changes = True
+            
+            # Pull changes
+            subprocess.run([git_loc, 'pull'], check=True)
+            print(f"Successfully updated {package_name}")
+            
+            # Pop stashed changes if any were stashed
+            if stashed_changes:
+                try:
+                    subprocess.run([git_loc, 'stash', 'pop'], check=True)
+                    print("Restored stashed changes")
+                except subprocess.CalledProcessError as pop_error:
+                    print(f"Warning: Could not restore stashed changes: {pop_error}")
+            
+            return True
+            
+        except subprocess.CalledProcessError as e:
+            print(f"Git command failed for {package_name}: {e}")
+            return False
+        finally:
+            os.chdir(original_cwd)
+            
+    except Exception as e:
+        print(f"Error updating {package_name} with git command: {e}")
+        return False
+
+def update_not_editable_package(package_name, package_info):
+    """Update a non-editable package using pip"""
+    try:
+        _, pip_list = get_pip_conda_prefix(list_return=True)
+        command = pip_list + ["--upgrade ", package_name]
+        
+        print(f"Updating {package_name} using pip...")
+        result = subprocess.run(command, shell=True, capture_output=True, text=True)
+        
+        if result.returncode == 0:
+            print(f"Successfully updated {package_name}")
+            return True
+        else:
+            print(f"Failed to update {package_name}: {result.stderr}")
+            return False
+            
+    except Exception as e:
+        print(f"Error updating {package_name}: {e}")
+        return False

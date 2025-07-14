@@ -15,6 +15,7 @@ from qtpy import QtCore
 from ..myutils import read_version, get_date_from_version
 from ..myutils import get_pip_install_cellacdc_version_command
 from ..myutils import get_git_pull_checkout_cellacdc_version_commands
+from ..myutils import get_info_version_text
 from .. import widgets, myutils
 from .. import html_utils, printl
 from .. import qrc_resources
@@ -42,18 +43,14 @@ class QDialogAbout(QDialog):
                 (Analysis of the Cell Division Cycle)
             </span>
         </p>
-        <p style="font-size:14px; font-family:ubuntu">
-            Version {version}<br><br>
-            Release date: {release_date}
-        </p>
-        <p style="font-size:13px; font-family:ubuntu">
-            Qt {QtCore.__version__}<br>
-            Python {python_version}<br>
-        </p>
-        <p style="font-size:13px; font-family:ubuntu">
-            Platform: {platform.platform()}<br>
-        </p>
         """)
+        
+        info_txts = get_info_version_text(cli_formatted_text=False)
+        for info_txt in info_txts:
+            paragraph = html_utils.paragraph(info_txt)
+            txt = f'{txt}{paragraph}'
+
+        titleLabel.setText(txt)
 
         titleLabel.setText(txt)
         
@@ -106,7 +103,7 @@ class QDialogAbout(QDialog):
         infoLabel.setTextInteractionFlags(Qt.TextBrowserInteraction);
         infoLabel.setOpenExternalLinks(True);
         txt = html_utils.paragraph(f"""
-            More info on our <a href=\"{github_url}">home page</a>.<br>
+            <br>More info on our <a href=\"{github_url}">home page</a>.<br>
         """)
         infoLabel.setText(txt)
 

@@ -4,6 +4,7 @@ import sys
 from importlib import import_module
 import traceback
 from tqdm import tqdm
+from . import config, myutils
 
 def _install_tables(parent_software='Cell-ACDC'):
     from . import try_input_install_package, is_conda_env
@@ -32,21 +33,29 @@ def _install_tables(parent_software='Cell-ACDC'):
             )
             print('-'*60)
             print(txt)
+            conda_prefix, pip_prefix = myutils.get_pip_conda_prefix()
+            conda_list, pip_list = myutils.get_pip_conda_prefix(list_return=True)
+
+            conda_txt = f'{conda_prefix} pytables'
+            pip_text = f'{pip_prefix} --upgrade tables'
+
+            conda_list = conda_list + ['pytables']
+            pip_list = pip_list + ['--upgrade', 'tables']
             if is_conda_env():
-                command_txt = 'conda install pytables'
-                alt_command_txt = 'pip install --upgrade tables'
+                command_txt = conda_txt
+                alt_command_txt = pip_text
                 cmd_args = [command_txt]
-                alt_cmd_args1 = command_txt.split(' ')
-                alt_cmd_args2 = [sys.executable, '-m', *alt_command_txt.split(' ')]
+                alt_cmd_args1 =conda_list
+                alt_cmd_args2 = pip_list
                 pkg_mng = 'conda'
                 alt_pkg_mng = 'pip'
                 shell = True
                 alt_shell = False
             else:
-                alt_command_txt = 'conda install pytables'
-                command_txt = 'pip install --upgrade tables'
-                cmd_args = [sys.executable, '-m', *command_txt.split(' ')]
-                alt_cmd_args1 = alt_command_txt.split(' ')
+                alt_command_txt = conda_txt
+                command_txt = pip_text
+                cmd_args = pip_list
+                alt_cmd_args1 = conda_list
                 alt_cmd_args2 = [alt_command_txt]
                 pkg_mng = 'pip'
                 alt_pkg_mng = 'conda'
@@ -167,7 +176,12 @@ def _setup_gui_libraries(caller_name='Cell-ACDC'):
         )
         print('-'*60)
         print(txt)
-        command_txt = 'pip install --upgrade qtpy'   
+
+        conda_prefix, pip_prefix = myutils.get_pip_conda_prefix()
+        conda_list, pip_list = myutils.get_pip_conda_prefix(list_return=True)
+
+        command_txt = f'{pip_prefix} --upgrade qtpy'
+
         while True:
             from .config import parser_args
             if parser_args['yes']:
@@ -177,8 +191,9 @@ def _setup_gui_libraries(caller_name='Cell-ACDC'):
             
             if answer.lower() == 'y' or not answer:
                 import subprocess
+                cmd = pip_list + ['-U', 'qtpy']
                 subprocess.check_call(
-                    [sys.executable, '-m', 'pip', 'install', '-U', 'qtpy']
+                    cmd
                 )
                 break
             elif answer.lower() == 'n':
@@ -196,7 +211,7 @@ def _setup_gui_libraries(caller_name='Cell-ACDC'):
     from . import is_mac_arm64
     default_qt = 'PyQt5' if is_mac_arm64 else 'PyQt6'
     
-    try:
+    try: # no need to handle no_cli, acdc is run with -y flag
         from qtpy.QtCore import Qt
     except Exception as e:
         traceback.print_exc()
@@ -206,18 +221,18 @@ def _setup_gui_libraries(caller_name='Cell-ACDC'):
             'You can install it now or you can close (press "n") and install\n'
             'a compatible GUI library with one of '
             'the following commands:\n\n'
-            '    * pip install PyQt6==6.6.0 PyQt6-Qt6==6.6.0\n'
-            '    * pip install PyQt5 (or `conda install pyqt`)\n'
-            '    * pip install PySide2\n'
-            '    * pip install PySide6\n\n'
-            f'Note: if `{default_qt}` installation fails, you could try installing any '
+            f'    * {pip_prefix} PyQt6==6.6.0 PyQt6-Qt6==6.6.0\n'
+            f'    * {pip_prefix} PyQt5 (or `conda install pyqt`)\n'
+            f'    * {pip_prefix} PySide2\n'
+            f'    * {pip_prefix} PySide6\n\n'
+            f'Note: If `{default_qt}` installation fails, you could try installing any '
             'of the other libraries.\n'
         )
         print('-'*60)
         print(txt)
-        pip_command = 'pip install -U PyQt6==6.6.0 PyQt6-Qt6==6.6.0'
+        pip_command = f'{pip_prefix} -U PyQt6==6.6.0 PyQt6-Qt6==6.6.0'
         if is_mac_arm64:
-            commnad_txt = 'conda install -y pyqt'
+            commnad_txt = f'{conda_prefix} pyqt'
             pkg_name = 'pyqt'
         else:
             commnad_txt = pip_command
@@ -232,11 +247,11 @@ def _setup_gui_libraries(caller_name='Cell-ACDC'):
                 import subprocess
                 if is_mac_arm64 and is_conda_env():
                     subprocess.check_call(
-                        ['conda install -y pyqt'], shell=True
+                        [f'{conda_prefix} pyqt'], shell=True
                     )
                 else:
-                    pip_args = pip_command.split()
-                    subprocess.check_call([sys.executable, '-m', *pip_args])
+                    pip_args = pip_list + ['-U', 'PyQt6==6.6.0', 'PyQt6-Qt6==6.6.0']
+                    subprocess.check_call(pip_args)
                 warn_restart = True
                 break
             elif answer.lower() == 'n':
@@ -306,7 +321,7 @@ def _setup_app(splashscreen=False, icon_path=None, logo_path=None, scheme=None):
     from qtpy.QtGui import QPalette, QIcon
     from . import settings_csv_path, resources_folderpath
     
-    app = QApplication([])
+    app = QApplication(['Cell-ACDC'])
     app.setStyle(QStyleFactory.create('Fusion'))
     is_OS_dark_mode = app.palette().color(QPalette.Window).getHsl()[2] < 100
     app.toggle_dark_mode = False
@@ -353,7 +368,7 @@ def _setup_app(splashscreen=False, icon_path=None, logo_path=None, scheme=None):
     from ._palettes import getPaletteColorScheme, setToolTipStyleSheet
     from ._palettes import get_color_scheme
     from . import qrc_resources_path
-    from .qrc_resources import qt_resource_data
+    from . import qrc_resources
     from . import printl
     
     # Check if there are new icons --> replace qrc_resources.py
@@ -368,7 +383,7 @@ def _setup_app(splashscreen=False, icon_path=None, logo_path=None, scheme=None):
         qrc_resources_scheme = import_module('cellacdc.qrc_resources_dark')
         qt_resource_data_scheme = qrc_resources_scheme.qt_resource_data
     
-    if qt_resource_data_scheme != qt_resource_data:
+    if qt_resource_data_scheme != qrc_resources.qt_resource_data:
         # When we add new icons the qrc_resources.py file needs to be replaced
         shutil.copyfile(qrc_resources_scheme_path, qrc_resources_path)
     

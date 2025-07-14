@@ -1,7 +1,6 @@
 import os
 import sys
 import time
-from tkinter import Y
 
 import numpy as np
 import pandas as pd

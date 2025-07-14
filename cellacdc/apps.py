@@ -13,7 +13,11 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle, Circle, PathPatch, Path
 import numpy as np
 import scipy.interpolate
-import tkinter as tk
+try:
+    import tkinter as tk
+except Exception as err:
+    pass
+
 import cv2
 import traceback
 from itertools import combinations, permutations
@@ -67,7 +71,7 @@ from . import exception_handler
 from . import load, prompts, core, measurements, html_utils
 from . import is_mac, is_win, is_linux, settings_folderpath, config
 from . import preproc_recipes_path, segm_recipes_path
-from . import is_conda_env, pytorch_commands
+from . import is_conda_env
 from . import qrc_resources, printl
 from . import colors
 from . import issues_url
@@ -14778,8 +14782,9 @@ class InstallPyTorchDialog(QBaseDialog):
         preferencesLayout.addWidget(self.cmptPlatformCombobox, row, 1)
         
         row += 1
+        pip_prefix, conda_prefix = myutils.get_pip_conda_prefix()
         self.commandWidget = widgets.CopiableCommandWidget(
-            command='pip install torch'
+            command=f'{pip_prefix} torch'
         )
         preferencesLayout.addWidget(QLabel('Run this command: '), row, 0)
         preferencesLayout.addWidget(self.commandWidget, row, 1, 1, 2)
@@ -14810,7 +14815,7 @@ class InstallPyTorchDialog(QBaseDialog):
         osText = self.osCombobox.currentText()
         pkgManager = self.pkgManagerCombobox.currentText()
         cmptPlatform = self.cmptPlatformCombobox.currentText()
-        command = pytorch_commands[osText][pkgManager][cmptPlatform]
+        command = myutils.get_pytorch_command()[osText][pkgManager][cmptPlatform]
         self.commandWidget.setCommand(command)
     
     def ok_cb(self):

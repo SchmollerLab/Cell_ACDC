@@ -174,12 +174,12 @@ class Model(CellposeBaseModel):
             directml_gpu,
             gpu, device)
 
-    def _get_eval_kawrgs_v3(
+    def _get_eval_kwargs_v3(
             self,
             eval_kwargs: dict,
             **kwargs: dict,
     ):
-        eval_kwargs_2 = {
+        eval_kwargs_3 = {
             'cellprob_threshold': kwargs['cellprob_threshold'],
             'min_size': kwargs['min_size'],
             'resample': kwargs['resample'],
@@ -190,7 +190,7 @@ class Model(CellposeBaseModel):
 
         }
 
-        eval_kwargs.update(eval_kwargs_2)
+        eval_kwargs.update(eval_kwargs_3)
 
         return eval_kwargs
 
@@ -311,7 +311,7 @@ class Model(CellposeBaseModel):
             # tile_overlap=tile_overlap,
         )
 
-        eval_kwargs = self._get_eval_kawrgs_v3(
+        eval_kwargs = self._get_eval_kwargs_v3(
             eval_kwargs=eval_kwargs,
             cellprob_threshold=cellprob_threshold,
             min_size=min_size,
@@ -387,7 +387,7 @@ class Model(CellposeBaseModel):
     def segment3DT(self, video_data, signals=None, init_imgs=True, **kwargs): # just 2D over time
         self.timelapse = True
         eval_kwargs, self.isZstack = self.get_eval_kwargs(video_data[0], **kwargs)
-        eval_kwargs = self._get_eval_kawrgs_v3(
+        eval_kwargs = self._get_eval_kwargs_v3(
             eval_kwargs=eval_kwargs,
             cellprob_threshold=kwargs['cellprob_threshold'],
             min_size=kwargs['min_size'],
