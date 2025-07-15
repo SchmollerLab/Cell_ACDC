@@ -3340,8 +3340,6 @@ def _install_package_gui_msg(
         including_higher_version=including_higher_version
     )
     
-    command_html = pkg_command.lower().replace('<', '&lt;').replace('>', '&gt;')
-    
     conda_prefix, pip_prefix = get_pip_conda_prefix()
 
     if installer == 'pip':
@@ -3349,7 +3347,8 @@ def _install_package_gui_msg(
     elif installer == 'conda':
         command = f'{conda_prefix} -c conda-forge {pkg_command}'
         
-
+    command_html = command.lower().replace('<', '&lt;').replace('>', '&gt;')
+    
     txt = html_utils.paragraph(f"""
         {caller_name} is going to <b>download and {install_text}</b>
         <code>{pkg_name}</code>.<br><br>
@@ -3366,7 +3365,7 @@ def _install_package_gui_msg(
     _, okButton = msg.information(
         parent, f'Install {pkg_name}', txt, 
         buttonsTexts=('Cancel', 'Ok'), 
-        commands=(command,)
+        commands=(command_html,)
     )
     return msg.clickedButton == okButton
 
