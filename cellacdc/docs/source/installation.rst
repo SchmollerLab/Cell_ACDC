@@ -27,7 +27,7 @@ Install Cell-ACDC on Windows using the installer
 
 .. raw:: html
 
-   <a href="https://hmgubox2.helmholtz-muenchen.de/index.php/s/XdoLnbAAK8pwmyX?openfile=true" 
+   <a href="https://hmgubox2.helmholtz-muenchen.de/index.php/s/aBFkjEYrH6HW5bN" 
       target="_blank" 
       style="display: inline-block; padding: 12px 24px; background-color: #007acc; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; margin: 10px 0;">
       📥 Download Cell-ACDC Installer
@@ -44,7 +44,7 @@ Please find more information on the `GitHub page <https://github.com/SchmollerLa
 
 **The installation steps are as follows:**
 
-1. Download the installer from the `link above <https://hmgubox2.helmholtz-muenchen.de/index.php/s/XdoLnbAAK8pwmyX?openfile=true>`__.
+1. Download the installer from the `link above <https://hmgubox2.helmholtz-muenchen.de/index.php/s/aBFkjEYrH6HW5bN>`__.
 
 2. Run the installer by double-clicking on it. Accept the prompt to allow the installer to make changes to your computer.
 

@@ -13543,7 +13543,9 @@ class guiWin(QMainWindow):
             True if the original labels are shown, False otherwise.
         """
         self.viewOriginalLabels = checked
+        self.whitelistIDsToolbar.viewOGToggle.blockSignals(True)
         self.whitelistIDsToolbar.viewOGToggle.setChecked(checked)
+        self.whitelistIDsToolbar.viewOGToggle.blockSignals(False)
 
     def whitelistAddNewIDsToggled(self, checked: bool):
         """Will set self.addNewIDsWhitelistToggle to checked and call
@@ -13691,6 +13693,7 @@ class guiWin(QMainWindow):
         IDs_to_remove : list, optional
             IDs to remove from the whitelist, by default None
         """
+        got_data = False
         benchmark = False
         if benchmark:
             ts = [time.perf_counter()]
@@ -13714,15 +13717,15 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         if posData.whitelist is None:
             return
-            
+
         if frame_i is None:
             frame_i = posData.frame_i
             og_frame_i = frame_i
         else:
             og_frame_i = posData.frame_i
             posData.frame_i = frame_i
-
-
+            # getting data is handles later in the code
+            
         debug = posData.whitelist._debug
         if debug:
             printl('whitelistUpdateLab', frame_i, og_frame_i)
@@ -13732,20 +13735,21 @@ class guiWin(QMainWindow):
         if benchmark:
             ts.append(time.perf_counter())
 
-        self.whitelistSetViewOGIDsToggle(False)
+        self.whitelistSetViewOGIDsToggle(False) ###
 
         if benchmark:
             ts.append(time.perf_counter())
 
-
-        og_lab = posData.whitelist.originalLabs[frame_i]
+        og_lab = posData.whitelist.originalLabs[frame_i] ###
         if benchmark:
             ts.append(time.perf_counter())
 
+        ####
         whitelist = posData.whitelist.get(frame_i=frame_i)
         IDs_to_add_remove_provided = IDs_to_add is not None or IDs_to_remove is not None
         if not IDs_to_add_remove_provided:
             self.get_data()
+            got_data = True
             current_IDs = set(posData.IDs)
             missing_IDs = list(whitelist - current_IDs)
             to_be_removed_IDs = list(current_IDs - whitelist)
@@ -13753,22 +13757,17 @@ class guiWin(QMainWindow):
             missing_IDs = list(IDs_to_add) if IDs_to_add is not None else []
             to_be_removed_IDs = list(IDs_to_remove) if IDs_to_remove is not None else []
 
-        if benchmark:
-            ts.append(time.perf_counter())
-
-        if missing_IDs and track_og_curr and not new_frame:
-            self.whitelistTrackOGCurr(frame_i=frame_i)
+        ###
 
         if benchmark:
             ts.append(time.perf_counter())
-
-        if not missing_IDs and not to_be_removed_IDs:
+        
+        ###
+        if not missing_IDs and not to_be_removed_IDs: # nothing to do
             if og_frame_i != frame_i:
                 posData.frame_i = og_frame_i
-                if not IDs_to_add_remove_provided:
-                    self.get_data()
-                    self.update_rp(wl_update=False)
-                    self.store_data(autosave=False)
+            if got_data and og_frame_i != frame_i:
+                self.get_data()
             if benchmark:
                 print('No IDs to add/remove')
                 ts.append(time.perf_counter())
@@ -13783,11 +13782,24 @@ class guiWin(QMainWindow):
 
             return
         
+        if not got_data:
+            self.get_data()
+            got_data = True
+        
+        if benchmark:
+            ts.append(time.perf_counter())
+
+        ###
+        if missing_IDs and track_og_curr and not new_frame:
+            self.whitelistTrackOGCurr(frame_i=frame_i, 
+                                      lab = posData.lab,
+                                      rp = posData.rp)
+        
         missing_IDs = np.array(missing_IDs, dtype=np.int32)
         to_be_removed_IDs = np.array(to_be_removed_IDs, dtype=np.int32)
 
         if debug:
-            printl(current_IDs, missing_IDs, to_be_removed_IDs)
+            printl(missing_IDs, to_be_removed_IDs)
 
         curr_lab = posData.lab # or curr_lab = posData.lab??? 
         # convert values to int if they are not already
@@ -13814,6 +13826,7 @@ class guiWin(QMainWindow):
             ts.append(time.perf_counter())
         
         posData.lab = curr_lab
+
         self.update_rp(wl_update=False)
         self.store_data()
 
@@ -13821,10 +13834,7 @@ class guiWin(QMainWindow):
             ts.append(time.perf_counter())
         if og_frame_i != frame_i:
             posData.frame_i = og_frame_i
-            if not IDs_to_add_remove_provided:
-                self.get_data()
-                self.update_rp(wl_update=False)
-                self.store_data(autosave=False)
+            self.get_data()
         
         self.updateAllImages()
         self.setAllTextAnnotations()
@@ -14241,6 +14251,8 @@ class guiWin(QMainWindow):
             self.whitelistUpdateLab(frame_i=frame_i, track_og_curr=track_og_curr, 
                                     new_frame=new_frame, IDs_to_add=IDs_to_add, 
                                     IDs_to_remove=IDs_to_remove, )
+            self.update_rp(wl_update=False)
+            self.store_data(autosave=False)
 
     def whitelistIDs_cb(self, checked:bool):
         """Callback for when the whitelist IDs button is checked or unchecked.
@@ -17327,9 +17339,13 @@ class guiWin(QMainWindow):
             self.progressWin.close()
             self.progressWin = None
         self.logger.info(error)
-        worker.thread().quit()
-        worker.deleteLater()
-        worker.thread().deleteLater()
+        try:
+            worker.thread().quit()
+            worker.deleteLater()
+            worker.thread().deleteLater()
+        except Exception as err:
+            # Worker already closed
+            pass
         raise error
     
     def workerLog(self, text):
