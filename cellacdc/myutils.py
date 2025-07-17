@@ -419,7 +419,8 @@ def get_info_version_text(is_cli=False, cli_formatted_text=True):
     version = read_version()
     release_date = get_date_from_version(version, package='cellacdc')
     py_ver = sys.version_info
-    env_folderpath = os.path.dirname(os.__file__)
+    import numpy as np
+    env_folderpath = os.path.dirname(np.__file__)
     python_version = f'{py_ver.major}.{py_ver.minor}.{py_ver.micro}'
     info_txts = [
         f'Version {version}',
