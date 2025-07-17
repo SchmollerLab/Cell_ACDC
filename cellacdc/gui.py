@@ -8123,11 +8123,15 @@ class guiWin(QMainWindow):
         idx = self.modelNames.index(model_name)
         acdcSegment = self.acdcSegment_li[idx]
 
-        if acdcSegment is None or base_model_name != self.local_seg_base_model_name:
-            self.logger.info(f'Importing {base_model_name}...')
-            acdcSegment = myutils.import_segment_module(base_model_name)
-            self.acdcSegment_li[idx] = acdcSegment
-            self.local_seg_base_model_name = base_model_name  
+        try:
+            if acdcSegment is None or base_model_name != self.local_seg_base_model_name:
+                self.logger.info(f'Importing {base_model_name}...')
+                acdcSegment = myutils.import_segment_module(base_model_name)
+                self.acdcSegment_li[idx] = acdcSegment
+                self.local_seg_base_model_name = base_model_name
+        except (IndexError, ImportError) as e:
+            self.logger.error(f'Error importing {base_model_name}: {e}')
+            return
         
         extra_params = ['overlap_threshold',
                         'padding',
@@ -8218,10 +8222,7 @@ class guiWin(QMainWindow):
         self.SegForLostIDsWaitCond.wakeAll()
     
     def SegForLostIDsWorkerAskInstallModel(self, model_name):
-        if model_name == 'cellpose_custom':
-            myutils.check_install_cellpose(version="any")
-        else:
-            myutils.check_install_package(model_name)
+        myutils.check_install_package(model_name)
         
         self.SegForLostIDsWaitCond.wakeAll()
 

@@ -291,11 +291,23 @@ class SegForLostIDsWorker(QObject):
         acdcSegment = self.guiWin.acdcSegment_li[idx]
 
         if acdcSegment is None or base_model_name != self.guiWin.local_seg_base_model_name:
-            self.logger.info(f'Importing {base_model_name}...')
-            self.emitSigAskInstallModel(base_model_name)
-            acdcSegment = myutils.import_segment_module(base_model_name)
-            self.guiWin.acdcSegment_li[idx] = acdcSegment
-            self.guiWin.local_seg_base_model_name = base_model_name  
+            try:
+                self.logger.info(f'Importing {base_model_name}...')
+                self.emitSigAskInstallModel(base_model_name)
+                acdcSegment = myutils.import_segment_module(base_model_name)
+                self.guiWin.acdcSegment_li[idx] = acdcSegment
+                self.guiWin.local_seg_base_model_name = base_model_name
+            except (IndexError, ImportError) as e:
+                self.logger.warning(
+                    f'Cannot import {base_model_name} model. '
+                    'Please install it first.'
+                )
+                self.signals.critical.emit(
+                    (self, f'Cannot import {base_model_name} model. '
+                    'Please install it first.')
+                )
+                self.signals.finished.emit(self)
+                return
 
         win = self.guiWin.SegForLostIDsSettings['win']
         init_kwargs_new = self.guiWin.SegForLostIDsSettings['init_kwargs_new']
