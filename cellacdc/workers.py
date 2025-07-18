@@ -201,6 +201,7 @@ class SegForLostIDsWorker(QObject):
     # sigGet2Dlab = Signal()
     # sigGetTrackedLostIDs = Signal()
     # sigGetBrushID = Signal()
+    sigSegForLostIDsWorkerAskInstallGPU = Signal(str, bool)
     sigTrackManuallyAddedObject = Signal(object, object, bool, bool)
 
     def __init__(self, guiWin, mutex, waitCond, debug=True):
@@ -247,6 +248,13 @@ class SegForLostIDsWorker(QObject):
         self.sigAskInstallModel.emit(model_name)
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
+        
+    def emitSigAskInstallGPU(self, base_model_name, use_gpu):
+        self.mutex.lock()
+        self.sigSegForLostIDsWorkerAskInstallGPU.emit(base_model_name,
+                                                     use_gpu)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
     
     # def emitGet2Dlab(self):
     #     self.mutex.lock()
@@ -283,19 +291,48 @@ class SegForLostIDsWorker(QObject):
         if not self.guiWin.SegForLostIDsSettings:
             self.signals.finished.emit(self)
             return
+        
 
         self.logger.info('Segmentation for lost IDs started.')
         model_name = 'local_seg'
         base_model_name = self.guiWin.SegForLostIDsSettings['base_model_name']
         idx = self.guiWin.modelNames.index(model_name)
         acdcSegment = self.guiWin.acdcSegment_li[idx]
+        
+        init_kwargs = self.guiWin.SegForLostIDsSettings['win'].init_kwargs
+        
+        use_gpu = init_kwargs.get('device', 'cpu') != 'cpu'
+        use_gpu = use_gpu or init_kwargs.get('use_gpu', False)
+        
+        self.emitSigAskInstallGPU(base_model_name, use_gpu)
+        
+        if not self.gpu_go:
+            return
+        
+        if not self.dont_force_cpu:
+            if 'device' in init_kwargs:
+                init_kwargs['device'] = 'cpu'
+            if 'use_gpu' in init_kwargs:
+                init_kwargs['use_gpu'] = False
 
         if acdcSegment is None or base_model_name != self.guiWin.local_seg_base_model_name:
-            self.logger.info(f'Importing {base_model_name}...')
-            self.emitSigAskInstallModel(base_model_name)
-            acdcSegment = myutils.import_segment_module(base_model_name)
-            self.guiWin.acdcSegment_li[idx] = acdcSegment
-            self.guiWin.local_seg_base_model_name = base_model_name  
+            try:
+                self.logger.info(f'Importing {base_model_name}...')
+                self.emitSigAskInstallModel(base_model_name)
+                acdcSegment = myutils.import_segment_module(base_model_name)
+                self.guiWin.acdcSegment_li[idx] = acdcSegment
+                self.guiWin.local_seg_base_model_name = base_model_name
+            except (IndexError, ImportError, KeyError) as e:
+                self.logger.warning(
+                    f'Cannot import {base_model_name} model. '
+                    'Please install it first.'
+                )
+                self.signals.critical.emit(
+                    (self, f'Cannot import {base_model_name} model. '
+                    'Please install it first.')
+                )
+                self.signals.finished.emit(self)
+                return
 
         win = self.guiWin.SegForLostIDsSettings['win']
         init_kwargs_new = self.guiWin.SegForLostIDsSettings['init_kwargs_new']

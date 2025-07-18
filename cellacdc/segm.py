@@ -602,7 +602,7 @@ class segmWin(QMainWindow):
         
         # Initialize model
         use_gpu = init_kwargs.get('gpu', False)
-        proceed = myutils.check_gpu_availible(model_name, use_gpu, qparent=self)
+        proceed = myutils.check_gpu_available(model_name, use_gpu, qparent=self)
         if not proceed:
             self.processStopped()
             return

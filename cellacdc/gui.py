@@ -8123,11 +8123,15 @@ class guiWin(QMainWindow):
         idx = self.modelNames.index(model_name)
         acdcSegment = self.acdcSegment_li[idx]
 
-        if acdcSegment is None or base_model_name != self.local_seg_base_model_name:
-            self.logger.info(f'Importing {base_model_name}...')
-            acdcSegment = myutils.import_segment_module(base_model_name)
-            self.acdcSegment_li[idx] = acdcSegment
-            self.local_seg_base_model_name = base_model_name  
+        try:
+            if acdcSegment is None or base_model_name != self.local_seg_base_model_name:
+                self.logger.info(f'Importing {base_model_name}...')
+                acdcSegment = myutils.import_segment_module(base_model_name)
+                self.acdcSegment_li[idx] = acdcSegment
+                self.local_seg_base_model_name = base_model_name
+        except (IndexError, ImportError, KeyError) as e:
+            self.logger.error(f'Error importing {base_model_name}: {e}')
+            return
         
         extra_params = ['overlap_threshold',
                         'padding',
@@ -8201,6 +8205,7 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         if posData.frame_i == 0:
             self.logger.info('Segmentation for lost IDs not available on first frame.')
+            self.setFrameNavigationDisabled(disable=False, why='Segmentation for lost IDs')
             return
         self.storeUndoRedoStates(False)
         self.progressWin = apps.QDialogWorkerProgress(
@@ -8218,11 +8223,7 @@ class guiWin(QMainWindow):
         self.SegForLostIDsWaitCond.wakeAll()
     
     def SegForLostIDsWorkerAskInstallModel(self, model_name):
-        if model_name == 'cellpose_custom':
-            myutils.check_install_cellpose(version="any")
-        else:
-            myutils.check_install_package(model_name)
-        
+        myutils.check_install_package(model_name)
         self.SegForLostIDsWaitCond.wakeAll()
 
     def startSegForLostIDsWorker(self):
@@ -8242,6 +8243,10 @@ class guiWin(QMainWindow):
         )
         self.SegForLostIDsWorker.sigshowImageDebug.connect(
             self.showImageDebug
+        )
+        
+        self.SegForLostIDsWorker.sigSegForLostIDsWorkerAskInstallGPU.connect(
+            self.SegForLostIDsWorkerAskInstallGPU
         )
 
         self.SegForLostIDsWorker.sigStoreData.connect(self.onSigStoreDataSegForLostIDsWorker)
@@ -8270,7 +8275,15 @@ class guiWin(QMainWindow):
         # Start the thread and worker
         self._thread.started.connect(self.SegForLostIDsWorker.run)
         self._thread.start()
-    
+        
+    def SegForLostIDsWorkerAskInstallGPU(self, model_name, use_gpu):
+        result = myutils.check_gpu_available(model_name, use_gpu, qparent=self)
+        self.SegForLostIDsWorker.gpu_go = result
+        dont_force_cpu = myutils.check_gpu_available(
+            model_name, use_gpu, do_not_warn=True)
+        self.SegForLostIDsWorker.dont_force_cpu = dont_force_cpu
+        self.SegForLostIDsWaitCond.wakeAll()
+
     def onSigStoreDataSegForLostIDsWorker(self, autosave):
         self.onSigStoreData(
             self.SegForLostIDsWaitCond, autosave=autosave)
@@ -17037,7 +17050,7 @@ class guiWin(QMainWindow):
             )
 
             use_gpu = win.init_kwargs.get('gpu', False)
-            proceed = myutils.check_gpu_availible(model_name, use_gpu, qparent=self)
+            proceed = myutils.check_gpu_available(model_name, use_gpu, qparent=self)
             if not proceed:
                 self.logger.info('Segmentation process cancelled.')
                 self.titleLabel.setText('Segmentation process cancelled.')
@@ -17231,7 +17244,7 @@ class guiWin(QMainWindow):
             secondChannelData = self.getSecondChannelData()
 
         use_gpu = win.init_kwargs.get('gpu', False)
-        proceed = myutils.check_gpu_availible(model_name, use_gpu, qparent=self)
+        proceed = myutils.check_gpu_available(model_name, use_gpu, qparent=self)
         if not proceed:
             self.logger.info('Segmentation process cancelled.')
             self.titleLabel.setText('Segmentation process cancelled.')
@@ -17472,7 +17485,7 @@ class guiWin(QMainWindow):
             return
 
         use_gpu = win.init_kwargs.get('gpu', False)
-        proceed = myutils.check_gpu_availible(model_name, use_gpu, qparent=self)
+        proceed = myutils.check_gpu_available(model_name, use_gpu, qparent=self)
         if not proceed:
             self.logger.info('Segmentation process cancelled.')
             self.titleLabel.setText('Segmentation process cancelled.')
