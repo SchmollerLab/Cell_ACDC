@@ -297,7 +297,7 @@ class SegForLostIDsWorker(QObject):
                 acdcSegment = myutils.import_segment_module(base_model_name)
                 self.guiWin.acdcSegment_li[idx] = acdcSegment
                 self.guiWin.local_seg_base_model_name = base_model_name
-            except (IndexError, ImportError) as e:
+            except (IndexError, ImportError, KeyError) as e:
                 self.logger.warning(
                     f'Cannot import {base_model_name} model. '
                     'Please install it first.'

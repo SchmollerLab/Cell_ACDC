@@ -8129,7 +8129,7 @@ class guiWin(QMainWindow):
                 acdcSegment = myutils.import_segment_module(base_model_name)
                 self.acdcSegment_li[idx] = acdcSegment
                 self.local_seg_base_model_name = base_model_name
-        except (IndexError, ImportError) as e:
+        except (IndexError, ImportError, KeyError) as e:
             self.logger.error(f'Error importing {base_model_name}: {e}')
             return
         
