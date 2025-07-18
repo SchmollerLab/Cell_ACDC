@@ -3754,11 +3754,11 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None):
     if msg.clickedButton == proceedButton:
         return True
 
-def check_gpu_availible(model_name, use_gpu, do_not_warn=False, qparent=None):
+def check_gpu_available(model_name, use_gpu, do_not_warn=False, qparent=None):
     if not use_gpu:
         return True
 
-    frameworks = _availible_frameworks(model_name)
+    frameworks = _available_frameworks(model_name)
     ask_installs = set()
     framework_available = False
     for framework, model_compatible in frameworks.items():
@@ -3798,7 +3798,7 @@ def check_gpu_availible(model_name, use_gpu, do_not_warn=False, qparent=None):
     return proceed
 
 
-def _availible_frameworks(model_name):
+def _available_frameworks(model_name):
     frameworks = {
 
     "cuda":(
