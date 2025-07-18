@@ -2693,7 +2693,10 @@ def purge_module(module_name):
         
     importlib.invalidate_caches()
     importlib.import_module(module_name)
-    importlib.reload(module_name)
+    if module_name in sys.modules:
+        importlib.reload(sys.modules[module_name])
+    else:
+        raise ModuleNotFoundError(f"Module '{module_name}' not found in sys.modules.")
 
 def compare_model_versions(
         target_version: str,
