@@ -8223,7 +8223,6 @@ class guiWin(QMainWindow):
     
     def SegForLostIDsWorkerAskInstallModel(self, model_name):
         myutils.check_install_package(model_name)
-        
         self.SegForLostIDsWaitCond.wakeAll()
 
     def startSegForLostIDsWorker(self):
@@ -8243,6 +8242,10 @@ class guiWin(QMainWindow):
         )
         self.SegForLostIDsWorker.sigshowImageDebug.connect(
             self.showImageDebug
+        )
+        
+        self.SegForLostIDsWorker.sigSegForLostIDsWorkerAskInstallGPU.connect(
+            self.SegForLostIDsWorkerAskInstallGPU
         )
 
         self.SegForLostIDsWorker.sigStoreData.connect(self.onSigStoreDataSegForLostIDsWorker)
@@ -8271,7 +8274,15 @@ class guiWin(QMainWindow):
         # Start the thread and worker
         self._thread.started.connect(self.SegForLostIDsWorker.run)
         self._thread.start()
-    
+        
+    def SegForLostIDsWorkerAskInstallGPU(self, model_name, use_gpu):
+        result = myutils.check_gpu_availible(model_name, use_gpu, qparent=self)
+        self.SegForLostIDsWorker.gpu_go = result
+        dont_force_cpu = myutils.check_gpu_availible(
+            model_name, use_gpu, do_not_warn=True)
+        self.SegForLostIDsWorker.dont_force_cpu = dont_force_cpu
+        self.SegForLostIDsWaitCond.wakeAll()
+
     def onSigStoreDataSegForLostIDsWorker(self, autosave):
         self.onSigStoreData(
             self.SegForLostIDsWaitCond, autosave=autosave)

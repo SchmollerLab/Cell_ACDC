@@ -3751,7 +3751,7 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None):
     if msg.clickedButton == proceedButton:
         return True
 
-def check_gpu_availible(model_name, use_gpu, qparent=None):
+def check_gpu_availible(model_name, use_gpu, do_not_warn=False, qparent=None):
     if not use_gpu:
         return True
 
@@ -3787,6 +3787,9 @@ def check_gpu_availible(model_name, use_gpu, qparent=None):
     
     if framework_available:
         return True
+    
+    elif do_not_warn:
+        return False
     
     proceed = _warn_install_gpu(model_name, ask_installs, qparent=qparent)
     return proceed
