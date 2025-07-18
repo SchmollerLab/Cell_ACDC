@@ -8277,9 +8277,9 @@ class guiWin(QMainWindow):
         self._thread.start()
         
     def SegForLostIDsWorkerAskInstallGPU(self, model_name, use_gpu):
-        result = myutils.check_gpu_availible(model_name, use_gpu, qparent=self)
+        result = myutils.check_gpu_available(model_name, use_gpu, qparent=self)
         self.SegForLostIDsWorker.gpu_go = result
-        dont_force_cpu = myutils.check_gpu_availible(
+        dont_force_cpu = myutils.check_gpu_available(
             model_name, use_gpu, do_not_warn=True)
         self.SegForLostIDsWorker.dont_force_cpu = dont_force_cpu
         self.SegForLostIDsWaitCond.wakeAll()
@@ -17050,7 +17050,7 @@ class guiWin(QMainWindow):
             )
 
             use_gpu = win.init_kwargs.get('gpu', False)
-            proceed = myutils.check_gpu_availible(model_name, use_gpu, qparent=self)
+            proceed = myutils.check_gpu_available(model_name, use_gpu, qparent=self)
             if not proceed:
                 self.logger.info('Segmentation process cancelled.')
                 self.titleLabel.setText('Segmentation process cancelled.')
@@ -17244,7 +17244,7 @@ class guiWin(QMainWindow):
             secondChannelData = self.getSecondChannelData()
 
         use_gpu = win.init_kwargs.get('gpu', False)
-        proceed = myutils.check_gpu_availible(model_name, use_gpu, qparent=self)
+        proceed = myutils.check_gpu_available(model_name, use_gpu, qparent=self)
         if not proceed:
             self.logger.info('Segmentation process cancelled.')
             self.titleLabel.setText('Segmentation process cancelled.')
@@ -17485,7 +17485,7 @@ class guiWin(QMainWindow):
             return
 
         use_gpu = win.init_kwargs.get('gpu', False)
-        proceed = myutils.check_gpu_availible(model_name, use_gpu, qparent=self)
+        proceed = myutils.check_gpu_available(model_name, use_gpu, qparent=self)
         if not proceed:
             self.logger.info('Segmentation process cancelled.')
             self.titleLabel.setText('Segmentation process cancelled.')
