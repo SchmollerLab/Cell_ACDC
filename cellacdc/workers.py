@@ -310,9 +310,9 @@ class SegForLostIDsWorker(QObject):
             return
         
         if not self.dont_force_cpu:
-            if init_kwargs.get('device', SENTINEL_NOT_GIVEN) != SENTINEL_NOT_GIVEN:
+            if 'device' in init_kwargs:
                 init_kwargs['device'] = 'cpu'
-            if init_kwargs.get('use_gpu', SENTINEL_NOT_GIVEN) != SENTINEL_NOT_GIVEN:
+            if 'use_gpu' in init_kwargs:
                 init_kwargs['use_gpu'] = False
 
         if acdcSegment is None or base_model_name != self.guiWin.local_seg_base_model_name:
