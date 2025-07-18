@@ -18157,6 +18157,7 @@ class guiWin(QMainWindow):
             tuple(int(val) for val in prev_rp[prev_IDs_idxs[ID]].centroid) 
             for ID in posData.lost_IDs
         }
+        printl(accepted_lost_centroids)
         try:
             posData.tracked_lost_centroids[frame_i] = (
                 posData.tracked_lost_centroids[frame_i] | (accepted_lost_centroids)
@@ -28080,6 +28081,10 @@ class guiWin(QMainWindow):
             tracked_lost_centroids = set()
 
         for centroid in tracked_lost_centroids:
+            if len(centroid) < 3 and prev_lab.ndim == 3:
+                # Ignore wrongly stored centroids
+                continue
+
             ID = prev_lab[centroid]
             if ID == 0:
                 continue
