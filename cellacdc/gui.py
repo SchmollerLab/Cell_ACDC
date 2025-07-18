@@ -8205,6 +8205,7 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         if posData.frame_i == 0:
             self.logger.info('Segmentation for lost IDs not available on first frame.')
+            self.setFrameNavigationDisabled(disable=False, why='Segmentation for lost IDs')
             return
         self.storeUndoRedoStates(False)
         self.progressWin = apps.QDialogWorkerProgress(
