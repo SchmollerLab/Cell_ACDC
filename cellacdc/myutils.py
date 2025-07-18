@@ -2741,10 +2741,6 @@ def check_install_cellpose(
 
     purge_module('cellpose')
 
-    importlib.invalidate_caches()
-    import cellpose
-    importlib.reload(cellpose)
-
 def check_install_baby():
     check_install_package(
         'TensorFlow', 
@@ -2885,9 +2881,6 @@ def check_install_torch(is_cli=False, caller_name='Cell-ACDC', qparent=None):
     _run_command(command)    
     
     purge_module('torch')
-    importlib.invalidate_caches()
-    import torch
-    importlib.reload(torch)
 
 def check_install_package(
         pkg_name: str, 
@@ -3389,6 +3382,9 @@ def _install_tensorflow(max_version='', min_version=''):
         args = [sys.executable, '-m', 'pip', 'install', '-U', pkg_command]
         shell = False
     subprocess.check_call(args, shell=shell)
+    
+    # purge numpy
+    purge_module('numpy')
 
 def _install_segment_anything():
     args = [
