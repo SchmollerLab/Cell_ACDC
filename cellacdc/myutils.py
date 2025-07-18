@@ -2690,6 +2690,10 @@ def purge_module(module_name):
     to_delete = [mod for mod in sys.modules if mod == module_name or mod.startswith(module_name + '.')]
     for mod in to_delete:
         del sys.modules[mod]
+        
+    importlib.invalidate_caches()
+    importlib.import_module(module_name)
+    importlib.reload(module_name)
 
 def compare_model_versions(
         target_version: str,
@@ -3735,6 +3739,7 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None):
                 pypi_name = 'torch-directml',
                 return_outcome=True,
             )
+            purge_module('torch')
             return success
         else:
             msg = widgets.myMessageBox()
