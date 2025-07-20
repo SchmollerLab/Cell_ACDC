@@ -252,7 +252,7 @@ def lab_replace_values(lab, rp, oldIDs, newIDs, in_place=True):
             lab[obj.slice][obj.image] = newIDs[idx]
         except OverflowError:
             # Value too large for current dtype, promote to larger dtype
-            larger_dtype = np.result_type(lab.dtype, newIDs[idx])
+            larger_dtype = np.min_scalar_type(newIDs[idx])
             lab = lab.astype(larger_dtype)
             lab[obj.slice][obj.image] = newIDs[idx]
     return lab
