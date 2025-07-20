@@ -419,7 +419,7 @@ def get_info_version_text(is_cli=False, cli_formatted_text=True):
     version = read_version()
     release_date = get_date_from_version(version, package='cellacdc')
     py_ver = sys.version_info
-    env_folderpath = os.path.dirname(os.__file__)
+    env_folderpath = sys.prefix
     python_version = f'{py_ver.major}.{py_ver.minor}.{py_ver.micro}'
     info_txts = [
         f'Version {version}',
@@ -2690,6 +2690,13 @@ def purge_module(module_name):
     to_delete = [mod for mod in sys.modules if mod == module_name or mod.startswith(module_name + '.')]
     for mod in to_delete:
         del sys.modules[mod]
+        
+    importlib.invalidate_caches()
+    importlib.import_module(module_name)
+    if module_name in sys.modules:
+        importlib.reload(sys.modules[module_name])
+    else:
+        raise ModuleNotFoundError(f"Module '{module_name}' not found in sys.modules.")
 
 def compare_model_versions(
         target_version: str,
@@ -2736,10 +2743,6 @@ def check_install_cellpose(
     )
 
     purge_module('cellpose')
-
-    importlib.invalidate_caches()
-    import cellpose
-    importlib.reload(cellpose)
 
 def check_install_baby():
     check_install_package(
@@ -2881,9 +2884,6 @@ def check_install_torch(is_cli=False, caller_name='Cell-ACDC', qparent=None):
     _run_command(command)    
     
     purge_module('torch')
-    importlib.invalidate_caches()
-    import torch
-    importlib.reload(torch)
 
 def check_install_package(
         pkg_name: str, 
@@ -3385,6 +3385,9 @@ def _install_tensorflow(max_version='', min_version=''):
         args = [sys.executable, '-m', 'pip', 'install', '-U', pkg_command]
         shell = False
     subprocess.check_call(args, shell=shell)
+    
+    # purge numpy
+    purge_module('numpy')
 
 def _install_segment_anything():
     args = [
@@ -3735,6 +3738,7 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None):
                 pypi_name = 'torch-directml',
                 return_outcome=True,
             )
+            purge_module('torch')
             return success
         else:
             msg = widgets.myMessageBox()
@@ -3750,11 +3754,11 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None):
     if msg.clickedButton == proceedButton:
         return True
 
-def check_gpu_availible(model_name, use_gpu, qparent=None):
+def check_gpu_available(model_name, use_gpu, do_not_warn=False, qparent=None):
     if not use_gpu:
         return True
 
-    frameworks = _availible_frameworks(model_name)
+    frameworks = _available_frameworks(model_name)
     ask_installs = set()
     framework_available = False
     for framework, model_compatible in frameworks.items():
@@ -3787,11 +3791,14 @@ def check_gpu_availible(model_name, use_gpu, qparent=None):
     if framework_available:
         return True
     
+    elif do_not_warn:
+        return False
+    
     proceed = _warn_install_gpu(model_name, ask_installs, qparent=qparent)
     return proceed
 
 
-def _availible_frameworks(model_name):
+def _available_frameworks(model_name):
     frameworks = {
 
     "cuda":(
