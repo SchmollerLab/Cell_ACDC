@@ -649,6 +649,7 @@ class normal_division_lineage_tree:
                 # create a new family
                 generation = 1
                 self.families.append([(daughter_ID, generation) for daughter_ID in daughter_IDs])
+                origin_id = -1
                 
 
             for daughter_ID in daughter_IDs:
