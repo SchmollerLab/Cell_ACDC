@@ -20594,6 +20594,13 @@ class guiWin(QMainWindow):
         self.ch_indipend_custom_func_dict = (
             measurements.get_channel_indipendent_custom_metrics_func()
         )
+        if not hasattr(self, 'chIndipendCustomMetricsToSave'):
+            self.chIndipendCustomMetricsToSave = list(
+                measurements.ch_indipend_custom_metrics_desc(
+                    posData.SizeZ>1, isSegm3D=self.isSegm3D,
+                ).keys()
+            )
+            
         self.ch_indipend_custom_func_params = (
             measurements.get_channel_indipend_custom_metrics_params(
                 self.ch_indipend_custom_func_dict,
