@@ -718,7 +718,7 @@ class LabelRoiWorker(QObject):
                 break
             elif self.started:
                 if self.isTimelapse:
-                    segmData = np.zeros(self.imageData.shape, dtype=np.uint16)
+                    segmData = np.zeros(self.imageData.shape, dtype=np.uint32)
                     for frame_i, img in enumerate(self.imageData):
                         if self.roiSecondChannel is not None:
                             secondChannelImg = self.roiSecondChannel[frame_i]
@@ -944,7 +944,8 @@ class AutoSaveWorker(QObject):
             if not np.any(lab):
                 continue
 
-            acdc_df = load.pd_bool_to_int(acdc_df, inplace=False)
+            acdc_df = load.pd_bool_and_float_to_int(acdc_df, inplace=False, 
+                                                    colsToCastInt=[])
             acdc_df_li.append(acdc_df)
             key = (frame_i, posData.TimeIncrement*frame_i)
             keys.append(key)
@@ -1496,7 +1497,9 @@ class ComputeMetricsWorker(QObject):
                         except:
                             acdc_df = myutils.getBaseAcdcDf(rp)
                     
-                    acdc_df = load.pd_bool_to_int(acdc_df, inplace=False)
+                    acdc_df = load.pd_bool_and_float_to_int(acdc_df, 
+                                                            inplace=False,
+                                                            colsToCastInt=[])
                     
                     try:
                         # if posData.fluo_data_dict:
@@ -6729,7 +6732,9 @@ class saveDataWorker(QObject):
                     # if frame_i == 9:
                     #     cols = list(base_cca_dict.keys())[:9]
                     #     printl(acdc_df[cols])
-                    acdc_df = load.pd_bool_to_int(acdc_df, inplace=False)
+                    acdc_df = load.pd_bool_and_float_to_int(acdc_df, 
+                                                            inplace=False, 
+                                                            colsToCastInt=[])
                     rp = data_dict['regionprops']
                     acdc_df['num_objects'] = len(acdc_df)
                     if save_metrics:

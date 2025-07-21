@@ -10,6 +10,7 @@ external_pkgs
 .vs
 test.py
 .ref_graphs/
+test.csv
 
 env_dependencies_issues.txt
 not_installed_requirements.txt

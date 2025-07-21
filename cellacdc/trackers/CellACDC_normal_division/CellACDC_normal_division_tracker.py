@@ -647,8 +647,10 @@ class normal_division_lineage_tree:
                 printl(frame_i, mother_daughters, IDs_prev, IDs_curr_untracked, assignments, curr_IDs)
                 printl(f"Warning: No family could be associated. Creating a new family for cells {daughter_IDs} with suspected mother ID {mother_ID}.")
                 # create a new family
-                generation = 1
-                self.families.append([(daughter_ID, generation) for daughter_ID in daughter_IDs])
+                generation = -1
+                for daughter_ID in daughter_IDs:
+                    family = [(daughter_ID, generation)]
+                    self.families.append(family) # add two new families if necessary
                 origin_id = -1
                 
 
