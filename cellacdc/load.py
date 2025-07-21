@@ -1012,7 +1012,7 @@ def pd_int_to_bool(acdc_df, colsToCast=None):
             continue
     return acdc_df
 
-def pd_bool_and_float_to_int(acdc_df, colsToCast=None, colsToCastInt=None, csv_path=None, inplace=True):
+def pd_bool_and_float_to_int(acdc_df, colsToCastBool=None, colsToCastInt=None, csv_path=None, inplace=True):
     """
     Function used to convert "FALSE" strings and booleans to 0s and 1s
     to avoid pandas interpreting as strings or numbers.
@@ -1020,8 +1020,8 @@ def pd_bool_and_float_to_int(acdc_df, colsToCast=None, colsToCastInt=None, csv_p
     """
     if not inplace:
         acdc_df = acdc_df.copy()
-    if colsToCast is None:
-        colsToCast = acdc_df_bool_cols
+    if colsToCastBool is None:
+        colsToCastBool = acdc_df_bool_cols
     if colsToCastInt is None:
         colsToCastInt = acdc_df_int_cols
         additional_sister_cols = [
@@ -1041,7 +1041,7 @@ def pd_bool_and_float_to_int(acdc_df, colsToCast=None, colsToCastInt=None, csv_p
             isObject = pd.api.types.is_object_dtype(notna_series)
             isString = pd.api.types.is_string_dtype(notna_series)
             isBool = pd.api.types.is_bool_dtype(notna_series)
-            if col in colsToCast:
+            if col in colsToCastBool:
                 if isFloat or isBool:
                     acdc_df.loc[notna_idx, col] = acdc_df.loc[notna_idx, col].astype(int)
                 elif isString or isObject:
