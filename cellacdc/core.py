@@ -248,13 +248,8 @@ def lab_replace_values(lab, rp, oldIDs, newIDs, in_place=True):
         if obj.label == newIDs[idx]:
             # Skip assigning ID to same ID
             continue
-        try:
-            lab[obj.slice][obj.image] = newIDs[idx]
-        except OverflowError:
-            # Value too large for current dtype, promote to larger dtype
-            larger_dtype = np.result_type(lab.dtype, newIDs[idx])
-            lab = lab.astype(larger_dtype)
-            lab[obj.slice][obj.image] = newIDs[idx]
+
+        lab[obj.slice][obj.image] = newIDs[idx]
     return lab
 
 def post_process_segm(labels, return_delIDs=False, **kwargs):
