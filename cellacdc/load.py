@@ -1012,7 +1012,7 @@ def pd_int_to_bool(acdc_df, colsToCast=None):
             continue
     return acdc_df
 
-def pd_bool_to_int(acdc_df, colsToCast=None, colsToCastInt=None, csv_path=None, inplace=True):
+def pd_bool_and_float_to_int(acdc_df, colsToCast=None, colsToCastInt=None, csv_path=None, inplace=True):
     """
     Function used to convert "FALSE" strings and booleans to 0s and 1s
     to avoid pandas interpreting as strings or numbers.
