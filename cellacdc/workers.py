@@ -718,7 +718,7 @@ class LabelRoiWorker(QObject):
                 break
             elif self.started:
                 if self.isTimelapse:
-                    segmData = np.zeros(self.imageData.shape, dtype=np.uint16)
+                    segmData = np.zeros(self.imageData.shape, dtype=np.uint32)
                     for frame_i, img in enumerate(self.imageData):
                         if self.roiSecondChannel is not None:
                             secondChannelImg = self.roiSecondChannel[frame_i]
