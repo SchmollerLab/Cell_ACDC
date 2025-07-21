@@ -1298,7 +1298,7 @@ def cca_df_to_acdc_df(cca_df, rp, acdc_df=None):
 
 class LineageTree:
     def __init__(self, acdc_df, logging_func=print, debug=False) -> None:
-        acdc_df = load.pd_bool_to_int(acdc_df).reset_index()
+        acdc_df = load.pd_bool_and_float_to_int(acdc_df, colsToCastInt=[]).reset_index()
         acdc_df = self._normalize_gen_num(acdc_df).reset_index()
         acdc_df = acdc_df.drop(columns=['index', 'level_0'], errors='ignore')
         self.acdc_df = acdc_df.set_index(['frame_i', 'Cell_ID'])

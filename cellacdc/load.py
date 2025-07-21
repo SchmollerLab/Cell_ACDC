@@ -521,7 +521,7 @@ def _parse_loaded_acdc_df(acdc_df):
     # remove duplicates saved by mistake or bugs
     duplicated = acdc_df.index.duplicated(keep='first')
     acdc_df = acdc_df[~duplicated]
-    acdc_df = pd_bool_to_int(acdc_df, acdc_df_bool_cols, inplace=True)
+    acdc_df = pd_bool_and_float_to_int(acdc_df, acdc_df_bool_cols, colsToCastInt=[], inplace=True)
     acdc_df = pd_int_to_bool(acdc_df, acdc_df_bool_cols)
     return acdc_df
 
@@ -623,7 +623,7 @@ def _copy_acdc_dfs_to_temp_archive(
                     zip.open(csv_name), dtype=acdc_df_str_cols
                 )
             acdc_df = _ensure_acdc_df_latest_compatibility(acdc_df)
-            acdc_df = pd_bool_to_int(acdc_df, inplace=False)
+            acdc_df = pd_bool_and_float_to_int(acdc_df, inplace=False)
             compression_opts['archive_name'] = csv_name
             acdc_df.to_csv(
                 temp_zip_path, compression=compression_opts, mode='a'
@@ -656,7 +656,7 @@ def _store_acdc_df_archive(zip_path, acdc_df_to_store):
         
     
     compression_opts['archive_name'] = csv_name
-    acdc_df = pd_bool_to_int(acdc_df_to_store, inplace=False)
+    acdc_df = pd_bool_and_float_to_int(acdc_df_to_store, inplace=False)
     acdc_df.to_csv(temp_zip_path, compression=compression_opts, mode='a')
     shutil.move(temp_zip_path, zip_path)
     shutil.rmtree(temp_dirpath)
@@ -1017,6 +1017,7 @@ def pd_bool_and_float_to_int(acdc_df, colsToCastBool=None, colsToCastInt=None, c
     Function used to convert "FALSE" strings and booleans to 0s and 1s
     to avoid pandas interpreting as strings or numbers.
     Also converts floats to integers for integer columns.
+    To not convert columns, pass emptry list to colsToCastBool or colsToCastInt.
     """
     if not inplace:
         acdc_df = acdc_df.copy()
@@ -1949,7 +1950,7 @@ class loadData:
         if not save:
             return acdc_df
 
-        acdc_df = pd_bool_to_int(acdc_df, inplace=False)
+        acdc_df = pd_bool_and_float_to_int(acdc_df, inplace=False)
         if cca_dfs_attr:
             acdc_df.to_csv(self.acdc_output_csv_path)
             self.loadAcdcDf(self.acdc_output_csv_path)
