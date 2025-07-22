@@ -3176,7 +3176,7 @@ def _install_pytorch_cli(
     logger_func(txt)
     questions = {
         'Choose your OS:': ('Windows', 'Mac', 'Linux'), 
-        'Package manager:': ('Conda', 'Pip'), 
+        'Package manager:': ('Pip'), 
         'Compute platform:': (
             'CPU', 'CUDA 11.8 (NVIDIA GPU)', 'CUDA 12.1 (NVIDIA GPU)'
         )
@@ -4570,15 +4570,27 @@ def translateStrNone(*args):
     return args
 
 def get_pytorch_command():
+    """Get the command to install pytorch CPU or CUDA
+
+    Returns
+    -------
+    dict
+        Dictionary mapping OS to commands for installing PyTorch
+    
+    Notes
+    -----
+    As of Oct 2024, the `pytorch` channel on Anaconda was deprecated. 
+    See here https://github.com/pytorch/pytorch/issues/138506
+    """
     conda_prefix, pip_prefix = get_pip_conda_prefix()
 
     pytorch_commands = {
         'Windows': {
-            'Conda': {
-                'CPU': f'{conda_prefix} pytorch torchvision cpuonly -c conda-forge',
-                'CUDA 11.8 (NVIDIA GPU)': f'{conda_prefix} pytorch torchvision pytorch-cuda=11.8 -c conda-forge -c nvidia',
-                'CUDA 12.1 (NVIDIA GPU)': f'{conda_prefix} pytorch torchvision pytorch-cuda=12.1 -c conda-forge -c nvidia'
-            },
+            # 'Conda': {
+            #     'CPU': f'{conda_prefix} pytorch torchvision cpuonly -c conda-forge',
+            #     'CUDA 11.8 (NVIDIA GPU)': f'{conda_prefix} pytorch torchvision pytorch-cuda=11.8 -c conda-forge -c nvidia',
+            #     'CUDA 12.1 (NVIDIA GPU)': f'{conda_prefix} pytorch torchvision pytorch-cuda=12.1 -c conda-forge -c nvidia'
+            # },
             'Pip': {
                 'CPU': f'{pip_prefix} torch torchvision',
                 'CUDA 11.8 (NVIDIA GPU)': f'{pip_prefix} torch torchvision --index-url https://download.pytorch.org/whl/cu118',
@@ -4586,11 +4598,11 @@ def get_pytorch_command():
             }
         },
         'Mac': {
-            'Conda': {
-                'CPU': f'{conda_prefix} pytorch torchvision cpuonly -c conda-forge',
-                'CUDA 11.8 (NVIDIA GPU)': '[WARNING]: CUDA is not available on MacOS',
-                'CUDA 12.1 (NVIDIA GPU)': '[WARNING]: CUDA is not available on MacOS'
-            },
+            # 'Conda': {
+            #     'CPU': f'{conda_prefix} pytorch torchvision cpuonly -c conda-forge',
+            #     'CUDA 11.8 (NVIDIA GPU)': '[WARNING]: CUDA is not available on MacOS',
+            #     'CUDA 12.1 (NVIDIA GPU)': '[WARNING]: CUDA is not available on MacOS'
+            # },
             'Pip': {
                 'CPU': f'{pip_prefix} torch torchvision',
                 'CUDA 11.8 (NVIDIA GPU)': '[WARNING]: CUDA is not available on MacOS',
@@ -4598,11 +4610,11 @@ def get_pytorch_command():
             }
         },
         'Linux': {
-            'Conda': {
-                'CPU': f'{conda_prefix} pytorch torchvision cpuonly -c conda-forge',
-                'CUDA 11.8 (NVIDIA GPU)': f'{conda_prefix} pytorch torchvision pytorch-cuda=11.8 -c conda-forge -c nvidia',
-                'CUDA 12.1 (NVIDIA GPU)': f'{conda_prefix} pytorch torchvision pytorch-cuda=12.1 -c conda-forge -c nvidia'
-            },
+            # 'Conda': {
+            #     'CPU': f'{conda_prefix} pytorch torchvision cpuonly -c conda-forge',
+            #     'CUDA 11.8 (NVIDIA GPU)': f'{conda_prefix} pytorch torchvision pytorch-cuda=11.8 -c conda-forge -c nvidia',
+            #     'CUDA 12.1 (NVIDIA GPU)': f'{conda_prefix} pytorch torchvision pytorch-cuda=12.1 -c conda-forge -c nvidia'
+            # },
             'Pip': {
                 'CPU': f'{pip_prefix} torch torchvision --index-url https://download.pytorch.org/whl/cpu',
                 'CUDA 11.8 (NVIDIA GPU)': f'{pip_prefix} torch torchvision --index-url https://download.pytorch.org/whl/cu118',
