@@ -18539,6 +18539,7 @@ class guiWin(QMainWindow):
         if posData.frame_i == max(self.lineage_tree.frames_for_dfs):
             # here we can just propagate the cahnged. This is super fast, since there is no recursion, no children and fast finding of parents
             self.lineage_tree.propagate(posData.frame_i, relevant_cells=changed_IDs)
+            self.lin_tree_to_acdc_df(specific={posData.frame_i})
             self.original_df_lin_tree = None
             self.original_df_lin_tree_i = None
             return
@@ -22674,8 +22675,8 @@ class guiWin(QMainWindow):
 
         posData = self.data[self.pos_i]
 
-
         lin_tree_colnames = None
+        self.store_data(autosave=False)
         for frame_i in lin_tree_set:
             acdc_df = posData.allData_li[frame_i]['acdc_df']
 
