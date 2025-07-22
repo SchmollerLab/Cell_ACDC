@@ -457,6 +457,13 @@ def get_info_version_text(is_cli=False, cli_formatted_text=True):
     formatted_info_txts.append('='*max_len)
     info_txt = '\n'.join(formatted_info_txts)
     
+    try:
+        from spotmax.utils import get_info_version_text as smax_info
+        smax_info_txt = smax_info(include_platform=False, is_cli=is_cli)
+        info_txt += '\n\n' + smax_info_txt
+    except ImportError:
+        pass
+    
     return info_txt
 
 def _log_system_info(logger, log_path, is_cli=False, also_spotmax=False):
