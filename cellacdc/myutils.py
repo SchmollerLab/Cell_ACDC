@@ -3692,7 +3692,8 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None):
         <code>{pip_prefix} uninstall torch</code>.<br>
         Then, install the CUDA version required by your GPU with the follwing 
         command (which installs version 11.6):<br>
-        <code>{conda_prefix} pytorch pytorch-cuda=11.6 -c nvidia</code>
+        <code>{pip_prefix} torch torchvision torchaudio --index-url 
+        https://download.pytorch.org/whl/cu128</code>
         <br><br>
         """)
     
