@@ -3691,11 +3691,41 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None):
         First, uninstall the CPU version of PyTorch with the following command:<br>
         <code>{pip_prefix} uninstall torch</code>.<br>
         Then, install the CUDA version required by your GPU with the follwing 
-        command (which installs version 11.6):<br>
+        command (in this case 12.8):<br>
         <code>{pip_prefix} torch torchvision torchaudio --index-url 
         https://download.pytorch.org/whl/cu128</code>
-        <br><br>
+        <br>
         """)
+    
+    add_info = html_utils.to_admonition(
+        f"""
+        Pleae use the following table to find the correct link for the command.
+        You can check the CUDA  <br> version installed on your system with the
+        command <code>nvidia-smi</code> in the terminal.<br>
+
+        {html_utils.table_style_header}
+            <tr>
+                <th>CUDA Version</th>
+                <th>PyTorch Installation Link</th>
+            </tr>
+            <tr>
+                <td>CUDA 11.8</td>
+                <td><code>https://download.pytorch.org/whl/cu118</code></td>
+            </tr>
+            <tr>
+                <td>CUDA 12.6</td>
+                <td><code>https://download.pytorch.org/whl/cu126</code></td>
+            </tr>
+            <tr>
+                <td>CUDA 12.8</td>
+                <td><code>https://download.pytorch.org/whl/cu128</code></td>
+            </tr>
+        </table>
+        """,
+        "info"
+    )
+    
+    txt_cuda = f'{txt_cuda}{add_info}'
     
     txt_directML_title = html_utils.paragraph(f"<b>DirectML</b>", font_size='18px')
     txt_directML = html_utils.paragraph(f"""

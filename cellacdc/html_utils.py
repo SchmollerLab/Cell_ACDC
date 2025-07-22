@@ -377,3 +377,10 @@ import_sh = span('<i>import</i>', color=class_color)
 is_not_sh = span('is not', color=class_color)
 np_mean_sh = span('np.mean', color=class_color)
 np_std_sh = span('np.std', color=class_color)
+
+import textwrap
+
+table_style_header = textwrap.dedent('''\
+        <table style="border-collapse: collapse; width: 100%; 
+        border: 1px solid black; padding: 5px; text-align: left;">
+''')
