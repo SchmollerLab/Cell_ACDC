@@ -8251,7 +8251,7 @@ class guiWin(QMainWindow):
 
         self.SegForLostIDsWorker.sigStoreData.connect(self.onSigStoreDataSegForLostIDsWorker)
         self.SegForLostIDsWorker.sigUpdateRP.connect(self.onSigUpdateRPSegForLostIDsWorker)
-        self.SegForLostIDsWorker.sigGetData.connect(self.onSigGetDataSegForLostIDsWorker)
+        # self.SegForLostIDsWorker.sigGetData.connect(self.onSigGetDataSegForLostIDsWorker)
         # self.SegForLostIDsWorker.sigGet2Dlab.connect(self.onSigGet2DlabSegForLostIDsWorker)
         # self.SegForLostIDsWorker.sigGetTrackedLostIDs.connect(self.onSigGetTrackedSegForLostIDsWorker)
         # self.SegForLostIDsWorker.sigGetBrushID.connect(self.onSigGetBrushIDSegForLostIDsWorker)
@@ -8293,9 +8293,9 @@ class guiWin(QMainWindow):
                            wl_update=wl_update, 
                            wl_track_og_curr=wl_track_og_curr)
         
-    def onSigGetDataSegForLostIDsWorker(self):
-        self.onSigGetData(
-            self.SegForLostIDsWaitCond)
+    # def onSigGetDataSegForLostIDsWorker(self):
+    #     self.onSigGetData(
+    #         self.SegForLostIDsWaitCond)
 
     # def onSigGet2DlabSegForLostIDsWorker(self):
     #     posData = self.data[self.pos_i]
