@@ -301,12 +301,13 @@ class SegForLostIDsWorker(QObject):
         
         init_kwargs = self.guiWin.SegForLostIDsSettings['win'].init_kwargs
         
-        use_gpu = init_kwargs.get('device', 'cpu') != 'cpu'
+        use_gpu = init_kwargs.get('device_type', 'cpu') != 'cpu'
         use_gpu = use_gpu or init_kwargs.get('use_gpu', False)
         
         self.emitSigAskInstallGPU(base_model_name, use_gpu)
         
         if not self.gpu_go:
+            self.signals.finished.emit(self)
             return
         
         if not self.dont_force_cpu:
