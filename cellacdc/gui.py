@@ -8333,7 +8333,6 @@ class guiWin(QMainWindow):
         waitcond.wakeAll()
 
     def SegForLostIDsWorkerFinished(self):
-
         self.updateAllImages()
         self.update_rp()
         self.store_data(autosave=True)
