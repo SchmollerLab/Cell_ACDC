@@ -11890,38 +11890,46 @@ class QDialogModelParams(QDialog):
     
     def showEvent(self, event) -> None:
         buttonHeight = self.okButton.minimumSizeHint().height()
-        height = (
+        heightLeft = (
             self.initParamsScrollArea.minimumHeightNoScrollbar()
             + 70 + buttonHeight
         )
+        heightRight = buttonHeight
         if self.segmentParamsScrollArea is not None:
-            height += (
+            heightRight += (
                 self.segmentParamsScrollArea.minimumHeightNoScrollbar()
                 + 70 + buttonHeight
             )
         if self.extraParamsScrollArea is not None:
-            height += (
+            heightRight += (
                 self.extraParamsScrollArea.minimumHeightNoScrollbar()
                 + 70 + buttonHeight
             )
             
         if self.additionalSegmGroupbox is not None:
-            height += self.additionalSegmGroupbox.minimumSizeHint().height()
-            height += buttonHeight
+            heightRight += self.additionalSegmGroupbox.minimumSizeHint().height()
+            heightRight += buttonHeight
         if self.preProcessParamsWidget is not None:
-            height += self.preProcessParamsWidget.minimumSizeHint().height()
-            height += buttonHeight
+            heightLeft += self.preProcessParamsWidget.minimumSizeHint().height()
+            heightLeft += buttonHeight
         if self.postProcessGroupbox is not None:
-            height += self.postProcessGroupbox.minimumSizeHint().height()
-            height += buttonHeight
+            heightRight += self.postProcessGroupbox.minimumSizeHint().height()
+            heightRight += buttonHeight
         if self.seeHereLabel is not None:
-            height += self.seeHereLabel.minimumSizeHint().height()
-        height += buttonHeight
-        self.move(self.pos().x(), 20)
+            heightRight += self.seeHereLabel.minimumSizeHint().height()
+        height = max(heightLeft, heightRight)
         screenHeight = self.screen().size().height()
+        screenGeom = self.screen().geometry()
+        screenLeft = screenGeom.left()
+        screenRight = screenGeom.right()
+        screenCenter = (screenLeft + screenRight) / 2
+        width = self.sizeHint().width()
+        windowLeft = int(screenCenter - width/2)
+        self.move(windowLeft, 20)
+        
         if height >= screenHeight - 150:
             height = screenHeight - 150
-        self.resize(self.width(), height)
+        self.resize(width, height)
 
 class downloadModel:
     def __init__(self, model_name, parent=None):
