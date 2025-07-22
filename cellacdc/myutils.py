@@ -2824,8 +2824,9 @@ def install_package_conda(conda_pkg_name, channel='conda-forge'):
             'Cell-ACDC is not running in a `conda` environment.'
         )
     conda_prefix, pip_prefix = get_pip_conda_prefix()
+    conda_prefix = conda_prefix.replace('conda-forge', channel)
 
-    command = f'{conda_prefix} -c {channel} -y {conda_pkg_name}'
+    command = f'{conda_prefix} -y {conda_pkg_name}'
     _subprocess_run_command(command)
 
 def _subprocess_run_command(command, shell=True, callback='check_call'):
@@ -3291,7 +3292,7 @@ def _install_package_cli_msg(
     if installer == 'pip':
         install_command = f'{pip_prefix} --upgrade {pkg_command}'
     elif installer == 'conda':
-        install_command = f'{conda_prefix} -c conda-forge {pkg_command}'
+        install_command = f'{conda_prefix} {pkg_command}'
         
     separator = '-'*60
     txt = (
@@ -3345,7 +3346,7 @@ def _install_package_gui_msg(
     if installer == 'pip':
         command = f'{pip_prefix} --upgrade {pkg_command}'
     elif installer == 'conda':
-        command = f'{conda_prefix} -c conda-forge {pkg_command}'
+        command = f'{conda_prefix} {pkg_command}'
         
     command_html = command.lower().replace('<', '&lt;').replace('>', '&gt;')
     
@@ -3379,7 +3380,7 @@ def _install_tensorflow(max_version='', min_version=''):
     conda_prefix, pip_prefix = get_pip_conda_prefix()
 
     if is_mac and cpu == 'arm':
-        args = [f'{conda_prefix} -c conda-forge "{pkg_command}"']
+        args = [f'{conda_prefix} "{pkg_command}"']
         shell = True
     else:
         args = [sys.executable, '-m', 'pip', 'install', '-U', pkg_command]
@@ -3631,20 +3632,20 @@ def get_pip_conda_prefix(list_return=False):
         pass
 
     if no_cli_install:
-        conda_prefix = f'{conda_path} install -y -p {venv_path}'
+        conda_prefix = f'{conda_path} install -y -p {venv_path} -c conda-forge'
         exec_path = sys.executable
         if ' ' in exec_path:
             exec_path = f'"{exec_path}"'
         pip_prefix = f"{exec_path} -m pip install"
     else:
-        conda_prefix = 'conda install -y'
+        conda_prefix = 'conda install -y -c conda-forge'
         pip_prefix = 'pip install'
     
     pip_list = [sys.executable, '-m', 'pip', 'install']
     if no_cli_install:
-        conda_list = [conda_path.strip('"').strip("'"), 'install', '-y', '-p', venv_path.strip('"').strip("'")]
+        conda_list = [conda_path.strip('"').strip("'"), 'install', '-y', '-p', venv_path.strip('"').strip("'"), '-c', 'conda-forge']
     else:
-        conda_list = ['conda', 'install', '-y']
+        conda_list = ['conda', 'install', '-y', '-c', 'conda-forge']
     if list_return:
         return conda_list, pip_list
     else:
@@ -3691,7 +3692,7 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None):
         <code>{pip_prefix} uninstall torch</code>.<br>
         Then, install the CUDA version required by your GPU with the follwing 
         command (which installs version 11.6):<br>
-        <code>{conda_prefix} pytorch pytorch-cuda=11.6 -c conda-forge -c nvidia</code>
+        <code>{conda_prefix} pytorch pytorch-cuda=11.6 -c nvidia</code>
         <br><br>
         """)
     
