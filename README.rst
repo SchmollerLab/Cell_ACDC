@@ -98,8 +98,46 @@ See below **how it compares** to other popular tools available (*Table 1
 of
 our* \ `publication <https://bmcbiol.biomedcentral.com/articles/10.1186/s12915-022-01372-6>`__).
 
-.. image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/cellacdc/resources/figures/Table1.jpg
-  :width: 700
+.. raw:: html
+   
+   <table border="1" cellspacing="0" cellpadding="6">
+   <thead>
+      <tr>
+         <th>Feature</th>
+         <th>Cell-ACDC</th>
+         <th>YeaZ</th>
+         <th>Cell-pose</th>
+         <th>Yeast-Mate</th>
+         <th>Deep-Cell</th>
+         <th>Phylo-Cell</th>
+         <th>Cell-Profiler</th>
+         <th>ImageJ Fiji</th>
+         <th>Yeast-Spotter</th>
+         <th>Yeast-Net</th>
+         <th>Morpho-LibJ</th>
+      </tr>
+   </thead>
+   <tbody>
+      <tr><td>Deep-learning segmentation</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>❌</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>❌</td></tr>
+      <tr><td>Traditional segmentation</td><td>✅</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>✅</td><td>✅</td><td>✅</td><td>❌</td><td>❌</td><td>✅</td></tr>
+      <tr><td>Tracking</td><td>✅</td><td>✅</td><td>❌</td><td>❌</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>❌</td><td>❌</td><td>❌</td></tr>
+      <tr><td>Manual corrections</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>❌</td><td>❌</td><td>✅</td></tr>
+      <tr><td>Automatic real-time tracking</td><td>✅</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td></tr>
+      <tr><td>Automatic propagation of corrections</td><td>✅</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>✅</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td></tr>
+      <tr><td>Automatic mother-bud pairing</td><td>✅</td><td>❌</td><td>❌</td><td>✅</td><td>❌</td><td>✅</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td></tr>
+      <tr><td>Pedigree annotations</td><td>✅</td><td>❌</td><td>❌</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>❌</td><td>❌</td><td>❌</td></tr>
+      <tr><td>Cell division annotations</td><td>✅</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>✅</td><td>✅</td><td>✅</td><td>❌</td><td>❌</td><td>❌</td></tr>
+      <tr><td>Downstream analysis</td><td>✅</td><td>❌</td><td>❌</td><td>❌</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>❌</td><td>❌</td><td>❌</td></tr>
+      <tr><td>3D z-stacks</td><td>✅</td><td>❌</td><td>✅</td><td>❌</td><td>✅</td><td>❌</td><td>✅</td><td>✅</td><td>❌</td><td>❌</td><td>✅</td></tr>
+      <tr><td>Multiple model organisms</td><td>✅</td><td>❌</td><td>✅</td><td>❌</td><td>✅</td><td>❌</td><td>✅</td><td>✅</td><td>❌</td><td>❌</td><td>✅</td></tr>
+      <tr><td>Bio-formats</td><td>✅</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>✅</td><td>✅</td><td>❌</td><td>❌</td><td>✅</td></tr>
+      <tr><td>User manual</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>❌</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+      <tr><td>Open source</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+      <tr><td>Does not require a licence</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>❌</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+   </tbody>
+   </table>
+
+
 
 Is it only about segmentation?
 ------------------------------
@@ -116,12 +154,12 @@ or 2D images over time) and even **4D data** (3D z-stacks over time).
 Finally, we provide Jupyter notebooks to **visualize** and interactively
 **explore** the data produced.
 
-Bidirectional microscopy shift error correction
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Is every second line in your files from your bidirectional microscopy
-shifted? Look
-`here <https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/scripts/README.md>`__
-for further information on how to correct your data.
+.. Bidirectional microscopy shift error correction
+.. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. Is every second line in your files from your bidirectional microscopy
+.. shifted? Look
+.. `here <https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/scripts/README.md>`__
+.. for further information on how to correct your data.
 
 Scientific publications where Cell-ACDC was used
 ================================================
