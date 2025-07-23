@@ -26,47 +26,78 @@ See `the table below <#comparison_table>`_ **how it compares** to other popular 
 of
 our* \ `publication <https://bmcbiol.biomedcentral.com/articles/10.1186/s12915-022-01372-6>`__).
 
-.. table:: Comparison of Cell-ACDC with other tools
-   :align: center
-   :widths: auto
-   :name: comparison_table
+.. raw:: html
 
-   +--------------------------------------+-----------+------+-----------+------------+-----------+------------+---------------+-------------+---------------+-----------+-------------+
-   |               Feature                | Cell-ACDC | YeaZ | Cell-pose | Yeast-Mate | Deep-Cell | Phylo-Cell | Cell-Profiler | ImageJ Fiji | Yeast-Spotter | Yeast-Net | Morpho-LibJ |
-   +======================================+===========+======+===========+============+===========+============+===============+=============+===============+===========+=============+
-   |      Deep-learning segmentation      |     ✅    |  ✅  |     ✅    |     ✅     |     ✅    |     ❌     |       ✅      |      ✅     |       ✅      |     ✅    |      ❌     |
-   +--------------------------------------+-----------+------+-----------+------------+-----------+------------+---------------+-------------+---------------+-----------+-------------+
-   |       Traditional segmentation       |     ✅    |  ❌  |     ❌    |     ❌     |     ❌    |     ✅     |       ✅      |      ✅     |       ❌      |     ❌    |      ✅     |
-   +--------------------------------------+-----------+------+-----------+------------+-----------+------------+---------------+-------------+---------------+-----------+-------------+
-   |               Tracking               |     ✅    |  ✅  |     ❌    |     ❌     |     ✅    |     ✅     |       ✅      |      ✅     |       ❌      |     ❌    |      ❌     |
-   +--------------------------------------+-----------+------+-----------+------------+-----------+------------+---------------+-------------+---------------+-----------+-------------+
-   |          Manual corrections          |     ✅    |  ✅  |     ✅    |     ✅     |     ✅    |     ✅     |       ✅      |      ✅     |       ❌      |     ❌    |      ✅     |
-   +--------------------------------------+-----------+------+-----------+------------+-----------+------------+---------------+-------------+---------------+-----------+-------------+
-   |     Automatic real-time tracking     |     ✅    |  ❌  |     ❌    |     ❌     |     ❌    |     ❌     |       ❌      |      ❌     |       ❌      |     ❌    |      ❌     |
-   +--------------------------------------+-----------+------+-----------+------------+-----------+------------+---------------+-------------+---------------+-----------+-------------+
-   | Automatic propagation of corrections |     ✅    |  ❌  |     ❌    |     ❌     |     ❌    |     ✅     |       ❌      |      ❌     |       ❌      |     ❌    |      ❌     |
-   +--------------------------------------+-----------+------+-----------+------------+-----------+------------+---------------+-------------+---------------+-----------+-------------+
-   |     Automatic mother-bud pairing     |     ✅    |  ❌  |     ❌    |     ✅     |     ❌    |     ✅     |       ❌      |      ❌     |       ❌      |     ❌    |      ❌     |
-   +--------------------------------------+-----------+------+-----------+------------+-----------+------------+---------------+-------------+---------------+-----------+-------------+
-   |         Pedigree annotations         |     ✅    |  ❌  |     ❌    |     ✅     |     ✅    |     ✅     |       ✅      |      ✅     |       ❌      |     ❌    |      ❌     |
-   +--------------------------------------+-----------+------+-----------+------------+-----------+------------+---------------+-------------+---------------+-----------+-------------+
-   |      Cell division annotations       |     ✅    |  ❌  |     ❌    |     ❌     |     ❌    |     ✅     |       ✅      |      ✅     |       ❌      |     ❌    |      ❌     |
-   +--------------------------------------+-----------+------+-----------+------------+-----------+------------+---------------+-------------+---------------+-----------+-------------+
-   |         Downstream analysis          |     ✅    |  ❌  |     ❌    |     ❌     |     ✅    |     ✅     |       ✅      |      ✅     |       ❌      |     ❌    |      ❌     |
-   +--------------------------------------+-----------+------+-----------+------------+-----------+------------+---------------+-------------+---------------+-----------+-------------+
-   |             3D z-stacks              |     ✅    |  ❌  |     ✅    |     ❌     |     ✅    |     ❌     |       ✅      |      ✅     |       ❌      |     ❌    |      ✅     |
-   +--------------------------------------+-----------+------+-----------+------------+-----------+------------+---------------+-------------+---------------+-----------+-------------+
-   |       Multiple model organisms       |     ✅    |  ❌  |     ✅    |     ❌     |     ✅    |     ❌     |       ✅      |      ✅     |       ❌      |     ❌    |      ✅     |
-   +--------------------------------------+-----------+------+-----------+------------+-----------+------------+---------------+-------------+---------------+-----------+-------------+
-   |             Bio-formats              |     ✅    |  ❌  |     ❌    |     ❌     |     ❌    |     ❌     |       ✅      |      ✅     |       ❌      |     ❌    |      ✅     |
-   +--------------------------------------+-----------+------+-----------+------------+-----------+------------+---------------+-------------+---------------+-----------+-------------+
-   |             User manual              |     ✅    |  ✅  |     ✅    |     ✅     |     ✅    |     ❌     |       ✅      |      ✅     |       ✅      |     ✅    |      ✅     |
-   +--------------------------------------+-----------+------+-----------+------------+-----------+------------+---------------+-------------+---------------+-----------+-------------+
-   |             Open source              |     ✅    |  ✅  |     ✅    |     ✅     |     ✅    |     ✅     |       ✅      |      ✅     |       ✅      |     ✅    |      ✅     |
-   +--------------------------------------+-----------+------+-----------+------------+-----------+------------+---------------+-------------+---------------+-----------+-------------+
-   |      Does not require a licence      |     ✅    |  ✅  |     ✅    |     ✅     |     ✅    |     ❌     |       ✅      |      ✅     |       ✅      |     ✅    |      ✅     |
-   +--------------------------------------+-----------+------+-----------+------------+-----------+------------+---------------+-------------+---------------+-----------+-------------+
+   <style>
+   .rotated-header-cell {
+      width: 40px;
+      height: 100px;
+      padding: 0;
+      position: relative; /* Needed as anchor for absolute positioning */
+      vertical-align: bottom;
+      text-align: center;
+   }
 
+   .rotated-text {
+      position: absolute;
+      bottom: 50%; /* Align near bottom of the cell */
+      left: 70%;
+      transform: translateX(-50%) rotate(-75deg);
+      transform-origin: bottom center;
+      white-space: nowrap;
+      line-height: 1;
+      font-weight: normal;
+      padding: 0;
+      margin: 0;
+      width: max-content;
+      user-select: none;
+   }
+
+   /* Optional: fix first header cell vertical alignment */
+   th:first-child {
+      vertical-align: bottom;
+      padding-bottom: 10px;
+   }
+   </style>
+
+   <table border="1" cellspacing="0" cellpadding="6">
+   <thead>
+      <tr style="height: 100;">
+         <th style="text-align: center; vertical-align: bottom;">Feature</th>
+         <th class="rotated-header-cell"><div class="rotated-text">Cell-ACDC</div></th>
+         <th class="rotated-header-cell"><div class="rotated-text">YeaZ</div></th>
+         <th class="rotated-header-cell"><div class="rotated-text">Cellpose</div></th>
+         <th class="rotated-header-cell"><div class="rotated-text">YeastMate</div></th>
+         <th class="rotated-header-cell"><div class="rotated-text">DeepCell</div></th>
+         <th class="rotated-header-cell"><div class="rotated-text">PhyloCell</div></th>
+         <th class="rotated-header-cell"><div class="rotated-text">CellProfiler</div></th>
+         <th class="rotated-header-cell"><div class="rotated-text">ImageJ/Fiji</div></th>
+         <th class="rotated-header-cell"><div class="rotated-text">YeastSpotter</div></th>
+         <th class="rotated-header-cell"><div class="rotated-text">YeastNet</div></th>
+         <th class="rotated-header-cell"><div class="rotated-text">MorphoLibJ</div></th>
+      </tr>
+   </thead>
+   <tbody>
+      <tr><td>Deep-learning segmentation</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>❌</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>❌</td></tr>
+      <tr><td>Traditional segmentation</td><td>✅</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>✅</td><td>✅</td><td>✅</td><td>❌</td><td>❌</td><td>✅</td></tr>
+      <tr><td>Tracking</td><td>✅</td><td>✅</td><td>❌</td><td>❌</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>❌</td><td>❌</td><td>❌</td></tr>
+      <tr><td>Manual corrections</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>❌</td><td>❌</td><td>✅</td></tr>
+      <tr><td>Automatic real-time tracking</td><td>✅</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td></tr>
+      <tr><td>Automatic propagation of corrections</td><td>✅</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>✅</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td></tr>
+      <tr><td>Automatic mother-bud pairing</td><td>✅</td><td>❌</td><td>❌</td><td>✅</td><td>❌</td><td>✅</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td></tr>
+      <tr><td>Pedigree annotations</td><td>✅</td><td>❌</td><td>❌</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>❌</td><td>❌</td><td>❌</td></tr>
+      <tr><td>Cell division annotations</td><td>✅</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>✅</td><td>✅</td><td>✅</td><td>❌</td><td>❌</td><td>❌</td></tr>
+      <tr><td>Downstream analysis</td><td>✅</td><td>❌</td><td>❌</td><td>❌</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>❌</td><td>❌</td><td>❌</td></tr>
+      <tr><td>3D z-stacks</td><td>✅</td><td>❌</td><td>✅</td><td>❌</td><td>✅</td><td>❌</td><td>✅</td><td>✅</td><td>❌</td><td>❌</td><td>✅</td></tr>
+      <tr><td>Multiple model organisms</td><td>✅</td><td>❌</td><td>✅</td><td>❌</td><td>✅</td><td>❌</td><td>✅</td><td>✅</td><td>❌</td><td>❌</td><td>✅</td></tr>
+      <tr><td>Bio-formats</td><td>✅</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>✅</td><td>✅</td><td>❌</td><td>❌</td><td>✅</td></tr>
+      <tr><td>User manual</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>❌</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+      <tr><td>Open source</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+      <tr><td>Does not require a licence</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>❌</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+   </tbody>
+   </table>
+
+|
 
 Is it only about segmentation?
 ------------------------------
