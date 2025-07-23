@@ -11,6 +11,8 @@ external_pkgs
 test.py
 .ref_graphs/
 test.csv
+cellacdc/test2.py
+
 
 env_dependencies_issues.txt
 not_installed_requirements.txt

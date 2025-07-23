@@ -2831,8 +2831,12 @@ def install_package_conda(conda_pkg_name, channel='conda-forge'):
             'Cell-ACDC is not running in a `conda` environment.'
         )
     conda_prefix, pip_prefix = get_pip_conda_prefix()
+    conda_prefix = re.sub(
+        r'(-c\sconda-forge\s?|--channel=conda-forge\s?)', f'-c {channel} ', 
+        conda_prefix
+    )
 
-    command = f'{conda_prefix} -c {channel} -y {conda_pkg_name}'
+    command = f'{conda_prefix} -y {conda_pkg_name}'
     _subprocess_run_command(command)
 
 def _subprocess_run_command(command, shell=True, callback='check_call'):
@@ -3298,7 +3302,7 @@ def _install_package_cli_msg(
     if installer == 'pip':
         install_command = f'{pip_prefix} --upgrade {pkg_command}'
     elif installer == 'conda':
-        install_command = f'{conda_prefix} -c conda-forge {pkg_command}'
+        install_command = f'{conda_prefix} {pkg_command}'
         
     separator = '-'*60
     txt = (
@@ -3352,7 +3356,7 @@ def _install_package_gui_msg(
     if installer == 'pip':
         command = f'{pip_prefix} --upgrade {pkg_command}'
     elif installer == 'conda':
-        command = f'{conda_prefix} -c conda-forge {pkg_command}'
+        command = f'{conda_prefix} {pkg_command}'
         
     command_html = command.lower().replace('<', '&lt;').replace('>', '&gt;')
     
@@ -3386,7 +3390,7 @@ def _install_tensorflow(max_version='', min_version=''):
     conda_prefix, pip_prefix = get_pip_conda_prefix()
 
     if is_mac and cpu == 'arm':
-        args = [f'{conda_prefix} -c conda-forge "{pkg_command}"']
+        args = [f'{conda_prefix} "{pkg_command}"']
         shell = True
     else:
         args = [sys.executable, '-m', 'pip', 'install', '-U', pkg_command]
@@ -3638,20 +3642,20 @@ def get_pip_conda_prefix(list_return=False):
         pass
 
     if no_cli_install:
-        conda_prefix = f'{conda_path} install -y -p {venv_path}'
+        conda_prefix = f'{conda_path} install -y -p {venv_path} -c conda-forge'
         exec_path = sys.executable
         if ' ' in exec_path:
             exec_path = f'"{exec_path}"'
         pip_prefix = f"{exec_path} -m pip install"
     else:
-        conda_prefix = 'conda install -y'
+        conda_prefix = 'conda install -y -c conda-forge'
         pip_prefix = 'pip install'
     
     pip_list = [sys.executable, '-m', 'pip', 'install']
     if no_cli_install:
-        conda_list = [conda_path.strip('"').strip("'"), 'install', '-y', '-p', venv_path.strip('"').strip("'")]
+        conda_list = [conda_path.strip('"').strip("'"), 'install', '-y', '-p', venv_path.strip('"').strip("'"), '-c', 'conda-forge']
     else:
-        conda_list = ['conda', 'install', '-y']
+        conda_list = ['conda', 'install', '-y', '-c', 'conda-forge']
     if list_return:
         return conda_list, pip_list
     else:
@@ -3693,14 +3697,44 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None):
     pip_prefix = pip_prefix.replace('install -y', 'uninstall')
     txt_cuda = html_utils.paragraph(f"""
         Check out these instructions {cellpose_href}, and {torch_href}.<br>
-        We <b>highly recommend using Conda</b> to install PyTorch GPU.<br>
-        First, uninstall the CPU version of PyTorch with the following command:<br>
-        <code>{pip_prefix} uninstall torch</code>.<br>
+        First, uninstall the CPU version of PyTorch with the following command:<br><br>
+        <code>{pip_prefix} uninstall torch</code>.<br><br>
         Then, install the CUDA version required by your GPU with the follwing 
-        command (which installs version 11.6):<br>
-        <code>{conda_prefix} pytorch pytorch-cuda=11.6 -c conda-forge -c nvidia</code>
-        <br><br>
+        command (in this case 12.8):<br><br>
+        <code>{pip_prefix} torch torchvision torchaudio --index-url 
+        https://download.pytorch.org/whl/cu128</code>
+        <br>
         """)
+    
+    add_info = html_utils.to_admonition(
+        f"""
+        Pleae use the following table to find the correct link for the command.
+        You can check the CUDA  <br> version installed on your system with the
+        command <code>nvidia-smi</code> in the terminal.<br>
+
+        {html_utils.table_style_header}
+            <tr>
+                <th>CUDA Version</th>
+                <th>PyTorch Installation Link</th>
+            </tr>
+            <tr>
+                <td>CUDA 11.8</td>
+                <td><code>https://download.pytorch.org/whl/cu118</code></td>
+            </tr>
+            <tr>
+                <td>CUDA 12.6</td>
+                <td><code>https://download.pytorch.org/whl/cu126</code></td>
+            </tr>
+            <tr>
+                <td>CUDA 12.8</td>
+                <td><code>https://download.pytorch.org/whl/cu128</code></td>
+            </tr>
+        </table>
+        """,
+        "info"
+    )
+    
+    txt_cuda = f'{txt_cuda}{add_info}'
     
     txt_directML_title = html_utils.paragraph(f"<b>DirectML</b>", font_size='18px')
     txt_directML = html_utils.paragraph(f"""
