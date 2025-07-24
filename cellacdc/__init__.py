@@ -534,6 +534,20 @@ def exception_handler(func):
         return result
     return inner_function
 
+def disableWindow(func):
+    @wraps(func)
+    def inner_function(self, *args, **kwargs):
+        self.setDisabled(True)
+        try:
+            result = func(self, *args, **kwargs)
+            return result
+        except Exception as err:
+            raise err
+        finally:
+            self.setDisabled(False)
+            self.activateWindow()
+    return inner_function
+
 def ignore_exception(func):
     @wraps(func)
     def inner_function(self, *args, **kwargs):
