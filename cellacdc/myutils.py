@@ -4818,8 +4818,28 @@ def update_not_editable_package(package_name, package_info):
 
 def try_kwargs(func, *args, **kwargs):
     """
-    Try to call a function with the given keyword arguments.
-    If it fails, print an error message and return None.
+    Attempt to call a function with the provided arguments and keyword arguments.
+    
+    If the function raises a TypeError due to unexpected keyword arguments, 
+    those arguments are dynamically removed, and the function is retried. 
+    This process continues until the function succeeds or no keyword arguments 
+    remain, in which case the exception is re-raised.
+    
+    Args:
+        func (Callable): The function to call.
+        *args: Positional arguments to pass to the function.
+        **kwargs: Keyword arguments to pass to the function.
+    
+    Returns:
+        Tuple[Any, List[str]]: A tuple containing:
+            - The result of the function call (or None if it fails).
+            - A list of keyword arguments that were removed.
+    
+    Raises:
+        ValueError: If a keyword argument mentioned in the error message 
+            is not found in the provided kwargs.
+        TypeError: If the function fails with a TypeError after all keyword 
+            arguments have been removed.
     """
     
     kwargs = kwargs.copy()  # Create a copy to avoid modifying the original

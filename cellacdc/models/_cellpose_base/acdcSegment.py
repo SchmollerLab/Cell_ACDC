@@ -143,7 +143,6 @@ class Model:
                 print(f"Image min: {sample_img.min()}, max: {sample_img.max()}")
             self.printed_model_params = True
         
-        out = self.model.eval(image, **kwargs)
         out, removed_kwargs = myutils.try_kwargs(
             self.model.eval,
             image,
