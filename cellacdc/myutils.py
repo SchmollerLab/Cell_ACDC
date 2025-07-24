@@ -4815,3 +4815,53 @@ def update_not_editable_package(package_name, package_info):
     except Exception as e:
         print(f"Error updating {package_name}: {e}")
         return False
+
+def try_kwargs(func, *args, **kwargs):
+    """
+    Attempt to call a function with the provided arguments and keyword arguments.
+    
+    If the function raises a TypeError due to unexpected keyword arguments, 
+    those arguments are dynamically removed, and the function is retried. 
+    This process continues until the function succeeds or no keyword arguments 
+    remain, in which case the exception is re-raised.
+    
+    Args:
+        func (Callable): The function to call.
+        *args: Positional arguments to pass to the function.
+        **kwargs: Keyword arguments to pass to the function.
+    
+    Returns:
+        Tuple[Any, List[str]]: A tuple containing:
+            - The result of the function call (or None if it fails).
+            - A list of keyword arguments that were removed.
+    
+    Raises:
+        ValueError: If a keyword argument mentioned in the error message 
+            is not found in the provided kwargs.
+        TypeError: If the function fails with a TypeError after all keyword 
+            arguments have been removed.
+    """
+    
+    kwargs = kwargs.copy()  # Create a copy to avoid modifying the original
+    removed_kwargs = []
+    pattern = r"unexpected keyword argument ['\"](\w+)['\"]"    
+    while True:
+        try:
+            return func(*args, **kwargs), removed_kwargs
+        except TypeError as e:
+            match = re.search(pattern, str(e))
+            if match:
+                kwarg_name = match.group(1)
+                if kwarg_name in kwargs:
+                    del kwargs[kwarg_name]
+                    removed_kwargs.append(kwarg_name)
+                else:
+                    raise ValueError(
+                        f"Keyword argument '{kwarg_name}' not found in kwargs."
+                    )
+            else:
+                raise e
+            
+            if len(kwargs) == 0:
+                print(f"Function {func.__name__} failed with TypeError: {e}")
+                raise e
