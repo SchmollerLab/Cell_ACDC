@@ -457,6 +457,13 @@ def get_info_version_text(is_cli=False, cli_formatted_text=True):
     formatted_info_txts.append('='*max_len)
     info_txt = '\n'.join(formatted_info_txts)
     
+    try:
+        from spotmax.utils import get_info_version_text as smax_info
+        smax_info_txt = smax_info(include_platform=False, is_cli=is_cli)
+        info_txt += '\n\n' + smax_info_txt
+    except ImportError:
+        pass
+    
     return info_txt
 
 def _log_system_info(logger, log_path, is_cli=False, also_spotmax=False):
@@ -2824,8 +2831,12 @@ def install_package_conda(conda_pkg_name, channel='conda-forge'):
             'Cell-ACDC is not running in a `conda` environment.'
         )
     conda_prefix, pip_prefix = get_pip_conda_prefix()
+    conda_prefix = re.sub(
+        r'(-c\sconda-forge\s?|--channel=conda-forge\s?)', f'-c {channel} ', 
+        conda_prefix
+    )
 
-    command = f'{conda_prefix} -c {channel} -y {conda_pkg_name}'
+    command = f'{conda_prefix} -y {conda_pkg_name}'
     _subprocess_run_command(command)
 
 def _subprocess_run_command(command, shell=True, callback='check_call'):
@@ -3291,7 +3302,7 @@ def _install_package_cli_msg(
     if installer == 'pip':
         install_command = f'{pip_prefix} --upgrade {pkg_command}'
     elif installer == 'conda':
-        install_command = f'{conda_prefix} -c conda-forge {pkg_command}'
+        install_command = f'{conda_prefix} {pkg_command}'
         
     separator = '-'*60
     txt = (
@@ -3345,7 +3356,7 @@ def _install_package_gui_msg(
     if installer == 'pip':
         command = f'{pip_prefix} --upgrade {pkg_command}'
     elif installer == 'conda':
-        command = f'{conda_prefix} -c conda-forge {pkg_command}'
+        command = f'{conda_prefix} {pkg_command}'
         
     command_html = command.lower().replace('<', '&lt;').replace('>', '&gt;')
     
@@ -3379,7 +3390,7 @@ def _install_tensorflow(max_version='', min_version=''):
     conda_prefix, pip_prefix = get_pip_conda_prefix()
 
     if is_mac and cpu == 'arm':
-        args = [f'{conda_prefix} -c conda-forge "{pkg_command}"']
+        args = [f'{conda_prefix} "{pkg_command}"']
         shell = True
     else:
         args = [sys.executable, '-m', 'pip', 'install', '-U', pkg_command]
@@ -3631,20 +3642,20 @@ def get_pip_conda_prefix(list_return=False):
         pass
 
     if no_cli_install:
-        conda_prefix = f'{conda_path} install -y -p {venv_path}'
+        conda_prefix = f'{conda_path} install -y -p {venv_path} -c conda-forge'
         exec_path = sys.executable
         if ' ' in exec_path:
             exec_path = f'"{exec_path}"'
         pip_prefix = f"{exec_path} -m pip install"
     else:
-        conda_prefix = 'conda install -y'
+        conda_prefix = 'conda install -y -c conda-forge'
         pip_prefix = 'pip install'
     
     pip_list = [sys.executable, '-m', 'pip', 'install']
     if no_cli_install:
-        conda_list = [conda_path.strip('"').strip("'"), 'install', '-y', '-p', venv_path.strip('"').strip("'")]
+        conda_list = [conda_path.strip('"').strip("'"), 'install', '-y', '-p', venv_path.strip('"').strip("'"), '-c', 'conda-forge']
     else:
-        conda_list = ['conda', 'install', '-y']
+        conda_list = ['conda', 'install', '-y', '-c', 'conda-forge']
     if list_return:
         return conda_list, pip_list
     else:
@@ -3686,14 +3697,44 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None):
     pip_prefix = pip_prefix.replace('install -y', 'uninstall')
     txt_cuda = html_utils.paragraph(f"""
         Check out these instructions {cellpose_href}, and {torch_href}.<br>
-        We <b>highly recommend using Conda</b> to install PyTorch GPU.<br>
-        First, uninstall the CPU version of PyTorch with the following command:<br>
-        <code>{pip_prefix} uninstall torch</code>.<br>
+        First, uninstall the CPU version of PyTorch with the following command:<br><br>
+        <code>{pip_prefix} uninstall torch</code>.<br><br>
         Then, install the CUDA version required by your GPU with the follwing 
-        command (which installs version 11.6):<br>
-        <code>{conda_prefix} pytorch pytorch-cuda=11.6 -c conda-forge -c nvidia</code>
-        <br><br>
+        command (in this case 12.8):<br><br>
+        <code>{pip_prefix} torch torchvision torchaudio --index-url 
+        https://download.pytorch.org/whl/cu128</code>
+        <br>
         """)
+    
+    add_info = html_utils.to_admonition(
+        f"""
+        Pleae use the following table to find the correct link for the command.
+        You can check the CUDA  <br> version installed on your system with the
+        command <code>nvidia-smi</code> in the terminal.<br>
+
+        {html_utils.table_style_header}
+            <tr>
+                <th>CUDA Version</th>
+                <th>PyTorch Installation Link</th>
+            </tr>
+            <tr>
+                <td>CUDA 11.8</td>
+                <td><code>https://download.pytorch.org/whl/cu118</code></td>
+            </tr>
+            <tr>
+                <td>CUDA 12.6</td>
+                <td><code>https://download.pytorch.org/whl/cu126</code></td>
+            </tr>
+            <tr>
+                <td>CUDA 12.8</td>
+                <td><code>https://download.pytorch.org/whl/cu128</code></td>
+            </tr>
+        </table>
+        """,
+        "info"
+    )
+    
+    txt_cuda = f'{txt_cuda}{add_info}'
     
     txt_directML_title = html_utils.paragraph(f"<b>DirectML</b>", font_size='18px')
     txt_directML = html_utils.paragraph(f"""
@@ -4774,3 +4815,176 @@ def update_not_editable_package(package_name, package_info):
     except Exception as e:
         print(f"Error updating {package_name}: {e}")
         return False
+
+def try_kwargs(func, *args, **kwargs):
+    """
+    Attempt to call a function with the provided arguments and keyword arguments.
+    
+    If the function raises a TypeError due to unexpected keyword arguments, 
+    those arguments are dynamically removed, and the function is retried. 
+    This process continues until the function succeeds or no keyword arguments 
+    remain, in which case the exception is re-raised.
+    
+    Args:
+        func (Callable): The function to call.
+        *args: Positional arguments to pass to the function.
+        **kwargs: Keyword arguments to pass to the function.
+    
+    Returns:
+        Tuple[Any, List[str]]: A tuple containing:
+            - The result of the function call (or None if it fails).
+            - A list of keyword arguments that were removed.
+    
+    Raises:
+        ValueError: If a keyword argument mentioned in the error message 
+            is not found in the provided kwargs.
+        TypeError: If the function fails with a TypeError after all keyword 
+            arguments have been removed.
+    """
+    
+    kwargs = kwargs.copy()  # Create a copy to avoid modifying the original
+    removed_kwargs = []
+    pattern = r"unexpected keyword argument ['\"](\w+)['\"]"    
+    while True:
+        try:
+            return func(*args, **kwargs), removed_kwargs
+        except TypeError as e:
+            match = re.search(pattern, str(e))
+            if match:
+                kwarg_name = match.group(1)
+                if kwarg_name in kwargs:
+                    del kwargs[kwarg_name]
+                    removed_kwargs.append(kwarg_name)
+                else:
+                    raise ValueError(
+                        f"Keyword argument '{kwarg_name}' not found in kwargs."
+                    )
+            else:
+                raise e
+            
+            if len(kwargs) == 0:
+                print(f"Function {func.__name__} failed with TypeError: {e}")
+                raise e
+    
+def get_obj_by_label(rp, target_label):
+    """
+    Returns the object with the specified label from the given list of objects.
+
+    Parameters
+    ----------
+    rp : list
+        The list of objects to search through.
+    target_label : str
+        The label of the object to find.
+
+    Returns
+    -------
+    object
+        The object with the specified label, or None if not found.
+    """
+    for obj in rp:
+        if obj.label == target_label:
+            return obj
+    return None
+
+def find_distances_ID(rps, point=None, ID=None):
+    """
+    Calculate the distances between a given point and the centroids of a list of regionprops.
+
+    Parameters
+    ----------
+    rps : list
+        List of regionprops objects.
+    point : tuple, optional
+        The coordinates of the point. Defaults to None.
+    ID : int, optional
+        The label ID of the regionprops object. Defaults to None.
+
+    Returns
+    -------
+    numpy.ndarray
+        A matrix of distances between the point and the centroids.
+
+    Raises
+    ------
+    ValueError
+        If ID is not found in the list of regionprops (list of cells).
+    ValueError
+        If neither ID nor point is provided.
+    ValueError
+        If both ID and point are provided.
+    """
+
+    if ID is not None and point is None:
+        try:
+            point = [rp.centroid for rp in rps if rp.label == ID][0]
+        except IndexError:
+            raise ValueError(f'ID {ID} not found in regionprops (list of cells).')
+
+    elif ID is None and point is None:
+        raise ValueError('Either ID or point must be provided.')
+
+    elif ID is not None and point is not None:
+        raise ValueError('Only one of ID or point must be provided.')
+    
+    point = point[::-1] # rp are in (y, x) format (or (z, y, x) for 3D data) so I need to reverse order
+    point = np.array([point])
+    centroids = np.array([rp.centroid for rp in rps])
+    diff = point[:, np.newaxis] - centroids
+    dist_matrix = np.linalg.norm(diff, axis=2)
+    return dist_matrix
+
+def sort_IDs_dist(rps, point=None, ID=None):
+    """Sorts the IDs of regionprops based on their distances to a given point.
+
+    Parameters
+    ----------
+    rps : list
+        A list of regionprops objects representing cells.
+    point : tuple, optional
+        The coordinates of the point to calculate distances from. 
+        If not provided, it will be calculated based on the given ID.
+    ID : int, optional
+        The ID of the regionprops object to calculate distances from. 
+        If this and point are both provided, or neither, an error will be 
+        raised.
+
+    Returns
+    -------
+    list
+        A sorted list of IDs based on their distances to the given point.
+
+    Raises
+    ------
+    ValueError
+        If ID is not found in the list of regionprops objects.
+    ValueError
+        If neither ID nor point is provided.
+    ValueError
+        If both ID and point are provided.
+
+    """
+    if ID is not None and point is None:
+        try:
+            point = [rp.centroid for rp in rps if rp.label == ID][0]
+        except IndexError:
+            raise ValueError(f'ID {ID} not found in regionprops (list of cells).')
+
+    elif ID is None and point is None:
+        raise ValueError('Either ID or point must be provided.')
+
+    elif ID is not None and point is not None:
+        raise ValueError('Only one of ID or point must be provided.')
+    
+
+    IDs = [rp.label for rp in rps]
+    if len(IDs) == 0:
+        return []
+    elif len(IDs) == 1:
+        return IDs
+    dist_matrix = find_distances_ID(rps, point=point)        
+    dist_matrix = np.squeeze(dist_matrix)
+
+    sorted_ids = sorted(zip(dist_matrix, IDs))
+    sorted_ids = [ID for _, ID in sorted_ids]
+    return sorted_ids

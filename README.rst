@@ -94,12 +94,50 @@ correction, and several tools to facilitate manual correction, from
 simple yet useful **brush** and **eraser** to more complex flood fill
 (magic wand) and Random Walker segmentation routines.
 
-See below **how it compares** to other popular tools available (*Table 1
+See `the table below <#comparison_table>`_ **how it compares** to other popular tools available (*Table 1
 of
 our* \ `publication <https://bmcbiol.biomedcentral.com/articles/10.1186/s12915-022-01372-6>`__).
 
-.. image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/cellacdc/resources/figures/Table1.jpg
-  :width: 700
+.. table:: Comparison of Cell-ACDC with other tools
+   :align: center
+   :widths: auto
+   :name: comparison_table
+
+   +--------------------------------------+-----------+------+-----------+------------+-----------+------------+---------------+-------------+---------------+-----------+-------------+
+   |               Feature                | Cell-ACDC | YeaZ | Cell-pose | Yeast-Mate | Deep-Cell | Phylo-Cell | Cell-Profiler | ImageJ Fiji | Yeast-Spotter | Yeast-Net | Morpho-LibJ |
+   +======================================+===========+======+===========+============+===========+============+===============+=============+===============+===========+=============+
+   |      Deep-learning segmentation      |     ✅    |  ✅  |     ✅    |     ✅     |     ✅    |     ❌     |       ✅      |      ✅     |       ✅      |     ✅    |      ❌     |
+   +--------------------------------------+-----------+------+-----------+------------+-----------+------------+---------------+-------------+---------------+-----------+-------------+
+   |       Traditional segmentation       |     ✅    |  ❌  |     ❌    |     ❌     |     ❌    |     ✅     |       ✅      |      ✅     |       ❌      |     ❌    |      ✅     |
+   +--------------------------------------+-----------+------+-----------+------------+-----------+------------+---------------+-------------+---------------+-----------+-------------+
+   |               Tracking               |     ✅    |  ✅  |     ❌    |     ❌     |     ✅    |     ✅     |       ✅      |      ✅     |       ❌      |     ❌    |      ❌     |
+   +--------------------------------------+-----------+------+-----------+------------+-----------+------------+---------------+-------------+---------------+-----------+-------------+
+   |          Manual corrections          |     ✅    |  ✅  |     ✅    |     ✅     |     ✅    |     ✅     |       ✅      |      ✅     |       ❌      |     ❌    |      ✅     |
+   +--------------------------------------+-----------+------+-----------+------------+-----------+------------+---------------+-------------+---------------+-----------+-------------+
+   |     Automatic real-time tracking     |     ✅    |  ❌  |     ❌    |     ❌     |     ❌    |     ❌     |       ❌      |      ❌     |       ❌      |     ❌    |      ❌     |
+   +--------------------------------------+-----------+------+-----------+------------+-----------+------------+---------------+-------------+---------------+-----------+-------------+
+   | Automatic propagation of corrections |     ✅    |  ❌  |     ❌    |     ❌     |     ❌    |     ✅     |       ❌      |      ❌     |       ❌      |     ❌    |      ❌     |
+   +--------------------------------------+-----------+------+-----------+------------+-----------+------------+---------------+-------------+---------------+-----------+-------------+
+   |     Automatic mother-bud pairing     |     ✅    |  ❌  |     ❌    |     ✅     |     ❌    |     ✅     |       ❌      |      ❌     |       ❌      |     ❌    |      ❌     |
+   +--------------------------------------+-----------+------+-----------+------------+-----------+------------+---------------+-------------+---------------+-----------+-------------+
+   |         Pedigree annotations         |     ✅    |  ❌  |     ❌    |     ✅     |     ✅    |     ✅     |       ✅      |      ✅     |       ❌      |     ❌    |      ❌     |
+   +--------------------------------------+-----------+------+-----------+------------+-----------+------------+---------------+-------------+---------------+-----------+-------------+
+   |      Cell division annotations       |     ✅    |  ❌  |     ❌    |     ❌     |     ❌    |     ✅     |       ✅      |      ✅     |       ❌      |     ❌    |      ❌     |
+   +--------------------------------------+-----------+------+-----------+------------+-----------+------------+---------------+-------------+---------------+-----------+-------------+
+   |         Downstream analysis          |     ✅    |  ❌  |     ❌    |     ❌     |     ✅    |     ✅     |       ✅      |      ✅     |       ❌      |     ❌    |      ❌     |
+   +--------------------------------------+-----------+------+-----------+------------+-----------+------------+---------------+-------------+---------------+-----------+-------------+
+   |             3D z-stacks              |     ✅    |  ❌  |     ✅    |     ❌     |     ✅    |     ❌     |       ✅      |      ✅     |       ❌      |     ❌    |      ✅     |
+   +--------------------------------------+-----------+------+-----------+------------+-----------+------------+---------------+-------------+---------------+-----------+-------------+
+   |       Multiple model organisms       |     ✅    |  ❌  |     ✅    |     ❌     |     ✅    |     ❌     |       ✅      |      ✅     |       ❌      |     ❌    |      ✅     |
+   +--------------------------------------+-----------+------+-----------+------------+-----------+------------+---------------+-------------+---------------+-----------+-------------+
+   |             Bio-formats              |     ✅    |  ❌  |     ❌    |     ❌     |     ❌    |     ❌     |       ✅      |      ✅     |       ❌      |     ❌    |      ✅     |
+   +--------------------------------------+-----------+------+-----------+------------+-----------+------------+---------------+-------------+---------------+-----------+-------------+
+   |             User manual              |     ✅    |  ✅  |     ✅    |     ✅     |     ✅    |     ❌     |       ✅      |      ✅     |       ✅      |     ✅    |      ✅     |
+   +--------------------------------------+-----------+------+-----------+------------+-----------+------------+---------------+-------------+---------------+-----------+-------------+
+   |             Open source              |     ✅    |  ✅  |     ✅    |     ✅     |     ✅    |     ✅     |       ✅      |      ✅     |       ✅      |     ✅    |      ✅     |
+   +--------------------------------------+-----------+------+-----------+------------+-----------+------------+---------------+-------------+---------------+-----------+-------------+
+   |      Does not require a licence      |     ✅    |  ✅  |     ✅    |     ✅     |     ✅    |     ❌     |       ✅      |      ✅     |       ✅      |     ✅    |      ✅     |
+   +--------------------------------------+-----------+------+-----------+------------+-----------+------------+---------------+-------------+---------------+-----------+-------------+
 
 Is it only about segmentation?
 ------------------------------
@@ -116,29 +154,29 @@ or 2D images over time) and even **4D data** (3D z-stacks over time).
 Finally, we provide Jupyter notebooks to **visualize** and interactively
 **explore** the data produced.
 
-Bidirectional microscopy shift error correction
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Is every second line in your files from your bidirectional microscopy
-shifted? Look
-`here <https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/scripts/README.md>`__
-for further information on how to correct your data.
+.. Too specific for the README
+.. Bidirectional microscopy shift error correction
+.. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. Is every second line in your files from your bidirectional microscopy
+.. shifted? Look
+.. `here <https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/scripts/README.md>`__
+.. for further information on how to correct your data.
 
 Scientific publications where Cell-ACDC was used
 ================================================
 
-See here for a list of the **scientific publications** where Cell-ACDC was used: 
-`Link <https://cell-acdc.readthedocs.io/en/latest/publications.html>`_.
+Check `here <https://cell-acdc.readthedocs.io/en/latest/publications.html>`__ for a list of the **scientific publications** where Cell-ACDC was used.
 
 Resources
 =========
-- Please find a complete user guide `here <https://cell-acdc.readthedocs.io/en/latest/>`__
+- `Complete user guide <https://cell-acdc.readthedocs.io/en/latest/>`__
 - `Installation guide <https://cell-acdc.readthedocs.io/en/latest/installation.html#installation-using-anaconda-recommended>`__
 - `User manual <https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf>`__
 - `Publication <https://bmcbiol.biomedcentral.com/articles/10.1186/s12915-022-01372-6>`__ of Cell-ACDC
-- `Image.sc Forum <https://forum.image.sc/tag/cell-acdc>`_ to ask **any question**. Make sure to tag the Topic with the tag ``cell-acdc``. 
-- **Report issues, request a feature or ask questions** by opening a new issue `here <https://github.com/SchmollerLab/Cell_ACDC/issues>`__
-- X `thread <https://twitter.com/frank_pado/status/1443957038841794561?s=20>`__
-- `Scientific publications where Cell-ACDC was used <https://cell-acdc.readthedocs.io/en/latest/publications.html>`__
+- `Image.sc Forum <https://forum.image.sc/tag/cell-acdc>`_ to ask **any question**. Make sure to tag the Topic with the tag ``cell-acdc``
+- `GitHub issues <https://github.com/SchmollerLab/Cell_ACDC/issues>`__ for **reporting issues, request a feature or ask questions**
+- `X thread <https://twitter.com/frank_pado/status/1443957038841794561?s=20>`__
+- `Scientific publications <https://cell-acdc.readthedocs.io/en/latest/publications.html>`__ where Cell-ACDC was used 
 
 Citing Cell-ACDC and the available models
 =========================================
@@ -152,7 +190,7 @@ If you find Cell-ACDC useful, please cite it as follows:
 
 **IMPORTANT**: when citing Cell-ACDC make sure to also cite the paper of the 
 segmentation models and trackers you used! 
-See `here <https://cell-acdc.readthedocs.io/en/latest/citation.html>`_ for a list of models currently available in Cell-ACDC.
+See `here <https://cell-acdc.readthedocs.io/en/latest/citation.html>`__ for a list of models currently available in Cell-ACDC.
 
 Contact
 =======
