@@ -4919,16 +4919,16 @@ def find_distances_ID(rps, point=None, ID=None):
         try:
             point = [rp.centroid for rp in rps if rp.label == ID][0]
         except IndexError:
-            raise(ValueError(f'ID {ID} not found in regionprops (list of cells).'))
+            raise ValueError(f'ID {ID} not found in regionprops (list of cells).')
 
     elif ID is None and point is None:
-        raise(ValueError('Either ID or point must be provided.'))
+        raise ValueError('Either ID or point must be provided.')
 
     elif ID is not None and point is not None:
-        raise(ValueError('Only one of ID or point must be provided.'))
+        raise ValueError('Only one of ID or point must be provided.')
     
     point = point[::-1] # rp are in (y, x) format (or (z, y, x) for 3D data) so I need to reverse order
-    point=np.array([point])
+    point = np.array([point])
     centroids = np.array([rp.centroid for rp in rps])
     diff = point[:, np.newaxis] - centroids
     dist_matrix = np.linalg.norm(diff, axis=2)
