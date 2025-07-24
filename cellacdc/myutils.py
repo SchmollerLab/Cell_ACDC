@@ -4815,3 +4815,33 @@ def update_not_editable_package(package_name, package_info):
     except Exception as e:
         print(f"Error updating {package_name}: {e}")
         return False
+
+def try_kwargs(func, *args, **kwargs):
+    """
+    Try to call a function with the given keyword arguments.
+    If it fails, print an error message and return None.
+    """
+    
+    kwargs = kwargs.copy()  # Create a copy to avoid modifying the original
+    removed_kwargs = []
+    pattern = r"unexpected keyword argument ['\"](\w+)['\"]"    
+    while True:
+        try:
+            return func(*args, **kwargs), removed_kwargs
+        except TypeError as e:
+            match = re.search(pattern, str(e))
+            if match:
+                kwarg_name = match.group(1)
+                if kwarg_name in kwargs:
+                    del kwargs[kwarg_name]
+                    removed_kwargs.append(kwarg_name)
+                else:
+                    raise ValueError(
+                        f"Keyword argument '{kwarg_name}' not found in kwargs."
+                    )
+            else:
+                raise e
+            
+            if len(kwargs) == 0:
+                print(f"Function {func.__name__} failed with TypeError: {e}")
+                raise e

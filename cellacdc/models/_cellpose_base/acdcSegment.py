@@ -125,15 +125,7 @@ class Model:
         if self.cp_version == 3:
             kwargs["channel_axis"] = self.channel_axis
             kwargs["z_axis"] = self.z_axis
-
-        model_eval_params = inspect.signature(self.model.eval).parameters
-        param_names = list(model_eval_params.keys())
-        warn_deleted_flow3D_smooth = False
-        if 'flow3D_smooth' not in param_names and 'flow3D_smooth' in kwargs:
-            if kwargs['flow3D_smooth'] != 0:
-                warn_deleted_flow3D_smooth = True
-            del kwargs['flow3D_smooth']
-
+            
         if not self.printed_model_params:
             if isinstance(image, list):
                 sample_img = image[0]
@@ -149,16 +141,31 @@ class Model:
                     print(f"Channel {i+1} min: {subarr.min()}, max: {subarr.max()}")
             else:
                 print(f"Image min: {sample_img.min()}, max: {sample_img.max()}")
-            
-            if warn_deleted_flow3D_smooth:
-                print(
-                    "Warning: `flow3D_smooth` parameter is not used in the current "
-                    "version of Cellpose. It has been removed from the kwargs."
-                )
-                        
             self.printed_model_params = True
-
-        return self.model.eval(image, **kwargs)[0]
+        
+        out = self.model.eval(image, **kwargs)
+        out, removed_kwargs = myutils.try_kwargs(
+            self.model.eval,
+            image,
+            **kwargs
+        )
+        segm = out[0]
+        if removed_kwargs:
+            print(
+                f"""
+                The following kwargs could not be used:
+                {removed_kwargs}
+                """
+            )
+            for kwarg in removed_kwargs:
+                if kwarg in kwargs:
+                    del kwargs[kwarg]
+                else:
+                    printl(
+                        f"Warning: {kwarg} not found in kwargs, "
+                        "but was removed from eval method."
+                    )
+        return segm
     
     def second_ch_img_to_stack(self, first_ch_data, second_ch_data):
         # The 'cyto' model can work with a second channel (e.g., nucleus).
