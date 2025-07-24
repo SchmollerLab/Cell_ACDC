@@ -4815,3 +4815,126 @@ def update_not_editable_package(package_name, package_info):
     except Exception as e:
         print(f"Error updating {package_name}: {e}")
         return False
+    
+def get_obj_by_label(rp, target_label):
+    """
+    Returns the object with the specified label from the given list of objects.
+
+    Parameters
+    ----------
+    rp : list
+        The list of objects to search through.
+    target_label : str
+        The label of the object to find.
+
+    Returns
+    -------
+    object
+        The object with the specified label, or None if not found.
+    """
+    for obj in rp:
+        if obj.label == target_label:
+            return obj
+    return None
+
+def find_distances_ID(rps, point=None, ID=None):
+    """
+    Calculate the distances between a given point and the centroids of a list of regionprops.
+
+    Parameters
+    ----------
+    rps : list
+        List of regionprops objects.
+    point : tuple, optional
+        The coordinates of the point. Defaults to None.
+    ID : int, optional
+        The label ID of the regionprops object. Defaults to None.
+
+    Returns
+    -------
+    numpy.ndarray
+        A matrix of distances between the point and the centroids.
+
+    Raises
+    ------
+    ValueError
+        If ID is not found in the list of regionprops (list of cells).
+    ValueError
+        If neither ID nor point is provided.
+    ValueError
+        If both ID and point are provided.
+    """
+
+    if ID is not None and point is None:
+        try:
+            point = [rp.centroid for rp in rps if rp.label == ID][0]
+        except IndexError:
+            raise(ValueError(f'ID {ID} not found in regionprops (list of cells).'))
+
+    elif ID is None and point is None:
+        raise(ValueError('Either ID or point must be provided.'))
+
+    elif ID is not None and point is not None:
+        raise(ValueError('Only one of ID or point must be provided.'))
+    
+    point = point[::-1] # rp are in (y, x) format (or (z, y, x) for 3D data) so I need to reverse order
+    point=np.array([point])
+    centroids = np.array([rp.centroid for rp in rps])
+    diff = point[:, np.newaxis] - centroids
+    dist_matrix = np.linalg.norm(diff, axis=2)
+    return dist_matrix
+
+def sort_IDs_dist(rps, point=None, ID=None):
+    """Sorts the IDs of regionprops based on their distances to a given point.
+
+    Parameters
+    ----------
+    rps : list
+        A list of regionprops objects representing cells.
+    point : tuple, optional
+        The coordinates of the point to calculate distances from. 
+        If not provided, it will be calculated based on the given ID.
+    ID : int, optional
+        The ID of the regionprops object to calculate distances from. 
+        If this and point are both provided, or neither, an error will be 
+        raised.
+
+    Returns
+    -------
+    list
+        A sorted list of IDs based on their distances to the given point.
+
+    Raises
+    ------
+    ValueError
+        If ID is not found in the list of regionprops objects.
+    ValueError
+        If neither ID nor point is provided.
+    ValueError
+        If both ID and point are provided.
+
+    """
+    if ID is not None and point is None:
+        try:
+            point = [rp.centroid for rp in rps if rp.label == ID][0]
+        except IndexError:
+            raise(ValueError(f'ID {ID} not found in regionprops (list of cells).'))
+
+    elif ID is None and point is None:
+        raise(ValueError('Either ID or point must be provided.'))
+
+    elif ID is not None and point is not None:
+        raise(ValueError('Only one of ID or point must be provided.'))
+    
+
+    IDs = [rp.label for rp in rps]
+    if len(IDs) == 0:
+        return []
+    elif len(IDs) == 1:
+        return IDs
+    dist_matrix = find_distances_ID(rps, point=point)        
+    dist_matrix = np.squeeze(dist_matrix)
+
+    sorted_ids = sorted(zip(dist_matrix, IDs))
+    sorted_ids = [ID for _, ID in sorted_ids]
+    return sorted_ids
