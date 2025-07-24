@@ -4968,13 +4968,13 @@ def sort_IDs_dist(rps, point=None, ID=None):
         try:
             point = [rp.centroid for rp in rps if rp.label == ID][0]
         except IndexError:
-            raise(ValueError(f'ID {ID} not found in regionprops (list of cells).'))
+            raise ValueError(f'ID {ID} not found in regionprops (list of cells).')
 
     elif ID is None and point is None:
-        raise(ValueError('Either ID or point must be provided.'))
+        raise ValueError('Either ID or point must be provided.')
 
     elif ID is not None and point is not None:
-        raise(ValueError('Only one of ID or point must be provided.'))
+        raise ValueError('Only one of ID or point must be provided.')
     
 
     IDs = [rp.label for rp in rps]
