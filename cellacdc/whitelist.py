@@ -1001,7 +1001,7 @@ class WhitelistGUIElements:
             self.whitelistIDsUpdateText()
 
     def whitelistAddNewIDs(self, ignore_not_first_time:bool=False):
-        """Functionw white adds new IDs to the whitelist, based on the original labels.
+        """Function which adds new IDs to the whitelist, based on the original labels.
         It will check if the frame is visited the first time, unless 
         ignore_not_first_time is True.
         It does nothing if self.addNewIDsWhitelistToggle is False.
