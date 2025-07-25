@@ -197,7 +197,7 @@ class SegForLostIDsWorker(QObject):
     sigshowImageDebug = Signal(object)
     sigStoreData = Signal(bool)
     sigUpdateRP = Signal(bool, bool)
-    sigGetData = Signal()
+    # sigGetData = Signal()
     # sigGet2Dlab = Signal()
     # sigGetTrackedLostIDs = Signal()
     # sigGetBrushID = Signal()
@@ -237,11 +237,11 @@ class SegForLostIDsWorker(QObject):
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
 
-    def emitSigGetData(self):
-        self.mutex.lock()
-        self.sigGetData.emit()
-        self.waitCond.wait(self.mutex)
-        self.mutex.unlock()
+    # def emitSigGetData(self):
+    #     self.mutex.lock()
+    #     self.sigGetData.emit()
+    #     self.waitCond.wait(self.mutex)
+    #     self.mutex.unlock()
 
     def emitSigAskInstallModel(self, model_name):
         self.mutex.lock()
@@ -291,7 +291,6 @@ class SegForLostIDsWorker(QObject):
         if not self.guiWin.SegForLostIDsSettings:
             self.signals.finished.emit(self)
             return
-        
 
         self.logger.info('Segmentation for lost IDs started.')
         model_name = 'local_seg'
@@ -346,8 +345,6 @@ class SegForLostIDsWorker(QObject):
             except Exception as e:
                 pass
 
-        self.emitSigGetData()
-
         assigned_IDs = []
         missing_IDs_global = set()
         original_lab = posData.lab.copy()
@@ -356,19 +353,17 @@ class SegForLostIDsWorker(QObject):
 
         curr_img = self.guiWin.getDisplayedImg1()
         prev_lab = self.guiWin.get_2Dlab(posData.allData_li[frame_i-1]['labels'])
-        prev_IDs = posData.allData_li[frame_i-1]['IDs']
+        prev_IDs = set(posData.allData_li[frame_i-1]['IDs'])
 
         # should probably not paly so much with posData.lab, instead handle stuff myself
         self.signals.initProgressBar.emit(2 * args_new['max_interations'])
-        new_labs = np.zeros([args_new['max_interations'], *posData.lab.shape], dtype=int)
-        for i in range(args_new['max_interations']):
-            self.emitSigGetData()
-            
+        new_labs = np.zeros([args_new['max_interations'], *posData.lab.shape], dtype=np.uint32)
+        for i in range(args_new['max_interations']):            
             curr_lab = self.guiWin.get_2Dlab(posData.lab)
             tracked_lost_IDs = self.guiWin.getTrackedLostIDs()
             new_unique_ID = self.guiWin.setBrushID(useCurrentLab=True, return_val=True)
 
-            missing_IDs = set(prev_IDs) - set(posData.IDs) - set(tracked_lost_IDs)
+            missing_IDs = prev_IDs - set(posData.IDs) - set(tracked_lost_IDs)
             missing_IDs_global.update(missing_IDs)
 
             assigned_IDs_prev = assigned_IDs.copy()
@@ -384,11 +379,9 @@ class SegForLostIDsWorker(QObject):
             bboxs_list.append(bboxs)
             posData.lab = new_lab
             self.emitSigUpdateRP(wl_update=True, wl_track_og_curr=False)
-            self.emitSigStoreData(autosave=False)
             newly_assigned_IDs = set(assigned_IDs) - set(assigned_IDs_prev)
             self.emitTrackManuallyAddedObject(newly_assigned_IDs, True, False, False)
             new_labs[i] = posData.lab.copy()
-            self.emitSigStoreData(autosave=False)
             self.signals.progressBar.emit(1)
             
         if self._debug:
