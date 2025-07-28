@@ -3636,6 +3636,24 @@ def run_fiji_command(command=None, logger_func=print):
             continue
     return False
 
+def import_promptable_segment_module(model_name):
+    try:
+        acdcPromptSegment = import_module(
+            f'cellacdc.promptable_models.{model_name}.acdcPromptSegment'
+        )
+    except ModuleNotFoundError as e:
+        # Check if custom model
+        cp = config.ConfigParser()
+        cp.read(promptable_models_list_file_path)
+        model_path = cp[model_name]['path']
+        spec = importlib.util.spec_from_file_location(
+            'acdcPromptSegment', model_path
+        )
+        acdcPromptSegment = importlib.util.module_from_spec(spec)
+        sys.modules['acdcPromptSegment'] = acdcPromptSegment
+        spec.loader.exec_module(acdcPromptSegment)
+    return acdcPromptSegment
+
 def init_tracker(
         posData, trackerName, realTime=False, qparent=None, 
         return_init_params=False
