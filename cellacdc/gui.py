@@ -16324,7 +16324,8 @@ class guiWin(QMainWindow):
         
         if not self.magicPromptsToolbar.viewModelParamsAction.isEnabled():
             self.blinker = qutils.QControlBlink(
-                self.magicPromptsToolbar.selectModelAction, qparent=self
+                self.magicPromptsToolbar.selectModelAction.toolbutton, 
+                qparent=self
             )
             self.blinker.start()
             _warnings.warnPromptSegmentModelNotInit(qparent=self)

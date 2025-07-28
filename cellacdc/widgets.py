@@ -2969,9 +2969,11 @@ class ToolBar(QToolBar):
         return spinbox
     
     def addButton(self, icon_str: str, text='', checkable=False):
-        action = QAction(QIcon(icon_str), text, self)
-        action.setCheckable(checkable)
-        self.addAction(action)
+        button = QToolButton(self)
+        button.setIcon(QIcon(icon_str))
+        button.setCheckable(checkable)
+        action = self.addWidget(button)
+        action.toolbutton = button
         return action
 
     def addComboBox(self, items=None, label=''):
