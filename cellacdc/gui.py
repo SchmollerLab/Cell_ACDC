@@ -7538,6 +7538,7 @@ class guiWin(QMainWindow):
                     )
                 else:
                     self.restorePrevPointIdRightClick(addPointsByClickingButton)
+                self.drawPointsLayers(computePointsLayers=False)
             else:
                 point_id = self.getAddedPointId(
                     magicPromptsON, addPointsByClickingButton, 
@@ -7547,6 +7548,8 @@ class guiWin(QMainWindow):
                     return
                 
                 self.addClickedPoint(action, x, y, point_id)
+                self.drawPointsLayers(computePointsLayers=False)
+                
                 point_id = self.getClickedPointNewId(
                     action, point_id, 
                     addPointsByClickingButton.pointIdSpinbox,
@@ -7555,8 +7558,6 @@ class guiWin(QMainWindow):
                 addPointsByClickingButton.pointIdSpinbox.setValue(
                     point_id, setLinkedWidget=False
                 )
-                    
-            self.drawPointsLayers(computePointsLayers=False)
         
         elif left_click and canDrawClearRegion:
             x, y = event.pos().x(), event.pos().y()
@@ -24663,10 +24664,12 @@ class guiWin(QMainWindow):
         
         posData = self.data[self.pos_i]
         if isMagicPrompts:
-            if current_id not in posData.IDs_idxs:
+            is_already_new = self.isPointIdAlreadyNew(current_id, action)
+            if is_already_new:
                 return current_id
             
-            new_id = self.setBrushID(return_val=True)
+            new_ID = self.setBrushID(return_val=True)
+            new_id = max(current_id, new_ID) + 1
             return new_id
         else:
             framePointsData = action.pointsData.get(posData.frame_i)
@@ -24694,6 +24697,28 @@ class guiWin(QMainWindow):
             size=action.pointSize
         )
     
+    def isPointIdAlreadyNew(self, point_id, action):
+        posData = self.data[self.pos_i]
+        if point_id in posData.IDs_idxs:
+            return False
+        
+        is_ID = point_id in posData.IDs_idxs
+        framePointsData = action.pointsData.get(posData.frame_i)
+        if framePointsData is None:
+            return not is_ID
+        
+        if 'x' not in framePointsData:
+            is_id_already_added = False
+            for z, z_data in framePointsData.items():
+                if point_id in z_data['id']:
+                    is_id_already_added = True
+                    break
+        else:
+            is_id_already_added = point_id in framePointsData['id']
+        
+        is_already_new = not is_ID and not is_id_already_added
+        return is_already_new
+        
     def addClickedPoint(self, action, x, y, id):
         x, y = round(x, 2), round(y, 2)
         posData = self.data[self.pos_i]
