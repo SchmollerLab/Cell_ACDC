@@ -320,9 +320,7 @@ class Whitelist:
         if not new_centroids:
             return
         
-        new_IDs = {gui_utils.ID_from_centroid(curr_lab, *new_centroid) for new_centroid in new_centroids}
-        printl(new_IDs, 'new IDs')
-        printl(new_centroids, 'new centroids')
+        new_IDs = {gui_utils.nearest_ID_to_centroid(curr_lab, *new_centroid) for new_centroid in new_centroids}
 
         self.propagateIDs(IDs_to_add=new_IDs, 
                           curr_frame_only=False,

@@ -4712,7 +4712,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             xdata, ydata = int(x), int(y)
             delID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if delID == 0:
-                nearest_ID = gui_utils.nearest_nonzero(
+                nearest_ID = core.nearest_nonzero_2D(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 delID_prompt = apps.QLineEditDialog(
@@ -4783,7 +4783,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = gui_utils.nearest_nonzero(self.get_2Dlab(posData.lab), y, x)
+                nearest_ID = core.nearest_nonzero_2D(
+                    self.get_2Dlab(posData.lab), y, x)
                 sepID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
@@ -4873,7 +4874,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = gui_utils.nearest_nonzero(
+                nearest_ID = core.nearest_nonzero_2D(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 clickedBkgrID = apps.QLineEditDialog(
@@ -4911,7 +4912,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = gui_utils.nearest_nonzero(
+                nearest_ID = core.nearest_nonzero_2D(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 mergeID_prompt = apps.QLineEditDialog(
@@ -4957,7 +4958,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = gui_utils.nearest_nonzero(
+                nearest_ID = core.nearest_nonzero_2D(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 clickedBkgrID = apps.QLineEditDialog(
@@ -4980,7 +4981,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = gui_utils.nearest_nonzero(
+                nearest_ID = core.nearest_nonzero_2D(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 mergeID_prompt = apps.QLineEditDialog(
@@ -5012,7 +5013,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = gui_utils.nearest_nonzero(
+                nearest_ID = core.nearest_nonzero_2D(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 editID_prompt = apps.QLineEditDialog(
@@ -5064,7 +5065,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = gui_utils.nearest_nonzero(
+                nearest_ID = core.nearest_nonzero_2D(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 keepID_win = apps.QLineEditDialog(
@@ -5095,7 +5096,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = gui_utils.nearest_nonzero(
+                nearest_ID = core.nearest_nonzero_2D(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 binID_prompt = apps.QLineEditDialog(
@@ -5175,7 +5176,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = gui_utils.nearest_nonzero(
+                nearest_ID = core.nearest_nonzero_2D(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 ripID_prompt = apps.QLineEditDialog(
@@ -6435,7 +6436,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             lab2D = self.get_2Dlab(posData.lab)
             ID = lab2D[ydata, xdata]
             if ID == 0:
-                nearest_ID = gui_utils.nearest_nonzero(
+                nearest_ID = core.nearest_nonzero_2D(
                     lab2D, y, x
                 )
                 mergeID_prompt = apps.QLineEditDialog(
@@ -6709,7 +6710,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 return
 
             if ID == 0:
-                nearest_ID = gui_utils.nearest_nonzero(
+                nearest_ID = core.nearest_nonzero_2D(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 mothID_prompt = apps.QLineEditDialog(
@@ -7368,7 +7369,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = gui_utils.nearest_nonzero(
+                nearest_ID = core.nearest_nonzero_2D(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 keepID_win = apps.QLineEditDialog(
@@ -7399,7 +7400,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
 
             if ID == 0:
-                nearest_ID = gui_utils.nearest_nonzero(
+                nearest_ID = core.nearest_nonzero_2D(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 keepID_win = apps.QLineEditDialog(
@@ -7636,7 +7637,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = gui_utils.nearest_nonzero(
+                nearest_ID = core.nearest_nonzero_2D(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 divID_prompt = apps.QLineEditDialog(
@@ -7678,7 +7679,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = gui_utils.nearest_nonzero(
+                nearest_ID = core.nearest_nonzero_2D(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 budID_prompt = apps.QLineEditDialog(
@@ -7725,7 +7726,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = gui_utils.nearest_nonzero(
+                nearest_ID = core.nearest_nonzero_2D(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 unknownID_prompt = apps.QLineEditDialog(
@@ -7754,7 +7755,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = gui_utils.nearest_nonzero(
+                nearest_ID = core.nearest_nonzero_2D(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 clickedBkgrDialog = apps.QLineEditDialog(
@@ -9130,7 +9131,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 'You clicked on the background.\n'
                 f'Enter here the ID {text}'
             )
-            nearest_ID = gui_utils.nearest_nonzero(
+            nearest_ID = core.nearest_nonzero_2D(
                 self.get_2Dlab(posData.lab), xdata, ydata
             )
             clickedBkgrID = apps.QLineEditDialog(
@@ -13233,28 +13234,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if frame_i is None:
             frame_i = posData.frame_i
         
-        og_frame_i = posData.frame_i
-        if og_frame_i != frame_i:
-            self.store_data(autosave=False)
-            posData.frame_i = frame_i
-            self.get_data()
-        
-        if curr_lab is None:
+        if curr_lab is None and frame_i == posData.frame_i:
             curr_lab = posData.lab
+            
         if curr_lab is None:
             try:
                 curr_lab = posData.allData_li[frame_i]['labels'].copy()
             except:
                 pass
+            
         if curr_lab is None:
             try:
                 curr_lab = posData.segm_data[frame_i].copy()
             except:
                 pass
-            
-        if og_frame_i != frame_i:
-            posData.frame_i = og_frame_i
-            self.get_data()
         
         return curr_lab
 
