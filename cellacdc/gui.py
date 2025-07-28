@@ -7546,13 +7546,14 @@ class guiWin(QMainWindow):
                 if point_id is None:
                     return
                 
-                self.addClickedPoint(action, x, y, id)
-                id = self.getClickedPointNewId(
-                    action, id, addPointsByClickingButton.pointIdSpinbox,
+                self.addClickedPoint(action, x, y, point_id)
+                point_id = self.getClickedPointNewId(
+                    action, point_id, 
+                    addPointsByClickingButton.pointIdSpinbox,
                     isMagicPrompts=magicPromptsON
                 )
                 addPointsByClickingButton.pointIdSpinbox.setValue(
-                    id, setLinkedWidget=False
+                    point_id, setLinkedWidget=False
                 )
                     
             self.drawPointsLayers(computePointsLayers=False)
