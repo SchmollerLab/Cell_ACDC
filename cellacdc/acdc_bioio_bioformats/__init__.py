@@ -14,8 +14,15 @@ if conda_prefix is not None:
 EXTENSION_PACKAGE_MAPPER = {
     '.czi': 'bioio-czi',
     '.dv': 'bioio-dv',
+    '.r3d': 'bioio-dv',
     '.lif': 'bioio-lif',
     '.nd2': 'bioio-nd2',
+    '.tif': 'bioio-tifffile', 
+    '.tiff': 'bioio-tifffile',
+    '.ome.tiff': 'bioio-ome-tiff',
+    '.zarr': 'bioio-ome-zarr',
+    '.sldy': 'bioio-sldy',
+    '.dir': 'bioio-sldy',
 }
 
 from .reader import ImageReader, get_omexml_metadata, OMEXML, Metadata
