@@ -96,6 +96,7 @@ from .myutils import exec_time, setupLogger, ArgSpec
 from .help import welcome, about
 from .trackers.CellACDC_normal_division.CellACDC_normal_division_tracker import normal_division_lineage_tree, reorg_sister_cells_for_export
 from .plot import imshow
+from . import gui_utils
 
 np.seterr(invalid='ignore')
 
@@ -317,7 +318,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.keepDisabled = False
         self.whitelistAddNewIDsFrame = None
         self.whitelistOriginalIDs = None
-        self.whyNavigateDisabled = ''
+        self.whyNavigateDisabled = set()
 
         self.checkableButtons = []
         self.LeftClickButtons = []
@@ -4711,7 +4712,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             xdata, ydata = int(x), int(y)
             delID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if delID == 0:
-                nearest_ID = self.nearest_nonzero(
+                nearest_ID = gui_utils.nearest_nonzero(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 delID_prompt = apps.QLineEditDialog(
@@ -4782,7 +4783,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.nearest_nonzero(self.get_2Dlab(posData.lab), y, x)
+                nearest_ID = gui_utils.nearest_nonzero(self.get_2Dlab(posData.lab), y, x)
                 sepID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
@@ -4872,7 +4873,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.nearest_nonzero(
+                nearest_ID = gui_utils.nearest_nonzero(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 clickedBkgrID = apps.QLineEditDialog(
@@ -4910,7 +4911,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.nearest_nonzero(
+                nearest_ID = gui_utils.nearest_nonzero(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 mergeID_prompt = apps.QLineEditDialog(
@@ -4956,7 +4957,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.nearest_nonzero(
+                nearest_ID = gui_utils.nearest_nonzero(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 clickedBkgrID = apps.QLineEditDialog(
@@ -4979,7 +4980,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.nearest_nonzero(
+                nearest_ID = gui_utils.nearest_nonzero(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 mergeID_prompt = apps.QLineEditDialog(
@@ -5011,7 +5012,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.nearest_nonzero(
+                nearest_ID = gui_utils.nearest_nonzero(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 editID_prompt = apps.QLineEditDialog(
@@ -5063,7 +5064,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.nearest_nonzero(
+                nearest_ID = gui_utils.nearest_nonzero(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 keepID_win = apps.QLineEditDialog(
@@ -5094,7 +5095,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.nearest_nonzero(
+                nearest_ID = gui_utils.nearest_nonzero(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 binID_prompt = apps.QLineEditDialog(
@@ -5174,7 +5175,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.nearest_nonzero(
+                nearest_ID = gui_utils.nearest_nonzero(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 ripID_prompt = apps.QLineEditDialog(
@@ -6434,7 +6435,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             lab2D = self.get_2Dlab(posData.lab)
             ID = lab2D[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.nearest_nonzero(
+                nearest_ID = gui_utils.nearest_nonzero(
                     lab2D, y, x
                 )
                 mergeID_prompt = apps.QLineEditDialog(
@@ -6708,7 +6709,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 return
 
             if ID == 0:
-                nearest_ID = self.nearest_nonzero(
+                nearest_ID = gui_utils.nearest_nonzero(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 mothID_prompt = apps.QLineEditDialog(
@@ -7367,7 +7368,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.nearest_nonzero(
+                nearest_ID = gui_utils.nearest_nonzero(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 keepID_win = apps.QLineEditDialog(
@@ -7398,7 +7399,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
 
             if ID == 0:
-                nearest_ID = self.nearest_nonzero(
+                nearest_ID = gui_utils.nearest_nonzero(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 keepID_win = apps.QLineEditDialog(
@@ -7635,7 +7636,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.nearest_nonzero(
+                nearest_ID = gui_utils.nearest_nonzero(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 divID_prompt = apps.QLineEditDialog(
@@ -7677,7 +7678,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.nearest_nonzero(
+                nearest_ID = gui_utils.nearest_nonzero(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 budID_prompt = apps.QLineEditDialog(
@@ -7724,7 +7725,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.nearest_nonzero(
+                nearest_ID = gui_utils.nearest_nonzero(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 unknownID_prompt = apps.QLineEditDialog(
@@ -7753,7 +7754,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.nearest_nonzero(
+                nearest_ID = gui_utils.nearest_nonzero(
                     self.get_2Dlab(posData.lab), y, x
                 )
                 clickedBkgrDialog = apps.QLineEditDialog(
@@ -7850,8 +7851,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if self.getDistanceListMissingIDsCachedFrame != frame_i:
             self.distanceListMissingIDs = dict()
             self.getDistanceListMissingIDsCachedFrame = frame_i
-            self.store_data(autosave=False)
-            self.get_data()
+            # self.store_data(autosave=False)
+            # self.get_data()
 
         if ID not in self.distanceListMissingIDs.keys():
             prev_rp = posData.allData_li[frame_i-1]['regionprops']
@@ -9129,7 +9130,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 'You clicked on the background.\n'
                 f'Enter here the ID {text}'
             )
-            nearest_ID = self.nearest_nonzero(
+            nearest_ID = gui_utils.nearest_nonzero(
                 self.get_2Dlab(posData.lab), xdata, ydata
             )
             clickedBkgrID = apps.QLineEditDialog(
@@ -12448,13 +12449,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.zSliceScrollBar.setSliderPosition(nearest_nonzero_z)
         self.update_z_slice(nearest_nonzero_z)
 
-    def nearest_nonzero(self, a, y, x):
-        r, c = np.nonzero(a)
-        if r.size == 0:
-            return None
-        dist = ((r - y)**2 + (c - x)**2)
-        min_idx = dist.argmin()
-        return a[r[min_idx], c[min_idx]]
+
 
     def disconnectLeftClickButtons(self):
         for button in self.LeftClickButtons:
@@ -13211,30 +13206,84 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.updateAllImages()
 
         # QTimer.singleShot(300, self.autoRange)
+    
+    def get_curr_lab(self, curr_lab: np.ndarray|None = None, frame_i: int|None = None):
+        """Get the current labels for the position data. Hirarchically checks:
+        1. If `curr_lab` is provided, use it.
+        2. If `posData.lab` is not None, use it.
+        3. If `posData.allData_li[frame_i]['labels']` exists, use it.
+        4. If `posData.segm_data[frame_i]` exists, use it.
+        
+        If frame_i is None, uses the current frame index from `posData`.
 
-    def setFrameNavigationDisabled(self, disable: bool = False, why: str = ""):
+        Parameters
+        ----------
+        curr_lab : np.ndarray, optional
+            Current labels for the position data if it should be checked 
+            if its not None first, by default None
+        frame_i : int, optional
+            Frame index to use for retrieving labels, by default None
+
+        Returns
+        -------
+        np.ndarray
+            Current labels for the position data
+        """
+        posData = self.data[self.pos_i]
+        if frame_i is None:
+            frame_i = posData.frame_i
+        
+        og_frame_i = posData.frame_i
+        if og_frame_i != frame_i:
+            self.store_data(autosave=False)
+            posData.frame_i = frame_i
+            self.get_data()
+        
+        if curr_lab is None:
+            curr_lab = posData.lab
+        if curr_lab is None:
+            try:
+                curr_lab = posData.allData_li[frame_i]['labels'].copy()
+            except:
+                pass
+        if curr_lab is None:
+            try:
+                curr_lab = posData.segm_data[frame_i].copy()
+            except:
+                pass
+            
+        if og_frame_i != frame_i:
+            posData.frame_i = og_frame_i
+            self.get_data()
+        
+        return curr_lab
+
+    def setFrameNavigationDisabled(self, disable: bool, why: str):
         """Disables the frame navigation buttons and scrollbar.
         This is used when the user is not allowed to navigate through frames
         Call again to unlock it again. Also sets tooltips to inform the user
         
         Parameters
         ----------
-        disable : bool, optional
-            if the navigation should be disabled, by default False
-        why : str, optional
-            set tooltip of scrollbar to tell user why its disabled, by default ""
+        disable : bool
+            if the navigation should be disabled
+        why : str
+            the reason for disabeling the navigation.
         """
         
-        # If the action is diabled, and another reason tries to enable it, return early
-        if not self.prevAction.isEnabled() and self.whyNavigateDisabled != why and why != "":
-            return
+        if disable:
+            self.whyNavigateDisabled.add(why)
+        else:
+            try:
+                self.whyNavigateDisabled.remove(why)
+            except KeyError:
+                pass
         
-        if disable and self.prevAction.isEnabled():
-            self.whyNavigateDisabled = why
-            
-        if not disable and not self.prevAction.isEnabled():
-            self.whyNavigateDisabled = ""
-        
+        if len(self.whyNavigateDisabled) == 0:
+            disable = False
+        else:
+            disable = True
+
         # Apply the disable/enable state
         self.prevAction.setDisabled(disable)
         self.nextAction.setDisabled(disable)
@@ -13253,11 +13302,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             )
             return
         
-        if not why:
-            stack = traceback.format_stack()
-            calling_func = stack[-2].split('in ')[1].split('\n')[0]
-            why = f'called from {calling_func}'
-        txt = f'Frame navigation disabled: {why}'
+        txt = f'Frame navigation disabled: {self.whyNavigateDisabled}'
         self.logger.info(txt)
         self.navigateScrollBar.setToolTip(txt)
         
@@ -13856,17 +13901,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             return
 
         if ev.key() == Qt.Key_Q and self.debug:
-            # posData = self.data[self.pos_i]
-            # frame_i = posData.frame_i
-            # import pandasgui
-            # df_li = [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))] 
-            # pandasgui.show(
-            #     self.lineage_tree.lineage_list, df_li, self.lineage_tree.lineage_list[frame_i-1], df_li[frame_i-1]
-            # )
-            
-            # pass
-        
-            QTimer.singleShot(100, self._do_nothing)
+            self.setFrameNavigationDisabled(
+                False, 'Viewing original labels'
+            )
 
 
         if not self.isDataLoaded:
@@ -25586,9 +25623,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         posData = self.data[self.pos_i]
         prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
         prev_IDs_idxs = posData.allData_li[posData.frame_i-1]['IDs_idxs']
+        if posData.whitelist is not None and posData.whitelist.whitelistIDs is not None:
+            whitelist = posData.whitelist.whitelistIDs[posData.frame_i-1]
+        else:
+            whitelist = None
+
         contours = []
         for lostID in posData.lost_IDs:
-            if lostID in delROIsIDs:
+            if lostID in delROIsIDs or (whitelist is not None and lostID not in whitelist):
                 continue
             
             obj = prev_rp[prev_IDs_idxs[lostID]]

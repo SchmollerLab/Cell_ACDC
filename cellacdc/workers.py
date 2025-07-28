@@ -6790,7 +6790,8 @@ class saveDataWorker(QObject):
             
             if posData.whitelist:
                 whitelistIDs_path = posData.segm_npz_path.replace('.npz', '_whitelistIDs.json')
-                posData.whitelist.save(whitelistIDs_path)
+                new_centroids_path = posData.segm_npz_path.replace('.npz', '_new_centroids.json')
+                posData.whitelist.save(whitelistIDs_path, new_centroids_path=new_centroids_path)
 
             if posData.segmInfo_df is not None:
                 try:

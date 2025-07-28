@@ -6,7 +6,7 @@ import json
 from typing import Set, List, Tuple
 import time
 
-from . import html_utils, apps, widgets, exception_handler, disableWindow
+from . import html_utils, apps, widgets, exception_handler, disableWindow, gui_utils
 from .trackers.CellACDC import CellACDC_tracker
 
 class Whitelist:
@@ -40,6 +40,7 @@ class Whitelist:
         self.whitelistIDs = None
         self.whitelistOriginalFrame_i = None
         self.initialized_i = set()
+        self.new_centroids = None
 
     def __getitem__(self, index:int):
         """Gets a whitelist for a given index.
@@ -81,7 +82,7 @@ class Whitelist:
         """
         if og_data is None:
             og_data = np.load(selected_path)
-            og_data = og_data[og_data.files[0]] # is this right?
+            og_data = og_data[og_data.files[0]]
 
         self.originalLabs = og_data
         self.originalLabsIDs = [{obj.label for obj in skimage.measure.regionprops(frame)} for frame in og_data]
@@ -99,7 +100,8 @@ class Whitelist:
         #since I changed the originalLabs to be a np.ndarray
         np.savez_compressed(save_path, self.originalLabs)
     
-    def load(self, whitelist_path:str, 
+    def load(self, whitelist_path:str,
+             new_centroids_path:str,
              segm_data:np.ndarray,
              allData_li:list=None,
              ):
@@ -147,21 +149,85 @@ class Whitelist:
             self.whitelistIDs = None
             return False
             
-        self.originalLabs = segm_data.copy()
-
-        self.originalLabsIDs = [None] * len(self.total_frames)
-        for frame_i in self.total_frames:
-            try:
-                originalLabsIDs_frame_i = set(allData_li[frame_i]['IDs'])
-            except AttributeError:
-                originalLabsIDs_frame_i = None
-            if originalLabsIDs_frame_i is None:
-                originalLabsIDs_frame_i = {obj.label for obj in skimage.measure.regionprops(
-                                        self.originalLabs[frame_i])}
-            self.originalLabsIDs[frame_i] = originalLabsIDs_frame_i
+        self.makeOriginalLabsAndIDs(segm_data, allData_li
+                                    )
+            
+        self.load_centroids(new_centroids_path=new_centroids_path)
         return True
+    
+    def load_centroids(self, new_centroids_path:str):
+        if os.path.exists(new_centroids_path):
+            with open(new_centroids_path, 'r') as json_file:
+                self.new_centroids = json.load(json_file)
+            
+            self.new_centroids = list(self.new_centroids) if isinstance(self.new_centroids, list) else self.new_centroids
+            for i, val in enumerate(self.new_centroids):
+                if isinstance(val, str) and val.lower() == "none":
+                    self.new_centroids[i] = {}
+                elif val is None:
+                    self.new_centroids[i] = {}
+                else: # convert to integers
+                    self.new_centroids[i] = {tuple(map(int, centroid)) for centroid in val}
+        else:
+            printl('No new centroids file found, initializing new centroids.')
+            self.create_new_centroids()
+        
+        print(self.new_centroids)
+    
+    def create_new_centroids(self,
+                            curr_rp=None,
+                            frame_i:int=None, 
+                            ):
+        """
+        Creates self.new_centroids based on the input data.
+        
 
-    def save(self, whitelist_path:str):
+        Parameters
+        ----------
+        curr_rp : skimage.measure.regionprops, optional
+            Region properties for the current frame, by default None
+        frame_i : int, optional
+            Frame index for curr_rp, by default None
+
+        Raises
+        ------
+        ValueError
+            If curr_rp is provided, frame_i must also be provided.
+        """
+        if self.new_centroids is not None:
+            return
+        
+        if frame_i is None and curr_rp is not None:
+            raise ValueError(
+                'If curr_rp is provided, frame_i must also be provided.'
+            )
+        
+        self.new_centroids = []
+        for i in self.total_frames:
+            if i == 0:
+                self.new_centroids.append({})
+                continue
+            
+            all_there = (self.originalLabsIDs[i] is not None and 
+                         self.originalLabsIDs[i-1] is not None)
+            if all_there is False:
+                self.new_centroids.append({})
+                continue
+                
+            new_IDs = self.originalLabsIDs[i] - self.originalLabsIDs[i-1]
+            
+            rp = None
+            if frame_i==i and curr_rp is not None:
+                rp = curr_rp
+            else:
+                rp = skimage.measure.regionprops(self.originalLabs[i])
+
+            self.new_centroids.append({
+                tuple(map(int, obj.centroid)) for obj in rp if obj.label in new_IDs
+            })
+                
+
+    def save(self, whitelist_path:str, new_centroids_path:str):
         """Saves the whitelist to a json file.
         If the whitelist is None, it will not be saved.
         Make sure that the path is in accordance to the one provided in load.
@@ -182,6 +248,15 @@ class Whitelist:
                 wl_copy[key] = list(val)
         json.dump(wl_copy, open(whitelist_path, 'w+'), indent=4)
         
+        for i, val in enumerate(self.new_centroids):
+            if val is None:
+                self.new_centroids[i] = "None"
+            else:
+                self.new_centroids[i] = list(val)
+
+        with open(new_centroids_path, 'w+') as json_file:
+            json.dump(self.new_centroids, json_file, indent=4)
+
     def checkOriginalLabels(self, frame_i:int):
         """Checks if there are no original labels for the current frame.
         
@@ -237,11 +312,18 @@ class Whitelist:
         for i in [frame_i, frame_i-1]:
             if not self.checkOriginalLabels(i):
                 return
+        
+        if curr_lab is None:
+            curr_lab = allData_li[frame_i]['labels']
+        
+        new_centroids = self.new_centroids[frame_i]
+        if not new_centroids:
+            return
+        
+        new_IDs = {gui_utils.ID_from_centroid(curr_lab, *new_centroid) for new_centroid in new_centroids}
+        printl(new_IDs, 'new IDs')
+        printl(new_centroids, 'new centroids')
 
-        IDs_curr_og_lab = self.originalLabsIDs[frame_i]
-        IDs_prev_og_lab = self.originalLabsIDs[frame_i-1]
-
-        new_IDs = IDs_curr_og_lab - IDs_prev_og_lab
         self.propagateIDs(IDs_to_add=new_IDs, 
                           curr_frame_only=False,
                           frame_i=frame_i,
@@ -331,26 +413,12 @@ class Whitelist:
             
             IDs_curr = set(IDs_curr)
 
-        if self.originalLabs is None:
-            self.originalLabs = np.zeros_like(segm_data)
-            self.originalLabsIDs = []
-            for i in range(len(segm_data)):
-                if i == frame_i and curr_lab is not None:
-                    self.originalLabs[i] = curr_lab.copy()
-                    self.originalLabsIDs.append(IDs_curr)
-                    continue
-                try:
-                    # if allData_li:
-                    lab = allData_li[i]['labels'].copy()
-                    # else:
-                    #     lab = labs[i].copy()
 
-                    self.originalLabs[i] = lab
-                    self.originalLabsIDs.append(allData_li[i]['IDs'])
-                except AttributeError:
-                    lab = segm_data[i].copy()
-                    self.originalLabs[i] = lab
-                    self.originalLabsIDs.append({obj.label for obj in skimage.measure.regionprops(lab)})
+        self.makeOriginalLabsAndIDs(segm_data, allData_li=allData_li, 
+                                    frame_i=frame_i, curr_lab=curr_lab,
+                                    IDs_curr=IDs_curr,
+                                    )
+        self.create_new_centroids()
 
         whitelistIDs = set(whitelistIDs)
         self.propagateIDs(frame_i,
@@ -361,9 +429,67 @@ class Whitelist:
                           index_lab_combo=index_lab_combo,
                           IDs_curr=IDs_curr,
                           curr_rp=curr_rp,
-                          curr_lab=curr_lab,
+                          curr_lab=curr_lab,      
                         #   labs=labs,
                           )
+
+    def makeOriginalLabsAndIDs(self, segm_data: np.ndarray,  
+                               allData_li: list=None, frame_i: int=None, 
+                               curr_lab: np.ndarray=None, 
+                               IDs_curr: set | list=None,):
+        """ Initializes the originalLabs and originalLabsIDs variables.
+
+        Parameters
+        ----------
+        segm_data : np.ndarray
+            The segmentation data for the video. (Unwhitelisted!)
+        allData_li : list, optional
+            The allData list for the video, by default None
+        frame_i : int, optional
+            The frame index for the current frame, by default None
+        curr_lab : np.ndarray, optional
+            The current lab for the frame, by default None
+        IDs_curr : set | list, optional
+            The current IDs for the frame, by default None
+        """
+        if self.originalLabs is not None:
+            return
+        if IDs_curr is not None or curr_lab is not None:
+            if IDs_curr is None or curr_lab is None or frame_i is None:
+                raise ValueError(
+                    'If IDs_curr, curr_lab or frame_i are provided, all must be provided.'
+                )
+                
+        self.originalLabs = np.copy(segm_data)
+        self.originalLabsIDs = [None] * len(self.total_frames)
+        
+        if IDs_curr is not None:
+            self.originalLabsIDs[frame_i] = IDs_curr
+        
+        if allData_li is not None:
+            for i in range(len(allData_li)):
+                if i == frame_i and IDs_curr is not None: # already set
+                    continue
+                lab = None
+                try:
+                    lab = allData_li[frame_i]['labels']
+                except:
+                    pass
+                if lab is not None:
+                    self.originalLabs[frame_i] = lab.copy()
+            
+        for i in range(len(segm_data)):
+            IDs = None
+            if IDs_curr is not None and i == frame_i:
+                IDs = set(IDs_curr)
+            elif allData_li is not None:
+                try:
+                    IDs = set(allData_li[i]['IDs'])
+                except KeyError:
+                    pass
+            if IDs is None:
+                IDs = {obj.label for obj in skimage.measure.regionprops(self.originalLabs[i])}
+            self.originalLabsIDs[i] = IDs
         
     def get(self,frame_i:int,try_create_new_whitelists:bool=False):
         """Gets the whitelist for a given frame index.
@@ -402,11 +528,11 @@ class Whitelist:
             old_whitelistIDs = set(old_whitelistIDs)
         
         return old_whitelistIDs
-    
-    def initNewFrames(self, 
-                       frame_i:int, 
-                       force:bool=False, 
-                       ):
+
+    def initNewFrames(self,
+                      frame_i: int,
+                      force: bool = False,
+                      ):
         """Initialize the whitelists for all new frame.
         All frames up to and including frame_i will be initialized.
         Unless forced, it will only initialize the whitelist if the frame is not 
@@ -428,7 +554,7 @@ class Whitelist:
         
         missing_frames = set(range(frame_i+1)) - self.initialized_i
         update_frames = []
-
+    
         if self._debug:
             printl(missing_frames, self.initialized_i, frame_i)
 
@@ -621,8 +747,6 @@ class Whitelist:
             if self._debug:
                 printl('Using curr_lab')
             IDs_curr = {obj.label for obj in skimage.measure.regionprops(lab)}
-
-
         else:
             IDs_curr = allData_li[frame_i]['IDs']
             if self._debug:
@@ -712,17 +836,13 @@ class Whitelist:
         IDs_to_add = new_whitelist - old_whitelist
         IDs_to_remove = old_whitelist - new_whitelist
 
-        if  IDs_to_add == IDs_to_remove == set():
+        if IDs_to_add == IDs_to_remove == set():
             return update_frames
 
         if self._debug:
             printl(IDs_to_add, IDs_to_remove)
             
-        # get the range of frames to update
-        if new_frame:
-            prop_to_frame_i = last_frame_i - 1
-        else:
-            prop_to_frame_i = last_frame_i
+        prop_to_frame_i = last_frame_i
 
         if curr_frame_only:
             frames_range = [frame_i]
@@ -780,6 +900,9 @@ class WhitelistGUIElements:
         
         if frame_i is None:
             frame_i = posData.frame_i
+        
+        if posData.whitelist.originalLabsIDs is None:
+            return False
 
         if (frame_i >= len(posData.whitelist.originalLabsIDs) or
            posData.whitelist.originalLabsIDs[frame_i] is None):
@@ -855,7 +978,7 @@ class WhitelistGUIElements:
 
     @disableWindow
     def whitelistLoadOGLabs(self, selected:str):
-        """Loads the original labels from the selected files"
+        """Loads the original labels from the selected files
 
         Parameters
         ----------
@@ -883,7 +1006,7 @@ class WhitelistGUIElements:
         """
         switch_to_og = checked and not self.viewOriginalLabels
         switch_to_seg = not checked and self.viewOriginalLabels
-
+        
         if not switch_to_og and not switch_to_seg:
             return
 
@@ -901,7 +1024,7 @@ class WhitelistGUIElements:
             frames_range = [frame_i]
 
         self.store_data(autosave=False)
-        
+    
         if not self.whitelistCheckOriginalLabels():
             return
         if switch_to_og:
@@ -941,9 +1064,9 @@ class WhitelistGUIElements:
             self.updateAllImages()
 
         elif switch_to_seg:
+            self.viewOriginalLabels = False
             self.setFrameNavigationDisabled(False, why='Viewing original labels')
 
-            self.viewOriginalLabels = False
             for i in frames_range:
                 posData.frame_i = i
                 self.get_data()
@@ -1001,11 +1124,11 @@ class WhitelistGUIElements:
             self.whitelistIDsUpdateText()
 
     def whitelistAddNewIDs(self, ignore_not_first_time:bool=False):
-        """Functionw white adds new IDs to the whitelist, based on the original labels.
+        """Function which adds new IDs to the whitelist, based on the original labels.
         It will check if the frame is visited the first time, unless 
         ignore_not_first_time is True.
         It does nothing if self.addNewIDsWhitelistToggle is False.
-        !!!Carefull, does not change the lab, just the whitelist!!!
+        !!!Careful, does not change the lab, just the whitelist!!!
 
         Parameters
         ----------
@@ -1013,7 +1136,7 @@ class WhitelistGUIElements:
             Weather it should be checked if the frame is visited 
             the first time, by default False
         """
-        mode = self.modeComboBox.currentText()
+        mode = self.modeComboBox.currentText()        
         if mode != 'Segmentation and Tracking':
             return
     
@@ -1037,18 +1160,18 @@ class WhitelistGUIElements:
     
         if frame_i == 0:
             return
-        
-        if self.whitelistAddNewIDsFrame is None:
-            self.whitelistAddNewIDsFrame = frame_i
 
-        if frame_i == self.whitelistAddNewIDsFrame:
+        if self.whitelistAddNewIDsFrame is not None and frame_i == self.whitelistAddNewIDsFrame:
             return
-        
+                
         self.whitelistAddNewIDsFrame = frame_i
+
+        curr_lab = self.get_curr_lab()
 
         posData.whitelist.addNewIDs(frame_i=frame_i,
                                     allData_li=posData.allData_li,
-                                    IDs_curr=posData.IDs,)        
+                                    IDs_curr=posData.IDs,
+                                    curr_lab=curr_lab)        
 
 
     def whitelistIDsAccepted(self, 
@@ -1083,6 +1206,7 @@ class WhitelistGUIElements:
         whitelistIDs = set(whitelistIDs)
 
         IDs_curr = set(posData.IDs)
+        
         posData.whitelist.IDsAccepted(
             whitelistIDs,
             segm_data=posData.segm_data,
@@ -1090,21 +1214,22 @@ class WhitelistGUIElements:
             allData_li=posData.allData_li,
             IDs_curr=IDs_curr,
             curr_lab=posData.lab,
+            
         )
-        self.whitelistPropagateIDs(new_whitelist=whitelistIDs, 
-                                   try_create_new_whitelists=True, 
-                                   only_future_frames=True, 
-                                   force_not_dynamic_update=True,
-                                   update_lab=True
-                                   )
-        
-        self.whitelistUpdateLab(track_og_curr=False)
+                
+        # self.whitelistPropagateIDs(new_whitelist=whitelistIDs, 
+        #                            try_create_new_whitelists=True, 
+        #                            only_future_frames=True, 
+        #                            force_not_dynamic_update=True,
+        #                            update_lab=True
+        #                            )
+        self.whitelistUpdateLab(track_og_curr=True)
 
         self.whitelistIDsUpdateText()
         self.keepIDsTempLayerLeft.clear()
 
     def whitelistUpdateLab(self, frame_i: int=None,
-        track_og_curr=True, new_frame:bool=False,
+        track_og_curr=False, new_frame:bool=False,
         IDs_to_add:List[int] | Set[int]=None,
         IDs_to_remove:List[int]|Set[int]=None,
         ): 
@@ -1117,7 +1242,7 @@ class WhitelistGUIElements:
             frame which should be updated. If not provided, 
             uses posData.frame_i, by default None
         track_og_curr : bool, optional
-            if True, will track the original current IDs, by default True
+            if True, will track the original current IDs, by default False
         new_frame : bool, optional
             if True, will set the frame to the new frame, by default False
         IDs_to_add : list, optional
@@ -1311,13 +1436,15 @@ class WhitelistGUIElements:
                              lab:np.ndarray=None,
                              rp:list=None,
                              IDs: Set[int] | List[int] =None):
-        """Track the original labels in relation to the current (whitelisted) labels.
+        """Track the original labels in relation to the current (whitelisted) 
+        labels.
         Parameters
 
         Parameters
         ----------
         frame_i : int, optional
-            frame_i to be tracked, posData.frame_i if not provided, by default None
+            frame_i to be tracked, posData.frame_i if not provided, 
+            by default None
         against_prev : bool, optional
             if the original frame should be tracked against frame_i-1. 
             Cannot be used with rp or lab, by default False
@@ -1346,7 +1473,8 @@ class WhitelistGUIElements:
             printl('whitelistTrackOGCurr', against_prev)
 
         if against_prev and (rp is not None or lab is not None):
-            raise ValueError('Cannot provide both rp and lab when tracking against previous frame.'
+            raise ValueError('Cannot provide both rp and lab when tracking'
+                             ' against previous frame.'
             'Instead only provide rp and lab, and dont set against_prev.')
 
         if frame_i is None:
@@ -1392,7 +1520,7 @@ class WhitelistGUIElements:
                 posData = posData,
                 setBrushID_func=self.setBrushID,
                 IDs=IDs,
-                assign_unique_new_IDs=False,
+                # assign_unique_new_IDs=False,
         )
 
         posData.whitelist.originalLabs[frame_i] = og_lab
@@ -1404,7 +1532,6 @@ class WhitelistGUIElements:
 
     def whitelistTrackCurrOG(self, frame_i:int=None, against_prev:bool=False):
         """Track the current (whitelisted) labels in relation to the original labels.
-        !THis is not yet updated for better store and get data!!!
         Parameters
         ----------
         frame_i : int, optional
@@ -1521,7 +1648,7 @@ class WhitelistGUIElements:
             frame_i=frame_i, force=force)
 
         self.whitelistAddNewIDs()
-        return new_frame, update_frames
+        return new_frame, update_frames                    
 
     def whitelistPropagateIDs(self, 
                               new_whitelist: Set[int] | List[int] = None, 
