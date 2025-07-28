@@ -80,10 +80,10 @@ class Model:
     
         
     def check_model_path_model_type(self, model_path, model_type):
-        if model_path == 'None':
+        if model_path == 'None' or not model_path:
             model_path = None
         
-        if model_type == 'None':
+        if model_type == 'None' or not model_type:
             model_type = None
         
         if model_path is not None and model_type is not None:
