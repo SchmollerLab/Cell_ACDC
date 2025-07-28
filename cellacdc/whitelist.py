@@ -171,8 +171,6 @@ class Whitelist:
         else:
             printl('No new centroids file found, initializing new centroids.')
             self.create_new_centroids()
-        
-        print(self.new_centroids)
     
     def create_new_centroids(self,
                             curr_rp=None,
@@ -470,11 +468,11 @@ class Whitelist:
                     continue
                 lab = None
                 try:
-                    lab = allData_li[frame_i]['labels']
+                    lab = allData_li[i]['labels']
                 except:
                     pass
                 if lab is not None:
-                    self.originalLabs[frame_i] = lab.copy()
+                    self.originalLabs[i] = lab.copy()
             
         for i in range(len(segm_data)):
             IDs = None
