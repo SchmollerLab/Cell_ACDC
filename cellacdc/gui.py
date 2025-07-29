@@ -16385,8 +16385,12 @@ class guiWin(QMainWindow):
         )
     
     def magicPromptsClearPoints(self):
-        self.promptSegmentPointsLayerToolbar.scatterItem().clear()
-    
+        posData = self.data[self.pos_i]
+        scatterItem = self.promptSegmentPointsLayerToolbar.scatterItem()
+        scatterItem.clear()
+        action = scatterItem.action
+        action.pointsData.pop(posData.frame_i, None)
+        
     @disableWindow
     def magicPromptsComputeOnImageTriggered(self, toolbar):
         inputs = self.getMagicPromptsInputs(toolbar)
