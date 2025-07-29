@@ -142,7 +142,7 @@ class Model:
         self._validate_prompt(prompt, prompt_type=prompt_type)
         self._validate_image(image)
         
-        if prompt_id not in self.prompt_ids_image_mapper:
+        if prompt_id not in self.prompt_ids_image_mapper and prompt_id != 0:
             self.prompt_ids_image_mapper[prompt_id] = (image, image_origin)
         
         if prompt_id != 0:
@@ -157,7 +157,7 @@ class Model:
         else:
             # Negative prompt for the background
             self.negative_prompts[0].append((prompt, prompt_type))
-    
+        
     def _add_object_prompts(self, prompt_id, is_negative=False):
         prompts = self.prompts[prompt_id]
         for prompt, prompt_type in prompts:
