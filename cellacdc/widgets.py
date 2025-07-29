@@ -10622,6 +10622,8 @@ class PointsLayersToolbar(ToolBar):
         
         super().__init__(name, parent)
         
+        self.guiWin = parent
+        
         self.setContextMenuPolicy(Qt.PreventContextMenu)
         
         self.addPointsLayerAction = self.addButton(':addPointsLayer.svg')
@@ -10647,7 +10649,8 @@ class PointsLayersToolbar(ToolBar):
         yy = []
         xx = []
         ids = []
-        for frame_i, framePointsData in action.pointsData.items():
+        pointsDataPos = action.pointsData[self.guiWin.pos_i]
+        for frame_i, framePointsData in pointsDataPos.items():
             if posData.SizeZ > 1:
                 for z, zSlicePointsData in framePointsData.items():
                     yyxx = zip(

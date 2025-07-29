@@ -16389,7 +16389,10 @@ class guiWin(QMainWindow):
         scatterItem = self.promptSegmentPointsLayerToolbar.scatterItem()
         scatterItem.clear()
         action = scatterItem.action
-        action.pointsData.pop(posData.frame_i, None)
+        pointsDataPos = action.pointsData.get(self.pos_i)
+        if pointsDataPos is None:
+            return
+        action.pointsData[self.pos_i].pop(posData.frame_i, None)
         
     @disableWindow
     def magicPromptsComputeOnImageTriggered(self, toolbar):
@@ -18469,7 +18472,18 @@ class guiWin(QMainWindow):
         self.drawManualTrackingGhost(self.xHoverImg, self.yHoverImg)
         self.drawManualBackgroundObj(self.xHoverImg, self.yHoverImg)
     
+    def clearUndoQueue(self):
+        posData = self.data[self.pos_i]
+        self.UndoCount = 0
+        self.redoAction.setEnabled(False)
+        self.undoAction.setEnabled(False)
+        posData.UndoRedoStates = [[] for _ in range(posData.SizeT)]
+        posData.UndoRedoCcaStates = [[] for _ in range(posData.SizeT)]
+        if hasattr(self, 'undoAddPointQueueMapper'):
+            self.undoAddPointQueueMapper = defaultdict(list)
+    
     def updatePos(self):
+        self.clearUndoQueue()
         self.setStatusBarLabel()
         self.checkManageVersions()
         self.removeAlldelROIsCurrentFrame()
@@ -20731,7 +20745,6 @@ class guiWin(QMainWindow):
             for action in toolbar.actions()[1:]:
                 try:
                     action.scatterItem.clear()
-                    # action.pointsData = {}
                 except Exception as e:
                     continue
 
@@ -24140,7 +24153,12 @@ class guiWin(QMainWindow):
         if not hasattr(self, 'undoAddPointQueueMapper'):
             self.undoAddPointQueueMapper = defaultdict(list)
 
-        state = deepcopy(action.pointsData)
+        posData = self.data[self.pos_i]
+        pointsDataPos = action.pointsData.get(self.pos_i)
+        if pointsDataPos is None:
+            return
+        
+        state = deepcopy(pointsDataPos)
         self.undoAddPointQueueMapper[action].append(state)
         self.undoAction.setEnabled(True)
         
@@ -24152,8 +24170,9 @@ class guiWin(QMainWindow):
         if len(undoAddPointQueue) == 0:
             return False
         
+        posData = self.data[self.pos_i]
         state = undoAddPointQueue.pop(-1)
-        action.pointsData = state
+        action.pointsData[self.pos_i] = state
         
         self.drawPointsLayers(computePointsLayers=False)
         
@@ -24252,7 +24271,6 @@ class guiWin(QMainWindow):
     
     def pointsLayerLoadedDfsToData(self):
         posData = self.data[self.pos_i]
-        
         for toolbar in self.pointsLayersToolbars:
             for action in toolbar.actions()[1:]:
                 if not hasattr(action, 'loadedDfInfo'):
@@ -24268,12 +24286,14 @@ class guiWin(QMainWindow):
                 filename = f'{posData.basename}{endname}'
                 filepath = os.path.join(posData.images_path, filename)
                 if not os.path.exists(filepath):
-                    action.pointsData = {}
+                    action.pointsData[self.pos_i] = {}
                 
                 df = load.load_df_points_layer(filepath)
-                action.pointsData = load.loaded_df_to_points_data(
-                    df, action.loadedDfInfo['t'], action.loadedDfInfo['z'], 
-                    action.loadedDfInfo['y'], action.loadedDfInfo['x']
+                action.pointsData[self.pos_i] = (
+                    load.loaded_df_to_points_data(
+                        df, action.loadedDfInfo['t'], action.loadedDfInfo['z'], 
+                        action.loadedDfInfo['y'], action.loadedDfInfo['x']
+                    )
                 )
                 self.logLoadedTablePointsLayer(df)
             
@@ -24312,7 +24332,7 @@ class guiWin(QMainWindow):
             if not hasattr(action.button, 'clickEntryTableEndName'):
                 continue
             tableEndName = action.button.clickEntryTableEndName
-            action.pointsData = {}
+            action.pointsData[self.pos_i] = {}
             if posData.clickEntryPointsDfs.get(tableEndName) is None:
                 continue
             
@@ -24323,20 +24343,20 @@ class guiWin(QMainWindow):
                 return
             
             for frame_i, df_frame in df.groupby('frame_i'):
-                action.pointsData[frame_i] = {}
+                action.pointsData[self.pos_i][frame_i] = {}
                 if posData.SizeZ > 1:
                     for z, df_zlice in df_frame.groupby('z'):
                         xx = df_zlice['x'].to_list()
                         yy = df_zlice['y'].to_list()
                         ids = df_zlice['id'].to_list()
-                        action.pointsData[frame_i][z] = {
+                        action.pointsData[self.pos_i][frame_i][z] = {
                             'x': xx, 'y': yy, 'id': ids
                         }
                 else:
                     xx = df_frame['x'].to_list()
                     yy = df_frame['y'].to_list()
                     ids = df_frame['id'].to_list()
-                    action.pointsData[frame_i] = {
+                    action.pointsData[self.pos_i][frame_i] = {
                         'x': xx, 'y': yy, 'id': ids
                     }
             
@@ -24563,7 +24583,9 @@ class guiWin(QMainWindow):
         scatterItem.action = action
         action.layerType = self.addPointsWin.layerType
         action.layerTypeIdx = self.addPointsWin.layerTypeIdx
-        action.pointsData = self.addPointsWin.pointsData
+        posData = self.data[self.pos_i]
+        action.pointsData = {}
+        action.pointsData[self.pos_i] = self.addPointsWin.pointsData
         action.snapToMax = False
         action.loadedDfInfo = self.addPointsWin.loadedDfInfo
         self.setPointsLayerLoadedDfEndanme(action)
@@ -24617,7 +24639,7 @@ class guiWin(QMainWindow):
     
     def removeClickedPoints(self, action, points):
         posData = self.data[self.pos_i]
-        framePointsData = action.pointsData[posData.frame_i]
+        framePointsData = action.pointsData[self.pos_i][posData.frame_i]
         if posData.SizeZ > 1:
             zProjHow = self.zProjComboBox.currentText()
             if zProjHow != 'single z-slice':
@@ -24671,12 +24693,16 @@ class guiWin(QMainWindow):
             new_id = max(current_id, new_ID) + 1
             return new_id
         else:
-            framePointsData = action.pointsData.get(posData.frame_i)
+            pointsDataPos = action.pointsData.get(self.pos_i)
+            if pointsDataPos is None:
+                return 1
+            
+            framePointsData = pointsDataPos.get(posData.frame_i)
             if framePointsData is None:
                 return 1
             if posData.SizeZ > 1:
                 new_id = 1
-                for z_data in action.pointsData[posData.frame_i].values():
+                for z_data in framePointsData.values():
                     max_id = max(z_data.get('id', 0), default=0) + 1
                     if max_id > new_id:
                         new_id = max_id
@@ -24702,7 +24728,11 @@ class guiWin(QMainWindow):
             return False
         
         is_ID = point_id in posData.IDs_idxs
-        framePointsData = action.pointsData.get(posData.frame_i)
+        pointsDataPos = action.pointsData.get(self.pos_i)
+        if pointsDataPos is None:
+            return not is_ID
+        
+        framePointsData = pointsDataPos.get(posData.frame_i)
         if framePointsData is None:
             return not is_ID
         
@@ -24721,7 +24751,11 @@ class guiWin(QMainWindow):
     def addClickedPoint(self, action, x, y, id):
         x, y = round(x, 2), round(y, 2)
         posData = self.data[self.pos_i]
-        framePointsData = action.pointsData.get(posData.frame_i)
+        pointsDataPos = action.pointsData.get(self.pos_i)
+        if pointsDataPos is None:
+            action.pointsData[self.pos_i] = {}
+        
+        framePointsData = pointsDataPos.get(posData.frame_i)
         if action.snapToMax:
             radius = round(action.pointSize/2)
             rr, cc = skimage.draw.disk((round(y), round(x)), radius)
@@ -24731,28 +24765,32 @@ class guiWin(QMainWindow):
         if framePointsData is None:
             if posData.SizeZ > 1:
                 zSlice = self.zSliceScrollBar.sliderPosition()
-                action.pointsData[posData.frame_i] = {
+                action.pointsData[self.pos_i][posData.frame_i] = {
                     zSlice: {'x': [x], 'y': [y], 'id': [id]}
                 }
             else:
-                action.pointsData[posData.frame_i] = {
+                action.pointsData[self.pos_i][posData.frame_i] = {
                     'x': [x], 'y': [y], 'id': [id]
                 }
         else:
             if posData.SizeZ > 1:
                 zSlice = self.zSliceScrollBar.sliderPosition()
-                z_data = action.pointsData[posData.frame_i].get(zSlice)
+                z_data = framePointsData.get(zSlice)
                 if z_data is None:
                     framePointsData[zSlice] = {'x': [x], 'y': [y], 'id': [id]}
                 else:
                     framePointsData[zSlice]['x'].append(x)
                     framePointsData[zSlice]['y'].append(y)
                     framePointsData[zSlice]['id'].append(id)
-                action.pointsData[posData.frame_i] = framePointsData
+                action.pointsData[self.pos_i][posData.frame_i] = (
+                    framePointsData
+                )
             else:
-                action.pointsData[posData.frame_i]['x'].append(x)
-                action.pointsData[posData.frame_i]['y'].append(y)
-                action.pointsData[posData.frame_i]['id'].append(id)
+                pointsDataPos = action.pointsData[self.pos_i]
+                framePointsData = pointsDataPos[posData.frame_i]
+                pointsDataPos['x'].append(x)
+                pointsDataPos['y'].append(y)
+                pointsDataPos['id'].append(id)
         
     def showPointsLayerIdsToggled(self, button, checked):
         button.action.scatterItem.drawIds = checked
@@ -24834,7 +24872,7 @@ class guiWin(QMainWindow):
         # NOTE: if user requested to draw from table we load that in 
         # apps.AddPointsLayerDialog.ok_cb()
         posData = self.data[self.pos_i]
-        action.pointsData[posData.frame_i] = {}
+        action.pointsData[self.pos_i] = {posData.frame_i: {}}
         if hasattr(action, 'weighingData'):
             lab = posData.lab
             img = action.weighingData[self.pos_i][posData.frame_i]
@@ -24848,22 +24886,22 @@ class guiWin(QMainWindow):
             if len(centroid) == 3:
                 zc, yc, xc = centroid
                 z_int = round(zc)
-                if z_int not in action.pointsData[posData.frame_i]:
-                    action.pointsData[posData.frame_i][z_int] = {
+                if z_int not in action.pointsData[self.pos_i][posData.frame_i]:
+                    action.pointsData[self.pos_i][posData.frame_i][z_int] = {
                         'x': [xc], 'y': [yc]
                     }
                 else:
-                    z_data = action.pointsData[posData.frame_i][z_int]
+                    z_data = action.pointsData[self.pos_i][posData.frame_i][z_int]
                     z_data['x'].append(xc)
                     z_data['y'].append(yc)
             else:
                 yc, xc = centroid
-                if 'y' not in action.pointsData[posData.frame_i]:
-                    action.pointsData[posData.frame_i]['y'] = [yc]
-                    action.pointsData[posData.frame_i]['x'] = [xc]
+                if 'y' not in action.pointsData[self.pos_i][posData.frame_i]:
+                    action.pointsData[self.pos_i][posData.frame_i]['y'] = [yc]
+                    action.pointsData[self.pos_i][posData.frame_i]['x'] = [xc]
                 else:
-                    action.pointsData[posData.frame_i]['y'].append(yc)
-                    action.pointsData[posData.frame_i]['x'].append(xc)
+                    action.pointsData[self.pos_i][posData.frame_i]['y'].append(yc)
+                    action.pointsData[self.pos_i][posData.frame_i]['x'].append(xc)
     
     def drawPointsLayers(self, computePointsLayers=True):
         posData = self.data[self.pos_i]
@@ -24878,7 +24916,7 @@ class guiWin(QMainWindow):
                 if not action.button.isChecked():
                     continue
                 
-                if posData.frame_i not in action.pointsData:
+                if posData.frame_i not in action.pointsData.get(self.pos_i, set()):
                     if action.layerTypeIdx != 4:
                         self.logger.info(
                             f'Frame number {posData.frame_i+1} does not have any '
@@ -24886,7 +24924,7 @@ class guiWin(QMainWindow):
                         )
                     continue
                 
-                framePointsData = action.pointsData[posData.frame_i]
+                framePointsData = action.pointsData[self.pos_i][posData.frame_i]
     
                 if 'x' not in framePointsData:
                     # 3D points
