@@ -7816,6 +7816,9 @@ class ImShow(QBaseWindow):
         imageItem = scrollbar.imageItem
         img = self._get2Dimg(imageItem, scrollbar.image)
         imageItem.setImage(img, autoLevels=self._autoLevels)
+        overlayLab = self._get2DlabOverlay(imageItem)
+        if overlayLab is not None:
+            imageItem.labImageItem.setImage(overlayLab, autoLevels=False)
         self.setPointsVisible(imageItem)
         if not self._linkedScrollbars:
             return
@@ -7838,6 +7841,8 @@ class ImShow(QBaseWindow):
             pass
         finally:
             self._linkedScrollbars = True
+        
+        self.updateIDs()
 
     def setPointsVisible(self, imageItem):
         if not hasattr(imageItem, 'pointsItems'):
