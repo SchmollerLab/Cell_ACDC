@@ -24755,7 +24755,7 @@ class guiWin(QMainWindow):
         if pointsDataPos is None:
             action.pointsData[self.pos_i] = {}
         
-        framePointsData = pointsDataPos.get(posData.frame_i)
+        framePointsData = action.pointsData[self.pos_i].get(posData.frame_i)
         if action.snapToMax:
             radius = round(action.pointSize/2)
             rr, cc = skimage.draw.disk((round(y), round(x)), radius)
