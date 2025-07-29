@@ -29311,6 +29311,8 @@ class guiWin(QMainWindow):
         self.labelsLayerRightImg.setOpacity(alpha)
         self.lastTrackedFrameLabel.setText('')
         
+        self.promptSegmentPointsLayerToolbar.isPointsLayerInit = False
+        
         for action in self.askHowFutureFramesActions.values():
             action.setChecked(True)
             action.setDisabled(True)
