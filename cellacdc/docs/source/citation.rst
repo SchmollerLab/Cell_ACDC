@@ -10,7 +10,7 @@ If you use Cell-ACDC in your publication, please cite:
 
 .. important:: 
 
-   Wwhen citing Cell-ACDC make sure to also cite the paper of the 
+   When citing Cell-ACDC make sure to also cite the paper of the 
    segmentation models and trackers you used! 
    Below you find the links to the models currently available in Cell-ACDC.
 
