@@ -21669,29 +21669,28 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         self.setTitleText()
 
-        if lin_tree_df.shape[0] > lin_tree_df_prev.shape[0]: # check if new cells have arrived
-            new_cells = lin_tree_df.index.difference(lin_tree_df_prev.index) # I could use this for the if already but this is probably faster for frames where nothing changes
-            if new_cells.shape[0] == 0:
-                self.logger.info('No new cells in the lineage tree for this frame.')
-                return
-            
-            for ax in (0, 1):
-                if not self.areMothBudLinesRequested(ax):
+        new_cells = lin_tree_df.index.difference(lin_tree_df_prev.index) # I could use this for the if already but this is probably faster for frames where nothing changes
+        if new_cells.shape[0] == 0:
+            self.logger.info('No new cells in the lineage tree for this frame.')
+            return
+        
+        for ax in (0, 1):
+            if not self.areMothBudLinesRequested(ax):
+                continue
+
+            for ID in new_cells:
+                curr_obj = myutils.get_obj_by_label(rp, ID)
+                lin_tree_df_ID = lin_tree_df.loc[ID]
+
+                # lin_tree_df_mother_ID = lin_tree_df_prev.loc[lin_tree_df_ID["parent_ID_tree"]]
+                if lin_tree_df_ID["parent_ID_tree"] == -1: # make sure that new obj where the parents are not known get skipped
                     continue
+                mother_obj = myutils.get_obj_by_label(prev_rp, lin_tree_df_ID["parent_ID_tree"])
 
-                for ID in new_cells:
-                    curr_obj = myutils.get_obj_by_label(rp, ID)
-                    lin_tree_df_ID = lin_tree_df.loc[ID]
+                emerg_frame_i = lin_tree_df_ID["emerg_frame_i"]
+                isNew = emerg_frame_i == frame_i
 
-                    # lin_tree_df_mother_ID = lin_tree_df_prev.loc[lin_tree_df_ID["parent_ID_tree"]]
-                    if lin_tree_df_ID["parent_ID_tree"] == -1: # make sure that new obj where the parents are not known get skipped
-                        continue
-                    mother_obj = myutils.get_obj_by_label(prev_rp, lin_tree_df_ID["parent_ID_tree"])
-
-                    emerg_frame_i = lin_tree_df_ID["emerg_frame_i"]
-                    isNew = emerg_frame_i == frame_i
-
-                    self.drawObjLin_TreeMothBudLines(ax, curr_obj, mother_obj, isNew, ID=ID)
+                self.drawObjLin_TreeMothBudLines(ax, curr_obj, mother_obj, isNew, ID=ID)
 
     def drawObjLin_TreeMothBudLines(self, ax, obj, mother_obj, isNew, ID=None):
         """
@@ -21710,19 +21709,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         ID : int, optional
             The ID of the object, by default None.
         """
-        printl('Drawing moth-bud lines...')
         if not self.areMothBudLinesRequested(ax):
-            printl('Moth-bud lines not requested for this axis.')
             return
 
         if not ID:
             ID = obj.label
         
         isObjVisible = self.isObjVisible(obj.bbox)
-        printl(isObjVisible)
         
-        # if not isObjVisible:
-        #     return
+        if not isObjVisible:
+            return
 
         scatterItem = self.getMothBudLineScatterItem(ax, isNew)
 
