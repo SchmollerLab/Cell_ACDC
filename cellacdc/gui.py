@@ -17403,6 +17403,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if result is None:
             self.original_df_lin_tree = None
             self.original_df_lin_tree_i = None
+            self.lin_tree_to_acdc_df(specific={posData.frame_i})
             return
 
         css, txt, differences = result
@@ -21710,15 +21711,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             The ID of the object, by default None.
         """
         if not self.areMothBudLinesRequested(ax):
+            printl('Moth-bud lines not requested for this axis.')
             return
 
         if not ID:
             ID = obj.label
         
         isObjVisible = self.isObjVisible(obj.bbox)
+        printl(isObjVisible)
         
-        if not isObjVisible:
-            return
+        # if not isObjVisible:
+        #     return
 
         scatterItem = self.getMothBudLineScatterItem(ax, isNew)
 

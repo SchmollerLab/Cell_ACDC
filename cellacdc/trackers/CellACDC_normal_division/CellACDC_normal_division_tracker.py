@@ -870,31 +870,32 @@ class normal_division_lineage_tree:
             if df is None:
                 continue
 
-            if ('generation_num_tree' in df.columns 
+            if not ('generation_num_tree' in df.columns 
                 and not (df['generation_num_tree'] == 0).any()
                 and not df['generation_num_tree'].isnull().any() 
                 and not df["generation_num_tree"].isna().any() 
                 and not df["generation_num_tree"].empty):
+                continue
 
-                df = checked_reset_index_Cell_ID(df)
+            df = checked_reset_index_Cell_ID(df)
 
-                df = filter_cols(df)
-                df = reorg_sister_cells_for_import(df)
-                self.frames_for_dfs.add(i)
-                df_li_new.append(df)
+            df = filter_cols(df)
+            df = reorg_sister_cells_for_import(df)
+            self.frames_for_dfs.add(i)
+            df_li_new.append(df)
 
-                df_filter = df.index.isin(added_IDs)  
-                for root_ID, group in df[df_filter].groupby('root_ID_tree'):
-                    if root_ID not in families_root_IDs:
-                        family = list(zip(group.index, group['generation_num_tree']))
-                        families.append(family)
-                        families_root_IDs.append(root_ID)
-                    else:
-                        # If the root_ID is already in families, we just update the family with the new cells
-                        family_index = families_root_IDs.index(root_ID)
-                        families[family_index].extend(zip(group.index, group['generation_num_tree']))
-                        
-                    added_IDs.update(group.index)
+            df_filter = df.index.isin(added_IDs)  
+            for root_ID, group in df[df_filter].groupby('root_ID_tree'):
+                if root_ID not in families_root_IDs:
+                    family = list(zip(group.index, group['generation_num_tree']))
+                    families.append(family)
+                    families_root_IDs.append(root_ID)
+                else:
+                    # If the root_ID is already in families, we just update the family with the new cells
+                    family_index = families_root_IDs.index(root_ID)
+                    families[family_index].extend(zip(group.index, group['generation_num_tree']))
+                    
+                added_IDs.update(group.index)
                     
         if df_li_new:
             self.lineage_list = df_li_new
