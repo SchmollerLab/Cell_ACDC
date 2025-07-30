@@ -1768,11 +1768,21 @@ class createDataStructWin(QMainWindow):
 
     def instructMoveRawFiles(self):
         msg = widgets.myMessageBox(showCentered=False, wrapText=False)
-        txt = html_utils.paragraph("""
-            Put all of the raw microscopy files from the <b>same experiment</b><br> 
+        tip_admon = html_utils.to_admonition(
+            'If you have a single gray-scale TIFF file, '
+            'placing into a folder called <code>Images</code> will be enough.',
+            admonition_type='tip',
+        )
+        txt = html_utils.paragraph(f"""
+            Put all of the raw microscopy files from the <b>same experiment</b>
             into an <b>empty folder</b> before closing this dialogue.<br><br>
 
-            Note that there should be <b>no other files</b> in this folder.
+            Note that there should be <b>no other files</b> in this folder.<br><br>
+            
+            Microscopy files are those files that are typically generated 
+            by the microscope, for example '.czi' (Zeiss), '.nd2' (Nikon), 
+            '.lif' (Leica), etc.<br><br>
+            {tip_admon}
         """
         )
         msg.information(
