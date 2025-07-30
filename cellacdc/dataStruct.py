@@ -1810,6 +1810,22 @@ class createDataStructWin(QMainWindow):
 
         return msg.clickedButton == loadPosButton
     
+    def warnSelectedPathEmpty(self, raw_src_path):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(
+            f"""
+            The selected folder (see below) is either <b>empty</b> 
+            or does not contain any files.<br><br>
+            Please select a folder that contains raw microscopy files.<br><br>
+            Thank you for your patience!
+            """
+        )
+        msg.warning(
+            self, 'Empty folder', txt, 
+            commands=(raw_src_path, ),
+            path_to_browse=raw_src_path
+        )
+    
     def checkFileFormat(self, raw_src_path):
         self.moveOtherFiles = False
         self.copyOtherFiles = False
@@ -1818,6 +1834,9 @@ class createDataStructWin(QMainWindow):
             filename for filename in ls
             if os.path.isfile(os.path.join(raw_src_path, filename))
         ]
+        if not files:
+            self.warnSelectedPathEmpty(raw_src_path)
+            return []
         all_ext = [
             os.path.splitext(filename)[1] for filename in ls
             if os.path.isfile(os.path.join(raw_src_path, filename))
