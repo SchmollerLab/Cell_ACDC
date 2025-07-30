@@ -1355,6 +1355,8 @@ class loadData:
             except Exception as e:
                 traceback.print_exc()
                 self.criticalExtNotValid(signals=signals)
+        else:
+            self.criticalExtNotValid(signals=signals)
     
     def loadChannelData(self, channelName):
         if channelName == self.user_ch_name:
