@@ -21612,9 +21612,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         except KeyError:
             return        
         
-        # isObjVisible = self.isObjVisible(obj.bbox)
-        # if not isObjVisible:
-        #     return
+        isObjVisible = self.isObjVisible(obj.bbox)
+        if not isObjVisible:
+            return
         
         ccs_ID = cca_df_ID['cell_cycle_stage']
         if ccs_ID == 'G1':
