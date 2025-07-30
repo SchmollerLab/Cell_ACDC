@@ -1332,7 +1332,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.gui_createAnnotateToolbar()
 
     @disableWindow
-    def propagateLinTreeAction(self):
+    def propagateLinTreeAction(self, dummy_for_button=None):
         """
         Propagates the lineage tree based on the current frame_i. Used in self.propagateLinTreeButton.
         """
@@ -21710,6 +21710,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         ID : int, optional
             The ID of the object, by default None.
         """
+        printl('Drawing moth-bud lines...')
         if not self.areMothBudLinesRequested(ax):
             printl('Moth-bud lines not requested for this axis.')
             return
