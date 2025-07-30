@@ -869,12 +869,14 @@ class normal_division_lineage_tree:
         for i, df in enumerate(df_li):
             if df is None:
                 continue
+            
+            if 'generation_num_tree' not in df.columns:
+                continue
 
-            if not ('generation_num_tree' in df.columns 
-                and not (df['generation_num_tree'] == 0).any()
-                and not df['generation_num_tree'].isnull().any() 
-                and not df["generation_num_tree"].isna().any() 
-                and not df["generation_num_tree"].empty):
+            if ((df['generation_num_tree'] == 0).any()
+                or df['generation_num_tree'].isnull().any() 
+                or df["generation_num_tree"].isna().any() 
+                or df["generation_num_tree"].empty):
                 continue
 
             df = checked_reset_index_Cell_ID(df)
