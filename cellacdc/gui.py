@@ -16369,6 +16369,11 @@ class guiWin(QMainWindow):
         image = image[..., ymin:ymax, xmin:xmax]
         image_origin = (0, ymin, xmin)
         
+        df_points = df_points[df_points['y'] >= ymin]
+        df_points = df_points[df_points['x'] >= xmin]
+        df_points = df_points[df_points['y'] < ymax]
+        df_points = df_points[df_points['x'] < xmax]
+        
         df_points['y'] -= ymin
         df_points['x'] -= xmin
         
