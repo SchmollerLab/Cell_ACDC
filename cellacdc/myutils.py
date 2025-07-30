@@ -1284,11 +1284,11 @@ def getDefault_SegmInfo_df(posData, filename):
 def get_examples_path(which):
     if which == 'time_lapse_2D':
         foldername = 'TimeLapse_2D'
-        url = 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/CaMdYXiwxxoq3Ts/download/TimeLapse_2D.zip'
+        url = 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/KgJQtsQKZJnWZjL/download/TimeLapse_2D.zip'
         file_size = 45143552
     elif which == 'snapshots_3D':
         foldername = 'Multi_3D_zStack_Analysed'
-        url = 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/CXZDoQMANNrKL7a/download/Yeast_Analysed_multi3D_zStacks.zip'
+        url = 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/3RNjGiPwKcdnGtj/download/Yeast_Analysed_multi3D_zStacks.zip'
         file_size = 124822528
     else:
         return ''
