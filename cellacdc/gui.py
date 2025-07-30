@@ -21671,7 +21671,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         new_cells = lin_tree_df.index.difference(lin_tree_df_prev.index) # I could use this for the if already but this is probably faster for frames where nothing changes
         if new_cells.shape[0] == 0:
-            self.logger.info('No new cells in the lineage tree for this frame.')
             return
         
         for ax in (0, 1):
