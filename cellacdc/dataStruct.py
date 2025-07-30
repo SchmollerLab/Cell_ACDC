@@ -1814,7 +1814,8 @@ class createDataStructWin(QMainWindow):
         msg = widgets.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(
             f"""
-            The selected folder (see below) <b>is empty</b>.<br><br>
+            The selected folder (see below) is either <b>empty</b> 
+            or does not contain any files.<br><br>
             Please select a folder that contains raw microscopy files.<br><br>
             Thank you for your patience!
             """
