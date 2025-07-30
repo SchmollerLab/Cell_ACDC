@@ -12210,6 +12210,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.setDrawAnnotComboboxText()
         self.prevAnnotOptions = None
     
+    def uncheckAllButtonsFromButtonGroup(self, buttonGroup):
+        for button in buttonGroup.buttons():
+            if button.isChecked():
+                button.setChecked(False)
+    
     @disableWindow
     def changeMode(self, text):
         self.reconnectUndoRedo()
@@ -12228,6 +12233,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.lin_tree_ask_changes()
             self.lineage_tree = None
             self.editLin_TreeBar.setVisible(False)
+            self.uncheckAllButtonsFromButtonGroup(self.editLin_TreeGroup)
 
         elif prevMode == 'Cell cycle analysis':
             self.setEnabledCcaToolbar(enabled=False)
@@ -21605,9 +21611,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         except KeyError:
             return        
         
-        isObjVisible = self.isObjVisible(obj.bbox)
-        if not isObjVisible:
-            return
+        # isObjVisible = self.isObjVisible(obj.bbox)
+        # if not isObjVisible:
+        #     return
         
         ccs_ID = cca_df_ID['cell_cycle_stage']
         if ccs_ID == 'G1':
