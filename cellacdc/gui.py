@@ -2363,7 +2363,10 @@ class guiWin(QMainWindow):
             self.viewSetMagicPromptModelParams
         )
         self.magicPromptsToolbar.sigClearPoints.connect(
-            self.magicPromptsClearPoints
+            partial(self.magicPromptsClearPoints, only_zoom=False)
+        )
+        self.magicPromptsToolbar.sigClearPointsOnZmom.connect(
+            partial(self.magicPromptsClearPoints, only_zoom=True)
         )
         
         self.addToolBar(Qt.TopToolBarArea, self.magicPromptsToolbar)
@@ -16389,15 +16392,60 @@ class guiWin(QMainWindow):
             image_origin=image_origin, zoom_slice=zoom_slice
         )
     
-    def magicPromptsClearPoints(self):
+    def magicPromptsClearPoints(self, toolbar, only_zoom=False):
         posData = self.data[self.pos_i]
         scatterItem = self.promptSegmentPointsLayerToolbar.scatterItem()
-        scatterItem.clear()
         action = scatterItem.action
+        
         pointsDataPos = action.pointsData.get(self.pos_i)
         if pointsDataPos is None:
             return
-        action.pointsData[self.pos_i].pop(posData.frame_i, None)
+        
+        
+        
+        framePointsData = action.pointsData[self.pos_i].pop(
+            posData.frame_i, None
+        )
+        if framePointsData is None:
+            return
+        
+        if not only_zoom:
+            scatterItem.clear()
+            return
+        
+        ((xmin, xmax), (ymin, ymax)) = self.ax1.viewRange()
+        Y, X = posData.img_data.shape[-2:]
+        
+        xmin = int(max(0, xmin))
+        xmax = int(min(X, xmax))
+        ymin = int(max(0, ymin))
+        ymax = int(min(Y, ymax))
+        
+        if 'x' in framePointsData:
+            newFramePointsData = {'x': [], 'y': [], 'id': []}
+            xx = framePointsData['x']
+            yy = framePointsData['y']
+            ids = framePointsData['id']
+            for x, y, point_id in zip(xx, yy, ids):
+                if x < xmin or x >= xmax or y < ymin or y >= ymax:
+                    newFramePointsData['x'].append(x)
+                    newFramePointsData['y'].append(y)
+                    newFramePointsData['id'].append(point_id)
+        else:
+            newFramePointsData = {}
+            for z, zSliceFramePointsData in framePointsData.items():
+                newFramePointsData[z] = {'x': [], 'y': [], 'id': []}
+                xx = zSliceFramePointsData['x']
+                yy = zSliceFramePointsData['y']
+                ids = zSliceFramePointsData['id']
+                for x, y, point_id in zip(xx, yy, ids):
+                    if x < xmin or x >= xmax or y < ymin or y >= ymax:
+                        newFramePointsData[z]['x'].append(x)
+                        newFramePointsData[z]['y'].append(y)
+                        newFramePointsData[z]['id'].append(point_id)
+        
+        action.pointsData[self.pos_i][posData.frame_i] = newFramePointsData
+        self.drawPointsLayers()
         
     @disableWindow
     def magicPromptsComputeOnImageTriggered(self, toolbar):
@@ -24612,6 +24660,7 @@ class guiWin(QMainWindow):
         if toolbar == self.promptSegmentPointsLayerToolbar:
             self.promptSegmentPointsLayerToolbar.isPointsLayerInit = True
             self.magicPromptsToolbar.clearPointsAction.setDisabled(False)
+            self.magicPromptsToolbar.clearPointsActionOnZoom.setDisabled(False)
             QTimer.singleShot(
                 200, self.magicPromptsToolbar.selectModelAction.trigger
             )

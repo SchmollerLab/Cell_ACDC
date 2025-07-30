@@ -153,6 +153,7 @@
     <file alias="contribute.svg">resources/icons/contribute.svg</file>
     <file alias="wizard.svg">resources/icons/wizard.svg</file>
     <file alias="compute-zoom.svg">resources/icons/compute-zoom.svg</file>
+    <file alias="clear-points-zoom.svg">resources/icons/clear_points_zoom_dark.svg</file>
     <file alias="clear-points.svg">resources/icons/clear_points.svg</file>
     <file alias="download.svg">resources/icons/download.svg</file>
     <file alias="warning.svg">resources/icons/warning.svg</file>

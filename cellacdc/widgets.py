@@ -10326,6 +10326,7 @@ class MagicPromptsToolbar(ToolBar):
     sigComputeOnZoom = Signal(object)
     sigComputeOnImage = Signal(object)
     sigClearPoints = Signal(object)
+    sigClearPointsOnZmom = Signal(object)
     sigInitSelectedModel = Signal(
         str, object, list, list, str, object
     )
@@ -10378,6 +10379,12 @@ class MagicPromptsToolbar(ToolBar):
         )
         self.clearPointsAction.setDisabled(True)
         
+        self.clearPointsActionOnZoom = self.addButton(':clear-points-zoom.svg')
+        self.clearPointsActionOnZoom.setToolTip(
+            'Clear all points on the zoomed area of the image'
+        )
+        self.clearPointsActionOnZoom.setDisabled(True)
+        
         self.addSeparator()
         
         self.infoAction = self.addButton(':info.svg')
@@ -10401,6 +10408,9 @@ class MagicPromptsToolbar(ToolBar):
         )
         self.clearPointsAction.triggered.connect(
             self.emitSigClearPoints
+        )
+        self.clearPointsActionOnZoom.triggered.connect(
+            self.emitSigClearPointsOnZoom
         )
     
     def showHelp(self):
@@ -10455,6 +10465,9 @@ class MagicPromptsToolbar(ToolBar):
     
     def emitSigClearPoints(self):
         self.sigClearPoints.emit(self)
+    
+    def emitSigClearPointsOnZoom(self):
+        self.sigClearPointsOnZmom.emit(self)
     
     def emitSigComputeOnZoom(self):
         self.sigComputeOnZoom.emit(self)
