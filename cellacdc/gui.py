@@ -12212,8 +12212,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     
     def uncheckAllButtonsFromButtonGroup(self, buttonGroup):
         for button in buttonGroup.buttons():
-            if button.isChecked():
-                button.setChecked(False)
+            if not button.isCheckable():
+                continue
+            
+            if not button.isChecked():
+                continue
+            
+            button.setChecked(False)
     
     @disableWindow
     def changeMode(self, text):
