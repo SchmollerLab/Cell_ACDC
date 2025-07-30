@@ -14062,14 +14062,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
                 self.onDoubleSpaceBar()
                 self.countKeyPress = 0
         elif isBrushKey or isEraserKey:
-            mode = self.modeComboBox.currentText()
-            if mode == 'Cell cycle analysis' or mode == 'Viewer':
-                return
             if isBrushKey:
                 self.Button = self.brushButton
             else:
                 self.Button = self.eraserButton
 
+            if not self.Button.isVisible():
+                return
+            
             if self.countKeyPress == 0:
                 # If first time clicking B activate brush and start timer
                 # to catch double press of B
