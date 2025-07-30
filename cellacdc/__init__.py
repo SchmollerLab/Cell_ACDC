@@ -19,6 +19,12 @@ from typing import Iterable
 KNOWN_EXTENSIONS = (
     '.tif', '.npz', '.npy', '.h5', '.json', '.csv', '.txt'
 )
+IMAGE_EXTENSIONS = (
+    '.tif', '.tiff', '.png', '.jpg', '.jpeg', '.bmp', '.gif',
+)
+VIDEO_EXTENSIONS = (
+    '.mp4', '.avi', '.mov', '.mkv', '.webm', '.flv',
+)
 
 def _warn_ask_install_package(commands: Iterable[str], note_txt=''):
     open_str = '='*100

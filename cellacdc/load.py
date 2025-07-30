@@ -56,6 +56,7 @@ from . import sorted_cols
 from . import io
 from . import core
 from . import whitelist
+from . import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
 
 acdc_df_bool_cols = [
     'is_cell_dead',
@@ -1338,12 +1339,16 @@ class loadData:
             self.img_data = np.squeeze(np.load(imgPath))
             self.dset = self.img_data
             self.img_data_shape = self.img_data.shape
-        else:
+        elif self.ext in IMAGE_EXTENSIONS:
             try:
                 self.img_data = np.squeeze(imread(imgPath))
                 self.dset = self.img_data
                 self.img_data_shape = self.img_data.shape
-            except ValueError:
+            except Exception as err:
+                traceback.print_exc()
+                self.criticalExtNotValid(signals=signals)
+        elif self.ext in VIDEO_EXTENSIONS: 
+            try:
                 self.img_data = self._loadVideo(imgPath)
                 self.dset = self.img_data
                 self.img_data_shape = self.img_data.shape
