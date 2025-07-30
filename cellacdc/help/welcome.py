@@ -909,11 +909,7 @@ class welcomeWin(QWidget):
             self.guiWin.openFolder(exp_path=exp_path)
 
     def launchDataStruct(self, checked=True):
-        self.dataStructWin = dataStruct.createDataStructWin(
-            mainWin=self
-        )
-        self.dataStructWin.show()
-        self.dataStructWin.main()
+        self.mainWin.dataStructButton.click()
 
     def addPbar(self):
         self.QPbar = widgets.ProgressBar(self)
