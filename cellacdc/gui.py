@@ -1332,7 +1332,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.gui_createAnnotateToolbar()
 
     @disableWindow
-    def propagateLinTreeAction(self):
+    def propagateLinTreeAction(self, dummy_for_button=None):
         """
         Propagates the lineage tree based on the current frame_i. Used in self.propagateLinTreeButton.
         """
@@ -12210,6 +12210,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.setDrawAnnotComboboxText()
         self.prevAnnotOptions = None
     
+    def uncheckAllButtonsFromButtonGroup(self, buttonGroup):
+        for button in buttonGroup.buttons():
+            if not button.isCheckable():
+                continue
+            
+            if not button.isChecked():
+                continue
+            
+            button.setChecked(False)
+    
     @disableWindow
     def changeMode(self, text):
         self.reconnectUndoRedo()
@@ -12228,6 +12238,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
             self.lin_tree_ask_changes()
             self.lineage_tree = None
             self.editLin_TreeBar.setVisible(False)
+            self.uncheckAllButtonsFromButtonGroup(self.editLin_TreeGroup)
 
         elif prevMode == 'Cell cycle analysis':
             self.setEnabledCcaToolbar(enabled=False)
@@ -17397,6 +17408,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         if result is None:
             self.original_df_lin_tree = None
             self.original_df_lin_tree_i = None
+            self.lin_tree_to_acdc_df(specific={posData.frame_i})
             return
 
         css, txt, differences = result
@@ -21662,29 +21674,27 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         self.setTitleText()
 
-        if lin_tree_df.shape[0] > lin_tree_df_prev.shape[0]: # check if new cells have arrived
-            new_cells = lin_tree_df.index.difference(lin_tree_df_prev.index) # I could use this for the if already but this is probably faster for frames where nothing changes
-            if new_cells.shape[0] == 0:
-                self.logger.info('No new cells in the lineage tree for this frame.')
-                return
-            
-            for ax in (0, 1):
-                if not self.areMothBudLinesRequested(ax):
+        new_cells = lin_tree_df.index.difference(lin_tree_df_prev.index) # I could use this for the if already but this is probably faster for frames where nothing changes
+        if new_cells.shape[0] == 0:
+            return
+        
+        for ax in (0, 1):
+            if not self.areMothBudLinesRequested(ax):
+                continue
+
+            for ID in new_cells:
+                curr_obj = myutils.get_obj_by_label(rp, ID)
+                lin_tree_df_ID = lin_tree_df.loc[ID]
+
+                # lin_tree_df_mother_ID = lin_tree_df_prev.loc[lin_tree_df_ID["parent_ID_tree"]]
+                if lin_tree_df_ID["parent_ID_tree"] == -1: # make sure that new obj where the parents are not known get skipped
                     continue
+                mother_obj = myutils.get_obj_by_label(prev_rp, lin_tree_df_ID["parent_ID_tree"])
 
-                for ID in new_cells:
-                    curr_obj = myutils.get_obj_by_label(rp, ID)
-                    lin_tree_df_ID = lin_tree_df.loc[ID]
+                emerg_frame_i = lin_tree_df_ID["emerg_frame_i"]
+                isNew = emerg_frame_i == frame_i
 
-                    # lin_tree_df_mother_ID = lin_tree_df_prev.loc[lin_tree_df_ID["parent_ID_tree"]]
-                    if lin_tree_df_ID["parent_ID_tree"] == -1: # make sure that new obj where the parents are not known get skipped
-                        continue
-                    mother_obj = myutils.get_obj_by_label(prev_rp, lin_tree_df_ID["parent_ID_tree"])
-
-                    emerg_frame_i = lin_tree_df_ID["emerg_frame_i"]
-                    isNew = emerg_frame_i == frame_i
-
-                    self.drawObjLin_TreeMothBudLines(ax, curr_obj, mother_obj, isNew, ID=ID)
+                self.drawObjLin_TreeMothBudLines(ax, curr_obj, mother_obj, isNew, ID=ID)
 
     def drawObjLin_TreeMothBudLines(self, ax, obj, mother_obj, isNew, ID=None):
         """
