@@ -777,7 +777,7 @@ class welcomeWin(QWidget):
         openManualButton = widgets.showInFileManagerButton(
             ' Download and open user manual... '
         )
-        openManualButton.clicked.connect(myutils.browse_docs())
+        openManualButton.clicked.connect(myutils.browse_docs)
 
         buttonLayout = QHBoxLayout()
         buttonLayout.addWidget(openManualButton)
