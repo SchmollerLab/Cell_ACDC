@@ -2680,7 +2680,7 @@ def check_cellpose_version(version: str):
             cancel = _warnings.warn_installing_different_cellpose_version(
                 version, installed_version
             )
-        if not compare_model_versions(
+        if not is_second_version_greater(
             min_target_versions_cp[str(major_requested)],
             installed_version
         ):
@@ -2705,7 +2705,7 @@ def purge_module(module_name):
     else:
         raise ModuleNotFoundError(f"Module '{module_name}' not found in sys.modules.")
 
-def compare_model_versions(
+def is_second_version_greater(
         target_version: str,
         current_version: str,
 ):
@@ -2717,6 +2717,23 @@ def compare_model_versions(
     current_version = packaging_version.parse(current_version)
     
     return current_version >= target_version
+
+def is_pkg_version_within_range(
+        package_version: str, min_version='', max_version=''
+    ):
+    package_version_number = packaging_version.parse(package_version)
+    is_greater_than_min = True
+    if min_version:
+        min_version_number = packaging_version.parse(min_version)
+        is_greater_than_min = package_version_number >= min_version_number
+    
+    is_less_than_max = True
+    if max_version:
+        max_version_number = packaging_version.parse(max_version)
+        is_less_than_max = package_version_number <= max_version_number
+    
+    return is_greater_than_min and is_less_than_max
+        
 
 def check_install_cellpose(
         version: Literal['2.0', '3.0', '4.0', 'any'] = '2.0', 

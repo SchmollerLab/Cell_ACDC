@@ -169,18 +169,18 @@ def _setup_gui_libraries(caller_name='Cell-ACDC'):
     try:
         import qtpy
     except ModuleNotFoundError as e:
+        conda_prefix, pip_prefix = myutils.get_pip_conda_prefix()
+        conda_list, pip_list = myutils.get_pip_conda_prefix(list_return=True)
+        
+        command_txt = f'{pip_prefix} --upgrade qtpy'
+        
         txt = (
             f'{caller_name} needs to install the package `qtpy`.\n\n'
             f'You can let {caller_name} install it now, or you can abort '
-            'and install it manually with the command `pip install qtpy`.'
+            f'and install it manually with the command `{command_txt}`.'
         )
         print('-'*60)
         print(txt)
-
-        conda_prefix, pip_prefix = myutils.get_pip_conda_prefix()
-        conda_list, pip_list = myutils.get_pip_conda_prefix(list_return=True)
-
-        command_txt = f'{pip_prefix} --upgrade qtpy'
 
         while True:
             from .config import parser_args
@@ -192,9 +192,7 @@ def _setup_gui_libraries(caller_name='Cell-ACDC'):
             if answer.lower() == 'y' or not answer:
                 import subprocess
                 cmd = pip_list + ['-U', 'qtpy']
-                subprocess.check_call(
-                    cmd
-                )
+                subprocess.check_call(cmd)
                 break
             elif answer.lower() == 'n':
                 raise e
@@ -429,4 +427,85 @@ def run_cli(ini_filepath):
     logger.info('**********************************************')
     
     
+def _setup_numpy(caller_name='Cell-ACDC'):
+    import urllib.request
+    import json
+    import re
     
+    from . import try_input_install_package
+    
+    numpy_versions = []
+    url = "https://pypi.org/pypi/numba/json"
+    with urllib.request.urlopen(url) as response:
+        data = json.load(response)
+        requires_dist = data["info"].get("requires_dist", [])
+        numpy_versions = [
+            req for req in requires_dist if "numpy" in req.lower()
+        ]
+    
+    if not numpy_versions:
+        print(
+            f'[WARNING]: Could not find NumPy version requirements for Numba. '
+            'Please, install the latest version of NumPy manually.'
+        )
+        return
+    
+    numpy_versions_txt = numpy_versions[0]
+    
+    max_version = re.findall(r'<=?(\d+\.\d+)', numpy_versions_txt)
+    min_version = re.findall(r'>=?(\d+\.\d+)', numpy_versions_txt)
+    if max_version:
+        max_version = max_version[0]
+    else:
+        max_version = ''
+        
+    if min_version:
+        min_version = min_version[0]
+    else:
+        min_version = ''
+    
+    import numpy
+    installed_numpy_version = numpy.__version__
+    is_numpy_version_within_range = myutils.is_pkg_version_within_range(
+        installed_numpy_version,
+        min_version=min_version,
+        max_version=max_version
+    )
+    
+    if is_numpy_version_within_range:
+        return
+    
+    conda_prefix, pip_prefix = myutils.get_pip_conda_prefix()
+    conda_list, pip_list = myutils.get_pip_conda_prefix(list_return=True)
+
+    command_txt = f'{pip_prefix} --upgrade "{numpy_versions_txt}"'
+    
+    txt = (
+        f'{caller_name} needs to upgrade the package `numpy`.\n\n'
+        f'The current version is {installed_numpy_version}, but it needs to be '
+        f'between {min_version} and {max_version}.\n\n'
+        f'You can let {caller_name} install it now, or you can abort '
+        f'and install it manually with the command `{command_txt}`.'
+    )
+    print('-'*60)
+    print(txt)
+    
+    while True:
+        from .config import parser_args
+        if parser_args['yes']:
+            answer = 'y'
+        else:
+            answer = try_input_install_package('qtpy', command_txt)
+        
+        if answer.lower() == 'y' or not answer:
+            import subprocess
+            cmd = pip_list + ['-U', numpy_versions_txt]
+            subprocess.check_call(cmd)
+            break
+        elif answer.lower() == 'n':
+            raise ModuleNotFoundError(f'Numba requires {numpy_versions_txt} ')
+        else:
+            print(
+                f'"{answer}" is not a valid answer. '
+                'Type "y" for "yes", or "n" for "no".'
+            )
