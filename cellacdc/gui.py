@@ -7802,9 +7802,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         Parameters
         ----------
-        posData : ???
+        posData : cellacdc.load.loadData
             The position data.
-        event : ???
+        event : QtGui.QMouseEvent
             The event object.
         ydata : int
             The y-coordinate data.
@@ -7883,9 +7883,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         Parameters
         ----------
-        posData : ???
+        posData : cellacdc.load.loadData
             The position data object.
-        event : ???
+        event : QtGui.QMouseEvent
             The event object.
         ydata : int
             The y-coordinate data.
@@ -7927,9 +7927,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         Parameters
         ----------
-        posData : ???
+        posData : cellacdc.load.loadData
             The position data.
-        event : ???
+        event : QtGui.QMouseEvent
             The event that triggered the annotation.
         ydata : int
             The y-coordinate data.
@@ -21702,8 +21702,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
 
         Parameters
         ----------
-        ax : ???
-            The matplotlib axes object to draw on.
+        ax : cellacdc.widgets.MainPlotItem
+            The Cell-ACDC GUI axes object to draw on.
         obj : Object
             The object for which to draw the moth-bud lines.
         mother_obj : Object
