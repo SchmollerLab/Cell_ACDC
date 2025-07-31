@@ -27349,10 +27349,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
     def warnUserCreationImagesFolder(self, images_path):
         msg = widgets.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(f"""
-            To load the data, Cell-ACDC requires the <b>image(s) to be located in a
+            Cell-ACDC requires a specific folder structure to load the data.<br><br>
+            Specifically, it requires the <b>image(s) to be located in a
             folder called <code>Images</code></b>.<br><br>
             The <b>file format</b> of the images must be <b>TIFF</b> (.tif extension).<br><br>
-            You can choose to let Cell-ACDC deal with that, or you can stop the 
+            You can choose to let Cell-ACDC create the required data structure 
+            from your file, or you can stop the 
             process and manually place the image(s) into a folder called 
             <code>Images</code>.<br><br>
             If you choose to proceed, Cell-ACDC will create the following 

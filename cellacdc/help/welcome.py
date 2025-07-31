@@ -777,7 +777,7 @@ class welcomeWin(QWidget):
         openManualButton = widgets.showInFileManagerButton(
             ' Download and open user manual... '
         )
-        openManualButton.clicked.connect(myutils.showUserManual)
+        openManualButton.clicked.connect(myutils.browse_docs)
 
         buttonLayout = QHBoxLayout()
         buttonLayout.addWidget(openManualButton)
@@ -886,11 +886,21 @@ class welcomeWin(QWidget):
         self.df_settings.to_csv(self.df_settings_path)
 
     def openGUIsingleImage(self):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(f"""
+            After clicking "Ok" on this dialogue, the Cell-ACDC GUI from 
+            module 3 will open.<br><br>
+            You will then be asked to select an image file (e.g., .tif or .png), 
+            or a video file (e.g., .avi). 
+        """)
+        msg.information(
+            self, 'Test with my image', txt
+        )
+        
         if self.mainWin is not None:
             self.mainWin.launchGui()
             guiWin = self.mainWin.guiWins[-1]
             QTimer.singleShot(200, guiWin.openFile)
-            self.mainWin.guiWins[-1].openFile()
         else:
             self.guiWin = gui.guiWin(self.app)
             self.guiWin.showAndSetSize()
@@ -909,11 +919,7 @@ class welcomeWin(QWidget):
             self.guiWin.openFolder(exp_path=exp_path)
 
     def launchDataStruct(self, checked=True):
-        self.dataStructWin = dataStruct.createDataStructWin(
-            mainWin=self
-        )
-        self.dataStructWin.show()
-        self.dataStructWin.main()
+        self.mainWin.dataStructButton.click()
 
     def addPbar(self):
         self.QPbar = widgets.ProgressBar(self)
