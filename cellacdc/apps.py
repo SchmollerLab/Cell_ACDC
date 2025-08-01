@@ -11930,7 +11930,8 @@ class QDialogModelParams(QDialog):
             )
             initParamsStretch = optimalHeightInitParams/heightPreprocParams
             initParamsStretch = max(1, round(initParamsStretch))
-            self.leftColumnLayout.setStretch(2, initParamsStretch)
+            # Set stretch for the "initial parameters" widget at index 2 in the left column layout
+            self.leftColumnLayout.setStretch(LEFT_COLUMN_INIT_PARAMS_INDEX, initParamsStretch)
         if self.postProcessGroupbox is not None:
             heightRight += self.postProcessGroupbox.minimumSizeHint().height()
             heightRight += buttonHeight
