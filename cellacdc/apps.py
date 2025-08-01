@@ -93,6 +93,7 @@ POSITIVE_FLOAT_REGEX = float_regex(allow_negative=False)
 TREEWIDGET_STYLESHEET = _palettes.TreeWidgetStyleSheet()
 LISTWIDGET_STYLESHEET = _palettes.ListWidgetStyleSheet()
 BACKGROUND_RGBA = _palettes.get_disabled_colors()['Button']
+MAX_PREPROCESS_STEPS = 4
 
 font = QFont()
 font.setPixelSize(12)
@@ -10737,6 +10738,7 @@ class QDialogModelParams(QDialog):
 
         loadFunc = self.loadLastSelection
         
+        self.initParamsColIndex = 0
         # LEFT COLUMN: Preprocessing and Init params
         preProcessLayout = None
         self.preProcessParamsWidget = None
@@ -10752,6 +10754,7 @@ class QDialogModelParams(QDialog):
             )
             preProcessLayout.addWidget(widgets.QHLine())
             leftColumnLayout.addLayout(preProcessLayout)
+            self.initParamsColIndex += 1
         
         # Init params in left column
         self.initParamsScrollArea = widgets.ScrollArea()
@@ -10778,9 +10781,11 @@ class QDialogModelParams(QDialog):
         initParamsScrollAreaLayout.addWidget(initGroupBox)
         
         leftColumnLayout.addWidget(QLabel(f'<b>{initGroupBox.title()}</b>'))
+        self.initParamsColIndex += 1
         initGroupBox.setTitle('')
         leftColumnLayout.addWidget(self.initParamsScrollArea)
         leftColumnLayout.addLayout(initButtonsLayout)
+        self.leftColumnLayout = leftColumnLayout
 
         # RIGHT COLUMN: Segmentation/Eval and Post-processing params
 
@@ -11890,10 +11895,10 @@ class QDialogModelParams(QDialog):
     
     def showEvent(self, event) -> None:
         buttonHeight = self.okButton.minimumSizeHint().height()
-        heightLeft = (
+        heightInitParams = (
             self.initParamsScrollArea.minimumHeightNoScrollbar()
-            + 70 + buttonHeight
         )
+        heightLeft = heightInitParams + 70 + buttonHeight
         heightRight = buttonHeight
         if self.segmentParamsScrollArea is not None:
             heightRight += (
@@ -11905,13 +11910,34 @@ class QDialogModelParams(QDialog):
                 self.extraParamsScrollArea.minimumHeightNoScrollbar()
                 + 70 + buttonHeight
             )
-            
+        
         if self.additionalSegmGroupbox is not None:
             heightRight += self.additionalSegmGroupbox.minimumSizeHint().height()
             heightRight += buttonHeight
         if self.preProcessParamsWidget is not None:
-            heightLeft += self.preProcessParamsWidget.minimumSizeHint().height()
+            heightPreprocParams = (
+                self.preProcessParamsWidget.minimumSizeHint().height()
+            )
+            heightLeft += heightPreprocParams
             heightLeft += buttonHeight
+            # Set stretch factor for the widget at index 0 (likely the initial parameters widget)
+            # to ensure it expands appropriately when the window is resized.
+            # A stretch factor of 1 gives it a proportional share of available space.
+            self.leftColumnLayout.setStretch(0, 1)
+            
+            heightPreprocessStep = (
+                self.preProcessParamsWidget.stepSizeHeightHint()
+            )
+            heightPreprocessButtons = heightPreprocParams - heightPreprocessStep
+            optimalHeightInitParams = (
+                heightPreprocessButtons + MAX_PREPROCESS_STEPS*heightPreprocessStep
+            )
+            initParamsStretch = optimalHeightInitParams/heightPreprocParams
+            initParamsStretch = max(1, round(initParamsStretch))
+            # Set stretch for the "initial parameters" widget at index 2 in the left column layout
+            self.leftColumnLayout.setStretch(
+                self.initParamsColIndex, initParamsStretch
+            )
         if self.postProcessGroupbox is not None:
             heightRight += self.postProcessGroupbox.minimumSizeHint().height()
             heightRight += buttonHeight
@@ -15368,6 +15394,14 @@ class PreProcessParamsWidget(QWidget):
         
         mainLayout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(mainLayout)
+    
+    def stepSizeHeightHint(self):
+        stepWidgets = self.stepsWidgets[1]
+        height = (
+            stepWidgets['stepLabel'].minimumSizeHint().height()
+            + stepWidgets['selector'].minimumSizeHint().height()
+        )
+        return height
     
     def setChecked(self, checked):
         self.groupbox.setChecked(checked)
