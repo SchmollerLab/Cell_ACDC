@@ -93,6 +93,7 @@ POSITIVE_FLOAT_REGEX = float_regex(allow_negative=False)
 TREEWIDGET_STYLESHEET = _palettes.TreeWidgetStyleSheet()
 LISTWIDGET_STYLESHEET = _palettes.ListWidgetStyleSheet()
 BACKGROUND_RGBA = _palettes.get_disabled_colors()['Button']
+MAX_PREPROCESS_STEPS = 4
 
 font = QFont()
 font.setPixelSize(12)
@@ -10737,6 +10738,7 @@ class QDialogModelParams(QDialog):
 
         loadFunc = self.loadLastSelection
         
+        self.initParamsColIndex = 0
         # LEFT COLUMN: Preprocessing and Init params
         preProcessLayout = None
         self.preProcessParamsWidget = None
@@ -10752,6 +10754,7 @@ class QDialogModelParams(QDialog):
             )
             preProcessLayout.addWidget(widgets.QHLine())
             leftColumnLayout.addLayout(preProcessLayout)
+            self.initParamsColIndex += 1
         
         # Init params in left column
         self.initParamsScrollArea = widgets.ScrollArea()
@@ -10778,6 +10781,7 @@ class QDialogModelParams(QDialog):
         initParamsScrollAreaLayout.addWidget(initGroupBox)
         
         leftColumnLayout.addWidget(QLabel(f'<b>{initGroupBox.title()}</b>'))
+        self.initParamsColIndex += 1
         initGroupBox.setTitle('')
         leftColumnLayout.addWidget(self.initParamsScrollArea)
         leftColumnLayout.addLayout(initButtonsLayout)
@@ -11931,7 +11935,9 @@ class QDialogModelParams(QDialog):
             initParamsStretch = optimalHeightInitParams/heightPreprocParams
             initParamsStretch = max(1, round(initParamsStretch))
             # Set stretch for the "initial parameters" widget at index 2 in the left column layout
-            self.leftColumnLayout.setStretch(LEFT_COLUMN_INIT_PARAMS_INDEX, initParamsStretch)
+            self.leftColumnLayout.setStretch(
+                self.initParamsColIndex, initParamsStretch
+            )
         if self.postProcessGroupbox is not None:
             heightRight += self.postProcessGroupbox.minimumSizeHint().height()
             heightRight += buttonHeight
