@@ -16679,7 +16679,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.statusBarLabel.setText('Saving combined channels...')
         
         self.saveCombinedChannelsWorker = workers.SaveCombinedChannelsWorker(
-            self.data, appendedText, 
+            self.data, appendedText, ext=".tif",
         )
         
         self.saveCombinedChannelsThread = QThread()
@@ -16773,7 +16773,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         self.statusBarLabel.setText('Saving pre-processed data...')
         
         self.savePreprocWorker = workers.SaveProcessedDataWorker(
-            self.data, appendedText
+            self.data, appendedText, ext=".tif"
         )
         
         self.savePreprocThread = QThread()
