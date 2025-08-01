@@ -16749,7 +16749,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements):
         
         win = apps.filenameDialog(
             basename=f'{posData.basename}{self.user_ch_name}',
-            ext=posData.ext,
+            ext=".tif",
             hintText='Insert a name for the <b>preprocessed image</b> file:',
             defaultEntry='preprocessed',
             helpText=helpText, 
