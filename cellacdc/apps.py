@@ -11926,7 +11926,7 @@ class QDialogModelParams(QDialog):
             )
             heightPreprocessButtons = heightPreprocParams - heightPreprocessStep
             optimalHeightInitParams = (
-                heightPreprocessButtons + 4*heightPreprocessStep
+                heightPreprocessButtons + MAX_PREPROCESS_STEPS*heightPreprocessStep
             )
             initParamsStretch = optimalHeightInitParams/heightPreprocParams
             initParamsStretch = max(1, round(initParamsStretch))
