@@ -39,6 +39,7 @@ if GUI_INSTALLED:
     from . import widgets
     from . import qrc_resources_path, qrc_resources_light_path
     from . import qrc_resources_dark_path
+    from . import whitelist
     
     
 import warnings
@@ -55,7 +56,6 @@ from . import cca_functions
 from . import sorted_cols
 from . import io
 from . import core
-from . import whitelist
 from . import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
 
 acdc_df_bool_cols = [
