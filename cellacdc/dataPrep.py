@@ -3133,6 +3133,23 @@ class dataPrepWin(QMainWindow):
         self.saveAlignedWorkerLoop = QEventLoop(self)
         self.saveAlignedWorkerLoop.exec_()
     
+    def removeAlignShiftsFile(self):
+        for posData in self.data:
+            posData = self.data[self.pos_i]
+            if posData.align_shifts_path is None:
+                continue
+            
+            if not os.path.exists(posData.align_shifts_path):
+                continue
+            
+            self.logger.info(
+                f'Removing align shifts file: {posData.align_shifts_path}'
+            )
+            try:
+                os.remove(posData.align_shifts_path)
+            except Exception as e:
+                pass
+            
     def handleAlignedDataOnClosing(self):
         if not hasattr(self, 'tempFilesToMove'):
             return True
@@ -3145,6 +3162,7 @@ class dataPrepWin(QMainWindow):
             return False
         
         if not saveAligned:
+            self.removeAlignShiftsFile()
             return True
         
         cancel = self.warnSaveAlignedNotReversible()
