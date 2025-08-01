@@ -11916,6 +11916,9 @@ class QDialogModelParams(QDialog):
             )
             heightLeft += heightPreprocParams
             heightLeft += buttonHeight
+            # Set stretch factor for the widget at index 0 (likely the initial parameters widget)
+            # to ensure it expands appropriately when the window is resized.
+            # A stretch factor of 1 gives it a proportional share of available space.
             self.leftColumnLayout.setStretch(0, 1)
             
             heightPreprocessStep = (
