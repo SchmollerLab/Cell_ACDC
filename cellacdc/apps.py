@@ -10781,6 +10781,7 @@ class QDialogModelParams(QDialog):
         initGroupBox.setTitle('')
         leftColumnLayout.addWidget(self.initParamsScrollArea)
         leftColumnLayout.addLayout(initButtonsLayout)
+        self.leftColumnLayout = leftColumnLayout
 
         # RIGHT COLUMN: Segmentation/Eval and Post-processing params
 
@@ -11890,10 +11891,10 @@ class QDialogModelParams(QDialog):
     
     def showEvent(self, event) -> None:
         buttonHeight = self.okButton.minimumSizeHint().height()
-        heightLeft = (
+        heightInitParams = (
             self.initParamsScrollArea.minimumHeightNoScrollbar()
-            + 70 + buttonHeight
         )
+        heightLeft = heightInitParams + 70 + buttonHeight
         heightRight = buttonHeight
         if self.segmentParamsScrollArea is not None:
             heightRight += (
@@ -11905,13 +11906,28 @@ class QDialogModelParams(QDialog):
                 self.extraParamsScrollArea.minimumHeightNoScrollbar()
                 + 70 + buttonHeight
             )
-            
+        
         if self.additionalSegmGroupbox is not None:
             heightRight += self.additionalSegmGroupbox.minimumSizeHint().height()
             heightRight += buttonHeight
         if self.preProcessParamsWidget is not None:
-            heightLeft += self.preProcessParamsWidget.minimumSizeHint().height()
+            heightPreprocParams = (
+                self.preProcessParamsWidget.minimumSizeHint().height()
+            )
+            heightLeft += heightPreprocParams
             heightLeft += buttonHeight
+            self.leftColumnLayout.setStretch(0, 1)
+            
+            heightPreprocessStep = (
+                self.preProcessParamsWidget.stepSizeHeightHint()
+            )
+            heightPreprocessButtons = heightPreprocParams - heightPreprocessStep
+            optimalHeightInitParams = (
+                heightPreprocessButtons + 4*heightPreprocessStep
+            )
+            initParamsStretch = optimalHeightInitParams/heightPreprocParams
+            initParamsStretch = max(1, round(initParamsStretch))
+            self.leftColumnLayout.setStretch(2, initParamsStretch)
         if self.postProcessGroupbox is not None:
             heightRight += self.postProcessGroupbox.minimumSizeHint().height()
             heightRight += buttonHeight
@@ -15368,6 +15384,14 @@ class PreProcessParamsWidget(QWidget):
         
         mainLayout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(mainLayout)
+    
+    def stepSizeHeightHint(self):
+        stepWidgets = self.stepsWidgets[1]
+        height = (
+            stepWidgets['stepLabel'].minimumSizeHint().height()
+            + stepWidgets['selector'].minimumSizeHint().height()
+        )
+        return height
     
     def setChecked(self, checked):
         self.groupbox.setChecked(checked)
