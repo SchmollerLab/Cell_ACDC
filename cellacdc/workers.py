@@ -5540,21 +5540,24 @@ class SaveProcessedDataWorker(QObject):
     def __init__(
             self, 
             allPosData: Iterable['load.loadData'], 
-            appended_text_filename: str
+            appended_text_filename: str,
+            ext: str = None
         ):
         QObject.__init__(self)
         self.allPosData = allPosData
         self.signals = signals()
         self.logger = workerLogger(self.signals.progress)
         self.appended_text_filename = appended_text_filename
-    
+        self.ext = ext
+
     @worker_exception_handler
     def run(self):
         self.signals.initProgressBar.emit(0)
         for posData in self.allPosData:
+            ext_loc = self.ext if self.ext is not None else posData.ext
             processed_filename = (
                 f'{posData.basename}{posData.user_ch_name}_'
-                f'{self.appended_text_filename}{posData.ext}'
+                f'{self.appended_text_filename}{ext_loc}'
             )
             processed_filepath = os.path.join(
                 posData.images_path, processed_filename
