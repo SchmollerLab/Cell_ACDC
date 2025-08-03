@@ -939,6 +939,8 @@ class welcomeWin(QWidget):
 
         if self.QPbar is None:
             self.addPbar()
+        else:
+            self.QPbar.setVisible(True)
 
         self.thread = QThread()
         self.worker = downloadWorker('time_lapse_2D')
@@ -946,7 +948,7 @@ class welcomeWin(QWidget):
         self.worker.progress.connect(self.downloadProgress)
         self.worker.finished.connect(self.thread.quit)
         self.worker.finished.connect(self.worker.deleteLater)
-        self.worker.finished.connect(self.openGUIexample)
+        self.worker.finished.connect(self.downloadTimeLapseExampleWorkerFinished)
         self.thread.finished.connect(self.thread.deleteLater)
 
         self.thread.started.connect(self.worker.run)
@@ -960,19 +962,39 @@ class welcomeWin(QWidget):
         elif len_chunk == 0:
             self.QPbar.setValue(self.QPbar.maximum())
 
+    def downloadTimeLapseExampleWorkerFinished(self):
+        self.QPbar.setVisible(False)
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(f"""
+            Done!<br><br>
+            The example dataset has been downloaded to path below.<br><br>
+            Do you want to <b>open it in the GUI</b>?
+        """)
+        _, yesButton = msg.question(
+            self, 'Open downloaded dataset?', txt,
+            buttonsTexts=('No, thanks', 'Yes, please, open the GUI'),
+            commands=(self.worker.exp_path,),
+            path_to_browse=self.worker.exp_path
+        )
+        self.infoTextWidget.setText(
+            '<br><b>Example downloaded</b> to '
+            f'<code>{self.worker.exp_path}</code>.<br>'
+        )
+        if msg.clickedButton == yesButton:
+            self.openGUIexample()
+    
     def openGUIexample(self):
         txt = (
         f"""
         <p style="font-size:11px; font-family:ubuntu">
-            <br><b>Example downloaded</b> to {self.worker.exp_path}.<br>
+            <br><b>Example downloaded</b> to 
+            <code>{self.worker.exp_path}</code>.<br>
             Opening GUI...
         </p>
         """
         )
         self.infoTextWidget.setText(txt)
-        self.QPbar.setValue(self.QPbar.maximum())
         self.openGUIfolder(self.worker.exp_path)
-
 
     def test3DzStacksExample(self, checked=True):
         _, example_path, _, _ = myutils.get_examples_path('snapshots_3D')
@@ -987,6 +1009,8 @@ class welcomeWin(QWidget):
 
         if self.QPbar is None:
             self.addPbar()
+        else:
+            self.QPbar.setVisible(True)
 
         self.thread = QThread()
         self.worker = downloadWorker('snapshots_3D')
