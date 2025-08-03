@@ -948,7 +948,7 @@ class welcomeWin(QWidget):
         self.worker.progress.connect(self.downloadProgress)
         self.worker.finished.connect(self.thread.quit)
         self.worker.finished.connect(self.worker.deleteLater)
-        self.worker.finished.connect(self.downloadTimeLapseExampleWorkerFinished)
+        self.worker.finished.connect(self.downloadExampleWorkerFinished)
         self.thread.finished.connect(self.thread.deleteLater)
 
         self.thread.started.connect(self.worker.run)
@@ -962,7 +962,7 @@ class welcomeWin(QWidget):
         elif len_chunk == 0:
             self.QPbar.setValue(self.QPbar.maximum())
 
-    def downloadTimeLapseExampleWorkerFinished(self):
+    def downloadExampleWorkerFinished(self):
         self.QPbar.setVisible(False)
         msg = widgets.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(f"""
@@ -1018,7 +1018,7 @@ class welcomeWin(QWidget):
         self.worker.progress.connect(self.downloadProgress)
         self.worker.finished.connect(self.thread.quit)
         self.worker.finished.connect(self.worker.deleteLater)
-        self.worker.finished.connect(self.openGUIexample)
+        self.worker.finished.connect(self.downloadExampleWorkerFinished)
         self.thread.finished.connect(self.thread.deleteLater)
 
         self.thread.started.connect(self.worker.run)
