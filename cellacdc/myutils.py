@@ -2882,12 +2882,24 @@ def check_install_omnipose():
         install_package_conda('mahotas')
         _install_pip_package('omnipose-acdc')
 
-def _run_command(command, shell=True):
+def _run_command(command: str, shell=False):
     if command.find('conda') == -1:
         args = command.split(' ')
     else:
         args = command
-    subprocess.check_call(args, shell=shell)
+    
+    try:
+        subprocess.check_call(args, shell=shell)
+        return
+    except Exception as err:
+        pass
+    
+    try:
+        args = command.split(' ')
+        subprocess.check_call(args, shell=shell)
+        return
+    except Exception as err:
+        pass
 
 def check_install_torch(is_cli=False, caller_name='Cell-ACDC', qparent=None):
     try:
