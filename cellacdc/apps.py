@@ -14553,7 +14553,7 @@ class InstallPyTorchDialog(QBaseDialog):
         
         row += 1
         self.pkgManagerCombobox = QComboBox()
-        self.pkgManagerCombobox.addItems(['Conda', 'Pip'])
+        self.pkgManagerCombobox.addItems(['Pip'])
         if not is_conda_env():
             self.pkgManagerCombobox.setCurrentText('Pip')
             self.pkgManagerCombobox.setDisabled(True)
