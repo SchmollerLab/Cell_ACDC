@@ -2887,9 +2887,6 @@ def _run_command(command: str | list[str], shell=False):
         raise TypeError(
             f'Command must be a string or a list of strings, not {type(command)}'
         )
-        
-    if isinstance(command, str) and 'conda' in command:
-        command = command.split(' ')
     
     command_str = None
     if isinstance(command, str):
