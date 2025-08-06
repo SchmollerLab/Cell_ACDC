@@ -2165,6 +2165,9 @@ class SegmKernel(_WorkflowKernel):
         self.model = myutils.init_segm_model(
             acdcSegment, posData, self.init_model_kwargs
         )
+        if self.model is None:
+            # The model was not initialized correctly
+            return
         self.is_segment3DT_available = any(
             [name=='segment3DT' for name in dir(self.model)]
         )
@@ -2412,6 +2415,12 @@ class SegmKernel(_WorkflowKernel):
 
         if self.model is None:
             self.init_segm_model(posData)
+        
+        if self.model is None:
+            self.logger_func(
+                f'\nSegmentation model {self.model_name} was not initialized!'
+            )
+            return
         
         """Segmentation routine"""
         self.logger_func(f'\nSegmenting with {self.model_name}...')

@@ -59,7 +59,7 @@ class Model(CellposeBaseModel):
             Only for v3
 
         """
-
+        self.init_successful = False
         self.initConstants()
         model_type, model_path, device = myutils.translateStrNone(model_type, model_path, device)
         
@@ -95,6 +95,7 @@ class Model(CellposeBaseModel):
                 residual_on=custom_residual_on,
                 diam_mean=custom_diam_mean,
             )
+        self.init_successful = True
     
     def _get_eval_kwargs_v2(
            self,
